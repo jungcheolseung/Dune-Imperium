@@ -1,4 +1,4 @@
-from status import Imperium, AgentIcon
+from dune.status import Imperium, AgentIcon
 
 
 start_cards = {
