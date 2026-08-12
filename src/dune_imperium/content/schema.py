@@ -33,9 +33,12 @@ class CardDefinition:
     card_id: str
     name: str
     sources: tuple[SourceRef, ...]
+    catalog_url: str | None = None
 
     def __post_init__(self) -> None:
         if not self.card_id or not self.name:
             raise ValueError("cards require stable IDs and names")
         if not self.sources:
             raise ValueError("cards require official source references")
+        if self.catalog_url is not None and not self.catalog_url.startswith("https://"):
+            raise ValueError("card catalog URLs must use HTTPS")

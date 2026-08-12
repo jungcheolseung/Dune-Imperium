@@ -66,6 +66,12 @@ Main은 최신 판정과 clarification을 FAQ에서 확인하라고 안내한다
 확인에만 사용한다. 규칙 권위가 아니며, 이미지 파일을 저장하거나 재배포하기
 전에는 이용 조건을 따로 확인한다.
 
+[Dire Wolf의 Uprising Design Diary 2](https://news.direwolfdigital.com/dune-imperium-uprising-design-diary-2-sandworms-conflicts-and-the-shield-wall/)는
+Objective 카드의 battle icon, 인원 표시, First Player 표시처럼 룰북 본문에서
+개별 카드별로 열거하지 않은 **구성물 식별**을 공식 이미지와 대조하는 데만
+사용한다. 이 글의 설계 설명을 Main·Board Guide·FAQ보다 높은 규칙 판정 근거로
+사용하지 않는다.
+
 ## 변경 절차
 
 새 FAQ나 룰북이 나오면 다음 순서로 갱신한다.
