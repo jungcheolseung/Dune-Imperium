@@ -365,13 +365,20 @@ setup을 만들며, 숨겨야 할 덱 순서와 상대 비공개 카드가 관�
 
 ## 8. 바로 다음 작업
 
-R0 규칙 명세의 coverage 검산이 끝난 뒤 M0를 시작한다. 첫 구현 PR/작업 단위는
-다음으로 제한한다.
+R0, M0, M1을 완료했고 M2의 보드·시작 구성물·Conflict·Objective manifest와
+seed 기반 setup randomization을 구현했다. 권위 상태에는 공용 카드 zone을,
+`PlayerView`에는 공개 상태와 관측자 자신의 비공개 카드만 담는 redaction 경계를
+추가했다.
 
-1. `src/dune_imperium` 골격과 개발 도구 설정
-2. 핵심 Protocol/dataclass의 타입 계약
-3. `RulesetConfig(players=4, choam_module=False)`
-4. 규칙 명세와 연결된 콘텐츠 manifest 문서 골격
-5. 커널 계약을 검증하는 첫 테스트
+M2의 남은 작업은 다음 순서로 진행한다.
 
-이 단계에서는 실제 카드 효과나 UI, RL 패키지를 아직 구현하지 않는다.
+1. 기본 게임 Imperium 65장과 Intrigue 40장의 setup용 identity manifest를 만든다.
+2. Leader 선택, 두 공용 deck shuffle, Imperium Row 공개, 네 시작 덱 shuffle을
+   하나의 기록 가능한 setup chance 흐름으로 연결한다.
+3. 완성된 setup을 `GameState`에 적재하고 여러 seed의 수량·결정성·관측 보안
+   통합 테스트를 추가한다.
+4. Spy observation post 인접 그래프를 전사하고 보드 공간과의 상호 참조를
+   검증한다.
+
+실제 카드 효과 해석은 M6까지 미루되, M2에서 필요한 카드 identity와 CHOAM 제외
+여부는 출처와 함께 고정한다.
