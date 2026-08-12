@@ -9,6 +9,7 @@ from dune_imperium.core import (
     DecisionFrame,
     DomainAction,
     GameEvent,
+    GamePhase,
     GameState,
     IllegalActionError,
     PlayerDecision,
@@ -125,6 +126,14 @@ def test_clone_is_equal_but_not_identical() -> None:
 
     assert clone == state
     assert clone is not state
+
+
+def test_only_finished_phase_is_terminal() -> None:
+    engine = PassAroundEngine()
+    state = engine.reset(RulesetConfig(), seed=11)
+
+    assert engine.is_terminal(state) is False
+    assert engine.is_terminal(replace(state, phase=GamePhase.FINISHED)) is True
 
 
 def test_rules_cannot_change_revision_directly() -> None:

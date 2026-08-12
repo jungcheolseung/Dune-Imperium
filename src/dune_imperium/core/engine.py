@@ -6,10 +6,11 @@ from dataclasses import dataclass, replace
 
 from dune_imperium.config import RulesetConfig
 from dune_imperium.core.actions import DomainAction
-from dune_imperium.core.decisions import Decision, PlayerDecision
+from dune_imperium.core.chance import ChanceOutcome, validate_chance_outcome
+from dune_imperium.core.decisions import ChanceDecision, Decision, PlayerDecision
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.observation import PlayerView
-from dune_imperium.core.state import GameState, canonical_state_hash
+from dune_imperium.core.state import GamePhase, GameState, canonical_state_hash
 
 
 class IllegalActionError(ValueError):
@@ -29,7 +30,7 @@ class Transition:
     """Externally visible result of applying one action."""
 
     state: GameState
-    action: DomainAction
+    action: DomainAction | ChanceOutcome
     events: tuple[GameEvent, ...]
     next_decision: Decision | None
 
@@ -74,8 +75,23 @@ class RulesEngine(ABC):
     def observe(self, state: GameState, player: int) -> PlayerView:
         """Create a deterministic player-scoped view."""
 
-    def apply(self, state: GameState, action: DomainAction) -> Transition:
-        """Validate and apply an action without mutating ``state``."""
+    def apply(
+        self,
+        state: GameState,
+        action: DomainAction | ChanceOutcome,
+    ) -> Transition:
+        """Validate and apply a player action or chance outcome."""
+
+        if isinstance(action, ChanceOutcome):
+            return self._apply_chance_outcome(state, action)
+        return self._apply_player_action(state, action)
+
+    def _apply_player_action(
+        self,
+        state: GameState,
+        action: DomainAction,
+    ) -> Transition:
+        """Validate and apply one player-owned action."""
 
         decision = self.current_decision(state)
         if not isinstance(decision, PlayerDecision):
@@ -89,6 +105,41 @@ class RulesEngine(ABC):
 
         original_hash = canonical_state_hash(state)
         result = self._apply_legal(state, action)
+        return self._finish_transition(state, original_hash, action, result)
+
+    def _apply_chance_outcome(
+        self,
+        state: GameState,
+        outcome: ChanceOutcome,
+    ) -> Transition:
+        """Validate and apply one recorded chance result."""
+
+        decision = self.current_decision(state)
+        if not isinstance(decision, ChanceDecision):
+            raise IllegalActionError("the current decision does not accept chance")
+        try:
+            validate_chance_outcome(decision, outcome)
+        except ValueError as error:
+            raise IllegalActionError(str(error)) from error
+        original_hash = canonical_state_hash(state)
+        result = self._apply_chance(state, outcome)
+        return self._finish_transition(state, original_hash, outcome, result)
+
+    def _apply_chance(self, state: GameState, outcome: ChanceOutcome) -> RuleResult:
+        """Resolve a valid chance result; override when chance is used."""
+
+        del state, outcome
+        raise NotImplementedError("this rules engine has no chance transitions")
+
+    def _finish_transition(
+        self,
+        state: GameState,
+        original_hash: str,
+        action: DomainAction | ChanceOutcome,
+        result: RuleResult,
+    ) -> Transition:
+        """Enforce transition invariants shared by every input type."""
+
         if canonical_state_hash(state) != original_hash:
             raise RuntimeError("rules mutated the input state")
         if result.state.revision != state.revision:
@@ -110,3 +161,8 @@ class RulesEngine(ABC):
         """Return an independent full-information state clone."""
 
         return copy.deepcopy(state)
+
+    def is_terminal(self, state: GameState) -> bool:
+        """Return whether no further game transition may occur."""
+
+        return state.phase is GamePhase.FINISHED
