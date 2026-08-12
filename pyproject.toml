@@ -1,5 +1,5 @@
 [project]
-name = "dune"
+name = "dune-imperium"
 version = "0.1.0"
 description = "A Python implementation of Dune: Imperium - Uprising for AI research"
 authors = [
@@ -12,8 +12,8 @@ dependencies = []
 [dependency-groups]
 dev = [
     "mypy>=1.2.0",
-    "pycodestyle>=2.10.0",
-    "pylint>=2.17.2",
+    "pytest>=8.4.0",
+    "ruff>=0.12.0",
 ]
 
 [build-system]
@@ -21,5 +21,21 @@ requires = ["uv_build>=0.12.3,<0.13"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]
-module-name = "dune"
-module-root = ""
+module-name = "dune_imperium"
+
+[tool.pytest.ini_options]
+addopts = ["--strict-config", "--strict-markers", "-ra"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 88
+src = ["src", "tests"]
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["B", "E", "F", "I", "UP"]
+
+[tool.mypy]
+files = ["src", "tests"]
+python_version = "3.14"
+strict = true

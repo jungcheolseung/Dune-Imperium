@@ -1,0 +1,1 @@
+"""Versioned game content definitions."""

@@ -96,7 +96,11 @@ Dune Cards Hub는 카드 및 시각 자료의 참고 출처로 사용한다. 규
 ```bash
 uv sync
 uv run python --version
+uv run pytest
+uv run ruff check src tests
+uv run mypy src tests
 ```
 
 `uv sync`는 `.python-version`에 지정된 Python 3.14로 `.venv`를 만들고
-`uv.lock`에 고정된 의존성을 설치한다.
+`uv.lock`에 고정된 의존성을 설치한다. 새 구현은 `src/dune_imperium/`에 두며,
+기존 `dune/` 패키지는 이전 구현의 참고 자료일 뿐 새 코드에서 import하지 않는다.
