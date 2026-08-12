@@ -42,3 +42,16 @@ class CardDefinition:
             raise ValueError("cards require official source references")
         if self.catalog_url is not None and not self.catalog_url.startswith("https://"):
             raise ValueError("card catalog URLs must use HTTPS")
+
+
+@dataclass(frozen=True, slots=True)
+class DeckCardEntry:
+    """One card definition and its physical quantity in a shared deck."""
+
+    card: CardDefinition
+    copies: int = 1
+    choam_only: bool = False
+
+    def __post_init__(self) -> None:
+        if self.copies < 1:
+            raise ValueError("deck-card copies must be positive")

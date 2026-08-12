@@ -3,6 +3,16 @@
 from collections import Counter
 
 from dune_imperium.content.uprising.conflicts import CONFLICTS
+from dune_imperium.content.uprising.imperium import (
+    IMPERIUM_CARDS,
+    imperium_cards_for_choam,
+    imperium_deck_instance_ids,
+)
+from dune_imperium.content.uprising.intrigue import (
+    INTRIGUE_CARDS,
+    intrigue_cards_for_choam,
+    intrigue_deck_instance_ids,
+)
 from dune_imperium.content.uprising.leaders import LEADERS, leaders_for_choam
 from dune_imperium.content.uprising.objectives import (
     OBJECTIVES,
@@ -67,3 +77,51 @@ def test_reserve_stacks_are_finite_and_have_no_foldspace() -> None:
         "prepare_the_way": 8,
         "the_spice_must_flow": 10,
     }
+
+
+def test_imperium_manifest_matches_base_and_choam_counts() -> None:
+    assert len(IMPERIUM_CARDS) == 54
+    assert sum(entry.copies for entry in IMPERIUM_CARDS) == 69
+    assert sum(entry.copies for entry in imperium_cards_for_choam(False)) == 65
+    assert {
+        entry.card.card_id for entry in IMPERIUM_CARDS if entry.choam_only
+    } == {
+        "cargo_runner",
+        "delivery_agreement",
+        "interstellar_trade",
+        "priority_contracts",
+    }
+
+
+def test_intrigue_manifest_matches_base_and_choam_counts() -> None:
+    assert len(INTRIGUE_CARDS) == 39
+    assert sum(entry.copies for entry in INTRIGUE_CARDS) == 44
+    assert sum(entry.copies for entry in intrigue_cards_for_choam(False)) == 40
+    assert {
+        entry.card.card_id for entry in INTRIGUE_CARDS if entry.choam_only
+    } == {
+        "backed_by_choam",
+        "choam_profits",
+        "leverage",
+        "reach_agreement",
+    }
+    assert next(
+        entry.copies
+        for entry in INTRIGUE_CARDS
+        if entry.card.card_id == "special_mission"
+    ) == 2
+
+
+def test_shared_deck_manifests_have_unique_ids_urls_and_instances() -> None:
+    for entries in (IMPERIUM_CARDS, INTRIGUE_CARDS):
+        ids = tuple(entry.card.card_id for entry in entries)
+        assert len(ids) == len(set(ids))
+        assert all(entry.card.catalog_url for entry in entries)
+
+    for instance_ids, expected in (
+        (imperium_deck_instance_ids(False), 65),
+        (imperium_deck_instance_ids(True), 69),
+        (intrigue_deck_instance_ids(False), 40),
+        (intrigue_deck_instance_ids(True), 44),
+    ):
+        assert len(instance_ids) == len(set(instance_ids)) == expected
