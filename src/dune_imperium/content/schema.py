@@ -24,3 +24,18 @@ class SourceRef:
             raise ValueError("source pages must contain positive page numbers")
         if len(self.pages) != len(set(self.pages)):
             raise ValueError("source pages must be unique")
+
+
+@dataclass(frozen=True, slots=True)
+class CardDefinition:
+    """Identity and provenance shared by all future card schemas."""
+
+    card_id: str
+    name: str
+    sources: tuple[SourceRef, ...]
+
+    def __post_init__(self) -> None:
+        if not self.card_id or not self.name:
+            raise ValueError("cards require stable IDs and names")
+        if not self.sources:
+            raise ValueError("cards require official source references")

@@ -10,6 +10,7 @@ from typing import Any
 from dune_imperium.config import RulesetConfig
 from dune_imperium.core.decisions import DecisionFrame
 from dune_imperium.core.events import GameEvent
+from dune_imperium.core.player import PlayerState
 
 
 class GamePhase(StrEnum):
@@ -33,6 +34,7 @@ class GameState:
     seed: int
     phase: GamePhase = GamePhase.SETUP
     revision: int = 0
+    players: tuple[PlayerState, ...] = ()
     decision_stack: tuple[DecisionFrame, ...] = ()
     event_log: tuple[GameEvent, ...] = ()
 

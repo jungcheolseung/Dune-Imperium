@@ -15,6 +15,7 @@ from dune_imperium.core.engine import (
 )
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.observation import PlayerView
+from dune_imperium.core.player import Influence, PlayerState, Resources
 from dune_imperium.core.replay import (
     GameReplay,
     ReplayMismatchError,
@@ -34,10 +35,13 @@ __all__ = [
     "GameReplay",
     "GameState",
     "IllegalActionError",
+    "Influence",
     "PlayerDecision",
+    "PlayerState",
     "PlayerView",
     "RuleResult",
     "RulesEngine",
+    "Resources",
     "ReplayMismatchError",
     "Transition",
     "canonical_state_hash",
