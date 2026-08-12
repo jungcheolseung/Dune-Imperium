@@ -1,0 +1,23 @@
+{
+  "main": {
+    "label": "Uprising Main Rulebook",
+    "url": "https://d19y2ttatozxjp.cloudfront.net/pdfs/DUNE_IMPERIUM_UPRISING_Main_Rulebook_23-10-12.pdf",
+    "sha256": "0a8daa36f73c09316143d05bbd5d845183d1ae6f56ce211d93c59b360074f7db",
+    "pdf_filename": "diu-main.pdf",
+    "text_filename": "diu-main.txt"
+  },
+  "board-guide": {
+    "label": "Uprising Rules Supplements and Board Space Guide",
+    "url": "https://d19y2ttatozxjp.cloudfront.net/pdfs/DUNE_IMPERIUM_UPRISING_Rules_Supplements_23-10-12.pdf",
+    "sha256": "454ea3ef442f0622f4bf5b83b8368b24e34aaf4f0dc0f02d93dfba66e690c075",
+    "pdf_filename": "diu-supplements.pdf",
+    "text_filename": "diu-supplements.txt"
+  },
+  "faq": {
+    "label": "Errata and Frequently Asked Questions, January 13, 2025",
+    "url": "https://d19y2ttatozxjp.cloudfront.net/pdfs/DUNE_IMPERIUM_FAQ_25-1-13.pdf",
+    "sha256": "7b54c283357244e5107d1d0f4e87817d39297e914c2014239acbb2c460c0c6b9",
+    "pdf_filename": "di-faq-2025-01-13.pdf",
+    "text_filename": "di-faq-2025-01-13.txt"
+  }
+}
