@@ -20,3 +20,10 @@ It therefore cannot establish rules provenance or replace validation.
 Dire Wolf Digital's official rules and FAQ remain authoritative for rules
 adjudication. Dune Cards Hub remains the card-level fallback when a DIU value is
 missing, ambiguous, or conflicts with already verified content.
+
+### Recorded discrepancies
+
+- DIU models Trade Dispute's trash icon with `deck: ["hand", "played"]`.
+  The general Uprising trash rule also permits a card in the player's discard
+  pile, and the black trash icon is optional. The local typed reward therefore
+  follows the official general rule rather than DIU's zone list.

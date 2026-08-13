@@ -292,10 +292,12 @@ def resolve_combat_rewards(state: GameState) -> RuleResult:
                         reward.optional_victory_points,
                     )
                 )
-        trash_count = min(
-            reward.trash_cards * amount,
-            len(next_owner.hand) + len(next_owner.in_play),
+        trash_candidates = (
+            *next_owner.hand,
+            *next_owner.discard_pile,
+            *next_owner.in_play,
         )
+        trash_count = reward.trash_cards * amount if trash_candidates else 0
         for _ in range(trash_count):
             frames_in_order.append(
                 _trash_card_frame(
@@ -411,7 +413,7 @@ def legal_combat_reward_trash_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Return cards in hand or in play eligible for a Conflict trash reward."""
+    """Return decline plus eligible hand, discard, and in-play cards."""
 
     if not 0 <= player < state.config.players or not state.decision_stack:
         return ()
@@ -422,13 +424,16 @@ def legal_combat_reward_trash_actions(
     if not isinstance(decision, PlayerDecision) or decision.owner != player:
         return ()
     owner = state.players[player]
-    return tuple(
-        DomainAction(
-            action_id="trash_combat_reward_card",
-            actor=player,
-            arguments=(("card_id", card_id),),
-        )
-        for card_id in (*owner.hand, *owner.in_play)
+    return (
+        DomainAction(action_id="decline_combat_reward_trash", actor=player),
+        *(
+            DomainAction(
+                action_id="trash_combat_reward_card",
+                actor=player,
+                arguments=(("card_id", card_id),),
+            )
+            for card_id in (*owner.hand, *owner.discard_pile, *owner.in_play)
+        ),
     )
 
 
@@ -440,20 +445,31 @@ def apply_combat_reward_trash(
 
     if action not in legal_combat_reward_trash_actions(state, action.actor):
         raise ValueError("action is not a legal Combat reward trash choice")
-    card_id = dict(action.arguments)["card_id"]
-    if not isinstance(card_id, str):
-        raise RuntimeError("Combat reward trash choice has invalid card ID")
     frame = state.decision_stack[-1]
     choice_index = _context_int(dict(frame.context), "choice_index")
     owner = state.players[action.actor]
-    next_owner = replace(
-        owner,
-        hand=tuple(candidate for candidate in owner.hand if candidate != card_id),
-        in_play=tuple(
-            candidate for candidate in owner.in_play if candidate != card_id
-        ),
-        trashed=(*owner.trashed, card_id),
-    )
+    declined = action.action_id == "decline_combat_reward_trash"
+    if declined:
+        card_id = ""
+        next_owner = owner
+    else:
+        card_value = dict(action.arguments)["card_id"]
+        if not isinstance(card_value, str):
+            raise RuntimeError("Combat reward trash choice has invalid card ID")
+        card_id = card_value
+        next_owner = replace(
+            owner,
+            hand=tuple(candidate for candidate in owner.hand if candidate != card_id),
+            discard_pile=tuple(
+                candidate
+                for candidate in owner.discard_pile
+                if candidate != card_id
+            ),
+            in_play=tuple(
+                candidate for candidate in owner.in_play if candidate != card_id
+            ),
+            trashed=(*owner.trashed, card_id),
+        )
     remaining = state.decision_stack[:-1]
     next_state = replace(
         state,
@@ -469,7 +485,7 @@ def apply_combat_reward_trash(
             f"round:{state.round_number}:combat_reward:trash:"
             f"{choice_index}:{action.actor}:{card_id}"
         ),
-        kind="card_trashed",
+        kind=("combat_reward_trash_declined" if declined else "card_trashed"),
         payload=(("card_id", card_id), ("player", action.actor)),
     )
     return RuleResult(state=next_state, events=(event,))
@@ -911,7 +927,10 @@ def _trash_card_frame(
         frame_id=f"round:{state.round_number}:combat_reward_trash:{index}:{player}",
         decision=PlayerDecision(
             owner=player,
-            prompt="Choose an Imperium card from your hand or in play to trash",
+            prompt=(
+                "Trash an Imperium card from your hand, discard pile, or in play, "
+                "or decline"
+            ),
         ),
         context=(("choice_index", index), ("player", player)),
     )

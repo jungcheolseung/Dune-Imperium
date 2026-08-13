@@ -535,27 +535,44 @@ def test_sandworm_repeats_spice_freighters_payment_choice() -> None:
     assert state.combat_rewards_resolved is True
 
 
-def test_trade_dispute_trashes_from_hand_and_in_play_in_rank_order() -> None:
+def test_trade_dispute_trashes_from_hand_discard_and_in_play() -> None:
     state = _reward_state("trade_dispute")
     players = list(state.players)
-    players[0] = replace(players[0], hand=("p0:hand",))
-    players[1] = replace(players[1], in_play=("p1:played",))
+    players[0] = replace(
+        players[0],
+        hand=("p0:hand",),
+        discard_pile=("p0:discard",),
+        in_play=("p0:played",),
+    )
+    players[1] = replace(players[1], discard_pile=("p1:discard",))
     state = replace(state, players=tuple(players))
     state = resolve_combat_rewards(state).state
 
     first_actions = legal_combat_reward_trash_actions(state, 0)
-    assert tuple(dict(action.arguments)["card_id"] for action in first_actions) == (
-        "p0:hand",
+    assert tuple(action.action_id for action in first_actions) == (
+        "decline_combat_reward_trash",
+        "trash_combat_reward_card",
+        "trash_combat_reward_card",
+        "trash_combat_reward_card",
     )
-    state = apply_combat_reward_trash(state, first_actions[0]).state
+    assert tuple(
+        dict(action.arguments)["card_id"] for action in first_actions[1:]
+    ) == (
+        "p0:hand",
+        "p0:discard",
+        "p0:played",
+    )
+    state = apply_combat_reward_trash(state, first_actions[2]).state
 
     second_actions = legal_combat_reward_trash_actions(state, 1)
-    state = apply_combat_reward_trash(state, second_actions[0]).state
+    state = apply_combat_reward_trash(state, second_actions[1]).state
 
-    assert state.players[0].hand == ()
-    assert state.players[0].trashed == ("p0:hand",)
-    assert state.players[1].in_play == ()
-    assert state.players[1].trashed == ("p1:played",)
+    assert state.players[0].hand == ("p0:hand",)
+    assert state.players[0].discard_pile == ()
+    assert state.players[0].in_play == ("p0:played",)
+    assert state.players[0].trashed == ("p0:discard",)
+    assert state.players[1].discard_pile == ()
+    assert state.players[1].trashed == ("p1:discard",)
     assert state.players[0].resources.solari == 2
     assert state.players[0].resources.water == 2
     assert state.combat_rewards_resolved is True
@@ -575,11 +592,34 @@ def test_sandworm_trash_reward_is_limited_by_available_cards() -> None:
     state = resolve_combat_rewards(state).state
 
     actions = legal_combat_reward_trash_actions(state, 0)
-    state = apply_combat_reward_trash(state, actions[0]).state
+    state = apply_combat_reward_trash(state, actions[1]).state
+
+    assert legal_combat_reward_trash_actions(state, 0) == (
+        DomainAction(action_id="decline_combat_reward_trash", actor=0),
+    )
+    state = apply_combat_reward_trash(
+        state,
+        legal_combat_reward_trash_actions(state, 0)[0],
+    ).state
 
     assert state.players[0].trashed == ("only_card",)
     assert state.decision_stack == ()
     assert state.combat_rewards_resolved is True
+
+
+def test_trade_dispute_trash_can_be_declined_with_cards_available() -> None:
+    state = _reward_state("trade_dispute")
+    owner = replace(state.players[0], discard_pile=("keep_me",))
+    state = replace(state, players=(owner, *state.players[1:]))
+    state = resolve_combat_rewards(state).state
+
+    declined = legal_combat_reward_trash_actions(state, 0)[0]
+    result = apply_combat_reward_trash(state, declined)
+
+    assert result.state.players[0].discard_pile == ("keep_me",)
+    assert result.state.players[0].trashed == ()
+    assert result.state.combat_rewards_resolved is True
+    assert result.events[0].kind == "combat_reward_trash_declined"
 
 
 def test_combat_winner_takes_conflict_matches_icon_and_units_are_cleaned_up() -> None:
