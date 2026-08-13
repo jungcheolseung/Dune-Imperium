@@ -2,6 +2,8 @@
 
 from dataclasses import replace
 
+import pytest
+
 from dune_imperium import RulesetConfig
 from dune_imperium.content.uprising.starting_cards import (
     starting_card_for_instance,
@@ -9,14 +11,16 @@ from dune_imperium.content.uprising.starting_cards import (
 )
 from dune_imperium.core import (
     DecisionFrame,
+    DomainAction,
     GamePhase,
     GameState,
     Influence,
     PlayerDecision,
     PlayerState,
     Resources,
+    canonical_state_hash,
 )
-from dune_imperium.rules.agent_turn import legal_agent_actions
+from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 
 
 def _instance(player: int, card_id: str) -> str:
@@ -49,6 +53,22 @@ def _space_ids(state: GameState) -> set[str]:
         str(dict(action.arguments)["space_id"])
         for action in legal_agent_actions(state, 0)
     }
+
+
+def _action_to(
+    state: GameState,
+    space_id: str,
+    cost_option: int | None = None,
+) -> DomainAction:
+    return next(
+        action
+        for action in legal_agent_actions(state, 0)
+        if dict(action.arguments)["space_id"] == space_id
+        and (
+            cost_option is None
+            or dict(action.arguments).get("cost_option") == cost_option
+        )
+    )
 
 
 def test_instance_ids_resolve_to_starting_card_definitions() -> None:
@@ -123,3 +143,71 @@ def test_swordmaster_uses_the_current_dynamic_cost() -> None:
     opponent = replace(state.players[1], swordmaster_acquired=True, agents_available=3)
     state = replace(state, players=(state.players[0], opponent, *state.players[2:]))
     assert "swordmaster" in _space_ids(state)
+
+
+def test_agent_action_pays_cost_and_moves_agent_and_card() -> None:
+    dune = _instance(0, "dune_the_desert_planet")
+    state = _state(dune)
+
+    result = apply_agent_action(state, _action_to(state, "hagga_basin"))
+    owner = result.state.players[0]
+
+    assert owner.resources.water == 0
+    assert owner.agents_available == 1
+    assert owner.agent_locations == ("hagga_basin",)
+    assert owner.hand == ()
+    assert owner.in_play == (dune,)
+    assert result.events[0].kind == "agent_placed"
+    assert result.events[0].payload == (
+        ("card_id", dune),
+        ("player", 0),
+        ("space_id", "hagga_basin"),
+    )
+
+
+def test_selected_cost_option_is_paid_and_recorded_for_effect_resolution() -> None:
+    dagger = _instance(0, "dagger")
+    owner = PlayerState(
+        player_id=0,
+        hand=(dagger,),
+        resources=Resources(solari=2),
+    )
+    state = _state(owner=owner)
+
+    result = apply_agent_action(state, _action_to(state, "gather_support", 1))
+    context = dict(result.state.decision_stack[-1].context)
+
+    assert result.state.players[0].resources.solari == 0
+    assert context["cost_option"] == 1
+
+
+def test_agent_effect_frame_preserves_freely_ordered_effect_groups() -> None:
+    seek_allies = _instance(0, "seek_allies")
+    state = _state(seek_allies)
+
+    result = apply_agent_action(state, _action_to(state, "dutiful_service"))
+    frame = result.state.decision_stack[-1]
+    context = dict(frame.context)
+
+    assert isinstance(frame.decision, PlayerDecision)
+    assert frame.decision.owner == 0
+    assert context["pending_agent_effect"] is True
+    assert context["pending_board_effect"] is True
+    assert context["pending_faction_influence"] is True
+    assert context["space_id"] == "dutiful_service"
+
+
+def test_agent_action_rejects_unlisted_action_without_mutating_state() -> None:
+    dagger = _instance(0, "dagger")
+    state = _state(dagger)
+    before = canonical_state_hash(state)
+    action = _action_to(state, "assembly_hall")
+    invalid = replace(
+        action,
+        arguments=(("card_id", dagger), ("space_id", "sardaukar")),
+    )
+
+    with pytest.raises(ValueError, match="not a legal Agent turn"):
+        apply_agent_action(state, invalid)
+
+    assert canonical_state_hash(state) == before
