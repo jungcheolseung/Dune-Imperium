@@ -76,3 +76,87 @@ def _draw_five(player: PlayerState) -> PlayerState:
         deck=player.deck[5:],
         hand=(*player.hand, *player.deck[:5]),
     )
+
+
+def resolve_makers(state: GameState) -> RuleResult:
+    """Add spice to every unoccupied Maker space and open Recall."""
+
+    if state.phase is not GamePhase.MAKERS:
+        raise ValueError("Makers can resolve only during the Makers phase")
+    if state.decision_stack:
+        raise ValueError("Makers cannot resolve with a pending decision")
+    occupied = {
+        space_id
+        for player in state.players
+        for space_id in player.agent_locations
+    }
+    maker_bonus_spice = tuple(
+        (space_id, amount if space_id in occupied else amount + 1)
+        for space_id, amount in state.maker_bonus_spice
+    )
+    next_state = replace(
+        state,
+        phase=GamePhase.RECALL_OR_ENDGAME,
+        maker_bonus_spice=maker_bonus_spice,
+    )
+    events = tuple(
+        GameEvent(
+            event_id=f"round:{state.round_number}:maker:{space_id}",
+            kind="maker_spice_added",
+            payload=(("space_id", space_id),),
+        )
+        for space_id, _ in state.maker_bonus_spice
+        if space_id not in occupied
+    )
+    return RuleResult(state=next_state, events=events)
+
+
+def resolve_recall_or_endgame(state: GameState) -> RuleResult:
+    """Enter Endgame or recall Agents and prepare the next Round Start."""
+
+    if state.phase is not GamePhase.RECALL_OR_ENDGAME:
+        raise ValueError("Recall can resolve only after Makers")
+    if state.first_player is None:
+        raise ValueError("Recall requires a First Player")
+    if state.decision_stack:
+        raise ValueError("Recall cannot resolve with a pending decision")
+    if any(
+        player.troops_conflict > 0
+        or player.sandworms_conflict > 0
+        or player.combat_strength > 0
+        for player in state.players
+    ):
+        raise ValueError("Combat cleanup must finish before Recall")
+
+    if not state.conflict_deck or any(
+        player.victory_points >= 10 for player in state.players
+    ):
+        next_state = replace(state, phase=GamePhase.ENDGAME)
+        event = GameEvent(
+            event_id=f"round:{state.round_number}:endgame",
+            kind="endgame_started",
+        )
+        return RuleResult(state=next_state, events=(event,))
+
+    players = tuple(
+        replace(
+            player,
+            agents_available=3 if player.swordmaster_acquired else 2,
+            agent_locations=(),
+            has_revealed=False,
+        )
+        for player in state.players
+    )
+    first_player = (state.first_player + 1) % state.config.players
+    next_state = replace(
+        state,
+        phase=GamePhase.ROUND_START,
+        first_player=first_player,
+        players=players,
+    )
+    event = GameEvent(
+        event_id=f"round:{state.round_number}:recall",
+        kind="agents_recalled",
+        payload=(("first_player", first_player),),
+    )
+    return RuleResult(state=next_state, events=(event,))

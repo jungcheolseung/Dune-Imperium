@@ -45,6 +45,11 @@ class GameState:
     intrigue_deck: tuple[str, ...] = ()
     intrigue_discard: tuple[str, ...] = ()
     reserve_stacks: tuple[tuple[str, int], ...] = ()
+    maker_bonus_spice: tuple[tuple[str, int], ...] = (
+        ("deep_desert", 0),
+        ("hagga_basin", 0),
+        ("imperial_basin", 0),
+    )
     decision_stack: tuple[DecisionFrame, ...] = ()
     event_log: tuple[GameEvent, ...] = ()
 
@@ -77,6 +82,14 @@ class GameState:
             raise ValueError("Reserve stack IDs must be unique")
         if any(not card_id or count < 0 for card_id, count in self.reserve_stacks):
             raise ValueError("Reserve stacks require IDs and non-negative counts")
+
+        maker_ids = tuple(space_id for space_id, _ in self.maker_bonus_spice)
+        if maker_ids != ("deep_desert", "hagga_basin", "imperial_basin"):
+            raise ValueError(
+                "Maker bonus spice must use the three spaces in rules order"
+            )
+        if any(amount < 0 for _, amount in self.maker_bonus_spice):
+            raise ValueError("Maker bonus spice must not be negative")
 
     def push_decision(self, frame: DecisionFrame) -> GameState:
         """Return a state with ``frame`` at the top of the stack."""
