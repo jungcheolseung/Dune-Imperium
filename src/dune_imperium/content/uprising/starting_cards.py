@@ -1,9 +1,18 @@
 """The ten-card Uprising starting deck listed in Main Rulebook p. 3."""
 
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Final
 
 from dune_imperium.content.schema import CardDefinition, SourceDocument, SourceRef
+from dune_imperium.content.uprising.types import AgentIcon
+
+
+class StartingCardAgentEffect(StrEnum):
+    """Non-numeric Agent-box effects in the starting deck."""
+
+    TRASH_SELF = "trash_self"
+    LEADER_SIGNET = "leader_signet"
 
 
 @dataclass(frozen=True, slots=True)
@@ -12,10 +21,18 @@ class StartingCardEntry:
 
     card: CardDefinition
     copies: int
+    agent_icons: tuple[AgentIcon, ...] = ()
+    agent_effect: StartingCardAgentEffect | None = None
+    reveal_persuasion: int = 0
+    reveal_strength: int = 0
 
     def __post_init__(self) -> None:
         if self.copies < 1:
             raise ValueError("starting-card copies must be positive")
+        if len(self.agent_icons) != len(set(self.agent_icons)):
+            raise ValueError("starting-card Agent icons must be unique")
+        if min(self.reveal_persuasion, self.reveal_strength) < 0:
+            raise ValueError("starting-card Reveal values must not be negative")
 
 
 MAIN_P3: Final = (SourceRef(SourceDocument.MAIN_RULEBOOK, (3,)),)
@@ -28,9 +45,25 @@ STARTING_DECK: Final = (
             MAIN_P3,
         ),
         copies=2,
+        reveal_persuasion=2,
     ),
-    StartingCardEntry(CardDefinition("dagger", "Dagger", MAIN_P3), copies=2),
-    StartingCardEntry(CardDefinition("diplomacy", "Diplomacy", MAIN_P3), copies=1),
+    StartingCardEntry(
+        CardDefinition("dagger", "Dagger", MAIN_P3),
+        copies=2,
+        agent_icons=(AgentIcon.LANDSRAAD,),
+        reveal_strength=1,
+    ),
+    StartingCardEntry(
+        CardDefinition("diplomacy", "Diplomacy", MAIN_P3),
+        copies=1,
+        agent_icons=(
+            AgentIcon.EMPEROR,
+            AgentIcon.SPACING_GUILD,
+            AgentIcon.BENE_GESSERIT,
+            AgentIcon.FREMEN,
+        ),
+        reveal_persuasion=1,
+    ),
     StartingCardEntry(
         CardDefinition(
             "dune_the_desert_planet",
@@ -38,20 +71,42 @@ STARTING_DECK: Final = (
             MAIN_P3,
         ),
         copies=2,
+        agent_icons=(AgentIcon.SPICE_TRADE,),
+        reveal_persuasion=1,
     ),
     StartingCardEntry(
         CardDefinition("reconnaissance", "Reconnaissance", MAIN_P3),
         copies=1,
+        agent_icons=(AgentIcon.CITY,),
+        reveal_persuasion=1,
     ),
     StartingCardEntry(
         CardDefinition("seek_allies", "Seek Allies", MAIN_P3),
         copies=1,
+        agent_icons=(
+            AgentIcon.EMPEROR,
+            AgentIcon.SPACING_GUILD,
+            AgentIcon.BENE_GESSERIT,
+            AgentIcon.FREMEN,
+        ),
+        agent_effect=StartingCardAgentEffect.TRASH_SELF,
     ),
     StartingCardEntry(
         CardDefinition("signet_ring", "Signet Ring", MAIN_P3),
         copies=1,
+        agent_icons=(
+            AgentIcon.LANDSRAAD,
+            AgentIcon.CITY,
+            AgentIcon.SPICE_TRADE,
+        ),
+        agent_effect=StartingCardAgentEffect.LEADER_SIGNET,
+        reveal_persuasion=1,
     ),
 )
+
+STARTING_CARDS_BY_ID: Final = {
+    entry.card.card_id: entry for entry in STARTING_DECK
+}
 
 
 def starting_deck_instance_ids(player: int) -> tuple[str, ...]:

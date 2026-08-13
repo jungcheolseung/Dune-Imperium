@@ -4,7 +4,6 @@ from dune_imperium.content.uprising.board import (
     BOARD_SPACES,
     BOARD_SPACES_BY_ID,
     OBSERVATION_POSTS,
-    AgentIcon,
     BoardSpace,
     Faction,
     ObservationPost,
@@ -15,6 +14,7 @@ from dune_imperium.content.uprising.intrigue import INTRIGUE_CARDS
 from dune_imperium.content.uprising.leaders import LEADERS
 from dune_imperium.content.uprising.objectives import OBJECTIVES
 from dune_imperium.content.uprising.reserve import RESERVE_STACKS
+from dune_imperium.content.uprising.types import AgentIcon
 
 __all__ = [
     "BOARD_SPACES",

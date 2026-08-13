@@ -3,6 +3,19 @@
 from enum import IntEnum, StrEnum
 
 
+class AgentIcon(StrEnum):
+    """Agent icons shared by cards and board spaces."""
+
+    EMPEROR = "emperor"
+    SPACING_GUILD = "spacing_guild"
+    BENE_GESSERIT = "bene_gesserit"
+    FREMEN = "fremen"
+    LANDSRAAD = "landsraad"
+    CITY = "city"
+    SPICE_TRADE = "spice_trade"
+    SPY = "spy"
+
+
 class BattleIcon(StrEnum):
     """Icons paired by Objective and won Conflict cards."""
 

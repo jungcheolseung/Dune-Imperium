@@ -12,19 +12,7 @@ from types import MappingProxyType
 from typing import Final
 
 from dune_imperium.content.schema import SourceDocument, SourceRef
-
-
-class AgentIcon(StrEnum):
-    """Agent icons printed on cards and board spaces."""
-
-    EMPEROR = "emperor"
-    SPACING_GUILD = "spacing_guild"
-    BENE_GESSERIT = "bene_gesserit"
-    FREMEN = "fremen"
-    LANDSRAAD = "landsraad"
-    CITY = "city"
-    SPICE_TRADE = "spice_trade"
-    SPY = "spy"
+from dune_imperium.content.uprising.types import AgentIcon
 
 
 class Faction(StrEnum):

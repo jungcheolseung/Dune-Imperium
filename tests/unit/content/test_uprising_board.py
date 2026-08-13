@@ -7,11 +7,11 @@ from dune_imperium.content.uprising.board import (
     BOARD_SPACES,
     BOARD_SPACES_BY_ID,
     OBSERVATION_POSTS,
-    AgentIcon,
     DynamicCost,
     Faction,
     ResourceCost,
 )
+from dune_imperium.content.uprising.types import AgentIcon
 
 
 def ids_with(attribute: str) -> set[str]:
