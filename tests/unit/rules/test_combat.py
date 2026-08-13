@@ -21,14 +21,18 @@ from dune_imperium.rules.combat import (
     apply_combat_reward_influence,
     apply_combat_reward_optional_payment,
     apply_combat_reward_spy,
+    apply_combat_reward_spy_recall,
     apply_combat_reward_trash,
+    apply_distinct_combat_reward_influence,
     begin_combat_intrigue,
     finish_combat,
     legal_combat_intrigue_actions,
     legal_combat_reward_influence_actions,
     legal_combat_reward_optional_payment_actions,
     legal_combat_reward_spy_actions,
+    legal_combat_reward_spy_recall_actions,
     legal_combat_reward_trash_actions,
+    legal_distinct_combat_reward_influence_actions,
     rank_combat,
     resolve_combat_rewards,
 )
@@ -354,9 +358,55 @@ def test_combat_rewards_require_completed_intrigue_and_only_resolve_once() -> No
         resolve_combat_rewards(resolved)
 
 
-def test_transcribed_distinct_influence_reward_waits_for_rule_support() -> None:
-    with pytest.raises(NotImplementedError, match="distinct Faction"):
-        resolve_combat_rewards(_reward_state("propaganda"))
+def test_propaganda_requires_two_distinct_factions() -> None:
+    state = resolve_combat_rewards(_reward_state("propaganda")).state
+    first_actions = legal_distinct_combat_reward_influence_actions(state, 0)
+    emperor = next(
+        action
+        for action in first_actions
+        if dict(action.arguments)["faction"] == "emperor"
+    )
+    state = apply_distinct_combat_reward_influence(state, emperor).state
+
+    second_actions = legal_distinct_combat_reward_influence_actions(state, 0)
+
+    assert "emperor" not in {
+        dict(action.arguments)["faction"] for action in second_actions
+    }
+    state = apply_distinct_combat_reward_influence(state, second_actions[0]).state
+    assert state.players[0].influence.emperor == 1
+    assert sum(
+        (
+            state.players[0].influence.emperor,
+            state.players[0].influence.spacing_guild,
+            state.players[0].influence.bene_gesserit,
+            state.players[0].influence.fremen,
+        )
+    ) == 2
+    assert state.combat_rewards_resolved is True
+
+
+def test_sandworm_restarts_propaganda_distinct_group() -> None:
+    state = resolve_combat_rewards(
+        _reward_state("propaganda", sandworm_players=(0,))
+    ).state
+
+    chosen: list[str] = []
+    for faction in ("emperor", "spacing_guild", "emperor", "spacing_guild"):
+        actions = legal_distinct_combat_reward_influence_actions(state, 0)
+        action = next(
+            candidate
+            for candidate in actions
+            if dict(candidate.arguments)["faction"] == faction
+        )
+        chosen.append(faction)
+        state = apply_distinct_combat_reward_influence(state, action).state
+
+    assert chosen == ["emperor", "spacing_guild", "emperor", "spacing_guild"]
+    assert state.players[0].influence.emperor == 2
+    assert state.players[0].influence.spacing_guild == 2
+    assert state.players[0].victory_points == 3
+    assert state.combat_rewards_resolved is True
 
 
 def test_tier_two_resources_troops_and_fixed_influence_resolve() -> None:
@@ -701,9 +751,42 @@ def test_sandworm_doubles_tier_three_vp_and_payment_opportunities() -> None:
     assert state.players[0].control_space_ids == ("imperial_basin",)
 
 
-def test_arrakeen_spy_recall_choice_is_explicitly_blocked() -> None:
-    with pytest.raises(NotImplementedError, match="Spy recall"):
-        resolve_combat_rewards(_reward_state("battle_for_arrakeen"))
+def test_arrakeen_reward_recalls_two_selected_placed_spies() -> None:
+    state = _reward_state("battle_for_arrakeen")
+    owner = replace(
+        state.players[0],
+        spies_supply=0,
+        spy_post_ids=("post_a", "post_b", "post_c"),
+    )
+    state = replace(state, players=(owner, *state.players[1:]))
+    state = resolve_combat_rewards(state).state
+
+    actions = legal_combat_reward_spy_recall_actions(state, 0)
+
+    assert len(actions) == 4
+    paid = apply_combat_reward_spy_recall(state, actions[2]).state
+    assert paid.players[0].spies_supply == 2
+    assert len(paid.players[0].spy_post_ids) == 1
+    assert paid.players[0].victory_points == 3
+    assert paid.combat_rewards_resolved is True
+
+
+def test_arrakeen_spy_recall_can_be_declined_when_unaffordable() -> None:
+    state = _reward_state("battle_for_arrakeen")
+    owner = replace(
+        state.players[0],
+        spies_supply=2,
+        spy_post_ids=("only_post",),
+    )
+    state = replace(state, players=(owner, *state.players[1:]))
+    state = resolve_combat_rewards(state).state
+
+    actions = legal_combat_reward_spy_recall_actions(state, 0)
+
+    assert actions == (DomainAction(action_id="decline_combat_reward", actor=0),)
+    declined = apply_combat_reward_spy_recall(state, actions[0]).state
+    assert declined.players[0].spy_post_ids == ("only_post",)
+    assert declined.players[0].victory_points == 2
 
     tied = _reward_state("battle_for_arrakeen", strengths=(8, 8, 4, 0))
     result = resolve_combat_rewards(tied).state

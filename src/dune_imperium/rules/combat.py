@@ -306,6 +306,27 @@ def resolve_combat_rewards(state: GameState) -> RuleResult:
                         reward.optional_victory_points,
                     )
                 )
+            if reward.optional_recall_spies:
+                frames_in_order.append(
+                    _optional_spy_recall_frame(
+                        state,
+                        assignment.player,
+                        len(frames_in_order),
+                        reward.optional_recall_spies,
+                        reward.optional_victory_points,
+                    )
+                )
+            if reward.choose_distinct_influence:
+                group = len(frames_in_order)
+                for _ in range(reward.choose_distinct_influence):
+                    frames_in_order.append(
+                        _distinct_influence_frame(
+                            state,
+                            assignment.player,
+                            len(frames_in_order),
+                            group,
+                        )
+                    )
         trash_candidates = (
             *next_owner.hand,
             *next_owner.discard_pile,
@@ -427,6 +448,96 @@ def apply_combat_reward_optional_payment(
             ("cost", cost if paid else 0),
             ("player", action.actor),
             ("resource", resource),
+            ("victory_points", victory_points if paid else 0),
+        ),
+    )
+    return RuleResult(state=next_state, events=(event,))
+
+
+def legal_combat_reward_spy_recall_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return decline plus every payable pair of placed Spies."""
+
+    if not 0 <= player < state.config.players or not state.decision_stack:
+        return ()
+    frame = state.decision_stack[-1]
+    if ":combat_reward_spy_recall:" not in frame.frame_id:
+        return ()
+    decision = frame.decision
+    if not isinstance(decision, PlayerDecision) or decision.owner != player:
+        return ()
+    count = _context_int(dict(frame.context), "spy_count")
+    posts = state.players[player].spy_post_ids
+    actions = [DomainAction(action_id="decline_combat_reward", actor=player)]
+    if count != 2:
+        raise NotImplementedError("only a two-Spy Combat reward cost is supported")
+    actions.extend(
+        DomainAction(
+            action_id="recall_spies_for_combat_reward",
+            actor=player,
+            arguments=(
+                ("first_post_id", posts[first]),
+                ("second_post_id", posts[second]),
+            ),
+        )
+        for first in range(len(posts))
+        for second in range(first + 1, len(posts))
+    )
+    return tuple(actions)
+
+
+def apply_combat_reward_spy_recall(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Recall a selected Spy pair or decline the optional VP reward."""
+
+    if action not in legal_combat_reward_spy_recall_actions(state, action.actor):
+        raise ValueError("action is not a legal Combat reward Spy recall")
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    choice_index = _context_int(context, "choice_index")
+    spy_count = _context_int(context, "spy_count")
+    victory_points = _context_int(context, "victory_points")
+    paid = action.action_id == "recall_spies_for_combat_reward"
+    recalled = (
+        {
+            str(dict(action.arguments)["first_post_id"]),
+            str(dict(action.arguments)["second_post_id"]),
+        }
+        if paid
+        else set()
+    )
+    owner = state.players[action.actor]
+    next_owner = replace(
+        owner,
+        spies_supply=owner.spies_supply + (spy_count if paid else 0),
+        spy_post_ids=tuple(
+            post_id for post_id in owner.spy_post_ids if post_id not in recalled
+        ),
+        victory_points=owner.victory_points + (victory_points if paid else 0),
+    )
+    remaining = state.decision_stack[:-1]
+    next_state = replace(
+        state,
+        players=tuple(
+            next_owner if player.player_id == action.actor else player
+            for player in state.players
+        ),
+        decision_stack=remaining,
+        combat_rewards_resolved=not remaining,
+    )
+    event = GameEvent(
+        event_id=(
+            f"round:{state.round_number}:combat_reward:spy_recall:"
+            f"{choice_index}:{action.actor}"
+        ),
+        kind=("spies_recalled" if paid else "combat_reward_declined"),
+        payload=(
+            ("player", action.actor),
+            ("spies", spy_count if paid else 0),
             ("victory_points", victory_points if paid else 0),
         ),
     )
@@ -637,6 +748,89 @@ def legal_combat_reward_influence_actions(
     )
 
 
+def legal_distinct_combat_reward_influence_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return unchosen factions for one choose-distinct Influence group."""
+
+    if not 0 <= player < state.config.players or not state.decision_stack:
+        return ()
+    frame = state.decision_stack[-1]
+    if ":combat_reward_distinct_influence:" not in frame.frame_id:
+        return ()
+    decision = frame.decision
+    if not isinstance(decision, PlayerDecision) or decision.owner != player:
+        return ()
+    context = dict(frame.context)
+    chosen_mask = _context_int(context, "chosen_mask")
+    influence = state.players[player].influence
+    return tuple(
+        DomainAction(
+            action_id="choose_distinct_combat_reward_influence",
+            actor=player,
+            arguments=(("faction", faction.value),),
+        )
+        for index, faction in enumerate(Faction)
+        if not chosen_mask & (1 << index)
+        and _influence_amount(influence, faction) < 3
+    )
+
+
+def apply_distinct_combat_reward_influence(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Gain one Influence and exclude that faction within the current group."""
+
+    if action not in legal_distinct_combat_reward_influence_actions(
+        state, action.actor
+    ):
+        raise ValueError("action is not a legal distinct Influence choice")
+    faction_value = dict(action.arguments)["faction"]
+    if not isinstance(faction_value, str):
+        raise RuntimeError("distinct Influence choice has invalid faction")
+    faction = Faction(faction_value)
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    choice_index = _context_int(context, "choice_index")
+    group = _context_int(context, "group")
+    chosen_mask = _context_int(context, "chosen_mask")
+    faction_index = tuple(Faction).index(faction)
+    owner = state.players[action.actor]
+    current = _influence_amount(owner.influence, faction)
+    next_owner = replace(
+        owner,
+        influence=_replace_influence(owner.influence, faction, current + 1),
+        victory_points=owner.victory_points + (1 if current == 1 else 0),
+    )
+    remaining = state.decision_stack[:-1]
+    if remaining and _frame_context_int(remaining[-1], "group") == group:
+        next_context = dict(remaining[-1].context)
+        next_context["chosen_mask"] = chosen_mask | (1 << faction_index)
+        remaining = (*remaining[:-1], replace(
+            remaining[-1], context=tuple(sorted(next_context.items()))
+        ))
+    next_state = replace(
+        state,
+        players=tuple(
+            next_owner if player.player_id == action.actor else player
+            for player in state.players
+        ),
+        decision_stack=remaining,
+        combat_rewards_resolved=not remaining,
+    )
+    event = GameEvent(
+        event_id=(
+            f"round:{state.round_number}:combat_reward:distinct_influence:"
+            f"{choice_index}:{action.actor}:{faction.value}"
+        ),
+        kind="influence_gained",
+        payload=(("amount", 1), ("faction", faction.value), ("player", action.actor)),
+    )
+    return RuleResult(state=next_state, events=(event,))
+
+
 def apply_combat_reward_influence(
     state: GameState,
     action: DomainAction,
@@ -844,16 +1038,27 @@ def _validate_supported_rewards(
     for assignment in ranking.rewards:
         reward = rewards[assignment.rank - 1]
         unsupported: list[str] = []
-        if reward.choose_distinct_influence:
-            unsupported.append("distinct Faction Influence")
-        if reward.optional_recall_spies:
-            unsupported.append("optional Spy recall")
         if reward.contracts and state.config.choam_module:
             unsupported.append("CHOAM contract selection")
         if unsupported:
             raise NotImplementedError(
                 "Combat reward choices are not implemented: " + ", ".join(unsupported)
             )
+
+        if reward.choose_distinct_influence:
+            influence = state.players[assignment.player].influence
+            available = sum(
+                _influence_amount(influence, faction) < 3 for faction in Faction
+            )
+            capacity = sum(
+                max(0, 3 - _influence_amount(influence, faction))
+                for faction in Faction
+            )
+            required = reward.choose_distinct_influence * assignment.multiplier
+            if available < reward.choose_distinct_influence or capacity < required:
+                raise NotImplementedError(
+                    "Influence 4 bonuses and Alliances are not implemented"
+                )
 
         if reward.influence_faction is not None:
             current = _influence_amount(
@@ -971,6 +1176,57 @@ def _optional_payment_frame(
             ("player", player),
             ("resource", resource),
             ("victory_points", victory_points),
+        ),
+    )
+
+
+def _optional_spy_recall_frame(
+    state: GameState,
+    player: int,
+    index: int,
+    spy_count: int,
+    victory_points: int,
+) -> DecisionFrame:
+    return DecisionFrame(
+        frame_id=(
+            f"round:{state.round_number}:combat_reward_spy_recall:{index}:{player}"
+        ),
+        decision=PlayerDecision(
+            owner=player,
+            prompt=(
+                f"Recall {spy_count} placed Spies to gain "
+                f"{victory_points} Victory Point"
+            ),
+        ),
+        context=(
+            ("choice_index", index),
+            ("player", player),
+            ("spy_count", spy_count),
+            ("victory_points", victory_points),
+        ),
+    )
+
+
+def _distinct_influence_frame(
+    state: GameState,
+    player: int,
+    index: int,
+    group: int,
+) -> DecisionFrame:
+    return DecisionFrame(
+        frame_id=(
+            f"round:{state.round_number}:combat_reward_distinct_influence:"
+            f"{index}:{player}"
+        ),
+        decision=PlayerDecision(
+            owner=player,
+            prompt="Choose a different faction to gain one Influence",
+        ),
+        context=(
+            ("choice_index", index),
+            ("chosen_mask", 0),
+            ("group", group),
+            ("player", player),
         ),
     )
 
@@ -1107,6 +1363,11 @@ def _context_int(context: dict[str, bool | int | str], key: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise RuntimeError(f"Combat Intrigue frame has invalid {key}")
     return value
+
+
+def _frame_context_int(frame: DecisionFrame, key: str) -> int | None:
+    value = dict(frame.context).get(key)
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
 def _rewards(
