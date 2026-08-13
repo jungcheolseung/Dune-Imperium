@@ -7,6 +7,7 @@ from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
+from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
 
 
@@ -105,3 +106,83 @@ def current_reveal_context(state: GameState) -> dict[str, ActionValue]:
     if not required.issubset(context):
         raise ValueError("the current decision is not a Reveal turn")
     return context
+
+
+def legal_finish_reveal_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return the explicit action that ends the current Reveal turn."""
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    try:
+        context = current_reveal_context(state)
+    except ValueError:
+        return ()
+    owner = context["turn_owner"]
+    if isinstance(owner, bool) or not isinstance(owner, int) or owner != player:
+        return ()
+    return (DomainAction(action_id="finish_reveal", actor=player),)
+
+
+def finish_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
+    """Clean up in-play cards and advance or enter Combat."""
+
+    if action not in legal_finish_reveal_actions(state, action.actor):
+        raise ValueError("action is not a legal Reveal cleanup")
+    owner = state.players[action.actor]
+    next_owner = replace(
+        owner,
+        has_revealed=True,
+        discard_pile=(*owner.discard_pile, *owner.in_play),
+        in_play=(),
+    )
+    players = tuple(
+        next_owner if player.player_id == action.actor else player
+        for player in state.players
+    )
+    next_player = _next_unrevealed_player(players, action.actor)
+    if next_player is None:
+        phase = GamePhase.COMBAT
+        decision_stack = state.decision_stack[:-1]
+    else:
+        phase = GamePhase.PLAYER_TURNS
+        decision_stack = (
+            *state.decision_stack[:-1],
+            DecisionFrame(
+                frame_id=f"round:{state.round_number}:turn:{next_player}",
+                decision=PlayerDecision(
+                    owner=next_player,
+                    prompt="Choose an Agent turn or Reveal turn",
+                ),
+                context=(
+                    ("round", state.round_number),
+                    ("turn_owner", next_player),
+                ),
+            ),
+        )
+    next_state = replace(
+        state,
+        phase=phase,
+        players=players,
+        decision_stack=decision_stack,
+    )
+    event = GameEvent(
+        event_id=f"round:{state.round_number}:player:{action.actor}:reveal_finished",
+        kind="reveal_finished",
+        payload=(("player", action.actor),),
+    )
+    return RuleResult(state=next_state, events=(event,))
+
+
+def _next_unrevealed_player(
+    players: tuple[PlayerState, ...],
+    owner: int,
+) -> int | None:
+    for offset in range(1, len(players) + 1):
+        candidate = (owner + offset) % len(players)
+        player = players[candidate]
+        if not player.has_revealed:
+            return candidate
+    return None

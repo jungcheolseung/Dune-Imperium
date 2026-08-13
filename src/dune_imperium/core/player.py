@@ -58,6 +58,7 @@ class PlayerState:
     spy_post_ids: tuple[str, ...] = ()
     control_space_ids: tuple[str, ...] = ()
     combat_strength: int = 0
+    has_revealed: bool = False
     high_council: bool = False
     maker_hooks: bool = False
     deck: tuple[str, ...] = ()

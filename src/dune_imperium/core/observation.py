@@ -31,6 +31,7 @@ class PublicPlayerView:
     spy_post_ids: tuple[str, ...]
     control_space_ids: tuple[str, ...]
     combat_strength: int
+    has_revealed: bool
     high_council: bool
     maker_hooks: bool
     in_play: tuple[str, ...]
@@ -114,6 +115,7 @@ def _public_player_view(player: PlayerState) -> PublicPlayerView:
         spy_post_ids=player.spy_post_ids,
         control_space_ids=player.control_space_ids,
         combat_strength=player.combat_strength,
+        has_revealed=player.has_revealed,
         high_council=player.high_council,
         maker_hooks=player.maker_hooks,
         in_play=player.in_play,

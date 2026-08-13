@@ -1,5 +1,7 @@
 """Tests for the basic Reveal-turn transition."""
 
+from dataclasses import replace
+
 from dune_imperium import RulesetConfig
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.core import (
@@ -10,7 +12,12 @@ from dune_imperium.core import (
     PlayerDecision,
     PlayerState,
 )
-from dune_imperium.rules.reveal_turn import begin_reveal_turn, legal_reveal_actions
+from dune_imperium.rules.reveal_turn import (
+    begin_reveal_turn,
+    finish_reveal_turn,
+    legal_finish_reveal_actions,
+    legal_reveal_actions,
+)
 
 
 def _instance(card_id: str, copy: int = 0) -> str:
@@ -111,3 +118,85 @@ def test_reveal_preserves_agent_cards_already_in_play() -> None:
     result = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
 
     assert result.state.players[0].in_play == (played, revealed)
+
+
+def test_reveal_cleanup_discards_in_play_but_preserves_late_drawn_hand() -> None:
+    revealed = _instance("diplomacy")
+    retained = _instance("dagger")
+    state = _state(PlayerState(player_id=0, hand=(revealed,)))
+    state = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+    owner = replace(state.players[0], hand=(retained,))
+    state = replace(state, players=(owner, *state.players[1:]))
+
+    result = finish_reveal_turn(state, legal_finish_reveal_actions(state, 0)[0])
+    owner = result.state.players[0]
+
+    assert owner.has_revealed is True
+    assert owner.in_play == ()
+    assert owner.discard_pile == (revealed,)
+    assert owner.hand == (retained,)
+
+
+def test_reveal_cleanup_skips_players_who_already_revealed() -> None:
+    state = _state(PlayerState(player_id=0))
+    state = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+    players = (
+        state.players[0],
+        replace(state.players[1], has_revealed=True),
+        state.players[2],
+        replace(state.players[3], has_revealed=True),
+    )
+    state = replace(state, players=players)
+
+    result = finish_reveal_turn(state, legal_finish_reveal_actions(state, 0)[0])
+
+    decision = result.state.decision_stack[-1].decision
+    assert isinstance(decision, PlayerDecision)
+    assert decision.owner == 2
+
+
+def test_last_reveal_cleanup_enters_combat_without_pending_decision() -> None:
+    state = _state(PlayerState(player_id=0))
+    state = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+    players = (
+        state.players[0],
+        *(replace(player, has_revealed=True) for player in state.players[1:]),
+    )
+    state = replace(state, players=players)
+
+    result = finish_reveal_turn(state, legal_finish_reveal_actions(state, 0)[0])
+
+    assert result.state.phase is GamePhase.COMBAT
+    assert result.state.decision_stack == ()
+    assert all(player.has_revealed for player in result.state.players)
+
+
+def test_four_empty_reveal_turns_follow_seat_order_into_combat() -> None:
+    state = _state(PlayerState(player_id=0))
+    state = replace(
+        state,
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:2",
+                decision=PlayerDecision(owner=2, prompt="Choose a turn"),
+            ),
+        ),
+    )
+
+    visited: list[int] = []
+    for player in (2, 3, 0, 1):
+        decision = state.decision_stack[-1].decision
+        assert isinstance(decision, PlayerDecision)
+        visited.append(decision.owner)
+        state = begin_reveal_turn(
+            state,
+            legal_reveal_actions(state, player)[0],
+        ).state
+        state = finish_reveal_turn(
+            state,
+            legal_finish_reveal_actions(state, player)[0],
+        ).state
+
+    assert visited == [2, 3, 0, 1]
+    assert state.phase is GamePhase.COMBAT
+    assert state.decision_stack == ()

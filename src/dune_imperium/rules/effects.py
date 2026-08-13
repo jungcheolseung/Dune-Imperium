@@ -111,7 +111,7 @@ def advance_after_effect(
         frame = state.decision_stack[-1]
         next_frame = replace(frame, context=tuple(sorted(context.items())))
     else:
-        next_player = (owner + 1) % state.config.players
+        next_player = _next_unrevealed_player(state, owner)
         next_frame = DecisionFrame(
             frame_id=f"round:{state.round_number}:turn:{next_player}",
             decision=PlayerDecision(
@@ -125,3 +125,11 @@ def advance_after_effect(
         players=next_players,
         decision_stack=(*state.decision_stack[:-1], next_frame),
     )
+
+
+def _next_unrevealed_player(state: GameState, owner: int) -> int:
+    for offset in range(1, state.config.players + 1):
+        candidate = (owner + offset) % state.config.players
+        if not state.players[candidate].has_revealed:
+            return candidate
+    raise RuntimeError("no unrevealed player remains during Player Turns")

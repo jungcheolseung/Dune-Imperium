@@ -48,6 +48,7 @@ def test_view_contains_public_state_and_only_observers_private_cards() -> None:
     assert view.imperium_row == ("imperium_public",)
     assert view.intrigue_discard == ("intrigue_public",)
     assert view.players[1].objective_ids == ("objective_1",)
+    assert view.players[1].has_revealed is False
     assert view.private is not None
     assert view.private.deck_size == 2
     assert view.private.hand == ("p0:hand",)
