@@ -24,7 +24,7 @@ from dune_imperium.rules.combat import (
     legal_combat_intrigue_actions,
     legal_combat_reward_influence_actions,
     rank_combat,
-    resolve_tier_one_combat_rewards,
+    resolve_combat_rewards,
 )
 
 
@@ -271,7 +271,7 @@ def _reward_state(
 
 
 def test_desert_mouse_rewards_apply_by_rank() -> None:
-    result = resolve_tier_one_combat_rewards(
+    result = resolve_combat_rewards(
         _reward_state("skirmish_desert_mouse")
     )
 
@@ -286,7 +286,7 @@ def test_desert_mouse_rewards_apply_by_rank() -> None:
 
 
 def test_ornithopter_rewards_draw_intrigue_in_rank_order() -> None:
-    result = resolve_tier_one_combat_rewards(
+    result = resolve_combat_rewards(
         _reward_state("skirmish_ornithopter")
     )
 
@@ -297,7 +297,7 @@ def test_ornithopter_rewards_draw_intrigue_in_rank_order() -> None:
 
 
 def test_sandworm_doubles_the_assigned_reward_row() -> None:
-    result = resolve_tier_one_combat_rewards(
+    result = resolve_combat_rewards(
         _reward_state("skirmish_ornithopter", sandworm_players=(1,))
     )
 
@@ -315,7 +315,7 @@ def test_crysknife_queues_and_applies_influence_choice() -> None:
     players[0] = replace(players[0], influence=Influence(emperor=1))
     state = replace(state, players=tuple(players))
 
-    rewarded = resolve_tier_one_combat_rewards(state).state
+    rewarded = resolve_combat_rewards(state).state
     actions = legal_combat_reward_influence_actions(rewarded, 0)
 
     assert rewarded.combat_rewards_resolved is False
@@ -339,23 +339,90 @@ def test_combat_rewards_require_completed_intrigue_and_only_resolve_once() -> No
     state = _reward_state("skirmish_desert_mouse")
 
     with pytest.raises(ValueError, match="Intrigue must finish"):
-        resolve_tier_one_combat_rewards(
+        resolve_combat_rewards(
             replace(state, combat_intrigue_complete=False)
         )
 
-    resolved = resolve_tier_one_combat_rewards(state).state
+    resolved = resolve_combat_rewards(state).state
     with pytest.raises(ValueError, match="already resolved"):
-        resolve_tier_one_combat_rewards(resolved)
+        resolve_combat_rewards(resolved)
 
 
 def test_untranscribed_conflict_rewards_are_explicitly_blocked() -> None:
     with pytest.raises(NotImplementedError, match="not transcribed"):
-        resolve_tier_one_combat_rewards(_reward_state("propaganda"))
+        resolve_combat_rewards(_reward_state("propaganda"))
 
 
-def test_transcribed_tier_two_rewards_wait_for_rule_support() -> None:
-    with pytest.raises(NotImplementedError, match="only Tier I"):
-        resolve_tier_one_combat_rewards(_reward_state("choam_security"))
+def test_tier_two_resources_troops_and_fixed_influence_resolve() -> None:
+    state = _reward_state("protect_the_sietches")
+    players = list(state.players)
+    players[0] = replace(players[0], influence=Influence(fremen=1))
+    state = replace(state, players=tuple(players))
+
+    result = resolve_combat_rewards(state).state
+
+    assert result.players[0].resources.water == 2
+    assert result.players[0].troops_garrison == 4
+    assert result.players[0].influence.fremen == 2
+    assert result.players[0].victory_points == 2
+    assert result.players[1].resources.spice == 3
+    assert result.players[1].troops_garrison == 4
+    assert result.players[2].resources.spice == 2
+
+
+def test_contract_icons_become_two_solari_when_choam_is_off() -> None:
+    result = resolve_combat_rewards(_reward_state("choam_security")).state
+
+    assert result.players[0].resources.solari == 2
+    assert result.players[0].influence.spacing_guild == 1
+    assert result.players[1].resources.solari == 2
+    assert result.players[1].resources.water == 2
+    assert result.players[2].intrigue_cards == ("intrigue:0",)
+
+
+def test_control_reward_replaces_an_opponents_marker() -> None:
+    state = _reward_state("siege_of_arrakeen")
+    players = list(state.players)
+    players[1] = replace(players[1], control_space_ids=("arrakeen",))
+    state = replace(state, players=tuple(players))
+
+    result = resolve_combat_rewards(state).state
+
+    assert result.players[0].control_space_ids == ("arrakeen",)
+    assert result.players[1].control_space_ids == ()
+
+
+def test_sandworm_does_not_double_control_marker() -> None:
+    result = resolve_combat_rewards(
+        _reward_state("siege_of_arrakeen", sandworm_players=(0,))
+    ).state
+
+    assert result.players[0].control_space_ids == ("arrakeen",)
+    assert result.players[0].resources.solari == 4
+    assert result.players[0].troops_garrison == 7
+
+
+def test_unimplemented_tier_two_choice_blocks_only_when_rewarded() -> None:
+    with pytest.raises(NotImplementedError, match="spy placement"):
+        resolve_combat_rewards(_reward_state("seize_spice_refinery"))
+
+    tied = _reward_state(
+        "seize_spice_refinery",
+        strengths=(8, 8, 4, 0),
+    )
+    result = resolve_combat_rewards(tied).state
+
+    assert result.players[0].resources.spice == 1
+    assert result.players[1].resources.spice == 1
+    assert result.players[2].resources.spice == 2
+
+
+def test_choam_contract_selection_remains_deferred() -> None:
+    state = _reward_state("choam_security")
+    state = replace(state, config=RulesetConfig(choam_module=True))
+
+    with pytest.raises(NotImplementedError, match="contract selection"):
+        resolve_combat_rewards(state)
 
 
 def test_combat_winner_takes_conflict_matches_icon_and_units_are_cleaned_up() -> None:

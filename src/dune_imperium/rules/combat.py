@@ -6,7 +6,7 @@ from enum import IntEnum
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID, ConflictReward
 from dune_imperium.content.uprising.objectives import OBJECTIVES_BY_ID
-from dune_imperium.content.uprising.types import BattleIcon, ConflictTier
+from dune_imperium.content.uprising.types import BattleIcon
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
@@ -204,8 +204,8 @@ def apply_combat_intrigue_pass(
     return RuleResult(state=next_state, events=(event,))
 
 
-def resolve_tier_one_combat_rewards(state: GameState) -> RuleResult:
-    """Apply transcribed Conflict rewards and open any Influence choices."""
+def resolve_combat_rewards(state: GameState) -> RuleResult:
+    """Apply supported Conflict rewards and open any Influence choices."""
 
     if state.phase is not GamePhase.COMBAT:
         raise ValueError("Combat rewards can resolve only during Combat")
@@ -224,10 +224,9 @@ def resolve_tier_one_combat_rewards(state: GameState) -> RuleResult:
         raise NotImplementedError(
             f"Conflict rewards are not transcribed: {conflict_id}"
         )
-    if conflict.tier is not ConflictTier.ONE:
-        raise NotImplementedError("only Tier I Conflict rewards can resolve")
 
     ranking = rank_combat(state.players)
+    _validate_supported_rewards(state, ranking, conflict.rewards)
     intrigue_count = sum(
         conflict.rewards[reward.rank - 1].intrigue * reward.multiplier
         for reward in ranking.rewards
@@ -245,15 +244,33 @@ def resolve_tier_one_combat_rewards(state: GameState) -> RuleResult:
         owner = players[assignment.player]
         drawn = intrigue_deck[: reward.intrigue * amount]
         intrigue_deck = intrigue_deck[len(drawn) :]
-        players[assignment.player] = replace(
+        contract_solari = 0 if state.config.choam_module else reward.contracts * 2
+        recruited = min(owner.troops_supply, reward.troops * amount)
+        next_owner = replace(
             owner,
             resources=Resources(
-                solari=owner.resources.solari + reward.solari * amount,
+                solari=(
+                    owner.resources.solari
+                    + reward.solari * amount
+                    + contract_solari * amount
+                ),
                 spice=owner.resources.spice + reward.spice * amount,
-                water=owner.resources.water,
+                water=owner.resources.water + reward.water * amount,
             ),
+            troops_supply=owner.troops_supply - recruited,
+            troops_garrison=owner.troops_garrison + recruited,
             intrigue_cards=(*owner.intrigue_cards, *drawn),
         )
+        next_owner = _gain_fixed_influence(next_owner, reward, amount)
+        players[assignment.player] = next_owner
+        if reward.control_space_id is not None:
+            players = list(
+                _apply_control(
+                    tuple(players),
+                    assignment.player,
+                    reward.control_space_id,
+                )
+            )
         choice_owners.extend(
             assignment.player for _ in range(reward.choose_influence * amount)
         )
@@ -463,6 +480,9 @@ def _combat_reward_event(
     assignment: CombatReward,
     reward: ConflictReward,
 ) -> GameEvent:
+    contract_solari = (
+        0 if state.config.choam_module else reward.contracts * 2
+    )
     return GameEvent(
         event_id=(
             f"round:{state.round_number}:combat_reward:{assignment.player}:"
@@ -471,13 +491,109 @@ def _combat_reward_event(
         kind="combat_reward_gained",
         payload=(
             ("choose_influence", reward.choose_influence * assignment.multiplier),
+            ("contracts", reward.contracts * assignment.multiplier),
+            ("control_space_id", reward.control_space_id or ""),
+            (
+                "faction",
+                reward.influence_faction.value
+                if reward.influence_faction is not None
+                else "",
+            ),
+            (
+                "faction_influence",
+                reward.faction_influence * assignment.multiplier,
+            ),
             ("intrigue", reward.intrigue * assignment.multiplier),
             ("multiplier", assignment.multiplier),
             ("player", assignment.player),
             ("rank", assignment.rank.value),
-            ("solari", reward.solari * assignment.multiplier),
+            (
+                "solari",
+                (reward.solari + contract_solari) * assignment.multiplier,
+            ),
             ("spice", reward.spice * assignment.multiplier),
+            ("troops", reward.troops * assignment.multiplier),
+            ("water", reward.water * assignment.multiplier),
         ),
+    )
+
+
+def _validate_supported_rewards(
+    state: GameState,
+    ranking: CombatRanking,
+    rewards: tuple[ConflictReward, ConflictReward, ConflictReward],
+) -> None:
+    for assignment in ranking.rewards:
+        reward = rewards[assignment.rank - 1]
+        unsupported: list[str] = []
+        if reward.place_spies:
+            unsupported.append("spy placement")
+        if reward.trash_cards:
+            unsupported.append("card trashing")
+        if reward.optional_spice_cost:
+            unsupported.append("optional Spice payment")
+        if reward.contracts and state.config.choam_module:
+            unsupported.append("CHOAM contract selection")
+        if unsupported:
+            raise NotImplementedError(
+                "Combat reward choices are not implemented: " + ", ".join(unsupported)
+            )
+
+        if reward.influence_faction is not None:
+            current = _influence_amount(
+                state.players[assignment.player].influence,
+                reward.influence_faction,
+            )
+            if current + reward.faction_influence * assignment.multiplier > 3:
+                raise NotImplementedError(
+                    "Influence 4 bonuses and Alliances are not implemented"
+                )
+
+
+def _gain_fixed_influence(
+    player: PlayerState,
+    reward: ConflictReward,
+    multiplier: int,
+) -> PlayerState:
+    if reward.influence_faction is None:
+        return player
+    current = _influence_amount(player.influence, reward.influence_faction)
+    gained = reward.faction_influence * multiplier
+    return replace(
+        player,
+        influence=_replace_influence(
+            player.influence,
+            reward.influence_faction,
+            current + gained,
+        ),
+        victory_points=(
+            player.victory_points + (1 if current < 2 <= current + gained else 0)
+        ),
+    )
+
+
+def _apply_control(
+    players: tuple[PlayerState, ...],
+    winner: int,
+    space_id: str,
+) -> tuple[PlayerState, ...]:
+    owner = players[winner]
+    if space_id in owner.control_space_ids or len(owner.control_space_ids) == 3:
+        return players
+    return tuple(
+        replace(
+            player,
+            control_space_ids=(
+                (*player.control_space_ids, space_id)
+                if player.player_id == winner
+                else tuple(
+                    controlled
+                    for controlled in player.control_space_ids
+                    if controlled != space_id
+                )
+            ),
+        )
+        for player in players
     )
 
 
