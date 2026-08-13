@@ -622,6 +622,25 @@ def test_trade_dispute_trash_can_be_declined_with_cards_available() -> None:
     assert result.events[0].kind == "combat_reward_trash_declined"
 
 
+def test_trade_dispute_returns_trashed_reserve_card_to_its_stack() -> None:
+    state = _reward_state("trade_dispute")
+    reserve_card = "reserve:prepare_the_way:7"
+    owner = replace(state.players[0], discard_pile=(reserve_card,))
+    state = replace(
+        state,
+        players=(owner, *state.players[1:]),
+        reserve_stacks=(("prepare_the_way", 7), ("the_spice_must_flow", 10)),
+    )
+    state = resolve_combat_rewards(state).state
+    action = legal_combat_reward_trash_actions(state, 0)[1]
+
+    result = apply_combat_reward_trash(state, action).state
+
+    assert result.players[0].discard_pile == ()
+    assert result.players[0].trashed == ()
+    assert dict(result.reserve_stacks)["prepare_the_way"] == 8
+
+
 def test_combat_winner_takes_conflict_matches_icon_and_units_are_cleaned_up() -> None:
     state = _reward_state("skirmish_crysknife")
     players = list(state.players)

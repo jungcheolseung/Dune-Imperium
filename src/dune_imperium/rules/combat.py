@@ -6,6 +6,7 @@ from enum import IntEnum
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID, ConflictReward
 from dune_imperium.content.uprising.objectives import OBJECTIVES_BY_ID
+from dune_imperium.content.uprising.reserve import RESERVE_STACKS_BY_ID
 from dune_imperium.content.uprising.types import BattleIcon
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
@@ -449,6 +450,7 @@ def apply_combat_reward_trash(
     choice_index = _context_int(dict(frame.context), "choice_index")
     owner = state.players[action.actor]
     declined = action.action_id == "decline_combat_reward_trash"
+    reserve_card_id: str | None = None
     if declined:
         card_id = ""
         next_owner = owner
@@ -457,6 +459,7 @@ def apply_combat_reward_trash(
         if not isinstance(card_value, str):
             raise RuntimeError("Combat reward trash choice has invalid card ID")
         card_id = card_value
+        reserve_card_id = _reserve_card_id(card_id)
         next_owner = replace(
             owner,
             hand=tuple(candidate for candidate in owner.hand if candidate != card_id),
@@ -468,7 +471,22 @@ def apply_combat_reward_trash(
             in_play=tuple(
                 candidate for candidate in owner.in_play if candidate != card_id
             ),
-            trashed=(*owner.trashed, card_id),
+            trashed=(
+                owner.trashed
+                if reserve_card_id is not None
+                else (*owner.trashed, card_id)
+            ),
+        )
+    reserve_stacks = state.reserve_stacks
+    if not declined and reserve_card_id is not None:
+        if reserve_card_id not in dict(reserve_stacks):
+            raise RuntimeError("trashed Reserve card has no matching stack")
+        reserve_stacks = tuple(
+            (
+                candidate_id,
+                count + 1 if candidate_id == reserve_card_id else count,
+            )
+            for candidate_id, count in reserve_stacks
         )
     remaining = state.decision_stack[:-1]
     next_state = replace(
@@ -477,6 +495,7 @@ def apply_combat_reward_trash(
             next_owner if player.player_id == action.actor else player
             for player in state.players
         ),
+        reserve_stacks=reserve_stacks,
         decision_stack=remaining,
         combat_rewards_resolved=not remaining,
     )
@@ -489,6 +508,14 @@ def apply_combat_reward_trash(
         payload=(("card_id", card_id), ("player", action.actor)),
     )
     return RuleResult(state=next_state, events=(event,))
+
+
+def _reserve_card_id(instance_id: str) -> str | None:
+    parts = instance_id.split(":", 2)
+    if len(parts) != 3 or parts[0] != "reserve":
+        return None
+    card_id = parts[1]
+    return card_id if card_id in RESERVE_STACKS_BY_ID else None
 
 
 def legal_combat_reward_spy_actions(
