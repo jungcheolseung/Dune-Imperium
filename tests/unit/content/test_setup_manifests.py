@@ -2,7 +2,12 @@
 
 from collections import Counter
 
-from dune_imperium.content.uprising.conflicts import CONFLICTS
+from dune_imperium.content.uprising.conflicts import (
+    CONFLICTS,
+    CONFLICTS_BY_ID,
+    ConflictReward,
+    conflicts_by_tier,
+)
 from dune_imperium.content.uprising.imperium import (
     IMPERIUM_CARDS,
     imperium_card_for_instance,
@@ -35,6 +40,35 @@ def test_conflict_manifest_has_the_official_tier_counts() -> None:
         ConflictTier.THREE: 4,
     }
     assert all(conflict.card.catalog_url for conflict in CONFLICTS)
+
+
+def test_tier_one_conflict_rewards_and_battle_icons_are_transcribed() -> None:
+    crysknife = CONFLICTS_BY_ID["skirmish_crysknife"]
+    ornithopter = CONFLICTS_BY_ID["skirmish_ornithopter"]
+    desert_mouse = CONFLICTS_BY_ID["skirmish_desert_mouse"]
+
+    assert crysknife.battle_icon is BattleIcon.CRYSKNIFE
+    assert crysknife.rewards == (
+        ConflictReward(choose_influence=1),
+        ConflictReward(spice=1, intrigue=1),
+        ConflictReward(spice=1),
+    )
+    assert ornithopter.battle_icon is BattleIcon.ORNITHOPTER
+    assert ornithopter.rewards == (
+        ConflictReward(solari=1, intrigue=1),
+        ConflictReward(solari=2, intrigue=1),
+        ConflictReward(intrigue=1),
+    )
+    assert desert_mouse.battle_icon is BattleIcon.DESERT_MOUSE
+    assert desert_mouse.rewards == (
+        ConflictReward(solari=2),
+        ConflictReward(solari=3),
+        ConflictReward(solari=2),
+    )
+    assert all(
+        conflict.rewards is not None and conflict.battle_icon is not None
+        for conflict in conflicts_by_tier(ConflictTier.ONE)
+    )
 
 
 def test_base_setup_excludes_only_the_choam_leader() -> None:
