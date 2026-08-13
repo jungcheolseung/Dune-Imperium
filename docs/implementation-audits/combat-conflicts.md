@@ -15,6 +15,7 @@ reviewed without reading the transition code. Official rule summaries under
 | Trash icon | The player may decline or trash from hand, discard pile, or in play. | Reserve cards return to their Reserve stack instead of entering the trash zone. |
 | Spy reward | Each repeated reward selects an empty Observation Post and spends one Spy from supply. | Globally occupied posts are excluded. No choice is opened without a Spy or empty post. |
 | Control | A sole winner replaces the marker at the printed critical location. | There are exactly three critical locations and three markers per player; already owning all three needs no fourth-marker choice. |
+| Tier III VP | Printed VP and optional Spice/Solari payment rewards repeat under a sandworm. | Each repeated optional reward requires its own payment; Control still occurs once. |
 | Battle icons | A sole winner takes the Conflict and an unambiguous matching pair gains 1 VP. | Multiple possible matching cards are blocked because the official selection policy is unresolved. |
 
 ## Explicitly blocked
@@ -23,8 +24,8 @@ reviewed without reading the transition code. Official rule summaries under
 - Influence 4 bonuses and Alliance acquisition or transfer.
 - CHOAM-enabled contract selection.
 - Choosing among multiple face-up cards with the same matching battle icon.
-- Tier III distinct-Faction Influence, Solari payment, and placed-Spy recall
-  choices until their decision transitions are implemented.
+- Tier III distinct-Faction Influence and placed-Spy recall choices until their
+  decision transitions are implemented.
 - Conflict-card Shield Wall detonation until the board token state and reveal
   choice are implemented.
 

@@ -641,6 +641,76 @@ def test_trade_dispute_returns_trashed_reserve_card_to_its_stack() -> None:
     assert dict(result.reserve_stacks)["prepare_the_way"] == 8
 
 
+def test_tier_three_base_vp_control_and_spice_payment_resolve() -> None:
+    state = _reward_state("battle_for_imperial_basin")
+    owner = replace(
+        state.players[0],
+        resources=replace(state.players[0].resources, spice=4),
+    )
+    state = replace(state, players=(owner, *state.players[1:]))
+
+    rewarded = resolve_combat_rewards(state).state
+
+    assert rewarded.players[0].victory_points == 2
+    assert rewarded.players[0].control_space_ids == ("imperial_basin",)
+    assert rewarded.players[1].resources.spice == 5
+    assert rewarded.players[2].resources.spice == 3
+    actions = legal_combat_reward_optional_payment_actions(rewarded, 0)
+    paid = apply_combat_reward_optional_payment(rewarded, actions[1]).state
+    assert paid.players[0].resources.spice == 0
+    assert paid.players[0].victory_points == 3
+
+
+def test_tier_three_solari_payment_uses_solari_not_spice() -> None:
+    state = _reward_state("battle_for_spice_refinery")
+    owner = replace(
+        state.players[0],
+        resources=replace(state.players[0].resources, solari=6, spice=2),
+    )
+    state = replace(state, players=(owner, *state.players[1:]))
+    rewarded = resolve_combat_rewards(state).state
+
+    paid = apply_combat_reward_optional_payment(
+        rewarded,
+        legal_combat_reward_optional_payment_actions(rewarded, 0)[1],
+    ).state
+
+    assert paid.players[0].resources.solari == 0
+    assert paid.players[0].resources.spice == 2
+    assert paid.players[0].victory_points == 3
+
+
+def test_sandworm_doubles_tier_three_vp_and_payment_opportunities() -> None:
+    state = _reward_state(
+        "battle_for_imperial_basin",
+        sandworm_players=(0,),
+    )
+    owner = replace(
+        state.players[0],
+        resources=replace(state.players[0].resources, spice=8),
+    )
+    state = replace(state, players=(owner, *state.players[1:]))
+    state = resolve_combat_rewards(state).state
+
+    for _ in range(2):
+        action = legal_combat_reward_optional_payment_actions(state, 0)[1]
+        state = apply_combat_reward_optional_payment(state, action).state
+
+    assert state.players[0].victory_points == 5
+    assert state.players[0].resources.spice == 0
+    assert state.players[0].control_space_ids == ("imperial_basin",)
+
+
+def test_arrakeen_spy_recall_choice_is_explicitly_blocked() -> None:
+    with pytest.raises(NotImplementedError, match="Spy recall"):
+        resolve_combat_rewards(_reward_state("battle_for_arrakeen"))
+
+    tied = _reward_state("battle_for_arrakeen", strengths=(8, 8, 4, 0))
+    result = resolve_combat_rewards(tied).state
+    assert result.players[0].resources.spice == 1
+    assert result.players[0].resources.solari == 3
+
+
 def test_combat_winner_takes_conflict_matches_icon_and_units_are_cleaned_up() -> None:
     state = _reward_state("skirmish_crysknife")
     players = list(state.players)

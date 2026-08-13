@@ -262,6 +262,7 @@ def resolve_combat_rewards(state: GameState) -> RuleResult:
             troops_supply=owner.troops_supply - recruited,
             troops_garrison=owner.troops_garrison + recruited,
             intrigue_cards=(*owner.intrigue_cards, *drawn),
+            victory_points=owner.victory_points + reward.victory_points * amount,
         )
         next_owner = _gain_fixed_influence(next_owner, reward, amount)
         players[assignment.player] = next_owner
@@ -289,7 +290,19 @@ def resolve_combat_rewards(state: GameState) -> RuleResult:
                         state,
                         assignment.player,
                         len(frames_in_order),
+                        "spice",
                         reward.optional_spice_cost,
+                        reward.optional_victory_points,
+                    )
+                )
+            if reward.optional_solari_cost:
+                frames_in_order.append(
+                    _optional_payment_frame(
+                        state,
+                        assignment.player,
+                        len(frames_in_order),
+                        "solari",
+                        reward.optional_solari_cost,
                         reward.optional_victory_points,
                     )
                 )
@@ -353,9 +366,13 @@ def legal_combat_reward_optional_payment_actions(
     decision = frame.decision
     if not isinstance(decision, PlayerDecision) or decision.owner != player:
         return ()
-    cost = _context_int(dict(frame.context), "spice_cost")
+    context = dict(frame.context)
+    cost = _context_int(context, "cost")
+    resource = context.get("resource")
+    if resource not in ("solari", "spice"):
+        raise RuntimeError("optional Combat reward has invalid resource")
     actions = [DomainAction(action_id="decline_combat_reward", actor=player)]
-    if state.players[player].resources.spice >= cost:
+    if getattr(state.players[player].resources, resource) >= cost:
         actions.append(DomainAction(action_id="pay_combat_reward", actor=player))
     return tuple(actions)
 
@@ -373,7 +390,10 @@ def apply_combat_reward_optional_payment(
     frame = state.decision_stack[-1]
     context = dict(frame.context)
     choice_index = _context_int(context, "choice_index")
-    spice_cost = _context_int(context, "spice_cost")
+    cost = _context_int(context, "cost")
+    resource = context.get("resource")
+    if resource not in ("solari", "spice"):
+        raise RuntimeError("optional Combat reward has invalid resource")
     victory_points = _context_int(context, "victory_points")
     paid = action.action_id == "pay_combat_reward"
     owner = state.players[action.actor]
@@ -381,7 +401,9 @@ def apply_combat_reward_optional_payment(
         owner,
         resources=replace(
             owner.resources,
-            spice=owner.resources.spice - (spice_cost if paid else 0),
+            **{
+                resource: getattr(owner.resources, resource) - (cost if paid else 0)
+            },
         ),
         victory_points=owner.victory_points + (victory_points if paid else 0),
     )
@@ -402,8 +424,9 @@ def apply_combat_reward_optional_payment(
         ),
         kind=("combat_reward_paid" if paid else "combat_reward_declined"),
         payload=(
+            ("cost", cost if paid else 0),
             ("player", action.actor),
-            ("spice", spice_cost if paid else 0),
+            ("resource", resource),
             ("victory_points", victory_points if paid else 0),
         ),
     )
@@ -821,12 +844,8 @@ def _validate_supported_rewards(
     for assignment in ranking.rewards:
         reward = rewards[assignment.rank - 1]
         unsupported: list[str] = []
-        if reward.victory_points:
-            unsupported.append("Victory Points")
         if reward.choose_distinct_influence:
             unsupported.append("distinct Faction Influence")
-        if reward.optional_solari_cost:
-            unsupported.append("optional Solari payment")
         if reward.optional_recall_spies:
             unsupported.append("optional Spy recall")
         if reward.contracts and state.config.choam_module:
@@ -931,7 +950,8 @@ def _optional_payment_frame(
     state: GameState,
     player: int,
     index: int,
-    spice_cost: int,
+    resource: str,
+    cost: int,
     victory_points: int,
 ) -> DecisionFrame:
     return DecisionFrame(
@@ -941,13 +961,15 @@ def _optional_payment_frame(
         decision=PlayerDecision(
             owner=player,
             prompt=(
-                f"Pay {spice_cost} Spice to gain {victory_points} Victory Point"
+                f"Pay {cost} {resource.title()} to gain "
+                f"{victory_points} Victory Point"
             ),
         ),
         context=(
             ("choice_index", index),
+            ("cost", cost),
             ("player", player),
-            ("spice_cost", spice_cost),
+            ("resource", resource),
             ("victory_points", victory_points),
         ),
     )
