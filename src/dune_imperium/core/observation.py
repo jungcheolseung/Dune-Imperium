@@ -37,6 +37,8 @@ class PublicPlayerView:
     in_play: tuple[str, ...]
     trashed: tuple[str, ...]
     objective_ids: tuple[str, ...]
+    won_conflict_ids: tuple[str, ...]
+    face_down_battle_card_ids: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,4 +129,6 @@ def _public_player_view(player: PlayerState) -> PublicPlayerView:
         in_play=player.in_play,
         trashed=player.trashed,
         objective_ids=player.objective_ids,
+        won_conflict_ids=player.won_conflict_ids,
+        face_down_battle_card_ids=player.face_down_battle_card_ids,
     )

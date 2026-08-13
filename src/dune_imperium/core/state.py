@@ -75,6 +75,11 @@ class GameState:
             *self.conflict_deck,
             *self.unused_conflict_ids,
             *self.current_conflict_ids,
+            *(
+                conflict_id
+                for player in self.players
+                for conflict_id in player.won_conflict_ids
+            ),
         )
         if len(shared_cards) != len(set(shared_cards)):
             raise ValueError("a Conflict card cannot occupy two shared zones")

@@ -20,6 +20,7 @@ from dune_imperium.rules.combat import (
     apply_combat_intrigue_pass,
     apply_combat_reward_influence,
     begin_combat_intrigue,
+    finish_combat,
     legal_combat_intrigue_actions,
     legal_combat_reward_influence_actions,
     rank_combat,
@@ -350,3 +351,61 @@ def test_combat_rewards_require_completed_intrigue_and_only_resolve_once() -> No
 def test_untranscribed_conflict_rewards_are_explicitly_blocked() -> None:
     with pytest.raises(NotImplementedError, match="not transcribed"):
         resolve_tier_one_combat_rewards(_reward_state("choam_security"))
+
+
+def test_combat_winner_takes_conflict_matches_icon_and_units_are_cleaned_up() -> None:
+    state = _reward_state("skirmish_crysknife")
+    players = list(state.players)
+    players[0] = replace(
+        players[0],
+        objective_ids=("objective_crysknife_1",),
+        troops_supply=7,
+        troops_conflict=2,
+        sandworms_conflict=1,
+    )
+    players[1] = replace(players[1], troops_supply=8, troops_conflict=1)
+    state = replace(
+        state,
+        players=tuple(players),
+        current_conflict_ids=("older_tied_conflict", "skirmish_crysknife"),
+        combat_rewards_resolved=True,
+    )
+
+    result = finish_combat(state)
+    winner = result.state.players[0]
+
+    assert result.state.phase is GamePhase.MAKERS
+    assert result.state.current_conflict_ids == ("older_tied_conflict",)
+    assert winner.won_conflict_ids == ("skirmish_crysknife",)
+    assert winner.face_down_battle_card_ids == (
+        "objective_crysknife_1",
+        "skirmish_crysknife",
+    )
+    assert winner.victory_points == 2
+    assert winner.troops_supply == 9
+    assert all(player.troops_conflict == 0 for player in result.state.players)
+    assert all(player.sandworms_conflict == 0 for player in result.state.players)
+    assert all(player.combat_strength == 0 for player in result.state.players)
+    assert tuple(event.kind for event in result.events) == (
+        "conflict_won",
+        "battle_icons_matched",
+        "combat_cleaned_up",
+    )
+
+
+def test_first_place_tie_leaves_conflict_on_board_during_cleanup() -> None:
+    state = replace(
+        _reward_state("skirmish_desert_mouse", strengths=(8, 8, 4, 0)),
+        combat_rewards_resolved=True,
+    )
+
+    result = finish_combat(state)
+
+    assert result.state.current_conflict_ids == ("skirmish_desert_mouse",)
+    assert all(player.won_conflict_ids == () for player in result.state.players)
+    assert tuple(event.kind for event in result.events) == ("combat_cleaned_up",)
+
+
+def test_combat_cleanup_requires_resolved_rewards() -> None:
+    with pytest.raises(ValueError, match="rewards must resolve"):
+        finish_combat(_reward_state("skirmish_desert_mouse"))

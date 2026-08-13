@@ -68,6 +68,8 @@ class PlayerState:
     trashed: tuple[str, ...] = ()
     intrigue_cards: tuple[str, ...] = ()
     objective_ids: tuple[str, ...] = ()
+    won_conflict_ids: tuple[str, ...] = ()
+    face_down_battle_card_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.player_id < 0:
@@ -100,6 +102,15 @@ class PlayerState:
             raise ValueError("a player has only three control markers")
         if len(self.control_space_ids) != len(set(self.control_space_ids)):
             raise ValueError("control marker locations must be unique")
+        battle_card_ids = (*self.objective_ids, *self.won_conflict_ids)
+        if len(battle_card_ids) != len(set(battle_card_ids)):
+            raise ValueError("battle cards in a player's supply must be unique")
+        if not set(self.face_down_battle_card_ids) <= set(battle_card_ids):
+            raise ValueError("face-down battle cards must be in the player's supply")
+        if len(self.face_down_battle_card_ids) != len(
+            set(self.face_down_battle_card_ids)
+        ):
+            raise ValueError("a battle card cannot be face-down twice")
 
         imperium_cards = (
             *self.deck,

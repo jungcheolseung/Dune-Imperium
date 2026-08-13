@@ -61,6 +61,10 @@ OBJECTIVES: Final = (
     ),
 )
 
+OBJECTIVES_BY_ID: Final = {
+    objective.objective_id: objective for objective in OBJECTIVES
+}
+
 
 def objectives_for_players(players: int) -> tuple[ObjectiveDefinition, ...]:
     """Filter Objective cards using their printed player-count marks."""

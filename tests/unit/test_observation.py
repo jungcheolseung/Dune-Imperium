@@ -55,6 +55,8 @@ def test_view_contains_public_state_and_only_observers_private_cards() -> None:
     )
     assert view.intrigue_discard == ("intrigue_public",)
     assert view.players[1].objective_ids == ("objective_1",)
+    assert view.players[1].won_conflict_ids == ()
+    assert view.players[1].face_down_battle_card_ids == ()
     assert view.players[1].has_revealed is False
     assert view.private is not None
     assert view.private.deck_size == 2
@@ -112,3 +114,11 @@ def test_game_state_rejects_duplicate_hidden_and_public_conflicts() -> None:
             conflict_deck=("same",),
             current_conflict_ids=("same",),
         )
+
+
+def test_game_state_rejects_conflict_in_board_and_player_supply() -> None:
+    state = _state()
+    winner = replace(state.players[0], won_conflict_ids=("conflict_public",))
+
+    with pytest.raises(ValueError, match="Conflict card"):
+        replace(state, players=(winner, *state.players[1:]))

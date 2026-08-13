@@ -5,6 +5,8 @@ from enum import IntEnum
 
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID, ConflictReward
+from dune_imperium.content.uprising.objectives import OBJECTIVES_BY_ID
+from dune_imperium.content.uprising.types import BattleIcon
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
@@ -338,6 +340,120 @@ def apply_combat_reward_influence(
         payload=(("amount", 1), ("faction", faction.value), ("player", action.actor)),
     )
     return RuleResult(state=next_state, events=(event,))
+
+
+def finish_combat(state: GameState) -> RuleResult:
+    """Award the Conflict card, clean up combat units, and enter Makers."""
+
+    if state.phase is not GamePhase.COMBAT:
+        raise ValueError("Combat can finish only during Combat")
+    if not state.combat_rewards_resolved:
+        raise ValueError("Combat rewards must resolve before cleanup")
+    if state.decision_stack:
+        raise ValueError("Combat cannot finish with a pending decision")
+    if not state.current_conflict_ids:
+        raise ValueError("Combat cleanup requires a current Conflict")
+
+    conflict_id = state.current_conflict_ids[-1]
+    ranking = rank_combat(state.players)
+    players = state.players
+    current_conflict_ids = state.current_conflict_ids
+    events: list[GameEvent] = []
+    if ranking.winner is not None:
+        winner = players[ranking.winner]
+        matched_card_id = _matching_battle_card(winner, conflict_id)
+        face_down = winner.face_down_battle_card_ids
+        victory_points = winner.victory_points
+        if matched_card_id is not None:
+            face_down = (*face_down, matched_card_id, conflict_id)
+            victory_points += 1
+        winner = replace(
+            winner,
+            victory_points=victory_points,
+            won_conflict_ids=(*winner.won_conflict_ids, conflict_id),
+            face_down_battle_card_ids=face_down,
+        )
+        players = tuple(
+            winner if player.player_id == ranking.winner else player
+            for player in players
+        )
+        current_conflict_ids = current_conflict_ids[:-1]
+        events.append(
+            GameEvent(
+                event_id=f"round:{state.round_number}:conflict_won:{ranking.winner}",
+                kind="conflict_won",
+                payload=(("conflict_id", conflict_id), ("player", ranking.winner)),
+            )
+        )
+        if matched_card_id is not None:
+            events.append(
+                GameEvent(
+                    event_id=(
+                        f"round:{state.round_number}:battle_icons_matched:"
+                        f"{ranking.winner}"
+                    ),
+                    kind="battle_icons_matched",
+                    payload=(
+                        ("first_card_id", matched_card_id),
+                        ("player", ranking.winner),
+                        ("second_card_id", conflict_id),
+                    ),
+                )
+            )
+
+    players = tuple(
+        replace(
+            player,
+            troops_supply=player.troops_supply + player.troops_conflict,
+            troops_conflict=0,
+            sandworms_conflict=0,
+            combat_strength=0,
+        )
+        for player in players
+    )
+    next_state = replace(
+        state,
+        phase=GamePhase.MAKERS,
+        players=players,
+        current_conflict_ids=current_conflict_ids,
+    )
+    events.append(
+        GameEvent(
+            event_id=f"round:{state.round_number}:combat_cleanup",
+            kind="combat_cleaned_up",
+        )
+    )
+    return RuleResult(state=next_state, events=tuple(events))
+
+
+def _matching_battle_card(player: PlayerState, conflict_id: str) -> str | None:
+    battle_icon = CONFLICTS_BY_ID[conflict_id].battle_icon
+    if battle_icon is None:
+        raise NotImplementedError(
+            f"Conflict battle icon is not transcribed: {conflict_id}"
+        )
+    face_up = (
+        card_id
+        for card_id in (*player.objective_ids, *player.won_conflict_ids)
+        if card_id not in player.face_down_battle_card_ids
+    )
+    matches = tuple(
+        card_id
+        for card_id in face_up
+        if _battle_icon_for(card_id) is battle_icon
+    )
+    if len(matches) > 1:
+        raise NotImplementedError("choosing among matching battle icons is unresolved")
+    return matches[0] if matches else None
+
+
+def _battle_icon_for(card_id: str) -> BattleIcon:
+    if card_id in OBJECTIVES_BY_ID:
+        return OBJECTIVES_BY_ID[card_id].battle_icon
+    battle_icon = CONFLICTS_BY_ID[card_id].battle_icon
+    if battle_icon is None:
+        raise NotImplementedError(f"Conflict battle icon is not transcribed: {card_id}")
+    return battle_icon
 
 
 def _combat_reward_event(
