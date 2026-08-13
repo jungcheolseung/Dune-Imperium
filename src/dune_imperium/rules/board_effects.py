@@ -2,12 +2,15 @@
 
 from dataclasses import replace
 
-from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState, Resources
 from dune_imperium.core.state import GameState
-from dune_imperium.rules.effects import GainResourcesEffect
+from dune_imperium.rules.effects import (
+    GainResourcesEffect,
+    advance_after_effect,
+    current_agent_effect_context,
+)
 
 
 def board_effects_for(
@@ -35,8 +38,7 @@ def board_effects_for(
 def resolve_board_effect(state: GameState) -> RuleResult:
     """Resolve the board-effect group in the current Agent-turn frame."""
 
-    frame = _current_effect_frame(state)
-    context = dict(frame.context)
+    _, context = current_agent_effect_context(state)
     if context.get("pending_board_effect") is not True:
         raise ValueError("the current Agent turn has no pending board effect")
     player = context.get("turn_owner")
@@ -61,27 +63,13 @@ def resolve_board_effect(state: GameState) -> RuleResult:
         for candidate in state.players
     )
     context["pending_board_effect"] = False
-    next_frame = replace(frame, context=tuple(sorted(context.items())))
-    next_state = replace(
-        state,
-        players=players,
-        decision_stack=(*state.decision_stack[:-1], next_frame),
-    )
+    next_state = advance_after_effect(state, context, players)
     event = GameEvent(
         event_id=f"round:{state.round_number}:player:{player}:board:{space_id}",
         kind="board_effect_resolved",
         payload=(("player", player), ("space_id", space_id)),
     )
     return RuleResult(state=next_state, events=(event,))
-
-
-def _current_effect_frame(state: GameState) -> DecisionFrame:
-    if not state.decision_stack:
-        raise ValueError("there is no pending Agent-turn effect frame")
-    frame = state.decision_stack[-1]
-    if not isinstance(frame.decision, PlayerDecision):
-        raise ValueError("the current decision is not an Agent-turn effect")
-    return frame
 
 
 def _gain_resources(
