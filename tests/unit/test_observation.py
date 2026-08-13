@@ -122,3 +122,20 @@ def test_game_state_rejects_conflict_in_board_and_player_supply() -> None:
 
     with pytest.raises(ValueError, match="Conflict card"):
         replace(state, players=(winner, *state.players[1:]))
+
+
+def test_game_state_rejects_two_spies_on_one_observation_post() -> None:
+    state = _state()
+    first = replace(
+        state.players[0],
+        spies_supply=2,
+        spy_post_ids=("same_post",),
+    )
+    second = replace(
+        state.players[1],
+        spies_supply=2,
+        spy_post_ids=("same_post",),
+    )
+
+    with pytest.raises(ValueError, match="only one Spy"):
+        replace(state, players=(first, second, *state.players[2:]))

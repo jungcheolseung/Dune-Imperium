@@ -20,12 +20,14 @@ from dune_imperium.rules.combat import (
     apply_combat_intrigue_pass,
     apply_combat_reward_influence,
     apply_combat_reward_optional_payment,
+    apply_combat_reward_spy,
     apply_combat_reward_trash,
     begin_combat_intrigue,
     finish_combat,
     legal_combat_intrigue_actions,
     legal_combat_reward_influence_actions,
     legal_combat_reward_optional_payment_actions,
+    legal_combat_reward_spy_actions,
     legal_combat_reward_trash_actions,
     rank_combat,
     resolve_combat_rewards,
@@ -406,10 +408,7 @@ def test_sandworm_does_not_double_control_marker() -> None:
     assert result.players[0].troops_garrison == 7
 
 
-def test_unimplemented_tier_two_choice_blocks_only_when_rewarded() -> None:
-    with pytest.raises(NotImplementedError, match="spy placement"):
-        resolve_combat_rewards(_reward_state("seize_spice_refinery"))
-
+def test_seize_spice_refinery_skips_spy_choice_when_first_place_is_tied() -> None:
     tied = _reward_state(
         "seize_spice_refinery",
         strengths=(8, 8, 4, 0),
@@ -419,6 +418,53 @@ def test_unimplemented_tier_two_choice_blocks_only_when_rewarded() -> None:
     assert result.players[0].resources.spice == 1
     assert result.players[1].resources.spice == 1
     assert result.players[2].resources.spice == 2
+
+
+def test_conflict_spy_reward_lists_empty_observation_posts() -> None:
+    state = _reward_state("seize_spice_refinery")
+    occupied_post = "emperor-sardaukar-dutiful-service"
+    opponent = replace(
+        state.players[1],
+        spies_supply=2,
+        spy_post_ids=(occupied_post,),
+    )
+    state = replace(
+        state,
+        players=(state.players[0], opponent, *state.players[2:]),
+    )
+
+    rewarded = resolve_combat_rewards(state).state
+    actions = legal_combat_reward_spy_actions(rewarded, 0)
+
+    assert len(actions) == 12
+    assert occupied_post not in {
+        dict(action.arguments)["post_id"] for action in actions
+    }
+    placed = apply_combat_reward_spy(rewarded, actions[0]).state
+    assert placed.players[0].spies_supply == 2
+    assert placed.players[0].spy_post_ids == (
+        dict(actions[0].arguments)["post_id"],
+    )
+    assert placed.players[0].resources.spice == 2
+    assert placed.players[0].control_space_ids == ("spice_refinery",)
+    assert placed.combat_rewards_resolved is True
+
+
+def test_sandworm_repeats_spy_placement_but_not_control() -> None:
+    state = resolve_combat_rewards(
+        _reward_state("seize_spice_refinery", sandworm_players=(0,))
+    ).state
+
+    for _ in range(2):
+        action = legal_combat_reward_spy_actions(state, 0)[0]
+        state = apply_combat_reward_spy(state, action).state
+
+    assert state.players[0].spies_supply == 1
+    assert len(state.players[0].spy_post_ids) == 2
+    assert len(set(state.players[0].spy_post_ids)) == 2
+    assert state.players[0].resources.spice == 4
+    assert state.players[0].control_space_ids == ("spice_refinery",)
+    assert state.combat_rewards_resolved is True
 
 
 def test_choam_contract_selection_remains_deferred() -> None:

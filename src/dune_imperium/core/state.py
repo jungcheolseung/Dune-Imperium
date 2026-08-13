@@ -84,6 +84,12 @@ class GameState:
         if len(shared_cards) != len(set(shared_cards)):
             raise ValueError("a Conflict card cannot occupy two shared zones")
 
+        occupied_spy_posts = tuple(
+            post_id for player in self.players for post_id in player.spy_post_ids
+        )
+        if len(occupied_spy_posts) != len(set(occupied_spy_posts)):
+            raise ValueError("an Observation Post can hold only one Spy")
+
         reserve_ids = tuple(card_id for card_id, _ in self.reserve_stacks)
         if len(reserve_ids) != len(set(reserve_ids)):
             raise ValueError("Reserve stack IDs must be unique")

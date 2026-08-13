@@ -3,7 +3,7 @@
 from dataclasses import dataclass, replace
 from enum import IntEnum
 
-from dune_imperium.content.uprising.board import Faction
+from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID, ConflictReward
 from dune_imperium.content.uprising.objectives import OBJECTIVES_BY_ID
 from dune_imperium.content.uprising.types import BattleIcon
@@ -304,6 +304,22 @@ def resolve_combat_rewards(state: GameState) -> RuleResult:
                     len(frames_in_order),
                 )
             )
+        occupied_posts = {
+            post_id for player in players for post_id in player.spy_post_ids
+        }
+        spy_count = min(
+            reward.place_spies * amount,
+            next_owner.spies_supply,
+            len(OBSERVATION_POSTS) - len(occupied_posts),
+        )
+        for _ in range(spy_count):
+            frames_in_order.append(
+                _spy_placement_frame(
+                    state,
+                    assignment.player,
+                    len(frames_in_order),
+                )
+            )
         events.append(
             _combat_reward_event(state, assignment, reward)
         )
@@ -455,6 +471,76 @@ def apply_combat_reward_trash(
         ),
         kind="card_trashed",
         payload=(("card_id", card_id), ("player", action.actor)),
+    )
+    return RuleResult(state=next_state, events=(event,))
+
+
+def legal_combat_reward_spy_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return currently empty Observation Posts for a Conflict reward."""
+
+    if not 0 <= player < state.config.players or not state.decision_stack:
+        return ()
+    frame = state.decision_stack[-1]
+    if ":combat_reward_spy:" not in frame.frame_id:
+        return ()
+    decision = frame.decision
+    if not isinstance(decision, PlayerDecision) or decision.owner != player:
+        return ()
+    if state.players[player].spies_supply == 0:
+        return ()
+    occupied = {
+        post_id for owner in state.players for post_id in owner.spy_post_ids
+    }
+    return tuple(
+        DomainAction(
+            action_id="place_combat_reward_spy",
+            actor=player,
+            arguments=(("post_id", post.post_id),),
+        )
+        for post in OBSERVATION_POSTS
+        if post.post_id not in occupied
+    )
+
+
+def apply_combat_reward_spy(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Place one Spy from supply on a selected empty Observation Post."""
+
+    if action not in legal_combat_reward_spy_actions(state, action.actor):
+        raise ValueError("action is not a legal Combat reward Spy placement")
+    post_id = dict(action.arguments)["post_id"]
+    if not isinstance(post_id, str):
+        raise RuntimeError("Combat reward Spy placement has invalid post ID")
+    frame = state.decision_stack[-1]
+    choice_index = _context_int(dict(frame.context), "choice_index")
+    owner = state.players[action.actor]
+    next_owner = replace(
+        owner,
+        spies_supply=owner.spies_supply - 1,
+        spy_post_ids=(*owner.spy_post_ids, post_id),
+    )
+    remaining = state.decision_stack[:-1]
+    next_state = replace(
+        state,
+        players=tuple(
+            next_owner if player.player_id == action.actor else player
+            for player in state.players
+        ),
+        decision_stack=remaining,
+        combat_rewards_resolved=not remaining,
+    )
+    event = GameEvent(
+        event_id=(
+            f"round:{state.round_number}:combat_reward:spy:"
+            f"{choice_index}:{action.actor}:{post_id}"
+        ),
+        kind="spy_placed",
+        payload=(("player", action.actor), ("post_id", post_id)),
     )
     return RuleResult(state=next_state, events=(event,))
 
@@ -692,8 +778,6 @@ def _validate_supported_rewards(
     for assignment in ranking.rewards:
         reward = rewards[assignment.rank - 1]
         unsupported: list[str] = []
-        if reward.place_spies:
-            unsupported.append("spy placement")
         if reward.contracts and state.config.choam_module:
             unsupported.append("CHOAM contract selection")
         if unsupported:
@@ -828,6 +912,21 @@ def _trash_card_frame(
         decision=PlayerDecision(
             owner=player,
             prompt="Choose an Imperium card from your hand or in play to trash",
+        ),
+        context=(("choice_index", index), ("player", player)),
+    )
+
+
+def _spy_placement_frame(
+    state: GameState,
+    player: int,
+    index: int,
+) -> DecisionFrame:
+    return DecisionFrame(
+        frame_id=f"round:{state.round_number}:combat_reward_spy:{index}:{player}",
+        decision=PlayerDecision(
+            owner=player,
+            prompt="Choose an empty Observation Post for your Spy",
         ),
         context=(("choice_index", index), ("player", player)),
     )
