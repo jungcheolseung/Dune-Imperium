@@ -90,3 +90,18 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         ),
     )
     return RuleResult(state=next_state, events=(event,))
+
+
+def current_reveal_context(state: GameState) -> dict[str, ActionValue]:
+    """Return and validate the current Reveal resolution frame."""
+
+    if not state.decision_stack:
+        raise ValueError("there is no pending Reveal turn")
+    frame = state.decision_stack[-1]
+    if not isinstance(frame.decision, PlayerDecision):
+        raise ValueError("the current decision is not a Reveal turn")
+    context = dict(frame.context)
+    required = {"persuasion", "revealed_card_count", "strength", "turn_owner"}
+    if not required.issubset(context):
+        raise ValueError("the current decision is not a Reveal turn")
+    return context

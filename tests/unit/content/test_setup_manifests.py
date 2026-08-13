@@ -18,7 +18,10 @@ from dune_imperium.content.uprising.objectives import (
     OBJECTIVES,
     objectives_for_players,
 )
-from dune_imperium.content.uprising.reserve import RESERVE_STACKS
+from dune_imperium.content.uprising.reserve import (
+    RESERVE_STACKS,
+    RESERVE_STACKS_BY_ID,
+)
 from dune_imperium.content.uprising.types import BattleIcon, ConflictTier
 
 
@@ -76,6 +79,13 @@ def test_reserve_stacks_are_finite_and_have_no_foldspace() -> None:
     assert {stack.card.card_id: stack.copies for stack in RESERVE_STACKS} == {
         "prepare_the_way": 8,
         "the_spice_must_flow": 10,
+    }
+    assert {
+        card_id: (stack.acquisition_cost, stack.acquisition_vp)
+        for card_id, stack in RESERVE_STACKS_BY_ID.items()
+    } == {
+        "prepare_the_way": (2, 0),
+        "the_spice_must_flow": (9, 1),
     }
 
 
