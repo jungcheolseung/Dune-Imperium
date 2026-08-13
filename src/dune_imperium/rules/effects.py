@@ -23,6 +23,47 @@ class GainResourcesEffect:
             raise ValueError("a resource-gain effect must gain something")
 
 
+@dataclass(frozen=True, slots=True)
+class DrawImperiumCardsEffect:
+    """Draw cards from the current player's personal deck."""
+
+    count: int
+
+    def __post_init__(self) -> None:
+        if self.count < 1:
+            raise ValueError("card draw count must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class DrawIntrigueCardsEffect:
+    """Draw hidden cards from the shared Intrigue deck."""
+
+    count: int
+
+    def __post_init__(self) -> None:
+        if self.count < 1:
+            raise ValueError("Intrigue draw count must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class RecruitTroopsEffect:
+    """Recruit as many troops as possible up to ``count``."""
+
+    count: int
+
+    def __post_init__(self) -> None:
+        if self.count < 1:
+            raise ValueError("troop recruit count must be positive")
+
+
+type AutomaticEffect = (
+    GainResourcesEffect
+    | DrawImperiumCardsEffect
+    | DrawIntrigueCardsEffect
+    | RecruitTroopsEffect
+)
+
+
 def current_agent_effect_context(
     state: GameState,
 ) -> tuple[DecisionFrame, dict[str, ActionValue]]:
@@ -39,6 +80,7 @@ def current_agent_effect_context(
         "cost_option",
         "pending_agent_effect",
         "pending_board_effect",
+        "pending_combat_deployment",
         "pending_faction_influence",
         "space_id",
         "turn_owner",
@@ -61,6 +103,7 @@ def advance_after_effect(
     pending = (
         context["pending_agent_effect"],
         context["pending_board_effect"],
+        context["pending_combat_deployment"],
         context["pending_faction_influence"],
     )
     next_players = state.players if players is None else players

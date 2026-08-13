@@ -1,5 +1,7 @@
 """Tests for typed automatic board-space effects."""
 
+from dataclasses import replace
+
 import pytest
 
 from dune_imperium import RulesetConfig
@@ -16,7 +18,12 @@ from dune_imperium.core import (
 )
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 from dune_imperium.rules.board_effects import board_effects_for, resolve_board_effect
-from dune_imperium.rules.effects import GainResourcesEffect
+from dune_imperium.rules.effects import (
+    DrawImperiumCardsEffect,
+    DrawIntrigueCardsEffect,
+    GainResourcesEffect,
+    RecruitTroopsEffect,
+)
 
 
 def _instance(card_id: str) -> str:
@@ -103,10 +110,10 @@ def test_spice_refinery_reward_depends_on_already_paid_option() -> None:
 
 def test_unimplemented_or_already_resolved_board_effect_is_rejected() -> None:
     state = _state("diplomacy")
-    placed = apply_agent_action(state, _action_to(state, "fremkit")).state
+    placed = apply_agent_action(state, _action_to(state, "desert_tactics")).state
     before = canonical_state_hash(placed)
 
-    with pytest.raises(NotImplementedError, match="fremkit"):
+    with pytest.raises(NotImplementedError, match="desert_tactics"):
         resolve_board_effect(placed)
     assert canonical_state_hash(placed) == before
 
@@ -117,3 +124,59 @@ def test_unimplemented_or_already_resolved_board_effect_is_rejected() -> None:
     resolved = resolve_board_effect(dutiful).state
     with pytest.raises(ValueError, match="no pending"):
         resolve_board_effect(resolved)
+
+
+def test_draw_and_recruit_board_effects_are_typed() -> None:
+    state = _state("diplomacy")
+
+    assert board_effects_for(state, "fremkit", 0) == (
+        DrawImperiumCardsEffect(1),
+    )
+    assert board_effects_for(state, "assembly_hall", 0) == (
+        DrawIntrigueCardsEffect(1),
+    )
+    assert board_effects_for(state, "research_station", 0) == (
+        RecruitTroopsEffect(2),
+        DrawImperiumCardsEffect(2),
+    )
+
+
+def test_fremkit_draws_a_card_and_leaves_combat_deployment_pending() -> None:
+    state = _state("diplomacy")
+    drawn = _instance("dagger")
+    owner = replace(state.players[0], deck=(drawn,))
+    state = replace(state, players=(owner, *state.players[1:]))
+    placed = apply_agent_action(state, _action_to(state, "fremkit")).state
+
+    resolved = resolve_board_effect(placed).state
+    context = dict(resolved.decision_stack[-1].context)
+
+    assert resolved.players[0].hand == (drawn,)
+    assert resolved.players[0].deck == ()
+    assert context["pending_board_effect"] is False
+    assert context["pending_combat_deployment"] is True
+
+
+def test_assembly_hall_draws_hidden_intrigue() -> None:
+    state = _state("dagger")
+    state = replace(state, intrigue_deck=("intrigue:first", "intrigue:second"))
+    placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
+
+    resolved = resolve_board_effect(placed).state
+
+    assert resolved.players[0].intrigue_cards == ("intrigue:first",)
+    assert resolved.intrigue_deck == ("intrigue:second",)
+
+
+def test_gather_support_recruits_available_troops_and_finishes_turn() -> None:
+    state = _state("dagger")
+    placed = apply_agent_action(state, _action_to(state, "gather_support", 0)).state
+
+    resolved = resolve_board_effect(placed).state
+    owner = resolved.players[0]
+    decision = resolved.decision_stack[-1].decision
+
+    assert owner.troops_supply == 7
+    assert owner.troops_garrison == 5
+    assert isinstance(decision, PlayerDecision)
+    assert decision.owner == 1

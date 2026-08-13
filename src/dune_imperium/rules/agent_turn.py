@@ -109,8 +109,10 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
             ("cost_option", cost_option),
             ("pending_agent_effect", card.agent_effect is not None),
             ("pending_board_effect", True),
+            ("pending_combat_deployment", space.combat),
             ("pending_faction_influence", space.faction is not None),
             ("space_id", space_id),
+            ("troops_recruited", 0),
             ("turn_owner", action.actor),
         ),
     )
