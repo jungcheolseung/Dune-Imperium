@@ -1,9 +1,14 @@
 """Pure four-player Combat ranking rules."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import IntEnum
 
+from dune_imperium.core.actions import DomainAction
+from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
+from dune_imperium.core.engine import RuleResult
+from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
+from dune_imperium.core.state import GamePhase, GameState
 
 
 class RewardRank(IntEnum):
@@ -87,6 +92,114 @@ def rank_combat(players: tuple[PlayerState, ...]) -> CombatRanking:
     return CombatRanking(rewards=tuple(rewards), winner=winner)
 
 
+def begin_combat_intrigue(state: GameState) -> RuleResult:
+    """Open Combat Intrigue priority at the first eligible seat."""
+
+    if state.phase is not GamePhase.COMBAT:
+        raise ValueError("Combat Intrigue can begin only during Combat")
+    if state.first_player is None:
+        raise ValueError("Combat Intrigue requires a First Player")
+    if state.decision_stack:
+        raise ValueError("Combat Intrigue cannot begin with a pending decision")
+    if state.combat_intrigue_complete:
+        raise ValueError("Combat Intrigue is already complete")
+
+    participants = _participants_from(state, state.first_player)
+    if any(state.players[player].intrigue_cards for player in participants):
+        raise NotImplementedError(
+            "Combat Intrigue card eligibility is not transcribed yet"
+        )
+    if not participants:
+        next_state = replace(state, combat_intrigue_complete=True)
+        event = GameEvent(
+            event_id=f"round:{state.round_number}:combat_intrigue",
+            kind="combat_intrigue_finished",
+        )
+        return RuleResult(state=next_state, events=(event,))
+
+    first = participants[0]
+    frame = _combat_intrigue_frame(
+        state,
+        participants=participants,
+        current_index=0,
+        consecutive_passes=0,
+    )
+    next_state = replace(state, decision_stack=(frame,))
+    event = GameEvent(
+        event_id=f"round:{state.round_number}:combat_intrigue:{first}",
+        kind="combat_intrigue_started",
+        payload=(("player", first),),
+    )
+    return RuleResult(state=next_state, events=(event,))
+
+
+def legal_combat_intrigue_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return pass while Combat Intrigue card play remains unimplemented."""
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    if not state.decision_stack:
+        return ()
+    frame = state.decision_stack[-1]
+    if not frame.frame_id.endswith(":combat_intrigue"):
+        return ()
+    decision = frame.decision
+    if not isinstance(decision, PlayerDecision) or decision.owner != player:
+        return ()
+    return (DomainAction(action_id="pass_combat_intrigue", actor=player),)
+
+
+def apply_combat_intrigue_pass(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Record one pass and finish after every participant passes consecutively."""
+
+    if action not in legal_combat_intrigue_actions(state, action.actor):
+        raise ValueError("action is not a legal Combat Intrigue pass")
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    participants = _participants_from_mask(
+        state.config.players,
+        _context_int(context, "participants_mask"),
+        state.first_player,
+    )
+    current_index = _context_int(context, "current_index")
+    consecutive_passes = _context_int(context, "consecutive_passes") + 1
+    if consecutive_passes == len(participants):
+        next_state = replace(
+            state,
+            combat_intrigue_complete=True,
+            decision_stack=state.decision_stack[:-1],
+        )
+        kind = "combat_intrigue_finished"
+    else:
+        next_index = (current_index + 1) % len(participants)
+        next_frame = _combat_intrigue_frame(
+            state,
+            participants=participants,
+            current_index=next_index,
+            consecutive_passes=consecutive_passes,
+        )
+        next_state = replace(
+            state,
+            decision_stack=(*state.decision_stack[:-1], next_frame),
+        )
+        kind = "combat_intrigue_passed"
+    event = GameEvent(
+        event_id=(
+            f"round:{state.round_number}:combat_intrigue:pass:{action.actor}:"
+            f"{consecutive_passes}"
+        ),
+        kind=kind,
+        payload=(("player", action.actor),),
+    )
+    return RuleResult(state=next_state, events=(event,))
+
+
 def _positive_strength_groups(
     players: tuple[PlayerState, ...],
 ) -> tuple[tuple[int, ...], ...]:
@@ -102,6 +215,62 @@ def _positive_strength_groups(
         )
         for strength in strengths
     )
+
+
+def _participants_from(state: GameState, first_player: int) -> tuple[int, ...]:
+    return tuple(
+        player
+        for offset in range(state.config.players)
+        if _has_conflict_units(
+            state.players[player := (first_player + offset) % state.config.players]
+        )
+    )
+
+
+def _has_conflict_units(player: PlayerState) -> bool:
+    return player.troops_conflict + player.sandworms_conflict > 0
+
+
+def _participants_from_mask(
+    players: int,
+    mask: int,
+    first_player: int | None,
+) -> tuple[int, ...]:
+    if first_player is None:
+        raise RuntimeError("Combat Intrigue frame requires a First Player")
+    return tuple(
+        player
+        for offset in range(players)
+        if mask & (1 << (player := (first_player + offset) % players))
+    )
+
+
+def _combat_intrigue_frame(
+    state: GameState,
+    participants: tuple[int, ...],
+    current_index: int,
+    consecutive_passes: int,
+) -> DecisionFrame:
+    mask = sum(1 << player for player in participants)
+    return DecisionFrame(
+        frame_id=f"round:{state.round_number}:combat_intrigue",
+        decision=PlayerDecision(
+            owner=participants[current_index],
+            prompt="Play Combat Intrigue cards or pass",
+        ),
+        context=(
+            ("consecutive_passes", consecutive_passes),
+            ("current_index", current_index),
+            ("participants_mask", mask),
+        ),
+    )
+
+
+def _context_int(context: dict[str, bool | int | str], key: str) -> int:
+    value = context.get(key)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise RuntimeError(f"Combat Intrigue frame has invalid {key}")
+    return value
 
 
 def _rewards(
