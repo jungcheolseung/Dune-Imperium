@@ -20,11 +20,13 @@ from dune_imperium.rules.combat import (
     apply_combat_intrigue_pass,
     apply_combat_reward_influence,
     apply_combat_reward_optional_payment,
+    apply_combat_reward_trash,
     begin_combat_intrigue,
     finish_combat,
     legal_combat_intrigue_actions,
     legal_combat_reward_influence_actions,
     legal_combat_reward_optional_payment_actions,
+    legal_combat_reward_trash_actions,
     rank_combat,
     resolve_combat_rewards,
 )
@@ -484,6 +486,53 @@ def test_sandworm_repeats_spice_freighters_payment_choice() -> None:
     assert state.players[0].resources.spice == 0
     assert state.players[0].influence.emperor == 2
     assert state.players[0].victory_points == 4
+    assert state.combat_rewards_resolved is True
+
+
+def test_trade_dispute_trashes_from_hand_and_in_play_in_rank_order() -> None:
+    state = _reward_state("trade_dispute")
+    players = list(state.players)
+    players[0] = replace(players[0], hand=("p0:hand",))
+    players[1] = replace(players[1], in_play=("p1:played",))
+    state = replace(state, players=tuple(players))
+    state = resolve_combat_rewards(state).state
+
+    first_actions = legal_combat_reward_trash_actions(state, 0)
+    assert tuple(dict(action.arguments)["card_id"] for action in first_actions) == (
+        "p0:hand",
+    )
+    state = apply_combat_reward_trash(state, first_actions[0]).state
+
+    second_actions = legal_combat_reward_trash_actions(state, 1)
+    state = apply_combat_reward_trash(state, second_actions[0]).state
+
+    assert state.players[0].hand == ()
+    assert state.players[0].trashed == ("p0:hand",)
+    assert state.players[1].in_play == ()
+    assert state.players[1].trashed == ("p1:played",)
+    assert state.players[0].resources.solari == 2
+    assert state.players[0].resources.water == 2
+    assert state.combat_rewards_resolved is True
+
+
+def test_trade_dispute_skips_trash_when_no_card_is_available() -> None:
+    result = resolve_combat_rewards(_reward_state("trade_dispute")).state
+
+    assert result.decision_stack == ()
+    assert result.combat_rewards_resolved is True
+
+
+def test_sandworm_trash_reward_is_limited_by_available_cards() -> None:
+    state = _reward_state("trade_dispute", sandworm_players=(0,))
+    owner = replace(state.players[0], hand=("only_card",))
+    state = replace(state, players=(owner, *state.players[1:]))
+    state = resolve_combat_rewards(state).state
+
+    actions = legal_combat_reward_trash_actions(state, 0)
+    state = apply_combat_reward_trash(state, actions[0]).state
+
+    assert state.players[0].trashed == ("only_card",)
+    assert state.decision_stack == ()
     assert state.combat_rewards_resolved is True
 
 
