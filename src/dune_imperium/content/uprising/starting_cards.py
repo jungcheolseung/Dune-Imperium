@@ -109,6 +109,24 @@ STARTING_CARDS_BY_ID: Final = {
 }
 
 
+def starting_card_for_instance(instance_id: str) -> StartingCardEntry:
+    """Resolve a stable per-player instance ID to its card definition."""
+
+    marker = ":starter:"
+    if marker not in instance_id:
+        raise ValueError("not a starting-card instance ID")
+    card_and_copy = instance_id.split(marker, maxsplit=1)[1]
+    try:
+        card_id, copy_text = card_and_copy.rsplit(":", maxsplit=1)
+        copy = int(copy_text)
+        entry = STARTING_CARDS_BY_ID[card_id]
+    except (KeyError, ValueError) as error:
+        raise ValueError("unknown starting-card instance ID") from error
+    if copy < 0 or copy >= entry.copies:
+        raise ValueError("starting-card copy index is out of range")
+    return entry
+
+
 def starting_deck_instance_ids(player: int) -> tuple[str, ...]:
     """Create stable IDs for one player's unshuffled starting cards."""
 
