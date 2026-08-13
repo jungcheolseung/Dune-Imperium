@@ -3,11 +3,13 @@
 from dataclasses import dataclass, replace
 from enum import IntEnum
 
+from dune_imperium.content.uprising.board import Faction
+from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID, ConflictReward
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
-from dune_imperium.core.player import PlayerState
+from dune_imperium.core.player import Influence, PlayerState, Resources
 from dune_imperium.core.state import GamePhase, GameState
 
 
@@ -198,6 +200,228 @@ def apply_combat_intrigue_pass(
         payload=(("player", action.actor),),
     )
     return RuleResult(state=next_state, events=(event,))
+
+
+def resolve_tier_one_combat_rewards(state: GameState) -> RuleResult:
+    """Apply transcribed Conflict rewards and open any Influence choices."""
+
+    if state.phase is not GamePhase.COMBAT:
+        raise ValueError("Combat rewards can resolve only during Combat")
+    if not state.combat_intrigue_complete:
+        raise ValueError("Combat Intrigue must finish before rewards")
+    if state.combat_rewards_resolved:
+        raise ValueError("Combat rewards are already resolved")
+    if state.decision_stack:
+        raise ValueError("Combat rewards cannot resolve with a pending decision")
+    if not state.current_conflict_ids:
+        raise ValueError("Combat rewards require a current Conflict")
+
+    conflict_id = state.current_conflict_ids[-1]
+    conflict = CONFLICTS_BY_ID[conflict_id]
+    if conflict.rewards is None:
+        raise NotImplementedError(
+            f"Conflict rewards are not transcribed: {conflict_id}"
+        )
+
+    ranking = rank_combat(state.players)
+    intrigue_count = sum(
+        conflict.rewards[reward.rank - 1].intrigue * reward.multiplier
+        for reward in ranking.rewards
+    )
+    if intrigue_count > len(state.intrigue_deck):
+        raise ValueError("Conflict rewards require more Intrigue cards than remain")
+
+    players = list(state.players)
+    intrigue_deck = state.intrigue_deck
+    choice_owners: list[int] = []
+    events: list[GameEvent] = []
+    for assignment in ranking.rewards:
+        reward = conflict.rewards[assignment.rank - 1]
+        amount = assignment.multiplier
+        owner = players[assignment.player]
+        drawn = intrigue_deck[: reward.intrigue * amount]
+        intrigue_deck = intrigue_deck[len(drawn) :]
+        players[assignment.player] = replace(
+            owner,
+            resources=Resources(
+                solari=owner.resources.solari + reward.solari * amount,
+                spice=owner.resources.spice + reward.spice * amount,
+                water=owner.resources.water,
+            ),
+            intrigue_cards=(*owner.intrigue_cards, *drawn),
+        )
+        choice_owners.extend(
+            assignment.player for _ in range(reward.choose_influence * amount)
+        )
+        events.append(
+            _combat_reward_event(state, assignment, reward)
+        )
+
+    _validate_influence_choices(tuple(players), tuple(choice_owners))
+    frames = tuple(
+        _influence_choice_frame(state, player, index)
+        for index, player in reversed(tuple(enumerate(choice_owners)))
+    )
+    next_state = replace(
+        state,
+        players=tuple(players),
+        intrigue_deck=intrigue_deck,
+        combat_rewards_resolved=not frames,
+        decision_stack=frames,
+    )
+    return RuleResult(state=next_state, events=tuple(events))
+
+
+def legal_combat_reward_influence_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return factions whose Alliance boundary is not reached yet."""
+
+    if not 0 <= player < state.config.players or not state.decision_stack:
+        return ()
+    frame = state.decision_stack[-1]
+    if ":combat_reward_influence:" not in frame.frame_id:
+        return ()
+    decision = frame.decision
+    if not isinstance(decision, PlayerDecision) or decision.owner != player:
+        return ()
+    influence = state.players[player].influence
+    return tuple(
+        DomainAction(
+            action_id="choose_combat_reward_influence",
+            actor=player,
+            arguments=(("faction", faction.value),),
+        )
+        for faction in Faction
+        if _influence_amount(influence, faction) < 3
+    )
+
+
+def apply_combat_reward_influence(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Resolve one queued choose-a-faction Influence reward."""
+
+    if action not in legal_combat_reward_influence_actions(state, action.actor):
+        raise ValueError("action is not a legal Combat reward Influence choice")
+    faction_value = dict(action.arguments)["faction"]
+    if not isinstance(faction_value, str):
+        raise RuntimeError("Combat reward Influence choice has invalid faction")
+    faction = Faction(faction_value)
+    frame = state.decision_stack[-1]
+    choice_index = _context_int(dict(frame.context), "choice_index")
+    owner = state.players[action.actor]
+    current = _influence_amount(owner.influence, faction)
+    next_owner = replace(
+        owner,
+        influence=_replace_influence(owner.influence, faction, current + 1),
+        victory_points=owner.victory_points + (1 if current == 1 else 0),
+    )
+    remaining = state.decision_stack[:-1]
+    next_state = replace(
+        state,
+        players=tuple(
+            next_owner if player.player_id == action.actor else player
+            for player in state.players
+        ),
+        decision_stack=remaining,
+        combat_rewards_resolved=not remaining,
+    )
+    event = GameEvent(
+        event_id=(
+            f"round:{state.round_number}:combat_reward:influence:"
+            f"{choice_index}:{action.actor}:{faction.value}"
+        ),
+        kind="influence_gained",
+        payload=(("amount", 1), ("faction", faction.value), ("player", action.actor)),
+    )
+    return RuleResult(state=next_state, events=(event,))
+
+
+def _combat_reward_event(
+    state: GameState,
+    assignment: CombatReward,
+    reward: ConflictReward,
+) -> GameEvent:
+    return GameEvent(
+        event_id=(
+            f"round:{state.round_number}:combat_reward:{assignment.player}:"
+            f"{assignment.rank.value}"
+        ),
+        kind="combat_reward_gained",
+        payload=(
+            ("choose_influence", reward.choose_influence * assignment.multiplier),
+            ("intrigue", reward.intrigue * assignment.multiplier),
+            ("multiplier", assignment.multiplier),
+            ("player", assignment.player),
+            ("rank", assignment.rank.value),
+            ("solari", reward.solari * assignment.multiplier),
+            ("spice", reward.spice * assignment.multiplier),
+        ),
+    )
+
+
+def _validate_influence_choices(
+    players: tuple[PlayerState, ...],
+    choice_owners: tuple[int, ...],
+) -> None:
+    for player in players:
+        required = choice_owners.count(player.player_id)
+        capacity = sum(
+            max(0, 3 - _influence_amount(player.influence, faction))
+            for faction in Faction
+        )
+        if required > capacity:
+            raise NotImplementedError(
+                "Influence 4 bonuses and Alliances are not implemented"
+            )
+
+
+def _influence_choice_frame(
+    state: GameState,
+    player: int,
+    index: int,
+) -> DecisionFrame:
+    return DecisionFrame(
+        frame_id=(
+            f"round:{state.round_number}:combat_reward_influence:{index}:{player}"
+        ),
+        decision=PlayerDecision(
+            owner=player,
+            prompt="Choose a faction to gain one Influence",
+        ),
+        context=(("choice_index", index), ("player", player)),
+    )
+
+
+def _influence_amount(influence: Influence, faction: Faction) -> int:
+    match faction:
+        case Faction.EMPEROR:
+            return influence.emperor
+        case Faction.SPACING_GUILD:
+            return influence.spacing_guild
+        case Faction.BENE_GESSERIT:
+            return influence.bene_gesserit
+        case Faction.FREMEN:
+            return influence.fremen
+
+
+def _replace_influence(
+    influence: Influence,
+    faction: Faction,
+    amount: int,
+) -> Influence:
+    match faction:
+        case Faction.EMPEROR:
+            return replace(influence, emperor=amount)
+        case Faction.SPACING_GUILD:
+            return replace(influence, spacing_guild=amount)
+        case Faction.BENE_GESSERIT:
+            return replace(influence, bene_gesserit=amount)
+        case Faction.FREMEN:
+            return replace(influence, fremen=amount)
 
 
 def _positive_strength_groups(

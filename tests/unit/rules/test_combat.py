@@ -9,6 +9,7 @@ from dune_imperium.core import (
     DomainAction,
     GamePhase,
     GameState,
+    Influence,
     PlayerDecision,
     PlayerState,
 )
@@ -17,9 +18,12 @@ from dune_imperium.rules.combat import (
     CombatReward,
     RewardRank,
     apply_combat_intrigue_pass,
+    apply_combat_reward_influence,
     begin_combat_intrigue,
     legal_combat_intrigue_actions,
+    legal_combat_reward_influence_actions,
     rank_combat,
+    resolve_tier_one_combat_rewards,
 )
 
 
@@ -244,3 +248,105 @@ def test_unlisted_combat_intrigue_action_is_rejected() -> None:
             state,
             DomainAction(action_id="play_unknown", actor=0),
         )
+
+
+def _reward_state(
+    conflict_id: str,
+    strengths: tuple[int, int, int, int] = (8, 6, 4, 0),
+    *,
+    sandworm_players: tuple[int, ...] = (),
+) -> GameState:
+    return GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.COMBAT,
+        round_number=1,
+        first_player=0,
+        players=_players(strengths, sandworm_players),
+        current_conflict_ids=(conflict_id,),
+        combat_intrigue_complete=True,
+        intrigue_deck=("intrigue:0", "intrigue:1", "intrigue:2", "intrigue:3"),
+    )
+
+
+def test_desert_mouse_rewards_apply_by_rank() -> None:
+    result = resolve_tier_one_combat_rewards(
+        _reward_state("skirmish_desert_mouse")
+    )
+
+    assert tuple(player.resources.solari for player in result.state.players) == (
+        2,
+        3,
+        2,
+        0,
+    )
+    assert result.state.combat_rewards_resolved is True
+    assert result.state.decision_stack == ()
+
+
+def test_ornithopter_rewards_draw_intrigue_in_rank_order() -> None:
+    result = resolve_tier_one_combat_rewards(
+        _reward_state("skirmish_ornithopter")
+    )
+
+    assert result.state.players[0].intrigue_cards == ("intrigue:0",)
+    assert result.state.players[1].intrigue_cards == ("intrigue:1",)
+    assert result.state.players[2].intrigue_cards == ("intrigue:2",)
+    assert result.state.intrigue_deck == ("intrigue:3",)
+
+
+def test_sandworm_doubles_the_assigned_reward_row() -> None:
+    result = resolve_tier_one_combat_rewards(
+        _reward_state("skirmish_ornithopter", sandworm_players=(1,))
+    )
+
+    assert result.state.players[1].resources.solari == 4
+    assert result.state.players[1].intrigue_cards == (
+        "intrigue:1",
+        "intrigue:2",
+    )
+    assert result.state.players[2].intrigue_cards == ("intrigue:3",)
+
+
+def test_crysknife_queues_and_applies_influence_choice() -> None:
+    state = _reward_state("skirmish_crysknife")
+    players = list(state.players)
+    players[0] = replace(players[0], influence=Influence(emperor=1))
+    state = replace(state, players=tuple(players))
+
+    rewarded = resolve_tier_one_combat_rewards(state).state
+    actions = legal_combat_reward_influence_actions(rewarded, 0)
+
+    assert rewarded.combat_rewards_resolved is False
+    assert {dict(action.arguments)["faction"] for action in actions} == {
+        "emperor",
+        "spacing_guild",
+        "bene_gesserit",
+        "fremen",
+    }
+    emperor = next(
+        action for action in actions if dict(action.arguments)["faction"] == "emperor"
+    )
+    resolved = apply_combat_reward_influence(rewarded, emperor).state
+
+    assert resolved.players[0].influence.emperor == 2
+    assert resolved.players[0].victory_points == 2
+    assert resolved.combat_rewards_resolved is True
+
+
+def test_combat_rewards_require_completed_intrigue_and_only_resolve_once() -> None:
+    state = _reward_state("skirmish_desert_mouse")
+
+    with pytest.raises(ValueError, match="Intrigue must finish"):
+        resolve_tier_one_combat_rewards(
+            replace(state, combat_intrigue_complete=False)
+        )
+
+    resolved = resolve_tier_one_combat_rewards(state).state
+    with pytest.raises(ValueError, match="already resolved"):
+        resolve_tier_one_combat_rewards(resolved)
+
+
+def test_untranscribed_conflict_rewards_are_explicitly_blocked() -> None:
+    with pytest.raises(NotImplementedError, match="not transcribed"):
+        resolve_tier_one_combat_rewards(_reward_state("choam_security"))

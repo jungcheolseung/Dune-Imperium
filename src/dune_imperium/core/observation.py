@@ -62,6 +62,7 @@ class PlayerView:
     private: PrivatePlayerView | None = None
     current_conflict_ids: tuple[str, ...] = ()
     combat_intrigue_complete: bool = False
+    combat_rewards_resolved: bool = False
     imperium_row: tuple[str, ...] = ()
     intrigue_discard: tuple[str, ...] = ()
     reserve_stacks: tuple[tuple[str, int], ...] = ()
@@ -94,6 +95,7 @@ def observe_state(state: GameState, player: int) -> PlayerView:
         ),
         current_conflict_ids=state.current_conflict_ids,
         combat_intrigue_complete=state.combat_intrigue_complete,
+        combat_rewards_resolved=state.combat_rewards_resolved,
         imperium_row=state.imperium_row,
         intrigue_discard=state.intrigue_discard,
         reserve_stacks=state.reserve_stacks,

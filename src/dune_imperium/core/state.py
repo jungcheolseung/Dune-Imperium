@@ -41,6 +41,7 @@ class GameState:
     unused_conflict_ids: tuple[str, ...] = ()
     current_conflict_ids: tuple[str, ...] = ()
     combat_intrigue_complete: bool = False
+    combat_rewards_resolved: bool = False
     imperium_deck: tuple[str, ...] = ()
     imperium_row: tuple[str, ...] = ()
     intrigue_deck: tuple[str, ...] = ()
