@@ -17,6 +17,7 @@ def _entry(
     catalog_id: int,
     slug: str,
     name: str,
+    acquisition_cost: int,
     *,
     copies: int = 1,
     choam_only: bool = False,
@@ -30,65 +31,70 @@ def _entry(
         ),
         copies=copies,
         choam_only=choam_only,
+        acquisition_cost=acquisition_cost,
     )
 
 
 IMPERIUM_CARDS: Final = (
-    _entry(30, "bene-gesserit-operative", "Bene Gesserit Operative", copies=2),
-    _entry(45, "branching-path", "Branching Path"),
-    _entry(42, "calculus-of-power", "Calculus of Power", copies=2),
-    _entry(61, "captured-mentat", "Captured Mentat"),
-    _entry(181, "cargo-runner", "Cargo Runner", choam_only=True),
-    _entry(67, "chani-clever-tactician", "Chani, Clever Tactician"),
-    _entry(69, "corrinth-city", "Corrinth City"),
-    _entry(35, "covert-operation", "Covert Operation"),
-    _entry(44, "dangerous-rhetoric", "Dangerous Rhetoric"),
-    _entry(182, "delivery-agreement", "Delivery Agreement", choam_only=True),
-    _entry(71, "desert-power", "Desert Power"),
-    _entry(27, "desert-survival", "Desert Survival", copies=2),
-    _entry(37, "double-agent", "Double Agent", copies=2),
-    _entry(46, "ecological-testing-station", "Ecological Testing Station"),
-    _entry(23, "fedaykin-stilltent", "Fedaykin Stilltent"),
-    _entry(38, "guild-envoy", "Guild Envoy"),
-    _entry(43, "guild-spy", "Guild Spy"),
-    _entry(21, "hidden-missive", "Hidden Missive"),
-    _entry(24, "imperial-spymaster", "Imperial Spymaster"),
-    _entry(64, "in-high-places", "In High Places"),
-    _entry(184, "interstellar-trade", "Interstellar Trade", choam_only=True),
-    _entry(68, "junction-headquarters", "Junction Headquarters"),
-    _entry(63, "leadership", "Leadership"),
-    _entry(74, "long-live-the-fighters", "Long Live the Fighters"),
-    _entry(19, "maker-keeper", "Maker Keeper", copies=2),
-    _entry(32, "maula-pistol", "Maula Pistol", copies=2),
-    _entry(34, "northern-watermaster", "Northern Watermaster"),
-    _entry(75, "overthrow", "Overthrow"),
-    _entry(49, "paracompass", "Paracompass"),
-    _entry(73, "price-is-no-object", "Price is No Object"),
-    _entry(183, "priority-contracts", "Priority Contracts", choam_only=True),
-    _entry(55, "public-spectacle", "Public Spectacle", copies=2),
-    _entry(40, "rebel-supplier", "Rebel Supplier", copies=2),
-    _entry(20, "reliable-informant", "Reliable Informant"),
-    _entry(51, "sardaukar-coordination", "Sardaukar Coordination", copies=2),
-    _entry(15, "sardaukar-soldier", "Sardaukar Soldier"),
-    _entry(48, "shishakli", "Shishakli"),
-    _entry(17, "smuggler-s-harvester", "Smuggler's Harvester", copies=2),
-    _entry(47, "smuggler-s-haven", "Smuggler's Haven"),
-    _entry(56, "southern-elders", "Southern Elders"),
-    _entry(12, "space-time-folding", "Space-time Folding"),
-    _entry(60, "spacing-guild-s-favor", "Spacing Guild's Favor", copies=2),
-    _entry(25, "spy-network", "Spy Network"),
-    _entry(76, "steersman", "Steersman"),
-    _entry(70, "stilgar-the-devoted", "Stilgar, The Devoted"),
-    _entry(65, "strike-fleet", "Strike Fleet"),
-    _entry(62, "subversive-advisor", "Subversive Advisor"),
-    _entry(66, "treacherous-maneuver", "Treacherous Maneuver"),
-    _entry(58, "tread-in-darkness", "Tread in Darkness", copies=2),
-    _entry(53, "truthtrance", "Truthtrance", copies=2),
-    _entry(28, "undercover-asset", "Undercover Asset"),
-    _entry(11, "unswerving-loyalty", "Unswerving Loyalty", copies=2),
-    _entry(14, "weirding-woman", "Weirding Woman", copies=2),
-    _entry(22, "wheels-within-wheels", "Wheels Within Wheels"),
+    _entry(30, "bene-gesserit-operative", "Bene Gesserit Operative", 3, copies=2),
+    _entry(45, "branching-path", "Branching Path", 3),
+    _entry(42, "calculus-of-power", "Calculus of Power", 3, copies=2),
+    _entry(61, "captured-mentat", "Captured Mentat", 5),
+    _entry(181, "cargo-runner", "Cargo Runner", 3, choam_only=True),
+    _entry(67, "chani-clever-tactician", "Chani, Clever Tactician", 5),
+    _entry(69, "corrinth-city", "Corrinth City", 6),
+    _entry(35, "covert-operation", "Covert Operation", 3),
+    _entry(44, "dangerous-rhetoric", "Dangerous Rhetoric", 3),
+    _entry(182, "delivery-agreement", "Delivery Agreement", 5, choam_only=True),
+    _entry(71, "desert-power", "Desert Power", 6),
+    _entry(27, "desert-survival", "Desert Survival", 2, copies=2),
+    _entry(37, "double-agent", "Double Agent", 3, copies=2),
+    _entry(46, "ecological-testing-station", "Ecological Testing Station", 3),
+    _entry(23, "fedaykin-stilltent", "Fedaykin Stilltent", 2),
+    _entry(38, "guild-envoy", "Guild Envoy", 3),
+    _entry(43, "guild-spy", "Guild Spy", 3),
+    _entry(21, "hidden-missive", "Hidden Missive", 2),
+    _entry(24, "imperial-spymaster", "Imperial Spymaster", 2),
+    _entry(64, "in-high-places", "In High Places", 5),
+    _entry(184, "interstellar-trade", "Interstellar Trade", 7, choam_only=True),
+    _entry(68, "junction-headquarters", "Junction Headquarters", 6),
+    _entry(63, "leadership", "Leadership", 5),
+    _entry(74, "long-live-the-fighters", "Long Live the Fighters", 7),
+    _entry(19, "maker-keeper", "Maker Keeper", 2, copies=2),
+    _entry(32, "maula-pistol", "Maula Pistol", 3, copies=2),
+    _entry(34, "northern-watermaster", "Northern Watermaster", 3),
+    _entry(75, "overthrow", "Overthrow", 8),
+    _entry(49, "paracompass", "Paracompass", 4),
+    _entry(73, "price-is-no-object", "Price is No Object", 6),
+    _entry(183, "priority-contracts", "Priority Contracts", 6, choam_only=True),
+    _entry(55, "public-spectacle", "Public Spectacle", 4, copies=2),
+    _entry(40, "rebel-supplier", "Rebel Supplier", 3, copies=2),
+    _entry(20, "reliable-informant", "Reliable Informant", 2),
+    _entry(51, "sardaukar-coordination", "Sardaukar Coordination", 4, copies=2),
+    _entry(15, "sardaukar-soldier", "Sardaukar Soldier", 1),
+    _entry(48, "shishakli", "Shishakli", 4),
+    _entry(17, "smuggler-s-harvester", "Smuggler's Harvester", 1, copies=2),
+    _entry(47, "smuggler-s-haven", "Smuggler's Haven", 4),
+    _entry(56, "southern-elders", "Southern Elders", 4),
+    _entry(12, "space-time-folding", "Space-time Folding", 1),
+    _entry(60, "spacing-guild-s-favor", "Spacing Guild's Favor", 5, copies=2),
+    _entry(25, "spy-network", "Spy Network", 2),
+    _entry(76, "steersman", "Steersman", 8),
+    _entry(70, "stilgar-the-devoted", "Stilgar, The Devoted", 6),
+    _entry(65, "strike-fleet", "Strike Fleet", 5),
+    _entry(62, "subversive-advisor", "Subversive Advisor", 5),
+    _entry(66, "treacherous-maneuver", "Treacherous Maneuver", 5),
+    _entry(58, "tread-in-darkness", "Tread in Darkness", 4, copies=2),
+    _entry(53, "truthtrance", "Truthtrance", 4, copies=2),
+    _entry(28, "undercover-asset", "Undercover Asset", 2),
+    _entry(11, "unswerving-loyalty", "Unswerving Loyalty", 1, copies=2),
+    _entry(14, "weirding-woman", "Weirding Woman", 1, copies=2),
+    _entry(22, "wheels-within-wheels", "Wheels Within Wheels", 2),
 )
+
+IMPERIUM_CARDS_BY_ID: Final = {
+    entry.card.card_id: entry for entry in IMPERIUM_CARDS
+}
 
 
 def imperium_cards_for_choam(choam_module: bool) -> tuple[DeckCardEntry, ...]:
@@ -107,3 +113,20 @@ def imperium_deck_instance_ids(choam_module: bool) -> tuple[str, ...]:
         for entry in imperium_cards_for_choam(choam_module)
         for copy in range(entry.copies)
     )
+
+
+def imperium_card_for_instance(instance_id: str) -> DeckCardEntry:
+    """Resolve a stable Imperium deck instance ID to its definition."""
+
+    prefix = "imperium:"
+    if not instance_id.startswith(prefix):
+        raise ValueError("not an Imperium-card instance ID")
+    try:
+        card_id, copy_text = instance_id.removeprefix(prefix).rsplit(":", maxsplit=1)
+        copy = int(copy_text)
+        entry = IMPERIUM_CARDS_BY_ID[card_id]
+    except (KeyError, ValueError) as error:
+        raise ValueError("unknown Imperium-card instance ID") from error
+    if copy < 0 or copy >= entry.copies:
+        raise ValueError("Imperium-card copy index is out of range")
+    return entry

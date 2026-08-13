@@ -51,7 +51,10 @@ class DeckCardEntry:
     card: CardDefinition
     copies: int = 1
     choam_only: bool = False
+    acquisition_cost: int | None = None
 
     def __post_init__(self) -> None:
         if self.copies < 1:
             raise ValueError("deck-card copies must be positive")
+        if self.acquisition_cost is not None and self.acquisition_cost < 0:
+            raise ValueError("acquisition cost must not be negative")

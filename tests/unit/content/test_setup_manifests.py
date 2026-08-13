@@ -5,6 +5,7 @@ from collections import Counter
 from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.imperium import (
     IMPERIUM_CARDS,
+    imperium_card_for_instance,
     imperium_cards_for_choam,
     imperium_deck_instance_ids,
 )
@@ -101,6 +102,7 @@ def test_imperium_manifest_matches_base_and_choam_counts() -> None:
         "interstellar_trade",
         "priority_contracts",
     }
+    assert all(entry.acquisition_cost is not None for entry in IMPERIUM_CARDS)
 
 
 def test_intrigue_manifest_matches_base_and_choam_counts() -> None:
@@ -135,3 +137,25 @@ def test_shared_deck_manifests_have_unique_ids_urls_and_instances() -> None:
         (intrigue_deck_instance_ids(True), 44),
     ):
         assert len(instance_ids) == len(set(instance_ids)) == expected
+
+
+def test_imperium_costs_cover_the_printed_range_and_resolve_instances() -> None:
+    costs = {entry.card.card_id: entry.acquisition_cost for entry in IMPERIUM_CARDS}
+
+    assert Counter(costs.values()) == {
+        1: 5,
+        2: 9,
+        3: 13,
+        4: 8,
+        5: 9,
+        6: 6,
+        7: 2,
+        8: 2,
+    }
+    assert min(cost for cost in costs.values() if cost is not None) == 1
+    assert max(cost for cost in costs.values() if cost is not None) == 8
+    assert costs["sardaukar_soldier"] == 1
+    assert costs["bene_gesserit_operative"] == 3
+    assert costs["overthrow"] == 8
+    instance = imperium_deck_instance_ids(False)[0]
+    assert imperium_card_for_instance(instance).card.card_id in costs
