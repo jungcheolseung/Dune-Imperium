@@ -22,6 +22,7 @@ class BattleIcon(StrEnum):
     CRYSKNIFE = "crysknife"
     DESERT_MOUSE = "desert_mouse"
     ORNITHOPTER = "ornithopter"
+    WILD = "wild"
 
 
 class ConflictTier(IntEnum):

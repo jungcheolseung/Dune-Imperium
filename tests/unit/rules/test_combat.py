@@ -354,8 +354,8 @@ def test_combat_rewards_require_completed_intrigue_and_only_resolve_once() -> No
         resolve_combat_rewards(resolved)
 
 
-def test_untranscribed_conflict_rewards_are_explicitly_blocked() -> None:
-    with pytest.raises(NotImplementedError, match="not transcribed"):
+def test_transcribed_distinct_influence_reward_waits_for_rule_support() -> None:
+    with pytest.raises(NotImplementedError, match="distinct Faction"):
         resolve_combat_rewards(_reward_state("propaganda"))
 
 

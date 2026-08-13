@@ -197,10 +197,75 @@ def test_tier_two_conflict_rewards_and_battle_icons_are_transcribed() -> None:
     assert {
         conflict.card.card_id: (
             conflict.battle_icon,
-            conflict.shield_wall,
+            conflict.shield_wall_detonation,
             conflict.rewards,
         )
         for conflict in conflicts_by_tier(ConflictTier.TWO)
+    } == expected
+
+
+def test_tier_three_conflict_rewards_and_icons_are_transcribed() -> None:
+    expected = {
+        "propaganda": (
+            BattleIcon.WILD,
+            False,
+            (
+                ConflictReward(choose_distinct_influence=2),
+                ConflictReward(spice=3, intrigue=1),
+                ConflictReward(spice=3),
+            ),
+        ),
+        "battle_for_imperial_basin": (
+            BattleIcon.ORNITHOPTER,
+            True,
+            (
+                ConflictReward(
+                    victory_points=1,
+                    control_space_id="imperial_basin",
+                    optional_spice_cost=4,
+                    optional_victory_points=1,
+                ),
+                ConflictReward(spice=5),
+                ConflictReward(spice=3),
+            ),
+        ),
+        "battle_for_arrakeen": (
+            BattleIcon.CRYSKNIFE,
+            True,
+            (
+                ConflictReward(
+                    victory_points=1,
+                    control_space_id="arrakeen",
+                    optional_recall_spies=2,
+                    optional_victory_points=1,
+                ),
+                ConflictReward(solari=3, spice=1, intrigue=1),
+                ConflictReward(solari=2, spice=2),
+            ),
+        ),
+        "battle_for_spice_refinery": (
+            BattleIcon.DESERT_MOUSE,
+            True,
+            (
+                ConflictReward(
+                    victory_points=1,
+                    control_space_id="spice_refinery",
+                    optional_solari_cost=6,
+                    optional_victory_points=1,
+                ),
+                ConflictReward(spice=3, intrigue=1),
+                ConflictReward(spice=3),
+            ),
+        ),
+    }
+
+    assert {
+        conflict.card.card_id: (
+            conflict.battle_icon,
+            conflict.shield_wall_detonation,
+            conflict.rewards,
+        )
+        for conflict in conflicts_by_tier(ConflictTier.THREE)
     } == expected
 
 
@@ -209,6 +274,12 @@ def test_conflict_reward_rejects_incomplete_compound_effects() -> None:
         ConflictReward(faction_influence=1)
     with pytest.raises(ValueError, match="cost and reward"):
         ConflictReward(optional_spice_cost=3)
+    with pytest.raises(ValueError, match="one cost type"):
+        ConflictReward(
+            optional_spice_cost=3,
+            optional_solari_cost=2,
+            optional_victory_points=1,
+        )
 
 
 def test_base_setup_excludes_only_the_choam_leader() -> None:

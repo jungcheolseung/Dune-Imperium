@@ -22,10 +22,13 @@ class ConflictReward:
     trash_cards: int = 0
     victory_points: int = 0
     choose_influence: int = 0
+    choose_distinct_influence: int = 0
     faction_influence: int = 0
     influence_faction: Faction | None = None
     control_space_id: str | None = None
     optional_spice_cost: int = 0
+    optional_solari_cost: int = 0
+    optional_recall_spies: int = 0
     optional_victory_points: int = 0
 
     def __post_init__(self) -> None:
@@ -40,15 +43,25 @@ class ConflictReward:
             self.trash_cards,
             self.victory_points,
             self.choose_influence,
+            self.choose_distinct_influence,
             self.faction_influence,
             self.optional_spice_cost,
+            self.optional_solari_cost,
+            self.optional_recall_spies,
             self.optional_victory_points,
         )
         if min(values) < 0:
             raise ValueError("Conflict reward quantities must not be negative")
         if (self.faction_influence > 0) != (self.influence_faction is not None):
             raise ValueError("fixed Influence requires both a faction and amount")
-        if (self.optional_spice_cost > 0) != (self.optional_victory_points > 0):
+        optional_costs = (
+            self.optional_spice_cost,
+            self.optional_solari_cost,
+            self.optional_recall_spies,
+        )
+        if sum(cost > 0 for cost in optional_costs) > 1:
+            raise ValueError("an optional Conflict reward requires one cost type")
+        if any(optional_costs) != (self.optional_victory_points > 0):
             raise ValueError("optional Conflict rewards require a cost and reward")
         if self.control_space_id == "":
             raise ValueError("control space ID must not be empty")
@@ -63,7 +76,7 @@ class ConflictDefinition:
     card: CardDefinition
     tier: ConflictTier
     battle_icon: BattleIcon | None = None
-    shield_wall: bool = False
+    shield_wall_detonation: bool = False
     rewards: tuple[ConflictReward, ConflictReward, ConflictReward] | None = None
 
 
@@ -77,7 +90,7 @@ def _conflict(
     tier: ConflictTier,
     *,
     battle_icon: BattleIcon | None = None,
-    shield_wall: bool = False,
+    shield_wall_detonation: bool = False,
     rewards: tuple[ConflictReward, ConflictReward, ConflictReward] | None = None,
 ) -> ConflictDefinition:
     slug = f"uprising-{content_id.replace('_', '-')}"
@@ -90,7 +103,7 @@ def _conflict(
         ),
         tier=tier,
         battle_icon=battle_icon,
-        shield_wall=shield_wall,
+        shield_wall_detonation=shield_wall_detonation,
         rewards=rewards,
     )
 
@@ -187,7 +200,7 @@ CONFLICTS: Final = (
         "Seize Spice Refinery",
         ConflictTier.TWO,
         battle_icon=BattleIcon.CRYSKNIFE,
-        shield_wall=True,
+        shield_wall_detonation=True,
         rewards=(
             ConflictReward(
                 spice=2,
@@ -237,7 +250,7 @@ CONFLICTS: Final = (
         "Secure Imperial Basin",
         ConflictTier.TWO,
         battle_icon=BattleIcon.DESERT_MOUSE,
-        shield_wall=True,
+        shield_wall_detonation=True,
         rewards=(
             ConflictReward(
                 spice=2,
@@ -277,24 +290,71 @@ CONFLICTS: Final = (
             ConflictReward(water=1, troops=1),
         ),
     ),
-    _conflict(463, "propaganda", "Propaganda", ConflictTier.THREE),
+    _conflict(
+        463,
+        "propaganda",
+        "Propaganda",
+        ConflictTier.THREE,
+        battle_icon=BattleIcon.WILD,
+        rewards=(
+            ConflictReward(choose_distinct_influence=2),
+            ConflictReward(spice=3, intrigue=1),
+            ConflictReward(spice=3),
+        ),
+    ),
     _conflict(
         464,
         "battle_for_imperial_basin",
         "Battle for Imperial Basin",
         ConflictTier.THREE,
+        battle_icon=BattleIcon.ORNITHOPTER,
+        shield_wall_detonation=True,
+        rewards=(
+            ConflictReward(
+                victory_points=1,
+                control_space_id="imperial_basin",
+                optional_spice_cost=4,
+                optional_victory_points=1,
+            ),
+            ConflictReward(spice=5),
+            ConflictReward(spice=3),
+        ),
     ),
     _conflict(
         465,
         "battle_for_arrakeen",
         "Battle for Arrakeen",
         ConflictTier.THREE,
+        battle_icon=BattleIcon.CRYSKNIFE,
+        shield_wall_detonation=True,
+        rewards=(
+            ConflictReward(
+                victory_points=1,
+                control_space_id="arrakeen",
+                optional_recall_spies=2,
+                optional_victory_points=1,
+            ),
+            ConflictReward(solari=3, spice=1, intrigue=1),
+            ConflictReward(solari=2, spice=2),
+        ),
     ),
     _conflict(
         466,
         "battle_for_spice_refinery",
         "Battle for Spice Refinery",
         ConflictTier.THREE,
+        battle_icon=BattleIcon.DESERT_MOUSE,
+        shield_wall_detonation=True,
+        rewards=(
+            ConflictReward(
+                victory_points=1,
+                control_space_id="spice_refinery",
+                optional_solari_cost=6,
+                optional_victory_points=1,
+            ),
+            ConflictReward(spice=3, intrigue=1),
+            ConflictReward(spice=3),
+        ),
     ),
 )
 

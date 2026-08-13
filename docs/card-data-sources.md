@@ -27,3 +27,12 @@ missing, ambiguous, or conflicts with already verified content.
   The general Uprising trash rule also permits a card in the player's discard
   pile, and the black trash icon is optional. The local typed reward therefore
   follows the official general rule rather than DIU's zone list.
+- DIU records Propaganda's battle icon as `unknown`; the printed question-mark
+  icon is retained locally as the Endgame wild battle icon. Its first reward is
+  also modeled as choosing two distinct Factions, not two unrestricted repeats.
+- DIU represents Battle for Arrakeen's two-Spy arrow cost as a generic Spy
+  resource cost. The printed upward arrows require recalling two placed Spies,
+  so the local schema records a recall cost.
+- DIU's `shieldwall` boolean denotes the crossed Shield Wall detonation icon on
+  a Conflict card. The local field is named `shield_wall_detonation` to avoid
+  confusing it with the current board token state.

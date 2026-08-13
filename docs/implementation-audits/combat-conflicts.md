@@ -23,7 +23,10 @@ reviewed without reading the transition code. Official rule summaries under
 - Influence 4 bonuses and Alliance acquisition or transfer.
 - CHOAM-enabled contract selection.
 - Choosing among multiple face-up cards with the same matching battle icon.
-- Tier III rewards until their card data and decisions are transcribed.
+- Tier III distinct-Faction Influence, Solari payment, and placed-Spy recall
+  choices until their decision transitions are implemented.
+- Conflict-card Shield Wall detonation until the board token state and reveal
+  choice are implemented.
 
 ## Project conventions and unresolved ordering
 

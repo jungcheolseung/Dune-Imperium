@@ -821,6 +821,14 @@ def _validate_supported_rewards(
     for assignment in ranking.rewards:
         reward = rewards[assignment.rank - 1]
         unsupported: list[str] = []
+        if reward.victory_points:
+            unsupported.append("Victory Points")
+        if reward.choose_distinct_influence:
+            unsupported.append("distinct Faction Influence")
+        if reward.optional_solari_cost:
+            unsupported.append("optional Solari payment")
+        if reward.optional_recall_spies:
+            unsupported.append("optional Spy recall")
         if reward.contracts and state.config.choam_module:
             unsupported.append("CHOAM contract selection")
         if unsupported:
