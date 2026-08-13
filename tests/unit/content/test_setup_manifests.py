@@ -157,5 +157,18 @@ def test_imperium_costs_cover_the_printed_range_and_resolve_instances() -> None:
     assert costs["sardaukar_soldier"] == 1
     assert costs["bene_gesserit_operative"] == 3
     assert costs["overthrow"] == 8
+    assert {
+        entry.card.card_id for entry in IMPERIUM_CARDS if entry.has_acquisition_bonus
+    } == {
+        "guild_spy",
+        "in_high_places",
+        "interstellar_trade",
+        "overthrow",
+        "price_is_no_object",
+        "spy_network",
+        "steersman",
+        "strike_fleet",
+        "subversive_advisor",
+    }
     instance = imperium_deck_instance_ids(False)[0]
     assert imperium_card_for_instance(instance).card.card_id in costs

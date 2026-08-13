@@ -52,6 +52,7 @@ class DeckCardEntry:
     copies: int = 1
     choam_only: bool = False
     acquisition_cost: int | None = None
+    has_acquisition_bonus: bool = False
 
     def __post_init__(self) -> None:
         if self.copies < 1:
