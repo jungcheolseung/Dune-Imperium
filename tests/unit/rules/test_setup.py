@@ -1,19 +1,30 @@
 """Tests for rules-backed player setup constructors."""
 
+from dataclasses import replace
+
 import pytest
 
+from dune_imperium import RulesetConfig
 from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.objectives import objectives_for_players
 from dune_imperium.content.uprising.types import ConflictTier
-from dune_imperium.core import ChanceResolver, PlayerState
+from dune_imperium.core import ChanceReplayError, ChanceResolver, GamePhase, PlayerState
 from dune_imperium.rules.setup import (
     apply_starting_deck_shuffle,
     assign_objectives,
     build_conflict_setup,
     conflict_setup_decisions,
+    create_initial_state,
     create_unshuffled_players,
     objective_setup_decision,
     starting_deck_shuffle_decision,
+)
+
+SELECTED_LEADERS = (
+    "feyd_rautha_harkonnen",
+    "gurney_halleck",
+    "lady_amber_metulli",
+    "lady_jessica",
 )
 
 
@@ -121,3 +132,86 @@ def test_starting_deck_shuffle_is_a_full_recorded_permutation() -> None:
     assert set(shuffled.deck) == set(before)
     assert len(shuffled.deck) == 10
     assert shuffled.deck != before
+
+
+@pytest.mark.parametrize("seed", (0, 1, 17, 2026, 2**32))
+def test_complete_base_setup_populates_every_shared_and_player_zone(seed: int) -> None:
+    result = create_initial_state(
+        RulesetConfig(),
+        seed=seed,
+        leader_ids=SELECTED_LEADERS,
+    )
+    state = result.state
+
+    assert state.phase is GamePhase.ROUND_START
+    assert state.round_number == 0
+    assert state.first_player in range(4)
+    assert tuple(player.leader_id for player in state.players) == SELECTED_LEADERS
+    assert all(len(player.deck) == 10 and player.hand == () for player in state.players)
+    assert all(len(player.objective_ids) == 1 for player in state.players)
+    assert len(state.conflict_deck) == 10
+    assert len(state.unused_conflict_ids) == 6
+    assert state.current_conflict_ids == ()
+    assert len(state.imperium_row) == 5
+    assert len(state.imperium_deck) == 60
+    assert len(state.intrigue_deck) == 40
+    assert state.reserve_stacks == (
+        ("prepare_the_way", 8),
+        ("the_spice_must_flow", 10),
+    )
+    assert len(result.chance_outcomes) == 10
+
+
+def test_complete_setup_repeats_from_seed_and_from_recorded_chance() -> None:
+    first = create_initial_state(
+        RulesetConfig(),
+        seed=55,
+        leader_ids=SELECTED_LEADERS,
+    )
+    repeated = create_initial_state(
+        RulesetConfig(),
+        seed=55,
+        leader_ids=SELECTED_LEADERS,
+    )
+    replayed = create_initial_state(
+        RulesetConfig(),
+        seed=999,
+        leader_ids=SELECTED_LEADERS,
+        recorded_outcomes=first.chance_outcomes,
+    )
+
+    assert repeated == first
+    assert replace(replayed.state, seed=first.state.seed) == first.state
+    assert replayed.chance_outcomes == first.chance_outcomes
+
+
+def test_complete_setup_rejects_invalid_leader_selections() -> None:
+    with pytest.raises(ValueError, match="unique"):
+        create_initial_state(
+            RulesetConfig(),
+            seed=1,
+            leader_ids=(SELECTED_LEADERS[0],) * 4,
+        )
+
+    with pytest.raises(ValueError, match="not available"):
+        create_initial_state(
+            RulesetConfig(),
+            seed=1,
+            leader_ids=(*SELECTED_LEADERS[:3], "shaddam_corrino_iv"),
+        )
+
+
+def test_complete_setup_rejects_trailing_recorded_chance() -> None:
+    first = create_initial_state(
+        RulesetConfig(),
+        seed=55,
+        leader_ids=SELECTED_LEADERS,
+    )
+
+    with pytest.raises(ChanceReplayError, match="unused"):
+        create_initial_state(
+            RulesetConfig(),
+            seed=55,
+            leader_ids=SELECTED_LEADERS,
+            recorded_outcomes=(*first.chance_outcomes, first.chance_outcomes[-1]),
+        )

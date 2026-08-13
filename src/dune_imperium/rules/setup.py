@@ -2,13 +2,24 @@
 
 from dataclasses import dataclass, replace
 
+from dune_imperium.config import RulesetConfig
 from dune_imperium.content.uprising.conflicts import conflicts_by_tier
+from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
+from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
+from dune_imperium.content.uprising.leaders import leaders_for_choam
 from dune_imperium.content.uprising.objectives import objectives_for_players
+from dune_imperium.content.uprising.reserve import RESERVE_STACKS
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.content.uprising.types import ConflictTier
-from dune_imperium.core.chance import ChanceOutcome, validate_chance_outcome
+from dune_imperium.core.chance import (
+    ChanceOutcome,
+    ChanceReplayError,
+    ChanceResolver,
+    validate_chance_outcome,
+)
 from dune_imperium.core.decisions import ChanceDecision
 from dune_imperium.core.player import PlayerState
+from dune_imperium.core.state import GamePhase, GameState
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,6 +36,14 @@ class ConflictSetup:
             raise ValueError("six Conflict cards must remain unused")
         if set(self.deck) & set(self.unused):
             raise ValueError("selected and unused Conflict cards must be disjoint")
+
+
+@dataclass(frozen=True, slots=True)
+class SetupResult:
+    """A completed setup state and its replayable chance stream."""
+
+    state: GameState
+    chance_outcomes: tuple[ChanceOutcome, ...]
 
 
 def create_unshuffled_players() -> tuple[PlayerState, ...]:
@@ -160,3 +179,106 @@ def apply_starting_deck_shuffle(
 
     validate_chance_outcome(starting_deck_shuffle_decision(player), outcome)
     return replace(player, deck=outcome.values)
+
+
+def create_initial_state(
+    config: RulesetConfig,
+    seed: int,
+    leader_ids: tuple[str, ...],
+    recorded_outcomes: tuple[ChanceOutcome, ...] | None = None,
+) -> SetupResult:
+    """Build the complete pre-Round-Start state for four selected Leaders.
+
+    Leader choice remains an explicit caller decision because the official rules
+    permit either selection or random assignment without defining a draft order.
+    Every actual shuffle and deal is routed through the returned chance stream.
+    """
+
+    _validate_leader_selection(config, leader_ids)
+    resolver = ChanceResolver(seed=seed, recorded=recorded_outcomes)
+
+    conflict = build_conflict_setup(
+        tuple(resolver.resolve(decision) for decision in conflict_setup_decisions())
+    )
+    players, first_player = assign_objectives(
+        create_unshuffled_players(),
+        resolver.resolve(objective_setup_decision()),
+    )
+    players = tuple(
+        replace(player, leader_id=leader_id)
+        for player, leader_id in zip(players, leader_ids, strict=True)
+    )
+
+    imperium = resolver.resolve(
+        _shuffle_decision(
+            "setup:imperium_deck",
+            "Shuffle the Imperium deck",
+            imperium_deck_instance_ids(config.choam_module),
+        )
+    ).values
+    intrigue = resolver.resolve(
+        _shuffle_decision(
+            "setup:intrigue_deck",
+            "Shuffle the Intrigue deck",
+            intrigue_deck_instance_ids(config.choam_module),
+        )
+    ).values
+    players = tuple(
+        apply_starting_deck_shuffle(
+            player,
+            resolver.resolve(starting_deck_shuffle_decision(player)),
+        )
+        for player in players
+    )
+
+    if recorded_outcomes is not None and not resolver.exhausted:
+        raise ChanceReplayError("recorded chance stream has unused outcomes")
+
+    state = GameState(
+        config=config,
+        seed=seed,
+        phase=GamePhase.ROUND_START,
+        first_player=first_player,
+        players=players,
+        conflict_deck=conflict.deck,
+        unused_conflict_ids=conflict.unused,
+        imperium_deck=imperium[5:],
+        imperium_row=imperium[:5],
+        intrigue_deck=intrigue,
+        reserve_stacks=tuple(
+            (stack.card.card_id, stack.copies) for stack in RESERVE_STACKS
+        ),
+    )
+    return SetupResult(state=state, chance_outcomes=resolver.outcomes)
+
+
+def _validate_leader_selection(
+    config: RulesetConfig,
+    leader_ids: tuple[str, ...],
+) -> None:
+    if len(leader_ids) != config.players:
+        raise ValueError("setup requires one Leader for each configured player")
+    if len(leader_ids) != len(set(leader_ids)):
+        raise ValueError("selected Leaders must be unique physical cards")
+
+    available = {
+        leader.leader_id for leader in leaders_for_choam(config.choam_module)
+    }
+    unavailable = tuple(
+        leader_id for leader_id in leader_ids if leader_id not in available
+    )
+    if unavailable:
+        raise ValueError(f"Leader is not available in this ruleset: {unavailable[0]}")
+
+
+def _shuffle_decision(
+    decision_id: str,
+    prompt: str,
+    cards: tuple[str, ...],
+) -> ChanceDecision:
+    return ChanceDecision(
+        decision_id=decision_id,
+        prompt=prompt,
+        options=cards,
+        count=len(cards),
+    )
