@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Final
 
 from dune_imperium.content.schema import CardDefinition, SourceDocument, SourceRef
+from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.types import BattleIcon, ConflictTier
 
 
@@ -13,14 +14,45 @@ class ConflictReward:
 
     solari: int = 0
     spice: int = 0
+    water: int = 0
     intrigue: int = 0
+    troops: int = 0
+    place_spies: int = 0
+    contracts: int = 0
+    trash_cards: int = 0
+    victory_points: int = 0
     choose_influence: int = 0
+    faction_influence: int = 0
+    influence_faction: Faction | None = None
+    control_space_id: str | None = None
+    optional_spice_cost: int = 0
+    optional_victory_points: int = 0
 
     def __post_init__(self) -> None:
-        values = (self.solari, self.spice, self.intrigue, self.choose_influence)
+        values = (
+            self.solari,
+            self.spice,
+            self.water,
+            self.intrigue,
+            self.troops,
+            self.place_spies,
+            self.contracts,
+            self.trash_cards,
+            self.victory_points,
+            self.choose_influence,
+            self.faction_influence,
+            self.optional_spice_cost,
+            self.optional_victory_points,
+        )
         if min(values) < 0:
             raise ValueError("Conflict reward quantities must not be negative")
-        if max(values) == 0:
+        if (self.faction_influence > 0) != (self.influence_faction is not None):
+            raise ValueError("fixed Influence requires both a faction and amount")
+        if (self.optional_spice_cost > 0) != (self.optional_victory_points > 0):
+            raise ValueError("optional Conflict rewards require a cost and reward")
+        if self.control_space_id == "":
+            raise ValueError("control space ID must not be empty")
+        if max(values) == 0 and self.control_space_id is None:
             raise ValueError("a Conflict reward row must contain a reward")
 
 
@@ -31,6 +63,7 @@ class ConflictDefinition:
     card: CardDefinition
     tier: ConflictTier
     battle_icon: BattleIcon | None = None
+    shield_wall: bool = False
     rewards: tuple[ConflictReward, ConflictReward, ConflictReward] | None = None
 
 
@@ -44,6 +77,7 @@ def _conflict(
     tier: ConflictTier,
     *,
     battle_icon: BattleIcon | None = None,
+    shield_wall: bool = False,
     rewards: tuple[ConflictReward, ConflictReward, ConflictReward] | None = None,
 ) -> ConflictDefinition:
     slug = f"uprising-{content_id.replace('_', '-')}"
@@ -56,6 +90,7 @@ def _conflict(
         ),
         tier=tier,
         battle_icon=battle_icon,
+        shield_wall=shield_wall,
         rewards=rewards,
     )
 
@@ -97,30 +132,151 @@ CONFLICTS: Final = (
             ConflictReward(solari=2),
         ),
     ),
-    _conflict(454, "choam_security", "CHOAM Security", ConflictTier.TWO),
-    _conflict(455, "spice_freighters", "Spice Freighters", ConflictTier.TWO),
-    _conflict(456, "siege_of_arrakeen", "Siege of Arrakeen", ConflictTier.TWO),
+    _conflict(
+        454,
+        "choam_security",
+        "CHOAM Security",
+        ConflictTier.TWO,
+        battle_icon=BattleIcon.CRYSKNIFE,
+        rewards=(
+            ConflictReward(
+                troops=1,
+                contracts=1,
+                faction_influence=1,
+                influence_faction=Faction.SPACING_GUILD,
+            ),
+            ConflictReward(solari=2, water=1, troops=2),
+            ConflictReward(intrigue=1, troops=1),
+        ),
+    ),
+    _conflict(
+        455,
+        "spice_freighters",
+        "Spice Freighters",
+        ConflictTier.TWO,
+        battle_icon=BattleIcon.CRYSKNIFE,
+        rewards=(
+            ConflictReward(
+                choose_influence=1,
+                optional_spice_cost=3,
+                optional_victory_points=1,
+            ),
+            ConflictReward(spice=1, water=1, troops=1),
+            ConflictReward(spice=1, troops=1),
+        ),
+    ),
+    _conflict(
+        456,
+        "siege_of_arrakeen",
+        "Siege of Arrakeen",
+        ConflictTier.TWO,
+        battle_icon=BattleIcon.ORNITHOPTER,
+        rewards=(
+            ConflictReward(
+                solari=2,
+                troops=2,
+                control_space_id="arrakeen",
+            ),
+            ConflictReward(solari=4, troops=1),
+            ConflictReward(solari=3),
+        ),
+    ),
     _conflict(
         457,
         "seize_spice_refinery",
         "Seize Spice Refinery",
         ConflictTier.TWO,
+        battle_icon=BattleIcon.CRYSKNIFE,
+        shield_wall=True,
+        rewards=(
+            ConflictReward(
+                spice=2,
+                place_spies=1,
+                control_space_id="spice_refinery",
+            ),
+            ConflictReward(spice=1, intrigue=1, troops=1),
+            ConflictReward(spice=2),
+        ),
     ),
-    _conflict(458, "test_of_loyalty", "Test of Loyalty", ConflictTier.TWO),
-    _conflict(459, "shadow_contest", "Shadow Contest", ConflictTier.TWO),
+    _conflict(
+        458,
+        "test_of_loyalty",
+        "Test of Loyalty",
+        ConflictTier.TWO,
+        battle_icon=BattleIcon.ORNITHOPTER,
+        rewards=(
+            ConflictReward(
+                solari=2,
+                place_spies=1,
+                faction_influence=1,
+                influence_faction=Faction.EMPEROR,
+            ),
+            ConflictReward(solari=4, troops=1),
+            ConflictReward(solari=3),
+        ),
+    ),
+    _conflict(
+        459,
+        "shadow_contest",
+        "Shadow Contest",
+        ConflictTier.TWO,
+        battle_icon=BattleIcon.ORNITHOPTER,
+        rewards=(
+            ConflictReward(
+                intrigue=1,
+                faction_influence=1,
+                influence_faction=Faction.BENE_GESSERIT,
+            ),
+            ConflictReward(spice=1, intrigue=1, troops=1),
+            ConflictReward(spice=1, troops=1),
+        ),
+    ),
     _conflict(
         460,
         "secure_imperial_basin",
         "Secure Imperial Basin",
         ConflictTier.TWO,
+        battle_icon=BattleIcon.DESERT_MOUSE,
+        shield_wall=True,
+        rewards=(
+            ConflictReward(
+                spice=2,
+                troops=1,
+                control_space_id="imperial_basin",
+            ),
+            ConflictReward(water=2, troops=1),
+            ConflictReward(water=1, troops=1),
+        ),
     ),
     _conflict(
         461,
         "protect_the_sietches",
         "Protect the Sietches",
         ConflictTier.TWO,
+        battle_icon=BattleIcon.DESERT_MOUSE,
+        rewards=(
+            ConflictReward(
+                water=1,
+                troops=1,
+                faction_influence=1,
+                influence_faction=Faction.FREMEN,
+            ),
+            ConflictReward(spice=3, troops=1),
+            ConflictReward(spice=2),
+        ),
     ),
-    _conflict(462, "trade_dispute", "Trade Dispute", ConflictTier.TWO),
+    _conflict(
+        462,
+        "trade_dispute",
+        "Trade Dispute",
+        ConflictTier.TWO,
+        battle_icon=BattleIcon.DESERT_MOUSE,
+        rewards=(
+            ConflictReward(water=1, contracts=1, trash_cards=1),
+            ConflictReward(spice=1, water=1, trash_cards=1),
+            ConflictReward(water=1, troops=1),
+        ),
+    ),
     _conflict(463, "propaganda", "Propaganda", ConflictTier.THREE),
     _conflict(
         464,

@@ -85,6 +85,8 @@ uv run scripts/prepare_official_rules.py
   리더, 각종 덱 카드, 계약 등 카드 이미지와 카드별 정보를 찾을 때 사용한다.
 - [Dune Cards Hub](https://dunecardshub.com): 다른 확장팩 자료가 필요할 때
   해당 확장팩을 선택해 사용한다.
+- 외부 구조화 데이터의 사용 범위와 검증 정책은
+  [카드 데이터 전사 출처](docs/card-data-sources.md)에 기록한다.
 
 Dune Cards Hub는 카드 및 시각 자료의 참고 출처로 사용한다. 규칙 설명과 카드
 효과 해석이 충돌할 경우에는 Dire Wolf Digital의 공식 룰북과 공식 보충 자료를

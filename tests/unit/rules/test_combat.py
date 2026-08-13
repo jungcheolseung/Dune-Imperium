@@ -350,6 +350,11 @@ def test_combat_rewards_require_completed_intrigue_and_only_resolve_once() -> No
 
 def test_untranscribed_conflict_rewards_are_explicitly_blocked() -> None:
     with pytest.raises(NotImplementedError, match="not transcribed"):
+        resolve_tier_one_combat_rewards(_reward_state("propaganda"))
+
+
+def test_transcribed_tier_two_rewards_wait_for_rule_support() -> None:
+    with pytest.raises(NotImplementedError, match="only Tier I"):
         resolve_tier_one_combat_rewards(_reward_state("choam_security"))
 
 

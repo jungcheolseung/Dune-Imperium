@@ -6,7 +6,7 @@ from enum import IntEnum
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID, ConflictReward
 from dune_imperium.content.uprising.objectives import OBJECTIVES_BY_ID
-from dune_imperium.content.uprising.types import BattleIcon
+from dune_imperium.content.uprising.types import BattleIcon, ConflictTier
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
@@ -224,6 +224,8 @@ def resolve_tier_one_combat_rewards(state: GameState) -> RuleResult:
         raise NotImplementedError(
             f"Conflict rewards are not transcribed: {conflict_id}"
         )
+    if conflict.tier is not ConflictTier.ONE:
+        raise NotImplementedError("only Tier I Conflict rewards can resolve")
 
     ranking = rank_combat(state.players)
     intrigue_count = sum(

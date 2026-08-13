@@ -2,6 +2,9 @@
 
 from collections import Counter
 
+import pytest
+
+from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.conflicts import (
     CONFLICTS,
     CONFLICTS_BY_ID,
@@ -69,6 +72,143 @@ def test_tier_one_conflict_rewards_and_battle_icons_are_transcribed() -> None:
         conflict.rewards is not None and conflict.battle_icon is not None
         for conflict in conflicts_by_tier(ConflictTier.ONE)
     )
+
+
+def test_tier_two_conflict_rewards_and_battle_icons_are_transcribed() -> None:
+    expected = {
+        "choam_security": (
+            BattleIcon.CRYSKNIFE,
+            False,
+            (
+                ConflictReward(
+                    troops=1,
+                    contracts=1,
+                    faction_influence=1,
+                    influence_faction=Faction.SPACING_GUILD,
+                ),
+                ConflictReward(solari=2, water=1, troops=2),
+                ConflictReward(intrigue=1, troops=1),
+            ),
+        ),
+        "spice_freighters": (
+            BattleIcon.CRYSKNIFE,
+            False,
+            (
+                ConflictReward(
+                    choose_influence=1,
+                    optional_spice_cost=3,
+                    optional_victory_points=1,
+                ),
+                ConflictReward(spice=1, water=1, troops=1),
+                ConflictReward(spice=1, troops=1),
+            ),
+        ),
+        "siege_of_arrakeen": (
+            BattleIcon.ORNITHOPTER,
+            False,
+            (
+                ConflictReward(
+                    solari=2,
+                    troops=2,
+                    control_space_id="arrakeen",
+                ),
+                ConflictReward(solari=4, troops=1),
+                ConflictReward(solari=3),
+            ),
+        ),
+        "seize_spice_refinery": (
+            BattleIcon.CRYSKNIFE,
+            True,
+            (
+                ConflictReward(
+                    spice=2,
+                    place_spies=1,
+                    control_space_id="spice_refinery",
+                ),
+                ConflictReward(spice=1, intrigue=1, troops=1),
+                ConflictReward(spice=2),
+            ),
+        ),
+        "test_of_loyalty": (
+            BattleIcon.ORNITHOPTER,
+            False,
+            (
+                ConflictReward(
+                    solari=2,
+                    place_spies=1,
+                    faction_influence=1,
+                    influence_faction=Faction.EMPEROR,
+                ),
+                ConflictReward(solari=4, troops=1),
+                ConflictReward(solari=3),
+            ),
+        ),
+        "shadow_contest": (
+            BattleIcon.ORNITHOPTER,
+            False,
+            (
+                ConflictReward(
+                    intrigue=1,
+                    faction_influence=1,
+                    influence_faction=Faction.BENE_GESSERIT,
+                ),
+                ConflictReward(spice=1, intrigue=1, troops=1),
+                ConflictReward(spice=1, troops=1),
+            ),
+        ),
+        "secure_imperial_basin": (
+            BattleIcon.DESERT_MOUSE,
+            True,
+            (
+                ConflictReward(
+                    spice=2,
+                    troops=1,
+                    control_space_id="imperial_basin",
+                ),
+                ConflictReward(water=2, troops=1),
+                ConflictReward(water=1, troops=1),
+            ),
+        ),
+        "protect_the_sietches": (
+            BattleIcon.DESERT_MOUSE,
+            False,
+            (
+                ConflictReward(
+                    water=1,
+                    troops=1,
+                    faction_influence=1,
+                    influence_faction=Faction.FREMEN,
+                ),
+                ConflictReward(spice=3, troops=1),
+                ConflictReward(spice=2),
+            ),
+        ),
+        "trade_dispute": (
+            BattleIcon.DESERT_MOUSE,
+            False,
+            (
+                ConflictReward(water=1, contracts=1, trash_cards=1),
+                ConflictReward(spice=1, water=1, trash_cards=1),
+                ConflictReward(water=1, troops=1),
+            ),
+        ),
+    }
+
+    assert {
+        conflict.card.card_id: (
+            conflict.battle_icon,
+            conflict.shield_wall,
+            conflict.rewards,
+        )
+        for conflict in conflicts_by_tier(ConflictTier.TWO)
+    } == expected
+
+
+def test_conflict_reward_rejects_incomplete_compound_effects() -> None:
+    with pytest.raises(ValueError, match="fixed Influence"):
+        ConflictReward(faction_influence=1)
+    with pytest.raises(ValueError, match="cost and reward"):
+        ConflictReward(optional_spice_cost=3)
 
 
 def test_base_setup_excludes_only_the_choam_leader() -> None:
