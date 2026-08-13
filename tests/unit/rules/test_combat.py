@@ -19,10 +19,12 @@ from dune_imperium.rules.combat import (
     RewardRank,
     apply_combat_intrigue_pass,
     apply_combat_reward_influence,
+    apply_combat_reward_optional_payment,
     begin_combat_intrigue,
     finish_combat,
     legal_combat_intrigue_actions,
     legal_combat_reward_influence_actions,
+    legal_combat_reward_optional_payment_actions,
     rank_combat,
     resolve_combat_rewards,
 )
@@ -423,6 +425,66 @@ def test_choam_contract_selection_remains_deferred() -> None:
 
     with pytest.raises(NotImplementedError, match="contract selection"):
         resolve_combat_rewards(state)
+
+
+def test_spice_freighters_reward_can_be_paid_after_influence_choice() -> None:
+    state = _reward_state("spice_freighters")
+    owner = replace(
+        state.players[0],
+        resources=replace(state.players[0].resources, spice=3),
+    )
+    state = replace(state, players=(owner, *state.players[1:]))
+
+    rewarded = resolve_combat_rewards(state).state
+    influence = legal_combat_reward_influence_actions(rewarded, 0)[0]
+    rewarded = apply_combat_reward_influence(rewarded, influence).state
+    actions = legal_combat_reward_optional_payment_actions(rewarded, 0)
+
+    assert tuple(action.action_id for action in actions) == (
+        "decline_combat_reward",
+        "pay_combat_reward",
+    )
+    paid = apply_combat_reward_optional_payment(rewarded, actions[1]).state
+    assert paid.players[0].resources.spice == 0
+    assert paid.players[0].victory_points == 2
+    assert paid.combat_rewards_resolved is True
+
+
+def test_unaffordable_spice_freighters_reward_can_only_be_declined() -> None:
+    state = resolve_combat_rewards(_reward_state("spice_freighters")).state
+    influence = legal_combat_reward_influence_actions(state, 0)[0]
+    state = apply_combat_reward_influence(state, influence).state
+
+    actions = legal_combat_reward_optional_payment_actions(state, 0)
+
+    assert tuple(action.action_id for action in actions) == (
+        "decline_combat_reward",
+    )
+    declined = apply_combat_reward_optional_payment(state, actions[0])
+    assert declined.state.players[0].victory_points == 1
+    assert declined.state.combat_rewards_resolved is True
+    assert declined.events[0].kind == "combat_reward_declined"
+
+
+def test_sandworm_repeats_spice_freighters_payment_choice() -> None:
+    state = _reward_state("spice_freighters", sandworm_players=(0,))
+    owner = replace(
+        state.players[0],
+        resources=replace(state.players[0].resources, spice=6),
+    )
+    state = replace(state, players=(owner, *state.players[1:]))
+    state = resolve_combat_rewards(state).state
+
+    for _ in range(2):
+        influence = legal_combat_reward_influence_actions(state, 0)[0]
+        state = apply_combat_reward_influence(state, influence).state
+        payment = legal_combat_reward_optional_payment_actions(state, 0)[1]
+        state = apply_combat_reward_optional_payment(state, payment).state
+
+    assert state.players[0].resources.spice == 0
+    assert state.players[0].influence.emperor == 2
+    assert state.players[0].victory_points == 4
+    assert state.combat_rewards_resolved is True
 
 
 def test_combat_winner_takes_conflict_matches_icon_and_units_are_cleaned_up() -> None:

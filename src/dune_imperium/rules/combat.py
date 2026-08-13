@@ -237,6 +237,7 @@ def resolve_combat_rewards(state: GameState) -> RuleResult:
     players = list(state.players)
     intrigue_deck = state.intrigue_deck
     choice_owners: list[int] = []
+    frames_in_order: list[DecisionFrame] = []
     events: list[GameEvent] = []
     for assignment in ranking.rewards:
         reward = conflict.rewards[assignment.rank - 1]
@@ -271,18 +272,32 @@ def resolve_combat_rewards(state: GameState) -> RuleResult:
                     reward.control_space_id,
                 )
             )
-        choice_owners.extend(
-            assignment.player for _ in range(reward.choose_influence * amount)
-        )
+        for _ in range(amount):
+            for _ in range(reward.choose_influence):
+                choice_owners.append(assignment.player)
+                frames_in_order.append(
+                    _influence_choice_frame(
+                        state,
+                        assignment.player,
+                        len(frames_in_order),
+                    )
+                )
+            if reward.optional_spice_cost:
+                frames_in_order.append(
+                    _optional_payment_frame(
+                        state,
+                        assignment.player,
+                        len(frames_in_order),
+                        reward.optional_spice_cost,
+                        reward.optional_victory_points,
+                    )
+                )
         events.append(
             _combat_reward_event(state, assignment, reward)
         )
 
     _validate_influence_choices(tuple(players), tuple(choice_owners))
-    frames = tuple(
-        _influence_choice_frame(state, player, index)
-        for index, player in reversed(tuple(enumerate(choice_owners)))
-    )
+    frames = tuple(reversed(frames_in_order))
     next_state = replace(
         state,
         players=tuple(players),
@@ -291,6 +306,77 @@ def resolve_combat_rewards(state: GameState) -> RuleResult:
         decision_stack=frames,
     )
     return RuleResult(state=next_state, events=tuple(events))
+
+
+def legal_combat_reward_optional_payment_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return decline and, when affordable, pay for an optional reward."""
+
+    if not 0 <= player < state.config.players or not state.decision_stack:
+        return ()
+    frame = state.decision_stack[-1]
+    if ":combat_reward_optional:" not in frame.frame_id:
+        return ()
+    decision = frame.decision
+    if not isinstance(decision, PlayerDecision) or decision.owner != player:
+        return ()
+    cost = _context_int(dict(frame.context), "spice_cost")
+    actions = [DomainAction(action_id="decline_combat_reward", actor=player)]
+    if state.players[player].resources.spice >= cost:
+        actions.append(DomainAction(action_id="pay_combat_reward", actor=player))
+    return tuple(actions)
+
+
+def apply_combat_reward_optional_payment(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Pay for or decline one optional Conflict reward."""
+
+    if action not in legal_combat_reward_optional_payment_actions(
+        state, action.actor
+    ):
+        raise ValueError("action is not a legal optional Combat reward choice")
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    choice_index = _context_int(context, "choice_index")
+    spice_cost = _context_int(context, "spice_cost")
+    victory_points = _context_int(context, "victory_points")
+    paid = action.action_id == "pay_combat_reward"
+    owner = state.players[action.actor]
+    next_owner = replace(
+        owner,
+        resources=replace(
+            owner.resources,
+            spice=owner.resources.spice - (spice_cost if paid else 0),
+        ),
+        victory_points=owner.victory_points + (victory_points if paid else 0),
+    )
+    remaining = state.decision_stack[:-1]
+    next_state = replace(
+        state,
+        players=tuple(
+            next_owner if player.player_id == action.actor else player
+            for player in state.players
+        ),
+        decision_stack=remaining,
+        combat_rewards_resolved=not remaining,
+    )
+    event = GameEvent(
+        event_id=(
+            f"round:{state.round_number}:combat_reward:optional:"
+            f"{choice_index}:{action.actor}"
+        ),
+        kind=("combat_reward_paid" if paid else "combat_reward_declined"),
+        payload=(
+            ("player", action.actor),
+            ("spice", spice_cost if paid else 0),
+            ("victory_points", victory_points if paid else 0),
+        ),
+    )
+    return RuleResult(state=next_state, events=(event,))
 
 
 def legal_combat_reward_influence_actions(
@@ -530,8 +616,6 @@ def _validate_supported_rewards(
             unsupported.append("spy placement")
         if reward.trash_cards:
             unsupported.append("card trashing")
-        if reward.optional_spice_cost:
-            unsupported.append("optional Spice payment")
         if reward.contracts and state.config.choam_module:
             unsupported.append("CHOAM contract selection")
         if unsupported:
@@ -627,6 +711,32 @@ def _influence_choice_frame(
             prompt="Choose a faction to gain one Influence",
         ),
         context=(("choice_index", index), ("player", player)),
+    )
+
+
+def _optional_payment_frame(
+    state: GameState,
+    player: int,
+    index: int,
+    spice_cost: int,
+    victory_points: int,
+) -> DecisionFrame:
+    return DecisionFrame(
+        frame_id=(
+            f"round:{state.round_number}:combat_reward_optional:{index}:{player}"
+        ),
+        decision=PlayerDecision(
+            owner=player,
+            prompt=(
+                f"Pay {spice_cost} Spice to gain {victory_points} Victory Point"
+            ),
+        ),
+        context=(
+            ("choice_index", index),
+            ("player", player),
+            ("spice_cost", spice_cost),
+            ("victory_points", victory_points),
+        ),
     )
 
 
