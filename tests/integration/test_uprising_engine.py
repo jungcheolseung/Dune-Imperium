@@ -54,6 +54,26 @@ def test_reveal_resolution_cannot_start_another_turn() -> None:
     assert "finish_reveal" in reveal_action_ids
 
 
+def test_assembly_hall_is_playable_and_draws_intrigue() -> None:
+    engine = UprisingRulesEngine()
+    state = engine.reset(RulesetConfig(), seed=2)
+    decision = engine.current_decision(state)
+    assert isinstance(decision, PlayerDecision)
+    assembly_hall = next(
+        action
+        for action in engine.legal_actions(state, decision.owner)
+        if dict(action.arguments).get("space_id") == "assembly_hall"
+    )
+    intrigue_card = state.intrigue_deck[0]
+
+    state = engine.apply(state, assembly_hall).state
+    resolve = engine.legal_actions(state, decision.owner)
+    assert tuple(action.action_id for action in resolve) == ("resolve_board_effect",)
+    state = engine.apply(state, resolve[0]).state
+
+    assert intrigue_card in state.players[decision.owner].intrigue_cards
+
+
 def test_four_seeded_random_players_finish_one_round() -> None:
     result = run_random_round(
         UprisingRulesEngine(),

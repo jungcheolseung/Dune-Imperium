@@ -21,10 +21,12 @@ reviewed without reading the transition code. Official rule summaries under
 | Influence | Friendship VP, printed track bonuses, and Alliance acquisition or upward transfer use one shared transition. | Influence-loss transfer choices remain deferred with OQ-014 until a reachable content case is implemented. |
 | Shield Wall | Setup begins with the token present; the six printed protected Conflicts remove Maker-space sandworm actions until permanent destruction. | Sietch Tabr exposes explicit keep/destroy choices; the Conflict-card symbol denotes protection, not detonation. |
 | Battle icons | A sole winner takes the Conflict and an unambiguous matching pair gains 1 VP. | Multiple possible matching cards are blocked because the official selection policy is unresolved. |
+| Combat Intrigue priority | Participants rotate from First Player order until all pass consecutively, even when they hold Intrigue cards. | Only pass is exposed until individual Combat Intrigue timing and effects are transcribed. |
 
 ## Explicitly blocked
 
-- Combat Intrigue card play and card eligibility.
+- Individual Combat Intrigue card play, eligibility, and effects. The official
+  participant priority/pass loop remains available.
 - CHOAM-enabled contract selection.
 - Choosing among multiple face-up cards with the same matching battle icon.
 - Shield Wall detonation effects from cards until those content paths are

@@ -224,7 +224,7 @@ def test_no_participant_closes_combat_intrigue_immediately() -> None:
     assert result.events[0].kind == "combat_intrigue_finished"
 
 
-def test_intrigue_holders_wait_for_card_type_transcription() -> None:
+def test_intrigue_holders_can_pass_while_card_effects_are_deferred() -> None:
     player = PlayerState(
         player_id=0,
         troops_supply=8,
@@ -239,8 +239,11 @@ def test_intrigue_holders_wait_for_card_type_transcription() -> None:
         players=(player, *(PlayerState(player_id=seat) for seat in range(1, 4))),
     )
 
-    with pytest.raises(NotImplementedError, match="eligibility"):
-        begin_combat_intrigue(state)
+    started = begin_combat_intrigue(state).state
+
+    assert legal_combat_intrigue_actions(started, 0) == (
+        DomainAction(action_id="pass_combat_intrigue", actor=0),
+    )
 
 
 def test_unlisted_combat_intrigue_action_is_rejected() -> None:

@@ -115,10 +115,6 @@ def begin_combat_intrigue(state: GameState) -> RuleResult:
         raise ValueError("Combat Intrigue is already complete")
 
     participants = _participants_from(state, state.first_player)
-    if any(state.players[player].intrigue_cards for player in participants):
-        raise NotImplementedError(
-            "Combat Intrigue card eligibility is not transcribed yet"
-        )
     if not participants:
         next_state = replace(state, combat_intrigue_complete=True)
         event = GameEvent(
@@ -147,7 +143,7 @@ def legal_combat_intrigue_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Return pass while Combat Intrigue card play remains unimplemented."""
+    """Return pass while individual Combat Intrigue effects remain deferred."""
 
     if not 0 <= player < state.config.players:
         raise ValueError("player must identify a configured seat")

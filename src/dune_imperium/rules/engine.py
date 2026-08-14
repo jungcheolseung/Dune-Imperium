@@ -57,10 +57,7 @@ from dune_imperium.rules.combat_deployment import (
     apply_combat_deployment,
     legal_combat_deployments,
 )
-from dune_imperium.rules.effects import (
-    DrawIntrigueCardsEffect,
-    current_agent_effect_context,
-)
+from dune_imperium.rules.effects import current_agent_effect_context
 from dune_imperium.rules.phases import (
     begin_round,
     resolve_makers,
@@ -253,10 +250,10 @@ def _agent_action_is_supported(state: GameState, action: DomainAction) -> bool:
     else:
         cost_option = 0
     try:
-        effects = board_effects_for(state, space_id, cost_option)
+        board_effects_for(state, space_id, cost_option)
     except NotImplementedError:
         return False
-    return not any(isinstance(effect, DrawIntrigueCardsEffect) for effect in effects)
+    return True
 
 
 def _apply_agent_card_effect(state: GameState, action: DomainAction) -> RuleResult:
