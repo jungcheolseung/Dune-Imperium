@@ -19,9 +19,11 @@ from dune_imperium.core import (
 )
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 from dune_imperium.rules.board_effects import (
+    apply_espionage_action,
     apply_maker_space_action,
     apply_sietch_tabr_action,
     board_effects_for,
+    legal_espionage_actions,
     legal_maker_space_actions,
     legal_sietch_tabr_actions,
     resolve_board_effect,
@@ -188,6 +190,90 @@ def test_assembly_hall_draws_hidden_intrigue() -> None:
 
     assert resolved.players[0].intrigue_cards == ("intrigue:first",)
     assert resolved.intrigue_deck == ("intrigue:second",)
+
+
+def _espionage_state(*, spies_supply: int = 3) -> tuple[GameState, str]:
+    state = _state("diplomacy", Resources(spice=1))
+    drawn = _instance("dagger")
+    spy_post_ids = (
+        "emperor-sardaukar-dutiful-service",
+        "landsraad-assembly-hall-gather-support",
+        "arrakis-imperial-basin",
+    )[: 3 - spies_supply]
+    owner = replace(
+        state.players[0],
+        deck=(drawn,),
+        spies_supply=spies_supply,
+        spy_post_ids=spy_post_ids,
+    )
+    state = replace(state, players=(owner, *state.players[1:]))
+    return apply_agent_action(state, _action_to(state, "espionage")).state, drawn
+
+
+def test_espionage_draws_card_and_can_place_spy() -> None:
+    state, drawn = _espionage_state()
+    actions = legal_espionage_actions(state, 0)
+    placement = next(
+        action
+        for action in actions
+        if action.action_id == "resolve_espionage_place_spy"
+    )
+    post_id = dict(placement.arguments)["post_id"]
+
+    result = apply_espionage_action(state, placement)
+    owner = result.state.players[0]
+    context = dict(result.state.decision_stack[-1].context)
+
+    assert drawn in owner.hand
+    assert owner.spies_supply == 2
+    assert post_id in owner.spy_post_ids
+    assert context["pending_board_effect"] is False
+    assert context["pending_faction_influence"] is True
+    assert tuple(event.kind for event in result.events) == (
+        "spy_placed",
+        "board_effect_resolved",
+    )
+
+
+def test_espionage_can_decline_spy_and_still_draw_card() -> None:
+    state, drawn = _espionage_state()
+    decline = next(
+        action
+        for action in legal_espionage_actions(state, 0)
+        if action.action_id == "resolve_espionage_without_spy"
+    )
+
+    resolved = apply_espionage_action(state, decline).state
+
+    assert drawn in resolved.players[0].hand
+    assert resolved.players[0].spies_supply == 3
+    assert resolved.players[0].spy_post_ids == ()
+
+
+def test_espionage_recall_commits_to_a_replacement_when_supply_is_empty() -> None:
+    state, drawn = _espionage_state(spies_supply=0)
+    recall_actions = legal_espionage_actions(state, 0)
+    recalled_post = dict(recall_actions[0].arguments)["post_id"]
+
+    recalled = apply_espionage_action(state, recall_actions[0])
+    replacement_actions = legal_espionage_actions(recalled.state, 0)
+
+    assert {action.action_id for action in recall_actions} == {
+        "recall_spy_for_espionage"
+    }
+    assert {action.action_id for action in replacement_actions} == {
+        "resolve_espionage_place_spy"
+    }
+    assert recalled_post not in recalled.state.players[0].spy_post_ids
+    assert recalled.state.players[0].spies_supply == 1
+    assert recalled.events[0].kind == "spy_recalled"
+
+    resolved = apply_espionage_action(recalled.state, replacement_actions[0]).state
+    owner = resolved.players[0]
+
+    assert drawn in owner.hand
+    assert owner.spies_supply == 0
+    assert len(owner.spy_post_ids) == 3
 
 
 def test_first_high_council_visit_grants_seat_without_repeat_rewards() -> None:

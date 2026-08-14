@@ -2,6 +2,7 @@
 
 from dataclasses import replace
 
+from dune_imperium.content.uprising.board import OBSERVATION_POSTS
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import PlayerDecision
 from dune_imperium.core.engine import RuleResult
@@ -143,6 +144,146 @@ def resolve_board_effect(state: GameState) -> RuleResult:
         payload=(("player", player), ("space_id", space_id)),
     )
     return RuleResult(state=next_state, events=(event,))
+
+
+def legal_espionage_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return Espionage's optional Spy placement or required recall choices."""
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return ()
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    if (
+        context.get("pending_board_effect") is not True
+        or context.get("space_id") != "espionage"
+    ):
+        return ()
+
+    owner = state.players[player]
+    occupied = {
+        post_id for candidate in state.players for post_id in candidate.spy_post_ids
+    }
+    if context.get("espionage_spy_recalled") is True or owner.spies_supply > 0:
+        placements = tuple(
+            DomainAction(
+                action_id="resolve_espionage_place_spy",
+                actor=player,
+                arguments=(("post_id", post.post_id),),
+            )
+            for post in OBSERVATION_POSTS
+            if post.post_id not in occupied
+        )
+        if context.get("espionage_spy_recalled") is True:
+            return placements
+        return (
+            DomainAction(action_id="resolve_espionage_without_spy", actor=player),
+            *placements,
+        )
+
+    return tuple(
+        DomainAction(
+            action_id="recall_spy_for_espionage",
+            actor=player,
+            arguments=(("post_id", post_id),),
+        )
+        for post_id in owner.spy_post_ids
+    )
+
+
+def apply_espionage_action(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Resolve Espionage, including its two-step recall-then-place branch."""
+
+    if action not in legal_espionage_actions(state, action.actor):
+        raise ValueError("action is not a legal Espionage choice")
+    _, context = current_agent_effect_context(state)
+    owner = state.players[action.actor]
+    post_id = dict(action.arguments).get("post_id")
+
+    if action.action_id == "recall_spy_for_espionage":
+        if not isinstance(post_id, str):
+            raise RuntimeError("Espionage recall has invalid post ID")
+        next_owner = replace(
+            owner,
+            spies_supply=owner.spies_supply + 1,
+            spy_post_ids=tuple(
+                candidate for candidate in owner.spy_post_ids if candidate != post_id
+            ),
+        )
+        context["espionage_spy_recalled"] = True
+        players = tuple(
+            next_owner if candidate.player_id == action.actor else candidate
+            for candidate in state.players
+        )
+        next_state = advance_after_effect(state, context, players)
+        event = GameEvent(
+            event_id=(
+                f"round:{state.round_number}:player:{action.actor}:spy_recalled:"
+                f"espionage:{post_id}"
+            ),
+            kind="spy_recalled",
+            payload=(
+                ("player", action.actor),
+                ("post_id", post_id),
+                ("source", "espionage"),
+            ),
+        )
+        return RuleResult(state=next_state, events=(event,))
+
+    next_owner = _draw_imperium_cards(owner, 1)
+    events: list[GameEvent] = []
+    if action.action_id == "resolve_espionage_place_spy":
+        if not isinstance(post_id, str):
+            raise RuntimeError("Espionage placement has invalid post ID")
+        next_owner = replace(
+            next_owner,
+            spies_supply=next_owner.spies_supply - 1,
+            spy_post_ids=(*next_owner.spy_post_ids, post_id),
+        )
+        events.append(
+            GameEvent(
+                event_id=(
+                    f"round:{state.round_number}:player:{action.actor}:spy_placed:"
+                    f"espionage:{post_id}"
+                ),
+                kind="spy_placed",
+                payload=(
+                    ("player", action.actor),
+                    ("post_id", post_id),
+                    ("source", "espionage"),
+                ),
+            )
+        )
+
+    players = tuple(
+        next_owner if candidate.player_id == action.actor else candidate
+        for candidate in state.players
+    )
+    context["pending_board_effect"] = False
+    next_state = advance_after_effect(state, context, players)
+    events.append(
+        GameEvent(
+            event_id=(
+                f"round:{state.round_number}:player:{action.actor}:board:espionage"
+            ),
+            kind="board_effect_resolved",
+            payload=(
+                ("action_id", action.action_id),
+                ("player", action.actor),
+                ("space_id", "espionage"),
+            ),
+        )
+    )
+    return RuleResult(state=next_state, events=tuple(events))
 
 
 def legal_sietch_tabr_actions(
