@@ -1,5 +1,7 @@
 """Tests for Agent-card, Faction, and effect-frame completion."""
 
+from dataclasses import replace
+
 import pytest
 
 from dune_imperium import RulesetConfig
@@ -94,12 +96,39 @@ def test_finishing_all_effect_groups_opens_clockwise_players_turn() -> None:
     assert state.decision_stack[-1].context == (("round", 1), ("turn_owner", 1))
 
 
-def test_influence_four_boundary_waits_for_alliance_rules() -> None:
+def test_influence_four_grants_emperor_bonus_and_alliance() -> None:
     state = _state("diplomacy", Influence(emperor=3))
     placed = apply_agent_action(state, _action_to(state, "dutiful_service")).state
 
-    with pytest.raises(NotImplementedError, match="Alliances"):
-        resolve_faction_influence(placed)
+    resolved = resolve_faction_influence(placed).state
+
+    owner = resolved.players[0]
+    assert owner.influence.emperor == 4
+    assert owner.troops_supply == 7
+    assert owner.troops_garrison == 5
+    assert owner.alliance_faction_ids == ("emperor",)
+    assert owner.victory_points == 2
+
+
+def test_rising_above_an_opponent_transfers_the_alliance_vp() -> None:
+    state = _state("diplomacy", Influence(emperor=4))
+    challenger = replace(state.players[0], victory_points=2)
+    holder = replace(
+        state.players[1],
+        influence=Influence(emperor=4),
+        alliance_faction_ids=("emperor",),
+        victory_points=2,
+    )
+    state = replace(state, players=(challenger, holder, *state.players[2:]))
+    placed = apply_agent_action(state, _action_to(state, "dutiful_service")).state
+
+    resolved = resolve_faction_influence(placed).state
+
+    assert resolved.players[0].influence.emperor == 5
+    assert resolved.players[0].alliance_faction_ids == ("emperor",)
+    assert resolved.players[0].victory_points == 3
+    assert resolved.players[1].alliance_faction_ids == ()
+    assert resolved.players[1].victory_points == 1
 
 
 def test_signet_effect_waits_for_leader_implementations() -> None:

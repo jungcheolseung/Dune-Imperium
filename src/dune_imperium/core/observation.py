@@ -29,6 +29,7 @@ class PublicPlayerView:
     sandworms_conflict: int
     spies_supply: int
     spy_post_ids: tuple[str, ...]
+    alliance_faction_ids: tuple[str, ...]
     control_space_ids: tuple[str, ...]
     combat_strength: int
     has_revealed: bool
@@ -121,6 +122,7 @@ def _public_player_view(player: PlayerState) -> PublicPlayerView:
         sandworms_conflict=player.sandworms_conflict,
         spies_supply=player.spies_supply,
         spy_post_ids=player.spy_post_ids,
+        alliance_faction_ids=player.alliance_faction_ids,
         control_space_ids=player.control_space_ids,
         combat_strength=player.combat_strength,
         has_revealed=player.has_revealed,

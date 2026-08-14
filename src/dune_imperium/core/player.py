@@ -36,6 +36,13 @@ class Influence:
             < 0
         ):
             raise ValueError("influence must not be negative")
+        if max(
+            self.emperor,
+            self.spacing_guild,
+            self.bene_gesserit,
+            self.fremen,
+        ) > 6:
+            raise ValueError("influence cannot exceed the top of its track")
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,6 +63,7 @@ class PlayerState:
     sandworms_conflict: int = 0
     spies_supply: int = 3
     spy_post_ids: tuple[str, ...] = ()
+    alliance_faction_ids: tuple[str, ...] = ()
     control_space_ids: tuple[str, ...] = ()
     combat_strength: int = 0
     has_revealed: bool = False
@@ -98,6 +106,10 @@ class PlayerState:
             raise ValueError("a player must always account for all three spies")
         if len(self.spy_post_ids) != len(set(self.spy_post_ids)):
             raise ValueError("a player cannot place two spies on one post")
+        if len(self.alliance_faction_ids) != len(set(self.alliance_faction_ids)):
+            raise ValueError("a player cannot hold one Faction Alliance twice")
+        if any(not faction_id for faction_id in self.alliance_faction_ids):
+            raise ValueError("Alliance faction IDs must not be empty")
         if len(self.control_space_ids) > 3:
             raise ValueError("a player has only three control markers")
         if len(self.control_space_ids) != len(set(self.control_space_ids)):

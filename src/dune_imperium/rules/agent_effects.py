@@ -2,19 +2,20 @@
 
 from dataclasses import replace
 
-from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID, Faction
+from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID
 from dune_imperium.content.uprising.starting_cards import (
     StartingCardAgentEffect,
     starting_card_for_instance,
 )
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
-from dune_imperium.core.player import Influence, PlayerState
+from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.effects import (
     advance_after_effect,
     current_agent_effect_context,
 )
+from dune_imperium.rules.influence import gain_faction_influence
 
 
 def resolve_agent_card_effect(state: GameState) -> RuleResult:
@@ -50,7 +51,7 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
 
 
 def resolve_faction_influence(state: GameState) -> RuleResult:
-    """Gain the visited Faction's Influence through the Friendship boundary."""
+    """Gain the visited Faction's Influence and resolve crossed boundaries."""
 
     _, context = current_agent_effect_context(state)
     if context["pending_faction_influence"] is not True:
@@ -60,34 +61,22 @@ def resolve_faction_influence(state: GameState) -> RuleResult:
     if faction is None:
         raise RuntimeError("pending Faction Influence requires a Faction space")
 
-    owner = state.players[player]
-    current = _influence_amount(owner.influence, faction)
-    if current >= 3:
-        raise NotImplementedError(
-            "Influence 4 bonuses and Alliances are not implemented"
-        )
-    influence = _replace_influence(owner.influence, faction, current + 1)
-    friendship_vp = 1 if current == 1 else 0
-    next_owner = replace(
-        owner,
-        influence=influence,
-        victory_points=owner.victory_points + friendship_vp,
-    )
-    players = _replace_player(state, next_owner)
-    context["pending_faction_influence"] = False
-    next_state = advance_after_effect(state, context, players)
-    event = GameEvent(
-        event_id=(
+    gained = gain_faction_influence(
+        state,
+        player,
+        faction,
+        1,
+        event_prefix=(
             f"round:{state.round_number}:player:{player}:influence:{faction.value}"
         ),
-        kind="influence_gained",
-        payload=(
-            ("amount", 1),
-            ("faction", faction.value),
-            ("player", player),
-        ),
     )
-    return RuleResult(state=next_state, events=(event,))
+    context["pending_faction_influence"] = False
+    next_state = advance_after_effect(
+        gained.state,
+        context,
+        gained.state.players,
+    )
+    return RuleResult(state=next_state, events=gained.events)
 
 
 def _effect_subject(context: dict[str, bool | int | str]) -> tuple[int, str, str]:
@@ -112,31 +101,3 @@ def _replace_player(
         player if candidate.player_id == player.player_id else candidate
         for candidate in state.players
     )
-
-
-def _influence_amount(influence: Influence, faction: Faction) -> int:
-    match faction:
-        case Faction.EMPEROR:
-            return influence.emperor
-        case Faction.SPACING_GUILD:
-            return influence.spacing_guild
-        case Faction.BENE_GESSERIT:
-            return influence.bene_gesserit
-        case Faction.FREMEN:
-            return influence.fremen
-
-
-def _replace_influence(
-    influence: Influence,
-    faction: Faction,
-    amount: int,
-) -> Influence:
-    match faction:
-        case Faction.EMPEROR:
-            return replace(influence, emperor=amount)
-        case Faction.SPACING_GUILD:
-            return replace(influence, spacing_guild=amount)
-        case Faction.BENE_GESSERIT:
-            return replace(influence, bene_gesserit=amount)
-        case Faction.FREMEN:
-            return replace(influence, fremen=amount)

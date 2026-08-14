@@ -57,6 +57,7 @@ def test_view_contains_public_state_and_only_observers_private_cards() -> None:
     assert view.players[1].objective_ids == ("objective_1",)
     assert view.players[1].won_conflict_ids == ()
     assert view.players[1].face_down_battle_card_ids == ()
+    assert view.players[1].alliance_faction_ids == ()
     assert view.players[1].has_revealed is False
     assert view.private is not None
     assert view.private.deck_size == 2
@@ -138,4 +139,13 @@ def test_game_state_rejects_two_spies_on_one_observation_post() -> None:
     )
 
     with pytest.raises(ValueError, match="only one Spy"):
+        replace(state, players=(first, second, *state.players[2:]))
+
+
+def test_game_state_rejects_two_owners_of_one_alliance() -> None:
+    state = _state()
+    first = replace(state.players[0], alliance_faction_ids=("fremen",))
+    second = replace(state.players[1], alliance_faction_ids=("fremen",))
+
+    with pytest.raises(ValueError, match="only one owner"):
         replace(state, players=(first, second, *state.players[2:]))

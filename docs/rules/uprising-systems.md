@@ -74,9 +74,12 @@
   여러 Influence를 한 번에 얻으며 2를 지나가는 것도 `reach 2`이고, 내려갈 때가
   아니라 올라갈 때만 `reach`로 본다. Influence를 잃었다가 다시 올라오면 다시
   도달할 수 있다. `[Main pp. 7, 17]`
-- Influence 4에 도달하면 track에 표시된 보너스를 얻는다. 4 아래로 내려가도
+- Influence 4에 도달하면 track에 표시된 보너스를 얻는다. Emperor는 troop 2개,
+  Spacing Guild는 water 3, Bene Gesserit은 Intrigue card 1장, Fremen은 water 1을
+  얻는다. 이 값은 공식 setup board artwork와 p. 7의 Bene Gesserit track 예시를
+  함께 전사했다. 4 아래로 내려가도
   보너스를 반환하지 않으며, 다시 4에 도달하면 같은 보너스를 다시 받을 수 있다.
-  `[Main p. 7]`
+  `[Main pp. 4, 7 board artwork]`
 
 ## Alliance
 

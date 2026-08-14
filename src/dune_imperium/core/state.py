@@ -90,6 +90,14 @@ class GameState:
         if len(occupied_spy_posts) != len(set(occupied_spy_posts)):
             raise ValueError("an Observation Post can hold only one Spy")
 
+        held_alliances = tuple(
+            faction_id
+            for player in self.players
+            for faction_id in player.alliance_faction_ids
+        )
+        if len(held_alliances) != len(set(held_alliances)):
+            raise ValueError("a Faction Alliance can have only one owner")
+
         reserve_ids = tuple(card_id for card_id, _ in self.reserve_stacks)
         if len(reserve_ids) != len(set(reserve_ids)):
             raise ValueError("Reserve stack IDs must be unique")
