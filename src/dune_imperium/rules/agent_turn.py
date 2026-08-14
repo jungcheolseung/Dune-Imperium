@@ -50,6 +50,8 @@ def legal_agent_actions(state: GameState, player: int) -> tuple[DomainAction, ..
         for space in BOARD_SPACES:
             if space.agent_icon not in card.agent_icons or space.space_id in occupied:
                 continue
+            if space.space_id == "swordmaster" and owner.swordmaster_acquired:
+                continue
             if not _meets_requirement(owner.influence, space.requirement):
                 continue
             actions.extend(

@@ -190,6 +190,50 @@ def test_assembly_hall_draws_hidden_intrigue() -> None:
     assert resolved.intrigue_deck == ("intrigue:second",)
 
 
+def test_first_high_council_visit_grants_seat_without_repeat_rewards() -> None:
+    state = _state("dagger", Resources(solari=5))
+    placed = apply_agent_action(state, _action_to(state, "high_council")).state
+
+    resolved = resolve_board_effect(placed).state
+    owner = resolved.players[0]
+
+    assert owner.high_council is True
+    assert owner.resources.spice == 0
+    assert owner.intrigue_cards == ()
+    assert owner.troops_garrison == 3
+
+
+def test_high_council_revisit_grants_spice_intrigue_and_troops() -> None:
+    state = _state("dagger", Resources(solari=5))
+    owner = replace(state.players[0], high_council=True)
+    state = replace(
+        state,
+        players=(owner, *state.players[1:]),
+        intrigue_deck=("intrigue:first",),
+    )
+    placed = apply_agent_action(state, _action_to(state, "high_council")).state
+
+    resolved = resolve_board_effect(placed).state
+    owner = resolved.players[0]
+
+    assert owner.resources.spice == 2
+    assert owner.intrigue_cards == ("intrigue:first",)
+    assert owner.troops_supply == 6
+    assert owner.troops_garrison == 6
+
+
+def test_swordmaster_is_available_immediately_after_acquisition() -> None:
+    state = _state("dagger", Resources(solari=8))
+    placed = apply_agent_action(state, _action_to(state, "swordmaster")).state
+
+    resolved = resolve_board_effect(placed).state
+    owner = resolved.players[0]
+
+    assert owner.swordmaster_acquired is True
+    assert owner.agents_available == 2
+    assert owner.agent_locations == ("swordmaster",)
+
+
 def test_gather_support_recruits_available_troops_and_finishes_turn() -> None:
     state = _state("dagger")
     placed = apply_agent_action(state, _action_to(state, "gather_support", 0)).state

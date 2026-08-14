@@ -145,6 +145,19 @@ def test_swordmaster_uses_the_current_dynamic_cost() -> None:
     assert "swordmaster" in _space_ids(state)
 
 
+def test_player_who_has_swordmaster_cannot_visit_its_space_again() -> None:
+    dagger = _instance(0, "dagger")
+    owner = PlayerState(
+        player_id=0,
+        hand=(dagger,),
+        resources=Resources(solari=8),
+        agents_available=3,
+        swordmaster_acquired=True,
+    )
+
+    assert "swordmaster" not in _space_ids(_state(owner=owner))
+
+
 def test_agent_action_pays_cost_and_moves_agent_and_card() -> None:
     dune = _instance(0, "dune_the_desert_planet")
     state = _state(dune)

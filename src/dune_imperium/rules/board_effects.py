@@ -43,6 +43,10 @@ def board_effects_for(
             return (DrawImperiumCardsEffect(1),)
         case "assembly_hall", 0:
             return (DrawIntrigueCardsEffect(1),)
+        case "high_council", 0:
+            return ()
+        case "swordmaster", 0 | 1:
+            return ()
         case "arrakeen", 0:
             return (RecruitTroopsEffect(1), DrawImperiumCardsEffect(1))
         case "gather_support", 0:
@@ -81,9 +85,30 @@ def resolve_board_effect(state: GameState) -> RuleResult:
     ):
         raise RuntimeError("Agent-turn effect frame has invalid context")
 
-    effects = board_effects_for(state, space_id, cost_option)
     owner = state.players[player]
     next_owner = owner
+    effects: tuple[AutomaticEffect, ...]
+    if space_id == "high_council":
+        if owner.high_council:
+            effects = (
+                GainResourcesEffect(spice=2),
+                DrawIntrigueCardsEffect(1),
+                RecruitTroopsEffect(3),
+            )
+        else:
+            next_owner = replace(owner, high_council=True)
+            effects = ()
+    elif space_id == "swordmaster":
+        if owner.swordmaster_acquired:
+            raise RuntimeError("a player cannot acquire Swordmaster twice")
+        next_owner = replace(
+            owner,
+            swordmaster_acquired=True,
+            agents_available=owner.agents_available + 1,
+        )
+        effects = ()
+    else:
+        effects = board_effects_for(state, space_id, cost_option)
     intrigue_deck = state.intrigue_deck
     for effect in effects:
         match effect:
