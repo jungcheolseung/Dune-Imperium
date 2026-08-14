@@ -1,6 +1,7 @@
 """Stable integer encoding for structured Uprising actions."""
 
 from dataclasses import dataclass, field
+from numbers import Integral
 
 from dune_imperium.config import RulesetConfig
 from dune_imperium.content.uprising.board import (
@@ -67,13 +68,14 @@ class ActionCodec:
     def decode(self, action_index: int, actor: int) -> DomainAction:
         """Reconstruct an actor-owned structured action from an integer ID."""
 
-        if isinstance(action_index, bool) or not isinstance(action_index, int):
+        if isinstance(action_index, bool) or not isinstance(action_index, Integral):
             raise TypeError("action index must be an integer")
-        if not 0 <= action_index < self.size:
+        index = int(action_index)
+        if not 0 <= index < self.size:
             raise ValueError("action index is outside the catalog")
         if not 0 <= actor < self.config.players:
             raise ValueError("action actor must identify a configured player")
-        template = self.catalog[action_index]
+        template = self.catalog[index]
         return DomainAction(
             action_id=template.action_id,
             actor=actor,
