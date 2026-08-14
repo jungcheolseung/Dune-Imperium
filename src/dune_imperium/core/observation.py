@@ -69,6 +69,7 @@ class PlayerView:
     imperium_row: tuple[str, ...] = ()
     intrigue_discard: tuple[str, ...] = ()
     reserve_stacks: tuple[tuple[str, int], ...] = ()
+    shield_wall_present: bool = True
     maker_bonus_spice: tuple[tuple[str, int], ...] = ()
     public_data: tuple[tuple[str, ActionValue], ...] = ()
     private_data: tuple[tuple[str, ActionValue], ...] = ()
@@ -102,6 +103,7 @@ def observe_state(state: GameState, player: int) -> PlayerView:
         imperium_row=state.imperium_row,
         intrigue_discard=state.intrigue_discard,
         reserve_stacks=state.reserve_stacks,
+        shield_wall_present=state.shield_wall_present,
         maker_bonus_spice=state.maker_bonus_spice,
     )
 

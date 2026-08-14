@@ -152,6 +152,7 @@ def test_complete_base_setup_populates_every_shared_and_player_zone(seed: int) -
     assert len(state.conflict_deck) == 10
     assert len(state.unused_conflict_ids) == 6
     assert state.current_conflict_ids == ()
+    assert state.shield_wall_present is True
     assert len(state.imperium_row) == 5
     assert len(state.imperium_deck) == 60
     assert len(state.intrigue_deck) == 40

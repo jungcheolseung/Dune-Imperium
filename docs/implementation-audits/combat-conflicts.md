@@ -19,6 +19,7 @@ reviewed without reading the transition code. Official rule summaries under
 | Propaganda | Each `Choose two` requires two distinct Factions. | A sandworm repeats the whole reward, so the same pair may be chosen again in the second group. |
 | Arrakeen Spy cost | The player may decline or recall one selected pair of placed Spies for 1 VP. | Spies return to supply; having fewer than two placed Spies leaves only decline. |
 | Influence | Friendship VP, printed track bonuses, and Alliance acquisition or upward transfer use one shared transition. | Influence-loss transfer choices remain deferred with OQ-014 until a reachable content case is implemented. |
+| Shield Wall | Setup begins with the token present; the six printed protected Conflicts block sandworm eligibility until permanent destruction. | The Conflict-card symbol denotes protection, not a detonation choice. |
 | Battle icons | A sole winner takes the Conflict and an unambiguous matching pair gains 1 VP. | Multiple possible matching cards are blocked because the official selection policy is unresolved. |
 
 ## Explicitly blocked
@@ -26,8 +27,8 @@ reviewed without reading the transition code. Official rule summaries under
 - Combat Intrigue card play and card eligibility.
 - CHOAM-enabled contract selection.
 - Choosing among multiple face-up cards with the same matching battle icon.
-- Conflict-card Shield Wall detonation until the board token state and reveal
-  choice are implemented.
+- Shield Wall detonation effects from board spaces and cards until those effect
+  paths are implemented.
 
 ## Project conventions and unresolved ordering
 

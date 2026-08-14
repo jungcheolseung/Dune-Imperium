@@ -48,6 +48,7 @@ def test_view_contains_public_state_and_only_observers_private_cards() -> None:
     assert view.combat_intrigue_complete is False
     assert view.combat_rewards_resolved is False
     assert view.imperium_row == ("imperium_public",)
+    assert view.shield_wall_present is True
     assert view.maker_bonus_spice == (
         ("deep_desert", 0),
         ("hagga_basin", 0),

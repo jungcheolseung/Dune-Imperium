@@ -76,7 +76,7 @@ class ConflictDefinition:
     card: CardDefinition
     tier: ConflictTier
     battle_icon: BattleIcon | None = None
-    shield_wall_detonation: bool = False
+    shield_wall_protected: bool = False
     rewards: tuple[ConflictReward, ConflictReward, ConflictReward] | None = None
 
 
@@ -90,7 +90,7 @@ def _conflict(
     tier: ConflictTier,
     *,
     battle_icon: BattleIcon | None = None,
-    shield_wall_detonation: bool = False,
+    shield_wall_protected: bool = False,
     rewards: tuple[ConflictReward, ConflictReward, ConflictReward] | None = None,
 ) -> ConflictDefinition:
     slug = f"uprising-{content_id.replace('_', '-')}"
@@ -103,7 +103,7 @@ def _conflict(
         ),
         tier=tier,
         battle_icon=battle_icon,
-        shield_wall_detonation=shield_wall_detonation,
+        shield_wall_protected=shield_wall_protected,
         rewards=rewards,
     )
 
@@ -184,6 +184,7 @@ CONFLICTS: Final = (
         "Siege of Arrakeen",
         ConflictTier.TWO,
         battle_icon=BattleIcon.ORNITHOPTER,
+        shield_wall_protected=True,
         rewards=(
             ConflictReward(
                 solari=2,
@@ -200,7 +201,7 @@ CONFLICTS: Final = (
         "Seize Spice Refinery",
         ConflictTier.TWO,
         battle_icon=BattleIcon.CRYSKNIFE,
-        shield_wall_detonation=True,
+        shield_wall_protected=True,
         rewards=(
             ConflictReward(
                 spice=2,
@@ -250,7 +251,7 @@ CONFLICTS: Final = (
         "Secure Imperial Basin",
         ConflictTier.TWO,
         battle_icon=BattleIcon.DESERT_MOUSE,
-        shield_wall_detonation=True,
+        shield_wall_protected=True,
         rewards=(
             ConflictReward(
                 spice=2,
@@ -308,7 +309,7 @@ CONFLICTS: Final = (
         "Battle for Imperial Basin",
         ConflictTier.THREE,
         battle_icon=BattleIcon.ORNITHOPTER,
-        shield_wall_detonation=True,
+        shield_wall_protected=True,
         rewards=(
             ConflictReward(
                 victory_points=1,
@@ -326,7 +327,7 @@ CONFLICTS: Final = (
         "Battle for Arrakeen",
         ConflictTier.THREE,
         battle_icon=BattleIcon.CRYSKNIFE,
-        shield_wall_detonation=True,
+        shield_wall_protected=True,
         rewards=(
             ConflictReward(
                 victory_points=1,
@@ -344,7 +345,7 @@ CONFLICTS: Final = (
         "Battle for Spice Refinery",
         ConflictTier.THREE,
         battle_icon=BattleIcon.DESERT_MOUSE,
-        shield_wall_detonation=True,
+        shield_wall_protected=True,
         rewards=(
             ConflictReward(
                 victory_points=1,

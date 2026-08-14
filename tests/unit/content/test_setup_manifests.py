@@ -105,7 +105,7 @@ def test_tier_two_conflict_rewards_and_battle_icons_are_transcribed() -> None:
         ),
         "siege_of_arrakeen": (
             BattleIcon.ORNITHOPTER,
-            False,
+            True,
             (
                 ConflictReward(
                     solari=2,
@@ -197,7 +197,7 @@ def test_tier_two_conflict_rewards_and_battle_icons_are_transcribed() -> None:
     assert {
         conflict.card.card_id: (
             conflict.battle_icon,
-            conflict.shield_wall_detonation,
+            conflict.shield_wall_protected,
             conflict.rewards,
         )
         for conflict in conflicts_by_tier(ConflictTier.TWO)
@@ -262,7 +262,7 @@ def test_tier_three_conflict_rewards_and_icons_are_transcribed() -> None:
     assert {
         conflict.card.card_id: (
             conflict.battle_icon,
-            conflict.shield_wall_detonation,
+            conflict.shield_wall_protected,
             conflict.rewards,
         )
         for conflict in conflicts_by_tier(ConflictTier.THREE)

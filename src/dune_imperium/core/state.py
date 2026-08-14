@@ -47,6 +47,7 @@ class GameState:
     intrigue_deck: tuple[str, ...] = ()
     intrigue_discard: tuple[str, ...] = ()
     reserve_stacks: tuple[tuple[str, int], ...] = ()
+    shield_wall_present: bool = True
     maker_bonus_spice: tuple[tuple[str, int], ...] = (
         ("deep_desert", 0),
         ("hagga_basin", 0),

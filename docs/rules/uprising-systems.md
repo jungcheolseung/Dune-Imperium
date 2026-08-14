@@ -111,6 +111,9 @@
 - setup 때 Shield Wall token을 board에 놓는다. token이 있는 동안 Arrakeen,
   Spice Refinery, Imperial Basin의 Conflict에는 sandworm을 소환할 수 없다.
   `[Main pp. 4, 10]`
+- 해당 Conflict 카드 오른쪽 아래의 Shield Wall 표시는 detonation 효과가 아니라
+  현재 Conflict가 이 보호를 받는다는 표시다. Uprising 기본 Conflict에는 이
+  표시가 있는 카드가 여섯 장이다. `[Main p. 10 board artwork]`
 - Shield Wall detonation 아이콘은 token을 제거할 **선택권**을 준다. 제거한 token은
   box로 돌아가고 게임이 끝날 때까지 복구되지 않는다. 제거된 뒤에는 어느
   Conflict에도 Shield Wall로 인한 sandworm 금지가 없다.

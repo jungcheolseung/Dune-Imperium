@@ -33,6 +33,7 @@ missing, ambiguous, or conflicts with already verified content.
 - DIU represents Battle for Arrakeen's two-Spy arrow cost as a generic Spy
   resource cost. The printed upward arrows require recalling two placed Spies,
   so the local schema records a recall cost.
-- DIU's `shieldwall` boolean denotes the crossed Shield Wall detonation icon on
-  a Conflict card. The local field is named `shield_wall_detonation` to avoid
-  confusing it with the current board token state.
+- DIU's `shieldwall` boolean denotes the crossed Shield Wall protection icon at
+  the lower right of a Conflict card, not the detonation effect icon available
+  on cards and Sietch Tabr. The local field is named `shield_wall_protected` and
+  Siege of Arrakeen is corrected to `True` from its printed card image.
