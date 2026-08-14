@@ -19,8 +19,10 @@ from dune_imperium.core import (
 )
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 from dune_imperium.rules.board_effects import (
+    apply_maker_space_action,
     apply_sietch_tabr_action,
     board_effects_for,
+    legal_maker_space_actions,
     legal_sietch_tabr_actions,
     resolve_board_effect,
 )
@@ -247,3 +249,83 @@ def test_sietch_tabr_omits_detonation_after_wall_is_destroyed() -> None:
         "take_sietch_tabr_supplies",
         "take_sietch_tabr_water",
     }
+
+
+def _hagga_basin_state(*, wall_present: bool) -> GameState:
+    state = _state("dune_the_desert_planet")
+    owner = replace(state.players[0], maker_hooks=True)
+    state = replace(
+        state,
+        players=(owner, *state.players[1:]),
+        current_conflict_ids=("siege_of_arrakeen",),
+        shield_wall_present=wall_present,
+        maker_bonus_spice=(
+            ("deep_desert", 0),
+            ("hagga_basin", 3),
+            ("imperial_basin", 0),
+        ),
+    )
+    return apply_agent_action(state, _action_to(state, "hagga_basin")).state
+
+
+def test_shield_wall_removes_sandworm_choice_from_protected_conflict() -> None:
+    state = _hagga_basin_state(wall_present=True)
+
+    assert tuple(
+        action.action_id for action in legal_maker_space_actions(state, 0)
+    ) == ("harvest_maker_spice",)
+
+
+def test_maker_space_can_summon_worm_and_collect_bonus_after_detonation() -> None:
+    state = _hagga_basin_state(wall_present=False)
+    actions = legal_maker_space_actions(state, 0)
+    summon = next(
+        action for action in actions if action.action_id == "summon_maker_sandworms"
+    )
+
+    resolved = apply_maker_space_action(state, summon).state
+
+    assert resolved.players[0].sandworms_conflict == 1
+    assert resolved.players[0].resources.spice == 3
+    assert dict(resolved.maker_bonus_spice)["hagga_basin"] == 0
+    assert dict(resolved.decision_stack[-1].context)[
+        "pending_combat_deployment"
+    ] is True
+
+
+def test_maker_spice_choice_collects_base_and_accumulated_spice() -> None:
+    state = _hagga_basin_state(wall_present=True)
+    harvest = legal_maker_space_actions(state, 0)[0]
+
+    resolved = apply_maker_space_action(state, harvest).state
+
+    assert resolved.players[0].resources.spice == 5
+    assert resolved.players[0].sandworms_conflict == 0
+    assert dict(resolved.maker_bonus_spice)["hagga_basin"] == 0
+
+
+def test_deep_desert_summons_two_sandworms() -> None:
+    state = _state("dune_the_desert_planet", Resources(water=3))
+    owner = replace(state.players[0], maker_hooks=True)
+    state = replace(
+        state,
+        players=(owner, *state.players[1:]),
+        current_conflict_ids=("propaganda",),
+        maker_bonus_spice=(
+            ("deep_desert", 2),
+            ("hagga_basin", 0),
+            ("imperial_basin", 0),
+        ),
+    )
+    state = apply_agent_action(state, _action_to(state, "deep_desert")).state
+    summon = next(
+        action
+        for action in legal_maker_space_actions(state, 0)
+        if action.action_id == "summon_maker_sandworms"
+    )
+
+    resolved = apply_maker_space_action(state, summon).state
+
+    assert resolved.players[0].sandworms_conflict == 2
+    assert resolved.players[0].resources.spice == 2
+    assert dict(resolved.maker_bonus_spice)["deep_desert"] == 0

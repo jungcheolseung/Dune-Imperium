@@ -17,7 +17,10 @@ from dune_imperium.rules.effects import (
     advance_after_effect,
     current_agent_effect_context,
 )
-from dune_imperium.rules.shield_wall import destroy_shield_wall
+from dune_imperium.rules.shield_wall import (
+    current_conflict_is_shield_wall_protected,
+    destroy_shield_wall,
+)
 
 
 def board_effects_for(
@@ -210,6 +213,118 @@ def apply_sietch_tabr_action(
         )
     )
     return RuleResult(state=next_state, events=tuple(events))
+
+
+def legal_maker_space_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return spice or currently legal sandworm choices for desert Makers."""
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return ()
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    space_id = context.get("space_id")
+    if (
+        context.get("pending_board_effect") is not True
+        or space_id not in ("deep_desert", "hagga_basin")
+    ):
+        return ()
+    actions = [
+        DomainAction(
+            action_id="harvest_maker_spice",
+            actor=player,
+            arguments=(("space_id", space_id),),
+        )
+    ]
+    owner = state.players[player]
+    if (
+        owner.maker_hooks
+        and state.current_conflict_ids
+        and not current_conflict_is_shield_wall_protected(state)
+    ):
+        actions.append(
+            DomainAction(
+                action_id="summon_maker_sandworms",
+                actor=player,
+                arguments=(("space_id", space_id),),
+            )
+        )
+    return tuple(actions)
+
+
+def apply_maker_space_action(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Collect bonus spice, then take base spice or summon sandworms."""
+
+    if action not in legal_maker_space_actions(state, action.actor):
+        raise ValueError("action is not a legal Maker-space choice")
+    space_id = dict(action.arguments).get("space_id")
+    if space_id not in ("deep_desert", "hagga_basin"):
+        raise RuntimeError("Maker-space action has invalid space ID")
+    bonus_by_space = dict(state.maker_bonus_spice)
+    bonus_spice = bonus_by_space[space_id]
+    owner = state.players[action.actor]
+    base_spice = 0
+    sandworms = 0
+    if action.action_id == "harvest_maker_spice":
+        base_spice = 4 if space_id == "deep_desert" else 2
+        owner = replace(
+            owner,
+            resources=replace(
+                owner.resources,
+                spice=owner.resources.spice + bonus_spice + base_spice,
+            ),
+        )
+    else:
+        sandworms = 2 if space_id == "deep_desert" else 1
+        owner = replace(
+            owner,
+            resources=replace(
+                owner.resources,
+                spice=owner.resources.spice + bonus_spice,
+            ),
+            sandworms_conflict=owner.sandworms_conflict + sandworms,
+        )
+
+    players = tuple(
+        owner if candidate.player_id == action.actor else candidate
+        for candidate in state.players
+    )
+    maker_bonus_spice = tuple(
+        (candidate, 0 if candidate == space_id else amount)
+        for candidate, amount in state.maker_bonus_spice
+    )
+    _, context = current_agent_effect_context(state)
+    context["pending_board_effect"] = False
+    effect_state = replace(
+        state,
+        players=players,
+        maker_bonus_spice=maker_bonus_spice,
+    )
+    next_state = advance_after_effect(effect_state, context, players)
+    event = GameEvent(
+        event_id=(
+            f"round:{state.round_number}:player:{action.actor}:board:{space_id}"
+        ),
+        kind="board_effect_resolved",
+        payload=(
+            ("action_id", action.action_id),
+            ("bonus_spice", bonus_spice),
+            ("player", action.actor),
+            ("sandworms", sandworms),
+            ("space_id", space_id),
+            ("spice", bonus_spice + base_spice),
+        ),
+    )
+    return RuleResult(state=next_state, events=(event,))
 
 
 def _gain_resources(
