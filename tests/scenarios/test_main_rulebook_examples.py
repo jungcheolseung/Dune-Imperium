@@ -12,6 +12,7 @@ from dune_imperium.core import (
     PlayerState,
 )
 from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.phases import resolve_makers, resolve_recall_or_endgame
 
 
 def _starting_card(player: int, card_id: str) -> str:
@@ -172,3 +173,52 @@ def test_main_page_13_reveal_acquires_and_immediately_refills_the_row() -> None:
     decision = engine.current_decision(state)
     assert isinstance(decision, PlayerDecision)
     assert decision.owner == 1
+
+
+def test_main_page_15_makers_accumulate_before_recall_and_marker_pass() -> None:
+    """Only empty Maker spaces gain spice before Agents are recalled."""
+
+    players = (
+        PlayerState(
+            player_id=0,
+            agents_available=1,
+            agent_locations=("imperial_basin",),
+            has_revealed=True,
+        ),
+        *(PlayerState(player_id=seat, has_revealed=True) for seat in range(1, 4)),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=15,
+        phase=GamePhase.MAKERS,
+        round_number=1,
+        first_player=0,
+        players=players,
+        conflict_deck=("skirmish_crysknife",),
+        maker_bonus_spice=(
+            ("deep_desert", 1),
+            ("hagga_basin", 0),
+            ("imperial_basin", 0),
+        ),
+    )
+
+    makers = resolve_makers(state)
+
+    assert makers.state.phase is GamePhase.RECALL_OR_ENDGAME
+    assert makers.state.maker_bonus_spice == (
+        ("deep_desert", 2),
+        ("hagga_basin", 1),
+        ("imperial_basin", 0),
+    )
+    assert tuple(dict(event.payload)["space_id"] for event in makers.events) == (
+        "deep_desert",
+        "hagga_basin",
+    )
+
+    recalled = resolve_recall_or_endgame(makers.state).state
+
+    assert recalled.phase is GamePhase.ROUND_START
+    assert recalled.first_player == 1
+    assert all(player.agents_available == 2 for player in recalled.players)
+    assert all(not player.agent_locations for player in recalled.players)
+    assert all(not player.has_revealed for player in recalled.players)
