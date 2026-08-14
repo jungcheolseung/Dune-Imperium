@@ -4,13 +4,18 @@ from dataclasses import replace
 
 from dune_imperium import RulesetConfig
 from dune_imperium.core import (
+    ChanceDecision,
+    ChanceOutcome,
+    ChanceResolver,
     GamePhase,
+    GameReplay,
     PlayerDecision,
     Resources,
     canonical_state_hash,
     replay_game,
 )
 from dune_imperium.core.engine import RuleResult
+from dune_imperium.core.replay import ReplayStep
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.engine import _advance_automatic
 from dune_imperium.simulation import run_random_round
@@ -293,6 +298,49 @@ def test_same_game_and_policy_seeds_reproduce_the_round() -> None:
     assert canonical_state_hash(first.state) == canonical_state_hash(second.state)
     assert first.replay.steps == second.replay.steps
     assert replay_game(engine, first.replay) == first.state
+
+
+def test_two_rounds_replay_through_third_round_discard_shuffles() -> None:
+    engine = UprisingRulesEngine()
+    config = RulesetConfig()
+    state = engine.reset(config, seed=11)
+    resolver = ChanceResolver(seed=9011)
+    steps: list[ReplayStep] = []
+
+    for _ in range(100):
+        if state.round_number == 3:
+            break
+        decision = engine.current_decision(state)
+        step: ReplayStep
+        if isinstance(decision, ChanceDecision):
+            step = resolver.resolve(decision)
+        elif isinstance(decision, PlayerDecision):
+            actions = engine.legal_actions(state, decision.owner)
+            step = next(
+                action
+                for action in actions
+                if action.action_id in ("reveal_turn", "finish_reveal")
+            )
+        else:
+            raise AssertionError("multi-round replay reached no decision")
+        state = engine.apply(state, step).state
+        steps.append(step)
+    else:
+        raise AssertionError("two rounds exceeded the transition limit")
+
+    chance_steps = tuple(step for step in steps if isinstance(step, ChanceOutcome))
+    assert state.phase is GamePhase.PLAYER_TURNS
+    assert state.round_number == 3
+    assert len(chance_steps) == 4
+    assert all(player.discard_pile == () for player in state.players)
+
+    replay = GameReplay(
+        ruleset=config,
+        seed=11,
+        steps=tuple(steps),
+        expected_state_hash=canonical_state_hash(state),
+    )
+    assert replay_game(engine, replay) == state
 
 
 def test_every_advertised_action_stays_in_the_supported_vertical_slice() -> None:

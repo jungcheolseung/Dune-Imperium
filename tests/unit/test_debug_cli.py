@@ -51,5 +51,6 @@ def test_random_cli_mode_prints_a_round_summary(
     assert main(["--seed", "2", "--random-policy-seed", "12"]) == 0
 
     output = capsys.readouterr().out
-    assert '"phase": "round_start"' in output
+    assert '"round": 2' in output
+    assert '"phase": "player_turns"' in output
     assert '"steps":' in output

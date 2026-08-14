@@ -262,6 +262,8 @@ Council·Swordmaster, 4인 Combat 순위와 기본 보상, Makers·Recall 및 En
 구현했다. 최종 순위는 공식 tiebreak 전체를 적용하며, Intrigue 보유와 가능한 wild
 battle icon match가 모두 없는 Endgame은 `FINISHED`까지 자동 진행한다. Endgame
 Intrigue 처리와 wild battle icon 선택은 OQ-001 및 콘텐츠 전사 전까지 보류한다.
+개인 덱 draw는 부족할 때 discard를 replayable chance로 shuffle하며, 두 라운드와
+세 번째 Round Start shuffle까지 같은 action/chance stream으로 재생한다.
 
 - Influence, Friendship, Alliance 이동과 VP 경계를 구현한다.
 - Spy의 Infiltrate, Gather Intelligence와 회수 제한을 구현한다.

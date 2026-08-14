@@ -223,7 +223,10 @@ def _encode_view(view: PlayerView) -> np.ndarray[Any, np.dtype[np.int32]]:
 
 
 def _round_finished(state: GameState) -> bool:
-    return state.phase in (GamePhase.ROUND_START, GamePhase.ENDGAME)
+    return state.round_number > 1 or state.phase in (
+        GamePhase.ROUND_START,
+        GamePhase.ENDGAME,
+    )
 
 
 def _agent_id(player: int) -> AgentId:
