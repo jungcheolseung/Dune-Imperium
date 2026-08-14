@@ -5,10 +5,12 @@ from dataclasses import replace
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID
 from dune_imperium.content.uprising.starting_cards import (
     starting_card_for_instance,
     starting_deck_instance_ids,
 )
+from dune_imperium.content.uprising.types import AgentIcon
 from dune_imperium.core import (
     DecisionFrame,
     DomainAction,
@@ -20,7 +22,11 @@ from dune_imperium.core import (
     Resources,
     canonical_state_hash,
 )
-from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
+from dune_imperium.rules.agent_turn import (
+    apply_agent_action,
+    card_can_access_space,
+    legal_agent_actions,
+)
 
 
 def _instance(player: int, card_id: str) -> str:
@@ -81,6 +87,40 @@ def test_card_icons_limit_agent_destinations() -> None:
     state = _state(_instance(0, "dagger"))
 
     assert _space_ids(state) == {"assembly_hall", "gather_support"}
+
+
+def test_spy_agent_icon_accesses_only_spaces_connected_to_an_owned_spy() -> None:
+    owner = PlayerState(
+        player_id=0,
+        spies_supply=2,
+        spy_post_ids=("arrakis-spice-refinery-arrakeen",),
+    )
+
+    assert card_can_access_space(
+        (AgentIcon.SPY,), BOARD_SPACES_BY_ID["arrakeen"], owner
+    )
+    assert card_can_access_space(
+        (AgentIcon.SPY,), BOARD_SPACES_BY_ID["spice_refinery"], owner
+    )
+    assert not card_can_access_space(
+        (AgentIcon.SPY,), BOARD_SPACES_BY_ID["assembly_hall"], owner
+    )
+
+
+def test_spy_agent_icon_does_not_recall_the_spy_for_destination_access() -> None:
+    owner = PlayerState(
+        player_id=0,
+        spies_supply=2,
+        spy_post_ids=("arrakis-spice-refinery-arrakeen",),
+    )
+
+    assert card_can_access_space(
+        (AgentIcon.CITY, AgentIcon.SPY),
+        BOARD_SPACES_BY_ID["imperial_basin"],
+        owner,
+    ) is False
+    assert owner.spies_supply == 2
+    assert owner.spy_post_ids == ("arrakis-spice-refinery-arrakeen",)
 
 
 def test_costs_and_influence_requirements_filter_spaces() -> None:

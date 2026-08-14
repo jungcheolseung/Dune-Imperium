@@ -13,6 +13,7 @@ from dune_imperium.content.uprising.board import (
     ResourceCost,
 )
 from dune_imperium.content.uprising.starting_cards import starting_card_for_instance
+from dune_imperium.content.uprising.types import AgentIcon
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
@@ -24,9 +25,9 @@ from dune_imperium.core.state import GamePhase, GameState
 def legal_agent_actions(state: GameState, player: int) -> tuple[DomainAction, ...]:
     """Enumerate card-and-space pairs currently legal for ``player``.
 
-    Occupied spaces, printed costs, and printed Influence requirements are
-    enforced here. Spy infiltration and effect-specific exceptions are deferred
-    until their rule systems are implemented.
+    Occupied spaces, Agent-icon access, printed costs, and printed Influence
+    requirements are enforced here. Infiltrate is handled as a distinct form of
+    an Agent action because it must also identify the Spy being recalled.
     """
 
     if not 0 <= player < state.config.players:
@@ -49,7 +50,10 @@ def legal_agent_actions(state: GameState, player: int) -> tuple[DomainAction, ..
     for card_instance_id in owner.hand:
         card = starting_card_for_instance(card_instance_id)
         for space in BOARD_SPACES:
-            if space.agent_icon not in card.agent_icons or space.space_id in occupied:
+            if (
+                not card_can_access_space(card.agent_icons, space, owner)
+                or space.space_id in occupied
+            ):
                 continue
             if space.space_id == "swordmaster" and owner.swordmaster_acquired:
                 continue
@@ -65,6 +69,29 @@ def legal_agent_actions(state: GameState, player: int) -> tuple[DomainAction, ..
                 )
             )
     return tuple(actions)
+
+
+def card_can_access_space(
+    agent_icons: tuple[AgentIcon, ...],
+    space: BoardSpace,
+    owner: PlayerState,
+) -> bool:
+    """Return whether a card's Agent icons make ``space`` a destination.
+
+    A printed icon grants direct access. The Spy Agent icon instead grants
+    access when at least one of the owner's currently placed Spies is connected
+    to the destination, without recalling that Spy.
+    """
+
+    if space.agent_icon in agent_icons:
+        return True
+    if AgentIcon.SPY not in agent_icons:
+        return False
+    return any(
+        post.post_id in owner.spy_post_ids
+        and space.space_id in post.connected_space_ids
+        for post in OBSERVATION_POSTS
+    )
 
 
 def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
