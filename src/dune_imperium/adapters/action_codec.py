@@ -1,0 +1,265 @@
+"""Stable integer encoding for structured Uprising actions."""
+
+from dataclasses import dataclass, field
+
+from dune_imperium.config import RulesetConfig
+from dune_imperium.content.uprising.board import (
+    BOARD_SPACES,
+    OBSERVATION_POSTS,
+    Faction,
+)
+from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
+from dune_imperium.content.uprising.reserve import RESERVE_STACKS
+from dune_imperium.content.uprising.starting_cards import STARTING_DECK
+from dune_imperium.core.actions import ActionValue, DomainAction
+
+ACTION_CODEC_VERSION = 1
+MAX_DEPLOYMENT_COUNT = 12
+
+
+@dataclass(frozen=True, slots=True)
+class ActionTemplate:
+    """Actor-neutral action stored at one stable catalog index."""
+
+    action_id: str
+    arguments: tuple[tuple[str, ActionValue], ...] = ()
+
+    def __post_init__(self) -> None:
+        DomainAction(self.action_id, actor=0, arguments=self.arguments)
+
+
+@dataclass(frozen=True, slots=True)
+class ActionCodec:
+    """Encode, decode, and mask actions for one ruleset configuration."""
+
+    config: RulesetConfig
+    catalog: tuple[ActionTemplate, ...] = field(init=False)
+    _indices: dict[ActionTemplate, int] = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        catalog = _build_catalog(self.config)
+        indices = {template: index for index, template in enumerate(catalog)}
+        if len(indices) != len(catalog):
+            raise RuntimeError("action catalog contains duplicate templates")
+        object.__setattr__(self, "catalog", catalog)
+        object.__setattr__(self, "_indices", indices)
+
+    @property
+    def size(self) -> int:
+        """Return the fixed discrete action-space size."""
+
+        return len(self.catalog)
+
+    def encode(self, action: DomainAction) -> int:
+        """Return the integer ID for one structured action."""
+
+        if not 0 <= action.actor < self.config.players:
+            raise ValueError("action actor must identify a configured player")
+        template = ActionTemplate(
+            action_id=action.action_id,
+            arguments=_normalize_arguments(action.arguments, action.actor),
+        )
+        try:
+            return self._indices[template]
+        except KeyError as error:
+            raise ValueError("action is not present in this codec version") from error
+
+    def decode(self, action_index: int, actor: int) -> DomainAction:
+        """Reconstruct an actor-owned structured action from an integer ID."""
+
+        if isinstance(action_index, bool) or not isinstance(action_index, int):
+            raise TypeError("action index must be an integer")
+        if not 0 <= action_index < self.size:
+            raise ValueError("action index is outside the catalog")
+        if not 0 <= actor < self.config.players:
+            raise ValueError("action actor must identify a configured player")
+        template = self.catalog[action_index]
+        return DomainAction(
+            action_id=template.action_id,
+            actor=actor,
+            arguments=_denormalize_arguments(template.arguments, actor),
+        )
+
+    def legal_action_mask(
+        self,
+        legal_actions: tuple[DomainAction, ...],
+    ) -> tuple[int, ...]:
+        """Return a fixed-width binary mask for the supplied legal actions."""
+
+        mask = [0] * self.size
+        for action in legal_actions:
+            mask[self.encode(action)] = 1
+        return tuple(mask)
+
+
+def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
+    templates: list[ActionTemplate] = [
+        ActionTemplate(action_id=action_id)
+        for action_id in (
+            "decline_combat_reward",
+            "decline_combat_reward_trash",
+            "finish_reveal",
+            "pass_combat_intrigue",
+            "pay_combat_reward",
+            "resolve_agent_card_effect",
+            "resolve_board_effect",
+            "resolve_faction_influence",
+            "reveal_turn",
+            "take_sietch_tabr_supplies",
+            "take_sietch_tabr_water",
+            "take_sietch_tabr_water_and_destroy_wall",
+        )
+    ]
+    templates.extend(_agent_turn_templates())
+    templates.extend(
+        ActionTemplate(
+            action_id="deploy_troops",
+            arguments=(("count", count),),
+        )
+        for count in range(MAX_DEPLOYMENT_COUNT + 1)
+    )
+    templates.extend(
+        ActionTemplate(
+            action_id="acquire_reserve",
+            arguments=(("card_id", stack.card.card_id),),
+        )
+        for stack in RESERVE_STACKS
+    )
+    imperium_instances = imperium_deck_instance_ids(config.choam_module)
+    templates.extend(
+        ActionTemplate(
+            action_id="acquire_imperium",
+            arguments=(("instance_id", instance_id),),
+        )
+        for instance_id in imperium_instances
+    )
+    for space_id in ("deep_desert", "hagga_basin", "imperial_basin"):
+        templates.append(
+            ActionTemplate(
+                action_id="harvest_maker_spice",
+                arguments=(("space_id", space_id),),
+            )
+        )
+    for space_id in ("deep_desert", "hagga_basin"):
+        templates.append(
+            ActionTemplate(
+                action_id="summon_maker_sandworms",
+                arguments=(("space_id", space_id),),
+            )
+        )
+    post_ids = tuple(post.post_id for post in OBSERVATION_POSTS)
+    templates.extend(
+        ActionTemplate(
+            action_id="place_combat_reward_spy",
+            arguments=(("post_id", post_id),),
+        )
+        for post_id in post_ids
+    )
+    templates.extend(
+        ActionTemplate(
+            action_id="recall_spies_for_combat_reward",
+            arguments=(
+                ("first_post_id", first_post_id),
+                ("second_post_id", second_post_id),
+            ),
+        )
+        for first_post_id in post_ids
+        for second_post_id in post_ids
+        if first_post_id != second_post_id
+    )
+    for action_id in (
+        "choose_combat_reward_influence",
+        "choose_distinct_combat_reward_influence",
+    ):
+        templates.extend(
+            ActionTemplate(
+                action_id=action_id,
+                arguments=(("faction", faction.value),),
+            )
+            for faction in Faction
+        )
+    templates.extend(_trash_templates(config))
+    return tuple(sorted(templates, key=_template_sort_key))
+
+
+def _agent_turn_templates() -> tuple[ActionTemplate, ...]:
+    templates: list[ActionTemplate] = []
+    for card in STARTING_DECK:
+        for copy in range(card.copies):
+            card_id = f"starter:{card.card.card_id}:{copy}"
+            for space in BOARD_SPACES:
+                if space.agent_icon not in card.agent_icons:
+                    continue
+                if space.dynamic_cost is None and len(space.cost_options) > 1:
+                    templates.extend(
+                        ActionTemplate(
+                            action_id="agent_turn",
+                            arguments=(
+                                ("card_id", card_id),
+                                ("cost_option", option),
+                                ("space_id", space.space_id),
+                            ),
+                        )
+                        for option in range(len(space.cost_options))
+                    )
+                else:
+                    templates.append(
+                        ActionTemplate(
+                            action_id="agent_turn",
+                            arguments=(
+                                ("card_id", card_id),
+                                ("space_id", space.space_id),
+                            ),
+                        )
+                    )
+    return tuple(templates)
+
+
+def _trash_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
+    card_ids = [
+        f"starter:{card.card.card_id}:{copy}"
+        for card in STARTING_DECK
+        for copy in range(card.copies)
+    ]
+    card_ids.extend(imperium_deck_instance_ids(config.choam_module))
+    card_ids.extend(
+        f"reserve:{stack.card.card_id}:{copy}"
+        for stack in RESERVE_STACKS
+        for copy in range(stack.copies)
+    )
+    return tuple(
+        ActionTemplate(
+            action_id="trash_combat_reward_card",
+            arguments=(("card_id", card_id),),
+        )
+        for card_id in card_ids
+    )
+
+
+def _normalize_arguments(
+    arguments: tuple[tuple[str, ActionValue], ...],
+    actor: int,
+) -> tuple[tuple[str, ActionValue], ...]:
+    prefix = f"player:{actor}:starter:"
+    return tuple(
+        (key, f"starter:{value.removeprefix(prefix)}")
+        if isinstance(value, str) and value.startswith(prefix)
+        else (key, value)
+        for key, value in arguments
+    )
+
+
+def _denormalize_arguments(
+    arguments: tuple[tuple[str, ActionValue], ...],
+    actor: int,
+) -> tuple[tuple[str, ActionValue], ...]:
+    return tuple(
+        (key, f"player:{actor}:{value}")
+        if isinstance(value, str) and value.startswith("starter:")
+        else (key, value)
+        for key, value in arguments
+    )
+
+
+def _template_sort_key(template: ActionTemplate) -> tuple[str, str]:
+    return template.action_id, repr(template.arguments)
