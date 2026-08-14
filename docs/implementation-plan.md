@@ -2,7 +2,7 @@
 
 상태: 초안 3 — R0 규칙 명세, M0 개발 골격, M1 엔진 커널, M2 4인 setup과
 정적 보드, M3 한 라운드 수직 조각, M4 RL 인터페이스 조기 검증 완료;
-M5 진행 예정
+M5 진행 중
 
 이 문서는 규칙 엔진부터 강화학습 AI와 사람용 플레이 인터페이스까지의 구현
 순서와 각 단계의 완료 조건을 정의한다. 구현 중 새 규칙을 발견하더라도 핵심
@@ -240,7 +240,7 @@ seeded random 4인 라운드를 실행하고 action replay로 최종 상태를 �
 ### M4. RL 인터페이스 조기 검증
 
 상태: **완료** (2026-08-14). 기본 룰셋은 versioned actor-neutral 정수 action
-catalog와 같은 폭의 legal action mask를 사용한다. 현재 codec v2는 428개
+catalog와 같은 폭의 legal action mask를 사용한다. 현재 codec v5는 534개
 행동이며, `dune_imperium_uprising_v0` AEC 환경은
 한 라운드를 episode로 실행하며 PettingZoo `api_test`와 `seed_test`를 통과한다.
 관측과 `info`에는 전체 `GameState`를 노출하지 않는다.
@@ -255,6 +255,13 @@ catalog와 같은 폭의 legal action mask를 사용한다. 현재 codec v2는 4
 `GameState`를 정책의 observation이나 `info`에 노출하지 않는다.
 
 ### M5. 기본 게임 시스템 규칙
+
+상태: **진행 중** (2026-08-14). Influence·Alliance, Spy의 Infiltrate와 Gather
+Intelligence, Shield Wall·Maker Hook·sandworm·critical location control, High
+Council·Swordmaster, 4인 Combat 순위와 기본 보상, Makers·Recall 및 Endgame 진입을
+구현했다. 최종 순위는 공식 tiebreak 전체를 적용하며, Intrigue 보유와 가능한 wild
+battle icon match가 모두 없는 Endgame은 `FINISHED`까지 자동 진행한다. Endgame
+Intrigue 처리와 wild battle icon 선택은 OQ-001 및 콘텐츠 전사 전까지 보류한다.
 
 - Influence, Friendship, Alliance 이동과 VP 경계를 구현한다.
 - Spy의 Infiltrate, Gather Intelligence와 회수 제한을 구현한다.

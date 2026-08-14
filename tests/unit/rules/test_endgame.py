@@ -7,8 +7,9 @@ import pytest
 from dune_imperium import RulesetConfig
 from dune_imperium.core import GamePhase, GameState, PlayerState, Resources
 from dune_imperium.rules.endgame import (
+    can_finish_endgame_automatically,
     final_standings,
-    finish_endgame_without_intrigue,
+    finish_endgame_without_pending_effects,
 )
 
 
@@ -107,7 +108,7 @@ def test_endgame_without_intrigue_finishes_with_ranked_winner_event() -> None:
         _player(3, victory_points=8),
     )
 
-    result = finish_endgame_without_intrigue(state)
+    result = finish_endgame_without_pending_effects(state)
 
     assert result.state.phase is GamePhase.FINISHED
     assert result.events[0].kind == "game_finished"
@@ -119,5 +120,25 @@ def test_held_intrigue_conservatively_blocks_automatic_endgame_finish() -> None:
     holder = replace(state.players[2], intrigue_cards=("intrigue:cunning:0",))
     state = replace(state, players=(*state.players[:2], holder, state.players[3]))
 
-    with pytest.raises(ValueError, match="Intrigue resolution"):
-        finish_endgame_without_intrigue(state)
+    assert can_finish_endgame_automatically(state) is False
+    with pytest.raises(ValueError, match="Intrigue or wild battle"):
+        finish_endgame_without_pending_effects(state)
+
+
+def test_face_up_wild_battle_match_blocks_automatic_finish() -> None:
+    state = _state()
+    holder = replace(
+        state.players[0],
+        objective_ids=("objective_crysknife_1",),
+        won_conflict_ids=("propaganda",),
+    )
+    state = replace(state, players=(holder, *state.players[1:]))
+
+    assert can_finish_endgame_automatically(state) is False
+
+    matched = replace(
+        holder,
+        face_down_battle_card_ids=("objective_crysknife_1", "propaganda"),
+    )
+    matched_state = replace(state, players=(matched, *state.players[1:]))
+    assert can_finish_endgame_automatically(matched_state) is True

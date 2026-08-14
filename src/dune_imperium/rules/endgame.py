@@ -2,6 +2,9 @@
 
 from dataclasses import dataclass, replace
 
+from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
+from dune_imperium.content.uprising.objectives import OBJECTIVES_BY_ID
+from dune_imperium.content.uprising.types import BattleIcon
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
@@ -64,20 +67,30 @@ def final_standings(state: GameState) -> tuple[FinalStanding, ...]:
     )
 
 
-def finish_endgame_without_intrigue(state: GameState) -> RuleResult:
-    """Finish an Endgame for which no Intrigue resolution can be pending.
+def can_finish_endgame_automatically(state: GameState) -> bool:
+    """Return whether no unimplemented Endgame choice can affect scoring."""
+
+    return not any(
+        player.intrigue_cards or _has_wild_battle_match(player)
+        for player in state.players
+    )
+
+
+def finish_endgame_without_pending_effects(state: GameState) -> RuleResult:
+    """Finish an Endgame for which no unresolved scoring effect is pending.
 
     Until Intrigue timing metadata and OQ-001 are resolved, holding any
     Intrigue card conservatively blocks this automatic path, even if that card
-    will eventually be identified as a non-Endgame type.
+    will eventually be identified as a non-Endgame type. A possible wild battle
+    icon match also blocks until its choice is implemented.
     """
 
     if state.phase is not GamePhase.ENDGAME:
         raise ValueError("only an Endgame can be finished")
     if state.decision_stack:
         raise ValueError("Endgame cannot finish with a pending decision")
-    if any(player.intrigue_cards for player in state.players):
-        raise ValueError("Endgame Intrigue resolution is not implemented")
+    if not can_finish_endgame_automatically(state):
+        raise ValueError("Endgame has unresolved Intrigue or wild battle effects")
 
     standings = final_standings(state)
     winner = standings[0]
@@ -91,6 +104,21 @@ def finish_endgame_without_intrigue(state: GameState) -> RuleResult:
         ),
     )
     return RuleResult(state=next_state, events=(event,))
+
+
+def _has_wild_battle_match(player: PlayerState) -> bool:
+    face_up_ids = (set(player.objective_ids) | set(player.won_conflict_ids)) - set(
+        player.face_down_battle_card_ids
+    )
+    icons = {
+        OBJECTIVES_BY_ID[card_id].battle_icon
+        if card_id in OBJECTIVES_BY_ID
+        else CONFLICTS_BY_ID[card_id].battle_icon
+        for card_id in face_up_ids
+    }
+    return BattleIcon.WILD in icons and any(
+        icon not in (None, BattleIcon.WILD) for icon in icons
+    )
 
 
 def _ranking_key(player: PlayerState, reveal_position: int) -> tuple[int, ...]:
