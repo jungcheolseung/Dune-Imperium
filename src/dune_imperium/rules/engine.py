@@ -59,7 +59,9 @@ from dune_imperium.rules.combat_deployment import (
 )
 from dune_imperium.rules.effects import current_agent_effect_context
 from dune_imperium.rules.phases import (
+    apply_control_defense_action,
     begin_round,
+    legal_control_defense_actions,
     resolve_makers,
     resolve_recall_or_endgame,
 )
@@ -127,6 +129,7 @@ class UprisingRulesEngine(RulesEngine):
             )
 
         actions: list[DomainAction] = []
+        actions.extend(legal_control_defense_actions(state, player))
         actions.extend(self._supported_agent_actions(state, player))
         actions.extend(legal_reveal_actions(state, player))
         actions.extend(legal_combat_intrigue_actions(state, player))
@@ -140,6 +143,8 @@ class UprisingRulesEngine(RulesEngine):
 
     def _apply_legal(self, state: GameState, action: DomainAction) -> RuleResult:
         handlers = {
+            "decline_control_defense": apply_control_defense_action,
+            "deploy_control_defense": apply_control_defense_action,
             "agent_turn": apply_agent_action,
             "reveal_turn": begin_reveal_turn,
             "resolve_agent_card_effect": _apply_agent_card_effect,

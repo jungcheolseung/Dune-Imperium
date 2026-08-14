@@ -9,10 +9,13 @@ from dune_imperium.core import (
     GamePhase,
     GameState,
     PlayerDecision,
+    PlayerState,
     canonical_state_hash,
 )
 from dune_imperium.rules.phases import (
+    apply_control_defense_action,
     begin_round,
+    legal_control_defense_actions,
     resolve_makers,
     resolve_recall_or_endgame,
 )
@@ -81,6 +84,69 @@ def test_round_start_emits_public_conflict_and_private_draw_events() -> None:
         (3,),
     )
     assert all(event.kind == "cards_drawn" for event in events[1:])
+
+
+def _controlled_round_start(*, troops_supply: int = 9) -> GameState:
+    players = tuple(
+        PlayerState(
+            player_id=player,
+            deck=tuple(f"player:{player}:card:{index}" for index in range(5)),
+            troops_supply=troops_supply if player == 2 else 9,
+            troops_garrison=12 - troops_supply if player == 2 else 3,
+            control_space_ids=("arrakeen",) if player == 2 else (),
+        )
+        for player in range(4)
+    )
+    return GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.ROUND_START,
+        first_player=0,
+        players=players,
+        conflict_deck=("siege_of_arrakeen",),
+    )
+
+
+def test_controlled_conflict_opens_defense_before_first_turn() -> None:
+    state = begin_round(_controlled_round_start()).state
+    decision = state.decision_stack[-1].decision
+
+    assert isinstance(decision, PlayerDecision)
+    assert decision.owner == 2
+    assert tuple(
+        action.action_id for action in legal_control_defense_actions(state, 2)
+    ) == ("decline_control_defense", "deploy_control_defense")
+
+
+def test_control_defense_deploys_one_troop_then_opens_first_turn() -> None:
+    state = begin_round(_controlled_round_start()).state
+    deploy = legal_control_defense_actions(state, 2)[1]
+
+    result = apply_control_defense_action(state, deploy)
+    owner = result.state.players[2]
+    decision = result.state.decision_stack[-1].decision
+
+    assert owner.troops_supply == 8
+    assert owner.troops_conflict == 1
+    assert isinstance(decision, PlayerDecision)
+    assert decision.owner == 0
+    assert result.events[0].kind == "control_defense_deployed"
+
+
+def test_control_defense_can_be_declined_and_skips_when_supply_is_empty() -> None:
+    state = begin_round(_controlled_round_start()).state
+    decline = legal_control_defense_actions(state, 2)[0]
+
+    declined = apply_control_defense_action(state, decline)
+    decision = declined.state.decision_stack[-1].decision
+    assert isinstance(decision, PlayerDecision)
+    assert decision.owner == 0
+    assert declined.state.players[2].troops_conflict == 0
+
+    no_supply = begin_round(_controlled_round_start(troops_supply=0)).state
+    no_supply_decision = no_supply.decision_stack[-1].decision
+    assert isinstance(no_supply_decision, PlayerDecision)
+    assert no_supply_decision.owner == 0
 
 
 def test_round_start_is_pure_and_rejects_wrong_phase() -> None:

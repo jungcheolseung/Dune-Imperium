@@ -2,6 +2,8 @@
 
 from dataclasses import replace
 
+from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
+from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
@@ -31,16 +33,11 @@ def begin_round(state: GameState) -> RuleResult:
     round_number = state.round_number + 1
     conflict_id = state.conflict_deck[0]
     players = tuple(_draw_five(player) for player in state.players)
-    first_turn = DecisionFrame(
-        frame_id=f"round:{round_number}:turn:{state.first_player}",
-        decision=PlayerDecision(
-            owner=state.first_player,
-            prompt="Choose an Agent turn or Reveal turn",
-        ),
-        context=(
-            ("round", round_number),
-            ("turn_owner", state.first_player),
-        ),
+    opening_frame = _round_opening_frame(
+        players,
+        conflict_id,
+        round_number,
+        state.first_player,
     )
     next_state = replace(
         state,
@@ -51,7 +48,7 @@ def begin_round(state: GameState) -> RuleResult:
         current_conflict_ids=(*state.current_conflict_ids, conflict_id),
         combat_intrigue_complete=False,
         combat_rewards_resolved=False,
-        decision_stack=(first_turn,),
+        decision_stack=(opening_frame,),
     )
     events = (
         GameEvent(
@@ -72,11 +69,132 @@ def begin_round(state: GameState) -> RuleResult:
     return RuleResult(state=next_state, events=events)
 
 
+def legal_control_defense_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Offer the controller's optional one-troop defensive deployment."""
+
+    if not 0 <= player < state.config.players or not state.decision_stack:
+        return ()
+    frame = state.decision_stack[-1]
+    decision = frame.decision
+    if (
+        not frame.frame_id.endswith(":control_defense")
+        or not isinstance(decision, PlayerDecision)
+        or decision.owner != player
+    ):
+        return ()
+    return (
+        DomainAction(action_id="decline_control_defense", actor=player),
+        DomainAction(action_id="deploy_control_defense", actor=player),
+    )
+
+
+def apply_control_defense_action(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Resolve the optional deployment and open the First Player's turn."""
+
+    if action not in legal_control_defense_actions(state, action.actor):
+        raise ValueError("action is not a legal Control defense choice")
+    if state.first_player is None:
+        raise RuntimeError("Control defense requires a First Player")
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    space_id = context.get("space_id")
+    if not isinstance(space_id, str):
+        raise RuntimeError("Control defense frame has invalid space ID")
+    deployed = action.action_id == "deploy_control_defense"
+    owner = state.players[action.actor]
+    if deployed and owner.troops_supply == 0:
+        raise RuntimeError("Control defender has no troop in supply")
+    next_owner = replace(
+        owner,
+        troops_supply=owner.troops_supply - int(deployed),
+        troops_conflict=owner.troops_conflict + int(deployed),
+    )
+    players = tuple(
+        next_owner if player.player_id == action.actor else player
+        for player in state.players
+    )
+    next_state = replace(
+        state,
+        players=players,
+        decision_stack=(
+            *state.decision_stack[:-1],
+            _turn_frame(state.round_number, state.first_player),
+        ),
+    )
+    event = GameEvent(
+        event_id=(
+            f"round:{state.round_number}:control_defense:{space_id}:{action.actor}"
+        ),
+        kind=("control_defense_deployed" if deployed else "control_defense_declined"),
+        payload=(
+            ("player", action.actor),
+            ("space_id", space_id),
+            ("troops", int(deployed)),
+        ),
+    )
+    return RuleResult(state=next_state, events=(event,))
+
+
 def _draw_five(player: PlayerState) -> PlayerState:
     return replace(
         player,
         deck=player.deck[5:],
         hand=(*player.hand, *player.deck[:5]),
+    )
+
+
+def _round_opening_frame(
+    players: tuple[PlayerState, ...],
+    conflict_id: str,
+    round_number: int,
+    first_player: int,
+) -> DecisionFrame:
+    conflict = CONFLICTS_BY_ID[conflict_id]
+    control_space_id = (
+        None if conflict.rewards is None else conflict.rewards[0].control_space_id
+    )
+    controllers = tuple(
+        player
+        for player in players
+        if control_space_id is not None and control_space_id in player.control_space_ids
+    )
+    if len(controllers) > 1:
+        raise RuntimeError("a critical location cannot have multiple controllers")
+    if controllers and controllers[0].troops_supply > 0:
+        if control_space_id is None:
+            raise RuntimeError("Control defender requires a critical location")
+        controller = controllers[0]
+        return DecisionFrame(
+            frame_id=f"round:{round_number}:control_defense",
+            decision=PlayerDecision(
+                owner=controller.player_id,
+                prompt="Deploy one troop from supply to defend your location?",
+            ),
+            context=(
+                ("space_id", control_space_id),
+                ("turn_owner", first_player),
+            ),
+        )
+    return _turn_frame(round_number, first_player)
+
+
+def _turn_frame(round_number: int, player: int) -> DecisionFrame:
+    return DecisionFrame(
+        frame_id=f"round:{round_number}:turn:{player}",
+        decision=PlayerDecision(
+            owner=player,
+            prompt="Choose an Agent turn or Reveal turn",
+        ),
+        context=(
+            ("round", round_number),
+            ("turn_owner", player),
+        ),
     )
 
 
