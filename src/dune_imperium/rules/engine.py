@@ -61,8 +61,12 @@ from dune_imperium.rules.combat_deployment import (
 )
 from dune_imperium.rules.effects import current_agent_effect_context
 from dune_imperium.rules.endgame import (
+    apply_endgame_wild_action,
+    begin_endgame_wild_choice,
     can_finish_endgame_automatically,
     finish_endgame_without_pending_effects,
+    legal_endgame_wild_actions,
+    unambiguous_endgame_wild_match,
 )
 from dune_imperium.rules.phases import (
     apply_control_defense_action,
@@ -145,6 +149,7 @@ class UprisingRulesEngine(RulesEngine):
             )
 
         actions: list[DomainAction] = []
+        actions.extend(legal_endgame_wild_actions(state, player))
         actions.extend(legal_control_defense_actions(state, player))
         actions.extend(self._supported_agent_actions(state, player))
         actions.extend(legal_reveal_actions(state, player))
@@ -160,6 +165,7 @@ class UprisingRulesEngine(RulesEngine):
     def _apply_legal(self, state: GameState, action: DomainAction) -> RuleResult:
         handlers = {
             "decline_control_defense": apply_control_defense_action,
+            "decline_endgame_wild_match": apply_endgame_wild_action,
             "decline_gather_intelligence": apply_gather_intelligence_action,
             "deploy_control_defense": apply_control_defense_action,
             "agent_turn": apply_agent_action,
@@ -174,6 +180,7 @@ class UprisingRulesEngine(RulesEngine):
             "take_sietch_tabr_water": apply_sietch_tabr_action,
             "take_sietch_tabr_water_and_destroy_wall": apply_sietch_tabr_action,
             "harvest_maker_spice": apply_maker_space_action,
+            "match_endgame_wild_icon": apply_endgame_wild_action,
             "summon_maker_sandworms": apply_maker_space_action,
             "deploy_troops": apply_combat_deployment,
             "acquire_reserve": apply_reserve_acquisition,
@@ -328,10 +335,16 @@ def _advance_automatic(result: RuleResult) -> RuleResult:
             automatic = resolve_makers(state)
         elif state.phase is GamePhase.RECALL_OR_ENDGAME:
             automatic = resolve_recall_or_endgame(state)
-        elif state.phase is GamePhase.ENDGAME and can_finish_endgame_automatically(
-            state
-        ):
-            automatic = finish_endgame_without_pending_effects(state)
+        elif state.phase is GamePhase.ENDGAME:
+            if can_finish_endgame_automatically(state):
+                automatic = finish_endgame_without_pending_effects(state)
+            elif (
+                not any(player.intrigue_cards for player in state.players)
+                and unambiguous_endgame_wild_match(state) is not None
+            ):
+                automatic = begin_endgame_wild_choice(state)
+            else:
+                break
         else:
             break
         state = automatic.state

@@ -86,6 +86,15 @@ def can_finish_endgame_automatically(state: GameState) -> bool:
     )
 
 
+def unambiguous_endgame_wild_match(
+    state: GameState,
+) -> EndgameWildMatch | None:
+    """Return the only possible wild pair, or ``None`` otherwise."""
+
+    matches = _endgame_wild_matches(state)
+    return matches[0] if len(matches) == 1 else None
+
+
 def begin_endgame_wild_choice(state: GameState) -> RuleResult:
     """Open an optional wild-icon match when exactly one pair is possible."""
 
@@ -95,11 +104,9 @@ def begin_endgame_wild_choice(state: GameState) -> RuleResult:
         raise ValueError("wild battle choice requires no pending decision")
     if any(player.intrigue_cards for player in state.players):
         raise ValueError("Endgame Intrigue ordering is unresolved")
-    matches = _endgame_wild_matches(state)
-    if len(matches) != 1:
+    match = unambiguous_endgame_wild_match(state)
+    if match is None:
         raise ValueError("Endgame wild choice requires exactly one possible pair")
-
-    match = matches[0]
     frame = DecisionFrame(
         frame_id=f"round:{state.round_number}:endgame_wild:{match.player}",
         decision=PlayerDecision(

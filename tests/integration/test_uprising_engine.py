@@ -70,6 +70,57 @@ def test_automatic_endgame_finishes_only_when_no_intrigue_is_held() -> None:
     )
 
 
+def test_engine_opens_wild_match_then_finishes_after_player_choice() -> None:
+    engine = UprisingRulesEngine()
+    state = engine.reset(RulesetConfig(), seed=2)
+    holder = replace(
+        state.players[0],
+        objective_ids=("objective_crysknife_1",),
+        won_conflict_ids=("propaganda",),
+    )
+    players = (
+        holder,
+        *(
+            replace(
+                player,
+                objective_ids=tuple(
+                    card_id
+                    for card_id in player.objective_ids
+                    if card_id != "objective_crysknife_1"
+                ),
+            )
+            for player in state.players[1:]
+        ),
+    )
+    state = replace(
+        state,
+        phase=GamePhase.ENDGAME,
+        players=players,
+        reveal_order=(0, 1, 2, 3),
+        current_conflict_ids=(),
+        conflict_deck=(),
+        unused_conflict_ids=tuple(
+            conflict_id
+            for conflict_id in state.unused_conflict_ids
+            if conflict_id != "propaganda"
+        ),
+        decision_stack=(),
+    )
+    opened = _advance_automatic(RuleResult(state=state)).state
+
+    actions = engine.legal_actions(opened, 0)
+    match = next(
+        action for action in actions if action.action_id == "match_endgame_wild_icon"
+    )
+    transition = engine.apply(opened, match)
+
+    assert transition.state.phase is GamePhase.FINISHED
+    assert tuple(event.kind for event in transition.events) == (
+        "endgame_wild_matched",
+        "game_finished",
+    )
+
+
 def test_engine_exposes_and_applies_infiltrate_agent_destination() -> None:
     engine = UprisingRulesEngine()
     state = engine.reset(RulesetConfig(), seed=2)
