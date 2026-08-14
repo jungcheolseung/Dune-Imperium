@@ -36,6 +36,7 @@ class GameState:
     revision: int = 0
     round_number: int = 0
     first_player: int | None = None
+    reveal_order: tuple[int, ...] = ()
     players: tuple[PlayerState, ...] = ()
     conflict_deck: tuple[str, ...] = ()
     unused_conflict_ids: tuple[str, ...] = ()
@@ -63,6 +64,10 @@ class GameState:
             0 <= self.first_player < self.config.players
         ):
             raise ValueError("first_player must identify a configured player")
+        if len(self.reveal_order) != len(set(self.reveal_order)):
+            raise ValueError("a player can appear in the Reveal order only once")
+        if any(not 0 <= player < self.config.players for player in self.reveal_order):
+            raise ValueError("Reveal order must contain configured players")
         if self.players and len(self.players) != self.config.players:
             raise ValueError("state must contain every configured player")
         if self.players and tuple(player.player_id for player in self.players) != tuple(

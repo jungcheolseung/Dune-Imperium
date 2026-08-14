@@ -43,6 +43,7 @@ def begin_round(state: GameState) -> RuleResult:
         state,
         phase=GamePhase.PLAYER_TURNS,
         round_number=round_number,
+        reveal_order=(),
         players=players,
         conflict_deck=state.conflict_deck[1:],
         current_conflict_ids=(*state.current_conflict_ids, conflict_id),
@@ -206,9 +207,7 @@ def resolve_makers(state: GameState) -> RuleResult:
     if state.decision_stack:
         raise ValueError("Makers cannot resolve with a pending decision")
     occupied = {
-        space_id
-        for player in state.players
-        for space_id in player.agent_locations
+        space_id for player in state.players for space_id in player.agent_locations
     }
     maker_bonus_spice = tuple(
         (space_id, amount if space_id in occupied else amount + 1)

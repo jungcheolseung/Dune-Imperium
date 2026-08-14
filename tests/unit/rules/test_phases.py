@@ -38,7 +38,7 @@ def _setup_state(seed: int = 71) -> GameState:
 
 
 def test_round_start_reveals_conflict_draws_five_and_opens_first_turn() -> None:
-    state = _setup_state()
+    state = replace(_setup_state(), reveal_order=(1, 3, 0, 2))
     first_conflict = state.conflict_deck[0]
     original_decks = tuple(player.deck for player in state.players)
 
@@ -47,6 +47,7 @@ def test_round_start_reveals_conflict_draws_five_and_opens_first_turn() -> None:
 
     assert started.phase is GamePhase.PLAYER_TURNS
     assert started.round_number == 1
+    assert started.reveal_order == ()
     assert started.current_conflict_ids == (first_conflict,)
     assert started.conflict_deck == state.conflict_deck[1:]
     for player, original_deck in zip(started.players, original_decks, strict=True):

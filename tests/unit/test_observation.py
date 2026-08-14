@@ -44,6 +44,7 @@ def test_view_contains_public_state_and_only_observers_private_cards() -> None:
     view = observe_state(state, player=0)
 
     assert view.first_player == 2
+    assert view.reveal_order == state.reveal_order
     assert view.current_conflict_ids == ("conflict_public",)
     assert view.combat_intrigue_complete is False
     assert view.combat_rewards_resolved is False

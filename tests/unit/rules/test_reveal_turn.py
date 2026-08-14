@@ -132,6 +132,7 @@ def test_reveal_cleanup_discards_in_play_but_preserves_late_drawn_hand() -> None
     owner = result.state.players[0]
 
     assert owner.has_revealed is True
+    assert result.state.reveal_order == (0,)
     assert owner.in_play == ()
     assert owner.discard_pile == (revealed,)
     assert owner.hand == (retained,)
@@ -198,5 +199,6 @@ def test_four_empty_reveal_turns_follow_seat_order_into_combat() -> None:
         ).state
 
     assert visited == [2, 3, 0, 1]
+    assert state.reveal_order == (2, 3, 0, 1)
     assert state.phase is GamePhase.COMBAT
     assert state.decision_stack == ()

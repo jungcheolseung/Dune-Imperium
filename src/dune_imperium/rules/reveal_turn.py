@@ -43,9 +43,7 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
     strength = 0
     if units > 0:
         strength = (
-            owner.troops_conflict * 2
-            + owner.sandworms_conflict * 3
-            + sword_strength
+            owner.troops_conflict * 2 + owner.sandworms_conflict * 3 + sword_strength
         )
     next_owner = replace(
         owner,
@@ -166,6 +164,7 @@ def finish_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         state,
         phase=phase,
         players=players,
+        reveal_order=(*state.reveal_order, action.actor),
         decision_stack=decision_stack,
     )
     event = GameEvent(

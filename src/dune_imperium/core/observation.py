@@ -61,6 +61,7 @@ class PlayerView:
     phase: GamePhase
     round_number: int = 0
     first_player: int | None = None
+    reveal_order: tuple[int, ...] = ()
     players: tuple[PublicPlayerView, ...] = ()
     private: PrivatePlayerView | None = None
     current_conflict_ids: tuple[str, ...] = ()
@@ -90,6 +91,7 @@ def observe_state(state: GameState, player: int) -> PlayerView:
         phase=state.phase,
         round_number=state.round_number,
         first_player=state.first_player,
+        reveal_order=state.reveal_order,
         players=tuple(_public_player_view(candidate) for candidate in state.players),
         private=PrivatePlayerView(
             deck_size=len(owner.deck),
