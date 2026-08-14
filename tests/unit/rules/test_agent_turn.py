@@ -178,6 +178,50 @@ def test_agent_action_pays_cost_and_moves_agent_and_card() -> None:
     )
 
 
+def test_critical_location_visit_pays_the_opposing_controller() -> None:
+    reconnaissance = _instance(0, "reconnaissance")
+    state = _state(reconnaissance)
+    controller = replace(
+        state.players[1],
+        control_space_ids=("arrakeen",),
+    )
+    state = replace(
+        state,
+        players=(state.players[0], controller, *state.players[2:]),
+    )
+
+    result = apply_agent_action(state, _action_to(state, "arrakeen"))
+
+    assert result.state.players[1].resources.solari == 1
+    assert tuple(event.kind for event in result.events) == (
+        "agent_placed",
+        "control_bonus_gained",
+    )
+    assert result.events[1].payload == (
+        ("amount", 1),
+        ("player", 1),
+        ("resource", "solari"),
+        ("space_id", "arrakeen"),
+    )
+
+
+def test_controller_gains_bonus_when_visiting_their_own_imperial_basin() -> None:
+    dune = _instance(0, "dune_the_desert_planet")
+    owner = PlayerState(
+        player_id=0,
+        hand=(dune,),
+        control_space_ids=("imperial_basin",),
+    )
+    state = _state(owner=owner)
+
+    result = apply_agent_action(
+        state,
+        _action_to(state, "imperial_basin"),
+    )
+
+    assert result.state.players[0].resources.spice == 1
+
+
 def test_selected_cost_option_is_paid_and_recorded_for_effect_resolution() -> None:
     dagger = _instance(0, "dagger")
     owner = PlayerState(

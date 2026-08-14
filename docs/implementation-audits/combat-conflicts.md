@@ -14,7 +14,7 @@ reviewed without reading the transition code. Official rule summaries under
 | Contract icon | With CHOAM disabled, each icon grants 2 Solari. | CHOAM-enabled contract selection remains explicitly unsupported. |
 | Trash icon | The player may decline or trash from hand, discard pile, or in play. | Reserve cards return to their Reserve stack instead of entering the trash zone. |
 | Spy reward | Each repeated reward selects an empty Observation Post and spends one Spy from supply. | Globally occupied posts are excluded. No choice is opened without a Spy or empty post. |
-| Control | A sole winner replaces the marker at the printed critical location. | There are exactly three critical locations and three markers per player; already owning all three needs no fourth-marker choice. |
+| Control | A sole winner replaces the marker at the printed critical location; every later visit pays its controller 1 Solari or spice as printed. | There are exactly three critical locations and three markers per player; already owning all three needs no fourth-marker choice. |
 | Tier III VP | Printed VP and optional Spice/Solari payment rewards repeat under a sandworm. | Each repeated optional reward requires its own payment; Control still occurs once. |
 | Propaganda | Each `Choose two` requires two distinct Factions. | A sandworm repeats the whole reward, so the same pair may be chosen again in the second group. |
 | Arrakeen Spy cost | The player may decline or recall one selected pair of placed Spies for 1 VP. | Spies return to supply; having fewer than two placed Spies leaves only decline. |
@@ -41,6 +41,10 @@ reviewed without reading the transition code. Official rule summaries under
 - Automatic parts of all assigned rewards are applied before queued player
   choices. Current supported choices do not alter another player's already
   calculated rank, but future interactive rewards must re-audit this sequencing.
+- A critical-location Control bonus is paid immediately after Agent placement,
+  before the visitor resolves freely ordered Agent, board, and Faction effects.
+  OQ-008 remains open for future content where this relative timing can change a
+  legal choice or result.
 
 ## External-data discrepancies found
 

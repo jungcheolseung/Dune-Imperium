@@ -123,7 +123,7 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
         players=players,
         decision_stack=(*state.decision_stack[:-1], effect_frame),
     )
-    event = GameEvent(
+    placement_event = GameEvent(
         event_id=(
             f"round:{state.round_number}:player:{action.actor}:agent:{space_id}"
         ),
@@ -134,7 +134,13 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
             ("space_id", space_id),
         ),
     )
-    return RuleResult(state=next_state, events=(event,))
+    next_state, control_event = _apply_control_visit_bonus(next_state, space_id)
+    events = (
+        (placement_event,)
+        if control_event is None
+        else (placement_event, control_event)
+    )
+    return RuleResult(state=next_state, events=events)
 
 
 def _actions_for_affordable_costs(
@@ -236,3 +242,50 @@ def _meets_requirement(
         case Faction.FREMEN:
             amount = influence.fremen
     return amount >= requirement.amount
+
+
+def _apply_control_visit_bonus(
+    state: GameState,
+    space_id: str,
+) -> tuple[GameState, GameEvent | None]:
+    resource = {
+        "arrakeen": "solari",
+        "spice_refinery": "solari",
+        "imperial_basin": "spice",
+    }.get(space_id)
+    if resource is None:
+        return state, None
+    controllers = tuple(
+        player for player in state.players if space_id in player.control_space_ids
+    )
+    if not controllers:
+        return state, None
+    if len(controllers) > 1:
+        raise RuntimeError("a critical location cannot have multiple controllers")
+
+    controller = controllers[0]
+    next_controller = replace(
+        controller,
+        resources=replace(
+            controller.resources,
+            **{resource: getattr(controller.resources, resource) + 1},
+        ),
+    )
+    players = tuple(
+        next_controller if player.player_id == next_controller.player_id else player
+        for player in state.players
+    )
+    event = GameEvent(
+        event_id=(
+            f"round:{state.round_number}:control_bonus:{space_id}:"
+            f"{controller.player_id}"
+        ),
+        kind="control_bonus_gained",
+        payload=(
+            ("amount", 1),
+            ("player", controller.player_id),
+            ("resource", resource),
+            ("space_id", space_id),
+        ),
+    )
+    return replace(state, players=players), event
