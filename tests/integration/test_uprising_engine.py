@@ -1,35 +1,23 @@
 """Integration coverage for the concrete Uprising rules dispatcher."""
 
-import random
-
 from dune_imperium import RulesetConfig
 from dune_imperium.core import (
     GamePhase,
-    GameState,
-    PlayerDecision,
     canonical_state_hash,
+    replay_game,
 )
 from dune_imperium.rules import UprisingRulesEngine
-
-
-def _play_one_round(game_seed: int, policy_seed: int) -> GameState:
-    engine = UprisingRulesEngine()
-    state = engine.reset(RulesetConfig(), game_seed)
-    policy_rng = random.Random(policy_seed)
-
-    for _ in range(500):
-        if state.phase in (GamePhase.ROUND_START, GamePhase.ENDGAME):
-            return state
-        decision = engine.current_decision(state)
-        assert isinstance(decision, PlayerDecision)
-        actions = engine.legal_actions(state, decision.owner)
-        assert actions
-        state = engine.apply(state, policy_rng.choice(actions)).state
-    raise AssertionError("one round did not finish within the transition limit")
+from dune_imperium.simulation import run_random_round
 
 
 def test_four_seeded_random_players_finish_one_round() -> None:
-    state = _play_one_round(game_seed=0, policy_seed=1000)
+    result = run_random_round(
+        UprisingRulesEngine(),
+        RulesetConfig(),
+        game_seed=0,
+        policy_seed=1000,
+    )
+    state = result.state
 
     assert state.phase is GamePhase.ROUND_START
     assert state.round_number == 1
@@ -47,13 +35,21 @@ def test_four_seeded_random_players_finish_one_round() -> None:
 
 
 def test_same_game_and_policy_seeds_reproduce_the_round() -> None:
-    first = _play_one_round(game_seed=7, policy_seed=2007)
-    second = _play_one_round(game_seed=7, policy_seed=2007)
+    engine = UprisingRulesEngine()
+    first = run_random_round(engine, RulesetConfig(), 7, 2007)
+    second = run_random_round(engine, RulesetConfig(), 7, 2007)
 
-    assert canonical_state_hash(first) == canonical_state_hash(second)
+    assert canonical_state_hash(first.state) == canonical_state_hash(second.state)
+    assert first.replay.steps == second.replay.steps
+    assert replay_game(engine, first.replay) == first.state
 
 
 def test_every_advertised_action_stays_in_the_supported_vertical_slice() -> None:
     for game_seed in range(4):
-        state = _play_one_round(game_seed, policy_seed=3000 + game_seed)
-        assert state.phase is GamePhase.ROUND_START
+        result = run_random_round(
+            UprisingRulesEngine(),
+            RulesetConfig(),
+            game_seed,
+            policy_seed=3000 + game_seed,
+        )
+        assert result.state.phase is GamePhase.ROUND_START
