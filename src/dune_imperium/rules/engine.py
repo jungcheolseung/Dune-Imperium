@@ -10,6 +10,7 @@ from dune_imperium.content.uprising.starting_cards import (
     starting_card_for_instance,
 )
 from dune_imperium.core.actions import DomainAction
+from dune_imperium.core.chance import ChanceOutcome
 from dune_imperium.core.decisions import PlayerDecision
 from dune_imperium.core.engine import RuleResult, RulesEngine
 from dune_imperium.core.events import GameEvent
@@ -70,8 +71,9 @@ from dune_imperium.rules.endgame import (
 )
 from dune_imperium.rules.phases import (
     apply_control_defense_action,
-    begin_round,
+    apply_round_start_reshuffle,
     legal_control_defense_actions,
+    prepare_round_start,
     resolve_makers,
     resolve_recall_or_endgame,
 )
@@ -109,8 +111,15 @@ class UprisingRulesEngine(RulesEngine):
 
     def _initial_state(self, config: RulesetConfig, seed: int) -> GameState:
         setup = create_initial_state(config, seed, self._leader_ids)
-        started = begin_round(setup.state)
+        started = prepare_round_start(setup.state)
         return replace(started.state, event_log=started.events)
+
+    def _apply_chance(
+        self,
+        state: GameState,
+        outcome: ChanceOutcome,
+    ) -> RuleResult:
+        return _advance_automatic(apply_round_start_reshuffle(state, outcome))
 
     def legal_actions(
         self,
@@ -335,6 +344,8 @@ def _advance_automatic(result: RuleResult) -> RuleResult:
             automatic = resolve_makers(state)
         elif state.phase is GamePhase.RECALL_OR_ENDGAME:
             automatic = resolve_recall_or_endgame(state)
+        elif state.phase is GamePhase.ROUND_START:
+            automatic = prepare_round_start(state)
         elif state.phase is GamePhase.ENDGAME:
             if can_finish_endgame_automatically(state):
                 automatic = finish_endgame_without_pending_effects(state)

@@ -4,10 +4,10 @@ from dataclasses import dataclass
 
 from dune_imperium.agents import RandomAgent
 from dune_imperium.config import RulesetConfig
-from dune_imperium.core.actions import DomainAction
-from dune_imperium.core.decisions import PlayerDecision
+from dune_imperium.core.chance import ChanceResolver
+from dune_imperium.core.decisions import ChanceDecision, PlayerDecision
 from dune_imperium.core.engine import RulesEngine
-from dune_imperium.core.replay import GameReplay
+from dune_imperium.core.replay import GameReplay, ReplayStep
 from dune_imperium.core.state import GamePhase, GameState, canonical_state_hash
 
 
@@ -39,7 +39,8 @@ def run_random_round(
     )
     state = engine.reset(config, game_seed)
     started_round = state.round_number
-    steps: list[DomainAction] = []
+    chance = ChanceResolver(seed=game_seed)
+    steps: list[ReplayStep] = []
 
     for _ in range(max_steps):
         if _round_finished(state, started_round):
@@ -52,6 +53,11 @@ def run_random_round(
             return RoundSimulation(state=state, replay=replay)
 
         decision = engine.current_decision(state)
+        if isinstance(decision, ChanceDecision):
+            outcome = chance.resolve(decision)
+            state = engine.apply(state, outcome).state
+            steps.append(outcome)
+            continue
         if not isinstance(decision, PlayerDecision):
             raise RuntimeError("one-round runner requires a pending player decision")
         actions = engine.legal_actions(state, decision.owner)
@@ -66,8 +72,6 @@ def run_random_round(
 
 
 def _round_finished(state: GameState, started_round: int) -> bool:
-    return state.phase is GamePhase.ENDGAME or (
-        state.phase is GamePhase.ROUND_START
-        and state.round_number == started_round
-        and not state.decision_stack
+    return state.phase in (GamePhase.ENDGAME, GamePhase.FINISHED) or (
+        state.round_number > started_round
     )

@@ -6,6 +6,8 @@ import pytest
 
 from dune_imperium import RulesetConfig
 from dune_imperium.core import (
+    ChanceDecision,
+    ChanceOutcome,
     GamePhase,
     GameState,
     PlayerDecision,
@@ -14,8 +16,10 @@ from dune_imperium.core import (
 )
 from dune_imperium.rules.phases import (
     apply_control_defense_action,
+    apply_round_start_reshuffle,
     begin_round,
     legal_control_defense_actions,
+    prepare_round_start,
     resolve_makers,
     resolve_recall_or_endgame,
 )
@@ -160,13 +164,47 @@ def test_round_start_is_pure_and_rejects_wrong_phase() -> None:
         begin_round(replace(state, phase=GamePhase.PLAYER_TURNS))
 
 
-def test_round_start_defers_draw_that_requires_reshuffling() -> None:
+def test_round_start_requests_and_applies_recorded_discard_reshuffle() -> None:
     state = _setup_state()
-    first = replace(state.players[0], deck=state.players[0].deck[:4])
+    original = state.players[0]
+    first = replace(
+        original,
+        deck=original.deck[:2],
+        discard_pile=original.deck[2:6],
+    )
     state = replace(state, players=(first, *state.players[1:]))
 
-    with pytest.raises(ValueError, match="reshuffle"):
-        begin_round(state)
+    prepared = prepare_round_start(state).state
+    decision = prepared.decision_stack[-1].decision
+
+    assert isinstance(decision, ChanceDecision)
+    assert decision.options == first.discard_pile
+    outcome = ChanceOutcome(decision.decision_id, tuple(reversed(decision.options)))
+    result = apply_round_start_reshuffle(prepared, outcome)
+
+    assert result.state.phase is GamePhase.PLAYER_TURNS
+    assert result.state.players[0].hand == (
+        *first.deck,
+        *tuple(reversed(first.discard_pile))[:3],
+    )
+    assert result.state.players[0].discard_pile == ()
+    assert result.events[0].kind == "personal_discard_shuffled"
+
+
+def test_round_start_draws_all_available_cards_when_total_is_below_five() -> None:
+    state = _setup_state()
+    first = replace(state.players[0], deck=state.players[0].deck[:3])
+    state = replace(state, players=(first, *state.players[1:]))
+
+    result = prepare_round_start(state)
+
+    assert len(result.state.players[0].hand) == 3
+    draw_event = next(
+        event
+        for event in result.events
+        if event.kind == "cards_drawn" and dict(event.payload)["player"] == 0
+    )
+    assert dict(draw_event.payload)["count"] == 3
 
 
 def test_makers_add_spice_only_to_unoccupied_spaces() -> None:

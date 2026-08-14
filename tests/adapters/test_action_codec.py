@@ -82,8 +82,8 @@ def test_every_action_in_seeded_round_round_trips_through_codec() -> None:
     )
 
     for step in result.replay.steps:
-        assert isinstance(step, DomainAction)
-        assert codec.decode(codec.encode(step), step.actor) == step
+        if isinstance(step, DomainAction):
+            assert codec.decode(codec.encode(step), step.actor) == step
 
 
 def test_legal_action_mask_marks_exactly_the_supplied_actions() -> None:

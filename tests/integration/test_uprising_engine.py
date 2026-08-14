@@ -270,9 +270,9 @@ def test_four_seeded_random_players_finish_one_round() -> None:
     )
     state = result.state
 
-    assert state.phase is GamePhase.ROUND_START
-    assert state.round_number == 1
-    assert not state.decision_stack
+    assert state.phase is GamePhase.PLAYER_TURNS
+    assert state.round_number == 2
+    assert isinstance(state.decision_stack[-1].decision, PlayerDecision)
     assert all(not player.has_revealed for player in state.players)
     assert all(player.agents_available == 2 for player in state.players)
     assert all(player.combat_strength == 0 for player in state.players)
@@ -303,4 +303,5 @@ def test_every_advertised_action_stays_in_the_supported_vertical_slice() -> None
             game_seed,
             policy_seed=3000 + game_seed,
         )
-        assert result.state.phase is GamePhase.ROUND_START
+        assert result.state.phase is GamePhase.PLAYER_TURNS
+        assert result.state.round_number == 2

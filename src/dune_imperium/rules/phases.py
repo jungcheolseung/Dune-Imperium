@@ -4,7 +4,8 @@ from dataclasses import replace
 
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
 from dune_imperium.core.actions import DomainAction
-from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
+from dune_imperium.core.chance import ChanceOutcome
+from dune_imperium.core.decisions import ChanceDecision, DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
@@ -12,11 +13,10 @@ from dune_imperium.core.state import GamePhase, GameState
 
 
 def begin_round(state: GameState) -> RuleResult:
-    """Reveal a Conflict, draw five cards each, and open the first turn.
+    """Reveal a Conflict, draw up to five cards each, and open the first turn.
 
-    This transition covers a Round Start for which every player already has at
-    least five cards in their draw deck. A later chance-backed transition will
-    handle reshuffling a discard pile when a draw crosses the deck boundary.
+    Any discard pile needed to complete the draw must already have been
+    shuffled beneath the remaining draw deck by ``prepare_round_start``.
     """
 
     if state.phase is not GamePhase.ROUND_START:
@@ -27,12 +27,16 @@ def begin_round(state: GameState) -> RuleResult:
         raise ValueError("Round Start cannot begin with a pending decision")
     if not state.conflict_deck:
         raise ValueError("a round cannot begin without a Conflict card")
-    if any(len(player.deck) < 5 for player in state.players):
+    if any(len(player.deck) < 5 and player.discard_pile for player in state.players):
         raise ValueError("Round Start draw requires a discard reshuffle transition")
 
     round_number = state.round_number + 1
     conflict_id = state.conflict_deck[0]
-    players = tuple(_draw_five(player) for player in state.players)
+    draw_counts = tuple(min(5, len(player.deck)) for player in state.players)
+    players = tuple(
+        _draw_cards(player, count)
+        for player, count in zip(state.players, draw_counts, strict=True)
+    )
     opening_frame = _round_opening_frame(
         players,
         conflict_id,
@@ -61,13 +65,77 @@ def begin_round(state: GameState) -> RuleResult:
             GameEvent(
                 event_id=f"round:{round_number}:player:{player.player_id}:draw",
                 kind="cards_drawn",
-                payload=(("count", 5), ("player", player.player_id)),
+                payload=(("count", count), ("player", player.player_id)),
                 visible_to=(player.player_id,),
             )
-            for player in players
+            for player, count in zip(players, draw_counts, strict=True)
+            if count > 0
         ),
     )
     return RuleResult(state=next_state, events=events)
+
+
+def prepare_round_start(state: GameState) -> RuleResult:
+    """Request required discard shuffles or begin the round immediately."""
+
+    if state.phase is not GamePhase.ROUND_START:
+        raise ValueError("only Round Start can be prepared")
+    if state.decision_stack:
+        raise ValueError("Round Start preparation requires no pending decision")
+    for player in state.players:
+        if len(player.deck) >= 5 or not player.discard_pile:
+            continue
+        decision_id = (
+            f"round:{state.round_number + 1}:player:{player.player_id}:discard_shuffle"
+        )
+        frame = DecisionFrame(
+            frame_id=f"{decision_id}:round_start",
+            decision=ChanceDecision(
+                decision_id=decision_id,
+                prompt=f"Shuffle player {player.player_id}'s discard pile",
+                options=player.discard_pile,
+                count=len(player.discard_pile),
+            ),
+            context=(("player", player.player_id),),
+        )
+        return RuleResult(state=state.push_decision(frame))
+    return begin_round(state)
+
+
+def apply_round_start_reshuffle(
+    state: GameState,
+    outcome: ChanceOutcome,
+) -> RuleResult:
+    """Append one recorded discard permutation beneath the remaining deck."""
+
+    if not state.decision_stack:
+        raise ValueError("there is no pending Round Start reshuffle")
+    frame = state.decision_stack[-1]
+    if not frame.frame_id.endswith(":round_start") or not isinstance(
+        frame.decision, ChanceDecision
+    ):
+        raise ValueError("the current chance decision is not a Round Start reshuffle")
+    player = dict(frame.context).get("player")
+    if isinstance(player, bool) or not isinstance(player, int):
+        raise RuntimeError("Round Start reshuffle has invalid player context")
+    owner = state.players[player]
+    next_owner = replace(
+        owner,
+        deck=(*owner.deck, *outcome.values),
+        discard_pile=(),
+    )
+    players = tuple(
+        next_owner if candidate.player_id == player else candidate
+        for candidate in state.players
+    )
+    prepared = prepare_round_start(replace(state.pop_decision(), players=players))
+    event = GameEvent(
+        event_id=f"round:{state.round_number + 1}:player:{player}:discard_shuffled",
+        kind="personal_discard_shuffled",
+        payload=(("count", len(outcome.values)), ("player", player)),
+        visible_to=(player,),
+    )
+    return RuleResult(state=prepared.state, events=(event, *prepared.events))
 
 
 def legal_control_defense_actions(
@@ -142,11 +210,11 @@ def apply_control_defense_action(
     return RuleResult(state=next_state, events=(event,))
 
 
-def _draw_five(player: PlayerState) -> PlayerState:
+def _draw_cards(player: PlayerState, count: int) -> PlayerState:
     return replace(
         player,
-        deck=player.deck[5:],
-        hand=(*player.hand, *player.deck[:5]),
+        deck=player.deck[count:],
+        hand=(*player.hand, *player.deck[:count]),
     )
 
 
