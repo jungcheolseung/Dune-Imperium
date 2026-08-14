@@ -14,7 +14,7 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     assert ACTION_CODEC_VERSION == 2
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
-    assert first.size > 0
+    assert first.size == 428
 
 
 def test_starting_card_actions_share_an_index_between_players() -> None:
