@@ -9,6 +9,9 @@ readme = "README.md"
 requires-python = ">=3.14,<3.15"
 dependencies = []
 
+[project.scripts]
+dune-imperium-debug = "dune_imperium.cli.debug:main"
+
 [dependency-groups]
 dev = [
     "mypy>=1.2.0",
