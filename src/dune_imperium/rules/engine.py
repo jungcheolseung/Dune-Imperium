@@ -68,6 +68,7 @@ from dune_imperium.rules.phases import (
 )
 from dune_imperium.rules.reveal_turn import (
     begin_reveal_turn,
+    current_reveal_context,
     finish_reveal_turn,
     legal_finish_reveal_actions,
     legal_reveal_actions,
@@ -105,16 +106,32 @@ class UprisingRulesEngine(RulesEngine):
     ) -> tuple[DomainAction, ...]:
         """Return all currently supported actions for the decision owner."""
 
+        try:
+            current_agent_effect_context(state)
+        except ValueError:
+            pass
+        else:
+            return (
+                *self._agent_effect_actions(state, player),
+                *legal_sietch_tabr_actions(state, player),
+                *legal_maker_space_actions(state, player),
+                *legal_combat_deployments(state, player),
+            )
+
+        try:
+            current_reveal_context(state)
+        except ValueError:
+            pass
+        else:
+            return (
+                *legal_reserve_acquisitions(state, player),
+                *self._supported_imperium_acquisitions(state, player),
+                *legal_finish_reveal_actions(state, player),
+            )
+
         actions: list[DomainAction] = []
         actions.extend(self._supported_agent_actions(state, player))
         actions.extend(legal_reveal_actions(state, player))
-        actions.extend(self._agent_effect_actions(state, player))
-        actions.extend(legal_sietch_tabr_actions(state, player))
-        actions.extend(legal_maker_space_actions(state, player))
-        actions.extend(legal_combat_deployments(state, player))
-        actions.extend(legal_reserve_acquisitions(state, player))
-        actions.extend(self._supported_imperium_acquisitions(state, player))
-        actions.extend(legal_finish_reveal_actions(state, player))
         actions.extend(legal_combat_intrigue_actions(state, player))
         actions.extend(legal_combat_reward_optional_payment_actions(state, player))
         actions.extend(legal_combat_reward_spy_recall_actions(state, player))

@@ -3,11 +3,55 @@
 from dune_imperium import RulesetConfig
 from dune_imperium.core import (
     GamePhase,
+    PlayerDecision,
     canonical_state_hash,
     replay_game,
 )
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.simulation import run_random_round
+
+
+def test_agent_effect_resolution_cannot_start_a_second_agent_turn() -> None:
+    engine = UprisingRulesEngine()
+    state = engine.reset(RulesetConfig(), seed=2)
+    decision = engine.current_decision(state)
+    assert isinstance(decision, PlayerDecision)
+    first_player = decision.owner
+    agent_action = next(
+        action
+        for action in engine.legal_actions(state, first_player)
+        if action.action_id == "agent_turn"
+    )
+
+    state = engine.apply(state, agent_action).state
+    effect_action_ids = {
+        action.action_id for action in engine.legal_actions(state, first_player)
+    }
+
+    assert "agent_turn" not in effect_action_ids
+    assert "reveal_turn" not in effect_action_ids
+    assert state.players[first_player].agents_available == 1
+
+
+def test_reveal_resolution_cannot_start_another_turn() -> None:
+    engine = UprisingRulesEngine()
+    state = engine.reset(RulesetConfig(), seed=2)
+    decision = engine.current_decision(state)
+    assert isinstance(decision, PlayerDecision)
+    reveal = next(
+        action
+        for action in engine.legal_actions(state, decision.owner)
+        if action.action_id == "reveal_turn"
+    )
+
+    state = engine.apply(state, reveal).state
+    reveal_action_ids = {
+        action.action_id for action in engine.legal_actions(state, decision.owner)
+    }
+
+    assert "agent_turn" not in reveal_action_ids
+    assert "reveal_turn" not in reveal_action_ids
+    assert "finish_reveal" in reveal_action_ids
 
 
 def test_four_seeded_random_players_finish_one_round() -> None:
