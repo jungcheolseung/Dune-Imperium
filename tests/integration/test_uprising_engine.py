@@ -36,6 +36,59 @@ def test_agent_effect_resolution_cannot_start_a_second_agent_turn() -> None:
     assert state.players[first_player].agents_available == 1
 
 
+def test_engine_exposes_and_applies_infiltrate_agent_destination() -> None:
+    engine = UprisingRulesEngine()
+    state = engine.reset(RulesetConfig(), seed=2)
+    decision = engine.current_decision(state)
+    assert isinstance(decision, PlayerDecision)
+    player = decision.owner
+    owner = state.players[player]
+    dagger = next(
+        card_id
+        for card_id in (*owner.deck, *owner.hand, *owner.discard_pile)
+        if ":dagger:" in card_id
+    )
+    post_id = "landsraad-assembly-hall-gather-support"
+    owner = replace(
+        owner,
+        deck=(),
+        hand=(dagger,),
+        discard_pile=(),
+        spies_supply=2,
+        spy_post_ids=(post_id,),
+    )
+    opponent_id = (player + 1) % state.config.players
+    opponent = replace(
+        state.players[opponent_id],
+        agents_available=1,
+        agent_locations=("assembly_hall",),
+    )
+    state = replace(
+        state,
+        players=tuple(
+            owner
+            if candidate.player_id == player
+            else opponent
+            if candidate.player_id == opponent_id
+            else candidate
+            for candidate in state.players
+        ),
+    )
+
+    infiltrate = next(
+        action
+        for action in engine.legal_actions(state, player)
+        if dict(action.arguments).get("infiltrate_post_id") == post_id
+    )
+    transition = engine.apply(state, infiltrate)
+
+    assert "assembly_hall" in transition.state.players[player].agent_locations
+    assert transition.state.players[player].spy_post_ids == ()
+    assert any(
+        event.kind == "spy_recalled_for_infiltrate" for event in transition.events
+    )
+
+
 def test_reveal_resolution_cannot_start_another_turn() -> None:
     engine = UprisingRulesEngine()
     state = engine.reset(RulesetConfig(), seed=2)
@@ -111,9 +164,7 @@ def test_espionage_uses_explicit_spy_choices_instead_of_generic_resolution() -> 
     choices = engine.legal_actions(state, player)
 
     assert "resolve_board_effect" not in {action.action_id for action in choices}
-    assert "resolve_espionage_without_spy" in {
-        action.action_id for action in choices
-    }
+    assert "resolve_espionage_without_spy" in {action.action_id for action in choices}
     placement = next(
         action
         for action in choices

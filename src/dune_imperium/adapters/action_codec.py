@@ -12,9 +12,10 @@ from dune_imperium.content.uprising.board import (
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.reserve import RESERVE_STACKS
 from dune_imperium.content.uprising.starting_cards import STARTING_DECK
+from dune_imperium.content.uprising.types import AgentIcon
 from dune_imperium.core.actions import ActionValue, DomainAction
 
-ACTION_CODEC_VERSION = 4
+ACTION_CODEC_VERSION = 5
 MAX_DEPLOYMENT_COUNT = 12
 
 
@@ -212,30 +213,40 @@ def _agent_turn_templates() -> tuple[ActionTemplate, ...]:
         for copy in range(card.copies):
             card_id = f"starter:{card.card.card_id}:{copy}"
             for space in BOARD_SPACES:
-                if space.agent_icon not in card.agent_icons:
+                if (
+                    space.agent_icon not in card.agent_icons
+                    and AgentIcon.SPY not in card.agent_icons
+                ):
                     continue
-                if space.dynamic_cost is None and len(space.cost_options) > 1:
-                    templates.extend(
-                        ActionTemplate(
-                            action_id="agent_turn",
-                            arguments=(
-                                ("card_id", card_id),
-                                ("cost_option", option),
-                                ("space_id", space.space_id),
-                            ),
+                cost_options: tuple[int | None, ...] = (
+                    tuple(range(len(space.cost_options)))
+                    if space.dynamic_cost is None and len(space.cost_options) > 1
+                    else (None,)
+                )
+                infiltration_post_ids: tuple[str | None, ...] = (
+                    None,
+                    *(
+                        post.post_id
+                        for post in OBSERVATION_POSTS
+                        if space.space_id in post.connected_space_ids
+                    ),
+                )
+                for cost_option in cost_options:
+                    for infiltrate_post_id in infiltration_post_ids:
+                        arguments: list[tuple[str, ActionValue]] = [
+                            ("card_id", card_id)
+                        ]
+                        if cost_option is not None:
+                            arguments.append(("cost_option", cost_option))
+                        if infiltrate_post_id is not None:
+                            arguments.append(("infiltrate_post_id", infiltrate_post_id))
+                        arguments.append(("space_id", space.space_id))
+                        templates.append(
+                            ActionTemplate(
+                                action_id="agent_turn",
+                                arguments=tuple(arguments),
+                            )
                         )
-                        for option in range(len(space.cost_options))
-                    )
-                else:
-                    templates.append(
-                        ActionTemplate(
-                            action_id="agent_turn",
-                            arguments=(
-                                ("card_id", card_id),
-                                ("space_id", space.space_id),
-                            ),
-                        )
-                    )
     return tuple(templates)
 
 

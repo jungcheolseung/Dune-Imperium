@@ -13,13 +13,12 @@ truth for the transition code.
 | Espionage | After paying 1 Spice, the player draws one personal card and may place one Spy. | Declining the optional Spy does not decline the card draw. Bene Gesserit influence remains a separately ordered Agent-turn effect. |
 | Empty supply | To place through Espionage with no Spy in supply, the player first selects one of their placed Spies to recall without effect and then must select an empty post. | Recall and placement are separate decisions so the engine does not enumerate every ordered pair as one action. Once recall is chosen, placement cannot be declined. |
 | Gather Intelligence | Immediately after Agent placement, a connected Spy opens a decline-or-recall decision before Agent-card, board-space, deployment, or Faction effects. Recalling draws one personal card. | At most one Spy can be used for Gather Intelligence in a turn. If the personal deck is empty, only decline is exposed because discard reshuffling remains deferred. |
+| Infiltrate | An otherwise legal Agent card may enter a space occupied by one opponent by selecting and recalling a connected Spy as part of the Agent action. | The recalled Spy is removed before the Gather Intelligence window, so it cannot be used for both effects. Multiple-opponent occupancy remains deferred under OQ-006. |
+| Spy Agent icon | A card's Spy Agent icon makes every space connected to one of the player's placed Spies an available Agent destination. | Destination access does not recall the Spy. Imperium-card icon transcription remains part of the broader content milestone. |
 | Conflict reward | A Spy reward selects one globally empty post and spends a Spy from supply. | This existing reward path does not currently offer the empty-supply recall permission because the reward itself is mandatory only when executable. |
 
 ## Deferred Spy systems
 
-- `Infiltrate`: recall a connected Spy to enter a space occupied by another
-  player's Agent.
-- The Spy Agent icon as an alternate destination-access icon.
 - General `Recall Spy` icons and card-specific Spy effects.
 - The multiple-opponent Infiltrate interpretation tracked by OQ-006 and the
   Gather Intelligence/contract ordering tracked by OQ-011.
@@ -27,7 +26,8 @@ truth for the transition code.
 ## Action and replay compatibility
 
 Espionage added one decline action and 13 each of recall and placement actions.
-Gather Intelligence adds one decline action and 13 post-specific recall
-actions. The fixed action catalog therefore changes from version 3 (455
-entries) to version 4 (469 entries), and new replay records default to codec
-version 4.
+Gather Intelligence added one decline action and 13 post-specific recall
+actions in codec version 4. Infiltrate adds every valid starting-card,
+board-space, and connected-post combination, changing the fixed action catalog
+from 469 entries to 534 entries in version 5. New replay records default to
+codec version 5.

@@ -11,10 +11,10 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     first = ActionCodec(RulesetConfig())
     second = ActionCodec(RulesetConfig())
 
-    assert ACTION_CODEC_VERSION == 4
+    assert ACTION_CODEC_VERSION == 5
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
-    assert first.size == 469
+    assert first.size == 534
 
 
 def test_starting_card_actions_share_an_index_between_players() -> None:
@@ -38,6 +38,24 @@ def test_starting_card_actions_share_an_index_between_players() -> None:
 
     assert codec.encode(first) == codec.encode(second)
     assert codec.decode(codec.encode(first), actor=3) == second
+
+
+def test_infiltrate_agent_action_round_trips_with_selected_spy() -> None:
+    codec = ActionCodec(RulesetConfig())
+    action = DomainAction(
+        action_id="agent_turn",
+        actor=2,
+        arguments=(
+            ("card_id", "player:2:starter:dagger:0"),
+            (
+                "infiltrate_post_id",
+                "landsraad-assembly-hall-gather-support",
+            ),
+            ("space_id", "assembly_hall"),
+        ),
+    )
+
+    assert codec.decode(codec.encode(action), actor=2) == action
 
 
 def test_every_action_in_seeded_round_round_trips_through_codec() -> None:
