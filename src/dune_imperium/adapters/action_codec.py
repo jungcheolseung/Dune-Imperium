@@ -14,7 +14,7 @@ from dune_imperium.content.uprising.reserve import RESERVE_STACKS
 from dune_imperium.content.uprising.starting_cards import STARTING_DECK
 from dune_imperium.core.actions import ActionValue, DomainAction
 
-ACTION_CODEC_VERSION = 3
+ACTION_CODEC_VERSION = 4
 MAX_DEPLOYMENT_COUNT = 12
 
 
@@ -101,6 +101,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "decline_combat_reward",
             "decline_combat_reward_trash",
             "decline_control_defense",
+            "decline_gather_intelligence",
             "deploy_control_defense",
             "finish_reveal",
             "pass_combat_intrigue",
@@ -153,6 +154,13 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             )
         )
     post_ids = tuple(post.post_id for post in OBSERVATION_POSTS)
+    templates.extend(
+        ActionTemplate(
+            action_id="gather_intelligence",
+            arguments=(("post_id", post_id),),
+        )
+        for post_id in post_ids
+    )
     for action_id in (
         "recall_spy_for_espionage",
         "resolve_espionage_place_spy",

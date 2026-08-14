@@ -75,6 +75,10 @@ from dune_imperium.rules.reveal_turn import (
     legal_reveal_actions,
 )
 from dune_imperium.rules.setup import create_initial_state
+from dune_imperium.rules.spies import (
+    apply_gather_intelligence_action,
+    legal_gather_intelligence_actions,
+)
 
 DEFAULT_LEADER_IDS = (
     "feyd_rautha_harkonnen",
@@ -112,6 +116,11 @@ class UprisingRulesEngine(RulesEngine):
         except ValueError:
             pass
         else:
+            gather_intelligence_actions = legal_gather_intelligence_actions(
+                state, player
+            )
+            if gather_intelligence_actions:
+                return gather_intelligence_actions
             return (
                 *self._agent_effect_actions(state, player),
                 *legal_espionage_actions(state, player),
@@ -147,6 +156,7 @@ class UprisingRulesEngine(RulesEngine):
     def _apply_legal(self, state: GameState, action: DomainAction) -> RuleResult:
         handlers = {
             "decline_control_defense": apply_control_defense_action,
+            "decline_gather_intelligence": apply_gather_intelligence_action,
             "deploy_control_defense": apply_control_defense_action,
             "agent_turn": apply_agent_action,
             "reveal_turn": begin_reveal_turn,
@@ -165,6 +175,7 @@ class UprisingRulesEngine(RulesEngine):
             "acquire_reserve": apply_reserve_acquisition,
             "acquire_imperium": apply_imperium_acquisition,
             "finish_reveal": finish_reveal_turn,
+            "gather_intelligence": apply_gather_intelligence_action,
             "pass_combat_intrigue": apply_combat_intrigue_pass,
             "decline_combat_reward": _apply_decline_combat_reward,
             "pay_combat_reward": apply_combat_reward_optional_payment,

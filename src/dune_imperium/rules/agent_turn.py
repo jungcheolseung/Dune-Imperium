@@ -5,6 +5,7 @@ from dataclasses import replace
 from dune_imperium.content.uprising.board import (
     BOARD_SPACES,
     BOARD_SPACES_BY_ID,
+    OBSERVATION_POSTS,
     BoardSpace,
     DynamicCost,
     Faction,
@@ -113,6 +114,14 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
             ("pending_board_effect", True),
             ("pending_combat_deployment", space.combat),
             ("pending_faction_influence", space.faction is not None),
+            (
+                "pending_gather_intelligence",
+                any(
+                    space_id in post.connected_space_ids
+                    and post.post_id in next_owner.spy_post_ids
+                    for post in OBSERVATION_POSTS
+                ),
+            ),
             ("space_id", space_id),
             ("troops_recruited", 0),
             ("turn_owner", action.actor),
