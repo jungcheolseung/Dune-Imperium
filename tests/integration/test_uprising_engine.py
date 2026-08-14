@@ -10,7 +10,9 @@ from dune_imperium.core import (
     canonical_state_hash,
     replay_game,
 )
+from dune_imperium.core.engine import RuleResult
 from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.engine import _advance_automatic
 from dune_imperium.simulation import run_random_round
 
 
@@ -34,6 +36,38 @@ def test_agent_effect_resolution_cannot_start_a_second_agent_turn() -> None:
     assert "agent_turn" not in effect_action_ids
     assert "reveal_turn" not in effect_action_ids
     assert state.players[first_player].agents_available == 1
+
+
+def test_automatic_endgame_finishes_only_when_no_intrigue_is_held() -> None:
+    engine = UprisingRulesEngine()
+    state = engine.reset(RulesetConfig(), seed=2)
+    players = tuple(
+        replace(
+            player,
+            hand=(),
+            deck=(),
+            discard_pile=(),
+            intrigue_cards=(),
+            has_revealed=True,
+        )
+        for player in state.players
+    )
+    state = replace(
+        state,
+        phase=GamePhase.RECALL_OR_ENDGAME,
+        players=players,
+        conflict_deck=(),
+        reveal_order=(0, 1, 2, 3),
+        decision_stack=(),
+    )
+
+    result = _advance_automatic(RuleResult(state=state))
+
+    assert result.state.phase is GamePhase.FINISHED
+    assert tuple(event.kind for event in result.events) == (
+        "endgame_started",
+        "game_finished",
+    )
 
 
 def test_engine_exposes_and_applies_infiltrate_agent_destination() -> None:

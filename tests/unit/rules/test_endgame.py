@@ -6,7 +6,10 @@ import pytest
 
 from dune_imperium import RulesetConfig
 from dune_imperium.core import GamePhase, GameState, PlayerState, Resources
-from dune_imperium.rules.endgame import final_standings
+from dune_imperium.rules.endgame import (
+    final_standings,
+    finish_endgame_without_intrigue,
+)
 
 
 def _state(
@@ -94,3 +97,27 @@ def test_final_standings_are_pure_and_available_after_finish() -> None:
     assert final_standings(state) == final_standings(state)
     assert final_standings(finished) == final_standings(state)
     assert state.phase is GamePhase.ENDGAME
+
+
+def test_endgame_without_intrigue_finishes_with_ranked_winner_event() -> None:
+    state = _state(
+        _player(0, victory_points=9),
+        _player(1, victory_points=11),
+        _player(2, victory_points=10),
+        _player(3, victory_points=8),
+    )
+
+    result = finish_endgame_without_intrigue(state)
+
+    assert result.state.phase is GamePhase.FINISHED
+    assert result.events[0].kind == "game_finished"
+    assert result.events[0].payload == (("player", 1), ("victory_points", 11))
+
+
+def test_held_intrigue_conservatively_blocks_automatic_endgame_finish() -> None:
+    state = _state()
+    holder = replace(state.players[2], intrigue_cards=("intrigue:cunning:0",))
+    state = replace(state, players=(*state.players[:2], holder, state.players[3]))
+
+    with pytest.raises(ValueError, match="Intrigue resolution"):
+        finish_endgame_without_intrigue(state)

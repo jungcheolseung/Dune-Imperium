@@ -60,6 +60,7 @@ from dune_imperium.rules.combat_deployment import (
     legal_combat_deployments,
 )
 from dune_imperium.rules.effects import current_agent_effect_context
+from dune_imperium.rules.endgame import finish_endgame_without_intrigue
 from dune_imperium.rules.phases import (
     apply_control_defense_action,
     begin_round,
@@ -324,6 +325,10 @@ def _advance_automatic(result: RuleResult) -> RuleResult:
             automatic = resolve_makers(state)
         elif state.phase is GamePhase.RECALL_OR_ENDGAME:
             automatic = resolve_recall_or_endgame(state)
+        elif state.phase is GamePhase.ENDGAME and not any(
+            player.intrigue_cards for player in state.players
+        ):
+            automatic = finish_endgame_without_intrigue(state)
         else:
             break
         state = automatic.state
