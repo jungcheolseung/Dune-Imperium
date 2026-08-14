@@ -106,3 +106,23 @@ uv run mypy src tests
 `uv sync`는 `.python-version`에 지정된 Python 3.14로 `.venv`를 만들고
 `uv.lock`에 고정된 의존성을 설치한다. 새 구현은 `src/dune_imperium/`에 두며,
 기존 `dune/` 패키지는 이전 구현의 참고 자료일 뿐 새 코드에서 import하지 않는다.
+
+### PettingZoo 한 라운드 환경
+
+RL optional 의존성을 설치하면 고정 action catalog와 mask를 사용하는 AEC 환경을
+실행할 수 있다.
+
+```bash
+uv sync --extra rl
+```
+
+```python
+from dune_imperium.adapters.pettingzoo_env import env
+
+environment = env()
+environment.reset(seed=7)
+observation, reward, terminated, truncated, info = environment.last()
+```
+
+현재 `dune_imperium_uprising_v0`는 M3 수직 조각에 맞춰 한 라운드를 하나의
+episode로 취급한다.
