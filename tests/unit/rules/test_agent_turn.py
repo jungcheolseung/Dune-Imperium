@@ -114,11 +114,14 @@ def test_spy_agent_icon_does_not_recall_the_spy_for_destination_access() -> None
         spy_post_ids=("arrakis-spice-refinery-arrakeen",),
     )
 
-    assert card_can_access_space(
-        (AgentIcon.CITY, AgentIcon.SPY),
-        BOARD_SPACES_BY_ID["imperial_basin"],
-        owner,
-    ) is False
+    assert (
+        card_can_access_space(
+            (AgentIcon.CITY, AgentIcon.SPY),
+            BOARD_SPACES_BY_ID["imperial_basin"],
+            owner,
+        )
+        is False
+    )
     assert owner.spies_supply == 2
     assert owner.spy_post_ids == ("arrakis-spice-refinery-arrakeen",)
 
@@ -160,6 +163,76 @@ def test_occupied_spaces_and_non_agent_cards_are_excluded() -> None:
     state = replace(state, players=(state.players[0], opponent, *state.players[2:]))
 
     assert _space_ids(state) == {"gather_support"}
+
+
+def test_infiltrate_adds_occupied_destination_with_connected_spy_choice() -> None:
+    dagger = _instance(0, "dagger")
+    owner = PlayerState(
+        player_id=0,
+        hand=(dagger,),
+        spies_supply=2,
+        spy_post_ids=("landsraad-assembly-hall-gather-support",),
+    )
+    state = _state(owner=owner)
+    opponent = replace(
+        state.players[1],
+        agents_available=1,
+        agent_locations=("assembly_hall",),
+    )
+    state = replace(state, players=(state.players[0], opponent, *state.players[2:]))
+
+    action = _action_to(state, "assembly_hall")
+
+    assert dict(action.arguments)["infiltrate_post_id"] == (
+        "landsraad-assembly-hall-gather-support"
+    )
+    assert "gather_support" in _space_ids(state)
+
+
+def test_infiltrate_does_not_bypass_icon_or_connection_requirements() -> None:
+    dagger = _instance(0, "dagger")
+    owner = PlayerState(
+        player_id=0,
+        hand=(dagger,),
+        spies_supply=2,
+        spy_post_ids=("arrakis-spice-refinery-arrakeen",),
+    )
+    state = _state(owner=owner)
+    opponents = tuple(
+        replace(
+            candidate,
+            agents_available=1,
+            agent_locations=("assembly_hall",),
+        )
+        if candidate.player_id == 1
+        else candidate
+        for candidate in state.players
+    )
+
+    assert "assembly_hall" not in _space_ids(replace(state, players=opponents))
+
+
+def test_infiltrate_defers_space_with_multiple_opposing_agents() -> None:
+    dagger = _instance(0, "dagger")
+    owner = PlayerState(
+        player_id=0,
+        hand=(dagger,),
+        spies_supply=2,
+        spy_post_ids=("landsraad-assembly-hall-gather-support",),
+    )
+    state = _state(owner=owner)
+    opponents = tuple(
+        replace(
+            candidate,
+            agents_available=1,
+            agent_locations=("assembly_hall",),
+        )
+        if candidate.player_id in (1, 2)
+        else candidate
+        for candidate in state.players
+    )
+
+    assert "assembly_hall" not in _space_ids(replace(state, players=opponents))
 
 
 def test_only_current_decision_owner_receives_agent_actions() -> None:
@@ -215,6 +288,41 @@ def test_agent_action_pays_cost_and_moves_agent_and_card() -> None:
         ("card_id", dune),
         ("player", 0),
         ("space_id", "hagga_basin"),
+    )
+
+
+def test_infiltrate_recalls_selected_spy_and_consumes_its_gather_window() -> None:
+    reconnaissance = _instance(0, "reconnaissance")
+    post_id = "arrakis-spice-refinery-arrakeen"
+    owner = PlayerState(
+        player_id=0,
+        hand=(reconnaissance,),
+        spies_supply=2,
+        spy_post_ids=(post_id,),
+    )
+    state = _state(owner=owner)
+    opponent = replace(
+        state.players[1],
+        agents_available=1,
+        agent_locations=("arrakeen",),
+    )
+    state = replace(state, players=(state.players[0], opponent, *state.players[2:]))
+
+    result = apply_agent_action(state, _action_to(state, "arrakeen"))
+    next_owner = result.state.players[0]
+    context = dict(result.state.decision_stack[-1].context)
+
+    assert next_owner.spies_supply == 3
+    assert next_owner.spy_post_ids == ()
+    assert context["pending_gather_intelligence"] is False
+    assert tuple(event.kind for event in result.events) == (
+        "agent_placed",
+        "spy_recalled_for_infiltrate",
+    )
+    assert result.events[1].payload == (
+        ("player", 0),
+        ("post_id", post_id),
+        ("space_id", "arrakeen"),
     )
 
 
