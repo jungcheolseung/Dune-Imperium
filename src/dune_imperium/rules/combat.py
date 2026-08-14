@@ -12,8 +12,13 @@ from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
-from dune_imperium.core.player import Influence, PlayerState, Resources
+from dune_imperium.core.player import PlayerState, Resources
 from dune_imperium.core.state import GamePhase, GameState
+from dune_imperium.rules.influence import (
+    MAX_INFLUENCE,
+    gain_faction_influence,
+    influence_amount,
+)
 
 
 class RewardRank(IntEnum):
@@ -264,8 +269,26 @@ def resolve_combat_rewards(state: GameState) -> RuleResult:
             intrigue_cards=(*owner.intrigue_cards, *drawn),
             victory_points=owner.victory_points + reward.victory_points * amount,
         )
-        next_owner = _gain_fixed_influence(next_owner, reward, amount)
         players[assignment.player] = next_owner
+        if reward.influence_faction is not None:
+            influence_result = gain_faction_influence(
+                replace(
+                    state,
+                    players=tuple(players),
+                    intrigue_deck=intrigue_deck,
+                ),
+                assignment.player,
+                reward.influence_faction,
+                reward.faction_influence * amount,
+                event_prefix=(
+                    f"round:{state.round_number}:combat_reward:fixed_influence:"
+                    f"{assignment.player}:{assignment.rank.value}"
+                ),
+            )
+            players = list(influence_result.state.players)
+            intrigue_deck = influence_result.state.intrigue_deck
+            events.extend(influence_result.events)
+            next_owner = players[assignment.player]
         if reward.control_space_id is not None:
             players = list(
                 _apply_control(
@@ -744,7 +767,12 @@ def legal_combat_reward_influence_actions(
             arguments=(("faction", faction.value),),
         )
         for faction in Faction
-        if _influence_amount(influence, faction) < 3
+        if influence_amount(influence, faction) < MAX_INFLUENCE
+        and not (
+            faction is Faction.BENE_GESSERIT
+            and influence_amount(influence, faction) == 3
+            and not state.intrigue_deck
+        )
     )
 
 
@@ -773,7 +801,12 @@ def legal_distinct_combat_reward_influence_actions(
         )
         for index, faction in enumerate(Faction)
         if not chosen_mask & (1 << index)
-        and _influence_amount(influence, faction) < 3
+        and influence_amount(influence, faction) < MAX_INFLUENCE
+        and not (
+            faction is Faction.BENE_GESSERIT
+            and influence_amount(influence, faction) == 3
+            and not state.intrigue_deck
+        )
     )
 
 
@@ -797,12 +830,15 @@ def apply_distinct_combat_reward_influence(
     group = _context_int(context, "group")
     chosen_mask = _context_int(context, "chosen_mask")
     faction_index = tuple(Faction).index(faction)
-    owner = state.players[action.actor]
-    current = _influence_amount(owner.influence, faction)
-    next_owner = replace(
-        owner,
-        influence=_replace_influence(owner.influence, faction, current + 1),
-        victory_points=owner.victory_points + (1 if current == 1 else 0),
+    gained = gain_faction_influence(
+        state,
+        action.actor,
+        faction,
+        1,
+        event_prefix=(
+            f"round:{state.round_number}:combat_reward:distinct_influence:"
+            f"{choice_index}:{action.actor}:{faction.value}"
+        ),
     )
     remaining = state.decision_stack[:-1]
     if remaining and _frame_context_int(remaining[-1], "group") == group:
@@ -812,23 +848,11 @@ def apply_distinct_combat_reward_influence(
             remaining[-1], context=tuple(sorted(next_context.items()))
         ))
     next_state = replace(
-        state,
-        players=tuple(
-            next_owner if player.player_id == action.actor else player
-            for player in state.players
-        ),
+        gained.state,
         decision_stack=remaining,
         combat_rewards_resolved=not remaining,
     )
-    event = GameEvent(
-        event_id=(
-            f"round:{state.round_number}:combat_reward:distinct_influence:"
-            f"{choice_index}:{action.actor}:{faction.value}"
-        ),
-        kind="influence_gained",
-        payload=(("amount", 1), ("faction", faction.value), ("player", action.actor)),
-    )
-    return RuleResult(state=next_state, events=(event,))
+    return RuleResult(state=next_state, events=gained.events)
 
 
 def apply_combat_reward_influence(
@@ -845,32 +869,23 @@ def apply_combat_reward_influence(
     faction = Faction(faction_value)
     frame = state.decision_stack[-1]
     choice_index = _context_int(dict(frame.context), "choice_index")
-    owner = state.players[action.actor]
-    current = _influence_amount(owner.influence, faction)
-    next_owner = replace(
-        owner,
-        influence=_replace_influence(owner.influence, faction, current + 1),
-        victory_points=owner.victory_points + (1 if current == 1 else 0),
-    )
-    remaining = state.decision_stack[:-1]
-    next_state = replace(
+    gained = gain_faction_influence(
         state,
-        players=tuple(
-            next_owner if player.player_id == action.actor else player
-            for player in state.players
-        ),
-        decision_stack=remaining,
-        combat_rewards_resolved=not remaining,
-    )
-    event = GameEvent(
-        event_id=(
+        action.actor,
+        faction,
+        1,
+        event_prefix=(
             f"round:{state.round_number}:combat_reward:influence:"
             f"{choice_index}:{action.actor}:{faction.value}"
         ),
-        kind="influence_gained",
-        payload=(("amount", 1), ("faction", faction.value), ("player", action.actor)),
     )
-    return RuleResult(state=next_state, events=(event,))
+    remaining = state.decision_stack[:-1]
+    next_state = replace(
+        gained.state,
+        decision_stack=remaining,
+        combat_rewards_resolved=not remaining,
+    )
+    return RuleResult(state=next_state, events=gained.events)
 
 
 def finish_combat(state: GameState) -> RuleResult:
@@ -1048,10 +1063,11 @@ def _validate_supported_rewards(
         if reward.choose_distinct_influence:
             influence = state.players[assignment.player].influence
             available = sum(
-                _influence_amount(influence, faction) < 3 for faction in Faction
+                influence_amount(influence, faction) < MAX_INFLUENCE
+                for faction in Faction
             )
             capacity = sum(
-                max(0, 3 - _influence_amount(influence, faction))
+                max(0, MAX_INFLUENCE - influence_amount(influence, faction))
                 for faction in Faction
             )
             required = reward.choose_distinct_influence * assignment.multiplier
@@ -1059,39 +1075,6 @@ def _validate_supported_rewards(
                 raise NotImplementedError(
                     "Influence 4 bonuses and Alliances are not implemented"
                 )
-
-        if reward.influence_faction is not None:
-            current = _influence_amount(
-                state.players[assignment.player].influence,
-                reward.influence_faction,
-            )
-            if current + reward.faction_influence * assignment.multiplier > 3:
-                raise NotImplementedError(
-                    "Influence 4 bonuses and Alliances are not implemented"
-                )
-
-
-def _gain_fixed_influence(
-    player: PlayerState,
-    reward: ConflictReward,
-    multiplier: int,
-) -> PlayerState:
-    if reward.influence_faction is None:
-        return player
-    current = _influence_amount(player.influence, reward.influence_faction)
-    gained = reward.faction_influence * multiplier
-    return replace(
-        player,
-        influence=_replace_influence(
-            player.influence,
-            reward.influence_faction,
-            current + gained,
-        ),
-        victory_points=(
-            player.victory_points + (1 if current < 2 <= current + gained else 0)
-        ),
-    )
-
 
 def _apply_control(
     players: tuple[PlayerState, ...],
@@ -1125,7 +1108,7 @@ def _validate_influence_choices(
     for player in players:
         required = choice_owners.count(player.player_id)
         capacity = sum(
-            max(0, 3 - _influence_amount(player.influence, faction))
+            max(0, MAX_INFLUENCE - influence_amount(player.influence, faction))
             for faction in Faction
         )
         if required > capacity:
@@ -1264,32 +1247,6 @@ def _spy_placement_frame(
     )
 
 
-def _influence_amount(influence: Influence, faction: Faction) -> int:
-    match faction:
-        case Faction.EMPEROR:
-            return influence.emperor
-        case Faction.SPACING_GUILD:
-            return influence.spacing_guild
-        case Faction.BENE_GESSERIT:
-            return influence.bene_gesserit
-        case Faction.FREMEN:
-            return influence.fremen
-
-
-def _replace_influence(
-    influence: Influence,
-    faction: Faction,
-    amount: int,
-) -> Influence:
-    match faction:
-        case Faction.EMPEROR:
-            return replace(influence, emperor=amount)
-        case Faction.SPACING_GUILD:
-            return replace(influence, spacing_guild=amount)
-        case Faction.BENE_GESSERIT:
-            return replace(influence, bene_gesserit=amount)
-        case Faction.FREMEN:
-            return replace(influence, fremen=amount)
 
 
 def _positive_strength_groups(

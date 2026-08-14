@@ -345,6 +345,30 @@ def test_crysknife_queues_and_applies_influence_choice() -> None:
     assert resolved.combat_rewards_resolved is True
 
 
+def test_combat_influence_choice_resolves_track_bonus_and_alliance() -> None:
+    state = _reward_state("skirmish_crysknife")
+    players = list(state.players)
+    players[0] = replace(players[0], influence=Influence(bene_gesserit=3))
+    state = replace(
+        state,
+        players=tuple(players),
+        intrigue_deck=("track_bonus_intrigue", *state.intrigue_deck),
+    )
+    rewarded = resolve_combat_rewards(state).state
+    action = next(
+        candidate
+        for candidate in legal_combat_reward_influence_actions(rewarded, 0)
+        if dict(candidate.arguments)["faction"] == "bene_gesserit"
+    )
+
+    resolved = apply_combat_reward_influence(rewarded, action).state
+
+    assert resolved.players[0].influence.bene_gesserit == 4
+    assert resolved.players[0].intrigue_cards == ("intrigue:0",)
+    assert resolved.players[0].alliance_faction_ids == ("bene_gesserit",)
+    assert resolved.players[0].victory_points == 2
+
+
 def test_combat_rewards_require_completed_intrigue_and_only_resolve_once() -> None:
     state = _reward_state("skirmish_desert_mouse")
 
