@@ -137,12 +137,8 @@ def test_unimplemented_or_already_resolved_board_effect_is_rejected() -> None:
 def test_draw_and_recruit_board_effects_are_typed() -> None:
     state = _state("diplomacy")
 
-    assert board_effects_for(state, "fremkit", 0) == (
-        DrawImperiumCardsEffect(1),
-    )
-    assert board_effects_for(state, "assembly_hall", 0) == (
-        DrawIntrigueCardsEffect(1),
-    )
+    assert board_effects_for(state, "fremkit", 0) == (DrawImperiumCardsEffect(1),)
+    assert board_effects_for(state, "assembly_hall", 0) == (DrawIntrigueCardsEffect(1),)
     assert board_effects_for(state, "research_station", 0) == (
         RecruitTroopsEffect(2),
         DrawImperiumCardsEffect(2),
@@ -288,9 +284,9 @@ def test_maker_space_can_summon_worm_and_collect_bonus_after_detonation() -> Non
     assert resolved.players[0].sandworms_conflict == 1
     assert resolved.players[0].resources.spice == 3
     assert dict(resolved.maker_bonus_spice)["hagga_basin"] == 0
-    assert dict(resolved.decision_stack[-1].context)[
-        "pending_combat_deployment"
-    ] is True
+    assert (
+        dict(resolved.decision_stack[-1].context)["pending_combat_deployment"] is True
+    )
 
 
 def test_maker_spice_choice_collects_base_and_accumulated_spice() -> None:
@@ -329,3 +325,29 @@ def test_deep_desert_summons_two_sandworms() -> None:
     assert resolved.players[0].sandworms_conflict == 2
     assert resolved.players[0].resources.spice == 2
     assert dict(resolved.maker_bonus_spice)["deep_desert"] == 0
+
+
+def test_imperial_basin_collects_spice_without_a_sandworm_choice() -> None:
+    state = _state("dune_the_desert_planet")
+    owner = replace(state.players[0], maker_hooks=True)
+    state = replace(
+        state,
+        players=(owner, *state.players[1:]),
+        current_conflict_ids=("propaganda",),
+        maker_bonus_spice=(
+            ("deep_desert", 0),
+            ("hagga_basin", 0),
+            ("imperial_basin", 2),
+        ),
+    )
+    state = apply_agent_action(state, _action_to(state, "imperial_basin")).state
+
+    actions = legal_maker_space_actions(state, 0)
+    resolved = apply_maker_space_action(state, actions[0]).state
+
+    assert tuple(action.action_id for action in actions) == ("harvest_maker_spice",)
+    assert resolved.players[0].resources.spice == 3
+    assert dict(resolved.maker_bonus_spice)["imperial_basin"] == 0
+    assert (
+        dict(resolved.decision_stack[-1].context)["pending_combat_deployment"] is True
+    )

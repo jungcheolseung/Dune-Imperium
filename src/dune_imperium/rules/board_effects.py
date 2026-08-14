@@ -219,7 +219,7 @@ def legal_maker_space_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Return spice or currently legal sandworm choices for desert Makers."""
+    """Return spice and any legal sandworm choices for a Maker space."""
 
     if not 0 <= player < state.config.players:
         raise ValueError("player must identify a configured seat")
@@ -230,9 +230,10 @@ def legal_maker_space_actions(
     if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
         return ()
     space_id = context.get("space_id")
-    if (
-        context.get("pending_board_effect") is not True
-        or space_id not in ("deep_desert", "hagga_basin")
+    if context.get("pending_board_effect") is not True or space_id not in (
+        "deep_desert",
+        "hagga_basin",
+        "imperial_basin",
     ):
         return ()
     actions = [
@@ -244,7 +245,8 @@ def legal_maker_space_actions(
     ]
     owner = state.players[player]
     if (
-        owner.maker_hooks
+        space_id != "imperial_basin"
+        and owner.maker_hooks
         and state.current_conflict_ids
         and not current_conflict_is_shield_wall_protected(state)
     ):
@@ -267,7 +269,7 @@ def apply_maker_space_action(
     if action not in legal_maker_space_actions(state, action.actor):
         raise ValueError("action is not a legal Maker-space choice")
     space_id = dict(action.arguments).get("space_id")
-    if space_id not in ("deep_desert", "hagga_basin"):
+    if space_id not in ("deep_desert", "hagga_basin", "imperial_basin"):
         raise RuntimeError("Maker-space action has invalid space ID")
     bonus_by_space = dict(state.maker_bonus_spice)
     bonus_spice = bonus_by_space[space_id]
@@ -275,7 +277,11 @@ def apply_maker_space_action(
     base_spice = 0
     sandworms = 0
     if action.action_id == "harvest_maker_spice":
-        base_spice = 4 if space_id == "deep_desert" else 2
+        base_spice = {
+            "deep_desert": 4,
+            "hagga_basin": 2,
+            "imperial_basin": 1,
+        }[space_id]
         owner = replace(
             owner,
             resources=replace(
@@ -311,9 +317,7 @@ def apply_maker_space_action(
     )
     next_state = advance_after_effect(effect_state, context, players)
     event = GameEvent(
-        event_id=(
-            f"round:{state.round_number}:player:{action.actor}:board:{space_id}"
-        ),
+        event_id=(f"round:{state.round_number}:player:{action.actor}:board:{space_id}"),
         kind="board_effect_resolved",
         payload=(
             ("action_id", action.action_id),

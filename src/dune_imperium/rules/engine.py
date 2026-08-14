@@ -135,9 +135,7 @@ class UprisingRulesEngine(RulesEngine):
         actions.extend(legal_combat_reward_trash_actions(state, player))
         actions.extend(legal_combat_reward_spy_actions(state, player))
         actions.extend(legal_combat_reward_influence_actions(state, player))
-        actions.extend(
-            legal_distinct_combat_reward_influence_actions(state, player)
-        )
+        actions.extend(legal_distinct_combat_reward_influence_actions(state, player))
         return tuple(actions)
 
     def _apply_legal(self, state: GameState, action: DomainAction) -> RuleResult:
@@ -217,10 +215,11 @@ class UprisingRulesEngine(RulesEngine):
             actions.append(
                 DomainAction(action_id="resolve_agent_card_effect", actor=player)
             )
-        if (
-            context["pending_board_effect"] is True
-            and context["space_id"]
-            not in ("sietch_tabr", "deep_desert", "hagga_basin")
+        if context["pending_board_effect"] is True and context["space_id"] not in (
+            "sietch_tabr",
+            "deep_desert",
+            "hagga_basin",
+            "imperial_basin",
         ):
             actions.append(DomainAction(action_id="resolve_board_effect", actor=player))
         if context["pending_faction_influence"] is True:
@@ -239,7 +238,12 @@ def _agent_action_is_supported(state: GameState, action: DomainAction) -> bool:
     card = starting_card_for_instance(card_id)
     if card.agent_effect not in (None, StartingCardAgentEffect.TRASH_SELF):
         return False
-    if space_id in ("sietch_tabr", "deep_desert", "hagga_basin"):
+    if space_id in (
+        "sietch_tabr",
+        "deep_desert",
+        "hagga_basin",
+        "imperial_basin",
+    ):
         return True
     space = BOARD_SPACES_BY_ID[space_id]
     requested_option = arguments.get("cost_option")
