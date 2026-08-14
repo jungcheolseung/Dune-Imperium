@@ -27,9 +27,11 @@ from dune_imperium.rules.agent_effects import (
 )
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 from dune_imperium.rules.board_effects import (
+    apply_espionage_action,
     apply_maker_space_action,
     apply_sietch_tabr_action,
     board_effects_for,
+    legal_espionage_actions,
     legal_maker_space_actions,
     legal_sietch_tabr_actions,
     resolve_board_effect,
@@ -112,6 +114,7 @@ class UprisingRulesEngine(RulesEngine):
         else:
             return (
                 *self._agent_effect_actions(state, player),
+                *legal_espionage_actions(state, player),
                 *legal_sietch_tabr_actions(state, player),
                 *legal_maker_space_actions(state, player),
                 *legal_combat_deployments(state, player),
@@ -150,6 +153,9 @@ class UprisingRulesEngine(RulesEngine):
             "resolve_agent_card_effect": _apply_agent_card_effect,
             "resolve_board_effect": _apply_board_effect,
             "resolve_faction_influence": _apply_faction_influence,
+            "recall_spy_for_espionage": apply_espionage_action,
+            "resolve_espionage_place_spy": apply_espionage_action,
+            "resolve_espionage_without_spy": apply_espionage_action,
             "take_sietch_tabr_supplies": apply_sietch_tabr_action,
             "take_sietch_tabr_water": apply_sietch_tabr_action,
             "take_sietch_tabr_water_and_destroy_wall": apply_sietch_tabr_action,
@@ -221,6 +227,7 @@ class UprisingRulesEngine(RulesEngine):
                 DomainAction(action_id="resolve_agent_card_effect", actor=player)
             )
         if context["pending_board_effect"] is True and context["space_id"] not in (
+            "espionage",
             "sietch_tabr",
             "deep_desert",
             "hagga_basin",
@@ -244,6 +251,7 @@ def _agent_action_is_supported(state: GameState, action: DomainAction) -> bool:
     if card.agent_effect not in (None, StartingCardAgentEffect.TRASH_SELF):
         return False
     if space_id in (
+        "espionage",
         "sietch_tabr",
         "deep_desert",
         "hagga_basin",

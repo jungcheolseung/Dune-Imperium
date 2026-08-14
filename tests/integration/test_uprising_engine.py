@@ -1,9 +1,12 @@
 """Integration coverage for the concrete Uprising rules dispatcher."""
 
+from dataclasses import replace
+
 from dune_imperium import RulesetConfig
 from dune_imperium.core import (
     GamePhase,
     PlayerDecision,
+    Resources,
     canonical_state_hash,
     replay_game,
 )
@@ -72,6 +75,54 @@ def test_assembly_hall_is_playable_and_draws_intrigue() -> None:
     state = engine.apply(state, resolve[0]).state
 
     assert intrigue_card in state.players[decision.owner].intrigue_cards
+
+
+def test_espionage_uses_explicit_spy_choices_instead_of_generic_resolution() -> None:
+    engine = UprisingRulesEngine()
+    state = engine.reset(RulesetConfig(), seed=2)
+    decision = engine.current_decision(state)
+    assert isinstance(decision, PlayerDecision)
+    player = decision.owner
+    owner = state.players[player]
+    cards = (*owner.deck, *owner.hand, *owner.discard_pile)
+    diplomacy = next(card for card in cards if ":diplomacy:" in card)
+    drawn = next(card for card in cards if card != diplomacy)
+    owner = replace(
+        owner,
+        resources=Resources(spice=1),
+        deck=(drawn,),
+        hand=(diplomacy,),
+        discard_pile=(),
+    )
+    state = replace(
+        state,
+        players=tuple(
+            owner if candidate.player_id == player else candidate
+            for candidate in state.players
+        ),
+    )
+    espionage = next(
+        action
+        for action in engine.legal_actions(state, player)
+        if dict(action.arguments).get("space_id") == "espionage"
+    )
+
+    state = engine.apply(state, espionage).state
+    choices = engine.legal_actions(state, player)
+
+    assert "resolve_board_effect" not in {action.action_id for action in choices}
+    assert "resolve_espionage_without_spy" in {
+        action.action_id for action in choices
+    }
+    placement = next(
+        action
+        for action in choices
+        if action.action_id == "resolve_espionage_place_spy"
+    )
+    state = engine.apply(state, placement).state
+
+    assert drawn in state.players[player].hand
+    assert state.players[player].spies_supply == 2
 
 
 def test_four_seeded_random_players_finish_one_round() -> None:
