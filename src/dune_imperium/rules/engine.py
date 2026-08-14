@@ -37,6 +37,10 @@ from dune_imperium.rules.board_effects import (
     legal_sietch_tabr_actions,
     resolve_board_effect,
 )
+from dune_imperium.rules.card_draw import (
+    apply_personal_draw_reshuffle,
+    personal_draw_is_pending,
+)
 from dune_imperium.rules.combat import (
     apply_combat_intrigue_pass,
     apply_combat_reward_influence,
@@ -119,7 +123,12 @@ class UprisingRulesEngine(RulesEngine):
         state: GameState,
         outcome: ChanceOutcome,
     ) -> RuleResult:
-        return _advance_automatic(apply_round_start_reshuffle(state, outcome))
+        result = (
+            apply_personal_draw_reshuffle(state, outcome)
+            if personal_draw_is_pending(state)
+            else apply_round_start_reshuffle(state, outcome)
+        )
+        return _advance_automatic(result)
 
     def legal_actions(
         self,

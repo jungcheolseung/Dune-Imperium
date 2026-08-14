@@ -8,6 +8,7 @@ from dune_imperium.core.decisions import PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GameState
+from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.effects import (
     advance_after_effect,
     current_agent_effect_context,
@@ -40,10 +41,8 @@ def legal_gather_intelligence_actions(
         for post in OBSERVATION_POSTS
         if space_id in post.connected_space_ids
     }
-    actions = [
-        DomainAction(action_id="decline_gather_intelligence", actor=player)
-    ]
-    if owner.deck:
+    actions = [DomainAction(action_id="decline_gather_intelligence", actor=player)]
+    if owner.deck or owner.discard_pile:
         actions.extend(
             DomainAction(
                 action_id="gather_intelligence",
@@ -77,8 +76,6 @@ def apply_gather_intelligence_action(
             spy_post_ids=tuple(
                 candidate for candidate in owner.spy_post_ids if candidate != post_id
             ),
-            deck=owner.deck[1:],
-            hand=(*owner.hand, owner.deck[0]),
         )
         events.append(
             GameEvent(
@@ -96,5 +93,15 @@ def apply_gather_intelligence_action(
         owner if candidate.player_id == action.actor else candidate
         for candidate in state.players
     )
-    next_state = advance_after_effect(state, context, players)
-    return RuleResult(state=next_state, events=tuple(events))
+    continued = advance_after_effect(state, context, players)
+    if action.action_id == "gather_intelligence":
+        draw = draw_or_request_personal_cards(
+            continued,
+            action.actor,
+            1,
+            source=(
+                f"round:{state.round_number}:player:{action.actor}:gather_intelligence"
+            ),
+        )
+        return RuleResult(state=draw.state, events=(*events, *draw.events))
+    return RuleResult(state=continued, events=tuple(events))

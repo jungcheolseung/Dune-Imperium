@@ -7,6 +7,8 @@ import pytest
 from dune_imperium import RulesetConfig
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.core import (
+    ChanceDecision,
+    ChanceOutcome,
     DecisionFrame,
     DomainAction,
     GamePhase,
@@ -17,6 +19,7 @@ from dune_imperium.core import (
     Resources,
     canonical_state_hash,
 )
+from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 from dune_imperium.rules.board_effects import (
     apply_espionage_action,
@@ -248,6 +251,29 @@ def test_espionage_can_decline_spy_and_still_draw_card() -> None:
     assert drawn in resolved.players[0].hand
     assert resolved.players[0].spies_supply == 3
     assert resolved.players[0].spy_post_ids == ()
+
+
+def test_espionage_reshuffles_discard_before_drawing() -> None:
+    state, drawn = _espionage_state()
+    owner = replace(state.players[0], deck=(), discard_pile=(drawn,))
+    state = replace(state, players=(owner, *state.players[1:]))
+    engine = UprisingRulesEngine()
+    decline = next(
+        action
+        for action in engine.legal_actions(state, 0)
+        if action.action_id == "resolve_espionage_without_spy"
+    )
+
+    pending = engine.apply(state, decline).state
+    decision = engine.current_decision(pending)
+    assert isinstance(decision, ChanceDecision)
+    finished = engine.apply(
+        pending,
+        ChanceOutcome(decision.decision_id, (drawn,)),
+    ).state
+
+    assert finished.players[0].hand == (drawn,)
+    assert finished.players[0].discard_pile == ()
 
 
 def test_espionage_recall_commits_to_a_replacement_when_supply_is_empty() -> None:

@@ -1,8 +1,12 @@
 """Tests for Spy decisions around Agent placement."""
 
+from dataclasses import replace
+
 from dune_imperium import RulesetConfig
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.core import (
+    ChanceDecision,
+    ChanceOutcome,
     DecisionFrame,
     GamePhase,
     GameState,
@@ -93,9 +97,10 @@ def test_gather_intelligence_can_be_declined_without_recalling_spy() -> None:
 
     assert result.state.players[0].spies_supply == 2
     assert result.state.players[0].spy_post_ids == (ASSEMBLY_POST,)
-    assert dict(result.state.decision_stack[-1].context)[
-        "pending_gather_intelligence"
-    ] is False
+    assert (
+        dict(result.state.decision_stack[-1].context)["pending_gather_intelligence"]
+        is False
+    )
     assert result.events == ()
 
 
@@ -127,3 +132,31 @@ def test_unconnected_spy_does_not_open_gather_intelligence_window() -> None:
     state = apply_agent_action(state, action).state
 
     assert legal_gather_intelligence_actions(state, 0) == ()
+
+
+def test_gather_intelligence_reshuffles_discard_before_drawing() -> None:
+    state, drawn = _placed_state()
+    owner = replace(
+        state.players[0],
+        deck=(),
+        discard_pile=(drawn,),
+    )
+    state = replace(state, players=(owner, *state.players[1:]))
+    engine = UprisingRulesEngine()
+    gather = next(
+        action
+        for action in engine.legal_actions(state, 0)
+        if action.action_id == "gather_intelligence"
+    )
+
+    pending = engine.apply(state, gather).state
+    decision = engine.current_decision(pending)
+    assert isinstance(decision, ChanceDecision)
+    finished = engine.apply(
+        pending,
+        ChanceOutcome(decision.decision_id, (drawn,)),
+    ).state
+
+    assert finished.players[0].hand == (drawn,)
+    assert finished.players[0].discard_pile == ()
+    assert finished.players[0].spies_supply == 3

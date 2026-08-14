@@ -9,6 +9,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState, Resources
 from dune_imperium.core.state import GameState
+from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.effects import (
     AutomaticEffect,
     DrawImperiumCardsEffect,
@@ -111,12 +112,13 @@ def resolve_board_effect(state: GameState) -> RuleResult:
     else:
         effects = board_effects_for(state, space_id, cost_option)
     intrigue_deck = state.intrigue_deck
+    personal_draw_count = 0
     for effect in effects:
         match effect:
             case GainResourcesEffect():
                 next_owner = _gain_resources(next_owner, effect)
             case DrawImperiumCardsEffect():
-                next_owner = _draw_imperium_cards(next_owner, effect.count)
+                personal_draw_count += effect.count
             case DrawIntrigueCardsEffect():
                 next_owner, intrigue_deck = _draw_intrigue_cards(
                     next_owner,
@@ -138,12 +140,22 @@ def resolve_board_effect(state: GameState) -> RuleResult:
     context["pending_board_effect"] = False
     effect_state = replace(state, intrigue_deck=intrigue_deck)
     next_state = advance_after_effect(effect_state, context, players)
+    draw_events: tuple[GameEvent, ...] = ()
+    if personal_draw_count:
+        draw = draw_or_request_personal_cards(
+            next_state,
+            player,
+            personal_draw_count,
+            source=f"round:{state.round_number}:player:{player}:board:{space_id}",
+        )
+        next_state = draw.state
+        draw_events = draw.events
     event = GameEvent(
         event_id=f"round:{state.round_number}:player:{player}:board:{space_id}",
         kind="board_effect_resolved",
         payload=(("player", player), ("space_id", space_id)),
     )
-    return RuleResult(state=next_state, events=(event,))
+    return RuleResult(state=next_state, events=(*draw_events, event))
 
 
 def legal_espionage_actions(
@@ -239,7 +251,7 @@ def apply_espionage_action(
         )
         return RuleResult(state=next_state, events=(event,))
 
-    next_owner = _draw_imperium_cards(owner, 1)
+    next_owner = owner
     events: list[GameEvent] = []
     if action.action_id == "resolve_espionage_place_spy":
         if not isinstance(post_id, str):
@@ -270,6 +282,14 @@ def apply_espionage_action(
     )
     context["pending_board_effect"] = False
     next_state = advance_after_effect(state, context, players)
+    draw = draw_or_request_personal_cards(
+        next_state,
+        action.actor,
+        1,
+        source=(f"round:{state.round_number}:player:{action.actor}:board:espionage"),
+    )
+    next_state = draw.state
+    events.extend(draw.events)
     events.append(
         GameEvent(
             event_id=(
@@ -510,16 +530,6 @@ def _gain_resources(
             spice=player.resources.spice + effect.spice,
             water=player.resources.water + effect.water,
         ),
-    )
-
-
-def _draw_imperium_cards(player: PlayerState, count: int) -> PlayerState:
-    if len(player.deck) < count:
-        raise NotImplementedError("personal discard reshuffle is not implemented")
-    return replace(
-        player,
-        deck=player.deck[count:],
-        hand=(*player.hand, *player.deck[:count]),
     )
 
 
