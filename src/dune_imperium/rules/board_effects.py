@@ -2,6 +2,8 @@
 
 from dataclasses import replace
 
+from dune_imperium.core.actions import DomainAction
+from dune_imperium.core.decisions import PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState, Resources
@@ -15,6 +17,7 @@ from dune_imperium.rules.effects import (
     advance_after_effect,
     current_agent_effect_context,
 )
+from dune_imperium.rules.shield_wall import destroy_shield_wall
 
 
 def board_effects_for(
@@ -110,6 +113,103 @@ def resolve_board_effect(state: GameState) -> RuleResult:
         payload=(("player", player), ("space_id", space_id)),
     )
     return RuleResult(state=next_state, events=(event,))
+
+
+def legal_sietch_tabr_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return Sietch Tabr's supplies or water/detonation choices."""
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return ()
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    if (
+        context.get("pending_board_effect") is not True
+        or context.get("space_id") != "sietch_tabr"
+    ):
+        return ()
+    actions = [
+        DomainAction(action_id="take_sietch_tabr_supplies", actor=player),
+        DomainAction(action_id="take_sietch_tabr_water", actor=player),
+    ]
+    if state.shield_wall_present:
+        actions.append(
+            DomainAction(
+                action_id="take_sietch_tabr_water_and_destroy_wall",
+                actor=player,
+            )
+        )
+    return tuple(actions)
+
+
+def apply_sietch_tabr_action(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Resolve one explicit Sietch Tabr reward branch."""
+
+    if action not in legal_sietch_tabr_actions(state, action.actor):
+        raise ValueError("action is not a legal Sietch Tabr choice")
+    _, context = current_agent_effect_context(state)
+    owner = state.players[action.actor]
+    recruited = 0
+    if action.action_id == "take_sietch_tabr_supplies":
+        owner, recruited = _recruit_troops(owner, 1)
+        owner = replace(
+            owner,
+            resources=replace(owner.resources, water=owner.resources.water + 1),
+            maker_hooks=True,
+        )
+        previous = context.get("troops_recruited")
+        if isinstance(previous, bool) or not isinstance(previous, int):
+            raise RuntimeError("Agent-turn effect frame has invalid recruit count")
+        context["troops_recruited"] = previous + recruited
+    else:
+        owner = replace(
+            owner,
+            resources=replace(owner.resources, water=owner.resources.water + 1),
+        )
+
+    players = tuple(
+        owner if candidate.player_id == action.actor else candidate
+        for candidate in state.players
+    )
+    effect_state = replace(state, players=players)
+    events: list[GameEvent] = []
+    if action.action_id == "take_sietch_tabr_water_and_destroy_wall":
+        destruction = destroy_shield_wall(
+            effect_state,
+            event_id=(
+                f"round:{state.round_number}:player:{action.actor}:shield_wall:"
+                "sietch_tabr"
+            ),
+            source="sietch_tabr",
+        )
+        effect_state = destruction.state
+        events.extend(destruction.events)
+
+    context["pending_board_effect"] = False
+    next_state = advance_after_effect(effect_state, context, effect_state.players)
+    events.append(
+        GameEvent(
+            event_id=(
+                f"round:{state.round_number}:player:{action.actor}:board:sietch_tabr"
+            ),
+            kind="board_effect_resolved",
+            payload=(
+                ("action_id", action.action_id),
+                ("player", action.actor),
+                ("space_id", "sietch_tabr"),
+            ),
+        )
+    )
+    return RuleResult(state=next_state, events=tuple(events))
 
 
 def _gain_resources(

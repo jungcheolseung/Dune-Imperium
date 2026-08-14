@@ -11,13 +11,19 @@ from dune_imperium.core import (
     DomainAction,
     GamePhase,
     GameState,
+    Influence,
     PlayerDecision,
     PlayerState,
     Resources,
     canonical_state_hash,
 )
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
-from dune_imperium.rules.board_effects import board_effects_for, resolve_board_effect
+from dune_imperium.rules.board_effects import (
+    apply_sietch_tabr_action,
+    board_effects_for,
+    legal_sietch_tabr_actions,
+    resolve_board_effect,
+)
 from dune_imperium.rules.effects import (
     DrawImperiumCardsEffect,
     DrawIntrigueCardsEffect,
@@ -180,3 +186,64 @@ def test_gather_support_recruits_available_troops_and_finishes_turn() -> None:
     assert owner.troops_garrison == 5
     assert isinstance(decision, PlayerDecision)
     assert decision.owner == 1
+
+
+def _sietch_tabr_state() -> GameState:
+    state = _state("signet_ring")
+    owner = replace(state.players[0], influence=Influence(fremen=2))
+    state = replace(state, players=(owner, *state.players[1:]))
+    return apply_agent_action(state, _action_to(state, "sietch_tabr")).state
+
+
+def test_sietch_tabr_supplies_grant_hooks_troop_and_water() -> None:
+    state = _sietch_tabr_state()
+    action = next(
+        candidate
+        for candidate in legal_sietch_tabr_actions(state, 0)
+        if candidate.action_id == "take_sietch_tabr_supplies"
+    )
+
+    resolved = apply_sietch_tabr_action(state, action).state
+    owner = resolved.players[0]
+    context = dict(resolved.decision_stack[-1].context)
+
+    assert owner.maker_hooks is True
+    assert owner.resources.water == 2
+    assert owner.troops_supply == 8
+    assert owner.troops_garrison == 4
+    assert context["troops_recruited"] == 1
+    assert context["pending_board_effect"] is False
+    assert context["pending_combat_deployment"] is True
+
+
+def test_sietch_tabr_water_can_destroy_shield_wall() -> None:
+    state = _sietch_tabr_state()
+    actions = legal_sietch_tabr_actions(state, 0)
+
+    assert {action.action_id for action in actions} == {
+        "take_sietch_tabr_supplies",
+        "take_sietch_tabr_water",
+        "take_sietch_tabr_water_and_destroy_wall",
+    }
+    detonate = next(
+        action
+        for action in actions
+        if action.action_id == "take_sietch_tabr_water_and_destroy_wall"
+    )
+    result = apply_sietch_tabr_action(state, detonate)
+
+    assert result.state.players[0].resources.water == 2
+    assert result.state.shield_wall_present is False
+    assert tuple(event.kind for event in result.events) == (
+        "shield_wall_destroyed",
+        "board_effect_resolved",
+    )
+
+
+def test_sietch_tabr_omits_detonation_after_wall_is_destroyed() -> None:
+    state = replace(_sietch_tabr_state(), shield_wall_present=False)
+
+    assert {action.action_id for action in legal_sietch_tabr_actions(state, 0)} == {
+        "take_sietch_tabr_supplies",
+        "take_sietch_tabr_water",
+    }
