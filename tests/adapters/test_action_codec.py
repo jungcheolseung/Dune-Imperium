@@ -11,10 +11,10 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     first = ActionCodec(RulesetConfig())
     second = ActionCodec(RulesetConfig())
 
-    assert ACTION_CODEC_VERSION == 5
+    assert ACTION_CODEC_VERSION == 6
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
-    assert first.size == 534
+    assert first.size == 554
 
 
 def test_starting_card_actions_share_an_index_between_players() -> None:
@@ -56,6 +56,20 @@ def test_infiltrate_agent_action_round_trips_with_selected_spy() -> None:
     )
 
     assert codec.decode(codec.encode(action), actor=2) == action
+
+
+def test_endgame_wild_match_round_trips_with_both_card_ids() -> None:
+    codec = ActionCodec(RulesetConfig())
+    action = DomainAction(
+        action_id="match_endgame_wild_icon",
+        actor=1,
+        arguments=(
+            ("matching_card_id", "objective_crysknife_1"),
+            ("wild_card_id", "propaganda"),
+        ),
+    )
+
+    assert codec.decode(codec.encode(action), actor=1) == action
 
 
 def test_every_action_in_seeded_round_round_trips_through_codec() -> None:

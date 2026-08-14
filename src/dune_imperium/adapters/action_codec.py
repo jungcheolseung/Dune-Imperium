@@ -9,13 +9,15 @@ from dune_imperium.content.uprising.board import (
     OBSERVATION_POSTS,
     Faction,
 )
+from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
+from dune_imperium.content.uprising.objectives import objectives_for_players
 from dune_imperium.content.uprising.reserve import RESERVE_STACKS
 from dune_imperium.content.uprising.starting_cards import STARTING_DECK
-from dune_imperium.content.uprising.types import AgentIcon
+from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
 from dune_imperium.core.actions import ActionValue, DomainAction
 
-ACTION_CODEC_VERSION = 5
+ACTION_CODEC_VERSION = 6
 MAX_DEPLOYMENT_COUNT = 12
 
 
@@ -102,6 +104,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "decline_combat_reward",
             "decline_combat_reward_trash",
             "decline_control_defense",
+            "decline_endgame_wild_match",
             "decline_gather_intelligence",
             "deploy_control_defense",
             "finish_reveal",
@@ -118,6 +121,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         )
     ]
     templates.extend(_agent_turn_templates())
+    templates.extend(_endgame_wild_templates(config))
     templates.extend(
         ActionTemplate(
             action_id="deploy_troops",
@@ -248,6 +252,35 @@ def _agent_turn_templates() -> tuple[ActionTemplate, ...]:
                             )
                         )
     return tuple(templates)
+
+
+def _endgame_wild_templates(
+    config: RulesetConfig,
+) -> tuple[ActionTemplate, ...]:
+    battle_cards = (
+        *((conflict.card.card_id, conflict.battle_icon) for conflict in CONFLICTS),
+        *(
+            (objective.objective_id, objective.battle_icon)
+            for objective in objectives_for_players(config.players)
+        ),
+    )
+    wild_card_ids = tuple(
+        card_id for card_id, icon in battle_cards if icon is BattleIcon.WILD
+    )
+    matching_card_ids = tuple(
+        card_id for card_id, icon in battle_cards if icon not in (None, BattleIcon.WILD)
+    )
+    return tuple(
+        ActionTemplate(
+            action_id="match_endgame_wild_icon",
+            arguments=(
+                ("matching_card_id", matching_card_id),
+                ("wild_card_id", wild_card_id),
+            ),
+        )
+        for wild_card_id in wild_card_ids
+        for matching_card_id in matching_card_ids
+    )
 
 
 def _trash_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:

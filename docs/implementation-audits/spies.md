@@ -29,5 +29,5 @@ Espionage added one decline action and 13 each of recall and placement actions.
 Gather Intelligence added one decline action and 13 post-specific recall
 actions in codec version 4. Infiltrate adds every valid starting-card,
 board-space, and connected-post combination, changing the fixed action catalog
-from 469 entries to 534 entries in version 5. New replay records default to
-codec version 5.
+from 469 entries to 534 entries in version 5. Endgame actions later advance the
+current catalog and replay default to codec version 6.
