@@ -5,6 +5,8 @@ from dataclasses import dataclass, replace
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
 from dune_imperium.content.uprising.objectives import OBJECTIVES_BY_ID
 from dune_imperium.content.uprising.types import BattleIcon
+from dune_imperium.core.actions import DomainAction
+from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
@@ -23,6 +25,15 @@ class FinalStanding:
     water: int
     troops_garrison: int
     reveal_position: int
+
+
+@dataclass(frozen=True, slots=True)
+class EndgameWildMatch:
+    """One currently possible wild-to-printed battle icon match."""
+
+    player: int
+    wild_card_id: str
+    matching_card_id: str
 
 
 def final_standings(state: GameState) -> tuple[FinalStanding, ...]:
@@ -70,10 +81,122 @@ def final_standings(state: GameState) -> tuple[FinalStanding, ...]:
 def can_finish_endgame_automatically(state: GameState) -> bool:
     """Return whether no unimplemented Endgame choice can affect scoring."""
 
-    return not any(
-        player.intrigue_cards or _has_wild_battle_match(player)
+    return not any(player.intrigue_cards for player in state.players) and not (
+        _endgame_wild_matches(state)
+    )
+
+
+def begin_endgame_wild_choice(state: GameState) -> RuleResult:
+    """Open an optional wild-icon match when exactly one pair is possible."""
+
+    if state.phase is not GamePhase.ENDGAME:
+        raise ValueError("wild battle icons resolve only during Endgame")
+    if state.decision_stack:
+        raise ValueError("wild battle choice requires no pending decision")
+    if any(player.intrigue_cards for player in state.players):
+        raise ValueError("Endgame Intrigue ordering is unresolved")
+    matches = _endgame_wild_matches(state)
+    if len(matches) != 1:
+        raise ValueError("Endgame wild choice requires exactly one possible pair")
+
+    match = matches[0]
+    frame = DecisionFrame(
+        frame_id=f"round:{state.round_number}:endgame_wild:{match.player}",
+        decision=PlayerDecision(
+            owner=match.player,
+            prompt="Match the wild battle icon for 1 Victory Point?",
+        ),
+        context=(
+            ("matching_card_id", match.matching_card_id),
+            ("turn_owner", match.player),
+            ("wild_card_id", match.wild_card_id),
+        ),
+    )
+    return RuleResult(state=state.push_decision(frame))
+
+
+def legal_endgame_wild_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return decline and match actions for an open wild-icon choice."""
+
+    if not 0 <= player < state.config.players or not state.decision_stack:
+        return ()
+    frame = state.decision_stack[-1]
+    if (
+        not frame.frame_id.startswith(f"round:{state.round_number}:endgame_wild:")
+        or not isinstance(frame.decision, PlayerDecision)
+        or frame.decision.owner != player
+    ):
+        return ()
+    context = dict(frame.context)
+    wild_card_id = context.get("wild_card_id")
+    matching_card_id = context.get("matching_card_id")
+    if not isinstance(wild_card_id, str) or not isinstance(matching_card_id, str):
+        raise RuntimeError("Endgame wild frame has invalid card IDs")
+    return (
+        DomainAction(action_id="decline_endgame_wild_match", actor=player),
+        DomainAction(
+            action_id="match_endgame_wild_icon",
+            actor=player,
+            arguments=(
+                ("matching_card_id", matching_card_id),
+                ("wild_card_id", wild_card_id),
+            ),
+        ),
+    )
+
+
+def apply_endgame_wild_action(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Decline or resolve the currently unambiguous wild-icon match."""
+
+    if action not in legal_endgame_wild_actions(state, action.actor):
+        raise ValueError("action is not a legal Endgame wild choice")
+    context = dict(state.decision_stack[-1].context)
+    wild_card_id = str(context["wild_card_id"])
+    matching_card_id = str(context["matching_card_id"])
+    matched = action.action_id == "match_endgame_wild_icon"
+    owner = state.players[action.actor]
+    next_owner = replace(
+        owner,
+        victory_points=owner.victory_points + int(matched),
+        face_down_battle_card_ids=(
+            (*owner.face_down_battle_card_ids, wild_card_id, matching_card_id)
+            if matched
+            else owner.face_down_battle_card_ids
+        ),
+    )
+    players = tuple(
+        next_owner if player.player_id == action.actor else player
         for player in state.players
     )
+    declined = (
+        state.declined_endgame_wild_card_ids
+        if matched
+        else (*state.declined_endgame_wild_card_ids, wild_card_id)
+    )
+    next_state = replace(
+        state.pop_decision(),
+        players=players,
+        declined_endgame_wild_card_ids=declined,
+    )
+    event = GameEvent(
+        event_id=(
+            f"round:{state.round_number}:endgame_wild:{action.actor}:"
+            f"{'matched' if matched else 'declined'}"
+        ),
+        kind=("endgame_wild_matched" if matched else "endgame_wild_declined"),
+        payload=(
+            ("matching_card_id", matching_card_id),
+            ("player", action.actor),
+            ("wild_card_id", wild_card_id),
+        ),
+    )
+    return RuleResult(state=next_state, events=(event,))
 
 
 def finish_endgame_without_pending_effects(state: GameState) -> RuleResult:
@@ -106,19 +229,35 @@ def finish_endgame_without_pending_effects(state: GameState) -> RuleResult:
     return RuleResult(state=next_state, events=(event,))
 
 
-def _has_wild_battle_match(player: PlayerState) -> bool:
-    face_up_ids = (set(player.objective_ids) | set(player.won_conflict_ids)) - set(
-        player.face_down_battle_card_ids
-    )
-    icons = {
-        OBJECTIVES_BY_ID[card_id].battle_icon
-        if card_id in OBJECTIVES_BY_ID
-        else CONFLICTS_BY_ID[card_id].battle_icon
-        for card_id in face_up_ids
-    }
-    return BattleIcon.WILD in icons and any(
-        icon not in (None, BattleIcon.WILD) for icon in icons
-    )
+def _endgame_wild_matches(state: GameState) -> tuple[EndgameWildMatch, ...]:
+    matches: list[EndgameWildMatch] = []
+    declined = set(state.declined_endgame_wild_card_ids)
+    for player in state.players:
+        face_up_ids = (set(player.objective_ids) | set(player.won_conflict_ids)) - set(
+            player.face_down_battle_card_ids
+        )
+        wild_ids = tuple(
+            card_id
+            for card_id in face_up_ids
+            if card_id not in declined and _battle_icon(card_id) is BattleIcon.WILD
+        )
+        matching_ids = tuple(
+            card_id
+            for card_id in face_up_ids
+            if _battle_icon(card_id) not in (None, BattleIcon.WILD)
+        )
+        matches.extend(
+            EndgameWildMatch(player.player_id, wild_card_id, matching_card_id)
+            for wild_card_id in wild_ids
+            for matching_card_id in matching_ids
+        )
+    return tuple(matches)
+
+
+def _battle_icon(card_id: str) -> BattleIcon | None:
+    if card_id in OBJECTIVES_BY_ID:
+        return OBJECTIVES_BY_ID[card_id].battle_icon
+    return CONFLICTS_BY_ID[card_id].battle_icon
 
 
 def _ranking_key(player: PlayerState, reveal_position: int) -> tuple[int, ...]:

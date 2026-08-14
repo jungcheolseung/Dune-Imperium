@@ -7,9 +7,12 @@ import pytest
 from dune_imperium import RulesetConfig
 from dune_imperium.core import GamePhase, GameState, PlayerState, Resources
 from dune_imperium.rules.endgame import (
+    apply_endgame_wild_action,
+    begin_endgame_wild_choice,
     can_finish_endgame_automatically,
     final_standings,
     finish_endgame_without_pending_effects,
+    legal_endgame_wild_actions,
 )
 
 
@@ -142,3 +145,79 @@ def test_face_up_wild_battle_match_blocks_automatic_finish() -> None:
     )
     matched_state = replace(state, players=(matched, *state.players[1:]))
     assert can_finish_endgame_automatically(matched_state) is True
+
+
+def test_unambiguous_wild_match_opens_optional_owner_choice() -> None:
+    state = _state()
+    holder = replace(
+        state.players[2],
+        objective_ids=("objective_crysknife_1",),
+        won_conflict_ids=("propaganda",),
+    )
+    state = replace(state, players=(*state.players[:2], holder, state.players[3]))
+
+    opened = begin_endgame_wild_choice(state).state
+    actions = legal_endgame_wild_actions(opened, 2)
+
+    assert tuple(action.action_id for action in actions) == (
+        "decline_endgame_wild_match",
+        "match_endgame_wild_icon",
+    )
+    assert legal_endgame_wild_actions(opened, 1) == ()
+
+
+def test_matching_wild_icons_turns_both_cards_face_down_and_gains_vp() -> None:
+    state = _state()
+    holder = replace(
+        state.players[0],
+        objective_ids=("objective_crysknife_1",),
+        won_conflict_ids=("propaganda",),
+    )
+    state = replace(state, players=(holder, *state.players[1:]))
+    state = begin_endgame_wild_choice(state).state
+    match = legal_endgame_wild_actions(state, 0)[1]
+
+    result = apply_endgame_wild_action(state, match)
+    owner = result.state.players[0]
+
+    assert owner.victory_points == 2
+    assert owner.face_down_battle_card_ids == (
+        "propaganda",
+        "objective_crysknife_1",
+    )
+    assert result.state.decision_stack == ()
+    assert result.events[0].kind == "endgame_wild_matched"
+    assert can_finish_endgame_automatically(result.state) is True
+
+
+def test_declining_wild_match_records_choice_without_turning_cards() -> None:
+    state = _state()
+    holder = replace(
+        state.players[1],
+        objective_ids=("objective_crysknife_1",),
+        won_conflict_ids=("propaganda",),
+    )
+    state = replace(state, players=(state.players[0], holder, *state.players[2:]))
+    state = begin_endgame_wild_choice(state).state
+    decline = legal_endgame_wild_actions(state, 1)[0]
+
+    result = apply_endgame_wild_action(state, decline)
+
+    assert result.state.players[1].face_down_battle_card_ids == ()
+    assert result.state.declined_endgame_wild_card_ids == ("propaganda",)
+    assert result.events[0].kind == "endgame_wild_declined"
+    assert can_finish_endgame_automatically(result.state) is True
+
+
+def test_multiple_wild_match_candidates_remain_blocked_by_open_question() -> None:
+    state = _state()
+    holder = replace(
+        state.players[0],
+        objective_ids=("objective_crysknife_1", "objective_crysknife_2"),
+        won_conflict_ids=("propaganda",),
+    )
+    state = replace(state, players=(holder, *state.players[1:]))
+
+    with pytest.raises(ValueError, match="exactly one possible pair"):
+        begin_endgame_wild_choice(state)
+    assert can_finish_endgame_automatically(state) is False
