@@ -43,6 +43,8 @@ def board_effects_for(
             return (DrawImperiumCardsEffect(1),)
         case "assembly_hall", 0:
             return (DrawIntrigueCardsEffect(1),)
+        case "arrakeen", 0:
+            return (RecruitTroopsEffect(1), DrawImperiumCardsEffect(1))
         case "gather_support", 0:
             return (RecruitTroopsEffect(2),)
         case "gather_support", 1:

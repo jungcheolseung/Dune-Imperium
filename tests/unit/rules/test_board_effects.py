@@ -161,6 +161,24 @@ def test_fremkit_draws_a_card_and_leaves_combat_deployment_pending() -> None:
     assert context["pending_combat_deployment"] is True
 
 
+def test_arrakeen_recruits_a_troop_and_draws_a_card() -> None:
+    state = _state("reconnaissance")
+    drawn = _instance("dagger")
+    owner = replace(state.players[0], deck=(drawn,))
+    state = replace(state, players=(owner, *state.players[1:]))
+    placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
+
+    resolved = resolve_board_effect(placed).state
+    owner = resolved.players[0]
+    context = dict(resolved.decision_stack[-1].context)
+
+    assert owner.hand == (drawn,)
+    assert owner.troops_supply == 8
+    assert owner.troops_garrison == 4
+    assert context["troops_recruited"] == 1
+    assert context["pending_combat_deployment"] is True
+
+
 def test_assembly_hall_draws_hidden_intrigue() -> None:
     state = _state("dagger")
     state = replace(state, intrigue_deck=("intrigue:first", "intrigue:second"))
