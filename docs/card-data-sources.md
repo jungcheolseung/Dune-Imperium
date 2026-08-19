@@ -57,6 +57,20 @@ a generated runtime manifest. A card effect enters production only when it is
 represented by local typed content, covered by tests, and checked against card
 art or an applicable official clarification where DIU is ambiguous.
 
+### DIU-first Imperium batches
+
+The first shared-deck batch transcribes Maula Pistol and Truthtrance. Both use
+only effect shapes already supported by the local rules engine: static Agent
+icons, static Reveal Persuasion or strength, and a replayable personal-card
+draw. DIU supplies the initial Faction, icon, and effect transcription. The
+local manifest remains authoritative for stable IDs, acquisition costs,
+physical quantities, CHOAM inclusion, and catalog URLs.
+
+Cards with trash triggers, restricted Spy placement, choices, conditions, or
+new effect primitives are held for later batches even when their basic Reveal
+values would otherwise be simple. This prevents a partially implemented card
+from being exposed as fully playable.
+
 ### Recorded discrepancies
 
 - DIU models Trade Dispute's trash icon with `deck: ["hand", "played"]`.
