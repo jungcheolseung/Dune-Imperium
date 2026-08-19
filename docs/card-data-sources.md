@@ -102,6 +102,11 @@ Influence thresholds are evaluated independently, awarding Water, Spice, or
 both, while its dual affiliation, two Agent icons, and static Reveal Persuasion
 use the common personal-card schema.
 
+The ninth batch transcribes Southern Elders. Personal cards may now carry
+multiple automatic Reveal effects, each with an optional typed Faction Bond.
+The same shared bond check gates its Bene Gesserit Agent recruitment and Fremen
+Reveal Persuasion without conflating the two affiliations.
+
 Cards with restricted Spy placement, player choices, conditions that require
 untracked state, or unsupported effect primitives are held for later batches
 even when their basic Reveal values would otherwise be simple. This prevents a

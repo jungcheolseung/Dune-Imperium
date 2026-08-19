@@ -31,4 +31,4 @@ actions in codec version 4. Infiltrate adds every valid starting-card,
 board-space, and connected-post combination, changing the fixed action catalog
 from 469 entries to 534 entries in version 5. Endgame actions later advance the
 catalog to version 6; personal-card content later advances the current replay
-default to version 15 without changing these Spy templates.
+default to version 16 without changing these Spy templates.
