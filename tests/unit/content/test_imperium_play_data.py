@@ -90,6 +90,18 @@ def test_desert_survival_play_data_includes_its_optional_trash() -> None:
     assert card.reveal_strength == 1
 
 
+def test_smugglers_harvester_play_data_includes_its_maker_bonus() -> None:
+    card = IMPERIUM_CARDS_BY_ID["smuggler_s_harvester"]
+
+    assert card.play_data_complete is True
+    assert card.factions == (Faction.SPACING_GUILD,)
+    assert card.agent_icons == (AgentIcon.SPICE_TRADE,)
+    assert card.agent_effect is PersonalCardAgentEffect.GAIN_SPICE_IF_MAKER_SPACE
+    assert card.trash_effect is None
+    assert card.reveal_persuasion == 1
+    assert card.reveal_strength == 0
+
+
 def test_untranscribed_imperium_card_still_fails_explicitly() -> None:
     instance_id = _instance("double_agent")
 

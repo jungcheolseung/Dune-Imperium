@@ -160,6 +160,16 @@ def test_desert_survival_uses_its_spice_trade_icon() -> None:
     }
 
 
+def test_smugglers_harvester_uses_its_spice_trade_icon() -> None:
+    harvester = _imperium_instance("smuggler_s_harvester")
+
+    assert _space_ids(_state(harvester)) == {
+        "accept_contract",
+        "hagga_basin",
+        "imperial_basin",
+    }
+
+
 def test_spy_agent_icon_accesses_only_spaces_connected_to_an_owned_spy() -> None:
     owner = PlayerState(
         player_id=0,

@@ -157,7 +157,7 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
             ("cost_option", cost_option),
             (
                 "pending_agent_effect",
-                _agent_effect_is_available(card.agent_effect, owner),
+                _agent_effect_is_available(card.agent_effect, owner, space),
             ),
             ("pending_board_effect", True),
             ("pending_combat_deployment", space.combat),
@@ -219,6 +219,7 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
 def _agent_effect_is_available(
     effect: PersonalCardAgentEffect | None,
     owner: PlayerState,
+    space: BoardSpace,
 ) -> bool:
     if effect is None:
         return False
@@ -229,6 +230,8 @@ def _agent_effect_is_available(
         is PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO
     ):
         return owner.influence.bene_gesserit >= 2
+    if effect is PersonalCardAgentEffect.GAIN_SPICE_IF_MAKER_SPACE:
+        return space.maker
     return True
 
 

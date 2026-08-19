@@ -211,6 +211,15 @@ def test_desert_survival_contributes_reveal_values() -> None:
     assert context["strength"] == 3
 
 
+def test_smugglers_harvester_contributes_reveal_persuasion() -> None:
+    harvester = _imperium_instance("smuggler_s_harvester")
+    state = _state(PlayerState(player_id=0, hand=(harvester,)))
+
+    result = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
+
+    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 1
+
+
 def test_reveal_preserves_agent_cards_already_in_play() -> None:
     played = _instance("dagger", 0)
     revealed = _instance("dagger", 1)

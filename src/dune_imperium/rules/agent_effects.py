@@ -1,5 +1,7 @@
 """Resolution of starting-card and Faction Agent-turn effects."""
 
+from dataclasses import replace
+
 from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.content.uprising.types import PersonalCardAgentEffect
@@ -133,6 +135,18 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         if isinstance(previous, bool) or not isinstance(previous, int):
             raise RuntimeError("Agent-turn effect frame has invalid recruit count")
         context["troops_recruited"] = previous + recruited
+        event_kind = "agent_card_effect_resolved"
+    elif effect is PersonalCardAgentEffect.GAIN_SPICE_IF_MAKER_SPACE:
+        space_id = context.get("space_id")
+        if not isinstance(space_id, str) or not BOARD_SPACES_BY_ID[space_id].maker:
+            raise RuntimeError("conditional Agent effect is not available")
+        next_owner = replace(
+            owner,
+            resources=replace(
+                owner.resources,
+                spice=owner.resources.spice + 1,
+            ),
+        )
         event_kind = "agent_card_effect_resolved"
     else:
         raise NotImplementedError(
