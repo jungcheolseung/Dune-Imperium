@@ -16,8 +16,9 @@ from a player's personal deck. General Agent, Reveal, and deck-building rules in
 | Sardaukar Soldier | The card has Emperor affiliation, a City Agent icon, reveals for one Persuasion and one strength, and draws one Intrigue card when trashed. | Agent-card and Combat-reward trash paths now share one transition, including Reserve return and card-specific trash triggers. |
 | Hidden Missive | The card has Bene Gesserit affiliation, a Landsraad Agent icon, and reveals for one Persuasion and one strength. At two Bene Gesserit Influence, its Agent box recruits one troop and draws one personal card. | Recruited troops join the Agent turn's shared deployable count, and the draw uses the replayable personal-deck reshuffle path. |
 | Desert Survival | The card has Fremen affiliation, a Spice Trade Agent icon, reveals for one Persuasion and one strength, and may trash one personal card in its Agent box. | The explicit decline and card choices cover hand, discard pile, and cards in play through the shared trash transition. |
+| Smuggler's Harvester | The card has Spacing Guild affiliation, a Spice Trade Agent icon, and reveals for one Persuasion. Its Agent box gains one Spice only at a Maker space. | The condition uses the destination's typed `maker` property, so it is unavailable at other Spice Trade spaces. |
 | Chance and replay | Prepare the Way's draw uses the same personal discard reshuffle decision as board-space and Spy draws. | Its Reserve instance ID remains stable through discard, shuffle, hand, and in-play zones. |
-| RL encoding | Every transcribed physical card copy can take its Agent destinations, including Infiltrate variants. | Imperium batches grow the catalog through 832 in v8, 845 in v9, 857 in v10, and 971 in v11 with actor-neutral Agent trash choices. |
+| RL encoding | Every transcribed physical card copy can take its Agent destinations, including Infiltrate variants. | Imperium batches grow the catalog through 832 in v8, 845 in v9, 857 in v10, 971 in v11, and 991 in v12. |
 
 ## Card-level verification
 
@@ -25,7 +26,8 @@ from a player's personal deck. General Agent, Reveal, and deck-building rules in
   visually checked on 2026-08-19 for Agent icons, conditional Agent text, and
   Reveal values.
 - Maula Pistol, Truthtrance, Sardaukar Soldier, Hidden Missive, and Desert
-  Survival were bootstrapped from DIU `imperium.JSON` at
+  Survival, plus Smuggler's Harvester, were bootstrapped from DIU
+  `imperium.JSON` at
   reviewed commit `990523441421d34a670505d5b32318f01754b960`. Their local
   physical counts and stable IDs continue to come from the verified manifest;
   DIU's conflicting `quantity` values were not imported.
@@ -35,9 +37,9 @@ from a player's personal deck. General Agent, Reveal, and deck-building rules in
 ## Deferred boundaries
 
 - All shared Imperium cards except Maula Pistol, Truthtrance, Sardaukar Soldier,
-  Hidden Missive, and Desert Survival still have only identity and
-  acquisition-cost data. Drawing one of those cards fails explicitly until its
-  play data is transcribed.
+  Hidden Missive, Desert Survival, and Smuggler's Harvester still have only
+  identity and acquisition-cost data. Drawing one of those cards fails
+  explicitly until its play data is transcribed.
 - Signet Ring remains blocked on Leader ability implementation.
 - Reveal effects that require choices or change state beyond static Persuasion
   and strength need a serial Reveal-effect decision path.

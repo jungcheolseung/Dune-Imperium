@@ -82,6 +82,10 @@ decline-or-trash choice over the player's hand, discard pile, and cards in play.
 The selected card resolves through the same trash transition used by Combat
 rewards, so Reserve returns and on-trash triggers remain consistent.
 
+The fifth batch transcribes Smuggler's Harvester. Its Agent bonus checks the
+visited board space's typed Maker flag before awarding one Spice; non-Maker
+Spice Trade destinations expose no card effect. Its Reveal value is static.
+
 Cards with restricted Spy placement, player choices, conditions that require
 untracked state, or unsupported effect primitives are held for later batches
 even when their basic Reveal values would otherwise be simple. This prevents a

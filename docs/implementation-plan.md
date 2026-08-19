@@ -240,7 +240,7 @@ seeded random 4인 라운드를 실행하고 action replay로 최종 상태를 �
 ### M4. RL 인터페이스 조기 검증
 
 상태: **완료** (2026-08-14). 기본 룰셋은 versioned actor-neutral 정수 action
-catalog와 같은 폭의 legal action mask를 사용한다. 현재 codec v11은 971개
+catalog와 같은 폭의 legal action mask를 사용한다. 현재 codec v12는 991개
 행동이며, `dune_imperium_uprising_v0` AEC 환경은
 한 라운드를 episode로 실행하며 PettingZoo `api_test`와 `seed_test`를 통과한다.
 관측과 `info`에는 전체 `GameState`를 노출하지 않는다.
@@ -288,8 +288,9 @@ Intrigue draw를 연결했으며 해당 행동을 codec v9에 포함했다. 세 
 Hidden Missive의 조건부 병력 모집과 개인 카드 draw를 기존 Agent 효과 순서 및
 replayable shuffle 경로에 연결했고, 해당 행동을 codec v10에 포함했다. 네 번째
 묶음은 Desert Survival의 선택적 개인 카드 폐기를 손·버림 더미·사용 영역에
-공통 적용하고 해당 선택을 codec v11에 포함했다. 고정된 DIU `imperium.JSON`을
-런타임 의존성 없이 63개 local
+공통 적용하고 해당 선택을 codec v11에 포함했다. 다섯 번째 묶음은 Smuggler's
+Harvester의 Maker 공간 방문 조건과 Spice 보상을 연결하고 해당 행동을 codec
+v12에 포함했다. 고정된 DIU `imperium.JSON`을 런타임 의존성 없이 63개 local
 identity와 대조하고 아이콘·Faction·효과 형태를 정규화하는 read-only audit
 도구도 사용한다. 나머지 Imperium과 Intrigue, Leader, Objective 효과는 아직
 identity manifest 수준이다.
