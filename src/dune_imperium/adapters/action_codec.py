@@ -27,7 +27,7 @@ from dune_imperium.content.uprising.starting_cards import (
 from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
 from dune_imperium.core.actions import ActionValue, DomainAction
 
-ACTION_CODEC_VERSION = 27
+ACTION_CODEC_VERSION = 28
 MAX_DEPLOYMENT_COUNT = 12
 
 
@@ -227,6 +227,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         if first_post_id != second_post_id
     )
     for action_id in (
+        "choose_agent_card_influence",
         "choose_combat_reward_influence",
         "choose_distinct_combat_reward_influence",
     ):

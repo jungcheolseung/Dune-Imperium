@@ -146,7 +146,19 @@ IMPERIUM_CARDS: Final = (
     _entry(67, "chani-clever-tactician", "Chani, Clever Tactician", 5),
     _entry(69, "corrinth-city", "Corrinth City", 6),
     _entry(35, "covert-operation", "Covert Operation", 3),
-    _entry(44, "dangerous-rhetoric", "Dangerous Rhetoric", 3),
+    _entry(
+        44,
+        "dangerous-rhetoric",
+        "Dangerous Rhetoric",
+        3,
+        agent_icons=(AgentIcon.LANDSRAAD, AgentIcon.SPY),
+        agent_effect=(
+            PersonalCardAgentEffect.TRASH_SELF_AND_GAIN_CHOSEN_INFLUENCE
+        ),
+        reveal_persuasion=1,
+        reveal_strength=1,
+        play_data_complete=True,
+    ),
     _entry(182, "delivery-agreement", "Delivery Agreement", 5, choam_only=True),
     _entry(71, "desert-power", "Desert Power", 6),
     _entry(

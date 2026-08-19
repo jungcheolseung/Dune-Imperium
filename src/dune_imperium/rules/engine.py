@@ -23,9 +23,11 @@ from dune_imperium.rules.acquisition import (
     legal_reserve_acquisitions,
 )
 from dune_imperium.rules.agent_effects import (
+    apply_agent_card_influence,
     apply_agent_card_payment,
     apply_agent_card_spy_action,
     apply_agent_card_trash,
+    legal_agent_card_influence_actions,
     legal_agent_card_payment_actions,
     legal_agent_card_spy_actions,
     legal_agent_card_trash_actions,
@@ -237,6 +239,7 @@ class UprisingRulesEngine(RulesEngine):
             "choose_distinct_combat_reward_influence": (
                 apply_distinct_combat_reward_influence
             ),
+            "choose_agent_card_influence": apply_agent_card_influence,
         }
         result = handlers[action.action_id](state, action)
         return _advance_automatic(result)
@@ -292,7 +295,13 @@ class UprisingRulesEngine(RulesEngine):
             trash_actions = legal_agent_card_trash_actions(state, player)
             payment_actions = legal_agent_card_payment_actions(state, player)
             spy_actions = legal_agent_card_spy_actions(state, player)
-            choice_actions = (*trash_actions, *payment_actions, *spy_actions)
+            influence_actions = legal_agent_card_influence_actions(state, player)
+            choice_actions = (
+                *trash_actions,
+                *payment_actions,
+                *spy_actions,
+                *influence_actions,
+            )
             if choice_actions:
                 actions.extend(choice_actions)
             else:
@@ -325,6 +334,7 @@ def _agent_action_is_supported(state: GameState, action: DomainAction) -> bool:
         None,
         PersonalCardAgentEffect.TRASH_SELF,
         PersonalCardAgentEffect.TRASH_PERSONAL_CARD,
+        PersonalCardAgentEffect.TRASH_SELF_AND_GAIN_CHOSEN_INFLUENCE,
         PersonalCardAgentEffect.DRAW_PERSONAL_CARD,
         PersonalCardAgentEffect.GAIN_SPICE_IF_MAKER_SPACE,
         PersonalCardAgentEffect.GAIN_WATER,

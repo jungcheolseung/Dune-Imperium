@@ -28,6 +28,82 @@ from dune_imperium.rules.spy_placement import (
 )
 
 
+def legal_agent_card_influence_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return Faction choices for the current Agent-card effect."""
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return ()
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    if context.get("pending_agent_effect") is not True:
+        return ()
+    _, source_card_id, _ = _effect_subject(context)
+    source_card = personal_card_for_instance(source_card_id)
+    if (
+        source_card.agent_effect
+        is not PersonalCardAgentEffect.TRASH_SELF_AND_GAIN_CHOSEN_INFLUENCE
+    ):
+        return ()
+    return tuple(
+        DomainAction(
+            action_id="choose_agent_card_influence",
+            actor=player,
+            arguments=(("faction", faction.value),),
+        )
+        for faction in Faction
+    )
+
+
+def apply_agent_card_influence(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Trash the source card and gain the selected Faction Influence."""
+
+    if action not in legal_agent_card_influence_actions(state, action.actor):
+        raise ValueError("action is not a legal Agent-card Influence choice")
+    _, context = current_agent_effect_context(state)
+    _, source_card_id, _ = _effect_subject(context)
+    faction_value = dict(action.arguments).get("faction")
+    if not isinstance(faction_value, str):
+        raise RuntimeError("Agent-card Influence choice has invalid Faction")
+    faction = Faction(faction_value)
+    source = (
+        f"round:{state.round_number}:player:{action.actor}:"
+        f"agent_card:{source_card_id}"
+    )
+    trashed = trash_personal_card(
+        state,
+        action.actor,
+        source_card_id,
+        source=source,
+    )
+    gained = gain_faction_influence(
+        trashed.state,
+        action.actor,
+        faction,
+        1,
+        event_prefix=f"{source}:influence:{faction.value}",
+    )
+    context["pending_agent_effect"] = False
+    next_state = advance_after_effect(
+        gained.state,
+        context,
+        gained.state.players,
+    )
+    return RuleResult(
+        state=next_state,
+        events=(*trashed.events, *gained.events),
+    )
+
+
 def legal_agent_card_spy_actions(
     state: GameState,
     player: int,

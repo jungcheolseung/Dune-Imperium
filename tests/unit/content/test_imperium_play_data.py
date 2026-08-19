@@ -345,6 +345,20 @@ def test_rebel_supplier_play_data_uses_the_turn_recall_condition() -> None:
     assert card.reveal_effects == (PersonalCardRevealEffect(spice=1),)
 
 
+def test_dangerous_rhetoric_play_data_trashes_for_chosen_influence() -> None:
+    card = IMPERIUM_CARDS_BY_ID["dangerous_rhetoric"]
+
+    assert card.play_data_complete is True
+    assert card.factions == ()
+    assert card.agent_icons == (AgentIcon.LANDSRAAD, AgentIcon.SPY)
+    assert (
+        card.agent_effect
+        is PersonalCardAgentEffect.TRASH_SELF_AND_GAIN_CHOSEN_INFLUENCE
+    )
+    assert card.reveal_persuasion == 1
+    assert card.reveal_strength == 1
+
+
 def test_untranscribed_imperium_card_still_fails_explicitly() -> None:
     instance_id = _instance("double_agent")
 

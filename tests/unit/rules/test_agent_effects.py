@@ -19,9 +19,11 @@ from dune_imperium.core import (
     Resources,
 )
 from dune_imperium.rules.agent_effects import (
+    apply_agent_card_influence,
     apply_agent_card_payment,
     apply_agent_card_spy_action,
     apply_agent_card_trash,
+    legal_agent_card_influence_actions,
     legal_agent_card_payment_actions,
     legal_agent_card_spy_actions,
     legal_agent_card_trash_actions,
@@ -1175,3 +1177,43 @@ def test_rebel_supplier_recruits_two_after_gathering_intelligence() -> None:
     assert result.state.players[0].troops_supply == 7
     assert result.state.players[0].troops_garrison == 5
     assert dict(result.state.decision_stack[-1].context)["troops_recruited"] == 2
+
+
+def test_dangerous_rhetoric_trashes_itself_for_chosen_influence() -> None:
+    rhetoric = _imperium_instance("dangerous_rhetoric")
+    owner = PlayerState(player_id=0, hand=(rhetoric,))
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
+    choices = legal_agent_card_influence_actions(placed, 0)
+    action = next(
+        action
+        for action in choices
+        if dict(action.arguments)["faction"] == "fremen"
+    )
+
+    result = apply_agent_card_influence(placed, action)
+    resolved_owner = result.state.players[0]
+
+    assert len(choices) == 4
+    assert rhetoric not in resolved_owner.in_play
+    assert resolved_owner.trashed == (rhetoric,)
+    assert resolved_owner.influence.fremen == 1
+    assert dict(result.state.decision_stack[-1].context)[
+        "pending_agent_effect"
+    ] is False
+    assert tuple(event.kind for event in result.events) == (
+        "card_trashed",
+        "influence_gained",
+    )

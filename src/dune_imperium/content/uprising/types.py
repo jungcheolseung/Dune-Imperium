@@ -31,6 +31,9 @@ class PersonalCardAgentEffect(StrEnum):
 
     TRASH_SELF = "trash_self"
     TRASH_PERSONAL_CARD = "trash_personal_card"
+    TRASH_SELF_AND_GAIN_CHOSEN_INFLUENCE = (
+        "trash_self_and_gain_chosen_influence"
+    )
     LEADER_SIGNET = "leader_signet"
     PAY_TWO_WATER_TO_DRAW_TWO = "pay_two_water_to_draw_two"
     DRAW_PERSONAL_CARD = "draw_personal_card"

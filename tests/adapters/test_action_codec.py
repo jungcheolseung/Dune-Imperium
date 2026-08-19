@@ -11,10 +11,10 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     first = ActionCodec(RulesetConfig())
     second = ActionCodec(RulesetConfig())
 
-    assert ACTION_CODEC_VERSION == 27
+    assert ACTION_CODEC_VERSION == 28
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
-    assert first.size == 1454
+    assert first.size == 1509
 
 
 def test_agent_card_spy_choice_round_trips() -> None:
@@ -26,6 +26,17 @@ def test_agent_card_spy_choice_round_trips() -> None:
     )
 
     assert codec.decode(codec.encode(action), actor=1) == action
+
+
+def test_agent_card_influence_choice_round_trips() -> None:
+    codec = ActionCodec(RulesetConfig())
+    action = DomainAction(
+        action_id="choose_agent_card_influence",
+        actor=2,
+        arguments=(("faction", "fremen"),),
+    )
+
+    assert codec.decode(codec.encode(action), actor=2) == action
 
 
 def test_starting_card_actions_share_an_index_between_players() -> None:

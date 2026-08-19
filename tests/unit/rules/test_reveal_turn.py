@@ -296,6 +296,23 @@ def test_rebel_supplier_reveals_for_spice_and_strength() -> None:
     assert result.state.players[0].combat_strength == 3
 
 
+def test_dangerous_rhetoric_reveals_for_persuasion_and_strength() -> None:
+    rhetoric = _imperium_instance("dangerous_rhetoric")
+    state = _state(
+        PlayerState(
+            player_id=0,
+            hand=(rhetoric,),
+            troops_supply=8,
+            troops_conflict=1,
+        )
+    )
+
+    result = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
+
+    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 1
+    assert result.state.players[0].combat_strength == 3
+
+
 def test_high_council_and_assembly_hall_add_reveal_persuasion() -> None:
     state = _state(
         PlayerState(
