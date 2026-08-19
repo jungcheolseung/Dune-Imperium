@@ -16,7 +16,7 @@ truth for the transition code.
 | Infiltrate | An otherwise legal Agent card may enter a space occupied by one opponent by selecting and recalling a connected Spy as part of the Agent action. | The recalled Spy is removed before the Gather Intelligence window, so it cannot be used for both effects. Multiple-opponent occupancy remains deferred under OQ-006. |
 | Spy Agent icon | A card's Spy Agent icon makes every space connected to one of the player's placed Spies an available Agent destination. | Destination access does not recall the Spy. Imperium-card icon transcription remains part of the broader content milestone. |
 | Conflict reward | A Spy reward selects one globally empty post and spends a Spy from supply. | This existing reward path does not currently offer the empty-supply recall permission because the reward itself is mandatory only when executable. |
-| Agent-card placement | Bene Gesserit Operative selects one globally empty post and spends a Spy from supply. | With an empty supply, recall and placement are separate mandatory decisions, using the same shared occupancy operations as Espionage. |
+| Agent-card placement | Bene Gesserit Operative selects any globally empty post; Reliable Informant is restricted to posts connected to Emperor, Bene Gesserit, or Spacing Guild spaces. | With an empty supply, recall and placement are separate mandatory decisions. A restricted effect offers only recalls that can open a destination when every eligible post is occupied. |
 
 ## Deferred Spy systems
 
@@ -33,5 +33,7 @@ board-space, and connected-post combination, changing the fixed action catalog
 from 469 entries to 534 entries in version 5. Endgame actions later advance the
 catalog to version 6. Bene Gesserit Operative adds 13 card-placement and 13
 card-recall templates, while its two physical copies add eight Agent actions;
-personal-card content advances the current replay default to version 21 with a
-1196-entry catalog.
+personal-card content advances the replay default to version 21 with a
+1196-entry catalog. Reliable Informant's four Agent templates then advance the
+current default to version 22 with 1200 entries; it reuses the card-level Spy
+choice templates.
