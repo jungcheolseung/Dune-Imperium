@@ -240,7 +240,7 @@ seeded random 4인 라운드를 실행하고 action replay로 최종 상태를 �
 ### M4. RL 인터페이스 조기 검증
 
 상태: **완료** (2026-08-14). 기본 룰셋은 versioned actor-neutral 정수 action
-catalog와 같은 폭의 legal action mask를 사용한다. 현재 codec v14는 1014개
+catalog와 같은 폭의 legal action mask를 사용한다. 현재 codec v15는 1060개
 행동이며, `dune_imperium_uprising_v0` AEC 환경은
 한 라운드를 episode로 실행하며 PettingZoo `api_test`와 `seed_test`를 통과한다.
 관측과 `info`에는 전체 `GameState`를 노출하지 않는다.
@@ -294,7 +294,9 @@ v12에 포함했다. 여섯 번째 묶음은 정적 Reveal 자원·병력 효과
 Fedaykin Stilltent의 Maker 공간 병력 모집과 Reveal Water를 연결해 codec v13에
 포함했다. 일곱 번째 묶음은 Reveal의 Fremen Bond 판정과 Northern Watermaster의
 Agent Water·조건부 Reveal Spice를 연결해 codec v14에 포함했다. 고정된 DIU
-`imperium.JSON`을 런타임 의존성 없이 63개 local
+`imperium.JSON`의 여덟 번째 묶음으로 Maker Keeper의 두 Influence 조건을
+독립 보상으로 연결해 codec v15에 포함했다. 이 파일은 런타임 의존성 없이 63개
+local
 identity와 대조하고 아이콘·Faction·효과 형태를 정규화하는 read-only audit
 도구도 사용한다. 나머지 Imperium과 Intrigue, Leader, Objective 효과는 아직
 identity manifest 수준이다.

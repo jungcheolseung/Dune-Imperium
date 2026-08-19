@@ -19,17 +19,16 @@ from a player's personal deck. General Agent, Reveal, and deck-building rules in
 | Smuggler's Harvester | The card has Spacing Guild affiliation, a Spice Trade Agent icon, and reveals for one Persuasion. Its Agent box gains one Spice only at a Maker space. | The condition uses the destination's typed `maker` property, so it is unavailable at other Spice Trade spaces. |
 | Fedaykin Stilltent | The card has Fremen affiliation and a Spice Trade Agent icon. Its Agent box recruits one troop at a Maker space, and its Reveal effect gains one Water. | Agent recruitment contributes to the current turn's deployable count; the automatic Reveal gain uses the shared typed Reveal-effect schema. |
 | Northern Watermaster | The card has Fremen affiliation and a City Agent icon. Its Agent box gains one Water; Reveal gives one Persuasion and two Spice with Fremen Bond. | Bond requires another Fremen-affiliated card among cards already in play and cards revealed this turn. |
+| Maker Keeper | The card has Bene Gesserit and Fremen affiliations, City and Spice Trade Agent icons, and reveals for two Persuasion. At two Bene Gesserit Influence it gains one Water; at two Fremen Influence it gains one Spice. | The two conditions resolve independently, including receiving both rewards when both thresholds are met. |
 | Chance and replay | Prepare the Way's draw uses the same personal discard reshuffle decision as board-space and Spy draws. | Its Reserve instance ID remains stable through discard, shuffle, hand, and in-play zones. |
-| RL encoding | Every transcribed physical card copy can take its Agent destinations, including Infiltrate variants. | Imperium batches grow the catalog through 832 in v8, 845 in v9, 857 in v10, 971 in v11, 991 in v12, 1001 in v13, and 1014 in v14. |
+| RL encoding | Every transcribed physical card copy can take its Agent destinations, including Infiltrate variants. | Imperium batches grow the catalog through 832 in v8, 845 in v9, 857 in v10, 971 in v11, 991 in v12, 1001 in v13, 1014 in v14, and 1060 in v15. |
 
 ## Card-level verification
 
 - The two printed card images linked by the Reserve content manifest were
   visually checked on 2026-08-19 for Agent icons, conditional Agent text, and
   Reveal values.
-- Maula Pistol, Truthtrance, Sardaukar Soldier, Hidden Missive, and Desert
-  Survival, plus Smuggler's Harvester, Fedaykin Stilltent, and Northern
-  Watermaster, were bootstrapped from DIU `imperium.JSON` at
+- These nine shared cards were bootstrapped from DIU `imperium.JSON` at
   reviewed commit `990523441421d34a670505d5b32318f01754b960`. Their local
   physical counts and stable IDs continue to come from the verified manifest;
   DIU's conflicting `quantity` values were not imported.
@@ -38,11 +37,9 @@ from a player's personal deck. General Agent, Reveal, and deck-building rules in
 
 ## Deferred boundaries
 
-- All shared Imperium cards except Maula Pistol, Truthtrance, Sardaukar Soldier,
-  Hidden Missive, Desert Survival, Smuggler's Harvester, Fedaykin Stilltent, and
-  Northern Watermaster still have only identity and acquisition-cost data.
-  Drawing one of those cards fails explicitly until its play data is
-  transcribed.
+- All shared Imperium cards other than the nine listed above still have only
+  identity and acquisition-cost data. Drawing one of those cards fails
+  explicitly until its play data is transcribed.
 - Signet Ring remains blocked on Leader ability implementation.
 - Reveal effects that require choices or change state beyond static Persuasion
   and strength need a serial Reveal-effect decision path.

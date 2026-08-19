@@ -97,6 +97,11 @@ among the cards already in play or revealed in the same turn. Faction
 affiliation is now uniform across every personal-card source schema so that
 this bond check does not depend on card origin.
 
+The eighth batch transcribes Maker Keeper. Its Bene Gesserit and Fremen
+Influence thresholds are evaluated independently, awarding Water, Spice, or
+both, while its dual affiliation, two Agent icons, and static Reveal Persuasion
+use the common personal-card schema.
+
 Cards with restricted Spy placement, player choices, conditions that require
 untracked state, or unsupported effect primitives are held for later batches
 even when their basic Reveal values would otherwise be simple. This prevents a
