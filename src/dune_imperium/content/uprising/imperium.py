@@ -12,6 +12,7 @@ from dune_imperium.content.schema import (
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.types import (
     AgentIcon,
+    PersonalCardAcquisitionEffect,
     PersonalCardAgentEffect,
     PersonalCardBond,
     PersonalCardRevealEffect,
@@ -29,6 +30,7 @@ class ImperiumCardEntry(DeckCardEntry):
     factions: tuple[Faction, ...] = ()
     agent_icons: tuple[AgentIcon, ...] = ()
     agent_effect: PersonalCardAgentEffect | None = None
+    acquisition_effect: PersonalCardAcquisitionEffect | None = None
     trash_effect: PersonalCardTrashEffect | None = None
     reveal_persuasion: int = 0
     reveal_strength: int = 0
@@ -45,10 +47,13 @@ class ImperiumCardEntry(DeckCardEntry):
             raise ValueError("Imperium-card Reveal values must not be negative")
         if len(self.reveal_effects) != len(set(self.reveal_effects)):
             raise ValueError("Imperium-card Reveal effects must be unique")
+        if self.acquisition_effect is not None and not self.has_acquisition_bonus:
+            raise ValueError("typed acquisition effect requires an acquisition bonus")
         if not self.play_data_complete and (
             self.factions
             or self.agent_icons
             or self.agent_effect is not None
+            or self.acquisition_effect is not None
             or self.trash_effect is not None
             or self.reveal_persuasion
             or self.reveal_strength
@@ -69,6 +74,7 @@ def _entry(
     factions: tuple[Faction, ...] = (),
     agent_icons: tuple[AgentIcon, ...] = (),
     agent_effect: PersonalCardAgentEffect | None = None,
+    acquisition_effect: PersonalCardAcquisitionEffect | None = None,
     trash_effect: PersonalCardTrashEffect | None = None,
     reveal_persuasion: int = 0,
     reveal_strength: int = 0,
@@ -89,6 +95,7 @@ def _entry(
         factions=factions,
         agent_icons=agent_icons,
         agent_effect=agent_effect,
+        acquisition_effect=acquisition_effect,
         trash_effect=trash_effect,
         reveal_persuasion=reveal_persuasion,
         reveal_strength=reveal_strength,
@@ -224,7 +231,26 @@ IMPERIUM_CARDS: Final = (
         ),
         play_data_complete=True,
     ),
-    _entry(75, "overthrow", "Overthrow", 8, has_acquisition_bonus=True),
+    _entry(
+        75,
+        "overthrow",
+        "Overthrow",
+        8,
+        has_acquisition_bonus=True,
+        factions=(Faction.EMPEROR,),
+        agent_icons=(
+            AgentIcon.EMPEROR,
+            AgentIcon.SPACING_GUILD,
+            AgentIcon.BENE_GESSERIT,
+            AgentIcon.FREMEN,
+        ),
+        agent_effect=PersonalCardAgentEffect.GAIN_VISITED_FACTION_INFLUENCE,
+        acquisition_effect=PersonalCardAcquisitionEffect.DRAW_INTRIGUE_CARD,
+        reveal_persuasion=2,
+        reveal_strength=2,
+        reveal_effects=(PersonalCardRevealEffect(recruit_troops=1),),
+        play_data_complete=True,
+    ),
     _entry(
         49,
         "paracompass",

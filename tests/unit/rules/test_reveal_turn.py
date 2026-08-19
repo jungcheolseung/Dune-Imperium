@@ -352,6 +352,27 @@ def test_paracompass_reveal_scales_with_council_and_swordmaster() -> None:
     assert dict(both_result.state.decision_stack[-1].context)["persuasion"] == 5
 
 
+def test_overthrow_recruits_and_contributes_reveal_values() -> None:
+    overthrow = _imperium_instance("overthrow")
+    state = _state(
+        PlayerState(
+            player_id=0,
+            hand=(overthrow,),
+            troops_supply=8,
+            troops_conflict=1,
+        )
+    )
+
+    result = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
+    owner = result.state.players[0]
+    context = dict(result.state.decision_stack[-1].context)
+
+    assert owner.troops_supply == 7
+    assert owner.troops_garrison == 4
+    assert context["persuasion"] == 2
+    assert context["strength"] == 4
+
+
 def test_reveal_preserves_agent_cards_already_in_play() -> None:
     played = _instance("dagger", 0)
     revealed = _instance("dagger", 1)

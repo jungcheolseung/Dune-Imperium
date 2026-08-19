@@ -36,6 +36,7 @@ class PersonalCardAgentEffect(StrEnum):
     DRAW_PERSONAL_CARD = "draw_personal_card"
     GAIN_SPICE_IF_MAKER_SPACE = "gain_spice_if_maker_space"
     GAIN_TWO_SOLARI = "gain_two_solari"
+    GAIN_VISITED_FACTION_INFLUENCE = "gain_visited_faction_influence"
     GAIN_WATER = "gain_water"
     GAIN_BY_BENE_GESSERIT_AND_FREMEN_INFLUENCE_TWO = (
         "gain_by_bene_gesserit_and_fremen_influence_two"
@@ -53,6 +54,12 @@ class PersonalCardAgentEffect(StrEnum):
 
 class PersonalCardTrashEffect(StrEnum):
     """Typed effects triggered when a personal card is trashed."""
+
+    DRAW_INTRIGUE_CARD = "draw_intrigue_card"
+
+
+class PersonalCardAcquisitionEffect(StrEnum):
+    """Typed effects resolved immediately after acquiring an Imperium card."""
 
     DRAW_INTRIGUE_CARD = "draw_intrigue_card"
 

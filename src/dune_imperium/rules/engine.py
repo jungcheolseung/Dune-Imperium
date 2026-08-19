@@ -248,9 +248,14 @@ class UprisingRulesEngine(RulesEngine):
         return tuple(
             action
             for action in legal_imperium_acquisitions(state, player)
-            if not imperium_card_for_instance(
-                str(dict(action.arguments)["instance_id"])
-            ).has_acquisition_bonus
+            if (
+                not (
+                    definition := imperium_card_for_instance(
+                        str(dict(action.arguments)["instance_id"])
+                    )
+                ).has_acquisition_bonus
+                or definition.acquisition_effect is not None
+            )
         )
 
     def _agent_effect_actions(
@@ -308,6 +313,7 @@ def _agent_action_is_supported(state: GameState, action: DomainAction) -> bool:
         PersonalCardAgentEffect.GAIN_SPICE_IF_MAKER_SPACE,
         PersonalCardAgentEffect.GAIN_WATER,
         PersonalCardAgentEffect.GAIN_TWO_SOLARI,
+        PersonalCardAgentEffect.GAIN_VISITED_FACTION_INFLUENCE,
         PersonalCardAgentEffect.GAIN_BY_BENE_GESSERIT_AND_FREMEN_INFLUENCE_TWO,
         PersonalCardAgentEffect.RECRUIT_TWO_IF_BENE_GESSERIT_BOND,
         PersonalCardAgentEffect.RETURN_SELF_IF_BENE_GESSERIT_BOND,

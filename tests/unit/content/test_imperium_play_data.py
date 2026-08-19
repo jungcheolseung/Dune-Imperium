@@ -10,6 +10,7 @@ from dune_imperium.content.uprising.imperium import (
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.content.uprising.types import (
     AgentIcon,
+    PersonalCardAcquisitionEffect,
     PersonalCardAgentEffect,
     PersonalCardBond,
     PersonalCardRevealEffect,
@@ -213,6 +214,27 @@ def test_paracompass_play_data_has_council_and_swordmaster_reveal_gains() -> Non
             requires_swordmaster=True,
         ),
     )
+
+
+def test_overthrow_play_data_covers_acquisition_agent_and_reveal() -> None:
+    card = IMPERIUM_CARDS_BY_ID["overthrow"]
+
+    assert card.play_data_complete is True
+    assert card.factions == (Faction.EMPEROR,)
+    assert card.agent_icons == (
+        AgentIcon.EMPEROR,
+        AgentIcon.SPACING_GUILD,
+        AgentIcon.BENE_GESSERIT,
+        AgentIcon.FREMEN,
+    )
+    assert card.agent_effect is PersonalCardAgentEffect.GAIN_VISITED_FACTION_INFLUENCE
+    assert (
+        card.acquisition_effect
+        is PersonalCardAcquisitionEffect.DRAW_INTRIGUE_CARD
+    )
+    assert card.reveal_persuasion == 2
+    assert card.reveal_strength == 2
+    assert card.reveal_effects == (PersonalCardRevealEffect(recruit_troops=1),)
 
 
 def test_untranscribed_imperium_card_still_fails_explicitly() -> None:

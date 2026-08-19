@@ -800,3 +800,28 @@ def test_paracompass_gains_two_solari_on_its_agent_turn() -> None:
     result = resolve_agent_card_effect(placed)
 
     assert result.state.players[0].resources.solari == 2
+
+
+def test_overthrow_gains_extra_influence_with_the_visited_faction() -> None:
+    overthrow = _imperium_instance("overthrow")
+    owner = PlayerState(player_id=0, hand=(overthrow,))
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "secrets")).state
+
+    result = resolve_agent_card_effect(placed)
+    context = dict(result.state.decision_stack[-1].context)
+
+    assert result.state.players[0].influence.bene_gesserit == 1
+    assert context["pending_faction_influence"] is True

@@ -237,6 +237,18 @@ def test_paracompass_uses_its_city_icon() -> None:
     assert _space_ids(_state(paracompass)) == {"arrakeen", "spice_refinery"}
 
 
+def test_overthrow_uses_all_four_faction_icons() -> None:
+    overthrow = _imperium_instance("overthrow")
+
+    assert _space_ids(_state(overthrow)) == {
+        "desert_tactics",
+        "deliver_supplies",
+        "dutiful_service",
+        "fremkit",
+        "secrets",
+    }
+
+
 def test_spy_agent_icon_accesses_only_spaces_connected_to_an_owned_spy() -> None:
     owner = PlayerState(
         player_id=0,

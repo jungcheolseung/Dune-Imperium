@@ -4,6 +4,7 @@ from dataclasses import replace
 
 from dune_imperium.content.uprising.imperium import imperium_card_for_instance
 from dune_imperium.content.uprising.reserve import RESERVE_STACKS_BY_ID
+from dune_imperium.content.uprising.types import PersonalCardAcquisitionEffect
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
@@ -149,7 +150,7 @@ def apply_imperium_acquisition(
     if not isinstance(instance_id, str):
         raise ValueError("Imperium acquisition instance_id must be a string")
     definition = imperium_card_for_instance(instance_id)
-    if definition.has_acquisition_bonus:
+    if definition.has_acquisition_bonus and definition.acquisition_effect is None:
         raise NotImplementedError(
             f"acquisition bonus is not implemented: {definition.card.card_id}"
         )
@@ -168,10 +169,33 @@ def apply_imperium_acquisition(
     row = list(state.imperium_row)
     row[row.index(instance_id)] = state.imperium_deck[0]
     owner = state.players[action.actor]
+    intrigue_deck = state.intrigue_deck
     next_owner = replace(
         owner,
         discard_pile=(*owner.discard_pile, instance_id),
     )
+    acquisition_events: tuple[GameEvent, ...] = ()
+    if (
+        definition.acquisition_effect
+        is PersonalCardAcquisitionEffect.DRAW_INTRIGUE_CARD
+    ):
+        if not intrigue_deck:
+            raise ValueError("the Intrigue deck does not contain enough cards")
+        next_owner = replace(
+            next_owner,
+            intrigue_cards=(*next_owner.intrigue_cards, intrigue_deck[0]),
+        )
+        intrigue_deck = intrigue_deck[1:]
+        acquisition_events = (
+            GameEvent(
+                event_id=(
+                    f"round:{state.round_number}:player:{action.actor}:"
+                    f"acquire:{instance_id}:intrigue_draw"
+                ),
+                kind="intrigue_card_drawn",
+                payload=(("count", 1), ("player", action.actor)),
+            ),
+        )
     players = tuple(
         next_owner if player.player_id == action.actor else player
         for player in state.players
@@ -184,6 +208,7 @@ def apply_imperium_acquisition(
         players=players,
         imperium_deck=state.imperium_deck[1:],
         imperium_row=tuple(row),
+        intrigue_deck=intrigue_deck,
         decision_stack=(*state.decision_stack[:-1], next_frame),
     )
     event = GameEvent(
@@ -197,4 +222,4 @@ def apply_imperium_acquisition(
             ("player", action.actor),
         ),
     )
-    return RuleResult(state=next_state, events=(event,))
+    return RuleResult(state=next_state, events=(event, *acquisition_events))

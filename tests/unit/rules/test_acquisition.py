@@ -20,6 +20,7 @@ from dune_imperium.rules.acquisition import (
     legal_imperium_acquisitions,
     legal_reserve_acquisitions,
 )
+from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.reveal_turn import (
     begin_reveal_turn,
     legal_reveal_actions,
@@ -196,3 +197,39 @@ def test_acquisition_bonus_card_is_not_silently_resolved() -> None:
 
     with pytest.raises(NotImplementedError, match="guild_spy"):
         apply_imperium_acquisition(state, action)
+
+
+def test_overthrow_acquisition_draws_an_intrigue_card() -> None:
+    arguments = tuple(_instance("convincing_argument", copy) for copy in range(2))
+    dunes = tuple(_instance("dune_the_desert_planet", copy) for copy in range(2))
+    state = _reveal_state(
+        *arguments,
+        *dunes,
+        _instance("diplomacy"),
+        _instance("reconnaissance"),
+    )
+    instances = imperium_deck_instance_ids(False)
+    overthrow = next(card for card in instances if ":overthrow:" in card)
+    others = tuple(card for card in instances if card != overthrow)
+    state = replace(
+        state,
+        imperium_row=(overthrow, *others[:4]),
+        imperium_deck=others[4:],
+        intrigue_deck=("intrigue:test:0",),
+    )
+    action = next(
+        action
+        for action in legal_imperium_acquisitions(state, 0)
+        if dict(action.arguments)["instance_id"] == overthrow
+    )
+    assert action in UprisingRulesEngine().legal_actions(state, 0)
+
+    result = apply_imperium_acquisition(state, action)
+
+    assert result.state.players[0].discard_pile == (overthrow,)
+    assert result.state.players[0].intrigue_cards == ("intrigue:test:0",)
+    assert result.state.intrigue_deck == ()
+    assert tuple(event.kind for event in result.events) == (
+        "card_acquired",
+        "intrigue_card_drawn",
+    )

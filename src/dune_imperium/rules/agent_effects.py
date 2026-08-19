@@ -250,6 +250,30 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             ),
         )
         event_kind = "agent_card_effect_resolved"
+    elif effect is PersonalCardAgentEffect.GAIN_VISITED_FACTION_INFLUENCE:
+        space_id = context.get("space_id")
+        if not isinstance(space_id, str):
+            raise RuntimeError("Agent-turn effect frame has invalid space")
+        faction = BOARD_SPACES_BY_ID[space_id].faction
+        if faction is None:
+            raise RuntimeError("card effect requires a visited Faction space")
+        gained = gain_faction_influence(
+            state,
+            player,
+            faction,
+            1,
+            event_prefix=(
+                f"round:{state.round_number}:player:{player}:"
+                f"agent_card:{card_instance_id}:influence:{faction.value}"
+            ),
+        )
+        context["pending_agent_effect"] = False
+        next_state = advance_after_effect(
+            gained.state,
+            context,
+            gained.state.players,
+        )
+        return RuleResult(state=next_state, events=gained.events)
     elif (
         effect
         is PersonalCardAgentEffect.GAIN_BY_BENE_GESSERIT_AND_FREMEN_INFLUENCE_TWO
