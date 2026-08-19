@@ -271,6 +271,12 @@ def _agent_effect_is_available(
             card_instance_id,
             Faction.BENE_GESSERIT,
         )
+    if effect is PersonalCardAgentEffect.GAIN_WATER_IF_BENE_GESSERIT_BOND:
+        return has_faction_bond(
+            (*owner.in_play, card_instance_id),
+            card_instance_id,
+            Faction.BENE_GESSERIT,
+        )
     return True
 
 

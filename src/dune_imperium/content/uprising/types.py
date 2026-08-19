@@ -43,6 +43,7 @@ class PersonalCardAgentEffect(StrEnum):
     DRAW_INTRIGUE_IF_SPY_RECALLED_THIS_TURN = (
         "draw_intrigue_if_spy_recalled_this_turn"
     )
+    GAIN_WATER_IF_BENE_GESSERIT_BOND = "gain_water_if_bene_gesserit_bond"
     GAIN_VISITED_FACTION_INFLUENCE = "gain_visited_faction_influence"
     GAIN_WATER = "gain_water"
     GAIN_BY_BENE_GESSERIT_AND_FREMEN_INFLUENCE_TWO = (
@@ -77,6 +78,9 @@ class PersonalCardRevealChoiceEffect(StrEnum):
 
     RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED = (
         "recall_spy_to_draw_intrigue_if_two_placed"
+    )
+    MAY_RECALL_TWO_SPIES_FOR_TWO_PERSUASION = (
+        "may_recall_two_spies_for_two_persuasion"
     )
 
 

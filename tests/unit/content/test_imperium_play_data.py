@@ -312,6 +312,24 @@ def test_spy_network_play_data_has_acquisition_and_reveal_spy_effects() -> None:
     )
 
 
+def test_in_high_places_play_data_has_bond_acquisition_and_reveal_choice() -> None:
+    card = IMPERIUM_CARDS_BY_ID["in_high_places"]
+
+    assert card.play_data_complete is True
+    assert card.factions == (Faction.BENE_GESSERIT,)
+    assert card.agent_icons == (AgentIcon.BENE_GESSERIT, AgentIcon.EMPEROR)
+    assert (
+        card.agent_effect
+        is PersonalCardAgentEffect.GAIN_WATER_IF_BENE_GESSERIT_BOND
+    )
+    assert card.acquisition_effect is PersonalCardAcquisitionEffect.PLACE_SPY
+    assert card.reveal_persuasion == 2
+    assert card.reveal_strength == 0
+    assert card.reveal_choice_effects == (
+        PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_TWO_PERSUASION,
+    )
+
+
 def test_untranscribed_imperium_card_still_fails_explicitly() -> None:
     instance_id = _instance("double_agent")
 

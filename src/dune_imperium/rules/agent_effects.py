@@ -435,6 +435,21 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             ),
         )
         event_kind = "agent_card_effect_resolved"
+    elif effect is PersonalCardAgentEffect.GAIN_WATER_IF_BENE_GESSERIT_BOND:
+        if not has_faction_bond(
+            owner.in_play,
+            card_instance_id,
+            Faction.BENE_GESSERIT,
+        ):
+            raise RuntimeError("conditional Agent effect is not available")
+        next_owner = replace(
+            owner,
+            resources=replace(
+                owner.resources,
+                water=owner.resources.water + 1,
+            ),
+        )
+        event_kind = "agent_card_effect_resolved"
     elif effect is PersonalCardAgentEffect.PLACE_SPY:
         if legal_agent_card_spy_actions(state, player):
             raise RuntimeError("place-Spy Agent effect requires a player choice")

@@ -2,7 +2,7 @@
 
 from dataclasses import replace
 
-from dune_imperium.content.uprising.board import Faction
+from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.content.uprising.types import PersonalCardRevealChoiceEffect
 from dune_imperium.core.actions import ActionValue, DomainAction
@@ -28,42 +28,129 @@ def legal_reveal_spy_actions(
     context = dict(frame.context)
     if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
         return ()
-    if context.get("reveal_choice_effect") != (
-        PersonalCardRevealChoiceEffect.RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED.value
-    ):
+    effect_value = context.get("reveal_choice_effect")
+    if not isinstance(effect_value, str):
         return ()
-    return tuple(
-        DomainAction(
-            action_id="recall_spy_for_reveal",
-            actor=player,
-            arguments=(("post_id", post_id),),
-        )
-        for post_id in state.players[player].spy_post_ids
+    effect = PersonalCardRevealChoiceEffect(effect_value)
+    occupied = frozenset(state.players[player].spy_post_ids)
+    post_ids = tuple(
+        post.post_id for post in OBSERVATION_POSTS if post.post_id in occupied
     )
+    if (
+        effect
+        is PersonalCardRevealChoiceEffect.RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED
+    ):
+        return tuple(
+            DomainAction(
+                action_id="recall_spy_for_reveal",
+                actor=player,
+                arguments=(("post_id", post_id),),
+            )
+            for post_id in post_ids
+        )
+    if effect is PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_TWO_PERSUASION:
+        return (
+            DomainAction(action_id="decline_reveal_spy_recall", actor=player),
+            *(
+                DomainAction(
+                    action_id="recall_spies_for_reveal",
+                    actor=player,
+                    arguments=(
+                        ("first_post_id", first_post_id),
+                        ("second_post_id", second_post_id),
+                    ),
+                )
+                for index, first_post_id in enumerate(post_ids)
+                for second_post_id in post_ids[index + 1 :]
+            ),
+        )
+    return ()
 
 
 def apply_reveal_spy_action(
     state: GameState,
     action: DomainAction,
 ) -> RuleResult:
-    """Recall the selected Spy and draw the effect's Intrigue card."""
+    """Resolve the current Reveal effect's Spy recall choice."""
 
     if action not in legal_reveal_spy_actions(state, action.actor):
         raise ValueError("action is not a legal Reveal Spy choice")
-    if not state.intrigue_deck:
-        raise ValueError("the Intrigue deck does not contain enough cards")
     frame = state.decision_stack[-1]
     context = dict(frame.context)
     card_id = context.get("reveal_card_id")
-    post_id = dict(action.arguments).get("post_id")
-    if not isinstance(card_id, str) or not isinstance(post_id, str):
+    effect_value = context.get("reveal_choice_effect")
+    if not isinstance(card_id, str) or not isinstance(effect_value, str):
         raise RuntimeError("Reveal Spy frame has invalid context")
-    owner = state.players[action.actor]
-    next_owner = recall_spy(owner, post_id)
-    next_owner = replace(
-        next_owner,
-        intrigue_cards=(*next_owner.intrigue_cards, state.intrigue_deck[0]),
+    effect = PersonalCardRevealChoiceEffect(effect_value)
+    source = (
+        f"round:{state.round_number}:player:{action.actor}:"
+        f"reveal_card:{card_id}"
     )
+
+    if action.action_id == "decline_reveal_spy_recall":
+        return RuleResult(
+            state=replace(state, decision_stack=state.decision_stack[:-1]),
+            events=(
+                GameEvent(
+                    event_id=f"{source}:spy_recall_declined",
+                    kind="reveal_spy_recall_declined",
+                    payload=(("card_id", card_id), ("player", action.actor)),
+                ),
+            ),
+        )
+
+    owner = state.players[action.actor]
+    arguments = dict(action.arguments)
+    events: list[GameEvent] = []
+    intrigue_deck = state.intrigue_deck
+    remaining = state.decision_stack[:-1]
+    if (
+        effect
+        is PersonalCardRevealChoiceEffect.RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED
+    ):
+        if not intrigue_deck:
+            raise ValueError("the Intrigue deck does not contain enough cards")
+        post_id = arguments.get("post_id")
+        if not isinstance(post_id, str):
+            raise RuntimeError("Reveal Spy choice has invalid post ID")
+        next_owner = recall_spy(owner, post_id)
+        next_owner = replace(
+            next_owner,
+            intrigue_cards=(*next_owner.intrigue_cards, intrigue_deck[0]),
+        )
+        intrigue_deck = intrigue_deck[1:]
+        events.extend(
+            (
+                _spy_recalled_event(state, action.actor, card_id, post_id),
+                GameEvent(
+                    event_id=f"{source}:intrigue_draw",
+                    kind="intrigue_card_drawn",
+                    payload=(("count", 1), ("player", action.actor)),
+                ),
+            )
+        )
+    else:
+        first_post_id = arguments.get("first_post_id")
+        second_post_id = arguments.get("second_post_id")
+        if not isinstance(first_post_id, str) or not isinstance(second_post_id, str):
+            raise RuntimeError("Reveal Spy choice has invalid post IDs")
+        next_owner = recall_spy(recall_spy(owner, first_post_id), second_post_id)
+        remaining = _add_reveal_persuasion(remaining, 2)
+        events.extend(
+            (
+                _spy_recalled_event(state, action.actor, card_id, first_post_id),
+                _spy_recalled_event(state, action.actor, card_id, second_post_id),
+                GameEvent(
+                    event_id=f"{source}:persuasion",
+                    kind="reveal_persuasion_gained",
+                    payload=(
+                        ("amount", 2),
+                        ("card_id", card_id),
+                        ("player", action.actor),
+                    ),
+                ),
+            )
+        )
     players = tuple(
         next_owner if player.player_id == action.actor else player
         for player in state.players
@@ -71,32 +158,52 @@ def apply_reveal_spy_action(
     next_state = replace(
         state,
         players=players,
-        intrigue_deck=state.intrigue_deck[1:],
-        decision_stack=state.decision_stack[:-1],
+        intrigue_deck=intrigue_deck,
+        decision_stack=remaining,
     )
-    source = (
-        f"round:{state.round_number}:player:{action.actor}:"
-        f"reveal_card:{card_id}"
-    )
-    return RuleResult(
-        state=next_state,
-        events=(
-            GameEvent(
-                event_id=f"{source}:spy_recalled:{post_id}",
-                kind="spy_recalled",
-                payload=(
-                    ("player", action.actor),
-                    ("post_id", post_id),
-                    ("source", card_id),
-                ),
-            ),
-            GameEvent(
-                event_id=f"{source}:intrigue_draw",
-                kind="intrigue_card_drawn",
-                payload=(("count", 1), ("player", action.actor)),
-            ),
+    return RuleResult(state=next_state, events=tuple(events))
+
+
+def _spy_recalled_event(
+    state: GameState,
+    player: int,
+    card_id: str,
+    post_id: str,
+) -> GameEvent:
+    return GameEvent(
+        event_id=(
+            f"round:{state.round_number}:player:{player}:"
+            f"reveal_card:{card_id}:spy_recalled:{post_id}"
+        ),
+        kind="spy_recalled",
+        payload=(
+            ("player", player),
+            ("post_id", post_id),
+            ("source", card_id),
         ),
     )
+
+
+def _add_reveal_persuasion(
+    frames: tuple[DecisionFrame, ...],
+    amount: int,
+) -> tuple[DecisionFrame, ...]:
+    """Add Persuasion to the Reveal frame below serial choice frames."""
+
+    for index in range(len(frames) - 1, -1, -1):
+        context = dict(frames[index].context)
+        persuasion = context.get("persuasion")
+        if persuasion is None:
+            continue
+        if isinstance(persuasion, bool) or not isinstance(persuasion, int):
+            raise RuntimeError("Reveal frame has invalid Persuasion")
+        context["persuasion"] = persuasion + amount
+        return (
+            *frames[:index],
+            replace(frames[index], context=tuple(sorted(context.items()))),
+            *frames[index + 1 :],
+        )
+    raise RuntimeError("Reveal Spy choice is missing its Reveal frame")
 
 
 def legal_reveal_actions(state: GameState, player: int) -> tuple[DomainAction, ...]:
@@ -208,11 +315,18 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         DecisionFrame(
             frame_id=(
                 f"round:{state.round_number}:player:{action.actor}:"
-                f"reveal_spy:{card_id}"
+                f"reveal_spy:{card_id}:{effect.value}"
             ),
             decision=PlayerDecision(
                 owner=action.actor,
-                prompt="Choose a Spy to recall for this Reveal effect",
+                prompt=(
+                    "Choose two Spies to recall or decline this Reveal effect"
+                    if effect
+                    is (
+                        PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_TWO_PERSUASION
+                    )
+                    else "Choose a Spy to recall for this Reveal effect"
+                ),
             ),
             context=(
                 ("reveal_card_id", card_id),
@@ -223,7 +337,10 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         for card_id, card in zip(revealed, cards, strict=True)
         for effect in card.reveal_choice_effects
         if effect
-        is PersonalCardRevealChoiceEffect.RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED
+        in (
+            PersonalCardRevealChoiceEffect.RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED,
+            PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_TWO_PERSUASION,
+        )
         and len(owner.spy_post_ids) >= 2
     )
     next_state = replace(

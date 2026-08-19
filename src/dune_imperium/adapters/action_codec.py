@@ -27,7 +27,7 @@ from dune_imperium.content.uprising.starting_cards import (
 from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
 from dune_imperium.core.actions import ActionValue, DomainAction
 
-ACTION_CODEC_VERSION = 25
+ACTION_CODEC_VERSION = 26
 MAX_DEPLOYMENT_COUNT = 12
 
 
@@ -118,6 +118,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "decline_control_defense",
             "decline_endgame_wild_match",
             "decline_gather_intelligence",
+            "decline_reveal_spy_recall",
             "deploy_control_defense",
             "finish_reveal",
             "pass_combat_intrigue",
@@ -201,6 +202,17 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             arguments=(("post_id", post_id),),
         )
         for post_id in post_ids
+    )
+    templates.extend(
+        ActionTemplate(
+            action_id="recall_spies_for_reveal",
+            arguments=(
+                ("first_post_id", first_post_id),
+                ("second_post_id", second_post_id),
+            ),
+        )
+        for index, first_post_id in enumerate(post_ids)
+        for second_post_id in post_ids[index + 1 :]
     )
     templates.extend(
         ActionTemplate(

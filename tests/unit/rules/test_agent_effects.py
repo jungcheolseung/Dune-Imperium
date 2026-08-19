@@ -1108,3 +1108,31 @@ def test_imperial_spymaster_draws_intrigue_after_gathering_intelligence() -> Non
         "agent_card_effect_resolved",
         "intrigue_card_drawn",
     )
+
+
+def test_in_high_places_gains_water_with_bene_gesserit_bond() -> None:
+    in_high_places = _imperium_instance("in_high_places")
+    truthtrance = _imperium_instance("truthtrance")
+    owner = PlayerState(
+        player_id=0,
+        hand=(in_high_places,),
+        in_play=(truthtrance,),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "secrets")).state
+
+    result = resolve_agent_card_effect(placed)
+
+    assert result.state.players[0].resources.water == 2

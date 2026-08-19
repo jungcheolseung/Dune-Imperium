@@ -221,7 +221,22 @@ IMPERIUM_CARDS: Final = (
         reveal_strength=1,
         play_data_complete=True,
     ),
-    _entry(64, "in-high-places", "In High Places", 5, has_acquisition_bonus=True),
+    _entry(
+        64,
+        "in-high-places",
+        "In High Places",
+        5,
+        has_acquisition_bonus=True,
+        factions=(Faction.BENE_GESSERIT,),
+        agent_icons=(AgentIcon.BENE_GESSERIT, AgentIcon.EMPEROR),
+        agent_effect=PersonalCardAgentEffect.GAIN_WATER_IF_BENE_GESSERIT_BOND,
+        acquisition_effect=PersonalCardAcquisitionEffect.PLACE_SPY,
+        reveal_persuasion=2,
+        reveal_choice_effects=(
+            PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_TWO_PERSUASION,
+        ),
+        play_data_complete=True,
+    ),
     _entry(
         184,
         "interstellar-trade",

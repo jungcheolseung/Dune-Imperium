@@ -15,6 +15,7 @@ from dune_imperium.core import (
 )
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.reveal_turn import (
+    apply_reveal_spy_action,
     begin_reveal_turn,
     finish_reveal_turn,
     legal_finish_reveal_actions,
@@ -174,7 +175,11 @@ def test_spy_network_recalls_one_of_two_spies_and_draws_intrigue() -> None:
     revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
     engine = UprisingRulesEngine()
     choices = engine.legal_actions(revealed.state, 0)
-    selected = choices[1]
+    selected = next(
+        action
+        for action in choices
+        if dict(action.arguments)["post_id"] == posts[1]
+    )
     result = engine.apply(revealed.state, selected)
 
     assert tuple(action.action_id for action in choices) == (
@@ -209,6 +214,68 @@ def test_spy_network_has_no_recall_effect_with_only_one_spy() -> None:
 
     assert legal_reveal_spy_actions(result.state, 0) == ()
     assert dict(result.state.decision_stack[-1].context)["persuasion"] == 2
+
+
+def test_in_high_places_may_recall_two_spies_for_two_persuasion() -> None:
+    in_high_places = _imperium_instance("in_high_places")
+    posts = (
+        "arrakis-hagga-basin",
+        "arrakis-deep-desert",
+        "bene-gesserit-espionage-secrets",
+    )
+    state = _state(
+        PlayerState(
+            player_id=0,
+            hand=(in_high_places,),
+            spies_supply=0,
+            spy_post_ids=posts,
+        )
+    )
+
+    revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
+    choices = legal_reveal_spy_actions(revealed.state, 0)
+    recall = next(
+        action for action in choices if action.action_id == "recall_spies_for_reveal"
+    )
+    result = apply_reveal_spy_action(revealed.state, recall)
+
+    assert len(choices) == 4
+    assert result.state.players[0].spies_supply == 2
+    assert len(result.state.players[0].spy_post_ids) == 1
+    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 4
+    assert tuple(event.kind for event in result.events) == (
+        "spy_recalled",
+        "spy_recalled",
+        "reveal_persuasion_gained",
+    )
+
+
+def test_in_high_places_reveal_spy_recall_may_be_declined() -> None:
+    in_high_places = _imperium_instance("in_high_places")
+    posts = (
+        "arrakis-hagga-basin",
+        "bene-gesserit-espionage-secrets",
+    )
+    state = _state(
+        PlayerState(
+            player_id=0,
+            hand=(in_high_places,),
+            spies_supply=1,
+            spy_post_ids=posts,
+        )
+    )
+    revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
+    decline = next(
+        action
+        for action in legal_reveal_spy_actions(revealed.state, 0)
+        if action.action_id == "decline_reveal_spy_recall"
+    )
+
+    result = apply_reveal_spy_action(revealed.state, decline)
+
+    assert result.state.players[0].spy_post_ids == posts
+    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 2
+    assert result.events[0].kind == "reveal_spy_recall_declined"
 
 
 def test_high_council_and_assembly_hall_add_reveal_persuasion() -> None:
