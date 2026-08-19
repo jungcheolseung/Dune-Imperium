@@ -40,6 +40,9 @@ class PersonalCardAgentEffect(StrEnum):
     RECRUIT_THREE_IF_SPY_RECALLED_THIS_TURN = (
         "recruit_three_if_spy_recalled_this_turn"
     )
+    RECRUIT_TWO_IF_SPY_RECALLED_THIS_TURN = (
+        "recruit_two_if_spy_recalled_this_turn"
+    )
     DRAW_INTRIGUE_IF_SPY_RECALLED_THIS_TURN = (
         "draw_intrigue_if_spy_recalled_this_turn"
     )

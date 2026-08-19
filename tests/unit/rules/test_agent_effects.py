@@ -1136,3 +1136,42 @@ def test_in_high_places_gains_water_with_bene_gesserit_bond() -> None:
     result = resolve_agent_card_effect(placed)
 
     assert result.state.players[0].resources.water == 2
+
+
+def test_rebel_supplier_recruits_two_after_gathering_intelligence() -> None:
+    supplier = _imperium_instance("rebel_supplier")
+    drawn = _instance("dagger")
+    post_id = "arrakis-spice-refinery-arrakeen"
+    owner = PlayerState(
+        player_id=0,
+        hand=(supplier,),
+        deck=(drawn,),
+        spies_supply=2,
+        spy_post_ids=(post_id,),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed_agent = apply_agent_action(state, _action_to(state, "arrakeen")).state
+    gather = next(
+        action
+        for action in legal_gather_intelligence_actions(placed_agent, 0)
+        if action.action_id == "gather_intelligence"
+    )
+
+    gathered = apply_gather_intelligence_action(placed_agent, gather)
+    result = resolve_agent_card_effect(gathered.state)
+
+    assert result.state.players[0].troops_supply == 7
+    assert result.state.players[0].troops_garrison == 5
+    assert dict(result.state.decision_stack[-1].context)["troops_recruited"] == 2

@@ -330,6 +330,21 @@ def test_in_high_places_play_data_has_bond_acquisition_and_reveal_choice() -> No
     )
 
 
+def test_rebel_supplier_play_data_uses_the_turn_recall_condition() -> None:
+    card = IMPERIUM_CARDS_BY_ID["rebel_supplier"]
+
+    assert card.play_data_complete is True
+    assert card.factions == (Faction.FREMEN,)
+    assert card.agent_icons == (AgentIcon.CITY,)
+    assert (
+        card.agent_effect
+        is PersonalCardAgentEffect.RECRUIT_TWO_IF_SPY_RECALLED_THIS_TURN
+    )
+    assert card.reveal_persuasion == 0
+    assert card.reveal_strength == 1
+    assert card.reveal_effects == (PersonalCardRevealEffect(spice=1),)
+
+
 def test_untranscribed_imperium_card_still_fails_explicitly() -> None:
     instance_id = _instance("double_agent")
 
