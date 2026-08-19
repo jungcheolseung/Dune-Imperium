@@ -186,6 +186,18 @@ def test_northern_watermaster_uses_its_city_icon() -> None:
     assert _space_ids(_state(watermaster)) == {"arrakeen", "spice_refinery"}
 
 
+def test_maker_keeper_uses_its_city_and_spice_trade_icons() -> None:
+    maker_keeper = _imperium_instance("maker_keeper")
+
+    assert _space_ids(_state(maker_keeper)) == {
+        "accept_contract",
+        "arrakeen",
+        "hagga_basin",
+        "imperial_basin",
+        "spice_refinery",
+    }
+
+
 def test_spy_agent_icon_accesses_only_spaces_connected_to_an_owned_spy() -> None:
     owner = PlayerState(
         player_id=0,

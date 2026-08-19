@@ -250,6 +250,15 @@ def test_northern_watermaster_gains_spice_only_with_fremen_bond() -> None:
     assert dict(with_result.state.decision_stack[-1].context)["persuasion"] == 2
 
 
+def test_maker_keeper_contributes_two_reveal_persuasion() -> None:
+    maker_keeper = _imperium_instance("maker_keeper")
+    state = _state(PlayerState(player_id=0, hand=(maker_keeper,)))
+
+    result = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
+
+    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 2
+
+
 def test_reveal_preserves_agent_cards_already_in_play() -> None:
     played = _instance("dagger", 0)
     revealed = _instance("dagger", 1)

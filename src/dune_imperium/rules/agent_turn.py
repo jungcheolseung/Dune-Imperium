@@ -234,6 +234,13 @@ def _agent_effect_is_available(
         return space.maker
     if effect is PersonalCardAgentEffect.RECRUIT_ONE_IF_MAKER_SPACE:
         return space.maker
+    if (
+        effect
+        is PersonalCardAgentEffect.GAIN_BY_BENE_GESSERIT_AND_FREMEN_INFLUENCE_TWO
+    ):
+        return (
+            owner.influence.bene_gesserit >= 2 or owner.influence.fremen >= 2
+        )
     return True
 
 

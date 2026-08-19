@@ -488,3 +488,92 @@ def test_northern_watermaster_gains_water_on_its_agent_turn() -> None:
 
     assert result.state.players[0].resources.water == 2
     assert result.events[0].kind == "agent_card_effect_resolved"
+
+
+def test_maker_keeper_gains_each_reward_for_its_matching_influence() -> None:
+    maker_keeper = _imperium_instance("maker_keeper")
+    owner = PlayerState(
+        player_id=0,
+        hand=(maker_keeper,),
+        influence=Influence(bene_gesserit=2, fremen=2),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
+
+    result = resolve_agent_card_effect(placed)
+
+    assert result.state.players[0].resources.spice == 1
+    assert result.state.players[0].resources.water == 2
+
+
+@pytest.mark.parametrize(
+    ("influence", "expected_spice", "expected_water"),
+    (
+        (Influence(bene_gesserit=2), 0, 2),
+        (Influence(fremen=2), 1, 1),
+    ),
+)
+def test_maker_keeper_rewards_are_independent(
+    influence: Influence,
+    expected_spice: int,
+    expected_water: int,
+) -> None:
+    maker_keeper = _imperium_instance("maker_keeper")
+    owner = PlayerState(
+        player_id=0,
+        hand=(maker_keeper,),
+        influence=influence,
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
+
+    result = resolve_agent_card_effect(placed)
+
+    assert result.state.players[0].resources.spice == expected_spice
+    assert result.state.players[0].resources.water == expected_water
+
+
+def test_maker_keeper_has_no_agent_effect_without_matching_influence() -> None:
+    maker_keeper = _imperium_instance("maker_keeper")
+    owner = PlayerState(player_id=0, hand=(maker_keeper,))
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+
+    placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
+
+    assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False

@@ -26,6 +26,9 @@ class PersonalCardAgentEffect(StrEnum):
     DRAW_PERSONAL_CARD = "draw_personal_card"
     GAIN_SPICE_IF_MAKER_SPACE = "gain_spice_if_maker_space"
     GAIN_WATER = "gain_water"
+    GAIN_BY_BENE_GESSERIT_AND_FREMEN_INFLUENCE_TWO = (
+        "gain_by_bene_gesserit_and_fremen_influence_two"
+    )
     RECRUIT_ONE_IF_MAKER_SPACE = "recruit_one_if_maker_space"
     DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO = (
         "draw_if_bene_gesserit_influence_two"

@@ -167,6 +167,23 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             ),
         )
         event_kind = "agent_card_effect_resolved"
+    elif (
+        effect
+        is PersonalCardAgentEffect.GAIN_BY_BENE_GESSERIT_AND_FREMEN_INFLUENCE_TWO
+    ):
+        gains_water = owner.influence.bene_gesserit >= 2
+        gains_spice = owner.influence.fremen >= 2
+        if not gains_water and not gains_spice:
+            raise RuntimeError("conditional Agent effect is not available")
+        next_owner = replace(
+            owner,
+            resources=replace(
+                owner.resources,
+                spice=owner.resources.spice + int(gains_spice),
+                water=owner.resources.water + int(gains_water),
+            ),
+        )
+        event_kind = "agent_card_effect_resolved"
     else:
         raise NotImplementedError(
             f"personal-card Agent effect is not implemented: {card.card.card_id}"

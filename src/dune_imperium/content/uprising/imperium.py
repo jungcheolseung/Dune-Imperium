@@ -161,7 +161,20 @@ IMPERIUM_CARDS: Final = (
     _entry(68, "junction-headquarters", "Junction Headquarters", 6),
     _entry(63, "leadership", "Leadership", 5),
     _entry(74, "long-live-the-fighters", "Long Live the Fighters", 7),
-    _entry(19, "maker-keeper", "Maker Keeper", 2, copies=2),
+    _entry(
+        19,
+        "maker-keeper",
+        "Maker Keeper",
+        2,
+        copies=2,
+        factions=(Faction.BENE_GESSERIT, Faction.FREMEN),
+        agent_icons=(AgentIcon.CITY, AgentIcon.SPICE_TRADE),
+        agent_effect=(
+            PersonalCardAgentEffect.GAIN_BY_BENE_GESSERIT_AND_FREMEN_INFLUENCE_TWO
+        ),
+        reveal_persuasion=2,
+        play_data_complete=True,
+    ),
     _entry(
         32,
         "maula-pistol",

@@ -129,6 +129,20 @@ def test_northern_watermaster_play_data_has_fremen_bond_gain() -> None:
     )
 
 
+def test_maker_keeper_play_data_has_independent_influence_rewards() -> None:
+    card = IMPERIUM_CARDS_BY_ID["maker_keeper"]
+
+    assert card.play_data_complete is True
+    assert card.factions == (Faction.BENE_GESSERIT, Faction.FREMEN)
+    assert card.agent_icons == (AgentIcon.CITY, AgentIcon.SPICE_TRADE)
+    assert (
+        card.agent_effect
+        is PersonalCardAgentEffect.GAIN_BY_BENE_GESSERIT_AND_FREMEN_INFLUENCE_TWO
+    )
+    assert card.reveal_persuasion == 2
+    assert card.reveal_strength == 0
+
+
 def test_untranscribed_imperium_card_still_fails_explicitly() -> None:
     instance_id = _instance("double_agent")
 
