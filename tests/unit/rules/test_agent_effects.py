@@ -1442,3 +1442,75 @@ def test_leadership_has_no_agent_effect_without_a_sandworm() -> None:
     placed = apply_agent_action(state, _action_to(state, "hagga_basin")).state
 
     assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False
+
+
+def test_shishakli_may_trash_a_personal_card_to_draw_one() -> None:
+    shishakli = _imperium_instance("shishakli")
+    trashed_card = _instance("dagger")
+    drawn_card = _instance("convincing_argument")
+    owner = PlayerState(
+        player_id=0,
+        hand=(shishakli, trashed_card),
+        deck=(drawn_card,),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
+    action = next(
+        action
+        for action in legal_agent_card_trash_actions(placed, 0)
+        if dict(action.arguments).get("card_id") == trashed_card
+    )
+
+    result = apply_agent_card_trash(placed, action)
+
+    assert result.state.players[0].trashed == (trashed_card,)
+    assert result.state.players[0].hand == (drawn_card,)
+    assert result.state.players[0].deck == ()
+    assert result.events[0].kind == "card_trashed"
+
+
+def test_shishakli_trash_draw_may_be_declined() -> None:
+    shishakli = _imperium_instance("shishakli")
+    drawn_card = _instance("dagger")
+    owner = PlayerState(
+        player_id=0,
+        hand=(shishakli,),
+        deck=(drawn_card,),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
+    decline = next(
+        action
+        for action in legal_agent_card_trash_actions(placed, 0)
+        if action.action_id == "decline_agent_card_trash"
+    )
+
+    result = apply_agent_card_trash(placed, decline)
+
+    assert result.state.players[0].hand == ()
+    assert result.state.players[0].deck == (drawn_card,)
+    assert result.state.players[0].trashed == ()

@@ -13,6 +13,7 @@ from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.card_bonds import has_faction_bond
 from dune_imperium.rules.effects import recruit_troops
+from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
     place_spy,
@@ -471,7 +472,23 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
             ("strength", strength),
         ),
     )
-    return RuleResult(state=next_state, events=(event,))
+    events: list[GameEvent] = [event]
+    for card_id, effect in reveal_effects:
+        if effect.influence_faction is None:
+            continue
+        gained = gain_faction_influence(
+            next_state,
+            action.actor,
+            Faction(effect.influence_faction.value),
+            effect.influence,
+            event_prefix=(
+                f"round:{state.round_number}:player:{action.actor}:"
+                f"reveal_card:{card_id}:influence:{effect.influence_faction.value}"
+            ),
+        )
+        next_state = gained.state
+        events.extend(gained.events)
+    return RuleResult(state=next_state, events=tuple(events))
 
 
 def current_reveal_context(state: GameState) -> dict[str, ActionValue]:

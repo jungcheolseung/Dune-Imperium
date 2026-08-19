@@ -31,6 +31,7 @@ class PersonalCardAgentEffect(StrEnum):
 
     TRASH_SELF = "trash_self"
     TRASH_PERSONAL_CARD = "trash_personal_card"
+    TRASH_PERSONAL_CARD_TO_DRAW_ONE = "trash_personal_card_to_draw_one"
     TRASH_SELF_AND_GAIN_CHOSEN_INFLUENCE = (
         "trash_self_and_gain_chosen_influence"
     )
@@ -110,6 +111,8 @@ class PersonalCardRevealEffect:
     recruit_troops: int = 0
     strength: int = 0
     strength_per_other_sword_card: int = 0
+    influence: int = 0
+    influence_faction: PersonalCardBond | None = None
     required_faction_bond: PersonalCardBond | None = None
     requires_high_council: bool = False
     requires_swordmaster: bool = False
@@ -129,6 +132,13 @@ class PersonalCardRevealEffect:
             raise TypeError("counted Reveal Faction must use PersonalCardBond")
         if self.per_revealed_faction is not None and self.persuasion == 0:
             raise ValueError("counted Reveal Faction requires Persuasion")
+        if self.influence_faction is not None and not isinstance(
+            self.influence_faction,
+            PersonalCardBond,
+        ):
+            raise TypeError("Reveal Influence Faction must use PersonalCardBond")
+        if (self.influence == 0) != (self.influence_faction is None):
+            raise ValueError("Reveal Influence amount and Faction must be paired")
         if not isinstance(self.requires_high_council, bool) or not isinstance(
             self.requires_swordmaster,
             bool,
@@ -144,6 +154,7 @@ class PersonalCardRevealEffect:
             self.recruit_troops,
             self.strength,
             self.strength_per_other_sword_card,
+            self.influence,
         )
         if min((*gains, self.minimum_spies_placed)) < 0:
             raise ValueError("personal-card Reveal gains must not be negative")

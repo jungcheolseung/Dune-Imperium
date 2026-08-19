@@ -466,6 +466,45 @@ def test_leadership_does_not_count_itself_or_an_agent_card_for_bonus() -> None:
     assert result.state.players[0].combat_strength == 3
 
 
+def test_shishakli_reveal_gains_fremen_influence_only_with_bond() -> None:
+    shishakli = _imperium_instance("shishakli")
+    maula = _imperium_instance("maula_pistol")
+    without_bond = _state(
+        PlayerState(
+            player_id=0,
+            hand=(shishakli,),
+            troops_supply=8,
+            troops_conflict=1,
+        )
+    )
+    with_bond = _state(
+        PlayerState(
+            player_id=0,
+            hand=(shishakli, maula),
+            troops_supply=8,
+            troops_conflict=1,
+        )
+    )
+
+    without_result = begin_reveal_turn(
+        without_bond,
+        legal_reveal_actions(without_bond, 0)[0],
+    )
+    with_result = begin_reveal_turn(
+        with_bond,
+        legal_reveal_actions(with_bond, 0)[0],
+    )
+
+    assert without_result.state.players[0].influence.fremen == 0
+    assert without_result.state.players[0].combat_strength == 4
+    assert with_result.state.players[0].influence.fremen == 1
+    assert with_result.state.players[0].combat_strength == 5
+    assert tuple(event.kind for event in with_result.events) == (
+        "reveal_started",
+        "influence_gained",
+    )
+
+
 def test_high_council_and_assembly_hall_add_reveal_persuasion() -> None:
     state = _state(
         PlayerState(

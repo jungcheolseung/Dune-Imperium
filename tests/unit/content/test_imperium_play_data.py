@@ -442,6 +442,26 @@ def test_leadership_play_data_scales_with_worms_and_other_sword_cards() -> None:
     )
 
 
+def test_shishakli_play_data_has_trash_draw_and_fremen_bond_influence() -> None:
+    card = IMPERIUM_CARDS_BY_ID["shishakli"]
+
+    assert card.play_data_complete is True
+    assert card.factions == (Faction.FREMEN,)
+    assert card.agent_icons == (AgentIcon.CITY, AgentIcon.SPICE_TRADE)
+    assert (
+        card.agent_effect
+        is PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE
+    )
+    assert card.reveal_strength == 2
+    assert card.reveal_effects == (
+        PersonalCardRevealEffect(
+            influence=1,
+            influence_faction=PersonalCardBond.FREMEN,
+            required_faction_bond=PersonalCardBond.FREMEN,
+        ),
+    )
+
+
 def test_untranscribed_imperium_card_still_fails_explicitly() -> None:
     instance_id = _instance("double_agent")
 
@@ -468,3 +488,5 @@ def test_personal_card_reveal_effect_requires_a_nonnegative_gain() -> None:
             water=1,
             per_revealed_faction=PersonalCardBond.FREMEN,
         )
+    with pytest.raises(ValueError, match="must be paired"):
+        PersonalCardRevealEffect(influence=1)

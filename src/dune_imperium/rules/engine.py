@@ -336,6 +336,7 @@ def _agent_action_is_supported(state: GameState, action: DomainAction) -> bool:
         None,
         PersonalCardAgentEffect.TRASH_SELF,
         PersonalCardAgentEffect.TRASH_PERSONAL_CARD,
+        PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE,
         PersonalCardAgentEffect.TRASH_SELF_AND_GAIN_CHOSEN_INFLUENCE,
         PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE_IF_SPY_RECALLED_THIS_TURN,
         PersonalCardAgentEffect.DRAW_PERSONAL_CARD,

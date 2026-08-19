@@ -426,7 +426,24 @@ IMPERIUM_CARDS: Final = (
         reveal_strength=1,
         play_data_complete=True,
     ),
-    _entry(48, "shishakli", "Shishakli", 4),
+    _entry(
+        48,
+        "shishakli",
+        "Shishakli",
+        4,
+        factions=(Faction.FREMEN,),
+        agent_icons=(AgentIcon.CITY, AgentIcon.SPICE_TRADE),
+        agent_effect=PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE,
+        reveal_strength=2,
+        reveal_effects=(
+            PersonalCardRevealEffect(
+                influence=1,
+                influence_faction=PersonalCardBond.FREMEN,
+                required_faction_bond=PersonalCardBond.FREMEN,
+            ),
+        ),
+        play_data_complete=True,
+    ),
     _entry(
         17,
         "smuggler-s-harvester",

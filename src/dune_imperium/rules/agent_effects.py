@@ -230,7 +230,7 @@ def legal_agent_card_trash_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Return Desert Survival's optional personal-card trash choices."""
+    """Return optional personal-card trash choices for the current Agent card."""
 
     if not 0 <= player < state.config.players:
         raise ValueError("player must identify a configured seat")
@@ -244,7 +244,10 @@ def legal_agent_card_trash_actions(
         return ()
     _, source_card_id, _ = _effect_subject(context)
     source_card = personal_card_for_instance(source_card_id)
-    if source_card.agent_effect is not PersonalCardAgentEffect.TRASH_PERSONAL_CARD:
+    if source_card.agent_effect not in (
+        PersonalCardAgentEffect.TRASH_PERSONAL_CARD,
+        PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE,
+    ):
         return ()
 
     owner = state.players[player]
@@ -268,6 +271,8 @@ def apply_agent_card_trash(state: GameState, action: DomainAction) -> RuleResult
     if action not in legal_agent_card_trash_actions(state, action.actor):
         raise ValueError("action is not a legal Agent-card trash choice")
     _, context = current_agent_effect_context(state)
+    _, source_card_id, _ = _effect_subject(context)
+    source_card = personal_card_for_instance(source_card_id)
     context["pending_agent_effect"] = False
     source = f"round:{state.round_number}:player:{action.actor}:agent_card"
     if action.action_id == "decline_agent_card_trash":
@@ -293,6 +298,20 @@ def apply_agent_card_trash(state: GameState, action: DomainAction) -> RuleResult
         context,
         trashed.state.players,
     )
+    if (
+        source_card.agent_effect
+        is PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE
+    ):
+        drawn = draw_or_request_personal_cards(
+            next_state,
+            action.actor,
+            1,
+            source=f"{source}:trash_draw",
+        )
+        return RuleResult(
+            state=drawn.state,
+            events=(*trashed.events, *drawn.events),
+        )
     return RuleResult(state=next_state, events=trashed.events)
 
 
