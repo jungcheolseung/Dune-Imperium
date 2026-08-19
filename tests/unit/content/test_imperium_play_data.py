@@ -8,7 +8,11 @@ from dune_imperium.content.uprising.imperium import (
     imperium_deck_instance_ids,
 )
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
-from dune_imperium.content.uprising.types import AgentIcon, PersonalCardAgentEffect
+from dune_imperium.content.uprising.types import (
+    AgentIcon,
+    PersonalCardAgentEffect,
+    PersonalCardTrashEffect,
+)
 
 
 def _instance(card_id: str) -> str:
@@ -47,8 +51,20 @@ def test_truthtrance_play_data_matches_the_diu_transcription() -> None:
     assert card.reveal_strength == 0
 
 
+def test_sardaukar_soldier_play_data_includes_its_trash_trigger() -> None:
+    card = IMPERIUM_CARDS_BY_ID["sardaukar_soldier"]
+
+    assert card.play_data_complete is True
+    assert card.factions == (Faction.EMPEROR,)
+    assert card.agent_icons == (AgentIcon.CITY,)
+    assert card.agent_effect is None
+    assert card.trash_effect is PersonalCardTrashEffect.DRAW_INTRIGUE_CARD
+    assert card.reveal_persuasion == 1
+    assert card.reveal_strength == 1
+
+
 def test_untranscribed_imperium_card_still_fails_explicitly() -> None:
-    instance_id = _instance("sardaukar_soldier")
+    instance_id = _instance("desert_survival")
 
     with pytest.raises(NotImplementedError, match="not transcribed"):
         personal_card_for_instance(instance_id)

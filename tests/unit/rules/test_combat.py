@@ -718,6 +718,33 @@ def test_trade_dispute_returns_trashed_reserve_card_to_its_stack() -> None:
     assert dict(result.reserve_stacks)["prepare_the_way"] == 8
 
 
+def test_trashing_sardaukar_soldier_draws_an_intrigue_card() -> None:
+    state = _reward_state("trade_dispute")
+    sardaukar = "imperium:sardaukar_soldier:0"
+    owner = replace(state.players[0], discard_pile=(sardaukar,))
+    state = replace(
+        state,
+        players=(owner, *state.players[1:]),
+        intrigue_deck=("intrigue:test:0",),
+    )
+    state = resolve_combat_rewards(state).state
+    action = next(
+        action
+        for action in legal_combat_reward_trash_actions(state, 0)
+        if dict(action.arguments).get("card_id") == sardaukar
+    )
+
+    result = apply_combat_reward_trash(state, action)
+
+    assert result.state.players[0].trashed == (sardaukar,)
+    assert result.state.players[0].intrigue_cards == ("intrigue:test:0",)
+    assert result.state.intrigue_deck == ()
+    assert tuple(event.kind for event in result.events) == (
+        "card_trashed",
+        "intrigue_card_drawn",
+    )
+
+
 def test_tier_three_base_vp_control_and_spice_payment_resolve() -> None:
     state = _reward_state("battle_for_imperial_basin")
     owner = replace(

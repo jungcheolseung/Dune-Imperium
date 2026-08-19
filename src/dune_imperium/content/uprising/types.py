@@ -27,6 +27,12 @@ class PersonalCardAgentEffect(StrEnum):
     )
 
 
+class PersonalCardTrashEffect(StrEnum):
+    """Typed effects triggered when a personal card is trashed."""
+
+    DRAW_INTRIGUE_CARD = "draw_intrigue_card"
+
+
 class BattleIcon(StrEnum):
     """Icons paired by Objective and won Conflict cards."""
 

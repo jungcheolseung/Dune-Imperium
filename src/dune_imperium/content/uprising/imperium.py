@@ -10,7 +10,11 @@ from dune_imperium.content.schema import (
     SourceRef,
 )
 from dune_imperium.content.uprising.board import Faction
-from dune_imperium.content.uprising.types import AgentIcon, PersonalCardAgentEffect
+from dune_imperium.content.uprising.types import (
+    AgentIcon,
+    PersonalCardAgentEffect,
+    PersonalCardTrashEffect,
+)
 
 BASE_SOURCES: Final = (SourceRef(SourceDocument.MAIN_RULEBOOK, (3, 4)),)
 CHOAM_SOURCES: Final = (SourceRef(SourceDocument.MAIN_RULEBOOK, (3, 4, 16)),)
@@ -23,6 +27,7 @@ class ImperiumCardEntry(DeckCardEntry):
     factions: tuple[Faction, ...] = ()
     agent_icons: tuple[AgentIcon, ...] = ()
     agent_effect: PersonalCardAgentEffect | None = None
+    trash_effect: PersonalCardTrashEffect | None = None
     reveal_persuasion: int = 0
     reveal_strength: int = 0
     play_data_complete: bool = False
@@ -39,6 +44,7 @@ class ImperiumCardEntry(DeckCardEntry):
             self.factions
             or self.agent_icons
             or self.agent_effect is not None
+            or self.trash_effect is not None
             or self.reveal_persuasion
             or self.reveal_strength
         ):
@@ -57,6 +63,7 @@ def _entry(
     factions: tuple[Faction, ...] = (),
     agent_icons: tuple[AgentIcon, ...] = (),
     agent_effect: PersonalCardAgentEffect | None = None,
+    trash_effect: PersonalCardTrashEffect | None = None,
     reveal_persuasion: int = 0,
     reveal_strength: int = 0,
     play_data_complete: bool = False,
@@ -75,6 +82,7 @@ def _entry(
         factions=factions,
         agent_icons=agent_icons,
         agent_effect=agent_effect,
+        trash_effect=trash_effect,
         reveal_persuasion=reveal_persuasion,
         reveal_strength=reveal_strength,
         play_data_complete=play_data_complete,
@@ -142,7 +150,18 @@ IMPERIUM_CARDS: Final = (
     _entry(40, "rebel-supplier", "Rebel Supplier", 3, copies=2),
     _entry(20, "reliable-informant", "Reliable Informant", 2),
     _entry(51, "sardaukar-coordination", "Sardaukar Coordination", 4, copies=2),
-    _entry(15, "sardaukar-soldier", "Sardaukar Soldier", 1),
+    _entry(
+        15,
+        "sardaukar-soldier",
+        "Sardaukar Soldier",
+        1,
+        factions=(Faction.EMPEROR,),
+        agent_icons=(AgentIcon.CITY,),
+        trash_effect=PersonalCardTrashEffect.DRAW_INTRIGUE_CARD,
+        reveal_persuasion=1,
+        reveal_strength=1,
+        play_data_complete=True,
+    ),
     _entry(48, "shishakli", "Shishakli", 4),
     _entry(17, "smuggler-s-harvester", "Smuggler's Harvester", 1, copies=2),
     _entry(47, "smuggler-s-haven", "Smuggler's Haven", 4),

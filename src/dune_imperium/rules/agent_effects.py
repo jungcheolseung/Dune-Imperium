@@ -1,7 +1,5 @@
 """Resolution of starting-card and Faction Agent-turn effects."""
 
-from dataclasses import replace
-
 from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.content.uprising.types import PersonalCardAgentEffect
@@ -10,6 +8,7 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
+from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.effects import (
     advance_after_effect,
     current_agent_effect_context,
@@ -29,14 +28,19 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
 
     owner = state.players[player]
     if effect is PersonalCardAgentEffect.TRASH_SELF:
-        next_owner = replace(
-            owner,
-            in_play=tuple(
-                card_id for card_id in owner.in_play if card_id != card_instance_id
-            ),
-            trashed=(*owner.trashed, card_instance_id),
+        trashed = trash_personal_card(
+            state,
+            player,
+            card_instance_id,
+            source=f"round:{state.round_number}:player:{player}:agent_card",
         )
-        event_kind = "card_trashed"
+        context["pending_agent_effect"] = False
+        next_state = advance_after_effect(
+            trashed.state,
+            context,
+            trashed.state.players,
+        )
+        return RuleResult(state=next_state, events=trashed.events)
     elif effect is PersonalCardAgentEffect.DRAW_PERSONAL_CARD:
         next_owner = owner
         event_kind = "agent_card_effect_resolved"

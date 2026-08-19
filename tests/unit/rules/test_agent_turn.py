@@ -138,6 +138,12 @@ def test_transcribed_imperium_icons_enable_agent_destinations() -> None:
     assert "assembly_hall" not in truthtrance_spaces
 
 
+def test_sardaukar_soldier_uses_its_city_icon() -> None:
+    sardaukar = _imperium_instance("sardaukar_soldier")
+
+    assert _space_ids(_state(sardaukar)) == {"arrakeen", "spice_refinery"}
+
+
 def test_spy_agent_icon_accesses_only_spaces_connected_to_an_owned_spy() -> None:
     owner = PlayerState(
         player_id=0,

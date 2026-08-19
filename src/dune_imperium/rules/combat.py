@@ -6,7 +6,6 @@ from enum import IntEnum
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID, ConflictReward
 from dune_imperium.content.uprising.objectives import OBJECTIVES_BY_ID
-from dune_imperium.content.uprising.reserve import RESERVE_STACKS_BY_ID
 from dune_imperium.content.uprising.types import BattleIcon
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
@@ -14,6 +13,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState, Resources
 from dune_imperium.core.state import GamePhase, GameState
+from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.influence import (
     MAX_INFLUENCE,
     gain_faction_influence,
@@ -601,74 +601,44 @@ def apply_combat_reward_trash(
         raise ValueError("action is not a legal Combat reward trash choice")
     frame = state.decision_stack[-1]
     choice_index = _context_int(dict(frame.context), "choice_index")
-    owner = state.players[action.actor]
     declined = action.action_id == "decline_combat_reward_trash"
-    reserve_card_id: str | None = None
+    events: tuple[GameEvent, ...]
     if declined:
         card_id = ""
-        next_owner = owner
+        working_state = state
+        events = (
+            GameEvent(
+                event_id=(
+                    f"round:{state.round_number}:combat_reward:trash:"
+                    f"{choice_index}:{action.actor}"
+                ),
+                kind="combat_reward_trash_declined",
+                payload=(("card_id", card_id), ("player", action.actor)),
+            ),
+        )
     else:
         card_value = dict(action.arguments)["card_id"]
         if not isinstance(card_value, str):
             raise RuntimeError("Combat reward trash choice has invalid card ID")
         card_id = card_value
-        reserve_card_id = _reserve_card_id(card_id)
-        next_owner = replace(
-            owner,
-            hand=tuple(candidate for candidate in owner.hand if candidate != card_id),
-            discard_pile=tuple(
-                candidate
-                for candidate in owner.discard_pile
-                if candidate != card_id
-            ),
-            in_play=tuple(
-                candidate for candidate in owner.in_play if candidate != card_id
-            ),
-            trashed=(
-                owner.trashed
-                if reserve_card_id is not None
-                else (*owner.trashed, card_id)
+        trashed = trash_personal_card(
+            state,
+            action.actor,
+            card_id,
+            source=(
+                f"round:{state.round_number}:combat_reward:trash:"
+                f"{choice_index}:{action.actor}"
             ),
         )
-    reserve_stacks = state.reserve_stacks
-    if not declined and reserve_card_id is not None:
-        if reserve_card_id not in dict(reserve_stacks):
-            raise RuntimeError("trashed Reserve card has no matching stack")
-        reserve_stacks = tuple(
-            (
-                candidate_id,
-                count + 1 if candidate_id == reserve_card_id else count,
-            )
-            for candidate_id, count in reserve_stacks
-        )
-    remaining = state.decision_stack[:-1]
+        working_state = trashed.state
+        events = trashed.events
+    remaining = working_state.decision_stack[:-1]
     next_state = replace(
-        state,
-        players=tuple(
-            next_owner if player.player_id == action.actor else player
-            for player in state.players
-        ),
-        reserve_stacks=reserve_stacks,
+        working_state,
         decision_stack=remaining,
         combat_rewards_resolved=not remaining,
     )
-    event = GameEvent(
-        event_id=(
-            f"round:{state.round_number}:combat_reward:trash:"
-            f"{choice_index}:{action.actor}:{card_id}"
-        ),
-        kind=("combat_reward_trash_declined" if declined else "card_trashed"),
-        payload=(("card_id", card_id), ("player", action.actor)),
-    )
-    return RuleResult(state=next_state, events=(event,))
-
-
-def _reserve_card_id(instance_id: str) -> str | None:
-    parts = instance_id.split(":", 2)
-    if len(parts) != 3 or parts[0] != "reserve":
-        return None
-    card_id = parts[1]
-    return card_id if card_id in RESERVE_STACKS_BY_ID else None
+    return RuleResult(state=next_state, events=events)
 
 
 def legal_combat_reward_spy_actions(
