@@ -522,6 +522,15 @@ def test_tread_in_darkness_reveals_for_persuasion_and_strength() -> None:
     assert result.state.players[0].combat_strength == 3
 
 
+def test_space_time_folding_reveals_for_one_persuasion() -> None:
+    folding = _imperium_instance("space_time_folding")
+    state = _state(PlayerState(player_id=0, hand=(folding,)))
+
+    result = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
+
+    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 1
+
+
 def test_high_council_and_assembly_hall_add_reveal_persuasion() -> None:
     state = _state(
         PlayerState(

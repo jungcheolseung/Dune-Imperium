@@ -19,10 +19,12 @@ from dune_imperium.core import (
     Resources,
 )
 from dune_imperium.rules.agent_effects import (
+    apply_agent_card_discard,
     apply_agent_card_influence,
     apply_agent_card_payment,
     apply_agent_card_spy_action,
     apply_agent_card_trash,
+    legal_agent_card_discard_actions,
     legal_agent_card_influence_actions,
     legal_agent_card_payment_actions,
     legal_agent_card_spy_actions,
@@ -1572,5 +1574,80 @@ def test_tread_in_darkness_has_no_agent_effect_without_bond() -> None:
     )
 
     placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
+
+    assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False
+
+
+@pytest.mark.parametrize(
+    ("discarded_card_id", "expected_hand_count", "expected_deck_count"),
+    (
+        ("dagger", 1, 1),
+        ("reliable_informant", 2, 0),
+    ),
+)
+def test_space_time_folding_draw_depends_on_discarded_card_faction(
+    discarded_card_id: str,
+    expected_hand_count: int,
+    expected_deck_count: int,
+) -> None:
+    folding = _imperium_instance("space_time_folding")
+    discarded = (
+        _instance(discarded_card_id)
+        if discarded_card_id == "dagger"
+        else _imperium_instance(discarded_card_id)
+    )
+    first = _instance("convincing_argument")
+    second = _instance("reconnaissance")
+    owner = PlayerState(
+        player_id=0,
+        hand=(folding, discarded),
+        deck=(first, second),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "deliver_supplies")).state
+    action = next(
+        action
+        for action in legal_agent_card_discard_actions(placed, 0)
+        if action.action_id == "discard_agent_card"
+    )
+
+    result = apply_agent_card_discard(placed, action)
+
+    assert result.state.players[0].discard_pile == (discarded,)
+    assert len(result.state.players[0].hand) == expected_hand_count
+    assert len(result.state.players[0].deck) == expected_deck_count
+    assert result.events[0].kind == "card_discarded"
+
+
+def test_space_time_folding_has_no_agent_effect_without_another_hand_card() -> None:
+    folding = _imperium_instance("space_time_folding")
+    owner = PlayerState(player_id=0, hand=(folding,))
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+
+    placed = apply_agent_action(state, _action_to(state, "deliver_supplies")).state
 
     assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False

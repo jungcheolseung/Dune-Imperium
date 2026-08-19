@@ -480,6 +480,20 @@ def test_tread_in_darkness_play_data_has_bond_trash_draw() -> None:
     assert card.reveal_strength == 1
 
 
+def test_space_time_folding_play_data_has_conditional_discard_draw() -> None:
+    card = IMPERIUM_CARDS_BY_ID["space_time_folding"]
+
+    assert card.play_data_complete is True
+    assert card.factions == (Faction.SPACING_GUILD,)
+    assert card.agent_icons == (AgentIcon.SPACING_GUILD,)
+    assert (
+        card.agent_effect
+        is PersonalCardAgentEffect.DISCARD_TO_DRAW_ONE_OR_TWO_IF_SPACING_GUILD
+    )
+    assert card.reveal_persuasion == 1
+    assert card.reveal_strength == 0
+
+
 def test_untranscribed_imperium_card_still_fails_explicitly() -> None:
     instance_id = _instance("double_agent")
 

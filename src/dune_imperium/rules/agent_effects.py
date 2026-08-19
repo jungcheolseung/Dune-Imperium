@@ -28,6 +28,97 @@ from dune_imperium.rules.spy_placement import (
 )
 
 
+def legal_agent_card_discard_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return optional hand-discard choices for the current Agent card."""
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return ()
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    if context.get("pending_agent_effect") is not True:
+        return ()
+    _, source_card_id, _ = _effect_subject(context)
+    source_card = personal_card_for_instance(source_card_id)
+    if (
+        source_card.agent_effect
+        is not PersonalCardAgentEffect.DISCARD_TO_DRAW_ONE_OR_TWO_IF_SPACING_GUILD
+    ):
+        return ()
+    return (
+        DomainAction(action_id="decline_agent_card_discard", actor=player),
+        *(
+            DomainAction(
+                action_id="discard_agent_card",
+                actor=player,
+                arguments=(("card_id", card_id),),
+            )
+            for card_id in state.players[player].hand
+        ),
+    )
+
+
+def apply_agent_card_discard(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Decline or discard one hand card, then resolve its conditional draw."""
+
+    if action not in legal_agent_card_discard_actions(state, action.actor):
+        raise ValueError("action is not a legal Agent-card discard choice")
+    _, context = current_agent_effect_context(state)
+    context["pending_agent_effect"] = False
+    source = f"round:{state.round_number}:player:{action.actor}:agent_card_discard"
+    if action.action_id == "decline_agent_card_discard":
+        return RuleResult(
+            state=advance_after_effect(state, context),
+            events=(
+                GameEvent(
+                    event_id=f"{source}:declined",
+                    kind="agent_card_discard_declined",
+                    payload=(("player", action.actor),),
+                ),
+            ),
+        )
+
+    card_id = dict(action.arguments).get("card_id")
+    if not isinstance(card_id, str):
+        raise RuntimeError("Agent-card discard choice has invalid card ID")
+    owner = state.players[action.actor]
+    discarded_card = personal_card_for_instance(card_id)
+    next_owner = replace(
+        owner,
+        hand=tuple(candidate for candidate in owner.hand if candidate != card_id),
+        discard_pile=(*owner.discard_pile, card_id),
+    )
+    prepared = advance_after_effect(
+        state,
+        context,
+        _replace_player(state, next_owner),
+    )
+    event = GameEvent(
+        event_id=f"{source}:{card_id}",
+        kind="card_discarded",
+        payload=(("card_id", card_id), ("player", action.actor)),
+    )
+    draw_count = (
+        2 if Faction.SPACING_GUILD in discarded_card.factions else 1
+    )
+    drawn = draw_or_request_personal_cards(
+        prepared,
+        action.actor,
+        draw_count,
+        source=f"{source}:{card_id}:draw",
+    )
+    return RuleResult(state=drawn.state, events=(event, *drawn.events))
+
+
 def legal_agent_card_influence_actions(
     state: GameState,
     player: int,

@@ -23,10 +23,12 @@ from dune_imperium.rules.acquisition import (
     legal_reserve_acquisitions,
 )
 from dune_imperium.rules.agent_effects import (
+    apply_agent_card_discard,
     apply_agent_card_influence,
     apply_agent_card_payment,
     apply_agent_card_spy_action,
     apply_agent_card_trash,
+    legal_agent_card_discard_actions,
     legal_agent_card_influence_actions,
     legal_agent_card_payment_actions,
     legal_agent_card_spy_actions,
@@ -196,6 +198,7 @@ class UprisingRulesEngine(RulesEngine):
         handlers = {
             "decline_control_defense": apply_control_defense_action,
             "decline_agent_card_payment": apply_agent_card_payment,
+            "decline_agent_card_discard": apply_agent_card_discard,
             "decline_agent_card_trash": apply_agent_card_trash,
             "decline_endgame_wild_match": apply_endgame_wild_action,
             "decline_gather_intelligence": apply_gather_intelligence_action,
@@ -228,6 +231,7 @@ class UprisingRulesEngine(RulesEngine):
             "gather_intelligence": apply_gather_intelligence_action,
             "pass_combat_intrigue": apply_combat_intrigue_pass,
             "pay_agent_card_water": apply_agent_card_payment,
+            "discard_agent_card": apply_agent_card_discard,
             "place_agent_card_spy": apply_agent_card_spy_action,
             "recall_spy_for_agent_card": apply_agent_card_spy_action,
             "decline_combat_reward": _apply_decline_combat_reward,
@@ -295,11 +299,13 @@ class UprisingRulesEngine(RulesEngine):
         actions: list[DomainAction] = []
         if context["pending_agent_effect"] is True:
             trash_actions = legal_agent_card_trash_actions(state, player)
+            discard_actions = legal_agent_card_discard_actions(state, player)
             payment_actions = legal_agent_card_payment_actions(state, player)
             spy_actions = legal_agent_card_spy_actions(state, player)
             influence_actions = legal_agent_card_influence_actions(state, player)
             choice_actions = (
                 *trash_actions,
+                *discard_actions,
                 *payment_actions,
                 *spy_actions,
                 *influence_actions,
@@ -342,6 +348,7 @@ def _agent_action_is_supported(state: GameState, action: DomainAction) -> bool:
         PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE_IF_SPY_RECALLED_THIS_TURN,
         PersonalCardAgentEffect.DRAW_PERSONAL_CARD,
         PersonalCardAgentEffect.DRAW_PER_SANDWORM_IN_CONFLICT,
+        PersonalCardAgentEffect.DISCARD_TO_DRAW_ONE_OR_TWO_IF_SPACING_GUILD,
         PersonalCardAgentEffect.GAIN_SPICE_IF_MAKER_SPACE,
         PersonalCardAgentEffect.GAIN_WATER,
         PersonalCardAgentEffect.GAIN_TWO_SOLARI,

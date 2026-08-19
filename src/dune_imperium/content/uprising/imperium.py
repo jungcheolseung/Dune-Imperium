@@ -474,7 +474,19 @@ IMPERIUM_CARDS: Final = (
         ),
         play_data_complete=True,
     ),
-    _entry(12, "space-time-folding", "Space-time Folding", 1),
+    _entry(
+        12,
+        "space-time-folding",
+        "Space-time Folding",
+        1,
+        factions=(Faction.SPACING_GUILD,),
+        agent_icons=(AgentIcon.SPACING_GUILD,),
+        agent_effect=(
+            PersonalCardAgentEffect.DISCARD_TO_DRAW_ONE_OR_TWO_IF_SPACING_GUILD
+        ),
+        reveal_persuasion=1,
+        play_data_complete=True,
+    ),
     _entry(60, "spacing-guild-s-favor", "Spacing Guild's Favor", 5, copies=2),
     _entry(
         25,

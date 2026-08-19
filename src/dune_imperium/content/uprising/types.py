@@ -45,6 +45,9 @@ class PersonalCardAgentEffect(StrEnum):
     PAY_TWO_WATER_TO_DRAW_TWO = "pay_two_water_to_draw_two"
     DRAW_PERSONAL_CARD = "draw_personal_card"
     DRAW_PER_SANDWORM_IN_CONFLICT = "draw_per_sandworm_in_conflict"
+    DISCARD_TO_DRAW_ONE_OR_TWO_IF_SPACING_GUILD = (
+        "discard_to_draw_one_or_two_if_spacing_guild"
+    )
     GAIN_SPICE_IF_MAKER_SPACE = "gain_spice_if_maker_space"
     GAIN_TWO_SOLARI = "gain_two_solari"
     PLACE_SPY = "place_spy"

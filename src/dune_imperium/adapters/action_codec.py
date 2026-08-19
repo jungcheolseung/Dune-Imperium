@@ -27,7 +27,7 @@ from dune_imperium.content.uprising.starting_cards import (
 from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
 from dune_imperium.core.actions import ActionValue, DomainAction
 
-ACTION_CODEC_VERSION = 34
+ACTION_CODEC_VERSION = 35
 MAX_DEPLOYMENT_COUNT = 12
 
 
@@ -115,6 +115,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "decline_combat_reward_trash",
             "decline_agent_card_trash",
             "decline_agent_card_payment",
+            "decline_agent_card_discard",
             "decline_control_defense",
             "decline_endgame_wild_match",
             "decline_gather_intelligence",
@@ -241,6 +242,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             for faction in Faction
         )
     templates.extend(_trash_templates(config, "trash_agent_card"))
+    templates.extend(_trash_templates(config, "discard_agent_card"))
     templates.extend(_trash_templates(config, "trash_combat_reward_card"))
     return tuple(sorted(templates, key=_template_sort_key))
 
