@@ -282,6 +282,20 @@ def test_strike_fleet_play_data_covers_spy_acquisition_and_recall_reward() -> No
     assert card.reveal_strength == 3
 
 
+def test_imperial_spymaster_play_data_uses_the_turn_recall_condition() -> None:
+    card = IMPERIUM_CARDS_BY_ID["imperial_spymaster"]
+
+    assert card.play_data_complete is True
+    assert card.factions == (Faction.EMPEROR,)
+    assert card.agent_icons == (AgentIcon.EMPEROR, AgentIcon.SPY)
+    assert (
+        card.agent_effect
+        is PersonalCardAgentEffect.DRAW_INTRIGUE_IF_SPY_RECALLED_THIS_TURN
+    )
+    assert card.reveal_persuasion == 1
+    assert card.reveal_strength == 1
+
+
 def test_untranscribed_imperium_card_still_fails_explicitly() -> None:
     instance_id = _instance("double_agent")
 

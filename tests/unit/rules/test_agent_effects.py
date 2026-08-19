@@ -1065,3 +1065,46 @@ def test_strike_fleet_recruits_three_after_gathering_intelligence() -> None:
     assert result.state.players[0].troops_supply == 6
     assert result.state.players[0].troops_garrison == 6
     assert context["troops_recruited"] == 3
+
+
+def test_imperial_spymaster_draws_intrigue_after_gathering_intelligence() -> None:
+    spymaster = _imperium_instance("imperial_spymaster")
+    drawn = _instance("dagger")
+    post_id = "arrakis-spice-refinery-arrakeen"
+    owner = PlayerState(
+        player_id=0,
+        hand=(spymaster,),
+        deck=(drawn,),
+        spies_supply=2,
+        spy_post_ids=(post_id,),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        intrigue_deck=("intrigue:test:0",),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed_agent = apply_agent_action(state, _action_to(state, "arrakeen")).state
+    gather = next(
+        action
+        for action in legal_gather_intelligence_actions(placed_agent, 0)
+        if action.action_id == "gather_intelligence"
+    )
+
+    gathered = apply_gather_intelligence_action(placed_agent, gather)
+    result = resolve_agent_card_effect(gathered.state)
+
+    assert result.state.players[0].intrigue_cards == ("intrigue:test:0",)
+    assert result.state.intrigue_deck == ()
+    assert tuple(event.kind for event in result.events) == (
+        "agent_card_effect_resolved",
+        "intrigue_card_drawn",
+    )

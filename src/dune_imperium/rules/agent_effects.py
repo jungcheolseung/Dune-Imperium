@@ -451,6 +451,45 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         else:
             next_owner = owner
             event_kind = "agent_card_effect_unavailable"
+    elif effect is PersonalCardAgentEffect.DRAW_INTRIGUE_IF_SPY_RECALLED_THIS_TURN:
+        if context.get("spy_recalled_this_turn") is not True:
+            next_owner = owner
+            event_kind = "agent_card_effect_unavailable"
+        else:
+            if not state.intrigue_deck:
+                raise ValueError("the Intrigue deck does not contain enough cards")
+            next_owner = replace(
+                owner,
+                intrigue_cards=(*owner.intrigue_cards, state.intrigue_deck[0]),
+            )
+            context["pending_agent_effect"] = False
+            next_state = advance_after_effect(
+                replace(state, intrigue_deck=state.intrigue_deck[1:]),
+                context,
+                _replace_player(state, next_owner),
+            )
+            source = (
+                f"round:{state.round_number}:player:{player}:"
+                f"agent_card:{card_instance_id}"
+            )
+            return RuleResult(
+                state=next_state,
+                events=(
+                    GameEvent(
+                        event_id=source,
+                        kind="agent_card_effect_resolved",
+                        payload=(
+                            ("card_id", card_instance_id),
+                            ("player", player),
+                        ),
+                    ),
+                    GameEvent(
+                        event_id=f"{source}:intrigue_draw",
+                        kind="intrigue_card_drawn",
+                        payload=(("count", 1), ("player", player)),
+                    ),
+                ),
+            )
     else:
         raise NotImplementedError(
             f"personal-card Agent effect is not implemented: {card.card.card_id}"

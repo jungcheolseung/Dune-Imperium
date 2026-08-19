@@ -200,7 +200,20 @@ IMPERIUM_CARDS: Final = (
         reveal_strength=1,
         play_data_complete=True,
     ),
-    _entry(24, "imperial-spymaster", "Imperial Spymaster", 2),
+    _entry(
+        24,
+        "imperial-spymaster",
+        "Imperial Spymaster",
+        2,
+        factions=(Faction.EMPEROR,),
+        agent_icons=(AgentIcon.EMPEROR, AgentIcon.SPY),
+        agent_effect=(
+            PersonalCardAgentEffect.DRAW_INTRIGUE_IF_SPY_RECALLED_THIS_TURN
+        ),
+        reveal_persuasion=1,
+        reveal_strength=1,
+        play_data_complete=True,
+    ),
     _entry(64, "in-high-places", "In High Places", 5, has_acquisition_bonus=True),
     _entry(
         184,
