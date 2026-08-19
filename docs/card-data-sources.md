@@ -77,6 +77,11 @@ Bene Gesserit Influence before adding one troop to the Agent turn's common
 recruit-and-deploy count and drawing through the replayable personal-deck path.
 The troop recruitment transition is shared with board-space effects.
 
+The fourth batch transcribes Desert Survival. Its Agent box opens an explicit
+decline-or-trash choice over the player's hand, discard pile, and cards in play.
+The selected card resolves through the same trash transition used by Combat
+rewards, so Reserve returns and on-trash triggers remain consistent.
+
 Cards with restricted Spy placement, player choices, conditions that require
 untracked state, or unsupported effect primitives are held for later batches
 even when their basic Reveal values would otherwise be simple. This prevents a
