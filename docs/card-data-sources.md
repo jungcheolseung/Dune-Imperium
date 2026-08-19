@@ -121,6 +121,11 @@ Council or High Council together with Swordmaster, allowing its two conditional
 Persuasion gains to stack with the board's normal Council bonus. Its Agent
 effect is an unconditional two-Solari gain.
 
+The thirteenth batch transcribes Overthrow and opens the typed acquisition-bonus
+boundary. Its acquisition Intrigue draw resolves immediately, while cards whose
+recorded acquisition bonus remains untyped are still filtered from engine legal
+actions. Its Agent and Reveal effects reuse Influence and troop transitions.
+
 Cards with restricted Spy placement, player choices, conditions that require
 untracked state, or unsupported effect primitives are held for later batches
 even when their basic Reveal values would otherwise be simple. This prevents a
