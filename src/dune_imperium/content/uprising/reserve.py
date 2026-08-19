@@ -23,6 +23,7 @@ class ReserveStackDefinition:
     factions: tuple[Faction, ...] = ()
     agent_icons: tuple[AgentIcon, ...] = ()
     agent_effect: PersonalCardAgentEffect | None = None
+    agent_spy_factions: tuple[Faction, ...] = ()
     reveal_persuasion: int = 0
     reveal_strength: int = 0
     reveal_effects: tuple[PersonalCardRevealEffect, ...] = ()
@@ -41,6 +42,12 @@ class ReserveStackDefinition:
             raise ValueError("Reserve Agent icons must be unique")
         if len(self.factions) != len(set(self.factions)):
             raise ValueError("Reserve Factions must be unique")
+        if len(self.agent_spy_factions) != len(set(self.agent_spy_factions)):
+            raise ValueError("Reserve Spy target Factions must be unique")
+        if self.agent_spy_factions and (
+            self.agent_effect is not PersonalCardAgentEffect.PLACE_SPY
+        ):
+            raise ValueError("Spy target Factions require a place-Spy Agent effect")
         if len(self.reveal_effects) != len(set(self.reveal_effects)):
             raise ValueError("Reserve Reveal effects must be unique")
 

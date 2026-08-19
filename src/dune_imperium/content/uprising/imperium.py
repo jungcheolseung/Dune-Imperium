@@ -30,6 +30,7 @@ class ImperiumCardEntry(DeckCardEntry):
     factions: tuple[Faction, ...] = ()
     agent_icons: tuple[AgentIcon, ...] = ()
     agent_effect: PersonalCardAgentEffect | None = None
+    agent_spy_factions: tuple[Faction, ...] = ()
     acquisition_effect: PersonalCardAcquisitionEffect | None = None
     trash_effect: PersonalCardTrashEffect | None = None
     reveal_persuasion: int = 0
@@ -43,6 +44,12 @@ class ImperiumCardEntry(DeckCardEntry):
             raise ValueError("Imperium-card Factions must be unique")
         if len(self.agent_icons) != len(set(self.agent_icons)):
             raise ValueError("Imperium-card Agent icons must be unique")
+        if len(self.agent_spy_factions) != len(set(self.agent_spy_factions)):
+            raise ValueError("Imperium-card Spy target Factions must be unique")
+        if self.agent_spy_factions and (
+            self.agent_effect is not PersonalCardAgentEffect.PLACE_SPY
+        ):
+            raise ValueError("Spy target Factions require a place-Spy Agent effect")
         if min(self.reveal_persuasion, self.reveal_strength) < 0:
             raise ValueError("Imperium-card Reveal values must not be negative")
         if len(self.reveal_effects) != len(set(self.reveal_effects)):
@@ -53,6 +60,7 @@ class ImperiumCardEntry(DeckCardEntry):
             self.factions
             or self.agent_icons
             or self.agent_effect is not None
+            or self.agent_spy_factions
             or self.acquisition_effect is not None
             or self.trash_effect is not None
             or self.reveal_persuasion
@@ -74,6 +82,7 @@ def _entry(
     factions: tuple[Faction, ...] = (),
     agent_icons: tuple[AgentIcon, ...] = (),
     agent_effect: PersonalCardAgentEffect | None = None,
+    agent_spy_factions: tuple[Faction, ...] = (),
     acquisition_effect: PersonalCardAcquisitionEffect | None = None,
     trash_effect: PersonalCardTrashEffect | None = None,
     reveal_persuasion: int = 0,
@@ -95,6 +104,7 @@ def _entry(
         factions=factions,
         agent_icons=agent_icons,
         agent_effect=agent_effect,
+        agent_spy_factions=agent_spy_factions,
         acquisition_effect=acquisition_effect,
         trash_effect=trash_effect,
         reveal_persuasion=reveal_persuasion,
@@ -297,7 +307,23 @@ IMPERIUM_CARDS: Final = (
     _entry(183, "priority-contracts", "Priority Contracts", 6, choam_only=True),
     _entry(55, "public-spectacle", "Public Spectacle", 4, copies=2),
     _entry(40, "rebel-supplier", "Rebel Supplier", 3, copies=2),
-    _entry(20, "reliable-informant", "Reliable Informant", 2),
+    _entry(
+        20,
+        "reliable-informant",
+        "Reliable Informant",
+        2,
+        factions=(Faction.SPACING_GUILD,),
+        agent_icons=(AgentIcon.SPACING_GUILD,),
+        agent_effect=PersonalCardAgentEffect.PLACE_SPY,
+        agent_spy_factions=(
+            Faction.EMPEROR,
+            Faction.BENE_GESSERIT,
+            Faction.SPACING_GUILD,
+        ),
+        reveal_persuasion=1,
+        reveal_effects=(PersonalCardRevealEffect(solari=1),),
+        play_data_complete=True,
+    ),
     _entry(51, "sardaukar-coordination", "Sardaukar Coordination", 4, copies=2),
     _entry(
         15,

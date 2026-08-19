@@ -22,6 +22,7 @@ from dune_imperium.rules.effects import (
 from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
+    observation_post_ids_for_factions,
     place_spy,
     recall_spy,
 )
@@ -49,6 +50,12 @@ def legal_agent_card_spy_actions(
         return ()
 
     owner = state.players[player]
+    allowed_post_ids = (
+        observation_post_ids_for_factions(source_card.agent_spy_factions)
+        if source_card.agent_spy_factions
+        else None
+    )
+    placements = empty_observation_post_ids(state, allowed_post_ids)
     if context.get("agent_card_spy_recalled") is True or owner.spies_supply > 0:
         return tuple(
             DomainAction(
@@ -56,7 +63,12 @@ def legal_agent_card_spy_actions(
                 actor=player,
                 arguments=(("post_id", post_id),),
             )
-            for post_id in empty_observation_post_ids(state)
+            for post_id in placements
+        )
+    recall_post_ids = owner.spy_post_ids
+    if not placements and allowed_post_ids is not None:
+        recall_post_ids = tuple(
+            post_id for post_id in owner.spy_post_ids if post_id in allowed_post_ids
         )
     return tuple(
         DomainAction(
@@ -64,7 +76,7 @@ def legal_agent_card_spy_actions(
             actor=player,
             arguments=(("post_id", post_id),),
         )
-        for post_id in owner.spy_post_ids
+        for post_id in recall_post_ids
     )
 
 
@@ -423,6 +435,11 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             ),
         )
         event_kind = "agent_card_effect_resolved"
+    elif effect is PersonalCardAgentEffect.PLACE_SPY:
+        if legal_agent_card_spy_actions(state, player):
+            raise RuntimeError("place-Spy Agent effect requires a player choice")
+        next_owner = owner
+        event_kind = "agent_card_effect_unavailable"
     else:
         raise NotImplementedError(
             f"personal-card Agent effect is not implemented: {card.card.card_id}"

@@ -107,6 +107,16 @@ def test_bene_gesserit_operative_gains_persuasion_with_two_placed_spies() -> Non
     assert dict(bonus.state.decision_stack[-1].context)["persuasion"] == 3
 
 
+def test_reliable_informant_reveals_for_persuasion_and_solari() -> None:
+    informant = _imperium_instance("reliable_informant")
+    state = _state(PlayerState(player_id=0, hand=(informant,)))
+
+    result = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
+
+    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 1
+    assert result.state.players[0].resources.solari == 1
+
+
 def test_high_council_and_assembly_hall_add_reveal_persuasion() -> None:
     state = _state(
         PlayerState(

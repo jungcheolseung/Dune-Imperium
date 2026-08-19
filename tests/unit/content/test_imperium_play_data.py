@@ -52,6 +52,22 @@ def test_bene_gesserit_operative_play_data_places_and_counts_spies() -> None:
     )
 
 
+def test_reliable_informant_play_data_restricts_its_spy_targets() -> None:
+    card = IMPERIUM_CARDS_BY_ID["reliable_informant"]
+
+    assert card.play_data_complete is True
+    assert card.factions == (Faction.SPACING_GUILD,)
+    assert card.agent_icons == (AgentIcon.SPACING_GUILD,)
+    assert card.agent_effect is PersonalCardAgentEffect.PLACE_SPY
+    assert card.agent_spy_factions == (
+        Faction.EMPEROR,
+        Faction.BENE_GESSERIT,
+        Faction.SPACING_GUILD,
+    )
+    assert card.reveal_persuasion == 1
+    assert card.reveal_effects == (PersonalCardRevealEffect(solari=1),)
+
+
 def test_truthtrance_play_data_matches_the_diu_transcription() -> None:
     card = IMPERIUM_CARDS_BY_ID["truthtrance"]
 

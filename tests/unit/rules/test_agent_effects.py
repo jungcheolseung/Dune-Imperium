@@ -899,3 +899,123 @@ def test_bene_gesserit_operative_recalls_before_placing_when_supply_is_empty() -
     assert recalled.events[0].kind == "spy_recalled"
     assert replaced.state.players[0].spies_supply == 0
     assert set(replaced.state.players[0].spy_post_ids) == set(posts)
+
+
+def test_reliable_informant_limits_spy_placement_to_three_faction_posts() -> None:
+    informant = _imperium_instance("reliable_informant")
+    owner = PlayerState(player_id=0, hand=(informant,))
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed_agent = apply_agent_action(
+        state,
+        _action_to(state, "deliver_supplies"),
+    ).state
+
+    post_ids = {
+        dict(action.arguments)["post_id"]
+        for action in legal_agent_card_spy_actions(placed_agent, 0)
+    }
+
+    assert post_ids == {
+        "emperor-sardaukar-dutiful-service",
+        "spacing-guild-heighliner-deliver-supplies",
+        "bene-gesserit-espionage-secrets",
+    }
+
+
+def test_reliable_informant_can_only_recall_a_spy_that_opens_a_target_post() -> None:
+    informant = _imperium_instance("reliable_informant")
+    target_posts = (
+        "emperor-sardaukar-dutiful-service",
+        "spacing-guild-heighliner-deliver-supplies",
+        "bene-gesserit-espionage-secrets",
+    )
+    owner = PlayerState(
+        player_id=0,
+        hand=(informant,),
+        spies_supply=0,
+        spy_post_ids=(target_posts[0], "arrakis-hagga-basin", "arrakis-deep-desert"),
+    )
+    opponents = (
+        PlayerState(player_id=1, spies_supply=2, spy_post_ids=(target_posts[1],)),
+        PlayerState(player_id=2, spies_supply=2, spy_post_ids=(target_posts[2],)),
+        PlayerState(player_id=3),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *opponents),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed_agent = apply_agent_action(
+        state,
+        _action_to(state, "deliver_supplies"),
+    ).state
+
+    actions = legal_agent_card_spy_actions(placed_agent, 0)
+
+    assert tuple(dict(action.arguments)["post_id"] for action in actions) == (
+        target_posts[0],
+    )
+
+
+def test_reliable_informant_finishes_when_every_target_post_is_unavailable() -> None:
+    informant = _imperium_instance("reliable_informant")
+    target_posts = (
+        "emperor-sardaukar-dutiful-service",
+        "spacing-guild-heighliner-deliver-supplies",
+        "bene-gesserit-espionage-secrets",
+    )
+    owner = PlayerState(player_id=0, hand=(informant,))
+    opponents = tuple(
+        PlayerState(player_id=seat, spies_supply=2, spy_post_ids=(post_id,))
+        for seat, post_id in enumerate(target_posts, start=1)
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *opponents),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed_agent = apply_agent_action(
+        state,
+        _action_to(state, "deliver_supplies"),
+    ).state
+    engine = UprisingRulesEngine()
+    unavailable = next(
+        action
+        for action in engine.legal_actions(placed_agent, 0)
+        if action.action_id == "resolve_agent_card_effect"
+    )
+
+    result = engine.apply(placed_agent, unavailable)
+
+    assert result.events[0].kind == "agent_card_effect_unavailable"
+    assert (
+        dict(result.state.decision_stack[-1].context)["pending_agent_effect"] is False
+    )

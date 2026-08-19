@@ -2,7 +2,11 @@
 
 from dataclasses import replace
 
-from dune_imperium.content.uprising.board import OBSERVATION_POSTS
+from dune_imperium.content.uprising.board import (
+    BOARD_SPACES_BY_ID,
+    OBSERVATION_POSTS,
+    Faction,
+)
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 
@@ -19,6 +23,22 @@ def empty_observation_post_ids(
         for post in OBSERVATION_POSTS
         if post.post_id not in occupied
         and (allowed_post_ids is None or post.post_id in allowed_post_ids)
+    )
+
+
+def observation_post_ids_for_factions(
+    factions: tuple[Faction, ...],
+) -> frozenset[str]:
+    """Return posts connected to at least one space of a target Faction."""
+
+    targets = frozenset(factions)
+    return frozenset(
+        post.post_id
+        for post in OBSERVATION_POSTS
+        if any(
+            BOARD_SPACES_BY_ID[space_id].faction in targets
+            for space_id in post.connected_space_ids
+        )
     )
 
 
