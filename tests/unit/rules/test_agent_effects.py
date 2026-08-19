@@ -1386,3 +1386,59 @@ def test_stilgar_recruits_two_deployable_troops() -> None:
     assert result.state.players[0].troops_supply == 7
     assert result.state.players[0].troops_garrison == 5
     assert dict(result.state.decision_stack[-1].context)["troops_recruited"] == 2
+
+
+def test_leadership_draws_one_card_per_sandworm_in_conflict() -> None:
+    leadership = _imperium_instance("leadership")
+    first = _instance("dagger")
+    second = _instance("convincing_argument")
+    owner = PlayerState(
+        player_id=0,
+        hand=(leadership,),
+        deck=(first, second),
+        sandworms_conflict=2,
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "hagga_basin")).state
+
+    result = resolve_agent_card_effect(placed)
+
+    assert result.state.players[0].hand == (first, second)
+    assert result.state.players[0].deck == ()
+    assert tuple(event.kind for event in result.events) == (
+        "agent_card_effect_resolved",
+    )
+
+
+def test_leadership_has_no_agent_effect_without_a_sandworm() -> None:
+    leadership = _imperium_instance("leadership")
+    owner = PlayerState(player_id=0, hand=(leadership,))
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+
+    placed = apply_agent_action(state, _action_to(state, "hagga_basin")).state
+
+    assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False

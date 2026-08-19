@@ -40,6 +40,7 @@ class PersonalCardAgentEffect(StrEnum):
     LEADER_SIGNET = "leader_signet"
     PAY_TWO_WATER_TO_DRAW_TWO = "pay_two_water_to_draw_two"
     DRAW_PERSONAL_CARD = "draw_personal_card"
+    DRAW_PER_SANDWORM_IN_CONFLICT = "draw_per_sandworm_in_conflict"
     GAIN_SPICE_IF_MAKER_SPACE = "gain_spice_if_maker_space"
     GAIN_TWO_SOLARI = "gain_two_solari"
     PLACE_SPY = "place_spy"
@@ -107,6 +108,8 @@ class PersonalCardRevealEffect:
     water: int = 0
     persuasion: int = 0
     recruit_troops: int = 0
+    strength: int = 0
+    strength_per_other_sword_card: int = 0
     required_faction_bond: PersonalCardBond | None = None
     requires_high_council: bool = False
     requires_swordmaster: bool = False
@@ -139,6 +142,8 @@ class PersonalCardRevealEffect:
             self.water,
             self.persuasion,
             self.recruit_troops,
+            self.strength,
+            self.strength_per_other_sword_card,
         )
         if min((*gains, self.minimum_spies_placed)) < 0:
             raise ValueError("personal-card Reveal gains must not be negative")

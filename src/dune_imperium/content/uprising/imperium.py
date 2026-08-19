@@ -258,7 +258,21 @@ IMPERIUM_CARDS: Final = (
         has_acquisition_bonus=True,
     ),
     _entry(68, "junction-headquarters", "Junction Headquarters", 6),
-    _entry(63, "leadership", "Leadership", 5),
+    _entry(
+        63,
+        "leadership",
+        "Leadership",
+        5,
+        factions=(Faction.FREMEN,),
+        agent_icons=(AgentIcon.FREMEN, AgentIcon.SPICE_TRADE),
+        agent_effect=PersonalCardAgentEffect.DRAW_PER_SANDWORM_IN_CONFLICT,
+        reveal_persuasion=2,
+        reveal_strength=1,
+        reveal_effects=(
+            PersonalCardRevealEffect(strength_per_other_sword_card=1),
+        ),
+        play_data_complete=True,
+    ),
     _entry(74, "long-live-the-fighters", "Long Live the Fighters", 7),
     _entry(
         19,

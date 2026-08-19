@@ -312,7 +312,7 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
     cards = tuple(personal_card_for_instance(card_id) for card_id in revealed)
     cards_in_play = (*owner.in_play, *revealed)
     reveal_effects = tuple(
-        effect
+        (card_id, effect)
         for card_id, card in zip(revealed, cards, strict=True)
         for effect in card.reveal_effects
         if (not effect.requires_high_council or owner.high_council)
@@ -337,14 +337,34 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
             if effect.per_revealed_faction is not None
             else 1
         )
-        for effect in reveal_effects
+        for _, effect in reveal_effects
     )
     if owner.high_council:
         persuasion += 2
     if "assembly_hall" in owner.agent_locations:
         persuasion += 1
 
-    sword_strength = sum(card.reveal_strength for card in cards)
+    card_strengths = tuple(
+        (
+            card_id,
+            card.reveal_strength
+            + sum(
+                effect.strength
+                for effect_card_id, effect in reveal_effects
+                if effect_card_id == card_id
+            ),
+        )
+        for card_id, card in zip(revealed, cards, strict=True)
+    )
+    sword_strength = sum(strength for _, strength in card_strengths) + sum(
+        effect.strength_per_other_sword_card
+        * sum(
+            strength > 0
+            for card_id, strength in card_strengths
+            if card_id != effect_card_id
+        )
+        for effect_card_id, effect in reveal_effects
+    )
     units = owner.troops_conflict + owner.sandworms_conflict
     strength = 0
     if units > 0:
@@ -356,16 +376,16 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         resources=replace(
             owner.resources,
             solari=owner.resources.solari
-            + sum(effect.solari for effect in reveal_effects),
+            + sum(effect.solari for _, effect in reveal_effects),
             spice=owner.resources.spice
-            + sum(effect.spice for effect in reveal_effects),
+            + sum(effect.spice for _, effect in reveal_effects),
             water=owner.resources.water
-            + sum(effect.water for effect in reveal_effects),
+            + sum(effect.water for _, effect in reveal_effects),
         ),
     )
     next_owner, _ = recruit_troops(
         next_owner,
-        sum(effect.recruit_troops for effect in reveal_effects),
+        sum(effect.recruit_troops for _, effect in reveal_effects),
     )
     next_owner = replace(
         next_owner,

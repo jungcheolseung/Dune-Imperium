@@ -425,6 +425,23 @@ def test_stilgar_play_data_counts_revealed_fremen_cards() -> None:
     )
 
 
+def test_leadership_play_data_scales_with_worms_and_other_sword_cards() -> None:
+    card = IMPERIUM_CARDS_BY_ID["leadership"]
+
+    assert card.play_data_complete is True
+    assert card.factions == (Faction.FREMEN,)
+    assert card.agent_icons == (AgentIcon.FREMEN, AgentIcon.SPICE_TRADE)
+    assert (
+        card.agent_effect
+        is PersonalCardAgentEffect.DRAW_PER_SANDWORM_IN_CONFLICT
+    )
+    assert card.reveal_persuasion == 2
+    assert card.reveal_strength == 1
+    assert card.reveal_effects == (
+        PersonalCardRevealEffect(strength_per_other_sword_card=1),
+    )
+
+
 def test_untranscribed_imperium_card_still_fails_explicitly() -> None:
     instance_id = _instance("double_agent")
 

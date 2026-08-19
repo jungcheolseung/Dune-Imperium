@@ -397,6 +397,11 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
     elif effect is PersonalCardAgentEffect.DRAW_PERSONAL_CARD:
         next_owner = owner
         event_kind = "agent_card_effect_resolved"
+    elif effect is PersonalCardAgentEffect.DRAW_PER_SANDWORM_IN_CONFLICT:
+        if owner.sandworms_conflict == 0:
+            raise RuntimeError("conditional Agent effect is not available")
+        next_owner = owner
+        event_kind = "agent_card_effect_resolved"
     elif effect is PersonalCardAgentEffect.DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO:
         if owner.influence.bene_gesserit < 2:
             raise RuntimeError("conditional Agent effect is not available")
@@ -655,13 +660,19 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
     )
     if effect in (
         PersonalCardAgentEffect.DRAW_PERSONAL_CARD,
+        PersonalCardAgentEffect.DRAW_PER_SANDWORM_IN_CONFLICT,
         PersonalCardAgentEffect.DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO,
         PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO,
     ):
+        draw_count = (
+            owner.sandworms_conflict
+            if effect is PersonalCardAgentEffect.DRAW_PER_SANDWORM_IN_CONFLICT
+            else 1
+        )
         draw = draw_or_request_personal_cards(
             next_state,
             player,
-            1,
+            draw_count,
             source=(
                 f"round:{state.round_number}:player:{player}:"
                 f"agent_card:{card.card.card_id}"

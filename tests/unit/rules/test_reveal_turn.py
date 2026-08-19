@@ -429,6 +429,43 @@ def test_stilgar_counts_itself_as_a_revealed_fremen_card() -> None:
     assert dict(result.state.decision_stack[-1].context)["persuasion"] == 2
 
 
+def test_leadership_gains_strength_per_other_revealed_sword_card() -> None:
+    leadership = _imperium_instance("leadership")
+    dagger = _instance("dagger")
+    rhetoric = _imperium_instance("dangerous_rhetoric")
+    state = _state(
+        PlayerState(
+            player_id=0,
+            hand=(leadership, dagger, rhetoric),
+            troops_supply=8,
+            troops_conflict=1,
+        )
+    )
+
+    result = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
+
+    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 3
+    assert result.state.players[0].combat_strength == 7
+
+
+def test_leadership_does_not_count_itself_or_an_agent_card_for_bonus() -> None:
+    leadership = _imperium_instance("leadership")
+    played_dagger = _instance("dagger")
+    state = _state(
+        PlayerState(
+            player_id=0,
+            hand=(leadership,),
+            in_play=(played_dagger,),
+            troops_supply=8,
+            troops_conflict=1,
+        )
+    )
+
+    result = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
+
+    assert result.state.players[0].combat_strength == 3
+
+
 def test_high_council_and_assembly_hall_add_reveal_persuasion() -> None:
     state = _state(
         PlayerState(
