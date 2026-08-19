@@ -241,6 +241,15 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             ),
         )
         event_kind = "agent_card_effect_resolved"
+    elif effect is PersonalCardAgentEffect.GAIN_TWO_SOLARI:
+        next_owner = replace(
+            owner,
+            resources=replace(
+                owner.resources,
+                solari=owner.resources.solari + 2,
+            ),
+        )
+        event_kind = "agent_card_effect_resolved"
     elif (
         effect
         is PersonalCardAgentEffect.GAIN_BY_BENE_GESSERIT_AND_FREMEN_INFLUENCE_TWO

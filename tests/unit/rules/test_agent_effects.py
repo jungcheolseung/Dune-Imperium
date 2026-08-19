@@ -777,3 +777,26 @@ def test_ecological_testing_station_has_no_payment_without_two_water() -> None:
     placed = apply_agent_action(state, _action_to(state, "fremkit")).state
 
     assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False
+
+
+def test_paracompass_gains_two_solari_on_its_agent_turn() -> None:
+    paracompass = _imperium_instance("paracompass")
+    owner = PlayerState(player_id=0, hand=(paracompass,))
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
+
+    result = resolve_agent_card_effect(placed)
+
+    assert result.state.players[0].resources.solari == 2

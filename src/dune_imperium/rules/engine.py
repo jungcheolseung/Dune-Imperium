@@ -307,6 +307,7 @@ def _agent_action_is_supported(state: GameState, action: DomainAction) -> bool:
         PersonalCardAgentEffect.DRAW_PERSONAL_CARD,
         PersonalCardAgentEffect.GAIN_SPICE_IF_MAKER_SPACE,
         PersonalCardAgentEffect.GAIN_WATER,
+        PersonalCardAgentEffect.GAIN_TWO_SOLARI,
         PersonalCardAgentEffect.GAIN_BY_BENE_GESSERIT_AND_FREMEN_INFLUENCE_TWO,
         PersonalCardAgentEffect.RECRUIT_TWO_IF_BENE_GESSERIT_BOND,
         PersonalCardAgentEffect.RETURN_SELF_IF_BENE_GESSERIT_BOND,

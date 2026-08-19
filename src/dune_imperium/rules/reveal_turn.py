@@ -40,11 +40,15 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         effect
         for card_id, card in zip(revealed, cards, strict=True)
         for effect in card.reveal_effects
-        if effect.required_faction_bond is None
-        or has_faction_bond(
-            cards_in_play,
-            card_id,
-            Faction(effect.required_faction_bond.value),
+        if (not effect.requires_high_council or owner.high_council)
+        and (not effect.requires_swordmaster or owner.swordmaster_acquired)
+        and (
+            effect.required_faction_bond is None
+            or has_faction_bond(
+                cards_in_play,
+                card_id,
+                Faction(effect.required_faction_bond.value),
+            )
         )
     )
     persuasion = sum(card.reveal_persuasion for card in cards) + sum(

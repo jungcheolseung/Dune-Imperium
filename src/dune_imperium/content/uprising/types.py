@@ -35,6 +35,7 @@ class PersonalCardAgentEffect(StrEnum):
     PAY_TWO_WATER_TO_DRAW_TWO = "pay_two_water_to_draw_two"
     DRAW_PERSONAL_CARD = "draw_personal_card"
     GAIN_SPICE_IF_MAKER_SPACE = "gain_spice_if_maker_space"
+    GAIN_TWO_SOLARI = "gain_two_solari"
     GAIN_WATER = "gain_water"
     GAIN_BY_BENE_GESSERIT_AND_FREMEN_INFLUENCE_TWO = (
         "gain_by_bene_gesserit_and_fremen_influence_two"
@@ -66,6 +67,8 @@ class PersonalCardRevealEffect:
     persuasion: int = 0
     recruit_troops: int = 0
     required_faction_bond: PersonalCardBond | None = None
+    requires_high_council: bool = False
+    requires_swordmaster: bool = False
 
     def __post_init__(self) -> None:
         if self.required_faction_bond is not None and not isinstance(
@@ -73,6 +76,13 @@ class PersonalCardRevealEffect:
             PersonalCardBond,
         ):
             raise TypeError("Faction Bond requirement must use PersonalCardBond")
+        if not isinstance(self.requires_high_council, bool) or not isinstance(
+            self.requires_swordmaster,
+            bool,
+        ):
+            raise TypeError("Reveal state requirements must be booleans")
+        if self.requires_swordmaster and not self.requires_high_council:
+            raise ValueError("Swordmaster Reveal requirement also needs High Council")
         values = (
             self.solari,
             self.spice,

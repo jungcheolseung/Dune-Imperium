@@ -195,6 +195,26 @@ def test_ecological_testing_station_play_data_has_payment_and_bond_gain() -> Non
     )
 
 
+def test_paracompass_play_data_has_council_and_swordmaster_reveal_gains() -> None:
+    card = IMPERIUM_CARDS_BY_ID["paracompass"]
+
+    assert card.play_data_complete is True
+    assert card.factions == ()
+    assert card.agent_icons == (AgentIcon.CITY,)
+    assert card.agent_effect is PersonalCardAgentEffect.GAIN_TWO_SOLARI
+    assert card.reveal_effects == (
+        PersonalCardRevealEffect(
+            persuasion=2,
+            requires_high_council=True,
+        ),
+        PersonalCardRevealEffect(
+            persuasion=1,
+            requires_high_council=True,
+            requires_swordmaster=True,
+        ),
+    )
+
+
 def test_untranscribed_imperium_card_still_fails_explicitly() -> None:
     instance_id = _instance("double_agent")
 
@@ -212,3 +232,5 @@ def test_personal_card_reveal_effect_requires_a_nonnegative_gain() -> None:
             water=1,
             required_faction_bond="fremen",
         )
+    with pytest.raises(ValueError, match="also needs High Council"):
+        PersonalCardRevealEffect(persuasion=1, requires_swordmaster=True)

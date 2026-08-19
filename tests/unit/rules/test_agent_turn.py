@@ -231,6 +231,12 @@ def test_ecological_testing_station_uses_fremen_and_city_icons() -> None:
     }
 
 
+def test_paracompass_uses_its_city_icon() -> None:
+    paracompass = _imperium_instance("paracompass")
+
+    assert _space_ids(_state(paracompass)) == {"arrakeen", "spice_refinery"}
+
+
 def test_spy_agent_icon_accesses_only_spaces_connected_to_an_owned_spy() -> None:
     owner = PlayerState(
         player_id=0,

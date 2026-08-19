@@ -318,6 +318,40 @@ def test_ecological_testing_station_gains_water_with_fremen_bond() -> None:
     assert dict(with_result.state.decision_stack[-1].context)["persuasion"] == 2
 
 
+def test_paracompass_reveal_scales_with_council_and_swordmaster() -> None:
+    paracompass = _imperium_instance("paracompass")
+    neither = _state(PlayerState(player_id=0, hand=(paracompass,)))
+    council = _state(
+        PlayerState(player_id=0, hand=(paracompass,), high_council=True)
+    )
+    both = _state(
+        PlayerState(
+            player_id=0,
+            hand=(paracompass,),
+            high_council=True,
+            swordmaster_acquired=True,
+            agents_available=3,
+        )
+    )
+
+    neither_result = begin_reveal_turn(
+        neither,
+        legal_reveal_actions(neither, 0)[0],
+    )
+    council_result = begin_reveal_turn(
+        council,
+        legal_reveal_actions(council, 0)[0],
+    )
+    both_result = begin_reveal_turn(
+        both,
+        legal_reveal_actions(both, 0)[0],
+    )
+
+    assert dict(neither_result.state.decision_stack[-1].context)["persuasion"] == 0
+    assert dict(council_result.state.decision_stack[-1].context)["persuasion"] == 4
+    assert dict(both_result.state.decision_stack[-1].context)["persuasion"] == 5
+
+
 def test_reveal_preserves_agent_cards_already_in_play() -> None:
     played = _instance("dagger", 0)
     revealed = _instance("dagger", 1)

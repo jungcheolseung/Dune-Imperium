@@ -225,7 +225,26 @@ IMPERIUM_CARDS: Final = (
         play_data_complete=True,
     ),
     _entry(75, "overthrow", "Overthrow", 8, has_acquisition_bonus=True),
-    _entry(49, "paracompass", "Paracompass", 4),
+    _entry(
+        49,
+        "paracompass",
+        "Paracompass",
+        4,
+        agent_icons=(AgentIcon.CITY,),
+        agent_effect=PersonalCardAgentEffect.GAIN_TWO_SOLARI,
+        reveal_effects=(
+            PersonalCardRevealEffect(
+                persuasion=2,
+                requires_high_council=True,
+            ),
+            PersonalCardRevealEffect(
+                persuasion=1,
+                requires_high_council=True,
+                requires_swordmaster=True,
+            ),
+        ),
+        play_data_complete=True,
+    ),
     _entry(
         73,
         "price-is-no-object",
