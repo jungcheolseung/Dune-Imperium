@@ -28,4 +28,4 @@ summaries in `docs/rules/` remain the source of truth.
 The decline action and every valid Propaganda-to-printed-icon pair add 20
 templates. The fixed catalog changes from 534 entries in codec version 5 to 554
 entries in version 6. Later personal-card content advances the current replay
-default to codec version 12 without changing these Endgame templates.
+default to codec version 13 without changing these Endgame templates.

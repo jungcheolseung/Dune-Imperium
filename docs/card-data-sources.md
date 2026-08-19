@@ -86,6 +86,11 @@ The fifth batch transcribes Smuggler's Harvester. Its Agent bonus checks the
 visited board space's typed Maker flag before awarding one Spice; non-Maker
 Spice Trade destinations expose no card effect. Its Reveal value is static.
 
+The sixth batch transcribes Fedaykin Stilltent and introduces typed automatic
+Reveal gains for public resources and recruited troops. Its Agent effect shares
+the Maker-space condition and troop-recruit transition, while its Reveal effect
+adds one Water directly during Reveal setup.
+
 Cards with restricted Spy placement, player choices, conditions that require
 untracked state, or unsupported effect primitives are held for later batches
 even when their basic Reveal values would otherwise be simple. This prevents a
