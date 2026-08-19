@@ -20,6 +20,7 @@ truth for the transition code.
 | Acquisition placement | Acquiring Strike Fleet immediately opens a Spy placement choice over the current Reveal frame. | The acquired card is discarded and the row is refilled before choosing the post; an empty supply uses the same recall-then-place sequence and then returns to Reveal purchasing. |
 | Current-turn recall | The Agent effect frame records whether Infiltrate, Gather Intelligence, or Espionage recalled a Spy during that Agent turn. | Strike Fleet reads this flag to recruit three troops and Imperial Spymaster reads it to draw one Intrigue card; the flag is scoped to one turn. |
 | Reveal recall | Spy Network checks for at least two placed Spies when Reveal begins, then requires the owner to choose and recall one before drawing one Intrigue card. | The choice frame blocks purchases and other turn actions until it returns to the underlying Reveal frame. With fewer than two Spies, no choice opens. |
+| Reveal recall cost | In High Places may recall any two placed Spies to add two Persuasion, or decline without changing state. | Two-Spy payment is one atomic action selected from canonical unordered pairs, keeping the action catalog smaller and preventing partial payment. |
 
 ## Deferred Spy systems
 
@@ -46,3 +47,5 @@ Imperial Spymaster adds 51 Agent templates and advances the current default to
 version 24 with 1328 entries.
 Spy Network adds 13 Reveal-recall templates and advances the current default to
 version 25 with 1341 entries.
+In High Places adds one decline, 78 unordered two-Spy recall, and eight Agent
+templates, advancing the current default to version 26 with 1428 entries.

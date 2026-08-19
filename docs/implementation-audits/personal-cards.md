@@ -30,15 +30,16 @@ from a player's personal deck. General Agent, Reveal, and deck-building rules in
 | Strike Fleet | The card has a Spy Agent icon. Acquisition places one Spy; after the card sends an Agent, it recruits three troops if that turn recalled a Spy through Infiltrate, Gather Intelligence, or Espionage. Reveal gives one Persuasion and three strength. | The acquisition choice is stacked over the Reveal frame and returns to purchasing after placement. Agent-turn recall state is explicit in the effect frame, so it does not leak between turns. |
 | Imperial Spymaster | The card has Emperor affiliation plus Emperor and Spy Agent icons. After it sends an Agent, it draws one Intrigue card if that turn recalled a Spy; Reveal gives one Persuasion and one strength. | It shares Strike Fleet's turn-scoped recall condition and consumes the top Intrigue card through an explicit deterministic transition. |
 | Spy Network | The card has Emperor and Spacing Guild affiliations and no Agent icon. Acquisition places one Spy; Reveal gives two Persuasion and one strength, then with at least two placed Spies requires choosing one to recall and drawing one Intrigue card. | The serial Reveal choice sits above the purchasing frame, preventing purchases, turn starts, or another Reveal until the Spy effect resolves. |
+| In High Places | The card has Bene Gesserit affiliation plus Bene Gesserit and Emperor Agent icons. Acquisition places one Spy; Bene Gesserit Bond gains one Water; Reveal gives two Persuasion and may recall two Spies for two more. | The Reveal cost is atomic: decline or one canonical pair is chosen, so an interrupted half-payment cannot enter state. |
 | Chance and replay | Prepare the Way's draw uses the same personal discard reshuffle decision as board-space and Spy draws. | Its Reserve instance ID remains stable through discard, shuffle, hand, and in-play zones. |
-| RL encoding | Every transcribed physical card copy can take its Agent destinations, including Infiltrate variants. | Imperium batches grow the catalog through 832 in v8, 845 in v9, 857 in v10, 971 in v11, 991 in v12, 1001 in v13, 1014 in v14, 1060 in v15, 1068 in v16, 1114 in v17, 1133 in v18, 1146 in v19, 1162 in v20, 1196 in v21, 1200 in v22, 1277 in v23, 1328 in v24, and 1341 in v25. |
+| RL encoding | Every transcribed physical card copy can take its Agent destinations, including Infiltrate variants. | Imperium batches grow the catalog through 832 in v8, 845 in v9, 857 in v10, 971 in v11, 991 in v12, 1001 in v13, 1014 in v14, 1060 in v15, 1068 in v16, 1114 in v17, 1133 in v18, 1146 in v19, 1162 in v20, 1196 in v21, 1200 in v22, 1277 in v23, 1328 in v24, 1341 in v25, and 1428 in v26. |
 
 ## Card-level verification
 
 - The two printed card images linked by the Reserve content manifest were
   visually checked on 2026-08-19 for Agent icons, conditional Agent text, and
   Reveal values.
-- These nineteen shared cards were bootstrapped from DIU `imperium.JSON` at
+- These twenty shared cards were bootstrapped from DIU `imperium.JSON` at
   reviewed commit `990523441421d34a670505d5b32318f01754b960`. Their local
   physical counts and stable IDs continue to come from the verified manifest;
   DIU's conflicting `quantity` values were not imported.
@@ -47,10 +48,10 @@ from a player's personal deck. General Agent, Reveal, and deck-building rules in
 
 ## Deferred boundaries
 
-- All shared Imperium cards other than the nineteen listed above still have only
+- All shared Imperium cards other than the twenty listed above still have only
   identity and acquisition-cost data. Drawing one of those cards fails
   explicitly until its play data is transcribed.
 - Signet Ring remains blocked on Leader ability implementation.
-- Reveal effects with player choices still need a serial Reveal-effect decision
-  path; automatic resource and troop gains are supported.
+- Spy recall Reveal choices now use a serial decision path; other Reveal choices
+  remain deferred. Automatic resource and troop gains are supported.
 - Acquisition bonuses without a local typed effect remain unavailable.
