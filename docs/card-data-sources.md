@@ -91,6 +91,12 @@ Reveal gains for public resources and recruited troops. Its Agent effect shares
 the Maker-space condition and troop-recruit transition, while its Reveal effect
 adds one Water directly during Reveal setup.
 
+The seventh batch transcribes Northern Watermaster. Its unconditional Agent
+effect gains one Water, while its Reveal Spice requires another Fremen card
+among the cards already in play or revealed in the same turn. Faction
+affiliation is now uniform across every personal-card source schema so that
+this bond check does not depend on card origin.
+
 Cards with restricted Spy placement, player choices, conditions that require
 untracked state, or unsupported effect primitives are held for later batches
 even when their basic Reveal values would otherwise be simple. This prevents a
