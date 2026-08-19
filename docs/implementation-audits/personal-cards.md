@@ -40,15 +40,16 @@ from a player's personal deck. General Agent, Reveal, and deck-building rules in
 | Leadership | The card has Fremen affiliation plus Fremen and Spice Trade Agent icons. Its Agent box draws one personal card per Sandworm currently in the Conflict; Reveal gives two Persuasion, one strength, and one more strength per other revealed card that provides strength. | Multi-card draw uses the replayable discard reshuffle path. The multiplier excludes Leadership itself and cards left in play from Agent turns, matching DIU's `sword_card` resolver semantics. |
 | Shishakli | The card has Fremen affiliation plus City and Spice Trade Agent icons. Its Agent box may trash one personal card to draw one; Reveal gives two strength and Fremen Bond gains one Fremen Influence. | Declining spends neither the card nor the draw. Reveal Influence uses the shared track transition, including Friendship, bonuses, and Alliance transfer. |
 | Tread in Darkness | The card has Bene Gesserit affiliation plus Landsraad, City, and Spice Trade Agent icons. With Bene Gesserit Bond, its Agent box may trash one personal card to draw one; Reveal gives two Persuasion and one strength. | Without Bond the Agent effect is unavailable; with Bond it reuses Shishakli's atomic trash-then-draw path and explicit decline. |
+| Space-time Folding | The card has Spacing Guild affiliation and a matching Faction Agent icon. Its Agent box may discard one hand card to draw one, or two if the discarded card has Spacing Guild affiliation; Reveal gives one Persuasion. | Discard is distinct from trash and records the paid card in the discard pile before the replayable draw, so a required reshuffle may include that card. |
 | Chance and replay | Prepare the Way's draw uses the same personal discard reshuffle decision as board-space and Spy draws. | Its Reserve instance ID remains stable through discard, shuffle, hand, and in-play zones. |
-| RL encoding | Every transcribed physical card copy can take its Agent destinations, including Infiltrate variants. | Imperium batches grow the catalog through 832 in v8, 845 in v9, 857 in v10, 971 in v11, 991 in v12, 1001 in v13, 1014 in v14, 1060 in v15, 1068 in v16, 1114 in v17, 1133 in v18, 1146 in v19, 1162 in v20, 1196 in v21, 1200 in v22, 1277 in v23, 1328 in v24, 1341 in v25, 1428 in v26, 1454 in v27, 1509 in v28, 1637 in v29, 1688 in v30, 1715 in v31, 1729 in v32, 1752 in v33, and 1822 in v34. |
+| RL encoding | Every transcribed physical card copy can take its Agent destinations, including Infiltrate variants. | Imperium batches grow the catalog through 832 in v8, 845 in v9, 857 in v10, 971 in v11, 991 in v12, 1001 in v13, 1014 in v14, 1060 in v15, 1068 in v16, 1114 in v17, 1133 in v18, 1146 in v19, 1162 in v20, 1196 in v21, 1200 in v22, 1277 in v23, 1328 in v24, 1341 in v25, 1428 in v26, 1454 in v27, 1509 in v28, 1637 in v29, 1688 in v30, 1715 in v31, 1729 in v32, 1752 in v33, 1822 in v34, and 1920 in v35. |
 
 ## Card-level verification
 
 - The two printed card images linked by the Reserve content manifest were
   visually checked on 2026-08-19 for Agent icons, conditional Agent text, and
   Reveal values.
-- These twenty-nine shared cards were bootstrapped from DIU `imperium.JSON` at
+- These thirty shared cards were bootstrapped from DIU `imperium.JSON` at
   reviewed commit `990523441421d34a670505d5b32318f01754b960`. Their local
   physical counts and stable IDs continue to come from the verified manifest;
   DIU's conflicting `quantity` values were not imported.
@@ -57,7 +58,7 @@ from a player's personal deck. General Agent, Reveal, and deck-building rules in
 
 ## Deferred boundaries
 
-- All shared Imperium cards other than the twenty-nine listed above still have only
+- All shared Imperium cards other than the thirty listed above still have only
   identity and acquisition-cost data. Drawing one of those cards fails
   explicitly until its play data is transcribed.
 - Signet Ring remains blocked on Leader ability implementation.

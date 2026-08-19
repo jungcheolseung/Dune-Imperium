@@ -240,7 +240,7 @@ seeded random 4인 라운드를 실행하고 action replay로 최종 상태를 �
 ### M4. RL 인터페이스 조기 검증
 
 상태: **완료** (2026-08-14). 기본 룰셋은 versioned actor-neutral 정수 action
-catalog와 같은 폭의 legal action mask를 사용한다. 현재 codec v34는 1822개
+catalog와 같은 폭의 legal action mask를 사용한다. 현재 codec v35는 1920개
 행동이며, `dune_imperium_uprising_v0` AEC 환경은
 한 라운드를 episode로 실행하며 PettingZoo `api_test`와 `seed_test`를 통과한다.
 관측과 `info`에는 전체 `GameState`를 노출하지 않는다.
@@ -337,6 +337,9 @@ Fremen Bond Reveal Influence를 codec v33에 연결했다. Reveal Influence도
 공통 트랙 경계를 사용한다.
 스물여덟 번째 묶음은 같은 폐기·draw 선택을 Bene Gesserit Bond로
 제한한 Tread in Darkness와 Reveal 값을 codec v34에 연결했다.
+스물아홉 번째 묶음은 손의 카드를 discard하는 별도 선택 경계를 추가하고,
+Space-time Folding이 Spacing Guild 카드를 버리면 draw를 2장으로 늘리도록
+codec v35에 연결했다.
 고정된 DIU `imperium.JSON`은 런타임 의존성 없이 63개 local identity와
 대조하고 아이콘·Faction·효과 형태를 정규화하는 read-only audit에만 사용한다.
 나머지 Imperium과 Intrigue, Leader, Objective 효과는 아직 identity manifest
