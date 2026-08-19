@@ -18,6 +18,7 @@ from dune_imperium.rules.effects import (
     RecruitTroopsEffect,
     advance_after_effect,
     current_agent_effect_context,
+    recruit_troops,
 )
 from dune_imperium.rules.shield_wall import (
     current_conflict_is_shield_wall_protected,
@@ -126,7 +127,7 @@ def resolve_board_effect(state: GameState) -> RuleResult:
                     effect.count,
                 )
             case RecruitTroopsEffect():
-                next_owner, recruited = _recruit_troops(next_owner, effect.count)
+                next_owner, recruited = recruit_troops(next_owner, effect.count)
                 previous = context.get("troops_recruited")
                 if isinstance(previous, bool) or not isinstance(previous, int):
                     raise RuntimeError(
@@ -351,7 +352,7 @@ def apply_sietch_tabr_action(
     owner = state.players[action.actor]
     recruited = 0
     if action.action_id == "take_sietch_tabr_supplies":
-        owner, recruited = _recruit_troops(owner, 1)
+        owner, recruited = recruit_troops(owner, 1)
         owner = replace(
             owner,
             resources=replace(owner.resources, water=owner.resources.water + 1),
@@ -543,16 +544,4 @@ def _draw_intrigue_cards(
     return (
         replace(player, intrigue_cards=(*player.intrigue_cards, *deck[:count])),
         deck[count:],
-    )
-
-
-def _recruit_troops(player: PlayerState, count: int) -> tuple[PlayerState, int]:
-    recruited = min(player.troops_supply, count)
-    return (
-        replace(
-            player,
-            troops_supply=player.troops_supply - recruited,
-            troops_garrison=player.troops_garrison + recruited,
-        ),
-        recruited,
     )

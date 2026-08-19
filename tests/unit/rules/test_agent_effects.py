@@ -229,3 +229,64 @@ def test_maula_pistol_agent_effect_draws_one_personal_card() -> None:
     assert resolved.state.players[0].hand == (drawn,)
     assert resolved.state.players[0].deck == ()
     assert resolved.events[0].kind == "agent_card_effect_resolved"
+
+
+def test_hidden_missive_recruits_and_draws_with_required_influence() -> None:
+    hidden_missive = _imperium_instance("hidden_missive")
+    drawn = _instance("dagger")
+    owner = PlayerState(
+        player_id=0,
+        hand=(hidden_missive,),
+        deck=(drawn,),
+        influence=Influence(bene_gesserit=2),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "gather_support")).state
+
+    resolved = resolve_agent_card_effect(placed)
+    context = dict(resolved.state.decision_stack[-1].context)
+
+    assert resolved.state.players[0].troops_supply == 8
+    assert resolved.state.players[0].troops_garrison == 4
+    assert resolved.state.players[0].hand == (drawn,)
+    assert resolved.state.players[0].deck == ()
+    assert context["troops_recruited"] == 1
+    assert resolved.events[0].kind == "agent_card_effect_resolved"
+
+
+def test_hidden_missive_has_no_agent_effect_below_required_influence() -> None:
+    hidden_missive = _imperium_instance("hidden_missive")
+    owner = PlayerState(
+        player_id=0,
+        hand=(hidden_missive,),
+        influence=Influence(bene_gesserit=1),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+
+    placed = apply_agent_action(state, _action_to(state, "gather_support")).state
+
+    assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False

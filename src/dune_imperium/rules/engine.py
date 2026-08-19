@@ -291,6 +291,7 @@ def _agent_action_is_supported(state: GameState, action: DomainAction) -> bool:
         PersonalCardAgentEffect.TRASH_SELF,
         PersonalCardAgentEffect.DRAW_PERSONAL_CARD,
         PersonalCardAgentEffect.DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO,
+        PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO,
     ):
         return False
     if space_id in (

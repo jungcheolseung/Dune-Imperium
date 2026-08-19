@@ -144,6 +144,12 @@ def test_sardaukar_soldier_uses_its_city_icon() -> None:
     assert _space_ids(_state(sardaukar)) == {"arrakeen", "spice_refinery"}
 
 
+def test_hidden_missive_uses_its_landsraad_icon() -> None:
+    hidden_missive = _imperium_instance("hidden_missive")
+
+    assert _space_ids(_state(hidden_missive)) == {"assembly_hall", "gather_support"}
+
+
 def test_spy_agent_icon_accesses_only_spaces_connected_to_an_owned_spy() -> None:
     owner = PlayerState(
         player_id=0,

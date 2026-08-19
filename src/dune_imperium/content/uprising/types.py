@@ -25,6 +25,9 @@ class PersonalCardAgentEffect(StrEnum):
     DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO = (
         "draw_if_bene_gesserit_influence_two"
     )
+    RECRUIT_ONE_AND_DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO = (
+        "recruit_one_and_draw_if_bene_gesserit_influence_two"
+    )
 
 
 class PersonalCardTrashEffect(StrEnum):

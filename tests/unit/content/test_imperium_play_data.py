@@ -63,6 +63,21 @@ def test_sardaukar_soldier_play_data_includes_its_trash_trigger() -> None:
     assert card.reveal_strength == 1
 
 
+def test_hidden_missive_play_data_includes_its_conditional_agent_effect() -> None:
+    card = IMPERIUM_CARDS_BY_ID["hidden_missive"]
+
+    assert card.play_data_complete is True
+    assert card.factions == (Faction.BENE_GESSERIT,)
+    assert card.agent_icons == (AgentIcon.LANDSRAAD,)
+    assert (
+        card.agent_effect
+        is PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO
+    )
+    assert card.trash_effect is None
+    assert card.reveal_persuasion == 1
+    assert card.reveal_strength == 1
+
+
 def test_untranscribed_imperium_card_still_fails_explicitly() -> None:
     instance_id = _instance("desert_survival")
 

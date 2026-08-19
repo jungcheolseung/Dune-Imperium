@@ -64,6 +64,22 @@ type AutomaticEffect = (
 )
 
 
+def recruit_troops(player: PlayerState, count: int) -> tuple[PlayerState, int]:
+    """Move up to ``count`` available troops from supply to garrison."""
+
+    if count < 0:
+        raise ValueError("troop recruit count must not be negative")
+    recruited = min(player.troops_supply, count)
+    return (
+        replace(
+            player,
+            troops_supply=player.troops_supply - recruited,
+            troops_garrison=player.troops_garrison + recruited,
+        ),
+        recruited,
+    )
+
+
 def current_agent_effect_context(
     state: GameState,
 ) -> tuple[DecisionFrame, dict[str, ActionValue]]:

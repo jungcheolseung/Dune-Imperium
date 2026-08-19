@@ -107,7 +107,20 @@ IMPERIUM_CARDS: Final = (
     _entry(23, "fedaykin-stilltent", "Fedaykin Stilltent", 2),
     _entry(38, "guild-envoy", "Guild Envoy", 3),
     _entry(43, "guild-spy", "Guild Spy", 3, has_acquisition_bonus=True),
-    _entry(21, "hidden-missive", "Hidden Missive", 2),
+    _entry(
+        21,
+        "hidden-missive",
+        "Hidden Missive",
+        2,
+        factions=(Faction.BENE_GESSERIT,),
+        agent_icons=(AgentIcon.LANDSRAAD,),
+        agent_effect=(
+            PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO
+        ),
+        reveal_persuasion=1,
+        reveal_strength=1,
+        play_data_complete=True,
+    ),
     _entry(24, "imperial-spymaster", "Imperial Spymaster", 2),
     _entry(64, "in-high-places", "In High Places", 5, has_acquisition_bonus=True),
     _entry(

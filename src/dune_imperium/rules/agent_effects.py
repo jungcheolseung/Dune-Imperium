@@ -12,6 +12,7 @@ from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.effects import (
     advance_after_effect,
     current_agent_effect_context,
+    recruit_troops,
 )
 from dune_imperium.rules.influence import gain_faction_influence
 
@@ -49,6 +50,18 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             raise RuntimeError("conditional Agent effect is not available")
         next_owner = owner
         event_kind = "agent_card_effect_resolved"
+    elif (
+        effect
+        is PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO
+    ):
+        if owner.influence.bene_gesserit < 2:
+            raise RuntimeError("conditional Agent effect is not available")
+        next_owner, recruited = recruit_troops(owner, 1)
+        previous = context.get("troops_recruited")
+        if isinstance(previous, bool) or not isinstance(previous, int):
+            raise RuntimeError("Agent-turn effect frame has invalid recruit count")
+        context["troops_recruited"] = previous + recruited
+        event_kind = "agent_card_effect_resolved"
     else:
         raise NotImplementedError(
             f"personal-card Agent effect is not implemented: {card.card.card_id}"
@@ -67,6 +80,7 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
     if effect in (
         PersonalCardAgentEffect.DRAW_PERSONAL_CARD,
         PersonalCardAgentEffect.DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO,
+        PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO,
     ):
         draw = draw_or_request_personal_cards(
             next_state,
