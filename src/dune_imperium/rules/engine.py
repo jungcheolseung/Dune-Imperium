@@ -21,7 +21,9 @@ from dune_imperium.rules.acquisition import (
     legal_reserve_acquisitions,
 )
 from dune_imperium.rules.agent_effects import (
+    apply_agent_card_payment,
     apply_agent_card_trash,
+    legal_agent_card_payment_actions,
     legal_agent_card_trash_actions,
     resolve_agent_card_effect,
     resolve_faction_influence,
@@ -183,6 +185,7 @@ class UprisingRulesEngine(RulesEngine):
     def _apply_legal(self, state: GameState, action: DomainAction) -> RuleResult:
         handlers = {
             "decline_control_defense": apply_control_defense_action,
+            "decline_agent_card_payment": apply_agent_card_payment,
             "decline_agent_card_trash": apply_agent_card_trash,
             "decline_endgame_wild_match": apply_endgame_wild_action,
             "decline_gather_intelligence": apply_gather_intelligence_action,
@@ -207,6 +210,7 @@ class UprisingRulesEngine(RulesEngine):
             "finish_reveal": finish_reveal_turn,
             "gather_intelligence": apply_gather_intelligence_action,
             "pass_combat_intrigue": apply_combat_intrigue_pass,
+            "pay_agent_card_water": apply_agent_card_payment,
             "decline_combat_reward": _apply_decline_combat_reward,
             "pay_combat_reward": apply_combat_reward_optional_payment,
             "recall_spies_for_combat_reward": apply_combat_reward_spy_recall,
@@ -266,8 +270,10 @@ class UprisingRulesEngine(RulesEngine):
         actions: list[DomainAction] = []
         if context["pending_agent_effect"] is True:
             trash_actions = legal_agent_card_trash_actions(state, player)
-            if trash_actions:
-                actions.extend(trash_actions)
+            payment_actions = legal_agent_card_payment_actions(state, player)
+            choice_actions = (*trash_actions, *payment_actions)
+            if choice_actions:
+                actions.extend(choice_actions)
             else:
                 actions.append(
                     DomainAction(action_id="resolve_agent_card_effect", actor=player)
@@ -304,6 +310,7 @@ def _agent_action_is_supported(state: GameState, action: DomainAction) -> bool:
         PersonalCardAgentEffect.GAIN_BY_BENE_GESSERIT_AND_FREMEN_INFLUENCE_TWO,
         PersonalCardAgentEffect.RECRUIT_TWO_IF_BENE_GESSERIT_BOND,
         PersonalCardAgentEffect.RETURN_SELF_IF_BENE_GESSERIT_BOND,
+        PersonalCardAgentEffect.PAY_TWO_WATER_TO_DRAW_TWO,
         PersonalCardAgentEffect.RECRUIT_ONE_IF_MAKER_SPACE,
         PersonalCardAgentEffect.DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO,
         PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO,

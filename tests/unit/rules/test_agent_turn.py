@@ -220,6 +220,17 @@ def test_weirding_woman_uses_its_city_and_spice_trade_icons() -> None:
     }
 
 
+def test_ecological_testing_station_uses_fremen_and_city_icons() -> None:
+    station = _imperium_instance("ecological_testing_station")
+
+    assert _space_ids(_state(station)) == {
+        "arrakeen",
+        "desert_tactics",
+        "fremkit",
+        "spice_refinery",
+    }
+
+
 def test_spy_agent_icon_accesses_only_spaces_connected_to_an_owned_spy() -> None:
     owner = PlayerState(
         player_id=0,

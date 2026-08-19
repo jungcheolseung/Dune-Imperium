@@ -232,6 +232,8 @@ def _agent_effect_is_available(
         return False
     if effect is PersonalCardAgentEffect.DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO:
         return owner.influence.bene_gesserit >= 2
+    if effect is PersonalCardAgentEffect.PAY_TWO_WATER_TO_DRAW_TWO:
+        return owner.resources.water >= 2
     if (
         effect
         is PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO

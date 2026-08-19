@@ -92,6 +92,79 @@ def apply_agent_card_trash(state: GameState, action: DomainAction) -> RuleResult
     return RuleResult(state=next_state, events=trashed.events)
 
 
+def legal_agent_card_payment_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return Ecological Testing Station's optional Water payment."""
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return ()
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    if context.get("pending_agent_effect") is not True:
+        return ()
+    _, source_card_id, _ = _effect_subject(context)
+    source_card = personal_card_for_instance(source_card_id)
+    if (
+        source_card.agent_effect
+        is not PersonalCardAgentEffect.PAY_TWO_WATER_TO_DRAW_TWO
+    ):
+        return ()
+    if state.players[player].resources.water < 2:
+        raise RuntimeError("pending Agent-card payment is not affordable")
+    return (
+        DomainAction(action_id="decline_agent_card_payment", actor=player),
+        DomainAction(action_id="pay_agent_card_water", actor=player),
+    )
+
+
+def apply_agent_card_payment(state: GameState, action: DomainAction) -> RuleResult:
+    """Resolve or decline an Agent-box Water payment and card draw."""
+
+    if action not in legal_agent_card_payment_actions(state, action.actor):
+        raise ValueError("action is not a legal Agent-card payment choice")
+    _, context = current_agent_effect_context(state)
+    context["pending_agent_effect"] = False
+    source = f"round:{state.round_number}:player:{action.actor}:agent_card_payment"
+    if action.action_id == "decline_agent_card_payment":
+        next_state = advance_after_effect(state, context)
+        event = GameEvent(
+            event_id=f"{source}:declined",
+            kind="agent_card_payment_declined",
+            payload=(("player", action.actor),),
+        )
+        return RuleResult(state=next_state, events=(event,))
+
+    owner = state.players[action.actor]
+    next_owner = replace(
+        owner,
+        resources=replace(owner.resources, water=owner.resources.water - 2),
+    )
+    players = _replace_player(state, next_owner)
+    paid_state = advance_after_effect(state, context, players)
+    event = GameEvent(
+        event_id=f"{source}:paid",
+        kind="agent_card_payment_resolved",
+        payload=(
+            ("player", action.actor),
+            ("resource", "water"),
+            ("spent", 2),
+        ),
+    )
+    draw = draw_or_request_personal_cards(
+        paid_state,
+        action.actor,
+        2,
+        source=source,
+    )
+    return RuleResult(state=draw.state, events=(event, *draw.events))
+
+
 def resolve_agent_card_effect(state: GameState) -> RuleResult:
     """Resolve the supported Agent box in the current effect frame."""
 

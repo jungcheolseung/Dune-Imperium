@@ -15,9 +15,12 @@ from dune_imperium.core import (
     Influence,
     PlayerDecision,
     PlayerState,
+    Resources,
 )
 from dune_imperium.rules.agent_effects import (
+    apply_agent_card_payment,
     apply_agent_card_trash,
+    legal_agent_card_payment_actions,
     legal_agent_card_trash_actions,
     resolve_agent_card_effect,
     resolve_faction_influence,
@@ -679,5 +682,98 @@ def test_weirding_woman_has_no_agent_effect_without_bene_gesserit_bond() -> None
     )
 
     placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
+
+    assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False
+
+
+def test_ecological_testing_station_may_pay_water_to_draw_two() -> None:
+    station = _imperium_instance("ecological_testing_station")
+    first = _instance("dagger")
+    second = _instance("convincing_argument")
+    owner = PlayerState(
+        player_id=0,
+        hand=(station,),
+        deck=(first, second),
+        resources=Resources(water=2),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "fremkit")).state
+    action = next(
+        action
+        for action in legal_agent_card_payment_actions(placed, 0)
+        if action.action_id == "pay_agent_card_water"
+    )
+
+    result = apply_agent_card_payment(placed, action)
+
+    assert result.state.players[0].resources.water == 0
+    assert result.state.players[0].hand == (first, second)
+    assert result.state.players[0].deck == ()
+    assert result.events[0].kind == "agent_card_payment_resolved"
+
+
+def test_ecological_testing_station_payment_may_be_declined() -> None:
+    station = _imperium_instance("ecological_testing_station")
+    owner = PlayerState(
+        player_id=0,
+        hand=(station,),
+        resources=Resources(water=2),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "fremkit")).state
+    action = next(
+        action
+        for action in legal_agent_card_payment_actions(placed, 0)
+        if action.action_id == "decline_agent_card_payment"
+    )
+
+    result = apply_agent_card_payment(placed, action)
+
+    assert result.state.players[0].resources.water == 2
+    assert result.events[0].kind == "agent_card_payment_declined"
+
+
+def test_ecological_testing_station_has_no_payment_without_two_water() -> None:
+    station = _imperium_instance("ecological_testing_station")
+    owner = PlayerState(player_id=0, hand=(station,))
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+
+    placed = apply_agent_action(state, _action_to(state, "fremkit")).state
 
     assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False

@@ -123,7 +123,23 @@ IMPERIUM_CARDS: Final = (
         play_data_complete=True,
     ),
     _entry(37, "double-agent", "Double Agent", 3, copies=2),
-    _entry(46, "ecological-testing-station", "Ecological Testing Station", 3),
+    _entry(
+        46,
+        "ecological-testing-station",
+        "Ecological Testing Station",
+        3,
+        factions=(Faction.FREMEN,),
+        agent_icons=(AgentIcon.FREMEN, AgentIcon.CITY),
+        agent_effect=PersonalCardAgentEffect.PAY_TWO_WATER_TO_DRAW_TWO,
+        reveal_persuasion=1,
+        reveal_effects=(
+            PersonalCardRevealEffect(
+                water=1,
+                required_faction_bond=PersonalCardBond.FREMEN,
+            ),
+        ),
+        play_data_complete=True,
+    ),
     _entry(
         23,
         "fedaykin-stilltent",
