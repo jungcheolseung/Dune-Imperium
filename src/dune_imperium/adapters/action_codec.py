@@ -27,7 +27,7 @@ from dune_imperium.content.uprising.starting_cards import (
 from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
 from dune_imperium.core.actions import ActionValue, DomainAction
 
-ACTION_CODEC_VERSION = 10
+ACTION_CODEC_VERSION = 11
 MAX_DEPLOYMENT_COUNT = 12
 
 
@@ -113,6 +113,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         for action_id in (
             "decline_combat_reward",
             "decline_combat_reward_trash",
+            "decline_agent_card_trash",
             "decline_control_defense",
             "decline_endgame_wild_match",
             "decline_gather_intelligence",
@@ -217,7 +218,8 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             )
             for faction in Faction
         )
-    templates.extend(_trash_templates(config))
+    templates.extend(_trash_templates(config, "trash_agent_card"))
+    templates.extend(_trash_templates(config, "trash_combat_reward_card"))
     return tuple(sorted(templates, key=_template_sort_key))
 
 
@@ -307,7 +309,10 @@ def _endgame_wild_templates(
     )
 
 
-def _trash_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
+def _trash_templates(
+    config: RulesetConfig,
+    action_id: str,
+) -> tuple[ActionTemplate, ...]:
     card_ids = [
         f"starter:{card.card.card_id}:{copy}"
         for card in STARTING_DECK
@@ -321,7 +326,7 @@ def _trash_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     )
     return tuple(
         ActionTemplate(
-            action_id="trash_combat_reward_card",
+            action_id=action_id,
             arguments=(("card_id", card_id),),
         )
         for card_id in card_ids

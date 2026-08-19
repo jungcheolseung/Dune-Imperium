@@ -11,10 +11,10 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     first = ActionCodec(RulesetConfig())
     second = ActionCodec(RulesetConfig())
 
-    assert ACTION_CODEC_VERSION == 10
+    assert ACTION_CODEC_VERSION == 11
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
-    assert first.size == 857
+    assert first.size == 971
 
 
 def test_starting_card_actions_share_an_index_between_players() -> None:
@@ -81,6 +81,17 @@ def test_imperium_agent_action_round_trips_with_stable_instance_id() -> None:
             ("card_id", "imperium:maula_pistol:0"),
             ("space_id", "arrakeen"),
         ),
+    )
+
+    assert codec.decode(codec.encode(action), actor=2) == action
+
+
+def test_agent_card_trash_round_trips_with_actor_owned_starting_card() -> None:
+    codec = ActionCodec(RulesetConfig())
+    action = DomainAction(
+        action_id="trash_agent_card",
+        actor=2,
+        arguments=(("card_id", "player:2:starter:dagger:0"),),
     )
 
     assert codec.decode(codec.encode(action), actor=2) == action

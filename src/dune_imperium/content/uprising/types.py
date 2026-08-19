@@ -20,6 +20,7 @@ class PersonalCardAgentEffect(StrEnum):
     """Typed Agent-box effects currently transcribed for personal cards."""
 
     TRASH_SELF = "trash_self"
+    TRASH_PERSONAL_CARD = "trash_personal_card"
     LEADER_SIGNET = "leader_signet"
     DRAW_PERSONAL_CARD = "draw_personal_card"
     DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO = (

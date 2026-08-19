@@ -21,6 +21,8 @@ from dune_imperium.rules.acquisition import (
     legal_reserve_acquisitions,
 )
 from dune_imperium.rules.agent_effects import (
+    apply_agent_card_trash,
+    legal_agent_card_trash_actions,
     resolve_agent_card_effect,
     resolve_faction_influence,
 )
@@ -181,6 +183,7 @@ class UprisingRulesEngine(RulesEngine):
     def _apply_legal(self, state: GameState, action: DomainAction) -> RuleResult:
         handlers = {
             "decline_control_defense": apply_control_defense_action,
+            "decline_agent_card_trash": apply_agent_card_trash,
             "decline_endgame_wild_match": apply_endgame_wild_action,
             "decline_gather_intelligence": apply_gather_intelligence_action,
             "deploy_control_defense": apply_control_defense_action,
@@ -209,6 +212,7 @@ class UprisingRulesEngine(RulesEngine):
             "recall_spies_for_combat_reward": apply_combat_reward_spy_recall,
             "decline_combat_reward_trash": apply_combat_reward_trash,
             "trash_combat_reward_card": apply_combat_reward_trash,
+            "trash_agent_card": apply_agent_card_trash,
             "place_combat_reward_spy": apply_combat_reward_spy,
             "choose_combat_reward_influence": apply_combat_reward_influence,
             "choose_distinct_combat_reward_influence": (
@@ -261,9 +265,13 @@ class UprisingRulesEngine(RulesEngine):
             return ()
         actions: list[DomainAction] = []
         if context["pending_agent_effect"] is True:
-            actions.append(
-                DomainAction(action_id="resolve_agent_card_effect", actor=player)
-            )
+            trash_actions = legal_agent_card_trash_actions(state, player)
+            if trash_actions:
+                actions.extend(trash_actions)
+            else:
+                actions.append(
+                    DomainAction(action_id="resolve_agent_card_effect", actor=player)
+                )
         if context["pending_board_effect"] is True and context["space_id"] not in (
             "espionage",
             "sietch_tabr",
@@ -289,6 +297,7 @@ def _agent_action_is_supported(state: GameState, action: DomainAction) -> bool:
     if card.agent_effect not in (
         None,
         PersonalCardAgentEffect.TRASH_SELF,
+        PersonalCardAgentEffect.TRASH_PERSONAL_CARD,
         PersonalCardAgentEffect.DRAW_PERSONAL_CARD,
         PersonalCardAgentEffect.DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO,
         PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO,

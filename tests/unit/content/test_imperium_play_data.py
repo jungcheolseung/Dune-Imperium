@@ -78,8 +78,20 @@ def test_hidden_missive_play_data_includes_its_conditional_agent_effect() -> Non
     assert card.reveal_strength == 1
 
 
+def test_desert_survival_play_data_includes_its_optional_trash() -> None:
+    card = IMPERIUM_CARDS_BY_ID["desert_survival"]
+
+    assert card.play_data_complete is True
+    assert card.factions == (Faction.FREMEN,)
+    assert card.agent_icons == (AgentIcon.SPICE_TRADE,)
+    assert card.agent_effect is PersonalCardAgentEffect.TRASH_PERSONAL_CARD
+    assert card.trash_effect is None
+    assert card.reveal_persuasion == 1
+    assert card.reveal_strength == 1
+
+
 def test_untranscribed_imperium_card_still_fails_explicitly() -> None:
-    instance_id = _instance("desert_survival")
+    instance_id = _instance("double_agent")
 
     with pytest.raises(NotImplementedError, match="not transcribed"):
         personal_card_for_instance(instance_id)

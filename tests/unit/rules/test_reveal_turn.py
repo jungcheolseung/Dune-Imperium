@@ -193,6 +193,24 @@ def test_hidden_missive_contributes_reveal_values() -> None:
     assert context["strength"] == 3
 
 
+def test_desert_survival_contributes_reveal_values() -> None:
+    desert_survival = _imperium_instance("desert_survival")
+    state = _state(
+        PlayerState(
+            player_id=0,
+            hand=(desert_survival,),
+            troops_supply=8,
+            troops_conflict=1,
+        )
+    )
+
+    result = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
+    context = dict(result.state.decision_stack[-1].context)
+
+    assert context["persuasion"] == 1
+    assert context["strength"] == 3
+
+
 def test_reveal_preserves_agent_cards_already_in_play() -> None:
     played = _instance("dagger", 0)
     revealed = _instance("dagger", 1)

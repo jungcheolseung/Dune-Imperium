@@ -17,6 +17,8 @@ from dune_imperium.core import (
     PlayerState,
 )
 from dune_imperium.rules.agent_effects import (
+    apply_agent_card_trash,
+    legal_agent_card_trash_actions,
     resolve_agent_card_effect,
     resolve_faction_influence,
 )
@@ -290,3 +292,81 @@ def test_hidden_missive_has_no_agent_effect_below_required_influence() -> None:
     placed = apply_agent_action(state, _action_to(state, "gather_support")).state
 
     assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False
+
+
+def test_desert_survival_may_trash_from_any_eligible_zone() -> None:
+    desert_survival = _imperium_instance("desert_survival")
+    hand_card = _instance("dagger")
+    discarded_card = _instance("convincing_argument")
+    owner = PlayerState(
+        player_id=0,
+        hand=(desert_survival, hand_card),
+        discard_pile=(discarded_card,),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "accept_contract")).state
+
+    actions = legal_agent_card_trash_actions(placed, 0)
+    trash_ids = {
+        dict(action.arguments)["card_id"]
+        for action in actions
+        if action.action_id == "trash_agent_card"
+    }
+
+    assert {hand_card, discarded_card, desert_survival} == trash_ids
+
+    action = next(
+        action
+        for action in actions
+        if dict(action.arguments).get("card_id") == discarded_card
+    )
+    result = apply_agent_card_trash(placed, action)
+
+    assert result.state.players[0].discard_pile == ()
+    assert result.state.players[0].trashed == (discarded_card,)
+    assert result.state.players[0].in_play == (desert_survival,)
+    assert result.events[0].kind == "card_trashed"
+    context = dict(result.state.decision_stack[-1].context)
+    assert context["pending_agent_effect"] is False
+
+
+def test_desert_survival_trash_may_be_declined() -> None:
+    desert_survival = _imperium_instance("desert_survival")
+    owner = PlayerState(player_id=0, hand=(desert_survival,))
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "accept_contract")).state
+    action = next(
+        action
+        for action in legal_agent_card_trash_actions(placed, 0)
+        if action.action_id == "decline_agent_card_trash"
+    )
+
+    result = apply_agent_card_trash(placed, action)
+
+    assert result.state.players[0].in_play == (desert_survival,)
+    assert result.state.players[0].trashed == ()
+    assert result.events[0].kind == "agent_card_trash_declined"

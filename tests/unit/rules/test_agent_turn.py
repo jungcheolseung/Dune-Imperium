@@ -150,6 +150,16 @@ def test_hidden_missive_uses_its_landsraad_icon() -> None:
     assert _space_ids(_state(hidden_missive)) == {"assembly_hall", "gather_support"}
 
 
+def test_desert_survival_uses_its_spice_trade_icon() -> None:
+    desert_survival = _imperium_instance("desert_survival")
+
+    assert _space_ids(_state(desert_survival)) == {
+        "accept_contract",
+        "hagga_basin",
+        "imperial_basin",
+    }
+
+
 def test_spy_agent_icon_accesses_only_spaces_connected_to_an_owned_spy() -> None:
     owner = PlayerState(
         player_id=0,

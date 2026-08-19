@@ -3,6 +3,8 @@
 from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.content.uprising.types import PersonalCardAgentEffect
+from dune_imperium.core.actions import DomainAction
+from dune_imperium.core.decisions import PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
@@ -15,6 +17,76 @@ from dune_imperium.rules.effects import (
     recruit_troops,
 )
 from dune_imperium.rules.influence import gain_faction_influence
+
+
+def legal_agent_card_trash_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return Desert Survival's optional personal-card trash choices."""
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return ()
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    if context.get("pending_agent_effect") is not True:
+        return ()
+    _, source_card_id, _ = _effect_subject(context)
+    source_card = personal_card_for_instance(source_card_id)
+    if source_card.agent_effect is not PersonalCardAgentEffect.TRASH_PERSONAL_CARD:
+        return ()
+
+    owner = state.players[player]
+    eligible = (*owner.hand, *owner.discard_pile, *owner.in_play)
+    return (
+        DomainAction(action_id="decline_agent_card_trash", actor=player),
+        *(
+            DomainAction(
+                action_id="trash_agent_card",
+                actor=player,
+                arguments=(("card_id", card_id),),
+            )
+            for card_id in eligible
+        ),
+    )
+
+
+def apply_agent_card_trash(state: GameState, action: DomainAction) -> RuleResult:
+    """Resolve or decline an Agent-box personal-card trash choice."""
+
+    if action not in legal_agent_card_trash_actions(state, action.actor):
+        raise ValueError("action is not a legal Agent-card trash choice")
+    _, context = current_agent_effect_context(state)
+    context["pending_agent_effect"] = False
+    source = f"round:{state.round_number}:player:{action.actor}:agent_card"
+    if action.action_id == "decline_agent_card_trash":
+        next_state = advance_after_effect(state, context)
+        event = GameEvent(
+            event_id=f"{source}:trash_declined",
+            kind="agent_card_trash_declined",
+            payload=(("player", action.actor),),
+        )
+        return RuleResult(state=next_state, events=(event,))
+
+    card_id = dict(action.arguments).get("card_id")
+    if not isinstance(card_id, str):
+        raise RuntimeError("Agent-card trash choice has invalid card ID")
+    trashed = trash_personal_card(
+        state,
+        action.actor,
+        card_id,
+        source=source,
+    )
+    next_state = advance_after_effect(
+        trashed.state,
+        context,
+        trashed.state.players,
+    )
+    return RuleResult(state=next_state, events=trashed.events)
 
 
 def resolve_agent_card_effect(state: GameState) -> RuleResult:
