@@ -9,6 +9,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
+from dune_imperium.rules.effects import recruit_troops
 
 
 def legal_reveal_actions(state: GameState, player: int) -> tuple[DomainAction, ...]:
@@ -45,8 +46,27 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         strength = (
             owner.troops_conflict * 2 + owner.sandworms_conflict * 3 + sword_strength
         )
+    reveal_effects = tuple(
+        card.reveal_effect for card in cards if card.reveal_effect is not None
+    )
     next_owner = replace(
         owner,
+        resources=replace(
+            owner.resources,
+            solari=owner.resources.solari
+            + sum(effect.solari for effect in reveal_effects),
+            spice=owner.resources.spice
+            + sum(effect.spice for effect in reveal_effects),
+            water=owner.resources.water
+            + sum(effect.water for effect in reveal_effects),
+        ),
+    )
+    next_owner, _ = recruit_troops(
+        next_owner,
+        sum(effect.recruit_troops for effect in reveal_effects),
+    )
+    next_owner = replace(
+        next_owner,
         hand=(),
         in_play=(*owner.in_play, *revealed),
         combat_strength=strength,

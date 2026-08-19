@@ -148,6 +148,16 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             ),
         )
         event_kind = "agent_card_effect_resolved"
+    elif effect is PersonalCardAgentEffect.RECRUIT_ONE_IF_MAKER_SPACE:
+        space_id = context.get("space_id")
+        if not isinstance(space_id, str) or not BOARD_SPACES_BY_ID[space_id].maker:
+            raise RuntimeError("conditional Agent effect is not available")
+        next_owner, recruited = recruit_troops(owner, 1)
+        previous = context.get("troops_recruited")
+        if isinstance(previous, bool) or not isinstance(previous, int):
+            raise RuntimeError("Agent-turn effect frame has invalid recruit count")
+        context["troops_recruited"] = previous + recruited
+        event_kind = "agent_card_effect_resolved"
     else:
         raise NotImplementedError(
             f"personal-card Agent effect is not implemented: {card.card.card_id}"

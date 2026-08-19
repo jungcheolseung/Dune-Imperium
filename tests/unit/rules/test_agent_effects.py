@@ -416,3 +416,51 @@ def test_smugglers_harvester_has_no_agent_effect_away_from_maker_spaces() -> Non
     placed = apply_agent_action(state, _action_to(state, "accept_contract")).state
 
     assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False
+
+
+def test_fedaykin_stilltent_recruits_a_deployable_troop_at_a_maker_space() -> None:
+    stilltent = _imperium_instance("fedaykin_stilltent")
+    owner = PlayerState(player_id=0, hand=(stilltent,))
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "imperial_basin")).state
+
+    result = resolve_agent_card_effect(placed)
+    context = dict(result.state.decision_stack[-1].context)
+
+    assert result.state.players[0].troops_supply == 8
+    assert result.state.players[0].troops_garrison == 4
+    assert context["troops_recruited"] == 1
+
+
+def test_fedaykin_stilltent_has_no_agent_effect_away_from_maker_spaces() -> None:
+    stilltent = _imperium_instance("fedaykin_stilltent")
+    owner = PlayerState(player_id=0, hand=(stilltent,))
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+
+    placed = apply_agent_action(state, _action_to(state, "accept_contract")).state
+
+    assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False

@@ -1,5 +1,6 @@
-"""Enums shared by Uprising card manifests."""
+"""Types shared by Uprising card manifests."""
 
+from dataclasses import dataclass
 from enum import IntEnum, StrEnum
 
 
@@ -24,6 +25,7 @@ class PersonalCardAgentEffect(StrEnum):
     LEADER_SIGNET = "leader_signet"
     DRAW_PERSONAL_CARD = "draw_personal_card"
     GAIN_SPICE_IF_MAKER_SPACE = "gain_spice_if_maker_space"
+    RECRUIT_ONE_IF_MAKER_SPACE = "recruit_one_if_maker_space"
     DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO = (
         "draw_if_bene_gesserit_influence_two"
     )
@@ -36,6 +38,23 @@ class PersonalCardTrashEffect(StrEnum):
     """Typed effects triggered when a personal card is trashed."""
 
     DRAW_INTRIGUE_CARD = "draw_intrigue_card"
+
+
+@dataclass(frozen=True, slots=True)
+class PersonalCardRevealEffect:
+    """Automatic public gains produced when a personal card is revealed."""
+
+    solari: int = 0
+    spice: int = 0
+    water: int = 0
+    recruit_troops: int = 0
+
+    def __post_init__(self) -> None:
+        values = (self.solari, self.spice, self.water, self.recruit_troops)
+        if min(values) < 0:
+            raise ValueError("personal-card Reveal gains must not be negative")
+        if max(values) == 0:
+            raise ValueError("personal-card Reveal effect must gain something")
 
 
 class BattleIcon(StrEnum):

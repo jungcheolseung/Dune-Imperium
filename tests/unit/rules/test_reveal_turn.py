@@ -220,6 +220,16 @@ def test_smugglers_harvester_contributes_reveal_persuasion() -> None:
     assert dict(result.state.decision_stack[-1].context)["persuasion"] == 1
 
 
+def test_fedaykin_stilltent_gains_water_when_revealed() -> None:
+    stilltent = _imperium_instance("fedaykin_stilltent")
+    state = _state(PlayerState(player_id=0, hand=(stilltent,)))
+
+    result = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
+
+    assert result.state.players[0].resources.water == 2
+    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 0
+
+
 def test_reveal_preserves_agent_cards_already_in_play() -> None:
     played = _instance("dagger", 0)
     revealed = _instance("dagger", 1)

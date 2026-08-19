@@ -13,6 +13,7 @@ from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.types import (
     AgentIcon,
     PersonalCardAgentEffect,
+    PersonalCardRevealEffect,
     PersonalCardTrashEffect,
 )
 
@@ -30,6 +31,7 @@ class ImperiumCardEntry(DeckCardEntry):
     trash_effect: PersonalCardTrashEffect | None = None
     reveal_persuasion: int = 0
     reveal_strength: int = 0
+    reveal_effect: PersonalCardRevealEffect | None = None
     play_data_complete: bool = False
 
     def __post_init__(self) -> None:
@@ -47,6 +49,7 @@ class ImperiumCardEntry(DeckCardEntry):
             or self.trash_effect is not None
             or self.reveal_persuasion
             or self.reveal_strength
+            or self.reveal_effect is not None
         ):
             raise ValueError("partial Imperium-card play data must not be exposed")
 
@@ -66,6 +69,7 @@ def _entry(
     trash_effect: PersonalCardTrashEffect | None = None,
     reveal_persuasion: int = 0,
     reveal_strength: int = 0,
+    reveal_effect: PersonalCardRevealEffect | None = None,
     play_data_complete: bool = False,
 ) -> ImperiumCardEntry:
     return ImperiumCardEntry(
@@ -85,6 +89,7 @@ def _entry(
         trash_effect=trash_effect,
         reveal_persuasion=reveal_persuasion,
         reveal_strength=reveal_strength,
+        reveal_effect=reveal_effect,
         play_data_complete=play_data_complete,
     )
 
@@ -116,7 +121,17 @@ IMPERIUM_CARDS: Final = (
     ),
     _entry(37, "double-agent", "Double Agent", 3, copies=2),
     _entry(46, "ecological-testing-station", "Ecological Testing Station", 3),
-    _entry(23, "fedaykin-stilltent", "Fedaykin Stilltent", 2),
+    _entry(
+        23,
+        "fedaykin-stilltent",
+        "Fedaykin Stilltent",
+        2,
+        factions=(Faction.FREMEN,),
+        agent_icons=(AgentIcon.SPICE_TRADE,),
+        agent_effect=PersonalCardAgentEffect.RECRUIT_ONE_IF_MAKER_SPACE,
+        reveal_effect=PersonalCardRevealEffect(water=1),
+        play_data_complete=True,
+    ),
     _entry(38, "guild-envoy", "Guild Envoy", 3),
     _entry(43, "guild-spy", "Guild Spy", 3, has_acquisition_bonus=True),
     _entry(

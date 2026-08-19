@@ -11,6 +11,7 @@ from dune_imperium.content.uprising.personal_cards import personal_card_for_inst
 from dune_imperium.content.uprising.types import (
     AgentIcon,
     PersonalCardAgentEffect,
+    PersonalCardRevealEffect,
     PersonalCardTrashEffect,
 )
 
@@ -102,8 +103,27 @@ def test_smugglers_harvester_play_data_includes_its_maker_bonus() -> None:
     assert card.reveal_strength == 0
 
 
+def test_fedaykin_stilltent_play_data_has_maker_and_reveal_gains() -> None:
+    card = IMPERIUM_CARDS_BY_ID["fedaykin_stilltent"]
+
+    assert card.play_data_complete is True
+    assert card.factions == (Faction.FREMEN,)
+    assert card.agent_icons == (AgentIcon.SPICE_TRADE,)
+    assert card.agent_effect is PersonalCardAgentEffect.RECRUIT_ONE_IF_MAKER_SPACE
+    assert card.reveal_effect == PersonalCardRevealEffect(water=1)
+    assert card.reveal_persuasion == 0
+    assert card.reveal_strength == 0
+
+
 def test_untranscribed_imperium_card_still_fails_explicitly() -> None:
     instance_id = _instance("double_agent")
 
     with pytest.raises(NotImplementedError, match="not transcribed"):
         personal_card_for_instance(instance_id)
+
+
+def test_personal_card_reveal_effect_requires_a_nonnegative_gain() -> None:
+    with pytest.raises(ValueError, match="must gain"):
+        PersonalCardRevealEffect()
+    with pytest.raises(ValueError, match="must not be negative"):
+        PersonalCardRevealEffect(water=-1)

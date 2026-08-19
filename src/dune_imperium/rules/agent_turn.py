@@ -232,6 +232,8 @@ def _agent_effect_is_available(
         return owner.influence.bene_gesserit >= 2
     if effect is PersonalCardAgentEffect.GAIN_SPICE_IF_MAKER_SPACE:
         return space.maker
+    if effect is PersonalCardAgentEffect.RECRUIT_ONE_IF_MAKER_SPACE:
+        return space.maker
     return True
 
 

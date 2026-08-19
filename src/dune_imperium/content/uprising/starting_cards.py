@@ -4,7 +4,11 @@ from dataclasses import dataclass
 from typing import Final
 
 from dune_imperium.content.schema import CardDefinition, SourceDocument, SourceRef
-from dune_imperium.content.uprising.types import AgentIcon, PersonalCardAgentEffect
+from dune_imperium.content.uprising.types import (
+    AgentIcon,
+    PersonalCardAgentEffect,
+    PersonalCardRevealEffect,
+)
 
 # Backward-compatible content name; Agent effects are now shared by every
 # personal Imperium-card source rather than being starting-card-specific.
@@ -21,6 +25,7 @@ class StartingCardEntry:
     agent_effect: PersonalCardAgentEffect | None = None
     reveal_persuasion: int = 0
     reveal_strength: int = 0
+    reveal_effect: PersonalCardRevealEffect | None = None
 
     def __post_init__(self) -> None:
         if self.copies < 1:
