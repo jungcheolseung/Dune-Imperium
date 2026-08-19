@@ -247,6 +247,7 @@ def legal_agent_card_trash_actions(
     if source_card.agent_effect not in (
         PersonalCardAgentEffect.TRASH_PERSONAL_CARD,
         PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE,
+        PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND,
     ):
         return ()
 
@@ -300,7 +301,10 @@ def apply_agent_card_trash(state: GameState, action: DomainAction) -> RuleResult
     )
     if (
         source_card.agent_effect
-        is PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE
+        in (
+            PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE,
+            PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND,
+        )
     ):
         drawn = draw_or_request_personal_cards(
             next_state,

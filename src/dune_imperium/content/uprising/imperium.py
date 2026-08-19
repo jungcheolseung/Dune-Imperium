@@ -531,7 +531,21 @@ IMPERIUM_CARDS: Final = (
         has_acquisition_bonus=True,
     ),
     _entry(66, "treacherous-maneuver", "Treacherous Maneuver", 5),
-    _entry(58, "tread-in-darkness", "Tread in Darkness", 4, copies=2),
+    _entry(
+        58,
+        "tread-in-darkness",
+        "Tread in Darkness",
+        4,
+        copies=2,
+        factions=(Faction.BENE_GESSERIT,),
+        agent_icons=(AgentIcon.LANDSRAAD, AgentIcon.CITY, AgentIcon.SPICE_TRADE),
+        agent_effect=(
+            PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND
+        ),
+        reveal_persuasion=2,
+        reveal_strength=1,
+        play_data_complete=True,
+    ),
     _entry(
         53,
         "truthtrance",

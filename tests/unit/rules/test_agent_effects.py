@@ -1514,3 +1514,63 @@ def test_shishakli_trash_draw_may_be_declined() -> None:
     assert result.state.players[0].hand == ()
     assert result.state.players[0].deck == (drawn_card,)
     assert result.state.players[0].trashed == ()
+
+
+def test_tread_in_darkness_may_trash_and_draw_with_bene_gesserit_bond() -> None:
+    tread = _imperium_instance("tread_in_darkness")
+    bond_card = _imperium_instance("truthtrance")
+    trashed_card = _instance("dagger")
+    drawn_card = _instance("convincing_argument")
+    owner = PlayerState(
+        player_id=0,
+        hand=(tread, trashed_card),
+        deck=(drawn_card,),
+        in_play=(bond_card,),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
+    action = next(
+        action
+        for action in legal_agent_card_trash_actions(placed, 0)
+        if dict(action.arguments).get("card_id") == trashed_card
+    )
+
+    result = apply_agent_card_trash(placed, action)
+
+    assert result.state.players[0].trashed == (trashed_card,)
+    assert result.state.players[0].hand == (drawn_card,)
+    assert result.state.players[0].in_play == (bond_card, tread)
+
+
+def test_tread_in_darkness_has_no_agent_effect_without_bond() -> None:
+    tread = _imperium_instance("tread_in_darkness")
+    owner = PlayerState(player_id=0, hand=(tread,))
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+
+    placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
+
+    assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False

@@ -505,6 +505,23 @@ def test_shishakli_reveal_gains_fremen_influence_only_with_bond() -> None:
     )
 
 
+def test_tread_in_darkness_reveals_for_persuasion_and_strength() -> None:
+    tread = _imperium_instance("tread_in_darkness")
+    state = _state(
+        PlayerState(
+            player_id=0,
+            hand=(tread,),
+            troops_supply=8,
+            troops_conflict=1,
+        )
+    )
+
+    result = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
+
+    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 2
+    assert result.state.players[0].combat_strength == 3
+
+
 def test_high_council_and_assembly_hall_add_reveal_persuasion() -> None:
     state = _state(
         PlayerState(

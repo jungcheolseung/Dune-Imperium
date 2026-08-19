@@ -32,6 +32,9 @@ class PersonalCardAgentEffect(StrEnum):
     TRASH_SELF = "trash_self"
     TRASH_PERSONAL_CARD = "trash_personal_card"
     TRASH_PERSONAL_CARD_TO_DRAW_ONE = "trash_personal_card_to_draw_one"
+    TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND = (
+        "trash_personal_card_to_draw_one_if_bene_gesserit_bond"
+    )
     TRASH_SELF_AND_GAIN_CHOSEN_INFLUENCE = (
         "trash_self_and_gain_chosen_influence"
     )
