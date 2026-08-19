@@ -240,7 +240,7 @@ seeded random 4인 라운드를 실행하고 action replay로 최종 상태를 �
 ### M4. RL 인터페이스 조기 검증
 
 상태: **완료** (2026-08-14). 기본 룰셋은 versioned actor-neutral 정수 action
-catalog와 같은 폭의 legal action mask를 사용한다. 현재 codec v20은 1162개
+catalog와 같은 폭의 legal action mask를 사용한다. 현재 codec v21은 1196개
 행동이며, `dune_imperium_uprising_v0` AEC 환경은
 한 라운드를 episode로 실행하며 PettingZoo `api_test`와 `seed_test`를 통과한다.
 관측과 `info`에는 전체 `GameState`를 노출하지 않는다.
@@ -303,7 +303,9 @@ v17에 연결했다. 열한 번째 묶음은 Ecological Testing Station의 선�
 묶음인 Paracompass의 High Council·Swordmaster Reveal 조건과 Agent Solari를
 codec v19에 연결했다. 열세 번째 묶음은 typed 획득 보너스 경계를 열고
 Overthrow의 획득 Intrigue draw, Agent 추가 Influence, Reveal 병력 모집을 codec
-v20에 연결했다. 고정된 DIU `imperium.JSON`은 런타임 의존성 없이 63개 local
+v20에 연결했다. 열네 번째 묶음은 공통 Spy 배치·회수 경계를 만들고 Bene
+Gesserit Operative의 Agent Spy 배치와 Spy 2개 조건부 Reveal Persuasion을 codec
+v21에 연결했다. 고정된 DIU `imperium.JSON`은 런타임 의존성 없이 63개 local
 identity와 대조하고 아이콘·Faction·효과 형태를 정규화하는 read-only audit에만
 사용한다. 나머지 Imperium과 Intrigue, Leader, Objective 효과는 아직 identity
 manifest 수준이다.
