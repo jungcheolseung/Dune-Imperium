@@ -1,18 +1,14 @@
 """The ten-card Uprising starting deck listed in Main Rulebook p. 3."""
 
 from dataclasses import dataclass
-from enum import StrEnum
 from typing import Final
 
 from dune_imperium.content.schema import CardDefinition, SourceDocument, SourceRef
-from dune_imperium.content.uprising.types import AgentIcon
+from dune_imperium.content.uprising.types import AgentIcon, PersonalCardAgentEffect
 
-
-class StartingCardAgentEffect(StrEnum):
-    """Non-numeric Agent-box effects in the starting deck."""
-
-    TRASH_SELF = "trash_self"
-    LEADER_SIGNET = "leader_signet"
+# Backward-compatible content name; Agent effects are now shared by every
+# personal Imperium-card source rather than being starting-card-specific.
+StartingCardAgentEffect = PersonalCardAgentEffect
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,7 +18,7 @@ class StartingCardEntry:
     card: CardDefinition
     copies: int
     agent_icons: tuple[AgentIcon, ...] = ()
-    agent_effect: StartingCardAgentEffect | None = None
+    agent_effect: PersonalCardAgentEffect | None = None
     reveal_persuasion: int = 0
     reveal_strength: int = 0
 
@@ -89,7 +85,7 @@ STARTING_DECK: Final = (
             AgentIcon.BENE_GESSERIT,
             AgentIcon.FREMEN,
         ),
-        agent_effect=StartingCardAgentEffect.TRASH_SELF,
+        agent_effect=PersonalCardAgentEffect.TRASH_SELF,
     ),
     StartingCardEntry(
         CardDefinition("signet_ring", "Signet Ring", MAIN_P3),
@@ -99,7 +95,7 @@ STARTING_DECK: Final = (
             AgentIcon.CITY,
             AgentIcon.SPICE_TRADE,
         ),
-        agent_effect=StartingCardAgentEffect.LEADER_SIGNET,
+        agent_effect=PersonalCardAgentEffect.LEADER_SIGNET,
         reveal_persuasion=1,
     ),
 )

@@ -5,10 +5,8 @@ from dataclasses import replace
 from dune_imperium.config import RulesetConfig
 from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID, DynamicCost
 from dune_imperium.content.uprising.imperium import imperium_card_for_instance
-from dune_imperium.content.uprising.starting_cards import (
-    StartingCardAgentEffect,
-    starting_card_for_instance,
-)
+from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
+from dune_imperium.content.uprising.types import PersonalCardAgentEffect
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceOutcome
 from dune_imperium.core.decisions import PlayerDecision
@@ -287,8 +285,12 @@ def _agent_action_is_supported(state: GameState, action: DomainAction) -> bool:
     space_id = arguments["space_id"]
     if not isinstance(card_id, str) or not isinstance(space_id, str):
         return False
-    card = starting_card_for_instance(card_id)
-    if card.agent_effect not in (None, StartingCardAgentEffect.TRASH_SELF):
+    card = personal_card_for_instance(card_id)
+    if card.agent_effect not in (
+        None,
+        PersonalCardAgentEffect.TRASH_SELF,
+        PersonalCardAgentEffect.DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO,
+    ):
         return False
     if space_id in (
         "espionage",

@@ -110,6 +110,25 @@ def test_reveal_strength_requires_a_unit_in_conflict() -> None:
     assert unit_result.state.players[0].combat_strength == 3
 
 
+def test_reserve_cards_contribute_their_printed_reveal_values() -> None:
+    prepare = "reserve:prepare_the_way:7"
+    spice = "reserve:the_spice_must_flow:9"
+    state = _state(
+        PlayerState(
+            player_id=0,
+            hand=(prepare, spice),
+            troops_supply=8,
+            troops_conflict=1,
+        )
+    )
+
+    result = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
+    context = dict(result.state.decision_stack[-1].context)
+
+    assert context["persuasion"] == 2
+    assert context["strength"] == 3
+
+
 def test_reveal_preserves_agent_cards_already_in_play() -> None:
     played = _instance("dagger", 0)
     revealed = _instance("dagger", 1)

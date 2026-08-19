@@ -89,6 +89,25 @@ def test_card_icons_limit_agent_destinations() -> None:
     assert _space_ids(state) == {"assembly_hall", "gather_support"}
 
 
+def test_prepare_the_way_uses_its_landsraad_and_city_icons() -> None:
+    owner = PlayerState(
+        player_id=0,
+        hand=("reserve:prepare_the_way:7",),
+        resources=Resources(solari=10, spice=10, water=10),
+    )
+    state = _state(owner=owner)
+
+    assert _space_ids(state) == {
+        "arrakeen",
+        "assembly_hall",
+        "gather_support",
+        "high_council",
+        "research_station",
+        "spice_refinery",
+        "swordmaster",
+    }
+
+
 def test_spy_agent_icon_accesses_only_spaces_connected_to_an_owned_spy() -> None:
     owner = PlayerState(
         player_id=0,

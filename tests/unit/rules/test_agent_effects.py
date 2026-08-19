@@ -137,3 +137,60 @@ def test_signet_effect_waits_for_leader_implementations() -> None:
 
     with pytest.raises(NotImplementedError, match="signet_ring"):
         resolve_agent_card_effect(placed)
+
+
+def test_prepare_the_way_draws_with_two_bene_gesserit_influence() -> None:
+    prepare = "reserve:prepare_the_way:7"
+    drawn = _instance("dagger")
+    owner = PlayerState(
+        player_id=0,
+        hand=(prepare,),
+        deck=(drawn,),
+        influence=Influence(bene_gesserit=2),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
+
+    resolved = resolve_agent_card_effect(placed)
+
+    assert resolved.state.players[0].hand == (drawn,)
+    assert resolved.state.players[0].deck == ()
+    assert resolved.events[0].kind == "agent_card_effect_resolved"
+
+
+def test_prepare_the_way_has_no_agent_effect_below_required_influence() -> None:
+    prepare = "reserve:prepare_the_way:7"
+    owner = PlayerState(
+        player_id=0,
+        hand=(prepare,),
+        influence=Influence(bene_gesserit=1),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+
+    placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
+
+    assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False

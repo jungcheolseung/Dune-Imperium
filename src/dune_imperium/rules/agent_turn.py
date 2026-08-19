@@ -12,8 +12,8 @@ from dune_imperium.content.uprising.board import (
     InfluenceRequirement,
     ResourceCost,
 )
-from dune_imperium.content.uprising.starting_cards import starting_card_for_instance
-from dune_imperium.content.uprising.types import AgentIcon
+from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
+from dune_imperium.content.uprising.types import AgentIcon, PersonalCardAgentEffect
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
@@ -43,7 +43,7 @@ def legal_agent_actions(state: GameState, player: int) -> tuple[DomainAction, ..
         return ()
     actions: list[DomainAction] = []
     for card_instance_id in owner.hand:
-        card = starting_card_for_instance(card_instance_id)
+        card = personal_card_for_instance(card_instance_id)
         for space in BOARD_SPACES:
             if not card_can_access_space(card.agent_icons, space, owner):
                 continue
@@ -123,7 +123,7 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
     if not isinstance(card_instance_id, str) or not isinstance(space_id, str):
         raise ValueError("Agent action card_id and space_id must be strings")
 
-    card = starting_card_for_instance(card_instance_id)
+    card = personal_card_for_instance(card_instance_id)
     space = BOARD_SPACES_BY_ID[space_id]
     cost_option, cost = _selected_cost(state, space, arguments.get("cost_option"))
     owner = state.players[action.actor]
@@ -155,7 +155,10 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
         context=(
             ("card_id", card_instance_id),
             ("cost_option", cost_option),
-            ("pending_agent_effect", card.agent_effect is not None),
+            (
+                "pending_agent_effect",
+                _agent_effect_is_available(card.agent_effect, owner),
+            ),
             ("pending_board_effect", True),
             ("pending_combat_deployment", space.combat),
             ("pending_faction_influence", space.faction is not None),
@@ -211,6 +214,17 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
         else (placement_event, *infiltration_events, control_event)
     )
     return RuleResult(state=next_state, events=events)
+
+
+def _agent_effect_is_available(
+    effect: PersonalCardAgentEffect | None,
+    owner: PlayerState,
+) -> bool:
+    if effect is None:
+        return False
+    if effect is PersonalCardAgentEffect.DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO:
+        return owner.influence.bene_gesserit >= 2
+    return True
 
 
 def _actions_for_affordable_costs(

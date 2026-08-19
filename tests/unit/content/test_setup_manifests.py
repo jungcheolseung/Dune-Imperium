@@ -30,8 +30,14 @@ from dune_imperium.content.uprising.objectives import (
 from dune_imperium.content.uprising.reserve import (
     RESERVE_STACKS,
     RESERVE_STACKS_BY_ID,
+    reserve_card_for_instance,
 )
-from dune_imperium.content.uprising.types import BattleIcon, ConflictTier
+from dune_imperium.content.uprising.types import (
+    AgentIcon,
+    BattleIcon,
+    ConflictTier,
+    PersonalCardAgentEffect,
+)
 
 
 def test_conflict_manifest_has_the_official_tier_counts() -> None:
@@ -280,6 +286,31 @@ def test_conflict_reward_rejects_incomplete_compound_effects() -> None:
             optional_solari_cost=2,
             optional_victory_points=1,
         )
+
+
+def test_reserve_play_data_matches_the_printed_cards() -> None:
+    prepare = RESERVE_STACKS_BY_ID["prepare_the_way"]
+    spice = RESERVE_STACKS_BY_ID["the_spice_must_flow"]
+
+    assert prepare.agent_icons == (AgentIcon.LANDSRAAD, AgentIcon.CITY)
+    assert prepare.agent_effect is (
+        PersonalCardAgentEffect.DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO
+    )
+    assert prepare.reveal_persuasion == 2
+    assert prepare.reveal_strength == 0
+    assert spice.agent_icons == ()
+    assert spice.agent_effect is None
+    assert spice.reveal_persuasion == 0
+    assert spice.reveal_strength == 1
+
+
+def test_reserve_instance_ids_resolve_and_validate_copy_bounds() -> None:
+    assert (
+        reserve_card_for_instance("reserve:prepare_the_way:7").card.card_id
+        == "prepare_the_way"
+    )
+    with pytest.raises(ValueError, match="copy index"):
+        reserve_card_for_instance("reserve:prepare_the_way:8")
 
 
 def test_base_setup_excludes_only_the_choam_leader() -> None:

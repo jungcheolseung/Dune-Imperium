@@ -2,7 +2,7 @@
 
 from dataclasses import replace
 
-from dune_imperium.content.uprising.starting_cards import starting_card_for_instance
+from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
@@ -31,7 +31,7 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         raise ValueError("action is not a legal Reveal turn")
     owner = state.players[action.actor]
     revealed = owner.hand
-    cards = tuple(starting_card_for_instance(card_id) for card_id in revealed)
+    cards = tuple(personal_card_for_instance(card_id) for card_id in revealed)
     persuasion = sum(card.reveal_persuasion for card in cards)
     if owner.high_council:
         persuasion += 2
