@@ -62,6 +62,7 @@ class PersonalCardAgentEffect(StrEnum):
         "gain_by_emperor_and_spacing_guild_influence_two"
     )
     RECRUIT_ONE_IF_MAKER_SPACE = "recruit_one_if_maker_space"
+    RECRUIT_TWO_TROOPS = "recruit_two_troops"
     RECRUIT_TWO_IF_BENE_GESSERIT_BOND = "recruit_two_if_bene_gesserit_bond"
     RETURN_SELF_IF_BENE_GESSERIT_BOND = "return_self_if_bene_gesserit_bond"
     DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO = (
@@ -110,6 +111,7 @@ class PersonalCardRevealEffect:
     requires_high_council: bool = False
     requires_swordmaster: bool = False
     minimum_spies_placed: int = 0
+    per_revealed_faction: PersonalCardBond | None = None
 
     def __post_init__(self) -> None:
         if self.required_faction_bond is not None and not isinstance(
@@ -117,6 +119,13 @@ class PersonalCardRevealEffect:
             PersonalCardBond,
         ):
             raise TypeError("Faction Bond requirement must use PersonalCardBond")
+        if self.per_revealed_faction is not None and not isinstance(
+            self.per_revealed_faction,
+            PersonalCardBond,
+        ):
+            raise TypeError("counted Reveal Faction must use PersonalCardBond")
+        if self.per_revealed_faction is not None and self.persuasion == 0:
+            raise ValueError("counted Reveal Faction requires Persuasion")
         if not isinstance(self.requires_high_council, bool) or not isinstance(
             self.requires_swordmaster,
             bool,

@@ -461,7 +461,22 @@ IMPERIUM_CARDS: Final = (
         play_data_complete=True,
     ),
     _entry(76, "steersman", "Steersman", 8, has_acquisition_bonus=True),
-    _entry(70, "stilgar-the-devoted", "Stilgar, The Devoted", 6),
+    _entry(
+        70,
+        "stilgar-the-devoted",
+        "Stilgar, The Devoted",
+        6,
+        factions=(Faction.FREMEN,),
+        agent_icons=(AgentIcon.FREMEN, AgentIcon.CITY, AgentIcon.SPICE_TRADE),
+        agent_effect=PersonalCardAgentEffect.RECRUIT_TWO_TROOPS,
+        reveal_effects=(
+            PersonalCardRevealEffect(
+                persuasion=2,
+                per_revealed_faction=PersonalCardBond.FREMEN,
+            ),
+        ),
+        play_data_complete=True,
+    ),
     _entry(
         65,
         "strike-fleet",

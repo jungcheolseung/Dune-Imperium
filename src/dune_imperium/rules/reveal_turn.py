@@ -328,7 +328,16 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         )
     )
     persuasion = sum(card.reveal_persuasion for card in cards) + sum(
-        effect.persuasion for effect in reveal_effects
+        effect.persuasion
+        * (
+            sum(
+                Faction(effect.per_revealed_faction.value) in card.factions
+                for card in cards
+            )
+            if effect.per_revealed_faction is not None
+            else 1
+        )
+        for effect in reveal_effects
     )
     if owner.high_council:
         persuasion += 2

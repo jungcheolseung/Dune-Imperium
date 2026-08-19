@@ -1361,3 +1361,28 @@ def test_wheels_within_wheels_has_no_agent_effect_below_both_thresholds() -> Non
     placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
 
     assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False
+
+
+def test_stilgar_recruits_two_deployable_troops() -> None:
+    stilgar = _imperium_instance("stilgar_the_devoted")
+    owner = PlayerState(player_id=0, hand=(stilgar,))
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
+
+    result = resolve_agent_card_effect(placed)
+
+    assert result.state.players[0].troops_supply == 7
+    assert result.state.players[0].troops_garrison == 5
+    assert dict(result.state.decision_stack[-1].context)["troops_recruited"] == 2

@@ -354,6 +354,7 @@ def _agent_action_is_supported(state: GameState, action: DomainAction) -> bool:
         PersonalCardAgentEffect.RETURN_SELF_IF_BENE_GESSERIT_BOND,
         PersonalCardAgentEffect.PAY_TWO_WATER_TO_DRAW_TWO,
         PersonalCardAgentEffect.RECRUIT_ONE_IF_MAKER_SPACE,
+        PersonalCardAgentEffect.RECRUIT_TWO_TROOPS,
         PersonalCardAgentEffect.DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO,
         PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO,
     ):

@@ -406,6 +406,25 @@ def test_unswerving_loyalty_play_data_has_only_reveal_rewards() -> None:
     )
 
 
+def test_stilgar_play_data_counts_revealed_fremen_cards() -> None:
+    card = IMPERIUM_CARDS_BY_ID["stilgar_the_devoted"]
+
+    assert card.play_data_complete is True
+    assert card.factions == (Faction.FREMEN,)
+    assert card.agent_icons == (
+        AgentIcon.FREMEN,
+        AgentIcon.CITY,
+        AgentIcon.SPICE_TRADE,
+    )
+    assert card.agent_effect is PersonalCardAgentEffect.RECRUIT_TWO_TROOPS
+    assert card.reveal_effects == (
+        PersonalCardRevealEffect(
+            persuasion=2,
+            per_revealed_faction=PersonalCardBond.FREMEN,
+        ),
+    )
+
+
 def test_untranscribed_imperium_card_still_fails_explicitly() -> None:
     instance_id = _instance("double_agent")
 
@@ -427,3 +446,8 @@ def test_personal_card_reveal_effect_requires_a_nonnegative_gain() -> None:
         )
     with pytest.raises(ValueError, match="also needs High Council"):
         PersonalCardRevealEffect(persuasion=1, requires_swordmaster=True)
+    with pytest.raises(ValueError, match="requires Persuasion"):
+        PersonalCardRevealEffect(
+            water=1,
+            per_revealed_faction=PersonalCardBond.FREMEN,
+        )

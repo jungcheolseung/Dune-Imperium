@@ -402,6 +402,33 @@ def test_unswerving_loyalty_reveals_for_persuasion_and_recruits_one() -> None:
     assert result.state.players[0].troops_garrison == 4
 
 
+def test_stilgar_counts_only_fremen_cards_revealed_this_turn() -> None:
+    stilgar = _imperium_instance("stilgar_the_devoted")
+    maula = _imperium_instance("maula_pistol")
+    truthtrance = _imperium_instance("truthtrance")
+    previously_played_fremen = _imperium_instance("unswerving_loyalty")
+    state = _state(
+        PlayerState(
+            player_id=0,
+            hand=(stilgar, maula, truthtrance),
+            in_play=(previously_played_fremen,),
+        )
+    )
+
+    result = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
+
+    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 6
+
+
+def test_stilgar_counts_itself_as_a_revealed_fremen_card() -> None:
+    stilgar = _imperium_instance("stilgar_the_devoted")
+    state = _state(PlayerState(player_id=0, hand=(stilgar,)))
+
+    result = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
+
+    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 2
+
+
 def test_high_council_and_assembly_hall_add_reveal_persuasion() -> None:
     state = _state(
         PlayerState(
