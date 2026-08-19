@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Final
 
 from dune_imperium.content.schema import CardDefinition, SourceDocument, SourceRef
+from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.types import (
     AgentIcon,
     PersonalCardAgentEffect,
@@ -21,6 +22,7 @@ class StartingCardEntry:
 
     card: CardDefinition
     copies: int
+    factions: tuple[Faction, ...] = ()
     agent_icons: tuple[AgentIcon, ...] = ()
     agent_effect: PersonalCardAgentEffect | None = None
     reveal_persuasion: int = 0
@@ -32,6 +34,8 @@ class StartingCardEntry:
             raise ValueError("starting-card copies must be positive")
         if len(self.agent_icons) != len(set(self.agent_icons)):
             raise ValueError("starting-card Agent icons must be unique")
+        if len(self.factions) != len(set(self.factions)):
+            raise ValueError("starting-card Factions must be unique")
         if min(self.reveal_persuasion, self.reveal_strength) < 0:
             raise ValueError("starting-card Reveal values must not be negative")
 

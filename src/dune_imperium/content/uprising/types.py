@@ -25,6 +25,7 @@ class PersonalCardAgentEffect(StrEnum):
     LEADER_SIGNET = "leader_signet"
     DRAW_PERSONAL_CARD = "draw_personal_card"
     GAIN_SPICE_IF_MAKER_SPACE = "gain_spice_if_maker_space"
+    GAIN_WATER = "gain_water"
     RECRUIT_ONE_IF_MAKER_SPACE = "recruit_one_if_maker_space"
     DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO = (
         "draw_if_bene_gesserit_influence_two"
@@ -48,8 +49,11 @@ class PersonalCardRevealEffect:
     spice: int = 0
     water: int = 0
     recruit_troops: int = 0
+    requires_fremen_bond: bool = False
 
     def __post_init__(self) -> None:
+        if not isinstance(self.requires_fremen_bond, bool):
+            raise TypeError("Fremen Bond requirement must be a boolean")
         values = (self.solari, self.spice, self.water, self.recruit_troops)
         if min(values) < 0:
             raise ValueError("personal-card Reveal gains must not be negative")

@@ -464,3 +464,27 @@ def test_fedaykin_stilltent_has_no_agent_effect_away_from_maker_spaces() -> None
     placed = apply_agent_action(state, _action_to(state, "accept_contract")).state
 
     assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False
+
+
+def test_northern_watermaster_gains_water_on_its_agent_turn() -> None:
+    watermaster = _imperium_instance("northern_watermaster")
+    owner = PlayerState(player_id=0, hand=(watermaster,))
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
+
+    result = resolve_agent_card_effect(placed)
+
+    assert result.state.players[0].resources.water == 2
+    assert result.events[0].kind == "agent_card_effect_resolved"

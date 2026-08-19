@@ -158,6 +158,15 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             raise RuntimeError("Agent-turn effect frame has invalid recruit count")
         context["troops_recruited"] = previous + recruited
         event_kind = "agent_card_effect_resolved"
+    elif effect is PersonalCardAgentEffect.GAIN_WATER:
+        next_owner = replace(
+            owner,
+            resources=replace(
+                owner.resources,
+                water=owner.resources.water + 1,
+            ),
+        )
+        event_kind = "agent_card_effect_resolved"
     else:
         raise NotImplementedError(
             f"personal-card Agent effect is not implemented: {card.card.card_id}"

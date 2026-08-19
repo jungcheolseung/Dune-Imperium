@@ -115,6 +115,20 @@ def test_fedaykin_stilltent_play_data_has_maker_and_reveal_gains() -> None:
     assert card.reveal_strength == 0
 
 
+def test_northern_watermaster_play_data_has_fremen_bond_gain() -> None:
+    card = IMPERIUM_CARDS_BY_ID["northern_watermaster"]
+
+    assert card.play_data_complete is True
+    assert card.factions == (Faction.FREMEN,)
+    assert card.agent_icons == (AgentIcon.CITY,)
+    assert card.agent_effect is PersonalCardAgentEffect.GAIN_WATER
+    assert card.reveal_persuasion == 1
+    assert card.reveal_effect == PersonalCardRevealEffect(
+        spice=2,
+        requires_fremen_bond=True,
+    )
+
+
 def test_untranscribed_imperium_card_still_fails_explicitly() -> None:
     instance_id = _instance("double_agent")
 
@@ -127,3 +141,5 @@ def test_personal_card_reveal_effect_requires_a_nonnegative_gain() -> None:
         PersonalCardRevealEffect()
     with pytest.raises(ValueError, match="must not be negative"):
         PersonalCardRevealEffect(water=-1)
+    with pytest.raises(TypeError, match="must be a boolean"):
+        PersonalCardRevealEffect(water=1, requires_fremen_bond=1)  # type: ignore[arg-type]

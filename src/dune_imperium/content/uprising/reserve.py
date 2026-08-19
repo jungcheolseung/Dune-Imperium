@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Final
 
 from dune_imperium.content.schema import CardDefinition, SourceDocument, SourceRef
+from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.types import (
     AgentIcon,
     PersonalCardAgentEffect,
@@ -19,6 +20,7 @@ class ReserveStackDefinition:
     copies: int
     acquisition_cost: int
     acquisition_vp: int = 0
+    factions: tuple[Faction, ...] = ()
     agent_icons: tuple[AgentIcon, ...] = ()
     agent_effect: PersonalCardAgentEffect | None = None
     reveal_persuasion: int = 0
@@ -37,6 +39,8 @@ class ReserveStackDefinition:
             raise ValueError("Reserve acquisition values must not be negative")
         if len(self.agent_icons) != len(set(self.agent_icons)):
             raise ValueError("Reserve Agent icons must be unique")
+        if len(self.factions) != len(set(self.factions)):
+            raise ValueError("Reserve Factions must be unique")
 
 
 MAIN_P3_P5: Final = (SourceRef(SourceDocument.MAIN_RULEBOOK, (3, 4, 5)),)

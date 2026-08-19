@@ -175,7 +175,21 @@ IMPERIUM_CARDS: Final = (
         reveal_strength=1,
         play_data_complete=True,
     ),
-    _entry(34, "northern-watermaster", "Northern Watermaster", 3),
+    _entry(
+        34,
+        "northern-watermaster",
+        "Northern Watermaster",
+        3,
+        factions=(Faction.FREMEN,),
+        agent_icons=(AgentIcon.CITY,),
+        agent_effect=PersonalCardAgentEffect.GAIN_WATER,
+        reveal_persuasion=1,
+        reveal_effect=PersonalCardRevealEffect(
+            spice=2,
+            requires_fremen_bond=True,
+        ),
+        play_data_complete=True,
+    ),
     _entry(75, "overthrow", "Overthrow", 8, has_acquisition_bonus=True),
     _entry(49, "paracompass", "Paracompass", 4),
     _entry(

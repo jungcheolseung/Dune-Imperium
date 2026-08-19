@@ -180,6 +180,12 @@ def test_fedaykin_stilltent_uses_its_spice_trade_icon() -> None:
     }
 
 
+def test_northern_watermaster_uses_its_city_icon() -> None:
+    watermaster = _imperium_instance("northern_watermaster")
+
+    assert _space_ids(_state(watermaster)) == {"arrakeen", "spice_refinery"}
+
+
 def test_spy_agent_icon_accesses_only_spaces_connected_to_an_owned_spy() -> None:
     owner = PlayerState(
         player_id=0,

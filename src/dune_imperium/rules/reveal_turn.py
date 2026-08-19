@@ -2,6 +2,7 @@
 
 from dataclasses import replace
 
+from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
@@ -47,7 +48,13 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
             owner.troops_conflict * 2 + owner.sandworms_conflict * 3 + sword_strength
         )
     reveal_effects = tuple(
-        card.reveal_effect for card in cards if card.reveal_effect is not None
+        card.reveal_effect
+        for card_id, card in zip(revealed, cards, strict=True)
+        if card.reveal_effect is not None
+        and (
+            not card.reveal_effect.requires_fremen_bond
+            or _has_fremen_bond(card_id, (*owner.in_play, *revealed))
+        )
     )
     next_owner = replace(
         owner,
@@ -205,3 +212,12 @@ def _next_unrevealed_player(
         if not player.has_revealed:
             return candidate
     return None
+
+
+def _has_fremen_bond(card_id: str, in_play: tuple[str, ...]) -> bool:
+    return any(
+        candidate_id != card_id
+        and Faction.FREMEN
+        in personal_card_for_instance(candidate_id).factions
+        for candidate_id in in_play
+    )

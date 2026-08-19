@@ -230,6 +230,26 @@ def test_fedaykin_stilltent_gains_water_when_revealed() -> None:
     assert dict(result.state.decision_stack[-1].context)["persuasion"] == 0
 
 
+def test_northern_watermaster_gains_spice_only_with_fremen_bond() -> None:
+    watermaster = _imperium_instance("northern_watermaster")
+    maula = _imperium_instance("maula_pistol")
+    without_bond = _state(PlayerState(player_id=0, hand=(watermaster,)))
+    with_bond = _state(PlayerState(player_id=0, hand=(watermaster, maula)))
+
+    without_result = begin_reveal_turn(
+        without_bond,
+        legal_reveal_actions(without_bond, 0)[0],
+    )
+    with_result = begin_reveal_turn(
+        with_bond,
+        legal_reveal_actions(with_bond, 0)[0],
+    )
+
+    assert without_result.state.players[0].resources.spice == 0
+    assert with_result.state.players[0].resources.spice == 2
+    assert dict(with_result.state.decision_stack[-1].context)["persuasion"] == 2
+
+
 def test_reveal_preserves_agent_cards_already_in_play() -> None:
     played = _instance("dagger", 0)
     revealed = _instance("dagger", 1)
