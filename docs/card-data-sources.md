@@ -111,6 +111,11 @@ The tenth batch transcribes Weirding Woman. Bene Gesserit Bond moves the Agent
 card from play back into its owner's hand, allowing the same physical instance
 to participate in the later Reveal turn while preserving zone uniqueness.
 
+The eleventh batch transcribes Ecological Testing Station. Its Agent effect
+opens an explicit decline-or-pay choice for two Water and draws two cards through
+the replayable personal-deck path. Its Fremen Bond Reveal Water uses the shared
+conditional Reveal-effect collection.
+
 Cards with restricted Spy placement, player choices, conditions that require
 untracked state, or unsupported effect primitives are held for later batches
 even when their basic Reveal values would otherwise be simple. This prevents a
