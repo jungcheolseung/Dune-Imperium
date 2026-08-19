@@ -51,3 +51,5 @@ In High Places adds one decline, 78 unordered two-Spy recall, and eight Agent
 templates, advancing the current default to version 26 with 1428 entries.
 Rebel Supplier's two physical copies add 26 City Agent templates, advancing the
 current default to version 27 with 1454 entries.
+Dangerous Rhetoric adds 51 Spy-icon Agent templates and four shared Faction
+choice templates, advancing the current default to version 28 with 1509 entries.

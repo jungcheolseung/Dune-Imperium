@@ -32,15 +32,16 @@ from a player's personal deck. General Agent, Reveal, and deck-building rules in
 | Spy Network | The card has Emperor and Spacing Guild affiliations and no Agent icon. Acquisition places one Spy; Reveal gives two Persuasion and one strength, then with at least two placed Spies requires choosing one to recall and drawing one Intrigue card. | The serial Reveal choice sits above the purchasing frame, preventing purchases, turn starts, or another Reveal until the Spy effect resolves. |
 | In High Places | The card has Bene Gesserit affiliation plus Bene Gesserit and Emperor Agent icons. Acquisition places one Spy; Bene Gesserit Bond gains one Water; Reveal gives two Persuasion and may recall two Spies for two more. | The Reveal cost is atomic: decline or one canonical pair is chosen, so an interrupted half-payment cannot enter state. |
 | Rebel Supplier | The card has Fremen affiliation and a City Agent icon. After it sends an Agent, it recruits two troops if that turn recalled a Spy; Reveal gives one Spice and one strength. | It reuses the same turn-scoped Infiltrate, Gather Intelligence, and Espionage recall signal as Strike Fleet and Imperial Spymaster. |
+| Dangerous Rhetoric | The card has Landsraad and Spy Agent icons and no Faction affiliation. Its Agent box trashes itself and gains one Influence with a chosen Faction; Reveal gives one Persuasion and one strength. | Trash and Faction choice resolve as one mandatory action, while the shared Influence transition still applies Friendship, track bonuses, and Alliance ownership. |
 | Chance and replay | Prepare the Way's draw uses the same personal discard reshuffle decision as board-space and Spy draws. | Its Reserve instance ID remains stable through discard, shuffle, hand, and in-play zones. |
-| RL encoding | Every transcribed physical card copy can take its Agent destinations, including Infiltrate variants. | Imperium batches grow the catalog through 832 in v8, 845 in v9, 857 in v10, 971 in v11, 991 in v12, 1001 in v13, 1014 in v14, 1060 in v15, 1068 in v16, 1114 in v17, 1133 in v18, 1146 in v19, 1162 in v20, 1196 in v21, 1200 in v22, 1277 in v23, 1328 in v24, 1341 in v25, 1428 in v26, and 1454 in v27. |
+| RL encoding | Every transcribed physical card copy can take its Agent destinations, including Infiltrate variants. | Imperium batches grow the catalog through 832 in v8, 845 in v9, 857 in v10, 971 in v11, 991 in v12, 1001 in v13, 1014 in v14, 1060 in v15, 1068 in v16, 1114 in v17, 1133 in v18, 1146 in v19, 1162 in v20, 1196 in v21, 1200 in v22, 1277 in v23, 1328 in v24, 1341 in v25, 1428 in v26, 1454 in v27, and 1509 in v28. |
 
 ## Card-level verification
 
 - The two printed card images linked by the Reserve content manifest were
   visually checked on 2026-08-19 for Agent icons, conditional Agent text, and
   Reveal values.
-- These twenty-one shared cards were bootstrapped from DIU `imperium.JSON` at
+- These twenty-two shared cards were bootstrapped from DIU `imperium.JSON` at
   reviewed commit `990523441421d34a670505d5b32318f01754b960`. Their local
   physical counts and stable IDs continue to come from the verified manifest;
   DIU's conflicting `quantity` values were not imported.
@@ -49,7 +50,7 @@ from a player's personal deck. General Agent, Reveal, and deck-building rules in
 
 ## Deferred boundaries
 
-- All shared Imperium cards other than the twenty-one listed above still have only
+- All shared Imperium cards other than the twenty-two listed above still have only
   identity and acquisition-cost data. Drawing one of those cards fails
   explicitly until its play data is transcribed.
 - Signet Ring remains blocked on Leader ability implementation.
