@@ -5,6 +5,7 @@ from dataclasses import replace
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.content.uprising.board import OBSERVATION_POSTS
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.core import (
@@ -19,14 +20,17 @@ from dune_imperium.core import (
 )
 from dune_imperium.rules.agent_effects import (
     apply_agent_card_payment,
+    apply_agent_card_spy_action,
     apply_agent_card_trash,
     legal_agent_card_payment_actions,
+    legal_agent_card_spy_actions,
     legal_agent_card_trash_actions,
     resolve_agent_card_effect,
     resolve_faction_influence,
 )
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 from dune_imperium.rules.board_effects import resolve_board_effect
+from dune_imperium.rules.engine import UprisingRulesEngine
 
 
 def _instance(card_id: str) -> str:
@@ -825,3 +829,73 @@ def test_overthrow_gains_extra_influence_with_the_visited_faction() -> None:
 
     assert result.state.players[0].influence.bene_gesserit == 1
     assert context["pending_faction_influence"] is True
+
+
+def test_bene_gesserit_operative_places_a_spy_on_an_empty_post() -> None:
+    operative = _imperium_instance("bene_gesserit_operative")
+    owner = PlayerState(player_id=0, hand=(operative,))
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed_agent = apply_agent_action(state, _action_to(state, "secrets")).state
+    engine = UprisingRulesEngine()
+    choices = engine.legal_actions(placed_agent, 0)
+
+    result = engine.apply(placed_agent, choices[0])
+    post_id = dict(choices[0].arguments)["post_id"]
+
+    assert result.state.players[0].spies_supply == 2
+    assert result.state.players[0].spy_post_ids == (post_id,)
+    assert result.events[0].kind == "spy_placed"
+    assert (
+        dict(result.state.decision_stack[-1].context)["pending_agent_effect"] is False
+    )
+
+
+def test_bene_gesserit_operative_recalls_before_placing_when_supply_is_empty() -> None:
+    operative = _imperium_instance("bene_gesserit_operative")
+    posts = tuple(post.post_id for post in OBSERVATION_POSTS[:3])
+    owner = PlayerState(
+        player_id=0,
+        hand=(operative,),
+        spies_supply=0,
+        spy_post_ids=posts,
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed_agent = apply_agent_action(state, _action_to(state, "secrets")).state
+    recall_action = legal_agent_card_spy_actions(placed_agent, 0)[0]
+
+    recalled = apply_agent_card_spy_action(placed_agent, recall_action)
+    recalled_post = dict(recall_action.arguments)["post_id"]
+    placement = next(
+        action
+        for action in legal_agent_card_spy_actions(recalled.state, 0)
+        if dict(action.arguments)["post_id"] == recalled_post
+    )
+    replaced = apply_agent_card_spy_action(recalled.state, placement)
+
+    assert recalled.events[0].kind == "spy_recalled"
+    assert replaced.state.players[0].spies_supply == 0
+    assert set(replaced.state.players[0].spy_post_ids) == set(posts)

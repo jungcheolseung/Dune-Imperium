@@ -42,6 +42,7 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         for effect in card.reveal_effects
         if (not effect.requires_high_council or owner.high_council)
         and (not effect.requires_swordmaster or owner.swordmaster_acquired)
+        and len(owner.spy_post_ids) >= effect.minimum_spies_placed
         and (
             effect.required_faction_bond is None
             or has_faction_bond(

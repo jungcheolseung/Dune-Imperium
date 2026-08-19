@@ -22,8 +22,10 @@ from dune_imperium.rules.acquisition import (
 )
 from dune_imperium.rules.agent_effects import (
     apply_agent_card_payment,
+    apply_agent_card_spy_action,
     apply_agent_card_trash,
     legal_agent_card_payment_actions,
+    legal_agent_card_spy_actions,
     legal_agent_card_trash_actions,
     resolve_agent_card_effect,
     resolve_faction_influence,
@@ -211,6 +213,8 @@ class UprisingRulesEngine(RulesEngine):
             "gather_intelligence": apply_gather_intelligence_action,
             "pass_combat_intrigue": apply_combat_intrigue_pass,
             "pay_agent_card_water": apply_agent_card_payment,
+            "place_agent_card_spy": apply_agent_card_spy_action,
+            "recall_spy_for_agent_card": apply_agent_card_spy_action,
             "decline_combat_reward": _apply_decline_combat_reward,
             "pay_combat_reward": apply_combat_reward_optional_payment,
             "recall_spies_for_combat_reward": apply_combat_reward_spy_recall,
@@ -276,7 +280,8 @@ class UprisingRulesEngine(RulesEngine):
         if context["pending_agent_effect"] is True:
             trash_actions = legal_agent_card_trash_actions(state, player)
             payment_actions = legal_agent_card_payment_actions(state, player)
-            choice_actions = (*trash_actions, *payment_actions)
+            spy_actions = legal_agent_card_spy_actions(state, player)
+            choice_actions = (*trash_actions, *payment_actions, *spy_actions)
             if choice_actions:
                 actions.extend(choice_actions)
             else:
@@ -313,6 +318,7 @@ def _agent_action_is_supported(state: GameState, action: DomainAction) -> bool:
         PersonalCardAgentEffect.GAIN_SPICE_IF_MAKER_SPACE,
         PersonalCardAgentEffect.GAIN_WATER,
         PersonalCardAgentEffect.GAIN_TWO_SOLARI,
+        PersonalCardAgentEffect.PLACE_SPY,
         PersonalCardAgentEffect.GAIN_VISITED_FACTION_INFLUENCE,
         PersonalCardAgentEffect.GAIN_BY_BENE_GESSERIT_AND_FREMEN_INFLUENCE_TWO,
         PersonalCardAgentEffect.RECRUIT_TWO_IF_BENE_GESSERIT_BOND,

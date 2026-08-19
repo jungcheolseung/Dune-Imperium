@@ -38,6 +38,20 @@ def test_maula_pistol_play_data_matches_the_diu_transcription() -> None:
     assert personal_card_for_instance(_instance("maula_pistol")) is card
 
 
+def test_bene_gesserit_operative_play_data_places_and_counts_spies() -> None:
+    card = IMPERIUM_CARDS_BY_ID["bene_gesserit_operative"]
+
+    assert card.play_data_complete is True
+    assert card.factions == ()
+    assert card.agent_icons == (AgentIcon.BENE_GESSERIT,)
+    assert card.agent_effect is PersonalCardAgentEffect.PLACE_SPY
+    assert card.reveal_persuasion == 1
+    assert card.reveal_strength == 0
+    assert card.reveal_effects == (
+        PersonalCardRevealEffect(persuasion=2, minimum_spies_placed=2),
+    )
+
+
 def test_truthtrance_play_data_matches_the_diu_transcription() -> None:
     card = IMPERIUM_CARDS_BY_ID["truthtrance"]
 
@@ -247,6 +261,8 @@ def test_untranscribed_imperium_card_still_fails_explicitly() -> None:
 def test_personal_card_reveal_effect_requires_a_nonnegative_gain() -> None:
     with pytest.raises(ValueError, match="must gain"):
         PersonalCardRevealEffect()
+    with pytest.raises(ValueError, match="must gain"):
+        PersonalCardRevealEffect(minimum_spies_placed=2)
     with pytest.raises(ValueError, match="must not be negative"):
         PersonalCardRevealEffect(water=-1)
     with pytest.raises(TypeError, match="must use PersonalCardBond"):

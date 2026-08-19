@@ -105,7 +105,23 @@ def _entry(
 
 
 IMPERIUM_CARDS: Final = (
-    _entry(30, "bene-gesserit-operative", "Bene Gesserit Operative", 3, copies=2),
+    _entry(
+        30,
+        "bene-gesserit-operative",
+        "Bene Gesserit Operative",
+        3,
+        copies=2,
+        agent_icons=(AgentIcon.BENE_GESSERIT,),
+        agent_effect=PersonalCardAgentEffect.PLACE_SPY,
+        reveal_persuasion=1,
+        reveal_effects=(
+            PersonalCardRevealEffect(
+                persuasion=2,
+                minimum_spies_placed=2,
+            ),
+        ),
+        play_data_complete=True,
+    ),
     _entry(45, "branching-path", "Branching Path", 3),
     _entry(42, "calculus-of-power", "Calculus of Power", 3, copies=2),
     _entry(61, "captured-mentat", "Captured Mentat", 5),

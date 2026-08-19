@@ -36,6 +36,7 @@ class PersonalCardAgentEffect(StrEnum):
     DRAW_PERSONAL_CARD = "draw_personal_card"
     GAIN_SPICE_IF_MAKER_SPACE = "gain_spice_if_maker_space"
     GAIN_TWO_SOLARI = "gain_two_solari"
+    PLACE_SPY = "place_spy"
     GAIN_VISITED_FACTION_INFLUENCE = "gain_visited_faction_influence"
     GAIN_WATER = "gain_water"
     GAIN_BY_BENE_GESSERIT_AND_FREMEN_INFLUENCE_TWO = (
@@ -76,6 +77,7 @@ class PersonalCardRevealEffect:
     required_faction_bond: PersonalCardBond | None = None
     requires_high_council: bool = False
     requires_swordmaster: bool = False
+    minimum_spies_placed: int = 0
 
     def __post_init__(self) -> None:
         if self.required_faction_bond is not None and not isinstance(
@@ -90,16 +92,16 @@ class PersonalCardRevealEffect:
             raise TypeError("Reveal state requirements must be booleans")
         if self.requires_swordmaster and not self.requires_high_council:
             raise ValueError("Swordmaster Reveal requirement also needs High Council")
-        values = (
+        gains = (
             self.solari,
             self.spice,
             self.water,
             self.persuasion,
             self.recruit_troops,
         )
-        if min(values) < 0:
+        if min((*gains, self.minimum_spies_placed)) < 0:
             raise ValueError("personal-card Reveal gains must not be negative")
-        if max(values) == 0:
+        if max(gains) == 0:
             raise ValueError("personal-card Reveal effect must gain something")
 
 

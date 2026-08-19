@@ -79,6 +79,34 @@ def test_reveal_moves_hand_to_in_play_and_totals_persuasion() -> None:
     assert context["revealed_card_001"] == diplomacy
 
 
+def test_bene_gesserit_operative_gains_persuasion_with_two_placed_spies() -> None:
+    operative = _imperium_instance("bene_gesserit_operative")
+    without_spies = _state(PlayerState(player_id=0, hand=(operative,)))
+    with_spies = _state(
+        PlayerState(
+            player_id=0,
+            hand=(operative,),
+            spies_supply=1,
+            spy_post_ids=(
+                "emperor-sardaukar-dutiful-service",
+                "bene-gesserit-espionage-secrets",
+            ),
+        )
+    )
+
+    base = begin_reveal_turn(
+        without_spies,
+        legal_reveal_actions(without_spies, 0)[0],
+    )
+    bonus = begin_reveal_turn(
+        with_spies,
+        legal_reveal_actions(with_spies, 0)[0],
+    )
+
+    assert dict(base.state.decision_stack[-1].context)["persuasion"] == 1
+    assert dict(bonus.state.decision_stack[-1].context)["persuasion"] == 3
+
+
 def test_high_council_and_assembly_hall_add_reveal_persuasion() -> None:
     state = _state(
         PlayerState(

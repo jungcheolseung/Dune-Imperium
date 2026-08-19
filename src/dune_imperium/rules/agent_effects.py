@@ -20,6 +20,108 @@ from dune_imperium.rules.effects import (
     recruit_troops,
 )
 from dune_imperium.rules.influence import gain_faction_influence
+from dune_imperium.rules.spy_placement import (
+    empty_observation_post_ids,
+    place_spy,
+    recall_spy,
+)
+
+
+def legal_agent_card_spy_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return placement or recall choices for an Agent-box Spy icon."""
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return ()
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    if context.get("pending_agent_effect") is not True:
+        return ()
+    _, source_card_id, _ = _effect_subject(context)
+    source_card = personal_card_for_instance(source_card_id)
+    if source_card.agent_effect is not PersonalCardAgentEffect.PLACE_SPY:
+        return ()
+
+    owner = state.players[player]
+    if context.get("agent_card_spy_recalled") is True or owner.spies_supply > 0:
+        return tuple(
+            DomainAction(
+                action_id="place_agent_card_spy",
+                actor=player,
+                arguments=(("post_id", post_id),),
+            )
+            for post_id in empty_observation_post_ids(state)
+        )
+    return tuple(
+        DomainAction(
+            action_id="recall_spy_for_agent_card",
+            actor=player,
+            arguments=(("post_id", post_id),),
+        )
+        for post_id in owner.spy_post_ids
+    )
+
+
+def apply_agent_card_spy_action(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Resolve a card's place-Spy effect, recalling first when necessary."""
+
+    if action not in legal_agent_card_spy_actions(state, action.actor):
+        raise ValueError("action is not a legal Agent-card Spy choice")
+    _, context = current_agent_effect_context(state)
+    _, source_card_id, _ = _effect_subject(context)
+    post_id = dict(action.arguments).get("post_id")
+    if not isinstance(post_id, str):
+        raise RuntimeError("Agent-card Spy choice has invalid post ID")
+    owner = state.players[action.actor]
+    source = (
+        f"round:{state.round_number}:player:{action.actor}:agent_card:{source_card_id}"
+    )
+
+    if action.action_id == "recall_spy_for_agent_card":
+        next_owner = recall_spy(owner, post_id)
+        context["agent_card_spy_recalled"] = True
+        next_state = advance_after_effect(
+            state,
+            context,
+            _replace_player(state, next_owner),
+        )
+        event = GameEvent(
+            event_id=f"{source}:spy_recalled:{post_id}",
+            kind="spy_recalled",
+            payload=(
+                ("player", action.actor),
+                ("post_id", post_id),
+                ("source", source_card_id),
+            ),
+        )
+        return RuleResult(state=next_state, events=(event,))
+
+    next_owner = place_spy(owner, post_id)
+    context["pending_agent_effect"] = False
+    next_state = advance_after_effect(
+        state,
+        context,
+        _replace_player(state, next_owner),
+    )
+    event = GameEvent(
+        event_id=f"{source}:spy_placed:{post_id}",
+        kind="spy_placed",
+        payload=(
+            ("card_id", source_card_id),
+            ("player", action.actor),
+            ("post_id", post_id),
+        ),
+    )
+    return RuleResult(state=next_state, events=(event,))
 
 
 def legal_agent_card_trash_actions(

@@ -2,7 +2,6 @@
 
 from dataclasses import replace
 
-from dune_imperium.content.uprising.board import OBSERVATION_POSTS
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import PlayerDecision
 from dune_imperium.core.engine import RuleResult
@@ -23,6 +22,11 @@ from dune_imperium.rules.effects import (
 from dune_imperium.rules.shield_wall import (
     current_conflict_is_shield_wall_protected,
     destroy_shield_wall,
+)
+from dune_imperium.rules.spy_placement import (
+    empty_observation_post_ids,
+    place_spy,
+    recall_spy,
 )
 
 
@@ -180,18 +184,14 @@ def legal_espionage_actions(
         return ()
 
     owner = state.players[player]
-    occupied = {
-        post_id for candidate in state.players for post_id in candidate.spy_post_ids
-    }
     if context.get("espionage_spy_recalled") is True or owner.spies_supply > 0:
         placements = tuple(
             DomainAction(
                 action_id="resolve_espionage_place_spy",
                 actor=player,
-                arguments=(("post_id", post.post_id),),
+                arguments=(("post_id", post_id),),
             )
-            for post in OBSERVATION_POSTS
-            if post.post_id not in occupied
+            for post_id in empty_observation_post_ids(state)
         )
         if context.get("espionage_spy_recalled") is True:
             return placements
@@ -225,13 +225,7 @@ def apply_espionage_action(
     if action.action_id == "recall_spy_for_espionage":
         if not isinstance(post_id, str):
             raise RuntimeError("Espionage recall has invalid post ID")
-        next_owner = replace(
-            owner,
-            spies_supply=owner.spies_supply + 1,
-            spy_post_ids=tuple(
-                candidate for candidate in owner.spy_post_ids if candidate != post_id
-            ),
-        )
+        next_owner = recall_spy(owner, post_id)
         context["espionage_spy_recalled"] = True
         players = tuple(
             next_owner if candidate.player_id == action.actor else candidate
@@ -257,11 +251,7 @@ def apply_espionage_action(
     if action.action_id == "resolve_espionage_place_spy":
         if not isinstance(post_id, str):
             raise RuntimeError("Espionage placement has invalid post ID")
-        next_owner = replace(
-            next_owner,
-            spies_supply=next_owner.spies_supply - 1,
-            spy_post_ids=(*next_owner.spy_post_ids, post_id),
-        )
+        next_owner = place_spy(next_owner, post_id)
         events.append(
             GameEvent(
                 event_id=(
