@@ -17,6 +17,8 @@ truth for the transition code.
 | Spy Agent icon | A card's Spy Agent icon makes every space connected to one of the player's placed Spies an available Agent destination. | Destination access does not recall the Spy. Imperium-card icon transcription remains part of the broader content milestone. |
 | Conflict reward | A Spy reward selects one globally empty post and spends a Spy from supply. | This existing reward path does not currently offer the empty-supply recall permission because the reward itself is mandatory only when executable. |
 | Agent-card placement | Bene Gesserit Operative selects any globally empty post; Reliable Informant is restricted to posts connected to Emperor, Bene Gesserit, or Spacing Guild spaces. | With an empty supply, recall and placement are separate mandatory decisions. A restricted effect offers only recalls that can open a destination when every eligible post is occupied. |
+| Acquisition placement | Acquiring Strike Fleet immediately opens a Spy placement choice over the current Reveal frame. | The acquired card is discarded and the row is refilled before choosing the post; an empty supply uses the same recall-then-place sequence and then returns to Reveal purchasing. |
+| Current-turn recall | The Agent effect frame records whether Infiltrate, Gather Intelligence, or Espionage recalled a Spy during that Agent turn. | Strike Fleet reads this flag to recruit three troops; the flag is scoped to one turn and cannot carry into a later Agent action. |
 
 ## Deferred Spy systems
 
@@ -36,4 +38,6 @@ card-recall templates, while its two physical copies add eight Agent actions;
 personal-card content advances the replay default to version 21 with a
 1196-entry catalog. Reliable Informant's four Agent templates then advance the
 current default to version 22 with 1200 entries; it reuses the card-level Spy
-choice templates.
+choice templates. Strike Fleet adds 13 acquisition-placement, 13
+acquisition-recall, and 51 Spy-icon Agent templates, advancing the current
+default to version 23 with 1277 entries.
