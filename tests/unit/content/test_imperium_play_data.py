@@ -165,6 +165,20 @@ def test_southern_elders_play_data_has_two_reveal_effects() -> None:
     )
 
 
+def test_weirding_woman_play_data_has_bond_return_effect() -> None:
+    card = IMPERIUM_CARDS_BY_ID["weirding_woman"]
+
+    assert card.play_data_complete is True
+    assert card.factions == (Faction.BENE_GESSERIT,)
+    assert card.agent_icons == (AgentIcon.CITY, AgentIcon.SPICE_TRADE)
+    assert (
+        card.agent_effect
+        is PersonalCardAgentEffect.RETURN_SELF_IF_BENE_GESSERIT_BOND
+    )
+    assert card.reveal_persuasion == 1
+    assert card.reveal_strength == 1
+
+
 def test_untranscribed_imperium_card_still_fails_explicitly() -> None:
     instance_id = _instance("double_agent")
 

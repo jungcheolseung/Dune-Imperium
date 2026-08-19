@@ -280,6 +280,24 @@ def test_southern_elders_applies_unconditional_and_bond_reveal_effects() -> None
     assert dict(with_result.state.decision_stack[-1].context)["persuasion"] == 3
 
 
+def test_weirding_woman_contributes_reveal_values() -> None:
+    weirding_woman = _imperium_instance("weirding_woman")
+    state = _state(
+        PlayerState(
+            player_id=0,
+            hand=(weirding_woman,),
+            troops_supply=8,
+            troops_conflict=1,
+        )
+    )
+
+    result = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
+    context = dict(result.state.decision_stack[-1].context)
+
+    assert context["persuasion"] == 1
+    assert context["strength"] == 3
+
+
 def test_reveal_preserves_agent_cards_already_in_play() -> None:
     played = _instance("dagger", 0)
     revealed = _instance("dagger", 1)

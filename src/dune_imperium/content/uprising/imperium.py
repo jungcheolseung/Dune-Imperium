@@ -298,7 +298,19 @@ IMPERIUM_CARDS: Final = (
     ),
     _entry(28, "undercover-asset", "Undercover Asset", 2),
     _entry(11, "unswerving-loyalty", "Unswerving Loyalty", 1, copies=2),
-    _entry(14, "weirding-woman", "Weirding Woman", 1, copies=2),
+    _entry(
+        14,
+        "weirding-woman",
+        "Weirding Woman",
+        1,
+        copies=2,
+        factions=(Faction.BENE_GESSERIT,),
+        agent_icons=(AgentIcon.CITY, AgentIcon.SPICE_TRADE),
+        agent_effect=PersonalCardAgentEffect.RETURN_SELF_IF_BENE_GESSERIT_BOND,
+        reveal_persuasion=1,
+        reveal_strength=1,
+        play_data_complete=True,
+    ),
     _entry(22, "wheels-within-wheels", "Wheels Within Wheels", 2),
 )
 

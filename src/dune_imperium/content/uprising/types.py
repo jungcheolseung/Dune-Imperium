@@ -40,6 +40,7 @@ class PersonalCardAgentEffect(StrEnum):
     )
     RECRUIT_ONE_IF_MAKER_SPACE = "recruit_one_if_maker_space"
     RECRUIT_TWO_IF_BENE_GESSERIT_BOND = "recruit_two_if_bene_gesserit_bond"
+    RETURN_SELF_IF_BENE_GESSERIT_BOND = "return_self_if_bene_gesserit_bond"
     DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO = (
         "draw_if_bene_gesserit_influence_two"
     )

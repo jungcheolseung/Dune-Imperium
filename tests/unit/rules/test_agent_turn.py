@@ -208,6 +208,18 @@ def test_southern_elders_uses_its_two_faction_icons() -> None:
     }
 
 
+def test_weirding_woman_uses_its_city_and_spice_trade_icons() -> None:
+    weirding_woman = _imperium_instance("weirding_woman")
+
+    assert _space_ids(_state(weirding_woman)) == {
+        "accept_contract",
+        "arrakeen",
+        "hagga_basin",
+        "imperial_basin",
+        "spice_refinery",
+    }
+
+
 def test_spy_agent_icon_accesses_only_spaces_connected_to_an_owned_spy() -> None:
     owner = PlayerState(
         player_id=0,

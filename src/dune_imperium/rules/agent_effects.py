@@ -198,6 +198,23 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             raise RuntimeError("Agent-turn effect frame has invalid recruit count")
         context["troops_recruited"] = previous + recruited
         event_kind = "agent_card_effect_resolved"
+    elif effect is PersonalCardAgentEffect.RETURN_SELF_IF_BENE_GESSERIT_BOND:
+        if not has_faction_bond(
+            owner.in_play,
+            card_instance_id,
+            Faction.BENE_GESSERIT,
+        ):
+            raise RuntimeError("conditional Agent effect is not available")
+        next_owner = replace(
+            owner,
+            hand=(*owner.hand, card_instance_id),
+            in_play=tuple(
+                candidate
+                for candidate in owner.in_play
+                if candidate != card_instance_id
+            ),
+        )
+        event_kind = "agent_card_effect_resolved"
     else:
         raise NotImplementedError(
             f"personal-card Agent effect is not implemented: {card.card.card_id}"

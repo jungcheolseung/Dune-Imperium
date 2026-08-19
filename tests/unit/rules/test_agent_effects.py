@@ -630,3 +630,54 @@ def test_southern_elders_has_no_agent_effect_without_bene_gesserit_bond() -> Non
     placed = apply_agent_action(state, _action_to(state, "secrets")).state
 
     assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False
+
+
+def test_weirding_woman_returns_to_hand_with_bene_gesserit_bond() -> None:
+    weirding_woman = _imperium_instance("weirding_woman")
+    truthtrance = _imperium_instance("truthtrance")
+    owner = PlayerState(
+        player_id=0,
+        hand=(weirding_woman,),
+        in_play=(truthtrance,),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
+
+    result = resolve_agent_card_effect(placed)
+
+    assert result.state.players[0].hand == (weirding_woman,)
+    assert result.state.players[0].in_play == (truthtrance,)
+
+
+def test_weirding_woman_has_no_agent_effect_without_bene_gesserit_bond() -> None:
+    weirding_woman = _imperium_instance("weirding_woman")
+    owner = PlayerState(player_id=0, hand=(weirding_woman,))
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+
+    placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
+
+    assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False
