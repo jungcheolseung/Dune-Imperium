@@ -35,6 +35,7 @@ from a player's personal deck. General Agent, Reveal, and deck-building rules in
 | Dangerous Rhetoric | The card has Landsraad and Spy Agent icons and no Faction affiliation. Its Agent box trashes itself and gains one Influence with a chosen Faction; Reveal gives one Persuasion and one strength. | Trash and Faction choice resolve as one mandatory action, while the shared Influence transition still applies Friendship, track bonuses, and Alliance ownership. |
 | Public Spectacle | The card has Emperor affiliation and a Spy Agent icon. If its Agent turn recalled a Spy, its owner chooses a Faction and gains one Influence; Reveal gives one Persuasion and places one Spy. | Reveal placement is mandatory and serial: with an empty supply, the owner recalls one placed Spy before choosing an empty Observation Post. |
 | Wheels Within Wheels | The card has Emperor and Spacing Guild affiliations and a Spy Agent icon. At two Emperor Influence it gains two Solari; at two Spacing Guild Influence it gains one Spice. Reveal gives one Persuasion and places one Spy. | The Agent conditions resolve independently and can both pay out; Reveal reuses Public Spectacle's mandatory placement and empty-supply recall path. |
+| Unswerving Loyalty | The card has Fremen affiliation and no Agent icon. Reveal gives one Persuasion and recruits one troop. | It uses the shared automatic Reveal recruitment path and adds no new structured action. |
 | Chance and replay | Prepare the Way's draw uses the same personal discard reshuffle decision as board-space and Spy draws. | Its Reserve instance ID remains stable through discard, shuffle, hand, and in-play zones. |
 | RL encoding | Every transcribed physical card copy can take its Agent destinations, including Infiltrate variants. | Imperium batches grow the catalog through 832 in v8, 845 in v9, 857 in v10, 971 in v11, 991 in v12, 1001 in v13, 1014 in v14, 1060 in v15, 1068 in v16, 1114 in v17, 1133 in v18, 1146 in v19, 1162 in v20, 1196 in v21, 1200 in v22, 1277 in v23, 1328 in v24, 1341 in v25, 1428 in v26, 1454 in v27, 1509 in v28, 1637 in v29, and 1688 in v30. |
 
@@ -43,7 +44,7 @@ from a player's personal deck. General Agent, Reveal, and deck-building rules in
 - The two printed card images linked by the Reserve content manifest were
   visually checked on 2026-08-19 for Agent icons, conditional Agent text, and
   Reveal values.
-- These twenty-four shared cards were bootstrapped from DIU `imperium.JSON` at
+- These twenty-five shared cards were bootstrapped from DIU `imperium.JSON` at
   reviewed commit `990523441421d34a670505d5b32318f01754b960`. Their local
   physical counts and stable IDs continue to come from the verified manifest;
   DIU's conflicting `quantity` values were not imported.
@@ -52,7 +53,7 @@ from a player's personal deck. General Agent, Reveal, and deck-building rules in
 
 ## Deferred boundaries
 
-- All shared Imperium cards other than the twenty-four listed above still have only
+- All shared Imperium cards other than the twenty-five listed above still have only
   identity and acquisition-cost data. Drawing one of those cards fails
   explicitly until its play data is transcribed.
 - Signet Ring remains blocked on Leader ability implementation.

@@ -324,6 +324,9 @@ Spy 회수 조건과 결합하고 Reveal Spy 배치·공급 부족 회수 경계
 Public Spectacle을 codec v29에 연결했다.
 스물세 번째 묶음은 같은 Reveal Spy 배치와 복수 Influence 조건 패턴을 재사용해
 Wheels Within Wheels의 독립적인 Solari·Spice 보상을 codec v30에 연결했다.
+스물네 번째 묶음은 Agent 행동이 없는 Unswerving Loyalty의 Reveal
+Persuasion·병력 모집을 기존 자동 Reveal 경계에 연결했다. 새 action template이
+필요하지 않아 codec은 v30·1688개를 유지한다.
 고정된 DIU `imperium.JSON`은 런타임 의존성 없이 63개 local identity와
 대조하고 아이콘·Faction·효과 형태를 정규화하는 read-only audit에만 사용한다.
 나머지 Imperium과 Intrigue, Leader, Objective 효과는 아직 identity manifest
