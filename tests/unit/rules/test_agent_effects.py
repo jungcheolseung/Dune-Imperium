@@ -1292,3 +1292,72 @@ def test_public_spectacle_influence_is_unavailable_without_spy_recall() -> None:
 
     assert result.state.players[0].influence == Influence()
     assert result.events[0].kind == "agent_card_effect_unavailable"
+
+
+@pytest.mark.parametrize(
+    ("influence", "expected_solari", "expected_spice"),
+    (
+        (Influence(emperor=2), 2, 0),
+        (Influence(spacing_guild=2), 0, 1),
+        (Influence(emperor=2, spacing_guild=2), 2, 1),
+    ),
+)
+def test_wheels_within_wheels_rewards_are_independent(
+    influence: Influence,
+    expected_solari: int,
+    expected_spice: int,
+) -> None:
+    wheels = _imperium_instance("wheels_within_wheels")
+    owner = PlayerState(
+        player_id=0,
+        hand=(wheels,),
+        influence=influence,
+        spies_supply=2,
+        spy_post_ids=("arrakis-spice-refinery-arrakeen",),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
+
+    result = resolve_agent_card_effect(placed)
+
+    assert result.state.players[0].resources.solari == expected_solari
+    assert result.state.players[0].resources.spice == expected_spice
+
+
+def test_wheels_within_wheels_has_no_agent_effect_below_both_thresholds() -> None:
+    wheels = _imperium_instance("wheels_within_wheels")
+    owner = PlayerState(
+        player_id=0,
+        hand=(wheels,),
+        spies_supply=2,
+        spy_post_ids=("arrakis-spice-refinery-arrakeen",),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+
+    placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
+
+    assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False

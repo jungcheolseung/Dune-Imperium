@@ -376,6 +376,22 @@ def test_public_spectacle_play_data_uses_spy_recall_and_placement() -> None:
     )
 
 
+def test_wheels_within_wheels_play_data_reuses_reveal_spy_placement() -> None:
+    card = IMPERIUM_CARDS_BY_ID["wheels_within_wheels"]
+
+    assert card.play_data_complete is True
+    assert card.factions == (Faction.EMPEROR, Faction.SPACING_GUILD)
+    assert card.agent_icons == (AgentIcon.SPY,)
+    assert (
+        card.agent_effect
+        is PersonalCardAgentEffect.GAIN_BY_EMPEROR_AND_SPACING_GUILD_INFLUENCE_TWO
+    )
+    assert card.reveal_persuasion == 1
+    assert card.reveal_choice_effects == (
+        PersonalCardRevealChoiceEffect.PLACE_SPY,
+    )
+
+
 def test_untranscribed_imperium_card_still_fails_explicitly() -> None:
     instance_id = _instance("double_agent")
 

@@ -376,6 +376,21 @@ def test_public_spectacle_reveal_recalls_before_placing_with_empty_supply() -> N
     )
 
 
+def test_wheels_within_wheels_reveals_for_persuasion_and_places_a_spy() -> None:
+    wheels = _imperium_instance("wheels_within_wheels")
+    state = _state(PlayerState(player_id=0, hand=(wheels,)))
+    revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
+    placement = legal_reveal_spy_actions(revealed.state, 0)[0]
+
+    result = apply_reveal_spy_action(revealed.state, placement)
+
+    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 1
+    assert result.state.players[0].spies_supply == 2
+    assert result.state.players[0].spy_post_ids == (
+        dict(placement.arguments)["post_id"],
+    )
+
+
 def test_high_council_and_assembly_hall_add_reveal_persuasion() -> None:
     state = _state(
         PlayerState(

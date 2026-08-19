@@ -517,7 +517,20 @@ IMPERIUM_CARDS: Final = (
         reveal_strength=1,
         play_data_complete=True,
     ),
-    _entry(22, "wheels-within-wheels", "Wheels Within Wheels", 2),
+    _entry(
+        22,
+        "wheels-within-wheels",
+        "Wheels Within Wheels",
+        2,
+        factions=(Faction.EMPEROR, Faction.SPACING_GUILD),
+        agent_icons=(AgentIcon.SPY,),
+        agent_effect=(
+            PersonalCardAgentEffect.GAIN_BY_EMPEROR_AND_SPACING_GUILD_INFLUENCE_TWO
+        ),
+        reveal_persuasion=1,
+        reveal_choice_effects=(PersonalCardRevealChoiceEffect.PLACE_SPY,),
+        play_data_complete=True,
+    ),
 )
 
 IMPERIUM_CARDS_BY_ID: Final = {

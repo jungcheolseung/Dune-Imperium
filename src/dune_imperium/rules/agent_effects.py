@@ -495,6 +495,23 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             ),
         )
         event_kind = "agent_card_effect_resolved"
+    elif (
+        effect
+        is PersonalCardAgentEffect.GAIN_BY_EMPEROR_AND_SPACING_GUILD_INFLUENCE_TWO
+    ):
+        gains_solari = owner.influence.emperor >= 2
+        gains_spice = owner.influence.spacing_guild >= 2
+        if not gains_solari and not gains_spice:
+            raise RuntimeError("conditional Agent effect is not available")
+        next_owner = replace(
+            owner,
+            resources=replace(
+                owner.resources,
+                solari=owner.resources.solari + 2 * int(gains_solari),
+                spice=owner.resources.spice + int(gains_spice),
+            ),
+        )
+        event_kind = "agent_card_effect_resolved"
     elif effect is PersonalCardAgentEffect.RECRUIT_TWO_IF_BENE_GESSERIT_BOND:
         if not has_faction_bond(
             owner.in_play,

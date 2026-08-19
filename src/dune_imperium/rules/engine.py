@@ -349,6 +349,7 @@ def _agent_action_is_supported(state: GameState, action: DomainAction) -> bool:
         PersonalCardAgentEffect.GAIN_WATER_IF_BENE_GESSERIT_BOND,
         PersonalCardAgentEffect.GAIN_VISITED_FACTION_INFLUENCE,
         PersonalCardAgentEffect.GAIN_BY_BENE_GESSERIT_AND_FREMEN_INFLUENCE_TWO,
+        PersonalCardAgentEffect.GAIN_BY_EMPEROR_AND_SPACING_GUILD_INFLUENCE_TWO,
         PersonalCardAgentEffect.RECRUIT_TWO_IF_BENE_GESSERIT_BOND,
         PersonalCardAgentEffect.RETURN_SELF_IF_BENE_GESSERIT_BOND,
         PersonalCardAgentEffect.PAY_TWO_WATER_TO_DRAW_TWO,

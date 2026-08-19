@@ -58,6 +58,9 @@ class PersonalCardAgentEffect(StrEnum):
     GAIN_BY_BENE_GESSERIT_AND_FREMEN_INFLUENCE_TWO = (
         "gain_by_bene_gesserit_and_fremen_influence_two"
     )
+    GAIN_BY_EMPEROR_AND_SPACING_GUILD_INFLUENCE_TWO = (
+        "gain_by_emperor_and_spacing_guild_influence_two"
+    )
     RECRUIT_ONE_IF_MAKER_SPACE = "recruit_one_if_maker_space"
     RECRUIT_TWO_IF_BENE_GESSERIT_BOND = "recruit_two_if_bene_gesserit_bond"
     RETURN_SELF_IF_BENE_GESSERIT_BOND = "return_self_if_bene_gesserit_bond"

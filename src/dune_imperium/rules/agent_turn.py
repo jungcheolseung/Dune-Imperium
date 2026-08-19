@@ -259,6 +259,11 @@ def _agent_effect_is_available(
         return (
             owner.influence.bene_gesserit >= 2 or owner.influence.fremen >= 2
         )
+    if (
+        effect
+        is PersonalCardAgentEffect.GAIN_BY_EMPEROR_AND_SPACING_GUILD_INFLUENCE_TWO
+    ):
+        return owner.influence.emperor >= 2 or owner.influence.spacing_guild >= 2
     if effect is PersonalCardAgentEffect.RECRUIT_TWO_IF_BENE_GESSERIT_BOND:
         return has_faction_bond(
             (*owner.in_play, card_instance_id),
