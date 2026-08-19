@@ -2,7 +2,7 @@
 
 상태: 초안 3 — R0 규칙 명세, M0 개발 골격, M1 엔진 커널, M2 4인 setup과
 정적 보드, M3 한 라운드 수직 조각, M4 RL 인터페이스 조기 검증 완료;
-M5 진행 중
+M5 진행 중, M6 콘텐츠 수직 조각 시작
 
 이 문서는 규칙 엔진부터 강화학습 AI와 사람용 플레이 인터페이스까지의 구현
 순서와 각 단계의 완료 조건을 정의한다. 구현 중 새 규칙을 발견하더라도 핵심
@@ -240,7 +240,7 @@ seeded random 4인 라운드를 실행하고 action replay로 최종 상태를 �
 ### M4. RL 인터페이스 조기 검증
 
 상태: **완료** (2026-08-14). 기본 룰셋은 versioned actor-neutral 정수 action
-catalog와 같은 폭의 legal action mask를 사용한다. 현재 codec v6는 554개
+catalog와 같은 폭의 legal action mask를 사용한다. 현재 codec v7은 754개
 행동이며, `dune_imperium_uprising_v0` AEC 환경은
 한 라운드를 episode로 실행하며 PettingZoo `api_test`와 `seed_test`를 통과한다.
 관측과 `info`에는 전체 `GameState`를 노출하지 않는다.
@@ -276,6 +276,12 @@ Intrigue 처리와 wild battle icon 선택은 OQ-001 및 콘텐츠 전사 전까
 완료 조건: 각 시스템의 경계·예외 scenario와 상태 불변식 테스트가 통과한다.
 
 ### M6. Uprising 기본 콘텐츠 완성
+
+상태: **진행 중** (2026-08-19). 시작 카드와 Reserve 카드가 같은 개인 카드
+resolver를 사용한다. Prepare the Way의 Agent 아이콘·조건부 draw·Reveal 값과
+The Spice Must Flow의 Reveal strength를 전사했으며, Reserve Agent 행동을 codec
+v7에 포함했다. Imperium, Intrigue, Leader와 Objective 효과는 아직 identity
+manifest 수준이다.
 
 - 기본 게임의 리더, 시작/Reserve/Imperium/Intrigue/Conflict/Objective 콘텐츠를
   전사한다.
@@ -387,20 +393,15 @@ Intrigue 처리와 wild battle icon 선택은 OQ-001 및 콘텐츠 전사 전까
 
 ## 8. 바로 다음 작업
 
-R0, M0, M1을 완료했고 M2의 보드·시작 구성물·Conflict·Objective manifest와
-seed 기반 setup randomization을 구현했다. 권위 상태에는 공용 카드 zone을,
-`PlayerView`에는 공개 상태와 관측자 자신의 비공개 카드만 담는 redaction 경계를
-추가했다.
+M5의 보드 시스템과 multi-round 개인 덱 shuffle까지 구현했고 M6의 첫 콘텐츠
+수직 조각으로 두 Reserve 카드를 실제 play 경로에 연결했다. 다음 작업은 아래
+순서로 진행한다.
 
-M2의 남은 작업은 다음 순서로 진행한다.
-
-1. 기본 게임 Imperium 65장과 Intrigue 40장의 setup용 identity manifest를 만든다.
-2. Leader 선택, 두 공용 deck shuffle, Imperium Row 공개, 네 시작 덱 shuffle을
-   하나의 기록 가능한 setup chance 흐름으로 연결한다.
-3. 완성된 setup을 `GameState`에 적재하고 여러 seed의 수량·결정성·관측 보안
-   통합 테스트를 추가한다.
-4. Spy observation post 인접 그래프를 전사하고 보드 공간과의 상호 참조를
-   검증한다.
-
-실제 카드 효과 해석은 M6까지 미루되, M2에서 필요한 카드 identity와 CHOAM 제외
-여부는 출처와 함께 고정한다.
+1. Imperium 카드에 Agent 아이콘, Faction affiliation, Reveal 값과 typed effect
+   필드를 추가하고 단순 카드 묶음부터 공통 개인 카드 resolver에 연결한다.
+2. 획득 보너스가 있는 Imperium 카드의 연속 선택과 replay 경로를 구현한다.
+3. Plot, Combat, Endgame Intrigue 타입과 공통 play/discard 경계를 만든 뒤 단순
+   Intrigue 효과부터 전사한다.
+4. Combat Intrigue와 Endgame Intrigue의 실제 카드 경로를 연결해 M5의 보류
+   경계를 줄인다.
+5. Signet Ring과 기본 Leader 능력, Objective 효과를 구현한다.
