@@ -21,7 +21,7 @@ truth for the transition code.
 | Current-turn recall | The Agent effect frame records whether Infiltrate, Gather Intelligence, or Espionage recalled a Spy during that Agent turn. | Strike Fleet recruits three troops, Rebel Supplier recruits two, Imperial Spymaster draws one Intrigue card, and Public Spectacle gains chosen Faction Influence from this turn-scoped flag. |
 | Reveal recall | Spy Network checks for at least two placed Spies when Reveal begins, then requires the owner to choose and recall one before drawing one Intrigue card. | The choice frame blocks purchases and other turn actions until it returns to the underlying Reveal frame. With fewer than two Spies, no choice opens. |
 | Reveal recall cost | In High Places may recall any two placed Spies to add two Persuasion, or decline without changing state. | Two-Spy payment is one atomic action selected from canonical unordered pairs, keeping the action catalog smaller and preventing partial payment. |
-| Reveal placement | Public Spectacle places one Spy during Reveal. | The serial choice blocks purchasing until placement finishes; an empty supply requires recalling one owned Spy first, without triggering a recall benefit. |
+| Reveal placement | Public Spectacle and Wheels Within Wheels place one Spy during Reveal. | The serial choice blocks purchasing until placement finishes; an empty supply requires recalling one owned Spy first, without triggering a recall benefit. |
 
 ## Deferred Spy systems
 
@@ -57,3 +57,5 @@ choice templates, advancing the current default to version 28 with 1509 entries.
 Public Spectacle's two copies add 102 Spy-icon Agent templates, and Reveal
 placement adds 13 placement and 13 recall templates, advancing the current
 default to version 29 with 1637 entries.
+Wheels Within Wheels reuses the Reveal choices and adds 51 Spy-icon Agent
+templates, advancing the current default to version 30 with 1688 entries.

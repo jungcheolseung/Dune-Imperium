@@ -240,7 +240,7 @@ seeded random 4인 라운드를 실행하고 action replay로 최종 상태를 �
 ### M4. RL 인터페이스 조기 검증
 
 상태: **완료** (2026-08-14). 기본 룰셋은 versioned actor-neutral 정수 action
-catalog와 같은 폭의 legal action mask를 사용한다. 현재 codec v29는 1637개
+catalog와 같은 폭의 legal action mask를 사용한다. 현재 codec v30은 1688개
 행동이며, `dune_imperium_uprising_v0` AEC 환경은
 한 라운드를 episode로 실행하며 PettingZoo `api_test`와 `seed_test`를 통과한다.
 관측과 `info`에는 전체 `GameState`를 노출하지 않는다.
@@ -321,7 +321,10 @@ Rebel Supplier의 조건부 병력 모집과 Reveal Spice·strength를 codec v27
 Dangerous Rhetoric의 자기 폐기·선택한 Faction Influence, Reveal 값을 codec
 v28에 연결했다. 스물두 번째 묶음은 같은 Faction 선택을 이번 Agent 턴
 Spy 회수 조건과 결합하고 Reveal Spy 배치·공급 부족 회수 경계를 추가해
-Public Spectacle을 codec v29에 연결했다. 고정된 DIU `imperium.JSON`은 런타임 의존성 없이 63개 local identity와
+Public Spectacle을 codec v29에 연결했다.
+스물세 번째 묶음은 같은 Reveal Spy 배치와 복수 Influence 조건 패턴을 재사용해
+Wheels Within Wheels의 독립적인 Solari·Spice 보상을 codec v30에 연결했다.
+고정된 DIU `imperium.JSON`은 런타임 의존성 없이 63개 local identity와
 대조하고 아이콘·Faction·효과 형태를 정규화하는 read-only audit에만 사용한다.
 나머지 Imperium과 Intrigue, Leader, Objective 효과는 아직 identity manifest
 수준이다.
