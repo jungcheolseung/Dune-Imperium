@@ -391,6 +391,17 @@ def test_wheels_within_wheels_reveals_for_persuasion_and_places_a_spy() -> None:
     )
 
 
+def test_unswerving_loyalty_reveals_for_persuasion_and_recruits_one() -> None:
+    loyalty = _imperium_instance("unswerving_loyalty")
+    state = _state(PlayerState(player_id=0, hand=(loyalty,)))
+
+    result = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
+
+    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 1
+    assert result.state.players[0].troops_supply == 8
+    assert result.state.players[0].troops_garrison == 4
+
+
 def test_high_council_and_assembly_hall_add_reveal_persuasion() -> None:
     state = _state(
         PlayerState(

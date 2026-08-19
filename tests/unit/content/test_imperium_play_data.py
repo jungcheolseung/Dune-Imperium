@@ -392,6 +392,20 @@ def test_wheels_within_wheels_play_data_reuses_reveal_spy_placement() -> None:
     )
 
 
+def test_unswerving_loyalty_play_data_has_only_reveal_rewards() -> None:
+    card = IMPERIUM_CARDS_BY_ID["unswerving_loyalty"]
+
+    assert card.play_data_complete is True
+    assert card.factions == (Faction.FREMEN,)
+    assert card.agent_icons == ()
+    assert card.agent_effect is None
+    assert card.reveal_persuasion == 1
+    assert card.reveal_strength == 0
+    assert card.reveal_effects == (
+        PersonalCardRevealEffect(recruit_troops=1),
+    )
+
+
 def test_untranscribed_imperium_card_still_fails_explicitly() -> None:
     instance_id = _instance("double_agent")
 

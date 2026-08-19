@@ -503,7 +503,17 @@ IMPERIUM_CARDS: Final = (
         play_data_complete=True,
     ),
     _entry(28, "undercover-asset", "Undercover Asset", 2),
-    _entry(11, "unswerving-loyalty", "Unswerving Loyalty", 1, copies=2),
+    _entry(
+        11,
+        "unswerving-loyalty",
+        "Unswerving Loyalty",
+        1,
+        copies=2,
+        factions=(Faction.FREMEN,),
+        reveal_persuasion=1,
+        reveal_effects=(PersonalCardRevealEffect(recruit_troops=1),),
+        play_data_complete=True,
+    ),
     _entry(
         14,
         "weirding-woman",
