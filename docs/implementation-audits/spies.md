@@ -18,7 +18,7 @@ truth for the transition code.
 | Conflict reward | A Spy reward selects one globally empty post and spends a Spy from supply. | This existing reward path does not currently offer the empty-supply recall permission because the reward itself is mandatory only when executable. |
 | Agent-card placement | Bene Gesserit Operative selects any globally empty post; Reliable Informant is restricted to posts connected to Emperor, Bene Gesserit, or Spacing Guild spaces. | With an empty supply, recall and placement are separate mandatory decisions. A restricted effect offers only recalls that can open a destination when every eligible post is occupied. |
 | Acquisition placement | Acquiring Strike Fleet immediately opens a Spy placement choice over the current Reveal frame. | The acquired card is discarded and the row is refilled before choosing the post; an empty supply uses the same recall-then-place sequence and then returns to Reveal purchasing. |
-| Current-turn recall | The Agent effect frame records whether Infiltrate, Gather Intelligence, or Espionage recalled a Spy during that Agent turn. | Strike Fleet reads this flag to recruit three troops and Imperial Spymaster reads it to draw one Intrigue card; the flag is scoped to one turn. |
+| Current-turn recall | The Agent effect frame records whether Infiltrate, Gather Intelligence, or Espionage recalled a Spy during that Agent turn. | Strike Fleet recruits three troops, Rebel Supplier recruits two, and Imperial Spymaster draws one Intrigue card from this turn-scoped flag. |
 | Reveal recall | Spy Network checks for at least two placed Spies when Reveal begins, then requires the owner to choose and recall one before drawing one Intrigue card. | The choice frame blocks purchases and other turn actions until it returns to the underlying Reveal frame. With fewer than two Spies, no choice opens. |
 | Reveal recall cost | In High Places may recall any two placed Spies to add two Persuasion, or decline without changing state. | Two-Spy payment is one atomic action selected from canonical unordered pairs, keeping the action catalog smaller and preventing partial payment. |
 
@@ -49,3 +49,5 @@ Spy Network adds 13 Reveal-recall templates and advances the current default to
 version 25 with 1341 entries.
 In High Places adds one decline, 78 unordered two-Spy recall, and eight Agent
 templates, advancing the current default to version 26 with 1428 entries.
+Rebel Supplier's two physical copies add 26 City Agent templates, advancing the
+current default to version 27 with 1454 entries.

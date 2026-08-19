@@ -240,7 +240,7 @@ seeded random 4인 라운드를 실행하고 action replay로 최종 상태를 �
 ### M4. RL 인터페이스 조기 검증
 
 상태: **완료** (2026-08-14). 기본 룰셋은 versioned actor-neutral 정수 action
-catalog와 같은 폭의 legal action mask를 사용한다. 현재 codec v26은 1428개
+catalog와 같은 폭의 legal action mask를 사용한다. 현재 codec v27은 1454개
 행동이며, `dune_imperium_uprising_v0` AEC 환경은
 한 라운드를 episode로 실행하며 PettingZoo `api_test`와 `seed_test`를 통과한다.
 관측과 `info`에는 전체 `GameState`를 노출하지 않는다.
@@ -310,15 +310,17 @@ v21에 연결했다. 열다섯 번째 묶음은 Reliable Informant의 세 Factio
 `imperium.JSON`의 열여섯 번째 묶음은 선택형 획득 효과 frame을 도입하고 Strike
 Fleet의 획득 Spy 배치, 이번 턴 Spy 회수 조건부 병력 모집, Reveal 값을 codec
 v23에 연결했다. 열일곱 번째 묶음은 같은 회수 판정을 재사용해 Imperial
-Spymaster의 조건부 Intrigue draw와 Reveal 값을 codec v24에 연결했다. JSON은
-열여덟 번째 묶음에서 Reveal 중첩 선택 frame을 도입해 Spy Network의 획득 Spy
-배치와 조건부 Spy 회수·Intrigue draw를 codec v25에 연결했다. JSON은 런타임
-의존성 없이 열아홉 번째 묶음인 In High Places의 획득 Spy 배치, Bene Gesserit
+Spymaster의 조건부 Intrigue draw와 Reveal 값을 codec v24에 연결했다. 열여덟
+번째 묶음에서 Reveal 중첩 선택 frame을 도입해 Spy Network의 획득 Spy
+배치와 조건부 Spy 회수·Intrigue draw를 codec v25에 연결했다. 열아홉 번째
+묶음인 In High Places의 획득 Spy 배치, Bene Gesserit
 Bond Water, 선택적 Spy 2개 회수와 Reveal Persuasion을 codec v26에 연결했다.
-JSON은 런타임 의존성 없이 63개 local
-identity와 대조하고 아이콘·Faction·효과 형태를 정규화하는 read-only audit에만
-사용한다. 나머지 Imperium과 Intrigue, Leader, Objective 효과는 아직 identity
-manifest 수준이다.
+스무 번째 묶음은 기존 Agent 턴 Spy 회수 판정을 재사용해
+Rebel Supplier의 조건부 병력 모집과 Reveal Spice·strength를 codec v27에
+연결했다. 고정된 DIU `imperium.JSON`은 런타임 의존성 없이 63개 local identity와
+대조하고 아이콘·Faction·효과 형태를 정규화하는 read-only audit에만 사용한다.
+나머지 Imperium과 Intrigue, Leader, Objective 효과는 아직 identity manifest
+수준이다.
 
 - 기본 게임의 리더, 시작/Reserve/Imperium/Intrigue/Conflict/Objective 콘텐츠를
   전사한다.
