@@ -66,8 +66,14 @@ draw. DIU supplies the initial Faction, icon, and effect transcription. The
 local manifest remains authoritative for stable IDs, acquisition costs,
 physical quantities, CHOAM inclusion, and catalog URLs.
 
-Cards with trash triggers, restricted Spy placement, choices, conditions, or
-new effect primitives are held for later batches even when their basic Reveal
+The second batch transcribes Sardaukar Soldier. Its static Emperor affiliation,
+City icon, and Reveal values reuse the personal-card resolver, while its
+on-trash Intrigue draw adds a typed trash trigger. Agent-card and Combat-reward
+trash now share that transition, including the existing rule that a trashed
+Reserve card returns to its stack.
+
+Cards with restricted Spy placement, choices, conditions, or unsupported
+effect primitives are held for later batches even when their basic Reveal
 values would otherwise be simple. This prevents a partially implemented card
 from being exposed as fully playable.
 

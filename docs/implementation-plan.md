@@ -240,7 +240,7 @@ seeded random 4인 라운드를 실행하고 action replay로 최종 상태를 �
 ### M4. RL 인터페이스 조기 검증
 
 상태: **완료** (2026-08-14). 기본 룰셋은 versioned actor-neutral 정수 action
-catalog와 같은 폭의 legal action mask를 사용한다. 현재 codec v8은 832개
+catalog와 같은 폭의 legal action mask를 사용한다. 현재 codec v9은 845개
 행동이며, `dune_imperium_uprising_v0` AEC 환경은
 한 라운드를 episode로 실행하며 PettingZoo `api_test`와 `seed_test`를 통과한다.
 관측과 `info`에는 전체 `GameState`를 노출하지 않는다.
@@ -282,8 +282,10 @@ resolver를 사용한다. Prepare the Way의 Agent 아이콘·조건부 draw·Re
 The Spice Must Flow의 Reveal strength를 전사했으며, Reserve Agent 행동을 codec
 v7에 포함했다. 첫 Imperium 묶음으로 Maula Pistol과 Truthtrance의 Faction,
 Agent 아이콘과 Reveal 값을 전사하고 Maula Pistol의 Agent draw를 연결했으며,
-해당 행동을 codec v8에 포함했다. 고정된 DIU `imperium.JSON`을 런타임 의존성
-없이 63개 local
+해당 행동을 codec v8에 포함했다. 두 번째 묶음은 Sardaukar Soldier의 City
+아이콘과 Reveal 값을 전사하고, 공통 개인 카드 폐기 전환을 통해 폐기 시
+Intrigue draw를 연결했으며 해당 행동을 codec v9에 포함했다. 고정된 DIU
+`imperium.JSON`을 런타임 의존성 없이 63개 local
 identity와 대조하고 아이콘·Faction·효과 형태를 정규화하는 read-only audit
 도구도 사용한다. 나머지 Imperium과 Intrigue, Leader, Objective 효과는 아직
 identity manifest 수준이다.
