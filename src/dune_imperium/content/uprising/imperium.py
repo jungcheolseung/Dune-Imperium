@@ -373,7 +373,21 @@ IMPERIUM_CARDS: Final = (
     _entry(25, "spy-network", "Spy Network", 2, has_acquisition_bonus=True),
     _entry(76, "steersman", "Steersman", 8, has_acquisition_bonus=True),
     _entry(70, "stilgar-the-devoted", "Stilgar, The Devoted", 6),
-    _entry(65, "strike-fleet", "Strike Fleet", 5, has_acquisition_bonus=True),
+    _entry(
+        65,
+        "strike-fleet",
+        "Strike Fleet",
+        5,
+        has_acquisition_bonus=True,
+        agent_icons=(AgentIcon.SPY,),
+        agent_effect=(
+            PersonalCardAgentEffect.RECRUIT_THREE_IF_SPY_RECALLED_THIS_TURN
+        ),
+        acquisition_effect=PersonalCardAcquisitionEffect.PLACE_SPY,
+        reveal_persuasion=1,
+        reveal_strength=3,
+        play_data_complete=True,
+    ),
     _entry(
         62,
         "subversive-advisor",

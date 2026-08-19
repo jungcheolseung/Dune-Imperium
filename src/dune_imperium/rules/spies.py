@@ -87,6 +87,7 @@ def apply_gather_intelligence_action(
                 payload=(("player", action.actor), ("post_id", post_id)),
             )
         )
+        context["spy_recalled_this_turn"] = True
 
     context["pending_gather_intelligence"] = False
     players = tuple(

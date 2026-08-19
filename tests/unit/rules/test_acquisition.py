@@ -15,8 +15,10 @@ from dune_imperium.core import (
     PlayerState,
 )
 from dune_imperium.rules.acquisition import (
+    apply_acquisition_spy_action,
     apply_imperium_acquisition,
     apply_reserve_acquisition,
+    legal_acquisition_spy_actions,
     legal_imperium_acquisitions,
     legal_reserve_acquisitions,
 )
@@ -233,3 +235,79 @@ def test_overthrow_acquisition_draws_an_intrigue_card() -> None:
         "card_acquired",
         "intrigue_card_drawn",
     )
+
+
+def test_strike_fleet_acquisition_opens_and_resolves_spy_placement() -> None:
+    state = _reveal_state(
+        _instance("convincing_argument", 0),
+        _instance("convincing_argument", 1),
+        _instance("diplomacy"),
+    )
+    instances = imperium_deck_instance_ids(False)
+    strike_fleet = next(card for card in instances if ":strike_fleet:" in card)
+    others = tuple(card for card in instances if card != strike_fleet)
+    state = replace(
+        state,
+        imperium_row=(strike_fleet, *others[:4]),
+        imperium_deck=others[4:],
+    )
+    engine = UprisingRulesEngine()
+    acquire = next(
+        action
+        for action in engine.legal_actions(state, 0)
+        if dict(action.arguments).get("instance_id") == strike_fleet
+    )
+
+    acquired = engine.apply(state, acquire)
+    choices = legal_acquisition_spy_actions(acquired.state, 0)
+    placed = apply_acquisition_spy_action(acquired.state, choices[0])
+    post_id = dict(choices[0].arguments)["post_id"]
+
+    assert acquired.state.players[0].discard_pile == (strike_fleet,)
+    assert {action.action_id for action in choices} == {"place_acquisition_spy"}
+    assert placed.state.players[0].spies_supply == 2
+    assert placed.state.players[0].spy_post_ids == (post_id,)
+    assert dict(placed.state.decision_stack[-1].context)["persuasion"] == 0
+
+
+def test_strike_fleet_acquisition_recalls_before_placing_with_empty_supply() -> None:
+    state = _reveal_state(
+        _instance("convincing_argument", 0),
+        _instance("convincing_argument", 1),
+        _instance("diplomacy"),
+    )
+    instances = imperium_deck_instance_ids(False)
+    strike_fleet = next(card for card in instances if ":strike_fleet:" in card)
+    others = tuple(card for card in instances if card != strike_fleet)
+    posts = (
+        "arrakis-hagga-basin",
+        "arrakis-deep-desert",
+        "bene-gesserit-espionage-secrets",
+    )
+    owner = replace(state.players[0], spies_supply=0, spy_post_ids=posts)
+    state = replace(
+        state,
+        players=(owner, *state.players[1:]),
+        imperium_row=(strike_fleet, *others[:4]),
+        imperium_deck=others[4:],
+    )
+    acquire = next(
+        action
+        for action in UprisingRulesEngine().legal_actions(state, 0)
+        if dict(action.arguments).get("instance_id") == strike_fleet
+    )
+
+    acquired = apply_imperium_acquisition(state, acquire).state
+    recall = legal_acquisition_spy_actions(acquired, 0)[0]
+    recalled = apply_acquisition_spy_action(acquired, recall)
+    placement = next(
+        action
+        for action in legal_acquisition_spy_actions(recalled.state, 0)
+        if dict(action.arguments)["post_id"] == dict(recall.arguments)["post_id"]
+    )
+    replaced = apply_acquisition_spy_action(recalled.state, placement)
+
+    assert recalled.events[0].kind == "spy_recalled"
+    assert replaced.state.players[0].spies_supply == 0
+    assert set(replaced.state.players[0].spy_post_ids) == set(posts)
+    assert dict(replaced.state.decision_stack[-1].context)["persuasion"] == 0

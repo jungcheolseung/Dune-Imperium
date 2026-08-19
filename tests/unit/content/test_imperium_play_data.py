@@ -267,6 +267,21 @@ def test_overthrow_play_data_covers_acquisition_agent_and_reveal() -> None:
     assert card.reveal_effects == (PersonalCardRevealEffect(recruit_troops=1),)
 
 
+def test_strike_fleet_play_data_covers_spy_acquisition_and_recall_reward() -> None:
+    card = IMPERIUM_CARDS_BY_ID["strike_fleet"]
+
+    assert card.play_data_complete is True
+    assert card.factions == ()
+    assert card.agent_icons == (AgentIcon.SPY,)
+    assert (
+        card.agent_effect
+        is PersonalCardAgentEffect.RECRUIT_THREE_IF_SPY_RECALLED_THIS_TURN
+    )
+    assert card.acquisition_effect is PersonalCardAcquisitionEffect.PLACE_SPY
+    assert card.reveal_persuasion == 1
+    assert card.reveal_strength == 3
+
+
 def test_untranscribed_imperium_card_still_fails_explicitly() -> None:
     instance_id = _instance("double_agent")
 

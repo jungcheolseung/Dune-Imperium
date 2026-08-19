@@ -440,6 +440,17 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             raise RuntimeError("place-Spy Agent effect requires a player choice")
         next_owner = owner
         event_kind = "agent_card_effect_unavailable"
+    elif effect is PersonalCardAgentEffect.RECRUIT_THREE_IF_SPY_RECALLED_THIS_TURN:
+        if context.get("spy_recalled_this_turn") is True:
+            next_owner, recruited = recruit_troops(owner, 3)
+            previous = context.get("troops_recruited")
+            if isinstance(previous, bool) or not isinstance(previous, int):
+                raise RuntimeError("Agent-turn effect frame has invalid recruit count")
+            context["troops_recruited"] = previous + recruited
+            event_kind = "agent_card_effect_resolved"
+        else:
+            next_owner = owner
+            event_kind = "agent_card_effect_unavailable"
     else:
         raise NotImplementedError(
             f"personal-card Agent effect is not implemented: {card.card.card_id}"

@@ -31,6 +31,10 @@ from dune_imperium.rules.agent_effects import (
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 from dune_imperium.rules.board_effects import resolve_board_effect
 from dune_imperium.rules.engine import UprisingRulesEngine
+from dune_imperium.rules.spies import (
+    apply_gather_intelligence_action,
+    legal_gather_intelligence_actions,
+)
 
 
 def _instance(card_id: str) -> str:
@@ -1019,3 +1023,45 @@ def test_reliable_informant_finishes_when_every_target_post_is_unavailable() -> 
     assert (
         dict(result.state.decision_stack[-1].context)["pending_agent_effect"] is False
     )
+
+
+def test_strike_fleet_recruits_three_after_gathering_intelligence() -> None:
+    strike_fleet = _imperium_instance("strike_fleet")
+    drawn = _instance("dagger")
+    post_id = "arrakis-spice-refinery-arrakeen"
+    owner = PlayerState(
+        player_id=0,
+        hand=(strike_fleet,),
+        deck=(drawn,),
+        spies_supply=2,
+        spy_post_ids=(post_id,),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed_agent = apply_agent_action(state, _action_to(state, "arrakeen")).state
+    gather = next(
+        action
+        for action in legal_gather_intelligence_actions(placed_agent, 0)
+        if action.action_id == "gather_intelligence"
+    )
+
+    gathered = apply_gather_intelligence_action(placed_agent, gather)
+    result = resolve_agent_card_effect(gathered.state)
+    context = dict(result.state.decision_stack[-1].context)
+
+    assert result.state.players[0].spy_post_ids == ()
+    assert result.state.players[0].hand == (drawn,)
+    assert result.state.players[0].troops_supply == 6
+    assert result.state.players[0].troops_garrison == 6
+    assert context["troops_recruited"] == 3

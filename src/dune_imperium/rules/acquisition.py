@@ -6,10 +6,111 @@ from dune_imperium.content.uprising.imperium import imperium_card_for_instance
 from dune_imperium.content.uprising.reserve import RESERVE_STACKS_BY_ID
 from dune_imperium.content.uprising.types import PersonalCardAcquisitionEffect
 from dune_imperium.core.actions import DomainAction
+from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
+from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.reveal_turn import current_reveal_context
+from dune_imperium.rules.spy_placement import (
+    empty_observation_post_ids,
+    place_spy,
+    recall_spy,
+)
+
+
+def legal_acquisition_spy_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return choices for a place-Spy acquisition bonus."""
+
+    if not 0 <= player < state.config.players or not state.decision_stack:
+        return ()
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    if (
+        not isinstance(frame.decision, PlayerDecision)
+        or frame.decision.owner != player
+        or "acquisition_card_id" not in context
+    ):
+        return ()
+    owner = state.players[player]
+    if context.get("acquisition_spy_recalled") is True or owner.spies_supply > 0:
+        return tuple(
+            DomainAction(
+                action_id="place_acquisition_spy",
+                actor=player,
+                arguments=(("post_id", post_id),),
+            )
+            for post_id in empty_observation_post_ids(state)
+        )
+    return tuple(
+        DomainAction(
+            action_id="recall_spy_for_acquisition",
+            actor=player,
+            arguments=(("post_id", post_id),),
+        )
+        for post_id in owner.spy_post_ids
+    )
+
+
+def apply_acquisition_spy_action(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Recall if necessary, then place the Spy granted on acquisition."""
+
+    if action not in legal_acquisition_spy_actions(state, action.actor):
+        raise ValueError("action is not a legal acquisition Spy choice")
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    card_id = context["acquisition_card_id"]
+    post_id = dict(action.arguments).get("post_id")
+    if not isinstance(card_id, str) or not isinstance(post_id, str):
+        raise RuntimeError("acquisition Spy frame has invalid context")
+    owner = state.players[action.actor]
+    source = (
+        f"round:{state.round_number}:player:{action.actor}:"
+        f"acquire:{card_id}"
+    )
+
+    if action.action_id == "recall_spy_for_acquisition":
+        next_owner = recall_spy(owner, post_id)
+        context["acquisition_spy_recalled"] = True
+        next_frame = replace(frame, context=tuple(sorted(context.items())))
+        next_state = replace(
+            state,
+            players=_replace_player(state, next_owner),
+            decision_stack=(*state.decision_stack[:-1], next_frame),
+        )
+        event = GameEvent(
+            event_id=f"{source}:spy_recalled:{post_id}",
+            kind="spy_recalled",
+            payload=(
+                ("player", action.actor),
+                ("post_id", post_id),
+                ("source", card_id),
+            ),
+        )
+        return RuleResult(state=next_state, events=(event,))
+
+    next_owner = place_spy(owner, post_id)
+    next_state = replace(
+        state,
+        players=_replace_player(state, next_owner),
+        decision_stack=state.decision_stack[:-1],
+    )
+    event = GameEvent(
+        event_id=f"{source}:spy_placed:{post_id}",
+        kind="spy_placed",
+        payload=(
+            ("card_id", card_id),
+            ("player", action.actor),
+            ("post_id", post_id),
+        ),
+    )
+    return RuleResult(state=next_state, events=(event,))
 
 
 def legal_reserve_acquisitions(
@@ -203,13 +304,32 @@ def apply_imperium_acquisition(
     context["persuasion"] = persuasion - cost
     frame = state.decision_stack[-1]
     next_frame = replace(frame, context=tuple(sorted(context.items())))
+    decision_stack = (*state.decision_stack[:-1], next_frame)
+    if definition.acquisition_effect is PersonalCardAcquisitionEffect.PLACE_SPY:
+        decision_stack = (
+            *decision_stack,
+            DecisionFrame(
+                frame_id=(
+                    f"round:{state.round_number}:player:{action.actor}:"
+                    f"acquisition_spy:{instance_id}"
+                ),
+                decision=PlayerDecision(
+                    owner=action.actor,
+                    prompt="Choose an Observation Post for the acquired Spy",
+                ),
+                context=(
+                    ("acquisition_card_id", instance_id),
+                    ("turn_owner", action.actor),
+                ),
+            ),
+        )
     next_state = replace(
         state,
         players=players,
         imperium_deck=state.imperium_deck[1:],
         imperium_row=tuple(row),
         intrigue_deck=intrigue_deck,
-        decision_stack=(*state.decision_stack[:-1], next_frame),
+        decision_stack=decision_stack,
     )
     event = GameEvent(
         event_id=(
@@ -223,3 +343,13 @@ def apply_imperium_acquisition(
         ),
     )
     return RuleResult(state=next_state, events=(event, *acquisition_events))
+
+
+def _replace_player(
+    state: GameState,
+    owner: PlayerState,
+) -> tuple[PlayerState, ...]:
+    return tuple(
+        owner if player.player_id == owner.player_id else player
+        for player in state.players
+    )

@@ -177,6 +177,7 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
                 ),
             ),
             ("space_id", space_id),
+            ("spy_recalled_this_turn", infiltrate_post_id is not None),
             ("troops_recruited", 0),
             ("turn_owner", action.actor),
         ),

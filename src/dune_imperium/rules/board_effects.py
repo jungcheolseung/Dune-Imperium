@@ -227,6 +227,7 @@ def apply_espionage_action(
             raise RuntimeError("Espionage recall has invalid post ID")
         next_owner = recall_spy(owner, post_id)
         context["espionage_spy_recalled"] = True
+        context["spy_recalled_this_turn"] = True
         players = tuple(
             next_owner if candidate.player_id == action.actor else candidate
             for candidate in state.players

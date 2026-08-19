@@ -117,6 +117,23 @@ def test_reliable_informant_reveals_for_persuasion_and_solari() -> None:
     assert result.state.players[0].resources.solari == 1
 
 
+def test_strike_fleet_reveals_for_persuasion_and_strength() -> None:
+    strike_fleet = _imperium_instance("strike_fleet")
+    state = _state(
+        PlayerState(
+            player_id=0,
+            hand=(strike_fleet,),
+            troops_supply=8,
+            troops_conflict=1,
+        )
+    )
+
+    result = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
+
+    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 1
+    assert result.state.players[0].combat_strength == 5
+
+
 def test_high_council_and_assembly_hall_add_reveal_persuasion() -> None:
     state = _state(
         PlayerState(

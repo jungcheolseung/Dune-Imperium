@@ -15,8 +15,10 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.observation import PlayerView, observe_state
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.acquisition import (
+    apply_acquisition_spy_action,
     apply_imperium_acquisition,
     apply_reserve_acquisition,
+    legal_acquisition_spy_actions,
     legal_imperium_acquisitions,
     legal_reserve_acquisitions,
 )
@@ -171,6 +173,7 @@ class UprisingRulesEngine(RulesEngine):
             )
 
         actions: list[DomainAction] = []
+        actions.extend(legal_acquisition_spy_actions(state, player))
         actions.extend(legal_endgame_wild_actions(state, player))
         actions.extend(legal_control_defense_actions(state, player))
         actions.extend(self._supported_agent_actions(state, player))
@@ -209,6 +212,8 @@ class UprisingRulesEngine(RulesEngine):
             "deploy_troops": apply_combat_deployment,
             "acquire_reserve": apply_reserve_acquisition,
             "acquire_imperium": apply_imperium_acquisition,
+            "place_acquisition_spy": apply_acquisition_spy_action,
+            "recall_spy_for_acquisition": apply_acquisition_spy_action,
             "finish_reveal": finish_reveal_turn,
             "gather_intelligence": apply_gather_intelligence_action,
             "pass_combat_intrigue": apply_combat_intrigue_pass,
@@ -319,6 +324,7 @@ def _agent_action_is_supported(state: GameState, action: DomainAction) -> bool:
         PersonalCardAgentEffect.GAIN_WATER,
         PersonalCardAgentEffect.GAIN_TWO_SOLARI,
         PersonalCardAgentEffect.PLACE_SPY,
+        PersonalCardAgentEffect.RECRUIT_THREE_IF_SPY_RECALLED_THIS_TURN,
         PersonalCardAgentEffect.GAIN_VISITED_FACTION_INFLUENCE,
         PersonalCardAgentEffect.GAIN_BY_BENE_GESSERIT_AND_FREMEN_INFLUENCE_TWO,
         PersonalCardAgentEffect.RECRUIT_TWO_IF_BENE_GESSERIT_BOND,
