@@ -240,7 +240,7 @@ seeded random 4인 라운드를 실행하고 action replay로 최종 상태를 �
 ### M4. RL 인터페이스 조기 검증
 
 상태: **완료** (2026-08-14). 기본 룰셋은 versioned actor-neutral 정수 action
-catalog와 같은 폭의 legal action mask를 사용한다. 현재 codec v32는 1729개
+catalog와 같은 폭의 legal action mask를 사용한다. 현재 codec v33은 1752개
 행동이며, `dune_imperium_uprising_v0` AEC 환경은
 한 라운드를 episode로 실행하며 PettingZoo `api_test`와 `seed_test`를 통과한다.
 관측과 `info`에는 전체 `GameState`를 노출하지 않는다.
@@ -332,6 +332,9 @@ Persuasion·병력 모집을 기존 자동 Reveal 경계에 연결했다. 새 ac
 스물여섯 번째 묶음은 Leadership의 Conflict Sandworm당 개인 카드 draw와
 자신을 제외한 이번 Reveal의 검 제공 카드당 strength 1을 codec v32에
 연결했다.
+스물일곱 번째 묶음은 Shishakli의 선택적 개인 카드 폐기·draw와
+Fremen Bond Reveal Influence를 codec v33에 연결했다. Reveal Influence도
+공통 트랙 경계를 사용한다.
 고정된 DIU `imperium.JSON`은 런타임 의존성 없이 63개 local identity와
 대조하고 아이콘·Faction·효과 형태를 정규화하는 read-only audit에만 사용한다.
 나머지 Imperium과 Intrigue, Leader, Objective 효과는 아직 identity manifest
