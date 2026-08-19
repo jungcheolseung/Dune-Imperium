@@ -10,6 +10,7 @@ requires-python = ">=3.14,<3.15"
 dependencies = []
 
 [project.scripts]
+dune-imperium-audit-diu = "dune_imperium.cli.diu_audit:main"
 dune-imperium-debug = "dune_imperium.cli.debug:main"
 
 [project.optional-dependencies]
