@@ -23,15 +23,16 @@ from a player's personal deck. General Agent, Reveal, and deck-building rules in
 | Southern Elders | The card has Bene Gesserit and Fremen affiliations and matching Faction Agent icons. Bene Gesserit Bond recruits two troops; Reveal always gains one Water and Fremen Bond adds two Persuasion. | Agent and Reveal paths share one typed Faction Bond check, and one card may carry multiple independently gated Reveal effects. |
 | Weirding Woman | The card has Bene Gesserit affiliation, City and Spice Trade Agent icons, and reveals for one Persuasion and one strength. Bene Gesserit Bond returns the Agent card from play to its owner's hand. | The returned card remains available for the same round's later Reveal turn. |
 | Ecological Testing Station | The card has Fremen affiliation and Fremen and City Agent icons. Its Agent box may pay two Water to draw two personal cards; Reveal gives one Persuasion and Fremen Bond gains one Water. | Payment has explicit pay and decline actions, and its draw uses the replayable personal-deck reshuffle path. |
+| Paracompass | The card has a City Agent icon and gains two Solari in its Agent box. Reveal gains two Persuasion with High Council and one additional Persuasion when the player also has Swordmaster. | The card's conditional Persuasion stacks with the normal two-Persuasion High Council bonus. |
 | Chance and replay | Prepare the Way's draw uses the same personal discard reshuffle decision as board-space and Spy draws. | Its Reserve instance ID remains stable through discard, shuffle, hand, and in-play zones. |
-| RL encoding | Every transcribed physical card copy can take its Agent destinations, including Infiltrate variants. | Imperium batches grow the catalog through 832 in v8, 845 in v9, 857 in v10, 971 in v11, 991 in v12, 1001 in v13, 1014 in v14, 1060 in v15, 1068 in v16, 1114 in v17, and 1133 in v18. |
+| RL encoding | Every transcribed physical card copy can take its Agent destinations, including Infiltrate variants. | Imperium batches grow the catalog through 832 in v8, 845 in v9, 857 in v10, 971 in v11, 991 in v12, 1001 in v13, 1014 in v14, 1060 in v15, 1068 in v16, 1114 in v17, 1133 in v18, and 1146 in v19. |
 
 ## Card-level verification
 
 - The two printed card images linked by the Reserve content manifest were
   visually checked on 2026-08-19 for Agent icons, conditional Agent text, and
   Reveal values.
-- These twelve shared cards were bootstrapped from DIU `imperium.JSON` at
+- These thirteen shared cards were bootstrapped from DIU `imperium.JSON` at
   reviewed commit `990523441421d34a670505d5b32318f01754b960`. Their local
   physical counts and stable IDs continue to come from the verified manifest;
   DIU's conflicting `quantity` values were not imported.
@@ -40,7 +41,7 @@ from a player's personal deck. General Agent, Reveal, and deck-building rules in
 
 ## Deferred boundaries
 
-- All shared Imperium cards other than the twelve listed above still have only
+- All shared Imperium cards other than the thirteen listed above still have only
   identity and acquisition-cost data. Drawing one of those cards fails
   explicitly until its play data is transcribed.
 - Signet Ring remains blocked on Leader ability implementation.

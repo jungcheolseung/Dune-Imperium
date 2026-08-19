@@ -116,6 +116,11 @@ opens an explicit decline-or-pay choice for two Water and draws two cards throug
 the replayable personal-deck path. Its Fremen Bond Reveal Water uses the shared
 conditional Reveal-effect collection.
 
+The twelfth batch transcribes Paracompass. Reveal effects may now require High
+Council or High Council together with Swordmaster, allowing its two conditional
+Persuasion gains to stack with the board's normal Council bonus. Its Agent
+effect is an unconditional two-Solari gain.
+
 Cards with restricted Spy placement, player choices, conditions that require
 untracked state, or unsupported effect primitives are held for later batches
 even when their basic Reveal values would otherwise be simple. This prevents a
