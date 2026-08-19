@@ -88,11 +88,13 @@ from dune_imperium.rules.phases import (
     resolve_recall_or_endgame,
 )
 from dune_imperium.rules.reveal_turn import (
+    apply_reveal_spy_action,
     begin_reveal_turn,
     current_reveal_context,
     finish_reveal_turn,
     legal_finish_reveal_actions,
     legal_reveal_actions,
+    legal_reveal_spy_actions,
 )
 from dune_imperium.rules.setup import create_initial_state
 from dune_imperium.rules.spies import (
@@ -174,6 +176,7 @@ class UprisingRulesEngine(RulesEngine):
 
         actions: list[DomainAction] = []
         actions.extend(legal_acquisition_spy_actions(state, player))
+        actions.extend(legal_reveal_spy_actions(state, player))
         actions.extend(legal_endgame_wild_actions(state, player))
         actions.extend(legal_control_defense_actions(state, player))
         actions.extend(self._supported_agent_actions(state, player))
@@ -214,6 +217,7 @@ class UprisingRulesEngine(RulesEngine):
             "acquire_imperium": apply_imperium_acquisition,
             "place_acquisition_spy": apply_acquisition_spy_action,
             "recall_spy_for_acquisition": apply_acquisition_spy_action,
+            "recall_spy_for_reveal": apply_reveal_spy_action,
             "finish_reveal": finish_reveal_turn,
             "gather_intelligence": apply_gather_intelligence_action,
             "pass_combat_intrigue": apply_combat_intrigue_pass,

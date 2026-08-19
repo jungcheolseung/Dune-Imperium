@@ -72,6 +72,14 @@ class PersonalCardAcquisitionEffect(StrEnum):
     PLACE_SPY = "place_spy"
 
 
+class PersonalCardRevealChoiceEffect(StrEnum):
+    """Reveal effects that require a player-owned serial decision."""
+
+    RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED = (
+        "recall_spy_to_draw_intrigue_if_two_placed"
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class PersonalCardRevealEffect:
     """Automatic public gains produced when a personal card is revealed."""

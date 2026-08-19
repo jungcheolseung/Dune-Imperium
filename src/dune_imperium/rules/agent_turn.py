@@ -35,7 +35,15 @@ def legal_agent_actions(state: GameState, player: int) -> tuple[DomainAction, ..
         raise ValueError("player must identify a configured seat")
     if state.phase is not GamePhase.PLAYER_TURNS or not state.decision_stack:
         return ()
-    decision = state.decision_stack[-1].decision
+    frame = state.decision_stack[-1]
+    frame_parts = frame.frame_id.split(":")
+    if (
+        len(frame_parts) != 4
+        or frame_parts[0] != "round"
+        or frame_parts[2:] != ["turn", str(player)]
+    ):
+        return ()
+    decision = frame.decision
     if not isinstance(decision, PlayerDecision) or decision.owner != player:
         return ()
 

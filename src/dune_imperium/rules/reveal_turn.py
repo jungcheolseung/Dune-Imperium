@@ -4,6 +4,7 @@ from dataclasses import replace
 
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
+from dune_imperium.content.uprising.types import PersonalCardRevealChoiceEffect
 from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
@@ -12,6 +13,90 @@ from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.card_bonds import has_faction_bond
 from dune_imperium.rules.effects import recruit_troops
+from dune_imperium.rules.spy_placement import recall_spy
+
+
+def legal_reveal_spy_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return Spy choices for the current serial Reveal effect."""
+
+    if not 0 <= player < state.config.players or not state.decision_stack:
+        return ()
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    if context.get("reveal_choice_effect") != (
+        PersonalCardRevealChoiceEffect.RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED.value
+    ):
+        return ()
+    return tuple(
+        DomainAction(
+            action_id="recall_spy_for_reveal",
+            actor=player,
+            arguments=(("post_id", post_id),),
+        )
+        for post_id in state.players[player].spy_post_ids
+    )
+
+
+def apply_reveal_spy_action(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Recall the selected Spy and draw the effect's Intrigue card."""
+
+    if action not in legal_reveal_spy_actions(state, action.actor):
+        raise ValueError("action is not a legal Reveal Spy choice")
+    if not state.intrigue_deck:
+        raise ValueError("the Intrigue deck does not contain enough cards")
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    card_id = context.get("reveal_card_id")
+    post_id = dict(action.arguments).get("post_id")
+    if not isinstance(card_id, str) or not isinstance(post_id, str):
+        raise RuntimeError("Reveal Spy frame has invalid context")
+    owner = state.players[action.actor]
+    next_owner = recall_spy(owner, post_id)
+    next_owner = replace(
+        next_owner,
+        intrigue_cards=(*next_owner.intrigue_cards, state.intrigue_deck[0]),
+    )
+    players = tuple(
+        next_owner if player.player_id == action.actor else player
+        for player in state.players
+    )
+    next_state = replace(
+        state,
+        players=players,
+        intrigue_deck=state.intrigue_deck[1:],
+        decision_stack=state.decision_stack[:-1],
+    )
+    source = (
+        f"round:{state.round_number}:player:{action.actor}:"
+        f"reveal_card:{card_id}"
+    )
+    return RuleResult(
+        state=next_state,
+        events=(
+            GameEvent(
+                event_id=f"{source}:spy_recalled:{post_id}",
+                kind="spy_recalled",
+                payload=(
+                    ("player", action.actor),
+                    ("post_id", post_id),
+                    ("source", card_id),
+                ),
+            ),
+            GameEvent(
+                event_id=f"{source}:intrigue_draw",
+                kind="intrigue_card_drawn",
+                payload=(("count", 1), ("player", action.actor)),
+            ),
+        ),
+    )
 
 
 def legal_reveal_actions(state: GameState, player: int) -> tuple[DomainAction, ...]:
@@ -21,7 +106,15 @@ def legal_reveal_actions(state: GameState, player: int) -> tuple[DomainAction, .
         raise ValueError("player must identify a configured seat")
     if state.phase is not GamePhase.PLAYER_TURNS or not state.decision_stack:
         return ()
-    decision = state.decision_stack[-1].decision
+    frame = state.decision_stack[-1]
+    frame_parts = frame.frame_id.split(":")
+    if (
+        len(frame_parts) != 4
+        or frame_parts[0] != "round"
+        or frame_parts[2:] != ["turn", str(player)]
+    ):
+        return ()
+    decision = frame.decision
     if not isinstance(decision, PlayerDecision) or decision.owner != player:
         return ()
     return (DomainAction(action_id="reveal_turn", actor=player),)
@@ -111,10 +204,36 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         ),
         context=tuple(sorted(context)),
     )
+    choice_frames = tuple(
+        DecisionFrame(
+            frame_id=(
+                f"round:{state.round_number}:player:{action.actor}:"
+                f"reveal_spy:{card_id}"
+            ),
+            decision=PlayerDecision(
+                owner=action.actor,
+                prompt="Choose a Spy to recall for this Reveal effect",
+            ),
+            context=(
+                ("reveal_card_id", card_id),
+                ("reveal_choice_effect", effect.value),
+                ("turn_owner", action.actor),
+            ),
+        )
+        for card_id, card in zip(revealed, cards, strict=True)
+        for effect in card.reveal_choice_effects
+        if effect
+        is PersonalCardRevealChoiceEffect.RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED
+        and len(owner.spy_post_ids) >= 2
+    )
     next_state = replace(
         state,
         players=players,
-        decision_stack=(*state.decision_stack[:-1], reveal_frame),
+        decision_stack=(
+            *state.decision_stack[:-1],
+            reveal_frame,
+            *reversed(choice_frames),
+        ),
     )
     event = GameEvent(
         event_id=f"round:{state.round_number}:player:{action.actor}:reveal",

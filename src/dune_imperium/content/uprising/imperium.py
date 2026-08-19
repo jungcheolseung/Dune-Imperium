@@ -15,6 +15,7 @@ from dune_imperium.content.uprising.types import (
     PersonalCardAcquisitionEffect,
     PersonalCardAgentEffect,
     PersonalCardBond,
+    PersonalCardRevealChoiceEffect,
     PersonalCardRevealEffect,
     PersonalCardTrashEffect,
 )
@@ -36,6 +37,7 @@ class ImperiumCardEntry(DeckCardEntry):
     reveal_persuasion: int = 0
     reveal_strength: int = 0
     reveal_effects: tuple[PersonalCardRevealEffect, ...] = ()
+    reveal_choice_effects: tuple[PersonalCardRevealChoiceEffect, ...] = ()
     play_data_complete: bool = False
 
     def __post_init__(self) -> None:
@@ -54,6 +56,8 @@ class ImperiumCardEntry(DeckCardEntry):
             raise ValueError("Imperium-card Reveal values must not be negative")
         if len(self.reveal_effects) != len(set(self.reveal_effects)):
             raise ValueError("Imperium-card Reveal effects must be unique")
+        if len(self.reveal_choice_effects) != len(set(self.reveal_choice_effects)):
+            raise ValueError("Imperium-card Reveal choices must be unique")
         if self.acquisition_effect is not None and not self.has_acquisition_bonus:
             raise ValueError("typed acquisition effect requires an acquisition bonus")
         if not self.play_data_complete and (
@@ -66,6 +70,7 @@ class ImperiumCardEntry(DeckCardEntry):
             or self.reveal_persuasion
             or self.reveal_strength
             or self.reveal_effects
+            or self.reveal_choice_effects
         ):
             raise ValueError("partial Imperium-card play data must not be exposed")
 
@@ -88,6 +93,7 @@ def _entry(
     reveal_persuasion: int = 0,
     reveal_strength: int = 0,
     reveal_effects: tuple[PersonalCardRevealEffect, ...] = (),
+    reveal_choice_effects: tuple[PersonalCardRevealChoiceEffect, ...] = (),
     play_data_complete: bool = False,
 ) -> ImperiumCardEntry:
     return ImperiumCardEntry(
@@ -110,6 +116,7 @@ def _entry(
         reveal_persuasion=reveal_persuasion,
         reveal_strength=reveal_strength,
         reveal_effects=reveal_effects,
+        reveal_choice_effects=reveal_choice_effects,
         play_data_complete=play_data_complete,
     )
 
@@ -383,7 +390,21 @@ IMPERIUM_CARDS: Final = (
     ),
     _entry(12, "space-time-folding", "Space-time Folding", 1),
     _entry(60, "spacing-guild-s-favor", "Spacing Guild's Favor", 5, copies=2),
-    _entry(25, "spy-network", "Spy Network", 2, has_acquisition_bonus=True),
+    _entry(
+        25,
+        "spy-network",
+        "Spy Network",
+        2,
+        has_acquisition_bonus=True,
+        factions=(Faction.EMPEROR, Faction.SPACING_GUILD),
+        acquisition_effect=PersonalCardAcquisitionEffect.PLACE_SPY,
+        reveal_persuasion=2,
+        reveal_strength=1,
+        reveal_choice_effects=(
+            PersonalCardRevealChoiceEffect.RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED,
+        ),
+        play_data_complete=True,
+    ),
     _entry(76, "steersman", "Steersman", 8, has_acquisition_bonus=True),
     _entry(70, "stilgar-the-devoted", "Stilgar, The Devoted", 6),
     _entry(

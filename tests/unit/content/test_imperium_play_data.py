@@ -13,6 +13,7 @@ from dune_imperium.content.uprising.types import (
     PersonalCardAcquisitionEffect,
     PersonalCardAgentEffect,
     PersonalCardBond,
+    PersonalCardRevealChoiceEffect,
     PersonalCardRevealEffect,
     PersonalCardTrashEffect,
 )
@@ -294,6 +295,21 @@ def test_imperial_spymaster_play_data_uses_the_turn_recall_condition() -> None:
     )
     assert card.reveal_persuasion == 1
     assert card.reveal_strength == 1
+
+
+def test_spy_network_play_data_has_acquisition_and_reveal_spy_effects() -> None:
+    card = IMPERIUM_CARDS_BY_ID["spy_network"]
+
+    assert card.play_data_complete is True
+    assert card.factions == (Faction.EMPEROR, Faction.SPACING_GUILD)
+    assert card.agent_icons == ()
+    assert card.agent_effect is None
+    assert card.acquisition_effect is PersonalCardAcquisitionEffect.PLACE_SPY
+    assert card.reveal_persuasion == 2
+    assert card.reveal_strength == 1
+    assert card.reveal_choice_effects == (
+        PersonalCardRevealChoiceEffect.RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED,
+    )
 
 
 def test_untranscribed_imperium_card_still_fails_explicitly() -> None:

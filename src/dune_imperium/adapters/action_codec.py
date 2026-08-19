@@ -27,7 +27,7 @@ from dune_imperium.content.uprising.starting_cards import (
 from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
 from dune_imperium.core.actions import ActionValue, DomainAction
 
-ACTION_CODEC_VERSION = 24
+ACTION_CODEC_VERSION = 25
 MAX_DEPLOYMENT_COUNT = 12
 
 
@@ -185,6 +185,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         "recall_spy_for_acquisition",
         "recall_spy_for_agent_card",
         "recall_spy_for_espionage",
+        "recall_spy_for_reveal",
         "resolve_espionage_place_spy",
     ):
         templates.extend(

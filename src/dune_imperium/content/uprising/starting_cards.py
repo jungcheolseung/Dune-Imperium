@@ -8,6 +8,7 @@ from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.types import (
     AgentIcon,
     PersonalCardAgentEffect,
+    PersonalCardRevealChoiceEffect,
     PersonalCardRevealEffect,
 )
 
@@ -29,6 +30,7 @@ class StartingCardEntry:
     reveal_persuasion: int = 0
     reveal_strength: int = 0
     reveal_effects: tuple[PersonalCardRevealEffect, ...] = ()
+    reveal_choice_effects: tuple[PersonalCardRevealChoiceEffect, ...] = ()
 
     def __post_init__(self) -> None:
         if self.copies < 1:
@@ -45,6 +47,8 @@ class StartingCardEntry:
             raise ValueError("Spy target Factions require a place-Spy Agent effect")
         if len(self.reveal_effects) != len(set(self.reveal_effects)):
             raise ValueError("starting-card Reveal effects must be unique")
+        if len(self.reveal_choice_effects) != len(set(self.reveal_choice_effects)):
+            raise ValueError("starting-card Reveal choices must be unique")
         if min(self.reveal_persuasion, self.reveal_strength) < 0:
             raise ValueError("starting-card Reveal values must not be negative")
 

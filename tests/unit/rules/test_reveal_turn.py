@@ -13,11 +13,13 @@ from dune_imperium.core import (
     PlayerDecision,
     PlayerState,
 )
+from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.reveal_turn import (
     begin_reveal_turn,
     finish_reveal_turn,
     legal_finish_reveal_actions,
     legal_reveal_actions,
+    legal_reveal_spy_actions,
 )
 
 
@@ -149,6 +151,64 @@ def test_imperial_spymaster_reveals_for_persuasion_and_strength() -> None:
 
     assert dict(result.state.decision_stack[-1].context)["persuasion"] == 1
     assert result.state.players[0].combat_strength == 3
+
+
+def test_spy_network_recalls_one_of_two_spies_and_draws_intrigue() -> None:
+    spy_network = _imperium_instance("spy_network")
+    posts = (
+        "arrakis-hagga-basin",
+        "bene-gesserit-espionage-secrets",
+    )
+    state = _state(
+        PlayerState(
+            player_id=0,
+            hand=(spy_network,),
+            troops_supply=8,
+            troops_conflict=1,
+            spies_supply=1,
+            spy_post_ids=posts,
+        )
+    )
+    state = replace(state, intrigue_deck=("intrigue:test:0",))
+
+    revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
+    engine = UprisingRulesEngine()
+    choices = engine.legal_actions(revealed.state, 0)
+    selected = choices[1]
+    result = engine.apply(revealed.state, selected)
+
+    assert tuple(action.action_id for action in choices) == (
+        "recall_spy_for_reveal",
+        "recall_spy_for_reveal",
+    )
+    assert {dict(action.arguments)["post_id"] for action in choices} == set(posts)
+    assert result.state.players[0].spy_post_ids == (posts[0],)
+    assert result.state.players[0].spies_supply == 2
+    assert result.state.players[0].intrigue_cards == ("intrigue:test:0",)
+    assert result.state.intrigue_deck == ()
+    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 2
+    assert result.state.players[0].combat_strength == 3
+    assert tuple(event.kind for event in result.events) == (
+        "spy_recalled",
+        "intrigue_card_drawn",
+    )
+
+
+def test_spy_network_has_no_recall_effect_with_only_one_spy() -> None:
+    spy_network = _imperium_instance("spy_network")
+    state = _state(
+        PlayerState(
+            player_id=0,
+            hand=(spy_network,),
+            spies_supply=2,
+            spy_post_ids=("arrakis-hagga-basin",),
+        )
+    )
+
+    result = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
+
+    assert legal_reveal_spy_actions(result.state, 0) == ()
+    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 2
 
 
 def test_high_council_and_assembly_hall_add_reveal_persuasion() -> None:
