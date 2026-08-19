@@ -11,6 +11,7 @@ from dune_imperium.content.uprising.personal_cards import personal_card_for_inst
 from dune_imperium.content.uprising.types import (
     AgentIcon,
     PersonalCardAgentEffect,
+    PersonalCardBond,
     PersonalCardRevealEffect,
     PersonalCardTrashEffect,
 )
@@ -110,7 +111,7 @@ def test_fedaykin_stilltent_play_data_has_maker_and_reveal_gains() -> None:
     assert card.factions == (Faction.FREMEN,)
     assert card.agent_icons == (AgentIcon.SPICE_TRADE,)
     assert card.agent_effect is PersonalCardAgentEffect.RECRUIT_ONE_IF_MAKER_SPACE
-    assert card.reveal_effect == PersonalCardRevealEffect(water=1)
+    assert card.reveal_effects == (PersonalCardRevealEffect(water=1),)
     assert card.reveal_persuasion == 0
     assert card.reveal_strength == 0
 
@@ -123,9 +124,11 @@ def test_northern_watermaster_play_data_has_fremen_bond_gain() -> None:
     assert card.agent_icons == (AgentIcon.CITY,)
     assert card.agent_effect is PersonalCardAgentEffect.GAIN_WATER
     assert card.reveal_persuasion == 1
-    assert card.reveal_effect == PersonalCardRevealEffect(
-        spice=2,
-        requires_fremen_bond=True,
+    assert card.reveal_effects == (
+        PersonalCardRevealEffect(
+            spice=2,
+            required_faction_bond=PersonalCardBond.FREMEN,
+        ),
     )
 
 
@@ -143,6 +146,25 @@ def test_maker_keeper_play_data_has_independent_influence_rewards() -> None:
     assert card.reveal_strength == 0
 
 
+def test_southern_elders_play_data_has_two_reveal_effects() -> None:
+    card = IMPERIUM_CARDS_BY_ID["southern_elders"]
+
+    assert card.play_data_complete is True
+    assert card.factions == (Faction.BENE_GESSERIT, Faction.FREMEN)
+    assert card.agent_icons == (AgentIcon.BENE_GESSERIT, AgentIcon.FREMEN)
+    assert (
+        card.agent_effect
+        is PersonalCardAgentEffect.RECRUIT_TWO_IF_BENE_GESSERIT_BOND
+    )
+    assert card.reveal_effects == (
+        PersonalCardRevealEffect(water=1),
+        PersonalCardRevealEffect(
+            persuasion=2,
+            required_faction_bond=PersonalCardBond.FREMEN,
+        ),
+    )
+
+
 def test_untranscribed_imperium_card_still_fails_explicitly() -> None:
     instance_id = _instance("double_agent")
 
@@ -155,5 +177,8 @@ def test_personal_card_reveal_effect_requires_a_nonnegative_gain() -> None:
         PersonalCardRevealEffect()
     with pytest.raises(ValueError, match="must not be negative"):
         PersonalCardRevealEffect(water=-1)
-    with pytest.raises(TypeError, match="must be a boolean"):
-        PersonalCardRevealEffect(water=1, requires_fremen_bond=1)  # type: ignore[arg-type]
+    with pytest.raises(TypeError, match="must use PersonalCardBond"):
+        PersonalCardRevealEffect(  # type: ignore[arg-type]
+            water=1,
+            required_faction_bond="fremen",
+        )

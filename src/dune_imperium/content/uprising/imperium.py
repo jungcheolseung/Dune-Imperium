@@ -13,6 +13,7 @@ from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.types import (
     AgentIcon,
     PersonalCardAgentEffect,
+    PersonalCardBond,
     PersonalCardRevealEffect,
     PersonalCardTrashEffect,
 )
@@ -31,7 +32,7 @@ class ImperiumCardEntry(DeckCardEntry):
     trash_effect: PersonalCardTrashEffect | None = None
     reveal_persuasion: int = 0
     reveal_strength: int = 0
-    reveal_effect: PersonalCardRevealEffect | None = None
+    reveal_effects: tuple[PersonalCardRevealEffect, ...] = ()
     play_data_complete: bool = False
 
     def __post_init__(self) -> None:
@@ -42,6 +43,8 @@ class ImperiumCardEntry(DeckCardEntry):
             raise ValueError("Imperium-card Agent icons must be unique")
         if min(self.reveal_persuasion, self.reveal_strength) < 0:
             raise ValueError("Imperium-card Reveal values must not be negative")
+        if len(self.reveal_effects) != len(set(self.reveal_effects)):
+            raise ValueError("Imperium-card Reveal effects must be unique")
         if not self.play_data_complete and (
             self.factions
             or self.agent_icons
@@ -49,7 +52,7 @@ class ImperiumCardEntry(DeckCardEntry):
             or self.trash_effect is not None
             or self.reveal_persuasion
             or self.reveal_strength
-            or self.reveal_effect is not None
+            or self.reveal_effects
         ):
             raise ValueError("partial Imperium-card play data must not be exposed")
 
@@ -69,7 +72,7 @@ def _entry(
     trash_effect: PersonalCardTrashEffect | None = None,
     reveal_persuasion: int = 0,
     reveal_strength: int = 0,
-    reveal_effect: PersonalCardRevealEffect | None = None,
+    reveal_effects: tuple[PersonalCardRevealEffect, ...] = (),
     play_data_complete: bool = False,
 ) -> ImperiumCardEntry:
     return ImperiumCardEntry(
@@ -89,7 +92,7 @@ def _entry(
         trash_effect=trash_effect,
         reveal_persuasion=reveal_persuasion,
         reveal_strength=reveal_strength,
-        reveal_effect=reveal_effect,
+        reveal_effects=reveal_effects,
         play_data_complete=play_data_complete,
     )
 
@@ -129,7 +132,7 @@ IMPERIUM_CARDS: Final = (
         factions=(Faction.FREMEN,),
         agent_icons=(AgentIcon.SPICE_TRADE,),
         agent_effect=PersonalCardAgentEffect.RECRUIT_ONE_IF_MAKER_SPACE,
-        reveal_effect=PersonalCardRevealEffect(water=1),
+        reveal_effects=(PersonalCardRevealEffect(water=1),),
         play_data_complete=True,
     ),
     _entry(38, "guild-envoy", "Guild Envoy", 3),
@@ -197,9 +200,11 @@ IMPERIUM_CARDS: Final = (
         agent_icons=(AgentIcon.CITY,),
         agent_effect=PersonalCardAgentEffect.GAIN_WATER,
         reveal_persuasion=1,
-        reveal_effect=PersonalCardRevealEffect(
-            spice=2,
-            requires_fremen_bond=True,
+        reveal_effects=(
+            PersonalCardRevealEffect(
+                spice=2,
+                required_faction_bond=PersonalCardBond.FREMEN,
+            ),
         ),
         play_data_complete=True,
     ),
@@ -243,7 +248,23 @@ IMPERIUM_CARDS: Final = (
         play_data_complete=True,
     ),
     _entry(47, "smuggler-s-haven", "Smuggler's Haven", 4),
-    _entry(56, "southern-elders", "Southern Elders", 4),
+    _entry(
+        56,
+        "southern-elders",
+        "Southern Elders",
+        4,
+        factions=(Faction.BENE_GESSERIT, Faction.FREMEN),
+        agent_icons=(AgentIcon.BENE_GESSERIT, AgentIcon.FREMEN),
+        agent_effect=PersonalCardAgentEffect.RECRUIT_TWO_IF_BENE_GESSERIT_BOND,
+        reveal_effects=(
+            PersonalCardRevealEffect(water=1),
+            PersonalCardRevealEffect(
+                persuasion=2,
+                required_faction_bond=PersonalCardBond.FREMEN,
+            ),
+        ),
+        play_data_complete=True,
+    ),
     _entry(12, "space-time-folding", "Space-time Folding", 1),
     _entry(60, "spacing-guild-s-favor", "Spacing Guild's Favor", 5, copies=2),
     _entry(25, "spy-network", "Spy Network", 2, has_acquisition_bonus=True),

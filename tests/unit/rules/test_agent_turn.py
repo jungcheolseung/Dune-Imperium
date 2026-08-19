@@ -198,6 +198,16 @@ def test_maker_keeper_uses_its_city_and_spice_trade_icons() -> None:
     }
 
 
+def test_southern_elders_uses_its_two_faction_icons() -> None:
+    southern_elders = _imperium_instance("southern_elders")
+
+    assert _space_ids(_state(southern_elders)) == {
+        "desert_tactics",
+        "fremkit",
+        "secrets",
+    }
+
+
 def test_spy_agent_icon_accesses_only_spaces_connected_to_an_owned_spy() -> None:
     owner = PlayerState(
         player_id=0,

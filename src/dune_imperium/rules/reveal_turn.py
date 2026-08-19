@@ -10,6 +10,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
+from dune_imperium.rules.card_bonds import has_faction_bond
 from dune_imperium.rules.effects import recruit_troops
 
 
@@ -34,7 +35,21 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
     owner = state.players[action.actor]
     revealed = owner.hand
     cards = tuple(personal_card_for_instance(card_id) for card_id in revealed)
-    persuasion = sum(card.reveal_persuasion for card in cards)
+    cards_in_play = (*owner.in_play, *revealed)
+    reveal_effects = tuple(
+        effect
+        for card_id, card in zip(revealed, cards, strict=True)
+        for effect in card.reveal_effects
+        if effect.required_faction_bond is None
+        or has_faction_bond(
+            cards_in_play,
+            card_id,
+            Faction(effect.required_faction_bond.value),
+        )
+    )
+    persuasion = sum(card.reveal_persuasion for card in cards) + sum(
+        effect.persuasion for effect in reveal_effects
+    )
     if owner.high_council:
         persuasion += 2
     if "assembly_hall" in owner.agent_locations:
@@ -47,15 +62,6 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         strength = (
             owner.troops_conflict * 2 + owner.sandworms_conflict * 3 + sword_strength
         )
-    reveal_effects = tuple(
-        card.reveal_effect
-        for card_id, card in zip(revealed, cards, strict=True)
-        if card.reveal_effect is not None
-        and (
-            not card.reveal_effect.requires_fremen_bond
-            or _has_fremen_bond(card_id, (*owner.in_play, *revealed))
-        )
-    )
     next_owner = replace(
         owner,
         resources=replace(
@@ -212,12 +218,3 @@ def _next_unrevealed_player(
         if not player.has_revealed:
             return candidate
     return None
-
-
-def _has_fremen_bond(card_id: str, in_play: tuple[str, ...]) -> bool:
-    return any(
-        candidate_id != card_id
-        and Faction.FREMEN
-        in personal_card_for_instance(candidate_id).factions
-        for candidate_id in in_play
-    )

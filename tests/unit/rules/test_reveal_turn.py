@@ -259,6 +259,27 @@ def test_maker_keeper_contributes_two_reveal_persuasion() -> None:
     assert dict(result.state.decision_stack[-1].context)["persuasion"] == 2
 
 
+def test_southern_elders_applies_unconditional_and_bond_reveal_effects() -> None:
+    southern_elders = _imperium_instance("southern_elders")
+    maula = _imperium_instance("maula_pistol")
+    without_bond = _state(PlayerState(player_id=0, hand=(southern_elders,)))
+    with_bond = _state(PlayerState(player_id=0, hand=(southern_elders, maula)))
+
+    without_result = begin_reveal_turn(
+        without_bond,
+        legal_reveal_actions(without_bond, 0)[0],
+    )
+    with_result = begin_reveal_turn(
+        with_bond,
+        legal_reveal_actions(with_bond, 0)[0],
+    )
+
+    assert without_result.state.players[0].resources.water == 2
+    assert dict(without_result.state.decision_stack[-1].context)["persuasion"] == 0
+    assert with_result.state.players[0].resources.water == 2
+    assert dict(with_result.state.decision_stack[-1].context)["persuasion"] == 3
+
+
 def test_reveal_preserves_agent_cards_already_in_play() -> None:
     played = _instance("dagger", 0)
     revealed = _instance("dagger", 1)

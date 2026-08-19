@@ -25,7 +25,7 @@ class GameReplay:
     expected_state_hash: str
     ruleset_version: str = "uprising-r0"
     content_version: str = "uprising-content-v0"
-    action_codec_version: int = 15
+    action_codec_version: int = 16
 
     def __post_init__(self) -> None:
         if self.seed < 0:

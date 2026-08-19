@@ -20,6 +20,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import Influence, PlayerState, Resources
 from dune_imperium.core.state import GamePhase, GameState
+from dune_imperium.rules.card_bonds import has_faction_bond
 
 
 def legal_agent_actions(state: GameState, player: int) -> tuple[DomainAction, ...]:
@@ -157,7 +158,12 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
             ("cost_option", cost_option),
             (
                 "pending_agent_effect",
-                _agent_effect_is_available(card.agent_effect, owner, space),
+                _agent_effect_is_available(
+                    card.agent_effect,
+                    owner,
+                    space,
+                    card_instance_id,
+                ),
             ),
             ("pending_board_effect", True),
             ("pending_combat_deployment", space.combat),
@@ -220,6 +226,7 @@ def _agent_effect_is_available(
     effect: PersonalCardAgentEffect | None,
     owner: PlayerState,
     space: BoardSpace,
+    card_instance_id: str,
 ) -> bool:
     if effect is None:
         return False
@@ -240,6 +247,12 @@ def _agent_effect_is_available(
     ):
         return (
             owner.influence.bene_gesserit >= 2 or owner.influence.fremen >= 2
+        )
+    if effect is PersonalCardAgentEffect.RECRUIT_TWO_IF_BENE_GESSERIT_BOND:
+        return has_faction_bond(
+            (*owner.in_play, card_instance_id),
+            card_instance_id,
+            Faction.BENE_GESSERIT,
         )
     return True
 

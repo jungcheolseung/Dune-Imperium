@@ -17,6 +17,15 @@ class AgentIcon(StrEnum):
     SPY = "spy"
 
 
+class PersonalCardBond(StrEnum):
+    """Faction affiliation required from another card in play."""
+
+    EMPEROR = "emperor"
+    SPACING_GUILD = "spacing_guild"
+    BENE_GESSERIT = "bene_gesserit"
+    FREMEN = "fremen"
+
+
 class PersonalCardAgentEffect(StrEnum):
     """Typed Agent-box effects currently transcribed for personal cards."""
 
@@ -30,6 +39,7 @@ class PersonalCardAgentEffect(StrEnum):
         "gain_by_bene_gesserit_and_fremen_influence_two"
     )
     RECRUIT_ONE_IF_MAKER_SPACE = "recruit_one_if_maker_space"
+    RECRUIT_TWO_IF_BENE_GESSERIT_BOND = "recruit_two_if_bene_gesserit_bond"
     DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO = (
         "draw_if_bene_gesserit_influence_two"
     )
@@ -51,13 +61,23 @@ class PersonalCardRevealEffect:
     solari: int = 0
     spice: int = 0
     water: int = 0
+    persuasion: int = 0
     recruit_troops: int = 0
-    requires_fremen_bond: bool = False
+    required_faction_bond: PersonalCardBond | None = None
 
     def __post_init__(self) -> None:
-        if not isinstance(self.requires_fremen_bond, bool):
-            raise TypeError("Fremen Bond requirement must be a boolean")
-        values = (self.solari, self.spice, self.water, self.recruit_troops)
+        if self.required_faction_bond is not None and not isinstance(
+            self.required_faction_bond,
+            PersonalCardBond,
+        ):
+            raise TypeError("Faction Bond requirement must use PersonalCardBond")
+        values = (
+            self.solari,
+            self.spice,
+            self.water,
+            self.persuasion,
+            self.recruit_troops,
+        )
         if min(values) < 0:
             raise ValueError("personal-card Reveal gains must not be negative")
         if max(values) == 0:

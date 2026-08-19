@@ -25,7 +25,7 @@ class ReserveStackDefinition:
     agent_effect: PersonalCardAgentEffect | None = None
     reveal_persuasion: int = 0
     reveal_strength: int = 0
-    reveal_effect: PersonalCardRevealEffect | None = None
+    reveal_effects: tuple[PersonalCardRevealEffect, ...] = ()
 
     def __post_init__(self) -> None:
         if self.copies < 1:
@@ -41,6 +41,8 @@ class ReserveStackDefinition:
             raise ValueError("Reserve Agent icons must be unique")
         if len(self.factions) != len(set(self.factions)):
             raise ValueError("Reserve Factions must be unique")
+        if len(self.reveal_effects) != len(set(self.reveal_effects)):
+            raise ValueError("Reserve Reveal effects must be unique")
 
 
 MAIN_P3_P5: Final = (SourceRef(SourceDocument.MAIN_RULEBOOK, (3, 4, 5)),)

@@ -2,7 +2,7 @@
 
 from dataclasses import replace
 
-from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID
+from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID, Faction
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.content.uprising.types import PersonalCardAgentEffect
 from dune_imperium.core.actions import DomainAction
@@ -11,6 +11,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
+from dune_imperium.rules.card_bonds import has_faction_bond
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.effects import (
@@ -183,6 +184,19 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
                 water=owner.resources.water + int(gains_water),
             ),
         )
+        event_kind = "agent_card_effect_resolved"
+    elif effect is PersonalCardAgentEffect.RECRUIT_TWO_IF_BENE_GESSERIT_BOND:
+        if not has_faction_bond(
+            owner.in_play,
+            card_instance_id,
+            Faction.BENE_GESSERIT,
+        ):
+            raise RuntimeError("conditional Agent effect is not available")
+        next_owner, recruited = recruit_troops(owner, 2)
+        previous = context.get("troops_recruited")
+        if isinstance(previous, bool) or not isinstance(previous, int):
+            raise RuntimeError("Agent-turn effect frame has invalid recruit count")
+        context["troops_recruited"] = previous + recruited
         event_kind = "agent_card_effect_resolved"
     else:
         raise NotImplementedError(
