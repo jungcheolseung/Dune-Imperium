@@ -1217,3 +1217,78 @@ def test_dangerous_rhetoric_trashes_itself_for_chosen_influence() -> None:
         "card_trashed",
         "influence_gained",
     )
+
+
+def test_public_spectacle_gains_chosen_influence_after_spy_recall() -> None:
+    spectacle = _imperium_instance("public_spectacle")
+    drawn = _instance("dagger")
+    post_id = "arrakis-spice-refinery-arrakeen"
+    owner = PlayerState(
+        player_id=0,
+        hand=(spectacle,),
+        deck=(drawn,),
+        spies_supply=2,
+        spy_post_ids=(post_id,),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
+    gather = next(
+        action
+        for action in legal_gather_intelligence_actions(placed, 0)
+        if action.action_id == "gather_intelligence"
+    )
+    gathered = apply_gather_intelligence_action(placed, gather).state
+    engine = UprisingRulesEngine()
+    choice = next(
+        action
+        for action in engine.legal_actions(gathered, 0)
+        if dict(action.arguments).get("faction") == "spacing_guild"
+    )
+
+    result = engine.apply(gathered, choice)
+
+    assert result.state.players[0].influence.spacing_guild == 1
+    assert result.state.players[0].in_play == (spectacle,)
+    assert result.events[0].kind == "influence_gained"
+
+
+def test_public_spectacle_influence_is_unavailable_without_spy_recall() -> None:
+    spectacle = _imperium_instance("public_spectacle")
+    post_id = "arrakis-spice-refinery-arrakeen"
+    owner = PlayerState(
+        player_id=0,
+        hand=(spectacle,),
+        spies_supply=2,
+        spy_post_ids=(post_id,),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
+
+    result = resolve_agent_card_effect(placed)
+
+    assert result.state.players[0].influence == Influence()
+    assert result.events[0].kind == "agent_card_effect_unavailable"

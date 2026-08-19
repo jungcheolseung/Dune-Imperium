@@ -3,6 +3,7 @@
 from dataclasses import replace
 
 from dune_imperium import RulesetConfig
+from dune_imperium.content.uprising.board import OBSERVATION_POSTS
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.core import (
@@ -311,6 +312,68 @@ def test_dangerous_rhetoric_reveals_for_persuasion_and_strength() -> None:
 
     assert dict(result.state.decision_stack[-1].context)["persuasion"] == 1
     assert result.state.players[0].combat_strength == 3
+
+
+def test_public_spectacle_reveal_places_a_spy() -> None:
+    spectacle = _imperium_instance("public_spectacle")
+    state = _state(PlayerState(player_id=0, hand=(spectacle,)))
+    revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
+    engine = UprisingRulesEngine()
+    choices = engine.legal_actions(revealed.state, 0)
+    selected = next(
+        action
+        for action in choices
+        if dict(action.arguments).get("post_id")
+        == "emperor-sardaukar-dutiful-service"
+    )
+
+    result = engine.apply(revealed.state, selected)
+
+    assert {action.action_id for action in choices} == {"place_reveal_spy"}
+    assert result.state.players[0].spies_supply == 2
+    assert result.state.players[0].spy_post_ids == (
+        "emperor-sardaukar-dutiful-service",
+    )
+    assert result.events[0].kind == "spy_placed"
+    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 1
+
+
+def test_public_spectacle_reveal_recalls_before_placing_with_empty_supply() -> None:
+    spectacle = _imperium_instance("public_spectacle")
+    original_posts = tuple(post.post_id for post in OBSERVATION_POSTS[:3])
+    state = _state(
+        PlayerState(
+            player_id=0,
+            hand=(spectacle,),
+            spies_supply=0,
+            spy_post_ids=original_posts,
+        )
+    )
+    revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
+    recall = legal_reveal_spy_actions(revealed.state, 0)[0]
+
+    recalled = apply_reveal_spy_action(revealed.state, recall)
+    placements = legal_reveal_spy_actions(recalled.state, 0)
+    destination = next(
+        action
+        for action in placements
+        if dict(action.arguments)["post_id"] not in original_posts
+    )
+    result = apply_reveal_spy_action(recalled.state, destination)
+
+    recalled_post = dict(recall.arguments)["post_id"]
+    destination_post = dict(destination.arguments)["post_id"]
+    assert recall.action_id == "recall_spy_for_reveal_placement"
+    assert {action.action_id for action in placements} == {"place_reveal_spy"}
+    assert result.state.players[0].spies_supply == 0
+    assert result.state.players[0].spy_post_ids == (
+        *(post_id for post_id in original_posts if post_id != recalled_post),
+        destination_post,
+    )
+    assert tuple(event.kind for event in (*recalled.events, *result.events)) == (
+        "spy_recalled",
+        "spy_placed",
+    )
 
 
 def test_high_council_and_assembly_hall_add_reveal_persuasion() -> None:

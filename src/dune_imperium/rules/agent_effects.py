@@ -46,9 +46,16 @@ def legal_agent_card_influence_actions(
         return ()
     _, source_card_id, _ = _effect_subject(context)
     source_card = personal_card_for_instance(source_card_id)
+    effect = source_card.agent_effect
+    if effect not in (
+        PersonalCardAgentEffect.TRASH_SELF_AND_GAIN_CHOSEN_INFLUENCE,
+        PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE_IF_SPY_RECALLED_THIS_TURN,
+    ):
+        return ()
     if (
-        source_card.agent_effect
-        is not PersonalCardAgentEffect.TRASH_SELF_AND_GAIN_CHOSEN_INFLUENCE
+        effect
+        is PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE_IF_SPY_RECALLED_THIS_TURN
+        and context.get("spy_recalled_this_turn") is not True
     ):
         return ()
     return tuple(
@@ -65,7 +72,7 @@ def apply_agent_card_influence(
     state: GameState,
     action: DomainAction,
 ) -> RuleResult:
-    """Trash the source card and gain the selected Faction Influence."""
+    """Resolve the current Agent card's selected Faction Influence."""
 
     if action not in legal_agent_card_influence_actions(state, action.actor):
         raise ValueError("action is not a legal Agent-card Influence choice")
@@ -75,18 +82,25 @@ def apply_agent_card_influence(
     if not isinstance(faction_value, str):
         raise RuntimeError("Agent-card Influence choice has invalid Faction")
     faction = Faction(faction_value)
+    source_card = personal_card_for_instance(source_card_id)
     source = (
         f"round:{state.round_number}:player:{action.actor}:"
         f"agent_card:{source_card_id}"
     )
-    trashed = trash_personal_card(
-        state,
-        action.actor,
-        source_card_id,
-        source=source,
-    )
+    if (
+        source_card.agent_effect
+        is PersonalCardAgentEffect.TRASH_SELF_AND_GAIN_CHOSEN_INFLUENCE
+    ):
+        prepared = trash_personal_card(
+            state,
+            action.actor,
+            source_card_id,
+            source=source,
+        )
+    else:
+        prepared = RuleResult(state=state)
     gained = gain_faction_influence(
-        trashed.state,
+        prepared.state,
         action.actor,
         faction,
         1,
@@ -100,7 +114,7 @@ def apply_agent_card_influence(
     )
     return RuleResult(
         state=next_state,
-        events=(*trashed.events, *gained.events),
+        events=(*prepared.events, *gained.events),
     )
 
 
@@ -592,6 +606,14 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
                     ),
                 ),
             )
+    elif (
+        effect
+        is PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE_IF_SPY_RECALLED_THIS_TURN
+    ):
+        if context.get("spy_recalled_this_turn") is True:
+            raise RuntimeError("Agent-card Influence effect requires a player choice")
+        next_owner = owner
+        event_kind = "agent_card_effect_unavailable"
     else:
         raise NotImplementedError(
             f"personal-card Agent effect is not implemented: {card.card.card_id}"

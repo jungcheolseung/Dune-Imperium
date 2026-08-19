@@ -13,7 +13,11 @@ from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.card_bonds import has_faction_bond
 from dune_imperium.rules.effects import recruit_troops
-from dune_imperium.rules.spy_placement import recall_spy
+from dune_imperium.rules.spy_placement import (
+    empty_observation_post_ids,
+    place_spy,
+    recall_spy,
+)
 
 
 def legal_reveal_spy_actions(
@@ -32,6 +36,25 @@ def legal_reveal_spy_actions(
     if not isinstance(effect_value, str):
         return ()
     effect = PersonalCardRevealChoiceEffect(effect_value)
+    owner = state.players[player]
+    if effect is PersonalCardRevealChoiceEffect.PLACE_SPY:
+        if context.get("reveal_spy_recalled") is True or owner.spies_supply > 0:
+            return tuple(
+                DomainAction(
+                    action_id="place_reveal_spy",
+                    actor=player,
+                    arguments=(("post_id", post_id),),
+                )
+                for post_id in empty_observation_post_ids(state)
+            )
+        return tuple(
+            DomainAction(
+                action_id="recall_spy_for_reveal_placement",
+                actor=player,
+                arguments=(("post_id", post_id),),
+            )
+            for post_id in owner.spy_post_ids
+        )
     occupied = frozenset(state.players[player].spy_post_ids)
     post_ids = tuple(
         post.post_id for post in OBSERVATION_POSTS if post.post_id in occupied
@@ -71,7 +94,7 @@ def apply_reveal_spy_action(
     state: GameState,
     action: DomainAction,
 ) -> RuleResult:
-    """Resolve the current Reveal effect's Spy recall choice."""
+    """Resolve the current Reveal effect's Spy placement or recall choice."""
 
     if action not in legal_reveal_spy_actions(state, action.actor):
         raise ValueError("action is not a legal Reveal Spy choice")
@@ -87,6 +110,49 @@ def apply_reveal_spy_action(
         f"reveal_card:{card_id}"
     )
 
+    arguments = dict(action.arguments)
+    if action.action_id == "recall_spy_for_reveal_placement":
+        post_id = arguments.get("post_id")
+        if not isinstance(post_id, str):
+            raise RuntimeError("Reveal Spy choice has invalid post ID")
+        next_owner = recall_spy(state.players[action.actor], post_id)
+        context["reveal_spy_recalled"] = True
+        next_frame = replace(frame, context=tuple(sorted(context.items())))
+        return RuleResult(
+            state=replace(
+                state,
+                players=_replace_player(state, next_owner),
+                decision_stack=(*state.decision_stack[:-1], next_frame),
+            ),
+            events=(
+                _spy_recalled_event(state, action.actor, card_id, post_id),
+            ),
+        )
+
+    if action.action_id == "place_reveal_spy":
+        post_id = arguments.get("post_id")
+        if not isinstance(post_id, str):
+            raise RuntimeError("Reveal Spy choice has invalid post ID")
+        next_owner = place_spy(state.players[action.actor], post_id)
+        return RuleResult(
+            state=replace(
+                state,
+                players=_replace_player(state, next_owner),
+                decision_stack=state.decision_stack[:-1],
+            ),
+            events=(
+                GameEvent(
+                    event_id=f"{source}:spy_placed:{post_id}",
+                    kind="spy_placed",
+                    payload=(
+                        ("card_id", card_id),
+                        ("player", action.actor),
+                        ("post_id", post_id),
+                    ),
+                ),
+            ),
+        )
+
     if action.action_id == "decline_reveal_spy_recall":
         return RuleResult(
             state=replace(state, decision_stack=state.decision_stack[:-1]),
@@ -100,7 +166,6 @@ def apply_reveal_spy_action(
         )
 
     owner = state.players[action.actor]
-    arguments = dict(action.arguments)
     events: list[GameEvent] = []
     intrigue_deck = state.intrigue_deck
     remaining = state.decision_stack[:-1]
@@ -181,6 +246,16 @@ def _spy_recalled_event(
             ("post_id", post_id),
             ("source", card_id),
         ),
+    )
+
+
+def _replace_player(
+    state: GameState,
+    player: PlayerState,
+) -> tuple[PlayerState, ...]:
+    return tuple(
+        player if candidate.player_id == player.player_id else candidate
+        for candidate in state.players
     )
 
 
@@ -320,7 +395,9 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
             decision=PlayerDecision(
                 owner=action.actor,
                 prompt=(
-                    "Choose two Spies to recall or decline this Reveal effect"
+                    "Choose where to place a Spy for this Reveal effect"
+                    if effect is PersonalCardRevealChoiceEffect.PLACE_SPY
+                    else "Choose two Spies to recall or decline this Reveal effect"
                     if effect
                     is (
                         PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_TWO_PERSUASION
@@ -336,12 +413,15 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         )
         for card_id, card in zip(revealed, cards, strict=True)
         for effect in card.reveal_choice_effects
-        if effect
-        in (
-            PersonalCardRevealChoiceEffect.RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED,
-            PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_TWO_PERSUASION,
+        if effect is PersonalCardRevealChoiceEffect.PLACE_SPY
+        or (
+            effect
+            in (
+                PersonalCardRevealChoiceEffect.RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED,
+                PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_TWO_PERSUASION,
+            )
+            and len(owner.spy_post_ids) >= 2
         )
-        and len(owner.spy_post_ids) >= 2
     )
     next_state = replace(
         state,

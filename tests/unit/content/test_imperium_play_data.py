@@ -359,6 +359,23 @@ def test_dangerous_rhetoric_play_data_trashes_for_chosen_influence() -> None:
     assert card.reveal_strength == 1
 
 
+def test_public_spectacle_play_data_uses_spy_recall_and_placement() -> None:
+    card = IMPERIUM_CARDS_BY_ID["public_spectacle"]
+
+    assert card.play_data_complete is True
+    assert card.factions == (Faction.EMPEROR,)
+    assert card.agent_icons == (AgentIcon.SPY,)
+    assert (
+        card.agent_effect
+        is PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE_IF_SPY_RECALLED_THIS_TURN
+    )
+    assert card.reveal_persuasion == 1
+    assert card.reveal_strength == 0
+    assert card.reveal_choice_effects == (
+        PersonalCardRevealChoiceEffect.PLACE_SPY,
+    )
+
+
 def test_untranscribed_imperium_card_still_fails_explicitly() -> None:
     instance_id = _instance("double_agent")
 

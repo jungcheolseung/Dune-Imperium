@@ -34,6 +34,9 @@ class PersonalCardAgentEffect(StrEnum):
     TRASH_SELF_AND_GAIN_CHOSEN_INFLUENCE = (
         "trash_self_and_gain_chosen_influence"
     )
+    GAIN_CHOSEN_INFLUENCE_IF_SPY_RECALLED_THIS_TURN = (
+        "gain_chosen_influence_if_spy_recalled_this_turn"
+    )
     LEADER_SIGNET = "leader_signet"
     PAY_TWO_WATER_TO_DRAW_TWO = "pay_two_water_to_draw_two"
     DRAW_PERSONAL_CARD = "draw_personal_card"
@@ -88,6 +91,7 @@ class PersonalCardRevealChoiceEffect(StrEnum):
     MAY_RECALL_TWO_SPIES_FOR_TWO_PERSUASION = (
         "may_recall_two_spies_for_two_persuasion"
     )
+    PLACE_SPY = "place_spy"
 
 
 @dataclass(frozen=True, slots=True)

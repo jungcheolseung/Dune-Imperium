@@ -352,7 +352,21 @@ IMPERIUM_CARDS: Final = (
         has_acquisition_bonus=True,
     ),
     _entry(183, "priority-contracts", "Priority Contracts", 6, choam_only=True),
-    _entry(55, "public-spectacle", "Public Spectacle", 4, copies=2),
+    _entry(
+        55,
+        "public-spectacle",
+        "Public Spectacle",
+        4,
+        copies=2,
+        factions=(Faction.EMPEROR,),
+        agent_icons=(AgentIcon.SPY,),
+        agent_effect=(
+            PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE_IF_SPY_RECALLED_THIS_TURN
+        ),
+        reveal_persuasion=1,
+        reveal_choice_effects=(PersonalCardRevealChoiceEffect.PLACE_SPY,),
+        play_data_complete=True,
+    ),
     _entry(
         40,
         "rebel-supplier",
