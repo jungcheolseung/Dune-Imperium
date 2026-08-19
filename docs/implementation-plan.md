@@ -280,7 +280,9 @@ Intrigue 처리와 wild battle icon 선택은 OQ-001 및 콘텐츠 전사 전까
 상태: **진행 중** (2026-08-19). 시작 카드와 Reserve 카드가 같은 개인 카드
 resolver를 사용한다. Prepare the Way의 Agent 아이콘·조건부 draw·Reveal 값과
 The Spice Must Flow의 Reveal strength를 전사했으며, Reserve Agent 행동을 codec
-v7에 포함했다. Imperium, Intrigue, Leader와 Objective 효과는 아직 identity
+v7에 포함했다. 고정된 DIU `imperium.JSON`을 런타임 의존성 없이 63개 local
+identity와 대조하고 아이콘·Faction·효과 형태를 정규화하는 read-only audit
+도구도 추가했다. Imperium, Intrigue, Leader와 Objective 효과는 아직 identity
 manifest 수준이다.
 
 - 기본 게임의 리더, 시작/Reserve/Imperium/Intrigue/Conflict/Objective 콘텐츠를
@@ -397,8 +399,9 @@ M5의 보드 시스템과 multi-round 개인 덱 shuffle까지 구현했고 M6�
 수직 조각으로 두 Reserve 카드를 실제 play 경로에 연결했다. 다음 작업은 아래
 순서로 진행한다.
 
-1. Imperium 카드에 Agent 아이콘, Faction affiliation, Reveal 값과 typed effect
-   필드를 추가하고 단순 카드 묶음부터 공통 개인 카드 resolver에 연결한다.
+1. DIU audit 결과를 기준으로 Imperium 카드에 Agent 아이콘, Faction affiliation,
+   Reveal 값과 typed effect 필드를 추가하고 단순 카드 묶음부터 공통 개인 카드
+   resolver에 연결한다.
 2. 획득 보너스가 있는 Imperium 카드의 연속 선택과 replay 경로를 구현한다.
 3. Plot, Combat, Endgame Intrigue 타입과 공통 play/discard 경계를 만든 뒤 단순
    Intrigue 효과부터 전사한다.

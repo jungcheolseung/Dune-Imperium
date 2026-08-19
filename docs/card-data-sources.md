@@ -21,6 +21,42 @@ Dire Wolf Digital's official rules and FAQ remain authoritative for rules
 adjudication. Dune Cards Hub remains the card-level fallback when a DIU value is
 missing, ambiguous, or conflicts with already verified content.
 
+### Development audit workflow
+
+DIU is never discovered or loaded by the game runtime. A developer may pass an
+explicit working-copy path to the read-only audit command:
+
+```bash
+uv run dune-imperium-audit-diu ../DIU/data/imperium.JSON
+```
+
+The audit performs the following normalization without writing generated data:
+
+- matches DIU names to the project's stable card IDs, including the recorded
+  `Branching Paths` / `Branching Path` spelling alias;
+- distinguishes the seven starting-card, two Reserve, and 54 shared Imperium
+  identities;
+- converts `agent_icon` / `agent_icons`, scalar/list icon values, and the three
+  color icons to the local `AgentIcon` values;
+- converts `faction` / `factions` and display/lower-case spellings to local
+  Faction values;
+- recursively inventories every `type` under Agent, Reveal, Fremen Bond,
+  acquire, discard, and trash effect containers;
+- rejects missing or duplicate identities, unknown icons and Factions, invalid
+  container types, and group mismatches rather than guessing.
+
+At the reviewed commit, all 63 identities match: seven starting cards, two
+Reserve cards, and 54 shared Imperium cards. The recursive inventory contains
+312 typed effect objects. DIU's declared quantity differs from the verified
+local manifest for 48 identities, so the audit reports but never imports source
+quantities. The local manifest remains authoritative for physical counts and
+CHOAM inclusion.
+
+The normalized audit result is an input to later typed transcription work, not
+a generated runtime manifest. A card effect enters production only when it is
+represented by local typed content, covered by tests, and checked against card
+art or an applicable official clarification where DIU is ambiguous.
+
 ### Recorded discrepancies
 
 - DIU models Trade Dispute's trash icon with `deck: ["hand", "played"]`.
