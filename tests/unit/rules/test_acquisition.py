@@ -20,7 +20,10 @@ from dune_imperium.rules.acquisition import (
     legal_imperium_acquisitions,
     legal_reserve_acquisitions,
 )
-from dune_imperium.rules.reveal_turn import begin_reveal_turn, legal_reveal_actions
+from dune_imperium.rules.reveal_turn import (
+    begin_reveal_turn,
+    legal_reveal_actions,
+)
 
 
 def _instance(card_id: str, copy: int = 0) -> str:
@@ -127,6 +130,48 @@ def test_imperium_purchase_refills_same_row_position_immediately() -> None:
     assert result.state.imperium_row == (expensive, replacement, *others[:3])
     assert result.state.imperium_deck == others[4:]
     assert dict(result.state.decision_stack[-1].context)["persuasion"] == 1
+
+
+def test_acquired_transcribed_card_can_be_revealed_later() -> None:
+    cards = (
+        _instance("convincing_argument", 0),
+        _instance("convincing_argument", 1),
+    )
+    state = _reveal_state(*cards)
+    instances = imperium_deck_instance_ids(False)
+    maula = next(card for card in instances if ":maula_pistol:" in card)
+    others = tuple(card for card in instances if card != maula)
+    state = replace(
+        state,
+        imperium_row=(maula, *others[:4]),
+        imperium_deck=others[4:],
+    )
+    action = next(
+        action
+        for action in legal_imperium_acquisitions(state, 0)
+        if dict(action.arguments)["instance_id"] == maula
+    )
+    acquired = apply_imperium_acquisition(state, action).state
+    owner = replace(
+        acquired.players[0],
+        hand=(maula,),
+        discard_pile=acquired.players[0].in_play,
+        in_play=(),
+    )
+    later = replace(
+        acquired,
+        players=(owner, *acquired.players[1:]),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:2:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+
+    revealed = begin_reveal_turn(later, legal_reveal_actions(later, 0)[0]).state
+
+    assert dict(revealed.decision_stack[-1].context)["persuasion"] == 1
 
 
 def test_acquisition_bonus_card_is_not_silently_resolved() -> None:

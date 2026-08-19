@@ -3,6 +3,7 @@
 from dataclasses import replace
 
 from dune_imperium import RulesetConfig
+from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.core import (
     DecisionFrame,
@@ -26,6 +27,14 @@ def _instance(card_id: str, copy: int = 0) -> str:
         for instance_id in starting_deck_instance_ids(0)
         if f":{card_id}:" in instance_id
     )[copy]
+
+
+def _imperium_instance(card_id: str) -> str:
+    return next(
+        instance_id
+        for instance_id in imperium_deck_instance_ids(False)
+        if f":{card_id}:" in instance_id
+    )
 
 
 def _state(player: PlayerState) -> GameState:
@@ -117,6 +126,25 @@ def test_reserve_cards_contribute_their_printed_reveal_values() -> None:
         PlayerState(
             player_id=0,
             hand=(prepare, spice),
+            troops_supply=8,
+            troops_conflict=1,
+        )
+    )
+
+    result = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
+    context = dict(result.state.decision_stack[-1].context)
+
+    assert context["persuasion"] == 2
+    assert context["strength"] == 3
+
+
+def test_transcribed_imperium_cards_contribute_reveal_values() -> None:
+    maula = _imperium_instance("maula_pistol")
+    truthtrance = _imperium_instance("truthtrance")
+    state = _state(
+        PlayerState(
+            player_id=0,
+            hand=(maula, truthtrance),
             troops_supply=8,
             troops_conflict=1,
         )

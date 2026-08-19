@@ -37,6 +37,9 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             trashed=(*owner.trashed, card_instance_id),
         )
         event_kind = "card_trashed"
+    elif effect is PersonalCardAgentEffect.DRAW_PERSONAL_CARD:
+        next_owner = owner
+        event_kind = "agent_card_effect_resolved"
     elif effect is PersonalCardAgentEffect.DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO:
         if owner.influence.bene_gesserit < 2:
             raise RuntimeError("conditional Agent effect is not available")
@@ -57,7 +60,10 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         kind=event_kind,
         payload=(("card_id", card_instance_id), ("player", player)),
     )
-    if effect is PersonalCardAgentEffect.DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO:
+    if effect in (
+        PersonalCardAgentEffect.DRAW_PERSONAL_CARD,
+        PersonalCardAgentEffect.DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO,
+    ):
         draw = draw_or_request_personal_cards(
             next_state,
             player,

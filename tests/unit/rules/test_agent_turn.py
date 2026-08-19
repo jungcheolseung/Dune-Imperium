@@ -6,6 +6,7 @@ import pytest
 
 from dune_imperium import RulesetConfig
 from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID
+from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.starting_cards import (
     starting_card_for_instance,
     starting_deck_instance_ids,
@@ -33,6 +34,14 @@ def _instance(player: int, card_id: str) -> str:
     return next(
         instance_id
         for instance_id in starting_deck_instance_ids(player)
+        if f":{card_id}:" in instance_id
+    )
+
+
+def _imperium_instance(card_id: str) -> str:
+    return next(
+        instance_id
+        for instance_id in imperium_deck_instance_ids(False)
         if f":{card_id}:" in instance_id
     )
 
@@ -106,6 +115,27 @@ def test_prepare_the_way_uses_its_landsraad_and_city_icons() -> None:
         "spice_refinery",
         "swordmaster",
     }
+
+
+def test_transcribed_imperium_icons_enable_agent_destinations() -> None:
+    maula = _imperium_instance("maula_pistol")
+    truthtrance = _imperium_instance("truthtrance")
+
+    maula_spaces = _space_ids(_state(maula))
+    truthtrance_spaces = _space_ids(_state(truthtrance))
+
+    assert maula_spaces == {
+        "accept_contract",
+        "arrakeen",
+        "hagga_basin",
+        "imperial_basin",
+        "spice_refinery",
+    }
+    assert "dutiful_service" in truthtrance_spaces
+    assert "deliver_supplies" in truthtrance_spaces
+    assert "secrets" in truthtrance_spaces
+    assert "fremkit" in truthtrance_spaces
+    assert "assembly_hall" not in truthtrance_spaces
 
 
 def test_spy_agent_icon_accesses_only_spaces_connected_to_an_owned_spy() -> None:

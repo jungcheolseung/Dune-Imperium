@@ -10,7 +10,11 @@ from dune_imperium.content.uprising.board import (
     Faction,
 )
 from dune_imperium.content.uprising.conflicts import CONFLICTS
-from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
+from dune_imperium.content.uprising.imperium import (
+    IMPERIUM_CARDS,
+    ImperiumCardEntry,
+    imperium_deck_instance_ids,
+)
 from dune_imperium.content.uprising.objectives import objectives_for_players
 from dune_imperium.content.uprising.reserve import (
     RESERVE_STACKS,
@@ -23,7 +27,7 @@ from dune_imperium.content.uprising.starting_cards import (
 from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
 from dune_imperium.core.actions import ActionValue, DomainAction
 
-ACTION_CODEC_VERSION = 7
+ACTION_CODEC_VERSION = 8
 MAX_DEPLOYMENT_COUNT = 12
 
 
@@ -223,12 +227,17 @@ def _agent_turn_templates() -> tuple[ActionTemplate, ...]:
         templates.extend(_agent_turn_templates_for_card("starter", starting_card))
     for reserve_card in RESERVE_STACKS:
         templates.extend(_agent_turn_templates_for_card("reserve", reserve_card))
+    for imperium_card in IMPERIUM_CARDS:
+        if imperium_card.play_data_complete:
+            templates.extend(
+                _agent_turn_templates_for_card("imperium", imperium_card)
+            )
     return tuple(templates)
 
 
 def _agent_turn_templates_for_card(
     prefix: str,
-    card: StartingCardEntry | ReserveStackDefinition,
+    card: StartingCardEntry | ReserveStackDefinition | ImperiumCardEntry,
 ) -> tuple[ActionTemplate, ...]:
     templates: list[ActionTemplate] = []
     for copy in range(card.copies):

@@ -5,6 +5,7 @@ from dataclasses import replace
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.core import (
     DecisionFrame,
@@ -27,6 +28,14 @@ def _instance(card_id: str) -> str:
     return next(
         instance_id
         for instance_id in starting_deck_instance_ids(0)
+        if f":{card_id}:" in instance_id
+    )
+
+
+def _imperium_instance(card_id: str) -> str:
+    return next(
+        instance_id
+        for instance_id in imperium_deck_instance_ids(False)
         if f":{card_id}:" in instance_id
     )
 
@@ -194,3 +203,29 @@ def test_prepare_the_way_has_no_agent_effect_below_required_influence() -> None:
     placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
 
     assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False
+
+
+def test_maula_pistol_agent_effect_draws_one_personal_card() -> None:
+    maula = _imperium_instance("maula_pistol")
+    drawn = _instance("dagger")
+    owner = PlayerState(player_id=0, hand=(maula,), deck=(drawn,))
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
+
+    resolved = resolve_agent_card_effect(placed)
+
+    assert resolved.state.players[0].hand == (drawn,)
+    assert resolved.state.players[0].deck == ()
+    assert resolved.events[0].kind == "agent_card_effect_resolved"

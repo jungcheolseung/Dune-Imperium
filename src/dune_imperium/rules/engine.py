@@ -289,6 +289,7 @@ def _agent_action_is_supported(state: GameState, action: DomainAction) -> bool:
     if card.agent_effect not in (
         None,
         PersonalCardAgentEffect.TRASH_SELF,
+        PersonalCardAgentEffect.DRAW_PERSONAL_CARD,
         PersonalCardAgentEffect.DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO,
     ):
         return False

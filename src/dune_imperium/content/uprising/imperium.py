@@ -1,5 +1,6 @@
-"""Setup identities for the 69-card Uprising Imperium deck."""
+"""Typed identities and transcribed play data for the Uprising Imperium deck."""
 
+from dataclasses import dataclass
 from typing import Final
 
 from dune_imperium.content.schema import (
@@ -8,9 +9,40 @@ from dune_imperium.content.schema import (
     SourceDocument,
     SourceRef,
 )
+from dune_imperium.content.uprising.board import Faction
+from dune_imperium.content.uprising.types import AgentIcon, PersonalCardAgentEffect
 
 BASE_SOURCES: Final = (SourceRef(SourceDocument.MAIN_RULEBOOK, (3, 4)),)
 CHOAM_SOURCES: Final = (SourceRef(SourceDocument.MAIN_RULEBOOK, (3, 4, 16)),)
+
+
+@dataclass(frozen=True, slots=True)
+class ImperiumCardEntry(DeckCardEntry):
+    """One shared-deck card plus independently verified play-facing data."""
+
+    factions: tuple[Faction, ...] = ()
+    agent_icons: tuple[AgentIcon, ...] = ()
+    agent_effect: PersonalCardAgentEffect | None = None
+    reveal_persuasion: int = 0
+    reveal_strength: int = 0
+    play_data_complete: bool = False
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if len(self.factions) != len(set(self.factions)):
+            raise ValueError("Imperium-card Factions must be unique")
+        if len(self.agent_icons) != len(set(self.agent_icons)):
+            raise ValueError("Imperium-card Agent icons must be unique")
+        if min(self.reveal_persuasion, self.reveal_strength) < 0:
+            raise ValueError("Imperium-card Reveal values must not be negative")
+        if not self.play_data_complete and (
+            self.factions
+            or self.agent_icons
+            or self.agent_effect is not None
+            or self.reveal_persuasion
+            or self.reveal_strength
+        ):
+            raise ValueError("partial Imperium-card play data must not be exposed")
 
 
 def _entry(
@@ -22,8 +54,14 @@ def _entry(
     copies: int = 1,
     choam_only: bool = False,
     has_acquisition_bonus: bool = False,
-) -> DeckCardEntry:
-    return DeckCardEntry(
+    factions: tuple[Faction, ...] = (),
+    agent_icons: tuple[AgentIcon, ...] = (),
+    agent_effect: PersonalCardAgentEffect | None = None,
+    reveal_persuasion: int = 0,
+    reveal_strength: int = 0,
+    play_data_complete: bool = False,
+) -> ImperiumCardEntry:
+    return ImperiumCardEntry(
         card=CardDefinition(
             card_id=slug.replace("-", "_"),
             name=name,
@@ -34,6 +72,12 @@ def _entry(
         choam_only=choam_only,
         acquisition_cost=acquisition_cost,
         has_acquisition_bonus=has_acquisition_bonus,
+        factions=factions,
+        agent_icons=agent_icons,
+        agent_effect=agent_effect,
+        reveal_persuasion=reveal_persuasion,
+        reveal_strength=reveal_strength,
+        play_data_complete=play_data_complete,
     )
 
 
@@ -70,7 +114,19 @@ IMPERIUM_CARDS: Final = (
     _entry(63, "leadership", "Leadership", 5),
     _entry(74, "long-live-the-fighters", "Long Live the Fighters", 7),
     _entry(19, "maker-keeper", "Maker Keeper", 2, copies=2),
-    _entry(32, "maula-pistol", "Maula Pistol", 3, copies=2),
+    _entry(
+        32,
+        "maula-pistol",
+        "Maula Pistol",
+        3,
+        copies=2,
+        factions=(Faction.FREMEN,),
+        agent_icons=(AgentIcon.CITY, AgentIcon.SPICE_TRADE),
+        agent_effect=PersonalCardAgentEffect.DRAW_PERSONAL_CARD,
+        reveal_persuasion=1,
+        reveal_strength=1,
+        play_data_complete=True,
+    ),
     _entry(34, "northern-watermaster", "Northern Watermaster", 3),
     _entry(75, "overthrow", "Overthrow", 8, has_acquisition_bonus=True),
     _entry(49, "paracompass", "Paracompass", 4),
@@ -106,7 +162,22 @@ IMPERIUM_CARDS: Final = (
     ),
     _entry(66, "treacherous-maneuver", "Treacherous Maneuver", 5),
     _entry(58, "tread-in-darkness", "Tread in Darkness", 4, copies=2),
-    _entry(53, "truthtrance", "Truthtrance", 4, copies=2),
+    _entry(
+        53,
+        "truthtrance",
+        "Truthtrance",
+        4,
+        copies=2,
+        factions=(Faction.BENE_GESSERIT,),
+        agent_icons=(
+            AgentIcon.EMPEROR,
+            AgentIcon.SPACING_GUILD,
+            AgentIcon.BENE_GESSERIT,
+            AgentIcon.FREMEN,
+        ),
+        reveal_persuasion=1,
+        play_data_complete=True,
+    ),
     _entry(28, "undercover-asset", "Undercover Asset", 2),
     _entry(11, "unswerving-loyalty", "Unswerving Loyalty", 1, copies=2),
     _entry(14, "weirding-woman", "Weirding Woman", 1, copies=2),
@@ -118,7 +189,7 @@ IMPERIUM_CARDS_BY_ID: Final = {
 }
 
 
-def imperium_cards_for_choam(choam_module: bool) -> tuple[DeckCardEntry, ...]:
+def imperium_cards_for_choam(choam_module: bool) -> tuple[ImperiumCardEntry, ...]:
     """Return physical card entries included by the selected setup."""
 
     return tuple(
@@ -136,7 +207,7 @@ def imperium_deck_instance_ids(choam_module: bool) -> tuple[str, ...]:
     )
 
 
-def imperium_card_for_instance(instance_id: str) -> DeckCardEntry:
+def imperium_card_for_instance(instance_id: str) -> ImperiumCardEntry:
     """Resolve a stable Imperium deck instance ID to its definition."""
 
     prefix = "imperium:"
