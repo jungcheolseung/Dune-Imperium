@@ -72,10 +72,15 @@ on-trash Intrigue draw adds a typed trash trigger. Agent-card and Combat-reward
 trash now share that transition, including the existing rule that a trashed
 Reserve card returns to its stack.
 
-Cards with restricted Spy placement, choices, conditions, or unsupported
-effect primitives are held for later batches even when their basic Reveal
-values would otherwise be simple. This prevents a partially implemented card
-from being exposed as fully playable.
+The third batch transcribes Hidden Missive. Its conditional Agent effect checks
+Bene Gesserit Influence before adding one troop to the Agent turn's common
+recruit-and-deploy count and drawing through the replayable personal-deck path.
+The troop recruitment transition is shared with board-space effects.
+
+Cards with restricted Spy placement, player choices, conditions that require
+untracked state, or unsupported effect primitives are held for later batches
+even when their basic Reveal values would otherwise be simple. This prevents a
+partially implemented card from being exposed as fully playable.
 
 ### Recorded discrepancies
 
