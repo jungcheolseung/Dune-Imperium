@@ -107,6 +107,10 @@ multiple automatic Reveal effects, each with an optional typed Faction Bond.
 The same shared bond check gates its Bene Gesserit Agent recruitment and Fremen
 Reveal Persuasion without conflating the two affiliations.
 
+The tenth batch transcribes Weirding Woman. Bene Gesserit Bond moves the Agent
+card from play back into its owner's hand, allowing the same physical instance
+to participate in the later Reveal turn while preserving zone uniqueness.
+
 Cards with restricted Spy placement, player choices, conditions that require
 untracked state, or unsupported effect primitives are held for later batches
 even when their basic Reveal values would otherwise be simple. This prevents a

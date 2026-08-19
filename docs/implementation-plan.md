@@ -240,7 +240,7 @@ seeded random 4인 라운드를 실행하고 action replay로 최종 상태를 �
 ### M4. RL 인터페이스 조기 검증
 
 상태: **완료** (2026-08-14). 기본 룰셋은 versioned actor-neutral 정수 action
-catalog와 같은 폭의 legal action mask를 사용한다. 현재 codec v16은 1068개
+catalog와 같은 폭의 legal action mask를 사용한다. 현재 codec v17은 1114개
 행동이며, `dune_imperium_uprising_v0` AEC 환경은
 한 라운드를 episode로 실행하며 PettingZoo `api_test`와 `seed_test`를 통과한다.
 관측과 `info`에는 전체 `GameState`를 노출하지 않는다.
@@ -297,7 +297,8 @@ Agent Water·조건부 Reveal Spice를 연결해 codec v14에 포함했다. 고�
 `imperium.JSON`의 여덟 번째 묶음으로 Maker Keeper의 두 Influence 조건을
 독립 보상으로 연결해 codec v15에 포함했다. 아홉 번째 묶음은 복수 Reveal 효과와
 공통 Faction Bond 판정을 도입해 Southern Elders를 codec v16에 연결했다. 이
-파일은 런타임 의존성 없이 63개 local
+기반으로 열 번째 묶음인 Weirding Woman의 Bene Gesserit Bond 자기 회수를 codec
+v17에 연결했다. 이 파일은 런타임 의존성 없이 63개 local
 identity와 대조하고 아이콘·Faction·효과 형태를 정규화하는 read-only audit
 도구도 사용한다. 나머지 Imperium과 Intrigue, Leader, Objective 효과는 아직
 identity manifest 수준이다.
