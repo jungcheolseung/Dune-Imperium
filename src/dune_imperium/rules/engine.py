@@ -365,6 +365,7 @@ def _agent_action_is_supported(state: GameState, action: DomainAction) -> bool:
         PersonalCardAgentEffect.GAIN_WATER,
         PersonalCardAgentEffect.GAIN_TWO_SOLARI,
         PersonalCardAgentEffect.PLACE_SPY,
+        PersonalCardAgentEffect.PLACE_SPY_ALLOW_SHARED_IF_SPYING_ON_VISITED_SPACE,
         PersonalCardAgentEffect.RECRUIT_THREE_IF_SPY_RECALLED_THIS_TURN,
         PersonalCardAgentEffect.RECRUIT_TWO_IF_SPY_RECALLED_THIS_TURN,
         PersonalCardAgentEffect.DRAW_INTRIGUE_IF_SPY_RECALLED_THIS_TURN,

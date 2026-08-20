@@ -102,12 +102,6 @@ class GameState:
         if not set(self.declined_endgame_wild_card_ids) <= won_conflict_ids:
             raise ValueError("declined Endgame wild cards must be won Conflicts")
 
-        occupied_spy_posts = tuple(
-            post_id for player in self.players for post_id in player.spy_post_ids
-        )
-        if len(occupied_spy_posts) != len(set(occupied_spy_posts)):
-            raise ValueError("an Observation Post can hold only one Spy")
-
         held_alliances = tuple(
             faction_id
             for player in self.players

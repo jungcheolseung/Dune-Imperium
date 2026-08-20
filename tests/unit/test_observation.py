@@ -128,7 +128,7 @@ def test_game_state_rejects_conflict_in_board_and_player_supply() -> None:
         replace(state, players=(winner, *state.players[1:]))
 
 
-def test_game_state_rejects_two_spies_on_one_observation_post() -> None:
+def test_game_state_allows_different_players_to_share_observation_post() -> None:
     state = _state()
     first = replace(
         state.players[0],
@@ -141,8 +141,10 @@ def test_game_state_rejects_two_spies_on_one_observation_post() -> None:
         spy_post_ids=("same_post",),
     )
 
-    with pytest.raises(ValueError, match="only one Spy"):
-        replace(state, players=(first, second, *state.players[2:]))
+    shared = replace(state, players=(first, second, *state.players[2:]))
+
+    assert shared.players[0].spy_post_ids == ("same_post",)
+    assert shared.players[1].spy_post_ids == ("same_post",)
 
 
 def test_game_state_rejects_two_owners_of_one_alliance() -> None:

@@ -193,7 +193,25 @@ IMPERIUM_CARDS: Final = (
         reveal_strength=1,
         play_data_complete=True,
     ),
-    _entry(37, "double-agent", "Double Agent", 3, copies=2),
+    _entry(
+        37,
+        "double-agent",
+        "Double Agent",
+        3,
+        copies=2,
+        factions=(Faction.EMPEROR, Faction.SPACING_GUILD),
+        agent_icons=(
+            AgentIcon.LANDSRAAD,
+            AgentIcon.CITY,
+            AgentIcon.SPICE_TRADE,
+        ),
+        agent_effect=(
+            PersonalCardAgentEffect.PLACE_SPY_ALLOW_SHARED_IF_SPYING_ON_VISITED_SPACE
+        ),
+        reveal_persuasion=1,
+        reveal_strength=1,
+        play_data_complete=True,
+    ),
     _entry(
         46,
         "ecological-testing-station",

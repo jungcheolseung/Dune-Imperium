@@ -545,8 +545,27 @@ def test_spacing_guilds_favor_play_data_has_discard_and_reveal_payments() -> Non
     )
 
 
+def test_double_agent_play_data_has_conditional_shared_spy_placement() -> None:
+    card = IMPERIUM_CARDS_BY_ID["double_agent"]
+
+    assert card.play_data_complete is True
+    assert card.copies == 2
+    assert card.factions == (Faction.EMPEROR, Faction.SPACING_GUILD)
+    assert card.agent_icons == (
+        AgentIcon.LANDSRAAD,
+        AgentIcon.CITY,
+        AgentIcon.SPICE_TRADE,
+    )
+    assert (
+        card.agent_effect
+        is PersonalCardAgentEffect.PLACE_SPY_ALLOW_SHARED_IF_SPYING_ON_VISITED_SPACE
+    )
+    assert card.reveal_persuasion == 1
+    assert card.reveal_strength == 1
+
+
 def test_untranscribed_imperium_card_still_fails_explicitly() -> None:
-    instance_id = _instance("double_agent")
+    instance_id = _instance("calculus_of_power")
 
     with pytest.raises(NotImplementedError, match="not transcribed"):
         personal_card_for_instance(instance_id)

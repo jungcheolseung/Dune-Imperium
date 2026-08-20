@@ -57,6 +57,9 @@ class PersonalCardAgentEffect(StrEnum):
     GAIN_SPICE_IF_MAKER_SPACE = "gain_spice_if_maker_space"
     GAIN_TWO_SOLARI = "gain_two_solari"
     PLACE_SPY = "place_spy"
+    PLACE_SPY_ALLOW_SHARED_IF_SPYING_ON_VISITED_SPACE = (
+        "place_spy_allow_shared_if_spying_on_visited_space"
+    )
     RECRUIT_THREE_IF_SPY_RECALLED_THIS_TURN = (
         "recruit_three_if_spy_recalled_this_turn"
     )

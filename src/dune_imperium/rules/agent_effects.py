@@ -2,10 +2,14 @@
 
 from dataclasses import replace
 
-from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID, Faction
+from dune_imperium.content.uprising.board import (
+    BOARD_SPACES_BY_ID,
+    OBSERVATION_POSTS,
+    Faction,
+)
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.content.uprising.types import PersonalCardAgentEffect
-from dune_imperium.core.actions import DomainAction
+from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.decisions import PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
@@ -278,7 +282,10 @@ def legal_agent_card_spy_actions(
         return ()
     _, source_card_id, _ = _effect_subject(context)
     source_card = personal_card_for_instance(source_card_id)
-    if source_card.agent_effect is not PersonalCardAgentEffect.PLACE_SPY:
+    if source_card.agent_effect not in (
+        PersonalCardAgentEffect.PLACE_SPY,
+        PersonalCardAgentEffect.PLACE_SPY_ALLOW_SHARED_IF_SPYING_ON_VISITED_SPACE,
+    ):
         return ()
 
     owner = state.players[player]
@@ -288,6 +295,26 @@ def legal_agent_card_spy_actions(
         else None
     )
     placements = empty_observation_post_ids(state, allowed_post_ids)
+    if (
+        source_card.agent_effect
+        is PersonalCardAgentEffect.PLACE_SPY_ALLOW_SHARED_IF_SPYING_ON_VISITED_SPACE
+        and _owner_is_spying_on_visited_space(state, player, context)
+    ):
+        opponent_posts = {
+            post_id
+            for candidate in state.players
+            if candidate.player_id != player
+            for post_id in candidate.spy_post_ids
+        }
+        placements = tuple(
+            post.post_id
+            for post in OBSERVATION_POSTS
+            if post.post_id not in owner.spy_post_ids
+            and (
+                post.post_id in opponent_posts
+                or post.post_id in placements
+            )
+        )
     if context.get("agent_card_spy_recalled") is True or owner.spies_supply > 0:
         return tuple(
             DomainAction(
@@ -734,7 +761,10 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             ),
         )
         event_kind = "agent_card_effect_resolved"
-    elif effect is PersonalCardAgentEffect.PLACE_SPY:
+    elif effect in (
+        PersonalCardAgentEffect.PLACE_SPY,
+        PersonalCardAgentEffect.PLACE_SPY_ALLOW_SHARED_IF_SPYING_ON_VISITED_SPACE,
+    ):
         if legal_agent_card_spy_actions(state, player):
             raise RuntimeError("place-Spy Agent effect requires a player choice")
         next_owner = owner
@@ -897,4 +927,19 @@ def _replace_player(
     return tuple(
         player if candidate.player_id == player.player_id else candidate
         for candidate in state.players
+    )
+
+
+def _owner_is_spying_on_visited_space(
+    state: GameState,
+    player: int,
+    context: dict[str, ActionValue],
+) -> bool:
+    space_id = context.get("space_id")
+    if not isinstance(space_id, str):
+        raise RuntimeError("Agent-turn effect frame has invalid space")
+    occupied = frozenset(state.players[player].spy_post_ids)
+    return any(
+        space_id in post.connected_space_ids and post.post_id in occupied
+        for post in OBSERVATION_POSTS
     )

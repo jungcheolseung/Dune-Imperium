@@ -1855,3 +1855,76 @@ def test_agent_card_discard_resolves_spacing_guilds_favor_trigger() -> None:
         "card_discarded",
         "personal_card_discard_effect_resolved",
     ]
+
+
+def test_double_agent_may_share_opponent_post_when_spying_on_visited_space() -> None:
+    double_agent = _imperium_instance("double_agent")
+    connected = "landsraad-assembly-hall-gather-support"
+    opponent_post = "emperor-sardaukar-dutiful-service"
+    owner = PlayerState(
+        player_id=0,
+        hand=(double_agent,),
+        spies_supply=2,
+        spy_post_ids=(connected,),
+    )
+    opponent = PlayerState(
+        player_id=1,
+        spies_supply=2,
+        spy_post_ids=(opponent_post,),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, opponent, PlayerState(player_id=2), PlayerState(player_id=3)),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
+    shared = next(
+        action
+        for action in legal_agent_card_spy_actions(placed, 0)
+        if dict(action.arguments)["post_id"] == opponent_post
+    )
+
+    result = apply_agent_card_spy_action(placed, shared).state
+
+    assert opponent_post in result.players[0].spy_post_ids
+    assert opponent_post in result.players[1].spy_post_ids
+
+
+def test_double_agent_cannot_share_post_without_spying_on_visited_space() -> None:
+    double_agent = _imperium_instance("double_agent")
+    opponent_post = "emperor-sardaukar-dutiful-service"
+    owner = PlayerState(player_id=0, hand=(double_agent,))
+    opponent = PlayerState(
+        player_id=1,
+        spies_supply=2,
+        spy_post_ids=(opponent_post,),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, opponent, PlayerState(player_id=2), PlayerState(player_id=3)),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
+
+    post_ids = {
+        dict(action.arguments)["post_id"]
+        for action in legal_agent_card_spy_actions(placed, 0)
+    }
+
+    assert opponent_post not in post_ids
