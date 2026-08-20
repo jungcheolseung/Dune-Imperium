@@ -87,6 +87,9 @@
 
 - strength는 Conflict의 unit과 이번 Reveal turn에 reveal한 sword icon으로 계산한다. Conflict의 troop 하나는 strength 2, sandworm 하나는 strength 3, reveal한 sword 하나는 strength 1이다. [Main p. 12]
 - Conflict에 unit이 하나 이상 있어야 strength를 가질 수 있다. 마지막 unit이 제거되면 sword가 남아 있어도 strength는 0이 된다. [Main p. 12]
+- Calculus of Power는 Reveal 중 play 영역의 다른 Emperor card를 trash해 sword
+  3을 얻거나 거절할 수 있다. 비용으로 자기 자신을 고를 수 없고, trash된 card의
+  고유 trash 효과는 정상 처리한다. `[Calculus of Power card]`
 - strength를 계산하면 다른 플레이어에게 알리고 Combat marker를 Combat track의 해당 칸으로 옮긴다. strength가 20을 넘으면 marker를 `+20` 면으로 뒤집고 track 처음부터 초과분을 표시한다. [Main p. 12]
 - Reveal turn 중 효과가 unit 수나 strength를 바꾸면 Combat marker도 그에 맞게 갱신한다. [Main p. 13]
 

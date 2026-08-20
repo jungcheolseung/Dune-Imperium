@@ -66,3 +66,5 @@ entries.
 Covert Operation adds another 51 Spy-icon Agent templates and 93 opponent-owned
 discard templates, advancing the current default to version 41 with 2337
 entries.
+The two Calculus of Power copies add 102 Spy-icon Agent templates plus 94 Reveal
+trash choices, advancing the current default to version 42 with 2533 entries.

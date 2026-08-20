@@ -361,6 +361,10 @@ Faction Influence를 얻는 acquisition trigger를 추가해 codec v40에 연결
 서른다섯 번째 묶음은 Covert Operation의 각 상대 hand discard를 시계방향의
 player-owned 결정 frame으로 직렬화했다. 손이 빈 상대는 건너뛰고, 실제 discard는
 카드별 discard trigger를 포함한 공통 transition을 사용하며 codec v41에 연결했다.
+서른여섯 번째 묶음은 Calculus of Power 두 장의 Agent 자기 trash와 Reveal의
+다른 Emperor card trash 비용·strength 3 보상을 직렬 선택 frame으로 연결했다.
+공통 trash trigger와 Conflict unit이 있어야 strength가 생기는 규칙을 유지하며
+codec v42에 연결했다.
 고정된 DIU `imperium.JSON`은 런타임 의존성 없이 63개 local identity와
 대조하고 아이콘·Faction·효과 형태를 정규화하는 read-only audit에만 사용한다.
 나머지 Imperium과 Intrigue, Leader, Objective 효과는 아직 identity manifest
