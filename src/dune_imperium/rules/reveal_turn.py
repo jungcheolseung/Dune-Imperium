@@ -12,6 +12,7 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.card_bonds import has_faction_bond
+from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.effects import recruit_troops
 from dune_imperium.rules.influence import (
     alliance_recipients_after_influence_loss,
@@ -181,6 +182,110 @@ def legal_reveal_spice_influence_actions(
                 arguments=(("faction", faction.value),),
             )
             for faction in Faction
+        ),
+    )
+
+
+def legal_reveal_card_trash_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return optional Emperor-card trash payments for the current Reveal."""
+
+    if not 0 <= player < state.config.players or not state.decision_stack:
+        return ()
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    if (
+        context.get("reveal_choice_effect")
+        != (
+            PersonalCardRevealChoiceEffect.MAY_TRASH_OTHER_EMPEROR_FOR_THREE_STRENGTH.value
+        )
+    ):
+        return ()
+    source_card_id = context.get("reveal_card_id")
+    if not isinstance(source_card_id, str):
+        raise RuntimeError("Reveal trash frame has invalid card ID")
+    return (
+        DomainAction(action_id="decline_reveal_card_trash", actor=player),
+        *(
+            DomainAction(
+                action_id="trash_reveal_card",
+                actor=player,
+                arguments=(("card_id", card_id),),
+            )
+            for card_id in state.players[player].in_play
+            if card_id != source_card_id
+            and Faction.EMPEROR in personal_card_for_instance(card_id).factions
+        ),
+    )
+
+
+def apply_reveal_card_trash(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Decline or trash another Emperor card for three Reveal strength."""
+
+    if action not in legal_reveal_card_trash_actions(state, action.actor):
+        raise ValueError("action is not a legal Reveal card trash choice")
+    context = dict(state.decision_stack[-1].context)
+    source_card_id = context.get("reveal_card_id")
+    if not isinstance(source_card_id, str):
+        raise RuntimeError("Reveal trash frame has invalid card ID")
+    source = (
+        f"round:{state.round_number}:player:{action.actor}:"
+        f"reveal_card:{source_card_id}"
+    )
+    if action.action_id == "decline_reveal_card_trash":
+        return RuleResult(
+            state=replace(state, decision_stack=state.decision_stack[:-1]),
+            events=(
+                GameEvent(
+                    event_id=f"{source}:trash_declined",
+                    kind="reveal_card_trash_declined",
+                    payload=(("card_id", source_card_id), ("player", action.actor)),
+                ),
+            ),
+        )
+
+    card_id = dict(action.arguments).get("card_id")
+    if not isinstance(card_id, str):
+        raise RuntimeError("Reveal trash choice has invalid card ID")
+    trashed = trash_personal_card(
+        state,
+        action.actor,
+        card_id,
+        source=source,
+    )
+    owner = trashed.state.players[action.actor]
+    counted_strength = 3 if owner.troops_conflict + owner.sandworms_conflict else 0
+    next_owner = replace(
+        owner,
+        combat_strength=owner.combat_strength + counted_strength,
+    )
+    remaining = trashed.state.decision_stack[:-1]
+    if counted_strength:
+        remaining = _add_reveal_strength(remaining, counted_strength)
+    return RuleResult(
+        state=replace(
+            trashed.state,
+            players=_replace_player(trashed.state, next_owner),
+            decision_stack=remaining,
+        ),
+        events=(
+            *trashed.events,
+            GameEvent(
+                event_id=f"{source}:strength",
+                kind="reveal_strength_gained",
+                payload=(
+                    ("amount", 3),
+                    ("card_id", source_card_id),
+                    ("player", action.actor),
+                ),
+            ),
         ),
     )
 
@@ -504,6 +609,28 @@ def _add_reveal_persuasion(
     raise RuntimeError("Reveal Spy choice is missing its Reveal frame")
 
 
+def _add_reveal_strength(
+    frames: tuple[DecisionFrame, ...],
+    amount: int,
+) -> tuple[DecisionFrame, ...]:
+    """Add counted strength to the Reveal frame below serial choices."""
+
+    for index in range(len(frames) - 1, -1, -1):
+        context = dict(frames[index].context)
+        strength = context.get("strength")
+        if strength is None:
+            continue
+        if isinstance(strength, bool) or not isinstance(strength, int):
+            raise RuntimeError("Reveal frame has invalid strength")
+        context["strength"] = strength + amount
+        return (
+            *frames[:index],
+            replace(frames[index], context=tuple(sorted(context.items()))),
+            *frames[index + 1 :],
+        )
+    raise RuntimeError("Reveal trash choice is missing its Reveal frame")
+
+
 def legal_reveal_actions(state: GameState, player: int) -> tuple[DomainAction, ...]:
     """Return the always-available Reveal choice for the current turn owner."""
 
@@ -662,6 +789,11 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
                     is (
                         PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_TWO_PERSUASION
                     )
+                    else "Trash another Emperor card or decline this Reveal effect"
+                    if effect
+                    is (
+                        PersonalCardRevealChoiceEffect.MAY_TRASH_OTHER_EMPEROR_FOR_THREE_STRENGTH
+                    )
                     else "Choose a Spy to recall for this Reveal effect"
                 ),
             ),
@@ -687,6 +819,16 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
             and owner.resources.spice >= 3
         )
         or effect is PersonalCardRevealChoiceEffect.PLACE_SPY
+        or (
+            effect
+            is PersonalCardRevealChoiceEffect.MAY_TRASH_OTHER_EMPEROR_FOR_THREE_STRENGTH
+            and any(
+                candidate_id != card_id
+                and Faction.EMPEROR
+                in personal_card_for_instance(candidate_id).factions
+                for candidate_id in cards_in_play
+            )
+        )
         or (
             effect
             in (

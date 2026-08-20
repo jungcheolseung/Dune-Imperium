@@ -150,7 +150,21 @@ IMPERIUM_CARDS: Final = (
         play_data_complete=True,
     ),
     _entry(45, "branching-path", "Branching Path", 3),
-    _entry(42, "calculus-of-power", "Calculus of Power", 3, copies=2),
+    _entry(
+        42,
+        "calculus-of-power",
+        "Calculus of Power",
+        3,
+        copies=2,
+        factions=(Faction.EMPEROR,),
+        agent_icons=(AgentIcon.LANDSRAAD, AgentIcon.SPY),
+        agent_effect=PersonalCardAgentEffect.TRASH_SELF,
+        reveal_persuasion=2,
+        reveal_choice_effects=(
+            PersonalCardRevealChoiceEffect.MAY_TRASH_OTHER_EMPEROR_FOR_THREE_STRENGTH,
+        ),
+        play_data_complete=True,
+    ),
     _entry(
         61,
         "captured-mentat",

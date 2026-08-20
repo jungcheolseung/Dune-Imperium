@@ -599,8 +599,22 @@ def test_covert_operation_play_data_forces_each_opponent_to_discard() -> None:
     assert card.reveal_strength == 0
 
 
+def test_calculus_of_power_play_data_trashes_self_or_another_emperor() -> None:
+    card = IMPERIUM_CARDS_BY_ID["calculus_of_power"]
+
+    assert card.play_data_complete is True
+    assert card.copies == 2
+    assert card.factions == (Faction.EMPEROR,)
+    assert card.agent_icons == (AgentIcon.LANDSRAAD, AgentIcon.SPY)
+    assert card.agent_effect is PersonalCardAgentEffect.TRASH_SELF
+    assert card.reveal_persuasion == 2
+    assert card.reveal_choice_effects == (
+        PersonalCardRevealChoiceEffect.MAY_TRASH_OTHER_EMPEROR_FOR_THREE_STRENGTH,
+    )
+
+
 def test_untranscribed_imperium_card_still_fails_explicitly() -> None:
-    instance_id = _instance("calculus_of_power")
+    instance_id = _instance("branching_path")
 
     with pytest.raises(NotImplementedError, match="not transcribed"):
         personal_card_for_instance(instance_id)

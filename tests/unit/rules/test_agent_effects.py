@@ -2082,3 +2082,33 @@ def test_double_agent_cannot_share_post_without_spying_on_visited_space() -> Non
     }
 
     assert opponent_post not in post_ids
+
+
+def test_calculus_of_power_trashes_itself_on_agent_turn() -> None:
+    calculus = _imperium_instance("calculus_of_power")
+    owner = PlayerState(
+        player_id=0,
+        spies_supply=2,
+        spy_post_ids=("landsraad-assembly-hall-gather-support",),
+        hand=(calculus,),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
+
+    result = resolve_agent_card_effect(placed)
+
+    assert result.state.players[0].in_play == ()
+    assert result.state.players[0].trashed == (calculus,)
+    assert result.events[0].kind == "card_trashed"

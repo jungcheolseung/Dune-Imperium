@@ -94,6 +94,7 @@ from dune_imperium.rules.phases import (
     resolve_recall_or_endgame,
 )
 from dune_imperium.rules.reveal_turn import (
+    apply_reveal_card_trash,
     apply_reveal_influence_exchange,
     apply_reveal_spice_influence,
     apply_reveal_spy_action,
@@ -102,6 +103,7 @@ from dune_imperium.rules.reveal_turn import (
     finish_reveal_turn,
     legal_finish_reveal_actions,
     legal_reveal_actions,
+    legal_reveal_card_trash_actions,
     legal_reveal_influence_exchange_actions,
     legal_reveal_spice_influence_actions,
     legal_reveal_spy_actions,
@@ -187,6 +189,7 @@ class UprisingRulesEngine(RulesEngine):
         actions: list[DomainAction] = []
         actions.extend(legal_acquisition_spy_actions(state, player))
         actions.extend(legal_opponent_card_discard_actions(state, player))
+        actions.extend(legal_reveal_card_trash_actions(state, player))
         actions.extend(legal_reveal_spy_actions(state, player))
         actions.extend(legal_reveal_influence_exchange_actions(state, player))
         actions.extend(legal_reveal_spice_influence_actions(state, player))
@@ -212,6 +215,7 @@ class UprisingRulesEngine(RulesEngine):
             "decline_endgame_wild_match": apply_endgame_wild_action,
             "decline_gather_intelligence": apply_gather_intelligence_action,
             "decline_reveal_spy_recall": apply_reveal_spy_action,
+            "decline_reveal_card_trash": apply_reveal_card_trash,
             "deploy_control_defense": apply_control_defense_action,
             "agent_turn": apply_agent_action,
             "reveal_turn": begin_reveal_turn,
@@ -236,6 +240,7 @@ class UprisingRulesEngine(RulesEngine):
             "place_reveal_spy": apply_reveal_spy_action,
             "recall_spy_for_reveal_placement": apply_reveal_spy_action,
             "recall_spies_for_reveal": apply_reveal_spy_action,
+            "trash_reveal_card": apply_reveal_card_trash,
             "decline_reveal_influence_exchange": apply_reveal_influence_exchange,
             "exchange_reveal_influence": apply_reveal_influence_exchange,
             "decline_reveal_spice_influence": apply_reveal_spice_influence,

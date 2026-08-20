@@ -127,6 +127,9 @@ class PersonalCardRevealChoiceEffect(StrEnum):
         "may_lose_influence_to_gain_influence"
     )
     MAY_PAY_THREE_SPICE_FOR_INFLUENCE = "may_pay_three_spice_for_influence"
+    MAY_TRASH_OTHER_EMPEROR_FOR_THREE_STRENGTH = (
+        "may_trash_other_emperor_for_three_strength"
+    )
 
 
 class PersonalCardRevealAcquisitionEffect(StrEnum):

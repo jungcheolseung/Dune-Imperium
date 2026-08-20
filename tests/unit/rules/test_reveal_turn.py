@@ -18,6 +18,7 @@ from dune_imperium.core import (
 )
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.reveal_turn import (
+    apply_reveal_card_trash,
     apply_reveal_influence_exchange,
     apply_reveal_spice_influence,
     apply_reveal_spy_action,
@@ -25,10 +26,63 @@ from dune_imperium.rules.reveal_turn import (
     finish_reveal_turn,
     legal_finish_reveal_actions,
     legal_reveal_actions,
+    legal_reveal_card_trash_actions,
     legal_reveal_influence_exchange_actions,
     legal_reveal_spice_influence_actions,
     legal_reveal_spy_actions,
 )
+
+
+def test_calculus_of_power_trashes_another_emperor_for_strength() -> None:
+    calculus = _imperium_instance("calculus_of_power")
+    sardaukar = _imperium_instance("sardaukar_soldier")
+    owner = PlayerState(
+        player_id=0,
+        troops_supply=8,
+        troops_garrison=3,
+        troops_conflict=1,
+        hand=(calculus, sardaukar),
+    )
+    state = replace(_state(owner), intrigue_deck=("intrigue:test",))
+    revealed = begin_reveal_turn(
+        state,
+        DomainAction(action_id="reveal_turn", actor=0),
+    ).state
+    actions = legal_reveal_card_trash_actions(revealed, 0)
+
+    assert {action.action_id for action in actions} == {
+        "decline_reveal_card_trash",
+        "trash_reveal_card",
+    }
+    trash = next(
+        action for action in actions if action.action_id == "trash_reveal_card"
+    )
+    assert dict(trash.arguments)["card_id"] == sardaukar
+
+    result = apply_reveal_card_trash(revealed, trash)
+    context = dict(result.state.decision_stack[-1].context)
+
+    assert result.state.players[0].in_play == (calculus,)
+    assert result.state.players[0].trashed == (sardaukar,)
+    assert result.state.players[0].intrigue_cards == ("intrigue:test",)
+    assert result.state.players[0].combat_strength == 6
+    assert context["strength"] == 6
+    assert [event.kind for event in result.events] == [
+        "card_trashed",
+        "intrigue_card_drawn",
+        "reveal_strength_gained",
+    ]
+
+
+def test_calculus_of_power_cannot_pay_with_itself() -> None:
+    calculus = _imperium_instance("calculus_of_power")
+    revealed = begin_reveal_turn(
+        _state(PlayerState(player_id=0, hand=(calculus,))),
+        DomainAction(action_id="reveal_turn", actor=0),
+    ).state
+
+    assert legal_reveal_card_trash_actions(revealed, 0) == ()
+    assert dict(revealed.decision_stack[-1].context)["persuasion"] == 2
 
 
 def test_captured_mentat_may_exchange_influence_on_reveal() -> None:
