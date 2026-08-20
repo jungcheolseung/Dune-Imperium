@@ -83,6 +83,10 @@
 
 ## Alliance
 
+- Card의 Alliance 조건은 해당 Faction Influence가 4 이상인지가 아니라 현재 그
+  Faction의 Alliance token을 보유하는지 확인한다. Branching Path는 Bene Gesserit
+  Alliance를 보유할 때만 Agent box의 선택형 trash 비용과 보상을 사용할 수 있다.
+  `[Main p. 7]` `[Branching Path card]`
 - 한 Faction에서 처음 Influence 4에 도달한 플레이어는 Alliance token과 그
   token의 1 VP를 얻는다. 다른 플레이어가 현재 보유자보다 **높은** 칸으로
   올라가면 token과 그 VP가 새 플레이어에게 이전된다. 동률만으로는 Main의 일반
