@@ -45,7 +45,7 @@
 | `[Main p. 6]` | Great House와 galactic figure를 전제로 한 Objective 도입 문구 | `out of scope` | 세계관 설명은 규칙 명세가 아님 |
 | `[Main p. 7]` | 네 Faction, Influence 증감, 2 Influence VP, 4 Influence bonus | `covered` | [uprising-systems.md](uprising-systems.md) |
 | `[Main p. 7]` | Alliance 획득, 더 높은 Influence의 상대에게 token과 VP 이전 | `covered` | [uprising-systems.md](uprising-systems.md) |
-| `[FAQ p. 1]` | Alliance 보유자가 3 이하로 내려갈 때 4 이상 수령 후보가 여러 명인 경우 | `open question` | [OQ-014](open-questions.md#oq-014--alliance-상실-때-여러-수령-후보) |
+| `[FAQ p. 1]` | Alliance 보유자가 3 이하로 내려갈 때 4 이상 수령 후보가 여러 명인 경우 | `covered` | [uprising-systems.md](uprising-systems.md), [OQ-014](open-questions.md#oq-014--alliance-상실-때-여러-수령-후보) |
 | `[Main p. 7]` | Intrigue의 비공개 보관·확인·공개·공용 discard와 Plot·Combat·Endgame 시점 | `covered` | [player-turns.md](player-turns.md), [combat-and-round-end.md](combat-and-round-end.md) |
 | `[Main p. 7]` | Faction 세계관 설명을 p. 2에서 참조 | `out of scope` | 세계관 설명은 규칙 명세가 아님 |
 | `[Main p. 8]` | 다섯 phase 순서, Conflict 공개, 각자 5장 draw | `covered` | [setup-and-game-flow.md](setup-and-game-flow.md) |

@@ -343,6 +343,10 @@ codec v35에 연결했다.
 서른 번째 묶음은 같은 hand discard 경계에서 decline 허용 여부와 조건부 draw를
 분리해, Guild Envoy의 의무 discard와 Spacing Guild 카드 discard 시 draw 2장을
 codec v36에 연결했다.
+서른한 번째 묶음은 선택형 hand discard 비용에 Intrigue·개인 카드 draw 보상을
+연결하고, Influence 감소와 증가 Faction을 함께 선택하는 Reveal 경계를 추가해
+Captured Mentat을 codec v37에 연결했다. Influence 감소는 Friendship VP와
+Alliance 반환·이전·복수 동률 수령자 선택을 공통 transition으로 처리한다.
 고정된 DIU `imperium.JSON`은 런타임 의존성 없이 63개 local identity와
 대조하고 아이콘·Faction·효과 형태를 정규화하는 read-only audit에만 사용한다.
 나머지 Imperium과 Intrigue, Leader, Objective 효과는 아직 identity manifest
