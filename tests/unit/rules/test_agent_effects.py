@@ -1651,3 +1651,74 @@ def test_space_time_folding_has_no_agent_effect_without_another_hand_card() -> N
     placed = apply_agent_action(state, _action_to(state, "deliver_supplies")).state
 
     assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False
+
+
+@pytest.mark.parametrize(
+    ("discarded_card_id", "expected_hand_count", "expected_deck_count"),
+    (
+        ("dagger", 0, 2),
+        ("reliable_informant", 2, 0),
+    ),
+)
+def test_guild_envoy_requires_discard_and_only_draws_for_spacing_guild(
+    discarded_card_id: str,
+    expected_hand_count: int,
+    expected_deck_count: int,
+) -> None:
+    envoy = _imperium_instance("guild_envoy")
+    discarded = (
+        _instance(discarded_card_id)
+        if discarded_card_id == "dagger"
+        else _imperium_instance(discarded_card_id)
+    )
+    first = _instance("convincing_argument")
+    second = _instance("reconnaissance")
+    owner = PlayerState(
+        player_id=0,
+        hand=(envoy, discarded),
+        deck=(first, second),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "deliver_supplies")).state
+    actions = legal_agent_card_discard_actions(placed, 0)
+
+    assert {action.action_id for action in actions} == {"discard_agent_card"}
+    result = apply_agent_card_discard(placed, actions[0])
+
+    assert result.state.players[0].discard_pile == (discarded,)
+    assert len(result.state.players[0].hand) == expected_hand_count
+    assert len(result.state.players[0].deck) == expected_deck_count
+
+
+def test_guild_envoy_has_no_agent_effect_without_another_hand_card() -> None:
+    envoy = _imperium_instance("guild_envoy")
+    owner = PlayerState(player_id=0, hand=(envoy,))
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+
+    placed = apply_agent_action(state, _action_to(state, "deliver_supplies")).state
+
+    assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False

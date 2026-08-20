@@ -494,6 +494,25 @@ def test_space_time_folding_play_data_has_conditional_discard_draw() -> None:
     assert card.reveal_strength == 0
 
 
+def test_guild_envoy_play_data_has_mandatory_conditional_discard_draw() -> None:
+    card = IMPERIUM_CARDS_BY_ID["guild_envoy"]
+
+    assert card.play_data_complete is True
+    assert card.factions == (Faction.SPACING_GUILD,)
+    assert card.agent_icons == (
+        AgentIcon.EMPEROR,
+        AgentIcon.SPACING_GUILD,
+        AgentIcon.BENE_GESSERIT,
+        AgentIcon.FREMEN,
+    )
+    assert (
+        card.agent_effect
+        is PersonalCardAgentEffect.DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD
+    )
+    assert card.reveal_persuasion == 1
+    assert card.reveal_strength == 0
+
+
 def test_untranscribed_imperium_card_still_fails_explicitly() -> None:
     instance_id = _instance("double_agent")
 
@@ -509,9 +528,9 @@ def test_personal_card_reveal_effect_requires_a_nonnegative_gain() -> None:
     with pytest.raises(ValueError, match="must not be negative"):
         PersonalCardRevealEffect(water=-1)
     with pytest.raises(TypeError, match="must use PersonalCardBond"):
-        PersonalCardRevealEffect(  # type: ignore[arg-type]
+        PersonalCardRevealEffect(
             water=1,
-            required_faction_bond="fremen",
+            required_faction_bond="fremen",  # type: ignore[arg-type]
         )
     with pytest.raises(ValueError, match="also needs High Council"):
         PersonalCardRevealEffect(persuasion=1, requires_swordmaster=True)

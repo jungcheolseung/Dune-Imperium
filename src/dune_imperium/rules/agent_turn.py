@@ -245,7 +245,10 @@ def _agent_effect_is_available(
         return owner.resources.water >= 2
     if effect is PersonalCardAgentEffect.DRAW_PER_SANDWORM_IN_CONFLICT:
         return owner.sandworms_conflict > 0
-    if effect is PersonalCardAgentEffect.DISCARD_TO_DRAW_ONE_OR_TWO_IF_SPACING_GUILD:
+    if effect in (
+        PersonalCardAgentEffect.DISCARD_TO_DRAW_ONE_OR_TWO_IF_SPACING_GUILD,
+        PersonalCardAgentEffect.DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD,
+    ):
         return len(owner.hand) > 1
     if (
         effect

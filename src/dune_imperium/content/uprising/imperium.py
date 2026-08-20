@@ -203,7 +203,24 @@ IMPERIUM_CARDS: Final = (
         reveal_effects=(PersonalCardRevealEffect(water=1),),
         play_data_complete=True,
     ),
-    _entry(38, "guild-envoy", "Guild Envoy", 3),
+    _entry(
+        38,
+        "guild-envoy",
+        "Guild Envoy",
+        3,
+        factions=(Faction.SPACING_GUILD,),
+        agent_icons=(
+            AgentIcon.EMPEROR,
+            AgentIcon.SPACING_GUILD,
+            AgentIcon.BENE_GESSERIT,
+            AgentIcon.FREMEN,
+        ),
+        agent_effect=(
+            PersonalCardAgentEffect.DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD
+        ),
+        reveal_persuasion=1,
+        play_data_complete=True,
+    ),
     _entry(43, "guild-spy", "Guild Spy", 3, has_acquisition_bonus=True),
     _entry(
         21,

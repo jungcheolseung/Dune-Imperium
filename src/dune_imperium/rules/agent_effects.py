@@ -46,13 +46,19 @@ def legal_agent_card_discard_actions(
         return ()
     _, source_card_id, _ = _effect_subject(context)
     source_card = personal_card_for_instance(source_card_id)
-    if (
-        source_card.agent_effect
-        is not PersonalCardAgentEffect.DISCARD_TO_DRAW_ONE_OR_TWO_IF_SPACING_GUILD
+    effect = source_card.agent_effect
+    if effect not in (
+        PersonalCardAgentEffect.DISCARD_TO_DRAW_ONE_OR_TWO_IF_SPACING_GUILD,
+        PersonalCardAgentEffect.DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD,
     ):
         return ()
     return (
-        DomainAction(action_id="decline_agent_card_discard", actor=player),
+        *(
+            (DomainAction(action_id="decline_agent_card_discard", actor=player),)
+            if effect
+            is PersonalCardAgentEffect.DISCARD_TO_DRAW_ONE_OR_TWO_IF_SPACING_GUILD
+            else ()
+        ),
         *(
             DomainAction(
                 action_id="discard_agent_card",
@@ -107,9 +113,16 @@ def apply_agent_card_discard(
         kind="card_discarded",
         payload=(("card_id", card_id), ("player", action.actor)),
     )
-    draw_count = (
-        2 if Faction.SPACING_GUILD in discarded_card.factions else 1
-    )
+    source_card = personal_card_for_instance(_effect_subject(context)[1])
+    if (
+        source_card.agent_effect
+        is PersonalCardAgentEffect.DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD
+    ):
+        draw_count = 2 if Faction.SPACING_GUILD in discarded_card.factions else 0
+    else:
+        draw_count = 2 if Faction.SPACING_GUILD in discarded_card.factions else 1
+    if draw_count == 0:
+        return RuleResult(state=prepared, events=(event,))
     drawn = draw_or_request_personal_cards(
         prepared,
         action.actor,

@@ -48,6 +48,9 @@ class PersonalCardAgentEffect(StrEnum):
     DISCARD_TO_DRAW_ONE_OR_TWO_IF_SPACING_GUILD = (
         "discard_to_draw_one_or_two_if_spacing_guild"
     )
+    DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD = (
+        "discard_one_draw_two_if_spacing_guild"
+    )
     GAIN_SPICE_IF_MAKER_SPACE = "gain_spice_if_maker_space"
     GAIN_TWO_SOLARI = "gain_two_solari"
     PLACE_SPY = "place_spy"
