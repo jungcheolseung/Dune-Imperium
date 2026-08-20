@@ -1889,6 +1889,64 @@ def test_guild_spy_cannot_discard_guild_card_without_intrigue_reward() -> None:
     ) == (non_guild_card,)
 
 
+def test_covert_operation_makes_opponents_with_cards_discard_clockwise() -> None:
+    covert_operation = _imperium_instance("covert_operation")
+    first_discard = _instance("dagger").replace("player:0:", "player:1:")
+    second_discard = _imperium_instance("spacing_guild_s_favor")
+    owner = PlayerState(
+        player_id=0,
+        spies_supply=2,
+        spy_post_ids=("landsraad-assembly-hall-gather-support",),
+        hand=(covert_operation,),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(
+            owner,
+            PlayerState(player_id=1, hand=(first_discard,)),
+            PlayerState(player_id=2, hand=(second_discard,)),
+            PlayerState(player_id=3),
+        ),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
+
+    pending = resolve_agent_card_effect(placed)
+    engine = UprisingRulesEngine()
+
+    assert pending.state.decision_stack[-1].decision == PlayerDecision(
+        owner=1,
+        prompt="Choose a card to discard for Covert Operation",
+    )
+    assert engine.legal_actions(pending.state, 2) == ()
+    first = engine.apply(pending.state, engine.legal_actions(pending.state, 1)[0])
+    assert first.state.players[1].discard_pile == (first_discard,)
+    assert first.state.decision_stack[-1].decision == PlayerDecision(
+        owner=2,
+        prompt="Choose a card to discard for Covert Operation",
+    )
+
+    second = engine.apply(first.state, engine.legal_actions(first.state, 2)[0])
+
+    assert second.state.players[2].discard_pile == (second_discard,)
+    assert second.state.players[2].resources.spice == 2
+    resumed = second.state.decision_stack[-1].decision
+    assert isinstance(resumed, PlayerDecision)
+    assert resumed.owner == 0
+    assert [event.kind for event in second.events] == [
+        "card_discarded",
+        "personal_card_discard_effect_resolved",
+    ]
+
+
 def test_spacing_guilds_favor_draws_one_on_agent_turn() -> None:
     favor = _imperium_instance("spacing_guild_s_favor")
     drawn = _instance("dagger")

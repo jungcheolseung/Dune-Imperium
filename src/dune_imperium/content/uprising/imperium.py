@@ -169,7 +169,16 @@ IMPERIUM_CARDS: Final = (
     _entry(181, "cargo-runner", "Cargo Runner", 3, choam_only=True),
     _entry(67, "chani-clever-tactician", "Chani, Clever Tactician", 5),
     _entry(69, "corrinth-city", "Corrinth City", 6),
-    _entry(35, "covert-operation", "Covert Operation", 3),
+    _entry(
+        35,
+        "covert-operation",
+        "Covert Operation",
+        3,
+        agent_icons=(AgentIcon.SPY,),
+        agent_effect=PersonalCardAgentEffect.EACH_OPPONENT_DISCARDS_PERSONAL_CARD,
+        reveal_persuasion=2,
+        play_data_complete=True,
+    ),
     _entry(
         44,
         "dangerous-rhetoric",

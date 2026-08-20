@@ -28,11 +28,13 @@ from dune_imperium.rules.agent_effects import (
     apply_agent_card_payment,
     apply_agent_card_spy_action,
     apply_agent_card_trash,
+    apply_opponent_card_discard,
     legal_agent_card_discard_actions,
     legal_agent_card_influence_actions,
     legal_agent_card_payment_actions,
     legal_agent_card_spy_actions,
     legal_agent_card_trash_actions,
+    legal_opponent_card_discard_actions,
     resolve_agent_card_effect,
     resolve_faction_influence,
 )
@@ -184,6 +186,7 @@ class UprisingRulesEngine(RulesEngine):
 
         actions: list[DomainAction] = []
         actions.extend(legal_acquisition_spy_actions(state, player))
+        actions.extend(legal_opponent_card_discard_actions(state, player))
         actions.extend(legal_reveal_spy_actions(state, player))
         actions.extend(legal_reveal_influence_exchange_actions(state, player))
         actions.extend(legal_reveal_spice_influence_actions(state, player))
@@ -242,6 +245,7 @@ class UprisingRulesEngine(RulesEngine):
             "pass_combat_intrigue": apply_combat_intrigue_pass,
             "pay_agent_card_water": apply_agent_card_payment,
             "discard_agent_card": apply_agent_card_discard,
+            "discard_opponent_card": apply_opponent_card_discard,
             "place_agent_card_spy": apply_agent_card_spy_action,
             "recall_spy_for_agent_card": apply_agent_card_spy_action,
             "decline_combat_reward": _apply_decline_combat_reward,
@@ -362,6 +366,7 @@ def _agent_action_is_supported(state: GameState, action: DomainAction) -> bool:
         PersonalCardAgentEffect.DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD,
         PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD,
         PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE_AND_INTRIGUE_IF_SPACING_GUILD,
+        PersonalCardAgentEffect.EACH_OPPONENT_DISCARDS_PERSONAL_CARD,
         PersonalCardAgentEffect.GAIN_SPICE_IF_MAKER_SPACE,
         PersonalCardAgentEffect.GAIN_WATER,
         PersonalCardAgentEffect.GAIN_TWO_SOLARI,

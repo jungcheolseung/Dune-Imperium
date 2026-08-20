@@ -10,7 +10,7 @@ from dune_imperium.content.uprising.board import (
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.content.uprising.types import PersonalCardAgentEffect
 from dune_imperium.core.actions import ActionValue, DomainAction
-from dune_imperium.core.decisions import PlayerDecision
+from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
@@ -190,6 +190,70 @@ def apply_agent_card_discard(
     return RuleResult(
         state=drawn.state,
         events=(*discarded.events, *intrigue_events, *drawn.events),
+    )
+
+
+def legal_opponent_card_discard_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return hand cards the current Covert Operation target may discard."""
+
+    if not 0 <= player < state.config.players or not state.decision_stack:
+        return ()
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    if (
+        not isinstance(frame.decision, PlayerDecision)
+        or frame.decision.owner != player
+        or "covert_operation_card_id" not in context
+        or "covert_operation_owner" not in context
+    ):
+        return ()
+    return tuple(
+        DomainAction(
+            action_id="discard_opponent_card",
+            actor=player,
+            arguments=(("card_id", card_id),),
+        )
+        for card_id in state.players[player].hand
+    )
+
+
+def apply_opponent_card_discard(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Discard one target-owned card and expose the next opponent decision."""
+
+    if action not in legal_opponent_card_discard_actions(state, action.actor):
+        raise ValueError("action is not a legal opponent-card discard")
+    context = dict(state.decision_stack[-1].context)
+    source_card_id = context["covert_operation_card_id"]
+    source_owner = context["covert_operation_owner"]
+    card_id = dict(action.arguments).get("card_id")
+    if (
+        not isinstance(source_card_id, str)
+        or isinstance(source_owner, bool)
+        or not isinstance(source_owner, int)
+        or not isinstance(card_id, str)
+    ):
+        raise RuntimeError("Covert Operation frame has invalid context")
+    discarded = discard_personal_card_from_hand(
+        state,
+        action.actor,
+        card_id,
+        source=(
+            f"round:{state.round_number}:player:{source_owner}:"
+            f"agent_card:{source_card_id}:opponent:{action.actor}"
+        ),
+    )
+    return RuleResult(
+        state=replace(
+            discarded.state,
+            decision_stack=discarded.state.decision_stack[:-1],
+        ),
+        events=discarded.events,
     )
 
 
@@ -608,6 +672,56 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
     elif effect is PersonalCardAgentEffect.DRAW_PERSONAL_CARD:
         next_owner = owner
         event_kind = "agent_card_effect_resolved"
+    elif effect is PersonalCardAgentEffect.EACH_OPPONENT_DISCARDS_PERSONAL_CARD:
+        context["pending_agent_effect"] = False
+        base_frame = replace(
+            state.decision_stack[-1],
+            context=tuple(sorted(context.items())),
+        )
+        targets = tuple(
+            (player + offset) % state.config.players
+            for offset in range(1, state.config.players)
+            if state.players[(player + offset) % state.config.players].hand
+        )
+        frames = tuple(
+            DecisionFrame(
+                frame_id=(
+                    f"round:{state.round_number}:player:{player}:"
+                    f"agent_card:{card_instance_id}:opponent:{target}"
+                ),
+                decision=PlayerDecision(
+                    owner=target,
+                    prompt="Choose a card to discard for Covert Operation",
+                ),
+                context=(
+                    ("covert_operation_card_id", card_instance_id),
+                    ("covert_operation_owner", player),
+                ),
+            )
+            for target in reversed(targets)
+        )
+        base_state = replace(
+            state,
+            decision_stack=(*state.decision_stack[:-1], base_frame, *frames),
+        )
+        next_state = (
+            base_state
+            if targets
+            else advance_after_effect(base_state, context, base_state.players)
+        )
+        return RuleResult(
+            state=next_state,
+            events=(
+                GameEvent(
+                    event_id=(
+                        f"round:{state.round_number}:player:{player}:"
+                        f"agent_card:{card_instance_id}"
+                    ),
+                    kind="agent_card_effect_resolved",
+                    payload=(("card_id", card_instance_id), ("player", player)),
+                ),
+            ),
+        )
     elif effect is PersonalCardAgentEffect.DRAW_PER_SANDWORM_IN_CONFLICT:
         if owner.sandworms_conflict == 0:
             raise RuntimeError("conditional Agent effect is not available")

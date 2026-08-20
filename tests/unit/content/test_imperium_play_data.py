@@ -585,6 +585,20 @@ def test_guild_spy_play_data_has_discard_acquisition_and_reveal_triggers() -> No
     )
 
 
+def test_covert_operation_play_data_forces_each_opponent_to_discard() -> None:
+    card = IMPERIUM_CARDS_BY_ID["covert_operation"]
+
+    assert card.play_data_complete is True
+    assert card.factions == ()
+    assert card.agent_icons == (AgentIcon.SPY,)
+    assert (
+        card.agent_effect
+        is PersonalCardAgentEffect.EACH_OPPONENT_DISCARDS_PERSONAL_CARD
+    )
+    assert card.reveal_persuasion == 2
+    assert card.reveal_strength == 0
+
+
 def test_untranscribed_imperium_card_still_fails_explicitly() -> None:
     instance_id = _instance("calculus_of_power")
 

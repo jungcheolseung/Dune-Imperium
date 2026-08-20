@@ -57,6 +57,7 @@ class PersonalCardAgentEffect(StrEnum):
     MAY_DISCARD_TO_DRAW_ONE_AND_INTRIGUE_IF_SPACING_GUILD = (
         "may_discard_to_draw_one_and_intrigue_if_spacing_guild"
     )
+    EACH_OPPONENT_DISCARDS_PERSONAL_CARD = "each_opponent_discards_personal_card"
     GAIN_SPICE_IF_MAKER_SPACE = "gain_spice_if_maker_space"
     GAIN_TWO_SOLARI = "gain_two_solari"
     PLACE_SPY = "place_spy"
