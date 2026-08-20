@@ -244,7 +244,7 @@ FAQ의 `See ...` 항목은 새 규칙이 없더라도 연결 대상의 coverage�
 | `Gather Intelligence` 참조 `[FAQ p. 2]` | `covered` | [player-turns.md](player-turns.md), [uprising-systems.md](uprising-systems.md) |
 | `Ghola`와 grafted card 상호작용 `[FAQ p. 2]` | `out of scope` | Immortality의 graft 규칙 제외 |
 | `Guild Bankers` discount `[FAQ p. 2]` | `deferred to content manifest` | card 데이터와 `official-rulings-index.md` |
-| `Guild Envoy`의 의무 discard `[FAQ p. 2]` | `deferred to content manifest` | card 데이터와 `official-rulings-index.md` |
+| `Guild Envoy`의 의무 discard `[FAQ p. 2]` | `covered` | [../implementation-audits/personal-cards.md](../implementation-audits/personal-cards.md)와 card scenario test |
 | `Gun Thopter`의 opponent garrison 조건 `[FAQ p. 2]` | `deferred to content manifest` | card 데이터와 `official-rulings-index.md` |
 | `Helena Richese`의 Manipulate 참조 `[FAQ p. 2]` | `deferred to content manifest` | Leader 데이터와 `official-rulings-index.md` |
 | `Ilesa Ecaz — One Step Ahead`의 `otherwise` `[FAQ p. 2]` | `deferred to content manifest` | Leader 데이터와 `official-rulings-index.md` |

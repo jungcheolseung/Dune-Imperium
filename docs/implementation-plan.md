@@ -340,6 +340,9 @@ Fremen Bond Reveal Influence를 codec v33에 연결했다. Reveal Influence도
 스물아홉 번째 묶음은 손의 카드를 discard하는 별도 선택 경계를 추가하고,
 Space-time Folding이 Spacing Guild 카드를 버리면 draw를 2장으로 늘리도록
 codec v35에 연결했다.
+서른 번째 묶음은 같은 hand discard 경계에서 decline 허용 여부와 조건부 draw를
+분리해, Guild Envoy의 의무 discard와 Spacing Guild 카드 discard 시 draw 2장을
+codec v36에 연결했다.
 고정된 DIU `imperium.JSON`은 런타임 의존성 없이 63개 local identity와
 대조하고 아이콘·Faction·효과 형태를 정규화하는 read-only audit에만 사용한다.
 나머지 Imperium과 Intrigue, Leader, Objective 효과는 아직 identity manifest
