@@ -294,6 +294,13 @@ def _agent_effect_is_available(
             card_instance_id,
             Faction.BENE_GESSERIT,
         )
+    if (
+        effect
+        is (
+            PersonalCardAgentEffect.MAY_TRASH_FOR_INTRIGUE_AND_TWO_TROOPS_IF_BENE_GESSERIT_ALLIANCE
+        )
+    ):
+        return Faction.BENE_GESSERIT.value in owner.alliance_faction_ids
     if effect is PersonalCardAgentEffect.GAIN_WATER_IF_BENE_GESSERIT_BOND:
         return has_faction_bond(
             (*owner.in_play, card_instance_id),

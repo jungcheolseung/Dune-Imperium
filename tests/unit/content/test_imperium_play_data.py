@@ -613,8 +613,24 @@ def test_calculus_of_power_play_data_trashes_self_or_another_emperor() -> None:
     )
 
 
+def test_branching_path_play_data_has_alliance_trash_reward() -> None:
+    card = IMPERIUM_CARDS_BY_ID["branching_path"]
+
+    assert card.play_data_complete is True
+    assert card.factions == (Faction.BENE_GESSERIT,)
+    assert card.agent_icons == (AgentIcon.BENE_GESSERIT, AgentIcon.LANDSRAAD)
+    assert (
+        card.agent_effect
+        is (
+            PersonalCardAgentEffect.MAY_TRASH_FOR_INTRIGUE_AND_TWO_TROOPS_IF_BENE_GESSERIT_ALLIANCE
+        )
+    )
+    assert card.reveal_persuasion == 2
+    assert card.reveal_strength == 0
+
+
 def test_untranscribed_imperium_card_still_fails_explicitly() -> None:
-    instance_id = _instance("branching_path")
+    instance_id = _instance("chani_clever_tactician")
 
     with pytest.raises(NotImplementedError, match="not transcribed"):
         personal_card_for_instance(instance_id)

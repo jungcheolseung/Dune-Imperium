@@ -149,7 +149,19 @@ IMPERIUM_CARDS: Final = (
         ),
         play_data_complete=True,
     ),
-    _entry(45, "branching-path", "Branching Path", 3),
+    _entry(
+        45,
+        "branching-path",
+        "Branching Path",
+        3,
+        factions=(Faction.BENE_GESSERIT,),
+        agent_icons=(AgentIcon.BENE_GESSERIT, AgentIcon.LANDSRAAD),
+        agent_effect=(
+            PersonalCardAgentEffect.MAY_TRASH_FOR_INTRIGUE_AND_TWO_TROOPS_IF_BENE_GESSERIT_ALLIANCE
+        ),
+        reveal_persuasion=2,
+        play_data_complete=True,
+    ),
     _entry(
         42,
         "calculus-of-power",

@@ -5,7 +5,7 @@ from dataclasses import replace
 import pytest
 
 from dune_imperium import RulesetConfig
-from dune_imperium.content.uprising.board import OBSERVATION_POSTS
+from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.core import (
@@ -2112,3 +2112,101 @@ def test_calculus_of_power_trashes_itself_on_agent_turn() -> None:
     assert result.state.players[0].in_play == ()
     assert result.state.players[0].trashed == (calculus,)
     assert result.events[0].kind == "card_trashed"
+
+
+def test_branching_path_alliance_trash_draws_intrigue_and_recruits_two() -> None:
+    branching_path = _imperium_instance("branching_path")
+    sardaukar = _imperium_instance("sardaukar_soldier")
+    owner = PlayerState(
+        player_id=0,
+        alliance_faction_ids=(Faction.BENE_GESSERIT.value,),
+        hand=(branching_path, sardaukar),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        intrigue_deck=("intrigue:trash", "intrigue:reward"),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
+    action = next(
+        action
+        for action in legal_agent_card_trash_actions(placed, 0)
+        if dict(action.arguments).get("card_id") == sardaukar
+    )
+
+    result = apply_agent_card_trash(placed, action)
+    context = dict(result.state.decision_stack[-1].context)
+
+    assert result.state.players[0].trashed == (sardaukar,)
+    assert result.state.players[0].intrigue_cards == (
+        "intrigue:trash",
+        "intrigue:reward",
+    )
+    assert result.state.players[0].troops_supply == 7
+    assert result.state.players[0].troops_garrison == 5
+    assert context["troops_recruited"] == 2
+    assert [event.kind for event in result.events] == [
+        "card_trashed",
+        "intrigue_card_drawn",
+        "intrigue_card_drawn",
+    ]
+
+
+def test_branching_path_agent_effect_requires_bene_gesserit_alliance() -> None:
+    branching_path = _imperium_instance("branching_path")
+    owner = PlayerState(player_id=0, hand=(branching_path, _instance("dagger")))
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        intrigue_deck=("intrigue:reward",),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+
+    placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
+
+    assert legal_agent_card_trash_actions(placed, 0) == ()
+    assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False
+
+
+def test_branching_path_cannot_trash_without_intrigue_reward() -> None:
+    branching_path = _imperium_instance("branching_path")
+    owner = PlayerState(
+        player_id=0,
+        alliance_faction_ids=(Faction.BENE_GESSERIT.value,),
+        hand=(branching_path, _instance("dagger")),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
+
+    assert legal_agent_card_trash_actions(placed, 0) == (
+        DomainAction(action_id="decline_agent_card_trash", actor=0),
+    )

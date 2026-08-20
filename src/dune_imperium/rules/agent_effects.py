@@ -8,7 +8,10 @@ from dune_imperium.content.uprising.board import (
     Faction,
 )
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
-from dune_imperium.content.uprising.types import PersonalCardAgentEffect
+from dune_imperium.content.uprising.types import (
+    PersonalCardAgentEffect,
+    PersonalCardTrashEffect,
+)
 from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
@@ -500,11 +503,28 @@ def legal_agent_card_trash_actions(
         PersonalCardAgentEffect.TRASH_PERSONAL_CARD,
         PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE,
         PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND,
+        PersonalCardAgentEffect.MAY_TRASH_FOR_INTRIGUE_AND_TWO_TROOPS_IF_BENE_GESSERIT_ALLIANCE,
     ):
         return ()
 
     owner = state.players[player]
     eligible = (*owner.hand, *owner.discard_pile, *owner.in_play)
+    if (
+        source_card.agent_effect
+        is (
+            PersonalCardAgentEffect.MAY_TRASH_FOR_INTRIGUE_AND_TWO_TROOPS_IF_BENE_GESSERIT_ALLIANCE
+        )
+    ):
+        eligible = tuple(
+            card_id
+            for card_id in eligible
+            if len(state.intrigue_deck)
+            >= 1
+            + int(
+                getattr(personal_card_for_instance(card_id), "trash_effect", None)
+                is PersonalCardTrashEffect.DRAW_INTRIGUE_CARD
+            )
+        )
     return (
         DomainAction(action_id="decline_agent_card_trash", actor=player),
         *(
@@ -546,6 +566,50 @@ def apply_agent_card_trash(state: GameState, action: DomainAction) -> RuleResult
         card_id,
         source=source,
     )
+    if (
+        source_card.agent_effect
+        is (
+            PersonalCardAgentEffect.MAY_TRASH_FOR_INTRIGUE_AND_TWO_TROOPS_IF_BENE_GESSERIT_ALLIANCE
+        )
+    ):
+        if not trashed.state.intrigue_deck:
+            raise RuntimeError("Branching Path trash has no Intrigue reward")
+        next_owner, recruited = recruit_troops(
+            trashed.state.players[action.actor],
+            2,
+        )
+        next_owner = replace(
+            next_owner,
+            intrigue_cards=(
+                *next_owner.intrigue_cards,
+                trashed.state.intrigue_deck[0],
+            ),
+        )
+        previous = context.get("troops_recruited")
+        if isinstance(previous, bool) or not isinstance(previous, int):
+            raise RuntimeError("Agent-turn effect frame has invalid recruit count")
+        context["troops_recruited"] = previous + recruited
+        rewarded = replace(
+            trashed.state,
+            players=_replace_player(trashed.state, next_owner),
+            intrigue_deck=trashed.state.intrigue_deck[1:],
+        )
+        next_state = advance_after_effect(
+            rewarded,
+            context,
+            rewarded.players,
+        )
+        return RuleResult(
+            state=next_state,
+            events=(
+                *trashed.events,
+                GameEvent(
+                    event_id=f"{source}:trash_reward:intrigue_draw",
+                    kind="intrigue_card_drawn",
+                    payload=(("count", 1), ("player", action.actor)),
+                ),
+            ),
+        )
     next_state = advance_after_effect(
         trashed.state,
         context,

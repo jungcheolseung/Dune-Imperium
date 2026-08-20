@@ -35,6 +35,9 @@ class PersonalCardAgentEffect(StrEnum):
     TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND = (
         "trash_personal_card_to_draw_one_if_bene_gesserit_bond"
     )
+    MAY_TRASH_FOR_INTRIGUE_AND_TWO_TROOPS_IF_BENE_GESSERIT_ALLIANCE = (
+        "may_trash_for_intrigue_and_two_troops_if_bene_gesserit_alliance"
+    )
     TRASH_SELF_AND_GAIN_CHOSEN_INFLUENCE = (
         "trash_self_and_gain_chosen_influence"
     )
