@@ -95,6 +95,130 @@ def gain_faction_influence(
     )
 
 
+def alliance_recipients_after_influence_loss(
+    state: GameState,
+    player: int,
+    faction: Faction,
+) -> tuple[int, ...]:
+    """Return players eligible to receive an Alliance after losing one step."""
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("Influence owner must identify a configured player")
+    owner = state.players[player]
+    if faction.value not in owner.alliance_faction_ids:
+        return ()
+    current = influence_amount(owner.influence, faction)
+    if current == 0:
+        return ()
+    tied = tuple(
+        candidate.player_id
+        for candidate in state.players
+        if candidate.player_id != player
+        and influence_amount(candidate.influence, faction) == current
+    )
+    if tied:
+        return tied
+    if current - 1 >= 4:
+        return ()
+    return tuple(
+        candidate.player_id
+        for candidate in state.players
+        if candidate.player_id != player
+        and influence_amount(candidate.influence, faction) >= 4
+    )
+
+
+def lose_faction_influence(
+    state: GameState,
+    player: int,
+    faction: Faction,
+    amount: int,
+    *,
+    event_prefix: str,
+    alliance_recipient: int | None = None,
+) -> RuleResult:
+    """Lose Influence one space at a time and resolve held Alliance tokens."""
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("Influence owner must identify a configured player")
+    if amount < 0:
+        raise ValueError("Influence loss must not be negative")
+    if amount > 1 and alliance_recipient is not None:
+        raise ValueError("an Alliance recipient can only resolve a one-step loss")
+
+    players = state.players
+    lost = 0
+    events: list[GameEvent] = []
+    for step in range(amount):
+        step_state = replace(state, players=players)
+        recipients = alliance_recipients_after_influence_loss(
+            step_state,
+            player,
+            faction,
+        )
+        if len(recipients) > 1 and alliance_recipient not in recipients:
+            raise ValueError("Influence loss requires an Alliance recipient choice")
+        if len(recipients) <= 1 and alliance_recipient is not None:
+            raise ValueError(
+                "Influence loss does not allow an Alliance recipient choice"
+            )
+
+        owner = players[player]
+        current = influence_amount(owner.influence, faction)
+        if current == 0:
+            break
+        next_amount = current - 1
+        owner = replace(
+            owner,
+            influence=replace_influence(owner.influence, faction, next_amount),
+            victory_points=owner.victory_points - (1 if next_amount == 1 else 0),
+        )
+        players = replace_player(players, owner)
+        lost += 1
+
+        if faction.value in owner.alliance_faction_ids:
+            recipient = (
+                alliance_recipient
+                if len(recipients) > 1
+                else recipients[0]
+                if recipients
+                else None
+            )
+            if recipient is not None:
+                players, event = _transfer_or_return_alliance(
+                    players,
+                    player,
+                    faction,
+                    recipient,
+                    event_id=f"{event_prefix}:alliance:{step}",
+                )
+                events.append(event)
+            elif next_amount < 4:
+                players, event = _transfer_or_return_alliance(
+                    players,
+                    player,
+                    faction,
+                    None,
+                    event_id=f"{event_prefix}:alliance:{step}",
+                )
+                events.append(event)
+
+    if lost:
+        events.insert(
+            0,
+            GameEvent(
+                event_id=f"{event_prefix}:influence",
+                kind="influence_lost",
+                payload=(
+                    ("amount", lost),
+                    ("faction", faction.value),
+                    ("player", player),
+                ),
+            ),
+        )
+    return RuleResult(state=replace(state, players=players), events=tuple(events))
+
+
 def influence_amount(influence: Influence, faction: Faction) -> int:
     """Return one faction's position from the fixed Influence record."""
 
@@ -227,6 +351,48 @@ def _update_alliance(
         ),
     )
     return tuple(next_players), event
+
+
+def _transfer_or_return_alliance(
+    players: tuple[PlayerState, ...],
+    holder: int,
+    faction: Faction,
+    recipient: int | None,
+    *,
+    event_id: str,
+) -> tuple[tuple[PlayerState, ...], GameEvent]:
+    faction_id = faction.value
+    next_players: list[PlayerState] = []
+    for owner in players:
+        alliance_ids = owner.alliance_faction_ids
+        victory_points = owner.victory_points
+        if owner.player_id == holder:
+            alliance_ids = tuple(
+                candidate for candidate in alliance_ids if candidate != faction_id
+            )
+            victory_points -= 1
+        if owner.player_id == recipient:
+            alliance_ids = (*alliance_ids, faction_id)
+            victory_points += 1
+        next_players.append(
+            replace(
+                owner,
+                alliance_faction_ids=alliance_ids,
+                victory_points=victory_points,
+            )
+        )
+    return (
+        tuple(next_players),
+        GameEvent(
+            event_id=event_id,
+            kind="alliance_lost" if recipient is None else "alliance_transferred",
+            payload=(
+                ("faction", faction_id),
+                ("from_player", holder),
+                ("to_player", -1 if recipient is None else recipient),
+            ),
+        ),
+    )
 
 
 def replace_player(
