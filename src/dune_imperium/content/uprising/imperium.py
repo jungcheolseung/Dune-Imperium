@@ -15,6 +15,7 @@ from dune_imperium.content.uprising.types import (
     PersonalCardAcquisitionEffect,
     PersonalCardAgentEffect,
     PersonalCardBond,
+    PersonalCardDiscardEffect,
     PersonalCardRevealChoiceEffect,
     PersonalCardRevealEffect,
     PersonalCardTrashEffect,
@@ -33,6 +34,7 @@ class ImperiumCardEntry(DeckCardEntry):
     agent_effect: PersonalCardAgentEffect | None = None
     agent_spy_factions: tuple[Faction, ...] = ()
     acquisition_effect: PersonalCardAcquisitionEffect | None = None
+    discard_effect: PersonalCardDiscardEffect | None = None
     trash_effect: PersonalCardTrashEffect | None = None
     reveal_persuasion: int = 0
     reveal_strength: int = 0
@@ -66,6 +68,7 @@ class ImperiumCardEntry(DeckCardEntry):
             or self.agent_effect is not None
             or self.agent_spy_factions
             or self.acquisition_effect is not None
+            or self.discard_effect is not None
             or self.trash_effect is not None
             or self.reveal_persuasion
             or self.reveal_strength
@@ -89,6 +92,7 @@ def _entry(
     agent_effect: PersonalCardAgentEffect | None = None,
     agent_spy_factions: tuple[Faction, ...] = (),
     acquisition_effect: PersonalCardAcquisitionEffect | None = None,
+    discard_effect: PersonalCardDiscardEffect | None = None,
     trash_effect: PersonalCardTrashEffect | None = None,
     reveal_persuasion: int = 0,
     reveal_strength: int = 0,
@@ -112,6 +116,7 @@ def _entry(
         agent_effect=agent_effect,
         agent_spy_factions=agent_spy_factions,
         acquisition_effect=acquisition_effect,
+        discard_effect=discard_effect,
         trash_effect=trash_effect,
         reveal_persuasion=reveal_persuasion,
         reveal_strength=reveal_strength,
@@ -518,7 +523,22 @@ IMPERIUM_CARDS: Final = (
         reveal_persuasion=1,
         play_data_complete=True,
     ),
-    _entry(60, "spacing-guild-s-favor", "Spacing Guild's Favor", 5, copies=2),
+    _entry(
+        60,
+        "spacing-guild-s-favor",
+        "Spacing Guild's Favor",
+        5,
+        copies=2,
+        factions=(Faction.SPACING_GUILD,),
+        agent_icons=(AgentIcon.SPACING_GUILD, AgentIcon.SPICE_TRADE),
+        agent_effect=PersonalCardAgentEffect.DRAW_PERSONAL_CARD,
+        discard_effect=PersonalCardDiscardEffect.GAIN_TWO_SPICE,
+        reveal_persuasion=2,
+        reveal_choice_effects=(
+            PersonalCardRevealChoiceEffect.MAY_PAY_THREE_SPICE_FOR_INFLUENCE,
+        ),
+        play_data_complete=True,
+    ),
     _entry(
         25,
         "spy-network",

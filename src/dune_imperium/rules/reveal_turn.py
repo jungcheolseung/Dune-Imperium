@@ -149,6 +149,107 @@ def legal_reveal_influence_exchange_actions(
     return tuple(actions)
 
 
+def legal_reveal_spice_influence_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return optional three-Spice payments for Reveal Influence."""
+
+    if not 0 <= player < state.config.players or not state.decision_stack:
+        return ()
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    if (
+        context.get("reveal_choice_effect")
+        != PersonalCardRevealChoiceEffect.MAY_PAY_THREE_SPICE_FOR_INFLUENCE.value
+    ):
+        return ()
+    decline = DomainAction(
+        action_id="decline_reveal_spice_influence",
+        actor=player,
+    )
+    if state.players[player].resources.spice < 3:
+        return (decline,)
+    return (
+        decline,
+        *(
+            DomainAction(
+                action_id="pay_reveal_spice_influence",
+                actor=player,
+                arguments=(("faction", faction.value),),
+            )
+            for faction in Faction
+        ),
+    )
+
+
+def apply_reveal_spice_influence(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Decline or pay three Spice and gain one chosen Faction Influence."""
+
+    if action not in legal_reveal_spice_influence_actions(state, action.actor):
+        raise ValueError("action is not a legal Reveal Spice payment")
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    card_id = context.get("reveal_card_id")
+    if not isinstance(card_id, str):
+        raise RuntimeError("Reveal Spice-payment frame has invalid card ID")
+    source = (
+        f"round:{state.round_number}:player:{action.actor}:"
+        f"reveal_card:{card_id}:spice_influence"
+    )
+    if action.action_id == "decline_reveal_spice_influence":
+        return RuleResult(
+            state=replace(state, decision_stack=state.decision_stack[:-1]),
+            events=(
+                GameEvent(
+                    event_id=f"{source}:declined",
+                    kind="reveal_spice_influence_declined",
+                    payload=(("card_id", card_id), ("player", action.actor)),
+                ),
+            ),
+        )
+
+    faction_value = dict(action.arguments).get("faction")
+    if not isinstance(faction_value, str):
+        raise RuntimeError("Reveal Spice payment has invalid Faction")
+    owner = state.players[action.actor]
+    if owner.resources.spice < 3:
+        raise RuntimeError("Reveal Influence payment requires three Spice")
+    owner = replace(
+        owner,
+        resources=replace(owner.resources, spice=owner.resources.spice - 3),
+    )
+    paid = replace(state, players=_replace_player(state, owner))
+    gained = gain_faction_influence(
+        paid,
+        action.actor,
+        Faction(faction_value),
+        1,
+        event_prefix=f"{source}:gained:{faction_value}",
+    )
+    payment_event = GameEvent(
+        event_id=f"{source}:paid",
+        kind="reveal_spice_paid",
+        payload=(
+            ("amount", 3),
+            ("card_id", card_id),
+            ("player", action.actor),
+        ),
+    )
+    return RuleResult(
+        state=replace(
+            gained.state,
+            decision_stack=gained.state.decision_stack[:-1],
+        ),
+        events=(payment_event, *gained.events),
+    )
+
+
 def apply_reveal_influence_exchange(
     state: GameState,
     action: DomainAction,
@@ -551,6 +652,9 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
                     is (
                         PersonalCardRevealChoiceEffect.MAY_LOSE_INFLUENCE_TO_GAIN_INFLUENCE
                     )
+                    else "Pay three Spice for Influence or decline this Reveal effect"
+                    if effect
+                    is PersonalCardRevealChoiceEffect.MAY_PAY_THREE_SPICE_FOR_INFLUENCE
                     else "Choose where to place a Spy for this Reveal effect"
                     if effect is PersonalCardRevealChoiceEffect.PLACE_SPY
                     else "Choose two Spies to recall or decline this Reveal effect"
@@ -576,6 +680,11 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
                 influence_amount(owner.influence, faction) > 0
                 for faction in Faction
             )
+        )
+        or (
+            effect
+            is PersonalCardRevealChoiceEffect.MAY_PAY_THREE_SPICE_FOR_INFLUENCE
+            and owner.resources.spice >= 3
         )
         or effect is PersonalCardRevealChoiceEffect.PLACE_SPY
         or (

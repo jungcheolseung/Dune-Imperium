@@ -8,6 +8,7 @@ from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.types import (
     AgentIcon,
     PersonalCardAgentEffect,
+    PersonalCardDiscardEffect,
     PersonalCardRevealChoiceEffect,
     PersonalCardRevealEffect,
 )
@@ -27,6 +28,7 @@ class StartingCardEntry:
     agent_icons: tuple[AgentIcon, ...] = ()
     agent_effect: PersonalCardAgentEffect | None = None
     agent_spy_factions: tuple[Faction, ...] = ()
+    discard_effect: PersonalCardDiscardEffect | None = None
     reveal_persuasion: int = 0
     reveal_strength: int = 0
     reveal_effects: tuple[PersonalCardRevealEffect, ...] = ()

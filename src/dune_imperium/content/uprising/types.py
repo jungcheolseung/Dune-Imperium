@@ -93,6 +93,12 @@ class PersonalCardTrashEffect(StrEnum):
     DRAW_INTRIGUE_CARD = "draw_intrigue_card"
 
 
+class PersonalCardDiscardEffect(StrEnum):
+    """Typed effects triggered when a personal card is discarded from hand."""
+
+    GAIN_TWO_SPICE = "gain_two_spice"
+
+
 class PersonalCardAcquisitionEffect(StrEnum):
     """Typed effects resolved immediately after acquiring an Imperium card."""
 
@@ -113,6 +119,7 @@ class PersonalCardRevealChoiceEffect(StrEnum):
     MAY_LOSE_INFLUENCE_TO_GAIN_INFLUENCE = (
         "may_lose_influence_to_gain_influence"
     )
+    MAY_PAY_THREE_SPICE_FOR_INFLUENCE = "may_pay_three_spice_for_influence"
 
 
 @dataclass(frozen=True, slots=True)

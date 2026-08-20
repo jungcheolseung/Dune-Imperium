@@ -13,6 +13,7 @@ from dune_imperium.content.uprising.types import (
     PersonalCardAcquisitionEffect,
     PersonalCardAgentEffect,
     PersonalCardBond,
+    PersonalCardDiscardEffect,
     PersonalCardRevealChoiceEffect,
     PersonalCardRevealEffect,
     PersonalCardTrashEffect,
@@ -526,6 +527,21 @@ def test_captured_mentat_play_data_has_discard_and_influence_choices() -> None:
     assert card.reveal_persuasion == 1
     assert card.reveal_choice_effects == (
         PersonalCardRevealChoiceEffect.MAY_LOSE_INFLUENCE_TO_GAIN_INFLUENCE,
+    )
+
+
+def test_spacing_guilds_favor_play_data_has_discard_and_reveal_payments() -> None:
+    card = IMPERIUM_CARDS_BY_ID["spacing_guild_s_favor"]
+
+    assert card.play_data_complete is True
+    assert card.copies == 2
+    assert card.factions == (Faction.SPACING_GUILD,)
+    assert card.agent_icons == (AgentIcon.SPACING_GUILD, AgentIcon.SPICE_TRADE)
+    assert card.agent_effect is PersonalCardAgentEffect.DRAW_PERSONAL_CARD
+    assert card.discard_effect is PersonalCardDiscardEffect.GAIN_TWO_SPICE
+    assert card.reveal_persuasion == 2
+    assert card.reveal_choice_effects == (
+        PersonalCardRevealChoiceEffect.MAY_PAY_THREE_SPICE_FOR_INFLUENCE,
     )
 
 

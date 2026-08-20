@@ -14,16 +14,19 @@ from dune_imperium.core import (
     Influence,
     PlayerDecision,
     PlayerState,
+    Resources,
 )
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.reveal_turn import (
     apply_reveal_influence_exchange,
+    apply_reveal_spice_influence,
     apply_reveal_spy_action,
     begin_reveal_turn,
     finish_reveal_turn,
     legal_finish_reveal_actions,
     legal_reveal_actions,
     legal_reveal_influence_exchange_actions,
+    legal_reveal_spice_influence_actions,
     legal_reveal_spy_actions,
 )
 
@@ -109,6 +112,79 @@ def test_captured_mentat_selects_between_tied_alliance_recipients() -> None:
     assert result.players[0].alliance_faction_ids == ()
     assert result.players[2].alliance_faction_ids == (Faction.EMPEROR.value,)
     assert result.players[0].influence.fremen == 1
+
+
+def test_spacing_guilds_favor_may_pay_three_spice_for_influence() -> None:
+    favor = _imperium_instance("spacing_guild_s_favor")
+    owner = PlayerState(
+        player_id=0,
+        hand=(favor,),
+        resources=Resources(spice=3),
+    )
+    revealed = begin_reveal_turn(
+        _state(owner),
+        DomainAction(action_id="reveal_turn", actor=0),
+    ).state
+    actions = legal_reveal_spice_influence_actions(revealed, 0)
+
+    assert len(actions) == 5
+    payment = next(
+        action
+        for action in actions
+        if dict(action.arguments).get("faction") == Faction.FREMEN.value
+    )
+    result = apply_reveal_spice_influence(revealed, payment)
+
+    assert result.state.players[0].resources.spice == 0
+    assert result.state.players[0].influence.fremen == 1
+    assert [event.kind for event in result.events] == [
+        "reveal_spice_paid",
+        "influence_gained",
+    ]
+
+
+def test_spacing_guilds_favor_cleanup_does_not_trigger_discard_effect() -> None:
+    favor = _imperium_instance("spacing_guild_s_favor")
+    revealed = begin_reveal_turn(
+        _state(PlayerState(player_id=0, hand=(favor,))),
+        DomainAction(action_id="reveal_turn", actor=0),
+    ).state
+
+    result = finish_reveal_turn(
+        revealed,
+        DomainAction(action_id="finish_reveal", actor=0),
+    ).state
+
+    assert result.players[0].discard_pile == (favor,)
+    assert result.players[0].resources.spice == 0
+
+
+def test_two_spacing_guild_favors_cannot_spend_same_spice_twice() -> None:
+    favors = tuple(
+        instance_id
+        for instance_id in imperium_deck_instance_ids(False)
+        if ":spacing_guild_s_favor:" in instance_id
+    )
+    owner = PlayerState(
+        player_id=0,
+        hand=favors,
+        resources=Resources(spice=3),
+    )
+    revealed = begin_reveal_turn(
+        _state(owner),
+        DomainAction(action_id="reveal_turn", actor=0),
+    ).state
+    payment = next(
+        action
+        for action in legal_reveal_spice_influence_actions(revealed, 0)
+        if dict(action.arguments).get("faction") == Faction.EMPEROR.value
+    )
+
+    paid = apply_reveal_spice_influence(revealed, payment).state
+
+    assert legal_reveal_spice_influence_actions(paid, 0) == (
+        DomainAction(action_id="decline_reveal_spice_influence", actor=0),
+    )
 
 
 def _instance(card_id: str, copy: int = 0) -> str:

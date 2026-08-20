@@ -1791,3 +1791,67 @@ def test_captured_mentat_cannot_pay_discard_without_intrigue_reward() -> None:
     assert legal_agent_card_discard_actions(placed, 0) == (
         DomainAction(action_id="decline_agent_card_discard", actor=0),
     )
+
+
+def test_spacing_guilds_favor_draws_one_on_agent_turn() -> None:
+    favor = _imperium_instance("spacing_guild_s_favor")
+    drawn = _instance("dagger")
+    owner = PlayerState(player_id=0, hand=(favor,), deck=(drawn,))
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "accept_contract")).state
+
+    result = resolve_agent_card_effect(placed)
+
+    assert result.state.players[0].hand == (drawn,)
+    assert result.state.players[0].in_play == (favor,)
+
+
+def test_agent_card_discard_resolves_spacing_guilds_favor_trigger() -> None:
+    envoy = _imperium_instance("guild_envoy")
+    favor = _imperium_instance("spacing_guild_s_favor")
+    owner = PlayerState(
+        player_id=0,
+        hand=(envoy, favor),
+        deck=(_instance("dagger"), _instance("reconnaissance")),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "deliver_supplies")).state
+    discard = next(
+        action
+        for action in legal_agent_card_discard_actions(placed, 0)
+        if dict(action.arguments).get("card_id") == favor
+    )
+
+    result = apply_agent_card_discard(placed, discard)
+
+    assert result.state.players[0].resources.spice == 2
+    assert len(result.state.players[0].hand) == 2
+    assert result.state.players[0].discard_pile == (favor,)
+    assert [event.kind for event in result.events[:2]] == [
+        "card_discarded",
+        "personal_card_discard_effect_resolved",
+    ]

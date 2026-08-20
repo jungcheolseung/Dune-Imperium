@@ -93,6 +93,7 @@ from dune_imperium.rules.phases import (
 )
 from dune_imperium.rules.reveal_turn import (
     apply_reveal_influence_exchange,
+    apply_reveal_spice_influence,
     apply_reveal_spy_action,
     begin_reveal_turn,
     current_reveal_context,
@@ -100,6 +101,7 @@ from dune_imperium.rules.reveal_turn import (
     legal_finish_reveal_actions,
     legal_reveal_actions,
     legal_reveal_influence_exchange_actions,
+    legal_reveal_spice_influence_actions,
     legal_reveal_spy_actions,
 )
 from dune_imperium.rules.setup import create_initial_state
@@ -184,6 +186,7 @@ class UprisingRulesEngine(RulesEngine):
         actions.extend(legal_acquisition_spy_actions(state, player))
         actions.extend(legal_reveal_spy_actions(state, player))
         actions.extend(legal_reveal_influence_exchange_actions(state, player))
+        actions.extend(legal_reveal_spice_influence_actions(state, player))
         actions.extend(legal_endgame_wild_actions(state, player))
         actions.extend(legal_control_defense_actions(state, player))
         actions.extend(self._supported_agent_actions(state, player))
@@ -232,6 +235,8 @@ class UprisingRulesEngine(RulesEngine):
             "recall_spies_for_reveal": apply_reveal_spy_action,
             "decline_reveal_influence_exchange": apply_reveal_influence_exchange,
             "exchange_reveal_influence": apply_reveal_influence_exchange,
+            "decline_reveal_spice_influence": apply_reveal_spice_influence,
+            "pay_reveal_spice_influence": apply_reveal_spice_influence,
             "finish_reveal": finish_reveal_turn,
             "gather_intelligence": apply_gather_intelligence_action,
             "pass_combat_intrigue": apply_combat_intrigue_pass,

@@ -12,6 +12,7 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.card_bonds import has_faction_bond
+from dune_imperium.rules.card_discard import discard_personal_card_from_hand
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.effects import (
@@ -106,22 +107,17 @@ def apply_agent_card_discard(
     card_id = dict(action.arguments).get("card_id")
     if not isinstance(card_id, str):
         raise RuntimeError("Agent-card discard choice has invalid card ID")
-    owner = state.players[action.actor]
     discarded_card = personal_card_for_instance(card_id)
-    next_owner = replace(
-        owner,
-        hand=tuple(candidate for candidate in owner.hand if candidate != card_id),
-        discard_pile=(*owner.discard_pile, card_id),
+    discarded = discard_personal_card_from_hand(
+        state,
+        action.actor,
+        card_id,
+        source=source,
     )
     prepared = advance_after_effect(
-        state,
+        discarded.state,
         context,
-        _replace_player(state, next_owner),
-    )
-    event = GameEvent(
-        event_id=f"{source}:{card_id}",
-        kind="card_discarded",
-        payload=(("card_id", card_id), ("player", action.actor)),
+        discarded.state.players,
     )
     source_card = personal_card_for_instance(_effect_subject(context)[1])
     if (
@@ -149,7 +145,7 @@ def apply_agent_card_discard(
     else:
         draw_count = 2 if Faction.SPACING_GUILD in discarded_card.factions else 1
     if draw_count == 0:
-        return RuleResult(state=prepared, events=(event,))
+        return RuleResult(state=prepared, events=discarded.events)
     drawn = draw_or_request_personal_cards(
         prepared,
         action.actor,
@@ -170,7 +166,7 @@ def apply_agent_card_discard(
     )
     return RuleResult(
         state=drawn.state,
-        events=(event, *intrigue_events, *drawn.events),
+        events=(*discarded.events, *intrigue_events, *drawn.events),
     )
 
 
