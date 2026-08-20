@@ -143,6 +143,9 @@
   나오면 자신의 supply에서 Spy를 가져와 비어 있는 observation post 한 곳에
   놓을 수 있다. 효과가 특정 Agent icon 연결을 요구하면 그 조건을 만족하는
   post만 선택할 수 있다. `[Main pp. 11, 20]`
+- Double Agent는 이번 Agent turn에 방문한 space를 이미 spying 중일 때 상대
+  Spy가 있는 observation post에 자기 Spy를 함께 놓을 수 있다. 같은 플레이어가
+  자기 Spy 둘을 한 post에 놓는 것은 허용되지 않는다. `[Double Agent card]`
 - Spy 배치를 선택했지만 supply에 Spy가 없다면, 먼저 board의 자기 Spy 하나를
   효과 없이 recall할 수 있다. `[Main pp. 11, 20]`
 - Recall Spy 아이콘은 observation post의 자기 Spy 하나를 supply로 돌려보낼 수

@@ -351,6 +351,9 @@ Alliance 반환·이전·복수 동률 수령자 선택을 공통 transition으�
 분리하고, Spacing Guild's Favor의 hand discard Spice 2, Agent draw 1, Reveal의
 Spice 3 비용과 선택한 Faction Influence를 codec v38에 연결했다. Reveal Clean Up
 이동은 discard trigger를 발동하지 않는다.
+서른세 번째 묶음은 Double Agent가 이번에 방문한 space를 이미 spying 중이면
+상대 Spy가 있는 Observation Post를 공유할 수 있도록 Agent-card Spy 배치를
+확장하고 codec v39에 연결했다. 일반 배치는 계속 전역 빈 Post만 허용한다.
 고정된 DIU `imperium.JSON`은 런타임 의존성 없이 63개 local identity와
 대조하고 아이콘·Faction·효과 형태를 정규화하는 read-only audit에만 사용한다.
 나머지 Imperium과 Intrigue, Leader, Objective 효과는 아직 identity manifest
