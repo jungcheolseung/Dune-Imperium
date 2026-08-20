@@ -17,11 +17,12 @@ truth for the transition code.
 | Spy Agent icon | A card's Spy Agent icon makes every space connected to one of the player's placed Spies an available Agent destination. | Destination access does not recall the Spy. Imperium-card icon transcription remains part of the broader content milestone. |
 | Conflict reward | A Spy reward selects one globally empty post and spends a Spy from supply. | This existing reward path does not currently offer the empty-supply recall permission because the reward itself is mandatory only when executable. |
 | Agent-card placement | Bene Gesserit Operative selects any globally empty post; Reliable Informant is restricted to posts connected to Emperor, Bene Gesserit, or Spacing Guild spaces; Double Agent adds its conditional sharing exception. | With an empty supply, recall and placement are separate mandatory decisions. A restricted effect offers only recalls that can open a destination when every eligible post is occupied. |
-| Acquisition placement | Acquiring Strike Fleet immediately opens a Spy placement choice over the current Reveal frame. | The acquired card is discarded and the row is refilled before choosing the post; an empty supply uses the same recall-then-place sequence and then returns to Reveal purchasing. |
+| Acquisition placement | Acquiring Strike Fleet or Guild Spy immediately opens a Spy placement choice over the current Reveal frame. | The acquired card is discarded and the row is refilled before choosing the post; an empty supply uses the same recall-then-place sequence and then returns to Reveal purchasing. |
 | Current-turn recall | The Agent effect frame records whether Infiltrate, Gather Intelligence, or Espionage recalled a Spy during that Agent turn. | Strike Fleet recruits three troops, Rebel Supplier recruits two, Imperial Spymaster draws one Intrigue card, and Public Spectacle gains chosen Faction Influence from this turn-scoped flag. |
 | Reveal recall | Spy Network checks for at least two placed Spies when Reveal begins, then requires the owner to choose and recall one before drawing one Intrigue card. | The choice frame blocks purchases and other turn actions until it returns to the underlying Reveal frame. With fewer than two Spies, no choice opens. |
 | Reveal recall cost | In High Places may recall any two placed Spies to add two Persuasion, or decline without changing state. | Two-Spy payment is one atomic action selected from canonical unordered pairs, keeping the action catalog smaller and preventing partial payment. |
 | Reveal placement | Public Spectacle and Wheels Within Wheels place one Spy during Reveal. | The serial choice blocks purchasing until placement finishes; an empty supply requires recalling one owned Spy first, without triggering a recall benefit. |
+| Spied Factions | Guild Spy treats a Faction as spied on when one of its owner's Observation Posts is connected to a space of that Faction. | Acquiring The Spice Must Flow during that Reveal gains one Influence for each distinct matching Faction; multiple posts connected to the same Faction do not duplicate it. |
 
 ## Deferred Spy systems
 
@@ -59,3 +60,6 @@ placement adds 13 placement and 13 recall templates, advancing the current
 default to version 29 with 1637 entries.
 Wheels Within Wheels reuses the Reveal choices and adds 51 Spy-icon Agent
 templates, advancing the current default to version 30 with 1688 entries.
+Guild Spy reuses acquisition placement and hand-discard choices while adding 51
+Spy-icon Agent templates, advancing the current default to version 40 with 2193
+entries.

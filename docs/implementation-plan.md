@@ -354,6 +354,10 @@ Spice 3 비용과 선택한 Faction Influence를 codec v38에 연결했다. Reve
 서른세 번째 묶음은 Double Agent가 이번에 방문한 space를 이미 spying 중이면
 상대 Spy가 있는 Observation Post를 공유할 수 있도록 Agent-card Spy 배치를
 확장하고 codec v39에 연결했다. 일반 배치는 계속 전역 빈 Post만 허용한다.
+서른네 번째 묶음은 Guild Spy의 선택형 hand discard·개인 카드 draw와 Spacing
+Guild 카드 discard 시 Intrigue 추가 draw를 기존 경계에 연결했다. Acquisition의
+Spy 배치를 재사용하고, Reveal 중 The Spice Must Flow 획득 시 spying 중인 각
+Faction Influence를 얻는 acquisition trigger를 추가해 codec v40에 연결했다.
 고정된 DIU `imperium.JSON`은 런타임 의존성 없이 63개 local identity와
 대조하고 아이콘·Faction·효과 형태를 정규화하는 read-only audit에만 사용한다.
 나머지 Imperium과 Intrigue, Leader, Objective 효과는 아직 identity manifest

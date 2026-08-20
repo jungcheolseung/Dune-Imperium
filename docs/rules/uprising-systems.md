@@ -146,6 +146,10 @@
 - Double Agent는 이번 Agent turn에 방문한 space를 이미 spying 중일 때 상대
   Spy가 있는 observation post에 자기 Spy를 함께 놓을 수 있다. 같은 플레이어가
   자기 Spy 둘을 한 post에 놓는 것은 허용되지 않는다. `[Double Agent card]`
+- Guild Spy의 Reveal 효과에서 어떤 Faction을 spying 중인지는 자기 Spy가 놓인
+  observation post가 그 Faction space 하나 이상에 연결되는지로 판정한다. 같은
+  Faction에 연결된 Spy가 여러 개여도 그 Faction Influence는 한 번만 얻는다.
+  `[Guild Spy card]`
 - Spy 배치를 선택했지만 supply에 Spy가 없다면, 먼저 board의 자기 Spy 하나를
   효과 없이 recall할 수 있다. `[Main pp. 11, 20]`
 - Recall Spy 아이콘은 observation post의 자기 Spy 하나를 supply로 돌려보낼 수
