@@ -141,7 +141,21 @@ IMPERIUM_CARDS: Final = (
     ),
     _entry(45, "branching-path", "Branching Path", 3),
     _entry(42, "calculus-of-power", "Calculus of Power", 3, copies=2),
-    _entry(61, "captured-mentat", "Captured Mentat", 5),
+    _entry(
+        61,
+        "captured-mentat",
+        "Captured Mentat",
+        5,
+        agent_icons=(AgentIcon.LANDSRAAD, AgentIcon.SPICE_TRADE),
+        agent_effect=(
+            PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD
+        ),
+        reveal_persuasion=1,
+        reveal_choice_effects=(
+            PersonalCardRevealChoiceEffect.MAY_LOSE_INFLUENCE_TO_GAIN_INFLUENCE,
+        ),
+        play_data_complete=True,
+    ),
     _entry(181, "cargo-runner", "Cargo Runner", 3, choam_only=True),
     _entry(67, "chani-clever-tactician", "Chani, Clever Tactician", 5),
     _entry(69, "corrinth-city", "Corrinth City", 6),

@@ -513,6 +513,22 @@ def test_guild_envoy_play_data_has_mandatory_conditional_discard_draw() -> None:
     assert card.reveal_strength == 0
 
 
+def test_captured_mentat_play_data_has_discard_and_influence_choices() -> None:
+    card = IMPERIUM_CARDS_BY_ID["captured_mentat"]
+
+    assert card.play_data_complete is True
+    assert card.factions == ()
+    assert card.agent_icons == (AgentIcon.LANDSRAAD, AgentIcon.SPICE_TRADE)
+    assert (
+        card.agent_effect
+        is PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD
+    )
+    assert card.reveal_persuasion == 1
+    assert card.reveal_choice_effects == (
+        PersonalCardRevealChoiceEffect.MAY_LOSE_INFLUENCE_TO_GAIN_INFLUENCE,
+    )
+
+
 def test_untranscribed_imperium_card_still_fails_explicitly() -> None:
     instance_id = _instance("double_agent")
 

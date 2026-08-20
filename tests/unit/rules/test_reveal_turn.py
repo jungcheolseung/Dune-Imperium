@@ -3,7 +3,7 @@
 from dataclasses import replace
 
 from dune_imperium import RulesetConfig
-from dune_imperium.content.uprising.board import OBSERVATION_POSTS
+from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.core import (
@@ -11,18 +11,104 @@ from dune_imperium.core import (
     DomainAction,
     GamePhase,
     GameState,
+    Influence,
     PlayerDecision,
     PlayerState,
 )
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.reveal_turn import (
+    apply_reveal_influence_exchange,
     apply_reveal_spy_action,
     begin_reveal_turn,
     finish_reveal_turn,
     legal_finish_reveal_actions,
     legal_reveal_actions,
+    legal_reveal_influence_exchange_actions,
     legal_reveal_spy_actions,
 )
+
+
+def test_captured_mentat_may_exchange_influence_on_reveal() -> None:
+    mentat = _imperium_instance("captured_mentat")
+    owner = PlayerState(
+        player_id=0,
+        hand=(mentat,),
+        influence=Influence(emperor=1),
+    )
+    revealed = begin_reveal_turn(
+        _state(owner),
+        DomainAction(action_id="reveal_turn", actor=0),
+    ).state
+    actions = legal_reveal_influence_exchange_actions(revealed, 0)
+
+    assert len(actions) == 5
+    assert any(
+        dict(action.arguments)
+        == {"gained_faction": "emperor", "lost_faction": "emperor"}
+        for action in actions
+    )
+    exchange = next(
+        action
+        for action in actions
+        if dict(action.arguments)
+        == {"gained_faction": "fremen", "lost_faction": "emperor"}
+    )
+    result = apply_reveal_influence_exchange(revealed, exchange)
+
+    assert result.state.players[0].influence.emperor == 0
+    assert result.state.players[0].influence.fremen == 1
+    assert [event.kind for event in result.events] == [
+        "influence_lost",
+        "influence_gained",
+    ]
+
+
+def test_captured_mentat_skips_influence_choice_with_no_payable_cost() -> None:
+    mentat = _imperium_instance("captured_mentat")
+
+    revealed = begin_reveal_turn(
+        _state(PlayerState(player_id=0, hand=(mentat,))),
+        DomainAction(action_id="reveal_turn", actor=0),
+    ).state
+
+    assert legal_reveal_influence_exchange_actions(revealed, 0) == ()
+    assert dict(revealed.decision_stack[-1].context)["persuasion"] == 1
+
+
+def test_captured_mentat_selects_between_tied_alliance_recipients() -> None:
+    mentat = _imperium_instance("captured_mentat")
+    owner = PlayerState(
+        player_id=0,
+        hand=(mentat,),
+        influence=Influence(emperor=4),
+        alliance_faction_ids=(Faction.EMPEROR.value,),
+        victory_points=2,
+    )
+    state = _state(owner)
+    players = list(state.players)
+    players[1] = replace(players[1], influence=Influence(emperor=4))
+    players[2] = replace(players[2], influence=Influence(emperor=4))
+    state = replace(state, players=tuple(players))
+    revealed = begin_reveal_turn(
+        state,
+        DomainAction(action_id="reveal_turn", actor=0),
+    ).state
+    exchange = next(
+        action
+        for action in legal_reveal_influence_exchange_actions(revealed, 0)
+        if dict(action.arguments)
+        == {
+            "alliance_recipient": 2,
+            "gained_faction": "fremen",
+            "lost_faction": "emperor",
+        }
+    )
+
+    result = apply_reveal_influence_exchange(revealed, exchange).state
+
+    assert result.players[0].alliance_faction_ids == ()
+    assert result.players[2].alliance_faction_ids == (Faction.EMPEROR.value,)
+    assert result.players[0].influence.fremen == 1
 
 
 def _instance(card_id: str, copy: int = 0) -> str:

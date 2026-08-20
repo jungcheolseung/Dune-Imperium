@@ -11,10 +11,25 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     first = ActionCodec(RulesetConfig())
     second = ActionCodec(RulesetConfig())
 
-    assert ACTION_CODEC_VERSION == 36
+    assert ACTION_CODEC_VERSION == 37
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
-    assert first.size == 1936
+    assert first.size == 2039
+
+
+def test_reveal_influence_exchange_round_trips() -> None:
+    codec = ActionCodec(RulesetConfig())
+    action = DomainAction(
+        action_id="exchange_reveal_influence",
+        actor=0,
+        arguments=(
+            ("alliance_recipient", 2),
+            ("gained_faction", "emperor"),
+            ("lost_faction", "emperor"),
+        ),
+    )
+
+    assert codec.decode(codec.encode(action), actor=0) == action
 
 
 def test_agent_card_spy_choice_round_trips() -> None:

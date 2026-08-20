@@ -1722,3 +1722,72 @@ def test_guild_envoy_has_no_agent_effect_without_another_hand_card() -> None:
     placed = apply_agent_action(state, _action_to(state, "deliver_supplies")).state
 
     assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False
+
+
+def test_captured_mentat_may_discard_to_draw_intrigue_and_personal_card() -> None:
+    mentat = _imperium_instance("captured_mentat")
+    discarded = _instance("dagger")
+    drawn = _instance("convincing_argument")
+    owner = PlayerState(
+        player_id=0,
+        hand=(mentat, discarded),
+        deck=(drawn,),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        intrigue_deck=("intrigue:plot",),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
+    actions = legal_agent_card_discard_actions(placed, 0)
+
+    assert {action.action_id for action in actions} == {
+        "decline_agent_card_discard",
+        "discard_agent_card",
+    }
+    result = apply_agent_card_discard(
+        placed,
+        next(action for action in actions if action.action_id == "discard_agent_card"),
+    )
+
+    assert result.state.players[0].discard_pile == (discarded,)
+    assert result.state.players[0].hand == (drawn,)
+    assert result.state.players[0].intrigue_cards == ("intrigue:plot",)
+    assert result.state.intrigue_deck == ()
+    assert [event.kind for event in result.events] == [
+        "card_discarded",
+        "intrigue_card_drawn",
+    ]
+
+
+def test_captured_mentat_cannot_pay_discard_without_intrigue_reward() -> None:
+    mentat = _imperium_instance("captured_mentat")
+    owner = PlayerState(player_id=0, hand=(mentat, _instance("dagger")))
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+
+    placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
+
+    assert legal_agent_card_discard_actions(placed, 0) == (
+        DomainAction(action_id="decline_agent_card_discard", actor=0),
+    )

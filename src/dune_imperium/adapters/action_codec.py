@@ -27,7 +27,7 @@ from dune_imperium.content.uprising.starting_cards import (
 from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
 from dune_imperium.core.actions import ActionValue, DomainAction
 
-ACTION_CODEC_VERSION = 36
+ACTION_CODEC_VERSION = 37
 MAX_DEPLOYMENT_COUNT = 12
 
 
@@ -120,6 +120,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "decline_endgame_wild_match",
             "decline_gather_intelligence",
             "decline_reveal_spy_recall",
+            "decline_reveal_influence_exchange",
             "deploy_control_defense",
             "finish_reveal",
             "pass_combat_intrigue",
@@ -241,6 +242,30 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             )
             for faction in Faction
         )
+    templates.extend(
+        ActionTemplate(
+            action_id="exchange_reveal_influence",
+            arguments=(
+                ("gained_faction", gained_faction.value),
+                ("lost_faction", lost_faction.value),
+            ),
+        )
+        for lost_faction in Faction
+        for gained_faction in Faction
+    )
+    templates.extend(
+        ActionTemplate(
+            action_id="exchange_reveal_influence",
+            arguments=(
+                ("alliance_recipient", recipient),
+                ("gained_faction", gained_faction.value),
+                ("lost_faction", lost_faction.value),
+            ),
+        )
+        for lost_faction in Faction
+        for gained_faction in Faction
+        for recipient in range(config.players)
+    )
     templates.extend(_trash_templates(config, "trash_agent_card"))
     templates.extend(_trash_templates(config, "discard_agent_card"))
     templates.extend(_trash_templates(config, "trash_combat_reward_card"))

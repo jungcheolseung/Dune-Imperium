@@ -13,7 +13,12 @@ from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.card_bonds import has_faction_bond
 from dune_imperium.rules.effects import recruit_troops
-from dune_imperium.rules.influence import gain_faction_influence
+from dune_imperium.rules.influence import (
+    alliance_recipients_after_influence_loss,
+    gain_faction_influence,
+    influence_amount,
+    lose_faction_influence,
+)
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
     place_spy,
@@ -89,6 +94,122 @@ def legal_reveal_spy_actions(
             ),
         )
     return ()
+
+
+def legal_reveal_influence_exchange_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return optional Influence cost-and-reward choices for a Reveal card."""
+
+    if not 0 <= player < state.config.players or not state.decision_stack:
+        return ()
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    if (
+        context.get("reveal_choice_effect")
+        != PersonalCardRevealChoiceEffect.MAY_LOSE_INFLUENCE_TO_GAIN_INFLUENCE.value
+    ):
+        return ()
+    actions: list[DomainAction] = [
+        DomainAction(action_id="decline_reveal_influence_exchange", actor=player)
+    ]
+    owner = state.players[player]
+    for lost_faction in Faction:
+        if influence_amount(owner.influence, lost_faction) == 0:
+            continue
+        recipients = alliance_recipients_after_influence_loss(
+            state,
+            player,
+            lost_faction,
+        )
+        recipient_options: tuple[int | None, ...] = (
+            tuple(recipients) if len(recipients) > 1 else (None,)
+        )
+        for gained_faction in Faction:
+            for recipient in recipient_options:
+                arguments: tuple[tuple[str, ActionValue], ...] = (
+                    ("gained_faction", gained_faction.value),
+                    ("lost_faction", lost_faction.value),
+                )
+                if recipient is not None:
+                    arguments = (
+                        ("alliance_recipient", recipient),
+                        *arguments,
+                    )
+                actions.append(
+                    DomainAction(
+                        action_id="exchange_reveal_influence",
+                        actor=player,
+                        arguments=arguments,
+                    )
+                )
+    return tuple(actions)
+
+
+def apply_reveal_influence_exchange(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Decline or atomically pay and resolve a Reveal Influence exchange."""
+
+    if action not in legal_reveal_influence_exchange_actions(state, action.actor):
+        raise ValueError("action is not a legal Reveal Influence exchange")
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    card_id = context.get("reveal_card_id")
+    if not isinstance(card_id, str):
+        raise RuntimeError("Reveal Influence frame has invalid card ID")
+    source = (
+        f"round:{state.round_number}:player:{action.actor}:"
+        f"reveal_card:{card_id}:influence_exchange"
+    )
+    if action.action_id == "decline_reveal_influence_exchange":
+        return RuleResult(
+            state=replace(state, decision_stack=state.decision_stack[:-1]),
+            events=(
+                GameEvent(
+                    event_id=f"{source}:declined",
+                    kind="reveal_influence_exchange_declined",
+                    payload=(("card_id", card_id), ("player", action.actor)),
+                ),
+            ),
+        )
+
+    arguments = dict(action.arguments)
+    lost_value = arguments.get("lost_faction")
+    gained_value = arguments.get("gained_faction")
+    recipient = arguments.get("alliance_recipient")
+    if not isinstance(lost_value, str) or not isinstance(gained_value, str):
+        raise RuntimeError("Reveal Influence exchange has invalid Factions")
+    if recipient is not None and (
+        isinstance(recipient, bool) or not isinstance(recipient, int)
+    ):
+        raise RuntimeError("Reveal Influence exchange has invalid recipient")
+    lost = lose_faction_influence(
+        state,
+        action.actor,
+        Faction(lost_value),
+        1,
+        event_prefix=f"{source}:lost:{lost_value}",
+        alliance_recipient=recipient,
+    )
+    gained = gain_faction_influence(
+        lost.state,
+        action.actor,
+        Faction(gained_value),
+        1,
+        event_prefix=f"{source}:gained:{gained_value}",
+    )
+    return RuleResult(
+        state=replace(
+            gained.state,
+            decision_stack=gained.state.decision_stack[:-1],
+        ),
+        events=(*lost.events, *gained.events),
+    )
 
 
 def apply_reveal_spy_action(
@@ -425,7 +546,12 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
             decision=PlayerDecision(
                 owner=action.actor,
                 prompt=(
-                    "Choose where to place a Spy for this Reveal effect"
+                    "Choose Influence to lose and gain or decline this Reveal effect"
+                    if effect
+                    is (
+                        PersonalCardRevealChoiceEffect.MAY_LOSE_INFLUENCE_TO_GAIN_INFLUENCE
+                    )
+                    else "Choose where to place a Spy for this Reveal effect"
                     if effect is PersonalCardRevealChoiceEffect.PLACE_SPY
                     else "Choose two Spies to recall or decline this Reveal effect"
                     if effect
@@ -443,7 +569,15 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         )
         for card_id, card in zip(revealed, cards, strict=True)
         for effect in card.reveal_choice_effects
-        if effect is PersonalCardRevealChoiceEffect.PLACE_SPY
+        if (
+            effect
+            is PersonalCardRevealChoiceEffect.MAY_LOSE_INFLUENCE_TO_GAIN_INFLUENCE
+            and any(
+                influence_amount(owner.influence, faction) > 0
+                for faction in Faction
+            )
+        )
+        or effect is PersonalCardRevealChoiceEffect.PLACE_SPY
         or (
             effect
             in (

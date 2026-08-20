@@ -92,12 +92,14 @@ from dune_imperium.rules.phases import (
     resolve_recall_or_endgame,
 )
 from dune_imperium.rules.reveal_turn import (
+    apply_reveal_influence_exchange,
     apply_reveal_spy_action,
     begin_reveal_turn,
     current_reveal_context,
     finish_reveal_turn,
     legal_finish_reveal_actions,
     legal_reveal_actions,
+    legal_reveal_influence_exchange_actions,
     legal_reveal_spy_actions,
 )
 from dune_imperium.rules.setup import create_initial_state
@@ -181,6 +183,7 @@ class UprisingRulesEngine(RulesEngine):
         actions: list[DomainAction] = []
         actions.extend(legal_acquisition_spy_actions(state, player))
         actions.extend(legal_reveal_spy_actions(state, player))
+        actions.extend(legal_reveal_influence_exchange_actions(state, player))
         actions.extend(legal_endgame_wild_actions(state, player))
         actions.extend(legal_control_defense_actions(state, player))
         actions.extend(self._supported_agent_actions(state, player))
@@ -227,6 +230,8 @@ class UprisingRulesEngine(RulesEngine):
             "place_reveal_spy": apply_reveal_spy_action,
             "recall_spy_for_reveal_placement": apply_reveal_spy_action,
             "recall_spies_for_reveal": apply_reveal_spy_action,
+            "decline_reveal_influence_exchange": apply_reveal_influence_exchange,
+            "exchange_reveal_influence": apply_reveal_influence_exchange,
             "finish_reveal": finish_reveal_turn,
             "gather_intelligence": apply_gather_intelligence_action,
             "pass_combat_intrigue": apply_combat_intrigue_pass,
@@ -350,6 +355,7 @@ def _agent_action_is_supported(state: GameState, action: DomainAction) -> bool:
         PersonalCardAgentEffect.DRAW_PER_SANDWORM_IN_CONFLICT,
         PersonalCardAgentEffect.DISCARD_TO_DRAW_ONE_OR_TWO_IF_SPACING_GUILD,
         PersonalCardAgentEffect.DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD,
+        PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD,
         PersonalCardAgentEffect.GAIN_SPICE_IF_MAKER_SPACE,
         PersonalCardAgentEffect.GAIN_WATER,
         PersonalCardAgentEffect.GAIN_TWO_SOLARI,

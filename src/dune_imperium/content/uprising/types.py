@@ -51,6 +51,9 @@ class PersonalCardAgentEffect(StrEnum):
     DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD = (
         "discard_one_draw_two_if_spacing_guild"
     )
+    MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD = (
+        "may_discard_to_draw_intrigue_and_personal_card"
+    )
     GAIN_SPICE_IF_MAKER_SPACE = "gain_spice_if_maker_space"
     GAIN_TWO_SOLARI = "gain_two_solari"
     PLACE_SPY = "place_spy"
@@ -107,6 +110,9 @@ class PersonalCardRevealChoiceEffect(StrEnum):
         "may_recall_two_spies_for_two_persuasion"
     )
     PLACE_SPY = "place_spy"
+    MAY_LOSE_INFLUENCE_TO_GAIN_INFLUENCE = (
+        "may_lose_influence_to_gain_influence"
+    )
 
 
 @dataclass(frozen=True, slots=True)
