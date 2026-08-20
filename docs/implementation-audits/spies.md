@@ -63,3 +63,6 @@ templates, advancing the current default to version 30 with 1688 entries.
 Guild Spy reuses acquisition placement and hand-discard choices while adding 51
 Spy-icon Agent templates, advancing the current default to version 40 with 2193
 entries.
+Covert Operation adds another 51 Spy-icon Agent templates and 93 opponent-owned
+discard templates, advancing the current default to version 41 with 2337
+entries.

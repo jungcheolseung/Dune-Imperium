@@ -358,6 +358,9 @@ Spice 3 비용과 선택한 Faction Influence를 codec v38에 연결했다. Reve
 Guild 카드 discard 시 Intrigue 추가 draw를 기존 경계에 연결했다. Acquisition의
 Spy 배치를 재사용하고, Reveal 중 The Spice Must Flow 획득 시 spying 중인 각
 Faction Influence를 얻는 acquisition trigger를 추가해 codec v40에 연결했다.
+서른다섯 번째 묶음은 Covert Operation의 각 상대 hand discard를 시계방향의
+player-owned 결정 frame으로 직렬화했다. 손이 빈 상대는 건너뛰고, 실제 discard는
+카드별 discard trigger를 포함한 공통 transition을 사용하며 codec v41에 연결했다.
 고정된 DIU `imperium.JSON`은 런타임 의존성 없이 63개 local identity와
 대조하고 아이콘·Faction·효과 형태를 정규화하는 read-only audit에만 사용한다.
 나머지 Imperium과 Intrigue, Leader, Objective 효과는 아직 identity manifest
