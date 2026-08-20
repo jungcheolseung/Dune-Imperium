@@ -42,6 +42,24 @@ def observation_post_ids_for_factions(
     )
 
 
+def spied_factions(player: PlayerState) -> tuple[Faction, ...]:
+    """Return Factions with a space connected to one of the player's Spies."""
+
+    occupied = frozenset(player.spy_post_ids)
+    return tuple(
+        faction
+        for faction in Faction
+        if any(
+            post.post_id in occupied
+            and any(
+                BOARD_SPACES_BY_ID[space_id].faction is faction
+                for space_id in post.connected_space_ids
+            )
+            for post in OBSERVATION_POSTS
+        )
+    )
+
+
 def place_spy(player: PlayerState, post_id: str) -> PlayerState:
     """Move one of ``player``'s Spies from supply to an Observation Post."""
 

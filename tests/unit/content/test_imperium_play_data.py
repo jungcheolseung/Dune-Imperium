@@ -14,6 +14,7 @@ from dune_imperium.content.uprising.types import (
     PersonalCardAgentEffect,
     PersonalCardBond,
     PersonalCardDiscardEffect,
+    PersonalCardRevealAcquisitionEffect,
     PersonalCardRevealChoiceEffect,
     PersonalCardRevealEffect,
     PersonalCardTrashEffect,
@@ -562,6 +563,26 @@ def test_double_agent_play_data_has_conditional_shared_spy_placement() -> None:
     )
     assert card.reveal_persuasion == 1
     assert card.reveal_strength == 1
+
+
+def test_guild_spy_play_data_has_discard_acquisition_and_reveal_triggers() -> None:
+    card = IMPERIUM_CARDS_BY_ID["guild_spy"]
+
+    assert card.play_data_complete is True
+    assert card.factions == (Faction.SPACING_GUILD,)
+    assert card.agent_icons == (AgentIcon.SPY,)
+    assert (
+        card.agent_effect
+        is PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE_AND_INTRIGUE_IF_SPACING_GUILD
+    )
+    assert card.acquisition_effect is PersonalCardAcquisitionEffect.PLACE_SPY
+    assert card.reveal_persuasion == 2
+    assert (
+        card.reveal_acquisition_effect
+        is (
+            PersonalCardRevealAcquisitionEffect.GAIN_INFLUENCE_FOR_EACH_SPIED_FACTION_ON_SPICE_MUST_FLOW
+        )
+    )
 
 
 def test_untranscribed_imperium_card_still_fails_explicitly() -> None:

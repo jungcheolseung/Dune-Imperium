@@ -181,23 +181,25 @@ def test_acquisition_bonus_card_is_not_silently_resolved() -> None:
     cards = (
         _instance("convincing_argument", 0),
         _instance("convincing_argument", 1),
+        _instance("dune_the_desert_planet", 0),
+        _instance("dune_the_desert_planet", 1),
     )
     state = _reveal_state(*cards)
     instances = imperium_deck_instance_ids(False)
-    guild_spy = next(card for card in instances if ":guild_spy:" in card)
-    others = tuple(card for card in instances if card != guild_spy)
+    price = next(card for card in instances if ":price_is_no_object:" in card)
+    others = tuple(card for card in instances if card != price)
     state = replace(
         state,
-        imperium_row=(guild_spy, *others[:4]),
+        imperium_row=(price, *others[:4]),
         imperium_deck=others[4:],
     )
     action = next(
         action
         for action in legal_imperium_acquisitions(state, 0)
-        if dict(action.arguments)["instance_id"] == guild_spy
+        if dict(action.arguments)["instance_id"] == price
     )
 
-    with pytest.raises(NotImplementedError, match="guild_spy"):
+    with pytest.raises(NotImplementedError, match="price_is_no_object"):
         apply_imperium_acquisition(state, action)
 
 
@@ -268,6 +270,75 @@ def test_strike_fleet_acquisition_opens_and_resolves_spy_placement() -> None:
     assert placed.state.players[0].spies_supply == 2
     assert placed.state.players[0].spy_post_ids == (post_id,)
     assert dict(placed.state.decision_stack[-1].context)["persuasion"] == 0
+
+
+def test_guild_spy_acquisition_opens_spy_placement() -> None:
+    state = _reveal_state(
+        _instance("convincing_argument", 0),
+        _instance("diplomacy"),
+    )
+    instances = imperium_deck_instance_ids(False)
+    guild_spy = next(card for card in instances if ":guild_spy:" in card)
+    others = tuple(card for card in instances if card != guild_spy)
+    state = replace(
+        state,
+        imperium_row=(guild_spy, *others[:4]),
+        imperium_deck=others[4:],
+    )
+    acquire = next(
+        action
+        for action in UprisingRulesEngine().legal_actions(state, 0)
+        if dict(action.arguments).get("instance_id") == guild_spy
+    )
+
+    acquired = UprisingRulesEngine().apply(state, acquire)
+
+    assert acquired.state.players[0].discard_pile == (guild_spy,)
+    assert {
+        action.action_id
+        for action in legal_acquisition_spy_actions(acquired.state, 0)
+    } == {"place_acquisition_spy"}
+
+
+def test_guild_spy_gains_influence_for_spied_factions_on_spice_must_flow() -> None:
+    guild_spy = next(
+        card for card in imperium_deck_instance_ids(False) if ":guild_spy:" in card
+    )
+    state = _reveal_state(
+        guild_spy,
+        _instance("convincing_argument", 0),
+        _instance("convincing_argument", 1),
+        _instance("dune_the_desert_planet", 0),
+        _instance("dune_the_desert_planet", 1),
+        _instance("diplomacy"),
+    )
+    owner = replace(
+        state.players[0],
+        spies_supply=1,
+        spy_post_ids=(
+            "emperor-sardaukar-dutiful-service",
+            "spacing-guild-heighliner-deliver-supplies",
+        ),
+    )
+    state = replace(state, players=(owner, *state.players[1:]))
+    action = next(
+        action
+        for action in legal_reserve_acquisitions(state, 0)
+        if dict(action.arguments)["card_id"] == "the_spice_must_flow"
+    )
+
+    result = apply_reserve_acquisition(state, action)
+    influence = result.state.players[0].influence
+
+    assert influence.emperor == 1
+    assert influence.spacing_guild == 1
+    assert influence.bene_gesserit == 0
+    assert influence.fremen == 0
+    assert [event.kind for event in result.events] == [
+        "card_acquired",
+        "influence_gained",
+        "influence_gained",
+    ]
 
 
 def test_strike_fleet_acquisition_recalls_before_placing_with_empty_supply() -> None:

@@ -3,19 +3,25 @@
 from dataclasses import replace
 
 from dune_imperium.content.uprising.imperium import imperium_card_for_instance
+from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.content.uprising.reserve import RESERVE_STACKS_BY_ID
-from dune_imperium.content.uprising.types import PersonalCardAcquisitionEffect
+from dune_imperium.content.uprising.types import (
+    PersonalCardAcquisitionEffect,
+    PersonalCardRevealAcquisitionEffect,
+)
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
+from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.reveal_turn import current_reveal_context
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
     place_spy,
     recall_spy,
+    spied_factions,
 )
 
 
@@ -198,7 +204,12 @@ def apply_reserve_acquisition(
         kind="card_acquired",
         payload=(("card_id", card_id), ("player", action.actor)),
     )
-    return RuleResult(state=next_state, events=(event,))
+    triggered = _resolve_reveal_acquisition_triggers(
+        next_state,
+        action.actor,
+        card_id,
+    )
+    return RuleResult(state=triggered.state, events=(event, *triggered.events))
 
 
 def legal_imperium_acquisitions(
@@ -353,3 +364,38 @@ def _replace_player(
         owner if player.player_id == owner.player_id else player
         for player in state.players
     )
+
+
+def _resolve_reveal_acquisition_triggers(
+    state: GameState,
+    player: int,
+    acquired_card_id: str,
+) -> RuleResult:
+    if acquired_card_id != "the_spice_must_flow":
+        return RuleResult(state=state)
+    trigger_cards = tuple(
+        played_card_id
+        for played_card_id in state.players[player].in_play
+        if personal_card_for_instance(played_card_id).reveal_acquisition_effect
+        is (
+            PersonalCardRevealAcquisitionEffect.GAIN_INFLUENCE_FOR_EACH_SPIED_FACTION_ON_SPICE_MUST_FLOW
+        )
+    )
+    next_state = state
+    events: tuple[GameEvent, ...] = ()
+    for trigger_card_id in trigger_cards:
+        for faction in spied_factions(next_state.players[player]):
+            gained = gain_faction_influence(
+                next_state,
+                player,
+                faction,
+                1,
+                event_prefix=(
+                    f"round:{state.round_number}:player:{player}:"
+                    f"reveal_card:{trigger_card_id}:spice_must_flow:"
+                    f"{faction.value}"
+                ),
+            )
+            next_state = gained.state
+            events = (*events, *gained.events)
+    return RuleResult(state=next_state, events=events)

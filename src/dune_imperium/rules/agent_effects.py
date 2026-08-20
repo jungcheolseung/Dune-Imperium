@@ -56,6 +56,7 @@ def legal_agent_card_discard_actions(
         PersonalCardAgentEffect.DISCARD_TO_DRAW_ONE_OR_TWO_IF_SPACING_GUILD,
         PersonalCardAgentEffect.DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD,
         PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD,
+        PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE_AND_INTRIGUE_IF_SPACING_GUILD,
     ):
         return ()
     may_pay = (
@@ -70,6 +71,7 @@ def legal_agent_card_discard_actions(
             in (
                 PersonalCardAgentEffect.DISCARD_TO_DRAW_ONE_OR_TWO_IF_SPACING_GUILD,
                 PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD,
+                PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE_AND_INTRIGUE_IF_SPACING_GUILD,
             )
             else ()
         ),
@@ -81,6 +83,15 @@ def legal_agent_card_discard_actions(
             )
             for card_id in state.players[player].hand
             if may_pay
+            and not (
+                effect
+                is (
+                    PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE_AND_INTRIGUE_IF_SPACING_GUILD
+                )
+                and Faction.SPACING_GUILD
+                in personal_card_for_instance(card_id).factions
+                and not state.intrigue_deck
+            )
         ),
     )
 
@@ -124,6 +135,7 @@ def apply_agent_card_discard(
         discarded.state.players,
     )
     source_card = personal_card_for_instance(_effect_subject(context)[1])
+    draws_intrigue = False
     if (
         source_card.agent_effect
         is PersonalCardAgentEffect.DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD
@@ -133,8 +145,19 @@ def apply_agent_card_discard(
         source_card.agent_effect
         is PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD
     ):
+        draws_intrigue = True
+        draw_count = 1
+    elif (
+        source_card.agent_effect
+        is PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE_AND_INTRIGUE_IF_SPACING_GUILD
+    ):
+        draws_intrigue = Faction.SPACING_GUILD in discarded_card.factions
+        draw_count = 1
+    else:
+        draw_count = 2 if Faction.SPACING_GUILD in discarded_card.factions else 1
+    if draws_intrigue:
         if not prepared.intrigue_deck:
-            raise RuntimeError("Captured Mentat discard has no Intrigue reward")
+            raise RuntimeError("Agent-card discard has no Intrigue reward")
         next_owner = prepared.players[action.actor]
         next_owner = replace(
             next_owner,
@@ -145,9 +168,6 @@ def apply_agent_card_discard(
             players=_replace_player(prepared, next_owner),
             intrigue_deck=prepared.intrigue_deck[1:],
         )
-        draw_count = 1
-    else:
-        draw_count = 2 if Faction.SPACING_GUILD in discarded_card.factions else 1
     if draw_count == 0:
         return RuleResult(state=prepared, events=discarded.events)
     drawn = draw_or_request_personal_cards(
@@ -164,8 +184,7 @@ def apply_agent_card_discard(
                 payload=(("count", 1), ("player", action.actor)),
             ),
         )
-        if source_card.agent_effect
-        is PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD
+        if draws_intrigue
         else ()
     )
     return RuleResult(

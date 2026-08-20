@@ -1793,6 +1793,102 @@ def test_captured_mentat_cannot_pay_discard_without_intrigue_reward() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("discarded_card_id", "draws_intrigue"),
+    (
+        ("dagger", False),
+        ("reliable_informant", True),
+    ),
+)
+def test_guild_spy_may_cycle_and_draws_intrigue_for_guild_discard(
+    discarded_card_id: str,
+    draws_intrigue: bool,
+) -> None:
+    guild_spy = _imperium_instance("guild_spy")
+    discarded = (
+        _instance(discarded_card_id)
+        if discarded_card_id == "dagger"
+        else _imperium_instance(discarded_card_id)
+    )
+    drawn = _instance("convincing_argument")
+    owner = PlayerState(
+        player_id=0,
+        spies_supply=2,
+        spy_post_ids=("landsraad-assembly-hall-gather-support",),
+        hand=(guild_spy, discarded),
+        deck=(drawn,),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        intrigue_deck=("intrigue:plot",),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
+    actions = legal_agent_card_discard_actions(placed, 0)
+
+    assert {action.action_id for action in actions} == {
+        "decline_agent_card_discard",
+        "discard_agent_card",
+    }
+    result = apply_agent_card_discard(
+        placed,
+        next(action for action in actions if action.action_id == "discard_agent_card"),
+    )
+
+    assert result.state.players[0].discard_pile == (discarded,)
+    assert result.state.players[0].hand == (drawn,)
+    assert result.state.players[0].intrigue_cards == (
+        ("intrigue:plot",) if draws_intrigue else ()
+    )
+    assert [event.kind for event in result.events] == [
+        "card_discarded",
+        *(["intrigue_card_drawn"] if draws_intrigue else []),
+    ]
+
+
+def test_guild_spy_cannot_discard_guild_card_without_intrigue_reward() -> None:
+    guild_spy = _imperium_instance("guild_spy")
+    guild_card = _imperium_instance("reliable_informant")
+    non_guild_card = _instance("dagger")
+    owner = PlayerState(
+        player_id=0,
+        spies_supply=2,
+        spy_post_ids=("landsraad-assembly-hall-gather-support",),
+        hand=(guild_spy, guild_card, non_guild_card),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
+
+    actions = legal_agent_card_discard_actions(placed, 0)
+
+    assert tuple(
+        dict(action.arguments).get("card_id")
+        for action in actions
+        if action.action_id == "discard_agent_card"
+    ) == (non_guild_card,)
+
+
 def test_spacing_guilds_favor_draws_one_on_agent_turn() -> None:
     favor = _imperium_instance("spacing_guild_s_favor")
     drawn = _instance("dagger")

@@ -54,6 +54,9 @@ class PersonalCardAgentEffect(StrEnum):
     MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD = (
         "may_discard_to_draw_intrigue_and_personal_card"
     )
+    MAY_DISCARD_TO_DRAW_ONE_AND_INTRIGUE_IF_SPACING_GUILD = (
+        "may_discard_to_draw_one_and_intrigue_if_spacing_guild"
+    )
     GAIN_SPICE_IF_MAKER_SPACE = "gain_spice_if_maker_space"
     GAIN_TWO_SOLARI = "gain_two_solari"
     PLACE_SPY = "place_spy"
@@ -123,6 +126,14 @@ class PersonalCardRevealChoiceEffect(StrEnum):
         "may_lose_influence_to_gain_influence"
     )
     MAY_PAY_THREE_SPICE_FOR_INFLUENCE = "may_pay_three_spice_for_influence"
+
+
+class PersonalCardRevealAcquisitionEffect(StrEnum):
+    """Typed effects triggered by an acquisition during the current Reveal."""
+
+    GAIN_INFLUENCE_FOR_EACH_SPIED_FACTION_ON_SPICE_MUST_FLOW = (
+        "gain_influence_for_each_spied_faction_on_spice_must_flow"
+    )
 
 
 @dataclass(frozen=True, slots=True)
