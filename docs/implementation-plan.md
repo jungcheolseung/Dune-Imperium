@@ -347,6 +347,10 @@ codec v36에 연결했다.
 연결하고, Influence 감소와 증가 Faction을 함께 선택하는 Reveal 경계를 추가해
 Captured Mentat을 codec v37에 연결했다. Influence 감소는 Friendship VP와
 Alliance 반환·이전·복수 동률 수령자 선택을 공통 transition으로 처리한다.
+서른두 번째 묶음은 hand discard 사유와 discard trigger를 공통 transition으로
+분리하고, Spacing Guild's Favor의 hand discard Spice 2, Agent draw 1, Reveal의
+Spice 3 비용과 선택한 Faction Influence를 codec v38에 연결했다. Reveal Clean Up
+이동은 discard trigger를 발동하지 않는다.
 고정된 DIU `imperium.JSON`은 런타임 의존성 없이 63개 local identity와
 대조하고 아이콘·Faction·효과 형태를 정규화하는 read-only audit에만 사용한다.
 나머지 Imperium과 Intrigue, Leader, Objective 효과는 아직 identity manifest

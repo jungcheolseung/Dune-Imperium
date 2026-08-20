@@ -103,11 +103,10 @@
 - 효과가 플레이어에게 카드 한 장을 `discard`하라고 지시하면 별도 지정이 없는 한 그 플레이어의 손에서 선택한다. [FAQ p. 2]
 - 별도 지정이 없는 `discard` 대상으로 Intrigue 카드를 선택할 수 없다. [Main p. 20]
 - 일반 카드의 버림 더미와 Intrigue 카드의 버림 더미는 서로 별개다. 일반 카드는 각 플레이어의 버림 더미에, 해결한 Intrigue 카드는 Intrigue Deck 옆의 공용 앞면 버림 더미에 놓는다. [Main p. 7] [Main p. 13]
-- Spacing Guild's Favor를 현재 ruleset의 content manifest에 포함하는 경우, Clean
-  Up에 in-play 상태에서 discard pile로 옮기는 것은 그 card의 `discard` 능력을
+- 현재 ruleset의 Spacing Guild's Favor는 Clean Up에 in-play 상태에서 discard
+  pile로 옮기는 것으로 그 card의 `discard` 능력을
   발동하지 않는다. hand에서 discard할 때만 발동한다. [Main p. 17]
 
 ## 미확정 항목
 
 - 여러 의무 효과가 서로 충돌할 때 적용할 일반 우선순위는 지정된 두 문서에서 확인되지 않는다. 확인된 범위에서는 공간 효과, Agent 상자 효과, 세력 영향력 및 조건을 충족한 계약 효과만 원하는 순서로 처리할 수 있다. [Main p. 9] [FAQ p. 1] [FAQ p. 3]
-- 정리 단계의 카드 이동이 다른 모든 카드의 `discard` 조건에 어떻게 적용되는지는 일반 규칙으로 명시되어 있지 않다. 지정된 자료는 Spacing Guild's Favor에 대해서만 정리 중 이동이 해당 능력을 발동하지 않는다고 확정한다. [Main p. 12] [Main p. 17]

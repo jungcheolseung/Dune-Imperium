@@ -117,7 +117,7 @@
 | `[Main p. 17]` | Lady Jessica의 시작 면 | `covered` | [setup-and-game-flow.md](setup-and-game-flow.md), [official-rulings-index.md](official-rulings-index.md); 전환 능력 데이터만 content manifest |
 | `[Main p. 17]` | Lady Margot Fenring·Princess Irulan의 `reach 2 Influence` 판정 | `covered` | [uprising-systems.md](uprising-systems.md); 개별 능력 연결은 content manifest로 이관 |
 | `[Main p. 17]` | Shaddam Signet Ring의 unit 배치 제한은 즉시 발효 | `covered` | [choam-module.md](choam-module.md); 능력 데이터는 content manifest로 이관 |
-| `[Main p. 17]` | Spacing Guild's Favor는 Clean Up 이동이 아니라 hand discard에만 반응 | `deferred to content manifest` | 판정은 [player-turns.md](player-turns.md)와 [official-rulings-index.md](official-rulings-index.md)에 보존; card 소속과 연결은 content manifest |
+| `[Main p. 17]` | Spacing Guild's Favor는 Clean Up 이동이 아니라 hand discard에만 반응 | `covered` | [player-turns.md](player-turns.md), [official-rulings-index.md](official-rulings-index.md), [../implementation-audits/personal-cards.md](../implementation-audits/personal-cards.md) |
 | `[Main p. 17]` | 자원, Faction, Combat, Spy, sandworm에 관한 전략 팁 | `out of scope` | 전략 조언이며 규칙 상태가 아님 |
 
 ### Main p. 20: Icon Guide and Additional Terms

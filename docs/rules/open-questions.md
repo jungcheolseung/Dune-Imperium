@@ -130,13 +130,13 @@
 
 ## OQ-013 — Clean Up 이동과 일반적인 `discard` 반응
 
-- 상태: `CONTENT`
-- Reveal Clean Up은 in-play 카드를 discard pile로 옮긴다. Main은 Spacing Guild's
-  Favor에 한해 이 이동이 그 카드의 discard ability를 발동하지 않고 hand에서의
-  discard만 발동한다고 명시하지만, 모든 `discard` 반응에 적용되는 일반 규칙은
-  제시하지 않는다. `[Main pp. 12, 17]`
-- 필요한 답: 콘텐츠 전사 후 같은 표현을 쓰는 다른 카드가 있는지 확인하고,
-  있다면 해당 카드별 공식 판정을 찾는다.
+- 상태: `RESOLVED`
+- 현재 Uprising 기본 Imperium 콘텐츠의 discard trigger는 Spacing Guild's Favor
+  하나뿐이며, Main은 이 카드가 hand에서 discard될 때만 발동한다고 직접 정한다.
+  구현은 hand-discard transition에서만 trigger를 처리하고 Reveal Clean Up은
+  in-play 카드를 직접 discard pile로 이동한다. 다른 확장 콘텐츠에서 새 discard
+  trigger를 추가하면 해당 카드의 문구와 판정을 별도로 재검토한다.
+  `[Main pp. 12, 17]`
 
 ## OQ-014 — Alliance 상실 때 여러 수령 후보
 
