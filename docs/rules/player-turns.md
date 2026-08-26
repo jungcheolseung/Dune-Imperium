@@ -72,6 +72,11 @@
   선택해 hand의 Intrigue card 1장을 trash하고 Spice 2를 함께 지불하면 Victory
   Point 1을 얻는다. 비용 일부만 지불할 수 없으며 전체 비용을 지불하지 않고
   생략할 수 있다. `[Junction Headquarters card]` `[Main pp. 9, 20]`
+- Corrinth City는 Agent box의 화살표를 선택해 hand의 다른 card 2장을 discard하고
+  Solari 5를 함께 지불하면 Victory Point 1을 얻는다. 효과를 시작하기 전에 두
+  card와 Solari를 모두 보유해야 하므로, discard한 card의 효과로 얻는 자원을
+  Solari 비용에 사용할 수 없다. 전체 비용을 지불하지 않고 생략할 수 있다.
+  `[Corrinth City card]` `[Designer clarification]` `[Main pp. 9, 20]`
 - Signet Ring card를 Agent turn에 내서 Agent를 보내면 Leader의 Signet Ring icon이 표시된 능력을 사용한다. [Main p. 6] [Main p. 20]
 - CHOAM Module의 Shaddam Corrino IV에 관한 별도 판정은
   `choam-module.md`와 콘텐츠 명세에서 다룬다. [Main pp. 16-17]
@@ -113,6 +118,9 @@
 - Steersman은 Reveal에서 Persuasion 2와 Spice 2를 얻는다. `[Steersman card]`
 - Junction Headquarters는 Reveal에서 Persuasion 1과 Water 1을 얻고 troop 1명을
   recruit한다. `[Junction Headquarters card]`
+- Corrinth City는 Reveal에서 Solari 5를 얻거나, 아직 High Council 좌석이 없으면
+  Solari 5를 지불하고 좌석을 얻는다. 좌석을 선택하면 현재 Reveal turn부터
+  Persuasion 2를 얻는다. `[Corrinth City card]` `[Board Guide p. 2]`
 
 ## 카드 획득과 Imperium Row 보충
 
