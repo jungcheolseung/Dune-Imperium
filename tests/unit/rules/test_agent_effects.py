@@ -26,6 +26,7 @@ from dune_imperium.rules.agent_effects import (
     apply_agent_card_recall,
     apply_agent_card_spy_action,
     apply_agent_card_trash,
+    apply_corrinth_city_payment,
     legal_agent_card_discard_actions,
     legal_agent_card_influence_actions,
     legal_agent_card_intrigue_payment_actions,
@@ -33,6 +34,7 @@ from dune_imperium.rules.agent_effects import (
     legal_agent_card_recall_actions,
     legal_agent_card_spy_actions,
     legal_agent_card_trash_actions,
+    legal_corrinth_city_payment_actions,
     resolve_agent_card_effect,
     resolve_faction_influence,
 )
@@ -104,6 +106,97 @@ def test_seek_allies_trashes_itself_from_in_play() -> None:
     assert card not in resolved.players[0].in_play
     assert resolved.players[0].trashed == (card,)
     assert dict(resolved.decision_stack[-1].context)["pending_agent_effect"] is False
+
+
+def test_corrinth_city_atomically_discards_two_and_pays_five_for_vp() -> None:
+    corrinth_city = _imperium_instance("corrinth_city")
+    dagger = _instance("dagger")
+    favor = _imperium_instance("spacing_guild_s_favor")
+    owner = PlayerState(
+        player_id=0,
+        hand=(corrinth_city, favor, dagger),
+        resources=Resources(solari=5),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
+    actions = legal_corrinth_city_payment_actions(placed, 0)
+
+    assert {action.action_id for action in actions} == {
+        "decline_corrinth_city_payment",
+        "select_corrinth_city_discard",
+    }
+    selection = next(
+        action
+        for action in actions
+        if dict(action.arguments).get("card_id") == favor
+    )
+    selected = apply_corrinth_city_payment(placed, selection)
+    assert selected.state.players[0].hand == (favor, dagger)
+    assert selected.state.players[0].resources.solari == 5
+    assert selected.events[0].kind == "corrinth_city_payment_started"
+
+    payment = next(
+        action
+        for action in legal_corrinth_city_payment_actions(selected.state, 0)
+        if action.action_id == "pay_corrinth_city"
+    )
+    result = apply_corrinth_city_payment(selected.state, payment)
+    resolved = result.state.players[0]
+
+    assert resolved.hand == ()
+    assert set(resolved.discard_pile) == {dagger, favor}
+    assert resolved.resources.solari == 0
+    assert resolved.resources.spice == 2
+    assert resolved.victory_points == owner.victory_points + 1
+    assert (
+        dict(result.state.decision_stack[-1].context)["pending_agent_effect"] is False
+    )
+    assert [event.kind for event in result.events] == [
+        "card_discarded",
+        "personal_card_discard_effect_resolved",
+        "card_discarded",
+        "corrinth_city_payment_resolved",
+    ]
+
+
+def test_corrinth_city_cost_must_be_available_before_discard_effects() -> None:
+    corrinth_city = _imperium_instance("corrinth_city")
+    favor = _imperium_instance("spacing_guild_s_favor")
+    owner = PlayerState(
+        player_id=0,
+        hand=(corrinth_city, favor, _instance("dagger")),
+        resources=Resources(solari=4),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+
+    placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
+
+    assert legal_corrinth_city_payment_actions(placed, 0) == ()
+    assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False
 
 
 def test_faction_influence_reaches_friendship_and_awards_vp() -> None:

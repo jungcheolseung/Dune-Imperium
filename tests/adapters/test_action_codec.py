@@ -11,10 +11,29 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     first = ActionCodec(RulesetConfig())
     second = ActionCodec(RulesetConfig())
 
-    assert ACTION_CODEC_VERSION == 51
+    assert ACTION_CODEC_VERSION == 52
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
-    assert first.size == 2906
+    assert first.size == 3111
+
+
+def test_corrinth_city_staged_payment_round_trips() -> None:
+    codec = ActionCodec(RulesetConfig())
+    actions = (
+        DomainAction(
+            action_id="select_corrinth_city_discard",
+            actor=0,
+            arguments=(("card_id", "imperium:spacing_guild_s_favor:0"),),
+        ),
+        DomainAction(
+            action_id="pay_corrinth_city",
+            actor=0,
+            arguments=(("card_id", "player:0:starter:dagger:0"),),
+        ),
+    )
+
+    for action in actions:
+        assert codec.decode(codec.encode(action), actor=0) == action
 
 
 def test_agent_card_spice_payment_round_trips() -> None:

@@ -18,6 +18,7 @@ from dune_imperium.core import (
 )
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.reveal_turn import (
+    apply_corrinth_city_reveal,
     apply_reveal_card_trash,
     apply_reveal_influence_exchange,
     apply_reveal_spice_influence,
@@ -25,6 +26,7 @@ from dune_imperium.rules.reveal_turn import (
     apply_reveal_troop_retreat,
     begin_reveal_turn,
     finish_reveal_turn,
+    legal_corrinth_city_reveal_actions,
     legal_finish_reveal_actions,
     legal_reveal_actions,
     legal_reveal_card_trash_actions,
@@ -33,6 +35,57 @@ from dune_imperium.rules.reveal_turn import (
     legal_reveal_spy_actions,
     legal_reveal_troop_retreat_actions,
 )
+
+
+def test_corrinth_city_can_take_high_council_during_current_reveal() -> None:
+    corrinth_city = _imperium_instance("corrinth_city")
+    owner = PlayerState(
+        player_id=0,
+        hand=(corrinth_city,),
+        resources=Resources(solari=5),
+    )
+    revealed = begin_reveal_turn(
+        _state(owner),
+        DomainAction(action_id="reveal_turn", actor=0),
+    ).state
+    actions = legal_corrinth_city_reveal_actions(revealed, 0)
+
+    assert tuple(action.action_id for action in actions) == (
+        "gain_five_reveal_solari",
+        "take_high_council_from_reveal",
+    )
+    take_seat = actions[1]
+    result = apply_corrinth_city_reveal(revealed, take_seat)
+    resolved = result.state.players[0]
+
+    assert resolved.high_council is True
+    assert resolved.resources.solari == 0
+    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 2
+    assert result.events[0].kind == "high_council_acquired"
+
+
+def test_corrinth_city_gains_five_solari_when_seat_is_unavailable() -> None:
+    corrinth_city = _imperium_instance("corrinth_city")
+    owner = PlayerState(
+        player_id=0,
+        hand=(corrinth_city,),
+        resources=Resources(solari=2),
+        high_council=True,
+    )
+    revealed = begin_reveal_turn(
+        _state(owner),
+        DomainAction(action_id="reveal_turn", actor=0),
+    ).state
+    actions = legal_corrinth_city_reveal_actions(revealed, 0)
+
+    assert tuple(action.action_id for action in actions) == (
+        "gain_five_reveal_solari",
+    )
+    result = apply_corrinth_city_reveal(revealed, actions[0])
+
+    assert result.state.players[0].resources.solari == 7
+    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 2
+    assert result.events[0].kind == "reveal_solari_gained"
 
 
 def test_calculus_of_power_trashes_another_emperor_for_strength() -> None:

@@ -270,6 +270,100 @@ def legal_reveal_troop_retreat_actions(
     )
 
 
+def legal_corrinth_city_reveal_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return Corrinth City's mutually exclusive Reveal choices."""
+
+    if not 0 <= player < state.config.players or not state.decision_stack:
+        return ()
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    if (
+        context.get("reveal_choice_effect")
+        != PersonalCardRevealChoiceEffect.GAIN_FIVE_SOLARI_OR_TAKE_HIGH_COUNCIL.value
+    ):
+        return ()
+    owner = state.players[player]
+    take_seat = (
+        ()
+        if owner.high_council or owner.resources.solari < 5
+        else (
+            DomainAction(
+                action_id="take_high_council_from_reveal",
+                actor=player,
+            ),
+        )
+    )
+    return (
+        DomainAction(action_id="gain_five_reveal_solari", actor=player),
+        *take_seat,
+    )
+
+
+def apply_corrinth_city_reveal(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Gain five Solari or pay five for a High Council seat."""
+
+    if action not in legal_corrinth_city_reveal_actions(state, action.actor):
+        raise ValueError("action is not a legal Corrinth City Reveal choice")
+    context = dict(state.decision_stack[-1].context)
+    card_id = context.get("reveal_card_id")
+    if not isinstance(card_id, str):
+        raise RuntimeError("Corrinth City Reveal frame has invalid card ID")
+    source = (
+        f"round:{state.round_number}:player:{action.actor}:"
+        f"reveal_card:{card_id}"
+    )
+    owner = state.players[action.actor]
+    remaining = state.decision_stack[:-1]
+    if action.action_id == "gain_five_reveal_solari":
+        next_owner = replace(
+            owner,
+            resources=replace(owner.resources, solari=owner.resources.solari + 5),
+        )
+        event = GameEvent(
+            event_id=f"{source}:solari",
+            kind="reveal_solari_gained",
+            payload=(
+                ("amount", 5),
+                ("card_id", card_id),
+                ("player", action.actor),
+            ),
+        )
+    else:
+        if owner.high_council or owner.resources.solari < 5:
+            raise RuntimeError("Corrinth City High Council choice is unavailable")
+        next_owner = replace(
+            owner,
+            high_council=True,
+            resources=replace(owner.resources, solari=owner.resources.solari - 5),
+        )
+        remaining = _add_reveal_persuasion(remaining, 2)
+        event = GameEvent(
+            event_id=f"{source}:high_council",
+            kind="high_council_acquired",
+            payload=(
+                ("card_id", card_id),
+                ("player", action.actor),
+                ("solari", 5),
+            ),
+        )
+    return RuleResult(
+        state=replace(
+            state,
+            players=_replace_player(state, next_owner),
+            decision_stack=remaining,
+        ),
+        events=(event,),
+    )
+
+
 def apply_reveal_troop_retreat(
     state: GameState,
     action: DomainAction,
@@ -958,6 +1052,11 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
                     is (
                         PersonalCardRevealChoiceEffect.MAY_RETREAT_TWO_TROOPS_FOR_FOUR_STRENGTH
                     )
+                    else "Gain five Solari or pay five for a High Council seat"
+                    if effect
+                    is (
+                        PersonalCardRevealChoiceEffect.GAIN_FIVE_SOLARI_OR_TAKE_HIGH_COUNCIL
+                    )
                     else "Choose a Spy to recall for this Reveal effect"
                 ),
             ),
@@ -1002,6 +1101,8 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
             is PersonalCardRevealChoiceEffect.MAY_RETREAT_TWO_TROOPS_FOR_FOUR_STRENGTH
             and owner.troops_conflict >= 2
         )
+        or effect
+        is PersonalCardRevealChoiceEffect.GAIN_FIVE_SOLARI_OR_TAKE_HIGH_COUNCIL
         or (
             effect
             in (

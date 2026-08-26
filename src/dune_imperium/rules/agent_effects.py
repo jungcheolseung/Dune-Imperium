@@ -816,7 +816,6 @@ def apply_agent_card_intrigue_payment(
         raise ValueError("action is not a legal Agent-card Intrigue payment")
     _, context = current_agent_effect_context(state)
     _, source_card_id, _ = _effect_subject(context)
-    context["pending_agent_effect"] = False
     source = (
         f"round:{state.round_number}:player:{action.actor}:"
         f"agent_card:{source_card_id}:intrigue_payment"
@@ -927,6 +926,153 @@ def legal_agent_card_payment_actions(
                 else "pay_agent_card_spice"
             ),
             actor=player,
+        ),
+    )
+
+
+def legal_corrinth_city_payment_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return Corrinth City's optional, atomic two-card payment choices."""
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return ()
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    if context.get("pending_agent_effect") is not True:
+        return ()
+    _, source_card_id, _ = _effect_subject(context)
+    source_card = personal_card_for_instance(source_card_id)
+    if (
+        source_card.agent_effect
+        is not PersonalCardAgentEffect.MAY_DISCARD_TWO_AND_PAY_FIVE_SOLARI_FOR_VP
+    ):
+        return ()
+    owner = state.players[player]
+    if owner.resources.solari < 5 or len(owner.hand) < 2:
+        raise RuntimeError("pending Corrinth City payment is not affordable")
+    first_card_id = context.get("corrinth_first_card_id")
+    if first_card_id is not None and not isinstance(first_card_id, str):
+        raise RuntimeError("pending Corrinth City payment has invalid first card")
+    return (
+        DomainAction(action_id="decline_corrinth_city_payment", actor=player),
+        *(
+            DomainAction(
+                action_id=(
+                    "select_corrinth_city_discard"
+                    if first_card_id is None
+                    else "pay_corrinth_city"
+                ),
+                actor=player,
+                arguments=(("card_id", card_id),),
+            )
+            for card_id in owner.hand
+            if card_id != first_card_id
+        ),
+    )
+
+
+def apply_corrinth_city_payment(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Decline or pay Corrinth City's complete cost before resolving discards."""
+
+    if action not in legal_corrinth_city_payment_actions(state, action.actor):
+        raise ValueError("action is not a legal Corrinth City payment choice")
+    _, context = current_agent_effect_context(state)
+    _, source_card_id, _ = _effect_subject(context)
+    source = (
+        f"round:{state.round_number}:player:{action.actor}:"
+        f"agent_card:{source_card_id}"
+    )
+    if action.action_id == "decline_corrinth_city_payment":
+        context["pending_agent_effect"] = False
+        return RuleResult(
+            state=advance_after_effect(state, context),
+            events=(
+                GameEvent(
+                    event_id=f"{source}:declined",
+                    kind="corrinth_city_payment_declined",
+                    payload=(("player", action.actor),),
+                ),
+            ),
+        )
+
+    card_id = dict(action.arguments).get("card_id")
+    if not isinstance(card_id, str):
+        raise RuntimeError("Corrinth City payment has invalid card ID")
+    if action.action_id == "select_corrinth_city_discard":
+        context["corrinth_first_card_id"] = card_id
+        frame = state.decision_stack[-1]
+        next_frame = replace(frame, context=tuple(sorted(context.items())))
+        return RuleResult(
+            state=replace(
+                state,
+                decision_stack=(*state.decision_stack[:-1], next_frame),
+            ),
+            events=(
+                GameEvent(
+                    event_id=f"{source}:first_discard_selected",
+                    kind="corrinth_city_payment_started",
+                    payload=(("player", action.actor),),
+                ),
+            ),
+        )
+
+    first_card_id = context.get("corrinth_first_card_id")
+    if not isinstance(first_card_id, str):
+        raise RuntimeError("Corrinth City payment is missing its first card")
+    context["pending_agent_effect"] = False
+    owner = state.players[action.actor]
+    if owner.resources.solari < 5:
+        raise RuntimeError("Corrinth City payment requires five Solari")
+    paid_owner = replace(
+        owner,
+        resources=replace(owner.resources, solari=owner.resources.solari - 5),
+    )
+    paid_state = replace(state, players=_replace_player(state, paid_owner))
+    first_discard = discard_personal_card_from_hand(
+        paid_state,
+        action.actor,
+        first_card_id,
+        source=source,
+    )
+    second_discard = discard_personal_card_from_hand(
+        first_discard.state,
+        action.actor,
+        card_id,
+        source=source,
+    )
+    resolved_owner = second_discard.state.players[action.actor]
+    resolved_owner = replace(
+        resolved_owner,
+        victory_points=resolved_owner.victory_points + 1,
+    )
+    next_state = advance_after_effect(
+        second_discard.state,
+        context,
+        _replace_player(second_discard.state, resolved_owner),
+    )
+    return RuleResult(
+        state=next_state,
+        events=(
+            *first_discard.events,
+            *second_discard.events,
+            GameEvent(
+                event_id=f"{source}:resolved",
+                kind="corrinth_city_payment_resolved",
+                payload=(
+                    ("player", action.actor),
+                    ("solari", 5),
+                    ("victory_points", 1),
+                ),
+            ),
         ),
     )
 

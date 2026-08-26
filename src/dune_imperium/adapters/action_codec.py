@@ -28,7 +28,7 @@ from dune_imperium.content.uprising.starting_cards import (
 from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
 from dune_imperium.core.actions import ActionValue, DomainAction
 
-ACTION_CODEC_VERSION = 51
+ACTION_CODEC_VERSION = 52
 MAX_DEPLOYMENT_COUNT = 12
 
 
@@ -116,6 +116,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "decline_combat_reward_trash",
             "decline_agent_card_trash",
             "decline_agent_card_payment",
+            "decline_corrinth_city_payment",
             "decline_agent_card_intrigue_payment",
             "decline_agent_card_discard",
             "decline_agent_card_acquisition",
@@ -129,10 +130,12 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "decline_reveal_troop_retreat",
             "deploy_control_defense",
             "finish_reveal",
+            "gain_five_reveal_solari",
             "gain_two_reveal_strength",
             "pass_combat_intrigue",
             "pay_agent_card_water",
             "pay_agent_card_spice",
+            "take_high_council_from_reveal",
             "pay_combat_reward",
             "resolve_agent_card_effect",
             "resolve_board_effect",
@@ -316,6 +319,8 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     templates.extend(_trash_templates(config, "discard_opponent_card"))
     templates.extend(_trash_templates(config, "trash_reveal_card"))
     templates.extend(_trash_templates(config, "trash_combat_reward_card"))
+    templates.extend(_trash_templates(config, "select_corrinth_city_discard"))
+    templates.extend(_trash_templates(config, "pay_corrinth_city"))
     return tuple(sorted(templates, key=_template_sort_key))
 
 
@@ -409,6 +414,16 @@ def _trash_templates(
     config: RulesetConfig,
     action_id: str,
 ) -> tuple[ActionTemplate, ...]:
+    return tuple(
+        ActionTemplate(
+            action_id=action_id,
+            arguments=(("card_id", card_id),),
+        )
+        for card_id in _personal_card_instance_ids(config)
+    )
+
+
+def _personal_card_instance_ids(config: RulesetConfig) -> tuple[str, ...]:
     card_ids = [
         f"starter:{card.card.card_id}:{copy}"
         for card in STARTING_DECK
@@ -420,13 +435,7 @@ def _trash_templates(
         for stack in RESERVE_STACKS
         for copy in range(stack.copies)
     )
-    return tuple(
-        ActionTemplate(
-            action_id=action_id,
-            arguments=(("card_id", card_id),),
-        )
-        for card_id in card_ids
-    )
+    return tuple(card_ids)
 
 
 def _normalize_arguments(

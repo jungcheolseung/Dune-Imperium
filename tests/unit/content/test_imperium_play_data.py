@@ -786,11 +786,21 @@ def test_undercover_asset_play_data_is_complete() -> None:
     )
 
 
-def test_untranscribed_imperium_card_still_fails_explicitly() -> None:
-    instance_id = _instance("corrinth_city")
+def test_corrinth_city_play_data_is_complete() -> None:
+    card = IMPERIUM_CARDS_BY_ID["corrinth_city"]
 
-    with pytest.raises(NotImplementedError, match="not transcribed"):
-        personal_card_for_instance(instance_id)
+    assert card.play_data_complete is True
+    assert card.factions == (Faction.EMPEROR,)
+    assert card.agent_icons == (AgentIcon.EMPEROR, AgentIcon.LANDSRAAD)
+    assert (
+        card.agent_effect
+        is PersonalCardAgentEffect.MAY_DISCARD_TWO_AND_PAY_FIVE_SOLARI_FOR_VP
+    )
+    assert card.reveal_persuasion == 0
+    assert card.reveal_strength == 0
+    assert card.reveal_choice_effects == (
+        PersonalCardRevealChoiceEffect.GAIN_FIVE_SOLARI_OR_TAKE_HIGH_COUNCIL,
+    )
 
 
 def test_personal_card_reveal_effect_requires_a_nonnegative_gain() -> None:

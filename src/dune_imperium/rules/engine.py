@@ -32,6 +32,7 @@ from dune_imperium.rules.agent_effects import (
     apply_agent_card_recall,
     apply_agent_card_spy_action,
     apply_agent_card_trash,
+    apply_corrinth_city_payment,
     apply_opponent_card_discard,
     legal_agent_card_discard_actions,
     legal_agent_card_influence_actions,
@@ -40,6 +41,7 @@ from dune_imperium.rules.agent_effects import (
     legal_agent_card_recall_actions,
     legal_agent_card_spy_actions,
     legal_agent_card_trash_actions,
+    legal_corrinth_city_payment_actions,
     legal_opponent_card_discard_actions,
     resolve_agent_card_effect,
     resolve_faction_influence,
@@ -100,6 +102,7 @@ from dune_imperium.rules.phases import (
     resolve_recall_or_endgame,
 )
 from dune_imperium.rules.reveal_turn import (
+    apply_corrinth_city_reveal,
     apply_reveal_card_trash,
     apply_reveal_influence_exchange,
     apply_reveal_spice_influence,
@@ -108,6 +111,7 @@ from dune_imperium.rules.reveal_turn import (
     begin_reveal_turn,
     current_reveal_context,
     finish_reveal_turn,
+    legal_corrinth_city_reveal_actions,
     legal_finish_reveal_actions,
     legal_reveal_actions,
     legal_reveal_card_trash_actions,
@@ -197,6 +201,7 @@ class UprisingRulesEngine(RulesEngine):
         actions: list[DomainAction] = []
         actions.extend(legal_acquisition_spy_actions(state, player))
         actions.extend(legal_opponent_card_discard_actions(state, player))
+        actions.extend(legal_corrinth_city_reveal_actions(state, player))
         actions.extend(legal_reveal_card_trash_actions(state, player))
         actions.extend(legal_reveal_spy_actions(state, player))
         actions.extend(legal_reveal_influence_exchange_actions(state, player))
@@ -219,6 +224,7 @@ class UprisingRulesEngine(RulesEngine):
         handlers = {
             "decline_control_defense": apply_control_defense_action,
             "decline_agent_card_payment": apply_agent_card_payment,
+            "decline_corrinth_city_payment": apply_corrinth_city_payment,
             "decline_agent_card_intrigue_payment": (
                 apply_agent_card_intrigue_payment
             ),
@@ -229,6 +235,8 @@ class UprisingRulesEngine(RulesEngine):
             "decline_gather_intelligence": apply_gather_intelligence_action,
             "decline_reveal_spy_recall": apply_reveal_spy_action,
             "decline_reveal_card_trash": apply_reveal_card_trash,
+            "gain_five_reveal_solari": apply_corrinth_city_reveal,
+            "take_high_council_from_reveal": apply_corrinth_city_reveal,
             "deploy_control_defense": apply_control_defense_action,
             "agent_turn": apply_agent_action,
             "reveal_turn": begin_reveal_turn,
@@ -268,6 +276,8 @@ class UprisingRulesEngine(RulesEngine):
             "pass_combat_intrigue": apply_combat_intrigue_pass,
             "pay_agent_card_water": apply_agent_card_payment,
             "pay_agent_card_spice": apply_agent_card_payment,
+            "pay_corrinth_city": apply_corrinth_city_payment,
+            "select_corrinth_city_discard": apply_corrinth_city_payment,
             "pay_agent_card_intrigue_and_spice": (
                 apply_agent_card_intrigue_payment
             ),
@@ -343,6 +353,10 @@ class UprisingRulesEngine(RulesEngine):
             trash_actions = legal_agent_card_trash_actions(state, player)
             discard_actions = legal_agent_card_discard_actions(state, player)
             payment_actions = legal_agent_card_payment_actions(state, player)
+            corrinth_city_actions = legal_corrinth_city_payment_actions(
+                state,
+                player,
+            )
             intrigue_payment_actions = legal_agent_card_intrigue_payment_actions(
                 state,
                 player,
@@ -355,6 +369,7 @@ class UprisingRulesEngine(RulesEngine):
                 *trash_actions,
                 *discard_actions,
                 *payment_actions,
+                *corrinth_city_actions,
                 *intrigue_payment_actions,
                 *recall_actions,
                 *spy_actions,
@@ -422,6 +437,7 @@ def _agent_action_is_supported(state: GameState, action: DomainAction) -> bool:
         PersonalCardAgentEffect.RECRUIT_TWO_IF_BENE_GESSERIT_BOND,
         PersonalCardAgentEffect.RETURN_SELF_IF_BENE_GESSERIT_BOND,
         PersonalCardAgentEffect.PAY_TWO_WATER_TO_DRAW_TWO,
+        PersonalCardAgentEffect.MAY_DISCARD_TWO_AND_PAY_FIVE_SOLARI_FOR_VP,
         PersonalCardAgentEffect.MAY_TRASH_INTRIGUE_AND_PAY_TWO_SPICE_FOR_VP_IF_SPACING_GUILD_ALLIANCE,
         PersonalCardAgentEffect.RECRUIT_ONE_IF_MAKER_SPACE,
         PersonalCardAgentEffect.RECRUIT_TWO_TROOPS,

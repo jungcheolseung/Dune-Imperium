@@ -50,6 +50,9 @@ class PersonalCardAgentEffect(StrEnum):
     LEADER_SIGNET = "leader_signet"
     PAY_TWO_WATER_TO_DRAW_TWO = "pay_two_water_to_draw_two"
     MAY_PAY_FOUR_SPICE_FOR_VP = "may_pay_four_spice_for_vp"
+    MAY_DISCARD_TWO_AND_PAY_FIVE_SOLARI_FOR_VP = (
+        "may_discard_two_and_pay_five_solari_for_vp"
+    )
     MAY_TRASH_INTRIGUE_AND_PAY_TWO_SPICE_FOR_VP_IF_SPACING_GUILD_ALLIANCE = (
         "may_trash_intrigue_and_pay_two_spice_for_vp_if_spacing_guild_alliance"
     )
@@ -150,6 +153,9 @@ class PersonalCardRevealChoiceEffect(StrEnum):
     )
     MAY_RETREAT_TWO_TROOPS_FOR_FOUR_STRENGTH = (
         "may_retreat_two_troops_for_four_strength"
+    )
+    GAIN_FIVE_SOLARI_OR_TAKE_HIGH_COUNCIL = (
+        "gain_five_solari_or_take_high_council"
     )
 
 

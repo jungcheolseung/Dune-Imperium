@@ -230,7 +230,21 @@ IMPERIUM_CARDS: Final = (
         ),
         play_data_complete=True,
     ),
-    _entry(69, "corrinth-city", "Corrinth City", 6),
+    _entry(
+        69,
+        "corrinth-city",
+        "Corrinth City",
+        6,
+        factions=(Faction.EMPEROR,),
+        agent_icons=(AgentIcon.EMPEROR, AgentIcon.LANDSRAAD),
+        agent_effect=(
+            PersonalCardAgentEffect.MAY_DISCARD_TWO_AND_PAY_FIVE_SOLARI_FOR_VP
+        ),
+        reveal_choice_effects=(
+            PersonalCardRevealChoiceEffect.GAIN_FIVE_SOLARI_OR_TAKE_HIGH_COUNCIL,
+        ),
+        play_data_complete=True,
+    ),
     _entry(
         35,
         "covert-operation",

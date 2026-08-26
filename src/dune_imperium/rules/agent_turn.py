@@ -262,6 +262,11 @@ def _agent_effect_is_available(
         return owner.resources.spice >= 4
     if (
         effect
+        is PersonalCardAgentEffect.MAY_DISCARD_TWO_AND_PAY_FIVE_SOLARI_FOR_VP
+    ):
+        return owner.resources.solari >= 5 and len(owner.hand) >= 3
+    if (
+        effect
         is (
             PersonalCardAgentEffect.MAY_TRASH_INTRIGUE_AND_PAY_TWO_SPICE_FOR_VP_IF_SPACING_GUILD_ALLIANCE
         )
