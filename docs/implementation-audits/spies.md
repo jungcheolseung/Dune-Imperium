@@ -22,6 +22,7 @@ truth for the transition code.
 | Reveal recall | Spy Network checks for at least two placed Spies when Reveal begins, then requires the owner to choose and recall one before drawing one Intrigue card. | The choice frame blocks purchases and other turn actions until it returns to the underlying Reveal frame. With fewer than two Spies, no choice opens. |
 | Reveal recall cost | In High Places may recall any two placed Spies to add two Persuasion, or decline without changing state. | Two-Spy payment is one atomic action selected from canonical unordered pairs, keeping the action catalog smaller and preventing partial payment. |
 | Reveal placement | Public Spectacle and Wheels Within Wheels place one Spy during Reveal. | The serial choice blocks purchasing until placement finishes; an empty supply requires recalling one owned Spy first, without triggering a recall benefit. |
+| Reveal placement alternative | Undercover Asset chooses between placing one Spy and gaining two strength. | Before a Spy is recalled, either branch remains available. Recalling for an empty supply commits to placement so the recall cannot be taken before switching to strength. |
 | Spied Factions | Guild Spy treats a Faction as spied on when one of its owner's Observation Posts is connected to a space of that Faction. | Acquiring The Spice Must Flow during that Reveal gains one Influence for each distinct matching Faction; multiple posts connected to the same Faction do not duplicate it. |
 
 ## Deferred Spy systems

@@ -20,6 +20,9 @@
    [Main p. 9] [Main p. 11]
 5. 공간의 비용은 공간이나 낸 카드의 효과를 하나라도 처리하기 전에 즉시 전부 지불해야 한다. 지불할 수 없으면 그 공간을 선택할 수 없다. [Main p. 9]
 6. 공간에 Influence requirement가 있으면 진입할 때 충족해야 한다. Imperial Privilege는 Emperor Influence 2 이상, Shipping은 Spacing Guild Influence 2 이상, Sietch Tabr는 Fremen Influence 2 이상을 요구한다. [Main p. 9]
+   Undercover Asset은 그 카드를 사용해 Agent를 보내는 그 turn에 한해 이 Influence
+   requirement들을 무시한다. 카드의 Agent icon, 공간 비용, 점유 제한 등 다른
+   합법성 조건은 그대로 적용한다. `[Undercover Asset card]` `[Main p. 6]`
 
 ### Agent 아이콘과 Spy
 

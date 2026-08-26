@@ -369,6 +369,10 @@ codec v42에 연결했다.
 기존 Agent-card 선택에 연결하고, Intrigue 1장·병력 2명 복합 보상을 원자적으로
 처리한다. Trash trigger가 먼저 Intrigue를 소비하는 대상의 필요 장수까지 합법
 행동에서 검증하며 codec v43에 연결했다.
+서른여덟 번째 묶음은 Undercover Asset이 Agent를 보내는 동안에만 보드 공간의
+Influence requirement를 무시하도록 배치 합법성 경계를 확장했다. Reveal의 Spy
+배치 또는 strength 2 선택과 Spy 공급 부족 시 recall 후 배치를 직렬화해 codec
+v44에 연결했다.
 고정된 DIU `imperium.JSON`은 런타임 의존성 없이 63개 local identity와
 대조하고 아이콘·Faction·효과 형태를 정규화하는 read-only audit에만 사용한다.
 나머지 Imperium과 Intrigue, Leader, Objective 효과는 아직 identity manifest
