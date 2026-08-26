@@ -2,6 +2,23 @@
 
 Read `README.md` before making architectural or rules-related changes.
 
+## Commit workflow
+
+- During implementation tasks, proactively commit completed work in small,
+  coherent units instead of leaving the whole implementation uncommitted.
+- Verify each implementation unit with the relevant tests and quality checks
+  before committing it. Do not commit a knowingly broken intermediate state.
+- Keep code and its regression tests in the same commit. When a rule or card
+  implementation also changes project documentation, use separate focused
+  commits when that makes the history clearer; follow the existing `Play ...`
+  and `Document ...` pattern for card slices where appropriate.
+- Use concise imperative commit messages that describe the completed behavior.
+- Never stage or commit unrelated or pre-existing user changes. Inspect the
+  worktree before staging, stage explicit paths, and preserve any dirty state
+  that is outside the current task.
+- Do not rewrite, amend, squash, or otherwise alter existing commits unless the
+  user explicitly asks for that history operation.
+
 ## Rule sources
 
 - The implementation target is the four-player base game of Dune: Imperium -
