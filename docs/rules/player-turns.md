@@ -47,6 +47,10 @@
 ### Agent box와 Signet Ring
 
 - Agent turn에는 낸 card의 Agent box만 처리하고 그 card의 Reveal box는 무시한다. [Main p. 8] [Main p. 9]
+- Smuggler's Haven은 Agent box의 화살표를 선택하면 Spice 4를 지불하고
+  Victory Point 1을 얻는다. 공간 비용을 먼저 지불한 뒤 남은 Spice로 이 비용을
+  낼 수 있어야 하며, 지불하지 않고 생략할 수 있다. `[Smuggler's Haven card]`
+  `[Main p. 9]`
 - Signet Ring card를 Agent turn에 내서 Agent를 보내면 Leader의 Signet Ring icon이 표시된 능력을 사용한다. [Main p. 6] [Main p. 20]
 - CHOAM Module의 Shaddam Corrino IV에 관한 별도 판정은
   `choam-module.md`와 콘텐츠 명세에서 다룬다. [Main pp. 16-17]
@@ -78,6 +82,9 @@
 
 - Reveal turn 도중 card를 draw하면 즉시 그 card를 reveal하고 이번 Reveal turn에 사용한다. [FAQ p. 3]
 - Reveal turn이 끝난 뒤 card를 draw하면 다음 round까지 hand에 보관한다. 다음 Round Start에도 별도로 card 다섯 장을 draw한다. [FAQ p. 3]
+- Smuggler's Haven은 Reveal에서 Persuasion 1을 얻고, 자신의 Spy가 Maker board
+  space에 연결된 Observation Post에 있으면 Spice 2를 추가로 얻는다.
+  `[Smuggler's Haven card]` `[Main p. 6]`
 
 ## 카드 획득과 Imperium Row 보충
 

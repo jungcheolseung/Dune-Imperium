@@ -377,6 +377,10 @@ v44에 연결했다.
 Agent 턴에 실제 모집한 병력만 배치하도록 기존 병력 배치 경계를 일반화했다.
 Reveal의 기본 strength와 이번 Reveal Emperor 카드당 추가 strength를 연결해
 codec v45에 포함했다.
+마흔 번째 묶음은 Smuggler's Haven의 선택형 Spice 4 대 Victory Point 1 거래를
+공통 Agent-card 결제 경계에 연결했다. Reveal은 Persuasion 1과 Maker 공간을
+spying 중일 때의 Spice 2를 적용하며, 보드 공간 비용을 지불한 뒤 카드 비용의
+지불 가능성을 판정하도록 순서를 바로잡고 codec v46에 포함했다.
 고정된 DIU `imperium.JSON`은 런타임 의존성 없이 63개 local identity와
 대조하고 아이콘·Faction·효과 형태를 정규화하는 read-only audit에만 사용한다.
 나머지 Imperium과 Intrigue, Leader, Objective 효과는 아직 identity manifest

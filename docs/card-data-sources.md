@@ -133,6 +133,10 @@ partially implemented card from being exposed as fully playable.
 
 ### Recorded discrepancies
 
+- DIU gives Smuggler's Haven one Solari as its unconditional Reveal resource.
+  The printed card instead gives one Persuasion, followed by two Spice only
+  while spying on a Maker board space, so the local transcription follows the
+  verified card image.
 - DIU models Trade Dispute's trash icon with `deck: ["hand", "played"]`.
   The general Uprising trash rule also permits a card in the player's discard
   pile, and the black trash icon is optional. The local typed reward therefore
