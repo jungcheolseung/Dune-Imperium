@@ -50,6 +50,9 @@ class PersonalCardAgentEffect(StrEnum):
     LEADER_SIGNET = "leader_signet"
     PAY_TWO_WATER_TO_DRAW_TWO = "pay_two_water_to_draw_two"
     MAY_PAY_FOUR_SPICE_FOR_VP = "may_pay_four_spice_for_vp"
+    MAY_TRASH_INTRIGUE_AND_PAY_TWO_SPICE_FOR_VP_IF_SPACING_GUILD_ALLIANCE = (
+        "may_trash_intrigue_and_pay_two_spice_for_vp_if_spacing_guild_alliance"
+    )
     ACQUIRE_WITH_SOLARI_TO_HAND = "acquire_with_solari_to_hand"
     DRAW_ONE_AND_RECALL_AGENT = "draw_one_and_recall_agent"
     DRAW_PERSONAL_CARD = "draw_personal_card"

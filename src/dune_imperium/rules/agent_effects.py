@@ -761,6 +761,128 @@ def apply_agent_card_trash(state: GameState, action: DomainAction) -> RuleResult
     return RuleResult(state=next_state, events=trashed.events)
 
 
+def legal_agent_card_intrigue_payment_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return optional Intrigue-and-Spice payment choices for an Agent card."""
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return ()
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    if context.get("pending_agent_effect") is not True:
+        return ()
+    _, source_card_id, _ = _effect_subject(context)
+    effect = personal_card_for_instance(source_card_id).agent_effect
+    if (
+        effect
+        is not (
+            PersonalCardAgentEffect.MAY_TRASH_INTRIGUE_AND_PAY_TWO_SPICE_FOR_VP_IF_SPACING_GUILD_ALLIANCE
+        )
+    ):
+        return ()
+    owner = state.players[player]
+    if (
+        Faction.SPACING_GUILD.value not in owner.alliance_faction_ids
+        or owner.resources.spice < 2
+        or not owner.intrigue_cards
+    ):
+        raise RuntimeError("pending Agent-card Intrigue payment is not affordable")
+    return (
+        DomainAction(action_id="decline_agent_card_intrigue_payment", actor=player),
+        *(
+            DomainAction(
+                action_id="pay_agent_card_intrigue_and_spice",
+                actor=player,
+                arguments=(("intrigue_card_id", card_id),),
+            )
+            for card_id in owner.intrigue_cards
+        ),
+    )
+
+
+def apply_agent_card_intrigue_payment(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Decline or trash one Intrigue and pay two Spice for one VP."""
+
+    if action not in legal_agent_card_intrigue_payment_actions(state, action.actor):
+        raise ValueError("action is not a legal Agent-card Intrigue payment")
+    _, context = current_agent_effect_context(state)
+    _, source_card_id, _ = _effect_subject(context)
+    context["pending_agent_effect"] = False
+    source = (
+        f"round:{state.round_number}:player:{action.actor}:"
+        f"agent_card:{source_card_id}:intrigue_payment"
+    )
+    if action.action_id == "decline_agent_card_intrigue_payment":
+        return RuleResult(
+            state=advance_after_effect(state, context),
+            events=(
+                GameEvent(
+                    event_id=f"{source}:declined",
+                    kind="agent_card_payment_declined",
+                    payload=(("card_id", source_card_id), ("player", action.actor)),
+                ),
+            ),
+        )
+
+    intrigue_card_id = dict(action.arguments).get("intrigue_card_id")
+    if not isinstance(intrigue_card_id, str):
+        raise RuntimeError("Agent-card Intrigue payment has invalid card ID")
+    owner = state.players[action.actor]
+    next_owner = replace(
+        owner,
+        resources=replace(
+            owner.resources,
+            spice=owner.resources.spice - 2,
+        ),
+        victory_points=owner.victory_points + 1,
+        intrigue_cards=tuple(
+            card_id
+            for card_id in owner.intrigue_cards
+            if card_id != intrigue_card_id
+        ),
+    )
+    next_state = advance_after_effect(
+        replace(
+            state,
+            intrigue_trash=(*state.intrigue_trash, intrigue_card_id),
+        ),
+        context,
+        _replace_player(state, next_owner),
+    )
+    return RuleResult(
+        state=next_state,
+        events=(
+            GameEvent(
+                event_id=f"{source}:intrigue_trashed:{intrigue_card_id}",
+                kind="intrigue_card_trashed",
+                payload=(
+                    ("card_id", intrigue_card_id),
+                    ("player", action.actor),
+                ),
+            ),
+            GameEvent(
+                event_id=f"{source}:paid",
+                kind="agent_card_payment_resolved",
+                payload=(
+                    ("card_id", source_card_id),
+                    ("player", action.actor),
+                    ("resource", "spice"),
+                    ("spent", 2),
+                ),
+            ),
+        ),
+    )
+
+
 def legal_agent_card_payment_actions(
     state: GameState,
     player: int,

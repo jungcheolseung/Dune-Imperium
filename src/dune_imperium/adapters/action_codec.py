@@ -15,6 +15,7 @@ from dune_imperium.content.uprising.imperium import (
     ImperiumCardEntry,
     imperium_deck_instance_ids,
 )
+from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
 from dune_imperium.content.uprising.objectives import objectives_for_players
 from dune_imperium.content.uprising.reserve import (
     RESERVE_STACKS,
@@ -27,7 +28,7 @@ from dune_imperium.content.uprising.starting_cards import (
 from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
 from dune_imperium.core.actions import ActionValue, DomainAction
 
-ACTION_CODEC_VERSION = 50
+ACTION_CODEC_VERSION = 51
 MAX_DEPLOYMENT_COUNT = 12
 
 
@@ -115,6 +116,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "decline_combat_reward_trash",
             "decline_agent_card_trash",
             "decline_agent_card_payment",
+            "decline_agent_card_intrigue_payment",
             "decline_agent_card_discard",
             "decline_agent_card_acquisition",
             "decline_control_defense",
@@ -167,12 +169,20 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         for stack in RESERVE_STACKS
     )
     imperium_instances = imperium_deck_instance_ids(config.choam_module)
+    intrigue_instances = intrigue_deck_instance_ids(config.choam_module)
     templates.extend(
         ActionTemplate(
             action_id="acquire_imperium",
             arguments=(("instance_id", instance_id),),
         )
         for instance_id in imperium_instances
+    )
+    templates.extend(
+        ActionTemplate(
+            action_id="pay_agent_card_intrigue_and_spice",
+            arguments=(("intrigue_card_id", instance_id),),
+        )
+        for instance_id in intrigue_instances
     )
     templates.extend(
         ActionTemplate(

@@ -408,6 +408,21 @@ def test_steersman_reveal_gains_persuasion_and_spice() -> None:
     assert result.state.players[0].resources.spice == 2
 
 
+def test_junction_headquarters_reveal_gains_water_and_recruits() -> None:
+    junction = _imperium_instance("junction_headquarters")
+
+    result = begin_reveal_turn(
+        _state(PlayerState(player_id=0, hand=(junction,))),
+        DomainAction(action_id="reveal_turn", actor=0),
+    )
+
+    owner = result.state.players[0]
+    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 1
+    assert owner.resources.water == 2
+    assert owner.troops_supply == 8
+    assert owner.troops_garrison == 4
+
+
 def test_reveal_moves_hand_to_in_play_and_totals_persuasion() -> None:
     argument = _instance("convincing_argument")
     diplomacy = _instance("diplomacy")

@@ -21,12 +21,14 @@ from dune_imperium.core import (
 from dune_imperium.rules.agent_effects import (
     apply_agent_card_discard,
     apply_agent_card_influence,
+    apply_agent_card_intrigue_payment,
     apply_agent_card_payment,
     apply_agent_card_recall,
     apply_agent_card_spy_action,
     apply_agent_card_trash,
     legal_agent_card_discard_actions,
     legal_agent_card_influence_actions,
+    legal_agent_card_intrigue_payment_actions,
     legal_agent_card_payment_actions,
     legal_agent_card_recall_actions,
     legal_agent_card_spy_actions,
@@ -623,6 +625,111 @@ def test_steersman_draws_and_may_recall_its_just_placed_agent() -> None:
     assert result.state.players[0].hand == (drawn_card,)
     assert result.state.players[0].in_play == (steersman,)
     assert [event.kind for event in result.events] == ["agent_recalled"]
+
+
+def test_junction_headquarters_may_pay_intrigue_and_spice_for_vp() -> None:
+    junction = _imperium_instance("junction_headquarters")
+    first_intrigue = "intrigue:cunning:0"
+    second_intrigue = "intrigue:buy_access:0"
+    owner = PlayerState(
+        player_id=0,
+        hand=(junction,),
+        resources=Resources(spice=2),
+        alliance_faction_ids=(Faction.SPACING_GUILD.value,),
+        intrigue_cards=(first_intrigue, second_intrigue),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        intrigue_discard=("intrigue:old",),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
+
+    actions = legal_agent_card_intrigue_payment_actions(placed, 0)
+    assert {action.action_id for action in actions} == {
+        "decline_agent_card_intrigue_payment",
+        "pay_agent_card_intrigue_and_spice",
+    }
+    assert {
+        dict(action.arguments).get("intrigue_card_id")
+        for action in actions
+        if action.action_id == "pay_agent_card_intrigue_and_spice"
+    } == {first_intrigue, second_intrigue}
+    pay = next(
+        action
+        for action in actions
+        if dict(action.arguments).get("intrigue_card_id") == second_intrigue
+    )
+    assert pay in UprisingRulesEngine().legal_actions(placed, 0)
+
+    paid = apply_agent_card_intrigue_payment(placed, pay)
+    declined = apply_agent_card_intrigue_payment(placed, actions[0])
+
+    assert paid.state.players[0].resources.spice == 0
+    assert paid.state.players[0].victory_points == 2
+    assert paid.state.players[0].intrigue_cards == (first_intrigue,)
+    assert paid.state.intrigue_discard == ("intrigue:old",)
+    assert paid.state.intrigue_trash == (second_intrigue,)
+    assert [event.kind for event in paid.events] == [
+        "intrigue_card_trashed",
+        "agent_card_payment_resolved",
+    ]
+    assert declined.state.players[0].resources.spice == 2
+    assert declined.state.players[0].victory_points == 1
+    assert declined.state.players[0].intrigue_cards == (
+        first_intrigue,
+        second_intrigue,
+    )
+
+
+@pytest.mark.parametrize(
+    ("alliance_faction_ids", "spice", "intrigue_cards"),
+    (
+        ((), 2, ("intrigue:cunning:0",)),
+        ((Faction.SPACING_GUILD.value,), 1, ("intrigue:cunning:0",)),
+        ((Faction.SPACING_GUILD.value,), 2, ()),
+    ),
+)
+def test_junction_headquarters_requires_its_complete_cost(
+    alliance_faction_ids: tuple[str, ...],
+    spice: int,
+    intrigue_cards: tuple[str, ...],
+) -> None:
+    junction = _imperium_instance("junction_headquarters")
+    owner = PlayerState(
+        player_id=0,
+        hand=(junction,),
+        resources=Resources(spice=spice),
+        alliance_faction_ids=alliance_faction_ids,
+        intrigue_cards=intrigue_cards,
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+
+    placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
+
+    assert legal_agent_card_intrigue_payment_actions(placed, 0) == ()
+    assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False
 
 
 def test_smugglers_harvester_gains_spice_at_a_maker_space() -> None:

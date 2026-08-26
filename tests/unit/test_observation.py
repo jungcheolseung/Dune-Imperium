@@ -34,6 +34,7 @@ def _state() -> GameState:
         imperium_row=("imperium_public",),
         intrigue_deck=("intrigue_hidden",),
         intrigue_discard=("intrigue_public",),
+        intrigue_trash=("intrigue_trashed",),
         reserve_stacks=(("prepare_the_way", 8),),
     )
 
@@ -57,6 +58,7 @@ def test_view_contains_public_state_and_only_observers_private_cards() -> None:
         ("imperial_basin", 0),
     )
     assert view.intrigue_discard == ("intrigue_public",)
+    assert view.intrigue_trash == ("intrigue_trashed",)
     assert view.players[1].objective_ids == ("objective_1",)
     assert view.players[1].won_conflict_ids == ()
     assert view.players[1].face_down_battle_card_ids == ()

@@ -404,7 +404,20 @@ IMPERIUM_CARDS: Final = (
         choam_only=True,
         has_acquisition_bonus=True,
     ),
-    _entry(68, "junction-headquarters", "Junction Headquarters", 6),
+    _entry(
+        68,
+        "junction-headquarters",
+        "Junction Headquarters",
+        6,
+        factions=(Faction.SPACING_GUILD,),
+        agent_icons=(AgentIcon.LANDSRAAD, AgentIcon.CITY, AgentIcon.SPICE_TRADE),
+        agent_effect=(
+            PersonalCardAgentEffect.MAY_TRASH_INTRIGUE_AND_PAY_TWO_SPICE_FOR_VP_IF_SPACING_GUILD_ALLIANCE
+        ),
+        reveal_persuasion=1,
+        reveal_effects=(PersonalCardRevealEffect(water=1, recruit_troops=1),),
+        play_data_complete=True,
+    ),
     _entry(
         63,
         "leadership",

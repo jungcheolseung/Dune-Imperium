@@ -260,6 +260,17 @@ def _agent_effect_is_available(
         return owner.resources.water >= 2
     if effect is PersonalCardAgentEffect.MAY_PAY_FOUR_SPICE_FOR_VP:
         return owner.resources.spice >= 4
+    if (
+        effect
+        is (
+            PersonalCardAgentEffect.MAY_TRASH_INTRIGUE_AND_PAY_TWO_SPICE_FOR_VP_IF_SPACING_GUILD_ALLIANCE
+        )
+    ):
+        return (
+            Faction.SPACING_GUILD.value in owner.alliance_faction_ids
+            and owner.resources.spice >= 2
+            and bool(owner.intrigue_cards)
+        )
     if effect is PersonalCardAgentEffect.ACQUIRE_WITH_SOLARI_TO_HAND:
         return owner.resources.solari > 0
     if effect is PersonalCardAgentEffect.DRAW_PER_SANDWORM_IN_CONFLICT:

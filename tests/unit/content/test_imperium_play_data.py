@@ -744,6 +744,29 @@ def test_steersman_play_data_matches_the_card() -> None:
     assert card.reveal_effects == (PersonalCardRevealEffect(spice=2),)
 
 
+def test_junction_headquarters_play_data_matches_the_card() -> None:
+    card = IMPERIUM_CARDS_BY_ID["junction_headquarters"]
+
+    assert card.play_data_complete is True
+    assert card.factions == (Faction.SPACING_GUILD,)
+    assert card.agent_icons == (
+        AgentIcon.LANDSRAAD,
+        AgentIcon.CITY,
+        AgentIcon.SPICE_TRADE,
+    )
+    assert (
+        card.agent_effect
+        is (
+            PersonalCardAgentEffect.MAY_TRASH_INTRIGUE_AND_PAY_TWO_SPICE_FOR_VP_IF_SPACING_GUILD_ALLIANCE
+        )
+    )
+    assert card.reveal_persuasion == 1
+    assert card.reveal_strength == 0
+    assert card.reveal_effects == (
+        PersonalCardRevealEffect(water=1, recruit_troops=1),
+    )
+
+
 def test_undercover_asset_play_data_is_complete() -> None:
     card = IMPERIUM_CARDS_BY_ID["undercover_asset"]
 

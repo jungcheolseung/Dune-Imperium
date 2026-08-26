@@ -48,6 +48,7 @@ class GameState:
     imperium_row: tuple[str, ...] = ()
     intrigue_deck: tuple[str, ...] = ()
     intrigue_discard: tuple[str, ...] = ()
+    intrigue_trash: tuple[str, ...] = ()
     reserve_stacks: tuple[tuple[str, int], ...] = ()
     shield_wall_present: bool = True
     maker_bonus_spice: tuple[tuple[str, int], ...] = (

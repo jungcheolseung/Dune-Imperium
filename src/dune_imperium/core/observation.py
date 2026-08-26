@@ -70,6 +70,7 @@ class PlayerView:
     combat_rewards_resolved: bool = False
     imperium_row: tuple[str, ...] = ()
     intrigue_discard: tuple[str, ...] = ()
+    intrigue_trash: tuple[str, ...] = ()
     reserve_stacks: tuple[tuple[str, int], ...] = ()
     shield_wall_present: bool = True
     maker_bonus_spice: tuple[tuple[str, int], ...] = ()
@@ -106,6 +107,7 @@ def observe_state(state: GameState, player: int) -> PlayerView:
         combat_rewards_resolved=state.combat_rewards_resolved,
         imperium_row=state.imperium_row,
         intrigue_discard=state.intrigue_discard,
+        intrigue_trash=state.intrigue_trash,
         reserve_stacks=state.reserve_stacks,
         shield_wall_present=state.shield_wall_present,
         maker_bonus_spice=state.maker_bonus_spice,
