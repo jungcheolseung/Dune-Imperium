@@ -244,6 +244,100 @@ def legal_reveal_card_trash_actions(
     )
 
 
+def legal_reveal_troop_retreat_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return the optional two-troop Reveal retreat payment."""
+
+    if not 0 <= player < state.config.players or not state.decision_stack:
+        return ()
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    if (
+        context.get("reveal_choice_effect")
+        != PersonalCardRevealChoiceEffect.MAY_RETREAT_TWO_TROOPS_FOR_FOUR_STRENGTH.value
+    ):
+        return ()
+    decline = DomainAction(action_id="decline_reveal_troop_retreat", actor=player)
+    if state.players[player].troops_conflict < 2:
+        return (decline,)
+    return (
+        decline,
+        DomainAction(action_id="retreat_two_troops_for_reveal", actor=player),
+    )
+
+
+def apply_reveal_troop_retreat(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Decline or retreat two troops for four Reveal strength."""
+
+    if action not in legal_reveal_troop_retreat_actions(state, action.actor):
+        raise ValueError("action is not a legal Reveal troop-retreat choice")
+    context = dict(state.decision_stack[-1].context)
+    card_id = context.get("reveal_card_id")
+    if not isinstance(card_id, str):
+        raise RuntimeError("Reveal troop-retreat frame has invalid card ID")
+    source = (
+        f"round:{state.round_number}:player:{action.actor}:"
+        f"reveal_card:{card_id}"
+    )
+    if action.action_id == "decline_reveal_troop_retreat":
+        return RuleResult(
+            state=replace(state, decision_stack=state.decision_stack[:-1]),
+            events=(
+                GameEvent(
+                    event_id=f"{source}:troop_retreat_declined",
+                    kind="reveal_troop_retreat_declined",
+                    payload=(("card_id", card_id), ("player", action.actor)),
+                ),
+            ),
+        )
+
+    owner = state.players[action.actor]
+    if owner.troops_conflict < 2:
+        raise RuntimeError("Reveal troop-retreat payment requires two troops")
+    remaining_units = owner.troops_conflict - 2 + owner.sandworms_conflict
+    next_strength = owner.combat_strength if remaining_units else 0
+    next_owner = replace(
+        owner,
+        troops_garrison=owner.troops_garrison + 2,
+        troops_conflict=owner.troops_conflict - 2,
+        combat_strength=next_strength,
+    )
+    remaining = state.decision_stack[:-1]
+    strength_delta = next_strength - owner.combat_strength
+    if strength_delta:
+        remaining = _add_reveal_strength(remaining, strength_delta)
+    return RuleResult(
+        state=replace(
+            state,
+            players=_replace_player(state, next_owner),
+            decision_stack=remaining,
+        ),
+        events=(
+            GameEvent(
+                event_id=f"{source}:troops_retreated",
+                kind="troops_retreated",
+                payload=(("count", 2), ("player", action.actor)),
+            ),
+            GameEvent(
+                event_id=f"{source}:strength",
+                kind="reveal_strength_gained",
+                payload=(
+                    ("amount", 4),
+                    ("card_id", card_id),
+                    ("player", action.actor),
+                ),
+            ),
+        ),
+    )
+
+
 def apply_reveal_card_trash(
     state: GameState,
     action: DomainAction,
@@ -859,6 +953,11 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
                     is (
                         PersonalCardRevealChoiceEffect.MAY_TRASH_OTHER_EMPEROR_FOR_THREE_STRENGTH
                     )
+                    else "Retreat two troops for four strength or decline"
+                    if effect
+                    is (
+                        PersonalCardRevealChoiceEffect.MAY_RETREAT_TWO_TROOPS_FOR_FOUR_STRENGTH
+                    )
                     else "Choose a Spy to recall for this Reveal effect"
                 ),
             ),
@@ -897,6 +996,11 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
                 in personal_card_for_instance(candidate_id).factions
                 for candidate_id in cards_in_play
             )
+        )
+        or (
+            effect
+            is PersonalCardRevealChoiceEffect.MAY_RETREAT_TWO_TROOPS_FOR_FOUR_STRENGTH
+            and owner.troops_conflict >= 2
         )
         or (
             effect

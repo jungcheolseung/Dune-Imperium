@@ -696,6 +696,33 @@ def test_treacherous_maneuver_play_data_matches_the_card() -> None:
     assert card.reveal_effects == (PersonalCardRevealEffect(draw_intrigue=1),)
 
 
+def test_chani_clever_tactician_play_data_matches_the_card() -> None:
+    card = IMPERIUM_CARDS_BY_ID["chani_clever_tactician"]
+
+    assert card.play_data_complete is True
+    assert card.factions == (Faction.FREMEN,)
+    assert card.agent_icons == (
+        AgentIcon.SPACING_GUILD,
+        AgentIcon.CITY,
+        AgentIcon.SPICE_TRADE,
+    )
+    assert (
+        card.agent_effect
+        is PersonalCardAgentEffect.DRAW_INTRIGUE_IF_THREE_UNITS_IN_CONFLICT
+    )
+    assert card.reveal_persuasion == 0
+    assert card.reveal_strength == 0
+    assert card.reveal_effects == (
+        PersonalCardRevealEffect(
+            persuasion=2,
+            required_faction_bond=PersonalCardBond.FREMEN,
+        ),
+    )
+    assert card.reveal_choice_effects == (
+        PersonalCardRevealChoiceEffect.MAY_RETREAT_TWO_TROOPS_FOR_FOUR_STRENGTH,
+    )
+
+
 def test_undercover_asset_play_data_is_complete() -> None:
     card = IMPERIUM_CARDS_BY_ID["undercover_asset"]
 
@@ -716,7 +743,7 @@ def test_undercover_asset_play_data_is_complete() -> None:
 
 
 def test_untranscribed_imperium_card_still_fails_explicitly() -> None:
-    instance_id = _instance("chani_clever_tactician")
+    instance_id = _instance("corrinth_city")
 
     with pytest.raises(NotImplementedError, match="not transcribed"):
         personal_card_for_instance(instance_id)

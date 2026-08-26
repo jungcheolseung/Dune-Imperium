@@ -81,6 +81,9 @@ class PersonalCardAgentEffect(StrEnum):
     DRAW_INTRIGUE_IF_SPY_RECALLED_THIS_TURN = (
         "draw_intrigue_if_spy_recalled_this_turn"
     )
+    DRAW_INTRIGUE_IF_THREE_UNITS_IN_CONFLICT = (
+        "draw_intrigue_if_three_units_in_conflict"
+    )
     GAIN_WATER_IF_BENE_GESSERIT_BOND = "gain_water_if_bene_gesserit_bond"
     GAIN_VISITED_FACTION_INFLUENCE = "gain_visited_faction_influence"
     GAIN_WATER = "gain_water"
@@ -139,6 +142,9 @@ class PersonalCardRevealChoiceEffect(StrEnum):
     MAY_PAY_THREE_SPICE_FOR_INFLUENCE = "may_pay_three_spice_for_influence"
     MAY_TRASH_OTHER_EMPEROR_FOR_THREE_STRENGTH = (
         "may_trash_other_emperor_for_three_strength"
+    )
+    MAY_RETREAT_TWO_TROOPS_FOR_FOUR_STRENGTH = (
+        "may_retreat_two_troops_for_four_strength"
     )
 
 

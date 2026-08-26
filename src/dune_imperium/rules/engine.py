@@ -100,6 +100,7 @@ from dune_imperium.rules.reveal_turn import (
     apply_reveal_influence_exchange,
     apply_reveal_spice_influence,
     apply_reveal_spy_action,
+    apply_reveal_troop_retreat,
     begin_reveal_turn,
     current_reveal_context,
     finish_reveal_turn,
@@ -109,6 +110,7 @@ from dune_imperium.rules.reveal_turn import (
     legal_reveal_influence_exchange_actions,
     legal_reveal_spice_influence_actions,
     legal_reveal_spy_actions,
+    legal_reveal_troop_retreat_actions,
 )
 from dune_imperium.rules.setup import create_initial_state
 from dune_imperium.rules.spies import (
@@ -195,6 +197,7 @@ class UprisingRulesEngine(RulesEngine):
         actions.extend(legal_reveal_spy_actions(state, player))
         actions.extend(legal_reveal_influence_exchange_actions(state, player))
         actions.extend(legal_reveal_spice_influence_actions(state, player))
+        actions.extend(legal_reveal_troop_retreat_actions(state, player))
         actions.extend(legal_endgame_wild_actions(state, player))
         actions.extend(legal_control_defense_actions(state, player))
         actions.extend(self._supported_agent_actions(state, player))
@@ -249,9 +252,11 @@ class UprisingRulesEngine(RulesEngine):
             "decline_reveal_influence_exchange": apply_reveal_influence_exchange,
             "exchange_reveal_influence": apply_reveal_influence_exchange,
             "decline_reveal_spice_influence": apply_reveal_spice_influence,
+            "decline_reveal_troop_retreat": apply_reveal_troop_retreat,
             "pay_reveal_spice_influence": apply_reveal_spice_influence,
             "finish_reveal": finish_reveal_turn,
             "gain_two_reveal_strength": apply_reveal_spy_action,
+            "retreat_two_troops_for_reveal": apply_reveal_troop_retreat,
             "gather_intelligence": apply_gather_intelligence_action,
             "pass_combat_intrigue": apply_combat_intrigue_pass,
             "pay_agent_card_water": apply_agent_card_payment,
@@ -391,6 +396,7 @@ def _agent_action_is_supported(state: GameState, action: DomainAction) -> bool:
         PersonalCardAgentEffect.RECRUIT_THREE_IF_SPY_RECALLED_THIS_TURN,
         PersonalCardAgentEffect.RECRUIT_TWO_IF_SPY_RECALLED_THIS_TURN,
         PersonalCardAgentEffect.DRAW_INTRIGUE_IF_SPY_RECALLED_THIS_TURN,
+        PersonalCardAgentEffect.DRAW_INTRIGUE_IF_THREE_UNITS_IN_CONFLICT,
         PersonalCardAgentEffect.GAIN_WATER_IF_BENE_GESSERIT_BOND,
         PersonalCardAgentEffect.GAIN_VISITED_FACTION_INFLUENCE,
         PersonalCardAgentEffect.GAIN_BY_BENE_GESSERIT_AND_FREMEN_INFLUENCE_TWO,

@@ -205,7 +205,31 @@ IMPERIUM_CARDS: Final = (
         play_data_complete=True,
     ),
     _entry(181, "cargo-runner", "Cargo Runner", 3, choam_only=True),
-    _entry(67, "chani-clever-tactician", "Chani, Clever Tactician", 5),
+    _entry(
+        67,
+        "chani-clever-tactician",
+        "Chani, Clever Tactician",
+        5,
+        factions=(Faction.FREMEN,),
+        agent_icons=(
+            AgentIcon.SPACING_GUILD,
+            AgentIcon.CITY,
+            AgentIcon.SPICE_TRADE,
+        ),
+        agent_effect=(
+            PersonalCardAgentEffect.DRAW_INTRIGUE_IF_THREE_UNITS_IN_CONFLICT
+        ),
+        reveal_effects=(
+            PersonalCardRevealEffect(
+                persuasion=2,
+                required_faction_bond=PersonalCardBond.FREMEN,
+            ),
+        ),
+        reveal_choice_effects=(
+            PersonalCardRevealChoiceEffect.MAY_RETREAT_TWO_TROOPS_FOR_FOUR_STRENGTH,
+        ),
+        play_data_complete=True,
+    ),
     _entry(69, "corrinth-city", "Corrinth City", 6),
     _entry(
         35,

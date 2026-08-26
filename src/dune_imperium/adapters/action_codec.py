@@ -27,7 +27,7 @@ from dune_imperium.content.uprising.starting_cards import (
 from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
 from dune_imperium.core.actions import ActionValue, DomainAction
 
-ACTION_CODEC_VERSION = 48
+ACTION_CODEC_VERSION = 49
 MAX_DEPLOYMENT_COUNT = 12
 
 
@@ -124,6 +124,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "decline_reveal_influence_exchange",
             "decline_reveal_card_trash",
             "decline_reveal_spice_influence",
+            "decline_reveal_troop_retreat",
             "deploy_control_defense",
             "finish_reveal",
             "gain_two_reveal_strength",
@@ -136,6 +137,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "resolve_espionage_without_spy",
             "resolve_faction_influence",
             "reveal_turn",
+            "retreat_two_troops_for_reveal",
             "take_sietch_tabr_supplies",
             "take_sietch_tabr_water",
             "take_sietch_tabr_water_and_destroy_wall",

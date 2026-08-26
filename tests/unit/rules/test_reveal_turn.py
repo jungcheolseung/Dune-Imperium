@@ -22,6 +22,7 @@ from dune_imperium.rules.reveal_turn import (
     apply_reveal_influence_exchange,
     apply_reveal_spice_influence,
     apply_reveal_spy_action,
+    apply_reveal_troop_retreat,
     begin_reveal_turn,
     finish_reveal_turn,
     legal_finish_reveal_actions,
@@ -30,6 +31,7 @@ from dune_imperium.rules.reveal_turn import (
     legal_reveal_influence_exchange_actions,
     legal_reveal_spice_influence_actions,
     legal_reveal_spy_actions,
+    legal_reveal_troop_retreat_actions,
 )
 
 
@@ -315,6 +317,83 @@ def test_treacherous_maneuver_reveal_tolerates_an_empty_intrigue_deck() -> None:
         "intrigue_card_drawn",
     ]
     assert dict(result.events[-1].payload)["count"] == 0
+
+
+def test_chani_retreats_two_troops_for_four_strength() -> None:
+    chani = _imperium_instance("chani_clever_tactician")
+    owner = PlayerState(
+        player_id=0,
+        hand=(chani,),
+        troops_supply=8,
+        troops_garrison=2,
+        troops_conflict=2,
+        sandworms_conflict=1,
+    )
+    revealed = begin_reveal_turn(
+        _state(owner),
+        DomainAction(action_id="reveal_turn", actor=0),
+    ).state
+
+    actions = legal_reveal_troop_retreat_actions(revealed, 0)
+    assert {action.action_id for action in actions} == {
+        "decline_reveal_troop_retreat",
+        "retreat_two_troops_for_reveal",
+    }
+    retreat = next(
+        action
+        for action in actions
+        if action.action_id == "retreat_two_troops_for_reveal"
+    )
+    result = apply_reveal_troop_retreat(revealed, retreat)
+    context = dict(result.state.decision_stack[-1].context)
+
+    assert result.state.players[0].troops_conflict == 0
+    assert result.state.players[0].sandworms_conflict == 1
+    assert result.state.players[0].troops_garrison == 4
+    assert result.state.players[0].combat_strength == 7
+    assert context["strength"] == 7
+    assert [event.kind for event in result.events] == [
+        "troops_retreated",
+        "reveal_strength_gained",
+    ]
+
+
+def test_chani_retreat_clears_strength_when_no_unit_remains() -> None:
+    chani = _imperium_instance("chani_clever_tactician")
+    owner = PlayerState(
+        player_id=0,
+        hand=(chani,),
+        troops_supply=8,
+        troops_garrison=2,
+        troops_conflict=2,
+    )
+    revealed = begin_reveal_turn(
+        _state(owner),
+        DomainAction(action_id="reveal_turn", actor=0),
+    ).state
+    retreat = next(
+        action
+        for action in legal_reveal_troop_retreat_actions(revealed, 0)
+        if action.action_id == "retreat_two_troops_for_reveal"
+    )
+
+    result = apply_reveal_troop_retreat(revealed, retreat)
+
+    assert result.state.players[0].troops_conflict == 0
+    assert result.state.players[0].combat_strength == 0
+    assert dict(result.state.decision_stack[-1].context)["strength"] == 0
+
+
+def test_chani_fremen_bond_adds_two_persuasion() -> None:
+    chani = _imperium_instance("chani_clever_tactician")
+    fremen = _imperium_instance("desert_survival")
+
+    result = begin_reveal_turn(
+        _state(PlayerState(player_id=0, hand=(chani, fremen))),
+        DomainAction(action_id="reveal_turn", actor=0),
+    )
+
+    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 3
 
 
 def test_reveal_moves_hand_to_in_play_and_totals_persuasion() -> None:

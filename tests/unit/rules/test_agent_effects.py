@@ -34,6 +34,10 @@ from dune_imperium.rules.agent_effects import (
 )
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 from dune_imperium.rules.board_effects import resolve_board_effect
+from dune_imperium.rules.combat_deployment import (
+    apply_combat_deployment,
+    legal_combat_deployments,
+)
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.spies import (
     apply_gather_intelligence_action,
@@ -497,6 +501,81 @@ def test_treacherous_maneuver_needs_an_emperor_payment() -> None:
 
     assert legal_agent_card_trash_actions(placed, 0) == ()
     assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False
+
+
+def test_chani_draws_intrigue_after_deploying_a_third_unit() -> None:
+    chani = _imperium_instance("chani_clever_tactician")
+    owner = PlayerState(
+        player_id=0,
+        hand=(chani,),
+        troops_supply=7,
+        troops_garrison=4,
+        troops_conflict=1,
+        sandworms_conflict=1,
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        intrigue_deck=("intrigue:test",),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
+    deploy_one = next(
+        action
+        for action in legal_combat_deployments(placed, 0)
+        if dict(action.arguments)["count"] == 1
+    )
+    deployed = apply_combat_deployment(placed, deploy_one).state
+
+    result = resolve_agent_card_effect(deployed)
+
+    assert result.state.players[0].troops_conflict == 2
+    assert result.state.players[0].sandworms_conflict == 1
+    assert result.state.players[0].intrigue_cards == ("intrigue:test",)
+    assert result.state.intrigue_deck == ()
+    assert [event.kind for event in result.events] == [
+        "agent_card_effect_resolved",
+        "intrigue_card_drawn",
+    ]
+
+
+def test_chani_agent_effect_is_unavailable_below_three_units() -> None:
+    chani = _imperium_instance("chani_clever_tactician")
+    owner = PlayerState(
+        player_id=0,
+        hand=(chani,),
+        troops_supply=8,
+        troops_garrison=2,
+        troops_conflict=2,
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        intrigue_deck=("intrigue:test",),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
+
+    result = resolve_agent_card_effect(placed)
+
+    assert result.state.players[0].intrigue_cards == ()
+    assert result.events[0].kind == "agent_card_effect_unavailable"
 
 
 def test_smugglers_harvester_gains_spice_at_a_maker_space() -> None:
