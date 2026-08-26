@@ -12,9 +12,9 @@ truth for the transition code.
 | Occupancy | Normal Spy placement selects a post unoccupied by every player. Double Agent may instead share an opponent's post while its owner is spying on the space visited that turn. | The 13 stable post IDs and their board-space edges are recorded in `docs/rules/observation-posts.md`; one player can never place two of their own Spies on one post. |
 | Espionage | After paying 1 Spice, the player draws one personal card and may place one Spy. | Declining the optional Spy does not decline the card draw. Bene Gesserit influence remains a separately ordered Agent-turn effect. |
 | Empty supply | To place through Espionage with no Spy in supply, the player first selects one of their placed Spies to recall without effect and then must select an empty post. | Recall and placement are separate decisions so the engine does not enumerate every ordered pair as one action. Once recall is chosen, placement cannot be declined. |
-| Gather Intelligence | Immediately after Agent placement, a connected Spy opens a decline-or-recall decision before Agent-card, board-space, deployment, or Faction effects. Recalling draws one personal card. | At most one Spy can be used for Gather Intelligence in a turn. If the personal deck is empty, only decline is exposed because discard reshuffling remains deferred. |
+| Gather Intelligence | Immediately after Agent placement, a connected Spy opens a decline-or-recall decision before Agent-card, board-space, deployment, or Faction effects. Recalling draws one personal card. | At most one Spy can be used for Gather Intelligence in a turn. An empty deck uses the shared replayable discard reshuffle; only an empty deck and discard pile suppress the recall action. |
 | Infiltrate | An otherwise legal Agent card may enter a space occupied by one opponent by selecting and recalling a connected Spy as part of the Agent action. | The recalled Spy is removed before the Gather Intelligence window, so it cannot be used for both effects. Multiple-opponent occupancy remains deferred under OQ-006. |
-| Spy Agent icon | A card's Spy Agent icon makes every space connected to one of the player's placed Spies an available Agent destination. | Destination access does not recall the Spy. Imperium-card icon transcription remains part of the broader content milestone. |
+| Spy Agent icon | A card's Spy Agent icon makes every space connected to one of the player's placed Spies an available Agent destination. | Destination access does not recall the Spy. Transcribed Imperium cards use the same destination path; three remaining base cards still await full play-data transcription. |
 | Conflict reward | A Spy reward selects one globally empty post and spends a Spy from supply. | This existing reward path does not currently offer the empty-supply recall permission because the reward itself is mandatory only when executable. |
 | Agent-card placement | Bene Gesserit Operative selects any globally empty post; Reliable Informant is restricted to posts connected to Emperor, Bene Gesserit, or Spacing Guild spaces; Double Agent adds its conditional sharing exception. | With an empty supply, recall and placement are separate mandatory decisions. A restricted effect offers only recalls that can open a destination when every eligible post is occupied. |
 | Acquisition placement | Acquiring Strike Fleet or Guild Spy immediately opens a Spy placement choice over the current Reveal frame. | The acquired card is discarded and the row is refilled before choosing the post; an empty supply uses the same recall-then-place sequence and then returns to Reveal purchasing. |
@@ -42,30 +42,32 @@ catalog to version 6. Bene Gesserit Operative adds 13 card-placement and 13
 card-recall templates, while its two physical copies add eight Agent actions;
 personal-card content advances the replay default to version 21 with a
 1196-entry catalog. Reliable Informant's four Agent templates then advance the
-current default to version 22 with 1200 entries; it reuses the card-level Spy
+default at that slice to version 22 with 1200 entries; it reuses the card-level Spy
 choice templates. Strike Fleet adds 13 acquisition-placement, 13
-acquisition-recall, and 51 Spy-icon Agent templates, advancing the current
+acquisition-recall, and 51 Spy-icon Agent templates, advancing that slice's
 default to version 23 with 1277 entries.
-Imperial Spymaster adds 51 Agent templates and advances the current default to
+Imperial Spymaster adds 51 Agent templates and advances that slice's default to
 version 24 with 1328 entries.
-Spy Network adds 13 Reveal-recall templates and advances the current default to
+Spy Network adds 13 Reveal-recall templates and advances that slice's default to
 version 25 with 1341 entries.
 In High Places adds one decline, 78 unordered two-Spy recall, and eight Agent
-templates, advancing the current default to version 26 with 1428 entries.
+templates, advancing that slice's default to version 26 with 1428 entries.
 Rebel Supplier's two physical copies add 26 City Agent templates, advancing the
-current default to version 27 with 1454 entries.
+default at that slice to version 27 with 1454 entries.
 Dangerous Rhetoric adds 51 Spy-icon Agent templates and four shared Faction
-choice templates, advancing the current default to version 28 with 1509 entries.
+choice templates, advancing that slice's default to version 28 with 1509 entries.
 Public Spectacle's two copies add 102 Spy-icon Agent templates, and Reveal
-placement adds 13 placement and 13 recall templates, advancing the current
+placement adds 13 placement and 13 recall templates, advancing that slice's
 default to version 29 with 1637 entries.
 Wheels Within Wheels reuses the Reveal choices and adds 51 Spy-icon Agent
-templates, advancing the current default to version 30 with 1688 entries.
+templates, advancing that slice's default to version 30 with 1688 entries.
 Guild Spy reuses acquisition placement and hand-discard choices while adding 51
-Spy-icon Agent templates, advancing the current default to version 40 with 2193
+Spy-icon Agent templates, advancing that slice's default to version 40 with 2193
 entries.
 Covert Operation adds another 51 Spy-icon Agent templates and 93 opponent-owned
-discard templates, advancing the current default to version 41 with 2337
+discard templates, advancing that slice's default to version 41 with 2337
 entries.
 The two Calculus of Power copies add 102 Spy-icon Agent templates plus 94 Reveal
-trash choices, advancing the current default to version 42 with 2533 entries.
+trash choices, advancing the default at that slice to version 42 with 2533
+entries. Later non-Spy card slices advance the current replay default to codec
+version 52 with 3111 entries without changing these Spy templates.

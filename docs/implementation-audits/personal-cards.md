@@ -95,10 +95,11 @@ from a player's personal deck. General Agent, Reveal, and deck-building rules in
 
 ## Deferred boundaries
 
-- All shared Imperium cards other than the forty-seven listed above still have only
-  identity and acquisition-cost data. Drawing one of those cards fails
-  explicitly until its play data is transcribed.
+- Three base and four CHOAM-only Imperium cards outside the forty-seven listed
+  above still have only identity and acquisition-cost data. Drawing one of
+  those cards fails explicitly until its play data is transcribed.
 - Signet Ring remains blocked on Leader ability implementation.
-- Spy recall and troop-retreat Reveal choices use serial decision paths; other
-  Reveal choices remain deferred. Automatic resource and troop gains are supported.
+- Every Reveal choice used by the forty-seven transcribed cards has a serial or
+  atomic decision path. Reveal effects belonging to untranscribed cards remain
+  unavailable rather than partially exposed.
 - Acquisition bonuses without a local typed effect remain unavailable.

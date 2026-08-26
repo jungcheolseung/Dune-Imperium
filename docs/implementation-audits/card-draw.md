@@ -17,8 +17,8 @@ remain authoritative.
 
 ## Deferred boundaries
 
-- Imperium/Reserve cards drawn in later rounds still require M6 card icon and
-  effect transcription before every possible hand can take Agent and Reveal
-  turns.
+- The three remaining base Imperium identities still require M6 play-data
+  transcription before every possible later-round hand can take Agent and
+  Reveal turns.
 - The shared Intrigue and Imperium decks do not use personal discard reshuffle
   rules and retain their separate depletion boundaries.

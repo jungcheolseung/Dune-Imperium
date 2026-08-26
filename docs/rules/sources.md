@@ -12,7 +12,8 @@
 
 공식 진입점은 [Dire Wolf Digital 리소스 페이지](https://www.direwolfdigital.com/dune-imperium/resources/)와
 [Uprising 룰북 페이지](https://www.direwolfdigital.com/dune-imperium/resources/diu_rules)다.
-위 버전은 2026-08-12에 이 진입점에서 확인했다.
+위 버전은 2026-08-26에 공식 진입점에서 다시 확인했으며, 세 PDF의 SHA-256도
+고정 manifest와 모두 일치했다.
 
 확인한 공식 파일의 SHA-256은 다음과 같다. 공식 URL의 파일이 같은 이름으로
 교체되었는지 판별할 때 사용한다.
