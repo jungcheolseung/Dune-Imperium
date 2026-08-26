@@ -1,6 +1,10 @@
 # Repository instructions
 
-Read `README.md` before making architectural or rules-related changes.
+Read `README.md` before making architectural or rules-related changes. Before
+continuing implementation in a new session, also read
+`docs/development-handoff.md` for the current baseline and next work item. If
+that status conflicts with code or tests, treat the executable repository as
+authoritative and update the handoff in the same work unit.
 
 ## Commit workflow
 
