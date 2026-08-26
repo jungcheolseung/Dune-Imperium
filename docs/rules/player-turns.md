@@ -64,6 +64,10 @@
   sandworm을 합쳐 unit이 3개 이상이면 Intrigue card 1장을 얻는다. 같은 Agent
   turn의 병력 배치를 먼저 처리해 세 번째 unit을 보낸 뒤 이 조건을 확인할 수
   있다. `[Chani, Clever Tactician card]` `[Main pp. 9-10]`
+- Steersman은 Agent box에서 개인 card 1장을 draw하고 board의 자기 Agent 하나를
+  선택해 Leader로 recall한다. 이전 turn에 배치한 Agent뿐 아니라 Steersman을 내며
+  방금 배치한 Agent도 고를 수 있고, 회수한 Agent는 이후 turn에 다시 사용할 수
+  있다. `[Steersman card]` `[Main pp. 9, 20]`
 - Signet Ring card를 Agent turn에 내서 Agent를 보내면 Leader의 Signet Ring icon이 표시된 능력을 사용한다. [Main p. 6] [Main p. 20]
 - CHOAM Module의 Shaddam Corrino IV에 관한 별도 판정은
   `choam-module.md`와 콘텐츠 명세에서 다룬다. [Main pp. 16-17]
@@ -102,6 +106,7 @@
   `[Price is No Object card]`
 - Treacherous Maneuver는 Reveal에서 Persuasion 1과 Intrigue card 1장을 얻는다.
   `[Treacherous Maneuver card]`
+- Steersman은 Reveal에서 Persuasion 2와 Spice 2를 얻는다. `[Steersman card]`
 
 ## 카드 획득과 Imperium Row 보충
 
@@ -115,6 +120,9 @@
   `[The Spice Must Flow card]` `[Main p. 6]`
 - Imperium Row에는 항상 card 다섯 장이 있어야 한다. card를 acquire해 자리가 비면 Imperium Deck 맨 위 card로 보충하며, Persuasion이 남아 있으면 새로 보충된 card도 acquire할 수 있다. [Main p. 13]
 - card의 cost 아래에 acquire box가 있으면 그 효과는 card를 acquire하는 순간 한 번만 얻으며, 나중에 hand에서 그 card를 낼 때는 얻지 않는다. [Main p. 20]
+- Steersman을 acquire하면 Spacing Guild Influence 1을 즉시 얻는다. 일반 Reveal
+  acquire뿐 아니라 카드 효과가 다른 지불 수단과 목적지를 지정해도 이 acquire
+  보너스는 동일하게 처리한다. `[Steersman card]` `[Main p. 20]`
 - The Spice Must Flow를 acquire하며 얻은 Victory Point는 이후 그 카드를
   trash하더라도 유지한다. [FAQ p. 4]
 

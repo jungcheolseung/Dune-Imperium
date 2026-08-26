@@ -396,6 +396,10 @@ Intrigue draw를 Agent 효과 순서에 연결했다. Reveal에서는 troop 2개
 strength 4 보상을 하나의 선택으로 처리하고, 마지막 unit이 사라질 때 strength를
 0으로 다시 계산한다. Fremen Bond Persuasion 2와 세 Agent icon을 포함해 codec
 v49에 연결했다.
+마흔네 번째 묶음은 Steersman의 개인 card draw와 배치된 Agent 한 명 회수를
+Agent-card 직렬 선택으로 연결했다. 방금 배치한 Agent도 회수할 수 있으며 회수한
+Agent는 같은 round의 이후 turn에 다시 사용한다. 획득 시 Spacing Guild Influence,
+Reveal의 Persuasion 2·Spice 2를 추가해 codec v50에 포함했다.
 고정된 DIU `imperium.JSON`은 런타임 의존성 없이 63개 local identity와
 대조하고 아이콘·Faction·효과 형태를 정규화하는 read-only audit에만 사용한다.
 나머지 Imperium과 Intrigue, Leader, Objective 효과는 아직 identity manifest
@@ -515,10 +519,11 @@ M5의 보드 시스템과 multi-round 개인 덱 shuffle까지 구현했고 M6�
 수직 조각으로 두 Reserve 카드를 실제 play 경로에 연결했다. 다음 작업은 아래
 순서로 진행한다.
 
-1. DIU audit 결과를 기준으로 Imperium 카드에 Agent 아이콘, Faction affiliation,
-   Reveal 값과 typed effect 필드를 추가하고 단순 카드 묶음부터 공통 개인 카드
-   resolver에 연결한다.
-2. 획득 보너스가 있는 Imperium 카드의 연속 선택과 replay 경로를 구현한다.
+1. 남은 기본 Imperium 카드는 아래 순서를 유지하며 공통 경계를 확장한다.
+   `Junction Headquarters` → `Corrinth City` → `Desert Power` →
+   `Long Live the Fighters` → `Subversive Advisor`.
+2. 위 기본 카드 묶음이 끝나면 CHOAM 전용 Imperium 카드와 계약 시스템을 함께
+   구현한다.
 3. Plot, Combat, Endgame Intrigue 타입과 공통 play/discard 경계를 만든 뒤 단순
    Intrigue 효과부터 전사한다.
 4. Combat Intrigue와 Endgame Intrigue의 실제 카드 경로를 연결해 M5의 보류
