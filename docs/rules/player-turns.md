@@ -55,6 +55,11 @@
   하나를 Persuasion 대신 같은 양의 Solari로 acquire해 hand에 놓거나 생략할 수
   있다. Acquire box가 있는 card를 고르면 그 보너스도 즉시 처리한다.
   `[Price is No Object card]` `[Main pp. 6, 9, 20]`
+- Treacherous Maneuver는 Agent box의 화살표를 선택하면 이 카드와 hand의 다른
+  Emperor card 한 장을 함께 trash하고, 방문한 Faction의 Influence를 기본 1 대신
+  총 2 얻는다. 비용을 지불하지 않고 생략할 수 있으며 discard pile이나 이미
+  play 영역에 있던 Emperor card는 비용으로 고를 수 없다.
+  `[Treacherous Maneuver card]` `[Main p. 9]`
 - Signet Ring card를 Agent turn에 내서 Agent를 보내면 Leader의 Signet Ring icon이 표시된 능력을 사용한다. [Main p. 6] [Main p. 20]
 - CHOAM Module의 Shaddam Corrino IV에 관한 별도 판정은
   `choam-module.md`와 콘텐츠 명세에서 다룬다. [Main pp. 16-17]
@@ -91,6 +96,8 @@
   `[Smuggler's Haven card]` `[Main p. 6]`
 - Price is No Object는 Reveal에서 Persuasion 2와 Solari 2를 얻는다.
   `[Price is No Object card]`
+- Treacherous Maneuver는 Reveal에서 Persuasion 1과 Intrigue card 1장을 얻는다.
+  `[Treacherous Maneuver card]`
 
 ## 카드 획득과 Imperium Row 보충
 

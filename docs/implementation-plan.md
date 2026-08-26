@@ -386,6 +386,11 @@ spying 중일 때의 Spice 2를 적용하며, 보드 공간 비용을 지불한 
 놓고, Row 보충·Reserve 수량·획득 보너스·The Spice Must Flow Victory Point를
 기존 획득 transition과 공유한다. 획득 시 Solari 2와 Reveal의 Persuasion 2·
 Solari 2를 연결해 codec v47에 포함했다.
+마흔두 번째 묶음은 Treacherous Maneuver의 자기 자신과 hand의 다른 Emperor card
+폐기 비용을 기존 Agent-card trash 선택에 연결했다. 비용을 지불하면 방문 Faction의
+기본 Influence 1에 추가 Influence 1을 더하고, 거절하면 기본 Influence만 얻는다.
+Reveal의 Persuasion 1과 Intrigue draw 1도 자동 Reveal 효과로 추가해 codec v48에
+포함했다.
 고정된 DIU `imperium.JSON`은 런타임 의존성 없이 63개 local identity와
 대조하고 아이콘·Faction·효과 형태를 정규화하는 read-only audit에만 사용한다.
 나머지 Imperium과 Intrigue, Leader, Objective 효과는 아직 identity manifest

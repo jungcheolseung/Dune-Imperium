@@ -53,8 +53,9 @@ from a player's personal deck. General Agent, Reveal, and deck-building rules in
 | Sardaukar Coordination | Both copies have Emperor affiliation plus Emperor and Landsraad Agent icons. Their Agent box may deploy troops recruited during that turn even from a non-Combat space. Reveal gives one strength plus one more for each Emperor card revealed that turn, including the source card. | Non-Combat use has no two-troop existing-garrison allowance: only the frame's actual recruit count may deploy. The Reveal multiplier excludes Emperor cards left in play from earlier Agent turns and each revealed copy resolves its own multiplier. |
 | Smuggler's Haven | The card has Spacing Guild affiliation plus Spacing Guild and Spice Trade Agent icons. Its Agent box may pay four Spice for one Victory Point; Reveal gives one Persuasion and two Spice while the owner is spying on a Maker board space. | Affordability is checked after paying the visited board space's cost. The Reveal condition follows Observation Post connections to typed Maker spaces; a Spy at an unrelated post does not qualify. The printed Persuasion corrects DIU's conflicting Solari transcription. |
 | Price is No Object | The card has Emperor and Bene Gesserit affiliations plus matching Faction Agent icons. Acquisition gains two Solari. Its Agent box may acquire one Imperium Row or Reserve card to hand by paying its printed Persuasion cost in Solari; Reveal gives two Persuasion and two Solari. | The optional acquisition is one serial action or decline. Row refill, Reserve counts, acquisition bonuses, Spy follow-up choices, and The Spice Must Flow's Victory Point still resolve; only the payment resource and destination zone change. With no Solari the unavailable effect creates no choice. |
+| Treacherous Maneuver | The card has Emperor affiliation and all four Faction Agent icons. Its Agent box may trash itself and another Emperor card from hand to gain one additional Influence with the visited Faction; Reveal gives one Persuasion and draws one Intrigue card. | The hand payment excludes discard and in-play cards. Paying shares the common trash-trigger and Influence transitions, so the board space's normal Influence and the extra step together apply Friendship, track bonuses, and Alliance changes. Declining preserves both cards and grants only the normal step. |
 | Chance and replay | Prepare the Way's draw uses the same personal discard reshuffle decision as board-space and Spy draws. | Its Reserve instance ID remains stable through discard, shuffle, hand, and in-play zones. |
-| RL encoding | Every transcribed physical card copy can take its Agent destinations, including Infiltrate variants. | Imperium batches grow the catalog through 832 in v8, 845 in v9, 857 in v10, 971 in v11, 991 in v12, 1001 in v13, 1014 in v14, 1060 in v15, 1068 in v16, 1114 in v17, 1133 in v18, 1146 in v19, 1162 in v20, 1196 in v21, 1200 in v22, 1277 in v23, 1328 in v24, 1341 in v25, 1428 in v26, 1454 in v27, 1509 in v28, 1637 in v29, 1688 in v30, 1715 in v31, 1729 in v32, 1752 in v33, 1822 in v34, 1920 in v35, 1936 in v36, 2039 in v37, 2072 in v38, 2142 in v39, 2193 in v40, 2337 in v41, 2533 in v42, 2549 in v43, 2601 in v44, 2633 in v45, 2648 in v46, and 2724 in v47. |
+| RL encoding | Every transcribed physical card copy can take its Agent destinations, including Infiltrate variants. | Imperium batches grow the catalog through 832 in v8, 845 in v9, 857 in v10, 971 in v11, 991 in v12, 1001 in v13, 1014 in v14, 1060 in v15, 1068 in v16, 1114 in v17, 1133 in v18, 1146 in v19, 1162 in v20, 1196 in v21, 1200 in v22, 1277 in v23, 1328 in v24, 1341 in v25, 1428 in v26, 1454 in v27, 1509 in v28, 1637 in v29, 1688 in v30, 1715 in v31, 1729 in v32, 1752 in v33, 1822 in v34, 1920 in v35, 1936 in v36, 2039 in v37, 2072 in v38, 2142 in v39, 2193 in v40, 2337 in v41, 2533 in v42, 2549 in v43, 2601 in v44, 2633 in v45, 2648 in v46, 2724 in v47, and 2740 in v48. |
 
 ## Card-level verification
 
@@ -65,7 +66,10 @@ from a player's personal deck. General Agent, Reveal, and deck-building rules in
   its Reveal diamond is one Persuasion rather than DIU's recorded Solari.
 - Price is No Object's linked printed image was visually checked on 2026-08-26
   for acquisition placement, Agent icons and destination, and Reveal values.
-- These forty-two shared cards were bootstrapped from DIU `imperium.JSON` at
+- Treacherous Maneuver's linked printed image was visually checked on 2026-08-26
+  for its two-card trash cost, replacement Influence gain, Agent icons, and
+  Reveal values.
+- These forty-three shared cards were bootstrapped from DIU `imperium.JSON` at
   reviewed commit `990523441421d34a670505d5b32318f01754b960`. Their local
   physical counts and stable IDs continue to come from the verified manifest;
   DIU's conflicting `quantity` values were not imported.
@@ -74,7 +78,7 @@ from a player's personal deck. General Agent, Reveal, and deck-building rules in
 
 ## Deferred boundaries
 
-- All shared Imperium cards other than the forty-two listed above still have only
+- All shared Imperium cards other than the forty-three listed above still have only
   identity and acquisition-cost data. Drawing one of those cards fails
   explicitly until its play data is transcribed.
 - Signet Ring remains blocked on Leader ability implementation.
