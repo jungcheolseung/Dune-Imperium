@@ -176,7 +176,7 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
                 "pending_agent_effect",
                 _agent_effect_is_available(
                     card.agent_effect,
-                    owner,
+                    replace(owner, resources=next_owner.resources),
                     space,
                     card_instance_id,
                 ),
@@ -258,6 +258,8 @@ def _agent_effect_is_available(
         return owner.influence.bene_gesserit >= 2
     if effect is PersonalCardAgentEffect.PAY_TWO_WATER_TO_DRAW_TWO:
         return owner.resources.water >= 2
+    if effect is PersonalCardAgentEffect.MAY_PAY_FOUR_SPICE_FOR_VP:
+        return owner.resources.spice >= 4
     if effect is PersonalCardAgentEffect.DRAW_PER_SANDWORM_IN_CONFLICT:
         return owner.sandworms_conflict > 0
     if effect in (

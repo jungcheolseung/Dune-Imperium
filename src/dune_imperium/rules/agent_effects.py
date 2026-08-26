@@ -639,7 +639,7 @@ def legal_agent_card_payment_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Return Ecological Testing Station's optional Water payment."""
+    """Return optional resource payments for the current Agent card."""
 
     if not 0 <= player < state.config.players:
         raise ValueError("player must identify a configured seat")
@@ -653,21 +653,38 @@ def legal_agent_card_payment_actions(
         return ()
     _, source_card_id, _ = _effect_subject(context)
     source_card = personal_card_for_instance(source_card_id)
-    if (
-        source_card.agent_effect
-        is not PersonalCardAgentEffect.PAY_TWO_WATER_TO_DRAW_TWO
+    if source_card.agent_effect not in (
+        PersonalCardAgentEffect.PAY_TWO_WATER_TO_DRAW_TWO,
+        PersonalCardAgentEffect.MAY_PAY_FOUR_SPICE_FOR_VP,
     ):
         return ()
-    if state.players[player].resources.water < 2:
+    owner = state.players[player]
+    if (
+        source_card.agent_effect
+        is PersonalCardAgentEffect.PAY_TWO_WATER_TO_DRAW_TWO
+        and owner.resources.water < 2
+    ) or (
+        source_card.agent_effect
+        is PersonalCardAgentEffect.MAY_PAY_FOUR_SPICE_FOR_VP
+        and owner.resources.spice < 4
+    ):
         raise RuntimeError("pending Agent-card payment is not affordable")
     return (
         DomainAction(action_id="decline_agent_card_payment", actor=player),
-        DomainAction(action_id="pay_agent_card_water", actor=player),
+        DomainAction(
+            action_id=(
+                "pay_agent_card_water"
+                if source_card.agent_effect
+                is PersonalCardAgentEffect.PAY_TWO_WATER_TO_DRAW_TWO
+                else "pay_agent_card_spice"
+            ),
+            actor=player,
+        ),
     )
 
 
 def apply_agent_card_payment(state: GameState, action: DomainAction) -> RuleResult:
-    """Resolve or decline an Agent-box Water payment and card draw."""
+    """Resolve or decline an Agent-box resource payment."""
 
     if action not in legal_agent_card_payment_actions(state, action.actor):
         raise ValueError("action is not a legal Agent-card payment choice")
@@ -684,9 +701,21 @@ def apply_agent_card_payment(state: GameState, action: DomainAction) -> RuleResu
         return RuleResult(state=next_state, events=(event,))
 
     owner = state.players[action.actor]
+    source_card = personal_card_for_instance(_effect_subject(context)[1])
+    pays_water = (
+        source_card.agent_effect
+        is PersonalCardAgentEffect.PAY_TWO_WATER_TO_DRAW_TWO
+    )
+    resource = "water" if pays_water else "spice"
+    spent = 2 if pays_water else 4
     next_owner = replace(
         owner,
-        resources=replace(owner.resources, water=owner.resources.water - 2),
+        resources=replace(
+            owner.resources,
+            water=owner.resources.water - (spent if pays_water else 0),
+            spice=owner.resources.spice - (0 if pays_water else spent),
+        ),
+        victory_points=owner.victory_points + (0 if pays_water else 1),
     )
     players = _replace_player(state, next_owner)
     paid_state = advance_after_effect(state, context, players)
@@ -695,10 +724,12 @@ def apply_agent_card_payment(state: GameState, action: DomainAction) -> RuleResu
         kind="agent_card_payment_resolved",
         payload=(
             ("player", action.actor),
-            ("resource", "water"),
-            ("spent", 2),
+            ("resource", resource),
+            ("spent", spent),
         ),
     )
+    if not pays_water:
+        return RuleResult(state=paid_state, events=(event,))
     draw = draw_or_request_personal_cards(
         paid_state,
         action.actor,

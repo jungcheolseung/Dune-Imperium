@@ -22,6 +22,7 @@ from dune_imperium.rules.influence import (
 )
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
+    is_spying_on_maker_space,
     place_spy,
     recall_spy,
 )
@@ -723,6 +724,10 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
                 card_id,
                 Faction(effect.required_faction_bond.value),
             )
+        )
+        and (
+            not effect.requires_spying_on_maker_space
+            or is_spying_on_maker_space(owner)
         )
     )
     persuasion = sum(card.reveal_persuasion for card in cards) + sum(

@@ -433,6 +433,130 @@ def test_smugglers_harvester_has_no_agent_effect_away_from_maker_spaces() -> Non
     assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False
 
 
+def test_smugglers_haven_may_pay_four_spice_for_one_vp() -> None:
+    haven = _imperium_instance("smuggler_s_haven")
+    owner = PlayerState(
+        player_id=0,
+        hand=(haven,),
+        resources=Resources(spice=4),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "deliver_supplies")).state
+    payment = next(
+        action
+        for action in legal_agent_card_payment_actions(placed, 0)
+        if action.action_id == "pay_agent_card_spice"
+    )
+
+    result = apply_agent_card_payment(placed, payment)
+
+    assert result.state.players[0].resources.spice == 0
+    assert result.state.players[0].victory_points == 2
+    assert result.events[0].kind == "agent_card_payment_resolved"
+
+
+def test_smugglers_haven_trade_may_be_declined() -> None:
+    haven = _imperium_instance("smuggler_s_haven")
+    owner = PlayerState(
+        player_id=0,
+        hand=(haven,),
+        resources=Resources(spice=4),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "accept_contract")).state
+    decline = next(
+        action
+        for action in legal_agent_card_payment_actions(placed, 0)
+        if action.action_id == "decline_agent_card_payment"
+    )
+
+    result = apply_agent_card_payment(placed, decline)
+
+    assert result.state.players[0].resources.spice == 4
+    assert result.state.players[0].victory_points == 1
+    assert result.events[0].kind == "agent_card_payment_declined"
+
+
+def test_smugglers_haven_skips_unaffordable_trade() -> None:
+    haven = _imperium_instance("smuggler_s_haven")
+    owner = PlayerState(
+        player_id=0,
+        hand=(haven,),
+        resources=Resources(spice=3),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+
+    placed = apply_agent_action(state, _action_to(state, "deliver_supplies")).state
+
+    assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False
+    assert legal_agent_card_payment_actions(placed, 0) == ()
+
+
+def test_smugglers_haven_checks_trade_after_paying_the_board_space_cost() -> None:
+    haven = _imperium_instance("smuggler_s_haven")
+    owner = PlayerState(
+        player_id=0,
+        hand=(haven,),
+        resources=Resources(spice=4),
+        influence=Influence(spacing_guild=2),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+
+    placed = apply_agent_action(state, _action_to(state, "shipping")).state
+
+    assert placed.players[0].resources.spice == 1
+    assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False
+    assert legal_agent_card_payment_actions(placed, 0) == ()
+
+
 def test_fedaykin_stilltent_recruits_a_deployable_troop_at_a_maker_space() -> None:
     stilltent = _imperium_instance("fedaykin_stilltent")
     owner = PlayerState(player_id=0, hand=(stilltent,))

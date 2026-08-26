@@ -155,6 +155,23 @@ def test_smugglers_harvester_play_data_includes_its_maker_bonus() -> None:
     assert card.reveal_strength == 0
 
 
+def test_smugglers_haven_play_data_uses_the_printed_reveal_persuasion() -> None:
+    card = IMPERIUM_CARDS_BY_ID["smuggler_s_haven"]
+
+    assert card.play_data_complete is True
+    assert card.copies == 1
+    assert card.factions == (Faction.SPACING_GUILD,)
+    assert card.agent_icons == (AgentIcon.SPACING_GUILD, AgentIcon.SPICE_TRADE)
+    assert card.agent_effect is PersonalCardAgentEffect.MAY_PAY_FOUR_SPICE_FOR_VP
+    assert card.reveal_persuasion == 1
+    assert card.reveal_effects == (
+        PersonalCardRevealEffect(
+            spice=2,
+            requires_spying_on_maker_space=True,
+        ),
+    )
+
+
 def test_fedaykin_stilltent_play_data_has_maker_and_reveal_gains() -> None:
     card = IMPERIUM_CARDS_BY_ID["fedaykin_stilltent"]
 

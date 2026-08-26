@@ -250,6 +250,7 @@ class UprisingRulesEngine(RulesEngine):
             "gather_intelligence": apply_gather_intelligence_action,
             "pass_combat_intrigue": apply_combat_intrigue_pass,
             "pay_agent_card_water": apply_agent_card_payment,
+            "pay_agent_card_spice": apply_agent_card_payment,
             "discard_agent_card": apply_agent_card_discard,
             "discard_opponent_card": apply_opponent_card_discard,
             "place_agent_card_spy": apply_agent_card_spy_action,

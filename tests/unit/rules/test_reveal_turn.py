@@ -1019,6 +1019,38 @@ def test_smugglers_harvester_contributes_reveal_persuasion() -> None:
     assert dict(result.state.decision_stack[-1].context)["persuasion"] == 1
 
 
+def test_smugglers_haven_gains_spice_while_spying_on_a_maker_space() -> None:
+    haven = _imperium_instance("smuggler_s_haven")
+    owner = PlayerState(
+        player_id=0,
+        hand=(haven,),
+        spies_supply=2,
+        spy_post_ids=("arrakis-hagga-basin",),
+    )
+    state = _state(owner)
+
+    result = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
+
+    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 1
+    assert result.state.players[0].resources.spice == 2
+
+
+def test_smugglers_haven_has_no_spice_bonus_at_a_non_maker_post() -> None:
+    haven = _imperium_instance("smuggler_s_haven")
+    owner = PlayerState(
+        player_id=0,
+        hand=(haven,),
+        spies_supply=2,
+        spy_post_ids=("emperor-sardaukar-dutiful-service",),
+    )
+    state = _state(owner)
+
+    result = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
+
+    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 1
+    assert result.state.players[0].resources.spice == 0
+
+
 def test_fedaykin_stilltent_gains_water_when_revealed() -> None:
     stilltent = _imperium_instance("fedaykin_stilltent")
     state = _state(PlayerState(player_id=0, hand=(stilltent,)))

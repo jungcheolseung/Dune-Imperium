@@ -596,7 +596,23 @@ IMPERIUM_CARDS: Final = (
         reveal_persuasion=1,
         play_data_complete=True,
     ),
-    _entry(47, "smuggler-s-haven", "Smuggler's Haven", 4),
+    _entry(
+        47,
+        "smuggler-s-haven",
+        "Smuggler's Haven",
+        4,
+        factions=(Faction.SPACING_GUILD,),
+        agent_icons=(AgentIcon.SPACING_GUILD, AgentIcon.SPICE_TRADE),
+        agent_effect=PersonalCardAgentEffect.MAY_PAY_FOUR_SPICE_FOR_VP,
+        reveal_persuasion=1,
+        reveal_effects=(
+            PersonalCardRevealEffect(
+                spice=2,
+                requires_spying_on_maker_space=True,
+            ),
+        ),
+        play_data_complete=True,
+    ),
     _entry(
         56,
         "southern-elders",

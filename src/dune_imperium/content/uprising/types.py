@@ -46,6 +46,7 @@ class PersonalCardAgentEffect(StrEnum):
     )
     LEADER_SIGNET = "leader_signet"
     PAY_TWO_WATER_TO_DRAW_TWO = "pay_two_water_to_draw_two"
+    MAY_PAY_FOUR_SPICE_FOR_VP = "may_pay_four_spice_for_vp"
     DRAW_PERSONAL_CARD = "draw_personal_card"
     DRAW_PER_SANDWORM_IN_CONFLICT = "draw_per_sandworm_in_conflict"
     DISCARD_TO_DRAW_ONE_OR_TWO_IF_SPACING_GUILD = (
@@ -161,6 +162,7 @@ class PersonalCardRevealEffect:
     requires_high_council: bool = False
     requires_swordmaster: bool = False
     minimum_spies_placed: int = 0
+    requires_spying_on_maker_space: bool = False
     per_revealed_faction: PersonalCardBond | None = None
 
     def __post_init__(self) -> None:
@@ -187,9 +189,10 @@ class PersonalCardRevealEffect:
             raise TypeError("Reveal Influence Faction must use PersonalCardBond")
         if (self.influence == 0) != (self.influence_faction is None):
             raise ValueError("Reveal Influence amount and Faction must be paired")
-        if not isinstance(self.requires_high_council, bool) or not isinstance(
-            self.requires_swordmaster,
-            bool,
+        if (
+            not isinstance(self.requires_high_council, bool)
+            or not isinstance(self.requires_swordmaster, bool)
+            or not isinstance(self.requires_spying_on_maker_space, bool)
         ):
             raise TypeError("Reveal state requirements must be booleans")
         if self.requires_swordmaster and not self.requires_high_council:

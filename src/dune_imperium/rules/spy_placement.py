@@ -60,6 +60,20 @@ def spied_factions(player: PlayerState) -> tuple[Faction, ...]:
     )
 
 
+def is_spying_on_maker_space(player: PlayerState) -> bool:
+    """Return whether one of the player's Spies watches a Maker space."""
+
+    occupied = frozenset(player.spy_post_ids)
+    return any(
+        post.post_id in occupied
+        and any(
+            BOARD_SPACES_BY_ID[space_id].maker
+            for space_id in post.connected_space_ids
+        )
+        for post in OBSERVATION_POSTS
+    )
+
+
 def place_spy(player: PlayerState, post_id: str) -> PlayerState:
     """Move one of ``player``'s Spies from supply to an Observation Post."""
 

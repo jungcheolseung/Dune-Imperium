@@ -180,6 +180,17 @@ def test_smugglers_harvester_uses_its_spice_trade_icon() -> None:
     }
 
 
+def test_smugglers_haven_uses_spacing_guild_and_spice_trade_icons() -> None:
+    haven = _imperium_instance("smuggler_s_haven")
+
+    assert _space_ids(_state(haven)) == {
+        "accept_contract",
+        "deliver_supplies",
+        "hagga_basin",
+        "imperial_basin",
+    }
+
+
 def test_fedaykin_stilltent_uses_its_spice_trade_icon() -> None:
     stilltent = _imperium_instance("fedaykin_stilltent")
 
