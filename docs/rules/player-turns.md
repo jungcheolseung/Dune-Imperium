@@ -77,6 +77,10 @@
   card와 Solari를 모두 보유해야 하므로, discard한 card의 효과로 얻는 자원을
   Solari 비용에 사용할 수 없다. 전체 비용을 지불하지 않고 생략할 수 있다.
   `[Corrinth City card]` `[Designer clarification]` `[Main pp. 9, 20]`
+- Desert Power는 이 turn에 Maker board space로 Agent를 보냈으면 Agent box에서
+  Spice 2를 얻는다. 선택한 공간의 typed `maker` 속성으로 판정하며, 같은
+  Spice Trade icon의 비-Maker 공간에서는 적용하지 않는다.
+  `[Desert Power card]` `[FAQ p. 2]`
 - Signet Ring card를 Agent turn에 내서 Agent를 보내면 Leader의 Signet Ring icon이 표시된 능력을 사용한다. [Main p. 6] [Main p. 20]
 - CHOAM Module의 Shaddam Corrino IV에 관한 별도 판정은
   `choam-module.md`와 콘텐츠 명세에서 다룬다. [Main pp. 16-17]
@@ -121,6 +125,11 @@
 - Corrinth City는 Reveal에서 Solari 5를 얻거나, 아직 High Council 좌석이 없으면
   Solari 5를 지불하고 좌석을 얻는다. 좌석을 선택하면 현재 Reveal turn부터
   Persuasion 2를 얻는다. `[Corrinth City card]` `[Board Guide p. 2]`
+- Desert Power는 Reveal에서 Persuasion 2를 얻거나, Maker Hooks를 보유하고
+  Water 1을 지불해 sandworm 1개를 소환하고 현재 Conflict에 즉시 배치한다.
+  Maker Hooks는 소비하지 않으며 Shield Wall이 현재 Conflict를 보호하면
+  sandworm 선택을 할 수 없다. `[Desert Power card]` `[Main pp. 10, 20]`
+  `[FAQ p. 2]`
 
 ## 카드 획득과 Imperium Row 보충
 

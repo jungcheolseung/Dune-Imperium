@@ -8,10 +8,10 @@
 ## 현재 구현 상태
 
 2026-08-26 기준으로 기본 보드 시스템, multi-round 상태 전이와 개인 덱 reshuffle,
-47종의 기본 Imperium 카드 play data가 구현되어 있다. 기본 룰셋의 Imperium 카드
-50종 중 남은 카드는 `Desert Power`, `Long Live the Fighters`,
-`Subversive Advisor`다. 현재 action codec은 v52·3,111개이며 전체 테스트 506개,
-Ruff, mypy가 통과한다.
+48종의 기본 Imperium 카드 play data가 구현되어 있다. 기본 룰셋의 Imperium 카드
+50종 중 남은 카드는 `Long Live the Fighters`, `Subversive Advisor`다.
+현재 action codec은 v53·3,123개이며 전체 테스트 517개, Ruff, mypy가
+통과한다.
 
 코어 엔진은 여러 라운드를 진행하고 replay할 수 있지만, 공개 random runner와
 `dune_imperium_uprising_v0` PettingZoo adapter는 여전히 한 라운드를 실행 단위로
@@ -59,7 +59,7 @@ Dune: Imperium 경험을 할 수 있게 하는 것이다.
 
 ## 아직 결정하지 않은 사항
 
-- 현재 81개 정수 관측과 v52 action catalog 이후의 전체 게임 관측 확장 및 최종
+- 현재 81개 정수 관측과 v53 action catalog 이후의 전체 게임 관측 확장 및 최종
   학습용 인코딩, 학습 알고리즘과 모델 구조
 - 사람이 플레이할 최종 UI 형태
 - CHOAM 이후 다른 확장팩을 추가할 범위와 순서

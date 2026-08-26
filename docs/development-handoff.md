@@ -23,13 +23,13 @@ uv run ruff check src tests
 uv run mypy src tests
 ```
 
-2026-08-26의 기준 결과는 pytest 506개 통과, Ruff 통과, mypy 통과다. 현재 action
-codec은 `ACTION_CODEC_VERSION = 52`, 기본 룰셋 catalog 크기는 3,111이다.
+2026-08-26의 기준 결과는 pytest 517개 통과, Ruff 통과, mypy 통과다. 현재 action
+codec은 `ACTION_CODEC_VERSION = 53`, 기본 룰셋 catalog 크기는 3,123이다.
 
 ## 현재 구현 기준선
 
-마지막 기능 커밋은 `d680488 Play Corrinth City`, 그 카드의 규칙·로드맵 문서
-커밋은 `6aa0832 Document Corrinth City`다.
+마지막 기능 커밋은 `958897a Play Desert Power`다. 그 카드의
+규칙·로드맵 문서는 이 기준선에 반영했다.
 
 - R0-M4는 완료됐다. 공식 규칙 자료, 엔진 커널, 4인 setup, 한 라운드 수직 조각,
   actor-neutral action codec과 PettingZoo AEC 계약이 있다.
@@ -37,7 +37,7 @@ codec은 `ACTION_CODEC_VERSION = 52`, 기본 룰셋 catalog 크기는 3,111이�
   Spy/Infiltrate/Gather Intelligence, 개인 덱 reshuffle chance, Combat 순위와 보상,
   sandworm·Shield Wall·control, Makers·Recall, Endgame 진입과 안전한 일부 종료를
   실행할 수 있다.
-- 시작 카드 7종, Reserve 2종과 기본 Imperium 50종 중 47종에 완전한 play data가
+- 시작 카드 7종, Reserve 2종과 기본 Imperium 50종 중 48종에 완전한 play data가
   있다. 구현된 카드별 판정은 personal-card audit에 기록돼 있다.
 - 코어 상태 머신과 replay는 여러 라운드를 지원한다. 통합 테스트는 두 라운드 뒤
   세 번째 Round Start의 개인 덱 reshuffle까지 재생한다.
@@ -49,8 +49,8 @@ codec은 `ACTION_CODEC_VERSION = 52`, 기본 룰셋 catalog 크기는 3,111이�
 
 ## 아직 완성되지 않은 경계
 
-- 기본 Imperium 미전사 3종:
-  `Desert Power`, `Long Live the Fighters`, `Subversive Advisor`
+- 기본 Imperium 미전사 2종:
+  `Long Live the Fighters`, `Subversive Advisor`
 - CHOAM 전용 Imperium 미전사 4종:
   `Cargo Runner`, `Delivery Agreement`, `Interstellar Trade`,
   `Priority Contracts`
@@ -73,15 +73,15 @@ codec은 `ACTION_CODEC_VERSION = 52`, 기본 룰셋 catalog 크기는 3,111이�
 
 현재 합의된 순서를 유지한다.
 
-1. `Desert Power`
-2. `Long Live the Fighters`
-3. `Subversive Advisor`
-4. CHOAM 전용 Imperium 4종과 contract 시스템
-5. Plot, Combat, Endgame Intrigue 공통 경계와 실제 카드 효과
-6. Leader Signet Ring·기본 능력, 남은 Objective 상호작용
-7. 전체 게임 random/self-play runner와 PettingZoo episode 확장
+1. `Long Live the Fighters`
+2. `Subversive Advisor`
+3. CHOAM 전용 Imperium 4종과 contract 시스템
+4. Plot, Combat, Endgame Intrigue 공통 경계와 실제 카드 효과
+5. Leader Signet Ring·기본 능력, 남은 Objective 상호작용
+6. 전체 게임 random/self-play runner와 PettingZoo episode 확장
 
-바로 다음 작업은 `Desert Power`다. 카드 하나의 구현 단위는 다음 순서를 따른다.
+바로 다음 작업은 `Long Live the Fighters`다. 카드 하나의 구현 단위는 다음
+순서를 따른다.
 
 1. Dune Cards Hub의 실물 이미지를 확인하고 DIU audit 데이터와 대조한다.
 2. 공식 일반 규칙만으로 해석되지 않는 부분은 `rules/open-questions.md`에 먼저
@@ -91,9 +91,9 @@ codec은 `ACTION_CODEC_VERSION = 52`, 기본 룰셋 catalog 크기는 3,111이�
 4. 카드 데이터 테스트, Agent/Reveal 상호작용 테스트, codec round-trip을 함께
    추가한다.
 5. 관련 테스트 후 전체 pytest·Ruff·mypy를 실행한다.
-6. 코드와 회귀 테스트를 `Play Desert Power`로 커밋한다.
+6. 코드와 회귀 테스트를 `Play Long Live the Fighters`로 커밋한다.
 7. 구현 계획, player-turn 규칙, personal-card audit의 다음 순서를 갱신하고
-   `Document Desert Power`로 별도 커밋한다.
+   `Document Long Live the Fighters`로 별도 커밋한다.
 
 이후 카드도 같은 `Play ...` / `Document ...` 패턴을 유지한다. 구체적인 커밋
 정책은 `AGENTS.md`에 영구 기록돼 있다.
@@ -138,8 +138,9 @@ Codex sandbox에서 uv cache 쓰기가 제한되면 명령 앞에
 ## 원격 저장소 인계 주의
 
 이 문서를 작성할 때 로컬 `master`에는 `origin/master`의
-`f9026ec Document Steersman roadmap` 이후 Junction Headquarters와 Corrinth City
-구현·문서 커밋이 더 있지만 아직 원격에는 보이지 않는다. 새 계정이 새 clone으로
+`f9026ec Document Steersman roadmap` 이후 Junction Headquarters, Corrinth City,
+Desert Power 구현·문서 커밋이 더 있지만 아직 원격에는 보이지 않는다. 새 계정이
+새 clone으로
 이어받는다면 기존 계정에서 현재 `master`를 먼저 push하거나 저장소 자체를
 전달해야 한다.
 
@@ -153,6 +154,7 @@ git log --oneline --all --decorate -10
 - `4a738cc Document Junction Headquarters`
 - `d680488 Play Corrinth City`
 - `6aa0832 Document Corrinth City`
+- `958897a Play Desert Power`
 
-이 커밋들이 없으면 문서에 적힌 v52·3,111 action 및 47종 카드 기준선과 실제
+이 커밋들이 없으면 문서에 적힌 v53·3,123 action 및 48종 카드 기준선과 실제
 코드가 일치하지 않는다.

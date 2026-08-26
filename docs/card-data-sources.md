@@ -126,13 +126,13 @@ boundary. Its acquisition Intrigue draw resolves immediately, while cards whose
 recorded acquisition bonus remains untyped are still filtered from engine legal
 actions. Its Agent and Reveal effects reuse Influence and troop transitions.
 
-Subsequent batches continue through Corrinth City and codec version 52. The
+Subsequent batches continue through Desert Power and codec version 53. The
 authoritative card-by-card behavior and verification notes are maintained in
 [the personal-card implementation audit](implementation-audits/personal-cards.md)
-instead of duplicating every batch here. As of 2026-08-26, 47 of the 50
+instead of duplicating every batch here. As of 2026-08-26, 48 of the 50
 non-CHOAM Imperium identities have complete play data. The remaining base cards
-are Desert Power, Long Live the Fighters, and Subversive Advisor; four additional
-untranscribed identities are CHOAM-only. A card is still hidden from playable
+are Long Live the Fighters and Subversive Advisor; four additional untranscribed
+identities are CHOAM-only. A card is still hidden from playable
 Agent paths until its full local transcription and regression tests are ready.
 
 ### Recorded discrepancies

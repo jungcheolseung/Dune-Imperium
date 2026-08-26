@@ -58,8 +58,9 @@ from a player's personal deck. General Agent, Reveal, and deck-building rules in
 | Steersman | The card has Spacing Guild affiliation plus Spacing Guild, Landsraad, City, and Spice Trade Agent icons. Acquisition gains one Spacing Guild Influence; its Agent box draws one personal card and recalls one Agent; Reveal gives two Persuasion and two Spice. | Recall choices include every Agent currently on the board, including the Agent just placed with Steersman. Removing its location frees the board space and returns the component for a later turn. Both normal and Solari-based acquisition share the Influence bonus and its track transitions. |
 | Junction Headquarters | The card has Spacing Guild affiliation plus Landsraad, City, and Spice Trade Agent icons. With the Spacing Guild Alliance, its Agent box may trash one Intrigue card and pay two Spice for one Victory Point; Reveal gives one Persuasion, one Water, and recruits one troop. | Alliance, Intrigue, and Spice are checked together before exposing the optional payment. The selected private Intrigue ID becomes public in a distinct permanent trash zone and cannot return through an Intrigue-discard reshuffle. Declining preserves the full cost. |
 | Corrinth City | The card has Emperor affiliation plus Emperor and Landsraad Agent icons. Its Agent box may discard two hand cards and pay five Solari for one Victory Point; Reveal chooses between gaining five Solari and paying five Solari to take a High Council seat. | The two discard targets are selected serially without moving either card; the second choice atomically commits the full cost and deducts Solari before resolving the shared discard transitions. The full payment may be declined. A Reveal seat is unavailable once owned; taking it adds the High Council's two Persuasion to the current Reveal frame. |
+| Desert Power | The card has Fremen affiliation and a Spice Trade Agent icon. Its Agent box gains two Spice after visiting a Maker space; Reveal keeps two Persuasion or, with Maker Hooks, may pay one Water to summon and deploy one Sandworm. | The Sandworm choice is unavailable without Water, Maker Hooks, a current Conflict, or while the Shield Wall protects that Conflict. Maker Hooks are not consumed. A first unit activates all static and previously chosen Reveal swords, while an additional Sandworm adds three strength. |
 | Chance and replay | Prepare the Way's draw uses the same personal discard reshuffle decision as board-space and Spy draws. | Its Reserve instance ID remains stable through discard, shuffle, hand, and in-play zones. |
-| RL encoding | Every transcribed physical card copy can take its Agent destinations, including Infiltrate variants. | Imperium batches grow the catalog through 832 in v8, 845 in v9, 857 in v10, 971 in v11, 991 in v12, 1001 in v13, 1014 in v14, 1060 in v15, 1068 in v16, 1114 in v17, 1133 in v18, 1146 in v19, 1162 in v20, 1196 in v21, 1200 in v22, 1277 in v23, 1328 in v24, 1341 in v25, 1428 in v26, 1454 in v27, 1509 in v28, 1637 in v29, 1688 in v30, 1715 in v31, 1729 in v32, 1752 in v33, 1822 in v34, 1920 in v35, 1936 in v36, 2039 in v37, 2072 in v38, 2142 in v39, 2193 in v40, 2337 in v41, 2533 in v42, 2549 in v43, 2601 in v44, 2633 in v45, 2648 in v46, 2724 in v47, 2740 in v48, 2769 in v49, 2830 in v50, 2906 in v51, and 3111 in v52. Corrinth City's staged card selection avoids encoding every possible pair. |
+| RL encoding | Every transcribed physical card copy can take its Agent destinations, including Infiltrate variants. | Imperium batches grow the catalog through 832 in v8, 845 in v9, 857 in v10, 971 in v11, 991 in v12, 1001 in v13, 1014 in v14, 1060 in v15, 1068 in v16, 1114 in v17, 1133 in v18, 1146 in v19, 1162 in v20, 1196 in v21, 1200 in v22, 1277 in v23, 1328 in v24, 1341 in v25, 1428 in v26, 1454 in v27, 1509 in v28, 1637 in v29, 1688 in v30, 1715 in v31, 1729 in v32, 1752 in v33, 1822 in v34, 1920 in v35, 1936 in v36, 2039 in v37, 2072 in v38, 2142 in v39, 2193 in v40, 2337 in v41, 2533 in v42, 2549 in v43, 2601 in v44, 2633 in v45, 2648 in v46, 2724 in v47, 2740 in v48, 2769 in v49, 2830 in v50, 2906 in v51, 3111 in v52, and 3123 in v53. Desert Power adds two actor-neutral Reveal choices and its Spice Trade destinations. |
 
 ## Card-level verification
 
@@ -86,7 +87,10 @@ from a player's personal deck. General Agent, Reveal, and deck-building rules in
   its two-card-and-Solari Agent cost, destinations, and mutually exclusive
   Solari or High Council Reveal choices. Its designer clarification was also
   checked for the requirement to cover the entire Agent cost before starting it.
-- These forty-seven shared cards were bootstrapped from DIU `imperium.JSON` at
+- Desert Power's linked printed image was visually checked on 2026-08-26 for its
+  Maker-space condition, Spice reward, destination, and mutually exclusive
+  Persuasion or Maker-Hooks-and-Water Sandworm Reveal choices.
+- These forty-eight shared cards were bootstrapped from DIU `imperium.JSON` at
   reviewed commit `990523441421d34a670505d5b32318f01754b960`. Their local
   physical counts and stable IDs continue to come from the verified manifest;
   DIU's conflicting `quantity` values were not imported.
@@ -95,11 +99,11 @@ from a player's personal deck. General Agent, Reveal, and deck-building rules in
 
 ## Deferred boundaries
 
-- Three base and four CHOAM-only Imperium cards outside the forty-seven listed
+- Two base and four CHOAM-only Imperium cards outside the forty-eight listed
   above still have only identity and acquisition-cost data. Drawing one of
   those cards fails explicitly until its play data is transcribed.
 - Signet Ring remains blocked on Leader ability implementation.
-- Every Reveal choice used by the forty-seven transcribed cards has a serial or
+- Every Reveal choice used by the forty-eight transcribed cards has a serial or
   atomic decision path. Reveal effects belonging to untranscribed cards remain
   unavailable rather than partially exposed.
 - Acquisition bonuses without a local typed effect remain unavailable.
