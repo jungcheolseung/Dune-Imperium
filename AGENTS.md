@@ -77,7 +77,7 @@ Keep these tasks on Sol:
 For bounded implementation work, prefer spawning a subagent with:
 
 - Model: `gpt-5.6-luna`
-- Reasoning effort: `high`
+- Reasoning effort: `max`
 
 Delegate to Luna when the task is:
 
