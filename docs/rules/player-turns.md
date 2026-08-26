@@ -51,6 +51,10 @@
   Victory Point 1을 얻는다. 공간 비용을 먼저 지불한 뒤 남은 Spice로 이 비용을
   낼 수 있어야 하며, 지불하지 않고 생략할 수 있다. `[Smuggler's Haven card]`
   `[Main p. 9]`
+- Price is No Object는 Agent box를 처리할 때 Imperium Row 또는 Reserve의 card
+  하나를 Persuasion 대신 같은 양의 Solari로 acquire해 hand에 놓거나 생략할 수
+  있다. Acquire box가 있는 card를 고르면 그 보너스도 즉시 처리한다.
+  `[Price is No Object card]` `[Main pp. 6, 9, 20]`
 - Signet Ring card를 Agent turn에 내서 Agent를 보내면 Leader의 Signet Ring icon이 표시된 능력을 사용한다. [Main p. 6] [Main p. 20]
 - CHOAM Module의 Shaddam Corrino IV에 관한 별도 판정은
   `choam-module.md`와 콘텐츠 명세에서 다룬다. [Main pp. 16-17]
@@ -85,6 +89,8 @@
 - Smuggler's Haven은 Reveal에서 Persuasion 1을 얻고, 자신의 Spy가 Maker board
   space에 연결된 Observation Post에 있으면 Spice 2를 추가로 얻는다.
   `[Smuggler's Haven card]` `[Main p. 6]`
+- Price is No Object는 Reveal에서 Persuasion 2와 Solari 2를 얻는다.
+  `[Price is No Object card]`
 
 ## 카드 획득과 Imperium Row 보충
 
@@ -92,6 +98,10 @@
 - card 오른쪽 위의 Persuasion cost를 지불한다. 가진 Persuasion이 허용하는 만큼 여러 장을 acquire할 수 있다. [Main p. 13]
 - 여러 출처의 Persuasion을 합쳐 card 한 장의 cost를 내거나, 한 출처의 Persuasion을 나누어 여러 card의 cost를 낼 수 있다. 사용하지 않은 Persuasion은 Reveal turn이 끝나면 사라진다. [Main p. 13]
 - acquire한 card는 자신의 discard pile에 놓고 즉시 사용하지 않는다. 이후 deck에서 card를 draw할 수 없을 때 discard pile을 shuffle해 새 deck을 만든다. [Main p. 6] [Main p. 13]
+- Price is No Object의 Agent 효과로 acquire한 card는 이 일반 규칙을 덮어써
+  discard pile 대신 hand에 놓는다. The Spice Must Flow도 선택할 수 있으며,
+  acquire 보상인 Victory Point를 즉시 얻는다. `[Price is No Object card]`
+  `[The Spice Must Flow card]` `[Main p. 6]`
 - Imperium Row에는 항상 card 다섯 장이 있어야 한다. card를 acquire해 자리가 비면 Imperium Deck 맨 위 card로 보충하며, Persuasion이 남아 있으면 새로 보충된 card도 acquire할 수 있다. [Main p. 13]
 - card의 cost 아래에 acquire box가 있으면 그 효과는 card를 acquire하는 순간 한 번만 얻으며, 나중에 hand에서 그 card를 낼 때는 얻지 않는다. [Main p. 20]
 - The Spice Must Flow를 acquire하며 얻은 Victory Point는 이후 그 카드를

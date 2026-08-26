@@ -381,6 +381,11 @@ codec v45에 포함했다.
 공통 Agent-card 결제 경계에 연결했다. Reveal은 Persuasion 1과 Maker 공간을
 spying 중일 때의 Spice 2를 적용하며, 보드 공간 비용을 지불한 뒤 카드 비용의
 지불 가능성을 판정하도록 순서를 바로잡고 codec v46에 포함했다.
+마흔한 번째 묶음은 Price is No Object의 Solari 구매를 Agent 효과 안의 직렬
+획득 경계로 추가했다. Imperium Row와 Reserve를 같은 비용으로 acquire해 hand에
+놓고, Row 보충·Reserve 수량·획득 보너스·The Spice Must Flow Victory Point를
+기존 획득 transition과 공유한다. 획득 시 Solari 2와 Reveal의 Persuasion 2·
+Solari 2를 연결해 codec v47에 포함했다.
 고정된 DIU `imperium.JSON`은 런타임 의존성 없이 63개 local identity와
 대조하고 아이콘·Faction·효과 형태를 정규화하는 read-only audit에만 사용한다.
 나머지 Imperium과 Intrigue, Leader, Objective 효과는 아직 identity manifest
