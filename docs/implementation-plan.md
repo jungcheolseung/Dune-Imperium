@@ -400,6 +400,10 @@ v49에 연결했다.
 Agent-card 직렬 선택으로 연결했다. 방금 배치한 Agent도 회수할 수 있으며 회수한
 Agent는 같은 round의 이후 turn에 다시 사용한다. 획득 시 Spacing Guild Influence,
 Reveal의 Persuasion 2·Spice 2를 추가해 codec v50에 포함했다.
+마흔다섯 번째 묶음은 Junction Headquarters의 Spacing Guild Alliance 조건과
+Intrigue 1장 trash·Spice 2 복합 비용을 하나의 Agent-card 선택으로 연결해 VP 1을
+지급한다. Intrigue discard와 영구 제거를 구분하는 공개 `intrigue_trash` 상태를
+추가하고 Reveal의 Persuasion 1·Water 1·troop 1을 적용해 codec v51에 포함했다.
 고정된 DIU `imperium.JSON`은 런타임 의존성 없이 63개 local identity와
 대조하고 아이콘·Faction·효과 형태를 정규화하는 read-only audit에만 사용한다.
 나머지 Imperium과 Intrigue, Leader, Objective 효과는 아직 identity manifest
@@ -520,8 +524,8 @@ M5의 보드 시스템과 multi-round 개인 덱 shuffle까지 구현했고 M6�
 순서로 진행한다.
 
 1. 남은 기본 Imperium 카드는 아래 순서를 유지하며 공통 경계를 확장한다.
-   `Junction Headquarters` → `Corrinth City` → `Desert Power` →
-   `Long Live the Fighters` → `Subversive Advisor`.
+   `Corrinth City` → `Desert Power` → `Long Live the Fighters` →
+   `Subversive Advisor`.
 2. 위 기본 카드 묶음이 끝나면 CHOAM 전용 Imperium 카드와 계약 시스템을 함께
    구현한다.
 3. Plot, Combat, Endgame Intrigue 타입과 공통 play/discard 경계를 만든 뒤 단순

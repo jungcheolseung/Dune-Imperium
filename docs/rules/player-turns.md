@@ -68,6 +68,10 @@
   선택해 Leader로 recall한다. 이전 turn에 배치한 Agent뿐 아니라 Steersman을 내며
   방금 배치한 Agent도 고를 수 있고, 회수한 Agent는 이후 turn에 다시 사용할 수
   있다. `[Steersman card]` `[Main pp. 9, 20]`
+- Junction Headquarters는 Spacing Guild Alliance를 보유할 때 Agent box의 화살표를
+  선택해 hand의 Intrigue card 1장을 trash하고 Spice 2를 함께 지불하면 Victory
+  Point 1을 얻는다. 비용 일부만 지불할 수 없으며 전체 비용을 지불하지 않고
+  생략할 수 있다. `[Junction Headquarters card]` `[Main pp. 9, 20]`
 - Signet Ring card를 Agent turn에 내서 Agent를 보내면 Leader의 Signet Ring icon이 표시된 능력을 사용한다. [Main p. 6] [Main p. 20]
 - CHOAM Module의 Shaddam Corrino IV에 관한 별도 판정은
   `choam-module.md`와 콘텐츠 명세에서 다룬다. [Main pp. 16-17]
@@ -107,6 +111,8 @@
 - Treacherous Maneuver는 Reveal에서 Persuasion 1과 Intrigue card 1장을 얻는다.
   `[Treacherous Maneuver card]`
 - Steersman은 Reveal에서 Persuasion 2와 Spice 2를 얻는다. `[Steersman card]`
+- Junction Headquarters는 Reveal에서 Persuasion 1과 Water 1을 얻고 troop 1명을
+  recruit한다. `[Junction Headquarters card]`
 
 ## 카드 획득과 Imperium Row 보충
 
@@ -152,6 +158,9 @@
 - Intrigue 카드를 플레이하려면 카드의 모든 조건을 충족하고 모든 비용을 지불해야 한다. [FAQ p. 2]
 - 다음 공개 턴까지 적용되지 않는 Plot 효과는 카드를 앞면으로 자신의 앞에 두었다가 그 공개 턴에 사용한 뒤 버린다. [FAQ p. 2]
 - Intrigue Deck이 바닥나면 버린 Intrigue 카드를 섞어 새 Intrigue Deck을 만든다. [FAQ p. 2]
+- trash한 Intrigue card는 `intrigue_discard`에 놓지 않고 공개
+  `intrigue_trash` 영역에서 게임이 끝날 때까지 제외한다. 따라서 Intrigue Deck을
+  다시 만들 때 섞이지 않는다. `[Main p. 20]`
 
 ## `discard`의 의미
 
