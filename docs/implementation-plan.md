@@ -373,6 +373,10 @@ codec v42에 연결했다.
 Influence requirement를 무시하도록 배치 합법성 경계를 확장했다. Reveal의 Spy
 배치 또는 strength 2 선택과 Spy 공급 부족 시 recall 후 배치를 직렬화해 codec
 v44에 연결했다.
+서른아홉 번째 묶음은 Sardaukar Coordination 두 장이 비전투 공간에서도 이번
+Agent 턴에 실제 모집한 병력만 배치하도록 기존 병력 배치 경계를 일반화했다.
+Reveal의 기본 strength와 이번 Reveal Emperor 카드당 추가 strength를 연결해
+codec v45에 포함했다.
 고정된 DIU `imperium.JSON`은 런타임 의존성 없이 63개 local identity와
 대조하고 아이콘·Faction·효과 형태를 정규화하는 read-only audit에만 사용한다.
 나머지 Imperium과 Intrigue, Leader, Objective 효과는 아직 identity manifest

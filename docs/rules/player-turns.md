@@ -57,6 +57,10 @@
 - Agent turn의 기본 deploy는 Combat space에 Agent를 보냈을 때 할 수 있다. Combat space는 사막 그림과 교차한 sword 표시가 있는 space다. [Main p. 10]
 - Combat space에 들어간 turn에는 그 turn에 recruit한 troop을 원하는 수만큼 deploy하고, 그와 별도로 garrison의 troop을 최대 두 개 더 deploy할 수 있다. [Main p. 10]
 - 그 turn에 어떤 출처에서 recruit했든 새 troop은 Conflict에 deploy할 수 있다. 이미 garrison에 있던 troop을 다시 recruit한 것으로 취급해 두 개 제한을 우회할 수는 없다. [Main p. 10] [FAQ p. 4]
+- Sardaukar Coordination으로 Agent를 보내면 Combat space가 아니어도 그 turn에
+  실제로 recruit한 troop을 Conflict에 deploy할 수 있다. 이 예외는 기존
+  garrison troop 두 개를 추가로 deploy하는 권한을 주지 않는다.
+  `[Sardaukar Coordination card]` `[Main p. 6]`
 - garrison이나 supply의 troop은 Conflict strength를 제공하지 않는다. [Main p. 10] [Main p. 12]
 
 ## Reveal turn
@@ -93,6 +97,9 @@
 - Calculus of Power는 Reveal 중 play 영역의 다른 Emperor card를 trash해 sword
   3을 얻거나 거절할 수 있다. 비용으로 자기 자신을 고를 수 없고, trash된 card의
   고유 trash 효과는 정상 처리한다. `[Calculus of Power card]`
+- Sardaukar Coordination은 기본 sword 1개에 더해 이번 Reveal에 공개한 Emperor
+  card마다 sword 1개를 얻으며 자기 자신도 센다. 이전 Agent turn에 낸 Emperor
+  card는 이 수에 포함하지 않는다. `[Sardaukar Coordination card]`
 - strength를 계산하면 다른 플레이어에게 알리고 Combat marker를 Combat track의 해당 칸으로 옮긴다. strength가 20을 넘으면 marker를 `+20` 면으로 뒤집고 track 처음부터 초과분을 표시한다. [Main p. 12]
 - Reveal turn 중 효과가 unit 수나 strength를 바꾸면 Combat marker도 그에 맞게 갱신한다. [Main p. 13]
 
