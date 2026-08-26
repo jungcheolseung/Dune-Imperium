@@ -59,3 +59,54 @@ authoritative and update the handoff in the same work unit.
   precedence when sources conflict.
 - Before adding or redistributing image files in the project, verify the needed
   scope and applicable usage terms.
+
+## Agent routing
+
+Use the main `gpt-5.6-sol` agent as the controller.
+
+Keep these tasks on Sol:
+
+- Requirements interpretation
+- Repository-wide reasoning
+- Architecture and design
+- Task decomposition
+- Ambiguous debugging
+- Integration decisions
+- Final review
+
+For bounded implementation work, prefer spawning a subagent with:
+
+- Model: `gpt-5.6-luna`
+- Reasoning effort: `high`
+
+Delegate to Luna when the task is:
+
+- Clearly specified
+- Limited in scope
+- Mostly implementation rather than design
+- Unit-test creation
+- Repetitive edits
+- Small refactoring
+- Straightforward bug fixing with a known cause
+
+When delegating:
+
+- Provide only the context needed for the task.
+- Specify relevant files/directories when possible.
+- State explicit acceptance criteria.
+- Require relevant tests.
+- Instruct the subagent to report blockers rather than make broad design
+  decisions.
+
+Do not delegate to Luna when the task requires:
+
+- Architecture decisions
+- Broad repository understanding
+- Ambiguous root-cause analysis
+- Major cross-cutting changes
+
+If a Luna subagent becomes blocked or discovers that the task requires broader
+judgment, return the task to Sol.
+
+After delegated implementation, Sol must review the changes and verify relevant
+tests before considering the task complete.
