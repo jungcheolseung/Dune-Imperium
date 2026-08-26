@@ -60,6 +60,10 @@
   총 2 얻는다. 비용을 지불하지 않고 생략할 수 있으며 discard pile이나 이미
   play 영역에 있던 Emperor card는 비용으로 고를 수 없다.
   `[Treacherous Maneuver card]` `[Main p. 9]`
+- Chani, Clever Tactician은 Agent box를 처리하는 시점에 Conflict에 troop과
+  sandworm을 합쳐 unit이 3개 이상이면 Intrigue card 1장을 얻는다. 같은 Agent
+  turn의 병력 배치를 먼저 처리해 세 번째 unit을 보낸 뒤 이 조건을 확인할 수
+  있다. `[Chani, Clever Tactician card]` `[Main pp. 9-10]`
 - Signet Ring card를 Agent turn에 내서 Agent를 보내면 Leader의 Signet Ring icon이 표시된 능력을 사용한다. [Main p. 6] [Main p. 20]
 - CHOAM Module의 Shaddam Corrino IV에 관한 별도 판정은
   `choam-module.md`와 콘텐츠 명세에서 다룬다. [Main pp. 16-17]
@@ -124,6 +128,12 @@
 - Sardaukar Coordination은 기본 sword 1개에 더해 이번 Reveal에 공개한 Emperor
   card마다 sword 1개를 얻으며 자기 자신도 센다. 이전 Agent turn에 낸 Emperor
   card는 이 수에 포함하지 않는다. `[Sardaukar Coordination card]`
+- Chani, Clever Tactician은 Fremen Bond로 Persuasion 2를 얻는다. Reveal의
+  선택형 화살표를 사용하면 Conflict의 troop 2개를 garrison으로 retreat하고
+  sword 4개를 얻는다. 다른 unit이 남아 있으면 troop strength 4가 sword 4로
+  대체되어 총 strength는 유지되지만, 마지막 unit을 모두 retreat하면 sword가
+  남아 있어도 strength는 0이 된다. `[Chani, Clever Tactician card]`
+  `[Main pp. 12, 20]`
 - strength를 계산하면 다른 플레이어에게 알리고 Combat marker를 Combat track의 해당 칸으로 옮긴다. strength가 20을 넘으면 marker를 `+20` 면으로 뒤집고 track 처음부터 초과분을 표시한다. [Main p. 12]
 - Reveal turn 중 효과가 unit 수나 strength를 바꾸면 Combat marker도 그에 맞게 갱신한다. [Main p. 13]
 

@@ -391,6 +391,11 @@ Solari 2를 연결해 codec v47에 포함했다.
 기본 Influence 1에 추가 Influence 1을 더하고, 거절하면 기본 Influence만 얻는다.
 Reveal의 Persuasion 1과 Intrigue draw 1도 자동 Reveal 효과로 추가해 codec v48에
 포함했다.
+마흔세 번째 묶음은 Chani, Clever Tactician의 현재 Conflict unit 3개 조건부
+Intrigue draw를 Agent 효과 순서에 연결했다. Reveal에서는 troop 2개 retreat와
+strength 4 보상을 하나의 선택으로 처리하고, 마지막 unit이 사라질 때 strength를
+0으로 다시 계산한다. Fremen Bond Persuasion 2와 세 Agent icon을 포함해 codec
+v49에 연결했다.
 고정된 DIU `imperium.JSON`은 런타임 의존성 없이 63개 local identity와
 대조하고 아이콘·Faction·효과 형태를 정규화하는 read-only audit에만 사용한다.
 나머지 Imperium과 Intrigue, Leader, Objective 효과는 아직 identity manifest
