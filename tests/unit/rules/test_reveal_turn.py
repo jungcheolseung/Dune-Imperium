@@ -282,6 +282,41 @@ def test_reveal_is_available_even_with_agents_remaining() -> None:
     assert legal_reveal_actions(state, 1) == ()
 
 
+def test_treacherous_maneuver_reveal_draws_intrigue() -> None:
+    maneuver = _imperium_instance("treacherous_maneuver")
+    owner = PlayerState(player_id=0, hand=(maneuver,))
+    state = replace(_state(owner), intrigue_deck=("intrigue:test",))
+
+    result = begin_reveal_turn(
+        state,
+        DomainAction(action_id="reveal_turn", actor=0),
+    )
+
+    assert result.state.players[0].intrigue_cards == ("intrigue:test",)
+    assert result.state.intrigue_deck == ()
+    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 1
+    assert [event.kind for event in result.events] == [
+        "reveal_started",
+        "intrigue_card_drawn",
+    ]
+
+
+def test_treacherous_maneuver_reveal_tolerates_an_empty_intrigue_deck() -> None:
+    maneuver = _imperium_instance("treacherous_maneuver")
+
+    result = begin_reveal_turn(
+        _state(PlayerState(player_id=0, hand=(maneuver,))),
+        DomainAction(action_id="reveal_turn", actor=0),
+    )
+
+    assert result.state.players[0].intrigue_cards == ()
+    assert [event.kind for event in result.events] == [
+        "reveal_started",
+        "intrigue_card_drawn",
+    ]
+    assert dict(result.events[-1].payload)["count"] == 0
+
+
 def test_reveal_moves_hand_to_in_play_and_totals_persuasion() -> None:
     argument = _instance("convincing_argument")
     diplomacy = _instance("diplomacy")

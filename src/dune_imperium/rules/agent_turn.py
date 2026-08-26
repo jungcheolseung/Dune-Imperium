@@ -320,6 +320,16 @@ def _agent_effect_is_available(
         )
     ):
         return Faction.BENE_GESSERIT.value in owner.alliance_faction_ids
+    if (
+        effect
+        is PersonalCardAgentEffect.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE
+    ):
+        return any(
+            candidate_id != card_instance_id
+            and Faction.EMPEROR
+            in personal_card_for_instance(candidate_id).factions
+            for candidate_id in owner.hand
+        )
     if effect is PersonalCardAgentEffect.GAIN_WATER_IF_BENE_GESSERIT_BOND:
         return has_faction_bond(
             (*owner.in_play, card_instance_id),

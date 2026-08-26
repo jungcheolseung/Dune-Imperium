@@ -387,6 +387,118 @@ def test_desert_survival_trash_may_be_declined() -> None:
     assert result.events[0].kind == "agent_card_trash_declined"
 
 
+def test_treacherous_maneuver_pays_both_cards_for_extra_influence() -> None:
+    maneuver = _imperium_instance("treacherous_maneuver")
+    sardaukar = _imperium_instance("sardaukar_soldier")
+    non_emperor = _imperium_instance("desert_survival")
+    discarded_emperor = _imperium_instance("imperial_spymaster")
+    owner = PlayerState(
+        player_id=0,
+        hand=(maneuver, sardaukar, non_emperor),
+        discard_pile=(discarded_emperor,),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        intrigue_deck=("intrigue:test",),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "dutiful_service")).state
+
+    actions = legal_agent_card_trash_actions(placed, 0)
+    assert {
+        dict(action.arguments).get("card_id")
+        for action in actions
+        if action.action_id == "trash_agent_card"
+    } == {sardaukar}
+
+    trash = next(
+        action for action in actions if action.action_id == "trash_agent_card"
+    )
+    paid = apply_agent_card_trash(placed, trash)
+
+    assert paid.state.players[0].hand == (non_emperor,)
+    assert paid.state.players[0].in_play == ()
+    assert paid.state.players[0].trashed == (sardaukar, maneuver)
+    assert paid.state.players[0].intrigue_cards == ("intrigue:test",)
+    assert paid.state.players[0].influence.emperor == 1
+    assert [event.kind for event in paid.events] == [
+        "card_trashed",
+        "intrigue_card_drawn",
+        "card_trashed",
+        "influence_gained",
+    ]
+
+    resolved = resolve_faction_influence(paid.state).state
+    assert resolved.players[0].influence.emperor == 2
+    assert resolved.players[0].victory_points == 2
+
+
+def test_treacherous_maneuver_may_be_declined_for_only_normal_influence() -> None:
+    maneuver = _imperium_instance("treacherous_maneuver")
+    sardaukar = _imperium_instance("sardaukar_soldier")
+    owner = PlayerState(player_id=0, hand=(maneuver, sardaukar))
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "dutiful_service")).state
+    decline = next(
+        action
+        for action in legal_agent_card_trash_actions(placed, 0)
+        if action.action_id == "decline_agent_card_trash"
+    )
+
+    declined = apply_agent_card_trash(placed, decline).state
+    resolved = resolve_faction_influence(declined).state
+
+    assert resolved.players[0].hand == (sardaukar,)
+    assert resolved.players[0].in_play == (maneuver,)
+    assert resolved.players[0].trashed == ()
+    assert resolved.players[0].influence.emperor == 1
+
+
+def test_treacherous_maneuver_needs_an_emperor_payment() -> None:
+    maneuver = _imperium_instance("treacherous_maneuver")
+    non_emperor = _imperium_instance("desert_survival")
+    owner = PlayerState(player_id=0, hand=(maneuver, non_emperor))
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+
+    placed = apply_agent_action(state, _action_to(state, "dutiful_service")).state
+
+    assert legal_agent_card_trash_actions(placed, 0) == ()
+    assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False
+
+
 def test_smugglers_harvester_gains_spice_at_a_maker_space() -> None:
     harvester = _imperium_instance("smuggler_s_harvester")
     owner = PlayerState(player_id=0, hand=(harvester,))

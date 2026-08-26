@@ -38,6 +38,9 @@ class PersonalCardAgentEffect(StrEnum):
     MAY_TRASH_FOR_INTRIGUE_AND_TWO_TROOPS_IF_BENE_GESSERIT_ALLIANCE = (
         "may_trash_for_intrigue_and_two_troops_if_bene_gesserit_alliance"
     )
+    TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE = (
+        "trash_self_and_emperor_from_hand_for_extra_influence"
+    )
     TRASH_SELF_AND_GAIN_CHOSEN_INFLUENCE = (
         "trash_self_and_gain_chosen_influence"
     )
@@ -158,6 +161,7 @@ class PersonalCardRevealEffect:
     recruit_troops: int = 0
     strength: int = 0
     strength_per_other_sword_card: int = 0
+    draw_intrigue: int = 0
     influence: int = 0
     influence_faction: PersonalCardBond | None = None
     required_faction_bond: PersonalCardBond | None = None
@@ -207,6 +211,7 @@ class PersonalCardRevealEffect:
             self.recruit_troops,
             self.strength,
             self.strength_per_other_sword_card,
+            self.draw_intrigue,
             self.influence,
         )
         if min((*gains, self.minimum_spies_placed)) < 0:

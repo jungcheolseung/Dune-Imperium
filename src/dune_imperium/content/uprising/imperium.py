@@ -720,7 +720,25 @@ IMPERIUM_CARDS: Final = (
         5,
         has_acquisition_bonus=True,
     ),
-    _entry(66, "treacherous-maneuver", "Treacherous Maneuver", 5),
+    _entry(
+        66,
+        "treacherous-maneuver",
+        "Treacherous Maneuver",
+        5,
+        factions=(Faction.EMPEROR,),
+        agent_icons=(
+            AgentIcon.EMPEROR,
+            AgentIcon.SPACING_GUILD,
+            AgentIcon.BENE_GESSERIT,
+            AgentIcon.FREMEN,
+        ),
+        agent_effect=(
+            PersonalCardAgentEffect.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE
+        ),
+        reveal_persuasion=1,
+        reveal_effects=(PersonalCardRevealEffect(draw_intrigue=1),),
+        play_data_complete=True,
+    ),
     _entry(
         58,
         "tread-in-darkness",

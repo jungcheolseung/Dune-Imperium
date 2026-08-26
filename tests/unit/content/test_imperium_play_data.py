@@ -676,6 +676,26 @@ def test_branching_path_play_data_has_alliance_trash_reward() -> None:
     assert card.reveal_strength == 0
 
 
+def test_treacherous_maneuver_play_data_matches_the_card() -> None:
+    card = IMPERIUM_CARDS_BY_ID["treacherous_maneuver"]
+
+    assert card.play_data_complete is True
+    assert card.factions == (Faction.EMPEROR,)
+    assert card.agent_icons == (
+        AgentIcon.EMPEROR,
+        AgentIcon.SPACING_GUILD,
+        AgentIcon.BENE_GESSERIT,
+        AgentIcon.FREMEN,
+    )
+    assert (
+        card.agent_effect
+        is PersonalCardAgentEffect.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE
+    )
+    assert card.reveal_persuasion == 1
+    assert card.reveal_strength == 0
+    assert card.reveal_effects == (PersonalCardRevealEffect(draw_intrigue=1),)
+
+
 def test_undercover_asset_play_data_is_complete() -> None:
     card = IMPERIUM_CARDS_BY_ID["undercover_asset"]
 
@@ -709,6 +729,8 @@ def test_personal_card_reveal_effect_requires_a_nonnegative_gain() -> None:
         PersonalCardRevealEffect(minimum_spies_placed=2)
     with pytest.raises(ValueError, match="must not be negative"):
         PersonalCardRevealEffect(water=-1)
+    with pytest.raises(ValueError, match="must not be negative"):
+        PersonalCardRevealEffect(draw_intrigue=-1)
     with pytest.raises(TypeError, match="must use PersonalCardBond"):
         PersonalCardRevealEffect(
             water=1,

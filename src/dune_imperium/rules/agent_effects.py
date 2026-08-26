@@ -504,11 +504,22 @@ def legal_agent_card_trash_actions(
         PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE,
         PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND,
         PersonalCardAgentEffect.MAY_TRASH_FOR_INTRIGUE_AND_TWO_TROOPS_IF_BENE_GESSERIT_ALLIANCE,
+        PersonalCardAgentEffect.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE,
     ):
         return ()
 
     owner = state.players[player]
     eligible = (*owner.hand, *owner.discard_pile, *owner.in_play)
+    if (
+        source_card.agent_effect
+        is PersonalCardAgentEffect.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE
+    ):
+        eligible = tuple(
+            card_id
+            for card_id in owner.hand
+            if card_id != source_card_id
+            and Faction.EMPEROR in personal_card_for_instance(card_id).factions
+        )
     if (
         source_card.agent_effect
         is (
@@ -566,6 +577,38 @@ def apply_agent_card_trash(state: GameState, action: DomainAction) -> RuleResult
         card_id,
         source=source,
     )
+    if (
+        source_card.agent_effect
+        is PersonalCardAgentEffect.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE
+    ):
+        source_trashed = trash_personal_card(
+            trashed.state,
+            action.actor,
+            source_card_id,
+            source=source,
+        )
+        space_id = context.get("space_id")
+        if not isinstance(space_id, str):
+            raise RuntimeError("Agent-turn effect frame has invalid space")
+        faction = BOARD_SPACES_BY_ID[space_id].faction
+        if faction is None:
+            raise RuntimeError("Treacherous Maneuver requires a Faction space")
+        gained = gain_faction_influence(
+            source_trashed.state,
+            action.actor,
+            faction,
+            1,
+            event_prefix=f"{source}:extra_influence:{faction.value}",
+        )
+        next_state = advance_after_effect(
+            gained.state,
+            context,
+            gained.state.players,
+        )
+        return RuleResult(
+            state=next_state,
+            events=(*trashed.events, *source_trashed.events, *gained.events),
+        )
     if (
         source_card.agent_effect
         is (

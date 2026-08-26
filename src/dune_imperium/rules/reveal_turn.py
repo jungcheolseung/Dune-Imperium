@@ -928,6 +928,33 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
     )
     events: list[GameEvent] = [event]
     for card_id, effect in reveal_effects:
+        if effect.draw_intrigue == 0:
+            continue
+        drawn = next_state.intrigue_deck[: effect.draw_intrigue]
+        draw_owner = next_state.players[action.actor]
+        draw_owner = replace(
+            draw_owner,
+            intrigue_cards=(*draw_owner.intrigue_cards, *drawn),
+        )
+        next_state = replace(
+            next_state,
+            players=tuple(
+                draw_owner if player.player_id == action.actor else player
+                for player in next_state.players
+            ),
+            intrigue_deck=next_state.intrigue_deck[len(drawn) :],
+        )
+        events.append(
+            GameEvent(
+                event_id=(
+                    f"round:{state.round_number}:player:{action.actor}:"
+                    f"reveal_card:{card_id}:intrigue_draw"
+                ),
+                kind="intrigue_card_drawn",
+                payload=(("count", len(drawn)), ("player", action.actor)),
+            )
+        )
+    for card_id, effect in reveal_effects:
         if effect.influence_faction is None:
             continue
         gained = gain_faction_influence(
