@@ -607,6 +607,98 @@ def test_wheels_within_wheels_reveals_for_persuasion_and_places_a_spy() -> None:
     )
 
 
+def test_undercover_asset_reveal_may_place_a_spy() -> None:
+    undercover = _imperium_instance("undercover_asset")
+    state = _state(PlayerState(player_id=0, hand=(undercover,)))
+    revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
+    actions = legal_reveal_spy_actions(revealed.state, 0)
+
+    assert {action.action_id for action in actions} == {
+        "gain_two_reveal_strength",
+        "place_reveal_spy",
+    }
+    placement = next(
+        action for action in actions if action.action_id == "place_reveal_spy"
+    )
+    result = apply_reveal_spy_action(revealed.state, placement)
+
+    assert result.state.players[0].spies_supply == 2
+    assert result.state.players[0].spy_post_ids == (
+        dict(placement.arguments)["post_id"],
+    )
+
+
+def test_undercover_asset_reveal_may_gain_two_strength() -> None:
+    undercover = _imperium_instance("undercover_asset")
+    owner = PlayerState(
+        player_id=0,
+        hand=(undercover,),
+        troops_supply=8,
+        troops_conflict=1,
+    )
+    revealed = begin_reveal_turn(
+        _state(owner),
+        DomainAction(action_id="reveal_turn", actor=0),
+    ).state
+    strength = next(
+        action
+        for action in legal_reveal_spy_actions(revealed, 0)
+        if action.action_id == "gain_two_reveal_strength"
+    )
+
+    result = apply_reveal_spy_action(revealed, strength)
+
+    assert result.state.players[0].combat_strength == 4
+    assert dict(result.state.decision_stack[-1].context)["strength"] == 4
+    assert tuple(event.kind for event in result.events) == (
+        "reveal_strength_gained",
+    )
+
+
+def test_undercover_asset_reveal_strength_needs_a_conflict_unit() -> None:
+    undercover = _imperium_instance("undercover_asset")
+    revealed = begin_reveal_turn(
+        _state(PlayerState(player_id=0, hand=(undercover,))),
+        DomainAction(action_id="reveal_turn", actor=0),
+    ).state
+    strength = next(
+        action
+        for action in legal_reveal_spy_actions(revealed, 0)
+        if action.action_id == "gain_two_reveal_strength"
+    )
+
+    result = apply_reveal_spy_action(revealed, strength)
+
+    assert result.state.players[0].combat_strength == 0
+    assert dict(result.state.decision_stack[-1].context)["strength"] == 0
+
+
+def test_undercover_asset_commits_to_spy_after_empty_supply_recall() -> None:
+    undercover = _imperium_instance("undercover_asset")
+    original_posts = tuple(post.post_id for post in OBSERVATION_POSTS[:3])
+    owner = PlayerState(
+        player_id=0,
+        hand=(undercover,),
+        spies_supply=0,
+        spy_post_ids=original_posts,
+    )
+    revealed = begin_reveal_turn(
+        _state(owner),
+        DomainAction(action_id="reveal_turn", actor=0),
+    ).state
+    recall = next(
+        action
+        for action in legal_reveal_spy_actions(revealed, 0)
+        if action.action_id == "recall_spy_for_reveal_placement"
+    )
+
+    recalled = apply_reveal_spy_action(revealed, recall).state
+
+    assert {action.action_id for action in legal_reveal_spy_actions(recalled, 0)} == {
+        "place_reveal_spy"
+    }
+
+
 def test_unswerving_loyalty_reveals_for_persuasion_and_recruits_one() -> None:
     loyalty = _imperium_instance("unswerving_loyalty")
     state = _state(PlayerState(player_id=0, hand=(loyalty,)))

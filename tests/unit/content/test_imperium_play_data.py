@@ -629,6 +629,25 @@ def test_branching_path_play_data_has_alliance_trash_reward() -> None:
     assert card.reveal_strength == 0
 
 
+def test_undercover_asset_play_data_is_complete() -> None:
+    card = IMPERIUM_CARDS_BY_ID["undercover_asset"]
+
+    assert card.play_data_complete is True
+    assert card.factions == (Faction.EMPEROR, Faction.SPACING_GUILD)
+    assert card.agent_icons == (
+        AgentIcon.LANDSRAAD,
+        AgentIcon.CITY,
+        AgentIcon.SPICE_TRADE,
+        AgentIcon.SPY,
+    )
+    assert card.ignores_influence_requirements is True
+    assert card.reveal_persuasion == 0
+    assert card.reveal_strength == 0
+    assert card.reveal_choice_effects == (
+        PersonalCardRevealChoiceEffect.PLACE_SPY_OR_GAIN_TWO_STRENGTH,
+    )
+
+
 def test_untranscribed_imperium_card_still_fails_explicitly() -> None:
     instance_id = _instance("chani_clever_tactician")
 

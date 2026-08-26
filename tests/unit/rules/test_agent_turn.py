@@ -311,6 +311,38 @@ def test_costs_and_influence_requirements_filter_spaces() -> None:
     }
 
 
+def test_undercover_asset_ignores_influence_requirements_but_not_costs() -> None:
+    undercover = _imperium_instance("undercover_asset")
+    owner = PlayerState(
+        player_id=0,
+        hand=(undercover,),
+        resources=Resources(solari=3, spice=3, water=1),
+    )
+    state = _state(owner=owner)
+
+    assert {"imperial_privilege", "shipping", "sietch_tabr"} <= _space_ids(state)
+    assert "deep_desert" not in _space_ids(state)
+
+    action = _action_to(state, "sietch_tabr")
+    result = apply_agent_action(state, action)
+
+    assert result.state.players[0].agent_locations == ("sietch_tabr",)
+    assert result.state.players[0].influence.fremen == 0
+
+
+def test_other_cards_still_require_influence_after_undercover_is_in_play() -> None:
+    undercover = _imperium_instance("undercover_asset")
+    dune = _instance(0, "dune_the_desert_planet")
+    owner = PlayerState(
+        player_id=0,
+        hand=(dune,),
+        in_play=(undercover,),
+        resources=Resources(spice=3, water=3),
+    )
+
+    assert "shipping" not in _space_ids(_state(owner=owner))
+
+
 def test_occupied_spaces_and_non_agent_cards_are_excluded() -> None:
     dagger = _instance(0, "dagger")
     argument = _instance(0, "convincing_argument")

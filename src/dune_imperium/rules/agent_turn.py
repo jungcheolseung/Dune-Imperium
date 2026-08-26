@@ -12,6 +12,7 @@ from dune_imperium.content.uprising.board import (
     InfluenceRequirement,
     ResourceCost,
 )
+from dune_imperium.content.uprising.imperium import ImperiumCardEntry
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.content.uprising.types import AgentIcon, PersonalCardAgentEffect
 from dune_imperium.core.actions import DomainAction
@@ -60,7 +61,13 @@ def legal_agent_actions(state: GameState, player: int) -> tuple[DomainAction, ..
                 continue
             if space.space_id == "swordmaster" and owner.swordmaster_acquired:
                 continue
-            if not _meets_requirement(owner.influence, space.requirement):
+            if (
+                not (
+                    isinstance(card, ImperiumCardEntry)
+                    and card.ignores_influence_requirements
+                )
+                and not _meets_requirement(owner.influence, space.requirement)
+            ):
                 continue
             occupying_opponents = tuple(
                 candidate.player_id

@@ -246,6 +246,7 @@ class UprisingRulesEngine(RulesEngine):
             "decline_reveal_spice_influence": apply_reveal_spice_influence,
             "pay_reveal_spice_influence": apply_reveal_spice_influence,
             "finish_reveal": finish_reveal_turn,
+            "gain_two_reveal_strength": apply_reveal_spy_action,
             "gather_intelligence": apply_gather_intelligence_action,
             "pass_combat_intrigue": apply_combat_intrigue_pass,
             "pay_agent_card_water": apply_agent_card_payment,

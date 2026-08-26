@@ -34,6 +34,7 @@ class ImperiumCardEntry(DeckCardEntry):
     agent_icons: tuple[AgentIcon, ...] = ()
     agent_effect: PersonalCardAgentEffect | None = None
     agent_spy_factions: tuple[Faction, ...] = ()
+    ignores_influence_requirements: bool = False
     acquisition_effect: PersonalCardAcquisitionEffect | None = None
     discard_effect: PersonalCardDiscardEffect | None = None
     reveal_acquisition_effect: PersonalCardRevealAcquisitionEffect | None = None
@@ -52,6 +53,8 @@ class ImperiumCardEntry(DeckCardEntry):
             raise ValueError("Imperium-card Agent icons must be unique")
         if len(self.agent_spy_factions) != len(set(self.agent_spy_factions)):
             raise ValueError("Imperium-card Spy target Factions must be unique")
+        if not isinstance(self.ignores_influence_requirements, bool):
+            raise TypeError("Influence-requirement override must be a boolean")
         if self.agent_spy_factions and (
             self.agent_effect is not PersonalCardAgentEffect.PLACE_SPY
         ):
@@ -69,6 +72,7 @@ class ImperiumCardEntry(DeckCardEntry):
             or self.agent_icons
             or self.agent_effect is not None
             or self.agent_spy_factions
+            or self.ignores_influence_requirements
             or self.acquisition_effect is not None
             or self.discard_effect is not None
             or self.reveal_acquisition_effect is not None
@@ -94,6 +98,7 @@ def _entry(
     agent_icons: tuple[AgentIcon, ...] = (),
     agent_effect: PersonalCardAgentEffect | None = None,
     agent_spy_factions: tuple[Faction, ...] = (),
+    ignores_influence_requirements: bool = False,
     acquisition_effect: PersonalCardAcquisitionEffect | None = None,
     discard_effect: PersonalCardDiscardEffect | None = None,
     reveal_acquisition_effect: PersonalCardRevealAcquisitionEffect | None = None,
@@ -119,6 +124,7 @@ def _entry(
         agent_icons=agent_icons,
         agent_effect=agent_effect,
         agent_spy_factions=agent_spy_factions,
+        ignores_influence_requirements=ignores_influence_requirements,
         acquisition_effect=acquisition_effect,
         discard_effect=discard_effect,
         reveal_acquisition_effect=reveal_acquisition_effect,
@@ -700,7 +706,24 @@ IMPERIUM_CARDS: Final = (
         reveal_persuasion=1,
         play_data_complete=True,
     ),
-    _entry(28, "undercover-asset", "Undercover Asset", 2),
+    _entry(
+        28,
+        "undercover-asset",
+        "Undercover Asset",
+        2,
+        factions=(Faction.EMPEROR, Faction.SPACING_GUILD),
+        agent_icons=(
+            AgentIcon.LANDSRAAD,
+            AgentIcon.CITY,
+            AgentIcon.SPICE_TRADE,
+            AgentIcon.SPY,
+        ),
+        ignores_influence_requirements=True,
+        reveal_choice_effects=(
+            PersonalCardRevealChoiceEffect.PLACE_SPY_OR_GAIN_TWO_STRENGTH,
+        ),
+        play_data_complete=True,
+    ),
     _entry(
         11,
         "unswerving-loyalty",

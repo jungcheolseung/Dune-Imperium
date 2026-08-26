@@ -44,23 +44,43 @@ def legal_reveal_spy_actions(
         return ()
     effect = PersonalCardRevealChoiceEffect(effect_value)
     owner = state.players[player]
-    if effect is PersonalCardRevealChoiceEffect.PLACE_SPY:
-        if context.get("reveal_spy_recalled") is True or owner.spies_supply > 0:
-            return tuple(
+    if effect in (
+        PersonalCardRevealChoiceEffect.PLACE_SPY,
+        PersonalCardRevealChoiceEffect.PLACE_SPY_OR_GAIN_TWO_STRENGTH,
+    ):
+        strength_choice = (
+            ()
+            if context.get("reveal_spy_recalled") is True
+            or effect is PersonalCardRevealChoiceEffect.PLACE_SPY
+            else (
                 DomainAction(
-                    action_id="place_reveal_spy",
+                    action_id="gain_two_reveal_strength",
+                    actor=player,
+                ),
+            )
+        )
+        if context.get("reveal_spy_recalled") is True or owner.spies_supply > 0:
+            return (
+                *strength_choice,
+                *(
+                    DomainAction(
+                        action_id="place_reveal_spy",
+                        actor=player,
+                        arguments=(("post_id", post_id),),
+                    )
+                    for post_id in empty_observation_post_ids(state)
+                )
+            )
+        return (
+            *strength_choice,
+            *(
+                DomainAction(
+                    action_id="recall_spy_for_reveal_placement",
                     actor=player,
                     arguments=(("post_id", post_id),),
                 )
-                for post_id in empty_observation_post_ids(state)
+                for post_id in owner.spy_post_ids
             )
-        return tuple(
-            DomainAction(
-                action_id="recall_spy_for_reveal_placement",
-                actor=player,
-                arguments=(("post_id", post_id),),
-            )
-            for post_id in owner.spy_post_ids
         )
     occupied = frozenset(state.players[player].spy_post_ids)
     post_ids = tuple(
@@ -439,6 +459,34 @@ def apply_reveal_spy_action(
     )
 
     arguments = dict(action.arguments)
+    if action.action_id == "gain_two_reveal_strength":
+        owner = state.players[action.actor]
+        counted_strength = 2 if owner.troops_conflict + owner.sandworms_conflict else 0
+        next_owner = replace(
+            owner,
+            combat_strength=owner.combat_strength + counted_strength,
+        )
+        remaining = state.decision_stack[:-1]
+        if counted_strength:
+            remaining = _add_reveal_strength(remaining, counted_strength)
+        return RuleResult(
+            state=replace(
+                state,
+                players=_replace_player(state, next_owner),
+                decision_stack=remaining,
+            ),
+            events=(
+                GameEvent(
+                    event_id=f"{source}:strength",
+                    kind="reveal_strength_gained",
+                    payload=(
+                        ("amount", 2),
+                        ("card_id", card_id),
+                        ("player", action.actor),
+                    ),
+                ),
+            ),
+        )
     if action.action_id == "recall_spy_for_reveal_placement":
         post_id = arguments.get("post_id")
         if not isinstance(post_id, str):
@@ -782,6 +830,9 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
                     else "Pay three Spice for Influence or decline this Reveal effect"
                     if effect
                     is PersonalCardRevealChoiceEffect.MAY_PAY_THREE_SPICE_FOR_INFLUENCE
+                    else "Choose a Spy placement or gain two strength"
+                    if effect
+                    is PersonalCardRevealChoiceEffect.PLACE_SPY_OR_GAIN_TWO_STRENGTH
                     else "Choose where to place a Spy for this Reveal effect"
                     if effect is PersonalCardRevealChoiceEffect.PLACE_SPY
                     else "Choose two Spies to recall or decline this Reveal effect"
@@ -818,7 +869,11 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
             is PersonalCardRevealChoiceEffect.MAY_PAY_THREE_SPICE_FOR_INFLUENCE
             and owner.resources.spice >= 3
         )
-        or effect is PersonalCardRevealChoiceEffect.PLACE_SPY
+        or effect
+        in (
+            PersonalCardRevealChoiceEffect.PLACE_SPY,
+            PersonalCardRevealChoiceEffect.PLACE_SPY_OR_GAIN_TWO_STRENGTH,
+        )
         or (
             effect
             is PersonalCardRevealChoiceEffect.MAY_TRASH_OTHER_EMPEROR_FOR_THREE_STRENGTH
