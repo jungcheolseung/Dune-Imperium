@@ -424,6 +424,69 @@ def test_overthrow_acquisition_draws_an_intrigue_card() -> None:
     )
 
 
+def test_steersman_acquisition_gains_spacing_guild_influence() -> None:
+    arguments = tuple(_instance("convincing_argument", copy) for copy in range(2))
+    dunes = tuple(_instance("dune_the_desert_planet", copy) for copy in range(2))
+    state = _reveal_state(
+        *arguments,
+        *dunes,
+        _instance("diplomacy"),
+        _instance("reconnaissance"),
+    )
+    instances = imperium_deck_instance_ids(False)
+    steersman = _imperium_instance("steersman")
+    others = tuple(card for card in instances if card != steersman)
+    state = replace(
+        state,
+        imperium_row=(steersman, *others[:4]),
+        imperium_deck=others[4:],
+    )
+    action = next(
+        action
+        for action in legal_imperium_acquisitions(state, 0)
+        if dict(action.arguments)["instance_id"] == steersman
+    )
+
+    result = apply_imperium_acquisition(state, action)
+
+    assert result.state.players[0].discard_pile == (steersman,)
+    assert result.state.players[0].influence.spacing_guild == 1
+    assert [event.kind for event in result.events] == [
+        "card_acquired",
+        "influence_gained",
+    ]
+
+
+def test_price_is_no_object_preserves_steersman_acquisition_influence() -> None:
+    instances = imperium_deck_instance_ids(False)
+    steersman = _imperium_instance("steersman")
+    price = _imperium_instance("price_is_no_object")
+    others = tuple(
+        instance_id
+        for instance_id in instances
+        if instance_id not in {steersman, price}
+    )
+    state = _price_agent_state(
+        solari=8,
+        imperium_row=(steersman, *others[:4]),
+        imperium_deck=others[4:],
+    )
+    action = next(
+        action
+        for action in legal_agent_card_acquisitions(state, 0)
+        if dict(action.arguments).get("instance_id") == steersman
+    )
+
+    result = apply_agent_card_acquisition(state, action)
+
+    assert result.state.players[0].hand == (steersman,)
+    assert result.state.players[0].influence.spacing_guild == 1
+    assert [event.kind for event in result.events] == [
+        "card_acquired",
+        "influence_gained",
+    ]
+
+
 def test_strike_fleet_acquisition_opens_and_resolves_spy_placement() -> None:
     state = _reveal_state(
         _instance("convincing_argument", 0),

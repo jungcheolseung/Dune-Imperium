@@ -2,6 +2,7 @@
 
 from dataclasses import replace
 
+from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.imperium import imperium_card_for_instance
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.content.uprising.reserve import RESERVE_STACKS_BY_ID
@@ -310,6 +311,22 @@ def _acquire_imperium_to_hand_with_solari(
         intrigue_deck=intrigue_deck,
         decision_stack=(*state.decision_stack[:-1], base_frame),
     )
+    if (
+        definition.acquisition_effect
+        is PersonalCardAcquisitionEffect.GAIN_SPACING_GUILD_INFLUENCE
+    ):
+        gained = gain_faction_influence(
+            prepared,
+            action.actor,
+            Faction.SPACING_GUILD,
+            1,
+            event_prefix=(
+                f"round:{state.round_number}:player:{action.actor}:"
+                f"acquire_with_solari:{instance_id}:influence:spacing_guild"
+            ),
+        )
+        prepared = gained.state
+        acquisition_events = (*acquisition_events, *gained.events)
     if places_spy:
         next_state = replace(
             prepared,
@@ -533,6 +550,22 @@ def apply_imperium_acquisition(
         intrigue_deck=intrigue_deck,
         decision_stack=decision_stack,
     )
+    if (
+        definition.acquisition_effect
+        is PersonalCardAcquisitionEffect.GAIN_SPACING_GUILD_INFLUENCE
+    ):
+        gained = gain_faction_influence(
+            next_state,
+            action.actor,
+            Faction.SPACING_GUILD,
+            1,
+            event_prefix=(
+                f"round:{state.round_number}:player:{action.actor}:"
+                f"acquire:{instance_id}:influence:spacing_guild"
+            ),
+        )
+        next_state = gained.state
+        acquisition_events = (*acquisition_events, *gained.events)
     event = GameEvent(
         event_id=(
             f"round:{state.round_number}:player:{action.actor}:acquire:{instance_id}"

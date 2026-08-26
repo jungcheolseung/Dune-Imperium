@@ -481,6 +481,89 @@ def apply_agent_card_spy_action(
     return RuleResult(state=next_state, events=(event,))
 
 
+def legal_agent_card_recall_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return Agent locations that Steersman may recall."""
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return ()
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    if context.get("pending_agent_effect") is not True:
+        return ()
+    _, source_card_id, _ = _effect_subject(context)
+    if (
+        personal_card_for_instance(source_card_id).agent_effect
+        is not PersonalCardAgentEffect.DRAW_ONE_AND_RECALL_AGENT
+    ):
+        return ()
+    return tuple(
+        DomainAction(
+            action_id="recall_agent_for_agent_card",
+            actor=player,
+            arguments=(("space_id", space_id),),
+        )
+        for space_id in state.players[player].agent_locations
+    )
+
+
+def apply_agent_card_recall(state: GameState, action: DomainAction) -> RuleResult:
+    """Recall one Agent for Steersman, then draw one personal card."""
+
+    if action not in legal_agent_card_recall_actions(state, action.actor):
+        raise ValueError("action is not a legal Agent-card recall choice")
+    _, context = current_agent_effect_context(state)
+    _, source_card_id, _ = _effect_subject(context)
+    space_id = dict(action.arguments).get("space_id")
+    if not isinstance(space_id, str):
+        raise RuntimeError("Agent-card recall choice has invalid space ID")
+    owner = state.players[action.actor]
+    next_owner = replace(
+        owner,
+        agents_available=owner.agents_available + 1,
+        agent_locations=tuple(
+            location for location in owner.agent_locations if location != space_id
+        ),
+    )
+    context["pending_agent_effect"] = False
+    next_state = advance_after_effect(
+        state,
+        context,
+        _replace_player(state, next_owner),
+    )
+    source = (
+        f"round:{state.round_number}:player:{action.actor}:"
+        f"agent_card:{source_card_id}"
+    )
+    drawn = draw_or_request_personal_cards(
+        next_state,
+        action.actor,
+        1,
+        source=f"{source}:draw",
+    )
+    return RuleResult(
+        state=drawn.state,
+        events=(
+            GameEvent(
+                event_id=f"{source}:agent_recalled:{space_id}",
+                kind="agent_recalled",
+                payload=(
+                    ("card_id", source_card_id),
+                    ("player", action.actor),
+                    ("space_id", space_id),
+                ),
+            ),
+            *drawn.events,
+        ),
+    )
+
+
 def legal_agent_card_trash_actions(
     state: GameState,
     player: int,

@@ -723,6 +723,27 @@ def test_chani_clever_tactician_play_data_matches_the_card() -> None:
     )
 
 
+def test_steersman_play_data_matches_the_card() -> None:
+    card = IMPERIUM_CARDS_BY_ID["steersman"]
+
+    assert card.play_data_complete is True
+    assert card.factions == (Faction.SPACING_GUILD,)
+    assert card.agent_icons == (
+        AgentIcon.SPACING_GUILD,
+        AgentIcon.LANDSRAAD,
+        AgentIcon.CITY,
+        AgentIcon.SPICE_TRADE,
+    )
+    assert card.agent_effect is PersonalCardAgentEffect.DRAW_ONE_AND_RECALL_AGENT
+    assert (
+        card.acquisition_effect
+        is PersonalCardAcquisitionEffect.GAIN_SPACING_GUILD_INFLUENCE
+    )
+    assert card.reveal_persuasion == 2
+    assert card.reveal_strength == 0
+    assert card.reveal_effects == (PersonalCardRevealEffect(spice=2),)
+
+
 def test_undercover_asset_play_data_is_complete() -> None:
     card = IMPERIUM_CARDS_BY_ID["undercover_asset"]
 

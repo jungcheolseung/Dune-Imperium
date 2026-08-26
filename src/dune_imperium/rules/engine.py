@@ -28,12 +28,14 @@ from dune_imperium.rules.agent_effects import (
     apply_agent_card_discard,
     apply_agent_card_influence,
     apply_agent_card_payment,
+    apply_agent_card_recall,
     apply_agent_card_spy_action,
     apply_agent_card_trash,
     apply_opponent_card_discard,
     legal_agent_card_discard_actions,
     legal_agent_card_influence_actions,
     legal_agent_card_payment_actions,
+    legal_agent_card_recall_actions,
     legal_agent_card_spy_actions,
     legal_agent_card_trash_actions,
     legal_opponent_card_discard_actions,
@@ -265,6 +267,7 @@ class UprisingRulesEngine(RulesEngine):
             "discard_opponent_card": apply_opponent_card_discard,
             "place_agent_card_spy": apply_agent_card_spy_action,
             "recall_spy_for_agent_card": apply_agent_card_spy_action,
+            "recall_agent_for_agent_card": apply_agent_card_recall,
             "decline_combat_reward": _apply_decline_combat_reward,
             "pay_combat_reward": apply_combat_reward_optional_payment,
             "recall_spies_for_combat_reward": apply_combat_reward_spy_recall,
@@ -332,6 +335,7 @@ class UprisingRulesEngine(RulesEngine):
             trash_actions = legal_agent_card_trash_actions(state, player)
             discard_actions = legal_agent_card_discard_actions(state, player)
             payment_actions = legal_agent_card_payment_actions(state, player)
+            recall_actions = legal_agent_card_recall_actions(state, player)
             spy_actions = legal_agent_card_spy_actions(state, player)
             influence_actions = legal_agent_card_influence_actions(state, player)
             acquisition_actions = legal_agent_card_acquisitions(state, player)
@@ -339,6 +343,7 @@ class UprisingRulesEngine(RulesEngine):
                 *trash_actions,
                 *discard_actions,
                 *payment_actions,
+                *recall_actions,
                 *spy_actions,
                 *influence_actions,
                 *acquisition_actions,
@@ -409,6 +414,7 @@ def _agent_action_is_supported(state: GameState, action: DomainAction) -> bool:
         PersonalCardAgentEffect.DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO,
         PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO,
         PersonalCardAgentEffect.ACQUIRE_WITH_SOLARI_TO_HAND,
+        PersonalCardAgentEffect.DRAW_ONE_AND_RECALL_AGENT,
     ):
         return False
     if space_id in (

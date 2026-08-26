@@ -22,11 +22,13 @@ from dune_imperium.rules.agent_effects import (
     apply_agent_card_discard,
     apply_agent_card_influence,
     apply_agent_card_payment,
+    apply_agent_card_recall,
     apply_agent_card_spy_action,
     apply_agent_card_trash,
     legal_agent_card_discard_actions,
     legal_agent_card_influence_actions,
     legal_agent_card_payment_actions,
+    legal_agent_card_recall_actions,
     legal_agent_card_spy_actions,
     legal_agent_card_trash_actions,
     resolve_agent_card_effect,
@@ -576,6 +578,51 @@ def test_chani_agent_effect_is_unavailable_below_three_units() -> None:
 
     assert result.state.players[0].intrigue_cards == ()
     assert result.events[0].kind == "agent_card_effect_unavailable"
+
+
+def test_steersman_draws_and_may_recall_its_just_placed_agent() -> None:
+    steersman = _imperium_instance("steersman")
+    drawn_card = _instance("dagger")
+    owner = PlayerState(
+        player_id=0,
+        agents_available=1,
+        agent_locations=("dutiful_service",),
+        hand=(steersman,),
+        deck=(drawn_card,),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "deliver_supplies")).state
+
+    actions = legal_agent_card_recall_actions(placed, 0)
+    assert {
+        dict(action.arguments)["space_id"] for action in actions
+    } == {"dutiful_service", "deliver_supplies"}
+    recall_new = next(
+        action
+        for action in actions
+        if dict(action.arguments)["space_id"] == "deliver_supplies"
+    )
+    assert recall_new in UprisingRulesEngine().legal_actions(placed, 0)
+
+    result = apply_agent_card_recall(placed, recall_new)
+
+    assert result.state.players[0].agents_available == 1
+    assert result.state.players[0].agent_locations == ("dutiful_service",)
+    assert result.state.players[0].hand == (drawn_card,)
+    assert result.state.players[0].in_play == (steersman,)
+    assert [event.kind for event in result.events] == ["agent_recalled"]
 
 
 def test_smugglers_harvester_gains_spice_at_a_maker_space() -> None:

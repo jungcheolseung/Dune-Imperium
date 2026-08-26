@@ -27,7 +27,7 @@ from dune_imperium.content.uprising.starting_cards import (
 from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
 from dune_imperium.core.actions import ActionValue, DomainAction
 
-ACTION_CODEC_VERSION = 49
+ACTION_CODEC_VERSION = 50
 MAX_DEPLOYMENT_COUNT = 12
 
 
@@ -151,6 +151,13 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             arguments=(("count", count),),
         )
         for count in range(MAX_DEPLOYMENT_COUNT + 1)
+    )
+    templates.extend(
+        ActionTemplate(
+            action_id="recall_agent_for_agent_card",
+            arguments=(("space_id", space.space_id),),
+        )
+        for space in BOARD_SPACES
     )
     templates.extend(
         ActionTemplate(

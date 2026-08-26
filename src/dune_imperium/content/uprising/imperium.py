@@ -705,7 +705,27 @@ IMPERIUM_CARDS: Final = (
         ),
         play_data_complete=True,
     ),
-    _entry(76, "steersman", "Steersman", 8, has_acquisition_bonus=True),
+    _entry(
+        76,
+        "steersman",
+        "Steersman",
+        8,
+        has_acquisition_bonus=True,
+        factions=(Faction.SPACING_GUILD,),
+        agent_icons=(
+            AgentIcon.SPACING_GUILD,
+            AgentIcon.LANDSRAAD,
+            AgentIcon.CITY,
+            AgentIcon.SPICE_TRADE,
+        ),
+        agent_effect=PersonalCardAgentEffect.DRAW_ONE_AND_RECALL_AGENT,
+        acquisition_effect=(
+            PersonalCardAcquisitionEffect.GAIN_SPACING_GUILD_INFLUENCE
+        ),
+        reveal_persuasion=2,
+        reveal_effects=(PersonalCardRevealEffect(spice=2),),
+        play_data_complete=True,
+    ),
     _entry(
         70,
         "stilgar-the-devoted",

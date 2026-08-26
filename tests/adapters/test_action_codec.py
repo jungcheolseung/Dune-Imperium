@@ -11,10 +11,10 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     first = ActionCodec(RulesetConfig())
     second = ActionCodec(RulesetConfig())
 
-    assert ACTION_CODEC_VERSION == 49
+    assert ACTION_CODEC_VERSION == 50
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
-    assert first.size == 2769
+    assert first.size == 2830
 
 
 def test_agent_card_spice_payment_round_trips() -> None:

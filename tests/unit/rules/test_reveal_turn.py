@@ -396,6 +396,18 @@ def test_chani_fremen_bond_adds_two_persuasion() -> None:
     assert dict(result.state.decision_stack[-1].context)["persuasion"] == 3
 
 
+def test_steersman_reveal_gains_persuasion_and_spice() -> None:
+    steersman = _imperium_instance("steersman")
+
+    result = begin_reveal_turn(
+        _state(PlayerState(player_id=0, hand=(steersman,))),
+        DomainAction(action_id="reveal_turn", actor=0),
+    )
+
+    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 2
+    assert result.state.players[0].resources.spice == 2
+
+
 def test_reveal_moves_hand_to_in_play_and_totals_persuasion() -> None:
     argument = _instance("convincing_argument")
     diplomacy = _instance("diplomacy")
