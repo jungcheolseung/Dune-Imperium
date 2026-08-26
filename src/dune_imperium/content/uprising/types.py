@@ -74,6 +74,7 @@ class PersonalCardAgentEffect(StrEnum):
     )
     EACH_OPPONENT_DISCARDS_PERSONAL_CARD = "each_opponent_discards_personal_card"
     GAIN_SPICE_IF_MAKER_SPACE = "gain_spice_if_maker_space"
+    GAIN_TWO_SPICE_IF_MAKER_SPACE = "gain_two_spice_if_maker_space"
     GAIN_TWO_SOLARI = "gain_two_solari"
     PLACE_SPY = "place_spy"
     PLACE_SPY_ALLOW_SHARED_IF_SPYING_ON_VISITED_SPACE = (
@@ -157,6 +158,7 @@ class PersonalCardRevealChoiceEffect(StrEnum):
     GAIN_FIVE_SOLARI_OR_TAKE_HIGH_COUNCIL = (
         "gain_five_solari_or_take_high_council"
     )
+    MAY_PAY_WATER_FOR_SANDWORM = "may_pay_water_for_sandworm"
 
 
 class PersonalCardRevealAcquisitionEffect(StrEnum):

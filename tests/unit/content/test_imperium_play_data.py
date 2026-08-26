@@ -803,6 +803,24 @@ def test_corrinth_city_play_data_is_complete() -> None:
     )
 
 
+def test_desert_power_play_data_covers_maker_spice_and_sandworm_choice() -> None:
+    card = IMPERIUM_CARDS_BY_ID["desert_power"]
+
+    assert card.play_data_complete is True
+    assert card.acquisition_cost == 6
+    assert card.factions == (Faction.FREMEN,)
+    assert card.agent_icons == (AgentIcon.SPICE_TRADE,)
+    assert (
+        card.agent_effect
+        is PersonalCardAgentEffect.GAIN_TWO_SPICE_IF_MAKER_SPACE
+    )
+    assert card.reveal_persuasion == 2
+    assert card.reveal_strength == 0
+    assert card.reveal_choice_effects == (
+        PersonalCardRevealChoiceEffect.MAY_PAY_WATER_FOR_SANDWORM,
+    )
+
+
 def test_personal_card_reveal_effect_requires_a_nonnegative_gain() -> None:
     with pytest.raises(ValueError, match="must gain"):
         PersonalCardRevealEffect()

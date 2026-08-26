@@ -28,7 +28,7 @@ from dune_imperium.content.uprising.starting_cards import (
 from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
 from dune_imperium.core.actions import ActionValue, DomainAction
 
-ACTION_CODEC_VERSION = 52
+ACTION_CODEC_VERSION = 53
 MAX_DEPLOYMENT_COUNT = 12
 
 
@@ -126,6 +126,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "decline_reveal_spy_recall",
             "decline_reveal_influence_exchange",
             "decline_reveal_card_trash",
+            "decline_reveal_sandworm",
             "decline_reveal_spice_influence",
             "decline_reveal_troop_retreat",
             "deploy_control_defense",
@@ -135,6 +136,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "pass_combat_intrigue",
             "pay_agent_card_water",
             "pay_agent_card_spice",
+            "pay_reveal_water_for_sandworm",
             "take_high_council_from_reveal",
             "pay_combat_reward",
             "resolve_agent_card_effect",

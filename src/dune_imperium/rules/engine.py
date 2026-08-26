@@ -105,6 +105,7 @@ from dune_imperium.rules.reveal_turn import (
     apply_corrinth_city_reveal,
     apply_reveal_card_trash,
     apply_reveal_influence_exchange,
+    apply_reveal_sandworm_action,
     apply_reveal_spice_influence,
     apply_reveal_spy_action,
     apply_reveal_troop_retreat,
@@ -116,6 +117,7 @@ from dune_imperium.rules.reveal_turn import (
     legal_reveal_actions,
     legal_reveal_card_trash_actions,
     legal_reveal_influence_exchange_actions,
+    legal_reveal_sandworm_actions,
     legal_reveal_spice_influence_actions,
     legal_reveal_spy_actions,
     legal_reveal_troop_retreat_actions,
@@ -205,6 +207,7 @@ class UprisingRulesEngine(RulesEngine):
         actions.extend(legal_reveal_card_trash_actions(state, player))
         actions.extend(legal_reveal_spy_actions(state, player))
         actions.extend(legal_reveal_influence_exchange_actions(state, player))
+        actions.extend(legal_reveal_sandworm_actions(state, player))
         actions.extend(legal_reveal_spice_influence_actions(state, player))
         actions.extend(legal_reveal_troop_retreat_actions(state, player))
         actions.extend(legal_endgame_wild_actions(state, player))
@@ -235,6 +238,7 @@ class UprisingRulesEngine(RulesEngine):
             "decline_gather_intelligence": apply_gather_intelligence_action,
             "decline_reveal_spy_recall": apply_reveal_spy_action,
             "decline_reveal_card_trash": apply_reveal_card_trash,
+            "decline_reveal_sandworm": apply_reveal_sandworm_action,
             "gain_five_reveal_solari": apply_corrinth_city_reveal,
             "take_high_council_from_reveal": apply_corrinth_city_reveal,
             "deploy_control_defense": apply_control_defense_action,
@@ -269,6 +273,7 @@ class UprisingRulesEngine(RulesEngine):
             "decline_reveal_spice_influence": apply_reveal_spice_influence,
             "decline_reveal_troop_retreat": apply_reveal_troop_retreat,
             "pay_reveal_spice_influence": apply_reveal_spice_influence,
+            "pay_reveal_water_for_sandworm": apply_reveal_sandworm_action,
             "finish_reveal": finish_reveal_turn,
             "gain_two_reveal_strength": apply_reveal_spy_action,
             "retreat_two_troops_for_reveal": apply_reveal_troop_retreat,
@@ -422,6 +427,7 @@ def _agent_action_is_supported(state: GameState, action: DomainAction) -> bool:
         PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE_AND_INTRIGUE_IF_SPACING_GUILD,
         PersonalCardAgentEffect.EACH_OPPONENT_DISCARDS_PERSONAL_CARD,
         PersonalCardAgentEffect.GAIN_SPICE_IF_MAKER_SPACE,
+        PersonalCardAgentEffect.GAIN_TWO_SPICE_IF_MAKER_SPACE,
         PersonalCardAgentEffect.GAIN_WATER,
         PersonalCardAgentEffect.GAIN_TWO_SOLARI,
         PersonalCardAgentEffect.PLACE_SPY,

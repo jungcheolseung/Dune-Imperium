@@ -20,6 +20,7 @@ from dune_imperium.rules.influence import (
     influence_amount,
     lose_faction_influence,
 )
+from dune_imperium.rules.shield_wall import current_conflict_is_shield_wall_protected
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
     is_spying_on_maker_space,
@@ -203,6 +204,126 @@ def legal_reveal_spice_influence_actions(
                 arguments=(("faction", faction.value),),
             )
             for faction in Faction
+        ),
+    )
+
+
+def legal_reveal_sandworm_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return Desert Power's mutually exclusive Reveal choices."""
+
+    if not 0 <= player < state.config.players or not state.decision_stack:
+        return ()
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    if (
+        context.get("reveal_choice_effect")
+        != PersonalCardRevealChoiceEffect.MAY_PAY_WATER_FOR_SANDWORM.value
+    ):
+        return ()
+    actions: list[DomainAction] = [
+        DomainAction(action_id="decline_reveal_sandworm", actor=player),
+    ]
+    if _can_summon_reveal_sandworm(state, player):
+        actions.append(
+            DomainAction(
+                action_id="pay_reveal_water_for_sandworm",
+                actor=player,
+            )
+        )
+    return tuple(actions)
+
+
+def apply_reveal_sandworm_action(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Resolve Desert Power's Persuasion-or-sandworm Reveal choice."""
+
+    if action not in legal_reveal_sandworm_actions(state, action.actor):
+        raise ValueError("action is not a legal Reveal sandworm choice")
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    card_id = context.get("reveal_card_id")
+    if not isinstance(card_id, str):
+        raise RuntimeError("Reveal sandworm frame has invalid card ID")
+    source = (
+        f"round:{state.round_number}:player:{action.actor}:"
+        f"reveal_card:{card_id}"
+    )
+    if action.action_id == "decline_reveal_sandworm":
+        return RuleResult(
+            state=replace(state, decision_stack=state.decision_stack[:-1]),
+            events=(
+                GameEvent(
+                    event_id=f"{source}:sandworm_declined",
+                    kind="reveal_sandworm_declined",
+                    payload=(("card_id", card_id), ("player", action.actor)),
+                ),
+            ),
+        )
+
+    if not _can_summon_reveal_sandworm(state, action.actor):
+        raise RuntimeError("Desert Power sandworm choice is unavailable")
+    owner = state.players[action.actor]
+    previous_units = owner.troops_conflict + owner.sandworms_conflict
+    reveal_context = _reveal_frame_context(state.decision_stack[:-1])
+    current_strength = reveal_context.get("strength")
+    sword_strength = reveal_context.get("sword_strength", 0)
+    optional_sword_strength = reveal_context.get("optional_sword_strength", 0)
+    if (
+        isinstance(current_strength, bool)
+        or not isinstance(current_strength, int)
+        or isinstance(sword_strength, bool)
+        or not isinstance(sword_strength, int)
+        or isinstance(optional_sword_strength, bool)
+        or not isinstance(optional_sword_strength, int)
+    ):
+        raise RuntimeError("Reveal sandworm frame has invalid strength")
+    strength_delta = (
+        3
+        if previous_units
+        else 3 + sword_strength + optional_sword_strength - current_strength
+    )
+    next_owner = replace(
+        owner,
+        resources=replace(owner.resources, water=owner.resources.water - 1),
+        sandworms_conflict=owner.sandworms_conflict + 1,
+        combat_strength=owner.combat_strength + strength_delta,
+    )
+    remaining = state.decision_stack[:-1]
+    remaining = _add_reveal_persuasion(remaining, -2)
+    remaining = _add_reveal_strength(remaining, strength_delta)
+    return RuleResult(
+        state=replace(
+            state,
+            players=_replace_player(state, next_owner),
+            decision_stack=remaining,
+        ),
+        events=(
+            GameEvent(
+                event_id=f"{source}:sandworm",
+                kind="reveal_sandworm_deployed",
+                payload=(
+                    ("amount", 1),
+                    ("card_id", card_id),
+                    ("player", action.actor),
+                    ("water", 1),
+                ),
+            ),
+            GameEvent(
+                event_id=f"{source}:strength",
+                kind="reveal_strength_gained",
+                payload=(
+                    ("amount", strength_delta),
+                    ("card_id", card_id),
+                    ("player", action.actor),
+                ),
+            ),
         ),
     )
 
@@ -404,6 +525,7 @@ def apply_reveal_troop_retreat(
         combat_strength=next_strength,
     )
     remaining = state.decision_stack[:-1]
+    remaining = _add_reveal_optional_sword_strength(remaining, 4)
     strength_delta = next_strength - owner.combat_strength
     if strength_delta:
         remaining = _add_reveal_strength(remaining, strength_delta)
@@ -476,6 +598,7 @@ def apply_reveal_card_trash(
         combat_strength=owner.combat_strength + counted_strength,
     )
     remaining = trashed.state.decision_stack[:-1]
+    remaining = _add_reveal_optional_sword_strength(remaining, 3)
     if counted_strength:
         remaining = _add_reveal_strength(remaining, counted_strength)
     return RuleResult(
@@ -656,6 +779,7 @@ def apply_reveal_spy_action(
             combat_strength=owner.combat_strength + counted_strength,
         )
         remaining = state.decision_stack[:-1]
+        remaining = _add_reveal_optional_sword_strength(remaining, 2)
         if counted_strength:
             remaining = _add_reveal_strength(remaining, counted_strength)
         return RuleResult(
@@ -868,6 +992,55 @@ def _add_reveal_strength(
     raise RuntimeError("Reveal trash choice is missing its Reveal frame")
 
 
+def _add_reveal_optional_sword_strength(
+    frames: tuple[DecisionFrame, ...],
+    amount: int,
+) -> tuple[DecisionFrame, ...]:
+    """Record a chosen sword bonus even when no unit currently counts it."""
+
+    for index in range(len(frames) - 1, -1, -1):
+        context = dict(frames[index].context)
+        if "strength" not in context or "persuasion" not in context:
+            continue
+        optional_strength = context.get("optional_sword_strength", 0)
+        if (
+            isinstance(optional_strength, bool)
+            or not isinstance(optional_strength, int)
+        ):
+            raise RuntimeError("Reveal frame has invalid optional sword strength")
+        context["optional_sword_strength"] = optional_strength + amount
+        return (
+            *frames[:index],
+            replace(frames[index], context=tuple(sorted(context.items()))),
+            *frames[index + 1 :],
+        )
+    raise RuntimeError("Reveal choice is missing its Reveal frame")
+
+
+def _can_summon_reveal_sandworm(state: GameState, player: int) -> bool:
+    """Return whether Desert Power can currently deploy its sandworm."""
+
+    owner = state.players[player]
+    return (
+        owner.maker_hooks
+        and owner.resources.water >= 1
+        and bool(state.current_conflict_ids)
+        and not current_conflict_is_shield_wall_protected(state)
+    )
+
+
+def _reveal_frame_context(
+    frames: tuple[DecisionFrame, ...],
+) -> dict[str, ActionValue]:
+    """Find the active Reveal frame below any serial choice frames."""
+
+    for frame in reversed(frames):
+        context = dict(frame.context)
+        if "persuasion" in context and "strength" in context:
+            return context
+    raise RuntimeError("Reveal choice is missing its Reveal frame")
+
+
 def legal_reveal_actions(state: GameState, player: int) -> tuple[DomainAction, ...]:
     """Return the always-available Reveal choice for the current turn owner."""
 
@@ -998,9 +1171,11 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         for player in state.players
     )
     context: list[tuple[str, ActionValue]] = [
+        ("optional_sword_strength", 0),
         ("persuasion", persuasion),
         ("revealed_card_count", len(revealed)),
         ("strength", strength),
+        ("sword_strength", sword_strength),
         ("turn_owner", action.actor),
     ]
     context.extend(
@@ -1057,6 +1232,9 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
                     is (
                         PersonalCardRevealChoiceEffect.GAIN_FIVE_SOLARI_OR_TAKE_HIGH_COUNCIL
                     )
+                    else "Keep two Persuasion or pay one Water for a sandworm"
+                    if effect
+                    is PersonalCardRevealChoiceEffect.MAY_PAY_WATER_FOR_SANDWORM
                     else "Choose a Spy to recall for this Reveal effect"
                 ),
             ),
@@ -1103,6 +1281,11 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         )
         or effect
         is PersonalCardRevealChoiceEffect.GAIN_FIVE_SOLARI_OR_TAKE_HIGH_COUNCIL
+        or (
+            effect
+            is PersonalCardRevealChoiceEffect.MAY_PAY_WATER_FOR_SANDWORM
+            and _can_summon_reveal_sandworm(state, action.actor)
+        )
         or (
             effect
             in (

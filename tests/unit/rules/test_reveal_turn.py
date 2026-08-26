@@ -21,6 +21,7 @@ from dune_imperium.rules.reveal_turn import (
     apply_corrinth_city_reveal,
     apply_reveal_card_trash,
     apply_reveal_influence_exchange,
+    apply_reveal_sandworm_action,
     apply_reveal_spice_influence,
     apply_reveal_spy_action,
     apply_reveal_troop_retreat,
@@ -31,6 +32,7 @@ from dune_imperium.rules.reveal_turn import (
     legal_reveal_actions,
     legal_reveal_card_trash_actions,
     legal_reveal_influence_exchange_actions,
+    legal_reveal_sandworm_actions,
     legal_reveal_spice_influence_actions,
     legal_reveal_spy_actions,
     legal_reveal_troop_retreat_actions,
@@ -88,6 +90,154 @@ def test_corrinth_city_gains_five_solari_when_seat_is_unavailable() -> None:
     assert result.events[0].kind == "reveal_solari_gained"
 
 
+def test_desert_power_can_keep_persuasion_or_pay_water_for_a_sandworm() -> None:
+    desert_power = _imperium_instance("desert_power")
+    owner = PlayerState(
+        player_id=0,
+        hand=(desert_power,),
+        maker_hooks=True,
+        resources=Resources(water=1),
+    )
+    state = replace(
+        _state(owner),
+        current_conflict_ids=("propaganda",),
+        shield_wall_present=True,
+    )
+    revealed = begin_reveal_turn(state, DomainAction(action_id="reveal_turn", actor=0))
+
+    actions = legal_reveal_sandworm_actions(revealed.state, 0)
+    assert tuple(action.action_id for action in actions) == (
+        "decline_reveal_sandworm",
+        "pay_reveal_water_for_sandworm",
+    )
+
+    declined = apply_reveal_sandworm_action(revealed.state, actions[0])
+    assert dict(declined.state.decision_stack[-1].context)["persuasion"] == 2
+    assert declined.state.players[0].sandworms_conflict == 0
+
+    deployed = apply_reveal_sandworm_action(revealed.state, actions[1])
+    context = dict(deployed.state.decision_stack[-1].context)
+    owner_after = deployed.state.players[0]
+    assert owner_after.resources.water == 0
+    assert owner_after.maker_hooks is True
+    assert owner_after.sandworms_conflict == 1
+    assert owner_after.combat_strength == 3
+    assert context["persuasion"] == 0
+    assert context["strength"] == 3
+    assert tuple(event.kind for event in deployed.events) == (
+        "reveal_sandworm_deployed",
+        "reveal_strength_gained",
+    )
+
+
+def test_desert_power_recalculates_sword_strength_when_sandworm_is_first_unit() -> None:
+    desert_power = _imperium_instance("desert_power")
+    maula_pistol = _imperium_instance("maula_pistol")
+    owner = PlayerState(
+        player_id=0,
+        hand=(desert_power, maula_pistol),
+        maker_hooks=True,
+        resources=Resources(water=1),
+    )
+    state = replace(_state(owner), current_conflict_ids=("propaganda",))
+    revealed = begin_reveal_turn(state, DomainAction(action_id="reveal_turn", actor=0))
+
+    assert dict(revealed.state.decision_stack[-2].context)["strength"] == 0
+    action = legal_reveal_sandworm_actions(revealed.state, 0)[1]
+    deployed = apply_reveal_sandworm_action(revealed.state, action)
+
+    assert deployed.state.players[0].combat_strength == 4
+    assert dict(deployed.state.decision_stack[-1].context)["strength"] == 4
+
+
+def test_desert_power_adds_three_strength_to_existing_conflict_units() -> None:
+    desert_power = _imperium_instance("desert_power")
+    owner = PlayerState(
+        player_id=0,
+        hand=(desert_power,),
+        maker_hooks=True,
+        resources=Resources(water=1),
+        troops_supply=8,
+        troops_conflict=1,
+    )
+    state = replace(_state(owner), current_conflict_ids=("propaganda",))
+    revealed = begin_reveal_turn(state, DomainAction(action_id="reveal_turn", actor=0))
+    deployed = apply_reveal_sandworm_action(
+        revealed.state,
+        legal_reveal_sandworm_actions(revealed.state, 0)[1],
+    )
+
+    assert deployed.state.players[0].combat_strength == 5
+    assert dict(deployed.state.decision_stack[-1].context)["strength"] == 5
+
+
+def test_desert_power_reveal_sandworm_is_blocked_by_shield_wall() -> None:
+    desert_power = _imperium_instance("desert_power")
+    owner = PlayerState(
+        player_id=0,
+        hand=(desert_power,),
+        maker_hooks=True,
+        resources=Resources(water=1),
+    )
+    state = replace(
+        _state(owner),
+        current_conflict_ids=("siege_of_arrakeen",),
+        shield_wall_present=True,
+    )
+    revealed = begin_reveal_turn(state, DomainAction(action_id="reveal_turn", actor=0))
+
+    assert legal_reveal_sandworm_actions(revealed.state, 0) == ()
+    assert dict(revealed.state.decision_stack[-1].context)["persuasion"] == 2
+
+
+def test_desert_power_reveal_sandworm_requires_water_and_maker_hooks() -> None:
+    desert_power = _imperium_instance("desert_power")
+    for owner in (
+        PlayerState(
+            player_id=0,
+            hand=(desert_power,),
+            maker_hooks=False,
+            resources=Resources(water=1),
+        ),
+        PlayerState(
+            player_id=0,
+            hand=(desert_power,),
+            maker_hooks=True,
+            resources=Resources(water=0),
+        ),
+    ):
+        state = replace(_state(owner), current_conflict_ids=("propaganda",))
+        revealed = begin_reveal_turn(
+            state,
+            DomainAction(action_id="reveal_turn", actor=0),
+        )
+
+        assert legal_reveal_sandworm_actions(revealed.state, 0) == ()
+
+
+def test_engine_dispatches_desert_power_reveal_sandworm_choice() -> None:
+    desert_power = _imperium_instance("desert_power")
+    owner = PlayerState(
+        player_id=0,
+        hand=(desert_power,),
+        maker_hooks=True,
+        resources=Resources(water=1),
+    )
+    state = replace(_state(owner), current_conflict_ids=("propaganda",))
+    engine = UprisingRulesEngine()
+    revealed = begin_reveal_turn(state, DomainAction(action_id="reveal_turn", actor=0))
+    action = next(
+        candidate
+        for candidate in engine.legal_actions(revealed.state, 0)
+        if candidate.action_id == "pay_reveal_water_for_sandworm"
+    )
+
+    transition = engine.apply(revealed.state, action)
+
+    assert transition.state.players[0].sandworms_conflict == 1
+    assert transition.state.players[0].resources.water == 0
+
+
 def test_calculus_of_power_trashes_another_emperor_for_strength() -> None:
     calculus = _imperium_instance("calculus_of_power")
     sardaukar = _imperium_instance("sardaukar_soldier")
@@ -122,6 +272,7 @@ def test_calculus_of_power_trashes_another_emperor_for_strength() -> None:
     assert result.state.players[0].intrigue_cards == ("intrigue:test",)
     assert result.state.players[0].combat_strength == 6
     assert context["strength"] == 6
+    assert context["optional_sword_strength"] == 3
     assert [event.kind for event in result.events] == [
         "card_trashed",
         "intrigue_card_drawn",
@@ -138,6 +289,40 @@ def test_calculus_of_power_cannot_pay_with_itself() -> None:
 
     assert legal_reveal_card_trash_actions(revealed, 0) == ()
     assert dict(revealed.decision_stack[-1].context)["persuasion"] == 2
+
+
+def test_desert_power_recounts_calculus_sword_when_it_adds_the_first_unit() -> None:
+    desert_power = _imperium_instance("desert_power")
+    calculus = _imperium_instance("calculus_of_power")
+    sardaukar = _imperium_instance("sardaukar_soldier")
+    owner = PlayerState(
+        player_id=0,
+        hand=(calculus, desert_power),
+        in_play=(sardaukar,),
+        maker_hooks=True,
+        resources=Resources(water=1),
+    )
+    state = replace(_state(owner), current_conflict_ids=("propaganda",))
+    revealed = begin_reveal_turn(
+        state,
+        DomainAction(action_id="reveal_turn", actor=0),
+    ).state
+
+    calculus_trash = next(
+        action
+        for action in legal_reveal_card_trash_actions(revealed, 0)
+        if action.action_id == "trash_reveal_card"
+    )
+    after_calculus = apply_reveal_card_trash(revealed, calculus_trash).state
+    context = dict(after_calculus.decision_stack[-2].context)
+
+    assert context["strength"] == 0
+    assert context["optional_sword_strength"] == 3
+    desert_action = legal_reveal_sandworm_actions(after_calculus, 0)[1]
+    deployed = apply_reveal_sandworm_action(after_calculus, desert_action)
+
+    assert deployed.state.players[0].combat_strength == 6
+    assert dict(deployed.state.decision_stack[-1].context)["strength"] == 6
 
 
 def test_captured_mentat_may_exchange_influence_on_reveal() -> None:
@@ -405,6 +590,7 @@ def test_chani_retreats_two_troops_for_four_strength() -> None:
     assert result.state.players[0].troops_garrison == 4
     assert result.state.players[0].combat_strength == 7
     assert context["strength"] == 7
+    assert context["optional_sword_strength"] == 4
     assert [event.kind for event in result.events] == [
         "troops_retreated",
         "reveal_strength_gained",
@@ -434,7 +620,9 @@ def test_chani_retreat_clears_strength_when_no_unit_remains() -> None:
 
     assert result.state.players[0].troops_conflict == 0
     assert result.state.players[0].combat_strength == 0
-    assert dict(result.state.decision_stack[-1].context)["strength"] == 0
+    context = dict(result.state.decision_stack[-1].context)
+    assert context["strength"] == 0
+    assert context["optional_sword_strength"] == 4
 
 
 def test_chani_fremen_bond_adds_two_persuasion() -> None:
@@ -843,7 +1031,9 @@ def test_undercover_asset_reveal_may_gain_two_strength() -> None:
     result = apply_reveal_spy_action(revealed, strength)
 
     assert result.state.players[0].combat_strength == 4
-    assert dict(result.state.decision_stack[-1].context)["strength"] == 4
+    context = dict(result.state.decision_stack[-1].context)
+    assert context["strength"] == 4
+    assert context["optional_sword_strength"] == 2
     assert tuple(event.kind for event in result.events) == (
         "reveal_strength_gained",
     )
@@ -864,7 +1054,9 @@ def test_undercover_asset_reveal_strength_needs_a_conflict_unit() -> None:
     result = apply_reveal_spy_action(revealed, strength)
 
     assert result.state.players[0].combat_strength == 0
-    assert dict(result.state.decision_stack[-1].context)["strength"] == 0
+    context = dict(result.state.decision_stack[-1].context)
+    assert context["strength"] == 0
+    assert context["optional_sword_strength"] == 2
 
 
 def test_undercover_asset_commits_to_spy_after_empty_supply_recall() -> None:

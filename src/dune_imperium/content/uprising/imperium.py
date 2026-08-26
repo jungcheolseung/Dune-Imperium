@@ -269,7 +269,20 @@ IMPERIUM_CARDS: Final = (
         play_data_complete=True,
     ),
     _entry(182, "delivery-agreement", "Delivery Agreement", 5, choam_only=True),
-    _entry(71, "desert-power", "Desert Power", 6),
+    _entry(
+        71,
+        "desert-power",
+        "Desert Power",
+        6,
+        factions=(Faction.FREMEN,),
+        agent_icons=(AgentIcon.SPICE_TRADE,),
+        agent_effect=PersonalCardAgentEffect.GAIN_TWO_SPICE_IF_MAKER_SPACE,
+        reveal_persuasion=2,
+        reveal_choice_effects=(
+            PersonalCardRevealChoiceEffect.MAY_PAY_WATER_FOR_SANDWORM,
+        ),
+        play_data_complete=True,
+    ),
     _entry(
         27,
         "desert-survival",

@@ -2008,6 +2008,54 @@ def test_leadership_has_no_agent_effect_without_a_sandworm() -> None:
     assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False
 
 
+def test_desert_power_gains_two_spice_on_a_maker_space() -> None:
+    desert_power = _imperium_instance("desert_power")
+    owner = PlayerState(player_id=0, hand=(desert_power,))
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+
+    placed = apply_agent_action(state, _action_to(state, "hagga_basin")).state
+    result = resolve_agent_card_effect(placed)
+
+    assert result.state.players[0].resources.spice == 2
+    assert dict(result.state.decision_stack[-1].context)[
+        "pending_agent_effect"
+    ] is False
+
+
+def test_desert_power_has_no_agent_effect_on_a_non_maker_space() -> None:
+    desert_power = _imperium_instance("desert_power")
+    owner = PlayerState(player_id=0, hand=(desert_power,))
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+
+    placed = apply_agent_action(state, _action_to(state, "accept_contract")).state
+
+    assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False
+
+
 def test_shishakli_may_trash_a_personal_card_to_draw_one() -> None:
     shishakli = _imperium_instance("shishakli")
     trashed_card = _instance("dagger")

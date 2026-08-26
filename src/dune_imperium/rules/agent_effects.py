@@ -1245,6 +1245,18 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             ),
         )
         event_kind = "agent_card_effect_resolved"
+    elif effect is PersonalCardAgentEffect.GAIN_TWO_SPICE_IF_MAKER_SPACE:
+        space_id = context.get("space_id")
+        if not isinstance(space_id, str) or not BOARD_SPACES_BY_ID[space_id].maker:
+            raise RuntimeError("conditional Agent effect is not available")
+        next_owner = replace(
+            owner,
+            resources=replace(
+                owner.resources,
+                spice=owner.resources.spice + 2,
+            ),
+        )
+        event_kind = "agent_card_effect_resolved"
     elif effect is PersonalCardAgentEffect.RECRUIT_ONE_IF_MAKER_SPACE:
         space_id = context.get("space_id")
         if not isinstance(space_id, str) or not BOARD_SPACES_BY_ID[space_id].maker:
