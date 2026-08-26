@@ -260,6 +260,8 @@ def _agent_effect_is_available(
         return owner.resources.water >= 2
     if effect is PersonalCardAgentEffect.MAY_PAY_FOUR_SPICE_FOR_VP:
         return owner.resources.spice >= 4
+    if effect is PersonalCardAgentEffect.ACQUIRE_WITH_SOLARI_TO_HAND:
+        return owner.resources.solari > 0
     if effect is PersonalCardAgentEffect.DRAW_PER_SANDWORM_IN_CONFLICT:
         return owner.sandworms_conflict > 0
     if effect in (

@@ -27,7 +27,7 @@ from dune_imperium.content.uprising.starting_cards import (
 from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
 from dune_imperium.core.actions import ActionValue, DomainAction
 
-ACTION_CODEC_VERSION = 46
+ACTION_CODEC_VERSION = 47
 MAX_DEPLOYMENT_COUNT = 12
 
 
@@ -116,6 +116,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "decline_agent_card_trash",
             "decline_agent_card_payment",
             "decline_agent_card_discard",
+            "decline_agent_card_acquisition",
             "decline_control_defense",
             "decline_endgame_wild_match",
             "decline_gather_intelligence",
@@ -163,6 +164,20 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             arguments=(("instance_id", instance_id),),
         )
         for instance_id in imperium_instances
+    )
+    templates.extend(
+        ActionTemplate(
+            action_id="acquire_imperium_with_solari",
+            arguments=(("instance_id", instance_id),),
+        )
+        for instance_id in imperium_instances
+    )
+    templates.extend(
+        ActionTemplate(
+            action_id="acquire_reserve_with_solari",
+            arguments=(("card_id", stack.card.card_id),),
+        )
+        for stack in RESERVE_STACKS
     )
     for space_id in ("deep_desert", "hagga_basin", "imperial_basin"):
         templates.append(

@@ -1051,6 +1051,16 @@ def test_smugglers_haven_has_no_spice_bonus_at_a_non_maker_post() -> None:
     assert result.state.players[0].resources.spice == 0
 
 
+def test_price_is_no_object_reveals_for_persuasion_and_solari() -> None:
+    price = _imperium_instance("price_is_no_object")
+    state = _state(PlayerState(player_id=0, hand=(price,)))
+
+    result = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
+
+    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 2
+    assert result.state.players[0].resources.solari == 2
+
+
 def test_fedaykin_stilltent_gains_water_when_revealed() -> None:
     stilltent = _imperium_instance("fedaykin_stilltent")
     state = _state(PlayerState(player_id=0, hand=(stilltent,)))

@@ -47,6 +47,7 @@ class PersonalCardAgentEffect(StrEnum):
     LEADER_SIGNET = "leader_signet"
     PAY_TWO_WATER_TO_DRAW_TWO = "pay_two_water_to_draw_two"
     MAY_PAY_FOUR_SPICE_FOR_VP = "may_pay_four_spice_for_vp"
+    ACQUIRE_WITH_SOLARI_TO_HAND = "acquire_with_solari_to_hand"
     DRAW_PERSONAL_CARD = "draw_personal_card"
     DRAW_PER_SANDWORM_IN_CONFLICT = "draw_per_sandworm_in_conflict"
     DISCARD_TO_DRAW_ONE_OR_TWO_IF_SPACING_GUILD = (
@@ -114,6 +115,7 @@ class PersonalCardAcquisitionEffect(StrEnum):
     """Typed effects resolved immediately after acquiring an Imperium card."""
 
     DRAW_INTRIGUE_CARD = "draw_intrigue_card"
+    GAIN_TWO_SOLARI = "gain_two_solari"
     PLACE_SPY = "place_spy"
 
 

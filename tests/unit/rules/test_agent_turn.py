@@ -191,6 +191,15 @@ def test_smugglers_haven_uses_spacing_guild_and_spice_trade_icons() -> None:
     }
 
 
+def test_price_is_no_object_uses_emperor_and_bene_gesserit_icons() -> None:
+    price = _imperium_instance("price_is_no_object")
+
+    assert _space_ids(_state(price)) == {
+        "dutiful_service",
+        "secrets",
+    }
+
+
 def test_fedaykin_stilltent_uses_its_spice_trade_icon() -> None:
     stilltent = _imperium_instance("fedaykin_stilltent")
 

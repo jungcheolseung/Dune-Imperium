@@ -2,26 +2,29 @@
 
 from dataclasses import replace
 
-import pytest
-
 from dune_imperium import RulesetConfig
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.core import (
     DecisionFrame,
+    DomainAction,
     GamePhase,
     GameState,
     PlayerDecision,
     PlayerState,
+    Resources,
 )
 from dune_imperium.rules.acquisition import (
     apply_acquisition_spy_action,
+    apply_agent_card_acquisition,
     apply_imperium_acquisition,
     apply_reserve_acquisition,
     legal_acquisition_spy_actions,
+    legal_agent_card_acquisitions,
     legal_imperium_acquisitions,
     legal_reserve_acquisitions,
 )
+from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.reveal_turn import (
     begin_reveal_turn,
@@ -35,6 +38,14 @@ def _instance(card_id: str, copy: int = 0) -> str:
         for instance_id in starting_deck_instance_ids(0)
         if f":{card_id}:" in instance_id
     )[copy]
+
+
+def _imperium_instance(card_id: str) -> str:
+    return next(
+        instance_id
+        for instance_id in imperium_deck_instance_ids(False)
+        if f":{card_id}:" in instance_id
+    )
 
 
 def _reveal_state(*cards: str) -> GameState:
@@ -177,7 +188,7 @@ def test_acquired_transcribed_card_can_be_revealed_later() -> None:
     assert dict(revealed.decision_stack[-1].context)["persuasion"] == 1
 
 
-def test_acquisition_bonus_card_is_not_silently_resolved() -> None:
+def test_price_is_no_object_acquisition_gains_two_solari() -> None:
     cards = (
         _instance("convincing_argument", 0),
         _instance("convincing_argument", 1),
@@ -199,8 +210,182 @@ def test_acquisition_bonus_card_is_not_silently_resolved() -> None:
         if dict(action.arguments)["instance_id"] == price
     )
 
-    with pytest.raises(NotImplementedError, match="price_is_no_object"):
-        apply_imperium_acquisition(state, action)
+    result = apply_imperium_acquisition(state, action)
+
+    assert result.state.players[0].discard_pile == (price,)
+    assert result.state.players[0].resources.solari == 2
+    assert tuple(event.kind for event in result.events) == (
+        "card_acquired",
+        "acquisition_resource_gained",
+    )
+
+
+def _price_agent_state(
+    *,
+    solari: int,
+    imperium_row: tuple[str, ...] = (),
+    imperium_deck: tuple[str, ...] = (),
+    intrigue_deck: tuple[str, ...] = (),
+) -> GameState:
+    price = _imperium_instance("price_is_no_object")
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(
+            PlayerState(
+                player_id=0,
+                hand=(price,),
+                resources=Resources(solari=solari),
+            ),
+            *(PlayerState(player_id=seat) for seat in range(1, 4)),
+        ),
+        reserve_stacks=(
+            ("prepare_the_way", 8),
+            ("the_spice_must_flow", 10),
+        ),
+        imperium_row=imperium_row,
+        imperium_deck=imperium_deck,
+        intrigue_deck=intrigue_deck,
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    agent = next(
+        action
+        for action in legal_agent_actions(state, 0)
+        if dict(action.arguments)["space_id"] == "dutiful_service"
+    )
+    return apply_agent_action(state, agent).state
+
+
+def test_price_is_no_object_acquires_row_card_to_hand_with_solari() -> None:
+    instances = imperium_deck_instance_ids(False)
+    sardaukar = _imperium_instance("sardaukar_soldier")
+    others = tuple(
+        instance_id
+        for instance_id in instances
+        if instance_id not in {sardaukar, _imperium_instance("price_is_no_object")}
+    )
+    state = _price_agent_state(
+        solari=1,
+        imperium_row=(sardaukar, *others[:4]),
+        imperium_deck=others[4:],
+    )
+    engine = UprisingRulesEngine()
+    action = next(
+        action
+        for action in engine.legal_actions(state, 0)
+        if dict(action.arguments).get("instance_id") == sardaukar
+    )
+
+    result = engine.apply(state, action)
+
+    assert result.state.players[0].hand == (sardaukar,)
+    assert result.state.players[0].discard_pile == ()
+    assert result.state.players[0].resources.solari == 0
+    assert result.state.imperium_row[0] == others[4]
+    assert legal_agent_card_acquisitions(result.state, 0) == ()
+
+
+def test_price_is_no_object_acquires_reserve_card_to_hand_with_solari() -> None:
+    state = _price_agent_state(solari=9)
+    action = next(
+        action
+        for action in legal_agent_card_acquisitions(state, 0)
+        if dict(action.arguments).get("card_id") == "the_spice_must_flow"
+    )
+
+    result = apply_agent_card_acquisition(state, action)
+
+    assert result.state.players[0].hand == ("reserve:the_spice_must_flow:9",)
+    assert result.state.players[0].resources.solari == 0
+    assert result.state.players[0].victory_points == 2
+    assert dict(result.state.reserve_stacks)["the_spice_must_flow"] == 9
+
+
+def test_price_is_no_object_resolves_the_acquired_cards_bonus() -> None:
+    instances = imperium_deck_instance_ids(False)
+    overthrow = _imperium_instance("overthrow")
+    price = _imperium_instance("price_is_no_object")
+    others = tuple(
+        instance_id
+        for instance_id in instances
+        if instance_id not in {overthrow, price}
+    )
+    state = _price_agent_state(
+        solari=8,
+        imperium_row=(overthrow, *others[:4]),
+        imperium_deck=others[4:],
+        intrigue_deck=("intrigue:test:0",),
+    )
+    action = next(
+        action
+        for action in legal_agent_card_acquisitions(state, 0)
+        if dict(action.arguments).get("instance_id") == overthrow
+    )
+
+    result = apply_agent_card_acquisition(state, action)
+
+    assert result.state.players[0].hand == (overthrow,)
+    assert result.state.players[0].intrigue_cards == ("intrigue:test:0",)
+    assert result.state.intrigue_deck == ()
+    assert tuple(event.kind for event in result.events) == (
+        "card_acquired",
+        "intrigue_card_drawn",
+    )
+
+
+def test_price_is_no_object_preserves_acquisition_spy_follow_up() -> None:
+    instances = imperium_deck_instance_ids(False)
+    strike_fleet = _imperium_instance("strike_fleet")
+    price = _imperium_instance("price_is_no_object")
+    others = tuple(
+        instance_id
+        for instance_id in instances
+        if instance_id not in {strike_fleet, price}
+    )
+    state = _price_agent_state(
+        solari=5,
+        imperium_row=(strike_fleet, *others[:4]),
+        imperium_deck=others[4:],
+    )
+    action = next(
+        action
+        for action in legal_agent_card_acquisitions(state, 0)
+        if dict(action.arguments).get("instance_id") == strike_fleet
+    )
+
+    acquired = apply_agent_card_acquisition(state, action).state
+    placement = legal_acquisition_spy_actions(acquired, 0)[0]
+    result = apply_acquisition_spy_action(acquired, placement)
+
+    assert acquired.players[0].hand == (strike_fleet,)
+    assert result.state.players[0].spies_supply == 2
+    context = dict(result.state.decision_stack[-1].context)
+    assert context["pending_agent_effect"] is False
+
+
+def test_price_is_no_object_may_decline_its_acquisition() -> None:
+    state = _price_agent_state(solari=3)
+    decline = DomainAction(action_id="decline_agent_card_acquisition", actor=0)
+
+    result = apply_agent_card_acquisition(state, decline)
+
+    assert result.state.players[0].resources.solari == 3
+    assert result.state.players[0].hand == ()
+    assert result.events[0].kind == "agent_card_acquisition_declined"
+
+
+def test_price_is_no_object_skips_acquisition_without_solari() -> None:
+    state = _price_agent_state(solari=0)
+
+    assert dict(state.decision_stack[-1].context)["pending_agent_effect"] is False
+    assert legal_agent_card_acquisitions(state, 0) == ()
 
 
 def test_overthrow_acquisition_draws_an_intrigue_card() -> None:

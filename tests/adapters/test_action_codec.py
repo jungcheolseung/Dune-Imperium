@@ -11,15 +11,26 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     first = ActionCodec(RulesetConfig())
     second = ActionCodec(RulesetConfig())
 
-    assert ACTION_CODEC_VERSION == 46
+    assert ACTION_CODEC_VERSION == 47
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
-    assert first.size == 2648
+    assert first.size == 2724
 
 
 def test_agent_card_spice_payment_round_trips() -> None:
     codec = ActionCodec(RulesetConfig())
     action = DomainAction(action_id="pay_agent_card_spice", actor=0)
+
+    assert codec.decode(codec.encode(action), actor=0) == action
+
+
+def test_agent_card_solari_acquisition_round_trips() -> None:
+    codec = ActionCodec(RulesetConfig())
+    action = DomainAction(
+        action_id="acquire_imperium_with_solari",
+        actor=0,
+        arguments=(("instance_id", "imperium:sardaukar_soldier:0"),),
+    )
 
     assert codec.decode(codec.encode(action), actor=0) == action
 

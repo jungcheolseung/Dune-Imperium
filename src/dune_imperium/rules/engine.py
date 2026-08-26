@@ -16,9 +16,11 @@ from dune_imperium.core.observation import PlayerView, observe_state
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.acquisition import (
     apply_acquisition_spy_action,
+    apply_agent_card_acquisition,
     apply_imperium_acquisition,
     apply_reserve_acquisition,
     legal_acquisition_spy_actions,
+    legal_agent_card_acquisitions,
     legal_imperium_acquisitions,
     legal_reserve_acquisitions,
 )
@@ -211,6 +213,7 @@ class UprisingRulesEngine(RulesEngine):
             "decline_control_defense": apply_control_defense_action,
             "decline_agent_card_payment": apply_agent_card_payment,
             "decline_agent_card_discard": apply_agent_card_discard,
+            "decline_agent_card_acquisition": apply_agent_card_acquisition,
             "decline_agent_card_trash": apply_agent_card_trash,
             "decline_endgame_wild_match": apply_endgame_wild_action,
             "decline_gather_intelligence": apply_gather_intelligence_action,
@@ -234,6 +237,8 @@ class UprisingRulesEngine(RulesEngine):
             "deploy_troops": apply_combat_deployment,
             "acquire_reserve": apply_reserve_acquisition,
             "acquire_imperium": apply_imperium_acquisition,
+            "acquire_imperium_with_solari": apply_agent_card_acquisition,
+            "acquire_reserve_with_solari": apply_agent_card_acquisition,
             "place_acquisition_spy": apply_acquisition_spy_action,
             "recall_spy_for_acquisition": apply_acquisition_spy_action,
             "recall_spy_for_reveal": apply_reveal_spy_action,
@@ -324,12 +329,14 @@ class UprisingRulesEngine(RulesEngine):
             payment_actions = legal_agent_card_payment_actions(state, player)
             spy_actions = legal_agent_card_spy_actions(state, player)
             influence_actions = legal_agent_card_influence_actions(state, player)
+            acquisition_actions = legal_agent_card_acquisitions(state, player)
             choice_actions = (
                 *trash_actions,
                 *discard_actions,
                 *payment_actions,
                 *spy_actions,
                 *influence_actions,
+                *acquisition_actions,
             )
             if choice_actions:
                 actions.extend(choice_actions)
@@ -394,6 +401,7 @@ def _agent_action_is_supported(state: GameState, action: DomainAction) -> bool:
         PersonalCardAgentEffect.RECRUIT_TWO_TROOPS,
         PersonalCardAgentEffect.DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO,
         PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO,
+        PersonalCardAgentEffect.ACQUIRE_WITH_SOLARI_TO_HAND,
     ):
         return False
     if space_id in (

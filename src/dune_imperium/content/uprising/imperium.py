@@ -487,6 +487,13 @@ IMPERIUM_CARDS: Final = (
         "Price is No Object",
         6,
         has_acquisition_bonus=True,
+        factions=(Faction.EMPEROR, Faction.BENE_GESSERIT),
+        agent_icons=(AgentIcon.EMPEROR, AgentIcon.BENE_GESSERIT),
+        agent_effect=PersonalCardAgentEffect.ACQUIRE_WITH_SOLARI_TO_HAND,
+        acquisition_effect=PersonalCardAcquisitionEffect.GAIN_TWO_SOLARI,
+        reveal_persuasion=2,
+        reveal_effects=(PersonalCardRevealEffect(solari=2),),
+        play_data_complete=True,
     ),
     _entry(183, "priority-contracts", "Priority Contracts", 6, choam_only=True),
     _entry(

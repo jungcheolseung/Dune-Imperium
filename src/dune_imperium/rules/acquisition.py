@@ -1,4 +1,4 @@
-"""Card acquisition during a Reveal turn."""
+"""Card acquisition during Reveal and card-driven Agent effects."""
 
 from dataclasses import replace
 
@@ -7,14 +7,19 @@ from dune_imperium.content.uprising.personal_cards import personal_card_for_inst
 from dune_imperium.content.uprising.reserve import RESERVE_STACKS_BY_ID
 from dune_imperium.content.uprising.types import (
     PersonalCardAcquisitionEffect,
+    PersonalCardAgentEffect,
     PersonalCardRevealAcquisitionEffect,
 )
-from dune_imperium.core.actions import DomainAction
+from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
+from dune_imperium.rules.effects import (
+    advance_after_effect,
+    current_agent_effect_context,
+)
 from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.reveal_turn import current_reveal_context
 from dune_imperium.rules.spy_placement import (
@@ -117,6 +122,223 @@ def apply_acquisition_spy_action(
         ),
     )
     return RuleResult(state=next_state, events=(event,))
+
+
+def legal_agent_card_acquisitions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return Price is No Object's optional Solari acquisitions."""
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return ()
+    if (
+        not isinstance(frame.decision, PlayerDecision)
+        or frame.decision.owner != player
+        or context.get("pending_agent_effect") is not True
+    ):
+        return ()
+    source_id = context.get("card_id")
+    if not isinstance(source_id, str):
+        raise RuntimeError("Agent acquisition frame has invalid card ID")
+    source = personal_card_for_instance(source_id)
+    if (
+        source.agent_effect
+        is not PersonalCardAgentEffect.ACQUIRE_WITH_SOLARI_TO_HAND
+    ):
+        return ()
+
+    solari = state.players[player].resources.solari
+    reserve_actions = tuple(
+        DomainAction(
+            action_id="acquire_reserve_with_solari",
+            actor=player,
+            arguments=(("card_id", card_id),),
+        )
+        for card_id, count in state.reserve_stacks
+        if count > 0 and RESERVE_STACKS_BY_ID[card_id].acquisition_cost <= solari
+    )
+    imperium_actions = tuple(
+        DomainAction(
+            action_id="acquire_imperium_with_solari",
+            actor=player,
+            arguments=(("instance_id", instance_id),),
+        )
+        for instance_id in state.imperium_row
+        if (
+            (definition := imperium_card_for_instance(instance_id)).acquisition_cost
+            is not None
+            and definition.acquisition_cost <= solari
+            and (
+                not definition.has_acquisition_bonus
+                or definition.acquisition_effect is not None
+            )
+        )
+    )
+    return (
+        DomainAction(action_id="decline_agent_card_acquisition", actor=player),
+        *reserve_actions,
+        *imperium_actions,
+    )
+
+
+def apply_agent_card_acquisition(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Decline or acquire one card to hand by paying its cost in Solari."""
+
+    if action not in legal_agent_card_acquisitions(state, action.actor):
+        raise ValueError("action is not a legal Agent-card acquisition")
+    _, context = current_agent_effect_context(state)
+    context["pending_agent_effect"] = False
+    source = f"round:{state.round_number}:player:{action.actor}:agent_acquisition"
+    if action.action_id == "decline_agent_card_acquisition":
+        next_state = advance_after_effect(state, context)
+        return RuleResult(
+            state=next_state,
+            events=(
+                GameEvent(
+                    event_id=f"{source}:declined",
+                    kind="agent_card_acquisition_declined",
+                    payload=(("player", action.actor),),
+                ),
+            ),
+        )
+
+    if action.action_id == "acquire_reserve_with_solari":
+        return _acquire_reserve_to_hand_with_solari(state, action, context)
+    return _acquire_imperium_to_hand_with_solari(state, action, context)
+
+
+def _acquire_reserve_to_hand_with_solari(
+    state: GameState,
+    action: DomainAction,
+    context: dict[str, ActionValue],
+) -> RuleResult:
+    card_id = dict(action.arguments).get("card_id")
+    if not isinstance(card_id, str):
+        raise RuntimeError("Agent Reserve acquisition has invalid card ID")
+    definition = RESERVE_STACKS_BY_ID[card_id]
+    stack_count = dict(state.reserve_stacks)[card_id]
+    instance_id = f"reserve:{card_id}:{stack_count - 1}"
+    owner = state.players[action.actor]
+    next_owner = replace(
+        owner,
+        hand=(*owner.hand, instance_id),
+        resources=replace(
+            owner.resources,
+            solari=owner.resources.solari - definition.acquisition_cost,
+        ),
+        victory_points=owner.victory_points + definition.acquisition_vp,
+    )
+    reserve_stacks = tuple(
+        (candidate_id, count - 1 if candidate_id == card_id else count)
+        for candidate_id, count in state.reserve_stacks
+    )
+    prepared = replace(state, reserve_stacks=reserve_stacks)
+    next_state = advance_after_effect(
+        prepared,
+        context,
+        _replace_player(state, next_owner),
+    )
+    event = GameEvent(
+        event_id=(
+            f"round:{state.round_number}:player:{action.actor}:"
+            f"acquire_with_solari:{instance_id}"
+        ),
+        kind="card_acquired",
+        payload=(
+            ("card_id", card_id),
+            ("destination", "hand"),
+            ("payment", "solari"),
+            ("player", action.actor),
+        ),
+    )
+    return RuleResult(state=next_state, events=(event,))
+
+
+def _acquire_imperium_to_hand_with_solari(
+    state: GameState,
+    action: DomainAction,
+    context: dict[str, ActionValue],
+) -> RuleResult:
+    instance_id = dict(action.arguments).get("instance_id")
+    if not isinstance(instance_id, str):
+        raise RuntimeError("Agent Imperium acquisition has invalid instance ID")
+    definition = imperium_card_for_instance(instance_id)
+    if not state.imperium_deck:
+        raise NotImplementedError(
+            "Imperium Row refill after deck exhaustion is unresolved"
+        )
+    cost = definition.acquisition_cost
+    if cost is None:
+        raise RuntimeError("Imperium card is missing its acquisition cost")
+
+    row = list(state.imperium_row)
+    row[row.index(instance_id)] = state.imperium_deck[0]
+    owner = state.players[action.actor]
+    next_owner = replace(
+        owner,
+        hand=(*owner.hand, instance_id),
+        resources=replace(
+            owner.resources,
+            solari=owner.resources.solari - cost,
+        ),
+    )
+    next_owner, intrigue_deck, acquisition_events, places_spy = (
+        _resolve_imperium_acquisition_bonus(
+            state,
+            action.actor,
+            instance_id,
+            next_owner,
+        )
+    )
+    base_frame = replace(
+        state.decision_stack[-1],
+        context=tuple(sorted(context.items())),
+    )
+    prepared = replace(
+        state,
+        players=_replace_player(state, next_owner),
+        imperium_deck=state.imperium_deck[1:],
+        imperium_row=tuple(row),
+        intrigue_deck=intrigue_deck,
+        decision_stack=(*state.decision_stack[:-1], base_frame),
+    )
+    if places_spy:
+        next_state = replace(
+            prepared,
+            decision_stack=(
+                *prepared.decision_stack,
+                _acquisition_spy_frame(state, action.actor, instance_id),
+            ),
+        )
+    else:
+        next_state = advance_after_effect(
+            prepared,
+            context,
+            prepared.players,
+        )
+    event = GameEvent(
+        event_id=(
+            f"round:{state.round_number}:player:{action.actor}:"
+            f"acquire_with_solari:{instance_id}"
+        ),
+        kind="card_acquired",
+        payload=(
+            ("card_id", definition.card.card_id),
+            ("destination", "hand"),
+            ("instance_id", instance_id),
+            ("payment", "solari"),
+            ("player", action.actor),
+        ),
+    )
+    return RuleResult(state=next_state, events=(event, *acquisition_events))
 
 
 def legal_reserve_acquisitions(
@@ -281,58 +503,27 @@ def apply_imperium_acquisition(
     row = list(state.imperium_row)
     row[row.index(instance_id)] = state.imperium_deck[0]
     owner = state.players[action.actor]
-    intrigue_deck = state.intrigue_deck
     next_owner = replace(
         owner,
         discard_pile=(*owner.discard_pile, instance_id),
     )
-    acquisition_events: tuple[GameEvent, ...] = ()
-    if (
-        definition.acquisition_effect
-        is PersonalCardAcquisitionEffect.DRAW_INTRIGUE_CARD
-    ):
-        if not intrigue_deck:
-            raise ValueError("the Intrigue deck does not contain enough cards")
-        next_owner = replace(
+    next_owner, intrigue_deck, acquisition_events, places_spy = (
+        _resolve_imperium_acquisition_bonus(
+            state,
+            action.actor,
+            instance_id,
             next_owner,
-            intrigue_cards=(*next_owner.intrigue_cards, intrigue_deck[0]),
         )
-        intrigue_deck = intrigue_deck[1:]
-        acquisition_events = (
-            GameEvent(
-                event_id=(
-                    f"round:{state.round_number}:player:{action.actor}:"
-                    f"acquire:{instance_id}:intrigue_draw"
-                ),
-                kind="intrigue_card_drawn",
-                payload=(("count", 1), ("player", action.actor)),
-            ),
-        )
-    players = tuple(
-        next_owner if player.player_id == action.actor else player
-        for player in state.players
     )
+    players = _replace_player(state, next_owner)
     context["persuasion"] = persuasion - cost
     frame = state.decision_stack[-1]
     next_frame = replace(frame, context=tuple(sorted(context.items())))
     decision_stack = (*state.decision_stack[:-1], next_frame)
-    if definition.acquisition_effect is PersonalCardAcquisitionEffect.PLACE_SPY:
+    if places_spy:
         decision_stack = (
             *decision_stack,
-            DecisionFrame(
-                frame_id=(
-                    f"round:{state.round_number}:player:{action.actor}:"
-                    f"acquisition_spy:{instance_id}"
-                ),
-                decision=PlayerDecision(
-                    owner=action.actor,
-                    prompt="Choose an Observation Post for the acquired Spy",
-                ),
-                context=(
-                    ("acquisition_card_id", instance_id),
-                    ("turn_owner", action.actor),
-                ),
-            ),
+            _acquisition_spy_frame(state, action.actor, instance_id),
         )
     next_state = replace(
         state,
@@ -354,6 +545,87 @@ def apply_imperium_acquisition(
         ),
     )
     return RuleResult(state=next_state, events=(event, *acquisition_events))
+
+
+def _resolve_imperium_acquisition_bonus(
+    state: GameState,
+    player: int,
+    instance_id: str,
+    owner: PlayerState,
+) -> tuple[PlayerState, tuple[str, ...], tuple[GameEvent, ...], bool]:
+    """Apply one supported acquisition bonus before its follow-up choice."""
+
+    definition = imperium_card_for_instance(instance_id)
+    effect = definition.acquisition_effect
+    intrigue_deck = state.intrigue_deck
+    events: tuple[GameEvent, ...] = ()
+    if effect is PersonalCardAcquisitionEffect.DRAW_INTRIGUE_CARD:
+        if not intrigue_deck:
+            raise ValueError("the Intrigue deck does not contain enough cards")
+        owner = replace(
+            owner,
+            intrigue_cards=(*owner.intrigue_cards, intrigue_deck[0]),
+        )
+        intrigue_deck = intrigue_deck[1:]
+        events = (
+            GameEvent(
+                event_id=(
+                    f"round:{state.round_number}:player:{player}:"
+                    f"acquire:{instance_id}:intrigue_draw"
+                ),
+                kind="intrigue_card_drawn",
+                payload=(("count", 1), ("player", player)),
+            ),
+        )
+    elif effect is PersonalCardAcquisitionEffect.GAIN_TWO_SOLARI:
+        owner = replace(
+            owner,
+            resources=replace(
+                owner.resources,
+                solari=owner.resources.solari + 2,
+            ),
+        )
+        events = (
+            GameEvent(
+                event_id=(
+                    f"round:{state.round_number}:player:{player}:"
+                    f"acquire:{instance_id}:solari"
+                ),
+                kind="acquisition_resource_gained",
+                payload=(
+                    ("amount", 2),
+                    ("player", player),
+                    ("resource", "solari"),
+                ),
+            ),
+        )
+    return (
+        owner,
+        intrigue_deck,
+        events,
+        effect is PersonalCardAcquisitionEffect.PLACE_SPY,
+    )
+
+
+def _acquisition_spy_frame(
+    state: GameState,
+    player: int,
+    instance_id: str,
+) -> DecisionFrame:
+    return DecisionFrame(
+        frame_id=(
+            f"round:{state.round_number}:player:{player}:"
+            f"acquisition_spy:{instance_id}"
+        ),
+        decision=PlayerDecision(
+            owner=player,
+            prompt="Choose an Observation Post for the acquired Spy",
+        ),
+        context=(
+            ("acquisition_card_id", instance_id),
+            ("turn_owner", player),
+        ),
+    )
 
 
 def _replace_player(

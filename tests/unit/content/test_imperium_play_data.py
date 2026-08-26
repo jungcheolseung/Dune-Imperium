@@ -172,6 +172,19 @@ def test_smugglers_haven_play_data_uses_the_printed_reveal_persuasion() -> None:
     )
 
 
+def test_price_is_no_object_play_data_acquires_with_solari_to_hand() -> None:
+    card = IMPERIUM_CARDS_BY_ID["price_is_no_object"]
+
+    assert card.play_data_complete is True
+    assert card.copies == 1
+    assert card.factions == (Faction.EMPEROR, Faction.BENE_GESSERIT)
+    assert card.agent_icons == (AgentIcon.EMPEROR, AgentIcon.BENE_GESSERIT)
+    assert card.agent_effect is PersonalCardAgentEffect.ACQUIRE_WITH_SOLARI_TO_HAND
+    assert card.acquisition_effect is PersonalCardAcquisitionEffect.GAIN_TWO_SOLARI
+    assert card.reveal_persuasion == 2
+    assert card.reveal_effects == (PersonalCardRevealEffect(solari=2),)
+
+
 def test_fedaykin_stilltent_play_data_has_maker_and_reveal_gains() -> None:
     card = IMPERIUM_CARDS_BY_ID["fedaykin_stilltent"]
 
