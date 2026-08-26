@@ -35,6 +35,7 @@ class ImperiumCardEntry(DeckCardEntry):
     agent_effect: PersonalCardAgentEffect | None = None
     agent_spy_factions: tuple[Faction, ...] = ()
     ignores_influence_requirements: bool = False
+    allows_recruited_troop_deployment: bool = False
     acquisition_effect: PersonalCardAcquisitionEffect | None = None
     discard_effect: PersonalCardDiscardEffect | None = None
     reveal_acquisition_effect: PersonalCardRevealAcquisitionEffect | None = None
@@ -55,6 +56,8 @@ class ImperiumCardEntry(DeckCardEntry):
             raise ValueError("Imperium-card Spy target Factions must be unique")
         if not isinstance(self.ignores_influence_requirements, bool):
             raise TypeError("Influence-requirement override must be a boolean")
+        if not isinstance(self.allows_recruited_troop_deployment, bool):
+            raise TypeError("recruited-troop deployment permission must be a boolean")
         if self.agent_spy_factions and (
             self.agent_effect is not PersonalCardAgentEffect.PLACE_SPY
         ):
@@ -73,6 +76,7 @@ class ImperiumCardEntry(DeckCardEntry):
             or self.agent_effect is not None
             or self.agent_spy_factions
             or self.ignores_influence_requirements
+            or self.allows_recruited_troop_deployment
             or self.acquisition_effect is not None
             or self.discard_effect is not None
             or self.reveal_acquisition_effect is not None
@@ -99,6 +103,7 @@ def _entry(
     agent_effect: PersonalCardAgentEffect | None = None,
     agent_spy_factions: tuple[Faction, ...] = (),
     ignores_influence_requirements: bool = False,
+    allows_recruited_troop_deployment: bool = False,
     acquisition_effect: PersonalCardAcquisitionEffect | None = None,
     discard_effect: PersonalCardDiscardEffect | None = None,
     reveal_acquisition_effect: PersonalCardRevealAcquisitionEffect | None = None,
@@ -125,6 +130,7 @@ def _entry(
         agent_effect=agent_effect,
         agent_spy_factions=agent_spy_factions,
         ignores_influence_requirements=ignores_influence_requirements,
+        allows_recruited_troop_deployment=allows_recruited_troop_deployment,
         acquisition_effect=acquisition_effect,
         discard_effect=discard_effect,
         reveal_acquisition_effect=reveal_acquisition_effect,
@@ -530,7 +536,24 @@ IMPERIUM_CARDS: Final = (
         reveal_effects=(PersonalCardRevealEffect(solari=1),),
         play_data_complete=True,
     ),
-    _entry(51, "sardaukar-coordination", "Sardaukar Coordination", 4, copies=2),
+    _entry(
+        51,
+        "sardaukar-coordination",
+        "Sardaukar Coordination",
+        4,
+        copies=2,
+        factions=(Faction.EMPEROR,),
+        agent_icons=(AgentIcon.EMPEROR, AgentIcon.LANDSRAAD),
+        allows_recruited_troop_deployment=True,
+        reveal_strength=1,
+        reveal_effects=(
+            PersonalCardRevealEffect(
+                strength=1,
+                per_revealed_faction=PersonalCardBond.EMPEROR,
+            ),
+        ),
+        play_data_complete=True,
+    ),
     _entry(
         15,
         "sardaukar-soldier",

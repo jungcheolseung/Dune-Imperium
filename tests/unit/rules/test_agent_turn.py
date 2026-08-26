@@ -144,6 +144,16 @@ def test_sardaukar_soldier_uses_its_city_icon() -> None:
     assert _space_ids(_state(sardaukar)) == {"arrakeen", "spice_refinery"}
 
 
+def test_sardaukar_coordination_uses_emperor_and_landsraad_icons() -> None:
+    coordination = _imperium_instance("sardaukar_coordination")
+
+    assert _space_ids(_state(coordination)) == {
+        "assembly_hall",
+        "dutiful_service",
+        "gather_support",
+    }
+
+
 def test_hidden_missive_uses_its_landsraad_icon() -> None:
     hidden_missive = _imperium_instance("hidden_missive")
 

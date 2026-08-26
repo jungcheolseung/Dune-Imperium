@@ -171,6 +171,7 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
         context=(
             ("card_id", card_instance_id),
             ("cost_option", cost_option),
+            ("existing_troop_deployment_limit", 2 if space.combat else 0),
             (
                 "pending_agent_effect",
                 _agent_effect_is_available(
@@ -181,7 +182,14 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
                 ),
             ),
             ("pending_board_effect", True),
-            ("pending_combat_deployment", space.combat),
+            (
+                "pending_combat_deployment",
+                space.combat
+                or (
+                    isinstance(card, ImperiumCardEntry)
+                    and card.allows_recruited_troop_deployment
+                ),
+            ),
             ("pending_faction_influence", space.faction is not None),
             (
                 "pending_gather_intelligence",

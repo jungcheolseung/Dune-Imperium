@@ -174,8 +174,12 @@ class PersonalCardRevealEffect:
             PersonalCardBond,
         ):
             raise TypeError("counted Reveal Faction must use PersonalCardBond")
-        if self.per_revealed_faction is not None and self.persuasion == 0:
-            raise ValueError("counted Reveal Faction requires Persuasion")
+        if (
+            self.per_revealed_faction is not None
+            and self.persuasion == 0
+            and self.strength == 0
+        ):
+            raise ValueError("counted Reveal Faction requires Persuasion or strength")
         if self.influence_faction is not None and not isinstance(
             self.influence_faction,
             PersonalCardBond,

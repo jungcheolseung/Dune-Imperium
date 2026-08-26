@@ -3,6 +3,7 @@
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.core import (
     DecisionFrame,
@@ -25,6 +26,15 @@ def _instance(card_id: str, copy: int = 0) -> str:
     matches = tuple(
         instance_id
         for instance_id in starting_deck_instance_ids(0)
+        if f":{card_id}:" in instance_id
+    )
+    return matches[copy]
+
+
+def _imperium_instance(card_id: str, copy: int = 0) -> str:
+    matches = tuple(
+        instance_id
+        for instance_id in imperium_deck_instance_ids(False)
         if f":{card_id}:" in instance_id
     )
     return matches[copy]
@@ -131,3 +141,42 @@ def test_deployment_above_the_legal_limit_is_rejected() -> None:
 
     with pytest.raises(ValueError, match="not a legal Combat deployment"):
         apply_combat_deployment(state, invalid)
+
+
+def test_sardaukar_coordination_deploys_only_troops_recruited_this_turn() -> None:
+    coordination = _imperium_instance("sardaukar_coordination")
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(
+            PlayerState(player_id=0, hand=(coordination,)),
+            *(PlayerState(player_id=seat) for seat in range(1, 4)),
+        ),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    state = apply_agent_action(
+        state,
+        _agent_action_to(state, "gather_support"),
+    ).state
+
+    assert tuple(
+        dict(action.arguments)["count"]
+        for action in legal_combat_deployments(state, 0)
+    ) == (0,)
+
+    state = resolve_board_effect(state).state
+    assert tuple(
+        dict(action.arguments)["count"]
+        for action in legal_combat_deployments(state, 0)
+    ) == (0, 1, 2)
+
+    deployed = apply_combat_deployment(state, _deployment(state, 2)).state
+    assert deployed.players[0].troops_garrison == 3
+    assert deployed.players[0].troops_conflict == 2

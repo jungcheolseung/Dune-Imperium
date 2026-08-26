@@ -249,12 +249,12 @@ def _instance(card_id: str, copy: int = 0) -> str:
     )[copy]
 
 
-def _imperium_instance(card_id: str) -> str:
-    return next(
+def _imperium_instance(card_id: str, copy: int = 0) -> str:
+    return tuple(
         instance_id
         for instance_id in imperium_deck_instance_ids(False)
         if f":{card_id}:" in instance_id
-    )
+    )[copy]
 
 
 def _state(player: PlayerState) -> GameState:
@@ -772,6 +772,45 @@ def test_leadership_does_not_count_itself_or_an_agent_card_for_bonus() -> None:
     result = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
 
     assert result.state.players[0].combat_strength == 3
+
+
+def test_sardaukar_coordination_counts_each_revealed_emperor_card() -> None:
+    first = _imperium_instance("sardaukar_coordination", 0)
+    second = _imperium_instance("sardaukar_coordination", 1)
+    soldier = _imperium_instance("sardaukar_soldier")
+    owner = PlayerState(
+        player_id=0,
+        hand=(first, second, soldier),
+        troops_supply=8,
+        troops_conflict=1,
+    )
+
+    result = begin_reveal_turn(
+        _state(owner),
+        DomainAction(action_id="reveal_turn", actor=0),
+    )
+
+    assert result.state.players[0].combat_strength == 11
+    assert dict(result.state.decision_stack[-1].context)["strength"] == 11
+
+
+def test_sardaukar_coordination_ignores_emperor_agent_cards_in_play() -> None:
+    coordination = _imperium_instance("sardaukar_coordination")
+    played_soldier = _imperium_instance("sardaukar_soldier")
+    owner = PlayerState(
+        player_id=0,
+        hand=(coordination,),
+        in_play=(played_soldier,),
+        troops_supply=8,
+        troops_conflict=1,
+    )
+
+    result = begin_reveal_turn(
+        _state(owner),
+        DomainAction(action_id="reveal_turn", actor=0),
+    )
+
+    assert result.state.players[0].combat_strength == 4
 
 
 def test_shishakli_reveal_gains_fremen_influence_only_with_bond() -> None:

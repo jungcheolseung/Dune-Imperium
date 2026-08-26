@@ -32,9 +32,12 @@ def legal_combat_deployments(
     recruited = context["troops_recruited"]
     if isinstance(recruited, bool) or not isinstance(recruited, int):
         raise RuntimeError("Agent-turn effect frame has invalid recruit count")
+    existing_limit = context.get("existing_troop_deployment_limit")
+    if isinstance(existing_limit, bool) or not isinstance(existing_limit, int):
+        raise RuntimeError("Agent-turn effect frame has invalid deployment limit")
 
     garrison = state.players[player].troops_garrison
-    maximum = min(garrison, recruited + 2)
+    maximum = min(garrison, recruited + existing_limit)
     return tuple(
         DomainAction(
             action_id="deploy_troops",

@@ -748,6 +748,15 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
             card.reveal_strength
             + sum(
                 effect.strength
+                * (
+                    sum(
+                        Faction(effect.per_revealed_faction.value)
+                        in revealed_card.factions
+                        for revealed_card in cards
+                    )
+                    if effect.per_revealed_faction is not None
+                    else 1
+                )
                 for effect_card_id, effect in reveal_effects
                 if effect_card_id == card_id
             ),

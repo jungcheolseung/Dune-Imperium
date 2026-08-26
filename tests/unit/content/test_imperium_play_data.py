@@ -99,6 +99,23 @@ def test_sardaukar_soldier_play_data_includes_its_trash_trigger() -> None:
     assert card.reveal_strength == 1
 
 
+def test_sardaukar_coordination_play_data_deploys_and_counts_emperor_cards() -> None:
+    card = IMPERIUM_CARDS_BY_ID["sardaukar_coordination"]
+
+    assert card.play_data_complete is True
+    assert card.copies == 2
+    assert card.factions == (Faction.EMPEROR,)
+    assert card.agent_icons == (AgentIcon.EMPEROR, AgentIcon.LANDSRAAD)
+    assert card.allows_recruited_troop_deployment is True
+    assert card.reveal_strength == 1
+    assert card.reveal_effects == (
+        PersonalCardRevealEffect(
+            strength=1,
+            per_revealed_faction=PersonalCardBond.EMPEROR,
+        ),
+    )
+
+
 def test_hidden_missive_play_data_includes_its_conditional_agent_effect() -> None:
     card = IMPERIUM_CARDS_BY_ID["hidden_missive"]
 
@@ -669,7 +686,7 @@ def test_personal_card_reveal_effect_requires_a_nonnegative_gain() -> None:
         )
     with pytest.raises(ValueError, match="also needs High Council"):
         PersonalCardRevealEffect(persuasion=1, requires_swordmaster=True)
-    with pytest.raises(ValueError, match="requires Persuasion"):
+    with pytest.raises(ValueError, match="requires Persuasion or strength"):
         PersonalCardRevealEffect(
             water=1,
             per_revealed_faction=PersonalCardBond.FREMEN,
