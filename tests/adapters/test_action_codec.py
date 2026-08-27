@@ -11,7 +11,7 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     first = ActionCodec(RulesetConfig())
     second = ActionCodec(RulesetConfig())
 
-    assert ACTION_CODEC_VERSION == 56
+    assert ACTION_CODEC_VERSION == 57
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
     assert first.size == 3377
@@ -26,7 +26,7 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
     codec = ActionCodec(RulesetConfig(choam_module=True))
 
     assert codec.decode(codec.encode(action), actor=2) == action
-    assert codec.size == 3445
+    assert codec.size == 3491
 
     try:
         ActionCodec(RulesetConfig()).encode(action)
@@ -34,6 +34,30 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
         assert "not present" in str(error)
     else:
         raise AssertionError("module-off codec accepted a Contract action")
+
+
+def test_choam_contract_completion_and_spy_choices_round_trip() -> None:
+    codec = ActionCodec(RulesetConfig(choam_module=True))
+    actions = (
+        DomainAction(
+            action_id="complete_contract",
+            actor=1,
+            arguments=(("instance_id", "contract:arrakeen_ii"),),
+        ),
+        DomainAction(
+            action_id="place_contract_spy",
+            actor=1,
+            arguments=(("post_id", "arrakis-spice-refinery-arrakeen"),),
+        ),
+        DomainAction(
+            action_id="recall_spy_for_contract",
+            actor=1,
+            arguments=(("post_id", "arrakis-spice-refinery-arrakeen"),),
+        ),
+    )
+
+    for action in actions:
+        assert codec.decode(codec.encode(action), actor=1) == action
 
 
 def test_corrinth_city_staged_payment_round_trips() -> None:

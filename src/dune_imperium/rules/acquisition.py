@@ -17,6 +17,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
+from dune_imperium.rules.contracts import complete_acquire_contracts
 from dune_imperium.rules.effects import (
     advance_after_effect,
     current_agent_effect_context,
@@ -227,6 +228,10 @@ def _acquire_reserve_to_hand_with_solari(
     definition = RESERVE_STACKS_BY_ID[card_id]
     stack_count = dict(state.reserve_stacks)[card_id]
     instance_id = f"reserve:{card_id}:{stack_count - 1}"
+    source = (
+        f"round:{state.round_number}:player:{action.actor}:"
+        f"acquire_with_solari:{instance_id}"
+    )
     owner = state.players[action.actor]
     next_owner = replace(
         owner,
@@ -241,17 +246,24 @@ def _acquire_reserve_to_hand_with_solari(
         (candidate_id, count - 1 if candidate_id == card_id else count)
         for candidate_id, count in state.reserve_stacks
     )
-    prepared = replace(state, reserve_stacks=reserve_stacks)
-    next_state = advance_after_effect(
+    prepared = replace(
+        state,
+        players=_replace_player(state, next_owner),
+        reserve_stacks=reserve_stacks,
+    )
+    completed = complete_acquire_contracts(
         prepared,
+        action.actor,
+        card_id,
+        source=source,
+    )
+    next_state = advance_after_effect(
+        completed.state,
         context,
-        _replace_player(state, next_owner),
+        completed.state.players,
     )
     event = GameEvent(
-        event_id=(
-            f"round:{state.round_number}:player:{action.actor}:"
-            f"acquire_with_solari:{instance_id}"
-        ),
+        event_id=source,
         kind="card_acquired",
         payload=(
             ("card_id", card_id),
@@ -260,7 +272,7 @@ def _acquire_reserve_to_hand_with_solari(
             ("player", action.actor),
         ),
     )
-    return RuleResult(state=next_state, events=(event,))
+    return RuleResult(state=next_state, events=(event, *completed.events))
 
 
 def _acquire_imperium_to_hand_with_solari(
@@ -279,6 +291,10 @@ def _acquire_imperium_to_hand_with_solari(
     cost = definition.acquisition_cost
     if cost is None:
         raise RuntimeError("Imperium card is missing its acquisition cost")
+    source = (
+        f"round:{state.round_number}:player:{action.actor}:"
+        f"acquire_with_solari:{instance_id}"
+    )
 
     row = list(state.imperium_row)
     row[row.index(instance_id)] = state.imperium_deck[0]
@@ -327,6 +343,14 @@ def _acquire_imperium_to_hand_with_solari(
         )
         prepared = gained.state
         acquisition_events = (*acquisition_events, *gained.events)
+    completed = complete_acquire_contracts(
+        prepared,
+        action.actor,
+        definition.card.card_id,
+        source=source,
+    )
+    prepared = completed.state
+    acquisition_events = (*acquisition_events, *completed.events)
     if places_spy:
         next_state = replace(
             prepared,
@@ -342,10 +366,7 @@ def _acquire_imperium_to_hand_with_solari(
             prepared.players,
         )
     event = GameEvent(
-        event_id=(
-            f"round:{state.round_number}:player:{action.actor}:"
-            f"acquire_with_solari:{instance_id}"
-        ),
+        event_id=source,
         kind="card_acquired",
         payload=(
             ("card_id", definition.card.card_id),
@@ -448,7 +469,16 @@ def apply_reserve_acquisition(
         action.actor,
         card_id,
     )
-    return RuleResult(state=triggered.state, events=(event, *triggered.events))
+    completed = complete_acquire_contracts(
+        triggered.state,
+        action.actor,
+        card_id,
+        source=f"round:{state.round_number}:player:{action.actor}:acquire:{instance_id}",
+    )
+    return RuleResult(
+        state=completed.state,
+        events=(event, *triggered.events, *completed.events),
+    )
 
 
 def legal_imperium_acquisitions(
@@ -566,6 +596,14 @@ def apply_imperium_acquisition(
         )
         next_state = gained.state
         acquisition_events = (*acquisition_events, *gained.events)
+    completed = complete_acquire_contracts(
+        next_state,
+        action.actor,
+        definition.card.card_id,
+        source=f"round:{state.round_number}:player:{action.actor}:acquire:{instance_id}",
+    )
+    next_state = completed.state
+    acquisition_events = (*acquisition_events, *completed.events)
     event = GameEvent(
         event_id=(
             f"round:{state.round_number}:player:{action.actor}:acquire:{instance_id}"

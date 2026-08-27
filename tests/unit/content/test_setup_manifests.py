@@ -13,6 +13,9 @@ from dune_imperium.content.uprising.conflicts import (
 )
 from dune_imperium.content.uprising.contracts import (
     CONTRACTS,
+    ContractCondition,
+    ContractConditionKind,
+    ContractReward,
     contract_for_instance,
     contract_instance_ids,
 )
@@ -433,6 +436,126 @@ def test_standard_contract_manifest_has_twenty_unique_physical_tiles() -> None:
     assert contract_for_instance("contract:high_council_ii").card.name == (
         "High Council II"
     )
+
+
+def test_standard_contract_manifest_transcribes_printed_conditions_and_rewards() -> (
+    None
+):
+    printed = {
+        contract.card.card_id: (contract.condition, contract.reward)
+        for contract in CONTRACTS
+    }
+
+    assert printed == {
+        "acquire": (
+            ContractCondition(
+                ContractConditionKind.ACQUIRE_CARD,
+                target="the_spice_must_flow",
+            ),
+            ContractReward(
+                solari=3,
+                influence_faction=Faction.SPACING_GUILD,
+                influence=1,
+            ),
+        ),
+        "arrakeen_i": (
+            ContractCondition(ContractConditionKind.BOARD_SPACE, target="arrakeen"),
+            ContractReward(water=1),
+        ),
+        "arrakeen_ii": (
+            ContractCondition(ContractConditionKind.BOARD_SPACE, target="arrakeen"),
+            ContractReward(troops=1, spies=1),
+        ),
+        "deliver_supplies": (
+            ContractCondition(
+                ContractConditionKind.BOARD_SPACE,
+                target="deliver_supplies",
+            ),
+            ContractReward(solari=3),
+        ),
+        "espionage_i": (
+            ContractCondition(ContractConditionKind.BOARD_SPACE, target="espionage"),
+            ContractReward(solari=3),
+        ),
+        "espionage_ii": (
+            ContractCondition(ContractConditionKind.BOARD_SPACE, target="espionage"),
+            ContractReward(solari=1, contracts=1),
+        ),
+        "harvest_3": (
+            ContractCondition(ContractConditionKind.HARVEST_SPICE, amount=3),
+            ContractReward(solari=3),
+        ),
+        "harvest_3_contract": (
+            ContractCondition(ContractConditionKind.HARVEST_SPICE, amount=3),
+            ContractReward(contracts=1),
+        ),
+        "harvest_4": (
+            ContractCondition(ContractConditionKind.HARVEST_SPICE, amount=4),
+            ContractReward(solari=4),
+        ),
+        "harvest_4_contract": (
+            ContractCondition(ContractConditionKind.HARVEST_SPICE, amount=4),
+            ContractReward(solari=2, contracts=1),
+        ),
+        "heighliner_i": (
+            ContractCondition(ContractConditionKind.BOARD_SPACE, target="heighliner"),
+            ContractReward(water=2),
+        ),
+        "heighliner_ii": (
+            ContractCondition(ContractConditionKind.BOARD_SPACE, target="heighliner"),
+            ContractReward(troops=2),
+        ),
+        "heighliner_iii": (
+            ContractCondition(ContractConditionKind.BOARD_SPACE, target="heighliner"),
+            ContractReward(solari=3, contracts=1),
+        ),
+        "high_council_i": (
+            ContractCondition(
+                ContractConditionKind.BOARD_SPACE,
+                target="high_council",
+            ),
+            ContractReward(
+                influence_faction=Faction.BENE_GESSERIT,
+                influence=1,
+            ),
+        ),
+        "high_council_ii": (
+            ContractCondition(
+                ContractConditionKind.BOARD_SPACE,
+                target="high_council",
+            ),
+            ContractReward(solari=3),
+        ),
+        "high_council_iii": (
+            ContractCondition(
+                ContractConditionKind.BOARD_SPACE,
+                target="high_council",
+            ),
+            ContractReward(contracts=1),
+        ),
+        "immediate": (
+            ContractCondition(ContractConditionKind.IMMEDIATE),
+            ContractReward(solari=2),
+        ),
+        "research_station_i": (
+            ContractCondition(
+                ContractConditionKind.BOARD_SPACE,
+                target="research_station",
+            ),
+            ContractReward(solari=2, spies=1),
+        ),
+        "research_station_ii": (
+            ContractCondition(
+                ContractConditionKind.BOARD_SPACE,
+                target="research_station",
+            ),
+            ContractReward(solari=3),
+        ),
+        "sardaukar_i": (
+            ContractCondition(ContractConditionKind.BOARD_SPACE, target="sardaukar"),
+            ContractReward(personal_cards=2),
+        ),
+    }
 
 
 def test_imperium_costs_cover_the_printed_range_and_resolve_instances() -> None:

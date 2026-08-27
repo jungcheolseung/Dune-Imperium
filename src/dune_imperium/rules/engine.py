@@ -88,8 +88,12 @@ from dune_imperium.rules.combat_deployment import (
 )
 from dune_imperium.rules.contracts import (
     apply_contract_action,
+    apply_contract_completion,
+    apply_contract_spy_action,
     exhausted_contract_choice_is_pending,
     legal_contract_actions,
+    legal_contract_completion_actions,
+    legal_contract_spy_actions,
     resolve_exhausted_contract_choice,
 )
 from dune_imperium.rules.effects import current_agent_effect_context
@@ -201,6 +205,7 @@ class UprisingRulesEngine(RulesEngine):
                 return gather_intelligence_actions
             return (
                 *agent_effect_actions,
+                *legal_contract_completion_actions(state, player),
                 *legal_espionage_actions(state, player),
                 *legal_sietch_tabr_actions(state, player),
                 *legal_maker_space_actions(state, player),
@@ -220,6 +225,7 @@ class UprisingRulesEngine(RulesEngine):
 
         actions: list[DomainAction] = []
         actions.extend(legal_acquisition_spy_actions(state, player))
+        actions.extend(legal_contract_spy_actions(state, player))
         actions.extend(legal_opponent_card_discard_actions(state, player))
         actions.extend(legal_corrinth_city_reveal_actions(state, player))
         actions.extend(legal_reveal_card_trash_actions(state, player))
@@ -258,6 +264,9 @@ class UprisingRulesEngine(RulesEngine):
             "gain_five_reveal_solari": apply_corrinth_city_reveal,
             "take_high_council_from_reveal": apply_corrinth_city_reveal,
             "take_contract": apply_contract_action,
+            "complete_contract": apply_contract_completion,
+            "place_contract_spy": apply_contract_spy_action,
+            "recall_spy_for_contract": apply_contract_spy_action,
             "deploy_control_defense": apply_control_defense_action,
             "agent_turn": apply_agent_action,
             "reveal_turn": begin_reveal_turn,

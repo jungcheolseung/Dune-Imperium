@@ -22,6 +22,7 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import Influence, PlayerState, Resources
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.card_bonds import has_faction_bond
+from dune_imperium.rules.contracts import contract_candidates_for_agent_turn
 
 
 def legal_agent_actions(state: GameState, player: int) -> tuple[DomainAction, ...]:
@@ -162,6 +163,11 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
         next_owner if player.player_id == action.actor else player
         for player in state.players
     )
+    pending_contract_ids = contract_candidates_for_agent_turn(
+        state,
+        action.actor,
+        space_id,
+    )
     effect_frame = DecisionFrame(
         frame_id=(f"round:{state.round_number}:player:{action.actor}:agent_effects"),
         decision=PlayerDecision(
@@ -190,6 +196,7 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
                     and card.allows_recruited_troop_deployment
                 ),
             ),
+            ("pending_contract_ids", ",".join(pending_contract_ids)),
             (
                 "pending_faction_influence",
                 space.faction is not None
@@ -207,6 +214,8 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
                 ),
             ),
             ("space_id", space_id),
+            ("spice_at_placement", next_owner.resources.spice),
+            ("spice_spent_after_placement", 0),
             ("spy_recalled_this_turn", infiltrate_post_id is not None),
             ("troops_recruited", 0),
             ("turn_owner", action.actor),

@@ -1,9 +1,73 @@
 """Standard Contract identities for the Uprising CHOAM Module."""
 
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Final
 
 from dune_imperium.content.schema import CardDefinition, SourceDocument, SourceRef
+from dune_imperium.content.uprising.board import Faction
+
+
+class ContractConditionKind(StrEnum):
+    """Printed ways a standard Contract can be completed."""
+
+    BOARD_SPACE = "board_space"
+    HARVEST_SPICE = "harvest_spice"
+    ACQUIRE_CARD = "acquire_card"
+    IMMEDIATE = "immediate"
+
+
+@dataclass(frozen=True, slots=True)
+class ContractCondition:
+    """One printed Contract completion condition."""
+
+    kind: ContractConditionKind
+    target: str = ""
+    amount: int = 0
+
+    def __post_init__(self) -> None:
+        if self.kind in (
+            ContractConditionKind.BOARD_SPACE,
+            ContractConditionKind.ACQUIRE_CARD,
+        ):
+            if not self.target or self.amount:
+                raise ValueError("target Contract conditions require only a target")
+        elif self.kind is ContractConditionKind.HARVEST_SPICE:
+            if self.target or self.amount < 1:
+                raise ValueError("Harvest Contracts require a positive Spice amount")
+        elif self.target or self.amount:
+            raise ValueError("Immediate Contracts have no target or amount")
+
+
+@dataclass(frozen=True, slots=True)
+class ContractReward:
+    """One printed standard Contract reward."""
+
+    solari: int = 0
+    water: int = 0
+    troops: int = 0
+    personal_cards: int = 0
+    contracts: int = 0
+    spies: int = 0
+    influence_faction: Faction | None = None
+    influence: int = 0
+
+    def __post_init__(self) -> None:
+        quantities = (
+            self.solari,
+            self.water,
+            self.troops,
+            self.personal_cards,
+            self.contracts,
+            self.spies,
+            self.influence,
+        )
+        if min(quantities) < 0:
+            raise ValueError("Contract rewards must not be negative")
+        if not any(quantities):
+            raise ValueError("a Contract reward must grant something")
+        if (self.influence_faction is None) != (self.influence == 0):
+            raise ValueError("Contract Influence requires both a Faction and amount")
 
 
 @dataclass(frozen=True, slots=True)
@@ -11,7 +75,14 @@ class ContractDefinition:
     """One unique standard Contract tile."""
 
     card: CardDefinition
-    completes_immediately: bool = False
+    condition: ContractCondition
+    reward: ContractReward
+
+    @property
+    def completes_immediately(self) -> bool:
+        """Return whether taking this Contract completes it immediately."""
+
+        return self.condition.kind is ContractConditionKind.IMMEDIATE
 
 
 CONTRACT_SOURCES: Final = (SourceRef(SourceDocument.MAIN_RULEBOOK, (16,)),)
@@ -22,7 +93,8 @@ def _contract(
     slug: str,
     name: str,
     *,
-    completes_immediately: bool = False,
+    condition: ContractCondition,
+    reward: ContractReward,
 ) -> ContractDefinition:
     return ContractDefinition(
         card=CardDefinition(
@@ -33,31 +105,204 @@ def _contract(
                 f"https://dunecardshub.com/cards/{catalog_id}/uprising-{slug}"
             ),
         ),
-        completes_immediately=completes_immediately,
+        condition=condition,
+        reward=reward,
     )
 
 
 CONTRACTS: Final = (
-    _contract(517, "acquire", "Acquire"),
-    _contract(512, "arrakeen-i", "Arrakeen I"),
-    _contract(511, "arrakeen-ii", "Arrakeen II"),
-    _contract(518, "deliver-supplies", "Deliver Supplies"),
-    _contract(506, "espionage-i", "Espionage I"),
-    _contract(496, "espionage-ii", "Espionage II"),
-    _contract(508, "harvest-3", "Harvest 3+"),
-    _contract(493, "harvest-3-contract", "Harvest 3+"),
-    _contract(507, "harvest-4", "Harvest 4+"),
-    _contract(500, "harvest-4-contract", "Harvest 4+"),
-    _contract(505, "heighliner-i", "Heighliner I"),
-    _contract(504, "heighliner-ii", "Heighliner II"),
-    _contract(494, "heighliner-iii", "Heighliner III"),
-    _contract(516, "high-council-i", "High Council I"),
-    _contract(515, "high-council-ii", "High Council II"),
-    _contract(497, "high-council-iii", "High Council III"),
-    _contract(501, "immediate", "Immediate", completes_immediately=True),
-    _contract(510, "research-station-i", "Research Station I"),
-    _contract(509, "research-station-ii", "Research Station II"),
-    _contract(503, "sardaukar-i", "Sardaukar I"),
+    _contract(
+        517,
+        "acquire",
+        "Acquire",
+        condition=ContractCondition(
+            ContractConditionKind.ACQUIRE_CARD,
+            target="the_spice_must_flow",
+        ),
+        reward=ContractReward(
+            solari=3,
+            influence_faction=Faction.SPACING_GUILD,
+            influence=1,
+        ),
+    ),
+    _contract(
+        512,
+        "arrakeen-i",
+        "Arrakeen I",
+        condition=ContractCondition(
+            ContractConditionKind.BOARD_SPACE,
+            target="arrakeen",
+        ),
+        reward=ContractReward(water=1),
+    ),
+    _contract(
+        511,
+        "arrakeen-ii",
+        "Arrakeen II",
+        condition=ContractCondition(
+            ContractConditionKind.BOARD_SPACE,
+            target="arrakeen",
+        ),
+        reward=ContractReward(troops=1, spies=1),
+    ),
+    _contract(
+        518,
+        "deliver-supplies",
+        "Deliver Supplies",
+        condition=ContractCondition(
+            ContractConditionKind.BOARD_SPACE,
+            target="deliver_supplies",
+        ),
+        reward=ContractReward(solari=3),
+    ),
+    _contract(
+        506,
+        "espionage-i",
+        "Espionage I",
+        condition=ContractCondition(
+            ContractConditionKind.BOARD_SPACE,
+            target="espionage",
+        ),
+        reward=ContractReward(solari=3),
+    ),
+    _contract(
+        496,
+        "espionage-ii",
+        "Espionage II",
+        condition=ContractCondition(
+            ContractConditionKind.BOARD_SPACE,
+            target="espionage",
+        ),
+        reward=ContractReward(solari=1, contracts=1),
+    ),
+    _contract(
+        508,
+        "harvest-3",
+        "Harvest 3+",
+        condition=ContractCondition(ContractConditionKind.HARVEST_SPICE, amount=3),
+        reward=ContractReward(solari=3),
+    ),
+    _contract(
+        493,
+        "harvest-3-contract",
+        "Harvest 3+",
+        condition=ContractCondition(ContractConditionKind.HARVEST_SPICE, amount=3),
+        reward=ContractReward(contracts=1),
+    ),
+    _contract(
+        507,
+        "harvest-4",
+        "Harvest 4+",
+        condition=ContractCondition(ContractConditionKind.HARVEST_SPICE, amount=4),
+        reward=ContractReward(solari=4),
+    ),
+    _contract(
+        500,
+        "harvest-4-contract",
+        "Harvest 4+",
+        condition=ContractCondition(ContractConditionKind.HARVEST_SPICE, amount=4),
+        reward=ContractReward(solari=2, contracts=1),
+    ),
+    _contract(
+        505,
+        "heighliner-i",
+        "Heighliner I",
+        condition=ContractCondition(
+            ContractConditionKind.BOARD_SPACE,
+            target="heighliner",
+        ),
+        reward=ContractReward(water=2),
+    ),
+    _contract(
+        504,
+        "heighliner-ii",
+        "Heighliner II",
+        condition=ContractCondition(
+            ContractConditionKind.BOARD_SPACE,
+            target="heighliner",
+        ),
+        reward=ContractReward(troops=2),
+    ),
+    _contract(
+        494,
+        "heighliner-iii",
+        "Heighliner III",
+        condition=ContractCondition(
+            ContractConditionKind.BOARD_SPACE,
+            target="heighliner",
+        ),
+        reward=ContractReward(solari=3, contracts=1),
+    ),
+    _contract(
+        516,
+        "high-council-i",
+        "High Council I",
+        condition=ContractCondition(
+            ContractConditionKind.BOARD_SPACE,
+            target="high_council",
+        ),
+        reward=ContractReward(
+            influence_faction=Faction.BENE_GESSERIT,
+            influence=1,
+        ),
+    ),
+    _contract(
+        515,
+        "high-council-ii",
+        "High Council II",
+        condition=ContractCondition(
+            ContractConditionKind.BOARD_SPACE,
+            target="high_council",
+        ),
+        reward=ContractReward(solari=3),
+    ),
+    _contract(
+        497,
+        "high-council-iii",
+        "High Council III",
+        condition=ContractCondition(
+            ContractConditionKind.BOARD_SPACE,
+            target="high_council",
+        ),
+        reward=ContractReward(contracts=1),
+    ),
+    _contract(
+        501,
+        "immediate",
+        "Immediate",
+        condition=ContractCondition(ContractConditionKind.IMMEDIATE),
+        reward=ContractReward(solari=2),
+    ),
+    _contract(
+        510,
+        "research-station-i",
+        "Research Station I",
+        condition=ContractCondition(
+            ContractConditionKind.BOARD_SPACE,
+            target="research_station",
+        ),
+        reward=ContractReward(solari=2, spies=1),
+    ),
+    _contract(
+        509,
+        "research-station-ii",
+        "Research Station II",
+        condition=ContractCondition(
+            ContractConditionKind.BOARD_SPACE,
+            target="research_station",
+        ),
+        reward=ContractReward(solari=3),
+    ),
+    _contract(
+        503,
+        "sardaukar-i",
+        "Sardaukar I",
+        condition=ContractCondition(
+            ContractConditionKind.BOARD_SPACE,
+            target="sardaukar",
+        ),
+        reward=ContractReward(personal_cards=2),
+    ),
 )
 
 CONTRACTS_BY_ID: Final = {contract.card.card_id: contract for contract in CONTRACTS}

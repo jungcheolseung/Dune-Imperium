@@ -2,12 +2,282 @@
 
 from dataclasses import replace
 
-from dune_imperium.content.uprising.contracts import contract_for_instance
+from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID
+from dune_imperium.content.uprising.contracts import (
+    ContractConditionKind,
+    ContractDefinition,
+    contract_for_instance,
+)
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
+from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
+from dune_imperium.rules.card_draw import draw_or_request_personal_cards
+from dune_imperium.rules.effects import (
+    advance_after_effect,
+    current_agent_effect_context,
+    eligible_agent_contract_ids,
+    pending_agent_contract_ids,
+    recruit_troops,
+)
+from dune_imperium.rules.influence import gain_faction_influence
+from dune_imperium.rules.spy_placement import (
+    empty_observation_post_ids,
+    place_spy,
+    recall_spy,
+)
+
+
+def contract_candidates_for_agent_turn(
+    state: GameState,
+    player: int,
+    space_id: str,
+) -> tuple[str, ...]:
+    """Snapshot Contracts held when an Agent enters a matching space."""
+
+    if not state.config.choam_module:
+        return ()
+    if not 0 <= player < state.config.players:
+        raise ValueError("Contract owner must identify a configured player")
+    space = BOARD_SPACES_BY_ID[space_id]
+    candidates: list[str] = []
+    for instance_id in state.players[player].active_contract_ids:
+        condition = contract_for_instance(instance_id).condition
+        if (
+            condition.kind is ContractConditionKind.BOARD_SPACE
+            and condition.target == space_id
+        ) or (
+            condition.kind is ContractConditionKind.HARVEST_SPICE
+            and space.maker
+        ):
+            candidates.append(instance_id)
+    return tuple(candidates)
+
+
+def legal_contract_completion_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return mandatory Agent-turn Contract completions now available."""
+
+    if not state.config.choam_module or not 0 <= player < state.config.players:
+        return ()
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return ()
+    if (
+        not isinstance(frame.decision, PlayerDecision)
+        or frame.decision.owner != player
+        or context.get("pending_gather_intelligence") is True
+    ):
+        return ()
+    return tuple(
+        DomainAction(
+            action_id="complete_contract",
+            actor=player,
+            arguments=(("instance_id", instance_id),),
+        )
+        for instance_id in eligible_agent_contract_ids(context, state.players)
+    )
+
+
+def apply_contract_completion(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Complete one eligible Contract and resolve its printed reward."""
+
+    if action not in legal_contract_completion_actions(state, action.actor):
+        raise ValueError("action is not a legal Contract completion")
+    instance_id = dict(action.arguments).get("instance_id")
+    if not isinstance(instance_id, str):
+        raise RuntimeError("Contract completion has invalid instance ID")
+    _, context = current_agent_effect_context(state)
+    remaining = tuple(
+        candidate
+        for candidate in pending_agent_contract_ids(context)
+        if candidate != instance_id
+    )
+    context["pending_contract_ids"] = ",".join(remaining)
+    source = (
+        f"round:{state.round_number}:player:{action.actor}:"
+        f"contract:{instance_id}"
+    )
+    garrison_before = state.players[action.actor].troops_garrison
+    completed = _complete_contract_without_choices(
+        state,
+        action.actor,
+        instance_id,
+        source=source,
+    )
+    recruited = completed.state.players[action.actor].troops_garrison - garrison_before
+    if recruited:
+        previous = context.get("troops_recruited")
+        if isinstance(previous, bool) or not isinstance(previous, int):
+            raise RuntimeError("Agent-turn effect frame has invalid recruit count")
+        context["troops_recruited"] = previous + recruited
+    next_state = advance_after_effect(
+        completed.state,
+        context,
+        completed.state.players,
+    )
+    definition = contract_for_instance(instance_id)
+    follow_up = _begin_contract_reward_choice(
+        next_state,
+        action.actor,
+        definition,
+        source=source,
+    )
+    return RuleResult(
+        state=follow_up.state,
+        events=(*completed.events, *follow_up.events),
+    )
+
+
+def complete_acquire_contracts(
+    state: GameState,
+    player: int,
+    acquired_card_id: str,
+    *,
+    source: str,
+) -> RuleResult:
+    """Complete Contracts triggered by acquiring a named card."""
+
+    if not state.config.choam_module:
+        return RuleResult(state=state)
+    if not 0 <= player < state.config.players:
+        raise ValueError("Contract owner must identify a configured player")
+    if not acquired_card_id or not source:
+        raise ValueError("Acquire Contract trigger requires card and source IDs")
+    matching = tuple(
+        instance_id
+        for instance_id in state.players[player].active_contract_ids
+        if (
+            (condition := contract_for_instance(instance_id).condition).kind
+            is ContractConditionKind.ACQUIRE_CARD
+            and condition.target == acquired_card_id
+        )
+    )
+    next_state = state
+    events: tuple[GameEvent, ...] = ()
+    for instance_id in matching:
+        completed = _complete_contract_without_choices(
+            next_state,
+            player,
+            instance_id,
+            source=f"{source}:contract:{instance_id}",
+        )
+        definition = contract_for_instance(instance_id)
+        if any(
+            (
+                definition.reward.personal_cards,
+                definition.reward.contracts,
+                definition.reward.spies,
+            )
+        ):
+            raise NotImplementedError(
+                "Acquire Contracts with choice rewards require an explicit frame"
+            )
+        next_state = completed.state
+        events = (*events, *completed.events)
+    return RuleResult(state=next_state, events=events)
+
+
+def legal_contract_spy_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return recall-or-place choices for a Contract Spy reward."""
+
+    if not 0 <= player < state.config.players or not state.decision_stack:
+        return ()
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    if (
+        not isinstance(frame.decision, PlayerDecision)
+        or frame.decision.owner != player
+        or "contract_spy_id" not in context
+    ):
+        return ()
+    owner = state.players[player]
+    if context.get("contract_spy_recalled") is True or owner.spies_supply > 0:
+        return tuple(
+            DomainAction(
+                action_id="place_contract_spy",
+                actor=player,
+                arguments=(("post_id", post_id),),
+            )
+            for post_id in empty_observation_post_ids(state)
+        )
+    return tuple(
+        DomainAction(
+            action_id="recall_spy_for_contract",
+            actor=player,
+            arguments=(("post_id", post_id),),
+        )
+        for post_id in owner.spy_post_ids
+    )
+
+
+def apply_contract_spy_action(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Recall if necessary, then place a Spy granted by a Contract."""
+
+    if action not in legal_contract_spy_actions(state, action.actor):
+        raise ValueError("action is not a legal Contract Spy choice")
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    instance_id = context.get("contract_spy_id")
+    source = context.get("source")
+    post_id = dict(action.arguments).get("post_id")
+    if (
+        not isinstance(instance_id, str)
+        or not isinstance(source, str)
+        or not isinstance(post_id, str)
+    ):
+        raise RuntimeError("Contract Spy frame has invalid context")
+    owner = state.players[action.actor]
+    if action.action_id == "recall_spy_for_contract":
+        next_owner = recall_spy(owner, post_id)
+        context["contract_spy_recalled"] = True
+        next_frame = replace(frame, context=tuple(sorted(context.items())))
+        next_state = replace(
+            state,
+            players=_replace_player(state.players, next_owner),
+            decision_stack=(*state.decision_stack[:-1], next_frame),
+        )
+        event = GameEvent(
+            event_id=f"{source}:spy_recalled:{post_id}",
+            kind="spy_recalled",
+            payload=(
+                ("player", action.actor),
+                ("post_id", post_id),
+                ("source", instance_id),
+            ),
+        )
+        return RuleResult(state=next_state, events=(event,))
+
+    next_owner = place_spy(owner, post_id)
+    next_state = replace(
+        state,
+        players=_replace_player(state.players, next_owner),
+        decision_stack=state.decision_stack[:-1],
+    )
+    event = GameEvent(
+        event_id=f"{source}:spy_placed:{post_id}",
+        kind="spy_placed",
+        payload=(
+            ("contract_id", instance_id),
+            ("player", action.actor),
+            ("post_id", post_id),
+        ),
+    )
+    return RuleResult(state=next_state, events=(event,))
 
 
 def contract_choice_frame(
@@ -114,11 +384,25 @@ def apply_contract_action(state: GameState, action: DomainAction) -> RuleResult:
     definition = contract_for_instance(instance_value)
     owner = state.players[action.actor]
     if definition.completes_immediately:
+        reward = definition.reward
+        if any(
+            (
+                reward.water,
+                reward.troops,
+                reward.personal_cards,
+                reward.contracts,
+                reward.spies,
+                reward.influence,
+            )
+        ):
+            raise NotImplementedError(
+                "Immediate Contracts with non-Solari rewards are not implemented"
+            )
         next_owner = replace(
             owner,
             resources=replace(
                 owner.resources,
-                solari=owner.resources.solari + 2,
+                solari=owner.resources.solari + reward.solari,
             ),
             completed_contract_ids=(
                 *owner.completed_contract_ids,
@@ -185,7 +469,7 @@ def apply_contract_action(state: GameState, action: DomainAction) -> RuleResult:
                 payload=(
                     ("contract_id", instance_value),
                     ("player", action.actor),
-                    ("solari", 2),
+                    ("solari", definition.reward.solari),
                 ),
             )
         )
@@ -265,3 +549,129 @@ def _gain_exhausted_market_solari(
         ),
     )
     return RuleResult(state=next_state, events=(event,))
+
+
+def _complete_contract_without_choices(
+    state: GameState,
+    player: int,
+    instance_id: str,
+    *,
+    source: str,
+) -> RuleResult:
+    definition = contract_for_instance(instance_id)
+    owner = state.players[player]
+    if instance_id not in owner.active_contract_ids:
+        raise ValueError("completed Contract must be active")
+    reward = definition.reward
+    next_owner, recruited = recruit_troops(owner, reward.troops)
+    next_owner = replace(
+        next_owner,
+        resources=replace(
+            next_owner.resources,
+            solari=next_owner.resources.solari + reward.solari,
+            water=next_owner.resources.water + reward.water,
+        ),
+        active_contract_ids=tuple(
+            candidate
+            for candidate in next_owner.active_contract_ids
+            if candidate != instance_id
+        ),
+        completed_contract_ids=(
+            *next_owner.completed_contract_ids,
+            instance_id,
+        ),
+    )
+    next_state = replace(
+        state,
+        players=_replace_player(state.players, next_owner),
+    )
+    influence_events: tuple[GameEvent, ...] = ()
+    if reward.influence_faction is not None:
+        gained = gain_faction_influence(
+            next_state,
+            player,
+            reward.influence_faction,
+            reward.influence,
+            event_prefix=f"{source}:reward:{reward.influence_faction.value}",
+        )
+        next_state = gained.state
+        influence_events = gained.events
+    event = GameEvent(
+        event_id=f"{source}:completed",
+        kind="contract_completed",
+        payload=(
+            ("contract_id", instance_id),
+            ("contracts", reward.contracts),
+            ("influence", reward.influence),
+            (
+                "influence_faction",
+                ""
+                if reward.influence_faction is None
+                else reward.influence_faction.value,
+            ),
+            ("personal_cards", reward.personal_cards),
+            ("player", player),
+            ("solari", reward.solari),
+            ("spies", reward.spies),
+            ("troops", recruited),
+            ("water", reward.water),
+        ),
+    )
+    return RuleResult(state=next_state, events=(event, *influence_events))
+
+
+def _begin_contract_reward_choice(
+    state: GameState,
+    player: int,
+    definition: ContractDefinition,
+    *,
+    source: str,
+) -> RuleResult:
+    reward = definition.reward
+    choice_count = sum(
+        bool(value)
+        for value in (reward.personal_cards, reward.contracts, reward.spies)
+    )
+    if choice_count > 1:
+        raise NotImplementedError(
+            "Contract rewards with multiple serial choices are not implemented"
+        )
+    if reward.personal_cards:
+        return draw_or_request_personal_cards(
+            state,
+            player,
+            reward.personal_cards,
+            source=f"{source}:reward:personal_draw",
+        )
+    if reward.contracts:
+        return begin_contract_gain(
+            state,
+            player,
+            reward.contracts,
+            source=f"{source}:reward",
+        )
+    if reward.spies:
+        frame = DecisionFrame(
+            frame_id=f"{source}:reward:spy",
+            decision=PlayerDecision(
+                owner=player,
+                prompt="Choose an Observation Post for the Contract Spy",
+            ),
+            context=(
+                ("contract_spy_id", f"contract:{definition.card.card_id}"),
+                ("source", source),
+                ("turn_owner", player),
+            ),
+        )
+        return RuleResult(state=state.push_decision(frame))
+    return RuleResult(state=state)
+
+
+def _replace_player(
+    players: tuple[PlayerState, ...],
+    owner: PlayerState,
+) -> tuple[PlayerState, ...]:
+    return tuple(
+        owner if candidate.player_id == owner.player_id else candidate
+        for candidate in players
+    )

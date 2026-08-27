@@ -1003,6 +1003,10 @@ def apply_agent_card_intrigue_payment(
     if not isinstance(intrigue_card_id, str):
         raise RuntimeError("Agent-card Intrigue payment has invalid card ID")
     owner = state.players[action.actor]
+    previous_spent = context.get("spice_spent_after_placement", 0)
+    if isinstance(previous_spent, bool) or not isinstance(previous_spent, int):
+        raise RuntimeError("Agent-turn effect frame has invalid Spice spending")
+    context["spice_spent_after_placement"] = previous_spent + 2
     next_owner = replace(
         owner,
         resources=replace(
@@ -1269,6 +1273,11 @@ def apply_agent_card_payment(state: GameState, action: DomainAction) -> RuleResu
     )
     resource = "water" if pays_water else "spice"
     spent = 2 if pays_water else 4
+    if not pays_water:
+        previous_spent = context.get("spice_spent_after_placement", 0)
+        if isinstance(previous_spent, bool) or not isinstance(previous_spent, int):
+            raise RuntimeError("Agent-turn effect frame has invalid Spice spending")
+        context["spice_spent_after_placement"] = previous_spent + spent
     next_owner = replace(
         owner,
         resources=replace(

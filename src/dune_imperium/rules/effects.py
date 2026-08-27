@@ -2,6 +2,10 @@
 
 from dataclasses import dataclass, replace
 
+from dune_imperium.content.uprising.contracts import (
+    ContractConditionKind,
+    contract_for_instance,
+)
 from dune_imperium.core.actions import ActionValue
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.player import PlayerState
@@ -116,7 +120,7 @@ def advance_after_effect(
     owner = context["turn_owner"]
     if isinstance(owner, bool) or not isinstance(owner, int):
         raise RuntimeError("Agent-turn effect frame has invalid owner")
-    pending = (
+    regular_pending = (
         context.get("pending_gather_intelligence", False),
         context["pending_agent_effect"],
         context["pending_board_effect"],
@@ -124,7 +128,8 @@ def advance_after_effect(
         context["pending_faction_influence"],
     )
     next_players = state.players if players is None else players
-    if any(value is True for value in pending):
+    contracts_pending = bool(eligible_agent_contract_ids(context, next_players))
+    if any(value is True for value in regular_pending) or contracts_pending:
         frame = state.decision_stack[-1]
         next_frame = replace(frame, context=tuple(sorted(context.items())))
     else:
@@ -142,6 +147,55 @@ def advance_after_effect(
         players=next_players,
         decision_stack=(*state.decision_stack[:-1], next_frame),
     )
+
+
+def pending_agent_contract_ids(
+    context: dict[str, ActionValue],
+) -> tuple[str, ...]:
+    """Decode the Agent-frame snapshot of Contracts held at placement time."""
+
+    value = context.get("pending_contract_ids", "")
+    if not isinstance(value, str):
+        raise RuntimeError("Agent-turn effect frame has invalid Contract IDs")
+    return tuple(instance_id for instance_id in value.split(",") if instance_id)
+
+
+def eligible_agent_contract_ids(
+    context: dict[str, ActionValue],
+    players: tuple[PlayerState, ...],
+) -> tuple[str, ...]:
+    """Return snapshot Contracts whose completion condition is now satisfied."""
+
+    owner_value = context.get("turn_owner")
+    if isinstance(owner_value, bool) or not isinstance(owner_value, int):
+        raise RuntimeError("Agent-turn effect frame has invalid owner")
+    if not 0 <= owner_value < len(players):
+        raise RuntimeError("Agent-turn effect frame owner is outside player state")
+    owner = players[owner_value]
+    spice_at_placement = context.get("spice_at_placement", owner.resources.spice)
+    spice_spent = context.get("spice_spent_after_placement", 0)
+    if (
+        isinstance(spice_at_placement, bool)
+        or not isinstance(spice_at_placement, int)
+        or isinstance(spice_spent, bool)
+        or not isinstance(spice_spent, int)
+        or spice_at_placement < 0
+        or spice_spent < 0
+    ):
+        raise RuntimeError("Agent-turn effect frame has invalid Spice tracking")
+    spice_gained = owner.resources.spice - spice_at_placement + spice_spent
+
+    eligible: list[str] = []
+    for instance_id in pending_agent_contract_ids(context):
+        if instance_id not in owner.active_contract_ids:
+            continue
+        condition = contract_for_instance(instance_id).condition
+        if condition.kind is ContractConditionKind.BOARD_SPACE or (
+            condition.kind is ContractConditionKind.HARVEST_SPICE
+            and spice_gained >= condition.amount
+        ):
+            eligible.append(instance_id)
+    return tuple(eligible)
 
 
 def _next_unrevealed_player(state: GameState, owner: int) -> int:
