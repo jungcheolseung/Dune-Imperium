@@ -36,6 +36,10 @@ from dune_imperium.rules.combat import (
     rank_combat,
     resolve_combat_rewards,
 )
+from dune_imperium.rules.contracts import (
+    apply_contract_action,
+    legal_contract_actions,
+)
 
 
 def _players(
@@ -284,9 +288,7 @@ def _reward_state(
 
 
 def test_desert_mouse_rewards_apply_by_rank() -> None:
-    result = resolve_combat_rewards(
-        _reward_state("skirmish_desert_mouse")
-    )
+    result = resolve_combat_rewards(_reward_state("skirmish_desert_mouse"))
 
     assert tuple(player.resources.solari for player in result.state.players) == (
         2,
@@ -299,9 +301,7 @@ def test_desert_mouse_rewards_apply_by_rank() -> None:
 
 
 def test_ornithopter_rewards_draw_intrigue_in_rank_order() -> None:
-    result = resolve_combat_rewards(
-        _reward_state("skirmish_ornithopter")
-    )
+    result = resolve_combat_rewards(_reward_state("skirmish_ornithopter"))
 
     assert result.state.players[0].intrigue_cards == ("intrigue:0",)
     assert result.state.players[1].intrigue_cards == ("intrigue:1",)
@@ -376,9 +376,7 @@ def test_combat_rewards_require_completed_intrigue_and_only_resolve_once() -> No
     state = _reward_state("skirmish_desert_mouse")
 
     with pytest.raises(ValueError, match="Intrigue must finish"):
-        resolve_combat_rewards(
-            replace(state, combat_intrigue_complete=False)
-        )
+        resolve_combat_rewards(replace(state, combat_intrigue_complete=False))
 
     resolved = resolve_combat_rewards(state).state
     with pytest.raises(ValueError, match="already resolved"):
@@ -402,14 +400,17 @@ def test_propaganda_requires_two_distinct_factions() -> None:
     }
     state = apply_distinct_combat_reward_influence(state, second_actions[0]).state
     assert state.players[0].influence.emperor == 1
-    assert sum(
-        (
-            state.players[0].influence.emperor,
-            state.players[0].influence.spacing_guild,
-            state.players[0].influence.bene_gesserit,
-            state.players[0].influence.fremen,
+    assert (
+        sum(
+            (
+                state.players[0].influence.emperor,
+                state.players[0].influence.spacing_guild,
+                state.players[0].influence.bene_gesserit,
+                state.players[0].influence.fremen,
+            )
         )
-    ) == 2
+        == 2
+    )
     assert state.combat_rewards_resolved is True
 
 
@@ -519,9 +520,7 @@ def test_conflict_spy_reward_lists_empty_observation_posts() -> None:
     }
     placed = apply_combat_reward_spy(rewarded, actions[0]).state
     assert placed.players[0].spies_supply == 2
-    assert placed.players[0].spy_post_ids == (
-        dict(actions[0].arguments)["post_id"],
-    )
+    assert placed.players[0].spy_post_ids == (dict(actions[0].arguments)["post_id"],)
     assert placed.players[0].resources.spice == 2
     assert placed.players[0].control_space_ids == ("spice_refinery",)
     assert placed.combat_rewards_resolved is True
@@ -544,12 +543,29 @@ def test_sandworm_repeats_spy_placement_but_not_control() -> None:
     assert state.combat_rewards_resolved is True
 
 
-def test_choam_contract_selection_remains_deferred() -> None:
+def test_choam_conflict_reward_opens_and_resolves_contract_selection() -> None:
     state = _reward_state("choam_security")
-    state = replace(state, config=RulesetConfig(choam_module=True))
+    state = replace(
+        state,
+        config=RulesetConfig(choam_module=True),
+        contract_bank=("contract:research_station_i",),
+        face_up_contract_ids=(
+            "contract:arrakeen_i",
+            "contract:high_council_ii",
+        ),
+    )
 
-    with pytest.raises(NotImplementedError, match="contract selection"):
-        resolve_combat_rewards(state)
+    rewarded = resolve_combat_rewards(state).state
+    actions = legal_contract_actions(rewarded, 0)
+    resolved = apply_contract_action(rewarded, actions[1]).state
+
+    assert len(actions) == 2
+    assert resolved.players[0].active_contract_ids == ("contract:high_council_ii",)
+    assert resolved.face_up_contract_ids == (
+        "contract:arrakeen_i",
+        "contract:research_station_i",
+    )
+    assert resolved.combat_rewards_resolved is True
 
 
 def test_spice_freighters_reward_can_be_paid_after_influence_choice() -> None:
@@ -582,9 +598,7 @@ def test_unaffordable_spice_freighters_reward_can_only_be_declined() -> None:
 
     actions = legal_combat_reward_optional_payment_actions(state, 0)
 
-    assert tuple(action.action_id for action in actions) == (
-        "decline_combat_reward",
-    )
+    assert tuple(action.action_id for action in actions) == ("decline_combat_reward",)
     declined = apply_combat_reward_optional_payment(state, actions[0])
     assert declined.state.players[0].victory_points == 1
     assert declined.state.combat_rewards_resolved is True
@@ -632,9 +646,7 @@ def test_trade_dispute_trashes_from_hand_discard_and_in_play() -> None:
         "trash_combat_reward_card",
         "trash_combat_reward_card",
     )
-    assert tuple(
-        dict(action.arguments)["card_id"] for action in first_actions[1:]
-    ) == (
+    assert tuple(dict(action.arguments)["card_id"] for action in first_actions[1:]) == (
         "p0:hand",
         "p0:discard",
         "p0:played",

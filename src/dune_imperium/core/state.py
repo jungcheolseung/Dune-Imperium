@@ -49,6 +49,8 @@ class GameState:
     intrigue_deck: tuple[str, ...] = ()
     intrigue_discard: tuple[str, ...] = ()
     intrigue_trash: tuple[str, ...] = ()
+    contract_bank: tuple[str, ...] = ()
+    face_up_contract_ids: tuple[str, ...] = ()
     reserve_stacks: tuple[tuple[str, int], ...] = ()
     shield_wall_present: bool = True
     maker_bonus_spice: tuple[tuple[str, int], ...] = (
@@ -82,6 +84,25 @@ class GameState:
             raise ValueError("players must be stored in seat order")
         if len(self.imperium_row) > 5:
             raise ValueError("Imperium Row cannot contain more than five cards")
+        if len(self.face_up_contract_ids) > 2:
+            raise ValueError("the Contract market cannot contain more than two tiles")
+
+        contracts = (
+            *self.contract_bank,
+            *self.face_up_contract_ids,
+            *(
+                contract_id
+                for player in self.players
+                for contract_id in (
+                    *player.active_contract_ids,
+                    *player.completed_contract_ids,
+                )
+            ),
+        )
+        if len(contracts) != len(set(contracts)):
+            raise ValueError("a Contract cannot occupy two zones")
+        if not self.config.choam_module and contracts:
+            raise ValueError("Contracts require the CHOAM Module")
 
         shared_cards = (
             *self.conflict_deck,

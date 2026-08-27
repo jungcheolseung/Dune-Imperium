@@ -6,6 +6,7 @@ import pytest
 
 from dune_imperium import RulesetConfig
 from dune_imperium.content.uprising.conflicts import CONFLICTS
+from dune_imperium.content.uprising.contracts import contract_instance_ids
 from dune_imperium.content.uprising.objectives import objectives_for_players
 from dune_imperium.content.uprising.types import ConflictTier
 from dune_imperium.core import ChanceReplayError, ChanceResolver, GamePhase, PlayerState
@@ -182,6 +183,29 @@ def test_complete_setup_repeats_from_seed_and_from_recorded_chance() -> None:
     )
 
     assert repeated == first
+    assert replace(replayed.state, seed=first.state.seed) == first.state
+    assert replayed.chance_outcomes == first.chance_outcomes
+
+
+def test_choam_setup_shuffles_twenty_contracts_and_exposes_two() -> None:
+    first = create_initial_state(
+        RulesetConfig(choam_module=True),
+        seed=55,
+        leader_ids=SELECTED_LEADERS,
+    )
+    replayed = create_initial_state(
+        RulesetConfig(choam_module=True),
+        seed=999,
+        leader_ids=SELECTED_LEADERS,
+        recorded_outcomes=first.chance_outcomes,
+    )
+
+    assert len(first.state.face_up_contract_ids) == 2
+    assert len(first.state.contract_bank) == 18
+    assert set((*first.state.face_up_contract_ids, *first.state.contract_bank)) == set(
+        contract_instance_ids()
+    )
+    assert len(first.chance_outcomes) == 11
     assert replace(replayed.state, seed=first.state.seed) == first.state
     assert replayed.chance_outcomes == first.chance_outcomes
 

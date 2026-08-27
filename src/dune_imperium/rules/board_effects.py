@@ -9,6 +9,7 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState, Resources
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
+from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effects import (
     AutomaticEffect,
     DrawImperiumCardsEffect,
@@ -68,6 +69,8 @@ def board_effects_for(
             return (GainResourcesEffect(solari=4),)
         case "accept_contract", 0 if not state.config.choam_module:
             return (DrawImperiumCardsEffect(1), GainResourcesEffect(solari=2))
+        case "accept_contract", 0:
+            return (DrawImperiumCardsEffect(1),)
         case _:
             raise NotImplementedError(
                 f"board effect is not implemented: {space_id} option {cost_option}"
@@ -155,12 +158,25 @@ def resolve_board_effect(state: GameState) -> RuleResult:
         )
         next_state = draw.state
         draw_events = draw.events
+    contract_events: tuple[GameEvent, ...] = ()
+    if space_id == "accept_contract" and state.config.choam_module:
+        contracts = begin_contract_gain(
+            next_state,
+            player,
+            1,
+            source=(f"round:{state.round_number}:player:{player}:board:{space_id}"),
+        )
+        next_state = contracts.state
+        contract_events = contracts.events
     event = GameEvent(
         event_id=f"round:{state.round_number}:player:{player}:board:{space_id}",
         kind="board_effect_resolved",
         payload=(("player", player), ("space_id", space_id)),
     )
-    return RuleResult(state=next_state, events=(*draw_events, event))
+    return RuleResult(
+        state=next_state,
+        events=(*draw_events, *contract_events, event),
+    )
 
 
 def legal_espionage_actions(

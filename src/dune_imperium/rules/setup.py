@@ -4,6 +4,7 @@ from dataclasses import dataclass, replace
 
 from dune_imperium.config import RulesetConfig
 from dune_imperium.content.uprising.conflicts import conflicts_by_tier
+from dune_imperium.content.uprising.contracts import contract_instance_ids
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
 from dune_imperium.content.uprising.leaders import leaders_for_choam
@@ -130,6 +131,17 @@ def objective_setup_decision() -> ChanceDecision:
     )
 
 
+def contract_setup_decision() -> ChanceDecision:
+    """Return the full shuffle for the 20 standard Contracts."""
+
+    contracts = contract_instance_ids()
+    return _shuffle_decision(
+        "setup:contracts",
+        "Shuffle the standard Contracts",
+        contracts,
+    )
+
+
 def assign_objectives(
     players: tuple[PlayerState, ...],
     outcome: ChanceOutcome,
@@ -223,6 +235,11 @@ def create_initial_state(
             intrigue_deck_instance_ids(config.choam_module),
         )
     ).values
+    contracts = (
+        resolver.resolve(contract_setup_decision()).values
+        if config.choam_module
+        else ()
+    )
     players = tuple(
         apply_starting_deck_shuffle(
             player,
@@ -245,6 +262,8 @@ def create_initial_state(
         imperium_deck=imperium[5:],
         imperium_row=imperium[:5],
         intrigue_deck=intrigue,
+        contract_bank=contracts[2:],
+        face_up_contract_ids=contracts[:2],
         reserve_stacks=tuple(
             (stack.card.card_id, stack.copies) for stack in RESERVE_STACKS
         ),
@@ -261,9 +280,7 @@ def _validate_leader_selection(
     if len(leader_ids) != len(set(leader_ids)):
         raise ValueError("selected Leaders must be unique physical cards")
 
-    available = {
-        leader.leader_id for leader in leaders_for_choam(config.choam_module)
-    }
+    available = {leader.leader_id for leader in leaders_for_choam(config.choam_module)}
     unavailable = tuple(
         leader_id for leader_id in leader_ids if leader_id not in available
     )

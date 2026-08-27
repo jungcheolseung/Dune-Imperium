@@ -9,6 +9,7 @@ from dune_imperium.content.uprising.board import (
     ObservationPost,
 )
 from dune_imperium.content.uprising.conflicts import CONFLICTS
+from dune_imperium.content.uprising.contracts import CONTRACTS
 from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS
 from dune_imperium.content.uprising.intrigue import INTRIGUE_CARDS
 from dune_imperium.content.uprising.leaders import LEADERS
@@ -20,6 +21,7 @@ __all__ = [
     "BOARD_SPACES",
     "BOARD_SPACES_BY_ID",
     "CONFLICTS",
+    "CONTRACTS",
     "IMPERIUM_CARDS",
     "INTRIGUE_CARDS",
     "LEADERS",

@@ -11,6 +11,11 @@ from dune_imperium.content.uprising.conflicts import (
     ConflictReward,
     conflicts_by_tier,
 )
+from dune_imperium.content.uprising.contracts import (
+    CONTRACTS,
+    contract_for_instance,
+    contract_instance_ids,
+)
 from dune_imperium.content.uprising.imperium import (
     IMPERIUM_CARDS,
     imperium_card_for_instance,
@@ -370,9 +375,7 @@ def test_imperium_manifest_matches_base_and_choam_counts() -> None:
     assert len(IMPERIUM_CARDS) == 54
     assert sum(entry.copies for entry in IMPERIUM_CARDS) == 69
     assert sum(entry.copies for entry in imperium_cards_for_choam(False)) == 65
-    assert {
-        entry.card.card_id for entry in IMPERIUM_CARDS if entry.choam_only
-    } == {
+    assert {entry.card.card_id for entry in IMPERIUM_CARDS if entry.choam_only} == {
         "cargo_runner",
         "delivery_agreement",
         "interstellar_trade",
@@ -385,19 +388,20 @@ def test_intrigue_manifest_matches_base_and_choam_counts() -> None:
     assert len(INTRIGUE_CARDS) == 39
     assert sum(entry.copies for entry in INTRIGUE_CARDS) == 44
     assert sum(entry.copies for entry in intrigue_cards_for_choam(False)) == 40
-    assert {
-        entry.card.card_id for entry in INTRIGUE_CARDS if entry.choam_only
-    } == {
+    assert {entry.card.card_id for entry in INTRIGUE_CARDS if entry.choam_only} == {
         "backed_by_choam",
         "choam_profits",
         "leverage",
         "reach_agreement",
     }
-    assert next(
-        entry.copies
-        for entry in INTRIGUE_CARDS
-        if entry.card.card_id == "special_mission"
-    ) == 2
+    assert (
+        next(
+            entry.copies
+            for entry in INTRIGUE_CARDS
+            if entry.card.card_id == "special_mission"
+        )
+        == 2
+    )
 
 
 def test_shared_deck_manifests_have_unique_ids_urls_and_instances() -> None:
@@ -413,6 +417,22 @@ def test_shared_deck_manifests_have_unique_ids_urls_and_instances() -> None:
         (intrigue_deck_instance_ids(True), 44),
     ):
         assert len(instance_ids) == len(set(instance_ids)) == expected
+
+
+def test_standard_contract_manifest_has_twenty_unique_physical_tiles() -> None:
+    instances = contract_instance_ids()
+
+    assert len(CONTRACTS) == len(instances) == len(set(instances)) == 20
+    assert len({contract.card.card_id for contract in CONTRACTS}) == 20
+    assert all(contract.card.catalog_url for contract in CONTRACTS)
+    assert {
+        contract.card.card_id
+        for contract in CONTRACTS
+        if contract.completes_immediately
+    } == {"immediate"}
+    assert contract_for_instance("contract:high_council_ii").card.name == (
+        "High Council II"
+    )
 
 
 def test_imperium_costs_cover_the_printed_range_and_resolve_instances() -> None:

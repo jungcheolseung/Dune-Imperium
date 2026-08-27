@@ -40,6 +40,8 @@ class PublicPlayerView:
     objective_ids: tuple[str, ...]
     won_conflict_ids: tuple[str, ...]
     face_down_battle_card_ids: tuple[str, ...]
+    active_contract_ids: tuple[str, ...]
+    completed_contract_count: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,6 +73,8 @@ class PlayerView:
     imperium_row: tuple[str, ...] = ()
     intrigue_discard: tuple[str, ...] = ()
     intrigue_trash: tuple[str, ...] = ()
+    contract_bank_size: int = 0
+    face_up_contract_ids: tuple[str, ...] = ()
     reserve_stacks: tuple[tuple[str, int], ...] = ()
     shield_wall_present: bool = True
     maker_bonus_spice: tuple[tuple[str, int], ...] = ()
@@ -108,6 +112,8 @@ def observe_state(state: GameState, player: int) -> PlayerView:
         imperium_row=state.imperium_row,
         intrigue_discard=state.intrigue_discard,
         intrigue_trash=state.intrigue_trash,
+        contract_bank_size=len(state.contract_bank),
+        face_up_contract_ids=state.face_up_contract_ids,
         reserve_stacks=state.reserve_stacks,
         shield_wall_present=state.shield_wall_present,
         maker_bonus_spice=state.maker_bonus_spice,
@@ -141,4 +147,6 @@ def _public_player_view(player: PlayerState) -> PublicPlayerView:
         objective_ids=player.objective_ids,
         won_conflict_ids=player.won_conflict_ids,
         face_down_battle_card_ids=player.face_down_battle_card_ids,
+        active_contract_ids=player.active_contract_ids,
+        completed_contract_count=len(player.completed_contract_ids),
     )

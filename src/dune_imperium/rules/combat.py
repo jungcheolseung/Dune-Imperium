@@ -14,6 +14,7 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState, Resources
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.card_trash import trash_personal_card
+from dune_imperium.rules.contracts import contract_choice_frame
 from dune_imperium.rules.influence import (
     MAX_INFLUENCE,
     gain_faction_influence,
@@ -56,9 +57,7 @@ class CombatRanking:
         if len(players) != len(set(players)):
             raise ValueError("a player cannot receive two Conflict reward rows")
         first = tuple(
-            reward.player
-            for reward in self.rewards
-            if reward.rank is RewardRank.FIRST
+            reward.player for reward in self.rewards if reward.rank is RewardRank.FIRST
         )
         if self.winner is None and first:
             raise ValueError("a first-place reward requires a winner")
@@ -293,6 +292,17 @@ def resolve_combat_rewards(state: GameState) -> RuleResult:
                     reward.control_space_id,
                 )
             )
+        if reward.contracts and state.config.choam_module:
+            frames_in_order.append(
+                contract_choice_frame(
+                    assignment.player,
+                    reward.contracts * amount,
+                    source=(
+                        f"round:{state.round_number}:combat_reward:"
+                        f"{assignment.player}:{assignment.rank.value}"
+                    ),
+                )
+            )
         for _ in range(amount):
             for _ in range(reward.choose_influence):
                 choice_owners.append(assignment.player)
@@ -376,9 +386,7 @@ def resolve_combat_rewards(state: GameState) -> RuleResult:
                     len(frames_in_order),
                 )
             )
-        events.append(
-            _combat_reward_event(state, assignment, reward)
-        )
+        events.append(_combat_reward_event(state, assignment, reward))
 
     _validate_influence_choices(tuple(players), tuple(choice_owners))
     frames = tuple(reversed(frames_in_order))
@@ -423,9 +431,7 @@ def apply_combat_reward_optional_payment(
 ) -> RuleResult:
     """Pay for or decline one optional Conflict reward."""
 
-    if action not in legal_combat_reward_optional_payment_actions(
-        state, action.actor
-    ):
+    if action not in legal_combat_reward_optional_payment_actions(state, action.actor):
         raise ValueError("action is not a legal optional Combat reward choice")
     frame = state.decision_stack[-1]
     context = dict(frame.context)
@@ -441,9 +447,7 @@ def apply_combat_reward_optional_payment(
         owner,
         resources=replace(
             owner.resources,
-            **{
-                resource: getattr(owner.resources, resource) - (cost if paid else 0)
-            },
+            **{resource: getattr(owner.resources, resource) - (cost if paid else 0)},
         ),
         victory_points=owner.victory_points + (victory_points if paid else 0),
     )
@@ -657,9 +661,7 @@ def legal_combat_reward_spy_actions(
         return ()
     if state.players[player].spies_supply == 0:
         return ()
-    occupied = {
-        post_id for owner in state.players for post_id in owner.spy_post_ids
-    }
+    occupied = {post_id for owner in state.players for post_id in owner.spy_post_ids}
     return tuple(
         DomainAction(
             action_id="place_combat_reward_spy",
@@ -810,9 +812,10 @@ def apply_distinct_combat_reward_influence(
     if remaining and _frame_context_int(remaining[-1], "group") == group:
         next_context = dict(remaining[-1].context)
         next_context["chosen_mask"] = chosen_mask | (1 << faction_index)
-        remaining = (*remaining[:-1], replace(
-            remaining[-1], context=tuple(sorted(next_context.items()))
-        ))
+        remaining = (
+            *remaining[:-1],
+            replace(remaining[-1], context=tuple(sorted(next_context.items()))),
+        )
     next_state = replace(
         gained.state,
         decision_stack=remaining,
@@ -950,9 +953,7 @@ def _matching_battle_card(player: PlayerState, conflict_id: str) -> str | None:
         if card_id not in player.face_down_battle_card_ids
     )
     matches = tuple(
-        card_id
-        for card_id in face_up
-        if _battle_icon_for(card_id) is battle_icon
+        card_id for card_id in face_up if _battle_icon_for(card_id) is battle_icon
     )
     if len(matches) > 1:
         raise NotImplementedError("choosing among matching battle icons is unresolved")
@@ -973,9 +974,7 @@ def _combat_reward_event(
     assignment: CombatReward,
     reward: ConflictReward,
 ) -> GameEvent:
-    contract_solari = (
-        0 if state.config.choam_module else reward.contracts * 2
-    )
+    contract_solari = 0 if state.config.choam_module else reward.contracts * 2
     return GameEvent(
         event_id=(
             f"round:{state.round_number}:combat_reward:{assignment.player}:"
@@ -1018,14 +1017,6 @@ def _validate_supported_rewards(
 ) -> None:
     for assignment in ranking.rewards:
         reward = rewards[assignment.rank - 1]
-        unsupported: list[str] = []
-        if reward.contracts and state.config.choam_module:
-            unsupported.append("CHOAM contract selection")
-        if unsupported:
-            raise NotImplementedError(
-                "Combat reward choices are not implemented: " + ", ".join(unsupported)
-            )
-
         if reward.choose_distinct_influence:
             influence = state.players[assignment.player].influence
             available = sum(
@@ -1041,6 +1032,7 @@ def _validate_supported_rewards(
                 raise NotImplementedError(
                     "Influence 4 bonuses and Alliances are not implemented"
                 )
+
 
 def _apply_control(
     players: tuple[PlayerState, ...],
@@ -1115,8 +1107,7 @@ def _optional_payment_frame(
         decision=PlayerDecision(
             owner=player,
             prompt=(
-                f"Pay {cost} {resource.title()} to gain "
-                f"{victory_points} Victory Point"
+                f"Pay {cost} {resource.title()} to gain {victory_points} Victory Point"
             ),
         ),
         context=(
@@ -1213,8 +1204,6 @@ def _spy_placement_frame(
     )
 
 
-
-
 def _positive_strength_groups(
     players: tuple[PlayerState, ...],
 ) -> tuple[tuple[int, ...], ...]:
@@ -1224,9 +1213,7 @@ def _positive_strength_groups(
     )
     return tuple(
         tuple(
-            player.player_id
-            for player in players
-            if player.combat_strength == strength
+            player.player_id for player in players if player.combat_strength == strength
         )
         for strength in strengths
     )

@@ -10,6 +10,7 @@ from dune_imperium.content.uprising.board import (
     Faction,
 )
 from dune_imperium.content.uprising.conflicts import CONFLICTS
+from dune_imperium.content.uprising.contracts import contract_instance_ids
 from dune_imperium.content.uprising.imperium import (
     IMPERIUM_CARDS,
     ImperiumCardEntry,
@@ -28,7 +29,7 @@ from dune_imperium.content.uprising.starting_cards import (
 from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
 from dune_imperium.core.actions import ActionValue, DomainAction
 
-ACTION_CODEC_VERSION = 55
+ACTION_CODEC_VERSION = 56
 MAX_DEPLOYMENT_COUNT = 12
 
 
@@ -182,6 +183,14 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         )
         for instance_id in imperium_instances
     )
+    if config.choam_module:
+        templates.extend(
+            ActionTemplate(
+                action_id="take_contract",
+                arguments=(("instance_id", instance_id),),
+            )
+            for instance_id in contract_instance_ids()
+        )
     templates.extend(
         ActionTemplate(
             action_id="pay_agent_card_intrigue_and_spice",
@@ -318,9 +327,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     )
     templates.extend(_trash_templates(config, "trash_agent_card"))
     templates.extend(_trash_templates(config, "select_long_live_fighters_draw"))
-    templates.extend(
-        _trash_templates(config, "select_long_live_fighters_discard")
-    )
+    templates.extend(_trash_templates(config, "select_long_live_fighters_discard"))
     templates.extend(_trash_templates(config, "discard_agent_card"))
     templates.extend(_trash_templates(config, "discard_opponent_card"))
     templates.extend(_trash_templates(config, "trash_reveal_card"))
@@ -338,9 +345,7 @@ def _agent_turn_templates() -> tuple[ActionTemplate, ...]:
         templates.extend(_agent_turn_templates_for_card("reserve", reserve_card))
     for imperium_card in IMPERIUM_CARDS:
         if imperium_card.play_data_complete:
-            templates.extend(
-                _agent_turn_templates_for_card("imperium", imperium_card)
-            )
+            templates.extend(_agent_turn_templates_for_card("imperium", imperium_card))
     return tuple(templates)
 
 

@@ -36,12 +36,15 @@ class Influence:
             < 0
         ):
             raise ValueError("influence must not be negative")
-        if max(
-            self.emperor,
-            self.spacing_guild,
-            self.bene_gesserit,
-            self.fremen,
-        ) > 6:
+        if (
+            max(
+                self.emperor,
+                self.spacing_guild,
+                self.bene_gesserit,
+                self.fremen,
+            )
+            > 6
+        ):
             raise ValueError("influence cannot exceed the top of its track")
 
 
@@ -78,6 +81,8 @@ class PlayerState:
     objective_ids: tuple[str, ...] = ()
     won_conflict_ids: tuple[str, ...] = ()
     face_down_battle_card_ids: tuple[str, ...] = ()
+    active_contract_ids: tuple[str, ...] = ()
+    completed_contract_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.player_id < 0:
@@ -123,6 +128,10 @@ class PlayerState:
             set(self.face_down_battle_card_ids)
         ):
             raise ValueError("a battle card cannot be face-down twice")
+
+        contracts = (*self.active_contract_ids, *self.completed_contract_ids)
+        if len(contracts) != len(set(contracts)):
+            raise ValueError("a Contract cannot be active and completed")
 
         imperium_cards = (
             *self.deck,

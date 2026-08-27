@@ -104,6 +104,42 @@ def test_each_player_receives_their_own_private_cards() -> None:
     assert all(not hasattr(player, "hand_size") for player in second.players)
 
 
+def test_contract_market_is_public_but_hidden_contract_identities_are_redacted() -> (
+    None
+):
+    state = _state()
+    players = list(state.players)
+    players[0] = replace(
+        players[0],
+        active_contract_ids=("contract:arrakeen_i",),
+        completed_contract_ids=("contract:immediate",),
+    )
+    players[1] = replace(
+        players[1],
+        completed_contract_ids=("contract:espionage_i",),
+    )
+    state = replace(
+        state,
+        config=RulesetConfig(choam_module=True),
+        players=tuple(players),
+        contract_bank=("contract:hidden_a", "contract:hidden_b"),
+        face_up_contract_ids=("contract:high_council_i",),
+    )
+
+    view = observe_state(state, 0)
+    reordered = replace(state, contract_bank=tuple(reversed(state.contract_bank)))
+
+    assert view.face_up_contract_ids == ("contract:high_council_i",)
+    assert view.contract_bank_size == 2
+    assert view.players[0].active_contract_ids == ("contract:arrakeen_i",)
+    assert view.players[0].completed_contract_count == 1
+    assert view.players[1].completed_contract_count == 1
+    assert view.private is not None
+    assert not hasattr(view.players[1], "completed_contract_ids")
+    assert not hasattr(view.private, "completed_contract_ids")
+    assert observe_state(reordered, 0) == view
+
+
 def test_observation_is_pure_and_rejects_invalid_seats() -> None:
     state = _state()
 

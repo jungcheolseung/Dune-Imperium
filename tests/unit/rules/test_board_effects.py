@@ -31,6 +31,7 @@ from dune_imperium.rules.board_effects import (
     legal_sietch_tabr_actions,
     resolve_board_effect,
 )
+from dune_imperium.rules.contracts import legal_contract_actions
 from dune_imperium.rules.effects import (
     DrawImperiumCardsEffect,
     DrawIntrigueCardsEffect,
@@ -95,6 +96,29 @@ def test_first_resource_board_effects_are_typed() -> None:
     assert board_effects_for(state, "spice_refinery", 1) == (
         GainResourcesEffect(solari=4),
     )
+
+
+def test_accept_contract_draws_and_opens_the_choam_market_choice() -> None:
+    state = _state("dune_the_desert_planet")
+    drawn = _instance("dagger")
+    owner = replace(state.players[0], deck=(drawn,))
+    state = replace(
+        state,
+        config=RulesetConfig(choam_module=True),
+        players=(owner, *state.players[1:]),
+        contract_bank=("contract:research_station_i",),
+        face_up_contract_ids=(
+            "contract:arrakeen_i",
+            "contract:high_council_ii",
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "accept_contract")).state
+
+    result = resolve_board_effect(placed)
+
+    assert result.state.players[0].hand == (drawn,)
+    assert len(legal_contract_actions(result.state, 0)) == 2
+    assert result.events[-1].kind == "board_effect_resolved"
 
 
 def test_dutiful_service_resolves_board_reward_and_keeps_faction_pending() -> None:

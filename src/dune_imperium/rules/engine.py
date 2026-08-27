@@ -86,6 +86,12 @@ from dune_imperium.rules.combat_deployment import (
     apply_combat_deployment,
     legal_combat_deployments,
 )
+from dune_imperium.rules.contracts import (
+    apply_contract_action,
+    exhausted_contract_choice_is_pending,
+    legal_contract_actions,
+    resolve_exhausted_contract_choice,
+)
 from dune_imperium.rules.effects import current_agent_effect_context
 from dune_imperium.rules.endgame import (
     apply_endgame_wild_action,
@@ -173,6 +179,10 @@ class UprisingRulesEngine(RulesEngine):
     ) -> tuple[DomainAction, ...]:
         """Return all currently supported actions for the decision owner."""
 
+        contract_actions = legal_contract_actions(state, player)
+        if contract_actions:
+            return contract_actions
+
         try:
             _, agent_context = current_agent_effect_context(state)
         except ValueError:
@@ -236,9 +246,7 @@ class UprisingRulesEngine(RulesEngine):
             "decline_control_defense": apply_control_defense_action,
             "decline_agent_card_payment": apply_agent_card_payment,
             "decline_corrinth_city_payment": apply_corrinth_city_payment,
-            "decline_agent_card_intrigue_payment": (
-                apply_agent_card_intrigue_payment
-            ),
+            "decline_agent_card_intrigue_payment": (apply_agent_card_intrigue_payment),
             "decline_agent_card_discard": apply_agent_card_discard,
             "decline_agent_card_acquisition": apply_agent_card_acquisition,
             "decline_agent_card_trash": apply_agent_card_trash,
@@ -249,6 +257,7 @@ class UprisingRulesEngine(RulesEngine):
             "decline_reveal_sandworm": apply_reveal_sandworm_action,
             "gain_five_reveal_solari": apply_corrinth_city_reveal,
             "take_high_council_from_reveal": apply_corrinth_city_reveal,
+            "take_contract": apply_contract_action,
             "deploy_control_defense": apply_control_defense_action,
             "agent_turn": apply_agent_action,
             "reveal_turn": begin_reveal_turn,
@@ -291,9 +300,7 @@ class UprisingRulesEngine(RulesEngine):
             "pay_agent_card_spice": apply_agent_card_payment,
             "pay_corrinth_city": apply_corrinth_city_payment,
             "select_corrinth_city_discard": apply_corrinth_city_payment,
-            "pay_agent_card_intrigue_and_spice": (
-                apply_agent_card_intrigue_payment
-            ),
+            "pay_agent_card_intrigue_and_spice": (apply_agent_card_intrigue_payment),
             "select_long_live_fighters_draw": apply_agent_card_long_live_action,
             "select_long_live_fighters_discard": apply_agent_card_long_live_action,
             "discard_agent_card": apply_agent_card_discard,
@@ -519,8 +526,12 @@ def _apply_decline_combat_reward(
 def _advance_automatic(result: RuleResult) -> RuleResult:
     state = result.state
     events: list[GameEvent] = list(result.events)
-    while not state.decision_stack:
-        if state.phase is GamePhase.COMBAT:
+    while True:
+        if exhausted_contract_choice_is_pending(state):
+            automatic = resolve_exhausted_contract_choice(state)
+        elif state.decision_stack:
+            break
+        elif state.phase is GamePhase.COMBAT:
             if not state.combat_intrigue_complete:
                 automatic = begin_combat_intrigue(state)
             elif not state.combat_rewards_resolved:

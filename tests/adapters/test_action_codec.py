@@ -11,10 +11,29 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     first = ActionCodec(RulesetConfig())
     second = ActionCodec(RulesetConfig())
 
-    assert ACTION_CODEC_VERSION == 55
+    assert ACTION_CODEC_VERSION == 56
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
     assert first.size == 3377
+
+
+def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
+    action = DomainAction(
+        action_id="take_contract",
+        actor=2,
+        arguments=(("instance_id", "contract:high_council_ii"),),
+    )
+    codec = ActionCodec(RulesetConfig(choam_module=True))
+
+    assert codec.decode(codec.encode(action), actor=2) == action
+    assert codec.size == 3445
+
+    try:
+        ActionCodec(RulesetConfig()).encode(action)
+    except ValueError as error:
+        assert "not present" in str(error)
+    else:
+        raise AssertionError("module-off codec accepted a Contract action")
 
 
 def test_corrinth_city_staged_payment_round_trips() -> None:
@@ -60,16 +79,12 @@ def test_long_live_the_fighters_choices_round_trip() -> None:
         DomainAction(
             action_id="select_long_live_fighters_draw",
             actor=0,
-            arguments=(
-                ("card_id", "player:0:starter:dagger:0"),
-            ),
+            arguments=(("card_id", "player:0:starter:dagger:0"),),
         ),
         DomainAction(
             action_id="select_long_live_fighters_discard",
             actor=2,
-            arguments=(
-                ("card_id", "imperium:sardaukar_soldier:0"),
-            ),
+            arguments=(("card_id", "imperium:sardaukar_soldier:0"),),
         ),
     )
 
