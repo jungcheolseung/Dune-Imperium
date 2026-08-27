@@ -118,6 +118,10 @@
   않는다. `[Main p. 11]` `[FAQ p. 1]`
 - 필요한 답: contract completion과 Gather Intelligence 중 어느 decision window가
   먼저인지에 대한 공식 판정.
+- 구현 convention: 공식 판정을 찾기 전에는 Main p. 11의 `immediately after`를
+  우선해 Gather Intelligence를 먼저 완료하고, 그 뒤 contract·board space·Agent
+  box 효과의 자유 순서 창을 연다. 이 순서는 공식 사실이 아니라 프로젝트 판정이며
+  contract 회귀 테스트로 고정한다.
 
 ## OQ-012 — 자유 순서 그룹 밖 의무 효과의 충돌
 
@@ -127,6 +131,11 @@
   동시에 적용되어 서로 충돌할 때의 일반 우선순위는 제시하지 않는다.
   `[Main p. 9]` `[FAQ pp. 1, 3]`
 - 필요한 답: 콘텐츠 전사 후 실제 충돌 사례별 공식 판정을 확인한다.
+- 현재 구현 convention: The Spice Must Flow를 acquire할 때 기존 카드의 acquire
+  trigger를 먼저 처리하고, 그 뒤 Acquire Contract를 완료한다. standard Acquire
+  Contract의 보상은 Spacing Guild Influence 1과 Solari 3뿐이지만, Influence
+  경계·Alliance 때문에 순서가 관측될 수 있으므로 공식 일반 판정이 나오면 다시
+  검토한다.
 
 ## OQ-013 — Clean Up 이동과 일반적인 `discard` 반응
 

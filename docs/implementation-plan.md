@@ -242,8 +242,8 @@ seeded random 4인 라운드를 실행하고 action replay로 최종 상태를 �
 
 상태: **완료** (2026-08-14, 현황 갱신 2026-08-28). 기본 룰셋은 versioned
 actor-neutral 정수 action catalog와 같은 폭의 legal action mask를 사용한다.
-현재 codec v56의 기본 룰셋은 3,377개 행동이며, CHOAM 룰셋은 contract 선택을
-포함해 3,445개 행동이다. `dune_imperium_uprising_v0` AEC 환경은
+현재 codec v57의 기본 룰셋은 3,377개 행동이며, CHOAM 룰셋은 contract 시장·완료·
+Spy 선택을 포함해 3,491개 행동이다. `dune_imperium_uprising_v0` AEC 환경은
 한 라운드를 episode로 실행하며 PettingZoo `api_test`와 `seed_test`를 통과한다.
 관측과 `info`에는 전체 `GameState`를 노출하지 않는다.
 
@@ -460,14 +460,14 @@ setup, First Player, battle icon 경로까지 연결돼 있다.
 
 ### M8. CHOAM 계약 모듈
 
-상태: **진행 중** (현황 갱신 2026-08-28). standard contract 20장의 identity와
-출처 URL을 전사하고, `choam_module=True` setup의 replayable shuffle·공개 2장·
-face-down bank 18장을 구현했다. Accept Contract와 Conflict reward의 contract
-icon은 같은 직렬 시장 선택을 사용하며 선택한 자리를 bank 맨 위 계약으로
-보충한다. bank만 비면 공개 시장이 줄고, 모든 계약이 소진되면 남은 icon마다
-2 Solari를 얻는다. Immediate는 가져오는 즉시 2 Solari를 받고 완료 기록으로
-이동한다. 다른 계약의 완료 조건과 보상은 아직 전사하지 않았다. codec v56은
-기본 룰셋 3,377개를 유지하고 CHOAM 룰셋에 20개 계약 선택을 포함해 3,445개다.
+상태: **진행 중** (현황 갱신 2026-08-28). standard contract 20장의 identity·
+조건·보상과 출처 URL을 전사하고, `choam_module=True` setup의 replayable shuffle·
+공개 2장·face-down bank 18장을 구현했다. 시장 take/refill·고갈과 Immediate뿐
+아니라 board-space 방문, Harvest의 turn Spice 합계, The Spice Must Flow acquire
+완료 trigger도 연결돼 있다. 같은 조건의 여러 contract는 모두 의무 완료하며,
+각 보상은 board·Agent 효과와 직렬 자유 순서로 처리한다. codec v57은 기본 룰셋
+3,377개를 유지하고 CHOAM 룰셋의 시장·완료·Spy 선택까지 3,491개다. 남은 M8
+범위는 Shaddam의 별도 Sardaukar contract와 CHOAM 전용 Imperium/Intrigue다.
 
 - 계약 deck/공개 시장, 계약 완료 조건, 완료 계약 기록을 구현한다.
 - Shaddam과 CHOAM 전용 Imperium/Intrigue 카드를 추가한다.

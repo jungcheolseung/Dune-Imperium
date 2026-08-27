@@ -137,6 +137,9 @@ Agent paths until its full local transcription and regression tests are ready.
 
 ### Recorded discrepancies
 
+- DIU records the standard Harvest 3+ Contract's reward as one Solari. The
+  linked printed tile clearly shows three Solari, so the local typed Contract
+  reward and regression test use three.
 - DIU gives Smuggler's Haven one Solari as its unconditional Reveal resource.
   The printed card instead gives one Persuasion, followed by two Spice only
   while spying on a Maker board space, so the local transcription follows the

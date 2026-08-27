@@ -25,13 +25,13 @@ uv run ruff check src tests
 uv run mypy src tests
 ```
 
-2026-08-28의 기준 결과는 pytest 547개 통과, Ruff 통과, mypy 통과다. 현재 action
-codec은 `ACTION_CODEC_VERSION = 56`이며 기본 룰셋 catalog는 3,377개, CHOAM
-룰셋 catalog는 3,445개다.
+2026-08-28의 기준 결과는 pytest 558개 통과, Ruff 통과, mypy 통과다. 현재 action
+codec은 `ACTION_CODEC_VERSION = 57`이며 기본 룰셋 catalog는 3,377개, CHOAM
+룰셋 catalog는 3,491개다.
 
 ## 현재 구현 기준선
 
-마지막 기능 커밋은 `61d5eda Implement CHOAM contract market`이다. 이 기능의
+마지막 기능 커밋은 `cfdc4dd Complete standard CHOAM contracts`다. 이 기능의
 규칙·로드맵 문서는 이 기준선에 반영했다.
 
 - R0-M4는 완료됐다. 공식 규칙 자료, 엔진 커널, 4인 setup, 한 라운드 수직 조각,
@@ -45,7 +45,12 @@ codec은 `ACTION_CODEC_VERSION = 56`이며 기본 룰셋 catalog는 3,377개, CH
 - CHOAM을 켜면 standard contract 20장을 replayable chance로 섞고 공개 시장
   2장과 face-down bank 18장을 만든다. Accept Contract와 Conflict reward가 같은
   take/refill 선택을 사용하고, 시장 고갈 시 icon마다 2 Solari로 전환한다.
-  Immediate는 즉시 2 Solari를 받고 completed zone으로 이동한다.
+  20장의 typed 조건·보상이 모두 구현돼 있으며 공간 방문, turn 중 Harvest Spice
+  총획득, The Spice Must Flow acquire로 완료한다. 같은 조건의 여러 장은 모두
+  의무 완료하고 보상·board·Agent 효과 순서는 플레이어가 정한다.
+- 공간 진입 시 보유 Contract를 snapshot하므로 같은 turn에 보상으로 새 Contract를
+  가져와도 소급 완료하지 않는다. Gather Intelligence가 먼저인 것은 OQ-011의
+  공식 답이 아니라 명시적으로 테스트한 프로젝트 convention이다.
 - 코어 상태 머신과 replay는 여러 라운드를 지원한다. 통합 테스트는 두 라운드 뒤
   세 번째 Round Start의 개인 덱 reshuffle까지 재생한다.
 - `run_random_round`, debug CLI, `dune_imperium_uprising_v0` PettingZoo adapter는
@@ -64,43 +69,39 @@ codec은 `ACTION_CODEC_VERSION = 56`이며 기본 룰셋 catalog는 3,377개, CH
 - Leader는 identity와 setup 선택만 있고 Signet Ring 및 Leader 능력은 없다.
 - Objective는 4인 setup, First Player, battle icon 경로가 구현됐지만 이후 콘텐츠
   상호작용은 다시 감사해야 한다.
-- Immediate 이외 contract의 완료 조건·인쇄 보상과 완료 trigger는 구현되지
-  않았다. 완료 Contract identity의 관측 정책은 OQ-010, Gather Intelligence와
-  완료 순서는 OQ-011 경계를 유지한다.
+- Shaddam Corrino IV의 set-aside Sardaukar Contract 경로는 Leader 능력과 함께
+  남아 있다. 완료 Contract identity의 관측 정책은 OQ-010, Gather Intelligence와
+  완료 순서의 공식 답은 OQ-011 경계를 유지한다.
 - held Intrigue가 있는 Endgame은 효과와 priority가 없으므로 보수적으로 자동
   종료하지 않는다. 여러 wild battle-icon pair 선택도 보류돼 있다.
 - 모든 미해결 규칙 질문은 [`rules/open-questions.md`](rules/open-questions.md)에
   있으며, 공식 근거 없이 코드로 임의 확정하면 안 된다.
 
 따라서 현재 엔진을 “완전한 Uprising 게임”으로 간주하면 안 된다. CHOAM을
-켜면 미전사 Imperium 카드와 미구현 contract 경로가 남아 있고, 기본 룰셋에도
+켜면 미전사 Imperium 카드와 Shaddam 전용 contract 경로가 남아 있고, 기본 룰셋에도
 Intrigue와 Leader 효과가 빠져 있어
 일반적인 전체 게임을 끝까지 실행할 수 없다.
 
 ## 다음 구현 순서
 
-첫 contract 시장 수직 조각은 완료됐다. 다음 순서를 유지한다.
+standard contract 수직 조각은 완료됐다. 다음 순서를 유지한다.
 
-1. contract 완료 조건·보상·완료 trigger
-2. CHOAM 전용 Imperium 4종
-3. Plot, Combat, Endgame Intrigue 공통 경계와 실제 카드 효과
-4. Leader Signet Ring·기본 능력, 남은 Objective 상호작용
-5. 전체 게임 random/self-play runner와 PettingZoo episode 확장
+1. CHOAM 전용 Imperium 4종
+2. Plot, Combat, Endgame Intrigue 공통 경계와 실제 카드 효과
+3. Leader Signet Ring·기본 능력과 Shaddam 전용 Contract, 남은 Objective 상호작용
+4. 전체 게임 random/self-play runner와 PettingZoo episode 확장
 
-바로 다음 작업은 non-Immediate contract 완료의 첫 수직 조각이다.
-구현 단위는 다음 순서를 따른다.
+바로 다음 작업은 CHOAM 전용 Imperium 4종이다:
+`Cargo Runner`, `Delivery Agreement`, `Interstellar Trade`,
+`Priority Contracts`. 구현 단위는 다음 순서를 따른다.
 
-1. 20장 contract의 조건과 보상을 linked printed image로 대조해 typed content로
-   전사한다. Dune Cards Hub는 카드 판독에만 사용하고 규칙 판정은 Main p. 16과
-   FAQ p. 1을 우선한다.
-2. board-space 방문, Harvest spice 합계, The Spice Must Flow acquire trigger를
-   기존 Agent/Reveal 흐름에 연결한다. Immediate는 이미 구현돼 있다.
-3. 같은 조건의 여러 contract를 의무적으로 함께 완료하고, 보상·board effect·
-   Agent box effect의 자유 순서를 직렬 decision frame으로 모델링한다.
-4. Gather Intelligence와 contract 완료가 함께 가능한 경우 OQ-011을 먼저 다시
-   조사하고, 공식 근거가 없으면 project convention을 명시한 뒤 테스트로 고정한다.
-5. active/completed zone, reward, 완료 count 관측, replay와 codec 회귀를 추가하고
-   전체 pytest·Ruff·mypy를 실행한다.
+1. linked printed image로 네 카드의 Agent·Reveal·Acquire 효과와 Contract 참조를
+   대조해 typed content로 전사한다.
+2. standard Contract 완료 count/시장 선택과 상호작용하는 효과를 기존 공통
+   transition에 연결한다.
+3. 같은 turn 효과 순서가 OQ-012에 닿으면 공식 근거를 다시 확인하고, 답이 없으면
+   project convention을 먼저 문서화한다.
+4. 카드별 legal action, reward, replay와 codec 회귀를 추가하고 전체 검증을 한다.
 
 이후 카드도 같은 `Play ...` / `Document ...` 패턴을 유지한다. 구체적인 커밋
 정책은 `AGENTS.md`에 영구 기록돼 있다.
@@ -146,8 +147,8 @@ Codex sandbox에서 uv cache 쓰기가 제한되면 명령 앞에
 
 이 문서를 갱신할 때 로컬 `master`에는 `origin/master`의
 `f9026ec Document Steersman roadmap` 이후 Junction Headquarters, Corrinth City,
-Desert Power, Long Live the Fighters, Subversive Advisor와 CHOAM contract 시장
-구현·문서 커밋이 더
+Desert Power, Long Live the Fighters, Subversive Advisor와 standard CHOAM
+contract 구현·문서 커밋이 더
 있지만 아직 원격에는
 보이지 않는다. 새 계정이
 새 clone으로
@@ -168,6 +169,7 @@ git log --oneline --all --decorate -10
 - `98a013c Play Long Live the Fighters`
 - `2b1b25f Play Subversive Advisor`
 - `61d5eda Implement CHOAM contract market`
+- `cfdc4dd Complete standard CHOAM contracts`
 
-이 커밋들이 없으면 문서에 적힌 v56 action catalog와 contract 시장 기준선이
+이 커밋들이 없으면 문서에 적힌 v57 action catalog와 standard contract 기준선이
 실제 코드와 일치하지 않는다.

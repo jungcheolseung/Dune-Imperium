@@ -59,7 +59,8 @@ CHOAM Module은 Uprising에 포함된 mini-expansion이다. 공식 룰북은 먼
   처리할 수 있다. `[FAQ p. 1]`
 - Gather Intelligence는 Agent를 놓은 직후 board space나 Agent card 효과보다
   먼저 결정한다. 공식 문서는 이 즉시 window와 contract 완료의 상대 순서를
-  직접 명시하지 않는다. 이 부분은
+  직접 명시하지 않는다. 공식 판정을 찾기 전 프로젝트 구현은 Gather
+  Intelligence를 먼저 처리한다. 이 convention은
   [OQ-011](open-questions.md#oq-011--gather-intelligence와-contract-완료의-상대-순서)로
   남긴다. `[Main p. 11]` `[FAQ p. 1]`
 
@@ -75,8 +76,9 @@ Signet Ring으로 Agent를 보낼 때 그 제한은 즉시 적용된다. `[Main 
 
 ## 구현 상태
 
-standard contract 20장의 identity·setup과 공개 시장의 take/refill·고갈 처리는
-구현돼 있다. Immediate는 가져오는 즉시 완료해 2 Solari를 받는다. 나머지
-contract의 완료 조건·보상과 Shaddam의 set-aside Sardaukar contract 선택은 다음
-구현 단위다. 세부 상태·관측·codec 경계는
+standard contract 20장의 identity·setup, 공개 시장의 take/refill·고갈, 모든
+완료 조건과 인쇄 보상은 구현돼 있다. 공간 방문 시 보유하던 contract를 snapshot해
+소급 완료를 막고, Harvest의 그 turn Spice 획득 합계와 The Spice Must Flow acquire
+trigger도 연결한다. Shaddam의 set-aside Sardaukar contract 선택은 Leader 구현
+단위로 남아 있다. 세부 상태·관측·codec 경계는
 [Contract 구현 audit](../implementation-audits/contracts.md)에 기록한다.
