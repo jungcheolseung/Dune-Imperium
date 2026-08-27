@@ -87,6 +87,11 @@
   의무다. 조건을 맞추기 위해 discard pile을 reshuffle하지 않으며, 공간·Faction·card
   효과의 자유로운 순서에 따라 조건 판정 결과가 달라질 수 있다.
   `[Long Live the Fighters card]` `[Designer clarification]` `[Main pp. 9, 20]`
+- Subversive Advisor는 Spy Agent icon으로 Faction board space에 Agent를
+  보내면 일반 Influence 1 대신 해당 Faction Influence 2를 얻고 자기 자신을
+  trash한다. 이 효과는 의무이며 일반 Faction Influence를 별도로 더해 총 3을
+  얻지 않는다. 비-Faction 공간에 Agent를 보내면 이 효과로 Influence를 얻거나
+  카드를 trash하지 않는다. `[Subversive Advisor card]` `[Main pp. 9, 11, 20]`
 - Signet Ring card를 Agent turn에 내서 Agent를 보내면 Leader의 Signet Ring icon이 표시된 능력을 사용한다. [Main p. 6] [Main p. 20]
 - CHOAM Module의 Shaddam Corrino IV에 관한 별도 판정은
   `choam-module.md`와 콘텐츠 명세에서 다룬다. [Main pp. 16-17]
@@ -138,6 +143,8 @@
   `[FAQ p. 2]`
 - Long Live the Fighters는 Reveal에서 Persuasion 2와 strength 3을 얻는다.
   `[Long Live the Fighters card]`
+- Subversive Advisor는 Reveal에서 Solari 1을 얻는다.
+  `[Subversive Advisor card]`
 
 ## 카드 획득과 Imperium Row 보충
 
@@ -154,6 +161,10 @@
 - Steersman을 acquire하면 Spacing Guild Influence 1을 즉시 얻는다. 일반 Reveal
   acquire뿐 아니라 카드 효과가 다른 지불 수단과 목적지를 지정해도 이 acquire
   보너스는 동일하게 처리한다. `[Steersman card]` `[Main p. 20]`
+- Subversive Advisor를 acquire하면 Spy 1개를 Observation Post에 놓는다.
+  일반 Reveal acquire로는 카드를 discard pile에, Price is No Object로는 hand에
+  놓지만 Spy 배치 보너스는 동일하게 처리한다.
+  `[Subversive Advisor card]` `[Price is No Object card]` `[Main pp. 11, 20]`
 - The Spice Must Flow를 acquire하며 얻은 Victory Point는 이후 그 카드를
   trash하더라도 유지한다. [FAQ p. 4]
 

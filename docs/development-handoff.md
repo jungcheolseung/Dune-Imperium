@@ -23,12 +23,12 @@ uv run ruff check src tests
 uv run mypy src tests
 ```
 
-2026-08-27의 기준 결과는 pytest 528개 통과, Ruff 통과, mypy 통과다. 현재 action
-codec은 `ACTION_CODEC_VERSION = 54`, 기본 룰셋 catalog 크기는 3,326이다.
+2026-08-27의 기준 결과는 pytest 536개 통과, Ruff 통과, mypy 통과다. 현재 action
+codec은 `ACTION_CODEC_VERSION = 55`, 기본 룰셋 catalog 크기는 3,377이다.
 
 ## 현재 구현 기준선
 
-마지막 기능 커밋은 `98a013c Play Long Live the Fighters`다. 그 카드의
+마지막 기능 커밋은 `2b1b25f Play Subversive Advisor`다. 그 카드의
 규칙·로드맵 문서는 이 기준선에 반영했다.
 
 - R0-M4는 완료됐다. 공식 규칙 자료, 엔진 커널, 4인 setup, 한 라운드 수직 조각,
@@ -37,7 +37,7 @@ codec은 `ACTION_CODEC_VERSION = 54`, 기본 룰셋 catalog 크기는 3,326이�
   Spy/Infiltrate/Gather Intelligence, 개인 덱 reshuffle chance, Combat 순위와 보상,
   sandworm·Shield Wall·control, Makers·Recall, Endgame 진입과 안전한 일부 종료를
   실행할 수 있다.
-- 시작 카드 7종, Reserve 2종과 기본 Imperium 50종 중 49종에 완전한 play data가
+- 시작 카드 7종, Reserve 2종과 기본 Imperium 50종 모두에 완전한 play data가
   있다. 구현된 카드별 판정은 personal-card audit에 기록돼 있다.
 - 코어 상태 머신과 replay는 여러 라운드를 지원한다. 통합 테스트는 두 라운드 뒤
   세 번째 Round Start의 개인 덱 reshuffle까지 재생한다.
@@ -49,7 +49,6 @@ codec은 `ACTION_CODEC_VERSION = 54`, 기본 룰셋 catalog 크기는 3,326이�
 
 ## 아직 완성되지 않은 경계
 
-- 기본 Imperium 미전사 1종: `Subversive Advisor`
 - CHOAM 전용 Imperium 미전사 4종:
   `Cargo Runner`, `Delivery Agreement`, `Interstellar Trade`,
   `Priority Contracts`
@@ -64,34 +63,36 @@ codec은 `ACTION_CODEC_VERSION = 54`, 기본 룰셋 catalog 크기는 3,326이�
 - 모든 미해결 규칙 질문은 [`rules/open-questions.md`](rules/open-questions.md)에
   있으며, 공식 근거 없이 코드로 임의 확정하면 안 된다.
 
-따라서 현재 엔진을 “완전한 Uprising 게임”으로 간주하면 안 된다. 미전사 Imperium
-카드가 손에 들어오면 명시적으로 실패하며, Intrigue와 Leader 효과가 빠져 있어
+따라서 현재 엔진을 “완전한 Uprising 게임”으로 간주하면 안 된다. CHOAM을
+켜면 미전사 Imperium 카드와 미구현 contract 경로가 남아 있고, 기본 룰셋에도
+Intrigue와 Leader 효과가 빠져 있어
 일반적인 전체 게임을 끝까지 실행할 수 없다.
 
 ## 다음 구현 순서
 
 현재 합의된 순서를 유지한다.
 
-1. `Subversive Advisor`
-2. CHOAM 전용 Imperium 4종과 contract 시스템
+1. CHOAM contract identity·setup·공개 시장 take/refill 공통 경계
+2. contract 완료 조건·보상·완료 기록과 CHOAM 전용 Imperium 4종
 3. Plot, Combat, Endgame Intrigue 공통 경계와 실제 카드 효과
 4. Leader Signet Ring·기본 능력, 남은 Objective 상호작용
 5. 전체 게임 random/self-play runner와 PettingZoo episode 확장
 
-바로 다음 작업은 `Subversive Advisor`다. 카드 하나의 구현 단위는 다음
-순서를 따른다.
+바로 다음 작업은 CHOAM contract setup과 공개 시장의 첫 수직 조각이다.
+구현 단위는 다음 순서를 따른다.
 
-1. Dune Cards Hub의 실물 이미지를 확인하고 DIU audit 데이터와 대조한다.
-2. 공식 일반 규칙만으로 해석되지 않는 부분은 `rules/open-questions.md`에 먼저
-   기록한다.
-3. typed card data, 합법 행동, 전이, engine dispatch, action codec을 필요한
-   최소 범위로 구현한다.
-4. 카드 데이터 테스트, Agent/Reveal 상호작용 테스트, codec round-trip을 함께
-   추가한다.
+1. Main p. 16과 `rules/choam-module.md`를 기준으로 standard contract 20개의
+   identity·수량·출처를 실물 자료와 대조한다.
+2. `choam_module=True`일 때 20개를 seed 기반으로 섞고 2개를 face-up으로
+   놓는 setup과 공개 시장 상태를 추가한다.
+3. contract icon이 공개 contract 하나를 고르고 bank에서 보충하는 선택을
+   engine·replay·버전 action codec에 연결한다. module OFF의 Solari 2 대체
+   효과는 기존 회귀를 유지한다.
+4. setup 결정론, take/refill, bank 고갈, 공개 정보·불변식 테스트를 추가한다.
 5. 관련 테스트 후 전체 pytest·Ruff·mypy를 실행한다.
-6. 코드와 회귀 테스트를 `Play Subversive Advisor`로 커밋한다.
-7. 구현 계획, player-turn 규칙, personal-card audit의 다음 순서를 갱신하고
-   `Document Subversive Advisor`로 별도 커밋한다.
+6. 코드와 회귀 테스트를 `Implement CHOAM contract market`으로 커밋한다.
+7. 규칙·구현 계획·audit·handoff를 `Document CHOAM contract market`으로
+   별도 커밋한다.
 
 이후 카드도 같은 `Play ...` / `Document ...` 패턴을 유지한다. 구체적인 커밋
 정책은 `AGENTS.md`에 영구 기록돼 있다.
@@ -137,7 +138,8 @@ Codex sandbox에서 uv cache 쓰기가 제한되면 명령 앞에
 
 이 문서를 작성할 때 로컬 `master`에는 `origin/master`의
 `f9026ec Document Steersman roadmap` 이후 Junction Headquarters, Corrinth City,
-Desert Power, Long Live the Fighters 구현·문서 커밋이 더 있지만 아직 원격에는
+Desert Power, Long Live the Fighters, Subversive Advisor 구현·문서 커밋이 더
+있지만 아직 원격에는
 보이지 않는다. 새 계정이
 새 clone으로
 이어받는다면 기존 계정에서 현재 `master`를 먼저 push하거나 저장소 자체를
@@ -155,6 +157,7 @@ git log --oneline --all --decorate -10
 - `6aa0832 Document Corrinth City`
 - `958897a Play Desert Power`
 - `98a013c Play Long Live the Fighters`
+- `2b1b25f Play Subversive Advisor`
 
-이 커밋들이 없으면 문서에 적힌 v54·3,326 action 및 49종 카드 기준선과 실제
+이 커밋들이 없으면 문서에 적힌 v55·3,377 action 및 50종 카드 기준선과 실제
 코드가 일치하지 않는다.

@@ -126,12 +126,12 @@ boundary. Its acquisition Intrigue draw resolves immediately, while cards whose
 recorded acquisition bonus remains untyped are still filtered from engine legal
 actions. Its Agent and Reveal effects reuse Influence and troop transitions.
 
-Subsequent batches continue through Long Live the Fighters and codec version 54. The
+Subsequent batches complete the non-CHOAM deck through Subversive Advisor and
+codec version 55. The
 authoritative card-by-card behavior and verification notes are maintained in
 [the personal-card implementation audit](implementation-audits/personal-cards.md)
-instead of duplicating every batch here. As of 2026-08-27, 49 of the 50
-non-CHOAM Imperium identities have complete play data. The remaining base card
-is Subversive Advisor; four additional untranscribed
+instead of duplicating every batch here. As of 2026-08-27, all 50 non-CHOAM
+Imperium identities have complete play data. Four additional untranscribed
 identities are CHOAM-only. A card is still hidden from playable
 Agent paths until its full local transcription and regression tests are ready.
 
