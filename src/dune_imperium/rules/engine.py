@@ -28,6 +28,7 @@ from dune_imperium.rules.agent_effects import (
     apply_agent_card_discard,
     apply_agent_card_influence,
     apply_agent_card_intrigue_payment,
+    apply_agent_card_long_live_action,
     apply_agent_card_payment,
     apply_agent_card_recall,
     apply_agent_card_spy_action,
@@ -37,6 +38,7 @@ from dune_imperium.rules.agent_effects import (
     legal_agent_card_discard_actions,
     legal_agent_card_influence_actions,
     legal_agent_card_intrigue_payment_actions,
+    legal_agent_card_long_live_actions,
     legal_agent_card_payment_actions,
     legal_agent_card_recall_actions,
     legal_agent_card_spy_actions,
@@ -172,17 +174,23 @@ class UprisingRulesEngine(RulesEngine):
         """Return all currently supported actions for the decision owner."""
 
         try:
-            current_agent_effect_context(state)
+            _, agent_context = current_agent_effect_context(state)
         except ValueError:
             pass
         else:
+            agent_effect_actions = self._agent_effect_actions(state, player)
+            if agent_context.get("long_live_fighters_selection_started") is True:
+                # Long Live the Fighters is one atomic card effect. Once its
+                # private selection starts, no board/Faction/combat choice may
+                # be interleaved before the second card selection commits.
+                return agent_effect_actions
             gather_intelligence_actions = legal_gather_intelligence_actions(
                 state, player
             )
             if gather_intelligence_actions:
                 return gather_intelligence_actions
             return (
-                *self._agent_effect_actions(state, player),
+                *agent_effect_actions,
                 *legal_espionage_actions(state, player),
                 *legal_sietch_tabr_actions(state, player),
                 *legal_maker_space_actions(state, player),
@@ -286,6 +294,8 @@ class UprisingRulesEngine(RulesEngine):
             "pay_agent_card_intrigue_and_spice": (
                 apply_agent_card_intrigue_payment
             ),
+            "select_long_live_fighters_draw": apply_agent_card_long_live_action,
+            "select_long_live_fighters_discard": apply_agent_card_long_live_action,
             "discard_agent_card": apply_agent_card_discard,
             "discard_opponent_card": apply_opponent_card_discard,
             "place_agent_card_spy": apply_agent_card_spy_action,
@@ -355,6 +365,9 @@ class UprisingRulesEngine(RulesEngine):
             return ()
         actions: list[DomainAction] = []
         if context["pending_agent_effect"] is True:
+            long_live_actions = legal_agent_card_long_live_actions(state, player)
+            if context.get("long_live_fighters_selection_started") is True:
+                return long_live_actions
             trash_actions = legal_agent_card_trash_actions(state, player)
             discard_actions = legal_agent_card_discard_actions(state, player)
             payment_actions = legal_agent_card_payment_actions(state, player)
@@ -421,6 +434,7 @@ def _agent_action_is_supported(state: GameState, action: DomainAction) -> bool:
         PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE_IF_SPY_RECALLED_THIS_TURN,
         PersonalCardAgentEffect.DRAW_PERSONAL_CARD,
         PersonalCardAgentEffect.DRAW_PER_SANDWORM_IN_CONFLICT,
+        PersonalCardAgentEffect.LOOK_AT_TOP_THREE,
         PersonalCardAgentEffect.DISCARD_TO_DRAW_ONE_OR_TWO_IF_SPACING_GUILD,
         PersonalCardAgentEffect.DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD,
         PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD,

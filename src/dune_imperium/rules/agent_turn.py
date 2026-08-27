@@ -254,6 +254,11 @@ def _agent_effect_is_available(
 ) -> bool:
     if effect is None:
         return False
+    if effect is PersonalCardAgentEffect.LOOK_AT_TOP_THREE:
+        # Long Live the Fighters checks its deck-size requirement when the
+        # Agent effect is actually resolved. Board and Faction effects may
+        # draw cards before that point in the same turn.
+        return True
     if effect is PersonalCardAgentEffect.DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO:
         return owner.influence.bene_gesserit >= 2
     if effect is PersonalCardAgentEffect.PAY_TWO_WATER_TO_DRAW_TWO:

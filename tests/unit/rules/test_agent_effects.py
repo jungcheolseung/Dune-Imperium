@@ -9,6 +9,8 @@ from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.core import (
+    ChanceDecision,
+    ChanceOutcome,
     DecisionFrame,
     DomainAction,
     GamePhase,
@@ -22,6 +24,7 @@ from dune_imperium.rules.agent_effects import (
     apply_agent_card_discard,
     apply_agent_card_influence,
     apply_agent_card_intrigue_payment,
+    apply_agent_card_long_live_action,
     apply_agent_card_payment,
     apply_agent_card_recall,
     apply_agent_card_spy_action,
@@ -30,6 +33,7 @@ from dune_imperium.rules.agent_effects import (
     legal_agent_card_discard_actions,
     legal_agent_card_influence_actions,
     legal_agent_card_intrigue_payment_actions,
+    legal_agent_card_long_live_actions,
     legal_agent_card_payment_actions,
     legal_agent_card_recall_actions,
     legal_agent_card_spy_actions,
@@ -40,6 +44,7 @@ from dune_imperium.rules.agent_effects import (
 )
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 from dune_imperium.rules.board_effects import resolve_board_effect
+from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.combat_deployment import (
     apply_combat_deployment,
     legal_combat_deployments,
@@ -2054,6 +2059,342 @@ def test_desert_power_has_no_agent_effect_on_a_non_maker_space() -> None:
     placed = apply_agent_action(state, _action_to(state, "accept_contract")).state
 
     assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False
+
+
+def _long_live_state(
+    deck: tuple[str, ...],
+    *,
+    discard_pile: tuple[str, ...] = (),
+    intrigue_deck: tuple[str, ...] = (),
+) -> GameState:
+    long_live = _imperium_instance("long_live_the_fighters")
+    owner = PlayerState(
+        player_id=0,
+        hand=(long_live,),
+        deck=deck,
+        discard_pile=discard_pile,
+    )
+    return GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        intrigue_deck=intrigue_deck,
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+
+
+def test_long_live_the_fighters_commits_draw_discard_and_trash_atomically() -> None:
+    first = _instance("dagger")
+    second = _instance("convincing_argument")
+    third = _instance("dune_the_desert_planet")
+    tail = _instance("reconnaissance")
+    state = _long_live_state((first, second, third, tail))
+    engine = UprisingRulesEngine()
+
+    placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
+    assert {
+        action.action_id for action in engine.legal_actions(placed, 0)
+    } == {"resolve_agent_card_effect", "resolve_board_effect", "deploy_troops"}
+
+    ready = engine.apply(
+        placed,
+        DomainAction(action_id="resolve_agent_card_effect", actor=0),
+    ).state
+    first_actions = legal_agent_card_long_live_actions(ready, 0)
+    assert {dict(action.arguments)["card_id"] for action in first_actions} == {
+        first,
+        second,
+        third,
+    }
+
+    selected = engine.apply(
+        ready,
+        next(
+            action
+            for action in first_actions
+            if dict(action.arguments)["card_id"] == first
+        ),
+    )
+    selected_owner = selected.state.players[0]
+    assert selected_owner.deck == (first, second, third, tail)
+    assert selected_owner.hand == ()
+    assert selected_owner.discard_pile == ()
+    assert selected_owner.trashed == ()
+    assert {
+        action.action_id for action in engine.legal_actions(selected.state, 0)
+    } == {"select_long_live_fighters_discard"}
+
+    discard = next(
+        action
+        for action in legal_agent_card_long_live_actions(selected.state, 0)
+        if dict(action.arguments)["card_id"] == second
+    )
+    result = engine.apply(selected.state, discard)
+    owner = result.state.players[0]
+    assert owner.deck == (tail,)
+    assert owner.hand == (first,)
+    assert owner.discard_pile == (second,)
+    assert owner.trashed == (third,)
+    context = dict(result.state.decision_stack[-1].context)
+    assert context["pending_agent_effect"] is False
+    assert "long_live_fighters_draw_card_id" not in context
+    assert "long_live_fighters_selection_started" not in context
+    assert context["pending_board_effect"] is True
+    assert [event.kind for event in result.events] == [
+        "card_discarded",
+        "card_trashed",
+        "agent_card_effect_resolved",
+    ]
+
+
+def test_long_live_the_fighters_only_offers_the_top_three_and_preserves_tail() -> None:
+    first = _instance("dagger")
+    second = _instance("convincing_argument")
+    third = _instance("dune_the_desert_planet")
+    tail = _instance("reconnaissance")
+    state = _long_live_state((first, second, third, tail))
+    placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
+    ready = resolve_agent_card_effect(placed).state
+    selected = apply_agent_card_long_live_action(
+        ready,
+        next(
+            action
+            for action in legal_agent_card_long_live_actions(ready, 0)
+            if dict(action.arguments)["card_id"] == first
+        ),
+    ).state
+
+    discard_actions = legal_agent_card_long_live_actions(selected, 0)
+    assert {dict(action.arguments)["card_id"] for action in discard_actions} == {
+        second,
+        third,
+    }
+    with pytest.raises(ValueError, match="not a legal Long Live"):
+        apply_agent_card_long_live_action(
+            selected,
+            DomainAction(
+                action_id="select_long_live_fighters_discard",
+                actor=0,
+                arguments=(("card_id", tail),),
+            ),
+        )
+
+
+def test_long_live_the_fighters_skips_effect_without_three_deck_cards() -> None:
+    first = _instance("dagger")
+    second = _instance("convincing_argument")
+    state = _long_live_state(
+        (first, second),
+        discard_pile=(_instance("reconnaissance"),),
+    )
+    placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
+
+    result = resolve_agent_card_effect(placed)
+
+    assert result.state.players[0].deck == (first, second)
+    assert result.state.players[0].discard_pile == (_instance("reconnaissance"),)
+    assert result.state.decision_stack[-1].frame_id == (
+        "round:1:player:0:agent_effects"
+    )
+    assert dict(result.state.decision_stack[-1].context)[
+        "pending_agent_effect"
+    ] is False
+    assert isinstance(result.state.decision_stack[-1].decision, PlayerDecision)
+    assert result.state.decision_stack[-1].decision.owner == 0
+    assert result.events[0].kind == "agent_card_effect_unavailable"
+
+
+def test_personal_card_trash_rejects_deck_without_explicit_permission() -> None:
+    deck_card = _instance("dagger")
+    state = _long_live_state((deck_card,))
+
+    with pytest.raises(ValueError, match="eligible owned zone"):
+        trash_personal_card(
+            state,
+            0,
+            deck_card,
+            source="test:trash",
+        )
+
+
+def test_long_live_the_fighters_rechecks_deck_after_a_board_draw() -> None:
+    first = _instance("dagger")
+    second = _instance("convincing_argument")
+    third = _instance("dune_the_desert_planet")
+    state = _long_live_state((first, second, third))
+    placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
+    after_board = resolve_board_effect(placed).state
+    assert after_board.players[0].deck == (second, third)
+    assert after_board.players[0].hand == (first,)
+
+    result = resolve_agent_card_effect(after_board)
+
+    assert result.state.players[0].deck == (second, third)
+    assert result.state.players[0].hand == (first,)
+    assert dict(result.state.decision_stack[-1].context)[
+        "pending_agent_effect"
+    ] is False
+
+
+def test_long_live_the_fighters_can_start_after_board_draw_reshuffles_discard() -> None:
+    first = _instance("dagger")
+    second = _instance("convincing_argument")
+    third = _instance("dune_the_desert_planet")
+    fourth = _instance("reconnaissance")
+    state = _long_live_state((), discard_pile=(first, second, third, fourth))
+    engine = UprisingRulesEngine()
+    placed = engine.apply(
+        state,
+        _action_to(state, "arrakeen"),
+    ).state
+
+    board_action = next(
+        action
+        for action in engine.legal_actions(placed, 0)
+        if action.action_id == "resolve_board_effect"
+    )
+    pending = engine.apply(placed, board_action).state
+    chance = engine.current_decision(pending)
+    assert isinstance(chance, ChanceDecision)
+    assert chance.count == 4
+
+    reshuffled = engine.apply(
+        pending,
+        ChanceOutcome(chance.decision_id, (fourth, third, second, first)),
+    ).state
+    assert reshuffled.players[0].deck == (third, second, first)
+    assert reshuffled.players[0].hand == (fourth,)
+    assert reshuffled.players[0].discard_pile == ()
+
+    resolve = next(
+        action
+        for action in engine.legal_actions(reshuffled, 0)
+        if action.action_id == "resolve_agent_card_effect"
+    )
+    ready = engine.apply(reshuffled, resolve).state
+    actions = engine.legal_actions(ready, 0)
+    assert {action.action_id for action in actions} == {
+        "select_long_live_fighters_draw"
+    }
+    assert {
+        dict(action.arguments)["card_id"] for action in actions
+    } == {third, second, first}
+
+
+def test_long_live_the_fighters_trashes_from_deck_with_shared_trash_triggers() -> None:
+    draw_card = _instance("dagger")
+    discard_card = _instance("convincing_argument")
+    sardaukar = _imperium_instance("sardaukar_soldier")
+    state = _long_live_state(
+        (draw_card, discard_card, sardaukar),
+        intrigue_deck=("intrigue:test",),
+    )
+    placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
+    ready = resolve_agent_card_effect(placed).state
+    first_selected = apply_agent_card_long_live_action(
+        ready,
+        next(
+            action
+            for action in legal_agent_card_long_live_actions(ready, 0)
+            if dict(action.arguments)["card_id"] == draw_card
+        ),
+    ).state
+    result = apply_agent_card_long_live_action(
+        first_selected,
+        next(
+            action
+            for action in legal_agent_card_long_live_actions(first_selected, 0)
+            if dict(action.arguments)["card_id"] == discard_card
+        ),
+    )
+
+    owner = result.state.players[0]
+    assert owner.hand == (draw_card,)
+    assert owner.discard_pile == (discard_card,)
+    assert owner.trashed == (sardaukar,)
+    assert owner.intrigue_cards == ("intrigue:test",)
+    assert result.state.intrigue_deck == ()
+    assert [event.kind for event in result.events] == [
+        "card_discarded",
+        "card_trashed",
+        "intrigue_card_drawn",
+        "agent_card_effect_resolved",
+    ]
+
+
+def test_long_live_the_fighters_returns_a_trashed_reserve_card_to_its_stack() -> None:
+    draw_card = _instance("dagger")
+    discard_card = _instance("convincing_argument")
+    reserve_card = "reserve:prepare_the_way:7"
+    state = _long_live_state((draw_card, discard_card, reserve_card))
+    state = replace(
+        state,
+        reserve_stacks=(
+            ("prepare_the_way", 7),
+            ("the_spice_must_flow", 10),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
+    ready = resolve_agent_card_effect(placed).state
+    selected = apply_agent_card_long_live_action(
+        ready,
+        next(
+            action
+            for action in legal_agent_card_long_live_actions(ready, 0)
+            if dict(action.arguments)["card_id"] == draw_card
+        ),
+    ).state
+    result = apply_agent_card_long_live_action(
+        selected,
+        next(
+            action
+            for action in legal_agent_card_long_live_actions(selected, 0)
+            if dict(action.arguments)["card_id"] == discard_card
+        ),
+    )
+
+    assert result.state.players[0].trashed == ()
+    assert dict(result.state.reserve_stacks)["prepare_the_way"] == 8
+
+
+def test_long_live_the_fighters_top_three_discard_skips_hand_discard_trigger() -> None:
+    draw_card = _instance("dagger")
+    favor = _imperium_instance("spacing_guild_s_favor")
+    trash_card = _instance("convincing_argument")
+    state = _long_live_state((draw_card, favor, trash_card))
+    placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
+    ready = resolve_agent_card_effect(placed).state
+    selected = apply_agent_card_long_live_action(
+        ready,
+        next(
+            action
+            for action in legal_agent_card_long_live_actions(ready, 0)
+            if dict(action.arguments)["card_id"] == draw_card
+        ),
+    ).state
+    result = apply_agent_card_long_live_action(
+        selected,
+        next(
+            action
+            for action in legal_agent_card_long_live_actions(selected, 0)
+            if dict(action.arguments)["card_id"] == favor
+        ),
+    )
+
+    assert result.state.players[0].discard_pile == (favor,)
+    assert result.state.players[0].resources.spice == 0
+    assert [event.kind for event in result.events] == [
+        "card_discarded",
+        "card_trashed",
+        "agent_card_effect_resolved",
+    ]
 
 
 def test_shishakli_may_trash_a_personal_card_to_draw_one() -> None:

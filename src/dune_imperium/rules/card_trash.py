@@ -16,21 +16,36 @@ def trash_personal_card(
     card_id: str,
     *,
     source: str,
+    allow_deck: bool = False,
 ) -> RuleResult:
-    """Remove one owned card from an eligible zone and resolve its trash trigger."""
+    """Remove one owned card from an eligible zone and resolve its trash trigger.
+
+    Deck trashing is an explicit exception used by card effects such as Long
+    Live the Fighters; ordinary trash callers remain limited to hand, discard,
+    and in-play cards.
+    """
 
     if not 0 <= player < state.config.players:
         raise ValueError("trash player must identify a configured seat")
     if not card_id or not source:
         raise ValueError("trash card and source IDs must not be empty")
+    if not isinstance(allow_deck, bool):
+        raise TypeError("allow_deck must be a boolean")
     owner = state.players[player]
     eligible = (*owner.hand, *owner.discard_pile, *owner.in_play)
+    if allow_deck:
+        eligible = (*owner.deck, *eligible)
     if card_id not in eligible:
         raise ValueError("trash card is not in an eligible owned zone")
 
     reserve_card_id = _reserve_card_id(card_id)
     next_owner = replace(
         owner,
+        deck=(
+            tuple(candidate for candidate in owner.deck if candidate != card_id)
+            if allow_deck
+            else owner.deck
+        ),
         hand=tuple(candidate for candidate in owner.hand if candidate != card_id),
         discard_pile=tuple(
             candidate for candidate in owner.discard_pile if candidate != card_id

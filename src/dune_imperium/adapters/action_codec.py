@@ -28,7 +28,7 @@ from dune_imperium.content.uprising.starting_cards import (
 from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
 from dune_imperium.core.actions import ActionValue, DomainAction
 
-ACTION_CODEC_VERSION = 53
+ACTION_CODEC_VERSION = 54
 MAX_DEPLOYMENT_COUNT = 12
 
 
@@ -317,6 +317,10 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         for faction in Faction
     )
     templates.extend(_trash_templates(config, "trash_agent_card"))
+    templates.extend(_trash_templates(config, "select_long_live_fighters_draw"))
+    templates.extend(
+        _trash_templates(config, "select_long_live_fighters_discard")
+    )
     templates.extend(_trash_templates(config, "discard_agent_card"))
     templates.extend(_trash_templates(config, "discard_opponent_card"))
     templates.extend(_trash_templates(config, "trash_reveal_card"))

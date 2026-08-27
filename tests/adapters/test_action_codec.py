@@ -11,10 +11,10 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     first = ActionCodec(RulesetConfig())
     second = ActionCodec(RulesetConfig())
 
-    assert ACTION_CODEC_VERSION == 53
+    assert ACTION_CODEC_VERSION == 54
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
-    assert first.size == 3123
+    assert first.size == 3326
 
 
 def test_corrinth_city_staged_payment_round_trips() -> None:
@@ -48,6 +48,29 @@ def test_desert_power_reveal_choices_round_trip() -> None:
     actions = (
         DomainAction(action_id="decline_reveal_sandworm", actor=0),
         DomainAction(action_id="pay_reveal_water_for_sandworm", actor=2),
+    )
+
+    for action in actions:
+        assert codec.decode(codec.encode(action), actor=action.actor) == action
+
+
+def test_long_live_the_fighters_choices_round_trip() -> None:
+    codec = ActionCodec(RulesetConfig())
+    actions = (
+        DomainAction(
+            action_id="select_long_live_fighters_draw",
+            actor=0,
+            arguments=(
+                ("card_id", "player:0:starter:dagger:0"),
+            ),
+        ),
+        DomainAction(
+            action_id="select_long_live_fighters_discard",
+            actor=2,
+            arguments=(
+                ("card_id", "imperium:sardaukar_soldier:0"),
+            ),
+        ),
     )
 
     for action in actions:

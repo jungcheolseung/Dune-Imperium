@@ -35,6 +35,11 @@ from dune_imperium.rules.spy_placement import (
     recall_spy,
 )
 
+_LONG_LIVE_SELECTION_STARTED = "long_live_fighters_selection_started"
+_LONG_LIVE_DRAW_CARD_ID = "long_live_fighters_draw_card_id"
+_LONG_LIVE_DRAW_ACTION_ID = "select_long_live_fighters_draw"
+_LONG_LIVE_DISCARD_ACTION_ID = "select_long_live_fighters_discard"
+
 
 def legal_agent_card_discard_actions(
     state: GameState,
@@ -193,6 +198,168 @@ def apply_agent_card_discard(
     return RuleResult(
         state=drawn.state,
         events=(*discarded.events, *intrigue_events, *drawn.events),
+    )
+
+
+def legal_agent_card_long_live_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return Long Live the Fighters' two private top-card choices.
+
+    The first choice is exposed only after the Agent effect has explicitly
+    started resolving. This preserves the free ordering of the board,
+    Faction, and card effect groups while still checking the three-card
+    requirement at the point of resolution.
+    """
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return ()
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    if context.get("pending_agent_effect") is not True:
+        return ()
+    _, source_card_id, _ = _effect_subject(context)
+    source_card = personal_card_for_instance(source_card_id)
+    if source_card.agent_effect is not PersonalCardAgentEffect.LOOK_AT_TOP_THREE:
+        return ()
+    if context.get(_LONG_LIVE_SELECTION_STARTED) is not True:
+        return ()
+
+    top_cards = state.players[player].deck[:3]
+    if len(top_cards) < 3:
+        raise RuntimeError(
+            "Long Live the Fighters selection requires three cards in the deck"
+        )
+    draw_card_id = context.get(_LONG_LIVE_DRAW_CARD_ID)
+    if draw_card_id is None:
+        return tuple(
+            DomainAction(
+                action_id=_LONG_LIVE_DRAW_ACTION_ID,
+                actor=player,
+                arguments=(("card_id", card_id),),
+            )
+            for card_id in top_cards
+        )
+    if not isinstance(draw_card_id, str) or draw_card_id not in top_cards:
+        raise RuntimeError("Long Live the Fighters frame has an invalid draw card")
+    return tuple(
+        DomainAction(
+            action_id=_LONG_LIVE_DISCARD_ACTION_ID,
+            actor=player,
+            arguments=(("card_id", card_id),),
+        )
+        for card_id in top_cards
+        if card_id != draw_card_id
+    )
+
+
+def apply_agent_card_long_live_action(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Resolve one Long Live the Fighters choice.
+
+    The selected cards remain in the deck after the first action. The second
+    action commits draw, discard, and trash together, so no unrelated decision
+    can be interleaved with this one card effect.
+    """
+
+    if action not in legal_agent_card_long_live_actions(state, action.actor):
+        raise ValueError("action is not a legal Long Live the Fighters choice")
+    _, context = current_agent_effect_context(state)
+    player, source_card_id, _ = _effect_subject(context)
+    card_id = dict(action.arguments).get("card_id")
+    if not isinstance(card_id, str):
+        raise RuntimeError("Long Live the Fighters choice has invalid card ID")
+
+    source = (
+        f"round:{state.round_number}:player:{player}:"
+        f"agent_card:{source_card_id}:long_live_fighters"
+    )
+    if action.action_id == _LONG_LIVE_DRAW_ACTION_ID:
+        context[_LONG_LIVE_DRAW_CARD_ID] = card_id
+        frame = state.decision_stack[-1]
+        next_frame = replace(frame, context=tuple(sorted(context.items())))
+        return RuleResult(
+            state=replace(
+                state,
+                decision_stack=(*state.decision_stack[:-1], next_frame),
+            ),
+            events=(
+                GameEvent(
+                    event_id=f"{source}:selection_started",
+                    kind="long_live_fighters_selection_started",
+                    payload=(("player", player),),
+                ),
+            ),
+        )
+
+    draw_card_id = context.get(_LONG_LIVE_DRAW_CARD_ID)
+    if not isinstance(draw_card_id, str):
+        raise RuntimeError("Long Live the Fighters frame is missing its draw card")
+    top_cards = state.players[player].deck[:3]
+    if len(top_cards) < 3 or draw_card_id not in top_cards or card_id not in top_cards:
+        raise RuntimeError("Long Live the Fighters frame has invalid top cards")
+    if card_id == draw_card_id:
+        raise RuntimeError("Long Live the Fighters cannot draw and discard one card")
+    trash_card_id = next(
+        candidate
+        for candidate in top_cards
+        if candidate not in (draw_card_id, card_id)
+    )
+
+    # Stage the printed draw and discard moves first. The remaining card stays
+    # in the deck for the shared trash transition, so a future trash trigger
+    # observes the same zones as the completed printed order.
+    owner = state.players[player]
+    staged_owner = replace(
+        owner,
+        deck=tuple(
+            candidate
+            for candidate in owner.deck
+            if candidate not in (draw_card_id, card_id)
+        ),
+        hand=(*owner.hand, draw_card_id),
+        discard_pile=(*owner.discard_pile, card_id),
+    )
+    staged_state = replace(
+        state,
+        players=_replace_player(state, staged_owner),
+    )
+    trashed = trash_personal_card(
+        staged_state,
+        player,
+        trash_card_id,
+        source=source,
+        allow_deck=True,
+    )
+    next_owner = trashed.state.players[player]
+    context["pending_agent_effect"] = False
+    context.pop(_LONG_LIVE_SELECTION_STARTED, None)
+    context.pop(_LONG_LIVE_DRAW_CARD_ID, None)
+    next_state = advance_after_effect(
+        trashed.state,
+        context,
+        _replace_player(trashed.state, next_owner),
+    )
+    discard_event = GameEvent(
+        event_id=f"{source}:discard:{card_id}",
+        kind="card_discarded",
+        payload=(("card_id", card_id), ("player", player)),
+    )
+    resolved_event = GameEvent(
+        event_id=f"{source}:resolved",
+        kind="agent_card_effect_resolved",
+        payload=(("card_id", source_card_id), ("player", player)),
+    )
+    return RuleResult(
+        state=next_state,
+        events=(discard_event, *trashed.events, resolved_event),
     )
 
 
@@ -1158,6 +1325,38 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             trashed.state.players,
         )
         return RuleResult(state=next_state, events=trashed.events)
+    elif effect is PersonalCardAgentEffect.LOOK_AT_TOP_THREE:
+        if context.get(_LONG_LIVE_SELECTION_STARTED) is True:
+            raise RuntimeError(
+                "Long Live the Fighters selection is already in progress"
+            )
+        if len(owner.deck) < 3:
+            next_owner = owner
+            event_kind = "agent_card_effect_unavailable"
+        else:
+            context[_LONG_LIVE_SELECTION_STARTED] = True
+            frame = state.decision_stack[-1]
+            next_frame = replace(frame, context=tuple(sorted(context.items())))
+            source = (
+                f"round:{state.round_number}:player:{player}:"
+                f"agent_card:{card_instance_id}:long_live_fighters"
+            )
+            return RuleResult(
+                state=replace(
+                    state,
+                    decision_stack=(*state.decision_stack[:-1], next_frame),
+                ),
+                events=(
+                    GameEvent(
+                        event_id=f"{source}:ready",
+                        kind="agent_card_effect_ready",
+                        payload=(
+                            ("card_id", card_instance_id),
+                            ("player", player),
+                        ),
+                    ),
+                ),
+            )
     elif effect is PersonalCardAgentEffect.DRAW_PERSONAL_CARD:
         next_owner = owner
         event_kind = "agent_card_effect_resolved"
