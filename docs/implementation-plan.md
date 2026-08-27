@@ -240,9 +240,10 @@ seeded random 4인 라운드를 실행하고 action replay로 최종 상태를 �
 
 ### M4. RL 인터페이스 조기 검증
 
-상태: **완료** (2026-08-14, 현황 갱신 2026-08-27). 기본 룰셋은 versioned
+상태: **완료** (2026-08-14, 현황 갱신 2026-08-28). 기본 룰셋은 versioned
 actor-neutral 정수 action catalog와 같은 폭의 legal action mask를 사용한다.
-현재 codec v55는 3,377개 행동이며, `dune_imperium_uprising_v0` AEC 환경은
+현재 codec v56의 기본 룰셋은 3,377개 행동이며, CHOAM 룰셋은 contract 선택을
+포함해 3,445개 행동이다. `dune_imperium_uprising_v0` AEC 환경은
 한 라운드를 episode로 실행하며 PettingZoo `api_test`와 `seed_test`를 통과한다.
 관측과 `info`에는 전체 `GameState`를 노출하지 않는다.
 
@@ -459,6 +460,15 @@ setup, First Player, battle icon 경로까지 연결돼 있다.
 
 ### M8. CHOAM 계약 모듈
 
+상태: **진행 중** (현황 갱신 2026-08-28). standard contract 20장의 identity와
+출처 URL을 전사하고, `choam_module=True` setup의 replayable shuffle·공개 2장·
+face-down bank 18장을 구현했다. Accept Contract와 Conflict reward의 contract
+icon은 같은 직렬 시장 선택을 사용하며 선택한 자리를 bank 맨 위 계약으로
+보충한다. bank만 비면 공개 시장이 줄고, 모든 계약이 소진되면 남은 icon마다
+2 Solari를 얻는다. Immediate는 가져오는 즉시 2 Solari를 받고 완료 기록으로
+이동한다. 다른 계약의 완료 조건과 보상은 아직 전사하지 않았다. codec v56은
+기본 룰셋 3,377개를 유지하고 CHOAM 룰셋에 20개 계약 선택을 포함해 3,445개다.
+
 - 계약 deck/공개 시장, 계약 완료 조건, 완료 계약 기록을 구현한다.
 - Shaddam과 CHOAM 전용 Imperium/Intrigue 카드를 추가한다.
 - 모듈 OFF에서는 계약 아이콘의 대체 효과를 적용한다.
@@ -547,12 +557,13 @@ setup, First Player, battle icon 경로까지 연결돼 있다.
 ## 8. 바로 다음 작업
 
 M5의 보드 시스템과 multi-round 개인 덱 shuffle까지 구현했고 M6에서 두 Reserve와
-기본 Imperium 50종을 실제 play 경로에 연결했다. 다음 작업은 아래 순서로 진행한다.
+기본 Imperium 50종을 실제 play 경로에 연결했다. M8의 첫 수직 조각으로 standard
+contract 20장의 identity·setup·공개 시장 take/refill도 연결했다. 다음 작업은
+아래 순서로 진행한다.
 
-1. standard CHOAM contract 20개의 identity와 setup, face-up 시장의 take/refill
-   공통 경계를 먼저 구현한다.
-2. 그 상태 위에 contract 완료 조건·보상·완료 기록과 CHOAM 전용
-   Imperium 카드를 연결한다.
+1. contract 완료 조건과 인쇄 보상을 전사하고 Agent turn·Harvest·The Spice Must
+   Flow acquire 경로 및 완료 기록에 연결한다.
+2. CHOAM 전용 Imperium 4종을 contract 상태와 함께 실제 play 경로에 연결한다.
 3. Plot, Combat, Endgame Intrigue 타입과 공통 play/discard 경계를 만든 뒤 단순
    Intrigue 효과부터 전사한다.
 4. Combat Intrigue와 Endgame Intrigue의 실제 카드 경로를 연결해 M5의 보류

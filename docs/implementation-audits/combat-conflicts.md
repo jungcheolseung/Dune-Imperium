@@ -11,7 +11,7 @@ reviewed without reading the transition code. Official rule summaries under
 | Ranking | Four-player zero-strength and tie rules determine reward rows. | A tied first place has no winner and leaves the Conflict on the board. |
 | Sandworms | A player with at least one sandworm receives the assigned reward twice. | Control and battle icons are never doubled. Optional costs are offered twice. |
 | Troop rewards | Troops move from supply to garrison before Combat cleanup. | Rewards resolve before Conflict troops return to supply, so an empty supply can limit recruitment. |
-| Contract icon | With CHOAM disabled, each icon grants 2 Solari. | CHOAM-enabled contract selection remains explicitly unsupported. |
+| Contract icon | With CHOAM disabled, each icon grants 2 Solari. With CHOAM enabled, every repeated icon opens the shared public Contract market choice. | Sandworm doubling repeats the selection. If the market runs out between repetitions, each remaining icon converts to 2 Solari. |
 | Trash icon | The player may decline or trash from hand, discard pile, or in play. | Reserve cards return to their Reserve stack instead of entering the trash zone. |
 | Spy reward | Each repeated reward selects an empty Observation Post and spends one Spy from supply. | Globally occupied posts are excluded. No choice is opened without a Spy or empty post. |
 | Control | A sole winner replaces the marker at the printed critical location; every later visit pays its controller 1 Solari or spice as printed. | There are exactly three critical locations and three markers per player; already owning all three needs no fourth-marker choice. |
@@ -27,7 +27,6 @@ reviewed without reading the transition code. Official rule summaries under
 
 - Individual Combat Intrigue card play, eligibility, and effects. The official
   participant priority/pass loop remains available.
-- CHOAM-enabled contract selection.
 - Choosing among multiple face-up cards with the same matching battle icon.
 - Shield Wall detonation effects from cards until those content paths are
   implemented.

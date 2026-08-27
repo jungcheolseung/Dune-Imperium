@@ -72,3 +72,11 @@ card text를 콘텐츠 명세에 전사한 뒤 구현한다. FAQ는 Sardaukar Co
 Emperor of the Known Universe의 제한은 발동한 **그 turn**에만 적용된다.
 Signet Ring으로 Agent를 보낼 때 그 제한은 즉시 적용된다. `[Main p. 17]`
 `[FAQ p. 3]`
+
+## 구현 상태
+
+standard contract 20장의 identity·setup과 공개 시장의 take/refill·고갈 처리는
+구현돼 있다. Immediate는 가져오는 즉시 완료해 2 Solari를 받는다. 나머지
+contract의 완료 조건·보상과 Shaddam의 set-aside Sardaukar contract 선택은 다음
+구현 단위다. 세부 상태·관측·codec 경계는
+[Contract 구현 audit](../implementation-audits/contracts.md)에 기록한다.
