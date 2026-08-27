@@ -1,9 +1,9 @@
 # Dune: Imperium - Uprising 구현 계획
 
-상태: 초안 4 (2026-08-26) — R0 규칙 명세, M0 개발 골격, M1 엔진 커널,
+상태: 초안 4 (2026-08-27) — R0 규칙 명세, M0 개발 골격, M1 엔진 커널,
 M2 4인 setup과 정적 보드, M3 한 라운드 수직 조각, M4 RL 인터페이스 조기 검증
 완료. M5의 기본 시스템 경계는 대부분 연결됐고 콘텐츠 의존 항목이 남아 있다.
-M6는 기본 Imperium 카드 50종 중 48종을 완료했다.
+M6는 기본 Imperium 카드 50종 중 49종을 완료했다.
 
 이 문서는 규칙 엔진부터 강화학습 AI와 사람용 플레이 인터페이스까지의 구현
 순서와 각 단계의 완료 조건을 정의한다. 구현 중 새 규칙을 발견하더라도 핵심
@@ -240,9 +240,9 @@ seeded random 4인 라운드를 실행하고 action replay로 최종 상태를 �
 
 ### M4. RL 인터페이스 조기 검증
 
-상태: **완료** (2026-08-14, 현황 갱신 2026-08-26). 기본 룰셋은 versioned
+상태: **완료** (2026-08-14, 현황 갱신 2026-08-27). 기본 룰셋은 versioned
 actor-neutral 정수 action catalog와 같은 폭의 legal action mask를 사용한다.
-현재 codec v53은 3,123개 행동이며, `dune_imperium_uprising_v0` AEC 환경은
+현재 codec v54는 3,326개 행동이며, `dune_imperium_uprising_v0` AEC 환경은
 한 라운드를 episode로 실행하며 PettingZoo `api_test`와 `seed_test`를 통과한다.
 관측과 `info`에는 전체 `GameState`를 노출하지 않는다.
 
@@ -257,7 +257,7 @@ actor-neutral 정수 action catalog와 같은 폭의 legal action mask를 사용
 
 ### M5. 기본 게임 시스템 규칙
 
-상태: **진행 중** (현황 갱신 2026-08-26). Influence·Alliance, Spy의 Infiltrate와
+상태: **진행 중** (현황 갱신 2026-08-27). Influence·Alliance, Spy의 Infiltrate와
 Gather Intelligence, Shield Wall·Maker Hook·sandworm·critical location control,
 High Council·Swordmaster, 4인 Combat 순위와 기본 보상, Makers·Recall 및 Endgame
 진입을 구현했다. 최종 순위는 공식 tiebreak 전체를 적용하며, Intrigue 보유와
@@ -279,7 +279,7 @@ High Council·Swordmaster, 4인 Combat 순위와 기본 보상, Makers·Recall �
 
 ### M6. Uprising 기본 콘텐츠 완성
 
-상태: **진행 중** (현황 갱신 2026-08-26). 시작 카드와 Reserve 카드가 같은 개인 카드
+상태: **진행 중** (현황 갱신 2026-08-27). 시작 카드와 Reserve 카드가 같은 개인 카드
 resolver를 사용한다. Prepare the Way의 Agent 아이콘·조건부 draw·Reveal 값과
 The Spice Must Flow의 Reveal strength를 전사했으며, Reserve Agent 행동을 codec
 v7에 포함했다. 첫 Imperium 묶음으로 Maula Pistol과 Truthtrance의 Faction,
@@ -418,10 +418,16 @@ Reveal에도 반영해 codec v52에 포함했다.
 Shield Wall이 현재 Conflict를 보호하면 sandworm 선택을 노출하지 않으며,
 첫 unit이 생길 때 이전에 해결한 선택형 sword까지 다시 strength에 반영해
 codec v53에 포함했다.
+마흔여덟 번째 묶음은 Long Live the Fighters의 Agent 효과를 해결하는
+시점에 개인 deck이 3장 이상일 때만 맨 위 3장을 확인하도록 연결했다.
+첫 선택은 card를 옮기지 않고, 두 번째 선택에서 서로 다른 draw·discard·trash
+대상을 인쇄된 하나의 효과로 원자적 확정한다. 조건을 맞추기 위해 discard를
+reshuffle하지 않으며, deck trash는 Reserve 반환과 카드별 trash trigger를 재사용한다.
+Reveal의 Persuasion 2·strength 3과 Fremen·City 목적지를 codec v54에 포함했다.
 고정된 DIU `imperium.JSON`은 런타임 의존성 없이 63개 local identity와
 대조하고 아이콘·Faction·효과 형태를 정규화하는 read-only audit에만 사용한다.
-기본 Imperium의 미전사 카드는 `Long Live the Fighters`, `Subversive Advisor`
-두 장이고 CHOAM 전용 미전사 카드는 네 장이다. Intrigue와
+기본 Imperium의 미전사 카드는 `Subversive Advisor` 한 장이고 CHOAM 전용
+미전사 카드는 네 장이다. Intrigue와
 Leader는 identity/setup 수준이며 실제 play 능력이 아직 없다. Objective는 4인
 setup, First Player, battle icon 경로까지 연결돼 있다.
 
@@ -536,10 +542,9 @@ setup, First Player, battle icon 경로까지 연결돼 있다.
 ## 8. 바로 다음 작업
 
 M5의 보드 시스템과 multi-round 개인 덱 shuffle까지 구현했고 M6에서 두 Reserve와
-기본 Imperium 48종을 실제 play 경로에 연결했다. 다음 작업은 아래 순서로 진행한다.
+기본 Imperium 49종을 실제 play 경로에 연결했다. 다음 작업은 아래 순서로 진행한다.
 
-1. 남은 기본 Imperium 카드는 아래 순서를 유지하며 공통 경계를 확장한다.
-   `Long Live the Fighters` → `Subversive Advisor`.
+1. 남은 기본 Imperium 카드 `Subversive Advisor`를 구현하며 공통 경계를 확장한다.
 2. 위 기본 카드 묶음이 끝나면 CHOAM 전용 Imperium 카드와 계약 시스템을 함께
    구현한다.
 3. Plot, Combat, Endgame Intrigue 타입과 공통 play/discard 경계를 만든 뒤 단순

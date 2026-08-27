@@ -81,6 +81,12 @@
   Spice 2를 얻는다. 선택한 공간의 typed `maker` 속성으로 판정하며, 같은
   Spice Trade icon의 비-Maker 공간에서는 적용하지 않는다.
   `[Desert Power card]` `[FAQ p. 2]`
+- Long Live the Fighters는 Agent box를 해결하는 시점에 개인 deck이 3장
+  이상이면 맨 위 3장을 보고, 서로 다른 card를 하나씩 draw·discard·trash한다.
+  전체 문장이 하나의 효과이므로 선택 사이에 다른 행동을 할 수 없고 trash는
+  의무다. 조건을 맞추기 위해 discard pile을 reshuffle하지 않으며, 공간·Faction·card
+  효과의 자유로운 순서에 따라 조건 판정 결과가 달라질 수 있다.
+  `[Long Live the Fighters card]` `[Designer clarification]` `[Main pp. 9, 20]`
 - Signet Ring card를 Agent turn에 내서 Agent를 보내면 Leader의 Signet Ring icon이 표시된 능력을 사용한다. [Main p. 6] [Main p. 20]
 - CHOAM Module의 Shaddam Corrino IV에 관한 별도 판정은
   `choam-module.md`와 콘텐츠 명세에서 다룬다. [Main pp. 16-17]
@@ -130,6 +136,8 @@
   Maker Hooks는 소비하지 않으며 Shield Wall이 현재 Conflict를 보호하면
   sandworm 선택을 할 수 없다. `[Desert Power card]` `[Main pp. 10, 20]`
   `[FAQ p. 2]`
+- Long Live the Fighters는 Reveal에서 Persuasion 2와 strength 3을 얻는다.
+  `[Long Live the Fighters card]`
 
 ## 카드 획득과 Imperium Row 보충
 
