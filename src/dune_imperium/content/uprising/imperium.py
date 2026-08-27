@@ -814,6 +814,13 @@ IMPERIUM_CARDS: Final = (
         "Subversive Advisor",
         5,
         has_acquisition_bonus=True,
+        agent_icons=(AgentIcon.SPY,),
+        agent_effect=(
+            PersonalCardAgentEffect.GAIN_TWO_VISITED_FACTION_INFLUENCE_AND_TRASH_SELF
+        ),
+        acquisition_effect=PersonalCardAcquisitionEffect.PLACE_SPY,
+        reveal_effects=(PersonalCardRevealEffect(solari=1),),
+        play_data_complete=True,
     ),
     _entry(
         66,

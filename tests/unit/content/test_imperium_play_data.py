@@ -834,6 +834,24 @@ def test_long_live_the_fighters_play_data_matches_the_card() -> None:
     assert card.reveal_strength == 3
 
 
+def test_subversive_advisor_play_data_matches_the_card() -> None:
+    card = IMPERIUM_CARDS_BY_ID["subversive_advisor"]
+
+    assert card.play_data_complete is True
+    assert card.copies == 1
+    assert card.acquisition_cost == 5
+    assert card.factions == ()
+    assert card.agent_icons == (AgentIcon.SPY,)
+    assert (
+        card.agent_effect
+        is PersonalCardAgentEffect.GAIN_TWO_VISITED_FACTION_INFLUENCE_AND_TRASH_SELF
+    )
+    assert card.acquisition_effect is PersonalCardAcquisitionEffect.PLACE_SPY
+    assert card.reveal_persuasion == 0
+    assert card.reveal_strength == 0
+    assert card.reveal_effects == (PersonalCardRevealEffect(solari=1),)
+
+
 def test_personal_card_reveal_effect_requires_a_nonnegative_gain() -> None:
     with pytest.raises(ValueError, match="must gain"):
         PersonalCardRevealEffect()

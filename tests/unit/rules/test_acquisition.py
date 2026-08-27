@@ -370,6 +370,73 @@ def test_price_is_no_object_preserves_acquisition_spy_follow_up() -> None:
     assert context["pending_agent_effect"] is False
 
 
+def test_subversive_advisor_normal_acquisition_opens_spy_placement() -> None:
+    state = _reveal_state(
+        _instance("convincing_argument", 0),
+        _instance("convincing_argument", 1),
+        _instance("diplomacy"),
+    )
+    instances = imperium_deck_instance_ids(False)
+    subversive = _imperium_instance("subversive_advisor")
+    others = tuple(instance for instance in instances if instance != subversive)
+    state = replace(
+        state,
+        imperium_row=(subversive, *others[:4]),
+        imperium_deck=others[4:],
+    )
+    engine = UprisingRulesEngine()
+    acquire = next(
+        action
+        for action in engine.legal_actions(state, 0)
+        if dict(action.arguments).get("instance_id") == subversive
+    )
+
+    acquired = engine.apply(state, acquire)
+    placement = legal_acquisition_spy_actions(acquired.state, 0)[0]
+    result = apply_acquisition_spy_action(acquired.state, placement)
+
+    assert acquired.state.players[0].discard_pile == (subversive,)
+    assert {
+        action.action_id
+        for action in legal_acquisition_spy_actions(acquired.state, 0)
+    } == {"place_acquisition_spy"}
+    assert result.state.players[0].spies_supply == 2
+    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 0
+
+
+def test_price_can_acquire_subversive_advisor_to_hand_and_place_spy() -> None:
+    instances = imperium_deck_instance_ids(False)
+    subversive = _imperium_instance("subversive_advisor")
+    price = _imperium_instance("price_is_no_object")
+    others = tuple(
+        instance_id
+        for instance_id in instances
+        if instance_id not in {subversive, price}
+    )
+    state = _price_agent_state(
+        solari=5,
+        imperium_row=(subversive, *others[:4]),
+        imperium_deck=others[4:],
+    )
+    engine = UprisingRulesEngine()
+    acquire = next(
+        action
+        for action in engine.legal_actions(state, 0)
+        if dict(action.arguments).get("instance_id") == subversive
+    )
+
+    acquired = engine.apply(state, acquire)
+    placement = legal_acquisition_spy_actions(acquired.state, 0)[0]
+    result = apply_acquisition_spy_action(acquired.state, placement)
+
+    assert acquired.state.players[0].hand == (subversive,)
+    assert acquired.state.players[0].resources.solari == 0
+    assert result.state.players[0].spies_supply == 2
+    assert dict(result.state.decision_stack[-1].context)[
+        "pending_agent_effect"
+    ] is False
+
+
 def test_price_is_no_object_may_decline_its_acquisition() -> None:
     state = _price_agent_state(solari=3)
     decline = DomainAction(action_id="decline_agent_card_acquisition", actor=0)

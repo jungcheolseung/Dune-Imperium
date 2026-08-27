@@ -435,6 +435,7 @@ def _agent_action_is_supported(state: GameState, action: DomainAction) -> bool:
         PersonalCardAgentEffect.DRAW_PERSONAL_CARD,
         PersonalCardAgentEffect.DRAW_PER_SANDWORM_IN_CONFLICT,
         PersonalCardAgentEffect.LOOK_AT_TOP_THREE,
+        PersonalCardAgentEffect.GAIN_TWO_VISITED_FACTION_INFLUENCE_AND_TRASH_SELF,
         PersonalCardAgentEffect.DISCARD_TO_DRAW_ONE_OR_TWO_IF_SPACING_GUILD,
         PersonalCardAgentEffect.DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD,
         PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD,

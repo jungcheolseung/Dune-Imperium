@@ -1325,6 +1325,43 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             trashed.state.players,
         )
         return RuleResult(state=next_state, events=trashed.events)
+    elif (
+        effect
+        is PersonalCardAgentEffect.GAIN_TWO_VISITED_FACTION_INFLUENCE_AND_TRASH_SELF
+    ):
+        space_id = context.get("space_id")
+        if not isinstance(space_id, str):
+            raise RuntimeError("Agent-turn effect frame has invalid space")
+        faction = BOARD_SPACES_BY_ID[space_id].faction
+        if faction is None:
+            raise RuntimeError("card effect requires a visited Faction space")
+        source = (
+            f"round:{state.round_number}:player:{player}:"
+            f"agent_card:{card_instance_id}"
+        )
+        gained = gain_faction_influence(
+            state,
+            player,
+            faction,
+            2,
+            event_prefix=f"{source}:influence:{faction.value}",
+        )
+        trashed = trash_personal_card(
+            gained.state,
+            player,
+            card_instance_id,
+            source=source,
+        )
+        context["pending_agent_effect"] = False
+        next_state = advance_after_effect(
+            trashed.state,
+            context,
+            trashed.state.players,
+        )
+        return RuleResult(
+            state=next_state,
+            events=(*gained.events, *trashed.events),
+        )
     elif effect is PersonalCardAgentEffect.LOOK_AT_TOP_THREE:
         if context.get(_LONG_LIVE_SELECTION_STARTED) is True:
             raise RuntimeError(

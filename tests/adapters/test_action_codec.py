@@ -11,10 +11,10 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     first = ActionCodec(RulesetConfig())
     second = ActionCodec(RulesetConfig())
 
-    assert ACTION_CODEC_VERSION == 54
+    assert ACTION_CODEC_VERSION == 55
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
-    assert first.size == 3326
+    assert first.size == 3377
 
 
 def test_corrinth_city_staged_payment_round_trips() -> None:
@@ -75,6 +75,20 @@ def test_long_live_the_fighters_choices_round_trip() -> None:
 
     for action in actions:
         assert codec.decode(codec.encode(action), actor=action.actor) == action
+
+
+def test_subversive_advisor_agent_turn_round_trips() -> None:
+    codec = ActionCodec(RulesetConfig())
+    action = DomainAction(
+        action_id="agent_turn",
+        actor=0,
+        arguments=(
+            ("card_id", "imperium:subversive_advisor:0"),
+            ("space_id", "dutiful_service"),
+        ),
+    )
+
+    assert codec.decode(codec.encode(action), actor=0) == action
 
 
 def test_agent_card_solari_acquisition_round_trips() -> None:

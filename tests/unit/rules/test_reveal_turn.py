@@ -1447,6 +1447,16 @@ def test_price_is_no_object_reveals_for_persuasion_and_solari() -> None:
     assert result.state.players[0].resources.solari == 2
 
 
+def test_subversive_advisor_reveals_for_one_solari() -> None:
+    subversive = _imperium_instance("subversive_advisor")
+    state = _state(PlayerState(player_id=0, hand=(subversive,)))
+
+    result = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
+
+    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 0
+    assert result.state.players[0].resources.solari == 1
+
+
 def test_fedaykin_stilltent_gains_water_when_revealed() -> None:
     stilltent = _imperium_instance("fedaykin_stilltent")
     state = _state(PlayerState(player_id=0, hand=(stilltent,)))

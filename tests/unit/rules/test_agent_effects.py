@@ -2061,6 +2061,113 @@ def test_desert_power_has_no_agent_effect_on_a_non_maker_space() -> None:
     assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False
 
 
+def _subversive_state(
+    *,
+    influence: Influence | None = None,
+    spy_post_id: str = "emperor-sardaukar-dutiful-service",
+) -> GameState:
+    subversive = _imperium_instance("subversive_advisor")
+    owner = PlayerState(
+        player_id=0,
+        hand=(subversive,),
+        influence=influence if influence is not None else Influence(),
+        spies_supply=2,
+        spy_post_ids=(spy_post_id,),
+    )
+    return GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+
+
+def test_subversive_advisor_replaces_faction_influence_and_trashes_itself() -> None:
+    state = _subversive_state()
+    subversive = state.players[0].hand[0]
+    opponent = replace(
+        state.players[1],
+        agents_available=1,
+        agent_locations=("dutiful_service",),
+    )
+    state = replace(state, players=(state.players[0], opponent, *state.players[2:]))
+    placed = apply_agent_action(state, _action_to(state, "dutiful_service")).state
+    engine = UprisingRulesEngine()
+
+    context = dict(placed.decision_stack[-1].context)
+    assert context["pending_agent_effect"] is True
+    assert context["pending_faction_influence"] is False
+    assert {
+        action.action_id for action in engine.legal_actions(placed, 0)
+    } == {"resolve_agent_card_effect", "resolve_board_effect"}
+
+    result = engine.apply(
+        placed,
+        DomainAction(action_id="resolve_agent_card_effect", actor=0),
+    )
+    owner = result.state.players[0]
+
+    assert owner.influence.emperor == 2
+    assert owner.in_play == ()
+    assert owner.trashed == (subversive,)
+    assert dict(result.state.decision_stack[-1].context)[
+        "pending_faction_influence"
+    ] is False
+    assert [event.kind for event in result.events] == [
+        "influence_gained",
+        "card_trashed",
+    ]
+    assert {
+        action.action_id for action in engine.legal_actions(result.state, 0)
+    } == {"resolve_board_effect"}
+
+
+def test_subversive_advisor_uses_shared_influence_boundary_and_alliance_rules() -> None:
+    state = _subversive_state(influence=Influence(emperor=3))
+    challenger = replace(state.players[0], victory_points=1)
+    holder = replace(
+        state.players[1],
+        influence=Influence(emperor=4),
+        alliance_faction_ids=(Faction.EMPEROR.value,),
+        victory_points=2,
+    )
+    state = replace(state, players=(challenger, holder, *state.players[2:]))
+    placed = apply_agent_action(state, _action_to(state, "dutiful_service")).state
+
+    result = resolve_agent_card_effect(placed)
+
+    assert result.state.players[0].influence.emperor == 5
+    assert result.state.players[0].alliance_faction_ids == (Faction.EMPEROR.value,)
+    assert result.state.players[0].victory_points == 2
+    assert result.state.players[1].alliance_faction_ids == ()
+    assert result.state.players[1].victory_points == 1
+
+
+def test_subversive_advisor_is_unavailable_on_a_non_faction_spy_destination() -> None:
+    state = _subversive_state(
+        spy_post_id="choam-shipping-accept-contract",
+    )
+    subversive = state.players[0].hand[0]
+    placed = apply_agent_action(state, _action_to(state, "accept_contract")).state
+
+    context = dict(placed.decision_stack[-1].context)
+    assert context["pending_agent_effect"] is False
+    assert context["pending_faction_influence"] is False
+    assert placed.players[0].in_play == (subversive,)
+    assert placed.players[0].trashed == ()
+    assert all(
+        action.action_id != "resolve_agent_card_effect"
+        for action in UprisingRulesEngine().legal_actions(placed, 0)
+    )
+
+
 def _long_live_state(
     deck: tuple[str, ...],
     *,

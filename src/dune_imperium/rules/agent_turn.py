@@ -190,7 +190,14 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
                     and card.allows_recruited_troop_deployment
                 ),
             ),
-            ("pending_faction_influence", space.faction is not None),
+            (
+                "pending_faction_influence",
+                space.faction is not None
+                and card.agent_effect
+                is not (
+                    PersonalCardAgentEffect.GAIN_TWO_VISITED_FACTION_INFLUENCE_AND_TRASH_SELF
+                ),
+            ),
             (
                 "pending_gather_intelligence",
                 any(
@@ -259,6 +266,11 @@ def _agent_effect_is_available(
         # Agent effect is actually resolved. Board and Faction effects may
         # draw cards before that point in the same turn.
         return True
+    if (
+        effect
+        is PersonalCardAgentEffect.GAIN_TWO_VISITED_FACTION_INFLUENCE_AND_TRASH_SELF
+    ):
+        return space.faction is not None
     if effect is PersonalCardAgentEffect.DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO:
         return owner.influence.bene_gesserit >= 2
     if effect is PersonalCardAgentEffect.PAY_TWO_WATER_TO_DRAW_TWO:

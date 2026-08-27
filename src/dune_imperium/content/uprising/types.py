@@ -29,6 +29,9 @@ class PersonalCardBond(StrEnum):
 class PersonalCardAgentEffect(StrEnum):
     """Typed Agent-box effects currently transcribed for personal cards."""
 
+    GAIN_TWO_VISITED_FACTION_INFLUENCE_AND_TRASH_SELF = (
+        "gain_two_visited_faction_influence_and_trash_self"
+    )
     LOOK_AT_TOP_THREE = "look_at_top_three"
     TRASH_SELF = "trash_self"
     TRASH_PERSONAL_CARD = "trash_personal_card"
