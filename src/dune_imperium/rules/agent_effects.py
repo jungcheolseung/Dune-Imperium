@@ -587,7 +587,10 @@ def legal_agent_card_spy_actions(
                 or post.post_id in placements
             )
         )
-    if context.get("agent_card_spy_recalled") is True or owner.spies_supply > 0:
+    # Placement needs a Spy in supply right now [Main pp. 11, 20]; a recall
+    # made earlier this turn may already have been consumed by another effect
+    # (e.g. the Espionage board space), in which case another recall is offered.
+    if owner.spies_supply > 0:
         return tuple(
             DomainAction(
                 action_id="place_agent_card_spy",

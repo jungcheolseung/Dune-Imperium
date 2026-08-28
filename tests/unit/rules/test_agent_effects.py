@@ -3580,3 +3580,63 @@ def test_priority_contracts_takes_a_contract_or_converts_an_empty_market() -> No
 
     assert result.state.players[0].resources.solari == 2
     assert result.events[-1].kind == "contract_icons_converted_to_solari"
+
+
+def test_agent_card_spy_placement_needs_a_spy_in_supply_at_that_moment() -> None:
+    # Placing a Spy without one in supply first recalls a placed Spy
+    # [Main pp. 11, 20]. If the Espionage board effect consumes that recalled
+    # Spy before the card effect resolves, the card must offer another recall
+    # rather than an impossible placement.
+    operative = _imperium_instance("bene_gesserit_operative")
+    owner = PlayerState(
+        player_id=0,
+        hand=(operative,),
+        resources=Resources(spice=1),
+        spies_supply=0,
+        spy_post_ids=(
+            "landsraad-assembly-hall-gather-support",
+            "arrakis-research-station-spice-refinery",
+            "fremen-desert-tactics-fremkit",
+        ),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    engine = UprisingRulesEngine()
+    placed = engine.apply(state, _action_to(state, "espionage")).state
+
+    recalled = engine.apply(
+        placed,
+        DomainAction(
+            action_id="recall_spy_for_agent_card",
+            actor=0,
+            arguments=(("post_id", "landsraad-assembly-hall-gather-support"),),
+        ),
+    ).state
+    assert recalled.players[0].spies_supply == 1
+
+    spied = engine.apply(
+        recalled,
+        DomainAction(
+            action_id="resolve_espionage_place_spy",
+            actor=0,
+            arguments=(("post_id", "landsraad-assembly-hall-gather-support"),),
+        ),
+    ).state
+    assert spied.players[0].spies_supply == 0
+
+    offered = {a.action_id for a in engine.legal_actions(spied, 0)}
+    assert "place_agent_card_spy" not in offered
+    assert "recall_spy_for_agent_card" in offered
+
