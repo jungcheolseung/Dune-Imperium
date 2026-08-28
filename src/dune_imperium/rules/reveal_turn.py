@@ -22,6 +22,7 @@ from dune_imperium.rules.influence import (
     lose_faction_influence,
 )
 from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
+from dune_imperium.rules.intrigue_triggers import expire_reveal_faceup_intrigue
 from dune_imperium.rules.shield_wall import current_conflict_is_shield_wall_protected
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
@@ -1503,7 +1504,10 @@ def finish_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
 
     if action not in legal_finish_reveal_actions(state, action.actor):
         raise ValueError("action is not a legal Reveal cleanup")
-    owner = state.players[action.actor]
+    # Face-up Intrigue whose window was this Reveal turn expires with it.
+    expired = expire_reveal_faceup_intrigue(state, action.actor)
+    working = expired.state
+    owner = working.players[action.actor]
     next_owner = replace(
         owner,
         has_revealed=True,
@@ -1512,34 +1516,34 @@ def finish_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
     )
     players = tuple(
         next_owner if player.player_id == action.actor else player
-        for player in state.players
+        for player in working.players
     )
     next_player = _next_unrevealed_player(players, action.actor)
     if next_player is None:
         phase = GamePhase.COMBAT
-        decision_stack = state.decision_stack[:-1]
+        decision_stack = working.decision_stack[:-1]
     else:
         phase = GamePhase.PLAYER_TURNS
         decision_stack = (
-            *state.decision_stack[:-1],
+            *working.decision_stack[:-1],
             DecisionFrame(
                 kind=FrameKind.TURN,
-                frame_id=f"round:{state.round_number}:turn:{next_player}",
+                frame_id=f"round:{working.round_number}:turn:{next_player}",
                 decision=PlayerDecision(
                     owner=next_player,
                     prompt="Choose an Agent turn or Reveal turn",
                 ),
                 context=(
-                    ("round", state.round_number),
+                    ("round", working.round_number),
                     ("turn_owner", next_player),
                 ),
             ),
         )
     next_state = replace(
-        state,
+        working,
         phase=phase,
         players=players,
-        reveal_order=(*state.reveal_order, action.actor),
+        reveal_order=(*working.reveal_order, action.actor),
         decision_stack=decision_stack,
     )
     event = GameEvent(
@@ -1547,7 +1551,7 @@ def finish_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         kind="reveal_finished",
         payload=(("player", action.actor),),
     )
-    return RuleResult(state=next_state, events=(event,))
+    return RuleResult(state=next_state, events=(*expired.events, event))
 
 
 def _next_unrevealed_player(
@@ -1624,13 +1628,4 @@ def add_units_to_reveal(
     )
 
 
-def reveal_is_open_for(state: GameState, player: int) -> bool:
-    """Return whether ``player``'s Reveal frame is on the decision stack."""
-
-    return any(
-        frame.kind == FrameKind.REVEAL
-        and isinstance(frame.decision, PlayerDecision)
-        and frame.decision.owner == player
-        for frame in state.decision_stack
-    )
 

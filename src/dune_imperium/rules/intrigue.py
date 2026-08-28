@@ -71,6 +71,7 @@ from dune_imperium.rules.frames import (
     owned_top_frame,
     replace_player,
     replace_top_frame,
+    reveal_is_open_for,
     top_frame,
     with_context,
 )
@@ -80,7 +81,7 @@ from dune_imperium.rules.influence import (
     influence_amount,
     lose_faction_influence,
 )
-from dune_imperium.rules.reveal_turn import add_units_to_reveal, reveal_is_open_for
+from dune_imperium.rules.reveal_turn import add_units_to_reveal
 from dune_imperium.rules.shield_wall import destroy_shield_wall
 from dune_imperium.rules.spy_placement import place_spy, recall_spy
 
@@ -198,6 +199,31 @@ def apply_intrigue_play(state: GameState, action: DomainAction) -> RuleResult:
                     ("water", cost.water),
                 ),
             )
+        )
+
+    if option.trigger is not None:
+        # The effect does not apply yet: the card waits face up in front of
+        # its owner until the trigger fires [FAQ p. 2].
+        waiting_owner = played_state.players[player]
+        moved = replace(
+            waiting_owner,
+            intrigue_cards=tuple(
+                held for held in waiting_owner.intrigue_cards if held != card_id
+            ),
+            intrigue_faceup=(*waiting_owner.intrigue_faceup, card_id),
+        )
+        events.append(
+            GameEvent(
+                event_id=f"{source}:faceup",
+                kind="intrigue_kept_faceup",
+                payload=(("card_id", card_id), ("player", player)),
+            )
+        )
+        return RuleResult(
+            state=replace(
+                played_state, players=replace_player(played_state.players, moved)
+            ),
+            events=tuple(events),
         )
 
     if choice_slots(sections, shield_wall_present=state.shield_wall_present):

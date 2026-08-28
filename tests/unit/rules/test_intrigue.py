@@ -82,7 +82,7 @@ def _play(state: GameState, card_id: str, option: int = 0) -> DomainAction:
 def test_transcribed_intrigue_options_are_well_formed() -> None:
     transcribed = [entry for entry in INTRIGUE_CARDS if entry.play_data_complete]
 
-    assert len(transcribed) == 28
+    assert len(transcribed) == 29
     for entry in transcribed:
         assert entry.options
         for option in entry.options:
@@ -1473,6 +1473,156 @@ def test_impress_acquiring_spy_network_opens_the_spy_frame_after_the_card() -> N
     done = engine.apply(acquired, spy_actions[0]).state
     assert len(done.players[0].spy_post_ids) == 1
     assert done.decision_stack[-1].kind == "combat_intrigue"
+
+
+def _persuasion_hand(copies: int = 2) -> tuple[str, ...]:
+    return tuple(
+        instance_id
+        for instance_id in starting_deck_instance_ids(0)
+        if ":convincing_argument:" in instance_id
+    )[:copies]
+
+
+def _reveal(state: GameState) -> DomainAction:
+    return DomainAction(action_id="reveal_turn", actor=0)
+
+
+def test_call_to_arms_waits_face_up_when_played() -> None:
+    card = _intrigue("call_to_arms")
+    owner = PlayerState(player_id=0, intrigue_cards=(card,))
+    state = _turn_state(owner)
+    engine = UprisingRulesEngine()
+
+    assert legal_intrigue_play_actions(state, 0) == (_play(state, card),)
+    result = engine.apply(state, _play(state, card))
+    done = result.state
+    assert done.players[0].intrigue_cards == ()
+    assert done.players[0].intrigue_faceup == (card,)
+    assert done.intrigue_discard == ()
+    assert [event.kind for event in result.events] == [
+        "intrigue_played",
+        "intrigue_kept_faceup",
+    ]
+    # The turn frame is untouched: no choice frame opens for a waiting card.
+    assert done.decision_stack == state.decision_stack
+
+
+def test_call_to_arms_recruits_per_reveal_acquisition_then_expires() -> None:
+    card = _intrigue("call_to_arms")
+    owner = PlayerState(
+        player_id=0, intrigue_faceup=(card,), hand=_persuasion_hand()
+    )
+    state = _with_market(_turn_state(owner))
+    engine = UprisingRulesEngine()
+    revealed = engine.apply(state, _reveal(state)).state
+
+    cheap = _imperium_instance("sardaukar_soldier")
+    bought = engine.apply(
+        revealed,
+        DomainAction(
+            action_id="acquire_imperium",
+            actor=0,
+            arguments=(("instance_id", cheap),),
+        ),
+    )
+    assert bought.state.players[0].troops_garrison == 4
+    assert "intrigue_triggered" in [event.kind for event in bought.events]
+
+    again = engine.apply(
+        bought.state,
+        DomainAction(
+            action_id="acquire_reserve",
+            actor=0,
+            arguments=(("card_id", "prepare_the_way"),),
+        ),
+    ).state
+    assert again.players[0].troops_garrison == 5
+    # The card stays face up between firings [FAQ p. 2].
+    assert again.players[0].intrigue_faceup == (card,)
+
+    finished = engine.apply(
+        again, DomainAction(action_id="finish_reveal", actor=0)
+    )
+    assert finished.state.players[0].intrigue_faceup == ()
+    assert finished.state.intrigue_discard == (card,)
+    assert "intrigue_expired" in [event.kind for event in finished.events]
+
+
+def test_call_to_arms_played_during_the_reveal_applies_at_once() -> None:
+    card = _intrigue("call_to_arms")
+    owner = PlayerState(
+        player_id=0, intrigue_cards=(card,), hand=_persuasion_hand(1)
+    )
+    state = _with_market(_turn_state(owner))
+    engine = UprisingRulesEngine()
+    revealed = engine.apply(state, _reveal(state)).state
+
+    played = engine.apply(revealed, _play(revealed, card)).state
+    assert played.players[0].intrigue_faceup == (card,)
+    bought = engine.apply(
+        played,
+        DomainAction(
+            action_id="acquire_reserve",
+            actor=0,
+            arguments=(("card_id", "prepare_the_way"),),
+        ),
+    ).state
+    assert bought.players[0].troops_garrison == 4
+
+
+def test_call_to_arms_ignores_acquisitions_outside_the_reveal_turn() -> None:
+    call = _intrigue("call_to_arms")
+    awe = _intrigue("inspire_awe")
+    owner = PlayerState(player_id=0, intrigue_cards=(awe,), intrigue_faceup=(call,))
+    state = _with_market(_turn_state(owner))
+    engine = UprisingRulesEngine()
+
+    opened = engine.apply(state, _play(state, awe)).state
+    done = engine.apply(opened, _acquire_reserve("prepare_the_way")).state
+    # An Agent-turn acquisition is outside the Reveal-turn window.
+    assert done.players[0].troops_garrison == 3
+    assert done.players[0].intrigue_faceup == (call,)
+
+
+def test_call_to_arms_counts_intrigue_acquisitions_during_the_reveal() -> None:
+    call = _intrigue("call_to_arms")
+    awe = _intrigue("inspire_awe")
+    owner = PlayerState(player_id=0, intrigue_cards=(awe,), intrigue_faceup=(call,))
+    state = _with_market(_turn_state(owner))
+    engine = UprisingRulesEngine()
+    revealed = engine.apply(state, _reveal(state)).state
+
+    opened = engine.apply(revealed, _play(revealed, awe)).state
+    done = engine.apply(opened, _acquire_reserve("prepare_the_way")).state
+    assert done.players[0].troops_garrison == 4
+
+
+def test_call_to_arms_trigger_is_supply_limited() -> None:
+    card = _intrigue("call_to_arms")
+    owner = PlayerState(
+        player_id=0,
+        intrigue_faceup=(card,),
+        troops_supply=0,
+        troops_garrison=12,
+        hand=_persuasion_hand(1),
+    )
+    state = _with_market(_turn_state(owner))
+    engine = UprisingRulesEngine()
+    revealed = engine.apply(state, _reveal(state)).state
+
+    bought = engine.apply(
+        revealed,
+        DomainAction(
+            action_id="acquire_reserve",
+            actor=0,
+            arguments=(("card_id", "prepare_the_way"),),
+        ),
+    )
+    assert bought.state.players[0].troops_garrison == 12
+    triggered = next(
+        event for event in bought.events if event.kind == "intrigue_triggered"
+    )
+    assert dict(triggered.payload)["troops"] == 0
 
 
 def test_reach_agreement_retreats_for_a_contract_in_the_choam_module() -> None:

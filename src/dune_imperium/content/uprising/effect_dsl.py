@@ -385,6 +385,22 @@ type Reward = (
 )
 
 
+# --- Triggers ---------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class OnRevealAcquisitionThisRound:
+    """During the owner's Reveal turn this round, whenever they acquire a card.
+
+    A card played with this trigger stays face up in front of its owner until
+    the effect applies [FAQ p. 2], fires once per card acquired during the
+    owner's Reveal turn, and is discarded when that Reveal turn ends.
+    """
+
+
+type Trigger = OnRevealAcquisitionThisRound
+
+
 # --- Composition ------------------------------------------------------------
 
 
@@ -409,13 +425,26 @@ class EffectSection:
 
 @dataclass(frozen=True, slots=True)
 class IntrigueOption:
-    """One way to play an Intrigue card (the halves of an ``—OR—`` card)."""
+    """One way to play an Intrigue card (the halves of an ``—OR—`` card).
+
+    An option with a ``trigger`` does nothing when played; the card waits
+    face up and its sections resolve each time the trigger fires.
+    """
 
     timing: IntrigueTiming
     sections: tuple[EffectSection, ...]
+    trigger: Trigger | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.timing, IntrigueTiming):
             raise TypeError("Intrigue option timing must use IntrigueTiming")
         if not self.sections:
             raise ValueError("an Intrigue option needs at least one section")
+        if self.trigger is not None:
+            if self.timing is not IntrigueTiming.PLOT:
+                raise ValueError("triggered Intrigue options must use Plot timing")
+            for section in self.sections:
+                if section.costs or section.condition is not None:
+                    raise ValueError(
+                        "triggered Intrigue sections must be free and unconditional"
+                    )

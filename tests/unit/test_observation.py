@@ -17,6 +17,7 @@ def _state() -> GameState:
             hand=(f"p{seat}:hand",),
             discard_pile=(f"p{seat}:discard",),
             intrigue_cards=(f"p{seat}:intrigue",),
+            intrigue_faceup=(f"p{seat}:faceup",),
             objective_ids=(f"objective_{seat}",),
         )
         for seat in range(4)
@@ -59,6 +60,8 @@ def test_view_contains_public_state_and_only_observers_private_cards() -> None:
     )
     assert view.intrigue_discard == ("intrigue_public",)
     assert view.intrigue_trash == ("intrigue_trashed",)
+    # A face-up Intrigue card waiting on its trigger is public [FAQ p. 2].
+    assert view.players[1].intrigue_faceup == ("p1:faceup",)
     assert view.players[1].objective_ids == ("objective_1",)
     assert view.players[1].won_conflict_ids == ()
     assert view.players[1].face_down_battle_card_ids == ()

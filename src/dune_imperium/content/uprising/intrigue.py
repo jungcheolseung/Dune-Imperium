@@ -28,6 +28,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     IntrigueOption,
     IntrigueTiming,
     LoseInfluence,
+    OnRevealAcquisitionThisRound,
     PayResources,
     PlaceSpy,
     RecallSpy,
@@ -38,6 +39,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     SummonSandworm,
     TakeContract,
     TrashPersonalCard,
+    Trigger,
 )
 
 BASE_SOURCES: Final = (SourceRef(SourceDocument.MAIN_RULEBOOK, (3, 4)),)
@@ -71,6 +73,12 @@ class IntrigueCardEntry(DeckCardEntry):
 
 def _plot(*sections: EffectSection) -> IntrigueOption:
     return IntrigueOption(timing=IntrigueTiming.PLOT, sections=sections)
+
+
+def _plot_trigger(trigger: Trigger, *sections: EffectSection) -> IntrigueOption:
+    return IntrigueOption(
+        timing=IntrigueTiming.PLOT, sections=sections, trigger=trigger
+    )
 
 
 def _combat(*sections: EffectSection) -> IntrigueOption:
@@ -133,7 +141,17 @@ INTRIGUE_CARDS: Final = (
             ),
         ),
     ),
-    _entry(138, "call-to-arms", "Call to Arms"),
+    _entry(
+        138,
+        "call-to-arms",
+        "Call to Arms",
+        options=(
+            _plot_trigger(
+                OnRevealAcquisitionThisRound(),
+                EffectSection(rewards=(RecruitTroops(1),)),
+            ),
+        ),
+    ),
     _entry(
         135,
         "change-allegiances",

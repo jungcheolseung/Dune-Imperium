@@ -124,3 +124,14 @@ def replace_player(
         player if candidate.player_id == player.player_id else candidate
         for candidate in players
     )
+
+
+def reveal_is_open_for(state: GameState, player: int) -> bool:
+    """Return whether ``player``'s Reveal frame is on the decision stack."""
+
+    return any(
+        frame.kind == FrameKind.REVEAL
+        and isinstance(frame.decision, PlayerDecision)
+        and frame.decision.owner == player
+        for frame in state.decision_stack
+    )

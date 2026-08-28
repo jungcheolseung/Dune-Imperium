@@ -37,6 +37,7 @@ class PublicPlayerView:
     maker_hooks: bool
     in_play: tuple[str, ...]
     trashed: tuple[str, ...]
+    intrigue_faceup: tuple[str, ...]
     objective_ids: tuple[str, ...]
     won_conflict_ids: tuple[str, ...]
     face_down_battle_card_ids: tuple[str, ...]
@@ -144,6 +145,7 @@ def _public_player_view(player: PlayerState) -> PublicPlayerView:
         maker_hooks=player.maker_hooks,
         in_play=player.in_play,
         trashed=player.trashed,
+        intrigue_faceup=player.intrigue_faceup,
         objective_ids=player.objective_ids,
         won_conflict_ids=player.won_conflict_ids,
         face_down_battle_card_ids=player.face_down_battle_card_ids,

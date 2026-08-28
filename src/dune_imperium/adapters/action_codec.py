@@ -32,7 +32,7 @@ from dune_imperium.content.uprising.starting_cards import (
 from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
 from dune_imperium.core.actions import ActionValue, DomainAction
 
-ACTION_CODEC_VERSION = 65
+ACTION_CODEC_VERSION = 66
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 

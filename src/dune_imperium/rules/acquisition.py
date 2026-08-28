@@ -27,6 +27,7 @@ from dune_imperium.rules.effects import (
 )
 from dune_imperium.rules.frames import FrameKind, replace_player
 from dune_imperium.rules.influence import gain_faction_influence
+from dune_imperium.rules.intrigue_triggers import fire_reveal_acquisition_intrigue
 from dune_imperium.rules.reveal_turn import current_reveal_context
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
@@ -494,9 +495,14 @@ def apply_reserve_acquisition(
         card_id,
         source=f"round:{state.round_number}:player:{action.actor}:acquire:{instance_id}",
     )
+    fired = fire_reveal_acquisition_intrigue(
+        completed.state,
+        action.actor,
+        source=f"round:{state.round_number}:player:{action.actor}:acquire:{instance_id}",
+    )
     return RuleResult(
-        state=completed.state,
-        events=(event, *triggered.events, *completed.events),
+        state=fired.state,
+        events=(event, *triggered.events, *completed.events, *fired.events),
     )
 
 
@@ -639,6 +645,13 @@ def apply_imperium_acquisition(
         )
         next_state = contracts.state
         acquisition_events = (*acquisition_events, *contracts.events)
+    fired = fire_reveal_acquisition_intrigue(
+        next_state,
+        action.actor,
+        source=f"round:{state.round_number}:player:{action.actor}:acquire:{instance_id}",
+    )
+    next_state = fired.state
+    acquisition_events = (*acquisition_events, *fired.events)
     event = GameEvent(
         event_id=(
             f"round:{state.round_number}:player:{action.actor}:acquire:{instance_id}"
@@ -879,6 +892,7 @@ def acquire_reserve_for_intrigue(
         reserve_stacks=reserve_stacks,
     )
     completed = complete_acquire_contracts(prepared, player, card_id, source=source)
+    fired = fire_reveal_acquisition_intrigue(completed.state, player, source=source)
     event = GameEvent(
         event_id=f"{source}:acquired:{instance_id}",
         kind="card_acquired",
@@ -890,7 +904,8 @@ def acquire_reserve_for_intrigue(
     )
     return IntrigueAcquisition(
         result=RuleResult(
-            state=completed.state, events=(event, *completed.events)
+            state=fired.state,
+            events=(event, *completed.events, *fired.events),
         ),
         instance_id=instance_id,
     )
@@ -960,6 +975,7 @@ def acquire_imperium_for_intrigue(
         definition.card.card_id,
         source=source,
     )
+    fired = fire_reveal_acquisition_intrigue(completed.state, player, source=source)
     event = GameEvent(
         event_id=f"{source}:acquired:{instance_id}",
         kind="card_acquired",
@@ -972,8 +988,8 @@ def acquire_imperium_for_intrigue(
     )
     return IntrigueAcquisition(
         result=RuleResult(
-            state=completed.state,
-            events=(event, *acquisition_events, *completed.events),
+            state=fired.state,
+            events=(event, *acquisition_events, *completed.events, *fired.events),
         ),
         instance_id=instance_id,
         places_spy=bonus.places_spy,

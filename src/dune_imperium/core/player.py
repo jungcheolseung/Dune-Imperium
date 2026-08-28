@@ -78,6 +78,7 @@ class PlayerState:
     in_play: tuple[str, ...] = ()
     trashed: tuple[str, ...] = ()
     intrigue_cards: tuple[str, ...] = ()
+    intrigue_faceup: tuple[str, ...] = ()
     objective_ids: tuple[str, ...] = ()
     won_conflict_ids: tuple[str, ...] = ()
     face_down_battle_card_ids: tuple[str, ...] = ()
@@ -142,3 +143,7 @@ class PlayerState:
         )
         if len(imperium_cards) != len(set(imperium_cards)):
             raise ValueError("an Imperium card instance cannot occupy two zones")
+
+        intrigue_zones = (*self.intrigue_cards, *self.intrigue_faceup)
+        if len(intrigue_zones) != len(set(intrigue_zones)):
+            raise ValueError("an Intrigue card cannot be both held and face up")
