@@ -82,7 +82,7 @@ def _play(state: GameState, card_id: str, option: int = 0) -> DomainAction:
 def test_transcribed_intrigue_options_are_well_formed() -> None:
     transcribed = [entry for entry in INTRIGUE_CARDS if entry.play_data_complete]
 
-    assert len(transcribed) == 37
+    assert len(transcribed) == 39
     for entry in transcribed:
         assert entry.options
         for option in entry.options:
@@ -94,9 +94,8 @@ def test_transcribed_intrigue_options_are_well_formed() -> None:
     }
 
 
-def test_untranscribed_intrigue_cards_offer_no_play() -> None:
-    owner = PlayerState(player_id=0, intrigue_cards=(_intrigue("manipulate"),))
-    assert legal_intrigue_play_actions(_turn_state(owner), 0) == ()
+def test_every_intrigue_identity_is_transcribed() -> None:
+    assert all(entry.play_data_complete for entry in INTRIGUE_CARDS)
 
 
 def test_only_the_turn_owner_may_play_plot_intrigue() -> None:
@@ -2206,6 +2205,165 @@ def test_a_window_may_play_several_endgame_cards_before_passing() -> None:
             DomainAction(action_id="pass_endgame_intrigue", actor=seat),
         ).state
     assert working.phase is GamePhase.FINISHED
+
+
+def test_spring_the_trap_recalls_two_spies_for_seven_swords() -> None:
+    card = _intrigue("spring_the_trap")
+    posts = (_post(0), _post(1))
+    fighter = _fighter(
+        0,
+        1,
+        intrigue_cards=(card,),
+        spies_supply=1,
+        spy_post_ids=posts,
+    )
+    state = _combat_state(fighter)
+    engine = UprisingRulesEngine()
+
+    opened = engine.apply(state, _play(state, card)).state
+    assert opened.decision_stack[-1].kind == "intrigue_choice"
+    first = engine.apply(
+        opened,
+        DomainAction(
+            action_id="recall_spy_for_intrigue",
+            actor=0,
+            arguments=(("post_id", posts[0]),),
+        ),
+    ).state
+    done = engine.apply(
+        first,
+        DomainAction(
+            action_id="recall_spy_for_intrigue",
+            actor=0,
+            arguments=(("post_id", posts[1]),),
+        ),
+    ).state
+    assert done.players[0].spies_supply == 3
+    assert done.players[0].combat_strength == 9
+    assert done.intrigue_discard == (card,)
+    assert done.decision_stack[-1].kind == "combat_intrigue"
+
+    # With fewer than two placed Spies the mandatory cost cannot be paid.
+    lone = _combat_state(
+        _fighter(0, 1, intrigue_cards=(card,), spies_supply=2, spy_post_ids=(posts[0],))
+    )
+    assert legal_intrigue_play_actions(lone, 0) == ()
+
+
+def test_manipulate_sets_a_row_card_aside_for_its_owner() -> None:
+    card = _intrigue("manipulate")
+    cheap = _imperium_instance("sardaukar_soldier")
+    owner = PlayerState(player_id=0, intrigue_cards=(card,))
+    state = _with_market(_turn_state(owner))
+    engine = UprisingRulesEngine()
+
+    opened = engine.apply(state, _play(state, card)).state
+    assert opened.decision_stack[-1].kind == "intrigue_choice"
+    targets = {
+        dict(action.arguments)["instance_id"]
+        for action in engine.legal_actions(opened, 0)
+    }
+    assert targets == set(state.imperium_row)
+
+    done = engine.apply(
+        opened,
+        DomainAction(
+            action_id="manipulate_imperium_row",
+            actor=0,
+            arguments=(("instance_id", cheap),),
+        ),
+    ).state
+    # The Row is replaced at once and the card waits with its owner.
+    assert cheap not in done.imperium_row
+    assert done.imperium_row == (
+        _imperium_instance("maula_pistol"),
+        _imperium_instance("steersman"),
+    )
+    assert done.players[0].imperium_set_aside == (cheap,)
+    assert done.intrigue_discard == (card,)
+
+
+def test_manipulated_card_is_acquired_at_a_discount_during_the_reveal() -> None:
+    cheap = _imperium_instance("sardaukar_soldier")
+    owner = PlayerState(player_id=0, imperium_set_aside=(cheap,))
+    state = _with_market(_turn_state(owner))
+    engine = UprisingRulesEngine()
+
+    # Sardaukar Soldier costs 1, so the discount makes it free: the option
+    # appears even with zero Persuasion, for the owner only.
+    revealed = engine.apply(state, _reveal(state)).state
+    offers = [
+        action
+        for action in engine.legal_actions(revealed, 0)
+        if action.action_id == "acquire_manipulated_imperium"
+    ]
+    assert offers == [
+        DomainAction(
+            action_id="acquire_manipulated_imperium",
+            actor=0,
+            arguments=(("instance_id", cheap),),
+        )
+    ]
+    assert engine.legal_actions(revealed, 1) == ()
+
+    result = engine.apply(revealed, offers[0])
+    done = result.state
+    assert done.players[0].imperium_set_aside == ()
+    assert done.players[0].discard_pile == (cheap,)
+    acquired = next(e for e in result.events if e.kind == "card_acquired")
+    assert dict(acquired.payload)["discount"] == 1
+    # The Row is untouched by a set-aside acquisition.
+    assert done.imperium_row == state.imperium_row
+
+
+def test_manipulated_card_spends_the_discounted_persuasion() -> None:
+    spy_network = _imperium_instance("spy_network")
+    owner = PlayerState(
+        player_id=0,
+        imperium_set_aside=(spy_network,),
+        hand=_persuasion_hand(1),
+    )
+    state = _with_market(_turn_state(owner))
+    engine = UprisingRulesEngine()
+    revealed = engine.apply(state, _reveal(state)).state
+
+    acquired = engine.apply(
+        revealed,
+        DomainAction(
+            action_id="acquire_manipulated_imperium",
+            actor=0,
+            arguments=(("instance_id", spy_network),),
+        ),
+    ).state
+    # Spy Network costs 2: one Persuasion is spent and its acquire box opens
+    # the shared Spy placement frame [Main p. 20].
+    frame = acquired.decision_stack[-1]
+    assert frame.kind == "acquisition_spy"
+    reveal_frame = acquired.decision_stack[-2]
+    assert dict(reveal_frame.context)["persuasion"] == 1
+
+    placed = engine.apply(
+        acquired, engine.legal_actions(acquired, 0)[0]
+    ).state
+    assert len(placed.players[0].spy_post_ids) == 1
+    assert placed.decision_stack[-1].kind == "reveal"
+
+
+def test_unacquired_manipulated_card_leaves_the_game_with_the_reveal() -> None:
+    cheap = _imperium_instance("sardaukar_soldier")
+    owner = PlayerState(player_id=0, imperium_set_aside=(cheap,))
+    state = _with_market(_turn_state(owner))
+    engine = UprisingRulesEngine()
+    revealed = engine.apply(state, _reveal(state)).state
+
+    result = engine.apply(
+        revealed, DomainAction(action_id="finish_reveal", actor=0)
+    )
+    done = result.state
+    assert done.players[0].imperium_set_aside == ()
+    assert done.players[0].discard_pile == ()
+    assert done.imperium_removed == (cheap,)
+    assert "imperium_card_removed" in [event.kind for event in result.events]
 
 
 def test_reach_agreement_retreats_for_a_contract_in_the_choam_module() -> None:

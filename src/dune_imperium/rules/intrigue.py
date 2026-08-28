@@ -29,8 +29,10 @@ from dune_imperium.content.uprising.effect_dsl import (
     PlaceSpy,
     RecallSpy,
     RetreatTroops,
+    SetAsideImperiumRowCard,
     TrashPersonalCard,
 )
+from dune_imperium.content.uprising.imperium import imperium_card_for_instance
 from dune_imperium.content.uprising.intrigue import (
     INTRIGUE_CARDS_BY_INSTANCE,
     intrigue_card_for_instance,
@@ -373,6 +375,15 @@ def legal_intrigue_choice_actions(
                 )
                 for conflict_id in flippable_battle_card_ids(owner, icon)
             )
+        case SetAsideImperiumRowCard():
+            actions.extend(
+                DomainAction(
+                    action_id="manipulate_imperium_row",
+                    actor=player,
+                    arguments=(("instance_id", instance_id),),
+                )
+                for instance_id in state.imperium_row
+            )
         case AcquireCardUpTo(max_cost=max_cost):
             actions.extend(
                 DomainAction(
@@ -434,6 +445,40 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
         case AcquireCardUpTo():
             return _apply_intrigue_acquisition(
                 state, frame, context, player, slot, action, step_source
+            )
+        case SetAsideImperiumRowCard():
+            instance_id = str(arguments["instance_id"])
+            if not state.imperium_deck:
+                raise NotImplementedError(
+                    "Imperium Row refill after deck exhaustion is unresolved"
+                )
+            row = list(state.imperium_row)
+            row[row.index(instance_id)] = state.imperium_deck[0]
+            owner = state.players[player]
+            keeper = replace(
+                owner,
+                imperium_set_aside=(*owner.imperium_set_aside, instance_id),
+            )
+            result = RuleResult(
+                state=replace(
+                    state,
+                    players=replace_player(state.players, keeper),
+                    imperium_deck=state.imperium_deck[1:],
+                    imperium_row=tuple(row),
+                ),
+                events=(
+                    GameEvent(
+                        event_id=f"{step_source}:set_aside:{instance_id}",
+                        kind="imperium_row_card_set_aside",
+                        payload=(
+                            ("card_id", imperium_card_for_instance(
+                                instance_id
+                            ).card.card_id),
+                            ("instance_id", instance_id),
+                            ("player", player),
+                        ),
+                    ),
+                ),
             )
         case FlipBattleCard():
             flipped_id = str(arguments["card_id"])

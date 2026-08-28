@@ -49,6 +49,7 @@ class GameState:
     intrigue_deck: tuple[str, ...] = ()
     intrigue_discard: tuple[str, ...] = ()
     intrigue_trash: tuple[str, ...] = ()
+    imperium_removed: tuple[str, ...] = ()
     contract_bank: tuple[str, ...] = ()
     face_up_contract_ids: tuple[str, ...] = ()
     reserve_stacks: tuple[tuple[str, int], ...] = ()

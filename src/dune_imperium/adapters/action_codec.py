@@ -32,7 +32,7 @@ from dune_imperium.content.uprising.starting_cards import (
 from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
 from dune_imperium.core.actions import ActionValue, DomainAction
 
-ACTION_CODEC_VERSION = 70
+ACTION_CODEC_VERSION = 71
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 
@@ -278,6 +278,14 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         )
         for conflict in CONFLICTS
     )
+    for action_id in ("manipulate_imperium_row", "acquire_manipulated_imperium"):
+        templates.extend(
+            ActionTemplate(
+                action_id=action_id,
+                arguments=(("instance_id", instance_id),),
+            )
+            for instance_id in imperium_instances
+        )
     templates.extend(
         ActionTemplate(
             action_id="acquire_imperium_with_solari",

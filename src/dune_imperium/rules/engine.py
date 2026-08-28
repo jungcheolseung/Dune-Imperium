@@ -25,9 +25,11 @@ from dune_imperium.rules.acquisition import (
     apply_acquisition_spy_action,
     apply_agent_card_acquisition,
     apply_imperium_acquisition,
+    apply_manipulated_acquisition,
     apply_reserve_acquisition,
     legal_acquisition_spy_actions,
     legal_imperium_acquisitions,
+    legal_manipulated_acquisitions,
     legal_reserve_acquisitions,
 )
 from dune_imperium.rules.agent_effect_frame import legal_agent_effect_frame_actions
@@ -224,6 +226,7 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     FrameKind.REVEAL: (
         legal_reserve_acquisitions,
         legal_imperium_acquisitions,
+        legal_manipulated_acquisitions,
         legal_finish_reveal_actions,
         legal_intrigue_play_actions,
     ),
@@ -280,6 +283,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "acquire_intrigue_imperium": apply_intrigue_choice,
     "acquire_intrigue_reserve": apply_intrigue_choice,
     "flip_battle_card": apply_intrigue_choice,
+    "manipulate_imperium_row": apply_intrigue_choice,
+    "acquire_manipulated_imperium": apply_manipulated_acquisition,
     "place_trigger_spy": apply_trigger_spy_action,
     "recall_spy_for_trigger": apply_trigger_spy_action,
     "decline_intrigue_trigger": apply_trigger_spy_action,

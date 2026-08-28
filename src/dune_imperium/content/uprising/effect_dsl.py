@@ -443,6 +443,22 @@ class AcquireCardUpTo:
             raise ValueError("acquisition cost cap must be positive")
 
 
+@dataclass(frozen=True, slots=True)
+class SetAsideImperiumRowCard:
+    """Remove and replace one Imperium Row card, setting it aside for the owner.
+
+    Until the owner's Reveal turn this round ends, only they may acquire the
+    set-aside card, for ``discount`` less Persuasion; opponents never can, and
+    an unacquired card leaves the game with that Reveal turn [FAQ p. 3].
+    """
+
+    discount: int = 1
+
+    def __post_init__(self) -> None:
+        if self.discount < 1:
+            raise ValueError("set-aside discount must be positive")
+
+
 type Reward = (
     GainResources
     | GainVictoryPoints
@@ -459,6 +475,7 @@ type Reward = (
     | RetreatTroops
     | TakeContract
     | AcquireCardUpTo
+    | SetAsideImperiumRowCard
 )
 
 

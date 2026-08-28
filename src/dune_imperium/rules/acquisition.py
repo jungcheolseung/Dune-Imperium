@@ -812,6 +812,166 @@ def acquisition_spy_frame(
 
 
 
+MANIPULATE_DISCOUNT = 1
+
+
+def _manipulated_cost(instance_id: str) -> int | None:
+    cost = imperium_card_for_instance(instance_id).acquisition_cost
+    if cost is None:
+        return None
+    return max(cost - MANIPULATE_DISCOUNT, 0)
+
+
+def legal_manipulated_acquisitions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Offer the revealer their own set-aside Imperium cards at the discount.
+
+    Only the player who removed the card may acquire it [FAQ p. 3], for one
+    Persuasion less [Manipulate card], during their Reveal turn this round.
+    """
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    owner = state.players[player]
+    if not owner.imperium_set_aside:
+        return ()
+    try:
+        context = current_reveal_context(state)
+    except ValueError:
+        return ()
+    turn_owner = context["turn_owner"]
+    persuasion = context["persuasion"]
+    if (
+        isinstance(turn_owner, bool)
+        or not isinstance(turn_owner, int)
+        or isinstance(persuasion, bool)
+        or not isinstance(persuasion, int)
+    ):
+        raise RuntimeError("Reveal frame has invalid acquisition context")
+    if turn_owner != player:
+        return ()
+    return tuple(
+        DomainAction(
+            action_id="acquire_manipulated_imperium",
+            actor=player,
+            arguments=(("instance_id", instance_id),),
+        )
+        for instance_id in owner.imperium_set_aside
+        if (cost := _manipulated_cost(instance_id)) is not None
+        and cost <= persuasion
+        and (
+            not (definition := imperium_card_for_instance(instance_id))
+            .has_acquisition_bonus
+            or definition.acquisition_effect is not None
+        )
+    )
+
+
+def apply_manipulated_acquisition(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Acquire one set-aside Imperium card for one Persuasion less."""
+
+    if action not in legal_manipulated_acquisitions(state, action.actor):
+        raise ValueError("action is not a legal set-aside acquisition")
+    instance_id = dict(action.arguments)["instance_id"]
+    if not isinstance(instance_id, str):
+        raise ValueError("set-aside acquisition instance_id must be a string")
+    definition = imperium_card_for_instance(instance_id)
+    cost = _manipulated_cost(instance_id)
+    if cost is None:
+        raise RuntimeError("set-aside Imperium card is missing its cost")
+
+    context = current_reveal_context(state)
+    persuasion = context["persuasion"]
+    if isinstance(persuasion, bool) or not isinstance(persuasion, int):
+        raise RuntimeError("Reveal frame has invalid Persuasion")
+    owner = state.players[action.actor]
+    next_owner = replace(
+        owner,
+        imperium_set_aside=tuple(
+            held for held in owner.imperium_set_aside if held != instance_id
+        ),
+        discard_pile=(*owner.discard_pile, instance_id),
+    )
+    bonus = _resolve_imperium_acquisition_bonus(
+        state,
+        action.actor,
+        instance_id,
+        next_owner,
+    )
+    context["persuasion"] = persuasion - cost
+    frame = state.decision_stack[-1]
+    next_frame = replace(frame, context=tuple(sorted(context.items())))
+    decision_stack = (*state.decision_stack[:-1], next_frame)
+    if bonus.places_spy:
+        decision_stack = (
+            *decision_stack,
+            acquisition_spy_frame(state, action.actor, instance_id),
+        )
+    next_state = replace(
+        state,
+        players=replace_player(state.players, bonus.owner),
+        intrigue_deck=bonus.intrigue_deck,
+        pending_intrigue_draws=_with_pending_draw(state, bonus.pending_draw),
+        decision_stack=decision_stack,
+    )
+    acquisition_events = bonus.events
+    source = (
+        f"round:{state.round_number}:player:{action.actor}:"
+        f"acquire_manipulated:{instance_id}"
+    )
+    if (
+        definition.acquisition_effect
+        is PersonalCardAcquisitionEffect.GAIN_SPACING_GUILD_INFLUENCE
+    ):
+        gained = gain_faction_influence(
+            next_state,
+            action.actor,
+            Faction.SPACING_GUILD,
+            1,
+            event_prefix=f"{source}:influence:spacing_guild",
+        )
+        next_state = gained.state
+        acquisition_events = (*acquisition_events, *gained.events)
+    completed = complete_acquire_contracts(
+        next_state,
+        action.actor,
+        definition.card.card_id,
+        source=source,
+    )
+    next_state = completed.state
+    acquisition_events = (*acquisition_events, *completed.events)
+    if bonus.takes_contract:
+        contracts = begin_contract_gain(
+            next_state,
+            action.actor,
+            1,
+            source=f"{source}:acquisition_bonus",
+        )
+        next_state = contracts.state
+        acquisition_events = (*acquisition_events, *contracts.events)
+    fired = fire_reveal_acquisition_intrigue(
+        next_state, action.actor, source=source
+    )
+    next_state = fired.state
+    acquisition_events = (*acquisition_events, *fired.events)
+    event = GameEvent(
+        event_id=source,
+        kind="card_acquired",
+        payload=(
+            ("card_id", definition.card.card_id),
+            ("discount", MANIPULATE_DISCOUNT),
+            ("instance_id", instance_id),
+            ("player", action.actor),
+        ),
+    )
+    return RuleResult(state=next_state, events=(event, *acquisition_events))
+
+
 def acquirable_reserve_card_ids(
     state: GameState,
     max_cost: int,

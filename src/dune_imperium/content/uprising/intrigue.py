@@ -39,6 +39,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     RecruitTroops,
     RetreatTroops,
     SandwormsInConflictAtLeast,
+    SetAsideImperiumRowCard,
     SpiceMustFlowCardsAtLeast,
     SpiesPlacedAtLeast,
     SummonSandworm,
@@ -406,7 +407,14 @@ INTRIGUE_CARDS: Final = (
             ),
         ),
     ),
-    _entry(143, "manipulate", "Manipulate"),
+    _entry(
+        143,
+        "manipulate",
+        "Manipulate",
+        options=(
+            _plot(EffectSection(rewards=(SetAsideImperiumRowCard(1),))),
+        ),
+    ),
     _entry(
         145,
         "market-opportunity",
@@ -577,7 +585,19 @@ INTRIGUE_CARDS: Final = (
             ),
         ),
     ),
-    _entry(153, "spring-the-trap", "Spring The Trap"),
+    _entry(
+        153,
+        "spring-the-trap",
+        "Spring The Trap",
+        options=(
+            _combat(
+                EffectSection(
+                    costs=(RecallSpy(2),),
+                    rewards=(GainCombatStrength(7),),
+                )
+            ),
+        ),
+    ),
     _entry(
         130,
         "strategic-stockpiling",

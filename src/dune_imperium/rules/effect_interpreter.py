@@ -39,6 +39,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     RetreatTroops,
     Reward,
     SandwormsInConflictAtLeast,
+    SetAsideImperiumRowCard,
     SpiceMustFlowCardsAtLeast,
     SpiesPlacedAtLeast,
     SummonSandworm,
@@ -78,6 +79,7 @@ type ChoiceSlot = (
     | PlaceSpy
     | AcquireCardUpTo
     | FlipBattleCard
+    | SetAsideImperiumRowCard
 )
 
 
@@ -247,6 +249,7 @@ def choice_slots(
                     | PlaceSpy()
                     | RetreatTroops()
                     | AcquireCardUpTo()
+                    | SetAsideImperiumRowCard()
                 ):
                     slots.append(reward)
                 case _:
@@ -344,6 +347,8 @@ def _choice_rewards_feasible(
                     or acquirable_imperium_instance_ids(state, max_cost)
                 ):
                     return False
+                case SetAsideImperiumRowCard() if not state.imperium_row:
+                    return False
                 case _:
                     pass
     return True
@@ -396,7 +401,8 @@ def automatic_rewards(sections: tuple[EffectSection, ...]) -> tuple[Reward, ...]
             | TrashPersonalCard
             | PlaceSpy
             | RetreatTroops
-            | AcquireCardUpTo,
+            | AcquireCardUpTo
+            | SetAsideImperiumRowCard,
         )
     )
 

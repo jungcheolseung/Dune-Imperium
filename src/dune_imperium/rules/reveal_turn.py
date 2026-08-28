@@ -1515,11 +1515,30 @@ def finish_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
     expired = expire_reveal_faceup_intrigue(state, action.actor)
     working = expired.state
     owner = working.players[action.actor]
+    # A set-aside Imperium card not acquired by the end of this Reveal turn
+    # leaves the game [FAQ p. 3].
+    removed = owner.imperium_set_aside
+    removal_events = tuple(
+        GameEvent(
+            event_id=(
+                f"round:{working.round_number}:player:{action.actor}:"
+                f"imperium_removed:{instance_id}"
+            ),
+            kind="imperium_card_removed",
+            payload=(("instance_id", instance_id), ("player", action.actor)),
+        )
+        for instance_id in removed
+    )
+    if removed:
+        working = replace(
+            working, imperium_removed=(*working.imperium_removed, *removed)
+        )
     next_owner = replace(
         owner,
         has_revealed=True,
         discard_pile=(*owner.discard_pile, *owner.in_play),
         in_play=(),
+        imperium_set_aside=(),
     )
     players = tuple(
         next_owner if player.player_id == action.actor else player
@@ -1559,7 +1578,9 @@ def finish_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         kind="reveal_finished",
         payload=(("player", action.actor),),
     )
-    return RuleResult(state=next_state, events=(*expired.events, event))
+    return RuleResult(
+        state=next_state, events=(*expired.events, *removal_events, event)
+    )
 
 
 def _next_unrevealed_player(

@@ -83,6 +83,7 @@ class PlayerState:
     trashed: tuple[str, ...] = ()
     intrigue_cards: tuple[str, ...] = ()
     intrigue_faceup: tuple[str, ...] = ()
+    imperium_set_aside: tuple[str, ...] = ()
     objective_ids: tuple[str, ...] = ()
     won_conflict_ids: tuple[str, ...] = ()
     face_down_battle_card_ids: tuple[str, ...] = ()
@@ -148,6 +149,7 @@ class PlayerState:
             *self.discard_pile,
             *self.in_play,
             *self.trashed,
+            *self.imperium_set_aside,
         )
         if len(imperium_cards) != len(set(imperium_cards)):
             raise ValueError("an Imperium card instance cannot occupy two zones")

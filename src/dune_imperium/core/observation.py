@@ -38,6 +38,7 @@ class PublicPlayerView:
     in_play: tuple[str, ...]
     trashed: tuple[str, ...]
     intrigue_faceup: tuple[str, ...]
+    imperium_set_aside: tuple[str, ...]
     objective_ids: tuple[str, ...]
     won_conflict_ids: tuple[str, ...]
     face_down_battle_card_ids: tuple[str, ...]
@@ -72,6 +73,7 @@ class PlayerView:
     combat_intrigue_complete: bool = False
     combat_rewards_resolved: bool = False
     imperium_row: tuple[str, ...] = ()
+    imperium_removed: tuple[str, ...] = ()
     intrigue_discard: tuple[str, ...] = ()
     intrigue_trash: tuple[str, ...] = ()
     contract_bank_size: int = 0
@@ -111,6 +113,7 @@ def observe_state(state: GameState, player: int) -> PlayerView:
         combat_intrigue_complete=state.combat_intrigue_complete,
         combat_rewards_resolved=state.combat_rewards_resolved,
         imperium_row=state.imperium_row,
+        imperium_removed=state.imperium_removed,
         intrigue_discard=state.intrigue_discard,
         intrigue_trash=state.intrigue_trash,
         contract_bank_size=len(state.contract_bank),
@@ -146,6 +149,7 @@ def _public_player_view(player: PlayerState) -> PublicPlayerView:
         in_play=player.in_play,
         trashed=player.trashed,
         intrigue_faceup=player.intrigue_faceup,
+        imperium_set_aside=player.imperium_set_aside,
         objective_ids=player.objective_ids,
         won_conflict_ids=player.won_conflict_ids,
         face_down_battle_card_ids=player.face_down_battle_card_ids,
