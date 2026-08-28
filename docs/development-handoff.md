@@ -32,10 +32,9 @@ codec은 `ACTION_CODEC_VERSION = 64`이며 기본 룰셋 catalog는 3,668개, CH
 
 ## 현재 구현 기준선
 
-마지막 기능 커밋은 `Play unit-changing Combat Intrigue with immediate participant
-removal`이다. 그 앞에 [`refactoring-plan.md`](refactoring-plan.md)의 A·B 단계(frame
-kind, 표 기반 dispatch), Covert Operation deadlock 수정, Reserve copy ID 재발급
-수정이 있다.
+마지막 기능 커밋은 `a56dba7 Play unit-changing Combat Intrigue with immediate
+participant removal`, 마지막 커밋은 `009fb0f Document unit-changing Combat
+Intrigue and the OQ-003 convention`이다.
 
 - R0-M4는 완료됐다. 공식 규칙 자료, 엔진 커널, 4인 setup, 한 라운드 수직 조각,
   actor-neutral action codec과 PettingZoo AEC 계약이 있다.
@@ -43,26 +42,21 @@ kind, 표 기반 dispatch), Covert Operation deadlock 수정, Reserve copy ID �
   Spy/Infiltrate/Gather Intelligence, 개인 덱 reshuffle chance, Combat 순위와 보상,
   sandworm·Shield Wall·control, Makers·Recall, Endgame 진입과 안전한 일부 종료를
   실행할 수 있다.
-- 시작 카드 7종, Reserve 2종과 기본 Imperium 50종, CHOAM 전용 Imperium 4종
-  모두에 완전한 play data가 있다. 구현된 카드별 판정은 personal-card audit에
-  기록돼 있다.
-- CHOAM을 켜면 standard contract 20장을 replayable chance로 섞고 공개 시장
-  2장과 face-down bank 18장을 만든다. Accept Contract와 Conflict reward가 같은
-  take/refill 선택을 사용하고, 시장 고갈 시 icon마다 2 Solari로 전환한다.
-  20장의 typed 조건·보상이 모두 구현돼 있으며 공간 방문, turn 중 Harvest Spice
-  총획득, The Spice Must Flow acquire로 완료한다. 같은 조건의 여러 장은 모두
-  의무 완료하고 보상·board·Agent 효과 순서는 플레이어가 정한다.
-- CHOAM 전용 Imperium 4종은 완료 Contract 수, 공개 Contract 시장, 시장 고갈의
-  2 Solari 전환을 공통 경계로 사용한다. Cargo Runner의 임계 draw는 Agent 효과를
-  실제 해결할 때 세며, Interstellar Trade의 Reveal Persuasion은 Reveal 시작 때의
-  완료 수로 고정한다. Delivery Agreement와 Priority Contracts의 인쇄된 기본
-  Reveal 보상은 DIU JSON과 달리 Spice이며, 4개 이상 완료 시 card trash와 1 VP를
-  선택할 수 있다.
-- 공간 진입 시 보유 Contract를 snapshot하므로 같은 turn에 보상으로 새 Contract를
-  가져와도 소급 완료하지 않는다. Gather Intelligence가 먼저인 것은 OQ-011의
-  공식 답이 아니라 명시적으로 테스트한 프로젝트 convention이다.
-- 코어 상태 머신과 replay는 여러 라운드를 지원한다. 통합 테스트는 두 라운드 뒤
-  세 번째 Round Start의 개인 덱 reshuffle까지 재생한다.
+- 시작 카드 7종, Reserve 2종, 기본 Imperium 50종, CHOAM 전용 Imperium 4종 모두에
+  완전한 play data가 있다(`implementation-audits/personal-cards.md`).
+- CHOAM standard contract 20장의 시장·완료·보상과 CHOAM 전용 Imperium 4종이
+  연결돼 있다(`implementation-audits/contracts.md`).
+- Intrigue 44장 중 Plot 19종·Combat 10종(identity 26종)이 effect DSL로 전사돼
+  실제 play된다. Plot은 소유자의 `turn`/`agent_effects`/`reveal` frame에서, Combat은
+  `combat_intrigue` frame의 priority 보유 참가자에게 제시된다. 선택이 필요한
+  효과는 `intrigue_choice` frame의 슬롯으로 순차 해결한다
+  (`implementation-audits/intrigue.md`).
+- Intrigue deck 고갈 시 모든 draw 지점이 `pending_intrigue_draws` 큐를 거쳐
+  replayable reshuffle chance로 해결된다.
+- 규칙 dispatcher는 `LEGAL_ACTION_PROVIDERS[FrameKind]`와 `ACTION_HANDLERS`
+  두 표로 동작한다(`refactoring-plan.md`).
+- 코어 상태 머신과 replay는 여러 라운드를 지원한다. 200게임×8라운드 random
+  soak(replay 검증 포함)이 약 40초에 통과한다.
 - `run_random_round`, debug CLI, `dune_imperium_uprising_v0` PettingZoo adapter는
   의도적으로 한 라운드에서 끝난다. 전체 게임 runner나 전체 게임 RL episode는
   아직 없다.
@@ -71,52 +65,61 @@ kind, 표 기반 dispatch), Covert Operation deadlock 수정, Reserve copy ID �
 
 ## 아직 완성되지 않은 경계
 
-- Intrigue는 effect DSL, Plot play 경계, 선택 슬롯 frame, Combat priority loop
-  안의 play가 있고 Plot 19종·Combat 10종이 play된다. 나머지 13종과 Endgame timing은
-  없다.
-  세부는 [`implementation-audits/intrigue.md`](implementation-audits/intrigue.md).
+- Intrigue 13종 identity는 setup만 있고 play할 수 없다. 필요한 경계별로:
+  - 무료 획득(비용 상한)과 조건부 hand 투입: Impress(Combat), Inspire Awe(Plot)
+  - turn 지속 트리거("이번 Reveal에서 획득할 때마다", "한 turn에 unit 3 배치 시",
+    "이번 turn에 spice를 얻었다면"): Call to Arms, Distraction ×2, Leverage(CHOAM;
+    카드 아이콘을 아직 확인하지 못함)
+  - Endgame timing(OQ-001): Crysknife, Desert Mouse, Ornithopter의 Endgame 절반,
+    CHOAM Profits, Secure Spice Trade, Shadow Alliance
+  - Imperium Row 교체와 할인 지속: Manipulate
+  - "Conflict를 이길 때" 종류: Spring the Trap 등은 카드 확인 필요
+  - Endgame과 "이길 때" 카드가 없으므로 held Intrigue가 있는 Endgame은 보수적으로
+    자동 종료하지 않는다(OQ-001).
+- Reveal turn 중 개인 card draw는 FAQ p. 3의 즉시 공개 규칙이 구현되지 않아
+  해당 Plot 옵션을 Reveal에서 제시하지 않는다(OQ-015(c)).
 - Leader는 identity와 setup 선택만 있고 Signet Ring 및 Leader 능력은 없다.
+  `UNIMPLEMENTED_AGENT_EFFECTS`가 Signet Ring 카드를 숨긴다.
+- `secrets`, `desert_tactics` board space는 board effect가 미구현이라 dispatcher가
+  숨긴다(`board_effect_is_implemented`).
 - Objective는 4인 setup, First Player, battle icon 경로가 구현됐지만 이후 콘텐츠
   상호작용은 다시 감사해야 한다.
 - Shaddam Corrino IV의 set-aside Sardaukar Contract 경로는 Leader 능력과 함께
-  남아 있다. 완료 Contract identity의 관측 정책은 OQ-010, Gather Intelligence와
-  완료 순서의 공식 답은 OQ-011 경계를 유지한다.
-- held Intrigue가 있는 Endgame은 효과와 priority가 없으므로 보수적으로 자동
-  종료하지 않는다. 여러 wild battle-icon pair 선택도 보류돼 있다.
-- 모든 미해결 규칙 질문은 [`rules/open-questions.md`](rules/open-questions.md)에
-  있으며, 공식 근거 없이 코드로 임의 확정하면 안 된다.
+  남아 있다. OQ-010, OQ-011 경계를 유지한다.
+- 모든 미해결 규칙 질문과 프로젝트 convention(OQ-003, OQ-015 등)은
+  [`rules/open-questions.md`](rules/open-questions.md)에 있으며, 공식 근거 없이
+  코드로 임의 확정하면 안 된다. 규칙 동작을 바꾸기 전에는 반드시 `docs/rules/`의
+  문장을 인용한다([`lessons.md`](lessons.md)).
 
-따라서 현재 엔진을 “완전한 Uprising 게임”으로 간주하면 안 된다. CHOAM에는
-Shaddam 전용 contract 경로와 전용 Intrigue가 남아 있고, 기본 룰셋에도 Intrigue와
-Leader 효과가 빠져 있어 일반적인 전체 게임을 끝까지 실행할 수 없다.
+따라서 현재 엔진을 "완전한 Uprising 게임"으로 간주하면 안 된다.
 
 ## 다음 구현 순서
 
-standard contract와 CHOAM 전용 Imperium 수직 조각은 완료됐다. 다음 순서를
-유지한다.
+큰 순서는 유지한다.
 
-1. Plot, Combat, Endgame Intrigue 공통 경계와 실제 카드 효과
+1. 남은 Intrigue 13종의 경계 (아래 세부 순서)
 2. Leader Signet Ring·기본 능력과 Shaddam 전용 Contract, 남은 Objective 상호작용
 3. 전체 게임 random/self-play runner와 PettingZoo episode 확장
 
-[`refactoring-plan.md`](refactoring-plan.md)의 A·B 단계와 C 단계의 DSL·첫 Plot
-묶음은 끝났다. 선택 슬롯(Faction·discard)도 있다. Intrigue draw는 모두 공통 reshuffle 경계를 지난다. 남은 Plot은 Imperium Row
-획득(Inspire Awe), turn 트리거(Call to Arms, Distraction, Leverage), Endgame 절반
-(Crysknife, Desert Mouse, Ornithopter), custom(Manipulate)이며 모두 새 경계가
-필요하다. Combat play와 unit 변화(OQ-003 convention)까지 연결됐다. 다음은 Impress·Inspire
-Awe의 무료 획득(비용 상한) 경계, 그 뒤 Call to Arms·Distraction의 turn 트리거,
-Endgame 3종(OQ-001), Manipulate 순이다.
-구현 단위는 다음 순서를 따른다.
+Intrigue 세부 순서(권장):
 
-1. 44장 Intrigue identity를 Plot·Combat·Endgame과 복합 타입으로 분류하고, 공개
-   play·공용 discard·조건·비용을 typed content로 전사할 공통 schema를 정한다.
-2. 자신의 Agent/Reveal turn에 Plot을 낼 수 있는 serial decision과 해결 후 공개
-   discard를 연결한다. 다음 Reveal까지 남는 효과는 별도 지속 상태로 둔다.
-3. 단순 자원·병력·Influence Plot 카드부터 실제 효과와 codec 회귀를 추가한다.
-4. 이후 Combat priority/pass와 Endgame OQ-001 경계로 확장한다.
+1. **무료 획득 경계** — Impress(Combat: 2검 + 비용 4 이하 카드 획득), Inspire Awe
+   (Plot: 비용 3 이하 카드 획득; sandworm이 Conflict에 있으면 hand로).
+   `rules/acquisition.py`의 Price is No Object(Solari 획득→hand) 경로와 Reveal
+   acquire를 참고해 "Persuasion 없이 비용 상한으로 Row/Reserve 카드를 가져오는"
+   DSL 보상(`AcquireCardUpTo(cost, to_hand_if=...)`)과 선택 슬롯을 만든다.
+2. **turn 트리거** — Call to Arms("이번 Reveal에서 획득할 때마다 troop 1"),
+   Distraction("한 turn에 unit 3 이상 배치 시 상대 Spy와 같은 post에 Spy 배치").
+   FAQ p. 2대로 다음 Reveal까지 face-up으로 두는 지속 효과 상태가 필요하다
+   (`PlayerState`에 pending Plot 효과 목록). Leverage는 먼저 카드 이미지를 확인한다
+   (`https://dunecardshub.com/images/uprising-intrigue-leverage.webp`).
+3. **Endgame Intrigue** — OQ-001의 참가 순서·종료 조건·wild matching 시점을
+   convention으로 정한 뒤 Endgame frame에서 play한다. 카드 6종.
+4. Manipulate(custom hook), "이길 때" 카드.
 
-이후 카드도 같은 `Play ...` / `Document ...` 패턴을 유지한다. 구체적인 커밋
-정책은 `AGENTS.md`에 영구 기록돼 있다.
+각 묶음은 카드 이미지로 텍스트를 검증하고(`docs/card-data-sources.md`의 방법),
+`Play ...` / `Document ...` 커밋 쌍을 유지하며, 새 결정 경계는
+`FrameKind` → frame `kind` → dispatcher 표 → codec 순으로 추가한다.
 
 ## 코드 탐색 지도
 
@@ -165,19 +168,22 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에
 
 ## 원격 저장소 인계 주의
 
-2026-08-28 기준 `origin/master`는 `61d5eda Implement CHOAM contract market`까지
-올라가 있었고, 이후 커밋은 push 여부를 `git log origin/master..master`로 확인한다.
+2026-08-28 마감 시점의 `origin/master`는 `e954856 Document Cunning and Special
+Mission`이고, 로컬 `master`에는 그 뒤 Combat Intrigue 커밋 4개(`fe58b4d`,
+`956cb62`, `a56dba7`, `009fb0f`)가 있다. 새 세션은 `git log origin/master..master`로
+push 여부를 확인한다. 새 clone에서 `git log --oneline -1`이 `009fb0f`가 아니면
+이 문서의 v64 action catalog, 3,900개 CHOAM 행동, 632개 테스트 기준선이 실제
+코드와 일치하지 않는다.
 
-- `242bffb Document CHOAM contract market`
-- `cfdc4dd Complete standard CHOAM contracts`
-- `58747f3 Document standard CHOAM contract completion`
-- `b20d403 Play CHOAM Imperium cards`
-- `b71cec1 Document CHOAM Imperium cards`
-- `6d158a9 Drive the rules dispatcher from frame-kind tables`
-- `31d55f7 End the Agent turn after Covert Operation's last opponent discard`
-- `3a5c650 Play the first Plot Intrigue batch through an effect DSL`
+## 2026-08-28 세션 요약
 
-새 clone으로 이어받는다면 먼저 현재 `master`를 push해야 한다. 새 clone에서는
-`git log --oneline -5`에 `b71cec1`이 보이는지 확인한다. 이 커밋들이 없으면 문서에
-적힌 v64 action catalog, 3,900개 CHOAM 행동, 632개 테스트 기준선이 실제 코드와
-일치하지 않는다.
+- Codex → Claude Code 전환. `AGENTS.md`를 도구 중립으로, `CLAUDE.md`를 진입점으로.
+- 리팩토링 A·B: `DecisionFrame.kind`, `rules/frames.py`, 표 기반 dispatcher. 그
+  과정에서 Covert Operation deadlock, Reserve copy ID 재발급, Spy 공급 판정 버그
+  수정.
+- effect DSL(C 단계)과 Intrigue: Plot 19종·Combat 10종, 선택 슬롯 frame, Intrigue
+  draw 공통 reshuffle 경계, OQ-003·OQ-015 convention.
+- 처리량: 입력 불변 hash 가드를 opt-in으로 바꿔 random play 약 45배 가속.
+- 코드 리뷰(`/code-review`) 후속 항목은 `refactoring-plan.md` 끝에 있다.
+- 교훈: 리뷰 지적을 규칙 문서 확인 없이 반영해 Harvest 계약 판정을 잘못 바꿨다가
+  되돌림 → `lessons.md`, `AGENTS.md` 규칙 인용 의무.

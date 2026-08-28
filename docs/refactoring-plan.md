@@ -71,7 +71,7 @@ turn 중 Plot", "Combat priority", "Endgame" 등 새 frame kind가 여러 개 �
 | --- | --- | --- | --- |
 | A | frame `kind` 도입, `rules/frames.py` helper 집약, `_replace_player` 통합 | 낮음 | 완료 (2026-08-28) |
 | B | frame kind 표 기반 dispatch, 화이트리스트 제거, legal 우선순위 명시화 | 낮음 | 완료 (2026-08-28) |
-| C | effect DSL 설계 → Intrigue를 DSL로 구현 → Imperium 점진 이관 | 중간 | 진행 중 (DSL·첫 Plot 묶음 2026-08-28) |
+| C | effect DSL 설계 → Intrigue를 DSL로 구현 → Imperium 점진 이관 | 중간 | 진행 중 (2026-08-28: Intrigue 26/39 identity를 DSL로 전사, Imperium 이관은 미착수) |
 
 A와 B는 codec version 변경 없이 기존 테스트로 검증한다. 각 단계는 작은 커밋
 단위로 나누고, 상태 hash·replay 테스트가 깨지지 않는지 매 커밋에서 확인한다.

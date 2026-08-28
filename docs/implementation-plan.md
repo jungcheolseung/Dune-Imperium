@@ -444,8 +444,10 @@ M5의 보드 시스템과 multi-round 개인 덱 shuffle까지 구현했고 M6�
 identity·setup·공개 시장·완료·보상과 CHOAM 전용 Imperium 4종까지 연결했다. 다음
 작업은 아래 순서로 진행한다.
 
-1. 남은 Plot Intrigue를 DSL로 전사한다. trash·Spy 배치·Shield Wall·sandworm
-   같은 선택형 효과는 기존 경계를 DSL 슬롯으로 감싼다.
-2. Combat Intrigue play를 priority/pass loop에 연결하고 Endgame Intrigue를
-   OQ-001 경계로 확장해 M5의 보류 경계를 줄인다.
-3. Signet Ring과 기본 Leader 능력, Objective 효과를 구현한다.
+1. 남은 Intrigue 13종: 무료 획득 경계(Impress, Inspire Awe) → turn 트리거
+   (Call to Arms, Distraction, Leverage) → Endgame Intrigue(OQ-001 convention 뒤
+   6종) → Manipulate. 세부 순서와 참고 위치는
+   [개발 인수인계](development-handoff.md)에 있다.
+2. Signet Ring과 기본 Leader 능력, Shaddam 전용 Contract, Objective 효과를
+   구현한다.
+3. 전체 게임 random/self-play runner와 PettingZoo episode를 확장한다.
