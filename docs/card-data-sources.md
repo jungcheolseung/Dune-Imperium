@@ -194,3 +194,8 @@ and Unexpected Allies as a sandworm plus `shield_active: false`; locally the
 detonation icon is a detonate-or-keep choice because the rules make removing
 the token optional [Main pp. 10, 20].
 
+The fourth batch transcribes Cunning and Special Mission from their card
+images. Special Mission's first half places a Spy on a Bene Gesserit-connected
+post (the purple Faction disc on the card); DIU's `target: "blue"` is read the
+same way.
+

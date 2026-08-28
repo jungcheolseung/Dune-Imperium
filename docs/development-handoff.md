@@ -26,14 +26,13 @@ uv run ruff check src tests
 uv run mypy src tests
 ```
 
-2026-08-28의 기준 결과는 pytest 616개 통과, Ruff 통과, mypy 통과다. 현재 action
-codec은 `ACTION_CODEC_VERSION = 61`이며 기본 룰셋 catalog는 3,521개, CHOAM
-룰셋 catalog는 3,748개다.
+2026-08-28의 기준 결과는 pytest 620개 통과, Ruff 통과, mypy 통과다. 현재 action
+codec은 `ACTION_CODEC_VERSION = 62`이며 기본 룰셋 catalog는 3,647개, CHOAM
+룰셋 catalog는 3,878개다.
 
 ## 현재 구현 기준선
 
-마지막 기능 커밋은 `e44fdf6 Play Detonation and Unexpected Allies through the
-DSL`이다. 그 앞에 [`refactoring-plan.md`](refactoring-plan.md)의 A·B 단계(frame
+마지막 기능 커밋은 `Play Cunning and Special Mission through the DSL`이다. 그 앞에 [`refactoring-plan.md`](refactoring-plan.md)의 A·B 단계(frame
 kind, 표 기반 dispatch), Covert Operation deadlock 수정, Reserve copy ID 재발급
 수정이 있다.
 
@@ -71,7 +70,7 @@ kind, 표 기반 dispatch), Covert Operation deadlock 수정, Reserve copy ID �
 
 ## 아직 완성되지 않은 경계
 
-- Intrigue는 effect DSL, Plot play 경계, 선택 슬롯 frame과 Plot 16종이 있다. 나머지 23종과
+- Intrigue는 effect DSL, Plot play 경계, 선택 슬롯 frame과 Plot 19종이 있다. 나머지 21종과
   Combat/Endgame timing은 없으며 Combat에는 참가자 priority/pass 틀만 있다.
   세부는 [`implementation-audits/intrigue.md`](implementation-audits/intrigue.md).
 - Leader는 identity와 setup 선택만 있고 Signet Ring 및 Leader 능력은 없다.
@@ -99,12 +98,11 @@ standard contract와 CHOAM 전용 Imperium 수직 조각은 완료됐다. 다음
 3. 전체 게임 random/self-play runner와 PettingZoo episode 확장
 
 [`refactoring-plan.md`](refactoring-plan.md)의 A·B 단계와 C 단계의 DSL·첫 Plot
-묶음은 끝났다. 선택 슬롯(Faction·discard)도 있다. Intrigue draw는 모두 공통 reshuffle 경계를 지난다. 남은 Plot은 trash 선택
-(Cunning), Spy 배치(Special Mission, Distraction), Imperium Row 획득(Inspire Awe),
-turn 트리거(Call to Arms, Distraction, Leverage), Endgame 절반(Crysknife, Desert
-Mouse, Ornithopter), custom(Manipulate)이다. 다음은 Cunning·Special Mission처럼
-기존 trash/Spy 경계를 DSL 슬롯으로 감싸는 묶음이고, 그 뒤 Combat Intrigue play를
-priority/pass loop에 연결한다.
+묶음은 끝났다. 선택 슬롯(Faction·discard)도 있다. Intrigue draw는 모두 공통 reshuffle 경계를 지난다. 남은 Plot은 Imperium Row
+획득(Inspire Awe), turn 트리거(Call to Arms, Distraction, Leverage), Endgame 절반
+(Crysknife, Desert Mouse, Ornithopter), custom(Manipulate)이며 모두 새 경계가
+필요하다. 다음은 Combat Intrigue play를 priority/pass loop에 연결하는 단계(전투
+카드 10종 + 전사된 Combat 절반 2종)를 권한다.
 구현 단위는 다음 순서를 따른다.
 
 1. 44장 Intrigue identity를 Plot·Combat·Endgame과 복합 타입으로 분류하고, 공개
@@ -178,5 +176,5 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에
 
 새 clone으로 이어받는다면 먼저 현재 `master`를 push해야 한다. 새 clone에서는
 `git log --oneline -5`에 `b71cec1`이 보이는지 확인한다. 이 커밋들이 없으면 문서에
-적힌 v61 action catalog, 3,748개 CHOAM 행동, 616개 테스트 기준선이 실제 코드와
+적힌 v62 action catalog, 3,878개 CHOAM 행동, 620개 테스트 기준선이 실제 코드와
 일치하지 않는다.

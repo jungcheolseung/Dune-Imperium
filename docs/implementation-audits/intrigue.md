@@ -17,8 +17,8 @@ Intrigue cards are transcribed with the composable DSL in
 | `IntrigueOption(timing, sections)` | One way to play the card. `A —OR— B` cards have two options; stacked lines share one option. |
 | `EffectSection(rewards, condition, cost)` | One printed line. It is *applicable* when its condition holds (or has none). |
 | Conditions | `InfluenceAtLeast`, `HasHighCouncil`, `SpiesPlacedAtLeast`, `CompletedContractsAtLeast` |
-| Costs | `PayResources` (automatic), `LoseInfluence`, `DiscardFromHand` (choice slots) |
-| Rewards | `GainResources`, `GainVictoryPoints`, `RecruitTroops`, `DrawPersonalCards`, `DrawIntrigueCards`, `GainInfluence` (a choice slot unless one Faction is allowed), `DestroyShieldWall` (a detonate/keep choice slot while the token is present), `DeployFromGarrison` (a count choice slot), `SummonSandworm` (automatic; no effect against a protected Conflict), `GainCombatStrength` (transcribed, Combat play not wired yet) |
+| Costs | `PayResources` (automatic), `LoseInfluence`, `DiscardFromHand`, `RecallSpy` (choice slots) |
+| Rewards | `GainResources`, `GainVictoryPoints`, `RecruitTroops`, `DrawPersonalCards`, `DrawIntrigueCards`, `GainInfluence` (a choice slot unless one Faction is allowed), `DestroyShieldWall` (a detonate/keep choice slot while the token is present), `DeployFromGarrison` (a count choice slot), `SummonSandworm` (automatic; no effect against a protected Conflict), `TrashPersonalCard` (an optional trash slot over hand, discard and play), `PlaceSpy` (a placement slot, recall-first when supply is empty), `GainCombatStrength` (transcribed, Combat play not wired yet) |
 
 An option is playable when at least one section applies, the summed resource
 costs are affordable, the player has enough total Influence for every
@@ -43,7 +43,7 @@ of the stack, and only then is the card discarded.
 | Units mid-Reveal | Troops or sandworms that a Plot puts into the Conflict during the owner's Reveal turn update `combat_strength` and the Reveal frame's strength like Desert Power's sandworm: the first units also make the revealed sword strength count [Main p. 13]. Before the Reveal they simply move. | A section whose only reward is the detonation icon is not applicable once the Shield Wall is gone, so Detonation then offers only its deployment option. |
 | Harvest accounting | Spice paid for an Intrigue during the Agent-turn frame is added to `spice_spent_after_placement`; Spice an Intrigue grants counts like any other gain. | Harvest Spice Contracts count Spice gained from every source during the turn at a Maker space [Main p. 16], so paying Spice must not hide the harvest while Intrigue gains legitimately contribute. |
 | Visibility | `intrigue_played` and `intrigue_cost_paid` events are public; draws report only counts. | Card identity stays hidden until played [Main p. 7]. |
-| Choice slots | `choose_intrigue_faction(faction[, alliance_recipient])` resolves a `LoseInfluence` or multi-Faction `GainInfluence` step; `choose_intrigue_discard(card_id)` resolves a `DiscardFromHand` step; `detonate_shield_wall`/`keep_shield_wall` resolve a `DestroyShieldWall` step; `deploy_intrigue_troops(count)` resolves a `DeployFromGarrison` step. | Losing Influence reuses the shared transition, so Friendship VP loss and Alliance return/transfer (with a recipient choice on ties) behave exactly as in the Reveal exchange. Opponents have no legal actions while the frame is open. |
+| Choice slots | `choose_intrigue_faction(faction[, alliance_recipient])` resolves a `LoseInfluence` or multi-Faction `GainInfluence` step; `choose_intrigue_discard(card_id)` resolves a `DiscardFromHand` step; `detonate_shield_wall`/`keep_shield_wall` resolve a `DestroyShieldWall` step; `deploy_intrigue_troops(count)` resolves a `DeployFromGarrison` step; `trash_intrigue_card(card_id)`/`decline_intrigue_trash` resolve a `TrashPersonalCard` step; `place_intrigue_spy(post_id)` and `recall_spy_for_intrigue(post_id)` resolve `PlaceSpy` and `RecallSpy` steps. Choice slots resolve before the automatic rewards, so a card drawn by the same option is not yet available to a trash slot printed after it (project convention; see Cunning). | Losing Influence reuses the shared transition, so Friendship VP loss and Alliance return/transfer (with a recipient choice on ties) behave exactly as in the Reveal exchange. Opponents have no legal actions while the frame is open. |
 
 ## Transcribed cards
 
@@ -66,7 +66,9 @@ Printed text was checked against the Dune Cards Hub card image for each card.
 | Sietch Ritual | 1 | Plot: discard a card from hand → gain 1 Bene Gesserit or Fremen Influence. | Unplayable with an empty hand, so effectively an Agent-turn card. The discarded card's hand-discard trigger fires. |
 | Backed by CHOAM | 1 (CHOAM) | Plot: lose 1 Influence → 4 Solari. Combat: with two or more completed Contracts, 4 strength. | DIU lists four completed Contracts; the printed card says two. Only the Plot option is offered until Combat play exists. |
 | Detonation | 2 | Plot: Shield Wall detonation icon; or deploy up to four garrison troops to the Conflict. | The icon is a choice [Main pp. 10, 20]; the deployment option needs at least one garrison troop. |
+| Cunning | 1 | Plot: draw 1 card; or pay 1 Spice → draw 1 card and optionally trash a card. | The trash choice is taken before the draw resolves, so the drawn card cannot be the one trashed (convention, OQ-015). |
+| Special Mission | 2 | Plot: place a Spy on a Bene Gesserit-connected post; or recall a Spy → Shield Wall detonation icon and 2 Spice. | Placement needs a Spy in supply or a placed Spy to recall first; the recall option needs a placed Spy. |
 | Unexpected Allies | 1 | Plot: pay 2 Water → Shield Wall detonation icon, then summon 1 sandworm. | No Maker Hooks marking on the card, so none is required. Keeping the wall against a protected Conflict leaves the sandworm effect with nothing to do [Main p. 20]; the Water stays paid. |
 
-Remaining Intrigue identities (23) have setup identity only and are not
+Remaining Intrigue identities (21) have setup identity only and are not
 offered for play.

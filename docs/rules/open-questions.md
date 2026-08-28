@@ -183,6 +183,9 @@
   Agent turn의 마지막 pending 그룹이 해결되면 turn이 자동으로 넘어가므로 그
   전에 내야 한다. (b) 조건이 성립한 모든 비용 줄은 의무이며, 전부 지불할 수 없으면
   카드를 낼 수 없다. (c) Reveal turn 중 개인 card draw가 있는 Plot은 FAQ p. 3의
-  즉시 공개 규칙을 구현하기 전까지 제시하지 않는다. 세 판정 모두 프로젝트
-  convention이며 `tests/unit/rules/test_intrigue.py`로 고정한다.
+  즉시 공개 규칙을 구현하기 전까지 제시하지 않는다. (d) 한 option 안의 선택
+  슬롯(trash, Spy 등)은 자동 보상(draw 등)보다 먼저 해결하므로 Cunning처럼
+  "draw 후 trash"로 인쇄된 카드에서 방금 draw한 card는 trash 대상이 되지 않는다.
+  네 판정 모두 프로젝트 convention이며 `tests/unit/rules/test_intrigue.py`로
+  고정한다.
 
