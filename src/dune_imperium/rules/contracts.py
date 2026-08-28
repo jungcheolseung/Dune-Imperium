@@ -338,7 +338,7 @@ def legal_contract_actions(
     if not 0 <= player < state.config.players or not state.decision_stack:
         return ()
     frame = state.decision_stack[-1]
-    if ":contract_market:" not in frame.frame_id:
+    if frame.kind != FrameKind.CONTRACT_MARKET:
         return ()
     if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
         return ()
@@ -483,7 +483,7 @@ def exhausted_contract_choice_is_pending(state: GameState) -> bool:
 
     return bool(
         state.decision_stack
-        and ":contract_market:" in state.decision_stack[-1].frame_id
+        and state.decision_stack[-1].kind == FrameKind.CONTRACT_MARKET
         and not state.face_up_contract_ids
     )
 

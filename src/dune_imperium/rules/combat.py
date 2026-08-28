@@ -150,7 +150,7 @@ def legal_combat_intrigue_actions(
     if not state.decision_stack:
         return ()
     frame = state.decision_stack[-1]
-    if not frame.frame_id.endswith(":combat_intrigue"):
+    if frame.kind != FrameKind.COMBAT_INTRIGUE:
         return ()
     decision = frame.decision
     if not isinstance(decision, PlayerDecision) or decision.owner != player:
@@ -410,7 +410,7 @@ def legal_combat_reward_optional_payment_actions(
     if not 0 <= player < state.config.players or not state.decision_stack:
         return ()
     frame = state.decision_stack[-1]
-    if ":combat_reward_optional:" not in frame.frame_id:
+    if frame.kind != FrameKind.COMBAT_REWARD_OPTIONAL:
         return ()
     decision = frame.decision
     if not isinstance(decision, PlayerDecision) or decision.owner != player:
@@ -487,7 +487,7 @@ def legal_combat_reward_spy_recall_actions(
     if not 0 <= player < state.config.players or not state.decision_stack:
         return ()
     frame = state.decision_stack[-1]
-    if ":combat_reward_spy_recall:" not in frame.frame_id:
+    if frame.kind != FrameKind.COMBAT_REWARD_SPY_RECALL:
         return ()
     decision = frame.decision
     if not isinstance(decision, PlayerDecision) or decision.owner != player:
@@ -577,7 +577,7 @@ def legal_combat_reward_trash_actions(
     if not 0 <= player < state.config.players or not state.decision_stack:
         return ()
     frame = state.decision_stack[-1]
-    if ":combat_reward_trash:" not in frame.frame_id:
+    if frame.kind != FrameKind.COMBAT_REWARD_TRASH:
         return ()
     decision = frame.decision
     if not isinstance(decision, PlayerDecision) or decision.owner != player:
@@ -655,7 +655,7 @@ def legal_combat_reward_spy_actions(
     if not 0 <= player < state.config.players or not state.decision_stack:
         return ()
     frame = state.decision_stack[-1]
-    if ":combat_reward_spy:" not in frame.frame_id:
+    if frame.kind != FrameKind.COMBAT_REWARD_SPY:
         return ()
     decision = frame.decision
     if not isinstance(decision, PlayerDecision) or decision.owner != player:
@@ -723,7 +723,7 @@ def legal_combat_reward_influence_actions(
     if not 0 <= player < state.config.players or not state.decision_stack:
         return ()
     frame = state.decision_stack[-1]
-    if ":combat_reward_influence:" not in frame.frame_id:
+    if frame.kind != FrameKind.COMBAT_REWARD_INFLUENCE:
         return ()
     decision = frame.decision
     if not isinstance(decision, PlayerDecision) or decision.owner != player:
@@ -754,7 +754,7 @@ def legal_distinct_combat_reward_influence_actions(
     if not 0 <= player < state.config.players or not state.decision_stack:
         return ()
     frame = state.decision_stack[-1]
-    if ":combat_reward_distinct_influence:" not in frame.frame_id:
+    if frame.kind != FrameKind.COMBAT_REWARD_DISTINCT_INFLUENCE:
         return ()
     decision = frame.decision
     if not isinstance(decision, PlayerDecision) or decision.owner != player:

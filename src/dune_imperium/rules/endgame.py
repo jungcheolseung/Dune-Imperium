@@ -134,7 +134,7 @@ def legal_endgame_wild_actions(
         return ()
     frame = state.decision_stack[-1]
     if (
-        not frame.frame_id.startswith(f"round:{state.round_number}:endgame_wild:")
+        frame.kind != FrameKind.ENDGAME_WILD
         or not isinstance(frame.decision, PlayerDecision)
         or frame.decision.owner != player
     ):

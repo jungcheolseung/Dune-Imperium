@@ -14,7 +14,7 @@ from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.card_bonds import has_faction_bond
 from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.effects import recruit_troops
-from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.frames import FrameKind, owned_top_frame
 from dune_imperium.rules.influence import (
     alliance_recipients_after_influence_loss,
     gain_faction_influence,
@@ -1136,9 +1136,8 @@ def _reveal_frame_context(
     """Find the active Reveal frame below any serial choice frames."""
 
     for frame in reversed(frames):
-        context = dict(frame.context)
-        if "persuasion" in context and "strength" in context:
-            return context
+        if frame.kind == FrameKind.REVEAL:
+            return dict(frame.context)
     raise RuntimeError("Reveal choice is missing its Reveal frame")
 
 
@@ -1149,16 +1148,7 @@ def legal_reveal_actions(state: GameState, player: int) -> tuple[DomainAction, .
         raise ValueError("player must identify a configured seat")
     if state.phase is not GamePhase.PLAYER_TURNS or not state.decision_stack:
         return ()
-    frame = state.decision_stack[-1]
-    frame_parts = frame.frame_id.split(":")
-    if (
-        len(frame_parts) != 4
-        or frame_parts[0] != "round"
-        or frame_parts[2:] != ["turn", str(player)]
-    ):
-        return ()
-    decision = frame.decision
-    if not isinstance(decision, PlayerDecision) or decision.owner != player:
+    if owned_top_frame(state, FrameKind.TURN, player) is None:
         return ()
     return (DomainAction(action_id="reveal_turn", actor=player),)
 
@@ -1494,13 +1484,9 @@ def current_reveal_context(state: GameState) -> dict[str, ActionValue]:
     if not state.decision_stack:
         raise ValueError("there is no pending Reveal turn")
     frame = state.decision_stack[-1]
-    if not isinstance(frame.decision, PlayerDecision):
+    if frame.kind != FrameKind.REVEAL or not isinstance(frame.decision, PlayerDecision):
         raise ValueError("the current decision is not a Reveal turn")
-    context = dict(frame.context)
-    required = {"persuasion", "revealed_card_count", "strength", "turn_owner"}
-    if not required.issubset(context):
-        raise ValueError("the current decision is not a Reveal turn")
-    return context
+    return dict(frame.context)
 
 
 def legal_finish_reveal_actions(

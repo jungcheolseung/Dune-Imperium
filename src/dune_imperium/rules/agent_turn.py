@@ -23,7 +23,7 @@ from dune_imperium.core.player import Influence, PlayerState, Resources
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.card_bonds import has_faction_bond
 from dune_imperium.rules.contracts import contract_candidates_for_agent_turn
-from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.frames import FrameKind, owned_top_frame
 
 
 def legal_agent_actions(state: GameState, player: int) -> tuple[DomainAction, ...]:
@@ -38,16 +38,7 @@ def legal_agent_actions(state: GameState, player: int) -> tuple[DomainAction, ..
         raise ValueError("player must identify a configured seat")
     if state.phase is not GamePhase.PLAYER_TURNS or not state.decision_stack:
         return ()
-    frame = state.decision_stack[-1]
-    frame_parts = frame.frame_id.split(":")
-    if (
-        len(frame_parts) != 4
-        or frame_parts[0] != "round"
-        or frame_parts[2:] != ["turn", str(player)]
-    ):
-        return ()
-    decision = frame.decision
-    if not isinstance(decision, PlayerDecision) or decision.owner != player:
+    if owned_top_frame(state, FrameKind.TURN, player) is None:
         return ()
 
     owner = state.players[player]

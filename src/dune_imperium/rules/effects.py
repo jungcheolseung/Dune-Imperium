@@ -93,22 +93,11 @@ def current_agent_effect_context(
     if not state.decision_stack:
         raise ValueError("there is no pending Agent-turn effect frame")
     frame = state.decision_stack[-1]
-    if not isinstance(frame.decision, PlayerDecision):
+    if frame.kind != FrameKind.AGENT_EFFECTS or not isinstance(
+        frame.decision, PlayerDecision
+    ):
         raise ValueError("the current decision is not an Agent-turn effect")
-    context = dict(frame.context)
-    required = {
-        "card_id",
-        "cost_option",
-        "pending_agent_effect",
-        "pending_board_effect",
-        "pending_combat_deployment",
-        "pending_faction_influence",
-        "space_id",
-        "turn_owner",
-    }
-    if not required.issubset(context):
-        raise ValueError("the current decision is not an Agent-turn effect")
-    return frame, context
+    return frame, dict(frame.context)
 
 
 def advance_after_effect(

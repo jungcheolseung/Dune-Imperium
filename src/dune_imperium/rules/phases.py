@@ -113,7 +113,7 @@ def apply_round_start_reshuffle(
     if not state.decision_stack:
         raise ValueError("there is no pending Round Start reshuffle")
     frame = state.decision_stack[-1]
-    if not frame.frame_id.endswith(":round_start") or not isinstance(
+    if frame.kind != FrameKind.ROUND_START_RESHUFFLE or not isinstance(
         frame.decision, ChanceDecision
     ):
         raise ValueError("the current chance decision is not a Round Start reshuffle")
@@ -151,7 +151,7 @@ def legal_control_defense_actions(
     frame = state.decision_stack[-1]
     decision = frame.decision
     if (
-        not frame.frame_id.endswith(":control_defense")
+        frame.kind != FrameKind.CONTROL_DEFENSE
         or not isinstance(decision, PlayerDecision)
         or decision.owner != player
     ):

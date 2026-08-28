@@ -105,6 +105,7 @@ from dune_imperium.rules.endgame import (
     legal_endgame_wild_actions,
     unambiguous_endgame_wild_match,
 )
+from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.phases import (
     apply_control_defense_action,
     apply_round_start_reshuffle,
@@ -535,8 +536,7 @@ def _apply_decline_combat_reward(
     state: GameState,
     action: DomainAction,
 ) -> RuleResult:
-    frame_id = state.decision_stack[-1].frame_id
-    if ":combat_reward_optional:" in frame_id:
+    if state.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_OPTIONAL:
         return apply_combat_reward_optional_payment(state, action)
     return apply_combat_reward_spy_recall(state, action)
 

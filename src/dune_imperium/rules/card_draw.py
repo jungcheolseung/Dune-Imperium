@@ -56,7 +56,7 @@ def apply_personal_draw_reshuffle(
     if not state.decision_stack:
         raise ValueError("there is no pending personal draw reshuffle")
     frame = state.decision_stack[-1]
-    if not frame.frame_id.endswith(":personal_draw") or not isinstance(
+    if frame.kind != FrameKind.PERSONAL_DRAW_RESHUFFLE or not isinstance(
         frame.decision, ChanceDecision
     ):
         raise ValueError("the current chance decision is not a personal draw")
@@ -99,7 +99,7 @@ def personal_draw_is_pending(state: GameState) -> bool:
 
     return bool(
         state.decision_stack
-        and state.decision_stack[-1].frame_id.endswith(":personal_draw")
+        and state.decision_stack[-1].kind == FrameKind.PERSONAL_DRAW_RESHUFFLE
     )
 
 
