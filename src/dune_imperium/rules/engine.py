@@ -89,12 +89,11 @@ from dune_imperium.rules.contracts import (
     resolve_exhausted_contract_choice,
 )
 from dune_imperium.rules.endgame import (
-    apply_endgame_wild_action,
-    begin_endgame_wild_choice,
+    apply_endgame_intrigue_action,
+    begin_endgame_intrigue,
     can_finish_endgame_automatically,
     finish_endgame_without_pending_effects,
-    legal_endgame_wild_actions,
-    unambiguous_endgame_wild_match,
+    legal_endgame_intrigue_actions,
 )
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.intrigue import (
@@ -253,7 +252,10 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     FrameKind.COMBAT_REWARD_DISTINCT_INFLUENCE: (
         legal_distinct_combat_reward_influence_actions,
     ),
-    FrameKind.ENDGAME_WILD: (legal_endgame_wild_actions,),
+    FrameKind.ENDGAME_INTRIGUE: (
+        legal_endgame_intrigue_actions,
+        legal_intrigue_play_actions,
+    ),
     # Chance frames never reach this table: legal_actions returns () for any
     # frame whose decision is not a PlayerDecision.
     FrameKind.INTRIGUE_CHOICE: (legal_intrigue_choice_actions,),
@@ -365,8 +367,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
         apply_distinct_combat_reward_influence
     ),
     # Endgame
-    "match_endgame_wild_icon": apply_endgame_wild_action,
-    "decline_endgame_wild_match": apply_endgame_wild_action,
+    "match_endgame_wild_icon": apply_endgame_intrigue_action,
+    "pass_endgame_intrigue": apply_endgame_intrigue_action,
 }
 
 
@@ -447,11 +449,8 @@ def _advance_automatic(result: RuleResult) -> RuleResult:
         elif state.phase is GamePhase.ENDGAME:
             if can_finish_endgame_automatically(state):
                 automatic = finish_endgame_without_pending_effects(state)
-            elif (
-                not any(player.intrigue_cards for player in state.players)
-                and unambiguous_endgame_wild_match(state) is not None
-            ):
-                automatic = begin_endgame_wild_choice(state)
+            elif not state.endgame_intrigue_complete:
+                automatic = begin_endgame_intrigue(state)
             else:
                 break
         else:

@@ -5,13 +5,13 @@ from dataclasses import dataclass, replace
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
 from dune_imperium.content.uprising.objectives import OBJECTIVES_BY_ID
 from dune_imperium.content.uprising.types import BattleIcon
-from dune_imperium.core.actions import DomainAction
+from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
-from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.frames import FrameKind, owned_top_frame
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,141 +80,174 @@ def final_standings(state: GameState) -> tuple[FinalStanding, ...]:
 
 
 def can_finish_endgame_automatically(state: GameState) -> bool:
-    """Return whether no unimplemented Endgame choice can affect scoring."""
+    """Return whether no Endgame choice remains that could affect scoring.
 
-    return not any(player.intrigue_cards for player in state.players) and not (
-        _endgame_wild_matches(state)
+    Once every player's Endgame window has closed the game always finishes;
+    the window itself is skipped when nobody holds an Intrigue card and no
+    wild battle pair exists.
+    """
+
+    return state.endgame_intrigue_complete or (
+        not any(player.intrigue_cards for player in state.players)
+        and not _endgame_wild_matches(state)
     )
 
 
-def unambiguous_endgame_wild_match(
-    state: GameState,
-) -> EndgameWildMatch | None:
-    """Return the only possible wild pair, or ``None`` otherwise."""
+def begin_endgame_intrigue(state: GameState) -> RuleResult:
+    """Open the first Endgame window, starting with the First Player.
 
-    matches = _endgame_wild_matches(state)
-    return matches[0] if len(matches) == 1 else None
-
-
-def begin_endgame_wild_choice(state: GameState) -> RuleResult:
-    """Open an optional wild-icon match when exactly one pair is possible."""
+    Each player, clockwise from the First Player, gets one window in which
+    they may play any number of Endgame Intrigue cards and match wild battle
+    icons in any order before the final Victory Points are compared
+    [Main pp. 7, 15, 20]. Passing closes the window for good (OQ-001).
+    """
 
     if state.phase is not GamePhase.ENDGAME:
-        raise ValueError("wild battle icons resolve only during Endgame")
+        raise ValueError("Endgame Intrigue windows open only during Endgame")
     if state.decision_stack:
-        raise ValueError("wild battle choice requires no pending decision")
-    if any(player.intrigue_cards for player in state.players):
-        raise ValueError("Endgame Intrigue ordering is unresolved")
-    match = unambiguous_endgame_wild_match(state)
-    if match is None:
-        raise ValueError("Endgame wild choice requires exactly one possible pair")
-    frame = DecisionFrame(
-        kind=FrameKind.ENDGAME_WILD,
-        frame_id=f"round:{state.round_number}:endgame_wild:{match.player}",
-        decision=PlayerDecision(
-            owner=match.player,
-            prompt="Match the wild battle icon for 1 Victory Point?",
-        ),
-        context=(
-            ("matching_card_id", match.matching_card_id),
-            ("turn_owner", match.player),
-            ("wild_card_id", match.wild_card_id),
-        ),
+        raise ValueError("the Endgame window requires no pending decision")
+    if state.endgame_intrigue_complete:
+        raise ValueError("every Endgame window has already closed")
+    if state.first_player is None:
+        raise ValueError("the Endgame window requires a First Player")
+    order = tuple(
+        (state.first_player + offset) % state.config.players
+        for offset in range(state.config.players)
     )
-    return RuleResult(state=state.push_decision(frame))
+    return RuleResult(
+        state=state.push_decision(_endgame_window_frame(state, order[0], order[1:]))
+    )
 
 
-def legal_endgame_wild_actions(
+def legal_endgame_intrigue_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Return decline and match actions for an open wild-icon choice."""
+    """Return pass and this player's wild battle matches for an open window.
 
-    if not 0 <= player < state.config.players or not state.decision_stack:
+    Endgame Intrigue plays are provided by the shared Intrigue play provider
+    on the same frame.
+    """
+
+    frame = owned_top_frame(state, FrameKind.ENDGAME_INTRIGUE, player)
+    if frame is None:
         return ()
-    frame = state.decision_stack[-1]
-    if (
-        frame.kind != FrameKind.ENDGAME_WILD
-        or not isinstance(frame.decision, PlayerDecision)
-        or frame.decision.owner != player
-    ):
-        return ()
-    context = dict(frame.context)
-    wild_card_id = context.get("wild_card_id")
-    matching_card_id = context.get("matching_card_id")
-    if not isinstance(wild_card_id, str) or not isinstance(matching_card_id, str):
-        raise RuntimeError("Endgame wild frame has invalid card IDs")
     return (
-        DomainAction(action_id="decline_endgame_wild_match", actor=player),
-        DomainAction(
-            action_id="match_endgame_wild_icon",
-            actor=player,
-            arguments=(
-                ("matching_card_id", matching_card_id),
-                ("wild_card_id", wild_card_id),
-            ),
+        DomainAction(action_id="pass_endgame_intrigue", actor=player),
+        *(
+            DomainAction(
+                action_id="match_endgame_wild_icon",
+                actor=player,
+                arguments=(
+                    ("matching_card_id", match.matching_card_id),
+                    ("wild_card_id", match.wild_card_id),
+                ),
+            )
+            for match in _endgame_wild_matches(state)
+            if match.player == player
         ),
     )
 
 
-def apply_endgame_wild_action(
+def apply_endgame_intrigue_action(
     state: GameState,
     action: DomainAction,
 ) -> RuleResult:
-    """Decline or resolve the currently unambiguous wild-icon match."""
+    """Pass the window on, or flip a wild pair for one Victory Point."""
 
-    if action not in legal_endgame_wild_actions(state, action.actor):
-        raise ValueError("action is not a legal Endgame wild choice")
-    context = dict(state.decision_stack[-1].context)
-    wild_card_id = str(context["wild_card_id"])
-    matching_card_id = str(context["matching_card_id"])
-    matched = action.action_id == "match_endgame_wild_icon"
+    if action not in legal_endgame_intrigue_actions(state, action.actor):
+        raise ValueError("action is not a legal Endgame window choice")
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+
+    if action.action_id == "pass_endgame_intrigue":
+        remaining = _remaining_players(context)
+        event = GameEvent(
+            event_id=(
+                f"round:{state.round_number}:endgame_intrigue:{action.actor}:passed"
+            ),
+            kind="endgame_intrigue_passed",
+            payload=(("player", action.actor),),
+        )
+        if remaining:
+            next_state = replace(
+                state,
+                decision_stack=(
+                    *state.decision_stack[:-1],
+                    _endgame_window_frame(state, remaining[0], remaining[1:]),
+                ),
+            )
+        else:
+            next_state = replace(
+                state.pop_decision(),
+                endgame_intrigue_complete=True,
+            )
+        return RuleResult(state=next_state, events=(event,))
+
+    arguments = dict(action.arguments)
+    wild_card_id = str(arguments["wild_card_id"])
+    matching_card_id = str(arguments["matching_card_id"])
     owner = state.players[action.actor]
     next_owner = replace(
         owner,
-        victory_points=owner.victory_points + int(matched),
+        victory_points=owner.victory_points + 1,
         face_down_battle_card_ids=(
-            (*owner.face_down_battle_card_ids, wild_card_id, matching_card_id)
-            if matched
-            else owner.face_down_battle_card_ids
+            *owner.face_down_battle_card_ids,
+            wild_card_id,
+            matching_card_id,
         ),
     )
     players = tuple(
         next_owner if player.player_id == action.actor else player
         for player in state.players
     )
-    declined = (
-        state.declined_endgame_wild_card_ids
-        if matched
-        else (*state.declined_endgame_wild_card_ids, wild_card_id)
-    )
-    next_state = replace(
-        state.pop_decision(),
-        players=players,
-        declined_endgame_wild_card_ids=declined,
-    )
     event = GameEvent(
         event_id=(
             f"round:{state.round_number}:endgame_wild:{action.actor}:"
-            f"{'matched' if matched else 'declined'}"
+            f"{wild_card_id}:{matching_card_id}"
         ),
-        kind=("endgame_wild_matched" if matched else "endgame_wild_declined"),
+        kind="endgame_wild_matched",
         payload=(
             ("matching_card_id", matching_card_id),
             ("player", action.actor),
             ("wild_card_id", wild_card_id),
         ),
     )
-    return RuleResult(state=next_state, events=(event,))
+    # The window stays open: further matches or Intrigue plays may follow.
+    return RuleResult(state=replace(state, players=players), events=(event,))
+
+
+def _endgame_window_frame(
+    state: GameState,
+    player: int,
+    remaining: tuple[int, ...],
+) -> DecisionFrame:
+    return DecisionFrame(
+        kind=FrameKind.ENDGAME_INTRIGUE,
+        frame_id=f"round:{state.round_number}:endgame_intrigue:{player}",
+        decision=PlayerDecision(
+            owner=player,
+            prompt="Play Endgame Intrigue, match wild icons, or pass",
+        ),
+        context=(
+            ("remaining", ",".join(str(seat) for seat in remaining)),
+            ("turn_owner", player),
+        ),
+    )
+
+
+def _remaining_players(context: dict[str, ActionValue]) -> tuple[int, ...]:
+    value = context.get("remaining")
+    if not isinstance(value, str):
+        raise RuntimeError("Endgame window frame has invalid remaining players")
+    return tuple(int(seat) for seat in value.split(",") if seat)
 
 
 def finish_endgame_without_pending_effects(state: GameState) -> RuleResult:
     """Finish an Endgame for which no unresolved scoring effect is pending.
 
-    Until Intrigue timing metadata and OQ-001 are resolved, holding any
-    Intrigue card conservatively blocks this automatic path, even if that card
-    will eventually be identified as a non-Endgame type. A possible wild battle
-    icon match also blocks until its choice is implemented.
+    The game finishes once every Endgame window has closed, or at once when
+    nobody holds an Intrigue card and no wild battle pair exists.
     """
 
     if state.phase is not GamePhase.ENDGAME:
@@ -240,19 +273,18 @@ def finish_endgame_without_pending_effects(state: GameState) -> RuleResult:
 
 def _endgame_wild_matches(state: GameState) -> tuple[EndgameWildMatch, ...]:
     matches: list[EndgameWildMatch] = []
-    declined = set(state.declined_endgame_wild_card_ids)
     for player in state.players:
         face_up_ids = (set(player.objective_ids) | set(player.won_conflict_ids)) - set(
             player.face_down_battle_card_ids
         )
         wild_ids = tuple(
             card_id
-            for card_id in face_up_ids
-            if card_id not in declined and _battle_icon(card_id) is BattleIcon.WILD
+            for card_id in sorted(face_up_ids)
+            if _battle_icon(card_id) is BattleIcon.WILD
         )
         matching_ids = tuple(
             card_id
-            for card_id in face_up_ids
+            for card_id in sorted(face_up_ids)
             if _battle_icon(card_id) not in (None, BattleIcon.WILD)
         )
         matches.extend(

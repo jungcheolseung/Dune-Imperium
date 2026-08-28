@@ -30,7 +30,7 @@ class FrameKind(StrEnum):
     COMBAT_REWARD_SPY_RECALL = "combat_reward_spy_recall"
     COMBAT_REWARD_TRASH = "combat_reward_trash"
     COMBAT_REWARD_SPY = "combat_reward_spy"
-    ENDGAME_WILD = "endgame_wild"
+    ENDGAME_INTRIGUE = "endgame_intrigue"
     ROUND_START_RESHUFFLE = "round_start_reshuffle"
     PERSONAL_DRAW_RESHUFFLE = "personal_draw_reshuffle"
     INTRIGUE_RESHUFFLE = "intrigue_reshuffle"

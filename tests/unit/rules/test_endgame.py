@@ -5,14 +5,21 @@ from dataclasses import replace
 import pytest
 
 from dune_imperium import RulesetConfig
-from dune_imperium.core import GamePhase, GameState, PlayerState, Resources
+from dune_imperium.core import (
+    DomainAction,
+    GamePhase,
+    GameState,
+    PlayerDecision,
+    PlayerState,
+    Resources,
+)
 from dune_imperium.rules.endgame import (
-    apply_endgame_wild_action,
-    begin_endgame_wild_choice,
+    apply_endgame_intrigue_action,
+    begin_endgame_intrigue,
     can_finish_endgame_automatically,
     final_standings,
     finish_endgame_without_pending_effects,
-    legal_endgame_wild_actions,
+    legal_endgame_intrigue_actions,
 )
 
 
@@ -23,9 +30,14 @@ def _state(
         config=RulesetConfig(),
         seed=1,
         phase=GamePhase.ENDGAME,
+        first_player=0,
         players=players or tuple(PlayerState(player_id=player) for player in range(4)),
         reveal_order=reveal_order,
     )
+
+
+def _pass(actor: int) -> DomainAction:
+    return DomainAction(action_id="pass_endgame_intrigue", actor=actor)
 
 
 def _player(
@@ -147,26 +159,46 @@ def test_face_up_wild_battle_match_blocks_automatic_finish() -> None:
     assert can_finish_endgame_automatically(matched_state) is True
 
 
-def test_unambiguous_wild_match_opens_optional_owner_choice() -> None:
+def test_endgame_windows_open_clockwise_from_the_first_player() -> None:
+    state = replace(_state(), first_player=2)
+    holder = replace(state.players[0], intrigue_cards=("intrigue:cunning:0",))
+    state = replace(state, players=(holder, *state.players[1:]))
+
+    opened = begin_endgame_intrigue(state).state
+    frame = opened.decision_stack[-1]
+    assert frame.kind == "endgame_intrigue"
+    assert isinstance(frame.decision, PlayerDecision)
+    assert frame.decision.owner == 2
+    assert dict(frame.context)["remaining"] == "3,0,1"
+    # Only pass is available without matches or playable Endgame cards.
+    assert legal_endgame_intrigue_actions(opened, 2) == (_pass(2),)
+    assert legal_endgame_intrigue_actions(opened, 0) == ()
+
+
+def test_passing_every_window_completes_the_endgame() -> None:
+    from dune_imperium.rules import UprisingRulesEngine
+
     state = _state()
-    holder = replace(
-        state.players[2],
-        objective_ids=("objective_crysknife_1",),
-        won_conflict_ids=("propaganda",),
-    )
-    state = replace(state, players=(*state.players[:2], holder, state.players[3]))
+    holder = replace(state.players[1], intrigue_cards=("intrigue:cunning:0",))
+    state = replace(state, players=(state.players[0], holder, *state.players[2:]))
+    engine = UprisingRulesEngine()
 
-    opened = begin_endgame_wild_choice(state).state
-    actions = legal_endgame_wild_actions(opened, 2)
+    opened = begin_endgame_intrigue(state).state
+    working = opened
+    for seat in (0, 1, 2):
+        working = engine.apply(working, _pass(seat)).state
+        assert working.decision_stack[-1].kind == "endgame_intrigue"
+    finished = engine.apply(working, _pass(3))
+    # The last pass closes the sweep and the game finishes at once.
+    assert finished.state.endgame_intrigue_complete is True
+    assert finished.state.phase is GamePhase.FINISHED
+    assert [event.kind for event in finished.events] == [
+        "endgame_intrigue_passed",
+        "game_finished",
+    ]
 
-    assert tuple(action.action_id for action in actions) == (
-        "decline_endgame_wild_match",
-        "match_endgame_wild_icon",
-    )
-    assert legal_endgame_wild_actions(opened, 1) == ()
 
-
-def test_matching_wild_icons_turns_both_cards_face_down_and_gains_vp() -> None:
+def test_wild_matches_resolve_inside_the_owners_window() -> None:
     state = _state()
     holder = replace(
         state.players[0],
@@ -174,23 +206,33 @@ def test_matching_wild_icons_turns_both_cards_face_down_and_gains_vp() -> None:
         won_conflict_ids=("propaganda",),
     )
     state = replace(state, players=(holder, *state.players[1:]))
-    state = begin_endgame_wild_choice(state).state
-    match = legal_endgame_wild_actions(state, 0)[1]
 
-    result = apply_endgame_wild_action(state, match)
+    opened = begin_endgame_intrigue(state).state
+    actions = legal_endgame_intrigue_actions(opened, 0)
+    assert actions[0] == _pass(0)
+    match = actions[1]
+    assert match.action_id == "match_endgame_wild_icon"
+    assert dict(match.arguments) == {
+        "matching_card_id": "objective_crysknife_1",
+        "wild_card_id": "propaganda",
+    }
+
+    result = apply_endgame_intrigue_action(opened, match)
     owner = result.state.players[0]
-
     assert owner.victory_points == 2
     assert owner.face_down_battle_card_ids == (
         "propaganda",
         "objective_crysknife_1",
     )
-    assert result.state.decision_stack == ()
+    # The window stays open for further plays before the owner passes.
+    assert result.state.decision_stack[-1].kind == "endgame_intrigue"
     assert result.events[0].kind == "endgame_wild_matched"
-    assert can_finish_endgame_automatically(result.state) is True
+    assert legal_endgame_intrigue_actions(result.state, 0) == (_pass(0),)
 
 
-def test_declining_wild_match_records_choice_without_turning_cards() -> None:
+def test_passing_without_matching_leaves_the_pair_unused() -> None:
+    from dune_imperium.rules import UprisingRulesEngine
+
     state = _state()
     holder = replace(
         state.players[1],
@@ -198,18 +240,19 @@ def test_declining_wild_match_records_choice_without_turning_cards() -> None:
         won_conflict_ids=("propaganda",),
     )
     state = replace(state, players=(state.players[0], holder, *state.players[2:]))
-    state = begin_endgame_wild_choice(state).state
-    decline = legal_endgame_wild_actions(state, 1)[0]
+    engine = UprisingRulesEngine()
 
-    result = apply_endgame_wild_action(state, decline)
+    working = begin_endgame_intrigue(state).state
+    for seat in (0, 1, 2):
+        working = engine.apply(working, _pass(seat)).state
+    finished = engine.apply(working, _pass(3)).state
 
-    assert result.state.players[1].face_down_battle_card_ids == ()
-    assert result.state.declined_endgame_wild_card_ids == ("propaganda",)
-    assert result.events[0].kind == "endgame_wild_declined"
-    assert can_finish_endgame_automatically(result.state) is True
+    assert finished.players[1].victory_points == 1
+    assert finished.players[1].face_down_battle_card_ids == ()
+    assert finished.phase is GamePhase.FINISHED
 
 
-def test_multiple_wild_match_candidates_remain_blocked_by_open_question() -> None:
+def test_multiple_wild_match_candidates_are_offered_together() -> None:
     state = _state()
     holder = replace(
         state.players[0],
@@ -218,6 +261,15 @@ def test_multiple_wild_match_candidates_remain_blocked_by_open_question() -> Non
     )
     state = replace(state, players=(holder, *state.players[1:]))
 
-    with pytest.raises(ValueError, match="exactly one possible pair"):
-        begin_endgame_wild_choice(state)
-    assert can_finish_endgame_automatically(state) is False
+    opened = begin_endgame_intrigue(state).state
+    matches = [
+        dict(action.arguments)["matching_card_id"]
+        for action in legal_endgame_intrigue_actions(opened, 0)
+        if action.action_id == "match_endgame_wild_icon"
+    ]
+    assert matches == ["objective_crysknife_1", "objective_crysknife_2"]
+
+    # Matching one pair consumes the wild card, so the other offer disappears.
+    first = legal_endgame_intrigue_actions(opened, 0)[1]
+    resolved = apply_endgame_intrigue_action(opened, first).state
+    assert legal_endgame_intrigue_actions(resolved, 0) == (_pass(0),)

@@ -65,7 +65,7 @@ class PlayerView:
     round_number: int = 0
     first_player: int | None = None
     reveal_order: tuple[int, ...] = ()
-    declined_endgame_wild_card_ids: tuple[str, ...] = ()
+    endgame_intrigue_complete: bool = False
     players: tuple[PublicPlayerView, ...] = ()
     private: PrivatePlayerView | None = None
     current_conflict_ids: tuple[str, ...] = ()
@@ -99,7 +99,7 @@ def observe_state(state: GameState, player: int) -> PlayerView:
         round_number=state.round_number,
         first_player=state.first_player,
         reveal_order=state.reveal_order,
-        declined_endgame_wild_card_ids=state.declined_endgame_wild_card_ids,
+        endgame_intrigue_complete=state.endgame_intrigue_complete,
         players=tuple(_public_player_view(candidate) for candidate in state.players),
         private=PrivatePlayerView(
             deck_size=len(owner.deck),

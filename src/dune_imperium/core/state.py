@@ -37,7 +37,7 @@ class GameState:
     round_number: int = 0
     first_player: int | None = None
     reveal_order: tuple[int, ...] = ()
-    declined_endgame_wild_card_ids: tuple[str, ...] = ()
+    endgame_intrigue_complete: bool = False
     players: tuple[PlayerState, ...] = ()
     conflict_deck: tuple[str, ...] = ()
     unused_conflict_ids: tuple[str, ...] = ()
@@ -76,10 +76,6 @@ class GameState:
             raise ValueError("a player can appear in the Reveal order only once")
         if any(not 0 <= player < self.config.players for player in self.reveal_order):
             raise ValueError("Reveal order must contain configured players")
-        if len(self.declined_endgame_wild_card_ids) != len(
-            set(self.declined_endgame_wild_card_ids)
-        ):
-            raise ValueError("an Endgame wild card can be declined only once")
         if self.players and len(self.players) != self.config.players:
             raise ValueError("state must contain every configured player")
         if self.players and tuple(player.player_id for player in self.players) != tuple(
@@ -120,14 +116,6 @@ class GameState:
         )
         if len(shared_cards) != len(set(shared_cards)):
             raise ValueError("a Conflict card cannot occupy two shared zones")
-        won_conflict_ids = {
-            conflict_id
-            for player in self.players
-            for conflict_id in player.won_conflict_ids
-        }
-        if not set(self.declined_endgame_wild_card_ids) <= won_conflict_ids:
-            raise ValueError("declined Endgame wild cards must be won Conflicts")
-
         held_alliances = tuple(
             faction_id
             for player in self.players

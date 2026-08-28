@@ -32,7 +32,7 @@ from dune_imperium.content.uprising.starting_cards import (
 from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
 from dune_imperium.core.actions import ActionValue, DomainAction
 
-ACTION_CODEC_VERSION = 68
+ACTION_CODEC_VERSION = 69
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 
@@ -126,7 +126,6 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "decline_agent_card_discard",
             "decline_agent_card_acquisition",
             "decline_control_defense",
-            "decline_endgame_wild_match",
             "decline_gather_intelligence",
             "decline_reveal_spy_recall",
             "decline_reveal_influence_exchange",
@@ -139,6 +138,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "gain_five_reveal_solari",
             "gain_two_reveal_strength",
             "pass_combat_intrigue",
+            "pass_endgame_intrigue",
             "pay_agent_card_water",
             "pay_agent_card_spice",
             "pay_reveal_water_for_sandworm",

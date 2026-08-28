@@ -117,18 +117,37 @@ def test_engine_opens_wild_match_then_finishes_after_player_choice() -> None:
         decision_stack=(),
     )
     opened = _advance_automatic(RuleResult(state=state)).state
+    assert opened.decision_stack[-1].kind == "endgame_intrigue"
 
-    actions = engine.legal_actions(opened, 0)
-    match = next(
-        action for action in actions if action.action_id == "match_endgame_wild_icon"
-    )
-    transition = engine.apply(opened, match)
+    working = opened
+    kinds: list[str] = []
+    matched = False
+    for _ in range(12):
+        if working.phase is GamePhase.FINISHED:
+            break
+        frame = working.decision_stack[-1]
+        assert isinstance(frame.decision, PlayerDecision)
+        owner = frame.decision.owner
+        actions = engine.legal_actions(working, owner)
+        match = next(
+            (a for a in actions if a.action_id == "match_endgame_wild_icon"),
+            None,
+        )
+        step = (
+            match
+            if match is not None and not matched
+            else next(a for a in actions if a.action_id == "pass_endgame_intrigue")
+        )
+        matched = matched or step is match
+        result = engine.apply(working, step)
+        kinds.extend(event.kind for event in result.events)
+        working = result.state
 
-    assert transition.state.phase is GamePhase.FINISHED
-    assert tuple(event.kind for event in transition.events) == (
-        "endgame_wild_matched",
-        "game_finished",
-    )
+    assert matched
+    assert working.phase is GamePhase.FINISHED
+    assert working.players[0].victory_points == state.players[0].victory_points + 1
+    assert "endgame_wild_matched" in kinds
+    assert kinds[-1] == "game_finished"
 
 
 def test_engine_exposes_and_applies_infiltrate_agent_destination() -> None:
