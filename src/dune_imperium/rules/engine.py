@@ -279,6 +279,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "retreat_intrigue_troops": apply_intrigue_choice,
     "acquire_intrigue_imperium": apply_intrigue_choice,
     "acquire_intrigue_reserve": apply_intrigue_choice,
+    "flip_battle_card": apply_intrigue_choice,
     "place_trigger_spy": apply_trigger_spy_action,
     "recall_spy_for_trigger": apply_trigger_spy_action,
     "decline_intrigue_trigger": apply_trigger_spy_action,

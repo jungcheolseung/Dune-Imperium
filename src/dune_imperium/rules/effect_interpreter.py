@@ -10,6 +10,7 @@ decision at a time; everything else is applied automatically.
 from dataclasses import dataclass, replace
 
 from dune_imperium.content.uprising.board import Faction
+from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireCardUpTo,
     CompletedContractsAtLeast,
@@ -20,6 +21,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     DrawIntrigueCards,
     DrawPersonalCards,
     EffectSection,
+    FlipBattleCard,
     GainCombatStrength,
     GainedSpiceThisTurn,
     GainInfluence,
@@ -29,6 +31,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     InfluenceAtLeast,
     IntrigueOption,
     LoseInfluence,
+    OpponentAllianceInfluenceAtLeast,
     PayResources,
     PlaceSpy,
     RecallSpy,
@@ -36,11 +39,13 @@ from dune_imperium.content.uprising.effect_dsl import (
     RetreatTroops,
     Reward,
     SandwormsInConflictAtLeast,
+    SpiceMustFlowCardsAtLeast,
     SpiesPlacedAtLeast,
     SummonSandworm,
     TakeContract,
     TrashPersonalCard,
 )
+from dune_imperium.content.uprising.types import BattleIcon
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
@@ -72,35 +77,75 @@ type ChoiceSlot = (
     | TrashPersonalCard
     | PlaceSpy
     | AcquireCardUpTo
+    | FlipBattleCard
 )
 
 
-def condition_holds(player: PlayerState, condition: Condition) -> bool:
-    """Evaluate one DSL condition against a player's public state."""
+def flippable_battle_card_ids(
+    player: PlayerState,
+    icon: BattleIcon,
+) -> tuple[str, ...]:
+    """Return the player's face-up won Conflict cards bearing ``icon`` or wild.
 
+    Objective cards are not valid targets for a printed flip effect.
+    """
+
+    face_down = set(player.face_down_battle_card_ids)
+    return tuple(
+        card_id
+        for card_id in player.won_conflict_ids
+        if card_id not in face_down
+        and CONFLICTS_BY_ID[card_id].battle_icon in (icon, BattleIcon.WILD)
+    )
+
+
+def condition_holds(state: GameState, player: int, condition: Condition) -> bool:
+    """Evaluate one DSL condition against the public game state."""
+
+    owner = state.players[player]
     match condition:
         case InfluenceAtLeast(faction=faction, amount=amount):
-            return influence_amount(player.influence, faction) >= amount
+            return influence_amount(owner.influence, faction) >= amount
         case HasHighCouncil():
-            return player.high_council
+            return owner.high_council
         case SpiesPlacedAtLeast(count=count):
-            return len(player.spy_post_ids) >= count
+            return len(owner.spy_post_ids) >= count
         case CompletedContractsAtLeast(count=count):
-            return len(player.completed_contract_ids) >= count
+            return len(owner.completed_contract_ids) >= count
         case SandwormsInConflictAtLeast(count=count):
-            return player.sandworms_conflict >= count
+            return owner.sandworms_conflict >= count
         case GainedSpiceThisTurn(amount=amount):
             gained = (
-                player.resources.spice
-                - player.spice_at_turn_start
-                + player.spice_spent_turn
+                owner.resources.spice
+                - owner.spice_at_turn_start
+                + owner.spice_spent_turn
             )
             return gained >= amount
+        case SpiceMustFlowCardsAtLeast(count=count):
+            prefix = "reserve:the_spice_must_flow:"
+            copies = sum(
+                1
+                for zone in (owner.deck, owner.hand, owner.discard_pile, owner.in_play)
+                for instance_id in zone
+                if instance_id.startswith(prefix)
+            )
+            return copies >= count
+        case OpponentAllianceInfluenceAtLeast(amount=amount):
+            return any(
+                influence_amount(owner.influence, faction) >= amount
+                and any(
+                    faction.value in candidate.alliance_faction_ids
+                    for candidate in state.players
+                    if candidate.player_id != player
+                )
+                for faction in Faction
+            )
     raise TypeError(f"unsupported condition: {condition!r}")
 
 
 def applicable_sections(
-    player: PlayerState,
+    state: GameState,
+    player: int,
     option: IntrigueOption,
     *,
     shield_wall_present: bool = True,
@@ -114,7 +159,10 @@ def applicable_sections(
     return tuple(
         section
         for section in option.sections
-        if (section.condition is None or condition_holds(player, section.condition))
+        if (
+            section.condition is None
+            or condition_holds(state, player, section.condition)
+        )
         and (
             shield_wall_present
             or not all(
@@ -184,7 +232,7 @@ def choice_slots(
         for cost in section.costs:
             if isinstance(cost, LoseInfluence | DiscardFromHand | RecallSpy):
                 slots.extend([cost] * cost.count)
-            elif isinstance(cost, RetreatTroops):
+            elif isinstance(cost, RetreatTroops | FlipBattleCard):
                 slots.append(cost)
     for section in sections:
         for reward in section.rewards:
@@ -225,6 +273,10 @@ def _choice_costs_feasible(
                     recalls_needed += count
                 case RetreatTroops(minimum=minimum):
                     retreats_needed += minimum
+                case FlipBattleCard(icon=icon) if not flippable_battle_card_ids(
+                    player, icon
+                ):
+                    return False
                 case _:
                     pass
     total_influence = sum(
@@ -306,7 +358,7 @@ def option_is_playable(
 
     owner = state.players[player]
     sections = applicable_sections(
-        owner, option, shield_wall_present=state.shield_wall_present
+        state, player, option, shield_wall_present=state.shield_wall_present
     )
     if option.trigger is not None:
         # Playing only sets the card waiting face up; its rewards resolve

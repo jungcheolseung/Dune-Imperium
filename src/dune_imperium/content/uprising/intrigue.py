@@ -19,6 +19,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     DrawIntrigueCards,
     DrawPersonalCards,
     EffectSection,
+    FlipBattleCard,
     GainCombatStrength,
     GainedSpiceThisTurn,
     GainInfluence,
@@ -31,18 +32,21 @@ from dune_imperium.content.uprising.effect_dsl import (
     LoseInfluence,
     OnRevealAcquisitionThisRound,
     OnUnitsDeployedInTurn,
+    OpponentAllianceInfluenceAtLeast,
     PayResources,
     PlaceSpy,
     RecallSpy,
     RecruitTroops,
     RetreatTroops,
     SandwormsInConflictAtLeast,
+    SpiceMustFlowCardsAtLeast,
     SpiesPlacedAtLeast,
     SummonSandworm,
     TakeContract,
     TrashPersonalCard,
     Trigger,
 )
+from dune_imperium.content.uprising.types import BattleIcon
 
 BASE_SOURCES: Final = (SourceRef(SourceDocument.MAIN_RULEBOOK, (3, 4)),)
 CHOAM_SOURCES: Final = (SourceRef(SourceDocument.MAIN_RULEBOOK, (3, 4, 16)),)
@@ -85,6 +89,22 @@ def _plot_trigger(trigger: Trigger, *sections: EffectSection) -> IntrigueOption:
 
 def _combat(*sections: EffectSection) -> IntrigueOption:
     return IntrigueOption(timing=IntrigueTiming.COMBAT, sections=sections)
+
+
+def _endgame(*sections: EffectSection) -> IntrigueOption:
+    return IntrigueOption(timing=IntrigueTiming.ENDGAME, sections=sections)
+
+
+def _spice_or_endgame_flip(icon: BattleIcon) -> tuple[IntrigueOption, ...]:
+    return (
+        _plot(EffectSection(rewards=(GainResources(spice=1),))),
+        _endgame(
+            EffectSection(
+                costs=(FlipBattleCard(icon),),
+                rewards=(GainVictoryPoints(1),),
+            )
+        ),
+    )
 
 
 def _entry(
@@ -170,7 +190,20 @@ INTRIGUE_CARDS: Final = (
             ),
         ),
     ),
-    _entry(450, "choam-profits", "CHOAM Profits", choam_only=True),
+    _entry(
+        450,
+        "choam-profits",
+        "CHOAM Profits",
+        choam_only=True,
+        options=(
+            _endgame(
+                EffectSection(
+                    condition=CompletedContractsAtLeast(4),
+                    rewards=(GainVictoryPoints(1),),
+                )
+            ),
+        ),
+    ),
     _entry(
         147,
         "contingency-plan",
@@ -194,7 +227,12 @@ INTRIGUE_CARDS: Final = (
             ),
         ),
     ),
-    _entry(159, "crysknife", "Crysknife"),
+    _entry(
+        159,
+        "crysknife",
+        "Crysknife",
+        options=_spice_or_endgame_flip(BattleIcon.CRYSKNIFE),
+    ),
     _entry(
         133,
         "cunning",
@@ -226,7 +264,12 @@ INTRIGUE_CARDS: Final = (
             ),
         ),
     ),
-    _entry(157, "desert-mouse", "Desert Mouse"),
+    _entry(
+        157,
+        "desert-mouse",
+        "Desert Mouse",
+        options=_spice_or_endgame_flip(BattleIcon.DESERT_MOUSE),
+    ),
     _entry(
         131,
         "detonation",
@@ -409,7 +452,12 @@ INTRIGUE_CARDS: Final = (
             ),
         ),
     ),
-    _entry(158, "ornithopter", "Ornithopter"),
+    _entry(
+        158,
+        "ornithopter",
+        "Ornithopter",
+        options=_spice_or_endgame_flip(BattleIcon.ORNITHOPTER),
+    ),
     _entry(
         156,
         "questionable-methods",
@@ -438,7 +486,19 @@ INTRIGUE_CARDS: Final = (
             ),
         ),
     ),
-    _entry(161, "secure-spice-trade", "Secure Spice Trade"),
+    _entry(
+        161,
+        "secure-spice-trade",
+        "Secure Spice Trade",
+        options=(
+            _endgame(
+                EffectSection(
+                    condition=SpiceMustFlowCardsAtLeast(2),
+                    rewards=(GainVictoryPoints(1), GainResources(spice=2)),
+                )
+            ),
+        ),
+    ),
     _entry(
         141,
         "shaddam-s-favor",
@@ -453,7 +513,19 @@ INTRIGUE_CARDS: Final = (
             ),
         ),
     ),
-    _entry(160, "shadow-alliance", "Shadow Alliance"),
+    _entry(
+        160,
+        "shadow-alliance",
+        "Shadow Alliance",
+        options=(
+            _endgame(
+                EffectSection(
+                    condition=OpponentAllianceInfluenceAtLeast(4),
+                    rewards=(GainVictoryPoints(1),),
+                )
+            ),
+        ),
+    ),
     _entry(
         127,
         "sietch-ritual",

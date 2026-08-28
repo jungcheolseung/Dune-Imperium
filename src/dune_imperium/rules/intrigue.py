@@ -21,6 +21,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     DiscardFromHand,
     DrawPersonalCards,
     EffectSection,
+    FlipBattleCard,
     GainInfluence,
     IntrigueOption,
     IntrigueTiming,
@@ -38,7 +39,6 @@ from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
-from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.acquisition import (
     acquirable_imperium_instance_ids,
@@ -58,6 +58,7 @@ from dune_imperium.rules.effect_interpreter import (
     automatic_rewards,
     choice_slots,
     condition_holds,
+    flippable_battle_card_ids,
     option_is_playable,
     pay_cost,
     resource_cost,
@@ -113,6 +114,13 @@ def legal_intrigue_play_actions(
     elif state.phase is GamePhase.COMBAT and frame.kind == FrameKind.COMBAT_INTRIGUE:
         # Only the participant whose priority it is may play [Main p. 14].
         timing = IntrigueTiming.COMBAT
+    elif (
+        state.phase is GamePhase.ENDGAME
+        and frame.kind == FrameKind.ENDGAME_INTRIGUE
+    ):
+        # Endgame Intrigue resolves in the owner's Endgame window
+        # [Main pp. 7, 15].
+        timing = IntrigueTiming.ENDGAME
     else:
         return ()
     owner = state.players[player]
@@ -125,8 +133,8 @@ def legal_intrigue_play_actions(
             if option.timing is not timing:
                 continue
             if frame.kind == FrameKind.REVEAL and (
-                _draws_personal_cards(owner, option)
-                or _acquires_to_hand(owner, option)
+                _draws_personal_cards(state, player, option)
+                or _acquires_to_hand(state, player, option)
             ):
                 # Cards entering the hand during a Reveal turn must be
                 # revealed at once [FAQ p. 3]; that boundary is not
@@ -159,7 +167,7 @@ def apply_intrigue_play(state: GameState, action: DomainAction) -> RuleResult:
     owner = state.players[player]
     option = intrigue_card_for_instance(card_id).options[option_index]
     sections = applicable_sections(
-        owner, option, shield_wall_present=state.shield_wall_present
+        state, player, option, shield_wall_present=state.shield_wall_present
     )
     section_indexes = tuple(
         index for index, section in enumerate(option.sections) if section in sections
@@ -356,6 +364,15 @@ def legal_intrigue_choice_actions(
                 )
                 for count in range(minimum, limit + 1)
             )
+        case FlipBattleCard(icon=icon):
+            actions.extend(
+                DomainAction(
+                    action_id="flip_battle_card",
+                    actor=player,
+                    arguments=(("card_id", conflict_id),),
+                )
+                for conflict_id in flippable_battle_card_ids(owner, icon)
+            )
         case AcquireCardUpTo(max_cost=max_cost):
             actions.extend(
                 DomainAction(
@@ -417,6 +434,28 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
         case AcquireCardUpTo():
             return _apply_intrigue_acquisition(
                 state, frame, context, player, slot, action, step_source
+            )
+        case FlipBattleCard():
+            flipped_id = str(arguments["card_id"])
+            owner = state.players[player]
+            flipped_owner = replace(
+                owner,
+                face_down_battle_card_ids=(
+                    *owner.face_down_battle_card_ids,
+                    flipped_id,
+                ),
+            )
+            result = RuleResult(
+                state=replace(
+                    state, players=replace_player(state.players, flipped_owner)
+                ),
+                events=(
+                    GameEvent(
+                        event_id=f"{step_source}:flipped:{flipped_id}",
+                        kind="battle_card_flipped",
+                        payload=(("card_id", flipped_id), ("player", player)),
+                    ),
+                ),
             )
         case LoseInfluence():
             faction = Faction(str(arguments["faction"]))
@@ -547,10 +586,11 @@ def _apply_intrigue_acquisition(
     card_id = context_str(context, "card_id", owner=_CHOICE_FRAME)
     source = context_str(context, "source", owner=_CHOICE_FRAME)
     slot_index = context_int(context, "slot", owner=_CHOICE_FRAME)
-    owner = state.players[player]
     # "Put that card in your hand" overrides the discard destination only
     # while its printed condition holds at resolution time.
-    to_hand = slot.to_hand_if is not None and condition_holds(owner, slot.to_hand_if)
+    to_hand = slot.to_hand_if is not None and condition_holds(
+        state, player, slot.to_hand_if
+    )
     context["slot"] = slot_index + 1
     advanced = replace_top_frame(state, with_context(frame, context))
     arguments = dict(action.arguments)
@@ -747,20 +787,22 @@ def _deploy_units(
     )
 
 
-def _draws_personal_cards(owner: PlayerState, option: IntrigueOption) -> bool:
+def _draws_personal_cards(
+    state: GameState, player: int, option: IntrigueOption
+) -> bool:
     return any(
         isinstance(reward, DrawPersonalCards)
-        for section in applicable_sections(owner, option)
+        for section in applicable_sections(state, player, option)
         for reward in section.rewards
     )
 
 
-def _acquires_to_hand(owner: PlayerState, option: IntrigueOption) -> bool:
+def _acquires_to_hand(state: GameState, player: int, option: IntrigueOption) -> bool:
     return any(
         isinstance(reward, AcquireCardUpTo)
         and reward.to_hand_if is not None
-        and condition_holds(owner, reward.to_hand_if)
-        for section in applicable_sections(owner, option)
+        and condition_holds(state, player, reward.to_hand_if)
+        for section in applicable_sections(state, player, option)
         for reward in section.rewards
     )
 

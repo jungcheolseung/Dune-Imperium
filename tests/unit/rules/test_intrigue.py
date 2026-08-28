@@ -82,7 +82,7 @@ def _play(state: GameState, card_id: str, option: int = 0) -> DomainAction:
 def test_transcribed_intrigue_options_are_well_formed() -> None:
     transcribed = [entry for entry in INTRIGUE_CARDS if entry.play_data_complete]
 
-    assert len(transcribed) == 31
+    assert len(transcribed) == 37
     for entry in transcribed:
         assert entry.options
         for option in entry.options:
@@ -2003,6 +2003,209 @@ def test_leverage_sees_spice_gained_through_a_played_intrigue() -> None:
     follower = finished.players[1]
     assert follower.spice_at_turn_start == follower.resources.spice
     assert follower.spice_spent_turn == 0
+
+
+def _endgame_window(owner: PlayerState, *, choam: bool = False) -> GameState:
+    from dune_imperium.rules.endgame import begin_endgame_intrigue
+
+    state = GameState(
+        config=RulesetConfig(choam_module=choam),
+        seed=1,
+        phase=GamePhase.ENDGAME,
+        first_player=0,
+        reveal_order=(0, 1, 2, 3),
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+    )
+    return begin_endgame_intrigue(state).state
+
+
+def _conflict_with_icon(icon_name: str) -> str:
+    from dune_imperium.content.uprising.conflicts import CONFLICTS
+    from dune_imperium.content.uprising.types import BattleIcon
+
+    return next(
+        conflict.card.card_id
+        for conflict in CONFLICTS
+        if conflict.battle_icon is BattleIcon(icon_name)
+    )
+
+
+def test_crysknife_flips_a_matching_conflict_card_for_a_point() -> None:
+    card = _intrigue("crysknife")
+    printed = _conflict_with_icon("crysknife")
+    wild = _conflict_with_icon("wild")
+    owner = PlayerState(
+        player_id=0,
+        intrigue_cards=(card,),
+        won_conflict_ids=(printed, wild),
+    )
+    state = _endgame_window(owner)
+    engine = UprisingRulesEngine()
+
+    # Only the Endgame half is offered inside the window.
+    assert legal_intrigue_play_actions(state, 0) == (_play(state, card, 1),)
+    opened = engine.apply(state, _play(state, card, 1)).state
+    assert opened.decision_stack[-1].kind == "intrigue_choice"
+    targets = {
+        dict(action.arguments)["card_id"]
+        for action in engine.legal_actions(opened, 0)
+    }
+    # The printed icon or the wild icon may be flipped [Crysknife card].
+    assert targets == {printed, wild}
+
+    done = engine.apply(
+        opened,
+        DomainAction(
+            action_id="flip_battle_card",
+            actor=0,
+            arguments=(("card_id", printed),),
+        ),
+    ).state
+    assert done.players[0].victory_points == 2
+    assert done.players[0].face_down_battle_card_ids == (printed,)
+    assert done.intrigue_discard == (card,)
+    assert done.decision_stack[-1].kind == "endgame_intrigue"
+
+
+def test_endgame_flip_ignores_objective_cards() -> None:
+    card = _intrigue("desert_mouse")
+    owner = PlayerState(
+        player_id=0,
+        intrigue_cards=(card,),
+        objective_ids=("objective_desert_mouse",),
+    )
+    state = _endgame_window(owner)
+    # An Objective card is not a face-up Conflict card [Desert Mouse card].
+    assert legal_intrigue_play_actions(state, 0) == ()
+
+
+def test_crysknife_plot_half_gains_spice_during_a_turn() -> None:
+    card = _intrigue("crysknife")
+    owner = PlayerState(player_id=0, intrigue_cards=(card,))
+    state = _turn_state(owner)
+    engine = UprisingRulesEngine()
+
+    assert legal_intrigue_play_actions(state, 0) == (_play(state, card, 0),)
+    done = engine.apply(state, _play(state, card, 0)).state
+    assert done.players[0].resources.spice == 1
+
+
+def test_choam_profits_needs_four_completed_contracts() -> None:
+    card = _intrigue("choam_profits")
+    contracts = tuple(f"contract:heighliner_i{'i' * copy}" for copy in range(1, 4))
+    short = PlayerState(
+        player_id=0,
+        intrigue_cards=(card,),
+        completed_contract_ids=contracts,
+    )
+    assert legal_intrigue_play_actions(_endgame_window(short, choam=True), 0) == ()
+
+    full = replace(
+        short, completed_contract_ids=(*contracts, "contract:arrakeen_i")
+    )
+    state = _endgame_window(full, choam=True)
+    engine = UprisingRulesEngine()
+    assert legal_intrigue_play_actions(state, 0) == (_play(state, card),)
+    done = engine.apply(state, _play(state, card)).state
+    assert done.players[0].victory_points == 2
+
+
+def test_secure_spice_trade_counts_owned_spice_must_flow_copies() -> None:
+    card = _intrigue("secure_spice_trade")
+    single = PlayerState(
+        player_id=0,
+        intrigue_cards=(card,),
+        deck=("reserve:the_spice_must_flow:0",),
+        trashed=("reserve:the_spice_must_flow:1",),
+    )
+    # A trashed copy has left the game, so one owned copy is not enough.
+    assert legal_intrigue_play_actions(_endgame_window(single), 0) == ()
+
+    double = replace(
+        single,
+        discard_pile=("reserve:the_spice_must_flow:2",),
+    )
+    state = _endgame_window(double)
+    engine = UprisingRulesEngine()
+    assert legal_intrigue_play_actions(state, 0) == (_play(state, card),)
+    done = engine.apply(state, _play(state, card)).state
+    assert done.players[0].victory_points == 2
+    assert done.players[0].resources.spice == 2
+
+
+def test_shadow_alliance_needs_an_opponent_held_alliance() -> None:
+    card = _intrigue("shadow_alliance")
+    owner = PlayerState(
+        player_id=0,
+        intrigue_cards=(card,),
+        influence=Influence(fremen=4),
+    )
+    # Nobody holds the Fremen Alliance: the condition does not hold.
+    assert legal_intrigue_play_actions(_endgame_window(owner), 0) == ()
+
+    # Holding the Alliance oneself does not satisfy the card either.
+    self_held = replace(owner, alliance_faction_ids=("fremen",))
+    assert legal_intrigue_play_actions(_endgame_window(self_held), 0) == ()
+
+    state = _endgame_window(owner)
+    rival = replace(
+        state.players[2],
+        influence=Influence(fremen=5),
+        alliance_faction_ids=("fremen",),
+    )
+    contested = replace(
+        state, players=(*state.players[:2], rival, state.players[3])
+    )
+    engine = UprisingRulesEngine()
+    assert legal_intrigue_play_actions(contested, 0) == (_play(contested, card),)
+    done = engine.apply(contested, _play(contested, card)).state
+    assert done.players[0].victory_points == 2
+
+
+def test_a_window_may_play_several_endgame_cards_before_passing() -> None:
+    crysknife = _intrigue("crysknife")
+    mouse = _intrigue("desert_mouse")
+    printed = _conflict_with_icon("crysknife")
+    wild = _conflict_with_icon("wild")
+    owner = PlayerState(
+        player_id=0,
+        intrigue_cards=(crysknife, mouse),
+        won_conflict_ids=(printed, wild),
+    )
+    state = _endgame_window(owner)
+    engine = UprisingRulesEngine()
+
+    first = engine.apply(state, _play(state, crysknife, 1)).state
+    flipped = engine.apply(
+        first,
+        DomainAction(
+            action_id="flip_battle_card",
+            actor=0,
+            arguments=(("card_id", printed),),
+        ),
+    ).state
+    # Desert Mouse may still flip the remaining wild Conflict card.
+    second = engine.apply(flipped, _play(flipped, mouse, 1)).state
+    done = engine.apply(
+        second,
+        DomainAction(
+            action_id="flip_battle_card",
+            actor=0,
+            arguments=(("card_id", wild),),
+        ),
+    ).state
+    assert done.players[0].victory_points == 3
+    assert set(done.players[0].face_down_battle_card_ids) == {printed, wild}
+    assert done.decision_stack[-1].kind == "endgame_intrigue"
+
+    # Passing every window afterwards finishes the game.
+    working = done
+    for seat in range(4):
+        working = engine.apply(
+            working,
+            DomainAction(action_id="pass_endgame_intrigue", actor=seat),
+        ).state
+    assert working.phase is GamePhase.FINISHED
 
 
 def test_reach_agreement_retreats_for_a_contract_in_the_choam_module() -> None:

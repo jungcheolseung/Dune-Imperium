@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from dune_imperium.content.uprising.board import Faction
+from dune_imperium.content.uprising.types import BattleIcon
 
 
 class IntrigueTiming(StrEnum):
@@ -90,6 +91,33 @@ class GainedSpiceThisTurn:
             raise ValueError("Spice-gained condition amount must be positive")
 
 
+@dataclass(frozen=True, slots=True)
+class SpiceMustFlowCardsAtLeast:
+    """The player owns at least ``count`` copies of The Spice Must Flow.
+
+    Copies in the deck, hand, discard pile and play area count; a trashed
+    copy has left the game.
+    """
+
+    count: int = 2
+
+    def __post_init__(self) -> None:
+        if self.count < 1:
+            raise ValueError("The Spice Must Flow count must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class OpponentAllianceInfluenceAtLeast:
+    """The player has ``amount`` or more Influence on a Faction track whose
+    Alliance token an opponent holds."""
+
+    amount: int = 4
+
+    def __post_init__(self) -> None:
+        if self.amount < 1:
+            raise ValueError("Influence condition amount must be positive")
+
+
 type Condition = (
     InfluenceAtLeast
     | HasHighCouncil
@@ -97,6 +125,8 @@ type Condition = (
     | CompletedContractsAtLeast
     | SandwormsInConflictAtLeast
     | GainedSpiceThisTurn
+    | SpiceMustFlowCardsAtLeast
+    | OpponentAllianceInfluenceAtLeast
 )
 
 
@@ -181,7 +211,31 @@ class RetreatTroops:
             raise ValueError("retreat maximum must not be below the minimum")
 
 
-type Cost = PayResources | LoseInfluence | DiscardFromHand | RecallSpy | RetreatTroops
+@dataclass(frozen=True, slots=True)
+class FlipBattleCard:
+    """Flip one of the player's face-up won Conflict cards face down.
+
+    The card text names one printed battle icon; a card bearing that icon or
+    the wild icon may be chosen. Objective cards are not valid targets.
+    """
+
+    icon: BattleIcon
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.icon, BattleIcon):
+            raise TypeError("battle-card flip requires a BattleIcon")
+        if self.icon is BattleIcon.WILD:
+            raise ValueError("the wild icon is always an alternative target")
+
+
+type Cost = (
+    PayResources
+    | LoseInfluence
+    | DiscardFromHand
+    | RecallSpy
+    | RetreatTroops
+    | FlipBattleCard
+)
 
 
 # --- Rewards ----------------------------------------------------------------
