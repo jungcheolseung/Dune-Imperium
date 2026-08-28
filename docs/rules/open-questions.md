@@ -190,8 +190,10 @@
 - 구현 convention: (a) 소유자에게 turn 선택이 제시된 순간부터 Plot을 낼 수 있고,
   Agent turn의 마지막 pending 그룹이 해결되면 turn이 자동으로 넘어가므로 그
   전에 내야 한다. (b) 조건이 성립한 모든 비용 줄은 의무이며, 전부 지불할 수 없으면
-  카드를 낼 수 없다. (c) Reveal turn 중 개인 card draw가 있는 Plot은 FAQ p. 3의
-  즉시 공개 규칙을 구현하기 전까지 제시하지 않는다. (d) 한 option 안의 선택
+  카드를 낼 수 없다. (c) Reveal turn 중 card가 hand에 들어가는 Plot — 개인 card
+  draw, 그리고 Inspire Awe처럼 조건이 성립해 hand로 acquire하는 경우 — 은
+  FAQ p. 3의 즉시 공개 규칙을 구현하기 전까지 제시하지 않는다. discard로
+  acquire하는 형태는 Reveal 중에도 제시한다. (d) 한 option 안의 선택
   슬롯(trash, Spy 등)은 자동 보상(draw 등)보다 먼저 해결하므로 Cunning처럼
   "draw 후 trash"로 인쇄된 카드에서 방금 draw한 card는 trash 대상이 되지 않는다.
   네 판정 모두 프로젝트 convention이며 `tests/unit/rules/test_intrigue.py`로

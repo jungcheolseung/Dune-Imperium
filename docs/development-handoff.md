@@ -1,6 +1,6 @@
 # 개발 인수인계
 
-기준일: 2026-08-28
+기준일: 2026-08-29
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재
 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md),
@@ -26,15 +26,14 @@ uv run ruff check src tests
 uv run mypy src tests
 ```
 
-2026-08-28의 기준 결과는 pytest 632개 통과, Ruff 통과, mypy 통과다. 현재 action
-codec은 `ACTION_CODEC_VERSION = 64`이며 기본 룰셋 catalog는 3,668개, CHOAM
-룰셋 catalog는 3,900개다.
+2026-08-29의 기준 결과는 pytest 639개 통과, Ruff 통과, mypy 통과다. 현재 action
+codec은 `ACTION_CODEC_VERSION = 65`이며 기본 룰셋 catalog는 3,737개, CHOAM
+룰셋 catalog는 3,973개다.
 
 ## 현재 구현 기준선
 
-마지막 기능 커밋은 `a56dba7 Play unit-changing Combat Intrigue with immediate
-participant removal`, 마지막 커밋은 `009fb0f Document unit-changing Combat
-Intrigue and the OQ-003 convention`이다.
+마지막 기능 커밋은 `72335eb Play Impress and Inspire Awe through the DSL`이고,
+그 뒤에 이 슬라이스의 `Document ...` 커밋이 있다.
 
 - R0-M4는 완료됐다. 공식 규칙 자료, 엔진 커널, 4인 setup, 한 라운드 수직 조각,
   actor-neutral action codec과 PettingZoo AEC 계약이 있다.
@@ -46,10 +45,12 @@ Intrigue and the OQ-003 convention`이다.
   완전한 play data가 있다(`implementation-audits/personal-cards.md`).
 - CHOAM standard contract 20장의 시장·완료·보상과 CHOAM 전용 Imperium 4종이
   연결돼 있다(`implementation-audits/contracts.md`).
-- Intrigue 44장 중 Plot 19종·Combat 10종(identity 26종)이 effect DSL로 전사돼
+- Intrigue 44장 중 Plot 20종·Combat 11종(identity 28종)이 effect DSL로 전사돼
   실제 play된다. Plot은 소유자의 `turn`/`agent_effects`/`reveal` frame에서, Combat은
   `combat_intrigue` frame의 priority 보유 참가자에게 제시된다. 선택이 필요한
-  효과는 `intrigue_choice` frame의 슬롯으로 순차 해결한다
+  효과는 `intrigue_choice` frame의 슬롯으로 순차 해결한다. Impress와 Inspire
+  Awe의 비용 상한 획득은 `AcquireCardUpTo` 슬롯으로 Row/Reserve에서 가져오며,
+  acquire box의 Spy 배치는 카드 해결 후 `acquisition_spy` frame을 재사용한다
   (`implementation-audits/intrigue.md`).
 - Intrigue deck 고갈 시 모든 draw 지점이 `pending_intrigue_draws` 큐를 거쳐
   replayable reshuffle chance로 해결된다.
@@ -65,8 +66,7 @@ Intrigue and the OQ-003 convention`이다.
 
 ## 아직 완성되지 않은 경계
 
-- Intrigue 13종 identity는 setup만 있고 play할 수 없다. 필요한 경계별로:
-  - 무료 획득(비용 상한)과 조건부 hand 투입: Impress(Combat), Inspire Awe(Plot)
+- Intrigue 11종 identity는 setup만 있고 play할 수 없다. 필요한 경계별로:
   - turn 지속 트리거("이번 Reveal에서 획득할 때마다", "한 turn에 unit 3 배치 시",
     "이번 turn에 spice를 얻었다면"): Call to Arms, Distraction ×2, Leverage(CHOAM;
     카드 아이콘을 아직 확인하지 못함)
@@ -76,8 +76,9 @@ Intrigue and the OQ-003 convention`이다.
   - "Conflict를 이길 때" 종류: Spring the Trap 등은 카드 확인 필요
   - Endgame과 "이길 때" 카드가 없으므로 held Intrigue가 있는 Endgame은 보수적으로
     자동 종료하지 않는다(OQ-001).
-- Reveal turn 중 개인 card draw는 FAQ p. 3의 즉시 공개 규칙이 구현되지 않아
-  해당 Plot 옵션을 Reveal에서 제시하지 않는다(OQ-015(c)).
+- Reveal turn 중 card가 hand에 들어가는 Plot(개인 card draw, Inspire Awe의
+  조건부 hand 획득)은 FAQ p. 3의 즉시 공개 규칙이 구현되지 않아 Reveal에서
+  제시하지 않는다(OQ-015(c)).
 - Leader는 identity와 setup 선택만 있고 Signet Ring 및 Leader 능력은 없다.
   `UNIMPLEMENTED_AGENT_EFFECTS`가 Signet Ring 카드를 숨긴다.
 - `secrets`, `desert_tactics` board space는 board effect가 미구현이라 dispatcher가
@@ -97,25 +98,22 @@ Intrigue and the OQ-003 convention`이다.
 
 큰 순서는 유지한다.
 
-1. 남은 Intrigue 13종의 경계 (아래 세부 순서)
+1. 남은 Intrigue 11종의 경계 (아래 세부 순서)
 2. Leader Signet Ring·기본 능력과 Shaddam 전용 Contract, 남은 Objective 상호작용
 3. 전체 게임 random/self-play runner와 PettingZoo episode 확장
 
 Intrigue 세부 순서(권장):
 
-1. **무료 획득 경계** — Impress(Combat: 2검 + 비용 4 이하 카드 획득), Inspire Awe
-   (Plot: 비용 3 이하 카드 획득; sandworm이 Conflict에 있으면 hand로).
-   `rules/acquisition.py`의 Price is No Object(Solari 획득→hand) 경로와 Reveal
-   acquire를 참고해 "Persuasion 없이 비용 상한으로 Row/Reserve 카드를 가져오는"
-   DSL 보상(`AcquireCardUpTo(cost, to_hand_if=...)`)과 선택 슬롯을 만든다.
-2. **turn 트리거** — Call to Arms("이번 Reveal에서 획득할 때마다 troop 1"),
+1. **turn 트리거** — Call to Arms("이번 Reveal에서 획득할 때마다 troop 1"),
    Distraction("한 turn에 unit 3 이상 배치 시 상대 Spy와 같은 post에 Spy 배치").
    FAQ p. 2대로 다음 Reveal까지 face-up으로 두는 지속 효과 상태가 필요하다
    (`PlayerState`에 pending Plot 효과 목록). Leverage는 먼저 카드 이미지를 확인한다
    (`https://dunecardshub.com/images/uprising-intrigue-leverage.webp`).
-3. **Endgame Intrigue** — OQ-001의 참가 순서·종료 조건·wild matching 시점을
+   핸드오프의 카드 요약은 이미지 검증 전 참고일 뿐이다(Impress의 비용 상한이
+   4로 잘못 적혔다가 카드 이미지로 3임을 확인한 전례가 있다).
+2. **Endgame Intrigue** — OQ-001의 참가 순서·종료 조건·wild matching 시점을
    convention으로 정한 뒤 Endgame frame에서 play한다. 카드 6종.
-4. Manipulate(custom hook), "이길 때" 카드.
+3. Manipulate(custom hook), "이길 때" 카드.
 
 각 묶음은 카드 이미지로 텍스트를 검증하고(`docs/card-data-sources.md`의 방법),
 `Play ...` / `Document ...` 커밋 쌍을 유지하며, 새 결정 경계는
@@ -144,8 +142,10 @@ Intrigue 세부 순서(권장):
 
 `RulesEngine.verify_input_immutability`는 매 전이마다 state 전체를 canonical
 hash하는 디버그 가드라 기본 off다(켜면 random play가 약 70 step/s, 끄면 약
-3,000 step/s). 커널 테스트 엔진만 이를 켠다. 200게임×8라운드 random soak은 약
-40초면 끝난다.
+3,000 step/s). 커널 테스트 엔진만 이를 켠다. 200게임×8라운드 random soak
+(replay 검증 포함)은 2026-08-29 측정 기준 약 11초에 끝난다. soak 스크립트는
+저장소에 없으므로 세션 scratchpad에서 `run_random_round`의 루프를 다회전으로
+확장해 작성한다.
 
 ## 유용한 명령
 
@@ -168,12 +168,29 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에
 
 ## 원격 저장소 인계 주의
 
-2026-08-28 마감 시점의 `origin/master`는 `e954856 Document Cunning and Special
-Mission`이고, 로컬 `master`에는 그 뒤 Combat Intrigue 커밋 4개(`fe58b4d`,
-`956cb62`, `a56dba7`, `009fb0f`)가 있다. 새 세션은 `git log origin/master..master`로
-push 여부를 확인한다. 새 clone에서 `git log --oneline -1`이 `009fb0f`가 아니면
-이 문서의 v64 action catalog, 3,900개 CHOAM 행동, 632개 테스트 기준선이 실제
-코드와 일치하지 않는다.
+2026-08-29 작업 시작 시점의 `origin/master`는 `ed16d93 Refresh the development
+handoff for the next session`이고, 로컬 `master`에는 그 뒤 Impress·Inspire Awe
+슬라이스 커밋(`72335eb Play ...`와 이어지는 `Document ...`)이 있다. 새 세션은
+`git log origin/master..master`로 push 여부를 확인한다. checkout이 `ed16d93`
+이전이면 이 문서의 v65 action catalog, 3,737/3,973개 행동, 639개 테스트
+기준선이 실제 코드와 일치하지 않는다.
+
+## 2026-08-29 세션 요약
+
+- Impress(Combat: 검 2 + 비용 3 이하 획득)와 Inspire Awe(Plot: 비용 3 이하 획득,
+  sandworm이 Conflict에 있으면 hand로)를 카드 이미지로 검증해 전사했다. 이전
+  핸드오프의 "Impress 비용 4"는 오기였다.
+- `AcquireCardUpTo(max_cost, to_hand_if)` DSL 보상과 `acquire_intrigue_imperium`
+  / `acquire_intrigue_reserve` 선택 슬롯을 추가했다. Row 보충, acquire box 즉시
+  처리, Spy 배치 box의 `acquisition_spy` frame 재사용(카드 해결 후 push),
+  Contract 완료 확인을 기존 획득 경로와 공유한다. codec v65.
+- Reveal 중 hand로 들어가는 획득은 OQ-015(c)를 확장해 draw와 동일하게 보류한다.
+- 알려진 기존 버그(이번 슬라이스와 무관, HEAD `ed16d93`에서 재현): 4인 기본
+  룰셋 seed 10146 random play에서 Prepare the Way를 Agent 카드로 낼 때
+  `resolve_agent_card_effect`가 legal로 제시된 뒤 적용 시
+  "conditional Agent effect is not available"로 실패한다. legal 제공자와
+  `rules/agent_effects.py:1523` resolver의 조건 판정 불일치로 보이며, 별도
+  수정 작업으로 분리했다.
 
 ## 2026-08-28 세션 요약
 

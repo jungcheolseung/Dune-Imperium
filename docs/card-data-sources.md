@@ -206,3 +206,10 @@ The sixth batch transcribes Devour, Go to Ground, Spice is Power, Tactical
 Option and Reach Agreement from their card images. DIU's `retreat` cost with
 `amount: [1, 2]` / `"any"` maps to `RetreatTroops(1, 2)` / `RetreatTroops(1, None)`.
 
+The seventh batch transcribes Impress and Inspire Awe from their card images
+alone (no DIU working copy was present). Both cards print an acquisition cap
+of 3; the development handoff had recorded 4 for Impress, so the image was
+re-checked at crop level before transcription. Inspire Awe's sandworm
+sentence is modeled as a destination override on the acquisition reward, not
+as a separate conditional section.
+
