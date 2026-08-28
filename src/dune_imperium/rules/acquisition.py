@@ -230,8 +230,7 @@ def _acquire_reserve_to_hand_with_solari(
     if not isinstance(card_id, str):
         raise RuntimeError("Agent Reserve acquisition has invalid card ID")
     definition = RESERVE_STACKS_BY_ID[card_id]
-    stack_count = dict(state.reserve_stacks)[card_id]
-    instance_id = f"reserve:{card_id}:{stack_count - 1}"
+    instance_id = next_reserve_instance_id(state, card_id)
     source = (
         f"round:{state.round_number}:player:{action.actor}:"
         f"acquire_with_solari:{instance_id}"
@@ -450,8 +449,7 @@ def apply_reserve_acquisition(
     if isinstance(persuasion, bool) or not isinstance(persuasion, int):
         raise RuntimeError("Reveal frame has invalid Persuasion")
 
-    stack_count = dict(state.reserve_stacks)[card_id]
-    instance_id = f"reserve:{card_id}:{stack_count - 1}"
+    instance_id = next_reserve_instance_id(state, card_id)
     owner = state.players[action.actor]
     next_owner = replace(
         owner,
@@ -707,6 +705,39 @@ def _resolve_imperium_acquisition_bonus(
         effect is PersonalCardAcquisitionEffect.PLACE_SPY,
         effect is PersonalCardAcquisitionEffect.TAKE_CONTRACT,
     )
+
+
+def next_reserve_instance_id(state: GameState, card_id: str) -> str:
+    """Return an unused ``reserve:<card>:<copy>`` ID for the next acquisition.
+
+    Reserve copies are physically identical, so an ID only has to be unique
+    among copies currently owned by any player. A copy trashed back onto the
+    stack may therefore be re-issued while lower copy indexes stay in play.
+    """
+
+    if dict(state.reserve_stacks)[card_id] < 1:
+        raise ValueError("the Reserve stack is empty")
+    prefix = f"reserve:{card_id}:"
+    owned = {
+        instance_id
+        for player in state.players
+        for zone in (
+            player.deck,
+            player.hand,
+            player.discard_pile,
+            player.in_play,
+            player.trashed,
+        )
+        for instance_id in zone
+        if instance_id.startswith(prefix)
+    }
+    # Count down so the ID matches the historical ``count - 1`` scheme unless a
+    # returned copy would collide with one still in play.
+    for copy in reversed(range(RESERVE_STACKS_BY_ID[card_id].copies)):
+        candidate = f"{prefix}{copy}"
+        if candidate not in owned:
+            return candidate
+    raise RuntimeError("every Reserve copy is already owned")
 
 
 def _acquisition_spy_frame(

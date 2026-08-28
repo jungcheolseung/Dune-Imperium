@@ -843,3 +843,25 @@ def test_strike_fleet_acquisition_recalls_before_placing_with_empty_supply() -> 
     assert replaced.state.players[0].spies_supply == 0
     assert set(replaced.state.players[0].spy_post_ids) == set(posts)
     assert dict(replaced.state.decision_stack[-1].context)["persuasion"] == 0
+
+
+def test_reserve_acquisition_never_reissues_an_owned_copy_id() -> None:
+    from dune_imperium.rules.acquisition import next_reserve_instance_id
+
+    # Player 0 owns copy 7 while a returned copy sits on the stack (count 1).
+    owner = PlayerState(player_id=0, discard_pile=("reserve:prepare_the_way:7",))
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        reserve_stacks=(("prepare_the_way", 1), ("the_spice_must_flow", 10)),
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+    )
+
+    assert next_reserve_instance_id(state, "prepare_the_way") == (
+        "reserve:prepare_the_way:6"
+    )
+    assert next_reserve_instance_id(state, "the_spice_must_flow") == (
+        "reserve:the_spice_must_flow:9"
+    )
