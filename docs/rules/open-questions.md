@@ -41,6 +41,14 @@
   priority 순환에 언제 들어오거나 빠지는지는 설명하지 않는다. `[Main p. 14]`
 - 필요한 답: 해당 변화를 만들 수 있는 현재 범위의 card가 있는지 콘텐츠 전사로
   확인한 뒤, 실제 사례가 있으면 공식 판정을 찾는다.
+- 현재 범위 확인 결과(2026-08-28): Combat Intrigue 가운데 unit을 **줄이는** 카드는
+  Go to Ground, Spice is Power, Tactical Option, Reach Agreement이고, Combat 중
+  unit을 **늘리는** 카드는 없다.
+- 구현 convention: (a) 카드 효과로 마지막 unit이 Conflict를 떠난 참가자는 그
+  즉시 priority 순환에서 빠지며, 그 플레이어가 priority를 갖고 있었다면 시계
+  방향의 다음 남은 참가자에게 넘어간다. 남은 참가자가 없으면 Combat Intrigue
+  단계가 끝난다. (b) Combat 시작 시 unit이 없던 플레이어는 순환에 없고 이후에도
+  들어올 수 없다. `tests/unit/rules/test_intrigue.py`로 고정한다.
 
 ## OQ-004 — Imperium Deck 완전 고갈
 

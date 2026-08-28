@@ -202,3 +202,7 @@ same way.
 The fifth batch transcribes Weirding Combat, Questionable Methods and Find
 Weakness from their card images; all three match DIU's shapes.
 
+The sixth batch transcribes Devour, Go to Ground, Spice is Power, Tactical
+Option and Reach Agreement from their card images. DIU's `retreat` cost with
+`amount: [1, 2]` / `"any"` maps to `RetreatTroops(1, 2)` / `RetreatTroops(1, None)`.
+

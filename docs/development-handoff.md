@@ -26,13 +26,14 @@ uv run ruff check src tests
 uv run mypy src tests
 ```
 
-2026-08-28의 기준 결과는 pytest 626개 통과, Ruff 통과, mypy 통과다. 현재 action
-codec은 `ACTION_CODEC_VERSION = 63`이며 기본 룰셋 catalog는 3,650개, CHOAM
-룰셋 catalog는 3,881개다.
+2026-08-28의 기준 결과는 pytest 632개 통과, Ruff 통과, mypy 통과다. 현재 action
+codec은 `ACTION_CODEC_VERSION = 64`이며 기본 룰셋 catalog는 3,668개, CHOAM
+룰셋 catalog는 3,900개다.
 
 ## 현재 구현 기준선
 
-마지막 기능 커밋은 `Play Combat Intrigue in the priority loop`이다. 그 앞에 [`refactoring-plan.md`](refactoring-plan.md)의 A·B 단계(frame
+마지막 기능 커밋은 `Play unit-changing Combat Intrigue with immediate participant
+removal`이다. 그 앞에 [`refactoring-plan.md`](refactoring-plan.md)의 A·B 단계(frame
 kind, 표 기반 dispatch), Covert Operation deadlock 수정, Reserve copy ID 재발급
 수정이 있다.
 
@@ -71,7 +72,7 @@ kind, 표 기반 dispatch), Covert Operation deadlock 수정, Reserve copy ID �
 ## 아직 완성되지 않은 경계
 
 - Intrigue는 effect DSL, Plot play 경계, 선택 슬롯 frame, Combat priority loop
-  안의 play가 있고 Plot 19종·Combat 5종이 play된다. 나머지 18종과 Endgame timing은
+  안의 play가 있고 Plot 19종·Combat 10종이 play된다. 나머지 13종과 Endgame timing은
   없다.
   세부는 [`implementation-audits/intrigue.md`](implementation-audits/intrigue.md).
 - Leader는 identity와 setup 선택만 있고 Signet Ring 및 Leader 능력은 없다.
@@ -102,10 +103,9 @@ standard contract와 CHOAM 전용 Imperium 수직 조각은 완료됐다. 다음
 묶음은 끝났다. 선택 슬롯(Faction·discard)도 있다. Intrigue draw는 모두 공통 reshuffle 경계를 지난다. 남은 Plot은 Imperium Row
 획득(Inspire Awe), turn 트리거(Call to Arms, Distraction, Leverage), Endgame 절반
 (Crysknife, Desert Mouse, Ornithopter), custom(Manipulate)이며 모두 새 경계가
-필요하다. Combat play는 priority loop에 연결됐다. 다음은 unit 수를 바꾸는 Combat 카드
-(Devour, Go to Ground, Spice is Power, Tactical Option, Reach Agreement)로,
-OQ-003(unit 0↔1 변화 시 priority 순환) convention을 여기서 정한다. 그 뒤 Impress·
-Inspire Awe의 무료 획득 경계로 간다.
+필요하다. Combat play와 unit 변화(OQ-003 convention)까지 연결됐다. 다음은 Impress·Inspire
+Awe의 무료 획득(비용 상한) 경계, 그 뒤 Call to Arms·Distraction의 turn 트리거,
+Endgame 3종(OQ-001), Manipulate 순이다.
 구현 단위는 다음 순서를 따른다.
 
 1. 44장 Intrigue identity를 Plot·Combat·Endgame과 복합 타입으로 분류하고, 공개
@@ -179,5 +179,5 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에
 
 새 clone으로 이어받는다면 먼저 현재 `master`를 push해야 한다. 새 clone에서는
 `git log --oneline -5`에 `b71cec1`이 보이는지 확인한다. 이 커밋들이 없으면 문서에
-적힌 v63 action catalog, 3,881개 CHOAM 행동, 626개 테스트 기준선이 실제 코드와
+적힌 v64 action catalog, 3,900개 CHOAM 행동, 632개 테스트 기준선이 실제 코드와
 일치하지 않는다.
