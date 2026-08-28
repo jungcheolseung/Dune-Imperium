@@ -14,7 +14,7 @@
 ## 세션 시작 체크리스트
 
 1. 저장소 루트의 `AGENTS.md`(도구 중립 공통 지침), `CLAUDE.md`(Claude Code
-   진입점), `README.md`, 이 문서를 읽는다.
+   진입점), `README.md`, 이 문서, 그리고 [`lessons.md`](lessons.md)를 읽는다.
 2. `git status --short`와 `git log --oneline -10`으로 작업 트리와 최근 구현을
    확인한다. 기존 변경은 사용자 작업으로 취급하고 덮어쓰지 않는다.
 3. `uv sync --extra rl`로 Python 3.14 환경을 준비한다.

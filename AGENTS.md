@@ -42,6 +42,11 @@ authoritative and update the handoff in the same work unit.
   `scripts/official-rule-sources.json` and `docs/rules/sources.md` together when
   an official file version or checksum changes.
 - Before implementing a rule, consult `docs/rules/README.md` and its cited source.
+  This applies equally to bug fixes, code-review findings, and test
+  expectations: a reviewer's or your own reading of a rule is not evidence.
+  Quote the `docs/rules/` line (with its `[Main p. N]` / `[FAQ p. N]` citation)
+  in the commit or test before changing rule behaviour, and record any
+  mistake of this kind in `docs/lessons.md`.
   Do not silently fill a gap in the official documents. Add it to
   `docs/rules/open-questions.md`, and clearly distinguish any later project
   convention from an official rule.

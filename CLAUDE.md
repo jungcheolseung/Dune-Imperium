@@ -38,6 +38,15 @@ in the same work unit.
   content packages when you only need the conclusion.
 - Review every delegated diff and rerun pytest/ruff/mypy before committing.
 
+## Rule changes: verify before you act
+
+Never change what the engine does under a rule — including "fixing" it after a
+code-review finding — without first opening the relevant `docs/rules/*.md`
+section and quoting the sentence and citation that justifies the change. If
+the docs are silent, add an entry to `docs/rules/open-questions.md` instead of
+guessing. Past failures of this discipline are logged in `docs/lessons.md`;
+read it at session start.
+
 ## Conventions worth knowing
 
 - Card slices follow the `Play <Card>` / `Document <Card>` commit pairing; keep
