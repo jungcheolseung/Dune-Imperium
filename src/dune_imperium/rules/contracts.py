@@ -12,7 +12,6 @@ from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
-from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.effects import (
@@ -22,7 +21,7 @@ from dune_imperium.rules.effects import (
     pending_agent_contract_ids,
     recruit_troops,
 )
-from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.frames import FrameKind, replace_player
 from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
@@ -249,7 +248,7 @@ def apply_contract_spy_action(
         next_frame = replace(frame, context=tuple(sorted(context.items())))
         next_state = replace(
             state,
-            players=_replace_player(state.players, next_owner),
+            players=replace_player(state.players, next_owner),
             decision_stack=(*state.decision_stack[:-1], next_frame),
         )
         event = GameEvent(
@@ -266,7 +265,7 @@ def apply_contract_spy_action(
     next_owner = place_spy(owner, post_id)
     next_state = replace(
         state,
-        players=_replace_player(state.players, next_owner),
+        players=replace_player(state.players, next_owner),
         decision_stack=state.decision_stack[:-1],
     )
     event = GameEvent(
@@ -585,7 +584,7 @@ def _complete_contract_without_choices(
     )
     next_state = replace(
         state,
-        players=_replace_player(state.players, next_owner),
+        players=replace_player(state.players, next_owner),
     )
     influence_events: tuple[GameEvent, ...] = ()
     if reward.influence_faction is not None:
@@ -669,12 +668,3 @@ def _begin_contract_reward_choice(
         return RuleResult(state=state.push_decision(frame))
     return RuleResult(state=state)
 
-
-def _replace_player(
-    players: tuple[PlayerState, ...],
-    owner: PlayerState,
-) -> tuple[PlayerState, ...]:
-    return tuple(
-        owner if candidate.player_id == owner.player_id else candidate
-        for candidate in players
-    )

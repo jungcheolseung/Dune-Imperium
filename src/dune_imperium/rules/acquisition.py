@@ -25,7 +25,7 @@ from dune_imperium.rules.effects import (
     advance_after_effect,
     current_agent_effect_context,
 )
-from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.frames import FrameKind, replace_player
 from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.reveal_turn import current_reveal_context
 from dune_imperium.rules.spy_placement import (
@@ -98,7 +98,7 @@ def apply_acquisition_spy_action(
         next_frame = replace(frame, context=tuple(sorted(context.items())))
         next_state = replace(
             state,
-            players=_replace_player(state, next_owner),
+            players=replace_player(state.players, next_owner),
             decision_stack=(*state.decision_stack[:-1], next_frame),
         )
         event = GameEvent(
@@ -115,7 +115,7 @@ def apply_acquisition_spy_action(
     next_owner = place_spy(owner, post_id)
     next_state = replace(
         state,
-        players=_replace_player(state, next_owner),
+        players=replace_player(state.players, next_owner),
         decision_stack=state.decision_stack[:-1],
     )
     event = GameEvent(
@@ -252,7 +252,7 @@ def _acquire_reserve_to_hand_with_solari(
     )
     prepared = replace(
         state,
-        players=_replace_player(state, next_owner),
+        players=replace_player(state.players, next_owner),
         reserve_stacks=reserve_stacks,
     )
     completed = complete_acquire_contracts(
@@ -325,7 +325,7 @@ def _acquire_imperium_to_hand_with_solari(
     )
     prepared = replace(
         state,
-        players=_replace_player(state, next_owner),
+        players=replace_player(state.players, next_owner),
         imperium_deck=state.imperium_deck[1:],
         imperium_row=tuple(row),
         intrigue_deck=intrigue_deck,
@@ -580,7 +580,7 @@ def apply_imperium_acquisition(
             next_owner,
         )
     )
-    players = _replace_player(state, next_owner)
+    players = replace_player(state.players, next_owner)
     context["persuasion"] = persuasion - cost
     frame = state.decision_stack[-1]
     next_frame = replace(frame, context=tuple(sorted(context.items())))
@@ -730,15 +730,6 @@ def _acquisition_spy_frame(
         ),
     )
 
-
-def _replace_player(
-    state: GameState,
-    owner: PlayerState,
-) -> tuple[PlayerState, ...]:
-    return tuple(
-        owner if player.player_id == owner.player_id else player
-        for player in state.players
-    )
 
 
 def _resolve_reveal_acquisition_triggers(

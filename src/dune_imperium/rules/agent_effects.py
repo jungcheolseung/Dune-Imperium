@@ -16,7 +16,6 @@ from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
-from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.card_bonds import has_faction_bond
 from dune_imperium.rules.card_discard import discard_personal_card_from_hand
@@ -28,7 +27,7 @@ from dune_imperium.rules.effects import (
     current_agent_effect_context,
     recruit_troops,
 )
-from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.frames import FrameKind, replace_player
 from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
@@ -191,7 +190,7 @@ def apply_agent_card_discard(
         )
         prepared = replace(
             prepared,
-            players=_replace_player(prepared, next_owner),
+            players=replace_player(prepared.players, next_owner),
             intrigue_deck=prepared.intrigue_deck[1:],
         )
     if draw_count == 0:
@@ -347,7 +346,7 @@ def apply_agent_card_long_live_action(
     )
     staged_state = replace(
         state,
-        players=_replace_player(state, staged_owner),
+        players=replace_player(state.players, staged_owner),
     )
     trashed = trash_personal_card(
         staged_state,
@@ -363,7 +362,7 @@ def apply_agent_card_long_live_action(
     next_state = advance_after_effect(
         trashed.state,
         context,
-        _replace_player(trashed.state, next_owner),
+        replace_player(trashed.state.players, next_owner),
     )
     discard_event = GameEvent(
         event_id=f"{source}:discard:{card_id}",
@@ -635,7 +634,7 @@ def apply_agent_card_spy_action(
         next_state = advance_after_effect(
             state,
             context,
-            _replace_player(state, next_owner),
+            replace_player(state.players, next_owner),
         )
         event = GameEvent(
             event_id=f"{source}:spy_recalled:{post_id}",
@@ -653,7 +652,7 @@ def apply_agent_card_spy_action(
     next_state = advance_after_effect(
         state,
         context,
-        _replace_player(state, next_owner),
+        replace_player(state.players, next_owner),
     )
     event = GameEvent(
         event_id=f"{source}:spy_placed:{post_id}",
@@ -721,7 +720,7 @@ def apply_agent_card_recall(state: GameState, action: DomainAction) -> RuleResul
     next_state = advance_after_effect(
         state,
         context,
-        _replace_player(state, next_owner),
+        replace_player(state.players, next_owner),
     )
     source = (
         f"round:{state.round_number}:player:{action.actor}:"
@@ -903,7 +902,7 @@ def apply_agent_card_trash(state: GameState, action: DomainAction) -> RuleResult
         context["troops_recruited"] = previous + recruited
         rewarded = replace(
             trashed.state,
-            players=_replace_player(trashed.state, next_owner),
+            players=replace_player(trashed.state.players, next_owner),
             intrigue_deck=trashed.state.intrigue_deck[1:],
         )
         next_state = advance_after_effect(
@@ -1045,7 +1044,7 @@ def apply_agent_card_intrigue_payment(
             intrigue_trash=(*state.intrigue_trash, intrigue_card_id),
         ),
         context,
-        _replace_player(state, next_owner),
+        replace_player(state.players, next_owner),
     )
     return RuleResult(
         state=next_state,
@@ -1226,7 +1225,7 @@ def apply_corrinth_city_payment(
         owner,
         resources=replace(owner.resources, solari=owner.resources.solari - 5),
     )
-    paid_state = replace(state, players=_replace_player(state, paid_owner))
+    paid_state = replace(state, players=replace_player(state.players, paid_owner))
     first_discard = discard_personal_card_from_hand(
         paid_state,
         action.actor,
@@ -1247,7 +1246,7 @@ def apply_corrinth_city_payment(
     next_state = advance_after_effect(
         second_discard.state,
         context,
-        _replace_player(second_discard.state, resolved_owner),
+        replace_player(second_discard.state.players, resolved_owner),
     )
     return RuleResult(
         state=next_state,
@@ -1306,7 +1305,7 @@ def apply_agent_card_payment(state: GameState, action: DomainAction) -> RuleResu
         ),
         victory_points=owner.victory_points + (0 if pays_water else 1),
     )
-    players = _replace_player(state, next_owner)
+    players = replace_player(state.players, next_owner)
     paid_state = advance_after_effect(state, context, players)
     event = GameEvent(
         event_id=f"{source}:paid",
@@ -1739,7 +1738,7 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             next_state = advance_after_effect(
                 replace(state, intrigue_deck=state.intrigue_deck[1:]),
                 context,
-                _replace_player(state, next_owner),
+                replace_player(state.players, next_owner),
             )
             source = (
                 f"round:{state.round_number}:player:{player}:"
@@ -1778,7 +1777,7 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             next_state = advance_after_effect(
                 replace(state, intrigue_deck=state.intrigue_deck[1:]),
                 context,
-                _replace_player(state, next_owner),
+                replace_player(state.players, next_owner),
             )
             source = (
                 f"round:{state.round_number}:player:{player}:"
@@ -1816,7 +1815,7 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         raise NotImplementedError(
             f"personal-card Agent effect is not implemented: {card.card.card_id}"
         )
-    players = _replace_player(state, next_owner)
+    players = replace_player(state.players, next_owner)
     context["pending_agent_effect"] = False
     next_state = advance_after_effect(state, context, players)
     event = GameEvent(
@@ -1900,15 +1899,6 @@ def _effect_subject(context: dict[str, bool | int | str]) -> tuple[int, str, str
         raise RuntimeError("Agent-turn effect frame has invalid subject")
     return player, card_id, space_id
 
-
-def _replace_player(
-    state: GameState,
-    player: PlayerState,
-) -> tuple[PlayerState, ...]:
-    return tuple(
-        player if candidate.player_id == player.player_id else candidate
-        for candidate in state.players
-    )
 
 
 def _owner_is_spying_on_visited_space(

@@ -15,7 +15,7 @@ from dune_imperium.core.player import PlayerState, Resources
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.contracts import contract_choice_frame
-from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.frames import FrameKind, context_int, frame_context_int
 from dune_imperium.rules.influence import (
     MAX_INFLUENCE,
     gain_faction_influence,
@@ -170,11 +170,11 @@ def apply_combat_intrigue_pass(
     context = dict(frame.context)
     participants = _participants_from_mask(
         state.config.players,
-        _context_int(context, "participants_mask"),
+        context_int(context, "participants_mask"),
         state.first_player,
     )
-    current_index = _context_int(context, "current_index")
-    consecutive_passes = _context_int(context, "consecutive_passes") + 1
+    current_index = context_int(context, "current_index")
+    consecutive_passes = context_int(context, "consecutive_passes") + 1
     if consecutive_passes == len(participants):
         next_state = replace(
             state,
@@ -416,7 +416,7 @@ def legal_combat_reward_optional_payment_actions(
     if not isinstance(decision, PlayerDecision) or decision.owner != player:
         return ()
     context = dict(frame.context)
-    cost = _context_int(context, "cost")
+    cost = context_int(context, "cost")
     resource = context.get("resource")
     if resource not in ("solari", "spice"):
         raise RuntimeError("optional Combat reward has invalid resource")
@@ -436,12 +436,12 @@ def apply_combat_reward_optional_payment(
         raise ValueError("action is not a legal optional Combat reward choice")
     frame = state.decision_stack[-1]
     context = dict(frame.context)
-    choice_index = _context_int(context, "choice_index")
-    cost = _context_int(context, "cost")
+    choice_index = context_int(context, "choice_index")
+    cost = context_int(context, "cost")
     resource = context.get("resource")
     if resource not in ("solari", "spice"):
         raise RuntimeError("optional Combat reward has invalid resource")
-    victory_points = _context_int(context, "victory_points")
+    victory_points = context_int(context, "victory_points")
     paid = action.action_id == "pay_combat_reward"
     owner = state.players[action.actor]
     next_owner = replace(
@@ -492,7 +492,7 @@ def legal_combat_reward_spy_recall_actions(
     decision = frame.decision
     if not isinstance(decision, PlayerDecision) or decision.owner != player:
         return ()
-    count = _context_int(dict(frame.context), "spy_count")
+    count = context_int(dict(frame.context), "spy_count")
     posts = state.players[player].spy_post_ids
     actions = [DomainAction(action_id="decline_combat_reward", actor=player)]
     if count != 2:
@@ -522,9 +522,9 @@ def apply_combat_reward_spy_recall(
         raise ValueError("action is not a legal Combat reward Spy recall")
     frame = state.decision_stack[-1]
     context = dict(frame.context)
-    choice_index = _context_int(context, "choice_index")
-    spy_count = _context_int(context, "spy_count")
-    victory_points = _context_int(context, "victory_points")
+    choice_index = context_int(context, "choice_index")
+    spy_count = context_int(context, "spy_count")
+    victory_points = context_int(context, "victory_points")
     paid = action.action_id == "recall_spies_for_combat_reward"
     recalled = (
         {
@@ -605,7 +605,7 @@ def apply_combat_reward_trash(
     if action not in legal_combat_reward_trash_actions(state, action.actor):
         raise ValueError("action is not a legal Combat reward trash choice")
     frame = state.decision_stack[-1]
-    choice_index = _context_int(dict(frame.context), "choice_index")
+    choice_index = context_int(dict(frame.context), "choice_index")
     declined = action.action_id == "decline_combat_reward_trash"
     events: tuple[GameEvent, ...]
     if declined:
@@ -686,7 +686,7 @@ def apply_combat_reward_spy(
     if not isinstance(post_id, str):
         raise RuntimeError("Combat reward Spy placement has invalid post ID")
     frame = state.decision_stack[-1]
-    choice_index = _context_int(dict(frame.context), "choice_index")
+    choice_index = context_int(dict(frame.context), "choice_index")
     owner = state.players[action.actor]
     next_owner = replace(
         owner,
@@ -760,7 +760,7 @@ def legal_distinct_combat_reward_influence_actions(
     if not isinstance(decision, PlayerDecision) or decision.owner != player:
         return ()
     context = dict(frame.context)
-    chosen_mask = _context_int(context, "chosen_mask")
+    chosen_mask = context_int(context, "chosen_mask")
     influence = state.players[player].influence
     return tuple(
         DomainAction(
@@ -795,9 +795,9 @@ def apply_distinct_combat_reward_influence(
     faction = Faction(faction_value)
     frame = state.decision_stack[-1]
     context = dict(frame.context)
-    choice_index = _context_int(context, "choice_index")
-    group = _context_int(context, "group")
-    chosen_mask = _context_int(context, "chosen_mask")
+    choice_index = context_int(context, "choice_index")
+    group = context_int(context, "group")
+    chosen_mask = context_int(context, "chosen_mask")
     faction_index = tuple(Faction).index(faction)
     gained = gain_faction_influence(
         state,
@@ -810,7 +810,7 @@ def apply_distinct_combat_reward_influence(
         ),
     )
     remaining = state.decision_stack[:-1]
-    if remaining and _frame_context_int(remaining[-1], "group") == group:
+    if remaining and frame_context_int(remaining[-1], "group") == group:
         next_context = dict(remaining[-1].context)
         next_context["chosen_mask"] = chosen_mask | (1 << faction_index)
         remaining = (
@@ -838,7 +838,7 @@ def apply_combat_reward_influence(
         raise RuntimeError("Combat reward Influence choice has invalid faction")
     faction = Faction(faction_value)
     frame = state.decision_stack[-1]
-    choice_index = _context_int(dict(frame.context), "choice_index")
+    choice_index = context_int(dict(frame.context), "choice_index")
     gained = gain_faction_influence(
         state,
         action.actor,
@@ -1276,16 +1276,6 @@ def _combat_intrigue_frame(
     )
 
 
-def _context_int(context: dict[str, bool | int | str], key: str) -> int:
-    value = context.get(key)
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise RuntimeError(f"Combat Intrigue frame has invalid {key}")
-    return value
-
-
-def _frame_context_int(frame: DecisionFrame, key: str) -> int | None:
-    value = dict(frame.context).get(key)
-    return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
 def _rewards(

@@ -14,7 +14,7 @@ from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.card_bonds import has_faction_bond
 from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.effects import recruit_troops
-from dune_imperium.rules.frames import FrameKind, owned_top_frame
+from dune_imperium.rules.frames import FrameKind, owned_top_frame, replace_player
 from dune_imperium.rules.influence import (
     alliance_recipients_after_influence_loss,
     gain_faction_influence,
@@ -302,7 +302,7 @@ def apply_reveal_sandworm_action(
     return RuleResult(
         state=replace(
             state,
-            players=_replace_player(state, next_owner),
+            players=replace_player(state.players, next_owner),
             decision_stack=remaining,
         ),
         events=(
@@ -479,7 +479,7 @@ def apply_corrinth_city_reveal(
     return RuleResult(
         state=replace(
             state,
-            players=_replace_player(state, next_owner),
+            players=replace_player(state.players, next_owner),
             decision_stack=remaining,
         ),
         events=(event,),
@@ -546,7 +546,7 @@ def apply_contract_reveal_choice(
         return RuleResult(
             state=replace(
                 state.pop_decision(),
-                players=_replace_player(state, next_owner),
+                players=replace_player(state.players, next_owner),
             ),
             events=(
                 GameEvent(
@@ -572,7 +572,7 @@ def apply_contract_reveal_choice(
     next_owner = replace(owner, victory_points=owner.victory_points + 1)
     next_state = replace(
         trashed.state,
-        players=_replace_player(trashed.state, next_owner),
+        players=replace_player(trashed.state.players, next_owner),
     )
     event = GameEvent(
         event_id=f"{source}:victory_point",
@@ -633,7 +633,7 @@ def apply_reveal_troop_retreat(
     return RuleResult(
         state=replace(
             state,
-            players=_replace_player(state, next_owner),
+            players=replace_player(state.players, next_owner),
             decision_stack=remaining,
         ),
         events=(
@@ -705,7 +705,7 @@ def apply_reveal_card_trash(
     return RuleResult(
         state=replace(
             trashed.state,
-            players=_replace_player(trashed.state, next_owner),
+            players=replace_player(trashed.state.players, next_owner),
             decision_stack=remaining,
         ),
         events=(
@@ -762,7 +762,7 @@ def apply_reveal_spice_influence(
         owner,
         resources=replace(owner.resources, spice=owner.resources.spice - 3),
     )
-    paid = replace(state, players=_replace_player(state, owner))
+    paid = replace(state, players=replace_player(state.players, owner))
     gained = gain_faction_influence(
         paid,
         action.actor,
@@ -886,7 +886,7 @@ def apply_reveal_spy_action(
         return RuleResult(
             state=replace(
                 state,
-                players=_replace_player(state, next_owner),
+                players=replace_player(state.players, next_owner),
                 decision_stack=remaining,
             ),
             events=(
@@ -911,7 +911,7 @@ def apply_reveal_spy_action(
         return RuleResult(
             state=replace(
                 state,
-                players=_replace_player(state, next_owner),
+                players=replace_player(state.players, next_owner),
                 decision_stack=(*state.decision_stack[:-1], next_frame),
             ),
             events=(
@@ -927,7 +927,7 @@ def apply_reveal_spy_action(
         return RuleResult(
             state=replace(
                 state,
-                players=_replace_player(state, next_owner),
+                players=replace_player(state.players, next_owner),
                 decision_stack=state.decision_stack[:-1],
             ),
             events=(
@@ -1038,15 +1038,6 @@ def _spy_recalled_event(
         ),
     )
 
-
-def _replace_player(
-    state: GameState,
-    player: PlayerState,
-) -> tuple[PlayerState, ...]:
-    return tuple(
-        player if candidate.player_id == player.player_id else candidate
-        for candidate in state.players
-    )
 
 
 def _add_reveal_persuasion(

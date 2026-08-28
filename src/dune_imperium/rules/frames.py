@@ -96,6 +96,13 @@ def context_int(context: FrameContext, key: str, *, owner: str = "frame") -> int
     return value
 
 
+def frame_context_int(frame: DecisionFrame, key: str) -> int | None:
+    """Read an optional non-bool integer from a frame's context."""
+
+    value = dict(frame.context).get(key)
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
 def context_str(context: FrameContext, key: str, *, owner: str = "frame") -> str:
     """Read a required string from a frame context."""
 
