@@ -10,7 +10,7 @@ from dune_imperium.core.actions import ActionValue
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
-from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.frames import FrameKind, reset_turn_deployment
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,6 +144,7 @@ def advance_after_effect(
         next_frame = replace(frame, context=tuple(sorted(context.items())))
     else:
         next_player = _next_unrevealed_player(state, owner)
+        next_players = reset_turn_deployment(next_players, next_player)
         next_frame = DecisionFrame(
             kind=FrameKind.TURN,
             frame_id=f"round:{state.round_number}:turn:{next_player}",

@@ -528,6 +528,7 @@ def apply_maker_space_action(
                 spice=owner.resources.spice + bonus_spice,
             ),
             sandworms_conflict=owner.sandworms_conflict + sandworms,
+            units_deployed_turn=owner.units_deployed_turn + sandworms,
         )
 
     players = tuple(

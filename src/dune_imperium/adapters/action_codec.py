@@ -32,7 +32,7 @@ from dune_imperium.content.uprising.starting_cards import (
 from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
 from dune_imperium.core.actions import ActionValue, DomainAction
 
-ACTION_CODEC_VERSION = 66
+ACTION_CODEC_VERSION = 67
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 
@@ -241,6 +241,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "detonate_shield_wall",
             "keep_shield_wall",
             "decline_intrigue_trash",
+            "decline_intrigue_trigger",
         )
     )
     templates.extend(_trash_templates(config, "trash_intrigue_card"))
@@ -310,7 +311,9 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         "place_acquisition_spy",
         "place_agent_card_spy",
         "place_intrigue_spy",
+        "place_trigger_spy",
         "recall_spy_for_intrigue",
+        "recall_spy_for_trigger",
         "place_reveal_spy",
         "recall_spy_for_acquisition",
         "recall_spy_for_agent_card",

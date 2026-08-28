@@ -35,7 +35,11 @@ def begin_round(state: GameState) -> RuleResult:
     conflict_id = state.conflict_deck[0]
     draw_counts = tuple(min(5, len(player.deck)) for player in state.players)
     players = tuple(
-        _draw_cards(player, count)
+        replace(
+            _draw_cards(player, count),
+            units_deployed_turn=0,
+            deploy_trigger_offered_at=0,
+        )
         for player, count in zip(state.players, draw_counts, strict=True)
     )
     opening_frame = _round_opening_frame(

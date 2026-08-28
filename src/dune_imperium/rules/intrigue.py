@@ -646,6 +646,21 @@ def _finish_play(
         )
         next_state = counted.state
         events.extend(counted.events)
+    elif outcome.sandworms_deployed:
+        # A summoned sandworm is immediately deployed [Main p. 20], so it
+        # joins the owner's per-turn deployment count.
+        owner = next_state.players[player]
+        next_state = replace(
+            next_state,
+            players=replace_player(
+                next_state.players,
+                replace(
+                    owner,
+                    units_deployed_turn=owner.units_deployed_turn
+                    + outcome.sandworms_deployed,
+                ),
+            ),
+        )
     return RuleResult(state=next_state, events=tuple(events))
 
 
@@ -724,6 +739,7 @@ def _deploy_units(
         owner,
         troops_garrison=owner.troops_garrison - troops,
         troops_conflict=owner.troops_conflict + troops,
+        units_deployed_turn=owner.units_deployed_turn + troops,
     )
     return RuleResult(
         state=replace(state, players=replace_player(state.players, next_owner)),

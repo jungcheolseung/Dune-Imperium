@@ -109,6 +109,11 @@ from dune_imperium.rules.intrigue_deck import (
     intrigue_reshuffle_is_pending,
     resolve_pending_intrigue_draw,
 )
+from dune_imperium.rules.intrigue_triggers import (
+    apply_trigger_spy_action,
+    legal_trigger_spy_actions,
+    offer_deployment_triggers,
+)
 from dune_imperium.rules.phases import (
     apply_control_defense_action,
     apply_round_start_reshuffle,
@@ -252,6 +257,7 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     # Chance frames never reach this table: legal_actions returns () for any
     # frame whose decision is not a PlayerDecision.
     FrameKind.INTRIGUE_CHOICE: (legal_intrigue_choice_actions,),
+    FrameKind.INTRIGUE_TRIGGER_SPY: (legal_trigger_spy_actions,),
 }
 
 ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
@@ -271,6 +277,9 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "retreat_intrigue_troops": apply_intrigue_choice,
     "acquire_intrigue_imperium": apply_intrigue_choice,
     "acquire_intrigue_reserve": apply_intrigue_choice,
+    "place_trigger_spy": apply_trigger_spy_action,
+    "recall_spy_for_trigger": apply_trigger_spy_action,
+    "decline_intrigue_trigger": apply_trigger_spy_action,
     # Agent-turn effect frame
     "resolve_agent_card_effect": _apply_agent_card_effect,
     "resolve_board_effect": _apply_board_effect,
@@ -383,7 +392,7 @@ class UprisingRulesEngine(RulesEngine):
             result = apply_intrigue_reshuffle(state, outcome)
         else:
             result = apply_round_start_reshuffle(state, outcome)
-        return _advance_automatic(result)
+        return offer_deployment_triggers(_advance_automatic(result))
 
     def legal_actions(
         self,
@@ -405,7 +414,8 @@ class UprisingRulesEngine(RulesEngine):
         )
 
     def _apply_legal(self, state: GameState, action: DomainAction) -> RuleResult:
-        return _advance_automatic(ACTION_HANDLERS[action.action_id](state, action))
+        result = _advance_automatic(ACTION_HANDLERS[action.action_id](state, action))
+        return offer_deployment_triggers(result)
 
     def observe(self, state: GameState, player: int) -> PlayerView:
         return observe_state(state, player)

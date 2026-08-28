@@ -14,7 +14,12 @@ from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.card_bonds import has_faction_bond
 from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.effects import recruit_troops
-from dune_imperium.rules.frames import FrameKind, owned_top_frame, replace_player
+from dune_imperium.rules.frames import (
+    FrameKind,
+    owned_top_frame,
+    replace_player,
+    reset_turn_deployment,
+)
 from dune_imperium.rules.influence import (
     alliance_recipients_after_influence_loss,
     gain_faction_influence,
@@ -297,6 +302,7 @@ def apply_reveal_sandworm_action(
         resources=replace(owner.resources, water=owner.resources.water - 1),
         sandworms_conflict=owner.sandworms_conflict + 1,
         combat_strength=owner.combat_strength + strength_delta,
+        units_deployed_turn=owner.units_deployed_turn + 1,
     )
     remaining = state.decision_stack[:-1]
     remaining = _add_reveal_persuasion(remaining, -2)
@@ -1524,6 +1530,7 @@ def finish_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         decision_stack = working.decision_stack[:-1]
     else:
         phase = GamePhase.PLAYER_TURNS
+        players = reset_turn_deployment(players, next_player)
         decision_stack = (
             *working.decision_stack[:-1],
             DecisionFrame(
@@ -1608,6 +1615,7 @@ def add_units_to_reveal(
         troops_conflict=owner.troops_conflict + troops,
         sandworms_conflict=owner.sandworms_conflict + sandworms,
         combat_strength=owner.combat_strength + strength_delta,
+        units_deployed_turn=owner.units_deployed_turn + troops + sandworms,
     )
     return RuleResult(
         state=replace(

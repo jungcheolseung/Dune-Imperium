@@ -325,9 +325,12 @@ class PlaceSpy:
     """Place a Spy on an empty Observation Post, limited to ``factions`` if set.
 
     Without a Spy in supply the player first recalls one [Main pp. 11, 20].
+    ``shared_post`` inverts the target rule for card text that places the Spy
+    on the same post as another player's Spy.
     """
 
     factions: tuple[Faction, ...] | None = None
+    shared_post: bool = False
 
     def __post_init__(self) -> None:
         if self.factions is not None:
@@ -335,6 +338,10 @@ class PlaceSpy:
                 raise ValueError("Spy target Factions must be unique and non-empty")
             if any(not isinstance(faction, Faction) for faction in self.factions):
                 raise TypeError("Spy target Factions must use Faction")
+        if not isinstance(self.shared_post, bool):
+            raise TypeError("shared_post must be a boolean")
+        if self.shared_post and self.factions is not None:
+            raise ValueError("a shared-post placement cannot limit Factions")
 
 
 @dataclass(frozen=True, slots=True)
@@ -398,7 +405,24 @@ class OnRevealAcquisitionThisRound:
     """
 
 
-type Trigger = OnRevealAcquisitionThisRound
+@dataclass(frozen=True, slots=True)
+class OnUnitsDeployedInTurn:
+    """When the owner deploys ``minimum`` or more units to the Conflict in a
+    single turn.
+
+    Troops and sandworms are both units [Main p. 12] and a summoned sandworm
+    is immediately deployed [Main p. 20], so both count. The card waits face
+    up until a qualifying turn [FAQ p. 2].
+    """
+
+    minimum: int = 3
+
+    def __post_init__(self) -> None:
+        if self.minimum < 1:
+            raise ValueError("deployment trigger minimum must be positive")
+
+
+type Trigger = OnRevealAcquisitionThisRound | OnUnitsDeployedInTurn
 
 
 # --- Composition ------------------------------------------------------------

@@ -66,6 +66,7 @@ def apply_combat_deployment(
         owner,
         troops_garrison=owner.troops_garrison - count,
         troops_conflict=owner.troops_conflict + count,
+        units_deployed_turn=owner.units_deployed_turn + count,
     )
     players = tuple(
         next_owner if player.player_id == action.actor else player

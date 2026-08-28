@@ -35,6 +35,7 @@ class FrameKind(StrEnum):
     PERSONAL_DRAW_RESHUFFLE = "personal_draw_reshuffle"
     INTRIGUE_RESHUFFLE = "intrigue_reshuffle"
     INTRIGUE_CHOICE = "intrigue_choice"
+    INTRIGUE_TRIGGER_SPY = "intrigue_trigger_spy"
 
 
 def top_frame(state: GameState) -> DecisionFrame | None:
@@ -123,6 +124,21 @@ def replace_player(
     return tuple(
         player if candidate.player_id == player.player_id else candidate
         for candidate in players
+    )
+
+
+def reset_turn_deployment(
+    players: tuple[PlayerState, ...],
+    player: int,
+) -> tuple[PlayerState, ...]:
+    """Zero one player's per-turn deployment counters as their turn opens."""
+
+    owner = players[player]
+    if owner.units_deployed_turn == 0 and owner.deploy_trigger_offered_at == 0:
+        return players
+    return replace_player(
+        players,
+        replace(owner, units_deployed_turn=0, deploy_trigger_offered_at=0),
     )
 
 

@@ -29,6 +29,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     IntrigueTiming,
     LoseInfluence,
     OnRevealAcquisitionThisRound,
+    OnUnitsDeployedInTurn,
     PayResources,
     PlaceSpy,
     RecallSpy,
@@ -249,7 +250,18 @@ INTRIGUE_CARDS: Final = (
             ),
         ),
     ),
-    _entry(144, "distraction", "Distraction", copies=2),
+    _entry(
+        144,
+        "distraction",
+        "Distraction",
+        copies=2,
+        options=(
+            _plot_trigger(
+                OnUnitsDeployedInTurn(3),
+                EffectSection(rewards=(PlaceSpy(shared_post=True),)),
+            ),
+        ),
+    ),
     _entry(
         149,
         "find-weakness",

@@ -299,6 +299,10 @@ def option_is_playable(
     sections = applicable_sections(
         owner, option, shield_wall_present=state.shield_wall_present
     )
+    if option.trigger is not None:
+        # Playing only sets the card waiting face up; its rewards resolve
+        # when the trigger fires, so present feasibility does not gate it.
+        return bool(sections)
     return (
         bool(sections)
         and can_afford(owner, resource_cost(sections))

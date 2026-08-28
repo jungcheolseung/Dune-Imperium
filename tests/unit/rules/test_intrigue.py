@@ -82,7 +82,7 @@ def _play(state: GameState, card_id: str, option: int = 0) -> DomainAction:
 def test_transcribed_intrigue_options_are_well_formed() -> None:
     transcribed = [entry for entry in INTRIGUE_CARDS if entry.play_data_complete]
 
-    assert len(transcribed) == 29
+    assert len(transcribed) == 30
     for entry in transcribed:
         assert entry.options
         for option in entry.options:
@@ -1623,6 +1623,311 @@ def test_call_to_arms_trigger_is_supply_limited() -> None:
         event for event in bought.events if event.kind == "intrigue_triggered"
     )
     assert dict(triggered.payload)["troops"] == 0
+
+
+def _post(index: int) -> str:
+    from dune_imperium.content.uprising.board import OBSERVATION_POSTS
+
+    return OBSERVATION_POSTS[index].post_id
+
+
+def _place_trigger(post_id: str, actor: int = 0) -> DomainAction:
+    return DomainAction(
+        action_id="place_trigger_spy",
+        actor=actor,
+        arguments=(("post_id", post_id),),
+    )
+
+
+def _decline_trigger(actor: int = 0) -> DomainAction:
+    return DomainAction(action_id="decline_intrigue_trigger", actor=actor)
+
+
+def _spy_rival(post_id: str) -> PlayerState:
+    return PlayerState(player_id=1, spies_supply=2, spy_post_ids=(post_id,))
+
+
+def _distraction_arrakeen_state(*, rival_post: str | None) -> GameState:
+    owner = PlayerState(
+        player_id=0,
+        hand=(_starter("reconnaissance"),),
+        intrigue_cards=(_intrigue("shaddam_s_favor"),),
+        intrigue_faceup=(_intrigue("distraction"),),
+        troops_supply=9,
+        troops_garrison=3,
+    )
+    players: tuple[PlayerState, ...] = (
+        owner,
+        _spy_rival(rival_post) if rival_post else PlayerState(player_id=1),
+        PlayerState(player_id=2),
+        PlayerState(player_id=3),
+    )
+    state = _turn_state(owner)
+    return replace(state, players=players)
+
+
+def test_distraction_waits_face_up_and_is_playable_without_targets() -> None:
+    card = _intrigue("distraction")
+    owner = PlayerState(player_id=0, intrigue_cards=(card,))
+    state = _turn_state(owner)
+    engine = UprisingRulesEngine()
+
+    # No deployments and no opponent Spies: the card still just waits.
+    assert _play(state, card) in legal_intrigue_play_actions(state, 0)
+    done = engine.apply(state, _play(state, card)).state
+    assert done.players[0].intrigue_faceup == (card,)
+    assert done.decision_stack == state.decision_stack
+
+
+def test_distraction_fires_after_an_agent_deployment_ends_the_turn() -> None:
+    rival_post = _post(0)
+    card = _intrigue("distraction")
+    state = _distraction_arrakeen_state(rival_post=rival_post)
+    engine = UprisingRulesEngine()
+    to_arrakeen = next(
+        action
+        for action in legal_agent_actions(state, 0)
+        if dict(action.arguments)["space_id"] == "arrakeen"
+    )
+    placed = engine.apply(state, to_arrakeen).state
+    # Recruit one troop by Plot so three troops may be deployed [Main p. 12].
+    recruited = engine.apply(
+        placed, _play(placed, _intrigue("shaddam_s_favor"))
+    ).state
+    board_done = engine.apply(
+        recruited, DomainAction(action_id="resolve_board_effect", actor=0)
+    ).state
+
+    deployed = engine.apply(
+        board_done,
+        DomainAction(action_id="deploy_troops", actor=0, arguments=(("count", 3),)),
+    ).state
+    assert deployed.players[0].units_deployed_turn == 3
+    # The deployment ended the Agent turn, so the trigger frame sits on the
+    # next player's turn frame.
+    frame = deployed.decision_stack[-1]
+    assert frame.kind == "intrigue_trigger_spy"
+    below = deployed.decision_stack[-2]
+    assert below.kind == "turn"
+    assert isinstance(below.decision, PlayerDecision) and below.decision.owner == 1
+
+    actions = engine.legal_actions(deployed, 0)
+    assert _decline_trigger() in actions
+    assert _place_trigger(rival_post) in actions
+    done = engine.apply(deployed, _place_trigger(rival_post)).state
+    # Both players now share the post [Distraction card].
+    assert rival_post in done.players[0].spy_post_ids
+    assert rival_post in done.players[1].spy_post_ids
+    assert done.players[0].intrigue_faceup == ()
+    assert done.intrigue_discard[-1] == card
+    assert done.decision_stack[-1].kind == "turn"
+
+
+def test_distraction_offer_can_be_declined_and_the_card_stays() -> None:
+    rival_post = _post(1)
+    card = _intrigue("distraction")
+    state = _distraction_arrakeen_state(rival_post=rival_post)
+    engine = UprisingRulesEngine()
+    to_arrakeen = next(
+        action
+        for action in legal_agent_actions(state, 0)
+        if dict(action.arguments)["space_id"] == "arrakeen"
+    )
+    placed = engine.apply(state, to_arrakeen).state
+    recruited = engine.apply(
+        placed, _play(placed, _intrigue("shaddam_s_favor"))
+    ).state
+    board_done = engine.apply(
+        recruited, DomainAction(action_id="resolve_board_effect", actor=0)
+    ).state
+    deployed = engine.apply(
+        board_done,
+        DomainAction(action_id="deploy_troops", actor=0, arguments=(("count", 3),)),
+    ).state
+
+    declined = engine.apply(deployed, _decline_trigger()).state
+    # Declining keeps the card face up for a later qualifying turn (OQ-016).
+    assert declined.players[0].intrigue_faceup == (card,)
+    assert card not in declined.intrigue_discard
+    assert declined.decision_stack[-1].kind == "turn"
+    assert declined.players[0].deploy_trigger_offered_at == 3
+
+
+def test_distraction_played_after_deploying_three_fires_at_once() -> None:
+    rival_post = _post(2)
+    detonation = _intrigue("detonation")
+    distraction = _intrigue("distraction")
+    owner = PlayerState(
+        player_id=0,
+        intrigue_cards=(detonation, distraction),
+        troops_supply=9,
+        troops_garrison=3,
+    )
+    state = replace(
+        _turn_state(owner),
+        players=(
+            owner,
+            _spy_rival(rival_post),
+            PlayerState(player_id=2),
+            PlayerState(player_id=3),
+        ),
+    )
+    engine = UprisingRulesEngine()
+
+    opened = engine.apply(state, _play(state, detonation, 1)).state
+    deployed = engine.apply(
+        opened,
+        DomainAction(
+            action_id="deploy_intrigue_troops", actor=0, arguments=(("count", 3),)
+        ),
+    ).state
+    # Without a face-up card the deployment alone opens nothing.
+    assert deployed.players[0].units_deployed_turn == 3
+    assert deployed.decision_stack[-1].kind == "turn"
+
+    played = engine.apply(deployed, _play(deployed, distraction)).state
+    # The play itself re-checks the trigger: three units were already
+    # deployed this turn, so the offer opens at once.
+    assert played.decision_stack[-1].kind == "intrigue_trigger_spy"
+    done = engine.apply(played, _place_trigger(rival_post)).state
+    assert rival_post in done.players[0].spy_post_ids
+    assert done.intrigue_discard[-1] == distraction
+
+
+def test_distraction_needs_a_post_with_another_players_spy() -> None:
+    state = _distraction_arrakeen_state(rival_post=None)
+    engine = UprisingRulesEngine()
+    to_arrakeen = next(
+        action
+        for action in legal_agent_actions(state, 0)
+        if dict(action.arguments)["space_id"] == "arrakeen"
+    )
+    placed = engine.apply(state, to_arrakeen).state
+    recruited = engine.apply(
+        placed, _play(placed, _intrigue("shaddam_s_favor"))
+    ).state
+    board_done = engine.apply(
+        recruited, DomainAction(action_id="resolve_board_effect", actor=0)
+    ).state
+    deployed = engine.apply(
+        board_done,
+        DomainAction(action_id="deploy_troops", actor=0, arguments=(("count", 3),)),
+    ).state
+
+    # No opponent Spy on the board: nothing is offered and the card waits.
+    assert deployed.decision_stack[-1].kind == "turn"
+    assert deployed.players[0].intrigue_faceup == (_intrigue("distraction"),)
+    assert deployed.players[0].deploy_trigger_offered_at == 0
+
+
+def test_reveal_deployment_counts_for_distraction() -> None:
+    rival_post = _post(3)
+    detonation = _intrigue("detonation")
+    owner = PlayerState(
+        player_id=0,
+        intrigue_cards=(detonation,),
+        intrigue_faceup=(_intrigue("distraction"),),
+        troops_supply=9,
+        troops_garrison=3,
+    )
+    state = replace(
+        _turn_state(owner),
+        players=(
+            owner,
+            _spy_rival(rival_post),
+            PlayerState(player_id=2),
+            PlayerState(player_id=3),
+        ),
+    )
+    engine = UprisingRulesEngine()
+    revealed = engine.apply(state, _reveal(state)).state
+
+    opened = engine.apply(revealed, _play(revealed, detonation, 1)).state
+    deployed = engine.apply(
+        opened,
+        DomainAction(
+            action_id="deploy_intrigue_troops", actor=0, arguments=(("count", 3),)
+        ),
+    ).state
+    assert deployed.decision_stack[-1].kind == "intrigue_trigger_spy"
+    assert deployed.decision_stack[-2].kind == "reveal"
+
+    declined = engine.apply(deployed, _decline_trigger()).state
+    assert declined.decision_stack[-1].kind == "reveal"
+    finished = engine.apply(
+        declined, DomainAction(action_id="finish_reveal", actor=0)
+    ).state
+    assert finished.players[0].intrigue_faceup == (_intrigue("distraction"),)
+
+
+def test_sandworm_summon_counts_as_a_deployed_unit() -> None:
+    card = _intrigue("unexpected_allies")
+    owner = PlayerState(
+        player_id=0, intrigue_cards=(card,), resources=Resources(water=2)
+    )
+    state = replace(
+        _turn_state(owner),
+        current_conflict_ids=(_conflict(False),),
+    )
+    engine = UprisingRulesEngine()
+
+    opened = engine.apply(state, _play(state, card)).state
+    done = engine.apply(opened, _keep_wall()).state
+    # A summoned sandworm is immediately deployed [Main p. 20].
+    assert done.players[0].sandworms_conflict == 1
+    assert done.players[0].units_deployed_turn == 1
+
+
+def test_distraction_recalls_a_spy_first_when_the_supply_is_empty() -> None:
+    from dune_imperium.rules.intrigue_triggers import offer_deployment_triggers
+
+    rival_post = _post(4)
+    own_posts = (_post(5), _post(6), _post(7))
+    card = _intrigue("distraction")
+    owner = PlayerState(
+        player_id=0,
+        intrigue_faceup=(card,),
+        spies_supply=0,
+        spy_post_ids=own_posts,
+        units_deployed_turn=3,
+    )
+    state = replace(
+        _turn_state(owner),
+        players=(
+            owner,
+            _spy_rival(rival_post),
+            PlayerState(player_id=2),
+            PlayerState(player_id=3),
+        ),
+    )
+    engine = UprisingRulesEngine()
+    from dune_imperium.core.engine import RuleResult
+
+    offered = offer_deployment_triggers(RuleResult(state=state)).state
+    assert offered.decision_stack[-1].kind == "intrigue_trigger_spy"
+
+    actions = engine.legal_actions(offered, 0)
+    assert _decline_trigger() in actions
+    recall_ids = {
+        dict(action.arguments)["post_id"]
+        for action in actions
+        if action.action_id == "recall_spy_for_trigger"
+    }
+    assert recall_ids == set(own_posts)
+
+    recalled = engine.apply(
+        offered,
+        DomainAction(
+            action_id="recall_spy_for_trigger",
+            actor=0,
+            arguments=(("post_id", own_posts[0]),),
+        ),
+    ).state
+    # The recall keeps the frame open; the freed Spy may now be placed.
+    assert recalled.decision_stack[-1].kind == "intrigue_trigger_spy"
+    done = engine.apply(recalled, _place_trigger(rival_post)).state
+    assert rival_post in done.players[0].spy_post_ids
+    assert done.intrigue_discard == (card,)
 
 
 def test_reach_agreement_retreats_for_a_contract_in_the_choam_module() -> None:

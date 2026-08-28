@@ -69,6 +69,8 @@ class PlayerState:
     alliance_faction_ids: tuple[str, ...] = ()
     control_space_ids: tuple[str, ...] = ()
     combat_strength: int = 0
+    units_deployed_turn: int = 0
+    deploy_trigger_offered_at: int = 0
     has_revealed: bool = False
     high_council: bool = False
     maker_hooks: bool = False
@@ -97,6 +99,8 @@ class PlayerState:
             self.sandworms_conflict,
             self.spies_supply,
             self.combat_strength,
+            self.units_deployed_turn,
+            self.deploy_trigger_offered_at,
         )
         if min(quantities) < 0:
             raise ValueError("player component quantities must not be negative")
