@@ -485,6 +485,106 @@ def apply_corrinth_city_reveal(
     )
 
 
+def legal_contract_reveal_choice_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return the CHOAM choice between Spice and a self-trash VP."""
+
+    if not 0 <= player < state.config.players or not state.decision_stack:
+        return ()
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    if (
+        not isinstance(frame.decision, PlayerDecision)
+        or frame.decision.owner != player
+        or context.get("reveal_choice_effect")
+        != (
+            PersonalCardRevealChoiceEffect
+            .KEEP_SPICE_OR_TRASH_SELF_FOR_VP_IF_FOUR_CONTRACTS.value
+        )
+    ):
+        return ()
+    actions = [
+        DomainAction(action_id="keep_contract_reveal_spice", actor=player)
+    ]
+    if len(state.players[player].completed_contract_ids) >= 4:
+        actions.append(
+            DomainAction(action_id="trash_contract_reveal_for_vp", actor=player)
+        )
+    return tuple(actions)
+
+
+def apply_contract_reveal_choice(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Gain printed Spice or trash the card for one VP."""
+
+    if action not in legal_contract_reveal_choice_actions(state, action.actor):
+        raise ValueError("action is not a legal Contract-count Reveal choice")
+    context = dict(state.decision_stack[-1].context)
+    card_id = context.get("reveal_card_id")
+    if not isinstance(card_id, str):
+        raise RuntimeError("Contract-count Reveal choice has invalid card ID")
+    source = (
+        f"round:{state.round_number}:player:{action.actor}:"
+        f"reveal_card:{card_id}:contract_count_choice"
+    )
+    if action.action_id == "keep_contract_reveal_spice":
+        card = personal_card_for_instance(card_id)
+        spice = sum(effect.spice for effect in card.reveal_effects)
+        owner = state.players[action.actor]
+        next_owner = replace(
+            owner,
+            resources=replace(
+                owner.resources,
+                spice=owner.resources.spice + spice,
+            ),
+        )
+        return RuleResult(
+            state=replace(
+                state.pop_decision(),
+                players=_replace_player(state, next_owner),
+            ),
+            events=(
+                GameEvent(
+                    event_id=f"{source}:spice",
+                    kind="contract_reveal_spice_gained",
+                    payload=(
+                        ("amount", spice),
+                        ("card_id", card_id),
+                        ("player", action.actor),
+                    ),
+                ),
+            ),
+        )
+
+    prepared = state.pop_decision()
+    trashed = trash_personal_card(
+        prepared,
+        action.actor,
+        card_id,
+        source=source,
+    )
+    owner = trashed.state.players[action.actor]
+    next_owner = replace(owner, victory_points=owner.victory_points + 1)
+    next_state = replace(
+        trashed.state,
+        players=_replace_player(trashed.state, next_owner),
+    )
+    event = GameEvent(
+        event_id=f"{source}:victory_point",
+        kind="contract_reveal_card_trashed_for_vp",
+        payload=(
+            ("card_id", card_id),
+            ("player", action.actor),
+            ("victory_points", 1),
+        ),
+    )
+    return RuleResult(state=next_state, events=(*trashed.events, event))
+
+
 def apply_reveal_troop_retreat(
     state: GameState,
     action: DomainAction,
@@ -1090,6 +1190,15 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
             not effect.requires_spying_on_maker_space
             or is_spying_on_maker_space(owner)
         )
+        and not (
+            len(owner.completed_contract_ids) >= 4
+            and effect.spice > 0
+            and (
+                PersonalCardRevealChoiceEffect
+                .KEEP_SPICE_OR_TRASH_SELF_FOR_VP_IF_FOUR_CONTRACTS
+                in card.reveal_choice_effects
+            )
+        )
     )
     persuasion = sum(card.reveal_persuasion for card in cards) + sum(
         effect.persuasion
@@ -1101,6 +1210,8 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
             if effect.per_revealed_faction is not None
             else 1
         )
+        + effect.persuasion_per_completed_contract
+        * len(owner.completed_contract_ids)
         for _, effect in reveal_effects
     )
     if owner.high_council:
@@ -1235,6 +1346,12 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
                     else "Keep two Persuasion or pay one Water for a sandworm"
                     if effect
                     is PersonalCardRevealChoiceEffect.MAY_PAY_WATER_FOR_SANDWORM
+                    else "Gain Spice or trash this card for one Victory Point"
+                    if effect
+                    is (
+                        PersonalCardRevealChoiceEffect
+                        .KEEP_SPICE_OR_TRASH_SELF_FOR_VP_IF_FOUR_CONTRACTS
+                    )
                     else "Choose a Spy to recall for this Reveal effect"
                 ),
             ),
@@ -1293,6 +1410,14 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
                 PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_TWO_PERSUASION,
             )
             and len(owner.spy_post_ids) >= 2
+        )
+        or (
+            effect
+            is (
+                PersonalCardRevealChoiceEffect
+                .KEEP_SPICE_OR_TRASH_SELF_FOR_VP_IF_FOUR_CONTRACTS
+            )
+            and len(owner.completed_contract_ids) >= 4
         )
     )
     next_state = replace(

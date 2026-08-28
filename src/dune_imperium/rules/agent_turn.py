@@ -275,6 +275,13 @@ def _agent_effect_is_available(
         # Agent effect is actually resolved. Board and Faction effects may
         # draw cards before that point in the same turn.
         return True
+    if effect in (
+        PersonalCardAgentEffect.DRAW_PER_TWO_COMPLETED_CONTRACTS_UP_TO_TWO,
+        PersonalCardAgentEffect.MAY_DISCARD_TO_TAKE_CONTRACT,
+    ):
+        # Both conditions can become true after another freely ordered effect:
+        # a Contract can complete, or a board/card effect can draw a payment.
+        return True
     if (
         effect
         is PersonalCardAgentEffect.GAIN_TWO_VISITED_FACTION_INFLUENCE_AND_TRASH_SELF

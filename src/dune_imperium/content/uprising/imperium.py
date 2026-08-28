@@ -204,7 +204,20 @@ IMPERIUM_CARDS: Final = (
         ),
         play_data_complete=True,
     ),
-    _entry(181, "cargo-runner", "Cargo Runner", 3, choam_only=True),
+    _entry(
+        181,
+        "cargo-runner",
+        "Cargo Runner",
+        3,
+        choam_only=True,
+        factions=(Faction.SPACING_GUILD,),
+        agent_icons=(AgentIcon.LANDSRAAD, AgentIcon.CITY, AgentIcon.SPICE_TRADE),
+        agent_effect=(
+            PersonalCardAgentEffect.DRAW_PER_TWO_COMPLETED_CONTRACTS_UP_TO_TWO
+        ),
+        reveal_persuasion=1,
+        play_data_complete=True,
+    ),
     _entry(
         67,
         "chani-clever-tactician",
@@ -268,7 +281,21 @@ IMPERIUM_CARDS: Final = (
         reveal_strength=1,
         play_data_complete=True,
     ),
-    _entry(182, "delivery-agreement", "Delivery Agreement", 5, choam_only=True),
+    _entry(
+        182,
+        "delivery-agreement",
+        "Delivery Agreement",
+        5,
+        choam_only=True,
+        factions=(Faction.SPACING_GUILD,),
+        agent_icons=(AgentIcon.CITY,),
+        agent_effect=PersonalCardAgentEffect.MAY_DISCARD_TO_TAKE_CONTRACT,
+        reveal_effects=(PersonalCardRevealEffect(spice=1),),
+        reveal_choice_effects=(
+            PersonalCardRevealChoiceEffect.KEEP_SPICE_OR_TRASH_SELF_FOR_VP_IF_FOUR_CONTRACTS,
+        ),
+        play_data_complete=True,
+    ),
     _entry(
         71,
         "desert-power",
@@ -430,6 +457,14 @@ IMPERIUM_CARDS: Final = (
         7,
         choam_only=True,
         has_acquisition_bonus=True,
+        factions=(Faction.SPACING_GUILD,),
+        agent_icons=(AgentIcon.LANDSRAAD, AgentIcon.CITY, AgentIcon.SPICE_TRADE),
+        agent_effect=PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE,
+        acquisition_effect=PersonalCardAcquisitionEffect.TAKE_CONTRACT,
+        reveal_effects=(
+            PersonalCardRevealEffect(persuasion_per_completed_contract=1),
+        ),
+        play_data_complete=True,
     ),
     _entry(
         68,
@@ -570,7 +605,21 @@ IMPERIUM_CARDS: Final = (
         reveal_effects=(PersonalCardRevealEffect(solari=2),),
         play_data_complete=True,
     ),
-    _entry(183, "priority-contracts", "Priority Contracts", 6, choam_only=True),
+    _entry(
+        183,
+        "priority-contracts",
+        "Priority Contracts",
+        6,
+        choam_only=True,
+        factions=(Faction.SPACING_GUILD,),
+        agent_icons=(AgentIcon.LANDSRAAD, AgentIcon.SPICE_TRADE),
+        agent_effect=PersonalCardAgentEffect.TAKE_CONTRACT,
+        reveal_effects=(PersonalCardRevealEffect(spice=2),),
+        reveal_choice_effects=(
+            PersonalCardRevealChoiceEffect.KEEP_SPICE_OR_TRASH_SELF_FOR_VP_IF_FOUR_CONTRACTS,
+        ),
+        play_data_complete=True,
+    ),
     _entry(
         55,
         "public-spectacle",

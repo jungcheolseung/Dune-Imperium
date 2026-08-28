@@ -25,6 +25,7 @@ from dune_imperium.rules.acquisition import (
     legal_reserve_acquisitions,
 )
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
+from dune_imperium.rules.contracts import apply_contract_action, legal_contract_actions
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.reveal_turn import (
     begin_reveal_turn,
@@ -40,17 +41,17 @@ def _instance(card_id: str, copy: int = 0) -> str:
     )[copy]
 
 
-def _imperium_instance(card_id: str) -> str:
+def _imperium_instance(card_id: str, *, choam_module: bool = False) -> str:
     return next(
         instance_id
-        for instance_id in imperium_deck_instance_ids(False)
+        for instance_id in imperium_deck_instance_ids(choam_module)
         if f":{card_id}:" in instance_id
     )
 
 
-def _reveal_state(*cards: str) -> GameState:
+def _reveal_state(*cards: str, choam_module: bool = False) -> GameState:
     state = GameState(
-        config=RulesetConfig(),
+        config=RulesetConfig(choam_module=choam_module),
         seed=1,
         phase=GamePhase.PLAYER_TURNS,
         round_number=1,
@@ -70,6 +71,37 @@ def _reveal_state(*cards: str) -> GameState:
         ),
     )
     return begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+
+
+def _choam_interstellar_reveal_state(
+    *,
+    face_up_contract_ids: tuple[str, ...] = (
+        "contract:arrakeen_i",
+        "contract:high_council_ii",
+    ),
+    contract_bank: tuple[str, ...] = ("contract:research_station_i",),
+) -> GameState:
+    state = _reveal_state(
+        _instance("convincing_argument", 0),
+        _instance("convincing_argument", 1),
+        _instance("dune_the_desert_planet", 0),
+        _instance("dune_the_desert_planet", 1),
+        _instance("diplomacy"),
+        choam_module=True,
+    )
+    instances = imperium_deck_instance_ids(True)
+    interstellar = _imperium_instance(
+        "interstellar_trade",
+        choam_module=True,
+    )
+    others = tuple(instance for instance in instances if instance != interstellar)
+    return replace(
+        state,
+        imperium_row=(interstellar, *others[:4]),
+        imperium_deck=others[4:],
+        contract_bank=contract_bank,
+        face_up_contract_ids=face_up_contract_ids,
+    )
 
 
 def test_only_affordable_nonempty_reserve_stacks_are_legal() -> None:
@@ -144,6 +176,65 @@ def test_imperium_purchase_refills_same_row_position_immediately() -> None:
     assert result.state.imperium_row == (expensive, replacement, *others[:3])
     assert result.state.imperium_deck == others[4:]
     assert dict(result.state.decision_stack[-1].context)["persuasion"] == 1
+
+
+def test_interstellar_trade_acquisition_opens_contract_market_and_refills_it() -> None:
+    state = _choam_interstellar_reveal_state()
+    interstellar = _imperium_instance(
+        "interstellar_trade",
+        choam_module=True,
+    )
+    action = next(
+        action
+        for action in legal_imperium_acquisitions(state, 0)
+        if dict(action.arguments)["instance_id"] == interstellar
+    )
+
+    acquired = apply_imperium_acquisition(state, action)
+
+    assert acquired.state.players[0].discard_pile == (interstellar,)
+    assert acquired.state.players[0].resources.solari == 0
+    assert dict(acquired.state.decision_stack[-2].context)["persuasion"] == 0
+    contract_actions = legal_contract_actions(acquired.state, 0)
+    assert tuple(
+        dict(contract_action.arguments)["instance_id"]
+        for contract_action in contract_actions
+    ) == ("contract:arrakeen_i", "contract:high_council_ii")
+
+    taken = apply_contract_action(acquired.state, contract_actions[0])
+
+    assert taken.state.players[0].active_contract_ids == ("contract:arrakeen_i",)
+    assert taken.state.face_up_contract_ids == (
+        "contract:research_station_i",
+        "contract:high_council_ii",
+    )
+    assert taken.state.contract_bank == ()
+
+
+def test_interstellar_trade_acquisition_converts_exhausted_contract_icon_to_solari(
+) -> None:
+    state = _choam_interstellar_reveal_state(
+        face_up_contract_ids=(),
+        contract_bank=(),
+    )
+    interstellar = _imperium_instance(
+        "interstellar_trade",
+        choam_module=True,
+    )
+    action = next(
+        action
+        for action in legal_imperium_acquisitions(state, 0)
+        if dict(action.arguments)["instance_id"] == interstellar
+    )
+
+    result = apply_imperium_acquisition(state, action)
+
+    assert result.state.players[0].discard_pile == (interstellar,)
+    assert result.state.players[0].resources.solari == 2
+    assert [event.kind for event in result.events] == [
+        "card_acquired",
+        "contract_icons_converted_to_solari",
+    ]
 
 
 def test_acquired_transcribed_card_can_be_revealed_later() -> None:
@@ -226,10 +317,11 @@ def _price_agent_state(
     imperium_row: tuple[str, ...] = (),
     imperium_deck: tuple[str, ...] = (),
     intrigue_deck: tuple[str, ...] = (),
+    choam_module: bool = False,
 ) -> GameState:
-    price = _imperium_instance("price_is_no_object")
+    price = _imperium_instance("price_is_no_object", choam_module=choam_module)
     state = GameState(
-        config=RulesetConfig(),
+        config=RulesetConfig(choam_module=choam_module),
         seed=1,
         phase=GamePhase.PLAYER_TURNS,
         round_number=1,
@@ -290,6 +382,57 @@ def test_price_is_no_object_acquires_row_card_to_hand_with_solari() -> None:
     assert result.state.players[0].resources.solari == 0
     assert result.state.imperium_row[0] == others[4]
     assert legal_agent_card_acquisitions(result.state, 0) == ()
+
+
+def test_price_is_no_object_can_take_interstellar_trade_and_open_contract_market(
+) -> None:
+    instances = imperium_deck_instance_ids(True)
+    interstellar = _imperium_instance(
+        "interstellar_trade",
+        choam_module=True,
+    )
+    price = _imperium_instance("price_is_no_object", choam_module=True)
+    others = tuple(
+        instance_id
+        for instance_id in instances
+        if instance_id not in {interstellar, price}
+    )
+    state = _price_agent_state(
+        solari=7,
+        choam_module=True,
+        imperium_row=(interstellar, *others[:4]),
+        imperium_deck=others[4:],
+    )
+    state = replace(
+        state,
+        contract_bank=("contract:research_station_i",),
+        face_up_contract_ids=(
+            "contract:arrakeen_i",
+            "contract:high_council_ii",
+        ),
+    )
+    engine = UprisingRulesEngine()
+    action = next(
+        action
+        for action in engine.legal_actions(state, 0)
+        if dict(action.arguments).get("instance_id") == interstellar
+    )
+
+    acquired = engine.apply(state, action)
+
+    assert acquired.state.players[0].hand == (interstellar,)
+    assert acquired.state.players[0].in_play == (price,)
+    assert acquired.state.players[0].resources.solari == 0
+    contract_action = legal_contract_actions(acquired.state, 0)[0]
+    taken = apply_contract_action(acquired.state, contract_action)
+
+    assert taken.state.players[0].active_contract_ids == (
+        "contract:arrakeen_i",
+    )
+    assert taken.state.face_up_contract_ids == (
+        "contract:research_station_i",
+        "contract:high_council_ii",
+    )
 
 
 def test_price_is_no_object_acquires_reserve_card_to_hand_with_solari() -> None:

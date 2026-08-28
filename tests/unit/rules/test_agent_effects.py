@@ -49,6 +49,12 @@ from dune_imperium.rules.combat_deployment import (
     apply_combat_deployment,
     legal_combat_deployments,
 )
+from dune_imperium.rules.contracts import (
+    apply_contract_action,
+    apply_contract_completion,
+    legal_contract_actions,
+    legal_contract_completion_actions,
+)
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.spies import (
     apply_gather_intelligence_action,
@@ -64,10 +70,10 @@ def _instance(card_id: str) -> str:
     )
 
 
-def _imperium_instance(card_id: str) -> str:
+def _imperium_instance(card_id: str, *, choam_module: bool = False) -> str:
     return next(
         instance_id
-        for instance_id in imperium_deck_instance_ids(False)
+        for instance_id in imperium_deck_instance_ids(choam_module)
         if f":{card_id}:" in instance_id
     )
 
@@ -3268,3 +3274,166 @@ def test_branching_path_cannot_trash_without_intrigue_reward() -> None:
     assert legal_agent_card_trash_actions(placed, 0) == (
         DomainAction(action_id="decline_agent_card_trash", actor=0),
     )
+
+
+def test_cargo_runner_draws_up_to_two_cards_for_completed_contracts() -> None:
+    cargo_runner = _imperium_instance("cargo_runner", choam_module=True)
+    draws = (
+        _imperium_instance("truthtrance"),
+        _imperium_instance("sardaukar_soldier"),
+    )
+    owner = PlayerState(
+        player_id=0,
+        hand=(cargo_runner,),
+        deck=draws,
+        completed_contract_ids=(
+            "contract:arrakeen_i",
+            "contract:arrakeen_ii",
+            "contract:deliver_supplies",
+            "contract:espionage_i",
+            "contract:espionage_ii",
+        ),
+    )
+    state = GameState(
+        config=RulesetConfig(choam_module=True),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
+
+    result = resolve_agent_card_effect(placed)
+
+    assert len(result.state.players[0].hand) == 2
+    assert result.state.players[0].deck == ()
+    assert result.events[-1].kind == "agent_card_effect_resolved"
+
+
+def test_cargo_runner_counts_a_contract_completed_earlier_in_the_turn() -> None:
+    cargo_runner = _imperium_instance("cargo_runner", choam_module=True)
+    drawn = _imperium_instance("truthtrance")
+    owner = PlayerState(
+        player_id=0,
+        hand=(cargo_runner,),
+        deck=(drawn,),
+        active_contract_ids=("contract:arrakeen_i",),
+        completed_contract_ids=("contract:deliver_supplies",),
+    )
+    state = GameState(
+        config=RulesetConfig(choam_module=True),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
+    completion = legal_contract_completion_actions(placed, 0)[0]
+    completed = apply_contract_completion(placed, completion).state
+
+    result = resolve_agent_card_effect(completed)
+
+    assert result.state.players[0].completed_contract_ids == (
+        "contract:deliver_supplies",
+        "contract:arrakeen_i",
+    )
+    assert result.state.players[0].hand == (drawn,)
+
+
+def test_delivery_agreement_discards_a_card_to_take_a_contract() -> None:
+    delivery = _imperium_instance("delivery_agreement", choam_module=True)
+    dagger = _instance("dagger")
+    owner = PlayerState(player_id=0, hand=(delivery, dagger))
+    state = GameState(
+        config=RulesetConfig(choam_module=True),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        contract_bank=("contract:arrakeen_ii",),
+        face_up_contract_ids=("contract:arrakeen_i",),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
+    discard = next(
+        action
+        for action in legal_agent_card_discard_actions(placed, 0)
+        if dict(action.arguments).get("card_id") == dagger
+    )
+
+    discarded = apply_agent_card_discard(placed, discard).state
+    contract = legal_contract_actions(discarded, 0)[0]
+    result = apply_contract_action(discarded, contract)
+
+    assert result.state.players[0].discard_pile == (dagger,)
+    assert result.state.players[0].active_contract_ids == ("contract:arrakeen_i",)
+    assert result.state.face_up_contract_ids == ("contract:arrakeen_ii",)
+
+
+def test_interstellar_trade_agent_effect_gains_chosen_influence() -> None:
+    interstellar = _imperium_instance("interstellar_trade", choam_module=True)
+    owner = PlayerState(player_id=0, hand=(interstellar,))
+    state = GameState(
+        config=RulesetConfig(choam_module=True),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
+    action = next(
+        action
+        for action in legal_agent_card_influence_actions(placed, 0)
+        if dict(action.arguments).get("faction") == Faction.FREMEN.value
+    )
+
+    result = apply_agent_card_influence(placed, action)
+
+    assert result.state.players[0].influence.fremen == 1
+
+
+def test_priority_contracts_takes_a_contract_or_converts_an_empty_market() -> None:
+    priority = _imperium_instance("priority_contracts", choam_module=True)
+    owner = PlayerState(player_id=0, hand=(priority,))
+    state = GameState(
+        config=RulesetConfig(choam_module=True),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
+
+    result = resolve_agent_card_effect(placed)
+
+    assert result.state.players[0].resources.solari == 2
+    assert result.events[-1].kind == "contract_icons_converted_to_solari"

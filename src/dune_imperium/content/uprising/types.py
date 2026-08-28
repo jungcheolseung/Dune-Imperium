@@ -61,6 +61,12 @@ class PersonalCardAgentEffect(StrEnum):
         "may_trash_intrigue_and_pay_two_spice_for_vp_if_spacing_guild_alliance"
     )
     ACQUIRE_WITH_SOLARI_TO_HAND = "acquire_with_solari_to_hand"
+    TAKE_CONTRACT = "take_contract"
+    MAY_DISCARD_TO_TAKE_CONTRACT = "may_discard_to_take_contract"
+    DRAW_PER_TWO_COMPLETED_CONTRACTS_UP_TO_TWO = (
+        "draw_per_two_completed_contracts_up_to_two"
+    )
+    GAIN_CHOSEN_INFLUENCE = "gain_chosen_influence"
     DRAW_ONE_AND_RECALL_AGENT = "draw_one_and_recall_agent"
     DRAW_PERSONAL_CARD = "draw_personal_card"
     DRAW_PER_SANDWORM_IN_CONFLICT = "draw_per_sandworm_in_conflict"
@@ -136,6 +142,7 @@ class PersonalCardAcquisitionEffect(StrEnum):
     GAIN_TWO_SOLARI = "gain_two_solari"
     PLACE_SPY = "place_spy"
     GAIN_SPACING_GUILD_INFLUENCE = "gain_spacing_guild_influence"
+    TAKE_CONTRACT = "take_contract"
 
 
 class PersonalCardRevealChoiceEffect(StrEnum):
@@ -163,6 +170,9 @@ class PersonalCardRevealChoiceEffect(StrEnum):
         "gain_five_solari_or_take_high_council"
     )
     MAY_PAY_WATER_FOR_SANDWORM = "may_pay_water_for_sandworm"
+    KEEP_SPICE_OR_TRASH_SELF_FOR_VP_IF_FOUR_CONTRACTS = (
+        "keep_spice_or_trash_self_for_vp_if_four_contracts"
+    )
 
 
 class PersonalCardRevealAcquisitionEffect(StrEnum):
@@ -193,6 +203,7 @@ class PersonalCardRevealEffect:
     minimum_spies_placed: int = 0
     requires_spying_on_maker_space: bool = False
     per_revealed_faction: PersonalCardBond | None = None
+    persuasion_per_completed_contract: int = 0
 
     def __post_init__(self) -> None:
         if self.required_faction_bond is not None and not isinstance(
@@ -236,6 +247,7 @@ class PersonalCardRevealEffect:
             self.strength_per_other_sword_card,
             self.draw_intrigue,
             self.influence,
+            self.persuasion_per_completed_contract,
         )
         if min((*gains, self.minimum_spies_placed)) < 0:
             raise ValueError("personal-card Reveal gains must not be negative")

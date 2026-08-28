@@ -11,7 +11,7 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     first = ActionCodec(RulesetConfig())
     second = ActionCodec(RulesetConfig())
 
-    assert ACTION_CODEC_VERSION == 57
+    assert ACTION_CODEC_VERSION == 58
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
     assert first.size == 3377
@@ -26,7 +26,7 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
     codec = ActionCodec(RulesetConfig(choam_module=True))
 
     assert codec.decode(codec.encode(action), actor=2) == action
-    assert codec.size == 3491
+    assert codec.size == 3598
 
     try:
         ActionCodec(RulesetConfig()).encode(action)
@@ -54,6 +54,8 @@ def test_choam_contract_completion_and_spy_choices_round_trip() -> None:
             actor=1,
             arguments=(("post_id", "arrakis-spice-refinery-arrakeen"),),
         ),
+        DomainAction(action_id="keep_contract_reveal_spice", actor=1),
+        DomainAction(action_id="trash_contract_reveal_for_vp", actor=1),
     )
 
     for action in actions:

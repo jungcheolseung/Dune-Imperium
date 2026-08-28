@@ -17,7 +17,10 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
-from dune_imperium.rules.contracts import complete_acquire_contracts
+from dune_imperium.rules.contracts import (
+    begin_contract_gain,
+    complete_acquire_contracts,
+)
 from dune_imperium.rules.effects import (
     advance_after_effect,
     current_agent_effect_context,
@@ -307,7 +310,7 @@ def _acquire_imperium_to_hand_with_solari(
             solari=owner.resources.solari - cost,
         ),
     )
-    next_owner, intrigue_deck, acquisition_events, places_spy = (
+    next_owner, intrigue_deck, acquisition_events, places_spy, takes_contract = (
         _resolve_imperium_acquisition_bonus(
             state,
             action.actor,
@@ -359,6 +362,20 @@ def _acquire_imperium_to_hand_with_solari(
                 _acquisition_spy_frame(state, action.actor, instance_id),
             ),
         )
+    elif takes_contract:
+        resumed = advance_after_effect(
+            prepared,
+            context,
+            prepared.players,
+        )
+        contracts = begin_contract_gain(
+            resumed,
+            action.actor,
+            1,
+            source=f"{source}:acquisition_bonus",
+        )
+        next_state = contracts.state
+        acquisition_events = (*acquisition_events, *contracts.events)
     else:
         next_state = advance_after_effect(
             prepared,
@@ -554,7 +571,7 @@ def apply_imperium_acquisition(
         owner,
         discard_pile=(*owner.discard_pile, instance_id),
     )
-    next_owner, intrigue_deck, acquisition_events, places_spy = (
+    next_owner, intrigue_deck, acquisition_events, places_spy, takes_contract = (
         _resolve_imperium_acquisition_bonus(
             state,
             action.actor,
@@ -604,6 +621,18 @@ def apply_imperium_acquisition(
     )
     next_state = completed.state
     acquisition_events = (*acquisition_events, *completed.events)
+    if takes_contract:
+        contracts = begin_contract_gain(
+            next_state,
+            action.actor,
+            1,
+            source=(
+                f"round:{state.round_number}:player:{action.actor}:"
+                f"acquire:{instance_id}:acquisition_bonus"
+            ),
+        )
+        next_state = contracts.state
+        acquisition_events = (*acquisition_events, *contracts.events)
     event = GameEvent(
         event_id=(
             f"round:{state.round_number}:player:{action.actor}:acquire:{instance_id}"
@@ -623,7 +652,7 @@ def _resolve_imperium_acquisition_bonus(
     player: int,
     instance_id: str,
     owner: PlayerState,
-) -> tuple[PlayerState, tuple[str, ...], tuple[GameEvent, ...], bool]:
+) -> tuple[PlayerState, tuple[str, ...], tuple[GameEvent, ...], bool, bool]:
     """Apply one supported acquisition bonus before its follow-up choice."""
 
     definition = imperium_card_for_instance(instance_id)
@@ -675,6 +704,7 @@ def _resolve_imperium_acquisition_bonus(
         intrigue_deck,
         events,
         effect is PersonalCardAcquisitionEffect.PLACE_SPY,
+        effect is PersonalCardAcquisitionEffect.TAKE_CONTRACT,
     )
 
 

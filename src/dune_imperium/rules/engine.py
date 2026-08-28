@@ -114,6 +114,7 @@ from dune_imperium.rules.phases import (
     resolve_recall_or_endgame,
 )
 from dune_imperium.rules.reveal_turn import (
+    apply_contract_reveal_choice,
     apply_corrinth_city_reveal,
     apply_reveal_card_trash,
     apply_reveal_influence_exchange,
@@ -124,6 +125,7 @@ from dune_imperium.rules.reveal_turn import (
     begin_reveal_turn,
     current_reveal_context,
     finish_reveal_turn,
+    legal_contract_reveal_choice_actions,
     legal_corrinth_city_reveal_actions,
     legal_finish_reveal_actions,
     legal_reveal_actions,
@@ -228,6 +230,7 @@ class UprisingRulesEngine(RulesEngine):
         actions.extend(legal_contract_spy_actions(state, player))
         actions.extend(legal_opponent_card_discard_actions(state, player))
         actions.extend(legal_corrinth_city_reveal_actions(state, player))
+        actions.extend(legal_contract_reveal_choice_actions(state, player))
         actions.extend(legal_reveal_card_trash_actions(state, player))
         actions.extend(legal_reveal_spy_actions(state, player))
         actions.extend(legal_reveal_influence_exchange_actions(state, player))
@@ -262,6 +265,8 @@ class UprisingRulesEngine(RulesEngine):
             "decline_reveal_card_trash": apply_reveal_card_trash,
             "decline_reveal_sandworm": apply_reveal_sandworm_action,
             "gain_five_reveal_solari": apply_corrinth_city_reveal,
+            "keep_contract_reveal_spice": apply_contract_reveal_choice,
+            "trash_contract_reveal_for_vp": apply_contract_reveal_choice,
             "take_high_council_from_reveal": apply_corrinth_city_reveal,
             "take_contract": apply_contract_action,
             "complete_contract": apply_contract_completion,
@@ -481,6 +486,10 @@ def _agent_action_is_supported(state: GameState, action: DomainAction) -> bool:
         PersonalCardAgentEffect.DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO,
         PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO,
         PersonalCardAgentEffect.ACQUIRE_WITH_SOLARI_TO_HAND,
+        PersonalCardAgentEffect.TAKE_CONTRACT,
+        PersonalCardAgentEffect.MAY_DISCARD_TO_TAKE_CONTRACT,
+        PersonalCardAgentEffect.DRAW_PER_TWO_COMPLETED_CONTRACTS_UP_TO_TWO,
+        PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE,
         PersonalCardAgentEffect.DRAW_ONE_AND_RECALL_AGENT,
     ):
         return False

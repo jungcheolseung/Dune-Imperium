@@ -21,10 +21,10 @@ from dune_imperium.content.uprising.types import (
 )
 
 
-def _instance(card_id: str) -> str:
+def _instance(card_id: str, *, choam_module: bool = False) -> str:
     return next(
         instance_id
-        for instance_id in imperium_deck_instance_ids(False)
+        for instance_id in imperium_deck_instance_ids(choam_module)
         if f":{card_id}:" in instance_id
     )
 
@@ -850,6 +850,79 @@ def test_subversive_advisor_play_data_matches_the_card() -> None:
     assert card.reveal_persuasion == 0
     assert card.reveal_strength == 0
     assert card.reveal_effects == (PersonalCardRevealEffect(solari=1),)
+
+
+def test_cargo_runner_play_data_scales_draws_with_completed_contracts() -> None:
+    card = IMPERIUM_CARDS_BY_ID["cargo_runner"]
+
+    assert card.play_data_complete is True
+    assert card.acquisition_cost == 3
+    assert card.factions == (Faction.SPACING_GUILD,)
+    assert card.agent_icons == (
+        AgentIcon.LANDSRAAD,
+        AgentIcon.CITY,
+        AgentIcon.SPICE_TRADE,
+    )
+    assert (
+        card.agent_effect
+        is PersonalCardAgentEffect.DRAW_PER_TWO_COMPLETED_CONTRACTS_UP_TO_TWO
+    )
+    assert card.reveal_persuasion == 1
+    assert personal_card_for_instance(
+        _instance("cargo_runner", choam_module=True)
+    ) is card
+
+
+def test_delivery_agreement_play_data_uses_the_printed_vp_choice() -> None:
+    card = IMPERIUM_CARDS_BY_ID["delivery_agreement"]
+
+    assert card.play_data_complete is True
+    assert card.acquisition_cost == 5
+    assert card.factions == (Faction.SPACING_GUILD,)
+    assert card.agent_icons == (AgentIcon.CITY,)
+    assert card.agent_effect is PersonalCardAgentEffect.MAY_DISCARD_TO_TAKE_CONTRACT
+    assert card.reveal_persuasion == 0
+    assert card.reveal_effects == (PersonalCardRevealEffect(spice=1),)
+    assert card.reveal_choice_effects == (
+        PersonalCardRevealChoiceEffect
+        .KEEP_SPICE_OR_TRASH_SELF_FOR_VP_IF_FOUR_CONTRACTS,
+    )
+
+
+def test_interstellar_trade_play_data_uses_contract_count_and_market() -> None:
+    card = IMPERIUM_CARDS_BY_ID["interstellar_trade"]
+
+    assert card.play_data_complete is True
+    assert card.acquisition_cost == 7
+    assert card.has_acquisition_bonus is True
+    assert card.factions == (Faction.SPACING_GUILD,)
+    assert card.agent_icons == (
+        AgentIcon.LANDSRAAD,
+        AgentIcon.CITY,
+        AgentIcon.SPICE_TRADE,
+    )
+    assert card.agent_effect is PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE
+    assert card.acquisition_effect is PersonalCardAcquisitionEffect.TAKE_CONTRACT
+    assert card.reveal_persuasion == 0
+    assert card.reveal_effects == (
+        PersonalCardRevealEffect(persuasion_per_completed_contract=1),
+    )
+
+
+def test_priority_contracts_play_data_has_agent_and_reveal_contract_rewards() -> None:
+    card = IMPERIUM_CARDS_BY_ID["priority_contracts"]
+
+    assert card.play_data_complete is True
+    assert card.acquisition_cost == 6
+    assert card.factions == (Faction.SPACING_GUILD,)
+    assert card.agent_icons == (AgentIcon.LANDSRAAD, AgentIcon.SPICE_TRADE)
+    assert card.agent_effect is PersonalCardAgentEffect.TAKE_CONTRACT
+    assert card.reveal_persuasion == 0
+    assert card.reveal_effects == (PersonalCardRevealEffect(spice=2),)
+    assert card.reveal_choice_effects == (
+        PersonalCardRevealChoiceEffect
+        .KEEP_SPICE_OR_TRASH_SELF_FOR_VP_IF_FOUR_CONTRACTS,
+    )
 
 
 def test_personal_card_reveal_effect_requires_a_nonnegative_gain() -> None:

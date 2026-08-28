@@ -29,7 +29,7 @@ from dune_imperium.content.uprising.starting_cards import (
 from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
 from dune_imperium.core.actions import ActionValue, DomainAction
 
-ACTION_CODEC_VERSION = 57
+ACTION_CODEC_VERSION = 58
 MAX_DEPLOYMENT_COUNT = 12
 
 
@@ -151,7 +151,15 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "take_sietch_tabr_water_and_destroy_wall",
         )
     ]
-    templates.extend(_agent_turn_templates())
+    if config.choam_module:
+        templates.extend(
+            ActionTemplate(action_id=action_id)
+            for action_id in (
+                "keep_contract_reveal_spice",
+                "trash_contract_reveal_for_vp",
+            )
+        )
+    templates.extend(_agent_turn_templates(config))
     templates.extend(_endgame_wild_templates(config))
     templates.extend(
         ActionTemplate(
@@ -343,14 +351,16 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     return tuple(sorted(templates, key=_template_sort_key))
 
 
-def _agent_turn_templates() -> tuple[ActionTemplate, ...]:
+def _agent_turn_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     templates: list[ActionTemplate] = []
     for starting_card in STARTING_DECK:
         templates.extend(_agent_turn_templates_for_card("starter", starting_card))
     for reserve_card in RESERVE_STACKS:
         templates.extend(_agent_turn_templates_for_card("reserve", reserve_card))
     for imperium_card in IMPERIUM_CARDS:
-        if imperium_card.play_data_complete:
+        if imperium_card.play_data_complete and (
+            config.choam_module or not imperium_card.choam_only
+        ):
             templates.extend(_agent_turn_templates_for_card("imperium", imperium_card))
     return tuple(templates)
 

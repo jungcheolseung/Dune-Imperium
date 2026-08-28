@@ -22,6 +22,7 @@ from dune_imperium.rules.card_bonds import has_faction_bond
 from dune_imperium.rules.card_discard import discard_personal_card_from_hand
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.card_trash import trash_personal_card
+from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effects import (
     advance_after_effect,
     current_agent_effect_context,
@@ -65,6 +66,7 @@ def legal_agent_card_discard_actions(
         PersonalCardAgentEffect.DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD,
         PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD,
         PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE_AND_INTRIGUE_IF_SPACING_GUILD,
+        PersonalCardAgentEffect.MAY_DISCARD_TO_TAKE_CONTRACT,
     ):
         return ()
     may_pay = (
@@ -80,6 +82,7 @@ def legal_agent_card_discard_actions(
                 PersonalCardAgentEffect.DISCARD_TO_DRAW_ONE_OR_TWO_IF_SPACING_GUILD,
                 PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD,
                 PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE_AND_INTRIGUE_IF_SPACING_GUILD,
+                PersonalCardAgentEffect.MAY_DISCARD_TO_TAKE_CONTRACT,
             )
             else ()
         ),
@@ -143,6 +146,20 @@ def apply_agent_card_discard(
         discarded.state.players,
     )
     source_card = personal_card_for_instance(_effect_subject(context)[1])
+    if (
+        source_card.agent_effect
+        is PersonalCardAgentEffect.MAY_DISCARD_TO_TAKE_CONTRACT
+    ):
+        contracts = begin_contract_gain(
+            prepared,
+            action.actor,
+            1,
+            source=f"{source}:contract_reward",
+        )
+        return RuleResult(
+            state=contracts.state,
+            events=(*discarded.events, *contracts.events),
+        )
     draws_intrigue = False
     if (
         source_card.agent_effect
@@ -449,6 +466,7 @@ def legal_agent_card_influence_actions(
     if effect not in (
         PersonalCardAgentEffect.TRASH_SELF_AND_GAIN_CHOSEN_INFLUENCE,
         PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE_IF_SPY_RECALLED_THIS_TURN,
+        PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE,
     ):
         return ()
     if (
@@ -1406,6 +1424,40 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
     elif effect is PersonalCardAgentEffect.DRAW_PERSONAL_CARD:
         next_owner = owner
         event_kind = "agent_card_effect_resolved"
+    elif (
+        effect
+        is PersonalCardAgentEffect.DRAW_PER_TWO_COMPLETED_CONTRACTS_UP_TO_TWO
+    ):
+        next_owner = owner
+        event_kind = (
+            "agent_card_effect_resolved"
+            if len(owner.completed_contract_ids) >= 2
+            else "agent_card_effect_unavailable"
+        )
+    elif effect is PersonalCardAgentEffect.TAKE_CONTRACT:
+        context["pending_agent_effect"] = False
+        resumed = advance_after_effect(state, context)
+        contracts = begin_contract_gain(
+            resumed,
+            player,
+            1,
+            source=(
+                f"round:{state.round_number}:player:{player}:"
+                f"agent_card:{card_instance_id}"
+            ),
+        )
+        event = GameEvent(
+            event_id=(
+                f"round:{state.round_number}:player:{player}:"
+                f"agent_card:{card_instance_id}"
+            ),
+            kind="agent_card_effect_resolved",
+            payload=(("card_id", card_instance_id), ("player", player)),
+        )
+        return RuleResult(
+            state=contracts.state,
+            events=(event, *contracts.events),
+        )
     elif effect is PersonalCardAgentEffect.EACH_OPPONENT_DISCARDS_PERSONAL_CARD:
         context["pending_agent_effect"] = False
         base_frame = replace(
@@ -1756,6 +1808,8 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             raise RuntimeError("Agent-card Influence effect requires a player choice")
         next_owner = owner
         event_kind = "agent_card_effect_unavailable"
+    elif effect is PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE:
+        raise RuntimeError("Agent-card Influence effect requires a player choice")
     else:
         raise NotImplementedError(
             f"personal-card Agent effect is not implemented: {card.card.card_id}"
@@ -1776,12 +1830,19 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         PersonalCardAgentEffect.DRAW_PER_SANDWORM_IN_CONFLICT,
         PersonalCardAgentEffect.DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO,
         PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO,
+        PersonalCardAgentEffect.DRAW_PER_TWO_COMPLETED_CONTRACTS_UP_TO_TWO,
     ):
-        draw_count = (
-            owner.sandworms_conflict
-            if effect is PersonalCardAgentEffect.DRAW_PER_SANDWORM_IN_CONFLICT
-            else 1
-        )
+        if effect is PersonalCardAgentEffect.DRAW_PER_SANDWORM_IN_CONFLICT:
+            draw_count = owner.sandworms_conflict
+        elif (
+            effect
+            is PersonalCardAgentEffect.DRAW_PER_TWO_COMPLETED_CONTRACTS_UP_TO_TWO
+        ):
+            draw_count = min(len(owner.completed_contract_ids) // 2, 2)
+        else:
+            draw_count = 1
+        if draw_count == 0:
+            return RuleResult(state=next_state, events=(event,))
         draw = draw_or_request_personal_cards(
             next_state,
             player,

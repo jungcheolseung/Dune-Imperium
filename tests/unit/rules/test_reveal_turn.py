@@ -18,6 +18,7 @@ from dune_imperium.core import (
 )
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.reveal_turn import (
+    apply_contract_reveal_choice,
     apply_corrinth_city_reveal,
     apply_reveal_card_trash,
     apply_reveal_influence_exchange,
@@ -27,6 +28,7 @@ from dune_imperium.rules.reveal_turn import (
     apply_reveal_troop_retreat,
     begin_reveal_turn,
     finish_reveal_turn,
+    legal_contract_reveal_choice_actions,
     legal_corrinth_city_reveal_actions,
     legal_finish_reveal_actions,
     legal_reveal_actions,
@@ -489,17 +491,22 @@ def _instance(card_id: str, copy: int = 0) -> str:
     )[copy]
 
 
-def _imperium_instance(card_id: str, copy: int = 0) -> str:
+def _imperium_instance(
+    card_id: str,
+    copy: int = 0,
+    *,
+    choam_module: bool = False,
+) -> str:
     return tuple(
         instance_id
-        for instance_id in imperium_deck_instance_ids(False)
+        for instance_id in imperium_deck_instance_ids(choam_module)
         if f":{card_id}:" in instance_id
     )[copy]
 
 
-def _state(player: PlayerState) -> GameState:
+def _state(player: PlayerState, *, choam_module: bool = False) -> GameState:
     return GameState(
-        config=RulesetConfig(),
+        config=RulesetConfig(choam_module=choam_module),
         seed=1,
         phase=GamePhase.PLAYER_TURNS,
         round_number=1,
@@ -1455,6 +1462,85 @@ def test_subversive_advisor_reveals_for_one_solari() -> None:
 
     assert dict(result.state.decision_stack[-1].context)["persuasion"] == 0
     assert result.state.players[0].resources.solari == 1
+
+
+def test_interstellar_trade_persuasion_uses_completed_contracts_at_reveal() -> None:
+    interstellar = _imperium_instance(
+        "interstellar_trade",
+        choam_module=True,
+    )
+    owner = PlayerState(
+        player_id=0,
+        hand=(interstellar,),
+        completed_contract_ids=(
+            "contract:arrakeen_i",
+            "contract:arrakeen_ii",
+            "contract:deliver_supplies",
+        ),
+    )
+    state = _state(owner, choam_module=True)
+
+    result = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
+
+    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 3
+
+
+def test_delivery_agreement_gains_spice_automatically_below_four_contracts() -> None:
+    delivery = _imperium_instance(
+        "delivery_agreement",
+        choam_module=True,
+    )
+    owner = PlayerState(
+        player_id=0,
+        hand=(delivery,),
+        resources=Resources(spice=2),
+        completed_contract_ids=("contract:arrakeen_i",),
+    )
+    state = _state(owner, choam_module=True)
+
+    result = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
+
+    assert result.state.players[0].resources.spice == 3
+    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 0
+    assert legal_contract_reveal_choice_actions(result.state, 0) == ()
+
+
+def test_four_contract_reveal_can_keep_spice_or_trash_the_card_for_vp() -> None:
+    priority = _imperium_instance(
+        "priority_contracts",
+        choam_module=True,
+    )
+    owner = PlayerState(
+        player_id=0,
+        hand=(priority,),
+        resources=Resources(spice=3),
+        completed_contract_ids=(
+            "contract:arrakeen_i",
+            "contract:arrakeen_ii",
+            "contract:deliver_supplies",
+            "contract:espionage_i",
+        ),
+    )
+    state = _state(owner, choam_module=True)
+    revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+    actions = legal_contract_reveal_choice_actions(revealed, 0)
+
+    assert tuple(action.action_id for action in actions) == (
+        "keep_contract_reveal_spice",
+        "trash_contract_reveal_for_vp",
+    )
+    assert revealed.players[0].resources.spice == 3
+
+    kept = apply_contract_reveal_choice(revealed, actions[0])
+    assert kept.state.players[0].resources.spice == 5
+    assert priority in kept.state.players[0].in_play
+    assert kept.events[0].kind == "contract_reveal_spice_gained"
+
+    trashed = apply_contract_reveal_choice(revealed, actions[1])
+    assert trashed.state.players[0].resources.spice == 3
+    assert trashed.state.players[0].victory_points == owner.victory_points + 1
+    assert trashed.state.players[0].in_play == ()
+    assert trashed.state.players[0].trashed == (priority,)
 
 
 def test_fedaykin_stilltent_gains_water_when_revealed() -> None:
