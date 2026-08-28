@@ -17,8 +17,8 @@ def test_action_arguments_require_a_canonical_order() -> None:
 
 
 def test_decision_stack_is_last_in_first_out() -> None:
-    first = DecisionFrame("first", PlayerDecision(0, "First"))
-    second = DecisionFrame("second", PlayerDecision(1, "Second"))
+    first = DecisionFrame("test", "first", PlayerDecision(0, "First"))
+    second = DecisionFrame("test", "second", PlayerDecision(1, "Second"))
     state = GameState(config=RulesetConfig(), seed=1)
 
     stacked = state.push_decision(first).push_decision(second)
@@ -34,3 +34,8 @@ def test_state_hash_changes_with_replay_relevant_state() -> None:
     assert canonical_state_hash(state) != canonical_state_hash(
         GameState(config=RulesetConfig(), seed=2)
     )
+
+
+def test_decision_frame_requires_kind() -> None:
+    with pytest.raises(ValueError, match="frame kind"):
+        DecisionFrame("", "frame", PlayerDecision(0, "Prompt"))

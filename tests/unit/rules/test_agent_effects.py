@@ -92,6 +92,7 @@ def _state(card_id: str, influence: Influence | None = None) -> GameState:
         ),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -136,6 +137,7 @@ def test_corrinth_city_atomically_discards_two_and_pays_five_for_vp() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -198,6 +200,7 @@ def test_corrinth_city_cost_must_be_available_before_discard_effects() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -294,6 +297,7 @@ def test_prepare_the_way_draws_with_two_bene_gesserit_influence() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -323,6 +327,7 @@ def test_prepare_the_way_has_no_agent_effect_below_required_influence() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -346,6 +351,7 @@ def test_maula_pistol_agent_effect_draws_one_personal_card() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -377,6 +383,7 @@ def test_hidden_missive_recruits_and_draws_with_required_influence() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -410,6 +417,7 @@ def test_hidden_missive_has_no_agent_effect_below_required_influence() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -438,6 +446,7 @@ def test_desert_survival_may_trash_from_any_eligible_zone() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -480,6 +489,7 @@ def test_desert_survival_trash_may_be_declined() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -518,6 +528,7 @@ def test_treacherous_maneuver_pays_both_cards_for_extra_influence() -> None:
         intrigue_deck=("intrigue:test",),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -566,6 +577,7 @@ def test_treacherous_maneuver_may_be_declined_for_only_normal_influence() -> Non
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -599,6 +611,7 @@ def test_treacherous_maneuver_needs_an_emperor_payment() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -630,6 +643,7 @@ def test_chani_draws_intrigue_after_deploying_a_third_unit() -> None:
         intrigue_deck=("intrigue:test",),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -673,6 +687,7 @@ def test_chani_agent_effect_is_unavailable_below_three_units() -> None:
         intrigue_deck=("intrigue:test",),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -704,6 +719,7 @@ def test_steersman_draws_and_may_recall_its_just_placed_agent() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -751,6 +767,7 @@ def test_junction_headquarters_may_pay_intrigue_and_spice_for_vp() -> None:
         intrigue_discard=("intrigue:old",),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -824,6 +841,7 @@ def test_junction_headquarters_requires_its_complete_cost(
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -847,6 +865,7 @@ def test_smugglers_harvester_gains_spice_at_a_maker_space() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -871,6 +890,7 @@ def test_smugglers_harvester_has_no_agent_effect_away_from_maker_spaces() -> Non
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -897,6 +917,7 @@ def test_smugglers_haven_may_pay_four_spice_for_one_vp() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -931,6 +952,7 @@ def test_smugglers_haven_trade_may_be_declined() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -965,6 +987,7 @@ def test_smugglers_haven_skips_unaffordable_trade() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -993,6 +1016,7 @@ def test_smugglers_haven_checks_trade_after_paying_the_board_space_cost() -> Non
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -1017,6 +1041,7 @@ def test_fedaykin_stilltent_recruits_a_deployable_troop_at_a_maker_space() -> No
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -1043,6 +1068,7 @@ def test_fedaykin_stilltent_has_no_agent_effect_away_from_maker_spaces() -> None
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -1065,6 +1091,7 @@ def test_northern_watermaster_gains_water_on_its_agent_turn() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -1093,6 +1120,7 @@ def test_maker_keeper_gains_each_reward_for_its_matching_influence() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -1132,6 +1160,7 @@ def test_maker_keeper_rewards_are_independent(
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -1156,6 +1185,7 @@ def test_maker_keeper_has_no_agent_effect_without_matching_influence() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -1183,6 +1213,7 @@ def test_southern_elders_recruits_with_bene_gesserit_bond() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -1209,6 +1240,7 @@ def test_southern_elders_has_no_agent_effect_without_bene_gesserit_bond() -> Non
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -1236,6 +1268,7 @@ def test_weirding_woman_returns_to_hand_with_bene_gesserit_bond() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -1260,6 +1293,7 @@ def test_weirding_woman_has_no_agent_effect_without_bene_gesserit_bond() -> None
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -1289,6 +1323,7 @@ def test_ecological_testing_station_may_pay_water_to_draw_two() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -1324,6 +1359,7 @@ def test_ecological_testing_station_payment_may_be_declined() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -1353,6 +1389,7 @@ def test_ecological_testing_station_has_no_payment_without_two_water() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -1375,6 +1412,7 @@ def test_paracompass_gains_two_solari_on_its_agent_turn() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -1398,6 +1436,7 @@ def test_overthrow_gains_extra_influence_with_the_visited_faction() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -1423,6 +1462,7 @@ def test_bene_gesserit_operative_places_a_spy_on_an_empty_post() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -1460,6 +1500,7 @@ def test_bene_gesserit_operative_recalls_before_placing_when_supply_is_empty() -
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -1493,6 +1534,7 @@ def test_reliable_informant_limits_spy_placement_to_three_faction_posts() -> Non
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -1541,6 +1583,7 @@ def test_reliable_informant_can_only_recall_a_spy_that_opens_a_target_post() -> 
         players=(owner, *opponents),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -1578,6 +1621,7 @@ def test_reliable_informant_finishes_when_every_target_post_is_unavailable() -> 
         players=(owner, *opponents),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -1621,6 +1665,7 @@ def test_strike_fleet_recruits_three_after_gathering_intelligence() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -1664,6 +1709,7 @@ def test_imperial_spymaster_draws_intrigue_after_gathering_intelligence() -> Non
         intrigue_deck=("intrigue:test:0",),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -1703,6 +1749,7 @@ def test_in_high_places_gains_water_with_bene_gesserit_bond() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -1734,6 +1781,7 @@ def test_rebel_supplier_recruits_two_after_gathering_intelligence() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -1765,6 +1813,7 @@ def test_dangerous_rhetoric_trashes_itself_for_chosen_influence() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -1813,6 +1862,7 @@ def test_public_spectacle_gains_chosen_influence_after_spy_recall() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -1856,6 +1906,7 @@ def test_public_spectacle_influence_is_unavailable_without_spy_recall() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -1898,6 +1949,7 @@ def test_wheels_within_wheels_rewards_are_independent(
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -1927,6 +1979,7 @@ def test_wheels_within_wheels_has_no_agent_effect_below_both_thresholds() -> Non
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -1949,6 +2002,7 @@ def test_stilgar_recruits_two_deployable_troops() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -1981,6 +2035,7 @@ def test_leadership_draws_one_card_per_sandworm_in_conflict() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -2008,6 +2063,7 @@ def test_leadership_has_no_agent_effect_without_a_sandworm() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -2030,6 +2086,7 @@ def test_desert_power_gains_two_spice_on_a_maker_space() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -2056,6 +2113,7 @@ def test_desert_power_has_no_agent_effect_on_a_non_maker_space() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -2088,6 +2146,7 @@ def _subversive_state(
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -2196,6 +2255,7 @@ def _long_live_state(
         intrigue_deck=intrigue_deck,
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -2527,6 +2587,7 @@ def test_shishakli_may_trash_a_personal_card_to_draw_one() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -2563,6 +2624,7 @@ def test_shishakli_trash_draw_may_be_declined() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -2601,6 +2663,7 @@ def test_tread_in_darkness_may_trash_and_draw_with_bene_gesserit_bond() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -2631,6 +2694,7 @@ def test_tread_in_darkness_has_no_agent_effect_without_bond() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -2675,6 +2739,7 @@ def test_space_time_folding_draw_depends_on_discarded_card_faction(
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -2706,6 +2771,7 @@ def test_space_time_folding_has_no_agent_effect_without_another_hand_card() -> N
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -2750,6 +2816,7 @@ def test_guild_envoy_requires_discard_and_only_draws_for_spacing_guild(
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -2777,6 +2844,7 @@ def test_guild_envoy_has_no_agent_effect_without_another_hand_card() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -2806,6 +2874,7 @@ def test_captured_mentat_may_discard_to_draw_intrigue_and_personal_card() -> Non
         intrigue_deck=("intrigue:plot",),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -2844,6 +2913,7 @@ def test_captured_mentat_cannot_pay_discard_without_intrigue_reward() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -2891,6 +2961,7 @@ def test_guild_spy_may_cycle_and_draws_intrigue_for_guild_discard(
         intrigue_deck=("intrigue:plot",),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -2937,6 +3008,7 @@ def test_guild_spy_cannot_discard_guild_card_without_intrigue_reward() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -2976,6 +3048,7 @@ def test_covert_operation_makes_opponents_with_cards_discard_clockwise() -> None
         ),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -3023,6 +3096,7 @@ def test_spacing_guilds_favor_draws_one_on_agent_turn() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -3052,6 +3126,7 @@ def test_agent_card_discard_resolves_spacing_guilds_favor_trigger() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -3098,6 +3173,7 @@ def test_double_agent_may_share_opponent_post_when_spying_on_visited_space() -> 
         players=(owner, opponent, PlayerState(player_id=2), PlayerState(player_id=3)),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -3133,6 +3209,7 @@ def test_double_agent_cannot_share_post_without_spying_on_visited_space() -> Non
         players=(owner, opponent, PlayerState(player_id=2), PlayerState(player_id=3)),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -3164,6 +3241,7 @@ def test_calculus_of_power_trashes_itself_on_agent_turn() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -3195,6 +3273,7 @@ def test_branching_path_alliance_trash_draws_intrigue_and_recruits_two() -> None
         intrigue_deck=("intrigue:trash", "intrigue:reward"),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -3237,6 +3316,7 @@ def test_branching_path_agent_effect_requires_bene_gesserit_alliance() -> None:
         intrigue_deck=("intrigue:reward",),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -3264,6 +3344,7 @@ def test_branching_path_cannot_trash_without_intrigue_reward() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -3302,6 +3383,7 @@ def test_cargo_runner_draws_up_to_two_cards_for_completed_contracts() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -3334,6 +3416,7 @@ def test_cargo_runner_counts_a_contract_completed_earlier_in_the_turn() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -3366,6 +3449,7 @@ def test_delivery_agreement_discards_a_card_to_take_a_contract() -> None:
         face_up_contract_ids=("contract:arrakeen_i",),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -3398,6 +3482,7 @@ def test_interstellar_trade_agent_effect_gains_chosen_influence() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -3426,6 +3511,7 @@ def test_priority_contracts_takes_a_contract_or_converts_an_empty_market() -> No
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),

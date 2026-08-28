@@ -14,6 +14,7 @@ from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.card_bonds import has_faction_bond
 from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.effects import recruit_troops
+from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.influence import (
     alliance_recipients_after_influence_loss,
     gain_faction_influence,
@@ -1294,6 +1295,7 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         for index, card_id in enumerate(revealed)
     )
     reveal_frame = DecisionFrame(
+        kind=FrameKind.REVEAL,
         frame_id=f"round:{state.round_number}:player:{action.actor}:reveal",
         decision=PlayerDecision(
             owner=action.actor,
@@ -1303,6 +1305,7 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
     )
     choice_frames = tuple(
         DecisionFrame(
+            kind=FrameKind.REVEAL_CHOICE,
             frame_id=(
                 f"round:{state.round_number}:player:{action.actor}:"
                 f"reveal_spy:{card_id}:{effect.value}"
@@ -1543,6 +1546,7 @@ def finish_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         decision_stack = (
             *state.decision_stack[:-1],
             DecisionFrame(
+                kind=FrameKind.TURN,
                 frame_id=f"round:{state.round_number}:turn:{next_player}",
                 decision=PlayerDecision(
                     owner=next_player,

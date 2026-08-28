@@ -29,6 +29,7 @@ class ObjectiveThenPassEngine(RulesEngine):
 
     def _initial_state(self, config: RulesetConfig, seed: int) -> GameState:
         frame = DecisionFrame(
+            kind="setup_chance",
             frame_id="choose_objectives",
             decision=ChanceDecision(
                 decision_id="setup:objectives",
@@ -60,6 +61,7 @@ class ObjectiveThenPassEngine(RulesEngine):
     def _apply_chance(self, state: GameState, outcome: ChanceOutcome) -> RuleResult:
         next_state = state.pop_decision().push_decision(
             DecisionFrame(
+                kind="pass",
                 frame_id="player_pass",
                 decision=PlayerDecision(owner=0, prompt="Pass"),
             )

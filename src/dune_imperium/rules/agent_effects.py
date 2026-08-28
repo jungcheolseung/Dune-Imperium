@@ -28,6 +28,7 @@ from dune_imperium.rules.effects import (
     current_agent_effect_context,
     recruit_troops,
 )
+from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
@@ -1471,6 +1472,7 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         )
         frames = tuple(
             DecisionFrame(
+                kind=FrameKind.OPPONENT_CARD_DISCARD,
                 frame_id=(
                     f"round:{state.round_number}:player:{player}:"
                     f"agent_card:{card_instance_id}:opponent:{target}"

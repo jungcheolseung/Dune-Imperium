@@ -53,13 +53,20 @@ type Decision = PlayerDecision | ChanceDecision
 
 @dataclass(frozen=True, slots=True)
 class DecisionFrame:
-    """One resumable frame in a nested decision stack."""
+    """One resumable frame in a nested decision stack.
 
+    ``kind`` names the rule boundary that owns the frame so dispatch never has
+    to parse ``frame_id``. ``frame_id`` stays a unique, human-readable label.
+    """
+
+    kind: str
     frame_id: str
     decision: Decision
     context: tuple[tuple[str, ActionValue], ...] = ()
 
     def __post_init__(self) -> None:
+        if not self.kind:
+            raise ValueError("frame kind must not be empty")
         if not self.frame_id:
             raise ValueError("frame_id must not be empty")
 

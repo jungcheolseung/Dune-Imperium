@@ -65,6 +65,7 @@ def _reveal_state(*cards: str, choam_module: bool = False) -> GameState:
         ),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -268,6 +269,7 @@ def test_acquired_transcribed_card_can_be_revealed_later() -> None:
         players=(owner, *acquired.players[1:]),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:2:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -342,6 +344,7 @@ def _price_agent_state(
         intrigue_deck=intrigue_deck,
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),

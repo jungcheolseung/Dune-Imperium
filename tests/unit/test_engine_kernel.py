@@ -25,6 +25,7 @@ class PassAroundEngine(RulesEngine):
 
     def _initial_state(self, config: RulesetConfig, seed: int) -> GameState:
         frame = DecisionFrame(
+            kind="pass",
             frame_id="pass:0",
             decision=PlayerDecision(owner=0, prompt="Pass once"),
         )
@@ -46,6 +47,7 @@ class PassAroundEngine(RulesEngine):
         if next_player < state.config.players:
             next_state = next_state.push_decision(
                 DecisionFrame(
+                    kind="pass",
                     frame_id=f"pass:{next_player}",
                     decision=PlayerDecision(
                         owner=next_player,

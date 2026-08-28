@@ -11,6 +11,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
+from dune_imperium.rules.frames import FrameKind
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,6 +109,7 @@ def begin_endgame_wild_choice(state: GameState) -> RuleResult:
     if match is None:
         raise ValueError("Endgame wild choice requires exactly one possible pair")
     frame = DecisionFrame(
+        kind=FrameKind.ENDGAME_WILD,
         frame_id=f"round:{state.round_number}:endgame_wild:{match.player}",
         decision=PlayerDecision(
             owner=match.player,

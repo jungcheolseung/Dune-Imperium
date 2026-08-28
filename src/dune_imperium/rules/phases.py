@@ -10,6 +10,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
+from dune_imperium.rules.frames import FrameKind
 
 
 def begin_round(state: GameState) -> RuleResult:
@@ -89,6 +90,7 @@ def prepare_round_start(state: GameState) -> RuleResult:
             f"round:{state.round_number + 1}:player:{player.player_id}:discard_shuffle"
         )
         frame = DecisionFrame(
+            kind=FrameKind.ROUND_START_RESHUFFLE,
             frame_id=f"{decision_id}:round_start",
             decision=ChanceDecision(
                 decision_id=decision_id,
@@ -240,6 +242,7 @@ def _round_opening_frame(
             raise RuntimeError("Control defender requires a critical location")
         controller = controllers[0]
         return DecisionFrame(
+            kind=FrameKind.CONTROL_DEFENSE,
             frame_id=f"round:{round_number}:control_defense",
             decision=PlayerDecision(
                 owner=controller.player_id,
@@ -255,6 +258,7 @@ def _round_opening_frame(
 
 def _turn_frame(round_number: int, player: int) -> DecisionFrame:
     return DecisionFrame(
+        kind=FrameKind.TURN,
         frame_id=f"round:{round_number}:turn:{player}",
         decision=PlayerDecision(
             owner=player,

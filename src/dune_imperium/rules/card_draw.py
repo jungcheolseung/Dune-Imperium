@@ -7,6 +7,7 @@ from dune_imperium.core.decisions import ChanceDecision, DecisionFrame
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GameState
+from dune_imperium.rules.frames import FrameKind
 
 
 def draw_or_request_personal_cards(
@@ -28,6 +29,7 @@ def draw_or_request_personal_cards(
     if len(owner.deck) < count and owner.discard_pile:
         decision_id = f"{source}:discard_shuffle"
         frame = DecisionFrame(
+            kind=FrameKind.PERSONAL_DRAW_RESHUFFLE,
             frame_id=f"{decision_id}:personal_draw",
             decision=ChanceDecision(
                 decision_id=decision_id,

@@ -22,6 +22,7 @@ from dune_imperium.rules.effects import (
     pending_agent_contract_ids,
     recruit_troops,
 )
+from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
@@ -295,6 +296,7 @@ def contract_choice_frame(
     if not source:
         raise ValueError("Contract choice source must not be empty")
     return DecisionFrame(
+        kind=FrameKind.CONTRACT_MARKET,
         frame_id=f"{source}:contract_market:{player}",
         decision=PlayerDecision(owner=player, prompt="Take a face-up Contract"),
         context=(("remaining", count), ("source", source)),
@@ -652,6 +654,7 @@ def _begin_contract_reward_choice(
         )
     if reward.spies:
         frame = DecisionFrame(
+            kind=FrameKind.CONTRACT_REWARD_SPY,
             frame_id=f"{source}:reward:spy",
             decision=PlayerDecision(
                 owner=player,

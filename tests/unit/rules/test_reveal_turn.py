@@ -513,6 +513,7 @@ def _state(player: PlayerState, *, choam_module: bool = False) -> GameState:
         players=(player, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -1764,6 +1765,7 @@ def test_four_empty_reveal_turns_follow_seat_order_into_combat() -> None:
         state,
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:2",
                 decision=PlayerDecision(owner=2, prompt="Choose a turn"),
             ),

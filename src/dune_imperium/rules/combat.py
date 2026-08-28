@@ -15,6 +15,7 @@ from dune_imperium.core.player import PlayerState, Resources
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.contracts import contract_choice_frame
+from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.influence import (
     MAX_INFLUENCE,
     gain_faction_influence,
@@ -1081,6 +1082,7 @@ def _influence_choice_frame(
     index: int,
 ) -> DecisionFrame:
     return DecisionFrame(
+        kind=FrameKind.COMBAT_REWARD_INFLUENCE,
         frame_id=(
             f"round:{state.round_number}:combat_reward_influence:{index}:{player}"
         ),
@@ -1101,6 +1103,7 @@ def _optional_payment_frame(
     victory_points: int,
 ) -> DecisionFrame:
     return DecisionFrame(
+        kind=FrameKind.COMBAT_REWARD_OPTIONAL,
         frame_id=(
             f"round:{state.round_number}:combat_reward_optional:{index}:{player}"
         ),
@@ -1128,6 +1131,7 @@ def _optional_spy_recall_frame(
     victory_points: int,
 ) -> DecisionFrame:
     return DecisionFrame(
+        kind=FrameKind.COMBAT_REWARD_SPY_RECALL,
         frame_id=(
             f"round:{state.round_number}:combat_reward_spy_recall:{index}:{player}"
         ),
@@ -1154,6 +1158,7 @@ def _distinct_influence_frame(
     group: int,
 ) -> DecisionFrame:
     return DecisionFrame(
+        kind=FrameKind.COMBAT_REWARD_DISTINCT_INFLUENCE,
         frame_id=(
             f"round:{state.round_number}:combat_reward_distinct_influence:"
             f"{index}:{player}"
@@ -1177,6 +1182,7 @@ def _trash_card_frame(
     index: int,
 ) -> DecisionFrame:
     return DecisionFrame(
+        kind=FrameKind.COMBAT_REWARD_TRASH,
         frame_id=f"round:{state.round_number}:combat_reward_trash:{index}:{player}",
         decision=PlayerDecision(
             owner=player,
@@ -1195,6 +1201,7 @@ def _spy_placement_frame(
     index: int,
 ) -> DecisionFrame:
     return DecisionFrame(
+        kind=FrameKind.COMBAT_REWARD_SPY,
         frame_id=f"round:{state.round_number}:combat_reward_spy:{index}:{player}",
         decision=PlayerDecision(
             owner=player,
@@ -1255,6 +1262,7 @@ def _combat_intrigue_frame(
 ) -> DecisionFrame:
     mask = sum(1 << player for player in participants)
     return DecisionFrame(
+        kind=FrameKind.COMBAT_INTRIGUE,
         frame_id=f"round:{state.round_number}:combat_intrigue",
         decision=PlayerDecision(
             owner=participants[current_index],

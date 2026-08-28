@@ -74,6 +74,7 @@ def _agent_contract_state(
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -390,6 +391,7 @@ def test_acquiring_the_spice_must_flow_completes_acquire_contract() -> None:
         reserve_stacks=(("the_spice_must_flow", 1),),
         decision_stack=(
             DecisionFrame(
+                kind="reveal",
                 frame_id="round:1:player:0:reveal",
                 decision=PlayerDecision(owner=0, prompt="Resolve Reveal"),
                 context=(

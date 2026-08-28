@@ -59,6 +59,7 @@ def _research_station_state() -> GameState:
         ),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -156,6 +157,7 @@ def test_sardaukar_coordination_deploys_only_troops_recruited_this_turn() -> Non
         ),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),

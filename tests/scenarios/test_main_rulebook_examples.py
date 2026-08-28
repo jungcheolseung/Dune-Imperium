@@ -55,6 +55,7 @@ def test_main_page_11_imperial_basin_deploys_at_most_two_garrison_troops() -> No
         ),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
                 context=(("round", 1), ("turn_owner", 0)),
@@ -128,6 +129,7 @@ def test_main_page_13_reveal_acquires_and_immediately_refills_the_row() -> None:
         imperium_deck=(replacement, *other_cards[5:]),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
                 context=(("round", 1), ("turn_owner", 0)),

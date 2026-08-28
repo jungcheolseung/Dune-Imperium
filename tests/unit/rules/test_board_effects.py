@@ -61,6 +61,7 @@ def _state(card_id: str, resources: Resources | None = None) -> GameState:
         ),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),

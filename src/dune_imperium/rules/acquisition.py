@@ -25,6 +25,7 @@ from dune_imperium.rules.effects import (
     advance_after_effect,
     current_agent_effect_context,
 )
+from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.reveal_turn import current_reveal_context
 from dune_imperium.rules.spy_placement import (
@@ -714,6 +715,7 @@ def _acquisition_spy_frame(
     instance_id: str,
 ) -> DecisionFrame:
     return DecisionFrame(
+        kind=FrameKind.ACQUISITION_SPY,
         frame_id=(
             f"round:{state.round_number}:player:{player}:"
             f"acquisition_spy:{instance_id}"

@@ -23,6 +23,7 @@ from dune_imperium.core.player import Influence, PlayerState, Resources
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.card_bonds import has_faction_bond
 from dune_imperium.rules.contracts import contract_candidates_for_agent_turn
+from dune_imperium.rules.frames import FrameKind
 
 
 def legal_agent_actions(state: GameState, player: int) -> tuple[DomainAction, ...]:
@@ -169,6 +170,7 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
         space_id,
     )
     effect_frame = DecisionFrame(
+        kind=FrameKind.AGENT_EFFECTS,
         frame_id=(f"round:{state.round_number}:player:{action.actor}:agent_effects"),
         decision=PlayerDecision(
             owner=action.actor,

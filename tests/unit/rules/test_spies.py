@@ -48,6 +48,7 @@ def _placed_state() -> tuple[GameState, str]:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
@@ -119,6 +120,7 @@ def test_unconnected_spy_does_not_open_gather_intelligence_window() -> None:
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
+                kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
