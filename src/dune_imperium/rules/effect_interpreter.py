@@ -171,7 +171,6 @@ class RewardOutcome:
 
     result: RuleResult
     troops_recruited: int = 0
-    spice_gained: int = 0
 
 
 def automatic_rewards(sections: tuple[EffectSection, ...]) -> tuple[Reward, ...]:
@@ -201,14 +200,12 @@ def apply_rewards(
     owner = state.players[player]
     events: list[GameEvent] = []
     troops_recruited = 0
-    spice_gained = 0
     personal_draws = 0
     intrigue_draws = 0
     fixed_influence: list[GainInfluence] = []
     for reward in rewards:
         match reward:
             case GainResources(solari=solari, spice=spice, water=water):
-                spice_gained += spice
                 owner = replace(
                     owner,
                     resources=replace(
@@ -271,5 +268,4 @@ def apply_rewards(
     return RewardOutcome(
         result=RuleResult(state=next_state, events=tuple(events)),
         troops_recruited=troops_recruited,
-        spice_gained=spice_gained,
     )

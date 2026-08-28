@@ -342,7 +342,9 @@ def test_troops_recruited_before_placing_the_agent_may_still_be_deployed() -> No
     assert deployments == {0, 1}
 
 
-def test_intrigue_spice_does_not_count_as_harvested_spice() -> None:
+def test_intrigue_spice_trades_keep_harvest_accounting_honest() -> None:
+    # Harvest Contracts count Spice gained from every source during the turn
+    # [Main p. 16]: paid Spice must not hide a harvest, and gained Spice counts.
     card = _intrigue("market_opportunity")
     owner = PlayerState(
         player_id=0,
@@ -369,7 +371,8 @@ def test_intrigue_spice_does_not_count_as_harvested_spice() -> None:
 
     bought = engine.apply(placed, _play(placed, card, 1)).state
     context = dict(bought.decision_stack[-1].context)
-    assert context["spice_at_placement"] == 7
+    assert context["spice_at_placement"] == 2
+    assert context["spice_spent_after_placement"] == 0
 
 
 def test_reveal_turn_withholds_plot_options_that_draw_personal_cards() -> None:

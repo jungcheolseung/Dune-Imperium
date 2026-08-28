@@ -338,11 +338,9 @@ def _finish_play(
         ),
         intrigue_discard=(*resolved.intrigue_discard, card_id),
     )
-    if outcome.troops_recruited or outcome.spice_gained:
+    if outcome.troops_recruited:
         next_state = _update_agent_turn_frame(
-            next_state,
-            troops_recruited=outcome.troops_recruited,
-            spice_gained=outcome.spice_gained,
+            next_state, troops_recruited=outcome.troops_recruited
         )
     return RuleResult(state=next_state, events=outcome.result.events)
 
@@ -385,14 +383,15 @@ def _update_agent_turn_frame(
     *,
     troops_recruited: int = 0,
     spice_spent: int = 0,
-    spice_gained: int = 0,
 ) -> GameState:
     """Keep the owner's turn bookkeeping in step with an Intrigue effect.
 
     Troops recruited during the owner's turn join that turn's deployment
     allowance whether the Plot was played before or after placing the Agent.
-    Spice paid or gained by the card is excluded from the Harvest Spice
-    Contract accounting, which only tracks Spice harvested at the space.
+    Spice paid for the card is recorded as spent so that Harvest Spice
+    Contracts, which count Spice gained from every source during the turn
+    [Main p. 16], still see the full amount gained; Spice the card grants
+    counts toward those Contracts like any other gain.
     """
 
     for index in range(len(state.decision_stack) - 1, -1, -1):
@@ -407,8 +406,6 @@ def _update_agent_turn_frame(
         if frame.kind == FrameKind.AGENT_EFFECTS:
             spent = context_int(context, "spice_spent_after_placement")
             context["spice_spent_after_placement"] = spent + spice_spent
-            baseline = context_int(context, "spice_at_placement")
-            context["spice_at_placement"] = baseline + spice_gained
         updated = with_context(frame, context)
         return replace(
             state,
