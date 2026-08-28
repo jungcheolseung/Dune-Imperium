@@ -236,7 +236,10 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     FrameKind.CONTRACT_MARKET: (legal_contract_actions,),
     FrameKind.CONTRACT_REWARD_SPY: (legal_contract_spy_actions,),
     FrameKind.CONTROL_DEFENSE: (legal_control_defense_actions,),
-    FrameKind.COMBAT_INTRIGUE: (legal_combat_intrigue_actions,),
+    FrameKind.COMBAT_INTRIGUE: (
+        legal_combat_intrigue_actions,
+        legal_intrigue_play_actions,
+    ),
     FrameKind.COMBAT_REWARD_OPTIONAL: (legal_combat_reward_optional_payment_actions,),
     FrameKind.COMBAT_REWARD_SPY_RECALL: (legal_combat_reward_spy_recall_actions,),
     FrameKind.COMBAT_REWARD_TRASH: (legal_combat_reward_trash_actions,),

@@ -215,7 +215,20 @@ INTRIGUE_CARDS: Final = (
     ),
     _entry(151, "devour", "Devour"),
     _entry(144, "distraction", "Distraction", copies=2),
-    _entry(149, "find-weakness", "Find Weakness"),
+    _entry(
+        149,
+        "find-weakness",
+        "Find Weakness",
+        options=(
+            _combat(
+                EffectSection(rewards=(GainCombatStrength(2),)),
+                EffectSection(
+                    costs=(RecallSpy(1),),
+                    rewards=(GainCombatStrength(3),),
+                ),
+            ),
+        ),
+    ),
     _entry(146, "go-to-ground", "Go To Ground"),
     _entry(
         140,
@@ -298,7 +311,20 @@ INTRIGUE_CARDS: Final = (
         ),
     ),
     _entry(158, "ornithopter", "Ornithopter"),
-    _entry(156, "questionable-methods", "Questionable Methods"),
+    _entry(
+        156,
+        "questionable-methods",
+        "Questionable Methods",
+        options=(
+            _combat(
+                EffectSection(rewards=(GainCombatStrength(1),)),
+                EffectSection(
+                    costs=(LoseInfluence(1),),
+                    rewards=(GainCombatStrength(4),),
+                ),
+            ),
+        ),
+    ),
     _entry(449, "reach-agreement", "Reach Agreement", choam_only=True),
     _entry(161, "secure-spice-trade", "Secure Spice Trade"),
     _entry(
@@ -382,7 +408,20 @@ INTRIGUE_CARDS: Final = (
             ),
         ),
     ),
-    _entry(154, "weirding-combat", "Weirding Combat"),
+    _entry(
+        154,
+        "weirding-combat",
+        "Weirding Combat",
+        options=(
+            _combat(
+                EffectSection(rewards=(GainCombatStrength(3),)),
+                EffectSection(
+                    condition=InfluenceAtLeast(Faction.BENE_GESSERIT, 3),
+                    rewards=(GainCombatStrength(2),),
+                ),
+            ),
+        ),
+    ),
 )
 
 

@@ -376,8 +376,18 @@ def apply_rewards(
                             payload=(("count", count), ("player", player)),
                         )
                     )
-            case GainCombatStrength():
-                raise NotImplementedError("Combat strength rewards need Combat play")
+            case GainCombatStrength(amount=amount):
+                # Combat Intrigue strength changes update the marker at once
+                # [Main p. 14]; the caller only offers Combat options while
+                # the player has units in the Conflict.
+                owner = replace(owner, combat_strength=owner.combat_strength + amount)
+                events.append(
+                    GameEvent(
+                        event_id=f"{source}:combat_strength",
+                        kind="combat_strength_gained",
+                        payload=(("amount", amount), ("player", player)),
+                    )
+                )
             case _:
                 raise TypeError(f"unsupported reward: {reward!r}")
 

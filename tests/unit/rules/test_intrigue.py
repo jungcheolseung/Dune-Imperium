@@ -81,7 +81,7 @@ def _play(state: GameState, card_id: str, option: int = 0) -> DomainAction:
 def test_transcribed_intrigue_options_are_well_formed() -> None:
     transcribed = [entry for entry in INTRIGUE_CARDS if entry.play_data_complete]
 
-    assert len(transcribed) == 18
+    assert len(transcribed) == 21
     for entry in transcribed:
         assert entry.options
         for option in entry.options:
@@ -996,4 +996,167 @@ def test_special_mission_recall_option_pays_out_after_the_detonation_choice() ->
     # Without a placed Spy the recall option cannot be played at all.
     grounded = _turn_state(PlayerState(player_id=0, intrigue_cards=(card,)))
     assert legal_intrigue_play_actions(grounded, 0) == (_play(grounded, card, 0),)
+
+
+def _combat_state(*players: PlayerState) -> GameState:
+    from dune_imperium.rules.combat import begin_combat_intrigue
+
+    seats = list(players)
+    seats.extend(PlayerState(player_id=seat) for seat in range(len(seats), 4))
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.COMBAT,
+        round_number=1,
+        first_player=0,
+        current_conflict_ids=(_conflict(False),),
+        players=tuple(seats),
+    )
+    return begin_combat_intrigue(state).state
+
+
+def _pass(actor: int) -> DomainAction:
+    return DomainAction(action_id="pass_combat_intrigue", actor=actor)
+
+
+def test_combat_intrigue_is_offered_only_to_the_participant_with_priority() -> None:
+    card = _intrigue("weirding_combat")
+    fighter = PlayerState(
+        player_id=0,
+        intrigue_cards=(card,),
+        troops_supply=10,
+        troops_garrison=1,
+        troops_conflict=1,
+        combat_strength=2,
+    )
+    rival = PlayerState(
+        player_id=1,
+        intrigue_cards=(_intrigue("weirding_combat", 0),),
+        troops_supply=10,
+        troops_garrison=1,
+        troops_conflict=1,
+        combat_strength=2,
+    )
+    bystander = PlayerState(player_id=2, intrigue_cards=())
+    state = _combat_state(fighter, replace(rival, intrigue_cards=()), bystander)
+    engine = UprisingRulesEngine()
+
+    assert state.decision_stack[-1].kind == "combat_intrigue"
+    assert engine.legal_actions(state, 0) == (_pass(0), _play(state, card))
+    assert engine.legal_actions(state, 1) == ()
+
+    played = engine.apply(state, _play(state, card))
+    assert played.state.players[0].combat_strength == 5
+    assert "combat_strength_gained" in [e.kind for e in played.events]
+    # After playing, priority stays with the same player [Main p. 14].
+    assert engine.legal_actions(played.state, 0) == (_pass(0),)
+
+
+def test_weirding_combat_adds_two_more_with_three_bene_gesserit() -> None:
+    card = _intrigue("weirding_combat")
+    fighter = PlayerState(
+        player_id=0,
+        intrigue_cards=(card,),
+        influence=Influence(bene_gesserit=3),
+        troops_supply=11,
+        troops_garrison=0,
+        troops_conflict=1,
+        combat_strength=2,
+    )
+    state = _combat_state(fighter)
+    engine = UprisingRulesEngine()
+
+    played = engine.apply(state, _play(state, card)).state
+    assert played.players[0].combat_strength == 7
+
+
+def test_playing_combat_intrigue_restarts_the_consecutive_pass_count() -> None:
+    card = _intrigue("weirding_combat")
+    first = PlayerState(
+        player_id=0, troops_supply=11, troops_garrison=0, troops_conflict=1,
+        combat_strength=2,
+    )
+    second = PlayerState(
+        player_id=1,
+        intrigue_cards=(card,),
+        troops_supply=11,
+        troops_garrison=0,
+        troops_conflict=1,
+        combat_strength=2,
+    )
+    state = _combat_state(first, second)
+    engine = UprisingRulesEngine()
+
+    passed = engine.apply(state, _pass(0)).state
+    assert dict(passed.decision_stack[-1].context)["consecutive_passes"] == 1
+    play_as_second = DomainAction(
+        action_id="play_intrigue", actor=1, arguments=(("card_id", card), ("option", 0))
+    )
+    played = engine.apply(passed, play_as_second).state
+    assert dict(played.decision_stack[-1].context)["consecutive_passes"] == 0
+    # Both players must pass again in a row before Combat resolves.
+    once = engine.apply(played, _pass(1)).state
+    assert once.decision_stack[-1].kind == "combat_intrigue"
+    twice = engine.apply(once, _pass(0)).state
+    assert twice.combat_intrigue_complete is True
+
+
+def test_questionable_methods_requires_losing_influence_for_the_bonus() -> None:
+    card = _intrigue("questionable_methods")
+    fighter = PlayerState(
+        player_id=0,
+        intrigue_cards=(card,),
+        influence=Influence(fremen=1),
+        troops_supply=11,
+        troops_garrison=0,
+        troops_conflict=1,
+        combat_strength=2,
+    )
+    state = _combat_state(fighter)
+    engine = UprisingRulesEngine()
+
+    opened = engine.apply(state, _play(state, card)).state
+    assert opened.decision_stack[-1].kind == "intrigue_choice"
+    assert engine.legal_actions(opened, 0) == (_choose_faction("fremen"),)
+    done = engine.apply(opened, _choose_faction("fremen")).state
+    assert done.players[0].influence.fremen == 0
+    assert done.players[0].combat_strength == 7
+    assert done.decision_stack[-1].kind == "combat_intrigue"
+
+    # Under OQ-015(b) the Influence line is mandatory, so a player without
+    # any Influence cannot play the card at all.
+    broke = _combat_state(replace(fighter, influence=Influence()))
+    assert legal_intrigue_play_actions(broke, 0) == ()
+
+
+def test_find_weakness_recalls_a_spy_for_the_bonus() -> None:
+    card = _intrigue("find_weakness")
+    fighter = PlayerState(
+        player_id=0,
+        intrigue_cards=(card,),
+        spies_supply=2,
+        spy_post_ids=("landsraad-assembly-hall-gather-support",),
+        troops_supply=11,
+        troops_garrison=0,
+        troops_conflict=1,
+        combat_strength=2,
+    )
+    state = _combat_state(fighter)
+    engine = UprisingRulesEngine()
+
+    opened = engine.apply(state, _play(state, card)).state
+    assert engine.legal_actions(opened, 0) == (
+        _recall_spy("landsraad-assembly-hall-gather-support"),
+    )
+    done = engine.apply(
+        opened, _recall_spy("landsraad-assembly-hall-gather-support")
+    ).state
+    assert done.players[0].spies_supply == 3
+    assert done.players[0].combat_strength == 7
+
+
+def test_combat_intrigue_is_not_offered_during_player_turns() -> None:
+    card = _intrigue("weirding_combat")
+    owner = PlayerState(player_id=0, intrigue_cards=(card,))
+    assert legal_intrigue_play_actions(_turn_state(owner), 0) == ()
 

@@ -84,19 +84,23 @@ def legal_intrigue_play_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Return every Plot option ``player`` can currently play."""
+    """Return every Plot or Combat option ``player`` can currently play."""
 
     if not 0 <= player < state.config.players:
         raise ValueError("player must identify a configured seat")
-    if state.phase is not GamePhase.PLAYER_TURNS:
-        return ()
     frame = top_frame(state)
     if (
         frame is None
-        or frame.kind not in PLOT_FRAME_KINDS
         or not isinstance(frame.decision, PlayerDecision)
         or frame.decision.owner != player
     ):
+        return ()
+    if state.phase is GamePhase.PLAYER_TURNS and frame.kind in PLOT_FRAME_KINDS:
+        timing = IntrigueTiming.PLOT
+    elif state.phase is GamePhase.COMBAT and frame.kind == FrameKind.COMBAT_INTRIGUE:
+        # Only the participant whose priority it is may play [Main p. 14].
+        timing = IntrigueTiming.COMBAT
+    else:
         return ()
     owner = state.players[player]
     actions: list[DomainAction] = []
@@ -105,7 +109,7 @@ def legal_intrigue_play_actions(
         if entry is None or not entry.play_data_complete:
             continue
         for index, option in enumerate(entry.options):
-            if option.timing is not IntrigueTiming.PLOT:
+            if option.timing is not timing:
                 continue
             if frame.kind == FrameKind.REVEAL and _draws_personal_cards(owner, option):
                 # Cards drawn during a Reveal turn must be revealed at once
@@ -472,6 +476,7 @@ def _finish_play(
         next_state = _update_agent_turn_frame(
             next_state, troops_recruited=outcome.troops_recruited
         )
+    next_state = _reset_combat_passes(next_state)
     if outcome.sandworms_deployed and reveal_is_open_for(next_state, player):
         # The interpreter moved the sandworms; during a Reveal turn their
         # strength must also join the revealed total [Main p. 13].
@@ -493,6 +498,19 @@ def _finish_play(
         next_state = counted.state
         events.extend(counted.events)
     return RuleResult(state=next_state, events=tuple(events))
+
+
+def _reset_combat_passes(state: GameState) -> GameState:
+    """A played Combat Intrigue restarts the consecutive-pass count [Main p. 14]."""
+
+    frame = top_frame(state)
+    if frame is None or frame.kind != FrameKind.COMBAT_INTRIGUE:
+        return state
+    context = frame_context(frame)
+    if context.get("consecutive_passes") == 0:
+        return state
+    context["consecutive_passes"] = 0
+    return replace_top_frame(state, with_context(frame, context))
 
 
 def _deploy_units(
