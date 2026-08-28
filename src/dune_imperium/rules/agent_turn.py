@@ -210,7 +210,7 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
             ("spice_at_placement", next_owner.resources.spice),
             ("spice_spent_after_placement", 0),
             ("spy_recalled_this_turn", infiltrate_post_id is not None),
-            ("troops_recruited", 0),
+            ("troops_recruited", _troops_recruited_before_placement(state)),
             ("turn_owner", action.actor),
         ),
     )
@@ -381,6 +381,16 @@ def _agent_effect_is_available(
             Faction.BENE_GESSERIT,
         )
     return True
+
+
+def _troops_recruited_before_placement(state: GameState) -> int:
+    """Troops recruited earlier this turn (e.g. by Plot Intrigue) stay deployable."""
+
+    frame = state.decision_stack[-1]
+    value = dict(frame.context).get("troops_recruited", 0)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise RuntimeError("turn frame has an invalid recruit count")
+    return value
 
 
 def _actions_for_affordable_costs(

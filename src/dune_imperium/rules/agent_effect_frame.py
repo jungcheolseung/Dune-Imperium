@@ -58,12 +58,12 @@ def legal_agent_effect_frame_actions(
     if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
         return ()
 
-    pending_groups = _pending_group_actions(state, player, context)
     if context.get("long_live_fighters_selection_started") is True:
         # Long Live the Fighters is one atomic card effect. Once its private
         # selection starts, no board/Faction/combat choice may be interleaved
         # before the second card selection commits.
-        return pending_groups
+        return legal_agent_card_long_live_actions(state, player)
+    pending_groups = _pending_group_actions(state, player, context)
 
     gather_intelligence_actions = legal_gather_intelligence_actions(state, player)
     if gather_intelligence_actions:
@@ -87,8 +87,6 @@ def _pending_group_actions(
 ) -> tuple[DomainAction, ...]:
     actions: list[DomainAction] = []
     if context["pending_agent_effect"] is True:
-        if context.get("long_live_fighters_selection_started") is True:
-            return legal_agent_card_long_live_actions(state, player)
         choice_actions = tuple(
             action
             for provider in _AGENT_CARD_CHOICE_PROVIDERS

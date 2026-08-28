@@ -948,3 +948,12 @@ def test_personal_card_reveal_effect_requires_a_nonnegative_gain() -> None:
         )
     with pytest.raises(ValueError, match="must be paired"):
         PersonalCardRevealEffect(influence=1)
+
+
+def test_every_acquisition_bonus_has_a_typed_effect() -> None:
+    # The dispatcher advertises every Imperium acquisition, so a bonus without
+    # a typed effect would raise after the Persuasion was already spent.
+    for entry in IMPERIUM_CARDS_BY_ID.values():
+        if entry.has_acquisition_bonus:
+            assert entry.acquisition_effect is not None, entry.card.card_id
+

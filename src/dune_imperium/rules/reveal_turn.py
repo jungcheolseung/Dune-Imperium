@@ -1469,6 +1469,11 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
     return RuleResult(state=next_state, events=tuple(events))
 
 
+REVEAL_CONTEXT_KEYS = frozenset(
+    {"persuasion", "revealed_card_count", "strength", "turn_owner"}
+)
+
+
 def current_reveal_context(state: GameState) -> dict[str, ActionValue]:
     """Return and validate the current Reveal resolution frame."""
 
@@ -1477,7 +1482,10 @@ def current_reveal_context(state: GameState) -> dict[str, ActionValue]:
     frame = state.decision_stack[-1]
     if frame.kind != FrameKind.REVEAL or not isinstance(frame.decision, PlayerDecision):
         raise ValueError("the current decision is not a Reveal turn")
-    return dict(frame.context)
+    context = dict(frame.context)
+    if not REVEAL_CONTEXT_KEYS.issubset(context):
+        raise ValueError("the Reveal frame is missing context")
+    return context
 
 
 def legal_finish_reveal_actions(

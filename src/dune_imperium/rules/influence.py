@@ -7,6 +7,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import Influence, PlayerState
 from dune_imperium.core.state import GameState
+from dune_imperium.rules.frames import replace_player
 
 MAX_INFLUENCE = 6
 
@@ -394,14 +395,3 @@ def _transfer_or_return_alliance(
         ),
     )
 
-
-def replace_player(
-    players: tuple[PlayerState, ...],
-    player: PlayerState,
-) -> tuple[PlayerState, ...]:
-    """Replace one seat in an immutable player tuple."""
-
-    return tuple(
-        player if candidate.player_id == player.player_id else candidate
-        for candidate in players
-    )

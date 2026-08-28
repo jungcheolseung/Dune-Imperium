@@ -85,6 +85,23 @@ def recruit_troops(player: PlayerState, count: int) -> tuple[PlayerState, int]:
     )
 
 
+AGENT_EFFECT_CONTEXT_KEYS = frozenset(
+    {
+        "card_id",
+        "cost_option",
+        "pending_agent_effect",
+        "pending_board_effect",
+        "pending_combat_deployment",
+        "pending_faction_influence",
+        "space_id",
+        "spice_at_placement",
+        "spice_spent_after_placement",
+        "troops_recruited",
+        "turn_owner",
+    }
+)
+
+
 def current_agent_effect_context(
     state: GameState,
 ) -> tuple[DecisionFrame, dict[str, ActionValue]]:
@@ -97,7 +114,10 @@ def current_agent_effect_context(
         frame.decision, PlayerDecision
     ):
         raise ValueError("the current decision is not an Agent-turn effect")
-    return frame, dict(frame.context)
+    context = dict(frame.context)
+    if not AGENT_EFFECT_CONTEXT_KEYS.issubset(context):
+        raise ValueError("the Agent-turn effect frame is missing context")
+    return frame, context
 
 
 def advance_after_effect(

@@ -290,7 +290,7 @@ def test_intrigue_draw_reshuffles_the_discard_through_chance() -> None:
     assert resolved.state.intrigue_discard == (card,)
     assert resolved.state.players[0].intrigue_cards == (outcome.values[0],)
     assert resolved.state.intrigue_deck == outcome.values[1:]
-    assert resolved.state.decision_stack == state.decision_stack
+    assert resolved.state.decision_stack[-1].kind == "turn"
     assert [event.kind for event in resolved.events] == [
         "intrigue_discard_shuffled",
         "intrigue_card_drawn",
@@ -308,7 +308,108 @@ def test_intrigue_draw_stops_short_when_no_cards_remain() -> None:
 
     assert result.state.players[0].intrigue_cards == ()
     assert result.state.intrigue_discard == (card,)
-    assert result.state.decision_stack == state.decision_stack
+    assert result.state.decision_stack[-1].kind == "turn"
+
+
+def test_troops_recruited_before_placing_the_agent_may_still_be_deployed() -> None:
+    card = _intrigue("shaddam_s_favor")
+    owner = PlayerState(
+        player_id=0,
+        hand=(_starter("reconnaissance"),),
+        intrigue_cards=(card,),
+        troops_supply=12,
+        troops_garrison=0,
+    )
+    state = _turn_state(owner)
+    engine = UprisingRulesEngine()
+
+    recruited = engine.apply(state, _play(state, card)).state
+    assert dict(recruited.decision_stack[-1].context)["troops_recruited"] == 1
+    to_arrakeen = next(
+        action
+        for action in engine.legal_actions(recruited, 0)
+        if action.action_id == "agent_turn"
+        and dict(action.arguments)["space_id"] == "arrakeen"
+    )
+    placed = engine.apply(recruited, to_arrakeen).state
+
+    assert dict(placed.decision_stack[-1].context)["troops_recruited"] == 1
+    deployments = {
+        dict(action.arguments)["count"]
+        for action in engine.legal_actions(placed, 0)
+        if action.action_id == "deploy_troops"
+    }
+    assert deployments == {0, 1}
+
+
+def test_intrigue_spice_does_not_count_as_harvested_spice() -> None:
+    card = _intrigue("market_opportunity")
+    owner = PlayerState(
+        player_id=0,
+        hand=(_starter("reconnaissance"),),
+        intrigue_cards=(card,),
+        resources=Resources(solari=5, spice=2),
+    )
+    state = _turn_state(owner)
+    engine = UprisingRulesEngine()
+    to_arrakeen = next(
+        action
+        for action in engine.legal_actions(state, 0)
+        if action.action_id == "agent_turn"
+        and dict(action.arguments)["space_id"] == "arrakeen"
+    )
+    placed = engine.apply(state, to_arrakeen).state
+    before = dict(placed.decision_stack[-1].context)
+    assert before["spice_spent_after_placement"] == 0
+    assert before["spice_at_placement"] == 2
+
+    sold = engine.apply(placed, _play(placed, card, 0)).state
+    context = dict(sold.decision_stack[-1].context)
+    assert context["spice_spent_after_placement"] == 2
+
+    bought = engine.apply(placed, _play(placed, card, 1)).state
+    context = dict(bought.decision_stack[-1].context)
+    assert context["spice_at_placement"] == 7
+
+
+def test_reveal_turn_withholds_plot_options_that_draw_personal_cards() -> None:
+    report = _intrigue("intelligence_report")
+    plan = _intrigue("contingency_plan")
+    owner = PlayerState(
+        player_id=0, intrigue_cards=(report, plan), deck=(_starter("dagger"),)
+    )
+    state = _turn_state(owner)
+    engine = UprisingRulesEngine()
+
+    assert _play(state, report) in engine.legal_actions(state, 0)
+    revealed = engine.apply(state, DomainAction(action_id="reveal_turn", actor=0)).state
+    offered = [
+        a for a in engine.legal_actions(revealed, 0) if a.action_id == "play_intrigue"
+    ]
+    assert offered == [_play(revealed, plan)]
+
+
+def test_intrigue_card_stays_in_hand_while_its_choices_resolve() -> None:
+    card = _intrigue("buy_access")
+    owner = PlayerState(
+        player_id=0, intrigue_cards=(card,), resources=Resources(solari=5)
+    )
+    state = _turn_state(owner)
+    engine = UprisingRulesEngine()
+
+    opened = engine.apply(state, _play(state, card)).state
+    assert opened.players[0].intrigue_cards == (card,)
+    assert opened.intrigue_discard == ()
+    once = engine.apply(opened, _choose_faction("fremen")).state
+    assert once.players[0].intrigue_cards == (card,)
+    done = engine.apply(once, _choose_faction("emperor")).state
+    assert done.players[0].intrigue_cards == ()
+    assert done.intrigue_discard == (card,)
+
+
+def test_placeholder_intrigue_ids_are_ignored_by_the_play_provider() -> None:
+    owner = PlayerState(player_id=0, intrigue_cards=("intrigue:test",))
+    assert legal_intrigue_play_actions(_turn_state(owner), 0) == ()
 
 
 def test_troops_recruited_by_plot_during_an_agent_turn_may_be_deployed() -> None:

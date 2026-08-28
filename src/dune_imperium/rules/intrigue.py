@@ -16,16 +16,22 @@ from dataclasses import replace
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
     DiscardFromHand,
+    DrawPersonalCards,
     EffectSection,
     GainInfluence,
+    IntrigueOption,
     IntrigueTiming,
     LoseInfluence,
 )
-from dune_imperium.content.uprising.intrigue import intrigue_card_for_instance
+from dune_imperium.content.uprising.intrigue import (
+    INTRIGUE_CARDS_BY_INSTANCE,
+    intrigue_card_for_instance,
+)
 from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
+from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.card_discard import discard_personal_card_from_hand
 from dune_imperium.rules.effect_interpreter import (
@@ -85,11 +91,16 @@ def legal_intrigue_play_actions(
     owner = state.players[player]
     actions: list[DomainAction] = []
     for card_id in owner.intrigue_cards:
-        entry = intrigue_card_for_instance(card_id)
-        if not entry.play_data_complete:
+        entry = INTRIGUE_CARDS_BY_INSTANCE.get(card_id)
+        if entry is None or not entry.play_data_complete:
             continue
         for index, option in enumerate(entry.options):
             if option.timing is not IntrigueTiming.PLOT:
+                continue
+            if frame.kind == FrameKind.REVEAL and _draws_personal_cards(owner, option):
+                # Cards drawn during a Reveal turn must be revealed at once
+                # [FAQ p. 3]; that boundary is not implemented, so such
+                # options are withheld until the Reveal is over.
                 continue
             if option_is_playable(owner, option):
                 actions.append(
@@ -123,16 +134,15 @@ def apply_intrigue_play(state: GameState, action: DomainAction) -> RuleResult:
     cost = resource_cost(sections)
 
     paid_owner = pay_cost(owner, cost)
-    paid_owner = replace(
-        paid_owner,
-        intrigue_cards=tuple(
-            held for held in paid_owner.intrigue_cards if held != card_id
-        ),
-    )
     source = f"round:{state.round_number}:player:{player}:intrigue:{card_id}"
-    # Reveal and pay first; the card reaches the discard pile only after its
-    # effects resolve, so a draw it causes cannot reshuffle the card itself.
+    # Reveal and pay first. The card stays in the owner's Intrigue hand while
+    # it resolves and reaches the discard pile only at the end, so a draw it
+    # causes cannot reshuffle the card itself and no card leaves every zone.
     played_state = replace(state, players=replace_player(state.players, paid_owner))
+    if cost is not None and cost.spice:
+        played_state = _update_agent_turn_frame(
+            played_state, spice_spent=cost.spice
+        )
     events: list[GameEvent] = [
         GameEvent(
             event_id=source,
@@ -170,16 +180,13 @@ def apply_intrigue_play(state: GameState, action: DomainAction) -> RuleResult:
                 ("sections", ",".join(str(index) for index in section_indexes)),
                 ("slot", 0),
                 ("source", source),
-                ("troops_recruited", 0),
             ),
         )
         return RuleResult(
             state=played_state.push_decision(frame), events=tuple(events)
         )
 
-    finished = _finish_play(
-        played_state, player, card_id, option_index, sections, source
-    )
+    finished = _finish_play(played_state, player, card_id, sections, source)
     return RuleResult(state=finished.state, events=(*events, *finished.events))
 
 
@@ -296,10 +303,8 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
     if slot_index + 1 < len(_slots(context)):
         return RuleResult(state=next_state, events=result.events)
 
-    option_index = context_int(context, "option", owner=_CHOICE_FRAME)
-    sections = _sections(context)
     finished = _finish_play(
-        next_state.pop_decision(), player, card_id, option_index, sections, source
+        next_state.pop_decision(), player, card_id, _sections(context), source
     )
     return RuleResult(
         state=finished.state,
@@ -311,22 +316,43 @@ def _finish_play(
     state: GameState,
     player: int,
     card_id: str,
-    option_index: int,
     sections: tuple[EffectSection, ...],
     source: str,
 ) -> RuleResult:
-    """Apply automatic rewards, discard the card, and record recruits."""
+    """Apply automatic rewards, discard the card, and update turn bookkeeping."""
 
-    del option_index
     rewards = automatic_rewards(sections)
     outcome = apply_rewards(state, player, rewards, source=source)
+    resolved = outcome.result.state
+    owner = resolved.players[player]
     next_state = replace(
-        outcome.result.state,
-        intrigue_discard=(*outcome.result.state.intrigue_discard, card_id),
+        resolved,
+        players=replace_player(
+            resolved.players,
+            replace(
+                owner,
+                intrigue_cards=tuple(
+                    held for held in owner.intrigue_cards if held != card_id
+                ),
+            ),
+        ),
+        intrigue_discard=(*resolved.intrigue_discard, card_id),
     )
-    if outcome.troops_recruited:
-        next_state = _record_recruited_troops(next_state, outcome.troops_recruited)
+    if outcome.troops_recruited or outcome.spice_gained:
+        next_state = _update_agent_turn_frame(
+            next_state,
+            troops_recruited=outcome.troops_recruited,
+            spice_gained=outcome.spice_gained,
+        )
     return RuleResult(state=next_state, events=outcome.result.events)
+
+
+def _draws_personal_cards(owner: PlayerState, option: IntrigueOption) -> bool:
+    return any(
+        isinstance(reward, DrawPersonalCards)
+        for section in applicable_sections(owner, option)
+        for reward in section.rewards
+    )
 
 
 def _sections(context: dict[str, ActionValue]) -> tuple[EffectSection, ...]:
@@ -354,21 +380,36 @@ def _chosen_factions(context: dict[str, ActionValue]) -> tuple[Faction, ...]:
     return tuple(Faction(value) for value in raw.split(",") if value)
 
 
-def _record_recruited_troops(state: GameState, recruited: int) -> GameState:
-    """Let troops recruited during an Agent turn join that turn's deployment."""
+def _update_agent_turn_frame(
+    state: GameState,
+    *,
+    troops_recruited: int = 0,
+    spice_spent: int = 0,
+    spice_gained: int = 0,
+) -> GameState:
+    """Keep the owner's turn bookkeeping in step with an Intrigue effect.
+
+    Troops recruited during the owner's turn join that turn's deployment
+    allowance whether the Plot was played before or after placing the Agent.
+    Spice paid or gained by the card is excluded from the Harvest Spice
+    Contract accounting, which only tracks Spice harvested at the space.
+    """
 
     for index in range(len(state.decision_stack) - 1, -1, -1):
         frame = state.decision_stack[index]
-        if frame.kind != FrameKind.AGENT_EFFECTS:
+        if frame.kind not in (FrameKind.AGENT_EFFECTS, FrameKind.TURN):
             continue
         context = frame_context(frame)
-        previous = context_int(
-            context, "troops_recruited", owner="Agent-turn effect frame"
-        )
-        context["troops_recruited"] = previous + recruited
+        previous = context.get("troops_recruited", 0)
+        if isinstance(previous, bool) or not isinstance(previous, int):
+            raise RuntimeError("turn frame has an invalid recruit count")
+        context["troops_recruited"] = previous + troops_recruited
+        if frame.kind == FrameKind.AGENT_EFFECTS:
+            spent = context_int(context, "spice_spent_after_placement")
+            context["spice_spent_after_placement"] = spent + spice_spent
+            baseline = context_int(context, "spice_at_placement")
+            context["spice_at_placement"] = baseline + spice_gained
         updated = with_context(frame, context)
-        if index == len(state.decision_stack) - 1:
-            return replace_top_frame(state, updated)
         return replace(
             state,
             decision_stack=(

@@ -45,12 +45,12 @@ class IntrigueCardEntry(DeckCardEntry):
     """
 
     options: tuple[IntrigueOption, ...] = ()
-    play_data_complete: bool = False
 
-    def __post_init__(self) -> None:
-        super().__post_init__()
-        if self.play_data_complete != bool(self.options):
-            raise ValueError("Intrigue play data is complete exactly when transcribed")
+    @property
+    def play_data_complete(self) -> bool:
+        """Return whether every printed option is transcribed."""
+
+        return bool(self.options)
 
     @property
     def timings(self) -> frozenset[IntrigueTiming]:
@@ -86,7 +86,6 @@ def _entry(
         copies=copies,
         choam_only=choam_only,
         options=options,
-        play_data_complete=bool(options),
     )
 
 
@@ -331,19 +330,13 @@ INTRIGUE_CARDS: Final = (
 )
 
 
-INTRIGUE_CARDS_BY_ID: Final = {entry.card.card_id: entry for entry in INTRIGUE_CARDS}
-
-
 def intrigue_card_for_instance(instance_id: str) -> IntrigueCardEntry:
     """Return the Intrigue definition behind one ``intrigue:<id>:<copy>`` ID."""
 
-    parts = instance_id.split(":")
-    if len(parts) != 3 or parts[0] != "intrigue":
-        raise ValueError(f"not an Intrigue card instance: {instance_id}")
     try:
-        return INTRIGUE_CARDS_BY_ID[parts[1]]
+        return INTRIGUE_CARDS_BY_INSTANCE[instance_id]
     except KeyError as error:
-        raise ValueError(f"unknown Intrigue card: {instance_id}") from error
+        raise ValueError(f"unknown Intrigue card instance: {instance_id}") from error
 
 
 def intrigue_cards_for_choam(choam_module: bool) -> tuple[IntrigueCardEntry, ...]:
@@ -362,3 +355,11 @@ def intrigue_deck_instance_ids(choam_module: bool) -> tuple[str, ...]:
         for entry in intrigue_cards_for_choam(choam_module)
         for copy in range(entry.copies)
     )
+
+
+INTRIGUE_CARDS_BY_ID: Final = {entry.card.card_id: entry for entry in INTRIGUE_CARDS}
+INTRIGUE_CARDS_BY_INSTANCE: Final = {
+    instance_id: INTRIGUE_CARDS_BY_ID[instance_id.split(":")[1]]
+    for instance_id in intrigue_deck_instance_ids(True)
+}
+

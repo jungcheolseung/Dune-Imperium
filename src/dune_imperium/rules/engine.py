@@ -206,7 +206,7 @@ def _agent_action_is_executable(state: GameState, action: DomainAction) -> bool:
     return board_effect_is_implemented(state, space_id, cost_option)
 
 
-LEGAL_ACTION_PROVIDERS: Final[Mapping[FrameKind, tuple[LegalActionProvider, ...]]] = {
+LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     FrameKind.TURN: (
         _executable_agent_actions,
         legal_reveal_actions,
@@ -244,9 +244,8 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[FrameKind, tuple[LegalActionProvider, ...]
         legal_distinct_combat_reward_influence_actions,
     ),
     FrameKind.ENDGAME_WILD: (legal_endgame_wild_actions,),
-    FrameKind.ROUND_START_RESHUFFLE: (),
-    FrameKind.PERSONAL_DRAW_RESHUFFLE: (),
-    FrameKind.INTRIGUE_RESHUFFLE: (),
+    # Chance frames never reach this table: legal_actions returns () for any
+    # frame whose decision is not a PlayerDecision.
     FrameKind.INTRIGUE_CHOICE: (legal_intrigue_choice_actions,),
 }
 
@@ -383,10 +382,9 @@ class UprisingRulesEngine(RulesEngine):
         frame = state.decision_stack[-1]
         if not isinstance(frame.decision, PlayerDecision):
             return ()
-        try:
-            providers = LEGAL_ACTION_PROVIDERS[FrameKind(frame.kind)]
-        except (KeyError, ValueError) as error:
-            raise RuntimeError(f"unknown decision frame kind: {frame.kind}") from error
+        providers = LEGAL_ACTION_PROVIDERS.get(frame.kind)
+        if providers is None:
+            raise RuntimeError(f"unknown decision frame kind: {frame.kind}")
         return tuple(
             action for provider in providers for action in provider(state, player)
         )
