@@ -1,6 +1,7 @@
 """Resolution of starting-card and Faction Agent-turn effects."""
 
 from dataclasses import replace
+from typing import Final
 
 from dune_imperium.content.uprising.board import (
     BOARD_SPACES_BY_ID,
@@ -40,6 +41,14 @@ _LONG_LIVE_SELECTION_STARTED = "long_live_fighters_selection_started"
 _LONG_LIVE_DRAW_CARD_ID = "long_live_fighters_draw_card_id"
 _LONG_LIVE_DRAW_ACTION_ID = "select_long_live_fighters_draw"
 _LONG_LIVE_DISCARD_ACTION_ID = "select_long_live_fighters_discard"
+
+
+# Agent-box effects that are transcribed but whose rules are not implemented
+# yet. The dispatcher withholds Agent placements with these cards so that every
+# advertised action stays executable.
+UNIMPLEMENTED_AGENT_EFFECTS: Final = frozenset(
+    {PersonalCardAgentEffect.LEADER_SIGNET}
+)
 
 
 def legal_agent_card_discard_actions(

@@ -1,12 +1,19 @@
-"""Concrete dispatcher for the currently implemented Uprising rules slice."""
+"""Concrete dispatcher for the implemented Uprising rules.
 
+Dispatch is table-driven. ``LEGAL_ACTION_PROVIDERS`` maps the kind of the top
+decision frame to the ordered rule functions that may offer actions in that
+frame, and ``ACTION_HANDLERS`` maps every ``action_id`` to the function that
+resolves it. Adding a rule boundary means adding a frame kind and one table
+entry per side rather than editing dispatcher logic.
+"""
+
+from collections.abc import Callable, Mapping
 from dataclasses import replace
+from typing import Final
 
 from dune_imperium.config import RulesetConfig
 from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID, DynamicCost
-from dune_imperium.content.uprising.imperium import imperium_card_for_instance
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
-from dune_imperium.content.uprising.types import PersonalCardAgentEffect
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceOutcome
 from dune_imperium.core.decisions import PlayerDecision
@@ -20,11 +27,12 @@ from dune_imperium.rules.acquisition import (
     apply_imperium_acquisition,
     apply_reserve_acquisition,
     legal_acquisition_spy_actions,
-    legal_agent_card_acquisitions,
     legal_imperium_acquisitions,
     legal_reserve_acquisitions,
 )
+from dune_imperium.rules.agent_effect_frame import legal_agent_effect_frame_actions
 from dune_imperium.rules.agent_effects import (
+    UNIMPLEMENTED_AGENT_EFFECTS,
     apply_agent_card_discard,
     apply_agent_card_influence,
     apply_agent_card_intrigue_payment,
@@ -35,15 +43,6 @@ from dune_imperium.rules.agent_effects import (
     apply_agent_card_trash,
     apply_corrinth_city_payment,
     apply_opponent_card_discard,
-    legal_agent_card_discard_actions,
-    legal_agent_card_influence_actions,
-    legal_agent_card_intrigue_payment_actions,
-    legal_agent_card_long_live_actions,
-    legal_agent_card_payment_actions,
-    legal_agent_card_recall_actions,
-    legal_agent_card_spy_actions,
-    legal_agent_card_trash_actions,
-    legal_corrinth_city_payment_actions,
     legal_opponent_card_discard_actions,
     resolve_agent_card_effect,
     resolve_faction_influence,
@@ -53,10 +52,7 @@ from dune_imperium.rules.board_effects import (
     apply_espionage_action,
     apply_maker_space_action,
     apply_sietch_tabr_action,
-    board_effects_for,
-    legal_espionage_actions,
-    legal_maker_space_actions,
-    legal_sietch_tabr_actions,
+    board_effect_is_implemented,
     resolve_board_effect,
 )
 from dune_imperium.rules.card_draw import (
@@ -82,21 +78,16 @@ from dune_imperium.rules.combat import (
     legal_distinct_combat_reward_influence_actions,
     resolve_combat_rewards,
 )
-from dune_imperium.rules.combat_deployment import (
-    apply_combat_deployment,
-    legal_combat_deployments,
-)
+from dune_imperium.rules.combat_deployment import apply_combat_deployment
 from dune_imperium.rules.contracts import (
     apply_contract_action,
     apply_contract_completion,
     apply_contract_spy_action,
     exhausted_contract_choice_is_pending,
     legal_contract_actions,
-    legal_contract_completion_actions,
     legal_contract_spy_actions,
     resolve_exhausted_contract_choice,
 )
-from dune_imperium.rules.effects import current_agent_effect_context
 from dune_imperium.rules.endgame import (
     apply_endgame_wild_action,
     begin_endgame_wild_choice,
@@ -124,7 +115,6 @@ from dune_imperium.rules.reveal_turn import (
     apply_reveal_spy_action,
     apply_reveal_troop_retreat,
     begin_reveal_turn,
-    current_reveal_context,
     finish_reveal_turn,
     legal_contract_reveal_choice_actions,
     legal_corrinth_city_reveal_actions,
@@ -138,10 +128,10 @@ from dune_imperium.rules.reveal_turn import (
     legal_reveal_troop_retreat_actions,
 )
 from dune_imperium.rules.setup import create_initial_state
-from dune_imperium.rules.spies import (
-    apply_gather_intelligence_action,
-    legal_gather_intelligence_actions,
-)
+from dune_imperium.rules.spies import apply_gather_intelligence_action
+
+type LegalActionProvider = Callable[[GameState, int], tuple[DomainAction, ...]]
+type ActionHandler = Callable[[GameState, DomainAction], RuleResult]
 
 DEFAULT_LEADER_IDS = (
     "feyd_rautha_harkonnen",
@@ -151,13 +141,194 @@ DEFAULT_LEADER_IDS = (
 )
 
 
-class UprisingRulesEngine(RulesEngine):
-    """Connect implemented rule modules into one playable round state machine.
+def _apply_agent_card_effect(state: GameState, action: DomainAction) -> RuleResult:
+    del action
+    return resolve_agent_card_effect(state)
 
-    The dispatcher deliberately omits actions whose immediate downstream effect
-    is not implemented yet. This keeps every advertised legal action executable
-    within the current M3 vertical slice.
-    """
+
+def _apply_board_effect(state: GameState, action: DomainAction) -> RuleResult:
+    del action
+    return resolve_board_effect(state)
+
+
+def _apply_faction_influence(state: GameState, action: DomainAction) -> RuleResult:
+    del action
+    return resolve_faction_influence(state)
+
+
+def _apply_decline_combat_reward(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    if state.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_OPTIONAL:
+        return apply_combat_reward_optional_payment(state, action)
+    return apply_combat_reward_spy_recall(state, action)
+
+
+def _executable_agent_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Withhold Agent placements whose board effect is not implemented yet."""
+
+    return tuple(
+        action
+        for action in legal_agent_actions(state, player)
+        if _agent_action_is_executable(state, action)
+    )
+
+
+def _agent_action_is_executable(state: GameState, action: DomainAction) -> bool:
+    arguments = dict(action.arguments)
+    card_id = arguments["card_id"]
+    space_id = arguments["space_id"]
+    if not isinstance(card_id, str) or not isinstance(space_id, str):
+        return False
+    if personal_card_for_instance(card_id).agent_effect in UNIMPLEMENTED_AGENT_EFFECTS:
+        return False
+    requested_option = arguments.get("cost_option")
+    if isinstance(requested_option, int) and not isinstance(requested_option, bool):
+        cost_option = requested_option
+    elif BOARD_SPACES_BY_ID[space_id].dynamic_cost is DynamicCost.SWORDMASTER:
+        cost_option = int(any(player.swordmaster_acquired for player in state.players))
+    else:
+        cost_option = 0
+    return board_effect_is_implemented(state, space_id, cost_option)
+
+
+LEGAL_ACTION_PROVIDERS: Final[Mapping[FrameKind, tuple[LegalActionProvider, ...]]] = {
+    FrameKind.TURN: (_executable_agent_actions, legal_reveal_actions),
+    FrameKind.AGENT_EFFECTS: (legal_agent_effect_frame_actions,),
+    FrameKind.OPPONENT_CARD_DISCARD: (legal_opponent_card_discard_actions,),
+    FrameKind.ACQUISITION_SPY: (legal_acquisition_spy_actions,),
+    FrameKind.REVEAL: (
+        legal_reserve_acquisitions,
+        legal_imperium_acquisitions,
+        legal_finish_reveal_actions,
+    ),
+    FrameKind.REVEAL_CHOICE: (
+        legal_corrinth_city_reveal_actions,
+        legal_contract_reveal_choice_actions,
+        legal_reveal_card_trash_actions,
+        legal_reveal_spy_actions,
+        legal_reveal_influence_exchange_actions,
+        legal_reveal_sandworm_actions,
+        legal_reveal_spice_influence_actions,
+        legal_reveal_troop_retreat_actions,
+    ),
+    FrameKind.CONTRACT_MARKET: (legal_contract_actions,),
+    FrameKind.CONTRACT_REWARD_SPY: (legal_contract_spy_actions,),
+    FrameKind.CONTROL_DEFENSE: (legal_control_defense_actions,),
+    FrameKind.COMBAT_INTRIGUE: (legal_combat_intrigue_actions,),
+    FrameKind.COMBAT_REWARD_OPTIONAL: (legal_combat_reward_optional_payment_actions,),
+    FrameKind.COMBAT_REWARD_SPY_RECALL: (legal_combat_reward_spy_recall_actions,),
+    FrameKind.COMBAT_REWARD_TRASH: (legal_combat_reward_trash_actions,),
+    FrameKind.COMBAT_REWARD_SPY: (legal_combat_reward_spy_actions,),
+    FrameKind.COMBAT_REWARD_INFLUENCE: (legal_combat_reward_influence_actions,),
+    FrameKind.COMBAT_REWARD_DISTINCT_INFLUENCE: (
+        legal_distinct_combat_reward_influence_actions,
+    ),
+    FrameKind.ENDGAME_WILD: (legal_endgame_wild_actions,),
+    FrameKind.ROUND_START_RESHUFFLE: (),
+    FrameKind.PERSONAL_DRAW_RESHUFFLE: (),
+}
+
+ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
+    # Turn choice
+    "agent_turn": apply_agent_action,
+    "reveal_turn": begin_reveal_turn,
+    # Agent-turn effect frame
+    "resolve_agent_card_effect": _apply_agent_card_effect,
+    "resolve_board_effect": _apply_board_effect,
+    "resolve_faction_influence": _apply_faction_influence,
+    "gather_intelligence": apply_gather_intelligence_action,
+    "decline_gather_intelligence": apply_gather_intelligence_action,
+    "complete_contract": apply_contract_completion,
+    "recall_spy_for_espionage": apply_espionage_action,
+    "resolve_espionage_place_spy": apply_espionage_action,
+    "resolve_espionage_without_spy": apply_espionage_action,
+    "take_sietch_tabr_supplies": apply_sietch_tabr_action,
+    "take_sietch_tabr_water": apply_sietch_tabr_action,
+    "take_sietch_tabr_water_and_destroy_wall": apply_sietch_tabr_action,
+    "harvest_maker_spice": apply_maker_space_action,
+    "summon_maker_sandworms": apply_maker_space_action,
+    "deploy_troops": apply_combat_deployment,
+    # Agent-card serial choices
+    "trash_agent_card": apply_agent_card_trash,
+    "decline_agent_card_trash": apply_agent_card_trash,
+    "discard_agent_card": apply_agent_card_discard,
+    "decline_agent_card_discard": apply_agent_card_discard,
+    "pay_agent_card_water": apply_agent_card_payment,
+    "pay_agent_card_spice": apply_agent_card_payment,
+    "decline_agent_card_payment": apply_agent_card_payment,
+    "pay_corrinth_city": apply_corrinth_city_payment,
+    "select_corrinth_city_discard": apply_corrinth_city_payment,
+    "decline_corrinth_city_payment": apply_corrinth_city_payment,
+    "pay_agent_card_intrigue_and_spice": apply_agent_card_intrigue_payment,
+    "decline_agent_card_intrigue_payment": apply_agent_card_intrigue_payment,
+    "recall_agent_for_agent_card": apply_agent_card_recall,
+    "place_agent_card_spy": apply_agent_card_spy_action,
+    "recall_spy_for_agent_card": apply_agent_card_spy_action,
+    "choose_agent_card_influence": apply_agent_card_influence,
+    "acquire_imperium_with_solari": apply_agent_card_acquisition,
+    "acquire_reserve_with_solari": apply_agent_card_acquisition,
+    "decline_agent_card_acquisition": apply_agent_card_acquisition,
+    "select_long_live_fighters_draw": apply_agent_card_long_live_action,
+    "select_long_live_fighters_discard": apply_agent_card_long_live_action,
+    "discard_opponent_card": apply_opponent_card_discard,
+    # Reveal turn
+    "acquire_reserve": apply_reserve_acquisition,
+    "acquire_imperium": apply_imperium_acquisition,
+    "finish_reveal": finish_reveal_turn,
+    "place_acquisition_spy": apply_acquisition_spy_action,
+    "recall_spy_for_acquisition": apply_acquisition_spy_action,
+    # Reveal serial choices
+    "gain_five_reveal_solari": apply_corrinth_city_reveal,
+    "take_high_council_from_reveal": apply_corrinth_city_reveal,
+    "keep_contract_reveal_spice": apply_contract_reveal_choice,
+    "trash_contract_reveal_for_vp": apply_contract_reveal_choice,
+    "trash_reveal_card": apply_reveal_card_trash,
+    "decline_reveal_card_trash": apply_reveal_card_trash,
+    "place_reveal_spy": apply_reveal_spy_action,
+    "recall_spy_for_reveal": apply_reveal_spy_action,
+    "recall_spy_for_reveal_placement": apply_reveal_spy_action,
+    "recall_spies_for_reveal": apply_reveal_spy_action,
+    "gain_two_reveal_strength": apply_reveal_spy_action,
+    "decline_reveal_spy_recall": apply_reveal_spy_action,
+    "exchange_reveal_influence": apply_reveal_influence_exchange,
+    "decline_reveal_influence_exchange": apply_reveal_influence_exchange,
+    "pay_reveal_water_for_sandworm": apply_reveal_sandworm_action,
+    "decline_reveal_sandworm": apply_reveal_sandworm_action,
+    "pay_reveal_spice_influence": apply_reveal_spice_influence,
+    "decline_reveal_spice_influence": apply_reveal_spice_influence,
+    "retreat_two_troops_for_reveal": apply_reveal_troop_retreat,
+    "decline_reveal_troop_retreat": apply_reveal_troop_retreat,
+    # Contracts
+    "take_contract": apply_contract_action,
+    "place_contract_spy": apply_contract_spy_action,
+    "recall_spy_for_contract": apply_contract_spy_action,
+    # Round start and Combat
+    "deploy_control_defense": apply_control_defense_action,
+    "decline_control_defense": apply_control_defense_action,
+    "pass_combat_intrigue": apply_combat_intrigue_pass,
+    "pay_combat_reward": apply_combat_reward_optional_payment,
+    "recall_spies_for_combat_reward": apply_combat_reward_spy_recall,
+    "decline_combat_reward": _apply_decline_combat_reward,
+    "trash_combat_reward_card": apply_combat_reward_trash,
+    "decline_combat_reward_trash": apply_combat_reward_trash,
+    "place_combat_reward_spy": apply_combat_reward_spy,
+    "choose_combat_reward_influence": apply_combat_reward_influence,
+    "choose_distinct_combat_reward_influence": (
+        apply_distinct_combat_reward_influence
+    ),
+    # Endgame
+    "match_endgame_wild_icon": apply_endgame_wild_action,
+    "decline_endgame_wild_match": apply_endgame_wild_action,
+}
+
+
+class UprisingRulesEngine(RulesEngine):
+    """Connect the implemented rule modules into one multi-round state machine."""
 
     def __init__(self, leader_ids: tuple[str, ...] = DEFAULT_LEADER_IDS) -> None:
         self._leader_ids = leader_ids
@@ -184,361 +355,26 @@ class UprisingRulesEngine(RulesEngine):
         state: GameState,
         player: int,
     ) -> tuple[DomainAction, ...]:
-        """Return all currently supported actions for the decision owner."""
+        """Return the actions the top frame's providers offer to ``player``."""
 
-        contract_actions = legal_contract_actions(state, player)
-        if contract_actions:
-            return contract_actions
-
+        if not state.decision_stack:
+            return ()
+        frame = state.decision_stack[-1]
+        if not isinstance(frame.decision, PlayerDecision):
+            return ()
         try:
-            _, agent_context = current_agent_effect_context(state)
-        except ValueError:
-            pass
-        else:
-            agent_effect_actions = self._agent_effect_actions(state, player)
-            if agent_context.get("long_live_fighters_selection_started") is True:
-                # Long Live the Fighters is one atomic card effect. Once its
-                # private selection starts, no board/Faction/combat choice may
-                # be interleaved before the second card selection commits.
-                return agent_effect_actions
-            gather_intelligence_actions = legal_gather_intelligence_actions(
-                state, player
-            )
-            if gather_intelligence_actions:
-                return gather_intelligence_actions
-            return (
-                *agent_effect_actions,
-                *legal_contract_completion_actions(state, player),
-                *legal_espionage_actions(state, player),
-                *legal_sietch_tabr_actions(state, player),
-                *legal_maker_space_actions(state, player),
-                *legal_combat_deployments(state, player),
-            )
-
-        try:
-            current_reveal_context(state)
-        except ValueError:
-            pass
-        else:
-            return (
-                *legal_reserve_acquisitions(state, player),
-                *self._supported_imperium_acquisitions(state, player),
-                *legal_finish_reveal_actions(state, player),
-            )
-
-        actions: list[DomainAction] = []
-        actions.extend(legal_acquisition_spy_actions(state, player))
-        actions.extend(legal_contract_spy_actions(state, player))
-        actions.extend(legal_opponent_card_discard_actions(state, player))
-        actions.extend(legal_corrinth_city_reveal_actions(state, player))
-        actions.extend(legal_contract_reveal_choice_actions(state, player))
-        actions.extend(legal_reveal_card_trash_actions(state, player))
-        actions.extend(legal_reveal_spy_actions(state, player))
-        actions.extend(legal_reveal_influence_exchange_actions(state, player))
-        actions.extend(legal_reveal_sandworm_actions(state, player))
-        actions.extend(legal_reveal_spice_influence_actions(state, player))
-        actions.extend(legal_reveal_troop_retreat_actions(state, player))
-        actions.extend(legal_endgame_wild_actions(state, player))
-        actions.extend(legal_control_defense_actions(state, player))
-        actions.extend(self._supported_agent_actions(state, player))
-        actions.extend(legal_reveal_actions(state, player))
-        actions.extend(legal_combat_intrigue_actions(state, player))
-        actions.extend(legal_combat_reward_optional_payment_actions(state, player))
-        actions.extend(legal_combat_reward_spy_recall_actions(state, player))
-        actions.extend(legal_combat_reward_trash_actions(state, player))
-        actions.extend(legal_combat_reward_spy_actions(state, player))
-        actions.extend(legal_combat_reward_influence_actions(state, player))
-        actions.extend(legal_distinct_combat_reward_influence_actions(state, player))
-        return tuple(actions)
+            providers = LEGAL_ACTION_PROVIDERS[FrameKind(frame.kind)]
+        except (KeyError, ValueError) as error:
+            raise RuntimeError(f"unknown decision frame kind: {frame.kind}") from error
+        return tuple(
+            action for provider in providers for action in provider(state, player)
+        )
 
     def _apply_legal(self, state: GameState, action: DomainAction) -> RuleResult:
-        handlers = {
-            "decline_control_defense": apply_control_defense_action,
-            "decline_agent_card_payment": apply_agent_card_payment,
-            "decline_corrinth_city_payment": apply_corrinth_city_payment,
-            "decline_agent_card_intrigue_payment": (apply_agent_card_intrigue_payment),
-            "decline_agent_card_discard": apply_agent_card_discard,
-            "decline_agent_card_acquisition": apply_agent_card_acquisition,
-            "decline_agent_card_trash": apply_agent_card_trash,
-            "decline_endgame_wild_match": apply_endgame_wild_action,
-            "decline_gather_intelligence": apply_gather_intelligence_action,
-            "decline_reveal_spy_recall": apply_reveal_spy_action,
-            "decline_reveal_card_trash": apply_reveal_card_trash,
-            "decline_reveal_sandworm": apply_reveal_sandworm_action,
-            "gain_five_reveal_solari": apply_corrinth_city_reveal,
-            "keep_contract_reveal_spice": apply_contract_reveal_choice,
-            "trash_contract_reveal_for_vp": apply_contract_reveal_choice,
-            "take_high_council_from_reveal": apply_corrinth_city_reveal,
-            "take_contract": apply_contract_action,
-            "complete_contract": apply_contract_completion,
-            "place_contract_spy": apply_contract_spy_action,
-            "recall_spy_for_contract": apply_contract_spy_action,
-            "deploy_control_defense": apply_control_defense_action,
-            "agent_turn": apply_agent_action,
-            "reveal_turn": begin_reveal_turn,
-            "resolve_agent_card_effect": _apply_agent_card_effect,
-            "resolve_board_effect": _apply_board_effect,
-            "resolve_faction_influence": _apply_faction_influence,
-            "recall_spy_for_espionage": apply_espionage_action,
-            "resolve_espionage_place_spy": apply_espionage_action,
-            "resolve_espionage_without_spy": apply_espionage_action,
-            "take_sietch_tabr_supplies": apply_sietch_tabr_action,
-            "take_sietch_tabr_water": apply_sietch_tabr_action,
-            "take_sietch_tabr_water_and_destroy_wall": apply_sietch_tabr_action,
-            "harvest_maker_spice": apply_maker_space_action,
-            "match_endgame_wild_icon": apply_endgame_wild_action,
-            "summon_maker_sandworms": apply_maker_space_action,
-            "deploy_troops": apply_combat_deployment,
-            "acquire_reserve": apply_reserve_acquisition,
-            "acquire_imperium": apply_imperium_acquisition,
-            "acquire_imperium_with_solari": apply_agent_card_acquisition,
-            "acquire_reserve_with_solari": apply_agent_card_acquisition,
-            "place_acquisition_spy": apply_acquisition_spy_action,
-            "recall_spy_for_acquisition": apply_acquisition_spy_action,
-            "recall_spy_for_reveal": apply_reveal_spy_action,
-            "place_reveal_spy": apply_reveal_spy_action,
-            "recall_spy_for_reveal_placement": apply_reveal_spy_action,
-            "recall_spies_for_reveal": apply_reveal_spy_action,
-            "trash_reveal_card": apply_reveal_card_trash,
-            "decline_reveal_influence_exchange": apply_reveal_influence_exchange,
-            "exchange_reveal_influence": apply_reveal_influence_exchange,
-            "decline_reveal_spice_influence": apply_reveal_spice_influence,
-            "decline_reveal_troop_retreat": apply_reveal_troop_retreat,
-            "pay_reveal_spice_influence": apply_reveal_spice_influence,
-            "pay_reveal_water_for_sandworm": apply_reveal_sandworm_action,
-            "finish_reveal": finish_reveal_turn,
-            "gain_two_reveal_strength": apply_reveal_spy_action,
-            "retreat_two_troops_for_reveal": apply_reveal_troop_retreat,
-            "gather_intelligence": apply_gather_intelligence_action,
-            "pass_combat_intrigue": apply_combat_intrigue_pass,
-            "pay_agent_card_water": apply_agent_card_payment,
-            "pay_agent_card_spice": apply_agent_card_payment,
-            "pay_corrinth_city": apply_corrinth_city_payment,
-            "select_corrinth_city_discard": apply_corrinth_city_payment,
-            "pay_agent_card_intrigue_and_spice": (apply_agent_card_intrigue_payment),
-            "select_long_live_fighters_draw": apply_agent_card_long_live_action,
-            "select_long_live_fighters_discard": apply_agent_card_long_live_action,
-            "discard_agent_card": apply_agent_card_discard,
-            "discard_opponent_card": apply_opponent_card_discard,
-            "place_agent_card_spy": apply_agent_card_spy_action,
-            "recall_spy_for_agent_card": apply_agent_card_spy_action,
-            "recall_agent_for_agent_card": apply_agent_card_recall,
-            "decline_combat_reward": _apply_decline_combat_reward,
-            "pay_combat_reward": apply_combat_reward_optional_payment,
-            "recall_spies_for_combat_reward": apply_combat_reward_spy_recall,
-            "decline_combat_reward_trash": apply_combat_reward_trash,
-            "trash_combat_reward_card": apply_combat_reward_trash,
-            "trash_agent_card": apply_agent_card_trash,
-            "place_combat_reward_spy": apply_combat_reward_spy,
-            "choose_combat_reward_influence": apply_combat_reward_influence,
-            "choose_distinct_combat_reward_influence": (
-                apply_distinct_combat_reward_influence
-            ),
-            "choose_agent_card_influence": apply_agent_card_influence,
-        }
-        result = handlers[action.action_id](state, action)
-        return _advance_automatic(result)
+        return _advance_automatic(ACTION_HANDLERS[action.action_id](state, action))
 
     def observe(self, state: GameState, player: int) -> PlayerView:
         return observe_state(state, player)
-
-    def _supported_agent_actions(
-        self,
-        state: GameState,
-        player: int,
-    ) -> tuple[DomainAction, ...]:
-        return tuple(
-            action
-            for action in legal_agent_actions(state, player)
-            if _agent_action_is_supported(state, action)
-        )
-
-    def _supported_imperium_acquisitions(
-        self,
-        state: GameState,
-        player: int,
-    ) -> tuple[DomainAction, ...]:
-        return tuple(
-            action
-            for action in legal_imperium_acquisitions(state, player)
-            if (
-                not (
-                    definition := imperium_card_for_instance(
-                        str(dict(action.arguments)["instance_id"])
-                    )
-                ).has_acquisition_bonus
-                or definition.acquisition_effect is not None
-            )
-        )
-
-    def _agent_effect_actions(
-        self,
-        state: GameState,
-        player: int,
-    ) -> tuple[DomainAction, ...]:
-        try:
-            frame, context = current_agent_effect_context(state)
-        except ValueError:
-            return ()
-        if (
-            not isinstance(frame.decision, PlayerDecision)
-            or frame.decision.owner != player
-        ):
-            return ()
-        actions: list[DomainAction] = []
-        if context["pending_agent_effect"] is True:
-            long_live_actions = legal_agent_card_long_live_actions(state, player)
-            if context.get("long_live_fighters_selection_started") is True:
-                return long_live_actions
-            trash_actions = legal_agent_card_trash_actions(state, player)
-            discard_actions = legal_agent_card_discard_actions(state, player)
-            payment_actions = legal_agent_card_payment_actions(state, player)
-            corrinth_city_actions = legal_corrinth_city_payment_actions(
-                state,
-                player,
-            )
-            intrigue_payment_actions = legal_agent_card_intrigue_payment_actions(
-                state,
-                player,
-            )
-            recall_actions = legal_agent_card_recall_actions(state, player)
-            spy_actions = legal_agent_card_spy_actions(state, player)
-            influence_actions = legal_agent_card_influence_actions(state, player)
-            acquisition_actions = legal_agent_card_acquisitions(state, player)
-            choice_actions = (
-                *trash_actions,
-                *discard_actions,
-                *payment_actions,
-                *corrinth_city_actions,
-                *intrigue_payment_actions,
-                *recall_actions,
-                *spy_actions,
-                *influence_actions,
-                *acquisition_actions,
-            )
-            if choice_actions:
-                actions.extend(choice_actions)
-            else:
-                actions.append(
-                    DomainAction(action_id="resolve_agent_card_effect", actor=player)
-                )
-        if context["pending_board_effect"] is True and context["space_id"] not in (
-            "espionage",
-            "sietch_tabr",
-            "deep_desert",
-            "hagga_basin",
-            "imperial_basin",
-        ):
-            actions.append(DomainAction(action_id="resolve_board_effect", actor=player))
-        if context["pending_faction_influence"] is True:
-            actions.append(
-                DomainAction(action_id="resolve_faction_influence", actor=player)
-            )
-        return tuple(actions)
-
-
-def _agent_action_is_supported(state: GameState, action: DomainAction) -> bool:
-    arguments = dict(action.arguments)
-    card_id = arguments["card_id"]
-    space_id = arguments["space_id"]
-    if not isinstance(card_id, str) or not isinstance(space_id, str):
-        return False
-    card = personal_card_for_instance(card_id)
-    if card.agent_effect not in (
-        None,
-        PersonalCardAgentEffect.TRASH_SELF,
-        PersonalCardAgentEffect.TRASH_PERSONAL_CARD,
-        PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE,
-        PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND,
-        PersonalCardAgentEffect.MAY_TRASH_FOR_INTRIGUE_AND_TWO_TROOPS_IF_BENE_GESSERIT_ALLIANCE,
-        PersonalCardAgentEffect.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE,
-        PersonalCardAgentEffect.TRASH_SELF_AND_GAIN_CHOSEN_INFLUENCE,
-        PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE_IF_SPY_RECALLED_THIS_TURN,
-        PersonalCardAgentEffect.DRAW_PERSONAL_CARD,
-        PersonalCardAgentEffect.DRAW_PER_SANDWORM_IN_CONFLICT,
-        PersonalCardAgentEffect.LOOK_AT_TOP_THREE,
-        PersonalCardAgentEffect.GAIN_TWO_VISITED_FACTION_INFLUENCE_AND_TRASH_SELF,
-        PersonalCardAgentEffect.DISCARD_TO_DRAW_ONE_OR_TWO_IF_SPACING_GUILD,
-        PersonalCardAgentEffect.DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD,
-        PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD,
-        PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE_AND_INTRIGUE_IF_SPACING_GUILD,
-        PersonalCardAgentEffect.EACH_OPPONENT_DISCARDS_PERSONAL_CARD,
-        PersonalCardAgentEffect.GAIN_SPICE_IF_MAKER_SPACE,
-        PersonalCardAgentEffect.GAIN_TWO_SPICE_IF_MAKER_SPACE,
-        PersonalCardAgentEffect.GAIN_WATER,
-        PersonalCardAgentEffect.GAIN_TWO_SOLARI,
-        PersonalCardAgentEffect.PLACE_SPY,
-        PersonalCardAgentEffect.PLACE_SPY_ALLOW_SHARED_IF_SPYING_ON_VISITED_SPACE,
-        PersonalCardAgentEffect.RECRUIT_THREE_IF_SPY_RECALLED_THIS_TURN,
-        PersonalCardAgentEffect.RECRUIT_TWO_IF_SPY_RECALLED_THIS_TURN,
-        PersonalCardAgentEffect.DRAW_INTRIGUE_IF_SPY_RECALLED_THIS_TURN,
-        PersonalCardAgentEffect.DRAW_INTRIGUE_IF_THREE_UNITS_IN_CONFLICT,
-        PersonalCardAgentEffect.GAIN_WATER_IF_BENE_GESSERIT_BOND,
-        PersonalCardAgentEffect.GAIN_VISITED_FACTION_INFLUENCE,
-        PersonalCardAgentEffect.GAIN_BY_BENE_GESSERIT_AND_FREMEN_INFLUENCE_TWO,
-        PersonalCardAgentEffect.GAIN_BY_EMPEROR_AND_SPACING_GUILD_INFLUENCE_TWO,
-        PersonalCardAgentEffect.RECRUIT_TWO_IF_BENE_GESSERIT_BOND,
-        PersonalCardAgentEffect.RETURN_SELF_IF_BENE_GESSERIT_BOND,
-        PersonalCardAgentEffect.PAY_TWO_WATER_TO_DRAW_TWO,
-        PersonalCardAgentEffect.MAY_DISCARD_TWO_AND_PAY_FIVE_SOLARI_FOR_VP,
-        PersonalCardAgentEffect.MAY_TRASH_INTRIGUE_AND_PAY_TWO_SPICE_FOR_VP_IF_SPACING_GUILD_ALLIANCE,
-        PersonalCardAgentEffect.RECRUIT_ONE_IF_MAKER_SPACE,
-        PersonalCardAgentEffect.RECRUIT_TWO_TROOPS,
-        PersonalCardAgentEffect.DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO,
-        PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO,
-        PersonalCardAgentEffect.ACQUIRE_WITH_SOLARI_TO_HAND,
-        PersonalCardAgentEffect.TAKE_CONTRACT,
-        PersonalCardAgentEffect.MAY_DISCARD_TO_TAKE_CONTRACT,
-        PersonalCardAgentEffect.DRAW_PER_TWO_COMPLETED_CONTRACTS_UP_TO_TWO,
-        PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE,
-        PersonalCardAgentEffect.DRAW_ONE_AND_RECALL_AGENT,
-    ):
-        return False
-    if space_id in (
-        "espionage",
-        "sietch_tabr",
-        "deep_desert",
-        "hagga_basin",
-        "imperial_basin",
-    ):
-        return True
-    space = BOARD_SPACES_BY_ID[space_id]
-    requested_option = arguments.get("cost_option")
-    if isinstance(requested_option, int) and not isinstance(requested_option, bool):
-        cost_option = requested_option
-    elif space.dynamic_cost is DynamicCost.SWORDMASTER:
-        cost_option = int(any(player.swordmaster_acquired for player in state.players))
-    else:
-        cost_option = 0
-    try:
-        board_effects_for(state, space_id, cost_option)
-    except NotImplementedError:
-        return False
-    return True
-
-
-def _apply_agent_card_effect(state: GameState, action: DomainAction) -> RuleResult:
-    del action
-    return resolve_agent_card_effect(state)
-
-
-def _apply_board_effect(state: GameState, action: DomainAction) -> RuleResult:
-    del action
-    return resolve_board_effect(state)
-
-
-def _apply_faction_influence(state: GameState, action: DomainAction) -> RuleResult:
-    del action
-    return resolve_faction_influence(state)
-
-
-def _apply_decline_combat_reward(
-    state: GameState,
-    action: DomainAction,
-) -> RuleResult:
-    if state.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_OPTIONAL:
-        return apply_combat_reward_optional_payment(state, action)
-    return apply_combat_reward_spy_recall(state, action)
 
 
 def _advance_automatic(result: RuleResult) -> RuleResult:

@@ -3,13 +3,18 @@
 from dataclasses import replace
 
 from dune_imperium import RulesetConfig
+from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
+from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.core import (
     ChanceDecision,
     ChanceOutcome,
     ChanceResolver,
+    DecisionFrame,
     GamePhase,
     GameReplay,
+    GameState,
     PlayerDecision,
+    PlayerState,
     Resources,
     canonical_state_hash,
     replay_game,
@@ -353,3 +358,69 @@ def test_every_advertised_action_stays_in_the_supported_vertical_slice() -> None
         )
         assert result.state.phase is GamePhase.PLAYER_TURNS
         assert result.state.round_number == 2
+
+
+def _turn_state(hand: tuple[str, ...]) -> GameState:
+    return GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(
+            PlayerState(player_id=0, hand=hand, resources=Resources(spice=4)),
+            *(PlayerState(player_id=seat) for seat in range(1, 4)),
+        ),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+
+
+def test_engine_advertises_every_implemented_agent_card_effect() -> None:
+    haven = next(
+        instance_id
+        for instance_id in imperium_deck_instance_ids(False)
+        if ":smuggler_s_haven:" in instance_id
+    )
+    state = _turn_state((haven,))
+
+    destinations = {
+        dict(action.arguments)["space_id"]
+        for action in UprisingRulesEngine().legal_actions(state, 0)
+        if action.action_id == "agent_turn"
+    }
+
+    # Smuggler's Haven's Agent effect is implemented, so the dispatcher must
+    # advertise its placements instead of silently hiding the card.
+    assert "deliver_supplies" in destinations
+
+
+def test_engine_withholds_agent_actions_it_cannot_execute() -> None:
+    signet_ring = next(
+        instance_id
+        for instance_id in starting_deck_instance_ids(0)
+        if ":signet_ring:" in instance_id
+    )
+    diplomacy = next(
+        instance_id
+        for instance_id in starting_deck_instance_ids(0)
+        if ":diplomacy:" in instance_id
+    )
+    state = _turn_state((signet_ring, diplomacy))
+
+    actions = UprisingRulesEngine().legal_actions(state, 0)
+    agent_actions = [action for action in actions if action.action_id == "agent_turn"]
+
+    # Leader abilities are not implemented, so Signet Ring stays in hand.
+    assert all(dict(a.arguments)["card_id"] != signet_ring for a in agent_actions)
+    # Intrigue-driven board effects are not implemented, so those spaces are hidden
+    # from the dispatcher even though the rules module enumerates them.
+    destinations = {dict(a.arguments)["space_id"] for a in agent_actions}
+    assert "dutiful_service" in destinations
+    assert "secrets" not in destinations
+    assert "desert_tactics" not in destinations
+    assert any(action.action_id == "reveal_turn" for action in actions)

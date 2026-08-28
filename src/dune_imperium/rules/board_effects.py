@@ -30,6 +30,33 @@ from dune_imperium.rules.spy_placement import (
     recall_spy,
 )
 
+# Board spaces whose board effect is resolved through a dedicated choice rather
+# than the generic ``resolve_board_effect`` action.
+CHOICE_DRIVEN_SPACE_IDS = frozenset(
+    {"espionage", "sietch_tabr", "deep_desert", "hagga_basin", "imperial_basin"}
+)
+
+
+def board_effect_is_implemented(
+    state: GameState,
+    space_id: str,
+    cost_option: int,
+) -> bool:
+    """Return whether an Agent may be advertised for this paid board option.
+
+    Spaces whose printed effect still depends on unimplemented content (for
+    example Intrigue-driven spaces) are withheld from legal actions so that
+    every advertised action stays executable.
+    """
+
+    if space_id in CHOICE_DRIVEN_SPACE_IDS:
+        return True
+    try:
+        board_effects_for(state, space_id, cost_option)
+    except NotImplementedError:
+        return False
+    return True
+
 
 def board_effects_for(
     state: GameState,
