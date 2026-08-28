@@ -188,3 +188,9 @@ the card images: Imperium Politics offers Emperor or Spacing Guild Influence
 (not Spacing Guild/Bene Gesserit), and Backed by CHOAM's Combat half needs two
 completed Contracts (not four).
 
+The third batch transcribes Detonation and Unexpected Allies from their card
+images. DIU models Detonation's detonation half as `shield_active: false`
+and Unexpected Allies as a sandworm plus `shield_active: false`; locally the
+detonation icon is a detonate-or-keep choice because the rules make removing
+the token optional [Main pp. 10, 20].
+
