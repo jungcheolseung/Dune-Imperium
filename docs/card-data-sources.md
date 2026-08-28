@@ -213,3 +213,9 @@ re-checked at crop level before transcription. Inspire Awe's sandworm
 sentence is modeled as a destination override on the acquisition reward, not
 as a separate conditional section.
 
+The eighth batch transcribes Call to Arms from its card image ("During your
+Reveal turn this round, whenever you acquire a card:" plus a troop icon) as
+the first face-up triggered option. DIU (available locally again) models it
+as a `conditional_reward` with a `buy_imperium` condition, which matches the
+local per-acquisition trigger reading.
+

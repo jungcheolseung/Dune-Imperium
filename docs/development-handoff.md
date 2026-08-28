@@ -26,14 +26,14 @@ uv run ruff check src tests
 uv run mypy src tests
 ```
 
-2026-08-29의 기준 결과는 pytest 639개 통과, Ruff 통과, mypy 통과다. 현재 action
-codec은 `ACTION_CODEC_VERSION = 65`이며 기본 룰셋 catalog는 3,737개, CHOAM
-룰셋 catalog는 3,973개다.
+2026-08-29의 기준 결과는 pytest 645개 통과, Ruff 통과, mypy 통과다. 현재 action
+codec은 `ACTION_CODEC_VERSION = 66`이며 기본 룰셋 catalog는 3,738개, CHOAM
+룰셋 catalog는 3,974개다.
 
 ## 현재 구현 기준선
 
-마지막 기능 커밋은 `72335eb Play Impress and Inspire Awe through the DSL`이고,
-그 뒤에 이 슬라이스의 `Document ...` 커밋이 있다.
+마지막 기능 커밋은 `2de0d1b Play Call to Arms as a face-up Reveal-acquisition
+trigger`이고, 그 뒤에 이 슬라이스의 `Document ...` 커밋이 있다.
 
 - R0-M4는 완료됐다. 공식 규칙 자료, 엔진 커널, 4인 setup, 한 라운드 수직 조각,
   actor-neutral action codec과 PettingZoo AEC 계약이 있다.
@@ -45,13 +45,16 @@ codec은 `ACTION_CODEC_VERSION = 65`이며 기본 룰셋 catalog는 3,737개, CH
   완전한 play data가 있다(`implementation-audits/personal-cards.md`).
 - CHOAM standard contract 20장의 시장·완료·보상과 CHOAM 전용 Imperium 4종이
   연결돼 있다(`implementation-audits/contracts.md`).
-- Intrigue 44장 중 Plot 20종·Combat 11종(identity 28종)이 effect DSL로 전사돼
+- Intrigue 44장 중 Plot 21종·Combat 11종(identity 29종)이 effect DSL로 전사돼
   실제 play된다. Plot은 소유자의 `turn`/`agent_effects`/`reveal` frame에서, Combat은
   `combat_intrigue` frame의 priority 보유 참가자에게 제시된다. 선택이 필요한
   효과는 `intrigue_choice` frame의 슬롯으로 순차 해결한다. Impress와 Inspire
   Awe의 비용 상한 획득은 `AcquireCardUpTo` 슬롯으로 Row/Reserve에서 가져오며,
-  acquire box의 Spy 배치는 카드 해결 후 `acquisition_spy` frame을 재사용한다
-  (`implementation-audits/intrigue.md`).
+  acquire box의 Spy 배치는 카드 해결 후 `acquisition_spy` frame을 재사용한다.
+  Call to Arms는 첫 face-up trigger 카드로, play하면 공개 `intrigue_faceup`
+  존에서 대기하다가 소유자의 Reveal turn 획득마다 발동하고 그 Reveal 종료 시
+  만료된다(OQ-016, `rules/intrigue_triggers.py`,
+  `implementation-audits/intrigue.md`).
 - Intrigue deck 고갈 시 모든 draw 지점이 `pending_intrigue_draws` 큐를 거쳐
   replayable reshuffle chance로 해결된다.
 - 규칙 dispatcher는 `LEGAL_ACTION_PROVIDERS[FrameKind]`와 `ACTION_HANDLERS`
@@ -66,10 +69,11 @@ codec은 `ACTION_CODEC_VERSION = 65`이며 기본 룰셋 catalog는 3,737개, CH
 
 ## 아직 완성되지 않은 경계
 
-- Intrigue 11종 identity는 setup만 있고 play할 수 없다. 필요한 경계별로:
-  - turn 지속 트리거("이번 Reveal에서 획득할 때마다", "한 turn에 unit 3 배치 시",
-    "이번 turn에 spice를 얻었다면"): Call to Arms, Distraction ×2, Leverage(CHOAM;
-    카드 아이콘을 아직 확인하지 못함)
+- Intrigue 10종 identity는 setup만 있고 play할 수 없다. 필요한 경계별로:
+  - turn 트리거/조건 나머지: Distraction ×2("한 turn에 unit 3 이상 배치 시 다른
+    플레이어의 Spy가 있는 post에 Spy 배치 가능"), Leverage(CHOAM; "이번 turn에
+    spice를 얻었다면 Contract 1 + Solari 1" — 카드 이미지로 검증 완료, DIU의
+    "덱 draw 1" 기록은 오류)
   - Endgame timing(OQ-001): Crysknife, Desert Mouse, Ornithopter의 Endgame 절반,
     CHOAM Profits, Secure Spice Trade, Shadow Alliance
   - Imperium Row 교체와 할인 지속: Manipulate
@@ -104,16 +108,19 @@ codec은 `ACTION_CODEC_VERSION = 65`이며 기본 룰셋 catalog는 3,737개, CH
 
 Intrigue 세부 순서(권장):
 
-1. **turn 트리거** — Call to Arms("이번 Reveal에서 획득할 때마다 troop 1"),
-   Distraction("한 turn에 unit 3 이상 배치 시 상대 Spy와 같은 post에 Spy 배치").
-   FAQ p. 2대로 다음 Reveal까지 face-up으로 두는 지속 효과 상태가 필요하다
-   (`PlayerState`에 pending Plot 효과 목록). Leverage는 먼저 카드 이미지를 확인한다
-   (`https://dunecardshub.com/images/uprising-intrigue-leverage.webp`).
-   핸드오프의 카드 요약은 이미지 검증 전 참고일 뿐이다(Impress의 비용 상한이
-   4로 잘못 적혔다가 카드 이미지로 3임을 확인한 전례가 있다).
-2. **Endgame Intrigue** — OQ-001의 참가 순서·종료 조건·wild matching 시점을
+1. **Distraction** — `intrigue_faceup` 존과 [Main p. 12]의 "unit = troop +
+   sandworm, sandworm은 summon 시 즉시 deploy" 판정을 전제로, turn별 배치
+   카운터(frame context)와 배치 전이에서의 trigger interrupt, 다른 플레이어의
+   Spy가 있는 post에 놓는 새 Spy 배치 행동(codec 추가)이 필요하다. 거절 시
+   face-up 유지 여부는 OQ-016(c)로 정한다.
+2. **Leverage** — "이번 turn에 spice를 얻었다면"은 play 시점 조건으로 읽는다
+   (FAQ p. 2의 face-up 규칙은 "다음 Reveal까지 적용되지 않는 카드" 전용).
+   turn 시작 spice 스냅샷과 turn 중 spice 지출 카운터를 frame context에 더해
+   "이번 turn 총 획득 spice"를 계산한다. Harvest의 placement 기준 추적과는
+   별개로 유지한다.
+3. **Endgame Intrigue** — OQ-001의 참가 순서·종료 조건·wild matching 시점을
    convention으로 정한 뒤 Endgame frame에서 play한다. 카드 6종.
-3. Manipulate(custom hook), "이길 때" 카드.
+4. Manipulate(custom hook), "이길 때" 카드.
 
 각 묶음은 카드 이미지로 텍스트를 검증하고(`docs/card-data-sources.md`의 방법),
 `Play ...` / `Document ...` 커밋 쌍을 유지하며, 새 결정 경계는
@@ -170,16 +177,21 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에
 
 2026-08-29 작업 시작 시점의 `origin/master`는 `ed16d93 Refresh the development
 handoff for the next session`이고, 로컬 `master`에는 그 뒤 Impress·Inspire Awe
-슬라이스 커밋(`72335eb Play ...`와 이어지는 `Document ...`)이 있다. 새 세션은
-`git log origin/master..master`로 push 여부를 확인한다. checkout이 `ed16d93`
-이전이면 이 문서의 v65 action catalog, 3,737/3,973개 행동, 639개 테스트
-기준선이 실제 코드와 일치하지 않는다.
+슬라이스(`72335eb`, `d4ba179`)와 Call to Arms 슬라이스(`2de0d1b`와 이어지는
+`Document ...`)가 있다. 새 세션은 `git log origin/master..master`로 push 여부를
+확인한다. checkout이 이보다 이전이면 이 문서의 v66 action catalog,
+3,738/3,974개 행동, 645개 테스트 기준선이 실제 코드와 일치하지 않는다.
 
 ## 2026-08-29 세션 요약
 
 - Impress(Combat: 검 2 + 비용 3 이하 획득)와 Inspire Awe(Plot: 비용 3 이하 획득,
   sandworm이 Conflict에 있으면 hand로)를 카드 이미지로 검증해 전사했다. 이전
   핸드오프의 "Impress 비용 4"는 오기였다.
+- Call to Arms를 첫 face-up trigger로 전사했다: `IntrigueOption.trigger`,
+  공개 `PlayerState.intrigue_faceup` 존, `rules/intrigue_triggers.py`의
+  Reveal 획득 발동과 Reveal 종료 만료(OQ-016), codec v66. Distraction과
+  Leverage의 카드 이미지 검증도 마쳤다(Leverage 보상에 대한 DIU의 "덱 draw"
+  기록은 Contract 아이콘 오독이며, Reach Agreement 아이콘과 대조해 확정).
 - `AcquireCardUpTo(max_cost, to_hand_if)` DSL 보상과 `acquire_intrigue_imperium`
   / `acquire_intrigue_reserve` 선택 슬롯을 추가했다. Row 보충, acquire box 즉시
   처리, Spy 배치 box의 `acquisition_spy` frame 재사용(카드 해결 후 push),

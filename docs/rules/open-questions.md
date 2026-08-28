@@ -176,6 +176,22 @@
 3. 구현에 선택지가 남았다면 공식 규칙과 project convention의 명확한 구분
 4. 해당 edge case를 재현하는 scenario test
 
+## OQ-016 — face-up trigger Intrigue의 수명
+
+- 상태: `OPEN`
+- FAQ는 효과가 아직 적용되지 않는 Intrigue를 "그때까지 face up으로 두고, 그
+  다음 사용하고 discard한다"고 한다. 그러나 (a) trigger 창이 지나가도록 한 번도
+  발동하지 못한 카드(예: Call to Arms를 두고 Reveal에서 아무 카드도 acquire하지
+  않은 경우)를 언제 discard하는지, (b) "whenever" 반복 trigger의 discard 시점이
+  창의 끝인지 첫 발동인지, (c) 선택적 trigger("you may")를 거절하면 카드가
+  face up으로 남는지는 명시하지 않는다. `[FAQ p. 2]`
+- 필요한 답: face-up Intrigue의 만료와 거절 시 처리에 대한 공식 판정.
+- 구현 convention: (a)(b) 창이 명시된 카드(Call to Arms의 "이번 round의 자신의
+  Reveal turn")는 그 창이 닫힐 때(Reveal turn 종료) 발동 여부와 무관하게
+  discard한다. "whenever" trigger는 창이 닫힐 때까지 반복 발동한다.
+  `tests/unit/rules/test_intrigue.py`로 고정한다. (c)는 해당 카드(Distraction)
+  구현 시 정한다.
+
 ## OQ-015 — Intrigue의 Plot timing 시작점과 복수 비용 줄의 의무 지불
 
 - 상태: `OPEN`
