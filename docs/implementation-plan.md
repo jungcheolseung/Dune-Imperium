@@ -244,8 +244,8 @@ seeded random 4인 라운드를 실행하고 action replay로 최종 상태를 �
 
 상태: **완료** (2026-08-14, 현황 갱신 2026-08-28). 기본 룰셋은 versioned
 actor-neutral 정수 action catalog와 같은 폭의 legal action mask를 사용한다.
-현재 codec v58의 기본 룰셋은 3,377개 행동이며, CHOAM 룰셋은 contract 시장·완료·
-Spy·전용 Imperium 선택을 포함해 3,598개 행동이다. `dune_imperium_uprising_v0` AEC 환경은
+현재 codec v59의 기본 룰셋은 3,391개 행동이며, CHOAM 룰셋은 contract 시장·완료·
+Spy·전용 Imperium·Plot Intrigue 선택을 포함해 3,612개 행동이다. `dune_imperium_uprising_v0` AEC 환경은
 한 라운드를 episode로 실행하며 PettingZoo `api_test`와 `seed_test`를 통과한다.
 관측과 `info`에는 전체 `GameState`를 노출하지 않는다.
 
@@ -289,7 +289,7 @@ High Council·Swordmaster, 4인 Combat 순위와 기본 보상, Makers·Recall �
 - 시작 카드 7종, Reserve 2종(Prepare the Way, The Spice Must Flow), 기본
   Imperium 50종, CHOAM 전용 Imperium 4종의 play data를 모두 전사해 실제 Agent·
   Reveal·acquire 경로에 연결했다. codec은 Reserve Agent 행동의 v7에서 시작해
-  카드 묶음마다 올라 현재 v58이다.
+  카드 묶음마다 올라 현재 v59이다.
 - 카드 구현 과정에서 다음 공통 경계를 확립했다. 개인 카드 resolver, typed
   Reveal 효과 schema, Faction Bond·Influence 조건 판정, 선택형 획득 보너스,
   Spy 배치·회수와 turn 범위 recall 조건, hand discard·trash·deck-top 선택과
@@ -303,8 +303,10 @@ High Council·Swordmaster, 4인 Combat 순위와 기본 보상, Makers·Recall �
 
 남은 범위:
 
-- Intrigue 44장은 identity와 setup deck만 있고 Plot/Combat/Endgame play 효과가
-  없다.
+- Intrigue는 공통 play/discard 경계와 effect DSL이 있고 Plot 8종(Contingency
+  Plan, Councilor's Ambition, Depart for Arrakis, Intelligence Report, Market
+  Opportunity, Mercenaries, Shaddam's Favor, Strategic Stockpiling)이 실제 play
+  경로에 연결됐다. 나머지 31종 identity와 Combat/Endgame timing은 미구현이다.
 - Leader는 identity와 setup 선택만 있고 Signet Ring과 Leader 능력이 없다.
 - Objective는 4인 setup, First Player, battle icon 경로까지 연결됐으며 이후
   콘텐츠 상호작용은 다시 감사해야 한다.
@@ -442,8 +444,8 @@ M5의 보드 시스템과 multi-round 개인 덱 shuffle까지 구현했고 M6�
 identity·setup·공개 시장·완료·보상과 CHOAM 전용 Imperium 4종까지 연결했다. 다음
 작업은 아래 순서로 진행한다.
 
-1. Plot, Combat, Endgame Intrigue 타입과 공통 play/discard 경계를 만든 뒤 단순
-   Intrigue 효과부터 전사한다.
-2. Combat Intrigue와 Endgame Intrigue의 실제 카드 경로를 연결해 M5의 보류
-   경계를 줄인다.
+1. 남은 Plot Intrigue를 DSL로 전사한다. Faction 선택·discard·trash·Spy 배치
+   같은 선택형 비용은 기존 serial frame 경계를 DSL 비용으로 감싼다.
+2. Combat Intrigue play를 priority/pass loop에 연결하고 Endgame Intrigue를
+   OQ-001 경계로 확장해 M5의 보류 경계를 줄인다.
 3. Signet Ring과 기본 Leader 능력, Objective 효과를 구현한다.

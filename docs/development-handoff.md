@@ -26,15 +26,16 @@ uv run ruff check src tests
 uv run mypy src tests
 ```
 
-2026-08-28의 기준 결과는 pytest 577개 통과, Ruff 통과, mypy 통과다. 현재 action
-codec은 `ACTION_CODEC_VERSION = 58`이며 기본 룰셋 catalog는 3,377개, CHOAM
-룰셋 catalog는 3,598개다.
+2026-08-28의 기준 결과는 pytest 595개 통과, Ruff 통과, mypy 통과다. 현재 action
+codec은 `ACTION_CODEC_VERSION = 59`이며 기본 룰셋 catalog는 3,391개, CHOAM
+룰셋 catalog는 3,612개다.
 
 ## 현재 구현 기준선
 
-마지막 기능 커밋은 `b20d403 Play CHOAM Imperium cards`다. 그 뒤
-[`refactoring-plan.md`](refactoring-plan.md)의 A·B 단계(frame kind, 표 기반
-dispatch)와 Covert Operation deadlock 수정 `31d55f7`이 들어갔다.
+마지막 기능 커밋은 `3a5c650 Play the first Plot Intrigue batch through an effect
+DSL`이다. 그 앞에 [`refactoring-plan.md`](refactoring-plan.md)의 A·B 단계(frame
+kind, 표 기반 dispatch), Covert Operation deadlock 수정, Reserve copy ID 재발급
+수정이 있다.
 
 - R0-M4는 완료됐다. 공식 규칙 자료, 엔진 커널, 4인 setup, 한 라운드 수직 조각,
   actor-neutral action codec과 PettingZoo AEC 계약이 있다.
@@ -70,8 +71,9 @@ dispatch)와 Covert Operation deadlock 수정 `31d55f7`이 들어갔다.
 
 ## 아직 완성되지 않은 경계
 
-- Intrigue는 identity와 setup deck만 있으며 Plot/Combat/Endgame 실제 play 효과가
-  없다. Combat에는 참가자 priority/pass 틀만 있다.
+- Intrigue는 effect DSL과 Plot play 경계, 첫 Plot 8종이 있다. 나머지 31종과
+  Combat/Endgame timing은 없으며 Combat에는 참가자 priority/pass 틀만 있다.
+  세부는 [`implementation-audits/intrigue.md`](implementation-audits/intrigue.md).
 - Leader는 identity와 setup 선택만 있고 Signet Ring 및 Leader 능력은 없다.
 - Objective는 4인 setup, First Player, battle icon 경로가 구현됐지만 이후 콘텐츠
   상호작용은 다시 감사해야 한다.
@@ -96,8 +98,10 @@ standard contract와 CHOAM 전용 Imperium 수직 조각은 완료됐다. 다음
 2. Leader Signet Ring·기본 능력과 Shaddam 전용 Contract, 남은 Objective 상호작용
 3. 전체 게임 random/self-play runner와 PettingZoo episode 확장
 
-[`refactoring-plan.md`](refactoring-plan.md)의 A·B 단계는 끝났다. 바로 다음 작업은
-C 단계(effect DSL)를 겸한 Intrigue 공통 play/discard 경계와 첫 Plot 카드 묶음이다.
+[`refactoring-plan.md`](refactoring-plan.md)의 A·B 단계와 C 단계의 DSL·첫 Plot
+묶음은 끝났다. 바로 다음 작업은 선택형 비용(Faction 선택, discard, trash, Spy)을
+DSL에 추가해 남은 Plot Intrigue를 전사하는 것이고, 그 뒤 Combat Intrigue play를
+priority/pass loop에 연결한다.
 구현 단위는 다음 순서를 따른다.
 
 1. 44장 Intrigue identity를 Plot·Combat·Endgame과 복합 타입으로 분류하고, 공개
@@ -119,6 +123,7 @@ C 단계(effect DSL)를 겸한 Intrigue 공통 play/discard 경계와 첫 Plot �
 | Reveal과 acquire | `src/dune_imperium/rules/reveal_turn.py`, `acquisition.py` |
 | phase·Combat·Endgame | `src/dune_imperium/rules/phases.py`, `combat.py`, `endgame.py` |
 | dispatcher 표와 frame kind | `src/dune_imperium/rules/engine.py`, `frames.py`, `agent_effect_frame.py` |
+| effect DSL과 Intrigue | `content/uprising/effect_dsl.py`, `intrigue.py`, `rules/effect_interpreter.py`, `rules/intrigue.py`, `rules/intrigue_deck.py` |
 | 고정 action catalog | `src/dune_imperium/adapters/action_codec.py` |
 | 관측과 PettingZoo | `src/dune_imperium/core/observation.py`, `adapters/pettingzoo_env.py` |
 | replay와 random round | `src/dune_imperium/core/replay.py`, `simulation/runner.py` |
@@ -150,7 +155,7 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에
 ## 원격 저장소 인계 주의
 
 2026-08-28 기준 `origin/master`는 `61d5eda Implement CHOAM contract market`까지
-올라가 있고, 로컬 `master`에는 다음 커밋들이 아직 push되지 않았다(문서·리팩토링 커밋 포함).
+올라가 있었고, 이후 커밋은 push 여부를 `git log origin/master..master`로 확인한다.
 
 - `242bffb Document CHOAM contract market`
 - `cfdc4dd Complete standard CHOAM contracts`
@@ -159,8 +164,9 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에
 - `b71cec1 Document CHOAM Imperium cards`
 - `6d158a9 Drive the rules dispatcher from frame-kind tables`
 - `31d55f7 End the Agent turn after Covert Operation's last opponent discard`
+- `3a5c650 Play the first Plot Intrigue batch through an effect DSL`
 
 새 clone으로 이어받는다면 먼저 현재 `master`를 push해야 한다. 새 clone에서는
 `git log --oneline -5`에 `b71cec1`이 보이는지 확인한다. 이 커밋들이 없으면 문서에
-적힌 v58 action catalog, 3,598개 CHOAM 행동, 577개 테스트 기준선이 실제 코드와
+적힌 v59 action catalog, 3,612개 CHOAM 행동, 595개 테스트 기준선이 실제 코드와
 일치하지 않는다.

@@ -167,3 +167,20 @@
 2. 이 명세에서 바뀐 문장
 3. 구현에 선택지가 남았다면 공식 규칙과 project convention의 명확한 구분
 4. 해당 edge case를 재현하는 scenario test
+
+## OQ-015 — Intrigue의 Plot timing 시작점과 복수 비용 줄의 의무 지불
+
+- 상태: `OPEN`
+- Main은 Plot Intrigue를 자신의 Agent turn 또는 Reveal turn 도중 사용할 수 있다고
+  하고, FAQ는 Intrigue를 play하면 조건을 충족하고 비용을 지불해야 한다고 한다.
+  하지만 (a) Agent/Reveal 선택을 확정하기 전, 즉 turn이 막 시작된 시점이 "turn
+  도중"에 포함되는지, (b) Strategic Stockpiling처럼 비용 줄이 둘이고 그중 하나가
+  Influence 조건으로 열리는 카드에서 조건을 만족하면 두 비용을 모두 지불해야
+  하는지는 명시하지 않는다. `[Main pp. 7-8]` `[FAQ p. 2]`
+- 필요한 답: Plot play window의 시작점과, 조건부로 열린 두 번째 비용 줄의 의무
+  여부에 대한 공식 판정.
+- 구현 convention: (a) 소유자에게 turn 선택이 제시된 순간부터 Plot을 낼 수 있다.
+  (b) 조건이 성립한 모든 비용 줄은 의무이며, 전부 지불할 수 없으면 카드를 낼 수
+  없다. 두 판정 모두 프로젝트 convention이며 `tests/unit/rules/test_intrigue.py`로
+  고정한다.
+

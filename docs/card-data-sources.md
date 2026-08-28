@@ -166,3 +166,18 @@ Agent paths until its full local transcription and regression tests are ready.
   the lower right of a Conflict card, not the detonation effect icon available
   on cards and Sietch Tabr. The local field is named `shield_wall_protected` and
   Siege of Arrakeen is corrected to `True` from its printed card image.
+
+### Intrigue batches
+
+Intrigue effects are transcribed into the composable effect DSL rather than
+per-card enum members. DIU's `intrigue.JSON` (41 identities) supplies the
+initial condition/cost/reward shape; each card is then checked against the
+Dune Cards Hub card image (`https://dunecardshub.com/images/uprising-intrigue-<slug>.webp`),
+which is fetched for review only and never stored in the repository.
+
+The first batch transcribes Contingency Plan, Councilor's Ambition, Depart for
+Arrakis, Intelligence Report, Market Opportunity, Mercenaries, Shaddam's Favor
+and Strategic Stockpiling. DIU models Shaddam's Favor's unconditional troop as
+a bare effect outside the Plot action and Contingency Plan as a required
+choice; both are normalised into DSL options and sections locally.
+

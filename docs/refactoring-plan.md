@@ -70,7 +70,7 @@ turn 중 Plot", "Combat priority", "Endgame" 등 새 frame kind가 여러 개 �
 | --- | --- | --- | --- |
 | A | frame `kind` 도입, `rules/frames.py` helper 집약, `_replace_player` 통합 | 낮음 | 완료 (2026-08-28) |
 | B | frame kind 표 기반 dispatch, 화이트리스트 제거, legal 우선순위 명시화 | 낮음 | 완료 (2026-08-28) |
-| C | effect DSL 설계 → Intrigue를 DSL로 구현 → Imperium 점진 이관 | 중간 | Intrigue와 함께 |
+| C | effect DSL 설계 → Intrigue를 DSL로 구현 → Imperium 점진 이관 | 중간 | 진행 중 (DSL·첫 Plot 묶음 2026-08-28) |
 
 A와 B는 codec version 변경 없이 기존 테스트로 검증한다. 각 단계는 작은 커밋
 단위로 나누고, 상태 hash·replay 테스트가 깨지지 않는지 매 커밋에서 확인한다.
@@ -95,3 +95,15 @@ A와 B는 codec version 변경 없이 기존 테스트로 검증한다. 각 단�
 새 결정 경계를 추가할 때는 `FrameKind` 멤버, frame 생성 시 `kind`, 두 dispatch 표의
 항목, codec catalog를 함께 추가한다. 다음은 C 단계(effect DSL)이며 Intrigue와 함께
 진행한다.
+
+## C 진행 (2026-08-28)
+
+- `content/uprising/effect_dsl.py`에 Condition × Cost × Reward × Section × Option
+  DSL을, `rules/effect_interpreter.py`에 범용 해석기를 두고 Intrigue 첫 Plot 묶음
+  8종을 DSL만으로 전사했다. 자세한 판정은
+  [`implementation-audits/intrigue.md`](implementation-audits/intrigue.md)에 있다.
+- `rules/intrigue_deck.py`가 Intrigue draw와 discard reshuffle의 공통 경계다.
+  board effect·combat reward·card trigger의 기존 직접 draw 10곳은 아직 이 경계로
+  옮기지 않았다(다음 정리 항목).
+- Imperium enum 멤버의 DSL 이관은 Intrigue 전사가 끝난 뒤 단순한 것부터 시작한다.
+
