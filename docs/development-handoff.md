@@ -26,14 +26,14 @@ uv run ruff check src tests
 uv run mypy src tests
 ```
 
-2026-08-29의 기준 결과는 pytest 653개 통과, Ruff 통과, mypy 통과다. 현재 action
-codec은 `ACTION_CODEC_VERSION = 67`이며 기본 룰셋 catalog는 3,767개, CHOAM
-룰셋 catalog는 4,003개다.
+2026-08-29의 기준 결과는 pytest 655개 통과, Ruff 통과, mypy 통과다. 현재 action
+codec은 `ACTION_CODEC_VERSION = 68`이며 기본 룰셋 catalog는 3,767개, CHOAM
+룰셋 catalog는 4,004개다.
 
 ## 현재 구현 기준선
 
-마지막 기능 커밋은 `a3569af Play Distraction as a face-up deployment
-trigger`이고, 그 뒤에 이 슬라이스의 `Document ...` 커밋이 있다.
+마지막 기능 커밋은 `736688f Play Leverage on the Spice gained during the
+turn`이고, 그 뒤에 이 슬라이스의 `Document ...` 커밋이 있다.
 
 - R0-M4는 완료됐다. 공식 규칙 자료, 엔진 커널, 4인 setup, 한 라운드 수직 조각,
   actor-neutral action codec과 PettingZoo AEC 계약이 있다.
@@ -45,7 +45,7 @@ trigger`이고, 그 뒤에 이 슬라이스의 `Document ...` 커밋이 있다.
   완전한 play data가 있다(`implementation-audits/personal-cards.md`).
 - CHOAM standard contract 20장의 시장·완료·보상과 CHOAM 전용 Imperium 4종이
   연결돼 있다(`implementation-audits/contracts.md`).
-- Intrigue 44장 중 Plot 22종·Combat 11종(identity 30종)이 effect DSL로 전사돼
+- Intrigue 44장 중 Plot 23종·Combat 11종(identity 31종)이 effect DSL로 전사돼
   실제 play된다. Plot은 소유자의 `turn`/`agent_effects`/`reveal` frame에서, Combat은
   `combat_intrigue` frame의 priority 보유 참가자에게 제시된다. 선택이 필요한
   효과는 `intrigue_choice` frame의 슬롯으로 순차 해결한다. Impress와 Inspire
@@ -72,9 +72,7 @@ trigger`이고, 그 뒤에 이 슬라이스의 `Document ...` 커밋이 있다.
 
 ## 아직 완성되지 않은 경계
 
-- Intrigue 9종 identity는 setup만 있고 play할 수 없다. 필요한 경계별로:
-  - turn 조건 나머지: Leverage(CHOAM; "이번 turn에 spice를 얻었다면 Contract 1
-    + Solari 1" — 카드 이미지로 검증 완료, DIU의 "덱 draw 1" 기록은 오류)
+- Intrigue 8종 identity는 setup만 있고 play할 수 없다. 필요한 경계별로:
   - Endgame timing(OQ-001): Crysknife, Desert Mouse, Ornithopter의 Endgame 절반,
     CHOAM Profits, Secure Spice Trade, Shadow Alliance
   - Imperium Row 교체와 할인 지속: Manipulate
@@ -109,15 +107,11 @@ trigger`이고, 그 뒤에 이 슬라이스의 `Document ...` 커밋이 있다.
 
 Intrigue 세부 순서(권장):
 
-1. **Leverage** — "이번 turn에 spice를 얻었다면"은 play 시점 조건으로 읽는다
-   (FAQ p. 2의 face-up 규칙은 "다음 Reveal까지 적용되지 않는 카드" 전용).
-   turn 시작 spice 스냅샷과 turn 중 spice 지출 카운터를 더해 "이번 turn 총
-   획득 spice"를 계산한다(Distraction의 `units_deployed_turn`처럼 PlayerState
-   카운터가 frame context보다 견고하다). Harvest의 placement 기준 추적과는
-   별개로 유지한다.
-2. **Endgame Intrigue** — OQ-001의 참가 순서·종료 조건·wild matching 시점을
-   convention으로 정한 뒤 Endgame frame에서 play한다. 카드 6종.
-3. Manipulate(custom hook), "이길 때" 카드.
+1. **Endgame Intrigue** — OQ-001의 참가 순서·종료 조건·wild matching 시점을
+   convention으로 정한 뒤 Endgame frame에서 play한다. 카드 6종(Crysknife,
+   Desert Mouse, Ornithopter, CHOAM Profits, Secure Spice Trade,
+   Shadow Alliance). 각 카드 이미지를 먼저 검증한다.
+2. Manipulate(custom hook), "이길 때" 카드(Spring the Trap 등 카드 확인 필요).
 
 각 묶음은 카드 이미지로 텍스트를 검증하고(`docs/card-data-sources.md`의 방법),
 `Play ...` / `Document ...` 커밋 쌍을 유지하며, 새 결정 경계는
@@ -175,10 +169,11 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에
 2026-08-29 작업 시작 시점의 `origin/master`는 `ed16d93 Refresh the development
 handoff for the next session`이고, 로컬 `master`에는 그 뒤 Impress·Inspire Awe
 슬라이스(`72335eb`, `d4ba179`), Call to Arms 슬라이스(`2de0d1b`, `b8707d3`),
-Distraction 슬라이스(`a3569af`와 이어지는 `Document ...`)가 있다. 새 세션은
-`git log origin/master..master`로 push 여부를 확인한다. checkout이 이보다
-이전이면 이 문서의 v67 action catalog, 3,767/4,003개 행동, 653개 테스트
-기준선이 실제 코드와 일치하지 않는다.
+Distraction 슬라이스(`a3569af`, `d724b98`), Leverage 슬라이스(`736688f`와
+이어지는 `Document ...`)가 있다. 새 세션은 `git log origin/master..master`로
+push 여부를 확인한다. checkout이 이보다 이전이면 이 문서의 v68 action
+catalog, 3,767/4,004개 행동, 655개 테스트 기준선이 실제 코드와 일치하지
+않는다.
 
 ## 2026-08-29 세션 요약
 
@@ -194,6 +189,11 @@ Distraction 슬라이스(`a3569af`와 이어지는 `Document ...`)가 있다. �
   카운터(6개 배치 지점, Control defense 제외), dispatcher 전이 후
   `intrigue_trigger_spy` frame 제시, 다른 플레이어 Spy가 있는 post에의 공유
   배치와 recall-first, 거절 시 face-up 유지(OQ-016(c)), codec v67.
+- Leverage를 play 시점 조건으로 전사했다: `spice_at_turn_start` 스냅샷 +
+  `spice_spent_turn` 카운터(지출 5지점)로 "이번 turn 총 획득 spice"를
+  계산하고, 조건 성립 시 Contract 1 + Solari 1을 준다. Harvest의 placement
+  기준 회계와는 분리 유지. codec v68. 이로써 turn 트리거/조건 3종 묶음이
+  끝났고 남은 Intrigue는 Endgame 6종과 Manipulate·Spring the Trap이다.
 - `AcquireCardUpTo(max_cost, to_hand_if)` DSL 보상과 `acquire_intrigue_imperium`
   / `acquire_intrigue_reserve` 선택 슬롯을 추가했다. Row 보충, acquire box 즉시
   처리, Spy 배치 box의 `acquisition_spy` frame 재사용(카드 해결 후 push),

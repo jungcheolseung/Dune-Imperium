@@ -244,8 +244,8 @@ seeded random 4인 라운드를 실행하고 action replay로 최종 상태를 �
 
 상태: **완료** (2026-08-14, 현황 갱신 2026-08-28). 기본 룰셋은 versioned
 actor-neutral 정수 action catalog와 같은 폭의 legal action mask를 사용한다.
-현재 codec v67의 기본 룰셋은 3,767개 행동이며, CHOAM 룰셋은 contract 시장·완료·
-Spy·전용 Imperium·Intrigue 선택을 포함해 4,003개 행동이다. `dune_imperium_uprising_v0` AEC 환경은
+현재 codec v68의 기본 룰셋은 3,767개 행동이며, CHOAM 룰셋은 contract 시장·완료·
+Spy·전용 Imperium·Intrigue 선택을 포함해 4,004개 행동이다. `dune_imperium_uprising_v0` AEC 환경은
 한 라운드를 episode로 실행하며 PettingZoo `api_test`와 `seed_test`를 통과한다.
 관측과 `info`에는 전체 `GameState`를 노출하지 않는다.
 
@@ -304,8 +304,8 @@ High Council·Swordmaster, 4인 Combat 순위와 기본 보상, Makers·Recall �
 남은 범위:
 
 - Intrigue는 공통 play/discard 경계, effect DSL, 선택 슬롯 frame, Combat priority
-  loop 안의 play가 있고 Plot 22종·Combat 11종이 실제 play 경로에 연결됐다(목록은
-  [Intrigue audit](implementation-audits/intrigue.md)). 나머지 9종 identity와
+  loop 안의 play가 있고 Plot 23종·Combat 11종이 실제 play 경로에 연결됐다(목록은
+  [Intrigue audit](implementation-audits/intrigue.md)). 나머지 8종 identity와
   Endgame timing은 미구현이다.
 - Leader는 identity와 setup 선택만 있고 Signet Ring과 Leader 능력이 없다.
 - Objective는 4인 setup, First Player, battle icon 경로까지 연결됐으며 이후

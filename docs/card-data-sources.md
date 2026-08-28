@@ -166,6 +166,9 @@ Agent paths until its full local transcription and regression tests are ready.
   the lower right of a Conflict card, not the detonation effect icon available
   on cards and Sietch Tabr. The local field is named `shield_wall_protected` and
   Siege of Arrakeen is corrected to `True` from its printed card image.
+- DIU records Leverage's second reward as drawing one personal card. The
+  printed card shows the CHOAM Contract icon (identical to Reach Agreement's),
+  so the local transcription takes one Contract.
 
 ### Intrigue batches
 
@@ -224,4 +227,11 @@ deploy three or more units to the Conflict in a single turn:" then "You may
 place this Spy on the same observation post as another player's Spy."). DIU
 models it as a `deploy_units amount 3` condition with a `shared_post` Spy
 reward, matching the local trigger and the shared-post placement.
+
+The tenth batch transcribes Leverage from its card image ("If you gained
+spice this turn:" then the CHOAM Contract icon and a one-Solari coin). DIU's
+`gained_resource_this_turn` check matches, but its reward list gives one
+Solari and a personal-card draw; the left icon is identical to Reach
+Agreement's printed Contract icon, so the local transcription takes a
+Contract instead.
 
