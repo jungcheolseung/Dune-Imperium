@@ -11,6 +11,7 @@ from dataclasses import dataclass, replace
 
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
+    AcquireCardUpTo,
     CompletedContractsAtLeast,
     Condition,
     DeployFromGarrison,
@@ -43,6 +44,10 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
+from dune_imperium.rules.acquisition import (
+    acquirable_imperium_instance_ids,
+    acquirable_reserve_card_ids,
+)
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effects import recruit_troops
@@ -65,6 +70,7 @@ type ChoiceSlot = (
     | DeployFromGarrison
     | TrashPersonalCard
     | PlaceSpy
+    | AcquireCardUpTo
 )
 
 
@@ -183,6 +189,7 @@ def choice_slots(
                     | TrashPersonalCard()
                     | PlaceSpy()
                     | RetreatTroops()
+                    | AcquireCardUpTo()
                 ):
                     slots.append(reward)
                 case _:
@@ -271,6 +278,11 @@ def _choice_rewards_feasible(
                     return False
                 case TakeContract() if not state.config.choam_module:
                     return False
+                case AcquireCardUpTo(max_cost=max_cost) if not (
+                    acquirable_reserve_card_ids(state, max_cost)
+                    or acquirable_imperium_instance_ids(state, max_cost)
+                ):
+                    return False
                 case _:
                     pass
     return True
@@ -318,7 +330,8 @@ def automatic_rewards(sections: tuple[EffectSection, ...]) -> tuple[Reward, ...]
             | DeployFromGarrison
             | TrashPersonalCard
             | PlaceSpy
-            | RetreatTroops,
+            | RetreatTroops
+            | AcquireCardUpTo,
         )
     )
 

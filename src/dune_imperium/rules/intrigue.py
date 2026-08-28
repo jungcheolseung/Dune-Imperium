@@ -15,6 +15,7 @@ from dataclasses import replace
 
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
+    AcquireCardUpTo,
     DeployFromGarrison,
     DestroyShieldWall,
     DiscardFromHand,
@@ -39,15 +40,24 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
+from dune_imperium.rules.acquisition import (
+    acquirable_imperium_instance_ids,
+    acquirable_reserve_card_ids,
+    acquire_imperium_for_intrigue,
+    acquire_reserve_for_intrigue,
+    acquisition_spy_frame,
+)
 from dune_imperium.rules.card_discard import discard_personal_card_from_hand
 from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.combat import refresh_combat_participants
+from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effect_interpreter import (
     ChoiceSlot,
     applicable_sections,
     apply_rewards,
     automatic_rewards,
     choice_slots,
+    condition_holds,
     option_is_playable,
     pay_cost,
     resource_cost,
@@ -113,10 +123,14 @@ def legal_intrigue_play_actions(
         for index, option in enumerate(entry.options):
             if option.timing is not timing:
                 continue
-            if frame.kind == FrameKind.REVEAL and _draws_personal_cards(owner, option):
-                # Cards drawn during a Reveal turn must be revealed at once
-                # [FAQ p. 3]; that boundary is not implemented, so such
-                # options are withheld until the Reveal is over.
+            if frame.kind == FrameKind.REVEAL and (
+                _draws_personal_cards(owner, option)
+                or _acquires_to_hand(owner, option)
+            ):
+                # Cards entering the hand during a Reveal turn must be
+                # revealed at once [FAQ p. 3]; that boundary is not
+                # implemented, so such options are withheld until the
+                # Reveal is over.
                 continue
             if option_is_playable(state, player, option):
                 actions.append(
@@ -316,6 +330,23 @@ def legal_intrigue_choice_actions(
                 )
                 for count in range(minimum, limit + 1)
             )
+        case AcquireCardUpTo(max_cost=max_cost):
+            actions.extend(
+                DomainAction(
+                    action_id="acquire_intrigue_reserve",
+                    actor=player,
+                    arguments=(("card_id", card_id),),
+                )
+                for card_id in acquirable_reserve_card_ids(state, max_cost)
+            )
+            actions.extend(
+                DomainAction(
+                    action_id="acquire_intrigue_imperium",
+                    actor=player,
+                    arguments=(("instance_id", instance_id),),
+                )
+                for instance_id in acquirable_imperium_instance_ids(state, max_cost)
+            )
         case PlaceSpy():
             targets = spy_placement_targets(state, player, slot)
             if owner.spies_supply > 0 and targets:
@@ -357,6 +388,10 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
     step_source = f"{source}:slot:{slot_index}"
 
     match slot:
+        case AcquireCardUpTo():
+            return _apply_intrigue_acquisition(
+                state, frame, context, player, slot, action, step_source
+            )
         case LoseInfluence():
             faction = Faction(str(arguments["faction"]))
             recipient = arguments.get("alliance_recipient")
@@ -463,6 +498,74 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
         state=finished.state,
         events=(*result.events, *finished.events),
     )
+
+
+def _apply_intrigue_acquisition(
+    state: GameState,
+    frame: DecisionFrame,
+    context: dict[str, ActionValue],
+    player: int,
+    slot: AcquireCardUpTo,
+    action: DomainAction,
+    step_source: str,
+) -> RuleResult:
+    """Resolve an acquisition slot, finishing the card before follow-up frames.
+
+    The slot advances on the choice frame before the card moves, so the frame
+    is never buried. An acquire box that needs its own decision (a Spy post,
+    the Contract market) opens only after the Intrigue card has resolved and
+    reached the discard, exactly as those bonuses stack on the Reveal and
+    Price is No Object acquisition paths [Main p. 20].
+    """
+
+    card_id = context_str(context, "card_id", owner=_CHOICE_FRAME)
+    source = context_str(context, "source", owner=_CHOICE_FRAME)
+    slot_index = context_int(context, "slot", owner=_CHOICE_FRAME)
+    owner = state.players[player]
+    # "Put that card in your hand" overrides the discard destination only
+    # while its printed condition holds at resolution time.
+    to_hand = slot.to_hand_if is not None and condition_holds(owner, slot.to_hand_if)
+    context["slot"] = slot_index + 1
+    advanced = replace_top_frame(state, with_context(frame, context))
+    arguments = dict(action.arguments)
+    if action.action_id == "acquire_intrigue_reserve":
+        acquired = acquire_reserve_for_intrigue(
+            advanced,
+            player,
+            str(arguments["card_id"]),
+            to_hand=to_hand,
+            source=step_source,
+        )
+    else:
+        acquired = acquire_imperium_for_intrigue(
+            advanced,
+            player,
+            str(arguments["instance_id"]),
+            to_hand=to_hand,
+            source=step_source,
+        )
+    next_state = acquired.result.state
+    events = acquired.result.events
+    top = top_frame(next_state)
+    if top is None or top.frame_id != frame.frame_id:
+        raise RuntimeError("Intrigue acquisition buried its choice frame")
+    if slot_index + 1 >= len(_slots(context)):
+        finished = _finish_play(
+            next_state.pop_decision(), player, card_id, _sections(context), source
+        )
+        next_state = finished.state
+        events = (*events, *finished.events)
+    if acquired.places_spy:
+        next_state = next_state.push_decision(
+            acquisition_spy_frame(next_state, player, acquired.instance_id)
+        )
+    elif acquired.takes_contract:
+        contracts = begin_contract_gain(
+            next_state, player, 1, source=f"{step_source}:acquisition_bonus"
+        )
+        next_state = contracts.state
+        events = (*events, *contracts.events)
+    return RuleResult(state=next_state, events=events)
 
 
 def _finish_play(
@@ -605,6 +708,16 @@ def _deploy_units(
 def _draws_personal_cards(owner: PlayerState, option: IntrigueOption) -> bool:
     return any(
         isinstance(reward, DrawPersonalCards)
+        for section in applicable_sections(owner, option)
+        for reward in section.rewards
+    )
+
+
+def _acquires_to_hand(owner: PlayerState, option: IntrigueOption) -> bool:
+    return any(
+        isinstance(reward, AcquireCardUpTo)
+        and reward.to_hand_if is not None
+        and condition_holds(owner, reward.to_hand_if)
         for section in applicable_sections(owner, option)
         for reward in section.rewards
     )

@@ -11,6 +11,7 @@ from dune_imperium.content.schema import (
 )
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
+    AcquireCardUpTo,
     CompletedContractsAtLeast,
     DeployFromGarrison,
     DestroyShieldWall,
@@ -275,8 +276,34 @@ INTRIGUE_CARDS: Final = (
             ),
         ),
     ),
-    _entry(152, "impress", "Impress"),
-    _entry(148, "inspire-awe", "Inspire Awe"),
+    _entry(
+        152,
+        "impress",
+        "Impress",
+        options=(
+            _combat(
+                EffectSection(
+                    rewards=(GainCombatStrength(2), AcquireCardUpTo(3)),
+                )
+            ),
+        ),
+    ),
+    _entry(
+        148,
+        "inspire-awe",
+        "Inspire Awe",
+        options=(
+            _plot(
+                EffectSection(
+                    rewards=(
+                        AcquireCardUpTo(
+                            3, to_hand_if=SandwormsInConflictAtLeast(1)
+                        ),
+                    ),
+                )
+            ),
+        ),
+    ),
     _entry(
         142,
         "intelligence-report",

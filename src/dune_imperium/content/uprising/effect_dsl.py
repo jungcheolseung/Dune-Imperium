@@ -348,6 +348,24 @@ class TakeContract:
             raise ValueError("Contract count must be positive")
 
 
+@dataclass(frozen=True, slots=True)
+class AcquireCardUpTo:
+    """Acquire one Imperium Row or Reserve card costing at most ``max_cost``.
+
+    No Persuasion is spent; the printed cost cap limits the choice among the
+    five Row cards and the Reserve stacks [Main p. 13]. The card lands in the
+    owner's discard pile [Main pp. 6, 13] unless ``to_hand_if`` holds when the
+    acquisition resolves, in which case the card text puts it in hand.
+    """
+
+    max_cost: int
+    to_hand_if: Condition | None = None
+
+    def __post_init__(self) -> None:
+        if self.max_cost < 1:
+            raise ValueError("acquisition cost cap must be positive")
+
+
 type Reward = (
     GainResources
     | GainVictoryPoints
@@ -363,6 +381,7 @@ type Reward = (
     | PlaceSpy
     | RetreatTroops
     | TakeContract
+    | AcquireCardUpTo
 )
 
 

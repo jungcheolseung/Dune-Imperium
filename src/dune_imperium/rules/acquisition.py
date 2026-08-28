@@ -362,7 +362,7 @@ def _acquire_imperium_to_hand_with_solari(
             prepared,
             decision_stack=(
                 *prepared.decision_stack,
-                _acquisition_spy_frame(state, action.actor, instance_id),
+                acquisition_spy_frame(state, action.actor, instance_id),
             ),
         )
     elif takes_contract:
@@ -592,7 +592,7 @@ def apply_imperium_acquisition(
     if places_spy:
         decision_stack = (
             *decision_stack,
-            _acquisition_spy_frame(state, action.actor, instance_id),
+            acquisition_spy_frame(state, action.actor, instance_id),
         )
     next_state = replace(
         state,
@@ -774,11 +774,13 @@ def next_reserve_instance_id(state: GameState, card_id: str) -> str:
     raise RuntimeError("every Reserve copy is already owned")
 
 
-def _acquisition_spy_frame(
+def acquisition_spy_frame(
     state: GameState,
     player: int,
     instance_id: str,
 ) -> DecisionFrame:
+    """Return the follow-up frame for a place-Spy acquisition bonus."""
+
     return DecisionFrame(
         kind=FrameKind.ACQUISITION_SPY,
         frame_id=(
@@ -795,6 +797,188 @@ def _acquisition_spy_frame(
         ),
     )
 
+
+
+def acquirable_reserve_card_ids(
+    state: GameState,
+    max_cost: int,
+) -> tuple[str, ...]:
+    """Return non-empty Reserve stacks whose printed cost is within the cap."""
+
+    return tuple(
+        card_id
+        for card_id, count in state.reserve_stacks
+        if count > 0 and RESERVE_STACKS_BY_ID[card_id].acquisition_cost <= max_cost
+    )
+
+
+def acquirable_imperium_instance_ids(
+    state: GameState,
+    max_cost: int,
+) -> tuple[str, ...]:
+    """Return Imperium Row cards within the cap whose bonus is implemented."""
+
+    return tuple(
+        instance_id
+        for instance_id in state.imperium_row
+        if (
+            (definition := imperium_card_for_instance(instance_id)).acquisition_cost
+            is not None
+            and definition.acquisition_cost <= max_cost
+            and (
+                not definition.has_acquisition_bonus
+                or definition.acquisition_effect is not None
+            )
+        )
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class IntrigueAcquisition:
+    """One card acquired by an Intrigue effect, before its follow-up frames.
+
+    ``places_spy`` and ``takes_contract`` report acquire-box bonuses whose
+    frames the caller pushes once the Intrigue card itself has resolved.
+    """
+
+    result: RuleResult
+    instance_id: str
+    places_spy: bool = False
+    takes_contract: bool = False
+
+
+def acquire_reserve_for_intrigue(
+    state: GameState,
+    player: int,
+    card_id: str,
+    *,
+    to_hand: bool,
+    source: str,
+) -> IntrigueAcquisition:
+    """Acquire one Reserve card without Persuasion for an Intrigue effect."""
+
+    definition = RESERVE_STACKS_BY_ID[card_id]
+    instance_id = next_reserve_instance_id(state, card_id)
+    owner = state.players[player]
+    destination = "hand" if to_hand else "discard"
+    next_owner = replace(
+        owner,
+        hand=(*owner.hand, instance_id) if to_hand else owner.hand,
+        discard_pile=(
+            owner.discard_pile if to_hand else (*owner.discard_pile, instance_id)
+        ),
+        victory_points=owner.victory_points + definition.acquisition_vp,
+    )
+    reserve_stacks = tuple(
+        (candidate_id, count - 1 if candidate_id == card_id else count)
+        for candidate_id, count in state.reserve_stacks
+    )
+    prepared = replace(
+        state,
+        players=replace_player(state.players, next_owner),
+        reserve_stacks=reserve_stacks,
+    )
+    completed = complete_acquire_contracts(prepared, player, card_id, source=source)
+    event = GameEvent(
+        event_id=f"{source}:acquired:{instance_id}",
+        kind="card_acquired",
+        payload=(
+            ("card_id", card_id),
+            ("destination", destination),
+            ("player", player),
+        ),
+    )
+    return IntrigueAcquisition(
+        result=RuleResult(
+            state=completed.state, events=(event, *completed.events)
+        ),
+        instance_id=instance_id,
+    )
+
+
+def acquire_imperium_for_intrigue(
+    state: GameState,
+    player: int,
+    instance_id: str,
+    *,
+    to_hand: bool,
+    source: str,
+) -> IntrigueAcquisition:
+    """Acquire one Imperium Row card without Persuasion for an Intrigue effect.
+
+    The Row position refills from the Imperium Deck at once [Main p. 13] and
+    any acquire box resolves immediately [Main p. 20]. Bonuses that need a
+    follow-up decision are reported to the caller instead of pushing frames.
+    """
+
+    definition = imperium_card_for_instance(instance_id)
+    if definition.has_acquisition_bonus and definition.acquisition_effect is None:
+        raise NotImplementedError(
+            f"acquisition bonus is not implemented: {definition.card.card_id}"
+        )
+    if not state.imperium_deck:
+        raise NotImplementedError(
+            "Imperium Row refill after deck exhaustion is unresolved"
+        )
+    destination = "hand" if to_hand else "discard"
+    row = list(state.imperium_row)
+    row[row.index(instance_id)] = state.imperium_deck[0]
+    owner = state.players[player]
+    next_owner = replace(
+        owner,
+        hand=(*owner.hand, instance_id) if to_hand else owner.hand,
+        discard_pile=(
+            owner.discard_pile if to_hand else (*owner.discard_pile, instance_id)
+        ),
+    )
+    bonus = _resolve_imperium_acquisition_bonus(state, player, instance_id, next_owner)
+    prepared = replace(
+        state,
+        players=replace_player(state.players, bonus.owner),
+        imperium_deck=state.imperium_deck[1:],
+        imperium_row=tuple(row),
+        intrigue_deck=bonus.intrigue_deck,
+        pending_intrigue_draws=_with_pending_draw(state, bonus.pending_draw),
+    )
+    acquisition_events = bonus.events
+    if (
+        definition.acquisition_effect
+        is PersonalCardAcquisitionEffect.GAIN_SPACING_GUILD_INFLUENCE
+    ):
+        gained = gain_faction_influence(
+            prepared,
+            player,
+            Faction.SPACING_GUILD,
+            1,
+            event_prefix=f"{source}:influence:spacing_guild",
+        )
+        prepared = gained.state
+        acquisition_events = (*acquisition_events, *gained.events)
+    completed = complete_acquire_contracts(
+        prepared,
+        player,
+        definition.card.card_id,
+        source=source,
+    )
+    event = GameEvent(
+        event_id=f"{source}:acquired:{instance_id}",
+        kind="card_acquired",
+        payload=(
+            ("card_id", definition.card.card_id),
+            ("destination", destination),
+            ("instance_id", instance_id),
+            ("player", player),
+        ),
+    )
+    return IntrigueAcquisition(
+        result=RuleResult(
+            state=completed.state,
+            events=(event, *acquisition_events, *completed.events),
+        ),
+        instance_id=instance_id,
+        places_spy=bonus.places_spy,
+        takes_contract=bonus.takes_contract,
+    )
 
 
 def _resolve_reveal_acquisition_triggers(

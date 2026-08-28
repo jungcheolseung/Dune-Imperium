@@ -82,7 +82,7 @@ def _play(state: GameState, card_id: str, option: int = 0) -> DomainAction:
 def test_transcribed_intrigue_options_are_well_formed() -> None:
     transcribed = [entry for entry in INTRIGUE_CARDS if entry.play_data_complete]
 
-    assert len(transcribed) == 26
+    assert len(transcribed) == 28
     for entry in transcribed:
         assert entry.options
         for option in entry.options:
@@ -1282,6 +1282,197 @@ def test_devour_adds_more_and_offers_a_trash_with_a_sandworm() -> None:
     trashed = engine.apply(opened, _trash(_starter("dagger"))).state
     assert trashed.players[0].trashed == (_starter("dagger"),)
     assert trashed.players[0].combat_strength == 9
+
+
+def _imperium_instance(card_id: str) -> str:
+    return next(
+        instance_id
+        for instance_id in imperium_deck_instance_ids(False)
+        if f":{card_id}:" in instance_id
+    )
+
+
+def _acquire_imperium(instance_id: str, actor: int = 0) -> DomainAction:
+    return DomainAction(
+        action_id="acquire_intrigue_imperium",
+        actor=actor,
+        arguments=(("instance_id", instance_id),),
+    )
+
+
+def _acquire_reserve(card_id: str, actor: int = 0) -> DomainAction:
+    return DomainAction(
+        action_id="acquire_intrigue_reserve",
+        actor=actor,
+        arguments=(("card_id", card_id),),
+    )
+
+
+def _with_market(state: GameState) -> GameState:
+    return replace(
+        state,
+        imperium_row=(
+            _imperium_instance("sardaukar_soldier"),
+            _imperium_instance("steersman"),
+        ),
+        imperium_deck=(_imperium_instance("maula_pistol"),),
+        reserve_stacks=(("prepare_the_way", 8), ("the_spice_must_flow", 10)),
+    )
+
+
+def test_inspire_awe_acquires_a_cheap_card_to_the_discard_pile() -> None:
+    card = _intrigue("inspire_awe")
+    cheap = _imperium_instance("sardaukar_soldier")
+    owner = PlayerState(player_id=0, intrigue_cards=(card,))
+    state = _with_market(_turn_state(owner))
+    engine = UprisingRulesEngine()
+
+    opened = engine.apply(state, _play(state, card)).state
+    assert opened.decision_stack[-1].kind == "intrigue_choice"
+    # Only targets within the printed cap are offered: Prepare the Way costs
+    # 2 and Sardaukar Soldier 1, while The Spice Must Flow (9) and
+    # Steersman (8) are out of reach.
+    assert engine.legal_actions(opened, 0) == (
+        _acquire_reserve("prepare_the_way"),
+        _acquire_imperium(cheap),
+    )
+
+    result = engine.apply(opened, _acquire_imperium(cheap))
+    done = result.state
+    assert "card_acquired" in [event.kind for event in result.events]
+    # Without a sandworm the card lands in the discard pile [Main p. 13] and
+    # the Row refills from the Imperium Deck at once.
+    assert done.players[0].discard_pile == (cheap,)
+    assert done.players[0].hand == ()
+    assert done.imperium_row == (
+        _imperium_instance("maula_pistol"),
+        _imperium_instance("steersman"),
+    )
+    assert done.imperium_deck == ()
+    assert done.players[0].intrigue_cards == ()
+    assert done.intrigue_discard == (card,)
+    assert done.decision_stack == state.decision_stack
+
+
+def test_inspire_awe_puts_the_card_in_hand_with_a_sandworm_in_the_conflict() -> None:
+    card = _intrigue("inspire_awe")
+    owner = PlayerState(player_id=0, intrigue_cards=(card,), sandworms_conflict=1)
+    state = replace(
+        _with_market(_turn_state(owner)),
+        current_conflict_ids=(_conflict(False),),
+    )
+    engine = UprisingRulesEngine()
+
+    opened = engine.apply(state, _play(state, card)).state
+    done = engine.apply(opened, _acquire_reserve("prepare_the_way")).state
+
+    assert done.players[0].hand == ("reserve:prepare_the_way:7",)
+    assert done.players[0].discard_pile == ()
+    assert dict(done.reserve_stacks)["prepare_the_way"] == 7
+    assert done.intrigue_discard == (card,)
+
+
+def test_inspire_awe_is_unplayable_without_a_target_within_the_cap() -> None:
+    card = _intrigue("inspire_awe")
+    owner = PlayerState(player_id=0, intrigue_cards=(card,))
+    state = replace(
+        _turn_state(owner),
+        imperium_row=(_imperium_instance("steersman"),),
+        imperium_deck=(_imperium_instance("maula_pistol"),),
+        reserve_stacks=(("prepare_the_way", 0), ("the_spice_must_flow", 10)),
+    )
+    assert legal_intrigue_play_actions(state, 0) == ()
+
+
+def test_inspire_awe_to_hand_is_withheld_during_the_owners_reveal_turn() -> None:
+    card = _intrigue("inspire_awe")
+    owner = PlayerState(player_id=0, intrigue_cards=(card,), sandworms_conflict=1)
+    state = replace(
+        _with_market(_turn_state(owner)),
+        current_conflict_ids=(_conflict(False),),
+    )
+    engine = UprisingRulesEngine()
+
+    # With a sandworm the acquired card would enter the hand mid-Reveal,
+    # which needs the immediate-reveal rule [FAQ p. 3]; the option waits.
+    revealed = engine.apply(
+        state, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    assert revealed.decision_stack[-1].kind == "reveal"
+    assert legal_intrigue_play_actions(revealed, 0) == ()
+
+    # Without a sandworm the card goes to the discard pile, so the option
+    # stays available during the Reveal turn.
+    calm = _with_market(_turn_state(replace(owner, sandworms_conflict=0)))
+    shown = engine.apply(calm, DomainAction(action_id="reveal_turn", actor=0)).state
+    assert legal_intrigue_play_actions(shown, 0) == (_play(shown, card),)
+
+
+def test_impress_adds_strength_and_acquires_during_combat() -> None:
+    card = _intrigue("impress")
+    state = _with_market(
+        _combat_state(_fighter(0, 1), _fighter(1, 1, intrigue_cards=(card,)))
+    )
+    engine = UprisingRulesEngine()
+
+    passed = engine.apply(state, _pass(0)).state
+    assert dict(passed.decision_stack[-1].context)["consecutive_passes"] == 1
+    play = DomainAction(
+        action_id="play_intrigue",
+        actor=1,
+        arguments=(("card_id", card), ("option", 0)),
+    )
+    opened = engine.apply(passed, play).state
+    assert opened.decision_stack[-1].kind == "intrigue_choice"
+    # The swords are an automatic reward: they land when the card finishes.
+    assert opened.players[1].combat_strength == 2
+
+    cheap = _imperium_instance("sardaukar_soldier")
+    done = engine.apply(opened, _acquire_imperium(cheap, actor=1)).state
+    assert done.players[1].combat_strength == 4
+    assert done.players[1].discard_pile == (cheap,)
+    assert done.intrigue_discard == (card,)
+    frame = done.decision_stack[-1]
+    assert frame.kind == "combat_intrigue"
+    # Playing the card restarts the consecutive-pass count [Main p. 14].
+    assert dict(frame.context)["consecutive_passes"] == 0
+    assert isinstance(frame.decision, PlayerDecision)
+    assert frame.decision.owner == 1
+
+
+def test_impress_is_not_offered_without_an_affordable_target() -> None:
+    card = _intrigue("impress")
+    state = _combat_state(_fighter(0, 1, intrigue_cards=(card,)))
+    assert legal_intrigue_play_actions(state, 0) == ()
+
+
+def test_impress_acquiring_spy_network_opens_the_spy_frame_after_the_card() -> None:
+    card = _intrigue("impress")
+    spy_network = _imperium_instance("spy_network")
+    state = replace(
+        _combat_state(_fighter(0, 1, intrigue_cards=(card,))),
+        imperium_row=(spy_network,),
+        imperium_deck=(_imperium_instance("maula_pistol"),),
+    )
+    engine = UprisingRulesEngine()
+
+    opened = engine.apply(state, _play(state, card)).state
+    acquired = engine.apply(opened, _acquire_imperium(spy_network)).state
+
+    # The acquire box opens its Spy placement only after the Intrigue card
+    # has fully resolved [Main p. 20].
+    assert acquired.decision_stack[-1].kind == "acquisition_spy"
+    assert acquired.intrigue_discard == (card,)
+    assert acquired.players[0].combat_strength == 4
+    below = acquired.decision_stack[-2]
+    assert below.kind == "combat_intrigue"
+    assert dict(below.context)["consecutive_passes"] == 0
+
+    spy_actions = engine.legal_actions(acquired, 0)
+    assert {action.action_id for action in spy_actions} == {"place_acquisition_spy"}
+    done = engine.apply(acquired, spy_actions[0]).state
+    assert len(done.players[0].spy_post_ids) == 1
+    assert done.decision_stack[-1].kind == "combat_intrigue"
 
 
 def test_reach_agreement_retreats_for_a_contract_in_the_choam_module() -> None:
