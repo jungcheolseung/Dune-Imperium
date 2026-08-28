@@ -26,15 +26,14 @@ uv run ruff check src tests
 uv run mypy src tests
 ```
 
-2026-08-29의 기준 결과는 pytest 663개 통과, Ruff 통과, mypy 통과다. 현재 action
-codec은 `ACTION_CODEC_VERSION = 70`이며 기본 룰셋 catalog는 3,791개, CHOAM
-룰셋 catalog는 4,029개다.
+2026-08-29의 기준 결과는 pytest 668개 통과, Ruff 통과, mypy 통과다. 현재 action
+codec은 `ACTION_CODEC_VERSION = 71`이며 기본 룰셋 catalog는 3,923개, CHOAM
+룰셋 catalog는 4,169개다.
 
 ## 현재 구현 기준선
 
-마지막 기능 커밋은 `41b9ab4 Play the six Endgame Intrigue cards through the
-DSL`이고, 그 앞에 Endgame window 커밋(`5e4cf70`), 뒤에 이 묶음의
-`Document ...` 커밋이 있다.
+마지막 기능 커밋은 `9376a16 Play Manipulate and Spring the Trap, completing
+the Intrigue deck`이고, 그 뒤에 이 슬라이스의 `Document ...` 커밋이 있다.
 
 - R0-M4는 완료됐다. 공식 규칙 자료, 엔진 커널, 4인 setup, 한 라운드 수직 조각,
   actor-neutral action codec과 PettingZoo AEC 계약이 있다.
@@ -46,8 +45,8 @@ DSL`이고, 그 앞에 Endgame window 커밋(`5e4cf70`), 뒤에 이 묶음의
   완전한 play data가 있다(`implementation-audits/personal-cards.md`).
 - CHOAM standard contract 20장의 시장·완료·보상과 CHOAM 전용 Imperium 4종이
   연결돼 있다(`implementation-audits/contracts.md`).
-- Intrigue 44장 중 Plot 26종·Combat 11종·Endgame 6종(identity 42종)이 effect DSL로 전사돼
-  실제 play된다. Plot은 소유자의 `turn`/`agent_effects`/`reveal` frame에서, Combat은
+- Intrigue 44장은 39개 identity 전부가 effect DSL로 전사돼 실제 play된다
+  (Intrigue 덱 완결). Plot은 소유자의 `turn`/`agent_effects`/`reveal` frame에서, Combat은
   `combat_intrigue` frame의 priority 보유 참가자에게 제시된다. 선택이 필요한
   효과는 `intrigue_choice` frame의 슬롯으로 순차 해결한다. Impress와 Inspire
   Awe의 비용 상한 획득은 `AcquireCardUpTo` 슬롯으로 Row/Reserve에서 가져오며,
@@ -74,9 +73,6 @@ DSL`이고, 그 앞에 Endgame window 커밋(`5e4cf70`), 뒤에 이 묶음의
 
 ## 아직 완성되지 않은 경계
 
-- Intrigue 2종 identity는 setup만 있고 play할 수 없다.
-  - Imperium Row 교체와 할인 지속: Manipulate
-  - "Conflict를 이길 때" 종류: Spring the Trap(카드 확인 필요)
 - Reveal turn 중 card가 hand에 들어가는 Plot(개인 card draw, Inspire Awe의
   조건부 hand 획득)은 FAQ p. 3의 즉시 공개 규칙이 구현되지 않아 Reveal에서
   제시하지 않는다(OQ-015(c)).
@@ -97,16 +93,12 @@ DSL`이고, 그 앞에 Endgame window 커밋(`5e4cf70`), 뒤에 이 묶음의
 
 ## 다음 구현 순서
 
-큰 순서는 유지한다.
-
-1. 남은 Intrigue 2종의 경계 (아래 세부 순서)
-2. Leader Signet Ring·기본 능력과 Shaddam 전용 Contract, 남은 Objective 상호작용
-3. 전체 게임 random/self-play runner와 PettingZoo episode 확장
-
-Intrigue 세부 순서(권장):
-
-1. Manipulate(custom hook)와 "이길 때" 카드(Spring the Trap — 카드 이미지 확인
-   필요). 이 2종이 끝나면 Intrigue 44장이 완결된다.
+1. Leader Signet Ring·기본 능력과 Shaddam 전용 Contract(OQ-010, OQ-011),
+   남은 Objective 상호작용 재감사. 카드/리더 텍스트는 Dune Cards Hub 이미지로
+   먼저 검증한다(`https://dunecardshub.com/images/uprising-leader-<slug>.webp`
+   형태; slug 오타 가능성은 카탈로그 페이지에서 확인).
+2. 전체 게임 random/self-play runner 공개 API와 PettingZoo 전체 게임 episode
+   전환. 엔진은 이미 FINISHED까지 완주하므로 runner/adapter 경계만 남았다.
 
 각 묶음은 카드 이미지로 텍스트를 검증하고(`docs/card-data-sources.md`의 방법),
 `Play ...` / `Document ...` 커밋 쌍을 유지하며, 새 결정 경계는
@@ -165,11 +157,11 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에
 handoff for the next session`이고, 로컬 `master`에는 그 뒤 Impress·Inspire Awe
 슬라이스(`72335eb`, `d4ba179`), Call to Arms 슬라이스(`2de0d1b`, `b8707d3`),
 Distraction 슬라이스(`a3569af`, `d724b98`), Leverage 슬라이스(`736688f`,
-`2dde896`), Endgame 묶음(`5e4cf70`, `41b9ab4`와 이어지는 `Document ...`)이
-있다. 2026-08-29 중간에 사용자가 `2dde896`까지 push했다. 새 세션은
-`git log origin/master..master`로 push 여부를 확인한다. checkout이 이보다
-이전이면 이 문서의 v70 action catalog, 3,791/4,029개 행동, 663개 테스트
-기준선이 실제 코드와 일치하지 않는다.
+`2dde896`), Endgame 묶음(`5e4cf70`, `41b9ab4`, `707392d`), Intrigue 완결
+슬라이스(`9376a16`과 이어지는 `Document ...`)가 있다. 사용자가 2026-08-29 중간에
+`707392d`까지 push했다. 새 세션은 `git log origin/master..master`로 push 여부를
+확인한다. checkout이 이보다 이전이면 이 문서의 v71 action catalog,
+3,923/4,169개 행동, 668개 테스트 기준선이 실제 코드와 일치하지 않는다.
 
 ## 2026-08-29 세션 요약
 
@@ -189,6 +181,14 @@ Distraction 슬라이스(`a3569af`, `d724b98`), Leverage 슬라이스(`736688f`,
   `spice_spent_turn` 카운터(지출 5지점)로 "이번 turn 총 획득 spice"를
   계산하고, 조건 성립 시 Contract 1 + Solari 1을 준다. Harvest의 placement
   기준 회계와는 분리 유지. codec v68.
+- Manipulate와 Spring the Trap을 전사해 Intrigue 39개 identity(44장)를
+  완결했다. Spring the Trap은 Spy 2 recall → 검 7(기존 primitive), Manipulate는
+  `SetAsideImperiumRowCard` 슬롯 + 공개 `imperium_set_aside` 존 + Reveal 한정
+  할인 획득 + Reveal 종료 시 `imperium_removed`로 게임 제거(FAQ p. 3).
+  codec v71. random 완주 60판에서 set-aside 21회 = 획득 2 + 만료 19로 보존이
+  검산됐다. 참고: 기존 Prepare the Way 버그(별도 작업)는 신규 카드로 legal
+  action 목록이 바뀌며 최신 soak의 seed 10146 궤적에서는 더 이상 나타나지
+  않지만, `ed16d93`에서 그대로 재현된다.
 - Endgame Intrigue window(OQ-001 convention)를 열었다: First Player부터
   시계 방향 1회 순회, window 안에서 Endgame play와 wild matching 자유 순서,
   pass가 창을 닫고 마지막 pass가 게임을 끝낸다. 기존 단일 무모호 wild 자동

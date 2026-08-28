@@ -94,7 +94,7 @@ Main p. 20은 FAQ를 적용하기 전의 일반 용어 기준이다. 아래 항�
 
 | FAQ entry | 확인 가능한 범위 | 판정 | 상태 |
 | --- | --- | --- | --- |
-| Manipulate | FAQ가 이 이름의 Intrigue card를 Uprising card라고 직접 설명한다. [FAQ p. 3] | 제거한 Imperium Row 카드는 opponent가 acquire할 수 없다. 자신은 다른 효과로 얻을 수 있지만 1 Persuasion 할인은 받지 못하며, 다음 Reveal turn 끝까지 얻지 않으면 게임에서 제거한다. [FAQ p. 3] | 기본/CHOAM 소속 확인 전 비활성 |
+| Manipulate | FAQ가 이 이름의 Intrigue card를 Uprising card라고 직접 설명한다. [FAQ p. 3] | 제거한 Imperium Row 카드는 opponent가 acquire할 수 없다. 자신은 다른 효과로 얻을 수 있지만 1 Persuasion 할인은 받지 못하며, 다음 Reveal turn 끝까지 얻지 않으면 게임에서 제거한다. [FAQ p. 3] | 기본 룰셋 카드로 구현; [intrigue audit](../implementation-audits/intrigue.md) |
 
 ### content manifest 전사 시 확인: 소속 자체가 미확정
 

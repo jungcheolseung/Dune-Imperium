@@ -3,9 +3,10 @@
 상태: 초안 5 (2026-08-28) — R0 규칙 명세, M0 개발 골격, M1 엔진 커널,
 M2 4인 setup과 정적 보드, M3 한 라운드 수직 조각, M4 RL 인터페이스 조기 검증
 완료. M5의 기본 시스템 경계는 대부분 연결됐고 콘텐츠 의존 항목이 남아 있다.
-M6는 기본 Imperium 카드 50종을 모두 완료했고 M8의 CHOAM 전용 Imperium 4종도
-실제 play 경로에 연결했다. M6의 남은 범위는 Intrigue 44장 play 효과, Leader
-능력·Signet Ring, Objective 상호작용이며, M7 완주 검증은 아직 시작하지 않았다.
+M6는 기본 Imperium 카드 50종과 Intrigue 44장 play 효과를 모두 완료했고 M8의
+CHOAM 전용 Imperium 4종·Intrigue 3종도 실제 play 경로에 연결했다. M6의 남은
+범위는 Leader 능력·Signet Ring과 Objective 상호작용이며, M7 완주 검증은 아직
+시작하지 않았다.
 
 이 문서는 규칙 엔진부터 강화학습 AI와 사람용 플레이 인터페이스까지의 구현
 순서와 각 단계의 완료 조건을 정의한다. 구현 중 새 규칙을 발견하더라도 핵심
@@ -244,8 +245,8 @@ seeded random 4인 라운드를 실행하고 action replay로 최종 상태를 �
 
 상태: **완료** (2026-08-14, 현황 갱신 2026-08-28). 기본 룰셋은 versioned
 actor-neutral 정수 action catalog와 같은 폭의 legal action mask를 사용한다.
-현재 codec v70의 기본 룰셋은 3,791개 행동이며, CHOAM 룰셋은 contract 시장·완료·
-Spy·전용 Imperium·Intrigue 선택을 포함해 4,029개 행동이다. `dune_imperium_uprising_v0` AEC 환경은
+현재 codec v71의 기본 룰셋은 3,923개 행동이며, CHOAM 룰셋은 contract 시장·완료·
+Spy·전용 Imperium·Intrigue 선택을 포함해 4,169개 행동이다. `dune_imperium_uprising_v0` AEC 환경은
 한 라운드를 episode로 실행하며 PettingZoo `api_test`와 `seed_test`를 통과한다.
 관측과 `info`에는 전체 `GameState`를 노출하지 않는다.
 
@@ -305,10 +306,10 @@ FINISHED까지 완주되고 replay로 재현된다.
 남은 범위:
 
 - Intrigue는 공통 play/discard 경계, effect DSL, 선택 슬롯 frame, Combat priority
-  loop 안의 play가 있고 Plot 26종·Combat 11종·Endgame 6종이 실제 play 경로에
-  연결됐다(목록은 [Intrigue audit](implementation-audits/intrigue.md)). Endgame
-  window는 OQ-001 convention으로 동작하며, 나머지는 Manipulate와 Spring the
-  Trap 2종이다.
+  loop 안의 play가 있고 39개 identity(물리 44장) 전부가 실제 play 경로에
+  연결돼 Intrigue 덱이 완결됐다(목록은
+  [Intrigue audit](implementation-audits/intrigue.md)). Endgame window는
+  OQ-001 convention으로 동작한다.
 - Leader는 identity와 setup 선택만 있고 Signet Ring과 Leader 능력이 없다.
 - Objective는 4인 setup, First Player, battle icon 경로까지 연결됐으며 이후
   콘텐츠 상호작용은 다시 감사해야 한다.

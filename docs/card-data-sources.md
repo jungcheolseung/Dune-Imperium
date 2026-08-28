@@ -249,3 +249,9 @@ Spice Must Flow" for one Victory Point plus two Spice, and Shadow Alliance
 Alliance". DIU agrees on every shape except Shadow Alliance, where it drops
 the opponent-Alliance clause.
 
+The twelfth batch closes the deck with Manipulate and Spring the Trap.
+Spring the Trap prints two Spy-recall arrows into seven swords, exactly as
+DIU records it. Manipulate's text is transcribed from its image; DIU models
+the card as an opaque custom `manipulate` effect, so the local set-aside
+zone, discount and expiry follow the printed card and the FAQ p. 3 ruling.
+
