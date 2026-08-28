@@ -28,9 +28,12 @@ from dune_imperium.content.uprising.effect_dsl import (
     IntrigueTiming,
     LoseInfluence,
     PayResources,
+    PlaceSpy,
+    RecallSpy,
     RecruitTroops,
     SpiesPlacedAtLeast,
     SummonSandworm,
+    TrashPersonalCard,
 )
 
 BASE_SOURCES: Final = (SourceRef(SourceDocument.MAIN_RULEBOOK, (3, 4)),)
@@ -168,7 +171,20 @@ INTRIGUE_CARDS: Final = (
         ),
     ),
     _entry(159, "crysknife", "Crysknife"),
-    _entry(133, "cunning", "Cunning"),
+    _entry(
+        133,
+        "cunning",
+        "Cunning",
+        options=(
+            _plot(EffectSection(rewards=(DrawPersonalCards(1),))),
+            _plot(
+                EffectSection(
+                    costs=(PayResources(spice=1),),
+                    rewards=(DrawPersonalCards(1), TrashPersonalCard()),
+                )
+            ),
+        ),
+    ),
     _entry(
         132,
         "depart-for-arrakis",
@@ -315,7 +331,23 @@ INTRIGUE_CARDS: Final = (
             ),
         ),
     ),
-    _entry(136, "special-mission", "Special Mission", copies=2),
+    _entry(
+        136,
+        "special-mission",
+        "Special Mission",
+        copies=2,
+        options=(
+            _plot(
+                EffectSection(rewards=(PlaceSpy(factions=(Faction.BENE_GESSERIT,)),))
+            ),
+            _plot(
+                EffectSection(
+                    costs=(RecallSpy(1),),
+                    rewards=(DestroyShieldWall(), GainResources(spice=2)),
+                )
+            ),
+        ),
+    ),
     _entry(150, "spice-is-power", "Spice is Power"),
     _entry(153, "spring-the-trap", "Spring The Trap"),
     _entry(

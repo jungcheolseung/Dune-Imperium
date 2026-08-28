@@ -28,10 +28,13 @@ from dune_imperium.content.uprising.effect_dsl import (
     IntrigueOption,
     LoseInfluence,
     PayResources,
+    PlaceSpy,
+    RecallSpy,
     RecruitTroops,
     Reward,
     SpiesPlacedAtLeast,
     SummonSandworm,
+    TrashPersonalCard,
 )
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
@@ -43,13 +46,20 @@ from dune_imperium.rules.frames import replace_player
 from dune_imperium.rules.influence import gain_faction_influence, influence_amount
 from dune_imperium.rules.intrigue_deck import draw_intrigue_cards
 from dune_imperium.rules.shield_wall import current_conflict_is_shield_wall_protected
+from dune_imperium.rules.spy_placement import (
+    empty_observation_post_ids,
+    observation_post_ids_for_factions,
+)
 
 type ChoiceSlot = (
     LoseInfluence
     | DiscardFromHand
+    | RecallSpy
     | GainInfluence
     | DestroyShieldWall
     | DeployFromGarrison
+    | TrashPersonalCard
+    | PlaceSpy
 )
 
 
@@ -150,7 +160,7 @@ def choice_slots(
     slots: list[ChoiceSlot] = []
     for section in sections:
         for cost in section.costs:
-            if isinstance(cost, LoseInfluence | DiscardFromHand):
+            if isinstance(cost, LoseInfluence | DiscardFromHand | RecallSpy):
                 slots.extend([cost] * cost.count)
     for section in sections:
         for reward in section.rewards:
@@ -159,7 +169,7 @@ def choice_slots(
                     slots.extend([reward] * reward.times)
                 case DestroyShieldWall() if shield_wall_present:
                     slots.append(reward)
-                case DeployFromGarrison():
+                case DeployFromGarrison() | TrashPersonalCard() | PlaceSpy():
                     slots.append(reward)
                 case _:
                     pass
@@ -172,6 +182,7 @@ def _choice_costs_feasible(
 ) -> bool:
     influence_needed = 0
     discards_needed = 0
+    recalls_needed = 0
     for section in sections:
         for cost in section.costs:
             match cost:
@@ -179,22 +190,67 @@ def _choice_costs_feasible(
                     influence_needed += count
                 case DiscardFromHand(count=count):
                     discards_needed += count
+                case RecallSpy(count=count):
+                    recalls_needed += count
                 case _:
                     pass
     total_influence = sum(
         influence_amount(player.influence, faction) for faction in Faction
     )
-    return total_influence >= influence_needed and len(player.hand) >= discards_needed
+    return (
+        total_influence >= influence_needed
+        and len(player.hand) >= discards_needed
+        and len(player.spy_post_ids) >= recalls_needed
+    )
+
+
+def spy_placement_targets(
+    state: GameState,
+    player: int,
+    reward: PlaceSpy,
+) -> tuple[str, ...]:
+    """Return the empty posts this placement may use."""
+
+    allowed = (
+        observation_post_ids_for_factions(reward.factions)
+        if reward.factions is not None
+        else None
+    )
+    return empty_observation_post_ids(state, allowed)
+
+
+def spy_placement_possible(state: GameState, player: int, reward: PlaceSpy) -> bool:
+    """A placement is possible now or after recalling one of the owner's Spies."""
+
+    owner = state.players[player]
+    if spy_placement_targets(state, player, reward):
+        return owner.spies_supply > 0 or bool(owner.spy_post_ids)
+    if owner.spies_supply > 0:
+        return False
+    allowed = (
+        observation_post_ids_for_factions(reward.factions)
+        if reward.factions is not None
+        else None
+    )
+    # Recalling one of the owner's own Spies from an allowed post frees it.
+    return any(allowed is None or post_id in allowed for post_id in owner.spy_post_ids)
 
 
 def _choice_rewards_feasible(
-    player: PlayerState,
+    state: GameState,
+    player: int,
     sections: tuple[EffectSection, ...],
 ) -> bool:
+    owner = state.players[player]
     for section in sections:
         for reward in section.rewards:
-            if isinstance(reward, DeployFromGarrison) and player.troops_garrison < 1:
-                return False
+            match reward:
+                case DeployFromGarrison() if owner.troops_garrison < 1:
+                    return False
+                case PlaceSpy() if not spy_placement_possible(state, player, reward):
+                    return False
+                case _:
+                    pass
     return True
 
 
@@ -213,7 +269,7 @@ def option_is_playable(
         bool(sections)
         and can_afford(owner, resource_cost(sections))
         and _choice_costs_feasible(owner, sections)
-        and _choice_rewards_feasible(owner, sections)
+        and _choice_rewards_feasible(state, player, sections)
     )
 
 
@@ -234,7 +290,10 @@ def automatic_rewards(sections: tuple[EffectSection, ...]) -> tuple[Reward, ...]
         for section in sections
         for reward in section.rewards
         if not (isinstance(reward, GainInfluence) and reward.requires_choice)
-        and not isinstance(reward, DestroyShieldWall | DeployFromGarrison)
+        and not isinstance(
+            reward,
+            DestroyShieldWall | DeployFromGarrison | TrashPersonalCard | PlaceSpy,
+        )
     )
 
 

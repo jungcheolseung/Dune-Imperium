@@ -24,6 +24,9 @@ from dune_imperium.content.uprising.effect_dsl import (
     IntrigueOption,
     IntrigueTiming,
     LoseInfluence,
+    PlaceSpy,
+    RecallSpy,
+    TrashPersonalCard,
 )
 from dune_imperium.content.uprising.intrigue import (
     INTRIGUE_CARDS_BY_INSTANCE,
@@ -36,6 +39,7 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.card_discard import discard_personal_card_from_hand
+from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.effect_interpreter import (
     ChoiceSlot,
     applicable_sections,
@@ -45,6 +49,7 @@ from dune_imperium.rules.effect_interpreter import (
     option_is_playable,
     pay_cost,
     resource_cost,
+    spy_placement_targets,
 )
 from dune_imperium.rules.frames import (
     FrameKind,
@@ -65,6 +70,7 @@ from dune_imperium.rules.influence import (
 )
 from dune_imperium.rules.reveal_turn import add_units_to_reveal, reveal_is_open_for
 from dune_imperium.rules.shield_wall import destroy_shield_wall
+from dune_imperium.rules.spy_placement import place_spy, recall_spy
 
 # Frames during which the owner is inside their own Agent or Reveal turn.
 PLOT_FRAME_KINDS = frozenset(
@@ -268,6 +274,50 @@ def legal_intrigue_choice_actions(
                 )
                 for count in range(1, min(up_to, owner.troops_garrison) + 1)
             )
+        case TrashPersonalCard():
+            # The black trash icon is optional [Main p. 20].
+            actions.append(
+                DomainAction(action_id="decline_intrigue_trash", actor=player)
+            )
+            actions.extend(
+                DomainAction(
+                    action_id="trash_intrigue_card",
+                    actor=player,
+                    arguments=(("card_id", owned),),
+                )
+                for owned in (*owner.hand, *owner.discard_pile, *owner.in_play)
+            )
+        case RecallSpy():
+            actions.extend(
+                DomainAction(
+                    action_id="recall_spy_for_intrigue",
+                    actor=player,
+                    arguments=(("post_id", post_id),),
+                )
+                for post_id in owner.spy_post_ids
+            )
+        case PlaceSpy():
+            targets = spy_placement_targets(state, player, slot)
+            if owner.spies_supply > 0 and targets:
+                actions.extend(
+                    DomainAction(
+                        action_id="place_intrigue_spy",
+                        actor=player,
+                        arguments=(("post_id", post_id),),
+                    )
+                    for post_id in targets
+                )
+            else:
+                # No Spy in supply (or no free post): recall one first
+                # [Main pp. 11, 20].
+                actions.extend(
+                    DomainAction(
+                        action_id="recall_spy_for_intrigue",
+                        actor=player,
+                        arguments=(("post_id", post_id),),
+                    )
+                    for post_id in owner.spy_post_ids
+                )
     return tuple(actions)
 
 
@@ -335,6 +385,45 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
             count = arguments["count"]
             assert isinstance(count, int)
             result = _deploy_units(state, player, step_source, troops=count)
+        case TrashPersonalCard():
+            if action.action_id == "decline_intrigue_trash":
+                result = RuleResult(
+                    state=state,
+                    events=(
+                        GameEvent(
+                            event_id=f"{step_source}:trash_declined",
+                            kind="intrigue_trash_declined",
+                            payload=(("player", player),),
+                        ),
+                    ),
+                )
+            else:
+                result = trash_personal_card(
+                    state, player, str(arguments["card_id"]), source=step_source
+                )
+        case RecallSpy() | PlaceSpy():
+            post_id = str(arguments["post_id"])
+            owner = state.players[player]
+            if action.action_id == "recall_spy_for_intrigue":
+                next_owner = recall_spy(owner, post_id)
+                kind = "spy_recalled"
+            else:
+                next_owner = place_spy(owner, post_id)
+                kind = "spy_placed"
+            result = RuleResult(
+                state=replace(state, players=replace_player(state.players, next_owner)),
+                events=(
+                    GameEvent(
+                        event_id=f"{step_source}:{kind}:{post_id}",
+                        kind=kind,
+                        payload=(("player", player), ("post_id", post_id)),
+                    ),
+                ),
+            )
+            if isinstance(slot, PlaceSpy) and kind == "spy_recalled":
+                # The recall only prepared the placement; stay on this slot.
+                next_state = replace_top_frame(result.state, frame)
+                return RuleResult(state=next_state, events=result.events)
         case _:
             raise RuntimeError("Intrigue choice frame has an unsupported slot")
 

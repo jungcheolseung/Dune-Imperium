@@ -120,7 +120,18 @@ class DiscardFromHand:
             raise ValueError("hand discard count must be positive")
 
 
-type Cost = PayResources | LoseInfluence | DiscardFromHand
+@dataclass(frozen=True, slots=True)
+class RecallSpy:
+    """Return ``count`` of the player's placed Spies to supply (player choice)."""
+
+    count: int = 1
+
+    def __post_init__(self) -> None:
+        if self.count < 1:
+            raise ValueError("Spy recall count must be positive")
+
+
+type Cost = PayResources | LoseInfluence | DiscardFromHand | RecallSpy
 
 
 # --- Rewards ----------------------------------------------------------------
@@ -267,6 +278,31 @@ class DeployFromGarrison:
             raise ValueError("deployment limit must be positive")
 
 
+@dataclass(frozen=True, slots=True)
+class TrashPersonalCard:
+    """The black trash icon: optionally trash one card from hand, discard, or play.
+
+    Optional per [Main p. 20]; the player may decline.
+    """
+
+
+@dataclass(frozen=True, slots=True)
+class PlaceSpy:
+    """Place a Spy on an empty Observation Post, limited to ``factions`` if set.
+
+    Without a Spy in supply the player first recalls one [Main pp. 11, 20].
+    """
+
+    factions: tuple[Faction, ...] | None = None
+
+    def __post_init__(self) -> None:
+        if self.factions is not None:
+            if not self.factions or len(self.factions) != len(set(self.factions)):
+                raise ValueError("Spy target Factions must be unique and non-empty")
+            if any(not isinstance(faction, Faction) for faction in self.factions):
+                raise TypeError("Spy target Factions must use Faction")
+
+
 type Reward = (
     GainResources
     | GainVictoryPoints
@@ -278,6 +314,8 @@ type Reward = (
     | DestroyShieldWall
     | SummonSandworm
     | DeployFromGarrison
+    | TrashPersonalCard
+    | PlaceSpy
 )
 
 

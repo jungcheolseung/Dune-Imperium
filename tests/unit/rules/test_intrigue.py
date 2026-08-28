@@ -81,7 +81,7 @@ def _play(state: GameState, card_id: str, option: int = 0) -> DomainAction:
 def test_transcribed_intrigue_options_are_well_formed() -> None:
     transcribed = [entry for entry in INTRIGUE_CARDS if entry.play_data_complete]
 
-    assert len(transcribed) == 16
+    assert len(transcribed) == 18
     for entry in transcribed:
         assert entry.options
         for option in entry.options:
@@ -861,4 +861,139 @@ def test_unexpected_allies_without_a_wall_summons_directly() -> None:
     # Sandworm (3) plus the revealed sword (1), no choice frame was needed.
     assert done.players[0].combat_strength == 4
     assert done.decision_stack[-1].kind == "reveal"
+
+
+def _trash(card_id: str) -> DomainAction:
+    return DomainAction(
+        action_id="trash_intrigue_card", actor=0, arguments=(("card_id", card_id),)
+    )
+
+
+def _place_spy(post_id: str) -> DomainAction:
+    return DomainAction(
+        action_id="place_intrigue_spy", actor=0, arguments=(("post_id", post_id),)
+    )
+
+
+def _recall_spy(post_id: str) -> DomainAction:
+    return DomainAction(
+        action_id="recall_spy_for_intrigue", actor=0, arguments=(("post_id", post_id),)
+    )
+
+
+def test_cunning_offers_a_free_draw_or_a_paid_draw_with_optional_trash() -> None:
+    card = _intrigue("cunning")
+    dagger = _starter("dagger")
+    deck = (_starter("diplomacy"),)
+    owner = PlayerState(
+        player_id=0,
+        intrigue_cards=(card,),
+        hand=(dagger,),
+        discard_pile=(_starter("reconnaissance"),),
+        deck=deck,
+        resources=Resources(spice=1),
+    )
+    state = _turn_state(owner)
+    engine = UprisingRulesEngine()
+
+    free = engine.apply(state, _play(state, card, 0)).state
+    assert free.players[0].hand == (dagger, *deck)
+    assert free.players[0].resources.spice == 1
+
+    opened = engine.apply(state, _play(state, card, 1)).state
+    assert opened.players[0].resources.spice == 0
+    offered = engine.legal_actions(opened, 0)
+    assert offered[0].action_id == "decline_intrigue_trash"
+    assert {dict(a.arguments)["card_id"] for a in offered[1:]} == {
+        dagger,
+        _starter("reconnaissance"),
+    }
+
+    trashed = engine.apply(opened, _trash(dagger)).state
+    assert trashed.players[0].trashed == (dagger,)
+    assert trashed.players[0].hand == deck
+    assert trashed.intrigue_discard == (card,)
+
+    declined = engine.apply(
+        opened, DomainAction(action_id="decline_intrigue_trash", actor=0)
+    ).state
+    assert declined.players[0].trashed == ()
+    assert declined.players[0].hand == (dagger, *deck)
+
+
+def test_special_mission_places_a_spy_on_a_bene_gesserit_post() -> None:
+    card = _intrigue("special_mission")
+    owner = PlayerState(player_id=0, intrigue_cards=(card,))
+    state = _turn_state(owner)
+    engine = UprisingRulesEngine()
+
+    opened = engine.apply(state, _play(state, card, 0)).state
+    targets = {
+        str(dict(a.arguments)["post_id"]) for a in engine.legal_actions(opened, 0)
+    }
+    assert targets and all("bene-gesserit" in post for post in targets)
+    post = sorted(targets)[0]
+    placed = engine.apply(opened, _place_spy(post)).state
+    assert placed.players[0].spy_post_ids == (post,)
+    assert placed.players[0].spies_supply == 2
+    assert placed.intrigue_discard == (card,)
+
+
+def test_special_mission_recalls_first_when_no_spy_is_in_supply() -> None:
+    card = _intrigue("special_mission")
+    owner = PlayerState(
+        player_id=0,
+        intrigue_cards=(card,),
+        spies_supply=0,
+        spy_post_ids=(
+            "landsraad-assembly-hall-gather-support",
+            "arrakis-research-station-spice-refinery",
+            "fremen-desert-tactics-fremkit",
+        ),
+    )
+    state = _turn_state(owner)
+    engine = UprisingRulesEngine()
+
+    opened = engine.apply(state, _play(state, card, 0)).state
+    assert {a.action_id for a in engine.legal_actions(opened, 0)} == {
+        "recall_spy_for_intrigue"
+    }
+    recalled = engine.apply(
+        opened, _recall_spy("landsraad-assembly-hall-gather-support")
+    ).state
+    assert recalled.players[0].spies_supply == 1
+    # The slot is still open: now the placement itself is offered.
+    assert {a.action_id for a in engine.legal_actions(recalled, 0)} == {
+        "place_intrigue_spy"
+    }
+
+
+def test_special_mission_recall_option_pays_out_after_the_detonation_choice() -> None:
+    card = _intrigue("special_mission")
+    owner = PlayerState(
+        player_id=0,
+        intrigue_cards=(card,),
+        spies_supply=2,
+        spy_post_ids=("landsraad-assembly-hall-gather-support",),
+    )
+    state = _turn_state(owner)
+    engine = UprisingRulesEngine()
+
+    assert _play(state, card, 1) in legal_intrigue_play_actions(state, 0)
+    opened = engine.apply(state, _play(state, card, 1)).state
+    assert engine.legal_actions(opened, 0) == (
+        _recall_spy("landsraad-assembly-hall-gather-support"),
+    )
+    recalled = engine.apply(
+        opened, _recall_spy("landsraad-assembly-hall-gather-support")
+    ).state
+    assert recalled.players[0].spies_supply == 3
+    assert engine.legal_actions(recalled, 0) == (_detonate(), _keep_wall())
+    done = engine.apply(recalled, _keep_wall()).state
+    assert done.players[0].resources.spice == 2
+    assert done.shield_wall_present is True
+
+    # Without a placed Spy the recall option cannot be played at all.
+    grounded = _turn_state(PlayerState(player_id=0, intrigue_cards=(card,)))
+    assert legal_intrigue_play_actions(grounded, 0) == (_play(grounded, card, 0),)
 
