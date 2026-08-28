@@ -23,6 +23,14 @@
   언제 하는지는 설명하지 않는다. `[Main pp. 15, 20]`
 - 필요한 답: Endgame decision window의 참가 순서, 종료 조건, wild matching
   window.
+- 구현 convention(2026-08-29): First Player부터 시계 방향으로 각 플레이어가
+  Endgame window를 한 번씩 가진다. 자신의 window에서 Endgame Intrigue play와
+  wild battle icon matching을 원하는 만큼 자유로운 순서로 해결하고, pass하면
+  그 플레이어의 window는 다시 열리지 않는다. 아무도 Intrigue를 갖고 있지 않고
+  wild 쌍도 없으면 window 없이 즉시 종료한다. 순서가 상태에 영향을 주는 공개
+  효과가 없으므로 단일 순회로 충분하다는 판단이며,
+  `tests/unit/rules/test_endgame.py`와 `tests/unit/rules/test_intrigue.py`로
+  고정한다.
 
 ## OQ-002 — 동률 Combat reward 해결 순서
 

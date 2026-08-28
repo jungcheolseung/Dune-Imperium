@@ -244,8 +244,8 @@ seeded random 4인 라운드를 실행하고 action replay로 최종 상태를 �
 
 상태: **완료** (2026-08-14, 현황 갱신 2026-08-28). 기본 룰셋은 versioned
 actor-neutral 정수 action catalog와 같은 폭의 legal action mask를 사용한다.
-현재 codec v68의 기본 룰셋은 3,767개 행동이며, CHOAM 룰셋은 contract 시장·완료·
-Spy·전용 Imperium·Intrigue 선택을 포함해 4,004개 행동이다. `dune_imperium_uprising_v0` AEC 환경은
+현재 codec v70의 기본 룰셋은 3,791개 행동이며, CHOAM 룰셋은 contract 시장·완료·
+Spy·전용 Imperium·Intrigue 선택을 포함해 4,029개 행동이다. `dune_imperium_uprising_v0` AEC 환경은
 한 라운드를 episode로 실행하며 PettingZoo `api_test`와 `seed_test`를 통과한다.
 관측과 `info`에는 전체 `GameState`를 노출하지 않는다.
 
@@ -263,10 +263,11 @@ Spy·전용 Imperium·Intrigue 선택을 포함해 4,004개 행동이다. `dune_
 상태: **진행 중** (현황 갱신 2026-08-27). Influence·Alliance, Spy의 Infiltrate와
 Gather Intelligence, Shield Wall·Maker Hook·sandworm·critical location control,
 High Council·Swordmaster, 4인 Combat 순위와 기본 보상, Makers·Recall 및 Endgame
-진입을 구현했다. 최종 순위는 공식 tiebreak 전체를 적용하며, Intrigue 보유와
-가능한 wild battle icon match가 모두 없는 Endgame은 `FINISHED`까지 자동
-진행한다. Endgame Intrigue 처리와 wild battle icon 선택은 OQ-001 및 콘텐츠 전사
-전까지 보류한다.
+진입을 구현했다. 최종 순위는 공식 tiebreak 전체를 적용한다. Endgame은 First
+Player부터 시계 방향의 Endgame Intrigue window(OQ-001 convention)에서 Endgame
+play와 wild battle icon matching을 해결한 뒤 `FINISHED`로 진행하며, Intrigue
+보유와 wild 쌍이 모두 없으면 window 없이 즉시 종료한다. random 4인 게임이
+FINISHED까지 완주되고 replay로 재현된다.
 개인 덱 draw는 부족할 때 discard를 replayable chance로 shuffle하며, 두 라운드와
 세 번째 Round Start shuffle까지 같은 action/chance stream으로 재생한다.
 
@@ -304,9 +305,10 @@ High Council·Swordmaster, 4인 Combat 순위와 기본 보상, Makers·Recall �
 남은 범위:
 
 - Intrigue는 공통 play/discard 경계, effect DSL, 선택 슬롯 frame, Combat priority
-  loop 안의 play가 있고 Plot 23종·Combat 11종이 실제 play 경로에 연결됐다(목록은
-  [Intrigue audit](implementation-audits/intrigue.md)). 나머지 8종 identity와
-  Endgame timing은 미구현이다.
+  loop 안의 play가 있고 Plot 26종·Combat 11종·Endgame 6종이 실제 play 경로에
+  연결됐다(목록은 [Intrigue audit](implementation-audits/intrigue.md)). Endgame
+  window는 OQ-001 convention으로 동작하며, 나머지는 Manipulate와 Spring the
+  Trap 2종이다.
 - Leader는 identity와 setup 선택만 있고 Signet Ring과 Leader 능력이 없다.
 - Objective는 4인 setup, First Player, battle icon 경로까지 연결됐으며 이후
   콘텐츠 상호작용은 다시 감사해야 한다.

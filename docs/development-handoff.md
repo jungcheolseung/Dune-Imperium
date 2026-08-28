@@ -26,26 +26,27 @@ uv run ruff check src tests
 uv run mypy src tests
 ```
 
-2026-08-29의 기준 결과는 pytest 655개 통과, Ruff 통과, mypy 통과다. 현재 action
-codec은 `ACTION_CODEC_VERSION = 68`이며 기본 룰셋 catalog는 3,767개, CHOAM
-룰셋 catalog는 4,004개다.
+2026-08-29의 기준 결과는 pytest 663개 통과, Ruff 통과, mypy 통과다. 현재 action
+codec은 `ACTION_CODEC_VERSION = 70`이며 기본 룰셋 catalog는 3,791개, CHOAM
+룰셋 catalog는 4,029개다.
 
 ## 현재 구현 기준선
 
-마지막 기능 커밋은 `736688f Play Leverage on the Spice gained during the
-turn`이고, 그 뒤에 이 슬라이스의 `Document ...` 커밋이 있다.
+마지막 기능 커밋은 `41b9ab4 Play the six Endgame Intrigue cards through the
+DSL`이고, 그 앞에 Endgame window 커밋(`5e4cf70`), 뒤에 이 묶음의
+`Document ...` 커밋이 있다.
 
 - R0-M4는 완료됐다. 공식 규칙 자료, 엔진 커널, 4인 setup, 한 라운드 수직 조각,
   actor-neutral action codec과 PettingZoo AEC 계약이 있다.
 - M5의 주요 시스템은 연결돼 있다. Influence/Friendship/Alliance, Agent와 Reveal,
   Spy/Infiltrate/Gather Intelligence, 개인 덱 reshuffle chance, Combat 순위와 보상,
-  sandworm·Shield Wall·control, Makers·Recall, Endgame 진입과 안전한 일부 종료를
+  sandworm·Shield Wall·control, Makers·Recall, Endgame window와 게임 종료까지
   실행할 수 있다.
 - 시작 카드 7종, Reserve 2종, 기본 Imperium 50종, CHOAM 전용 Imperium 4종 모두에
   완전한 play data가 있다(`implementation-audits/personal-cards.md`).
 - CHOAM standard contract 20장의 시장·완료·보상과 CHOAM 전용 Imperium 4종이
   연결돼 있다(`implementation-audits/contracts.md`).
-- Intrigue 44장 중 Plot 23종·Combat 11종(identity 31종)이 effect DSL로 전사돼
+- Intrigue 44장 중 Plot 26종·Combat 11종·Endgame 6종(identity 42종)이 effect DSL로 전사돼
   실제 play된다. Plot은 소유자의 `turn`/`agent_effects`/`reveal` frame에서, Combat은
   `combat_intrigue` frame의 priority 보유 참가자에게 제시된다. 선택이 필요한
   효과는 `intrigue_choice` frame의 슬롯으로 순차 해결한다. Impress와 Inspire
@@ -62,8 +63,9 @@ turn`이고, 그 뒤에 이 슬라이스의 `Document ...` 커밋이 있다.
   replayable reshuffle chance로 해결된다.
 - 규칙 dispatcher는 `LEGAL_ACTION_PROVIDERS[FrameKind]`와 `ACTION_HANDLERS`
   두 표로 동작한다(`refactoring-plan.md`).
-- 코어 상태 머신과 replay는 여러 라운드를 지원한다. 200게임×8라운드 random
-  soak(replay 검증 포함)이 약 40초에 통과한다.
+- 코어 상태 머신과 replay는 전체 게임을 지원한다. 200게임×8라운드 random
+  soak이 약 11초, random 4인 게임 60판의 FINISHED 완주(창 240개, replay 검증
+  포함)가 약 30초에 통과한다.
 - `run_random_round`, debug CLI, `dune_imperium_uprising_v0` PettingZoo adapter는
   의도적으로 한 라운드에서 끝난다. 전체 게임 runner나 전체 게임 RL episode는
   아직 없다.
@@ -72,13 +74,9 @@ turn`이고, 그 뒤에 이 슬라이스의 `Document ...` 커밋이 있다.
 
 ## 아직 완성되지 않은 경계
 
-- Intrigue 8종 identity는 setup만 있고 play할 수 없다. 필요한 경계별로:
-  - Endgame timing(OQ-001): Crysknife, Desert Mouse, Ornithopter의 Endgame 절반,
-    CHOAM Profits, Secure Spice Trade, Shadow Alliance
+- Intrigue 2종 identity는 setup만 있고 play할 수 없다.
   - Imperium Row 교체와 할인 지속: Manipulate
-  - "Conflict를 이길 때" 종류: Spring the Trap 등은 카드 확인 필요
-  - Endgame과 "이길 때" 카드가 없으므로 held Intrigue가 있는 Endgame은 보수적으로
-    자동 종료하지 않는다(OQ-001).
+  - "Conflict를 이길 때" 종류: Spring the Trap(카드 확인 필요)
 - Reveal turn 중 card가 hand에 들어가는 Plot(개인 card draw, Inspire Awe의
   조건부 hand 획득)은 FAQ p. 3의 즉시 공개 규칙이 구현되지 않아 Reveal에서
   제시하지 않는다(OQ-015(c)).
@@ -101,17 +99,14 @@ turn`이고, 그 뒤에 이 슬라이스의 `Document ...` 커밋이 있다.
 
 큰 순서는 유지한다.
 
-1. 남은 Intrigue 11종의 경계 (아래 세부 순서)
+1. 남은 Intrigue 2종의 경계 (아래 세부 순서)
 2. Leader Signet Ring·기본 능력과 Shaddam 전용 Contract, 남은 Objective 상호작용
 3. 전체 게임 random/self-play runner와 PettingZoo episode 확장
 
 Intrigue 세부 순서(권장):
 
-1. **Endgame Intrigue** — OQ-001의 참가 순서·종료 조건·wild matching 시점을
-   convention으로 정한 뒤 Endgame frame에서 play한다. 카드 6종(Crysknife,
-   Desert Mouse, Ornithopter, CHOAM Profits, Secure Spice Trade,
-   Shadow Alliance). 각 카드 이미지를 먼저 검증한다.
-2. Manipulate(custom hook), "이길 때" 카드(Spring the Trap 등 카드 확인 필요).
+1. Manipulate(custom hook)와 "이길 때" 카드(Spring the Trap — 카드 이미지 확인
+   필요). 이 2종이 끝나면 Intrigue 44장이 완결된다.
 
 각 묶음은 카드 이미지로 텍스트를 검증하고(`docs/card-data-sources.md`의 방법),
 `Play ...` / `Document ...` 커밋 쌍을 유지하며, 새 결정 경계는
@@ -169,11 +164,12 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에
 2026-08-29 작업 시작 시점의 `origin/master`는 `ed16d93 Refresh the development
 handoff for the next session`이고, 로컬 `master`에는 그 뒤 Impress·Inspire Awe
 슬라이스(`72335eb`, `d4ba179`), Call to Arms 슬라이스(`2de0d1b`, `b8707d3`),
-Distraction 슬라이스(`a3569af`, `d724b98`), Leverage 슬라이스(`736688f`와
-이어지는 `Document ...`)가 있다. 새 세션은 `git log origin/master..master`로
-push 여부를 확인한다. checkout이 이보다 이전이면 이 문서의 v68 action
-catalog, 3,767/4,004개 행동, 655개 테스트 기준선이 실제 코드와 일치하지
-않는다.
+Distraction 슬라이스(`a3569af`, `d724b98`), Leverage 슬라이스(`736688f`,
+`2dde896`), Endgame 묶음(`5e4cf70`, `41b9ab4`와 이어지는 `Document ...`)이
+있다. 2026-08-29 중간에 사용자가 `2dde896`까지 push했다. 새 세션은
+`git log origin/master..master`로 push 여부를 확인한다. checkout이 이보다
+이전이면 이 문서의 v70 action catalog, 3,791/4,029개 행동, 663개 테스트
+기준선이 실제 코드와 일치하지 않는다.
 
 ## 2026-08-29 세션 요약
 
@@ -192,8 +188,17 @@ catalog, 3,767/4,004개 행동, 655개 테스트 기준선이 실제 코드와 �
 - Leverage를 play 시점 조건으로 전사했다: `spice_at_turn_start` 스냅샷 +
   `spice_spent_turn` 카운터(지출 5지점)로 "이번 turn 총 획득 spice"를
   계산하고, 조건 성립 시 Contract 1 + Solari 1을 준다. Harvest의 placement
-  기준 회계와는 분리 유지. codec v68. 이로써 turn 트리거/조건 3종 묶음이
-  끝났고 남은 Intrigue는 Endgame 6종과 Manipulate·Spring the Trap이다.
+  기준 회계와는 분리 유지. codec v68.
+- Endgame Intrigue window(OQ-001 convention)를 열었다: First Player부터
+  시계 방향 1회 순회, window 안에서 Endgame play와 wild matching 자유 순서,
+  pass가 창을 닫고 마지막 pass가 게임을 끝낸다. 기존 단일 무모호 wild 자동
+  경로와 `declined_endgame_wild_card_ids`를 대체했다(codec v69). 이어서
+  Endgame 6종(Crysknife, Desert Mouse, Ornithopter의 spice/flip 이중 절반,
+  CHOAM Profits, Secure Spice Trade, Shadow Alliance)을 전사했다(codec v70).
+  Shadow Alliance의 "상대가 Alliance를 보유한 트랙" 조건을 DIU가 누락한 것을
+  카드 이미지로 확인해 기록했고, 조건 DSL이 전체 상태를 읽도록 바꿨다.
+  random 4인 게임 60판이 처음으로 FINISHED까지 완주됐다(창 240개, wild 27회,
+  replay 검증 통과).
 - `AcquireCardUpTo(max_cost, to_hand_if)` DSL 보상과 `acquire_intrigue_imperium`
   / `acquire_intrigue_reserve` 선택 슬롯을 추가했다. Row 보충, acquire box 즉시
   처리, Spy 배치 box의 `acquisition_spy` frame 재사용(카드 해결 후 push),

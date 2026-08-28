@@ -169,6 +169,9 @@ Agent paths until its full local transcription and regression tests are ready.
 - DIU records Leverage's second reward as drawing one personal card. The
   printed card shows the CHOAM Contract icon (identical to Reach Agreement's),
   so the local transcription takes one Contract.
+- DIU's Shadow Alliance condition is four Influence with any Faction. The
+  printed card adds "where an opponent has the Alliance", so the local
+  condition requires an opponent-held Alliance on that track.
 
 ### Intrigue batches
 
@@ -234,4 +237,15 @@ spice this turn:" then the CHOAM Contract icon and a one-Solari coin). DIU's
 Solari and a personal-card draw; the left icon is identical to Reach
 Agreement's printed Contract icon, so the local transcription takes a
 Contract instead.
+
+The eleventh batch transcribes the six Endgame cards from their images.
+Crysknife, Desert Mouse and Ornithopter print a one-Spice hexagon as the
+Plot half and "Flip one of your face-up [icon] or [wild] Conflict cards"
+into the golden Victory Point sphere as the Endgame half (the Ornithopter
+image slug is misspelled "ornitopter" on Dune Cards Hub). CHOAM Profits
+requires "four or more contracts", Secure Spice Trade "at least two The
+Spice Must Flow" for one Victory Point plus two Spice, and Shadow Alliance
+"4 Influence (or more) on a Faction track where an opponent has the
+Alliance". DIU agrees on every shape except Shadow Alliance, where it drops
+the opponent-Alliance clause.
 
