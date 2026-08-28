@@ -113,10 +113,11 @@ A와 B는 codec version 변경 없이 기존 테스트로 검증한다. 각 단�
 
 리뷰에서 나온 구조적 지적 중 아직 처리하지 않은 것:
 
-- Intrigue draw 10곳(board effect, combat reward, card trigger, influence track
-  bonus)을 `rules/intrigue_deck.draw_intrigue_cards`로 이관해 deck 고갈 시
-  reshuffle chance frame을 공통 적용한다. 지금은 해당 경로가 빈 deck에서 draw를
-  건너뛰거나 예외를 낸다.
+- (완료 `8598321`) Intrigue draw 10곳을 공통 경계로 이관했다. 각 지점은 deck에
+  있는 만큼 즉시 뽑고 부족분을 `GameState.pending_intrigue_draws`에 큐잉하며,
+  engine의 `_advance_automatic`이 다음 플레이어 결정 전에 reshuffle chance frame을
+  올려 해소한다. Intrigue 카드 자체의 draw만은 카드가 discard되기 전에 즉시
+  해결해 자기 자신이 reshuffle에 섞이지 않게 한다.
 - Reserve copy ID는 zone 스캔 대신 stack별 발급 카운터를 state에 두는 편이 안전하다.
 - `ACTION_HANDLERS`를 `(FrameKind, action_id)`로 키잉하고 chance handler도 표로
   두면 `_apply_decline_combat_reward` 같은 kind 분기와 `_apply_chance`의 if/elif가

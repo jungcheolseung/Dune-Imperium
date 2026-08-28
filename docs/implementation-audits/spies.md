@@ -71,3 +71,13 @@ The two Calculus of Power copies add 102 Spy-icon Agent templates plus 94 Reveal
 trash choices, advancing the default at that slice to version 42 with 2533
 entries. Later non-Spy card slices advance the current replay default to codec
 version 52 with 3111 entries without changing these Spy templates.
+
+## Agent-card placement and supply
+
+An Agent-card Spy placement (`place_agent_card_spy`) is offered only while
+the owner has a Spy in supply at that moment; otherwise the card offers
+`recall_spy_for_agent_card` again [Main pp. 11, 20]. The earlier
+`agent_card_spy_recalled` flag is no longer sufficient on its own because the
+free ordering of Agent-turn groups lets the Espionage board effect consume a
+Spy that was recalled for the card.
+
