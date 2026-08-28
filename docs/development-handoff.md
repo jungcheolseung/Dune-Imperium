@@ -133,6 +133,13 @@ sandworm 같은 나머지 선택형 효과를 DSL에 추가해 남은 Plot Intri
 개인 카드 draw·Spy·Combat·Endgame의 민감한 설계 결정은
 `docs/implementation-audits/`의 주제별 문서를 먼저 확인한다.
 
+## 처리량 메모
+
+`RulesEngine.verify_input_immutability`는 매 전이마다 state 전체를 canonical
+hash하는 디버그 가드라 기본 off다(켜면 random play가 약 70 step/s, 끄면 약
+3,000 step/s). 커널 테스트 엔진만 이를 켠다. 200게임×6라운드 random soak은 약
+30초면 끝난다.
+
 ## 유용한 명령
 
 ```bash

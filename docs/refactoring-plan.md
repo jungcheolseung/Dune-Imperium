@@ -9,7 +9,8 @@ Intrigue 공통 경계를 만들기 전에 아래 항목을 정리한다. `core/
 
 ## 유지할 것
 
-- 불변 `GameState`와 `RuleResult`, 전이 후 canonical hash·revision 검증
+- 불변 `GameState`와 `RuleResult`, 전이 후 revision 검증(입력 state 불변 hash 검증은
+  `verify_input_immutability`로 켜는 디버그 가드; 기본 off)
 - chance outcome을 기록·주입하는 replay 설계와 `__post_init__` 불변식
 - decision stack 개념과 `_advance_automatic`의 phase 루프
 - 573개 테스트: 리팩토링의 안전망으로 codec version을 바꾸지 않고 통과시킨다
