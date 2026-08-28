@@ -32,8 +32,9 @@ from dune_imperium.content.uprising.starting_cards import (
 from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
 from dune_imperium.core.actions import ActionValue, DomainAction
 
-ACTION_CODEC_VERSION = 60
+ACTION_CODEC_VERSION = 61
 MAX_DEPLOYMENT_COUNT = 12
+MAX_INTRIGUE_DEPLOYMENT = 4
 
 
 @dataclass(frozen=True, slots=True)
@@ -234,6 +235,16 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         for recipient in range(config.players)
     )
     templates.extend(_trash_templates(config, "choose_intrigue_discard"))
+    templates.extend(
+        ActionTemplate(action_id=action_id)
+        for action_id in ("detonate_shield_wall", "keep_shield_wall")
+    )
+    templates.extend(
+        ActionTemplate(
+            action_id="deploy_intrigue_troops", arguments=(("count", count),)
+        )
+        for count in range(1, MAX_INTRIGUE_DEPLOYMENT + 1)
+    )
     templates.extend(
         ActionTemplate(
             action_id="acquire_imperium_with_solari",

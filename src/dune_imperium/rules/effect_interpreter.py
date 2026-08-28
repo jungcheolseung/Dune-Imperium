@@ -13,6 +13,8 @@ from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
     CompletedContractsAtLeast,
     Condition,
+    DeployFromGarrison,
+    DestroyShieldWall,
     DiscardFromHand,
     DrawIntrigueCards,
     DrawPersonalCards,
@@ -29,6 +31,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     RecruitTroops,
     Reward,
     SpiesPlacedAtLeast,
+    SummonSandworm,
 )
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
@@ -39,8 +42,15 @@ from dune_imperium.rules.effects import recruit_troops
 from dune_imperium.rules.frames import replace_player
 from dune_imperium.rules.influence import gain_faction_influence, influence_amount
 from dune_imperium.rules.intrigue_deck import draw_intrigue_cards
+from dune_imperium.rules.shield_wall import current_conflict_is_shield_wall_protected
 
-type ChoiceSlot = LoseInfluence | DiscardFromHand | GainInfluence
+type ChoiceSlot = (
+    LoseInfluence
+    | DiscardFromHand
+    | GainInfluence
+    | DestroyShieldWall
+    | DeployFromGarrison
+)
 
 
 def condition_holds(player: PlayerState, condition: Condition) -> bool:
@@ -61,13 +71,25 @@ def condition_holds(player: PlayerState, condition: Condition) -> bool:
 def applicable_sections(
     player: PlayerState,
     option: IntrigueOption,
+    *,
+    shield_wall_present: bool = True,
 ) -> tuple[EffectSection, ...]:
-    """Return the sections whose conditions currently hold."""
+    """Return the sections whose conditions currently hold.
+
+    A section that only offers the Shield Wall detonation icon has nothing to
+    do once the token is gone, so it is not applicable then.
+    """
 
     return tuple(
         section
         for section in option.sections
-        if section.condition is None or condition_holds(player, section.condition)
+        if (section.condition is None or condition_holds(player, section.condition))
+        and (
+            shield_wall_present
+            or not all(
+                isinstance(reward, DestroyShieldWall) for reward in section.rewards
+            )
+        )
     )
 
 
@@ -114,11 +136,15 @@ def pay_cost(player: PlayerState, cost: PayResources | None) -> PlayerState:
     )
 
 
-def choice_slots(sections: tuple[EffectSection, ...]) -> tuple[ChoiceSlot, ...]:
+def choice_slots(
+    sections: tuple[EffectSection, ...],
+    *,
+    shield_wall_present: bool = True,
+) -> tuple[ChoiceSlot, ...]:
     """Return the ordered player choices the sections require.
 
-    Cost choices across every section come first, then reward choices, each
-    repeated once per step (``count`` or ``times``).
+    Cost choices across every section come first, then reward choices in
+    printed order, each repeated once per step (``count`` or ``times``).
     """
 
     slots: list[ChoiceSlot] = []
@@ -128,8 +154,15 @@ def choice_slots(sections: tuple[EffectSection, ...]) -> tuple[ChoiceSlot, ...]:
                 slots.extend([cost] * cost.count)
     for section in sections:
         for reward in section.rewards:
-            if isinstance(reward, GainInfluence) and reward.requires_choice:
-                slots.extend([reward] * reward.times)
+            match reward:
+                case GainInfluence() if reward.requires_choice:
+                    slots.extend([reward] * reward.times)
+                case DestroyShieldWall() if shield_wall_present:
+                    slots.append(reward)
+                case DeployFromGarrison():
+                    slots.append(reward)
+                case _:
+                    pass
     return tuple(slots)
 
 
@@ -154,14 +187,33 @@ def _choice_costs_feasible(
     return total_influence >= influence_needed and len(player.hand) >= discards_needed
 
 
-def option_is_playable(player: PlayerState, option: IntrigueOption) -> bool:
+def _choice_rewards_feasible(
+    player: PlayerState,
+    sections: tuple[EffectSection, ...],
+) -> bool:
+    for section in sections:
+        for reward in section.rewards:
+            if isinstance(reward, DeployFromGarrison) and player.troops_garrison < 1:
+                return False
+    return True
+
+
+def option_is_playable(
+    state: GameState,
+    player: int,
+    option: IntrigueOption,
+) -> bool:
     """An option is playable when a section applies and every cost is payable."""
 
-    sections = applicable_sections(player, option)
+    owner = state.players[player]
+    sections = applicable_sections(
+        owner, option, shield_wall_present=state.shield_wall_present
+    )
     return (
         bool(sections)
-        and can_afford(player, resource_cost(sections))
-        and _choice_costs_feasible(player, sections)
+        and can_afford(owner, resource_cost(sections))
+        and _choice_costs_feasible(owner, sections)
+        and _choice_rewards_feasible(owner, sections)
     )
 
 
@@ -171,6 +223,7 @@ class RewardOutcome:
 
     result: RuleResult
     troops_recruited: int = 0
+    sandworms_deployed: int = 0
 
 
 def automatic_rewards(sections: tuple[EffectSection, ...]) -> tuple[Reward, ...]:
@@ -181,6 +234,7 @@ def automatic_rewards(sections: tuple[EffectSection, ...]) -> tuple[Reward, ...]
         for section in sections
         for reward in section.rewards
         if not (isinstance(reward, GainInfluence) and reward.requires_choice)
+        and not isinstance(reward, DestroyShieldWall | DeployFromGarrison)
     )
 
 
@@ -200,6 +254,7 @@ def apply_rewards(
     owner = state.players[player]
     events: list[GameEvent] = []
     troops_recruited = 0
+    sandworms_deployed = 0
     personal_draws = 0
     intrigue_draws = 0
     fixed_influence: list[GainInfluence] = []
@@ -235,6 +290,33 @@ def apply_rewards(
                 fixed_influence.append(reward)
             case GainInfluence():
                 raise ValueError("Influence choices must be resolved as choice slots")
+            case SummonSandworm(count=count, requires_maker_hooks=needs_hooks):
+                if (
+                    (needs_hooks and not owner.maker_hooks)
+                    or not state.current_conflict_ids
+                    or current_conflict_is_shield_wall_protected(state)
+                ):
+                    # No effect against a Shield Wall-protected Conflict
+                    # [Main p. 20] or without the required Maker Hooks.
+                    events.append(
+                        GameEvent(
+                            event_id=f"{source}:sandworm_unavailable",
+                            kind="sandworm_summon_unavailable",
+                            payload=(("player", player),),
+                        )
+                    )
+                else:
+                    owner = replace(
+                        owner, sandworms_conflict=owner.sandworms_conflict + count
+                    )
+                    sandworms_deployed += count
+                    events.append(
+                        GameEvent(
+                            event_id=f"{source}:sandworm",
+                            kind="sandworm_deployed",
+                            payload=(("count", count), ("player", player)),
+                        )
+                    )
             case GainCombatStrength():
                 raise NotImplementedError("Combat strength rewards need Combat play")
             case _:
@@ -270,4 +352,5 @@ def apply_rewards(
     return RewardOutcome(
         result=RuleResult(state=next_state, events=tuple(events)),
         troops_recruited=troops_recruited,
+        sandworms_deployed=sandworms_deployed,
     )

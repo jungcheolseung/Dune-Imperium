@@ -12,6 +12,8 @@ from dune_imperium.content.schema import (
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
     CompletedContractsAtLeast,
+    DeployFromGarrison,
+    DestroyShieldWall,
     DiscardFromHand,
     DrawIntrigueCards,
     DrawPersonalCards,
@@ -28,6 +30,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     PayResources,
     RecruitTroops,
     SpiesPlacedAtLeast,
+    SummonSandworm,
 )
 
 BASE_SOURCES: Final = (SourceRef(SourceDocument.MAIN_RULEBOOK, (3, 4)),)
@@ -184,7 +187,16 @@ INTRIGUE_CARDS: Final = (
         ),
     ),
     _entry(157, "desert-mouse", "Desert Mouse"),
-    _entry(131, "detonation", "Detonation", copies=2),
+    _entry(
+        131,
+        "detonation",
+        "Detonation",
+        copies=2,
+        options=(
+            _plot(EffectSection(rewards=(DestroyShieldWall(),))),
+            _plot(EffectSection(rewards=(DeployFromGarrison(4),))),
+        ),
+    ),
     _entry(151, "devour", "Devour"),
     _entry(144, "distraction", "Distraction", copies=2),
     _entry(149, "find-weakness", "Find Weakness"),
@@ -325,7 +337,19 @@ INTRIGUE_CARDS: Final = (
         ),
     ),
     _entry(155, "tactical-option", "Tactical Option"),
-    _entry(137, "unexpected-allies", "Unexpected Allies"),
+    _entry(
+        137,
+        "unexpected-allies",
+        "Unexpected Allies",
+        options=(
+            _plot(
+                EffectSection(
+                    costs=(PayResources(water=2),),
+                    rewards=(DestroyShieldWall(), SummonSandworm(1)),
+                )
+            ),
+        ),
+    ),
     _entry(154, "weirding-combat", "Weirding Combat"),
 )
 

@@ -81,7 +81,7 @@ def _play(state: GameState, card_id: str, option: int = 0) -> DomainAction:
 def test_transcribed_intrigue_options_are_well_formed() -> None:
     transcribed = [entry for entry in INTRIGUE_CARDS if entry.play_data_complete]
 
-    assert len(transcribed) == 14
+    assert len(transcribed) == 16
     for entry in transcribed:
         assert entry.options
         for option in entry.options:
@@ -708,4 +708,157 @@ def test_owed_intrigue_draw_stops_short_with_nothing_to_shuffle() -> None:
     assert done.state.players[0].intrigue_cards == ()
     assert done.state.pending_intrigue_draws == ()
     assert done.state.decision_stack[-1].kind == "turn"
+
+
+def _conflict(protected: bool) -> str:
+    from dune_imperium.content.uprising.conflicts import CONFLICTS
+
+    return next(
+        conflict.card.card_id
+        for conflict in CONFLICTS
+        if conflict.shield_wall_protected is protected
+    )
+
+
+def _detonate() -> DomainAction:
+    return DomainAction(action_id="detonate_shield_wall", actor=0)
+
+
+def _keep_wall() -> DomainAction:
+    return DomainAction(action_id="keep_shield_wall", actor=0)
+
+
+def _deploy(count: int) -> DomainAction:
+    return DomainAction(
+        action_id="deploy_intrigue_troops", actor=0, arguments=(("count", count),)
+    )
+
+
+def test_detonation_may_remove_the_shield_wall_or_keep_it() -> None:
+    card = _intrigue("detonation")
+    owner = PlayerState(player_id=0, intrigue_cards=(card,))
+    state = _turn_state(owner)
+    engine = UprisingRulesEngine()
+
+    # Option 0 is the detonation icon, option 1 the garrison deployment
+    # (unavailable here: the garrison holds troops, so it is offered too).
+    offered = legal_intrigue_play_actions(state, 0)
+    assert _play(state, card, 0) in offered
+
+    opened = engine.apply(state, _play(state, card, 0)).state
+    assert engine.legal_actions(opened, 0) == (_detonate(), _keep_wall())
+
+    detonated = engine.apply(opened, _detonate())
+    assert detonated.state.shield_wall_present is False
+    assert "shield_wall_destroyed" in [e.kind for e in detonated.events]
+    assert detonated.state.intrigue_discard == (card,)
+
+    kept = engine.apply(opened, _keep_wall()).state
+    assert kept.shield_wall_present is True
+    assert kept.intrigue_discard == (card,)
+
+    # Once the token is gone the detonation option has nothing to do.
+    gone = replace(_turn_state(owner), shield_wall_present=False)
+    assert legal_intrigue_play_actions(gone, 0) == (_play(gone, card, 1),)
+
+
+def test_detonation_deploys_up_to_four_garrison_troops() -> None:
+    card = _intrigue("detonation")
+    owner = PlayerState(player_id=0, intrigue_cards=(card,), troops_garrison=3)
+    state = replace(
+        _turn_state(replace(owner, troops_supply=9)),
+        current_conflict_ids=(_conflict(False),),
+    )
+    engine = UprisingRulesEngine()
+
+    opened = engine.apply(state, _play(state, card, 1)).state
+    assert engine.legal_actions(opened, 0) == (_deploy(1), _deploy(2), _deploy(3))
+
+    deployed = engine.apply(opened, _deploy(3)).state
+    assert deployed.players[0].troops_garrison == 0
+    assert deployed.players[0].troops_conflict == 3
+    assert deployed.decision_stack[-1].kind == "turn"
+
+    empty = PlayerState(
+        player_id=0, intrigue_cards=(card,), troops_supply=12, troops_garrison=0
+    )
+    assert legal_intrigue_play_actions(_turn_state(empty), 0) == (
+        _play(state, card, 0),
+    )
+
+
+def test_units_deployed_by_plot_during_reveal_count_toward_strength() -> None:
+    card = _intrigue("detonation")
+    owner = PlayerState(
+        player_id=0,
+        intrigue_cards=(card,),
+        hand=(_starter("dagger"),),
+        troops_garrison=3,
+        troops_supply=9,
+    )
+    state = replace(_turn_state(owner), current_conflict_ids=(_conflict(False),))
+    engine = UprisingRulesEngine()
+    revealed = engine.apply(state, DomainAction(action_id="reveal_turn", actor=0)).state
+    # Dagger reveals for one sword, but with no units it does not count yet.
+    assert revealed.players[0].combat_strength == 0
+
+    opened = engine.apply(revealed, _play(revealed, card, 1)).state
+    deployed = engine.apply(opened, _deploy(2)).state
+
+    assert deployed.players[0].troops_conflict == 2
+    # Two troops (4) plus the revealed sword (1).
+    assert deployed.players[0].combat_strength == 5
+    reveal_frame = next(f for f in deployed.decision_stack if f.kind == "reveal")
+    assert dict(reveal_frame.context)["strength"] == 5
+
+
+def test_unexpected_allies_detonates_then_summons_a_sandworm() -> None:
+    card = _intrigue("unexpected_allies")
+    owner = PlayerState(
+        player_id=0, intrigue_cards=(card,), resources=Resources(water=2)
+    )
+    state = replace(_turn_state(owner), current_conflict_ids=(_conflict(True),))
+    engine = UprisingRulesEngine()
+
+    opened = engine.apply(state, _play(state, card)).state
+    assert opened.players[0].resources.water == 0
+    assert engine.legal_actions(opened, 0) == (_detonate(), _keep_wall())
+
+    summoned = engine.apply(opened, _detonate())
+    assert summoned.state.shield_wall_present is False
+    assert summoned.state.players[0].sandworms_conflict == 1
+    assert [e.kind for e in summoned.events] == [
+        "shield_wall_destroyed",
+        "sandworm_deployed",
+    ]
+
+    # Keeping the wall leaves the protected Conflict untouched [Main p. 20].
+    blocked = engine.apply(opened, _keep_wall())
+    assert blocked.state.players[0].sandworms_conflict == 0
+    assert blocked.state.players[0].resources.water == 0
+    assert "sandworm_summon_unavailable" in [e.kind for e in blocked.events]
+
+
+def test_unexpected_allies_without_a_wall_summons_directly() -> None:
+    card = _intrigue("unexpected_allies")
+    owner = PlayerState(
+        player_id=0,
+        intrigue_cards=(card,),
+        hand=(_starter("dagger"),),
+        resources=Resources(water=2),
+    )
+    state = replace(
+        _turn_state(owner),
+        shield_wall_present=False,
+        current_conflict_ids=(_conflict(True),),
+    )
+    engine = UprisingRulesEngine()
+    revealed = engine.apply(state, DomainAction(action_id="reveal_turn", actor=0)).state
+
+    done = engine.apply(revealed, _play(revealed, card)).state
+
+    assert done.players[0].sandworms_conflict == 1
+    # Sandworm (3) plus the revealed sword (1), no choice frame was needed.
+    assert done.players[0].combat_strength == 4
+    assert done.decision_stack[-1].kind == "reveal"
 

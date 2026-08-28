@@ -258,6 +258,9 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "play_intrigue": apply_intrigue_play,
     "choose_intrigue_faction": apply_intrigue_choice,
     "choose_intrigue_discard": apply_intrigue_choice,
+    "detonate_shield_wall": apply_intrigue_choice,
+    "keep_shield_wall": apply_intrigue_choice,
+    "deploy_intrigue_troops": apply_intrigue_choice,
     # Agent-turn effect frame
     "resolve_agent_card_effect": _apply_agent_card_effect,
     "resolve_board_effect": _apply_board_effect,

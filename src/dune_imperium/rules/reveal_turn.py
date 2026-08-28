@@ -1560,3 +1560,77 @@ def _next_unrevealed_player(
         if not player.has_revealed:
             return candidate
     return None
+
+
+def add_units_to_reveal(
+    state: GameState,
+    player: int,
+    *,
+    troops: int = 0,
+    sandworms: int = 0,
+) -> RuleResult:
+    """Record units that entered the Conflict during ``player``'s Reveal turn.
+
+    Mirrors Desert Power: the first units make the revealed sword strength
+    count, later units add their own value only [Main p. 13].
+    """
+
+    owner = state.players[player]
+    value = 2 * troops + 3 * sandworms
+    if value == 0:
+        return RuleResult(state=state)
+    previous_units = owner.troops_conflict + owner.sandworms_conflict
+    context = _reveal_frame_context(state.decision_stack)
+    current_strength = context.get("strength")
+    sword_strength = context.get("sword_strength", 0)
+    optional_sword_strength = context.get("optional_sword_strength", 0)
+    if (
+        isinstance(current_strength, bool)
+        or not isinstance(current_strength, int)
+        or isinstance(sword_strength, bool)
+        or not isinstance(sword_strength, int)
+        or isinstance(optional_sword_strength, bool)
+        or not isinstance(optional_sword_strength, int)
+    ):
+        raise RuntimeError("Reveal frame has invalid strength")
+    strength_delta = (
+        value
+        if previous_units
+        else value + sword_strength + optional_sword_strength - current_strength
+    )
+    next_owner = replace(
+        owner,
+        troops_garrison=owner.troops_garrison - troops,
+        troops_conflict=owner.troops_conflict + troops,
+        sandworms_conflict=owner.sandworms_conflict + sandworms,
+        combat_strength=owner.combat_strength + strength_delta,
+    )
+    return RuleResult(
+        state=replace(
+            state,
+            players=replace_player(state.players, next_owner),
+            decision_stack=_add_reveal_strength(state.decision_stack, strength_delta),
+        ),
+        events=(
+            GameEvent(
+                event_id=(
+                    f"round:{state.round_number}:player:{player}:reveal:"
+                    f"units:{owner.troops_conflict + owner.sandworms_conflict}"
+                ),
+                kind="reveal_strength_gained",
+                payload=(("amount", strength_delta), ("player", player)),
+            ),
+        ),
+    )
+
+
+def reveal_is_open_for(state: GameState, player: int) -> bool:
+    """Return whether ``player``'s Reveal frame is on the decision stack."""
+
+    return any(
+        frame.kind == FrameKind.REVEAL
+        and isinstance(frame.decision, PlayerDecision)
+        and frame.decision.owner == player
+        for frame in state.decision_stack
+    )
+

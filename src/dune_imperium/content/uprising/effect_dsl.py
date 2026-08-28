@@ -229,6 +229,44 @@ class GainInfluence:
         return self.factions is None or len(self.factions) > 1
 
 
+@dataclass(frozen=True, slots=True)
+class DestroyShieldWall:
+    """The Shield Wall detonation icon: the player may remove the token.
+
+    Offered as a choice while the Shield Wall is present [Main pp. 10, 20];
+    it does nothing once the token is gone.
+    """
+
+
+@dataclass(frozen=True, slots=True)
+class SummonSandworm:
+    """Take ``count`` sandworms from the bank straight into the Conflict.
+
+    Does nothing while the current Conflict is protected by the Shield Wall
+    [Main p. 20]. Cards that require Maker Hooks set ``requires_maker_hooks``.
+    """
+
+    count: int = 1
+    requires_maker_hooks: bool = False
+
+    def __post_init__(self) -> None:
+        if self.count < 1:
+            raise ValueError("sandworm count must be positive")
+        if not isinstance(self.requires_maker_hooks, bool):
+            raise TypeError("requires_maker_hooks must be a boolean")
+
+
+@dataclass(frozen=True, slots=True)
+class DeployFromGarrison:
+    """Deploy up to ``up_to`` garrison troops to the Conflict (player choice)."""
+
+    up_to: int
+
+    def __post_init__(self) -> None:
+        if self.up_to < 1:
+            raise ValueError("deployment limit must be positive")
+
+
 type Reward = (
     GainResources
     | GainVictoryPoints
@@ -237,6 +275,9 @@ type Reward = (
     | DrawIntrigueCards
     | GainCombatStrength
     | GainInfluence
+    | DestroyShieldWall
+    | SummonSandworm
+    | DeployFromGarrison
 )
 
 

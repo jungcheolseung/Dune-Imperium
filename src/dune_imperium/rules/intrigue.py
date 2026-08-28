@@ -15,6 +15,8 @@ from dataclasses import replace
 
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
+    DeployFromGarrison,
+    DestroyShieldWall,
     DiscardFromHand,
     DrawPersonalCards,
     EffectSection,
@@ -61,6 +63,8 @@ from dune_imperium.rules.influence import (
     influence_amount,
     lose_faction_influence,
 )
+from dune_imperium.rules.reveal_turn import add_units_to_reveal, reveal_is_open_for
+from dune_imperium.rules.shield_wall import destroy_shield_wall
 
 # Frames during which the owner is inside their own Agent or Reveal turn.
 PLOT_FRAME_KINDS = frozenset(
@@ -102,7 +106,7 @@ def legal_intrigue_play_actions(
                 # [FAQ p. 3]; that boundary is not implemented, so such
                 # options are withheld until the Reveal is over.
                 continue
-            if option_is_playable(owner, option):
+            if option_is_playable(state, player, option):
                 actions.append(
                     DomainAction(
                         action_id="play_intrigue",
@@ -127,7 +131,9 @@ def apply_intrigue_play(state: GameState, action: DomainAction) -> RuleResult:
     player = action.actor
     owner = state.players[player]
     option = intrigue_card_for_instance(card_id).options[option_index]
-    sections = applicable_sections(owner, option)
+    sections = applicable_sections(
+        owner, option, shield_wall_present=state.shield_wall_present
+    )
     section_indexes = tuple(
         index for index, section in enumerate(option.sections) if section in sections
     )
@@ -168,7 +174,7 @@ def apply_intrigue_play(state: GameState, action: DomainAction) -> RuleResult:
             )
         )
 
-    if choice_slots(sections):
+    if choice_slots(sections, shield_wall_present=state.shield_wall_present):
         frame = DecisionFrame(
             kind=FrameKind.INTRIGUE_CHOICE,
             frame_id=f"{source}:choice",
@@ -178,6 +184,7 @@ def apply_intrigue_play(state: GameState, action: DomainAction) -> RuleResult:
                 ("chosen_factions", ""),
                 ("option", option_index),
                 ("sections", ",".join(str(index) for index in section_indexes)),
+                ("shield_wall_at_play", state.shield_wall_present),
                 ("slot", 0),
                 ("source", source),
             ),
@@ -248,6 +255,19 @@ def legal_intrigue_choice_actions(
                 )
                 for hand_card in owner.hand
             )
+        case DestroyShieldWall():
+            # The detonation icon is a choice [Main pp. 10, 20].
+            actions.append(DomainAction(action_id="detonate_shield_wall", actor=player))
+            actions.append(DomainAction(action_id="keep_shield_wall", actor=player))
+        case DeployFromGarrison(up_to=up_to):
+            actions.extend(
+                DomainAction(
+                    action_id="deploy_intrigue_troops",
+                    actor=player,
+                    arguments=(("count", count),),
+                )
+                for count in range(1, min(up_to, owner.troops_garrison) + 1)
+            )
     return tuple(actions)
 
 
@@ -295,6 +315,26 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
             result = discard_personal_card_from_hand(
                 state, player, str(arguments["card_id"]), source=step_source
             )
+        case DestroyShieldWall():
+            if action.action_id == "detonate_shield_wall":
+                result = destroy_shield_wall(
+                    state, event_id=f"{step_source}:shield_wall", source=source
+                )
+            else:
+                result = RuleResult(
+                    state=state,
+                    events=(
+                        GameEvent(
+                            event_id=f"{step_source}:shield_wall_kept",
+                            kind="shield_wall_kept",
+                            payload=(("player", player),),
+                        ),
+                    ),
+                )
+        case DeployFromGarrison():
+            count = arguments["count"]
+            assert isinstance(count, int)
+            result = _deploy_units(state, player, step_source, troops=count)
         case _:
             raise RuntimeError("Intrigue choice frame has an unsupported slot")
 
@@ -338,11 +378,63 @@ def _finish_play(
         ),
         intrigue_discard=(*resolved.intrigue_discard, card_id),
     )
+    events: list[GameEvent] = list(outcome.result.events)
     if outcome.troops_recruited:
         next_state = _update_agent_turn_frame(
             next_state, troops_recruited=outcome.troops_recruited
         )
-    return RuleResult(state=next_state, events=outcome.result.events)
+    if outcome.sandworms_deployed and reveal_is_open_for(next_state, player):
+        # The interpreter moved the sandworms; during a Reveal turn their
+        # strength must also join the revealed total [Main p. 13].
+        owner = next_state.players[player]
+        rolled_back = replace(
+            next_state,
+            players=replace_player(
+                next_state.players,
+                replace(
+                    owner,
+                    sandworms_conflict=owner.sandworms_conflict
+                    - outcome.sandworms_deployed,
+                ),
+            ),
+        )
+        counted = add_units_to_reveal(
+            rolled_back, player, sandworms=outcome.sandworms_deployed
+        )
+        next_state = counted.state
+        events.extend(counted.events)
+    return RuleResult(state=next_state, events=tuple(events))
+
+
+def _deploy_units(
+    state: GameState,
+    player: int,
+    step_source: str,
+    *,
+    troops: int,
+) -> RuleResult:
+    """Move garrison troops into the Conflict, counting strength mid-Reveal."""
+
+    owner = state.players[player]
+    if troops < 1 or owner.troops_garrison < troops:
+        raise RuntimeError("Intrigue deployment exceeds the garrison")
+    event = GameEvent(
+        event_id=f"{step_source}:deploy",
+        kind="troops_deployed",
+        payload=(("count", troops), ("player", player)),
+    )
+    if reveal_is_open_for(state, player):
+        counted = add_units_to_reveal(state, player, troops=troops)
+        return RuleResult(state=counted.state, events=(event, *counted.events))
+    next_owner = replace(
+        owner,
+        troops_garrison=owner.troops_garrison - troops,
+        troops_conflict=owner.troops_conflict + troops,
+    )
+    return RuleResult(
+        state=replace(state, players=replace_player(state.players, next_owner)),
+        events=(event,),
+    )
 
 
 def _draws_personal_cards(owner: PlayerState, option: IntrigueOption) -> bool:
@@ -362,7 +454,8 @@ def _sections(context: dict[str, ActionValue]) -> tuple[EffectSection, ...]:
 
 
 def _slots(context: dict[str, ActionValue]) -> tuple[ChoiceSlot, ...]:
-    return choice_slots(_sections(context))
+    wall = context.get("shield_wall_at_play", True)
+    return choice_slots(_sections(context), shield_wall_present=wall is True)
 
 
 def _current_slot(context: dict[str, ActionValue]) -> ChoiceSlot:
