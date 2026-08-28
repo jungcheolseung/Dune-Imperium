@@ -11,16 +11,20 @@ from dune_imperium.content.schema import (
 )
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
+    CompletedContractsAtLeast,
+    DiscardFromHand,
     DrawIntrigueCards,
     DrawPersonalCards,
     EffectSection,
     GainCombatStrength,
+    GainInfluence,
     GainResources,
     GainVictoryPoints,
     HasHighCouncil,
     InfluenceAtLeast,
     IntrigueOption,
     IntrigueTiming,
+    LoseInfluence,
     PayResources,
     RecruitTroops,
     SpiesPlacedAtLeast,
@@ -87,10 +91,56 @@ def _entry(
 
 
 INTRIGUE_CARDS: Final = (
-    _entry(448, "backed-by-choam", "Backed by CHOAM", choam_only=True),
-    _entry(139, "buy-access", "Buy Access"),
+    _entry(
+        448,
+        "backed-by-choam",
+        "Backed by CHOAM",
+        choam_only=True,
+        options=(
+            _plot(
+                EffectSection(
+                    costs=(LoseInfluence(1),),
+                    rewards=(GainResources(solari=4),),
+                )
+            ),
+            _combat(
+                EffectSection(
+                    condition=CompletedContractsAtLeast(2),
+                    rewards=(GainCombatStrength(4),),
+                )
+            ),
+        ),
+    ),
+    _entry(
+        139,
+        "buy-access",
+        "Buy Access",
+        options=(
+            _plot(
+                EffectSection(
+                    costs=(PayResources(solari=5),),
+                    rewards=(GainInfluence(times=2, distinct=True),),
+                )
+            ),
+        ),
+    ),
     _entry(138, "call-to-arms", "Call to Arms"),
-    _entry(135, "change-allegiances", "Change Allegiances"),
+    _entry(
+        135,
+        "change-allegiances",
+        "Change Allegiances",
+        options=(
+            _plot(
+                EffectSection(costs=(LoseInfluence(1),), rewards=(GainInfluence(),))
+            ),
+            _plot(
+                EffectSection(
+                    costs=(PayResources(spice=3),),
+                    rewards=(GainInfluence(),),
+                )
+            ),
+        ),
+    ),
     _entry(450, "choam-profits", "CHOAM Profits", choam_only=True),
     _entry(
         147,
@@ -124,7 +174,7 @@ INTRIGUE_CARDS: Final = (
         options=(
             _plot(
                 EffectSection(
-                    cost=PayResources(spice=2),
+                    costs=(PayResources(spice=2),),
                     rewards=(RecruitTroops(3),),
                 ),
                 EffectSection(
@@ -140,7 +190,23 @@ INTRIGUE_CARDS: Final = (
     _entry(144, "distraction", "Distraction", copies=2),
     _entry(149, "find-weakness", "Find Weakness"),
     _entry(146, "go-to-ground", "Go To Ground"),
-    _entry(140, "imperium-politics", "Imperium Politics"),
+    _entry(
+        140,
+        "imperium-politics",
+        "Imperium Politics",
+        options=(
+            _plot(
+                EffectSection(
+                    costs=(PayResources(solari=1),),
+                    rewards=(
+                        GainInfluence(
+                            factions=(Faction.EMPEROR, Faction.SPACING_GUILD)
+                        ),
+                    ),
+                )
+            ),
+        ),
+    ),
     _entry(152, "impress", "Impress"),
     _entry(148, "inspire-awe", "Inspire Awe"),
     _entry(
@@ -166,13 +232,13 @@ INTRIGUE_CARDS: Final = (
         options=(
             _plot(
                 EffectSection(
-                    cost=PayResources(spice=2),
+                    costs=(PayResources(spice=2),),
                     rewards=(GainResources(solari=5),),
                 )
             ),
             _plot(
                 EffectSection(
-                    cost=PayResources(solari=5),
+                    costs=(PayResources(solari=5),),
                     rewards=(GainResources(spice=5),),
                 )
             ),
@@ -185,13 +251,25 @@ INTRIGUE_CARDS: Final = (
         options=(
             _plot(
                 EffectSection(
-                    cost=PayResources(solari=3),
+                    costs=(PayResources(solari=3),),
                     rewards=(DrawIntrigueCards(1), RecruitTroops(2)),
                 )
             ),
         ),
     ),
-    _entry(134, "opportunism", "Opportunism"),
+    _entry(
+        134,
+        "opportunism",
+        "Opportunism",
+        options=(
+            _plot(
+                EffectSection(
+                    costs=(LoseInfluence(2), PayResources(solari=2)),
+                    rewards=(GainVictoryPoints(1),),
+                ),
+            ),
+        ),
+    ),
     _entry(158, "ornithopter", "Ornithopter"),
     _entry(156, "questionable-methods", "Questionable Methods"),
     _entry(449, "reach-agreement", "Reach Agreement", choam_only=True),
@@ -211,7 +289,21 @@ INTRIGUE_CARDS: Final = (
         ),
     ),
     _entry(160, "shadow-alliance", "Shadow Alliance"),
-    _entry(127, "sietch-ritual", "Sietch Ritual"),
+    _entry(
+        127,
+        "sietch-ritual",
+        "Sietch Ritual",
+        options=(
+            _plot(
+                EffectSection(
+                    costs=(DiscardFromHand(1),),
+                    rewards=(
+                        GainInfluence(factions=(Faction.BENE_GESSERIT, Faction.FREMEN)),
+                    ),
+                )
+            ),
+        ),
+    ),
     _entry(136, "special-mission", "Special Mission", copies=2),
     _entry(150, "spice-is-power", "Spice is Power"),
     _entry(153, "spring-the-trap", "Spring The Trap"),
@@ -222,12 +314,12 @@ INTRIGUE_CARDS: Final = (
         options=(
             _plot(
                 EffectSection(
-                    cost=PayResources(spice=5),
+                    costs=(PayResources(spice=5),),
                     rewards=(GainVictoryPoints(1),),
                 ),
                 EffectSection(
                     condition=InfluenceAtLeast(Faction.FREMEN, 3),
-                    cost=PayResources(water=3),
+                    costs=(PayResources(water=3),),
                     rewards=(GainVictoryPoints(1),),
                 ),
             ),

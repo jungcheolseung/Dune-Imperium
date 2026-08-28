@@ -98,7 +98,9 @@ from dune_imperium.rules.endgame import (
 )
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.intrigue import (
+    apply_intrigue_choice,
     apply_intrigue_play,
+    legal_intrigue_choice_actions,
     legal_intrigue_play_actions,
 )
 from dune_imperium.rules.intrigue_deck import (
@@ -245,6 +247,7 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[FrameKind, tuple[LegalActionProvider, ...]
     FrameKind.ROUND_START_RESHUFFLE: (),
     FrameKind.PERSONAL_DRAW_RESHUFFLE: (),
     FrameKind.INTRIGUE_RESHUFFLE: (),
+    FrameKind.INTRIGUE_CHOICE: (legal_intrigue_choice_actions,),
 }
 
 ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
@@ -252,6 +255,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "agent_turn": apply_agent_action,
     "reveal_turn": begin_reveal_turn,
     "play_intrigue": apply_intrigue_play,
+    "choose_intrigue_faction": apply_intrigue_choice,
+    "choose_intrigue_discard": apply_intrigue_choice,
     # Agent-turn effect frame
     "resolve_agent_card_effect": _apply_agent_card_effect,
     "resolve_board_effect": _apply_board_effect,

@@ -34,6 +34,7 @@ class FrameKind(StrEnum):
     ROUND_START_RESHUFFLE = "round_start_reshuffle"
     PERSONAL_DRAW_RESHUFFLE = "personal_draw_reshuffle"
     INTRIGUE_RESHUFFLE = "intrigue_reshuffle"
+    INTRIGUE_CHOICE = "intrigue_choice"
 
 
 def top_frame(state: GameState) -> DecisionFrame | None:

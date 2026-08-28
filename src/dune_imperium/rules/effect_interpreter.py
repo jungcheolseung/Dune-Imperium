@@ -1,23 +1,30 @@
 """Interpreter for the composable effect DSL.
 
 Conditions are pure predicates, costs are checked before anything changes, and
-rewards are applied in printed order. Draws are deferred to the end of the
-reward list because they may push a replayable chance frame.
+rewards are applied in printed order. Primitives that need a player choice
+(``LoseInfluence``, ``DiscardFromHand``, multi-Faction ``GainInfluence``) are
+exposed as ordered *choice slots* that the owning rule module resolves one
+decision at a time; everything else is applied automatically.
 """
 
 from dataclasses import dataclass, replace
 
+from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
+    CompletedContractsAtLeast,
     Condition,
+    DiscardFromHand,
     DrawIntrigueCards,
     DrawPersonalCards,
     EffectSection,
     GainCombatStrength,
+    GainInfluence,
     GainResources,
     GainVictoryPoints,
     HasHighCouncil,
     InfluenceAtLeast,
     IntrigueOption,
+    LoseInfluence,
     PayResources,
     RecruitTroops,
     Reward,
@@ -30,8 +37,10 @@ from dune_imperium.core.state import GameState
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.effects import recruit_troops
 from dune_imperium.rules.frames import replace_player
-from dune_imperium.rules.influence import influence_amount
+from dune_imperium.rules.influence import gain_faction_influence, influence_amount
 from dune_imperium.rules.intrigue_deck import draw_intrigue_cards
+
+type ChoiceSlot = LoseInfluence | DiscardFromHand | GainInfluence
 
 
 def condition_holds(player: PlayerState, condition: Condition) -> bool:
@@ -44,6 +53,8 @@ def condition_holds(player: PlayerState, condition: Condition) -> bool:
             return player.high_council
         case SpiesPlacedAtLeast(count=count):
             return len(player.spy_post_ids) >= count
+        case CompletedContractsAtLeast(count=count):
+            return len(player.completed_contract_ids) >= count
     raise TypeError(f"unsupported condition: {condition!r}")
 
 
@@ -60,19 +71,19 @@ def applicable_sections(
     )
 
 
-def total_cost(sections: tuple[EffectSection, ...]) -> PayResources | None:
-    """Sum every mandatory cost across ``sections``."""
+def resource_cost(sections: tuple[EffectSection, ...]) -> PayResources | None:
+    """Sum every automatic resource cost across ``sections``."""
 
     total: PayResources | None = None
     for section in sections:
-        if section.cost is None:
-            continue
-        total = section.cost if total is None else total + section.cost
+        for cost in section.costs:
+            if isinstance(cost, PayResources):
+                total = cost if total is None else total + cost
     return total
 
 
 def can_afford(player: PlayerState, cost: PayResources | None) -> bool:
-    """Return whether the player can pay ``cost`` right now."""
+    """Return whether the player can pay a resource ``cost`` right now."""
 
     if cost is None:
         return True
@@ -103,11 +114,55 @@ def pay_cost(player: PlayerState, cost: PayResources | None) -> PlayerState:
     )
 
 
+def choice_slots(sections: tuple[EffectSection, ...]) -> tuple[ChoiceSlot, ...]:
+    """Return the ordered player choices the sections require.
+
+    Cost choices across every section come first, then reward choices, each
+    repeated once per step (``count`` or ``times``).
+    """
+
+    slots: list[ChoiceSlot] = []
+    for section in sections:
+        for cost in section.costs:
+            if isinstance(cost, LoseInfluence | DiscardFromHand):
+                slots.extend([cost] * cost.count)
+    for section in sections:
+        for reward in section.rewards:
+            if isinstance(reward, GainInfluence) and reward.requires_choice:
+                slots.extend([reward] * reward.times)
+    return tuple(slots)
+
+
+def _choice_costs_feasible(
+    player: PlayerState,
+    sections: tuple[EffectSection, ...],
+) -> bool:
+    influence_needed = 0
+    discards_needed = 0
+    for section in sections:
+        for cost in section.costs:
+            match cost:
+                case LoseInfluence(count=count):
+                    influence_needed += count
+                case DiscardFromHand(count=count):
+                    discards_needed += count
+                case _:
+                    pass
+    total_influence = sum(
+        influence_amount(player.influence, faction) for faction in Faction
+    )
+    return total_influence >= influence_needed and len(player.hand) >= discards_needed
+
+
 def option_is_playable(player: PlayerState, option: IntrigueOption) -> bool:
-    """An option is playable when a section applies and all its costs are payable."""
+    """An option is playable when a section applies and every cost is payable."""
 
     sections = applicable_sections(player, option)
-    return bool(sections) and can_afford(player, total_cost(sections))
+    return (
+        bool(sections)
+        and can_afford(player, resource_cost(sections))
+        and _choice_costs_feasible(player, sections)
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,6 +173,17 @@ class RewardOutcome:
     troops_recruited: int = 0
 
 
+def automatic_rewards(sections: tuple[EffectSection, ...]) -> tuple[Reward, ...]:
+    """Return the rewards that resolve without a player choice."""
+
+    return tuple(
+        reward
+        for section in sections
+        for reward in section.rewards
+        if not (isinstance(reward, GainInfluence) and reward.requires_choice)
+    )
+
+
 def apply_rewards(
     state: GameState,
     player: int,
@@ -125,7 +191,7 @@ def apply_rewards(
     *,
     source: str,
 ) -> RewardOutcome:
-    """Apply ``rewards`` for ``player`` in printed order.
+    """Apply automatic ``rewards`` for ``player`` in printed order.
 
     Immediate gains resolve on the player first; personal and Intrigue draws
     are requested afterwards so any reshuffle chance frame sits on top.
@@ -136,6 +202,7 @@ def apply_rewards(
     troops_recruited = 0
     personal_draws = 0
     intrigue_draws = 0
+    fixed_influence: list[GainInfluence] = []
     for reward in rewards:
         match reward:
             case GainResources(solari=solari, spice=spice, water=water):
@@ -164,12 +231,28 @@ def apply_rewards(
                 personal_draws += count
             case DrawIntrigueCards(count=count):
                 intrigue_draws += count
+            case GainInfluence() if not reward.requires_choice:
+                fixed_influence.append(reward)
+            case GainInfluence():
+                raise ValueError("Influence choices must be resolved as choice slots")
             case GainCombatStrength():
                 raise NotImplementedError("Combat strength rewards need Combat play")
             case _:
                 raise TypeError(f"unsupported reward: {reward!r}")
 
     next_state = replace(state, players=replace_player(state.players, owner))
+    for index, gain in enumerate(fixed_influence):
+        assert gain.factions is not None
+        faction = gain.factions[0]
+        gained = gain_faction_influence(
+            next_state,
+            player,
+            faction,
+            gain.times,
+            event_prefix=f"{source}:influence:{index}:{faction.value}",
+        )
+        next_state = gained.state
+        events.extend(gained.events)
     if intrigue_draws:
         drawn = draw_intrigue_cards(
             next_state, player, intrigue_draws, source=f"{source}:intrigue"

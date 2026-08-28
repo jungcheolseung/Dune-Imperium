@@ -53,7 +53,20 @@ class SpiesPlacedAtLeast:
             raise ValueError("Spy condition count must be positive")
 
 
-type Condition = InfluenceAtLeast | HasHighCouncil | SpiesPlacedAtLeast
+@dataclass(frozen=True, slots=True)
+class CompletedContractsAtLeast:
+    """The player has completed at least ``count`` Contracts (CHOAM Module)."""
+
+    count: int
+
+    def __post_init__(self) -> None:
+        if self.count < 1:
+            raise ValueError("completed-Contract condition count must be positive")
+
+
+type Condition = (
+    InfluenceAtLeast | HasHighCouncil | SpiesPlacedAtLeast | CompletedContractsAtLeast
+)
 
 
 # --- Costs ------------------------------------------------------------------
@@ -81,7 +94,33 @@ class PayResources:
         )
 
 
-type Cost = PayResources
+@dataclass(frozen=True, slots=True)
+class LoseInfluence:
+    """Lose ``count`` Influence, choosing a Faction for each step.
+
+    Each step is a player choice among Factions where the player still has
+    Influence; the same Faction may be chosen more than once.
+    """
+
+    count: int = 1
+
+    def __post_init__(self) -> None:
+        if self.count < 1:
+            raise ValueError("Influence loss count must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class DiscardFromHand:
+    """Discard ``count`` personal cards chosen from hand."""
+
+    count: int = 1
+
+    def __post_init__(self) -> None:
+        if self.count < 1:
+            raise ValueError("hand discard count must be positive")
+
+
+type Cost = PayResources | LoseInfluence | DiscardFromHand
 
 
 # --- Rewards ----------------------------------------------------------------
@@ -157,6 +196,39 @@ class GainCombatStrength:
             raise ValueError("Combat strength gain must be positive")
 
 
+@dataclass(frozen=True, slots=True)
+class GainInfluence:
+    """Gain one Influence ``times`` times with a chosen Faction each time.
+
+    ``factions`` limits the choice; ``None`` allows any Faction. When exactly
+    one Faction is allowed there is no choice. ``distinct`` forbids choosing
+    the same Faction twice within one card.
+    """
+
+    times: int = 1
+    factions: tuple[Faction, ...] | None = None
+    distinct: bool = False
+
+    def __post_init__(self) -> None:
+        if self.times < 1:
+            raise ValueError("Influence gain times must be positive")
+        if self.factions is not None:
+            if not self.factions or len(self.factions) != len(set(self.factions)):
+                raise ValueError("Influence gain Factions must be unique and non-empty")
+            if any(not isinstance(faction, Faction) for faction in self.factions):
+                raise TypeError("Influence gain Factions must use Faction")
+            if self.distinct and self.times > len(self.factions):
+                raise ValueError("distinct Influence gains exceed the allowed Factions")
+        if not isinstance(self.distinct, bool):
+            raise TypeError("distinct must be a boolean")
+
+    @property
+    def requires_choice(self) -> bool:
+        """Return whether the player must pick a Faction."""
+
+        return self.factions is None or len(self.factions) > 1
+
+
 type Reward = (
     GainResources
     | GainVictoryPoints
@@ -164,6 +236,7 @@ type Reward = (
     | DrawPersonalCards
     | DrawIntrigueCards
     | GainCombatStrength
+    | GainInfluence
 )
 
 
@@ -180,11 +253,13 @@ class EffectSection:
 
     rewards: tuple[Reward, ...]
     condition: Condition | None = None
-    cost: Cost | None = None
+    costs: tuple[Cost, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.rewards:
             raise ValueError("an effect section must produce at least one reward")
+        if len(self.costs) != len(set(self.costs)):
+            raise ValueError("an effect section cannot repeat the same cost")
 
 
 @dataclass(frozen=True, slots=True)

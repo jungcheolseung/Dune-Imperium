@@ -32,7 +32,7 @@ from dune_imperium.content.uprising.starting_cards import (
 from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
 from dune_imperium.core.actions import ActionValue, DomainAction
 
-ACTION_CODEC_VERSION = 59
+ACTION_CODEC_VERSION = 60
 MAX_DEPLOYMENT_COUNT = 12
 
 
@@ -218,6 +218,22 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         for instance_id in intrigue_instances
         for option in range(len(intrigue_card_for_instance(instance_id).options))
     )
+    templates.extend(
+        ActionTemplate(
+            action_id="choose_intrigue_faction",
+            arguments=(("faction", faction.value),),
+        )
+        for faction in Faction
+    )
+    templates.extend(
+        ActionTemplate(
+            action_id="choose_intrigue_faction",
+            arguments=(("alliance_recipient", recipient), ("faction", faction.value)),
+        )
+        for faction in Faction
+        for recipient in range(config.players)
+    )
+    templates.extend(_trash_templates(config, "choose_intrigue_discard"))
     templates.extend(
         ActionTemplate(
             action_id="acquire_imperium_with_solari",

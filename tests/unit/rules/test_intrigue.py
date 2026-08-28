@@ -6,6 +6,7 @@ import pytest
 
 from dune_imperium import RulesetConfig
 from dune_imperium.content.uprising.effect_dsl import IntrigueTiming
+from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.intrigue import (
     INTRIGUE_CARDS,
     intrigue_card_for_instance,
@@ -80,7 +81,7 @@ def _play(state: GameState, card_id: str, option: int = 0) -> DomainAction:
 def test_transcribed_intrigue_options_are_well_formed() -> None:
     transcribed = [entry for entry in INTRIGUE_CARDS if entry.play_data_complete]
 
-    assert len(transcribed) == 8
+    assert len(transcribed) == 14
     for entry in transcribed:
         assert entry.options
         for option in entry.options:
@@ -363,3 +364,190 @@ def test_every_intrigue_instance_has_a_definition() -> None:
         assert intrigue_card_for_instance(instance_id).card.card_id in instance_id
     with pytest.raises(ValueError):
         intrigue_card_for_instance("imperium:maula_pistol:0")
+
+
+def _choose_faction(faction: str, recipient: int | None = None) -> DomainAction:
+    arguments: tuple[tuple[str, str | int], ...] = (("faction", faction),)
+    if recipient is not None:
+        arguments = (("alliance_recipient", recipient), *arguments)
+    return DomainAction(
+        action_id="choose_intrigue_faction", actor=0, arguments=arguments
+    )
+
+
+def _choose_discard(card_id: str) -> DomainAction:
+    return DomainAction(
+        action_id="choose_intrigue_discard", actor=0, arguments=(("card_id", card_id),)
+    )
+
+
+def test_buy_access_opens_two_distinct_faction_choices() -> None:
+    card = _intrigue("buy_access")
+    owner = PlayerState(
+        player_id=0, intrigue_cards=(card,), resources=Resources(solari=5)
+    )
+    state = _turn_state(owner)
+    engine = UprisingRulesEngine()
+
+    opened = engine.apply(state, _play(state, card))
+    assert opened.state.decision_stack[-1].kind == "intrigue_choice"
+    assert opened.state.players[0].resources.solari == 0
+    offered = {
+        dict(a.arguments)["faction"] for a in engine.legal_actions(opened.state, 0)
+    }
+    assert offered == {"emperor", "spacing_guild", "bene_gesserit", "fremen"}
+    # Opponents have nothing to do while the choice is open.
+    assert engine.legal_actions(opened.state, 1) == ()
+
+    first = engine.apply(opened.state, _choose_faction("fremen"))
+    assert first.state.players[0].influence.fremen == 1
+    remaining = {
+        dict(a.arguments)["faction"] for a in engine.legal_actions(first.state, 0)
+    }
+    assert "fremen" not in remaining and len(remaining) == 3
+
+    second = engine.apply(first.state, _choose_faction("emperor"))
+    assert second.state.players[0].influence.emperor == 1
+    assert second.state.decision_stack == state.decision_stack
+    assert second.state.intrigue_discard == (card,)
+    assert second.state.players[0].intrigue_cards == ()
+
+
+def test_imperium_politics_limits_the_choice_to_emperor_or_guild() -> None:
+    card = _intrigue("imperium_politics")
+    owner = PlayerState(
+        player_id=0, intrigue_cards=(card,), resources=Resources(solari=1)
+    )
+    state = _turn_state(owner)
+    engine = UprisingRulesEngine()
+
+    opened = engine.apply(state, _play(state, card)).state
+    assert engine.legal_actions(opened, 0) == (
+        _choose_faction("emperor"),
+        _choose_faction("spacing_guild"),
+    )
+    done = engine.apply(opened, _choose_faction("spacing_guild")).state
+    assert done.players[0].influence.spacing_guild == 1
+    assert done.decision_stack == state.decision_stack
+
+
+def test_change_allegiances_loss_requires_influence_and_offers_both_options() -> None:
+    card = _intrigue("change_allegiances")
+    poor = PlayerState(player_id=0, intrigue_cards=(card,))
+    assert legal_intrigue_play_actions(_turn_state(poor), 0) == ()
+
+    owner = replace(
+        poor, influence=Influence(bene_gesserit=1), resources=Resources(spice=3)
+    )
+    state = _turn_state(owner)
+    assert legal_intrigue_play_actions(state, 0) == (
+        _play(state, card, 0),
+        _play(state, card, 1),
+    )
+    engine = UprisingRulesEngine()
+    opened = engine.apply(state, _play(state, card, 0)).state
+    # Only Factions where the player still has Influence can be lost.
+    assert engine.legal_actions(opened, 0) == (_choose_faction("bene_gesserit"),)
+    lost = engine.apply(opened, _choose_faction("bene_gesserit")).state
+    assert lost.players[0].influence.bene_gesserit == 0
+    gained = engine.apply(lost, _choose_faction("fremen")).state
+    assert gained.players[0].influence.fremen == 1
+    assert gained.players[0].resources.spice == 3
+    assert gained.decision_stack == state.decision_stack
+
+
+def test_losing_influence_for_intrigue_offers_alliance_recipients() -> None:
+    card = _intrigue("change_allegiances")
+    owner = PlayerState(
+        player_id=0,
+        intrigue_cards=(card,),
+        influence=Influence(fremen=4),
+        alliance_faction_ids=("fremen",),
+    )
+    rivals = (
+        PlayerState(player_id=1, influence=Influence(fremen=4)),
+        PlayerState(player_id=2, influence=Influence(fremen=4)),
+        PlayerState(player_id=3),
+    )
+    state = replace(_turn_state(owner), players=(owner, *rivals))
+    engine = UprisingRulesEngine()
+
+    opened = engine.apply(state, _play(state, card, 0)).state
+    assert engine.legal_actions(opened, 0) == (
+        _choose_faction("fremen", recipient=1),
+        _choose_faction("fremen", recipient=2),
+    )
+    lost = engine.apply(opened, _choose_faction("fremen", recipient=2)).state
+    assert lost.players[0].alliance_faction_ids == ()
+    assert lost.players[2].alliance_faction_ids == ("fremen",)
+
+
+def test_opportunism_loses_two_influence_and_pays_solari_for_a_point() -> None:
+    card = _intrigue("opportunism")
+    short = PlayerState(
+        player_id=0,
+        intrigue_cards=(card,),
+        influence=Influence(emperor=1),
+        resources=Resources(solari=2),
+    )
+    assert legal_intrigue_play_actions(_turn_state(short), 0) == ()
+
+    owner = replace(short, influence=Influence(emperor=2))
+    state = _turn_state(owner)
+    engine = UprisingRulesEngine()
+    opened = engine.apply(state, _play(state, card)).state
+    assert opened.players[0].resources.solari == 0
+    once = engine.apply(opened, _choose_faction("emperor")).state
+    assert once.players[0].influence.emperor == 1
+    # Dropping below two Influence forfeits the Friendship Victory Point.
+    assert once.players[0].victory_points == 0
+    twice = engine.apply(once, _choose_faction("emperor")).state
+    assert twice.players[0].influence.emperor == 0
+    assert twice.players[0].victory_points == 1
+    assert twice.decision_stack == state.decision_stack
+
+
+def test_sietch_ritual_discards_a_hand_card_then_chooses_a_faction() -> None:
+    card = _intrigue("sietch_ritual")
+    favor = next(
+        instance_id
+        for instance_id in imperium_deck_instance_ids(False)
+        if ":spacing_guild_s_favor:" in instance_id
+    )
+    empty_handed = PlayerState(player_id=0, intrigue_cards=(card,))
+    assert legal_intrigue_play_actions(_turn_state(empty_handed), 0) == ()
+
+    owner = replace(empty_handed, hand=(_starter("dagger"), favor))
+    state = _turn_state(owner)
+    engine = UprisingRulesEngine()
+    opened = engine.apply(state, _play(state, card)).state
+    assert engine.legal_actions(opened, 0) == (
+        _choose_discard(_starter("dagger")),
+        _choose_discard(favor),
+    )
+    discarded = engine.apply(opened, _choose_discard(favor)).state
+    assert discarded.players[0].discard_pile == (favor,)
+    # The hand-discard trigger of Spacing Guild's Favor still fires.
+    assert discarded.players[0].resources.spice == 2
+    assert engine.legal_actions(discarded, 0) == (
+        _choose_faction("bene_gesserit"),
+        _choose_faction("fremen"),
+    )
+    done = engine.apply(discarded, _choose_faction("bene_gesserit")).state
+    assert done.players[0].influence.bene_gesserit == 1
+    assert done.intrigue_discard == (card,)
+
+
+def test_backed_by_choam_plot_half_trades_influence_for_solari() -> None:
+    card = _intrigue("backed_by_choam")
+    owner = PlayerState(
+        player_id=0, intrigue_cards=(card,), influence=Influence(spacing_guild=2)
+    )
+    state = replace(_turn_state(owner), config=RulesetConfig(choam_module=True))
+    engine = UprisingRulesEngine()
+
+    assert legal_intrigue_play_actions(state, 0) == (_play(state, card, 0),)
+    opened = engine.apply(state, _play(state, card, 0)).state
+    done = engine.apply(opened, _choose_faction("spacing_guild")).state
+    assert done.players[0].influence.spacing_guild == 1
+    assert done.players[0].resources.solari == 4
