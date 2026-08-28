@@ -282,161 +282,34 @@ High Council·Swordmaster, 4인 Combat 순위와 기본 보상, Makers·Recall �
 
 ### M6. Uprising 기본 콘텐츠 완성
 
-상태: **진행 중** (현황 갱신 2026-08-27). 시작 카드와 Reserve 카드가 같은 개인 카드
-resolver를 사용한다. Prepare the Way의 Agent 아이콘·조건부 draw·Reveal 값과
-The Spice Must Flow의 Reveal strength를 전사했으며, Reserve Agent 행동을 codec
-v7에 포함했다. 첫 Imperium 묶음으로 Maula Pistol과 Truthtrance의 Faction,
-Agent 아이콘과 Reveal 값을 전사하고 Maula Pistol의 Agent draw를 연결했으며,
-해당 행동을 codec v8에 포함했다. 두 번째 묶음은 Sardaukar Soldier의 City
-아이콘과 Reveal 값을 전사하고, 공통 개인 카드 폐기 전환을 통해 폐기 시
-Intrigue draw를 연결했으며 해당 행동을 codec v9에 포함했다. 세 번째 묶음은
-Hidden Missive의 조건부 병력 모집과 개인 카드 draw를 기존 Agent 효과 순서 및
-replayable shuffle 경로에 연결했고, 해당 행동을 codec v10에 포함했다. 네 번째
-묶음은 Desert Survival의 선택적 개인 카드 폐기를 손·버림 더미·사용 영역에
-공통 적용하고 해당 선택을 codec v11에 포함했다. 다섯 번째 묶음은 Smuggler's
-Harvester의 Maker 공간 방문 조건과 Spice 보상을 연결하고 해당 행동을 codec
-v12에 포함했다. 여섯 번째 묶음은 정적 Reveal 자원·병력 효과 스키마를 추가하고
-Fedaykin Stilltent의 Maker 공간 병력 모집과 Reveal Water를 연결해 codec v13에
-포함했다. 일곱 번째 묶음은 Reveal의 Fremen Bond 판정과 Northern Watermaster의
-Agent Water·조건부 Reveal Spice를 연결해 codec v14에 포함했다. 고정된 DIU
-`imperium.JSON`의 여덟 번째 묶음으로 Maker Keeper의 두 Influence 조건을
-독립 보상으로 연결해 codec v15에 포함했다. 아홉 번째 묶음은 복수 Reveal 효과와
-공통 Faction Bond 판정을 도입해 Southern Elders를 codec v16에 연결했다. 이
-기반으로 열 번째 묶음인 Weirding Woman의 Bene Gesserit Bond 자기 회수를 codec
-v17에 연결했다. 열한 번째 묶음은 Ecological Testing Station의 선택적 Water
-지불과 2장 draw, Fremen Bond Reveal Water를 codec v18에 연결했다. 열두 번째
-묶음인 Paracompass의 High Council·Swordmaster Reveal 조건과 Agent Solari를
-codec v19에 연결했다. 열세 번째 묶음은 typed 획득 보너스 경계를 열고
-Overthrow의 획득 Intrigue draw, Agent 추가 Influence, Reveal 병력 모집을 codec
-v20에 연결했다. 열네 번째 묶음은 공통 Spy 배치·회수 경계를 만들고 Bene
-Gesserit Operative의 Agent Spy 배치와 Spy 2개 조건부 Reveal Persuasion을 codec
-v21에 연결했다. 열다섯 번째 묶음은 Reliable Informant의 세 Faction 제한 Spy
-배치와 Reveal Persuasion·Solari를 codec v22에 연결했다. 고정된 DIU
-`imperium.JSON`의 열여섯 번째 묶음은 선택형 획득 효과 frame을 도입하고 Strike
-Fleet의 획득 Spy 배치, 이번 턴 Spy 회수 조건부 병력 모집, Reveal 값을 codec
-v23에 연결했다. 열일곱 번째 묶음은 같은 회수 판정을 재사용해 Imperial
-Spymaster의 조건부 Intrigue draw와 Reveal 값을 codec v24에 연결했다. 열여덟
-번째 묶음에서 Reveal 중첩 선택 frame을 도입해 Spy Network의 획득 Spy
-배치와 조건부 Spy 회수·Intrigue draw를 codec v25에 연결했다. 열아홉 번째
-묶음인 In High Places의 획득 Spy 배치, Bene Gesserit
-Bond Water, 선택적 Spy 2개 회수와 Reveal Persuasion을 codec v26에 연결했다.
-스무 번째 묶음은 기존 Agent 턴 Spy 회수 판정을 재사용해
-Rebel Supplier의 조건부 병력 모집과 Reveal Spice·strength를 codec v27에
-연결했다. 스물한 번째 묶음은 Agent 효과 중 Faction 선택 경계를 추가하고
-Dangerous Rhetoric의 자기 폐기·선택한 Faction Influence, Reveal 값을 codec
-v28에 연결했다. 스물두 번째 묶음은 같은 Faction 선택을 이번 Agent 턴
-Spy 회수 조건과 결합하고 Reveal Spy 배치·공급 부족 회수 경계를 추가해
-Public Spectacle을 codec v29에 연결했다.
-스물세 번째 묶음은 같은 Reveal Spy 배치와 복수 Influence 조건 패턴을 재사용해
-Wheels Within Wheels의 독립적인 Solari·Spice 보상을 codec v30에 연결했다.
-스물네 번째 묶음은 Agent 행동이 없는 Unswerving Loyalty의 Reveal
-Persuasion·병력 모집을 기존 자동 Reveal 경계에 연결했다. 새 action template이
-필요하지 않아 codec은 v30·1688개를 유지한다.
-스물다섯 번째 묶음은 Stilgar, the Devoted의 Agent 병력 2명 모집과
-이번 Reveal에 공개한 Fremen 카드당 Persuasion 2를 codec v31에 연결했다.
-스물여섯 번째 묶음은 Leadership의 Conflict Sandworm당 개인 카드 draw와
-자신을 제외한 이번 Reveal의 검 제공 카드당 strength 1을 codec v32에
-연결했다.
-스물일곱 번째 묶음은 Shishakli의 선택적 개인 카드 폐기·draw와
-Fremen Bond Reveal Influence를 codec v33에 연결했다. Reveal Influence도
-공통 트랙 경계를 사용한다.
-스물여덟 번째 묶음은 같은 폐기·draw 선택을 Bene Gesserit Bond로
-제한한 Tread in Darkness와 Reveal 값을 codec v34에 연결했다.
-스물아홉 번째 묶음은 손의 카드를 discard하는 별도 선택 경계를 추가하고,
-Space-time Folding이 Spacing Guild 카드를 버리면 draw를 2장으로 늘리도록
-codec v35에 연결했다.
-서른 번째 묶음은 같은 hand discard 경계에서 decline 허용 여부와 조건부 draw를
-분리해, Guild Envoy의 의무 discard와 Spacing Guild 카드 discard 시 draw 2장을
-codec v36에 연결했다.
-서른한 번째 묶음은 선택형 hand discard 비용에 Intrigue·개인 카드 draw 보상을
-연결하고, Influence 감소와 증가 Faction을 함께 선택하는 Reveal 경계를 추가해
-Captured Mentat을 codec v37에 연결했다. Influence 감소는 Friendship VP와
-Alliance 반환·이전·복수 동률 수령자 선택을 공통 transition으로 처리한다.
-서른두 번째 묶음은 hand discard 사유와 discard trigger를 공통 transition으로
-분리하고, Spacing Guild's Favor의 hand discard Spice 2, Agent draw 1, Reveal의
-Spice 3 비용과 선택한 Faction Influence를 codec v38에 연결했다. Reveal Clean Up
-이동은 discard trigger를 발동하지 않는다.
-서른세 번째 묶음은 Double Agent가 이번에 방문한 space를 이미 spying 중이면
-상대 Spy가 있는 Observation Post를 공유할 수 있도록 Agent-card Spy 배치를
-확장하고 codec v39에 연결했다. 일반 배치는 계속 전역 빈 Post만 허용한다.
-서른네 번째 묶음은 Guild Spy의 선택형 hand discard·개인 카드 draw와 Spacing
-Guild 카드 discard 시 Intrigue 추가 draw를 기존 경계에 연결했다. Acquisition의
-Spy 배치를 재사용하고, Reveal 중 The Spice Must Flow 획득 시 spying 중인 각
-Faction Influence를 얻는 acquisition trigger를 추가해 codec v40에 연결했다.
-서른다섯 번째 묶음은 Covert Operation의 각 상대 hand discard를 시계방향의
-player-owned 결정 frame으로 직렬화했다. 손이 빈 상대는 건너뛰고, 실제 discard는
-카드별 discard trigger를 포함한 공통 transition을 사용하며 codec v41에 연결했다.
-서른여섯 번째 묶음은 Calculus of Power 두 장의 Agent 자기 trash와 Reveal의
-다른 Emperor card trash 비용·strength 3 보상을 직렬 선택 frame으로 연결했다.
-공통 trash trigger와 Conflict unit이 있어야 strength가 생기는 규칙을 유지하며
-codec v42에 연결했다.
-서른일곱 번째 묶음은 Branching Path의 Bene Gesserit Alliance 조건부 trash를
-기존 Agent-card 선택에 연결하고, Intrigue 1장·병력 2명 복합 보상을 원자적으로
-처리한다. Trash trigger가 먼저 Intrigue를 소비하는 대상의 필요 장수까지 합법
-행동에서 검증하며 codec v43에 연결했다.
-서른여덟 번째 묶음은 Undercover Asset이 Agent를 보내는 동안에만 보드 공간의
-Influence requirement를 무시하도록 배치 합법성 경계를 확장했다. Reveal의 Spy
-배치 또는 strength 2 선택과 Spy 공급 부족 시 recall 후 배치를 직렬화해 codec
-v44에 연결했다.
-서른아홉 번째 묶음은 Sardaukar Coordination 두 장이 비전투 공간에서도 이번
-Agent 턴에 실제 모집한 병력만 배치하도록 기존 병력 배치 경계를 일반화했다.
-Reveal의 기본 strength와 이번 Reveal Emperor 카드당 추가 strength를 연결해
-codec v45에 포함했다.
-마흔 번째 묶음은 Smuggler's Haven의 선택형 Spice 4 대 Victory Point 1 거래를
-공통 Agent-card 결제 경계에 연결했다. Reveal은 Persuasion 1과 Maker 공간을
-spying 중일 때의 Spice 2를 적용하며, 보드 공간 비용을 지불한 뒤 카드 비용의
-지불 가능성을 판정하도록 순서를 바로잡고 codec v46에 포함했다.
-마흔한 번째 묶음은 Price is No Object의 Solari 구매를 Agent 효과 안의 직렬
-획득 경계로 추가했다. Imperium Row와 Reserve를 같은 비용으로 acquire해 hand에
-놓고, Row 보충·Reserve 수량·획득 보너스·The Spice Must Flow Victory Point를
-기존 획득 transition과 공유한다. 획득 시 Solari 2와 Reveal의 Persuasion 2·
-Solari 2를 연결해 codec v47에 포함했다.
-마흔두 번째 묶음은 Treacherous Maneuver의 자기 자신과 hand의 다른 Emperor card
-폐기 비용을 기존 Agent-card trash 선택에 연결했다. 비용을 지불하면 방문 Faction의
-기본 Influence 1에 추가 Influence 1을 더하고, 거절하면 기본 Influence만 얻는다.
-Reveal의 Persuasion 1과 Intrigue draw 1도 자동 Reveal 효과로 추가해 codec v48에
-포함했다.
-마흔세 번째 묶음은 Chani, Clever Tactician의 현재 Conflict unit 3개 조건부
-Intrigue draw를 Agent 효과 순서에 연결했다. Reveal에서는 troop 2개 retreat와
-strength 4 보상을 하나의 선택으로 처리하고, 마지막 unit이 사라질 때 strength를
-0으로 다시 계산한다. Fremen Bond Persuasion 2와 세 Agent icon을 포함해 codec
-v49에 연결했다.
-마흔네 번째 묶음은 Steersman의 개인 card draw와 배치된 Agent 한 명 회수를
-Agent-card 직렬 선택으로 연결했다. 방금 배치한 Agent도 회수할 수 있으며 회수한
-Agent는 같은 round의 이후 turn에 다시 사용한다. 획득 시 Spacing Guild Influence,
-Reveal의 Persuasion 2·Spice 2를 추가해 codec v50에 포함했다.
-마흔다섯 번째 묶음은 Junction Headquarters의 Spacing Guild Alliance 조건과
-Intrigue 1장 trash·Spice 2 복합 비용을 하나의 Agent-card 선택으로 연결해 VP 1을
-지급한다. Intrigue discard와 영구 제거를 구분하는 공개 `intrigue_trash` 상태를
-추가하고 Reveal의 Persuasion 1·Water 1·troop 1을 적용해 codec v51에 포함했다.
-마흔여섯 번째 묶음은 Corrinth City의 hand card 2장 선택을 직렬화하되 실제 card
-2장·Solari 5 복합 비용은 두 번째 선택에서 원자적으로 처리해 VP 1을 지급한다.
-전체 비용을 먼저 확인하고 Solari를 차감한 뒤 hand-discard trigger를 처리하므로
-discard 효과로 부족한 비용을 충당할 수 없다. Reveal은 Solari 5 획득과 Solari 5를
-내고 High Council 좌석을 얻는 선택을 직렬화하며, 새 좌석의 Persuasion 2를 현재
-Reveal에도 반영해 codec v52에 포함했다.
-마흔일곱 번째 묶음은 Desert Power가 Maker 공간에 Agent를 보낸 turn에 Spice
-2를 얻도록 했다. Reveal은 Persuasion 2와 Maker Hooks 보유 시 Water 1을
-내고 sandworm 1개를 즉시 Conflict에 배치하는 선택을 직렬화했다.
-Shield Wall이 현재 Conflict를 보호하면 sandworm 선택을 노출하지 않으며,
-첫 unit이 생길 때 이전에 해결한 선택형 sword까지 다시 strength에 반영해
-codec v53에 포함했다.
-마흔여덟 번째 묶음은 Long Live the Fighters의 Agent 효과를 해결하는
-시점에 개인 deck이 3장 이상일 때만 맨 위 3장을 확인하도록 연결했다.
-첫 선택은 card를 옮기지 않고, 두 번째 선택에서 서로 다른 draw·discard·trash
-대상을 인쇄된 하나의 효과로 원자적 확정한다. 조건을 맞추기 위해 discard를
-reshuffle하지 않으며, deck trash는 Reserve 반환과 카드별 trash trigger를 재사용한다.
-Reveal의 Persuasion 2·strength 3과 Fremen·City 목적지를 codec v54에 포함했다.
-마흔아홉 번째 묶음은 Subversive Advisor의 획득 시 Spy 배치, Spy Agent icon,
-Reveal Solari 1을 연결했다. Faction 공간에 Agent를 보내면 일반 Influence 1
-행동을 별도로 노출하지 않고, 카드 효과 하나가 해당 Faction Influence 2를
-얻은 뒤 자기 자신을 의무적으로 폐기한다. 비-Faction 공간에서는 이 Agent 효과가
-발생하지 않으며, 획득·Agent 목적지를 codec v55에 포함했다.
-고정된 DIU `imperium.JSON`은 런타임 의존성 없이 63개 local identity와
-대조하고 아이콘·Faction·효과 형태를 정규화하는 read-only audit에만 사용한다.
-기본 Imperium 50종과 CHOAM 전용 Imperium 4종은 모두 전사했다. Intrigue와
-Leader는 identity/setup 수준이며 실제 play 능력이 아직 없다. Objective는 4인
-setup, First Player, battle icon 경로까지 연결돼 있다.
+상태: **진행 중** (현황 갱신 2026-08-28).
+
+완료된 범위:
+
+- 시작 카드 7종, Reserve 2종(Prepare the Way, The Spice Must Flow), 기본
+  Imperium 50종, CHOAM 전용 Imperium 4종의 play data를 모두 전사해 실제 Agent·
+  Reveal·acquire 경로에 연결했다. codec은 Reserve Agent 행동의 v7에서 시작해
+  카드 묶음마다 올라 현재 v58이다.
+- 카드 구현 과정에서 다음 공통 경계를 확립했다. 개인 카드 resolver, typed
+  Reveal 효과 schema, Faction Bond·Influence 조건 판정, 선택형 획득 보너스,
+  Spy 배치·회수와 turn 범위 recall 조건, hand discard·trash·deck-top 선택과
+  카드별 trigger, Agent-card 결제·Solari 구매·Agent 회수, 상대 hand discard의
+  player-owned frame, Reveal 중첩 선택 frame, Influence 감소·Alliance 이전.
+- 카드별 인쇄 효과와 규칙 민감 판정은
+  [personal-cards audit](implementation-audits/personal-cards.md)에, 묶음 단위
+  구현 이력은 git의 `Play ...` / `Document ...` 커밋 쌍에 기록돼 있다.
+- 고정된 DIU `imperium.JSON`은 런타임 의존성 없이 63개 local identity와 대조하고
+  아이콘·Faction·효과 형태를 정규화하는 read-only audit에만 사용한다.
+
+남은 범위:
+
+- Intrigue 44장은 identity와 setup deck만 있고 Plot/Combat/Endgame play 효과가
+  없다.
+- Leader는 identity와 setup 선택만 있고 Signet Ring과 Leader 능력이 없다.
+- Objective는 4인 setup, First Player, battle icon 경로까지 연결됐으며 이후
+  콘텐츠 상호작용은 다시 감사해야 한다.
+
+마일스톤 범위:
 
 - 기본 게임의 리더, 시작/Reserve/Imperium/Intrigue/Conflict/Objective 콘텐츠를
   전사한다.
