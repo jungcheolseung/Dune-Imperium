@@ -1,5 +1,6 @@
-"""Setup identities for the 44-card Uprising Intrigue deck."""
+"""Identities and transcribed play data for the 44-card Uprising Intrigue deck."""
 
+from dataclasses import dataclass
 from typing import Final
 
 from dune_imperium.content.schema import (
@@ -8,9 +9,58 @@ from dune_imperium.content.schema import (
     SourceDocument,
     SourceRef,
 )
+from dune_imperium.content.uprising.board import Faction
+from dune_imperium.content.uprising.effect_dsl import (
+    DrawIntrigueCards,
+    DrawPersonalCards,
+    EffectSection,
+    GainCombatStrength,
+    GainResources,
+    GainVictoryPoints,
+    HasHighCouncil,
+    InfluenceAtLeast,
+    IntrigueOption,
+    IntrigueTiming,
+    PayResources,
+    RecruitTroops,
+    SpiesPlacedAtLeast,
+)
 
 BASE_SOURCES: Final = (SourceRef(SourceDocument.MAIN_RULEBOOK, (3, 4)),)
 CHOAM_SOURCES: Final = (SourceRef(SourceDocument.MAIN_RULEBOOK, (3, 4, 16)),)
+
+
+@dataclass(frozen=True, slots=True)
+class IntrigueCardEntry(DeckCardEntry):
+    """One Intrigue identity plus its transcribed play options.
+
+    ``options`` lists the alternative ways to play the card. A card printed as
+    ``A —OR— B`` has two options; a card with several stacked lines has one
+    option with several sections. ``play_data_complete`` marks that every
+    printed option is transcribed and executable by the rules engine.
+    """
+
+    options: tuple[IntrigueOption, ...] = ()
+    play_data_complete: bool = False
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if self.play_data_complete != bool(self.options):
+            raise ValueError("Intrigue play data is complete exactly when transcribed")
+
+    @property
+    def timings(self) -> frozenset[IntrigueTiming]:
+        """Return every timing at which some option can be played."""
+
+        return frozenset(option.timing for option in self.options)
+
+
+def _plot(*sections: EffectSection) -> IntrigueOption:
+    return IntrigueOption(timing=IntrigueTiming.PLOT, sections=sections)
+
+
+def _combat(*sections: EffectSection) -> IntrigueOption:
+    return IntrigueOption(timing=IntrigueTiming.COMBAT, sections=sections)
 
 
 def _entry(
@@ -20,8 +70,9 @@ def _entry(
     *,
     copies: int = 1,
     choam_only: bool = False,
-) -> DeckCardEntry:
-    return DeckCardEntry(
+    options: tuple[IntrigueOption, ...] = (),
+) -> IntrigueCardEntry:
+    return IntrigueCardEntry(
         card=CardDefinition(
             card_id=slug.replace("-", "_"),
             name=name,
@@ -30,6 +81,8 @@ def _entry(
         ),
         copies=copies,
         choam_only=choam_only,
+        options=options,
+        play_data_complete=bool(options),
     )
 
 
@@ -39,11 +92,48 @@ INTRIGUE_CARDS: Final = (
     _entry(138, "call-to-arms", "Call to Arms"),
     _entry(135, "change-allegiances", "Change Allegiances"),
     _entry(450, "choam-profits", "CHOAM Profits", choam_only=True),
-    _entry(147, "contingency-plan", "Contingency Plan", copies=3),
-    _entry(129, "councilor-s-ambition", "Councilor's Ambition"),
+    _entry(
+        147,
+        "contingency-plan",
+        "Contingency Plan",
+        copies=3,
+        options=(
+            _plot(EffectSection(rewards=(GainResources(solari=2),))),
+            _combat(EffectSection(rewards=(GainCombatStrength(3),))),
+        ),
+    ),
+    _entry(
+        129,
+        "councilor-s-ambition",
+        "Councilor's Ambition",
+        options=(
+            _plot(
+                EffectSection(
+                    condition=HasHighCouncil(),
+                    rewards=(GainResources(water=2),),
+                )
+            ),
+        ),
+    ),
     _entry(159, "crysknife", "Crysknife"),
     _entry(133, "cunning", "Cunning"),
-    _entry(132, "depart-for-arrakis", "Depart For Arrakis"),
+    _entry(
+        132,
+        "depart-for-arrakis",
+        "Depart For Arrakis",
+        options=(
+            _plot(
+                EffectSection(
+                    cost=PayResources(spice=2),
+                    rewards=(RecruitTroops(3),),
+                ),
+                EffectSection(
+                    condition=InfluenceAtLeast(Faction.SPACING_GUILD, 3),
+                    rewards=(DrawPersonalCards(1),),
+                ),
+            ),
+        ),
+    ),
     _entry(157, "desert-mouse", "Desert Mouse"),
     _entry(131, "detonation", "Detonation", copies=2),
     _entry(151, "devour", "Devour"),
@@ -53,30 +143,118 @@ INTRIGUE_CARDS: Final = (
     _entry(140, "imperium-politics", "Imperium Politics"),
     _entry(152, "impress", "Impress"),
     _entry(148, "inspire-awe", "Inspire Awe"),
-    _entry(142, "intelligence-report", "Intelligence Report"),
+    _entry(
+        142,
+        "intelligence-report",
+        "Intelligence Report",
+        options=(
+            _plot(
+                EffectSection(rewards=(DrawPersonalCards(1),)),
+                EffectSection(
+                    condition=SpiesPlacedAtLeast(2),
+                    rewards=(DrawPersonalCards(1),),
+                ),
+            ),
+        ),
+    ),
     _entry(447, "leverage", "Leverage", choam_only=True),
     _entry(143, "manipulate", "Manipulate"),
-    _entry(145, "market-opportunity", "Market Opportunity"),
-    _entry(128, "mercenaries", "Mercenaries"),
+    _entry(
+        145,
+        "market-opportunity",
+        "Market Opportunity",
+        options=(
+            _plot(
+                EffectSection(
+                    cost=PayResources(spice=2),
+                    rewards=(GainResources(solari=5),),
+                )
+            ),
+            _plot(
+                EffectSection(
+                    cost=PayResources(solari=5),
+                    rewards=(GainResources(spice=5),),
+                )
+            ),
+        ),
+    ),
+    _entry(
+        128,
+        "mercenaries",
+        "Mercenaries",
+        options=(
+            _plot(
+                EffectSection(
+                    cost=PayResources(solari=3),
+                    rewards=(DrawIntrigueCards(1), RecruitTroops(2)),
+                )
+            ),
+        ),
+    ),
     _entry(134, "opportunism", "Opportunism"),
     _entry(158, "ornithopter", "Ornithopter"),
     _entry(156, "questionable-methods", "Questionable Methods"),
     _entry(449, "reach-agreement", "Reach Agreement", choam_only=True),
     _entry(161, "secure-spice-trade", "Secure Spice Trade"),
-    _entry(141, "shaddam-s-favor", "Shaddam's Favor"),
+    _entry(
+        141,
+        "shaddam-s-favor",
+        "Shaddam's Favor",
+        options=(
+            _plot(
+                EffectSection(rewards=(RecruitTroops(1),)),
+                EffectSection(
+                    condition=InfluenceAtLeast(Faction.EMPEROR, 3),
+                    rewards=(GainResources(solari=3),),
+                ),
+            ),
+        ),
+    ),
     _entry(160, "shadow-alliance", "Shadow Alliance"),
     _entry(127, "sietch-ritual", "Sietch Ritual"),
     _entry(136, "special-mission", "Special Mission", copies=2),
     _entry(150, "spice-is-power", "Spice is Power"),
     _entry(153, "spring-the-trap", "Spring The Trap"),
-    _entry(130, "strategic-stockpiling", "Strategic Stockpiling"),
+    _entry(
+        130,
+        "strategic-stockpiling",
+        "Strategic Stockpiling",
+        options=(
+            _plot(
+                EffectSection(
+                    cost=PayResources(spice=5),
+                    rewards=(GainVictoryPoints(1),),
+                ),
+                EffectSection(
+                    condition=InfluenceAtLeast(Faction.FREMEN, 3),
+                    cost=PayResources(water=3),
+                    rewards=(GainVictoryPoints(1),),
+                ),
+            ),
+        ),
+    ),
     _entry(155, "tactical-option", "Tactical Option"),
     _entry(137, "unexpected-allies", "Unexpected Allies"),
     _entry(154, "weirding-combat", "Weirding Combat"),
 )
 
 
-def intrigue_cards_for_choam(choam_module: bool) -> tuple[DeckCardEntry, ...]:
+INTRIGUE_CARDS_BY_ID: Final = {entry.card.card_id: entry for entry in INTRIGUE_CARDS}
+
+
+def intrigue_card_for_instance(instance_id: str) -> IntrigueCardEntry:
+    """Return the Intrigue definition behind one ``intrigue:<id>:<copy>`` ID."""
+
+    parts = instance_id.split(":")
+    if len(parts) != 3 or parts[0] != "intrigue":
+        raise ValueError(f"not an Intrigue card instance: {instance_id}")
+    try:
+        return INTRIGUE_CARDS_BY_ID[parts[1]]
+    except KeyError as error:
+        raise ValueError(f"unknown Intrigue card: {instance_id}") from error
+
+
+def intrigue_cards_for_choam(choam_module: bool) -> tuple[IntrigueCardEntry, ...]:
     """Return physical card entries included by the selected setup."""
 
     return tuple(

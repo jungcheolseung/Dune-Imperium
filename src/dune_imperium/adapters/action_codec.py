@@ -16,7 +16,10 @@ from dune_imperium.content.uprising.imperium import (
     ImperiumCardEntry,
     imperium_deck_instance_ids,
 )
-from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
+from dune_imperium.content.uprising.intrigue import (
+    intrigue_card_for_instance,
+    intrigue_deck_instance_ids,
+)
 from dune_imperium.content.uprising.objectives import objectives_for_players
 from dune_imperium.content.uprising.reserve import (
     RESERVE_STACKS,
@@ -29,7 +32,7 @@ from dune_imperium.content.uprising.starting_cards import (
 from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
 from dune_imperium.core.actions import ActionValue, DomainAction
 
-ACTION_CODEC_VERSION = 58
+ACTION_CODEC_VERSION = 59
 MAX_DEPLOYMENT_COUNT = 12
 
 
@@ -206,6 +209,14 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             arguments=(("intrigue_card_id", instance_id),),
         )
         for instance_id in intrigue_instances
+    )
+    templates.extend(
+        ActionTemplate(
+            action_id="play_intrigue",
+            arguments=(("card_id", instance_id), ("option", option)),
+        )
+        for instance_id in intrigue_instances
+        for option in range(len(intrigue_card_for_instance(instance_id).options))
     )
     templates.extend(
         ActionTemplate(

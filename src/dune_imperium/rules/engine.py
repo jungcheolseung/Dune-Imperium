@@ -97,6 +97,14 @@ from dune_imperium.rules.endgame import (
     unambiguous_endgame_wild_match,
 )
 from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.intrigue import (
+    apply_intrigue_play,
+    legal_intrigue_play_actions,
+)
+from dune_imperium.rules.intrigue_deck import (
+    apply_intrigue_reshuffle,
+    intrigue_reshuffle_is_pending,
+)
 from dune_imperium.rules.phases import (
     apply_control_defense_action,
     apply_round_start_reshuffle,
@@ -197,7 +205,11 @@ def _agent_action_is_executable(state: GameState, action: DomainAction) -> bool:
 
 
 LEGAL_ACTION_PROVIDERS: Final[Mapping[FrameKind, tuple[LegalActionProvider, ...]]] = {
-    FrameKind.TURN: (_executable_agent_actions, legal_reveal_actions),
+    FrameKind.TURN: (
+        _executable_agent_actions,
+        legal_reveal_actions,
+        legal_intrigue_play_actions,
+    ),
     FrameKind.AGENT_EFFECTS: (legal_agent_effect_frame_actions,),
     FrameKind.OPPONENT_CARD_DISCARD: (legal_opponent_card_discard_actions,),
     FrameKind.ACQUISITION_SPY: (legal_acquisition_spy_actions,),
@@ -205,6 +217,7 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[FrameKind, tuple[LegalActionProvider, ...]
         legal_reserve_acquisitions,
         legal_imperium_acquisitions,
         legal_finish_reveal_actions,
+        legal_intrigue_play_actions,
     ),
     FrameKind.REVEAL_CHOICE: (
         legal_corrinth_city_reveal_actions,
@@ -231,12 +244,14 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[FrameKind, tuple[LegalActionProvider, ...]
     FrameKind.ENDGAME_WILD: (legal_endgame_wild_actions,),
     FrameKind.ROUND_START_RESHUFFLE: (),
     FrameKind.PERSONAL_DRAW_RESHUFFLE: (),
+    FrameKind.INTRIGUE_RESHUFFLE: (),
 }
 
 ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
-    # Turn choice
+    # Turn choice and Plot Intrigue
     "agent_turn": apply_agent_action,
     "reveal_turn": begin_reveal_turn,
+    "play_intrigue": apply_intrigue_play,
     # Agent-turn effect frame
     "resolve_agent_card_effect": _apply_agent_card_effect,
     "resolve_board_effect": _apply_board_effect,
@@ -343,11 +358,12 @@ class UprisingRulesEngine(RulesEngine):
         state: GameState,
         outcome: ChanceOutcome,
     ) -> RuleResult:
-        result = (
-            apply_personal_draw_reshuffle(state, outcome)
-            if personal_draw_is_pending(state)
-            else apply_round_start_reshuffle(state, outcome)
-        )
+        if personal_draw_is_pending(state):
+            result = apply_personal_draw_reshuffle(state, outcome)
+        elif intrigue_reshuffle_is_pending(state):
+            result = apply_intrigue_reshuffle(state, outcome)
+        else:
+            result = apply_round_start_reshuffle(state, outcome)
         return _advance_automatic(result)
 
     def legal_actions(

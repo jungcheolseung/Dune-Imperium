@@ -30,6 +30,7 @@ from dune_imperium.rules.board_effects import (
 from dune_imperium.rules.combat_deployment import legal_combat_deployments
 from dune_imperium.rules.contracts import legal_contract_completion_actions
 from dune_imperium.rules.effects import current_agent_effect_context
+from dune_imperium.rules.intrigue import legal_intrigue_play_actions
 from dune_imperium.rules.spies import legal_gather_intelligence_actions
 
 # Serial Agent-card choices. When any of these offers an action, the generic
@@ -75,6 +76,7 @@ def legal_agent_effect_frame_actions(
         *legal_sietch_tabr_actions(state, player),
         *legal_maker_space_actions(state, player),
         *legal_combat_deployments(state, player),
+        *legal_intrigue_play_actions(state, player),
     )
 
 

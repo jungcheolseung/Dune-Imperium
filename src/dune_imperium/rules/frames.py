@@ -33,6 +33,7 @@ class FrameKind(StrEnum):
     ENDGAME_WILD = "endgame_wild"
     ROUND_START_RESHUFFLE = "round_start_reshuffle"
     PERSONAL_DRAW_RESHUFFLE = "personal_draw_reshuffle"
+    INTRIGUE_RESHUFFLE = "intrigue_reshuffle"
 
 
 def top_frame(state: GameState) -> DecisionFrame | None:
