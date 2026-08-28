@@ -655,3 +655,57 @@ def test_backed_by_choam_plot_half_trades_influence_for_solari() -> None:
     done = engine.apply(opened, _choose_faction("spacing_guild")).state
     assert done.players[0].influence.spacing_guild == 1
     assert done.players[0].resources.solari == 4
+
+
+def test_owed_intrigue_draws_reshuffle_the_discard_before_the_next_decision() -> None:
+    # Assembly Hall's board effect draws an Intrigue card. With the deck empty
+    # the dispatcher shuffles the discard into a new deck [FAQ p. 2] and then
+    # completes the draw before the owner's next decision.
+    discard = (_intrigue("cunning"), _intrigue("devour"))
+    owner = PlayerState(player_id=0, hand=(_starter("dagger"),))
+    state = _turn_state(owner, intrigue_discard=discard)
+    engine = UprisingRulesEngine()
+    to_hall = next(
+        action
+        for action in engine.legal_actions(state, 0)
+        if action.action_id == "agent_turn"
+        and dict(action.arguments)["space_id"] == "assembly_hall"
+    )
+    placed = engine.apply(state, to_hall).state
+
+    pending = engine.apply(
+        placed, DomainAction(action_id="resolve_board_effect", actor=0)
+    )
+    decision = pending.next_decision
+    assert isinstance(decision, ChanceDecision)
+    assert decision.options == discard
+    assert pending.state.pending_intrigue_draws == ()
+
+    outcome = ChanceResolver(seed=5).resolve(decision)
+    resolved = engine.apply(pending.state, outcome)
+    assert resolved.state.players[0].intrigue_cards == (outcome.values[0],)
+    assert resolved.state.intrigue_discard == ()
+    # The board effect was the last pending group, so the turn passed on.
+    top = resolved.state.decision_stack[-1]
+    assert top.kind == "turn" and isinstance(top.decision, PlayerDecision)
+    assert top.decision.owner == 1
+
+
+def test_owed_intrigue_draw_stops_short_with_nothing_to_shuffle() -> None:
+    owner = PlayerState(player_id=0, hand=(_starter("dagger"),))
+    state = _turn_state(owner)
+    engine = UprisingRulesEngine()
+    to_hall = next(
+        action
+        for action in engine.legal_actions(state, 0)
+        if action.action_id == "agent_turn"
+        and dict(action.arguments)["space_id"] == "assembly_hall"
+    )
+    placed = engine.apply(state, to_hall).state
+
+    done = engine.apply(placed, DomainAction(action_id="resolve_board_effect", actor=0))
+
+    assert done.state.players[0].intrigue_cards == ()
+    assert done.state.pending_intrigue_draws == ()
+    assert done.state.decision_stack[-1].kind == "turn"
+

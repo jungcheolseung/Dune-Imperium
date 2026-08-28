@@ -75,20 +75,24 @@ def trash_personal_card(
             payload=(("card_id", card_id), ("player", player)),
         )
     ]
+    pending_intrigue_draws = state.pending_intrigue_draws
     if _trash_effect(card_id) is PersonalCardTrashEffect.DRAW_INTRIGUE_CARD:
-        drawn = intrigue_deck[:1]
-        intrigue_deck = intrigue_deck[len(drawn) :]
-        next_owner = replace(
-            next_owner,
-            intrigue_cards=(*next_owner.intrigue_cards, *drawn),
-        )
-        events.append(
-            GameEvent(
-                event_id=f"{source}:trash:{card_id}:intrigue_draw",
-                kind="intrigue_card_drawn",
-                payload=(("count", len(drawn)), ("player", player)),
+        draw_source = f"{source}:trash:{card_id}:intrigue_draw"
+        if intrigue_deck:
+            next_owner = replace(
+                next_owner,
+                intrigue_cards=(*next_owner.intrigue_cards, intrigue_deck[0]),
             )
-        )
+            intrigue_deck = intrigue_deck[1:]
+            events.append(
+                GameEvent(
+                    event_id=draw_source,
+                    kind="intrigue_card_drawn",
+                    payload=(("count", 1), ("player", player)),
+                )
+            )
+        else:
+            pending_intrigue_draws = (*pending_intrigue_draws, (player, 1, draw_source))
 
     players = tuple(
         next_owner if candidate.player_id == player else candidate
@@ -100,6 +104,7 @@ def trash_personal_card(
             players=players,
             reserve_stacks=reserve_stacks,
             intrigue_deck=intrigue_deck,
+            pending_intrigue_draws=pending_intrigue_draws,
         ),
         events=tuple(events),
     )

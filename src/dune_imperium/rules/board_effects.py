@@ -20,6 +20,7 @@ from dune_imperium.rules.effects import (
     current_agent_effect_context,
     recruit_troops,
 )
+from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
 from dune_imperium.rules.shield_wall import (
     current_conflict_is_shield_wall_protected,
     destroy_shield_wall,
@@ -146,8 +147,8 @@ def resolve_board_effect(state: GameState) -> RuleResult:
         effects = ()
     else:
         effects = board_effects_for(state, space_id, cost_option)
-    intrigue_deck = state.intrigue_deck
     personal_draw_count = 0
+    intrigue_draw_count = 0
     for effect in effects:
         match effect:
             case GainResourcesEffect():
@@ -155,11 +156,7 @@ def resolve_board_effect(state: GameState) -> RuleResult:
             case DrawImperiumCardsEffect():
                 personal_draw_count += effect.count
             case DrawIntrigueCardsEffect():
-                next_owner, intrigue_deck = _draw_intrigue_cards(
-                    next_owner,
-                    intrigue_deck,
-                    effect.count,
-                )
+                intrigue_draw_count += effect.count
             case RecruitTroopsEffect():
                 next_owner, recruited = recruit_troops(next_owner, effect.count)
                 previous = context.get("troops_recruited")
@@ -173,8 +170,18 @@ def resolve_board_effect(state: GameState) -> RuleResult:
         for candidate in state.players
     )
     context["pending_board_effect"] = False
-    effect_state = replace(state, intrigue_deck=intrigue_deck)
-    next_state = advance_after_effect(effect_state, context, players)
+    effect_state = replace(state, players=players)
+    intrigue_events: tuple[GameEvent, ...] = ()
+    if intrigue_draw_count:
+        intrigue_draw = draw_or_queue_intrigue_cards(
+            effect_state,
+            player,
+            intrigue_draw_count,
+            source=f"round:{state.round_number}:player:{player}:board:{space_id}",
+        )
+        effect_state = intrigue_draw.state
+        intrigue_events = intrigue_draw.events
+    next_state = advance_after_effect(effect_state, context)
     draw_events: tuple[GameEvent, ...] = ()
     if personal_draw_count:
         draw = draw_or_request_personal_cards(
@@ -202,7 +209,7 @@ def resolve_board_effect(state: GameState) -> RuleResult:
     )
     return RuleResult(
         state=next_state,
-        events=(*draw_events, *contract_events, event),
+        events=(*intrigue_events, *draw_events, *contract_events, event),
     )
 
 
@@ -567,15 +574,3 @@ def _gain_resources(
         ),
     )
 
-
-def _draw_intrigue_cards(
-    player: PlayerState,
-    deck: tuple[str, ...],
-    count: int,
-) -> tuple[PlayerState, tuple[str, ...]]:
-    if len(deck) < count:
-        raise ValueError("the Intrigue deck does not contain enough cards")
-    return (
-        replace(player, intrigue_cards=(*player.intrigue_cards, *deck[:count])),
-        deck[count:],
-    )

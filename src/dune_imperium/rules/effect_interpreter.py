@@ -254,6 +254,8 @@ def apply_rewards(
         next_state = gained.state
         events.extend(gained.events)
     if intrigue_draws:
+        # Resolved before the Intrigue card itself is discarded, so the deck
+        # reshuffle (if any) never includes the card being played.
         drawn = draw_intrigue_cards(
             next_state, player, intrigue_draws, source=f"{source}:intrigue"
         )

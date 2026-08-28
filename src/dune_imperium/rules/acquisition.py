@@ -1,6 +1,6 @@
 """Card acquisition during Reveal and card-driven Agent effects."""
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.imperium import imperium_card_for_instance
@@ -310,14 +310,16 @@ def _acquire_imperium_to_hand_with_solari(
             solari=owner.resources.solari - cost,
         ),
     )
-    next_owner, intrigue_deck, acquisition_events, places_spy, takes_contract = (
-        _resolve_imperium_acquisition_bonus(
-            state,
-            action.actor,
-            instance_id,
-            next_owner,
-        )
+    bonus = _resolve_imperium_acquisition_bonus(
+        state,
+        action.actor,
+        instance_id,
+        next_owner,
     )
+    next_owner = bonus.owner
+    acquisition_events = bonus.events
+    places_spy = bonus.places_spy
+    takes_contract = bonus.takes_contract
     base_frame = replace(
         state.decision_stack[-1],
         context=tuple(sorted(context.items())),
@@ -327,7 +329,8 @@ def _acquire_imperium_to_hand_with_solari(
         players=replace_player(state.players, next_owner),
         imperium_deck=state.imperium_deck[1:],
         imperium_row=tuple(row),
-        intrigue_deck=intrigue_deck,
+        intrigue_deck=bonus.intrigue_deck,
+        pending_intrigue_draws=_with_pending_draw(state, bonus.pending_draw),
         decision_stack=(*state.decision_stack[:-1], base_frame),
     )
     if (
@@ -570,14 +573,17 @@ def apply_imperium_acquisition(
         owner,
         discard_pile=(*owner.discard_pile, instance_id),
     )
-    next_owner, intrigue_deck, acquisition_events, places_spy, takes_contract = (
-        _resolve_imperium_acquisition_bonus(
-            state,
-            action.actor,
-            instance_id,
-            next_owner,
-        )
+    bonus = _resolve_imperium_acquisition_bonus(
+        state,
+        action.actor,
+        instance_id,
+        next_owner,
     )
+    next_owner = bonus.owner
+    intrigue_deck = bonus.intrigue_deck
+    acquisition_events = bonus.events
+    places_spy = bonus.places_spy
+    takes_contract = bonus.takes_contract
     players = replace_player(state.players, next_owner)
     context["persuasion"] = persuasion - cost
     frame = state.decision_stack[-1]
@@ -594,6 +600,7 @@ def apply_imperium_acquisition(
         imperium_deck=state.imperium_deck[1:],
         imperium_row=tuple(row),
         intrigue_deck=intrigue_deck,
+        pending_intrigue_draws=_with_pending_draw(state, bonus.pending_draw),
         decision_stack=decision_stack,
     )
     if (
@@ -646,36 +653,53 @@ def apply_imperium_acquisition(
     return RuleResult(state=next_state, events=(event, *acquisition_events))
 
 
+@dataclass(frozen=True, slots=True)
+class AcquisitionBonus:
+    """Result of an acquisition bonus before its follow-up choice."""
+
+    owner: PlayerState
+    intrigue_deck: tuple[str, ...]
+    events: tuple[GameEvent, ...]
+    places_spy: bool
+    takes_contract: bool
+    pending_draw: tuple[int, int, str] | None = None
+
+
 def _resolve_imperium_acquisition_bonus(
     state: GameState,
     player: int,
     instance_id: str,
     owner: PlayerState,
-) -> tuple[PlayerState, tuple[str, ...], tuple[GameEvent, ...], bool, bool]:
+) -> AcquisitionBonus:
     """Apply one supported acquisition bonus before its follow-up choice."""
 
     definition = imperium_card_for_instance(instance_id)
     effect = definition.acquisition_effect
     intrigue_deck = state.intrigue_deck
     events: tuple[GameEvent, ...] = ()
+    pending_draw: tuple[int, int, str] | None = None
     if effect is PersonalCardAcquisitionEffect.DRAW_INTRIGUE_CARD:
-        if not intrigue_deck:
-            raise ValueError("the Intrigue deck does not contain enough cards")
-        owner = replace(
-            owner,
-            intrigue_cards=(*owner.intrigue_cards, intrigue_deck[0]),
+        source = (
+            f"round:{state.round_number}:player:{player}:"
+            f"acquire:{instance_id}:intrigue_draw"
         )
-        intrigue_deck = intrigue_deck[1:]
-        events = (
-            GameEvent(
-                event_id=(
-                    f"round:{state.round_number}:player:{player}:"
-                    f"acquire:{instance_id}:intrigue_draw"
+        if intrigue_deck:
+            owner = replace(
+                owner,
+                intrigue_cards=(*owner.intrigue_cards, intrigue_deck[0]),
+            )
+            intrigue_deck = intrigue_deck[1:]
+            events = (
+                GameEvent(
+                    event_id=source,
+                    kind="intrigue_card_drawn",
+                    payload=(("count", 1), ("player", player)),
                 ),
-                kind="intrigue_card_drawn",
-                payload=(("count", 1), ("player", player)),
-            ),
-        )
+            )
+        else:
+            # The deck is empty: the dispatcher reshuffles the discard and
+            # completes the draw before the next player decision [FAQ p. 2].
+            pending_draw = (player, 1, source)
     elif effect is PersonalCardAcquisitionEffect.GAIN_TWO_SOLARI:
         owner = replace(
             owner,
@@ -698,13 +722,23 @@ def _resolve_imperium_acquisition_bonus(
                 ),
             ),
         )
-    return (
-        owner,
-        intrigue_deck,
-        events,
-        effect is PersonalCardAcquisitionEffect.PLACE_SPY,
-        effect is PersonalCardAcquisitionEffect.TAKE_CONTRACT,
+    return AcquisitionBonus(
+        owner=owner,
+        intrigue_deck=intrigue_deck,
+        events=events,
+        places_spy=effect is PersonalCardAcquisitionEffect.PLACE_SPY,
+        takes_contract=effect is PersonalCardAcquisitionEffect.TAKE_CONTRACT,
+        pending_draw=pending_draw,
     )
+
+
+def _with_pending_draw(
+    state: GameState,
+    pending_draw: tuple[int, int, str] | None,
+) -> tuple[tuple[int, int, str], ...]:
+    if pending_draw is None:
+        return state.pending_intrigue_draws
+    return (*state.pending_intrigue_draws, pending_draw)
 
 
 def next_reserve_instance_id(state: GameState, card_id: str) -> str:

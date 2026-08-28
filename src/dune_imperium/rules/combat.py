@@ -229,15 +229,9 @@ def resolve_combat_rewards(state: GameState) -> RuleResult:
 
     ranking = rank_combat(state.players)
     _validate_supported_rewards(state, ranking, conflict.rewards)
-    intrigue_count = sum(
-        conflict.rewards[reward.rank - 1].intrigue * reward.multiplier
-        for reward in ranking.rewards
-    )
-    if intrigue_count > len(state.intrigue_deck):
-        raise ValueError("Conflict rewards require more Intrigue cards than remain")
-
     players = list(state.players)
     intrigue_deck = state.intrigue_deck
+    pending_draws = state.pending_intrigue_draws
     choice_owners: list[int] = []
     frames_in_order: list[DecisionFrame] = []
     events: list[GameEvent] = []
@@ -247,6 +241,19 @@ def resolve_combat_rewards(state: GameState) -> RuleResult:
         owner = players[assignment.player]
         drawn = intrigue_deck[: reward.intrigue * amount]
         intrigue_deck = intrigue_deck[len(drawn) :]
+        if reward.intrigue * amount > len(drawn):
+            # Deck exhausted: the dispatcher reshuffles the discard [FAQ p. 2].
+            pending_draws = (
+                *pending_draws,
+                (
+                    assignment.player,
+                    reward.intrigue * amount - len(drawn),
+                    (
+                        f"round:{state.round_number}:combat_reward:intrigue:"
+                        f"{assignment.player}:{assignment.rank.value}"
+                    ),
+                ),
+            )
         contract_solari = 0 if state.config.choam_module else reward.contracts * 2
         recruited = min(owner.troops_supply, reward.troops * amount)
         next_owner = replace(
@@ -272,6 +279,7 @@ def resolve_combat_rewards(state: GameState) -> RuleResult:
                     state,
                     players=tuple(players),
                     intrigue_deck=intrigue_deck,
+                    pending_intrigue_draws=pending_draws,
                 ),
                 assignment.player,
                 reward.influence_faction,
@@ -283,6 +291,7 @@ def resolve_combat_rewards(state: GameState) -> RuleResult:
             )
             players = list(influence_result.state.players)
             intrigue_deck = influence_result.state.intrigue_deck
+            pending_draws = influence_result.state.pending_intrigue_draws
             events.extend(influence_result.events)
             next_owner = players[assignment.player]
         if reward.control_space_id is not None:
@@ -395,6 +404,7 @@ def resolve_combat_rewards(state: GameState) -> RuleResult:
         state,
         players=tuple(players),
         intrigue_deck=intrigue_deck,
+        pending_intrigue_draws=pending_draws,
         combat_rewards_resolved=not frames,
         decision_stack=frames,
     )

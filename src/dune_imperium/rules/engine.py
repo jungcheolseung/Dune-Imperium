@@ -105,7 +105,9 @@ from dune_imperium.rules.intrigue import (
 )
 from dune_imperium.rules.intrigue_deck import (
     apply_intrigue_reshuffle,
+    intrigue_draw_is_queued,
     intrigue_reshuffle_is_pending,
+    resolve_pending_intrigue_draw,
 )
 from dune_imperium.rules.phases import (
     apply_control_defense_action,
@@ -400,7 +402,9 @@ def _advance_automatic(result: RuleResult) -> RuleResult:
     state = result.state
     events: list[GameEvent] = list(result.events)
     while True:
-        if exhausted_contract_choice_is_pending(state):
+        if intrigue_draw_is_queued(state):
+            automatic = resolve_pending_intrigue_draw(state)
+        elif exhausted_contract_choice_is_pending(state):
             automatic = resolve_exhausted_contract_choice(state)
         elif state.decision_stack:
             break

@@ -65,6 +65,60 @@ def draw_intrigue_cards(
     )
 
 
+def draw_or_queue_intrigue_cards(
+    state: GameState,
+    player: int,
+    count: int,
+    *,
+    source: str,
+) -> RuleResult:
+    """Draw what the deck holds now and queue the rest for the dispatcher.
+
+    Rule modules that are in the middle of their own frame bookkeeping cannot
+    push the reshuffle chance frame themselves, so the shortfall is recorded
+    in ``pending_intrigue_draws`` and ``resolve_pending_intrigue_draw`` runs
+    it before the next player decision.
+    """
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("draw player must identify a configured seat")
+    if count < 1:
+        raise ValueError("Intrigue draw count must be positive")
+    if not source:
+        raise ValueError("Intrigue draw source must not be empty")
+    drawn_now = _draw_available(state, player, count, source)
+    shortfall = count - len(state.intrigue_deck[:count])
+    if shortfall <= 0:
+        return drawn_now
+    queued = replace(
+        drawn_now.state,
+        pending_intrigue_draws=(
+            *drawn_now.state.pending_intrigue_draws,
+            (player, shortfall, source),
+        ),
+    )
+    return RuleResult(state=queued, events=drawn_now.events)
+
+
+def intrigue_draw_is_queued(state: GameState) -> bool:
+    """Return whether an owed Intrigue draw can be resolved now."""
+
+    frame = state.decision_stack[-1] if state.decision_stack else None
+    return bool(state.pending_intrigue_draws) and (
+        frame is None or not isinstance(frame.decision, ChanceDecision)
+    )
+
+
+def resolve_pending_intrigue_draw(state: GameState) -> RuleResult:
+    """Resolve the oldest owed draw, reshuffling the discard if needed."""
+
+    if not state.pending_intrigue_draws:
+        raise ValueError("there is no pending Intrigue draw")
+    player, count, source = state.pending_intrigue_draws[0]
+    remaining = replace(state, pending_intrigue_draws=state.pending_intrigue_draws[1:])
+    return draw_intrigue_cards(remaining, player, count, source=source)
+
+
 def intrigue_reshuffle_is_pending(state: GameState) -> bool:
     """Return whether the top decision is an Intrigue discard reshuffle."""
 

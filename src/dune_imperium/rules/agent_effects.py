@@ -30,6 +30,7 @@ from dune_imperium.rules.effects import (
 )
 from dune_imperium.rules.frames import FrameKind, replace_player
 from dune_imperium.rules.influence import gain_faction_influence
+from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
     observation_post_ids_for_factions,
@@ -189,41 +190,29 @@ def apply_agent_card_discard(
         draw_count = 1
     else:
         draw_count = 2 if Faction.SPACING_GUILD in discarded_card.factions else 1
+    intrigue_draw_events: tuple[GameEvent, ...] = ()
     if draws_intrigue:
-        if not prepared.intrigue_deck:
-            raise RuntimeError("Agent-card discard has no Intrigue reward")
-        next_owner = prepared.players[action.actor]
-        next_owner = replace(
-            next_owner,
-            intrigue_cards=(*next_owner.intrigue_cards, prepared.intrigue_deck[0]),
-        )
-        prepared = replace(
+        intrigue_draw = draw_or_queue_intrigue_cards(
             prepared,
-            players=replace_player(prepared.players, next_owner),
-            intrigue_deck=prepared.intrigue_deck[1:],
+            action.actor,
+            1,
+            source=f"{source}:{card_id}:intrigue_draw",
         )
+        prepared = intrigue_draw.state
+        intrigue_draw_events = intrigue_draw.events
     if draw_count == 0:
-        return RuleResult(state=prepared, events=discarded.events)
+        return RuleResult(
+            state=prepared, events=(*discarded.events, *intrigue_draw_events)
+        )
     drawn = draw_or_request_personal_cards(
         prepared,
         action.actor,
         draw_count,
         source=f"{source}:{card_id}:draw",
     )
-    intrigue_events = (
-        (
-            GameEvent(
-                event_id=f"{source}:{card_id}:intrigue_draw",
-                kind="intrigue_card_drawn",
-                payload=(("count", 1), ("player", action.actor)),
-            ),
-        )
-        if draws_intrigue
-        else ()
-    )
     return RuleResult(
         state=drawn.state,
-        events=(*discarded.events, *intrigue_events, *drawn.events),
+        events=(*discarded.events, *intrigue_draw_events, *drawn.events),
     )
 
 
@@ -1740,22 +1729,15 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             next_owner = owner
             event_kind = "agent_card_effect_unavailable"
         else:
-            if not state.intrigue_deck:
-                raise ValueError("the Intrigue deck does not contain enough cards")
-            next_owner = replace(
-                owner,
-                intrigue_cards=(*owner.intrigue_cards, state.intrigue_deck[0]),
-            )
-            context["pending_agent_effect"] = False
-            next_state = advance_after_effect(
-                replace(state, intrigue_deck=state.intrigue_deck[1:]),
-                context,
-                replace_player(state.players, next_owner),
-            )
             source = (
                 f"round:{state.round_number}:player:{player}:"
                 f"agent_card:{card_instance_id}"
             )
+            intrigue_draw = draw_or_queue_intrigue_cards(
+                state, player, 1, source=f"{source}:intrigue_draw"
+            )
+            context["pending_agent_effect"] = False
+            next_state = advance_after_effect(intrigue_draw.state, context)
             return RuleResult(
                 state=next_state,
                 events=(
@@ -1767,11 +1749,7 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
                             ("player", player),
                         ),
                     ),
-                    GameEvent(
-                        event_id=f"{source}:intrigue_draw",
-                        kind="intrigue_card_drawn",
-                        payload=(("count", 1), ("player", player)),
-                    ),
+                    *intrigue_draw.events,
                 ),
             )
     elif effect is PersonalCardAgentEffect.DRAW_INTRIGUE_IF_THREE_UNITS_IN_CONFLICT:
@@ -1779,22 +1757,15 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             next_owner = owner
             event_kind = "agent_card_effect_unavailable"
         else:
-            if not state.intrigue_deck:
-                raise ValueError("the Intrigue deck does not contain enough cards")
-            next_owner = replace(
-                owner,
-                intrigue_cards=(*owner.intrigue_cards, state.intrigue_deck[0]),
-            )
-            context["pending_agent_effect"] = False
-            next_state = advance_after_effect(
-                replace(state, intrigue_deck=state.intrigue_deck[1:]),
-                context,
-                replace_player(state.players, next_owner),
-            )
             source = (
                 f"round:{state.round_number}:player:{player}:"
                 f"agent_card:{card_instance_id}"
             )
+            intrigue_draw = draw_or_queue_intrigue_cards(
+                state, player, 1, source=f"{source}:intrigue_draw"
+            )
+            context["pending_agent_effect"] = False
+            next_state = advance_after_effect(intrigue_draw.state, context)
             return RuleResult(
                 state=next_state,
                 events=(
@@ -1806,11 +1777,7 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
                             ("player", player),
                         ),
                     ),
-                    GameEvent(
-                        event_id=f"{source}:intrigue_draw",
-                        kind="intrigue_card_drawn",
-                        payload=(("count", 1), ("player", player)),
-                    ),
+                    *intrigue_draw.events,
                 ),
             )
     elif (

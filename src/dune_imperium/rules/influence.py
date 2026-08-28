@@ -29,6 +29,7 @@ def gain_faction_influence(
 
     players = state.players
     intrigue_deck = state.intrigue_deck
+    pending_draws = state.pending_intrigue_draws
     gained = 0
     events: list[GameEvent] = []
     for step in range(amount):
@@ -46,12 +47,17 @@ def gain_faction_influence(
         gained += 1
 
         if next_amount == 4:
-            players, intrigue_deck, bonus_payload = _apply_track_bonus(
+            players, intrigue_deck, bonus_payload, shortfall = _apply_track_bonus(
                 players,
                 intrigue_deck,
                 player,
                 faction,
             )
+            if shortfall:
+                pending_draws = (
+                    *pending_draws,
+                    (player, shortfall, f"{event_prefix}:track_bonus:{step}"),
+                )
             events.append(
                 GameEvent(
                     event_id=f"{event_prefix}:track_bonus:{step}",
@@ -91,7 +97,12 @@ def gain_faction_influence(
             ),
         )
     return RuleResult(
-        state=replace(state, players=players, intrigue_deck=intrigue_deck),
+        state=replace(
+            state,
+            players=players,
+            intrigue_deck=intrigue_deck,
+            pending_intrigue_draws=pending_draws,
+        ),
         events=tuple(events),
     )
 
@@ -261,8 +272,10 @@ def _apply_track_bonus(
     tuple[PlayerState, ...],
     tuple[str, ...],
     tuple[tuple[str, int | str], ...],
+    int,
 ]:
     owner = players[player]
+    intrigue_shortfall = 0
     match faction:
         case Faction.EMPEROR:
             recruited = min(2, owner.troops_supply)
@@ -279,24 +292,23 @@ def _apply_track_bonus(
             )
             payload = (("water", 3),)
         case Faction.BENE_GESSERIT:
-            if not intrigue_deck:
-                raise ValueError(
-                    "the Bene Gesserit Influence bonus requires an Intrigue card"
+            # Card identity stays hidden [Main p. 7]; only the count is public.
+            payload = (("intrigue", 1),)
+            if intrigue_deck:
+                owner = replace(
+                    owner,
+                    intrigue_cards=(*owner.intrigue_cards, intrigue_deck[0]),
                 )
-            card_id = intrigue_deck[0]
-            intrigue_deck = intrigue_deck[1:]
-            owner = replace(
-                owner,
-                intrigue_cards=(*owner.intrigue_cards, card_id),
-            )
-            payload = (("intrigue_card_id", card_id),)
+                intrigue_deck = intrigue_deck[1:]
+            else:
+                intrigue_shortfall = 1
         case Faction.FREMEN:
             owner = replace(
                 owner,
                 resources=replace(owner.resources, water=owner.resources.water + 1),
             )
             payload = (("water", 1),)
-    return replace_player(players, owner), intrigue_deck, payload
+    return replace_player(players, owner), intrigue_deck, payload, intrigue_shortfall
 
 
 def _update_alliance(

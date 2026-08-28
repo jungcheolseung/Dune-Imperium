@@ -21,6 +21,7 @@ from dune_imperium.rules.influence import (
     influence_amount,
     lose_faction_influence,
 )
+from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
 from dune_imperium.rules.shield_wall import current_conflict_is_shield_wall_protected
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
@@ -958,32 +959,35 @@ def apply_reveal_spy_action(
     owner = state.players[action.actor]
     events: list[GameEvent] = []
     intrigue_deck = state.intrigue_deck
+    pending_draws = state.pending_intrigue_draws
     remaining = state.decision_stack[:-1]
     if (
         effect
         is PersonalCardRevealChoiceEffect.RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED
     ):
-        if not intrigue_deck:
-            raise ValueError("the Intrigue deck does not contain enough cards")
         post_id = arguments.get("post_id")
         if not isinstance(post_id, str):
             raise RuntimeError("Reveal Spy choice has invalid post ID")
         next_owner = recall_spy(owner, post_id)
-        next_owner = replace(
-            next_owner,
-            intrigue_cards=(*next_owner.intrigue_cards, intrigue_deck[0]),
-        )
-        intrigue_deck = intrigue_deck[1:]
-        events.extend(
-            (
-                _spy_recalled_event(state, action.actor, card_id, post_id),
+        events.append(_spy_recalled_event(state, action.actor, card_id, post_id))
+        if intrigue_deck:
+            next_owner = replace(
+                next_owner,
+                intrigue_cards=(*next_owner.intrigue_cards, intrigue_deck[0]),
+            )
+            intrigue_deck = intrigue_deck[1:]
+            events.append(
                 GameEvent(
                     event_id=f"{source}:intrigue_draw",
                     kind="intrigue_card_drawn",
                     payload=(("count", 1), ("player", action.actor)),
-                ),
+                )
             )
-        )
+        else:
+            pending_draws = (
+                *pending_draws,
+                (action.actor, 1, f"{source}:intrigue_draw"),
+            )
     else:
         first_post_id = arguments.get("first_post_id")
         second_post_id = arguments.get("second_post_id")
@@ -1014,6 +1018,7 @@ def apply_reveal_spy_action(
         state,
         players=players,
         intrigue_deck=intrigue_deck,
+        pending_intrigue_draws=pending_draws,
         decision_stack=remaining,
     )
     return RuleResult(state=next_state, events=tuple(events))
@@ -1427,30 +1432,17 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
     for card_id, effect in reveal_effects:
         if effect.draw_intrigue == 0:
             continue
-        drawn = next_state.intrigue_deck[: effect.draw_intrigue]
-        draw_owner = next_state.players[action.actor]
-        draw_owner = replace(
-            draw_owner,
-            intrigue_cards=(*draw_owner.intrigue_cards, *drawn),
-        )
-        next_state = replace(
+        intrigue_draw = draw_or_queue_intrigue_cards(
             next_state,
-            players=tuple(
-                draw_owner if player.player_id == action.actor else player
-                for player in next_state.players
+            action.actor,
+            effect.draw_intrigue,
+            source=(
+                f"round:{state.round_number}:player:{action.actor}:"
+                f"reveal_card:{card_id}:intrigue_draw"
             ),
-            intrigue_deck=next_state.intrigue_deck[len(drawn) :],
         )
-        events.append(
-            GameEvent(
-                event_id=(
-                    f"round:{state.round_number}:player:{action.actor}:"
-                    f"reveal_card:{card_id}:intrigue_draw"
-                ),
-                kind="intrigue_card_drawn",
-                payload=(("count", len(drawn)), ("player", action.actor)),
-            )
-        )
+        next_state = intrigue_draw.state
+        events.extend(intrigue_draw.events)
     for card_id, effect in reveal_effects:
         if effect.influence_faction is None:
             continue

@@ -558,11 +558,12 @@ def test_treacherous_maneuver_reveal_tolerates_an_empty_intrigue_deck() -> None:
     )
 
     assert result.state.players[0].intrigue_cards == ()
-    assert [event.kind for event in result.events] == [
-        "reveal_started",
-        "intrigue_card_drawn",
-    ]
-    assert dict(result.events[-1].payload)["count"] == 0
+    # With the deck empty the draw is owed to the dispatcher, which reshuffles
+    # the discard [FAQ p. 2] or stops short when there is nothing to shuffle.
+    assert [event.kind for event in result.events] == ["reveal_started"]
+    (owed,) = result.state.pending_intrigue_draws
+    assert owed[:2] == (0, 1)
+    assert owed[2].endswith("treacherous_maneuver:0:intrigue_draw")
 
 
 def test_chani_retreats_two_troops_for_four_strength() -> None:

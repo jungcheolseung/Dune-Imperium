@@ -58,6 +58,10 @@ class GameState:
         ("hagga_basin", 0),
         ("imperial_basin", 0),
     )
+    # Intrigue draws owed after the deck ran out mid-transition, resolved by the
+    # dispatcher (reshuffling the discard through a chance decision) before the
+    # next player decision: (player, count, event source).
+    pending_intrigue_draws: tuple[tuple[int, int, str], ...] = ()
     decision_stack: tuple[DecisionFrame, ...] = ()
     event_log: tuple[GameEvent, ...] = ()
 
