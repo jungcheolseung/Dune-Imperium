@@ -82,7 +82,7 @@ def _play(state: GameState, card_id: str, option: int = 0) -> DomainAction:
 def test_transcribed_intrigue_options_are_well_formed() -> None:
     transcribed = [entry for entry in INTRIGUE_CARDS if entry.play_data_complete]
 
-    assert len(transcribed) == 30
+    assert len(transcribed) == 31
     for entry in transcribed:
         assert entry.options
         for option in entry.options:
@@ -1928,6 +1928,81 @@ def test_distraction_recalls_a_spy_first_when_the_supply_is_empty() -> None:
     done = engine.apply(recalled, _place_trigger(rival_post)).state
     assert rival_post in done.players[0].spy_post_ids
     assert done.intrigue_discard == (card,)
+
+
+def test_leverage_needs_spice_gained_this_turn() -> None:
+    card = _intrigue("leverage")
+    # Holding Spice is not gaining it: a fresh turn snapshot equals the
+    # current total, so the condition does not hold.
+    idle = PlayerState(
+        player_id=0,
+        intrigue_cards=(card,),
+        resources=Resources(spice=5),
+        spice_at_turn_start=5,
+    )
+    state = replace(
+        _turn_state(idle),
+        config=RulesetConfig(choam_module=True),
+        face_up_contract_ids=("contract:immediate",),
+    )
+    assert legal_intrigue_play_actions(state, 0) == ()
+
+    # Spending down to the starting total does not hide the gain.
+    churned = replace(
+        idle, resources=Resources(spice=5), spice_at_turn_start=5, spice_spent_turn=2
+    )
+    churning = replace(
+        _turn_state(churned),
+        config=RulesetConfig(choam_module=True),
+        face_up_contract_ids=("contract:heighliner_iii",),
+    )
+    engine = UprisingRulesEngine()
+    assert legal_intrigue_play_actions(churning, 0) == (_play(churning, card),)
+
+    market = engine.apply(churning, _play(churning, card)).state
+    assert market.players[0].resources.solari == 1
+    assert market.decision_stack[-1].kind == "contract_market"
+    taken = engine.apply(
+        market,
+        DomainAction(
+            action_id="take_contract",
+            actor=0,
+            arguments=(("instance_id", "contract:heighliner_iii"),),
+        ),
+    ).state
+    assert "contract:heighliner_iii" in taken.players[0].active_contract_ids
+    assert taken.intrigue_discard == (card,)
+
+
+def test_leverage_sees_spice_gained_through_a_played_intrigue() -> None:
+    leverage = _intrigue("leverage")
+    market_card = _intrigue("market_opportunity")
+    owner = PlayerState(
+        player_id=0,
+        intrigue_cards=(market_card, leverage),
+        resources=Resources(solari=5),
+    )
+    state = replace(
+        _turn_state(owner),
+        config=RulesetConfig(choam_module=True),
+        face_up_contract_ids=("contract:immediate",),
+    )
+    engine = UprisingRulesEngine()
+    assert _play(state, leverage) not in legal_intrigue_play_actions(state, 0)
+
+    # Market Opportunity's second half turns 5 Solari into 5 Spice.
+    swapped = engine.apply(state, _play(state, market_card, 1)).state
+    assert swapped.players[0].resources.spice == 5
+    assert _play(swapped, leverage) in legal_intrigue_play_actions(swapped, 0)
+
+    # After this player's turn passes, the next turn starts a fresh snapshot.
+    revealed = engine.apply(swapped, _reveal(swapped)).state
+    finished = engine.apply(
+        revealed, DomainAction(action_id="finish_reveal", actor=0)
+    ).state
+    follower = finished.players[1]
+    assert follower.spice_at_turn_start == follower.resources.spice
+    assert follower.spice_spent_turn == 0
 
 
 def test_reach_agreement_retreats_for_a_contract_in_the_choam_module() -> None:

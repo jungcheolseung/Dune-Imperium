@@ -127,18 +127,26 @@ def replace_player(
     )
 
 
-def reset_turn_deployment(
+def reset_turn_counters(
     players: tuple[PlayerState, ...],
     player: int,
 ) -> tuple[PlayerState, ...]:
-    """Zero one player's per-turn deployment counters as their turn opens."""
+    """Restart one player's per-turn bookkeeping as their turn opens.
+
+    Deployment counters return to zero and the Spice-gained tracking takes a
+    fresh snapshot of the player's current Spice.
+    """
 
     owner = players[player]
-    if owner.units_deployed_turn == 0 and owner.deploy_trigger_offered_at == 0:
-        return players
     return replace_player(
         players,
-        replace(owner, units_deployed_turn=0, deploy_trigger_offered_at=0),
+        replace(
+            owner,
+            units_deployed_turn=0,
+            deploy_trigger_offered_at=0,
+            spice_at_turn_start=owner.resources.spice,
+            spice_spent_turn=0,
+        ),
     )
 
 

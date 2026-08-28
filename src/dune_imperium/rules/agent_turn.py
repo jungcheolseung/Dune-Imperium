@@ -142,6 +142,7 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
     next_owner = replace(
         owner,
         resources=_pay_cost(owner.resources, cost),
+        spice_spent_turn=owner.spice_spent_turn + cost.spice,
         agents_available=owner.agents_available - 1,
         agent_locations=(*owner.agent_locations, space_id),
         spies_supply=owner.spies_supply + int(infiltrate_post_id is not None),

@@ -1035,6 +1035,7 @@ def apply_agent_card_intrigue_payment(
             owner.resources,
             spice=owner.resources.spice - 2,
         ),
+        spice_spent_turn=owner.spice_spent_turn + 2,
         victory_points=owner.victory_points + 1,
         intrigue_cards=tuple(
             card_id
@@ -1307,6 +1308,7 @@ def apply_agent_card_payment(state: GameState, action: DomainAction) -> RuleResu
             water=owner.resources.water - (spent if pays_water else 0),
             spice=owner.resources.spice - (0 if pays_water else spent),
         ),
+        spice_spent_turn=owner.spice_spent_turn + (0 if pays_water else spent),
         victory_points=owner.victory_points + (0 if pays_water else 1),
     )
     players = replace_player(state.players, next_owner)

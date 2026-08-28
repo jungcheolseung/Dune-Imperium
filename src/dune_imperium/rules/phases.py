@@ -39,6 +39,8 @@ def begin_round(state: GameState) -> RuleResult:
             _draw_cards(player, count),
             units_deployed_turn=0,
             deploy_trigger_offered_at=0,
+            spice_at_turn_start=player.resources.spice,
+            spice_spent_turn=0,
         )
         for player, count in zip(state.players, draw_counts, strict=True)
     )

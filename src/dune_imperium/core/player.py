@@ -71,6 +71,8 @@ class PlayerState:
     combat_strength: int = 0
     units_deployed_turn: int = 0
     deploy_trigger_offered_at: int = 0
+    spice_at_turn_start: int = 0
+    spice_spent_turn: int = 0
     has_revealed: bool = False
     high_council: bool = False
     maker_hooks: bool = False
@@ -101,6 +103,8 @@ class PlayerState:
             self.combat_strength,
             self.units_deployed_turn,
             self.deploy_trigger_offered_at,
+            self.spice_at_turn_start,
+            self.spice_spent_turn,
         )
         if min(quantities) < 0:
             raise ValueError("player component quantities must not be negative")

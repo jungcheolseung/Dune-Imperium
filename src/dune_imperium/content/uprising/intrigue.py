@@ -20,6 +20,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     DrawPersonalCards,
     EffectSection,
     GainCombatStrength,
+    GainedSpiceThisTurn,
     GainInfluence,
     GainResources,
     GainVictoryPoints,
@@ -348,7 +349,20 @@ INTRIGUE_CARDS: Final = (
             ),
         ),
     ),
-    _entry(447, "leverage", "Leverage", choam_only=True),
+    _entry(
+        447,
+        "leverage",
+        "Leverage",
+        choam_only=True,
+        options=(
+            _plot(
+                EffectSection(
+                    condition=GainedSpiceThisTurn(1),
+                    rewards=(TakeContract(1), GainResources(solari=1)),
+                )
+            ),
+        ),
+    ),
     _entry(143, "manipulate", "Manipulate"),
     _entry(
         145,

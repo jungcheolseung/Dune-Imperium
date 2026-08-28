@@ -18,7 +18,7 @@ from dune_imperium.rules.frames import (
     FrameKind,
     owned_top_frame,
     replace_player,
-    reset_turn_deployment,
+    reset_turn_counters,
 )
 from dune_imperium.rules.influence import (
     alliance_recipients_after_influence_loss,
@@ -769,6 +769,7 @@ def apply_reveal_spice_influence(
     owner = replace(
         owner,
         resources=replace(owner.resources, spice=owner.resources.spice - 3),
+        spice_spent_turn=owner.spice_spent_turn + 3,
     )
     paid = replace(state, players=replace_player(state.players, owner))
     gained = gain_faction_influence(
@@ -1530,7 +1531,7 @@ def finish_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         decision_stack = working.decision_stack[:-1]
     else:
         phase = GamePhase.PLAYER_TURNS
-        players = reset_turn_deployment(players, next_player)
+        players = reset_turn_counters(players, next_player)
         decision_stack = (
             *working.decision_stack[:-1],
             DecisionFrame(

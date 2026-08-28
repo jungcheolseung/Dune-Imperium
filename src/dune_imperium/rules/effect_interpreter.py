@@ -21,6 +21,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     DrawPersonalCards,
     EffectSection,
     GainCombatStrength,
+    GainedSpiceThisTurn,
     GainInfluence,
     GainResources,
     GainVictoryPoints,
@@ -88,6 +89,13 @@ def condition_holds(player: PlayerState, condition: Condition) -> bool:
             return len(player.completed_contract_ids) >= count
         case SandwormsInConflictAtLeast(count=count):
             return player.sandworms_conflict >= count
+        case GainedSpiceThisTurn(amount=amount):
+            gained = (
+                player.resources.spice
+                - player.spice_at_turn_start
+                + player.spice_spent_turn
+            )
+            return gained >= amount
     raise TypeError(f"unsupported condition: {condition!r}")
 
 
@@ -156,6 +164,7 @@ def pay_cost(player: PlayerState, cost: PayResources | None) -> PlayerState:
             spice=resources.spice - cost.spice,
             water=resources.water - cost.water,
         ),
+        spice_spent_turn=player.spice_spent_turn + cost.spice,
     )
 
 

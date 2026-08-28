@@ -75,12 +75,28 @@ class SandwormsInConflictAtLeast:
             raise ValueError("sandworm condition count must be positive")
 
 
+@dataclass(frozen=True, slots=True)
+class GainedSpiceThisTurn:
+    """The player has gained at least ``amount`` Spice during their turn.
+
+    Every source counts and spending Spice does not reduce the total; the
+    condition holds at the moment the card is played.
+    """
+
+    amount: int = 1
+
+    def __post_init__(self) -> None:
+        if self.amount < 1:
+            raise ValueError("Spice-gained condition amount must be positive")
+
+
 type Condition = (
     InfluenceAtLeast
     | HasHighCouncil
     | SpiesPlacedAtLeast
     | CompletedContractsAtLeast
     | SandwormsInConflictAtLeast
+    | GainedSpiceThisTurn
 )
 
 
