@@ -2,8 +2,8 @@
 
 기준일: 2026-08-28
 
-이 문서는 새 Codex 계정이나 새 개발 세션에서 저장소의 현재 위치를 빠르게
-복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md),
+이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재
+위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md),
 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md),
 카드별 세부 동작은
 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md),
@@ -13,7 +13,8 @@
 
 ## 세션 시작 체크리스트
 
-1. 저장소 루트의 `AGENTS.md`와 `README.md`, 이 문서를 읽는다.
+1. 저장소 루트의 `AGENTS.md`(도구 중립 공통 지침), `CLAUDE.md`(Claude Code
+   진입점), `README.md`, 이 문서를 읽는다.
 2. `git status --short`와 `git log --oneline -10`으로 작업 트리와 최근 구현을
    확인한다. 기존 변경은 사용자 작업으로 취급하고 덮어쓰지 않는다.
 3. `uv sync --extra rl`로 Python 3.14 환경을 준비한다.
@@ -141,34 +142,21 @@ uv run dune-imperium-audit-diu ../DIU/data/imperium.JSON
 uv run scripts/prepare_official_rules.py
 ```
 
-Codex sandbox에서 uv cache 쓰기가 제한되면 명령 앞에
+sandbox에서 uv cache 쓰기가 제한되면 명령 앞에
 `UV_CACHE_DIR=/tmp/dune-uv-cache`를 붙인다.
 
 ## 원격 저장소 인계 주의
 
-이 문서를 갱신할 때 로컬 `master`에는 `origin/master`의
-`f9026ec Document Steersman roadmap` 이후 Junction Headquarters, Corrinth City,
-Desert Power, Long Live the Fighters, Subversive Advisor, standard CHOAM
-contract와 CHOAM Imperium 구현·문서 커밋이 더 있지만 아직 원격에는 보이지
-않는다. 새 계정이 새 clone으로 이어받는다면 기존 계정에서 현재 `master`를 먼저
-push하거나 저장소 자체를 전달해야 한다.
+2026-08-28 기준 `origin/master`는 `61d5eda Implement CHOAM contract market`까지
+올라가 있고, 로컬 `master`에는 다음 5개 커밋이 아직 push되지 않았다.
 
-새 clone에서는 다음 커밋이 보이는지 최소한 확인한다.
-
-```bash
-git log --oneline --all --decorate -10
-```
-
-- `7f7ee38 Play Junction Headquarters`
-- `4a738cc Document Junction Headquarters`
-- `d680488 Play Corrinth City`
-- `6aa0832 Document Corrinth City`
-- `958897a Play Desert Power`
-- `98a013c Play Long Live the Fighters`
-- `2b1b25f Play Subversive Advisor`
-- `61d5eda Implement CHOAM contract market`
+- `242bffb Document CHOAM contract market`
 - `cfdc4dd Complete standard CHOAM contracts`
+- `58747f3 Document standard CHOAM contract completion`
 - `b20d403 Play CHOAM Imperium cards`
+- `b71cec1 Document CHOAM Imperium cards`
 
-이 커밋들이 없으면 문서에 적힌 v58 action catalog와 CHOAM Imperium 기준선이
-실제 코드와 일치하지 않는다.
+새 clone으로 이어받는다면 먼저 현재 `master`를 push해야 한다. 새 clone에서는
+`git log --oneline -5`에 `b71cec1`이 보이는지 확인한다. 이 커밋들이 없으면 문서에
+적힌 v58 action catalog, 3,598개 CHOAM 행동, 573개 테스트 기준선이 실제 코드와
+일치하지 않는다.

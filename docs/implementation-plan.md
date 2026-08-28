@@ -1,10 +1,11 @@
 # Dune: Imperium - Uprising 구현 계획
 
-상태: 초안 4 (2026-08-27) — R0 규칙 명세, M0 개발 골격, M1 엔진 커널,
+상태: 초안 5 (2026-08-28) — R0 규칙 명세, M0 개발 골격, M1 엔진 커널,
 M2 4인 setup과 정적 보드, M3 한 라운드 수직 조각, M4 RL 인터페이스 조기 검증
 완료. M5의 기본 시스템 경계는 대부분 연결됐고 콘텐츠 의존 항목이 남아 있다.
 M6는 기본 Imperium 카드 50종을 모두 완료했고 M8의 CHOAM 전용 Imperium 4종도
-실제 play 경로에 연결했다.
+실제 play 경로에 연결했다. M6의 남은 범위는 Intrigue 44장 play 효과, Leader
+능력·Signet Ring, Objective 상호작용이며, M7 완주 검증은 아직 시작하지 않았다.
 
 이 문서는 규칙 엔진부터 강화학습 AI와 사람용 플레이 인터페이스까지의 구현
 순서와 각 단계의 완료 조건을 정의한다. 구현 중 새 규칙을 발견하더라도 핵심
@@ -530,7 +531,7 @@ Sardaukar contract와 CHOAM 전용 Intrigue다.
 - **성능 회귀:** setup, step, legal action, observe, clone, games/sec 측정
 
 규칙이 불명확할 때는 임의 판정을 조용히 구현하지 않는다. 공식 근거와 질문을
-`rules_open_questions.md`에 남기고, 판정이 확정된 뒤 source citation과 회귀
+[`rules/open-questions.md`](rules/open-questions.md)에 남기고, 판정이 확정된 뒤 source citation과 회귀
 테스트를 함께 추가한다.
 
 ## 6. RL 경계 결정

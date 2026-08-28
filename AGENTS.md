@@ -60,34 +60,18 @@ authoritative and update the handoff in the same work unit.
 - Before adding or redistributing image files in the project, verify the needed
   scope and applicable usage terms.
 
-## Agent routing
+## Delegation
 
-Use the main `gpt-5.6-sol` agent as the controller.
+Keep requirements interpretation, repository-wide reasoning, architecture and
+design, task decomposition, ambiguous debugging, integration decisions, and the
+final review in the main session.
 
-Keep these tasks on Sol:
-
-- Requirements interpretation
-- Repository-wide reasoning
-- Architecture and design
-- Task decomposition
-- Ambiguous debugging
-- Integration decisions
-- Final review
-
-For bounded implementation work, prefer spawning a subagent with:
-
-- Model: `gpt-5.6-luna`
-- Reasoning effort: `max`
-
-Delegate to Luna when the task is:
-
-- Clearly specified
-- Limited in scope
-- Mostly implementation rather than design
-- Unit-test creation
-- Repetitive edits
-- Small refactoring
-- Straightforward bug fixing with a known cause
+Delegate to a subagent only bounded implementation work that is clearly
+specified, limited in scope, and mostly implementation rather than design:
+unit-test creation, repetitive edits, small refactoring, or straightforward bug
+fixing with a known cause. Do not delegate architecture decisions, work that
+needs broad repository understanding, ambiguous root-cause analysis, or major
+cross-cutting changes.
 
 When delegating:
 
@@ -98,15 +82,8 @@ When delegating:
 - Instruct the subagent to report blockers rather than make broad design
   decisions.
 
-Do not delegate to Luna when the task requires:
+After delegated implementation, the main session must review the changes and
+verify relevant tests before considering the task complete.
 
-- Architecture decisions
-- Broad repository understanding
-- Ambiguous root-cause analysis
-- Major cross-cutting changes
-
-If a Luna subagent becomes blocked or discovers that the task requires broader
-judgment, return the task to Sol.
-
-After delegated implementation, Sol must review the changes and verify relevant
-tests before considering the task complete.
+Tool-specific configuration (model names, reasoning effort) lives in the tool's
+own entry file, e.g. `CLAUDE.md` for Claude Code. This file stays tool-neutral.
