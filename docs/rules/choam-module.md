@@ -79,6 +79,8 @@ Signet Ring으로 Agent를 보낼 때 그 제한은 즉시 적용된다. `[Main 
 standard contract 20장의 identity·setup, 공개 시장의 take/refill·고갈, 모든
 완료 조건과 인쇄 보상은 구현돼 있다. 공간 방문 시 보유하던 contract를 snapshot해
 소급 완료를 막고, Harvest의 그 turn Spice 획득 합계와 The Spice Must Flow acquire
-trigger도 연결한다. Shaddam의 set-aside Sardaukar contract 선택은 Leader 구현
-단위로 남아 있다. 세부 상태·관측·codec 경계는
+trigger도 연결한다. CHOAM 전용 Imperium 4종은 completed Contract 수와 같은
+시장 transition을 사용해 Agent·Reveal·acquisition 효과까지 실제 play할 수 있다.
+전용 Intrigue 4종과 Shaddam의 set-aside Sardaukar contract 선택은 각각 Intrigue와
+Leader 구현 단위로 남아 있다. 세부 상태·관측·codec 경계는
 [Contract 구현 audit](../implementation-audits/contracts.md)에 기록한다.

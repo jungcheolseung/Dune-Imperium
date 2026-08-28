@@ -25,13 +25,13 @@ uv run ruff check src tests
 uv run mypy src tests
 ```
 
-2026-08-28의 기준 결과는 pytest 558개 통과, Ruff 통과, mypy 통과다. 현재 action
-codec은 `ACTION_CODEC_VERSION = 57`이며 기본 룰셋 catalog는 3,377개, CHOAM
-룰셋 catalog는 3,491개다.
+2026-08-28의 기준 결과는 pytest 573개 통과, Ruff 통과, mypy 통과다. 현재 action
+codec은 `ACTION_CODEC_VERSION = 58`이며 기본 룰셋 catalog는 3,377개, CHOAM
+룰셋 catalog는 3,598개다.
 
 ## 현재 구현 기준선
 
-마지막 기능 커밋은 `cfdc4dd Complete standard CHOAM contracts`다. 이 기능의
+마지막 기능 커밋은 `b20d403 Play CHOAM Imperium cards`다. 이 기능의
 규칙·로드맵 문서는 이 기준선에 반영했다.
 
 - R0-M4는 완료됐다. 공식 규칙 자료, 엔진 커널, 4인 setup, 한 라운드 수직 조각,
@@ -40,14 +40,21 @@ codec은 `ACTION_CODEC_VERSION = 57`이며 기본 룰셋 catalog는 3,377개, CH
   Spy/Infiltrate/Gather Intelligence, 개인 덱 reshuffle chance, Combat 순위와 보상,
   sandworm·Shield Wall·control, Makers·Recall, Endgame 진입과 안전한 일부 종료를
   실행할 수 있다.
-- 시작 카드 7종, Reserve 2종과 기본 Imperium 50종 모두에 완전한 play data가
-  있다. 구현된 카드별 판정은 personal-card audit에 기록돼 있다.
+- 시작 카드 7종, Reserve 2종과 기본 Imperium 50종, CHOAM 전용 Imperium 4종
+  모두에 완전한 play data가 있다. 구현된 카드별 판정은 personal-card audit에
+  기록돼 있다.
 - CHOAM을 켜면 standard contract 20장을 replayable chance로 섞고 공개 시장
   2장과 face-down bank 18장을 만든다. Accept Contract와 Conflict reward가 같은
   take/refill 선택을 사용하고, 시장 고갈 시 icon마다 2 Solari로 전환한다.
   20장의 typed 조건·보상이 모두 구현돼 있으며 공간 방문, turn 중 Harvest Spice
   총획득, The Spice Must Flow acquire로 완료한다. 같은 조건의 여러 장은 모두
   의무 완료하고 보상·board·Agent 효과 순서는 플레이어가 정한다.
+- CHOAM 전용 Imperium 4종은 완료 Contract 수, 공개 Contract 시장, 시장 고갈의
+  2 Solari 전환을 공통 경계로 사용한다. Cargo Runner의 임계 draw는 Agent 효과를
+  실제 해결할 때 세며, Interstellar Trade의 Reveal Persuasion은 Reveal 시작 때의
+  완료 수로 고정한다. Delivery Agreement와 Priority Contracts의 인쇄된 기본
+  Reveal 보상은 DIU JSON과 달리 Spice이며, 4개 이상 완료 시 card trash와 1 VP를
+  선택할 수 있다.
 - 공간 진입 시 보유 Contract를 snapshot하므로 같은 turn에 보상으로 새 Contract를
   가져와도 소급 완료하지 않는다. Gather Intelligence가 먼저인 것은 OQ-011의
   공식 답이 아니라 명시적으로 테스트한 프로젝트 convention이다.
@@ -61,9 +68,6 @@ codec은 `ACTION_CODEC_VERSION = 57`이며 기본 룰셋 catalog는 3,377개, CH
 
 ## 아직 완성되지 않은 경계
 
-- CHOAM 전용 Imperium 미전사 4종:
-  `Cargo Runner`, `Delivery Agreement`, `Interstellar Trade`,
-  `Priority Contracts`
 - Intrigue는 identity와 setup deck만 있으며 Plot/Combat/Endgame 실제 play 효과가
   없다. Combat에는 참가자 priority/pass 틀만 있다.
 - Leader는 identity와 setup 선택만 있고 Signet Ring 및 Leader 능력은 없다.
@@ -77,31 +81,28 @@ codec은 `ACTION_CODEC_VERSION = 57`이며 기본 룰셋 catalog는 3,377개, CH
 - 모든 미해결 규칙 질문은 [`rules/open-questions.md`](rules/open-questions.md)에
   있으며, 공식 근거 없이 코드로 임의 확정하면 안 된다.
 
-따라서 현재 엔진을 “완전한 Uprising 게임”으로 간주하면 안 된다. CHOAM을
-켜면 미전사 Imperium 카드와 Shaddam 전용 contract 경로가 남아 있고, 기본 룰셋에도
-Intrigue와 Leader 효과가 빠져 있어
-일반적인 전체 게임을 끝까지 실행할 수 없다.
+따라서 현재 엔진을 “완전한 Uprising 게임”으로 간주하면 안 된다. CHOAM에는
+Shaddam 전용 contract 경로와 전용 Intrigue가 남아 있고, 기본 룰셋에도 Intrigue와
+Leader 효과가 빠져 있어 일반적인 전체 게임을 끝까지 실행할 수 없다.
 
 ## 다음 구현 순서
 
-standard contract 수직 조각은 완료됐다. 다음 순서를 유지한다.
+standard contract와 CHOAM 전용 Imperium 수직 조각은 완료됐다. 다음 순서를
+유지한다.
 
-1. CHOAM 전용 Imperium 4종
-2. Plot, Combat, Endgame Intrigue 공통 경계와 실제 카드 효과
-3. Leader Signet Ring·기본 능력과 Shaddam 전용 Contract, 남은 Objective 상호작용
-4. 전체 게임 random/self-play runner와 PettingZoo episode 확장
+1. Plot, Combat, Endgame Intrigue 공통 경계와 실제 카드 효과
+2. Leader Signet Ring·기본 능력과 Shaddam 전용 Contract, 남은 Objective 상호작용
+3. 전체 게임 random/self-play runner와 PettingZoo episode 확장
 
-바로 다음 작업은 CHOAM 전용 Imperium 4종이다:
-`Cargo Runner`, `Delivery Agreement`, `Interstellar Trade`,
-`Priority Contracts`. 구현 단위는 다음 순서를 따른다.
+바로 다음 작업은 Intrigue 공통 play/discard 경계와 첫 Plot 카드 묶음이다.
+구현 단위는 다음 순서를 따른다.
 
-1. linked printed image로 네 카드의 Agent·Reveal·Acquire 효과와 Contract 참조를
-   대조해 typed content로 전사한다.
-2. standard Contract 완료 count/시장 선택과 상호작용하는 효과를 기존 공통
-   transition에 연결한다.
-3. 같은 turn 효과 순서가 OQ-012에 닿으면 공식 근거를 다시 확인하고, 답이 없으면
-   project convention을 먼저 문서화한다.
-4. 카드별 legal action, reward, replay와 codec 회귀를 추가하고 전체 검증을 한다.
+1. 44장 Intrigue identity를 Plot·Combat·Endgame과 복합 타입으로 분류하고, 공개
+   play·공용 discard·조건·비용을 typed content로 전사할 공통 schema를 정한다.
+2. 자신의 Agent/Reveal turn에 Plot을 낼 수 있는 serial decision과 해결 후 공개
+   discard를 연결한다. 다음 Reveal까지 남는 효과는 별도 지속 상태로 둔다.
+3. 단순 자원·병력·Influence Plot 카드부터 실제 효과와 codec 회귀를 추가한다.
+4. 이후 Combat priority/pass와 Endgame OQ-001 경계로 확장한다.
 
 이후 카드도 같은 `Play ...` / `Document ...` 패턴을 유지한다. 구체적인 커밋
 정책은 `AGENTS.md`에 영구 기록돼 있다.
@@ -147,13 +148,10 @@ Codex sandbox에서 uv cache 쓰기가 제한되면 명령 앞에
 
 이 문서를 갱신할 때 로컬 `master`에는 `origin/master`의
 `f9026ec Document Steersman roadmap` 이후 Junction Headquarters, Corrinth City,
-Desert Power, Long Live the Fighters, Subversive Advisor와 standard CHOAM
-contract 구현·문서 커밋이 더
-있지만 아직 원격에는
-보이지 않는다. 새 계정이
-새 clone으로
-이어받는다면 기존 계정에서 현재 `master`를 먼저 push하거나 저장소 자체를
-전달해야 한다.
+Desert Power, Long Live the Fighters, Subversive Advisor, standard CHOAM
+contract와 CHOAM Imperium 구현·문서 커밋이 더 있지만 아직 원격에는 보이지
+않는다. 새 계정이 새 clone으로 이어받는다면 기존 계정에서 현재 `master`를 먼저
+push하거나 저장소 자체를 전달해야 한다.
 
 새 clone에서는 다음 커밋이 보이는지 최소한 확인한다.
 
@@ -170,6 +168,7 @@ git log --oneline --all --decorate -10
 - `2b1b25f Play Subversive Advisor`
 - `61d5eda Implement CHOAM contract market`
 - `cfdc4dd Complete standard CHOAM contracts`
+- `b20d403 Play CHOAM Imperium cards`
 
-이 커밋들이 없으면 문서에 적힌 v57 action catalog와 standard contract 기준선이
+이 커밋들이 없으면 문서에 적힌 v58 action catalog와 CHOAM Imperium 기준선이
 실제 코드와 일치하지 않는다.

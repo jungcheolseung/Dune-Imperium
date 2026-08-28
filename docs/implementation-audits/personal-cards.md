@@ -61,8 +61,12 @@ from a player's personal deck. General Agent, Reveal, and deck-building rules in
 | Desert Power | The card has Fremen affiliation and a Spice Trade Agent icon. Its Agent box gains two Spice after visiting a Maker space; Reveal keeps two Persuasion or, with Maker Hooks, may pay one Water to summon and deploy one Sandworm. | The Sandworm choice is unavailable without Water, Maker Hooks, a current Conflict, or while the Shield Wall protects that Conflict. Maker Hooks are not consumed. A first unit activates all static and previously chosen Reveal swords, while an additional Sandworm adds three strength. |
 | Long Live the Fighters | The card has Fremen affiliation plus Fremen and City Agent icons. With at least three cards in its deck when the Agent effect resolves, it looks at the top three, draws one, discards one, and trashes one; Reveal gives two Persuasion and three strength. | The first private choice moves no cards; the second atomically commits all three distinct destinations in printed order and blocks unrelated actions between choices. It never reshuffles discard to reach three. Deck discard skips hand-only triggers, while deck trash reuses Reserve return and card-specific trash triggers. |
 | Subversive Advisor | The card has no Faction affiliation and a Spy Agent icon. Acquisition places one Spy. After sending an Agent to a Faction space, it gains two Influence with that Faction instead of the normal one and trashes itself; Reveal gives one Solari. | The mandatory Agent effect suppresses the separate normal Faction-Influence action, gains two through one shared transition, then uses the shared self-trash path. Board effects remain freely orderable around it. A non-Faction destination neither gains Influence nor trashes the card, and normal or Solari-based acquisition shares the same Spy-placement follow-up. |
+| Cargo Runner | This CHOAM card has Spacing Guild affiliation plus Landsraad, City, and Spice Trade Agent icons. Its Agent box draws one personal card with at least two completed Contracts and another with at least four; Reveal gives one Persuasion. | Only face-down completed Contracts count. The threshold is evaluated when the freely ordered Agent effect actually resolves, so Contracts completed earlier in that Agent turn can enable or increase the draw. Five or more completed Contracts remain capped at two cards. |
+| Delivery Agreement | This CHOAM card has Spacing Guild affiliation and a City Agent icon. Its Agent box may discard one hand card to take a face-up Contract. Reveal gains one Spice, or with at least four completed Contracts may trash itself for one Victory Point instead. | The discard is optional and uses the shared hand-only discard transition; an exhausted Contract market converts the icon to two Solari. Below four completed Contracts the Spice is automatic. At four or more, neither branch is applied until the serial Spice-or-trash choice resolves. |
+| Interstellar Trade | This CHOAM card has Spacing Guild affiliation plus Landsraad, City, and Spice Trade Agent icons. Acquisition takes a face-up Contract; its Agent box gains one Influence with any chosen Faction; Reveal gives one Persuasion per completed Contract. | Normal Reveal acquisition and Price is No Object both open the shared Contract market and use its two-Solari exhaustion fallback. Reveal counts completed Contracts once when Reveal begins, so completing Acquire by buying The Spice Must Flow later in that Reveal does not retroactively add Persuasion. |
+| Priority Contracts | This CHOAM card has Spacing Guild affiliation plus Landsraad and Spice Trade Agent icons. Its Agent box takes a face-up Contract. Reveal gains two Spice, or with at least four completed Contracts may trash itself for one Victory Point instead. | Agent and Reveal paths share the public completed-Contract count and market exhaustion rules. Like Delivery Agreement, its printed orange hexes are Spice rather than Persuasion, and the qualifying Reveal choice applies exactly one branch. |
 | Chance and replay | Prepare the Way's draw uses the same personal discard reshuffle decision as board-space and Spy draws. | Its Reserve instance ID remains stable through discard, shuffle, hand, and in-play zones. |
-| RL encoding | Every transcribed physical card copy can take its Agent destinations, including Infiltrate variants. | Imperium batches grow the catalog through 832 in v8, 845 in v9, 857 in v10, 971 in v11, 991 in v12, 1001 in v13, 1014 in v14, 1060 in v15, 1068 in v16, 1114 in v17, 1133 in v18, 1146 in v19, 1162 in v20, 1196 in v21, 1200 in v22, 1277 in v23, 1328 in v24, 1341 in v25, 1428 in v26, 1454 in v27, 1509 in v28, 1637 in v29, 1688 in v30, 1715 in v31, 1729 in v32, 1752 in v33, 1822 in v34, 1920 in v35, 1936 in v36, 2039 in v37, 2072 in v38, 2142 in v39, 2193 in v40, 2337 in v41, 2533 in v42, 2549 in v43, 2601 in v44, 2633 in v45, 2648 in v46, 2724 in v47, 2740 in v48, 2769 in v49, 2830 in v50, 2906 in v51, 3111 in v52, 3123 in v53, 3326 in v54, and 3377 in v55. Subversive Advisor adds its Spy destinations, including Infiltrate variants. |
+| RL encoding | Every transcribed physical card copy can take its Agent destinations, including Infiltrate variants. | Imperium batches grow the catalog through 832 in v8, 845 in v9, 857 in v10, 971 in v11, 991 in v12, 1001 in v13, 1014 in v14, 1060 in v15, 1068 in v16, 1114 in v17, 1133 in v18, 1146 in v19, 1162 in v20, 1196 in v21, 1200 in v22, 1277 in v23, 1328 in v24, 1341 in v25, 1428 in v26, 1454 in v27, 1509 in v28, 1637 in v29, 1688 in v30, 1715 in v31, 1729 in v32, 1752 in v33, 1822 in v34, 1920 in v35, 1936 in v36, 2039 in v37, 2072 in v38, 2142 in v39, 2193 in v40, 2337 in v41, 2533 in v42, 2549 in v43, 2601 in v44, 2633 in v45, 2648 in v46, 2724 in v47, 2740 in v48, 2769 in v49, 2830 in v50, 2906 in v51, 3111 in v52, 3123 in v53, 3326 in v54, and 3377 in v55. Codec v58 keeps the module-off catalog at 3,377 and expands only the CHOAM catalog to 3,598 with the four cards' Agent destinations and two Reveal choices. |
 
 ## Card-level verification
 
@@ -99,7 +103,12 @@ from a player's personal deck. General Agent, Reveal, and deck-building rules in
 - Subversive Advisor's linked printed image was visually checked on 2026-08-27
   for its acquisition Spy, Spy Agent icon, Faction-space replacement Influence,
   mandatory self-trash, and Reveal Solari.
-- These fifty shared cards were bootstrapped from DIU `imperium.JSON` at
+- The four CHOAM-only Imperium images were visually checked on 2026-08-28 for
+  Faction, Agent icons, Contract thresholds and icons, acquisition bonus, and
+  Reveal values. This check corrected DIU's Delivery Agreement and Priority
+  Contracts Reveal transcription to printed Spice and a self-trash Victory
+  Point alternative.
+- These fifty-four shared cards were bootstrapped from DIU `imperium.JSON` at
   reviewed commit `990523441421d34a670505d5b32318f01754b960`. Their local
   physical counts and stable IDs continue to come from the verified manifest;
   DIU's conflicting `quantity` values were not imported.
@@ -108,11 +117,7 @@ from a player's personal deck. General Agent, Reveal, and deck-building rules in
 
 ## Deferred boundaries
 
-- Four CHOAM-only Imperium cards outside the fifty listed above still have only
-  identity and acquisition-cost data. Drawing one of those cards fails
-  explicitly until its play data is transcribed.
 - Signet Ring remains blocked on Leader ability implementation.
-- Every Reveal choice used by the fifty transcribed cards has a serial or
-  atomic decision path. Reveal effects belonging to untranscribed cards remain
-  unavailable rather than partially exposed.
+- Every Reveal choice used by the fifty-four transcribed shared cards has a
+  serial or atomic decision path.
 - Acquisition bonuses without a local typed effect remain unavailable.

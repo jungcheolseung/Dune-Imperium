@@ -3,7 +3,8 @@
 상태: 초안 4 (2026-08-27) — R0 규칙 명세, M0 개발 골격, M1 엔진 커널,
 M2 4인 setup과 정적 보드, M3 한 라운드 수직 조각, M4 RL 인터페이스 조기 검증
 완료. M5의 기본 시스템 경계는 대부분 연결됐고 콘텐츠 의존 항목이 남아 있다.
-M6는 기본 Imperium 카드 50종을 모두 완료했다.
+M6는 기본 Imperium 카드 50종을 모두 완료했고 M8의 CHOAM 전용 Imperium 4종도
+실제 play 경로에 연결했다.
 
 이 문서는 규칙 엔진부터 강화학습 AI와 사람용 플레이 인터페이스까지의 구현
 순서와 각 단계의 완료 조건을 정의한다. 구현 중 새 규칙을 발견하더라도 핵심
@@ -242,8 +243,8 @@ seeded random 4인 라운드를 실행하고 action replay로 최종 상태를 �
 
 상태: **완료** (2026-08-14, 현황 갱신 2026-08-28). 기본 룰셋은 versioned
 actor-neutral 정수 action catalog와 같은 폭의 legal action mask를 사용한다.
-현재 codec v57의 기본 룰셋은 3,377개 행동이며, CHOAM 룰셋은 contract 시장·완료·
-Spy 선택을 포함해 3,491개 행동이다. `dune_imperium_uprising_v0` AEC 환경은
+현재 codec v58의 기본 룰셋은 3,377개 행동이며, CHOAM 룰셋은 contract 시장·완료·
+Spy·전용 Imperium 선택을 포함해 3,598개 행동이다. `dune_imperium_uprising_v0` AEC 환경은
 한 라운드를 episode로 실행하며 PettingZoo `api_test`와 `seed_test`를 통과한다.
 관측과 `info`에는 전체 `GameState`를 노출하지 않는다.
 
@@ -432,8 +433,7 @@ Reveal Solari 1을 연결했다. Faction 공간에 Agent를 보내면 일반 Inf
 발생하지 않으며, 획득·Agent 목적지를 codec v55에 포함했다.
 고정된 DIU `imperium.JSON`은 런타임 의존성 없이 63개 local identity와
 대조하고 아이콘·Faction·효과 형태를 정규화하는 read-only audit에만 사용한다.
-기본 Imperium 50종은 모두 전사했고 CHOAM 전용 미전사 카드는 네 장이다.
-Intrigue와
+기본 Imperium 50종과 CHOAM 전용 Imperium 4종은 모두 전사했다. Intrigue와
 Leader는 identity/setup 수준이며 실제 play 능력이 아직 없다. Objective는 4인
 setup, First Player, battle icon 경로까지 연결돼 있다.
 
@@ -465,9 +465,14 @@ setup, First Player, battle icon 경로까지 연결돼 있다.
 공개 2장·face-down bank 18장을 구현했다. 시장 take/refill·고갈과 Immediate뿐
 아니라 board-space 방문, Harvest의 turn Spice 합계, The Spice Must Flow acquire
 완료 trigger도 연결돼 있다. 같은 조건의 여러 contract는 모두 의무 완료하며,
-각 보상은 board·Agent 효과와 직렬 자유 순서로 처리한다. codec v57은 기본 룰셋
-3,377개를 유지하고 CHOAM 룰셋의 시장·완료·Spy 선택까지 3,491개다. 남은 M8
-범위는 Shaddam의 별도 Sardaukar contract와 CHOAM 전용 Imperium/Intrigue다.
+각 보상은 board·Agent 효과와 직렬 자유 순서로 처리한다. CHOAM 전용 Imperium
+4종도 완료 Contract 수와 같은 시장 transition에 연결했다. Cargo Runner는 효과
+해결 시점의 완료 수로 최대 두 장을 draw하고, Delivery Agreement와 Priority
+Contracts는 기본 Spice와 4개 완료 시 self-trash·VP 선택을 정확히 구분한다.
+Interstellar Trade는 acquire 시 Contract를 가져가고 Reveal 시작 시점의 완료 수만
+Persuasion으로 센다. codec v58은 기본 룰셋 3,377개를 유지하고 CHOAM 룰셋의
+전용 Agent 목적지와 Reveal 선택까지 3,598개다. 남은 M8 범위는 Shaddam의 별도
+Sardaukar contract와 CHOAM 전용 Intrigue다.
 
 - 계약 deck/공개 시장, 계약 완료 조건, 완료 계약 기록을 구현한다.
 - Shaddam과 CHOAM 전용 Imperium/Intrigue 카드를 추가한다.
@@ -557,15 +562,12 @@ setup, First Player, battle icon 경로까지 연결돼 있다.
 ## 8. 바로 다음 작업
 
 M5의 보드 시스템과 multi-round 개인 덱 shuffle까지 구현했고 M6에서 두 Reserve와
-기본 Imperium 50종을 실제 play 경로에 연결했다. M8의 첫 수직 조각으로 standard
-contract 20장의 identity·setup·공개 시장 take/refill도 연결했다. 다음 작업은
-아래 순서로 진행한다.
+기본 Imperium 50종을 실제 play 경로에 연결했다. M8은 standard contract 20장의
+identity·setup·공개 시장·완료·보상과 CHOAM 전용 Imperium 4종까지 연결했다. 다음
+작업은 아래 순서로 진행한다.
 
-1. contract 완료 조건과 인쇄 보상을 전사하고 Agent turn·Harvest·The Spice Must
-   Flow acquire 경로 및 완료 기록에 연결한다.
-2. CHOAM 전용 Imperium 4종을 contract 상태와 함께 실제 play 경로에 연결한다.
-3. Plot, Combat, Endgame Intrigue 타입과 공통 play/discard 경계를 만든 뒤 단순
+1. Plot, Combat, Endgame Intrigue 타입과 공통 play/discard 경계를 만든 뒤 단순
    Intrigue 효과부터 전사한다.
-4. Combat Intrigue와 Endgame Intrigue의 실제 카드 경로를 연결해 M5의 보류
+2. Combat Intrigue와 Endgame Intrigue의 실제 카드 경로를 연결해 M5의 보류
    경계를 줄인다.
-5. Signet Ring과 기본 Leader 능력, Objective 효과를 구현한다.
+3. Signet Ring과 기본 Leader 능력, Objective 효과를 구현한다.

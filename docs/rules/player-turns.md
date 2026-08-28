@@ -92,6 +92,17 @@
   trash한다. 이 효과는 의무이며 일반 Faction Influence를 별도로 더해 총 3을
   얻지 않는다. 비-Faction 공간에 Agent를 보내면 이 효과로 Influence를 얻거나
   카드를 trash하지 않는다. `[Subversive Advisor card]` `[Main pp. 9, 11, 20]`
+- Cargo Runner는 Agent box를 실제 해결할 때 completed Contract가 2개 이상이면
+  card 1장을 draw하고, 4개 이상이면 한 장을 더 draw한다. 같은 Agent turn에
+  contract 완료를 먼저 처리했다면 새 completed Contract도 센다.
+  `[Cargo Runner card]` `[FAQ p. 1]`
+- Delivery Agreement는 hand의 다른 card 1장을 discard하면 face-up Contract
+  하나를 가져오거나 이 효과를 생략할 수 있다. Priority Contracts는 비용 없이
+  face-up Contract 하나를 가져간다. 시장이 완전히 고갈됐으면 각 Contract icon은
+  Solari 2로 바뀐다. `[Delivery Agreement card]` `[Priority Contracts card]`
+  `[Main pp. 16, 20]`
+- Interstellar Trade는 Agent box에서 Faction 하나를 골라 Influence 1을 얻는다.
+  `[Interstellar Trade card]`
 - Signet Ring card를 Agent turn에 내서 Agent를 보내면 Leader의 Signet Ring icon이 표시된 능력을 사용한다. [Main p. 6] [Main p. 20]
 - CHOAM Module의 Shaddam Corrino IV에 관한 별도 판정은
   `choam-module.md`와 콘텐츠 명세에서 다룬다. [Main pp. 16-17]
@@ -145,6 +156,14 @@
   `[Long Live the Fighters card]`
 - Subversive Advisor는 Reveal에서 Solari 1을 얻는다.
   `[Subversive Advisor card]`
+- Cargo Runner는 Reveal에서 Persuasion 1을 얻는다. Interstellar Trade는 Reveal을
+  시작할 때 보유한 completed Contract마다 Persuasion 1을 얻으며, 같은 Reveal
+  중 The Spice Must Flow acquire로 Contract를 추가 완료해도 다시 계산하지 않는다.
+  `[Cargo Runner card]` `[Interstellar Trade card]` `[Designer clarification]`
+- Delivery Agreement와 Priority Contracts는 Reveal에서 각각 Spice 1과 Spice 2를
+  얻는다. completed Contract가 4개 이상이면 그 Spice 대신 해당 card를 trash하고
+  Victory Point 1을 얻을 수 있다. `[Delivery Agreement card]`
+  `[Priority Contracts card]`
 
 ## 카드 획득과 Imperium Row 보충
 
@@ -165,6 +184,10 @@
   일반 Reveal acquire로는 카드를 discard pile에, Price is No Object로는 hand에
   놓지만 Spy 배치 보너스는 동일하게 처리한다.
   `[Subversive Advisor card]` `[Price is No Object card]` `[Main pp. 11, 20]`
+- Interstellar Trade를 acquire하면 face-up Contract 하나를 가져간다. 일반 Reveal
+  acquire와 Price is No Object의 hand acquire 모두 같은 시장 take/refill과 시장
+  고갈 시 Solari 2 전환을 적용한다. `[Interstellar Trade card]`
+  `[Price is No Object card]` `[Main pp. 16, 20]`
 - The Spice Must Flow를 acquire하며 얻은 Victory Point는 이후 그 카드를
   trash하더라도 유지한다. [FAQ p. 4]
 

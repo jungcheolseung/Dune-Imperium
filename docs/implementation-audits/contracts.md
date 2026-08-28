@@ -22,7 +22,7 @@ visual reference.
 | Immediate | Taking Immediate grants its typed 2-Solari reward and moves the tile directly to completed Contracts. | It never occupies the active zone. |
 | Zones | The authoritative state keeps bank, face-up market, active player Contracts, and completed player Contracts disjoint. | Active Contract IDs and completed counts are observed; bank order and completed identities are redacted under OQ-010. |
 | Gather Intelligence | Gather Intelligence's immediate window resolves before Contract completion actions. | Official relative ordering remains unanswered under OQ-011; this is an explicit tested project convention. |
-| Action codec | `take_contract` and `complete_contract` have one actor-neutral template per standard Contract; Contract Spy placement/recall uses post-ID templates in codec v57. | The base catalog stays at 3,377; the CHOAM catalog is 3,491. |
+| Action codec | `take_contract` and `complete_contract` have one actor-neutral template per standard Contract; Contract Spy placement/recall uses post-ID templates. | Codec v58 keeps the base catalog at 3,377; CHOAM Imperium destinations and choices expand the module catalog to 3,598. |
 
 ## Deferred boundaries
 

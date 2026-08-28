@@ -130,9 +130,10 @@ Subsequent batches complete the non-CHOAM deck through Subversive Advisor and
 codec version 55. The
 authoritative card-by-card behavior and verification notes are maintained in
 [the personal-card implementation audit](implementation-audits/personal-cards.md)
-instead of duplicating every batch here. As of 2026-08-27, all 50 non-CHOAM
-Imperium identities have complete play data. Four additional untranscribed
-identities are CHOAM-only. A card is still hidden from playable
+instead of duplicating every batch here. As of 2026-08-28, all 50 non-CHOAM and
+four CHOAM-only Imperium identities have complete play data. The CHOAM batch
+adds Contract-count Reveal scaling, Contract-market acquisition and Agent
+effects, and qualifying self-trash choices. A card is hidden from playable
 Agent paths until its full local transcription and regression tests are ready.
 
 ### Recorded discrepancies
@@ -144,6 +145,13 @@ Agent paths until its full local transcription and regression tests are ready.
   The printed card instead gives one Persuasion, followed by two Spice only
   while spying on a Maker board space, so the local transcription follows the
   verified card image.
+- DIU gives Delivery Agreement one Reveal Persuasion and represents its
+  qualifying trash branch as Spice. The printed card instead gives one Spice,
+  or with at least four completed Contracts allows trashing itself for one
+  Victory Point, so the local typed choice follows the image.
+- DIU gives Priority Contracts two Reveal Persuasion. The printed card instead
+  gives two Spice, or with at least four completed Contracts allows trashing
+  itself for one Victory Point, so the local typed choice follows the image.
 - DIU models Trade Dispute's trash icon with `deck: ["hand", "played"]`.
   The general Uprising trash rule also permits a card in the player's discard
   pile, and the black trash icon is optional. The local typed reward therefore

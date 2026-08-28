@@ -8,15 +8,16 @@
 ## 현재 구현 상태
 
 2026-08-28 기준으로 기본 보드 시스템, multi-round 상태 전이와 개인 덱 reshuffle,
-기본 룰셋 Imperium 카드 50종 모두의 play data가 구현되어 있다.
-CHOAM Module은 standard contract 20장의 identity·setup·공개 시장과 모든 완료
-조건·인쇄 보상까지 연결돼 있다. 현재 action codec은 v57이며 기본 룰셋은
-3,377개, CHOAM 룰셋은 3,491개다. 전체 테스트 558개, Ruff, mypy가 통과한다.
+기본 룰셋 Imperium 카드 50종과 CHOAM 전용 4종, 총 54종의 play data가 구현되어
+있다. CHOAM Module은 standard contract 20장의 identity·setup·공개 시장·완료
+조건·인쇄 보상과 전용 Imperium 카드 효과까지 연결돼 있다. 현재 action codec은
+v58이며 기본 룰셋은 3,377개, CHOAM 룰셋은 3,598개다. 전체 테스트 573개, Ruff,
+mypy가 통과한다.
 
 코어 엔진은 여러 라운드를 진행하고 replay할 수 있지만, 공개 random runner와
 `dune_imperium_uprising_v0` PettingZoo adapter는 여전히 한 라운드를 실행 단위로
-삼는다. Intrigue 실제 play 효과, Leader 능력과 CHOAM 전용 Imperium 4종은 아직
-구현 전이므로 완전한 기본 게임이나 학습 환경이 끝난 상태는 아니다.
+삼는다. Intrigue 실제 play 효과와 Leader 능력은 아직 구현 전이므로 완전한 기본
+게임이나 학습 환경이 끝난 상태는 아니다.
 
 ## 프로젝트 비전
 
@@ -59,7 +60,7 @@ Dune: Imperium 경험을 할 수 있게 하는 것이다.
 
 ## 아직 결정하지 않은 사항
 
-- 현재 81개 정수 관측과 v57 action catalog 이후의 전체 게임 관측 확장 및 최종
+- 현재 81개 정수 관측과 v58 action catalog 이후의 전체 게임 관측 확장 및 최종
   학습용 인코딩, 학습 알고리즘과 모델 구조
 - 사람이 플레이할 최종 UI 형태
 - CHOAM 이후 다른 확장팩을 추가할 범위와 순서
