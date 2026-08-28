@@ -27,6 +27,8 @@ from dune_imperium.core import (
 class ObjectiveThenPassEngine(RulesEngine):
     """Tiny chance-to-player flow used as an engine contract fixture."""
 
+    verify_input_immutability = True
+
     def _initial_state(self, config: RulesetConfig, seed: int) -> GameState:
         frame = DecisionFrame(
             kind="setup_chance",

@@ -23,6 +23,8 @@ from dune_imperium.core import (
 class PassAroundEngine(RulesEngine):
     """Small deterministic rule system used to verify kernel behavior."""
 
+    verify_input_immutability = True
+
     def _initial_state(self, config: RulesetConfig, seed: int) -> GameState:
         frame = DecisionFrame(
             kind="pass",

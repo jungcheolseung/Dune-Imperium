@@ -36,7 +36,16 @@ class Transition:
 
 
 class RulesEngine(ABC):
-    """Template for deterministic, library-independent rules engines."""
+    """Template for deterministic, library-independent rules engines.
+
+    ``verify_input_immutability`` hashes the input state before and after
+    every transition to prove the rules never mutate it. ``GameState`` is a
+    frozen dataclass of tuples, so the check is a debugging aid; it costs a
+    full canonical serialisation (including the growing event log) per
+    transition and is therefore off by default.
+    """
+
+    verify_input_immutability: bool = False
 
     def reset(self, config: RulesetConfig, seed: int) -> GameState:
         """Create and validate an initial state."""
@@ -103,7 +112,7 @@ class RulesEngine(ABC):
         if action not in self.legal_actions(state, action.actor):
             raise IllegalActionError("action is not legal in the current state")
 
-        original_hash = canonical_state_hash(state)
+        original_hash = self._input_hash(state)
         result = self._apply_legal(state, action)
         return self._finish_transition(state, original_hash, action, result)
 
@@ -121,7 +130,7 @@ class RulesEngine(ABC):
             validate_chance_outcome(decision, outcome)
         except ValueError as error:
             raise IllegalActionError(str(error)) from error
-        original_hash = canonical_state_hash(state)
+        original_hash = self._input_hash(state)
         result = self._apply_chance(state, outcome)
         return self._finish_transition(state, original_hash, outcome, result)
 
@@ -131,16 +140,19 @@ class RulesEngine(ABC):
         del state, outcome
         raise NotImplementedError("this rules engine has no chance transitions")
 
+    def _input_hash(self, state: GameState) -> str | None:
+        return canonical_state_hash(state) if self.verify_input_immutability else None
+
     def _finish_transition(
         self,
         state: GameState,
-        original_hash: str,
+        original_hash: str | None,
         action: DomainAction | ChanceOutcome,
         result: RuleResult,
     ) -> Transition:
         """Enforce transition invariants shared by every input type."""
 
-        if canonical_state_hash(state) != original_hash:
+        if original_hash is not None and canonical_state_hash(state) != original_hash:
             raise RuntimeError("rules mutated the input state")
         if result.state.revision != state.revision:
             raise RuntimeError("rules must leave revision updates to RulesEngine")
