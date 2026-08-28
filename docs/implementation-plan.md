@@ -435,6 +435,8 @@ Sardaukar contract와 CHOAM 전용 Intrigue다.
 
 ## 8. 바로 다음 작업
 
+Intrigue 착수 전 구조 정리는 [리팩토링 계획](refactoring-plan.md)을 따른다.
+
 M5의 보드 시스템과 multi-round 개인 덱 shuffle까지 구현했고 M6에서 두 Reserve와
 기본 Imperium 50종을 실제 play 경로에 연결했다. M8은 standard contract 20장의
 identity·setup·공개 시장·완료·보상과 CHOAM 전용 Imperium 4종까지 연결했다. 다음

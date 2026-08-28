@@ -95,7 +95,9 @@ standard contract와 CHOAM 전용 Imperium 수직 조각은 완료됐다. 다음
 2. Leader Signet Ring·기본 능력과 Shaddam 전용 Contract, 남은 Objective 상호작용
 3. 전체 게임 random/self-play runner와 PettingZoo episode 확장
 
-바로 다음 작업은 Intrigue 공통 play/discard 경계와 첫 Plot 카드 묶음이다.
+Intrigue 착수 전에 [`refactoring-plan.md`](refactoring-plan.md)의 A·B 단계
+(frame kind, registry dispatch)를 먼저 처리한다. 그 뒤 바로 다음 작업은 Intrigue
+공통 play/discard 경계와 첫 Plot 카드 묶음이다.
 구현 단위는 다음 순서를 따른다.
 
 1. 44장 Intrigue identity를 Plot·Combat·Endgame과 복합 타입으로 분류하고, 공개
