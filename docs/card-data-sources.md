@@ -199,3 +199,6 @@ images. Special Mission's first half places a Spy on a Bene Gesserit-connected
 post (the purple Faction disc on the card); DIU's `target: "blue"` is read the
 same way.
 
+The fifth batch transcribes Weirding Combat, Questionable Methods and Find
+Weakness from their card images; all three match DIU's shapes.
+
