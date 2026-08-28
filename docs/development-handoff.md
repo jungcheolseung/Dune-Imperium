@@ -26,14 +26,14 @@ uv run ruff check src tests
 uv run mypy src tests
 ```
 
-2026-08-28의 기준 결과는 pytest 595개 통과, Ruff 통과, mypy 통과다. 현재 action
-codec은 `ACTION_CODEC_VERSION = 59`이며 기본 룰셋 catalog는 3,391개, CHOAM
-룰셋 catalog는 3,612개다.
+2026-08-28의 기준 결과는 pytest 602개 통과, Ruff 통과, mypy 통과다. 현재 action
+codec은 `ACTION_CODEC_VERSION = 60`이며 기본 룰셋 catalog는 3,510개, CHOAM
+룰셋 catalog는 3,737개다.
 
 ## 현재 구현 기준선
 
-마지막 기능 커밋은 `3a5c650 Play the first Plot Intrigue batch through an effect
-DSL`이다. 그 앞에 [`refactoring-plan.md`](refactoring-plan.md)의 A·B 단계(frame
+마지막 기능 커밋은 `Play choice-driven Plot Intrigue through DSL choice slots`
+(`git log -1 --grep='choice slots'`)다. 그 앞에 [`refactoring-plan.md`](refactoring-plan.md)의 A·B 단계(frame
 kind, 표 기반 dispatch), Covert Operation deadlock 수정, Reserve copy ID 재발급
 수정이 있다.
 
@@ -71,7 +71,7 @@ kind, 표 기반 dispatch), Covert Operation deadlock 수정, Reserve copy ID �
 
 ## 아직 완성되지 않은 경계
 
-- Intrigue는 effect DSL과 Plot play 경계, 첫 Plot 8종이 있다. 나머지 31종과
+- Intrigue는 effect DSL, Plot play 경계, 선택 슬롯 frame과 Plot 14종이 있다. 나머지 25종과
   Combat/Endgame timing은 없으며 Combat에는 참가자 priority/pass 틀만 있다.
   세부는 [`implementation-audits/intrigue.md`](implementation-audits/intrigue.md).
 - Leader는 identity와 setup 선택만 있고 Signet Ring 및 Leader 능력은 없다.
@@ -99,9 +99,9 @@ standard contract와 CHOAM 전용 Imperium 수직 조각은 완료됐다. 다음
 3. 전체 게임 random/self-play runner와 PettingZoo episode 확장
 
 [`refactoring-plan.md`](refactoring-plan.md)의 A·B 단계와 C 단계의 DSL·첫 Plot
-묶음은 끝났다. 바로 다음 작업은 선택형 비용(Faction 선택, discard, trash, Spy)을
-DSL에 추가해 남은 Plot Intrigue를 전사하는 것이고, 그 뒤 Combat Intrigue play를
-priority/pass loop에 연결한다.
+묶음은 끝났다. 선택 슬롯(Faction·discard)도 있다. 바로 다음 작업은 trash·Spy 배치·Shield Wall·
+sandworm 같은 나머지 선택형 효과를 DSL에 추가해 남은 Plot Intrigue를 전사하는
+것이고, 그 뒤 Combat Intrigue play를 priority/pass loop에 연결한다.
 구현 단위는 다음 순서를 따른다.
 
 1. 44장 Intrigue identity를 Plot·Combat·Endgame과 복합 타입으로 분류하고, 공개
@@ -168,5 +168,5 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에
 
 새 clone으로 이어받는다면 먼저 현재 `master`를 push해야 한다. 새 clone에서는
 `git log --oneline -5`에 `b71cec1`이 보이는지 확인한다. 이 커밋들이 없으면 문서에
-적힌 v59 action catalog, 3,612개 CHOAM 행동, 595개 테스트 기준선이 실제 코드와
+적힌 v60 action catalog, 3,737개 CHOAM 행동, 602개 테스트 기준선이 실제 코드와
 일치하지 않는다.

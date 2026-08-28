@@ -99,8 +99,9 @@ A와 B는 codec version 변경 없이 기존 테스트로 검증한다. 각 단�
 ## C 진행 (2026-08-28)
 
 - `content/uprising/effect_dsl.py`에 Condition × Cost × Reward × Section × Option
-  DSL을, `rules/effect_interpreter.py`에 범용 해석기를 두고 Intrigue 첫 Plot 묶음
-  8종을 DSL만으로 전사했다. 자세한 판정은
+  DSL을, `rules/effect_interpreter.py`에 범용 해석기를 두고 Intrigue Plot 14종을
+  DSL만으로 전사했다. 선택이 필요한 primitive는 `INTRIGUE_CHOICE` frame의 슬롯으로
+  순차 해결한다. 자세한 판정은
   [`implementation-audits/intrigue.md`](implementation-audits/intrigue.md)에 있다.
 - `rules/intrigue_deck.py`가 Intrigue draw와 discard reshuffle의 공통 경계다.
   board effect·combat reward·card trigger의 기존 직접 draw 10곳은 아직 이 경계로

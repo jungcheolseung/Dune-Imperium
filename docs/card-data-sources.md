@@ -181,3 +181,10 @@ and Strategic Stockpiling. DIU models Shaddam's Favor's unconditional troop as
 a bare effect outside the Plot action and Contingency Plan as a required
 choice; both are normalised into DSL options and sections locally.
 
+The second batch transcribes Buy Access, Change Allegiances, Imperium
+Politics, Opportunism, Sietch Ritual and Backed by CHOAM through DSL choice
+slots. Two DIU values disagree with the printed cards and were corrected from
+the card images: Imperium Politics offers Emperor or Spacing Guild Influence
+(not Spacing Guild/Bene Gesserit), and Backed by CHOAM's Combat half needs two
+completed Contracts (not four).
+
