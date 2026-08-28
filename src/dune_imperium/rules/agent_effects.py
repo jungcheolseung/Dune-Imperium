@@ -444,13 +444,16 @@ def apply_opponent_card_discard(
             f"agent_card:{source_card_id}:opponent:{action.actor}"
         ),
     )
-    return RuleResult(
-        state=replace(
-            discarded.state,
-            decision_stack=discarded.state.decision_stack[:-1],
-        ),
-        events=discarded.events,
+    popped = replace(
+        discarded.state,
+        decision_stack=discarded.state.decision_stack[:-1],
     )
+    base_frame = popped.decision_stack[-1] if popped.decision_stack else None
+    if base_frame is not None and base_frame.kind == FrameKind.AGENT_EFFECTS:
+        # The last opponent finished. Return to the owner's effect frame, or
+        # open the next turn when no group in that frame is still pending.
+        popped = advance_after_effect(popped, dict(base_frame.context))
+    return RuleResult(state=popped, events=discarded.events)
 
 
 def legal_agent_card_influence_actions(

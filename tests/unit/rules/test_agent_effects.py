@@ -7,6 +7,7 @@ import pytest
 from dune_imperium import RulesetConfig
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
+from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.core import (
     ChanceDecision,
@@ -3082,6 +3083,62 @@ def test_covert_operation_makes_opponents_with_cards_discard_clockwise() -> None
         "card_discarded",
         "personal_card_discard_effect_resolved",
     ]
+
+
+def test_covert_operation_resolved_last_still_ends_the_agent_turn() -> None:
+    covert_operation = _imperium_instance("covert_operation")
+    first_discard = _instance("dagger").replace("player:0:", "player:1:")
+    second_discard = _instance("dagger").replace("player:0:", "player:2:")
+    owner = PlayerState(
+        player_id=0,
+        spies_supply=2,
+        spy_post_ids=("landsraad-assembly-hall-gather-support",),
+        hand=(covert_operation,),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        intrigue_deck=intrigue_deck_instance_ids(False)[:1],
+        players=(
+            owner,
+            PlayerState(player_id=1, hand=(first_discard,)),
+            PlayerState(player_id=2, hand=(second_discard,)),
+            PlayerState(player_id=3),
+        ),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    engine = UprisingRulesEngine()
+    current = apply_agent_action(state, _action_to(state, "assembly_hall")).state
+
+    # Resolve every other pending group first so the card effect is last.
+    while True:
+        others = [
+            action
+            for action in engine.legal_actions(current, 0)
+            if action.action_id != "resolve_agent_card_effect"
+        ]
+        if not others:
+            break
+        current = engine.apply(current, others[0]).state
+    current = engine.apply(
+        current, DomainAction(action_id="resolve_agent_card_effect", actor=0)
+    ).state
+    current = engine.apply(current, engine.legal_actions(current, 1)[0]).state
+    current = engine.apply(current, engine.legal_actions(current, 2)[0]).state
+
+    top = current.decision_stack[-1]
+    assert top.kind == "turn"
+    assert isinstance(top.decision, PlayerDecision)
+    assert top.decision.owner == 1
+    assert engine.legal_actions(current, 1)
 
 
 def test_spacing_guilds_favor_draws_one_on_agent_turn() -> None:
