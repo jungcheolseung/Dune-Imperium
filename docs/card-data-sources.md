@@ -219,3 +219,9 @@ the first face-up triggered option. DIU (available locally again) models it
 as a `conditional_reward` with a `buy_imperium` condition, which matches the
 local per-acquisition trigger reading.
 
+The ninth batch transcribes Distraction from its card image ("When you
+deploy three or more units to the Conflict in a single turn:" then "You may
+place this Spy on the same observation post as another player's Spy."). DIU
+models it as a `deploy_units amount 3` condition with a `shared_post` Spy
+reward, matching the local trigger and the shared-post placement.
+

@@ -189,8 +189,11 @@
 - 구현 convention: (a)(b) 창이 명시된 카드(Call to Arms의 "이번 round의 자신의
   Reveal turn")는 그 창이 닫힐 때(Reveal turn 종료) 발동 여부와 무관하게
   discard한다. "whenever" trigger는 창이 닫힐 때까지 반복 발동한다.
-  `tests/unit/rules/test_intrigue.py`로 고정한다. (c)는 해당 카드(Distraction)
-  구현 시 정한다.
+  (c) 선택적 trigger(Distraction)를 거절한 카드는 사용된 것이 아니므로 face up
+  으로 남아 이후의 조건 충족 turn에 다시 제시된다. 같은 turn에서는 배치 수가
+  마지막 제시 시점보다 늘었을 때만 다시 제시하며, 이미 제시가 지나간 수치에서
+  나중에 낸 두 번째 사본은 다음 배치 때 제시된다. 세 판정 모두
+  `tests/unit/rules/test_intrigue.py`로 고정한다.
 
 ## OQ-015 — Intrigue의 Plot timing 시작점과 복수 비용 줄의 의무 지불
 
