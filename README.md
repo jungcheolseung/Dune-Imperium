@@ -11,7 +11,7 @@
 기본 룰셋 Imperium 카드 50종과 CHOAM 전용 4종, 총 54종의 play data가 구현되어
 있다. CHOAM Module은 standard contract 20장의 identity·setup·공개 시장·완료
 조건·인쇄 보상과 전용 Imperium 카드 효과까지 연결돼 있다. 현재 action codec은
-v58이며 기본 룰셋은 3,377개, CHOAM 룰셋은 3,598개다. 전체 테스트 573개, Ruff,
+v58이며 기본 룰셋은 3,377개, CHOAM 룰셋은 3,598개다. 전체 테스트 577개, Ruff,
 mypy가 통과한다.
 
 코어 엔진은 여러 라운드를 진행하고 replay할 수 있지만, 공개 random runner와

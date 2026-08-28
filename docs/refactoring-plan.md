@@ -68,9 +68,30 @@ turn 중 Plot", "Combat priority", "Endgame" 등 새 frame kind가 여러 개 �
 
 | 단계 | 작업 | 위험 | 상태 |
 | --- | --- | --- | --- |
-| A | frame `kind` 도입, `rules/frames.py` helper 집약, `_replace_player` 통합 | 낮음 | 진행 중 |
-| B | registry 기반 dispatch, 화이트리스트 제거, legal 우선순위 명시화 | 낮음 | 대기 |
+| A | frame `kind` 도입, `rules/frames.py` helper 집약, `_replace_player` 통합 | 낮음 | 완료 (2026-08-28) |
+| B | frame kind 표 기반 dispatch, 화이트리스트 제거, legal 우선순위 명시화 | 낮음 | 완료 (2026-08-28) |
 | C | effect DSL 설계 → Intrigue를 DSL로 구현 → Imperium 점진 이관 | 중간 | Intrigue와 함께 |
 
 A와 B는 codec version 변경 없이 기존 테스트로 검증한다. 각 단계는 작은 커밋
 단위로 나누고, 상태 hash·replay 테스트가 깨지지 않는지 매 커밋에서 확인한다.
+
+## A·B 결과 (2026-08-28)
+
+- `DecisionFrame.kind`가 필수 필드가 됐고 `rules/frames.py`의 `FrameKind`가 19개
+  frame 종류를 열거한다. `frame_id` 문자열 검사와 context 키 존재 여부로 frame을
+  식별하던 코드는 모두 `kind` 비교로 바뀌었다.
+- `rules/engine.py`는 `LEGAL_ACTION_PROVIDERS[FrameKind]`와 `ACTION_HANDLERS[action_id]`
+  두 표로만 dispatch한다. Agent-turn effect frame의 pending group 순서는
+  `rules/agent_effect_frame.py`가 소유한다.
+- 미구현 콘텐츠를 숨기는 규칙은 `UNIMPLEMENTED_AGENT_EFFECTS`(현재 `LEADER_SIGNET`)
+  와 `board_effect_is_implemented`(현재 `secrets`, `desert_tactics`)로 명시했다.
+  옛 화이트리스트는 구현된 Smuggler's Haven의 Agent 배치까지 숨기고 있었다.
+- 옛 engine과 새 engine의 `legal_actions`를 random play 240게임(두 룰셋 × 120 seed,
+  최대 5라운드, 약 16만 결정 지점)에서 비교해 위 Smuggler's Haven 차이 외에는
+  동일함을 확인했다. 이 과정에서 Covert Operation이 마지막 pending group일 때
+  turn이 끝나지 않는 기존 deadlock을 찾아 고쳤다.
+- codec version은 v58 그대로이며 테스트는 577개다.
+
+새 결정 경계를 추가할 때는 `FrameKind` 멤버, frame 생성 시 `kind`, 두 dispatch 표의
+항목, codec catalog를 함께 추가한다. 다음은 C 단계(effect DSL)이며 Intrigue와 함께
+진행한다.

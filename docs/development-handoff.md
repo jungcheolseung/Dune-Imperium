@@ -26,14 +26,15 @@ uv run ruff check src tests
 uv run mypy src tests
 ```
 
-2026-08-28의 기준 결과는 pytest 573개 통과, Ruff 통과, mypy 통과다. 현재 action
+2026-08-28의 기준 결과는 pytest 577개 통과, Ruff 통과, mypy 통과다. 현재 action
 codec은 `ACTION_CODEC_VERSION = 58`이며 기본 룰셋 catalog는 3,377개, CHOAM
 룰셋 catalog는 3,598개다.
 
 ## 현재 구현 기준선
 
-마지막 기능 커밋은 `b20d403 Play CHOAM Imperium cards`다. 이 기능의
-규칙·로드맵 문서는 이 기준선에 반영했다.
+마지막 기능 커밋은 `b20d403 Play CHOAM Imperium cards`다. 그 뒤
+[`refactoring-plan.md`](refactoring-plan.md)의 A·B 단계(frame kind, 표 기반
+dispatch)와 Covert Operation deadlock 수정 `31d55f7`이 들어갔다.
 
 - R0-M4는 완료됐다. 공식 규칙 자료, 엔진 커널, 4인 setup, 한 라운드 수직 조각,
   actor-neutral action codec과 PettingZoo AEC 계약이 있다.
@@ -95,9 +96,8 @@ standard contract와 CHOAM 전용 Imperium 수직 조각은 완료됐다. 다음
 2. Leader Signet Ring·기본 능력과 Shaddam 전용 Contract, 남은 Objective 상호작용
 3. 전체 게임 random/self-play runner와 PettingZoo episode 확장
 
-Intrigue 착수 전에 [`refactoring-plan.md`](refactoring-plan.md)의 A·B 단계
-(frame kind, registry dispatch)를 먼저 처리한다. 그 뒤 바로 다음 작업은 Intrigue
-공통 play/discard 경계와 첫 Plot 카드 묶음이다.
+[`refactoring-plan.md`](refactoring-plan.md)의 A·B 단계는 끝났다. 바로 다음 작업은
+C 단계(effect DSL)를 겸한 Intrigue 공통 play/discard 경계와 첫 Plot 카드 묶음이다.
 구현 단위는 다음 순서를 따른다.
 
 1. 44장 Intrigue identity를 Plot·Combat·Endgame과 복합 타입으로 분류하고, 공개
@@ -118,7 +118,7 @@ Intrigue 착수 전에 [`refactoring-plan.md`](refactoring-plan.md)의 A·B 단�
 | Agent 배치와 카드 효과 | `src/dune_imperium/rules/agent_turn.py`, `agent_effects.py` |
 | Reveal과 acquire | `src/dune_imperium/rules/reveal_turn.py`, `acquisition.py` |
 | phase·Combat·Endgame | `src/dune_imperium/rules/phases.py`, `combat.py`, `endgame.py` |
-| dispatcher | `src/dune_imperium/rules/engine.py` |
+| dispatcher 표와 frame kind | `src/dune_imperium/rules/engine.py`, `frames.py`, `agent_effect_frame.py` |
 | 고정 action catalog | `src/dune_imperium/adapters/action_codec.py` |
 | 관측과 PettingZoo | `src/dune_imperium/core/observation.py`, `adapters/pettingzoo_env.py` |
 | replay와 random round | `src/dune_imperium/core/replay.py`, `simulation/runner.py` |
@@ -150,15 +150,17 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에
 ## 원격 저장소 인계 주의
 
 2026-08-28 기준 `origin/master`는 `61d5eda Implement CHOAM contract market`까지
-올라가 있고, 로컬 `master`에는 다음 5개 커밋이 아직 push되지 않았다.
+올라가 있고, 로컬 `master`에는 다음 커밋들이 아직 push되지 않았다(문서·리팩토링 커밋 포함).
 
 - `242bffb Document CHOAM contract market`
 - `cfdc4dd Complete standard CHOAM contracts`
 - `58747f3 Document standard CHOAM contract completion`
 - `b20d403 Play CHOAM Imperium cards`
 - `b71cec1 Document CHOAM Imperium cards`
+- `6d158a9 Drive the rules dispatcher from frame-kind tables`
+- `31d55f7 End the Agent turn after Covert Operation's last opponent discard`
 
 새 clone으로 이어받는다면 먼저 현재 `master`를 push해야 한다. 새 clone에서는
 `git log --oneline -5`에 `b71cec1`이 보이는지 확인한다. 이 커밋들이 없으면 문서에
-적힌 v58 action catalog, 3,598개 CHOAM 행동, 573개 테스트 기준선이 실제 코드와
+적힌 v58 action catalog, 3,598개 CHOAM 행동, 577개 테스트 기준선이 실제 코드와
 일치하지 않는다.
