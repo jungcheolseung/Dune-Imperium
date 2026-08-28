@@ -346,7 +346,7 @@ High Council·Swordmaster, 4인 Combat 순위와 기본 보상, Makers·Recall �
 해결 시점의 완료 수로 최대 두 장을 draw하고, Delivery Agreement와 Priority
 Contracts는 기본 Spice와 4개 완료 시 self-trash·VP 선택을 정확히 구분한다.
 Interstellar Trade는 acquire 시 Contract를 가져가고 Reveal 시작 시점의 완료 수만
-Persuasion으로 센다. codec v58은 기본 룰셋 3,377개를 유지하고 CHOAM 룰셋의
+Persuasion으로 센다. 당시 codec v58은 기본 룰셋 3,377개를 유지하고 CHOAM 룰셋의
 전용 Agent 목적지와 Reveal 선택까지 3,598개다. 남은 M8 범위는 Shaddam의 별도
 Sardaukar contract와 CHOAM 전용 Intrigue다.
 
