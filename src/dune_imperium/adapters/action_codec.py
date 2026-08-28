@@ -32,7 +32,7 @@ from dune_imperium.content.uprising.starting_cards import (
 from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
 from dune_imperium.core.actions import ActionValue, DomainAction
 
-ACTION_CODEC_VERSION = 63
+ACTION_CODEC_VERSION = 64
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 
@@ -249,6 +249,12 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             action_id="deploy_intrigue_troops", arguments=(("count", count),)
         )
         for count in range(1, MAX_INTRIGUE_DEPLOYMENT + 1)
+    )
+    templates.extend(
+        ActionTemplate(
+            action_id="retreat_intrigue_troops", arguments=(("count", count),)
+        )
+        for count in range(1, MAX_DEPLOYMENT_COUNT + 1)
     )
     templates.extend(
         ActionTemplate(

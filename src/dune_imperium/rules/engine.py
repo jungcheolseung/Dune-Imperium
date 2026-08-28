@@ -268,6 +268,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "decline_intrigue_trash": apply_intrigue_choice,
     "place_intrigue_spy": apply_intrigue_choice,
     "recall_spy_for_intrigue": apply_intrigue_choice,
+    "retreat_intrigue_troops": apply_intrigue_choice,
     # Agent-turn effect frame
     "resolve_agent_card_effect": _apply_agent_card_effect,
     "resolve_board_effect": _apply_board_effect,

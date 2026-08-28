@@ -31,8 +31,11 @@ from dune_imperium.content.uprising.effect_dsl import (
     PlaceSpy,
     RecallSpy,
     RecruitTroops,
+    RetreatTroops,
+    SandwormsInConflictAtLeast,
     SpiesPlacedAtLeast,
     SummonSandworm,
+    TakeContract,
     TrashPersonalCard,
 )
 
@@ -213,7 +216,20 @@ INTRIGUE_CARDS: Final = (
             _plot(EffectSection(rewards=(DeployFromGarrison(4),))),
         ),
     ),
-    _entry(151, "devour", "Devour"),
+    _entry(
+        151,
+        "devour",
+        "Devour",
+        options=(
+            _combat(
+                EffectSection(rewards=(GainCombatStrength(2),)),
+                EffectSection(
+                    condition=SandwormsInConflictAtLeast(1),
+                    rewards=(GainCombatStrength(2), TrashPersonalCard()),
+                ),
+            ),
+        ),
+    ),
     _entry(144, "distraction", "Distraction", copies=2),
     _entry(
         149,
@@ -229,7 +245,19 @@ INTRIGUE_CARDS: Final = (
             ),
         ),
     ),
-    _entry(146, "go-to-ground", "Go To Ground"),
+    _entry(
+        146,
+        "go-to-ground",
+        "Go To Ground",
+        options=(
+            _combat(
+                EffectSection(
+                    costs=(RetreatTroops(1, 2),),
+                    rewards=(PlaceSpy(),),
+                )
+            ),
+        ),
+    ),
     _entry(
         140,
         "imperium-politics",
@@ -325,7 +353,20 @@ INTRIGUE_CARDS: Final = (
             ),
         ),
     ),
-    _entry(449, "reach-agreement", "Reach Agreement", choam_only=True),
+    _entry(
+        449,
+        "reach-agreement",
+        "Reach Agreement",
+        choam_only=True,
+        options=(
+            _combat(
+                EffectSection(
+                    costs=(RetreatTroops(1, 2),),
+                    rewards=(TakeContract(1),),
+                )
+            ),
+        ),
+    ),
     _entry(161, "secure-spice-trade", "Secure Spice Trade"),
     _entry(
         141,
@@ -374,7 +415,25 @@ INTRIGUE_CARDS: Final = (
             ),
         ),
     ),
-    _entry(150, "spice-is-power", "Spice is Power"),
+    _entry(
+        150,
+        "spice-is-power",
+        "Spice is Power",
+        options=(
+            _combat(
+                EffectSection(
+                    costs=(RetreatTroops(3, 3),),
+                    rewards=(GainResources(spice=3),),
+                )
+            ),
+            _combat(
+                EffectSection(
+                    costs=(PayResources(spice=3),),
+                    rewards=(GainCombatStrength(6),),
+                )
+            ),
+        ),
+    ),
     _entry(153, "spring-the-trap", "Spring The Trap"),
     _entry(
         130,
@@ -394,7 +453,15 @@ INTRIGUE_CARDS: Final = (
             ),
         ),
     ),
-    _entry(155, "tactical-option", "Tactical Option"),
+    _entry(
+        155,
+        "tactical-option",
+        "Tactical Option",
+        options=(
+            _combat(EffectSection(rewards=(GainCombatStrength(2),))),
+            _combat(EffectSection(rewards=(RetreatTroops(1, None),))),
+        ),
+    ),
     _entry(
         137,
         "unexpected-allies",

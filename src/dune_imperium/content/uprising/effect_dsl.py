@@ -64,8 +64,23 @@ class CompletedContractsAtLeast:
             raise ValueError("completed-Contract condition count must be positive")
 
 
+@dataclass(frozen=True, slots=True)
+class SandwormsInConflictAtLeast:
+    """The player has at least ``count`` sandworms in the current Conflict."""
+
+    count: int = 1
+
+    def __post_init__(self) -> None:
+        if self.count < 1:
+            raise ValueError("sandworm condition count must be positive")
+
+
 type Condition = (
-    InfluenceAtLeast | HasHighCouncil | SpiesPlacedAtLeast | CompletedContractsAtLeast
+    InfluenceAtLeast
+    | HasHighCouncil
+    | SpiesPlacedAtLeast
+    | CompletedContractsAtLeast
+    | SandwormsInConflictAtLeast
 )
 
 
@@ -131,7 +146,26 @@ class RecallSpy:
             raise ValueError("Spy recall count must be positive")
 
 
-type Cost = PayResources | LoseInfluence | DiscardFromHand | RecallSpy
+@dataclass(frozen=True, slots=True)
+class RetreatTroops:
+    """Move between ``minimum`` and ``maximum`` of the player's Conflict troops
+    back to the garrison (player choice). ``maximum=None`` means any number.
+
+    During Combat the retreated troops' strength leaves the total at once and
+    a player left without units drops out of the priority loop (OQ-003).
+    """
+
+    minimum: int = 1
+    maximum: int | None = None
+
+    def __post_init__(self) -> None:
+        if self.minimum < 1:
+            raise ValueError("retreat minimum must be positive")
+        if self.maximum is not None and self.maximum < self.minimum:
+            raise ValueError("retreat maximum must not be below the minimum")
+
+
+type Cost = PayResources | LoseInfluence | DiscardFromHand | RecallSpy | RetreatTroops
 
 
 # --- Rewards ----------------------------------------------------------------
@@ -303,6 +337,17 @@ class PlaceSpy:
                 raise TypeError("Spy target Factions must use Faction")
 
 
+@dataclass(frozen=True, slots=True)
+class TakeContract:
+    """The Contract icon: take ``count`` face-up Contracts (CHOAM Module)."""
+
+    count: int = 1
+
+    def __post_init__(self) -> None:
+        if self.count < 1:
+            raise ValueError("Contract count must be positive")
+
+
 type Reward = (
     GainResources
     | GainVictoryPoints
@@ -316,6 +361,8 @@ type Reward = (
     | DeployFromGarrison
     | TrashPersonalCard
     | PlaceSpy
+    | RetreatTroops
+    | TakeContract
 )
 
 

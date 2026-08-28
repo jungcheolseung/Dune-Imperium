@@ -26,6 +26,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     LoseInfluence,
     PlaceSpy,
     RecallSpy,
+    RetreatTroops,
     TrashPersonalCard,
 )
 from dune_imperium.content.uprising.intrigue import (
@@ -40,6 +41,7 @@ from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.card_discard import discard_personal_card_from_hand
 from dune_imperium.rules.card_trash import trash_personal_card
+from dune_imperium.rules.combat import refresh_combat_participants
 from dune_imperium.rules.effect_interpreter import (
     ChoiceSlot,
     applicable_sections,
@@ -300,6 +302,20 @@ def legal_intrigue_choice_actions(
                 )
                 for post_id in owner.spy_post_ids
             )
+        case RetreatTroops(minimum=minimum, maximum=maximum):
+            limit = (
+                owner.troops_conflict
+                if maximum is None
+                else min(maximum, owner.troops_conflict)
+            )
+            actions.extend(
+                DomainAction(
+                    action_id="retreat_intrigue_troops",
+                    actor=player,
+                    arguments=(("count", count),),
+                )
+                for count in range(minimum, limit + 1)
+            )
         case PlaceSpy():
             targets = spy_placement_targets(state, player, slot)
             if owner.spies_supply > 0 and targets:
@@ -405,6 +421,10 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
                 result = trash_personal_card(
                     state, player, str(arguments["card_id"]), source=step_source
                 )
+        case RetreatTroops():
+            count = arguments["count"]
+            assert isinstance(count, int)
+            result = _retreat_units(state, player, step_source, troops=count)
         case RecallSpy() | PlaceSpy():
             post_id = str(arguments["post_id"])
             owner = state.players[player]
@@ -476,7 +496,7 @@ def _finish_play(
         next_state = _update_agent_turn_frame(
             next_state, troops_recruited=outcome.troops_recruited
         )
-    next_state = _reset_combat_passes(next_state)
+    next_state = refresh_combat_participants(_reset_combat_passes(next_state))
     if outcome.sandworms_deployed and reveal_is_open_for(next_state, player):
         # The interpreter moved the sandworms; during a Reveal turn their
         # strength must also join the revealed total [Main p. 13].
@@ -498,6 +518,44 @@ def _finish_play(
         next_state = counted.state
         events.extend(counted.events)
     return RuleResult(state=next_state, events=tuple(events))
+
+
+def _retreat_units(
+    state: GameState,
+    player: int,
+    step_source: str,
+    *,
+    troops: int,
+) -> RuleResult:
+    """Return Conflict troops to the garrison, adjusting Combat strength.
+
+    Each troop carried two strength; a player left without units keeps no
+    strength at all [Main pp. 12, 14].
+    """
+
+    owner = state.players[player]
+    if troops < 1 or owner.troops_conflict < troops:
+        raise RuntimeError("Intrigue retreat exceeds the troops in the Conflict")
+    remaining_units = owner.troops_conflict - troops + owner.sandworms_conflict
+    next_strength = (
+        max(owner.combat_strength - 2 * troops, 0) if remaining_units else 0
+    )
+    next_owner = replace(
+        owner,
+        troops_garrison=owner.troops_garrison + troops,
+        troops_conflict=owner.troops_conflict - troops,
+        combat_strength=next_strength,
+    )
+    return RuleResult(
+        state=replace(state, players=replace_player(state.players, next_owner)),
+        events=(
+            GameEvent(
+                event_id=f"{step_source}:retreat",
+                kind="troops_retreated",
+                payload=(("count", troops), ("player", player)),
+            ),
+        ),
+    )
 
 
 def _reset_combat_passes(state: GameState) -> GameState:

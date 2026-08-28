@@ -1301,3 +1301,52 @@ def _rewards(
         )
         for player in recipients
     )
+
+
+def refresh_combat_participants(state: GameState) -> GameState:
+    """Drop participants who no longer have units from the priority loop.
+
+    Project convention for OQ-003: a player whose last unit leaves the
+    Conflict during Combat Intrigue is removed at once, and no player can join
+    the loop after Combat began. If nobody remains the Intrigue step ends.
+    """
+
+    if not state.decision_stack:
+        return state
+    frame = state.decision_stack[-1]
+    if frame.kind != FrameKind.COMBAT_INTRIGUE:
+        return state
+    context = dict(frame.context)
+    participants = _participants_from_mask(
+        state.config.players,
+        context_int(context, "participants_mask"),
+        state.first_player,
+    )
+    current_index = context_int(context, "current_index")
+    current = participants[current_index]
+    remaining = tuple(
+        player for player in participants if _has_conflict_units(state.players[player])
+    )
+    if remaining == participants:
+        return state
+    if not remaining:
+        return replace(
+            state,
+            combat_intrigue_complete=True,
+            decision_stack=state.decision_stack[:-1],
+        )
+    if current in remaining:
+        next_index = remaining.index(current)
+    else:
+        # Priority passes to the next remaining participant clockwise.
+        later = [p for p in participants[current_index + 1 :] if p in remaining]
+        next_index = remaining.index(later[0]) if later else 0
+    consecutive_passes = min(context_int(context, "consecutive_passes"), len(remaining))
+    next_frame = _combat_intrigue_frame(
+        state,
+        participants=remaining,
+        current_index=next_index,
+        consecutive_passes=consecutive_passes,
+    )
+    return replace(state, decision_stack=(*state.decision_stack[:-1], next_frame))
+

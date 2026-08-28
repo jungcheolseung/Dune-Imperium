@@ -29,6 +29,7 @@ from dune_imperium.core.engine import IllegalActionError
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 from dune_imperium.rules.intrigue import (
+    apply_intrigue_choice,
     apply_intrigue_play,
     legal_intrigue_play_actions,
 )
@@ -81,7 +82,7 @@ def _play(state: GameState, card_id: str, option: int = 0) -> DomainAction:
 def test_transcribed_intrigue_options_are_well_formed() -> None:
     transcribed = [entry for entry in INTRIGUE_CARDS if entry.play_data_complete]
 
-    assert len(transcribed) == 21
+    assert len(transcribed) == 26
     for entry in transcribed:
         assert entry.options
         for option in entry.options:
@@ -1159,4 +1160,147 @@ def test_combat_intrigue_is_not_offered_during_player_turns() -> None:
     card = _intrigue("weirding_combat")
     owner = PlayerState(player_id=0, intrigue_cards=(card,))
     assert legal_intrigue_play_actions(_turn_state(owner), 0) == ()
+
+
+def _retreat(count: int, actor: int = 0) -> DomainAction:
+    return DomainAction(
+        action_id="retreat_intrigue_troops", actor=actor, arguments=(("count", count),)
+    )
+
+
+def _fighter(player_id: int, troops: int, **extra: object) -> PlayerState:
+    return PlayerState(
+        player_id=player_id,
+        troops_supply=12 - troops,
+        troops_garrison=0,
+        troops_conflict=troops,
+        combat_strength=2 * troops,
+        **extra,  # type: ignore[arg-type]
+    )
+
+
+def test_go_to_ground_retreats_then_places_a_spy_and_drops_an_empty_player() -> None:
+    card = _intrigue("go_to_ground")
+    state = _combat_state(_fighter(0, 1, intrigue_cards=(card,)), _fighter(1, 2))
+    engine = UprisingRulesEngine()
+
+    opened = engine.apply(state, _play(state, card)).state
+    # Only one troop is in the Conflict, so only a one-troop retreat is offered.
+    assert engine.legal_actions(opened, 0) == (_retreat(1),)
+    retreated = engine.apply(opened, _retreat(1)).state
+    assert retreated.players[0].troops_conflict == 0
+    assert retreated.players[0].combat_strength == 0
+    # The Spy placement still resolves before the card finishes.
+    assert {a.action_id for a in engine.legal_actions(retreated, 0)} == {
+        "place_intrigue_spy"
+    }
+    post = str(dict(engine.legal_actions(retreated, 0)[0].arguments)["post_id"])
+    done = engine.apply(retreated, _place_spy(post)).state
+
+    assert done.players[0].spy_post_ids == (post,)
+    # OQ-003 convention: with no units left, player 0 leaves the loop at once
+    # and priority moves to the next remaining participant.
+    frame = done.decision_stack[-1]
+    assert frame.kind == "combat_intrigue"
+    assert isinstance(frame.decision, PlayerDecision)
+    assert frame.decision.owner == 1
+    assert dict(frame.context)["participants_mask"] == 0b10
+    assert engine.legal_actions(done, 0) == ()
+
+
+def test_tactical_option_retreating_the_last_units_ends_combat_intrigue() -> None:
+    card = _intrigue("tactical_option")
+    state = _combat_state(_fighter(0, 2, intrigue_cards=(card,)))
+    engine = UprisingRulesEngine()
+
+    opened = engine.apply(state, _play(state, card, 1)).state
+    assert engine.legal_actions(opened, 0) == (_retreat(1), _retreat(2))
+    # Resolve the slot without the dispatcher so the round does not run on.
+    done = apply_intrigue_choice(opened, _retreat(2))
+
+    assert done.state.players[0].troops_garrison == 2
+    assert done.state.players[0].combat_strength == 0
+    assert done.state.combat_intrigue_complete is True
+    assert done.state.decision_stack == ()
+
+
+def test_tactical_option_partial_retreat_keeps_the_player_in_the_loop() -> None:
+    card = _intrigue("tactical_option")
+    state = _combat_state(_fighter(0, 3, intrigue_cards=(card,)), _fighter(1, 1))
+    engine = UprisingRulesEngine()
+
+    opened = engine.apply(state, _play(state, card, 1)).state
+    done = engine.apply(opened, _retreat(1)).state
+
+    assert done.players[0].troops_conflict == 2
+    assert done.players[0].combat_strength == 4
+    frame = done.decision_stack[-1]
+    assert isinstance(frame.decision, PlayerDecision)
+    assert frame.decision.owner == 0
+    assert dict(frame.context)["consecutive_passes"] == 0
+
+
+def test_spice_is_power_offers_both_halves_when_affordable() -> None:
+    card = _intrigue("spice_is_power")
+    rich = _fighter(0, 3, intrigue_cards=(card,), resources=Resources(spice=3))
+    state = _combat_state(rich, _fighter(1, 1))
+    engine = UprisingRulesEngine()
+    assert legal_intrigue_play_actions(state, 0) == (
+        _play(state, card, 0),
+        _play(state, card, 1),
+    )
+
+    swords = engine.apply(state, _play(state, card, 1)).state
+    assert swords.players[0].resources.spice == 0
+    assert swords.players[0].combat_strength == 12
+
+    opened = engine.apply(state, _play(state, card, 0)).state
+    assert engine.legal_actions(opened, 0) == (_retreat(3),)
+    paid = engine.apply(opened, _retreat(3)).state
+    assert paid.players[0].resources.spice == 6
+    assert paid.players[0].troops_conflict == 0
+    assert dict(paid.decision_stack[-1].context)["participants_mask"] == 0b10
+
+    poor = _combat_state(_fighter(0, 2, intrigue_cards=(card,)))
+    assert legal_intrigue_play_actions(poor, 0) == ()
+
+
+def test_devour_adds_more_and_offers_a_trash_with_a_sandworm() -> None:
+    card = _intrigue("devour")
+    plain = _combat_state(_fighter(0, 1, intrigue_cards=(card,)))
+    engine = UprisingRulesEngine()
+    done = engine.apply(plain, _play(plain, card)).state
+    assert done.players[0].combat_strength == 4
+    assert done.decision_stack[-1].kind == "combat_intrigue"
+
+    worm = _fighter(0, 1, intrigue_cards=(card,), hand=(_starter("dagger"),))
+    worm = replace(worm, sandworms_conflict=1, combat_strength=5)
+    state = _combat_state(worm)
+    opened = engine.apply(state, _play(state, card)).state
+    assert opened.decision_stack[-1].kind == "intrigue_choice"
+    assert engine.legal_actions(opened, 0)[0].action_id == "decline_intrigue_trash"
+    trashed = engine.apply(opened, _trash(_starter("dagger"))).state
+    assert trashed.players[0].trashed == (_starter("dagger"),)
+    assert trashed.players[0].combat_strength == 9
+
+
+def test_reach_agreement_retreats_for_a_contract_in_the_choam_module() -> None:
+    card = _intrigue("reach_agreement")
+    fighter = _fighter(0, 2, intrigue_cards=(card,))
+    state = replace(
+        _combat_state(fighter, _fighter(1, 1)),
+        config=RulesetConfig(choam_module=True),
+        face_up_contract_ids=("contract:immediate", "contract:heighliner_iii"),
+        contract_bank=(),
+    )
+    engine = UprisingRulesEngine()
+
+    opened = engine.apply(state, _play(state, card)).state
+    assert engine.legal_actions(opened, 0) == (_retreat(1), _retreat(2))
+    market = engine.apply(opened, _retreat(1)).state
+    assert market.decision_stack[-1].kind == "contract_market"
+    assert {a.action_id for a in engine.legal_actions(market, 0)} == {"take_contract"}
+
+    # Without the CHOAM Module the Contract icon has no market to use.
+    assert legal_intrigue_play_actions(_combat_state(fighter), 0) == ()
 

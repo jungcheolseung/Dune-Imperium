@@ -31,9 +31,12 @@ from dune_imperium.content.uprising.effect_dsl import (
     PlaceSpy,
     RecallSpy,
     RecruitTroops,
+    RetreatTroops,
     Reward,
+    SandwormsInConflictAtLeast,
     SpiesPlacedAtLeast,
     SummonSandworm,
+    TakeContract,
     TrashPersonalCard,
 )
 from dune_imperium.core.engine import RuleResult
@@ -41,6 +44,7 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
+from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effects import recruit_troops
 from dune_imperium.rules.frames import replace_player
 from dune_imperium.rules.influence import gain_faction_influence, influence_amount
@@ -55,6 +59,7 @@ type ChoiceSlot = (
     LoseInfluence
     | DiscardFromHand
     | RecallSpy
+    | RetreatTroops
     | GainInfluence
     | DestroyShieldWall
     | DeployFromGarrison
@@ -75,6 +80,8 @@ def condition_holds(player: PlayerState, condition: Condition) -> bool:
             return len(player.spy_post_ids) >= count
         case CompletedContractsAtLeast(count=count):
             return len(player.completed_contract_ids) >= count
+        case SandwormsInConflictAtLeast(count=count):
+            return player.sandworms_conflict >= count
     raise TypeError(f"unsupported condition: {condition!r}")
 
 
@@ -162,6 +169,8 @@ def choice_slots(
         for cost in section.costs:
             if isinstance(cost, LoseInfluence | DiscardFromHand | RecallSpy):
                 slots.extend([cost] * cost.count)
+            elif isinstance(cost, RetreatTroops):
+                slots.append(cost)
     for section in sections:
         for reward in section.rewards:
             match reward:
@@ -169,7 +178,12 @@ def choice_slots(
                     slots.extend([reward] * reward.times)
                 case DestroyShieldWall() if shield_wall_present:
                     slots.append(reward)
-                case DeployFromGarrison() | TrashPersonalCard() | PlaceSpy():
+                case (
+                    DeployFromGarrison()
+                    | TrashPersonalCard()
+                    | PlaceSpy()
+                    | RetreatTroops()
+                ):
                     slots.append(reward)
                 case _:
                     pass
@@ -183,6 +197,7 @@ def _choice_costs_feasible(
     influence_needed = 0
     discards_needed = 0
     recalls_needed = 0
+    retreats_needed = 0
     for section in sections:
         for cost in section.costs:
             match cost:
@@ -192,6 +207,8 @@ def _choice_costs_feasible(
                     discards_needed += count
                 case RecallSpy(count=count):
                     recalls_needed += count
+                case RetreatTroops(minimum=minimum):
+                    retreats_needed += minimum
                 case _:
                     pass
     total_influence = sum(
@@ -201,6 +218,7 @@ def _choice_costs_feasible(
         total_influence >= influence_needed
         and len(player.hand) >= discards_needed
         and len(player.spy_post_ids) >= recalls_needed
+        and player.troops_conflict >= retreats_needed
     )
 
 
@@ -249,6 +267,10 @@ def _choice_rewards_feasible(
                     return False
                 case PlaceSpy() if not spy_placement_possible(state, player, reward):
                     return False
+                case RetreatTroops(minimum=minimum) if owner.troops_conflict < minimum:
+                    return False
+                case TakeContract() if not state.config.choam_module:
+                    return False
                 case _:
                     pass
     return True
@@ -292,7 +314,11 @@ def automatic_rewards(sections: tuple[EffectSection, ...]) -> tuple[Reward, ...]
         if not (isinstance(reward, GainInfluence) and reward.requires_choice)
         and not isinstance(
             reward,
-            DestroyShieldWall | DeployFromGarrison | TrashPersonalCard | PlaceSpy,
+            DestroyShieldWall
+            | DeployFromGarrison
+            | TrashPersonalCard
+            | PlaceSpy
+            | RetreatTroops,
         )
     )
 
@@ -316,6 +342,7 @@ def apply_rewards(
     sandworms_deployed = 0
     personal_draws = 0
     intrigue_draws = 0
+    contracts = 0
     fixed_influence: list[GainInfluence] = []
     for reward in rewards:
         match reward:
@@ -376,6 +403,8 @@ def apply_rewards(
                             payload=(("count", count), ("player", player)),
                         )
                     )
+            case TakeContract(count=count):
+                contracts += count
             case GainCombatStrength(amount=amount):
                 # Combat Intrigue strength changes update the marker at once
                 # [Main p. 14]; the caller only offers Combat options while
@@ -418,6 +447,12 @@ def apply_rewards(
         )
         next_state = drawn.state
         events.extend(drawn.events)
+    if contracts:
+        taken = begin_contract_gain(
+            next_state, player, contracts, source=f"{source}:contract"
+        )
+        next_state = taken.state
+        events.extend(taken.events)
     return RewardOutcome(
         result=RuleResult(state=next_state, events=tuple(events)),
         troops_recruited=troops_recruited,
