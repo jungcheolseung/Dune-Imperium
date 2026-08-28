@@ -109,3 +109,22 @@ A와 B는 codec version 변경 없이 기존 테스트로 검증한다. 각 단�
   옮기지 않았다(다음 정리 항목).
 - Imperium enum 멤버의 DSL 이관은 Intrigue 전사가 끝난 뒤 단순한 것부터 시작한다.
 
+## 코드 리뷰 후속 항목 (2026-08-28)
+
+리뷰에서 나온 구조적 지적 중 아직 처리하지 않은 것:
+
+- Intrigue draw 10곳(board effect, combat reward, card trigger, influence track
+  bonus)을 `rules/intrigue_deck.draw_intrigue_cards`로 이관해 deck 고갈 시
+  reshuffle chance frame을 공통 적용한다. 지금은 해당 경로가 빈 deck에서 draw를
+  건너뛰거나 예외를 낸다.
+- Reserve copy ID는 zone 스캔 대신 stack별 발급 카운터를 state에 두는 편이 안전하다.
+- `ACTION_HANDLERS`를 `(FrameKind, action_id)`로 키잉하고 chance handler도 표로
+  두면 `_apply_decline_combat_reward` 같은 kind 분기와 `_apply_chance`의 if/elif가
+  사라진다.
+- `PayResources`/`GainResources` 등 DSL 자원 record와 `rules/effects.py`·
+  `board.ResourceCost`의 중복은 Imperium 효과를 DSL로 이관할 때 한쪽으로 합친다.
+- Long Live the Fighters와 Corrinth City의 카드 전용 context flag는
+  `INTRIGUE_CHOICE`와 같은 범용 슬롯 frame으로 대체할 수 있다.
+- Covert Operation처럼 자식 frame을 쌓는 효과의 부모 frame 재개는 자식이 부모를
+  들여다보는 대신 engine의 `_advance_automatic`에서 처리하는 편이 일반적이다.
+

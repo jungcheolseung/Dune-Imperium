@@ -26,14 +26,15 @@ uv run ruff check src tests
 uv run mypy src tests
 ```
 
-2026-08-28의 기준 결과는 pytest 602개 통과, Ruff 통과, mypy 통과다. 현재 action
+2026-08-28의 기준 결과는 pytest 608개 통과, Ruff 통과, mypy 통과다. 현재 action
 codec은 `ACTION_CODEC_VERSION = 60`이며 기본 룰셋 catalog는 3,510개, CHOAM
 룰셋 catalog는 3,737개다.
 
 ## 현재 구현 기준선
 
-마지막 기능 커밋은 `Play choice-driven Plot Intrigue through DSL choice slots`
-(`git log -1 --grep='choice slots'`)다. 그 앞에 [`refactoring-plan.md`](refactoring-plan.md)의 A·B 단계(frame
+마지막 기능 커밋은 `Play choice-driven Plot Intrigue through DSL choice slots`이고,
+그 뒤 코드 리뷰 수정 `Fix review findings in the Intrigue and dispatcher slices`와
+처리량 수정이 있다. 그 앞에 [`refactoring-plan.md`](refactoring-plan.md)의 A·B 단계(frame
 kind, 표 기반 dispatch), Covert Operation deadlock 수정, Reserve copy ID 재발급
 수정이 있다.
 
@@ -175,5 +176,5 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에
 
 새 clone으로 이어받는다면 먼저 현재 `master`를 push해야 한다. 새 clone에서는
 `git log --oneline -5`에 `b71cec1`이 보이는지 확인한다. 이 커밋들이 없으면 문서에
-적힌 v60 action catalog, 3,737개 CHOAM 행동, 602개 테스트 기준선이 실제 코드와
+적힌 v60 action catalog, 3,737개 CHOAM 행동, 608개 테스트 기준선이 실제 코드와
 일치하지 않는다.

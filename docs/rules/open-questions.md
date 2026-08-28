@@ -179,8 +179,10 @@
   하는지는 명시하지 않는다. `[Main pp. 7-8]` `[FAQ p. 2]`
 - 필요한 답: Plot play window의 시작점과, 조건부로 열린 두 번째 비용 줄의 의무
   여부에 대한 공식 판정.
-- 구현 convention: (a) 소유자에게 turn 선택이 제시된 순간부터 Plot을 낼 수 있다.
-  (b) 조건이 성립한 모든 비용 줄은 의무이며, 전부 지불할 수 없으면 카드를 낼 수
-  없다. 두 판정 모두 프로젝트 convention이며 `tests/unit/rules/test_intrigue.py`로
-  고정한다.
+- 구현 convention: (a) 소유자에게 turn 선택이 제시된 순간부터 Plot을 낼 수 있고,
+  Agent turn의 마지막 pending 그룹이 해결되면 turn이 자동으로 넘어가므로 그
+  전에 내야 한다. (b) 조건이 성립한 모든 비용 줄은 의무이며, 전부 지불할 수 없으면
+  카드를 낼 수 없다. (c) Reveal turn 중 개인 card draw가 있는 Plot은 FAQ p. 3의
+  즉시 공개 규칙을 구현하기 전까지 제시하지 않는다. 세 판정 모두 프로젝트
+  convention이며 `tests/unit/rules/test_intrigue.py`로 고정한다.
 
