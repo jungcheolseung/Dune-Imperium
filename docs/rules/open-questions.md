@@ -131,6 +131,12 @@
 - 필요한 답: 공식 FAQ/ruling 또는 tournament rule에서 각 정보의 열람 가능성을
   확인한다. 답을 얻기 전 RL `PlayerView`의 비공개 정책은 프로젝트 convention임을
   명시하고 규칙 사실처럼 적지 않는다.
+- 구현 convention(2026-08-30, 부분): 존의 **장수**(각 플레이어의 hand·개인
+  deck·discard 장수, 보유 Intrigue 장수)는 실물 테이블에서 항상 보이는
+  정보이므로 `PublicPlayerView`에 공개한다. 카드 **identity**의 열람 범위는
+  계속 이 항목의 미해결 질문으로 남으며, 기존 공개/비공개 구분(Intrigue
+  identity는 play 전 비공개 등)은 바꾸지 않는다. 공식 근거가 아닌 관측 설계
+  결정이며 `tests/unit/test_observation.py`로 고정한다.
 
 ## OQ-011 — Gather Intelligence와 contract 완료의 상대 순서
 

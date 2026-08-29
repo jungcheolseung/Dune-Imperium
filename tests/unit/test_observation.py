@@ -104,7 +104,13 @@ def test_each_player_receives_their_own_private_cards() -> None:
     assert second.private.hand == ("p1:hand",)
     assert all(not hasattr(player, "hand") for player in second.players)
     assert all(not hasattr(player, "intrigue_cards") for player in second.players)
-    assert all(not hasattr(player, "hand_size") for player in second.players)
+    # Zone sizes are public by project convention (OQ-010): every pile and
+    # hand count is visible at the table while identities stay redacted.
+    assert first.private is not None
+    assert second.players[0].hand_size == len(first.private.hand)
+    assert second.players[0].deck_size == first.private.deck_size
+    assert second.players[0].discard_size == len(first.private.discard_pile)
+    assert second.players[0].intrigue_card_count == len(first.private.intrigue_cards)
 
 
 def test_contract_market_is_public_but_hidden_contract_identities_are_redacted() -> (

@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 
 from dune_imperium.core.actions import ActionValue
+from dune_imperium.core.decisions import PlayerDecision
 from dune_imperium.core.player import Influence, PlayerState, Resources
 from dune_imperium.core.state import GamePhase, GameState
 
@@ -21,6 +22,13 @@ class PublicPlayerView:
     victory_points: int
     resources: Resources
     influence: Influence
+    # Zone sizes are public by project convention (OQ-010): the physical
+    # game leaves every pile and hand count visible while identities stay
+    # governed by the explicit visibility rules.
+    hand_size: int
+    deck_size: int
+    discard_size: int
+    intrigue_card_count: int
     agents_available: int
     agent_locations: tuple[str, ...]
     swordmaster_acquired: bool
@@ -68,6 +76,13 @@ class PlayerView:
     phase: GamePhase
     round_number: int = 0
     first_player: int | None = None
+    # Public summary of the pending decision frame: its kind, the deciding
+    # player (None for chance), and the acting turn owner when the frame
+    # tracks one. Frame contexts stay unexposed until each kind's fields are
+    # individually cleared for visibility.
+    decision_kind: str | None = None
+    decision_owner: int | None = None
+    turn_owner: int | None = None
     reveal_order: tuple[int, ...] = ()
     endgame_intrigue_complete: bool = False
     players: tuple[PublicPlayerView, ...] = ()
@@ -98,12 +113,26 @@ def observe_state(state: GameState, player: int) -> PlayerView:
         raise ValueError("cannot observe a state without every configured player")
 
     owner = state.players[player]
+    decision_kind: str | None = None
+    decision_owner: int | None = None
+    turn_owner_value: int | None = None
+    if state.decision_stack:
+        frame = state.decision_stack[-1]
+        decision_kind = str(frame.kind)
+        if isinstance(frame.decision, PlayerDecision):
+            decision_owner = frame.decision.owner
+        context_owner = dict(frame.context).get("turn_owner")
+        if isinstance(context_owner, int) and not isinstance(context_owner, bool):
+            turn_owner_value = context_owner
     return PlayerView(
         player=player,
         revision=state.revision,
         phase=state.phase,
         round_number=state.round_number,
         first_player=state.first_player,
+        decision_kind=decision_kind,
+        decision_owner=decision_owner,
+        turn_owner=turn_owner_value,
         reveal_order=state.reveal_order,
         endgame_intrigue_complete=state.endgame_intrigue_complete,
         players=tuple(_public_player_view(candidate) for candidate in state.players),
@@ -137,6 +166,10 @@ def _public_player_view(player: PlayerState) -> PublicPlayerView:
         victory_points=player.victory_points,
         resources=player.resources,
         influence=player.influence,
+        hand_size=len(player.hand),
+        deck_size=len(player.deck),
+        discard_size=len(player.discard_pile),
+        intrigue_card_count=len(player.intrigue_cards),
         agents_available=player.agents_available,
         agent_locations=player.agent_locations,
         swordmaster_acquired=player.swordmaster_acquired,
