@@ -1,5 +1,7 @@
 # Leader ability audit
 
+기준일: 2026-08-29 — 기본 게임 8종 구현 완료, CHOAM 전용 Shaddam만 남음.
+
 Leader identity와 setup은 `content/uprising/leaders.py`, 능력 규칙은
 `rules/leader_abilities.py`가 소유한다. Signet Ring 일반 규칙은
 [`rules/player-turns.md`](../rules/player-turns.md)와
@@ -15,7 +17,10 @@ Leader identity와 setup은 `content/uprising/leaders.py`, 능력 규칙은
 판독해 전사했다. DIU `data/leader_data/*.json`은 부트스트랩 참고로만 썼고,
 이미지와 충돌하면 이미지를 따랐다. 아이콘 기준: 회색 정육면체 = troop,
 회색 원기둥 = Spy, 위 화살표가 붙은 원기둥 = Spy recall, 주황 육각형 = Spice,
-은화 = Solari, 파란 물방울 = water.
+은화 = Solari, 파란 물방울 = water, 초록 카드 = personal card draw, 금색
+카드 = Intrigue draw. space 유형 아이콘(파란 원 = City, 초록 오각형 =
+Landsraad, 네 Faction 문양)은 공식 Board Space Guide p. 1의 space별 tile
+artwork와 대조해 확정했다.
 
 ## 구현된 Leader (2026-08-29)
 
@@ -90,18 +95,72 @@ Leader identity와 setup은 `content/uprising/leaders.py`, 능력 규칙은
   효과 미구현으로 dispatcher가 숨기므로 현재 반복 대상은 espionage와
   fremkit이다.
 
+### Lady Margot Fenring
+
+- **Loyalty** — "When you reach [Bene Gesserit] 2 Influence: Spice 2."
+  Influence 상승 루프에서 `reach 2` VP와 같은 지점에 연결해 다단 상승의
+  통과, 재도달, 하강 미발동 판정을 공식 의미론과 공유한다
+  `[Main pp. 7, 17]`.
+- **Arrakis Informant(Signet)** — "[Spy] on [파란 원]" = City board space에
+  연결된 관측소에 Spy 배치. City 연결 관측소는 3곳뿐이라 전부 점유된 상태가
+  성립할 수 있고, supply Spy가 있는데 빈 City 관측소가 없으면 배치는
+  소실된다(recall-first는 supply가 빌 때만 `[Main pp. 11, 20]`; supply가
+  비었으면 City 관측소의 자기 Spy를 recall해 자리를 열 수 있다).
+
+### Muad'Dib
+
+- **Unpredictable Foe** — "Reveal Turn: If you have one or more sandworms in
+  the Conflict: [Intrigue 1 draw]." Gurney와 같은 Reveal passive 훅으로
+  조건이 처음 성립한 시점에 1회 지급하고 frame에 기록한다. 자신의 Reveal
+  turn 중 sandworm이 Conflict에서 빠지는 경로는 없어(retreat 효과는 troop
+  대상) 부여 후 조건 상실 문제가 없다.
+- **Lead the Way(Signet)** — personal card 1 draw(공통 reshuffle chance
+  경로).
+
+### Princess Irulan
+
+- **Imperial Birthright** — "When you reach [Emperor] 2 Influence:
+  [Intrigue 1 draw]." Loyalty와 같은 지점에 연결했고, Intrigue deck이 비면
+  기존 `pending_intrigue_draws` 경로로 보류한다.
+- **Chronicler's Insight(Signet)** — "You may choose: Acquire a card that
+  costs 1 to your hand —OR— Trash a card from your hand. If it has a cost of
+  1 or more: Spice 2." 획득은 인쇄 비용이 정확히 1인 Row/Reserve 카드를
+  Persuasion 없이 hand로 가져오며(현재 콘텐츠에서 비용 1은 Imperium 5종),
+  기존 공용 획득 경로(Row 보충 `[Main p. 13]`, acquire box, Contract 완료
+  확인)를 재사용한다. Row 보충 불가(Imperium deck 고갈) 상태에서는 Row
+  획득을 제시하지 않는다. trash는 hand 한정이고 시작 카드는 인쇄 비용이
+  없어 Spice를 주지 않는다. "may choose"이므로 전체 거절이 가능하다.
+
+### Staban Tuek
+
+- **Limited Allies** — "You start the game without Diplomacy in your deck."
+  setup의 Leader 배정 시 시작 덱에서 제거하며(9장), 이후의 셔플 chance
+  decision은 줄어든 덱을 대상으로 한다.
+- **Smuggle Spice** — "Whenever another player sends an Agent to a Maker
+  board space you are spying on: Spice 1." 다른 플레이어의 Agent 배치
+  시점에 해당 Maker space에 연결된 관측소에 Staban의 Spy가 있으면 자동
+  지급한다. DIU 데이터는 "you are spying on" 조건을 누락했으며 카드
+  이미지를 따랐다.
+- **Unseen Network(Signet)** — Spy 1 배치(제한 없음). "If placed on...
+  [초록 오각형=Landsraad]: Spice 1 → Solari 3. [4개 Faction 문양]:
+  Solari 2 → Intrigue 1 draw." 배치한 관측소가 Landsraad 또는 Faction
+  space에 연결된 경우에만 해당 arrow 지불을 선택할 수 있고, CHOAM·Maker
+  관측소에는 후속이 없다. 관측소 13곳 > Spy 12개이므로 무제한 배치는 항상
+  가능하다.
+
 ## 남은 Leader
 
-Lady Margot Fenring, Muad'Dib, Princess Irulan, Staban Tuek는 아직
-`IMPLEMENTED_ABILITY_LEADER_IDS` 밖이다. Margot/Irulan의 `reach 2` 판정은
-`[Main p. 17]`에 있다. Shaddam Corrino IV는 CHOAM 전용이며 set-aside
-Sardaukar Contract 경로(OQ-010, OQ-011 참고)와 함께 구현한다
-`[Main p. 17]` `[FAQ p. 3]`.
+Shaddam Corrino IV는 CHOAM 전용이며 set-aside Sardaukar Contract
+경로(OQ-010, OQ-011 참고)와 함께 구현한다 `[Main p. 17]` `[FAQ p. 3]`.
+기본 게임 8종의 Leader는 모두 구현됐다.
 
 ## 회귀 테스트
 
 `tests/unit/rules/test_leader_abilities.py`가 signet 자동 해결, Feyd 트랙
 분기·단계·최종 칸, Devious/Desert Scouts의 Reveal 액션과 1회 제한, Always
-Smiling 문턱과 중복 방지, Jessica 지불·flip·repeat 경로, setup 면 배정을
-고정한다. random 4인 완주 soak에서 네 Leader의 모든 신규 이벤트가 발동함을
-확인했고 replay 검증을 통과했다.
+Smiling·Unpredictable Foe 문턱과 중복 방지, Jessica 지불·flip·repeat 경로,
+reach-2 보너스(통과·재도달·타 Faction 미발동), Margot·Staban의 Spy 배치
+제한과 후속 지불, Chronicler's Insight의 획득·trash·거절, Limited Allies
+setup, Smuggle Spice 조건, setup 면 배정을 고정한다. 기본 4종과 신규 4종
+각각의 random 4인 완주 soak에서 모든 신규 이벤트가 발동함을 확인했고 replay
+검증을 통과했다.
