@@ -928,8 +928,13 @@ def test_special_mission_places_a_spy_on_a_bene_gesserit_post() -> None:
     engine = UprisingRulesEngine()
 
     opened = engine.apply(state, _play(state, card, 0)).state
+    offered = engine.legal_actions(opened, 0)
+    # The placement itself is optional ("you may") [Main pp. 11, 20].
+    assert "decline_intrigue_spy" in {a.action_id for a in offered}
     targets = {
-        str(dict(a.arguments)["post_id"]) for a in engine.legal_actions(opened, 0)
+        str(dict(a.arguments)["post_id"])
+        for a in offered
+        if a.action_id == "place_intrigue_spy"
     }
     assert targets and all("bene-gesserit" in post for post in targets)
     post = sorted(targets)[0]
@@ -937,6 +942,23 @@ def test_special_mission_places_a_spy_on_a_bene_gesserit_post() -> None:
     assert placed.players[0].spy_post_ids == (post,)
     assert placed.players[0].spies_supply == 2
     assert placed.intrigue_discard == (card,)
+
+
+def test_special_mission_spy_placement_can_be_declined() -> None:
+    card = _intrigue("special_mission")
+    owner = PlayerState(player_id=0, intrigue_cards=(card,))
+    state = _turn_state(owner)
+    engine = UprisingRulesEngine()
+
+    opened = engine.apply(state, _play(state, card, 0)).state
+    declined = engine.apply(
+        opened, DomainAction(action_id="decline_intrigue_spy", actor=0)
+    ).state
+
+    assert declined.players[0].spy_post_ids == ()
+    assert declined.players[0].spies_supply == 3
+    assert declined.intrigue_discard == (card,)
+    assert declined.decision_stack[-1].kind == "turn"
 
 
 def test_special_mission_recalls_first_when_no_spy_is_in_supply() -> None:
@@ -955,17 +977,87 @@ def test_special_mission_recalls_first_when_no_spy_is_in_supply() -> None:
     engine = UprisingRulesEngine()
 
     opened = engine.apply(state, _play(state, card, 0)).state
+    # The preparatory recall is optional [Main pp. 11, 20].
     assert {a.action_id for a in engine.legal_actions(opened, 0)} == {
-        "recall_spy_for_intrigue"
+        "recall_spy_for_intrigue",
+        "decline_intrigue_spy",
     }
     recalled = engine.apply(
         opened, _recall_spy("landsraad-assembly-hall-gather-support")
     ).state
     assert recalled.players[0].spies_supply == 1
-    # The slot is still open: now the placement itself is offered.
+    # The slot is still open: only the placement (or declining) remains, so
+    # exactly one Spy can be recalled per placement [Main p. 11].
     assert {a.action_id for a in engine.legal_actions(recalled, 0)} == {
-        "place_intrigue_spy"
+        "place_intrigue_spy",
+        "decline_intrigue_spy",
     }
+
+
+def test_special_mission_shared_post_does_not_make_the_placement_playable() -> None:
+    # Seed-97 sweep shape: the owner's only Bene Gesserit Spy shares its post
+    # with another player's Spy, so recalling it cannot free the post
+    # [Main pp. 11, 20] and option 0 must not be offered at all.
+    card = _intrigue("special_mission")
+    owner = PlayerState(
+        player_id=0,
+        intrigue_cards=(card,),
+        spies_supply=0,
+        spy_post_ids=(
+            "bene-gesserit-espionage-secrets",
+            "fremen-desert-tactics-fremkit",
+            "landsraad-assembly-hall-gather-support",
+        ),
+    )
+    state = _turn_state(owner)
+    watcher = replace(
+        state.players[3],
+        spies_supply=2,
+        spy_post_ids=("bene-gesserit-espionage-secrets",),
+    )
+    state = replace(state, players=(*state.players[:3], watcher))
+    engine = UprisingRulesEngine()
+
+    actions = engine.legal_actions(state, 0)
+    assert _play(state, card, 0) not in actions
+    # The recall option of the same card stays playable.
+    assert _play(state, card, 1) in actions
+
+
+def test_special_mission_slot_declines_after_a_drift_strands_the_placement() -> None:
+    # A trigger placement can occupy the freed post between the play-time
+    # check and the slot resolution; the stranded slot must resolve through
+    # the optional decline instead of deadlocking [Main pp. 11, 20].
+    card = _intrigue("special_mission")
+    owner = PlayerState(
+        player_id=0,
+        intrigue_cards=(card,),
+        spies_supply=0,
+        spy_post_ids=(
+            "bene-gesserit-espionage-secrets",
+            "fremen-desert-tactics-fremkit",
+            "landsraad-assembly-hall-gather-support",
+        ),
+    )
+    state = _turn_state(owner)
+    engine = UprisingRulesEngine()
+
+    opened = engine.apply(state, _play(state, card, 0)).state
+    watcher = replace(
+        opened.players[3],
+        spies_supply=2,
+        spy_post_ids=("bene-gesserit-espionage-secrets",),
+    )
+    drifted = replace(opened, players=(*opened.players[:3], watcher))
+
+    assert {a.action_id for a in engine.legal_actions(drifted, 0)} == {
+        "decline_intrigue_spy"
+    }
+    declined = engine.apply(
+        drifted, DomainAction(action_id="decline_intrigue_spy", actor=0)
+    ).state
+    assert declined.intrigue_discard == (card,)
+    assert declined.decision_stack[-1].kind == "turn"
 
 
 def test_special_mission_recall_option_pays_out_after_the_detonation_choice() -> None:
@@ -1189,9 +1281,11 @@ def test_go_to_ground_retreats_then_places_a_spy_and_drops_an_empty_player() -> 
     retreated = engine.apply(opened, _retreat(1)).state
     assert retreated.players[0].troops_conflict == 0
     assert retreated.players[0].combat_strength == 0
-    # The Spy placement still resolves before the card finishes.
+    # The Spy placement still resolves before the card finishes; placing is
+    # optional ("you may") [Main pp. 11, 20].
     assert {a.action_id for a in engine.legal_actions(retreated, 0)} == {
-        "place_intrigue_spy"
+        "place_intrigue_spy",
+        "decline_intrigue_spy",
     }
     post = str(dict(engine.legal_actions(retreated, 0)[0].arguments)["post_id"])
     done = engine.apply(retreated, _place_spy(post)).state

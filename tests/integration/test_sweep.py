@@ -49,6 +49,21 @@ def test_checked_heuristic_game_passes_every_invariant() -> None:
     assert 0 <= report.winner < 4
 
 
+@pytest.mark.parametrize("game_seed", [97, 901])
+def test_special_mission_spy_deadlock_seeds_run_to_finished(game_seed: int) -> None:
+    # These CHOAM heuristic games stranded the Special Mission PlaceSpy slot
+    # before the optional decline existed [Main pp. 11, 20].
+    report = run_checked_game(
+        RulesetConfig(choam_module=True),
+        game_seed=game_seed,
+        policy_seed=700_000 + game_seed,
+        privacy_interval=0,
+        policy="heuristic",
+    )
+
+    assert report.rounds >= 1
+
+
 def test_unknown_sweep_policy_is_rejected() -> None:
     with pytest.raises(ValueError, match="unknown sweep policy"):
         run_checked_game(RulesetConfig(), game_seed=1, policy_seed=1, policy="best")

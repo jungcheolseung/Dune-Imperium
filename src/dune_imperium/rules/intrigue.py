@@ -86,7 +86,12 @@ from dune_imperium.rules.influence import (
 )
 from dune_imperium.rules.reveal_turn import add_units_to_reveal
 from dune_imperium.rules.shield_wall import destroy_shield_wall
-from dune_imperium.rules.spy_placement import place_spy, recall_spy
+from dune_imperium.rules.spy_placement import (
+    observation_post_ids_for_factions,
+    place_spy,
+    recall_spy,
+    solo_occupied_post_ids,
+)
 
 # Frames during which the owner is inside their own Agent or Reveal turn.
 PLOT_FRAME_KINDS = frozenset(
@@ -403,7 +408,7 @@ def legal_intrigue_choice_actions(
             )
         case PlaceSpy():
             targets = spy_placement_targets(state, player, slot)
-            if owner.spies_supply > 0 and targets:
+            if owner.spies_supply > 0:
                 actions.extend(
                     DomainAction(
                         action_id="place_intrigue_spy",
@@ -413,16 +418,33 @@ def legal_intrigue_choice_actions(
                     for post_id in targets
                 )
             else:
-                # No Spy in supply (or no free post): recall one first
-                # [Main pp. 11, 20].
+                # With an empty supply the owner may first recall one Spy
+                # [Main pp. 11, 20]. Only recalls that keep the placement
+                # reachable are offered: any Spy while a target post is
+                # free, otherwise a Spy that is the sole occupant of an
+                # allowed post (a shared post stays occupied).
+                allowed_posts = (
+                    observation_post_ids_for_factions(slot.factions)
+                    if slot.factions is not None
+                    else None
+                )
+                recallable = (
+                    owner.spy_post_ids
+                    if targets
+                    else solo_occupied_post_ids(state, player, allowed_posts)
+                )
                 actions.extend(
                     DomainAction(
                         action_id="recall_spy_for_intrigue",
                         actor=player,
                         arguments=(("post_id", post_id),),
                     )
-                    for post_id in owner.spy_post_ids
+                    for post_id in recallable
                 )
+            # Placing the Spy is optional ("you may") [Main pp. 11, 20].
+            actions.append(
+                DomainAction(action_id="decline_intrigue_spy", actor=player)
+            )
     return tuple(actions)
 
 
@@ -570,6 +592,18 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
             count = arguments["count"]
             assert isinstance(count, int)
             result = _retreat_units(state, player, step_source, troops=count)
+        case PlaceSpy() if action.action_id == "decline_intrigue_spy":
+            # The Spy placement is optional [Main pp. 11, 20].
+            result = RuleResult(
+                state=state,
+                events=(
+                    GameEvent(
+                        event_id=f"{step_source}:spy_declined",
+                        kind="intrigue_spy_declined",
+                        payload=(("player", player),),
+                    ),
+                ),
+            )
         case RecallSpy() | PlaceSpy():
             post_id = str(arguments["post_id"])
             owner = state.players[player]

@@ -27,6 +27,34 @@ def empty_observation_post_ids(
     )
 
 
+def solo_occupied_post_ids(
+    state: GameState,
+    player: int,
+    allowed_post_ids: frozenset[str] | None = None,
+) -> tuple[str, ...]:
+    """Return posts where ``player``'s Spy is the sole occupant.
+
+    Recalling the Spy from such a post leaves it unoccupied, so it is the
+    only kind of recall that can free a placement target; a post shared
+    with another player's Spy stays occupied after the recall
+    [Main pp. 11, 20].
+    """
+
+    others = {
+        post_id
+        for candidate in state.players
+        if candidate.player_id != player
+        for post_id in candidate.spy_post_ids
+    }
+    return tuple(
+        post.post_id
+        for post in OBSERVATION_POSTS
+        if post.post_id in state.players[player].spy_post_ids
+        and post.post_id not in others
+        and (allowed_post_ids is None or post.post_id in allowed_post_ids)
+    )
+
+
 def observation_post_ids_for_factions(
     factions: tuple[Faction, ...],
 ) -> frozenset[str]:

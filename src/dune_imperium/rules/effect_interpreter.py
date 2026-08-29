@@ -66,6 +66,7 @@ from dune_imperium.rules.shield_wall import current_conflict_is_shield_wall_prot
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
     observation_post_ids_for_factions,
+    solo_occupied_post_ids,
 )
 
 type ChoiceSlot = (
@@ -322,8 +323,10 @@ def spy_placement_possible(state: GameState, player: int, reward: PlaceSpy) -> b
         if reward.factions is not None
         else None
     )
-    # Recalling one of the owner's own Spies from an allowed post frees it.
-    return any(allowed is None or post_id in allowed for post_id in owner.spy_post_ids)
+    # With an empty supply, one preparatory recall may free an allowed post,
+    # but only when the owner's Spy is its sole occupant; a post shared with
+    # another player's Spy stays occupied [Main pp. 11, 20].
+    return bool(solo_occupied_post_ids(state, player, allowed))
 
 
 def _choice_rewards_feasible(

@@ -299,6 +299,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "deploy_intrigue_troops": apply_intrigue_choice,
     "trash_intrigue_card": apply_intrigue_choice,
     "decline_intrigue_trash": apply_intrigue_choice,
+    "decline_intrigue_spy": apply_intrigue_choice,
     "place_intrigue_spy": apply_intrigue_choice,
     "recall_spy_for_intrigue": apply_intrigue_choice,
     "retreat_intrigue_troops": apply_intrigue_choice,
