@@ -343,6 +343,53 @@ def test_prepare_the_way_has_no_agent_effect_below_required_influence() -> None:
     assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False
 
 
+def test_prepare_the_way_draw_is_lost_when_influence_drops_before_resolving() -> None:
+    # The Influence condition is judged when the effect resolves in the
+    # player's chosen order [Main pp. 7, 9]; a mid-frame Influence loss (for
+    # example an Intrigue cost) therefore forfeits the conditional draw
+    # instead of failing the advertised resolution.
+    prepare = "reserve:prepare_the_way:7"
+    undrawn = _instance("dagger")
+    owner = PlayerState(
+        player_id=0,
+        hand=(prepare,),
+        deck=(undrawn,),
+        influence=Influence(bene_gesserit=2),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
+    assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is True
+
+    lowered_owner = replace(
+        placed.players[0], influence=Influence(bene_gesserit=1)
+    )
+    lowered = replace(
+        placed,
+        players=(lowered_owner, *placed.players[1:]),
+    )
+
+    resolved = resolve_agent_card_effect(lowered)
+
+    assert resolved.state.players[0].hand == ()
+    assert resolved.state.players[0].deck == (undrawn,)
+    assert resolved.events[0].kind == "agent_card_effect_unavailable"
+    context = dict(resolved.state.decision_stack[-1].context)
+    assert context["pending_agent_effect"] is False
+
+
 def test_maula_pistol_agent_effect_draws_one_personal_card() -> None:
     maula = _imperium_instance("maula_pistol")
     drawn = _instance("dagger")

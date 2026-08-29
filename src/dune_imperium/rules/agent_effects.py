@@ -1515,22 +1515,30 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         next_owner = owner
         event_kind = "agent_card_effect_resolved"
     elif effect is PersonalCardAgentEffect.DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO:
-        if owner.influence.bene_gesserit < 2:
-            raise RuntimeError("conditional Agent effect is not available")
+        # The Influence condition is judged when the effect resolves in the
+        # player's chosen order, which can differ from the placement-time
+        # check [Main pp. 7, 9]; below two Bene Gesserit Influence the
+        # conditional draw simply does nothing.
         next_owner = owner
-        event_kind = "agent_card_effect_resolved"
+        event_kind = (
+            "agent_card_effect_resolved"
+            if owner.influence.bene_gesserit >= 2
+            else "agent_card_effect_unavailable"
+        )
     elif (
         effect
         is PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO
     ):
-        if owner.influence.bene_gesserit < 2:
-            raise RuntimeError("conditional Agent effect is not available")
-        next_owner, recruited = recruit_troops(owner, 1)
-        previous = context.get("troops_recruited")
-        if isinstance(previous, bool) or not isinstance(previous, int):
-            raise RuntimeError("Agent-turn effect frame has invalid recruit count")
-        context["troops_recruited"] = previous + recruited
-        event_kind = "agent_card_effect_resolved"
+        if owner.influence.bene_gesserit >= 2:
+            next_owner, recruited = recruit_troops(owner, 1)
+            previous = context.get("troops_recruited")
+            if isinstance(previous, bool) or not isinstance(previous, int):
+                raise RuntimeError("Agent-turn effect frame has invalid recruit count")
+            context["troops_recruited"] = previous + recruited
+            event_kind = "agent_card_effect_resolved"
+        else:
+            next_owner = owner
+            event_kind = "agent_card_effect_unavailable"
     elif effect is PersonalCardAgentEffect.GAIN_SPICE_IF_MAKER_SPACE:
         space_id = context.get("space_id")
         if not isinstance(space_id, str) or not BOARD_SPACES_BY_ID[space_id].maker:
@@ -1820,7 +1828,7 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             draw_count = min(len(owner.completed_contract_ids) // 2, 2)
         else:
             draw_count = 1
-        if draw_count == 0:
+        if draw_count == 0 or event_kind == "agent_card_effect_unavailable":
             return RuleResult(state=next_state, events=(event,))
         draw = draw_or_request_personal_cards(
             next_state,
