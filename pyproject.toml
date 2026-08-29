@@ -12,6 +12,7 @@ dependencies = []
 [project.scripts]
 dune-imperium-audit-diu = "dune_imperium.cli.diu_audit:main"
 dune-imperium-debug = "dune_imperium.cli.debug:main"
+dune-imperium-sweep = "dune_imperium.cli.sweep:main"
 
 [project.optional-dependencies]
 rl = [
