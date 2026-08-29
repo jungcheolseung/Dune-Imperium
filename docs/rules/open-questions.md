@@ -102,6 +102,23 @@
 - 필요한 답: 학습 환경의 Leader selection을 공식 setup 범위에서 어떻게
   표준화할지 별도 ruleset option으로 명시해야 한다. 이는 공식 규칙이라고
   표시해서는 안 된다.
+- 구현 convention(2026-08-30, ruleset option — 공식 규칙 아님): **6종
+  공개 draft**.
+  1. 사용 룰셋의 합법 Leader 전체(기본 8종, CHOAM 켜면 Shaddam 포함
+     9종)에서 무작위로 6종을 뽑아 즉시 전원에게 공개한다(seeded chance로
+     replay 가능하게).
+  2. Objective 배분으로 First Player가 정해진 뒤, 라운드 1 turn 순서의
+     **역순**(마지막 turn 플레이어부터 시작해 First Player가 마지막)으로 한
+     명씩 남은 pool에서 공개 선택한다.
+  3. 모든 선택은 공개 정보이며, 선택되지 않은 2종은 그 게임에서 쓰지
+     않는다(공개).
+  - 공식 setup은 Leader 선택(`[Main p. 4]`)이 Objective/First Player
+    결정(`[Main p. 5]`)보다 앞이지만, 이 convention은 pick 순서를 정의하기
+    위해 Leader 선택을 First Player 확정 뒤로 옮긴다. 두 단계 모두 공개
+    정보만 다루므로 정보 흐름은 달라지지 않는다.
+  - 엔진에는 ruleset option으로 구현하고, 기존 고정 배정(테스트·sweep의
+    `DEFAULT_LEADER_IDS`) 경로는 재현성 용도로 유지한다. 공식 draft 절차가
+    발표되면 재검토한다.
 
 ## OQ-008 — Control bonus와 방문자 효과의 상대 순서
 

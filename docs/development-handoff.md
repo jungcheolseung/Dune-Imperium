@@ -130,21 +130,29 @@ M7 완주 검증, M8 CHOAM), **다음은 M11**(계획 조정으로 M9·M10보다
      위에 만들고 불러오기는 `replay_game` 재현으로 검증한다. 직렬화 포맷은
      설계 결정으로 남아 있다.
    - 카드 이미지는 이용 조건 확정 전이므로 텍스트 표현을 기본으로 한다
-     (AGENTS.md 이미지 정책). Leader 선택 UI는 OQ-007 미해결이라 ruleset
-     option으로 명시한다. 현재 엔진 기본은 `DEFAULT_LEADER_IDS` 4종
-     고정이다(`rules/engine.py`). web 스택 선택과 `ui` optional extra
-     추가는 구현 시작 시 결정한다.
+     (AGENTS.md 이미지 정책). Leader 선택은 OQ-007의 **6종 공개 draft
+     convention**(2026-08-30 확정: 합법 Leader 중 무작위 6종 즉시 공개 →
+     First Player 확정 뒤 turn 역순 pick, First Player가 마지막, 전부 공개)
+     을 ruleset option으로 구현한다. 현재 엔진 기본인 `DEFAULT_LEADER_IDS`
+     4종 고정(`rules/engine.py`)은 테스트·sweep 재현성용으로 유지한다. web
+     스택 선택과 `ui` optional extra 추가는 구현 시작 시 결정한다.
    - 제안 착수 슬라이스 순서(각각 검증·커밋 단위):
      1. 간단한 규칙 기반 heuristic agent + 단위 테스트. random과 같은
         `choose_action` 계약을 지키고, sweep/러너에 꽂아 완주 soak으로
         검증한다(M9 baseline 재사용을 docstring에 명시).
-     2. web 스택 결정 + 게임 세션 서버: 새 게임 생성(설정: seed,
-        `choam_module`, 좌석, AI 배정), 사람 좌석의 `PlayerView` 직렬화
-        조회, 합법 행동 목록 제공, 행동 적용, AI·chance 자동 진행. 엔진
-        공개 API만 사용하고 서버 자체 규칙 로직은 두지 않는다.
-     3. 최소 브라우저 UI: 텍스트 카드 표현으로 설정부터 최종 점수까지 한
-        게임 완주. 결정 frame kind별 프롬프트 표시.
-     4. 저장/불러오기(`GameReplay` 직렬화 + `replay_game` 검증)와 종료 후
+     2. Leader draft convention을 엔진 setup에 구현: 6종 추출은 seeded
+        chance, pick은 turn 역순의 player decision. 새 결정 경계는 관례대로
+        `FrameKind` → frame `kind` → dispatcher 표 → codec(v78 예상, Leader
+        pick 템플릿 추가) 순으로 넣고, ruleset option으로 켠다. 관측에는
+        공개 pool·pick 결과를 추가한다(`OBSERVATION_VERSION` 상향).
+     3. web 스택 결정 + 게임 세션 서버: 새 게임 생성(설정: seed,
+        `choam_module`, leader draft 여부, 좌석, AI 배정), 사람 좌석의
+        `PlayerView` 직렬화 조회, 합법 행동 목록 제공, 행동 적용, AI·chance
+        자동 진행. 엔진 공개 API만 사용하고 서버 자체 규칙 로직은 두지
+        않는다.
+     4. 최소 브라우저 UI: 텍스트 카드 표현으로 설정(leader draft 포함)부터
+        최종 점수까지 한 게임 완주. 결정 frame kind별 프롬프트 표시.
+     5. 저장/불러오기(`GameReplay` 직렬화 + `replay_game` 검증)와 종료 후
         replay 검토 화면.
 2. **M9 평가 러너와 baseline.** 여러 게임을 병렬 구동하고 정책 추론만
    batch하는 self-play 러너, random/heuristic(M11 상대에서 출발)/rollout
@@ -231,6 +239,13 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에
   방침(번호 유지, 나열 순서 = 구현 순서)은 `implementation-plan.md` 마일스톤
   절 서두에 있다. UI 형태는 로컬 웹 UI로, 초기 AI 상대는 random + 간단
   heuristic(M9 재사용)으로 확정했다.
+- Leader 선택 절차를 OQ-007의 구현 convention으로 확정했다: 합법 Leader 중
+  무작위 6종을 즉시 공개로 뽑고, First Player 확정 뒤 turn 역순으로 한
+  명씩 공개 pick(First Player가 마지막), 미선택 2종은 미사용. 공식 setup의
+  Leader 단계(`[Main p. 4]`)를 First Player 결정 뒤로 옮기는 ruleset
+  option이며 공식 규칙이 아니다. 세부와 구현 지침은
+  [`rules/open-questions.md`](rules/open-questions.md#oq-007--leader-선택-절차)에
+  있다.
 
 ## 2026-08-30 M7 검증 sweep 세션 요약
 

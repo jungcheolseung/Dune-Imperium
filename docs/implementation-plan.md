@@ -400,8 +400,10 @@ UI는 엔진의 공개 API(`reset`/`current_decision`/`legal_actions`/`apply`/
 - 카드 이미지를 표시할 경우 이용 조건과 배포 방식을 먼저 확정한다. 확정
   전에는 카드 텍스트 표현을 기본으로 한다.
 - AI 결정 설명은 실제 관측과 합법 행동만 사용하도록 한다.
-- Leader 선택 절차 표준화는 OQ-007이 미해결이므로 UI의 선택 방식은 ruleset
-  option으로 명시하고 공식 규칙처럼 적지 않는다.
+- Leader 선택은 OQ-007의 6종 공개 draft convention(합법 Leader 중 무작위
+  6종을 공개로 뽑고, First Player 확정 뒤 turn 역순으로 pick, First
+  Player가 마지막)을 ruleset option으로 구현한다. 공식 규칙이 아님을
+  명시하고, 고정 배정 경로는 테스트·재현성용으로 유지한다.
 
 완료 조건: 사람이 설정부터 최종 점수까지 완전한 게임을 안정적으로 플레이할 수
 있다.
