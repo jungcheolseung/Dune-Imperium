@@ -117,7 +117,7 @@ from a player's personal deck. General Agent, Reveal, and deck-building rules in
 
 ## Deferred boundaries
 
-- Signet Ring remains blocked on Leader ability implementation.
+- Signet Ring resolves through per-Leader ability data (`rules/leader_abilities.py`, [leaders.md](leaders.md)); seats whose Leader is not implemented yet still have their Signet Ring placements withheld.
 - Every Reveal choice used by the fifty-four transcribed shared cards has a
   serial or atomic decision path.
 - Acquisition bonuses without a local typed effect remain unavailable.

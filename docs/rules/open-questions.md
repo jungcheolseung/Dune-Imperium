@@ -226,3 +226,54 @@
   네 판정 모두 프로젝트 convention이며 `tests/unit/rules/test_intrigue.py`로
   고정한다.
 
+
+## OQ-017 — Feyd token이 맨 오른쪽에 있을 때의 Signet 보상
+
+- 상태: `OPEN`
+- Personal Training은 "Move your Feyd token one space to the right on your
+  Training track, earning the reward on the new space"라고 인쇄돼 있고, Main은
+  token이 맨 오른쪽 칸에 도달하면 게임 끝까지 그 자리에 남는다고만 말한다.
+  token이 더 이동할 수 없을 때 Signet Ring play가 무언가를 주는지는 명시하지
+  않는다. `[Feyd-Rautha Harkonnen card]` `[Main p. 17]`
+- 필요한 답: 맨 오른쪽 칸에서 Signet Ring을 냈을 때 보상 유무의 공식 판정.
+- 구현 convention(2026-08-29): 카드가 보상을 "새 칸"에 결부시키므로 이동이
+  없으면 보상도 없다. Signet Ring 카드 자체는 여전히 Agent를 보낸다.
+  `tests/unit/rules/test_leader_abilities.py`로 고정한다.
+
+## OQ-018 — memory 0개일 때의 Other Memories 사용 가능 여부
+
+- 상태: `OPEN`
+- Other Memories는 "you may return all your memories to your supply, drawing
+  a card for each one. Then flip this Leader over"라고 인쇄돼 있다. memory가
+  하나도 없을 때 이 능력을 써서(아무것도 되돌리지 않고) flip만 할 수 있는지는
+  공식 문서에 없다. `[Lady Jessica card]`
+- 필요한 답: memory 0개 상태에서 능력 사용(즉 flip)이 허용되는지의 공식 판정.
+- 구현 convention(2026-08-29): "all your memories"는 0개를 포함하는 것으로
+  읽어 사용을 허용한다(retreat의 `any number`가 0을 허용하는 FAQ 판정과 같은
+  방향, `[FAQ p. 3]` 참고). draw는 0장이고 flip은 일어난다.
+
+## OQ-019 — Reverend Mother 반복의 적용 범위
+
+- 상태: `OPEN`
+- Reverend Mother는 "repeat the effects printed on that space"라고 인쇄돼
+  있다. Faction board space 방문으로 얻는 Influence 1이 "그 space에 인쇄된
+  효과"에 포함되는지, space의 비용을 다시 지불해야 하는지는 공식 문서에 없다.
+  `[Reverend Mother Jessica card]`
+- 필요한 답: 반복 대상의 정확한 범위에 대한 공식 판정.
+- 구현 convention(2026-08-29): Influence는 "Faction의 board space에 Agent를
+  보내면" 얻는 Faction 규칙이지 space의 인쇄 효과가 아니므로 반복하지 않는다
+  `[Main p. 7]`. space 비용도 효과가 아니므로 재지불하지 않고, 반복은 인쇄
+  효과 상자(board 효과 경로)만 다시 해결한다.
+  `tests/unit/rules/test_leader_abilities.py`로 고정한다.
+
+## OQ-020 — Always Smiling 부여 뒤 strength가 내려간 경우
+
+- 상태: `OPEN`
+- Always Smiling은 "Reveal Turn: If you have 6* or more strength in the
+  Conflict: 1 Persuasion"이다. Persuasion을 부여받은 뒤 같은 Reveal turn에
+  retreat 등으로 strength가 6 미만으로 내려가면 Persuasion을 회수해야 하는지는
+  공식 문서에 없다. `[Gurney Halleck card]`
+- 필요한 답: 조건이 사후에 깨졌을 때의 공식 판정.
+- 구현 convention(2026-08-29): 조건이 처음 성립한 시점에 1회 부여하고 회수하지
+  않는다. Persuasion은 이미 지출됐을 수 있는 turn 자원이라 회수가 정의되지
+  않기 때문이다. `tests/unit/rules/test_leader_abilities.py`로 고정한다.
