@@ -1,9 +1,9 @@
-"""CLI for the M7 random full-game verification sweep."""
+"""CLI for the M7 full-game verification sweep."""
 
 import argparse
 from collections.abc import Sequence
 
-from dune_imperium.simulation.sweep import run_sweep, sweep_specs
+from dune_imperium.simulation.sweep import POLICIES, run_sweep, sweep_specs
 
 _RULESETS = {
     "base": (False,),
@@ -16,8 +16,9 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="dune-imperium-sweep",
         description=(
-            "Play seeded random four-player games to FINISHED while checking "
-            "card conservation, deadlocks, observation privacy, and replays."
+            "Play seeded four-player games to FINISHED with one baseline "
+            "policy while checking card conservation, deadlocks, observation "
+            "privacy, and replays."
         ),
     )
     parser.add_argument(
@@ -43,6 +44,12 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=700_000,
         help="policy seed = offset + game seed (default: 700000)",
+    )
+    parser.add_argument(
+        "--policy",
+        choices=sorted(POLICIES),
+        default="random",
+        help="baseline policy driving every seat (default: random)",
     )
     parser.add_argument(
         "--workers",
@@ -83,6 +90,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         max_steps=arguments.max_steps,
         privacy_interval=arguments.privacy_interval,
         verify_replay=not arguments.skip_replay,
+        policy=arguments.policy,
     )
     report = run_sweep(specs, workers=arguments.workers)
 

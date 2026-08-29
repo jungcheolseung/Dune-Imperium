@@ -1,10 +1,13 @@
-"""Integration coverage for the full-game random runner."""
+"""Integration coverage for the full-game runners."""
+
+import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents import HeuristicAgent, RandomAgent
 from dune_imperium.core import GamePhase, replay_game
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.endgame import final_standings
-from dune_imperium.simulation import run_random_game
+from dune_imperium.simulation import run_policy_game, run_random_game
 
 
 def test_random_game_runs_to_finished_and_replays() -> None:
@@ -46,3 +49,44 @@ def test_choam_random_game_runs_to_finished_and_replays() -> None:
     assert result.state.phase is GamePhase.FINISHED
     assert result.replay.ruleset == config
     replay_game(engine, result.replay)
+
+
+def test_random_game_delegates_to_the_policy_runner() -> None:
+    engine = UprisingRulesEngine()
+    config = RulesetConfig()
+    agents = tuple(RandomAgent(seed=3014 + seat) for seat in range(config.players))
+
+    baseline = run_random_game(engine, config, game_seed=14, policy_seed=3014)
+    explicit = run_policy_game(engine, config, game_seed=14, agents=agents)
+
+    assert explicit.replay.steps == baseline.replay.steps
+    assert explicit.replay.expected_state_hash == (
+        baseline.replay.expected_state_hash
+    )
+
+
+@pytest.mark.parametrize("choam_module", [False, True])
+def test_heuristic_game_runs_to_finished_and_replays(choam_module: bool) -> None:
+    engine = UprisingRulesEngine()
+    config = RulesetConfig(choam_module=choam_module)
+    agents = tuple(HeuristicAgent(seed=3015 + seat) for seat in range(config.players))
+
+    result = run_policy_game(engine, config, game_seed=15, agents=agents)
+
+    assert result.state.phase is GamePhase.FINISHED
+    assert [standing.rank for standing in result.standings] == [1, 2, 3, 4]
+    replayed = replay_game(engine, result.replay)
+    assert replayed.phase is GamePhase.FINISHED
+
+
+def test_policy_runner_requires_one_agent_per_seat() -> None:
+    engine = UprisingRulesEngine()
+    config = RulesetConfig()
+
+    with pytest.raises(ValueError, match="one agent per configured seat"):
+        run_policy_game(
+            engine,
+            config,
+            game_seed=16,
+            agents=(HeuristicAgent(seed=1),),
+        )

@@ -1,8 +1,9 @@
 """Headless runners built on the public rules-engine contract."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
-from dune_imperium.agents import RandomAgent
+from dune_imperium.agents import Agent, RandomAgent
 from dune_imperium.config import RulesetConfig
 from dune_imperium.core.chance import ChanceResolver
 from dune_imperium.core.decisions import ChanceDecision, PlayerDecision
@@ -80,12 +81,35 @@ def run_random_game(
 
     if policy_seed < 0:
         raise ValueError("policy seed must not be negative")
-    if max_steps < 1:
-        raise ValueError("max_steps must be positive")
-
     agents = tuple(
         RandomAgent(seed=policy_seed + player) for player in range(config.players)
     )
+    return run_policy_game(engine, config, game_seed, agents, max_steps=max_steps)
+
+
+def run_policy_game(
+    engine: RulesEngine,
+    config: RulesetConfig,
+    game_seed: int,
+    agents: Sequence[Agent],
+    *,
+    max_steps: int = 30_000,
+) -> GameSimulation:
+    """Run one full game with a caller-supplied agent per seat.
+
+    Every agent only sees its own ``PlayerView`` and legal actions, so the
+    M11 play interface and the M9 evaluation runner plug in through the same
+    ``choose_action`` contract that ``run_random_game`` uses. Chance
+    decisions resolve through a ``ChanceResolver`` seeded with ``game_seed``,
+    and the returned replay re-derives the same final state.
+    """
+
+    if len(agents) != config.players:
+        raise ValueError("exactly one agent per configured seat is required")
+    if max_steps < 1:
+        raise ValueError("max_steps must be positive")
+
+    seat_agents = tuple(agents)
     state = engine.reset(config, game_seed)
     chance = ChanceResolver(seed=game_seed)
     steps: list[ReplayStep] = []
@@ -97,7 +121,7 @@ def run_random_game(
                 standings=final_standings(state),
                 replay=_replay_record(config, game_seed, steps, state),
             )
-        state = _advance_one_decision(engine, state, agents, chance, steps)
+        state = _advance_one_decision(engine, state, seat_agents, chance, steps)
 
     raise RuntimeError(f"the game exceeded the {max_steps}-action limit")
 
@@ -105,7 +129,7 @@ def run_random_game(
 def _advance_one_decision(
     engine: RulesEngine,
     state: GameState,
-    agents: tuple[RandomAgent, ...],
+    agents: tuple[Agent, ...],
     chance: ChanceResolver,
     steps: list[ReplayStep],
 ) -> GameState:
@@ -115,7 +139,7 @@ def _advance_one_decision(
         steps.append(outcome)
         return engine.apply(state, outcome).state
     if not isinstance(decision, PlayerDecision):
-        raise RuntimeError("the random runner requires a pending decision")
+        raise RuntimeError("the runner requires a pending decision")
     actions = engine.legal_actions(state, decision.owner)
     if not actions:
         raise RuntimeError("current player decision has no legal actions")

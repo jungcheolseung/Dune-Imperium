@@ -9,6 +9,7 @@ from dune_imperium.simulation.invariants import (
 from dune_imperium.simulation.runner import (
     GameSimulation,
     RoundSimulation,
+    run_policy_game,
     run_random_game,
     run_random_round,
 )
@@ -32,6 +33,7 @@ __all__ = [
     "check_observation_privacy",
     "check_state_invariants",
     "run_checked_game",
+    "run_policy_game",
     "run_random_game",
     "run_random_round",
     "run_sweep",

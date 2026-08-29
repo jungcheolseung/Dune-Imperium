@@ -1,20 +1,22 @@
-"""Large-scale random full-game verification sweeps for M7.
+"""Large-scale full-game verification sweeps (M7).
 
-``run_checked_game`` plays one seeded random game to ``FINISHED`` while
-checking, after every transition, the global card-conservation invariants
-and, at sampled player decisions, the observation-privacy invariant. It
-also detects deadlocks (a pending player decision with no legal action or
-a game that never finishes) and verifies the recorded replay.
-``run_sweep`` fans a seed range out over worker processes and aggregates
-one report, which the ``dune-imperium-sweep`` CLI prints.
+``run_checked_game`` plays one seeded game to ``FINISHED`` — every seat
+driven by one selectable baseline policy — while checking, after every
+transition, the global card-conservation invariants and, at sampled player
+decisions, the observation-privacy invariant. It also detects deadlocks (a
+pending player decision with no legal action or a game that never finishes)
+and verifies the recorded replay. ``run_sweep`` fans a seed range out over
+worker processes and aggregates one report, which the
+``dune-imperium-sweep`` CLI prints.
 """
 
 import time
 from collections.abc import Iterable
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
+from typing import Final
 
-from dune_imperium.agents import RandomAgent
+from dune_imperium.agents import Agent, HeuristicAgent, RandomAgent
 from dune_imperium.config import RulesetConfig
 from dune_imperium.core.chance import ChanceResolver
 from dune_imperium.core.decisions import ChanceDecision, PlayerDecision
@@ -28,6 +30,12 @@ from dune_imperium.simulation.invariants import (
     check_observation_privacy,
     check_state_invariants,
 )
+
+# Seed-constructible policies a sweep can drive every seat with.
+POLICIES: Final[dict[str, type[RandomAgent] | type[HeuristicAgent]]] = {
+    "random": RandomAgent,
+    "heuristic": HeuristicAgent,
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,13 +81,16 @@ def run_checked_game(
     max_steps: int = 30_000,
     privacy_interval: int = 25,
     verify_replay: bool = True,
+    policy: str = "random",
 ) -> GameCheckReport:
-    """Play one random game to FINISHED under every invariant check."""
+    """Play one game to FINISHED under every invariant check."""
 
     if max_steps < 1:
         raise ValueError("max_steps must be positive")
     if privacy_interval < 0:
         raise ValueError("privacy_interval must not be negative")
+    if policy not in POLICIES:
+        raise ValueError(f"unknown sweep policy: {policy!r}")
 
     engine = UprisingRulesEngine()
     state = engine.reset(config, game_seed)
@@ -88,8 +99,9 @@ def run_checked_game(
     if privacy_interval:
         check_observation_privacy(state)
 
-    agents = tuple(
-        RandomAgent(seed=policy_seed + player) for player in range(config.players)
+    agents: tuple[Agent, ...] = tuple(
+        POLICIES[policy](seed=policy_seed + player)
+        for player in range(config.players)
     )
     chance = ChanceResolver(seed=game_seed)
     steps: list[ReplayStep] = []
@@ -160,6 +172,7 @@ class _GameSpec:
     max_steps: int
     privacy_interval: int
     verify_replay: bool
+    policy: str = "random"
 
 
 def _run_spec(spec: _GameSpec) -> GameCheckReport | SweepFailure:
@@ -172,6 +185,7 @@ def _run_spec(spec: _GameSpec) -> GameCheckReport | SweepFailure:
             max_steps=spec.max_steps,
             privacy_interval=spec.privacy_interval,
             verify_replay=spec.verify_replay,
+            policy=spec.policy,
         )
     except Exception as error:  # noqa: BLE001 - every failure belongs in the report
         return SweepFailure(
@@ -214,11 +228,14 @@ def sweep_specs(
     max_steps: int = 30_000,
     privacy_interval: int = 25,
     verify_replay: bool = True,
+    policy: str = "random",
 ) -> tuple[_GameSpec, ...]:
     """Build the seeded per-game specs for a sweep."""
 
     if games < 1:
         raise ValueError("a sweep needs at least one game")
+    if policy not in POLICIES:
+        raise ValueError(f"unknown sweep policy: {policy!r}")
     return tuple(
         _GameSpec(
             choam_module=choam_module,
@@ -227,6 +244,7 @@ def sweep_specs(
             max_steps=max_steps,
             privacy_interval=privacy_interval,
             verify_replay=verify_replay,
+            policy=policy,
         )
         for choam_module in rulesets
         for seed in range(start_seed, start_seed + games)

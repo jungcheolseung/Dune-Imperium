@@ -35,6 +35,27 @@ def test_checked_game_passes_every_invariant() -> None:
     assert 0 <= report.winner < 4
 
 
+def test_checked_heuristic_game_passes_every_invariant() -> None:
+    report = run_checked_game(
+        RulesetConfig(choam_module=True),
+        game_seed=61,
+        policy_seed=7061,
+        privacy_interval=5,
+        policy="heuristic",
+    )
+
+    assert report.ruleset == "uprising-4p-choam"
+    assert report.steps > 100
+    assert 0 <= report.winner < 4
+
+
+def test_unknown_sweep_policy_is_rejected() -> None:
+    with pytest.raises(ValueError, match="unknown sweep policy"):
+        run_checked_game(RulesetConfig(), game_seed=1, policy_seed=1, policy="best")
+    with pytest.raises(ValueError, match="unknown sweep policy"):
+        sweep_specs(games=1, rulesets=(False,), start_seed=1, policy="best")
+
+
 def test_small_sweep_covers_both_rulesets() -> None:
     specs = sweep_specs(
         games=1,
