@@ -73,7 +73,7 @@ Main p. 20은 FAQ를 적용하기 전의 일반 용어 기준이다. 아래 항�
 | Feyd-Rautha Harkonnen | setup 때 Feyd token을 Leader의 Training track 맨 왼쪽에 둔다. 맨 오른쪽에 도달한 뒤에는 그 위치에 계속 둔다. [Main p. 17] | `content/uprising/leaders.py`, [leaders audit](../implementation-audits/leaders.md), OQ-017 |
 | Lady Jessica | setup은 Reverend Mother Jessica가 아니라 Lady Jessica 면으로 시작한다. [Main p. 17] | `rules/setup.py`의 leader_face_id 배정과 `tests/unit/rules/test_leader_abilities.py` |
 | Lady Margot Fenring / Princess Irulan | 한 번에 여러 Influence를 얻어 2를 지나쳐도 `reach 2`다. Influence를 잃은 뒤 다시 올리면 같은 Faction에서 다시 2에 도달할 수 있고, 내려가는 중에는 `reach`가 발생하지 않는다. [Main p. 17] | [uprising-systems.md](uprising-systems.md)와 `rules/influence.py`의 reach-2 Leader 보너스, `tests/unit/rules/test_leader_abilities.py` |
-| Shaddam Corrino IV | Signet Ring을 play해 Agent를 보낼 때 `Emperor of the Known Universe`의 unit deploy 제한은 즉시 적용된다. [Main p. 17] | content manifest와 Leader scenario test |
+| Shaddam Corrino IV | Signet Ring을 play해 Agent를 보낼 때 `Emperor of the Known Universe`의 unit deploy 제한은 즉시 적용된다. [Main p. 17] | `rules/agent_turn.py`의 배치 시점 차단과 [leaders audit](../implementation-audits/leaders.md), `tests/unit/rules/test_leader_abilities.py` |
 | Spacing Guild’s Favor | Clean Up으로 in-play 카드가 discard pile로 이동하는 것은 이 카드의 discard 능력을 발동하지 않는다. hand에서 discard될 때만 발동한다. [Main p. 17] | [player-turns.md](player-turns.md)의 zone-move reason과 card scenario test |
 
 ## 4. FAQ named-card 판정의 소속 게이트
@@ -84,7 +84,7 @@ Main p. 20은 FAQ를 적용하기 전의 일반 용어 기준이다. 아래 항�
 | --- | --- | --- | --- |
 | The Spice Must Flow | Uprising 기본 Reserve card. `[Main p. 3]` | acquire할 때 얻은 VP는 card를 나중에 trash해도 유지한다. `[FAQ p. 4]` | [player-turns.md](player-turns.md); card 수치와 test는 content manifest |
 | Reverend Mother Jessica | Uprising 기본 Leader인 Lady Jessica의 반대 면. module 전용 Leader는 Shaddam이다. `[Main pp. 4, 16-17]` | 이 면으로 flip한 바로 그 turn에 Reverend Mother 능력을 사용할 수 있다. `[FAQ p. 3]` | `rules/leader_abilities.py`의 Other Memories flip과 [leaders audit](../implementation-audits/leaders.md) |
-| Shaddam Corrino IV | CHOAM Module 전용 Leader. `[Main pp. 4, 16]` | Sardaukar contract는 처음부터 보유하지 않으며 일반 contract 대신 set-aside contract를 얻는 선택지다. `Emperor of the Known Universe`는 발동한 turn에만 적용된다. `[FAQ p. 3]` | [choam-module.md](choam-module.md)와 Leader content manifest |
+| Shaddam Corrino IV | CHOAM Module 전용 Leader. `[Main pp. 4, 16]` | Sardaukar contract는 처음부터 보유하지 않으며 일반 contract 대신 set-aside contract를 얻는 선택지다. `Emperor of the Known Universe`는 발동한 turn에만 적용된다. `[FAQ p. 3]` | [choam-module.md](choam-module.md), `rules/contracts.py`의 set-aside 선택, [leaders audit](../implementation-audits/leaders.md) |
 
 ### content manifest 전사 시 확인: Uprising 연결은 명시됨
 

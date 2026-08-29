@@ -26,7 +26,9 @@ visual reference.
 
 ## Deferred boundaries
 
-- Shaddam Corrino IV's set-aside Sardaukar Contract alternative.
+- An official answer for the set-aside access after market exhaustion under
+  OQ-021; Shaddam's set-aside Sardaukar Contract alternative itself is
+  implemented (see the [Leader audit](leaders.md)).
 - An official answer for Gather Intelligence versus Contract completion under
   OQ-011; the implemented project convention remains clearly labeled until then.
 - Completed Contract identity visibility under OQ-010.

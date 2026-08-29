@@ -277,3 +277,21 @@
 - 구현 convention(2026-08-29): 조건이 처음 성립한 시점에 1회 부여하고 회수하지
   않는다. Persuasion은 이미 지출됐을 수 있는 turn 자원이라 회수가 정의되지
   않기 때문이다. `tests/unit/rules/test_leader_abilities.py`로 고정한다.
+
+## OQ-021 — 시장이 빈 뒤의 set-aside Sardaukar contract 접근
+
+- 상태: `OPEN`
+- Shaddam의 카드는 "Only you can acquire them during the game"이라 하고, FAQ는
+  Sardaukar Commander가 "일반적으로 얻을 수 있는 contract 대신(in place of)"
+  set-aside contract를 acquire할 선택권을 준다고 한다. Main은 "모든 contract를
+  플레이어들이 가져갔다면" contract 아이콘이 2 Solari로 되돌아간다고 한다.
+  face-up 시장과 bank가 모두 비었지만 set-aside가 남아 있을 때 Shaddam의
+  contract 아이콘이 여전히 set-aside를 가져올 수 있는지는 어느 문서도 직접
+  답하지 않는다. `[Shaddam Corrino IV card]` `[FAQ p. 3]` `[Main p. 16]`
+- 필요한 답: 시장 고갈 후 set-aside 접근 가능 여부의 공식 판정.
+- 구현 convention(2026-08-30): FAQ의 "in place of one of the generally
+  available contracts"를 따라 set-aside 선택은 열린 contract 시장 frame에서만
+  제시하고, 시장이 고갈되면 Shaddam의 contract 아이콘도 다른 플레이어처럼
+  2 Solari로 전환한다. 반대 해석(그의 아이콘은 set-aside가 남는 한 되돌아가지
+  않음)도 가능하므로 공식 판정이 나오면 재검토한다.
+  `tests/unit/rules/test_leader_abilities.py`로 고정한다.

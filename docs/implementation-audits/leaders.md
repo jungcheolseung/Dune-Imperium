@@ -1,6 +1,6 @@
 # Leader ability audit
 
-기준일: 2026-08-29 — 기본 게임 8종 구현 완료, CHOAM 전용 Shaddam만 남음.
+기준일: 2026-08-30 — 인쇄된 Leader 9종(기본 8 + CHOAM 전용 Shaddam) 구현 완료.
 
 Leader identity와 setup은 `content/uprising/leaders.py`, 능력 규칙은
 `rules/leader_abilities.py`가 소유한다. Signet Ring 일반 규칙은
@@ -22,7 +22,7 @@ Leader identity와 setup은 `content/uprising/leaders.py`, 능력 규칙은
 Landsraad, 네 Faction 문양)은 공식 Board Space Guide p. 1의 space별 tile
 artwork와 대조해 확정했다.
 
-## 구현된 Leader (2026-08-29)
+## 구현된 Leader
 
 ### Gurney Halleck
 
@@ -148,11 +148,30 @@ artwork와 대조해 확정했다.
   관측소에는 후속이 없다. 관측소 13곳 > Spy 12개이므로 무제한 배치는 항상
   가능하다.
 
+### Shaddam Corrino IV (CHOAM 전용, 2026-08-30)
+
+- **Sardaukar Commander** — "Set aside both Sardaukar contracts. Only you
+  can acquire them during the game." Shaddam이 선택된 CHOAM setup은 셔플
+  전에 Sardaukar 2장을 `GameState.sardaukar_contract_ids`로 빼고 남은
+  18장을 섞는다(6인 보충 규칙의 base-CHOAM setup 지시와 일치). contract
+  시장 frame이 열려 있는 동안 Shaddam의 선택지에 set-aside가 추가되고,
+  가져가면 face-up 대신이므로 시장 보충이 없다 `[FAQ p. 3]`. 시장 고갈 시
+  아이콘의 2 Solari 전환은 Shaddam에게도 적용한다(OQ-021 convention).
+- **Emperor of the Known Universe(Signet)** — "Units can't be deployed to
+  the Conflict this turn." + (Solari 1 + troop 1) —OR— (Solari 3 → 임의
+  Faction Influence 1). 제한은 Signet Ring 배치 즉시 발효되고
+  `[Main p. 17]` 그 turn에만 적용된다 `[FAQ p. 3]`. frame context의
+  `units_deploy_blocked`가 Combat 배치(pending 자체를 열지 않음), Maker
+  sandworm 소환, Plot Intrigue의 배치 option(Detonation)을 막고, Intrigue
+  SummonSandworm은 Shield Wall 규칙과 같은 무효 경로로 처리한다. 보상
+  선택은 의무이며 Solari 3 미만이면 troop 옵션만 제시된다. recruit된
+  troop은 같은 제한 때문에 그 turn에 배치할 수 없다.
+
 ## 남은 Leader
 
-Shaddam Corrino IV는 CHOAM 전용이며 set-aside Sardaukar Contract
-경로(OQ-010, OQ-011 참고)와 함께 구현한다 `[Main p. 17]` `[FAQ p. 3]`.
-기본 게임 8종의 Leader는 모두 구현됐다.
+없음 — 인쇄된 Uprising Leader 9종(기본 8 + CHOAM 전용 Shaddam)의 능력과
+Signet Ring이 모두 구현됐다. Sardaukar II contract의 Agent recall 보상은
+[contracts audit](contracts.md)의 2026-08-30 manifest 수정과 함께 들어갔다.
 
 ## 회귀 테스트
 

@@ -66,13 +66,15 @@ CHOAM Module은 Uprising에 포함된 mini-expansion이다. 공식 룰북은 먼
 
 ## Shaddam 관련 경계
 
-Shaddam의 setup 구성물과 두 능력은 Leader 및 별도 Sardaukar contract의 실제
-card text를 콘텐츠 명세에 전사한 뒤 구현한다. FAQ는 Sardaukar Commander가
-일반 face-up contract 대신 set-aside Sardaukar contract를 acquire할 선택권을
-주며, 그 contract를 게임 시작 시 이미 보유한 것으로 보지 않는다고 명확히 한다.
-Emperor of the Known Universe의 제한은 발동한 **그 turn**에만 적용된다.
-Signet Ring으로 Agent를 보낼 때 그 제한은 즉시 적용된다. `[Main p. 17]`
-`[FAQ p. 3]`
+Shaddam이 선택된 setup은 셔플 전에 두 Sardaukar contract를 set aside하며,
+그와만 acquire할 수 있다(게임 시작 시 보유하는 것은 아니다). FAQ는 Sardaukar
+Commander가 일반 face-up contract 대신 set-aside contract를 acquire할
+선택권을 준다고 명확히 하고, Emperor of the Known Universe의 제한은 발동한
+**그 turn**에만 적용되며 Signet Ring으로 Agent를 보낼 때 즉시 적용된다.
+`[Main p. 17]` `[FAQ p. 3]` 시장 고갈 뒤의 set-aside 접근은
+[OQ-021](open-questions.md#oq-021--시장이-빈-뒤의-set-aside-sardaukar-contract-접근)의
+convention을 따른다. 구현 세부는
+[Leader audit](../implementation-audits/leaders.md)에 있다.
 
 ## 구현 상태
 
@@ -81,6 +83,6 @@ standard contract 20장의 identity·setup, 공개 시장의 take/refill·고갈
 소급 완료를 막고, Harvest의 그 turn Spice 획득 합계와 The Spice Must Flow acquire
 trigger도 연결한다. CHOAM 전용 Imperium 4종은 completed Contract 수와 같은
 시장 transition을 사용해 Agent·Reveal·acquisition 효과까지 실제 play할 수 있다.
-전용 Intrigue 4종과 Shaddam의 set-aside Sardaukar contract 선택은 각각 Intrigue와
-Leader 구현 단위로 남아 있다. 세부 상태·관측·codec 경계는
+전용 Intrigue 4종과 Shaddam의 set-aside Sardaukar contract 선택까지 실제 play
+된다. 세부 상태·관측·codec 경계는
 [Contract 구현 audit](../implementation-audits/contracts.md)에 기록한다.
