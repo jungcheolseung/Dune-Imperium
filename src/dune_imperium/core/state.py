@@ -52,6 +52,9 @@ class GameState:
     imperium_removed: tuple[str, ...] = ()
     contract_bank: tuple[str, ...] = ()
     face_up_contract_ids: tuple[str, ...] = ()
+    # Contracts set aside during setup for Shaddam Corrino IV; only he can
+    # acquire them [Shaddam Corrino IV card] [FAQ p. 3].
+    sardaukar_contract_ids: tuple[str, ...] = ()
     reserve_stacks: tuple[tuple[str, int], ...] = ()
     shield_wall_present: bool = True
     maker_bonus_spice: tuple[tuple[str, int], ...] = (
@@ -91,6 +94,7 @@ class GameState:
         contracts = (
             *self.contract_bank,
             *self.face_up_contract_ids,
+            *self.sardaukar_contract_ids,
             *(
                 contract_id
                 for player in self.players

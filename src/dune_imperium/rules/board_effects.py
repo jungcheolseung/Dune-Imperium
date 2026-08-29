@@ -21,6 +21,7 @@ from dune_imperium.rules.effects import (
     recruit_troops,
 )
 from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
+from dune_imperium.rules.leader_abilities import units_deployment_blocked
 from dune_imperium.rules.shield_wall import (
     current_conflict_is_shield_wall_protected,
     destroy_shield_wall,
@@ -479,6 +480,9 @@ def legal_maker_space_actions(
         and owner.maker_hooks
         and state.current_conflict_ids
         and not current_conflict_is_shield_wall_protected(state)
+        # A summoned sandworm is immediately deployed [Main p. 20], so the
+        # Emperor of the Known Universe restriction withholds it.
+        and not units_deployment_blocked(state, player)
     ):
         actions.append(
             DomainAction(

@@ -44,6 +44,7 @@ from dune_imperium.rules.effects import (
     recruit_troops,
 )
 from dune_imperium.rules.frames import FrameKind, owned_top_frame, replace_player
+from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
 from dune_imperium.rules.reveal_turn import (
     add_reveal_optional_sword_strength,
@@ -71,6 +72,7 @@ IMPLEMENTED_ABILITY_LEADER_IDS: Final = frozenset(
         "lady_margot_fenring",
         "muad_dib",
         "princess_irulan",
+        "shaddam_corrino_iv",
         "staban_tuek",
     }
 )
@@ -626,6 +628,26 @@ def legal_leader_signet_actions(
             )
         return _leader_spy_placement_actions(state, player, context, None)
 
+    if owner.leader_id == "shaddam_corrino_iv":
+        # Emperor of the Known Universe: choose one Solari and one troop, or
+        # pay three Solari for one Influence of your choice; the deployment
+        # restriction already took effect at placement [Main p. 17].
+        return (
+            DomainAction(action_id="gain_leader_signet_troop", actor=player),
+            *(
+                (
+                    DomainAction(
+                        action_id="choose_leader_signet_influence",
+                        actor=player,
+                        arguments=(("faction", faction.value),),
+                    )
+                    for faction in Faction
+                )
+                if owner.resources.solari >= 3
+                else ()
+            ),
+        )
+
     if owner.leader_id == "princess_irulan":
         # Chronicler's Insight: acquire a card that costs one to hand, or
         # trash a hand card (two Spice if it costs one or more), or neither
@@ -852,6 +874,112 @@ def _apply_staban_bonus_payment(
         payload=(("intrigue", 1), ("player", player), ("solari", 2)),
     )
     return RuleResult(state=next_state, events=(event, *intrigue_draw.events))
+
+
+def apply_shaddam_signet_choice(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Resolve Emperor of the Known Universe's printed choice.
+
+    One Solari and one troop, or three Solari for one Influence of the
+    chosen Faction [Shaddam Corrino IV card].
+    """
+
+    if action not in legal_leader_signet_actions(state, action.actor):
+        raise ValueError("action is not a legal Leader Signet choice")
+    _, context = current_agent_effect_context(state)
+    player = action.actor
+    owner = state.players[player]
+    source = f"round:{state.round_number}:player:{player}:leader_signet"
+    context["pending_agent_effect"] = False
+
+    if action.action_id == "gain_leader_signet_troop":
+        next_owner, recruited = recruit_troops(owner, 1)
+        previous = context.get("troops_recruited")
+        if isinstance(previous, bool) or not isinstance(previous, int):
+            raise RuntimeError("Agent-turn effect frame has invalid recruit count")
+        context["troops_recruited"] = previous + recruited
+        next_owner = replace(
+            next_owner,
+            resources=replace(
+                next_owner.resources,
+                solari=next_owner.resources.solari + 1,
+            ),
+        )
+        next_state = advance_after_effect(
+            state,
+            context,
+            replace_player(state.players, next_owner),
+        )
+        return RuleResult(
+            state=next_state,
+            events=(
+                GameEvent(
+                    event_id=source,
+                    kind="leader_signet_resolved",
+                    payload=(
+                        ("player", player),
+                        ("solari", 1),
+                        ("troops", recruited),
+                    ),
+                ),
+            ),
+        )
+
+    faction_value = dict(action.arguments).get("faction")
+    if not isinstance(faction_value, str):
+        raise RuntimeError("Leader Signet Influence choice has invalid Faction")
+    if owner.resources.solari < 3:
+        raise RuntimeError("the Signet Ring Influence choice requires three Solari")
+    next_owner = replace(
+        owner,
+        resources=replace(owner.resources, solari=owner.resources.solari - 3),
+    )
+    paid = replace(state, players=replace_player(state.players, next_owner))
+    gained = gain_faction_influence(
+        paid,
+        player,
+        Faction(faction_value),
+        1,
+        event_prefix=f"{source}:influence:{faction_value}",
+    )
+    next_state = advance_after_effect(
+        gained.state,
+        context,
+        gained.state.players,
+    )
+    event = GameEvent(
+        event_id=source,
+        kind="leader_signet_resolved",
+        payload=(
+            ("faction", faction_value),
+            ("influence", 1),
+            ("player", player),
+            ("solari", 3),
+        ),
+    )
+    return RuleResult(state=next_state, events=(event, *gained.events))
+
+
+def units_deployment_blocked(state: GameState, player: int) -> bool:
+    """Return whether Emperor of the Known Universe blocks deployment.
+
+    Playing Shaddam's Signet Ring means units can't be deployed to the
+    Conflict for that whole Agent turn, effective from the placement
+    [Shaddam Corrino IV card] [Main p. 17]; the restriction ends with the
+    turn [FAQ p. 3], so it lives in the Agent-turn effect frame.
+    """
+
+    for frame in reversed(state.decision_stack):
+        if frame.kind != FrameKind.AGENT_EFFECTS:
+            continue
+        return (
+            isinstance(frame.decision, PlayerDecision)
+            and frame.decision.owner == player
+            and dict(frame.context).get("units_deploy_blocked") is True
+        )
+    return False
 
 
 def apply_leader_signet_spy(

@@ -34,6 +34,7 @@ from dune_imperium.rules.leader_abilities import (
     apply_leader_signet_acquire,
     apply_leader_signet_payment,
     apply_leader_spy_action,
+    apply_shaddam_signet_choice,
     grant_leader_reveal_passives,
     legal_feyd_track_actions,
     legal_leader_board_repeat_actions,
@@ -161,6 +162,9 @@ def test_fill_coffers_signet_adds_spice_while_holding_an_alliance() -> None:
 
 
 def test_signet_ring_stays_withheld_for_an_unimplemented_leader() -> None:
+    # All nine printed Leaders are implemented; the per-Leader gate still
+    # withholds Signet Ring placements for a seat without an implemented
+    # Leader identity.
     engine = UprisingRulesEngine()
     implemented = _turn_state(
         PlayerState(
@@ -172,7 +176,6 @@ def test_signet_ring_stays_withheld_for_an_unimplemented_leader() -> None:
     unimplemented = _turn_state(
         PlayerState(
             player_id=0,
-            leader_id="shaddam_corrino_iv",
             hand=(_signet_instance(),),
         )
     )
@@ -190,7 +193,6 @@ def test_signet_ring_stays_withheld_for_an_unimplemented_leader() -> None:
 def test_unimplemented_leader_signet_resolution_is_rejected() -> None:
     owner = PlayerState(
         player_id=0,
-        leader_id="shaddam_corrino_iv",
         hand=(_signet_instance(),),
     )
     state = _turn_state(owner)
@@ -1426,3 +1428,286 @@ def test_chroniclers_insight_can_decline_entirely() -> None:
     assert dict(result.state.decision_stack[-1].context)[
         "pending_agent_effect"
     ] is False
+
+
+def _choam_turn_state(owner: PlayerState) -> GameState:
+    return GameState(
+        config=RulesetConfig(choam_module=True),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+
+
+def _shaddam_owner(
+    *,
+    solari: int = 0,
+    hand: tuple[str, ...] = (),
+) -> PlayerState:
+    return PlayerState(
+        player_id=0,
+        leader_id="shaddam_corrino_iv",
+        resources=Resources(solari=solari),
+        hand=hand,
+    )
+
+
+def test_setup_sets_aside_both_sardaukar_contracts_for_shaddam() -> None:
+    setup = create_initial_state(
+        RulesetConfig(choam_module=True),
+        seed=11,
+        leader_ids=(
+            "shaddam_corrino_iv",
+            "gurney_halleck",
+            "lady_amber_metulli",
+            "lady_jessica",
+        ),
+    )
+
+    state = setup.state
+
+    # Sardaukar Commander sets aside both Sardaukar Contracts before the
+    # shuffle [Shaddam Corrino IV card]; the market still opens with two of
+    # the remaining eighteen tiles.
+    assert set(state.sardaukar_contract_ids) == {
+        "contract:sardaukar_i",
+        "contract:sardaukar_ii",
+    }
+    assert len(state.face_up_contract_ids) == 2
+    assert len(state.contract_bank) == 16
+    assert not set(state.sardaukar_contract_ids) & set(
+        (*state.face_up_contract_ids, *state.contract_bank)
+    )
+
+
+def test_setup_without_shaddam_keeps_the_sardaukar_tiles_in_the_pool() -> None:
+    setup = create_initial_state(
+        RulesetConfig(choam_module=True),
+        seed=11,
+        leader_ids=(
+            "feyd_rautha_harkonnen",
+            "gurney_halleck",
+            "lady_amber_metulli",
+            "lady_jessica",
+        ),
+    )
+
+    state = setup.state
+
+    assert state.sardaukar_contract_ids == ()
+    assert len(state.face_up_contract_ids) + len(state.contract_bank) == 20
+
+
+def test_shaddam_may_take_a_set_aside_sardaukar_contract() -> None:
+    from dune_imperium.rules.contracts import (
+        apply_contract_action,
+        begin_contract_gain,
+        legal_contract_actions,
+    )
+
+    owner = _shaddam_owner()
+    state = replace(
+        _choam_turn_state(owner),
+        face_up_contract_ids=("contract:immediate",),
+        contract_bank=("contract:deliver_supplies",),
+        sardaukar_contract_ids=(
+            "contract:sardaukar_i",
+            "contract:sardaukar_ii",
+        ),
+    )
+    opened = begin_contract_gain(state, 0, 1, source="test:shaddam").state
+
+    choices = {
+        dict(action.arguments)["instance_id"]
+        for action in legal_contract_actions(opened, 0)
+    }
+    assert choices == {
+        "contract:immediate",
+        "contract:sardaukar_i",
+        "contract:sardaukar_ii",
+    }
+
+    take = next(
+        action
+        for action in legal_contract_actions(opened, 0)
+        if dict(action.arguments)["instance_id"] == "contract:sardaukar_i"
+    )
+    result = apply_contract_action(opened, take)
+
+    # The set-aside tile is taken in place of a face-up one [FAQ p. 3]: the
+    # market keeps its tile and nothing refills from the bank.
+    assert result.state.players[0].active_contract_ids == (
+        "contract:sardaukar_i",
+    )
+    assert result.state.sardaukar_contract_ids == ("contract:sardaukar_ii",)
+    assert result.state.face_up_contract_ids == ("contract:immediate",)
+    assert result.state.contract_bank == ("contract:deliver_supplies",)
+
+
+def test_other_players_never_see_the_set_aside_contracts() -> None:
+    from dune_imperium.rules.contracts import (
+        begin_contract_gain,
+        legal_contract_actions,
+    )
+
+    owner = PlayerState(player_id=0, leader_id="gurney_halleck")
+    state = replace(
+        _choam_turn_state(owner),
+        face_up_contract_ids=("contract:immediate",),
+        sardaukar_contract_ids=(
+            "contract:sardaukar_i",
+            "contract:sardaukar_ii",
+        ),
+    )
+    opened = begin_contract_gain(state, 0, 1, source="test:other").state
+
+    choices = {
+        dict(action.arguments)["instance_id"]
+        for action in legal_contract_actions(opened, 0)
+    }
+
+    # Only Shaddam can acquire the set-aside Sardaukar Contracts
+    # [Shaddam Corrino IV card].
+    assert choices == {"contract:immediate"}
+
+
+def test_shaddam_contract_icon_reverts_to_solari_with_an_empty_market() -> None:
+    from dune_imperium.rules.contracts import begin_contract_gain
+
+    owner = _shaddam_owner()
+    state = replace(
+        _choam_turn_state(owner),
+        sardaukar_contract_ids=(
+            "contract:sardaukar_i",
+            "contract:sardaukar_ii",
+        ),
+    )
+
+    result = begin_contract_gain(state, 0, 1, source="test:exhausted")
+
+    # OQ-021 convention: the set-aside take replaces a generally available
+    # take [FAQ p. 3], so an exhausted market converts the icon to Solari
+    # even for Shaddam.
+    assert result.state.players[0].resources.solari == 2
+    assert result.state.sardaukar_contract_ids == (
+        "contract:sardaukar_i",
+        "contract:sardaukar_ii",
+    )
+
+
+def test_emperor_signet_gains_a_solari_and_a_deployable_free_troop() -> None:
+    owner = _shaddam_owner(hand=(_signet_instance(),))
+    state = _choam_turn_state(owner)
+    placed = apply_agent_action(state, _signet_action_to(state, "arrakeen")).state
+    context = dict(placed.decision_stack[-1].context)
+
+    # The deployment restriction takes effect immediately at placement
+    # [Main p. 17]: no Combat deployment is pending even on a Combat space.
+    assert context["units_deploy_blocked"] is True
+    assert context["pending_combat_deployment"] is False
+
+    actions = legal_leader_signet_actions(placed, 0)
+    assert [action.action_id for action in actions] == [
+        "gain_leader_signet_troop"
+    ]
+    result = apply_shaddam_signet_choice(placed, actions[0])
+    resolved = result.state.players[0]
+    next_context = dict(result.state.decision_stack[-1].context)
+
+    assert resolved.resources.solari == 1
+    assert resolved.troops_garrison == 4
+    assert next_context["troops_recruited"] == 1
+    assert next_context["pending_agent_effect"] is False
+
+
+def test_emperor_signet_can_buy_influence_with_three_solari() -> None:
+    owner = _shaddam_owner(solari=3, hand=(_signet_instance(),))
+    state = _choam_turn_state(owner)
+    placed = apply_agent_action(state, _signet_action_to(state, "arrakeen")).state
+
+    actions = legal_leader_signet_actions(placed, 0)
+    assert {action.action_id for action in actions} == {
+        "gain_leader_signet_troop",
+        "choose_leader_signet_influence",
+    }
+    choose = next(
+        action
+        for action in actions
+        if dict(action.arguments).get("faction") == "fremen"
+    )
+    result = apply_shaddam_signet_choice(placed, choose)
+    resolved = result.state.players[0]
+
+    assert resolved.resources.solari == 0
+    assert resolved.influence.fremen == 1
+
+
+def test_emperor_restriction_withholds_the_maker_sandworm_summon() -> None:
+    from dune_imperium.rules.board_effects import legal_maker_space_actions
+
+    owner = replace(
+        _shaddam_owner(hand=(_signet_instance(),)),
+        resources=Resources(water=1),
+        maker_hooks=True,
+    )
+    state = replace(
+        _choam_turn_state(owner),
+        current_conflict_ids=("siege_of_arrakeen",),
+    )
+    placed = apply_agent_action(state, _signet_action_to(state, "hagga_basin")).state
+
+    actions = legal_maker_space_actions(placed, 0)
+
+    # A summoned sandworm is immediately deployed [Main p. 20], so only the
+    # Spice harvest remains during the restricted turn.
+    assert [action.action_id for action in actions] == ["harvest_maker_spice"]
+
+
+def test_emperor_restriction_blocks_intrigue_deployment_options() -> None:
+    from dune_imperium.content.uprising.intrigue import (
+        INTRIGUE_CARDS_BY_INSTANCE,
+    )
+    from dune_imperium.rules.effect_interpreter import option_is_playable
+
+    detonation = "intrigue:detonation:0"
+    owner = replace(
+        _shaddam_owner(hand=(_signet_instance(),)),
+        troops_garrison=3,
+        intrigue_cards=(detonation,),
+    )
+    state = replace(
+        _choam_turn_state(owner),
+        shield_wall_present=False,
+        current_conflict_ids=("siege_of_arrakeen",),
+    )
+    placed = apply_agent_action(state, _signet_action_to(state, "arrakeen")).state
+    card = INTRIGUE_CARDS_BY_INSTANCE[detonation]
+
+    deploy_option = next(
+        index
+        for index, option in enumerate(card.options)
+        if any(
+            type(reward).__name__ == "DeployFromGarrison"
+            for section in option.sections
+            for reward in section.rewards
+        )
+    )
+
+    assert not option_is_playable(placed, 0, card.options[deploy_option])
+    unrestricted = _choam_turn_state(
+        replace(owner, hand=(), intrigue_cards=(detonation,))
+    )
+    unrestricted = replace(
+        unrestricted,
+        shield_wall_present=False,
+        current_conflict_ids=("siege_of_arrakeen",),
+    )
+    assert option_is_playable(unrestricted, 0, card.options[deploy_option])

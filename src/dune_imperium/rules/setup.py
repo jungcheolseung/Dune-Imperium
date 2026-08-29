@@ -1,6 +1,7 @@
 """Pure constructors for official four-player setup state."""
 
 from dataclasses import dataclass, replace
+from typing import Final
 
 from dune_imperium.config import RulesetConfig
 from dune_imperium.content.uprising.conflicts import conflicts_by_tier
@@ -134,10 +135,24 @@ def objective_setup_decision() -> ChanceDecision:
     )
 
 
-def contract_setup_decision() -> ChanceDecision:
-    """Return the full shuffle for the 20 standard Contracts."""
+SARDAUKAR_CONTRACT_IDS: Final = ("contract:sardaukar_i", "contract:sardaukar_ii")
 
-    contracts = contract_instance_ids()
+
+def contract_setup_decision(
+    set_aside_ids: tuple[str, ...] = (),
+) -> ChanceDecision:
+    """Return the setup shuffle for the standard Contracts.
+
+    When Shaddam Corrino IV is in play, both Sardaukar Contracts are set
+    aside before the shuffle [Shaddam Corrino IV card] and are excluded from
+    the shuffled pool.
+    """
+
+    contracts = tuple(
+        instance_id
+        for instance_id in contract_instance_ids()
+        if instance_id not in set_aside_ids
+    )
     return _shuffle_decision(
         "setup:contracts",
         "Shuffle the standard Contracts",
@@ -255,8 +270,15 @@ def create_initial_state(
             intrigue_deck_instance_ids(config.choam_module),
         )
     ).values
+    # Sardaukar Commander sets aside both Sardaukar Contracts before the
+    # shuffle; only Shaddam can acquire them [Shaddam Corrino IV card].
+    sardaukar_set_aside = (
+        SARDAUKAR_CONTRACT_IDS
+        if config.choam_module and "shaddam_corrino_iv" in leader_ids
+        else ()
+    )
     contracts = (
-        resolver.resolve(contract_setup_decision()).values
+        resolver.resolve(contract_setup_decision(sardaukar_set_aside)).values
         if config.choam_module
         else ()
     )
@@ -284,6 +306,7 @@ def create_initial_state(
         intrigue_deck=intrigue,
         contract_bank=contracts[2:],
         face_up_contract_ids=contracts[:2],
+        sardaukar_contract_ids=sardaukar_set_aside,
         reserve_stacks=tuple(
             (stack.card.card_id, stack.copies) for stack in RESERVE_STACKS
         ),

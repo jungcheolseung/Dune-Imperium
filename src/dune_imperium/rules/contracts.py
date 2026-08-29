@@ -401,7 +401,12 @@ def legal_contract_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Return every currently face-up Contract for the pending owner."""
+    """Return every Contract the pending owner may take right now.
+
+    Shaddam Corrino IV may acquire a set-aside Sardaukar Contract in place
+    of one of the generally available Contracts [FAQ p. 3], so his choices
+    add the set-aside tiles while the market itself is open.
+    """
 
     if not 0 <= player < state.config.players or not state.decision_stack:
         return ()
@@ -410,13 +415,18 @@ def legal_contract_actions(
         return ()
     if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
         return ()
+    set_aside = (
+        state.sardaukar_contract_ids
+        if state.players[player].leader_id == "shaddam_corrino_iv"
+        else ()
+    )
     return tuple(
         DomainAction(
             action_id="take_contract",
             actor=player,
             arguments=(("instance_id", instance_id),),
         )
-        for instance_id in state.face_up_contract_ids
+        for instance_id in (*state.face_up_contract_ids, *set_aside)
     )
 
 
@@ -442,14 +452,25 @@ def apply_contract_action(state: GameState, action: DomainAction) -> RuleResult:
         raise RuntimeError("Contract choice frame has invalid context")
 
     market = list(state.face_up_contract_ids)
-    market_index = market.index(instance_value)
     bank = state.contract_bank
-    replacement_id = bank[0] if bank else ""
-    if replacement_id:
-        market[market_index] = replacement_id
-        bank = bank[1:]
+    sardaukar_set_aside = state.sardaukar_contract_ids
+    replacement_id = ""
+    if instance_value in sardaukar_set_aside:
+        # A set-aside Sardaukar Contract is taken in place of a face-up one
+        # [FAQ p. 3]; the market keeps its tiles and nothing refills.
+        sardaukar_set_aside = tuple(
+            candidate
+            for candidate in sardaukar_set_aside
+            if candidate != instance_value
+        )
     else:
-        del market[market_index]
+        market_index = market.index(instance_value)
+        replacement_id = bank[0] if bank else ""
+        if replacement_id:
+            market[market_index] = replacement_id
+            bank = bank[1:]
+        else:
+            del market[market_index]
 
     definition = contract_for_instance(instance_value)
     owner = state.players[action.actor]
@@ -507,6 +528,7 @@ def apply_contract_action(state: GameState, action: DomainAction) -> RuleResult:
         players=players,
         contract_bank=bank,
         face_up_contract_ids=tuple(market),
+        sardaukar_contract_ids=sardaukar_set_aside,
         decision_stack=remaining_stack,
         combat_rewards_resolved=(
             not remaining_stack

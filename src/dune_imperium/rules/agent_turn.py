@@ -137,6 +137,13 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
     space = BOARD_SPACES_BY_ID[space_id]
     cost_option, cost = _selected_cost(state, space, arguments.get("cost_option"))
     owner = state.players[action.actor]
+    # Emperor of the Known Universe: playing Shaddam's Signet Ring blocks
+    # unit deployment to the Conflict for this whole turn, effective
+    # immediately from the placement [Main p. 17] [FAQ p. 3].
+    units_deploy_blocked = (
+        card.agent_effect is PersonalCardAgentEffect.LEADER_SIGNET
+        and owner.leader_id == "shaddam_corrino_iv"
+    )
     infiltrate_post_id = arguments.get("infiltrate_post_id")
     if infiltrate_post_id is not None and not isinstance(infiltrate_post_id, str):
         raise ValueError("Agent action infiltrate_post_id must be a string")
@@ -185,10 +192,13 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
             ("pending_board_effect", True),
             (
                 "pending_combat_deployment",
-                space.combat
-                or (
-                    isinstance(card, ImperiumCardEntry)
-                    and card.allows_recruited_troop_deployment
+                not units_deploy_blocked
+                and (
+                    space.combat
+                    or (
+                        isinstance(card, ImperiumCardEntry)
+                        and card.allows_recruited_troop_deployment
+                    )
                 ),
             ),
             ("pending_contract_ids", ",".join(pending_contract_ids)),
@@ -229,6 +239,7 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
             ("spy_recalled_this_turn", infiltrate_post_id is not None),
             ("troops_recruited", _troops_recruited_before_placement(state)),
             ("turn_owner", action.actor),
+            ("units_deploy_blocked", units_deploy_blocked),
         ),
     )
     next_state = replace(

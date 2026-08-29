@@ -61,6 +61,7 @@ from dune_imperium.rules.effects import recruit_troops
 from dune_imperium.rules.frames import replace_player
 from dune_imperium.rules.influence import gain_faction_influence, influence_amount
 from dune_imperium.rules.intrigue_deck import draw_intrigue_cards
+from dune_imperium.rules.leader_abilities import units_deployment_blocked
 from dune_imperium.rules.shield_wall import current_conflict_is_shield_wall_protected
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
@@ -334,7 +335,10 @@ def _choice_rewards_feasible(
     for section in sections:
         for reward in section.rewards:
             match reward:
-                case DeployFromGarrison() if owner.troops_garrison < 1:
+                case DeployFromGarrison() if (
+                    owner.troops_garrison < 1
+                    or units_deployment_blocked(state, player)
+                ):
                     return False
                 case PlaceSpy() if not spy_placement_possible(state, player, reward):
                     return False
@@ -465,9 +469,12 @@ def apply_rewards(
                     (needs_hooks and not owner.maker_hooks)
                     or not state.current_conflict_ids
                     or current_conflict_is_shield_wall_protected(state)
+                    or units_deployment_blocked(state, player)
                 ):
                     # No effect against a Shield Wall-protected Conflict
-                    # [Main p. 20] or without the required Maker Hooks.
+                    # [Main p. 20], without the required Maker Hooks, or
+                    # while Emperor of the Known Universe blocks deployment
+                    # for this turn [Main p. 17].
                     events.append(
                         GameEvent(
                             event_id=f"{source}:sandworm_unavailable",

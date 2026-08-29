@@ -135,6 +135,8 @@ LEADERS: Final = (
         "Shaddam Corrino IV",
         _catalog(202, "uprising-shaddam-corrino-iv"),
         choam_only=True,
+        ability_name="Sardaukar Commander",
+        signet_name="Emperor of the Known Universe",
     ),
 )
 
