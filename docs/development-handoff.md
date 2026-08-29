@@ -27,14 +27,14 @@ uv run ruff check src tests
 uv run mypy src tests
 ```
 
-2026-08-30의 기준 결과는 pytest 738개 통과, Ruff 통과, mypy 통과다. 현재 action
+2026-08-30의 기준 결과는 pytest 742개 통과, Ruff 통과, mypy 통과다. 현재 action
 codec은 `ACTION_CODEC_VERSION = 77`이며 기본 룰셋 catalog는 4,143개, CHOAM
 룰셋 catalog는 4,419개다.
 
 ## 현재 구현 기준선
 
-마지막 기능 커밋은 `ac75530 Play the Shaddam Corrino IV Leader abilities`이고,
-그 뒤에 이 슬라이스의 `Document ...` 커밋이 있다.
+마지막 기능 커밋은 `fa99359 Fix the Agent-card payment frames that never
+discharged or crashed`이고, 그 뒤에 Objective 감사 문서 커밋이 있다.
 
 - R0-M4는 완료됐다. 공식 규칙 자료, 엔진 커널, 4인 setup, 한 라운드 수직 조각,
   actor-neutral action codec과 PettingZoo AEC 계약이 있다.
@@ -91,8 +91,9 @@ codec은 `ACTION_CODEC_VERSION = 77`이며 기본 룰셋 catalog는 4,143개, CH
 - Agent 배치 시점 조건이 거짓이면 pending되지 않는 카드 효과는, 같은 frame의
   자유 순서 효과로 조건이 나중에 참이 되어도 제시되지 않는다(알려진 엔진
   경계; Prepare the Way 수정 커밋 `87a9300` 참고).
-- Objective는 4인 setup, First Player, battle icon 경로가 구현됐지만 이후 콘텐츠
-  상호작용은 다시 감사해야 한다.
+- Objective와 battle icon 상호작용은 2026-08-30에 재감사를 마쳤다
+  (`implementation-audits/objectives.md`, OQ-005 RESOLVED). Combat 다중 후보
+  guard는 미래 콘텐츠 대비 tripwire로 남는다.
 - Shaddam Corrino IV의 set-aside Sardaukar Contract 경로는 Leader 능력과 함께
   남아 있다. OQ-010, OQ-011 경계를 유지한다.
 - 모든 미해결 규칙 질문과 프로젝트 convention(OQ-003, OQ-015 등)은
@@ -104,20 +105,7 @@ codec은 `ACTION_CODEC_VERSION = 77`이며 기본 룰셋 catalog는 4,143개, CH
 
 ## 다음 구현 순서
 
-1. **남은 Objective 상호작용 재감사.** 시작점 사실관계:
-   - `content/uprising/objectives.py`에 Objective 5종이 있고 4인 게임은
-     `objectives_for_players(4)`가 4종(desert_mouse_4_6p, First Player를
-     부여하는 desert_mouse, crysknife 2종)을 선별해 setup의
-     `assign_objectives`가 배정한다.
-   - 규칙 접점: Conflict 승리 시 battle icon 쌍 뒤집기(`rules/combat.py`),
-     Intrigue의 `FlipBattleCard`(DSL은 Objective를 대상에서 제외한다고
-     기술)와 그 선택 slot(`rules/effect_interpreter.py`, `rules/intrigue.py`),
-     Endgame wild matching(`rules/endgame.py`).
-   - 할 일: 위 경로들이 Objective의 face-down 상태·wild 쌍·icon 종류를
-     콘텐츠 관점에서 일관되게 다루는지 재검토한다. 현재
-     `implementation-audits/`의 endgame·combat 문서 어디에도 Objective
-     언급이 없으므로, 결과를 담을 audit 절(또는 새 문서)을 만들어 기록한다.
-2. **전체 게임 random/self-play runner 공개 API와 PettingZoo 전체 게임 episode
+1. **전체 게임 random/self-play runner 공개 API와 PettingZoo 전체 게임 episode
    전환.** 시작점 사실관계:
    - `simulation/runner.py`는 `run_random_round`/`RoundSimulation`과 자체
      `_round_finished(state, started_round)`로 한 라운드에서 멈춘다.
@@ -193,9 +181,36 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에
 `master`에는 그 뒤 Intrigue 완결 슬라이스, 2026-08-29 Leader 묶음(기본 8종,
 `e6539ee`~`5ffa1bf`), 그리고 2026-08-30 Shaddam 묶음(Contract manifest 수정
 `5bfd2a5`, Shaddam `ac75530`, 문서 `4fc0e9d`)과 핸드오프 갱신 커밋들이
-순서대로 있다. 새 세션은 `git log origin/master..master`로 push 여부를
-확인한다. checkout이 Shaddam 묶음보다 이전이면 이 문서의 v77 action catalog,
-4,143/4,419개 행동, 738개 테스트 기준선이 실제 코드와 일치하지 않는다.
+순서대로 있다. 그 뒤에 2026-08-30 Objective 감사 묶음(지불 frame 수정
+`fa99359`와 감사 문서 커밋)이 있다. 새 세션은 `git log origin/master..master`로
+push 여부를 확인한다. checkout이 Objective 감사 묶음보다 이전이면 이 문서의
+742개 테스트 기준선이 실제 코드와 일치하지 않는다.
+
+## 2026-08-30 Objective 감사 세션 요약
+
+- 핸드오프의 "남은 Objective 상호작용 재감사"를 완료했다. setup 배정, Combat
+  즉시 icon matching, Endgame wild matching, Endgame Intrigue의
+  `FlipBattleCard`(Objective 제외, wild 대체 허용), 관측 공개 범위가 규칙
+  문서와 일관됨을 확인하고 `implementation-audits/objectives.md`에 기록했다.
+- OQ-005를 RESOLVED로 갱신했다: Combat 즉시 matching은 의무 pair가 도착
+  즉시 해소되므로 공식 콘텐츠에서 printed icon당 face-up 한 장을 넘을 수
+  없고(wild는 Propaganda 한 장뿐), Endgame wild의 복수 후보 선택은 OQ-001
+  window의 소유자 행동으로 이미 구현돼 있다. Combat 다중 후보
+  `NotImplementedError`는 미래 콘텐츠 tripwire로 유지한다.
+- 감사 soak에서 기존 엔진 버그를 발견해 수정했다(`fa99359`): Junction
+  Headquarters의 Intrigue+Spice 지불 frame이 `pending_agent_effect`를
+  해제하지 않아 화살표를 반복 지불할 수 있었고(한 턴 한 번 규칙 위반
+  `[Main p. 9]` `[FAQ p. 3]`), 지불 뒤 Spice가 2 미만이면 다음 legal-action
+  열거가 RuntimeError로 crash했다(seed 20010). 아울러 세 지불 legal
+  provider(Junction HQ, Ecological Testing Station/Smuggler's Haven,
+  Corrinth City)가 큐 후 지불 불가 상태에서 raise하던 것을 자유 순서
+  해결 시점 판정 `[Main pp. 9, 20]`에 따라 decline만 제시하도록 바꿨다
+  (Prepare the Way `87a9300`과 같은 판정 방식, 회귀 테스트 4건).
+- 검증: 기본 60판 + CHOAM 20판 random FINISHED 완주 soak(replay 검증,
+  매 전이 face-up 불변식 assert)에서 즉시 pair 181/62회, Endgame wild
+  32/8회, Endgame Intrigue flip 1/0회 발동을 확인했다. endgame·combat 감사
+  문서의 창 이전 서술과 Combat Intrigue/Shield Wall 잔재 서술도 현재 구현에
+  맞게 갱신했다.
 
 ## 2026-08-30 Shaddam 세션 요약
 

@@ -20,16 +20,14 @@ reviewed without reading the transition code. Official rule summaries under
 | Arrakeen Spy cost | The player may decline or recall one selected pair of placed Spies for 1 VP. | Spies return to supply; having fewer than two placed Spies leaves only decline. |
 | Influence | Friendship VP, printed track bonuses, Alliance acquisition or upward transfer, and Influence loss use shared transitions. | Captured Mentat proves that a legal loss reaches multiple recipients only when they were tied with the holder; the holder explicitly selects one as required by the FAQ. |
 | Shield Wall | Setup begins with the token present; the six printed protected Conflicts remove Maker-space sandworm actions until permanent destruction. | Sietch Tabr exposes explicit keep/destroy choices; the Conflict-card symbol denotes protection, not detonation. |
-| Battle icons | A sole winner takes the Conflict and an unambiguous matching pair gains 1 VP. | Multiple possible matching cards are blocked because the official selection policy is unresolved. |
-| Combat Intrigue priority | Participants rotate from First Player order until all pass consecutively, even when they hold Intrigue cards. | Only pass is exposed until individual Combat Intrigue timing and effects are transcribed. |
+| Battle icons | A sole winner takes the Conflict face up and a mandatory same-icon pair with a face-up Objective or won Conflict flips both cards for 1 VP. | Multiple same-icon candidates are unreachable with official content, so the guard against them is a content tripwire; the wild icon never pairs during Combat. See [objectives.md](objectives.md). |
+| Combat Intrigue priority | Participants rotate from First Player order until all pass consecutively, even when they hold Intrigue cards. | Combat-timed options of the transcribed Intrigue deck are offered to the priority holder with units in the Conflict; see [intrigue.md](intrigue.md). |
 
-## Explicitly blocked
+## Explicitly retained guards
 
-- Individual Combat Intrigue card play, eligibility, and effects. The official
-  participant priority/pass loop remains available.
-- Choosing among multiple face-up cards with the same matching battle icon.
-- Shield Wall detonation effects from cards until those content paths are
-  implemented.
+- `_matching_battle_card` raises if a Conflict icon is untranscribed or if
+  two same-icon face-up candidates ever become reachable; official content
+  cannot produce either state today ([objectives.md](objectives.md)).
 
 ## Project conventions and unresolved ordering
 

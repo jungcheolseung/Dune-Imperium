@@ -69,12 +69,20 @@
 
 ## OQ-005 — 여러 matching battle icon 중 pair 선택
 
-- 상태: `CONTENT`
+- 상태: `RESOLVED`
 - Conflict 승자가 새 face-up icon과 같은 face-up Conflict/Objective를 이미 여러
   장 가졌을 때 어떤 한 장과 pair를 만들지, 선택권이 있는지 명시하지 않는다.
   Endgame wild icon도 후보가 여러 개일 수 있다. `[Main pp. 14, 20]`
-- 필요한 답: 어느 카드를 뒤집는지가 다른 card effect에 실제 영향을 주는지 콘텐츠
-  전사 후 확인하고, 필요하면 공식 판정을 찾는다.
+- 콘텐츠 전사 완료 후 검토(2026-08-30): Combat의 즉시 matching은 공식
+  콘텐츠에서 후보가 두 장 이상일 수 없다. setup은 플레이어당 Objective 한 장을
+  주고, 이후 face-up battle card 추가는 승리한 Conflict뿐인데 도착 즉시 의무
+  pair로 뒤집히므로 printed icon당 face-up은 최대 한 장이며, wild는 Propaganda
+  한 장뿐이다. Endgame wild는 후보가 여러 개일 수 있고 어느 쪽을 뒤집는지가
+  Endgame Intrigue flip 대상(승리한 Conflict 한정)에 실제로 영향을 주므로,
+  OQ-001 window 안에서 소유자가 pair를 직접 고르는 행동으로 구현했다. 분석과
+  soak 근거는
+  [`../implementation-audits/objectives.md`](../implementation-audits/objectives.md)에
+  있으며, 엔진은 Combat 다중 후보를 미래 콘텐츠 대비 guard로 계속 차단한다.
 
 ## OQ-006 — 한 space에 여러 opponent Agent가 있을 때 Infiltrate
 
