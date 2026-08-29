@@ -132,6 +132,8 @@ def advance_after_effect(
         raise RuntimeError("Agent-turn effect frame has invalid owner")
     regular_pending = (
         context.get("pending_gather_intelligence", False),
+        context.get("pending_leader_ability", False),
+        context.get("pending_leader_board_repeat", False),
         context["pending_agent_effect"],
         context["pending_board_effect"],
         context["pending_combat_deployment"],

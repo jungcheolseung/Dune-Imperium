@@ -54,6 +54,8 @@ class PlayerState:
 
     player_id: int
     leader_id: str | None = None
+    # Face-up side of a double-sided Leader; equals leader_id for the rest.
+    leader_face_id: str | None = None
     victory_points: int = 1
     resources: Resources = Resources()
     influence: Influence = Influence()
@@ -63,6 +65,9 @@ class PlayerState:
     troops_supply: int = 9
     troops_garrison: int = 3
     troops_conflict: int = 0
+    # Troops stored on the Bene Gesserit area of the board as memories
+    # (Lady Jessica's Spice Agony).
+    memories: int = 0
     sandworms_conflict: int = 0
     spies_supply: int = 3
     spy_post_ids: tuple[str, ...] = ()
@@ -102,6 +107,7 @@ class PlayerState:
             self.troops_supply,
             self.troops_garrison,
             self.troops_conflict,
+            self.memories,
             self.sandworms_conflict,
             self.spies_supply,
             self.combat_strength,
@@ -118,7 +124,13 @@ class PlayerState:
             raise ValueError("available and placed agents must equal active agents")
         if len(self.agent_locations) != len(set(self.agent_locations)):
             raise ValueError("a player cannot place two agents in one space")
-        if self.troops_supply + self.troops_garrison + self.troops_conflict != 12:
+        if (
+            self.troops_supply
+            + self.troops_garrison
+            + self.troops_conflict
+            + self.memories
+            != 12
+        ):
             raise ValueError("a player must always account for all 12 troops")
         if self.spies_supply + len(self.spy_post_ids) != 3:
             raise ValueError("a player must always account for all three spies")

@@ -7,7 +7,7 @@ from dune_imperium.content.uprising.conflicts import conflicts_by_tier
 from dune_imperium.content.uprising.contracts import contract_instance_ids
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
-from dune_imperium.content.uprising.leaders import leaders_for_choam
+from dune_imperium.content.uprising.leaders import LEADERS_BY_ID, leaders_for_choam
 from dune_imperium.content.uprising.objectives import objectives_for_players
 from dune_imperium.content.uprising.reserve import RESERVE_STACKS
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
@@ -217,7 +217,15 @@ def create_initial_state(
         resolver.resolve(objective_setup_decision()),
     )
     players = tuple(
-        replace(player, leader_id=leader_id)
+        replace(
+            player,
+            leader_id=leader_id,
+            # Double-sided Leaders begin on their printed setup face
+            # [Main p. 17]; every other Leader's face is its identity.
+            leader_face_id=(
+                LEADERS_BY_ID[leader_id].setup_face_id or leader_id
+            ),
+        )
         for player, leader_id in zip(players, leader_ids, strict=True)
     )
 

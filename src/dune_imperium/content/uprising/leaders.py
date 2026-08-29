@@ -27,6 +27,8 @@ class LeaderDefinition:
     uses_feyd_token: bool = False
     ability_name: str | None = None
     signet_name: str | None = None
+    alternate_ability_name: str | None = None
+    alternate_signet_name: str | None = None
     sources: tuple[SourceRef, ...] = (
         SourceRef(SourceDocument.MAIN_RULEBOOK, (3, 4, 17)),
     )
@@ -38,6 +40,17 @@ class LeaderDefinition:
             raise ValueError("leader catalog URLs must use HTTPS")
         if (self.ability_name is None) != (self.signet_name is None):
             raise ValueError("leader abilities are transcribed as a pair")
+        if (self.alternate_ability_name is None) != (
+            self.alternate_signet_name is None
+        ):
+            raise ValueError("alternate-face abilities are transcribed as a pair")
+        if self.alternate_ability_name is not None and (
+            self.alternate_face_id is None or self.ability_name is None
+        ):
+            raise ValueError(
+                "alternate-face abilities require an alternate face and the "
+                "setup face's abilities"
+            )
         if not self.sources:
             raise ValueError("leaders require official source references")
 
@@ -75,6 +88,10 @@ LEADERS: Final = (
         _catalog(200, "uprising-lady-jessica"),
         setup_face_id="lady_jessica",
         alternate_face_id="reverend_mother_jessica",
+        ability_name="Other Memories",
+        signet_name="Spice Agony",
+        alternate_ability_name="Reverend Mother",
+        alternate_signet_name="Water of Life",
     ),
     LeaderDefinition(
         "lady_margot_fenring",

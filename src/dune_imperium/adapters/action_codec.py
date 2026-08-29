@@ -36,7 +36,7 @@ from dune_imperium.content.uprising.starting_cards import (
 from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
 from dune_imperium.core.actions import ActionValue, DomainAction
 
-ACTION_CODEC_VERSION = 73
+ACTION_CODEC_VERSION = 74
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 
@@ -130,7 +130,10 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "decline_agent_card_discard",
             "decline_agent_card_acquisition",
             "decline_control_defense",
+            "decline_leader_board_repeat",
             "decline_leader_card_trash",
+            "decline_leader_signet_payment",
+            "decline_other_memories",
             "decline_gather_intelligence",
             "decline_reveal_spy_recall",
             "decline_reveal_influence_exchange",
@@ -146,6 +149,8 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "pass_endgame_intrigue",
             "pay_agent_card_water",
             "pay_agent_card_spice",
+            "pay_leader_board_repeat",
+            "pay_leader_signet_spice",
             "pay_reveal_water_for_sandworm",
             "take_high_council_from_reveal",
             "pay_combat_reward",
@@ -159,6 +164,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "take_sietch_tabr_supplies",
             "take_sietch_tabr_water",
             "take_sietch_tabr_water_and_destroy_wall",
+            "use_other_memories",
         )
     ]
     if config.choam_module:

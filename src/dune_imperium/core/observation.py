@@ -17,6 +17,7 @@ class PublicPlayerView:
 
     player: int
     leader_id: str | None
+    leader_face_id: str | None
     victory_points: int
     resources: Resources
     influence: Influence
@@ -26,6 +27,7 @@ class PublicPlayerView:
     troops_supply: int
     troops_garrison: int
     troops_conflict: int
+    memories: int
     sandworms_conflict: int
     spies_supply: int
     spy_post_ids: tuple[str, ...]
@@ -129,6 +131,7 @@ def _public_player_view(player: PlayerState) -> PublicPlayerView:
     return PublicPlayerView(
         player=player.player_id,
         leader_id=player.leader_id,
+        leader_face_id=player.leader_face_id,
         victory_points=player.victory_points,
         resources=player.resources,
         influence=player.influence,
@@ -138,6 +141,7 @@ def _public_player_view(player: PlayerState) -> PublicPlayerView:
         troops_supply=player.troops_supply,
         troops_garrison=player.troops_garrison,
         troops_conflict=player.troops_conflict,
+        memories=player.memories,
         sandworms_conflict=player.sandworms_conflict,
         spies_supply=player.spies_supply,
         spy_post_ids=player.spy_post_ids,

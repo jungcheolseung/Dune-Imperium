@@ -1,6 +1,6 @@
 """Tests for implemented Leader abilities and Signet Ring resolution."""
 
-
+from dataclasses import replace
 
 import pytest
 
@@ -18,15 +18,23 @@ from dune_imperium.core import (
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.rules.agent_effects import resolve_agent_card_effect
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
+from dune_imperium.rules.board_effects import resolve_board_effect
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.leader_abilities import (
     apply_feyd_track_action,
+    apply_leader_board_repeat,
+    apply_leader_placement_ability,
     apply_leader_reveal_action,
+    apply_leader_signet_payment,
     grant_leader_reveal_passives,
     legal_feyd_track_actions,
+    legal_leader_board_repeat_actions,
+    legal_leader_placement_ability_actions,
     legal_leader_reveal_actions,
+    legal_leader_signet_actions,
 )
 from dune_imperium.rules.reveal_turn import begin_reveal_turn
+from dune_imperium.rules.setup import create_initial_state
 
 
 def _signet_instance(player: int = 0) -> str:
@@ -581,3 +589,305 @@ def test_devious_strength_is_not_offered_without_placed_spies() -> None:
     revealed = _reveal_state(owner)
 
     assert legal_leader_reveal_actions(revealed, 0) == ()
+
+
+def _jessica_owner(
+    *,
+    face: str = "lady_jessica",
+    spice: int = 0,
+    water: int = 1,
+    memories: int = 0,
+    hand: tuple[str, ...] = (),
+    deck: tuple[str, ...] = (),
+) -> PlayerState:
+    return PlayerState(
+        player_id=0,
+        leader_id="lady_jessica",
+        leader_face_id=face,
+        resources=Resources(spice=spice, water=water),
+        troops_supply=9 - memories,
+        memories=memories,
+        hand=hand,
+        deck=deck,
+    )
+
+
+def test_spice_agony_pays_for_an_intrigue_card_and_a_memory() -> None:
+    owner = _jessica_owner(spice=1, hand=(_signet_instance(),))
+    state = replace(_turn_state(owner), intrigue_deck=("intrigue:test",))
+    placed = apply_agent_action(state, _signet_action_to(state, "arrakeen")).state
+
+    actions = legal_leader_signet_actions(placed, 0)
+    assert {action.action_id for action in actions} == {
+        "decline_leader_signet_payment",
+        "pay_leader_signet_spice",
+    }
+    pay = next(
+        action for action in actions if action.action_id == "pay_leader_signet_spice"
+    )
+    result = apply_leader_signet_payment(placed, pay)
+    resolved = result.state.players[0]
+    context = dict(result.state.decision_stack[-1].context)
+
+    # Spice Agony: one Spice buys one Intrigue card and moves a supply troop
+    # to the Bene Gesserit area as a memory [Lady Jessica card].
+    assert resolved.resources.spice == 0
+    assert resolved.spice_spent_turn == 1
+    assert context["spice_spent_after_placement"] == 1
+    assert resolved.intrigue_cards == ("intrigue:test",)
+    assert resolved.memories == 1
+    assert resolved.troops_supply == 8
+    assert context["pending_agent_effect"] is False
+
+
+def test_spice_agony_without_spice_only_declines() -> None:
+    owner = _jessica_owner(spice=0, hand=(_signet_instance(),))
+    state = _turn_state(owner)
+    placed = apply_agent_action(state, _signet_action_to(state, "arrakeen")).state
+
+    actions = legal_leader_signet_actions(placed, 0)
+
+    assert [action.action_id for action in actions] == [
+        "decline_leader_signet_payment"
+    ]
+    result = apply_leader_signet_payment(placed, actions[0])
+    assert result.state.players[0].memories == 0
+    assert dict(result.state.decision_stack[-1].context)[
+        "pending_agent_effect"
+    ] is False
+
+
+def test_spice_agony_with_an_empty_supply_still_draws_intrigue() -> None:
+    owner = replace(
+        _jessica_owner(spice=1, hand=(_signet_instance(),)),
+        troops_supply=0,
+        troops_garrison=12,
+    )
+    state = replace(_turn_state(owner), intrigue_deck=("intrigue:test",))
+    placed = apply_agent_action(state, _signet_action_to(state, "arrakeen")).state
+
+    pay = next(
+        action
+        for action in legal_leader_signet_actions(placed, 0)
+        if action.action_id == "pay_leader_signet_spice"
+    )
+    result = apply_leader_signet_payment(placed, pay)
+
+    assert result.state.players[0].intrigue_cards == ("intrigue:test",)
+    assert result.state.players[0].memories == 0
+
+
+def test_water_of_life_pays_one_spice_for_one_water() -> None:
+    owner = _jessica_owner(
+        face="reverend_mother_jessica",
+        spice=1,
+        water=0,
+        hand=(_signet_instance(),),
+    )
+    state = _turn_state(owner)
+    placed = apply_agent_action(state, _signet_action_to(state, "arrakeen")).state
+
+    pay = next(
+        action
+        for action in legal_leader_signet_actions(placed, 0)
+        if action.action_id == "pay_leader_signet_spice"
+    )
+    result = apply_leader_signet_payment(placed, pay)
+
+    # Water of Life: one Spice buys one water [Reverend Mother Jessica card].
+    assert result.state.players[0].resources.spice == 0
+    assert result.state.players[0].resources.water == 1
+
+
+def _diplomacy_instance() -> str:
+    return "player:0:starter:diplomacy:0"
+
+
+def _signet_action_to_card(state: GameState, space_id: str) -> DomainAction:
+    return next(
+        action
+        for action in legal_agent_actions(state, 0)
+        if dict(action.arguments)["space_id"] == space_id
+        and dict(action.arguments)["card_id"] == _diplomacy_instance()
+    )
+
+
+def test_other_memories_flips_and_draws_per_memory() -> None:
+    dagger = "player:0:starter:dagger:0"
+    second = "player:0:starter:dagger:1"
+    owner = _jessica_owner(
+        spice=1,
+        memories=2,
+        hand=(_diplomacy_instance(),),
+        deck=(dagger, second),
+    )
+    state = _turn_state(owner)
+    placed = apply_agent_action(state, _signet_action_to_card(state, "espionage")).state
+    assert dict(placed.decision_stack[-1].context)["pending_leader_ability"] is True
+
+    actions = legal_leader_placement_ability_actions(placed, 0)
+    assert {action.action_id for action in actions} == {
+        "use_other_memories",
+        "decline_other_memories",
+    }
+    use = next(
+        action for action in actions if action.action_id == "use_other_memories"
+    )
+    result = apply_leader_placement_ability(placed, use)
+    resolved = result.state.players[0]
+    context = dict(result.state.decision_stack[-1].context)
+
+    # Other Memories returns every memory, draws one card per memory, and
+    # flips the Leader [Lady Jessica card]; the Reverend Mother ability opens
+    # on this same turn [FAQ p. 3].
+    assert resolved.leader_face_id == "reverend_mother_jessica"
+    assert resolved.memories == 0
+    assert resolved.troops_supply == 9
+    assert set(resolved.hand) >= {dagger, second}
+    assert context["pending_leader_ability"] is False
+    assert context["pending_leader_board_repeat"] is True
+    assert result.events[0].kind == "leader_flipped"
+
+
+def test_other_memories_with_no_memories_still_flips() -> None:
+    owner = _jessica_owner(spice=1, memories=0, hand=(_diplomacy_instance(),))
+    state = _turn_state(owner)
+    placed = apply_agent_action(state, _signet_action_to_card(state, "espionage")).state
+
+    use = next(
+        action
+        for action in legal_leader_placement_ability_actions(placed, 0)
+        if action.action_id == "use_other_memories"
+    )
+    result = apply_leader_placement_ability(placed, use)
+
+    assert result.state.players[0].leader_face_id == "reverend_mother_jessica"
+    assert len(result.events) == 1
+    assert dict(result.events[0].payload)["memories_returned"] == 0
+
+
+def test_other_memories_declining_keeps_the_lady_jessica_face() -> None:
+    owner = _jessica_owner(spice=1, memories=1, hand=(_diplomacy_instance(),))
+    state = _turn_state(owner)
+    placed = apply_agent_action(state, _signet_action_to_card(state, "espionage")).state
+
+    decline = next(
+        action
+        for action in legal_leader_placement_ability_actions(placed, 0)
+        if action.action_id == "decline_other_memories"
+    )
+    result = apply_leader_placement_ability(placed, decline)
+
+    assert result.state.players[0].leader_face_id == "lady_jessica"
+    assert result.state.players[0].memories == 1
+    assert dict(result.state.decision_stack[-1].context)[
+        "pending_leader_ability"
+    ] is False
+
+
+def test_other_memories_is_not_pending_outside_bene_gesserit_spaces() -> None:
+    owner = _jessica_owner(memories=1, hand=(_diplomacy_instance(),))
+    state = _turn_state(owner)
+    placed = apply_agent_action(
+        state, _signet_action_to_card(state, "dutiful_service")
+    ).state
+
+    assert dict(placed.decision_stack[-1].context)["pending_leader_ability"] is False
+    assert legal_leader_placement_ability_actions(placed, 0) == ()
+
+
+def test_reverend_mother_repeats_a_board_space_for_one_water() -> None:
+    dagger = "player:0:starter:dagger:0"
+    second = "player:0:starter:dagger:1"
+    owner = _jessica_owner(
+        face="reverend_mother_jessica",
+        water=1,
+        hand=(_diplomacy_instance(),),
+        deck=(dagger, second),
+    )
+    state = _turn_state(owner)
+    placed = apply_agent_action(state, _signet_action_to_card(state, "fremkit")).state
+    context = dict(placed.decision_stack[-1].context)
+    assert context["pending_leader_board_repeat"] is True
+
+    # The repeat waits for the printed effect's first resolution.
+    assert legal_leader_board_repeat_actions(placed, 0) == ()
+    first = resolve_board_effect(placed)
+    assert first.state.players[0].hand[-1] == dagger
+
+    actions = legal_leader_board_repeat_actions(first.state, 0)
+    assert {action.action_id for action in actions} == {
+        "decline_leader_board_repeat",
+        "pay_leader_board_repeat",
+    }
+    pay = next(
+        action for action in actions if action.action_id == "pay_leader_board_repeat"
+    )
+    paid = apply_leader_board_repeat(first.state, pay)
+    paid_context = dict(paid.state.decision_stack[-1].context)
+
+    assert paid.state.players[0].resources.water == 0
+    assert paid_context["pending_board_effect"] is True
+    assert paid_context["pending_leader_board_repeat"] is False
+
+    second_pass = resolve_board_effect(paid.state)
+    assert second_pass.state.players[0].hand[-1] == second
+    assert legal_leader_board_repeat_actions(second_pass.state, 0) == ()
+
+
+def test_reverend_mother_repeat_without_water_only_declines() -> None:
+    owner = _jessica_owner(
+        face="reverend_mother_jessica",
+        water=0,
+        hand=(_diplomacy_instance(),),
+        deck=("player:0:starter:dagger:0",),
+    )
+    state = _turn_state(owner)
+    placed = apply_agent_action(state, _signet_action_to_card(state, "fremkit")).state
+    first = resolve_board_effect(placed)
+
+    actions = legal_leader_board_repeat_actions(first.state, 0)
+
+    assert [action.action_id for action in actions] == [
+        "decline_leader_board_repeat"
+    ]
+    result = apply_leader_board_repeat(first.state, actions[0])
+    assert dict(result.state.decision_stack[-1].context)[
+        "pending_leader_board_repeat"
+    ] is False
+
+
+def test_lady_jessica_repeat_is_not_pending_before_the_flip() -> None:
+    owner = _jessica_owner(hand=(_diplomacy_instance(),))
+    state = _turn_state(owner)
+    placed = apply_agent_action(state, _signet_action_to_card(state, "fremkit")).state
+
+    assert dict(placed.decision_stack[-1].context)[
+        "pending_leader_board_repeat"
+    ] is False
+
+
+def test_setup_assigns_the_printed_leader_faces() -> None:
+    from dune_imperium import RulesetConfig as _Config
+
+    setup = create_initial_state(
+        _Config(),
+        seed=5,
+        leader_ids=(
+            "feyd_rautha_harkonnen",
+            "gurney_halleck",
+            "lady_amber_metulli",
+            "lady_jessica",
+        ),
+    )
+
+    faces = tuple(player.leader_face_id for player in setup.state.players)
+
+    # Lady Jessica starts on her Lady Jessica face [Main p. 17]; single-faced
+    # Leaders show their identity.
+    assert faces == (
+        "feyd_rautha_harkonnen",
+        "gurney_halleck",
+        "lady_amber_metulli",
+        "lady_jessica",
+    )

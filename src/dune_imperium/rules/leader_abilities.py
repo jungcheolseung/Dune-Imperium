@@ -23,6 +23,7 @@ from dune_imperium.core.decisions import PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GameState
+from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.effects import (
     advance_after_effect,
@@ -30,6 +31,7 @@ from dune_imperium.rules.effects import (
     recruit_troops,
 )
 from dune_imperium.rules.frames import FrameKind, owned_top_frame, replace_player
+from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
 from dune_imperium.rules.reveal_turn import (
     add_reveal_optional_sword_strength,
     add_reveal_persuasion,
@@ -49,6 +51,7 @@ IMPLEMENTED_ABILITY_LEADER_IDS: Final = frozenset(
         "feyd_rautha_harkonnen",
         "gurney_halleck",
         "lady_amber_metulli",
+        "lady_jessica",
     }
 )
 
@@ -431,6 +434,332 @@ def apply_feyd_track_action(
                     ("player", player),
                     ("post_id", post_id),
                     ("source", "leader_signet"),
+                ),
+            ),
+        ),
+    )
+
+
+def legal_leader_signet_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return Lady Jessica's optional one-Spice Signet Ring payment.
+
+    Spice Agony and Water of Life are both arrow effects that spend one Spice
+    [Lady Jessica card] [Reverend Mother Jessica card]; the payment choice is
+    judged when the Signet Ring resolves, so it never advertises an
+    unaffordable payment.
+    """
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return ()
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    if context.get("pending_agent_effect") is not True:
+        return ()
+    card_id = context.get("card_id")
+    if not isinstance(card_id, str) or (
+        personal_card_for_instance(card_id).agent_effect
+        is not PersonalCardAgentEffect.LEADER_SIGNET
+    ):
+        return ()
+    owner = state.players[player]
+    if owner.leader_id != "lady_jessica":
+        return ()
+    return (
+        DomainAction(action_id="decline_leader_signet_payment", actor=player),
+        *(
+            (DomainAction(action_id="pay_leader_signet_spice", actor=player),)
+            if owner.resources.spice >= 1
+            else ()
+        ),
+    )
+
+
+def apply_leader_signet_payment(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Pay or decline the one-Spice Signet Ring ability of Jessica's faces."""
+
+    if action not in legal_leader_signet_actions(state, action.actor):
+        raise ValueError("action is not a legal Leader Signet payment choice")
+    _, context = current_agent_effect_context(state)
+    player = action.actor
+    owner = state.players[player]
+    source = f"round:{state.round_number}:player:{player}:leader_signet"
+    context["pending_agent_effect"] = False
+
+    if action.action_id == "decline_leader_signet_payment":
+        next_state = advance_after_effect(state, context, state.players)
+        return RuleResult(
+            state=next_state,
+            events=(
+                GameEvent(
+                    event_id=f"{source}:declined",
+                    kind="leader_signet_payment_declined",
+                    payload=(("player", player),),
+                ),
+            ),
+        )
+
+    if owner.resources.spice < 1:
+        raise RuntimeError("the Signet Ring payment requires one Spice")
+    previous_spent = context.get("spice_spent_after_placement", 0)
+    if isinstance(previous_spent, bool) or not isinstance(previous_spent, int):
+        raise RuntimeError("Agent-turn effect frame has invalid Spice spending")
+    context["spice_spent_after_placement"] = previous_spent + 1
+    next_owner = replace(
+        owner,
+        resources=replace(owner.resources, spice=owner.resources.spice - 1),
+        spice_spent_turn=owner.spice_spent_turn + 1,
+    )
+    events: list[GameEvent] = [
+        GameEvent(
+            event_id=f"{source}:spice_paid",
+            kind="leader_signet_spice_paid",
+            payload=(("amount", 1), ("player", player)),
+        )
+    ]
+
+    if owner.leader_face_id == "reverend_mother_jessica":
+        # Water of Life: one Spice buys one water [Reverend Mother Jessica
+        # card].
+        next_owner = replace(
+            next_owner,
+            resources=replace(
+                next_owner.resources,
+                water=next_owner.resources.water + 1,
+            ),
+        )
+        next_state = advance_after_effect(
+            state,
+            context,
+            replace_player(state.players, next_owner),
+        )
+        events.append(
+            GameEvent(
+                event_id=source,
+                kind="leader_signet_resolved",
+                payload=(("player", player), ("water", 1)),
+            )
+        )
+        return RuleResult(state=next_state, events=tuple(events))
+
+    # Spice Agony: draw one Intrigue card and move a troop from the supply to
+    # the Bene Gesserit area of the board, where it is now a memory
+    # [Lady Jessica card]. With no troop left in the supply only the troop
+    # part is lost.
+    memories_gained = 1 if next_owner.troops_supply >= 1 else 0
+    next_owner = replace(
+        next_owner,
+        troops_supply=next_owner.troops_supply - memories_gained,
+        memories=next_owner.memories + memories_gained,
+    )
+    working = replace(state, players=replace_player(state.players, next_owner))
+    intrigue_draw = draw_or_queue_intrigue_cards(
+        working,
+        player,
+        1,
+        source=f"{source}:intrigue_draw",
+    )
+    next_state = advance_after_effect(
+        intrigue_draw.state,
+        context,
+        intrigue_draw.state.players,
+    )
+    events.append(
+        GameEvent(
+            event_id=source,
+            kind="leader_signet_resolved",
+            payload=(("memories", memories_gained), ("player", player)),
+        )
+    )
+    return RuleResult(
+        state=next_state,
+        events=(*events, *intrigue_draw.events),
+    )
+
+
+def legal_leader_placement_ability_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return Other Memories' use-or-decline choice after a placement."""
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return ()
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    if context.get("pending_leader_ability") is not True:
+        return ()
+    return (
+        DomainAction(action_id="use_other_memories", actor=player),
+        DomainAction(action_id="decline_other_memories", actor=player),
+    )
+
+
+def apply_leader_placement_ability(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Use or decline Other Memories on a Bene Gesserit placement.
+
+    Using it returns every memory to the supply, draws one card per memory,
+    and flips the Leader to Reverend Mother Jessica [Lady Jessica card]. The
+    Reverend Mother ability may then be used on this same turn [FAQ p. 3], so
+    the flip opens the paid board-repeat window for the visited space.
+    """
+
+    if action not in legal_leader_placement_ability_actions(state, action.actor):
+        raise ValueError("action is not a legal Leader placement ability choice")
+    _, context = current_agent_effect_context(state)
+    player = action.actor
+    context["pending_leader_ability"] = False
+    source = f"round:{state.round_number}:player:{player}:other_memories"
+
+    if action.action_id == "decline_other_memories":
+        next_state = advance_after_effect(state, context, state.players)
+        return RuleResult(
+            state=next_state,
+            events=(
+                GameEvent(
+                    event_id=f"{source}:declined",
+                    kind="leader_ability_declined",
+                    payload=(("player", player),),
+                ),
+            ),
+        )
+
+    owner = state.players[player]
+    memories = owner.memories
+    next_owner = replace(
+        owner,
+        troops_supply=owner.troops_supply + memories,
+        memories=0,
+        leader_face_id="reverend_mother_jessica",
+    )
+    context["pending_leader_board_repeat"] = True
+    next_state = advance_after_effect(
+        state,
+        context,
+        replace_player(state.players, next_owner),
+    )
+    flip_event = GameEvent(
+        event_id=source,
+        kind="leader_flipped",
+        payload=(
+            ("leader_face_id", "reverend_mother_jessica"),
+            ("memories_returned", memories),
+            ("player", player),
+        ),
+    )
+    if memories == 0:
+        return RuleResult(state=next_state, events=(flip_event,))
+    draw = draw_or_request_personal_cards(
+        next_state,
+        player,
+        memories,
+        source=f"{source}:draw",
+    )
+    return RuleResult(state=draw.state, events=(flip_event, *draw.events))
+
+
+def legal_leader_board_repeat_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return Reverend Mother's paid repeat of the visited space's effects.
+
+    The repeat choice waits until the printed board effect has resolved once,
+    then offers spending one water to repeat it [Reverend Mother Jessica
+    card]. The Agent-send Influence is a Faction rule, not a printed space
+    effect [Main p. 7], so it is not repeated.
+    """
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return ()
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    if context.get("pending_leader_board_repeat") is not True:
+        return ()
+    if context.get("pending_board_effect") is True:
+        return ()
+    owner = state.players[player]
+    return (
+        DomainAction(action_id="decline_leader_board_repeat", actor=player),
+        *(
+            (DomainAction(action_id="pay_leader_board_repeat", actor=player),)
+            if owner.resources.water >= 1
+            else ()
+        ),
+    )
+
+
+def apply_leader_board_repeat(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Pay one water to repeat the printed space effects, or decline."""
+
+    if action not in legal_leader_board_repeat_actions(state, action.actor):
+        raise ValueError("action is not a legal Leader board-repeat choice")
+    _, context = current_agent_effect_context(state)
+    player = action.actor
+    context["pending_leader_board_repeat"] = False
+    source = f"round:{state.round_number}:player:{player}:leader_board_repeat"
+
+    if action.action_id == "decline_leader_board_repeat":
+        next_state = advance_after_effect(state, context, state.players)
+        return RuleResult(
+            state=next_state,
+            events=(
+                GameEvent(
+                    event_id=f"{source}:declined",
+                    kind="leader_ability_declined",
+                    payload=(("player", player),),
+                ),
+            ),
+        )
+
+    owner = state.players[player]
+    if owner.resources.water < 1:
+        raise RuntimeError("the board repeat requires one water")
+    next_owner = replace(
+        owner,
+        resources=replace(owner.resources, water=owner.resources.water - 1),
+    )
+    context["pending_board_effect"] = True
+    # Per-resolution markers of the first pass must not leak into the repeat.
+    context.pop("espionage_spy_recalled", None)
+    next_state = advance_after_effect(
+        state,
+        context,
+        replace_player(state.players, next_owner),
+    )
+    return RuleResult(
+        state=next_state,
+        events=(
+            GameEvent(
+                event_id=source,
+                kind="leader_board_repeat_paid",
+                payload=(
+                    ("player", player),
+                    ("space_id", context.get("space_id", "")),
+                    ("water", 1),
                 ),
             ),
         ),

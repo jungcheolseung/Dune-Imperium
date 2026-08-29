@@ -207,6 +207,21 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
                     for post in OBSERVATION_POSTS
                 ),
             ),
+            (
+                # Other Memories triggers when Lady Jessica sends an Agent to
+                # a Bene Gesserit board space [Lady Jessica card].
+                "pending_leader_ability",
+                space.faction is Faction.BENE_GESSERIT
+                and owner.leader_face_id == "lady_jessica",
+            ),
+            (
+                # Reverend Mother offers one paid repeat of the printed space
+                # effects per turn on a Bene Gesserit or Fremen board space
+                # [Reverend Mother Jessica card].
+                "pending_leader_board_repeat",
+                space.faction in (Faction.BENE_GESSERIT, Faction.FREMEN)
+                and owner.leader_face_id == "reverend_mother_jessica",
+            ),
             ("space_id", space_id),
             ("spice_at_placement", next_owner.resources.spice),
             ("spice_spent_after_placement", 0),

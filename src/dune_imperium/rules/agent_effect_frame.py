@@ -31,7 +31,12 @@ from dune_imperium.rules.combat_deployment import legal_combat_deployments
 from dune_imperium.rules.contracts import legal_contract_completion_actions
 from dune_imperium.rules.effects import current_agent_effect_context
 from dune_imperium.rules.intrigue import legal_intrigue_play_actions
-from dune_imperium.rules.leader_abilities import legal_feyd_track_actions
+from dune_imperium.rules.leader_abilities import (
+    legal_feyd_track_actions,
+    legal_leader_board_repeat_actions,
+    legal_leader_placement_ability_actions,
+    legal_leader_signet_actions,
+)
 from dune_imperium.rules.spies import legal_gather_intelligence_actions
 
 # Serial Agent-card choices. When any of these offers an action, the generic
@@ -47,6 +52,7 @@ _AGENT_CARD_CHOICE_PROVIDERS = (
     legal_agent_card_influence_actions,
     legal_agent_card_acquisitions,
     legal_feyd_track_actions,
+    legal_leader_signet_actions,
 )
 
 
@@ -73,6 +79,8 @@ def legal_agent_effect_frame_actions(
 
     return (
         *pending_groups,
+        *legal_leader_placement_ability_actions(state, player),
+        *legal_leader_board_repeat_actions(state, player),
         *legal_contract_completion_actions(state, player),
         *legal_espionage_actions(state, player),
         *legal_sietch_tabr_actions(state, player),
