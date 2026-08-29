@@ -305,8 +305,8 @@ def apply_reveal_sandworm_action(
         units_deployed_turn=owner.units_deployed_turn + 1,
     )
     remaining = state.decision_stack[:-1]
-    remaining = _add_reveal_persuasion(remaining, -2)
-    remaining = _add_reveal_strength(remaining, strength_delta)
+    remaining = add_reveal_persuasion(remaining, -2)
+    remaining = add_reveal_strength(remaining, strength_delta)
     return RuleResult(
         state=replace(
             state,
@@ -474,7 +474,7 @@ def apply_corrinth_city_reveal(
             high_council=True,
             resources=replace(owner.resources, solari=owner.resources.solari - 5),
         )
-        remaining = _add_reveal_persuasion(remaining, 2)
+        remaining = add_reveal_persuasion(remaining, 2)
         event = GameEvent(
             event_id=f"{source}:high_council",
             kind="high_council_acquired",
@@ -634,10 +634,10 @@ def apply_reveal_troop_retreat(
         combat_strength=next_strength,
     )
     remaining = state.decision_stack[:-1]
-    remaining = _add_reveal_optional_sword_strength(remaining, 4)
+    remaining = add_reveal_optional_sword_strength(remaining, 4)
     strength_delta = next_strength - owner.combat_strength
     if strength_delta:
-        remaining = _add_reveal_strength(remaining, strength_delta)
+        remaining = add_reveal_strength(remaining, strength_delta)
     return RuleResult(
         state=replace(
             state,
@@ -707,9 +707,9 @@ def apply_reveal_card_trash(
         combat_strength=owner.combat_strength + counted_strength,
     )
     remaining = trashed.state.decision_stack[:-1]
-    remaining = _add_reveal_optional_sword_strength(remaining, 3)
+    remaining = add_reveal_optional_sword_strength(remaining, 3)
     if counted_strength:
-        remaining = _add_reveal_strength(remaining, counted_strength)
+        remaining = add_reveal_strength(remaining, counted_strength)
     return RuleResult(
         state=replace(
             trashed.state,
@@ -889,9 +889,9 @@ def apply_reveal_spy_action(
             combat_strength=owner.combat_strength + counted_strength,
         )
         remaining = state.decision_stack[:-1]
-        remaining = _add_reveal_optional_sword_strength(remaining, 2)
+        remaining = add_reveal_optional_sword_strength(remaining, 2)
         if counted_strength:
-            remaining = _add_reveal_strength(remaining, counted_strength)
+            remaining = add_reveal_strength(remaining, counted_strength)
         return RuleResult(
             state=replace(
                 state,
@@ -1002,7 +1002,7 @@ def apply_reveal_spy_action(
         if not isinstance(first_post_id, str) or not isinstance(second_post_id, str):
             raise RuntimeError("Reveal Spy choice has invalid post IDs")
         next_owner = recall_spy(recall_spy(owner, first_post_id), second_post_id)
-        remaining = _add_reveal_persuasion(remaining, 2)
+        remaining = add_reveal_persuasion(remaining, 2)
         events.extend(
             (
                 _spy_recalled_event(state, action.actor, card_id, first_post_id),
@@ -1053,7 +1053,7 @@ def _spy_recalled_event(
 
 
 
-def _add_reveal_persuasion(
+def add_reveal_persuasion(
     frames: tuple[DecisionFrame, ...],
     amount: int,
 ) -> tuple[DecisionFrame, ...]:
@@ -1075,7 +1075,7 @@ def _add_reveal_persuasion(
     raise RuntimeError("Reveal Spy choice is missing its Reveal frame")
 
 
-def _add_reveal_strength(
+def add_reveal_strength(
     frames: tuple[DecisionFrame, ...],
     amount: int,
 ) -> tuple[DecisionFrame, ...]:
@@ -1097,7 +1097,7 @@ def _add_reveal_strength(
     raise RuntimeError("Reveal trash choice is missing its Reveal frame")
 
 
-def _add_reveal_optional_sword_strength(
+def add_reveal_optional_sword_strength(
     frames: tuple[DecisionFrame, ...],
     amount: int,
 ) -> tuple[DecisionFrame, ...]:
@@ -1643,7 +1643,7 @@ def add_units_to_reveal(
         state=replace(
             state,
             players=replace_player(state.players, next_owner),
-            decision_stack=_add_reveal_strength(state.decision_stack, strength_delta),
+            decision_stack=add_reveal_strength(state.decision_stack, strength_delta),
         ),
         events=(
             GameEvent(

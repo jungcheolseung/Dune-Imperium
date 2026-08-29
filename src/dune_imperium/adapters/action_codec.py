@@ -32,7 +32,7 @@ from dune_imperium.content.uprising.starting_cards import (
 from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
 from dune_imperium.core.actions import ActionValue, DomainAction
 
-ACTION_CODEC_VERSION = 71
+ACTION_CODEC_VERSION = 72
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 
@@ -148,6 +148,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "resolve_board_effect",
             "resolve_espionage_without_spy",
             "resolve_faction_influence",
+            "retreat_leader_troop",
             "reveal_turn",
             "retreat_two_troops_for_reveal",
             "take_sietch_tabr_supplies",

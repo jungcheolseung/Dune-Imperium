@@ -274,10 +274,13 @@ def test_rising_above_an_opponent_transfers_the_alliance_vp() -> None:
 
 
 def test_signet_effect_waits_for_leader_implementations() -> None:
+    # The seat has no implemented Leader, so the Signet Ring ability cannot
+    # resolve; the dispatcher withholds such placements via
+    # ``leader_signet_is_implemented``.
     state = _state("signet_ring")
     placed = apply_agent_action(state, _action_to(state, "spice_refinery")).state
 
-    with pytest.raises(NotImplementedError, match="signet_ring"):
+    with pytest.raises(RuntimeError, match="not implemented"):
         resolve_agent_card_effect(placed)
 
 

@@ -1,7 +1,6 @@
 """Resolution of starting-card and Faction Agent-turn effects."""
 
 from dataclasses import replace
-from typing import Final
 
 from dune_imperium.content.uprising.board import (
     BOARD_SPACES_BY_ID,
@@ -31,6 +30,7 @@ from dune_imperium.rules.effects import (
 from dune_imperium.rules.frames import FrameKind, replace_player
 from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
+from dune_imperium.rules.leader_abilities import resolve_leader_signet
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
     observation_post_ids_for_factions,
@@ -42,14 +42,6 @@ _LONG_LIVE_SELECTION_STARTED = "long_live_fighters_selection_started"
 _LONG_LIVE_DRAW_CARD_ID = "long_live_fighters_draw_card_id"
 _LONG_LIVE_DRAW_ACTION_ID = "select_long_live_fighters_draw"
 _LONG_LIVE_DISCARD_ACTION_ID = "select_long_live_fighters_discard"
-
-
-# Agent-box effects that are transcribed but whose rules are not implemented
-# yet. The dispatcher withholds Agent placements with these cards so that every
-# advertised action stays executable.
-UNIMPLEMENTED_AGENT_EFFECTS: Final = frozenset(
-    {PersonalCardAgentEffect.LEADER_SIGNET}
-)
 
 
 def legal_agent_card_discard_actions(
@@ -1344,6 +1336,8 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
     effect = card.agent_effect
 
     owner = state.players[player]
+    if effect is PersonalCardAgentEffect.LEADER_SIGNET:
+        return resolve_leader_signet(state)
     if effect is PersonalCardAgentEffect.TRASH_SELF:
         trashed = trash_personal_card(
             state,

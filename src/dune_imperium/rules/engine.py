@@ -14,6 +14,7 @@ from typing import Final
 from dune_imperium.config import RulesetConfig
 from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID, DynamicCost
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
+from dune_imperium.content.uprising.types import PersonalCardAgentEffect
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceOutcome
 from dune_imperium.core.decisions import PlayerDecision
@@ -34,7 +35,6 @@ from dune_imperium.rules.acquisition import (
 )
 from dune_imperium.rules.agent_effect_frame import legal_agent_effect_frame_actions
 from dune_imperium.rules.agent_effects import (
-    UNIMPLEMENTED_AGENT_EFFECTS,
     apply_agent_card_discard,
     apply_agent_card_influence,
     apply_agent_card_intrigue_payment,
@@ -114,6 +114,12 @@ from dune_imperium.rules.intrigue_triggers import (
     apply_trigger_spy_action,
     legal_trigger_spy_actions,
     offer_deployment_triggers,
+)
+from dune_imperium.rules.leader_abilities import (
+    apply_leader_reveal_action,
+    grant_leader_reveal_passives,
+    leader_signet_is_implemented,
+    legal_leader_reveal_actions,
 )
 from dune_imperium.rules.phases import (
     apply_control_defense_action,
@@ -202,7 +208,11 @@ def _agent_action_is_executable(state: GameState, action: DomainAction) -> bool:
     space_id = arguments["space_id"]
     if not isinstance(card_id, str) or not isinstance(space_id, str):
         return False
-    if personal_card_for_instance(card_id).agent_effect in UNIMPLEMENTED_AGENT_EFFECTS:
+    if personal_card_for_instance(
+        card_id
+    ).agent_effect is PersonalCardAgentEffect.LEADER_SIGNET and not (
+        leader_signet_is_implemented(state.players[action.actor].leader_id)
+    ):
         return False
     requested_option = arguments.get("cost_option")
     if isinstance(requested_option, int) and not isinstance(requested_option, bool):
@@ -227,6 +237,7 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         legal_reserve_acquisitions,
         legal_imperium_acquisitions,
         legal_manipulated_acquisitions,
+        legal_leader_reveal_actions,
         legal_finish_reveal_actions,
         legal_intrigue_play_actions,
     ),
@@ -330,6 +341,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     # Reveal turn
     "acquire_reserve": apply_reserve_acquisition,
     "acquire_imperium": apply_imperium_acquisition,
+    "retreat_leader_troop": apply_leader_reveal_action,
     "finish_reveal": finish_reveal_turn,
     "place_acquisition_spy": apply_acquisition_spy_action,
     "recall_spy_for_acquisition": apply_acquisition_spy_action,
@@ -400,7 +412,9 @@ class UprisingRulesEngine(RulesEngine):
             result = apply_intrigue_reshuffle(state, outcome)
         else:
             result = apply_round_start_reshuffle(state, outcome)
-        return offer_deployment_triggers(_advance_automatic(result))
+        return offer_deployment_triggers(
+            grant_leader_reveal_passives(_advance_automatic(result))
+        )
 
     def legal_actions(
         self,
@@ -423,7 +437,7 @@ class UprisingRulesEngine(RulesEngine):
 
     def _apply_legal(self, state: GameState, action: DomainAction) -> RuleResult:
         result = _advance_automatic(ACTION_HANDLERS[action.action_id](state, action))
-        return offer_deployment_triggers(result)
+        return offer_deployment_triggers(grant_leader_reveal_passives(result))
 
     def observe(self, state: GameState, player: int) -> PlayerView:
         return observe_state(state, player)
