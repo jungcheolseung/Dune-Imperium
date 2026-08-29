@@ -2377,6 +2377,30 @@ def test_manipulate_sets_a_row_card_aside_for_its_owner() -> None:
     assert done.intrigue_discard == (card,)
 
 
+def test_manipulate_with_an_empty_deck_shrinks_the_row() -> None:
+    # OQ-004 convention: nothing refills the set-aside position once the
+    # Imperium Deck is exhausted [Main p. 13]; the Row keeps fewer cards.
+    card = _intrigue("manipulate")
+    cheap = _imperium_instance("sardaukar_soldier")
+    owner = PlayerState(player_id=0, intrigue_cards=(card,))
+    state = replace(_with_market(_turn_state(owner)), imperium_deck=())
+    engine = UprisingRulesEngine()
+
+    opened = engine.apply(state, _play(state, card)).state
+    done = engine.apply(
+        opened,
+        DomainAction(
+            action_id="manipulate_imperium_row",
+            actor=0,
+            arguments=(("instance_id", cheap),),
+        ),
+    ).state
+
+    assert done.imperium_row == (_imperium_instance("steersman"),)
+    assert done.imperium_deck == ()
+    assert done.players[0].imperium_set_aside == (cheap,)
+
+
 def test_manipulated_card_is_acquired_at_a_discount_during_the_reveal() -> None:
     cheap = _imperium_instance("sardaukar_soldier")
     owner = PlayerState(player_id=0, imperium_set_aside=(cheap,))

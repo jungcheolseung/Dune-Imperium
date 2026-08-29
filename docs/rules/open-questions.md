@@ -66,6 +66,17 @@
   다루지 않는다. 개인 deck과 Intrigue deck의 reshuffle 규칙은 별도로 있지만
   Imperium discard reshuffle 규칙은 제시되지 않는다. `[Main pp. 6, 13]`
 - 필요한 답: row를 줄인 채 진행하는지 등 최신 공식 판정.
+- 구현 convention(2026-08-30): 물리적으로 강제되는 유일한 진행을 따른다.
+  Imperium Deck이 비면 Row의 빈자리는 보충하지 않고 Row는 남은 카드 수로
+  계속 운영하며, 어떤 카드도 Imperium Deck으로 되돌아가지 않는다(공유
+  Imperium discard 존과 reshuffle 규칙이 존재하지 않으므로). 획득·set-aside의
+  모든 Row 제거 지점이 `rules/acquisition.py`의 `take_imperium_row_card`
+  헬퍼를 공유한다. heuristic policy sweep이 실제로 이 상태에 도달함을
+  확인했다(룰셋당 1,000판 중 기본 룰셋 6판이 `NotImplementedError`
+  tripwire에 걸렸다).
+  관측 인코딩의 row 세그먼트는 5 슬롯 고정이며 빈자리는 0으로 남는다.
+  `tests/unit/rules/test_acquisition.py`와
+  `tests/unit/rules/test_intrigue.py`로 고정한다.
 
 ## OQ-005 — 여러 matching battle icon 중 pair 선택
 

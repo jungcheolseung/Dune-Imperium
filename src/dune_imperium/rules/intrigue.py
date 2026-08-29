@@ -48,6 +48,7 @@ from dune_imperium.rules.acquisition import (
     acquire_imperium_for_intrigue,
     acquire_reserve_for_intrigue,
     acquisition_spy_frame,
+    take_imperium_row_card,
 )
 from dune_imperium.rules.card_discard import discard_personal_card_from_hand
 from dune_imperium.rules.card_trash import trash_personal_card
@@ -470,12 +471,7 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
             )
         case SetAsideImperiumRowCard():
             instance_id = str(arguments["instance_id"])
-            if not state.imperium_deck:
-                raise NotImplementedError(
-                    "Imperium Row refill after deck exhaustion is unresolved"
-                )
-            row = list(state.imperium_row)
-            row[row.index(instance_id)] = state.imperium_deck[0]
+            imperium_row, imperium_deck = take_imperium_row_card(state, instance_id)
             owner = state.players[player]
             keeper = replace(
                 owner,
@@ -485,8 +481,8 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
                 state=replace(
                     state,
                     players=replace_player(state.players, keeper),
-                    imperium_deck=state.imperium_deck[1:],
-                    imperium_row=tuple(row),
+                    imperium_deck=imperium_deck,
+                    imperium_row=imperium_row,
                 ),
                 events=(
                     GameEvent(

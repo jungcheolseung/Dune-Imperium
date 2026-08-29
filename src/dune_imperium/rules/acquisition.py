@@ -37,6 +37,26 @@ from dune_imperium.rules.spy_placement import (
 )
 
 
+def take_imperium_row_card(
+    state: GameState, instance_id: str
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Remove one Row card, refilling its position while the deck lasts.
+
+    Returns the next ``(imperium_row, imperium_deck)`` pair. The Row refills
+    from the top of the Imperium Deck [Main p. 13]; the official documents do
+    not cover an exhausted deck, so by the OQ-004 project convention the Row
+    then keeps operating with fewer cards, and nothing reshuffles back into
+    the Imperium Deck.
+    """
+
+    row = list(state.imperium_row)
+    if state.imperium_deck:
+        row[row.index(instance_id)] = state.imperium_deck[0]
+        return tuple(row), state.imperium_deck[1:]
+    row.remove(instance_id)
+    return tuple(row), state.imperium_deck
+
+
 def legal_acquisition_spy_actions(
     state: GameState,
     player: int,
@@ -295,10 +315,6 @@ def _acquire_imperium_to_hand_with_solari(
     if not isinstance(instance_id, str):
         raise RuntimeError("Agent Imperium acquisition has invalid instance ID")
     definition = imperium_card_for_instance(instance_id)
-    if not state.imperium_deck:
-        raise NotImplementedError(
-            "Imperium Row refill after deck exhaustion is unresolved"
-        )
     cost = definition.acquisition_cost
     if cost is None:
         raise RuntimeError("Imperium card is missing its acquisition cost")
@@ -307,8 +323,7 @@ def _acquire_imperium_to_hand_with_solari(
         f"acquire_with_solari:{instance_id}"
     )
 
-    row = list(state.imperium_row)
-    row[row.index(instance_id)] = state.imperium_deck[0]
+    imperium_row, imperium_deck = take_imperium_row_card(state, instance_id)
     owner = state.players[action.actor]
     next_owner = replace(
         owner,
@@ -335,8 +350,8 @@ def _acquire_imperium_to_hand_with_solari(
     prepared = replace(
         state,
         players=replace_player(state.players, next_owner),
-        imperium_deck=state.imperium_deck[1:],
-        imperium_row=tuple(row),
+        imperium_deck=imperium_deck,
+        imperium_row=imperium_row,
         intrigue_deck=bonus.intrigue_deck,
         pending_intrigue_draws=_with_pending_draw(state, bonus.pending_draw),
         decision_stack=(*state.decision_stack[:-1], base_frame),
@@ -567,10 +582,6 @@ def apply_imperium_acquisition(
         raise NotImplementedError(
             f"acquisition bonus is not implemented: {definition.card.card_id}"
         )
-    if not state.imperium_deck:
-        raise NotImplementedError(
-            "Imperium Row refill after deck exhaustion is unresolved"
-        )
     cost = definition.acquisition_cost
     if cost is None:
         raise RuntimeError("Imperium card is missing its acquisition cost")
@@ -579,8 +590,7 @@ def apply_imperium_acquisition(
     persuasion = context["persuasion"]
     if isinstance(persuasion, bool) or not isinstance(persuasion, int):
         raise RuntimeError("Reveal frame has invalid Persuasion")
-    row = list(state.imperium_row)
-    row[row.index(instance_id)] = state.imperium_deck[0]
+    imperium_row, imperium_deck = take_imperium_row_card(state, instance_id)
     owner = state.players[action.actor]
     next_owner = replace(
         owner,
@@ -610,8 +620,8 @@ def apply_imperium_acquisition(
     next_state = replace(
         state,
         players=players,
-        imperium_deck=state.imperium_deck[1:],
-        imperium_row=tuple(row),
+        imperium_deck=imperium_deck,
+        imperium_row=imperium_row,
         intrigue_deck=intrigue_deck,
         pending_intrigue_draws=_with_pending_draw(state, bonus.pending_draw),
         decision_stack=decision_stack,
@@ -1098,13 +1108,8 @@ def acquire_imperium_for_intrigue(
         raise NotImplementedError(
             f"acquisition bonus is not implemented: {definition.card.card_id}"
         )
-    if not state.imperium_deck:
-        raise NotImplementedError(
-            "Imperium Row refill after deck exhaustion is unresolved"
-        )
     destination = "hand" if to_hand else "discard"
-    row = list(state.imperium_row)
-    row[row.index(instance_id)] = state.imperium_deck[0]
+    imperium_row, imperium_deck = take_imperium_row_card(state, instance_id)
     owner = state.players[player]
     next_owner = replace(
         owner,
@@ -1117,8 +1122,8 @@ def acquire_imperium_for_intrigue(
     prepared = replace(
         state,
         players=replace_player(state.players, bonus.owner),
-        imperium_deck=state.imperium_deck[1:],
-        imperium_row=tuple(row),
+        imperium_deck=imperium_deck,
+        imperium_row=imperium_row,
         intrigue_deck=bonus.intrigue_deck,
         pending_intrigue_draws=_with_pending_draw(state, bonus.pending_draw),
     )

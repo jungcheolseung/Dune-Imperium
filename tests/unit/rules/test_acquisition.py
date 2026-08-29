@@ -179,6 +179,30 @@ def test_imperium_purchase_refills_same_row_position_immediately() -> None:
     assert dict(result.state.decision_stack[-1].context)["persuasion"] == 1
 
 
+def test_imperium_purchase_with_an_empty_deck_shrinks_the_row() -> None:
+    # OQ-004 convention: with the Imperium Deck exhausted there is nothing to
+    # refill from [Main p. 13], so the Row keeps operating with fewer cards.
+    state = _reveal_state(_instance("convincing_argument"))
+    instances = imperium_deck_instance_ids(False)
+    cheap = next(card for card in instances if ":sardaukar_soldier:" in card)
+    others = tuple(card for card in instances if card != cheap)
+    state = replace(
+        state,
+        imperium_row=(cheap, *others[:4]),
+        imperium_deck=(),
+    )
+
+    actions = legal_imperium_acquisitions(state, 0)
+    assert tuple(dict(action.arguments)["instance_id"] for action in actions) == (
+        cheap,
+    )
+    result = apply_imperium_acquisition(state, actions[0])
+
+    assert result.state.players[0].discard_pile == (cheap,)
+    assert result.state.imperium_row == others[:4]
+    assert result.state.imperium_deck == ()
+
+
 def test_interstellar_trade_acquisition_opens_contract_market_and_refills_it() -> None:
     state = _choam_interstellar_reveal_state()
     interstellar = _imperium_instance(
