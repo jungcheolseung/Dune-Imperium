@@ -93,27 +93,47 @@ the Intrigue deck`이고, 그 뒤에 이 슬라이스의 `Document ...` 커밋�
 
 ## 다음 구현 순서
 
-1. Leader Signet Ring·기본 능력과 Shaddam 전용 Contract(OQ-010, OQ-011),
-   남은 Objective 상호작용 재감사. 카드/리더 텍스트는 Dune Cards Hub 이미지로
-   먼저 검증한다(`https://dunecardshub.com/images/uprising-leader-<slug>.webp`
-   형태; slug 오타 가능성은 카탈로그 페이지에서 확인).
-2. 전체 게임 random/self-play runner 공개 API와 PettingZoo 전체 게임 episode
-   전환. 엔진은 이미 FINISHED까지 완주하므로 runner/adapter 경계만 남았다.
+1. **Leader 기본 능력과 Signet Ring.** 시작점 사실관계:
+   - `content/uprising/leaders.py`에는 identity 9종(기본 8 + Shaddam
+     `choam_only=True`)만 있고 능력·Signet 필드는 스키마에 아직 없다.
+     Lady Jessica는 `setup_face_id`/`alternate_face_id` 양면, Feyd-Rautha는
+     `uses_feyd_token=True`가 표시돼 있다.
+   - Signet Ring 시작 카드는 `rules/agent_effects.py`의
+     `UNIMPLEMENTED_AGENT_EFFECTS = {LEADER_SIGNET}`로 Agent 경로에서 숨겨져
+     있다. 이 집합을 비우는 것이 이 작업의 완료 신호다.
+   - 항상 테스트·soak에 쓰이는 `DEFAULT_LEADER_IDS`(Feyd-Rautha, Gurney,
+     Lady Amber Metulli, Lady Jessica; `rules/engine.py`) 4종부터 구현하고
+     나머지를 후속 묶음으로 나누는 것을 권장한다.
+   - 텍스트 검증: 리더별 카드 이미지(카탈로그 URL은 leaders.py에 있음)와
+     로컬 DIU `data/leader_data/*.json`(10파일, Reverend Mother 별도)을
+     부트스트랩으로 쓰되 이미지가 우선한다. FAQ p. 1-4에 리더별 판정이 많으니
+     `official-rulings-index.md`를 함께 확인한다.
+   - Shaddam의 set-aside Sardaukar Contract 경로는 CHOAM 모듈 소속이며 Leader
+     능력과 함께 구현한다.
+2. **남은 Objective 상호작용 재감사** — battle icon 경로는 구현돼 있으니
+   Intrigue flip(`FlipBattleCard`)·wild matching과의 상호작용을 콘텐츠 관점에서
+   재검토하고 audit에 기록한다.
+3. **전체 게임 random/self-play runner 공개 API와 PettingZoo 전체 게임 episode
+   전환.** 엔진은 이미 FINISHED까지 완주하므로 `simulation/runner.py`와
+   `adapters/pettingzoo_env.py`의 한 라운드 경계만 남았다. README의
+   "전체 게임 관측 확장" 미결정 사항과 함께 설계한다.
 
 각 묶음은 카드 이미지로 텍스트를 검증하고(`docs/card-data-sources.md`의 방법),
 `Play ...` / `Document ...` 커밋 쌍을 유지하며, 새 결정 경계는
 `FrameKind` → frame `kind` → dispatcher 표 → codec 순으로 추가한다.
+핸드오프의 카드 요약은 이미지 검증 전 참고일 뿐이다(Impress 비용, Spring the
+Trap 유형을 잘못 적었던 전례가 있다).
 
 ## 코드 탐색 지도
 
 | 목적 | 주요 위치 |
 | --- | --- |
-| 카드 manifest와 typed 효과 | `src/dune_imperium/content/uprising/` |
+| 카드 manifest와 typed 효과 | `src/dune_imperium/content/uprising/` (Leader identity는 `leaders.py`) |
 | Agent 배치와 카드 효과 | `src/dune_imperium/rules/agent_turn.py`, `agent_effects.py` |
 | Reveal과 acquire | `src/dune_imperium/rules/reveal_turn.py`, `acquisition.py` |
 | phase·Combat·Endgame | `src/dune_imperium/rules/phases.py`, `combat.py`, `endgame.py` |
 | dispatcher 표와 frame kind | `src/dune_imperium/rules/engine.py`, `frames.py`, `agent_effect_frame.py` |
-| effect DSL과 Intrigue | `content/uprising/effect_dsl.py`, `intrigue.py`, `rules/effect_interpreter.py`, `rules/intrigue.py`, `rules/intrigue_deck.py` |
+| effect DSL과 Intrigue | `content/uprising/effect_dsl.py`, `intrigue.py`, `rules/effect_interpreter.py`, `rules/intrigue.py`, `rules/intrigue_deck.py`, `rules/intrigue_triggers.py` |
 | 고정 action catalog | `src/dune_imperium/adapters/action_codec.py` |
 | 관측과 PettingZoo | `src/dune_imperium/core/observation.py`, `adapters/pettingzoo_env.py` |
 | replay와 random round | `src/dune_imperium/core/replay.py`, `simulation/runner.py` |
@@ -127,10 +147,12 @@ the Intrigue deck`이고, 그 뒤에 이 슬라이스의 `Document ...` 커밋�
 
 `RulesEngine.verify_input_immutability`는 매 전이마다 state 전체를 canonical
 hash하는 디버그 가드라 기본 off다(켜면 random play가 약 70 step/s, 끄면 약
-3,000 step/s). 커널 테스트 엔진만 이를 켠다. 200게임×8라운드 random soak
-(replay 검증 포함)은 2026-08-29 측정 기준 약 11초에 끝난다. soak 스크립트는
-저장소에 없으므로 세션 scratchpad에서 `run_random_round`의 루프를 다회전으로
-확장해 작성한다.
+3,000 step/s). 커널 테스트 엔진만 이를 켠다. 2026-08-29 측정 기준
+200게임×8라운드 random soak(replay 검증 포함)이 약 11초, random 4인 게임
+60판 FINISHED 완주 soak이 약 30초다. soak 스크립트는 저장소에 없으므로 세션
+scratchpad에서 작성한다: engine.reset 후 `phase is FINISHED`까지
+current_decision/legal_actions/apply 루프를 돌리고(ChanceDecision은
+ChanceResolver로) 마지막에 GameReplay로 재생 검증한다.
 
 ## 유용한 명령
 
@@ -158,16 +180,23 @@ handoff for the next session`이고, 로컬 `master`에는 그 뒤 Impress·Insp
 슬라이스(`72335eb`, `d4ba179`), Call to Arms 슬라이스(`2de0d1b`, `b8707d3`),
 Distraction 슬라이스(`a3569af`, `d724b98`), Leverage 슬라이스(`736688f`,
 `2dde896`), Endgame 묶음(`5e4cf70`, `41b9ab4`, `707392d`), Intrigue 완결
-슬라이스(`9376a16`과 이어지는 `Document ...`)가 있다. 사용자가 2026-08-29 중간에
-`707392d`까지 push했다. 새 세션은 `git log origin/master..master`로 push 여부를
-확인한다. checkout이 이보다 이전이면 이 문서의 v71 action catalog,
-3,923/4,169개 행동, 668개 테스트 기준선이 실제 코드와 일치하지 않는다.
+슬라이스(`9376a16`, `5d9f793`), 그리고 이 핸드오프 갱신 커밋이 순서대로 있다.
+사용자가 2026-08-29 중 `707392d`까지 push했고, 그 뒤 커밋 3개는 세션 종료
+시점 기준 미push였다. 새 세션은 `git log origin/master..master`로 push 여부를
+확인한다. checkout이 Intrigue 완결 슬라이스보다 이전이면 이 문서의 v71 action
+catalog, 3,923/4,169개 행동, 668개 테스트 기준선이 실제 코드와 일치하지
+않는다.
 
 ## 2026-08-29 세션 요약
 
 - Impress(Combat: 검 2 + 비용 3 이하 획득)와 Inspire Awe(Plot: 비용 3 이하 획득,
   sandworm이 Conflict에 있으면 hand로)를 카드 이미지로 검증해 전사했다. 이전
   핸드오프의 "Impress 비용 4"는 오기였다.
+- `AcquireCardUpTo(max_cost, to_hand_if)` DSL 보상과 `acquire_intrigue_imperium`
+  / `acquire_intrigue_reserve` 선택 슬롯을 추가했다. Row 보충, acquire box 즉시
+  처리, Spy 배치 box의 `acquisition_spy` frame 재사용(카드 해결 후 push),
+  Contract 완료 확인을 기존 획득 경로와 공유한다. codec v65.
+- Reveal 중 hand로 들어가는 획득은 OQ-015(c)를 확장해 draw와 동일하게 보류한다.
 - Call to Arms를 첫 face-up trigger로 전사했다: `IntrigueOption.trigger`,
   공개 `PlayerState.intrigue_faceup` 존, `rules/intrigue_triggers.py`의
   Reveal 획득 발동과 Reveal 종료 만료(OQ-016), codec v66. Distraction과
@@ -181,14 +210,6 @@ Distraction 슬라이스(`a3569af`, `d724b98`), Leverage 슬라이스(`736688f`,
   `spice_spent_turn` 카운터(지출 5지점)로 "이번 turn 총 획득 spice"를
   계산하고, 조건 성립 시 Contract 1 + Solari 1을 준다. Harvest의 placement
   기준 회계와는 분리 유지. codec v68.
-- Manipulate와 Spring the Trap을 전사해 Intrigue 39개 identity(44장)를
-  완결했다. Spring the Trap은 Spy 2 recall → 검 7(기존 primitive), Manipulate는
-  `SetAsideImperiumRowCard` 슬롯 + 공개 `imperium_set_aside` 존 + Reveal 한정
-  할인 획득 + Reveal 종료 시 `imperium_removed`로 게임 제거(FAQ p. 3).
-  codec v71. random 완주 60판에서 set-aside 21회 = 획득 2 + 만료 19로 보존이
-  검산됐다. 참고: 기존 Prepare the Way 버그(별도 작업)는 신규 카드로 legal
-  action 목록이 바뀌며 최신 soak의 seed 10146 궤적에서는 더 이상 나타나지
-  않지만, `ed16d93`에서 그대로 재현된다.
 - Endgame Intrigue window(OQ-001 convention)를 열었다: First Player부터
   시계 방향 1회 순회, window 안에서 Endgame play와 wild matching 자유 순서,
   pass가 창을 닫고 마지막 pass가 게임을 끝낸다. 기존 단일 무모호 wild 자동
@@ -199,11 +220,14 @@ Distraction 슬라이스(`a3569af`, `d724b98`), Leverage 슬라이스(`736688f`,
   카드 이미지로 확인해 기록했고, 조건 DSL이 전체 상태를 읽도록 바꿨다.
   random 4인 게임 60판이 처음으로 FINISHED까지 완주됐다(창 240개, wild 27회,
   replay 검증 통과).
-- `AcquireCardUpTo(max_cost, to_hand_if)` DSL 보상과 `acquire_intrigue_imperium`
-  / `acquire_intrigue_reserve` 선택 슬롯을 추가했다. Row 보충, acquire box 즉시
-  처리, Spy 배치 box의 `acquisition_spy` frame 재사용(카드 해결 후 push),
-  Contract 완료 확인을 기존 획득 경로와 공유한다. codec v65.
-- Reveal 중 hand로 들어가는 획득은 OQ-015(c)를 확장해 draw와 동일하게 보류한다.
+- Manipulate와 Spring the Trap을 전사해 Intrigue 39개 identity(44장)를
+  완결했다. Spring the Trap은 Spy 2 recall → 검 7(기존 primitive), Manipulate는
+  `SetAsideImperiumRowCard` 슬롯 + 공개 `imperium_set_aside` 존 + Reveal 한정
+  할인 획득 + Reveal 종료 시 `imperium_removed`로 게임 제거(FAQ p. 3).
+  codec v71. random 완주 60판에서 set-aside 21회 = 획득 2 + 만료 19로 보존이
+  검산됐다. 참고: 기존 Prepare the Way 버그(별도 작업)는 신규 카드로 legal
+  action 목록이 바뀌며 최신 soak의 seed 10146 궤적에서는 더 이상 나타나지
+  않지만, `ed16d93`에서 그대로 재현된다.
 - 알려진 기존 버그(이번 슬라이스와 무관, HEAD `ed16d93`에서 재현): 4인 기본
   룰셋 seed 10146 random play에서 Prepare the Way를 Agent 카드로 낼 때
   `resolve_agent_card_effect`가 legal로 제시된 뒤 적용 시
