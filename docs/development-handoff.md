@@ -27,15 +27,16 @@ uv run ruff check src tests
 uv run mypy src tests
 ```
 
-2026-08-30의 기준 결과는 pytest 755개 통과, Ruff 통과, mypy 통과다. 현재 action
+2026-08-30의 기준 결과는 pytest 770개 통과, Ruff 통과, mypy 통과다. 현재 action
 codec은 `ACTION_CODEC_VERSION = 77`(기본 4,143개, CHOAM 4,419개)이고, 관측은
 `OBSERVATION_VERSION = 1`의 1,409-int 전체 게임 인코딩이다
-([`rl-environment.md`](rl-environment.md)).
+([`rl-environment.md`](rl-environment.md)). `dune-imperium-sweep` 검증
+sweep은 룰셋당 10,000판(총 20,000판)이 실패 0으로 통과한 상태다.
 
 ## 현재 구현 기준선
 
-마지막 기능 커밋은 `95ad278 Turn the PettingZoo adapter into full-game
-episodes`이고, 그 앞에 전체 게임 러너·관측 인코딩·엔진 버그 수정 커밋들이
+마지막 기능 커밋은 `24b13e7 Advance the Agent turn after an acquisition Spy
+placement`이고, 그 앞에 M7 sweep 도구와 sweep이 적발한 버그 수정 커밋들이
 있다.
 
 - R0-M4는 완료됐다. 공식 규칙 자료, 엔진 커널, 4인 setup, 한 라운드 수직 조각,
@@ -110,21 +111,18 @@ episodes`이고, 그 앞에 전체 게임 러너·관측 인코딩·엔진 버�
 
 ## 다음 구현 순서
 
-1. **M7 완주 검증 확장(대규모 sweep과 불변식 검사).** 시작점 사실관계:
-   - `run_random_game`과 env soak은 있지만 저장소에 재사용 가능한 대규모
-     sweep 도구가 없다. 계획의 M7은 CI용 고정 소규모 seed 집합과 로컬
-     10,000+ seed 실행, 그리고 교착·빈 합법 행동·자원 음수·말 총량
-     불일치·비공개 정보 누출 검사를 요구한다(`implementation-plan.md`).
-   - 오늘 세션의 두 엔진 버그(Agent-card 지불 frame, Espionage Spy 소비)가
-     정확히 이런 sweep이 잡는 부류였다. 불변식 battery는 soak 중 매 전이
-     검사로 넣는 형태가 실효적이었다(Objective 감사의 face-up 불변식 예).
-   - 처리량 기준(2026-08-30): `run_random_game` 약 48ms/판(9,000 step/s),
-     env 경유 약 4,100 agent step/s. `verify_input_immutability`는 기본
-     off(아래 처리량 메모).
-2. **M9 평가 러너와 baseline.** 여러 게임을 병렬 구동하고 정책 추론만
-   batch하는 self-play 러너, random/heuristic baseline, 좌석·리더·seed 교차
-   대회 도구(`implementation-plan.md`의 M9). 관측·보상 계약은
-   [`rl-environment.md`](rl-environment.md)로 고정돼 있다.
+1. **M9 평가 러너와 baseline.** 시작점 사실관계:
+   - 여러 게임을 병렬 구동하고 정책 추론만 batch하는 self-play 러너,
+     random/규칙 기반 heuristic/rollout baseline, 좌석·리더·first
+     player·seed를 교차한 대회 도구가 목표다(`implementation-plan.md`의
+     M9). 승률 외에 평균 순위, VP 차이, 좌석별 성능, 결정 시간도 기록한다.
+   - 관측·보상 계약은 [`rl-environment.md`](rl-environment.md)로 고정돼
+     있고(관측 v1 1,409-int, 승자독식 zero-sum 종료 보상), agent 인터페이스
+     선례는 `agents/random_agent.py`(`choose_action(observation,
+     legal_actions)`)와 `simulation/sweep.py`의 병렬 실행 패턴이다.
+   - Leader 선택 표준화는 OQ-007이 미해결이므로, 대회 도구의 leader 배정은
+     ruleset option으로 명시하고 공식 규칙처럼 적지 않는다. 현재 엔진
+     기본은 `DEFAULT_LEADER_IDS` 4종 고정이다(`rules/engine.py`).
 
 각 묶음은 카드 이미지로 텍스트를 검증하고(`docs/card-data-sources.md`의 방법),
 `Play ...` / `Document ...` 커밋 쌍을 유지하며, 새 결정 경계는
@@ -146,6 +144,7 @@ Trap 유형을 잘못 적었던 전례가 있다).
 | 고정 action catalog | `src/dune_imperium/adapters/action_codec.py` |
 | 관측과 PettingZoo | `src/dune_imperium/core/observation.py`, `adapters/observation_encoding.py`, `adapters/pettingzoo_env.py` |
 | replay와 random 러너 | `src/dune_imperium/core/replay.py`, `simulation/runner.py` (한 라운드·전체 게임) |
+| 검증 sweep과 불변식 | `src/dune_imperium/simulation/sweep.py`, `simulation/invariants.py`, `cli/sweep.py` |
 | 카드별 회귀 테스트 | `tests/unit/content/`, `tests/unit/rules/` |
 | 통합·adapter 테스트 | `tests/integration/`, `tests/adapters/` |
 
@@ -157,15 +156,17 @@ Trap 유형을 잘못 적었던 전례가 있다).
 `RulesEngine.verify_input_immutability`는 매 전이마다 state 전체를 canonical
 hash하는 디버그 가드라 기본 off다(켜면 random play가 약 70 step/s, 끄면 약
 3,000 step/s). 커널 테스트 엔진만 이를 켠다. 완주 soak은 이제
-`run_random_game`을 그대로 쓰면 된다(2026-08-30 측정 약 48ms/판, 약 9,000
-step/s; replay 검증은 `replay_game` 호출 추가). env 경유 masked random full
-episode는 약 4,100 agent step/s다. 전이 단위 불변식 검사가 필요한 soak만
-scratchpad에서 current_decision/legal_actions/apply 루프를 직접 쓴다
-(ChanceDecision은 ChanceResolver로).
+`run_random_game`(약 48ms/판, 9,000 step/s)이나, 불변식·누출 검사와 replay
+검증까지 포함하는 `dune-imperium-sweep`(검사 전부 켠 단일 프로세스 약
+175ms/판, `--workers 8`로 약 50 games/s)을 그대로 쓴다. env 경유 masked
+random full episode는 약 4,100 agent step/s다.
 
 ## 유용한 명령
 
 ```bash
+# 검증 sweep: 카드 보존·교착·관측 누출·replay 검사 (룰셋당 100판 기본)
+uv run dune-imperium-sweep --games 100 --ruleset both --workers 8
+
 # 한 라운드 random 실행
 uv run dune-imperium-debug --seed 2 --random-policy-seed 1002
 
@@ -189,11 +190,32 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에
 `e6539ee`~`5ffa1bf`), 그리고 2026-08-30 Shaddam 묶음(Contract manifest 수정
 `5bfd2a5`, Shaddam `ac75530`, 문서 `4fc0e9d`)과 핸드오프 갱신 커밋들이
 순서대로 있다. 그 뒤에 2026-08-30 Objective 감사 묶음(지불 frame 수정
-`fa99359`, 감사 문서 `1d97903`)과 전체 게임 RL 전환 묶음(러너 `636fe9e`,
+`fa99359`, 감사 문서 `1d97903`), 전체 게임 RL 전환 묶음(러너 `636fe9e`,
 관측 인코딩 `efc4a11`+`4b50412`, Espionage 수정 `4d9efb8`, env 전환
-`95ad278`, 문서 커밋)이 있다. 새 세션은 `git log origin/master..master`로
-push 여부를 확인한다. checkout이 RL 전환 묶음보다 이전이면 이 문서의
-755개 테스트·관측 v1 기준선이 실제 코드와 일치하지 않는다.
+`95ad278`), 그리고 M7 sweep 묶음(도구 `3bafc67`, sweep이 적발한 수정
+`f148c14`+`83aa4f5`+`24b13e7`, 문서 커밋)이 있다. 새 세션은
+`git log origin/master..master`로 push 여부를 확인한다. checkout이 M7
+묶음보다 이전이면 이 문서의 770개 테스트·sweep 기준선이 실제 코드와
+일치하지 않는다.
+
+## 2026-08-30 M7 검증 sweep 세션 요약
+
+- `dune-imperium-sweep`을 만들었다(`simulation/sweep.py`, `invariants.py`,
+  `cli/sweep.py`): 매 전이의 전역 카드 census(개인 카드 instance 집합,
+  Reserve 스택+생존 사본 방정식, Intrigue·Conflict·Contract·Objective 보존과
+  단일 존), 교착 검출, 표본 주기의 관측 누출 검사(deck 순서·상대 hand·상대
+  Intrigue `[Main p. 7]`·Contract bank `[Main p. 16]`만 뒤섞은 상태와 관측
+  동일성; 뒤섞기가 실제로 상태를 바꾸는지도 테스트로 고정), replay 검증,
+  multiprocessing 병렬화와 CLI. pytest에 고정 seed 테스트 8건을 추가했다.
+- 첫 룰셋당 10,000판 sweep이 46판(0.23%)에서 잠복 버그 다섯 계열을
+  적발했고, 모두 해결 시점 판정 원칙(`[Main pp. 9, 20]`, `[Main p. 12]`)으로
+  수정했다: Spy Network recall 교착(`f148c14`), Maker Keeper·Wheels Within
+  Wheels·Bond 3종 조건 drift와 Corrinth City 선택 소실과 self-trash 보류
+  효과(`83aa4f5`, OQ-022 convention 신설), Price is No Object 획득 Spy
+  frame 정지(`24b13e7`).
+- 수정 후 재실행한 룰셋당 10,000판(총 20,000판, 모든 검사+replay 포함)이
+  실패 0으로 통과했다: 400초, 50 games/s, 전이 약 879만 회, 라운드
+  중앙값 10. M7을 완료로 표시했다.
 
 ## 2026-08-30 전체 게임 RL 전환 세션 요약
 

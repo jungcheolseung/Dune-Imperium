@@ -6,9 +6,9 @@ M2 4인 setup과 정적 보드, M3 한 라운드 수직 조각, M4 RL 인터페�
 M6는 Leader 9종 능력·Signet Ring과 Objective 상호작용 재감사까지 마쳐
 완료됐고, M8도 Shaddam의 Sardaukar contract와 CHOAM 전용 콘텐츠까지 연결돼
 완료됐다. 전체 게임 러너와 PettingZoo 전체 게임 episode
-([rl-environment.md](rl-environment.md))가 있으며, M7 완주 검증의 대규모
-sweep·property test·처리량 기준 기록은 아직
-시작하지 않았다.
+([rl-environment.md](rl-environment.md)), 그리고 M7의 `dune-imperium-sweep`
+완주 검증(룰셋당 10,000판 실패 0)까지 끝나 다음 마일스톤은 M9 평가
+환경이다.
 
 이 문서는 규칙 엔진부터 강화학습 AI와 사람용 플레이 인터페이스까지의 구현
 순서와 각 단계의 완료 조건을 정의한다. 구현 중 새 규칙을 발견하더라도 핵심
@@ -328,9 +328,18 @@ FINISHED까지 완주되고 replay로 재현된다.
 
 ### M7. 기본 게임 완주 검증
 
-상태: **진행 중** (2026-08-30). `run_random_game` 러너, 전체 게임 PettingZoo
-episode, 소규모 seed의 완주+replay 통합 테스트가 있다. 남은 범위는 아래의
-대규모 sweep·property test·불변식 검사·처리량 기준 기록이다.
+상태: **완료** (2026-08-30). `run_random_game` 러너와 전체 게임 PettingZoo
+episode 위에 `dune-imperium-sweep` 검증 도구를 만들었다. 매 전이마다 전역
+카드 보존(개인 카드 instance 집합, Reserve 스택+생존 사본, Intrigue·Conflict·
+Contract·Objective), 교착(빈 합법 행동·미종료), 그리고 표본 주기로 관측
+누출(숨은 정보만 뒤섞은 상태와의 관측 동일성)을 검사하고 replay를 검증한다.
+고정 소규모 seed 집합은 pytest에 있고, 룰셋당 10,000판(총 20,000판) 로컬
+sweep이 실패 0으로 통과했다(50 games/s, 8 workers, 전이 약 879만 회). 첫
+20,000판 실행은 잠복 버그 다섯 계열(Spy Network recall 교착, Price is No
+Object 획득 Spy frame 정지, Maker Keeper·Bond 조건 drift, Corrinth City
+선택 소실, self-trash 카드의 보류 효과)을 46판에서 적발했고 모두 해결
+시점 판정으로 수정했다. 시나리오 커버리지는 카드·규칙별 FAQ 인용 테스트
+770개가 담당하며, 절대 성능 목표는 원계획대로 이 기준선 위에서 따로 정한다.
 
 - random legal self-play, property-based state machine test, 장시간 soak test를
   추가한다.
