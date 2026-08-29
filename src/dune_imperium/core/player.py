@@ -76,6 +76,9 @@ class PlayerState:
     has_revealed: bool = False
     high_council: bool = False
     maker_hooks: bool = False
+    # Position of the Feyd token on the printed Training track; only used by
+    # the Feyd-Rautha Harkonnen Leader and left on the start space otherwise.
+    feyd_track_space: str = "start"
     deck: tuple[str, ...] = ()
     hand: tuple[str, ...] = ()
     discard_pile: tuple[str, ...] = ()

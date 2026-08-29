@@ -35,6 +35,7 @@ class PublicPlayerView:
     has_revealed: bool
     high_council: bool
     maker_hooks: bool
+    feyd_track_space: str
     in_play: tuple[str, ...]
     trashed: tuple[str, ...]
     intrigue_faceup: tuple[str, ...]
@@ -146,6 +147,7 @@ def _public_player_view(player: PlayerState) -> PublicPlayerView:
         has_revealed=player.has_revealed,
         high_council=player.high_council,
         maker_hooks=player.maker_hooks,
+        feyd_track_space=player.feyd_track_space,
         in_play=player.in_play,
         trashed=player.trashed,
         intrigue_faceup=player.intrigue_faceup,

@@ -20,6 +20,10 @@ from dune_imperium.content.uprising.intrigue import (
     intrigue_card_for_instance,
     intrigue_deck_instance_ids,
 )
+from dune_imperium.content.uprising.leaders import (
+    FEYD_TRACK_START,
+    FEYD_TRAINING_TRACK,
+)
 from dune_imperium.content.uprising.objectives import objectives_for_players
 from dune_imperium.content.uprising.reserve import (
     RESERVE_STACKS,
@@ -32,7 +36,7 @@ from dune_imperium.content.uprising.starting_cards import (
 from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
 from dune_imperium.core.actions import ActionValue, DomainAction
 
-ACTION_CODEC_VERSION = 72
+ACTION_CODEC_VERSION = 73
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 
@@ -126,6 +130,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "decline_agent_card_discard",
             "decline_agent_card_acquisition",
             "decline_control_defense",
+            "decline_leader_card_trash",
             "decline_gather_intelligence",
             "decline_reveal_spy_recall",
             "decline_reveal_influence_exchange",
@@ -327,8 +332,11 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         "place_acquisition_spy",
         "place_agent_card_spy",
         "place_intrigue_spy",
+        "place_leader_spy",
         "place_trigger_spy",
         "recall_spy_for_intrigue",
+        "recall_spy_for_leader",
+        "recall_spy_for_leader_placement",
         "recall_spy_for_trigger",
         "place_reveal_spy",
         "recall_spy_for_acquisition",
@@ -423,6 +431,15 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         )
         for faction in Faction
     )
+    templates.extend(
+        ActionTemplate(
+            action_id="advance_feyd_track",
+            arguments=(("space_id", space.space_id),),
+        )
+        for space in FEYD_TRAINING_TRACK
+        if space.space_id != FEYD_TRACK_START
+    )
+    templates.extend(_trash_templates(config, "trash_leader_card"))
     templates.extend(_trash_templates(config, "trash_agent_card"))
     templates.extend(_trash_templates(config, "select_long_live_fighters_draw"))
     templates.extend(_trash_templates(config, "select_long_live_fighters_discard"))

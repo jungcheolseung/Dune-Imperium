@@ -1,9 +1,11 @@
 """Tests for implemented Leader abilities and Signet Ring resolution."""
 
 
+
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.content.uprising.board import OBSERVATION_POSTS
 from dune_imperium.core import (
     DecisionFrame,
     DomainAction,
@@ -11,14 +13,17 @@ from dune_imperium.core import (
     GameState,
     PlayerDecision,
     PlayerState,
+    Resources,
 )
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.rules.agent_effects import resolve_agent_card_effect
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.leader_abilities import (
+    apply_feyd_track_action,
     apply_leader_reveal_action,
     grant_leader_reveal_passives,
+    legal_feyd_track_actions,
     legal_leader_reveal_actions,
 )
 from dune_imperium.rules.reveal_turn import begin_reveal_turn
@@ -327,3 +332,252 @@ def test_always_smiling_is_wired_through_the_engine_reveal() -> None:
 
     assert context["persuasion"] == 1
     assert context["leader_persuasion_granted"] is True
+
+
+def _feyd_effect_state(
+    *,
+    track_space: str = "start",
+    solari: int = 0,
+    spies_supply: int = 3,
+    spy_post_ids: tuple[str, ...] = (),
+    extra_hand: tuple[str, ...] = (),
+) -> GameState:
+    owner = PlayerState(
+        player_id=0,
+        leader_id="feyd_rautha_harkonnen",
+        hand=(_signet_instance(), *extra_hand),
+        resources=Resources(solari=solari),
+        feyd_track_space=track_space,
+        spies_supply=spies_supply,
+        spy_post_ids=spy_post_ids,
+    )
+    state = _turn_state(owner)
+    return apply_agent_action(state, _signet_action_to(state, "arrakeen")).state
+
+
+def test_personal_training_offers_the_start_fork() -> None:
+    placed = _feyd_effect_state()
+
+    actions = legal_feyd_track_actions(placed, 0)
+
+    assert {dict(action.arguments)["space_id"] for action in actions} == {
+        "paid_trash",
+        "first_spy",
+    }
+    assert all(action.action_id == "advance_feyd_track" for action in actions)
+
+
+def test_personal_training_spy_space_places_a_spy() -> None:
+    placed = _feyd_effect_state()
+    advance = next(
+        action
+        for action in legal_feyd_track_actions(placed, 0)
+        if dict(action.arguments)["space_id"] == "first_spy"
+    )
+    advanced = apply_feyd_track_action(placed, advance)
+    assert advanced.state.players[0].feyd_track_space == "first_spy"
+    assert advanced.events[0].kind == "feyd_token_advanced"
+
+    stage_actions = legal_feyd_track_actions(advanced.state, 0)
+    assert all(
+        action.action_id == "place_leader_spy" for action in stage_actions
+    )
+    placement = stage_actions[0]
+    result = apply_feyd_track_action(advanced.state, placement)
+
+    assert result.state.players[0].spies_supply == 2
+    assert len(result.state.players[0].spy_post_ids) == 1
+    context = dict(result.state.decision_stack[-1].context)
+    assert context["pending_agent_effect"] is False
+    assert "feyd_track_stage" not in context
+
+
+def test_personal_training_paid_trash_pays_one_solari() -> None:
+    dagger = "player:0:starter:dagger:0"
+    placed = _feyd_effect_state(solari=1, extra_hand=(dagger,))
+    advance = next(
+        action
+        for action in legal_feyd_track_actions(placed, 0)
+        if dict(action.arguments)["space_id"] == "paid_trash"
+    )
+    advanced = apply_feyd_track_action(placed, advance).state
+
+    stage_actions = legal_feyd_track_actions(advanced, 0)
+    assert stage_actions[0].action_id == "decline_leader_card_trash"
+    trash = next(
+        action
+        for action in stage_actions
+        if dict(action.arguments).get("card_id") == dagger
+    )
+    result = apply_feyd_track_action(advanced, trash)
+
+    assert result.state.players[0].resources.solari == 0
+    assert dagger in result.state.players[0].trashed
+    assert dict(result.state.decision_stack[-1].context)[
+        "pending_agent_effect"
+    ] is False
+
+
+def test_personal_training_paid_trash_without_solari_only_declines() -> None:
+    placed = _feyd_effect_state(solari=0)
+    advance = next(
+        action
+        for action in legal_feyd_track_actions(placed, 0)
+        if dict(action.arguments)["space_id"] == "paid_trash"
+    )
+    advanced = apply_feyd_track_action(placed, advance).state
+
+    actions = legal_feyd_track_actions(advanced, 0)
+
+    # The one-Solari arrow cost cannot be paid, so only the decline remains
+    # [Main pp. 9, 20].
+    assert [action.action_id for action in actions] == [
+        "decline_leader_card_trash"
+    ]
+    result = apply_feyd_track_action(advanced, actions[0])
+    assert dict(result.state.decision_stack[-1].context)[
+        "pending_agent_effect"
+    ] is False
+
+
+def test_personal_training_double_spice_space_is_automatic() -> None:
+    placed = _feyd_effect_state(track_space="second_spy")
+
+    advance = next(
+        action
+        for action in legal_feyd_track_actions(placed, 0)
+        if dict(action.arguments)["space_id"] == "double_spice"
+    )
+    result = apply_feyd_track_action(placed, advance)
+
+    assert result.state.players[0].resources.spice == 2
+    context = dict(result.state.decision_stack[-1].context)
+    assert context["pending_agent_effect"] is False
+    assert result.events[-1].kind == "leader_signet_resolved"
+
+
+def test_personal_training_final_space_recruits_and_places_a_spy() -> None:
+    placed = _feyd_effect_state(track_space="late_trash")
+
+    advance = next(
+        action
+        for action in legal_feyd_track_actions(placed, 0)
+        if dict(action.arguments)["space_id"] == "final"
+    )
+    advanced = apply_feyd_track_action(placed, advance)
+    assert advanced.state.players[0].troops_garrison == 4
+    assert (
+        dict(advanced.state.decision_stack[-1].context)["troops_recruited"] == 1
+    )
+
+    stage_actions = legal_feyd_track_actions(advanced.state, 0)
+    result = apply_feyd_track_action(advanced.state, stage_actions[0])
+
+    assert result.state.players[0].spies_supply == 2
+    assert result.state.players[0].feyd_track_space == "final"
+
+
+def test_personal_training_at_the_final_space_gives_no_reward() -> None:
+    placed = _feyd_effect_state(track_space="final")
+
+    # The token remains on the rightmost space [Main p. 17]; with no new
+    # space to move to, Personal Training earns nothing.
+    assert legal_feyd_track_actions(placed, 0) == ()
+    result = resolve_agent_card_effect(placed)
+
+    assert result.events[0].kind == "agent_card_effect_unavailable"
+    assert dict(result.state.decision_stack[-1].context)[
+        "pending_agent_effect"
+    ] is False
+
+
+def test_personal_training_spy_stage_recalls_first_without_supply() -> None:
+    posts = tuple(post.post_id for post in OBSERVATION_POSTS[:3])
+    placed = _feyd_effect_state(spies_supply=0, spy_post_ids=posts)
+    advance = next(
+        action
+        for action in legal_feyd_track_actions(placed, 0)
+        if dict(action.arguments)["space_id"] == "first_spy"
+    )
+    advanced = apply_feyd_track_action(placed, advance).state
+
+    recall_actions = legal_feyd_track_actions(advanced, 0)
+    assert all(
+        action.action_id == "recall_spy_for_leader_placement"
+        for action in recall_actions
+    )
+    recalled = apply_feyd_track_action(advanced, recall_actions[0]).state
+    assert dict(recalled.decision_stack[-1].context)["feyd_spy_recalled"] is True
+
+    placements = legal_feyd_track_actions(recalled, 0)
+    assert all(action.action_id == "place_leader_spy" for action in placements)
+    result = apply_feyd_track_action(recalled, placements[0])
+
+    assert result.state.players[0].spies_supply == 0
+    assert len(result.state.players[0].spy_post_ids) == 3
+
+
+def test_devious_strength_recalls_a_spy_for_two_swords() -> None:
+    post_id = OBSERVATION_POSTS[0].post_id
+    owner = PlayerState(
+        player_id=0,
+        leader_id="feyd_rautha_harkonnen",
+        hand=("player:0:starter:dagger:0",),
+        troops_supply=8,
+        troops_garrison=3,
+        troops_conflict=1,
+        spies_supply=2,
+        spy_post_ids=(post_id,),
+    )
+    revealed = _reveal_state(owner)
+    assert dict(revealed.decision_stack[-1].context)["strength"] == 3
+
+    (action,) = legal_leader_reveal_actions(revealed, 0)
+    assert action.action_id == "recall_spy_for_leader"
+    result = apply_leader_reveal_action(revealed, action)
+    resolved = result.state.players[0]
+    context = dict(result.state.decision_stack[-1].context)
+
+    assert resolved.spies_supply == 3
+    assert resolved.spy_post_ids == ()
+    assert resolved.combat_strength == 5
+    assert context["strength"] == 5
+    assert context["optional_sword_strength"] == 2
+    assert context["leader_reveal_ability_used"] is True
+    assert legal_leader_reveal_actions(result.state, 0) == ()
+
+
+def test_devious_strength_swords_do_not_count_without_units() -> None:
+    post_id = OBSERVATION_POSTS[0].post_id
+    owner = PlayerState(
+        player_id=0,
+        leader_id="feyd_rautha_harkonnen",
+        hand=("player:0:starter:dagger:0",),
+        spies_supply=2,
+        spy_post_ids=(post_id,),
+    )
+    revealed = _reveal_state(owner)
+
+    (action,) = legal_leader_reveal_actions(revealed, 0)
+    result = apply_leader_reveal_action(revealed, action)
+    context = dict(result.state.decision_stack[-1].context)
+
+    # Swords only count while units are in the Conflict [Main pp. 12-13]; the
+    # chosen bonus is still recorded for later deployments.
+    assert result.state.players[0].combat_strength == 0
+    assert context["strength"] == 0
+    assert context["optional_sword_strength"] == 2
+
+
+def test_devious_strength_is_not_offered_without_placed_spies() -> None:
+    owner = PlayerState(
+        player_id=0,
+        leader_id="feyd_rautha_harkonnen",
+        hand=("player:0:starter:dagger:0",),
+        troops_supply=8,
+        troops_garrison=3,
+        troops_conflict=1,
+    )
+    revealed = _reveal_state(owner)
+
+    assert legal_leader_reveal_actions(revealed, 0) == ()

@@ -116,6 +116,7 @@ from dune_imperium.rules.intrigue_triggers import (
     offer_deployment_triggers,
 )
 from dune_imperium.rules.leader_abilities import (
+    apply_feyd_track_action,
     apply_leader_reveal_action,
     grant_leader_reveal_passives,
     leader_signet_is_implemented,
@@ -338,10 +339,17 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "select_long_live_fighters_draw": apply_agent_card_long_live_action,
     "select_long_live_fighters_discard": apply_agent_card_long_live_action,
     "discard_opponent_card": apply_opponent_card_discard,
+    # Leader Signet Ring (Personal Training track)
+    "advance_feyd_track": apply_feyd_track_action,
+    "trash_leader_card": apply_feyd_track_action,
+    "decline_leader_card_trash": apply_feyd_track_action,
+    "place_leader_spy": apply_feyd_track_action,
+    "recall_spy_for_leader_placement": apply_feyd_track_action,
     # Reveal turn
     "acquire_reserve": apply_reserve_acquisition,
     "acquire_imperium": apply_imperium_acquisition,
     "retreat_leader_troop": apply_leader_reveal_action,
+    "recall_spy_for_leader": apply_leader_reveal_action,
     "finish_reveal": finish_reveal_turn,
     "place_acquisition_spy": apply_acquisition_spy_action,
     "recall_spy_for_acquisition": apply_acquisition_spy_action,

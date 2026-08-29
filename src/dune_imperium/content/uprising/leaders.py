@@ -1,6 +1,7 @@
 """Uprising Leader identities used during four-player setup."""
 
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Final
 
 from dune_imperium.content.schema import SourceDocument, SourceRef
@@ -51,6 +52,8 @@ LEADERS: Final = (
         "Feyd-Rautha Harkonnen",
         _catalog(195, "uprising-feyd-rautha-harkonnen"),
         uses_feyd_token=True,
+        ability_name="Devious Strength",
+        signet_name="Personal Training",
     ),
     LeaderDefinition(
         "gurney_halleck",
@@ -103,6 +106,63 @@ LEADERS: Final = (
 
 
 LEADERS_BY_ID: Final = {leader.leader_id: leader for leader in LEADERS}
+
+
+class FeydTrackReward(StrEnum):
+    """Printed reward of one Personal Training track space."""
+
+    NONE = "none"
+    PAY_SOLARI_TO_TRASH = "pay_solari_to_trash"
+    PLACE_SPY = "place_spy"
+    OPTIONAL_TRASH = "optional_trash"
+    GAIN_TWO_SPICE = "gain_two_spice"
+    TROOP_AND_SPY = "troop_and_spy"
+
+
+@dataclass(frozen=True, slots=True)
+class FeydTrackSpace:
+    """One space of Feyd-Rautha's printed Training track.
+
+    The track is a branching path: the Feyd token starts on the leftmost
+    space and Personal Training moves it one space to the right along an
+    edge of the player's choice, earning the reward on the new space
+    [Feyd-Rautha Harkonnen card] [Main p. 17].
+    """
+
+    space_id: str
+    reward: FeydTrackReward
+    next_space_ids: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if not self.space_id:
+            raise ValueError("Feyd track spaces require stable IDs")
+        if len(self.next_space_ids) != len(set(self.next_space_ids)):
+            raise ValueError("Feyd track edges must be unique")
+
+
+# Transcribed from the card image: the start square forks into a paid-trash
+# space (one Solari for a trash) above and a Spy space below, converges on a
+# free-trash space, forks again into a trash space above and a Spy-then-two-
+# Spice branch below, and both branches end on the troop-and-Spy space, where
+# the token remains for the rest of the game [Main p. 17].
+FEYD_TRAINING_TRACK: Final = (
+    FeydTrackSpace("start", FeydTrackReward.NONE, ("paid_trash", "first_spy")),
+    FeydTrackSpace("paid_trash", FeydTrackReward.PAY_SOLARI_TO_TRASH, ("mid_trash",)),
+    FeydTrackSpace("first_spy", FeydTrackReward.PLACE_SPY, ("mid_trash",)),
+    FeydTrackSpace(
+        "mid_trash",
+        FeydTrackReward.OPTIONAL_TRASH,
+        ("late_trash", "second_spy"),
+    ),
+    FeydTrackSpace("late_trash", FeydTrackReward.OPTIONAL_TRASH, ("final",)),
+    FeydTrackSpace("second_spy", FeydTrackReward.PLACE_SPY, ("double_spice",)),
+    FeydTrackSpace("double_spice", FeydTrackReward.GAIN_TWO_SPICE, ("final",)),
+    FeydTrackSpace("final", FeydTrackReward.TROOP_AND_SPY, ()),
+)
+
+FEYD_TRACK_BY_ID: Final = {space.space_id: space for space in FEYD_TRAINING_TRACK}
+
+FEYD_TRACK_START: Final = "start"
 
 
 def leaders_for_choam(choam_module: bool) -> tuple[LeaderDefinition, ...]:
