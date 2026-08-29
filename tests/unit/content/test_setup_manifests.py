@@ -526,13 +526,6 @@ def test_standard_contract_manifest_transcribes_printed_conditions_and_rewards()
             ),
             ContractReward(solari=3),
         ),
-        "high_council_iii": (
-            ContractCondition(
-                ContractConditionKind.BOARD_SPACE,
-                target="high_council",
-            ),
-            ContractReward(contracts=1),
-        ),
         "immediate": (
             ContractCondition(ContractConditionKind.IMMEDIATE),
             ContractReward(solari=2),
@@ -554,6 +547,10 @@ def test_standard_contract_manifest_transcribes_printed_conditions_and_rewards()
         "sardaukar_i": (
             ContractCondition(ContractConditionKind.BOARD_SPACE, target="sardaukar"),
             ContractReward(personal_cards=2),
+        ),
+        "sardaukar_ii": (
+            ContractCondition(ContractConditionKind.BOARD_SPACE, target="sardaukar"),
+            ContractReward(recall_agents=1),
         ),
     }
 

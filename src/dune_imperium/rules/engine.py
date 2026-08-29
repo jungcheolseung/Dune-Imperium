@@ -84,9 +84,11 @@ from dune_imperium.rules.combat_deployment import apply_combat_deployment
 from dune_imperium.rules.contracts import (
     apply_contract_action,
     apply_contract_completion,
+    apply_contract_recall_action,
     apply_contract_spy_action,
     exhausted_contract_choice_is_pending,
     legal_contract_actions,
+    legal_contract_recall_actions,
     legal_contract_spy_actions,
     resolve_exhausted_contract_choice,
 )
@@ -260,6 +262,7 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     ),
     FrameKind.CONTRACT_MARKET: (legal_contract_actions,),
     FrameKind.CONTRACT_REWARD_SPY: (legal_contract_spy_actions,),
+    FrameKind.CONTRACT_REWARD_RECALL: (legal_contract_recall_actions,),
     FrameKind.CONTROL_DEFENSE: (legal_control_defense_actions,),
     FrameKind.COMBAT_INTRIGUE: (
         legal_combat_intrigue_actions,
@@ -393,6 +396,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "take_contract": apply_contract_action,
     "place_contract_spy": apply_contract_spy_action,
     "recall_spy_for_contract": apply_contract_spy_action,
+    "recall_agent_for_contract": apply_contract_recall_action,
     # Round start and Combat
     "deploy_control_defense": apply_control_defense_action,
     "decline_control_defense": apply_control_defense_action,

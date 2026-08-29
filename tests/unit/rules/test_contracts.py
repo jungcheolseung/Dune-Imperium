@@ -425,15 +425,15 @@ def test_contract_reward_can_take_a_new_contract_without_retroactive_completion(
     None
 ):
     state = _agent_contract_state(
-        "reserve:prepare_the_way:7",
-        "contract:high_council_iii",
+        "player:0:starter:diplomacy:0",
+        "contract:espionage_ii",
     )
     state = replace(
         state,
         face_up_contract_ids=("contract:high_council_i",),
         contract_bank=("contract:deliver_supplies",),
     )
-    placed = _place_agent(state, "high_council")
+    placed = _place_agent(state, "espionage")
     engine = UprisingRulesEngine()
     completed = engine.apply(
         placed,
@@ -451,7 +451,7 @@ def test_contract_reward_can_take_a_new_contract_without_retroactive_completion(
     ).state
     owner = taken.players[0]
 
-    assert owner.completed_contract_ids == ("contract:high_council_iii",)
+    assert owner.completed_contract_ids == ("contract:espionage_ii",)
     assert owner.active_contract_ids == ("contract:high_council_i",)
     assert not legal_contract_completion_actions(taken, 0)
 
@@ -472,6 +472,63 @@ def test_sardaukar_contract_draws_two_personal_cards() -> None:
 
     assert completed.players[0].hand == deck
     assert completed.players[0].deck == ()
+
+
+def test_sardaukar_ii_contract_recalls_another_placed_agent() -> None:
+    state = _agent_contract_state(
+        _imperium_instance("truthtrance"),
+        "contract:sardaukar_ii",
+    )
+    owner = replace(
+        state.players[0],
+        agents_available=1,
+        agent_locations=("arrakeen",),
+    )
+    state = replace(state, players=(owner, *state.players[1:]))
+    placed = _place_agent(state, "sardaukar")
+    engine = UprisingRulesEngine()
+    completed = engine.apply(
+        placed,
+        legal_contract_completion_actions(placed, 0)[0],
+    ).state
+
+    # The printed reward recalls one of your Agents, and the just-sent Agent
+    # is not a valid target [Main p. 20].
+    recall_actions = engine.legal_actions(completed, 0)
+    assert [action.action_id for action in recall_actions] == [
+        "recall_agent_for_contract"
+    ]
+    assert [
+        dict(action.arguments)["space_id"] for action in recall_actions
+    ] == ["arrakeen"]
+
+    recalled = engine.apply(completed, recall_actions[0]).state
+    resolved = recalled.players[0]
+
+    assert resolved.agents_available == 1
+    assert resolved.agent_locations == ("sardaukar",)
+    assert resolved.completed_contract_ids == ("contract:sardaukar_ii",)
+
+
+def test_sardaukar_ii_recall_does_nothing_without_another_agent() -> None:
+    state = _agent_contract_state(
+        _imperium_instance("truthtrance"),
+        "contract:sardaukar_ii",
+    )
+    placed = _place_agent(state, "sardaukar")
+    engine = UprisingRulesEngine()
+    transition = engine.apply(
+        placed,
+        legal_contract_completion_actions(placed, 0)[0],
+    )
+
+    assert any(
+        event.kind == "contract_recall_unavailable" for event in transition.events
+    )
+    assert transition.state.decision_stack[-1].kind == "agent_effects"
+    assert transition.state.players[0].completed_contract_ids == (
+        "contract:sardaukar_ii",
+    )
 
 
 def test_contract_troops_increase_combat_deployment_limit() -> None:

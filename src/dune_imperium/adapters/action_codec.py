@@ -36,7 +36,7 @@ from dune_imperium.content.uprising.starting_cards import (
 from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
 from dune_imperium.core.actions import ActionValue, DomainAction
 
-ACTION_CODEC_VERSION = 75
+ACTION_CODEC_VERSION = 76
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 
@@ -217,6 +217,13 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
                 )
                 for instance_id in contract_instance_ids()
             )
+        templates.extend(
+            ActionTemplate(
+                action_id="recall_agent_for_contract",
+                arguments=(("space_id", space.space_id),),
+            )
+            for space in BOARD_SPACES
+        )
     templates.extend(
         ActionTemplate(
             action_id="pay_agent_card_intrigue_and_spice",

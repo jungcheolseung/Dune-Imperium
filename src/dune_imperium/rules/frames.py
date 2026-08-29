@@ -22,6 +22,7 @@ class FrameKind(StrEnum):
     REVEAL_CHOICE = "reveal_choice"
     CONTRACT_MARKET = "contract_market"
     CONTRACT_REWARD_SPY = "contract_reward_spy"
+    CONTRACT_REWARD_RECALL = "contract_reward_recall"
     CONTROL_DEFENSE = "control_defense"
     COMBAT_INTRIGUE = "combat_intrigue"
     COMBAT_REWARD_INFLUENCE = "combat_reward_influence"

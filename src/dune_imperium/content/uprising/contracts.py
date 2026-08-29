@@ -49,6 +49,7 @@ class ContractReward:
     personal_cards: int = 0
     contracts: int = 0
     spies: int = 0
+    recall_agents: int = 0
     influence_faction: Faction | None = None
     influence: int = 0
 
@@ -60,6 +61,7 @@ class ContractReward:
             self.personal_cards,
             self.contracts,
             self.spies,
+            self.recall_agents,
             self.influence,
         )
         if min(quantities) < 0:
@@ -257,16 +259,6 @@ CONTRACTS: Final = (
         reward=ContractReward(solari=3),
     ),
     _contract(
-        497,
-        "high-council-iii",
-        "High Council III",
-        condition=ContractCondition(
-            ContractConditionKind.BOARD_SPACE,
-            target="high_council",
-        ),
-        reward=ContractReward(contracts=1),
-    ),
-    _contract(
         501,
         "immediate",
         "Immediate",
@@ -302,6 +294,19 @@ CONTRACTS: Final = (
             target="sardaukar",
         ),
         reward=ContractReward(personal_cards=2),
+    ),
+    _contract(
+        502,
+        "sardaukar-ii",
+        "Sardaukar II",
+        condition=ContractCondition(
+            ContractConditionKind.BOARD_SPACE,
+            target="sardaukar",
+        ),
+        # The printed reward recalls one of the player's Agents; per the
+        # general glossary the recalled Agent cannot be the one just sent
+        # [Main p. 20].
+        reward=ContractReward(recall_agents=1),
     ),
 )
 

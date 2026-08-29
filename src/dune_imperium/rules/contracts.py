@@ -125,11 +125,13 @@ def apply_contract_completion(
         completed.state.players,
     )
     definition = contract_for_instance(instance_id)
+    turn_space_id = context.get("space_id")
     follow_up = _begin_contract_reward_choice(
         next_state,
         action.actor,
         definition,
         source=source,
+        excluded_space_id=turn_space_id if isinstance(turn_space_id, str) else "",
     )
     return RuleResult(
         state=follow_up.state,
@@ -278,6 +280,73 @@ def apply_contract_spy_action(
         ),
     )
     return RuleResult(state=next_state, events=(event,))
+
+
+def legal_contract_recall_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return the Agents a Contract recall reward may return to the Leader."""
+
+    if not 0 <= player < state.config.players or not state.decision_stack:
+        return ()
+    frame = state.decision_stack[-1]
+    if frame.kind != FrameKind.CONTRACT_REWARD_RECALL:
+        return ()
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    excluded = dict(frame.context).get("excluded_space_id")
+    return tuple(
+        DomainAction(
+            action_id="recall_agent_for_contract",
+            actor=player,
+            arguments=(("space_id", space_id),),
+        )
+        for space_id in state.players[player].agent_locations
+        if space_id != excluded
+    )
+
+
+def apply_contract_recall_action(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Recall the chosen Agent for a completed Contract [Main p. 20]."""
+
+    if action not in legal_contract_recall_actions(state, action.actor):
+        raise ValueError("action is not a legal Contract recall choice")
+    space_id = dict(action.arguments).get("space_id")
+    if not isinstance(space_id, str):
+        raise RuntimeError("Contract recall choice has invalid space ID")
+    source = dict(state.decision_stack[-1].context).get("source")
+    if not isinstance(source, str):
+        raise RuntimeError("Contract recall frame has invalid source")
+    owner = state.players[action.actor]
+    next_owner = replace(
+        owner,
+        agents_available=owner.agents_available + 1,
+        agent_locations=tuple(
+            location for location in owner.agent_locations if location != space_id
+        ),
+    )
+    next_state = replace(
+        state.pop_decision(),
+        players=replace_player(state.players, next_owner),
+    )
+    return RuleResult(
+        state=next_state,
+        events=(
+            GameEvent(
+                event_id=f"{source}:reward:recall:{space_id}",
+                kind="agent_recalled",
+                payload=(
+                    ("player", action.actor),
+                    ("source", source),
+                    ("space_id", space_id),
+                ),
+            ),
+        ),
+    )
 
 
 def contract_choice_frame(
@@ -612,6 +681,7 @@ def _complete_contract_without_choices(
             ),
             ("personal_cards", reward.personal_cards),
             ("player", player),
+            ("recall_agents", reward.recall_agents),
             ("solari", reward.solari),
             ("spies", reward.spies),
             ("troops", recruited),
@@ -627,16 +697,56 @@ def _begin_contract_reward_choice(
     definition: ContractDefinition,
     *,
     source: str,
+    excluded_space_id: str = "",
 ) -> RuleResult:
     reward = definition.reward
     choice_count = sum(
         bool(value)
-        for value in (reward.personal_cards, reward.contracts, reward.spies)
+        for value in (
+            reward.personal_cards,
+            reward.contracts,
+            reward.spies,
+            reward.recall_agents,
+        )
     )
     if choice_count > 1:
         raise NotImplementedError(
             "Contract rewards with multiple serial choices are not implemented"
         )
+    if reward.recall_agents:
+        # Recall one of your Agents; the just-sent Agent is not a valid
+        # target [Main p. 20], and with no other placed Agent the reward
+        # does nothing.
+        candidates = tuple(
+            space_id
+            for space_id in state.players[player].agent_locations
+            if space_id != excluded_space_id
+        )
+        if not candidates:
+            return RuleResult(
+                state=state,
+                events=(
+                    GameEvent(
+                        event_id=f"{source}:reward:recall_unavailable",
+                        kind="contract_recall_unavailable",
+                        payload=(("player", player),),
+                    ),
+                ),
+            )
+        frame = DecisionFrame(
+            kind=FrameKind.CONTRACT_REWARD_RECALL,
+            frame_id=f"{source}:reward:recall",
+            decision=PlayerDecision(
+                owner=player,
+                prompt="Choose one of your other Agents to recall",
+            ),
+            context=(
+                ("excluded_space_id", excluded_space_id),
+                ("source", source),
+                ("turn_owner", player),
+            ),
+        )
+        return RuleResult(state=state.push_decision(frame))
     if reward.personal_cards:
         return draw_or_request_personal_cards(
             state,

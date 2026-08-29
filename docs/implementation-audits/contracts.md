@@ -9,7 +9,7 @@ visual reference.
 
 | Area | Implemented behavior | Rule-sensitive note |
 | --- | --- | --- |
-| Manifest | The 20 standard Uprising Contracts have unique stable IDs, typed completion conditions and rewards, and Dune Cards Hub URLs. | The printed images were checked individually; Harvest 3+ uses the printed 3-Solari reward rather than DIU's incorrect value of 1. |
+| Manifest | The 20 standard Uprising Contracts have unique stable IDs, typed completion conditions and rewards, and Dune Cards Hub URLs. | The printed images were checked individually; Harvest 3+ uses the printed 3-Solari reward rather than DIU's incorrect value of 1. Corrected 2026-08-30: the set contains both Sardaukar tiles (Sardaukar II recalls one of your other Agents [Main p. 20]); the previously listed third High Council tile is a Rise of Ix jumpstart tile whose printed reward includes a Tech acquisition and does not belong to the standard 20. |
 | Setup | With CHOAM enabled, one recorded chance permutation shuffles all 20 tiles, exposes the first two, and leaves 18 in the face-down bank. | With CHOAM disabled, no Contract chance decision or state is created. |
 | Market choice | A Contract icon selects either face-up tile by stable instance ID. The bank's top tile refills the same market position. | The already-shuffled bank order stays authoritative and replayable; taking a tile adds no new chance outcome. |
 | Depletion | Once the bank is empty, taking a face-up tile shrinks the market. Once the market is also empty, each remaining Contract icon grants 2 Solari. | A doubled Conflict reward can take the last tile and automatically convert its second icon. |
@@ -38,6 +38,15 @@ visual reference.
 - All 20 conditions and rewards were cross-checked against their linked Dune
   Cards Hub images on 2026-08-28. The official Main and FAQ determine timing
   and mandatory/order rules; Dune Cards Hub is used only to read tile print.
+- The standard-set membership was re-verified on 2026-08-30: the six-player
+  supplement's base-CHOAM setup sets aside "the two Sardaukar contracts"
+  before shuffling, so both Sardaukar tiles belong to the shuffled 20, and the
+  composition (Acquire 1, Arrakeen 2, Deliver Supplies 1, Espionage 2,
+  Harvest 3+ 2, Harvest 4+ 2, Heighliner 3, High Council 2, Immediate 1,
+  Research Station 2, Sardaukar 2) sums to exactly 20. The catalog-497 "High
+  Council" tile prints a Rise of Ix Tech-acquisition reward and is a RoI
+  jumpstart tile; DIU's flat contract list had dropped that Tech icon, which
+  is how it was originally mistaken for a standard tile.
 - Setup replay, take/refill, partial and complete depletion, Immediate,
   board-space/Harvest/Acquire completion, all reward shapes, same-space multiple
   Contracts, no retroactive completion, Gather ordering, troop deployment,
