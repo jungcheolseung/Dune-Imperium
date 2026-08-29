@@ -1,6 +1,6 @@
 # 개발 인수인계
 
-기준일: 2026-08-29
+기준일: 2026-08-30
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재
 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md),
@@ -27,14 +27,14 @@ uv run ruff check src tests
 uv run mypy src tests
 ```
 
-2026-08-29의 기준 결과는 pytest 727개 통과, Ruff 통과, mypy 통과다. 현재 action
-codec은 `ACTION_CODEC_VERSION = 75`이며 기본 룰셋 catalog는 4,138개, CHOAM
-룰셋 catalog는 4,392개다.
+2026-08-30의 기준 결과는 pytest 738개 통과, Ruff 통과, mypy 통과다. 현재 action
+codec은 `ACTION_CODEC_VERSION = 77`이며 기본 룰셋 catalog는 4,143개, CHOAM
+룰셋 catalog는 4,419개다.
 
 ## 현재 구현 기준선
 
-마지막 기능 커밋은 `7f1813e Play the remaining four base-game Leader
-abilities`이고, 그 뒤에 이 슬라이스의 `Document ...` 커밋이 있다.
+마지막 기능 커밋은 `ac75530 Play the Shaddam Corrino IV Leader abilities`이고,
+그 뒤에 이 슬라이스의 `Document ...` 커밋이 있다.
 
 - R0-M4는 완료됐다. 공식 규칙 자료, 엔진 커널, 4인 setup, 한 라운드 수직 조각,
   actor-neutral action codec과 PettingZoo AEC 계약이 있다.
@@ -61,13 +61,14 @@ abilities`이고, 그 뒤에 이 슬라이스의 `Document ...` 커밋이 있다
   `implementation-audits/intrigue.md`).
 - Intrigue deck 고갈 시 모든 draw 지점이 `pending_intrigue_draws` 큐를 거쳐
   replayable reshuffle chance로 해결된다.
-- 기본 게임 Leader 8종의 능력과 Signet Ring이 모두 play된다
-  (`rules/leader_abilities.py`, `implementation-audits/leaders.md`). Signet
-  Ring 배치는 `leader_signet_is_implemented`의 Leader별 게이트가 관리하며
-  (과거의 `UNIMPLEMENTED_AGENT_EFFECTS` 전면 차단 대체), 현재는 CHOAM 전용
-  Shaddam만 게이트 밖이다. Lady Jessica의 flip 면은
-  `PlayerState.leader_face_id`, memory는 `memories`(troop 12개 불변식 포함),
-  Feyd token은 `feyd_track_space`로 공개 관측된다.
+- 인쇄된 Leader 9종(기본 8 + CHOAM 전용 Shaddam)의 능력과 Signet Ring이 모두
+  play된다(`rules/leader_abilities.py`, `implementation-audits/leaders.md`).
+  Lady Jessica의 flip 면은 `PlayerState.leader_face_id`, memory는
+  `memories`(troop 12개 불변식 포함), Feyd token은 `feyd_track_space`,
+  Shaddam의 set-aside contract는 `GameState.sardaukar_contract_ids`로 공개
+  관측된다. 2026-08-30에 standard Contract manifest를 수정했다: Sardaukar II
+  (Agent recall 보상)가 20장에 속하고, 이전에 있던 세 번째 High Council
+  타일은 Rise of Ix Tech 보상 타일의 오전사였다(`contracts.md` audit).
 - 규칙 dispatcher는 `LEGAL_ACTION_PROVIDERS[FrameKind]`와 `ACTION_HANDLERS`
   두 표로 동작한다(`refactoring-plan.md`).
 - 코어 상태 머신과 replay는 전체 게임을 지원한다. 200게임×8라운드 random
@@ -84,8 +85,6 @@ abilities`이고, 그 뒤에 이 슬라이스의 `Document ...` 커밋이 있다
 - Reveal turn 중 card가 hand에 들어가는 Plot(개인 card draw, Inspire Awe의
   조건부 hand 획득)은 FAQ p. 3의 즉시 공개 규칙이 구현되지 않아 Reveal에서
   제시하지 않는다(OQ-015(c)).
-- Shaddam Corrino IV(CHOAM 전용)의 능력·Signet과 set-aside Sardaukar
-  Contract 경로만 Leader 작업에서 남았다(OQ-010, OQ-011 경계 유지).
 - `secrets`, `desert_tactics` board space는 board effect가 미구현이라 dispatcher가
   숨긴다(`board_effect_is_implemented`). Reverend Mother의 board repeat와
   Other Memories도 그 공간들에서는 그래서 아직 발생하지 않는다.
@@ -105,15 +104,10 @@ abilities`이고, 그 뒤에 이 슬라이스의 `Document ...` 커밋이 있다
 
 ## 다음 구현 순서
 
-1. **Shaddam Corrino IV(CHOAM)와 set-aside Sardaukar Contract.** 기본 8종의
-   구현 패턴(`rules/leader_abilities.py`)을 따르고, Emperor of the Known
-   Universe의 배치 제한이 Signet play 시 즉시 적용되는 판정
-   `[Main p. 17]` `[FAQ p. 3]`과 OQ-010, OQ-011 경계를 함께 다룬다. CHOAM
-   룰셋 soak으로 검증한다.
-2. **남은 Objective 상호작용 재감사** — battle icon 경로는 구현돼 있으니
+1. **남은 Objective 상호작용 재감사** — battle icon 경로는 구현돼 있으니
    Intrigue flip(`FlipBattleCard`)·wild matching과의 상호작용을 콘텐츠 관점에서
    재검토하고 audit에 기록한다.
-3. **전체 게임 random/self-play runner 공개 API와 PettingZoo 전체 게임 episode
+2. **전체 게임 random/self-play runner 공개 API와 PettingZoo 전체 게임 episode
    전환.** 엔진은 이미 FINISHED까지 완주하므로 `simulation/runner.py`와
    `adapters/pettingzoo_env.py`의 한 라운드 경계만 남았다. README의
    "전체 게임 관측 확장" 미결정 사항과 함께 설계한다.
@@ -176,13 +170,31 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에
 
 ## 원격 저장소 인계 주의
 
-2026-08-29 Leader 세션 종료 시점의 `origin/master`는 `707392d`이고, 로컬
-`master`에는 그 뒤 Intrigue 완결 슬라이스(`9376a16`, `5d9f793`), 이전
-핸드오프 갱신(`df51572`), Leader 묶음(`e6539ee`, `87a9300`, `af0f512`,
-`190f1ba`, `a2b79f2`, `7f1813e`, `5ffa1bf`)과 이 핸드오프 갱신 커밋이
+2026-08-30 Shaddam 세션 종료 시점 기준 `origin/master`는 `707392d`이고, 로컬
+`master`에는 그 뒤 Intrigue 완결 슬라이스, 2026-08-29 Leader 묶음(기본 8종,
+`e6539ee`~`5ffa1bf`), 그리고 2026-08-30 Shaddam 묶음(Contract manifest 수정
+`5bfd2a5`, Shaddam `ac75530`, 문서 `4fc0e9d`)과 핸드오프 갱신 커밋들이
 순서대로 있다. 새 세션은 `git log origin/master..master`로 push 여부를
-확인한다. checkout이 Leader 묶음보다 이전이면 이 문서의 v75 action catalog,
-4,138/4,392개 행동, 727개 테스트 기준선이 실제 코드와 일치하지 않는다.
+확인한다. checkout이 Shaddam 묶음보다 이전이면 이 문서의 v77 action catalog,
+4,143/4,419개 행동, 738개 테스트 기준선이 실제 코드와 일치하지 않는다.
+
+## 2026-08-30 Shaddam 세션 요약
+
+- standard Contract manifest를 교정했다: 6인 보충 규칙의 base-CHOAM setup이
+  "두 Sardaukar contract"를 set aside하라고 지시하므로 Sardaukar 2장이 20장에
+  속하고, 공간별 구성 합산과 타일 이미지의 Rise of Ix Tech 보상으로 이전
+  세 번째 High Council 타일이 RoI jumpstart 타일의 오전사임을 확정했다.
+  Sardaukar II의 Agent recall 보상(`[Main p. 20]`의 방금-보낸-Agent 제외)을
+  `CONTRACT_REWARD_RECALL` frame으로 연결했다(codec v76).
+- Shaddam Corrino IV를 구현해 인쇄된 Leader 9종을 완결했다: Sardaukar
+  Commander의 setup set-aside와 시장 frame 내 전용 선택(시장 보충 없음,
+  고갈 시 2 Solari 전환은 OQ-021 convention), Emperor of the Known
+  Universe의 (Solari+troop | 3 Solari→Influence) 선택과 배치 즉시 발효되는
+  turn 한정 unit 배치 차단(Combat 배치·Maker 소환·Intrigue 배치 option·
+  SummonSandworm 무효)이다(codec v77).
+- 검증: Shaddam 포함 CHOAM 조합 30판 random FINISHED 완주 soak에서 set-aside
+  take 27회, signet 선택 85회, contract Agent recall 발동을 확인했고 기본
+  조합 25판 회귀와 replay 검증을 통과했다.
 
 ## 2026-08-29 Leader 세션 요약
 
