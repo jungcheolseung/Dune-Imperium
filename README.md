@@ -11,15 +11,15 @@
 기본 룰셋 Imperium 카드 50종과 CHOAM 전용 4종, 총 54종의 play data가 구현되어
 있다. CHOAM Module은 standard contract 20장의 identity·setup·공개 시장·완료
 조건·인쇄 보상과 전용 Imperium 카드 효과까지 연결돼 있다. 현재 action codec은
-v71이며 기본 룰셋은 3,923개, CHOAM 룰셋은 4,169개다. 전체 테스트 668개, Ruff,
+v75이며 기본 룰셋은 4,138개, CHOAM 룰셋은 4,392개다. 전체 테스트 727개, Ruff,
 mypy가 통과한다.
 
 코어 엔진은 Endgame Intrigue window(OQ-001 convention)까지 갖춰 random
-4인 게임을 FINISHED까지 완주하고 replay할 수 있다. 다만 공개 random runner와
-`dune_imperium_uprising_v0` PettingZoo adapter는 여전히 한 라운드를 실행 단위로
-삼는다. Intrigue 44장은 39개 identity 전부가 effect DSL로 play되어 완결됐고,
-Leader 능력은 아직 구현 전이므로 완전한 기본 게임이나 학습 환경이 끝난 상태는
-아니다.
+4인 게임을 FINISHED까지 완주하고 replay할 수 있다. Intrigue 44장은 39개
+identity 전부가 effect DSL로 play되어 완결됐고, 기본 게임 Leader 8종의 능력과
+Signet Ring도 모두 play된다(CHOAM 전용 Shaddam만 남음). 다만 공개 random
+runner와 `dune_imperium_uprising_v0` PettingZoo adapter는 여전히 한 라운드를
+실행 단위로 삼으므로 완전한 학습 환경이 끝난 상태는 아니다.
 
 ## 프로젝트 비전
 

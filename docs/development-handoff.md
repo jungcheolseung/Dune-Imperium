@@ -7,6 +7,7 @@
 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md),
 카드별 세부 동작은
 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md),
+Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md),
 계약 경계는
 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를
 따른다.
@@ -26,14 +27,14 @@ uv run ruff check src tests
 uv run mypy src tests
 ```
 
-2026-08-29의 기준 결과는 pytest 668개 통과, Ruff 통과, mypy 통과다. 현재 action
-codec은 `ACTION_CODEC_VERSION = 71`이며 기본 룰셋 catalog는 3,923개, CHOAM
-룰셋 catalog는 4,169개다.
+2026-08-29의 기준 결과는 pytest 727개 통과, Ruff 통과, mypy 통과다. 현재 action
+codec은 `ACTION_CODEC_VERSION = 75`이며 기본 룰셋 catalog는 4,138개, CHOAM
+룰셋 catalog는 4,392개다.
 
 ## 현재 구현 기준선
 
-마지막 기능 커밋은 `9376a16 Play Manipulate and Spring the Trap, completing
-the Intrigue deck`이고, 그 뒤에 이 슬라이스의 `Document ...` 커밋이 있다.
+마지막 기능 커밋은 `7f1813e Play the remaining four base-game Leader
+abilities`이고, 그 뒤에 이 슬라이스의 `Document ...` 커밋이 있다.
 
 - R0-M4는 완료됐다. 공식 규칙 자료, 엔진 커널, 4인 setup, 한 라운드 수직 조각,
   actor-neutral action codec과 PettingZoo AEC 계약이 있다.
@@ -60,6 +61,13 @@ the Intrigue deck`이고, 그 뒤에 이 슬라이스의 `Document ...` 커밋�
   `implementation-audits/intrigue.md`).
 - Intrigue deck 고갈 시 모든 draw 지점이 `pending_intrigue_draws` 큐를 거쳐
   replayable reshuffle chance로 해결된다.
+- 기본 게임 Leader 8종의 능력과 Signet Ring이 모두 play된다
+  (`rules/leader_abilities.py`, `implementation-audits/leaders.md`). Signet
+  Ring 배치는 `leader_signet_is_implemented`의 Leader별 게이트가 관리하며
+  (과거의 `UNIMPLEMENTED_AGENT_EFFECTS` 전면 차단 대체), 현재는 CHOAM 전용
+  Shaddam만 게이트 밖이다. Lady Jessica의 flip 면은
+  `PlayerState.leader_face_id`, memory는 `memories`(troop 12개 불변식 포함),
+  Feyd token은 `feyd_track_space`로 공개 관측된다.
 - 규칙 dispatcher는 `LEGAL_ACTION_PROVIDERS[FrameKind]`와 `ACTION_HANDLERS`
   두 표로 동작한다(`refactoring-plan.md`).
 - 코어 상태 머신과 replay는 전체 게임을 지원한다. 200게임×8라운드 random
@@ -76,10 +84,14 @@ the Intrigue deck`이고, 그 뒤에 이 슬라이스의 `Document ...` 커밋�
 - Reveal turn 중 card가 hand에 들어가는 Plot(개인 card draw, Inspire Awe의
   조건부 hand 획득)은 FAQ p. 3의 즉시 공개 규칙이 구현되지 않아 Reveal에서
   제시하지 않는다(OQ-015(c)).
-- Leader는 identity와 setup 선택만 있고 Signet Ring 및 Leader 능력은 없다.
-  `UNIMPLEMENTED_AGENT_EFFECTS`가 Signet Ring 카드를 숨긴다.
+- Shaddam Corrino IV(CHOAM 전용)의 능력·Signet과 set-aside Sardaukar
+  Contract 경로만 Leader 작업에서 남았다(OQ-010, OQ-011 경계 유지).
 - `secrets`, `desert_tactics` board space는 board effect가 미구현이라 dispatcher가
-  숨긴다(`board_effect_is_implemented`).
+  숨긴다(`board_effect_is_implemented`). Reverend Mother의 board repeat와
+  Other Memories도 그 공간들에서는 그래서 아직 발생하지 않는다.
+- Agent 배치 시점 조건이 거짓이면 pending되지 않는 카드 효과는, 같은 frame의
+  자유 순서 효과로 조건이 나중에 참이 되어도 제시되지 않는다(알려진 엔진
+  경계; Prepare the Way 수정 커밋 `87a9300` 참고).
 - Objective는 4인 setup, First Player, battle icon 경로가 구현됐지만 이후 콘텐츠
   상호작용은 다시 감사해야 한다.
 - Shaddam Corrino IV의 set-aside Sardaukar Contract 경로는 Leader 능력과 함께
@@ -93,23 +105,11 @@ the Intrigue deck`이고, 그 뒤에 이 슬라이스의 `Document ...` 커밋�
 
 ## 다음 구현 순서
 
-1. **Leader 기본 능력과 Signet Ring.** 시작점 사실관계:
-   - `content/uprising/leaders.py`에는 identity 9종(기본 8 + Shaddam
-     `choam_only=True`)만 있고 능력·Signet 필드는 스키마에 아직 없다.
-     Lady Jessica는 `setup_face_id`/`alternate_face_id` 양면, Feyd-Rautha는
-     `uses_feyd_token=True`가 표시돼 있다.
-   - Signet Ring 시작 카드는 `rules/agent_effects.py`의
-     `UNIMPLEMENTED_AGENT_EFFECTS = {LEADER_SIGNET}`로 Agent 경로에서 숨겨져
-     있다. 이 집합을 비우는 것이 이 작업의 완료 신호다.
-   - 항상 테스트·soak에 쓰이는 `DEFAULT_LEADER_IDS`(Feyd-Rautha, Gurney,
-     Lady Amber Metulli, Lady Jessica; `rules/engine.py`) 4종부터 구현하고
-     나머지를 후속 묶음으로 나누는 것을 권장한다.
-   - 텍스트 검증: 리더별 카드 이미지(카탈로그 URL은 leaders.py에 있음)와
-     로컬 DIU `data/leader_data/*.json`(10파일, Reverend Mother 별도)을
-     부트스트랩으로 쓰되 이미지가 우선한다. FAQ p. 1-4에 리더별 판정이 많으니
-     `official-rulings-index.md`를 함께 확인한다.
-   - Shaddam의 set-aside Sardaukar Contract 경로는 CHOAM 모듈 소속이며 Leader
-     능력과 함께 구현한다.
+1. **Shaddam Corrino IV(CHOAM)와 set-aside Sardaukar Contract.** 기본 8종의
+   구현 패턴(`rules/leader_abilities.py`)을 따르고, Emperor of the Known
+   Universe의 배치 제한이 Signet play 시 즉시 적용되는 판정
+   `[Main p. 17]` `[FAQ p. 3]`과 OQ-010, OQ-011 경계를 함께 다룬다. CHOAM
+   룰셋 soak으로 검증한다.
 2. **남은 Objective 상호작용 재감사** — battle icon 경로는 구현돼 있으니
    Intrigue flip(`FlipBattleCard`)·wild matching과의 상호작용을 콘텐츠 관점에서
    재검토하고 audit에 기록한다.
@@ -128,7 +128,8 @@ Trap 유형을 잘못 적었던 전례가 있다).
 
 | 목적 | 주요 위치 |
 | --- | --- |
-| 카드 manifest와 typed 효과 | `src/dune_imperium/content/uprising/` (Leader identity는 `leaders.py`) |
+| 카드 manifest와 typed 효과 | `src/dune_imperium/content/uprising/` (Leader identity·Feyd track은 `leaders.py`) |
+| Leader 능력과 Signet Ring | `src/dune_imperium/rules/leader_abilities.py`, reach-2 보너스는 `rules/influence.py`, Smuggle Spice는 `rules/agent_turn.py` |
 | Agent 배치와 카드 효과 | `src/dune_imperium/rules/agent_turn.py`, `agent_effects.py` |
 | Reveal과 acquire | `src/dune_imperium/rules/reveal_turn.py`, `acquisition.py` |
 | phase·Combat·Endgame | `src/dune_imperium/rules/phases.py`, `combat.py`, `endgame.py` |
@@ -175,17 +176,35 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에
 
 ## 원격 저장소 인계 주의
 
-2026-08-29 작업 시작 시점의 `origin/master`는 `ed16d93 Refresh the development
-handoff for the next session`이고, 로컬 `master`에는 그 뒤 Impress·Inspire Awe
-슬라이스(`72335eb`, `d4ba179`), Call to Arms 슬라이스(`2de0d1b`, `b8707d3`),
-Distraction 슬라이스(`a3569af`, `d724b98`), Leverage 슬라이스(`736688f`,
-`2dde896`), Endgame 묶음(`5e4cf70`, `41b9ab4`, `707392d`), Intrigue 완결
-슬라이스(`9376a16`, `5d9f793`), 그리고 이 핸드오프 갱신 커밋이 순서대로 있다.
-사용자가 2026-08-29 중 `707392d`까지 push했고, 그 뒤 커밋 3개는 세션 종료
-시점 기준 미push였다. 새 세션은 `git log origin/master..master`로 push 여부를
-확인한다. checkout이 Intrigue 완결 슬라이스보다 이전이면 이 문서의 v71 action
-catalog, 3,923/4,169개 행동, 668개 테스트 기준선이 실제 코드와 일치하지
-않는다.
+2026-08-29 Leader 세션 종료 시점의 `origin/master`는 `707392d`이고, 로컬
+`master`에는 그 뒤 Intrigue 완결 슬라이스(`9376a16`, `5d9f793`), 이전
+핸드오프 갱신(`df51572`), Leader 묶음(`e6539ee`, `87a9300`, `af0f512`,
+`190f1ba`, `a2b79f2`, `7f1813e`, `5ffa1bf`)과 이 핸드오프 갱신 커밋이
+순서대로 있다. 새 세션은 `git log origin/master..master`로 push 여부를
+확인한다. checkout이 Leader 묶음보다 이전이면 이 문서의 v75 action catalog,
+4,138/4,392개 행동, 727개 테스트 기준선이 실제 코드와 일치하지 않는다.
+
+## 2026-08-29 Leader 세션 요약
+
+- 기본 게임 Leader 8종의 능력과 Signet Ring을 카드 이미지로 검증해 모두
+  구현했다(codec v72→v75, 테스트 668→727). space 유형 아이콘(City 파란 원,
+  Landsraad 초록 오각형)은 Board Space Guide artwork로 확정했다.
+- Gurney(Warmaster recruit, Always Smiling 문턱 6), Amber(Fill Coffers,
+  Desert Scouts retreat), Feyd(분기형 Personal Training 트랙과 Devious
+  Strength), Jessica 양면(Spice Agony memory, Other Memories flip,
+  Water of Life, Reverend Mother board repeat), Margot(Loyalty, City Spy),
+  Muad'Dib(Lead the Way, Unpredictable Foe), Irulan(Imperial Birthright,
+  Chronicler's Insight), Staban(Limited Allies 9장 덱, Smuggle Spice,
+  Unseen Network)이다. 세부와 근거는 `implementation-audits/leaders.md`.
+- 새 convention 4건을 OQ-017~OQ-020으로 기록했다(Feyd 맨 오른쪽 칸 무보상,
+  memory 0개 flip 허용, Reverend Mother 반복의 Influence 제외
+  `[Main p. 7]`, Always Smiling 미회수).
+- 기존 버그 수정: Prepare the Way(그리고 Hidden Missive)의 조건부 Agent
+  효과가 배치와 해결 사이 Influence 하락 시 legal로 제시된 뒤 실패하던 것을
+  해결 시점 판정의 우아한 무효(no-op)로 바꿨다(`87a9300`,
+  docs/rules/player-turns.md의 자유 순서 조건 판정 문장 인용).
+- 검증: Leader 4종 기본 조합 60판 + 신규 4종 조합 25판 random FINISHED 완주
+  soak(replay 검증 포함)에서 모든 신규 경로의 발동을 이벤트 수로 확인했다.
 
 ## 2026-08-29 세션 요약
 
