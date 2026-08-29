@@ -24,7 +24,10 @@ from dune_imperium.content.uprising.board import (
     Faction,
 )
 from dune_imperium.content.uprising.conflicts import CONFLICTS
-from dune_imperium.content.uprising.contracts import CONTRACTS_BY_ID
+from dune_imperium.content.uprising.contracts import (
+    CONTRACTS_BY_ID,
+    contract_for_instance,
+)
 from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS_BY_ID
 from dune_imperium.content.uprising.intrigue import (
     INTRIGUE_CARDS_BY_ID,
@@ -230,12 +233,8 @@ def encode_player_view(view: PlayerView) -> tuple[int, ...]:
         [maker_spice.get(space_id, 0) for space_id in MAKER_SPACE_IDS],
     )
     writer.write("contract_bank_size", [view.contract_bank_size])
-    writer.write(
-        "face_up_contracts", _multi_hot(view.face_up_contract_ids, CONTRACT_IDS)
-    )
-    writer.write(
-        "sardaukar_contracts", _multi_hot(view.sardaukar_contract_ids, CONTRACT_IDS)
-    )
+    writer.write("face_up_contracts", _contract_flags(view.face_up_contract_ids))
+    writer.write("sardaukar_contracts", _contract_flags(view.sardaukar_contract_ids))
     writer.write("intrigue_discard", _intrigue_counts(view.intrigue_discard))
     writer.write("intrigue_trash", _intrigue_counts(view.intrigue_trash))
     writer.write("imperium_removed", _personal_counts(view.imperium_removed))
@@ -336,8 +335,7 @@ def _write_seat(writer: _Writer, seat_offset: int, player: PublicPlayerView) -> 
         set_aside_slots + [0] * (_SET_ASIDE_SLOTS - len(set_aside_slots)),
     )
     writer.write(
-        f"{prefix}_active_contracts",
-        _multi_hot(player.active_contract_ids, CONTRACT_IDS),
+        f"{prefix}_active_contracts", _contract_flags(player.active_contract_ids)
     )
 
 
@@ -371,6 +369,14 @@ def _intrigue_counts(instance_ids: tuple[str, ...]) -> list[int]:
         card_id = INTRIGUE_CARDS_BY_INSTANCE[instance_id].card.card_id
         counts[_INTRIGUE_INDEX[card_id]] += 1
     return counts
+
+
+def _contract_flags(instance_ids: tuple[str, ...]) -> list[int]:
+    identities = tuple(
+        contract_for_instance(instance_id).card.card_id
+        for instance_id in instance_ids
+    )
+    return _multi_hot(identities, CONTRACT_IDS)
 
 
 def _multi_hot(

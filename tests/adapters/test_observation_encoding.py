@@ -1,5 +1,7 @@
 """Tests for the versioned flat observation encoding."""
 
+import pytest
+
 from dune_imperium import RulesetConfig
 from dune_imperium.adapters.observation_encoding import (
     BATTLE_CARD_IDS,
@@ -82,11 +84,12 @@ def test_seat_blocks_rotate_egocentrically() -> None:
         assert zero_slice == one_slice
 
 
-def test_every_state_of_a_full_game_encodes() -> None:
+@pytest.mark.parametrize("choam_module", (False, True))
+def test_every_state_of_a_full_game_encodes(choam_module: bool) -> None:
     from dune_imperium.agents import RandomAgent
 
     engine = UprisingRulesEngine()
-    config = RulesetConfig()
+    config = RulesetConfig(choam_module=choam_module)
     agents = tuple(RandomAgent(seed=9100 + player) for player in range(4))
     state = engine.reset(config, 91)
     chance = ChanceResolver(seed=91)
