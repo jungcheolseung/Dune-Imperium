@@ -27,18 +27,20 @@ uv run ruff check src tests
 uv run mypy src tests
 ```
 
-2026-08-30의 기준 결과는 pytest 770개 통과, Ruff 통과, mypy 통과다. 현재 action
-codec은 `ACTION_CODEC_VERSION = 77`(기본 4,143개, CHOAM 4,419개)이고, 관측은
+2026-08-30의 기준 결과는 pytest 796개 통과, Ruff 통과, mypy 통과다. 현재 action
+codec은 `ACTION_CODEC_VERSION = 78`(기본 4,144개, CHOAM 4,420개)이고, 관측은
 `OBSERVATION_VERSION = 1`의 1,409-int 전체 게임 인코딩이다
 ([`rl-environment.md`](rl-environment.md)). `dune-imperium-sweep` 검증
-sweep은 룰셋당 10,000판(총 20,000판)이 실패 0으로 통과한 상태다.
+sweep은 random policy 룰셋당 10,000판(총 20,000판)과 heuristic policy
+룰셋당 1,000판(총 2,000판)이 실패 0으로 통과한 상태다.
 
 ## 현재 구현 기준선
 
-마지막 커밋은 `bef2ad9 Reorder the plan to build the human play interface
-before M9 and M10`(계획 조정)이고, 마지막 기능 커밋은 `24b13e7`(M7 sweep이
-적발한 버그 수정 묶음의 끝)이다. 마일스톤 현황: **R0~M8 완료**(M6 콘텐츠,
-M7 완주 검증, M8 CHOAM), **다음은 M11**(계획 조정으로 M9·M10보다 선행).
+마지막 기능 커밋은 `ac4d6d4`(heuristic sweep이 적발한 OQ-004 Imperium Row
+고갈 convention)이고, 그 앞에 Special Mission Spy slot 수정 `7a53c8f`와
+M11 슬라이스 1의 heuristic agent `1a449f4`가 있다. 마일스톤 현황:
+**R0~M8 완료**(M6 콘텐츠, M7 완주 검증, M8 CHOAM), **진행 중 M11**(계획
+조정으로 M9·M10보다 선행, 슬라이스 1 완료).
 
 - R0-M4는 완료됐다. 공식 규칙 자료, 엔진 커널, 4인 setup, 한 라운드 수직 조각,
   actor-neutral action codec과 PettingZoo AEC 계약이 있다.
@@ -137,12 +139,16 @@ M7 완주 검증, M8 CHOAM), **다음은 M11**(계획 조정으로 M9·M10보다
      4종 고정(`rules/engine.py`)은 테스트·sweep 재현성용으로 유지한다. web
      스택 선택과 `ui` optional extra 추가는 구현 시작 시 결정한다.
    - 제안 착수 슬라이스 순서(각각 검증·커밋 단위):
-     1. 간단한 규칙 기반 heuristic agent + 단위 테스트. random과 같은
-        `choose_action` 계약을 지키고, sweep/러너에 꽂아 완주 soak으로
-        검증한다(M9 baseline 재사용을 docstring에 명시).
+     1. ~~간단한 규칙 기반 heuristic agent + 단위 테스트~~ — **완료**
+        (`1a449f4`, 2026-08-30). `agents/heuristic_agent.py`의
+        `HeuristicAgent`(점수 기반 선택 + seeded tie-break, M9 baseline
+        재사용을 docstring에 명시), `Agent` Protocol(`agents/base.py`),
+        `run_policy_game` 러너 일반화, sweep `--policy {random,heuristic}`.
+        heuristic soak이 엔진 잠복 버그 두 계열을 적발해 함께 수정했다
+        (`7a53c8f`, `ac4d6d4`; 아래 세션 요약).
      2. Leader draft convention을 엔진 setup에 구현: 6종 추출은 seeded
         chance, pick은 turn 역순의 player decision. 새 결정 경계는 관례대로
-        `FrameKind` → frame `kind` → dispatcher 표 → codec(v78 예상, Leader
+        `FrameKind` → frame `kind` → dispatcher 표 → codec(v79 예상, Leader
         pick 템플릿 추가) 순으로 넣고, ruleset option으로 켠다. 관측에는
         공개 pool·pick 결과를 추가한다(`OBSERVATION_VERSION` 상향).
      3. web 스택 결정 + 게임 세션 서버: 새 게임 생성(설정: seed,
@@ -204,6 +210,9 @@ random full episode는 약 4,100 agent step/s다.
 # 검증 sweep: 카드 보존·교착·관측 누출·replay 검사 (룰셋당 100판 기본)
 uv run dune-imperium-sweep --games 100 --ruleset both --workers 8
 
+# 같은 sweep을 heuristic baseline으로 (M11 사람용 상대와 동일 정책)
+uv run dune-imperium-sweep --games 100 --ruleset both --workers 8 --policy heuristic
+
 # 한 라운드 random 실행
 uv run dune-imperium-debug --seed 2 --random-policy-seed 1002
 
@@ -222,16 +231,48 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에
 
 ## 원격 저장소 인계 주의
 
-2026-08-30 마무리 시점 기준 `origin/master`는 `9bf522f`(직전 세션의 핸드오프
-갱신)까지 push돼 있고, 로컬 `master`에는 그 뒤 이날의 커밋 14개가 로컬
-전용으로 남아 있다: Objective 감사 묶음(지불 frame 수정 `fa99359`, 감사 문서
-`1d97903`), 전체 게임 RL 전환 묶음(러너 `636fe9e`, 관측 인코딩
-`efc4a11`+`4b50412`, Espionage 수정 `4d9efb8`, env 전환 `95ad278`, 설계 문서
-`1a5ccba`), M7 sweep 묶음(도구 `3bafc67`, sweep이 적발한 수정
-`f148c14`+`83aa4f5`+`24b13e7`, 문서 `3fc1451`), 계획 조정 `bef2ad9`. push는
-사용자 판단으로 한다. 새 세션은 `git log origin/master..master`로 push 여부를
-확인하고, checkout이 `bef2ad9`보다 이전이면 이 문서의 770개 테스트·sweep·M11
-우선 기준선이 실제 코드와 일치하지 않는다.
+2026-08-30 M11 슬라이스 1 세션 기준 `origin/master`는 `290cdbf`(OQ-007
+draft convention 기록)까지 push돼 있고, 로컬 `master`에는 이번 세션의
+커밋이 로컬 전용으로 남아 있다: heuristic agent `1a449f4`, Special Mission
+Spy slot 수정 `7a53c8f`, OQ-004 Row 고갈 convention `ac4d6d4`, 그리고 이
+핸드오프 갱신. push는 사용자 판단으로 한다. 새 세션은
+`git log origin/master..master`로 push 여부를 확인하고, checkout이
+`ac4d6d4`보다 이전이면 이 문서의 796개 테스트·codec v78·heuristic sweep
+기준선이 실제 코드와 일치하지 않는다.
+
+## 2026-08-30 M11 슬라이스 1 세션 요약 (heuristic agent)
+
+- M11 슬라이스 1을 완료했다(`1a449f4`): `HeuristicAgent`는 RandomAgent와
+  같은 `choose_action(observation, legal_actions)` 계약으로, 합법 행동을
+  정적 전략 점수(직접 VP > 영구 업그레이드 > 비용 비례 획득 > 최대 배치,
+  decline/pass 최하)로 순위 매기고 동점은 seeded RNG로 깬다. 미지의 action
+  id는 0점이라 새 콘텐츠에서 seeded random으로 degrade한다. 점수는 규칙
+  판정이 아니라 전략 선호이며 공개 카드 비용만 참조한다.
+  `agents/base.py`의 `Agent` Protocol, `run_policy_game`(좌석별 agent 주입,
+  `run_random_game`이 위임), sweep/CLI의 `--policy {random,heuristic}`을
+  함께 추가했다.
+- heuristic soak(룰셋당 1,000판)이 random 10,000판이 못 가던 궤적에서 잠복
+  버그 두 계열을 적발했고, 공식 문서 확인 뒤 수정했다:
+  - **Special Mission PlaceSpy slot 교착**(`7a53c8f`, CHOAM seed 97·901):
+    play 시점 판정이 "자기 Spy recall = post 해방"으로 계산했지만 다른
+    플레이어 Spy가 공유한 post는 recall해도 비지 않고, slot은 도움 안 되는
+    recall만 무한 제시하다 행동 0개로 좌초했다. `[Main p. 11]`의 "비어 있는
+    post", "먼저 자기 Spy **하나**를 recall**할 수 있다**"(둘 다 선택)에
+    따라 slot 전 분기에 `decline_intrigue_spy`를 추가하고, recall은 배치로
+    이어질 수 있는 것만(빈 target이 있으면 아무 Spy, 없으면 allowed post의
+    단독 점유 Spy) 제시하며, play 시점 판정도 단독 점유 기준으로 고쳤다.
+    codec v78. Distraction trigger가 slot 루프 중간에 끼어들어 조건이
+    drift하는 실제 사례를 확인했다(해결 시점 판정 원칙 유지).
+  - **Imperium Deck 고갈 tripwire**(`ac4d6d4`, 기본 룰셋 6판): heuristic이
+    카드를 충분히 사서 공유 덱이 실제로 바닥났다. 공식 문서는 덱 위에서
+    보충한다고만 하므로(`[Main p. 13]`, OQ-004) 물리적으로 강제되는 유일한
+    진행을 convention으로 기록했다: 덱이 비면 Row는 보충 없이 남은 장수로
+    운영한다. 네 제거 지점이 `take_imperium_row_card` 헬퍼를 공유하고,
+    관측의 5-슬롯 Row 세그먼트는 빈자리를 0으로 둔다.
+- 검증: 수정 후 heuristic 룰셋당 1,000판(총 2,000판)과 random 300판×2가
+  모든 불변식·replay 검사 포함 실패 0으로 통과했다. 교착 seed 97·901은
+  invariant-checked 회귀 테스트로 고정했다(`tests/integration/test_sweep.py`).
+  pytest 770→796, Ruff, mypy 통과.
 
 ## 2026-08-30 계획 조정
 
