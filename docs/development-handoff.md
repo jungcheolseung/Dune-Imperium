@@ -35,9 +35,10 @@ sweep은 룰셋당 10,000판(총 20,000판)이 실패 0으로 통과한 상태�
 
 ## 현재 구현 기준선
 
-마지막 기능 커밋은 `24b13e7 Advance the Agent turn after an acquisition Spy
-placement`이고, 그 앞에 M7 sweep 도구와 sweep이 적발한 버그 수정 커밋들이
-있다.
+마지막 커밋은 `bef2ad9 Reorder the plan to build the human play interface
+before M9 and M10`(계획 조정)이고, 마지막 기능 커밋은 `24b13e7`(M7 sweep이
+적발한 버그 수정 묶음의 끝)이다. 마일스톤 현황: **R0~M8 완료**(M6 콘텐츠,
+M7 완주 검증, M8 CHOAM), **다음은 M11**(계획 조정으로 M9·M10보다 선행).
 
 - R0-M4는 완료됐다. 공식 규칙 자료, 엔진 커널, 4인 setup, 한 라운드 수직 조각,
   actor-neutral action codec과 PettingZoo AEC 계약이 있다.
@@ -74,9 +75,10 @@ placement`이고, 그 앞에 M7 sweep 도구와 sweep이 적발한 버그 수정
   타일은 Rise of Ix Tech 보상 타일의 오전사였다(`contracts.md` audit).
 - 규칙 dispatcher는 `LEGAL_ACTION_PROVIDERS[FrameKind]`와 `ACTION_HANDLERS`
   두 표로 동작한다(`refactoring-plan.md`).
-- 코어 상태 머신과 replay는 전체 게임을 지원한다. 200게임×8라운드 random
-  soak이 약 11초, random 4인 게임 60판의 FINISHED 완주(창 240개, replay 검증
-  포함)가 약 30초에 통과한다.
+- 코어 상태 머신과 replay는 전체 게임을 지원한다. `dune-imperium-sweep`으로
+  룰셋당 10,000판(총 20,000판) random 완주 sweep(매 전이 카드 보존·교착
+  검사, 표본 주기 관측 누출 검사, 게임별 replay 검증)이 실패 0으로
+  통과했다(2026-08-30, 400초/50 games/s).
 - `run_random_game`이 FINISHED까지 실행해 `GameSimulation(state, standings,
   replay)`를 돌려주고, `dune_imperium_uprising_v1` PettingZoo adapter는 전체
   게임을 한 episode로 실행한다(chance 내부 해결, 승자독식 zero-sum 종료 보상,
@@ -132,6 +134,18 @@ placement`이고, 그 앞에 M7 sweep 도구와 sweep이 적발한 버그 수정
      option으로 명시한다. 현재 엔진 기본은 `DEFAULT_LEADER_IDS` 4종
      고정이다(`rules/engine.py`). web 스택 선택과 `ui` optional extra
      추가는 구현 시작 시 결정한다.
+   - 제안 착수 슬라이스 순서(각각 검증·커밋 단위):
+     1. 간단한 규칙 기반 heuristic agent + 단위 테스트. random과 같은
+        `choose_action` 계약을 지키고, sweep/러너에 꽂아 완주 soak으로
+        검증한다(M9 baseline 재사용을 docstring에 명시).
+     2. web 스택 결정 + 게임 세션 서버: 새 게임 생성(설정: seed,
+        `choam_module`, 좌석, AI 배정), 사람 좌석의 `PlayerView` 직렬화
+        조회, 합법 행동 목록 제공, 행동 적용, AI·chance 자동 진행. 엔진
+        공개 API만 사용하고 서버 자체 규칙 로직은 두지 않는다.
+     3. 최소 브라우저 UI: 텍스트 카드 표현으로 설정부터 최종 점수까지 한
+        게임 완주. 결정 frame kind별 프롬프트 표시.
+     4. 저장/불러오기(`GameReplay` 직렬화 + `replay_game` 검증)와 종료 후
+        replay 검토 화면.
 2. **M9 평가 러너와 baseline.** 여러 게임을 병렬 구동하고 정책 추론만
    batch하는 self-play 러너, random/heuristic(M11 상대에서 출발)/rollout
    baseline, 좌석·리더·first player·seed 교차 대회 도구
@@ -200,18 +214,16 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에
 
 ## 원격 저장소 인계 주의
 
-2026-08-30 Shaddam 세션 종료 시점 기준 `origin/master`는 `707392d`이고, 로컬
-`master`에는 그 뒤 Intrigue 완결 슬라이스, 2026-08-29 Leader 묶음(기본 8종,
-`e6539ee`~`5ffa1bf`), 그리고 2026-08-30 Shaddam 묶음(Contract manifest 수정
-`5bfd2a5`, Shaddam `ac75530`, 문서 `4fc0e9d`)과 핸드오프 갱신 커밋들이
-순서대로 있다. 그 뒤에 2026-08-30 Objective 감사 묶음(지불 frame 수정
-`fa99359`, 감사 문서 `1d97903`), 전체 게임 RL 전환 묶음(러너 `636fe9e`,
-관측 인코딩 `efc4a11`+`4b50412`, Espionage 수정 `4d9efb8`, env 전환
-`95ad278`), 그리고 M7 sweep 묶음(도구 `3bafc67`, sweep이 적발한 수정
-`f148c14`+`83aa4f5`+`24b13e7`, 문서 커밋)이 있다. 새 세션은
-`git log origin/master..master`로 push 여부를 확인한다. checkout이 M7
-묶음보다 이전이면 이 문서의 770개 테스트·sweep 기준선이 실제 코드와
-일치하지 않는다.
+2026-08-30 마무리 시점 기준 `origin/master`는 `9bf522f`(직전 세션의 핸드오프
+갱신)까지 push돼 있고, 로컬 `master`에는 그 뒤 이날의 커밋 14개가 로컬
+전용으로 남아 있다: Objective 감사 묶음(지불 frame 수정 `fa99359`, 감사 문서
+`1d97903`), 전체 게임 RL 전환 묶음(러너 `636fe9e`, 관측 인코딩
+`efc4a11`+`4b50412`, Espionage 수정 `4d9efb8`, env 전환 `95ad278`, 설계 문서
+`1a5ccba`), M7 sweep 묶음(도구 `3bafc67`, sweep이 적발한 수정
+`f148c14`+`83aa4f5`+`24b13e7`, 문서 `3fc1451`), 계획 조정 `bef2ad9`. push는
+사용자 판단으로 한다. 새 세션은 `git log origin/master..master`로 push 여부를
+확인하고, checkout이 `bef2ad9`보다 이전이면 이 문서의 770개 테스트·sweep·M11
+우선 기준선이 실제 코드와 일치하지 않는다.
 
 ## 2026-08-30 계획 조정
 
