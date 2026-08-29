@@ -119,6 +119,13 @@ def apply_acquisition_spy_action(
         players=replace_player(state.players, next_owner),
         decision_stack=state.decision_stack[:-1],
     )
+    # An Agent-turn acquisition (Price is No Object) returns to an effect
+    # frame that may have nothing left pending; advance it like every other
+    # discharging handler so the Agent turn can end. Reveal acquisitions
+    # return to the Reveal frame, which keeps its own purchase actions.
+    top_frame = next_state.decision_stack[-1] if next_state.decision_stack else None
+    if top_frame is not None and top_frame.kind == FrameKind.AGENT_EFFECTS:
+        next_state = advance_after_effect(next_state, dict(top_frame.context))
     event = GameEvent(
         event_id=f"{source}:spy_placed:{post_id}",
         kind="spy_placed",

@@ -387,6 +387,52 @@ def test_price_is_no_object_acquires_row_card_to_hand_with_solari() -> None:
     assert legal_agent_card_acquisitions(result.state, 0) == ()
 
 
+def test_price_is_no_object_spy_acquisition_ends_the_agent_turn() -> None:
+    # After the Solari acquisition resolves an acquire-box Spy placement, the
+    # effect frame has nothing pending and the Agent turn advances instead of
+    # stalling without a legal action.
+    instances = imperium_deck_instance_ids(False)
+    strike_fleet = _imperium_instance("strike_fleet")
+    others = tuple(
+        instance_id
+        for instance_id in instances
+        if instance_id
+        not in {strike_fleet, _imperium_instance("price_is_no_object")}
+    )
+    state = _price_agent_state(
+        solari=9,
+        imperium_row=(strike_fleet, *others[:4]),
+        imperium_deck=others[4:],
+    )
+    engine = UprisingRulesEngine()
+    for action_id in ("resolve_board_effect", "resolve_faction_influence"):
+        action = next(
+            candidate
+            for candidate in engine.legal_actions(state, 0)
+            if candidate.action_id == action_id
+        )
+        state = engine.apply(state, action).state
+    acquire = next(
+        candidate
+        for candidate in engine.legal_actions(state, 0)
+        if dict(candidate.arguments).get("instance_id") == strike_fleet
+    )
+    state = engine.apply(state, acquire).state
+    placement = next(
+        candidate
+        for candidate in engine.legal_actions(state, 0)
+        if candidate.action_id == "place_acquisition_spy"
+    )
+    ended = engine.apply(state, placement).state
+
+    assert ended.players[0].hand == (strike_fleet,)
+    assert len(ended.players[0].spy_post_ids) == 1
+    assert ended.decision_stack[-1].kind == "turn"
+    assert isinstance(ended.decision_stack[-1].decision, PlayerDecision)
+    assert ended.decision_stack[-1].decision.owner == 1
+    assert engine.legal_actions(ended, 1)
+
+
 def test_price_is_no_object_can_take_interstellar_trade_and_open_contract_market(
 ) -> None:
     instances = imperium_deck_instance_ids(True)
