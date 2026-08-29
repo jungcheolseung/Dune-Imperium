@@ -304,13 +304,21 @@ def test_espionage_reshuffles_discard_before_drawing() -> None:
 def test_espionage_recall_commits_to_a_replacement_when_supply_is_empty() -> None:
     state, drawn = _espionage_state(spies_supply=0)
     recall_actions = legal_espionage_actions(state, 0)
-    recalled_post = dict(recall_actions[0].arguments)["post_id"]
+    first_recall = next(
+        action
+        for action in recall_actions
+        if action.action_id == "recall_spy_for_espionage"
+    )
+    recalled_post = dict(first_recall.arguments)["post_id"]
 
-    recalled = apply_espionage_action(state, recall_actions[0])
+    recalled = apply_espionage_action(state, first_recall)
     replacement_actions = legal_espionage_actions(recalled.state, 0)
 
+    # The printed placement stays optional before any recall [Board Guide
+    # p. 1]; once the recall is chosen, placement is committed.
     assert {action.action_id for action in recall_actions} == {
-        "recall_spy_for_espionage"
+        "resolve_espionage_without_spy",
+        "recall_spy_for_espionage",
     }
     assert {action.action_id for action in replacement_actions} == {
         "resolve_espionage_place_spy"
@@ -325,6 +333,64 @@ def test_espionage_recall_commits_to_a_replacement_when_supply_is_empty() -> Non
     assert drawn in owner.hand
     assert owner.spies_supply == 0
     assert len(owner.spy_post_ids) == 3
+
+
+def test_espionage_with_empty_supply_may_resolve_without_moving_a_spy() -> None:
+    # The printed placement is optional [Board Guide p. 1]; an empty supply
+    # must not force the player to relocate a placed Spy.
+    state, drawn = _espionage_state(spies_supply=0)
+    decline = next(
+        action
+        for action in legal_espionage_actions(state, 0)
+        if action.action_id == "resolve_espionage_without_spy"
+    )
+
+    result = apply_espionage_action(state, decline)
+    owner = result.state.players[0]
+
+    assert drawn in owner.hand
+    assert owner.spies_supply == 0
+    assert len(owner.spy_post_ids) == 3
+    assert dict(result.state.decision_stack[-1].context)["pending_board_effect"] is (
+        False
+    )
+
+
+def test_espionage_reopens_recall_when_the_recalled_spy_was_consumed() -> None:
+    # Placement needs a Spy in supply when it resolves [Main pp. 11, 20]; if a
+    # freely ordered effect consumed the recalled Spy, the committed placement
+    # reopens the recall choice instead of failing.
+    state, _ = _espionage_state(spies_supply=0)
+    first_recall = next(
+        action
+        for action in legal_espionage_actions(state, 0)
+        if action.action_id == "recall_spy_for_espionage"
+    )
+    recalled = apply_espionage_action(state, first_recall).state
+
+    consumed_owner = replace(
+        recalled.players[0],
+        spies_supply=0,
+        spy_post_ids=(
+            *recalled.players[0].spy_post_ids,
+            "fremen-desert-tactics-fremkit",
+        ),
+    )
+    consumed = replace(
+        recalled,
+        players=(consumed_owner, *recalled.players[1:]),
+    )
+
+    reopened = legal_espionage_actions(consumed, 0)
+    assert {action.action_id for action in reopened} == {"recall_spy_for_espionage"}
+
+    rerecalled = apply_espionage_action(consumed, reopened[0]).state
+    placements = legal_espionage_actions(rerecalled, 0)
+    assert {action.action_id for action in placements} == {
+        "resolve_espionage_place_spy"
+    }
+    placed = apply_espionage_action(rerecalled, placements[0]).state
+    assert placed.players[0].spies_supply == 0
 
 
 def test_first_high_council_visit_grants_seat_without_repeat_rewards() -> None:

@@ -235,7 +235,11 @@ def legal_espionage_actions(
         return ()
 
     owner = state.players[player]
-    if context.get("espionage_spy_recalled") is True or owner.spies_supply > 0:
+    recalled = context.get("espionage_spy_recalled") is True
+    # Placement needs a Spy in supply right now [Main pp. 11, 20]; a recall
+    # made for Espionage may already have been consumed by another freely
+    # ordered effect, so an empty supply always reopens the recall choice.
+    if owner.spies_supply > 0:
         placements = tuple(
             DomainAction(
                 action_id="resolve_espionage_place_spy",
@@ -244,20 +248,28 @@ def legal_espionage_actions(
             )
             for post_id in empty_observation_post_ids(state)
         )
-        if context.get("espionage_spy_recalled") is True:
+        if recalled:
             return placements
         return (
             DomainAction(action_id="resolve_espionage_without_spy", actor=player),
             *placements,
         )
 
-    return tuple(
+    recalls = tuple(
         DomainAction(
             action_id="recall_spy_for_espionage",
             actor=player,
             arguments=(("post_id", post_id),),
         )
         for post_id in owner.spy_post_ids
+    )
+    if recalled:
+        return recalls
+    # The printed Spy placement is optional [Board Guide p. 1], so with an
+    # empty supply the player may still resolve Espionage without recalling.
+    return (
+        DomainAction(action_id="resolve_espionage_without_spy", actor=player),
+        *recalls,
     )
 
 
