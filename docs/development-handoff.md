@@ -104,13 +104,32 @@ codec은 `ACTION_CODEC_VERSION = 77`이며 기본 룰셋 catalog는 4,143개, CH
 
 ## 다음 구현 순서
 
-1. **남은 Objective 상호작용 재감사** — battle icon 경로는 구현돼 있으니
-   Intrigue flip(`FlipBattleCard`)·wild matching과의 상호작용을 콘텐츠 관점에서
-   재검토하고 audit에 기록한다.
+1. **남은 Objective 상호작용 재감사.** 시작점 사실관계:
+   - `content/uprising/objectives.py`에 Objective 5종이 있고 4인 게임은
+     `objectives_for_players(4)`가 4종(desert_mouse_4_6p, First Player를
+     부여하는 desert_mouse, crysknife 2종)을 선별해 setup의
+     `assign_objectives`가 배정한다.
+   - 규칙 접점: Conflict 승리 시 battle icon 쌍 뒤집기(`rules/combat.py`),
+     Intrigue의 `FlipBattleCard`(DSL은 Objective를 대상에서 제외한다고
+     기술)와 그 선택 slot(`rules/effect_interpreter.py`, `rules/intrigue.py`),
+     Endgame wild matching(`rules/endgame.py`).
+   - 할 일: 위 경로들이 Objective의 face-down 상태·wild 쌍·icon 종류를
+     콘텐츠 관점에서 일관되게 다루는지 재검토한다. 현재
+     `implementation-audits/`의 endgame·combat 문서 어디에도 Objective
+     언급이 없으므로, 결과를 담을 audit 절(또는 새 문서)을 만들어 기록한다.
 2. **전체 게임 random/self-play runner 공개 API와 PettingZoo 전체 게임 episode
-   전환.** 엔진은 이미 FINISHED까지 완주하므로 `simulation/runner.py`와
-   `adapters/pettingzoo_env.py`의 한 라운드 경계만 남았다. README의
-   "전체 게임 관측 확장" 미결정 사항과 함께 설계한다.
+   전환.** 시작점 사실관계:
+   - `simulation/runner.py`는 `run_random_round`/`RoundSimulation`과 자체
+     `_round_finished(state, started_round)`로 한 라운드에서 멈춘다.
+     `adapters/pettingzoo_env.py`의 `DuneImperiumUprisingEnv`(AEC)도 자체
+     `_round_finished(state)`로 같은 경계를 쓰고, 관측은
+     `_encode_view`의 81개 int32다.
+   - 엔진은 FINISHED까지 완주·replay되므로(2026-08-29~30 soak) 경계 제거
+     자체는 작고, 실제 설계 지점은 전체 게임 episode의 관측 확장(README
+     "아직 결정하지 않은 사항")과 종료 reward 정의다. soak 루프의 표준
+     형태는 아래 처리량 메모를 따른다.
+   - Leader 능력이 모두 붙었으므로 러너/adapter 전환 뒤에는 어느 leader
+     조합으로도 전체 게임 episode를 돌릴 수 있다(CHOAM 포함).
 
 각 묶음은 카드 이미지로 텍스트를 검증하고(`docs/card-data-sources.md`의 방법),
 `Play ...` / `Document ...` 커밋 쌍을 유지하며, 새 결정 경계는
