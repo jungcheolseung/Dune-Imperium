@@ -111,18 +111,33 @@ placement`이고, 그 앞에 M7 sweep 도구와 sweep이 적발한 버그 수정
 
 ## 다음 구현 순서
 
-1. **M9 평가 러너와 baseline.** 시작점 사실관계:
-   - 여러 게임을 병렬 구동하고 정책 추론만 batch하는 self-play 러너,
-     random/규칙 기반 heuristic/rollout baseline, 좌석·리더·first
-     player·seed를 교차한 대회 도구가 목표다(`implementation-plan.md`의
-     M9). 승률 외에 평균 순위, VP 차이, 좌석별 성능, 결정 시간도 기록한다.
-   - 관측·보상 계약은 [`rl-environment.md`](rl-environment.md)로 고정돼
-     있고(관측 v1 1,409-int, 승자독식 zero-sum 종료 보상), agent 인터페이스
-     선례는 `agents/random_agent.py`(`choose_action(observation,
-     legal_actions)`)와 `simulation/sweep.py`의 병렬 실행 패턴이다.
-   - Leader 선택 표준화는 OQ-007이 미해결이므로, 대회 도구의 leader 배정은
-     ruleset option으로 명시하고 공식 규칙처럼 적지 않는다. 현재 엔진
-     기본은 `DEFAULT_LEADER_IDS` 4종 고정이다(`rules/engine.py`).
+1. **M11 사람용 플레이 인터페이스(로컬 웹 UI).** 2026-08-30에 M9·M10보다
+   앞으로 순서를 바꿨다(`implementation-plan.md` 마일스톤 절 서두의 근거
+   참고). 시작점 사실관계:
+   - 형태는 로컬 웹 UI(로컬 서버 + 브라우저)로 확정했다. UI는 엔진 공개
+     API(`reset`/`current_decision`/`legal_actions`/`apply`/`observe`)와
+     `PlayerView`만 사용하고, 사람에게도 `PlayerView`만 보낸다(비공개 정보
+     경계는 `core/observation.py`가 단독 결정, M7 sweep의 누출 검사로
+     검증됨).
+   - AI 상대는 `agents/random_agent.py`와 M11에서 새로 만드는 간단한 규칙
+     기반 heuristic agent(같은 `choose_action(observation, legal_actions)`
+     인터페이스)로 시작한다. 이 heuristic은 M9 baseline의 출발점으로
+     재사용하고, M9·M10 뒤에 강한 agent로 갈아끼운다.
+   - chance(덱 reshuffle)는 러너 패턴대로 seeded `ChanceResolver`로
+     해결한다(`simulation/runner.py`). 저장/불러오기는 `GameReplay` 직렬화
+     위에 만들고 불러오기는 `replay_game` 재현으로 검증한다. 직렬화 포맷은
+     설계 결정으로 남아 있다.
+   - 카드 이미지는 이용 조건 확정 전이므로 텍스트 표현을 기본으로 한다
+     (AGENTS.md 이미지 정책). Leader 선택 UI는 OQ-007 미해결이라 ruleset
+     option으로 명시한다. 현재 엔진 기본은 `DEFAULT_LEADER_IDS` 4종
+     고정이다(`rules/engine.py`). web 스택 선택과 `ui` optional extra
+     추가는 구현 시작 시 결정한다.
+2. **M9 평가 러너와 baseline.** 여러 게임을 병렬 구동하고 정책 추론만
+   batch하는 self-play 러너, random/heuristic(M11 상대에서 출발)/rollout
+   baseline, 좌석·리더·first player·seed 교차 대회 도구
+   (`implementation-plan.md`의 M9). 관측·보상 계약은
+   [`rl-environment.md`](rl-environment.md)로 고정돼 있고, 병렬 실행 선례는
+   `simulation/sweep.py`다.
 
 각 묶음은 카드 이미지로 텍스트를 검증하고(`docs/card-data-sources.md`의 방법),
 `Play ...` / `Document ...` 커밋 쌍을 유지하며, 새 결정 경계는
@@ -197,6 +212,13 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에
 `git log origin/master..master`로 push 여부를 확인한다. checkout이 M7
 묶음보다 이전이면 이 문서의 770개 테스트·sweep 기준선이 실제 코드와
 일치하지 않는다.
+
+## 2026-08-30 계획 조정
+
+- M11(사람용 플레이 인터페이스)을 M9·M10보다 앞으로 옮겼다. 근거와 순서
+  방침(번호 유지, 나열 순서 = 구현 순서)은 `implementation-plan.md` 마일스톤
+  절 서두에 있다. UI 형태는 로컬 웹 UI로, 초기 AI 상대는 random + 간단
+  heuristic(M9 재사용)으로 확정했다.
 
 ## 2026-08-30 M7 검증 sweep 세션 요약
 
