@@ -1937,6 +1937,164 @@ def test_imperial_spymaster_draws_intrigue_after_gathering_intelligence() -> Non
     )
 
 
+def test_maker_keeper_resolves_as_unavailable_after_influence_drops() -> None:
+    # Both Influence conditions are judged when the effect resolves in the
+    # player's chosen order [Main pp. 7, 9]; a mid-frame Influence loss (for
+    # example an Intrigue cost) forfeits the queued conditional gains.
+    maker_keeper = _imperium_instance("maker_keeper")
+    owner = PlayerState(
+        player_id=0,
+        hand=(maker_keeper,),
+        influence=Influence(fremen=2),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
+    lowered_owner = replace(placed.players[0], influence=Influence())
+    lowered = replace(placed, players=(lowered_owner, *placed.players[1:]))
+
+    result = resolve_agent_card_effect(lowered)
+
+    assert result.state.players[0].resources.spice == 0
+    assert result.state.players[0].resources.water == 1
+    assert result.events[0].kind == "agent_card_effect_unavailable"
+
+
+def test_in_high_places_bond_is_judged_when_the_effect_resolves() -> None:
+    # Trashing the bonded card mid-frame (for example through an Intrigue
+    # trash slot) forfeits the conditional gain [Main pp. 9, 20].
+    in_high_places = _imperium_instance("in_high_places")
+    truthtrance = _imperium_instance("truthtrance")
+    owner = PlayerState(
+        player_id=0,
+        hand=(in_high_places,),
+        in_play=(truthtrance,),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "secrets")).state
+    trashed_owner = replace(
+        placed.players[0],
+        in_play=tuple(
+            card for card in placed.players[0].in_play if card != truthtrance
+        ),
+        trashed=(truthtrance,),
+    )
+    lowered = replace(placed, players=(trashed_owner, *placed.players[1:]))
+
+    result = resolve_agent_card_effect(lowered)
+
+    assert result.state.players[0].resources.water == 1
+    assert result.events[0].kind == "agent_card_effect_unavailable"
+
+
+def test_seek_allies_self_trash_is_already_satisfied_after_a_mid_frame_trash(
+) -> None:
+    # A freely ordered Intrigue trash slot can trash the played card before
+    # its Agent box resolves; the mandatory Influence gain still resolves and
+    # the self-trash is already satisfied (OQ-022).
+    state = _state("seek_allies")
+    card = state.players[0].hand[0]
+    placed = apply_agent_action(state, _action_to(state, "dutiful_service")).state
+    trashed_owner = replace(
+        placed.players[0],
+        in_play=tuple(
+            candidate for candidate in placed.players[0].in_play if candidate != card
+        ),
+        trashed=(card,),
+    )
+    lowered = replace(placed, players=(trashed_owner, *placed.players[1:]))
+
+    result = resolve_agent_card_effect(lowered)
+
+    assert result.state.players[0].trashed == (card,)
+    assert result.events == (
+        result.events[0],
+    ) and result.events[0].kind == "agent_card_self_trash_satisfied"
+    assert (
+        dict(result.state.decision_stack[-1].context)["pending_agent_effect"]
+        is False
+    )
+
+
+def test_corrinth_city_first_selection_resets_when_the_card_leaves_hand() -> None:
+    # A freely ordered effect (for example an Intrigue discard cost) can
+    # consume the stored first selection before the payment completes; the
+    # atomic cost then restarts from no selection [Main pp. 9, 20].
+    corrinth_city = _imperium_instance("corrinth_city")
+    dagger = _instance("dagger")
+    diplomacy = _instance("diplomacy")
+    favor = _imperium_instance("spacing_guild_s_favor")
+    owner = PlayerState(
+        player_id=0,
+        hand=(corrinth_city, favor, dagger, diplomacy),
+        resources=Resources(solari=5),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
+    selection = next(
+        action
+        for action in legal_corrinth_city_payment_actions(placed, 0)
+        if dict(action.arguments).get("card_id") == favor
+    )
+    selected = apply_corrinth_city_payment(placed, selection).state
+
+    discarded_owner = replace(
+        selected.players[0],
+        hand=tuple(card for card in selected.players[0].hand if card != favor),
+        discard_pile=(favor,),
+    )
+    lowered = replace(selected, players=(discarded_owner, *selected.players[1:]))
+
+    actions = legal_corrinth_city_payment_actions(lowered, 0)
+    assert {action.action_id for action in actions} == {
+        "decline_corrinth_city_payment",
+        "select_corrinth_city_discard",
+    }
+    assert {
+        dict(action.arguments).get("card_id")
+        for action in actions
+        if action.action_id == "select_corrinth_city_discard"
+    } == {dagger, diplomacy}
+
+
 def test_in_high_places_gains_water_with_bene_gesserit_bond() -> None:
     in_high_places = _imperium_instance("in_high_places")
     truthtrance = _imperium_instance("truthtrance")
@@ -2396,6 +2554,40 @@ def test_subversive_advisor_replaces_faction_influence_and_trashes_itself() -> N
     assert {
         action.action_id for action in engine.legal_actions(result.state, 0)
     } == {"resolve_board_effect"}
+
+
+def test_subversive_advisor_influence_survives_a_mid_frame_self_trash() -> None:
+    # The mandatory Influence gain still resolves when a freely ordered
+    # Intrigue trash slot already trashed this card; the self-trash is then
+    # already satisfied (OQ-022).
+    state = _subversive_state()
+    subversive = state.players[0].hand[0]
+    opponent = replace(
+        state.players[1],
+        agents_available=1,
+        agent_locations=("dutiful_service",),
+    )
+    state = replace(state, players=(state.players[0], opponent, *state.players[2:]))
+    placed = apply_agent_action(state, _action_to(state, "dutiful_service")).state
+    trashed_owner = replace(
+        placed.players[0],
+        in_play=tuple(
+            card for card in placed.players[0].in_play if card != subversive
+        ),
+        trashed=(subversive,),
+    )
+    lowered = replace(placed, players=(trashed_owner, *placed.players[1:]))
+
+    result = resolve_agent_card_effect(lowered)
+    owner = result.state.players[0]
+
+    assert owner.influence.emperor == 2
+    assert owner.trashed == (subversive,)
+    assert result.events[-1].kind == "agent_card_self_trash_satisfied"
+    assert (
+        dict(result.state.decision_stack[-1].context)["pending_agent_effect"]
+        is False
+    )
 
 
 def test_subversive_advisor_uses_shared_influence_boundary_and_alliance_rules() -> None:

@@ -309,3 +309,21 @@
   2 Solari로 전환한다. 반대 해석(그의 아이콘은 set-aside가 남는 한 되돌아가지
   않음)도 가능하므로 공식 판정이 나오면 재검토한다.
   `tests/unit/rules/test_leader_abilities.py`로 고정한다.
+
+## OQ-022 — Agent 효과 해결 전에 play된 카드 자체가 trash될 때
+
+- 상태: `OPEN`
+- Agent turn의 자유 순서 안에서, play된 카드의 Agent box가 해결되기 전에
+  Intrigue의 trash 슬롯(예: Cunning) 등으로 그 카드 자체를 in play에서 trash할
+  수 있다. 공식 문서는 화살표 없는 자기 trash가 의무라고 정할 뿐
+  (`[FAQ p. 3]`), 이미 다른 효과로 trash된 카드의 보류 중인 Agent box를 어떻게
+  해결하는지는 답하지 않는다. `[Main pp. 9, 20]`
+- 필요한 답: play된 카드가 해결 전에 zone을 떠났을 때 그 카드의 인쇄 효과가
+  여전히 해결되는지의 공식 판정.
+- 구현 convention(2026-08-30): 의무 효과의 나머지 부분(예: Subversive Advisor의
+  Influence 2)은 그대로 해결하고, 자기 자신에 대한 trash 지시는 카드가 이미
+  trash 존에 있으므로 이미 충족된 것으로 본다
+  (`agent_card_self_trash_satisfied` event). 자기 자신을 hand로 되돌리는
+  효과(Weirding Woman)는 카드가 게임에서 제거됐으므로 무효로 해결한다. 조건부
+  효과(Bond, Influence 문턱)는 해결 시점에 다시 판정한다(`[Main pp. 9, 20]`의
+  자유 순서 판정). `tests/unit/rules/test_agent_effects.py`로 고정한다.

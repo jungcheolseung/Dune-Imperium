@@ -16,6 +16,7 @@ from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
+from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.card_bonds import has_faction_bond
 from dune_imperium.rules.card_discard import discard_personal_card_from_hand
@@ -1163,6 +1164,11 @@ def legal_corrinth_city_payment_actions(
     first_card_id = context.get("corrinth_first_card_id")
     if first_card_id is not None and not isinstance(first_card_id, str):
         raise RuntimeError("pending Corrinth City payment has invalid first card")
+    if first_card_id is not None and first_card_id not in owner.hand:
+        # A freely ordered effect (for example an Intrigue discard cost) can
+        # consume the stored first selection before the payment completes;
+        # the atomic cost then restarts from no selection [Main pp. 9, 20].
+        first_card_id = None
     return (
         DomainAction(action_id="decline_corrinth_city_payment", actor=player),
         *(
@@ -1343,6 +1349,27 @@ def apply_agent_card_payment(state: GameState, action: DomainAction) -> RuleResu
     return RuleResult(state=draw.state, events=(event, *draw.events))
 
 
+def _still_owned(owner: PlayerState, card_instance_id: str) -> bool:
+    """Return whether the card still sits in a trash-eligible owned zone."""
+
+    return card_instance_id in (*owner.hand, *owner.discard_pile, *owner.in_play)
+
+
+def _self_trash_satisfied_event(
+    state: GameState,
+    player: int,
+    card_instance_id: str,
+) -> GameEvent:
+    return GameEvent(
+        event_id=(
+            f"round:{state.round_number}:player:{player}:"
+            f"agent_card:{card_instance_id}:self_trash_satisfied"
+        ),
+        kind="agent_card_self_trash_satisfied",
+        payload=(("card_id", card_instance_id), ("player", player)),
+    )
+
+
 def resolve_agent_card_effect(state: GameState) -> RuleResult:
     """Resolve the supported Agent box in the current effect frame."""
 
@@ -1357,6 +1384,17 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
     if effect is PersonalCardAgentEffect.LEADER_SIGNET:
         return resolve_leader_signet(state)
     if effect is PersonalCardAgentEffect.TRASH_SELF:
+        # A freely ordered effect (for example an Intrigue trash slot) may
+        # already have trashed this card mid-frame; the mandatory self-trash
+        # is then already satisfied and resolves as a no-op (OQ-022).
+        if not _still_owned(owner, card_instance_id):
+            context["pending_agent_effect"] = False
+            return RuleResult(
+                state=advance_after_effect(state, context),
+                events=(
+                    _self_trash_satisfied_event(state, player, card_instance_id),
+                ),
+            )
         trashed = trash_personal_card(
             state,
             player,
@@ -1391,6 +1429,19 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             2,
             event_prefix=f"{source}:influence:{faction.value}",
         )
+        if not _still_owned(gained.state.players[player], card_instance_id):
+            # The mandatory Influence gain still resolves; the self-trash is
+            # already satisfied by the mid-frame trash (OQ-022).
+            context["pending_agent_effect"] = False
+            return RuleResult(
+                state=advance_after_effect(
+                    gained.state, context, gained.state.players
+                ),
+                events=(
+                    *gained.events,
+                    _self_trash_satisfied_event(state, player, card_instance_id),
+                ),
+            )
         trashed = trash_personal_card(
             gained.state,
             player,
@@ -1644,10 +1695,11 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         effect
         is PersonalCardAgentEffect.GAIN_BY_BENE_GESSERIT_AND_FREMEN_INFLUENCE_TWO
     ):
+        # Both Influence conditions are judged when the effect resolves in the
+        # player's chosen order [Main pp. 7, 9]; a mid-frame Influence loss
+        # (for example an Intrigue cost) can leave the effect with nothing.
         gains_water = owner.influence.bene_gesserit >= 2
         gains_spice = owner.influence.fremen >= 2
-        if not gains_water and not gains_spice:
-            raise RuntimeError("conditional Agent effect is not available")
         next_owner = replace(
             owner,
             resources=replace(
@@ -1656,15 +1708,19 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
                 water=owner.resources.water + int(gains_water),
             ),
         )
-        event_kind = "agent_card_effect_resolved"
+        event_kind = (
+            "agent_card_effect_resolved"
+            if gains_water or gains_spice
+            else "agent_card_effect_unavailable"
+        )
     elif (
         effect
         is PersonalCardAgentEffect.GAIN_BY_EMPEROR_AND_SPACING_GUILD_INFLUENCE_TWO
     ):
+        # Judged at resolution time like Maker Keeper's pair of conditions
+        # [Main pp. 7, 9]; with neither Influence the effect does nothing.
         gains_solari = owner.influence.emperor >= 2
         gains_spice = owner.influence.spacing_guild >= 2
-        if not gains_solari and not gains_spice:
-            raise RuntimeError("conditional Agent effect is not available")
         next_owner = replace(
             owner,
             resources=replace(
@@ -1673,52 +1729,60 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
                 spice=owner.resources.spice + int(gains_spice),
             ),
         )
-        event_kind = "agent_card_effect_resolved"
+        event_kind = (
+            "agent_card_effect_resolved"
+            if gains_solari or gains_spice
+            else "agent_card_effect_unavailable"
+        )
     elif effect is PersonalCardAgentEffect.RECRUIT_TWO_IF_BENE_GESSERIT_BOND:
-        if not has_faction_bond(
-            owner.in_play,
-            card_instance_id,
-            Faction.BENE_GESSERIT,
-        ):
-            raise RuntimeError("conditional Agent effect is not available")
-        next_owner, recruited = recruit_troops(owner, 2)
-        previous = context.get("troops_recruited")
-        if isinstance(previous, bool) or not isinstance(previous, int):
-            raise RuntimeError("Agent-turn effect frame has invalid recruit count")
-        context["troops_recruited"] = previous + recruited
-        event_kind = "agent_card_effect_resolved"
+        # The Bond is judged when the effect resolves in the player's chosen
+        # order [Main pp. 9, 20]; trashing the bonded card mid-frame (for
+        # example through an Intrigue slot) forfeits the conditional gain.
+        if has_faction_bond(owner.in_play, card_instance_id, Faction.BENE_GESSERIT):
+            next_owner, recruited = recruit_troops(owner, 2)
+            previous = context.get("troops_recruited")
+            if isinstance(previous, bool) or not isinstance(previous, int):
+                raise RuntimeError("Agent-turn effect frame has invalid recruit count")
+            context["troops_recruited"] = previous + recruited
+            event_kind = "agent_card_effect_resolved"
+        else:
+            next_owner = owner
+            event_kind = "agent_card_effect_unavailable"
     elif effect is PersonalCardAgentEffect.RETURN_SELF_IF_BENE_GESSERIT_BOND:
-        if not has_faction_bond(
+        # Judged at resolution time; the return also needs this card to still
+        # be in play, since a mid-frame trash removes it from the game.
+        if card_instance_id in owner.in_play and has_faction_bond(
             owner.in_play,
             card_instance_id,
             Faction.BENE_GESSERIT,
         ):
-            raise RuntimeError("conditional Agent effect is not available")
-        next_owner = replace(
-            owner,
-            hand=(*owner.hand, card_instance_id),
-            in_play=tuple(
-                candidate
-                for candidate in owner.in_play
-                if candidate != card_instance_id
-            ),
-        )
-        event_kind = "agent_card_effect_resolved"
+            next_owner = replace(
+                owner,
+                hand=(*owner.hand, card_instance_id),
+                in_play=tuple(
+                    candidate
+                    for candidate in owner.in_play
+                    if candidate != card_instance_id
+                ),
+            )
+            event_kind = "agent_card_effect_resolved"
+        else:
+            next_owner = owner
+            event_kind = "agent_card_effect_unavailable"
     elif effect is PersonalCardAgentEffect.GAIN_WATER_IF_BENE_GESSERIT_BOND:
-        if not has_faction_bond(
-            owner.in_play,
-            card_instance_id,
-            Faction.BENE_GESSERIT,
-        ):
-            raise RuntimeError("conditional Agent effect is not available")
-        next_owner = replace(
-            owner,
-            resources=replace(
-                owner.resources,
-                water=owner.resources.water + 1,
-            ),
-        )
-        event_kind = "agent_card_effect_resolved"
+        # The Bond is judged when the effect resolves [Main pp. 9, 20].
+        if has_faction_bond(owner.in_play, card_instance_id, Faction.BENE_GESSERIT):
+            next_owner = replace(
+                owner,
+                resources=replace(
+                    owner.resources,
+                    water=owner.resources.water + 1,
+                ),
+            )
+            event_kind = "agent_card_effect_resolved"
+        else:
+            next_owner = owner
+            event_kind = "agent_card_effect_unavailable"
     elif effect in (
         PersonalCardAgentEffect.PLACE_SPY,
         PersonalCardAgentEffect.PLACE_SPY_ALLOW_SHARED_IF_SPYING_ON_VISITED_SPACE,
