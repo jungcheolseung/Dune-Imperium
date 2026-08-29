@@ -973,7 +973,14 @@ def legal_agent_card_intrigue_payment_actions(
         or owner.resources.spice < 2
         or not owner.intrigue_cards
     ):
-        raise RuntimeError("pending Agent-card Intrigue payment is not affordable")
+        # The Alliance condition and the full arrow cost are judged again when
+        # the player resolves the pending payment in their chosen effect order
+        # [Main pp. 9, 20]; once they no longer hold, only skipping remains.
+        return (
+            DomainAction(
+                action_id="decline_agent_card_intrigue_payment", actor=player
+            ),
+        )
     return (
         DomainAction(action_id="decline_agent_card_intrigue_payment", actor=player),
         *(
@@ -996,6 +1003,9 @@ def apply_agent_card_intrigue_payment(
     if action not in legal_agent_card_intrigue_payment_actions(state, action.actor):
         raise ValueError("action is not a legal Agent-card Intrigue payment")
     _, context = current_agent_effect_context(state)
+    # Paying or skipping spends the card's one arrow choice for this turn
+    # [Main p. 9] [FAQ p. 3], so the pending effect is discharged either way.
+    context["pending_agent_effect"] = False
     _, source_card_id, _ = _effect_subject(context)
     source = (
         f"round:{state.round_number}:player:{action.actor}:"
@@ -1101,7 +1111,10 @@ def legal_agent_card_payment_actions(
         is PersonalCardAgentEffect.MAY_PAY_FOUR_SPICE_FOR_VP
         and owner.resources.spice < 4
     ):
-        raise RuntimeError("pending Agent-card payment is not affordable")
+        # The arrow cost is judged again when the player resolves the pending
+        # payment in their chosen effect order [Main pp. 9, 20]; once it is
+        # unaffordable, only skipping remains.
+        return (DomainAction(action_id="decline_agent_card_payment", actor=player),)
     return (
         DomainAction(action_id="decline_agent_card_payment", actor=player),
         DomainAction(
@@ -1141,7 +1154,12 @@ def legal_corrinth_city_payment_actions(
         return ()
     owner = state.players[player]
     if owner.resources.solari < 5 or len(owner.hand) < 2:
-        raise RuntimeError("pending Corrinth City payment is not affordable")
+        # The full cost must still be payable when the player resolves the
+        # pending payment in their chosen effect order [Main pp. 9, 20]; once
+        # it is unaffordable, only skipping remains.
+        return (
+            DomainAction(action_id="decline_corrinth_city_payment", actor=player),
+        )
     first_card_id = context.get("corrinth_first_card_id")
     if first_card_id is not None and not isinstance(first_card_id, str):
         raise RuntimeError("pending Corrinth City payment has invalid first card")

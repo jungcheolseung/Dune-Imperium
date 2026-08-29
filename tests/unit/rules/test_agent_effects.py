@@ -905,6 +905,159 @@ def test_junction_headquarters_requires_its_complete_cost(
     assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False
 
 
+def _junction_pending_state(
+    *,
+    spice: int,
+    intrigue_cards: tuple[str, ...],
+) -> GameState:
+    junction = _imperium_instance("junction_headquarters")
+    owner = PlayerState(
+        player_id=0,
+        hand=(junction,),
+        resources=Resources(spice=spice),
+        alliance_faction_ids=(Faction.SPACING_GUILD.value,),
+        intrigue_cards=intrigue_cards,
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    return apply_agent_action(state, _action_to(state, "assembly_hall")).state
+
+
+def test_junction_headquarters_payment_discharges_the_pending_arrow() -> None:
+    # One arrow cost and its effect may be chosen only once per turn
+    # [Main p. 9] [FAQ p. 3]; paying or skipping ends the pending effect
+    # instead of offering the payment again.
+    placed = _junction_pending_state(
+        spice=4,
+        intrigue_cards=("intrigue:cunning:0", "intrigue:buy_access:0"),
+    )
+    actions = legal_agent_card_intrigue_payment_actions(placed, 0)
+
+    paid = apply_agent_card_intrigue_payment(placed, actions[1]).state
+    assert paid.players[0].victory_points == 2
+    assert dict(paid.decision_stack[-1].context)["pending_agent_effect"] is False
+    assert legal_agent_card_intrigue_payment_actions(paid, 0) == ()
+    assert UprisingRulesEngine().legal_actions(paid, 0)
+
+    declined = apply_agent_card_intrigue_payment(placed, actions[0]).state
+    assert declined.players[0].victory_points == 1
+    assert dict(declined.decision_stack[-1].context)["pending_agent_effect"] is False
+    assert legal_agent_card_intrigue_payment_actions(declined, 0) == ()
+
+
+def test_junction_headquarters_offers_only_decline_once_unaffordable() -> None:
+    # The Alliance condition and the full arrow cost are judged again when
+    # the pending payment resolves in the player's chosen effect order
+    # [Main pp. 9, 20]; a mid-frame Spice loss leaves only the skip.
+    placed = _junction_pending_state(
+        spice=2,
+        intrigue_cards=("intrigue:cunning:0",),
+    )
+    drained = replace(placed.players[0], resources=Resources(spice=1))
+    lowered = replace(placed, players=(drained, *placed.players[1:]))
+
+    actions = legal_agent_card_intrigue_payment_actions(lowered, 0)
+    assert [action.action_id for action in actions] == [
+        "decline_agent_card_intrigue_payment"
+    ]
+    declined = apply_agent_card_intrigue_payment(lowered, actions[0])
+    assert declined.events[0].kind == "agent_card_payment_declined"
+    assert (
+        dict(declined.state.decision_stack[-1].context)["pending_agent_effect"]
+        is False
+    )
+
+
+def test_smugglers_haven_offers_only_decline_once_unaffordable() -> None:
+    # The arrow cost is judged again at resolution [Main pp. 9, 20]; a
+    # mid-frame Spice loss leaves only the skip.
+    haven = _imperium_instance("smuggler_s_haven")
+    owner = PlayerState(
+        player_id=0,
+        hand=(haven,),
+        resources=Resources(spice=4),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "accept_contract")).state
+    drained = replace(placed.players[0], resources=Resources(spice=3))
+    lowered = replace(placed, players=(drained, *placed.players[1:]))
+
+    actions = legal_agent_card_payment_actions(lowered, 0)
+    assert [action.action_id for action in actions] == ["decline_agent_card_payment"]
+    declined = apply_agent_card_payment(lowered, actions[0])
+    assert declined.events[0].kind == "agent_card_payment_declined"
+    assert (
+        dict(declined.state.decision_stack[-1].context)["pending_agent_effect"]
+        is False
+    )
+
+
+def test_corrinth_city_offers_only_decline_once_unaffordable() -> None:
+    # The full cost must still be payable at resolution [Main pp. 9, 20]; a
+    # mid-frame Solari loss leaves only the skip.
+    corrinth_city = _imperium_instance("corrinth_city")
+    dagger = _instance("dagger")
+    favor = _imperium_instance("spacing_guild_s_favor")
+    owner = PlayerState(
+        player_id=0,
+        hand=(corrinth_city, favor, dagger),
+        resources=Resources(solari=5),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
+    drained = replace(placed.players[0], resources=Resources(solari=4))
+    lowered = replace(placed, players=(drained, *placed.players[1:]))
+
+    actions = legal_corrinth_city_payment_actions(lowered, 0)
+    assert [action.action_id for action in actions] == [
+        "decline_corrinth_city_payment"
+    ]
+    declined = apply_corrinth_city_payment(lowered, actions[0])
+    assert declined.events[0].kind == "corrinth_city_payment_declined"
+    assert (
+        dict(declined.state.decision_stack[-1].context)["pending_agent_effect"]
+        is False
+    )
+
+
 def test_smugglers_harvester_gains_spice_at_a_maker_space() -> None:
     harvester = _imperium_instance("smuggler_s_harvester")
     owner = PlayerState(player_id=0, hand=(harvester,))
