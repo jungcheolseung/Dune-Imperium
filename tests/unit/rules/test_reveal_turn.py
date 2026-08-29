@@ -807,6 +807,46 @@ def test_spy_network_recalls_one_of_two_spies_and_draws_intrigue() -> None:
     )
 
 
+def test_spy_network_recall_becomes_unavailable_when_spies_drop_mid_reveal() -> None:
+    # The two-Spy condition is judged again when the queued choice resolves
+    # in the owner's chosen Reveal order [Main p. 12] [Main pp. 9, 20]; In
+    # High Places can recall both remaining Spies first, and the required
+    # recall and Intrigue draw are then unavailable.
+    in_high_places = _imperium_instance("in_high_places")
+    spy_network = _imperium_instance("spy_network")
+    posts = (
+        "arrakis-hagga-basin",
+        "bene-gesserit-espionage-secrets",
+    )
+    state = _state(
+        PlayerState(
+            player_id=0,
+            hand=(in_high_places, spy_network),
+            spies_supply=1,
+            spy_post_ids=posts,
+        )
+    )
+    state = replace(state, intrigue_deck=("intrigue:test:0",))
+
+    revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
+    engine = UprisingRulesEngine()
+    pair = next(
+        action
+        for action in engine.legal_actions(revealed.state, 0)
+        if action.action_id == "recall_spies_for_reveal"
+    )
+    drained = engine.apply(revealed.state, pair).state
+    assert drained.players[0].spy_post_ids == ()
+
+    choices = engine.legal_actions(drained, 0)
+    assert [action.action_id for action in choices] == ["decline_reveal_spy_recall"]
+    resolved = engine.apply(drained, choices[0]).state
+    assert resolved.players[0].intrigue_cards == ()
+    assert resolved.intrigue_deck == ("intrigue:test:0",)
+    assert resolved.players[0].spies_supply == 3
+    assert resolved.decision_stack[-1].kind == "reveal"
+
+
 def test_spy_network_has_no_recall_effect_with_only_one_spy() -> None:
     spy_network = _imperium_instance("spy_network")
     state = _state(

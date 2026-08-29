@@ -100,6 +100,15 @@ def legal_reveal_spy_actions(
         effect
         is PersonalCardRevealChoiceEffect.RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED
     ):
+        if len(post_ids) < 2:
+            # The two-Spy condition is judged again when this queued choice
+            # resolves in the owner's chosen Reveal order [Main p. 12]
+            # [Main pp. 9, 20]; a freely ordered recall (for example In High
+            # Places) can leave fewer than two, and the required recall and
+            # draw are then unavailable.
+            return (
+                DomainAction(action_id="decline_reveal_spy_recall", actor=player),
+            )
         return tuple(
             DomainAction(
                 action_id="recall_spy_for_reveal",
