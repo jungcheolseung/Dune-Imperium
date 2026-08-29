@@ -10,7 +10,10 @@ from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
 from dune_imperium.content.uprising.leaders import LEADERS_BY_ID, leaders_for_choam
 from dune_imperium.content.uprising.objectives import objectives_for_players
 from dune_imperium.content.uprising.reserve import RESERVE_STACKS
-from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
+from dune_imperium.content.uprising.starting_cards import (
+    starting_card_for_instance,
+    starting_deck_instance_ids,
+)
 from dune_imperium.content.uprising.types import ConflictTier
 from dune_imperium.core.chance import (
     ChanceOutcome,
@@ -224,6 +227,15 @@ def create_initial_state(
             # [Main p. 17]; every other Leader's face is its identity.
             leader_face_id=(
                 LEADERS_BY_ID[leader_id].setup_face_id or leader_id
+            ),
+            # Printed setup rules may remove starting cards (Staban Tuek's
+            # Limited Allies); the shuffle decision below then covers the
+            # reduced deck.
+            deck=tuple(
+                instance_id
+                for instance_id in player.deck
+                if starting_card_for_instance(instance_id).card.card_id
+                not in LEADERS_BY_ID[leader_id].removed_starting_card_ids
             ),
         )
         for player, leader_id in zip(players, leader_ids, strict=True)

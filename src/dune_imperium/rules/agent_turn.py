@@ -24,6 +24,7 @@ from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.card_bonds import has_faction_bond
 from dune_imperium.rules.contracts import contract_candidates_for_agent_turn
 from dune_imperium.rules.frames import FrameKind, owned_top_frame
+from dune_imperium.rules.leader_abilities import apply_smuggle_spice
 
 
 def legal_agent_actions(state: GameState, player: int) -> tuple[DomainAction, ...]:
@@ -263,10 +264,20 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
         )
     )
     next_state, control_event = _apply_control_visit_bonus(next_state, space_id)
+    smuggled_players, smuggle_events = apply_smuggle_spice(
+        next_state.players,
+        action.actor,
+        space_id,
+        space.maker,
+        state.round_number,
+    )
+    if smuggle_events:
+        next_state = replace(next_state, players=smuggled_players)
     events = (
-        (placement_event, *infiltration_events)
-        if control_event is None
-        else (placement_event, *infiltration_events, control_event)
+        placement_event,
+        *infiltration_events,
+        *(() if control_event is None else (control_event,)),
+        *smuggle_events,
     )
     return RuleResult(state=next_state, events=events)
 

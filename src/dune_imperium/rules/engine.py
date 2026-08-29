@@ -118,9 +118,12 @@ from dune_imperium.rules.intrigue_triggers import (
 from dune_imperium.rules.leader_abilities import (
     apply_feyd_track_action,
     apply_leader_board_repeat,
+    apply_leader_card_trash,
     apply_leader_placement_ability,
     apply_leader_reveal_action,
+    apply_leader_signet_acquire,
     apply_leader_signet_payment,
+    apply_leader_spy_action,
     grant_leader_reveal_passives,
     leader_signet_is_implemented,
     legal_leader_reveal_actions,
@@ -344,12 +347,15 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "discard_opponent_card": apply_opponent_card_discard,
     # Leader Signet Ring and placement-triggered Leader abilities
     "advance_feyd_track": apply_feyd_track_action,
-    "trash_leader_card": apply_feyd_track_action,
+    "trash_leader_card": apply_leader_card_trash,
     "decline_leader_card_trash": apply_feyd_track_action,
-    "place_leader_spy": apply_feyd_track_action,
-    "recall_spy_for_leader_placement": apply_feyd_track_action,
+    "place_leader_spy": apply_leader_spy_action,
+    "recall_spy_for_leader_placement": apply_leader_spy_action,
     "pay_leader_signet_spice": apply_leader_signet_payment,
+    "pay_leader_signet_solari": apply_leader_signet_payment,
     "decline_leader_signet_payment": apply_leader_signet_payment,
+    "acquire_leader_imperium": apply_leader_signet_acquire,
+    "acquire_leader_reserve": apply_leader_signet_acquire,
     "use_other_memories": apply_leader_placement_ability,
     "decline_other_memories": apply_leader_placement_ability,
     "pay_leader_board_repeat": apply_leader_board_repeat,
@@ -429,9 +435,10 @@ class UprisingRulesEngine(RulesEngine):
             result = apply_intrigue_reshuffle(state, outcome)
         else:
             result = apply_round_start_reshuffle(state, outcome)
-        return offer_deployment_triggers(
-            grant_leader_reveal_passives(_advance_automatic(result))
-        )
+        # An Intrigue draw granted by a Reveal passive may queue a reshuffle,
+        # so the automatic advance runs again after the passives.
+        result = grant_leader_reveal_passives(_advance_automatic(result))
+        return offer_deployment_triggers(_advance_automatic(result))
 
     def legal_actions(
         self,
@@ -454,7 +461,10 @@ class UprisingRulesEngine(RulesEngine):
 
     def _apply_legal(self, state: GameState, action: DomainAction) -> RuleResult:
         result = _advance_automatic(ACTION_HANDLERS[action.action_id](state, action))
-        return offer_deployment_triggers(grant_leader_reveal_passives(result))
+        # An Intrigue draw granted by a Reveal passive may queue a reshuffle,
+        # so the automatic advance runs again after the passives.
+        result = _advance_automatic(grant_leader_reveal_passives(result))
+        return offer_deployment_triggers(result)
 
     def observe(self, state: GameState, player: int) -> PlayerView:
         return observe_state(state, player)

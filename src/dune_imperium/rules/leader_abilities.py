@@ -12,19 +12,32 @@ through ``leader_signet_is_implemented``.
 from dataclasses import replace
 from typing import Final
 
+from dune_imperium.content.uprising.board import Faction
+from dune_imperium.content.uprising.imperium import imperium_card_for_instance
 from dune_imperium.content.uprising.leaders import (
     FEYD_TRACK_BY_ID,
     FeydTrackReward,
 )
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
-from dune_imperium.content.uprising.types import PersonalCardAgentEffect
+from dune_imperium.content.uprising.reserve import RESERVE_STACKS_BY_ID
+from dune_imperium.content.uprising.types import (
+    AgentIcon,
+    PersonalCardAgentEffect,
+)
 from dune_imperium.core.actions import ActionValue, DomainAction
-from dune_imperium.core.decisions import PlayerDecision
+from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
+from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
+from dune_imperium.rules.acquisition import (
+    acquire_imperium_for_intrigue,
+    acquire_reserve_for_intrigue,
+    acquisition_spy_frame,
+)
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.card_trash import trash_personal_card
+from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effects import (
     advance_after_effect,
     current_agent_effect_context,
@@ -39,6 +52,9 @@ from dune_imperium.rules.reveal_turn import (
 )
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
+    is_spying_on_space,
+    observation_post_ids_for_agent_icons,
+    observation_post_ids_for_factions,
     place_spy,
     recall_spy,
 )
@@ -52,6 +68,10 @@ IMPLEMENTED_ABILITY_LEADER_IDS: Final = frozenset(
         "gurney_halleck",
         "lady_amber_metulli",
         "lady_jessica",
+        "lady_margot_fenring",
+        "muad_dib",
+        "princess_irulan",
+        "staban_tuek",
     }
 )
 
@@ -136,6 +156,45 @@ def resolve_leader_signet(state: GameState) -> RuleResult:
                 ),
             ),
         )
+    elif owner.leader_id == "muad_dib":
+        # Lead the Way: draw one card [Muad'Dib card].
+        context["pending_agent_effect"] = False
+        next_state = advance_after_effect(state, context, state.players)
+        draw = draw_or_request_personal_cards(
+            next_state,
+            player,
+            1,
+            source=source,
+        )
+        event = GameEvent(
+            event_id=source,
+            kind="leader_signet_resolved",
+            payload=(("card_id", card_id), ("cards", 1), ("player", player)),
+        )
+        return RuleResult(state=draw.state, events=(event, *draw.events))
+    elif owner.leader_id == "lady_margot_fenring":
+        # Reached only when Arrakis Informant offers no placement: every post
+        # connected to a City board space is occupied and no recall can open
+        # one, so the Spy placement is lost.
+        if legal_leader_signet_actions(state, player):
+            raise RuntimeError("Arrakis Informant requires a player choice")
+        context["pending_agent_effect"] = False
+        next_state = advance_after_effect(state, context, state.players)
+        return RuleResult(
+            state=next_state,
+            events=(
+                GameEvent(
+                    event_id=source,
+                    kind="agent_card_effect_unavailable",
+                    payload=(("card_id", card_id), ("player", player)),
+                ),
+            ),
+        )
+    elif owner.leader_id in ("staban_tuek", "princess_irulan"):
+        # Unseen Network always finds an empty post (thirteen posts outnumber
+        # the twelve Spies) and Chronicler's Insight always offers a decline,
+        # so their choice providers never leave the generic resolution.
+        raise RuntimeError("this Leader's Signet Ring requires a player choice")
     else:
         raise RuntimeError("this Leader's Signet Ring ability is not implemented")
 
@@ -440,52 +499,186 @@ def apply_feyd_track_action(
     )
 
 
-def legal_leader_signet_actions(
+def _leader_signet_context(
     state: GameState,
     player: int,
-) -> tuple[DomainAction, ...]:
-    """Return Lady Jessica's optional one-Spice Signet Ring payment.
+) -> dict[str, ActionValue] | None:
+    """Return the effect-frame context while the Signet Ring is pending."""
 
-    Spice Agony and Water of Life are both arrow effects that spend one Spice
-    [Lady Jessica card] [Reverend Mother Jessica card]; the payment choice is
-    judged when the Signet Ring resolves, so it never advertises an
-    unaffordable payment.
-    """
-
-    if not 0 <= player < state.config.players:
-        raise ValueError("player must identify a configured seat")
     try:
         frame, context = current_agent_effect_context(state)
     except ValueError:
-        return ()
+        return None
     if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
-        return ()
+        return None
     if context.get("pending_agent_effect") is not True:
-        return ()
+        return None
     card_id = context.get("card_id")
     if not isinstance(card_id, str) or (
         personal_card_for_instance(card_id).agent_effect
         is not PersonalCardAgentEffect.LEADER_SIGNET
     ):
+        return None
+    return context
+
+
+LANDSRAAD_POST_IDS: Final = observation_post_ids_for_agent_icons(
+    (AgentIcon.LANDSRAAD,)
+)
+FACTION_POST_IDS: Final = observation_post_ids_for_factions(tuple(Faction))
+CITY_POST_IDS: Final = observation_post_ids_for_agent_icons((AgentIcon.CITY,))
+
+
+def _leader_spy_placement_actions(
+    state: GameState,
+    player: int,
+    context: dict[str, ActionValue],
+    allowed_post_ids: frozenset[str] | None,
+) -> tuple[DomainAction, ...]:
+    """Return place or recall-first choices for a Leader Spy placement.
+
+    Placement needs a Spy in supply on an empty (optionally restricted)
+    observation post; without one the player first recalls a Spy for no
+    effect [Main pp. 11, 20]. When no restricted post is empty, only recalls
+    from restricted posts can open one.
+    """
+
+    owner = state.players[player]
+    placements = empty_observation_post_ids(state, allowed_post_ids)
+    if context.get("leader_spy_recalled") is True or owner.spies_supply > 0:
+        return tuple(
+            DomainAction(
+                action_id="place_leader_spy",
+                actor=player,
+                arguments=(("post_id", post_id),),
+            )
+            for post_id in placements
+        )
+    recall_post_ids = owner.spy_post_ids
+    if not placements and allowed_post_ids is not None:
+        recall_post_ids = tuple(
+            post_id for post_id in owner.spy_post_ids if post_id in allowed_post_ids
+        )
+    return tuple(
+        DomainAction(
+            action_id="recall_spy_for_leader_placement",
+            actor=player,
+            arguments=(("post_id", post_id),),
+        )
+        for post_id in recall_post_ids
+    )
+
+
+def legal_leader_signet_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return the serial Signet Ring choices of the current player's Leader.
+
+    Every optional part is judged when the Signet Ring resolves, so an
+    unaffordable payment is never advertised.
+    """
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    context = _leader_signet_context(state, player)
+    if context is None:
         return ()
     owner = state.players[player]
-    if owner.leader_id != "lady_jessica":
-        return ()
-    return (
-        DomainAction(action_id="decline_leader_signet_payment", actor=player),
-        *(
-            (DomainAction(action_id="pay_leader_signet_spice", actor=player),)
-            if owner.resources.spice >= 1
-            else ()
-        ),
-    )
+
+    if owner.leader_id == "lady_jessica":
+        # Spice Agony and Water of Life both spend one Spice as an arrow cost
+        # [Lady Jessica card] [Reverend Mother Jessica card].
+        return (
+            DomainAction(action_id="decline_leader_signet_payment", actor=player),
+            *(
+                (DomainAction(action_id="pay_leader_signet_spice", actor=player),)
+                if owner.resources.spice >= 1
+                else ()
+            ),
+        )
+
+    if owner.leader_id == "lady_margot_fenring":
+        # Arrakis Informant: place a Spy on a post connected to a City board
+        # space [Lady Margot Fenring card].
+        return _leader_spy_placement_actions(state, player, context, CITY_POST_IDS)
+
+    if owner.leader_id == "staban_tuek":
+        bonus_post = context.get("staban_bonus_post")
+        if isinstance(bonus_post, str):
+            # Unseen Network's paid follow-up for the chosen post: one Spice
+            # for three Solari next to the Landsraad, or two Solari for an
+            # Intrigue card next to a Faction [Staban Tuek card].
+            payment: tuple[DomainAction, ...] = ()
+            if bonus_post in LANDSRAAD_POST_IDS and owner.resources.spice >= 1:
+                payment = (
+                    DomainAction(action_id="pay_leader_signet_spice", actor=player),
+                )
+            elif bonus_post in FACTION_POST_IDS and owner.resources.solari >= 2:
+                payment = (
+                    DomainAction(action_id="pay_leader_signet_solari", actor=player),
+                )
+            return (
+                DomainAction(
+                    action_id="decline_leader_signet_payment", actor=player
+                ),
+                *payment,
+            )
+        return _leader_spy_placement_actions(state, player, context, None)
+
+    if owner.leader_id == "princess_irulan":
+        # Chronicler's Insight: acquire a card that costs one to hand, or
+        # trash a hand card (two Spice if it costs one or more), or neither
+        # [Princess Irulan card].
+        actions: list[DomainAction] = [
+            DomainAction(action_id="decline_leader_signet_payment", actor=player)
+        ]
+        if state.imperium_deck:
+            actions.extend(
+                DomainAction(
+                    action_id="acquire_leader_imperium",
+                    actor=player,
+                    arguments=(("instance_id", instance_id),),
+                )
+                for instance_id in state.imperium_row
+                if (
+                    (
+                        definition := imperium_card_for_instance(instance_id)
+                    ).acquisition_cost
+                    == 1
+                    and (
+                        not definition.has_acquisition_bonus
+                        or definition.acquisition_effect is not None
+                    )
+                )
+            )
+        actions.extend(
+            DomainAction(
+                action_id="acquire_leader_reserve",
+                actor=player,
+                arguments=(("card_id", card_id),),
+            )
+            for card_id, count in state.reserve_stacks
+            if count > 0 and RESERVE_STACKS_BY_ID[card_id].acquisition_cost == 1
+        )
+        actions.extend(
+            DomainAction(
+                action_id="trash_leader_card",
+                actor=player,
+                arguments=(("card_id", card_id),),
+            )
+            for card_id in owner.hand
+        )
+        return tuple(actions)
+
+    return ()
 
 
 def apply_leader_signet_payment(
     state: GameState,
     action: DomainAction,
 ) -> RuleResult:
-    """Pay or decline the one-Spice Signet Ring ability of Jessica's faces."""
+    """Pay or decline an optional Signet Ring payment or choice."""
 
     if action not in legal_leader_signet_actions(state, action.actor):
         raise ValueError("action is not a legal Leader Signet payment choice")
@@ -494,6 +687,7 @@ def apply_leader_signet_payment(
     owner = state.players[player]
     source = f"round:{state.round_number}:player:{player}:leader_signet"
     context["pending_agent_effect"] = False
+    context.pop("staban_bonus_post", None)
 
     if action.action_id == "decline_leader_signet_payment":
         next_state = advance_after_effect(state, context, state.players)
@@ -507,6 +701,9 @@ def apply_leader_signet_payment(
                 ),
             ),
         )
+
+    if owner.leader_id == "staban_tuek":
+        return _apply_staban_bonus_payment(state, context, action)
 
     if owner.resources.spice < 1:
         raise RuntimeError("the Signet Ring payment requires one Spice")
@@ -584,6 +781,328 @@ def apply_leader_signet_payment(
         state=next_state,
         events=(*events, *intrigue_draw.events),
     )
+
+
+def _apply_staban_bonus_payment(
+    state: GameState,
+    context: dict[str, ActionValue],
+    action: DomainAction,
+) -> RuleResult:
+    """Resolve one paid Unseen Network follow-up [Staban Tuek card]."""
+
+    player = action.actor
+    owner = state.players[player]
+    source = f"round:{state.round_number}:player:{player}:leader_signet"
+
+    if action.action_id == "pay_leader_signet_spice":
+        # Next to the Landsraad: one Spice buys three Solari.
+        if owner.resources.spice < 1:
+            raise RuntimeError("the Landsraad bonus requires one Spice")
+        previous_spent = context.get("spice_spent_after_placement", 0)
+        if isinstance(previous_spent, bool) or not isinstance(previous_spent, int):
+            raise RuntimeError("Agent-turn effect frame has invalid Spice spending")
+        context["spice_spent_after_placement"] = previous_spent + 1
+        next_owner = replace(
+            owner,
+            resources=replace(
+                owner.resources,
+                spice=owner.resources.spice - 1,
+                solari=owner.resources.solari + 3,
+            ),
+            spice_spent_turn=owner.spice_spent_turn + 1,
+        )
+        next_state = advance_after_effect(
+            state,
+            context,
+            replace_player(state.players, next_owner),
+        )
+        return RuleResult(
+            state=next_state,
+            events=(
+                GameEvent(
+                    event_id=source,
+                    kind="leader_signet_resolved",
+                    payload=(("player", player), ("solari", 3), ("spice", 1)),
+                ),
+            ),
+        )
+
+    # Next to a Faction: two Solari buy one Intrigue card.
+    if owner.resources.solari < 2:
+        raise RuntimeError("the Faction bonus requires two Solari")
+    next_owner = replace(
+        owner,
+        resources=replace(owner.resources, solari=owner.resources.solari - 2),
+    )
+    working = replace(state, players=replace_player(state.players, next_owner))
+    intrigue_draw = draw_or_queue_intrigue_cards(
+        working,
+        player,
+        1,
+        source=f"{source}:intrigue_draw",
+    )
+    next_state = advance_after_effect(
+        intrigue_draw.state,
+        context,
+        intrigue_draw.state.players,
+    )
+    event = GameEvent(
+        event_id=source,
+        kind="leader_signet_resolved",
+        payload=(("intrigue", 1), ("player", player), ("solari", 2)),
+    )
+    return RuleResult(state=next_state, events=(event, *intrigue_draw.events))
+
+
+def apply_leader_signet_spy(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Place or recall-first the Spy of Arrakis Informant or Unseen Network."""
+
+    if action not in legal_leader_signet_actions(state, action.actor):
+        raise ValueError("action is not a legal Leader Signet Spy choice")
+    _, context = current_agent_effect_context(state)
+    player = action.actor
+    owner = state.players[player]
+    post_id = dict(action.arguments).get("post_id")
+    if not isinstance(post_id, str):
+        raise RuntimeError("Leader Signet Spy choice has invalid post ID")
+    source = f"round:{state.round_number}:player:{player}:leader_signet"
+
+    if action.action_id == "recall_spy_for_leader_placement":
+        next_owner = recall_spy(owner, post_id)
+        context["leader_spy_recalled"] = True
+        context["spy_recalled_this_turn"] = True
+        next_state = advance_after_effect(
+            state,
+            context,
+            replace_player(state.players, next_owner),
+        )
+        return RuleResult(
+            state=next_state,
+            events=(
+                GameEvent(
+                    event_id=f"{source}:spy_recalled:{post_id}",
+                    kind="spy_recalled",
+                    payload=(
+                        ("player", player),
+                        ("post_id", post_id),
+                        ("source", "leader_signet"),
+                    ),
+                ),
+            ),
+        )
+
+    next_owner = place_spy(owner, post_id)
+    context.pop("leader_spy_recalled", None)
+    if owner.leader_id == "staban_tuek" and (
+        post_id in LANDSRAAD_POST_IDS or post_id in FACTION_POST_IDS
+    ):
+        # The paid follow-up stays pending until paid or declined.
+        context["staban_bonus_post"] = post_id
+    else:
+        context["pending_agent_effect"] = False
+    next_state = advance_after_effect(
+        state,
+        context,
+        replace_player(state.players, next_owner),
+    )
+    return RuleResult(
+        state=next_state,
+        events=(
+            GameEvent(
+                event_id=f"{source}:spy_placed:{post_id}",
+                kind="spy_placed",
+                payload=(
+                    ("player", player),
+                    ("post_id", post_id),
+                    ("source", "leader_signet"),
+                ),
+            ),
+        ),
+    )
+
+
+def apply_leader_spy_action(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Route a Leader Spy action to its Leader's Signet Ring handler."""
+
+    if state.players[action.actor].leader_id == "feyd_rautha_harkonnen":
+        return apply_feyd_track_action(state, action)
+    return apply_leader_signet_spy(state, action)
+
+
+def apply_leader_signet_acquire(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Acquire a one-cost card to hand for Chronicler's Insight."""
+
+    if action not in legal_leader_signet_actions(state, action.actor):
+        raise ValueError("action is not a legal Leader Signet acquisition")
+    _, context = current_agent_effect_context(state)
+    player = action.actor
+    arguments = dict(action.arguments)
+    source = f"round:{state.round_number}:player:{player}:leader_signet"
+
+    if action.action_id == "acquire_leader_reserve":
+        card_id = arguments.get("card_id")
+        if not isinstance(card_id, str):
+            raise RuntimeError("Leader Signet acquisition has invalid card ID")
+        acquired = acquire_reserve_for_intrigue(
+            state,
+            player,
+            card_id,
+            to_hand=True,
+            source=source,
+        )
+    else:
+        instance_id = arguments.get("instance_id")
+        if not isinstance(instance_id, str):
+            raise RuntimeError("Leader Signet acquisition has invalid instance ID")
+        acquired = acquire_imperium_for_intrigue(
+            state,
+            player,
+            instance_id,
+            to_hand=True,
+            source=source,
+        )
+    context["pending_agent_effect"] = False
+    next_state = advance_after_effect(
+        acquired.result.state,
+        context,
+        acquired.result.state.players,
+    )
+    if acquired.places_spy:
+        next_state = next_state.push_decision(
+            acquisition_spy_frame(next_state, player, acquired.instance_id)
+        )
+        return RuleResult(state=next_state, events=acquired.result.events)
+    if acquired.takes_contract:
+        contracts = begin_contract_gain(
+            next_state,
+            player,
+            1,
+            source=f"{source}:acquisition_bonus",
+        )
+        return RuleResult(
+            state=contracts.state,
+            events=(*acquired.result.events, *contracts.events),
+        )
+    return RuleResult(state=next_state, events=acquired.result.events)
+
+
+def apply_leader_card_trash(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Route a Leader trash action to its Leader's Signet Ring handler."""
+
+    if state.players[action.actor].leader_id == "feyd_rautha_harkonnen":
+        return apply_feyd_track_action(state, action)
+    return apply_irulan_signet_trash(state, action)
+
+
+def apply_irulan_signet_trash(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Trash a hand card for Chronicler's Insight [Princess Irulan card].
+
+    A trashed card with a printed cost of one or more also grants two Spice;
+    starting cards have no printed cost.
+    """
+
+    if action not in legal_leader_signet_actions(state, action.actor):
+        raise ValueError("action is not a legal Leader Signet trash choice")
+    _, context = current_agent_effect_context(state)
+    player = action.actor
+    card_id = dict(action.arguments).get("card_id")
+    if not isinstance(card_id, str):
+        raise RuntimeError("Leader Signet trash has invalid card ID")
+    source = f"round:{state.round_number}:player:{player}:leader_signet"
+    definition = personal_card_for_instance(card_id)
+    printed_cost = getattr(definition, "acquisition_cost", None)
+    trashed = trash_personal_card(state, player, card_id, source=source)
+    events = list(trashed.events)
+    players = trashed.state.players
+    if isinstance(printed_cost, int) and printed_cost >= 1:
+        owner = players[player]
+        players = replace_player(
+            players,
+            replace(
+                owner,
+                resources=replace(
+                    owner.resources,
+                    spice=owner.resources.spice + 2,
+                ),
+            ),
+        )
+        events.append(
+            GameEvent(
+                event_id=f"{source}:spice",
+                kind="leader_signet_resolved",
+                payload=(("player", player), ("spice", 2)),
+            )
+        )
+    context["pending_agent_effect"] = False
+    next_state = advance_after_effect(trashed.state, context, players)
+    return RuleResult(state=next_state, events=tuple(events))
+
+
+def apply_smuggle_spice(
+    players: tuple[PlayerState, ...],
+    actor: int,
+    space_id: str,
+    is_maker_space: bool,
+    round_number: int,
+) -> tuple[tuple[PlayerState, ...], tuple[GameEvent, ...]]:
+    """Pay Smuggle Spice to spying opponents of an Agent placement.
+
+    Whenever another player sends an Agent to a Maker board space Staban Tuek
+    is spying on, he gains one Spice [Staban Tuek card].
+    """
+
+    if not is_maker_space:
+        return players, ()
+    events: list[GameEvent] = []
+    next_players = players
+    for candidate in players:
+        if (
+            candidate.player_id == actor
+            or candidate.leader_id != "staban_tuek"
+            or not is_spying_on_space(candidate, space_id)
+        ):
+            continue
+        next_players = replace_player(
+            next_players,
+            replace(
+                candidate,
+                resources=replace(
+                    candidate.resources,
+                    spice=candidate.resources.spice + 1,
+                ),
+            ),
+        )
+        events.append(
+            GameEvent(
+                event_id=(
+                    f"round:{round_number}:player:{candidate.player_id}:"
+                    f"smuggle_spice:{space_id}:{actor}"
+                ),
+                kind="leader_ability_spice_gained",
+                payload=(
+                    ("player", candidate.player_id),
+                    ("space_id", space_id),
+                    ("spice", 1),
+                    ("visitor", actor),
+                ),
+            )
+        )
+    return next_players, tuple(events)
 
 
 def legal_leader_placement_ability_actions(
@@ -889,8 +1408,10 @@ def grant_leader_reveal_passives(result: RuleResult) -> RuleResult:
 
     Always Smiling: during Gurney Halleck's Reveal turn, once his strength in
     the Conflict reaches six or more, he gains one Persuasion [Gurney Halleck
-    card]. The grant fires the first time the condition holds and is recorded
-    in the Reveal frame so it cannot repeat within the same Reveal turn.
+    card]. Unpredictable Foe: during Muad'Dib's Reveal turn, once he has a
+    sandworm in the Conflict, he draws one Intrigue card [Muad'Dib card].
+    Each grant fires the first time its condition holds and is recorded in
+    the Reveal frame so it cannot repeat within the same Reveal turn.
     """
 
     state = result.state
@@ -899,41 +1420,79 @@ def grant_leader_reveal_passives(result: RuleResult) -> RuleResult:
             continue
         if not isinstance(frame.decision, PlayerDecision):
             return result
+        player = frame.decision.owner
+        owner = state.players[player]
         context = dict(frame.context)
-        if context.get("leader_persuasion_granted") is True:
-            return result
-        owner = state.players[frame.decision.owner]
-        if owner.leader_id != "gurney_halleck":
-            return result
-        if owner.combat_strength < ALWAYS_SMILING_STRENGTH:
-            return result
-        stack = tuple(
-            replace(
-                candidate,
-                context=tuple(
-                    sorted({**dict(candidate.context),
-                            "leader_persuasion_granted": True}.items())
+        if owner.leader_id == "gurney_halleck":
+            if (
+                context.get("leader_persuasion_granted") is True
+                or owner.combat_strength < ALWAYS_SMILING_STRENGTH
+            ):
+                return result
+            stack = _with_frame_flag(
+                state.decision_stack, frame, "leader_persuasion_granted"
+            )
+            stack = add_reveal_persuasion(stack, 1)
+            event = GameEvent(
+                event_id=(
+                    f"round:{state.round_number}:player:{player}:"
+                    "leader_reveal:persuasion"
+                ),
+                kind="reveal_persuasion_gained",
+                payload=(
+                    ("amount", 1),
+                    ("leader_id", "gurney_halleck"),
+                    ("player", player),
                 ),
             )
-            if candidate is frame
-            else candidate
-            for candidate in state.decision_stack
-        )
-        stack = add_reveal_persuasion(stack, 1)
-        event = GameEvent(
-            event_id=(
-                f"round:{state.round_number}:player:{frame.decision.owner}:"
-                "leader_reveal:persuasion"
-            ),
-            kind="reveal_persuasion_gained",
-            payload=(
-                ("amount", 1),
-                ("leader_id", "gurney_halleck"),
-                ("player", frame.decision.owner),
-            ),
-        )
-        return RuleResult(
-            state=replace(state, decision_stack=stack),
-            events=(*result.events, event),
-        )
+            return RuleResult(
+                state=replace(state, decision_stack=stack),
+                events=(*result.events, event),
+            )
+        if owner.leader_id == "muad_dib":
+            if (
+                context.get("leader_intrigue_granted") is True
+                or owner.sandworms_conflict < 1
+            ):
+                return result
+            flagged = replace(
+                state,
+                decision_stack=_with_frame_flag(
+                    state.decision_stack, frame, "leader_intrigue_granted"
+                ),
+            )
+            drawn = draw_or_queue_intrigue_cards(
+                flagged,
+                player,
+                1,
+                source=(
+                    f"round:{state.round_number}:player:{player}:"
+                    "leader_reveal:intrigue"
+                ),
+            )
+            return RuleResult(
+                state=drawn.state,
+                events=(*result.events, *drawn.events),
+            )
+        return result
     return result
+
+
+def _with_frame_flag(
+    stack: tuple[DecisionFrame, ...],
+    frame: DecisionFrame,
+    flag: str,
+) -> tuple[DecisionFrame, ...]:
+    """Return ``stack`` with ``flag`` set to True on ``frame``."""
+
+    return tuple(
+        replace(
+            candidate,
+            context=tuple(
+                sorted({**dict(candidate.context), flag: True}.items())
+            ),
+        )
+        if candidate is frame
+        else candidate
+        for candidate in stack
+    )

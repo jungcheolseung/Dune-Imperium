@@ -29,6 +29,9 @@ class LeaderDefinition:
     signet_name: str | None = None
     alternate_ability_name: str | None = None
     alternate_signet_name: str | None = None
+    # Starting cards this Leader's printed setup rule removes from their
+    # ten-card deck (Staban Tuek's Limited Allies).
+    removed_starting_card_ids: tuple[str, ...] = ()
     sources: tuple[SourceRef, ...] = (
         SourceRef(SourceDocument.MAIN_RULEBOOK, (3, 4, 17)),
     )
@@ -51,6 +54,10 @@ class LeaderDefinition:
                 "alternate-face abilities require an alternate face and the "
                 "setup face's abilities"
             )
+        if len(self.removed_starting_card_ids) != len(
+            set(self.removed_starting_card_ids)
+        ):
+            raise ValueError("removed starting cards must be unique")
         if not self.sources:
             raise ValueError("leaders require official source references")
 
@@ -97,21 +104,31 @@ LEADERS: Final = (
         "lady_margot_fenring",
         "Lady Margot Fenring",
         _catalog(198, "uprising-lady-margot-fenring"),
+        ability_name="Loyalty",
+        signet_name="Arrakis Informant",
     ),
     LeaderDefinition(
         "muad_dib",
         "Muad'Dib",
         _catalog(180, "uprising-muad-dib"),
+        ability_name="Unpredictable Foe",
+        signet_name="Lead the Way",
     ),
     LeaderDefinition(
         "princess_irulan",
         "Princess Irulan",
         _catalog(196, "uprising-princess-irulan"),
+        ability_name="Imperial Birthright",
+        signet_name="Chronicler's Insight",
     ),
     LeaderDefinition(
         "staban_tuek",
         "Staban Tuek",
         _catalog(197, "uprising-staban-tuek"),
+        ability_name="Smuggle Spice",
+        signet_name="Unseen Network",
+        # Limited Allies: "You start the game without Diplomacy in your deck."
+        removed_starting_card_ids=("diplomacy",),
     ),
     LeaderDefinition(
         "shaddam_corrino_iv",

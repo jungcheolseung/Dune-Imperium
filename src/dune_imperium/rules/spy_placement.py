@@ -7,6 +7,7 @@ from dune_imperium.content.uprising.board import (
     OBSERVATION_POSTS,
     Faction,
 )
+from dune_imperium.content.uprising.types import AgentIcon
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 
@@ -39,6 +40,32 @@ def observation_post_ids_for_factions(
             BOARD_SPACES_BY_ID[space_id].faction in targets
             for space_id in post.connected_space_ids
         )
+    )
+
+
+def observation_post_ids_for_agent_icons(
+    icons: tuple[AgentIcon, ...],
+) -> frozenset[str]:
+    """Return posts connected to at least one space with a target Agent icon."""
+
+    targets = frozenset(icons)
+    return frozenset(
+        post.post_id
+        for post in OBSERVATION_POSTS
+        if any(
+            BOARD_SPACES_BY_ID[space_id].agent_icon in targets
+            for space_id in post.connected_space_ids
+        )
+    )
+
+
+def is_spying_on_space(player: PlayerState, space_id: str) -> bool:
+    """Return whether one of the player's Spies connects to ``space_id``."""
+
+    occupied = frozenset(player.spy_post_ids)
+    return any(
+        post.post_id in occupied and space_id in post.connected_space_ids
+        for post in OBSERVATION_POSTS
     )
 
 

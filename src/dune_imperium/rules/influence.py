@@ -46,6 +46,23 @@ def gain_faction_influence(
         players = replace_player(players, owner)
         gained += 1
 
+        if next_amount == 2:
+            # Loyalty and Imperial Birthright share the Victory Point's
+            # "reach 2" semantics: passing 2 in one multi-step gain counts,
+            # re-reaching after a loss counts again, and moving down never
+            # does [Main pp. 7, 17].
+            players, intrigue_deck, pending_draws, bonus_events = (
+                _apply_reach_two_leader_bonus(
+                    players,
+                    intrigue_deck,
+                    pending_draws,
+                    player,
+                    faction,
+                    event_id=f"{event_prefix}:leader_bonus:{step}",
+                )
+            )
+            events.extend(bonus_events)
+
         if next_amount == 4:
             players, intrigue_deck, bonus_payload, shortfall = _apply_track_bonus(
                 players,
@@ -261,6 +278,67 @@ def replace_influence(
             return replace(influence, bene_gesserit=amount)
         case Faction.FREMEN:
             return replace(influence, fremen=amount)
+
+
+def _apply_reach_two_leader_bonus(
+    players: tuple[PlayerState, ...],
+    intrigue_deck: tuple[str, ...],
+    pending_draws: tuple[tuple[int, int, str], ...],
+    player: int,
+    faction: Faction,
+    *,
+    event_id: str,
+) -> tuple[
+    tuple[PlayerState, ...],
+    tuple[str, ...],
+    tuple[tuple[int, int, str], ...],
+    tuple[GameEvent, ...],
+]:
+    """Resolve Leader abilities that fire on reaching two Influence.
+
+    Loyalty grants two Spice on reaching two Bene Gesserit Influence
+    [Lady Margot Fenring card]; Imperial Birthright draws one Intrigue card
+    on reaching two Emperor Influence [Princess Irulan card].
+    """
+
+    owner = players[player]
+    if owner.leader_id == "lady_margot_fenring" and faction is Faction.BENE_GESSERIT:
+        owner = replace(
+            owner,
+            resources=replace(owner.resources, spice=owner.resources.spice + 2),
+        )
+        event = GameEvent(
+            event_id=event_id,
+            kind="leader_influence_bonus_gained",
+            payload=(
+                ("faction", faction.value),
+                ("player", player),
+                ("spice", 2),
+            ),
+        )
+        return replace_player(players, owner), intrigue_deck, pending_draws, (event,)
+    if owner.leader_id == "princess_irulan" and faction is Faction.EMPEROR:
+        # Card identity stays hidden [Main p. 7]; only the count is public.
+        if intrigue_deck:
+            owner = replace(
+                owner,
+                intrigue_cards=(*owner.intrigue_cards, intrigue_deck[0]),
+            )
+            players = replace_player(players, owner)
+            intrigue_deck = intrigue_deck[1:]
+        else:
+            pending_draws = (*pending_draws, (player, 1, event_id))
+        event = GameEvent(
+            event_id=event_id,
+            kind="leader_influence_bonus_gained",
+            payload=(
+                ("faction", faction.value),
+                ("intrigue", 1),
+                ("player", player),
+            ),
+        )
+        return players, intrigue_deck, pending_draws, (event,)
+    return players, intrigue_deck, pending_draws, ()
 
 
 def _apply_track_bonus(

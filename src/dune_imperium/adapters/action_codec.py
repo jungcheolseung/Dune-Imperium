@@ -36,7 +36,7 @@ from dune_imperium.content.uprising.starting_cards import (
 from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
 from dune_imperium.core.actions import ActionValue, DomainAction
 
-ACTION_CODEC_VERSION = 74
+ACTION_CODEC_VERSION = 75
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 
@@ -150,6 +150,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "pay_agent_card_water",
             "pay_agent_card_spice",
             "pay_leader_board_repeat",
+            "pay_leader_signet_solari",
             "pay_leader_signet_spice",
             "pay_reveal_water_for_sandworm",
             "take_high_council_from_reveal",
@@ -444,6 +445,20 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         )
         for space in FEYD_TRAINING_TRACK
         if space.space_id != FEYD_TRACK_START
+    )
+    templates.extend(
+        ActionTemplate(
+            action_id="acquire_leader_imperium",
+            arguments=(("instance_id", instance_id),),
+        )
+        for instance_id in imperium_instances
+    )
+    templates.extend(
+        ActionTemplate(
+            action_id="acquire_leader_reserve",
+            arguments=(("card_id", stack.card.card_id),),
+        )
+        for stack in RESERVE_STACKS
     )
     templates.extend(_trash_templates(config, "trash_leader_card"))
     templates.extend(_trash_templates(config, "trash_agent_card"))
