@@ -1,11 +1,13 @@
 # Dune: Imperium - Uprising 구현 계획
 
-상태: 초안 5 (2026-08-28) — R0 규칙 명세, M0 개발 골격, M1 엔진 커널,
+상태: 초안 6 (2026-08-30) — R0 규칙 명세, M0 개발 골격, M1 엔진 커널,
 M2 4인 setup과 정적 보드, M3 한 라운드 수직 조각, M4 RL 인터페이스 조기 검증
 완료. M5의 기본 시스템 경계는 대부분 연결됐고 콘텐츠 의존 항목이 남아 있다.
-M6는 기본 Imperium 카드 50종과 Intrigue 44장 play 효과를 모두 완료했고 M8의
-CHOAM 전용 Imperium 4종·Intrigue 3종도 실제 play 경로에 연결했다. M6의 남은
-범위는 Leader 능력·Signet Ring과 Objective 상호작용이며, M7 완주 검증은 아직
+M6는 Leader 9종 능력·Signet Ring과 Objective 상호작용 재감사까지 마쳐
+완료됐고, M8도 Shaddam의 Sardaukar contract와 CHOAM 전용 콘텐츠까지 연결돼
+완료됐다. 전체 게임 러너와 PettingZoo 전체 게임 episode
+([rl-environment.md](rl-environment.md))가 있으며, M7 완주 검증의 대규모
+sweep·property test·처리량 기준 기록은 아직
 시작하지 않았다.
 
 이 문서는 규칙 엔진부터 강화학습 AI와 사람용 플레이 인터페이스까지의 구현
@@ -284,7 +286,7 @@ FINISHED까지 완주되고 replay로 재현된다.
 
 ### M6. Uprising 기본 콘텐츠 완성
 
-상태: **진행 중** (현황 갱신 2026-08-28).
+상태: **완료** (2026-08-30).
 
 완료된 범위:
 
@@ -302,17 +304,16 @@ FINISHED까지 완주되고 replay로 재현된다.
   구현 이력은 git의 `Play ...` / `Document ...` 커밋 쌍에 기록돼 있다.
 - 고정된 DIU `imperium.JSON`은 런타임 의존성 없이 63개 local identity와 대조하고
   아이콘·Faction·효과 형태를 정규화하는 read-only audit에만 사용한다.
-
-남은 범위:
-
 - Intrigue는 공통 play/discard 경계, effect DSL, 선택 슬롯 frame, Combat priority
   loop 안의 play가 있고 39개 identity(물리 44장) 전부가 실제 play 경로에
   연결돼 Intrigue 덱이 완결됐다(목록은
   [Intrigue audit](implementation-audits/intrigue.md)). Endgame window는
   OQ-001 convention으로 동작한다.
-- Leader는 identity와 setup 선택만 있고 Signet Ring과 Leader 능력이 없다.
-- Objective는 4인 setup, First Player, battle icon 경로까지 연결됐으며 이후
-  콘텐츠 상호작용은 다시 감사해야 한다.
+- 인쇄된 Leader 9종의 능력과 Signet Ring이 모두 play된다
+  ([Leader audit](implementation-audits/leaders.md)).
+- Objective는 setup·battle icon·Endgame wild·Intrigue flip 상호작용 재감사를
+  마쳤고 OQ-005를 해소했다
+  ([Objective audit](implementation-audits/objectives.md)).
 
 마일스톤 범위:
 
@@ -327,6 +328,10 @@ FINISHED까지 완주되고 replay로 재현된다.
 
 ### M7. 기본 게임 완주 검증
 
+상태: **진행 중** (2026-08-30). `run_random_game` 러너, 전체 게임 PettingZoo
+episode, 소규모 seed의 완주+replay 통합 테스트가 있다. 남은 범위는 아래의
+대규모 sweep·property test·불변식 검사·처리량 기준 기록이다.
+
 - random legal self-play, property-based state machine test, 장시간 soak test를
   추가한다.
 - CI에서는 고정된 소규모 seed 집합, 별도 로컬 작업에서는 최소 10,000개 seed를
@@ -339,7 +344,7 @@ FINISHED까지 완주되고 replay로 재현된다.
 
 ### M8. CHOAM 계약 모듈
 
-상태: **진행 중** (현황 갱신 2026-08-28). standard contract 20장의 identity·
+상태: **완료** (2026-08-30). standard contract 20장의 identity·
 조건·보상과 출처 URL을 전사하고, `choam_module=True` setup의 replayable shuffle·
 공개 2장·face-down bank 18장을 구현했다. 시장 take/refill·고갈과 Immediate뿐
 아니라 board-space 방문, Harvest의 turn Spice 합계, The Spice Must Flow acquire
@@ -350,8 +355,9 @@ FINISHED까지 완주되고 replay로 재현된다.
 Contracts는 기본 Spice와 4개 완료 시 self-trash·VP 선택을 정확히 구분한다.
 Interstellar Trade는 acquire 시 Contract를 가져가고 Reveal 시작 시점의 완료 수만
 Persuasion으로 센다. 당시 codec v58은 기본 룰셋 3,377개를 유지하고 CHOAM 룰셋의
-전용 Agent 목적지와 Reveal 선택까지 3,598개다. 남은 M8 범위는 Shaddam의 별도
-Sardaukar contract와 CHOAM 전용 Intrigue다.
+전용 Agent 목적지와 Reveal 선택까지 3,598개다. 이후 CHOAM 전용 Intrigue 3종,
+Shaddam의 set-aside Sardaukar contract와 Leader 능력(2026-08-30, codec v76~77),
+CHOAM 룰셋의 random 완주+replay 테스트까지 연결돼 완료 조건을 만족한다.
 
 - 계약 deck/공개 시장, 계약 완료 조건, 완료 계약 기록을 구현한다.
 - Shaddam과 CHOAM 전용 Imperium/Intrigue 카드를 추가한다.

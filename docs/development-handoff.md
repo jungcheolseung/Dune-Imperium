@@ -27,14 +27,16 @@ uv run ruff check src tests
 uv run mypy src tests
 ```
 
-2026-08-30의 기준 결과는 pytest 742개 통과, Ruff 통과, mypy 통과다. 현재 action
-codec은 `ACTION_CODEC_VERSION = 77`이며 기본 룰셋 catalog는 4,143개, CHOAM
-룰셋 catalog는 4,419개다.
+2026-08-30의 기준 결과는 pytest 755개 통과, Ruff 통과, mypy 통과다. 현재 action
+codec은 `ACTION_CODEC_VERSION = 77`(기본 4,143개, CHOAM 4,419개)이고, 관측은
+`OBSERVATION_VERSION = 1`의 1,409-int 전체 게임 인코딩이다
+([`rl-environment.md`](rl-environment.md)).
 
 ## 현재 구현 기준선
 
-마지막 기능 커밋은 `fa99359 Fix the Agent-card payment frames that never
-discharged or crashed`이고, 그 뒤에 Objective 감사 문서 커밋이 있다.
+마지막 기능 커밋은 `95ad278 Turn the PettingZoo adapter into full-game
+episodes`이고, 그 앞에 전체 게임 러너·관측 인코딩·엔진 버그 수정 커밋들이
+있다.
 
 - R0-M4는 완료됐다. 공식 규칙 자료, 엔진 커널, 4인 setup, 한 라운드 수직 조각,
   actor-neutral action codec과 PettingZoo AEC 계약이 있다.
@@ -74,9 +76,12 @@ discharged or crashed`이고, 그 뒤에 Objective 감사 문서 커밋이 있�
 - 코어 상태 머신과 replay는 전체 게임을 지원한다. 200게임×8라운드 random
   soak이 약 11초, random 4인 게임 60판의 FINISHED 완주(창 240개, replay 검증
   포함)가 약 30초에 통과한다.
-- `run_random_round`, debug CLI, `dune_imperium_uprising_v0` PettingZoo adapter는
-  의도적으로 한 라운드에서 끝난다. 전체 게임 runner나 전체 게임 RL episode는
-  아직 없다.
+- `run_random_game`이 FINISHED까지 실행해 `GameSimulation(state, standings,
+  replay)`를 돌려주고, `dune_imperium_uprising_v1` PettingZoo adapter는 전체
+  게임을 한 episode로 실행한다(chance 내부 해결, 승자독식 zero-sum 종료 보상,
+  1,409-int 관측, `choam_module`/`max_steps` 옵션). `run_random_round`와 debug
+  CLI는 의도적으로 한 라운드 단위를 유지한다. 설계 근거는
+  [`rl-environment.md`](rl-environment.md).
 - 공식 Main, Board Guide, FAQ는 2026-08-27에 공식 리소스 페이지에서 다시
   내려받아 `scripts/official-rule-sources.json`의 SHA-256과 모두 일치함을 확인했다.
 
@@ -105,19 +110,21 @@ discharged or crashed`이고, 그 뒤에 Objective 감사 문서 커밋이 있�
 
 ## 다음 구현 순서
 
-1. **전체 게임 random/self-play runner 공개 API와 PettingZoo 전체 게임 episode
-   전환.** 시작점 사실관계:
-   - `simulation/runner.py`는 `run_random_round`/`RoundSimulation`과 자체
-     `_round_finished(state, started_round)`로 한 라운드에서 멈춘다.
-     `adapters/pettingzoo_env.py`의 `DuneImperiumUprisingEnv`(AEC)도 자체
-     `_round_finished(state)`로 같은 경계를 쓰고, 관측은
-     `_encode_view`의 81개 int32다.
-   - 엔진은 FINISHED까지 완주·replay되므로(2026-08-29~30 soak) 경계 제거
-     자체는 작고, 실제 설계 지점은 전체 게임 episode의 관측 확장(README
-     "아직 결정하지 않은 사항")과 종료 reward 정의다. soak 루프의 표준
-     형태는 아래 처리량 메모를 따른다.
-   - Leader 능력이 모두 붙었으므로 러너/adapter 전환 뒤에는 어느 leader
-     조합으로도 전체 게임 episode를 돌릴 수 있다(CHOAM 포함).
+1. **M7 완주 검증 확장(대규모 sweep과 불변식 검사).** 시작점 사실관계:
+   - `run_random_game`과 env soak은 있지만 저장소에 재사용 가능한 대규모
+     sweep 도구가 없다. 계획의 M7은 CI용 고정 소규모 seed 집합과 로컬
+     10,000+ seed 실행, 그리고 교착·빈 합법 행동·자원 음수·말 총량
+     불일치·비공개 정보 누출 검사를 요구한다(`implementation-plan.md`).
+   - 오늘 세션의 두 엔진 버그(Agent-card 지불 frame, Espionage Spy 소비)가
+     정확히 이런 sweep이 잡는 부류였다. 불변식 battery는 soak 중 매 전이
+     검사로 넣는 형태가 실효적이었다(Objective 감사의 face-up 불변식 예).
+   - 처리량 기준(2026-08-30): `run_random_game` 약 48ms/판(9,000 step/s),
+     env 경유 약 4,100 agent step/s. `verify_input_immutability`는 기본
+     off(아래 처리량 메모).
+2. **M9 평가 러너와 baseline.** 여러 게임을 병렬 구동하고 정책 추론만
+   batch하는 self-play 러너, random/heuristic baseline, 좌석·리더·seed 교차
+   대회 도구(`implementation-plan.md`의 M9). 관측·보상 계약은
+   [`rl-environment.md`](rl-environment.md)로 고정돼 있다.
 
 각 묶음은 카드 이미지로 텍스트를 검증하고(`docs/card-data-sources.md`의 방법),
 `Play ...` / `Document ...` 커밋 쌍을 유지하며, 새 결정 경계는
@@ -137,8 +144,8 @@ Trap 유형을 잘못 적었던 전례가 있다).
 | dispatcher 표와 frame kind | `src/dune_imperium/rules/engine.py`, `frames.py`, `agent_effect_frame.py` |
 | effect DSL과 Intrigue | `content/uprising/effect_dsl.py`, `intrigue.py`, `rules/effect_interpreter.py`, `rules/intrigue.py`, `rules/intrigue_deck.py`, `rules/intrigue_triggers.py` |
 | 고정 action catalog | `src/dune_imperium/adapters/action_codec.py` |
-| 관측과 PettingZoo | `src/dune_imperium/core/observation.py`, `adapters/pettingzoo_env.py` |
-| replay와 random round | `src/dune_imperium/core/replay.py`, `simulation/runner.py` |
+| 관측과 PettingZoo | `src/dune_imperium/core/observation.py`, `adapters/observation_encoding.py`, `adapters/pettingzoo_env.py` |
+| replay와 random 러너 | `src/dune_imperium/core/replay.py`, `simulation/runner.py` (한 라운드·전체 게임) |
 | 카드별 회귀 테스트 | `tests/unit/content/`, `tests/unit/rules/` |
 | 통합·adapter 테스트 | `tests/integration/`, `tests/adapters/` |
 
@@ -149,12 +156,12 @@ Trap 유형을 잘못 적었던 전례가 있다).
 
 `RulesEngine.verify_input_immutability`는 매 전이마다 state 전체를 canonical
 hash하는 디버그 가드라 기본 off다(켜면 random play가 약 70 step/s, 끄면 약
-3,000 step/s). 커널 테스트 엔진만 이를 켠다. 2026-08-29 측정 기준
-200게임×8라운드 random soak(replay 검증 포함)이 약 11초, random 4인 게임
-60판 FINISHED 완주 soak이 약 30초다. soak 스크립트는 저장소에 없으므로 세션
-scratchpad에서 작성한다: engine.reset 후 `phase is FINISHED`까지
-current_decision/legal_actions/apply 루프를 돌리고(ChanceDecision은
-ChanceResolver로) 마지막에 GameReplay로 재생 검증한다.
+3,000 step/s). 커널 테스트 엔진만 이를 켠다. 완주 soak은 이제
+`run_random_game`을 그대로 쓰면 된다(2026-08-30 측정 약 48ms/판, 약 9,000
+step/s; replay 검증은 `replay_game` 호출 추가). env 경유 masked random full
+episode는 약 4,100 agent step/s다. 전이 단위 불변식 검사가 필요한 soak만
+scratchpad에서 current_decision/legal_actions/apply 루프를 직접 쓴다
+(ChanceDecision은 ChanceResolver로).
 
 ## 유용한 명령
 
@@ -182,9 +189,34 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에
 `e6539ee`~`5ffa1bf`), 그리고 2026-08-30 Shaddam 묶음(Contract manifest 수정
 `5bfd2a5`, Shaddam `ac75530`, 문서 `4fc0e9d`)과 핸드오프 갱신 커밋들이
 순서대로 있다. 그 뒤에 2026-08-30 Objective 감사 묶음(지불 frame 수정
-`fa99359`와 감사 문서 커밋)이 있다. 새 세션은 `git log origin/master..master`로
-push 여부를 확인한다. checkout이 Objective 감사 묶음보다 이전이면 이 문서의
-742개 테스트 기준선이 실제 코드와 일치하지 않는다.
+`fa99359`, 감사 문서 `1d97903`)과 전체 게임 RL 전환 묶음(러너 `636fe9e`,
+관측 인코딩 `efc4a11`+`4b50412`, Espionage 수정 `4d9efb8`, env 전환
+`95ad278`, 문서 커밋)이 있다. 새 세션은 `git log origin/master..master`로
+push 여부를 확인한다. checkout이 RL 전환 묶음보다 이전이면 이 문서의
+755개 테스트·관측 v1 기준선이 실제 코드와 일치하지 않는다.
+
+## 2026-08-30 전체 게임 RL 전환 세션 요약
+
+- 설계 확정([`rl-environment.md`](rl-environment.md)): 관측 v1은 PlayerView
+  순수 함수인 1,409-int 평면 벡터(세그먼트 표 export, egocentric 좌석 회전,
+  identity 카운트/슬롯/tri-state), 보상은 승자독식 zero-sum 종료 보상만,
+  chance는 env 내부 seeded 해결. 상대 hand·deck·discard·Intrigue 장수 공개를
+  OQ-010 부분 convention으로 기록했다.
+- `run_random_game` 러너(`GameSimulation(state, standings, replay)`)와
+  `dune_imperium_uprising_v1` env 전환을 구현했다. per-step VP delta 보상은
+  제거했고 종료 `infos`에 rank·VP를 노출한다. codec은 v77 그대로다.
+- PlayerView에 결정 frame 요약(kind·결정 소유자·turn 소유자)과 공개 존
+  장수를 추가했다. frame별 세부 컨텍스트 공개는 kind별 화이트리스트 검토
+  후로 미뤘다.
+- random 전체 게임에서 기존 엔진 버그를 하나 더 수정했다(`4d9efb8`):
+  Espionage recall 뒤 자유 순서 효과가 그 Spy를 소비하면 배치가 crash하던
+  것을 해결 시점 supply 재확인과 recall 재개방으로 바꿨고(`[Main pp. 11,
+  20]`, Agent-card Spy 경로와 동일 패턴), supply 0에서 decline이 빠져 있던
+  것도 인쇄 효과의 선택성(`[Board Guide p. 1]`)에 따라 복원했다.
+- 검증: env 경유 18판(기본 12+CHOAM 6) random full episode soak에서 승자독식
+  zero-sum 보상 불변식을 확인했고(약 4,100 agent step/s), 두 룰셋의 random
+  완주 전 상태 인코딩 sweep, PettingZoo api/seed 테스트, 755개 테스트·Ruff·
+  mypy가 통과한다.
 
 ## 2026-08-30 Objective 감사 세션 요약
 

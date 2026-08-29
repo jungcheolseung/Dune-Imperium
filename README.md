@@ -7,19 +7,21 @@
 
 ## 현재 구현 상태
 
-2026-08-29 기준으로 기본 보드 시스템, multi-round 상태 전이와 개인 덱 reshuffle,
+2026-08-30 기준으로 기본 보드 시스템, multi-round 상태 전이와 개인 덱 reshuffle,
 기본 룰셋 Imperium 카드 50종과 CHOAM 전용 4종, 총 54종의 play data가 구현되어
 있다. CHOAM Module은 standard contract 20장의 identity·setup·공개 시장·완료
 조건·인쇄 보상과 전용 Imperium 카드 효과까지 연결돼 있다. 현재 action codec은
-v77이며 기본 룰셋은 4,143개, CHOAM 룰셋은 4,419개다. 전체 테스트 738개, Ruff,
+v77이며 기본 룰셋은 4,143개, CHOAM 룰셋은 4,419개다. 전체 테스트 755개, Ruff,
 mypy가 통과한다.
 
 코어 엔진은 Endgame Intrigue window(OQ-001 convention)까지 갖춰 random
 4인 게임을 FINISHED까지 완주하고 replay할 수 있다. Intrigue 44장은 39개
 identity 전부가 effect DSL로 play되어 완결됐고, 인쇄된 Leader 9종(기본 8 +
-CHOAM 전용 Shaddam)의 능력과 Signet Ring도 모두 play된다. 다만 공개 random
-runner와 `dune_imperium_uprising_v0` PettingZoo adapter는 여전히 한 라운드를
-실행 단위로 삼으므로 완전한 학습 환경이 끝난 상태는 아니다.
+CHOAM 전용 Shaddam)의 능력과 Signet Ring도 모두 play된다.
+`run_random_game` 러너와 `dune_imperium_uprising_v1` PettingZoo adapter는
+전체 게임을 하나의 episode로 실행하며, 관측은 버전이 붙은 1,409-int 전체
+게임 인코딩, 보상은 승자독식 zero-sum 종료 보상이다
+([학습 환경 설계](docs/rl-environment.md)).
 
 ## 프로젝트 비전
 
@@ -62,8 +64,8 @@ Dune: Imperium 경험을 할 수 있게 하는 것이다.
 
 ## 아직 결정하지 않은 사항
 
-- 현재 81개 정수 관측과 v64 action catalog 이후의 전체 게임 관측 확장 및 최종
-  학습용 인코딩, 학습 알고리즘과 모델 구조
+- 학습 알고리즘과 모델 구조(관측 인코딩 v1과 종료 보상은
+  [학습 환경 설계](docs/rl-environment.md)로 확정했다)
 - 사람이 플레이할 최종 UI 형태
 - CHOAM 이후 다른 확장팩을 추가할 범위와 순서
 
@@ -126,7 +128,7 @@ uv run mypy src tests
 `uv.lock`에 고정된 의존성을 설치한다. 새 구현은 `src/dune_imperium/`에 두며,
 기존 `dune/` 패키지는 이전 구현의 참고 자료일 뿐 새 코드에서 import하지 않는다.
 
-### PettingZoo 한 라운드 환경
+### PettingZoo 전체 게임 환경
 
 RL optional 의존성을 설치하면 고정 action catalog와 mask를 사용하는 AEC 환경을
 실행할 수 있다.
@@ -138,11 +140,13 @@ uv sync --extra rl
 ```python
 from dune_imperium.adapters.pettingzoo_env import env
 
-environment = env()
+environment = env()          # env(choam_module=True)로 CHOAM 룰셋 선택
 environment.reset(seed=7)
 observation, reward, terminated, truncated, info = environment.last()
 ```
 
-현재 `dune_imperium_uprising_v0`는 한 라운드를 하나의 episode로 취급한다. 이는
-multi-round 코어 엔진과 별도의 adapter 경계이며, 전체 게임 episode 전환은 기본
-콘텐츠와 Endgame decision window가 완성된 뒤 진행한다.
+`dune_imperium_uprising_v1`은 전체 게임을 하나의 episode로 실행한다. 덱
+reshuffle 같은 chance 결정은 episode seed에서 유도한 resolver로 내부 해결하고,
+게임이 끝나면 공식 최종 순위의 승자가 +1, 나머지가 각 −1/3을 받는다
+(중간 보상 없음). 관측 벡터와 세그먼트 표, 보상 근거는
+[학습 환경 설계](docs/rl-environment.md)를 따른다.
