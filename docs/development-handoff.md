@@ -18,7 +18,8 @@ Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/lead
    진입점), `README.md`, 이 문서, 그리고 [`lessons.md`](lessons.md)를 읽는다.
 2. `git status --short`와 `git log --oneline -10`으로 작업 트리와 최근 구현을
    확인한다. 기존 변경은 사용자 작업으로 취급하고 덮어쓰지 않는다.
-3. `uv sync --extra rl`로 Python 3.14 환경을 준비한다.
+3. `uv sync --extra rl --extra ui`로 Python 3.14 환경을 준비한다(`ui`는
+   FastAPI 서버 의존성; 없으면 `tests/server/test_app.py`가 skip된다).
 4. 아래 기준 검증을 실행한다.
 
 ```bash
@@ -27,7 +28,7 @@ uv run ruff check src tests
 uv run mypy src tests
 ```
 
-2026-08-30의 기준 결과는 pytest 813개 통과, Ruff 통과, mypy 통과다. 현재 action
+2026-08-31의 기준 결과는 pytest 829개 통과, Ruff 통과, mypy 통과다. 현재 action
 codec은 `ACTION_CODEC_VERSION = 79`(기본 4,152개, CHOAM 4,429개)이고, 관측은
 `OBSERVATION_VERSION = 2`의 1,415-int 전체 게임 인코딩이다
 ([`rl-environment.md`](rl-environment.md)). `dune-imperium-sweep` 검증
@@ -37,11 +38,11 @@ sweep은 random policy 룰셋당 10,000판(총 20,000판), heuristic policy
 
 ## 현재 구현 기준선
 
-마지막 기능 커밋은 `c0c1795`(OQ-007 6-Leader 공개 draft ruleset option,
-M11 슬라이스 2)이고, 그 앞에 draft sweep이 적발한 Treacherous Maneuver
-OQ-022 수정 `d70b353`, 슬라이스 1 묶음(`1a449f4`+`7a53c8f`+`ac4d6d4`)이
-있다. 마일스톤 현황: **R0~M8 완료**(M6 콘텐츠, M7 완주 검증, M8 CHOAM),
-**진행 중 M11**(계획 조정으로 M9·M10보다 선행, 슬라이스 1·2 완료).
+마지막 기능 커밋은 `4fbd751`(FastAPI 게임 세션 서버, M11 슬라이스 3)이고,
+그 앞에 Leader draft `c0c1795`, Treacherous Maneuver OQ-022 수정
+`d70b353`, 슬라이스 1 묶음(`1a449f4`+`7a53c8f`+`ac4d6d4`)이 있다.
+마일스톤 현황: **R0~M8 완료**(M6 콘텐츠, M7 완주 검증, M8 CHOAM),
+**진행 중 M11**(계획 조정으로 M9·M10보다 선행, 슬라이스 1·2·3 완료).
 
 - R0-M4는 완료됐다. 공식 규칙 자료, 엔진 커널, 4인 setup, 한 라운드 수직 조각,
   actor-neutral action codec과 PettingZoo AEC 계약이 있다.
@@ -153,11 +154,12 @@ OQ-022 수정 `d70b353`, 슬라이스 1 묶음(`1a449f4`+`7a53c8f`+`ac4d6d4`)이
         v79의 `pick_leader` 템플릿(두 catalog 상시 포함), 관측 v2의 공개
         pool 세그먼트, PettingZoo `leader_draft` 옵션, sweep
         `--leader-draft`. 세부는 OQ-007 구현 노트와 아래 세션 요약.
-     3. web 스택 결정 + 게임 세션 서버: 새 게임 생성(설정: seed,
-        `choam_module`, leader draft 여부, 좌석, AI 배정), 사람 좌석의
-        `PlayerView` 직렬화 조회, 합법 행동 목록 제공, 행동 적용, AI·chance
-        자동 진행. 엔진 공개 API만 사용하고 서버 자체 규칙 로직은 두지
-        않는다.
+     3. ~~web 스택 결정 + 게임 세션 서버~~ — **완료**(`4fbd751`,
+        2026-08-31). 스택은 **FastAPI + uvicorn**(`ui` optional extra,
+        `dune-imperium-server` CLI). `server/sessions.py`의 프레임워크
+        중립 `GameSessionManager`가 엔진 공개 API + seeded
+        `ChanceResolver`만으로 세션을 구동하고(서버 자체 규칙 로직 없음),
+        `server/app.py`가 JSON HTTP로 노출한다. 세부는 아래 세션 요약.
      4. 최소 브라우저 UI: 텍스트 카드 표현으로 설정(leader draft 포함)부터
         최종 점수까지 한 게임 완주. 결정 frame kind별 프롬프트 표시.
      5. 저장/불러오기(`GameReplay` 직렬화 + `replay_game` 검증)와 종료 후
@@ -218,6 +220,9 @@ uv run dune-imperium-sweep --games 100 --ruleset both --workers 8 --policy heuri
 # OQ-007 6-Leader 공개 draft setup으로 완주 검사
 uv run dune-imperium-sweep --games 100 --ruleset both --workers 8 --leader-draft
 
+# 로컬 플레이 서버 (ui extra 필요; 기본 http://127.0.0.1:8000)
+uv run dune-imperium-server
+
 # 한 라운드 random 실행
 uv run dune-imperium-debug --seed 2 --random-policy-seed 1002
 
@@ -236,15 +241,40 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에
 
 ## 원격 저장소 인계 주의
 
-2026-08-30 M11 슬라이스 2 세션 기준 `origin/master`는 `290cdbf`(OQ-007
-draft convention 기록)까지 push돼 있고, 로컬 `master`에는 슬라이스 1 묶음
-(heuristic agent `1a449f4`, Special Mission Spy slot 수정 `7a53c8f`,
-OQ-004 Row 고갈 convention `ac4d6d4`, 문서 `23c4d33`)과 슬라이스 2 묶음
-(Treacherous Maneuver OQ-022 수정 `d70b353`, Leader draft `c0c1795`,
-그리고 이 핸드오프 갱신)이 로컬 전용으로 남아 있다. push는 사용자 판단으로
-한다. 새 세션은 `git log origin/master..master`로 push 여부를 확인하고,
-checkout이 `c0c1795`보다 이전이면 이 문서의 813개 테스트·codec v79·관측
-v2 기준선이 실제 코드와 일치하지 않는다.
+2026-08-31 슬라이스 3 마무리 기준 로컬 `master`와 `origin/master`는
+동기화돼 있다(사용자 지시로 슬라이스 1~3과 문서 갱신까지 push함; 이후에도
+push는 사용자 판단으로 한다). 새 세션은 `git log origin/master..master`로
+확인하고, checkout이 `4fbd751`보다 이전이면 이 문서의 829개 테스트·codec
+v79·관측 v2·서버 기준선이 실제 코드와 일치하지 않는다.
+
+## 2026-08-31 M11 슬라이스 3 세션 요약 (FastAPI 게임 세션 서버)
+
+- web 스택을 **FastAPI + uvicorn**으로 확정하고 `ui` optional extra와
+  `dune-imperium-server` CLI(기본 127.0.0.1:8000)를 추가했다(`4fbd751`).
+  개발 환경 준비 명령은 `uv sync --extra rl --extra ui`로 바뀌었다
+  (TestClient용 `httpx2`는 dev group).
+- `server/sessions.py`의 `GameSessionManager`는 프레임워크 중립이다. 게임
+  생성은 좌석 배정(`human`/`heuristic`/`random`), `choam_module`,
+  `leader_draft`, seed(미지정 시 SystemRandom, policy seed 기본은 sweep과
+  같은 700,000+game_seed)를 받고, 엔진 공개 API(`reset`/
+  `current_decision`/`legal_actions`/`apply`/`observe`)와 러너 패턴의
+  seeded `ChanceResolver`만 사용한다. chance와 AI 좌석은 생성 직후와 사람
+  행동 뒤 자동 진행되어 세션은 항상 사람 결정 또는 종료 순위에서 멈춘다.
+  적용된 모든 step은 슬라이스 5(저장/불러오기)를 위해 replay 형식으로
+  기록한다.
+- 비공개 경계: 사람은 자기 좌석의 직렬화된 `PlayerView`와 revision 가드가
+  붙은 index 기반 합법 행동 목록만 받는다. 둘 다 비공개 카드 identity를
+  담을 수 있으므로 AI 좌석 조회는 `SeatAccessError`(HTTP 403)로 거부하고,
+  `state.event_log`는 PlayerView 밖이므로 노출하지 않는다(가시성 결정은
+  계속 `core/observation.py` 단독).
+- HTTP 매핑: 미존재 게임 404, 비인간 좌석 403, revision 불일치 409, 기타
+  잘못된 요청 400, pydantic 형식 오류 422. endpoint는 게임
+  생성/목록/요약/좌석 view/좌석 행동 목록/행동 적용/삭제다.
+- 검증: 세션 단위 테스트 9건(전원 AI 생성 즉시 완주와 seed 재현, 사람
+  좌석 정지, index 행동 2,000 step 완주, draft 시작 frame, 좌석·seed
+  검증, 삭제)과 HTTP 테스트 7건(4인 사람 draft 게임을 API로 라운드 1까지
+  진행 포함). 실제 uvicorn 기동 + curl 왕복도 확인했다. pytest 813→829,
+  Ruff, mypy 통과.
 
 ## 2026-08-30 M11 슬라이스 2 세션 요약 (Leader draft)
 
