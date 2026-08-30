@@ -26,6 +26,26 @@ def _create(client: TestClient, **overrides: object) -> dict[str, object]:
     return summary
 
 
+def test_root_serves_the_ui_and_static_assets(client: TestClient) -> None:
+    index = client.get("/")
+    assert index.status_code == 200
+    assert "text/html" in index.headers["content-type"]
+    assert "Dune: Imperium" in index.text
+
+    script = client.get("/static/app.js")
+    assert script.status_code == 200
+    style = client.get("/static/style.css")
+    assert style.status_code == 200
+
+
+def test_catalog_endpoint_serves_display_names(client: TestClient) -> None:
+    response = client.get("/catalog")
+    assert response.status_code == 200
+    catalog = response.json()
+    assert catalog["cards"]["sardaukar_soldier"]["name"] == "Sardaukar Soldier"
+    assert catalog["leaders"]["lady_jessica"]["name"].startswith("Lady Jessica")
+
+
 def test_created_games_are_listed_and_summarized(client: TestClient) -> None:
     summary = _create(client)
     game_id = summary["game_id"]

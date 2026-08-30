@@ -1,0 +1,132 @@
+:root {
+  --bg: #f4efe6;
+  --panel: #fffdf8;
+  --ink: #2b2418;
+  --line: #d8cdb8;
+  --accent: #a4581e;
+  --accent-soft: #f3e3d2;
+  --good: #2f6b3a;
+  --bad: #a03030;
+  font-family: "Avenir Next", "Pretendard", "Apple SD Gothic Neo", sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.6rem 1.2rem;
+  background: var(--ink);
+  color: var(--bg);
+}
+
+header h1 { font-size: 1.1rem; margin: 0; flex: none; }
+#header-status { flex: 1; font-size: 0.9rem; opacity: 0.9; }
+
+main { max-width: 1180px; margin: 0 auto; padding: 1rem; }
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.9rem 1.1rem;
+  margin-bottom: 1rem;
+}
+
+h2 { margin: 0 0 0.6rem; font-size: 1.05rem; }
+h3 {
+  margin: 0.8rem 0 0.3rem;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+}
+
+fieldset {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin: 0 0 0.8rem;
+}
+fieldset label { display: block; margin: 0.25rem 0; }
+#seat-selects label { display: flex; gap: 0.5rem; align-items: center; }
+
+button {
+  font: inherit;
+  border: 1px solid var(--accent);
+  background: var(--accent-soft);
+  color: var(--ink);
+  border-radius: 8px;
+  padding: 0.35rem 0.8rem;
+  cursor: pointer;
+}
+button:hover:not(:disabled) { background: var(--accent); color: #fff; }
+button:disabled { opacity: 0.5; cursor: wait; }
+
+#decision-banner { border-left: 6px solid var(--accent); }
+#decision-info .prompt { font-weight: 700; font-size: 1.05rem; }
+#decision-info .meta { font-size: 0.85rem; opacity: 0.75; }
+
+#actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.6rem;
+}
+#actions button { text-align: left; max-width: 100%; }
+
+#seats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(255px, 1fr));
+  gap: 0.8rem;
+  margin-bottom: 1rem;
+}
+
+.seat {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.7rem 0.9rem;
+  font-size: 0.88rem;
+}
+.seat.active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.seat .who { font-weight: 700; }
+.seat .badge {
+  display: inline-block;
+  font-size: 0.72rem;
+  border-radius: 6px;
+  padding: 0 0.35rem;
+  margin-left: 0.3rem;
+  background: var(--accent);
+  color: #fff;
+}
+.seat ul { margin: 0.15rem 0 0; padding-left: 1.1rem; }
+
+.cardline { margin: 0.1rem 0; }
+.tag {
+  display: inline-block;
+  background: var(--accent-soft);
+  border-radius: 5px;
+  padding: 0 0.3rem;
+  margin: 0 0.15rem 0.15rem 0;
+  font-size: 0.8rem;
+}
+
+#standings table { border-collapse: collapse; width: 100%; }
+#standings th, #standings td {
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  padding: 0.25rem 0.5rem;
+}
+#standings .winner { color: var(--good); font-weight: 700; }
+
+.error { color: var(--bad); font-weight: 600; }
+.muted { opacity: 0.65; }

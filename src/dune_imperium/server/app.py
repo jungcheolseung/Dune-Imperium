@@ -9,10 +9,14 @@ other invalid request 400.
 
 from collections.abc import Iterator
 from contextlib import contextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from dune_imperium.server.catalog import build_catalog
 from dune_imperium.server.sessions import (
     GameSessionManager,
     JsonObject,
@@ -21,6 +25,8 @@ from dune_imperium.server.sessions import (
     StaleRevisionError,
     UnknownGameError,
 )
+
+_STATIC_DIR = Path(__file__).parent / "static"
 
 
 class CreateGameRequest(BaseModel):
@@ -51,6 +57,14 @@ def create_app(manager: GameSessionManager | None = None) -> FastAPI:
 
     sessions = manager if manager is not None else GameSessionManager()
     app = FastAPI(title="Dune: Imperium - Uprising local play server")
+
+    @app.get("/", include_in_schema=False)
+    def index() -> FileResponse:
+        return FileResponse(_STATIC_DIR / "index.html")
+
+    @app.get("/catalog")
+    def catalog() -> JsonObject:
+        return build_catalog()
 
     @app.post("/games")
     def create_game(request: CreateGameRequest) -> JsonObject:
@@ -98,6 +112,7 @@ def create_app(manager: GameSessionManager | None = None) -> FastAPI:
             sessions.delete(game_id)
         return {"deleted": game_id}
 
+    app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
     return app
 
 

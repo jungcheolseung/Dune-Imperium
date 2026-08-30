@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dune: Imperium — Uprising</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <h1>Dune: Imperium — Uprising</h1>
+    <div id="header-status"></div>
+    <button id="leave-game" hidden>새 게임 설정으로</button>
+  </header>
+
+  <main>
+    <section id="setup-screen" class="panel">
+      <h2>새 게임</h2>
+      <form id="setup-form">
+        <fieldset>
+          <legend>좌석 배정</legend>
+          <div id="seat-selects"></div>
+        </fieldset>
+        <fieldset>
+          <legend>규칙 옵션</legend>
+          <label><input type="checkbox" id="opt-leader-draft" checked>
+            Leader 6종 공개 draft (OQ-007 convention)</label>
+          <label><input type="checkbox" id="opt-choam">
+            CHOAM Module</label>
+          <label>Seed (빈칸 = 무작위)
+            <input type="number" id="opt-seed" min="0" placeholder="무작위"></label>
+        </fieldset>
+        <button type="submit" id="create-game">게임 시작</button>
+      </form>
+      <div id="game-list-wrap" hidden>
+        <h2>진행 중인 게임</h2>
+        <ul id="game-list"></ul>
+      </div>
+      <p id="setup-error" class="error" hidden></p>
+    </section>
+
+    <section id="game-screen" hidden>
+      <section id="decision-banner" class="panel">
+        <div id="decision-info"></div>
+        <div id="actions"></div>
+      </section>
+      <section id="standings" class="panel" hidden></section>
+      <section id="board" class="panel"></section>
+      <section id="seats"></section>
+      <section id="private-zone" class="panel"></section>
+      <p id="game-error" class="error" hidden></p>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
