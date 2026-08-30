@@ -27,20 +27,21 @@ uv run ruff check src tests
 uv run mypy src tests
 ```
 
-2026-08-30의 기준 결과는 pytest 796개 통과, Ruff 통과, mypy 통과다. 현재 action
-codec은 `ACTION_CODEC_VERSION = 78`(기본 4,144개, CHOAM 4,420개)이고, 관측은
-`OBSERVATION_VERSION = 1`의 1,409-int 전체 게임 인코딩이다
+2026-08-30의 기준 결과는 pytest 813개 통과, Ruff 통과, mypy 통과다. 현재 action
+codec은 `ACTION_CODEC_VERSION = 79`(기본 4,152개, CHOAM 4,429개)이고, 관측은
+`OBSERVATION_VERSION = 2`의 1,415-int 전체 게임 인코딩이다
 ([`rl-environment.md`](rl-environment.md)). `dune-imperium-sweep` 검증
-sweep은 random policy 룰셋당 10,000판(총 20,000판)과 heuristic policy
-룰셋당 1,000판(총 2,000판)이 실패 0으로 통과한 상태다.
+sweep은 random policy 룰셋당 10,000판(총 20,000판), heuristic policy
+룰셋당 1,000판, 그리고 `--leader-draft` 켠 두 policy 각 룰셋당 500판이
+모두 실패 0으로 통과한 상태다.
 
 ## 현재 구현 기준선
 
-마지막 기능 커밋은 `ac4d6d4`(heuristic sweep이 적발한 OQ-004 Imperium Row
-고갈 convention)이고, 그 앞에 Special Mission Spy slot 수정 `7a53c8f`와
-M11 슬라이스 1의 heuristic agent `1a449f4`가 있다. 마일스톤 현황:
-**R0~M8 완료**(M6 콘텐츠, M7 완주 검증, M8 CHOAM), **진행 중 M11**(계획
-조정으로 M9·M10보다 선행, 슬라이스 1 완료).
+마지막 기능 커밋은 `c0c1795`(OQ-007 6-Leader 공개 draft ruleset option,
+M11 슬라이스 2)이고, 그 앞에 draft sweep이 적발한 Treacherous Maneuver
+OQ-022 수정 `d70b353`, 슬라이스 1 묶음(`1a449f4`+`7a53c8f`+`ac4d6d4`)이
+있다. 마일스톤 현황: **R0~M8 완료**(M6 콘텐츠, M7 완주 검증, M8 CHOAM),
+**진행 중 M11**(계획 조정으로 M9·M10보다 선행, 슬라이스 1·2 완료).
 
 - R0-M4는 완료됐다. 공식 규칙 자료, 엔진 커널, 4인 setup, 한 라운드 수직 조각,
   actor-neutral action codec과 PettingZoo AEC 계약이 있다.
@@ -146,11 +147,12 @@ M11 슬라이스 1의 heuristic agent `1a449f4`가 있다. 마일스톤 현황:
         `run_policy_game` 러너 일반화, sweep `--policy {random,heuristic}`.
         heuristic soak이 엔진 잠복 버그 두 계열을 적발해 함께 수정했다
         (`7a53c8f`, `ac4d6d4`; 아래 세션 요약).
-     2. Leader draft convention을 엔진 setup에 구현: 6종 추출은 seeded
-        chance, pick은 turn 역순의 player decision. 새 결정 경계는 관례대로
-        `FrameKind` → frame `kind` → dispatcher 표 → codec(v79 예상, Leader
-        pick 템플릿 추가) 순으로 넣고, ruleset option으로 켠다. 관측에는
-        공개 pool·pick 결과를 추가한다(`OBSERVATION_VERSION` 상향).
+     2. ~~Leader draft convention을 엔진 setup에 구현~~ — **완료**
+        (`c0c1795`, 2026-08-30). `RulesetConfig(leader_draft=True)` ruleset
+        option, `FrameKind.LEADER_DRAFT` frame과 dispatcher 표, codec
+        v79의 `pick_leader` 템플릿(두 catalog 상시 포함), 관측 v2의 공개
+        pool 세그먼트, PettingZoo `leader_draft` 옵션, sweep
+        `--leader-draft`. 세부는 OQ-007 구현 노트와 아래 세션 요약.
      3. web 스택 결정 + 게임 세션 서버: 새 게임 생성(설정: seed,
         `choam_module`, leader draft 여부, 좌석, AI 배정), 사람 좌석의
         `PlayerView` 직렬화 조회, 합법 행동 목록 제공, 행동 적용, AI·chance
@@ -213,6 +215,9 @@ uv run dune-imperium-sweep --games 100 --ruleset both --workers 8
 # 같은 sweep을 heuristic baseline으로 (M11 사람용 상대와 동일 정책)
 uv run dune-imperium-sweep --games 100 --ruleset both --workers 8 --policy heuristic
 
+# OQ-007 6-Leader 공개 draft setup으로 완주 검사
+uv run dune-imperium-sweep --games 100 --ruleset both --workers 8 --leader-draft
+
 # 한 라운드 random 실행
 uv run dune-imperium-debug --seed 2 --random-policy-seed 1002
 
@@ -231,14 +236,45 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에
 
 ## 원격 저장소 인계 주의
 
-2026-08-30 M11 슬라이스 1 세션 기준 `origin/master`는 `290cdbf`(OQ-007
-draft convention 기록)까지 push돼 있고, 로컬 `master`에는 이번 세션의
-커밋이 로컬 전용으로 남아 있다: heuristic agent `1a449f4`, Special Mission
-Spy slot 수정 `7a53c8f`, OQ-004 Row 고갈 convention `ac4d6d4`, 그리고 이
-핸드오프 갱신. push는 사용자 판단으로 한다. 새 세션은
-`git log origin/master..master`로 push 여부를 확인하고, checkout이
-`ac4d6d4`보다 이전이면 이 문서의 796개 테스트·codec v78·heuristic sweep
-기준선이 실제 코드와 일치하지 않는다.
+2026-08-30 M11 슬라이스 2 세션 기준 `origin/master`는 `290cdbf`(OQ-007
+draft convention 기록)까지 push돼 있고, 로컬 `master`에는 슬라이스 1 묶음
+(heuristic agent `1a449f4`, Special Mission Spy slot 수정 `7a53c8f`,
+OQ-004 Row 고갈 convention `ac4d6d4`, 문서 `23c4d33`)과 슬라이스 2 묶음
+(Treacherous Maneuver OQ-022 수정 `d70b353`, Leader draft `c0c1795`,
+그리고 이 핸드오프 갱신)이 로컬 전용으로 남아 있다. push는 사용자 판단으로
+한다. 새 세션은 `git log origin/master..master`로 push 여부를 확인하고,
+checkout이 `c0c1795`보다 이전이면 이 문서의 813개 테스트·codec v79·관측
+v2 기준선이 실제 코드와 일치하지 않는다.
+
+## 2026-08-30 M11 슬라이스 2 세션 요약 (Leader draft)
+
+- OQ-007의 6-Leader 공개 draft convention을 `RulesetConfig(leader_draft=
+  True)` ruleset option으로 구현했다(`c0c1795`). reset이 pick과 무관한
+  setup chance(Conflict tier, Objective→First Player, 공개 pool 6종,
+  Imperium·Intrigue·Contract 전체 셔플, 시작 덱 전체 셔플)를 seeded로
+  모두 해결한 뒤 `GamePhase.SETUP`의 `leader_draft` frame에서 멈춘다.
+  pick은 라운드 1 turn 역순(First Player 마지막)의 player decision이고,
+  pick마다 setup face 배정과 인쇄된 시작 카드 제거(이미 섞인 덱 필터링 —
+  남은 순서 균등성 유지)를 적용하며, 마지막 pick이 Contract 시장을
+  배분한다(Shaddam pick 시 Sardaukar 2장 set-aside). 고정
+  `DEFAULT_LEADER_IDS` 경로는 그대로다.
+- action 공간은 옵션과 무관하게 고정이다: `pick_leader` 템플릿을 두
+  catalog에 상시 포함해 codec v79(기본 4,152, CHOAM 4,429). 관측은 v2로
+  올려 공개 pool 6-슬롯 세그먼트를 추가했다(1,415-int; pick 결과는 기존
+  좌석 Leader 슬롯). PettingZoo env에 `leader_draft` 옵션을 추가했고,
+  draft episode는 pick 결정으로 시작한다.
+- sweep은 census를 setup 종료 시점에 고정하도록 바꿨다(draft 중 Staban의
+  Limited Allies가 시작 카드를 정당하게 제거하므로). `--leader-draft`
+  플래그를 추가했다.
+- draft soak(두 policy × 두 룰셋 × 500판)이 기존 엔진 버그를 하나 더
+  적발해 수정했다(`d70b353`, CHOAM seed 198): Treacherous Maneuver를 낸 뒤
+  Cunning의 자유 순서 trash slot으로 그 카드 자체가 trash되면 Agent box
+  해결이 무조건 self-trash를 실행해 crash했다. 기록된 OQ-022 convention
+  (self-trash는 이미 충족, 나머지 효과는 해결)을 `apply_agent_card_trash`
+  에도 적용했다.
+- 검증: 수정 후 draft soak 총 2,000판(heuristic 1,000 + random 1,000,
+  모든 불변식·replay 검사) 실패 0, 비-draft heuristic 400판 회귀 통과.
+  pytest 796→813, Ruff, mypy 통과.
 
 ## 2026-08-30 M11 슬라이스 1 세션 요약 (heuristic agent)
 

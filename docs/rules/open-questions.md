@@ -130,6 +130,14 @@
   - 엔진에는 ruleset option으로 구현하고, 기존 고정 배정(테스트·sweep의
     `DEFAULT_LEADER_IDS`) 경로는 재현성 용도로 유지한다. 공식 draft 절차가
     발표되면 재검토한다.
+  - 구현(2026-08-30): `RulesetConfig(leader_draft=True)`가 이 convention을
+    켠다. reset이 pick과 무관한 setup chance를 모두 seeded 해결한 뒤
+    `GamePhase.SETUP`의 `leader_draft` frame에서 멈추고, pick마다 좌석을
+    확정(setup face, 인쇄된 시작 카드 제거는 이미 섞인 덱에서 필터링 —
+    남은 순서는 균등 유지)하며, 마지막 pick이 Contract 시장을
+    배분한다(Shaddam pick 시 Sardaukar set-aside). codec v79의
+    `pick_leader` 템플릿, 관측 v2의 공개 pool 세그먼트.
+    `tests/unit/rules/test_leader_draft.py`로 고정한다.
 
 ## OQ-008 — Control bonus와 방문자 효과의 상대 순서
 
