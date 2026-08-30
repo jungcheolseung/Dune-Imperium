@@ -28,7 +28,7 @@ uv run ruff check src tests
 uv run mypy src tests
 ```
 
-2026-08-31의 기준 결과는 pytest 829개 통과, Ruff 통과, mypy 통과다. 현재 action
+2026-08-31의 기준 결과는 pytest 833개 통과, Ruff 통과, mypy 통과다. 현재 action
 codec은 `ACTION_CODEC_VERSION = 79`(기본 4,152개, CHOAM 4,429개)이고, 관측은
 `OBSERVATION_VERSION = 2`의 1,415-int 전체 게임 인코딩이다
 ([`rl-environment.md`](rl-environment.md)). `dune-imperium-sweep` 검증
@@ -38,11 +38,12 @@ sweep은 random policy 룰셋당 10,000판(총 20,000판), heuristic policy
 
 ## 현재 구현 기준선
 
-마지막 기능 커밋은 `4fbd751`(FastAPI 게임 세션 서버, M11 슬라이스 3)이고,
-그 앞에 Leader draft `c0c1795`, Treacherous Maneuver OQ-022 수정
-`d70b353`, 슬라이스 1 묶음(`1a449f4`+`7a53c8f`+`ac4d6d4`)이 있다.
-마일스톤 현황: **R0~M8 완료**(M6 콘텐츠, M7 완주 검증, M8 CHOAM),
-**진행 중 M11**(계획 조정으로 M9·M10보다 선행, 슬라이스 1·2·3 완료).
+마지막 기능 커밋은 `42be883`(브라우저 UI, M11 슬라이스 4)이고, 그 앞에
+FastAPI 세션 서버 `4fbd751`, Leader draft `c0c1795`, Treacherous Maneuver
+OQ-022 수정 `d70b353`, 슬라이스 1 묶음(`1a449f4`+`7a53c8f`+`ac4d6d4`)이
+있다. 마일스톤 현황: **R0~M8 완료**(M6 콘텐츠, M7 완주 검증, M8 CHOAM),
+**진행 중 M11**(계획 조정으로 M9·M10보다 선행, 슬라이스 1~4 완료, 남은
+것은 슬라이스 5 저장/불러오기·replay 검토).
 
 - R0-M4는 완료됐다. 공식 규칙 자료, 엔진 커널, 4인 setup, 한 라운드 수직 조각,
   actor-neutral action codec과 PettingZoo AEC 계약이 있다.
@@ -160,8 +161,13 @@ sweep은 random policy 룰셋당 10,000판(총 20,000판), heuristic policy
         중립 `GameSessionManager`가 엔진 공개 API + seeded
         `ChanceResolver`만으로 세션을 구동하고(서버 자체 규칙 로직 없음),
         `server/app.py`가 JSON HTTP로 노출한다. 세부는 아래 세션 요약.
-     4. 최소 브라우저 UI: 텍스트 카드 표현으로 설정(leader draft 포함)부터
-        최종 점수까지 한 게임 완주. 결정 frame kind별 프롬프트 표시.
+     4. ~~최소 브라우저 UI~~ — **완료**(`42be883`, 2026-08-31). 의존성
+        없는 vanilla HTML/JS 단일 페이지(`server/static/`)를 서버 루트에서
+        서빙하고, `/catalog`가 인쇄된 표시 데이터(카드 이름·비용·설득·검·
+        Faction·아이콘, Intrigue timing, Leader 능력명, 공간 이름)를
+        제공한다. 설정(좌석·CHOAM·draft·seed)부터 결정 frame kind별
+        프롬프트, index 버튼 행동 적용, hot-seat 좌석 전환, 최종 순위까지
+        실제 브라우저에서 완주 검증했다. 세부는 아래 세션 요약.
      5. 저장/불러오기(`GameReplay` 직렬화 + `replay_game` 검증)와 종료 후
         replay 검토 화면.
 2. **M9 평가 러너와 baseline.** 여러 게임을 병렬 구동하고 정책 추론만
@@ -241,11 +247,34 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에
 
 ## 원격 저장소 인계 주의
 
-2026-08-31 슬라이스 3 마무리 기준 로컬 `master`와 `origin/master`는
-동기화돼 있다(사용자 지시로 슬라이스 1~3과 문서 갱신까지 push함; 이후에도
+2026-08-31 슬라이스 4 마무리 기준 로컬 `master`와 `origin/master`는
+동기화돼 있다(사용자 지시로 슬라이스 1~4와 문서 갱신까지 push함; 이후에도
 push는 사용자 판단으로 한다). 새 세션은 `git log origin/master..master`로
-확인하고, checkout이 `4fbd751`보다 이전이면 이 문서의 829개 테스트·codec
-v79·관측 v2·서버 기준선이 실제 코드와 일치하지 않는다.
+확인하고, checkout이 `42be883`보다 이전이면 이 문서의 833개 테스트·codec
+v79·관측 v2·서버·UI 기준선이 실제 코드와 일치하지 않는다.
+
+## 2026-08-31 M11 슬라이스 4 세션 요약 (브라우저 UI)
+
+- 의존성 없는 vanilla HTML/CSS/JS 단일 페이지를 `server/static/`에 두고
+  FastAPI가 `/`(index)와 `/static/*`으로 서빙한다(`42be883`). 클라이언트는
+  서버의 summary/`PlayerView`/actions/catalog payload만 렌더링하며 규칙
+  지식을 갖지 않는다.
+- `/catalog` endpoint(`server/catalog.py`, 프레임워크 중립)가 콘텐츠
+  manifest의 인쇄된 공개 표시 데이터를 제공한다: 개인 카드 63종의
+  이름·획득 비용·설득·검·Faction·Agent 아이콘, Intrigue 39종의 이름과
+  option timing, Contract·Conflict·Leader(능력명 포함)·보드 공간·Objective
+  이름. instance id → 카드 id 해석은 클라이언트의 접두사 파싱으로 한다.
+- 화면: 설정(좌석별 사람/휴리스틱/랜덤, CHOAM, OQ-007 draft 기본 켬,
+  seed, 진행 중 게임 이어서 열기) → 게임(결정 프롬프트 + frame kind +
+  결정 좌석, index 기반 행동 버튼, 보드 존—draft pool·Conflict·Imperium
+  Row·Reserve·Contract 시장·maker spice·Intrigue discard, 좌석 4개 공개
+  패널, 내 hand/discard/Intrigue 비공개 패널) → 종료 시 최종 순위 표.
+  여러 사람 좌석은 결정 좌석을 따라가는 hot-seat으로 처리한다.
+- 검증: 실제 uvicorn + 브라우저에서 폼으로 draft 게임을 만들고(설정 화면
+  → Leader pick 클릭 → 라운드 1 turn frame), UI 자체 행동 버튼 경로로
+  103회 결정을 자동 구동해 10라운드 최종 순위까지 완주했다(서버 로그 오류
+  0). `/catalog`·정적 서빙 테스트를 추가해 pytest 829→833, Ruff, mypy
+  통과.
 
 ## 2026-08-31 M11 슬라이스 3 세션 요약 (FastAPI 게임 세션 서버)
 
