@@ -1,6 +1,6 @@
 # 개발 인수인계
 
-기준일: 2026-08-30
+기준일: 2026-08-31
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재
 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md),
@@ -168,8 +168,38 @@ OQ-022 수정 `d70b353`, 슬라이스 1 묶음(`1a449f4`+`7a53c8f`+`ac4d6d4`)이
         제공한다. 설정(좌석·CHOAM·draft·seed)부터 결정 frame kind별
         프롬프트, index 버튼 행동 적용, hot-seat 좌석 전환, 최종 순위까지
         실제 브라우저에서 완주 검증했다. 세부는 아래 세션 요약.
-     5. 저장/불러오기(`GameReplay` 직렬화 + `replay_game` 검증)와 종료 후
-        replay 검토 화면.
+     5. **저장/불러오기 + 종료 후 replay 검토 화면 — 다음 작업.**
+        시작점 사실관계:
+        - 저장 대상은 `core/replay.py`의 `GameReplay`: `ruleset:
+          RulesetConfig`(players·choam_module·leader_draft), `seed`,
+          `steps: tuple[DomainAction | ChanceOutcome, ...]`,
+          `expected_state_hash`, 버전 필드 3개. 주의 — 러너·세션은 버전
+          필드를 기본값으로 두는데 `action_codec_version` 기본값 20은
+          오래된 값이다. 직렬화 슬라이스에서 실제 `ACTION_CODEC_VERSION`
+          스탬프와 불러오기 시 버전 검증을 같이 넣는 것이 자연스럽다.
+        - 서버 세션(`server/sessions.py`)은 이미 모든 적용 step을
+          `GameSession.steps`에 replay 형식으로 기록한다. 저장 = 그 시점
+          steps + `canonical_state_hash(state)`로 `GameReplay` 구성 →
+          JSON 직렬화. dataclass→JSON 변환 선례는 `core/state.py`의
+          `_canonicalize`(hash용)와 `server/sessions.py`의 `_jsonify`.
+          `DomainAction`/`ChanceOutcome` 구분 필드가 스키마에 필요하다.
+        - 불러오기 = 역직렬화 → `replay_game(engine, replay)` 재현
+          검증(불일치 시 `ReplayMismatchError`) → 새 `GameSession`으로
+          계속. **미결 설계**: 이어하기의 chance 흐름. 원 세션의
+          `ChanceResolver`는 seed에서 순차 소비된 RNG 스트림이므로 (a)
+          `random.Random.getstate()`를 함께 저장해 복원하거나 (b) "불러온
+          게임은 seed 기반 새 chance 스트림" convention을 명시(결정론은
+          유지되나 저장 전과 이후 셔플이 달라질 수 있음) 중 하나를
+          슬라이스에서 결정하고 문서화한다.
+        - replay 검토 화면은 서버가 replay를 step 단위로 다시 적용해
+          시점별 상태를 제공하는 방식이 자연스럽다(엔진 공개 API만).
+          검토도 비공개 경계를 유지한다 — 사람 좌석의 `PlayerView` 시점
+          재생으로 시작하고, 종료 후 전체 공개 여부는 별도 결정으로
+          남긴다(OQ-010 열람 범위 질문과 연결됨).
+        - 저장 위치(서버 로컬 파일 vs 브라우저 다운로드/업로드)는 구현
+          시작 시 결정한다.
+        슬라이스 5가 끝나면 M11 완료 조건(사람이 설정부터 최종 점수까지
+        안정적으로 완전한 게임을 플레이)을 판정하고 M9로 넘어간다.
 2. **M9 평가 러너와 baseline.** 여러 게임을 병렬 구동하고 정책 추론만
    batch하는 self-play 러너, random/heuristic(M11 상대에서 출발)/rollout
    baseline, 좌석·리더·first player·seed 교차 대회 도구
@@ -247,8 +277,8 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에
 
 ## 원격 저장소 인계 주의
 
-2026-08-31 슬라이스 4 마무리 기준 로컬 `master`와 `origin/master`는
-동기화돼 있다(사용자 지시로 슬라이스 1~4와 문서 갱신까지 push함; 이후에도
+2026-08-31 세션 마무리 기준 로컬 `master`와 `origin/master`는 동기화돼
+있다(사용자 지시로 슬라이스 1~4와 이 핸드오프 정리까지 push함; 이후에도
 push는 사용자 판단으로 한다). 새 세션은 `git log origin/master..master`로
 확인하고, checkout이 `42be883`보다 이전이면 이 문서의 833개 테스트·codec
 v79·관측 v2·서버·UI 기준선이 실제 코드와 일치하지 않는다.
