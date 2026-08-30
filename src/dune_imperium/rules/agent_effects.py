@@ -846,12 +846,26 @@ def apply_agent_card_trash(state: GameState, action: DomainAction) -> RuleResult
         source_card.agent_effect
         is PersonalCardAgentEffect.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE
     ):
-        source_trashed = trash_personal_card(
-            trashed.state,
-            action.actor,
-            source_card_id,
-            source=source,
-        )
+        # A freely ordered effect (for example an Intrigue trash slot) may
+        # already have trashed the played card mid-frame; the mandatory
+        # self-trash is then already satisfied and the rest of the effect
+        # still resolves (OQ-022).
+        if _still_owned(trashed.state.players[action.actor], source_card_id):
+            source_trashed = trash_personal_card(
+                trashed.state,
+                action.actor,
+                source_card_id,
+                source=source,
+            )
+        else:
+            source_trashed = RuleResult(
+                state=trashed.state,
+                events=(
+                    _self_trash_satisfied_event(
+                        trashed.state, action.actor, source_card_id
+                    ),
+                ),
+            )
         space_id = context.get("space_id")
         if not isinstance(space_id, str):
             raise RuntimeError("Agent-turn effect frame has invalid space")

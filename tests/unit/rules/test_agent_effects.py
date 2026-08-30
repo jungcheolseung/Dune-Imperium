@@ -616,6 +616,55 @@ def test_treacherous_maneuver_pays_both_cards_for_extra_influence() -> None:
     assert resolved.players[0].victory_points == 2
 
 
+def test_treacherous_maneuver_self_trash_is_already_satisfied_mid_frame() -> None:
+    # A freely ordered Intrigue trash slot can trash the played card before
+    # its trash choice resolves; the chosen Emperor card still trashes, the
+    # extra Influence still resolves, and the self-trash is already satisfied
+    # (OQ-022). Found by the leader-draft heuristic sweep (CHOAM seed 198).
+    maneuver = _imperium_instance("treacherous_maneuver")
+    sardaukar = _imperium_instance("sardaukar_soldier")
+    owner = PlayerState(player_id=0, hand=(maneuver, sardaukar))
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        intrigue_deck=("intrigue:test",),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "dutiful_service")).state
+    trashed_owner = replace(
+        placed.players[0],
+        in_play=tuple(
+            candidate
+            for candidate in placed.players[0].in_play
+            if candidate != maneuver
+        ),
+        trashed=(maneuver,),
+    )
+    lowered = replace(placed, players=(trashed_owner, *placed.players[1:]))
+
+    trash = next(
+        action
+        for action in legal_agent_card_trash_actions(lowered, 0)
+        if action.action_id == "trash_agent_card"
+    )
+    paid = apply_agent_card_trash(lowered, trash)
+
+    assert paid.state.players[0].trashed == (maneuver, sardaukar)
+    assert paid.state.players[0].influence.emperor == 1
+    kinds = [event.kind for event in paid.events]
+    assert "agent_card_self_trash_satisfied" in kinds
+    assert kinds.count("card_trashed") == 1
+
+
 def test_treacherous_maneuver_may_be_declined_for_only_normal_influence() -> None:
     maneuver = _imperium_instance("treacherous_maneuver")
     sardaukar = _imperium_instance("sardaukar_soldier")
