@@ -79,6 +79,29 @@ def test_heuristic_game_runs_to_finished_and_replays(choam_module: bool) -> None
     assert replayed.phase is GamePhase.FINISHED
 
 
+@pytest.mark.parametrize("choam_module", [False, True])
+def test_leader_draft_game_runs_to_finished_and_replays(choam_module: bool) -> None:
+    engine = UprisingRulesEngine()
+    config = RulesetConfig(choam_module=choam_module, leader_draft=True)
+    agents = tuple(HeuristicAgent(seed=3016 + seat) for seat in range(config.players))
+
+    result = run_policy_game(engine, config, game_seed=17, agents=agents)
+
+    assert result.state.phase is GamePhase.FINISHED
+    leaders = tuple(player.leader_id for player in result.state.players)
+    assert all(leader is not None for leader in leaders)
+    assert set(leaders) <= set(result.state.leader_draft_pool)
+    picks = tuple(
+        step
+        for step in result.replay.steps
+        if hasattr(step, "action_id") and step.action_id == "pick_leader"
+    )
+    assert len(picks) == 4
+    replayed = replay_game(engine, result.replay)
+    assert replayed.phase is GamePhase.FINISHED
+    assert tuple(player.leader_id for player in replayed.players) == leaders
+
+
 def test_policy_runner_requires_one_agent_per_seat() -> None:
     engine = UprisingRulesEngine()
     config = RulesetConfig()

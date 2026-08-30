@@ -42,7 +42,7 @@ from dune_imperium.core.observation import PlayerView, PublicPlayerView
 from dune_imperium.core.state import GamePhase
 from dune_imperium.rules.frames import FrameKind
 
-OBSERVATION_VERSION: Final = 1
+OBSERVATION_VERSION: Final = 2
 _SEATS: Final = 4
 
 PERSONAL_CARD_IDS: Final = (
@@ -77,6 +77,7 @@ _INTRIGUE_INDEX: Final = {
 _AGENT_LOCATION_SLOTS: Final = 3
 _SET_ASIDE_SLOTS: Final = 2
 _IMPERIUM_ROW_SLOTS: Final = 5
+_LEADER_DRAFT_SLOTS: Final = 6
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,6 +120,7 @@ def _segment_lengths() -> tuple[tuple[str, int], ...]:
         ("intrigue_trash", len(INTRIGUE_IDS)),
         ("imperium_removed", len(PERSONAL_CARD_IDS)),
         ("reveal_order", _SEATS),
+        ("leader_draft_pool", _LEADER_DRAFT_SLOTS),
     ]
     for seat in range(_SEATS):
         lengths.extend(_seat_segment_lengths(seat))
@@ -241,6 +243,16 @@ def encode_player_view(view: PlayerView) -> tuple[int, ...]:
     reveal_slots = [relative(seat) for seat in view.reveal_order]
     writer.write(
         "reveal_order", reveal_slots + [0] * (_SEATS - len(reveal_slots))
+    )
+    if len(view.leader_draft_pool) > _LEADER_DRAFT_SLOTS:
+        raise ValueError("the Leader draft pool holds more than six Leaders")
+    pool_slots = [
+        _index_plus_one(leader_id, LEADER_IDS)
+        for leader_id in view.leader_draft_pool
+    ]
+    writer.write(
+        "leader_draft_pool",
+        pool_slots + [0] * (_LEADER_DRAFT_SLOTS - len(pool_slots)),
     )
 
     for seat_offset in range(_SEATS):

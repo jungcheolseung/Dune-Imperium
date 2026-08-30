@@ -22,9 +22,11 @@ from dune_imperium.core.chance import (
     ChanceResolver,
     validate_chance_outcome,
 )
-from dune_imperium.core.decisions import ChanceDecision
+from dune_imperium.core.decisions import ChanceDecision, DecisionFrame, PlayerDecision
+from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
+from dune_imperium.rules.frames import FrameKind
 
 
 @dataclass(frozen=True, slots=True)
@@ -309,6 +311,123 @@ def create_initial_state(
         sardaukar_contract_ids=sardaukar_set_aside,
         reserve_stacks=tuple(
             (stack.card.card_id, stack.copies) for stack in RESERVE_STACKS
+        ),
+    )
+    return SetupResult(state=state, chance_outcomes=resolver.outcomes)
+
+
+LEADER_DRAFT_POOL_SIZE: Final = 6
+
+
+def leader_draft_pool_decision(config: RulesetConfig) -> ChanceDecision:
+    """Return the seeded face-up six-Leader deal of the OQ-007 draft."""
+
+    return ChanceDecision(
+        decision_id="setup:leader_draft_pool",
+        prompt="Deal six face-up Leaders for the draft",
+        options=tuple(
+            leader.leader_id for leader in leaders_for_choam(config.choam_module)
+        ),
+        count=LEADER_DRAFT_POOL_SIZE,
+    )
+
+
+def create_draft_initial_state(
+    config: RulesetConfig,
+    seed: int,
+    recorded_outcomes: tuple[ChanceOutcome, ...] | None = None,
+) -> SetupResult:
+    """Build the paused pre-pick state of the OQ-007 draft convention.
+
+    Everything independent of the Leader picks resolves eagerly through the
+    seeded chance stream: Conflict tiers, Objectives (which fix the First
+    Player), the public six-Leader pool, and full-set shuffles of the
+    Imperium deck, the Intrigue deck, the standard Contracts, and every
+    starting deck. The state then waits in ``GamePhase.SETUP`` on a
+    ``leader_draft`` frame owned by the last seat of the round-1 turn order.
+    Each pick finalizes its seat — printed starting-card removals filter the
+    already-shuffled deck, which leaves the remaining order uniformly random
+    — and the final pick deals the Contract market (setting the Sardaukar
+    Contracts aside when Shaddam was picked) and hands off to Round Start.
+    """
+
+    if not config.leader_draft:
+        raise ValueError("the draft setup requires the leader_draft option")
+    resolver = ChanceResolver(seed=seed, recorded=recorded_outcomes)
+
+    conflict = build_conflict_setup(
+        tuple(resolver.resolve(decision) for decision in conflict_setup_decisions())
+    )
+    players, first_player = assign_objectives(
+        create_unshuffled_players(),
+        resolver.resolve(objective_setup_decision()),
+    )
+    pool = resolver.resolve(leader_draft_pool_decision(config)).values
+    imperium = resolver.resolve(
+        _shuffle_decision(
+            "setup:imperium_deck",
+            "Shuffle the Imperium deck",
+            imperium_deck_instance_ids(config.choam_module),
+        )
+    ).values
+    intrigue = resolver.resolve(
+        _shuffle_decision(
+            "setup:intrigue_deck",
+            "Shuffle the Intrigue deck",
+            intrigue_deck_instance_ids(config.choam_module),
+        )
+    ).values
+    # The full Contract order is drawn now; whether the Sardaukar Contracts
+    # leave it is only known after the picks, so the market is dealt then.
+    contracts = (
+        resolver.resolve(contract_setup_decision()).values
+        if config.choam_module
+        else ()
+    )
+    players = tuple(
+        apply_starting_deck_shuffle(
+            player,
+            resolver.resolve(starting_deck_shuffle_decision(player)),
+        )
+        for player in players
+    )
+
+    if recorded_outcomes is not None and not resolver.exhausted:
+        raise ChanceReplayError("recorded chance stream has unused outcomes")
+
+    last_picker = (first_player + config.players - 1) % config.players
+    state = GameState(
+        config=config,
+        seed=seed,
+        phase=GamePhase.SETUP,
+        first_player=first_player,
+        players=players,
+        conflict_deck=conflict.deck,
+        unused_conflict_ids=conflict.unused,
+        imperium_deck=imperium[5:],
+        imperium_row=imperium[:5],
+        intrigue_deck=intrigue,
+        contract_bank=contracts,
+        leader_draft_pool=pool,
+        reserve_stacks=tuple(
+            (stack.card.card_id, stack.copies) for stack in RESERVE_STACKS
+        ),
+        decision_stack=(
+            DecisionFrame(
+                kind=FrameKind.LEADER_DRAFT,
+                frame_id="setup:leader_draft",
+                decision=PlayerDecision(
+                    owner=last_picker,
+                    prompt="Pick a Leader from the face-up draft pool",
+                ),
+            ),
+        ),
+        event_log=(
+            GameEvent(
+                event_id="setup:leader_draft:pool",
+                kind="leader_draft_pool_revealed",
+                payload=(("leader_ids", ",".join(pool)),),
+            ),
         ),
     )
     return SetupResult(state=state, chance_outcomes=resolver.outcomes)

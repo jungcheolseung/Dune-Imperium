@@ -55,6 +55,10 @@ class GameState:
     # Contracts set aside during setup for Shaddam Corrino IV; only he can
     # acquire them [Shaddam Corrino IV card] [FAQ p. 3].
     sardaukar_contract_ids: tuple[str, ...] = ()
+    # Face-up six-Leader pool of the OQ-007 draft convention, in draw order.
+    # Public for the whole game; Leaders picked from it appear on the seats
+    # and the two unpicked Leaders stay unused.
+    leader_draft_pool: tuple[str, ...] = ()
     reserve_stacks: tuple[tuple[str, int], ...] = ()
     shield_wall_present: bool = True
     maker_bonus_spice: tuple[tuple[str, int], ...] = (

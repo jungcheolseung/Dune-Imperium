@@ -131,6 +131,10 @@ from dune_imperium.rules.leader_abilities import (
     leader_signet_is_implemented,
     legal_leader_reveal_actions,
 )
+from dune_imperium.rules.leader_draft import (
+    apply_leader_draft_pick,
+    legal_leader_draft_actions,
+)
 from dune_imperium.rules.phases import (
     apply_control_defense_action,
     apply_round_start_reshuffle,
@@ -161,7 +165,7 @@ from dune_imperium.rules.reveal_turn import (
     legal_reveal_spy_actions,
     legal_reveal_troop_retreat_actions,
 )
-from dune_imperium.rules.setup import create_initial_state
+from dune_imperium.rules.setup import create_draft_initial_state, create_initial_state
 from dune_imperium.rules.spies import apply_gather_intelligence_action
 
 type LegalActionProvider = Callable[[GameState, int], tuple[DomainAction, ...]]
@@ -285,9 +289,12 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     # frame whose decision is not a PlayerDecision.
     FrameKind.INTRIGUE_CHOICE: (legal_intrigue_choice_actions,),
     FrameKind.INTRIGUE_TRIGGER_SPY: (legal_trigger_spy_actions,),
+    FrameKind.LEADER_DRAFT: (legal_leader_draft_actions,),
 }
 
 ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
+    # Setup Leader draft (OQ-007 convention)
+    "pick_leader": apply_leader_draft_pick,
     # Turn choice and Plot Intrigue
     "agent_turn": apply_agent_action,
     "reveal_turn": begin_reveal_turn,
@@ -428,6 +435,10 @@ class UprisingRulesEngine(RulesEngine):
         self._leader_ids = leader_ids
 
     def _initial_state(self, config: RulesetConfig, seed: int) -> GameState:
+        if config.leader_draft:
+            # The OQ-007 draft pauses in SETUP on the pick frames; the
+            # engine's fixed leader_ids only serve the non-draft path.
+            return create_draft_initial_state(config, seed).state
         setup = create_initial_state(config, seed, self._leader_ids)
         started = prepare_round_start(setup.state)
         return replace(started.state, event_log=started.events)

@@ -64,6 +64,22 @@ def test_special_mission_spy_deadlock_seeds_run_to_finished(game_seed: int) -> N
     assert report.rounds >= 1
 
 
+def test_checked_leader_draft_game_passes_every_invariant() -> None:
+    # The census is fixed after setup, so Staban's printed starting-card
+    # removal during the draft cannot trip card conservation.
+    report = run_checked_game(
+        RulesetConfig(choam_module=True, leader_draft=True),
+        game_seed=70,
+        policy_seed=7070,
+        privacy_interval=5,
+        policy="heuristic",
+    )
+
+    assert report.ruleset == "uprising-4p-choam"
+    assert report.steps > 100
+    assert 0 <= report.winner < 4
+
+
 def test_unknown_sweep_policy_is_rejected() -> None:
     with pytest.raises(ValueError, match="unknown sweep policy"):
         run_checked_game(RulesetConfig(), game_seed=1, policy_seed=1, policy="best")

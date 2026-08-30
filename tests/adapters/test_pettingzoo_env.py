@@ -90,6 +90,19 @@ def test_choam_full_game_episode_completes() -> None:
     assert sorted(info["rank"] for info in infos.values()) == [1, 2, 3, 4]
 
 
+def test_leader_draft_episode_starts_with_pick_decisions_and_completes() -> None:
+    environment = env(leader_draft=True)
+    environment.reset(seed=5)
+    observation, _, _, _, _ = environment.last()
+    assert observation is not None
+    # The episode opens on the draft frame: exactly the six pool picks.
+    assert int(observation["action_mask"].sum()) == 6
+
+    terminal_rewards, infos, _ = _play_episode(environment, seed=5)
+    assert sum(terminal_rewards.values()) == pytest.approx(0.0)
+    assert sorted(info["rank"] for info in infos.values()) == [1, 2, 3, 4]
+
+
 def test_step_limit_truncates_without_rewards() -> None:
     environment = env(max_steps=5)
     terminal_rewards, infos, steps = _play_episode(environment, seed=8)

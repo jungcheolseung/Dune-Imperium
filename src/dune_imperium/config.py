@@ -14,6 +14,11 @@ class RulesetConfig:
 
     players: int = 4
     choam_module: bool = False
+    # OQ-007 project convention (not an official rule): deal six random
+    # Leaders face up after First Player is known, then pick in reverse
+    # round-1 turn order. Off by default so fixed-Leader test and sweep
+    # setups stay reproducible.
+    leader_draft: bool = False
 
     def __post_init__(self) -> None:
         if self.players != 4:

@@ -11,10 +11,10 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     first = ActionCodec(RulesetConfig())
     second = ActionCodec(RulesetConfig())
 
-    assert ACTION_CODEC_VERSION == 78
+    assert ACTION_CODEC_VERSION == 79
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
-    assert first.size == 4144
+    assert first.size == 4152
 
 
 def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
@@ -26,7 +26,7 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
     codec = ActionCodec(RulesetConfig(choam_module=True))
 
     assert codec.decode(codec.encode(action), actor=2) == action
-    assert codec.size == 4420
+    assert codec.size == 4429
 
     try:
         ActionCodec(RulesetConfig()).encode(action)
@@ -325,3 +325,45 @@ def test_legal_action_mask_marks_exactly_the_supplied_actions() -> None:
     assert len(mask) == codec.size
     assert len(enabled) == len(legal_actions)
     assert {codec.decode(index, player) for index in enabled} == set(legal_actions)
+
+
+def test_leader_draft_picks_round_trip_in_both_catalogs() -> None:
+    base = ActionCodec(RulesetConfig())
+    choam = ActionCodec(RulesetConfig(choam_module=True))
+    pick = DomainAction(
+        action_id="pick_leader",
+        actor=1,
+        arguments=(("leader_id", "staban_tuek"),),
+    )
+    shaddam = DomainAction(
+        action_id="pick_leader",
+        actor=1,
+        arguments=(("leader_id", "shaddam_corrino_iv"),),
+    )
+
+    assert base.decode(base.encode(pick), actor=1) == pick
+    assert choam.decode(choam.encode(shaddam), actor=1) == shaddam
+    try:
+        base.encode(shaddam)
+    except ValueError as error:
+        assert "not present" in str(error)
+    else:
+        raise AssertionError("the base catalog accepted a CHOAM-only Leader")
+
+
+def test_leader_draft_reset_masks_exactly_the_pool_picks() -> None:
+    engine = UprisingRulesEngine()
+    config = RulesetConfig(leader_draft=True)
+    state = engine.reset(config, 21)
+    decision = engine.current_decision(state)
+    assert isinstance(decision, PlayerDecision)
+    codec = ActionCodec(config)
+
+    legal_actions = engine.legal_actions(state, decision.owner)
+    mask = codec.legal_action_mask(legal_actions)
+    enabled = tuple(index for index, value in enumerate(mask) if value)
+
+    assert len(enabled) == 6
+    assert {codec.decode(index, decision.owner) for index in enabled} == set(
+        legal_actions
+    )

@@ -52,6 +52,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="baseline policy driving every seat (default: random)",
     )
     parser.add_argument(
+        "--leader-draft",
+        action="store_true",
+        help="use the OQ-007 six-Leader draft setup instead of fixed Leaders",
+    )
+    parser.add_argument(
         "--workers",
         type=int,
         default=1,
@@ -91,6 +96,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         privacy_interval=arguments.privacy_interval,
         verify_replay=not arguments.skip_replay,
         policy=arguments.policy,
+        leader_draft=arguments.leader_draft,
     )
     report = run_sweep(specs, workers=arguments.workers)
 

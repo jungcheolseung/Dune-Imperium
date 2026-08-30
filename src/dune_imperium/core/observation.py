@@ -97,6 +97,9 @@ class PlayerView:
     contract_bank_size: int = 0
     face_up_contract_ids: tuple[str, ...] = ()
     sardaukar_contract_ids: tuple[str, ...] = ()
+    # The face-up six-Leader pool of the OQ-007 draft option, public to
+    # everyone for the whole game (empty without the option).
+    leader_draft_pool: tuple[str, ...] = ()
     reserve_stacks: tuple[tuple[str, int], ...] = ()
     shield_wall_present: bool = True
     maker_bonus_spice: tuple[tuple[str, int], ...] = ()
@@ -152,6 +155,7 @@ def observe_state(state: GameState, player: int) -> PlayerView:
         contract_bank_size=len(state.contract_bank),
         face_up_contract_ids=state.face_up_contract_ids,
         sardaukar_contract_ids=state.sardaukar_contract_ids,
+        leader_draft_pool=state.leader_draft_pool,
         reserve_stacks=state.reserve_stacks,
         shield_wall_present=state.shield_wall_present,
         maker_bonus_spice=state.maker_bonus_spice,

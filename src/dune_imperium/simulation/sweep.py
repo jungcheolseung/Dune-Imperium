@@ -94,8 +94,13 @@ def run_checked_game(
 
     engine = UprisingRulesEngine()
     state = engine.reset(config, game_seed)
-    census = CardCensus.from_state(state)
-    check_state_invariants(state, census)
+    # The census is fixed at the end of setup: a Leader-draft setup stays in
+    # GamePhase.SETUP through the picks, and a pick may still remove printed
+    # starting cards (Staban Tuek's Limited Allies) before play begins.
+    census: CardCensus | None = None
+    if state.phase is not GamePhase.SETUP:
+        census = CardCensus.from_state(state)
+        check_state_invariants(state, census)
     if privacy_interval:
         check_observation_privacy(state)
 
@@ -132,12 +137,15 @@ def run_checked_game(
             action = agents[decision.owner].choose_action(observation, actions)
             steps.append(action)
             state = engine.apply(state, action).state
-        try:
-            check_state_invariants(state, census)
-        except InvariantViolation as violation:
-            raise InvariantViolation(
-                f"after step {len(steps)}: {violation}"
-            ) from None
+        if census is None and state.phase is not GamePhase.SETUP:
+            census = CardCensus.from_state(state)
+        if census is not None:
+            try:
+                check_state_invariants(state, census)
+            except InvariantViolation as violation:
+                raise InvariantViolation(
+                    f"after step {len(steps)}: {violation}"
+                ) from None
     else:
         raise InvariantViolation(f"the game exceeded the {max_steps}-step limit")
 
@@ -173,10 +181,13 @@ class _GameSpec:
     privacy_interval: int
     verify_replay: bool
     policy: str = "random"
+    leader_draft: bool = False
 
 
 def _run_spec(spec: _GameSpec) -> GameCheckReport | SweepFailure:
-    config = RulesetConfig(choam_module=spec.choam_module)
+    config = RulesetConfig(
+        choam_module=spec.choam_module, leader_draft=spec.leader_draft
+    )
     try:
         return run_checked_game(
             config,
@@ -229,6 +240,7 @@ def sweep_specs(
     privacy_interval: int = 25,
     verify_replay: bool = True,
     policy: str = "random",
+    leader_draft: bool = False,
 ) -> tuple[_GameSpec, ...]:
     """Build the seeded per-game specs for a sweep."""
 
@@ -245,6 +257,7 @@ def sweep_specs(
             privacy_interval=privacy_interval,
             verify_replay=verify_replay,
             policy=policy,
+            leader_draft=leader_draft,
         )
         for choam_module in rulesets
         for seed in range(start_seed, start_seed + games)

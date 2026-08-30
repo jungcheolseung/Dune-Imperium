@@ -22,12 +22,12 @@ from dune_imperium.simulation import run_random_game
 
 
 def test_layout_is_versioned_and_contiguous() -> None:
-    assert OBSERVATION_VERSION == 1
+    assert OBSERVATION_VERSION == 2
     assert len(PERSONAL_CARD_IDS) == 63
     assert len(INTRIGUE_IDS) == 39
     assert len(CONFLICT_IDS) == 16
     assert len(BATTLE_CARD_IDS) == 21
-    assert OBSERVATION_SIZE == 1409
+    assert OBSERVATION_SIZE == 1415
 
     offset = 0
     for segment in OBSERVATION_SEGMENTS:
@@ -125,3 +125,28 @@ def test_terminal_standings_state_from_runner_encodes() -> None:
     for observer in range(4):
         encoded = encode_player_view(engine.observe(result.state, observer))
         assert len(encoded) == OBSERVATION_SIZE
+
+
+def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
+    from dune_imperium.adapters.observation_encoding import LEADER_IDS
+
+    engine = UprisingRulesEngine()
+    state = engine.reset(RulesetConfig(leader_draft=True), 15)
+    assert state.phase is GamePhase.SETUP
+
+    expected = [
+        LEADER_IDS.index(leader_id) + 1 for leader_id in state.leader_draft_pool
+    ]
+    for observer in range(4):
+        view = engine.observe(state, observer)
+        assert view.leader_draft_pool == state.leader_draft_pool
+        encoded = encode_player_view(view)
+        assert list(encoded[segment_slice("leader_draft_pool")]) == expected
+        # The draft frame kind is visible in the global decision scalars.
+        assert encoded[segment_slice("global_scalars")][4] == (
+            tuple(kind.value for kind in FrameKind).index("leader_draft") + 1
+        )
+
+    fixed = engine.reset(RulesetConfig(), 15)
+    fixed_encoded = encode_player_view(engine.observe(fixed, 0))
+    assert list(fixed_encoded[segment_slice("leader_draft_pool")]) == [0] * 6

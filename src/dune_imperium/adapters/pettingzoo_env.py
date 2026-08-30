@@ -50,6 +50,7 @@ class DuneImperiumUprisingEnv(
         render_mode: str | None = None,
         *,
         choam_module: bool = False,
+        leader_draft: bool = False,
         max_steps: int = 30_000,
     ) -> None:
         super().__init__()
@@ -58,7 +59,9 @@ class DuneImperiumUprisingEnv(
         if max_steps < 1:
             raise ValueError("max_steps must be positive")
         self.render_mode = render_mode
-        self.config = RulesetConfig(choam_module=choam_module)
+        self.config = RulesetConfig(
+            choam_module=choam_module, leader_draft=leader_draft
+        )
         self.engine = UprisingRulesEngine()
         self.codec = ActionCodec(self.config)
         self.max_steps = max_steps
@@ -235,6 +238,7 @@ def env(
     render_mode: str | None = None,
     *,
     choam_module: bool = False,
+    leader_draft: bool = False,
     max_steps: int = 30_000,
 ) -> DuneImperiumUprisingEnv:
     """Return the standard full-game AEC environment."""
@@ -242,6 +246,7 @@ def env(
     return DuneImperiumUprisingEnv(
         render_mode=render_mode,
         choam_module=choam_module,
+        leader_draft=leader_draft,
         max_steps=max_steps,
     )
 

@@ -23,6 +23,7 @@ from dune_imperium.content.uprising.intrigue import (
 from dune_imperium.content.uprising.leaders import (
     FEYD_TRACK_START,
     FEYD_TRAINING_TRACK,
+    leaders_for_choam,
 )
 from dune_imperium.content.uprising.objectives import objectives_for_players
 from dune_imperium.content.uprising.reserve import (
@@ -36,7 +37,7 @@ from dune_imperium.content.uprising.starting_cards import (
 from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
 from dune_imperium.core.actions import ActionValue, DomainAction
 
-ACTION_CODEC_VERSION = 78
+ACTION_CODEC_VERSION = 79
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 
@@ -118,7 +119,17 @@ class ActionCodec:
 
 
 def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
+    # The OQ-007 Leader draft picks are part of every catalog so the
+    # leader_draft ruleset option never changes the action space; the mask
+    # simply keeps them illegal outside a draft setup.
     templates: list[ActionTemplate] = [
+        ActionTemplate(
+            action_id="pick_leader",
+            arguments=(("leader_id", leader.leader_id),),
+        )
+        for leader in leaders_for_choam(config.choam_module)
+    ]
+    templates.extend(
         ActionTemplate(action_id=action_id)
         for action_id in (
             "decline_combat_reward",
@@ -168,7 +179,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "take_sietch_tabr_water_and_destroy_wall",
             "use_other_memories",
         )
-    ]
+    )
     if config.choam_module:
         templates.extend(
             ActionTemplate(action_id=action_id)
