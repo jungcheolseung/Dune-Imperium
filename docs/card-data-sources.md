@@ -21,6 +21,23 @@ Dire Wolf Digital's official rules and FAQ remain authoritative for rules
 adjudication. Dune Cards Hub remains the card-level fallback when a DIU value is
 missing, ambiguous, or conflicts with already verified content.
 
+## UI display text
+
+The browser UI's English effect text (`src/dune_imperium/display/`) is not a
+transcription of printed card text. Structured content (the Intrigue effect
+DSL, contract and conflict reward records, the static board-space effect
+table) renders mechanically from the same data the engine executes; the
+hand-authored parts — personal-card effect enum tokens, choice-driven board
+spaces, and Leader abilities — take their wording from the image-verified
+audit documents (`docs/implementation-audits/personal-cards.md`,
+`docs/implementation-audits/leaders.md`) and the cited space table
+(`docs/rules/board-spaces.md`). Coverage tests under `tests/unit/display/`
+fail when new content lacks display text, so wording changes should update
+the audit documents first and the display maps in the same work unit. Card
+images are never committed; the server serves the machine-local gitignored
+`downloads/dunecardshub/cards/` cache when present (typo overrides live in
+`display/images.py`).
+
 ### Development audit workflow
 
 DIU is never discovered or loaded by the game runtime. A developer may pass an

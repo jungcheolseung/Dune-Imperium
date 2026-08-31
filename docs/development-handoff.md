@@ -28,7 +28,7 @@ uv run ruff check src tests
 uv run mypy src tests
 ```
 
-2026-08-31의 기준 결과는 pytest 842개 통과, Ruff 통과, mypy 통과다. 현재 action
+2026-08-31의 기준 결과는 pytest 933개 통과, Ruff 통과, mypy 통과다. 현재 action
 codec은 `ACTION_CODEC_VERSION = 79`(기본 4,152개, CHOAM 4,429개)이고, 관측은
 `OBSERVATION_VERSION = 2`의 1,415-int 전체 게임 인코딩이다
 ([`rl-environment.md`](rl-environment.md)). `dune-imperium-sweep` 검증
@@ -38,8 +38,11 @@ sweep은 random policy 룰셋당 10,000판(총 20,000판), heuristic policy
 
 ## 현재 구현 기준선
 
-마지막 기능 커밋은 `e44900a`(저장/불러오기/검토 브라우저 UI, M11 슬라이스
-5)이고, 그 앞에 슬라이스 5 서버 API `8ab3cd2`, 브라우저 UI `42be883`,
+마지막 기능 커밋은 `3e2ae8f`(행동 효과 미리보기 + 전체 행동 라벨, UI 효과
+표시 슬라이스 5)이고, 그 앞에 같은 작업의 `d275a66`(보드 공간 패널·popover·
+카드 이미지), `d34a2d1`(/catalog 효과 텍스트·이미지), `a4befd4`(display
+패키지), `3c1cc69`(정적 보드 효과 테이블), 그리고 M11의 `e44900a`(저장/
+불러오기/검토 브라우저 UI), 슬라이스 5 서버 API `8ab3cd2`, 브라우저 UI `42be883`,
 FastAPI 세션 서버 `4fbd751`, Leader draft `c0c1795`, Treacherous Maneuver
 OQ-022 수정 `d70b353`, 슬라이스 1 묶음(`1a449f4`+`7a53c8f`+`ac4d6d4`)이
 있다. 마일스톤 현황: **R0~M8, M11 완료**(M6 콘텐츠, M7 완주 검증, M8
@@ -99,9 +102,15 @@ M11 절), **다음은 M9**.
 - Reveal turn 중 card가 hand에 들어가는 Plot(개인 card draw, Inspire Awe의
   조건부 hand 획득)은 FAQ p. 3의 즉시 공개 규칙이 구현되지 않아 Reveal에서
   제시하지 않는다(OQ-015(c)).
-- `secrets`, `desert_tactics` board space는 board effect가 미구현이라 dispatcher가
-  숨긴다(`board_effect_is_implemented`). Reverend Mother의 board repeat와
-  Other Memories도 그 공간들에서는 그래서 아직 발생하지 않는다.
+- board effect가 미구현이라 dispatcher가 배치 자체를 숨기는 공간은 기본
+  룰셋에서 `secrets`, `desert_tactics`, `imperial_privilege`, `shipping`의
+  4칸이고, CHOAM에서는 `dutiful_service`(face-up contract 획득 변형)도
+  추가된다(`board_effect_is_implemented`; 2026-08-31 UI 세션에서 코드로
+  재확인 — 이전 핸드오프의 "2칸" 서술은 부정확했다.
+  `tests/unit/rules/test_board_effects.py`가 이 집합을 고정한다). Reverend
+  Mother의 board repeat와 Other Memories도 그 공간들에서는 그래서 아직
+  발생하지 않는다. UI는 이 칸들을 계산된 `implemented` 플래그로 "미구현 ·
+  배치 불가" 배지와 함께 표시한다.
 - Agent 배치 시점 조건이 거짓이면 pending되지 않는 카드 효과는, 같은 frame의
   자유 순서 효과로 조건이 나중에 참이 되어도 제시되지 않는다(알려진 엔진
   경계; Prepare the Way 수정 커밋 `87a9300` 참고).
@@ -154,6 +163,7 @@ Trap 유형을 잘못 적었던 전례가 있다).
 | 관측과 PettingZoo | `src/dune_imperium/core/observation.py`, `adapters/observation_encoding.py`, `adapters/pettingzoo_env.py` |
 | replay와 random 러너 | `src/dune_imperium/core/replay.py`, `simulation/runner.py` (한 라운드·전체 게임) |
 | 로컬 플레이 서버·저장·검토 | `src/dune_imperium/server/` (`sessions.py`, `persistence.py`, `app.py`, `catalog.py`, `static/`) |
+| 영문 효과 표시 텍스트·이미지 매핑 | `src/dune_imperium/display/` (DSL·구조체 렌더러, enum 토큰 맵, 공간·Leader 텍스트, 이미지 파일명) |
 | 검증 sweep과 불변식 | `src/dune_imperium/simulation/sweep.py`, `simulation/invariants.py`, `cli/sweep.py` |
 | 카드별 회귀 테스트 | `tests/unit/content/`, `tests/unit/rules/` |
 | 통합·adapter 테스트 | `tests/integration/`, `tests/adapters/` |
@@ -204,11 +214,52 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에
 
 ## 원격 저장소 인계 주의
 
-2026-08-31 슬라이스 5 세션 마무리 기준 로컬 `master`는 `origin/master`보다
-앞서 있다(슬라이스 5 커밋들은 아직 push하지 않음; push는 사용자 판단으로
-한다). 새 세션은 `git log origin/master..master`와 반대 방향을 모두
-확인하고, checkout이 `e44900a`보다 이전이면 이 문서의 842개 테스트·저장/
-불러오기·replay 검토 기준선이 실제 코드와 일치하지 않는다.
+2026-08-31 UI 효과 표시 세션 마무리 기준 로컬 `master`는 `origin/master`보다
+앞서 있다(슬라이스 5와 효과 표시 커밋들은 아직 push하지 않음; push는
+사용자 판단으로 한다). 새 세션은 `git log origin/master..master`와 반대
+방향을 모두 확인하고, checkout이 `3e2ae8f`보다 이전이면 이 문서의 933개
+테스트·효과 표시 기준선이 실제 코드와 일치하지 않는다.
+
+## 2026-08-31 UI 효과 표시 세션 요약 (텍스트 자동 생성 + 로컬 이미지)
+
+- 문제: M11 UI가 이름만 보여줘 배치·플레이 결정 시 칸/카드 효과를 외워야
+  했다. 사용자 확정: 영어 효과 텍스트를 엔진 데이터에서 자동 생성해 전면
+  표시하고, gitignore된 `downloads/dunecardshub/cards/` 로컬 캐시(Uprising
+  189장)의 이미지를 병용한다(로컬 서빙 한정 승인, 저장소 커밋 금지 유지).
+  표시 전용 변경으로 codec·관측은 v79/v2 그대로다.
+- `3c1cc69`: `board_effects_for`의 match를 순수 함수
+  `static_board_effects(space_id, cost_option, choam_module)`로 추출(동작
+  불변). pin 테스트가 전 공간×옵션×룰셋 도메인과 미구현 집합(기본 4칸 +
+  CHOAM dutiful_service)을 고정 — 이 과정에서 이전 핸드오프의 "미구현
+  2칸" 서술이 부정확했음을 확인하고 위 경계 절을 정정했다.
+- `a4befd4`: 프레임워크 중립 `dune_imperium.display` 패키지. Intrigue
+  DSL(union별 exhaustive match + `assert_never`)·Contract·Conflict·정적
+  보드 테이블은 기계적 렌더, 개인 카드 enum 토큰(~50개)·선택형 공간·Leader
+  10면은 이미지 검증된 감사 문서(`personal-cards.md`, `leaders.md`,
+  `board-spaces.md`) 문구로 수작성. 커버리지 테스트가 모든 enum
+  멤버·DSL primitive·reveal 필드·카드·공간·Leader 면을 고정해, 텍스트 없는
+  신규 콘텐츠는 스위트가 실패한다. 이미지 파일명 오타 override 9건과
+  이미지 없는 시작 카드 4종도 실측으로 고정했다. 구현은 Sonnet 서브에이전트
+  2개에 위임하고 본 세션이 감사 문서 대조로 리뷰했다.
+- `d34a2d1`: `/catalog` 확장 — 카드·Intrigue·Contract·Conflict·Leader(대체
+  면 `reverend_mother_jessica` 항목 신설)·공간(비용·요구·플래그·옵션별
+  효과·계산된 implemented·notes) + `image` URL. `create_app`이
+  `--card-images-dir`/`DUNE_IMPERIUM_CARD_IMAGE_DIR`/기본 downloads 순으로
+  캐시를 찾아 존재할 때만 `/card-images` mount, 없으면 image 전부 null로
+  텍스트만 동작. contracts/spaces의 `deliver_supplies` id 충돌은 테스트로
+  고정하고 클라이언트가 space id를 spaces 섹션에 명시 조회해 해소한다.
+- `d275a66`: 보드 공간 패널(아이콘 그룹별 22칸: 비용·효과·요구·점유·컨트롤·
+  maker spice·미구현 배지)과 모든 chip의 상세 popover(효과 텍스트 + 이미지,
+  Esc/바깥 클릭 닫기). hot-seat·replay 검토도 chip 공용이라 자동 적용.
+- `3e2ae8f`: 행동 버튼 "ⓘ" 효과 미리보기(대상 공간의 해당 cost option +
+  카드 텍스트, play_intrigue는 해당 option만)와 `ACTION_LABELS` 111개 전체
+  커버(`tests/server/test_action_labels.py`가 rules 소스의 action_id
+  리터럴을 스캔해 누락·잔존 라벨 모두 실패 처리).
+- 검증: pytest 842→933, Ruff, mypy 통과. 실제 uvicorn + headless
+  Chromium E2E를 기본/CHOAM 두 룰셋에서 실행 — 22칸 렌더, 미구현 배지
+  4/5개, popover 텍스트·이미지 로드, ⓘ 미리보기 토글, 행동 버튼 6결정
+  진행, 페이지 오류 0. (WSL에 libasound가 없어 스크래치의 versioned stub을
+  `LD_LIBRARY_PATH`로 주입해 Playwright Chromium을 구동했다.)
 
 ## 2026-08-31 M11 슬라이스 5 세션 요약 (저장/불러오기 + replay 검토)
 
