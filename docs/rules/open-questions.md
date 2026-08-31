@@ -173,6 +173,13 @@
   계속 이 항목의 미해결 질문으로 남으며, 기존 공개/비공개 구분(Intrigue
   identity는 play 전 비공개 등)은 바꾸지 않는다. 공식 근거가 아닌 관측 설계
   결정이며 `tests/unit/test_observation.py`로 고정한다.
+- 구현 convention(2026-08-31, 추가): M11 서버의 종료 후 replay 검토도 같은
+  경계를 따른다 — 검토는 사람 좌석의 `PlayerView` 시점 재생만 제공하고,
+  step 라벨은 검토 좌석 자신의 행동만 상세히, 다른 좌석의 행동은 행동
+  주체만, chance 결과는 decision id만 노출한다(셔플 결과는 비공개 덱
+  순서를 그대로 담으므로). 게임 종료 후 전체 공개(상대 hand·덱 순서 열람)
+  여부는 이 항목의 미해결 질문으로 남는다. `tests/server/test_saves.py`로
+  고정한다.
 
 ## OQ-011 — Gather Intelligence와 contract 완료의 상대 순서
 

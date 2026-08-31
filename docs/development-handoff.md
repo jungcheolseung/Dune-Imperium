@@ -28,7 +28,7 @@ uv run ruff check src tests
 uv run mypy src tests
 ```
 
-2026-08-31의 기준 결과는 pytest 833개 통과, Ruff 통과, mypy 통과다. 현재 action
+2026-08-31의 기준 결과는 pytest 842개 통과, Ruff 통과, mypy 통과다. 현재 action
 codec은 `ACTION_CODEC_VERSION = 79`(기본 4,152개, CHOAM 4,429개)이고, 관측은
 `OBSERVATION_VERSION = 2`의 1,415-int 전체 게임 인코딩이다
 ([`rl-environment.md`](rl-environment.md)). `dune-imperium-sweep` 검증
@@ -38,12 +38,13 @@ sweep은 random policy 룰셋당 10,000판(총 20,000판), heuristic policy
 
 ## 현재 구현 기준선
 
-마지막 기능 커밋은 `42be883`(브라우저 UI, M11 슬라이스 4)이고, 그 앞에
+마지막 기능 커밋은 `e44900a`(저장/불러오기/검토 브라우저 UI, M11 슬라이스
+5)이고, 그 앞에 슬라이스 5 서버 API `8ab3cd2`, 브라우저 UI `42be883`,
 FastAPI 세션 서버 `4fbd751`, Leader draft `c0c1795`, Treacherous Maneuver
 OQ-022 수정 `d70b353`, 슬라이스 1 묶음(`1a449f4`+`7a53c8f`+`ac4d6d4`)이
-있다. 마일스톤 현황: **R0~M8 완료**(M6 콘텐츠, M7 완주 검증, M8 CHOAM),
-**진행 중 M11**(계획 조정으로 M9·M10보다 선행, 슬라이스 1~4 완료, 남은
-것은 슬라이스 5 저장/불러오기·replay 검토).
+있다. 마일스톤 현황: **R0~M8, M11 완료**(M6 콘텐츠, M7 완주 검증, M8
+CHOAM, M11 사람용 로컬 웹 UI — 완료 판정 근거는 `implementation-plan.md`
+M11 절), **다음은 M9**.
 
 - R0-M4는 완료됐다. 공식 규칙 자료, 엔진 커널, 4인 setup, 한 라운드 수직 조각,
   actor-neutral action codec과 PettingZoo AEC 계약이 있다.
@@ -118,94 +119,19 @@ OQ-022 수정 `d70b353`, 슬라이스 1 묶음(`1a449f4`+`7a53c8f`+`ac4d6d4`)이
 
 ## 다음 구현 순서
 
-1. **M11 사람용 플레이 인터페이스(로컬 웹 UI).** 2026-08-30에 M9·M10보다
-   앞으로 순서를 바꿨다(`implementation-plan.md` 마일스톤 절 서두의 근거
-   참고). 시작점 사실관계:
-   - 형태는 로컬 웹 UI(로컬 서버 + 브라우저)로 확정했다. UI는 엔진 공개
-     API(`reset`/`current_decision`/`legal_actions`/`apply`/`observe`)와
-     `PlayerView`만 사용하고, 사람에게도 `PlayerView`만 보낸다(비공개 정보
-     경계는 `core/observation.py`가 단독 결정, M7 sweep의 누출 검사로
-     검증됨).
-   - AI 상대는 `agents/random_agent.py`와 M11에서 새로 만드는 간단한 규칙
-     기반 heuristic agent(같은 `choose_action(observation, legal_actions)`
-     인터페이스)로 시작한다. 이 heuristic은 M9 baseline의 출발점으로
-     재사용하고, M9·M10 뒤에 강한 agent로 갈아끼운다.
-   - chance(덱 reshuffle)는 러너 패턴대로 seeded `ChanceResolver`로
-     해결한다(`simulation/runner.py`). 저장/불러오기는 `GameReplay` 직렬화
-     위에 만들고 불러오기는 `replay_game` 재현으로 검증한다. 직렬화 포맷은
-     설계 결정으로 남아 있다.
-   - 카드 이미지는 이용 조건 확정 전이므로 텍스트 표현을 기본으로 한다
-     (AGENTS.md 이미지 정책). Leader 선택은 OQ-007의 **6종 공개 draft
-     convention**(2026-08-30 확정: 합법 Leader 중 무작위 6종 즉시 공개 →
-     First Player 확정 뒤 turn 역순 pick, First Player가 마지막, 전부 공개)
-     을 ruleset option으로 구현한다. 현재 엔진 기본인 `DEFAULT_LEADER_IDS`
-     4종 고정(`rules/engine.py`)은 테스트·sweep 재현성용으로 유지한다. web
-     스택 선택과 `ui` optional extra 추가는 구현 시작 시 결정한다.
-   - 제안 착수 슬라이스 순서(각각 검증·커밋 단위):
-     1. ~~간단한 규칙 기반 heuristic agent + 단위 테스트~~ — **완료**
-        (`1a449f4`, 2026-08-30). `agents/heuristic_agent.py`의
-        `HeuristicAgent`(점수 기반 선택 + seeded tie-break, M9 baseline
-        재사용을 docstring에 명시), `Agent` Protocol(`agents/base.py`),
-        `run_policy_game` 러너 일반화, sweep `--policy {random,heuristic}`.
-        heuristic soak이 엔진 잠복 버그 두 계열을 적발해 함께 수정했다
-        (`7a53c8f`, `ac4d6d4`; 아래 세션 요약).
-     2. ~~Leader draft convention을 엔진 setup에 구현~~ — **완료**
-        (`c0c1795`, 2026-08-30). `RulesetConfig(leader_draft=True)` ruleset
-        option, `FrameKind.LEADER_DRAFT` frame과 dispatcher 표, codec
-        v79의 `pick_leader` 템플릿(두 catalog 상시 포함), 관측 v2의 공개
-        pool 세그먼트, PettingZoo `leader_draft` 옵션, sweep
-        `--leader-draft`. 세부는 OQ-007 구현 노트와 아래 세션 요약.
-     3. ~~web 스택 결정 + 게임 세션 서버~~ — **완료**(`4fbd751`,
-        2026-08-31). 스택은 **FastAPI + uvicorn**(`ui` optional extra,
-        `dune-imperium-server` CLI). `server/sessions.py`의 프레임워크
-        중립 `GameSessionManager`가 엔진 공개 API + seeded
-        `ChanceResolver`만으로 세션을 구동하고(서버 자체 규칙 로직 없음),
-        `server/app.py`가 JSON HTTP로 노출한다. 세부는 아래 세션 요약.
-     4. ~~최소 브라우저 UI~~ — **완료**(`42be883`, 2026-08-31). 의존성
-        없는 vanilla HTML/JS 단일 페이지(`server/static/`)를 서버 루트에서
-        서빙하고, `/catalog`가 인쇄된 표시 데이터(카드 이름·비용·설득·검·
-        Faction·아이콘, Intrigue timing, Leader 능력명, 공간 이름)를
-        제공한다. 설정(좌석·CHOAM·draft·seed)부터 결정 frame kind별
-        프롬프트, index 버튼 행동 적용, hot-seat 좌석 전환, 최종 순위까지
-        실제 브라우저에서 완주 검증했다. 세부는 아래 세션 요약.
-     5. **저장/불러오기 + 종료 후 replay 검토 화면 — 다음 작업.**
-        시작점 사실관계:
-        - 저장 대상은 `core/replay.py`의 `GameReplay`: `ruleset:
-          RulesetConfig`(players·choam_module·leader_draft), `seed`,
-          `steps: tuple[DomainAction | ChanceOutcome, ...]`,
-          `expected_state_hash`, 버전 필드 3개. 주의 — 러너·세션은 버전
-          필드를 기본값으로 두는데 `action_codec_version` 기본값 20은
-          오래된 값이다. 직렬화 슬라이스에서 실제 `ACTION_CODEC_VERSION`
-          스탬프와 불러오기 시 버전 검증을 같이 넣는 것이 자연스럽다.
-        - 서버 세션(`server/sessions.py`)은 이미 모든 적용 step을
-          `GameSession.steps`에 replay 형식으로 기록한다. 저장 = 그 시점
-          steps + `canonical_state_hash(state)`로 `GameReplay` 구성 →
-          JSON 직렬화. dataclass→JSON 변환 선례는 `core/state.py`의
-          `_canonicalize`(hash용)와 `server/sessions.py`의 `_jsonify`.
-          `DomainAction`/`ChanceOutcome` 구분 필드가 스키마에 필요하다.
-        - 불러오기 = 역직렬화 → `replay_game(engine, replay)` 재현
-          검증(불일치 시 `ReplayMismatchError`) → 새 `GameSession`으로
-          계속. **미결 설계**: 이어하기의 chance 흐름. 원 세션의
-          `ChanceResolver`는 seed에서 순차 소비된 RNG 스트림이므로 (a)
-          `random.Random.getstate()`를 함께 저장해 복원하거나 (b) "불러온
-          게임은 seed 기반 새 chance 스트림" convention을 명시(결정론은
-          유지되나 저장 전과 이후 셔플이 달라질 수 있음) 중 하나를
-          슬라이스에서 결정하고 문서화한다.
-        - replay 검토 화면은 서버가 replay를 step 단위로 다시 적용해
-          시점별 상태를 제공하는 방식이 자연스럽다(엔진 공개 API만).
-          검토도 비공개 경계를 유지한다 — 사람 좌석의 `PlayerView` 시점
-          재생으로 시작하고, 종료 후 전체 공개 여부는 별도 결정으로
-          남긴다(OQ-010 열람 범위 질문과 연결됨).
-        - 저장 위치(서버 로컬 파일 vs 브라우저 다운로드/업로드)는 구현
-          시작 시 결정한다.
-        슬라이스 5가 끝나면 M11 완료 조건(사람이 설정부터 최종 점수까지
-        안정적으로 완전한 게임을 플레이)을 판정하고 M9로 넘어간다.
-2. **M9 평가 러너와 baseline.** 여러 게임을 병렬 구동하고 정책 추론만
+M11(사람용 플레이 인터페이스)은 2026-08-31에 완료했다: 로컬 웹 UI로
+설정부터 최종 순위, 저장/불러오기, 종료 후 replay 검토까지 동작한다. 완료
+판정 근거와 설계 convention은 `implementation-plan.md` M11 절, 세부 구현은
+아래 세션 요약(슬라이스 1~5)을 본다.
+
+1. **M9 평가 러너와 baseline.** 여러 게임을 병렬 구동하고 정책 추론만
    batch하는 self-play 러너, random/heuristic(M11 상대에서 출발)/rollout
    baseline, 좌석·리더·first player·seed 교차 대회 도구
    (`implementation-plan.md`의 M9). 관측·보상 계약은
    [`rl-environment.md`](rl-environment.md)로 고정돼 있고, 병렬 실행 선례는
    `simulation/sweep.py`다.
+2. **M10 강화학습과 league self-play.** M9의 평가 행렬 위에서 시작한다
+   (`implementation-plan.md`의 M10).
 
 각 묶음은 카드 이미지로 텍스트를 검증하고(`docs/card-data-sources.md`의 방법),
 `Play ...` / `Document ...` 커밋 쌍을 유지하며, 새 결정 경계는
@@ -227,6 +153,7 @@ Trap 유형을 잘못 적었던 전례가 있다).
 | 고정 action catalog | `src/dune_imperium/adapters/action_codec.py` |
 | 관측과 PettingZoo | `src/dune_imperium/core/observation.py`, `adapters/observation_encoding.py`, `adapters/pettingzoo_env.py` |
 | replay와 random 러너 | `src/dune_imperium/core/replay.py`, `simulation/runner.py` (한 라운드·전체 게임) |
+| 로컬 플레이 서버·저장·검토 | `src/dune_imperium/server/` (`sessions.py`, `persistence.py`, `app.py`, `catalog.py`, `static/`) |
 | 검증 sweep과 불변식 | `src/dune_imperium/simulation/sweep.py`, `simulation/invariants.py`, `cli/sweep.py` |
 | 카드별 회귀 테스트 | `tests/unit/content/`, `tests/unit/rules/` |
 | 통합·adapter 테스트 | `tests/integration/`, `tests/adapters/` |
@@ -277,11 +204,49 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에
 
 ## 원격 저장소 인계 주의
 
-2026-08-31 세션 마무리 기준 로컬 `master`와 `origin/master`는 동기화돼
-있다(사용자 지시로 슬라이스 1~4와 이 핸드오프 정리까지 push함; 이후에도
-push는 사용자 판단으로 한다). 새 세션은 `git log origin/master..master`로
-확인하고, checkout이 `42be883`보다 이전이면 이 문서의 833개 테스트·codec
-v79·관측 v2·서버·UI 기준선이 실제 코드와 일치하지 않는다.
+2026-08-31 슬라이스 5 세션 마무리 기준 로컬 `master`는 `origin/master`보다
+앞서 있다(슬라이스 5 커밋들은 아직 push하지 않음; push는 사용자 판단으로
+한다). 새 세션은 `git log origin/master..master`와 반대 방향을 모두
+확인하고, checkout이 `e44900a`보다 이전이면 이 문서의 842개 테스트·저장/
+불러오기·replay 검토 기준선이 실제 코드와 일치하지 않는다.
+
+## 2026-08-31 M11 슬라이스 5 세션 요약 (저장/불러오기 + replay 검토)
+
+- 저장(`8ab3cd2`): `server/persistence.py`가 세션의 기록 steps를
+  `GameReplay` 위의 버전 있는 JSON 문서로 직렬화한다(`format_version` 1,
+  실제 `ACTION_CODEC_VERSION`·ruleset/content 버전 스탬프, step은
+  `type: action|chance` 판별자). 저장 파일은 서버 로컬 디스크의
+  `SaveStore`(`--saves-dir`, 기본 `~/.dune-imperium/saves`, 원자적 쓰기,
+  save_id 패턴 검증)에 두고, HTTP로는 metadata만 내보낸다 — 기록된 셔플
+  결과가 비공개 덱 순서를 그대로 담기 때문이다.
+- 불러오기의 chance 흐름은 핸드오프의 미결 설계 (a)의 변형으로 확정했다:
+  RNG 상태를 저장하는 대신, `restore_game`이 기록 steps를 fresh seeded
+  `ChanceResolver`(game seed)와 fresh seeded agents(policy seed + 좌석)로
+  재생하며 chance와 AI 결정을 **재생성해 기록과 대조**하고(사람 행동은
+  기록대로 적용), 마지막에 canonical state hash를 `replay_game`처럼
+  검증한다. 모든 RNG 스트림이 저장 시점 위치로 복원되므로 **불러온 게임은
+  저장하지 않은 세션과 동일하게 진행된다**(회귀 테스트로 고정: 저장 후
+  이어간 게임과 원본의 최종 순위·revision 일치). 대가로 저장본은 저장
+  당시의 엔진·agent 코드에 결속되며, 불일치·조작·버전 차이는 step 번호를
+  명시한 `SaveError`로 즉시 실패한다.
+- 종료 후 replay 검토: `review`(step 라벨 타임라인)와 `review_state`(fresh
+  엔진으로 기록 steps를 k개 재적용한 시점의 좌석 `PlayerView`)를
+  추가했다. 검토는 종료된 게임의 사람 좌석만 허용하고 OQ-010 경계를
+  유지한다(자기 행동만 상세, 타 좌석은 행동 주체만, chance는 decision id만;
+  open-questions.md에 convention 추가). 라이브 세션의 RNG는 건드리지
+  않는다.
+- HTTP: `POST /games/{id}/save`, `GET /saves`, `POST /saves/{id}/load`,
+  `DELETE /saves/{id}`, `GET /games/{id}/review`(+`/{step}`)를 추가했고
+  미존재 저장은 404, 형식·재생 오류는 400이다.
+- 브라우저 UI(`e44900a`): 설정 화면의 저장 목록(불러오기/삭제), 게임
+  헤더의 저장 버튼(슬롯 이름 프롬프트), 종료 화면의 "리플레이 검토" —
+  step 슬라이더·이전/다음·내 행동 점프·검토 좌석 선택이 기존 보드/좌석/
+  비공개 렌더러로 시점 상태를 그린다.
+- 검증: 실제 headless Chromium + uvicorn E2E로 draft 게임 생성 → 중간
+  저장 → 불러오기 → UI 버튼으로 79회 추가 결정 완주 → 종료 저장 →
+  491-step 검토 탐색 → 저장 삭제까지 서버 오류 0으로 확인했다. pytest
+  833→842(저장 문서 스탬프, 불러오기 동일 진행, 조작 거부 5종, SaveStore,
+  검토 경계·라벨, HTTP 왕복), Ruff, mypy 통과. M11 완료로 판정했다.
 
 ## 2026-08-31 M11 슬라이스 4 세션 요약 (브라우저 UI)
 

@@ -7,9 +7,10 @@ M6는 Leader 9종 능력·Signet Ring과 Objective 상호작용 재감사까지 
 완료됐고, M8도 Shaddam의 Sardaukar contract와 CHOAM 전용 콘텐츠까지 연결돼
 완료됐다. 전체 게임 러너와 PettingZoo 전체 게임 episode
 ([rl-environment.md](rl-environment.md)), 그리고 M7의 `dune-imperium-sweep`
-완주 검증(룰셋당 10,000판 실패 0)까지 끝났다. 다음 마일스톤은 M11 사람용
-플레이 인터페이스이고(2026-08-30 순서 변경), M9 평가 환경과 M10 강화학습이
-그 뒤를 잇는다.
+완주 검증(룰셋당 10,000판 실패 0)까지 끝났다. M11 사람용 플레이
+인터페이스(2026-08-30 순서 변경으로 M9·M10보다 선행)는 2026-08-31에
+저장/불러오기와 replay 검토까지 완료됐다. 다음 마일스톤은 M9 평가 환경이고
+M10 강화학습이 그 뒤를 잇는다.
 
 이 문서는 규칙 엔진부터 강화학습 AI와 사람용 플레이 인터페이스까지의 구현
 순서와 각 단계의 완료 조건을 정의한다. 구현 중 새 규칙을 발견하더라도 핵심
@@ -386,10 +387,18 @@ CHOAM 룰셋의 random 완주+replay 테스트까지 연결돼 완료 조건을 
 
 ### M11. 사람용 플레이 인터페이스
 
-상태: **다음 작업** (2026-08-30 순서 변경). 형태는 **로컬 웹 UI**(로컬 서버 +
-브라우저)로 확정했다. 규칙 코어는 UI에 의존하지 않는 기존 경계를 유지하고,
-UI는 엔진의 공개 API(`reset`/`current_decision`/`legal_actions`/`apply`/
-`observe`)와 `PlayerView`만 사용한다.
+상태: **완료** (2026-08-31). 형태는 **로컬 웹 UI**(FastAPI + uvicorn 로컬
+서버 + 의존성 없는 vanilla HTML/JS 브라우저 페이지)다. 규칙 코어는 UI에
+의존하지 않는 기존 경계를 유지하고, UI는 엔진의 공개 API(`reset`/
+`current_decision`/`legal_actions`/`apply`/`observe`)와 `PlayerView`만
+사용한다. 완료 조건(사람이 설정부터 최종 점수까지 완전한 게임을 안정적으로
+플레이)은 슬라이스 4의 브라우저 완주와 슬라이스 5의 저장→불러오기→완주→
+replay 검토 E2E(실제 headless Chromium + uvicorn, 서버 오류 0)로 판정했다.
+저장은 `GameReplay` 직렬화 위의 버전 스탬프된 로컬 JSON 파일이고,
+불러오기는 기록 steps를 seed 기반 chance·agent 스트림으로 재생성 대조해
+RNG 위치까지 복원하므로 불러온 게임은 저장하지 않은 세션과 동일하게
+진행된다. 종료 후 replay 검토는 사람 좌석의 `PlayerView` 시점 재생만
+제공한다(OQ-010 열람 범위 유지).
 
 - 한 사람과 세 AI, 좌석·리더 선택, 저장/불러오기, undo가 아닌 replay 검토를
   지원한다. 저장/불러오기는 `GameReplay` 직렬화 위에 만든다.
@@ -477,17 +486,6 @@ UI는 엔진의 공개 API(`reset`/`current_decision`/`legal_actions`/`apply`/
 
 ## 8. 바로 다음 작업
 
-Intrigue 착수 전 구조 정리는 [리팩토링 계획](refactoring-plan.md)을 따른다.
-
-M5의 보드 시스템과 multi-round 개인 덱 shuffle까지 구현했고 M6에서 두 Reserve와
-기본 Imperium 50종을 실제 play 경로에 연결했다. M8은 standard contract 20장의
-identity·setup·공개 시장·완료·보상과 CHOAM 전용 Imperium 4종까지 연결했다. 다음
-작업은 아래 순서로 진행한다.
-
-1. 남은 Intrigue 13종: 무료 획득 경계(Impress, Inspire Awe) → turn 트리거
-   (Call to Arms, Distraction, Leverage) → Endgame Intrigue(OQ-001 convention 뒤
-   6종) → Manipulate. 세부 순서와 참고 위치는
-   [개발 인수인계](development-handoff.md)에 있다.
-2. Signet Ring과 기본 Leader 능력, Shaddam 전용 Contract, Objective 효과를
-   구현한다.
-3. 전체 게임 random/self-play runner와 PettingZoo episode를 확장한다.
+R0~M8과 M11이 완료된 2026-08-31 기준으로 다음 작업은 **M9 평가 러너와
+baseline**이다(마일스톤 절의 M9 완료 조건을 따른다). 최신 기준선과 세부
+착수점은 [개발 인수인계](development-handoff.md)가 관리한다.
