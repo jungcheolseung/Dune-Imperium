@@ -27,8 +27,8 @@ M11의 규칙 기반 `HeuristicAgent`가 있으며, 검증 sweep은
 Leader 선택은 OQ-007의 6종 공개 draft convention을
 `RulesetConfig(leader_draft=True)` 옵션(sweep `--leader-draft`)으로 켤 수
 있다(공식 규칙 아님; 기본은 고정 배정). M11 사람용 플레이(완료)는 FastAPI
-기반 로컬 서버(`uv sync --extra ui` 후 `uv run dune-imperium-server`, 기본
-http://127.0.0.1:8000)로 한다: 브라우저에서 좌석 배정(사람/AI)·CHOAM·
+기반 로컬 서버(`uv sync --extra rl --extra ui` 후 `uv run
+dune-imperium-server`, 기본 http://127.0.0.1:8000)로 한다: 브라우저에서 좌석 배정(사람/AI)·CHOAM·
 leader draft 설정부터 텍스트 카드 보드·행동 선택·최종 순위까지 한 게임을
 완주할 수 있고, 같은 API를 JSON으로도 쓸 수 있다. 진행 중이거나 끝난
 게임은 `GameReplay` 직렬화 기반 로컬 저장 파일(`--saves-dir`, 기본
@@ -131,7 +131,7 @@ Dune Cards Hub는 카드 및 시각 자료의 참고 출처로 사용한다. 규
 ## 개발 환경
 
 ```bash
-uv sync
+uv sync --extra rl --extra ui
 uv run python --version
 uv run pytest
 uv run ruff check src tests
@@ -139,17 +139,17 @@ uv run mypy src tests
 ```
 
 `uv sync`는 `.python-version`에 지정된 Python 3.14로 `.venv`를 만들고
-`uv.lock`에 고정된 의존성을 설치한다. 새 구현은 `src/dune_imperium/`에 두며,
-기존 `dune/` 패키지는 이전 구현의 참고 자료일 뿐 새 코드에서 import하지 않는다.
+`uv.lock`에 고정된 의존성을 설치한다. 주의: `uv sync`는 환경을 나열한
+extras와 정확히 일치시키므로, extra를 빼고 실행하면 그 extra의 패키지가
+제거된다(예: `--extra ui`만 주면 rl의 gymnasium·pettingzoo가 지워진다).
+이 저장소의 표준 동기화 명령은 `uv sync --extra rl --extra ui`다. 새 구현은
+`src/dune_imperium/`에 두며, 기존 `dune/` 패키지는 이전 구현의 참고 자료일
+뿐 새 코드에서 import하지 않는다.
 
 ### PettingZoo 전체 게임 환경
 
-RL optional 의존성을 설치하면 고정 action catalog와 mask를 사용하는 AEC 환경을
-실행할 수 있다.
-
-```bash
-uv sync --extra rl
-```
+RL optional 의존성(`rl` extra, 표준 동기화 명령에 포함)을 설치하면 고정
+action catalog와 mask를 사용하는 AEC 환경을 실행할 수 있다.
 
 ```python
 from dune_imperium.adapters.pettingzoo_env import env
