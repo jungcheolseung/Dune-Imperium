@@ -14,7 +14,14 @@ from dune_imperium.server.sessions import GameSessionManager  # noqa: E402
 
 @pytest.fixture
 def client(tmp_path: Path) -> TestClient:
-    return TestClient(create_app(saves_dir=tmp_path / "saves"))
+    # card_images_dir is pinned to a nonexistent path so the tests behave
+    # identically with or without the machine-local image cache.
+    return TestClient(
+        create_app(
+            saves_dir=tmp_path / "saves",
+            card_images_dir=tmp_path / "no-images",
+        )
+    )
 
 
 def _create(client: TestClient, **overrides: object) -> dict[str, object]:
@@ -233,3 +240,38 @@ def test_a_leader_draft_game_over_http_reaches_round_one(
         picks += 1
     assert picks == 4
     assert summary["round_number"] == 1
+
+
+def test_card_images_are_served_when_the_cache_directory_exists(
+    tmp_path: Path,
+) -> None:
+    images = tmp_path / "images"
+    images.mkdir()
+    (images / "uprising-imperium-sardaukar-soldier.webp").write_bytes(
+        b"not-really-webp"
+    )
+    with TestClient(
+        create_app(saves_dir=tmp_path / "saves", card_images_dir=images)
+    ) as image_client:
+        catalog = image_client.get("/catalog").json()
+        soldier = catalog["cards"]["sardaukar_soldier"]
+        assert soldier["image"] == (
+            "/card-images/uprising-imperium-sardaukar-soldier.webp"
+        )
+        assert catalog["cards"]["dagger"]["image"] is None
+
+        served = image_client.get(soldier["image"])
+        assert served.status_code == 200
+        assert served.content == b"not-really-webp"
+
+
+def test_card_images_degrade_to_text_without_the_cache(
+    client: TestClient,
+) -> None:
+    catalog = client.get("/catalog").json()
+    for section in ("cards", "intrigue", "contracts", "conflicts", "spaces"):
+        assert all(
+            entry["image"] is None for entry in catalog[section].values()
+        ), section
+    missing = client.get("/card-images/uprising-imperium-sardaukar-soldier.webp")
+    assert missing.status_code == 404

@@ -11,6 +11,7 @@ only ever carry save metadata because the full document records shuffle
 outcomes and with them hidden deck orders.
 """
 
+import os
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -37,6 +38,21 @@ from dune_imperium.server.sessions import (
 )
 
 _STATIC_DIR = Path(__file__).parent / "static"
+
+
+def default_card_images_directory() -> Path:
+    """Return the local Dune Cards Hub cache location.
+
+    ``DUNE_IMPERIUM_CARD_IMAGE_DIR`` overrides the default, which is the
+    repository's gitignored ``downloads/dunecardshub/cards`` tree. The
+    directory is optional: when it does not exist the server simply serves
+    no card images.
+    """
+
+    override = os.environ.get("DUNE_IMPERIUM_CARD_IMAGE_DIR")
+    if override:
+        return Path(override)
+    return Path(__file__).parents[3] / "downloads" / "dunecardshub" / "cards"
 
 
 class CreateGameRequest(BaseModel):
@@ -71,12 +87,23 @@ class SaveGameRequest(BaseModel):
 def create_app(
     manager: GameSessionManager | None = None,
     saves_dir: Path | None = None,
+    card_images_dir: Path | None = None,
 ) -> FastAPI:
     """Build the local play server around one session manager."""
 
     sessions = manager if manager is not None else GameSessionManager()
     saves = SaveStore(
         saves_dir if saves_dir is not None else default_saves_directory()
+    )
+    images_dir = (
+        card_images_dir
+        if card_images_dir is not None
+        else default_card_images_directory()
+    )
+    image_files = (
+        frozenset(path.name for path in images_dir.iterdir() if path.is_file())
+        if images_dir.is_dir()
+        else frozenset()
     )
     app = FastAPI(title="Dune: Imperium - Uprising local play server")
 
@@ -86,7 +113,7 @@ def create_app(
 
     @app.get("/catalog")
     def catalog() -> JsonObject:
-        return build_catalog()
+        return build_catalog(image_files)
 
     @app.post("/games")
     def create_game(request: CreateGameRequest) -> JsonObject:
@@ -166,6 +193,12 @@ def create_app(
             return sessions.review_state(game_id, seat, step)
 
     app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
+    if images_dir.is_dir():
+        app.mount(
+            "/card-images",
+            StaticFiles(directory=images_dir),
+            name="card-images",
+        )
     return app
 
 

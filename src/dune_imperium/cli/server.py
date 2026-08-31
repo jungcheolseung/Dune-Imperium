@@ -27,6 +27,15 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="save-file directory (default: ~/.dune-imperium/saves)",
     )
+    parser.add_argument(
+        "--card-images-dir",
+        type=Path,
+        default=None,
+        help=(
+            "local card-image cache (default: DUNE_IMPERIUM_CARD_IMAGE_DIR "
+            "or the repository's downloads/dunecardshub/cards)"
+        ),
+    )
     return parser
 
 
@@ -38,7 +47,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     from dune_imperium.server.app import create_app
 
     uvicorn.run(
-        create_app(saves_dir=arguments.saves_dir),
+        create_app(
+            saves_dir=arguments.saves_dir,
+            card_images_dir=arguments.card_images_dir,
+        ),
         host=arguments.host,
         port=arguments.port,
     )
