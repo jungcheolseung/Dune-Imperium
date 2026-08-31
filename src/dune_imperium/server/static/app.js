@@ -12,7 +12,11 @@ const state = {
   actions: null,
   viewSeat: null,
   busy: false,
+  /* Post-game replay review: {meta, seat, cursor} while active. */
+  review: null,
 };
+
+let noteTimer = 0;
 
 const SEAT_KINDS = [
   ["human", "사람"],
@@ -223,6 +227,51 @@ async function loadGameList() {
   }
 }
 
+async function loadSaveList() {
+  const saves = await api("/saves");
+  el("save-list-wrap").hidden = saves.length === 0;
+  const list = el("save-list");
+  list.textContent = "";
+  for (const entry of saves) {
+    const item = document.createElement("li");
+    if (entry.error) {
+      item.className = "muted";
+      item.append(`${entry.save_id} · ${entry.error}`);
+      list.appendChild(item);
+      continue;
+    }
+    const title = entry.name || `seed ${entry.game_seed}`;
+    const status = entry.finished ? "종료됨" : `라운드 ${entry.round_number}`;
+    item.append(
+      `${title} · ${entry.seats.join(", ")} · ${status} · ${entry.saved_at} `
+    );
+    const load = document.createElement("button");
+    load.textContent = "불러오기";
+    load.addEventListener("click", async () => {
+      try {
+        el("setup-error").hidden = true;
+        const summary = await api(`/saves/${entry.save_id}/load`, {
+          method: "POST",
+        });
+        enterGame(summary);
+      } catch (error) {
+        el("setup-error").textContent = `불러오기 실패 (${error.message})`;
+        el("setup-error").hidden = false;
+      }
+    });
+    const remove = document.createElement("button");
+    remove.textContent = "삭제";
+    remove.addEventListener("click", async () => {
+      await api(`/saves/${entry.save_id}`, { method: "DELETE" }).catch(
+        () => {}
+      );
+      loadSaveList().catch(() => {});
+    });
+    item.append(load, " ", remove);
+    list.appendChild(item);
+  }
+}
+
 async function createGame(event) {
   event.preventDefault();
   const seats = [...el("seat-selects").querySelectorAll("select")].map(
@@ -257,11 +306,18 @@ function humanSeats() {
     .filter((seat) => seat !== null);
 }
 
+function activeSeat() {
+  return state.review ? state.review.seat : state.viewSeat;
+}
+
 function enterGame(summary) {
   state.gameId = summary.game_id;
+  state.review = null;
+  el("review-bar").hidden = true;
   el("setup-screen").hidden = true;
   el("game-screen").hidden = false;
   el("leave-game").hidden = false;
+  el("save-game").hidden = false;
   applySummary(summary);
 }
 
@@ -270,10 +326,40 @@ function leaveGame() {
   state.summary = null;
   state.view = null;
   state.actions = null;
+  state.review = null;
+  el("review-bar").hidden = true;
   el("game-screen").hidden = true;
   el("leave-game").hidden = true;
+  el("save-game").hidden = true;
   el("setup-screen").hidden = false;
   loadGameList().catch(() => {});
+  loadSaveList().catch(() => {});
+}
+
+function note(text) {
+  const target = el("game-note");
+  target.textContent = text;
+  target.hidden = false;
+  window.clearTimeout(noteTimer);
+  noteTimer = window.setTimeout(() => {
+    target.hidden = true;
+  }, 4000);
+}
+
+async function saveGame() {
+  if (!state.gameId) return;
+  const name = window.prompt("저장 이름 (비워도 됩니다)", "");
+  if (name === null) return;
+  try {
+    const metadata = await api(`/games/${state.gameId}/save`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: name || null }),
+    });
+    note(`저장됨: ${metadata.name || metadata.save_id.slice(0, 8)}`);
+  } catch (error) {
+    note(`저장 실패 (${error.message})`);
+  }
 }
 
 async function applySummary(summary) {
@@ -338,6 +424,85 @@ async function applyAction(index) {
   }
 }
 
+/* ---------- replay review ---------- */
+
+async function enterReview(seat) {
+  const meta = await api(`/games/${state.gameId}/review?seat=${seat}`);
+  state.review = { meta, seat, cursor: meta.step_count };
+  const select = el("review-seat");
+  select.textContent = "";
+  for (const humanSeat of humanSeats()) {
+    const option = document.createElement("option");
+    option.value = String(humanSeat);
+    option.textContent = `좌석 ${humanSeat}`;
+    select.appendChild(option);
+  }
+  select.value = String(seat);
+  const slider = el("review-slider");
+  slider.max = String(meta.step_count);
+  el("review-bar").hidden = false;
+  await reviewGoto(meta.step_count);
+}
+
+async function reviewGoto(cursor) {
+  const review = state.review;
+  if (!review) return;
+  cursor = Math.max(0, Math.min(review.meta.step_count, cursor));
+  try {
+    el("game-error").hidden = true;
+    const payload = await api(
+      `/games/${state.gameId}/review/${cursor}?seat=${review.seat}`
+    );
+    review.cursor = cursor;
+    state.view = payload.view;
+    state.actions = null;
+    el("review-slider").value = String(cursor);
+    el("review-status").textContent =
+      `step ${cursor}/${review.meta.step_count}` +
+      ` · 라운드 ${payload.round_number}` +
+      ` · ${PHASE_LABELS[payload.phase] || payload.phase}` +
+      ` · ${describeReviewStep(review.meta.steps[cursor - 1])}`;
+    render();
+  } catch (error) {
+    el("game-error").textContent = `검토 상태 조회 실패 (${error.message})`;
+    el("game-error").hidden = false;
+  }
+}
+
+function describeReviewStep(label) {
+  if (!label) return "게임 시작 전";
+  if (label.type === "chance") {
+    return `chance: ${prettify(label.decision_id)}`;
+  }
+  if (label.action_id) {
+    return `좌석 ${label.actor}: ${describeAction(label)}`;
+  }
+  return `좌석 ${label.actor} 행동`;
+}
+
+function reviewJumpOwn(direction) {
+  const review = state.review;
+  if (!review) return;
+  const steps = review.meta.steps;
+  for (
+    let cursor = review.cursor + direction;
+    cursor >= 1 && cursor <= steps.length;
+    cursor += direction
+  ) {
+    const label = steps[cursor - 1];
+    if (label.type === "action" && label.actor === review.seat) {
+      reviewGoto(cursor).catch(() => {});
+      return;
+    }
+  }
+}
+
+function exitReview() {
+  state.review = null;
+  el("review-bar").hidden = true;
+  refresh().catch(() => {});
+}
+
 /* ---------- rendering ---------- */
 
 function render() {
@@ -347,7 +512,9 @@ function render() {
     `라운드 ${summary.round_number} · ${PHASE_LABELS[summary.phase] || summary.phase}` +
     ` · seed ${summary.game_seed}` +
     (summary.choam_module ? " · CHOAM" : "") +
-    (summary.leader_draft ? " · draft" : "");
+    (summary.leader_draft ? " · draft" : "") +
+    (state.review ? " · 리플레이 검토" : "");
+  el("decision-banner").hidden = Boolean(state.review);
   renderBanner();
   renderStandings();
   renderBoard();
@@ -496,7 +663,11 @@ function renderSeats() {
   const view = state.view;
   if (!view) return;
   const summary = state.summary;
-  const decisionOwner = summary.decision ? summary.decision.owner : null;
+  const decisionOwner = state.review
+    ? view.decision_owner
+    : summary.decision
+      ? summary.decision.owner
+      : null;
 
   for (const player of view.players) {
     const seat = player.player;
@@ -510,7 +681,7 @@ function renderSeats() {
     if (summary.seats[seat] === "human") {
       const badge = document.createElement("span");
       badge.className = "badge";
-      badge.textContent = seat === state.viewSeat ? "YOU" : "사람";
+      badge.textContent = seat === activeSeat() ? "YOU" : "사람";
       who.appendChild(badge);
     }
     if (summary.first_player === seat) {
@@ -644,7 +815,7 @@ function renderPrivate() {
   }
   panel.hidden = false;
   const heading = document.createElement("h2");
-  heading.textContent = `내 카드 (좌석 ${state.viewSeat})`;
+  heading.textContent = `내 카드 (좌석 ${activeSeat()})`;
   panel.appendChild(heading);
 
   const hand = section(panel, `Hand (${view.private.hand.length})`);
@@ -666,7 +837,7 @@ function renderPrivate() {
 function renderStandings() {
   const panel = el("standings");
   const summary = state.summary;
-  if (!summary.finished || !summary.standings) {
+  if (state.review || !summary.finished || !summary.standings) {
     panel.hidden = true;
     return;
   }
@@ -691,6 +862,22 @@ function renderStandings() {
     table.appendChild(row);
   }
   panel.appendChild(table);
+
+  const humans = humanSeats();
+  if (humans.length) {
+    const review = document.createElement("button");
+    review.textContent = "리플레이 검토";
+    review.addEventListener("click", () => {
+      const seat = humans.includes(state.viewSeat)
+        ? state.viewSeat
+        : humans[0];
+      enterReview(seat).catch((error) => {
+        el("game-error").textContent = `검토 시작 실패 (${error.message})`;
+        el("game-error").hidden = false;
+      });
+    });
+    panel.appendChild(review);
+  }
 }
 
 /* ---------- boot ---------- */
@@ -700,7 +887,34 @@ async function init() {
   buildSeatSelects();
   el("setup-form").addEventListener("submit", createGame);
   el("leave-game").addEventListener("click", leaveGame);
+  el("save-game").addEventListener("click", () => {
+    saveGame().catch(() => {});
+  });
+  el("review-exit").addEventListener("click", exitReview);
+  el("review-first").addEventListener("click", () => {
+    reviewGoto(0).catch(() => {});
+  });
+  el("review-last").addEventListener("click", () => {
+    if (state.review) reviewGoto(state.review.meta.step_count).catch(() => {});
+  });
+  el("review-prev").addEventListener("click", () => {
+    if (state.review) reviewGoto(state.review.cursor - 1).catch(() => {});
+  });
+  el("review-next").addEventListener("click", () => {
+    if (state.review) reviewGoto(state.review.cursor + 1).catch(() => {});
+  });
+  el("review-prev-own").addEventListener("click", () => reviewJumpOwn(-1));
+  el("review-next-own").addEventListener("click", () => reviewJumpOwn(1));
+  el("review-slider").addEventListener("change", (event) => {
+    if (state.review) reviewGoto(Number(event.target.value)).catch(() => {});
+  });
+  el("review-seat").addEventListener("change", (event) => {
+    if (state.review) {
+      enterReview(Number(event.target.value)).catch(() => {});
+    }
+  });
   await loadGameList();
+  await loadSaveList();
 }
 
 init().catch((error) => {

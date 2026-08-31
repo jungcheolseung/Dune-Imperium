@@ -10,6 +10,7 @@
   <header>
     <h1>Dune: Imperium — Uprising</h1>
     <div id="header-status"></div>
+    <button id="save-game" hidden>저장</button>
     <button id="leave-game" hidden>새 게임 설정으로</button>
   </header>
 
@@ -36,6 +37,10 @@
         <h2>진행 중인 게임</h2>
         <ul id="game-list"></ul>
       </div>
+      <div id="save-list-wrap" hidden>
+        <h2>저장된 게임</h2>
+        <ul id="save-list"></ul>
+      </div>
       <p id="setup-error" class="error" hidden></p>
     </section>
 
@@ -44,11 +49,26 @@
         <div id="decision-info"></div>
         <div id="actions"></div>
       </section>
+      <section id="review-bar" class="panel" hidden>
+        <div class="review-controls">
+          <label>검토 좌석 <select id="review-seat"></select></label>
+          <button id="review-first">⏮</button>
+          <button id="review-prev">◀</button>
+          <input type="range" id="review-slider" min="0" max="0" value="0">
+          <button id="review-next">▶</button>
+          <button id="review-last">⏭</button>
+          <button id="review-prev-own">이전 내 행동</button>
+          <button id="review-next-own">다음 내 행동</button>
+          <button id="review-exit">검토 종료</button>
+        </div>
+        <div id="review-status" class="meta"></div>
+      </section>
       <section id="standings" class="panel" hidden></section>
       <section id="board" class="panel"></section>
       <section id="seats"></section>
       <section id="private-zone" class="panel"></section>
       <p id="game-error" class="error" hidden></p>
+      <p id="game-note" class="muted" hidden></p>
     </section>
   </main>
 

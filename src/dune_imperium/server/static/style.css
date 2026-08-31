@@ -120,6 +120,19 @@ button:disabled { opacity: 0.5; cursor: wait; }
   font-size: 0.8rem;
 }
 
+#review-bar { border-left: 6px solid var(--good); }
+.review-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+#review-slider { flex: 1; min-width: 140px; }
+#review-status { margin-top: 0.4rem; font-size: 0.85rem; opacity: 0.8; }
+
+#game-list button, #save-list button { margin-left: 0.3rem; }
+#game-list li, #save-list li { margin: 0.25rem 0; }
+
 #standings table { border-collapse: collapse; width: 100%; }
 #standings th, #standings td {
   border-bottom: 1px solid var(--line);
@@ -127,6 +140,7 @@ button:disabled { opacity: 0.5; cursor: wait; }
   padding: 0.25rem 0.5rem;
 }
 #standings .winner { color: var(--good); font-weight: 700; }
+#standings button { margin-top: 0.6rem; }
 
 .error { color: var(--bad); font-weight: 600; }
 .muted { opacity: 0.65; }
