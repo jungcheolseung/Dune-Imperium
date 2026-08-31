@@ -9,8 +9,10 @@ refuse them — keeping ``core.observation`` the single visibility authority.
 
 Chance decisions and AI seats advance automatically after game creation and
 after every human action, so a session always rests on a human decision or
-on the finished game. Every applied step is recorded replay-style for the
-upcoming save/load slice.
+on the finished game. Every applied step is recorded replay-style; saving
+serializes that record (``persistence``), and loading replays it against
+fresh seeded chance and agent streams so a loaded game continues exactly
+like the unsaved session would have.
 """
 
 import random
@@ -23,18 +25,24 @@ from typing import Final
 from dune_imperium.agents import Agent, HeuristicAgent, RandomAgent
 from dune_imperium.config import RulesetConfig
 from dune_imperium.core.actions import DomainAction
-from dune_imperium.core.chance import ChanceResolver
+from dune_imperium.core.chance import ChanceOutcome, ChanceResolver
 from dune_imperium.core.decisions import ChanceDecision, PlayerDecision
 from dune_imperium.core.observation import PlayerView
 from dune_imperium.core.replay import ReplayStep
-from dune_imperium.core.state import GamePhase, GameState
+from dune_imperium.core.state import GamePhase, GameState, canonical_state_hash
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.endgame import final_standings
-
-type JsonValue = (
-    None | bool | int | float | str | list["JsonValue"] | dict[str, "JsonValue"]
+from dune_imperium.server.persistence import (
+    JsonObject as JsonObject,
 )
-type JsonObject = dict[str, JsonValue]
+from dune_imperium.server.persistence import (
+    JsonValue as JsonValue,
+)
+from dune_imperium.server.persistence import (
+    SaveError,
+    build_save_document,
+    parse_save_document,
+)
 
 HUMAN_SEAT: Final = "human"
 AGENT_SEATS: Final[dict[str, type[RandomAgent] | type[HeuristicAgent]]] = {
@@ -100,11 +108,7 @@ class GameSessionManager:
         config = RulesetConfig(
             choam_module=choam_module, leader_draft=leader_draft
         )
-        if len(seats) != config.players:
-            raise SessionError("exactly one seat assignment per player is required")
-        for assignment in seats:
-            if assignment != HUMAN_SEAT and assignment not in AGENT_SEATS:
-                raise SessionError(f"unknown seat assignment: {assignment!r}")
+        _validate_seats(seats, config)
         if game_seed is None:
             game_seed = random.SystemRandom().randrange(2**31)
         if game_seed < 0:
@@ -220,6 +224,120 @@ class GameSessionManager:
                 raise UnknownGameError(f"unknown game: {game_id}")
             del self._sessions[game_id]
 
+    def save_game(self, game_id: str, *, name: str | None = None) -> JsonObject:
+        """Serialize one session into a versioned save document.
+
+        Sessions only rest on a human decision or on the finished game, so
+        the recorded steps always end on a state a load can resume from.
+        """
+
+        session = self._get(game_id)
+        with session.lock:
+            return build_save_document(
+                config=session.config,
+                game_seed=session.game_seed,
+                policy_seed=session.policy_seed,
+                seats=session.seats,
+                steps=tuple(session.steps),
+                expected_state_hash=canonical_state_hash(session.state),
+                source_game_id=session.game_id,
+                round_number=session.state.round_number,
+                phase=str(session.state.phase),
+                finished=session.state.phase is GamePhase.FINISHED,
+                name=name,
+            )
+
+    def restore_game(self, document: object) -> JsonObject:
+        """Rebuild a saved game as a new session and return its summary.
+
+        The recorded steps replay against a fresh seeded ``ChanceResolver``
+        and fresh seeded agents: chance and AI decisions are regenerated
+        and must match the record, human actions apply as recorded. That
+        restores every RNG stream to its saved position, so the loaded game
+        continues exactly like the unsaved session would have; a divergence
+        (an edited file, or code that no longer reproduces the record)
+        fails with the offending step index. The final canonical state hash
+        is verified like ``replay_game`` does.
+        """
+
+        parsed = parse_save_document(document)
+        config = parsed.replay.ruleset
+        _validate_seats(parsed.seats, config)
+        engine = UprisingRulesEngine()
+        session = GameSession(
+            game_id=uuid.uuid4().hex,
+            config=config,
+            game_seed=parsed.replay.seed,
+            policy_seed=parsed.policy_seed,
+            seats=parsed.seats,
+            engine=engine,
+            state=engine.reset(config, parsed.replay.seed),
+            chance=ChanceResolver(seed=parsed.replay.seed),
+            agents={
+                seat: AGENT_SEATS[assignment](seed=parsed.policy_seed + seat)
+                for seat, assignment in enumerate(parsed.seats)
+                if assignment in AGENT_SEATS
+            },
+        )
+        with session.lock:
+            _replay_recorded_steps(session, parsed.replay.steps)
+            actual_hash = canonical_state_hash(session.state)
+            if actual_hash != parsed.replay.expected_state_hash:
+                raise SaveError(
+                    "the replayed save does not reproduce its recorded state hash"
+                )
+            self._advance_locked(session)
+            summary = self._summary_locked(session)
+        with self._registry_lock:
+            self._sessions[session.game_id] = session
+        return summary
+
+    def review(self, game_id: str, seat: int) -> JsonObject:
+        """Return the step timeline of one finished game for one human seat.
+
+        Review keeps the live visibility boundary (OQ-010): the reviewed
+        seat sees its own recorded actions in full, only the acting seat of
+        other players' actions, and never the values of chance outcomes
+        (shuffle outcomes spell out hidden deck orders).
+        """
+
+        session = self._get(game_id)
+        self._require_human(session, seat)
+        with session.lock:
+            _require_finished(session)
+            steps = tuple(session.steps)
+        return {
+            "game_id": session.game_id,
+            "seat": seat,
+            "step_count": len(steps),
+            "steps": [_review_step_label(step, seat) for step in steps],
+        }
+
+    def review_state(self, game_id: str, seat: int, step: int) -> JsonObject:
+        """Return the reviewed seat's view after the first ``step`` steps."""
+
+        session = self._get(game_id)
+        self._require_human(session, seat)
+        with session.lock:
+            _require_finished(session)
+            steps = tuple(session.steps)
+        if not 0 <= step <= len(steps):
+            raise SessionError("review step is out of range")
+        # A fresh engine re-applies the record so the live session's RNG
+        # streams stay untouched.
+        engine = UprisingRulesEngine()
+        state = engine.reset(session.config, session.game_seed)
+        for recorded in steps[:step]:
+            state = engine.apply(state, recorded).state
+        return {
+            "game_id": session.game_id,
+            "seat": seat,
+            "step": step,
+            "round_number": state.round_number,
+            "phase": str(state.phase),
+            "view": _serialize_view(engine.observe(state, seat)),
+        }
+
     def _get(self, game_id: str) -> GameSession:
         with self._registry_lock:
             try:
@@ -297,6 +415,92 @@ class GameSessionManager:
                 else None
             ),
         }
+
+
+def _validate_seats(seats: tuple[str, ...], config: RulesetConfig) -> None:
+    if len(seats) != config.players:
+        raise SessionError("exactly one seat assignment per player is required")
+    for assignment in seats:
+        if assignment != HUMAN_SEAT and assignment not in AGENT_SEATS:
+            raise SessionError(f"unknown seat assignment: {assignment!r}")
+
+
+def _replay_recorded_steps(
+    session: GameSession, recorded_steps: tuple[ReplayStep, ...]
+) -> None:
+    """Re-apply a save's steps, regenerating chance and AI decisions.
+
+    Caller holds the session lock. Every regenerated step must equal the
+    record; that check both validates the save and proves the fresh RNG
+    streams sit exactly where the saved session left them.
+    """
+
+    engine = session.engine
+    for index, recorded in enumerate(recorded_steps):
+        decision = engine.current_decision(session.state)
+        regenerated: ReplayStep
+        if isinstance(recorded, ChanceOutcome):
+            if not isinstance(decision, ChanceDecision):
+                raise SaveError(
+                    f"save step {index} records {_step_summary(recorded)} but "
+                    "the game is not at a chance decision"
+                )
+            regenerated = session.chance.resolve(decision)
+        elif (
+            isinstance(decision, PlayerDecision) and decision.owner == recorded.actor
+        ):
+            if recorded.actor in session.agents:
+                observation = engine.observe(session.state, recorded.actor)
+                actions = engine.legal_actions(session.state, recorded.actor)
+                regenerated = session.agents[recorded.actor].choose_action(
+                    observation, actions
+                )
+            else:
+                regenerated = recorded
+        else:
+            raise SaveError(
+                f"save step {index} records {_step_summary(recorded)} but "
+                "the game expects a different decision owner"
+            )
+        if regenerated != recorded:
+            raise SaveError(
+                f"save step {index} ({_step_summary(recorded)}) does not "
+                "replay as recorded"
+            )
+        try:
+            session.state = engine.apply(session.state, regenerated).state
+        except Exception as error:
+            raise SaveError(
+                f"save step {index} ({_step_summary(recorded)}) failed to "
+                f"apply: {error}"
+            ) from error
+        session.steps.append(recorded)
+
+
+def _step_summary(step: ReplayStep) -> str:
+    if isinstance(step, ChanceOutcome):
+        return f"chance {step.decision_id}"
+    return f"action {step.action_id} by seat {step.actor}"
+
+
+def _require_finished(session: GameSession) -> None:
+    if session.state.phase is not GamePhase.FINISHED:
+        raise SessionError("replay review opens after the game finishes")
+
+
+def _review_step_label(step: ReplayStep, seat: int) -> JsonObject:
+    """Label one recorded step without crossing the seat's visibility."""
+
+    if isinstance(step, ChanceOutcome):
+        return {"type": "chance", "decision_id": step.decision_id}
+    if step.actor == seat:
+        return {
+            "type": "action",
+            "actor": step.actor,
+            "action_id": step.action_id,
+            "arguments": _jsonify(dict(step.arguments)),
+        }
+    return {"type": "action", "actor": step.actor}
 
 
 def _serialize_view(view: PlayerView) -> JsonObject:

@@ -1,5 +1,7 @@
 """HTTP-level tests for the FastAPI play server (needs the ``ui`` extra)."""
 
+from pathlib import Path
+
 import pytest
 
 pytest.importorskip("fastapi")
@@ -7,11 +9,12 @@ pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient  # noqa: E402
 
 from dune_imperium.server.app import create_app  # noqa: E402
+from dune_imperium.server.sessions import GameSessionManager  # noqa: E402
 
 
 @pytest.fixture
-def client() -> TestClient:
-    return TestClient(create_app())
+def client(tmp_path: Path) -> TestClient:
+    return TestClient(create_app(saves_dir=tmp_path / "saves"))
 
 
 def _create(client: TestClient, **overrides: object) -> dict[str, object]:
@@ -123,6 +126,86 @@ def test_deleting_a_game_removes_it(client: TestClient) -> None:
 
     assert client.delete(f"/games/{game_id}").json() == {"deleted": game_id}
     assert client.get(f"/games/{game_id}").status_code == 404
+
+
+def test_saves_roundtrip_over_http(client: TestClient) -> None:
+    summary = _create(client)
+    game_id = summary["game_id"]
+    applied = client.post(
+        f"/games/{game_id}/actions",
+        json={"seat": 0, "revision": summary["revision"], "index": 0},
+    )
+    assert applied.status_code == 200, applied.text
+    summary = applied.json()
+
+    saved = client.post(f"/games/{game_id}/save", json={"name": "테스트"})
+    assert saved.status_code == 200, saved.text
+    metadata = saved.json()
+    save_id = metadata["save_id"]
+    assert metadata["name"] == "테스트"
+    assert "steps" not in metadata
+    assert metadata["step_count"] > 0
+
+    listing = client.get("/saves")
+    assert listing.status_code == 200
+    assert [entry["save_id"] for entry in listing.json()] == [save_id]
+
+    loaded = client.post(f"/saves/{save_id}/load")
+    assert loaded.status_code == 200, loaded.text
+    restored = loaded.json()
+    assert restored["game_id"] != game_id
+    assert restored["revision"] == summary["revision"]
+    assert restored["decision"] == summary["decision"]
+
+    assert client.delete(f"/saves/{save_id}").json() == {"deleted": save_id}
+    assert client.delete(f"/saves/{save_id}").status_code == 404
+    assert client.post(f"/saves/{save_id}/load").status_code == 404
+    assert client.post("/games/absent/save", json={}).status_code == 404
+
+
+def test_review_over_http(tmp_path: Path) -> None:
+    manager = GameSessionManager()
+    client = TestClient(create_app(manager, saves_dir=tmp_path / "saves"))
+    summary = manager.create_game(
+        ("human", "heuristic", "heuristic", "heuristic"), game_seed=14
+    )
+    game_id = str(summary["game_id"])
+    for _ in range(2_000):
+        if summary["finished"]:
+            break
+        summary = manager.apply_action(
+            game_id, seat=0, revision=int(str(summary["revision"])), index=0
+        )
+    assert summary["finished"] is True
+
+    review = client.get(f"/games/{game_id}/review", params={"seat": 0})
+    assert review.status_code == 200, review.text
+    step_count = review.json()["step_count"]
+    assert step_count == len(review.json()["steps"])
+
+    final = client.get(f"/games/{game_id}/review/{step_count}", params={"seat": 0})
+    assert final.status_code == 200, final.text
+    assert final.json()["phase"] == "finished"
+    assert final.json()["view"]["player"] == 0
+
+    assert (
+        client.get(f"/games/{game_id}/review", params={"seat": 1}).status_code
+        == 403
+    )
+    assert (
+        client.get(
+            f"/games/{game_id}/review/{step_count + 1}", params={"seat": 0}
+        ).status_code
+        == 400
+    )
+
+    unfinished = _create(client)
+    assert (
+        client.get(
+            f"/games/{unfinished['game_id']}/review", params={"seat": 0}
+        ).status_code
+        == 400
+    )
 
 
 def test_a_leader_draft_game_over_http_reaches_round_one(

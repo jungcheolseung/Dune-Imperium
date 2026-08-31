@@ -2,6 +2,7 @@
 
 import argparse
 from collections.abc import Sequence
+from pathlib import Path
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -20,6 +21,12 @@ def _build_parser() -> argparse.ArgumentParser:
         default=8000,
         help="TCP port (default: 8000)",
     )
+    parser.add_argument(
+        "--saves-dir",
+        type=Path,
+        default=None,
+        help="save-file directory (default: ~/.dune-imperium/saves)",
+    )
     return parser
 
 
@@ -30,7 +37,11 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     from dune_imperium.server.app import create_app
 
-    uvicorn.run(create_app(), host=arguments.host, port=arguments.port)
+    uvicorn.run(
+        create_app(saves_dir=arguments.saves_dir),
+        host=arguments.host,
+        port=arguments.port,
+    )
     return 0
 
 
