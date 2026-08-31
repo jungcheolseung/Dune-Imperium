@@ -34,14 +34,21 @@ in the same work unit.
 ## Delegation with the Agent tool
 
 - Use the main session as the controller, per the delegation policy in
-  `AGENTS.md`.
+  `AGENTS.md`. The main session runs the expensive model; delegate token-heavy
+  bounded work to the cheaper project subagents in `.claude/agents/` so the
+  expensive model is spent on design, rules interpretation, and review.
 - For bounded implementation slices (one card's play data plus its regression
-  tests, repetitive edits, a known-cause bug fix) spawn a `general-purpose`
-  subagent with a self-contained prompt: files to touch, acceptance criteria,
-  and the tests it must pass. Ask it to report blockers instead of making
-  design decisions.
-- Use `Explore` subagents for read-only fan-out searches across the rules and
-  content packages when you only need the conclusion.
+  tests, repetitive edits, a known-cause bug fix) spawn the `card-implementer`
+  subagent (Sonnet) with a self-contained prompt: files to touch, acceptance
+  criteria, the tests it must pass, and the `docs/rules/*.md` quote with its
+  citation for any rule behaviour involved. It is instructed to report
+  blockers instead of making design decisions.
+- For read-only fan-out searches across the rules and content packages, when
+  you only need the conclusion, use the `repo-scout` subagent (Haiku). Its
+  rules summaries are pointers, not evidence: before changing rule behaviour,
+  the main session must still open the cited `docs/rules/*.md` section itself.
+- Fall back to the built-in `general-purpose` / `Explore` types only when a
+  task fits neither project subagent.
 - Review every delegated diff and rerun pytest/ruff/mypy before committing.
 
 ## Rule changes: verify before you act
