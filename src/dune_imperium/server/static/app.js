@@ -72,6 +72,17 @@ const ACTION_LABELS = {
 
 const RESOURCE_ICONS = { solari: "🪙", spice: "🌶", water: "💧" };
 
+/* Board-layout order for the spaces panel. */
+const AGENT_ICON_GROUPS = [
+  ["emperor", "Emperor"],
+  ["spacing_guild", "Spacing Guild"],
+  ["bene_gesserit", "Bene Gesserit"],
+  ["fremen", "Fremen"],
+  ["landsraad", "Landsraad"],
+  ["city", "City"],
+  ["spice_trade", "Spice Trade"],
+];
+
 function el(id) {
   return document.getElementById(id);
 }
@@ -150,13 +161,126 @@ function cardDetail(instanceId) {
   return "";
 }
 
-function chip(instanceId) {
+function chip(instanceId, entryOverride) {
   const span = document.createElement("span");
   span.className = "tag";
-  span.textContent = nameOf(instanceId);
+  const entry = entryOverride || lookup(baseId(instanceId));
+  span.textContent = entry ? entry.name : prettify(baseId(instanceId));
   const detail = cardDetail(instanceId);
   if (detail) span.title = detail;
+  if (entry) {
+    span.classList.add("clickable");
+    span.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openPopover(entry, span);
+    });
+  }
   return span;
+}
+
+/* ---------- detail popover ---------- */
+
+function choamActive() {
+  return Boolean(state.summary && state.summary.choam_module);
+}
+
+function spaceOptionsFor(entry) {
+  return choamActive() && entry.choam_options
+    ? entry.choam_options
+    : entry.options;
+}
+
+function spaceImplementedFor(entry) {
+  return choamActive() ? entry.choam_implemented : entry.implemented;
+}
+
+function costText(cost) {
+  const parts = [];
+  for (const resource of ["solari", "spice", "water"]) {
+    if (cost[resource]) parts.push(`${cost[resource]}${RESOURCE_ICONS[resource]}`);
+  }
+  return parts.length ? parts.join(" ") : "무료";
+}
+
+function requirementText(requirement) {
+  const label = FACTION_LABELS[requirement.faction] || requirement.faction;
+  return `요구: ${label} Influence ${requirement.amount}+`;
+}
+
+function popoverLines(entry) {
+  const lines = [];
+  if (entry.text) lines.push(...entry.text);
+  if (entry.condition) lines.push(`조건: ${entry.condition}`);
+  if (entry.reward) lines.push(`보상: ${entry.reward}`);
+  if (entry.rewards) lines.push(...entry.rewards);
+  if (entry.options) {
+    if (entry.requirement) lines.push(requirementText(entry.requirement));
+    for (const option of spaceOptionsFor(entry)) {
+      lines.push(`[${costText(option.cost)}] ${option.effect}`);
+    }
+  }
+  if (entry.ability_text) lines.push(`${entry.ability}: ${entry.ability_text}`);
+  if (entry.signet_text) {
+    lines.push(`Signet — ${entry.signet}: ${entry.signet_text}`);
+  }
+  if (entry.notes) lines.push(...entry.notes);
+  return lines;
+}
+
+function openPopover(entry, anchor) {
+  const pop = el("card-popover");
+  pop.textContent = "";
+
+  const title = document.createElement("div");
+  title.className = "popover-title";
+  title.textContent = entry.name;
+  pop.appendChild(title);
+
+  const meta = [];
+  if (entry.cost !== undefined && entry.cost !== null) {
+    meta.push(`비용 ${entry.cost}`);
+  }
+  if (entry.persuasion) meta.push(`🗣${entry.persuasion}`);
+  if (entry.swords) meta.push(`⚔${entry.swords}`);
+  if (entry.factions && entry.factions.length) {
+    meta.push(entry.factions.map((f) => FACTION_LABELS[f] || f).join("/"));
+  }
+  if (entry.timings) meta.push(`Intrigue (${entry.timings.join("/")})`);
+  if (entry.tier !== undefined) meta.push(`Conflict tier ${entry.tier}`);
+  if (entry.options && !spaceImplementedFor(entry)) meta.push("미구현 · 배치 불가");
+  if (meta.length) {
+    const line = document.createElement("div");
+    line.className = "meta";
+    line.textContent = meta.join(" · ");
+    pop.appendChild(line);
+  }
+
+  for (const text of popoverLines(entry)) {
+    const line = document.createElement("div");
+    line.className = "popover-line";
+    line.textContent = text;
+    pop.appendChild(line);
+  }
+  if (entry.image) {
+    const image = document.createElement("img");
+    image.loading = "lazy";
+    image.src = entry.image;
+    image.alt = entry.name;
+    pop.appendChild(image);
+  }
+
+  pop.hidden = false;
+  const rect = anchor.getBoundingClientRect();
+  const width = Math.min(340, window.innerWidth - 16);
+  pop.style.width = `${width}px`;
+  const maxLeft = window.scrollX + window.innerWidth - width - 8;
+  const left = Math.min(rect.left + window.scrollX, Math.max(window.scrollX + 8, maxLeft));
+  pop.style.left = `${left}px`;
+  pop.style.top = `${rect.bottom + window.scrollY + 6}px`;
+}
+
+function closePopover() {
+  el("card-popover").hidden = true;
 }
 
 function chipList(container, ids, emptyText) {
@@ -508,6 +632,7 @@ function exitReview() {
 function render() {
   const summary = state.summary;
   if (!summary) return;
+  closePopover();
   el("header-status").textContent =
     `라운드 ${summary.round_number} · ${PHASE_LABELS[summary.phase] || summary.phase}` +
     ` · seed ${summary.game_seed}` +
@@ -518,6 +643,7 @@ function render() {
   renderBanner();
   renderStandings();
   renderBoard();
+  renderSpaces();
   renderSeats();
   renderPrivate();
 }
@@ -646,6 +772,118 @@ function renderBoard() {
     const discard = section(board, "Intrigue discard");
     chipList(discard, view.intrigue_discard.slice(-8), "");
   }
+}
+
+function renderSpaces() {
+  const panel = el("spaces");
+  panel.textContent = "";
+  const catalog = state.catalog;
+  if (!catalog) {
+    panel.hidden = true;
+    return;
+  }
+  panel.hidden = false;
+
+  const heading = document.createElement("h2");
+  heading.textContent = "보드 공간";
+  panel.appendChild(heading);
+  const hint = document.createElement("div");
+  hint.className = "muted";
+  hint.textContent =
+    "Combat space 방문 시: 이번 turn에 recruit한 troop 전부와 garrison의 " +
+    "troop 최대 2개를 Conflict에 배치할 수 있습니다.";
+  panel.appendChild(hint);
+
+  const occupants = new Map();
+  const controllers = new Map();
+  const view = state.view;
+  if (view) {
+    for (const player of view.players) {
+      for (const spaceId of player.agent_locations) {
+        if (!occupants.has(spaceId)) occupants.set(spaceId, []);
+        occupants.get(spaceId).push(player.player);
+      }
+      for (const spaceId of player.control_space_ids) {
+        controllers.set(spaceId, player.player);
+      }
+    }
+  }
+  const makerSpice = new Map(view ? view.maker_bonus_spice : []);
+
+  for (const [icon, label] of AGENT_ICON_GROUPS) {
+    const spaceIds = Object.keys(catalog.spaces).filter(
+      (spaceId) => catalog.spaces[spaceId].agent_icon === icon
+    );
+    if (!spaceIds.length) continue;
+    const body = section(panel, label);
+    for (const spaceId of spaceIds) {
+      body.appendChild(spaceRow(spaceId, occupants, controllers, makerSpice));
+    }
+  }
+}
+
+function spaceRow(spaceId, occupants, controllers, makerSpice) {
+  const entry = state.catalog.spaces[spaceId];
+  const row = document.createElement("div");
+  row.className = "space-row";
+
+  const title = document.createElement("div");
+  title.appendChild(chip(spaceId, entry));
+  const flags = [];
+  if (entry.combat) flags.push("⚔ Combat");
+  if (entry.maker) flags.push("Maker");
+  if (entry.critical) flags.push("Control");
+  if (flags.length) {
+    const flagLine = document.createElement("div");
+    flagLine.className = "muted";
+    flagLine.textContent = flags.join(" · ");
+    title.appendChild(flagLine);
+  }
+  if (!spaceImplementedFor(entry)) {
+    const badge = document.createElement("span");
+    badge.className = "badge-unimpl";
+    badge.textContent = "미구현 · 배치 불가";
+    title.appendChild(badge);
+  }
+  row.appendChild(title);
+
+  const detail = document.createElement("div");
+  if (entry.requirement) {
+    const requirement = document.createElement("div");
+    requirement.className = "muted";
+    requirement.textContent = requirementText(entry.requirement);
+    detail.appendChild(requirement);
+  }
+  for (const option of spaceOptionsFor(entry)) {
+    const line = document.createElement("div");
+    line.textContent = `[${costText(option.cost)}] ${option.effect}`;
+    detail.appendChild(line);
+  }
+  for (const noteText of entry.notes) {
+    const line = document.createElement("div");
+    line.className = "muted";
+    line.textContent = noteText;
+    detail.appendChild(line);
+  }
+  const status = [];
+  const seats = occupants.get(spaceId);
+  if (seats && seats.length) {
+    status.push(`Agent: ${seats.map((seat) => `좌석 ${seat}`).join(", ")}`);
+  }
+  if (controllers.has(spaceId)) {
+    status.push(`Control: 좌석 ${controllers.get(spaceId)}`);
+  }
+  if (makerSpice.get(spaceId)) {
+    status.push(`bonus spice ${makerSpice.get(spaceId)}`);
+  }
+  if (status.length) {
+    const line = document.createElement("div");
+    line.className = "space-status";
+    line.textContent = status.join(" · ");
+    detail.appendChild(line);
+  }
+  row.appendChild(detail);
+  return row;
 }
 
 function seatLine(container, label, text) {
@@ -885,6 +1123,13 @@ function renderStandings() {
 async function init() {
   state.catalog = await api("/catalog");
   buildSeatSelects();
+  document.addEventListener("click", (event) => {
+    const pop = el("card-popover");
+    if (!pop.hidden && !pop.contains(event.target)) closePopover();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closePopover();
+  });
   el("setup-form").addEventListener("submit", createGame);
   el("leave-game").addEventListener("click", leaveGame);
   el("save-game").addEventListener("click", () => {
