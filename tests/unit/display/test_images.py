@@ -17,6 +17,7 @@ from dune_imperium.display.images import (
     KNOWN_MISSING,
     default_filename,
     image_filename,
+    required_images,
 )
 
 CACHE_DIR = (
@@ -87,6 +88,24 @@ def test_known_missing_and_overrides_do_not_overlap() -> None:
     assert not KNOWN_MISSING & FILENAME_OVERRIDES.keys()
 
 
+def test_required_images_cover_every_displayable_content_id() -> None:
+    entries = required_images()
+    keys = {(kind, content_id) for kind, content_id, _ in entries}
+    filenames = [filename for _, _, filename in entries]
+
+    # 54 imperium + 39 intrigue + 20 contracts + 16 conflicts + 22 spaces
+    # + 10 leader faces + (7 starting - 4 without upstream image) + 2 reserve.
+    assert len(entries) == 166
+    assert len(set(filenames)) == len(filenames)
+    assert not keys & KNOWN_MISSING
+    assert keys == {
+        key for key in _all_content_ids() if key not in KNOWN_MISSING
+    }
+    available = frozenset(filenames)
+    for kind, content_id, filename in entries:
+        assert image_filename(kind, content_id, available) == filename
+
+
 @pytest.mark.skipif(
     not CACHE_DIR.is_dir(),
     reason="Dune Cards Hub image cache is not checked out",
@@ -99,3 +118,5 @@ def test_every_content_id_resolves_or_is_known_missing() -> None:
         assert resolved is not None or (kind, content_id) in KNOWN_MISSING, (
             f"{kind}:{content_id} has no cache file and is not KNOWN_MISSING"
         )
+    for _, _, filename in required_images():
+        assert filename in available, filename
