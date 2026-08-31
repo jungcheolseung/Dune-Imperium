@@ -12,7 +12,13 @@ specifics.
    current baseline and the next work item.
 2. Run `git status --short` and `git log --oneline -10`; never overwrite
    pre-existing user changes.
-3. Verify the baseline before changing code:
+3. Run `git fetch origin` and compare both directions
+   (`git log --oneline origin/master..master` and `master..origin/master`).
+   This repository is worked on from multiple machines, so a stale clone
+   silently duplicates remote work (it cost a full session on 2026-08-31).
+   If the remote is ahead, align with it (or ask) before starting, and trust
+   the fetched baseline over this clone's handoff numbers.
+4. Verify the baseline before changing code:
 
 ```bash
 uv sync --extra rl --extra ui
