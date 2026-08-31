@@ -83,6 +83,26 @@ button:disabled { opacity: 0.5; cursor: wait; }
 }
 #actions button { text-align: left; max-width: 100%; }
 
+.action-item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem;
+  align-items: flex-start;
+  max-width: 100%;
+}
+.action-info {
+  padding: 0.35rem 0.45rem;
+  border-color: var(--line);
+  background: transparent;
+}
+.action-detail {
+  flex-basis: 100%;
+  background: var(--accent-soft);
+  border-radius: 8px;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.82rem;
+}
+
 #seats {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(255px, 1fr));

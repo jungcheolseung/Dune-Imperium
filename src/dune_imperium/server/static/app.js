@@ -42,32 +42,123 @@ const FACTION_LABELS = {
   fremen: "Fremen",
 };
 
+/* One Korean verb per engine action_id; tests/server/test_action_labels.py
+   fails when a rules action id is missing here. */
 const ACTION_LABELS = {
-  agent_turn: "Agent 배치",
-  reveal_turn: "Reveal 턴 시작",
-  finish_reveal: "Reveal 종료",
-  pick_leader: "Leader 선택",
-  play_intrigue: "Intrigue 사용",
-  deploy_troops: "병력 배치",
-  deploy_intrigue_troops: "병력 배치",
-  deploy_control_defense: "Control 방어 배치",
   acquire_imperium: "카드 획득",
-  acquire_reserve: "카드 획득",
   acquire_imperium_with_solari: "카드 획득 (Solari)",
-  acquire_reserve_with_solari: "카드 획득 (Solari)",
+  acquire_intrigue_imperium: "카드 획득 (Intrigue)",
+  acquire_intrigue_reserve: "카드 획득 (Intrigue)",
+  acquire_leader_imperium: "카드 획득 (Leader)",
+  acquire_leader_reserve: "카드 획득 (Leader)",
   acquire_manipulated_imperium: "Set-aside 카드 획득",
+  acquire_reserve: "카드 획득",
+  acquire_reserve_with_solari: "카드 획득 (Solari)",
+  advance_feyd_track: "Feyd token 전진",
+  agent_turn: "Agent 배치",
+  choose_agent_card_influence: "Influence 선택",
+  choose_combat_reward_influence: "Influence 선택 (Combat 보상)",
+  choose_distinct_combat_reward_influence: "Influence 선택 (Combat 보상)",
+  choose_intrigue_discard: "Discard할 카드 선택",
+  choose_intrigue_faction: "Influence 선택 (Intrigue)",
+  choose_leader_signet_influence: "Influence 선택 (Signet)",
   complete_contract: "Contract 완료",
-  take_contract: "Contract 획득",
-  harvest_maker_spice: "Spice 수확",
-  summon_maker_sandworms: "Sandworm 소환",
+  decline_agent_card_acquisition: "획득 안 함",
+  decline_agent_card_discard: "Discard 안 함",
+  decline_agent_card_intrigue_payment: "지불 안 함",
+  decline_agent_card_payment: "지불 안 함",
+  decline_agent_card_trash: "Trash 안 함",
+  decline_combat_reward: "보상 비용 지불 안 함",
+  decline_combat_reward_trash: "Trash 안 함",
+  decline_control_defense: "방어 배치 안 함",
+  decline_corrinth_city_payment: "지불 안 함",
+  decline_gather_intelligence: "Gather Intelligence 안 함",
+  decline_intrigue_spy: "Spy 배치 안 함",
+  decline_intrigue_trash: "Trash 안 함",
+  decline_intrigue_trigger: "발동 안 함",
+  decline_leader_board_repeat: "반복 안 함",
+  decline_leader_card_trash: "Trash 안 함",
+  decline_leader_signet_payment: "지불 안 함",
+  decline_other_memories: "Other Memories 안 씀",
+  decline_reveal_card_trash: "Trash 안 함",
+  decline_reveal_influence_exchange: "교환 안 함",
+  decline_reveal_sandworm: "Sandworm 소환 안 함",
+  decline_reveal_spice_influence: "지불 안 함",
+  decline_reveal_spy_recall: "Spy 회수 안 함",
+  decline_reveal_troop_retreat: "후퇴 안 함",
+  deploy_control_defense: "Control 방어 배치",
+  deploy_intrigue_troops: "병력 배치",
+  deploy_troops: "병력 배치",
+  detonate_shield_wall: "Shield Wall 파괴",
+  discard_agent_card: "카드 discard",
+  discard_opponent_card: "상대 카드 discard",
+  exchange_reveal_influence: "Influence 교환",
+  finish_reveal: "Reveal 종료",
+  flip_battle_card: "Battle card 뒤집기",
+  gain_five_reveal_solari: "5 Solari 획득",
+  gain_leader_signet_troop: "Troop 획득 (Signet)",
+  gain_two_reveal_strength: "검 2 획득",
   gather_intelligence: "Gather Intelligence",
-  resolve_board_effect: "보드 효과 해결",
-  resolve_agent_card_effect: "카드 효과 해결",
-  resolve_faction_influence: "Faction Influence 해결",
-  flip_battle_card: "Battle card 공개",
+  harvest_maker_spice: "Spice 수확",
+  keep_contract_reveal_spice: "Spice 유지",
+  keep_shield_wall: "Shield Wall 유지",
+  manipulate_imperium_row: "Imperium Row 카드 set-aside",
   match_endgame_wild_icon: "Wild icon 매칭",
   pass_combat_intrigue: "패스",
   pass_endgame_intrigue: "패스",
+  pay_agent_card_intrigue_and_spice: "Intrigue+Spice 지불",
+  pay_combat_reward: "보상 비용 지불",
+  pay_leader_board_repeat: "보드 효과 반복 (1💧)",
+  pay_leader_signet_solari: "Solari 지불 (Signet)",
+  pay_leader_signet_spice: "Spice 지불 (Signet)",
+  pay_reveal_spice_influence: "3 Spice → Influence",
+  pay_reveal_water_for_sandworm: "1 Water → Sandworm",
+  pick_leader: "Leader 선택",
+  place_acquisition_spy: "Spy 배치",
+  place_agent_card_spy: "Spy 배치",
+  place_combat_reward_spy: "Spy 배치",
+  place_contract_spy: "Spy 배치",
+  place_intrigue_spy: "Spy 배치",
+  place_leader_spy: "Spy 배치",
+  place_reveal_spy: "Spy 배치",
+  place_trigger_spy: "Spy 배치",
+  play_intrigue: "Intrigue 사용",
+  recall_agent_for_agent_card: "Agent 회수",
+  recall_agent_for_contract: "Agent 회수",
+  recall_spies_for_combat_reward: "Spy 회수",
+  recall_spies_for_reveal: "Spy 회수",
+  recall_spy_for_acquisition: "Spy 회수",
+  recall_spy_for_agent_card: "Spy 회수",
+  recall_spy_for_contract: "Spy 회수",
+  recall_spy_for_espionage: "Spy 회수",
+  recall_spy_for_intrigue: "Spy 회수",
+  recall_spy_for_leader: "Spy 회수",
+  recall_spy_for_leader_placement: "Spy 회수",
+  recall_spy_for_reveal: "Spy 회수",
+  recall_spy_for_reveal_placement: "Spy 회수",
+  recall_spy_for_trigger: "Spy 회수",
+  resolve_agent_card_effect: "카드 효과 해결",
+  resolve_board_effect: "보드 효과 해결",
+  resolve_espionage_place_spy: "Spy 배치 (Espionage)",
+  resolve_espionage_without_spy: "Spy 없이 해결",
+  resolve_faction_influence: "Faction Influence 해결",
+  retreat_intrigue_troops: "병력 후퇴",
+  retreat_leader_troop: "Troop 후퇴",
+  retreat_two_troops_for_reveal: "Troop 2 후퇴 → 검 4",
+  reveal_turn: "Reveal 턴 시작",
+  summon_maker_sandworms: "Sandworm 소환",
+  take_contract: "Contract 획득",
+  take_high_council_from_reveal: "High Council 획득",
+  take_sietch_tabr_supplies: "Sietch Tabr 보급 (Maker Hooks)",
+  take_sietch_tabr_water: "Sietch Tabr water",
+  take_sietch_tabr_water_and_destroy_wall: "Water + Shield Wall 파괴",
+  trash_agent_card: "카드 trash",
+  trash_combat_reward_card: "카드 trash (Combat 보상)",
+  trash_contract_reveal_for_vp: "이 카드 trash → VP",
+  trash_intrigue_card: "Intrigue trash",
+  trash_leader_card: "카드 trash (Leader)",
+  trash_reveal_card: "카드 trash",
+  use_other_memories: "Other Memories 사용",
 };
 
 const RESOURCE_ICONS = { solari: "🪙", spice: "🌶", water: "💧" };
@@ -682,12 +773,91 @@ function renderBanner() {
 
   if (!state.actions || decision.owner !== state.viewSeat) return;
   for (const action of state.actions.actions) {
-    const button = document.createElement("button");
-    button.textContent = describeAction(action);
-    button.disabled = state.busy;
-    button.addEventListener("click", () => applyAction(action.index));
-    actionsBox.appendChild(button);
+    actionsBox.appendChild(actionItem(action));
   }
+}
+
+/* Effect preview for one legal action: resolve its referenced space/cards
+   against the catalog. space_id resolves against the spaces section
+   explicitly (a contract may share its id with a space). */
+function actionPreviewEntries(action) {
+  const entries = [];
+  const args = action.arguments;
+  if (typeof args.space_id === "string" && state.catalog.spaces[args.space_id]) {
+    entries.push(state.catalog.spaces[args.space_id]);
+  }
+  for (const [key, value] of Object.entries(args)) {
+    if (key === "space_id" || typeof value !== "string") continue;
+    const entry = lookup(baseId(value));
+    if (entry && !entries.includes(entry)) entries.push(entry);
+  }
+  return entries;
+}
+
+function actionPreviewLines(action, entry) {
+  if (entry.options) {
+    const options = spaceOptionsFor(entry);
+    const index =
+      typeof action.arguments.cost_option === "number"
+        ? action.arguments.cost_option
+        : 0;
+    const option = options[index] || options[0];
+    const lines = [];
+    if (entry.requirement) lines.push(requirementText(entry.requirement));
+    lines.push(`[${costText(option.cost)}] ${option.effect}`);
+    lines.push(...entry.notes);
+    return lines;
+  }
+  const optionIndex = action.arguments.option;
+  if (
+    action.action_id === "play_intrigue" &&
+    entry.text &&
+    typeof optionIndex === "number" &&
+    entry.text[optionIndex]
+  ) {
+    return [entry.text[optionIndex]];
+  }
+  return popoverLines(entry);
+}
+
+function actionItem(action) {
+  const wrap = document.createElement("div");
+  wrap.className = "action-item";
+  const button = document.createElement("button");
+  button.textContent = describeAction(action);
+  button.disabled = state.busy;
+  button.addEventListener("click", () => applyAction(action.index));
+  wrap.appendChild(button);
+
+  const entries = actionPreviewEntries(action);
+  if (entries.length) {
+    const info = document.createElement("button");
+    info.type = "button";
+    info.className = "action-info";
+    info.textContent = "ⓘ";
+    info.title = "효과 미리보기";
+    const detail = document.createElement("div");
+    detail.className = "action-detail";
+    detail.hidden = true;
+    for (const entry of entries) {
+      const head = document.createElement("div");
+      head.className = "popover-title";
+      head.textContent = entry.name;
+      detail.appendChild(head);
+      for (const text of actionPreviewLines(action, entry)) {
+        const line = document.createElement("div");
+        line.className = "popover-line";
+        line.textContent = text;
+        detail.appendChild(line);
+      }
+    }
+    info.addEventListener("click", (event) => {
+      event.stopPropagation();
+      detail.hidden = !detail.hidden;
+    });
+    wrap.append(info, detail);
+  }
+  return wrap;
 }
 
 function section(parent, title) {
