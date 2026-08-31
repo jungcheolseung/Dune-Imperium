@@ -28,7 +28,7 @@ uv run ruff check src tests
 uv run mypy src tests
 ```
 
-2026-08-31의 기준 결과는 pytest 933개 통과, Ruff 통과, mypy 통과다. 현재 action
+2026-08-31의 기준 결과는 pytest 934개 통과, Ruff 통과, mypy 통과다. 현재 action
 codec은 `ACTION_CODEC_VERSION = 79`(기본 4,152개, CHOAM 4,429개)이고, 관측은
 `OBSERVATION_VERSION = 2`의 1,415-int 전체 게임 인코딩이다
 ([`rl-environment.md`](rl-environment.md)). `dune-imperium-sweep` 검증
@@ -38,10 +38,11 @@ sweep은 random policy 룰셋당 10,000판(총 20,000판), heuristic policy
 
 ## 현재 구현 기준선
 
-마지막 기능 커밋은 `3e2ae8f`(행동 효과 미리보기 + 전체 행동 라벨, UI 효과
-표시 슬라이스 5)이고, 그 앞에 같은 작업의 `d275a66`(보드 공간 패널·popover·
-카드 이미지), `d34a2d1`(/catalog 효과 텍스트·이미지), `a4befd4`(display
-패키지), `3c1cc69`(정적 보드 효과 테이블), 그리고 M11의 `e44900a`(저장/
+마지막 기능 커밋은 `4c175d1`(카드 이미지 캐시 다운로드 스크립트)이고, 그
+앞에 UI 효과 표시 작업의 `3e2ae8f`(행동 효과 미리보기 + 전체 행동 라벨),
+`d275a66`(보드 공간 패널·popover·카드 이미지), `d34a2d1`(/catalog 효과
+텍스트·이미지), `a4befd4`(display 패키지), `3c1cc69`(정적 보드 효과
+테이블), 그리고 M11의 `e44900a`(저장/
 불러오기/검토 브라우저 UI), 슬라이스 5 서버 API `8ab3cd2`, 브라우저 UI `42be883`,
 FastAPI 세션 서버 `4fbd751`, Leader draft `c0c1795`, Treacherous Maneuver
 OQ-022 수정 `d70b353`, 슬라이스 1 묶음(`1a449f4`+`7a53c8f`+`ac4d6d4`)이
@@ -196,6 +197,9 @@ uv run dune-imperium-sweep --games 100 --ruleset both --workers 8 --leader-draft
 # 로컬 플레이 서버 (ui extra 필요; 기본 http://127.0.0.1:8000)
 uv run dune-imperium-server
 
+# UI 카드 이미지 캐시 다운로드 (선택; 새 개발 머신에서 1회, 저장소 밖 downloads/)
+uv run scripts/fetch_card_images.py
+
 # 한 라운드 random 실행
 uv run dune-imperium-debug --seed 2 --random-policy-seed 1002
 
@@ -215,10 +219,13 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에
 ## 원격 저장소 인계 주의
 
 2026-08-31 UI 효과 표시 세션 마무리 기준 로컬 `master`는 `origin/master`보다
-앞서 있다(슬라이스 5와 효과 표시 커밋들은 아직 push하지 않음; push는
-사용자 판단으로 한다). 새 세션은 `git log origin/master..master`와 반대
-방향을 모두 확인하고, checkout이 `3e2ae8f`보다 이전이면 이 문서의 933개
-테스트·효과 표시 기준선이 실제 코드와 일치하지 않는다.
+앞서 있다(M11 슬라이스 5, 효과 표시, 이미지 fetch 스크립트 커밋들은 아직
+push하지 않음; push는 사용자 판단으로 한다). 새 세션은
+`git log origin/master..master`와 반대 방향을 모두 확인하고, checkout이
+`4c175d1`보다 이전이면 이 문서의 934개 테스트·효과 표시 기준선이 실제
+코드와 일치하지 않는다. **다른 머신에서 이어서 작업한다면 먼저 이
+머신에서 push가 필요하다.** 새 머신의 UI 카드 이미지는
+`uv run scripts/fetch_card_images.py` 1회로 채운다(선택; 없으면 텍스트만).
 
 ## 2026-08-31 UI 효과 표시 세션 요약 (텍스트 자동 생성 + 로컬 이미지)
 
@@ -260,6 +267,13 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에
   4/5개, popover 텍스트·이미지 로드, ⓘ 미리보기 토글, 행동 버튼 6결정
   진행, 페이지 오류 0. (WSL에 libasound가 없어 스크래치의 versioned stub을
   `LD_LIBRARY_PATH`로 주입해 Playwright Chromium을 구동했다.)
+- `4c175d1`(후속): `scripts/fetch_card_images.py` — 이미지 캐시가 없는
+  다른 개발 머신용 1회 다운로드 스크립트. 대상 목록은
+  `display.images.required_images()`(카탈로그가 참조 가능한 정확히 166장,
+  이미지 없는 시작 카드 4종 제외)에서 열거하고, UA+referer 헤더(직접
+  요청은 403), WebP 매직 검증, 기존 파일 skip/`--force`/`--dry-run`을
+  지원한다. 빈 디렉터리로 실다운로드 166/166 성공·기존 캐시와 전 파일
+  체크섬 동일을 확인했다. pytest 933→934.
 
 ## 2026-08-31 M11 슬라이스 5 세션 요약 (저장/불러오기 + replay 검토)
 

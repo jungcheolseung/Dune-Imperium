@@ -36,7 +36,9 @@ fail when new content lacks display text, so wording changes should update
 the audit documents first and the display maps in the same work unit. Card
 images are never committed; the server serves the machine-local gitignored
 `downloads/dunecardshub/cards/` cache when present (typo overrides live in
-`display/images.py`).
+`display/images.py`). A machine without the cache populates it with
+`uv run scripts/fetch_card_images.py`, which downloads exactly the file set
+`display.images.required_images()` enumerates.
 
 ### Development audit workflow
 
