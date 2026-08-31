@@ -67,8 +67,28 @@ def board_effects_for(
 ) -> tuple[AutomaticEffect, ...]:
     """Return implemented automatic effects for one paid board-space option."""
 
+    return static_board_effects(
+        space_id,
+        cost_option,
+        choam_module=state.config.choam_module,
+    )
+
+
+def static_board_effects(
+    space_id: str,
+    cost_option: int,
+    *,
+    choam_module: bool,
+) -> tuple[AutomaticEffect, ...]:
+    """Return the printed automatic effects of one paid board-space option.
+
+    This is the state-free table behind ``board_effects_for``; the display
+    catalog reads it too, so effect text shown to players always derives from
+    the same table the engine executes.
+    """
+
     match space_id, cost_option:
-        case "dutiful_service", 0 if not state.config.choam_module:
+        case "dutiful_service", 0 if not choam_module:
             return (GainResourcesEffect(solari=2),)
         case "sardaukar", 0:
             return (DrawIntrigueCardsEffect(1), RecruitTroopsEffect(4))
@@ -96,7 +116,7 @@ def board_effects_for(
             return (GainResourcesEffect(solari=2),)
         case "spice_refinery", 1:
             return (GainResourcesEffect(solari=4),)
-        case "accept_contract", 0 if not state.config.choam_module:
+        case "accept_contract", 0 if not choam_module:
             return (DrawImperiumCardsEffect(1), GainResourcesEffect(solari=2))
         case "accept_contract", 0:
             return (DrawImperiumCardsEffect(1),)

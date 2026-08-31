@@ -5,6 +5,7 @@ from dataclasses import replace
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.content.uprising.board import BOARD_SPACES
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.core import (
     ChanceDecision,
@@ -22,14 +23,17 @@ from dune_imperium.core import (
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 from dune_imperium.rules.board_effects import (
+    CHOICE_DRIVEN_SPACE_IDS,
     apply_espionage_action,
     apply_maker_space_action,
     apply_sietch_tabr_action,
+    board_effect_is_implemented,
     board_effects_for,
     legal_espionage_actions,
     legal_maker_space_actions,
     legal_sietch_tabr_actions,
     resolve_board_effect,
+    static_board_effects,
 )
 from dune_imperium.rules.contracts import legal_contract_actions
 from dune_imperium.rules.effects import (
@@ -616,3 +620,118 @@ def test_imperial_basin_collects_spice_without_a_sandworm_choice() -> None:
     assert (
         dict(resolved.decision_stack[-1].context)["pending_combat_deployment"] is True
     )
+
+
+# The display catalog renders board-space effect text from the same static
+# table the engine executes, so the full printed domain is pinned here: every
+# manifest space x cost option x ruleset maps to an exact effect tuple, or to
+# None where the automatic-effects channel does not cover the space (choice
+# frames, or a not-yet-implemented effect).
+_BASE_EFFECT_TABLE: dict[str, dict[int, tuple[object, ...] | None]] = {
+    "dutiful_service": {0: (GainResourcesEffect(solari=2),)},
+    "sardaukar": {0: (DrawIntrigueCardsEffect(1), RecruitTroopsEffect(4))},
+    "deliver_supplies": {0: (GainResourcesEffect(water=1),)},
+    "heighliner": {0: (RecruitTroopsEffect(5),)},
+    "espionage": {0: None},
+    "secrets": {0: None},
+    "desert_tactics": {0: None},
+    "fremkit": {0: (DrawImperiumCardsEffect(1),)},
+    "assembly_hall": {0: (DrawIntrigueCardsEffect(1),)},
+    "gather_support": {
+        0: (RecruitTroopsEffect(2),),
+        1: (RecruitTroopsEffect(2), GainResourcesEffect(water=1)),
+    },
+    "high_council": {0: ()},
+    "imperial_privilege": {0: None},
+    "swordmaster": {0: (), 1: ()},
+    "arrakeen": {0: (RecruitTroopsEffect(1), DrawImperiumCardsEffect(1))},
+    "research_station": {0: (RecruitTroopsEffect(2), DrawImperiumCardsEffect(2))},
+    "sietch_tabr": {0: None},
+    "spice_refinery": {
+        0: (GainResourcesEffect(solari=2),),
+        1: (GainResourcesEffect(solari=4),),
+    },
+    "accept_contract": {0: (DrawImperiumCardsEffect(1), GainResourcesEffect(solari=2))},
+    "deep_desert": {0: None},
+    "hagga_basin": {0: None},
+    "imperial_basin": {0: None},
+    "shipping": {0: None},
+}
+_CHOAM_EFFECT_OVERRIDES: dict[str, dict[int, tuple[object, ...] | None]] = {
+    "dutiful_service": {0: None},
+    "accept_contract": {0: (DrawImperiumCardsEffect(1),)},
+}
+
+
+def test_static_board_effects_pins_the_full_printed_domain() -> None:
+    manifest_domain = {
+        (space.space_id, option)
+        for space in BOARD_SPACES
+        for option in range(max(1, len(space.cost_options)))
+    }
+    pinned_domain = {
+        (space_id, option)
+        for space_id, options in _BASE_EFFECT_TABLE.items()
+        for option in options
+    }
+    assert pinned_domain == manifest_domain
+
+    for choam_module in (False, True):
+        for space_id, option in manifest_domain:
+            expected = _BASE_EFFECT_TABLE[space_id][option]
+            if choam_module and space_id in _CHOAM_EFFECT_OVERRIDES:
+                expected = _CHOAM_EFFECT_OVERRIDES[space_id][option]
+            try:
+                actual: tuple[object, ...] | None = static_board_effects(
+                    space_id,
+                    option,
+                    choam_module=choam_module,
+                )
+            except NotImplementedError:
+                actual = None
+            assert actual == expected, (space_id, option, choam_module)
+
+
+def test_unimplemented_board_spaces_are_exactly_pinned() -> None:
+    for choam_module, expected_hidden in (
+        (False, {"secrets", "desert_tactics", "imperial_privilege", "shipping"}),
+        (
+            True,
+            {
+                "secrets",
+                "desert_tactics",
+                "imperial_privilege",
+                "shipping",
+                "dutiful_service",
+            },
+        ),
+    ):
+        state = GameState(
+            config=RulesetConfig(choam_module=choam_module),
+            seed=1,
+            players=tuple(PlayerState(player_id=seat) for seat in range(4)),
+        )
+        hidden = {
+            space.space_id
+            for space in BOARD_SPACES
+            if not all(
+                board_effect_is_implemented(state, space.space_id, option)
+                for option in range(max(1, len(space.cost_options)))
+            )
+        }
+        assert hidden == expected_hidden, choam_module
+        assert not hidden & CHOICE_DRIVEN_SPACE_IDS
+
+
+def test_board_effects_for_delegates_to_the_static_table() -> None:
+    for choam_module in (False, True):
+        state = GameState(
+            config=RulesetConfig(choam_module=choam_module),
+            seed=1,
+            players=tuple(PlayerState(player_id=seat) for seat in range(4)),
+        )
+        assert board_effects_for(state, "accept_contract", 0) == static_board_effects(
+            "accept_contract",
+            0,
+            choam_module=choam_module,
+        )
