@@ -1599,6 +1599,42 @@ def test_four_contract_reveal_can_keep_spice_or_trash_the_card_for_vp() -> None:
     assert trashed.state.players[0].trashed == (priority,)
 
 
+def test_four_contract_trash_for_vp_is_withheld_once_the_card_is_gone() -> None:
+    # The self-trash is the Victory Point's cost, adjudicated at resolution
+    # time [Main pp. 9, 20]: once another effect trashed the card while this
+    # choice was pending, only the Spice branch remains.
+    priority = _imperium_instance(
+        "priority_contracts",
+        choam_module=True,
+    )
+    owner = PlayerState(
+        player_id=0,
+        hand=(priority,),
+        resources=Resources(spice=3),
+        completed_contract_ids=(
+            "contract:arrakeen_i",
+            "contract:arrakeen_ii",
+            "contract:deliver_supplies",
+            "contract:espionage_i",
+        ),
+    )
+    state = _state(owner, choam_module=True)
+    revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+    gone = replace(
+        revealed,
+        players=(
+            replace(revealed.players[0], in_play=(), trashed=(priority,)),
+            *revealed.players[1:],
+        ),
+    )
+
+    actions = legal_contract_reveal_choice_actions(gone, 0)
+
+    assert tuple(action.action_id for action in actions) == (
+        "keep_contract_reveal_spice",
+    )
+
+
 def test_fedaykin_stilltent_gains_water_when_revealed() -> None:
     stilltent = _imperium_instance("fedaykin_stilltent")
     state = _state(PlayerState(player_id=0, hand=(stilltent,)))

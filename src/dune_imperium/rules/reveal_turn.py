@@ -534,7 +534,13 @@ def legal_contract_reveal_choice_actions(
     actions = [
         DomainAction(action_id="keep_contract_reveal_spice", actor=player)
     ]
-    if len(state.players[player].completed_contract_ids) >= 4:
+    # The self-trash is the cost of the Victory Point, so it is adjudicated
+    # at resolution time [Main pp. 9, 20]: a card another effect already
+    # trashed while this choice was pending can no longer pay it.
+    if (
+        len(state.players[player].completed_contract_ids) >= 4
+        and context.get("reveal_card_id") in state.players[player].in_play
+    ):
         actions.append(
             DomainAction(action_id="trash_contract_reveal_for_vp", actor=player)
         )

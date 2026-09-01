@@ -381,6 +381,14 @@
   효과(Weirding Woman)는 카드가 게임에서 제거됐으므로 무효로 해결한다. 조건부
   효과(Bond, Influence 문턱)는 해결 시점에 다시 판정한다(`[Main pp. 9, 20]`의
   자유 순서 판정). `tests/unit/rules/test_agent_effects.py`로 고정한다.
+- 적용 확장(2026-09-01): 같은 convention을 Dangerous Rhetoric의
+  `TRASH_SELF_AND_GAIN_CHOSEN_INFLUENCE` 분기에도 적용했다(Desert Tactics의
+  board trash가 Spy 아이콘으로 그 칸에 낸 카드 자체를 잡을 수 있어 random
+  sweep CHOAM seed 2735에서 적발). 반대로 Delivery Agreement의 "trash해서
+  VP" 선택은 화살표 없는 지시가 아니라 **비용**이므로, 카드가 이미 trash된
+  뒤에는 충족으로 보지 않고 해결 시점 판정(`[Main pp. 9, 20]`)에 따라 그
+  선택지를 제시하지 않는다. `tests/unit/rules/test_reveal_turn.py`,
+  `tests/integration/test_sweep.py`로 고정한다.
 
 ## OQ-023 — Imperial Privilege의 recall 의무와 대상 부재 시 처리
 

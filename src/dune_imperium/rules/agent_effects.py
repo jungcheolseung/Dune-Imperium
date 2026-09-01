@@ -502,12 +502,24 @@ def apply_agent_card_influence(
         source_card.agent_effect
         is PersonalCardAgentEffect.TRASH_SELF_AND_GAIN_CHOSEN_INFLUENCE
     ):
-        prepared = trash_personal_card(
-            state,
-            action.actor,
-            source_card_id,
-            source=source,
-        )
+        # The card may already have been trashed by a freely ordered effect
+        # (a Cunning slot, Desert Tactics' trash); the arrowless self-trash
+        # instruction is then already satisfied and the mandatory Influence
+        # remainder still resolves (OQ-022).
+        if _still_owned(state.players[action.actor], source_card_id):
+            prepared = trash_personal_card(
+                state,
+                action.actor,
+                source_card_id,
+                source=source,
+            )
+        else:
+            prepared = RuleResult(
+                state=state,
+                events=(
+                    _self_trash_satisfied_event(state, action.actor, source_card_id),
+                ),
+            )
     else:
         prepared = RuleResult(state=state)
     gained = gain_faction_influence(

@@ -64,6 +64,21 @@ def test_special_mission_spy_deadlock_seeds_run_to_finished(game_seed: int) -> N
     assert report.rounds >= 1
 
 
+def test_self_trash_board_collision_seed_runs_to_finished() -> None:
+    # In this CHOAM random game Dangerous Rhetoric was played onto Desert
+    # Tactics via its Spy icon and board-trashed before its self-trash
+    # Agent box resolved; the OQ-022 satisfied path now covers the
+    # chosen-Influence effect too (2026-09-01 sweep).
+    report = run_checked_game(
+        RulesetConfig(choam_module=True),
+        game_seed=2735,
+        policy_seed=702_735,
+        privacy_interval=0,
+    )
+
+    assert report.rounds >= 8
+
+
 def test_checked_leader_draft_game_passes_every_invariant() -> None:
     # The census is fixed after setup, so Staban's printed starting-card
     # removal during the draft cannot trip card conservation.

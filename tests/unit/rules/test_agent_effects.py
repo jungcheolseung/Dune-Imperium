@@ -665,6 +665,56 @@ def test_treacherous_maneuver_self_trash_is_already_satisfied_mid_frame() -> Non
     assert kinds.count("card_trashed") == 1
 
 
+def test_dangerous_rhetoric_self_trash_is_already_satisfied_mid_frame() -> None:
+    # A freely ordered effect can trash Dangerous Rhetoric itself before its
+    # Agent box resolves (Desert Tactics' board trash reaches it when the
+    # card was played there via its Spy icon); the arrowless self-trash is
+    # then already satisfied and the mandatory chosen-Influence remainder
+    # still resolves (OQ-022). Found by the 2026-09-01 random sweep
+    # (CHOAM seed 2735).
+    rhetoric = _imperium_instance("dangerous_rhetoric")
+    owner = PlayerState(player_id=0, hand=(rhetoric,))
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        intrigue_deck=("intrigue:test",),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
+    trashed_owner = replace(
+        placed.players[0],
+        in_play=tuple(
+            candidate
+            for candidate in placed.players[0].in_play
+            if candidate != rhetoric
+        ),
+        trashed=(rhetoric,),
+    )
+    lowered = replace(placed, players=(trashed_owner, *placed.players[1:]))
+
+    choice = next(
+        action
+        for action in legal_agent_card_influence_actions(lowered, 0)
+        if dict(action.arguments)["faction"] == Faction.SPACING_GUILD.value
+    )
+    paid = apply_agent_card_influence(lowered, choice)
+
+    assert paid.state.players[0].trashed == (rhetoric,)
+    assert paid.state.players[0].influence.spacing_guild == 1
+    kinds = [event.kind for event in paid.events]
+    assert "agent_card_self_trash_satisfied" in kinds
+    assert "card_trashed" not in kinds
+
+
 def test_treacherous_maneuver_may_be_declined_for_only_normal_influence() -> None:
     maneuver = _imperium_instance("treacherous_maneuver")
     sardaukar = _imperium_instance("sardaukar_soldier")
