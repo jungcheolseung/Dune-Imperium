@@ -37,7 +37,7 @@ from dune_imperium.content.uprising.starting_cards import (
 from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
 from dune_imperium.core.actions import ActionValue, DomainAction
 
-ACTION_CODEC_VERSION = 80
+ACTION_CODEC_VERSION = 81
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 
@@ -169,6 +169,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "pay_combat_reward",
             "resolve_agent_card_effect",
             "resolve_board_effect",
+            "resolve_desert_tactics_without_trash",
             "resolve_espionage_without_spy",
             "resolve_faction_influence",
             "retreat_leader_troop",
@@ -490,6 +491,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     templates.extend(_trash_templates(config, "discard_opponent_card"))
     templates.extend(_trash_templates(config, "trash_reveal_card"))
     templates.extend(_trash_templates(config, "trash_combat_reward_card"))
+    templates.extend(_trash_templates(config, "trash_card_for_desert_tactics"))
     templates.extend(_trash_templates(config, "select_corrinth_city_discard"))
     templates.extend(_trash_templates(config, "pay_corrinth_city"))
     return tuple(sorted(templates, key=_template_sort_key))

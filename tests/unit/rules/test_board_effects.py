@@ -25,18 +25,24 @@ from dune_imperium.rules.agent_effects import resolve_faction_influence
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 from dune_imperium.rules.board_effects import (
     CHOICE_DRIVEN_SPACE_IDS,
+    apply_desert_tactics_action,
     apply_espionage_action,
     apply_maker_space_action,
     apply_shipping_action,
     apply_sietch_tabr_action,
     board_effect_is_implemented,
     board_effects_for,
+    legal_desert_tactics_actions,
     legal_espionage_actions,
     legal_maker_space_actions,
     legal_shipping_actions,
     legal_sietch_tabr_actions,
     resolve_board_effect,
     static_board_effects,
+)
+from dune_imperium.rules.combat_deployment import (
+    apply_combat_deployment,
+    legal_combat_deployments,
 )
 from dune_imperium.rules.contracts import apply_contract_action, legal_contract_actions
 from dune_imperium.rules.effects import (
@@ -654,6 +660,153 @@ def test_shipping_choice_awards_the_two_influence_friendship_vp() -> None:
     assert any(event.kind == "influence_gained" for event in result.events)
 
 
+def _desert_tactics_state() -> GameState:
+    fremen_card = _instance("diplomacy")
+    hand_card = _instance("dagger")
+    discard_card = _instance("reconnaissance")
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        players=(
+            PlayerState(
+                player_id=0,
+                hand=(fremen_card, hand_card),
+                discard_pile=(discard_card,),
+            ),
+            *(PlayerState(player_id=seat) for seat in range(1, 4)),
+        ),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    return apply_agent_action(state, _action_to(state, "desert_tactics")).state
+
+
+def test_desert_tactics_placement_pays_exactly_one_water() -> None:
+    state = _desert_tactics_state()
+
+    assert state.players[0].resources.water == 0
+    context = dict(state.decision_stack[-1].context)
+    assert context["pending_board_effect"] is True
+    assert context["space_id"] == "desert_tactics"
+
+
+def test_desert_tactics_offers_decline_and_every_eligible_card_trash() -> None:
+    state = _desert_tactics_state()
+    owner = state.players[0]
+    actions = legal_desert_tactics_actions(state, 0)
+
+    assert len(actions) == 1 + len(owner.hand) + len(owner.discard_pile) + len(
+        owner.in_play
+    )
+    assert actions[0].action_id == "resolve_desert_tactics_without_trash"
+    trash_actions = actions[1:]
+    assert all(
+        action.action_id == "trash_card_for_desert_tactics" for action in trash_actions
+    )
+    assert {dict(action.arguments)["card_id"] for action in trash_actions} == {
+        *owner.hand,
+        *owner.discard_pile,
+        *owner.in_play,
+    }
+
+
+def test_desert_tactics_trash_variant_recruits_and_trashes_chosen_card() -> None:
+    state = _desert_tactics_state()
+    owner = state.players[0]
+    trash_target = owner.discard_pile[0]
+    action = next(
+        candidate
+        for candidate in legal_desert_tactics_actions(state, 0)
+        if candidate.action_id == "trash_card_for_desert_tactics"
+        and dict(candidate.arguments)["card_id"] == trash_target
+    )
+
+    result = apply_desert_tactics_action(state, action)
+    resolved = result.state
+    resolved_owner = resolved.players[0]
+    context = dict(resolved.decision_stack[-1].context)
+
+    assert resolved_owner.troops_garrison == owner.troops_garrison + 1
+    assert context["troops_recruited"] == 1
+    assert trash_target not in resolved_owner.hand
+    assert trash_target not in resolved_owner.discard_pile
+    assert trash_target not in resolved_owner.in_play
+    assert trash_target in resolved_owner.trashed
+    assert result.events[-1].kind == "board_effect_resolved"
+    assert dict(result.events[-1].payload) == {
+        "action_id": "trash_card_for_desert_tactics",
+        "player": 0,
+        "space_id": "desert_tactics",
+    }
+    assert any(
+        deploy.action_id == "deploy_troops"
+        for deploy in legal_combat_deployments(resolved, 0)
+    )
+
+
+def test_desert_tactics_decline_variant_recruits_without_trashing() -> None:
+    state = _desert_tactics_state()
+    owner = state.players[0]
+    decline = next(
+        candidate
+        for candidate in legal_desert_tactics_actions(state, 0)
+        if candidate.action_id == "resolve_desert_tactics_without_trash"
+    )
+
+    result = apply_desert_tactics_action(state, decline)
+    resolved_owner = result.state.players[0]
+
+    assert resolved_owner.troops_garrison == owner.troops_garrison + 1
+    assert resolved_owner.hand == owner.hand
+    assert resolved_owner.discard_pile == owner.discard_pile
+    assert resolved_owner.in_play == owner.in_play
+    assert resolved_owner.trashed == ()
+    assert result.events[-1].kind == "board_effect_resolved"
+    assert dict(result.events[-1].payload) == {
+        "action_id": "resolve_desert_tactics_without_trash",
+        "player": 0,
+        "space_id": "desert_tactics",
+    }
+
+
+def test_desert_tactics_can_trash_the_just_played_card_itself() -> None:
+    state = _desert_tactics_state()
+    owner = state.players[0]
+    played_card = owner.in_play[-1]
+    action = next(
+        candidate
+        for candidate in legal_desert_tactics_actions(state, 0)
+        if candidate.action_id == "trash_card_for_desert_tactics"
+        and dict(candidate.arguments)["card_id"] == played_card
+    )
+
+    trashed_state = apply_desert_tactics_action(state, action).state
+    resolved_owner = trashed_state.players[0]
+
+    assert played_card not in resolved_owner.in_play
+    assert played_card in resolved_owner.trashed
+
+    deployment = next(
+        candidate
+        for candidate in legal_combat_deployments(trashed_state, 0)
+        if dict(candidate.arguments)["count"] == 0
+    )
+    deployed_state = apply_combat_deployment(trashed_state, deployment).state
+    # Desert Tactics' Fremen icon leaves the generic Faction Influence choice
+    # pending independently of the board effect just resolved above.
+    finished = resolve_faction_influence(deployed_state).state
+    decision = finished.decision_stack[-1].decision
+
+    assert isinstance(decision, PlayerDecision)
+    assert decision.owner == 1
+
+
 def _hagga_basin_state(*, wall_present: bool) -> GameState:
     state = _state("dune_the_desert_planet")
     owner = replace(state.players[0], maker_hooks=True)
@@ -831,7 +984,7 @@ def test_static_board_effects_pins_the_full_printed_domain() -> None:
 
 
 def test_unimplemented_board_spaces_are_exactly_pinned() -> None:
-    base_hidden = {"secrets", "desert_tactics", "imperial_privilege"}
+    base_hidden = {"secrets", "imperial_privilege"}
     for choam_module, expected_hidden in (
         (False, base_hidden),
         (True, base_hidden),

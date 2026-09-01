@@ -441,5 +441,4 @@ def test_engine_withholds_agent_actions_it_cannot_execute() -> None:
     destinations = {dict(a.arguments)["space_id"] for a in agent_actions}
     assert "dutiful_service" in destinations
     assert "secrets" not in destinations
-    assert "desert_tactics" not in destinations
     assert any(action.action_id == "reveal_turn" for action in actions)

@@ -51,6 +51,7 @@ from dune_imperium.rules.agent_effects import (
 )
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 from dune_imperium.rules.board_effects import (
+    apply_desert_tactics_action,
     apply_espionage_action,
     apply_maker_space_action,
     apply_shipping_action,
@@ -335,6 +336,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "harvest_maker_spice": apply_maker_space_action,
     "summon_maker_sandworms": apply_maker_space_action,
     "choose_shipping_influence": apply_shipping_action,
+    "resolve_desert_tactics_without_trash": apply_desert_tactics_action,
+    "trash_card_for_desert_tactics": apply_desert_tactics_action,
     "deploy_troops": apply_combat_deployment,
     # Agent-card serial choices
     "trash_agent_card": apply_agent_card_trash,

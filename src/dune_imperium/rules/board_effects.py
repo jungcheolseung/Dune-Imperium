@@ -10,6 +10,7 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState, Resources
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
+from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effects import (
     AutomaticEffect,
@@ -44,6 +45,7 @@ CHOICE_DRIVEN_SPACE_IDS = frozenset(
         "hagga_basin",
         "imperial_basin",
         "shipping",
+        "desert_tactics",
     }
 )
 
@@ -569,6 +571,96 @@ def apply_shipping_action(
         ),
     )
     return RuleResult(state=next_state, events=(*gained.events, event))
+
+
+def legal_desert_tactics_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return Desert Tactics' decline-or-trash choices for its optional trash."""
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return ()
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    if (
+        context.get("pending_board_effect") is not True
+        or context.get("space_id") != "desert_tactics"
+    ):
+        return ()
+    owner = state.players[player]
+    return (
+        DomainAction(action_id="resolve_desert_tactics_without_trash", actor=player),
+        *(
+            DomainAction(
+                action_id="trash_card_for_desert_tactics",
+                actor=player,
+                arguments=(("card_id", card_id),),
+            )
+            for card_id in (*owner.hand, *owner.discard_pile, *owner.in_play)
+        ),
+    )
+
+
+def apply_desert_tactics_action(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Recruit 1 troop and resolve Desert Tactics' optional card trash."""
+
+    if action not in legal_desert_tactics_actions(state, action.actor):
+        raise ValueError("action is not a legal Desert Tactics choice")
+    _, context = current_agent_effect_context(state)
+    owner = state.players[action.actor]
+    owner, recruited = recruit_troops(owner, 1)
+    previous = context.get("troops_recruited")
+    if isinstance(previous, bool) or not isinstance(previous, int):
+        raise RuntimeError("Agent-turn effect frame has invalid recruit count")
+    context["troops_recruited"] = previous + recruited
+
+    players = tuple(
+        owner if candidate.player_id == action.actor else candidate
+        for candidate in state.players
+    )
+    effect_state = replace(state, players=players)
+    events: list[GameEvent] = []
+    if action.action_id == "trash_card_for_desert_tactics":
+        card_value = dict(action.arguments)["card_id"]
+        if not isinstance(card_value, str):
+            raise RuntimeError("Desert Tactics trash choice has invalid card ID")
+        trashed = trash_personal_card(
+            effect_state,
+            action.actor,
+            card_value,
+            source=(
+                f"round:{state.round_number}:player:{action.actor}:board:"
+                "desert_tactics"
+            ),
+        )
+        effect_state = trashed.state
+        events.extend(trashed.events)
+
+    context["pending_board_effect"] = False
+    next_state = advance_after_effect(effect_state, context, effect_state.players)
+    events.append(
+        GameEvent(
+            event_id=(
+                f"round:{state.round_number}:player:{action.actor}:board:"
+                "desert_tactics"
+            ),
+            kind="board_effect_resolved",
+            payload=(
+                ("action_id", action.action_id),
+                ("player", action.actor),
+                ("space_id", "desert_tactics"),
+            ),
+        )
+    )
+    return RuleResult(state=next_state, events=tuple(events))
 
 
 def legal_maker_space_actions(
