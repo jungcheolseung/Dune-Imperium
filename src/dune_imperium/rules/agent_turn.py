@@ -80,10 +80,11 @@ def legal_agent_actions(state: GameState, player: int) -> tuple[DomainAction, ..
                     )
                 )
                 continue
-            # OQ-006 intentionally leaves multi-opponent occupancy unavailable
-            # until an official ruling determines how many Spies it requires.
-            if len(occupying_opponents) > 1:
-                continue
+            # OQ-006 decided convention: Infiltrate's trigger is the
+            # occupied-by-another-player predicate and its printed cost is one
+            # connected Spy recall, so a single recall ignores the opposing
+            # occupancy however many opponent Agents share the space
+            # [Main p. 11].
             for post_id in _connected_spy_post_ids(owner, space.space_id):
                 actions.extend(
                     _actions_for_affordable_costs(

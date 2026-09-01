@@ -435,16 +435,20 @@ def test_infiltrate_does_not_bypass_icon_or_connection_requirements() -> None:
     assert "assembly_hall" not in _space_ids(replace(state, players=opponents))
 
 
-def test_infiltrate_defers_space_with_multiple_opposing_agents() -> None:
+def test_infiltrate_enters_multi_opponent_space_for_one_spy_recall() -> None:
+    # OQ-006 decided convention: Infiltrate's cost is one connected Spy
+    # recall regardless of how many opponent Agents occupy the space
+    # [Main p. 11].
     dagger = _instance(0, "dagger")
+    post_id = "landsraad-assembly-hall-gather-support"
     owner = PlayerState(
         player_id=0,
         hand=(dagger,),
         spies_supply=2,
-        spy_post_ids=("landsraad-assembly-hall-gather-support",),
+        spy_post_ids=(post_id,),
     )
     state = _state(owner=owner)
-    opponents = tuple(
+    players = tuple(
         replace(
             candidate,
             agents_available=1,
@@ -454,8 +458,21 @@ def test_infiltrate_defers_space_with_multiple_opposing_agents() -> None:
         else candidate
         for candidate in state.players
     )
+    state = replace(state, players=players)
 
-    assert "assembly_hall" not in _space_ids(replace(state, players=opponents))
+    action = _action_to(state, "assembly_hall")
+    assert dict(action.arguments)["infiltrate_post_id"] == post_id
+
+    result = apply_agent_action(state, action)
+    next_owner = result.state.players[0]
+
+    assert next_owner.agent_locations == ("assembly_hall",)
+    assert next_owner.spies_supply == 3
+    assert next_owner.spy_post_ids == ()
+    assert tuple(event.kind for event in result.events) == (
+        "agent_placed",
+        "spy_recalled_for_infiltrate",
+    )
 
 
 def test_only_current_decision_owner_receives_agent_actions() -> None:
