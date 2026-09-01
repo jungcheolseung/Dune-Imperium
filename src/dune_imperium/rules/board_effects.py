@@ -4,7 +4,8 @@ from dataclasses import replace
 
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.core.actions import DomainAction
-from dune_imperium.core.decisions import PlayerDecision
+from dune_imperium.core.chance import ChanceOutcome
+from dune_imperium.core.decisions import ChanceDecision, DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState, Resources
@@ -22,8 +23,12 @@ from dune_imperium.rules.effects import (
     current_agent_effect_context,
     recruit_troops,
 )
+from dune_imperium.rules.frames import FrameKind, context_int, top_frame_of_kind
 from dune_imperium.rules.influence import gain_faction_influence
-from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
+from dune_imperium.rules.intrigue_deck import (
+    draw_intrigue_cards,
+    draw_or_queue_intrigue_cards,
+)
 from dune_imperium.rules.leader_abilities import units_deployment_blocked
 from dune_imperium.rules.shield_wall import (
     current_conflict_is_shield_wall_protected,
@@ -114,6 +119,8 @@ def static_board_effects(
             return (DrawImperiumCardsEffect(1),)
         case "assembly_hall", 0:
             return (DrawIntrigueCardsEffect(1),)
+        case "secrets", 0:
+            return (DrawIntrigueCardsEffect(1),)
         case "high_council", 0:
             return ()
         case "swordmaster", 0 | 1:
@@ -138,6 +145,87 @@ def static_board_effects(
             raise NotImplementedError(
                 f"board effect is not implemented: {space_id} option {cost_option}"
             )
+
+
+def _secrets_victims(state: GameState, thief: int) -> tuple[int, ...]:
+    """Return opponents clockwise from ``thief`` holding 4+ Intrigue cards.
+
+    Only HELD Intrigue counts [Board Guide p. 2, Main p. 7]; face-up trigger
+    cards in ``intrigue_faceup`` are played, not held, and do not count.
+    """
+    players = state.config.players
+    return tuple(
+        seat
+        for seat in ((thief + offset) % players for offset in range(1, players))
+        if len(state.players[seat].intrigue_cards) >= 4
+    )
+
+
+def _secrets_steal_frame(
+    state: GameState,
+    thief: int,
+    victim: int,
+    options: tuple[str, ...],
+) -> DecisionFrame:
+    decision_id = (
+        f"round:{state.round_number}:player:{thief}:board:secrets:steal:{victim}"
+    )
+    return DecisionFrame(
+        kind=FrameKind.SECRETS_STEAL,
+        frame_id=f"{decision_id}:secrets_steal",
+        decision=ChanceDecision(
+            decision_id=decision_id,
+            prompt=f"Randomly steal one Intrigue card from player {victim}",
+            options=options,
+            count=1,
+        ),
+        context=(("thief", thief), ("victim", victim)),
+    )
+
+
+def secrets_steal_is_pending(state: GameState) -> bool:
+    """Return whether the top decision is a Secrets random-steal chance."""
+
+    frame = top_frame_of_kind(state, FrameKind.SECRETS_STEAL)
+    return frame is not None and isinstance(frame.decision, ChanceDecision)
+
+
+def apply_secrets_steal(state: GameState, outcome: ChanceOutcome) -> RuleResult:
+    """Move the randomly chosen Intrigue card from victim to thief."""
+
+    frame = top_frame_of_kind(state, FrameKind.SECRETS_STEAL)
+    if frame is None or not isinstance(frame.decision, ChanceDecision):
+        raise ValueError("the current chance decision is not a Secrets steal")
+    context = dict(frame.context)
+    owner_label = "Secrets steal frame"
+    thief = context_int(context, "thief", owner=owner_label)
+    victim = context_int(context, "victim", owner=owner_label)
+    card_id = outcome.values[0]
+
+    victim_state = state.players[victim]
+    thief_state = state.players[thief]
+    next_victim = replace(
+        victim_state,
+        intrigue_cards=tuple(c for c in victim_state.intrigue_cards if c != card_id),
+    )
+    next_thief = replace(
+        thief_state, intrigue_cards=(*thief_state.intrigue_cards, card_id)
+    )
+    players = tuple(
+        next_victim
+        if candidate.player_id == victim
+        else next_thief
+        if candidate.player_id == thief
+        else candidate
+        for candidate in state.players
+    )
+    next_state = replace(state.pop_decision(), players=players)
+    event = GameEvent(
+        event_id=f"{frame.decision.decision_id}:stolen",
+        kind="intrigue_card_stolen",
+        payload=(("card_id", card_id), ("player", thief), ("victim", victim)),
+    )
+    return RuleResult(state=next_state, events=(event,))
 
 
 def resolve_board_effect(state: GameState) -> RuleResult:
@@ -240,6 +328,32 @@ def resolve_board_effect(state: GameState) -> RuleResult:
         )
         next_state = contracts.state
         contract_events = contracts.events
+    steal_events: tuple[GameEvent, ...] = ()
+    if space_id == "secrets":
+        victims = _secrets_victims(next_state, player)
+        for victim in reversed(victims):
+            next_state = next_state.push_decision(
+                _secrets_steal_frame(
+                    next_state,
+                    player,
+                    victim,
+                    next_state.players[victim].intrigue_cards,
+                )
+            )
+        if victims and next_state.pending_intrigue_draws:
+            queued_player, queued_count, queued_source = (
+                next_state.pending_intrigue_draws[0]
+            )
+            if queued_player != player or len(next_state.pending_intrigue_draws) != 1:
+                raise RuntimeError("Secrets has an unexpected queued Intrigue draw")
+            reshuffle = draw_intrigue_cards(
+                replace(next_state, pending_intrigue_draws=()),
+                queued_player,
+                queued_count,
+                source=queued_source,
+            )
+            next_state = reshuffle.state
+            steal_events = reshuffle.events
     event = GameEvent(
         event_id=f"round:{state.round_number}:player:{player}:board:{space_id}",
         kind="board_effect_resolved",
@@ -247,7 +361,7 @@ def resolve_board_effect(state: GameState) -> RuleResult:
     )
     return RuleResult(
         state=next_state,
-        events=(*intrigue_events, *draw_events, *contract_events, event),
+        events=(*intrigue_events, *draw_events, *contract_events, *steal_events, event),
     )
 
 

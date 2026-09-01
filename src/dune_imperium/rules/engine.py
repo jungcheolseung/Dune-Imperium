@@ -55,10 +55,12 @@ from dune_imperium.rules.board_effects import (
     apply_espionage_action,
     apply_imperial_privilege_action,
     apply_maker_space_action,
+    apply_secrets_steal,
     apply_shipping_action,
     apply_sietch_tabr_action,
     board_effect_is_implemented,
     resolve_board_effect,
+    secrets_steal_is_pending,
 )
 from dune_imperium.rules.card_draw import (
     apply_personal_draw_reshuffle,
@@ -461,6 +463,8 @@ class UprisingRulesEngine(RulesEngine):
             result = apply_personal_draw_reshuffle(state, outcome)
         elif intrigue_reshuffle_is_pending(state):
             result = apply_intrigue_reshuffle(state, outcome)
+        elif secrets_steal_is_pending(state):
+            result = apply_secrets_steal(state, outcome)
         else:
             result = apply_round_start_reshuffle(state, outcome)
         # An Intrigue draw granted by a Reveal passive may queue a reshuffle,

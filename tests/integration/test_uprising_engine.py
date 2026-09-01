@@ -436,9 +436,9 @@ def test_engine_withholds_agent_actions_it_cannot_execute() -> None:
 
     # Leader abilities are not implemented, so Signet Ring stays in hand.
     assert all(dict(a.arguments)["card_id"] != signet_ring for a in agent_actions)
-    # Intrigue-driven board effects are not implemented, so those spaces are hidden
-    # from the dispatcher even though the rules module enumerates them.
+    # Every board-space effect is implemented, so Diplomacy's Faction-icon
+    # destinations are all advertised even though Signet Ring above is not.
     destinations = {dict(a.arguments)["space_id"] for a in agent_actions}
     assert "dutiful_service" in destinations
-    assert "secrets" not in destinations
+    assert "secrets" in destinations
     assert any(action.action_id == "reveal_turn" for action in actions)

@@ -30,6 +30,7 @@ from dune_imperium.rules.board_effects import (
     apply_espionage_action,
     apply_imperial_privilege_action,
     apply_maker_space_action,
+    apply_secrets_steal,
     apply_shipping_action,
     apply_sietch_tabr_action,
     board_effect_is_implemented,
@@ -1116,6 +1117,182 @@ def test_imperial_basin_collects_spice_without_a_sandworm_choice() -> None:
     )
 
 
+def _secrets_state(
+    *,
+    seat1_intrigue: tuple[str, ...] = (),
+    seat1_faceup: tuple[str, ...] = (),
+    seat2_intrigue: tuple[str, ...] = (),
+    seat3_intrigue: tuple[str, ...] = (),
+    intrigue_deck: tuple[str, ...] = (),
+    intrigue_discard: tuple[str, ...] = (),
+) -> GameState:
+    state = _state("diplomacy")
+    seat1 = replace(
+        state.players[1], intrigue_cards=seat1_intrigue, intrigue_faceup=seat1_faceup
+    )
+    seat2 = replace(state.players[2], intrigue_cards=seat2_intrigue)
+    seat3 = replace(state.players[3], intrigue_cards=seat3_intrigue)
+    state = replace(
+        state,
+        players=(state.players[0], seat1, seat2, seat3),
+        intrigue_deck=intrigue_deck,
+        intrigue_discard=intrigue_discard,
+    )
+    return apply_agent_action(state, _action_to(state, "secrets")).state
+
+
+def test_secrets_no_qualifying_opponent_only_draws_intrigue() -> None:
+    # With every opponent below 4 held Intrigue cards [Board Guide p. 2], the
+    # Bene Gesserit Influence stays pending on the generic faction-visit path
+    # and no random-steal frame is pushed.
+    placed = _secrets_state(intrigue_deck=("intrigue:drawn",))
+
+    resolved = resolve_board_effect(placed).state
+
+    assert resolved.players[0].intrigue_cards == ("intrigue:drawn",)
+    assert not any(frame.kind == "secrets_steal" for frame in resolved.decision_stack)
+    top = resolved.decision_stack[-1]
+    assert top.kind == "agent_effects"
+    assert dict(top.context)["pending_faction_influence"] is True
+
+
+def test_secrets_one_qualifying_opponent_pushes_a_steal_frame() -> None:
+    victim_cards = ("intrigue:a", "intrigue:b", "intrigue:c", "intrigue:d")
+    placed = _secrets_state(seat1_intrigue=victim_cards)
+
+    resolved = resolve_board_effect(placed).state
+    top = resolved.decision_stack[-1]
+
+    assert top.kind == "secrets_steal"
+    decision = top.decision
+    assert isinstance(decision, ChanceDecision)
+    assert decision.options == victim_cards
+    assert decision.count == 1
+    assert dict(top.context) == {"thief": 0, "victim": 1}
+
+    outcome = ChanceResolver(seed=3).resolve(decision)
+    applied = apply_secrets_steal(resolved, outcome).state
+    stolen = outcome.values[0]
+
+    assert applied.players[1].intrigue_cards == tuple(
+        card for card in victim_cards if card != stolen
+    )
+    assert applied.players[0].intrigue_cards == (stolen,)
+    assert applied.decision_stack[-1].kind != "secrets_steal"
+
+
+def test_secrets_two_qualifying_opponents_resolve_clockwise_from_the_thief() -> None:
+    seat1_cards = ("intrigue:s1a", "intrigue:s1b", "intrigue:s1c", "intrigue:s1d")
+    seat2_cards = ("intrigue:s2a", "intrigue:s2b", "intrigue:s2c", "intrigue:s2d")
+    placed = _secrets_state(seat1_intrigue=seat1_cards, seat2_intrigue=seat2_cards)
+
+    resolved = resolve_board_effect(placed).state
+    steal_frames = [
+        frame for frame in resolved.decision_stack if frame.kind == "secrets_steal"
+    ]
+    assert len(steal_frames) == 2
+
+    # The seat immediately clockwise after the thief resolves first.
+    top = resolved.decision_stack[-1]
+    assert dict(top.context)["victim"] == 1
+    assert isinstance(top.decision, ChanceDecision)
+    assert top.decision.options == seat1_cards
+
+    outcome1 = ChanceResolver(seed=1).resolve(top.decision)
+    after_seat1 = apply_secrets_steal(resolved, outcome1).state
+    next_top = after_seat1.decision_stack[-1]
+
+    assert next_top.kind == "secrets_steal"
+    assert dict(next_top.context)["victim"] == 2
+    assert isinstance(next_top.decision, ChanceDecision)
+    assert next_top.decision.options == seat2_cards
+
+    outcome2 = ChanceResolver(seed=2).resolve(next_top.decision)
+    final = apply_secrets_steal(after_seat1, outcome2).state
+
+    assert final.players[1].intrigue_cards == tuple(
+        card for card in seat1_cards if card != outcome1.values[0]
+    )
+    assert final.players[2].intrigue_cards == tuple(
+        card for card in seat2_cards if card != outcome2.values[0]
+    )
+    assert final.players[0].intrigue_cards == (outcome1.values[0], outcome2.values[0])
+    assert final.decision_stack[-1].kind != "secrets_steal"
+
+
+def test_secrets_below_threshold_opponent_is_not_a_victim() -> None:
+    placed = _secrets_state(
+        seat1_intrigue=("intrigue:x", "intrigue:y", "intrigue:z"),
+        seat2_intrigue=("intrigue:a", "intrigue:b", "intrigue:c", "intrigue:d"),
+        seat3_intrigue=("intrigue:e", "intrigue:f", "intrigue:g", "intrigue:h"),
+    )
+
+    resolved = resolve_board_effect(placed).state
+    victims = {
+        dict(frame.context)["victim"]
+        for frame in resolved.decision_stack
+        if frame.kind == "secrets_steal"
+    }
+
+    assert victims == {2, 3}
+
+
+def test_secrets_faceup_intrigue_does_not_count_toward_the_threshold() -> None:
+    # Face-up trigger cards sit in a separate public zone and are played, not
+    # held [Main p. 7], so they never count toward the 4-card threshold.
+    placed = _secrets_state(
+        seat1_intrigue=("intrigue:x", "intrigue:y", "intrigue:z"),
+        seat1_faceup=("intrigue:trigger_a", "intrigue:trigger_b"),
+    )
+
+    resolved = resolve_board_effect(placed).state
+
+    assert not any(frame.kind == "secrets_steal" for frame in resolved.decision_stack)
+
+
+def test_secrets_reshuffle_resolves_before_the_steal_frame() -> None:
+    # Secrets' generic Intrigue draw still goes through the queued
+    # reshuffle-safe path [FAQ p. 2]. The printed order draws the Intrigue
+    # card first, so the reshuffle chance must resolve before the random
+    # steal frames (mirrors
+    # test_owed_intrigue_draws_reshuffle_the_discard_before_the_next_decision
+    # in test_intrigue.py).
+    victim_cards = ("intrigue:a", "intrigue:b", "intrigue:c", "intrigue:d")
+    state = _state("diplomacy")
+    victim = replace(state.players[1], intrigue_cards=victim_cards)
+    state = replace(
+        state,
+        players=(state.players[0], victim, *state.players[2:]),
+        intrigue_discard=("intrigue:cunning", "intrigue:devour"),
+    )
+    engine = UprisingRulesEngine()
+    to_secrets = next(
+        action
+        for action in engine.legal_actions(state, 0)
+        if action.action_id == "agent_turn"
+        and dict(action.arguments)["space_id"] == "secrets"
+    )
+    placed = engine.apply(state, to_secrets).state
+
+    pending = engine.apply(
+        placed, DomainAction(action_id="resolve_board_effect", actor=0)
+    )
+    decision = pending.next_decision
+
+    assert isinstance(decision, ChanceDecision)
+    assert "intrigue_shuffle" in decision.decision_id
+    assert pending.state.pending_intrigue_draws == ()
+
+    outcome = ChanceResolver(seed=7).resolve(decision)
+    resolved = engine.apply(pending.state, outcome)
+    next_top = resolved.state.decision_stack[-1]
+
+    assert next_top.kind == "secrets_steal"
+    assert isinstance(next_top.decision, ChanceDecision)
+    assert "secrets:steal:1" in next_top.decision.decision_id
+    assert next_top.decision.options == victim_cards
+
+
 # The display catalog renders board-space effect text from the same static
 # table the engine executes, so the full printed domain is pinned here: every
 # manifest space x cost option x ruleset maps to an exact effect tuple, or to
@@ -1127,7 +1304,7 @@ _BASE_EFFECT_TABLE: dict[str, dict[int, tuple[object, ...] | None]] = {
     "deliver_supplies": {0: (GainResourcesEffect(water=1),)},
     "heighliner": {0: (RecruitTroopsEffect(5),)},
     "espionage": {0: None},
-    "secrets": {0: None},
+    "secrets": {0: (DrawIntrigueCardsEffect(1),)},
     "desert_tactics": {0: None},
     "fremkit": {0: (DrawImperiumCardsEffect(1),)},
     "assembly_hall": {0: (DrawIntrigueCardsEffect(1),)},
@@ -1187,7 +1364,7 @@ def test_static_board_effects_pins_the_full_printed_domain() -> None:
 
 
 def test_unimplemented_board_spaces_are_exactly_pinned() -> None:
-    base_hidden = {"secrets"}
+    base_hidden: set[str] = set()
     for choam_module, expected_hidden in (
         (False, base_hidden),
         (True, base_hidden),

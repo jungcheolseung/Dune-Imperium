@@ -38,6 +38,7 @@ class FrameKind(StrEnum):
     INTRIGUE_CHOICE = "intrigue_choice"
     INTRIGUE_TRIGGER_SPY = "intrigue_trigger_spy"
     LEADER_DRAFT = "leader_draft"
+    SECRETS_STEAL = "secrets_steal"
 
 
 def top_frame(state: GameState) -> DecisionFrame | None:

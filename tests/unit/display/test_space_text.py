@@ -38,9 +38,7 @@ def test_implemented_flags_mirror_the_engine_gate() -> None:
         for space in BOARD_SPACES
         if not space_is_implemented(space.space_id, choam_module=True)
     }
-    assert base_hidden == {
-        "secrets",
-    }
+    assert base_hidden == set()
     assert choam_hidden == base_hidden
 
 
