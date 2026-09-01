@@ -40,6 +40,33 @@ def test_checked_game_passes_every_invariant() -> None:
     assert 0 <= report.winner < 4
 
 
+@pytest.mark.parametrize("game_seed", [485, 563])
+def test_mid_frame_reward_reshuffle_seeds_run_to_finished(game_seed: int) -> None:
+    # In these rotated-leader random games Cunning's owner resolved the
+    # automatic draw first (OQ-015) while the personal deck was empty; the
+    # queued reshuffle chance frame must stack on the updated choice frame
+    # instead of being overwritten, or the stale frame finishes the card a
+    # second time (2026-09-02 sweep).
+    import random
+
+    from dune_imperium.content.uprising.leaders import leaders_for_choam
+
+    leader_ids = tuple(
+        random.Random(game_seed).sample(
+            [leader.leader_id for leader in leaders_for_choam(False)], k=4
+        )
+    )
+    report = run_checked_game(
+        RulesetConfig(),
+        game_seed=game_seed,
+        policy_seed=700_000 + game_seed,
+        privacy_interval=0,
+        engine=UprisingRulesEngine(leader_ids=leader_ids),
+    )
+
+    assert report.rounds >= 8
+
+
 def test_checked_heuristic_game_passes_every_invariant() -> None:
     report = run_checked_game(
         RulesetConfig(choam_module=True),

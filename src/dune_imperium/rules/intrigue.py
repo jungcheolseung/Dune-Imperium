@@ -469,12 +469,15 @@ def apply_intrigue_rewards(state: GameState, action: DomainAction) -> RuleResult
         raise RuntimeError("Intrigue rewards resolution requires its choice frame")
     context = frame_context(frame)
     source = context_str(context, "source", owner=_CHOICE_FRAME)
-    applied = _apply_section_rewards(
-        state, action.actor, _sections(context), f"{source}:rewards"
-    )
+    # The frame is marked before the rewards apply so a draw that pushes a
+    # reshuffle chance frame stacks on the already-updated frame, exactly
+    # like the acquisition slot's advance-before-move pattern.
     context["rewards_applied"] = True
-    next_state = replace_top_frame(applied.state, with_context(frame, context))
-    return RuleResult(state=next_state, events=applied.events)
+    advanced = replace_top_frame(state, with_context(frame, context))
+    applied = _apply_section_rewards(
+        advanced, action.actor, _sections(context), f"{source}:rewards"
+    )
+    return RuleResult(state=applied.state, events=applied.events)
 
 
 def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
