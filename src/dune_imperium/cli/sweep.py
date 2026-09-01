@@ -1,9 +1,19 @@
 """CLI for the M7 full-game verification sweep."""
 
 import argparse
+import json
 from collections.abc import Sequence
+from pathlib import Path
 
-from dune_imperium.simulation.sweep import POLICIES, run_sweep, sweep_specs
+from dune_imperium.simulation.coverage import Census, merge_coverage, zero_coverage
+from dune_imperium.simulation.sweep import (
+    POLICIES,
+    GameCheckReport,
+    run_sweep,
+    sweep_specs,
+)
+
+_ChoamModuleByRuleset = {"uprising-4p-base": False, "uprising-4p-choam": True}
 
 _RULESETS = {
     "base": (False,),
@@ -57,6 +67,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help="use the OQ-007 six-Leader draft setup instead of fixed Leaders",
     )
     parser.add_argument(
+        "--rotate-leaders",
+        action="store_true",
+        help=(
+            "deal each game a different random four-Leader roster (deterministic "
+            "per game seed) instead of the engine's fixed default; rejected "
+            "together with --leader-draft"
+        ),
+    )
+    parser.add_argument(
         "--workers",
         type=int,
         default=1,
@@ -72,6 +91,16 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--soundness-interval",
+        type=int,
+        default=0,
+        help=(
+            "at every Nth player decision, check that every advertised legal "
+            "action applies and round-trips through the action codec; "
+            "0 disables the check (default: 0)"
+        ),
+    )
+    parser.add_argument(
         "--max-steps",
         type=int,
         default=30_000,
@@ -82,11 +111,55 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="skip the per-game replay verification",
     )
+    parser.add_argument(
+        "--coverage-json",
+        type=Path,
+        default=None,
+        help=(
+            "collect a content-coverage census per ruleset and write "
+            "{ruleset: {counts, zero}} JSON to this path"
+        ),
+    )
     return parser
 
 
+def _write_coverage_report(
+    games: tuple[GameCheckReport, ...],
+    path: Path,
+) -> None:
+    """Merge each game's census per ruleset, print zero-coverage, write JSON."""
+
+    merged: dict[str, Census] = {}
+    for game in games:
+        if game.coverage is None:
+            continue
+        merged[game.ruleset] = (
+            merge_coverage(merged[game.ruleset], game.coverage)
+            if game.ruleset in merged
+            else game.coverage
+        )
+
+    report: dict[str, dict[str, object]] = {}
+    for ruleset, counts in sorted(merged.items()):
+        zero = zero_coverage(counts, choam_module=_ChoamModuleByRuleset[ruleset])
+        report[ruleset] = {"counts": counts, "zero": zero}
+        zero_summary = ", ".join(
+            f"{dimension}={len(missing)}" for dimension, missing in sorted(zero.items())
+        )
+        print(
+            f"coverage {ruleset}: {len(counts)} dimensions tracked; "
+            f"zero counts: {zero_summary}"
+        )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(report, indent=2, sort_keys=True))
+    print(f"coverage census written to {path}")
+
+
 def main(argv: Sequence[str] | None = None) -> int:
-    arguments = _build_parser().parse_args(argv)
+    parser = _build_parser()
+    arguments = parser.parse_args(argv)
+    if arguments.rotate_leaders and arguments.leader_draft:
+        parser.error("--rotate-leaders cannot be combined with --leader-draft")
     specs = sweep_specs(
         games=arguments.games,
         rulesets=_RULESETS[arguments.ruleset],
@@ -94,9 +167,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         policy_offset=arguments.policy_offset,
         max_steps=arguments.max_steps,
         privacy_interval=arguments.privacy_interval,
+        soundness_interval=arguments.soundness_interval,
         verify_replay=not arguments.skip_replay,
         policy=arguments.policy,
         leader_draft=arguments.leader_draft,
+        rotate_leaders=arguments.rotate_leaders,
+        collect_coverage=arguments.coverage_json is not None,
     )
     report = run_sweep(specs, workers=arguments.workers)
 
@@ -119,6 +195,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             f"rounds: min {rounds[0]} / median {rounds[len(rounds) // 2]} / "
             f"max {rounds[-1]}; total steps {report.total_steps}"
         )
+    if arguments.coverage_json is not None:
+        _write_coverage_report(report.games, arguments.coverage_json)
     for failure in report.failures:
         print(
             f"FAIL {failure.ruleset} seed={failure.game_seed} "

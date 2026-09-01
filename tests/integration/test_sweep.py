@@ -1,6 +1,8 @@
 """Tests for the M7 verification sweep and its invariant checks."""
 
+import json
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -14,9 +16,12 @@ from dune_imperium.simulation import (
     InvariantViolation,
     check_observation_privacy,
     check_state_invariants,
+    merge_coverage,
+    normalize_instance_id,
     run_checked_game,
     run_sweep,
     sweep_specs,
+    zero_coverage,
 )
 from dune_imperium.simulation.invariants import _scramble_hidden_information
 
@@ -255,3 +260,173 @@ def test_checked_game_state_reaches_finished() -> None:
     assert baseline.state.phase is GamePhase.FINISHED
     assert checked.steps == len(baseline.replay.steps)
     assert checked.winner == baseline.standings[0].player
+
+
+@pytest.mark.parametrize("choam_module", [False, True])
+def test_soundness_interval_checks_every_advertised_action(
+    choam_module: bool,
+) -> None:
+    # Every legal action offered at a sampled decision must apply cleanly
+    # and round-trip through the ActionCodec: a passing run proves every
+    # advertised action in this game is both executable and
+    # codec-expressible, which the sweep otherwise never exercises.
+    report = run_checked_game(
+        RulesetConfig(choam_module=choam_module),
+        game_seed=61,
+        policy_seed=7061,
+        privacy_interval=0,
+        soundness_interval=5,
+    )
+
+    assert report.rounds >= 1
+
+
+def test_normalize_instance_id_strips_prefix_and_copy_index() -> None:
+    assert (
+        normalize_instance_id("imperium:dune_the_desert_planet:3")
+        == "dune_the_desert_planet"
+    )
+    assert (
+        normalize_instance_id("reserve:smuggler_s_harvester:0")
+        == "smuggler_s_harvester"
+    )
+    assert normalize_instance_id("intrigue:cunning:1") == "cunning"
+    assert normalize_instance_id("player:2:starter:signet_ring:0") == "signet_ring"
+    assert normalize_instance_id("bare_identity") == "bare_identity"
+
+
+def test_coverage_census_reports_normalized_identities() -> None:
+    report = run_checked_game(
+        RulesetConfig(),
+        game_seed=61,
+        policy_seed=7061,
+        privacy_interval=0,
+        collect_coverage=True,
+    )
+    coverage = report.coverage
+    assert coverage is not None
+
+    assert coverage["action_ids"]
+    assert coverage["agent_placements"]
+    assert coverage["event_kinds"]
+
+    # Per-copy instance IDs normalize down to a shared identity slug: no
+    # trailing copy-index suffix survives.
+    for key in coverage["cards_played"]:
+        assert not key.rsplit(":", 1)[-1].isdigit()
+    for key in coverage["cards_acquired"]:
+        assert not key.rsplit(":", 1)[-1].isdigit()
+
+    doubled = merge_coverage(coverage, coverage)
+    for dimension, counts in coverage.items():
+        for key, count in counts.items():
+            assert doubled[dimension][key] == count * 2
+
+    zero = zero_coverage(coverage, choam_module=False)
+    # This Conflict never gets drawn into this seeded ten-card deck.
+    assert "seize_spice_refinery" in zero["conflicts"]
+
+
+def test_rotate_leaders_specs_are_deterministic_with_four_distinct_ids() -> None:
+    first = sweep_specs(
+        games=3, rulesets=(False, True), start_seed=61, rotate_leaders=True
+    )
+    second = sweep_specs(
+        games=3, rulesets=(False, True), start_seed=61, rotate_leaders=True
+    )
+
+    assert [spec.leader_ids for spec in first] == [spec.leader_ids for spec in second]
+    for spec in first:
+        assert spec.leader_ids is not None
+        assert len(set(spec.leader_ids)) == 4
+        if not spec.choam_module:
+            assert "shaddam_corrino_iv" not in spec.leader_ids
+
+
+def test_rotate_leaders_choam_roster_can_include_shaddam() -> None:
+    specs = sweep_specs(games=1, rulesets=(True,), start_seed=0, rotate_leaders=True)
+
+    assert specs[0].leader_ids is not None
+    assert "shaddam_corrino_iv" in specs[0].leader_ids
+
+
+def test_rotated_leaders_game_runs_to_finished_under_full_checks() -> None:
+    specs = sweep_specs(
+        games=1,
+        rulesets=(True,),
+        start_seed=500,
+        privacy_interval=5,
+        soundness_interval=5,
+        rotate_leaders=True,
+    )
+    report = run_sweep(specs)
+
+    assert report.failures == ()
+    assert report.games[0].rounds >= 1
+
+
+def test_rotate_leaders_rejects_leader_draft() -> None:
+    with pytest.raises(ValueError, match="rotate_leaders cannot be combined"):
+        sweep_specs(
+            games=1,
+            rulesets=(False,),
+            start_seed=1,
+            rotate_leaders=True,
+            leader_draft=True,
+        )
+
+
+def test_cli_rejects_rotate_leaders_with_leader_draft() -> None:
+    with pytest.raises(SystemExit) as excinfo:
+        sweep_main(["--games", "1", "--rotate-leaders", "--leader-draft"])
+
+    assert excinfo.value.code == 2
+
+
+def test_cli_accepts_soundness_interval() -> None:
+    assert (
+        sweep_main(
+            [
+                "--games",
+                "1",
+                "--ruleset",
+                "base",
+                "--start-seed",
+                "61",
+                "--privacy-interval",
+                "0",
+                "--soundness-interval",
+                "5",
+                "--skip-replay",
+            ]
+        )
+        == 0
+    )
+
+
+def test_cli_writes_coverage_json(tmp_path: Path) -> None:
+    coverage_path = tmp_path / "coverage.json"
+
+    result = sweep_main(
+        [
+            "--games",
+            "1",
+            "--ruleset",
+            "base",
+            "--start-seed",
+            "61",
+            "--privacy-interval",
+            "0",
+            "--skip-replay",
+            "--coverage-json",
+            str(coverage_path),
+        ]
+    )
+
+    assert result == 0
+    payload = json.loads(coverage_path.read_text())
+    assert set(payload) == {"uprising-4p-base"}
+    ruleset_payload = payload["uprising-4p-base"]
+    assert set(ruleset_payload) == {"counts", "zero"}
+    assert ruleset_payload["counts"]["action_ids"]
+    assert "seize_spice_refinery" in ruleset_payload["zero"]["conflicts"]

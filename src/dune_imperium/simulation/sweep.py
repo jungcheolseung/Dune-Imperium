@@ -3,27 +3,33 @@
 ``run_checked_game`` plays one seeded game to ``FINISHED`` — every seat
 driven by one selectable baseline policy — while checking, after every
 transition, the global card-conservation invariants and, at sampled player
-decisions, the observation-privacy invariant. It also detects deadlocks (a
-pending player decision with no legal action or a game that never finishes)
-and verifies the recorded replay. ``run_sweep`` fans a seed range out over
-worker processes and aggregates one report, which the
-``dune-imperium-sweep`` CLI prints.
+decisions, the observation-privacy invariant and (optionally) that every
+advertised legal action actually applies and round-trips through the action
+codec. It also detects deadlocks (a pending player decision with no legal
+action or a game that never finishes) and verifies the recorded replay.
+``run_sweep`` fans a seed range out over worker processes and aggregates one
+report, which the ``dune-imperium-sweep`` CLI prints.
 """
 
+import random
 import time
 from collections.abc import Iterable
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 from typing import Final
 
+from dune_imperium.adapters.action_codec import ActionCodec
 from dune_imperium.agents import Agent, HeuristicAgent, RandomAgent
 from dune_imperium.config import RulesetConfig
+from dune_imperium.content.uprising.leaders import leaders_for_choam
+from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceResolver
 from dune_imperium.core.decisions import ChanceDecision, PlayerDecision
 from dune_imperium.core.replay import GameReplay, ReplayStep, replay_game
-from dune_imperium.core.state import GamePhase, canonical_state_hash
+from dune_imperium.core.state import GamePhase, GameState, canonical_state_hash
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.endgame import final_standings
+from dune_imperium.simulation.coverage import Census, collect_game_coverage
 from dune_imperium.simulation.invariants import (
     CardCensus,
     InvariantViolation,
@@ -48,6 +54,7 @@ class GameCheckReport:
     steps: int
     rounds: int
     winner: int
+    coverage: Census | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,8 +87,11 @@ def run_checked_game(
     *,
     max_steps: int = 30_000,
     privacy_interval: int = 25,
+    soundness_interval: int = 0,
     verify_replay: bool = True,
     policy: str = "random",
+    engine: UprisingRulesEngine | None = None,
+    collect_coverage: bool = False,
 ) -> GameCheckReport:
     """Play one game to FINISHED under every invariant check."""
 
@@ -89,10 +99,17 @@ def run_checked_game(
         raise ValueError("max_steps must be positive")
     if privacy_interval < 0:
         raise ValueError("privacy_interval must not be negative")
+    if soundness_interval < 0:
+        raise ValueError("soundness_interval must not be negative")
     if policy not in POLICIES:
         raise ValueError(f"unknown sweep policy: {policy!r}")
 
-    engine = UprisingRulesEngine()
+    engine = engine if engine is not None else UprisingRulesEngine()
+    # Built once so a soundness sample never rebuilds the fixed catalog: the
+    # sweep never otherwise exercises the codec, so this closes a real gap
+    # where an advertised action the catalog cannot express would only
+    # surface in env-based tests.
+    codec = ActionCodec(config) if soundness_interval else None
     state = engine.reset(config, game_seed)
     # The census is fixed at the end of setup: a Leader-draft setup stays in
     # GamePhase.SETUP through the picks, and a pick may still remove printed
@@ -132,6 +149,9 @@ def run_checked_game(
                 )
             if privacy_interval and player_decisions % privacy_interval == 0:
                 check_observation_privacy(state)
+            if soundness_interval and player_decisions % soundness_interval == 0:
+                assert codec is not None
+                _check_action_soundness(engine, state, actions, codec, len(steps))
             player_decisions += 1
             observation = engine.observe(state, decision.owner)
             action = agents[decision.owner].choose_action(observation, actions)
@@ -169,7 +189,44 @@ def run_checked_game(
         steps=len(steps),
         rounds=state.round_number,
         winner=standings[0].player,
+        coverage=collect_game_coverage(state, steps) if collect_coverage else None,
     )
+
+
+def _check_action_soundness(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    actions: tuple[DomainAction, ...],
+    codec: ActionCodec,
+    step_index: int,
+) -> None:
+    """Every advertised action must apply and round-trip through the codec.
+
+    ``GameState`` is immutable, so applying every legal action here does not
+    disturb the ongoing game; every resulting state is discarded.
+    """
+
+    for action in actions:
+        label = f"{action.action_id} {dict(action.arguments)}"
+        try:
+            engine.apply(state, action)
+        except Exception as error:  # noqa: BLE001 - any failure is the violation
+            raise InvariantViolation(
+                f"advertised action failed at step {step_index}: "
+                f"{label}: {type(error).__name__}: {error}"
+            ) from error
+        try:
+            decoded = codec.decode(codec.encode(action), action.actor)
+        except Exception as error:  # noqa: BLE001 - any failure is the violation
+            raise InvariantViolation(
+                f"advertised action failed the codec round-trip at step "
+                f"{step_index}: {label}: {type(error).__name__}: {error}"
+            ) from error
+        if decoded != action:
+            raise InvariantViolation(
+                f"advertised action failed the codec round-trip at step "
+                f"{step_index}: {label}: decoded as {decoded}"
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -182,11 +239,23 @@ class _GameSpec:
     verify_replay: bool
     policy: str = "random"
     leader_draft: bool = False
+    soundness_interval: int = 0
+    collect_coverage: bool = False
+    # Set only by sweep_specs(rotate_leaders=True); fixes the four Leaders
+    # UprisingRulesEngine deals at setup instead of the built-in default
+    # roster. Unused (and meaningless) alongside leader_draft, whose picks
+    # bypass the engine's fixed leader_ids entirely.
+    leader_ids: tuple[str, ...] | None = None
 
 
 def _run_spec(spec: _GameSpec) -> GameCheckReport | SweepFailure:
     config = RulesetConfig(
         choam_module=spec.choam_module, leader_draft=spec.leader_draft
+    )
+    engine = (
+        UprisingRulesEngine(leader_ids=spec.leader_ids)
+        if spec.leader_ids is not None
+        else UprisingRulesEngine()
     )
     try:
         return run_checked_game(
@@ -195,8 +264,11 @@ def _run_spec(spec: _GameSpec) -> GameCheckReport | SweepFailure:
             spec.policy_seed,
             max_steps=spec.max_steps,
             privacy_interval=spec.privacy_interval,
+            soundness_interval=spec.soundness_interval,
             verify_replay=spec.verify_replay,
             policy=spec.policy,
+            engine=engine,
+            collect_coverage=spec.collect_coverage,
         )
     except Exception as error:  # noqa: BLE001 - every failure belongs in the report
         return SweepFailure(
@@ -238,9 +310,12 @@ def sweep_specs(
     policy_offset: int = 700_000,
     max_steps: int = 30_000,
     privacy_interval: int = 25,
+    soundness_interval: int = 0,
     verify_replay: bool = True,
     policy: str = "random",
     leader_draft: bool = False,
+    rotate_leaders: bool = False,
+    collect_coverage: bool = False,
 ) -> tuple[_GameSpec, ...]:
     """Build the seeded per-game specs for a sweep."""
 
@@ -248,6 +323,11 @@ def sweep_specs(
         raise ValueError("a sweep needs at least one game")
     if policy not in POLICIES:
         raise ValueError(f"unknown sweep policy: {policy!r}")
+    if rotate_leaders and leader_draft:
+        # The draft picks its own Leaders in SETUP and never consults the
+        # engine's fixed leader_ids, so a rotated roster would be silently
+        # ignored rather than actually vary the draft.
+        raise ValueError("rotate_leaders cannot be combined with leader_draft")
     return tuple(
         _GameSpec(
             choam_module=choam_module,
@@ -255,9 +335,24 @@ def sweep_specs(
             policy_seed=policy_offset + seed,
             max_steps=max_steps,
             privacy_interval=privacy_interval,
+            soundness_interval=soundness_interval,
             verify_replay=verify_replay,
             policy=policy,
             leader_draft=leader_draft,
+            collect_coverage=collect_coverage,
+            leader_ids=(
+                tuple(
+                    random.Random(seed).sample(
+                        [
+                            leader.leader_id
+                            for leader in leaders_for_choam(choam_module)
+                        ],
+                        k=4,
+                    )
+                )
+                if rotate_leaders
+                else None
+            ),
         )
         for choam_module in rulesets
         for seed in range(start_seed, start_seed + games)
