@@ -309,6 +309,44 @@ def test_ornithopter_rewards_draw_intrigue_in_rank_order() -> None:
     assert result.state.intrigue_deck == ("intrigue:3",)
 
 
+def test_tied_reward_group_resolves_in_seat_order_not_first_player_order() -> None:
+    # OQ-002 decided convention: recipients tied at the same rank resolve in
+    # ascending seat order regardless of the First Player marker. With the
+    # complete Conflict set, tied groups only ever take the second and third
+    # reward rows, so the shared Intrigue deck split pinned here is the only
+    # state the order can change.
+    tied = replace(
+        _reward_state("skirmish_ornithopter", strengths=(8, 8, 4, 0)),
+        first_player=1,
+    )
+
+    result = resolve_combat_rewards(tied)
+
+    assert result.state.players[0].intrigue_cards == ("intrigue:0",)
+    assert result.state.players[1].intrigue_cards == ("intrigue:1",)
+    assert result.state.players[2].intrigue_cards == ("intrigue:2",)
+    assert result.state.intrigue_deck == ("intrigue:3",)
+
+
+def test_tied_trash_choices_open_in_seat_order() -> None:
+    # OQ-002 decided convention: the tied players' public trash choices are
+    # offered in ascending seat order as well, even when a later seat holds
+    # the First Player marker.
+    tied = _reward_state("trade_dispute", strengths=(8, 8, 4, 0))
+    players = tuple(
+        replace(player, hand=(f"p{player.player_id}:hand",))
+        if player.player_id in (0, 1)
+        else player
+        for player in tied.players
+    )
+    tied = replace(tied, players=players, first_player=1)
+
+    result = resolve_combat_rewards(tied)
+    stack = result.state.decision_stack
+
+    assert tuple(dict(frame.context)["player"] for frame in reversed(stack)) == (0, 1)
+
+
 def test_sandworm_doubles_the_assigned_reward_row() -> None:
     result = resolve_combat_rewards(
         _reward_state("skirmish_ornithopter", sandworm_players=(1,))
