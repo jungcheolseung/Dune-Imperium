@@ -2,6 +2,7 @@
 
 from dataclasses import replace
 
+from dune_imperium.content.uprising.board import Faction
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import PlayerDecision
 from dune_imperium.core.engine import RuleResult
@@ -20,6 +21,7 @@ from dune_imperium.rules.effects import (
     current_agent_effect_context,
     recruit_troops,
 )
+from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
 from dune_imperium.rules.leader_abilities import units_deployment_blocked
 from dune_imperium.rules.shield_wall import (
@@ -35,7 +37,14 @@ from dune_imperium.rules.spy_placement import (
 # Board spaces whose board effect is resolved through a dedicated choice rather
 # than the generic ``resolve_board_effect`` action.
 CHOICE_DRIVEN_SPACE_IDS = frozenset(
-    {"espionage", "sietch_tabr", "deep_desert", "hagga_basin", "imperial_basin"}
+    {
+        "espionage",
+        "sietch_tabr",
+        "deep_desert",
+        "hagga_basin",
+        "imperial_basin",
+        "shipping",
+    }
 )
 
 
@@ -481,6 +490,85 @@ def apply_sietch_tabr_action(
         )
     )
     return RuleResult(state=next_state, events=tuple(events))
+
+
+def legal_shipping_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return Shipping's Faction choices for its Influence reward."""
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return ()
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    if (
+        context.get("pending_board_effect") is not True
+        or context.get("space_id") != "shipping"
+    ):
+        return ()
+    return tuple(
+        DomainAction(
+            action_id="choose_shipping_influence",
+            actor=player,
+            arguments=(("faction", faction.value),),
+        )
+        for faction in Faction
+    )
+
+
+def apply_shipping_action(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Grant Shipping's Solari and chosen Faction Influence reward."""
+
+    if action not in legal_shipping_actions(state, action.actor):
+        raise ValueError("action is not a legal Shipping choice")
+    _, context = current_agent_effect_context(state)
+    faction_value = dict(action.arguments).get("faction")
+    if not isinstance(faction_value, str):
+        raise RuntimeError("Shipping Influence choice has invalid Faction")
+    faction = Faction(faction_value)
+
+    owner = state.players[action.actor]
+    owner = replace(
+        owner,
+        resources=replace(owner.resources, solari=owner.resources.solari + 5),
+    )
+    players = tuple(
+        owner if candidate.player_id == action.actor else candidate
+        for candidate in state.players
+    )
+    effect_state = replace(state, players=players)
+
+    gained = gain_faction_influence(
+        effect_state,
+        action.actor,
+        faction,
+        1,
+        event_prefix=(
+            f"round:{state.round_number}:player:{action.actor}:board:shipping:"
+            f"influence:{faction.value}"
+        ),
+    )
+
+    context["pending_board_effect"] = False
+    next_state = advance_after_effect(gained.state, context, gained.state.players)
+    event = GameEvent(
+        event_id=(f"round:{state.round_number}:player:{action.actor}:board:shipping"),
+        kind="board_effect_resolved",
+        payload=(
+            ("action_id", action.action_id),
+            ("player", action.actor),
+            ("space_id", "shipping"),
+        ),
+    )
+    return RuleResult(state=next_state, events=(*gained.events, event))
 
 
 def legal_maker_space_actions(

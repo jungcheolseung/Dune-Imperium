@@ -136,8 +136,8 @@ def test_catalog_spaces_carry_structured_board_data() -> None:
     shipping = spaces["shipping"]
     assert isinstance(shipping, dict)
     assert shipping["requirement"] == {"faction": "spacing_guild", "amount": 2}
-    assert shipping["implemented"] is False
-    assert shipping["choam_implemented"] is False
+    assert shipping["implemented"] is True
+    assert shipping["choam_implemented"] is True
 
     dutiful_service = spaces["dutiful_service"]
     assert isinstance(dutiful_service, dict)

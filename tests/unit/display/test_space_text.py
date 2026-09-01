@@ -42,7 +42,6 @@ def test_implemented_flags_mirror_the_engine_gate() -> None:
         "secrets",
         "desert_tactics",
         "imperial_privilege",
-        "shipping",
     }
     assert choam_hidden == base_hidden
 

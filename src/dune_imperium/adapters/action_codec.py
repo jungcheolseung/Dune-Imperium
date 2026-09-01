@@ -37,7 +37,7 @@ from dune_imperium.content.uprising.starting_cards import (
 from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
 from dune_imperium.core.actions import ActionValue, DomainAction
 
-ACTION_CODEC_VERSION = 79
+ACTION_CODEC_VERSION = 80
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 
@@ -420,6 +420,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         "choose_combat_reward_influence",
         "choose_distinct_combat_reward_influence",
         "choose_leader_signet_influence",
+        "choose_shipping_influence",
     ):
         templates.extend(
             ActionTemplate(

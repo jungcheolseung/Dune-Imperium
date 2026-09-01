@@ -5,7 +5,7 @@ from dataclasses import replace
 import pytest
 
 from dune_imperium import RulesetConfig
-from dune_imperium.content.uprising.board import BOARD_SPACES
+from dune_imperium.content.uprising.board import BOARD_SPACES, Faction
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.core import (
     ChanceDecision,
@@ -27,11 +27,13 @@ from dune_imperium.rules.board_effects import (
     CHOICE_DRIVEN_SPACE_IDS,
     apply_espionage_action,
     apply_maker_space_action,
+    apply_shipping_action,
     apply_sietch_tabr_action,
     board_effect_is_implemented,
     board_effects_for,
     legal_espionage_actions,
     legal_maker_space_actions,
+    legal_shipping_actions,
     legal_sietch_tabr_actions,
     resolve_board_effect,
     static_board_effects,
@@ -565,6 +567,93 @@ def test_sietch_tabr_omits_detonation_after_wall_is_destroyed() -> None:
     }
 
 
+def _shipping_state(influence: Influence) -> GameState:
+    state = _state("dune_the_desert_planet", Resources(spice=3))
+    owner = replace(state.players[0], influence=influence)
+    state = replace(state, players=(owner, *state.players[1:]))
+    return apply_agent_action(state, _action_to(state, "shipping")).state
+
+
+def test_shipping_requires_guild_influence_and_pays_exact_spice_cost() -> None:
+    unqualified = _state("dune_the_desert_planet", Resources(spice=3))
+    unqualified = replace(
+        unqualified,
+        players=(
+            replace(
+                unqualified.players[0],
+                influence=Influence(spacing_guild=1),
+            ),
+            *unqualified.players[1:],
+        ),
+    )
+    assert not any(
+        dict(action.arguments).get("space_id") == "shipping"
+        for action in legal_agent_actions(unqualified, 0)
+    )
+
+    placed = _shipping_state(Influence(spacing_guild=2))
+
+    assert placed.players[0].resources.spice == 0
+    context = dict(placed.decision_stack[-1].context)
+    assert context["pending_board_effect"] is True
+    assert context["space_id"] == "shipping"
+
+
+def test_shipping_offers_all_four_faction_choices() -> None:
+    state = _shipping_state(Influence(spacing_guild=2))
+    actions = legal_shipping_actions(state, 0)
+
+    assert len(actions) == 4
+    assert all(action.action_id == "choose_shipping_influence" for action in actions)
+    assert {dict(action.arguments)["faction"] for action in actions} == {
+        faction.value for faction in Faction
+    }
+
+
+def test_shipping_choice_grants_solari_and_chosen_influence() -> None:
+    state = _shipping_state(Influence(spacing_guild=2))
+    action = next(
+        candidate
+        for candidate in legal_shipping_actions(state, 0)
+        if dict(candidate.arguments)["faction"] == Faction.EMPEROR.value
+    )
+
+    result = apply_shipping_action(state, action)
+    owner = result.state.players[0]
+    decision = result.state.decision_stack[-1].decision
+
+    assert owner.resources.solari == 5
+    assert owner.influence.emperor == 1
+    # No other group is left pending for this hand/space combination, so
+    # resolving Shipping closes the Agent-turn effect frame and opens the
+    # clockwise player's turn, mirroring
+    # test_finishing_all_effect_groups_opens_clockwise_players_turn.
+    assert isinstance(decision, PlayerDecision)
+    assert decision.owner == 1
+    assert result.events[-1].kind == "board_effect_resolved"
+    assert dict(result.events[-1].payload) == {
+        "action_id": "choose_shipping_influence",
+        "player": 0,
+        "space_id": "shipping",
+    }
+
+
+def test_shipping_choice_awards_the_two_influence_friendship_vp() -> None:
+    state = _shipping_state(Influence(spacing_guild=2, emperor=1))
+    action = next(
+        candidate
+        for candidate in legal_shipping_actions(state, 0)
+        if dict(candidate.arguments)["faction"] == Faction.EMPEROR.value
+    )
+
+    result = apply_shipping_action(state, action)
+    owner = result.state.players[0]
+
+    assert owner.influence.emperor == 2
+    assert owner.victory_points == 2
+    assert any(event.kind == "influence_gained" for event in result.events)
+
+
 def _hagga_basin_state(*, wall_present: bool) -> GameState:
     state = _state("dune_the_desert_planet")
     owner = replace(state.players[0], maker_hooks=True)
@@ -742,7 +831,7 @@ def test_static_board_effects_pins_the_full_printed_domain() -> None:
 
 
 def test_unimplemented_board_spaces_are_exactly_pinned() -> None:
-    base_hidden = {"secrets", "desert_tactics", "imperial_privilege", "shipping"}
+    base_hidden = {"secrets", "desert_tactics", "imperial_privilege"}
     for choam_module, expected_hidden in (
         (False, base_hidden),
         (True, base_hidden),

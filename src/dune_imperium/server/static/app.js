@@ -62,6 +62,7 @@ const ACTION_LABELS = {
   choose_intrigue_discard: "Discard할 카드 선택",
   choose_intrigue_faction: "Influence 선택 (Intrigue)",
   choose_leader_signet_influence: "Influence 선택 (Signet)",
+  choose_shipping_influence: "Influence 선택 (Shipping)",
   complete_contract: "Contract 완료",
   decline_agent_card_acquisition: "획득 안 함",
   decline_agent_card_discard: "Discard 안 함",

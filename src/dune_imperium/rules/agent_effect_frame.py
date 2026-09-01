@@ -25,6 +25,7 @@ from dune_imperium.rules.board_effects import (
     CHOICE_DRIVEN_SPACE_IDS,
     legal_espionage_actions,
     legal_maker_space_actions,
+    legal_shipping_actions,
     legal_sietch_tabr_actions,
 )
 from dune_imperium.rules.combat_deployment import legal_combat_deployments
@@ -84,6 +85,7 @@ def legal_agent_effect_frame_actions(
         *legal_contract_completion_actions(state, player),
         *legal_espionage_actions(state, player),
         *legal_sietch_tabr_actions(state, player),
+        *legal_shipping_actions(state, player),
         *legal_maker_space_actions(state, player),
         *legal_combat_deployments(state, player),
         *legal_intrigue_play_actions(state, player),
