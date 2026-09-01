@@ -142,7 +142,7 @@ def test_catalog_spaces_carry_structured_board_data() -> None:
     dutiful_service = spaces["dutiful_service"]
     assert isinstance(dutiful_service, dict)
     assert dutiful_service["implemented"] is True
-    assert dutiful_service["choam_implemented"] is False
+    assert dutiful_service["choam_implemented"] is True
     assert dutiful_service["choam_options"] is not None
 
     imperial_basin = spaces["imperial_basin"]

@@ -21,6 +21,7 @@ from dune_imperium.core import (
     canonical_state_hash,
 )
 from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.agent_effects import resolve_faction_influence
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 from dune_imperium.rules.board_effects import (
     CHOICE_DRIVEN_SPACE_IDS,
@@ -35,7 +36,7 @@ from dune_imperium.rules.board_effects import (
     resolve_board_effect,
     static_board_effects,
 )
-from dune_imperium.rules.contracts import legal_contract_actions
+from dune_imperium.rules.contracts import apply_contract_action, legal_contract_actions
 from dune_imperium.rules.effects import (
     DrawImperiumCardsEffect,
     DrawIntrigueCardsEffect,
@@ -137,6 +138,54 @@ def test_dutiful_service_resolves_board_reward_and_keeps_faction_pending() -> No
     assert context["pending_board_effect"] is False
     assert context["pending_faction_influence"] is True
     assert result.events[0].kind == "board_effect_resolved"
+
+
+def test_dutiful_service_choam_opens_contract_market_and_grants_influence() -> None:
+    state = _state("diplomacy")
+    state = replace(
+        state,
+        config=RulesetConfig(choam_module=True),
+        contract_bank=("contract:research_station_i",),
+        face_up_contract_ids=(
+            "contract:arrakeen_i",
+            "contract:high_council_ii",
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "dutiful_service"))
+
+    assert placed.state.players[0].resources == state.players[0].resources
+
+    result = resolve_board_effect(placed.state)
+
+    assert result.state.players[0].resources.solari == 0
+    assert len(legal_contract_actions(result.state, 0)) == 2
+    assert result.events[-1].kind == "board_effect_resolved"
+
+    taken = apply_contract_action(
+        result.state, legal_contract_actions(result.state, 0)[0]
+    )
+    context = dict(taken.state.decision_stack[-1].context)
+    assert context["pending_faction_influence"] is True
+    assert taken.state.players[0].active_contract_ids == ("contract:arrakeen_i",)
+
+    influenced = resolve_faction_influence(taken.state)
+
+    assert influenced.state.players[0].influence.emperor == 1
+
+
+def test_dutiful_service_choam_falls_back_to_solari_with_empty_market() -> None:
+    state = _state("diplomacy")
+    state = replace(state, config=RulesetConfig(choam_module=True))
+    placed = apply_agent_action(state, _action_to(state, "dutiful_service")).state
+
+    result = resolve_board_effect(placed)
+
+    assert result.state.players[0].resources.solari == 2
+    assert legal_contract_actions(result.state, 0) == ()
+    context = dict(result.state.decision_stack[-1].context)
+    assert context["pending_board_effect"] is False
+    assert context["pending_faction_influence"] is True
+    assert result.events[-1].kind == "board_effect_resolved"
 
 
 def test_spice_refinery_reward_depends_on_already_paid_option() -> None:
@@ -658,7 +707,7 @@ _BASE_EFFECT_TABLE: dict[str, dict[int, tuple[object, ...] | None]] = {
     "shipping": {0: None},
 }
 _CHOAM_EFFECT_OVERRIDES: dict[str, dict[int, tuple[object, ...] | None]] = {
-    "dutiful_service": {0: None},
+    "dutiful_service": {0: ()},
     "accept_contract": {0: (DrawImperiumCardsEffect(1),)},
 }
 
@@ -693,18 +742,10 @@ def test_static_board_effects_pins_the_full_printed_domain() -> None:
 
 
 def test_unimplemented_board_spaces_are_exactly_pinned() -> None:
+    base_hidden = {"secrets", "desert_tactics", "imperial_privilege", "shipping"}
     for choam_module, expected_hidden in (
-        (False, {"secrets", "desert_tactics", "imperial_privilege", "shipping"}),
-        (
-            True,
-            {
-                "secrets",
-                "desert_tactics",
-                "imperial_privilege",
-                "shipping",
-                "dutiful_service",
-            },
-        ),
+        (False, base_hidden),
+        (True, base_hidden),
     ):
         state = GameState(
             config=RulesetConfig(choam_module=choam_module),

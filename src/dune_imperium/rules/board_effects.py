@@ -90,6 +90,8 @@ def static_board_effects(
     match space_id, cost_option:
         case "dutiful_service", 0 if not choam_module:
             return (GainResourcesEffect(solari=2),)
+        case "dutiful_service", 0:
+            return ()
         case "sardaukar", 0:
             return (DrawIntrigueCardsEffect(1), RecruitTroopsEffect(4))
         case "deliver_supplies", 0:
@@ -214,7 +216,10 @@ def resolve_board_effect(state: GameState) -> RuleResult:
         next_state = draw.state
         draw_events = draw.events
     contract_events: tuple[GameEvent, ...] = ()
-    if space_id == "accept_contract" and state.config.choam_module:
+    if (
+        space_id in ("accept_contract", "dutiful_service")
+        and state.config.choam_module
+    ):
         contracts = begin_contract_gain(
             next_state,
             player,

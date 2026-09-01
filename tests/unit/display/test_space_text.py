@@ -44,7 +44,7 @@ def test_implemented_flags_mirror_the_engine_gate() -> None:
         "imperial_privilege",
         "shipping",
     }
-    assert choam_hidden == base_hidden | {"dutiful_service"}
+    assert choam_hidden == base_hidden
 
 
 def test_automatic_text_derives_from_the_engine_effect_table() -> None:
