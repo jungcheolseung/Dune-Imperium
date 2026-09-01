@@ -1579,8 +1579,13 @@ def test_other_players_never_see_the_set_aside_contracts() -> None:
     assert choices == {"contract:immediate"}
 
 
-def test_shaddam_contract_icon_reverts_to_solari_with_an_empty_market() -> None:
-    from dune_imperium.rules.contracts import begin_contract_gain
+def test_shaddam_chooses_solari_or_set_aside_over_an_empty_market() -> None:
+    from dune_imperium.rules.contracts import (
+        apply_contract_action,
+        apply_exhausted_contract_solari,
+        begin_contract_gain,
+        legal_contract_actions,
+    )
 
     owner = _shaddam_owner()
     state = replace(
@@ -1591,16 +1596,30 @@ def test_shaddam_contract_icon_reverts_to_solari_with_an_empty_market() -> None:
         ),
     )
 
-    result = begin_contract_gain(state, 0, 1, source="test:exhausted")
+    # OQ-021 decided ruling: with every generally available Contract taken,
+    # Shaddam's icon still chooses between a set-aside Sardaukar Contract
+    # and the printed two-Solari conversion [Main p. 16].
+    opened = begin_contract_gain(state, 0, 1, source="test:exhausted").state
+    offered = legal_contract_actions(opened, 0)
+    assert [action.action_id for action in offered] == [
+        "take_contract",
+        "take_contract",
+        "take_exhausted_contract_solari",
+    ]
 
-    # OQ-021 convention: the set-aside take replaces a generally available
-    # take [FAQ p. 3], so an exhausted market converts the icon to Solari
-    # even for Shaddam.
-    assert result.state.players[0].resources.solari == 2
-    assert result.state.sardaukar_contract_ids == (
+    paid = apply_exhausted_contract_solari(opened, offered[2])
+    assert paid.state.players[0].resources.solari == 2
+    assert paid.state.sardaukar_contract_ids == (
         "contract:sardaukar_i",
         "contract:sardaukar_ii",
     )
+    assert paid.state.decision_stack == state.decision_stack
+
+    taken = apply_contract_action(opened, offered[0]).state
+    assert taken.players[0].active_contract_ids == ("contract:sardaukar_i",)
+    assert taken.sardaukar_contract_ids == ("contract:sardaukar_ii",)
+    assert taken.players[0].resources.solari == 0
+    assert taken.decision_stack == state.decision_stack
 
 
 def test_emperor_signet_gains_a_solari_and_a_deployable_free_troop() -> None:

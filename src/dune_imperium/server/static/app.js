@@ -154,6 +154,7 @@ const ACTION_LABELS = {
   reveal_turn: "Reveal 턴 시작",
   summon_maker_sandworms: "Sandworm 소환",
   take_contract: "Contract 획득",
+  take_exhausted_contract_solari: "Contract 대신 2 Solari",
   take_high_council_from_reveal: "High Council 획득",
   take_sietch_tabr_supplies: "Sietch Tabr 보급 (Maker Hooks)",
   take_sietch_tabr_water: "Sietch Tabr water",

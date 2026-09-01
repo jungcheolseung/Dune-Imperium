@@ -92,6 +92,7 @@ from dune_imperium.rules.contracts import (
     apply_contract_completion,
     apply_contract_recall_action,
     apply_contract_spy_action,
+    apply_exhausted_contract_solari,
     exhausted_contract_choice_is_pending,
     legal_contract_actions,
     legal_contract_recall_actions,
@@ -419,6 +420,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "decline_reveal_troop_retreat": apply_reveal_troop_retreat,
     # Contracts
     "take_contract": apply_contract_action,
+    "take_exhausted_contract_solari": apply_exhausted_contract_solari,
     "place_contract_spy": apply_contract_spy_action,
     "recall_spy_for_contract": apply_contract_spy_action,
     "recall_agent_for_contract": apply_contract_recall_action,

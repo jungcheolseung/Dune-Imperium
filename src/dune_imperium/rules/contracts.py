@@ -388,13 +388,23 @@ def begin_contract_gain(
         raise ValueError("Contract gain count must be positive")
     if not source:
         raise ValueError("Contract choice source must not be empty")
-    if state.face_up_contract_ids:
+    if state.face_up_contract_ids or _holds_set_aside_choice(state, player):
+        # Over an exhausted market Shaddam Corrino IV still chooses between
+        # his set-aside Sardaukar Contracts and the two-Solari conversion
+        # (OQ-021), so his icons open the frame instead of auto-converting.
         return RuleResult(
             state=state.push_decision(
                 contract_choice_frame(player, count, source=source)
             )
         )
     return _gain_exhausted_market_solari(state, player, count, source=source)
+
+
+def _holds_set_aside_choice(state: GameState, player: int) -> bool:
+    return (
+        state.players[player].leader_id == "shaddam_corrino_iv"
+        and bool(state.sardaukar_contract_ids)
+    )
 
 
 def legal_contract_actions(
@@ -420,14 +430,22 @@ def legal_contract_actions(
         if state.players[player].leader_id == "shaddam_corrino_iv"
         else ()
     )
-    return tuple(
+    actions = [
         DomainAction(
             action_id="take_contract",
             actor=player,
             arguments=(("instance_id", instance_id),),
         )
         for instance_id in (*state.face_up_contract_ids, *set_aside)
-    )
+    ]
+    if set_aside and not state.face_up_contract_ids:
+        # With every generally available Contract taken, each of Shaddam's
+        # icons chooses between a set-aside tile and the printed two-Solari
+        # conversion [Main p. 16] (OQ-021).
+        actions.append(
+            DomainAction(action_id="take_exhausted_contract_solari", actor=player)
+        )
+    return tuple(actions)
 
 
 def apply_contract_action(state: GameState, action: DomainAction) -> RuleResult:
@@ -568,13 +586,91 @@ def apply_contract_action(state: GameState, action: DomainAction) -> RuleResult:
     return RuleResult(state=next_state, events=tuple(events))
 
 
+def apply_exhausted_contract_solari(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Convert one of Shaddam's Contract icons to two Solari by choice.
+
+    Over an exhausted market his icons choose between a set-aside Sardaukar
+    Contract and the printed two-Solari conversion [Main p. 16] (OQ-021).
+    """
+
+    if action not in legal_contract_actions(state, action.actor):
+        raise ValueError("action is not a legal Contract choice")
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    remaining_value = context.get("remaining")
+    source_value = context.get("source")
+    if (
+        isinstance(remaining_value, bool)
+        or not isinstance(remaining_value, int)
+        or remaining_value < 1
+        or not isinstance(source_value, str)
+    ):
+        raise RuntimeError("Contract choice frame has invalid context")
+
+    owner = state.players[action.actor]
+    next_owner = replace(
+        owner,
+        resources=replace(owner.resources, solari=owner.resources.solari + 2),
+    )
+    players = tuple(
+        next_owner if candidate.player_id == action.actor else candidate
+        for candidate in state.players
+    )
+    remaining_count = remaining_value - 1
+    remaining_stack = state.decision_stack[:-1]
+    if remaining_count:
+        remaining_stack = (
+            *remaining_stack,
+            replace(
+                frame,
+                context=(
+                    ("remaining", remaining_count),
+                    ("source", source_value),
+                ),
+            ),
+        )
+    next_state = replace(
+        state,
+        players=players,
+        decision_stack=remaining_stack,
+        combat_rewards_resolved=(
+            not remaining_stack
+            if state.phase is GamePhase.COMBAT
+            else state.combat_rewards_resolved
+        ),
+    )
+    event = GameEvent(
+        event_id=(
+            f"{source_value}:contract_market_exhausted:{action.actor}:"
+            f"choice:{remaining_value}"
+        ),
+        kind="contract_icons_converted_to_solari",
+        payload=(
+            ("count", 1),
+            ("player", action.actor),
+            ("solari", 2),
+            ("source", source_value),
+        ),
+    )
+    return RuleResult(state=next_state, events=(event,))
+
+
 def exhausted_contract_choice_is_pending(state: GameState) -> bool:
     """Return whether the top Contract frame can resolve without player input."""
 
-    return bool(
-        state.decision_stack
-        and state.decision_stack[-1].kind == FrameKind.CONTRACT_MARKET
-        and not state.face_up_contract_ids
+    if not state.decision_stack:
+        return False
+    frame = state.decision_stack[-1]
+    if frame.kind != FrameKind.CONTRACT_MARKET or state.face_up_contract_ids:
+        return False
+    # Shaddam still holds a real choice over an exhausted market: a
+    # set-aside Sardaukar Contract or the two-Solari conversion (OQ-021).
+    return not (
+        isinstance(frame.decision, PlayerDecision)
+        and _holds_set_aside_choice(state, frame.decision.owner)
     )
 
 
