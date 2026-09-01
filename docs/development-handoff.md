@@ -1,6 +1,6 @@
 # 개발 인수인계
 
-기준일: 2026-09-01
+기준일: 2026-09-02
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
@@ -49,6 +49,7 @@ uv run mypy src tests
 
 2026-09-01의 **검증 강화 캠페인**(사용자 확정 범위: 전체 1→4)은 같은 날 완료했다: 1단계 보드 22칸 완결 + OQ-015(c), 2단계 sweep 확장 (`853ecd4`: 커버리지 census `--coverage-json`, 표본 주기 legal-action 전수 적용 + codec 왕복 `--soundness-interval`, seed별 리더 회전 `--rotate-leaders`), 3단계 교차 소크(아래), 4단계 대조(DIU 63종 전부 일치, open-questions 23건 재점검). 세부는 아래 세션 요약.
 
+0. **(사용자와 논의 대기) OQ-010 재확인 범위.** "한 번 공개된 정보는 재확인 가능해야 한다"는 방향은 사용자가 확정했고, 구체 범위 — 상대의 face-up discard pile identity, 완료가 공지됐던 contract identity, 종료 후 열람, event history 재생 범위 — 를 정하는 논의가 남아 있다. 결정에 따라 `PublicPlayerView`/관측 인코딩이 바뀔 수 있으므로(OBSERVATION_VERSION 상향 가능) M9 체크포인트를 만들기 전에 정하는 편이 싸다. 논의 전까지 구현은 현행 유지.
 1. **M9 평가 러너와 baseline.** 여러 게임을 병렬 구동하고 정책 추론만 batch하는 self-play 러너, random/heuristic(M11 상대에서 출발)/rollout baseline, 좌석·리더·first player·seed 교차 대회 도구 (`implementation-plan.md`의 M9). 관측·보상 계약은 [`rl-environment.md`](rl-environment.md)로 고정돼 있고, 병렬 실행 선례는 `simulation/sweep.py`다. 더 큰 야간 규모 재검증이 필요하면 `dune-imperium-sweep --games 50000 --ruleset both --workers 8 --rotate-leaders --soundness-interval 25 --coverage-json ...`을 커밋된 트리에서 돌린다.
 2. **M10 강화학습과 league self-play.** M9의 평가 행렬 위에서 시작한다 (`implementation-plan.md`의 M10).
 
