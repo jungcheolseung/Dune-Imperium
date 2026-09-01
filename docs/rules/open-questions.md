@@ -135,8 +135,9 @@
     `GamePhase.SETUP`의 `leader_draft` frame에서 멈추고, pick마다 좌석을
     확정(setup face, 인쇄된 시작 카드 제거는 이미 섞인 덱에서 필터링 —
     남은 순서는 균등 유지)하며, 마지막 pick이 Contract 시장을
-    배분한다(Shaddam pick 시 Sardaukar set-aside). codec v79의
-    `pick_leader` 템플릿, 관측 v2의 공개 pool 세그먼트.
+    배분한다(Shaddam pick 시 Sardaukar set-aside). `pick_leader`
+    템플릿(codec v79에서 도입, 이후 버전에도 유지), 관측 v2의 공개 pool
+    세그먼트.
     `tests/unit/rules/test_leader_draft.py`로 고정한다.
 
 ## OQ-008 — Control bonus와 방문자 효과의 상대 순서

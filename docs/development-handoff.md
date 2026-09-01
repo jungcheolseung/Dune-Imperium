@@ -28,13 +28,15 @@ uv run ruff check src tests
 uv run mypy src tests
 ```
 
-2026-09-01의 기준 결과는 pytest 973개 통과, Ruff 통과, mypy 통과다. 현재 action
+2026-09-01의 기준 결과는 pytest 984개 통과, Ruff 통과, mypy 통과다. 현재 action
 codec은 `ACTION_CODEC_VERSION = 82`(기본 4,313개, CHOAM 4,598개)이고, 관측은
 `OBSERVATION_VERSION = 2`의 1,415-int 전체 게임 인코딩이다
 ([`rl-environment.md`](rl-environment.md)). 보드 22칸 완결 + 즉시 공개 +
-`fab266f`/`e6fc298` 수정 반영 후의 `dune-imperium-sweep` 소크는 random policy
-룰셋당 3,000판, heuristic policy 룰셋당 1,000판, `--leader-draft` 켠 두 policy
-각 룰셋당 500판이 모두 실패 0으로 통과한 상태다(2026-09-01, 아래 세션 요약).
+`fab266f`/`e6fc298` 수정 + sweep 확장(`853ecd4`) 반영 후의 교차 소크는
+random 룰셋당 2,000판 + heuristic 룰셋당 1,000판(둘 다 `--rotate-leaders`) +
+draft 두 policy 각 룰셋당 500판, 전부 `--soundness-interval 25`를 켠 총
+7,000판이 실패 0으로 통과한 상태다(2026-09-01, 아래 세션 요약. 그 전
+단계에서는 random 룰셋당 3,000판 비회전 소크도 실패 0이었다).
 
 ## 현재 구현 기준선
 
@@ -134,29 +136,23 @@ convention(open-questions.md)과 위의 엔진 경계·미래 콘텐츠 tripwire
 
 ## 다음 구현 순서
 
-M9 착수 전에 2026-09-01 시작한 **검증 강화 캠페인**(사용자 확정 범위:
-전체 1→4)을 마친다. 1단계(보드 22칸 완결 + OQ-015(c))는 끝났고, 남은
-순서는 다음과 같다.
+2026-09-01의 **검증 강화 캠페인**(사용자 확정 범위: 전체 1→4)은 같은 날
+완료했다: 1단계 보드 22칸 완결 + OQ-015(c), 2단계 sweep 확장
+(`853ecd4`: 커버리지 census `--coverage-json`, 표본 주기 legal-action
+전수 적용 + codec 왕복 `--soundness-interval`, seed별 리더 회전
+`--rotate-leaders`), 3단계 교차 소크(아래), 4단계 대조(DIU 63종 전부
+일치, open-questions 23건 재점검). 세부는 아래 세션 요약.
 
-1. **sweep 확장(검증 도구).** (a) 콘텐츠 커버리지 census — replay의
-   action·이벤트를 카드/Intrigue/Leader/공간×옵션/계약/Conflict 차원으로
-   집계해 0회 경로를 보고. (b) 표본 주기 legal-action 건전성 검사 — 표본
-   결정마다 제시된 모든 합법 행동을 실제 적용해 "legal인데 적용 실패"
-   계열을 체계적으로 적발하고, 각 행동의 codec 인코딩 왕복도 검증(현재
-   sweep은 codec을 거치지 않아 이 계열이 env 테스트에서만 걸린다).
-   (c) `--rotate-leaders` — seed별 리더 4종을 seeded 추출해 9종 전원의
-   능력 경로를 커버.
-2. **대규모 교차 soak.** 리더 회전 × 두 룰셋 × random/heuristic × draft
-   on/off, 야간 규모. 커버리지 0인 경로는 강제 시나리오 테스트로 보강.
-3. **마무리 대조.** `dune-imperium-audit-diu` 재실행, open-questions 경계
-   재점검.
-4. **M9 평가 러너와 baseline.** 여러 게임을 병렬 구동하고 정책 추론만
+1. **M9 평가 러너와 baseline.** 여러 게임을 병렬 구동하고 정책 추론만
    batch하는 self-play 러너, random/heuristic(M11 상대에서 출발)/rollout
    baseline, 좌석·리더·first player·seed 교차 대회 도구
    (`implementation-plan.md`의 M9). 관측·보상 계약은
    [`rl-environment.md`](rl-environment.md)로 고정돼 있고, 병렬 실행 선례는
-   `simulation/sweep.py`다.
-5. **M10 강화학습과 league self-play.** M9의 평가 행렬 위에서 시작한다
+   `simulation/sweep.py`다. 더 큰 야간 규모 재검증이 필요하면
+   `dune-imperium-sweep --games 50000 --ruleset both --workers 8
+   --rotate-leaders --soundness-interval 25 --coverage-json ...`을
+   커밋된 트리에서 돌린다.
+2. **M10 강화학습과 league self-play.** M9의 평가 행렬 위에서 시작한다
    (`implementation-plan.md`의 M10).
 
 각 묶음은 카드 이미지로 텍스트를 검증하고(`docs/card-data-sources.md`의 방법),
@@ -239,14 +235,14 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에
 2026-09-01 세션 시작 시점에 `origin/master`와 로컬은 `1647bf2`로 일치했고,
 이 세션의 커밋들(`d7703ef`부터)은 로컬에만 있다(push는 사용자 판단으로
 한다). 새 세션은 `git log origin/master..master`와 반대 방향을 모두
-확인하고, checkout이 `e6fc298`보다 이전이면 이 문서의 973개 테스트·codec
+확인하고, checkout이 `853ecd4`보다 이전이면 이 문서의 984개 테스트·codec
 v82 기준선이 실제 코드와 일치하지 않는다. **다른 머신에서 이어서 작업한다면
 먼저 이 머신에서 push가 필요하다.** 새 머신의 UI 카드 이미지는
 비공개 `Dune-Imperium-assets` 저장소를 clone해 symlink로 연결하고(그 README
 참고), 접근이 없을 때만 `uv run scripts/fetch_card_images.py`로 채운다
 (선택; 없으면 텍스트만). 2026-09-01부터 이 머신의 캐시는 그 symlink다.
 
-## 2026-09-01 검증 강화 캠페인 1단계 세션 요약 (보드 22칸 완결 + 즉시 공개)
+## 2026-09-01 검증 강화 캠페인 세션 요약 (보드 22칸 완결 + 검증 도구 + 교차 소크)
 
 - 동기: M9/M10 전에 엔진에서 "학습이 변형 게임을 배우는" 원인을 제거한다.
   미구현 보드 칸은 codec을 바꾸는 작업이라 M9 이후로 미루면 평가 행렬과
@@ -306,6 +302,26 @@ v82 기준선이 실제 코드와 일치하지 않는다. **다른 머신에서 
 - 검증: pytest 934→973, Ruff, mypy. 수정 커밋 후 소크 —
   heuristic 룰셋당 1,000판, draft 두 policy 각 룰셋당 500판 실패 0,
   random 룰셋당 3,000판은 두 수정 반영 후 재실행 통과(위 기준선 절 수치).
+- 2단계 sweep 확장(`853ecd4`, pytest 973→984): `--soundness-interval N`
+  (표본 결정마다 제시된 모든 합법 행동을 실제 적용 + `ActionCodec`
+  인코딩 왕복 — sweep이 codec을 처음으로 검증), `--coverage-json PATH`
+  (replay·이벤트 기반 룰셋별 콘텐츠 커버리지 census + 카탈로그 대비 0회
+  보고), `--rotate-leaders`(seed 결정적 4종 추출, draft와 배타).
+- 3단계 교차 소크(커밋된 트리, 전 기능 on, 총 7,000판 실패 0):
+  random 룰셋당 2,000판 + heuristic 룰셋당 1,000판(둘 다 리더 회전) +
+  draft 두 policy 각 룰셋당 500판, 모두 `--soundness-interval 25`.
+  네 구성의 커버리지 합집합에서 0회 경로는 정확히 세 종뿐이며 전부
+  구조적이다: 기본 룰셋의 contracts 20개(CHOAM 전용), 기본 룰셋의
+  Shaddam 시그넷 액션 2개(`choose_leader_signet_influence`,
+  `gain_leader_signet_troop` — Shaddam은 CHOAM 전용), 그리고 양 룰셋의
+  `acquire_leader_reserve`(Irulan Chronicler's Insight의 Reserve 분기 —
+  현재 콘텐츠에 비용 1 Reserve 카드가 없어 죽은 일반화 코드,
+  `implementation-audits/leaders.md`의 "비용 1은 Imperium 5종" 기록과
+  일치). 비구조적 0 커버리지는 없다 — 강제 시나리오 테스트 추가 불요.
+- 4단계 대조: `dune-imperium-audit-diu ../DIU/data/imperium.JSON` 재실행
+  — 63종 전부 일치(copy 수 차이 48건은 기존 방침대로 로컬 manifest
+  우선). open-questions 23건 재점검 — OQ-007의 codec 버전 표기 모호 1건만
+  명확화(도입 시점 표기), 나머지 전부 현행과 일치.
 
 ## 2026-08-31 UI 효과 표시 세션 요약 (텍스트 자동 생성 + 로컬 이미지)
 
