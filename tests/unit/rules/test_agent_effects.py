@@ -715,6 +715,47 @@ def test_dangerous_rhetoric_self_trash_is_already_satisfied_mid_frame() -> None:
     assert "card_trashed" not in kinds
 
 
+def test_bond_survives_the_source_card_being_trashed_mid_frame() -> None:
+    # The printed Bond condition only counts OTHER cards of the Faction in
+    # play [Main p. 20], so a source card trashed by a freely ordered effect
+    # before its Bond box resolves (OQ-022) still bonds through the cards
+    # that remain. Found by the 2026-09-01 random sweep (seeds 2934/2590).
+    elders = _imperium_instance("southern_elders")
+    partner = _imperium_instance("tread_in_darkness")
+    owner = PlayerState(player_id=0, hand=(elders,), in_play=(partner,))
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "fremkit")).state
+    trashed_owner = replace(
+        placed.players[0],
+        in_play=tuple(
+            candidate
+            for candidate in placed.players[0].in_play
+            if candidate != elders
+        ),
+        trashed=(elders,),
+    )
+    lowered = replace(placed, players=(trashed_owner, *placed.players[1:]))
+    garrison_before = trashed_owner.troops_garrison
+
+    resolved = resolve_agent_card_effect(lowered)
+
+    assert resolved.state.players[0].troops_garrison == garrison_before + 2
+    assert resolved.events[-1].kind == "agent_card_effect_resolved"
+
+
 def test_treacherous_maneuver_may_be_declined_for_only_normal_influence() -> None:
     maneuver = _imperium_instance("treacherous_maneuver")
     sardaukar = _imperium_instance("sardaukar_soldier")

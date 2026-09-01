@@ -79,6 +79,26 @@ def test_self_trash_board_collision_seed_runs_to_finished() -> None:
     assert report.rounds >= 8
 
 
+@pytest.mark.parametrize(
+    ("choam_module", "game_seed"), [(False, 2934), (True, 2590)]
+)
+def test_bond_source_trashed_seeds_run_to_finished(
+    choam_module: bool, game_seed: int
+) -> None:
+    # In these random games a Bene Gesserit Bond card was trashed by a
+    # freely ordered effect before its Bond box resolved; the Bond now
+    # re-adjudicates over the remaining in-play cards [Main p. 20]
+    # (2026-09-01 sweep).
+    report = run_checked_game(
+        RulesetConfig(choam_module=choam_module),
+        game_seed=game_seed,
+        policy_seed=700_000 + game_seed,
+        privacy_interval=0,
+    )
+
+    assert report.rounds >= 1
+
+
 def test_checked_leader_draft_game_passes_every_invariant() -> None:
     # The census is fixed after setup, so Staban's printed starting-card
     # removal during the draft cannot trip card conservation.

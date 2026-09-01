@@ -387,7 +387,13 @@
   sweep CHOAM seed 2735에서 적발). 반대로 Delivery Agreement의 "trash해서
   VP" 선택은 화살표 없는 지시가 아니라 **비용**이므로, 카드가 이미 trash된
   뒤에는 충족으로 보지 않고 해결 시점 판정(`[Main pp. 9, 20]`)에 따라 그
-  선택지를 제시하지 않는다. `tests/unit/rules/test_reveal_turn.py`,
+  선택지를 제시하지 않는다. Bond 조건 재판정도 같은 상황을 만난다: 인쇄된
+  Bond 조건은 "**다른** 해당 Faction card가 in play"만 세므로
+  (`[Main p. 20]`, uprising-systems.md), source 카드 자신이 해결 전에
+  trash됐어도 남은 in play 카드로 Bond가 성립하며 `has_faction_bond`는
+  source의 존을 요구하지 않는다(random seeds 2934/2590에서 적발).
+  `tests/unit/rules/test_agent_effects.py`,
+  `tests/unit/rules/test_reveal_turn.py`,
   `tests/integration/test_sweep.py`로 고정한다.
 
 ## OQ-023 — Imperial Privilege의 recall 의무와 대상 부재 시 처리
