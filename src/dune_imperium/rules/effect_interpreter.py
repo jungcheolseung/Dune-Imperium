@@ -220,6 +220,19 @@ def pay_cost(player: PlayerState, cost: PayResources | None) -> PlayerState:
     )
 
 
+def cost_slots(sections: tuple[EffectSection, ...]) -> tuple[ChoiceSlot, ...]:
+    """Return the player-choice cost payments across every section."""
+
+    slots: list[ChoiceSlot] = []
+    for section in sections:
+        for cost in section.costs:
+            if isinstance(cost, LoseInfluence | DiscardFromHand | RecallSpy):
+                slots.extend([cost] * cost.count)
+            elif isinstance(cost, RetreatTroops | FlipBattleCard):
+                slots.append(cost)
+    return tuple(slots)
+
+
 def choice_slots(
     sections: tuple[EffectSection, ...],
     *,
@@ -231,13 +244,7 @@ def choice_slots(
     printed order, each repeated once per step (``count`` or ``times``).
     """
 
-    slots: list[ChoiceSlot] = []
-    for section in sections:
-        for cost in section.costs:
-            if isinstance(cost, LoseInfluence | DiscardFromHand | RecallSpy):
-                slots.extend([cost] * cost.count)
-            elif isinstance(cost, RetreatTroops | FlipBattleCard):
-                slots.append(cost)
+    slots: list[ChoiceSlot] = list(cost_slots(sections))
     for section in sections:
         for reward in section.rewards:
             match reward:

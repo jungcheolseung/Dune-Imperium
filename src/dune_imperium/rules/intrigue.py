@@ -59,6 +59,7 @@ from dune_imperium.rules.effect_interpreter import (
     automatic_rewards,
     choice_slots,
     condition_holds,
+    cost_slots,
     flippable_battle_card_ids,
     option_is_playable,
     pay_cost,
@@ -435,7 +436,45 @@ def legal_intrigue_choice_actions(
             actions.append(
                 DomainAction(action_id="decline_intrigue_spy", actor=player)
             )
+    sections = _sections(context)
+    if (
+        context.get("rewards_applied") is not True
+        and context_int(context, "slot", owner=_CHOICE_FRAME)
+        >= len(cost_slots(sections))
+        and automatic_rewards(sections)
+    ):
+        # Icons on one Intrigue line are independent effects and the owner
+        # picks their order (OQ-015), so once every arrow cost is paid the
+        # pending automatic rewards may resolve before, between, or after
+        # the remaining reward slots.
+        actions.append(
+            DomainAction(action_id="resolve_intrigue_rewards", actor=player)
+        )
     return tuple(actions)
+
+
+def apply_intrigue_rewards(state: GameState, action: DomainAction) -> RuleResult:
+    """Resolve the card's automatic rewards at the owner's chosen point.
+
+    Icons on one Intrigue line are independent effects whose order the owner
+    picks (OQ-015), so the non-choice rewards may land before, between, or
+    after the remaining choice slots; the final slot then finishes the card
+    without applying them again.
+    """
+
+    if action not in legal_intrigue_choice_actions(state, action.actor):
+        raise ValueError("action is not a legal Intrigue rewards resolution")
+    frame = owned_top_frame(state, FrameKind.INTRIGUE_CHOICE, action.actor)
+    if frame is None:
+        raise RuntimeError("Intrigue rewards resolution requires its choice frame")
+    context = frame_context(frame)
+    source = context_str(context, "source", owner=_CHOICE_FRAME)
+    applied = _apply_section_rewards(
+        state, action.actor, _sections(context), f"{source}:rewards"
+    )
+    context["rewards_applied"] = True
+    next_state = replace_top_frame(applied.state, with_context(frame, context))
+    return RuleResult(state=next_state, events=applied.events)
 
 
 def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
@@ -621,7 +660,12 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
         return RuleResult(state=next_state, events=result.events)
 
     finished = _finish_play(
-        next_state.pop_decision(), player, card_id, _sections(context), source
+        next_state.pop_decision(),
+        player,
+        card_id,
+        _sections(context),
+        source,
+        skip_rewards=context.get("rewards_applied") is True,
     )
     return RuleResult(
         state=finished.state,
@@ -681,7 +725,12 @@ def _apply_intrigue_acquisition(
         raise RuntimeError("Intrigue acquisition buried its choice frame")
     if slot_index + 1 >= len(_slots(context)):
         finished = _finish_play(
-            next_state.pop_decision(), player, card_id, _sections(context), source
+            next_state.pop_decision(),
+            player,
+            card_id,
+            _sections(context),
+            source,
+            skip_rewards=context.get("rewards_applied") is True,
         )
         next_state = finished.state
         events = (*events, *finished.events)
@@ -698,38 +747,23 @@ def _apply_intrigue_acquisition(
     return RuleResult(state=next_state, events=events)
 
 
-def _finish_play(
+def _apply_section_rewards(
     state: GameState,
     player: int,
-    card_id: str,
     sections: tuple[EffectSection, ...],
     source: str,
 ) -> RuleResult:
-    """Apply automatic rewards, discard the card, and update turn bookkeeping."""
+    """Apply the sections' automatic rewards and their turn bookkeeping."""
 
-    rewards = automatic_rewards(sections)
-    outcome = apply_rewards(state, player, rewards, source=source)
-    resolved = outcome.result.state
-    owner = resolved.players[player]
-    next_state = replace(
-        resolved,
-        players=replace_player(
-            resolved.players,
-            replace(
-                owner,
-                intrigue_cards=tuple(
-                    held for held in owner.intrigue_cards if held != card_id
-                ),
-            ),
-        ),
-        intrigue_discard=(*resolved.intrigue_discard, card_id),
+    outcome = apply_rewards(
+        state, player, automatic_rewards(sections), source=source
     )
+    next_state = outcome.result.state
     events: list[GameEvent] = list(outcome.result.events)
     if outcome.troops_recruited:
         next_state = _update_agent_turn_frame(
             next_state, troops_recruited=outcome.troops_recruited
         )
-    next_state = refresh_combat_participants(_reset_combat_passes(next_state))
     if outcome.sandworms_deployed and reveal_is_open_for(next_state, player):
         # The interpreter moved the sandworms; during a Reveal turn their
         # strength must also join the revealed total [Main p. 13].
@@ -766,6 +800,45 @@ def _finish_play(
             ),
         )
     return RuleResult(state=next_state, events=tuple(events))
+
+
+def _finish_play(
+    state: GameState,
+    player: int,
+    card_id: str,
+    sections: tuple[EffectSection, ...],
+    source: str,
+    *,
+    skip_rewards: bool = False,
+) -> RuleResult:
+    """Apply pending automatic rewards, discard the card, and update turns.
+
+    ``skip_rewards`` marks that the owner already resolved the automatic
+    rewards mid-frame at a point of their choosing (OQ-015).
+    """
+
+    applied = (
+        RuleResult(state=state)
+        if skip_rewards
+        else _apply_section_rewards(state, player, sections, source)
+    )
+    resolved = applied.state
+    owner = resolved.players[player]
+    next_state = replace(
+        resolved,
+        players=replace_player(
+            resolved.players,
+            replace(
+                owner,
+                intrigue_cards=tuple(
+                    held for held in owner.intrigue_cards if held != card_id
+                ),
+            ),
+        ),
+        intrigue_discard=(*resolved.intrigue_discard, card_id),
+    )
+    next_state = refresh_combat_participants(_reset_combat_passes(next_state))
+    return RuleResult(state=next_state, events=applied.events)
 
 
 def _retreat_units(

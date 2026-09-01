@@ -37,7 +37,7 @@ from dune_imperium.content.uprising.starting_cards import (
 from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
 from dune_imperium.core.actions import ActionValue, DomainAction
 
-ACTION_CODEC_VERSION = 82
+ACTION_CODEC_VERSION = 83
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 
@@ -291,6 +291,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "decline_intrigue_trigger",
             "decline_intrigue_spy",
             "decline_imperial_privilege_intrigue",
+            "resolve_intrigue_rewards",
         )
     )
     templates.extend(_trash_templates(config, "trash_intrigue_card"))

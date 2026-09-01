@@ -109,6 +109,7 @@ from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.intrigue import (
     apply_intrigue_choice,
     apply_intrigue_play,
+    apply_intrigue_rewards,
     legal_intrigue_choice_actions,
     legal_intrigue_play_actions,
 )
@@ -320,6 +321,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "acquire_intrigue_reserve": apply_intrigue_choice,
     "flip_battle_card": apply_intrigue_choice,
     "manipulate_imperium_row": apply_intrigue_choice,
+    "resolve_intrigue_rewards": apply_intrigue_rewards,
     "acquire_manipulated_imperium": apply_manipulated_acquisition,
     "place_trigger_spy": apply_trigger_spy_action,
     "recall_spy_for_trigger": apply_trigger_spy_action,

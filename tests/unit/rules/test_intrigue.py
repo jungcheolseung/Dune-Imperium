@@ -865,7 +865,11 @@ def test_unexpected_allies_detonates_then_summons_a_sandworm() -> None:
 
     opened = engine.apply(state, _play(state, card)).state
     assert opened.players[0].resources.water == 0
-    assert engine.legal_actions(opened, 0) == (_detonate(), _keep_wall())
+    assert engine.legal_actions(opened, 0) == (
+        _detonate(),
+        _keep_wall(),
+        DomainAction(action_id="resolve_intrigue_rewards", actor=0),
+    )
 
     summoned = engine.apply(opened, _detonate())
     assert summoned.state.shield_wall_present is False
@@ -947,7 +951,11 @@ def test_cunning_offers_a_free_draw_or_a_paid_draw_with_optional_trash() -> None
     assert opened.players[0].resources.spice == 0
     offered = engine.legal_actions(opened, 0)
     assert offered[0].action_id == "decline_intrigue_trash"
-    assert {dict(a.arguments)["card_id"] for a in offered[1:]} == {
+    assert {
+        dict(a.arguments)["card_id"]
+        for a in offered
+        if a.action_id == "trash_intrigue_card"
+    } == {
         dagger,
         _starter("reconnaissance"),
     }
@@ -962,6 +970,43 @@ def test_cunning_offers_a_free_draw_or_a_paid_draw_with_optional_trash() -> None
     ).state
     assert declined.players[0].trashed == ()
     assert declined.players[0].hand == (dagger, *deck)
+
+
+def test_cunning_owner_may_draw_first_and_trash_the_drawn_card() -> None:
+    # Icons on one Intrigue line are independent effects resolved in the
+    # order the owner picks (OQ-015 ruling), so resolving the draw first
+    # makes the drawn card a legal trash target.
+    card = _intrigue("cunning")
+    dagger = _starter("dagger")
+    drawn = _starter("diplomacy")
+    owner = PlayerState(
+        player_id=0,
+        intrigue_cards=(card,),
+        hand=(dagger,),
+        deck=(drawn,),
+        resources=Resources(spice=1),
+    )
+    state = _turn_state(owner)
+    engine = UprisingRulesEngine()
+
+    opened = engine.apply(state, _play(state, card, 1)).state
+    resolved = engine.apply(
+        opened, DomainAction(action_id="resolve_intrigue_rewards", actor=0)
+    ).state
+    assert resolved.players[0].hand == (dagger, drawn)
+    offered = engine.legal_actions(resolved, 0)
+    assert "resolve_intrigue_rewards" not in {a.action_id for a in offered}
+    assert drawn in {
+        dict(a.arguments)["card_id"]
+        for a in offered
+        if a.action_id == "trash_intrigue_card"
+    }
+
+    trashed = engine.apply(resolved, _trash(drawn)).state
+    assert trashed.players[0].trashed == (drawn,)
+    assert trashed.players[0].hand == (dagger,)
+    assert trashed.players[0].deck == ()
+    assert trashed.intrigue_discard == (card,)
 
 
 def test_special_mission_places_a_spy_on_a_bene_gesserit_post() -> None:
@@ -1123,7 +1168,11 @@ def test_special_mission_recall_option_pays_out_after_the_detonation_choice() ->
         opened, _recall_spy("landsraad-assembly-hall-gather-support")
     ).state
     assert recalled.players[0].spies_supply == 3
-    assert engine.legal_actions(recalled, 0) == (_detonate(), _keep_wall())
+    assert engine.legal_actions(recalled, 0) == (
+        _detonate(),
+        _keep_wall(),
+        DomainAction(action_id="resolve_intrigue_rewards", actor=0),
+    )
     done = engine.apply(recalled, _keep_wall()).state
     assert done.players[0].resources.spice == 2
     assert done.shield_wall_present is True
