@@ -72,8 +72,8 @@ def test_special_mission_spy_deadlock_seeds_run_to_finished(game_seed: int) -> N
 def test_self_trash_board_collision_seed_runs_to_finished() -> None:
     # In this CHOAM random game Dangerous Rhetoric was played onto Desert
     # Tactics via its Spy icon and board-trashed before its self-trash
-    # Agent box resolved; the OQ-022 satisfied path now covers the
-    # chosen-Influence effect too (2026-09-01 sweep).
+    # Agent box resolved; the un-activated box now expires under the
+    # OQ-022 designer ruling (2026-09-01 sweep).
     report = run_checked_game(
         RulesetConfig(choam_module=True),
         game_seed=2735,
@@ -91,9 +91,8 @@ def test_bond_source_trashed_seeds_run_to_finished(
     choam_module: bool, game_seed: int
 ) -> None:
     # In these random games a Bene Gesserit Bond card was trashed by a
-    # freely ordered effect before its Bond box resolved; the Bond now
-    # re-adjudicates over the remaining in-play cards [Main p. 20]
-    # (2026-09-01 sweep).
+    # freely ordered effect before its Bond box resolved; the un-activated
+    # box now expires under the OQ-022 designer ruling (2026-09-01 sweep).
     report = run_checked_game(
         RulesetConfig(choam_module=choam_module),
         game_seed=game_seed,

@@ -45,6 +45,7 @@ from dune_imperium.rules.agent_effects import (
     apply_agent_card_trash,
     apply_corrinth_city_payment,
     apply_opponent_card_discard,
+    expire_trashed_card_effects,
     legal_opponent_card_discard_actions,
     resolve_agent_card_effect,
     resolve_faction_influence,
@@ -470,7 +471,9 @@ class UprisingRulesEngine(RulesEngine):
         # An Intrigue draw granted by a Reveal passive may queue a reshuffle,
         # so the automatic advance runs again after the passives.
         result = grant_leader_reveal_passives(_advance_automatic(result))
-        return offer_deployment_triggers(_advance_automatic(result))
+        return offer_deployment_triggers(
+            expire_trashed_card_effects(_advance_automatic(result))
+        )
 
     def legal_actions(
         self,
@@ -496,7 +499,7 @@ class UprisingRulesEngine(RulesEngine):
         # An Intrigue draw granted by a Reveal passive may queue a reshuffle,
         # so the automatic advance runs again after the passives.
         result = _advance_automatic(grant_leader_reveal_passives(result))
-        return offer_deployment_triggers(result)
+        return offer_deployment_triggers(expire_trashed_card_effects(result))
 
     def observe(self, state: GameState, player: int) -> PlayerView:
         return observe_state(state, player)

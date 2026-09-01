@@ -502,24 +502,15 @@ def apply_agent_card_influence(
         source_card.agent_effect
         is PersonalCardAgentEffect.TRASH_SELF_AND_GAIN_CHOSEN_INFLUENCE
     ):
-        # The card may already have been trashed by a freely ordered effect
-        # (a Cunning slot, Desert Tactics' trash); the arrowless self-trash
-        # instruction is then already satisfied and the mandatory Influence
-        # remainder still resolves (OQ-022).
-        if _still_owned(state.players[action.actor], source_card_id):
-            prepared = trash_personal_card(
-                state,
-                action.actor,
-                source_card_id,
-                source=source,
-            )
-        else:
-            prepared = RuleResult(
-                state=state,
-                events=(
-                    _self_trash_satisfied_event(state, action.actor, source_card_id),
-                ),
-            )
+        # A card trashed by a freely ordered effect expires before this
+        # choice is offered (OQ-022), so the played card is still in play
+        # here and its own effect trashes it with its benefits.
+        prepared = trash_personal_card(
+            state,
+            action.actor,
+            source_card_id,
+            source=source,
+        )
     else:
         prepared = RuleResult(state=state)
     gained = gain_faction_influence(
@@ -858,26 +849,15 @@ def apply_agent_card_trash(state: GameState, action: DomainAction) -> RuleResult
         source_card.agent_effect
         is PersonalCardAgentEffect.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE
     ):
-        # A freely ordered effect (for example an Intrigue trash slot) may
-        # already have trashed the played card mid-frame; the mandatory
-        # self-trash is then already satisfied and the rest of the effect
-        # still resolves (OQ-022).
-        if _still_owned(trashed.state.players[action.actor], source_card_id):
-            source_trashed = trash_personal_card(
-                trashed.state,
-                action.actor,
-                source_card_id,
-                source=source,
-            )
-        else:
-            source_trashed = RuleResult(
-                state=trashed.state,
-                events=(
-                    _self_trash_satisfied_event(
-                        trashed.state, action.actor, source_card_id
-                    ),
-                ),
-            )
+        # A card trashed by a freely ordered effect expires before this
+        # choice is offered (OQ-022), so the source is still in play here
+        # and trashes itself as part of its own effect.
+        source_trashed = trash_personal_card(
+            trashed.state,
+            action.actor,
+            source_card_id,
+            source=source,
+        )
         space_id = context.get("space_id")
         if not isinstance(space_id, str):
             raise RuntimeError("Agent-turn effect frame has invalid space")
@@ -1381,19 +1361,40 @@ def _still_owned(owner: PlayerState, card_instance_id: str) -> bool:
     return card_instance_id in (*owner.hand, *owner.discard_pile, *owner.in_play)
 
 
-def _self_trash_satisfied_event(
-    state: GameState,
-    player: int,
-    card_instance_id: str,
-) -> GameEvent:
-    return GameEvent(
+def expire_trashed_card_effects(result: RuleResult) -> RuleResult:
+    """Expire a pending Agent box whose played card already left play.
+
+    You can't receive or activate an effect from a card that is already
+    trashed (OQ-022 designer ruling), so when a freely ordered effect
+    trashes the played card before its Agent box is activated, the whole
+    un-activated box expires instead of resolving.
+    """
+
+    state = result.state
+    if not state.decision_stack:
+        return result
+    frame = state.decision_stack[-1]
+    if frame.kind != FrameKind.AGENT_EFFECTS or not isinstance(
+        frame.decision, PlayerDecision
+    ):
+        return result
+    context = dict(frame.context)
+    if context.get("pending_agent_effect") is not True:
+        return result
+    player, card_instance_id, _ = _effect_subject(context)
+    if _still_owned(state.players[player], card_instance_id):
+        return result
+    context["pending_agent_effect"] = False
+    next_state = advance_after_effect(state, context)
+    event = GameEvent(
         event_id=(
             f"round:{state.round_number}:player:{player}:"
-            f"agent_card:{card_instance_id}:self_trash_satisfied"
+            f"agent_card:{card_instance_id}:effect_expired"
         ),
-        kind="agent_card_self_trash_satisfied",
+        kind="agent_card_effect_expired",
         payload=(("card_id", card_instance_id), ("player", player)),
     )
+    return RuleResult(state=next_state, events=(*result.events, event))
 
 
 def resolve_agent_card_effect(state: GameState) -> RuleResult:
@@ -1410,17 +1411,8 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
     if effect is PersonalCardAgentEffect.LEADER_SIGNET:
         return resolve_leader_signet(state)
     if effect is PersonalCardAgentEffect.TRASH_SELF:
-        # A freely ordered effect (for example an Intrigue trash slot) may
-        # already have trashed this card mid-frame; the mandatory self-trash
-        # is then already satisfied and resolves as a no-op (OQ-022).
-        if not _still_owned(owner, card_instance_id):
-            context["pending_agent_effect"] = False
-            return RuleResult(
-                state=advance_after_effect(state, context),
-                events=(
-                    _self_trash_satisfied_event(state, player, card_instance_id),
-                ),
-            )
+        # A card trashed by a freely ordered effect expires before this
+        # resolution is offered (OQ-022), so the card is still in play here.
         trashed = trash_personal_card(
             state,
             player,
@@ -1455,19 +1447,6 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             2,
             event_prefix=f"{source}:influence:{faction.value}",
         )
-        if not _still_owned(gained.state.players[player], card_instance_id):
-            # The mandatory Influence gain still resolves; the self-trash is
-            # already satisfied by the mid-frame trash (OQ-022).
-            context["pending_agent_effect"] = False
-            return RuleResult(
-                state=advance_after_effect(
-                    gained.state, context, gained.state.players
-                ),
-                events=(
-                    *gained.events,
-                    _self_trash_satisfied_event(state, player, card_instance_id),
-                ),
-            )
         trashed = trash_personal_card(
             gained.state,
             player,
@@ -1775,9 +1754,9 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             next_owner = owner
             event_kind = "agent_card_effect_unavailable"
     elif effect is PersonalCardAgentEffect.RETURN_SELF_IF_BENE_GESSERIT_BOND:
-        # Judged at resolution time; the return also needs this card to still
-        # be in play, since a mid-frame trash removes it from the game.
-        if card_instance_id in owner.in_play and has_faction_bond(
+        # The Bond is judged when the effect resolves [Main pp. 9, 20]; a
+        # trashed card expires before this resolution is offered (OQ-022).
+        if has_faction_bond(
             owner.in_play,
             card_instance_id,
             Faction.BENE_GESSERIT,

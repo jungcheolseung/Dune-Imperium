@@ -12,9 +12,9 @@ def has_faction_bond(
     """Return whether another card in play has the required affiliation.
 
     The printed Bond condition only counts OTHER cards of the Faction in
-    play [Main p. 20], so the source card's own zone is not part of it: a
-    source trashed by a freely ordered effect before its Bond box resolves
-    (OQ-022) still bonds through the remaining in-play cards.
+    play [Main p. 20], so the source card's own zone is not part of the
+    check. A source trashed before its box resolves never reaches this
+    check anymore: its un-activated box expires instead (OQ-022).
     """
 
     return any(

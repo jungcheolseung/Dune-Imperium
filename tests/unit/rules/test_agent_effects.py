@@ -20,6 +20,7 @@ from dune_imperium.core import (
     PlayerDecision,
     PlayerState,
     Resources,
+    RuleResult,
 )
 from dune_imperium.rules.agent_effects import (
     apply_agent_card_discard,
@@ -31,6 +32,7 @@ from dune_imperium.rules.agent_effects import (
     apply_agent_card_spy_action,
     apply_agent_card_trash,
     apply_corrinth_city_payment,
+    expire_trashed_card_effects,
     legal_agent_card_discard_actions,
     legal_agent_card_influence_actions,
     legal_agent_card_intrigue_payment_actions,
@@ -616,11 +618,13 @@ def test_treacherous_maneuver_pays_both_cards_for_extra_influence() -> None:
     assert resolved.players[0].victory_points == 2
 
 
-def test_treacherous_maneuver_self_trash_is_already_satisfied_mid_frame() -> None:
+def test_treacherous_maneuver_box_expires_when_trashed_mid_frame() -> None:
     # A freely ordered Intrigue trash slot can trash the played card before
-    # its trash choice resolves; the chosen Emperor card still trashes, the
-    # extra Influence still resolves, and the self-trash is already satisfied
-    # (OQ-022). Found by the leader-draft heuristic sweep (CHOAM seed 198).
+    # its trash choice resolves; the un-activated Agent box then expires
+    # without any of its effects, because you can't receive or activate an
+    # effect from a card that is already trashed (OQ-022 designer ruling).
+    # The collision was found by the leader-draft heuristic sweep (CHOAM
+    # seed 198).
     maneuver = _imperium_instance("treacherous_maneuver")
     sardaukar = _imperium_instance("sardaukar_soldier")
     owner = PlayerState(player_id=0, hand=(maneuver, sardaukar))
@@ -651,27 +655,24 @@ def test_treacherous_maneuver_self_trash_is_already_satisfied_mid_frame() -> Non
     )
     lowered = replace(placed, players=(trashed_owner, *placed.players[1:]))
 
-    trash = next(
-        action
-        for action in legal_agent_card_trash_actions(lowered, 0)
-        if action.action_id == "trash_agent_card"
-    )
-    paid = apply_agent_card_trash(lowered, trash)
+    expired = expire_trashed_card_effects(RuleResult(state=lowered))
 
-    assert paid.state.players[0].trashed == (maneuver, sardaukar)
-    assert paid.state.players[0].influence.emperor == 1
-    kinds = [event.kind for event in paid.events]
-    assert "agent_card_self_trash_satisfied" in kinds
-    assert kinds.count("card_trashed") == 1
+    assert expired.events[-1].kind == "agent_card_effect_expired"
+    context = dict(expired.state.decision_stack[-1].context)
+    assert context["pending_agent_effect"] is False
+    assert legal_agent_card_trash_actions(expired.state, 0) == ()
+    assert expired.state.players[0].hand == (sardaukar,)
+    assert expired.state.players[0].trashed == (maneuver,)
+    assert expired.state.players[0].influence.emperor == 0
 
 
-def test_dangerous_rhetoric_self_trash_is_already_satisfied_mid_frame() -> None:
+def test_dangerous_rhetoric_box_expires_when_trashed_mid_frame() -> None:
     # A freely ordered effect can trash Dangerous Rhetoric itself before its
     # Agent box resolves (Desert Tactics' board trash reaches it when the
-    # card was played there via its Spy icon); the arrowless self-trash is
-    # then already satisfied and the mandatory chosen-Influence remainder
-    # still resolves (OQ-022). Found by the 2026-09-01 random sweep
-    # (CHOAM seed 2735).
+    # card was played there via its Spy icon); the un-activated box then
+    # expires, so its chosen-Influence choice is never offered (OQ-022
+    # designer ruling). The collision was found by the 2026-09-01 random
+    # sweep (CHOAM seed 2735).
     rhetoric = _imperium_instance("dangerous_rhetoric")
     owner = PlayerState(player_id=0, hand=(rhetoric,))
     state = GameState(
@@ -701,25 +702,23 @@ def test_dangerous_rhetoric_self_trash_is_already_satisfied_mid_frame() -> None:
     )
     lowered = replace(placed, players=(trashed_owner, *placed.players[1:]))
 
-    choice = next(
-        action
-        for action in legal_agent_card_influence_actions(lowered, 0)
-        if dict(action.arguments)["faction"] == Faction.SPACING_GUILD.value
-    )
-    paid = apply_agent_card_influence(lowered, choice)
+    expired = expire_trashed_card_effects(RuleResult(state=lowered))
 
-    assert paid.state.players[0].trashed == (rhetoric,)
-    assert paid.state.players[0].influence.spacing_guild == 1
-    kinds = [event.kind for event in paid.events]
-    assert "agent_card_self_trash_satisfied" in kinds
-    assert "card_trashed" not in kinds
+    assert expired.events[-1].kind == "agent_card_effect_expired"
+    context = dict(expired.state.decision_stack[-1].context)
+    assert context["pending_agent_effect"] is False
+    assert legal_agent_card_influence_actions(expired.state, 0) == ()
+    assert expired.state.players[0].trashed == (rhetoric,)
+    assert expired.state.players[0].influence.spacing_guild == 0
 
 
-def test_bond_survives_the_source_card_being_trashed_mid_frame() -> None:
-    # The printed Bond condition only counts OTHER cards of the Faction in
-    # play [Main p. 20], so a source card trashed by a freely ordered effect
-    # before its Bond box resolves (OQ-022) still bonds through the cards
-    # that remain. Found by the 2026-09-01 random sweep (seeds 2934/2590).
+def test_bond_box_expires_with_its_trashed_source_card() -> None:
+    # A source card trashed by a freely ordered effect before its Bond box
+    # resolves expires with the box: you can't receive or activate an effect
+    # from a card that is already trashed (OQ-022 designer ruling). Bond
+    # checks for cards that stay in play keep counting only OTHER Faction
+    # cards [Main p. 20]. The collision was found by the 2026-09-01 random
+    # sweep (seeds 2934/2590).
     elders = _imperium_instance("southern_elders")
     partner = _imperium_instance("tread_in_darkness")
     owner = PlayerState(player_id=0, hand=(elders,), in_play=(partner,))
@@ -750,10 +749,12 @@ def test_bond_survives_the_source_card_being_trashed_mid_frame() -> None:
     lowered = replace(placed, players=(trashed_owner, *placed.players[1:]))
     garrison_before = trashed_owner.troops_garrison
 
-    resolved = resolve_agent_card_effect(lowered)
+    expired = expire_trashed_card_effects(RuleResult(state=lowered))
 
-    assert resolved.state.players[0].troops_garrison == garrison_before + 2
-    assert resolved.events[-1].kind == "agent_card_effect_resolved"
+    assert expired.events[-1].kind == "agent_card_effect_expired"
+    context = dict(expired.state.decision_stack[-1].context)
+    assert context["pending_agent_effect"] is False
+    assert expired.state.players[0].troops_garrison == garrison_before
 
 
 def test_treacherous_maneuver_may_be_declined_for_only_normal_influence() -> None:
@@ -2152,11 +2153,11 @@ def test_in_high_places_bond_is_judged_when_the_effect_resolves() -> None:
     assert result.events[0].kind == "agent_card_effect_unavailable"
 
 
-def test_seek_allies_self_trash_is_already_satisfied_after_a_mid_frame_trash(
-) -> None:
+def test_seek_allies_box_expires_after_a_mid_frame_trash() -> None:
     # A freely ordered Intrigue trash slot can trash the played card before
-    # its Agent box resolves; the mandatory Influence gain still resolves and
-    # the self-trash is already satisfied (OQ-022).
+    # its Agent box resolves; the un-activated box then expires instead of
+    # resolving, because you can't receive or activate an effect from a card
+    # that is already trashed (OQ-022 designer ruling).
     state = _state("seek_allies")
     card = state.players[0].hand[0]
     placed = apply_agent_action(state, _action_to(state, "dutiful_service")).state
@@ -2169,14 +2170,12 @@ def test_seek_allies_self_trash_is_already_satisfied_after_a_mid_frame_trash(
     )
     lowered = replace(placed, players=(trashed_owner, *placed.players[1:]))
 
-    result = resolve_agent_card_effect(lowered)
+    expired = expire_trashed_card_effects(RuleResult(state=lowered))
 
-    assert result.state.players[0].trashed == (card,)
-    assert result.events == (
-        result.events[0],
-    ) and result.events[0].kind == "agent_card_self_trash_satisfied"
+    assert expired.state.players[0].trashed == (card,)
+    assert [event.kind for event in expired.events] == ["agent_card_effect_expired"]
     assert (
-        dict(result.state.decision_stack[-1].context)["pending_agent_effect"]
+        dict(expired.state.decision_stack[-1].context)["pending_agent_effect"]
         is False
     )
 
@@ -2696,10 +2695,11 @@ def test_subversive_advisor_replaces_faction_influence_and_trashes_itself() -> N
     } == {"resolve_board_effect"}
 
 
-def test_subversive_advisor_influence_survives_a_mid_frame_self_trash() -> None:
-    # The mandatory Influence gain still resolves when a freely ordered
-    # Intrigue trash slot already trashed this card; the self-trash is then
-    # already satisfied (OQ-022).
+def test_subversive_advisor_box_expires_after_a_mid_frame_trash() -> None:
+    # When a freely ordered Intrigue trash slot already trashed this card,
+    # its un-activated Agent box expires without the Influence gain: you
+    # can't receive or activate an effect from a card that is already
+    # trashed (OQ-022 designer ruling).
     state = _subversive_state()
     subversive = state.players[0].hand[0]
     opponent = replace(
@@ -2718,14 +2718,14 @@ def test_subversive_advisor_influence_survives_a_mid_frame_self_trash() -> None:
     )
     lowered = replace(placed, players=(trashed_owner, *placed.players[1:]))
 
-    result = resolve_agent_card_effect(lowered)
-    owner = result.state.players[0]
+    expired = expire_trashed_card_effects(RuleResult(state=lowered))
+    owner = expired.state.players[0]
 
-    assert owner.influence.emperor == 2
+    assert owner.influence.emperor == 0
     assert owner.trashed == (subversive,)
-    assert result.events[-1].kind == "agent_card_self_trash_satisfied"
+    assert expired.events[-1].kind == "agent_card_effect_expired"
     assert (
-        dict(result.state.decision_stack[-1].context)["pending_agent_effect"]
+        dict(expired.state.decision_stack[-1].context)["pending_agent_effect"]
         is False
     )
 
