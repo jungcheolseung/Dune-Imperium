@@ -29,10 +29,10 @@
 
 ## 공식 문서가 명시하지 않은 정보 정책
 
-다음은 확인한 공식 문서에서 완전한 정책을 찾지 못했고, [OQ-010](open-questions.md#oq-010--손패discard와-과거-공개-정보의-열람-범위)의 `DECIDED` 판정(관측 설계 결정 — 공식 규칙 아님)을 따른다.
+다음은 확인한 공식 문서에서 완전한 정책을 찾지 못했다. [OQ-010](open-questions.md#oq-010--손패discard와-과거-공개-정보의-열람-범위)은 "한 번 공개된 정보는 재확인 가능해야 한다"는 방향까지 확정했고(2026-09-01, 사용자), 구체 범위는 후속 논의로 남아 있다. 현행 관측 v2 경계는 다음과 같으며 범위 논의 전까지 유지한다.
 
 - 일반 hand의 identity는 소유자만 보고, 장수는 전원에게 공개한다.
-- face-up 개인 discard pile의 identity는 소유자만 보고, 장수는 전원에게 공개한다.
+- face-up 개인 discard pile의 identity는 소유자만 보고, 장수는 전원에게 공개한다. 상대 discard 전체의 재확인 허용 여부가 후속 논의 대상이다.
 - 개인 deck과 공용 deck·bank의 남은 장수는 언제나 공개한다. 개인 deck의 순서와 구성은 소유자에게도 노출하지 않는다.
-- matched Conflict/Objective의 identity는 뒤집힌 뒤에도 공개를 유지하고, completed contract는 장수만 공개한다.
-- 게임 종료 후에도 전체 공개는 하지 않으며, 검토는 사람 좌석의 `PlayerView` 시점 재생만 제공한다.
+- matched Conflict/Objective의 identity는 뒤집힌 뒤에도 공개를 유지하고, completed contract는 장수만 공개한다. 완료가 공지됐던 contract identity의 재확인도 후속 논의 대상이다.
+- 게임 종료 후 전체 공개는 하지 않으며, 검토는 사람 좌석의 `PlayerView` 시점 재생만 제공한다.

@@ -12,7 +12,7 @@
 
 번호는 외부 링크의 안정성을 위해 재사용하지 않는다. 해결된 항목은 짧은 `RESOLVED` tombstone을 남기고 결과 문서로 연결한다.
 
-**2026-09-01 확정 캠페인**: 공식 리소스 페이지를 재확인해 Uprising Main Rulebook·Rules Supplements 23-10-12판과 FAQ 2025-01-13판이 여전히 최신임을 확정한 뒤, 남아 있던 `OPEN`/`CONTENT` 19건 전부에 확정 판정을 내렸다. 이 시점부터 `DECIDED` 판정은 프로젝트의 최종 판정이며 "공식 답변 대기" 상태가 아니다. 새 공식 문서가 발표될 때만 해당 항목을 다시 연다.
+**2026-09-01 확정 캠페인**: 공식 리소스 페이지를 재확인해 Uprising Main Rulebook·Rules Supplements 23-10-12판과 FAQ 2025-01-13판이 여전히 최신임을 확정한 뒤, 남아 있던 `OPEN`/`CONTENT` 19건 전부에 확정 판정을 내렸다. `DECIDED` 판정은 프로젝트의 최종 판정이며 "공식 답변 대기" 상태가 아니고, 새 공식 문서가 발표될 때만 해당 항목을 다시 연다. 같은 날 사용자 검토로 세 항목을 갱신했다: OQ-022는 디자이너 판정을 찾아 반대 방향으로 확정, OQ-023은 사용자 재판정으로 교체, OQ-010은 방향만 확정한 `OPEN`으로 되돌렸다(재확인 범위 논의 예정).
 
 ## OQ-001 — Endgame 처리 순서와 priority
 
@@ -37,6 +37,7 @@
 - 현재 범위 확인 결과(2026-08-28): Combat Intrigue 가운데 unit을 **줄이는** 카드는 Go to Ground, Spice is Power, Tactical Option, Reach Agreement이고, Combat 중 unit을 **늘리는** 카드는 없다.
 - 구현 convention: (a) 카드 효과로 마지막 unit이 Conflict를 떠난 참가자는 그 즉시 priority 순환에서 빠지며, 그 플레이어가 priority를 갖고 있었다면 시계 방향의 다음 남은 참가자에게 넘어간다. 남은 참가자가 없으면 Combat Intrigue 단계가 끝난다. (b) Combat 시작 시 unit이 없던 플레이어는 순환에 없고 이후에도 들어올 수 없다. `tests/unit/rules/test_intrigue.py`로 고정한다.
 - 확정(2026-09-01): Intrigue 39개 identity 완결 전사에서 census를 재검산했다 — Combat timing 옵션 가운데 unit을 늘리는 효과는 여전히 없고 줄이는 카드는 위 4종(retreat 비용·보상)뿐이다. 따라서 순환 "진입"은 현재 콘텐츠에서 구조적으로 불가능하고, "퇴장"은 위 convention (a)(b)를 최종 판정으로 채택한다. Combat 중 unit을 늘리는 새 콘텐츠가 추가되면 다시 연다.
+- 사용자 재확인(2026-09-01): unit이 배치되지 않은 플레이어는 Combat 단계 자체에 참가하지 않아 Combat Intrigue 기회를 받지 않고, 참가자도 unit 상실·retreat로 배치 unit이 없어지면 즉시 배제된다는 위 판정을 사용자가 그대로 확정했다.
 
 ## OQ-004 — Imperium Deck 완전 고갈
 
@@ -88,16 +89,13 @@
 
 ## OQ-010 — 손패·discard와 과거 공개 정보의 열람 범위
 
-- 상태: `DECIDED`
+- 상태: `OPEN`
 - 공식 규칙은 Intrigue identity를 play 전까지 opponent에게 공개하지 않는다고 명시하고, 여러 deck을 face-down, discard를 face-up으로 놓게 한다. 하지만 일반 hand identity/장수, discard 전체 검사, deck 장수, 한 번 공개됐다가 face-down이 된 카드의 재확인 가능 여부를 포괄적으로 정의하지 않는다. `[Main pp. 4-7, 12-14, 16, 20]`
 - 필요한 답: 공식 FAQ/ruling 또는 tournament rule에서 각 정보의 열람 가능성을 확인한다. 답을 얻기 전 RL `PlayerView`의 비공개 정책은 프로젝트 convention임을 명시하고 규칙 사실처럼 적지 않는다.
 - 구현 convention(2026-08-30, 부분): 존의 **장수**(각 플레이어의 hand·개인 deck·discard 장수, 보유 Intrigue 장수)는 실물 테이블에서 항상 보이는 정보이므로 `PublicPlayerView`에 공개한다. 카드 **identity**의 열람 범위는 계속 이 항목의 미해결 질문으로 남으며, 기존 공개/비공개 구분(Intrigue identity는 play 전 비공개 등)은 바꾸지 않는다. 공식 근거가 아닌 관측 설계 결정이며 `tests/unit/test_observation.py`로 고정한다.
 - 구현 convention(2026-08-31, 추가): M11 서버의 종료 후 replay 검토도 같은 경계를 따른다 — 검토는 사람 좌석의 `PlayerView` 시점 재생만 제공하고, step 라벨은 검토 좌석 자신의 행동만 상세히, 다른 좌석의 행동은 행동 주체만, chance 결과는 decision id만 노출한다(셔플 결과는 비공개 덱 순서를 그대로 담으므로). 게임 종료 후 전체 공개(상대 hand·덱 순서 열람) 여부는 이 항목의 미해결 질문으로 남는다. `tests/server/test_saves.py`로 고정한다.
-- 확정(2026-09-01, 관측 설계 결정 — 공식 규칙 아님): 남은 하위 질문을 현행 구현대로 최종 판정한다.
-  1. 존 **장수**(각자의 hand·개인 deck·discard·보유 Intrigue)는 전원에게 공개한다(2026-08-30 convention 승격).
-  2. 카드 **identity**는 다음 경계로 확정한다. 소유자는 자기 hand·discard pile·보유 Intrigue의 identity를 보고, 자기 개인 deck은 장수만 본다(순서·구성 비노출). 다른 플레이어에게는 face-up 공개 존만 identity를 노출한다: in play, trashed, face-up trigger Intrigue, Imperium Row/set-aside/removed, 활성 contract, Objective와 승리 Conflict, 그리고 한 번 공개됐다가 뒤집힌 battle card(`face_down_battle_card_ids` — 과거 공개 정보의 재확인 허용). 상대의 hand·개인 deck·discard pile identity는 노출하지 않고, 완료된 contract는 장수만 공개한다. 물리 테이블의 완전 기억(face-up discard 더미의 관찰, 완료 공지의 기억)으로 재구성 가능한 정보의 일부를 의도적으로 장수 근사로 축소한 관측 v2의 설계 경계이며, 공식 열람 규칙이 아니다.
-  3. 게임 종료 후에도 전체 공개는 하지 않는다. 검토는 사람 좌석의 `PlayerView` 시점 재생만 제공한다(2026-08-31 convention 승격).
-  - `tests/unit/test_observation.py`와 `tests/server/test_saves.py`로 고정한다. 공식 열람·tournament 규칙이 발표되면 다시 연다.
+- 방향 확정(2026-09-01, 사용자): **한 번 공개된 정보는 다시 확인할 수 있어야 한다.** 이 원칙을 어떤 정보에 어떻게 적용할지(상대 discard pile identity, 완료 contract identity, 종료 후 열람, event history 재생 범위 등)는 후속 논의에서 확정한다. 같은 날 이전에 기록했던 "현행 구현을 최종 판정으로 승격"은 이 방향 확정으로 대체됐다.
+- 후속 논의 전까지의 현행 관측 v2 경계(잠정 유지, 공식 규칙 아님): 존 장수는 전원 공개(2026-08-30 convention). 소유자는 자기 hand·discard·보유 Intrigue identity를 보고 자기 deck은 장수만 본다. 다른 플레이어에게는 face-up 공개 존(in play, trashed, face-up trigger Intrigue, Imperium Row/set-aside/removed, 활성 contract, Objective·승리 Conflict)과 뒤집힌 battle card identity(`face_down_battle_card_ids`)만 보인다. 상대 hand·deck·discard identity와 완료 contract identity는 비공개이고, 종료 후 검토는 좌석 `PlayerView` 시점 재생이다(2026-08-31 convention). 이 가운데 재확인 원칙과 어긋나는 지점 — 상대의 face-up discard pile 전체와 완료가 공지됐던 contract identity — 이 후속 논의의 핵심 대상이다. `tests/unit/test_observation.py`, `tests/server/test_saves.py`.
 
 ## OQ-011 — Gather Intelligence와 contract 완료의 상대 순서
 
@@ -114,6 +112,8 @@
 - 필요한 답: 콘텐츠 전사 후 실제 충돌 사례별 공식 판정을 확인한다.
 - 현재 구현 convention: The Spice Must Flow를 acquire할 때 기존 카드의 acquire trigger를 먼저 처리하고, 그 뒤 Acquire Contract를 완료한다. standard Acquire Contract의 보상은 Spacing Guild Influence 1과 Solari 3뿐이지만, Influence 경계·Alliance 때문에 순서가 관측될 수 있으므로 공식 일반 판정이 나오면 다시 검토한다.
 - 확정(2026-09-01): 콘텐츠 완결 시점에서 자유 순서 그룹 밖의 동시 의무 효과 계열은 획득(acquire) 이벤트 하나뿐임을 확인하고, 구현된 고정 순서를 최종 판정으로 채택한다: 획득한 카드 자신의 acquire 보상(예: The Spice Must Flow의 VP) → in-play 카드의 acquire trigger(spied Faction Influence) → Acquire Contract 완료(Spacing Guild Influence 1 + 3 Solari) → face-up trigger Intrigue(Call to Arms의 troop recruit). 네 단계 모두 같은 획득자에게 주는 가환 이득이고, Influence도 동일 플레이어의 순차 획득이라 Alliance 전이 판정이 순서에 불변이므로, 현재 콘텐츠에서 어떤 순서든 최종 상태가 같다. Clean Up discard trigger는 OQ-013(RESOLVED), 배치 trigger의 제시 시점은 OQ-016이 다룬다. 서로 비가환인 새 trigger 콘텐츠가 추가되면 다시 연다.
+- 참고(2026-09-01): Faction 공간 방문의 Influence 상승 **시점**은 이 항목의 질문이 아니라 공식 자유 순서 규칙이 직접 답한다 — "If the board space belongs to one of the Factions, you also move your cube one space up on its Influence track. You may carry out all these effects in any order" `[Main p. 9]`. 즉 방문자가 board·card 효과와의 순서를 스스로 고르며, 엔진도 `resolve_faction_influence`를 자유 순서 그룹의 선택 행동으로 제시한다.
+- 재개 조건(2026-09-01, 사용자): 다음 확장 Bloodlines는 Influence 획득의 순서를 관측 가능하게 만드는 trigger를 추가할 수 있다. Bloodlines 콘텐츠를 도입할 때 이 항목을 다시 열어, acquire 계열 밖의 새 충돌과 비가환 Influence trigger를 재검토한다.
 
 ## OQ-013 — Clean Up 이동과 일반적인 `discard` 반응
 
@@ -196,14 +196,15 @@
 - 상태: `DECIDED`
 - Agent turn의 자유 순서 안에서, play된 카드의 Agent box가 해결되기 전에 Intrigue의 trash 슬롯(예: Cunning) 등으로 그 카드 자체를 in play에서 trash할 수 있다. 공식 문서는 화살표 없는 자기 trash가 의무라고 정할 뿐 (`[FAQ p. 3]`), 이미 다른 효과로 trash된 카드의 보류 중인 Agent box를 어떻게 해결하는지는 답하지 않는다. `[Main pp. 9, 20]`
 - 필요한 답: play된 카드가 해결 전에 zone을 떠났을 때 그 카드의 인쇄 효과가 여전히 해결되는지의 공식 판정.
-- 구현 convention(2026-08-30): 의무 효과의 나머지 부분(예: Subversive Advisor의 Influence 2)은 그대로 해결하고, 자기 자신에 대한 trash 지시는 카드가 이미 trash 존에 있으므로 이미 충족된 것으로 본다 (`agent_card_self_trash_satisfied` event). 자기 자신을 hand로 되돌리는 효과(Weirding Woman)는 카드가 게임에서 제거됐으므로 무효로 해결한다. 조건부 효과(Bond, Influence 문턱)는 해결 시점에 다시 판정한다(`[Main pp. 9, 20]`의 자유 순서 판정). `tests/unit/rules/test_agent_effects.py`로 고정한다.
-- 적용 확장(2026-09-01): 같은 convention을 Dangerous Rhetoric의 `TRASH_SELF_AND_GAIN_CHOSEN_INFLUENCE` 분기에도 적용했다(Desert Tactics의 board trash가 Spy 아이콘으로 그 칸에 낸 카드 자체를 잡을 수 있어 random sweep CHOAM seed 2735에서 적발). 반대로 Delivery Agreement의 "trash해서 VP" 선택은 화살표 없는 지시가 아니라 **비용**이므로, 카드가 이미 trash된 뒤에는 충족으로 보지 않고 해결 시점 판정(`[Main pp. 9, 20]`)에 따라 그 선택지를 제시하지 않는다. Bond 조건 재판정도 같은 상황을 만난다: 인쇄된 Bond 조건은 "**다른** 해당 Faction card가 in play"만 세므로 (`[Main p. 20]`, uprising-systems.md), source 카드 자신이 해결 전에 trash됐어도 남은 in play 카드로 Bond가 성립하며 `has_faction_bond`는 source의 존을 요구하지 않는다(random seeds 2934/2590에서 적발). `tests/unit/rules/test_agent_effects.py`, `tests/unit/rules/test_reveal_turn.py`, `tests/integration/test_sweep.py`로 고정한다.
-- 확정(2026-09-01): 위 convention과 적용 확장 전부(의무 효과의 잔여 해결, 자기 trash 지시의 충족 간주, 자기 회수 무효, 비용형 자기 trash의 미제시, 조건의 해결 시점 재판정)를 최종 판정으로 채택한다.
+- 이전 convention(2026-08-30 ~ 2026-09-01, 폐기): 의무 효과의 나머지 부분은 그대로 해결하고 자기 trash 지시는 충족으로 간주했다(`agent_card_self_trash_satisfied`). Dangerous Rhetoric 분기 확장, Delivery Agreement의 비용형 trash 미제시, trash된 source의 Bond를 남은 in-play 카드로 성립시키는 재판정까지 같은 모델이었다. 아래 디자이너 판정 발견으로 대체됐다.
+- 확정(2026-09-01, 디자이너 판정 채택): 사용자 지시로 외부 커뮤니티와 공식 디지털 구현을 조사한 결과, 디자이너 Paul Dennen(BGG 계정 "Merakon", userid 31474)이 2023-02-19에 기존 pooled-effects 판정을 **공식 번복**하며 "you can't receive or activate an effect from a card that is already trashed"라고 판정한 것을 확인했다 — <https://boardgamegeek.com/thread/3031484> (페이지는 Cloudflare 사람 확인 뒤라 공개 geekdo API로 본문을 확인). 사례: Esmar Tuek을 trash해 얻은 spice로 그 Agent box를 발동할 수 없고, Foldspace를 draw 전에 trash하면 그 의무 draw도 발동하지 않는다(사실상 회피 가능). 후속 답글의 적용 세부: 이미 pool에 지급된 persuasion·sword는 유지, 카드가 **자기 효과로** 자신을 trash하는 경우 인쇄된 이득은 정상 지급, 설치형·지연 trigger는 source가 trash돼도 유지. 2025-01-13 FAQ의 Imperial Spy 항목(다른 수단으로 trash되면 draw하지 않는다)과 Beguiling Pheromones 항목이 같은 원칙의 named-card 적용이라, 이 판정이 최신 FAQ 시점에도 유효함을 뒷받침한다. `[FAQ pp. 1-2]`
+- 엔진 반영(`76dbbf7`): dispatcher 훅 `expire_trashed_card_effects`가, 자유 순서 효과가 play된 카드를 trash하면 아직 발동하지 않은 Agent box 전체(의무 부분·Bond box·선택 슬롯)를 `agent_card_effect_expired`로 만료시킨다. 이전의 충족 간주·잔여 해결 경로와 그 이벤트는 제거했다. Delivery Agreement 비용형 미제시와 Weirding Woman 무효는 이 일반 판정의 특수 사례로 흡수되고, Reveal에서 이미 확정된 기여분은 회수하지 않으며, 카드가 자기 효과로 자신을 trash하는 정상 경로는 그대로다. `tests/unit/rules/test_agent_effects.py`, `tests/unit/rules/test_reveal_turn.py`, `tests/integration/test_sweep.py`로 고정한다.
+- 출처가 공식 룰북·FAQ **문서**가 아닌 디자이너 포럼 판정이므로 상태는 `DECIDED`로 두고, 공식 문서에 인쇄되면 `RESOLVED`로 올린다.
 
 ## OQ-023 — Imperial Privilege의 recall 의무와 대상 부재 시 처리
 
 - 상태: `DECIDED`
 - Board Space Guide는 Imperial Privilege의 효과를 "원하면 Intrigue 1장을 discard하고 Intrigue 1장을 draw. 이번 turn에 보낸 Agent가 아닌 자신의 다른 Agent 1개를 recall하고 card 1장을 draw"로 인쇄한다. 첫 문장에만 선택 표지("원하면")가 있고, 다른 배치된 Agent가 하나도 없을 때 recall과 그에 결부된 card draw가 어떻게 되는지는 답하지 않는다. `[Board Guide p. 2]`
 - 필요한 답: recall 절이 의무인지, 그리고 recall 대상이 없을 때 card draw만 따로 발생하는지의 공식 판정.
-- 구현 convention(2026-09-01): 선택 표지가 없는 recall 절은 대상이 있으면 의무이며, 어느 Agent를 recall할지는 소유자가 고른다. 다른 배치된 Agent가 없으면 절 전체(recall과 draw)가 무효화되어 draw도 발생하지 않는다 — draw는 "recall하고 draw"로 recall에 결부돼 있기 때문이다. recall 대상은 Intrigue 슬롯이 해결된 뒤의 해결 시점에 판정한다(`[Main pp. 9, 20]`). `tests/unit/rules/test_board_effects.py`로 고정한다.
-- 확정(2026-09-01): 위 convention을 최종 판정으로 채택한다.
+- 이전 convention(2026-09-01, 폐기): recall 대상이 없으면 절 전체(recall과 draw)를 무효화했다. 같은 날 사용자 재검토로 아래 판정으로 교체됐다.
+- 확정(2026-09-01, 사용자 재판정): 인쇄문 "Recall one of your other Agents from the board, and draw a card"의 recall과 draw는 **별개의 효과**다. recall은 대상이 있으면 의무이고 소유자가 대상을 고르며, 다른 배치된 Agent가 없으면 불가능한 recall만 건너뛰고 card draw는 그대로 해결한다(의무 효과는 수행 가능한 부분을 수행한다는 원칙, `[FAQ p. 3]`의 의무 효과 판정과 정합). recall 대상 유무는 Intrigue 슬롯이 해결된 뒤의 해결 시점에 판정한다(`[Main pp. 9, 20]`). 엔진 반영은 `bce829e`, `tests/unit/rules/test_board_effects.py`로 고정한다.

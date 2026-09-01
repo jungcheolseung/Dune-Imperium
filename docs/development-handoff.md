@@ -41,7 +41,7 @@ uv run mypy src tests
 - Agent 배치 시점 조건이 거짓이면 pending되지 않는 카드 효과는, 같은 frame의 자유 순서 효과로 조건이 나중에 참이 되어도 제시되지 않는다(알려진 엔진 경계; Prepare the Way 수정 커밋 `87a9300` 참고).
 - Objective와 battle icon 상호작용은 2026-08-30에 재감사를 마쳤다 (`implementation-audits/objectives.md`, OQ-005 RESOLVED). Combat 다중 후보 guard는 미래 콘텐츠 대비 tripwire로 남는다.
 - Shaddam Corrino IV의 set-aside Sardaukar Contract 경로는 Leader 능력과 함께 남아 있다. OQ-010, OQ-011 경계는 확정 판정(`DECIDED`)으로 유지된다.
-- 공식 문서가 침묵하는 규칙 판정은 [`rules/open-questions.md`](rules/open-questions.md)에 있다. 2026-09-01 확정 캠페인으로 남아 있던 `OPEN`/`CONTENT` 19건 전부가 `DECIDED`(확정 프로젝트 판정)가 되어 더는 공식 답변 대기 상태가 아니며, 새 공식 룰북·FAQ가 답을 줄 때만 해당 항목을 다시 연다. 새로 발견되는 규칙 공백은 여전히 코드로 임의 확정하지 않고 그 문서에 먼저 기록하며, 규칙 동작을 바꾸기 전에는 반드시 `docs/rules/`의 문장을 인용한다([`lessons.md`](lessons.md)).
+- 공식 문서가 침묵하는 규칙 판정은 [`rules/open-questions.md`](rules/open-questions.md)에 있다. 2026-09-01 확정 캠페인과 같은 날의 사용자 검토를 거쳐, 현재 `OPEN`은 OQ-010 하나(재확인 원칙은 확정, 적용 범위 논의 예정)이고 나머지는 전부 `DECIDED`/`RESOLVED`다. `DECIDED`는 확정 프로젝트 판정으로 새 공식 룰북·FAQ(또는 OQ-022처럼 명시된 상위 근거)가 답을 줄 때만 다시 연다. 새로 발견되는 규칙 공백은 여전히 코드로 임의 확정하지 않고 그 문서에 먼저 기록하며, 규칙 동작을 바꾸기 전에는 반드시 `docs/rules/`의 문장을 인용한다([`lessons.md`](lessons.md)).
 
 콘텐츠(카드·리더·계약·Intrigue·보드 22칸)는 이제 4인 base+CHOAM 게임 범위에서 완결이다. 남은 경계는 공식 문서가 침묵하는 판정을 기록한 convention(open-questions.md)과 위의 엔진 경계·미래 콘텐츠 tripwire들이며, 이들은 "미구현 콘텐츠"가 아니라 문서화된 프로젝트 판정이다.
 
@@ -118,6 +118,15 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 ## 원격 저장소 인계 주의
 
 2026-09-01 세션 시작 시점에 `origin/master`와 로컬은 `1647bf2`로 일치했고, 이 세션의 커밋들(`d7703ef`부터)은 로컬에만 있다(push는 사용자 판단으로 한다). 새 세션은 `git log origin/master..master`와 반대 방향을 모두 확인하고, checkout이 `853ecd4`보다 이전이면 이 문서의 986개 테스트·codec v82 기준선이 실제 코드와 일치하지 않는다. **다른 머신에서 이어서 작업한다면 먼저 이 머신에서 push가 필요하다.** 새 머신의 UI 카드 이미지는 비공개 `Dune-Imperium-assets` 저장소를 clone해 symlink로 연결하고(그 README 참고), 접근이 없을 때만 `uv run scripts/fetch_card_images.py`로 채운다 (선택; 없으면 텍스트만). 2026-09-01부터 이 머신의 캐시는 그 symlink다.
+
+## 2026-09-01 오픈 퀘스천 후속 세션 요약 (사용자 피드백: OQ-022 디자이너 판정 채택, OQ-023 재판정, OQ-010 재개)
+
+- 사용자 피드백 6건을 반영했다. OQ-003은 사용자가 기존 판정을 그대로 재확인했고, OQ-015·OQ-021은 설명만 제공했다(판정 불변).
+- **OQ-022 (동작 변경, `76dbbf7`)**: 사용자 지시로 외부 커뮤니티·공식 디지털 구현을 조사했다. BGG thread 3031484에서 디자이너 Paul Dennen(계정 "Merakon")의 2023-02-19 판정을 확인했다 — 이미 trash된 카드의 효과는 받지도 발동하지도 않는다(기존 pooled-effects 판정의 공식 번복; Esmar Tuek/Cull, Foldspace 사례). 2025 FAQ의 Imperial Spy·Beguiling Pheromones named 항목이 같은 원칙이라 현재도 유효하다. 이에 따라 dispatcher 훅 `expire_trashed_card_effects`가 미발동 Agent box 전체(의무 부분·Bond·선택 슬롯)를 만료시키는 모델로 교체하고, 충족 간주·잔여 해결 경로와 `agent_card_self_trash_satisfied` 이벤트를 제거했다. 이미 지급된 Reveal 기여분과 설치형 trigger는 유지(후속 답글). BGG 페이지는 Cloudflare 사람 확인이라 열지 않고 공개 geekdo API로 본문을 확인했다(CAPTCHA 우회 없음). codec 불변.
+- **OQ-023 (동작 변경, `bce829e`)**: 사용자 재판정 — Imperial Privilege의 recall과 draw는 별개 효과이므로, recall 대상이 없으면 recall만 건너뛰고(`imperial_privilege_recall_skipped`) card draw는 그대로 해결한다. 이전의 절 전체 무효 판정을 교체했다.
+- **OQ-010 (재개)**: "한 번 공개된 정보는 재확인 가능해야 한다"는 방향을 사용자가 확정, 구체 범위(상대 discard identity, 완료 contract identity, 종료 후 열람 등)는 후속 논의로 남기고 `OPEN`으로 되돌렸다. 관측 v2 구현은 논의 전까지 현행 유지.
+- **OQ-012 (보강)**: Faction 공간의 Influence 상승 시점은 Main p. 9 자유 순서 원문("You may carry out all these effects in any order")이 직접 답한다 — 방문자가 시점을 고르며 엔진의 `resolve_faction_influence`도 그렇게 제시함을 확인. Bloodlines 도입 시 이 항목을 다시 열기로 재개 조건을 명시했다.
+- 검증: pytest 986(985+skip 1), Ruff, mypy. 커밋 트리 소크 — OQ-022 반영 후 룰셋당 700판(soundness 25), 두 커밋 반영 후 룰셋당 700판(`--rotate-leaders` + soundness 25) 모두 실패 0.
 
 ## 2026-09-01 오픈 퀘스천 확정 세션 요약 (19건 전부 DECIDED)
 
