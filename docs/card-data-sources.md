@@ -36,9 +36,14 @@ fail when new content lacks display text, so wording changes should update
 the audit documents first and the display maps in the same work unit. Card
 images are never committed; the server serves the machine-local gitignored
 `downloads/dunecardshub/cards/` cache when present (typo overrides live in
-`display/images.py`). A machine without the cache populates it with
-`uv run scripts/fetch_card_images.py`, which downloads exactly the file set
-`display.images.required_images()` enumerates.
+`display/images.py`). The cache is mirrored in the owner's private
+`Dune-Imperium-assets` repository (never in this public one): clone it as a
+sibling directory and symlink `downloads/dunecardshub/cards` to its
+`cards/en/`, per its README. A machine without that access populates the
+cache with `uv run scripts/fetch_card_images.py`, which downloads exactly
+the file set `display.images.required_images()` enumerates; with the
+symlink in place the script also fills gaps for newly implemented content
+directly into the assets checkout for commit there.
 
 ### Development audit workflow
 

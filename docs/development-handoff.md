@@ -197,7 +197,9 @@ uv run dune-imperium-sweep --games 100 --ruleset both --workers 8 --leader-draft
 # 로컬 플레이 서버 (ui extra 필요; 기본 http://127.0.0.1:8000)
 uv run dune-imperium-server
 
-# UI 카드 이미지 캐시 다운로드 (선택; 새 개발 머신에서 1회, 저장소 밖 downloads/)
+# UI 카드 이미지 캐시 (선택). 우선: 비공개 Dune-Imperium-assets 저장소를 형제
+# 디렉터리에 clone하고 그 README대로 downloads/dunecardshub/cards를 symlink.
+# 폴백/신규 카드 채움: 아래 fetch 스크립트 (빈 파일만 받는다)
 uv run scripts/fetch_card_images.py
 
 # 한 라운드 random 실행
@@ -225,7 +227,9 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에
 checkout이 `4c175d1`보다 이전이면 이 문서의 934개 테스트·fetch 스크립트
 기준선이 실제 코드와 일치하지 않는다. **다른 머신에서 이어서 작업한다면
 먼저 이 머신에서 push가 필요하다.** 새 머신의 UI 카드 이미지는
-`uv run scripts/fetch_card_images.py` 1회로 채운다(선택; 없으면 텍스트만).
+비공개 `Dune-Imperium-assets` 저장소를 clone해 symlink로 연결하고(그 README
+참고), 접근이 없을 때만 `uv run scripts/fetch_card_images.py`로 채운다
+(선택; 없으면 텍스트만). 2026-09-01부터 이 머신의 캐시는 그 symlink다.
 
 ## 2026-08-31 UI 효과 표시 세션 요약 (텍스트 자동 생성 + 로컬 이미지)
 
