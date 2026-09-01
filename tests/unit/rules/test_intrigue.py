@@ -27,11 +27,19 @@ from dune_imperium.core import (
 )
 from dune_imperium.core.engine import IllegalActionError
 from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.acquisition import (
+    apply_imperium_acquisition,
+    legal_imperium_acquisitions,
+)
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 from dune_imperium.rules.intrigue import (
     apply_intrigue_choice,
     apply_intrigue_play,
     legal_intrigue_play_actions,
+)
+from dune_imperium.rules.reveal_turn import (
+    apply_reveal_spy_action,
+    legal_reveal_spy_actions,
 )
 
 
@@ -375,21 +383,56 @@ def test_intrigue_spice_trades_keep_harvest_accounting_honest() -> None:
     assert context["spice_spent_after_placement"] == 0
 
 
-def test_reveal_turn_withholds_plot_options_that_draw_personal_cards() -> None:
+def test_reveal_turn_offers_and_immediately_reveals_a_drawn_plot_card() -> None:
+    # A card drawn during the owner's own Reveal turn is revealed and used
+    # at once [FAQ p. 3], so a Plot Intrigue that draws a personal card is
+    # no longer withheld while the Reveal turn is open.
     report = _intrigue("intelligence_report")
     plan = _intrigue("contingency_plan")
+    diplomacy = _starter("diplomacy")
+    cheap = _imperium_instance("sardaukar_soldier")
     owner = PlayerState(
-        player_id=0, intrigue_cards=(report, plan), deck=(_starter("dagger"),)
+        player_id=0, intrigue_cards=(report, plan), deck=(diplomacy,)
     )
-    state = _turn_state(owner)
+    state = replace(
+        _turn_state(owner),
+        imperium_row=(cheap,),
+        imperium_deck=(_imperium_instance("maula_pistol"),),
+    )
     engine = UprisingRulesEngine()
 
     assert _play(state, report) in engine.legal_actions(state, 0)
     revealed = engine.apply(state, DomainAction(action_id="reveal_turn", actor=0)).state
-    offered = [
-        a for a in engine.legal_actions(revealed, 0) if a.action_id == "play_intrigue"
-    ]
-    assert offered == [_play(revealed, plan)]
+    offered = {
+        dict(a.arguments)["card_id"]
+        for a in engine.legal_actions(revealed, 0)
+        if a.action_id == "play_intrigue"
+    }
+    assert offered == {report, plan}
+    assert legal_imperium_acquisitions(revealed, 0) == ()
+
+    result = apply_intrigue_play(revealed, _play(revealed, report))
+    played = result.state
+    owner_after = played.players[0]
+
+    # The drawn card lands directly in play, not in hand.
+    assert owner_after.hand == ()
+    assert owner_after.deck == ()
+    assert diplomacy in owner_after.in_play
+    context = dict(played.decision_stack[-1].context)
+    assert context["persuasion"] == 1
+    assert context["revealed_card_count"] == 1
+    assert context["revealed_card_000"] == diplomacy
+    assert "personal_card_late_revealed" in {event.kind for event in result.events}
+
+    # Its Persuasion pays for an acquisition this same Reveal turn.
+    acquisition = next(
+        action
+        for action in legal_imperium_acquisitions(played, 0)
+        if dict(action.arguments)["instance_id"] == cheap
+    )
+    acquired = apply_imperium_acquisition(played, acquisition).state
+    assert acquired.players[0].discard_pile == (cheap,)
 
 
 def test_intrigue_card_stays_in_hand_while_its_choices_resolve() -> None:
@@ -1477,7 +1520,9 @@ def test_inspire_awe_is_unplayable_without_a_target_within_the_cap() -> None:
     assert legal_intrigue_play_actions(state, 0) == ()
 
 
-def test_inspire_awe_to_hand_is_withheld_during_the_owners_reveal_turn() -> None:
+def test_inspire_awe_to_hand_immediately_reveals_during_the_owners_reveal_turn() -> (
+    None
+):
     card = _intrigue("inspire_awe")
     owner = PlayerState(player_id=0, intrigue_cards=(card,), sandworms_conflict=1)
     state = replace(
@@ -1486,19 +1531,78 @@ def test_inspire_awe_to_hand_is_withheld_during_the_owners_reveal_turn() -> None
     )
     engine = UprisingRulesEngine()
 
-    # With a sandworm the acquired card would enter the hand mid-Reveal,
-    # which needs the immediate-reveal rule [FAQ p. 3]; the option waits.
+    # With a sandworm the acquired card enters the hand mid-Reveal, so it is
+    # revealed and used at once [FAQ p. 3] instead of being withheld.
     revealed = engine.apply(
         state, DomainAction(action_id="reveal_turn", actor=0)
     ).state
     assert revealed.decision_stack[-1].kind == "reveal"
-    assert legal_intrigue_play_actions(revealed, 0) == ()
+    assert legal_intrigue_play_actions(revealed, 0) == (_play(revealed, card),)
 
-    # Without a sandworm the card goes to the discard pile, so the option
-    # stays available during the Reveal turn.
+    opened = engine.apply(revealed, _play(revealed, card)).state
+    assert opened.decision_stack[-1].kind == "intrigue_choice"
+
+    result = engine.apply(opened, _acquire_reserve("prepare_the_way"))
+    done = result.state
+    owner_after = done.players[0]
+
+    # The acquired card is immediately revealed into play rather than
+    # sitting in hand.
+    assert owner_after.hand == ()
+    assert "reserve:prepare_the_way:7" in owner_after.in_play
+    assert owner_after.discard_pile == ()
+    assert dict(done.reserve_stacks)["prepare_the_way"] == 7
+    assert done.intrigue_discard == (card,)
+    assert done.decision_stack[-1].kind == "reveal"
+    context = dict(done.decision_stack[-1].context)
+    assert context["persuasion"] == 2
+    assert context["revealed_card_count"] == 1
+    assert context["revealed_card_000"] == "reserve:prepare_the_way:7"
+    assert "personal_card_late_revealed" in {event.kind for event in result.events}
+
+    # Without a sandworm the card still goes to the discard pile untouched.
     calm = _with_market(_turn_state(replace(owner, sandworms_conflict=0)))
     shown = engine.apply(calm, DomainAction(action_id="reveal_turn", actor=0)).state
     assert legal_intrigue_play_actions(shown, 0) == (_play(shown, card),)
+
+
+def test_inspire_awe_late_reveal_choice_does_not_bury_the_intrigue_choice() -> None:
+    # The acquired card's own REVEAL_CHOICE frame [FAQ p. 3] must slot in
+    # above the Reveal frame without burying Inspire Awe's still-resolving
+    # Intrigue choice frame, which sits above the Reveal frame too.
+    card = _intrigue("inspire_awe")
+    wheels = _imperium_instance("wheels_within_wheels")
+    owner = PlayerState(player_id=0, intrigue_cards=(card,), sandworms_conflict=1)
+    state = replace(
+        _turn_state(owner),
+        imperium_row=(wheels,),
+        imperium_deck=(_imperium_instance("maula_pistol"),),
+        current_conflict_ids=(_conflict(False),),
+    )
+    engine = UprisingRulesEngine()
+
+    revealed = engine.apply(
+        state, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    opened = engine.apply(revealed, _play(revealed, card)).state
+    assert opened.decision_stack[-1].kind == "intrigue_choice"
+
+    done = engine.apply(opened, _acquire_imperium(wheels)).state
+
+    # Inspire Awe fully resolved (discarded) in the same step, and the
+    # acquired card's PLACE_SPY choice is now the only frame above Reveal.
+    assert done.intrigue_discard == (card,)
+    assert done.players[0].in_play == (wheels,)
+    assert done.decision_stack[-1].kind == "reveal_choice"
+    assert done.decision_stack[-2].kind == "reveal"
+
+    spy_actions = legal_reveal_spy_actions(done, 0)
+    assert spy_actions
+    resolved = apply_reveal_spy_action(done, spy_actions[0]).state
+    assert resolved.decision_stack[-1].kind == "reveal"
+    assert resolved.players[0].spy_post_ids == (
+        dict(spy_actions[0].arguments)["post_id"],
+    )
 
 
 def test_impress_adds_strength_and_acquires_during_combat() -> None:

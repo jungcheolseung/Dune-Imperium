@@ -19,11 +19,9 @@ from dune_imperium.content.uprising.effect_dsl import (
     DeployFromGarrison,
     DestroyShieldWall,
     DiscardFromHand,
-    DrawPersonalCards,
     EffectSection,
     FlipBattleCard,
     GainInfluence,
-    IntrigueOption,
     IntrigueTiming,
     LoseInfluence,
     PlaceSpy,
@@ -139,15 +137,6 @@ def legal_intrigue_play_actions(
             continue
         for index, option in enumerate(entry.options):
             if option.timing is not timing:
-                continue
-            if frame.kind == FrameKind.REVEAL and (
-                _draws_personal_cards(state, player, option)
-                or _acquires_to_hand(state, player, option)
-            ):
-                # Cards entering the hand during a Reveal turn must be
-                # revealed at once [FAQ p. 3]; that boundary is not
-                # implemented, so such options are withheld until the
-                # Reveal is over.
                 continue
             if option_is_playable(state, player, option):
                 actions.append(
@@ -859,26 +848,6 @@ def _deploy_units(
     return RuleResult(
         state=replace(state, players=replace_player(state.players, next_owner)),
         events=(event,),
-    )
-
-
-def _draws_personal_cards(
-    state: GameState, player: int, option: IntrigueOption
-) -> bool:
-    return any(
-        isinstance(reward, DrawPersonalCards)
-        for section in applicable_sections(state, player, option)
-        for reward in section.rewards
-    )
-
-
-def _acquires_to_hand(state: GameState, player: int, option: IntrigueOption) -> bool:
-    return any(
-        isinstance(reward, AcquireCardUpTo)
-        and reward.to_hand_if is not None
-        and condition_holds(state, player, reward.to_hand_if)
-        for section in applicable_sections(state, player, option)
-        for reward in section.rewards
     )
 
 

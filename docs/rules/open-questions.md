@@ -276,8 +276,19 @@
   전에 내야 한다. (b) 조건이 성립한 모든 비용 줄은 의무이며, 전부 지불할 수 없으면
   카드를 낼 수 없다. (c) Reveal turn 중 card가 hand에 들어가는 Plot — 개인 card
   draw, 그리고 Inspire Awe처럼 조건이 성립해 hand로 acquire하는 경우 — 은
-  FAQ p. 3의 즉시 공개 규칙을 구현하기 전까지 제시하지 않는다. discard로
-  acquire하는 형태는 Reveal 중에도 제시한다. (d) 한 option 안의 선택
+  이제 Reveal turn 중에도 제시한다. hand에 들어간 card는 FAQ p. 3의 즉시
+  공개 규칙에 따라 그 자리에서 revealed된다: hand → in_play로 옮기고, 더
+  커진 revealed 집합 기준으로 자신의 Reveal 기여분(설득·검·자원·선택 효과)을
+  얻어 같은 Reveal turn에 사용한다. 앞서 Reveal에서 이미 지급된 금액은
+  확정이며 다시 계산하거나 회수하지 않는다. 늦게 도착한 card의
+  per_revealed_faction·strength_per_other_sword_card 같은 교차 효과는 그
+  도착이 이미 revealed된 다른 card들에 일으키는 증분만 더하고, 그 증분을 줄
+  자격은 도착 시점 조건으로 다시 판정한다. discard로 acquire하는 형태는
+  Reveal 중에도 그대로 제시한다. 현재 콘텐츠의 교차 효과 3종
+  (Stilgar, Sardaukar Coordination, Leadership)은 모두 자격 조건이 없어 이
+  재판정이 항상 공허하며, `tests/unit/rules/test_reveal_turn.py`의 pin
+  테스트로 고정한다(자격 조건이 있는 교차 효과가 새로 추가되면 회수 로직이
+  없는 이 구현이 실패하도록 하는 장치). (d) 한 option 안의 선택
   슬롯(trash, Spy 등)은 자동 보상(draw 등)보다 먼저 해결하므로 Cunning처럼
   "draw 후 trash"로 인쇄된 카드에서 방금 draw한 card는 trash 대상이 되지 않는다.
   네 판정 모두 프로젝트 convention이며 `tests/unit/rules/test_intrigue.py`로

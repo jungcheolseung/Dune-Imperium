@@ -7,7 +7,8 @@ from dune_imperium.core.decisions import ChanceDecision, DecisionFrame
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GameState
-from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.frames import FrameKind, reveal_is_open_for
+from dune_imperium.rules.reveal_turn import reveal_late_arrivals
 
 
 def draw_or_request_personal_cards(
@@ -120,4 +121,9 @@ def _draw_available(
         next_owner if candidate.player_id == player else candidate
         for candidate in state.players
     )
-    return RuleResult(state=replace(state, players=players))
+    next_state = replace(state, players=players)
+    if drawn and reveal_is_open_for(next_state, player):
+        # A card drawn during the owner's own Reveal turn is revealed and
+        # used at once rather than withheld to the next round [FAQ p. 3].
+        return reveal_late_arrivals(next_state, player, drawn)
+    return RuleResult(state=next_state)

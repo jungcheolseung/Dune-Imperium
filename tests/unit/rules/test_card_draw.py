@@ -1,7 +1,14 @@
 """Tests for personal draw and replayable discard reshuffling."""
 
 from dune_imperium import RulesetConfig
-from dune_imperium.core import ChanceDecision, ChanceOutcome, GameState, PlayerState
+from dune_imperium.core import (
+    ChanceDecision,
+    ChanceOutcome,
+    DecisionFrame,
+    GameState,
+    PlayerDecision,
+    PlayerState,
+)
 from dune_imperium.rules.card_draw import (
     apply_personal_draw_reshuffle,
     draw_or_request_personal_cards,
@@ -60,3 +67,44 @@ def test_personal_draw_takes_only_available_cards_without_discard() -> None:
 
     assert result.state.players[0].hand == ("only",)
     assert result.state.players[0].deck == ()
+
+
+def test_draw_lands_in_hand_when_the_players_own_reveal_is_not_open() -> None:
+    # A draw during an Agent turn, or while a different player's Reveal is
+    # open, behaves exactly as before the immediate-reveal rule [FAQ p. 3]:
+    # the card stays in hand rather than being revealed.
+    owner = PlayerState(player_id=0, deck=("a", "b"))
+    other_players_reveal = PlayerState(player_id=1)
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        players=(
+            owner,
+            other_players_reveal,
+            PlayerState(player_id=2),
+            PlayerState(player_id=3),
+        ),
+        decision_stack=(
+            DecisionFrame(
+                kind="reveal",
+                frame_id="round:1:player:1:reveal",
+                decision=PlayerDecision(
+                    owner=1, prompt="Resolve Reveal effects and acquire cards"
+                ),
+                context=(
+                    ("optional_sword_strength", 0),
+                    ("persuasion", 0),
+                    ("revealed_card_count", 0),
+                    ("strength", 0),
+                    ("sword_strength", 0),
+                    ("turn_owner", 1),
+                ),
+            ),
+        ),
+    )
+
+    result = draw_or_request_personal_cards(state, 0, 1, source="test:draw")
+
+    assert result.state.players[0].hand == ("a",)
+    assert result.state.players[0].in_play == ()
+    assert result.state.players[0].deck == ("b",)

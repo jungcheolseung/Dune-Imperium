@@ -4,9 +4,18 @@ from dataclasses import replace
 
 from dune_imperium import RulesetConfig
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
-from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
-from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
+from dune_imperium.content.uprising.imperium import (
+    IMPERIUM_CARDS,
+    imperium_deck_instance_ids,
+)
+from dune_imperium.content.uprising.reserve import RESERVE_STACKS
+from dune_imperium.content.uprising.starting_cards import (
+    STARTING_DECK,
+    starting_deck_instance_ids,
+)
 from dune_imperium.core import (
+    ChanceDecision,
+    ChanceOutcome,
     DecisionFrame,
     DomainAction,
     GamePhase,
@@ -15,6 +24,10 @@ from dune_imperium.core import (
     PlayerDecision,
     PlayerState,
     Resources,
+)
+from dune_imperium.rules.card_draw import (
+    apply_personal_draw_reshuffle,
+    draw_or_request_personal_cards,
 )
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.reveal_turn import (
@@ -38,6 +51,7 @@ from dune_imperium.rules.reveal_turn import (
     legal_reveal_spice_influence_actions,
     legal_reveal_spy_actions,
     legal_reveal_troop_retreat_actions,
+    reveal_late_arrivals,
 )
 
 
@@ -1831,3 +1845,181 @@ def test_four_empty_reveal_turns_follow_seat_order_into_combat() -> None:
     assert state.reveal_order == (2, 3, 0, 1)
     assert state.phase is GamePhase.COMBAT
     assert state.decision_stack == ()
+
+
+# --- Immediate reveal of cards that arrive during a Reveal turn [FAQ p. 3] --
+
+
+def _with_late_hand(state: GameState, card_id: str) -> GameState:
+    """Simulate a card landing in seat 0's hand mid-Reveal, before revealing it."""
+
+    players = tuple(
+        replace(player, hand=(card_id,)) if player.player_id == 0 else player
+        for player in state.players
+    )
+    return replace(state, players=players)
+
+
+def test_late_reveal_stilgar_gains_a_persuasion_increment_from_a_fremen_arrival() -> (
+    None
+):
+    # Stilgar, The Devoted (per_revealed_faction=FREMEN) is already revealed;
+    # a late-arriving Fremen card [FAQ p. 3] adds the increment its own
+    # arrival causes on top of its own printed values, without recomputing
+    # Stilgar's already-granted amount.
+    stilgar = _imperium_instance("stilgar_the_devoted")
+    maula = _imperium_instance("maula_pistol")
+    state = _state(PlayerState(player_id=0, hand=(stilgar,)))
+    revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+    assert dict(revealed.decision_stack[-1].context)["persuasion"] == 2
+
+    arrived = _with_late_hand(revealed, maula)
+    result = reveal_late_arrivals(arrived, 0, (maula,))
+    context = dict(result.state.decision_stack[-1].context)
+
+    assert result.state.players[0].hand == ()
+    assert result.state.players[0].in_play == (stilgar, maula)
+    # maula's own Persuasion (1) plus the +2 Stilgar increment.
+    assert context["persuasion"] == 2 + 1 + 2
+    assert context["revealed_card_count"] == 2
+    assert context["revealed_card_001"] == maula
+
+
+def test_late_reveal_leadership_gains_strength_from_a_late_sword_card() -> None:
+    # Leadership (strength_per_other_sword_card=1) is already revealed; a
+    # late-arriving card with positive strength adds +1 to the group's
+    # strength beyond that card's own value [FAQ p. 3].
+    leadership = _imperium_instance("leadership")
+    dagger = _instance("dagger")
+    owner = PlayerState(
+        player_id=0,
+        hand=(leadership,),
+        troops_supply=8,
+        troops_conflict=1,
+    )
+    state = _state(owner)
+    revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+    assert revealed.players[0].combat_strength == 3
+
+    arrived = _with_late_hand(revealed, dagger)
+    result = reveal_late_arrivals(arrived, 0, (dagger,))
+    context = dict(result.state.decision_stack[-1].context)
+
+    # dagger's own strength (1) plus the +1 Leadership increment.
+    assert result.state.players[0].combat_strength == 3 + 2
+    assert context["strength"] == 5
+    assert context["sword_strength"] == 3
+
+
+def test_late_reveal_leadership_counts_an_already_revealed_sword_card() -> None:
+    # Leadership arrives late; its own strength_per_other_sword_card effect
+    # counts the already-revealed dagger's strength, recomputed purely over
+    # the current revealed set [FAQ p. 3].
+    leadership = _imperium_instance("leadership")
+    dagger = _instance("dagger")
+    owner = PlayerState(
+        player_id=0,
+        hand=(dagger,),
+        troops_supply=8,
+        troops_conflict=1,
+    )
+    state = _state(owner)
+    revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+    assert revealed.players[0].combat_strength == 3
+
+    arrived = _with_late_hand(revealed, leadership)
+    result = reveal_late_arrivals(arrived, 0, (leadership,))
+    context = dict(result.state.decision_stack[-1].context)
+
+    # leadership's own strength (1) plus +1 for the already-revealed dagger.
+    assert result.state.players[0].combat_strength == 3 + 2
+    assert context["persuasion"] == 2
+    assert context["strength"] == 5
+
+
+def test_late_reveal_pushes_a_resolvable_reveal_choice_frame() -> None:
+    corrinth_city = _imperium_instance("corrinth_city")
+    state = _state(PlayerState(player_id=0, resources=Resources(solari=5)))
+    revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+    assert revealed.decision_stack[-1].kind == "reveal"
+
+    arrived = _with_late_hand(revealed, corrinth_city)
+    result = reveal_late_arrivals(arrived, 0, (corrinth_city,))
+
+    assert result.state.decision_stack[-1].kind == "reveal_choice"
+    actions = legal_corrinth_city_reveal_actions(result.state, 0)
+    assert tuple(action.action_id for action in actions) == (
+        "gain_five_reveal_solari",
+        "take_high_council_from_reveal",
+    )
+    take_seat = actions[1]
+    resolved = apply_corrinth_city_reveal(result.state, take_seat)
+
+    assert resolved.state.players[0].high_council is True
+    assert resolved.state.decision_stack[-1].kind == "reveal"
+
+
+def test_late_reveal_grants_resource_effects_at_arrival() -> None:
+    stilltent = _imperium_instance("fedaykin_stilltent")
+    state = _state(PlayerState(player_id=0))
+    revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+
+    arrived = _with_late_hand(revealed, stilltent)
+    result = reveal_late_arrivals(arrived, 0, (stilltent,))
+
+    assert result.state.players[0].resources.water == 2
+    assert result.state.players[0].in_play == (stilltent,)
+
+
+def test_late_reveal_works_through_the_personal_draw_reshuffle_chance() -> None:
+    # An empty personal deck routes the reveal-time draw through the
+    # PERSONAL_DRAW_RESHUFFLE chance; the late-reveal hook on the
+    # completion path [FAQ p. 3] must still fire once it resolves.
+    discarded = _instance("dagger", 1)
+    owner = PlayerState(player_id=0, discard_pile=(discarded,))
+    state = _state(owner)
+    revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+    assert revealed.decision_stack[-1].kind == "reveal"
+
+    pending = draw_or_request_personal_cards(
+        revealed, 0, 1, source="test:late_draw"
+    )
+    assert pending.state.decision_stack[-1].kind == "personal_draw_reshuffle"
+    decision = pending.state.decision_stack[-1].decision
+    assert isinstance(decision, ChanceDecision)
+
+    outcome = ChanceOutcome(decision.decision_id, (discarded,))
+    result = apply_personal_draw_reshuffle(pending.state, outcome)
+
+    assert result.state.decision_stack[-1].kind == "reveal"
+    owner_after = result.state.players[0]
+    assert owner_after.hand == ()
+    assert owner_after.in_play == (discarded,)
+    context = dict(result.state.decision_stack[-1].context)
+    assert context["revealed_card_count"] == 1
+    assert context["revealed_card_000"] == discarded
+
+
+def test_cross_scaling_reveal_effects_have_no_eligibility_gates() -> None:
+    # The late-reveal cross-increment path [FAQ p. 3] re-adjudicates a
+    # per_revealed_faction/strength_per_other_sword_card effect's
+    # eligibility gates at arrival but never revokes an already-granted
+    # amount. Today every such effect is unconditional, so re-adjudication
+    # is vacuous; this pin fails the suite if future content adds a gated
+    # one, which would need the increment logic to also track revocation.
+    entries = (*STARTING_DECK, *RESERVE_STACKS, *IMPERIUM_CARDS)
+    scaling_effects = [
+        effect
+        for entry in entries
+        for effect in entry.reveal_effects
+        if effect.per_revealed_faction is not None
+        or effect.strength_per_other_sword_card
+    ]
+
+    assert len(scaling_effects) == 3
+    for effect in scaling_effects:
+        assert effect.requires_high_council is False
+        assert effect.requires_swordmaster is False
+        assert effect.minimum_spies_placed == 0
+        assert effect.required_faction_bond is None
+        assert effect.requires_spying_on_maker_space is False

@@ -25,10 +25,10 @@ from dune_imperium.rules.effects import (
     advance_after_effect,
     current_agent_effect_context,
 )
-from dune_imperium.rules.frames import FrameKind, replace_player
+from dune_imperium.rules.frames import FrameKind, replace_player, reveal_is_open_for
 from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.intrigue_triggers import fire_reveal_acquisition_intrigue
-from dune_imperium.rules.reveal_turn import current_reveal_context
+from dune_imperium.rules.reveal_turn import current_reveal_context, reveal_late_arrivals
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
     place_spy,
@@ -1079,11 +1079,16 @@ def acquire_reserve_for_intrigue(
             ("player", player),
         ),
     )
+    result_state = fired.state
+    result_events: tuple[GameEvent, ...] = (event, *completed.events, *fired.events)
+    if to_hand and reveal_is_open_for(result_state, player):
+        # A card acquired to hand during the owner's own Reveal turn is
+        # revealed and used at once rather than withheld [FAQ p. 3].
+        late = reveal_late_arrivals(result_state, player, (instance_id,))
+        result_state = late.state
+        result_events = (*result_events, *late.events)
     return IntrigueAcquisition(
-        result=RuleResult(
-            state=fired.state,
-            events=(event, *completed.events, *fired.events),
-        ),
+        result=RuleResult(state=result_state, events=result_events),
         instance_id=instance_id,
     )
 
@@ -1158,11 +1163,21 @@ def acquire_imperium_for_intrigue(
             ("player", player),
         ),
     )
+    result_state = fired.state
+    result_events: tuple[GameEvent, ...] = (
+        event,
+        *acquisition_events,
+        *completed.events,
+        *fired.events,
+    )
+    if to_hand and reveal_is_open_for(result_state, player):
+        # A card acquired to hand during the owner's own Reveal turn is
+        # revealed and used at once rather than withheld [FAQ p. 3].
+        late = reveal_late_arrivals(result_state, player, (instance_id,))
+        result_state = late.state
+        result_events = (*result_events, *late.events)
     return IntrigueAcquisition(
-        result=RuleResult(
-            state=fired.state,
-            events=(event, *acquisition_events, *completed.events, *fired.events),
-        ),
+        result=RuleResult(state=result_state, events=result_events),
         instance_id=instance_id,
         places_spy=bonus.places_spy,
         takes_contract=bonus.takes_contract,

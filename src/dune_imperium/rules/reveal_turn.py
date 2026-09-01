@@ -3,8 +3,14 @@
 from dataclasses import replace
 
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
-from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
-from dune_imperium.content.uprising.types import PersonalCardRevealChoiceEffect
+from dune_imperium.content.uprising.personal_cards import (
+    PersonalCardDefinition,
+    personal_card_for_instance,
+)
+from dune_imperium.content.uprising.types import (
+    PersonalCardRevealChoiceEffect,
+    PersonalCardRevealEffect,
+)
 from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
@@ -16,6 +22,8 @@ from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.effects import recruit_troops
 from dune_imperium.rules.frames import (
     FrameKind,
+    context_int,
+    context_str,
     owned_top_frame,
     replace_player,
     reset_turn_counters,
@@ -1154,32 +1162,22 @@ def _reveal_frame_context(
     raise RuntimeError("Reveal choice is missing its Reveal frame")
 
 
-def legal_reveal_actions(state: GameState, player: int) -> tuple[DomainAction, ...]:
-    """Return the always-available Reveal choice for the current turn owner."""
+def _reveal_effect_is_eligible(
+    owner: PlayerState,
+    cards_in_play: tuple[str, ...],
+    card_id: str,
+    card: PersonalCardDefinition,
+    effect: PersonalCardRevealEffect,
+) -> bool:
+    """Return whether one revealed card's automatic Reveal effect applies.
 
-    if not 0 <= player < state.config.players:
-        raise ValueError("player must identify a configured seat")
-    if state.phase is not GamePhase.PLAYER_TURNS or not state.decision_stack:
-        return ()
-    if owned_top_frame(state, FrameKind.TURN, player) is None:
-        return ()
-    return (DomainAction(action_id="reveal_turn", actor=player),)
+    Mirrors every gate ``begin_reveal_turn`` checks so the late-reveal path
+    [FAQ p. 3] can re-adjudicate eligibility at arrival under the same
+    rules.
+    """
 
-
-def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
-    """Reveal the hand and calculate its basic Persuasion and strength."""
-
-    if action not in legal_reveal_actions(state, action.actor):
-        raise ValueError("action is not a legal Reveal turn")
-    owner = state.players[action.actor]
-    revealed = owner.hand
-    cards = tuple(personal_card_for_instance(card_id) for card_id in revealed)
-    cards_in_play = (*owner.in_play, *revealed)
-    reveal_effects = tuple(
-        (card_id, effect)
-        for card_id, card in zip(revealed, cards, strict=True)
-        for effect in card.reveal_effects
-        if (not effect.requires_high_council or owner.high_council)
+    return (
+        (not effect.requires_high_council or owner.high_council)
         and (not effect.requires_swordmaster or owner.swordmaster_acquired)
         and len(owner.spy_post_ids) >= effect.minimum_spies_placed
         and (
@@ -1204,18 +1202,508 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
             )
         )
     )
-    persuasion = sum(card.reveal_persuasion for card in cards) + sum(
-        effect.persuasion
-        * (
-            sum(
-                Faction(effect.per_revealed_faction.value) in card.factions
-                for card in cards
-            )
-            if effect.per_revealed_faction is not None
-            else 1
+
+
+def _eligible_reveal_effects(
+    owner: PlayerState,
+    cards_in_play: tuple[str, ...],
+    card_id: str,
+    card: PersonalCardDefinition,
+) -> tuple[PersonalCardRevealEffect, ...]:
+    """Return ``card``'s Reveal effects that currently apply."""
+
+    return tuple(
+        effect
+        for effect in card.reveal_effects
+        if _reveal_effect_is_eligible(owner, cards_in_play, card_id, card, effect)
+    )
+
+
+def _reveal_effect_persuasion(
+    effect: PersonalCardRevealEffect,
+    revealed_cards: tuple[PersonalCardDefinition, ...],
+    completed_contracts: int,
+) -> int:
+    """Return one eligible effect's Persuasion over the given revealed set."""
+
+    return effect.persuasion * (
+        sum(
+            Faction(effect.per_revealed_faction.value) in card.factions
+            for card in revealed_cards
         )
-        + effect.persuasion_per_completed_contract
-        * len(owner.completed_contract_ids)
+        if effect.per_revealed_faction is not None
+        else 1
+    ) + effect.persuasion_per_completed_contract * completed_contracts
+
+
+def _reveal_effect_strength(
+    effect: PersonalCardRevealEffect,
+    revealed_cards: tuple[PersonalCardDefinition, ...],
+) -> int:
+    """Return one eligible effect's own-card strength over the revealed set."""
+
+    return effect.strength * (
+        sum(
+            Faction(effect.per_revealed_faction.value) in card.factions
+            for card in revealed_cards
+        )
+        if effect.per_revealed_faction is not None
+        else 1
+    )
+
+
+def _card_reveal_strength(
+    owner: PlayerState,
+    cards_in_play: tuple[str, ...],
+    card_id: str,
+    card: PersonalCardDefinition,
+    revealed_cards: tuple[PersonalCardDefinition, ...],
+) -> int:
+    """Return one card's own strength before any sword cross-term is added."""
+
+    return card.reveal_strength + sum(
+        _reveal_effect_strength(effect, revealed_cards)
+        for effect in _eligible_reveal_effects(owner, cards_in_play, card_id, card)
+    )
+
+
+def _reveal_choice_prompt(effect: PersonalCardRevealChoiceEffect) -> str:
+    """Return the REVEAL_CHOICE frame prompt text for one choice effect."""
+
+    return (
+        "Choose Influence to lose and gain or decline this Reveal effect"
+        if effect
+        is PersonalCardRevealChoiceEffect.MAY_LOSE_INFLUENCE_TO_GAIN_INFLUENCE
+        else "Pay three Spice for Influence or decline this Reveal effect"
+        if effect is PersonalCardRevealChoiceEffect.MAY_PAY_THREE_SPICE_FOR_INFLUENCE
+        else "Choose a Spy placement or gain two strength"
+        if effect is PersonalCardRevealChoiceEffect.PLACE_SPY_OR_GAIN_TWO_STRENGTH
+        else "Choose where to place a Spy for this Reveal effect"
+        if effect is PersonalCardRevealChoiceEffect.PLACE_SPY
+        else "Choose two Spies to recall or decline this Reveal effect"
+        if effect
+        is (
+            PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_TWO_PERSUASION
+        )
+        else "Trash another Emperor card or decline this Reveal effect"
+        if effect
+        is (
+            PersonalCardRevealChoiceEffect.MAY_TRASH_OTHER_EMPEROR_FOR_THREE_STRENGTH
+        )
+        else "Retreat two troops for four strength or decline"
+        if effect
+        is (
+            PersonalCardRevealChoiceEffect.MAY_RETREAT_TWO_TROOPS_FOR_FOUR_STRENGTH
+        )
+        else "Gain five Solari or pay five for a High Council seat"
+        if effect
+        is (
+            PersonalCardRevealChoiceEffect.GAIN_FIVE_SOLARI_OR_TAKE_HIGH_COUNCIL
+        )
+        else "Keep two Persuasion or pay one Water for a sandworm"
+        if effect is PersonalCardRevealChoiceEffect.MAY_PAY_WATER_FOR_SANDWORM
+        else "Gain Spice or trash this card for one Victory Point"
+        if effect
+        is (
+            PersonalCardRevealChoiceEffect
+            .KEEP_SPICE_OR_TRASH_SELF_FOR_VP_IF_FOUR_CONTRACTS
+        )
+        else "Choose a Spy to recall for this Reveal effect"
+    )
+
+
+def _reveal_choice_effect_is_available(
+    state: GameState,
+    player: int,
+    owner: PlayerState,
+    cards_in_play: tuple[str, ...],
+    card_id: str,
+    effect: PersonalCardRevealChoiceEffect,
+) -> bool:
+    """Return whether one revealed card's choice effect currently opens.
+
+    Mirrors every availability gate ``begin_reveal_turn`` checks, evaluated
+    against whichever ``owner``/``state`` snapshot the caller passes, so the
+    late-reveal path [FAQ p. 3] can push the same choice under the same
+    rules at arrival time.
+    """
+
+    return (
+        (
+            effect
+            is PersonalCardRevealChoiceEffect.MAY_LOSE_INFLUENCE_TO_GAIN_INFLUENCE
+            and any(
+                influence_amount(owner.influence, faction) > 0
+                for faction in Faction
+            )
+        )
+        or (
+            effect
+            is PersonalCardRevealChoiceEffect.MAY_PAY_THREE_SPICE_FOR_INFLUENCE
+            and owner.resources.spice >= 3
+        )
+        or effect
+        in (
+            PersonalCardRevealChoiceEffect.PLACE_SPY,
+            PersonalCardRevealChoiceEffect.PLACE_SPY_OR_GAIN_TWO_STRENGTH,
+        )
+        or (
+            effect
+            is PersonalCardRevealChoiceEffect.MAY_TRASH_OTHER_EMPEROR_FOR_THREE_STRENGTH
+            and any(
+                candidate_id != card_id
+                and Faction.EMPEROR
+                in personal_card_for_instance(candidate_id).factions
+                for candidate_id in cards_in_play
+            )
+        )
+        or (
+            effect
+            is PersonalCardRevealChoiceEffect.MAY_RETREAT_TWO_TROOPS_FOR_FOUR_STRENGTH
+            and owner.troops_conflict >= 2
+        )
+        or effect
+        is PersonalCardRevealChoiceEffect.GAIN_FIVE_SOLARI_OR_TAKE_HIGH_COUNCIL
+        or (
+            effect
+            is PersonalCardRevealChoiceEffect.MAY_PAY_WATER_FOR_SANDWORM
+            and _can_summon_reveal_sandworm(state, player)
+        )
+        or (
+            effect
+            in (
+                PersonalCardRevealChoiceEffect.RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED,
+                PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_TWO_PERSUASION,
+            )
+            and len(owner.spy_post_ids) >= 2
+        )
+        or (
+            effect
+            is (
+                PersonalCardRevealChoiceEffect
+                .KEEP_SPICE_OR_TRASH_SELF_FOR_VP_IF_FOUR_CONTRACTS
+            )
+            and len(owner.completed_contract_ids) >= 4
+        )
+    )
+
+
+def _build_reveal_choice_frame(
+    round_number: int,
+    player: int,
+    card_id: str,
+    effect: PersonalCardRevealChoiceEffect,
+) -> DecisionFrame:
+    """Return the REVEAL_CHOICE frame for one revealed card's choice effect."""
+
+    return DecisionFrame(
+        kind=FrameKind.REVEAL_CHOICE,
+        frame_id=(
+            f"round:{round_number}:player:{player}:"
+            f"reveal_spy:{card_id}:{effect.value}"
+        ),
+        decision=PlayerDecision(owner=player, prompt=_reveal_choice_prompt(effect)),
+        context=(
+            ("reveal_card_id", card_id),
+            ("reveal_choice_effect", effect.value),
+            ("turn_owner", player),
+        ),
+    )
+
+
+def _apply_late_reveal_frame_update(
+    frames: tuple[DecisionFrame, ...],
+    card_id: str,
+    persuasion_delta: int,
+    sword_delta: int,
+    *,
+    counts_toward_combat: bool,
+) -> tuple[DecisionFrame, ...]:
+    """Record one late-arriving card on the Reveal frame, wherever it sits.
+
+    A chance or choice frame can be layered above the Reveal frame when a
+    card lands in hand mid-Reveal (a Personal-draw reshuffle chance, or the
+    Intrigue choice frame an acquisition slot resolves under), so this scans
+    for it by kind rather than assuming the stack top, mirroring
+    ``replace_top_frame``'s single-frame replacement.
+    """
+
+    for index in range(len(frames) - 1, -1, -1):
+        if frames[index].kind != FrameKind.REVEAL:
+            continue
+        context = dict(frames[index].context)
+        count = context_int(context, "revealed_card_count", owner="Reveal frame")
+        context[f"revealed_card_{count:03d}"] = card_id
+        context["revealed_card_count"] = count + 1
+        if persuasion_delta:
+            context["persuasion"] = (
+                context_int(context, "persuasion", owner="Reveal frame")
+                + persuasion_delta
+            )
+        if sword_delta:
+            context["sword_strength"] = (
+                context_int(context, "sword_strength", owner="Reveal frame")
+                + sword_delta
+            )
+            if counts_toward_combat:
+                context["strength"] = (
+                    context_int(context, "strength", owner="Reveal frame")
+                    + sword_delta
+                )
+        return (
+            *frames[:index],
+            replace(frames[index], context=tuple(sorted(context.items()))),
+            *frames[index + 1 :],
+        )
+    raise RuntimeError("late-reveal card is missing its Reveal frame")
+
+
+def _insert_after_reveal_frame(
+    frames: tuple[DecisionFrame, ...],
+    new_frames: tuple[DecisionFrame, ...],
+) -> tuple[DecisionFrame, ...]:
+    """Insert frames directly above the Reveal frame, wherever it sits.
+
+    A pending Intrigue choice frame above the Reveal frame must stay on top
+    so the card that caused this late reveal is not buried mid-resolution;
+    the new frames slot in between it and the Reveal frame instead.
+    """
+
+    for index in range(len(frames) - 1, -1, -1):
+        if frames[index].kind == FrameKind.REVEAL:
+            return (*frames[: index + 1], *new_frames, *frames[index + 1 :])
+    raise RuntimeError("late-reveal choice is missing its Reveal frame")
+
+
+def _late_reveal_one_card(
+    state: GameState,
+    player: int,
+    card_id: str,
+) -> RuleResult:
+    """Immediately reveal one card that just entered ``player``'s hand.
+
+    A card drawn or acquired to hand during a player's own Reveal turn is
+    revealed at once and used in that same Reveal turn [FAQ p. 3]: it moves
+    to ``in_play``, grants its own Reveal contribution evaluated over the
+    now-larger revealed set, adds the increment its arrival causes to other
+    already-revealed cards' cross-scaling effects, and opens its own choice
+    effects. Amounts already granted to other cards are final and are never
+    recomputed here, only added to.
+    """
+
+    owner = state.players[player]
+    if card_id not in owner.hand:
+        raise RuntimeError("late-reveal card is not in the owner's hand")
+    card = personal_card_for_instance(card_id)
+    context = _reveal_frame_context(state.decision_stack)
+    previously_revealed_ids = tuple(
+        context_str(context, f"revealed_card_{index:03d}", owner="Reveal frame")
+        for index in range(
+            context_int(context, "revealed_card_count", owner="Reveal frame")
+        )
+    )
+
+    next_owner = replace(
+        owner,
+        hand=tuple(candidate for candidate in owner.hand if candidate != card_id),
+        in_play=(*owner.in_play, card_id),
+    )
+    cards_in_play = next_owner.in_play
+    completed_contracts = len(next_owner.completed_contract_ids)
+    revealed_cards = tuple(
+        personal_card_for_instance(instance_id)
+        for instance_id in (*previously_revealed_ids, card_id)
+    )
+
+    eligible = _eligible_reveal_effects(next_owner, cards_in_play, card_id, card)
+    persuasion_gain = card.reveal_persuasion + sum(
+        _reveal_effect_persuasion(effect, revealed_cards, completed_contracts)
+        for effect in eligible
+    )
+    own_strength = card.reveal_strength + sum(
+        _reveal_effect_strength(effect, revealed_cards) for effect in eligible
+    )
+    other_positive_strength = sum(
+        _card_reveal_strength(
+            next_owner,
+            cards_in_play,
+            other_id,
+            personal_card_for_instance(other_id),
+            revealed_cards,
+        )
+        > 0
+        for other_id in previously_revealed_ids
+    )
+    sword_delta = own_strength + sum(
+        effect.strength_per_other_sword_card * other_positive_strength
+        for effect in eligible
+        if effect.strength_per_other_sword_card
+    )
+
+    persuasion_increment = 0
+    for other_id in previously_revealed_ids:
+        other_card = personal_card_for_instance(other_id)
+        for effect in other_card.reveal_effects:
+            if (
+                effect.per_revealed_faction is None
+                and not effect.strength_per_other_sword_card
+            ):
+                continue
+            if not _reveal_effect_is_eligible(
+                next_owner, cards_in_play, other_id, other_card, effect
+            ):
+                continue
+            if (
+                effect.per_revealed_faction is not None
+                and Faction(effect.per_revealed_faction.value) in card.factions
+            ):
+                persuasion_increment += effect.persuasion
+                sword_delta += effect.strength
+            if effect.strength_per_other_sword_card and own_strength > 0:
+                sword_delta += effect.strength_per_other_sword_card
+    persuasion_delta = persuasion_gain + persuasion_increment
+
+    next_owner = replace(
+        next_owner,
+        resources=replace(
+            next_owner.resources,
+            solari=next_owner.resources.solari
+            + sum(effect.solari for effect in eligible),
+            spice=next_owner.resources.spice
+            + sum(effect.spice for effect in eligible),
+            water=next_owner.resources.water
+            + sum(effect.water for effect in eligible),
+        ),
+    )
+    next_owner, _ = recruit_troops(
+        next_owner, sum(effect.recruit_troops for effect in eligible)
+    )
+
+    units = next_owner.troops_conflict + next_owner.sandworms_conflict
+    counts_toward_combat = units > 0
+    if counts_toward_combat and sword_delta:
+        next_owner = replace(
+            next_owner, combat_strength=next_owner.combat_strength + sword_delta
+        )
+
+    source = f"round:{state.round_number}:player:{player}:reveal_card:{card_id}"
+    next_state = replace(
+        state,
+        players=replace_player(state.players, next_owner),
+        decision_stack=_apply_late_reveal_frame_update(
+            state.decision_stack,
+            card_id,
+            persuasion_delta,
+            sword_delta,
+            counts_toward_combat=counts_toward_combat,
+        ),
+    )
+    events: list[GameEvent] = [
+        GameEvent(
+            event_id=f"{source}:late_reveal",
+            kind="personal_card_late_revealed",
+            payload=(
+                ("card_id", card_id),
+                ("persuasion", persuasion_delta),
+                ("player", player),
+                ("strength", sword_delta),
+            ),
+        )
+    ]
+
+    for effect in eligible:
+        if effect.draw_intrigue == 0:
+            continue
+        drawn = draw_or_queue_intrigue_cards(
+            next_state,
+            player,
+            effect.draw_intrigue,
+            source=f"{source}:intrigue_draw",
+        )
+        next_state = drawn.state
+        events.extend(drawn.events)
+    for effect in eligible:
+        if effect.influence_faction is None:
+            continue
+        gained = gain_faction_influence(
+            next_state,
+            player,
+            Faction(effect.influence_faction.value),
+            effect.influence,
+            event_prefix=f"{source}:influence:{effect.influence_faction.value}",
+        )
+        next_state = gained.state
+        events.extend(gained.events)
+
+    latest_owner = next_state.players[player]
+    choice_frames = tuple(
+        _build_reveal_choice_frame(state.round_number, player, card_id, effect)
+        for effect in card.reveal_choice_effects
+        if _reveal_choice_effect_is_available(
+            next_state, player, latest_owner, cards_in_play, card_id, effect
+        )
+    )
+    if choice_frames:
+        next_state = replace(
+            next_state,
+            decision_stack=_insert_after_reveal_frame(
+                next_state.decision_stack, tuple(reversed(choice_frames))
+            ),
+        )
+
+    return RuleResult(state=next_state, events=tuple(events))
+
+
+def reveal_late_arrivals(
+    state: GameState,
+    player: int,
+    card_ids: tuple[str, ...],
+) -> RuleResult:
+    """Immediately reveal personal cards that just entered a Reveal hand.
+
+    A card drawn or acquired to hand during the owner's own Reveal turn is
+    revealed and used at once [FAQ p. 3] rather than withheld to the next
+    round. Cards are processed one at a time in the given (draw) order, so
+    a later card's cross-scaling effects see every card revealed before it.
+    """
+
+    working = state
+    events: list[GameEvent] = []
+    for card_id in card_ids:
+        step = _late_reveal_one_card(working, player, card_id)
+        working = step.state
+        events.extend(step.events)
+    return RuleResult(state=working, events=tuple(events))
+
+
+def legal_reveal_actions(state: GameState, player: int) -> tuple[DomainAction, ...]:
+    """Return the always-available Reveal choice for the current turn owner."""
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    if state.phase is not GamePhase.PLAYER_TURNS or not state.decision_stack:
+        return ()
+    if owned_top_frame(state, FrameKind.TURN, player) is None:
+        return ()
+    return (DomainAction(action_id="reveal_turn", actor=player),)
+
+
+def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
+    """Reveal the hand and calculate its basic Persuasion and strength."""
+
+    if action not in legal_reveal_actions(state, action.actor):
+        raise ValueError("action is not a legal Reveal turn")
+    owner = state.players[action.actor]
+    revealed = owner.hand
+    cards = tuple(personal_card_for_instance(card_id) for card_id in revealed)
+    cards_in_play = (*owner.in_play, *revealed)
+    reveal_effects = tuple(
+        (card_id, effect)
+        for card_id, card in zip(revealed, cards, strict=True)
+        for effect in _eligible_reveal_effects(owner, cards_in_play, card_id, card)
+    )
+    persuasion = sum(card.reveal_persuasion for card in cards) + sum(
+        _reveal_effect_persuasion(effect, cards, len(owner.completed_contract_ids))
         for _, effect in reveal_effects
     )
     if owner.high_council:
@@ -1228,16 +1716,7 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
             card_id,
             card.reveal_strength
             + sum(
-                effect.strength
-                * (
-                    sum(
-                        Faction(effect.per_revealed_faction.value)
-                        in revealed_card.factions
-                        for revealed_card in cards
-                    )
-                    if effect.per_revealed_faction is not None
-                    else 1
-                )
+                _reveal_effect_strength(effect, cards)
                 for effect_card_id, effect in reveal_effects
                 if effect_card_id == card_id
             ),
@@ -1307,123 +1786,11 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         context=tuple(sorted(context)),
     )
     choice_frames = tuple(
-        DecisionFrame(
-            kind=FrameKind.REVEAL_CHOICE,
-            frame_id=(
-                f"round:{state.round_number}:player:{action.actor}:"
-                f"reveal_spy:{card_id}:{effect.value}"
-            ),
-            decision=PlayerDecision(
-                owner=action.actor,
-                prompt=(
-                    "Choose Influence to lose and gain or decline this Reveal effect"
-                    if effect
-                    is (
-                        PersonalCardRevealChoiceEffect.MAY_LOSE_INFLUENCE_TO_GAIN_INFLUENCE
-                    )
-                    else "Pay three Spice for Influence or decline this Reveal effect"
-                    if effect
-                    is PersonalCardRevealChoiceEffect.MAY_PAY_THREE_SPICE_FOR_INFLUENCE
-                    else "Choose a Spy placement or gain two strength"
-                    if effect
-                    is PersonalCardRevealChoiceEffect.PLACE_SPY_OR_GAIN_TWO_STRENGTH
-                    else "Choose where to place a Spy for this Reveal effect"
-                    if effect is PersonalCardRevealChoiceEffect.PLACE_SPY
-                    else "Choose two Spies to recall or decline this Reveal effect"
-                    if effect
-                    is (
-                        PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_TWO_PERSUASION
-                    )
-                    else "Trash another Emperor card or decline this Reveal effect"
-                    if effect
-                    is (
-                        PersonalCardRevealChoiceEffect.MAY_TRASH_OTHER_EMPEROR_FOR_THREE_STRENGTH
-                    )
-                    else "Retreat two troops for four strength or decline"
-                    if effect
-                    is (
-                        PersonalCardRevealChoiceEffect.MAY_RETREAT_TWO_TROOPS_FOR_FOUR_STRENGTH
-                    )
-                    else "Gain five Solari or pay five for a High Council seat"
-                    if effect
-                    is (
-                        PersonalCardRevealChoiceEffect.GAIN_FIVE_SOLARI_OR_TAKE_HIGH_COUNCIL
-                    )
-                    else "Keep two Persuasion or pay one Water for a sandworm"
-                    if effect
-                    is PersonalCardRevealChoiceEffect.MAY_PAY_WATER_FOR_SANDWORM
-                    else "Gain Spice or trash this card for one Victory Point"
-                    if effect
-                    is (
-                        PersonalCardRevealChoiceEffect
-                        .KEEP_SPICE_OR_TRASH_SELF_FOR_VP_IF_FOUR_CONTRACTS
-                    )
-                    else "Choose a Spy to recall for this Reveal effect"
-                ),
-            ),
-            context=(
-                ("reveal_card_id", card_id),
-                ("reveal_choice_effect", effect.value),
-                ("turn_owner", action.actor),
-            ),
-        )
+        _build_reveal_choice_frame(state.round_number, action.actor, card_id, effect)
         for card_id, card in zip(revealed, cards, strict=True)
         for effect in card.reveal_choice_effects
-        if (
-            effect
-            is PersonalCardRevealChoiceEffect.MAY_LOSE_INFLUENCE_TO_GAIN_INFLUENCE
-            and any(
-                influence_amount(owner.influence, faction) > 0
-                for faction in Faction
-            )
-        )
-        or (
-            effect
-            is PersonalCardRevealChoiceEffect.MAY_PAY_THREE_SPICE_FOR_INFLUENCE
-            and owner.resources.spice >= 3
-        )
-        or effect
-        in (
-            PersonalCardRevealChoiceEffect.PLACE_SPY,
-            PersonalCardRevealChoiceEffect.PLACE_SPY_OR_GAIN_TWO_STRENGTH,
-        )
-        or (
-            effect
-            is PersonalCardRevealChoiceEffect.MAY_TRASH_OTHER_EMPEROR_FOR_THREE_STRENGTH
-            and any(
-                candidate_id != card_id
-                and Faction.EMPEROR
-                in personal_card_for_instance(candidate_id).factions
-                for candidate_id in cards_in_play
-            )
-        )
-        or (
-            effect
-            is PersonalCardRevealChoiceEffect.MAY_RETREAT_TWO_TROOPS_FOR_FOUR_STRENGTH
-            and owner.troops_conflict >= 2
-        )
-        or effect
-        is PersonalCardRevealChoiceEffect.GAIN_FIVE_SOLARI_OR_TAKE_HIGH_COUNCIL
-        or (
-            effect
-            is PersonalCardRevealChoiceEffect.MAY_PAY_WATER_FOR_SANDWORM
-            and _can_summon_reveal_sandworm(state, action.actor)
-        )
-        or (
-            effect
-            in (
-                PersonalCardRevealChoiceEffect.RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED,
-                PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_TWO_PERSUASION,
-            )
-            and len(owner.spy_post_ids) >= 2
-        )
-        or (
-            effect
-            is (
-                PersonalCardRevealChoiceEffect
-                .KEEP_SPICE_OR_TRASH_SELF_FOR_VP_IF_FOUR_CONTRACTS
-            )
-            and len(owner.completed_contract_ids) >= 4
+        if _reveal_choice_effect_is_available(
+            state, action.actor, owner, cards_in_play, card_id, effect
         )
     )
     next_state = replace(
