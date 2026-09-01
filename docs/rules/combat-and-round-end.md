@@ -79,9 +79,11 @@
 - 같은 Victory Point인 플레이어 사이의 기본 tiebreaker는 spice 수, Solari 수, water 수, garrison의 troop 수 순서다. 앞 항목으로 풀리지 않을 때만 다음 항목을 비교한다. [Main p. 15]
 - 위 tiebreaker로도 동률이면 가장 최근에 Reveal turn을 수행한 플레이어가 최종 승자다. [FAQ p. 2]
 
-## 미확정 항목
+## 공식 문서가 침묵하는 항목의 판정
 
-- 같은 순위에 묶인 여러 플레이어가 동일한 보상을 실제로 해결하는 플레이어 순서는 두 출처에 명시되어 있지 않다. 상호작용하는 보상을 모델링하기 전 별도의 판정 정책이 필요하다. [Main p. 14]
-- Combat Intrigue로 어떤 플레이어의 유닛 수가 0에서 1 이상 또는 1 이상에서 0으로 바뀔 때, 진행 중인 우선권 순환에 그 플레이어를 정확히 언제 추가하거나 제외하는지는 명시되어 있지 않다. [Main p. 14]
-- Endgame Intrigue를 플레이하는 플레이어 순서, 한 플레이어가 pass한 뒤 다시 기회를 얻는지, 그리고 Endgame wild battle icon 처리를 Endgame Intrigue 전후 어느 시점에 하는지는 명시되어 있지 않다. [Main p. 15] [Main p. 20]
-- 새 Conflict 카드와 일치하는 face-up 카드가 여러 장일 때 어느 한 장을 짝으로 선택하는지는 명시되어 있지 않다. [Main p. 14] [Main p. 20]
+다음 네 항목은 두 출처에 명시되어 있지 않으며, [open-questions.md](open-questions.md)의 확정 판정 또는 해소 결과를 따른다.
+
+- 같은 순위에 묶인 여러 플레이어의 보상 해결 순서: 동률 그룹이 받는 2·3위 줄에는 상호작용하는 보상이 없고, 좌석 번호 오름차순으로 해결한다(OQ-002 `DECIDED`). [Main p. 14]
+- Combat Intrigue 중 유닛 수 변화와 우선권 순환: 유닛을 늘리는 카드가 없어 진입은 불가능하고, 마지막 유닛을 잃은 참가자는 즉시 순환에서 빠진다(OQ-003 `DECIDED`). [Main p. 14]
+- Endgame Intrigue 순서와 wild matching 시점: First Player부터 시계 방향 단일 순회 window 안에서 자유 순서로 처리한다(OQ-001 `DECIDED`). [Main p. 15] [Main p. 20]
+- 일치하는 face-up 카드가 여러 장일 때의 pair 선택: Combat 즉시 matching은 공식 콘텐츠에서 다중 후보가 성립하지 않고, Endgame wild는 소유자가 고른다(OQ-005 `RESOLVED`). [Main p. 14] [Main p. 20]

@@ -13,7 +13,7 @@ truth for the transition code.
 | Espionage | After paying 1 Spice, the player draws one personal card and may place one Spy. | Declining the optional Spy does not decline the card draw. Bene Gesserit influence remains a separately ordered Agent-turn effect. |
 | Empty supply | To place through Espionage with no Spy in supply, the player first selects one of their placed Spies to recall without effect and then must select an empty post. Declining the optional placement stays available until a recall is chosen. | Recall and placement are separate decisions so the engine does not enumerate every ordered pair as one action. Once recall is chosen, placement cannot be declined, and placement re-checks the supply when it resolves: if a freely ordered effect consumed the recalled Spy, the recall choice reopens instead of failing [Main pp. 11, 20]. |
 | Gather Intelligence | Immediately after Agent placement, a connected Spy opens a decline-or-recall decision before Agent-card, board-space, deployment, or Faction effects. Recalling draws one personal card. | At most one Spy can be used for Gather Intelligence in a turn. An empty deck uses the shared replayable discard reshuffle; only an empty deck and discard pile suppress the recall action. |
-| Infiltrate | An otherwise legal Agent card may enter a space occupied by one opponent by selecting and recalling a connected Spy as part of the Agent action. | The recalled Spy is removed before the Gather Intelligence window, so it cannot be used for both effects. Multiple-opponent occupancy remains deferred under OQ-006. |
+| Infiltrate | An otherwise legal Agent card may enter a space occupied by any number of opponents by selecting and recalling one connected Spy as part of the Agent action. | The recalled Spy is removed before the Gather Intelligence window, so it cannot be used for both effects. One recall admits the Agent however many opponent Agents share the space (OQ-006 decided convention, [Main p. 11]). |
 | Spy Agent icon | A card's Spy Agent icon makes every space connected to one of the player's placed Spies an available Agent destination. | Destination access does not recall the Spy. Transcribed Imperium cards use the same destination path; three remaining base cards still await full play-data transcription. |
 | Conflict reward | A Spy reward selects one globally empty post and spends a Spy from supply. | This existing reward path does not currently offer the empty-supply recall permission because the reward itself is mandatory only when executable. |
 | Agent-card placement | Bene Gesserit Operative selects any globally empty post; Reliable Informant is restricted to posts connected to Emperor, Bene Gesserit, or Spacing Guild spaces; Double Agent adds its conditional sharing exception. | With an empty supply, recall and placement are separate mandatory decisions. A restricted effect offers only recalls that can open a destination when every eligible post is occupied. |
@@ -28,8 +28,10 @@ truth for the transition code.
 ## Deferred Spy systems
 
 - General `Recall Spy` icons and remaining card-specific Spy effects.
-- The multiple-opponent Infiltrate interpretation tracked by OQ-006 and the
-  Gather Intelligence/contract ordering tracked by OQ-011.
+- The multiple-opponent Infiltrate interpretation (OQ-006) and the Gather
+  Intelligence/contract ordering (OQ-011) are now decided project rulings in
+  `docs/rules/open-questions.md`; they reopen only if an official ruling
+  appears.
 
 ## Action and replay compatibility
 

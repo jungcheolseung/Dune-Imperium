@@ -233,6 +233,6 @@
   pile로 옮기는 것으로 그 card의 `discard` 능력을
   발동하지 않는다. hand에서 discard할 때만 발동한다. [Main p. 17]
 
-## 미확정 항목
+## 공식 문서가 침묵하는 항목의 판정
 
-- 여러 의무 효과가 서로 충돌할 때 적용할 일반 우선순위는 지정된 두 문서에서 확인되지 않는다. 확인된 범위에서는 공간 효과, Agent 상자 효과, 세력 영향력 및 조건을 충족한 계약 효과만 원하는 순서로 처리할 수 있다. [Main p. 9] [FAQ p. 1] [FAQ p. 3]
+- 여러 의무 효과가 서로 충돌할 때 적용할 일반 우선순위는 지정된 두 문서에서 확인되지 않는다. 확인된 범위에서는 공간 효과, Agent 상자 효과, 세력 영향력 및 조건을 충족한 계약 효과만 원하는 순서로 처리할 수 있다. 그 그룹 밖의 동시 의무 효과는 현재 콘텐츠에서 획득 이벤트 계열뿐이며, 고정 순서(획득 카드 자신의 보상 → in-play acquire trigger → Acquire Contract → face-up trigger Intrigue)를 [open-questions.md](open-questions.md)의 OQ-012 `DECIDED` 판정으로 확정했다. [Main p. 9] [FAQ p. 1] [FAQ p. 3]

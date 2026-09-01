@@ -29,19 +29,24 @@ reviewed without reading the transition code. Official rule summaries under
   two same-icon face-up candidates ever become reachable; official content
   cannot produce either state today ([objectives.md](objectives.md)).
 
-## Project conventions and unresolved ordering
+## Project conventions and decided ordering
 
-- Rewards are traversed in rank order and player seat order. Official sources do
-  not specify the order among players tied for the same reward row.
+- Rewards are traversed in rank order and ascending seat order. Official
+  sources do not specify the order among players tied for the same reward row;
+  the seat order is the decided convention recorded as OQ-002 (tied groups
+  only ever take the second and third reward rows, which carry no interacting
+  choices), pinned by the tied-order tests in
+  `tests/unit/rules/test_combat.py`.
 - Intrigue cards are consequently drawn in that deterministic traversal order.
-  This is an engine convention until an official ruling supplies another order.
 - Automatic parts of all assigned rewards are applied before queued player
   choices. Current supported choices do not alter another player's already
   calculated rank, but future interactive rewards must re-audit this sequencing.
 - A critical-location Control bonus is paid immediately after Agent placement,
   before the visitor resolves freely ordered Agent, board, and Faction effects.
-  OQ-008 remains open for future content where this relative timing can change a
-  legal choice or result.
+  OQ-008 is decided on the Main p. 11 worked example plus a full content scan
+  (no Agent-turn effect reads another player's resource totals); it reopens
+  only for future content where this relative timing can change a legal choice
+  or result.
 
 ## External-data discrepancies found
 

@@ -17,7 +17,7 @@ uv run ruff check src tests
 uv run mypy src tests
 ```
 
-2026-09-01의 기준 결과는 pytest 984개 통과, Ruff 통과, mypy 통과다. 현재 action codec은 `ACTION_CODEC_VERSION = 82`(기본 4,313개, CHOAM 4,598개)이고, 관측은 `OBSERVATION_VERSION = 2`의 1,415-int 전체 게임 인코딩이다 ([`rl-environment.md`](rl-environment.md)). 보드 22칸 완결 + 즉시 공개 + `fab266f`/`e6fc298` 수정 + sweep 확장(`853ecd4`) 반영 후의 교차 소크는 random 룰셋당 2,000판 + heuristic 룰셋당 1,000판(둘 다 `--rotate-leaders`) + draft 두 policy 각 룰셋당 500판, 전부 `--soundness-interval 25`를 켠 총 7,000판이 실패 0으로 통과한 상태다(2026-09-01, 아래 세션 요약. 그 전 단계에서는 random 룰셋당 3,000판 비회전 소크도 실패 0이었다).
+2026-09-01의 기준 결과는 pytest 986개 통과(카드 이미지 캐시가 없는 머신은 985 통과 + 1 skip), Ruff 통과, mypy 통과다. 현재 action codec은 `ACTION_CODEC_VERSION = 82`(기본 4,313개, CHOAM 4,598개)이고, 관측은 `OBSERVATION_VERSION = 2`의 1,415-int 전체 게임 인코딩이다 ([`rl-environment.md`](rl-environment.md)). 보드 22칸 완결 + 즉시 공개 + `fab266f`/`e6fc298` 수정 + sweep 확장(`853ecd4`) 반영 후의 교차 소크는 random 룰셋당 2,000판 + heuristic 룰셋당 1,000판(둘 다 `--rotate-leaders`) + draft 두 policy 각 룰셋당 500판, 전부 `--soundness-interval 25`를 켠 총 7,000판이 실패 0으로 통과한 상태다(2026-09-01, 아래 세션 요약. 그 전 단계에서는 random 룰셋당 3,000판 비회전 소크도 실패 0이었다).
 
 ## 현재 구현 기준선
 
@@ -40,8 +40,8 @@ uv run mypy src tests
 - (2026-09-01 해소) 보드 22칸 미구현 4~5칸과 OQ-015(c)의 Reveal 중 Plot 보류는 모두 구현됐다. `board_effect_is_implemented`와 UI의 "미구현 · 배치 불가" 배지는 미래 콘텐츠 대비 메커니즘으로 남아 있고, `tests/unit/rules/test_board_effects.py`의 pinned 집합은 이제 양쪽 룰셋 모두 빈 집합이다. Imperial Privilege의 recall 판정은 OQ-023 convention, Secrets의 무작위 강탈은 seeded `SECRETS_STEAL` chance frame이다.
 - Agent 배치 시점 조건이 거짓이면 pending되지 않는 카드 효과는, 같은 frame의 자유 순서 효과로 조건이 나중에 참이 되어도 제시되지 않는다(알려진 엔진 경계; Prepare the Way 수정 커밋 `87a9300` 참고).
 - Objective와 battle icon 상호작용은 2026-08-30에 재감사를 마쳤다 (`implementation-audits/objectives.md`, OQ-005 RESOLVED). Combat 다중 후보 guard는 미래 콘텐츠 대비 tripwire로 남는다.
-- Shaddam Corrino IV의 set-aside Sardaukar Contract 경로는 Leader 능력과 함께 남아 있다. OQ-010, OQ-011 경계를 유지한다.
-- 모든 미해결 규칙 질문과 프로젝트 convention(OQ-003, OQ-015 등)은 [`rules/open-questions.md`](rules/open-questions.md)에 있으며, 공식 근거 없이 코드로 임의 확정하면 안 된다. 규칙 동작을 바꾸기 전에는 반드시 `docs/rules/`의 문장을 인용한다([`lessons.md`](lessons.md)).
+- Shaddam Corrino IV의 set-aside Sardaukar Contract 경로는 Leader 능력과 함께 남아 있다. OQ-010, OQ-011 경계는 확정 판정(`DECIDED`)으로 유지된다.
+- 공식 문서가 침묵하는 규칙 판정은 [`rules/open-questions.md`](rules/open-questions.md)에 있다. 2026-09-01 확정 캠페인으로 남아 있던 `OPEN`/`CONTENT` 19건 전부가 `DECIDED`(확정 프로젝트 판정)가 되어 더는 공식 답변 대기 상태가 아니며, 새 공식 룰북·FAQ가 답을 줄 때만 해당 항목을 다시 연다. 새로 발견되는 규칙 공백은 여전히 코드로 임의 확정하지 않고 그 문서에 먼저 기록하며, 규칙 동작을 바꾸기 전에는 반드시 `docs/rules/`의 문장을 인용한다([`lessons.md`](lessons.md)).
 
 콘텐츠(카드·리더·계약·Intrigue·보드 22칸)는 이제 4인 base+CHOAM 게임 범위에서 완결이다. 남은 경계는 공식 문서가 침묵하는 판정을 기록한 convention(open-questions.md)과 위의 엔진 경계·미래 콘텐츠 tripwire들이며, 이들은 "미구현 콘텐츠"가 아니라 문서화된 프로젝트 판정이다.
 
@@ -117,7 +117,16 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 
 ## 원격 저장소 인계 주의
 
-2026-09-01 세션 시작 시점에 `origin/master`와 로컬은 `1647bf2`로 일치했고, 이 세션의 커밋들(`d7703ef`부터)은 로컬에만 있다(push는 사용자 판단으로 한다). 새 세션은 `git log origin/master..master`와 반대 방향을 모두 확인하고, checkout이 `853ecd4`보다 이전이면 이 문서의 984개 테스트·codec v82 기준선이 실제 코드와 일치하지 않는다. **다른 머신에서 이어서 작업한다면 먼저 이 머신에서 push가 필요하다.** 새 머신의 UI 카드 이미지는 비공개 `Dune-Imperium-assets` 저장소를 clone해 symlink로 연결하고(그 README 참고), 접근이 없을 때만 `uv run scripts/fetch_card_images.py`로 채운다 (선택; 없으면 텍스트만). 2026-09-01부터 이 머신의 캐시는 그 symlink다.
+2026-09-01 세션 시작 시점에 `origin/master`와 로컬은 `1647bf2`로 일치했고, 이 세션의 커밋들(`d7703ef`부터)은 로컬에만 있다(push는 사용자 판단으로 한다). 새 세션은 `git log origin/master..master`와 반대 방향을 모두 확인하고, checkout이 `853ecd4`보다 이전이면 이 문서의 986개 테스트·codec v82 기준선이 실제 코드와 일치하지 않는다. **다른 머신에서 이어서 작업한다면 먼저 이 머신에서 push가 필요하다.** 새 머신의 UI 카드 이미지는 비공개 `Dune-Imperium-assets` 저장소를 clone해 symlink로 연결하고(그 README 참고), 접근이 없을 때만 `uv run scripts/fetch_card_images.py`로 채운다 (선택; 없으면 텍스트만). 2026-09-01부터 이 머신의 캐시는 그 symlink다.
+
+## 2026-09-01 오픈 퀘스천 확정 세션 요약 (19건 전부 DECIDED)
+
+- 사용자 지시로 open-questions의 미해결 항목 전부에 확정 결정을 내렸다. 먼저 공식 리소스 페이지를 재확인해 Main/Supplements 23-10-12판과 FAQ 2025-01-13판이 여전히 최신임을 확정한 뒤(새 공식 판정 없음), `DECIDED` 상태(확정 프로젝트 판정 — 새 공식 문서가 답을 줄 때만 재검토)를 도입해 `OPEN`/`CONTENT` 19건 전부를 전환했다. RESOLVED 4건(OQ-005/009/013/014)은 그대로다.
+- 동작이 바뀐 유일한 항목은 OQ-006이다(`5baac89`): Main p. 11 원문의 Infiltrate는 "다른 플레이어가 점유 중"이라는 술어를 발동 조건으로, 연결된 Spy **하나**의 recall을 비용으로 두므로, opponent Agent가 2개 이상인 공간을 배치 불가로 막던 임시 guard를 제거하고 recall 하나로 진입을 허용했다. codec 불변(기존 `infiltrate_post_id` 인자 그대로).
+- OQ-002는 콘텐츠 검산으로 닫았다(`5e34522`): 동률 그룹이 받는 보상은 항상 2·3위 줄이고 그 줄에는 상호작용 보상이 없으므로(Influence 선택·contract·Spy·VP·optional 지불·control은 전부 1위 줄 전용), 좌석 번호 오름차순 해결(First Player 위치 무관)을 tied-order 테스트 2건으로 pin했다.
+- 나머지는 분석·문서 확정이다: OQ-001(완결 Endgame Intrigue 6종 전수 — 어떤 효과도 다른 window의 조건 입력을 바꾸지 못해 단일 순회 근거 유효), OQ-003(완결 Intrigue 39종 재검산 — Combat 중 유닛 증가 카드 없음), OQ-008(Main p. 11 공식 예시가 controller 보너스의 배치 즉시 해결을 직접 보여주고, Agent turn 중 상대 자원 총량을 읽는 효과가 전무함을 DSL 조건 전수로 확인), OQ-011(Main p. 11 원문 "immediately after placing your Agent (before receiving any effects...)"), OQ-012(자유 순서 밖 동시 의무 효과는 획득 이벤트 계열뿐 — 획득 카드 보상 → in-play trigger → Acquire Contract → Call to Arms 고정 순서 확정, 전부 같은 획득자의 가환 이득), OQ-010(관측 v2의 identity 공개 경계와 종료 후 비공개 검토를 최종 판정으로 승격), OQ-004/007/015~023(기존 convention을 확정 판정으로 채택; OQ-021은 FAQ "in place of" 근거 유지).
+- 규칙 문서의 미확정 절들을 확정 판정 참조로 갱신했다: `combat-and-round-end.md`, `player-turns.md`, `information-visibility.md`, 감사 문서 `spies.md`·`combat-conflicts.md`, 그리고 `open-questions.md`의 상태 정의(intro)와 2026-09-01 확정 캠페인 서문.
+- 검증: pytest 986(985+skip 1), Ruff, mypy 통과. 공식 PDF 텍스트는 `scripts/prepare_official_rules.py`로 /tmp에만 생성해 원문 대조에 사용했다.
 
 ## 2026-09-01 검증 강화 캠페인 세션 요약 (보드 22칸 완결 + 검증 도구 + 교차 소크)
 
