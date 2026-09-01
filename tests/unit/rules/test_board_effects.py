@@ -955,8 +955,11 @@ def test_imperial_privilege_recall_returns_agent_and_draws_a_card() -> None:
     assert any(event.kind == "agent_recalled" for event in result.events)
 
 
-def test_imperial_privilege_fizzles_the_recall_without_another_agent() -> None:
+def test_imperial_privilege_skips_only_the_recall_without_another_agent() -> None:
     state = _imperial_privilege_state(intrigue_cards=("intrigue:held",))
+    drawn = _instance("reconnaissance")
+    owner = replace(state.players[0], deck=(drawn,))
+    state = replace(state, players=(owner, *state.players[1:]))
     action = next(
         candidate
         for candidate in legal_imperial_privilege_actions(state, 0)
@@ -967,13 +970,17 @@ def test_imperial_privilege_fizzles_the_recall_without_another_agent() -> None:
     resolved = result.state
     decision = resolved.decision_stack[-1].decision
 
-    # No other Agent means the recall-and-draw clause fizzles entirely
-    # [Board Guide p. 2]: no recall frame, no personal-card draw.
+    # With no other deployed Agent only the recall is skipped; the card draw
+    # is a separate printed effect and still resolves (OQ-023 decided
+    # ruling, [Board Guide p. 2]).
     assert legal_imperial_privilege_actions(resolved, 0) == ()
-    assert resolved.players[0].hand == state.players[0].hand
+    assert drawn in resolved.players[0].hand
     assert isinstance(decision, PlayerDecision)
     assert decision.owner == 1
     assert result.events[-1].kind == "board_effect_resolved"
+    assert any(
+        event.kind == "imperial_privilege_recall_skipped" for event in result.events
+    )
     assert not any(event.kind == "agent_recalled" for event in result.events)
 
 

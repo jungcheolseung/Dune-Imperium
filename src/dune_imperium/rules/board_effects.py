@@ -925,12 +925,25 @@ def apply_imperial_privilege_action(
         if location != "imperial_privilege"
     )
     if not other_spaces:
-        # No other deployed Agent means the recall-and-draw clause fizzles
-        # entirely [Board Guide p. 2], closing the effect right here.
+        # With no other deployed Agent only the recall is skipped; the card
+        # draw is a separate printed effect and still resolves (OQ-023
+        # decided ruling, [Board Guide p. 2]).
         context["pending_board_effect"] = False
         next_state = advance_after_effect(
             effect_state, context, effect_state.players
         )
+        draw = draw_or_request_personal_cards(
+            next_state, action.actor, 1, source=source
+        )
+        next_state = draw.state
+        events.append(
+            GameEvent(
+                event_id=f"{source}:recall_skipped",
+                kind="imperial_privilege_recall_skipped",
+                payload=(("player", action.actor),),
+            )
+        )
+        events.extend(draw.events)
         events.append(
             GameEvent(
                 event_id=source,
