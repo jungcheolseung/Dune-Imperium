@@ -37,7 +37,7 @@ from dune_imperium.content.uprising.starting_cards import (
 from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
 from dune_imperium.core.actions import ActionValue, DomainAction
 
-ACTION_CODEC_VERSION = 81
+ACTION_CODEC_VERSION = 82
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 
@@ -207,6 +207,13 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     )
     templates.extend(
         ActionTemplate(
+            action_id="recall_agent_for_imperial_privilege",
+            arguments=(("space_id", space.space_id),),
+        )
+        for space in BOARD_SPACES
+    )
+    templates.extend(
+        ActionTemplate(
             action_id="acquire_reserve",
             arguments=(("card_id", stack.card.card_id),),
         )
@@ -246,6 +253,13 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     )
     templates.extend(
         ActionTemplate(
+            action_id="discard_intrigue_for_imperial_privilege",
+            arguments=(("card_id", instance_id),),
+        )
+        for instance_id in intrigue_instances
+    )
+    templates.extend(
+        ActionTemplate(
             action_id="play_intrigue",
             arguments=(("card_id", instance_id), ("option", option)),
         )
@@ -276,6 +290,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "decline_intrigue_trash",
             "decline_intrigue_trigger",
             "decline_intrigue_spy",
+            "decline_imperial_privilege_intrigue",
         )
     )
     templates.extend(_trash_templates(config, "trash_intrigue_card"))

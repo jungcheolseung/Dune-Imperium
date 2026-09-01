@@ -370,3 +370,20 @@
   효과(Weirding Woman)는 카드가 게임에서 제거됐으므로 무효로 해결한다. 조건부
   효과(Bond, Influence 문턱)는 해결 시점에 다시 판정한다(`[Main pp. 9, 20]`의
   자유 순서 판정). `tests/unit/rules/test_agent_effects.py`로 고정한다.
+
+## OQ-023 — Imperial Privilege의 recall 의무와 대상 부재 시 처리
+
+- 상태: `OPEN`
+- Board Space Guide는 Imperial Privilege의 효과를 "원하면 Intrigue 1장을
+  discard하고 Intrigue 1장을 draw. 이번 turn에 보낸 Agent가 아닌 자신의 다른
+  Agent 1개를 recall하고 card 1장을 draw"로 인쇄한다. 첫 문장에만 선택
+  표지("원하면")가 있고, 다른 배치된 Agent가 하나도 없을 때 recall과 그에
+  결부된 card draw가 어떻게 되는지는 답하지 않는다. `[Board Guide p. 2]`
+- 필요한 답: recall 절이 의무인지, 그리고 recall 대상이 없을 때 card draw만
+  따로 발생하는지의 공식 판정.
+- 구현 convention(2026-09-01): 선택 표지가 없는 recall 절은 대상이 있으면
+  의무이며, 어느 Agent를 recall할지는 소유자가 고른다. 다른 배치된 Agent가
+  없으면 절 전체(recall과 draw)가 무효화되어 draw도 발생하지 않는다 — draw는
+  "recall하고 draw"로 recall에 결부돼 있기 때문이다. recall 대상은 Intrigue
+  슬롯이 해결된 뒤의 해결 시점에 판정한다(`[Main pp. 9, 20]`).
+  `tests/unit/rules/test_board_effects.py`로 고정한다.

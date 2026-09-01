@@ -10,6 +10,7 @@ from dune_imperium.content.uprising.starting_cards import starting_deck_instance
 from dune_imperium.core import (
     ChanceDecision,
     ChanceOutcome,
+    ChanceResolver,
     DecisionFrame,
     DomainAction,
     GamePhase,
@@ -27,6 +28,7 @@ from dune_imperium.rules.board_effects import (
     CHOICE_DRIVEN_SPACE_IDS,
     apply_desert_tactics_action,
     apply_espionage_action,
+    apply_imperial_privilege_action,
     apply_maker_space_action,
     apply_shipping_action,
     apply_sietch_tabr_action,
@@ -34,6 +36,7 @@ from dune_imperium.rules.board_effects import (
     board_effects_for,
     legal_desert_tactics_actions,
     legal_espionage_actions,
+    legal_imperial_privilege_actions,
     legal_maker_space_actions,
     legal_shipping_actions,
     legal_sietch_tabr_actions,
@@ -807,6 +810,206 @@ def test_desert_tactics_can_trash_the_just_played_card_itself() -> None:
     assert decision.owner == 1
 
 
+def _imperial_privilege_state(
+    *,
+    intrigue_cards: tuple[str, ...] = (),
+    intrigue_deck: tuple[str, ...] = (),
+    other_agent_space: str | None = None,
+) -> GameState:
+    state = _state("dagger", Resources(solari=3))
+    owner = replace(
+        state.players[0],
+        influence=Influence(emperor=2),
+        intrigue_cards=intrigue_cards,
+    )
+    if other_agent_space is not None:
+        owner = replace(
+            owner,
+            agents_available=1,
+            agent_locations=(other_agent_space,),
+        )
+    state = replace(
+        state,
+        players=(owner, *state.players[1:]),
+        intrigue_deck=intrigue_deck,
+    )
+    return apply_agent_action(state, _action_to(state, "imperial_privilege")).state
+
+
+def test_imperial_privilege_requires_emperor_influence_and_pays_exact_solari_cost() -> (
+    None
+):
+    unqualified = _state("dagger", Resources(solari=3))
+    unqualified = replace(
+        unqualified,
+        players=(
+            replace(unqualified.players[0], influence=Influence(emperor=1)),
+            *unqualified.players[1:],
+        ),
+    )
+    assert not any(
+        dict(action.arguments).get("space_id") == "imperial_privilege"
+        for action in legal_agent_actions(unqualified, 0)
+    )
+
+    placed = _imperial_privilege_state()
+
+    assert placed.players[0].resources.solari == 0
+    context = dict(placed.decision_stack[-1].context)
+    assert context["pending_board_effect"] is True
+    assert context["space_id"] == "imperial_privilege"
+
+
+def test_imperial_privilege_offers_decline_and_every_held_intrigue_discard() -> None:
+    state = _imperial_privilege_state(
+        intrigue_cards=("intrigue:one", "intrigue:two"),
+    )
+    actions = legal_imperial_privilege_actions(state, 0)
+
+    assert actions[0].action_id == "decline_imperial_privilege_intrigue"
+    discard_actions = actions[1:]
+    assert all(
+        action.action_id == "discard_intrigue_for_imperial_privilege"
+        for action in discard_actions
+    )
+    assert {dict(action.arguments)["card_id"] for action in discard_actions} == {
+        "intrigue:one",
+        "intrigue:two",
+    }
+
+
+def test_imperial_privilege_offers_only_decline_with_no_held_intrigue() -> None:
+    state = _imperial_privilege_state()
+
+    assert tuple(
+        action.action_id for action in legal_imperial_privilege_actions(state, 0)
+    ) == ("decline_imperial_privilege_intrigue",)
+
+
+def test_imperial_privilege_discard_swaps_intrigue_then_offers_the_other_agent() -> (
+    None
+):
+    state = _imperial_privilege_state(
+        intrigue_cards=("intrigue:held",),
+        intrigue_deck=("intrigue:replacement",),
+        other_agent_space="arrakeen",
+    )
+    action = next(
+        candidate
+        for candidate in legal_imperial_privilege_actions(state, 0)
+        if candidate.action_id == "discard_intrigue_for_imperial_privilege"
+    )
+
+    result = apply_imperial_privilege_action(state, action)
+    resolved = result.state
+    owner = resolved.players[0]
+    context = dict(resolved.decision_stack[-1].context)
+
+    assert owner.intrigue_cards == ("intrigue:replacement",)
+    assert resolved.intrigue_discard == ("intrigue:held",)
+    assert resolved.intrigue_deck == ()
+    assert context["pending_board_effect"] is True
+    assert context["imperial_privilege_intrigue_resolved"] is True
+    assert any(event.kind == "intrigue_card_discarded" for event in result.events)
+
+    recall_actions = legal_imperial_privilege_actions(resolved, 0)
+    assert tuple(action.action_id for action in recall_actions) == (
+        "recall_agent_for_imperial_privilege",
+    )
+    assert dict(recall_actions[0].arguments) == {"space_id": "arrakeen"}
+
+
+def test_imperial_privilege_recall_returns_agent_and_draws_a_card() -> None:
+    state = _imperial_privilege_state(other_agent_space="arrakeen")
+    decline = next(
+        candidate
+        for candidate in legal_imperial_privilege_actions(state, 0)
+        if candidate.action_id == "decline_imperial_privilege_intrigue"
+    )
+    declined = apply_imperial_privilege_action(state, decline).state
+    drawn = _instance("reconnaissance")
+    declined_owner = replace(declined.players[0], deck=(drawn,))
+    declined = replace(declined, players=(declined_owner, *declined.players[1:]))
+    recall = next(
+        candidate
+        for candidate in legal_imperial_privilege_actions(declined, 0)
+        if candidate.action_id == "recall_agent_for_imperial_privilege"
+    )
+
+    result = apply_imperial_privilege_action(declined, recall)
+    resolved_owner = result.state.players[0]
+    decision = result.state.decision_stack[-1].decision
+
+    assert "arrakeen" not in resolved_owner.agent_locations
+    assert resolved_owner.agents_available == 1
+    assert resolved_owner.hand == (drawn,)
+    assert isinstance(decision, PlayerDecision)
+    assert decision.owner == 1
+    assert result.events[-1].kind == "board_effect_resolved"
+    assert dict(result.events[-1].payload) == {
+        "action_id": "recall_agent_for_imperial_privilege",
+        "player": 0,
+        "space_id": "imperial_privilege",
+    }
+    assert any(event.kind == "agent_recalled" for event in result.events)
+
+
+def test_imperial_privilege_fizzles_the_recall_without_another_agent() -> None:
+    state = _imperial_privilege_state(intrigue_cards=("intrigue:held",))
+    action = next(
+        candidate
+        for candidate in legal_imperial_privilege_actions(state, 0)
+        if candidate.action_id == "discard_intrigue_for_imperial_privilege"
+    )
+
+    result = apply_imperial_privilege_action(state, action)
+    resolved = result.state
+    decision = resolved.decision_stack[-1].decision
+
+    # No other Agent means the recall-and-draw clause fizzles entirely
+    # [Board Guide p. 2]: no recall frame, no personal-card draw.
+    assert legal_imperial_privilege_actions(resolved, 0) == ()
+    assert resolved.players[0].hand == state.players[0].hand
+    assert isinstance(decision, PlayerDecision)
+    assert decision.owner == 1
+    assert result.events[-1].kind == "board_effect_resolved"
+    assert not any(event.kind == "agent_recalled" for event in result.events)
+
+
+def test_imperial_privilege_discard_draw_reshuffles_an_empty_deck() -> None:
+    # The slot-1 draw goes through the reshuffle-safe path [FAQ p. 2], just
+    # like Assembly Hall's Intrigue draw (mirrors
+    # test_owed_intrigue_draws_reshuffle_the_discard_before_the_next_decision
+    # in test_intrigue.py).
+    discard = ("intrigue:cunning", "intrigue:devour")
+    state = _imperial_privilege_state(intrigue_cards=("intrigue:held",))
+    state = replace(state, intrigue_discard=discard)
+    engine = UprisingRulesEngine()
+    action = next(
+        candidate
+        for candidate in engine.legal_actions(state, 0)
+        if candidate.action_id == "discard_intrigue_for_imperial_privilege"
+    )
+
+    pending = engine.apply(state, action)
+    decision = pending.next_decision
+
+    assert isinstance(decision, ChanceDecision)
+    # The just-discarded card joins the pre-existing discard pile before the
+    # reshuffle is offered.
+    assert decision.options == (*discard, "intrigue:held")
+    assert pending.state.pending_intrigue_draws == ()
+
+    outcome = ChanceResolver(seed=5).resolve(decision)
+    resolved = engine.apply(pending.state, outcome)
+
+    # The empty deck did not crash the draw: the reshuffle completed and the
+    # owed card was delivered from the freshly shuffled deck.
+    assert len(resolved.state.players[0].intrigue_cards) == 1
+    assert resolved.state.intrigue_discard == ()
+    assert len(resolved.state.intrigue_deck) == 2
+
+
 def _hagga_basin_state(*, wall_present: bool) -> GameState:
     state = _state("dune_the_desert_planet")
     owner = replace(state.players[0], maker_hooks=True)
@@ -984,7 +1187,7 @@ def test_static_board_effects_pins_the_full_printed_domain() -> None:
 
 
 def test_unimplemented_board_spaces_are_exactly_pinned() -> None:
-    base_hidden = {"secrets", "imperial_privilege"}
+    base_hidden = {"secrets"}
     for choam_module, expected_hidden in (
         (False, base_hidden),
         (True, base_hidden),

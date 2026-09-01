@@ -46,6 +46,7 @@ CHOICE_DRIVEN_SPACE_IDS = frozenset(
         "imperial_basin",
         "shipping",
         "desert_tactics",
+        "imperial_privilege",
     }
 )
 
@@ -660,6 +661,176 @@ def apply_desert_tactics_action(
             ),
         )
     )
+    return RuleResult(state=next_state, events=tuple(events))
+
+
+def legal_imperial_privilege_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return Imperial Privilege's optional Intrigue slot, then its recall."""
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return ()
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    if (
+        context.get("pending_board_effect") is not True
+        or context.get("space_id") != "imperial_privilege"
+    ):
+        return ()
+
+    owner = state.players[player]
+    if context.get("imperial_privilege_intrigue_resolved") is not True:
+        return (
+            DomainAction(
+                action_id="decline_imperial_privilege_intrigue", actor=player
+            ),
+            *(
+                DomainAction(
+                    action_id="discard_intrigue_for_imperial_privilege",
+                    actor=player,
+                    arguments=(("card_id", card_id),),
+                )
+                for card_id in owner.intrigue_cards
+            ),
+        )
+    return tuple(
+        DomainAction(
+            action_id="recall_agent_for_imperial_privilege",
+            actor=player,
+            arguments=(("space_id", space_id),),
+        )
+        for space_id in owner.agent_locations
+        if space_id != "imperial_privilege"
+    )
+
+
+def apply_imperial_privilege_action(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Resolve Imperial Privilege's optional Intrigue swap, then its recall."""
+
+    if action not in legal_imperial_privilege_actions(state, action.actor):
+        raise ValueError("action is not a legal Imperial Privilege choice")
+    _, context = current_agent_effect_context(state)
+    owner = state.players[action.actor]
+    source = (
+        f"round:{state.round_number}:player:{action.actor}:board:imperial_privilege"
+    )
+
+    if action.action_id == "recall_agent_for_imperial_privilege":
+        space_id = dict(action.arguments).get("space_id")
+        if not isinstance(space_id, str):
+            raise RuntimeError("Imperial Privilege recall has invalid space ID")
+        next_owner = replace(
+            owner,
+            agents_available=owner.agents_available + 1,
+            agent_locations=tuple(
+                location for location in owner.agent_locations if location != space_id
+            ),
+        )
+        players = tuple(
+            next_owner if candidate.player_id == action.actor else candidate
+            for candidate in state.players
+        )
+        context["pending_board_effect"] = False
+        next_state = advance_after_effect(state, context, players)
+        draw = draw_or_request_personal_cards(
+            next_state, action.actor, 1, source=source
+        )
+        next_state = draw.state
+        recall_events = (
+            GameEvent(
+                event_id=(
+                    f"round:{state.round_number}:player:{action.actor}:"
+                    f"agent_recalled:imperial_privilege:{space_id}"
+                ),
+                kind="agent_recalled",
+                payload=(
+                    ("player", action.actor),
+                    ("source", "imperial_privilege"),
+                    ("space_id", space_id),
+                ),
+            ),
+            *draw.events,
+            GameEvent(
+                event_id=source,
+                kind="board_effect_resolved",
+                payload=(
+                    ("action_id", action.action_id),
+                    ("player", action.actor),
+                    ("space_id", "imperial_privilege"),
+                ),
+            ),
+        )
+        return RuleResult(state=next_state, events=recall_events)
+
+    effect_state = state
+    events: list[GameEvent] = []
+    if action.action_id == "discard_intrigue_for_imperial_privilege":
+        card_id = dict(action.arguments).get("card_id")
+        if not isinstance(card_id, str):
+            raise RuntimeError("Imperial Privilege discard has invalid card ID")
+        discarding_owner = replace(
+            owner,
+            intrigue_cards=tuple(
+                held for held in owner.intrigue_cards if held != card_id
+            ),
+        )
+        effect_state = replace(
+            state,
+            players=tuple(
+                discarding_owner if candidate.player_id == action.actor else candidate
+                for candidate in state.players
+            ),
+            intrigue_discard=(*state.intrigue_discard, card_id),
+        )
+        events.append(
+            GameEvent(
+                event_id=f"{source}:discarded:{card_id}",
+                kind="intrigue_card_discarded",
+                payload=(("card_id", card_id), ("player", action.actor)),
+            )
+        )
+        drawn = draw_or_queue_intrigue_cards(
+            effect_state, action.actor, 1, source=source
+        )
+        effect_state = drawn.state
+        events.extend(drawn.events)
+
+    context["imperial_privilege_intrigue_resolved"] = True
+    other_spaces = tuple(
+        location
+        for location in effect_state.players[action.actor].agent_locations
+        if location != "imperial_privilege"
+    )
+    if not other_spaces:
+        # No other deployed Agent means the recall-and-draw clause fizzles
+        # entirely [Board Guide p. 2], closing the effect right here.
+        context["pending_board_effect"] = False
+        next_state = advance_after_effect(
+            effect_state, context, effect_state.players
+        )
+        events.append(
+            GameEvent(
+                event_id=source,
+                kind="board_effect_resolved",
+                payload=(
+                    ("action_id", action.action_id),
+                    ("player", action.actor),
+                    ("space_id", "imperial_privilege"),
+                ),
+            )
+        )
+        return RuleResult(state=next_state, events=tuple(events))
+
+    next_state = advance_after_effect(effect_state, context, effect_state.players)
     return RuleResult(state=next_state, events=tuple(events))
 
 
