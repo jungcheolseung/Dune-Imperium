@@ -1,6 +1,6 @@
 # 개발 인수인계
 
-기준일: 2026-08-31
+기준일: 2026-09-01
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재
 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md),
@@ -28,17 +28,25 @@ uv run ruff check src tests
 uv run mypy src tests
 ```
 
-2026-08-31의 기준 결과는 pytest 934개 통과, Ruff 통과, mypy 통과다. 현재 action
-codec은 `ACTION_CODEC_VERSION = 79`(기본 4,152개, CHOAM 4,429개)이고, 관측은
+2026-09-01의 기준 결과는 pytest 973개 통과, Ruff 통과, mypy 통과다. 현재 action
+codec은 `ACTION_CODEC_VERSION = 82`(기본 4,313개, CHOAM 4,598개)이고, 관측은
 `OBSERVATION_VERSION = 2`의 1,415-int 전체 게임 인코딩이다
-([`rl-environment.md`](rl-environment.md)). `dune-imperium-sweep` 검증
-sweep은 random policy 룰셋당 10,000판(총 20,000판), heuristic policy
-룰셋당 1,000판, 그리고 `--leader-draft` 켠 두 policy 각 룰셋당 500판이
-모두 실패 0으로 통과한 상태다.
+([`rl-environment.md`](rl-environment.md)). 보드 22칸 완결 + 즉시 공개 +
+`fab266f`/`e6fc298` 수정 반영 후의 `dune-imperium-sweep` 소크는 random policy
+룰셋당 3,000판, heuristic policy 룰셋당 1,000판, `--leader-draft` 켠 두 policy
+각 룰셋당 500판이 모두 실패 0으로 통과한 상태다(2026-09-01, 아래 세션 요약).
 
 ## 현재 구현 기준선
 
-마지막 기능 커밋은 `4c175d1`(카드 이미지 캐시 다운로드 스크립트)이고, 그
+마지막 기능 커밋 묶음은 2026-09-01 검증 강화 캠페인의 보드 공간 완결
+슬라이스들이다: `d7703ef`(Dutiful Service CHOAM contract), `e141492`
+(Shipping, codec v80), `63a8994`(Desert Tactics, codec v81), `49a5bb6`
+(Imperial Privilege, codec v82, OQ-023), `78fa1a3`(Secrets chance 강탈,
+SECRETS_STEAL frame), `881d88b`(Reveal 중 hand 진입 카드의 FAQ p. 3 즉시
+공개, OQ-015(c) 해소), `fab266f`·`e6fc298`(소크가 적발한 mid-frame trash
+충돌 두 계열의 OQ-022 확장 수정). 이로써 **4인 보드 22칸 전부가 배치·해결 가능**하고
+Reveal 중 draw/hand-acquire Plot 보류도 사라졌다. 그 앞은
+`4c175d1`(카드 이미지 캐시 다운로드 스크립트)이고, 그
 앞에 UI 효과 표시 작업의 `3e2ae8f`(행동 효과 미리보기 + 전체 행동 라벨),
 `d275a66`(보드 공간 패널·popover·카드 이미지), `d34a2d1`(/catalog 효과
 텍스트·이미지), `a4befd4`(display 패키지), `3c1cc69`(정적 보드 효과
@@ -100,18 +108,12 @@ M11 절), **다음은 M9**.
 
 ## 아직 완성되지 않은 경계
 
-- Reveal turn 중 card가 hand에 들어가는 Plot(개인 card draw, Inspire Awe의
-  조건부 hand 획득)은 FAQ p. 3의 즉시 공개 규칙이 구현되지 않아 Reveal에서
-  제시하지 않는다(OQ-015(c)).
-- board effect가 미구현이라 dispatcher가 배치 자체를 숨기는 공간은 기본
-  룰셋에서 `secrets`, `desert_tactics`, `imperial_privilege`, `shipping`의
-  4칸이고, CHOAM에서는 `dutiful_service`(face-up contract 획득 변형)도
-  추가된다(`board_effect_is_implemented`; 2026-08-31 UI 세션에서 코드로
-  재확인 — 이전 핸드오프의 "2칸" 서술은 부정확했다.
-  `tests/unit/rules/test_board_effects.py`가 이 집합을 고정한다). Reverend
-  Mother의 board repeat와 Other Memories도 그 공간들에서는 그래서 아직
-  발생하지 않는다. UI는 이 칸들을 계산된 `implemented` 플래그로 "미구현 ·
-  배치 불가" 배지와 함께 표시한다.
+- (2026-09-01 해소) 보드 22칸 미구현 4~5칸과 OQ-015(c)의 Reveal 중 Plot
+  보류는 모두 구현됐다. `board_effect_is_implemented`와 UI의 "미구현 ·
+  배치 불가" 배지는 미래 콘텐츠 대비 메커니즘으로 남아 있고,
+  `tests/unit/rules/test_board_effects.py`의 pinned 집합은 이제 양쪽 룰셋
+  모두 빈 집합이다. Imperial Privilege의 recall 판정은 OQ-023 convention,
+  Secrets의 무작위 강탈은 seeded `SECRETS_STEAL` chance frame이다.
 - Agent 배치 시점 조건이 거짓이면 pending되지 않는 카드 효과는, 같은 frame의
   자유 순서 효과로 조건이 나중에 참이 되어도 제시되지 않는다(알려진 엔진
   경계; Prepare the Way 수정 커밋 `87a9300` 참고).
@@ -125,22 +127,36 @@ M11 절), **다음은 M9**.
   코드로 임의 확정하면 안 된다. 규칙 동작을 바꾸기 전에는 반드시 `docs/rules/`의
   문장을 인용한다([`lessons.md`](lessons.md)).
 
-따라서 현재 엔진을 "완전한 Uprising 게임"으로 간주하면 안 된다.
+콘텐츠(카드·리더·계약·Intrigue·보드 22칸)는 이제 4인 base+CHOAM 게임
+범위에서 완결이다. 남은 경계는 공식 문서가 침묵하는 판정을 기록한
+convention(open-questions.md)과 위의 엔진 경계·미래 콘텐츠 tripwire들이며,
+이들은 "미구현 콘텐츠"가 아니라 문서화된 프로젝트 판정이다.
 
 ## 다음 구현 순서
 
-M11(사람용 플레이 인터페이스)은 2026-08-31에 완료했다: 로컬 웹 UI로
-설정부터 최종 순위, 저장/불러오기, 종료 후 replay 검토까지 동작한다. 완료
-판정 근거와 설계 convention은 `implementation-plan.md` M11 절, 세부 구현은
-아래 세션 요약(슬라이스 1~5)을 본다.
+M9 착수 전에 2026-09-01 시작한 **검증 강화 캠페인**(사용자 확정 범위:
+전체 1→4)을 마친다. 1단계(보드 22칸 완결 + OQ-015(c))는 끝났고, 남은
+순서는 다음과 같다.
 
-1. **M9 평가 러너와 baseline.** 여러 게임을 병렬 구동하고 정책 추론만
+1. **sweep 확장(검증 도구).** (a) 콘텐츠 커버리지 census — replay의
+   action·이벤트를 카드/Intrigue/Leader/공간×옵션/계약/Conflict 차원으로
+   집계해 0회 경로를 보고. (b) 표본 주기 legal-action 건전성 검사 — 표본
+   결정마다 제시된 모든 합법 행동을 실제 적용해 "legal인데 적용 실패"
+   계열을 체계적으로 적발하고, 각 행동의 codec 인코딩 왕복도 검증(현재
+   sweep은 codec을 거치지 않아 이 계열이 env 테스트에서만 걸린다).
+   (c) `--rotate-leaders` — seed별 리더 4종을 seeded 추출해 9종 전원의
+   능력 경로를 커버.
+2. **대규모 교차 soak.** 리더 회전 × 두 룰셋 × random/heuristic × draft
+   on/off, 야간 규모. 커버리지 0인 경로는 강제 시나리오 테스트로 보강.
+3. **마무리 대조.** `dune-imperium-audit-diu` 재실행, open-questions 경계
+   재점검.
+4. **M9 평가 러너와 baseline.** 여러 게임을 병렬 구동하고 정책 추론만
    batch하는 self-play 러너, random/heuristic(M11 상대에서 출발)/rollout
    baseline, 좌석·리더·first player·seed 교차 대회 도구
    (`implementation-plan.md`의 M9). 관측·보상 계약은
    [`rl-environment.md`](rl-environment.md)로 고정돼 있고, 병렬 실행 선례는
    `simulation/sweep.py`다.
-2. **M10 강화학습과 league self-play.** M9의 평가 행렬 위에서 시작한다
+5. **M10 강화학습과 league self-play.** M9의 평가 행렬 위에서 시작한다
    (`implementation-plan.md`의 M10).
 
 각 묶음은 카드 이미지로 텍스트를 검증하고(`docs/card-data-sources.md`의 방법),
@@ -220,16 +236,76 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에
 
 ## 원격 저장소 인계 주의
 
-2026-08-31 세션 마무리 시점에 `origin/master`는 `b48cc40`(효과 표시
-문서화)까지 반영돼 있고, 로컬 `master`는 이미지 fetch 스크립트 커밋
-2개(`4c175d1`, `cd91248`)만큼 앞서 있다(push는 사용자 판단으로 한다).
-새 세션은 `git log origin/master..master`와 반대 방향을 모두 확인하고,
-checkout이 `4c175d1`보다 이전이면 이 문서의 934개 테스트·fetch 스크립트
-기준선이 실제 코드와 일치하지 않는다. **다른 머신에서 이어서 작업한다면
+2026-09-01 세션 시작 시점에 `origin/master`와 로컬은 `1647bf2`로 일치했고,
+이 세션의 커밋들(`d7703ef`부터)은 로컬에만 있다(push는 사용자 판단으로
+한다). 새 세션은 `git log origin/master..master`와 반대 방향을 모두
+확인하고, checkout이 `e6fc298`보다 이전이면 이 문서의 973개 테스트·codec
+v82 기준선이 실제 코드와 일치하지 않는다. **다른 머신에서 이어서 작업한다면
 먼저 이 머신에서 push가 필요하다.** 새 머신의 UI 카드 이미지는
 비공개 `Dune-Imperium-assets` 저장소를 clone해 symlink로 연결하고(그 README
 참고), 접근이 없을 때만 `uv run scripts/fetch_card_images.py`로 채운다
 (선택; 없으면 텍스트만). 2026-09-01부터 이 머신의 캐시는 그 symlink다.
+
+## 2026-09-01 검증 강화 캠페인 1단계 세션 요약 (보드 22칸 완결 + 즉시 공개)
+
+- 동기: M9/M10 전에 엔진에서 "학습이 변형 게임을 배우는" 원인을 제거한다.
+  미구현 보드 칸은 codec을 바꾸는 작업이라 M9 이후로 미루면 평가 행렬과
+  체크포인트가 무효화되므로 지금이 유일하게 싼 시점이었다. 사용자 확정
+  범위는 "전체 1→4"(보드 구현 → 검증 도구 → 대규모 soak → 대조).
+- 슬라이스는 모두 `docs/rules/board-spaces.md`의 전사·인용을 근거로 하고,
+  Sonnet `card-implementer` 서브에이전트에 위임한 뒤 본 세션이 diff를
+  리뷰하고 pytest/ruff/mypy를 재실행해 커밋했다.
+- `d7703ef` Dutiful Service(CHOAM): `accept_contract`의
+  `begin_contract_gain` 경로 재사용(빈 시장 2 Solari 폴백은 OQ-021).
+  codec 불변.
+- `e141492` Shipping: choice-driven 공간으로 5 Solari + 선택 Faction
+  Influence 1(`choose_shipping_influence` 4종, codec v80,
+  `gain_faction_influence` 경유로 friendship VP 경로 공유).
+- `63a8994` Desert Tactics: troop 1 recruit(`troops_recruited` counter로
+  Combat 배치 연동) + 선택적 trash(hand/discard/in play,
+  `trash_personal_card` 공유로 OQ-022 self-trash convention 승계). codec
+  v81.
+- `49a5bb6` Imperial Privilege: 2단계 슬롯 — 선택적 Intrigue discard→
+  reshuffle-safe draw, 그다음 의무 recall(방금 보낸 Agent 제외) + card 1
+  draw. 다른 배치 Agent가 없으면 절 전체 무효(신규 OQ-023 convention).
+  codec v82.
+- `78fa1a3` Secrets: 정적 Intrigue draw + `SECRETS_STEAL` chance frame으로
+  4장+ 보유 opponent마다 무작위 1장 강탈(held Intrigue만, intrigue_faceup
+  제외). draw의 reshuffle 부족분은 steal frame 위로 승격해 인쇄 순서(draw
+  → steal)를 유지. FrameKind는 enum 끝에 추가해 관측 인덱스 안정. codec
+  불변(chance 전용).
+- `881d88b` 즉시 공개(OQ-015(c) 해소): Reveal 중 hand에 들어간 카드는
+  즉시 in play로 옮겨 도착 시점 자격 판정으로 자신의 기여(설득·검·자원·
+  선택 frame)를 얻고, 이미 지급된 금액은 확정 유지한 채 교차 효과
+  증분만 더한다. `begin_reveal_turn`의 카드별 계산을 순수 헬퍼로 추출해
+  양 경로가 동일 판정. 훅은 hand 진입 지점 2곳(개인 draw 완료 —
+  reshuffle 후 경로 포함 — 과 Inspire Awe의 to-hand 획득). 교차 효과
+  3종(Stilgar, Sardaukar Coordination, Leadership)이 모두 무조건부임을
+  pin 테스트로 고정. 보류 필터 제거로 Reveal 중 해당 Plot이 제시된다.
+- 소크가 실전 버그 두 계열을 적발했다 — 둘 다 "새 board trash가 해결
+  대기 중인 카드를 mid-frame에 잡는" 가족이다.
+  - `fab266f`: Dangerous Rhetoric을 Spy 아이콘으로 Desert Tactics에 내고
+    board trash가 그 카드 자체를 잡으면
+    `TRASH_SELF_AND_GAIN_CHOSEN_INFLUENCE` Agent box가 무조건 self-trash를
+    실행해 crash(random CHOAM seed 2735). OQ-022 convention(이미
+    trash됐으면 충족 간주, 의무 잔여 효과는 해결)을
+    `apply_agent_card_influence`로 확장. 반대 성격인 Delivery Agreement의
+    "trash해서 VP"는 비용이므로 카드가 사라졌으면 해결 시점 판정으로
+    선택지를 제시하지 않게 했다.
+  - `e6fc298`: BG Bond 카드가 Bond box 해결 전에 trash되면
+    `has_faction_bond`가 source의 in-play 존재를 요구해 crash(random
+    seeds 2934/2590). 인쇄된 Bond 조건은 "다른 해당 Faction card가 in
+    play"만 세므로(`[Main p. 20]`) source의 존 요구를 제거했다.
+  - 회귀: 단위 3건 + 실패 seed 3개 완주(`tests/integration/test_sweep.py`).
+- 주의(재발 방지): 백그라운드 sweep을 서브에이전트의 작업 트리 편집과
+  겹치면 반쪽 편집 상태의 판별 불가한 실패가 섞인다(heuristic seed
+  236 실패가 그 사례 — 완성 트리에서 그 seed·그 배치 1,000판 전체는
+  통과했지만, 같은 오류 계열이 다른 seed에서 실제 버그로 재등장했다).
+  소크는 커밋된 트리에서만 돌리고, 실패는 반드시 완성 트리에서 재현해
+  판별한다.
+- 검증: pytest 934→973, Ruff, mypy. 수정 커밋 후 소크 —
+  heuristic 룰셋당 1,000판, draft 두 policy 각 룰셋당 500판 실패 0,
+  random 룰셋당 3,000판은 두 수정 반영 후 재실행 통과(위 기준선 절 수치).
 
 ## 2026-08-31 UI 효과 표시 세션 요약 (텍스트 자동 생성 + 로컬 이미지)
 
