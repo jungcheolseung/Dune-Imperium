@@ -26,9 +26,9 @@ visual reference.
 
 ## Deferred boundaries
 
-- An official answer for the set-aside access after market exhaustion under
-  OQ-021; Shaddam's set-aside Sardaukar Contract alternative itself is
-  implemented (see the [Leader audit](leaders.md)).
+- Set-aside access after market exhaustion is decided under OQ-021: Shaddam
+  chooses per icon between two Solari and a remaining set-aside tile (see the
+  [Leader audit](leaders.md)); it reopens only on an official ruling.
 - An official answer for Gather Intelligence versus Contract completion under
   OQ-011; the implemented project convention remains clearly labeled until then.
 - Completed Contract identity visibility under OQ-010.

@@ -17,7 +17,7 @@ uv run ruff check src tests
 uv run mypy src tests
 ```
 
-2026-09-01의 기준 결과는 pytest 986개 통과(카드 이미지 캐시가 없는 머신은 985 통과 + 1 skip), Ruff 통과, mypy 통과다. 현재 action codec은 `ACTION_CODEC_VERSION = 82`(기본 4,313개, CHOAM 4,598개)이고, 관측은 `OBSERVATION_VERSION = 2`의 1,415-int 전체 게임 인코딩이다 ([`rl-environment.md`](rl-environment.md)). 보드 22칸 완결 + 즉시 공개 + `fab266f`/`e6fc298` 수정 + sweep 확장(`853ecd4`) 반영 후의 교차 소크는 random 룰셋당 2,000판 + heuristic 룰셋당 1,000판(둘 다 `--rotate-leaders`) + draft 두 policy 각 룰셋당 500판, 전부 `--soundness-interval 25`를 켠 총 7,000판이 실패 0으로 통과한 상태다(2026-09-01, 아래 세션 요약. 그 전 단계에서는 random 룰셋당 3,000판 비회전 소크도 실패 0이었다).
+2026-09-02의 기준 결과는 pytest 989개 통과(카드 이미지 캐시가 없는 머신은 988 통과 + 1 skip), Ruff 통과, mypy 통과다. 현재 action codec은 `ACTION_CODEC_VERSION = 84`(기본 4,314개, CHOAM 4,600개)이고, 관측은 `OBSERVATION_VERSION = 2`의 1,415-int 전체 게임 인코딩이다 ([`rl-environment.md`](rl-environment.md)). 보드 22칸 완결 + 즉시 공개 + `fab266f`/`e6fc298` 수정 + sweep 확장(`853ecd4`) 반영 후의 교차 소크는 random 룰셋당 2,000판 + heuristic 룰셋당 1,000판(둘 다 `--rotate-leaders`) + draft 두 policy 각 룰셋당 500판, 전부 `--soundness-interval 25`를 켠 총 7,000판이 실패 0으로 통과한 상태다(2026-09-01, 아래 세션 요약. 그 전 단계에서는 random 룰셋당 3,000판 비회전 소크도 실패 0이었다).
 
 ## 현재 구현 기준선
 
@@ -117,7 +117,14 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 
 ## 원격 저장소 인계 주의
 
-2026-09-01 세션 시작 시점에 `origin/master`와 로컬은 `1647bf2`로 일치했고, 이 세션의 커밋들(`d7703ef`부터)은 로컬에만 있다(push는 사용자 판단으로 한다). 새 세션은 `git log origin/master..master`와 반대 방향을 모두 확인하고, checkout이 `853ecd4`보다 이전이면 이 문서의 986개 테스트·codec v82 기준선이 실제 코드와 일치하지 않는다. **다른 머신에서 이어서 작업한다면 먼저 이 머신에서 push가 필요하다.** 새 머신의 UI 카드 이미지는 비공개 `Dune-Imperium-assets` 저장소를 clone해 symlink로 연결하고(그 README 참고), 접근이 없을 때만 `uv run scripts/fetch_card_images.py`로 채운다 (선택; 없으면 텍스트만). 2026-09-01부터 이 머신의 캐시는 그 symlink다.
+2026-09-01 세션 시작 시점에 `origin/master`와 로컬은 `1647bf2`로 일치했고, 이 세션의 커밋들(`d7703ef`부터)은 로컬에만 있다(push는 사용자 판단으로 한다). 새 세션은 `git log origin/master..master`와 반대 방향을 모두 확인하고, checkout이 `853ecd4`보다 이전이면 이 문서의 989개 테스트·codec v84 기준선이 실제 코드와 일치하지 않는다. **다른 머신에서 이어서 작업한다면 먼저 이 머신에서 push가 필요하다.** 새 머신의 UI 카드 이미지는 비공개 `Dune-Imperium-assets` 저장소를 clone해 symlink로 연결하고(그 README 참고), 접근이 없을 때만 `uv run scripts/fetch_card_images.py`로 채운다 (선택; 없으면 텍스트만). 2026-09-01부터 이 머신의 캐시는 그 symlink다.
+
+## 2026-09-02 오픈 퀘스천 재판정 세션 요약 (OQ-015(d) 아이콘 순서 선택, OQ-021 Shaddam 선택)
+
+- **OQ-015(d) 재판정 (`446e6dc`, codec v83)**: 사용자 판정 — 한 효과 줄의 여러 아이콘은 독립 효과이고 인쇄가 순서를 강제하지 않으므로 소유자가 순서를 고른다(화살표 비용→보상은 인쇄 순서 유지, 비용 슬롯 먼저). INTRIGUE_CHOICE frame에 `resolve_intrigue_rewards` 행동을 추가해 비용 지불 뒤 자동 보상 묶음을 원하는 시점에 해결할 수 있게 했다. Cunning은 draw 먼저 → 뽑은 카드 trash 가능. 전수 스캔 결과 순서가 결과를 바꾸는 조합은 Cunning뿐이고(Unexpected Allies는 기존 고정이 유일 합리 순서), Devour/Impress/Leverage는 순서 무관, 화살표 비용 카드들(Questionable Methods 등)은 영향 없음.
+- **소크 적발 수정 (`f0f77eb`)**: 회전 리더 소크가 base seed 485/563에서 choice frame 복제(이중 discard·이중 draw)를 적발 — mid-frame draw가 reshuffle chance frame을 push했는데 top 교체가 그것을 덮어썼다. acquire 슬롯과 같은 advance-before-move 패턴(보상 적용 전 frame 갱신)으로 수정하고 두 seed를 회귀로 고정했다.
+- **OQ-021 재판정 (`2d2e237`, codec v84)**: 사용자 판정 — 시장·bank가 모두 소진돼도 set-aside Sardaukar contract가 남아 있으면 Shaddam은 아이콘마다 2 Solari와 set-aside 획득 중 선택한다(`take_exhausted_contract_solari`, CHOAM 전용 템플릿). 다른 플레이어와 set-aside 소진 후의 Shaddam은 기존 자동 2 Solari 전환 유지. 이전의 "Shaddam도 자동 전환" 판정 폐기.
+- 검증: pytest 989(988+skip 1), Ruff, mypy. 커밋 트리 소크 — 회전 리더 random 룰셋당 700판 + heuristic 룰셋당 400판, 모두 soundness 25, 실패 0(첫 회전 소크가 위 frame 복제 버그를 적발한 뒤 재실행 통과).
 
 ## 2026-09-01 오픈 퀘스천 후속 세션 요약 (사용자 피드백: OQ-022 디자이너 판정 채택, OQ-023 재판정, OQ-010 재개)
 

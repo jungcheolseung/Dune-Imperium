@@ -57,7 +57,7 @@ Leader identity와 setup은 `content/uprising/leaders.py`, 능력 규칙은 `rul
 
 ### Shaddam Corrino IV (CHOAM 전용, 2026-08-30)
 
-- **Sardaukar Commander** — "Set aside both Sardaukar contracts. Only you can acquire them during the game." Shaddam이 선택된 CHOAM setup은 셔플 전에 Sardaukar 2장을 `GameState.sardaukar_contract_ids`로 빼고 남은 18장을 섞는다(6인 보충 규칙의 base-CHOAM setup 지시와 일치). contract 시장 frame이 열려 있는 동안 Shaddam의 선택지에 set-aside가 추가되고, 가져가면 face-up 대신이므로 시장 보충이 없다 `[FAQ p. 3]`. 시장 고갈 시 아이콘의 2 Solari 전환은 Shaddam에게도 적용한다(OQ-021 convention).
+- **Sardaukar Commander** — "Set aside both Sardaukar contracts. Only you can acquire them during the game." Shaddam이 선택된 CHOAM setup은 셔플 전에 Sardaukar 2장을 `GameState.sardaukar_contract_ids`로 빼고 남은 18장을 섞는다(6인 보충 규칙의 base-CHOAM setup 지시와 일치). contract 시장 frame이 열려 있는 동안 Shaddam의 선택지에 set-aside가 추가되고, 가져가면 face-up 대신이므로 시장 보충이 없다 `[FAQ p. 3]`. 시장·bank가 모두 소진된 뒤에도 set-aside가 남아 있으면 그의 아이콘은 2 Solari와 set-aside 획득 중 하나를 선택한다(`take_exhausted_contract_solari`, OQ-021 재판정 2026-09-02); set-aside까지 소진되면 자동 2 Solari 전환으로 돌아간다.
 - **Emperor of the Known Universe(Signet)** — "Units can't be deployed to the Conflict this turn." + (Solari 1 + troop 1) —OR— (Solari 3 → 임의 Faction Influence 1). 제한은 Signet Ring 배치 즉시 발효되고 `[Main p. 17]` 그 turn에만 적용된다 `[FAQ p. 3]`. frame context의 `units_deploy_blocked`가 Combat 배치(pending 자체를 열지 않음), Maker sandworm 소환, Plot Intrigue의 배치 option(Detonation)을 막고, Intrigue SummonSandworm은 Shield Wall 규칙과 같은 무효 경로로 처리한다. 보상 선택은 의무이며 Solari 3 미만이면 troop 옵션만 제시된다. recruit된 troop은 같은 제한 때문에 그 turn에 배치할 수 없다.
 
 ## 남은 Leader
