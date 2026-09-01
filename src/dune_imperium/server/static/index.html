@@ -64,10 +64,12 @@
         <div id="review-status" class="meta"></div>
       </section>
       <section id="standings" class="panel" hidden></section>
-      <section id="board" class="panel"></section>
-      <section id="spaces" class="panel"></section>
-      <section id="seats"></section>
-      <section id="private-zone" class="panel"></section>
+      <div id="game-table">
+        <aside id="seats"></aside>
+        <section id="board" aria-label="게임 보드"></section>
+        <aside id="spaces" aria-label="보드 공간 상세"></aside>
+      </div>
+      <section id="private-zone"></section>
       <p id="game-error" class="error" hidden></p>
       <p id="game-note" class="muted" hidden></p>
     </section>

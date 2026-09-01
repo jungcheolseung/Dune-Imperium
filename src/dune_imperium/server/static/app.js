@@ -174,6 +174,23 @@ const AGENT_ICON_GROUPS = [
   ["spice_trade", "Spice Trade"],
 ];
 
+/* Percentage coordinates on the supplied square Uprising board scan. */
+const BOARD_SPACE_POSITIONS = {
+  sardaukar: [17.5, 10.5], dutiful_service: [17.5, 18.0],
+  heighliner: [17.5, 33.5], deliver_supplies: [17.5, 42.0],
+  espionage: [17.5, 59.0], secrets: [17.5, 67.5],
+  desert_tactics: [17.5, 83.0], fremkit: [17.5, 92.0],
+  high_council: [34.0, 8.0], imperial_privilege: [35.0, 15.0],
+  swordmaster: [53.0, 15.0], assembly_hall: [70.0, 8.0],
+  gather_support: [70.0, 15.0], accept_contract: [87.0, 16.0],
+  research_station: [43.0, 34.0], sietch_tabr: [36.0, 47.0],
+  deep_desert: [40.0, 61.0], hagga_basin: [55.5, 53.0],
+  spice_refinery: [66.0, 32.0], arrakeen: [80.0, 29.0],
+  imperial_basin: [79.0, 47.5], shipping: [94.5, 26.0],
+};
+
+const SEAT_COLORS = ["#27c6ff", "#ff5c57", "#75dc67", "#f4c542"];
+
 function el(id) {
   return document.getElementById(id);
 }
@@ -733,10 +750,10 @@ function render() {
   el("decision-banner").hidden = Boolean(state.review);
   renderBanner();
   renderStandings();
-  renderBoard();
-  renderSpaces();
+  renderTableBoard();
+  renderTableGuide();
   renderSeats();
-  renderPrivate();
+  renderTablePrivate();
 }
 
 function renderBanner() {
@@ -823,6 +840,8 @@ function actionPreviewLines(action, entry) {
 function actionItem(action) {
   const wrap = document.createElement("div");
   wrap.className = "action-item";
+  wrap.dataset.actionIndex = String(action.index);
+  if (action.arguments.space_id) wrap.dataset.spaceId = action.arguments.space_id;
   const button = document.createElement("button");
   button.textContent = describeAction(action);
   button.disabled = state.busy;
@@ -866,6 +885,172 @@ function section(parent, title) {
   const body = document.createElement("div");
   parent.append(heading, body);
   return body;
+}
+
+function renderTableBoard() {
+  const board = el("board");
+  board.textContent = "";
+  const view = state.view;
+  if (!view) return;
+
+  const stage = document.createElement("div");
+  stage.className = "board-stage";
+  const map = document.createElement("img");
+  map.className = "board-map";
+  map.src = "/game-images/map.jpg";
+  map.alt = "Dune Imperium Uprising board";
+  stage.appendChild(map);
+
+  const legalBySpace = new Map();
+  if (state.actions) {
+    for (const action of state.actions.actions) {
+      const spaceId = action.arguments.space_id;
+      if (!spaceId) continue;
+      if (!legalBySpace.has(spaceId)) legalBySpace.set(spaceId, []);
+      legalBySpace.get(spaceId).push(action);
+    }
+  }
+  const occupants = new Map();
+  for (const player of view.players) {
+    for (const spaceId of player.agent_locations) {
+      if (!occupants.has(spaceId)) occupants.set(spaceId, []);
+      occupants.get(spaceId).push(player.player);
+    }
+  }
+  for (const [spaceId, position] of Object.entries(BOARD_SPACE_POSITIONS)) {
+    const entry = state.catalog.spaces[spaceId];
+    if (!entry) continue;
+    const hotspot = document.createElement("button");
+    hotspot.type = "button";
+    hotspot.className = "board-hotspot";
+    hotspot.style.left = `${position[0]}%`;
+    hotspot.style.top = `${position[1]}%`;
+    hotspot.title = entry.name;
+    hotspot.setAttribute("aria-label", entry.name);
+    const legal = legalBySpace.get(spaceId) || [];
+    if (legal.length) hotspot.classList.add("legal");
+    if (!spaceImplementedFor(entry)) hotspot.classList.add("unimplemented");
+    for (const seat of occupants.get(spaceId) || []) {
+      const token = document.createElement("span");
+      token.className = "agent-token";
+      token.style.background = SEAT_COLORS[seat];
+      token.textContent = String(seat + 1);
+      hotspot.appendChild(token);
+    }
+    hotspot.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (legal.length === 1) {
+        applyAction(legal[0].index);
+        return;
+      }
+      openPopover(entry, hotspot);
+      for (const item of document.querySelectorAll(".action-item")) {
+        item.classList.toggle("action-match", item.dataset.spaceId === spaceId);
+      }
+    });
+    stage.appendChild(hotspot);
+  }
+  board.appendChild(stage);
+
+  const market = document.createElement("div");
+  market.className = "market-strip";
+  const title = document.createElement("strong");
+  title.textContent = "IMPERIUM ROW";
+  market.appendChild(title);
+  for (const cardId of view.imperium_row) market.appendChild(visualCard(cardId));
+  board.appendChild(market);
+
+  const hud = document.createElement("div");
+  hud.className = "board-hud";
+  const conflict = section(hud, "CONFLICT");
+  chipList(conflict, view.current_conflict_ids, "아직 공개되지 않음");
+  const reserve = section(hud, "RESERVE");
+  for (const [cardId, count] of view.reserve_stacks) {
+    const mark = chip(cardId);
+    mark.textContent += ` ×${count}`;
+    reserve.appendChild(mark);
+  }
+  const maker = section(hud, "MAKER SPICE");
+  maker.textContent = view.maker_bonus_spice
+    .map(([space, amount]) => `${nameOf(space)} ${amount}`)
+    .join(" · ");
+  if (view.leader_draft_pool.length) {
+    const pool = section(hud, "LEADER DRAFT");
+    for (const leaderId of view.leader_draft_pool) pool.appendChild(chip(leaderId));
+  }
+  board.appendChild(hud);
+}
+
+function renderTableGuide() {
+  const panel = el("spaces");
+  panel.hidden = false;
+  panel.innerHTML =
+    '<h2>TABLE GUIDE</h2><p>빛나는 공간은 지금 선택할 수 있습니다. ' +
+    '공간을 누르면 즉시 배치하거나 세부 효과를 표시합니다.</p>';
+  const legend = document.createElement("div");
+  legend.className = "space-legend";
+  for (const [icon, label] of AGENT_ICON_GROUPS) {
+    const count = Object.values(state.catalog.spaces)
+      .filter((space) => space.agent_icon === icon).length;
+    if (!count) continue;
+    const item = document.createElement("span");
+    item.textContent = `${label} ${count}`;
+    legend.appendChild(item);
+  }
+  panel.appendChild(legend);
+}
+
+function visualCard(instanceId, inHand = false) {
+  const entry = lookup(baseId(instanceId));
+  const card = document.createElement("button");
+  card.type = "button";
+  card.className = "visual-card" + (inHand ? " hand-card" : "");
+  const legal = state.actions
+    ? state.actions.actions.filter((action) =>
+        Object.values(action.arguments).includes(instanceId))
+    : [];
+  if (legal.length) card.classList.add("legal");
+  if (entry && entry.image) {
+    const image = document.createElement("img");
+    image.src = entry.image;
+    image.alt = entry.name;
+    card.appendChild(image);
+  } else {
+    card.textContent = entry ? entry.name : nameOf(instanceId);
+  }
+  card.title = entry ? entry.name : nameOf(instanceId);
+  card.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (legal.length === 1) applyAction(legal[0].index);
+    else if (entry) openPopover(entry, card);
+  });
+  return card;
+}
+
+function renderTablePrivate() {
+  const panel = el("private-zone");
+  panel.textContent = "";
+  const view = state.view;
+  if (!view || !view.private) {
+    panel.hidden = true;
+    return;
+  }
+  panel.hidden = false;
+  const label = document.createElement("div");
+  label.className = "hand-label";
+  label.innerHTML = `<strong>MY HAND</strong><span>${view.private.hand.length} cards</span>`;
+  panel.appendChild(label);
+  const hand = document.createElement("div");
+  hand.className = "hand-cards";
+  if (!view.private.hand.length) hand.textContent = "카드를 기다리는 중…";
+  for (const cardId of view.private.hand) hand.appendChild(visualCard(cardId, true));
+  panel.appendChild(hand);
+  const zones = document.createElement("div");
+  zones.className = "private-zones";
+  zones.innerHTML = `<strong>DECK ${view.private.deck_size}</strong>` +
+    `<span>DISCARD ${view.private.discard_pile.length}</span>` +
+    `<span>INTRIGUE ${view.private.intrigue_cards.length}</span>`;
+  panel.appendChild(zones);
 }
 
 function renderBoard() {

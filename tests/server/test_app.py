@@ -265,6 +265,22 @@ def test_card_images_are_served_when_the_cache_directory_exists(
         assert served.content == b"not-really-webp"
 
 
+def test_game_images_are_served_when_the_directory_exists(tmp_path: Path) -> None:
+    images = tmp_path / "game-images"
+    images.mkdir()
+    (images / "map.jpg").write_bytes(b"board")
+    with TestClient(
+        create_app(
+            saves_dir=tmp_path / "saves",
+            card_images_dir=tmp_path / "no-card-images",
+            game_images_dir=images,
+        )
+    ) as image_client:
+        response = image_client.get("/game-images/map.jpg")
+        assert response.status_code == 200
+        assert response.content == b"board"
+
+
 def test_card_images_degrade_to_text_without_the_cache(
     client: TestClient,
 ) -> None:

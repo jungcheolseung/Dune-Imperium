@@ -55,6 +55,15 @@ def default_card_images_directory() -> Path:
     return Path(__file__).parents[3] / "downloads" / "dunecardshub" / "cards"
 
 
+def default_game_images_directory() -> Path:
+    """Return the optional user-provided board artwork directory."""
+
+    override = os.environ.get("DUNE_IMPERIUM_GAME_IMAGE_DIR")
+    if override:
+        return Path(override)
+    return Path(__file__).parents[3] / "images"
+
+
 class CreateGameRequest(BaseModel):
     """Configuration for one new game."""
 
@@ -88,6 +97,7 @@ def create_app(
     manager: GameSessionManager | None = None,
     saves_dir: Path | None = None,
     card_images_dir: Path | None = None,
+    game_images_dir: Path | None = None,
 ) -> FastAPI:
     """Build the local play server around one session manager."""
 
@@ -104,6 +114,11 @@ def create_app(
         frozenset(path.name for path in images_dir.iterdir() if path.is_file())
         if images_dir.is_dir()
         else frozenset()
+    )
+    board_images_dir = (
+        game_images_dir
+        if game_images_dir is not None
+        else default_game_images_directory()
     )
     app = FastAPI(title="Dune: Imperium - Uprising local play server")
 
@@ -198,6 +213,12 @@ def create_app(
             "/card-images",
             StaticFiles(directory=images_dir),
             name="card-images",
+        )
+    if board_images_dir.is_dir():
+        app.mount(
+            "/game-images",
+            StaticFiles(directory=board_images_dir),
+            name="game-images",
         )
     return app
 
