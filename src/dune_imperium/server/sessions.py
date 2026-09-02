@@ -18,7 +18,7 @@ like the unsaved session would have.
 import random
 import threading
 import uuid
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from enum import StrEnum
 from typing import Final
 
@@ -42,6 +42,15 @@ from dune_imperium.server.persistence import (
     SaveError,
     build_save_document,
     parse_save_document,
+)
+from dune_imperium.server.session_log import (
+    LogEntry,
+    LoggedStep,
+    LoggedUndo,
+    log_step,
+    mark_undone,
+    undo_history,
+    undo_window,
 )
 
 HUMAN_SEAT: Final = "human"
@@ -84,6 +93,9 @@ class GameSession:
     chance: ChanceResolver
     agents: dict[int, Agent]
     steps: list[ReplayStep] = field(default_factory=list)
+    # Append-only session log: every applied step (undone ones included)
+    # and every undo marker; ``steps`` is its live projection.
+    log: list[LogEntry] = field(default_factory=list)
     lock: threading.Lock = field(default_factory=threading.Lock)
 
 
@@ -216,10 +228,73 @@ class GameSessionManager:
             if not 0 <= index < len(actions):
                 raise SessionError("action index is out of range")
             action = actions[index]
-            session.state = session.engine.apply(session.state, action).state
-            session.steps.append(action)
+            _apply_step(session, action)
             self._advance_locked(session)
             return self._summary_locked(session)
+
+    def undo(
+        self,
+        game_id: str,
+        seat: int,
+        revision: int,
+        steps: int = 1,
+    ) -> JsonObject:
+        """Take back the seat's own latest ``steps`` steps (M11 slice 6).
+
+        The window (``undo_window``) holds only the seat's consecutive
+        latest actions and closes at any chance outcome, any other seat's
+        action, or any step that revealed hidden information — so the
+        removed steps never touched the chance or AI streams and the
+        rebuilt state is again this seat's decision. The taken-back steps
+        stay in the session log, flagged ``undone``, behind an undo marker
+        (OQ-010: what was shown stays re-checkable).
+        """
+
+        session = self._get(game_id)
+        self._require_human(session, seat)
+        with session.lock:
+            if revision != session.state.revision:
+                raise StaleRevisionError(
+                    "the game advanced past the submitted revision"
+                )
+            window = undo_window(session.log, seat)
+            if steps < 1 or steps > window:
+                raise SessionError(
+                    f"seat {seat} may take back at most {window} step(s) now"
+                )
+            keep = len(session.steps) - steps
+            session.state = _state_after(session, keep)
+            del session.steps[keep:]
+            mark_undone(session.log, seat, steps)
+            return self._summary_locked(session)
+
+    def log(self, game_id: str, seat: int, *, after: int = 0) -> JsonObject:
+        """Return the session log from entry ``after`` on, as ``seat`` may see it.
+
+        Each entry carries the events its step produced, filtered by
+        ``visible_to``; action arguments naming a card the seat cannot
+        identify are redacted for other seats; chance values stay hidden.
+        Once the game has finished nothing is redacted (OQ-010 ruling 4).
+        Undone steps remain, flagged, followed by their undo marker.
+        """
+
+        session = self._get(game_id)
+        self._require_human(session, seat)
+        with session.lock:
+            entries = tuple(session.log)
+            finished = _is_finished(session.state)
+        if not 0 <= after <= len(entries):
+            raise SessionError("log cursor is out of range")
+        return {
+            "game_id": session.game_id,
+            "seat": seat,
+            "count": len(entries),
+            "entries": [
+                _log_entry_json(index, entry, seat, finished)
+                for index, entry in enumerate(entries)
+                if index >= after
+            ],
+        }
 
     def delete(self, game_id: str) -> None:
         """Forget one session."""
@@ -244,6 +319,7 @@ class GameSessionManager:
                 policy_seed=session.policy_seed,
                 seats=session.seats,
                 steps=tuple(session.steps),
+                log=tuple(session.log),
                 expected_state_hash=canonical_state_hash(session.state),
                 source_game_id=session.game_id,
                 round_number=session.state.round_number,
@@ -291,6 +367,8 @@ class GameSessionManager:
                 raise SaveError(
                     "the replayed save does not reproduce its recorded state hash"
                 )
+            if parsed.log is not None:
+                session.log = _rebuild_log(session, parsed.log)
             self._advance_locked(session)
             summary = self._summary_locked(session)
         with self._registry_lock:
@@ -316,6 +394,17 @@ class GameSessionManager:
             "seat": seat,
             "step_count": len(steps),
             "steps": [_review_step_label(step) for step in steps],
+            # Where steps were taken back (M11 slice 6): the live step index
+            # the undo rewound to, who undid, and what was undone.
+            "undo_history": [
+                {
+                    "step": position,
+                    "seat": marker.seat,
+                    "count": marker.count,
+                    "undone": [_review_step_label(entry.step) for entry in undone],
+                }
+                for position, marker, undone in undo_history(session.log)
+            ],
         }
 
     def review_state(self, game_id: str, seat: int, step: int) -> JsonObject:
@@ -332,12 +421,8 @@ class GameSessionManager:
             steps = tuple(session.steps)
         if not 0 <= step <= len(steps):
             raise SessionError("review step is out of range")
-        # A fresh engine re-applies the record so the live session's RNG
-        # streams stay untouched.
-        engine = UprisingRulesEngine()
-        state = engine.reset(session.config, session.game_seed)
-        for recorded in steps[:step]:
-            state = engine.apply(state, recorded).state
+        engine = session.engine
+        state = _state_after(session, step)
         return {
             "game_id": session.game_id,
             "seat": seat,
@@ -376,8 +461,7 @@ class GameSessionManager:
                 raise RuntimeError("an unfinished game has no pending decision")
             if isinstance(decision, ChanceDecision):
                 outcome = session.chance.resolve(decision)
-                session.steps.append(outcome)
-                session.state = engine.apply(session.state, outcome).state
+                _apply_step(session, outcome)
                 continue
             if not isinstance(decision, PlayerDecision):
                 raise RuntimeError(f"unknown decision type: {decision!r}")
@@ -392,8 +476,7 @@ class GameSessionManager:
             action = session.agents[decision.owner].choose_action(
                 observation, actions
             )
-            session.steps.append(action)
-            session.state = engine.apply(session.state, action).state
+            _apply_step(session, action)
         raise RuntimeError("auto-advance exceeded the step limit")
 
     def _summary_locked(self, session: GameSession) -> JsonObject:
@@ -409,9 +492,18 @@ class GameSessionManager:
                 "prompt": pending.prompt,
             }
         finished = state.phase is GamePhase.FINISHED
+        undo: list[JsonValue] = []
+        for seat, assignment in enumerate(session.seats):
+            if assignment != HUMAN_SEAT:
+                continue
+            window = undo_window(session.log, seat)
+            if window > 0:
+                undo.append({"seat": seat, "steps": window})
         return {
             "game_id": session.game_id,
             "revision": state.revision,
+            "log_count": len(session.log),
+            "undo": undo,
             "phase": str(state.phase),
             "round_number": state.round_number,
             "first_player": state.first_player,
@@ -480,13 +572,143 @@ def _replay_recorded_steps(
                 "replay as recorded"
             )
         try:
-            session.state = engine.apply(session.state, regenerated).state
+            _apply_step(session, regenerated)
         except Exception as error:
             raise SaveError(
                 f"save step {index} ({_step_summary(recorded)}) failed to "
                 f"apply: {error}"
             ) from error
-        session.steps.append(recorded)
+
+
+def _apply_step(session: GameSession, step: ReplayStep) -> None:
+    """Apply one step to the session and record it in steps and log."""
+
+    before = session.state
+    transition = session.engine.apply(before, step)
+    session.state = transition.state
+    session.steps.append(step)
+    session.log.append(log_step(before, transition.state, step, transition.events))
+
+
+def _state_after(session: GameSession, count: int) -> GameState:
+    """Rebuild the state after the first ``count`` live steps.
+
+    Steps replay deterministically, so this never touches the session's
+    chance or AI streams; the caller holds the session lock.
+    """
+
+    engine = session.engine
+    state = engine.reset(session.config, session.game_seed)
+    for recorded in session.steps[:count]:
+        state = engine.apply(state, recorded).state
+    return state
+
+
+def _rebuild_log(
+    session: GameSession,
+    saved: tuple[tuple[ReplayStep, bool] | LoggedUndo, ...],
+) -> list[LogEntry]:
+    """Rebuild the session log of a save, replaying its undone branches.
+
+    Caller holds the session lock and has already replayed the live steps
+    into ``session.log``. Live entries must match the record in order;
+    undone steps re-apply on the state their branch forked from (they
+    never include chance or AI decisions, see ``undo``), so their events
+    and reveal flags come back exactly.
+    """
+
+    live = [entry for entry in session.log if isinstance(entry, LoggedStep)]
+    rebuilt: list[LogEntry] = []
+    live_position = 0
+    branch: GameState | None = None
+    pending_undone = 0
+    for index, item in enumerate(saved):
+        if isinstance(item, LoggedUndo):
+            if pending_undone != item.count:
+                raise SaveError(
+                    f"save log entry {index}: undo marker count {item.count} does "
+                    f"not match the {pending_undone} undone step(s) before it"
+                )
+            rebuilt.append(item)
+            branch = None
+            pending_undone = 0
+            continue
+        step, undone = item
+        if not undone:
+            if pending_undone:
+                raise SaveError(
+                    f"save log entry {index}: undone steps must be followed by "
+                    "an undo marker"
+                )
+            if live_position >= len(live) or live[live_position].step != step:
+                raise SaveError(
+                    f"save log entry {index} does not match recorded step "
+                    f"{live_position}"
+                )
+            rebuilt.append(live[live_position])
+            live_position += 1
+            continue
+        if branch is None:
+            branch = _state_after(session, live_position)
+        try:
+            transition = session.engine.apply(branch, step)
+        except Exception as error:
+            raise SaveError(
+                f"save log entry {index} (undone {_step_summary(step)}) failed "
+                f"to apply: {error}"
+            ) from error
+        logged = log_step(branch, transition.state, step, transition.events)
+        rebuilt.append(replace(logged, undone=True))
+        branch = transition.state
+        pending_undone += 1
+    if pending_undone:
+        raise SaveError("the save log ends with undone steps but no undo marker")
+    if live_position != len(live):
+        raise SaveError("the save log does not cover every recorded step")
+    return rebuilt
+
+
+def _log_entry_json(
+    index: int, entry: LogEntry, seat: int, finished: bool
+) -> JsonObject:
+    if isinstance(entry, LoggedUndo):
+        return {
+            "index": index,
+            "type": "undo",
+            "seat": entry.seat,
+            "count": entry.count,
+        }
+    events: list[JsonValue] = [
+        {"kind": event.kind, "payload": _jsonify(dict(event.payload))}
+        for event in entry.events
+        if finished or event.visible_to is None or seat in event.visible_to
+    ]
+    step = entry.step
+    if isinstance(step, ChanceOutcome):
+        payload: JsonObject = {
+            "index": index,
+            "type": "chance",
+            "decision_id": step.decision_id,
+            "undone": entry.undone,
+            "events": events,
+        }
+        if finished:
+            payload["values"] = list(step.values)
+        return payload
+    redact = not finished and step.actor != seat
+    arguments = {
+        key: ("(비공개)" if redact and value in entry.hidden_arguments else value)
+        for key, value in step.arguments
+    }
+    return {
+        "index": index,
+        "type": "action",
+        "actor": step.actor,
+        "action_id": step.action_id,
+        "arguments": _jsonify(arguments),
+        "undone": entry.undone,
+        "events": events,
+    }
 
 
 def _step_summary(step: ReplayStep) -> str:

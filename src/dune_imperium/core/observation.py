@@ -136,6 +136,42 @@ def resolving_intrigue_ids(state: GameState) -> tuple[str, ...]:
     return tuple(resolving)
 
 
+def known_card_seats(state: GameState) -> dict[str, frozenset[int]]:
+    """Map every card that is not public to the seats that can identify it.
+
+    Cards absent from the result are public to every seat. Face-down decks
+    and the Contract bank are known to nobody [Main pp. 4-6, 16]; a hand or
+    a held Intrigue card is known to its owner only [Main p. 7], except the
+    cards OQ-010 keeps public: publicly acquired hand cards
+    (``PlayerState.hand_public``) and a played Intrigue whose choices are
+    still resolving. This is the single source the server uses to decide
+    what an event log may show and which steps an undo may take back.
+    """
+
+    nobody: frozenset[int] = frozenset()
+    known: dict[str, frozenset[int]] = {}
+    for card_id in (
+        *state.imperium_deck,
+        *state.intrigue_deck,
+        *state.contract_bank,
+        *state.conflict_deck,
+    ):
+        known[card_id] = nobody
+    resolving = set(resolving_intrigue_ids(state))
+    for player in state.players:
+        owner = frozenset({player.player_id})
+        for card_id in player.deck:
+            known[card_id] = nobody
+        public_hand = set(player.hand_public)
+        for card_id in player.hand:
+            if card_id not in public_hand:
+                known[card_id] = owner
+        for card_id in player.intrigue_cards:
+            if card_id not in resolving:
+                known[card_id] = owner
+    return known
+
+
 @dataclass(frozen=True, slots=True)
 class DisclosedPlayerZones:
     """One seat's hidden zones, laid open after the game has finished."""

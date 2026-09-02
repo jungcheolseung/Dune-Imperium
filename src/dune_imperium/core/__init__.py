@@ -21,6 +21,7 @@ from dune_imperium.core.observation import (
     PrivatePlayerView,
     PublicPlayerView,
     disclose_hidden_zones,
+    known_card_seats,
     observe_state,
 )
 from dune_imperium.core.player import Influence, PlayerState, Resources
@@ -58,6 +59,7 @@ __all__ = [
     "Transition",
     "canonical_state_hash",
     "disclose_hidden_zones",
+    "known_card_seats",
     "observe_state",
     "replay_game",
 ]

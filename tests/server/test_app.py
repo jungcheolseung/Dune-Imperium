@@ -281,3 +281,45 @@ def test_card_images_degrade_to_text_without_the_cache(
         ), section
     missing = client.get("/card-images/uprising-imperium-sardaukar-soldier.webp")
     assert missing.status_code == 404
+
+
+def test_undo_and_log_over_http(client: TestClient) -> None:
+    summary = _create(client, game_seed=14)
+    game_id = str(summary["game_id"])
+    while int(str(summary["revision"])) < 9:
+        response = client.post(
+            f"/games/{game_id}/actions",
+            json={"seat": 0, "revision": summary["revision"], "index": 0},
+        )
+        assert response.status_code == 200, response.text
+        summary = response.json()
+    assert summary["revision"] == 9
+    assert summary["undo"] == [{"seat": 0, "steps": 2}]
+
+    stale = client.post(
+        f"/games/{game_id}/undo", json={"seat": 0, "revision": 8, "steps": 1}
+    )
+    assert stale.status_code == 409, stale.text
+    too_many = client.post(
+        f"/games/{game_id}/undo", json={"seat": 0, "revision": 9, "steps": 3}
+    )
+    assert too_many.status_code == 400, too_many.text
+
+    undone = client.post(
+        f"/games/{game_id}/undo", json={"seat": 0, "revision": 9, "steps": 1}
+    )
+    assert undone.status_code == 200, undone.text
+    assert undone.json()["revision"] == 8
+    assert undone.json()["undo"] == [{"seat": 0, "steps": 1}]
+
+    log = client.get(f"/games/{game_id}/log", params={"seat": 0})
+    assert log.status_code == 200, log.text
+    entries = log.json()["entries"]
+    assert log.json()["count"] == len(entries) == undone.json()["log_count"]
+    assert entries[-1]["type"] == "undo"
+    assert entries[-2]["undone"] is True
+    tail = client.get(
+        f"/games/{game_id}/log", params={"seat": 0, "after": len(entries) - 1}
+    )
+    assert [entry["index"] for entry in tail.json()["entries"]] == [len(entries) - 1]
+    assert client.get(f"/games/{game_id}/log", params={"seat": 1}).status_code == 403

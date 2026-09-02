@@ -2,7 +2,9 @@
 
 A save document is one serialized ``GameReplay`` (ruleset, seed, recorded
 steps, final state hash, version stamps) plus the session facts needed to
-resume play: the seat assignments and the policy seed. The session layer
+resume play: the seat assignments, the policy seed, and (format version 2)
+the session log with its undo history — undone steps and undo markers —
+so a loaded game's live log and review still show what was taken back. The session layer
 owns the load walk that replays those steps; this module only defines the
 document schema, its version checks, and the JSON file store.
 
@@ -29,6 +31,7 @@ from dune_imperium.config import RulesetConfig
 from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.chance import ChanceOutcome
 from dune_imperium.core.replay import GameReplay, ReplayStep
+from dune_imperium.server.session_log import LogEntry, LoggedUndo
 
 type JsonValue = (
     None | bool | int | float | str | list["JsonValue"] | dict[str, "JsonValue"]
@@ -36,7 +39,12 @@ type JsonValue = (
 type JsonObject = dict[str, JsonValue]
 
 SAVE_FORMAT: Final = "dune-imperium-save"
-SAVE_FORMAT_VERSION: Final = 1
+SAVE_FORMAT_VERSION: Final = 2
+# Version 1 documents (before the session log existed) still load; their
+# log is rebuilt from the recorded steps with no undo history.
+_READABLE_FORMAT_VERSIONS: Final = frozenset({1, SAVE_FORMAT_VERSION})
+
+type SavedLogEntry = tuple[ReplayStep, bool] | LoggedUndo
 
 _SAVE_ID: Final = re.compile(r"^[0-9a-f]{32}$")
 
@@ -57,6 +65,8 @@ class ParsedSave:
     seats: tuple[str, ...]
     policy_seed: int
     name: str | None
+    # ``None`` for a version 1 document: the log is then just the live steps.
+    log: tuple[SavedLogEntry, ...] | None = None
 
 
 def default_saves_directory() -> Path:
@@ -80,6 +90,43 @@ def serialize_step(step: ReplayStep) -> JsonObject:
         "actor": step.actor,
         "arguments": {key: value for key, value in step.arguments},
     }
+
+
+def serialize_log_entry(entry: LogEntry) -> JsonObject:
+    """Encode one session-log entry: a (possibly undone) step or an undo marker."""
+
+    if isinstance(entry, LoggedUndo):
+        return {"type": "undo", "seat": entry.seat, "count": entry.count}
+    return {**serialize_step(entry.step), "undone": entry.undone}
+
+
+def deserialize_log_entry(value: object, index: int) -> SavedLogEntry:
+    """Decode one session-log entry, naming the entry index in every error."""
+
+    if not isinstance(value, dict):
+        raise SaveError(f"save log entry {index}: an entry must be an object")
+    if value.get("type") == "undo":
+        seat = value.get("seat")
+        count = value.get("count")
+        if (
+            not isinstance(seat, int)
+            or isinstance(seat, bool)
+            or not isinstance(count, int)
+            or isinstance(count, bool)
+            or count < 1
+        ):
+            raise SaveError(
+                f"save log entry {index}: an undo marker needs a seat and a count"
+            )
+        return LoggedUndo(seat=seat, count=count)
+    undone = value.get("undone", False)
+    if not isinstance(undone, bool):
+        raise SaveError(f"save log entry {index}: undone must be a boolean")
+    try:
+        step = deserialize_step(value, index)
+    except SaveError as error:
+        raise SaveError(f"save log entry {index}: {error}") from None
+    return (step, undone)
 
 
 def deserialize_step(value: object, index: int) -> ReplayStep:
@@ -142,6 +189,7 @@ def build_save_document(
     round_number: int,
     phase: str,
     finished: bool,
+    log: tuple[LogEntry, ...],
     name: str | None = None,
 ) -> JsonObject:
     """Serialize one resting session as a save document."""
@@ -165,6 +213,7 @@ def build_save_document(
         "policy_seed": policy_seed,
         "seats": list(seats),
         "steps": [serialize_step(step) for step in replay.steps],
+        "log": [serialize_log_entry(entry) for entry in log],
         "expected_state_hash": replay.expected_state_hash,
         "ruleset_version": replay.ruleset_version,
         "content_version": replay.content_version,
@@ -185,10 +234,11 @@ def parse_save_document(document: object) -> ParsedSave:
         raise SaveError("a save document must be a JSON object")
     if document.get("format") != SAVE_FORMAT:
         raise SaveError("not a dune-imperium save document")
-    if document.get("format_version") != SAVE_FORMAT_VERSION:
+    format_version = document.get("format_version")
+    if format_version not in _READABLE_FORMAT_VERSIONS:
         raise SaveError(
-            f"unsupported save format version {document.get('format_version')!r} "
-            f"(this server reads version {SAVE_FORMAT_VERSION})"
+            f"unsupported save format version {format_version!r} "
+            f"(this server reads versions {sorted(_READABLE_FORMAT_VERSIONS)})"
         )
 
     ruleset_value = document.get("ruleset")
@@ -237,6 +287,15 @@ def parse_save_document(document: object) -> ParsedSave:
         deserialize_step(item, index) for index, item in enumerate(raw_steps)
     )
 
+    log: tuple[SavedLogEntry, ...] | None = None
+    if format_version == SAVE_FORMAT_VERSION:
+        raw_log = document.get("log")
+        if not isinstance(raw_log, list):
+            raise SaveError("save log must be a list")
+        log = tuple(
+            deserialize_log_entry(item, index) for index, item in enumerate(raw_log)
+        )
+
     expected_state_hash = document.get("expected_state_hash")
     if not isinstance(expected_state_hash, str) or not expected_state_hash:
         raise SaveError("the save needs a non-empty expected_state_hash")
@@ -268,6 +327,7 @@ def parse_save_document(document: object) -> ParsedSave:
         seats=tuple(seats_value),
         policy_seed=policy_seed,
         name=name,
+        log=log,
     )
 
 

@@ -78,6 +78,14 @@ class ApplyActionRequest(BaseModel):
     index: int
 
 
+class UndoRequest(BaseModel):
+    """Take back the seat's own latest steps (M11 slice 6, OQ-010 boundary)."""
+
+    seat: int
+    revision: int
+    steps: int = Field(default=1, ge=1)
+
+
 class SaveGameRequest(BaseModel):
     """Optional display name for one new save."""
 
@@ -154,6 +162,21 @@ def create_app(
                 revision=request.revision,
                 index=request.index,
             )
+
+    @app.post("/games/{game_id}/undo")
+    def undo_steps(game_id: str, request: UndoRequest) -> JsonObject:
+        with _http_errors():
+            return sessions.undo(
+                game_id,
+                seat=request.seat,
+                revision=request.revision,
+                steps=request.steps,
+            )
+
+    @app.get("/games/{game_id}/log")
+    def game_log(game_id: str, seat: int, after: int = 0) -> JsonObject:
+        with _http_errors():
+            return sessions.log(game_id, seat, after=after)
 
     @app.delete("/games/{game_id}")
     def delete_game(game_id: str) -> JsonObject:
