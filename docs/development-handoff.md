@@ -17,7 +17,7 @@ uv run ruff check src tests
 uv run mypy src tests
 ```
 
-2026-09-02의 기준 결과는 pytest 993개 통과(카드 이미지 캐시가 없는 머신은 992 통과 + 1 skip), Ruff 통과, mypy 통과다. 현재 action codec은 `ACTION_CODEC_VERSION = 84`(기본 4,314개, CHOAM 4,600개)이고, 관측은 `OBSERVATION_VERSION = 3`의 1,967-int 전체 게임 인코딩이다 ([`rl-environment.md`](rl-environment.md)). 보드 22칸 완결 + 즉시 공개 + `fab266f`/`e6fc298` 수정 + sweep 확장(`853ecd4`) 반영 후의 교차 소크는 random 룰셋당 2,000판 + heuristic 룰셋당 1,000판(둘 다 `--rotate-leaders`) + draft 두 policy 각 룰셋당 500판, 전부 `--soundness-interval 25`를 켠 총 7,000판이 실패 0으로 통과한 상태다(2026-09-01, 아래 세션 요약. 그 전 단계에서는 random 룰셋당 3,000판 비회전 소크도 실패 0이었다).
+2026-09-02의 기준 결과는 pytest 1,003개 통과(카드 이미지 캐시가 없는 머신은 1,002 통과 + 1 skip), Ruff 통과, mypy 통과다. 현재 action codec은 `ACTION_CODEC_VERSION = 84`(기본 4,314개, CHOAM 4,600개)이고, 관측은 `OBSERVATION_VERSION = 3`의 1,967-int 전체 게임 인코딩이다 ([`rl-environment.md`](rl-environment.md)). 보드 22칸 완결 + 즉시 공개 + `fab266f`/`e6fc298` 수정 + sweep 확장(`853ecd4`) 반영 후의 교차 소크는 random 룰셋당 2,000판 + heuristic 룰셋당 1,000판(둘 다 `--rotate-leaders`) + draft 두 policy 각 룰셋당 500판, 전부 `--soundness-interval 25`를 켠 총 7,000판이 실패 0으로 통과한 상태다(2026-09-01, 아래 세션 요약. 그 전 단계에서는 random 룰셋당 3,000판 비회전 소크도 실패 0이었다).
 
 ## 현재 구현 기준선
 
@@ -49,7 +49,7 @@ uv run mypy src tests
 
 2026-09-01의 **검증 강화 캠페인**(사용자 확정 범위: 전체 1→4)은 같은 날 완료했다: 1단계 보드 22칸 완결 + OQ-015(c), 2단계 sweep 확장 (`853ecd4`: 커버리지 census `--coverage-json`, 표본 주기 legal-action 전수 적용 + codec 왕복 `--soundness-interval`, seed별 리더 회전 `--rotate-leaders`), 3단계 교차 소크(아래), 4단계 대조(DIU 63종 전부 일치, open-questions 23건 재점검). 세부는 아래 세션 요약.
 
-0. **M11 슬라이스 6: 행동 되돌리기 + 실시간 행동 로그.** 2026-09-02에 사용자와 설계를 확정했다(`implementation-plan.md` M11 절의 슬라이스 6 문단, OQ-010의 "관련 설계"). 서버·UI 작업이며 엔진과 관측은 바뀌지 않는다. 핵심: 되돌리기 창은 "마지막 무작위 결과 또는 다른 좌석 행동 이후 자신이 연속으로 한 행동", 판정은 단계 적용 전후 상태 비교(비공개 존 → 보이는 존 흐름 감지, 자기 draw 포함), 요청자는 본인 좌석, 되돌린 구간은 서버 세션 로그와 저장 파일에 보관해 실시간 로그·검토에서 "되돌림"으로 공개 표시. 실시간 로그는 엔진 `event_log`(이제 `check_event_visibility`로 누출이 검사된다)를 `visible_to`로 걸러 같은 세션 로그에서 보여 준다. 엔진 `event_log`는 상태의 일부라 단계를 잘라내면 사라지므로 세션 로그는 서버가 별도 보관해야 한다.
+0. (2026-09-02 완료) M11 슬라이스 6 행동 되돌리기 + 실시간 행동 로그 — 아래 세션 요약.
 1. **M9 평가 러너와 baseline.** 여러 게임을 병렬 구동하고 정책 추론만 batch하는 self-play 러너, random/heuristic(M11 상대에서 출발)/rollout baseline, 좌석·리더·first player·seed 교차 대회 도구 (`implementation-plan.md`의 M9). 관측·보상 계약은 [`rl-environment.md`](rl-environment.md)로 고정돼 있고, 병렬 실행 선례는 `simulation/sweep.py`다. 더 큰 야간 규모 재검증이 필요하면 `dune-imperium-sweep --games 50000 --ruleset both --workers 8 --rotate-leaders --soundness-interval 25 --coverage-json ...`을 커밋된 트리에서 돌린다.
 2. **M10 강화학습과 league self-play.** M9의 평가 행렬 위에서 시작한다 (`implementation-plan.md`의 M10).
 
@@ -118,7 +118,13 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 
 ## 원격 저장소 인계 주의
 
-2026-09-02 OQ-010 세션 시작 시점에 `origin/master`와 로컬은 `5b51928`로 일치했고, 이 세션의 커밋들(`8bb3bfe`부터)은 로컬에만 있다(push는 사용자 판단으로 한다). 새 세션은 `git log origin/master..master`와 반대 방향을 모두 확인하고, checkout이 `853ecd4`보다 이전이면 이 문서의 989개 테스트·codec v84 기준선이 실제 코드와 일치하지 않는다. **다른 머신에서 이어서 작업한다면 먼저 이 머신에서 push가 필요하다.** 새 머신의 UI 카드 이미지는 비공개 `Dune-Imperium-assets` 저장소를 clone해 symlink로 연결하고(그 README 참고), 접근이 없을 때만 `uv run scripts/fetch_card_images.py`로 채운다 (선택; 없으면 텍스트만). 2026-09-01부터 이 머신의 캐시는 그 symlink다.
+2026-09-02 세션 시작 시점에 `origin/master`와 로컬은 `5b51928`로 일치했고, 이 날의 커밋들(`8bb3bfe`부터 슬라이스 6까지)은 로컬에만 있다(push는 사용자 판단으로 한다). 새 세션은 `git log origin/master..master`와 반대 방향을 모두 확인하고, checkout이 `853ecd4`보다 이전이면 이 문서의 989개 테스트·codec v84 기준선이 실제 코드와 일치하지 않는다. **다른 머신에서 이어서 작업한다면 먼저 이 머신에서 push가 필요하다.** 새 머신의 UI 카드 이미지는 비공개 `Dune-Imperium-assets` 저장소를 clone해 symlink로 연결하고(그 README 참고), 접근이 없을 때만 `uv run scripts/fetch_card_images.py`로 채운다 (선택; 없으면 텍스트만). 2026-09-01부터 이 머신의 캐시는 그 symlink다.
+
+## 2026-09-02 M11 슬라이스 6 세션 요약 (행동 되돌리기 + 실시간 행동 로그)
+
+- **`0e76131` 서버**: `server/session_log.py` — append-only 세션 로그(`LoggedStep`: 단계 + 이벤트 + `reveals` + `hidden_arguments` + `undone`, `LoggedUndo` 마커). `reveals_hidden_information(before, after, actor)`는 새 `core.observation.known_card_seats`(카드별로 identity를 아는 좌석 집합; deck·bank는 아무도, hand·보유 Intrigue는 소유자만, `hand_public`·`intrigue_resolving`은 전원)로 "어떤 좌석이 전에 몰랐던 카드를 알게 됐는가"를 판정하되, 행동자만 알던 카드를 행동자가 스스로 공개한 경우(Intrigue play, hand discard/trash, Reveal)는 예외(사용자 판정). `undo_window`는 뒤에서부터 자기 행동이면서 `reveals`가 아닌 연속 단계 수 — chance·다른 좌석 행동·공개 단계에서 닫힌다. 따라서 되돌리는 구간에는 chance·AI 단계가 없어 RNG 스트림을 건드리지 않고, 복원 상태는 다시 그 좌석의 결정이다. `GameSessionManager.undo(seat, revision, steps)`는 `steps[:keep]`을 reset부터 재적용해 복원하고 로그의 해당 항목을 `undone`으로 표시한 뒤 마커를 붙인다. `log(seat, after)`는 이벤트를 `visible_to`로 거르고, 비공개 카드를 가리키는 행동 인수는 다른 좌석에게 `(비공개)`, chance 값은 종료 전 숨김(종료 후 전부 공개). 저장 형식 v2: `log` 필드(되돌린 단계·마커 포함), 복원 시 되돌린 가지를 분기 상태에서 재적용해 이벤트를 복구·검증; v1 저장도 읽는다(되돌림 이력 없음). 검토 메타 `undo_history`. HTTP `POST /games/{id}/undo`, `GET /games/{id}/log`. summary에 `undo`(좌석별 창)·`log_count`. 테스트 `tests/server/test_undo.py` 9건 + HTTP 1건.
+- **UI**(card-implementer 서브에이전트 구현, 메인 세션 검토): 결정 배너의 "되돌리기 (1단계)"/"N단계 모두 되돌리기" 버튼, `#action-log` 패널(이벤트별 한국어 라벨 `EVENT_LABELS`, 되돌린 항목 취소선, 마커 강조), 검토 상태줄의 되돌림 마커. headless Chromium E2E(스크래치 Playwright)로 되돌리기 → 로그 갱신 → 완주 → 검토 마커까지 JS 오류 0 확인.
+- 알려진 한계: 되돌린 뒤 다른 선택으로 같은 revision 번호에 도달할 수 있어, 아주 오래된 탭의 stale revision이 우연히 일치하면 revision 검사가 그 탭을 막지 못한다(로컬 단일 사용자 도구라 수용; 필요하면 summary에 undo 세대 번호를 추가).
 
 ## 2026-09-02 OQ-010 확정 세션 요약 (관측 v3, 이벤트 가시성 불변식, 종료 후 전체 공개, 되돌리기 설계)
 
@@ -126,7 +132,7 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 - **`8bb3bfe` 관측 v3 1차**: `PublicPlayerView.discard_pile`·`completed_contract_ids` 추가, `PrivatePlayerView.discard_pile`과 좌석 scalar 2개 제거, `seat{n}_discard`/`seat{n}_completed_contracts` 세그먼트. UI 좌석 카드에 완료 contract 표시.
 - **`7a52c17` 이벤트 가시성**: 새 sweep 불변식 `check_event_visibility`(매 전이, 공개 이벤트 payload의 card id가 비공개 존에 있으면 실패)를 넣고 random 24판 전수 조사로 세 가지 누출을 찾아 고쳤다. Secrets 강탈 이벤트를 공개/한정 두 이벤트로 분리, `cards_drawn`·`personal_discard_shuffled`는 공개로 전환(장수만 담음). 선택 해결 중인 played Intrigue는 `PlayerView.intrigue_resolving`으로, 공개 경로로 hand에 들어온 카드(Corrinth City·Intrigue to-hand·BG Bond 반환)는 새 `PlayerState.hand_public`(construction 시 hand 밖 항목 자동 제거) → `PublicPlayerView.hand_public`으로 공개. 관측 v3 최종 1,967-int(`seat{n}_hand_public` 63, 전역 `intrigue_resolving` 39 추가). privacy scramble이 두 공개 집합을 보존하도록 수정.
 - **`8087e9b` 종료 후 전체 공개**: `disclose_hidden_zones`(각 좌석 hand·deck 순서·Intrigue + Imperium/Intrigue/Conflict deck·bank 순서). 서버는 종료된 게임의 live view와 검토 모든 step에 `disclosure`를 붙이고, 검토 라벨은 전 좌석 상세 + chance 값, AI 좌석 검토 허용. UI에 "종료 후 공개" 패널과 전 좌석 검토 선택. headless Chromium E2E(스크래치 Playwright + ALSA stub, 메모리의 recipe)로 종료 화면·검토 화면 JS 오류 0 확인.
-- 되돌리기 기능은 설계만 확정하고 `implementation-plan.md` M11 슬라이스 6으로 기록했다(위 "다음 구현 순서" 0번).
+- 되돌리기 기능은 설계를 확정해 `implementation-plan.md` M11 슬라이스 6으로 기록했고, 같은 날 뒤이어 구현했다(위 세션 요약).
 - 검증: pytest 993, Ruff, mypy. 커밋 트리 소크(`7a52c17` 기준) — 회전 리더 random 룰셋당 150판 + heuristic 룰셋당 80판(soundness 25) + draft random 룰셋당 40판, 실패 0.
 - 교훈(프로세스): `ruff format`은 이 저장소의 검사 항목이 아니며 실행하면 무관한 60여 파일이 바뀐다. 이 세션에서 한 번 실행했다가 파일별로 되돌렸다. `ruff check`만 쓴다.
 
