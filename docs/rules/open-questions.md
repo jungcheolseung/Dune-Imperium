@@ -12,7 +12,7 @@
 
 번호는 외부 링크의 안정성을 위해 재사용하지 않는다. 해결된 항목은 짧은 `RESOLVED` tombstone을 남기고 결과 문서로 연결한다.
 
-**2026-09-01 확정 캠페인**: 공식 리소스 페이지를 재확인해 Uprising Main Rulebook·Rules Supplements 23-10-12판과 FAQ 2025-01-13판이 여전히 최신임을 확정한 뒤, 남아 있던 `OPEN`/`CONTENT` 19건 전부에 확정 판정을 내렸다. `DECIDED` 판정은 프로젝트의 최종 판정이며 "공식 답변 대기" 상태가 아니고, 새 공식 문서가 발표될 때만 해당 항목을 다시 연다. 같은 날 사용자 검토로 세 항목을 갱신했다: OQ-022는 디자이너 판정을 찾아 반대 방향으로 확정, OQ-023은 사용자 재판정으로 교체, OQ-010은 방향만 확정한 `OPEN`으로 되돌렸다(재확인 범위 논의 예정).
+**2026-09-01 확정 캠페인**: 공식 리소스 페이지를 재확인해 Uprising Main Rulebook·Rules Supplements 23-10-12판과 FAQ 2025-01-13판이 여전히 최신임을 확정한 뒤, 남아 있던 `OPEN`/`CONTENT` 19건 전부에 확정 판정을 내렸다. `DECIDED` 판정은 프로젝트의 최종 판정이며 "공식 답변 대기" 상태가 아니고, 새 공식 문서가 발표될 때만 해당 항목을 다시 연다. 같은 날 사용자 검토로 세 항목을 갱신했다: OQ-022는 디자이너 판정을 찾아 반대 방향으로 확정, OQ-023은 사용자 재판정으로 교체, OQ-010은 방향만 확정한 `OPEN`으로 되돌렸다가 2026-09-02에 사용자 판정 4건(상대 discard·완료 contract identity 공개, 실시간 로그 기준, 종료 후 전체 공개)으로 `DECIDED`했다.
 
 ## OQ-001 — Endgame 처리 순서와 priority
 
@@ -89,13 +89,17 @@
 
 ## OQ-010 — 손패·discard와 과거 공개 정보의 열람 범위
 
-- 상태: `OPEN`
+- 상태: `DECIDED`
 - 공식 규칙은 Intrigue identity를 play 전까지 opponent에게 공개하지 않는다고 명시하고, 여러 deck을 face-down, discard를 face-up으로 놓게 한다. 하지만 일반 hand identity/장수, discard 전체 검사, deck 장수, 한 번 공개됐다가 face-down이 된 카드의 재확인 가능 여부를 포괄적으로 정의하지 않는다. `[Main pp. 4-7, 12-14, 16, 20]`
-- 필요한 답: 공식 FAQ/ruling 또는 tournament rule에서 각 정보의 열람 가능성을 확인한다. 답을 얻기 전 RL `PlayerView`의 비공개 정책은 프로젝트 convention임을 명시하고 규칙 사실처럼 적지 않는다.
-- 구현 convention(2026-08-30, 부분): 존의 **장수**(각 플레이어의 hand·개인 deck·discard 장수, 보유 Intrigue 장수)는 실물 테이블에서 항상 보이는 정보이므로 `PublicPlayerView`에 공개한다. 카드 **identity**의 열람 범위는 계속 이 항목의 미해결 질문으로 남으며, 기존 공개/비공개 구분(Intrigue identity는 play 전 비공개 등)은 바꾸지 않는다. 공식 근거가 아닌 관측 설계 결정이며 `tests/unit/test_observation.py`로 고정한다.
-- 구현 convention(2026-08-31, 추가): M11 서버의 종료 후 replay 검토도 같은 경계를 따른다 — 검토는 사람 좌석의 `PlayerView` 시점 재생만 제공하고, step 라벨은 검토 좌석 자신의 행동만 상세히, 다른 좌석의 행동은 행동 주체만, chance 결과는 decision id만 노출한다(셔플 결과는 비공개 덱 순서를 그대로 담으므로). 게임 종료 후 전체 공개(상대 hand·덱 순서 열람) 여부는 이 항목의 미해결 질문으로 남는다. `tests/server/test_saves.py`로 고정한다.
-- 방향 확정(2026-09-01, 사용자): **한 번 공개된 정보는 다시 확인할 수 있어야 한다.** 이 원칙을 어떤 정보에 어떻게 적용할지(상대 discard pile identity, 완료 contract identity, 종료 후 열람, event history 재생 범위 등)는 후속 논의에서 확정한다. 같은 날 이전에 기록했던 "현행 구현을 최종 판정으로 승격"은 이 방향 확정으로 대체됐다.
-- 후속 논의 전까지의 현행 관측 v2 경계(잠정 유지, 공식 규칙 아님): 존 장수는 전원 공개(2026-08-30 convention). 소유자는 자기 hand·discard·보유 Intrigue identity를 보고 자기 deck은 장수만 본다. 다른 플레이어에게는 face-up 공개 존(in play, trashed, face-up trigger Intrigue, Imperium Row/set-aside/removed, 활성 contract, Objective·승리 Conflict)과 뒤집힌 battle card identity(`face_down_battle_card_ids`)만 보인다. 상대 hand·deck·discard identity와 완료 contract identity는 비공개이고, 종료 후 검토는 좌석 `PlayerView` 시점 재생이다(2026-08-31 convention). 이 가운데 재확인 원칙과 어긋나는 지점 — 상대의 face-up discard pile 전체와 완료가 공지됐던 contract identity — 이 후속 논의의 핵심 대상이다. `tests/unit/test_observation.py`, `tests/server/test_saves.py`.
+- 구현 convention(2026-08-30): 존의 **장수**(각 플레이어의 hand·개인 deck·discard 장수, 보유 Intrigue 장수)는 실물 테이블에서 항상 보이는 정보이므로 `PublicPlayerView`에 공개한다.
+- 방향 확정(2026-09-01, 사용자): **한 번 공개된 정보는 다시 확인할 수 있어야 한다.**
+- **확정(2026-09-02, 사용자 판정 4건)**. 모두 공식 규칙이 아니라 위 원칙을 적용한 프로젝트 판정이다.
+  1. **상대 discard pile identity는 전원 공개.** discard pile에 들어오는 모든 경로가 공개 시점을 거친다: acquire한 카드는 face-up으로 놓고 `[Main p. 13]`, play·reveal한 카드는 Clean Up 전까지 face-up in play였으며 `[Main pp. 9, 12, 20]`, hand에서 버리는 카드도 face-up pile 위에 놓인다. reshuffle로 deck에 들어가는 순간 다시 비공개가 된다. `PublicPlayerView.discard_pile`, 관측 v3 `seat{n}_discard`. 같은 원칙으로 **공개 경로로 hand에 들어온 카드**(Corrinth City의 acquire-to-hand, Intrigue의 "put that card in your hand", Bene Gesserit Bond로 in play에서 hand로 돌아온 카드)는 hand를 떠날 때까지 공개다(`PlayerState.hand_public` → `PublicPlayerView.hand_public`; 나중에 face-down draw로 다시 들어오면 비공개). play돼 선택 해결 중이라 아직 소유자 보유 존에 있는 Intrigue도 이미 공개된 카드이므로 `PlayerView.intrigue_resolving`으로 공개한다.
+  2. **완료 contract identity는 전원 공개.** 활성 중 face-up이었고 완료 시 사실과 reward를 알린 뒤 뒤집는다 `[Main p. 16]`. 뒤집힌 battle card를 `face_down_battle_card_ids`로 공개하는 선례와 같은 구조로 `PublicPlayerView.completed_contract_ids`(관측 v3 `seat{n}_completed_contracts`)에 둔다.
+  3. **실시간 행동 로그의 기준.** 로그는 엔진 `event_log`를 `visible_to`로 걸러 보여 준다. 공개 이벤트(`visible_to=None`)의 payload에 담긴 card identity는 그 이벤트 직후 공개 존에 있는 카드만 허용하고, 비공개 존(hand·deck·보유 Intrigue·deck·bank)에 남는 identity를 담는 이벤트는 관련 좌석 한정으로 표시한다. 장수·수량만 담는 이벤트는 전원 공개다. sweep 불변식 `check_event_visibility`가 매 전이마다 이를 검사한다(미래 콘텐츠 tripwire). 적용 결과: Secrets의 강탈은 공개 `intrigue_card_stolen`(도둑·피해자만)과 `intrigue_card_stolen_identity`(도둑·피해자 한정, card_id 포함)로 분리 `[Main p. 7]`; `cards_drawn`·`personal_discard_shuffled`는 장수만 담으므로 공개. `tests/integration/test_sweep.py`.
+  4. **게임 종료 후 전체 공개.** 이 항목만 재확인 원칙 밖이다(상대의 미사용 Intrigue와 deck 순서는 한 번도 공개된 적이 없다). 로컬 분석 도구라는 성격을 고려한 **검토 편의 convention**으로, FINISHED 이후에는 모든 좌석의 hand·deck 순서·보유 Intrigue와 Imperium/Intrigue/Conflict deck·contract bank 순서를 `disclose_hidden_zones`로 열고, M11 서버는 종료된 게임의 live view와 검토의 모든 step에 `disclosure`를 붙인다. 검토 라벨은 좌석 구분 없이 모든 행동을 상세 표시하고 chance 결과 값도 보여 주며, AI 좌석 시점의 검토도 허용한다. 진행 중인 게임의 view는 바뀌지 않는다. `tests/server/test_saves.py`, `tests/server/test_app.py`.
+- 관련 설계(2026-09-02, 사용자): **행동 되돌리기**(M11 슬라이스 6, [`../implementation-plan.md`](../implementation-plan.md))의 허용 경계도 같은 원칙을 따른다 — 숨겨진 더미에서 누군가에게 흘러간 정보(자기 draw 포함)는 되돌릴 수 없고, 자기 비공개 존에서 공개 존으로 스스로 옮긴 정보(Intrigue play, hand discard/trash, Reveal)는 손해를 감수하고 되돌릴 수 있으며, 되돌린 행동은 로그에 공개로 남는다.
+- 재개 조건: 새 공식 룰북·FAQ가 열람 정책을 직접 정할 때.
 
 ## OQ-011 — Gather Intelligence와 contract 완료의 상대 순서
 

@@ -17,7 +17,7 @@ uv run ruff check src tests
 uv run mypy src tests
 ```
 
-2026-09-02의 기준 결과는 pytest 989개 통과(카드 이미지 캐시가 없는 머신은 988 통과 + 1 skip), Ruff 통과, mypy 통과다. 현재 action codec은 `ACTION_CODEC_VERSION = 84`(기본 4,314개, CHOAM 4,600개)이고, 관측은 `OBSERVATION_VERSION = 2`의 1,415-int 전체 게임 인코딩이다 ([`rl-environment.md`](rl-environment.md)). 보드 22칸 완결 + 즉시 공개 + `fab266f`/`e6fc298` 수정 + sweep 확장(`853ecd4`) 반영 후의 교차 소크는 random 룰셋당 2,000판 + heuristic 룰셋당 1,000판(둘 다 `--rotate-leaders`) + draft 두 policy 각 룰셋당 500판, 전부 `--soundness-interval 25`를 켠 총 7,000판이 실패 0으로 통과한 상태다(2026-09-01, 아래 세션 요약. 그 전 단계에서는 random 룰셋당 3,000판 비회전 소크도 실패 0이었다).
+2026-09-02의 기준 결과는 pytest 993개 통과(카드 이미지 캐시가 없는 머신은 992 통과 + 1 skip), Ruff 통과, mypy 통과다. 현재 action codec은 `ACTION_CODEC_VERSION = 84`(기본 4,314개, CHOAM 4,600개)이고, 관측은 `OBSERVATION_VERSION = 3`의 1,967-int 전체 게임 인코딩이다 ([`rl-environment.md`](rl-environment.md)). 보드 22칸 완결 + 즉시 공개 + `fab266f`/`e6fc298` 수정 + sweep 확장(`853ecd4`) 반영 후의 교차 소크는 random 룰셋당 2,000판 + heuristic 룰셋당 1,000판(둘 다 `--rotate-leaders`) + draft 두 policy 각 룰셋당 500판, 전부 `--soundness-interval 25`를 켠 총 7,000판이 실패 0으로 통과한 상태다(2026-09-01, 아래 세션 요약. 그 전 단계에서는 random 룰셋당 3,000판 비회전 소크도 실패 0이었다).
 
 ## 현재 구현 기준선
 
@@ -40,8 +40,8 @@ uv run mypy src tests
 - (2026-09-01 해소) 보드 22칸 미구현 4~5칸과 OQ-015(c)의 Reveal 중 Plot 보류는 모두 구현됐다. `board_effect_is_implemented`와 UI의 "미구현 · 배치 불가" 배지는 미래 콘텐츠 대비 메커니즘으로 남아 있고, `tests/unit/rules/test_board_effects.py`의 pinned 집합은 이제 양쪽 룰셋 모두 빈 집합이다. Imperial Privilege의 recall 판정은 OQ-023 convention, Secrets의 무작위 강탈은 seeded `SECRETS_STEAL` chance frame이다.
 - Agent 배치 시점 조건이 거짓이면 pending되지 않는 카드 효과는, 같은 frame의 자유 순서 효과로 조건이 나중에 참이 되어도 제시되지 않는다(알려진 엔진 경계; Prepare the Way 수정 커밋 `87a9300` 참고).
 - Objective와 battle icon 상호작용은 2026-08-30에 재감사를 마쳤다 (`implementation-audits/objectives.md`, OQ-005 RESOLVED). Combat 다중 후보 guard는 미래 콘텐츠 대비 tripwire로 남는다.
-- Shaddam Corrino IV의 set-aside Sardaukar Contract 경로는 Leader 능력과 함께 남아 있다. OQ-010, OQ-011 경계는 확정 판정(`DECIDED`)으로 유지된다.
-- 공식 문서가 침묵하는 규칙 판정은 [`rules/open-questions.md`](rules/open-questions.md)에 있다. 2026-09-01 확정 캠페인과 같은 날의 사용자 검토를 거쳐, 현재 `OPEN`은 OQ-010 하나(재확인 원칙은 확정, 적용 범위 논의 예정)이고 나머지는 전부 `DECIDED`/`RESOLVED`다. `DECIDED`는 확정 프로젝트 판정으로 새 공식 룰북·FAQ(또는 OQ-022처럼 명시된 상위 근거)가 답을 줄 때만 다시 연다. 새로 발견되는 규칙 공백은 여전히 코드로 임의 확정하지 않고 그 문서에 먼저 기록하며, 규칙 동작을 바꾸기 전에는 반드시 `docs/rules/`의 문장을 인용한다([`lessons.md`](lessons.md)).
+- Shaddam Corrino IV의 set-aside Sardaukar Contract 경로는 Leader 능력과 함께 남아 있다. OQ-010(2026-09-02 확정), OQ-011 경계는 확정 판정(`DECIDED`)으로 유지된다.
+- 공식 문서가 침묵하는 규칙 판정은 [`rules/open-questions.md`](rules/open-questions.md)에 있다. 2026-09-01 확정 캠페인과 같은 날의 사용자 검토를 거쳐, 2026-09-02에 OQ-010까지 확정돼 `OPEN` 항목은 없고 전부 `DECIDED`/`RESOLVED`다. `DECIDED`는 확정 프로젝트 판정으로 새 공식 룰북·FAQ(또는 OQ-022처럼 명시된 상위 근거)가 답을 줄 때만 다시 연다. 새로 발견되는 규칙 공백은 여전히 코드로 임의 확정하지 않고 그 문서에 먼저 기록하며, 규칙 동작을 바꾸기 전에는 반드시 `docs/rules/`의 문장을 인용한다([`lessons.md`](lessons.md)).
 
 콘텐츠(카드·리더·계약·Intrigue·보드 22칸)는 이제 4인 base+CHOAM 게임 범위에서 완결이다. 남은 경계는 공식 문서가 침묵하는 판정을 기록한 convention(open-questions.md)과 위의 엔진 경계·미래 콘텐츠 tripwire들이며, 이들은 "미구현 콘텐츠"가 아니라 문서화된 프로젝트 판정이다.
 
@@ -49,7 +49,7 @@ uv run mypy src tests
 
 2026-09-01의 **검증 강화 캠페인**(사용자 확정 범위: 전체 1→4)은 같은 날 완료했다: 1단계 보드 22칸 완결 + OQ-015(c), 2단계 sweep 확장 (`853ecd4`: 커버리지 census `--coverage-json`, 표본 주기 legal-action 전수 적용 + codec 왕복 `--soundness-interval`, seed별 리더 회전 `--rotate-leaders`), 3단계 교차 소크(아래), 4단계 대조(DIU 63종 전부 일치, open-questions 23건 재점검). 세부는 아래 세션 요약.
 
-0. **(사용자와 논의 대기) OQ-010 재확인 범위.** "한 번 공개된 정보는 재확인 가능해야 한다"는 방향은 사용자가 확정했고, 구체 범위 — 상대의 face-up discard pile identity, 완료가 공지됐던 contract identity, 종료 후 열람, event history 재생 범위 — 를 정하는 논의가 남아 있다. 결정에 따라 `PublicPlayerView`/관측 인코딩이 바뀔 수 있으므로(OBSERVATION_VERSION 상향 가능) M9 체크포인트를 만들기 전에 정하는 편이 싸다. 논의 전까지 구현은 현행 유지.
+0. **M11 슬라이스 6: 행동 되돌리기 + 실시간 행동 로그.** 2026-09-02에 사용자와 설계를 확정했다(`implementation-plan.md` M11 절의 슬라이스 6 문단, OQ-010의 "관련 설계"). 서버·UI 작업이며 엔진과 관측은 바뀌지 않는다. 핵심: 되돌리기 창은 "마지막 무작위 결과 또는 다른 좌석 행동 이후 자신이 연속으로 한 행동", 판정은 단계 적용 전후 상태 비교(비공개 존 → 보이는 존 흐름 감지, 자기 draw 포함), 요청자는 본인 좌석, 되돌린 구간은 서버 세션 로그와 저장 파일에 보관해 실시간 로그·검토에서 "되돌림"으로 공개 표시. 실시간 로그는 엔진 `event_log`(이제 `check_event_visibility`로 누출이 검사된다)를 `visible_to`로 걸러 같은 세션 로그에서 보여 준다. 엔진 `event_log`는 상태의 일부라 단계를 잘라내면 사라지므로 세션 로그는 서버가 별도 보관해야 한다.
 1. **M9 평가 러너와 baseline.** 여러 게임을 병렬 구동하고 정책 추론만 batch하는 self-play 러너, random/heuristic(M11 상대에서 출발)/rollout baseline, 좌석·리더·first player·seed 교차 대회 도구 (`implementation-plan.md`의 M9). 관측·보상 계약은 [`rl-environment.md`](rl-environment.md)로 고정돼 있고, 병렬 실행 선례는 `simulation/sweep.py`다. 더 큰 야간 규모 재검증이 필요하면 `dune-imperium-sweep --games 50000 --ruleset both --workers 8 --rotate-leaders --soundness-interval 25 --coverage-json ...`을 커밋된 트리에서 돌린다.
 2. **M10 강화학습과 league self-play.** M9의 평가 행렬 위에서 시작한다 (`implementation-plan.md`의 M10).
 
@@ -118,7 +118,17 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 
 ## 원격 저장소 인계 주의
 
-2026-09-01 세션 시작 시점에 `origin/master`와 로컬은 `1647bf2`로 일치했고, 이 세션의 커밋들(`d7703ef`부터)은 로컬에만 있다(push는 사용자 판단으로 한다). 새 세션은 `git log origin/master..master`와 반대 방향을 모두 확인하고, checkout이 `853ecd4`보다 이전이면 이 문서의 989개 테스트·codec v84 기준선이 실제 코드와 일치하지 않는다. **다른 머신에서 이어서 작업한다면 먼저 이 머신에서 push가 필요하다.** 새 머신의 UI 카드 이미지는 비공개 `Dune-Imperium-assets` 저장소를 clone해 symlink로 연결하고(그 README 참고), 접근이 없을 때만 `uv run scripts/fetch_card_images.py`로 채운다 (선택; 없으면 텍스트만). 2026-09-01부터 이 머신의 캐시는 그 symlink다.
+2026-09-02 OQ-010 세션 시작 시점에 `origin/master`와 로컬은 `5b51928`로 일치했고, 이 세션의 커밋들(`8bb3bfe`부터)은 로컬에만 있다(push는 사용자 판단으로 한다). 새 세션은 `git log origin/master..master`와 반대 방향을 모두 확인하고, checkout이 `853ecd4`보다 이전이면 이 문서의 989개 테스트·codec v84 기준선이 실제 코드와 일치하지 않는다. **다른 머신에서 이어서 작업한다면 먼저 이 머신에서 push가 필요하다.** 새 머신의 UI 카드 이미지는 비공개 `Dune-Imperium-assets` 저장소를 clone해 symlink로 연결하고(그 README 참고), 접근이 없을 때만 `uv run scripts/fetch_card_images.py`로 채운다 (선택; 없으면 텍스트만). 2026-09-01부터 이 머신의 캐시는 그 symlink다.
+
+## 2026-09-02 OQ-010 확정 세션 요약 (관측 v3, 이벤트 가시성 불변식, 종료 후 전체 공개, 되돌리기 설계)
+
+- 사용자와 OQ-010의 네 범위를 결정했다(전부 추천안 채택, 세부는 `rules/open-questions.md`): (1) 상대 discard identity 공개, (2) 완료 contract identity 공개, (3) 실시간 로그는 `event_log`를 `visible_to`로 걸러 표시하되 공개 이벤트는 공개 존의 카드만 이름을 담는다, (4) 종료 후 전체 공개(검토 편의 convention).
+- **`8bb3bfe` 관측 v3 1차**: `PublicPlayerView.discard_pile`·`completed_contract_ids` 추가, `PrivatePlayerView.discard_pile`과 좌석 scalar 2개 제거, `seat{n}_discard`/`seat{n}_completed_contracts` 세그먼트. UI 좌석 카드에 완료 contract 표시.
+- **`7a52c17` 이벤트 가시성**: 새 sweep 불변식 `check_event_visibility`(매 전이, 공개 이벤트 payload의 card id가 비공개 존에 있으면 실패)를 넣고 random 24판 전수 조사로 세 가지 누출을 찾아 고쳤다. Secrets 강탈 이벤트를 공개/한정 두 이벤트로 분리, `cards_drawn`·`personal_discard_shuffled`는 공개로 전환(장수만 담음). 선택 해결 중인 played Intrigue는 `PlayerView.intrigue_resolving`으로, 공개 경로로 hand에 들어온 카드(Corrinth City·Intrigue to-hand·BG Bond 반환)는 새 `PlayerState.hand_public`(construction 시 hand 밖 항목 자동 제거) → `PublicPlayerView.hand_public`으로 공개. 관측 v3 최종 1,967-int(`seat{n}_hand_public` 63, 전역 `intrigue_resolving` 39 추가). privacy scramble이 두 공개 집합을 보존하도록 수정.
+- **`8087e9b` 종료 후 전체 공개**: `disclose_hidden_zones`(각 좌석 hand·deck 순서·Intrigue + Imperium/Intrigue/Conflict deck·bank 순서). 서버는 종료된 게임의 live view와 검토 모든 step에 `disclosure`를 붙이고, 검토 라벨은 전 좌석 상세 + chance 값, AI 좌석 검토 허용. UI에 "종료 후 공개" 패널과 전 좌석 검토 선택. headless Chromium E2E(스크래치 Playwright + ALSA stub, 메모리의 recipe)로 종료 화면·검토 화면 JS 오류 0 확인.
+- 되돌리기 기능은 설계만 확정하고 `implementation-plan.md` M11 슬라이스 6으로 기록했다(위 "다음 구현 순서" 0번).
+- 검증: pytest 993, Ruff, mypy. 커밋 트리 소크(`7a52c17` 기준) — 회전 리더 random 룰셋당 150판 + heuristic 룰셋당 80판(soundness 25) + draft random 룰셋당 40판, 실패 0.
+- 교훈(프로세스): `ruff format`은 이 저장소의 검사 항목이 아니며 실행하면 무관한 60여 파일이 바뀐다. 이 세션에서 한 번 실행했다가 파일별로 되돌렸다. `ruff check`만 쓴다.
 
 ## 2026-09-02 오픈 퀘스천 재판정 세션 요약 (OQ-015(d) 아이콘 순서 선택, OQ-021 Shaddam 선택)
 

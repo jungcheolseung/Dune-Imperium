@@ -20,7 +20,7 @@ visual reference.
 | Acquire | Acquiring The Spice Must Flow through Reveal or a supported Agent-card acquisition completes Acquire. | Existing card-acquisition triggers resolve before the Contract reward as the OQ-012 project convention for this non-conflicting standard tile. |
 | Rewards | Resources, fixed Faction Influence, troops, personal-card draw, Spy placement, and another face-up Contract all use shared typed transitions. | Recruited Contract troops increase the same Combat deployment limit as troops recruited from other Agent-turn sources. |
 | Immediate | Taking Immediate grants its typed 2-Solari reward and moves the tile directly to completed Contracts. | It never occupies the active zone. |
-| Zones | The authoritative state keeps bank, face-up market, active player Contracts, and completed player Contracts disjoint. | Active Contract IDs and completed counts are observed; bank order and completed identities are redacted under OQ-010. |
+| Zones | The authoritative state keeps bank, face-up market, active player Contracts, and completed player Contracts disjoint. | Active and completed Contract IDs are observed by every seat (OQ-010 ruling 2, 2026-09-02: a completed Contract was face up and its completion announced); only the bank order is redacted. |
 | Gather Intelligence | Gather Intelligence's immediate window resolves before Contract completion actions. | Official relative ordering remains unanswered under OQ-011; this is an explicit tested project convention. |
 | Action codec | `take_contract` and `complete_contract` have one actor-neutral template per standard Contract; Contract Spy placement/recall uses post-ID templates. | Codec v58 keeps the base catalog at 3,377; CHOAM Imperium destinations and choices expand the module catalog to 3,598. |
 
@@ -31,7 +31,6 @@ visual reference.
   [Leader audit](leaders.md)); it reopens only on an official ruling.
 - An official answer for Gather Intelligence versus Contract completion under
   OQ-011; the implemented project convention remains clearly labeled until then.
-- Completed Contract identity visibility under OQ-010.
 
 ## Verification
 

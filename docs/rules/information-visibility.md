@@ -29,10 +29,12 @@
 
 ## 공식 문서가 명시하지 않은 정보 정책
 
-다음은 확인한 공식 문서에서 완전한 정책을 찾지 못했다. [OQ-010](open-questions.md#oq-010--손패discard와-과거-공개-정보의-열람-범위)은 "한 번 공개된 정보는 재확인 가능해야 한다"는 방향까지 확정했고(2026-09-01, 사용자), 구체 범위는 후속 논의로 남아 있다. 현행 관측 v2 경계는 다음과 같으며 범위 논의 전까지 유지한다.
+다음은 확인한 공식 문서에서 완전한 정책을 찾지 못했다. [OQ-010](open-questions.md#oq-010--손패discard와-과거-공개-정보의-열람-범위)이 "한 번 공개된 정보는 재확인 가능해야 한다"는 원칙으로 확정했다(2026-09-02, 사용자 판정; 공식 규칙이 아닌 프로젝트 convention). 현행 관측 v3 경계는 다음과 같다.
 
-- 일반 hand의 identity는 소유자만 보고, 장수는 전원에게 공개한다.
-- face-up 개인 discard pile의 identity는 소유자만 보고, 장수는 전원에게 공개한다. 상대 discard 전체의 재확인 허용 여부가 후속 논의 대상이다.
+- 일반 hand의 identity는 소유자만 보고, 장수는 전원에게 공개한다. 단, 공개 경로로 hand에 들어온 카드(Corrinth City의 acquire-to-hand, Intrigue의 "put that card in your hand", Bond로 in play에서 돌아온 카드)는 hand를 떠날 때까지 전원이 identity를 본다(`hand_public`).
+- face-up 개인 discard pile의 identity와 장수는 전원에게 공개한다(모든 카드가 face-up으로 들어오므로). reshuffle로 deck이 되는 순간 다시 비공개다.
 - 개인 deck과 공용 deck·bank의 남은 장수는 언제나 공개한다. 개인 deck의 순서와 구성은 소유자에게도 노출하지 않는다.
-- matched Conflict/Objective의 identity는 뒤집힌 뒤에도 공개를 유지하고, completed contract는 장수만 공개한다. 완료가 공지됐던 contract identity의 재확인도 후속 논의 대상이다.
-- 게임 종료 후 전체 공개는 하지 않으며, 검토는 사람 좌석의 `PlayerView` 시점 재생만 제공한다.
+- 보유 Intrigue의 identity는 소유자만 본다 `[Main p. 7]`. play돼 선택 해결 중인 Intrigue는 이미 공개됐으므로 전원이 본다(`intrigue_resolving`).
+- matched Conflict/Objective의 identity는 뒤집힌 뒤에도 공개를 유지하고, completed contract도 identity를 공개한다(완료 사실이 공지됐으므로).
+- 실시간 행동 로그는 엔진 이벤트를 `visible_to`로 걸러 보여 준다. 공개 이벤트는 그 직후 공개 존에 있는 카드만 이름을 담는다(sweep 불변식으로 검사).
+- 게임 종료 후에는 모든 비공개 존(각 좌석의 hand·deck 순서·보유 Intrigue, 공용 deck·bank 순서)을 공개하고, 검토는 모든 좌석 시점과 모든 행동·chance 값을 보여 준다. 이는 재확인 원칙이 아니라 검토 편의 convention이다.
