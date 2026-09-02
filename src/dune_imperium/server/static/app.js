@@ -14,6 +14,8 @@ const state = {
   busy: false,
   /* Post-game replay review: {meta, seat, cursor} while active. */
   review: null,
+  /* Live session log for the active seat: {count, entries} (M11 slice 6). */
+  log: null,
 };
 
 let noteTimer = 0;
@@ -170,6 +172,39 @@ const ACTION_LABELS = {
 };
 
 const RESOURCE_ICONS = { solari: "🪙", spice: "🌶", water: "💧" };
+
+/* Korean labels for session-log event kinds (M11 slice 6); falls back to
+   prettify(kind) for anything not listed here. */
+const EVENT_LABELS = {
+  agent_placed: "Agent 배치",
+  card_acquired: "카드 획득",
+  card_discarded: "카드 discard",
+  card_trashed: "카드 trash",
+  cards_drawn: "카드 draw",
+  intrigue_played: "Intrigue play",
+  intrigue_card_drawn: "Intrigue draw",
+  intrigue_card_discarded: "Intrigue discard",
+  intrigue_card_stolen: "Intrigue 강탈",
+  troops_deployed: "병력 배치",
+  troops_retreated: "병력 후퇴",
+  influence_gained: "Influence 상승",
+  influence_lost: "Influence 하락",
+  alliance_gained: "Alliance 획득",
+  alliance_lost: "Alliance 상실",
+  spy_placed: "Spy 배치",
+  spy_recalled: "Spy 회수",
+  reveal_started: "Reveal 시작",
+  reveal_finished: "Reveal 종료",
+  conflict_revealed: "Conflict 공개",
+  conflict_won: "Conflict 승리",
+  combat_reward_gained: "Combat 보상",
+  contract_taken: "Contract 획득",
+  contract_completed: "Contract 완료",
+  victory_points_gained: "VP 획득",
+  personal_discard_shuffled: "discard reshuffle",
+  game_finished: "게임 종료",
+  leader_drafted: "Leader pick",
+};
 
 /* Board-layout order for the spaces panel. */
 const AGENT_ICON_GROUPS = [
@@ -600,6 +635,7 @@ async function applySummary(summary) {
   }
   state.view = null;
   state.actions = null;
+  state.log = null;
   if (state.viewSeat !== null) {
     state.view = await api(
       `/games/${state.gameId}/seats/${state.viewSeat}/view`
@@ -608,6 +644,11 @@ async function applySummary(summary) {
       state.actions = await api(
         `/games/${state.gameId}/seats/${state.viewSeat}/actions`
       );
+    }
+    /* The live action log is a game-screen feature only; review mode reads
+       its own timeline (meta.steps) instead. */
+    if (!state.review) {
+      state.log = await api(`/games/${state.gameId}/log?seat=${activeSeat()}`);
     }
   }
   render();
@@ -642,6 +683,36 @@ async function applyAction(index) {
       return;
     }
     el("game-error").textContent = `행동 적용 실패 (${error.message})`;
+    el("game-error").hidden = false;
+    render();
+  }
+}
+
+/* Take back `steps` of `seat`'s own latest steps (M11 slice 6). */
+async function submitUndo(seat, steps) {
+  if (state.busy) return;
+  state.busy = true;
+  render();
+  try {
+    el("game-error").hidden = true;
+    const summary = await api(`/games/${state.gameId}/undo`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        seat,
+        revision: state.summary.revision,
+        steps,
+      }),
+    });
+    state.busy = false;
+    await applySummary(summary);
+  } catch (error) {
+    state.busy = false;
+    if (error.status === 409) {
+      await refresh();
+      return;
+    }
+    el("game-error").textContent = `되돌리기 실패 (${error.message})`;
     el("game-error").hidden = false;
     render();
   }
@@ -683,11 +754,19 @@ async function reviewGoto(cursor) {
     state.view = payload.view;
     state.actions = null;
     el("review-slider").value = String(cursor);
-    el("review-status").textContent =
+    let status =
       `step ${cursor}/${review.meta.step_count}` +
       ` · 라운드 ${payload.round_number}` +
       ` · ${PHASE_LABELS[payload.phase] || payload.phase}` +
       ` · ${describeReviewStep(review.meta.steps[cursor - 1])}`;
+    /* Undo markers that rewound the game to this exact step (M11 slice 6). */
+    for (const item of review.meta.undo_history || []) {
+      if (item.step !== cursor) continue;
+      status +=
+        ` · ↩ 좌석 ${item.seat}가 여기서 ${item.count}단계 되돌림: ` +
+        item.undone.map(describeAction).join(" / ");
+    }
+    el("review-status").textContent = status;
     render();
   } catch (error) {
     el("game-error").textContent = `검토 상태 조회 실패 (${error.message})`;
@@ -749,6 +828,7 @@ function render() {
   renderBoard();
   renderSpaces();
   renderSeats();
+  renderLog();
   renderPrivate();
   renderDisclosure();
 }
@@ -816,27 +896,61 @@ function renderBanner() {
   if (summary.finished) {
     prompt.textContent = "게임이 끝났습니다.";
     info.append(prompt);
-    return;
-  }
-  const decision = summary.decision;
-  if (!decision) {
-    prompt.textContent = "진행 중…";
-    info.append(prompt);
-    return;
-  }
-  const seatKind = summary.seats[decision.owner];
-  const who =
-    decision.owner === state.viewSeat
-      ? `좌석 ${decision.owner} (당신)`
-      : `좌석 ${decision.owner} (${seatKind})`;
-  prompt.textContent = decision.prompt;
-  meta.textContent = `${who} · frame: ${decision.kind}`;
-  info.append(prompt, meta);
+  } else {
+    const decision = summary.decision;
+    if (!decision) {
+      prompt.textContent = "진행 중…";
+      info.append(prompt);
+    } else {
+      const seatKind = summary.seats[decision.owner];
+      const who =
+        decision.owner === state.viewSeat
+          ? `좌석 ${decision.owner} (당신)`
+          : `좌석 ${decision.owner} (${seatKind})`;
+      prompt.textContent = decision.prompt;
+      meta.textContent = `${who} · frame: ${decision.kind}`;
+      info.append(prompt, meta);
 
-  if (!state.actions || decision.owner !== state.viewSeat) return;
-  for (const action of state.actions.actions) {
-    actionsBox.appendChild(actionItem(action));
+      if (state.actions && decision.owner === state.viewSeat) {
+        for (const action of state.actions.actions) {
+          actionsBox.appendChild(actionItem(action));
+        }
+      }
+    }
   }
+
+  /* A human seat may still have takeable-back steps after the game ends
+     (its last live step), so the undo row renders in both branches above. */
+  appendUndoRow(info);
+}
+
+/* Undo controls for the viewing seat (M11 slice 6): a single-step button
+   and, when more than one step is available, a take-back-everything button. */
+function appendUndoRow(container) {
+  if (state.review) return;
+  const entry = (state.summary.undo || []).find(
+    (item) => item.seat === state.viewSeat
+  );
+  if (!entry || entry.steps <= 0) return;
+  const row = document.createElement("div");
+  row.className = "undo-row";
+
+  const one = document.createElement("button");
+  one.type = "button";
+  one.textContent = "되돌리기 (1단계)";
+  one.disabled = state.busy;
+  one.addEventListener("click", () => submitUndo(state.viewSeat, 1));
+  row.appendChild(one);
+
+  if (entry.steps > 1) {
+    const all = document.createElement("button");
+    all.type = "button";
+    all.textContent = `${entry.steps}단계 모두 되돌리기`;
+    all.disabled = state.busy;
+    all.addEventListener("click", () => submitUndo(state.viewSeat, entry.steps));
+    row.appendChild(all);
+  }
+  container.appendChild(row);
 }
 
 /* Effect preview for one legal action: resolve its referenced space/cards
@@ -1304,6 +1418,92 @@ function renderSeats() {
     }
     wrap.appendChild(card);
   }
+}
+
+/* ---------- live action log (M11 slice 6) ---------- */
+
+/* Render one event's payload as compact "key: value" pairs. Values keyed by
+   an id-shaped field (card/instance/conflict id, post_id, space_id) resolve
+   through the catalog via nameOf; the "player" key renders as a seat label. */
+function logEventPayload(payload) {
+  const parts = [];
+  for (const [key, value] of Object.entries(payload)) {
+    if (key === "player") {
+      parts.push(`좌석 ${value}`);
+      continue;
+    }
+    const isIdField =
+      key.endsWith("card_id") ||
+      key.endsWith("instance_id") ||
+      key.endsWith("conflict_id") ||
+      key === "card_id" ||
+      key === "post_id" ||
+      key === "space_id";
+    const shown = isIdField ? nameOf(value) : String(value);
+    parts.push(`${prettify(key)}: ${shown}`);
+  }
+  return parts.join(" · ");
+}
+
+function logEventLine(event) {
+  const line = document.createElement("div");
+  line.className = "logevent";
+  const label = EVENT_LABELS[event.kind] || prettify(event.kind);
+  const payload = logEventPayload(event.payload);
+  line.textContent = payload ? `${label} — ${payload}` : label;
+  return line;
+}
+
+function logEntryRow(entry) {
+  const row = document.createElement("div");
+  row.className = "logentry";
+  const head = document.createElement("div");
+
+  if (entry.type === "undo") {
+    row.classList.add("undo-marker");
+    head.textContent = `↩ 좌석 ${entry.seat}이(가) ${entry.count}단계 되돌림`;
+    row.appendChild(head);
+    return row;
+  }
+
+  if (entry.undone) row.classList.add("undone");
+  let text;
+  if (entry.type === "chance") {
+    text = `#${entry.index} chance: ${prettify(entry.decision_id)}`;
+    if (entry.values) {
+      const shown =
+        entry.values.length <= 3
+          ? entry.values.map(nameOf).join(", ")
+          : `${entry.values.slice(0, 3).map(nameOf).join(", ")} …`;
+      text += ` — ${shown}`;
+    }
+  } else {
+    text = `#${entry.index} 좌석 ${entry.actor}: ${describeAction(entry)}`;
+  }
+  if (entry.undone) text += " (되돌림)";
+  head.textContent = text;
+  row.appendChild(head);
+  for (const event of entry.events) row.appendChild(logEventLine(event));
+  return row;
+}
+
+function renderLog() {
+  const panel = el("action-log");
+  panel.textContent = "";
+  const log = state.log;
+  if (!log || !log.entries.length) {
+    panel.hidden = true;
+    return;
+  }
+  panel.hidden = false;
+  const heading = document.createElement("h2");
+  heading.textContent = "행동 로그";
+  panel.appendChild(heading);
+  const list = document.createElement("div");
+  list.className = "log-list";
+  for (const entry of log.entries) list.appendChild(logEntryRow(entry));
+  panel.appendChild(list);
+  list.scrollTop = list.scrollHeight;
 }
 
 function renderPrivate() {
