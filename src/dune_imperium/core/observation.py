@@ -12,8 +12,8 @@ from dune_imperium.core.state import GamePhase, GameState
 class PublicPlayerView:
     """Public board and supply information for one seat.
 
-    Private Imperium and Intrigue identities deliberately have no field here, so
-    adapter code cannot accidentally recover them from an opponent's view.
+    Hand, deck, and held-Intrigue identities deliberately have no field here,
+    so adapter code cannot accidentally recover them from an opponent's view.
     """
 
     player: int
@@ -27,7 +27,6 @@ class PublicPlayerView:
     # governed by the explicit visibility rules.
     hand_size: int
     deck_size: int
-    discard_size: int
     intrigue_card_count: int
     agents_available: int
     agent_locations: tuple[str, ...]
@@ -47,6 +46,11 @@ class PublicPlayerView:
     maker_hooks: bool
     feyd_track_space: str
     in_play: tuple[str, ...]
+    # Every card reaches a discard pile face up (acquired cards [Main p. 13],
+    # played and revealed cards after Clean Up [Main pp. 9, 12, 20], cards
+    # discarded from hand), so the pile stays re-checkable by everyone until a
+    # reshuffle hides it again (OQ-010 ruling 1).
+    discard_pile: tuple[str, ...]
     trashed: tuple[str, ...]
     intrigue_faceup: tuple[str, ...]
     imperium_set_aside: tuple[str, ...]
@@ -54,7 +58,10 @@ class PublicPlayerView:
     won_conflict_ids: tuple[str, ...]
     face_down_battle_card_ids: tuple[str, ...]
     active_contract_ids: tuple[str, ...]
-    completed_contract_count: int
+    # A completed Contract was face up while active and its completion was
+    # announced before it flipped [Main p. 16], so its identity stays public
+    # like a flipped battle card (OQ-010 ruling 2).
+    completed_contract_ids: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,7 +70,6 @@ class PrivatePlayerView:
 
     deck_size: int
     hand: tuple[str, ...]
-    discard_pile: tuple[str, ...]
     intrigue_cards: tuple[str, ...]
 
 
@@ -142,7 +148,6 @@ def observe_state(state: GameState, player: int) -> PlayerView:
         private=PrivatePlayerView(
             deck_size=len(owner.deck),
             hand=owner.hand,
-            discard_pile=owner.discard_pile,
             intrigue_cards=owner.intrigue_cards,
         ),
         current_conflict_ids=state.current_conflict_ids,
@@ -172,7 +177,6 @@ def _public_player_view(player: PlayerState) -> PublicPlayerView:
         influence=player.influence,
         hand_size=len(player.hand),
         deck_size=len(player.deck),
-        discard_size=len(player.discard_pile),
         intrigue_card_count=len(player.intrigue_cards),
         agents_available=player.agents_available,
         agent_locations=player.agent_locations,
@@ -192,6 +196,7 @@ def _public_player_view(player: PlayerState) -> PublicPlayerView:
         maker_hooks=player.maker_hooks,
         feyd_track_space=player.feyd_track_space,
         in_play=player.in_play,
+        discard_pile=player.discard_pile,
         trashed=player.trashed,
         intrigue_faceup=player.intrigue_faceup,
         imperium_set_aside=player.imperium_set_aside,
@@ -199,5 +204,5 @@ def _public_player_view(player: PlayerState) -> PublicPlayerView:
         won_conflict_ids=player.won_conflict_ids,
         face_down_battle_card_ids=player.face_down_battle_card_ids,
         active_contract_ids=player.active_contract_ids,
-        completed_contract_count=len(player.completed_contract_ids),
+        completed_contract_ids=player.completed_contract_ids,
     )

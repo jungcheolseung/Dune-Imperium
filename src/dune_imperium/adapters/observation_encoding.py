@@ -42,7 +42,7 @@ from dune_imperium.core.observation import PlayerView, PublicPlayerView
 from dune_imperium.core.state import GamePhase
 from dune_imperium.rules.frames import FrameKind
 
-OBSERVATION_VERSION: Final = 2
+OBSERVATION_VERSION: Final = 3
 _SEATS: Final = 4
 
 PERSONAL_CARD_IDS: Final = (
@@ -92,17 +92,19 @@ class ObservationSegment:
 def _seat_segment_lengths(seat: int) -> tuple[tuple[str, int], ...]:
     prefix = f"seat{seat}"
     return (
-        (f"{prefix}_scalars", 28),
+        (f"{prefix}_scalars", 26),
         (f"{prefix}_alliances", len(FACTION_IDS)),
         (f"{prefix}_control", len(CONTROL_SPACE_IDS)),
         (f"{prefix}_agent_locations", _AGENT_LOCATION_SLOTS),
         (f"{prefix}_spy_posts", len(POST_IDS)),
         (f"{prefix}_battle_cards", len(BATTLE_CARD_IDS)),
         (f"{prefix}_in_play", len(PERSONAL_CARD_IDS)),
+        (f"{prefix}_discard", len(PERSONAL_CARD_IDS)),
         (f"{prefix}_trashed", len(PERSONAL_CARD_IDS)),
         (f"{prefix}_intrigue_faceup", len(INTRIGUE_IDS)),
         (f"{prefix}_imperium_set_aside", _SET_ASIDE_SLOTS),
         (f"{prefix}_active_contracts", len(CONTRACT_IDS)),
+        (f"{prefix}_completed_contracts", len(CONTRACT_IDS)),
     )
 
 
@@ -127,7 +129,6 @@ def _segment_lengths() -> tuple[tuple[str, int], ...]:
     lengths.extend(
         (
             ("private_hand", len(PERSONAL_CARD_IDS)),
-            ("private_discard", len(PERSONAL_CARD_IDS)),
             ("private_intrigue", len(INTRIGUE_IDS)),
         )
     )
@@ -260,7 +261,6 @@ def encode_player_view(view: PlayerView) -> tuple[int, ...]:
         _write_seat(writer, seat_offset, view.players[seat])
 
     writer.write("private_hand", _personal_counts(view.private.hand))
-    writer.write("private_discard", _personal_counts(view.private.discard_pile))
     writer.write("private_intrigue", _intrigue_counts(view.private.intrigue_cards))
     return writer.finish()
 
@@ -294,7 +294,6 @@ def _write_seat(writer: _Writer, seat_offset: int, player: PublicPlayerView) -> 
             int(player.high_council),
             int(player.maker_hooks),
             player.memories,
-            player.completed_contract_count,
             _index_plus_one(player.leader_id, LEADER_IDS)
             if player.leader_id is not None
             else 0,
@@ -302,7 +301,6 @@ def _write_seat(writer: _Writer, seat_offset: int, player: PublicPlayerView) -> 
             FEYD_TRACK_IDS.index(player.feyd_track_space),
             player.hand_size,
             player.deck_size,
-            player.discard_size,
             player.intrigue_card_count,
         ],
     )
@@ -332,6 +330,7 @@ def _write_seat(writer: _Writer, seat_offset: int, player: PublicPlayerView) -> 
         ],
     )
     writer.write(f"{prefix}_in_play", _personal_counts(player.in_play))
+    writer.write(f"{prefix}_discard", _personal_counts(player.discard_pile))
     writer.write(f"{prefix}_trashed", _personal_counts(player.trashed))
     writer.write(
         f"{prefix}_intrigue_faceup", _intrigue_counts(player.intrigue_faceup)
@@ -348,6 +347,10 @@ def _write_seat(writer: _Writer, seat_offset: int, player: PublicPlayerView) -> 
     )
     writer.write(
         f"{prefix}_active_contracts", _contract_flags(player.active_contract_ids)
+    )
+    writer.write(
+        f"{prefix}_completed_contracts",
+        _contract_flags(player.completed_contract_ids),
     )
 
 

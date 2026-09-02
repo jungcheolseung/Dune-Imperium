@@ -1,5 +1,7 @@
 """Tests for the versioned flat observation encoding."""
 
+from dataclasses import replace
+
 import pytest
 
 from dune_imperium import RulesetConfig
@@ -22,12 +24,12 @@ from dune_imperium.simulation import run_random_game
 
 
 def test_layout_is_versioned_and_contiguous() -> None:
-    assert OBSERVATION_VERSION == 2
+    assert OBSERVATION_VERSION == 3
     assert len(PERSONAL_CARD_IDS) == 63
     assert len(INTRIGUE_IDS) == 39
     assert len(CONFLICT_IDS) == 16
     assert len(BATTLE_CARD_IDS) == 21
-    assert OBSERVATION_SIZE == 1415
+    assert OBSERVATION_SIZE == 1676
 
     offset = 0
     for segment in OBSERVATION_SEGMENTS:
@@ -65,8 +67,8 @@ def test_reset_state_encodes_the_turn_decision_for_every_observer() -> None:
         assert view.private is not None
         assert sum(hand) == len(view.private.hand) == 5
         seat_scalars = encoded[segment_slice("seat0_scalars")]
-        assert seat_scalars[24] == 5  # own public hand size
-        assert seat_scalars[25] == 5  # own public deck size
+        assert seat_scalars[23] == 5  # own public hand size
+        assert seat_scalars[24] == 5  # own public deck size
 
 
 def test_seat_blocks_rotate_egocentrically() -> None:
@@ -78,10 +80,40 @@ def test_seat_blocks_rotate_egocentrically() -> None:
 
     # Observer 0's seat1 block and observer 1's seat0 block both describe
     # absolute player 1, so every public chunk matches.
-    for segment_name in ("scalars", "alliances", "battle_cards", "in_play"):
+    for segment_name in (
+        "scalars",
+        "alliances",
+        "battle_cards",
+        "in_play",
+        "discard",
+        "completed_contracts",
+    ):
         zero_slice = from_zero[segment_slice(f"seat1_{segment_name}")]
         one_slice = from_one[segment_slice(f"seat0_{segment_name}")]
         assert zero_slice == one_slice
+
+
+def test_every_seat_discard_pile_is_encoded_for_every_observer() -> None:
+    # OQ-010 ruling 1: discard piles are re-checkable by everyone because
+    # every card reached them face up [Main pp. 9, 12, 13, 20].
+    engine = UprisingRulesEngine()
+    state = engine.reset(RulesetConfig(), seed=8)
+    players = list(state.players)
+    players[1] = replace(
+        players[1],
+        deck=players[1].deck[:-2],
+        discard_pile=(*players[1].discard_pile, *players[1].deck[-2:]),
+    )
+    state = replace(state, players=tuple(players))
+
+    for observer in range(4):
+        encoded = encode_player_view(engine.observe(state, observer))
+        relative = (1 - observer) % 4
+        discard = encoded[segment_slice(f"seat{relative}_discard")]
+        assert sum(discard) == 2
+        assert not any(
+            segment.name == "private_discard" for segment in OBSERVATION_SEGMENTS
+        )
 
 
 @pytest.mark.parametrize("choam_module", (False, True))

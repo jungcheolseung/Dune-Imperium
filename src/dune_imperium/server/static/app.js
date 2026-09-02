@@ -1173,11 +1173,8 @@ function renderSeats() {
     const zones = [];
     zones.push(`hand ${player.hand_size}`);
     zones.push(`deck ${player.deck_size}`);
-    zones.push(`discard ${player.discard_size}`);
+    zones.push(`discard ${player.discard_pile.length}`);
     zones.push(`intrigue ${player.intrigue_card_count}`);
-    if (player.completed_contract_count) {
-      zones.push(`계약 완료 ${player.completed_contract_count}`);
-    }
     seatLine(card, "존", zones.join(" · "));
 
     const battle = [
@@ -1199,13 +1196,24 @@ function renderSeats() {
       }
       card.appendChild(line);
     }
-    if (player.active_contract_ids.length) {
+    if (
+      player.active_contract_ids.length ||
+      player.completed_contract_ids.length
+    ) {
       const line = document.createElement("div");
       line.className = "cardline";
       const strong = document.createElement("strong");
       strong.textContent = "Contracts ";
       line.appendChild(strong);
       for (const id of player.active_contract_ids) line.appendChild(chip(id));
+      /* Completed Contracts stay re-checkable (OQ-010): their completion
+         was announced before they flipped face down. */
+      for (const id of player.completed_contract_ids) {
+        const mark = chip(id);
+        mark.textContent += " (완료)";
+        mark.classList.add("muted");
+        line.appendChild(mark);
+      }
       card.appendChild(line);
     }
     if (player.in_play.length) {
@@ -1236,11 +1244,11 @@ function renderPrivate() {
 
   const hand = section(panel, `Hand (${view.private.hand.length})`);
   chipList(hand, view.private.hand, "비어 있음");
-  const discard = section(
-    panel,
-    `Discard (${view.private.discard_pile.length})`
-  );
-  chipList(discard, view.private.discard_pile, "비어 있음");
+  /* Discard piles are public (OQ-010); the owner's copy lives in the seat's
+     public block like everyone else's. */
+  const ownDiscard = view.players[view.player].discard_pile;
+  const discard = section(panel, `Discard (${ownDiscard.length})`);
+  chipList(discard, ownDiscard, "비어 있음");
   const intrigue = section(
     panel,
     `Intrigue (${view.private.intrigue_cards.length})`

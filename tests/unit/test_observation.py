@@ -70,8 +70,12 @@ def test_view_contains_public_state_and_only_observers_private_cards() -> None:
     assert view.private is not None
     assert view.private.deck_size == 2
     assert view.private.hand == ("p0:hand",)
-    assert view.private.discard_pile == ("p0:discard",)
     assert view.private.intrigue_cards == ("p0:intrigue",)
+    assert not hasattr(view.private, "discard_pile")
+    # Every discard pile is re-checkable by everyone (OQ-010 ruling 1): each
+    # card entered it face up [Main pp. 9, 12, 13, 20].
+    assert view.players[0].discard_pile == ("p0:discard",)
+    assert view.players[1].discard_pile == ("p1:discard",)
 
 
 def test_opponent_secrets_and_hidden_deck_orders_do_not_change_view() -> None:
@@ -109,7 +113,6 @@ def test_each_player_receives_their_own_private_cards() -> None:
     assert first.private is not None
     assert second.players[0].hand_size == len(first.private.hand)
     assert second.players[0].deck_size == first.private.deck_size
-    assert second.players[0].discard_size == len(first.private.discard_pile)
     assert second.players[0].intrigue_card_count == len(first.private.intrigue_cards)
 
 
@@ -141,11 +144,12 @@ def test_contract_market_is_public_but_hidden_contract_identities_are_redacted()
     assert view.face_up_contract_ids == ("contract:high_council_i",)
     assert view.contract_bank_size == 2
     assert view.players[0].active_contract_ids == ("contract:arrakeen_i",)
-    assert view.players[0].completed_contract_count == 1
-    assert view.players[1].completed_contract_count == 1
-    assert view.private is not None
-    assert not hasattr(view.players[1], "completed_contract_ids")
-    assert not hasattr(view.private, "completed_contract_ids")
+    # A completed Contract was face up while active and its completion was
+    # announced before it flipped [Main p. 16], so the identity stays public
+    # for every seat (OQ-010 ruling 2); only the bank order is hidden.
+    assert view.players[0].completed_contract_ids == ("contract:immediate",)
+    assert view.players[1].completed_contract_ids == ("contract:espionage_i",)
+    assert not hasattr(view.players[1], "completed_contract_count")
     assert observe_state(reordered, 0) == view
 
 
