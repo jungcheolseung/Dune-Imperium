@@ -654,12 +654,15 @@ async function enterReview(seat) {
   state.review = { meta, seat, cursor: meta.step_count };
   const select = el("review-seat");
   select.textContent = "";
-  for (const humanSeat of humanSeats()) {
+  /* A finished game is fully disclosed (OQ-010), so any seat — human or
+     AI — can be reviewed from its own perspective. */
+  state.summary.seats.forEach((kind, reviewSeat) => {
     const option = document.createElement("option");
-    option.value = String(humanSeat);
-    option.textContent = `좌석 ${humanSeat}`;
+    option.value = String(reviewSeat);
+    const kindLabel = (SEAT_KINDS.find(([value]) => value === kind) || [kind, kind])[1];
+    option.textContent = `좌석 ${reviewSeat} (${kindLabel})`;
     select.appendChild(option);
-  }
+  });
   select.value = String(seat);
   const slider = el("review-slider");
   slider.max = String(meta.step_count);
@@ -695,12 +698,14 @@ async function reviewGoto(cursor) {
 function describeReviewStep(label) {
   if (!label) return "게임 시작 전";
   if (label.type === "chance") {
-    return `chance: ${prettify(label.decision_id)}`;
+    const values = label.values || [];
+    const shown =
+      values.length <= 3
+        ? values.map(nameOf).join(", ")
+        : `${values.length}장 · ${values.slice(0, 3).map(nameOf).join(", ")} …`;
+    return `chance: ${prettify(label.decision_id)}` + (shown ? ` — ${shown}` : "");
   }
-  if (label.action_id) {
-    return `좌석 ${label.actor}: ${describeAction(label)}`;
-  }
-  return `좌석 ${label.actor} 행동`;
+  return `좌석 ${label.actor}: ${describeAction(label)}`;
 }
 
 function reviewJumpOwn(direction) {
@@ -745,6 +750,55 @@ function render() {
   renderSpaces();
   renderSeats();
   renderPrivate();
+  renderDisclosure();
+}
+
+/* Post-game full disclosure (OQ-010 ruling 4): once a game has finished,
+   the server adds every hidden zone to the view, both live and in review. */
+function renderDisclosure() {
+  const panel = el("disclosure");
+  panel.textContent = "";
+  const view = state.view;
+  if (!view || !view.disclosure) {
+    panel.hidden = true;
+    return;
+  }
+  panel.hidden = false;
+  const heading = document.createElement("h2");
+  heading.textContent = "종료 후 공개 (모든 비공개 존)";
+  panel.appendChild(heading);
+  for (const zones of view.disclosure.players) {
+    const seat = section(panel, `좌석 ${zones.player}`);
+    const line = (label, ids, empty) => {
+      const row = document.createElement("div");
+      row.className = "cardline";
+      const strong = document.createElement("strong");
+      strong.textContent = `${label} `;
+      row.appendChild(strong);
+      if (!ids.length) row.append(empty);
+      for (const id of ids) row.appendChild(chip(id));
+      seat.appendChild(row);
+    };
+    line(`Hand (${zones.hand.length})`, zones.hand, "비어 있음");
+    line(`Deck 순서 (${zones.deck.length})`, zones.deck, "비어 있음");
+    line(`Intrigue (${zones.intrigue_cards.length})`, zones.intrigue_cards, "없음");
+  }
+  const decks = section(panel, "공용 덱 순서");
+  const deckLine = (label, ids) => {
+    const row = document.createElement("div");
+    row.className = "cardline";
+    const strong = document.createElement("strong");
+    strong.textContent = `${label} (${ids.length}) `;
+    row.appendChild(strong);
+    for (const id of ids) row.appendChild(chip(id));
+    decks.appendChild(row);
+  };
+  deckLine("Imperium deck", view.disclosure.imperium_deck);
+  deckLine("Intrigue deck", view.disclosure.intrigue_deck);
+  deckLine("Conflict deck", view.disclosure.conflict_deck);
+  if (view.disclosure.contract_bank.length) {
+    deckLine("Contract bank", view.disclosure.contract_bank);
+  }
 }
 
 function renderBanner() {

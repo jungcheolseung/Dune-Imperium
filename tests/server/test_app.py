@@ -195,10 +195,16 @@ def test_review_over_http(tmp_path: Path) -> None:
     assert final.json()["phase"] == "finished"
     assert final.json()["view"]["player"] == 0
 
+    # Post-game disclosure (OQ-010): AI seats can be reviewed too.
     assert (
         client.get(f"/games/{game_id}/review", params={"seat": 1}).status_code
+        == 200
+    )
+    assert (
+        client.get(f"/games/{game_id}/review", params={"seat": 4}).status_code
         == 403
     )
+    assert "disclosure" in final.json()["view"]
     assert (
         client.get(
             f"/games/{game_id}/review/{step_count + 1}", params={"seat": 0}

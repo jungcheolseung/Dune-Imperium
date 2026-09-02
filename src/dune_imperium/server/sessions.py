@@ -27,7 +27,7 @@ from dune_imperium.config import RulesetConfig
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceOutcome, ChanceResolver
 from dune_imperium.core.decisions import ChanceDecision, PlayerDecision
-from dune_imperium.core.observation import PlayerView
+from dune_imperium.core.observation import PlayerView, disclose_hidden_zones
 from dune_imperium.core.replay import ReplayStep
 from dune_imperium.core.state import GamePhase, GameState, canonical_state_hash
 from dune_imperium.rules import UprisingRulesEngine
@@ -160,13 +160,18 @@ class GameSessionManager:
             return self._summary_locked(session)
 
     def view(self, game_id: str, seat: int) -> JsonObject:
-        """Return the serialized ``PlayerView`` of one human seat."""
+        """Return the serialized ``PlayerView`` of one human seat.
+
+        Once the game has finished the payload also carries ``disclosure``
+        with every hidden zone (OQ-010 ruling 4: post-game full disclosure).
+        """
 
         session = self._get(game_id)
         self._require_human(session, seat)
         with session.lock:
-            view = session.engine.observe(session.state, seat)
-        return _serialize_view(view)
+            state = session.state
+            view = session.engine.observe(state, seat)
+        return _serialize_view(view, state if _is_finished(state) else None)
 
     def legal_actions(self, game_id: str, seat: int) -> JsonObject:
         """Return the indexed legal actions of one human seat."""
@@ -293,16 +298,16 @@ class GameSessionManager:
         return summary
 
     def review(self, game_id: str, seat: int) -> JsonObject:
-        """Return the step timeline of one finished game for one human seat.
+        """Return the step timeline of one finished game.
 
-        Review keeps the live visibility boundary (OQ-010): the reviewed
-        seat sees its own recorded actions in full, only the acting seat of
-        other players' actions, and never the values of chance outcomes
-        (shuffle outcomes spell out hidden deck orders).
+        A finished game is fully disclosed (OQ-010 ruling 4): every recorded
+        action is labelled in full whoever acted, chance outcomes carry their
+        values (a shuffle's order is no longer a secret), and any configured
+        seat — human or AI — can be reviewed.
         """
 
         session = self._get(game_id)
-        self._require_human(session, seat)
+        self._require_seat(session, seat)
         with session.lock:
             _require_finished(session)
             steps = tuple(session.steps)
@@ -310,14 +315,18 @@ class GameSessionManager:
             "game_id": session.game_id,
             "seat": seat,
             "step_count": len(steps),
-            "steps": [_review_step_label(step, seat) for step in steps],
+            "steps": [_review_step_label(step) for step in steps],
         }
 
     def review_state(self, game_id: str, seat: int, step: int) -> JsonObject:
-        """Return the reviewed seat's view after the first ``step`` steps."""
+        """Return the reviewed seat's view after the first ``step`` steps.
+
+        The payload also carries ``disclosure`` — every hidden zone at that
+        step — because the game is over (OQ-010 ruling 4).
+        """
 
         session = self._get(game_id)
-        self._require_human(session, seat)
+        self._require_seat(session, seat)
         with session.lock:
             _require_finished(session)
             steps = tuple(session.steps)
@@ -335,7 +344,7 @@ class GameSessionManager:
             "step": step,
             "round_number": state.round_number,
             "phase": str(state.phase),
-            "view": _serialize_view(engine.observe(state, seat)),
+            "view": _serialize_view(engine.observe(state, seat), state),
         }
 
     def _get(self, game_id: str) -> GameSession:
@@ -345,9 +354,12 @@ class GameSessionManager:
             except KeyError:
                 raise UnknownGameError(f"unknown game: {game_id}") from None
 
-    def _require_human(self, session: GameSession, seat: int) -> None:
+    def _require_seat(self, session: GameSession, seat: int) -> None:
         if not 0 <= seat < session.config.players:
             raise SeatAccessError("seat does not identify a configured player")
+
+    def _require_human(self, session: GameSession, seat: int) -> None:
+        self._require_seat(session, seat)
         if session.seats[seat] != HUMAN_SEAT:
             # Views and legal actions can carry private card identities.
             raise SeatAccessError("only a human seat may be read or acted for")
@@ -483,29 +495,43 @@ def _step_summary(step: ReplayStep) -> str:
     return f"action {step.action_id} by seat {step.actor}"
 
 
+def _is_finished(state: GameState) -> bool:
+    return state.phase is GamePhase.FINISHED
+
+
 def _require_finished(session: GameSession) -> None:
-    if session.state.phase is not GamePhase.FINISHED:
+    if not _is_finished(session.state):
         raise SessionError("replay review opens after the game finishes")
 
 
-def _review_step_label(step: ReplayStep, seat: int) -> JsonObject:
-    """Label one recorded step without crossing the seat's visibility."""
+def _review_step_label(step: ReplayStep) -> JsonObject:
+    """Label one recorded step of a finished game in full (OQ-010 ruling 4)."""
 
     if isinstance(step, ChanceOutcome):
-        return {"type": "chance", "decision_id": step.decision_id}
-    if step.actor == seat:
         return {
-            "type": "action",
-            "actor": step.actor,
-            "action_id": step.action_id,
-            "arguments": _jsonify(dict(step.arguments)),
+            "type": "chance",
+            "decision_id": step.decision_id,
+            "values": list(step.values),
         }
-    return {"type": "action", "actor": step.actor}
+    return {
+        "type": "action",
+        "actor": step.actor,
+        "action_id": step.action_id,
+        "arguments": _jsonify(dict(step.arguments)),
+    }
 
 
-def _serialize_view(view: PlayerView) -> JsonObject:
+def _serialize_view(view: PlayerView, disclosed: GameState | None) -> JsonObject:
+    """Serialize a view, adding every hidden zone of ``disclosed`` if given.
+
+    ``disclosed`` must only be passed for a game that has finished (OQ-010
+    ruling 4); it may be an earlier state of that finished game.
+    """
+
     serialized = _jsonify(asdict(view))
     assert isinstance(serialized, dict)
+    if disclosed is not None:
+        serialized["disclosure"] = _jsonify(asdict(disclose_hidden_zones(disclosed)))
     return serialized
 
 

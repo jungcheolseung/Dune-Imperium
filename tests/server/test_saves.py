@@ -225,14 +225,15 @@ def test_review_replays_a_finished_game_for_a_human_seat(
 
     kinds = {step["type"] for step in steps}
     assert kinds == {"action", "chance"}
+    # A finished game is fully disclosed (OQ-010 ruling 4): every step is
+    # labelled in full whoever acted, and chance outcomes carry their values.
     for step in steps:
         if step["type"] == "chance":
-            assert "values" not in step
             assert _text(step["decision_id"])
-        elif step["actor"] == 0:
-            assert _text(step["action_id"])
+            assert _texts(step["values"])
         else:
-            assert set(step) == {"type", "actor"}
+            assert _text(step["action_id"])
+            assert isinstance(step["arguments"], dict)
     assert any(step["type"] == "action" and step["actor"] == 0 for step in steps)
     assert any(step["type"] == "action" and step["actor"] != 0 for step in steps)
 
@@ -244,14 +245,31 @@ def test_review_replays_a_finished_game_for_a_human_seat(
     json.dumps(review)
     json.dumps(final)
 
+    # Every hidden zone is disclosed at every reviewed step, and the live
+    # view of the finished game carries the same disclosure.
+    disclosure = _obj(_obj(final["view"])["disclosure"])
+    seats = _rows(disclosure["players"])
+    assert [seat["player"] for seat in seats] == [0, 1, 2, 3]
+    assert {"hand", "deck", "intrigue_cards"} <= set(seats[1])
+    assert {"imperium_deck", "intrigue_deck", "contract_bank", "conflict_deck"} <= (
+        set(disclosure)
+    )
+    start_disclosure = _obj(_obj(start["view"])["disclosure"])
+    assert _texts(_rows(start_disclosure["players"])[1]["hand"])
+    assert _texts(start_disclosure["imperium_deck"])
+
+    # Any configured seat — including an AI seat — can be reviewed.
+    assert manager.review(game_id, 1)["seat"] == 1
+    assert _obj(manager.review_state(game_id, 1, 0)["view"])["player"] == 1
+
     with pytest.raises(SessionError, match="out of range"):
         manager.review_state(game_id, 0, len(steps) + 1)
     with pytest.raises(SessionError, match="out of range"):
         manager.review_state(game_id, 0, -1)
     with pytest.raises(SeatAccessError):
-        manager.review(game_id, 1)
+        manager.review(game_id, 4)
     with pytest.raises(SeatAccessError):
-        manager.review_state(game_id, 1, 0)
+        manager.review_state(game_id, 4, 0)
 
 
 def test_review_requires_a_finished_game() -> None:
@@ -263,3 +281,5 @@ def test_review_requires_a_finished_game() -> None:
         manager.review(game_id, 0)
     with pytest.raises(SessionError, match="finishes"):
         manager.review_state(game_id, 0, 0)
+    # Disclosure is a post-game convention only (OQ-010 ruling 4).
+    assert "disclosure" not in manager.view(game_id, 0)

@@ -15,9 +15,12 @@ from dune_imperium.core.engine import (
 )
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.observation import (
+    DisclosedPlayerZones,
+    HiddenZoneDisclosure,
     PlayerView,
     PrivatePlayerView,
     PublicPlayerView,
+    disclose_hidden_zones,
     observe_state,
 )
 from dune_imperium.core.player import Influence, PlayerState, Resources
@@ -43,6 +46,8 @@ __all__ = [
     "Influence",
     "PlayerDecision",
     "PlayerState",
+    "DisclosedPlayerZones",
+    "HiddenZoneDisclosure",
     "PlayerView",
     "PrivatePlayerView",
     "PublicPlayerView",
@@ -52,6 +57,7 @@ __all__ = [
     "ReplayMismatchError",
     "Transition",
     "canonical_state_hash",
+    "disclose_hidden_zones",
     "observe_state",
     "replay_game",
 ]

@@ -136,6 +136,55 @@ def resolving_intrigue_ids(state: GameState) -> tuple[str, ...]:
     return tuple(resolving)
 
 
+@dataclass(frozen=True, slots=True)
+class DisclosedPlayerZones:
+    """One seat's hidden zones, laid open after the game has finished."""
+
+    player: int
+    hand: tuple[str, ...]
+    deck: tuple[str, ...]
+    intrigue_cards: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class HiddenZoneDisclosure:
+    """Every hidden zone of a state, for post-game review only.
+
+    OQ-010 ruling 4 (project convention, not an official rule): once a game
+    has finished, review may show everything — each seat's hand, deck order,
+    and held Intrigue, plus the face-down deck and bank orders. The caller
+    is responsible for only producing this after ``GamePhase.FINISHED`` of
+    the game being reviewed; the state passed in may be any earlier state
+    of that finished game.
+    """
+
+    players: tuple[DisclosedPlayerZones, ...]
+    imperium_deck: tuple[str, ...]
+    intrigue_deck: tuple[str, ...]
+    contract_bank: tuple[str, ...]
+    conflict_deck: tuple[str, ...]
+
+
+def disclose_hidden_zones(state: GameState) -> HiddenZoneDisclosure:
+    """Return every hidden zone of ``state`` for post-game review (OQ-010)."""
+
+    return HiddenZoneDisclosure(
+        players=tuple(
+            DisclosedPlayerZones(
+                player=player.player_id,
+                hand=player.hand,
+                deck=player.deck,
+                intrigue_cards=player.intrigue_cards,
+            )
+            for player in state.players
+        ),
+        imperium_deck=state.imperium_deck,
+        intrigue_deck=state.intrigue_deck,
+        contract_bank=state.contract_bank,
+        conflict_deck=state.conflict_deck,
+    )
+
+
 def observe_state(state: GameState, player: int) -> PlayerView:
     """Return a pure view that omits every hidden card ordering and opponent secret."""
 
