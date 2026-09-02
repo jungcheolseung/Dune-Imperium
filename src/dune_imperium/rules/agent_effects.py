@@ -1761,9 +1761,12 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             card_instance_id,
             Faction.BENE_GESSERIT,
         ):
+            # The card was face up in play, so everyone keeps knowing it sits
+            # in the hand (OQ-010).
             next_owner = replace(
                 owner,
                 hand=(*owner.hand, card_instance_id),
+                hand_public=(*owner.hand_public, card_instance_id),
                 in_play=tuple(
                     candidate
                     for candidate in owner.in_play

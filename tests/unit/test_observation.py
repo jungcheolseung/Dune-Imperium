@@ -78,6 +78,49 @@ def test_view_contains_public_state_and_only_observers_private_cards() -> None:
     assert view.players[1].discard_pile == ("p1:discard",)
 
 
+def test_publicly_acquired_hand_cards_and_resolving_intrigue_are_public() -> None:
+    from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
+
+    state = _state()
+    players = list(state.players)
+    # A card that reached the hand face up (Corrinth City, Intrigue "put it
+    # in your hand", a Bond return) stays known to everyone (OQ-010).
+    players[1] = replace(
+        players[1],
+        hand=("p1:hand", "p1:known"),
+        hand_public=("p1:known",),
+    )
+    state = replace(
+        state,
+        players=tuple(players),
+        decision_stack=(
+            DecisionFrame(
+                kind="intrigue_choice",
+                frame_id="test:choice",
+                decision=PlayerDecision(owner=1, prompt="Resolve"),
+                context=(("card_id", "p1:intrigue"), ("slot", 0)),
+            ),
+        ),
+    )
+
+    view = observe_state(state, 0)
+
+    assert view.players[1].hand_public == ("p1:known",)
+    assert view.players[1].hand_size == 2
+    # The played Intrigue is revealed while its choices resolve [Main p. 7].
+    assert view.intrigue_resolving == ("p1:intrigue",)
+    # The rest of the hand stays hidden.
+    hidden_variant = replace(
+        state,
+        players=(
+            state.players[0],
+            replace(state.players[1], hand=("p1:known", "other")),
+            *state.players[2:],
+        ),
+    )
+    assert observe_state(hidden_variant, 0) == view
+
+
 def test_opponent_secrets_and_hidden_deck_orders_do_not_change_view() -> None:
     state = _state()
     opponent = state.players[1]

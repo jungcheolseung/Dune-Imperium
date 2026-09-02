@@ -74,7 +74,7 @@ def test_round_start_adds_five_cards_instead_of_refilling_hand_to_five() -> None
     assert started.players[0].hand[0] == "retained_card"
 
 
-def test_round_start_emits_public_conflict_and_private_draw_events() -> None:
+def test_round_start_emits_public_conflict_and_draw_count_events() -> None:
     state = _setup_state()
 
     events = begin_round(state).events
@@ -82,13 +82,12 @@ def test_round_start_emits_public_conflict_and_private_draw_events() -> None:
     assert len(events) == 5
     assert events[0].kind == "conflict_revealed"
     assert events[0].visible_to is None
-    assert tuple(event.visible_to for event in events[1:]) == (
-        (0,),
-        (1,),
-        (2,),
-        (3,),
-    )
+    # Draw counts are public (OQ-010: zone sizes are visible at the table)
+    # and the payload never names the drawn cards.
     assert all(event.kind == "cards_drawn" for event in events[1:])
+    assert all(event.visible_to is None for event in events[1:])
+    assert [dict(event.payload)["player"] for event in events[1:]] == [0, 1, 2, 3]
+    assert all("card_id" not in dict(event.payload) for event in events[1:])
 
 
 def _controlled_round_start(*, troops_supply: int = 9) -> GameState:

@@ -2,8 +2,9 @@
 
 ``run_checked_game`` plays one seeded game to ``FINISHED`` — every seat
 driven by one selectable baseline policy — while checking, after every
-transition, the global card-conservation invariants and, at sampled player
-decisions, the observation-privacy invariant and (optionally) that every
+transition, the global card-conservation invariants and that no public event
+names a hidden card, and, at sampled player decisions, the observation-privacy
+invariant and (optionally) that every
 advertised legal action actually applies and round-trips through the action
 codec. It also detects deadlocks (a pending player decision with no legal
 action or a game that never finishes) and verifies the recorded replay.
@@ -33,6 +34,7 @@ from dune_imperium.simulation.coverage import Census, collect_game_coverage
 from dune_imperium.simulation.invariants import (
     CardCensus,
     InvariantViolation,
+    check_event_visibility,
     check_observation_privacy,
     check_state_invariants,
 )
@@ -138,7 +140,7 @@ def run_checked_game(
         if isinstance(decision, ChanceDecision):
             outcome = chance.resolve(decision)
             steps.append(outcome)
-            state = engine.apply(state, outcome).state
+            transition = engine.apply(state, outcome)
         else:
             if not isinstance(decision, PlayerDecision):
                 raise InvariantViolation(f"unknown decision type: {decision!r}")
@@ -156,7 +158,12 @@ def run_checked_game(
             observation = engine.observe(state, decision.owner)
             action = agents[decision.owner].choose_action(observation, actions)
             steps.append(action)
-            state = engine.apply(state, action).state
+            transition = engine.apply(state, action)
+        state = transition.state
+        try:
+            check_event_visibility(state, transition.events)
+        except InvariantViolation as violation:
+            raise InvariantViolation(f"after step {len(steps)}: {violation}") from None
         if census is None and state.phase is not GamePhase.SETUP:
             census = CardCensus.from_state(state)
         if census is not None:

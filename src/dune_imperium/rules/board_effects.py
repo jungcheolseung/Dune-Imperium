@@ -220,12 +220,24 @@ def apply_secrets_steal(state: GameState, outcome: ChanceOutcome) -> RuleResult:
         for candidate in state.players
     )
     next_state = replace(state.pop_decision(), players=players)
-    event = GameEvent(
-        event_id=f"{frame.decision.decision_id}:stolen",
-        kind="intrigue_card_stolen",
-        payload=(("card_id", card_id), ("player", thief), ("victim", victim)),
+    # The theft itself is public (both Intrigue counts change at the table),
+    # but the stolen identity is not: Intrigue cards stay hidden from
+    # opponents until played [Main p. 7], so only the thief and the victim
+    # learn which card moved (OQ-010 ruling 3).
+    events = (
+        GameEvent(
+            event_id=f"{frame.decision.decision_id}:stolen",
+            kind="intrigue_card_stolen",
+            payload=(("player", thief), ("victim", victim)),
+        ),
+        GameEvent(
+            event_id=f"{frame.decision.decision_id}:stolen:identity",
+            kind="intrigue_card_stolen_identity",
+            payload=(("card_id", card_id), ("player", thief), ("victim", victim)),
+            visible_to=(thief, victim),
+        ),
     )
-    return RuleResult(state=next_state, events=(event,))
+    return RuleResult(state=next_state, events=events)
 
 
 def resolve_board_effect(state: GameState) -> RuleResult:

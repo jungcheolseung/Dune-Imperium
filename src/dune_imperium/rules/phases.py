@@ -69,11 +69,12 @@ def begin_round(state: GameState) -> RuleResult:
             payload=(("conflict_id", conflict_id), ("round", round_number)),
         ),
         *(
+            # The draw count is public: zone sizes are visible at the table
+            # (OQ-010) and the payload carries no card identity.
             GameEvent(
                 event_id=f"round:{round_number}:player:{player.player_id}:draw",
                 kind="cards_drawn",
                 payload=(("count", count), ("player", player.player_id)),
-                visible_to=(player.player_id,),
             )
             for player, count in zip(players, draw_counts, strict=True)
             if count > 0

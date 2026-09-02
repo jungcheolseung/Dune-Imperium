@@ -267,6 +267,7 @@ def _acquire_reserve_to_hand_with_solari(
     next_owner = replace(
         owner,
         hand=(*owner.hand, instance_id),
+        hand_public=(*owner.hand_public, instance_id),
         resources=replace(
             owner.resources,
             solari=owner.resources.solari - definition.acquisition_cost,
@@ -328,6 +329,7 @@ def _acquire_imperium_to_hand_with_solari(
     next_owner = replace(
         owner,
         hand=(*owner.hand, instance_id),
+        hand_public=(*owner.hand_public, instance_id),
         resources=replace(
             owner.resources,
             solari=owner.resources.solari - cost,
@@ -1054,6 +1056,9 @@ def acquire_reserve_for_intrigue(
     next_owner = replace(
         owner,
         hand=(*owner.hand, instance_id) if to_hand else owner.hand,
+        hand_public=(
+            (*owner.hand_public, instance_id) if to_hand else owner.hand_public
+        ),
         discard_pile=(
             owner.discard_pile if to_hand else (*owner.discard_pile, instance_id)
         ),
@@ -1119,6 +1124,9 @@ def acquire_imperium_for_intrigue(
     next_owner = replace(
         owner,
         hand=(*owner.hand, instance_id) if to_hand else owner.hand,
+        hand_public=(
+            (*owner.hand_public, instance_id) if to_hand else owner.hand_public
+        ),
         discard_pile=(
             owner.discard_pile if to_hand else (*owner.discard_pile, instance_id)
         ),

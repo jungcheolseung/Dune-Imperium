@@ -1178,7 +1178,8 @@ def test_secrets_one_qualifying_opponent_pushes_a_steal_frame() -> None:
     assert dict(top.context) == {"thief": 0, "victim": 1}
 
     outcome = ChanceResolver(seed=3).resolve(decision)
-    applied = apply_secrets_steal(resolved, outcome).state
+    result = apply_secrets_steal(resolved, outcome)
+    applied = result.state
     stolen = outcome.values[0]
 
     assert applied.players[1].intrigue_cards == tuple(
@@ -1186,6 +1187,16 @@ def test_secrets_one_qualifying_opponent_pushes_a_steal_frame() -> None:
     )
     assert applied.players[0].intrigue_cards == (stolen,)
     assert applied.decision_stack[-1].kind != "secrets_steal"
+    # The theft is public but the stolen identity stays between thief and
+    # victim: Intrigue is hidden from opponents until played [Main p. 7]
+    # (OQ-010 ruling 3 for the event log).
+    public, identity = result.events
+    assert public.kind == "intrigue_card_stolen"
+    assert public.visible_to is None
+    assert dict(public.payload) == {"player": 0, "victim": 1}
+    assert identity.kind == "intrigue_card_stolen_identity"
+    assert identity.visible_to == (0, 1)
+    assert dict(identity.payload) == {"card_id": stolen, "player": 0, "victim": 1}
 
 
 def test_secrets_two_qualifying_opponents_resolve_clockwise_from_the_thief() -> None:

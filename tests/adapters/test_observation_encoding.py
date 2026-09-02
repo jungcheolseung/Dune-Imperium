@@ -29,7 +29,7 @@ def test_layout_is_versioned_and_contiguous() -> None:
     assert len(INTRIGUE_IDS) == 39
     assert len(CONFLICT_IDS) == 16
     assert len(BATTLE_CARD_IDS) == 21
-    assert OBSERVATION_SIZE == 1676
+    assert OBSERVATION_SIZE == 1967
 
     offset = 0
     for segment in OBSERVATION_SEGMENTS:
@@ -85,6 +85,7 @@ def test_seat_blocks_rotate_egocentrically() -> None:
         "alliances",
         "battle_cards",
         "in_play",
+        "hand_public",
         "discard",
         "completed_contracts",
     ):

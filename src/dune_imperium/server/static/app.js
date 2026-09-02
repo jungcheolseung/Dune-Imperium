@@ -1225,6 +1225,29 @@ function renderSeats() {
       for (const id of player.in_play) line.appendChild(chip(id));
       card.appendChild(line);
     }
+    /* Hand cards that entered through a public move (Corrinth City, an
+       Intrigue "put it in your hand", a Bond return) stay known (OQ-010). */
+    if (player.hand_public.length) {
+      const line = document.createElement("div");
+      line.className = "cardline";
+      const strong = document.createElement("strong");
+      strong.textContent = "Hand (공개) ";
+      line.appendChild(strong);
+      for (const id of player.hand_public) line.appendChild(chip(id));
+      card.appendChild(line);
+    }
+    if (
+      view.intrigue_resolving.length &&
+      view.decision_owner === player.player
+    ) {
+      const line = document.createElement("div");
+      line.className = "cardline";
+      const strong = document.createElement("strong");
+      strong.textContent = "Intrigue 해결 중 ";
+      line.appendChild(strong);
+      for (const id of view.intrigue_resolving) line.appendChild(chip(id));
+      card.appendChild(line);
+    }
     wrap.appendChild(card);
   }
 }

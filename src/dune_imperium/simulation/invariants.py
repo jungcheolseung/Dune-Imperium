@@ -12,13 +12,17 @@ sweep can see across containers and time:
 - progress: a pending player decision must offer at least one legal action;
 - visibility: a player's observation must not depend on hidden information
   (deck orders, opponents' hand and Intrigue identities [Main p. 7], the
-  face-down Contract bank [Main p. 16]).
+  face-down Contract bank [Main p. 16]);
+- event visibility: a public event may only name cards that sit in a public
+  zone once the transition is applied (OQ-010 ruling 3), so a live event log
+  filtered by ``visible_to`` never leaks a hidden identity.
 """
 
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, replace
 
-from dune_imperium.core.observation import observe_state
+from dune_imperium.core.events import GameEvent
+from dune_imperium.core.observation import observe_state, resolving_intrigue_ids
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 
@@ -188,6 +192,62 @@ def check_observation_privacy(state: GameState) -> None:
             )
 
 
+def _hidden_instances(state: GameState) -> frozenset[str]:
+    """Card instances no seat may currently identify from the table.
+
+    Decks and the Contract bank are face down [Main pp. 4-6, 16]; hands and
+    held Intrigue are known only to their owner [Main p. 7]. Everything else
+    (in play, discard piles, trash, face-up Intrigue, the Imperium Row,
+    set-aside cards, active and completed Contracts, battle cards) has been
+    face up at some point and stays re-checkable under OQ-010.
+    """
+
+    hidden: set[str] = set()
+    hidden.update(state.imperium_deck)
+    hidden.update(state.intrigue_deck)
+    hidden.update(state.contract_bank)
+    hidden.update(state.conflict_deck)
+    for player in state.players:
+        hidden.update(player.hand)
+        hidden.update(player.deck)
+        hidden.update(player.intrigue_cards)
+        # Cards that reached the hand through a public move stay known.
+        hidden.difference_update(player.hand_public)
+    # A played Intrigue is revealed even while its choices still resolve.
+    hidden.difference_update(resolving_intrigue_ids(state))
+    return frozenset(hidden)
+
+
+def _payload_strings(event: GameEvent) -> Iterator[tuple[str, str]]:
+    for key, value in event.payload:
+        if isinstance(value, str):
+            yield key, value
+
+
+def check_event_visibility(state: GameState, events: Iterable[GameEvent]) -> None:
+    """Fail when a public event names a card that is hidden after the step.
+
+    ``state`` is the state the events describe (after the transition). A
+    public event (``visible_to=None``) feeds every seat's live log, so any
+    card identity in its payload must sit in a public zone of ``state``; an
+    identity that is still in a deck, the Contract bank, a hand, or a held
+    Intrigue set would leak through the log even though the observation
+    redacts it. Restricted events are the owner's business and are not
+    checked here.
+    """
+
+    hidden = _hidden_instances(state)
+    for event in events:
+        if event.visible_to is not None:
+            continue
+        for key, value in _payload_strings(event):
+            if value in hidden:
+                raise InvariantViolation(
+                    f"public event {event.kind} ({event.event_id}) names hidden "
+                    f"card {value!r} in payload field {key!r}"
+                )
+
+
 def _split_reversed(
     pool: tuple[str, ...],
     first_length: int,
@@ -199,13 +259,21 @@ def _split_reversed(
 def _scramble_hidden_information(state: GameState, observer: int) -> GameState:
     intrigue_pool: list[str] = list(state.intrigue_deck)
     players = list(state.players)
+    resolving = set(resolving_intrigue_ids(state))
 
     for seat, player in enumerate(players):
         if seat == observer:
             players[seat] = replace(player, deck=tuple(reversed(player.deck)))
             continue
-        hand, deck = _split_reversed((*player.hand, *player.deck), len(player.hand))
-        intrigue_pool.extend(player.intrigue_cards)
+        # Publicly known hand cards stay in the hand; only the face-down
+        # draws trade places with the deck.
+        known = set(player.hand_public)
+        secret_hand = tuple(card for card in player.hand if card not in known)
+        secret, deck = _split_reversed((*secret_hand, *player.deck), len(secret_hand))
+        hand = (*player.hand_public, *secret)
+        intrigue_pool.extend(
+            card for card in player.intrigue_cards if card not in resolving
+        )
         players[seat] = replace(player, hand=hand, deck=deck)
 
     reordered_intrigue = tuple(reversed(intrigue_pool))
@@ -213,10 +281,13 @@ def _scramble_hidden_information(state: GameState, observer: int) -> GameState:
     for seat, player in enumerate(players):
         if seat == observer:
             continue
-        held = len(state.players[seat].intrigue_cards)
+        kept = tuple(
+            card for card in state.players[seat].intrigue_cards if card in resolving
+        )
+        held = len(state.players[seat].intrigue_cards) - len(kept)
         players[seat] = replace(
             player,
-            intrigue_cards=reordered_intrigue[cursor : cursor + held],
+            intrigue_cards=(*kept, *reordered_intrigue[cursor : cursor + held]),
         )
         cursor += held
 

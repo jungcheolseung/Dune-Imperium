@@ -86,6 +86,14 @@ class PlayerState:
     feyd_track_space: str = "start"
     deck: tuple[str, ...] = ()
     hand: tuple[str, ...] = ()
+    # Hand cards whose identity every seat already knows because they
+    # entered the hand through a public move (acquired face up from the
+    # Imperium Row or Reserve straight to hand, or returned from in play)
+    # instead of a face-down draw. Under OQ-010 ("once revealed, information
+    # stays re-checkable") they remain public until they leave the hand;
+    # ``__post_init__`` drops any entry no longer in ``hand`` so a card that
+    # is played, discarded, or revealed and later redrawn is hidden again.
+    hand_public: tuple[str, ...] = ()
     discard_pile: tuple[str, ...] = ()
     in_play: tuple[str, ...] = ()
     trashed: tuple[str, ...] = ()
@@ -172,3 +180,13 @@ class PlayerState:
         intrigue_zones = (*self.intrigue_cards, *self.intrigue_faceup)
         if len(intrigue_zones) != len(set(intrigue_zones)):
             raise ValueError("an Intrigue card cannot be both held and face up")
+
+        if len(self.hand_public) != len(set(self.hand_public)):
+            raise ValueError("a hand card cannot be publicly known twice")
+        in_hand = set(self.hand)
+        if any(card_id not in in_hand for card_id in self.hand_public):
+            object.__setattr__(
+                self,
+                "hand_public",
+                tuple(card_id for card_id in self.hand_public if card_id in in_hand),
+            )

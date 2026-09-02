@@ -1624,6 +1624,8 @@ def test_weirding_woman_returns_to_hand_with_bene_gesserit_bond() -> None:
     result = resolve_agent_card_effect(placed)
 
     assert result.state.players[0].hand == (weirding_woman,)
+    # Returned from face-up play, so the hand copy stays public (OQ-010).
+    assert result.state.players[0].hand_public == (weirding_woman,)
     assert result.state.players[0].in_play == (truthtrance,)
 
 

@@ -86,11 +86,12 @@ def apply_personal_draw_reshuffle(
     )
     shuffled = replace(state.pop_decision(), players=players)
     drawn = _draw_available(shuffled, player, count, source)
+    # Public: everyone sees the discard pile become the new deck, and the
+    # payload carries only the count, never the shuffled order (OQ-010).
     event = GameEvent(
         event_id=f"{source}:discard_shuffled",
         kind="personal_discard_shuffled",
         payload=(("count", len(outcome.values)), ("player", player)),
-        visible_to=(player,),
     )
     return RuleResult(state=drawn.state, events=(event, *drawn.events))
 

@@ -10,6 +10,7 @@ from dune_imperium.simulation.coverage import (
 from dune_imperium.simulation.invariants import (
     CardCensus,
     InvariantViolation,
+    check_event_visibility,
     check_observation_privacy,
     check_state_invariants,
 )
@@ -38,6 +39,7 @@ __all__ = [
     "RoundSimulation",
     "SweepFailure",
     "SweepReport",
+    "check_event_visibility",
     "check_observation_privacy",
     "check_state_invariants",
     "collect_game_coverage",

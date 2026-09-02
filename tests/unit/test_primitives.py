@@ -39,3 +39,21 @@ def test_state_hash_changes_with_replay_relevant_state() -> None:
 def test_decision_frame_requires_kind() -> None:
     with pytest.raises(ValueError, match="frame kind"):
         DecisionFrame("", "frame", PlayerDecision(0, "Prompt"))
+
+
+def test_player_state_forgets_public_hand_cards_that_leave_the_hand() -> None:
+    from dataclasses import replace
+
+    from dune_imperium.core import PlayerState
+
+    player = PlayerState(player_id=0, hand=("a", "b"), hand_public=("b",))
+    assert player.hand_public == ("b",)
+
+    played = replace(player, hand=("a",))
+    assert played.hand_public == ()
+    # Drawing the same card again face down does not make it public.
+    redrawn = replace(played, hand=("a", "b"))
+    assert redrawn.hand_public == ()
+
+    with pytest.raises(ValueError, match="publicly known twice"):
+        PlayerState(player_id=0, hand=("a",), hand_public=("a", "a"))

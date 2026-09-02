@@ -98,6 +98,7 @@ def _seat_segment_lengths(seat: int) -> tuple[tuple[str, int], ...]:
         (f"{prefix}_agent_locations", _AGENT_LOCATION_SLOTS),
         (f"{prefix}_spy_posts", len(POST_IDS)),
         (f"{prefix}_battle_cards", len(BATTLE_CARD_IDS)),
+        (f"{prefix}_hand_public", len(PERSONAL_CARD_IDS)),
         (f"{prefix}_in_play", len(PERSONAL_CARD_IDS)),
         (f"{prefix}_discard", len(PERSONAL_CARD_IDS)),
         (f"{prefix}_trashed", len(PERSONAL_CARD_IDS)),
@@ -118,6 +119,7 @@ def _segment_lengths() -> tuple[tuple[str, int], ...]:
         ("contract_bank_size", 1),
         ("face_up_contracts", len(CONTRACT_IDS)),
         ("sardaukar_contracts", len(CONTRACT_IDS)),
+        ("intrigue_resolving", len(INTRIGUE_IDS)),
         ("intrigue_discard", len(INTRIGUE_IDS)),
         ("intrigue_trash", len(INTRIGUE_IDS)),
         ("imperium_removed", len(PERSONAL_CARD_IDS)),
@@ -238,6 +240,7 @@ def encode_player_view(view: PlayerView) -> tuple[int, ...]:
     writer.write("contract_bank_size", [view.contract_bank_size])
     writer.write("face_up_contracts", _contract_flags(view.face_up_contract_ids))
     writer.write("sardaukar_contracts", _contract_flags(view.sardaukar_contract_ids))
+    writer.write("intrigue_resolving", _intrigue_counts(view.intrigue_resolving))
     writer.write("intrigue_discard", _intrigue_counts(view.intrigue_discard))
     writer.write("intrigue_trash", _intrigue_counts(view.intrigue_trash))
     writer.write("imperium_removed", _personal_counts(view.imperium_removed))
@@ -329,6 +332,7 @@ def _write_seat(writer: _Writer, seat_offset: int, player: PublicPlayerView) -> 
             for card_id in BATTLE_CARD_IDS
         ],
     )
+    writer.write(f"{prefix}_hand_public", _personal_counts(player.hand_public))
     writer.write(f"{prefix}_in_play", _personal_counts(player.in_play))
     writer.write(f"{prefix}_discard", _personal_counts(player.discard_pile))
     writer.write(f"{prefix}_trashed", _personal_counts(player.trashed))

@@ -405,6 +405,9 @@ def test_price_is_no_object_acquires_row_card_to_hand_with_solari() -> None:
     result = engine.apply(state, action)
 
     assert result.state.players[0].hand == (sardaukar,)
+    # Taken face up from the Row straight to hand, so the identity stays
+    # public while it sits there (OQ-010).
+    assert result.state.players[0].hand_public == (sardaukar,)
     assert result.state.players[0].discard_pile == ()
     assert result.state.players[0].resources.solari == 0
     assert result.state.imperium_row[0] == others[4]

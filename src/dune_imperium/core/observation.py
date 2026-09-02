@@ -28,6 +28,9 @@ class PublicPlayerView:
     hand_size: int
     deck_size: int
     intrigue_card_count: int
+    # Hand cards every seat can identify because they entered the hand
+    # through a public move (OQ-010); see ``PlayerState.hand_public``.
+    hand_public: tuple[str, ...]
     agents_available: int
     agent_locations: tuple[str, ...]
     swordmaster_acquired: bool
@@ -98,6 +101,10 @@ class PlayerView:
     combat_rewards_resolved: bool = False
     imperium_row: tuple[str, ...] = ()
     imperium_removed: tuple[str, ...] = ()
+    # Intrigue cards already played (hence revealed [Main p. 7]) whose
+    # choices are still being resolved; they stay in the owner's held set
+    # until the last slot resolves, so the public view names them here.
+    intrigue_resolving: tuple[str, ...] = ()
     intrigue_discard: tuple[str, ...] = ()
     intrigue_trash: tuple[str, ...] = ()
     contract_bank_size: int = 0
@@ -111,6 +118,22 @@ class PlayerView:
     maker_bonus_spice: tuple[tuple[str, int], ...] = ()
     public_data: tuple[tuple[str, ActionValue], ...] = ()
     private_data: tuple[tuple[str, ActionValue], ...] = ()
+
+
+_RESOLVING_INTRIGUE_FRAME_KINDS = frozenset({"intrigue_choice"})
+
+
+def resolving_intrigue_ids(state: GameState) -> tuple[str, ...]:
+    """Return played Intrigue cards still held while their choices resolve."""
+
+    resolving: list[str] = []
+    for frame in state.decision_stack:
+        if str(frame.kind) not in _RESOLVING_INTRIGUE_FRAME_KINDS:
+            continue
+        card_id = dict(frame.context).get("card_id")
+        if isinstance(card_id, str) and card_id not in resolving:
+            resolving.append(card_id)
+    return tuple(resolving)
 
 
 def observe_state(state: GameState, player: int) -> PlayerView:
@@ -155,6 +178,7 @@ def observe_state(state: GameState, player: int) -> PlayerView:
         combat_rewards_resolved=state.combat_rewards_resolved,
         imperium_row=state.imperium_row,
         imperium_removed=state.imperium_removed,
+        intrigue_resolving=resolving_intrigue_ids(state),
         intrigue_discard=state.intrigue_discard,
         intrigue_trash=state.intrigue_trash,
         contract_bank_size=len(state.contract_bank),
@@ -178,6 +202,7 @@ def _public_player_view(player: PlayerState) -> PublicPlayerView:
         hand_size=len(player.hand),
         deck_size=len(player.deck),
         intrigue_card_count=len(player.intrigue_cards),
+        hand_public=player.hand_public,
         agents_available=player.agents_available,
         agent_locations=player.agent_locations,
         swordmaster_acquired=player.swordmaster_acquired,

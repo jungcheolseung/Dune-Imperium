@@ -14,6 +14,7 @@ from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.simulation import (
     CardCensus,
     InvariantViolation,
+    check_event_visibility,
     check_observation_privacy,
     check_state_invariants,
     merge_coverage,
@@ -214,6 +215,45 @@ def test_privacy_scramble_changes_hidden_state_but_not_the_view() -> None:
 
     assert observe_state(scrambled, 0) == observe_state(state, 0)
     check_observation_privacy(state)
+
+    # A publicly known hand card must survive the scramble in the hand.
+    known = state.players[1].hand[0]
+    marked = replace(
+        state,
+        players=(
+            state.players[0],
+            replace(state.players[1], hand_public=(known,)),
+            *state.players[2:],
+        ),
+    )
+    scrambled_marked = _scramble_hidden_information(marked, observer=0)
+    assert known in scrambled_marked.players[1].hand
+    assert scrambled_marked.players[1].hand_public == (known,)
+    check_observation_privacy(marked)
+
+
+def test_event_visibility_rejects_a_public_event_naming_a_hidden_card() -> None:
+    from dune_imperium.core.events import GameEvent
+
+    engine = UprisingRulesEngine()
+    state = engine.reset(RulesetConfig(), seed=67)
+    hidden_card = state.players[1].hand[0]
+    public_card = state.imperium_row[0]
+
+    leak = GameEvent(
+        event_id="test:leak",
+        kind="card_named",
+        payload=(("card_id", hidden_card), ("player", 1)),
+    )
+    with pytest.raises(InvariantViolation, match="names hidden card"):
+        check_event_visibility(state, (leak,))
+
+    # The same identity restricted to its owner, or a public card, is fine.
+    check_event_visibility(state, (replace(leak, visible_to=(1,)),))
+    check_event_visibility(
+        state,
+        (replace(leak, payload=(("card_id", public_card), ("player", 1))),),
+    )
 
 
 def test_step_limit_reports_a_failure_instead_of_raising() -> None:
