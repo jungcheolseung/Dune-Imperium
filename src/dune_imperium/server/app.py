@@ -76,6 +76,9 @@ class ApplyActionRequest(BaseModel):
     seat: int
     revision: int
     index: int
+    # Undo generation from the summary; optional for older clients, but the
+    # browser UI always sends it so a taken-back state cannot be acted on.
+    undo_count: int | None = None
 
 
 class UndoRequest(BaseModel):
@@ -84,6 +87,7 @@ class UndoRequest(BaseModel):
     seat: int
     revision: int
     steps: int = Field(default=1, ge=1)
+    undo_count: int | None = None
 
 
 class SaveGameRequest(BaseModel):
@@ -161,6 +165,7 @@ def create_app(
                 seat=request.seat,
                 revision=request.revision,
                 index=request.index,
+                undo_count=request.undo_count,
             )
 
     @app.post("/games/{game_id}/undo")
@@ -171,6 +176,7 @@ def create_app(
                 seat=request.seat,
                 revision=request.revision,
                 steps=request.steps,
+                undo_count=request.undo_count,
             )
 
     @app.get("/games/{game_id}/log")

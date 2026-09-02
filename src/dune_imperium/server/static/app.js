@@ -671,6 +671,7 @@ async function applyAction(index) {
       body: JSON.stringify({
         seat: state.viewSeat,
         revision: state.summary.revision,
+        undo_count: state.summary.undo_count,
         index,
       }),
     });
@@ -701,6 +702,7 @@ async function submitUndo(seat, steps) {
       body: JSON.stringify({
         seat,
         revision: state.summary.revision,
+        undo_count: state.summary.undo_count,
         steps,
       }),
     });

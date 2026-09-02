@@ -96,6 +96,11 @@ class GameSession:
     # Append-only session log: every applied step (undone ones included)
     # and every undo marker; ``steps`` is its live projection.
     log: list[LogEntry] = field(default_factory=list)
+    # How many undos happened. Revisions count applied steps, so after an
+    # undo and a different choice the same revision names a different
+    # state; a client that also sends this generation number can never act
+    # on a state that has been taken back under it.
+    undo_count: int = 0
     lock: threading.Lock = field(default_factory=threading.Lock)
 
 
@@ -208,16 +213,20 @@ class GameSessionManager:
         seat: int,
         revision: int,
         index: int,
+        *,
+        undo_count: int | None = None,
     ) -> JsonObject:
-        """Apply one indexed human action, then auto-advance the game."""
+        """Apply one indexed human action, then auto-advance the game.
+
+        ``undo_count``, when given, must equal the session's undo
+        generation as well: it protects a stale client whose revision
+        happens to match again after an undo and a different choice.
+        """
 
         session = self._get(game_id)
         self._require_human(session, seat)
         with session.lock:
-            if revision != session.state.revision:
-                raise StaleRevisionError(
-                    "the game advanced past the submitted revision"
-                )
+            _require_current(session, revision, undo_count)
             decision = session.engine.current_decision(session.state)
             if (
                 not isinstance(decision, PlayerDecision)
@@ -238,6 +247,8 @@ class GameSessionManager:
         seat: int,
         revision: int,
         steps: int = 1,
+        *,
+        undo_count: int | None = None,
     ) -> JsonObject:
         """Take back the seat's own latest ``steps`` steps (M11 slice 6).
 
@@ -253,10 +264,7 @@ class GameSessionManager:
         session = self._get(game_id)
         self._require_human(session, seat)
         with session.lock:
-            if revision != session.state.revision:
-                raise StaleRevisionError(
-                    "the game advanced past the submitted revision"
-                )
+            _require_current(session, revision, undo_count)
             window = undo_window(session.log, seat)
             if steps < 1 or steps > window:
                 raise SessionError(
@@ -266,6 +274,7 @@ class GameSessionManager:
             session.state = _state_after(session, keep)
             del session.steps[keep:]
             mark_undone(session.log, seat, steps)
+            session.undo_count += 1
             return self._summary_locked(session)
 
     def log(self, game_id: str, seat: int, *, after: int = 0) -> JsonObject:
@@ -369,6 +378,9 @@ class GameSessionManager:
                 )
             if parsed.log is not None:
                 session.log = _rebuild_log(session, parsed.log)
+                session.undo_count = sum(
+                    1 for entry in session.log if isinstance(entry, LoggedUndo)
+                )
             self._advance_locked(session)
             summary = self._summary_locked(session)
         with self._registry_lock:
@@ -502,6 +514,7 @@ class GameSessionManager:
         return {
             "game_id": session.game_id,
             "revision": state.revision,
+            "undo_count": session.undo_count,
             "log_count": len(session.log),
             "undo": undo,
             "phase": str(state.phase),
@@ -578,6 +591,19 @@ def _replay_recorded_steps(
                 f"save step {index} ({_step_summary(recorded)}) failed to "
                 f"apply: {error}"
             ) from error
+
+
+def _require_current(
+    session: GameSession, revision: int, undo_count: int | None
+) -> None:
+    """Reject requests made against a state the session has moved past."""
+
+    if revision != session.state.revision:
+        raise StaleRevisionError("the game advanced past the submitted revision")
+    if undo_count is not None and undo_count != session.undo_count:
+        raise StaleRevisionError(
+            "the game was taken back since the submitted undo generation"
+        )
 
 
 def _apply_step(session: GameSession, step: ReplayStep) -> None:

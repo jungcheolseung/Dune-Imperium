@@ -182,9 +182,11 @@ def test_undo_rewinds_to_the_seats_earlier_decision_and_keeps_the_log() -> None:
     with pytest.raises(SeatAccessError):
         manager.undo(game_id, seat=1, revision=9, steps=1)
 
-    rewound = manager.undo(game_id, seat=0, revision=9, steps=1)
+    assert summary["undo_count"] == 0
+    rewound = manager.undo(game_id, seat=0, revision=9, steps=1, undo_count=0)
 
     assert rewound["revision"] == 8
+    assert rewound["undo_count"] == 1
     assert rewound["undo"] == [{"seat": 0, "steps": 1}]
     assert manager.view(game_id, 0) == view_before
     assert manager.legal_actions(game_id, 0) == actions_before
@@ -203,6 +205,19 @@ def test_undo_rewinds_to_the_seats_earlier_decision_and_keeps_the_log() -> None:
     resumed = _play(manager, rewound, index=1)
     assert _int(resumed["revision"]) >= 9
     assert manager._get(game_id).steps[len(steps_before)] != undone_step
+
+    # The undo generation guards a stale client: a request carrying the
+    # pre-undo generation is refused even when its revision matches again.
+    stale_revision = _int(resumed["revision"])
+    with pytest.raises(StaleRevisionError, match="undo generation"):
+        manager.apply_action(
+            game_id, seat=0, revision=stale_revision, index=0, undo_count=0
+        )
+    with pytest.raises(StaleRevisionError, match="undo generation"):
+        manager.undo(game_id, seat=0, revision=stale_revision, undo_count=0)
+    manager.apply_action(
+        game_id, seat=0, revision=stale_revision, index=0, undo_count=1
+    )
 
     # Log projection: the live steps are exactly the non-undone entries.
     live = _live_log(manager, game_id)
@@ -320,6 +335,7 @@ def test_saves_carry_the_undo_history_and_restore_the_same_log() -> None:
     restored = manager.restore_game(document)
     restored_id = str(restored["game_id"])
     assert restored["revision"] == summary["revision"]
+    assert restored["undo_count"] == summary["undo_count"] == 1
     assert restored["undo"] == summary["undo"]
     assert restored["log_count"] == summary["log_count"]
     original = manager.log(game_id, 0)["entries"]
@@ -338,6 +354,7 @@ def test_version_one_saves_still_load_without_undo_history() -> None:
 
     session = manager._get(str(restored["game_id"]))
     assert restored["revision"] == summary["revision"]
+    assert restored["undo_count"] == 0
     assert all(isinstance(entry, LoggedStep) for entry in session.log)
     assert [entry.step for entry in session.log if isinstance(entry, LoggedStep)] == (
         session.steps

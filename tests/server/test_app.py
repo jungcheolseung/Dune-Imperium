@@ -306,11 +306,19 @@ def test_undo_and_log_over_http(client: TestClient) -> None:
     assert too_many.status_code == 400, too_many.text
 
     undone = client.post(
-        f"/games/{game_id}/undo", json={"seat": 0, "revision": 9, "steps": 1}
+        f"/games/{game_id}/undo",
+        json={"seat": 0, "revision": 9, "steps": 1, "undo_count": 0},
     )
     assert undone.status_code == 200, undone.text
     assert undone.json()["revision"] == 8
     assert undone.json()["undo"] == [{"seat": 0, "steps": 1}]
+    assert undone.json()["undo_count"] == 1
+    # A stale client still sending undo generation 0 is refused.
+    stale_generation = client.post(
+        f"/games/{game_id}/actions",
+        json={"seat": 0, "revision": 8, "index": 0, "undo_count": 0},
+    )
+    assert stale_generation.status_code == 409, stale_generation.text
 
     log = client.get(f"/games/{game_id}/log", params={"seat": 0})
     assert log.status_code == 200, log.text
