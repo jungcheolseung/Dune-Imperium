@@ -45,9 +45,10 @@ source URL and sha256). The server reads the manifest from the gitignored
 `ko/` scan per file over `en/`, and links only files that exist, so a
 machine without the assets checkout serves the same catalog with text.
 `tests/unit/display/test_images.py` pins that the manifest resolves all
-170 Uprising content IDs when the checkout is linked. Uprising's
-four-player starting deck is the base game's, unchanged, so those seven
-entries point at the base-game scans; the "Commander" variants Dune Cards
+170 Uprising content IDs when the checkout is linked. Every set directory
+is self-contained: Uprising's four-player starting deck is the base
+game's, unchanged, so `uprising/starting/` holds copies of the base-game
+scans (the manifest notes the copy); the "Commander" variants Dune Cards
 Hub files as "uprising-other" are six-player cards (Rules Supplements
 p. 7, 14) and sit under `uprising/six-player/`. The other expansions in
 the manifest are archived for future implementation with names derived

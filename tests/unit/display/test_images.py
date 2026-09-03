@@ -156,7 +156,8 @@ def test_the_assets_checkout_resolves_every_content_id() -> None:
     assert not missing, missing
     for key, relative in resolved.items():
         assert (CARDS_DIR / relative).is_file(), (key, relative)
-    # The four-player starting deck is the base game's, unchanged; the
-    # Uprising "Commander" variants are six-player cards, not these.
+    # Every set is self-contained: the Uprising starting deck lives under
+    # its own directory (copies of the base-game scans), never the
+    # six-player "Commander" variants.
     for content_id in ("dagger", "signet_ring", "convincing_argument"):
-        assert resolved[("other", content_id)].startswith("en/base/starting/")
+        assert resolved[("other", content_id)].startswith("en/uprising/starting/")
