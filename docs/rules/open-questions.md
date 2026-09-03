@@ -133,23 +133,23 @@
 ## OQ-024 — The Beast's Spoils(프로모)의 battle icon별 보상 범위
 
 - 상태: `DECIDED` (project convention)
-- 카드면: "Gain rewards for your face-up battle icons: Crysknife: trash 아이콘, Desert Mouse: spice 1, Ornithopter: troop". 이 카드는 정식 덱 밖의 Uprising 프로모라 어떤 공식 문서에도 없다. `[card face]` 공식 문서는 battle icon을 Objective와 획득 Conflict 카드의 face-up 인쇄 아이콘으로만 정의하고 wild icon은 Endgame에서만 짝짓는다고 한다. `[Main pp. 14, 20]`
-- 필요한 답: (a) 같은 아이콘이 여러 장 face-up이면 장수만큼 보상하는지, (b) face-up wild(Propaganda)가 세 아이콘 중 하나로 세어지는지, (c) trash 보상이 선택인지.
-- 판정(2026-09-03, project convention): (a) 카드 한 장당 한 번 — "face-up battle icons"는 복수형이고 아이콘은 카드에 하나씩 인쇄되므로 face-up 카드마다 그 아이콘의 보상을 받는다. (b) wild는 세지 않는다 — wild는 Endgame에서 하나의 아이콘과 짝짓기 위해 선택하는 것이지 그 자체가 Crysknife 등이 아니다(`[Main p. 20]`). (c) trash는 선택이다 — "Trashing is optional unless it's paying a cost"(`[Main p. 20]`)이고 여기서는 보상이다. 구현: `GAIN_REWARDS_PER_FACE_UP_BATTLE_ICON`은 spice·troop을 먼저 자동 지급하고 Crysknife 장수만큼 trash 선택(hand·discard·in play, 거절 시 남은 trash 포기)을 차례로 제시한다. `tests/unit/rules/test_promo_cards.py`.
+- 카드면(Agent box): "Gain rewards for your face-up battle icons: Crysknife: trash 아이콘, Desert Mouse: spice 1, Ornithopter: troop". 이 카드는 정식 덱 밖의 Uprising 프로모라 어떤 공식 문서에도 없다. `[card face]` 공식 규칙은 battle icon을 Objective와 획득 Conflict 카드의 face-up 인쇄 아이콘으로 정의하고, Conflict 카드를 가져올 때 같은 아이콘의 face-up 카드가 있으면 반드시 짝을 뒤집으므로 **같은 아이콘의 face-up 카드는 종류당 최대 1장**이다. wild icon은 Endgame에서만 짝짓는다. `[Main pp. 14, 20]`
+- 필요한 답: (a) face-up wild(Propaganda)가 세 아이콘 중 하나로 세어지는지, (b) trash 보상이 선택인지.
+- 판정(2026-09-03, 사용자 지적 반영): 보상은 **face-up인 아이콘 종류마다 한 번**이다 — 즉시 매칭 규칙(`[Main p. 14]`) 때문에 종류당 face-up 카드가 둘 이상일 수 없으므로 "장수"를 셀 필요가 없다. (a) wild는 세지 않는다 — wild는 Endgame에서 하나의 아이콘과 짝짓기 위해 선택하는 것이지 그 자체가 Crysknife 등이 아니다(`[Main p. 20]`). (b) trash는 선택이다 — "Trashing is optional unless it's paying a cost"(`[Main p. 20]`)이고 여기서는 보상이다. 구현: `GAIN_REWARDS_PER_FACE_UP_BATTLE_ICON`은 `face_up_battle_icons`(아이콘 집합)로 spice·troop을 자동 지급한 뒤 Crysknife가 있으면 trash 선택(hand·discard·in play, 거절 가능)을 한 번 제시한다. `tests/unit/rules/test_promo_cards.py`.
 
-## OQ-025 — Pivotal Gambit(프로모)의 "1위 보상에 wild battle icon 추가"
+## OQ-025 — Pivotal Gambit(프로모)의 "1위 보상에 Influence 1 선택 추가"
 
 - 상태: `DECIDED` (project convention)
-- 카드면: "Trash this card → troop AND Add [wild battle icon] to the first place reward for this conflict." 공식 문서는 Conflict 카드에 인쇄되지 않은 보상을 추가하는 절차나, 그렇게 얻은 wild icon이 카드 형태가 아닐 때의 취급을 다루지 않는다. `[card face]` `[Main pp. 14, 20]`
-- 필요한 답: (a) wild icon을 누가 받는가(카드를 낸 플레이어인가, 그 Conflict의 1위인가), (b) 1위가 없으면(동률) 어떻게 되는가, (c) 받은 wild icon을 언제 어떻게 짝짓는가.
-- 판정(2026-09-03, project convention): (a) 보상은 Conflict의 1위 보상에 붙으므로 누가 냈든 **그 Conflict의 1위**가 받는다. (b) 1위가 없으면 다른 1위 보상처럼 사라진다. (c) 받은 wild icon은 승자가 가져간 그 Conflict 카드에 붙은 것으로 취급한다: 도착 즉시 매칭은 인쇄 아이콘으로만 하고(`[Main p. 14]`), Endgame에서 그 카드를 wild 쪽으로 삼아 face-up 인쇄 아이콘 카드 한 장과 짝지을 수 있으며 자기 자신과는 짝짓지 못한다(`[Main p. 20]`). 도착 즉시 인쇄 아이콘으로 짝지어져 뒤집힌 카드의 wild는 함께 소모된다. Endgame Intrigue의 flip 비용(Crysknife 등)도 이 카드를 wild 카드처럼 대상으로 삼을 수 있다. 구현: `GameState.conflict_wild_icon_bonus`(이번 Conflict의 pledge) → `finish_combat`이 승자의 `wild_icon_conflict_ids`로 옮김 → `endgame`·`flippable_battle_card_ids`가 wild 쪽 후보에 포함. 관측 v4, codec v85(프로모 옵션 catalog는 모든 Conflict를 wild 후보로 가짐). `tests/unit/rules/test_promo_cards.py`.
+- 카드면(Agent box): "Trash this card → troop AND Add [Influence 1 선택 아이콘] to the first place reward for this conflict." 아이콘은 룰북 20쪽 "Gain one, gain two, lose one Influence. Choose any one of the four Factions"의 노란 마름모 `?`이다(wild battle icon의 평행사변형 `?`가 아님; 2026-09-03 처음 wild로 오독했던 것을 사용자가 바로잡았다). 공식 문서는 Conflict 카드에 인쇄되지 않은 보상을 추가하는 절차를 다루지 않는다. `[card face]` `[Main pp. 14, 20]`
+- 필요한 답: (a) 추가된 Influence를 누가 받는가, (b) 1위가 없으면(동률) 어떻게 되는가, (c) sandworm의 보상 두 배가 적용되는가.
+- 판정(2026-09-03, project convention): (a) 보상은 Conflict의 1위 보상에 붙으므로 누가 냈든 **그 Conflict의 1위**가 받는다(카드를 낸 플레이어 자신이 1위가 되도록 노리는 카드). (b) 1위가 없으면 다른 1위 보상처럼 사라진다. (c) 인쇄된 1위 보상과 같은 자격이므로 sandworm이 있으면 두 배가 된다(`[Main p. 14]`: control과 battle icon만 예외). 여러 장이 pledge되면 그만큼 누적된다. 구현: `GameState.conflict_first_place_influence_bonus`(라운드의 Conflict 공개 시 0) → `resolve_combat_rewards`가 1위 보상의 `choose_influence`에 더해 기존 `COMBAT_REWARD_INFLUENCE` 선택 frame으로 해결하고 0으로 되돌린다. 관측 v4 전역 scalar. `tests/unit/rules/test_promo_cards.py`.
 
 ## OQ-026 — Arrakis Revolt(프로모)의 Shield Wall 제거 선택과 보호된 Conflict
 
 - 상태: `DECIDED` (project convention)
-- 카드면(Agent box): "Maker Hooks: 2 spice → [Shield Wall 아이콘] [sandworm 아이콘]". 공식 아이콘 정의는 Shield Wall 아이콘을 "You **may** remove the Shield Wall", sandworm을 "Does nothing if the current Conflict is protected by the Shield Wall. Otherwise, summon and deploy one sandworm"으로 둔다. `[Main p. 20]` `[card face]`
+- 카드면(Agent box): "Maker Hooks: 2 spice → [Shield Wall 아이콘] [sandworm 아이콘]". 공식 아이콘 정의는 Shield Wall 아이콘을 "You **may** remove the Shield Wall token from the game board", sandworm을 "Does nothing if the current Conflict is protected by the Shield Wall. Otherwise, summon and deploy one sandworm"으로 둔다. `[Main p. 20]` 본문도 "When the Shield Wall detonation icon appears on a card or board space, you **may** remove the Shield Wall token"이라고 쓴다. `[Main p. 10]` `[card face]`
 - 필요한 답: 비용을 내고 Shield Wall을 남긴 채 보호된 Conflict에 sandworm을 소환하는(아무 효과 없는) 선택을 제시할지, 비용 재판정 시점.
-- 판정(2026-09-03, project convention): Maker Hooks는 배치 시 요구 조건이고 2 spice는 해결 시점에 다시 판정하는 화살표 비용이다(`[Main pp. 9, 20]`, 다른 화살표 비용과 같음). 선택지는 "지불 + Shield Wall 제거 + 소환"(벽이 있을 때)과 "지불 + 벽 유지 + 소환"(현재 Conflict가 보호되지 않을 때)이며, 보호된 Conflict에서 벽을 남기고 지불하는 무효 선택은 제시하지 않는다(2 spice로 아무것도 얻지 못하는 선택은 규칙상 가능하더라도 행동 공간에서 뺀다). Emperor of the Known Universe의 배치 차단(`[Main p. 17]`)은 sandworm 소환에도 적용된다. 구현: `MAY_PAY_TWO_SPICE_FOR_SHIELD_WALL_AND_SANDWORM_IF_MAKER_HOOKS`. `tests/unit/rules/test_promo_cards.py`.
+- 판정(2026-09-03, project convention; 제거가 선택이라는 점은 위 공식 문장 그대로): Maker Hooks는 배치 시 요구 조건이고 2 spice는 해결 시점에 다시 판정하는 화살표 비용이다(`[Main pp. 9, 20]`, 다른 화살표 비용과 같음). 선택지는 "지불 + Shield Wall 제거 + 소환"(벽이 있을 때)과 "지불 + 벽 유지 + 소환"(현재 Conflict가 보호되지 않을 때)이며, 보호된 Conflict에서 벽을 남기고 지불하는 무효 선택은 제시하지 않는다(2 spice로 아무것도 얻지 못하는 선택은 규칙상 가능하더라도 행동 공간에서 뺀다). Emperor of the Known Universe의 배치 차단(`[Main p. 17]`)은 sandworm 소환에도 적용된다. 구현: `MAY_PAY_TWO_SPICE_FOR_SHIELD_WALL_AND_SANDWORM_IF_MAKER_HOOKS`. `tests/unit/rules/test_promo_cards.py`.
 
 ## 판정이 생겼을 때 기록할 정보
 
