@@ -355,6 +355,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "discard_agent_card": apply_agent_card_discard,
     "decline_agent_card_discard": apply_agent_card_discard,
     "pay_agent_card_water": apply_agent_card_payment,
+    "pay_agent_card_spice_for_sandworm": apply_agent_card_payment,
+    "pay_agent_card_spice_for_sandworm_and_shield_wall": apply_agent_card_payment,
     "pay_agent_card_spice": apply_agent_card_payment,
     "decline_agent_card_payment": apply_agent_card_payment,
     "pay_corrinth_city": apply_corrinth_city_payment,

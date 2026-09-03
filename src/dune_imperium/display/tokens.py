@@ -184,6 +184,22 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
             "If you have 2 or more Emperor Influence: Gain 2 solari, "
             "If you have 2 or more Spacing Guild Influence: Gain 1 spice"
         ),
+        # Uprising promo cards (card faces; OQ-024 to OQ-026).
+        (
+            PersonalCardAgentEffect
+            .MAY_PAY_TWO_SPICE_FOR_SHIELD_WALL_AND_SANDWORM_IF_MAKER_HOOKS
+        ): (
+            "If Maker Hooks: You may pay 2 spice → You may remove the Shield Wall,"
+            " Summon 1 sandworm"
+        ),
+        PersonalCardAgentEffect.GAIN_REWARDS_PER_FACE_UP_BATTLE_ICON: (
+            "Gain rewards for your face-up battle icons: Crysknife: You may trash"
+            " a card, Desert Mouse: Gain 1 spice, Ornithopter: Recruit 1 troop"
+        ),
+        PersonalCardAgentEffect.MAY_TRASH_SELF_FOR_TROOP_AND_WILD_BATTLE_ICON: (
+            "You may trash this card → Recruit 1 troop and add a wild battle icon"
+            " to this Conflict's first-place reward"
+        ),
         PersonalCardAgentEffect.RECRUIT_ONE_IF_MAKER_SPACE: (
             "If you are at a Maker space: Recruit 1 troop"
         ),
@@ -226,6 +242,7 @@ ACQUISITION_EFFECT_TEXT: Final[Mapping[PersonalCardAcquisitionEffect, str]] = (
                 "Gain 1 Spacing Guild Influence"
             ),
             PersonalCardAcquisitionEffect.TAKE_CONTRACT: "Take 1 face-up Contract",
+            PersonalCardAcquisitionEffect.RECRUIT_ONE_TROOP: "Recruit 1 troop",
         }
     )
 )

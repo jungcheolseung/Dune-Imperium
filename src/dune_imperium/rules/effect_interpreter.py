@@ -88,10 +88,13 @@ type ChoiceSlot = (
 def flippable_battle_card_ids(
     player: PlayerState,
     icon: BattleIcon,
+    wild_icon_conflict_ids: tuple[str, ...] = (),
 ) -> tuple[str, ...]:
     """Return the player's face-up won Conflict cards bearing ``icon`` or wild.
 
-    Objective cards are not valid targets for a printed flip effect.
+    Objective cards are not valid targets for a printed flip effect. A won
+    Conflict that carries Pivotal Gambit's pledged wild icon
+    (``wild_icon_conflict_ids``) bears a wild icon as well (OQ-025).
     """
 
     face_down = set(player.face_down_battle_card_ids)
@@ -99,7 +102,10 @@ def flippable_battle_card_ids(
         card_id
         for card_id in player.won_conflict_ids
         if card_id not in face_down
-        and CONFLICTS_BY_ID[card_id].battle_icon in (icon, BattleIcon.WILD)
+        and (
+            CONFLICTS_BY_ID[card_id].battle_icon in (icon, BattleIcon.WILD)
+            or card_id in wild_icon_conflict_ids
+        )
     )
 
 
@@ -269,6 +275,7 @@ def choice_slots(
 def _choice_costs_feasible(
     player: PlayerState,
     sections: tuple[EffectSection, ...],
+    wild_icon_conflict_ids: tuple[str, ...] = (),
 ) -> bool:
     influence_needed = 0
     discards_needed = 0
@@ -286,7 +293,7 @@ def _choice_costs_feasible(
                 case RetreatTroops(minimum=minimum):
                     retreats_needed += minimum
                 case FlipBattleCard(icon=icon) if not flippable_battle_card_ids(
-                    player, icon
+                    player, icon, wild_icon_conflict_ids
                 ):
                     return False
                 case _:
@@ -386,7 +393,7 @@ def option_is_playable(
     return (
         bool(sections)
         and can_afford(owner, resource_cost(sections))
-        and _choice_costs_feasible(owner, sections)
+        and _choice_costs_feasible(owner, sections, state.wild_icon_conflict_ids)
         and _choice_rewards_feasible(state, player, sections)
     )
 

@@ -375,9 +375,18 @@ def test_reserve_stacks_are_finite_and_have_no_foldspace() -> None:
 
 
 def test_imperium_manifest_matches_base_and_choam_counts() -> None:
-    assert len(IMPERIUM_CARDS) == 54
-    assert sum(entry.copies for entry in IMPERIUM_CARDS) == 69
+    assert len(IMPERIUM_CARDS) == 57
+    assert sum(entry.copies for entry in IMPERIUM_CARDS) == 72
     assert sum(entry.copies for entry in imperium_cards_for_choam(False)) == 65
+    # The three Uprising promo cards join either ruleset only on request.
+    assert {entry.card.card_id for entry in IMPERIUM_CARDS if entry.promo} == {
+        "arrakis_revolt",
+        "pivotal_gambit",
+        "the_beast_s_spoils",
+    }
+    assert sum(entry.copies for entry in imperium_cards_for_choam(False, True)) == 68
+    assert sum(entry.copies for entry in imperium_cards_for_choam(True, True)) == 72
+    assert not any(entry.promo and entry.choam_only for entry in IMPERIUM_CARDS)
     assert {entry.card.card_id for entry in IMPERIUM_CARDS if entry.choam_only} == {
         "cargo_runner",
         "delivery_agreement",
@@ -411,7 +420,11 @@ def test_shared_deck_manifests_have_unique_ids_urls_and_instances() -> None:
     for entries in (IMPERIUM_CARDS, INTRIGUE_CARDS):
         ids = tuple(entry.card.card_id for entry in entries)
         assert len(ids) == len(set(ids))
-        assert all(entry.card.catalog_url for entry in entries)
+        # The Uprising promo cards have no Dune Cards Hub catalog page.
+        assert all(
+            entry.card.catalog_url for entry in entries if not entry.promo
+        )
+        assert all(entry.card.catalog_url is None for entry in entries if entry.promo)
 
     for instance_ids, expected in (
         (imperium_deck_instance_ids(False), 65),
@@ -561,10 +574,10 @@ def test_imperium_costs_cover_the_printed_range_and_resolve_instances() -> None:
     assert Counter(costs.values()) == {
         1: 5,
         2: 9,
-        3: 13,
+        3: 15,
         4: 8,
         5: 9,
-        6: 6,
+        6: 7,
         7: 2,
         8: 2,
     }
@@ -576,6 +589,7 @@ def test_imperium_costs_cover_the_printed_range_and_resolve_instances() -> None:
     assert {
         entry.card.card_id for entry in IMPERIUM_CARDS if entry.has_acquisition_bonus
     } == {
+        "arrakis_revolt",
         "guild_spy",
         "in_high_places",
         "interstellar_trade",

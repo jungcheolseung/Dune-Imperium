@@ -37,7 +37,7 @@ from dune_imperium.content.uprising.starting_cards import (
 from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
 from dune_imperium.core.actions import ActionValue, DomainAction
 
-ACTION_CODEC_VERSION = 84
+ACTION_CODEC_VERSION = 85
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 
@@ -161,6 +161,8 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "pass_endgame_intrigue",
             "pay_agent_card_water",
             "pay_agent_card_spice",
+            "pay_agent_card_spice_for_sandworm",
+            "pay_agent_card_spice_for_sandworm_and_shield_wall",
             "pay_leader_board_repeat",
             "pay_leader_signet_solari",
             "pay_leader_signet_spice",
@@ -220,7 +222,9 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         )
         for stack in RESERVE_STACKS
     )
-    imperium_instances = imperium_deck_instance_ids(config.choam_module)
+    imperium_instances = imperium_deck_instance_ids(
+        config.choam_module, config.promo_cards
+    )
     intrigue_instances = intrigue_deck_instance_ids(config.choam_module)
     templates.extend(
         ActionTemplate(
@@ -521,8 +525,10 @@ def _agent_turn_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     for reserve_card in RESERVE_STACKS:
         templates.extend(_agent_turn_templates_for_card("reserve", reserve_card))
     for imperium_card in IMPERIUM_CARDS:
-        if imperium_card.play_data_complete and (
-            config.choam_module or not imperium_card.choam_only
+        if (
+            imperium_card.play_data_complete
+            and (config.choam_module or not imperium_card.choam_only)
+            and (config.promo_cards or not imperium_card.promo)
         ):
             templates.extend(_agent_turn_templates_for_card("imperium", imperium_card))
     return tuple(templates)
@@ -584,6 +590,11 @@ def _endgame_wild_templates(
     wild_card_ids = tuple(
         card_id for card_id, icon in battle_cards if icon is BattleIcon.WILD
     )
+    if config.promo_cards:
+        # Pivotal Gambit can pledge a wild icon onto any Conflict card, so
+        # every won Conflict is a possible wild side (OQ-025).
+        conflict_ids = (conflict.card.card_id for conflict in CONFLICTS)
+        wild_card_ids = tuple(dict.fromkeys((*wild_card_ids, *conflict_ids)))
     matching_card_ids = tuple(
         card_id for card_id, icon in battle_cards if icon not in (None, BattleIcon.WILD)
     )
@@ -597,6 +608,7 @@ def _endgame_wild_templates(
         )
         for wild_card_id in wild_card_ids
         for matching_card_id in matching_card_ids
+        if wild_card_id != matching_card_id
     )
 
 
@@ -619,7 +631,9 @@ def _personal_card_instance_ids(config: RulesetConfig) -> tuple[str, ...]:
         for card in STARTING_DECK
         for copy in range(card.copies)
     ]
-    card_ids.extend(imperium_deck_instance_ids(config.choam_module))
+    card_ids.extend(
+        imperium_deck_instance_ids(config.choam_module, config.promo_cards)
+    )
     card_ids.extend(
         f"reserve:{stack.card.card_id}:{copy}"
         for stack in RESERVE_STACKS

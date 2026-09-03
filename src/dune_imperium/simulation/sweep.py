@@ -246,6 +246,7 @@ class _GameSpec:
     verify_replay: bool
     policy: str = "random"
     leader_draft: bool = False
+    promo_cards: bool = False
     soundness_interval: int = 0
     collect_coverage: bool = False
     # Set only by sweep_specs(rotate_leaders=True); fixes the four Leaders
@@ -257,7 +258,9 @@ class _GameSpec:
 
 def _run_spec(spec: _GameSpec) -> GameCheckReport | SweepFailure:
     config = RulesetConfig(
-        choam_module=spec.choam_module, leader_draft=spec.leader_draft
+        choam_module=spec.choam_module,
+        leader_draft=spec.leader_draft,
+        promo_cards=spec.promo_cards,
     )
     engine = (
         UprisingRulesEngine(leader_ids=spec.leader_ids)
@@ -321,6 +324,7 @@ def sweep_specs(
     verify_replay: bool = True,
     policy: str = "random",
     leader_draft: bool = False,
+    promo_cards: bool = False,
     rotate_leaders: bool = False,
     collect_coverage: bool = False,
 ) -> tuple[_GameSpec, ...]:
@@ -346,6 +350,7 @@ def sweep_specs(
             verify_replay=verify_replay,
             policy=policy,
             leader_draft=leader_draft,
+            promo_cards=promo_cards,
             collect_coverage=collect_coverage,
             leader_ids=(
                 tuple(

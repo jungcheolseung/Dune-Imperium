@@ -98,6 +98,9 @@ class CreateGameRequest(BaseModel):
     )
     choam_module: bool = False
     leader_draft: bool = False
+    # Shuffle in the three Uprising promo Imperium cards (not in the retail
+    # deck; see docs/implementation-plan.md M6).
+    promo_cards: bool = False
     game_seed: int | None = None
     policy_seed: int | None = None
 
@@ -182,6 +185,7 @@ def create_app(
                 tuple(request.seats),
                 choam_module=request.choam_module,
                 leader_draft=request.leader_draft,
+                promo_cards=request.promo_cards,
                 game_seed=request.game_seed,
                 policy_seed=request.policy_seed,
             )

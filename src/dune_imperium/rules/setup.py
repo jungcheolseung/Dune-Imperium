@@ -262,7 +262,7 @@ def create_initial_state(
         _shuffle_decision(
             "setup:imperium_deck",
             "Shuffle the Imperium deck",
-            imperium_deck_instance_ids(config.choam_module),
+            imperium_deck_instance_ids(config.choam_module, config.promo_cards),
         )
     ).values
     intrigue = resolver.resolve(
@@ -367,7 +367,7 @@ def create_draft_initial_state(
         _shuffle_decision(
             "setup:imperium_deck",
             "Shuffle the Imperium deck",
-            imperium_deck_instance_ids(config.choam_module),
+            imperium_deck_instance_ids(config.choam_module, config.promo_cards),
         )
     ).values
     intrigue = resolver.resolve(

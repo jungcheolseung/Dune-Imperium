@@ -72,6 +72,9 @@ const ACTION_LABELS = {
   decline_agent_card_discard: "Discard 안 함",
   decline_agent_card_intrigue_payment: "지불 안 함",
   decline_agent_card_payment: "지불 안 함",
+  pay_agent_card_spice_for_sandworm: "2 spice 지불 → sandworm 소환",
+  pay_agent_card_spice_for_sandworm_and_shield_wall:
+    "2 spice 지불 → Shield Wall 제거 + sandworm 소환",
   decline_agent_card_trash: "Trash 안 함",
   decline_combat_reward: "보상 비용 지불 안 함",
   decline_combat_reward_trash: "Trash 안 함",
@@ -542,6 +545,7 @@ async function createGame(event) {
     seats,
     choam_module: el("opt-choam").checked,
     leader_draft: el("opt-leader-draft").checked,
+    promo_cards: el("opt-promo").checked,
   };
   const seed = el("opt-seed").value;
   if (seed !== "") payload.game_seed = Number(seed);
@@ -964,6 +968,7 @@ function render() {
     `라운드 ${summary.round_number} · ${PHASE_LABELS[summary.phase] || summary.phase}` +
     ` · seed ${summary.game_seed}` +
     (summary.choam_module ? " · CHOAM" : "") +
+    (summary.promo_cards ? " · promo" : "") +
     (summary.leader_draft ? " · draft" : "") +
     (state.review ? " · 리플레이 검토" : "");
   el("decision-banner").hidden = Boolean(state.review);

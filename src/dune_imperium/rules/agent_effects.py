@@ -9,6 +9,7 @@ from dune_imperium.content.uprising.board import (
 )
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.content.uprising.types import (
+    BattleIcon,
     PersonalCardAgentEffect,
     PersonalCardTrashEffect,
 )
@@ -22,6 +23,7 @@ from dune_imperium.rules.card_bonds import has_faction_bond
 from dune_imperium.rules.card_discard import discard_personal_card_from_hand
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.card_trash import trash_personal_card
+from dune_imperium.rules.combat import face_up_battle_icon_counts
 from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effects import (
     advance_after_effect,
@@ -31,7 +33,14 @@ from dune_imperium.rules.effects import (
 from dune_imperium.rules.frames import FrameKind, replace_player
 from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
-from dune_imperium.rules.leader_abilities import resolve_leader_signet
+from dune_imperium.rules.leader_abilities import (
+    resolve_leader_signet,
+    units_deployment_blocked,
+)
+from dune_imperium.rules.shield_wall import (
+    current_conflict_is_shield_wall_protected,
+    destroy_shield_wall,
+)
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
     observation_post_ids_for_factions,
@@ -773,11 +782,28 @@ def legal_agent_card_trash_actions(
         PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND,
         PersonalCardAgentEffect.MAY_TRASH_FOR_INTRIGUE_AND_TWO_TROOPS_IF_BENE_GESSERIT_ALLIANCE,
         PersonalCardAgentEffect.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE,
+        PersonalCardAgentEffect.MAY_TRASH_SELF_FOR_TROOP_AND_WILD_BATTLE_ICON,
+        PersonalCardAgentEffect.GAIN_REWARDS_PER_FACE_UP_BATTLE_ICON,
     ):
+        return ()
+    if (
+        source_card.agent_effect
+        is PersonalCardAgentEffect.GAIN_REWARDS_PER_FACE_UP_BATTLE_ICON
+        and _crysknife_trashes_remaining(context) == 0
+    ):
+        # The Beast's Spoils resolves its automatic rewards first; only the
+        # Crysknife trashes it counted are then offered one at a time.
         return ()
 
     owner = state.players[player]
     eligible = (*owner.hand, *owner.discard_pile, *owner.in_play)
+    if (
+        source_card.agent_effect
+        is PersonalCardAgentEffect.MAY_TRASH_SELF_FOR_TROOP_AND_WILD_BATTLE_ICON
+    ):
+        # "Trash this card" is the arrow cost (OQ-022: a card already trashed
+        # by another effect expired before this choice was offered).
+        eligible = (source_card_id,) if source_card_id in owner.in_play else ()
     if (
         source_card.agent_effect
         is PersonalCardAgentEffect.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE
@@ -828,6 +854,7 @@ def apply_agent_card_trash(state: GameState, action: DomainAction) -> RuleResult
     context["pending_agent_effect"] = False
     source = f"round:{state.round_number}:player:{action.actor}:agent_card"
     if action.action_id == "decline_agent_card_trash":
+        context.pop("crysknife_trashes_remaining", None)
         next_state = advance_after_effect(state, context)
         event = GameEvent(
             event_id=f"{source}:trash_declined",
@@ -845,6 +872,70 @@ def apply_agent_card_trash(state: GameState, action: DomainAction) -> RuleResult
         card_id,
         source=source,
     )
+    if (
+        source_card.agent_effect
+        is PersonalCardAgentEffect.GAIN_REWARDS_PER_FACE_UP_BATTLE_ICON
+    ):
+        remaining = _crysknife_trashes_remaining(context) - 1
+        if remaining > 0:
+            # More Crysknife icons: keep the box pending for the next trash.
+            context["pending_agent_effect"] = True
+            context["crysknife_trashes_remaining"] = remaining
+            frame = trashed.state.decision_stack[-1]
+            next_frame = replace(frame, context=tuple(sorted(context.items())))
+            return RuleResult(
+                state=replace(
+                    trashed.state,
+                    decision_stack=(*trashed.state.decision_stack[:-1], next_frame),
+                ),
+                events=trashed.events,
+            )
+        context.pop("crysknife_trashes_remaining", None)
+        next_state = advance_after_effect(
+            trashed.state,
+            context,
+            trashed.state.players,
+        )
+        return RuleResult(state=next_state, events=trashed.events)
+    if (
+        source_card.agent_effect
+        is PersonalCardAgentEffect.MAY_TRASH_SELF_FOR_TROOP_AND_WILD_BATTLE_ICON
+    ):
+        # Pivotal Gambit: the trashed card pays for one troop and pledges a
+        # wild battle icon to this Conflict's first-place reward (OQ-025).
+        next_owner, recruited = recruit_troops(
+            trashed.state.players[action.actor],
+            1,
+        )
+        previous = context.get("troops_recruited")
+        if isinstance(previous, bool) or not isinstance(previous, int):
+            raise RuntimeError("Agent-turn effect frame has invalid recruit count")
+        context["troops_recruited"] = previous + recruited
+        pledged = replace(
+            trashed.state,
+            players=replace_player(trashed.state.players, next_owner),
+            conflict_wild_icon_bonus=True,
+        )
+        next_state = advance_after_effect(pledged, context, pledged.players)
+        return RuleResult(
+            state=next_state,
+            events=(
+                *trashed.events,
+                GameEvent(
+                    event_id=f"{source}:trash_reward:troop",
+                    kind="troops_recruited",
+                    payload=(("amount", recruited), ("player", action.actor)),
+                ),
+                GameEvent(
+                    event_id=f"{source}:trash_reward:wild_battle_icon",
+                    kind="wild_battle_icon_pledged",
+                    payload=(
+                        ("conflict_id", state.current_conflict_ids[-1]),
+                        ("player", action.actor),
+                    ),
+                ),
+            ),
+        )
     if (
         source_card.agent_effect
         is PersonalCardAgentEffect.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE
@@ -1103,6 +1194,12 @@ def legal_agent_card_payment_actions(
         return ()
     _, source_card_id, _ = _effect_subject(context)
     source_card = personal_card_for_instance(source_card_id)
+    if (
+        source_card.agent_effect
+        is PersonalCardAgentEffect
+        .MAY_PAY_TWO_SPICE_FOR_SHIELD_WALL_AND_SANDWORM_IF_MAKER_HOOKS
+    ):
+        return _arrakis_revolt_payment_actions(state, player)
     if source_card.agent_effect not in (
         PersonalCardAgentEffect.PAY_TWO_WATER_TO_DRAW_TWO,
         PersonalCardAgentEffect.MAY_PAY_FOUR_SPICE_FOR_VP,
@@ -1310,6 +1407,9 @@ def apply_agent_card_payment(state: GameState, action: DomainAction) -> RuleResu
         )
         return RuleResult(state=next_state, events=(event,))
 
+    if action.action_id in _ARRAKIS_REVOLT_ACTION_IDS:
+        return _apply_arrakis_revolt_payment(state, action, context, source)
+
     owner = state.players[action.actor]
     source_card = personal_card_for_instance(_effect_subject(context)[1])
     pays_water = (
@@ -1353,6 +1453,120 @@ def apply_agent_card_payment(state: GameState, action: DomainAction) -> RuleResu
         source=source,
     )
     return RuleResult(state=draw.state, events=(event, *draw.events))
+
+
+_ARRAKIS_REVOLT_ACTION_IDS = frozenset(
+    {
+        "pay_agent_card_spice_for_sandworm",
+        "pay_agent_card_spice_for_sandworm_and_shield_wall",
+    }
+)
+
+
+def _crysknife_trashes_remaining(context: dict[str, ActionValue]) -> int:
+    remaining = context.get("crysknife_trashes_remaining", 0)
+    if isinstance(remaining, bool) or not isinstance(remaining, int):
+        raise RuntimeError("Agent-turn effect frame has invalid Crysknife count")
+    return remaining
+
+
+def _arrakis_revolt_payment_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return Arrakis Revolt's arrow payment: 2 spice for the wall and a worm.
+
+    "You may remove the Shield Wall" and the sandworm are the two icons after
+    the arrow [Main p. 20]. The removal is optional, so paying while keeping
+    the wall is offered only when the worm can still do something (the
+    Conflict is not Shield Wall-protected); a summon that "does nothing"
+    against a protected Conflict is not worth two spice (OQ-026).
+    """
+
+    decline = DomainAction(action_id="decline_agent_card_payment", actor=player)
+    owner = state.players[player]
+    if (
+        not owner.maker_hooks
+        or owner.resources.spice < 2
+        or not state.current_conflict_ids
+    ):
+        return (decline,)
+    actions = [decline]
+    if state.shield_wall_present:
+        actions.append(
+            DomainAction(
+                action_id="pay_agent_card_spice_for_sandworm_and_shield_wall",
+                actor=player,
+            )
+        )
+    if not current_conflict_is_shield_wall_protected(state):
+        actions.append(
+            DomainAction(action_id="pay_agent_card_spice_for_sandworm", actor=player)
+        )
+    return tuple(actions)
+
+
+def _apply_arrakis_revolt_payment(
+    state: GameState,
+    action: DomainAction,
+    context: dict[str, ActionValue],
+    source: str,
+) -> RuleResult:
+    owner = state.players[action.actor]
+    previous_spent = context.get("spice_spent_after_placement", 0)
+    if isinstance(previous_spent, bool) or not isinstance(previous_spent, int):
+        raise RuntimeError("Agent-turn effect frame has invalid Spice spending")
+    context["spice_spent_after_placement"] = previous_spent + 2
+    next_owner = replace(
+        owner,
+        resources=replace(owner.resources, spice=owner.resources.spice - 2),
+        spice_spent_turn=owner.spice_spent_turn + 2,
+    )
+    paid = replace(state, players=replace_player(state.players, next_owner))
+    events: list[GameEvent] = [
+        GameEvent(
+            event_id=f"{source}:paid",
+            kind="agent_card_payment_resolved",
+            payload=(("player", action.actor), ("resource", "spice"), ("spent", 2)),
+        )
+    ]
+    if action.action_id == "pay_agent_card_spice_for_sandworm_and_shield_wall":
+        destroyed = destroy_shield_wall(
+            paid,
+            event_id=f"{source}:shield_wall",
+            source=f"player:{action.actor}:arrakis_revolt",
+        )
+        paid = destroyed.state
+        events.extend(destroyed.events)
+    owner = paid.players[action.actor]
+    if current_conflict_is_shield_wall_protected(paid) or units_deployment_blocked(
+        paid, action.actor
+    ):
+        # No effect against a Shield Wall-protected Conflict [Main p. 20] or
+        # while Emperor of the Known Universe blocks deployment [Main p. 17].
+        events.append(
+            GameEvent(
+                event_id=f"{source}:sandworm_unavailable",
+                kind="sandworm_summon_unavailable",
+                payload=(("player", action.actor),),
+            )
+        )
+    else:
+        owner = replace(
+            owner,
+            sandworms_conflict=owner.sandworms_conflict + 1,
+            units_deployed_turn=owner.units_deployed_turn + 1,
+        )
+        paid = replace(paid, players=replace_player(paid.players, owner))
+        events.append(
+            GameEvent(
+                event_id=f"{source}:sandworm",
+                kind="sandworm_deployed",
+                payload=(("count", 1), ("player", action.actor)),
+            )
+        )
+    next_state = advance_after_effect(paid, context, paid.players)
+    return RuleResult(state=next_state, events=tuple(events))
 
 
 def _still_owned(owner: PlayerState, card_instance_id: str) -> bool:
@@ -1885,6 +2099,57 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             raise RuntimeError("Agent-card Influence effect requires a player choice")
         next_owner = owner
         event_kind = "agent_card_effect_unavailable"
+    elif effect is PersonalCardAgentEffect.GAIN_REWARDS_PER_FACE_UP_BATTLE_ICON:
+        # The Beast's Spoils: one reward per face-up printed icon in the
+        # owner's supply (OQ-024). Spice and troops resolve here; each
+        # Crysknife's optional trash is then offered one at a time.
+        counts = face_up_battle_icon_counts(owner)
+        spice = counts[BattleIcon.DESERT_MOUSE]
+        next_owner, recruited = recruit_troops(owner, counts[BattleIcon.ORNITHOPTER])
+        next_owner = replace(
+            next_owner,
+            resources=replace(
+                next_owner.resources,
+                spice=next_owner.resources.spice + spice,
+            ),
+        )
+        previous = context.get("troops_recruited")
+        if isinstance(previous, bool) or not isinstance(previous, int):
+            raise RuntimeError("Agent-turn effect frame has invalid recruit count")
+        context["troops_recruited"] = previous + recruited
+        crysknives = counts[BattleIcon.CRYSKNIFE]
+        event_kind = (
+            "agent_card_effect_resolved"
+            if spice or recruited or crysknives
+            else "agent_card_effect_unavailable"
+        )
+        if crysknives:
+            context["crysknife_trashes_remaining"] = crysknives
+            frame = state.decision_stack[-1]
+            next_frame = replace(frame, context=tuple(sorted(context.items())))
+            return RuleResult(
+                state=replace(
+                    state,
+                    players=replace_player(state.players, next_owner),
+                    decision_stack=(*state.decision_stack[:-1], next_frame),
+                ),
+                events=(
+                    GameEvent(
+                        event_id=(
+                            f"round:{state.round_number}:player:{player}:"
+                            f"agent_card:{card_instance_id}"
+                        ),
+                        kind=event_kind,
+                        payload=(
+                            ("card_id", card_instance_id),
+                            ("crysknife", crysknives),
+                            ("player", player),
+                            ("spice", spice),
+                            ("troops", recruited),
+                        ),
+                    ),
+                ),
+            )
     elif effect is PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE:
         raise RuntimeError("Agent-card Influence effect requires a player choice")
     else:

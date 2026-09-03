@@ -16,11 +16,11 @@ from dune_imperium.display.cards import personal_card_text
 _ALL_ENTRIES = (*IMPERIUM_CARDS, *STARTING_DECK, *RESERVE_STACKS)
 
 
-def test_covers_all_54_imperium_7_starting_2_reserve_entries() -> None:
-    assert len(IMPERIUM_CARDS) == 54
+def test_covers_all_57_imperium_7_starting_2_reserve_entries() -> None:
+    assert len(IMPERIUM_CARDS) == 57
     assert len(STARTING_DECK) == 7
     assert len(RESERVE_STACKS) == 2
-    assert len(_ALL_ENTRIES) == 63
+    assert len(_ALL_ENTRIES) == 66
 
 
 def test_every_entry_produces_a_non_empty_list() -> None:

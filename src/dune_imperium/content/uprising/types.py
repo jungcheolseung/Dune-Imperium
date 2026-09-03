@@ -96,6 +96,15 @@ class PersonalCardAgentEffect(StrEnum):
     RECRUIT_TWO_IF_SPY_RECALLED_THIS_TURN = (
         "recruit_two_if_spy_recalled_this_turn"
     )
+    # Uprising promo cards (card faces; see docs/rules/open-questions.md
+    # OQ-024 to OQ-026 for the project rulings behind each).
+    MAY_PAY_TWO_SPICE_FOR_SHIELD_WALL_AND_SANDWORM_IF_MAKER_HOOKS = (
+        "may_pay_two_spice_for_shield_wall_and_sandworm_if_maker_hooks"
+    )
+    GAIN_REWARDS_PER_FACE_UP_BATTLE_ICON = "gain_rewards_per_face_up_battle_icon"
+    MAY_TRASH_SELF_FOR_TROOP_AND_WILD_BATTLE_ICON = (
+        "may_trash_self_for_troop_and_wild_battle_icon"
+    )
     DRAW_INTRIGUE_IF_SPY_RECALLED_THIS_TURN = (
         "draw_intrigue_if_spy_recalled_this_turn"
     )
@@ -143,6 +152,7 @@ class PersonalCardAcquisitionEffect(StrEnum):
     PLACE_SPY = "place_spy"
     GAIN_SPACING_GUILD_INFLUENCE = "gain_spacing_guild_influence"
     TAKE_CONTRACT = "take_contract"
+    RECRUIT_ONE_TROOP = "recruit_one_troop"
 
 
 class PersonalCardRevealChoiceEffect(StrEnum):

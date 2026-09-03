@@ -59,6 +59,12 @@ def test_catalog_endpoint_serves_display_names(client: TestClient) -> None:
     assert catalog["leaders"]["lady_jessica"]["name"].startswith("Lady Jessica")
 
 
+def test_promo_cards_option_reaches_the_ruleset(client: TestClient) -> None:
+    summary = _create(client, promo_cards=True, game_seed=5)
+    assert summary["promo_cards"] is True
+    assert _create(client, game_seed=5)["promo_cards"] is False
+
+
 def test_created_games_are_listed_and_summarized(client: TestClient) -> None:
     summary = _create(client)
     game_id = summary["game_id"]

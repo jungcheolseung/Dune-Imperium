@@ -24,6 +24,8 @@ from dune_imperium.content.uprising.types import (
 
 BASE_SOURCES: Final = (SourceRef(SourceDocument.MAIN_RULEBOOK, (3, 4)),)
 CHOAM_SOURCES: Final = (SourceRef(SourceDocument.MAIN_RULEBOOK, (3, 4, 16)),)
+# Promo cards appear in no official document; the card face is the source.
+PROMO_SOURCES: Final = (SourceRef(SourceDocument.CARD_FACE, (1,)),)
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,13 +92,14 @@ class ImperiumCardEntry(DeckCardEntry):
 
 
 def _entry(
-    catalog_id: int,
+    catalog_id: int | None,
     slug: str,
     name: str,
     acquisition_cost: int,
     *,
     copies: int = 1,
     choam_only: bool = False,
+    promo: bool = False,
     has_acquisition_bonus: bool = False,
     factions: tuple[Faction, ...] = (),
     agent_icons: tuple[AgentIcon, ...] = (),
@@ -118,11 +121,22 @@ def _entry(
         card=CardDefinition(
             card_id=slug.replace("-", "_"),
             name=name,
-            sources=CHOAM_SOURCES if choam_only else BASE_SOURCES,
-            catalog_url=f"https://dunecardshub.com/cards/{catalog_id}/uprising-{slug}",
+            sources=(
+                PROMO_SOURCES
+                if promo
+                else CHOAM_SOURCES
+                if choam_only
+                else BASE_SOURCES
+            ),
+            catalog_url=(
+                None
+                if catalog_id is None
+                else f"https://dunecardshub.com/cards/{catalog_id}/uprising-{slug}"
+            ),
         ),
         copies=copies,
         choam_only=choam_only,
+        promo=promo,
         acquisition_cost=acquisition_cost,
         has_acquisition_bonus=has_acquisition_bonus,
         factions=factions,
@@ -977,6 +991,56 @@ IMPERIUM_CARDS: Final = (
         reveal_choice_effects=(PersonalCardRevealChoiceEffect.PLACE_SPY,),
         play_data_complete=True,
     ),
+    # Uprising promo cards (2026-09-03): printed in the Uprising layout but
+    # not in the retail deck; dealt only with RulesetConfig(promo_cards=True).
+    # Transcribed from the card faces (Dune Cards Hub has no catalog page
+    # for them, hence no catalog_id); project rulings for the gaps the
+    # official documents leave are OQ-024 to OQ-026.
+    _entry(
+        None,
+        "arrakis-revolt",
+        "Arrakis Revolt",
+        6,
+        promo=True,
+        factions=(Faction.FREMEN,),
+        agent_icons=(AgentIcon.CITY,),
+        has_acquisition_bonus=True,
+        acquisition_effect=PersonalCardAcquisitionEffect.RECRUIT_ONE_TROOP,
+        agent_effect=(
+            PersonalCardAgentEffect
+            .MAY_PAY_TWO_SPICE_FOR_SHIELD_WALL_AND_SANDWORM_IF_MAKER_HOOKS
+        ),
+        reveal_persuasion=1,
+        reveal_strength=3,
+        play_data_complete=True,
+    ),
+    _entry(
+        None,
+        "pivotal-gambit",
+        "Pivotal Gambit",
+        3,
+        promo=True,
+        factions=(Faction.FREMEN,),
+        agent_icons=(AgentIcon.FREMEN, AgentIcon.CITY),
+        agent_effect=(
+            PersonalCardAgentEffect.MAY_TRASH_SELF_FOR_TROOP_AND_WILD_BATTLE_ICON
+        ),
+        reveal_persuasion=1,
+        reveal_strength=2,
+        play_data_complete=True,
+    ),
+    _entry(
+        None,
+        "the-beast-s-spoils",
+        "The Beast's Spoils",
+        3,
+        promo=True,
+        factions=(Faction.EMPEROR,),
+        agent_icons=(AgentIcon.CITY,),
+        agent_effect=PersonalCardAgentEffect.GAIN_REWARDS_PER_FACE_UP_BATTLE_ICON,
+        reveal_strength=3,
+        play_data_complete=True,
+    ),
 )
 
 IMPERIUM_CARDS_BY_ID: Final = {
@@ -984,20 +1048,29 @@ IMPERIUM_CARDS_BY_ID: Final = {
 }
 
 
-def imperium_cards_for_choam(choam_module: bool) -> tuple[ImperiumCardEntry, ...]:
+def imperium_cards_for_choam(
+    choam_module: bool,
+    promo_cards: bool = False,
+) -> tuple[ImperiumCardEntry, ...]:
     """Return physical card entries included by the selected setup."""
 
     return tuple(
-        entry for entry in IMPERIUM_CARDS if choam_module or not entry.choam_only
+        entry
+        for entry in IMPERIUM_CARDS
+        if (choam_module or not entry.choam_only)
+        and (promo_cards or not entry.promo)
     )
 
 
-def imperium_deck_instance_ids(choam_module: bool) -> tuple[str, ...]:
+def imperium_deck_instance_ids(
+    choam_module: bool,
+    promo_cards: bool = False,
+) -> tuple[str, ...]:
     """Return stable IDs for every physical Imperium card copy."""
 
     return tuple(
         f"imperium:{entry.card.card_id}:{copy}"
-        for entry in imperium_cards_for_choam(choam_module)
+        for entry in imperium_cards_for_choam(choam_module, promo_cards)
         for copy in range(entry.copies)
     )
 

@@ -58,6 +58,7 @@ def begin_round(state: GameState) -> RuleResult:
         players=players,
         conflict_deck=state.conflict_deck[1:],
         current_conflict_ids=(*state.current_conflict_ids, conflict_id),
+        conflict_wild_icon_bonus=False,
         combat_intrigue_complete=False,
         combat_rewards_resolved=False,
         decision_stack=(opening_frame,),

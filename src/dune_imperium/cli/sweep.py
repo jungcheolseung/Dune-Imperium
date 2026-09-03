@@ -13,7 +13,11 @@ from dune_imperium.simulation.sweep import (
     sweep_specs,
 )
 
-_ChoamModuleByRuleset = {"uprising-4p-base": False, "uprising-4p-choam": True}
+
+def _ruleset_options(identifier: str) -> tuple[bool, bool]:
+    """Split a RulesetConfig identifier into (choam_module, promo_cards)."""
+
+    return ("choam" in identifier, "+promo" in identifier)
 
 _RULESETS = {
     "base": (False,),
@@ -65,6 +69,14 @@ def _build_parser() -> argparse.ArgumentParser:
         "--leader-draft",
         action="store_true",
         help="use the OQ-007 six-Leader draft setup instead of fixed Leaders",
+    )
+    parser.add_argument(
+        "--promo-cards",
+        action="store_true",
+        help=(
+            "shuffle the three Uprising promo Imperium cards (Arrakis Revolt, "
+            "The Beast's Spoils, Pivotal Gambit) into the deck"
+        ),
     )
     parser.add_argument(
         "--rotate-leaders",
@@ -141,7 +153,10 @@ def _write_coverage_report(
 
     report: dict[str, dict[str, object]] = {}
     for ruleset, counts in sorted(merged.items()):
-        zero = zero_coverage(counts, choam_module=_ChoamModuleByRuleset[ruleset])
+        choam_module, promo_cards = _ruleset_options(ruleset)
+        zero = zero_coverage(
+            counts, choam_module=choam_module, promo_cards=promo_cards
+        )
         report[ruleset] = {"counts": counts, "zero": zero}
         zero_summary = ", ".join(
             f"{dimension}={len(missing)}" for dimension, missing in sorted(zero.items())
@@ -171,6 +186,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         verify_replay=not arguments.skip_replay,
         policy=arguments.policy,
         leader_draft=arguments.leader_draft,
+        promo_cards=arguments.promo_cards,
         rotate_leaders=arguments.rotate_leaders,
         collect_coverage=arguments.coverage_json is not None,
     )

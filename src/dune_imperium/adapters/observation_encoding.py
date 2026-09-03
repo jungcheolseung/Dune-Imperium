@@ -42,7 +42,7 @@ from dune_imperium.core.observation import PlayerView, PublicPlayerView
 from dune_imperium.core.state import GamePhase
 from dune_imperium.rules.frames import FrameKind
 
-OBSERVATION_VERSION: Final = 3
+OBSERVATION_VERSION: Final = 4
 _SEATS: Final = 4
 
 PERSONAL_CARD_IDS: Final = (
@@ -111,7 +111,7 @@ def _seat_segment_lengths(seat: int) -> tuple[tuple[str, int], ...]:
 
 def _segment_lengths() -> tuple[tuple[str, int], ...]:
     lengths: list[tuple[str, int]] = [
-        ("global_scalars", 11),
+        ("global_scalars", 12),
         ("current_conflict", 1),
         ("imperium_row", _IMPERIUM_ROW_SLOTS),
         ("reserve_stacks", len(RESERVE_STACK_IDS)),
@@ -125,6 +125,7 @@ def _segment_lengths() -> tuple[tuple[str, int], ...]:
         ("imperium_removed", len(PERSONAL_CARD_IDS)),
         ("reveal_order", _SEATS),
         ("leader_draft_pool", _LEADER_DRAFT_SLOTS),
+        ("wild_icon_conflicts", len(CONFLICT_IDS)),
     ]
     for seat in range(_SEATS):
         lengths.extend(_seat_segment_lengths(seat))
@@ -209,6 +210,7 @@ def encode_player_view(view: PlayerView) -> tuple[int, ...]:
             int(view.combat_intrigue_complete),
             int(view.combat_rewards_resolved),
             len(view.current_conflict_ids),
+            int(view.conflict_wild_icon_bonus),
         ],
     )
     writer.write(
@@ -257,6 +259,10 @@ def encode_player_view(view: PlayerView) -> tuple[int, ...]:
     writer.write(
         "leader_draft_pool",
         pool_slots + [0] * (_LEADER_DRAFT_SLOTS - len(pool_slots)),
+    )
+    writer.write(
+        "wild_icon_conflicts",
+        _multi_hot(view.wild_icon_conflict_ids, CONFLICT_IDS),
     )
 
     for seat_offset in range(_SEATS):

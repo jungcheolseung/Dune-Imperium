@@ -19,6 +19,11 @@ class RulesetConfig:
     # round-1 turn order. Off by default so fixed-Leader test and sweep
     # setups stay reproducible.
     leader_draft: bool = False
+    # Shuffle the three Uprising promo Imperium cards (Arrakis Revolt, The
+    # Beast's Spoils, Pivotal Gambit) into the Imperium deck. They are printed
+    # in the Uprising layout but are not part of the retail deck, so they stay
+    # out unless a table opts in.
+    promo_cards: bool = False
 
     def __post_init__(self) -> None:
         if self.players != 4:
@@ -30,4 +35,5 @@ class RulesetConfig:
         """Return a stable, human-readable ruleset identifier."""
 
         module = "choam" if self.choam_module else "base"
-        return f"uprising-4p-{module}"
+        promo = "+promo" if self.promo_cards else ""
+        return f"uprising-4p-{module}{promo}"

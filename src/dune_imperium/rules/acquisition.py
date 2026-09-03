@@ -24,6 +24,7 @@ from dune_imperium.rules.contracts import (
 from dune_imperium.rules.effects import (
     advance_after_effect,
     current_agent_effect_context,
+    recruit_troops,
 )
 from dune_imperium.rules.frames import FrameKind, replace_player, reveal_is_open_for
 from dune_imperium.rules.influence import gain_faction_influence
@@ -752,6 +753,20 @@ def _resolve_imperium_acquisition_bonus(
                     ("player", player),
                     ("resource", "solari"),
                 ),
+            ),
+        )
+    elif effect is PersonalCardAcquisitionEffect.RECRUIT_ONE_TROOP:
+        # Arrakis Revolt's acquire box (promo): the troop goes to the garrison
+        # like any recruit [Main p. 20].
+        owner, recruited = recruit_troops(owner, 1)
+        events = (
+            GameEvent(
+                event_id=(
+                    f"round:{state.round_number}:player:{player}:"
+                    f"acquire:{instance_id}:troop"
+                ),
+                kind="acquisition_troop_recruited",
+                payload=(("amount", recruited), ("player", player)),
             ),
         )
     return AcquisitionBonus(

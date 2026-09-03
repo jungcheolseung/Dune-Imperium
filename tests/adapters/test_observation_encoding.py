@@ -24,12 +24,12 @@ from dune_imperium.simulation import run_random_game
 
 
 def test_layout_is_versioned_and_contiguous() -> None:
-    assert OBSERVATION_VERSION == 3
-    assert len(PERSONAL_CARD_IDS) == 63
+    assert OBSERVATION_VERSION == 4
+    assert len(PERSONAL_CARD_IDS) == 66
     assert len(INTRIGUE_IDS) == 39
     assert len(CONFLICT_IDS) == 16
     assert len(BATTLE_CARD_IDS) == 21
-    assert OBSERVATION_SIZE == 1967
+    assert OBSERVATION_SIZE == 2038
 
     offset = 0
     for segment in OBSERVATION_SEGMENTS:
@@ -38,9 +38,9 @@ def test_layout_is_versioned_and_contiguous() -> None:
         offset += segment.length
     assert offset == OBSERVATION_SIZE
 
-    assert segment_slice("global_scalars") == slice(0, 11)
+    assert segment_slice("global_scalars") == slice(0, 12)
     seat0_in_play = segment_slice("seat0_in_play")
-    assert seat0_in_play.stop - seat0_in_play.start == 63
+    assert seat0_in_play.stop - seat0_in_play.start == 66
     private_intrigue = segment_slice("private_intrigue")
     assert private_intrigue.stop == OBSERVATION_SIZE
 

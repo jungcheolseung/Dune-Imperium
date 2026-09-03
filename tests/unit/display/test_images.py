@@ -76,6 +76,11 @@ def test_manifest_indexes_uprising_entries_with_a_content_id(tmp_path: Path) -> 
             ),
             _entry("base/starting/Dagger.webp", kind="starting", content_id="dagger"),
             _entry(
+                "uprising/promo/Pivotal Gambit.webp",
+                kind="promo",
+                content_id="pivotal_gambit",
+            ),
+            _entry(
                 "uprising/reserve/The Spice Must Flow.webp",
                 kind="reserve",
                 content_id="the_spice_must_flow",
@@ -93,6 +98,7 @@ def test_manifest_indexes_uprising_entries_with_a_content_id(tmp_path: Path) -> 
     assert dict(index) == {
         ("imperium", "sardaukar_soldier"): "uprising/imperium/Sardaukar Soldier.webp",
         ("other", "dagger"): "base/starting/Dagger.webp",
+        ("imperium", "pivotal_gambit"): "uprising/promo/Pivotal Gambit.webp",
         ("other", "the_spice_must_flow"): "uprising/reserve/The Spice Must Flow.webp",
     }
 
@@ -139,9 +145,9 @@ def test_resolve_prefers_korean_scans_and_drops_missing_files(tmp_path: Path) ->
 
 def test_required_image_keys_cover_every_displayable_content_id() -> None:
     keys = required_image_keys()
-    # 54 imperium + 39 intrigue + 20 contracts + 16 conflicts + 22 spaces
-    # + 10 leader faces + 7 starting + 2 reserve.
-    assert len(keys) == 170
+    # 57 imperium (54 + 3 promo) + 39 intrigue + 20 contracts + 16 conflicts
+    # + 22 spaces + 10 leader faces + 7 starting + 2 reserve.
+    assert len(keys) == 173
     assert len(set(keys)) == len(keys)
     assert set(keys) == _all_content_keys()
 

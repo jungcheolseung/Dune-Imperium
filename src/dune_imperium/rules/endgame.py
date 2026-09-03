@@ -277,10 +277,13 @@ def _endgame_wild_matches(state: GameState) -> tuple[EndgameWildMatch, ...]:
         face_up_ids = (set(player.objective_ids) | set(player.won_conflict_ids)) - set(
             player.face_down_battle_card_ids
         )
+        # A won Conflict carrying Pivotal Gambit's pledged wild icon pairs as
+        # a wild source too (OQ-025); it cannot pair with itself.
         wild_ids = tuple(
             card_id
             for card_id in sorted(face_up_ids)
             if _battle_icon(card_id) is BattleIcon.WILD
+            or card_id in state.wild_icon_conflict_ids
         )
         matching_ids = tuple(
             card_id
@@ -291,6 +294,7 @@ def _endgame_wild_matches(state: GameState) -> tuple[EndgameWildMatch, ...]:
             EndgameWildMatch(player.player_id, wild_card_id, matching_card_id)
             for wild_card_id in wild_ids
             for matching_card_id in matching_ids
+            if wild_card_id != matching_card_id
         )
     return tuple(matches)
 

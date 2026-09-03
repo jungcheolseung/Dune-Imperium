@@ -10,6 +10,9 @@ class SourceDocument(StrEnum):
     MAIN_RULEBOOK = "main_rulebook"
     BOARD_SPACE_GUIDE = "board_space_guide"
     FAQ = "faq"
+    # A card that no official document describes (the Uprising promo cards):
+    # the printed card face itself is the source, cited as page 1.
+    CARD_FACE = "card_face"
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,6 +54,9 @@ class DeckCardEntry:
     card: CardDefinition
     copies: int = 1
     choam_only: bool = False
+    # Promo card outside the retail deck; dealt only with
+    # ``RulesetConfig(promo_cards=True)``.
+    promo: bool = False
     acquisition_cost: int | None = None
     has_acquisition_bonus: bool = False
 

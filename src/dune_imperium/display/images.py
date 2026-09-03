@@ -23,7 +23,9 @@ Korean scan at ``ko/<path>`` is preferred per file and falls back to
 ``en/<path>``. Only entries of the Uprising set that carry a
 ``content_id`` are indexed; the other sets in the manifest are archived
 for future expansions. The manifest's ``starting`` and ``reserve`` kinds
-both map to the catalog's ``other`` kind (starting and Reserve cards).
+both map to the catalog's ``other`` kind (starting and Reserve cards), and
+its ``promo`` kind (the three Uprising promo Imperium cards) to
+``imperium``.
 """
 
 import json
@@ -38,7 +40,7 @@ DEFAULT_LANGUAGES: Final[tuple[str, ...]] = ("ko", "en")
 
 # Manifest kind -> catalog kind. Every other kind keeps its name.
 _CATALOG_KIND: Final[Mapping[str, str]] = MappingProxyType(
-    {"starting": "other", "reserve": "other"}
+    {"starting": "other", "reserve": "other", "promo": "imperium"}
 )
 
 type ImageKey = tuple[str, str]

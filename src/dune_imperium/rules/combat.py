@@ -884,6 +884,7 @@ def finish_combat(state: GameState) -> RuleResult:
     ranking = rank_combat(state.players)
     players = state.players
     current_conflict_ids = state.current_conflict_ids
+    wild_icon_conflict_ids = state.wild_icon_conflict_ids
     events: list[GameEvent] = []
     if ranking.winner is not None:
         winner = players[ranking.winner]
@@ -926,6 +927,31 @@ def finish_combat(state: GameState) -> RuleResult:
                     ),
                 )
             )
+        if state.conflict_wild_icon_bonus:
+            # Pivotal Gambit's pledge rides on the Conflict card: the winner
+            # keeps it as an extra wild battle icon for Endgame matching
+            # (OQ-025). Immediate matching stays printed-icon only [Main
+            # pp. 14, 20], so a pledged card that paired on arrival is
+            # already face down and the wild icon is spent with it.
+            wild_icon_conflict_ids = (*wild_icon_conflict_ids, conflict_id)
+            events.append(
+                GameEvent(
+                    event_id=(
+                        f"round:{state.round_number}:wild_battle_icon_awarded:"
+                        f"{ranking.winner}"
+                    ),
+                    kind="wild_battle_icon_awarded",
+                    payload=(("conflict_id", conflict_id), ("player", ranking.winner)),
+                )
+            )
+    elif state.conflict_wild_icon_bonus:
+        events.append(
+            GameEvent(
+                event_id=f"round:{state.round_number}:wild_battle_icon_forfeited",
+                kind="wild_battle_icon_forfeited",
+                payload=(("conflict_id", conflict_id),),
+            )
+        )
 
     players = tuple(
         replace(
@@ -942,6 +968,8 @@ def finish_combat(state: GameState) -> RuleResult:
         phase=GamePhase.MAKERS,
         players=players,
         current_conflict_ids=current_conflict_ids,
+        conflict_wild_icon_bonus=False,
+        wild_icon_conflict_ids=wild_icon_conflict_ids,
     )
     events.append(
         GameEvent(
@@ -969,6 +997,21 @@ def _matching_battle_card(player: PlayerState, conflict_id: str) -> str | None:
     if len(matches) > 1:
         raise NotImplementedError("choosing among matching battle icons is unresolved")
     return matches[0] if matches else None
+
+
+def face_up_battle_icon_counts(player: PlayerState) -> dict[BattleIcon, int]:
+    """Count the player's face-up Objective and won Conflict cards per icon.
+
+    Printed icons only: a face-up wild card (Propaganda) counts under
+    ``BattleIcon.WILD`` and never as one of the three printed icons.
+    """
+
+    counts = dict.fromkeys(BattleIcon, 0)
+    face_down = set(player.face_down_battle_card_ids)
+    for card_id in (*player.objective_ids, *player.won_conflict_ids):
+        if card_id not in face_down:
+            counts[_battle_icon_for(card_id)] += 1
+    return counts
 
 
 def _battle_icon_for(card_id: str) -> BattleIcon:

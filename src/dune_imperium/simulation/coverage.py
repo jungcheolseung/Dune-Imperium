@@ -167,7 +167,9 @@ def _agent_placement_catalog() -> frozenset[str]:
     return frozenset(keys)
 
 
-def zero_coverage(census: Census, *, choam_module: bool) -> dict[str, list[str]]:
+def zero_coverage(
+    census: Census, *, choam_module: bool, promo_cards: bool = False
+) -> dict[str, list[str]]:
     """Return, per dimension with a well-defined catalog, the untouched IDs.
 
     Only dimensions backed by a fixed content catalog are reported: a
@@ -175,7 +177,7 @@ def zero_coverage(census: Census, *, choam_module: bool) -> dict[str, list[str]]
     ``event_kinds``) is skipped rather than guessed at.
     """
 
-    config = RulesetConfig(choam_module=choam_module)
+    config = RulesetConfig(choam_module=choam_module, promo_cards=promo_cards)
     codec = ActionCodec(config)
 
     zero: dict[str, list[str]] = {}
@@ -194,7 +196,7 @@ def zero_coverage(census: Census, *, choam_module: bool) -> dict[str, list[str]]
     _report("agent_placements", _agent_placement_catalog())
     imperium_identities = {
         normalize_instance_id(instance_id)
-        for instance_id in imperium_deck_instance_ids(choam_module)
+        for instance_id in imperium_deck_instance_ids(choam_module, promo_cards)
     }
     reserve_identities = {stack.card.card_id for stack in RESERVE_STACKS}
     _report("cards_acquired", imperium_identities | reserve_identities)

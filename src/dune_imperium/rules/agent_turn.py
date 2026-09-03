@@ -327,6 +327,21 @@ def _agent_effect_is_available(
         return owner.resources.spice >= 4
     if (
         effect
+        is PersonalCardAgentEffect
+        .MAY_PAY_TWO_SPICE_FOR_SHIELD_WALL_AND_SANDWORM_IF_MAKER_HOOKS
+    ):
+        # "Maker Hooks:" is a requirement [Main p. 20]; the arrow cost is
+        # judged again at resolution like the other arrow payments.
+        return owner.maker_hooks and owner.resources.spice >= 2
+    if effect in (
+        PersonalCardAgentEffect.GAIN_REWARDS_PER_FACE_UP_BATTLE_ICON,
+        PersonalCardAgentEffect.MAY_TRASH_SELF_FOR_TROOP_AND_WILD_BATTLE_ICON,
+    ):
+        # Both are judged at resolution: the icon rewards over the supply at
+        # that time, the self-trash over whether the card is still in play.
+        return True
+    if (
+        effect
         is PersonalCardAgentEffect.MAY_DISCARD_TWO_AND_PAY_FIVE_SOLARI_FOR_VP
     ):
         return owner.resources.solari >= 5 and len(owner.hand) >= 3

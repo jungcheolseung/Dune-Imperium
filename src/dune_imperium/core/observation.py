@@ -115,6 +115,10 @@ class PlayerView:
     leader_draft_pool: tuple[str, ...] = ()
     reserve_stacks: tuple[tuple[str, int], ...] = ()
     shield_wall_present: bool = True
+    # Pivotal Gambit (promo): a wild battle icon pledged to this Conflict's
+    # first-place reward, and the won Conflicts that carry one (OQ-025).
+    conflict_wild_icon_bonus: bool = False
+    wild_icon_conflict_ids: tuple[str, ...] = ()
     maker_bonus_spice: tuple[tuple[str, int], ...] = ()
     public_data: tuple[tuple[str, ActionValue], ...] = ()
     private_data: tuple[tuple[str, ActionValue], ...] = ()
@@ -272,6 +276,8 @@ def observe_state(state: GameState, player: int) -> PlayerView:
         leader_draft_pool=state.leader_draft_pool,
         reserve_stacks=state.reserve_stacks,
         shield_wall_present=state.shield_wall_present,
+        conflict_wild_icon_bonus=state.conflict_wild_icon_bonus,
+        wild_icon_conflict_ids=state.wild_icon_conflict_ids,
         maker_bonus_spice=state.maker_bonus_spice,
     )
 
