@@ -1,38 +1,35 @@
-"""Download the Uprising card images the browser UI can display.
+"""Fill gaps in a card-image checkout from the sources its manifest records.
 
-Fetches exactly the file set enumerated by
-``dune_imperium.display.images.required_images()`` (170 files as of
-2026-09-03) from Dune Cards Hub into the gitignored local cache
-``downloads/dunecardshub/cards/`` — the directory the play server mounts at
-``/card-images``. Existing files are kept unless ``--force`` is given, so
-reruns only fill gaps.
+The private ``Dune-Imperium-assets`` repository holds the card scans and
+``cards/manifest.json`` (see ``dune_imperium.display.images``). Every
+manifest entry records where its file came from (Dune Cards Hub URL and
+sha256), so a checkout that is missing files — a fresh clone that only
+took the manifest, or a newly added entry — can be completed with:
 
-Run inside the project environment (the script imports the package):
+    uv run scripts/fetch_card_images.py            # downloads/cards
+    uv run scripts/fetch_card_images.py --dest ../Dune-Imperium-assets/cards
 
-    uv run scripts/fetch_card_images.py
-
-Images are a machine-local convenience per ``AGENTS.md`` and
-``docs/implementation-plan.md``: they are never committed to the repository,
-and Dune Cards Hub is a card/visual reference, not a rules authority. The
-server degrades to text-only when the cache is absent, so this script is
-optional. Direct requests without browser-like headers get HTTP 403, hence
-the User-Agent and Referer below.
+Files are written to ``<dest>/en/<path>`` and verified against the
+manifest's sha256; existing files are kept unless ``--force`` is given.
+The images are machine-local reference material per ``AGENTS.md``: never
+commit them to this repository, and treat Dune Cards Hub as a visual
+reference, not a rules authority. Direct requests without browser-like
+headers get HTTP 403, hence the User-Agent and Referer below.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import sys
 import time
 import urllib.error
 import urllib.request
 from pathlib import Path
 
-from dune_imperium.display.images import required_images
-
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_DEST = REPOSITORY_ROOT / "downloads" / "dunecardshub" / "cards"
-BASE_URL = "https://dunecardshub.com/images/"
+DEFAULT_DEST = REPOSITORY_ROOT / "downloads" / "cards"
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"
@@ -46,14 +43,20 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="fetch_card_images",
         description=(
-            "Download the Dune Cards Hub images the local play UI can show."
+            "Download the card images a manifest records but the checkout lacks."
         ),
     )
     parser.add_argument(
         "--dest",
         type=Path,
         default=DEFAULT_DEST,
-        help=f"target directory (default: {DEFAULT_DEST})",
+        help=f"cards directory holding manifest.json (default: {DEFAULT_DEST})",
+    )
+    parser.add_argument(
+        "--set",
+        dest="sets",
+        action="append",
+        help="only entries of this set (repeatable; default: every set)",
     )
     parser.add_argument(
         "--delay",
@@ -74,55 +77,64 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _fetch(filename: str) -> bytes:
-    request = urllib.request.Request(BASE_URL + filename, headers=HEADERS)
+def _fetch(url: str, expected_sha256: str) -> bytes:
+    request = urllib.request.Request(url, headers=HEADERS)
     with urllib.request.urlopen(request, timeout=30) as response:
         payload: bytes = response.read()
-    if payload[:4] != b"RIFF" or payload[8:12] != b"WEBP":
-        raise ValueError("response is not a WebP image")
+    digest = hashlib.sha256(payload).hexdigest()
+    if digest != expected_sha256:
+        raise ValueError(f"sha256 mismatch: expected {expected_sha256}, got {digest}")
     return payload
 
 
 def main(argv: list[str] | None = None) -> int:
     arguments = _build_parser().parse_args(argv)
-    entries = required_images()
+    manifest_path = arguments.dest / "manifest.json"
+    if not manifest_path.is_file():
+        print(f"no manifest at {manifest_path}", file=sys.stderr)
+        return 1
+    document = json.loads(manifest_path.read_text(encoding="utf-8"))
+    # Several entries may share one file (the Uprising starting deck reuses
+    # the base-game scans), so work per path.
+    targets: dict[str, dict[str, str]] = {}
+    for entry in document["entries"]:
+        if arguments.sets and entry["set"] not in arguments.sets:
+            continue
+        targets.setdefault(entry["path"], entry["source"])
 
     if arguments.dry_run:
-        for kind, content_id, filename in entries:
-            present = (arguments.dest / filename).is_file()
+        for relative, source in sorted(targets.items()):
+            present = (arguments.dest / "en" / relative).is_file()
             marker = "have" if present and not arguments.force else "need"
-            print(f"{marker}  {kind}:{content_id}  {filename}")
+            print(f"{marker}  {relative}  <- {source['url']}")
         return 0
 
-    arguments.dest.mkdir(parents=True, exist_ok=True)
     downloaded = 0
     skipped = 0
     failures: list[str] = []
-    for kind, content_id, filename in entries:
-        target = arguments.dest / filename
+    for relative, source in sorted(targets.items()):
+        target = arguments.dest / "en" / relative
         if target.is_file() and not arguments.force:
             skipped += 1
             continue
         try:
-            payload = _fetch(filename)
+            payload = _fetch(source["url"], source["sha256"])
         except (urllib.error.URLError, ValueError, TimeoutError) as error:
-            failures.append(f"{kind}:{content_id} ({filename}): {error}")
-            print(f"FAIL {filename}: {error}", file=sys.stderr)
+            failures.append(f"{relative}: {error}")
+            print(f"FAIL {relative}: {error}", file=sys.stderr)
         else:
+            target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(payload)
             downloaded += 1
-            print(f"ok   {filename}")
+            print(f"ok   {relative}")
         time.sleep(arguments.delay)
 
     print(
         f"done: {downloaded} downloaded, {skipped} already present,"
-        f" {len(failures)} failed, {len(entries)} total -> {arguments.dest}"
+        f" {len(failures)} failed, {len(targets)} total -> {arguments.dest}"
     )
     if failures:
-        print(
-            "Some files failed; rerun to retry only the gaps.",
-            file=sys.stderr,
-        )
+        print("Some files failed; rerun to retry only the gaps.", file=sys.stderr)
         return 1
     return 0
 

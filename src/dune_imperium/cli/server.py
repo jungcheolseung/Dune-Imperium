@@ -32,8 +32,8 @@ def _build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=None,
         help=(
-            "local card-image cache (default: DUNE_IMPERIUM_CARD_IMAGE_DIR "
-            "or the repository's downloads/dunecardshub/cards)"
+            "local card-image checkout with manifest.json (default: "
+            "DUNE_IMPERIUM_CARD_IMAGE_DIR or the repository's downloads/cards)"
         ),
     )
     return parser

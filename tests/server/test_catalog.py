@@ -160,12 +160,17 @@ def test_catalog_spaces_carry_structured_board_data() -> None:
     assert len(options) == 2
 
 
-def test_catalog_image_urls_follow_the_available_file_set() -> None:
+def test_catalog_image_urls_follow_the_resolved_index() -> None:
     with_images = build_catalog(
         frozenset(
             {
-                "uprising-imperium-sardaukar-soldier.webp",
-                "uprising-location-arakeen.webp",
+                (
+                    "imperium",
+                    "sardaukar_soldier",
+                    "en/uprising/imperium/Sardaukar Soldier.webp",
+                ),
+                ("location", "arrakeen", "ko/uprising/location/Arrakeen.webp"),
+                ("other", "dagger", "en/base/starting/Dagger.webp"),
             }
         )
     )
@@ -173,7 +178,13 @@ def test_catalog_image_urls_follow_the_available_file_set() -> None:
     assert isinstance(cards, dict)
     soldier = cards["sardaukar_soldier"]
     assert isinstance(soldier, dict)
-    assert soldier["image"] == "/card-images/uprising-imperium-sardaukar-soldier.webp"
+    # Printed names carry spaces: the URL is percent-encoded for the mount.
+    assert soldier["image"] == (
+        "/card-images/en/uprising/imperium/Sardaukar%20Soldier.webp"
+    )
+    dagger = cards["dagger"]
+    assert isinstance(dagger, dict)
+    assert dagger["image"] == "/card-images/en/base/starting/Dagger.webp"
     spice_must_flow = cards["the_spice_must_flow"]
     assert isinstance(spice_must_flow, dict)
     assert spice_must_flow["image"] is None
@@ -181,7 +192,7 @@ def test_catalog_image_urls_follow_the_available_file_set() -> None:
     assert isinstance(spaces, dict)
     arrakeen = spaces["arrakeen"]
     assert isinstance(arrakeen, dict)
-    assert arrakeen["image"] == "/card-images/uprising-location-arakeen.webp"
+    assert arrakeen["image"] == "/card-images/ko/uprising/location/Arrakeen.webp"
 
     without_images = build_catalog()
     cards = without_images["cards"]

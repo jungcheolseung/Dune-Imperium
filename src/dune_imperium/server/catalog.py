@@ -7,16 +7,18 @@ so the UI can render informative cards without ever touching hidden state.
 The catalog is immutable for a given ruleset build and set of local card
 images and safe to cache on the client.
 
-``image_files`` is the filename set of the server's local Dune Cards Hub
-cache; entries resolve to ``/card-images/...`` URLs only for files that
-actually exist, so a machine without the gitignored cache serves the same
-catalog with every ``image`` field null. ``icon_files`` and ``board_image``
-work the same way for the rulebook icon set (``/icons/...``) and the local
-board scan (``/board-image``): the catalog also carries the percent
-coordinates that place the live state on that scan (``display.board_layout``).
+``image_index`` is the server's resolved card-image index — ``(catalog
+kind, content_id, "<language>/<path>")`` triples from the private asset
+manifest (``display.images``) for files that actually exist — so a
+machine without the assets checkout serves the same catalog with every
+``image`` field null. ``icon_files`` and ``board_image`` work the same way
+for the rulebook icon set (``/icons/...``) and the local board scan
+(``/board-image``): the catalog also carries the percent coordinates that
+place the live state on that scan (``display.board_layout``).
 """
 
 from functools import cache
+from urllib.parse import quote
 
 from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID
 from dune_imperium.content.uprising.conflicts import CONFLICTS, ConflictDefinition
@@ -33,7 +35,6 @@ from dune_imperium.display import (
     conflict_rewards_texts,
     contract_condition_text,
     contract_reward_text,
-    image_filename,
     intrigue_card_text,
     personal_card_text,
     space_is_implemented,
@@ -47,12 +48,15 @@ from dune_imperium.server.sessions import JsonObject, JsonValue
 
 @cache
 def build_catalog(
-    image_files: frozenset[str] = frozenset(),
+    image_index: frozenset[tuple[str, str, str]] = frozenset(),
     icon_files: frozenset[str] = frozenset(),
     board_image: bool = False,
 ) -> JsonObject:
     """Return every display mapping the browser UI needs, keyed by ID."""
 
+    image_files: dict[tuple[str, str], str] = {
+        (kind, content_id): path for kind, content_id, path in image_index
+    }
     cards: dict[str, JsonValue] = {}
     for card_id, starter in STARTING_CARDS_BY_ID.items():
         cards[card_id] = _personal_card(
@@ -203,7 +207,7 @@ def _leader_face(
     ability: str | None,
     signet: str | None,
     face_id: str,
-    image_files: frozenset[str],
+    image_files: dict[tuple[str, str], str],
 ) -> JsonObject:
     texts = LEADER_FACE_TEXTS[face_id]
     return {
@@ -217,7 +221,7 @@ def _leader_face(
     }
 
 
-def _space(space_id: str, image_files: frozenset[str]) -> JsonObject:
+def _space(space_id: str, image_files: dict[tuple[str, str], str]) -> JsonObject:
     space = BOARD_SPACES_BY_ID[space_id]
     base_effects = space_option_effects(space_id, choam_module=False)
     choam_effects = space_option_effects(space_id, choam_module=True)
@@ -274,7 +278,9 @@ def _conflict_rewards(conflict: ConflictDefinition) -> list[JsonValue] | None:
 def _image_url(
     kind: str,
     content_id: str,
-    image_files: frozenset[str],
+    image_files: dict[tuple[str, str], str],
 ) -> str | None:
-    filename = image_filename(kind, content_id, image_files)
-    return f"/card-images/{filename}" if filename is not None else None
+    """Resolve to the mounted file URL; printed names carry spaces etc."""
+
+    path = image_files.get((kind, content_id))
+    return f"/card-images/{quote(path)}" if path is not None else None

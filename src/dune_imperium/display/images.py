@@ -1,96 +1,103 @@
-"""Local Dune Cards Hub image filename mapping for Uprising content.
+"""Card image lookup through the private asset manifest.
 
-Filenames are drawn from the gitignored ``downloads/dunecardshub/cards``
-cache (populated by fetching https://dunecardshub.com/uprising per
-``AGENTS.md``), named ``uprising-{kind}-{slug}.webp`` where ``slug`` is
-usually the content ID with underscores replaced by hyphens. Kinds:
-``imperium``, ``intrigue``, ``contract``, ``conflict``, ``location`` (board
-spaces), ``leader``, and ``other`` (starting and Reserve cards).
+Card scans are copyrighted and never live in this repository. They are
+kept in the owner's private ``Dune-Imperium-assets`` repository under
+``cards/<language>/<set>/<kind>/<printed name>.<ext>`` (for example
+``cards/en/uprising/imperium/Sardaukar Soldier.webp``) together with
+``cards/manifest.json``, which is the only mapping between those human
+file names and the engine's content IDs. The main repository mounts that
+``cards`` directory (default ``downloads/cards``, a symlink to the assets
+checkout) and reads the manifest at server start; without it the catalog
+simply carries no images and the UI shows text.
 
-``FILENAME_OVERRIDES`` and ``KNOWN_MISSING`` were derived empirically by
-listing the cache and cross-checking it against every content ID in the
-Uprising manifests; they record upstream filename typos, base-game files
-that stand in for unchanged Uprising reprints, and content that has no
-published image, not a rules judgement.
+Manifest entries look like::
 
-``required_images`` enumerates every file the display catalog can reference;
-``scripts/fetch_card_images.py`` downloads exactly that set into the local
-cache on a machine that does not have it yet.
+    {"path": "uprising/imperium/Sardaukar Soldier.webp",
+     "set": "uprising", "kind": "imperium", "name": "Sardaukar Soldier",
+     "name_source": "engine", "content_id": "sardaukar_soldier",
+     "source": {"site": "dunecardshub", "file": "...", "url": "...",
+                "sha256": "..."}}
+
+``path`` is language neutral; the language directory is chosen here so a
+Korean scan at ``ko/<path>`` is preferred per file and falls back to
+``en/<path>``. Only entries of the Uprising set that carry a
+``content_id`` are indexed; the other sets in the manifest are archived
+for future expansions. The manifest's ``starting`` and ``reserve`` kinds
+both map to the catalog's ``other`` kind (starting and Reserve cards).
 """
 
+import json
 from collections.abc import Mapping
+from pathlib import Path
 from types import MappingProxyType
 from typing import Final
 
+MANIFEST_FILENAME: Final = "manifest.json"
+UPRISING_SET: Final = "uprising"
+DEFAULT_LANGUAGES: Final[tuple[str, ...]] = ("ko", "en")
 
-def default_filename(kind: str, content_id: str) -> str:
-    """Return the cache filename this content ID would have with no override."""
-
-    return f"uprising-{kind}-{content_id.replace('_', '-')}.webp"
-
-
-FILENAME_OVERRIDES: Final[Mapping[tuple[str, str], str]] = MappingProxyType(
-    {
-        # Upstream Dune Cards Hub filename typos (verified against the cache).
-        ("imperium", "junction_headquarters"): (
-            "uprising-imperium-junction-headquaters.webp"
-        ),
-        ("imperium", "treacherous_maneuver"): (
-            "uprising-imperium-theacherous-maneuver.webp"
-        ),
-        ("intrigue", "ornithopter"): "uprising-intrigue-ornitopter.webp",
-        ("location", "high_council"): "uprising-location-hight-council.webp",
-        ("location", "arrakeen"): "uprising-location-arakeen.webp",
-        ("location", "deep_desert"): "uprising-location-deet-desert.webp",
-        # The four-player starting deck is the base game's, unchanged, and
-        # Dune Cards Hub publishes those seven cards only under the base
-        # game. Its "uprising-other-...-emperor/-muad-dib" files are the
-        # six-player Commander starting decks (Rules Supplements p. 7 and
-        # p. 14: the top-right icon marks a Shaddam / Muad'Dib starting
-        # card), so they are not the printed four-player cards.
-        ("other", "convincing_argument"): (
-            "dune-imperium-other-convincing-argument.webp"
-        ),
-        ("other", "seek_allies"): "dune-imperium-other-seek-allies.webp",
-        ("other", "signet_ring"): "dune-imperium-other-signet-ring.webp",
-        ("other", "dagger"): "dune-imperium-other-dagger.webp",
-        ("other", "diplomacy"): "dune-imperium-other-diplomacy.webp",
-        ("other", "dune_the_desert_planet"): (
-            "dune-imperium-other-dune-the-desert-planet.webp"
-        ),
-        ("other", "reconnaissance"): "dune-imperium-other-reconnaissance.webp",
-    }
+# Manifest kind -> catalog kind. Every other kind keeps its name.
+_CATALOG_KIND: Final[Mapping[str, str]] = MappingProxyType(
+    {"starting": "other", "reserve": "other"}
 )
 
-# Content with no published image at all. Empty since 2026-09-03 (four of the
-# base-game starting cards above were the only members); the mechanism stays
-# so future content without upstream art degrades to text deliberately.
-KNOWN_MISSING: Final[frozenset[tuple[str, str]]] = frozenset()
+type ImageKey = tuple[str, str]
+"""``(catalog kind, content_id)``: the key the display catalog resolves."""
 
 
-def image_filename(
-    kind: str, content_id: str, available: frozenset[str]
-) -> str | None:
-    """Resolve one content ID to its cache filename, or None when absent.
+def load_card_manifest(path: Path) -> Mapping[ImageKey, str]:
+    """Return ``{(catalog kind, content_id): language-neutral path}``.
 
-    A content ID in ``KNOWN_MISSING`` always resolves to None, regardless of
-    ``available``: no upstream image exists for it.
+    Reads one ``manifest.json``; entries outside the Uprising set or
+    without a ``content_id`` are ignored. A duplicate key is an error in
+    the manifest, not a tie to break silently.
     """
 
-    key = (kind, content_id)
-    if key in KNOWN_MISSING:
-        return None
-    filename = FILENAME_OVERRIDES.get(key, default_filename(kind, content_id))
-    return filename if filename in available else None
+    document = json.loads(path.read_text(encoding="utf-8"))
+    index: dict[ImageKey, str] = {}
+    for entry in document["entries"]:
+        content_id = entry.get("content_id")
+        if entry.get("set") != UPRISING_SET or not content_id:
+            continue
+        kind = _CATALOG_KIND.get(entry["kind"], entry["kind"])
+        key = (kind, content_id)
+        if key in index and index[key] != entry["path"]:
+            raise ValueError(f"manifest maps {key} to two paths")
+        index[key] = entry["path"]
+    return MappingProxyType(index)
 
 
-def required_images() -> tuple[tuple[str, str, str], ...]:
-    """Return ``(kind, content_id, filename)`` for every displayable image.
+def resolve_card_images(
+    cards_dir: Path,
+    languages: tuple[str, ...] = DEFAULT_LANGUAGES,
+) -> Mapping[ImageKey, str]:
+    """Return ``{key: "<language>/<path>"}`` for every image file present.
 
-    This is the exact file set the display catalog can reference: every
-    Uprising content ID across all catalog sections, minus ``KNOWN_MISSING``.
-    The content manifests are imported lazily so the mapping helpers above
-    stay importable without pulling the full content package.
+    ``languages`` is tried in order per file (Korean scan first, English
+    fallback), and keys whose file exists in no language are dropped so
+    the catalog never links to a missing file. A missing directory or
+    manifest yields an empty mapping.
+    """
+
+    manifest = cards_dir / MANIFEST_FILENAME
+    if not manifest.is_file():
+        return MappingProxyType({})
+    resolved: dict[ImageKey, str] = {}
+    for key, relative in load_card_manifest(manifest).items():
+        for language in languages:
+            if (cards_dir / language / relative).is_file():
+                resolved[key] = f"{language}/{relative}"
+                break
+    return MappingProxyType(resolved)
+
+
+def required_image_keys() -> tuple[ImageKey, ...]:
+    """Return every ``(catalog kind, content_id)`` the catalog can show.
+
+    This is the coverage contract for the manifest: a test against a
+    checked-out assets repository asserts each key resolves to a file.
+    The content manifests are imported lazily so the loader above stays
+    importable without the full content package.
     """
 
     from dune_imperium.content.uprising.board import BOARD_SPACES
@@ -102,28 +109,16 @@ def required_images() -> tuple[tuple[str, str, str], ...]:
     from dune_imperium.content.uprising.reserve import RESERVE_STACKS
     from dune_imperium.content.uprising.starting_cards import STARTING_CARDS_BY_ID
 
-    ids: list[tuple[str, str]] = []
-    ids += [("imperium", entry.card.card_id) for entry in IMPERIUM_CARDS]
-    ids += [("intrigue", entry.card.card_id) for entry in INTRIGUE_CARDS]
-    ids += [("contract", contract.card.card_id) for contract in CONTRACTS]
-    ids += [("conflict", conflict.card.card_id) for conflict in CONFLICTS]
-    ids += [("location", space.space_id) for space in BOARD_SPACES]
+    keys: list[ImageKey] = []
+    keys += [("imperium", entry.card.card_id) for entry in IMPERIUM_CARDS]
+    keys += [("intrigue", entry.card.card_id) for entry in INTRIGUE_CARDS]
+    keys += [("contract", contract.card.card_id) for contract in CONTRACTS]
+    keys += [("conflict", conflict.card.card_id) for conflict in CONFLICTS]
+    keys += [("location", space.space_id) for space in BOARD_SPACES]
     for leader in LEADERS:
-        ids.append(("leader", leader.leader_id))
+        keys.append(("leader", leader.leader_id))
         if leader.alternate_face_id is not None:
-            ids.append(("leader", leader.alternate_face_id))
-    ids += [("other", card_id) for card_id in STARTING_CARDS_BY_ID]
-    ids += [("other", stack.card.card_id) for stack in RESERVE_STACKS]
-
-    entries: list[tuple[str, str, str]] = []
-    seen: set[tuple[str, str]] = set()
-    for key in ids:
-        if key in seen or key in KNOWN_MISSING:
-            continue
-        seen.add(key)
-        kind, content_id = key
-        filename = FILENAME_OVERRIDES.get(
-            key, default_filename(kind, content_id)
-        )
-        entries.append((kind, content_id, filename))
-    return tuple(entries)
+            keys.append(("leader", leader.alternate_face_id))
+    keys += [("other", card_id) for card_id in STARTING_CARDS_BY_ID]
+    keys += [("other", stack.card.card_id) for stack in RESERVE_STACKS]
+    return tuple(dict.fromkeys(keys))

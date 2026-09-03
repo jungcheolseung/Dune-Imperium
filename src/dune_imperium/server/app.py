@@ -21,6 +21,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from dune_imperium.display.images import resolve_card_images
 from dune_imperium.server.catalog import build_catalog
 from dune_imperium.server.persistence import (
     SaveError,
@@ -41,18 +42,18 @@ _STATIC_DIR = Path(__file__).parent / "static"
 
 
 def default_card_images_directory() -> Path:
-    """Return the local Dune Cards Hub cache location.
+    """Return the local card-image checkout (``cards/`` with its manifest).
 
-    ``DUNE_IMPERIUM_CARD_IMAGE_DIR`` overrides the default, which is the
-    repository's gitignored ``downloads/dunecardshub/cards`` tree. The
-    directory is optional: when it does not exist the server simply serves
-    no card images.
+    ``DUNE_IMPERIUM_CARD_IMAGE_DIR`` overrides the default, the repository's
+    gitignored ``downloads/cards`` (a symlink to the private assets
+    checkout's ``cards`` directory). Optional: without the directory or its
+    ``manifest.json`` the server simply serves no card images.
     """
 
     override = os.environ.get("DUNE_IMPERIUM_CARD_IMAGE_DIR")
     if override:
         return Path(override)
-    return Path(__file__).parents[3] / "downloads" / "dunecardshub" / "cards"
+    return Path(__file__).parents[3] / "downloads" / "cards"
 
 
 def default_icons_directory() -> Path:
@@ -142,10 +143,9 @@ def create_app(
         if card_images_dir is not None
         else default_card_images_directory()
     )
-    image_files = (
-        frozenset(path.name for path in images_dir.iterdir() if path.is_file())
-        if images_dir.is_dir()
-        else frozenset()
+    image_index = frozenset(
+        (kind, content_id, path)
+        for (kind, content_id), path in resolve_card_images(images_dir).items()
     )
     icon_dir = icons_dir if icons_dir is not None else default_icons_directory()
     icon_files = (
@@ -164,7 +164,7 @@ def create_app(
 
     @app.get("/catalog")
     def catalog() -> JsonObject:
-        return build_catalog(image_files, icon_files, board_path.is_file())
+        return build_catalog(image_index, icon_files, board_path.is_file())
 
     @app.get("/board-image", include_in_schema=False)
     def board_image_file() -> FileResponse:

@@ -1,5 +1,6 @@
 """HTTP-level tests for the FastAPI play server (needs the ``ui`` extra)."""
 
+import json
 from pathlib import Path
 
 import pytest
@@ -250,21 +251,41 @@ def test_a_leader_draft_game_over_http_reaches_round_one(
     assert summary["round_number"] == 1
 
 
-def test_card_images_are_served_when_the_cache_directory_exists(
-    tmp_path: Path,
-) -> None:
-    images = tmp_path / "images"
-    images.mkdir()
-    (images / "uprising-imperium-sardaukar-soldier.webp").write_bytes(
-        b"not-really-webp"
+def test_card_images_are_served_from_a_manifest_checkout(tmp_path: Path) -> None:
+    cards = tmp_path / "cards"
+    relative = "uprising/imperium/Sardaukar Soldier.webp"
+    (cards / "en" / "uprising" / "imperium").mkdir(parents=True)
+    (cards / "en" / relative).write_bytes(b"not-really-webp")
+    (cards / "manifest.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "entries": [
+                    {
+                        "path": relative,
+                        "set": "uprising",
+                        "kind": "imperium",
+                        "name": "Sardaukar Soldier",
+                        "name_source": "engine",
+                        "content_id": "sardaukar_soldier",
+                        "source": {
+                            "site": "dunecardshub",
+                            "file": "x",
+                            "url": "u",
+                            "sha256": "0",
+                        },
+                    }
+                ],
+            }
+        )
     )
     with TestClient(
-        create_app(saves_dir=tmp_path / "saves", card_images_dir=images)
+        create_app(saves_dir=tmp_path / "saves", card_images_dir=cards)
     ) as image_client:
         catalog = image_client.get("/catalog").json()
         soldier = catalog["cards"]["sardaukar_soldier"]
         assert soldier["image"] == (
-            "/card-images/uprising-imperium-sardaukar-soldier.webp"
+            "/card-images/en/uprising/imperium/Sardaukar%20Soldier.webp"
         )
         assert catalog["cards"]["dagger"]["image"] is None
 
@@ -281,7 +302,7 @@ def test_card_images_degrade_to_text_without_the_cache(
         assert all(
             entry["image"] is None for entry in catalog[section].values()
         ), section
-    missing = client.get("/card-images/uprising-imperium-sardaukar-soldier.webp")
+    missing = client.get("/card-images/en/uprising/imperium/Sardaukar%20Soldier.webp")
     assert missing.status_code == 404
     assert catalog["icons"] == {}
     assert catalog["board_image"] is None

@@ -12,7 +12,11 @@ summaries under ``docs/rules/``.
 from dune_imperium.display.cards import personal_card_text
 from dune_imperium.display.effect_dsl_text import intrigue_card_text
 from dune_imperium.display.icons import ICON_NAMES, available_icons, icon_filename
-from dune_imperium.display.images import image_filename
+from dune_imperium.display.images import (
+    load_card_manifest,
+    required_image_keys,
+    resolve_card_images,
+)
 from dune_imperium.display.leaders import LEADER_FACE_TEXTS, LeaderFaceText
 from dune_imperium.display.spaces import (
     space_is_implemented,
@@ -35,9 +39,11 @@ __all__ = [
     "contract_condition_text",
     "contract_reward_text",
     "icon_filename",
-    "image_filename",
     "intrigue_card_text",
+    "load_card_manifest",
     "personal_card_text",
+    "required_image_keys",
+    "resolve_card_images",
     "space_is_implemented",
     "space_notes",
     "space_option_count",
