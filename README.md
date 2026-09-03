@@ -73,8 +73,12 @@ Dune Cards Hub는 카드 및 시각 자료의 참고 출처로 사용한다. 규
 대체한다. 소유자의 머신에서는 비공개 `Dune-Imperium-assets` 저장소를 옆에
 clone해 symlink로 연결한다(그 README 참고).
 
-- `downloads/dunecardshub/cards/` (또는 `DUNE_IMPERIUM_CARD_IMAGE_DIR`): Dune
-  Cards Hub 카드 이미지 캐시. `uv run scripts/fetch_card_images.py`로 채운다.
+- `downloads/cards/` (또는 `DUNE_IMPERIUM_CARD_IMAGE_DIR`): 카드 스캔 체크아웃.
+  `cards/manifest.json`이 `<세트>/<종류>/<인쇄 카드명>.<확장자>` 파일과 엔진
+  content ID를 잇는 유일한 매핑이고, 서버가 시작 시 읽어 존재하는 파일만
+  연결한다(`ko/` 스캔이 있으면 파일 단위로 우선, 없으면 `en/`).
+  `uv run scripts/fetch_card_images.py`는 manifest가 기록한 출처에서 빠진
+  파일만 내려받는다.
 - `downloads/icons/` (또는 `DUNE_IMPERIUM_ICON_DIR`): 공식 Uprising Main
   Rulebook의 Icon Guide(20쪽)와 Agent 아이콘(9쪽)에서 잘라낸 투명 PNG 45장.
   `uv run --with pymupdf --with pillow scripts/extract_rulebook_icons.py`가

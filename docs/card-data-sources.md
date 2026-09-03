@@ -34,16 +34,27 @@ audit documents (`docs/implementation-audits/personal-cards.md`,
 (`docs/rules/board-spaces.md`). Coverage tests under `tests/unit/display/`
 fail when new content lacks display text, so wording changes should update
 the audit documents first and the display maps in the same work unit. Card
-images are never committed; the server serves the machine-local gitignored
-`downloads/dunecardshub/cards/` cache when present (typo overrides live in
-`display/images.py`). The cache is mirrored in the owner's private
-`Dune-Imperium-assets` repository (never in this public one): clone it as a
-sibling directory and symlink `downloads/dunecardshub/cards` to its
-`cards/en/`, per its README. A machine without that access populates the
-cache with `uv run scripts/fetch_card_images.py`, which downloads exactly
-the file set `display.images.required_images()` enumerates; with the
-symlink in place the script also fills gaps for newly implemented content
-directly into the assets checkout for commit there.
+images are never committed. They live in the owner's private
+`Dune-Imperium-assets` repository (never in this public one) as
+`cards/<language>/<set>/<kind>/<printed name>.<ext>` — the file name is
+the printed card name, same-name cards carry the printed distinguisher in
+parentheses — and `cards/manifest.json` there is the only mapping between
+those names and the engine's content IDs (plus each file's Dune Cards Hub
+source URL and sha256). The server reads the manifest from the gitignored
+`downloads/cards` symlink at start-up (`display/images.py`), prefers a
+`ko/` scan per file over `en/`, and links only files that exist, so a
+machine without the assets checkout serves the same catalog with text.
+`tests/unit/display/test_images.py` pins that the manifest resolves all
+170 Uprising content IDs when the checkout is linked. Uprising's
+four-player starting deck is the base game's, unchanged, so those seven
+entries point at the base-game scans; the "Commander" variants Dune Cards
+Hub files as "uprising-other" are six-player cards (Rules Supplements
+p. 7, 14) and sit under `uprising/six-player/`. The other expansions in
+the manifest are archived for future implementation with names derived
+from the upstream slugs (`name_source: "upstream-slug"`, to be verified
+against the images when that set is transcribed).
+`uv run scripts/fetch_card_images.py` fills a checkout's gaps from the
+manifest's sources.
 
 The table UI (2026-09-03) adds two more machine-local, never-committed
 assets under the same policy: the rulebook icon set (`downloads/icons/`,

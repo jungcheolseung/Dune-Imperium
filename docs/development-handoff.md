@@ -17,7 +17,7 @@ uv run ruff check src tests
 uv run mypy src tests
 ```
 
-2026-09-03의 기준 결과는 pytest 1,015개 통과(카드 이미지 캐시가 없는 머신은 1,014 통과 + 1 skip), Ruff 통과, mypy 통과다. 현재 action codec은 `ACTION_CODEC_VERSION = 84`(기본 4,314개, CHOAM 4,600개)이고, 관측은 `OBSERVATION_VERSION = 3`의 1,967-int 전체 게임 인코딩이다 ([`rl-environment.md`](rl-environment.md)). 보드 22칸 완결 + 즉시 공개 + `fab266f`/`e6fc298` 수정 + sweep 확장(`853ecd4`) 반영 후의 교차 소크는 random 룰셋당 2,000판 + heuristic 룰셋당 1,000판(둘 다 `--rotate-leaders`) + draft 두 policy 각 룰셋당 500판, 전부 `--soundness-interval 25`를 켠 총 7,000판이 실패 0으로 통과한 상태다(2026-09-01, 아래 세션 요약. 그 전 단계에서는 random 룰셋당 3,000판 비회전 소크도 실패 0이었다).
+2026-09-03의 기준 결과는 pytest 1,011개 통과(카드 이미지 에셋이 없는 머신은 1,010 통과 + 1 skip), Ruff 통과, mypy 통과다. 현재 action codec은 `ACTION_CODEC_VERSION = 84`(기본 4,314개, CHOAM 4,600개)이고, 관측은 `OBSERVATION_VERSION = 3`의 1,967-int 전체 게임 인코딩이다 ([`rl-environment.md`](rl-environment.md)). 보드 22칸 완결 + 즉시 공개 + `fab266f`/`e6fc298` 수정 + sweep 확장(`853ecd4`) 반영 후의 교차 소크는 random 룰셋당 2,000판 + heuristic 룰셋당 1,000판(둘 다 `--rotate-leaders`) + draft 두 policy 각 룰셋당 500판, 전부 `--soundness-interval 25`를 켠 총 7,000판이 실패 0으로 통과한 상태다(2026-09-01, 아래 세션 요약. 그 전 단계에서는 random 룰셋당 3,000판 비회전 소크도 실패 0이었다).
 
 ## 현재 구현 기준선
 
@@ -97,7 +97,7 @@ uv run dune-imperium-sweep --games 100 --ruleset both --workers 8 --leader-draft
 uv run dune-imperium-server
 
 # UI 카드 이미지 캐시 (선택). 우선: 비공개 Dune-Imperium-assets 저장소를 형제
-# 디렉터리에 clone하고 그 README대로 downloads/dunecardshub/cards를 symlink.
+# 디렉터리에 clone하고 그 README대로 downloads/cards·downloads/icons·map.jpg를 symlink.
 # 폴백/신규 카드 채움: 아래 fetch 스크립트 (빈 파일만 받는다)
 uv run scripts/fetch_card_images.py
 
@@ -118,7 +118,7 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 
 ## 원격 저장소 인계 주의
 
-2026-09-03 세션 시작 시점에 `origin/master`와 로컬은 `e4ac740`으로 일치했고, 이 날의 슬라이스 7 커밋들(`3d70e38`부터)은 로컬에만 있다(push는 사용자 판단으로 한다). 원격에는 병합하지 않은 `kyungtae` 브랜치가 있다. 새 세션은 `git log origin/master..master`와 반대 방향을 모두 확인하고, checkout이 `853ecd4`보다 이전이면 이 문서의 989개 테스트·codec v84 기준선이 실제 코드와 일치하지 않는다. **다른 머신에서 이어서 작업한다면 먼저 이 머신에서 push가 필요하다.** 새 머신의 UI 카드 이미지는 비공개 `Dune-Imperium-assets` 저장소를 clone해 symlink로 연결하고(그 README 참고), 접근이 없을 때만 `uv run scripts/fetch_card_images.py`로 채운다 (선택; 없으면 텍스트만). 2026-09-01부터 이 머신의 캐시는 그 symlink다.
+2026-09-03 세션 시작 시점에 `origin/master`와 로컬은 `e4ac740`으로 일치했고, 이 날의 슬라이스 7 커밋들(`3d70e38`부터)은 로컬에만 있다(push는 사용자 판단으로 한다). 원격에는 병합하지 않은 `kyungtae` 브랜치가 있다. 새 세션은 `git log origin/master..master`와 반대 방향을 모두 확인하고, checkout이 `853ecd4`보다 이전이면 이 문서의 989개 테스트·codec v84 기준선이 실제 코드와 일치하지 않는다. **다른 머신에서 이어서 작업한다면 먼저 이 머신에서 push가 필요하다.** 새 머신의 UI 카드 이미지·아이콘·보드 스캔은 비공개 `Dune-Imperium-assets` 저장소를 clone해 symlink로 연결한다(그 README 참고; `downloads/cards`, `downloads/icons`, `map.jpg`). 카드 매핑은 그 저장소의 `cards/manifest.json`에만 있으므로 접근이 없으면 텍스트 UI로 동작한다.
 
 ## 2026-09-03 M11 슬라이스 7 세션 요약 (보드 스캔 테이블 + 룰북 아이콘)
 
@@ -129,6 +129,7 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 - 에셋 저장소(`Dune-Imperium-assets` `c57fa72`)에 `icons/` 45장과 `board/map.jpg`를 추가했고 이 머신은 `downloads/icons`·(선택) `map.jpg` symlink로 연결한다. 새 머신 설정은 그 README.
 - 검증: pytest 1,015, Ruff(`src tests`), mypy. headless Chromium E2E(스크래치 Playwright + ALSA stub): 게임 생성 → hotspot 22개·보드 이미지 로드·아이콘 65개 → popover(아이콘 4개) → 손패/hotspot 클릭으로 12단계 진행 → 토큰 4개·로그 19건, JS 오류 0·서버 오류 0. 스크린샷 검토로 hotspot 좌표가 스캔과 일치함을 확인했다.
 - 후속 수정: 손패의 Dagger·Diplomacy·Dune the Desert Planet·Reconnaissance가 텍스트 카드로 보인다는 사용자 지적 → Uprising판 이미지가 Dune Cards Hub에 없어 `KNOWN_MISSING`이던 네 장을 동일 인쇄물인 기본판 `dune-imperium-other-*.webp`로 매핑(`required_images` 170장, `KNOWN_MISSING`은 빈 집합으로 유지).
+- **에셋 정비(사용자 요청, `Dune-Imperium-assets` + 메인 `display/images.py` 재작성)**: 사용자 확인 — 캐시 600장은 Dune Cards Hub에서 받은 그대로(파일명·바이트 동일)였고, `uprising-other-*-emperor/-muad-dib`는 6인 Commander 덱(Rules Supplements p. 7, 14)이라 4인 시작 카드 7장은 기본판 스캔이 맞다. 새 규칙: `cards/<언어>/<세트>/<종류>/<인쇄 카드명>.<확장자>`(공백·아포스트로피·`+` 유지, 동명 카드는 인쇄된 구별 요소를 괄호로 — Skirmish 3장은 battle icon, Harvest 3+/4+ 두 쌍은 보상), 세트 7개(uprising, base, rise-of-ix, immortality, bloodlines, conspiracy, promo)로 600장 전부 분류(안 쓰는 확장팩은 slug 유도 이름 + `name_source: "upstream-slug"` 미검증 표시), 매핑은 에셋 저장소의 `cards/manifest.json` 하나(607항목: 파일 600 + 기본판 스캔을 공유하는 Uprising 시작 카드 7). 메인 저장소: `display/images.py`는 manifest 로더(`load_card_manifest`·`resolve_card_images`: ko 우선·en fallback·존재 파일만, `required_image_keys` 170)로 교체하고 오타 보정표·`KNOWN_MISSING` 제거, catalog URL은 percent-encoding, 서버 기본 경로 `downloads/cards`(에셋 `cards/` symlink), `fetch_card_images.py`는 manifest 출처로 빠진 파일만 받는 스크립트로 재작성. 검증: pytest 1,011(캐시 없는 머신은 skip 1), ruff, mypy, headless Chromium E2E 오류 0(손패 7장 전부 이미지).
 - 남은 개선: Influence·VP 트랙 마커를 보드 위에 그리기, 아이콘 키잉 tolerance(프레임형 Agent 아이콘 모서리의 잔여 베이지), 같은 카드 2장으로 생기는 중복 행동 라벨 구분.
 
 ## 2026-09-02 M11 슬라이스 6 세션 요약 (행동 되돌리기 + 실시간 행동 로그)
