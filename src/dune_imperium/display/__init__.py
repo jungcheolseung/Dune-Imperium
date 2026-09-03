@@ -11,6 +11,7 @@ summaries under ``docs/rules/``.
 
 from dune_imperium.display.cards import personal_card_text
 from dune_imperium.display.effect_dsl_text import intrigue_card_text
+from dune_imperium.display.icons import ICON_NAMES, available_icons, icon_filename
 from dune_imperium.display.images import image_filename
 from dune_imperium.display.leaders import LEADER_FACE_TEXTS, LeaderFaceText
 from dune_imperium.display.spaces import (
@@ -26,11 +27,14 @@ from dune_imperium.display.structs import (
 )
 
 __all__ = [
+    "ICON_NAMES",
     "LEADER_FACE_TEXTS",
     "LeaderFaceText",
+    "available_icons",
     "conflict_rewards_texts",
     "contract_condition_text",
     "contract_reward_text",
+    "icon_filename",
     "image_filename",
     "intrigue_card_text",
     "personal_card_text",

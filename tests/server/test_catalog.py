@@ -191,6 +191,32 @@ def test_catalog_image_urls_follow_the_available_file_set() -> None:
     assert soldier["image"] is None
 
 
+def test_catalog_carries_board_overlay_layout_and_optional_icons() -> None:
+    catalog = build_catalog()
+    spaces = catalog["spaces"]
+    assert isinstance(spaces, dict)
+    for entry in spaces.values():
+        assert isinstance(entry, dict)
+        box = entry["box"]
+        assert isinstance(box, list) and len(box) == 4
+    posts = catalog["posts"]
+    assert isinstance(posts, dict)
+    assert len(posts) == 13
+    assert catalog["icons"] == {}
+    assert catalog["board_image"] is None
+
+    with_assets = build_catalog(
+        frozenset(),
+        frozenset({"troop.png", "spice.png", "not-an-icon.png"}),
+        True,
+    )
+    assert with_assets["icons"] == {
+        "troop": "/icons/troop.png",
+        "spice": "/icons/spice.png",
+    }
+    assert with_assets["board_image"] == "/board-image"
+
+
 def test_catalog_cross_section_id_overlaps_are_pinned() -> None:
     """Sections share one namespace in the client's lookup(); overlapping
     ids are legal content (a Contract named after a space) but each one

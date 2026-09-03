@@ -14,12 +14,14 @@ from dune_imperium.server.sessions import GameSessionManager  # noqa: E402
 
 @pytest.fixture
 def client(tmp_path: Path) -> TestClient:
-    # card_images_dir is pinned to a nonexistent path so the tests behave
-    # identically with or without the machine-local image cache.
+    # The image locations are pinned to nonexistent paths so the tests
+    # behave identically with or without the machine-local caches.
     return TestClient(
         create_app(
             saves_dir=tmp_path / "saves",
             card_images_dir=tmp_path / "no-images",
+            icons_dir=tmp_path / "no-icons",
+            board_image=tmp_path / "no-map.jpg",
         )
     )
 
@@ -281,6 +283,34 @@ def test_card_images_degrade_to_text_without_the_cache(
         ), section
     missing = client.get("/card-images/uprising-imperium-sardaukar-soldier.webp")
     assert missing.status_code == 404
+    assert catalog["icons"] == {}
+    assert catalog["board_image"] is None
+    assert client.get("/board-image").status_code == 404
+    assert client.get("/icons/troop.png").status_code == 404
+
+
+def test_board_scan_and_icons_are_served_when_present(tmp_path: Path) -> None:
+    icons = tmp_path / "icons"
+    icons.mkdir()
+    (icons / "troop.png").write_bytes(b"png-troop")
+    (icons / "stray.txt").write_bytes(b"ignored")
+    board = tmp_path / "board.jpg"
+    board.write_bytes(b"jpeg-board")
+    with TestClient(
+        create_app(
+            saves_dir=tmp_path / "saves",
+            card_images_dir=tmp_path / "no-images",
+            icons_dir=icons,
+            board_image=board,
+        )
+    ) as image_client:
+        catalog = image_client.get("/catalog").json()
+        assert catalog["icons"] == {"troop": "/icons/troop.png"}
+        assert catalog["board_image"] == "/board-image"
+        assert image_client.get("/icons/troop.png").content == b"png-troop"
+        served = image_client.get("/board-image")
+        assert served.status_code == 200
+        assert served.content == b"jpeg-board"
 
 
 def test_undo_and_log_over_http(client: TestClient) -> None:

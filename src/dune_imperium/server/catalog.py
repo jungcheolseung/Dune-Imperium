@@ -10,7 +10,10 @@ images and safe to cache on the client.
 ``image_files`` is the filename set of the server's local Dune Cards Hub
 cache; entries resolve to ``/card-images/...`` URLs only for files that
 actually exist, so a machine without the gitignored cache serves the same
-catalog with every ``image`` field null.
+catalog with every ``image`` field null. ``icon_files`` and ``board_image``
+work the same way for the rulebook icon set (``/icons/...``) and the local
+board scan (``/board-image``): the catalog also carries the percent
+coordinates that place the live state on that scan (``display.board_layout``).
 """
 
 from functools import cache
@@ -26,6 +29,7 @@ from dune_imperium.content.uprising.reserve import RESERVE_STACKS
 from dune_imperium.content.uprising.starting_cards import STARTING_CARDS_BY_ID
 from dune_imperium.display import (
     LEADER_FACE_TEXTS,
+    available_icons,
     conflict_rewards_texts,
     contract_condition_text,
     contract_reward_text,
@@ -37,11 +41,16 @@ from dune_imperium.display import (
     space_option_count,
     space_option_effects,
 )
+from dune_imperium.display.board_layout import POST_POINTS, SPACE_BOXES
 from dune_imperium.server.sessions import JsonObject, JsonValue
 
 
 @cache
-def build_catalog(image_files: frozenset[str] = frozenset()) -> JsonObject:
+def build_catalog(
+    image_files: frozenset[str] = frozenset(),
+    icon_files: frozenset[str] = frozenset(),
+    board_image: bool = False,
+) -> JsonObject:
     """Return every display mapping the browser UI needs, keyed by ID."""
 
     cards: dict[str, JsonValue] = {}
@@ -154,6 +163,14 @@ def build_catalog(image_files: frozenset[str] = frozenset()) -> JsonObject:
             }
             for objective in OBJECTIVES
         },
+        "posts": {
+            post_id: [x, y] for post_id, (x, y) in POST_POINTS.items()
+        },
+        "icons": {
+            name: f"/icons/{filename}"
+            for name, filename in available_icons(icon_files).items()
+        },
+        "board_image": "/board-image" if board_image else None,
     }
 
 
@@ -239,6 +256,7 @@ def _space(space_id: str, image_files: frozenset[str]) -> JsonObject:
         "options": options,
         "choam_options": choam_options,
         "notes": list(space_notes(space_id)),
+        "box": list(SPACE_BOXES[space_id]),
         "implemented": space_is_implemented(space_id, choam_module=False),
         "choam_implemented": space_is_implemented(space_id, choam_module=True),
         "image": _image_url("location", space_id, image_files),

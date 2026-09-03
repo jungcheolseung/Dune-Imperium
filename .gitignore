@@ -179,3 +179,7 @@ pyrightconfig.json
 # The path is a machine-local symlink into the private Dune-Imperium-assets
 # checkout (see docs/card-data-sources.md for the same pattern).
 rulebooks
+
+# The owner's local scan of the printed board (served by the play UI,
+# never redistributed); see docs/card-data-sources.md.
+/map.jpg

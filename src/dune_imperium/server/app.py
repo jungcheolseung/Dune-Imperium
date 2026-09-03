@@ -55,6 +55,34 @@ def default_card_images_directory() -> Path:
     return Path(__file__).parents[3] / "downloads" / "dunecardshub" / "cards"
 
 
+def default_icons_directory() -> Path:
+    """Return the local rulebook icon set location.
+
+    ``DUNE_IMPERIUM_ICON_DIR`` overrides the default, the gitignored
+    ``downloads/icons`` tree that ``scripts/extract_rulebook_icons.py``
+    fills. Optional like the card cache: without it the UI shows text.
+    """
+
+    override = os.environ.get("DUNE_IMPERIUM_ICON_DIR")
+    if override:
+        return Path(override)
+    return Path(__file__).parents[3] / "downloads" / "icons"
+
+
+def default_board_image_path() -> Path:
+    """Return the owner's local board scan location.
+
+    ``DUNE_IMPERIUM_BOARD_IMAGE`` overrides the default ``map.jpg`` at the
+    repository root (gitignored). Without the file the UI falls back to
+    the text board.
+    """
+
+    override = os.environ.get("DUNE_IMPERIUM_BOARD_IMAGE")
+    if override:
+        return Path(override)
+    return Path(__file__).parents[3] / "map.jpg"
+
+
 class CreateGameRequest(BaseModel):
     """Configuration for one new game."""
 
@@ -100,6 +128,8 @@ def create_app(
     manager: GameSessionManager | None = None,
     saves_dir: Path | None = None,
     card_images_dir: Path | None = None,
+    icons_dir: Path | None = None,
+    board_image: Path | None = None,
 ) -> FastAPI:
     """Build the local play server around one session manager."""
 
@@ -117,6 +147,15 @@ def create_app(
         if images_dir.is_dir()
         else frozenset()
     )
+    icon_dir = icons_dir if icons_dir is not None else default_icons_directory()
+    icon_files = (
+        frozenset(path.name for path in icon_dir.iterdir() if path.is_file())
+        if icon_dir.is_dir()
+        else frozenset()
+    )
+    board_path = (
+        board_image if board_image is not None else default_board_image_path()
+    )
     app = FastAPI(title="Dune: Imperium - Uprising local play server")
 
     @app.get("/", include_in_schema=False)
@@ -125,7 +164,13 @@ def create_app(
 
     @app.get("/catalog")
     def catalog() -> JsonObject:
-        return build_catalog(image_files)
+        return build_catalog(image_files, icon_files, board_path.is_file())
+
+    @app.get("/board-image", include_in_schema=False)
+    def board_image_file() -> FileResponse:
+        if not board_path.is_file():
+            raise HTTPException(status_code=404, detail="no board image")
+        return FileResponse(board_path)
 
     @app.post("/games")
     def create_game(request: CreateGameRequest) -> JsonObject:
@@ -228,6 +273,8 @@ def create_app(
             StaticFiles(directory=images_dir),
             name="card-images",
         )
+    if icon_dir.is_dir():
+        app.mount("/icons", StaticFiles(directory=icon_dir), name="icons")
     return app
 
 
