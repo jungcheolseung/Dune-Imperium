@@ -189,6 +189,11 @@ def test_review_over_http(tmp_path: Path) -> None:
     for _ in range(2_000):
         if summary["finished"]:
             break
+        if summary["confirmation"] == 0:
+            summary = manager.confirm_turn(
+                game_id, seat=0, revision=int(str(summary["revision"]))
+            )
+            continue
         summary = manager.apply_action(
             game_id, seat=0, revision=int(str(summary["revision"])), index=0
         )

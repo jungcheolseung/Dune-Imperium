@@ -246,6 +246,47 @@ button:disabled { opacity: 0.5; cursor: wait; }
   pointer-events: auto;
 }
 .spy-token { width: 1.3em; height: 1.3em; font-size: 0.7em; }
+.track-cube {
+  position: absolute;
+  width: 1.05em;
+  height: 1.05em;
+  transform: translate(-50%, -50%);
+  border: 1px solid #111;
+  border-radius: 2px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+.alliance-ring {
+  position: absolute;
+  width: 2.6em;
+  height: 2.6em;
+  transform: translate(-50%, -50%);
+  border: 3px solid;
+  border-radius: 50%;
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.6);
+  pointer-events: none;
+}
+.track-token {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 1.5em;
+  height: 1.5em;
+  font-size: 0.8em;
+}
+.council-token { width: 1.9em; height: 1.9em; }
+.conflict-units {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 0.3em;
+  padding: 0.15em 0.4em;
+  background: rgba(0, 0, 0, 0.72);
+  border: 2px solid;
+  border-radius: 8px;
+  color: #fff;
+  font-weight: 700;
+  white-space: nowrap;
+}
 .board-note {
   position: absolute;
   right: 1%;
@@ -425,6 +466,23 @@ button:disabled { opacity: 0.5; cursor: wait; }
 }
 .undo-row button { background: transparent; border-color: var(--bad); color: var(--bad); }
 .undo-row button:hover:not(:disabled) { background: var(--bad); color: #fff; }
+
+.confirm-row { margin-top: 0.5rem; }
+.confirm-row button { border-color: var(--good); color: var(--good); background: transparent; font-weight: 700; }
+.confirm-row button:hover:not(:disabled) { background: var(--good); color: #111; }
+
+.action-item.irreversible > button:first-child { border-style: dashed; }
+.irreversible-badge {
+  display: inline-block;
+  margin-left: 0.4em;
+  padding: 0 0.35em;
+  border-radius: 4px;
+  font-size: 0.72em;
+  font-weight: 700;
+  color: var(--bad);
+  border: 1px solid var(--bad);
+  vertical-align: middle;
+}
 
 #review-bar { border-left: 6px solid var(--good); }
 .review-controls {

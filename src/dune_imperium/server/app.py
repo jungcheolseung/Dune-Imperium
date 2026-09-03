@@ -125,6 +125,14 @@ class UndoRequest(BaseModel):
     undo_count: int | None = None
 
 
+class ConfirmTurnRequest(BaseModel):
+    """Hand the turn over after the seat's still-undoable steps."""
+
+    seat: int
+    revision: int
+    undo_count: int | None = None
+
+
 class SaveGameRequest(BaseModel):
     """Optional display name for one new save."""
 
@@ -228,6 +236,16 @@ def create_app(
                 seat=request.seat,
                 revision=request.revision,
                 steps=request.steps,
+                undo_count=request.undo_count,
+            )
+
+    @app.post("/games/{game_id}/confirm")
+    def confirm_turn(game_id: str, request: ConfirmTurnRequest) -> JsonObject:
+        with _http_errors():
+            return sessions.confirm_turn(
+                game_id,
+                seat=request.seat,
+                revision=request.revision,
                 undo_count=request.undo_count,
             )
 

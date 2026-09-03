@@ -42,7 +42,11 @@ from dune_imperium.display import (
     space_option_count,
     space_option_effects,
 )
-from dune_imperium.display.board_layout import POST_POINTS, SPACE_BOXES
+from dune_imperium.display.board_layout import (
+    POST_POINTS,
+    SPACE_BOXES,
+    marker_layout,
+)
 from dune_imperium.server.sessions import JsonObject, JsonValue
 
 
@@ -175,6 +179,9 @@ def build_catalog(
             for name, filename in available_icons(icon_files).items()
         },
         "board_image": "/board-image" if board_image else None,
+        # Live-state marker coordinates on the scan (Influence, VP, strength,
+        # Conflict quadrants, High Council seats), percent of the image.
+        "tracks": marker_layout(),
     }
 
 

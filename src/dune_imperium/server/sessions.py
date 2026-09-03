@@ -48,8 +48,10 @@ from dune_imperium.server.session_log import (
     LogEntry,
     LoggedStep,
     LoggedUndo,
+    live_steps,
     log_step,
     mark_undone,
+    reveals_hidden_information,
     undo_history,
     undo_window,
 )
@@ -102,6 +104,11 @@ class GameSession:
     # state; a client that also sends this generation number can never act
     # on a state that has been taken back under it.
     undo_count: int = 0
+    # Seat whose turn has ended but whose steps are still undoable: the
+    # session waits for that seat's explicit confirmation before the next
+    # seat (AI or human) acts, so a turn is never handed over while it can
+    # still be taken back.
+    awaiting_confirmation: int | None = None
     lock: threading.Lock = field(default_factory=threading.Lock)
 
 
@@ -206,7 +213,7 @@ class GameSessionManager:
                 "revision": session.state.revision,
                 "seat": seat,
                 "actions": [
-                    _serialize_action(index, action, session.state)
+                    _serialize_action(index, action, session)
                     for index, action in enumerate(actions)
                 ],
             }
@@ -242,6 +249,31 @@ class GameSessionManager:
                 raise SessionError("action index is out of range")
             action = actions[index]
             _apply_step(session, action)
+            self._settle_locked(session, seat)
+            return self._summary_locked(session)
+
+    def confirm_turn(
+        self,
+        game_id: str,
+        seat: int,
+        revision: int,
+        *,
+        undo_count: int | None = None,
+    ) -> JsonObject:
+        """Hand the turn over after the seat's last undoable steps.
+
+        A human seat's turn end pauses while its trailing steps could still
+        be taken back (``undo_window``); only this confirmation lets the
+        chance stream and the other seats advance, closing that window.
+        """
+
+        session = self._get(game_id)
+        self._require_human(session, seat)
+        with session.lock:
+            _require_current(session, revision, undo_count)
+            if session.awaiting_confirmation != seat:
+                raise SessionError(f"seat {seat} has no turn end to confirm")
+            session.awaiting_confirmation = None
             self._advance_locked(session)
             return self._summary_locked(session)
 
@@ -279,6 +311,8 @@ class GameSessionManager:
             del session.steps[keep:]
             mark_undone(session.log, seat, steps)
             session.undo_count += 1
+            # The rewound state is again this seat's own decision.
+            session.awaiting_confirmation = None
             return self._summary_locked(session)
 
     def log(self, game_id: str, seat: int, *, after: int = 0) -> JsonObject:
@@ -385,7 +419,14 @@ class GameSessionManager:
                 session.undo_count = sum(
                     1 for entry in session.log if isinstance(entry, LoggedUndo)
                 )
-            self._advance_locked(session)
+            # A game saved while a human's turn end awaited confirmation
+            # resumes at that pause instead of handing the turn over.
+            live = live_steps(session.log)
+            last_actor = live[-1].actor if live else None
+            if last_actor is not None and session.seats[last_actor] == HUMAN_SEAT:
+                self._settle_locked(session, last_actor)
+            else:
+                self._advance_locked(session)
             summary = self._summary_locked(session)
         with self._registry_lock:
             self._sessions[session.game_id] = session
@@ -465,6 +506,26 @@ class GameSessionManager:
             # Views and legal actions can carry private card identities.
             raise SeatAccessError("only a human seat may be read or acted for")
 
+    def _settle_locked(self, session: GameSession, seat: int) -> None:
+        """After a human step, pause at a turn hand-over or auto-advance.
+
+        The pause happens only when the next decision belongs to another
+        seat and the seat's trailing steps are still undoable; a step that
+        revealed hidden information (or a pending chance outcome) already
+        closed the undo window, so there is nothing left to protect.
+        """
+
+        decision = session.engine.current_decision(session.state)
+        if (
+            isinstance(decision, PlayerDecision)
+            and decision.owner != seat
+            and undo_window(session.log, seat) > 0
+        ):
+            session.awaiting_confirmation = seat
+            return
+        session.awaiting_confirmation = None
+        self._advance_locked(session)
+
     def _advance_locked(self, session: GameSession) -> None:
         """Resolve chance and AI decisions until a human must act or the end."""
 
@@ -521,6 +582,7 @@ class GameSessionManager:
             "undo_count": session.undo_count,
             "log_count": len(session.log),
             "undo": undo,
+            "confirmation": session.awaiting_confirmation,
             "phase": str(state.phase),
             "round_number": state.round_number,
             "first_player": state.first_player,
@@ -789,16 +851,34 @@ def _serialize_view(view: PlayerView, disclosed: GameState | None) -> JsonObject
 
 
 def _serialize_action(
-    index: int, action: DomainAction, state: GameState
+    index: int, action: DomainAction, session: GameSession
 ) -> JsonObject:
-    """Serialize one legal action; ``detail`` names a keyed icon's printed effect."""
+    """Serialize one legal action.
+
+    ``detail`` names a keyed icon's printed effect; ``undoable`` says whether
+    the step could still be taken back afterwards (it could not once it
+    reveals hidden information or hands the game to a chance outcome).
+    """
 
     return {
         "index": index,
         "action_id": action.action_id,
         "arguments": _jsonify(dict(action.arguments)),
-        "detail": effect_action_text(state, action),
+        "detail": effect_action_text(session.state, action),
+        "undoable": _action_is_undoable(session, action),
     }
+
+
+def _action_is_undoable(session: GameSession, action: DomainAction) -> bool:
+    """Dry-run ``action`` and apply the undo-window rules to its outcome."""
+
+    try:
+        after = session.engine.apply(session.state, action).state
+    except Exception:  # noqa: BLE001 - a failing dry run is simply not undoable
+        return False
+    if reveals_hidden_information(session.state, after, action.actor):
+        return False
+    return not isinstance(session.engine.current_decision(after), ChanceDecision)
 
 
 def _jsonify(value: object) -> JsonValue:

@@ -59,6 +59,11 @@ def _advance(
     for _ in range(steps):
         if summary["finished"]:
             break
+        if summary["confirmation"] == 0:
+            summary = manager.confirm_turn(
+                game_id, seat=0, revision=_int(summary["revision"])
+            )
+            continue
         summary = manager.apply_action(
             game_id, seat=0, revision=_int(summary["revision"]), index=0
         )

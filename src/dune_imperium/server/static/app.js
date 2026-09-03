@@ -654,7 +654,11 @@ async function applySummary(summary) {
   state.summary = summary;
   const humans = humanSeats();
   const decision = summary.decision;
-  if (decision && decision.owner_is_human) {
+  if (typeof summary.confirmation === "number") {
+    /* The seat whose turn just ended still holds the table until it
+       confirms the hand-over (or takes its steps back). */
+    state.viewSeat = summary.confirmation;
+  } else if (decision && decision.owner_is_human) {
     state.viewSeat = decision.owner;
   } else if (humans.length) {
     state.viewSeat = humans.includes(state.viewSeat)
@@ -714,6 +718,37 @@ async function applyAction(index) {
       return;
     }
     el("game-error").textContent = `행동 적용 실패 (${error.message})`;
+    el("game-error").hidden = false;
+    render();
+  }
+}
+
+/* Hand the turn over after the seat's still-undoable steps: only now do
+   the chance stream and the other seats advance. */
+async function confirmTurn() {
+  if (state.busy) return;
+  state.busy = true;
+  render();
+  try {
+    el("game-error").hidden = true;
+    const summary = await api(`/games/${state.gameId}/confirm`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        seat: state.viewSeat,
+        revision: state.summary.revision,
+        undo_count: state.summary.undo_count,
+      }),
+    });
+    state.busy = false;
+    await applySummary(summary);
+  } catch (error) {
+    state.busy = false;
+    if (error.status === 409) {
+      await refresh();
+      return;
+    }
+    el("game-error").textContent = `턴 종료 실패 (${error.message})`;
     el("game-error").hidden = false;
     render();
   }
@@ -1071,6 +1106,23 @@ function renderBanner() {
     if (!decision) {
       prompt.textContent = "진행 중…";
       info.append(prompt);
+    } else if (summary.confirmation === state.viewSeat) {
+      /* The viewing seat's turn has ended but its steps can still be taken
+         back: nothing advances until it confirms the hand-over. */
+      const nextKind = summary.seats[decision.owner];
+      prompt.textContent = "행동을 마쳤습니다. 턴을 넘길까요?";
+      meta.textContent =
+        `되돌릴 수 있는 동안은 턴이 넘어가지 않습니다 · 다음: 좌석 ${decision.owner} (${nextKind})`;
+      info.append(prompt, meta);
+      const row = document.createElement("div");
+      row.className = "confirm-row";
+      const confirm = document.createElement("button");
+      confirm.type = "button";
+      confirm.textContent = "턴 종료 확정 ▶";
+      confirm.disabled = state.busy;
+      confirm.addEventListener("click", () => confirmTurn());
+      row.appendChild(confirm);
+      info.appendChild(row);
     } else {
       const seatKind = summary.seats[decision.owner];
       const who =
@@ -1190,6 +1242,17 @@ function actionItem(action) {
   button.appendChild(iconize(describeAction(action)));
   button.disabled = state.busy;
   button.addEventListener("click", () => applyAction(action.index));
+  if (action.undoable === false) {
+    /* The server dry-ran the step: it reveals hidden information or hands
+       the game to a chance outcome, so it cannot be taken back afterwards. */
+    wrap.classList.add("irreversible");
+    const badge = document.createElement("span");
+    badge.className = "irreversible-badge";
+    badge.textContent = "되돌리기 불가";
+    badge.title =
+      "이 행동 뒤에는 되돌릴 수 없습니다 (숨겨진 정보가 공개되거나 무작위 결과가 정해집니다)";
+    button.appendChild(badge);
+  }
   wrap.appendChild(button);
 
   const entries = actionPreviewEntries(action);
@@ -1388,7 +1451,96 @@ function renderBoardStage(board, view) {
     note.append(" 파괴됨");
     stage.appendChild(note);
   }
+  renderTrackMarkers(stage, view);
   board.appendChild(stage);
+}
+
+function placeAt(node, x, y) {
+  node.style.left = `${x}%`;
+  node.style.top = `${y}%`;
+  return node;
+}
+
+/* Live markers on the printed tracks (catalog.tracks, percent of the
+   scan): Influence cubes and Alliance rings on the Faction strips, VP
+   tokens on the score column, strength tokens on the combat track, deployed
+   units in each seat's Conflict quadrant, and Councilor tokens on the High
+   Council seats. */
+function renderTrackMarkers(stage, view) {
+  const tracks = state.catalog.tracks;
+  if (!tracks || !Array.isArray(view.players)) return;
+  const factions = Object.keys(FACTION_LABELS);
+  let councilSlot = 0;
+  view.players.forEach((player, index) => {
+    const seat = typeof player.player_id === "number" ? player.player_id : index;
+    const color = SEAT_COLORS[seat];
+
+    for (const key of factions) {
+      const offset = tracks.influence.offsets[key];
+      if (offset === undefined) continue;
+      const level = Math.max(0, Math.min(6, player.influence[key] || 0));
+      const cube = document.createElement("span");
+      cube.className = "track-cube";
+      cube.style.background = color;
+      cube.title = `좌석 ${seat} · ${FACTION_LABELS[key]} Influence ${player.influence[key]}`;
+      placeAt(cube, tracks.influence.seat_x[seat], tracks.influence.levels[level] + offset);
+      stage.appendChild(cube);
+      if ((player.alliance_faction_ids || []).includes(key)) {
+        const ring = document.createElement("span");
+        ring.className = "alliance-ring";
+        ring.style.borderColor = color;
+        ring.title = `좌석 ${seat} · ${FACTION_LABELS[key]} Alliance`;
+        placeAt(ring, tracks.influence.alliance[0], tracks.influence.alliance[1] + offset);
+        stage.appendChild(ring);
+      }
+    }
+
+    const vp = player.victory_points || 0;
+    const vpToken = seatToken(seat, "track-token vp-token");
+    vpToken.title = `좌석 ${seat} · ${vp} VP`;
+    const vpY = vp < tracks.victory_points.levels.length
+      ? tracks.victory_points.levels[vp]
+      : tracks.victory_points.overflow_y;
+    placeAt(vpToken, tracks.victory_points.x + (seat - 1.5) * 1.3, vpY);
+    stage.appendChild(vpToken);
+
+    const units = (player.troops_conflict || 0) + (player.sandworms_conflict || 0);
+    const strength = player.combat_strength || 0;
+    if (units > 0 || strength > 0) {
+      const capped = Math.min(strength, 20);
+      const row = capped > 10 ? 1 : 0;
+      const cell = capped > 10 ? capped - 10 : capped;
+      const token = seatToken(seat, "track-token strength-token");
+      token.title = `좌석 ${seat} · 전투력 ${strength}`;
+      placeAt(token, tracks.strength.cells[cell] + (seat - 1.5) * 0.9, tracks.strength.rows[row]);
+      stage.appendChild(token);
+    }
+
+    if (units > 0) {
+      const [qx, qy] = tracks.conflict_quadrants[seat] || tracks.conflict_quadrants[0];
+      const chip = document.createElement("span");
+      chip.className = "conflict-units";
+      chip.style.borderColor = color;
+      chip.title = `좌석 ${seat} · Conflict 유닛`;
+      chip.appendChild(seatToken(seat, "seat-mark"));
+      if (player.troops_conflict) chip.appendChild(amount("troop", "troop", player.troops_conflict));
+      if (player.sandworms_conflict) {
+        chip.appendChild(amount("sandworm", "sandworm", player.sandworms_conflict));
+      }
+      if (strength) chip.append(` ${strength}`);
+      placeAt(chip, qx, qy);
+      stage.appendChild(chip);
+    }
+
+    if (player.high_council && councilSlot < tracks.council_seats.length) {
+      const [cx, cy] = tracks.council_seats[councilSlot];
+      councilSlot += 1;
+      const token = seatToken(seat, "track-token council-token");
+      token.title = `좌석 ${seat} · High Council`;
+      placeAt(token, cx, cy);
+      stage.appendChild(token);
+    }
+  });
 }
 
 /* Text board for a machine without the board scan: the same data as a

@@ -43,14 +43,40 @@ def _int(value: object) -> int:
     return value
 
 
-def _play(
+def _play_raw(
     manager: GameSessionManager, summary: JsonObject, index: int = 0
 ) -> JsonObject:
+    """Apply one action of seat 0 without confirming a paused turn end."""
+
     return manager.apply_action(
         str(summary["game_id"]),
         seat=0,
         revision=_int(summary["revision"]),
         index=index,
+    )
+
+
+def _play(
+    manager: GameSessionManager, summary: JsonObject, index: int = 0
+) -> JsonObject:
+    """Apply one action of seat 0 and confirm the turn end if it paused."""
+
+    summary = _play_raw(manager, summary, index)
+    if summary["confirmation"] == 0:
+        summary = manager.confirm_turn(
+            str(summary["game_id"]),
+            seat=0,
+            revision=_int(summary["revision"]),
+            undo_count=_int(summary["undo_count"]),
+        )
+    return summary
+
+
+def _action_index(manager: GameSessionManager, game_id: str, action_id: str) -> int:
+    return next(
+        _int(entry["index"])
+        for entry in _rows(manager.legal_actions(game_id, 0)["actions"])
+        if entry["action_id"] == action_id
     )
 
 
@@ -157,6 +183,102 @@ def test_undo_window_holds_own_consecutive_steps_and_closes_on_reveals() -> None
     assert live[-1].reveals is True
     assert summary["undo"] == []
     assert undo_window(manager._get(game_id).log, 0) == 0
+
+
+# ---------------------------------------------------------------- turn end
+
+
+def test_turn_end_waits_for_confirmation_while_steps_are_undoable() -> None:
+    # Seat 0 (seed 14) sends Diplomacy to Dutiful Service, takes the Solari
+    # icon and then the Emperor Influence: the turn is over, nothing was
+    # revealed, so the session pauses instead of letting the AI seats act.
+    manager = GameSessionManager()
+    summary = manager.create_game(HUMAN_FIRST, game_seed=14)
+    game_id = str(summary["game_id"])
+    summary = _play_until_revision(manager, summary, 9)
+    summary = _play_raw(manager, summary)
+    assert summary["confirmation"] is None
+    influence = _action_index(manager, game_id, "resolve_faction_influence")
+    summary = _play_raw(manager, summary, index=influence)
+
+    assert summary["revision"] == 11
+    assert summary["confirmation"] == 0
+    assert _obj(summary["decision"])["owner"] != 0
+    assert summary["undo"] == [{"seat": 0, "steps": 3}]
+    assert len(manager._get(game_id).steps) == 11
+    assert manager.legal_actions(game_id, 0)["actions"] == []
+    with pytest.raises(SessionError, match="another seat"):
+        manager.apply_action(game_id, seat=0, revision=11, index=0)
+    with pytest.raises(StaleRevisionError):
+        manager.confirm_turn(game_id, seat=0, revision=10)
+
+    # Taking a step back reopens the seat's own decision.
+    rewound = manager.undo(game_id, seat=0, revision=11, steps=1)
+    assert rewound["confirmation"] is None
+    assert _obj(rewound["decision"])["owner"] == 0
+    assert rewound["revision"] == 10
+
+    # Redo the same step and confirm: only now do the other seats act.
+    summary = _play_raw(manager, rewound, index=influence)
+    assert summary["confirmation"] == 0
+    confirmed = manager.confirm_turn(
+        game_id, seat=0, revision=11, undo_count=_int(summary["undo_count"])
+    )
+    assert confirmed["confirmation"] is None
+    assert _int(confirmed["revision"]) > 11
+    assert confirmed["undo"] == []
+    with pytest.raises(SessionError, match="no turn end"):
+        manager.confirm_turn(game_id, seat=0, revision=_int(confirmed["revision"]))
+
+
+def test_turn_end_needs_no_confirmation_after_a_reveal() -> None:
+    # Seed 21's opening turn ends with Assembly Hall's Intrigue draw, which
+    # reveals the deck top to the drawer and closes the undo window: there
+    # is nothing to protect, so the AI seats act at once.
+    manager = GameSessionManager()
+    summary = manager.create_game(HUMAN_FIRST, game_seed=21)
+    game_id = str(summary["game_id"])
+    summary = _play_raw(manager, summary)
+    actions = _rows(manager.legal_actions(game_id, 0)["actions"])
+    assert [(entry["action_id"], entry["undoable"]) for entry in actions] == [
+        ("resolve_board_effect", False)
+    ]
+    summary = _play_raw(manager, summary)
+
+    assert summary["confirmation"] is None
+    assert _int(summary["revision"]) > 2
+    assert summary["undo"] == []
+
+
+def test_legal_actions_report_whether_each_step_can_be_taken_back() -> None:
+    manager = GameSessionManager()
+    summary = manager.create_game(HUMAN_FIRST, game_seed=14)
+    game_id = str(summary["game_id"])
+    summary = _play_until_revision(manager, summary, 9)
+    actions = _rows(manager.legal_actions(game_id, 0)["actions"])
+
+    # Dutiful Service's Solari icon and the Emperor Influence reveal nothing.
+    assert {entry["action_id"]: entry["undoable"] for entry in actions} == {
+        "resolve_board_effect": True,
+        "resolve_faction_influence": True,
+    }
+
+
+def test_a_save_taken_during_the_pause_restores_the_pause() -> None:
+    manager = GameSessionManager()
+    summary = manager.create_game(HUMAN_FIRST, game_seed=14)
+    game_id = str(summary["game_id"])
+    summary = _play_until_revision(manager, summary, 9)
+    summary = _play_raw(manager, summary)
+    influence = _action_index(manager, game_id, "resolve_faction_influence")
+    summary = _play_raw(manager, summary, index=influence)
+    assert summary["confirmation"] == 0
+
+    document = manager.save_game(game_id)
+    restored = manager.restore_game(document)
+    assert restored["confirmation"] == 0
+    assert restored["revision"] == 11
+    assert restored["undo"] == [{"seat": 0, "steps": 3}]
 
 
 # ---------------------------------------------------------------- undo

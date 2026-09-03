@@ -133,7 +133,12 @@ def test_apply_guards_revision_owner_and_index() -> None:
     advanced = manager.apply_action(game_id, seat=0, revision=revision, index=0)
     assert advanced["revision"] != revision
     if not advanced["finished"]:
-        assert _obj(advanced["decision"])["owner"] == 0
+        # Either the seat still decides, or its turn ended and the hand-over
+        # waits for confirmation while the steps are undoable.
+        assert (
+            _obj(advanced["decision"])["owner"] == 0
+            or advanced["confirmation"] == 0
+        )
 
 
 def test_a_human_game_can_be_played_to_the_end() -> None:
@@ -144,6 +149,11 @@ def test_a_human_game_can_be_played_to_the_end() -> None:
     for _ in range(2_000):
         if summary["finished"]:
             break
+        if summary["confirmation"] == 0:
+            summary = manager.confirm_turn(
+                game_id, seat=0, revision=_int(summary["revision"])
+            )
+            continue
         summary = manager.apply_action(
             game_id,
             seat=0,

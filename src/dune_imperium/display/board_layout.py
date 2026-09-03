@@ -22,7 +22,7 @@ are the centres of the observation-post "eye" icons.
 
 from collections.abc import Mapping
 from types import MappingProxyType
-from typing import Final
+from typing import Any, Final
 
 SPACE_BOXES: Final[Mapping[str, tuple[float, float, float, float]]] = (
     MappingProxyType(
@@ -77,3 +77,67 @@ POST_POINTS: Final[Mapping[str, tuple[float, float]]] = MappingProxyType(
         "fremen-desert-tactics-fremkit": (25.2, 88.2),
     }
 )
+
+
+# Live-state marker coordinates, measured on 2026-09-03 against the same
+# scan with a 0.5 % grid overlay.
+
+# Influence tracks: one vertical strip per Faction on the left edge. Levels
+# 0..6 run bottom-up; ``INFLUENCE_LEVEL_Y`` holds the Emperor strip's band
+# centres and each other Faction's strip is the same drawing shifted down by
+# ``INFLUENCE_STRIP_OFFSET_Y``. Seat cubes sit side by side at
+# ``INFLUENCE_SEAT_X`` so four cubes on one level stay readable.
+INFLUENCE_LEVEL_Y: Final = (23.0, 19.8, 16.3, 12.5, 9.0, 5.9, 3.2)
+INFLUENCE_STRIP_OFFSET_Y: Final[Mapping[str, float]] = MappingProxyType(
+    {
+        "emperor": 0.0,
+        "spacing_guild": 24.3,
+        "bene_gesserit": 48.7,
+        "fremen": 73.2,
+    }
+)
+INFLUENCE_SEAT_X: Final = (4.9, 6.7, 8.5, 10.3)
+# The Faction emblem at the top of each strip, where the Alliance token sits.
+ALLIANCE_POINT: Final = (7.5, 4.0)
+
+# Victory Point track: the numbered column on the right edge, 0 at the
+# bottom and 12 at the top; higher scores share the emblem above 12.
+VICTORY_POINT_X: Final = 96.5
+VICTORY_POINT_Y: Final = (
+    95.0, 89.7, 84.5, 79.0, 73.5, 68.5, 63.0, 57.7, 52.5, 47.0, 41.5, 36.0, 30.5
+)
+VICTORY_POINT_OVERFLOW_Y: Final = 25.5
+
+# Combat strength track: two numbered rows along the bottom edge, cells
+# 0..10 on the upper row and 11..20 on the lower row (same columns).
+STRENGTH_CELL_X: Final = tuple(46.3 + index * 4.37 for index in range(11))
+STRENGTH_ROW_Y: Final = (93.2, 97.6)
+
+# Conflict area quadrant centres, clockwise from the bottom-left one, used
+# for seats 0..3 ("keep your deployed units in the quadrant nearest to your
+# garrison" [Main p. 10]).
+CONFLICT_QUADRANTS: Final = ((45.5, 84.5), (45.5, 71.0), (86.0, 71.0), (86.0, 84.5))
+
+# The four High Council seats, left to right.
+COUNCIL_SEATS: Final = ((42.0, 5.5), (46.0, 5.5), (50.0, 5.5), (54.0, 5.5))
+
+
+def marker_layout() -> dict[str, Any]:
+    """Return every marker table as plain JSON-ready values."""
+
+    return {
+        "influence": {
+            "levels": list(INFLUENCE_LEVEL_Y),
+            "offsets": dict(INFLUENCE_STRIP_OFFSET_Y),
+            "seat_x": list(INFLUENCE_SEAT_X),
+            "alliance": list(ALLIANCE_POINT),
+        },
+        "victory_points": {
+            "x": VICTORY_POINT_X,
+            "levels": list(VICTORY_POINT_Y),
+            "overflow_y": VICTORY_POINT_OVERFLOW_Y,
+        },
+        "strength": {"cells": list(STRENGTH_CELL_X), "rows": list(STRENGTH_ROW_Y)},
+        "conflict_quadrants": [list(point) for point in CONFLICT_QUADRANTS],
+        "council_seats": [list(point) for point in COUNCIL_SEATS],
+    }

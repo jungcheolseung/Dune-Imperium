@@ -1,7 +1,45 @@
 """Tests for the board-scan overlay coordinates behind the browser UI."""
 
-from dune_imperium.content.uprising.board import BOARD_SPACES, OBSERVATION_POSTS
-from dune_imperium.display.board_layout import POST_POINTS, SPACE_BOXES
+from dune_imperium.content.uprising.board import (
+    BOARD_SPACES,
+    OBSERVATION_POSTS,
+    Faction,
+)
+from dune_imperium.display.board_layout import (
+    POST_POINTS,
+    SPACE_BOXES,
+    marker_layout,
+)
+
+
+def test_marker_tables_cover_the_printed_tracks() -> None:
+    layout = marker_layout()
+    influence = layout["influence"]
+    assert isinstance(influence, dict)
+    assert len(influence["levels"]) == 7
+    assert set(influence["offsets"]) == {faction.value for faction in Faction}
+    assert len(influence["seat_x"]) == 4
+    assert influence["levels"] == sorted(influence["levels"], reverse=True)
+    victory = layout["victory_points"]
+    assert isinstance(victory, dict)
+    assert len(victory["levels"]) == 13
+    assert victory["levels"] == sorted(victory["levels"], reverse=True)
+    strength = layout["strength"]
+    assert isinstance(strength, dict)
+    assert len(strength["cells"]) == 11 and len(strength["rows"]) == 2
+    assert len(layout["conflict_quadrants"]) == 4
+    assert len(layout["council_seats"]) == 4
+
+    def inside(value: object) -> bool:
+        return isinstance(value, (int, float)) and 0.0 <= value <= 100.0
+
+    for faction_offset in influence["offsets"].values():
+        assert all(inside(level + faction_offset) for level in influence["levels"])
+    assert all(inside(value) for value in influence["seat_x"])
+    assert all(inside(value) for value in victory["levels"])
+    assert all(inside(value) for value in strength["cells"])
+    for table in ("conflict_quadrants", "council_seats"):
+        assert all(inside(point[0]) and inside(point[1]) for point in layout[table])
 
 
 def test_every_board_space_has_exactly_one_hotspot_box() -> None:
