@@ -43,15 +43,16 @@ uv run mypy src tests
 - Shaddam Corrino IV의 set-aside Sardaukar Contract 경로는 Leader 능력과 함께 남아 있다. OQ-010(2026-09-02 확정), OQ-011 경계는 확정 판정(`DECIDED`)으로 유지된다.
 - 공식 문서가 침묵하는 규칙 판정은 [`rules/open-questions.md`](rules/open-questions.md)에 있다. 2026-09-01 확정 캠페인과 같은 날의 사용자 검토를 거쳐, 2026-09-02에 OQ-010까지 확정돼 `OPEN` 항목은 없고 전부 `DECIDED`/`RESOLVED`다. `DECIDED`는 확정 프로젝트 판정으로 새 공식 룰북·FAQ(또는 OQ-022처럼 명시된 상위 근거)가 답을 줄 때만 다시 연다. 새로 발견되는 규칙 공백은 여전히 코드로 임의 확정하지 않고 그 문서에 먼저 기록하며, 규칙 동작을 바꾸기 전에는 반드시 `docs/rules/`의 문장을 인용한다([`lessons.md`](lessons.md)).
 
-콘텐츠(카드·리더·계약·Intrigue·보드 22칸)는 이제 4인 base+CHOAM 게임 범위에서 완결이다. 남은 경계는 공식 문서가 침묵하는 판정을 기록한 convention(open-questions.md)과 위의 엔진 경계·미래 콘텐츠 tripwire들이며, 이들은 "미구현 콘텐츠"가 아니라 문서화된 프로젝트 판정이다.
+콘텐츠(카드·리더·계약·Intrigue·보드 22칸)는 이제 4인 base+CHOAM 게임 범위에서 완결이다. 예외는 2026-09-03에 사용자가 구현 대상으로 정한 Uprising 프로모 Imperium 3장(Arrakis Revolt, The Beast's Spoils, Pivotal Gambit; `implementation-plan.md` M6 절, 이미지는 에셋 저장소 `cards/en/uprising/promo/`)으로, 아직 content 패키지에 없다. 남은 경계는 공식 문서가 침묵하는 판정을 기록한 convention(open-questions.md)과 위의 엔진 경계·미래 콘텐츠 tripwire들이며, 이들은 "미구현 콘텐츠"가 아니라 문서화된 프로젝트 판정이다.
 
 ## 다음 구현 순서
 
 2026-09-01의 **검증 강화 캠페인**(사용자 확정 범위: 전체 1→4)은 같은 날 완료했다: 1단계 보드 22칸 완결 + OQ-015(c), 2단계 sweep 확장 (`853ecd4`: 커버리지 census `--coverage-json`, 표본 주기 legal-action 전수 적용 + codec 왕복 `--soundness-interval`, seed별 리더 회전 `--rotate-leaders`), 3단계 교차 소크(아래), 4단계 대조(DIU 63종 전부 일치, open-questions 23건 재점검). 세부는 아래 세션 요약.
 
 0. (2026-09-03 완료) M11 슬라이스 7 보드 스캔 테이블 + 룰북 아이콘 — 아래 세션 요약. (2026-09-02 완료) 슬라이스 6 행동 되돌리기 + 실시간 행동 로그.
-1. **M9 평가 러너와 baseline.** 여러 게임을 병렬 구동하고 정책 추론만 batch하는 self-play 러너, random/heuristic(M11 상대에서 출발)/rollout baseline, 좌석·리더·first player·seed 교차 대회 도구 (`implementation-plan.md`의 M9). 관측·보상 계약은 [`rl-environment.md`](rl-environment.md)로 고정돼 있고, 병렬 실행 선례는 `simulation/sweep.py`다. 더 큰 야간 규모 재검증이 필요하면 `dune-imperium-sweep --games 50000 --ruleset both --workers 8 --rotate-leaders --soundness-interval 25 --coverage-json ...`을 커밋된 트리에서 돌린다.
-2. **M10 강화학습과 league self-play.** M9의 평가 행렬 위에서 시작한다 (`implementation-plan.md`의 M10).
+1. **Uprising 프로모 Imperium 3장 콘텐츠 슬라이스**(M6 후속, 사용자 결정 2026-09-03; M9와의 선후는 미정). `Play ...`/`Document ...` 쌍, 이미지 검증, `uprising/promo/` manifest 항목에 `content_id` 부여. The Beast's Spoils의 battle icon별 보상과 Pivotal Gambit의 1위 보상 wild icon 추가는 새 Reveal 효과 경계다.
+2. **M9 평가 러너와 baseline.** 여러 게임을 병렬 구동하고 정책 추론만 batch하는 self-play 러너, random/heuristic(M11 상대에서 출발)/rollout baseline, 좌석·리더·first player·seed 교차 대회 도구 (`implementation-plan.md`의 M9). 관측·보상 계약은 [`rl-environment.md`](rl-environment.md)로 고정돼 있고, 병렬 실행 선례는 `simulation/sweep.py`다. 더 큰 야간 규모 재검증이 필요하면 `dune-imperium-sweep --games 50000 --ruleset both --workers 8 --rotate-leaders --soundness-interval 25 --coverage-json ...`을 커밋된 트리에서 돌린다.
+3. **M10 강화학습과 league self-play.** M9의 평가 행렬 위에서 시작한다 (`implementation-plan.md`의 M10).
 
 각 묶음은 카드 이미지로 텍스트를 검증하고(`docs/card-data-sources.md`의 방법), `Play ...` / `Document ...` 커밋 쌍을 유지하며, 새 결정 경계는 `FrameKind` → frame `kind` → dispatcher 표 → codec 순으로 추가한다. 핸드오프의 카드 요약은 이미지 검증 전 참고일 뿐이다(Impress 비용, Spring the Trap 유형을 잘못 적었던 전례가 있다).
 
@@ -130,6 +131,7 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 - 검증: pytest 1,015, Ruff(`src tests`), mypy. headless Chromium E2E(스크래치 Playwright + ALSA stub): 게임 생성 → hotspot 22개·보드 이미지 로드·아이콘 65개 → popover(아이콘 4개) → 손패/hotspot 클릭으로 12단계 진행 → 토큰 4개·로그 19건, JS 오류 0·서버 오류 0. 스크린샷 검토로 hotspot 좌표가 스캔과 일치함을 확인했다.
 - 후속 수정: 손패의 Dagger·Diplomacy·Dune the Desert Planet·Reconnaissance가 텍스트 카드로 보인다는 사용자 지적 → Uprising판 이미지가 Dune Cards Hub에 없어 `KNOWN_MISSING`이던 네 장을 동일 인쇄물인 기본판 `dune-imperium-other-*.webp`로 매핑(`required_images` 170장, `KNOWN_MISSING`은 빈 집합으로 유지).
 - **에셋 정비(사용자 요청, `Dune-Imperium-assets` + 메인 `display/images.py` 재작성)**: 사용자 확인 — 캐시 600장은 Dune Cards Hub에서 받은 그대로(파일명·바이트 동일)였고, `uprising-other-*-emperor/-muad-dib`는 6인 Commander 덱(Rules Supplements p. 7, 14)이라 4인 시작 카드 7장은 기본판 스캔이 맞다. 새 규칙: `cards/<언어>/<세트>/<종류>/<인쇄 카드명>.<확장자>`(공백·아포스트로피·`+` 유지, 동명 카드는 인쇄된 구별 요소를 괄호로 — Skirmish 3장은 battle icon, Harvest 3+/4+ 두 쌍은 보상), 세트 7개(uprising, base, rise-of-ix, immortality, bloodlines, conspiracy, promo)로 600장 전부 분류(안 쓰는 확장팩은 slug 유도 이름 + `name_source: "upstream-slug"` 미검증 표시), 매핑은 에셋 저장소의 `cards/manifest.json` 하나(607항목·파일 607: Uprising 시작 카드 7장은 세트별 자기 완결을 위해 기본판 스캔의 사본을 `uprising/starting/`에 둔다 — 사용자 결정). 메인 저장소: `display/images.py`는 manifest 로더(`load_card_manifest`·`resolve_card_images`: ko 우선·en fallback·존재 파일만, `required_image_keys` 170)로 교체하고 오타 보정표·`KNOWN_MISSING` 제거, catalog URL은 percent-encoding, 서버 기본 경로 `downloads/cards`(에셋 `cards/` symlink), `fetch_card_images.py`는 manifest 출처로 빠진 파일만 받는 스크립트로 재작성. 검증: pytest 1,011(캐시 없는 머신은 skip 1), ruff, mypy, headless Chromium E2E 오류 0(손패 7장 전부 이미지).
+- 프로모 정리(사용자): 캐시의 `promo/` 9장 중 Arrakis Revolt·The Beast's Spoils·Pivotal Gambit은 Uprising 후속 프로모라 구현 대상 → 에셋 `uprising/promo/`로 이동(`bb2cff7`), 나머지 6장은 다른 확장팩 프로모라 범위 밖.
 - 남은 개선: Influence·VP 트랙 마커를 보드 위에 그리기, 아이콘 키잉 tolerance(프레임형 Agent 아이콘 모서리의 잔여 베이지), 같은 카드 2장으로 생기는 중복 행동 라벨 구분.
 
 ## 2026-09-02 M11 슬라이스 6 세션 요약 (행동 되돌리기 + 실시간 행동 로그)
