@@ -35,6 +35,11 @@
 ### 효과 처리
 
 - Agent를 보낸 뒤 space 효과와 낸 card의 Agent box 효과를 얻는다. Faction space라면 그 Faction Influence도 1 얻는다. 이 효과들은 원하는 순서로 처리한다. [Main p. 7] [Main p. 9]
+- 한 space에 인쇄된 여러 아이콘(예: Arrakeen의 troop 1 recruit와 card 1 draw)은
+  각각 독립된 효과이며, 소유자가 각 아이콘을 별개 행동으로 원하는 순서에
+  해결한다. choose-one 줄과 문장형 효과의 단위 경계는
+  [open-questions.md](open-questions.md)의 OQ-027 `DECIDED` 판정을 따른다.
+  [Main p. 9]
 - CHOAM Module을 사용할 때 공간 진입으로 contract 조건을 충족하면 완료는
   의무다. 같은 공간을 조건으로 하는 contract가 여러 개면 한 번의 진입으로
   모두 완료하며, contract 효과도 공간 효과 및 Agent box 효과와 원하는 순서로

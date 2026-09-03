@@ -151,6 +151,14 @@
 - 필요한 답: 비용을 내고 Shield Wall을 남긴 채 보호된 Conflict에 sandworm을 소환하는(아무 효과 없는) 선택을 제시할지, 비용 재판정 시점.
 - 판정(2026-09-03, project convention; 제거가 선택이라는 점은 위 공식 문장 그대로): Maker Hooks는 배치 시 요구 조건이고 2 spice는 해결 시점에 다시 판정하는 화살표 비용이다(`[Main pp. 9, 20]`, 다른 화살표 비용과 같음). 선택지는 "지불 + Shield Wall 제거 + 소환"(벽이 있을 때)과 "지불 + 벽 유지 + 소환"(현재 Conflict가 보호되지 않을 때)이며, 보호된 Conflict에서 벽을 남기고 지불하는 무효 선택은 제시하지 않는다(2 spice로 아무것도 얻지 못하는 선택은 규칙상 가능하더라도 행동 공간에서 뺀다). Emperor of the Known Universe의 배치 차단(`[Main p. 17]`)은 sandworm 소환에도 적용된다. 구현: `MAY_PAY_TWO_SPICE_FOR_SHIELD_WALL_AND_SANDWORM_IF_MAKER_HOOKS`. `tests/unit/rules/test_promo_cards.py`.
 
+## OQ-027 — 보드 공간에 인쇄된 여러 아이콘의 해결 단위
+
+- 상태: `DECIDED`
+- Main은 Agent를 보낸 뒤 board space의 효과들, card Agent box의 효과들, Faction Influence를 "원하는 순서로 처리한다(You may carry out all these effects in any order)"고 한다. `[Main p. 9]` 그러나 한 공간에 인쇄된 여러 아이콘(예: Arrakeen의 troop 1 recruit와 card 1 draw)이 각각 별개의 "효과"인지, 그리고 choose-one 괄호로 묶인 줄이나 문장으로 쓰인 효과가 어디까지 하나의 단위인지는 어느 문서도 명시하지 않는다. `[Board Guide pp. 1-2]`
+- 필요한 답: 공간 아이콘의 해결 단위에 대한 공식 판정.
+- 이전 구현(~2026-09-03, 폐기): 인자 없는 `resolve_board_effect` 한 행동이 공간의 자동 효과 전부(troop·draw·자원 등)를 한 번에 해결했다. Espionage의 draw+Spy, Desert Tactics의 troop+trash, Shipping의 Solari+Influence도 선택 행동 하나에 묶여 있었다.
+- 확정(2026-09-03, 사용자 판정): 한 공간에 인쇄된 아이콘은 **각각 독립된 효과**이며, 소유자는 각 아이콘을 별개 행동으로 원하는 순서에 해결한다(OQ-015(d)의 Intrigue 아이콘 판정과 같은 방향, `[Main p. 9]`). 두 아이콘을 함께 해결해도 결과가 같은 경우가 많지만 결정 모델은 인쇄 단위를 따른다. 단위 경계는 project convention이다: (a) 자동 아이콘(자원·card draw·Intrigue draw·troop recruit)과 CHOAM contract 아이콘, High Council 착석, Swordmaster는 `resolve_board_effect(effect=<key>)`로 하나씩; (b) 선택이 필요한 아이콘 — Espionage의 Spy 배치, Desert Tactics의 trash, Shipping의 Faction 선택 — 은 각 공간의 전용 행동으로 하나씩; (c) Sietch Tabr의 choose-one 줄과 Maker 공간의 "bonus spice 후 spice 또는 sandworm" 선택은 인쇄된 하나의 선택 단위로 유지; (d) Imperial Privilege의 두 문장(선택적 Intrigue 교환, "recall하고 draw")과 Secrets의 "draw 후 무작위 강탈" 문장은 문장 단위로 유지한다(OQ-023의 recall/draw 분리 판정은 그대로). Reverend Mother의 반복(`[Reverend Mother Jessica card]`)은 공간의 인쇄 아이콘 전부를 다시 대기시킨다. 구현: frame context `board_icons`/`pending_board_icons`, `rules/board_effects.py`의 `board_icons_for`, codec v86(`resolve_board_effect` 템플릿 7종). `tests/unit/rules/test_board_effects.py`, `tests/unit/rules/test_leader_abilities.py`로 고정한다.
+
 ## 판정이 생겼을 때 기록할 정보
 
 각 항목을 닫을 때 다음을 함께 남긴다. `DECIDED` 항목에 새 공식 답이 나왔을 때도 같다.

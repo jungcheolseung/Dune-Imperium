@@ -12,6 +12,11 @@ Combat space를 방문하면 해당 turn에 recruit한 모든 troop과 기존 ga
 troop 최대 2개를 Conflict에 deploy할 수 있다. 아래 각 행은 이 공통 배치 규칙을
 반복하지 않는다. `[Board Guide p. 1]`
 
+한 space에 인쇄된 여러 아이콘은 각각 독립된 효과로, 방문자가 원하는 순서에
+하나씩 해결한다(`[Main p. 9]`; choose-one 줄과 문장형 효과의 단위 경계는
+[open-questions.md](open-questions.md)의 OQ-027). 아래 표의 "space 결과"는
+인쇄 순서대로 적는다.
+
 ## Emperor
 
 | space | 속성·진입 조건 | space 결과 | 출처 |
