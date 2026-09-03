@@ -2,6 +2,8 @@
 
 from dataclasses import replace
 
+import pytest
+
 from dune_imperium import RulesetConfig
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
 from dune_imperium.content.uprising.imperium import (
@@ -43,6 +45,7 @@ from dune_imperium.rules.reveal_turn import (
     finish_reveal_turn,
     legal_contract_reveal_choice_actions,
     legal_corrinth_city_reveal_actions,
+    legal_defer_reveal_choice_actions,
     legal_finish_reveal_actions,
     legal_reveal_actions,
     legal_reveal_card_trash_actions,
@@ -796,7 +799,11 @@ def test_spy_network_recalls_one_of_two_spies_and_draws_intrigue() -> None:
 
     revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
     engine = UprisingRulesEngine()
-    choices = engine.legal_actions(revealed.state, 0)
+    choices = tuple(
+        action
+        for action in engine.legal_actions(revealed.state, 0)
+        if action.action_id != "defer_reveal_choice"
+    )
     selected = next(
         action
         for action in choices
@@ -853,7 +860,10 @@ def test_spy_network_recall_becomes_unavailable_when_spies_drop_mid_reveal() -> 
     assert drained.players[0].spy_post_ids == ()
 
     choices = engine.legal_actions(drained, 0)
-    assert [action.action_id for action in choices] == ["decline_reveal_spy_recall"]
+    assert [action.action_id for action in choices] == [
+        "defer_reveal_choice",
+        "decline_reveal_spy_recall",
+    ]
     resolved = engine.apply(drained, choices[0]).state
     assert resolved.players[0].intrigue_cards == ()
     assert resolved.intrigue_deck == ("intrigue:test:0",)
@@ -990,7 +1000,10 @@ def test_public_spectacle_reveal_places_a_spy() -> None:
 
     result = engine.apply(revealed.state, selected)
 
-    assert {action.action_id for action in choices} == {"place_reveal_spy"}
+    assert {action.action_id for action in choices} == {
+        "defer_reveal_choice",
+        "place_reveal_spy",
+    }
     assert result.state.players[0].spies_supply == 2
     assert result.state.players[0].spy_post_ids == (
         "emperor-sardaukar-dutiful-service",
@@ -2059,3 +2072,165 @@ def test_cross_scaling_reveal_effects_have_no_eligibility_gates() -> None:
         assert effect.minimum_spies_placed == 0
         assert effect.required_faction_bond is None
         assert effect.requires_spying_on_maker_space is False
+
+
+# ---------------------------------------------------------------- free order
+
+
+def test_reveal_choice_can_be_deferred_and_resumed_in_the_owners_order() -> None:
+    # Two Spacing Guild's Favor copies each queue "pay 3 Spice for Influence".
+    # Reveal effects resolve in any order the owner likes [Main p. 12]: the
+    # first copy's choice is put off, the second resolves, the Reveal frame
+    # stays open for acquisitions, and the deferred choice comes back later.
+    first = _imperium_instance("spacing_guild_s_favor", 0)
+    second = _imperium_instance("spacing_guild_s_favor", 1)
+    state = _state(
+        PlayerState(player_id=0, hand=(first, second), resources=Resources(spice=6))
+    )
+    revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+    engine = UprisingRulesEngine()
+    top = revealed.decision_stack[-1]
+    assert top.kind == "reveal_choice"
+    assert dict(top.context)["reveal_card_id"] == first
+    defer = DomainAction(action_id="defer_reveal_choice", actor=0)
+    assert defer in engine.legal_actions(revealed, 0)
+
+    deferred = engine.apply(revealed, defer)
+    assert [event.kind for event in deferred.events] == ["reveal_choice_deferred"]
+    assert dict(deferred.state.decision_stack[-1].context)["reveal_card_id"] == second
+    reveal_frame = deferred.state.decision_stack[-2]
+    assert reveal_frame.kind == "reveal"
+    assert dict(reveal_frame.context)["deferred_reveal_choices"] == (
+        f"{first}|may_pay_three_spice_for_influence"
+    )
+
+    pay = next(
+        action
+        for action in engine.legal_actions(deferred.state, 0)
+        if action.action_id == "pay_reveal_spice_influence"
+        and dict(action.arguments)["faction"] == "emperor"
+    )
+    paid = engine.apply(deferred.state, pay).state
+    assert paid.decision_stack[-1].kind == "reveal"
+    assert paid.players[0].resources.spice == 3
+    actions = engine.legal_actions(paid, 0)
+    action_ids = {action.action_id for action in actions}
+    assert "finish_reveal" not in action_ids
+    with pytest.raises(ValueError, match="not a legal Reveal cleanup"):
+        finish_reveal_turn(paid, DomainAction(action_id="finish_reveal", actor=0))
+    # This bare state has nothing to acquire, so the Reveal frame offers just
+    # the resumption; with a market it would also list the acquisitions.
+    assert [action.action_id for action in actions] == ["resume_reveal_choice"]
+    resume = actions[0]
+    assert dict(resume.arguments) == {"effect": "may_pay_three_spice_for_influence"}
+
+    resumed = engine.apply(paid, resume)
+    assert [event.kind for event in resumed.events] == ["reveal_choice_resumed"]
+    top = resumed.state.decision_stack[-1]
+    assert top.kind == "reveal_choice"
+    assert dict(top.context)["reveal_card_id"] == first
+    assert dict(top.context)["reveal_choice_resumed"] is True
+    reveal_context = dict(resumed.state.decision_stack[-2].context)
+    assert reveal_context["deferred_reveal_choices"] == ""
+    action_ids = {action.action_id for action in engine.legal_actions(resumed.state, 0)}
+    # A resumed choice cannot be put off again, so the Reveal cannot cycle.
+    assert "defer_reveal_choice" not in action_ids
+    assert "pay_reveal_spice_influence" in action_ids
+
+    declined = engine.apply(
+        resumed.state,
+        DomainAction(action_id="decline_reveal_spice_influence", actor=0),
+    ).state
+    assert declined.decision_stack[-1].kind == "reveal"
+    assert "finish_reveal" in {
+        action.action_id for action in engine.legal_actions(declined, 0)
+    }
+
+
+def test_a_started_spy_placement_cannot_be_deferred() -> None:
+    wheels = _imperium_instance("wheels_within_wheels")
+    posts = (
+        "arrakis-hagga-basin",
+        "arrakis-deep-desert",
+        "bene-gesserit-espionage-secrets",
+    )
+    state = _state(
+        PlayerState(player_id=0, hand=(wheels,), spies_supply=0, spy_post_ids=posts)
+    )
+    revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+    engine = UprisingRulesEngine()
+    assert legal_defer_reveal_choice_actions(revealed, 0) == (
+        DomainAction(action_id="defer_reveal_choice", actor=0),
+    )
+
+    recall = next(
+        action
+        for action in engine.legal_actions(revealed, 0)
+        if action.action_id == "recall_spy_for_reveal_placement"
+    )
+    committed = engine.apply(revealed, recall).state
+
+    # The recall committed the placement; only the post choice remains.
+    assert legal_defer_reveal_choice_actions(committed, 0) == ()
+    assert "defer_reveal_choice" not in {
+        action.action_id for action in engine.legal_actions(committed, 0)
+    }
+
+
+def test_a_resumed_choice_whose_condition_lapsed_is_dropped() -> None:
+    # In High Places' two-Spy recall is deferred, Spy Network's required
+    # recall resolves first and leaves one Spy; brought back, the two-Spy
+    # choice is judged again at resolution [Main p. 12] and no longer opens.
+    in_high_places = _imperium_instance("in_high_places")
+    spy_network = _imperium_instance("spy_network")
+    posts = (
+        "arrakis-hagga-basin",
+        "bene-gesserit-espionage-secrets",
+    )
+    state = _state(
+        PlayerState(
+            player_id=0,
+            hand=(in_high_places, spy_network),
+            spies_supply=1,
+            spy_post_ids=posts,
+        )
+    )
+    state = replace(state, intrigue_deck=("intrigue:test:0",))
+    revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+    engine = UprisingRulesEngine()
+    assert dict(revealed.decision_stack[-1].context)["reveal_choice_effect"] == (
+        "may_recall_two_spies_for_two_persuasion"
+    )
+
+    deferred = engine.apply(
+        revealed, DomainAction(action_id="defer_reveal_choice", actor=0)
+    ).state
+    assert dict(deferred.decision_stack[-1].context)["reveal_choice_effect"] == (
+        "recall_spy_to_draw_intrigue_if_two_placed"
+    )
+    recall = next(
+        action
+        for action in engine.legal_actions(deferred, 0)
+        if action.action_id == "recall_spy_for_reveal"
+    )
+    recalled = engine.apply(deferred, recall).state
+    assert len(recalled.players[0].spy_post_ids) == 1
+    assert recalled.decision_stack[-1].kind == "reveal"
+
+    resume = next(
+        action
+        for action in engine.legal_actions(recalled, 0)
+        if action.action_id == "resume_reveal_choice"
+    )
+    result = engine.apply(recalled, resume)
+
+    assert [event.kind for event in result.events] == [
+        "reveal_choice_resumed",
+        "reveal_choice_unavailable",
+    ]
+    assert result.state.decision_stack[-1].kind == "reveal"
+    reveal_context = dict(result.state.decision_stack[-1].context)
+    assert reveal_context["deferred_reveal_choices"] == ""
+    assert "finish_reveal" in {
+        action.action_id for action in engine.legal_actions(result.state, 0)
+    }

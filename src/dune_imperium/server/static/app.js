@@ -155,6 +155,8 @@ const ACTION_LABELS = {
   resolve_espionage_without_spy: "Spy 없이 해결",
   resolve_faction_influence: "Faction Influence 해결",
   resolve_intrigue_rewards: "Intrigue 자동 보상 먼저 해결",
+  defer_reveal_choice: "이 Reveal 선택은 나중에",
+  resume_reveal_choice: "미룬 Reveal 선택 재개",
   retreat_intrigue_troops: "병력 후퇴",
   retreat_leader_troop: "Troop 후퇴",
   retreat_two_troops_for_reveal: "Troop 2 후퇴 → 검 4",

@@ -2,6 +2,7 @@
 
 from dune_imperium import RulesetConfig
 from dune_imperium.adapters import ACTION_CODEC_VERSION, ActionCodec
+from dune_imperium.content.uprising.types import PersonalCardRevealChoiceEffect
 from dune_imperium.core import DomainAction, PlayerDecision
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.agent_effects import AUTOMATIC_AGENT_ICONS
@@ -13,10 +14,10 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     first = ActionCodec(RulesetConfig())
     second = ActionCodec(RulesetConfig())
 
-    assert ACTION_CODEC_VERSION == 87
+    assert ACTION_CODEC_VERSION == 88
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
-    assert first.size == 4330
+    assert first.size == 4342
 
 
 def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
@@ -28,7 +29,7 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
     codec = ActionCodec(RulesetConfig(choam_module=True))
 
     assert codec.decode(codec.encode(action), actor=2) == action
-    assert codec.size == 4616
+    assert codec.size == 4628
 
     try:
         ActionCodec(RulesetConfig()).encode(action)
@@ -99,6 +100,21 @@ def test_agent_card_icons_round_trip_beside_the_bare_action() -> None:
             arguments=(("effect", key),),
         )
         assert codec.decode(codec.encode(action), actor=2) == action
+
+
+def test_reveal_choice_deferral_and_resumption_round_trip() -> None:
+    # Free Reveal ordering [Main p. 12]: one bare deferral plus one resume
+    # template per choice-effect kind (codec v88).
+    codec = ActionCodec(RulesetConfig())
+    defer = DomainAction(action_id="defer_reveal_choice", actor=3)
+    assert codec.decode(codec.encode(defer), actor=3) == defer
+    for effect in PersonalCardRevealChoiceEffect:
+        action = DomainAction(
+            action_id="resume_reveal_choice",
+            actor=3,
+            arguments=(("effect", effect.value),),
+        )
+        assert codec.decode(codec.encode(action), actor=3) == action
 
 
 def test_corrinth_city_staged_payment_round_trips() -> None:

@@ -34,12 +34,16 @@ from dune_imperium.content.uprising.starting_cards import (
     STARTING_DECK,
     StartingCardEntry,
 )
-from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
+from dune_imperium.content.uprising.types import (
+    AgentIcon,
+    BattleIcon,
+    PersonalCardRevealChoiceEffect,
+)
 from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.rules.agent_effects import AUTOMATIC_AGENT_ICONS
 from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 
-ACTION_CODEC_VERSION = 87
+ACTION_CODEC_VERSION = 88
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 
@@ -154,6 +158,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "decline_reveal_sandworm",
             "decline_reveal_spice_influence",
             "decline_reveal_troop_retreat",
+            "defer_reveal_choice",
             "deploy_control_defense",
             "finish_reveal",
             "gain_five_reveal_solari",
@@ -200,6 +205,14 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             arguments=(("effect", key),),
         )
         for key in AUTOMATIC_AGENT_ICONS
+    )
+    # Bringing back one kind of deferred Reveal choice [Main p. 12].
+    templates.extend(
+        ActionTemplate(
+            action_id="resume_reveal_choice",
+            arguments=(("effect", effect.value),),
+        )
+        for effect in PersonalCardRevealChoiceEffect
     )
     if config.choam_module:
         templates.extend(

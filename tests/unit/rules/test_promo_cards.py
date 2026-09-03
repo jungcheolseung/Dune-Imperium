@@ -567,8 +567,8 @@ def test_beasts_spoils_with_no_face_up_icons_does_nothing() -> None:
 
 def test_promo_actions_round_trip_through_the_codec() -> None:
     codec = ActionCodec(PROMO)
-    assert codec.size == 4430
-    assert ActionCodec(RulesetConfig(choam_module=True, promo_cards=True)).size == 4716
+    assert codec.size == 4442
+    assert ActionCodec(RulesetConfig(choam_module=True, promo_cards=True)).size == 4728
     for action_id in (
         "pay_agent_card_spice_for_sandworm",
         "pay_agent_card_spice_for_sandworm_and_shield_wall",

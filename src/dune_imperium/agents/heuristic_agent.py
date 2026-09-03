@@ -67,6 +67,10 @@ _ACTION_SCORES: Final[dict[str, float]] = {
     "take_contract": 2.0,
     "gain_leader_signet_troop": 2.0,
     "use_other_memories": 1.0,
+    # Reveal choice reordering never changes what the rule-based agent
+    # would gain; it resolves choices in card order and finishes.
+    "defer_reveal_choice": -5.0,
+    "resume_reveal_choice": -5.0,
 }
 
 _IMPERIUM_ACQUISITIONS: Final = frozenset(

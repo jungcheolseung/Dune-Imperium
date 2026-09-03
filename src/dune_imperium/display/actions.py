@@ -7,11 +7,15 @@ derived from the same engine tables and card data the rules execute.
 """
 
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
-from dune_imperium.content.uprising.types import PersonalCardAgentEffect
+from dune_imperium.content.uprising.types import (
+    PersonalCardAgentEffect,
+    PersonalCardRevealChoiceEffect,
+)
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.state import GameState
 from dune_imperium.display.spaces import board_effect_action_text
 from dune_imperium.rules.effects import current_agent_effect_context
+from dune_imperium.rules.reveal_turn import reveal_choice_prompt
 
 _BOX = PersonalCardAgentEffect
 
@@ -81,6 +85,8 @@ def effect_action_text(state: GameState, action: DomainAction) -> str | None:
         return None
     if action.action_id == "resolve_board_effect":
         return board_effect_action_text(state, action)
+    if action.action_id == "resume_reveal_choice":
+        return reveal_choice_prompt(PersonalCardRevealChoiceEffect(key))
     if action.action_id != "resolve_agent_card_effect":
         return None
     try:
