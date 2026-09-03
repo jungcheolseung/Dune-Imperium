@@ -21,6 +21,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import Influence, PlayerState, Resources
 from dune_imperium.core.state import GamePhase, GameState
+from dune_imperium.rules.board_effects import board_icons_for
 from dune_imperium.rules.card_bonds import has_faction_bond
 from dune_imperium.rules.contracts import contract_candidates_for_agent_turn
 from dune_imperium.rules.frames import FrameKind, owned_top_frame
@@ -170,6 +171,11 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
         action.actor,
         space_id,
     )
+    # Every printed icon of the space is its own freely ordered effect
+    # [Main p. 9] (OQ-027); the visit's icon list is fixed at placement.
+    board_icons = ",".join(
+        board_icons_for(state, action.actor, space_id, cost_option)
+    )
     effect_frame = DecisionFrame(
         kind=FrameKind.AGENT_EFFECTS,
         frame_id=(f"round:{state.round_number}:player:{action.actor}:agent_effects"),
@@ -178,6 +184,7 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
             prompt="Choose the next Agent-turn effect to resolve",
         ),
         context=(
+            ("board_icons", board_icons),
             ("card_id", card_instance_id),
             ("cost_option", cost_option),
             ("existing_troop_deployment_limit", 2 if space.combat else 0),
@@ -190,7 +197,8 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
                     card_instance_id,
                 ),
             ),
-            ("pending_board_effect", True),
+            ("pending_board_effect", bool(board_icons)),
+            ("pending_board_icons", board_icons),
             (
                 "pending_combat_deployment",
                 not units_deploy_blocked

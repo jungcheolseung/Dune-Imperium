@@ -19,6 +19,8 @@ from dune_imperium.display.images import (
 )
 from dune_imperium.display.leaders import LEADER_FACE_TEXTS, LeaderFaceText
 from dune_imperium.display.spaces import (
+    board_effect_action_text,
+    board_icon_text,
     space_is_implemented,
     space_notes,
     space_option_count,
@@ -35,6 +37,8 @@ __all__ = [
     "LEADER_FACE_TEXTS",
     "LeaderFaceText",
     "available_icons",
+    "board_effect_action_text",
+    "board_icon_text",
     "conflict_rewards_texts",
     "contract_condition_text",
     "contract_reward_text",

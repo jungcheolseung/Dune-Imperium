@@ -15,7 +15,10 @@ from dune_imperium.core import (
     Resources,
 )
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
-from dune_imperium.rules.board_effects import resolve_board_effect
+from dune_imperium.rules.board_effects import (
+    legal_board_effect_actions,
+    resolve_board_effect,
+)
 from dune_imperium.rules.combat_deployment import (
     apply_combat_deployment,
     legal_combat_deployments,
@@ -75,6 +78,14 @@ def _agent_action_to(state: GameState, space_id: str) -> DomainAction:
     )
 
 
+def _resolve_board_icons(state: GameState) -> GameState:
+    """Resolve every pending automatic board icon in printed order."""
+
+    for action in legal_board_effect_actions(state, 0):
+        state = resolve_board_effect(state, action).state
+    return state
+
+
 def _deployment(state: GameState, count: int) -> DomainAction:
     return next(
         action
@@ -89,7 +100,7 @@ def test_recruited_troops_and_two_existing_troops_may_deploy() -> None:
         state,
         _agent_action_to(state, "research_station"),
     ).state
-    state = resolve_board_effect(state).state
+    state = _resolve_board_icons(state)
 
     assert tuple(
         dict(action.arguments)["count"]
@@ -109,7 +120,7 @@ def test_zero_deployment_is_legal_and_finishes_the_effect_frame() -> None:
         state,
         _agent_action_to(state, "research_station"),
     ).state
-    state = resolve_board_effect(state).state
+    state = _resolve_board_icons(state)
 
     state = apply_combat_deployment(state, _deployment(state, 0)).state
 
@@ -133,7 +144,7 @@ def test_deployment_above_the_legal_limit_is_rejected() -> None:
         state,
         _agent_action_to(state, "research_station"),
     ).state
-    state = resolve_board_effect(state).state
+    state = _resolve_board_icons(state)
     invalid = DomainAction(
         action_id="deploy_troops",
         actor=0,
@@ -173,7 +184,7 @@ def test_sardaukar_coordination_deploys_only_troops_recruited_this_turn() -> Non
         for action in legal_combat_deployments(state, 0)
     ) == (0,)
 
-    state = resolve_board_effect(state).state
+    state = _resolve_board_icons(state)
     assert tuple(
         dict(action.arguments)["count"]
         for action in legal_combat_deployments(state, 0)

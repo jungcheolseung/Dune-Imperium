@@ -46,7 +46,10 @@ from dune_imperium.rules.agent_effects import (
     resolve_faction_influence,
 )
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
-from dune_imperium.rules.board_effects import resolve_board_effect
+from dune_imperium.rules.board_effects import (
+    legal_board_effect_actions,
+    resolve_board_effect,
+)
 from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.combat_deployment import (
     apply_combat_deployment,
@@ -109,6 +112,14 @@ def _action_to(state: GameState, space_id: str) -> DomainAction:
         for action in legal_agent_actions(state, 0)
         if dict(action.arguments)["space_id"] == space_id
     )
+
+
+def _resolve_board_icons(state: GameState) -> GameState:
+    """Resolve every pending automatic board icon in printed order."""
+
+    for action in legal_board_effect_actions(state, 0):
+        state = resolve_board_effect(state, action).state
+    return state
 
 
 def test_seek_allies_trashes_itself_from_in_play() -> None:
@@ -232,7 +243,7 @@ def test_finishing_all_effect_groups_opens_clockwise_players_turn() -> None:
 
     state = resolve_agent_card_effect(state).state
     state = resolve_faction_influence(state).state
-    state = resolve_board_effect(state).state
+    state = _resolve_board_icons(state)
 
     decision = state.decision_stack[-1].decision
     assert isinstance(decision, PlayerDecision)
@@ -2941,7 +2952,7 @@ def test_long_live_the_fighters_rechecks_deck_after_a_board_draw() -> None:
     third = _instance("dune_the_desert_planet")
     state = _long_live_state((first, second, third))
     placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
-    after_board = resolve_board_effect(placed).state
+    after_board = _resolve_board_icons(placed)
     assert after_board.players[0].deck == (second, third)
     assert after_board.players[0].hand == (first,)
 
@@ -2970,6 +2981,7 @@ def test_long_live_the_fighters_can_start_after_board_draw_reshuffles_discard() 
         action
         for action in engine.legal_actions(placed, 0)
         if action.action_id == "resolve_board_effect"
+        and dict(action.arguments)["effect"] == "cards"
     )
     pending = engine.apply(placed, board_action).state
     chance = engine.current_decision(pending)

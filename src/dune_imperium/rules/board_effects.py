@@ -1,6 +1,16 @@
-"""Typed resolution of implemented Uprising board-space effects."""
+"""Typed resolution of implemented Uprising board-space effects.
+
+Every printed icon of a visited space is one independently resolved effect:
+the owner orders the icons freely against each other and against the card,
+Faction, and Contract groups of the same Agent turn ("You may carry out all
+these effects in any order" [Main p. 9]; OQ-027). Automatic icons resolve
+through ``resolve_board_effect`` carrying an ``effect`` key; icons that need
+a choice (a Spy post, a card to trash, a Faction) resolve through the space's
+dedicated actions further down this module.
+"""
 
 from dataclasses import replace
+from typing import Final, assert_never
 
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.core.actions import DomainAction
@@ -20,10 +30,19 @@ from dune_imperium.rules.effects import (
     GainResourcesEffect,
     RecruitTroopsEffect,
     advance_after_effect,
+    board_icon_is_pending,
     current_agent_effect_context,
+    finish_board_icon,
+    pending_board_icons,
     recruit_troops,
 )
-from dune_imperium.rules.frames import FrameKind, context_int, top_frame_of_kind
+from dune_imperium.rules.frames import (
+    FrameKind,
+    context_int,
+    context_str,
+    replace_player,
+    top_frame_of_kind,
+)
 from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.intrigue_deck import (
     draw_intrigue_cards,
@@ -40,8 +59,37 @@ from dune_imperium.rules.spy_placement import (
     recall_spy,
 )
 
-# Board spaces whose board effect is resolved through a dedicated choice rather
-# than the generic ``resolve_board_effect`` action.
+_FRAME_LABEL = "Agent-turn effect frame"
+
+# Icon keys resolved by the generic ``resolve_board_effect`` action with
+# ``effect=<key>``. Kept sorted: the action codec enumerates them.
+BOARD_ICON_CARDS: Final = "cards"
+BOARD_ICON_CONTRACT: Final = "contract"
+BOARD_ICON_HIGH_COUNCIL: Final = "high_council"
+BOARD_ICON_INTRIGUE: Final = "intrigue"
+BOARD_ICON_RESOURCES: Final = "resources"
+BOARD_ICON_SWORDMASTER: Final = "swordmaster"
+BOARD_ICON_TROOPS: Final = "troops"
+AUTOMATIC_BOARD_ICONS: Final = (
+    BOARD_ICON_CARDS,
+    BOARD_ICON_CONTRACT,
+    BOARD_ICON_HIGH_COUNCIL,
+    BOARD_ICON_INTRIGUE,
+    BOARD_ICON_RESOURCES,
+    BOARD_ICON_SWORDMASTER,
+    BOARD_ICON_TROOPS,
+)
+
+# Icon keys resolved through a space's dedicated choice actions.
+BOARD_ICON_SPY: Final = "spy"  # Espionage: the optional Spy placement
+BOARD_ICON_TRASH: Final = "trash"  # Desert Tactics: the optional card trash
+BOARD_ICON_INFLUENCE: Final = "influence"  # Shipping: Influence with a chosen Faction
+BOARD_ICON_SIETCH_TABR: Final = "sietch_tabr"  # one printed choose-one row
+BOARD_ICON_MAKER: Final = "maker"  # bonus spice, then spice or sandworms
+BOARD_ICON_IMPERIAL_PRIVILEGE: Final = "imperial_privilege"  # written sentences
+
+# Board spaces with at least one icon that is resolved through a dedicated
+# choice rather than the generic ``resolve_board_effect`` action.
 CHOICE_DRIVEN_SPACE_IDS = frozenset(
     {
         "espionage",
@@ -53,6 +101,14 @@ CHOICE_DRIVEN_SPACE_IDS = frozenset(
         "desert_tactics",
         "imperial_privilege",
     }
+)
+
+# High Council after the Councilor is seated: "spice 2, Intrigue 1장, troop
+# 3개" on every later visit [Board Guide p. 2].
+HIGH_COUNCIL_REVISIT_EFFECTS: Final = (
+    GainResourcesEffect(spice=2),
+    DrawIntrigueCardsEffect(1),
+    RecruitTroopsEffect(3),
 )
 
 
@@ -101,7 +157,10 @@ def static_board_effects(
 
     This is the state-free table behind ``board_effects_for``; the display
     catalog reads it too, so effect text shown to players always derives from
-    the same table the engine executes.
+    the same table the engine executes. Choice-driven spaces list only their
+    automatic icons here (Espionage's card draw, Desert Tactics' troop,
+    Shipping's Solari); High Council's revisit rewards depend on the visitor
+    and live in ``visit_board_effects``.
     """
 
     match space_id, cost_option:
@@ -115,8 +174,12 @@ def static_board_effects(
             return (GainResourcesEffect(water=1),)
         case "heighliner", 0:
             return (RecruitTroopsEffect(5),)
+        case "espionage", 0:
+            return (DrawImperiumCardsEffect(1),)
         case "fremkit", 0:
             return (DrawImperiumCardsEffect(1),)
+        case "desert_tactics", 0:
+            return (RecruitTroopsEffect(1),)
         case "assembly_hall", 0:
             return (DrawIntrigueCardsEffect(1),)
         case "secrets", 0:
@@ -137,6 +200,8 @@ def static_board_effects(
             return (GainResourcesEffect(solari=2),)
         case "spice_refinery", 1:
             return (GainResourcesEffect(solari=4),)
+        case "shipping", 0:
+            return (GainResourcesEffect(solari=5),)
         case "accept_contract", 0 if not choam_module:
             return (DrawImperiumCardsEffect(1), GainResourcesEffect(solari=2))
         case "accept_contract", 0:
@@ -145,6 +210,120 @@ def static_board_effects(
             raise NotImplementedError(
                 f"board effect is not implemented: {space_id} option {cost_option}"
             )
+
+
+def visit_board_effects(
+    owner: PlayerState,
+    space_id: str,
+    cost_option: int,
+    *,
+    choam_module: bool,
+) -> tuple[AutomaticEffect, ...]:
+    """Return the automatic icons one visit by ``owner`` resolves."""
+
+    if space_id == "high_council":
+        return HIGH_COUNCIL_REVISIT_EFFECTS if owner.high_council else ()
+    return static_board_effects(space_id, cost_option, choam_module=choam_module)
+
+
+def board_icon_for_effect(effect: AutomaticEffect) -> str:
+    """Return the icon key one automatic effect is resolved under."""
+
+    match effect:
+        case GainResourcesEffect():
+            return BOARD_ICON_RESOURCES
+        case DrawImperiumCardsEffect():
+            return BOARD_ICON_CARDS
+        case DrawIntrigueCardsEffect():
+            return BOARD_ICON_INTRIGUE
+        case RecruitTroopsEffect():
+            return BOARD_ICON_TROOPS
+        case _:
+            assert_never(effect)
+
+
+def board_icons_for(
+    state: GameState,
+    player: int,
+    space_id: str,
+    cost_option: int,
+) -> tuple[str, ...]:
+    """Return the printed icons of one visit, in printed order.
+
+    Each key is one independently resolved effect [Main p. 9]: automatic keys
+    through ``resolve_board_effect``, the rest through the space's own choice
+    actions. A printed choose-one row (Sietch Tabr, the Maker spaces' spice or
+    sandworms) and Imperial Privilege's two written sentences stay single
+    keys, and Secrets' random steal is text that follows its Intrigue draw
+    (OQ-027).
+    """
+
+    owner = state.players[player]
+    choam_module = state.config.choam_module
+    match space_id:
+        case "high_council" if not owner.high_council:
+            return (BOARD_ICON_HIGH_COUNCIL,)
+        case "swordmaster":
+            return (BOARD_ICON_SWORDMASTER,)
+        case "sietch_tabr":
+            return (BOARD_ICON_SIETCH_TABR,)
+        case "deep_desert" | "hagga_basin" | "imperial_basin":
+            return (BOARD_ICON_MAKER,)
+        case "imperial_privilege":
+            return (BOARD_ICON_IMPERIAL_PRIVILEGE,)
+    icons = [
+        board_icon_for_effect(effect)
+        for effect in visit_board_effects(
+            owner, space_id, cost_option, choam_module=choam_module
+        )
+    ]
+    match space_id:
+        case "espionage":
+            icons.append(BOARD_ICON_SPY)
+        case "desert_tactics":
+            icons.append(BOARD_ICON_TRASH)
+        case "shipping":
+            icons.append(BOARD_ICON_INFLUENCE)
+        case "accept_contract" | "dutiful_service" if choam_module:
+            icons.append(BOARD_ICON_CONTRACT)
+    if len(set(icons)) != len(icons):
+        raise RuntimeError(f"board icons of {space_id} must be distinct: {icons}")
+    return tuple(icons)
+
+
+def legal_board_effect_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return one ``resolve_board_effect`` action per pending automatic icon."""
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return ()
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    return tuple(
+        DomainAction(
+            action_id="resolve_board_effect",
+            actor=player,
+            arguments=(("effect", key),),
+        )
+        for key in pending_board_icons(context)
+        if key in AUTOMATIC_BOARD_ICONS
+    )
+
+
+def _icon_effect(
+    effects: tuple[AutomaticEffect, ...],
+    key: str,
+) -> AutomaticEffect | None:
+    return next(
+        (effect for effect in effects if board_icon_for_effect(effect) == key),
+        None,
+    )
 
 
 def _secrets_victims(state: GameState, thief: int) -> tuple[int, ...]:
@@ -240,79 +419,68 @@ def apply_secrets_steal(state: GameState, outcome: ChanceOutcome) -> RuleResult:
     return RuleResult(state=next_state, events=events)
 
 
-def resolve_board_effect(state: GameState) -> RuleResult:
-    """Resolve the board-effect group in the current Agent-turn frame."""
+def resolve_board_effect(state: GameState, action: DomainAction) -> RuleResult:
+    """Resolve one printed icon of the visited space in the current Agent turn.
 
+    The ``effect`` argument names the icon; the other icons of the space stay
+    pending for their own actions, so the owner sequences them freely against
+    each other and against the card, Faction, and Contract groups
+    [Main p. 9] (OQ-027).
+    """
+
+    if action not in legal_board_effect_actions(state, action.actor):
+        raise ValueError("action is not a legal board-effect resolution")
     _, context = current_agent_effect_context(state)
-    if context.get("pending_board_effect") is not True:
-        raise ValueError("the current Agent turn has no pending board effect")
-    player = context.get("turn_owner")
-    space_id = context.get("space_id")
-    cost_option = context.get("cost_option")
-    if (
-        isinstance(player, bool)
-        or not isinstance(player, int)
-        or not isinstance(space_id, str)
-        or isinstance(cost_option, bool)
-        or not isinstance(cost_option, int)
-    ):
-        raise RuntimeError("Agent-turn effect frame has invalid context")
-
+    player = action.actor
+    space_id = context_str(context, "space_id", owner=_FRAME_LABEL)
+    cost_option = context_int(context, "cost_option", owner=_FRAME_LABEL)
+    key = str(dict(action.arguments)["effect"])
     owner = state.players[player]
+    effects = visit_board_effects(
+        owner, space_id, cost_option, choam_module=state.config.choam_module
+    )
+    source = f"round:{state.round_number}:player:{player}:board:{space_id}"
+    finish_board_icon(context, key)
+
     next_owner = owner
-    effects: tuple[AutomaticEffect, ...]
-    if space_id == "high_council":
-        if owner.high_council:
-            effects = (
-                GainResourcesEffect(spice=2),
-                DrawIntrigueCardsEffect(1),
-                RecruitTroopsEffect(3),
-            )
-        else:
-            next_owner = replace(owner, high_council=True)
-            effects = ()
-    elif space_id == "swordmaster":
-        if owner.swordmaster_acquired:
-            raise RuntimeError("a player cannot acquire Swordmaster twice")
-        next_owner = replace(
-            owner,
-            swordmaster_acquired=True,
-            agents_available=owner.agents_available + 1,
-        )
-        effects = ()
-    else:
-        effects = board_effects_for(state, space_id, cost_option)
     personal_draw_count = 0
     intrigue_draw_count = 0
-    for effect in effects:
-        match effect:
-            case GainResourcesEffect():
-                next_owner = _gain_resources(next_owner, effect)
-            case DrawImperiumCardsEffect():
-                personal_draw_count += effect.count
-            case DrawIntrigueCardsEffect():
-                intrigue_draw_count += effect.count
-            case RecruitTroopsEffect():
-                next_owner, recruited = recruit_troops(next_owner, effect.count)
-                previous = context.get("troops_recruited")
-                if isinstance(previous, bool) or not isinstance(previous, int):
-                    raise RuntimeError(
-                        "Agent-turn effect frame has invalid recruit count"
-                    )
-                context["troops_recruited"] = previous + recruited
-    players = tuple(
-        next_owner if candidate.player_id == player else candidate
-        for candidate in state.players
-    )
-    context["pending_board_effect"] = False
-    effect_state = replace(state, players=players)
+    match _icon_effect(effects, key):
+        case GainResourcesEffect() as effect:
+            next_owner = _gain_resources(owner, effect)
+        case DrawImperiumCardsEffect() as effect:
+            personal_draw_count = effect.count
+        case DrawIntrigueCardsEffect() as effect:
+            intrigue_draw_count = effect.count
+        case RecruitTroopsEffect() as effect:
+            next_owner, recruited = recruit_troops(owner, effect.count)
+            context["troops_recruited"] = (
+                context_int(context, "troops_recruited", owner=_FRAME_LABEL)
+                + recruited
+            )
+        case None if key == BOARD_ICON_HIGH_COUNCIL:
+            next_owner = replace(owner, high_council=True)
+        case None if key == BOARD_ICON_SWORDMASTER:
+            if owner.swordmaster_acquired:
+                raise RuntimeError("a player cannot acquire Swordmaster twice")
+            next_owner = replace(
+                owner,
+                swordmaster_acquired=True,
+                agents_available=owner.agents_available + 1,
+            )
+        case None if key == BOARD_ICON_CONTRACT:
+            pass
+        case _:
+            raise RuntimeError(f"board icon {key} has no effect on {space_id}")
+
+    effect_state = replace(state, players=replace_player(state.players, next_owner))
     intrigue_events: tuple[GameEvent, ...] = ()
     if intrigue_draw_count:
         intrigue_draw = draw_or_queue_intrigue_cards(
             effect_state,
             player,
             intrigue_draw_count,
-            source=f"round:{state.round_number}:player:{player}:board:{space_id}",
+            source=source,
         )
         effect_state = intrigue_draw.state
         intrigue_events = intrigue_draw.events
@@ -323,25 +491,19 @@ def resolve_board_effect(state: GameState) -> RuleResult:
             next_state,
             player,
             personal_draw_count,
-            source=f"round:{state.round_number}:player:{player}:board:{space_id}",
+            source=source,
         )
         next_state = draw.state
         draw_events = draw.events
     contract_events: tuple[GameEvent, ...] = ()
-    if (
-        space_id in ("accept_contract", "dutiful_service")
-        and state.config.choam_module
-    ):
-        contracts = begin_contract_gain(
-            next_state,
-            player,
-            1,
-            source=(f"round:{state.round_number}:player:{player}:board:{space_id}"),
-        )
+    if key == BOARD_ICON_CONTRACT:
+        contracts = begin_contract_gain(next_state, player, 1, source=source)
         next_state = contracts.state
         contract_events = contracts.events
     steal_events: tuple[GameEvent, ...] = ()
-    if space_id == "secrets":
+    if key == BOARD_ICON_INTRIGUE and space_id == "secrets":
+        # The random steal is printed text that follows the Intrigue draw
+        # [Board Guide p. 2], so it rides on the draw icon (OQ-027).
         victims = _secrets_victims(next_state, player)
         for victim in reversed(victims):
             next_state = next_state.push_decision(
@@ -367,9 +529,9 @@ def resolve_board_effect(state: GameState) -> RuleResult:
             next_state = reshuffle.state
             steal_events = reshuffle.events
     event = GameEvent(
-        event_id=f"round:{state.round_number}:player:{player}:board:{space_id}",
+        event_id=f"{source}:{key}",
         kind="board_effect_resolved",
-        payload=(("player", player), ("space_id", space_id)),
+        payload=(("effect", key), ("player", player), ("space_id", space_id)),
     )
     return RuleResult(
         state=next_state,
@@ -391,9 +553,8 @@ def legal_espionage_actions(
         return ()
     if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
         return ()
-    if (
-        context.get("pending_board_effect") is not True
-        or context.get("space_id") != "espionage"
+    if context.get("space_id") != "espionage" or not board_icon_is_pending(
+        context, BOARD_ICON_SPY
     ):
         return ()
 
@@ -498,24 +659,20 @@ def apply_espionage_action(
         next_owner if candidate.player_id == action.actor else candidate
         for candidate in state.players
     )
-    context["pending_board_effect"] = False
+    # The printed card draw is a separate icon with its own
+    # ``resolve_board_effect`` action, ordered by the owner (OQ-027).
+    finish_board_icon(context, BOARD_ICON_SPY)
     next_state = advance_after_effect(state, context, players)
-    draw = draw_or_request_personal_cards(
-        next_state,
-        action.actor,
-        1,
-        source=(f"round:{state.round_number}:player:{action.actor}:board:espionage"),
-    )
-    next_state = draw.state
-    events.extend(draw.events)
     events.append(
         GameEvent(
             event_id=(
-                f"round:{state.round_number}:player:{action.actor}:board:espionage"
+                f"round:{state.round_number}:player:{action.actor}:board:espionage:"
+                f"{BOARD_ICON_SPY}"
             ),
             kind="board_effect_resolved",
             payload=(
                 ("action_id", action.action_id),
+                ("effect", BOARD_ICON_SPY),
                 ("player", action.actor),
                 ("space_id", "espionage"),
             ),
@@ -538,9 +695,8 @@ def legal_sietch_tabr_actions(
         return ()
     if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
         return ()
-    if (
-        context.get("pending_board_effect") is not True
-        or context.get("space_id") != "sietch_tabr"
+    if context.get("space_id") != "sietch_tabr" or not board_icon_is_pending(
+        context, BOARD_ICON_SIETCH_TABR
     ):
         return ()
     actions = [
@@ -603,7 +759,7 @@ def apply_sietch_tabr_action(
         effect_state = destruction.state
         events.extend(destruction.events)
 
-    context["pending_board_effect"] = False
+    finish_board_icon(context, BOARD_ICON_SIETCH_TABR)
     next_state = advance_after_effect(effect_state, context, effect_state.players)
     events.append(
         GameEvent(
@@ -613,6 +769,7 @@ def apply_sietch_tabr_action(
             kind="board_effect_resolved",
             payload=(
                 ("action_id", action.action_id),
+                ("effect", BOARD_ICON_SIETCH_TABR),
                 ("player", action.actor),
                 ("space_id", "sietch_tabr"),
             ),
@@ -635,9 +792,8 @@ def legal_shipping_actions(
         return ()
     if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
         return ()
-    if (
-        context.get("pending_board_effect") is not True
-        or context.get("space_id") != "shipping"
+    if context.get("space_id") != "shipping" or not board_icon_is_pending(
+        context, BOARD_ICON_INFLUENCE
     ):
         return ()
     return tuple(
@@ -654,7 +810,7 @@ def apply_shipping_action(
     state: GameState,
     action: DomainAction,
 ) -> RuleResult:
-    """Grant Shipping's Solari and chosen Faction Influence reward."""
+    """Grant Shipping's Influence with the chosen Faction."""
 
     if action not in legal_shipping_actions(state, action.actor):
         raise ValueError("action is not a legal Shipping choice")
@@ -664,19 +820,10 @@ def apply_shipping_action(
         raise RuntimeError("Shipping Influence choice has invalid Faction")
     faction = Faction(faction_value)
 
-    owner = state.players[action.actor]
-    owner = replace(
-        owner,
-        resources=replace(owner.resources, solari=owner.resources.solari + 5),
-    )
-    players = tuple(
-        owner if candidate.player_id == action.actor else candidate
-        for candidate in state.players
-    )
-    effect_state = replace(state, players=players)
-
+    # The printed 5 Solari are a separate icon with their own
+    # ``resolve_board_effect`` action, ordered by the owner (OQ-027).
     gained = gain_faction_influence(
-        effect_state,
+        state,
         action.actor,
         faction,
         1,
@@ -686,13 +833,17 @@ def apply_shipping_action(
         ),
     )
 
-    context["pending_board_effect"] = False
+    finish_board_icon(context, BOARD_ICON_INFLUENCE)
     next_state = advance_after_effect(gained.state, context, gained.state.players)
     event = GameEvent(
-        event_id=(f"round:{state.round_number}:player:{action.actor}:board:shipping"),
+        event_id=(
+            f"round:{state.round_number}:player:{action.actor}:board:shipping:"
+            f"{BOARD_ICON_INFLUENCE}"
+        ),
         kind="board_effect_resolved",
         payload=(
             ("action_id", action.action_id),
+            ("effect", BOARD_ICON_INFLUENCE),
             ("player", action.actor),
             ("space_id", "shipping"),
         ),
@@ -714,9 +865,8 @@ def legal_desert_tactics_actions(
         return ()
     if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
         return ()
-    if (
-        context.get("pending_board_effect") is not True
-        or context.get("space_id") != "desert_tactics"
+    if context.get("space_id") != "desert_tactics" or not board_icon_is_pending(
+        context, BOARD_ICON_TRASH
     ):
         return ()
     owner = state.players[player]
@@ -737,23 +887,14 @@ def apply_desert_tactics_action(
     state: GameState,
     action: DomainAction,
 ) -> RuleResult:
-    """Recruit 1 troop and resolve Desert Tactics' optional card trash."""
+    """Resolve Desert Tactics' optional card trash, or decline it."""
 
     if action not in legal_desert_tactics_actions(state, action.actor):
         raise ValueError("action is not a legal Desert Tactics choice")
     _, context = current_agent_effect_context(state)
-    owner = state.players[action.actor]
-    owner, recruited = recruit_troops(owner, 1)
-    previous = context.get("troops_recruited")
-    if isinstance(previous, bool) or not isinstance(previous, int):
-        raise RuntimeError("Agent-turn effect frame has invalid recruit count")
-    context["troops_recruited"] = previous + recruited
-
-    players = tuple(
-        owner if candidate.player_id == action.actor else candidate
-        for candidate in state.players
-    )
-    effect_state = replace(state, players=players)
+    # The printed troop is a separate icon with its own
+    # ``resolve_board_effect`` action, ordered by the owner (OQ-027).
+    effect_state = state
     events: list[GameEvent] = []
     if action.action_id == "trash_card_for_desert_tactics":
         card_value = dict(action.arguments)["card_id"]
@@ -771,17 +912,18 @@ def apply_desert_tactics_action(
         effect_state = trashed.state
         events.extend(trashed.events)
 
-    context["pending_board_effect"] = False
+    finish_board_icon(context, BOARD_ICON_TRASH)
     next_state = advance_after_effect(effect_state, context, effect_state.players)
     events.append(
         GameEvent(
             event_id=(
                 f"round:{state.round_number}:player:{action.actor}:board:"
-                "desert_tactics"
+                f"desert_tactics:{BOARD_ICON_TRASH}"
             ),
             kind="board_effect_resolved",
             payload=(
                 ("action_id", action.action_id),
+                ("effect", BOARD_ICON_TRASH),
                 ("player", action.actor),
                 ("space_id", "desert_tactics"),
             ),
@@ -804,9 +946,8 @@ def legal_imperial_privilege_actions(
         return ()
     if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
         return ()
-    if (
-        context.get("pending_board_effect") is not True
-        or context.get("space_id") != "imperial_privilege"
+    if context.get("space_id") != "imperial_privilege" or not board_icon_is_pending(
+        context, BOARD_ICON_IMPERIAL_PRIVILEGE
     ):
         return ()
 
@@ -865,7 +1006,7 @@ def apply_imperial_privilege_action(
             next_owner if candidate.player_id == action.actor else candidate
             for candidate in state.players
         )
-        context["pending_board_effect"] = False
+        finish_board_icon(context, BOARD_ICON_IMPERIAL_PRIVILEGE)
         next_state = advance_after_effect(state, context, players)
         draw = draw_or_request_personal_cards(
             next_state, action.actor, 1, source=source
@@ -890,6 +1031,7 @@ def apply_imperial_privilege_action(
                 kind="board_effect_resolved",
                 payload=(
                     ("action_id", action.action_id),
+                    ("effect", BOARD_ICON_IMPERIAL_PRIVILEGE),
                     ("player", action.actor),
                     ("space_id", "imperial_privilege"),
                 ),
@@ -940,7 +1082,7 @@ def apply_imperial_privilege_action(
         # With no other deployed Agent only the recall is skipped; the card
         # draw is a separate printed effect and still resolves (OQ-023
         # decided ruling, [Board Guide p. 2]).
-        context["pending_board_effect"] = False
+        finish_board_icon(context, BOARD_ICON_IMPERIAL_PRIVILEGE)
         next_state = advance_after_effect(
             effect_state, context, effect_state.players
         )
@@ -962,6 +1104,7 @@ def apply_imperial_privilege_action(
                 kind="board_effect_resolved",
                 payload=(
                     ("action_id", action.action_id),
+                    ("effect", BOARD_ICON_IMPERIAL_PRIVILEGE),
                     ("player", action.actor),
                     ("space_id", "imperial_privilege"),
                 ),
@@ -988,11 +1131,11 @@ def legal_maker_space_actions(
     if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
         return ()
     space_id = context.get("space_id")
-    if context.get("pending_board_effect") is not True or space_id not in (
+    if space_id not in (
         "deep_desert",
         "hagga_basin",
         "imperial_basin",
-    ):
+    ) or not board_icon_is_pending(context, BOARD_ICON_MAKER):
         return ()
     actions = [
         DomainAction(
@@ -1071,7 +1214,7 @@ def apply_maker_space_action(
         for candidate, amount in state.maker_bonus_spice
     )
     _, context = current_agent_effect_context(state)
-    context["pending_board_effect"] = False
+    finish_board_icon(context, BOARD_ICON_MAKER)
     effect_state = replace(
         state,
         players=players,
@@ -1084,6 +1227,7 @@ def apply_maker_space_action(
         payload=(
             ("action_id", action.action_id),
             ("bonus_spice", bonus_spice),
+            ("effect", BOARD_ICON_MAKER),
             ("player", action.actor),
             ("sandworms", sandworms),
             ("space_id", space_id),

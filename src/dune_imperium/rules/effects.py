@@ -1,5 +1,6 @@
 """Small typed effects and pending-effect frame utilities."""
 
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 
 from dune_imperium.content.uprising.contracts import (
@@ -87,10 +88,12 @@ def recruit_troops(player: PlayerState, count: int) -> tuple[PlayerState, int]:
 
 AGENT_EFFECT_CONTEXT_KEYS = frozenset(
     {
+        "board_icons",
         "card_id",
         "cost_option",
         "pending_agent_effect",
         "pending_board_effect",
+        "pending_board_icons",
         "pending_combat_deployment",
         "pending_faction_influence",
         "space_id",
@@ -118,6 +121,50 @@ def current_agent_effect_context(
     if not AGENT_EFFECT_CONTEXT_KEYS.issubset(context):
         raise ValueError("the Agent-turn effect frame is missing context")
     return frame, context
+
+
+def pending_board_icons(context: Mapping[str, ActionValue]) -> tuple[str, ...]:
+    """Return the visited space's icons still waiting for their own action.
+
+    ``board_icons`` holds every printed icon of the visit in printed order and
+    ``pending_board_icons`` the ones not yet resolved; each icon is one
+    independently ordered effect [Main p. 9] (OQ-027). ``pending_board_effect``
+    stays the group-level flag the frame's turn-passing logic reads.
+    """
+
+    return _icon_keys(context, "pending_board_icons")
+
+
+def board_icon_is_pending(context: Mapping[str, ActionValue], key: str) -> bool:
+    """Return whether the visited space's ``key`` icon still awaits its action."""
+
+    return key in pending_board_icons(context)
+
+
+def finish_board_icon(context: dict[str, ActionValue], key: str) -> None:
+    """Retire one resolved icon and keep the board-effect group flag in step."""
+
+    remaining = list(pending_board_icons(context))
+    if key not in remaining:
+        raise ValueError(f"board icon is not pending: {key}")
+    remaining.remove(key)
+    context["pending_board_icons"] = ",".join(remaining)
+    context["pending_board_effect"] = bool(remaining)
+
+
+def rearm_board_icons(context: dict[str, ActionValue]) -> None:
+    """Queue every printed icon of the visit again (Reverend Mother's repeat)."""
+
+    icons = _icon_keys(context, "board_icons")
+    context["pending_board_icons"] = ",".join(icons)
+    context["pending_board_effect"] = bool(icons)
+
+
+def _icon_keys(context: Mapping[str, ActionValue], name: str) -> tuple[str, ...]:
+    value = context.get(name, "")
+    if not isinstance(value, str):
+        raise RuntimeError(f"Agent-turn effect frame has invalid {name}")
+    return tuple(key for key in value.split(",") if key)
 
 
 def advance_after_effect(

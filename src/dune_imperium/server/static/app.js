@@ -435,11 +435,27 @@ function chipList(container, ids, emptyText) {
   for (const id of ids) container.appendChild(chip(id));
 }
 
+/* Korean labels for the printed board-space icon a resolve_board_effect
+   action resolves (OQ-027). A legal action carries the server's English
+   effect fragment as `detail` (e.g. "Recruit 1 troop"), which iconizes;
+   log lines fall back to these labels. */
+const BOARD_EFFECT_LABELS = {
+  cards: "카드 draw",
+  contract: "Contract 획득",
+  high_council: "High Council 착석",
+  intrigue: "Intrigue draw",
+  resources: "자원 획득",
+  swordmaster: "Swordmaster 획득",
+  troops: "병력 recruit (garrison)",
+};
+
 function describeAction(action) {
   const verb = ACTION_LABELS[action.action_id] || prettify(action.action_id);
   const parts = [];
   for (const [key, value] of Object.entries(action.arguments)) {
-    if (typeof value === "number" || typeof value === "boolean") {
+    if (key === "effect" && typeof value === "string") {
+      parts.push(action.detail || BOARD_EFFECT_LABELS[value] || prettify(value));
+    } else if (typeof value === "number" || typeof value === "boolean") {
       parts.push(`${prettify(key)}: ${value}`);
     } else {
       parts.push(nameOf(value));

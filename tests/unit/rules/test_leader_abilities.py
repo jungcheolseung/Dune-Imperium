@@ -19,7 +19,12 @@ from dune_imperium.core import (
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.rules.agent_effects import resolve_agent_card_effect
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
-from dune_imperium.rules.board_effects import resolve_board_effect
+from dune_imperium.rules.board_effects import (
+    apply_desert_tactics_action,
+    legal_board_effect_actions,
+    legal_desert_tactics_actions,
+    resolve_board_effect,
+)
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.influence import (
     gain_faction_influence,
@@ -830,7 +835,7 @@ def test_reverend_mother_repeats_a_board_space_for_one_water() -> None:
 
     # The repeat waits for the printed effect's first resolution.
     assert legal_leader_board_repeat_actions(placed, 0) == ()
-    first = resolve_board_effect(placed)
+    first = resolve_board_effect(placed, _board_icon_action(placed, "cards"))
     assert first.state.players[0].hand[-1] == dagger
 
     actions = legal_leader_board_repeat_actions(first.state, 0)
@@ -848,7 +853,9 @@ def test_reverend_mother_repeats_a_board_space_for_one_water() -> None:
     assert paid_context["pending_board_effect"] is True
     assert paid_context["pending_leader_board_repeat"] is False
 
-    second_pass = resolve_board_effect(paid.state)
+    second_pass = resolve_board_effect(
+        paid.state, _board_icon_action(paid.state, "cards")
+    )
     assert second_pass.state.players[0].hand[-1] == second
     assert legal_leader_board_repeat_actions(second_pass.state, 0) == ()
 
@@ -862,7 +869,7 @@ def test_reverend_mother_repeat_without_water_only_declines() -> None:
     )
     state = _turn_state(owner)
     placed = apply_agent_action(state, _signet_action_to_card(state, "fremkit")).state
-    first = resolve_board_effect(placed)
+    first = resolve_board_effect(placed, _board_icon_action(placed, "cards"))
 
     actions = legal_leader_board_repeat_actions(first.state, 0)
 
@@ -873,6 +880,60 @@ def test_reverend_mother_repeat_without_water_only_declines() -> None:
     assert dict(result.state.decision_stack[-1].context)[
         "pending_leader_board_repeat"
     ] is False
+
+
+def test_reverend_mother_repeat_rearms_every_icon_of_the_space() -> None:
+    # Desert Tactics prints a troop icon and an optional trash icon, each its
+    # own freely ordered effect [Main p. 9] (OQ-027); the paid repeat queues
+    # both again and waits until the first pass has resolved both.
+    owner = _jessica_owner(
+        face="reverend_mother_jessica",
+        water=2,
+        hand=(_diplomacy_instance(),),
+    )
+    state = _turn_state(owner)
+    placed = apply_agent_action(
+        state, _signet_action_to_card(state, "desert_tactics")
+    ).state
+    assert dict(placed.decision_stack[-1].context)["board_icons"] == "troops,trash"
+    assert legal_leader_board_repeat_actions(placed, 0) == ()
+
+    recruited = resolve_board_effect(placed, _board_icon_action(placed, "troops")).state
+    assert recruited.players[0].troops_garrison == 4
+    assert legal_leader_board_repeat_actions(recruited, 0) == ()
+    decline = next(
+        action
+        for action in legal_desert_tactics_actions(recruited, 0)
+        if action.action_id == "resolve_desert_tactics_without_trash"
+    )
+    first = apply_desert_tactics_action(recruited, decline).state
+
+    pay = next(
+        action
+        for action in legal_leader_board_repeat_actions(first, 0)
+        if action.action_id == "pay_leader_board_repeat"
+    )
+    paid = apply_leader_board_repeat(first, pay).state
+    paid_context = dict(paid.decision_stack[-1].context)
+    assert paid_context["pending_board_icons"] == "troops,trash"
+    assert paid_context["pending_board_effect"] is True
+    assert [
+        dict(action.arguments)["effect"]
+        for action in legal_board_effect_actions(paid, 0)
+    ] == ["troops"]
+    assert legal_desert_tactics_actions(paid, 0) != ()
+
+    second = resolve_board_effect(paid, _board_icon_action(paid, "troops")).state
+    assert second.players[0].troops_garrison == 5
+    assert dict(second.decision_stack[-1].context)["pending_board_icons"] == "trash"
+
+
+def _board_icon_action(state: GameState, effect: str) -> DomainAction:
+    return next(
+        action
+        for action in legal_board_effect_actions(state, 0)
+        if dict(action.arguments)["effect"] == effect
+    )
 
 
 def test_lady_jessica_repeat_is_not_pending_before_the_flip() -> None:

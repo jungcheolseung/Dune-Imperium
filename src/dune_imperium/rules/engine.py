@@ -192,11 +192,6 @@ def _apply_agent_card_effect(state: GameState, action: DomainAction) -> RuleResu
     return resolve_agent_card_effect(state)
 
 
-def _apply_board_effect(state: GameState, action: DomainAction) -> RuleResult:
-    del action
-    return resolve_board_effect(state)
-
-
 def _apply_faction_influence(state: GameState, action: DomainAction) -> RuleResult:
     del action
     return resolve_faction_influence(state)
@@ -329,7 +324,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "decline_intrigue_trigger": apply_trigger_spy_action,
     # Agent-turn effect frame
     "resolve_agent_card_effect": _apply_agent_card_effect,
-    "resolve_board_effect": _apply_board_effect,
+    "resolve_board_effect": resolve_board_effect,
     "resolve_faction_influence": _apply_faction_influence,
     "gather_intelligence": apply_gather_intelligence_action,
     "decline_gather_intelligence": apply_gather_intelligence_action,

@@ -134,24 +134,26 @@ def test_undo_window_holds_own_consecutive_steps_and_closes_on_reveals() -> None
     assert summary["undo"] == [{"seat": 0, "steps": 1}]
 
     # The AI seats act next, which closes the window; the human's next
-    # three consecutive choices reopen and grow it.
-    summary = _play_until_revision(manager, summary, 11)
+    # four consecutive choices (an Arrakeen placement, the Feyd track, a
+    # declined trash, and Arrakeen's troop icon) reopen and grow it.
+    summary = _play_until_revision(manager, summary, 12)
     assert summary["undo"] == []
-    summary = _play_until_revision(manager, summary, 14)
-    assert summary["undo"] == [{"seat": 0, "steps": 3}]
+    summary = _play_until_revision(manager, summary, 16)
+    assert summary["undo"] == [{"seat": 0, "steps": 4}]
     live = _live_log(manager, game_id)
-    assert [entry.actor for entry in live[-3:]] == [0, 0, 0]
-    assert not any(entry.reveals for entry in live[-3:])
+    assert [entry.actor for entry in live[-4:]] == [0, 0, 0, 0]
+    assert not any(entry.reveals for entry in live[-4:])
 
-    # The next step resolves a board effect that draws a card: the deck top
-    # is now known to the drawer, so that step (and everything before it)
-    # can no longer be taken back.
+    # The next step resolves Arrakeen's card-draw icon: the deck top is now
+    # known to the drawer, so that step (and everything before it) can no
+    # longer be taken back.
     summary = _play(manager, summary)
-    assert summary["revision"] == 15
+    assert summary["revision"] == 17
     live = _live_log(manager, game_id)
     assert live[-1].actor == 0
     assert isinstance(live[-1].step, DomainAction)
     assert live[-1].step.action_id == "resolve_board_effect"
+    assert dict(live[-1].step.arguments) == {"effect": "cards"}
     assert live[-1].reveals is True
     assert summary["undo"] == []
     assert undo_window(manager._get(game_id).log, 0) == 0
@@ -164,28 +166,28 @@ def test_undo_rewinds_to_the_seats_earlier_decision_and_keeps_the_log() -> None:
     manager = GameSessionManager()
     summary = manager.create_game(HUMAN_FIRST, game_seed=14)
     game_id = str(summary["game_id"])
-    summary = _play_until_revision(manager, summary, 8)
+    summary = _play_until_revision(manager, summary, 9)
     view_before = manager.view(game_id, 0)
     actions_before = manager.legal_actions(game_id, 0)
     steps_before = list(manager._get(game_id).steps)
     summary = _play(manager, summary)
-    assert summary["revision"] == 9
+    assert summary["revision"] == 10
     assert summary["undo"] == [{"seat": 0, "steps": 2}]
     undone_step = manager._get(game_id).steps[-1]
 
     with pytest.raises(StaleRevisionError):
-        manager.undo(game_id, seat=0, revision=8, steps=1)
+        manager.undo(game_id, seat=0, revision=9, steps=1)
     with pytest.raises(SessionError, match="at most 2"):
-        manager.undo(game_id, seat=0, revision=9, steps=3)
+        manager.undo(game_id, seat=0, revision=10, steps=3)
     with pytest.raises(SessionError, match="at most"):
-        manager.undo(game_id, seat=0, revision=9, steps=0)
+        manager.undo(game_id, seat=0, revision=10, steps=0)
     with pytest.raises(SeatAccessError):
-        manager.undo(game_id, seat=1, revision=9, steps=1)
+        manager.undo(game_id, seat=1, revision=10, steps=1)
 
     assert summary["undo_count"] == 0
-    rewound = manager.undo(game_id, seat=0, revision=9, steps=1, undo_count=0)
+    rewound = manager.undo(game_id, seat=0, revision=10, steps=1, undo_count=0)
 
-    assert rewound["revision"] == 8
+    assert rewound["revision"] == 9
     assert rewound["undo_count"] == 1
     assert rewound["undo"] == [{"seat": 0, "steps": 1}]
     assert manager.view(game_id, 0) == view_before
@@ -203,7 +205,7 @@ def test_undo_rewinds_to_the_seats_earlier_decision_and_keeps_the_log() -> None:
     # A different choice continues the game from the rewound decision.
     assert len(_rows(actions_before["actions"])) >= 2
     resumed = _play(manager, rewound, index=1)
-    assert _int(resumed["revision"]) >= 9
+    assert _int(resumed["revision"]) >= 10
     assert manager._get(game_id).steps[len(steps_before)] != undone_step
 
     # The undo generation guards a stale client: a request carrying the

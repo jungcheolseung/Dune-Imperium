@@ -14,9 +14,19 @@ from types import MappingProxyType
 from typing import assert_never
 
 from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID, Faction
+from dune_imperium.core.actions import DomainAction
+from dune_imperium.core.state import GameState
 from dune_imperium.rules.board_effects import (
+    BOARD_ICON_CONTRACT,
+    BOARD_ICON_HIGH_COUNCIL,
+    BOARD_ICON_INFLUENCE,
+    BOARD_ICON_SPY,
+    BOARD_ICON_SWORDMASTER,
+    BOARD_ICON_TRASH,
     CHOICE_DRIVEN_SPACE_IDS,
+    board_icon_for_effect,
     static_board_effects,
+    visit_board_effects,
 )
 from dune_imperium.rules.effects import (
     AutomaticEffect,
@@ -24,6 +34,7 @@ from dune_imperium.rules.effects import (
     DrawIntrigueCardsEffect,
     GainResourcesEffect,
     RecruitTroopsEffect,
+    current_agent_effect_context,
 )
 
 FACTION_NAMES: Mapping[Faction, str] = MappingProxyType(
@@ -120,6 +131,69 @@ SPACE_NOTES: Mapping[str, tuple[str, ...]] = MappingProxyType(
         ),
     }
 )
+
+
+# English lines for the printed icons outside the automatic-effects table,
+# worded after docs/rules/board-spaces.md (Board Space Guide citations).
+_ICON_TEXTS: Mapping[str, str] = MappingProxyType(
+    {
+        BOARD_ICON_CONTRACT: (
+            "Take a face-up Contract (Gain 2 solari if none is available)"
+        ),
+        BOARD_ICON_HIGH_COUNCIL: (
+            "Seat your Councilor for +2 Persuasion at every Reveal turn"
+        ),
+        BOARD_ICON_SWORDMASTER: "Take your third Agent, usable from this round",
+        BOARD_ICON_SPY: "You may place a Spy",
+        BOARD_ICON_TRASH: "You may trash a card",
+        BOARD_ICON_INFLUENCE: "Gain 1 Influence with a Faction of your choice",
+    }
+)
+
+
+def board_icon_text(key: str, effects: tuple[AutomaticEffect, ...]) -> str:
+    """Render one printed icon of a visit as an English effect fragment.
+
+    Automatic icons read their amount from ``effects`` (the visit's entries
+    of the engine table); the choice and one-off icons use the authored
+    lines above.
+    """
+
+    for effect in effects:
+        if board_icon_for_effect(effect) == key:
+            return ", ".join(automatic_effect_texts(effect))
+    return _ICON_TEXTS[key]
+
+
+def board_effect_action_text(state: GameState, action: DomainAction) -> str | None:
+    """Describe a ``resolve_board_effect`` action by the icon it resolves.
+
+    Returns None for any other action or outside an Agent-turn effect frame.
+    """
+
+    if action.action_id != "resolve_board_effect":
+        return None
+    try:
+        _, context = current_agent_effect_context(state)
+    except ValueError:
+        return None
+    space_id = context.get("space_id")
+    cost_option = context.get("cost_option")
+    key = dict(action.arguments).get("effect")
+    if (
+        not isinstance(space_id, str)
+        or isinstance(cost_option, bool)
+        or not isinstance(cost_option, int)
+        or not isinstance(key, str)
+    ):
+        return None
+    effects = visit_board_effects(
+        state.players[action.actor],
+        space_id,
+        cost_option,
+        choam_module=state.config.choam_module,
+    )
+    return board_icon_text(key, effects)
 
 
 def space_option_count(space_id: str) -> int:

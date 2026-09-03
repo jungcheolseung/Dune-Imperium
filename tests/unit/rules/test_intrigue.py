@@ -716,9 +716,7 @@ def test_owed_intrigue_draws_reshuffle_the_discard_before_the_next_decision() ->
     )
     placed = engine.apply(state, to_hall).state
 
-    pending = engine.apply(
-        placed, DomainAction(action_id="resolve_board_effect", actor=0)
-    )
+    pending = engine.apply(placed, _board_icon_action("intrigue"))
     decision = pending.next_decision
     assert isinstance(decision, ChanceDecision)
     assert decision.options == discard
@@ -746,7 +744,7 @@ def test_owed_intrigue_draw_stops_short_with_nothing_to_shuffle() -> None:
     )
     placed = engine.apply(state, to_hall).state
 
-    done = engine.apply(placed, DomainAction(action_id="resolve_board_effect", actor=0))
+    done = engine.apply(placed, _board_icon_action("intrigue"))
 
     assert done.state.players[0].intrigue_cards == ()
     assert done.state.pending_intrigue_draws == ()
@@ -1893,6 +1891,26 @@ def _spy_rival(post_id: str) -> PlayerState:
     return PlayerState(player_id=1, spies_supply=2, spy_post_ids=(post_id,))
 
 
+def _board_icon_action(effect: str) -> DomainAction:
+    return DomainAction(
+        action_id="resolve_board_effect",
+        actor=0,
+        arguments=(("effect", effect),),
+    )
+
+
+def _resolve_board_icons(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    *effects: str,
+) -> GameState:
+    """Resolve the named printed icons of the visited space in order."""
+
+    for effect in effects:
+        state = engine.apply(state, _board_icon_action(effect)).state
+    return state
+
+
 def _distraction_arrakeen_state(*, rival_post: str | None) -> GameState:
     owner = PlayerState(
         player_id=0,
@@ -1940,9 +1958,7 @@ def test_distraction_fires_after_an_agent_deployment_ends_the_turn() -> None:
     recruited = engine.apply(
         placed, _play(placed, _intrigue("shaddam_s_favor"))
     ).state
-    board_done = engine.apply(
-        recruited, DomainAction(action_id="resolve_board_effect", actor=0)
-    ).state
+    board_done = _resolve_board_icons(engine, recruited, "troops", "cards")
 
     deployed = engine.apply(
         board_done,
@@ -1983,9 +1999,7 @@ def test_distraction_offer_can_be_declined_and_the_card_stays() -> None:
     recruited = engine.apply(
         placed, _play(placed, _intrigue("shaddam_s_favor"))
     ).state
-    board_done = engine.apply(
-        recruited, DomainAction(action_id="resolve_board_effect", actor=0)
-    ).state
+    board_done = _resolve_board_icons(engine, recruited, "troops", "cards")
     deployed = engine.apply(
         board_done,
         DomainAction(action_id="deploy_troops", actor=0, arguments=(("count", 3),)),
@@ -2052,9 +2066,7 @@ def test_distraction_needs_a_post_with_another_players_spy() -> None:
     recruited = engine.apply(
         placed, _play(placed, _intrigue("shaddam_s_favor"))
     ).state
-    board_done = engine.apply(
-        recruited, DomainAction(action_id="resolve_board_effect", actor=0)
-    ).state
+    board_done = _resolve_board_icons(engine, recruited, "troops", "cards")
     deployed = engine.apply(
         board_done,
         DomainAction(action_id="deploy_troops", actor=0, arguments=(("count", 3),)),

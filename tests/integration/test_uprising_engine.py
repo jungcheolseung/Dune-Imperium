@@ -239,6 +239,7 @@ def test_assembly_hall_is_playable_and_draws_intrigue() -> None:
     state = engine.apply(state, assembly_hall).state
     resolve = engine.legal_actions(state, decision.owner)
     assert tuple(action.action_id for action in resolve) == ("resolve_board_effect",)
+    assert dict(resolve[0].arguments) == {"effect": "intrigue"}
     state = engine.apply(state, resolve[0]).state
 
     assert intrigue_card in state.players[decision.owner].intrigue_cards
@@ -277,7 +278,14 @@ def test_espionage_uses_explicit_spy_choices_instead_of_generic_resolution() -> 
     state = engine.apply(state, espionage).state
     choices = engine.legal_actions(state, player)
 
-    assert "resolve_board_effect" not in {action.action_id for action in choices}
+    # The Spy icon resolves only through its explicit choices; the printed
+    # card draw is the space's other icon and keeps the generic action
+    # (OQ-027).
+    assert [
+        dict(action.arguments)["effect"]
+        for action in choices
+        if action.action_id == "resolve_board_effect"
+    ] == ["cards"]
     assert "resolve_espionage_without_spy" in {action.action_id for action in choices}
     placement = next(
         action
@@ -285,9 +293,16 @@ def test_espionage_uses_explicit_spy_choices_instead_of_generic_resolution() -> 
         if action.action_id == "resolve_espionage_place_spy"
     )
     state = engine.apply(state, placement).state
-
-    assert drawn in state.players[player].hand
     assert state.players[player].spies_supply == 2
+    assert drawn not in state.players[player].hand
+
+    draw = next(
+        action
+        for action in engine.legal_actions(state, player)
+        if action.action_id == "resolve_board_effect"
+    )
+    state = engine.apply(state, draw).state
+    assert drawn in state.players[player].hand
 
 
 def test_four_seeded_random_players_finish_one_round() -> None:

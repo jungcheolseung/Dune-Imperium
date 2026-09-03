@@ -22,7 +22,7 @@ from dune_imperium.rules.agent_effects import (
     legal_corrinth_city_payment_actions,
 )
 from dune_imperium.rules.board_effects import (
-    CHOICE_DRIVEN_SPACE_IDS,
+    legal_board_effect_actions,
     legal_desert_tactics_actions,
     legal_espionage_actions,
     legal_imperial_privilege_actions,
@@ -114,11 +114,9 @@ def _pending_group_actions(
             actions.append(
                 DomainAction(action_id="resolve_agent_card_effect", actor=player)
             )
-    if (
-        context["pending_board_effect"] is True
-        and context["space_id"] not in CHOICE_DRIVEN_SPACE_IDS
-    ):
-        actions.append(DomainAction(action_id="resolve_board_effect", actor=player))
+    # One action per pending automatic icon of the visited space; its
+    # choice icons are offered by the dedicated providers below (OQ-027).
+    actions.extend(legal_board_effect_actions(state, player))
     if context["pending_faction_influence"] is True:
         actions.append(
             DomainAction(action_id="resolve_faction_influence", actor=player)

@@ -4,6 +4,7 @@ from dune_imperium import RulesetConfig
 from dune_imperium.adapters import ACTION_CODEC_VERSION, ActionCodec
 from dune_imperium.core import DomainAction, PlayerDecision
 from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 from dune_imperium.simulation import run_random_round
 
 
@@ -11,10 +12,10 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     first = ActionCodec(RulesetConfig())
     second = ActionCodec(RulesetConfig())
 
-    assert ACTION_CODEC_VERSION == 85
+    assert ACTION_CODEC_VERSION == 86
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
-    assert first.size == 4316
+    assert first.size == 4322
 
 
 def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
@@ -26,7 +27,7 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
     codec = ActionCodec(RulesetConfig(choam_module=True))
 
     assert codec.decode(codec.encode(action), actor=2) == action
-    assert codec.size == 4602
+    assert codec.size == 4608
 
     try:
         ActionCodec(RulesetConfig()).encode(action)
@@ -60,6 +61,27 @@ def test_choam_contract_completion_and_spy_choices_round_trip() -> None:
 
     for action in actions:
         assert codec.decode(codec.encode(action), actor=1) == action
+
+
+def test_board_effect_icons_round_trip_and_the_bare_action_is_gone() -> None:
+    # One template per printed automatic icon (OQ-027); the old argument-less
+    # "resolve everything at once" action left the catalog with codec v86.
+    codec = ActionCodec(RulesetConfig())
+    assert AUTOMATIC_BOARD_ICONS == tuple(sorted(AUTOMATIC_BOARD_ICONS))
+    for key in AUTOMATIC_BOARD_ICONS:
+        action = DomainAction(
+            action_id="resolve_board_effect",
+            actor=1,
+            arguments=(("effect", key),),
+        )
+        assert codec.decode(codec.encode(action), actor=1) == action
+
+    try:
+        codec.encode(DomainAction(action_id="resolve_board_effect", actor=1))
+    except ValueError as error:
+        assert "not present" in str(error)
+    else:
+        raise AssertionError("the catalog still lists the bare board-effect action")
 
 
 def test_corrinth_city_staged_payment_round_trips() -> None:

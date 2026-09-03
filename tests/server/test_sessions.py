@@ -96,6 +96,27 @@ def test_only_human_seats_expose_views_and_actions() -> None:
         manager.view(game_id, 9)
 
 
+def test_legal_actions_describe_the_board_icon_they_resolve() -> None:
+    # Seat 0 opens seed 21 by sending a Dagger to Assembly Hall; the space's
+    # single Intrigue icon is then offered with its printed effect text.
+    manager = GameSessionManager()
+    summary = manager.create_game(HUMAN_FIRST, game_seed=21)
+    game_id = _text(summary["game_id"])
+    placements = _rows(manager.legal_actions(game_id, 0)["actions"])
+    assert all(entry["detail"] is None for entry in placements)
+    assert _obj(placements[0]["arguments"])["space_id"] == "assembly_hall"
+
+    summary = manager.apply_action(
+        game_id, seat=0, revision=_int(summary["revision"]), index=0
+    )
+    actions = _rows(manager.legal_actions(game_id, 0)["actions"])
+    assert [
+        (entry["action_id"], _obj(entry["arguments"])["effect"], entry["detail"])
+        for entry in actions
+        if entry["action_id"] == "resolve_board_effect"
+    ] == [("resolve_board_effect", "intrigue", "Draw 1 Intrigue card")]
+
+
 def test_apply_guards_revision_owner_and_index() -> None:
     manager = GameSessionManager()
     summary = manager.create_game(HUMAN_FIRST, game_seed=13)

@@ -36,8 +36,9 @@ from dune_imperium.content.uprising.starting_cards import (
 )
 from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
 from dune_imperium.core.actions import ActionValue, DomainAction
+from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 
-ACTION_CODEC_VERSION = 85
+ACTION_CODEC_VERSION = 86
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 
@@ -170,7 +171,6 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "take_high_council_from_reveal",
             "pay_combat_reward",
             "resolve_agent_card_effect",
-            "resolve_board_effect",
             "resolve_desert_tactics_without_trash",
             "resolve_espionage_without_spy",
             "resolve_faction_influence",
@@ -182,6 +182,14 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "take_sietch_tabr_water_and_destroy_wall",
             "use_other_memories",
         )
+    )
+    # One board-effect resolution per printed automatic icon (OQ-027).
+    templates.extend(
+        ActionTemplate(
+            action_id="resolve_board_effect",
+            arguments=(("effect", key),),
+        )
+        for key in AUTOMATIC_BOARD_ICONS
     )
     if config.choam_module:
         templates.extend(

@@ -41,6 +41,7 @@ from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effects import (
     advance_after_effect,
     current_agent_effect_context,
+    rearm_board_icons,
     recruit_troops,
 )
 from dune_imperium.rules.frames import FrameKind, owned_top_frame, replace_player
@@ -1389,7 +1390,9 @@ def apply_leader_board_repeat(
         owner,
         resources=replace(owner.resources, water=owner.resources.water - 1),
     )
-    context["pending_board_effect"] = True
+    # Every printed icon of the space is queued again, each for its own
+    # freely ordered action (OQ-027).
+    rearm_board_icons(context)
     # Per-resolution markers of the first pass must not leak into the repeat.
     context.pop("espionage_spy_recalled", None)
     next_state = advance_after_effect(
