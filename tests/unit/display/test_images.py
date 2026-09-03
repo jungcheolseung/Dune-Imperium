@@ -19,7 +19,7 @@ from dune_imperium.display.images import (
     resolve_card_images,
 )
 
-CARDS_DIR = Path(__file__).resolve().parents[3] / "downloads" / "cards"
+CARDS_DIR = Path(__file__).resolve().parents[3] / "assets" / "cards"
 
 
 def _all_content_keys() -> set[tuple[str, str]]:
@@ -148,7 +148,7 @@ def test_required_image_keys_cover_every_displayable_content_id() -> None:
 
 @pytest.mark.skipif(
     not (CARDS_DIR / "manifest.json").is_file(),
-    reason="card-image assets checkout is not linked at downloads/cards",
+    reason="assets checkout is not linked at assets/",
 )
 def test_the_assets_checkout_resolves_every_content_id() -> None:
     resolved = resolve_card_images(CARDS_DIR)

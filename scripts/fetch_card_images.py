@@ -6,7 +6,7 @@ manifest entry records where its file came from (Dune Cards Hub URL and
 sha256), so a checkout that is missing files — a fresh clone that only
 took the manifest, or a newly added entry — can be completed with:
 
-    uv run scripts/fetch_card_images.py            # downloads/cards
+    uv run scripts/fetch_card_images.py            # assets/cards
     uv run scripts/fetch_card_images.py --dest ../Dune-Imperium-assets/cards
 
 Files are written to ``<dest>/en/<path>`` and verified against the
@@ -29,7 +29,7 @@ import urllib.request
 from pathlib import Path
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_DEST = REPOSITORY_ROOT / "downloads" / "cards"
+DEFAULT_DEST = REPOSITORY_ROOT / "assets" / "cards"
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"

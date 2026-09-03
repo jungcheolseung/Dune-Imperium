@@ -39,49 +39,57 @@ from dune_imperium.server.sessions import (
 )
 
 _STATIC_DIR = Path(__file__).parent / "static"
+_REPOSITORY_ROOT = Path(__file__).parents[3]
+# Gitignored symlink to the private Dune-Imperium-assets checkout (cards/,
+# icons/, board/, rulebooks/); every default below lives under it.
+_ASSETS_DIR = _REPOSITORY_ROOT / "assets"
 
 
 def default_card_images_directory() -> Path:
     """Return the local card-image checkout (``cards/`` with its manifest).
 
-    ``DUNE_IMPERIUM_CARD_IMAGE_DIR`` overrides the default, the repository's
-    gitignored ``downloads/cards`` (a symlink to the private assets
-    checkout's ``cards`` directory). Optional: without the directory or its
+    ``DUNE_IMPERIUM_CARD_IMAGE_DIR`` overrides the default ``assets/cards``
+    (``assets`` is the repository's gitignored symlink to the private
+    assets checkout). Optional: without the directory or its
     ``manifest.json`` the server simply serves no card images.
     """
 
     override = os.environ.get("DUNE_IMPERIUM_CARD_IMAGE_DIR")
     if override:
         return Path(override)
-    return Path(__file__).parents[3] / "downloads" / "cards"
+    return _ASSETS_DIR / "cards"
 
 
 def default_icons_directory() -> Path:
     """Return the local rulebook icon set location.
 
-    ``DUNE_IMPERIUM_ICON_DIR`` overrides the default, the gitignored
-    ``downloads/icons`` tree that ``scripts/extract_rulebook_icons.py``
-    fills. Optional like the card cache: without it the UI shows text.
+    ``DUNE_IMPERIUM_ICON_DIR`` overrides the default ``assets/icons``, the
+    tree ``scripts/extract_rulebook_icons.py`` fills. Optional like the
+    card scans: without it the UI shows text.
     """
 
     override = os.environ.get("DUNE_IMPERIUM_ICON_DIR")
     if override:
         return Path(override)
-    return Path(__file__).parents[3] / "downloads" / "icons"
+    return _ASSETS_DIR / "icons"
 
 
 def default_board_image_path() -> Path:
     """Return the owner's local board scan location.
 
-    ``DUNE_IMPERIUM_BOARD_IMAGE`` overrides the default ``map.jpg`` at the
-    repository root (gitignored). Without the file the UI falls back to
+    ``DUNE_IMPERIUM_BOARD_IMAGE`` overrides the default
+    ``assets/board/map.jpg``; a gitignored ``map.jpg`` at the repository
+    root is accepted as a fallback. Without the file the UI falls back to
     the text board.
     """
 
     override = os.environ.get("DUNE_IMPERIUM_BOARD_IMAGE")
     if override:
         return Path(override)
-    return Path(__file__).parents[3] / "map.jpg"
+    in_assets = _ASSETS_DIR / "board" / "map.jpg"
+    if in_assets.is_file():
+        return in_assets
+    return _REPOSITORY_ROOT / "map.jpg"
 
 
 class CreateGameRequest(BaseModel):

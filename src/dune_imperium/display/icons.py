@@ -11,7 +11,7 @@ re-extracted, not reused.
 
 ``scripts/extract_rulebook_icons.py`` uses this table to crop each icon out
 of the rulebook and key out its background, producing one transparent PNG
-per name in the gitignored ``downloads/icons`` directory. The icons are
+per name in the gitignored ``assets/icons`` directory. The icons are
 copyrighted Dire Wolf Digital artwork; they are extracted for machine-local
 UI use only and are never committed to this repository, the same policy as
 the Dune Cards Hub card images in ``dune_imperium.display.images``.
@@ -84,7 +84,7 @@ def available_icons(files: frozenset[str]) -> dict[str, str]:
     """Return ``{name: filename}`` for every icon whose PNG is in ``files``.
 
     ``files`` is the listing of a local icon directory (e.g. the gitignored
-    ``downloads/icons``); names without a matching file are simply absent
+    ``assets/icons``); names without a matching file are simply absent
     from the result.
     """
 

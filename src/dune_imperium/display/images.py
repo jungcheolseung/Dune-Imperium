@@ -6,8 +6,8 @@ kept in the owner's private ``Dune-Imperium-assets`` repository under
 ``cards/en/uprising/imperium/Sardaukar Soldier.webp``) together with
 ``cards/manifest.json``, which is the only mapping between those human
 file names and the engine's content IDs. The main repository mounts that
-``cards`` directory (default ``downloads/cards``, a symlink to the assets
-checkout) and reads the manifest at server start; without it the catalog
+``cards`` directory (default ``assets/cards``; ``assets`` is a symlink to
+the assets checkout) and reads the manifest at server start; without it the catalog
 simply carries no images and the UI shows text.
 
 Manifest entries look like::

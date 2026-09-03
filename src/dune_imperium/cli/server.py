@@ -33,7 +33,7 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "local card-image checkout with manifest.json (default: "
-            "DUNE_IMPERIUM_CARD_IMAGE_DIR or the repository's downloads/cards)"
+            "DUNE_IMPERIUM_CARD_IMAGE_DIR or the repository's assets/cards)"
         ),
     )
     return parser

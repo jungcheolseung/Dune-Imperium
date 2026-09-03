@@ -4,7 +4,7 @@ Crops every icon in ``dune_imperium.display.icons.RULEBOOK_ICON_SOURCES`` out
 of the pinned "Uprising Main Rulebook" PDF (``scripts/official-rule-sources.json``
 key ``main``) using PyMuPDF, keys out the beige page background with Pillow,
 and writes one transparent PNG per icon name into a local directory
-(default: the gitignored ``downloads/icons``).
+(default: the gitignored ``assets/icons``).
 
 This script depends on ``pymupdf`` and ``pillow``, which are not project
 dependencies. Run it with ``uv run --with``:
@@ -35,7 +35,7 @@ if TYPE_CHECKING:
     from PIL.Image import Image  # type: ignore[import-not-found]
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_DEST = REPOSITORY_ROOT / "downloads" / "icons"
+DEFAULT_DEST = REPOSITORY_ROOT / "assets" / "icons"
 SOURCES_PATH = REPOSITORY_ROOT / "scripts" / "official-rule-sources.json"
 SOURCE_KEY = "main"
 
