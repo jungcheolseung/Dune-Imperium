@@ -21,6 +21,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import Influence, PlayerState, Resources
 from dune_imperium.core.state import GamePhase, GameState
+from dune_imperium.rules.agent_effects import agent_card_icons_at_placement
 from dune_imperium.rules.board_effects import board_icons_for
 from dune_imperium.rules.card_bonds import has_faction_bond
 from dune_imperium.rules.contracts import contract_candidates_for_agent_turn
@@ -176,6 +177,17 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
     board_icons = ",".join(
         board_icons_for(state, action.actor, space_id, cost_option)
     )
+    agent_effect_pending = _agent_effect_is_available(
+        card.agent_effect,
+        replace(owner, resources=next_owner.resources),
+        space,
+        card_instance_id,
+    )
+    # A multi-icon Agent box queues its printed icons for their own actions
+    # (OQ-027); single-effect boxes keep the plain resolution.
+    agent_icons = ",".join(
+        agent_card_icons_at_placement(card.agent_effect) if agent_effect_pending else ()
+    )
     effect_frame = DecisionFrame(
         kind=FrameKind.AGENT_EFFECTS,
         frame_id=(f"round:{state.round_number}:player:{action.actor}:agent_effects"),
@@ -188,15 +200,8 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
             ("card_id", card_instance_id),
             ("cost_option", cost_option),
             ("existing_troop_deployment_limit", 2 if space.combat else 0),
-            (
-                "pending_agent_effect",
-                _agent_effect_is_available(
-                    card.agent_effect,
-                    replace(owner, resources=next_owner.resources),
-                    space,
-                    card_instance_id,
-                ),
-            ),
+            ("pending_agent_effect", agent_effect_pending),
+            ("pending_agent_icons", agent_icons),
             ("pending_board_effect", bool(board_icons)),
             ("pending_board_icons", board_icons),
             (

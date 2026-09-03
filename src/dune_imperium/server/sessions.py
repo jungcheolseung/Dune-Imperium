@@ -30,7 +30,7 @@ from dune_imperium.core.decisions import ChanceDecision, PlayerDecision
 from dune_imperium.core.observation import PlayerView, disclose_hidden_zones
 from dune_imperium.core.replay import ReplayStep
 from dune_imperium.core.state import GamePhase, GameState, canonical_state_hash
-from dune_imperium.display import board_effect_action_text
+from dune_imperium.display import effect_action_text
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.endgame import final_standings
 from dune_imperium.server.persistence import (
@@ -791,13 +791,13 @@ def _serialize_view(view: PlayerView, disclosed: GameState | None) -> JsonObject
 def _serialize_action(
     index: int, action: DomainAction, state: GameState
 ) -> JsonObject:
-    """Serialize one legal action; ``detail`` names a board icon's printed effect."""
+    """Serialize one legal action; ``detail`` names a keyed icon's printed effect."""
 
     return {
         "index": index,
         "action_id": action.action_id,
         "arguments": _jsonify(dict(action.arguments)),
-        "detail": board_effect_action_text(state, action),
+        "detail": effect_action_text(state, action),
     }
 
 

@@ -4,6 +4,7 @@ from dune_imperium import RulesetConfig
 from dune_imperium.adapters import ACTION_CODEC_VERSION, ActionCodec
 from dune_imperium.core import DomainAction, PlayerDecision
 from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.agent_effects import AUTOMATIC_AGENT_ICONS
 from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 from dune_imperium.simulation import run_random_round
 
@@ -12,10 +13,10 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     first = ActionCodec(RulesetConfig())
     second = ActionCodec(RulesetConfig())
 
-    assert ACTION_CODEC_VERSION == 86
+    assert ACTION_CODEC_VERSION == 87
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
-    assert first.size == 4322
+    assert first.size == 4330
 
 
 def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
@@ -27,7 +28,7 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
     codec = ActionCodec(RulesetConfig(choam_module=True))
 
     assert codec.decode(codec.encode(action), actor=2) == action
-    assert codec.size == 4608
+    assert codec.size == 4616
 
     try:
         ActionCodec(RulesetConfig()).encode(action)
@@ -82,6 +83,22 @@ def test_board_effect_icons_round_trip_and_the_bare_action_is_gone() -> None:
         assert "not present" in str(error)
     else:
         raise AssertionError("the catalog still lists the bare board-effect action")
+
+
+def test_agent_card_icons_round_trip_beside_the_bare_action() -> None:
+    # Multi-icon Agent boxes resolve one keyed template per icon (OQ-027);
+    # single-effect boxes keep the argument-less template (codec v87).
+    codec = ActionCodec(RulesetConfig())
+    assert AUTOMATIC_AGENT_ICONS == tuple(sorted(AUTOMATIC_AGENT_ICONS))
+    bare = DomainAction(action_id="resolve_agent_card_effect", actor=2)
+    assert codec.decode(codec.encode(bare), actor=2) == bare
+    for key in AUTOMATIC_AGENT_ICONS:
+        action = DomainAction(
+            action_id="resolve_agent_card_effect",
+            actor=2,
+            arguments=(("effect", key),),
+        )
+        assert codec.decode(codec.encode(action), actor=2) == action
 
 
 def test_corrinth_city_staged_payment_round_trips() -> None:

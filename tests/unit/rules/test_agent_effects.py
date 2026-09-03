@@ -34,6 +34,7 @@ from dune_imperium.rules.agent_effects import (
     apply_corrinth_city_payment,
     expire_trashed_card_effects,
     legal_agent_card_discard_actions,
+    legal_agent_card_icon_actions,
     legal_agent_card_influence_actions,
     legal_agent_card_intrigue_payment_actions,
     legal_agent_card_long_live_actions,
@@ -43,6 +44,7 @@ from dune_imperium.rules.agent_effects import (
     legal_agent_card_trash_actions,
     legal_corrinth_city_payment_actions,
     resolve_agent_card_effect,
+    resolve_agent_card_icon,
     resolve_faction_influence,
 )
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
@@ -112,6 +114,26 @@ def _action_to(state: GameState, space_id: str) -> DomainAction:
         for action in legal_agent_actions(state, 0)
         if dict(action.arguments)["space_id"] == space_id
     )
+
+
+def _icon_action(state: GameState, effect: str) -> DomainAction:
+    return next(
+        action
+        for action in legal_agent_card_icon_actions(state, 0)
+        if dict(action.arguments)["effect"] == effect
+    )
+
+
+def _resolve_agent_icons(state: GameState, *effects: str) -> GameState:
+    """Resolve the named Agent-box icons in order, or every pending one."""
+
+    keys = effects or tuple(
+        str(dict(action.arguments)["effect"])
+        for action in legal_agent_card_icon_actions(state, 0)
+    )
+    for key in keys:
+        state = resolve_agent_card_icon(state, _icon_action(state, key)).state
+    return state
 
 
 def _resolve_board_icons(state: GameState) -> GameState:
@@ -454,8 +476,27 @@ def test_hidden_missive_recruits_and_draws_with_required_influence() -> None:
         ),
     )
     placed = apply_agent_action(state, _action_to(state, "gather_support")).state
+    # The troop and the card draw are two printed icons, each resolved by its
+    # own action in the owner's order (OQ-027).
+    assert dict(placed.decision_stack[-1].context)["pending_agent_icons"] == (
+        "troops,cards"
+    )
+    assert {
+        dict(action.arguments)["effect"]
+        for action in legal_agent_card_icon_actions(placed, 0)
+    } == {"troops", "cards"}
 
-    resolved = resolve_agent_card_effect(placed)
+    recruited = resolve_agent_card_icon(placed, _icon_action(placed, "troops"))
+    assert recruited.state.players[0].troops_garrison == 4
+    assert recruited.state.players[0].hand == ()
+    assert dict(recruited.state.decision_stack[-1].context)["pending_agent_icons"] == (
+        "cards"
+    )
+    assert recruited.events[-1].kind == "agent_card_effect_resolved"
+
+    resolved = resolve_agent_card_icon(
+        recruited.state, _icon_action(recruited.state, "cards")
+    )
     context = dict(resolved.state.decision_stack[-1].context)
 
     assert resolved.state.players[0].troops_supply == 8
@@ -463,7 +504,8 @@ def test_hidden_missive_recruits_and_draws_with_required_influence() -> None:
     assert resolved.state.players[0].hand == (drawn,)
     assert resolved.state.players[0].deck == ()
     assert context["troops_recruited"] == 1
-    assert resolved.events[0].kind == "agent_card_effect_resolved"
+    assert context["pending_agent_effect"] is False
+    assert resolved.events[-1].kind == "agent_card_effect_resolved"
 
 
 def test_hidden_missive_has_no_agent_effect_below_required_influence() -> None:
@@ -945,9 +987,25 @@ def test_steersman_draws_and_may_recall_its_just_placed_agent() -> None:
 
     assert result.state.players[0].agents_available == 1
     assert result.state.players[0].agent_locations == ("dutiful_service",)
-    assert result.state.players[0].hand == (drawn_card,)
     assert result.state.players[0].in_play == (steersman,)
     assert [event.kind for event in result.events] == ["agent_recalled"]
+    # The card draw is the box's other printed icon (OQ-027): still pending.
+    assert result.state.players[0].hand == ()
+    assert dict(result.state.decision_stack[-1].context)["pending_agent_icons"] == (
+        "cards"
+    )
+    drawn = _resolve_agent_icons(result.state, "cards")
+    assert drawn.players[0].hand == (drawn_card,)
+    assert dict(drawn.decision_stack[-1].context)["pending_agent_effect"] is False
+
+    # The other order: draw first, then recall.
+    drawn_first = _resolve_agent_icons(placed, "cards")
+    assert drawn_first.players[0].hand == (drawn_card,)
+    assert legal_agent_card_icon_actions(drawn_first, 0) == ()
+    assert {
+        dict(action.arguments)["space_id"]
+        for action in legal_agent_card_recall_actions(drawn_first, 0)
+    } == {"dutiful_service", "deliver_supplies"}
 
 
 def test_junction_headquarters_may_pay_intrigue_and_spice_for_vp() -> None:
@@ -1483,11 +1541,16 @@ def test_maker_keeper_gains_each_reward_for_its_matching_influence() -> None:
         ),
     )
     placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
+    # Water and spice are two independently gated icons (OQ-027).
+    assert dict(placed.decision_stack[-1].context)["pending_agent_icons"] == (
+        "water,spice"
+    )
 
-    result = resolve_agent_card_effect(placed)
+    resolved = _resolve_agent_icons(placed)
 
-    assert result.state.players[0].resources.spice == 1
-    assert result.state.players[0].resources.water == 2
+    assert resolved.players[0].resources.spice == 1
+    assert resolved.players[0].resources.water == 2
+    assert dict(resolved.decision_stack[-1].context)["pending_agent_effect"] is False
 
 
 @pytest.mark.parametrize(
@@ -1524,10 +1587,10 @@ def test_maker_keeper_rewards_are_independent(
     )
     placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
 
-    result = resolve_agent_card_effect(placed)
+    resolved = _resolve_agent_icons(placed)
 
-    assert result.state.players[0].resources.spice == expected_spice
-    assert result.state.players[0].resources.water == expected_water
+    assert resolved.players[0].resources.spice == expected_spice
+    assert resolved.players[0].resources.water == expected_water
 
 
 def test_maker_keeper_has_no_agent_effect_without_matching_influence() -> None:
@@ -2119,11 +2182,14 @@ def test_maker_keeper_resolves_as_unavailable_after_influence_drops() -> None:
     lowered_owner = replace(placed.players[0], influence=Influence())
     lowered = replace(placed, players=(lowered_owner, *placed.players[1:]))
 
-    result = resolve_agent_card_effect(lowered)
+    water = resolve_agent_card_icon(lowered, _icon_action(lowered, "water"))
+    assert water.events[-1].kind == "agent_card_effect_unavailable"
+    spice = resolve_agent_card_icon(water.state, _icon_action(water.state, "spice"))
+    assert spice.events[-1].kind == "agent_card_effect_unavailable"
 
-    assert result.state.players[0].resources.spice == 0
-    assert result.state.players[0].resources.water == 1
-    assert result.events[0].kind == "agent_card_effect_unavailable"
+    assert spice.state.players[0].resources.spice == 0
+    assert spice.state.players[0].resources.water == 1
+    assert dict(spice.state.decision_stack[-1].context)["pending_agent_effect"] is False
 
 
 def test_in_high_places_bond_is_judged_when_the_effect_resolves() -> None:
@@ -2334,6 +2400,11 @@ def test_dangerous_rhetoric_trashes_itself_for_chosen_influence() -> None:
         ),
     )
     placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
+    # The chosen-Influence icon and "Trash this card." are two printed icons
+    # (card face), each its own action in the owner's order (OQ-027).
+    assert dict(placed.decision_stack[-1].context)["pending_agent_icons"] == (
+        "influence,trash_self"
+    )
     choices = legal_agent_card_influence_actions(placed, 0)
     action = next(
         action
@@ -2345,16 +2416,42 @@ def test_dangerous_rhetoric_trashes_itself_for_chosen_influence() -> None:
     resolved_owner = result.state.players[0]
 
     assert len(choices) == 4
-    assert rhetoric not in resolved_owner.in_play
-    assert resolved_owner.trashed == (rhetoric,)
     assert resolved_owner.influence.fremen == 1
-    assert dict(result.state.decision_stack[-1].context)[
+    assert rhetoric in resolved_owner.in_play
+    assert dict(result.state.decision_stack[-1].context)["pending_agent_icons"] == (
+        "trash_self"
+    )
+    assert tuple(event.kind for event in result.events) == ("influence_gained",)
+
+    trashed = resolve_agent_card_icon(
+        result.state, _icon_action(result.state, "trash_self")
+    )
+    assert trashed.state.players[0].trashed == (rhetoric,)
+    assert trashed.events[0].kind == "card_trashed"
+    assert dict(trashed.state.decision_stack[-1].context)[
         "pending_agent_effect"
     ] is False
-    assert tuple(event.kind for event in result.events) == (
-        "card_trashed",
-        "influence_gained",
+
+    # The other order: the card trashes itself by its own icon first and its
+    # Influence still pays out (OQ-022: a card's own effect is not "already
+    # trashed" by another effect), so the expiry hook leaves it alone.
+    self_trashed = resolve_agent_card_icon(placed, _icon_action(placed, "trash_self"))
+    assert self_trashed.state.players[0].trashed == (rhetoric,)
+    untouched = expire_trashed_card_effects(self_trashed)
+    assert untouched.state == self_trashed.state
+    assert len(legal_agent_card_influence_actions(untouched.state, 0)) == 4
+    finished = apply_agent_card_influence(
+        untouched.state,
+        next(
+            candidate
+            for candidate in legal_agent_card_influence_actions(untouched.state, 0)
+            if dict(candidate.arguments)["faction"] == "fremen"
+        ),
     )
+    assert finished.state.players[0].influence.fremen == 1
+    assert dict(finished.state.decision_stack[-1].context)[
+        "pending_agent_effect"
+    ] is False
 
 
 def test_public_spectacle_gains_chosen_influence_after_spy_recall() -> None:
@@ -2470,11 +2567,14 @@ def test_wheels_within_wheels_rewards_are_independent(
         ),
     )
     placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
+    assert dict(placed.decision_stack[-1].context)["pending_agent_icons"] == (
+        "solari,spice"
+    )
 
-    result = resolve_agent_card_effect(placed)
+    resolved = _resolve_agent_icons(placed)
 
-    assert result.state.players[0].resources.solari == expected_solari
-    assert result.state.players[0].resources.spice == expected_spice
+    assert resolved.players[0].resources.solari == expected_solari
+    assert resolved.players[0].resources.spice == expected_spice
 
 
 def test_wheels_within_wheels_has_no_agent_effect_below_both_thresholds() -> None:
@@ -3442,14 +3542,22 @@ def test_captured_mentat_may_discard_to_draw_intrigue_and_personal_card() -> Non
         next(action for action in actions if action.action_id == "discard_agent_card"),
     )
 
+    # The discard is the arrow cost; the Intrigue draw and the card draw are
+    # independent reward icons queued for their own actions (OQ-027).
     assert result.state.players[0].discard_pile == (discarded,)
-    assert result.state.players[0].hand == (drawn,)
-    assert result.state.players[0].intrigue_cards == ("intrigue:plot",)
-    assert result.state.intrigue_deck == ()
-    assert [event.kind for event in result.events] == [
-        "card_discarded",
-        "intrigue_card_drawn",
-    ]
+    assert result.state.players[0].hand == ()
+    assert result.state.players[0].intrigue_cards == ()
+    assert [event.kind for event in result.events] == ["card_discarded"]
+    assert dict(result.state.decision_stack[-1].context)["pending_agent_icons"] == (
+        "intrigue,cards"
+    )
+    assert legal_agent_card_discard_actions(result.state, 0) == ()
+
+    resolved = _resolve_agent_icons(result.state)
+    assert resolved.players[0].hand == (drawn,)
+    assert resolved.players[0].intrigue_cards == ("intrigue:plot",)
+    assert resolved.intrigue_deck == ()
+    assert dict(resolved.decision_stack[-1].context)["pending_agent_effect"] is False
 
 
 def test_captured_mentat_cannot_pay_discard_without_intrigue_reward() -> None:
@@ -3529,15 +3637,22 @@ def test_guild_spy_may_cycle_and_draws_intrigue_for_guild_discard(
         next(action for action in actions if action.action_id == "discard_agent_card"),
     )
 
+    # The discard is the arrow cost; its reward icons (the card draw, plus
+    # the Intrigue draw for a Spacing Guild discard) are queued for their
+    # own actions (OQ-027).
     assert result.state.players[0].discard_pile == (discarded,)
-    assert result.state.players[0].hand == (drawn,)
-    assert result.state.players[0].intrigue_cards == (
+    assert result.state.players[0].hand == ()
+    assert [event.kind for event in result.events] == ["card_discarded"]
+    assert dict(result.state.decision_stack[-1].context)["pending_agent_icons"] == (
+        "cards,intrigue" if draws_intrigue else "cards"
+    )
+
+    resolved = _resolve_agent_icons(result.state)
+    assert resolved.players[0].hand == (drawn,)
+    assert resolved.players[0].intrigue_cards == (
         ("intrigue:plot",) if draws_intrigue else ()
     )
-    assert [event.kind for event in result.events] == [
-        "card_discarded",
-        *(["intrigue_card_drawn"] if draws_intrigue else []),
-    ]
+    assert dict(resolved.decision_stack[-1].context)["pending_agent_effect"] is False
 
 
 def test_guild_spy_cannot_discard_guild_card_without_intrigue_reward() -> None:
@@ -3895,19 +4010,29 @@ def test_branching_path_alliance_trash_draws_intrigue_and_recruits_two() -> None
     result = apply_agent_card_trash(placed, action)
     context = dict(result.state.decision_stack[-1].context)
 
+    # The trash is the arrow cost (Sardaukar Soldier's own trash trigger
+    # draws at once); the Intrigue draw and the two troops are independent
+    # reward icons queued for their own actions (OQ-027).
     assert result.state.players[0].trashed == (sardaukar,)
-    assert result.state.players[0].intrigue_cards == (
-        "intrigue:trash",
-        "intrigue:reward",
-    )
-    assert result.state.players[0].troops_supply == 7
-    assert result.state.players[0].troops_garrison == 5
-    assert context["troops_recruited"] == 2
+    assert result.state.players[0].intrigue_cards == ("intrigue:trash",)
+    assert result.state.players[0].troops_garrison == 3
+    assert context["pending_agent_icons"] == "intrigue,troops"
     assert [event.kind for event in result.events] == [
         "card_trashed",
         "intrigue_card_drawn",
-        "intrigue_card_drawn",
     ]
+    assert legal_agent_card_trash_actions(result.state, 0) == ()
+
+    resolved = _resolve_agent_icons(result.state)
+    context = dict(resolved.decision_stack[-1].context)
+    assert resolved.players[0].intrigue_cards == (
+        "intrigue:trash",
+        "intrigue:reward",
+    )
+    assert resolved.players[0].troops_supply == 7
+    assert resolved.players[0].troops_garrison == 5
+    assert context["troops_recruited"] == 2
+    assert context["pending_agent_effect"] is False
 
 
 def test_branching_path_agent_effect_requires_bene_gesserit_alliance() -> None:

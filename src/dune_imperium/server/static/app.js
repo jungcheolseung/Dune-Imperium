@@ -435,18 +435,23 @@ function chipList(container, ids, emptyText) {
   for (const id of ids) container.appendChild(chip(id));
 }
 
-/* Korean labels for the printed board-space icon a resolve_board_effect
-   action resolves (OQ-027). A legal action carries the server's English
-   effect fragment as `detail` (e.g. "Recruit 1 troop"), which iconizes;
-   log lines fall back to these labels. */
-const BOARD_EFFECT_LABELS = {
+/* Korean labels for the printed icon a keyed resolve_board_effect /
+   resolve_agent_card_effect action resolves (OQ-027). A legal action carries
+   the server's English effect fragment as `detail` (e.g. "Recruit 1 troop"),
+   which iconizes; log lines fall back to these labels. */
+const EFFECT_ICON_LABELS = {
   cards: "카드 draw",
   contract: "Contract 획득",
   high_council: "High Council 착석",
   intrigue: "Intrigue draw",
+  pledge: "1위 보상에 Influence 선택 추가",
   resources: "자원 획득",
+  solari: "Solari 획득",
+  spice: "Spice 획득",
   swordmaster: "Swordmaster 획득",
+  trash_self: "이 카드 trash",
   troops: "병력 recruit (garrison)",
+  water: "Water 획득",
 };
 
 function describeAction(action) {
@@ -454,7 +459,7 @@ function describeAction(action) {
   const parts = [];
   for (const [key, value] of Object.entries(action.arguments)) {
     if (key === "effect" && typeof value === "string") {
-      parts.push(action.detail || BOARD_EFFECT_LABELS[value] || prettify(value));
+      parts.push(action.detail || EFFECT_ICON_LABELS[value] || prettify(value));
     } else if (typeof value === "number" || typeof value === "boolean") {
       parts.push(`${prettify(key)}: ${value}`);
     } else {

@@ -48,6 +48,7 @@ from dune_imperium.rules.agent_effects import (
     expire_trashed_card_effects,
     legal_opponent_card_discard_actions,
     resolve_agent_card_effect,
+    resolve_agent_card_icon,
     resolve_faction_influence,
 )
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
@@ -188,7 +189,8 @@ DEFAULT_LEADER_IDS = (
 
 
 def _apply_agent_card_effect(state: GameState, action: DomainAction) -> RuleResult:
-    del action
+    if any(key == "effect" for key, _ in action.arguments):
+        return resolve_agent_card_icon(state, action)
     return resolve_agent_card_effect(state)
 
 

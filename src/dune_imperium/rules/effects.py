@@ -152,6 +152,35 @@ def finish_board_icon(context: dict[str, ActionValue], key: str) -> None:
     context["pending_board_effect"] = bool(remaining)
 
 
+def pending_agent_icons(context: Mapping[str, ActionValue]) -> tuple[str, ...]:
+    """Return the played card's Agent-box icons still waiting for their action.
+
+    A card whose Agent box prints several independent icons resolves them
+    one action each in the owner's order [Main p. 9] (OQ-027); the list is
+    empty for single-effect boxes, which keep the plain resolution action.
+    """
+
+    return _icon_keys(context, "pending_agent_icons")
+
+
+def arm_agent_icons(context: dict[str, ActionValue], icons: tuple[str, ...]) -> None:
+    """Queue the played card's printed icons, each for its own action."""
+
+    context["pending_agent_icons"] = ",".join(icons)
+    context["pending_agent_effect"] = bool(icons)
+
+
+def finish_agent_icon(context: dict[str, ActionValue], key: str) -> None:
+    """Retire one resolved Agent-box icon and keep the card's group flag in step."""
+
+    remaining = list(pending_agent_icons(context))
+    if key not in remaining:
+        raise ValueError(f"Agent-card icon is not pending: {key}")
+    remaining.remove(key)
+    context["pending_agent_icons"] = ",".join(remaining)
+    context["pending_agent_effect"] = bool(remaining)
+
+
 def rearm_board_icons(context: dict[str, ActionValue]) -> None:
     """Queue every printed icon of the visit again (Reverend Mother's repeat)."""
 

@@ -12,6 +12,7 @@ from dune_imperium.core.state import GameState
 from dune_imperium.rules.acquisition import legal_agent_card_acquisitions
 from dune_imperium.rules.agent_effects import (
     legal_agent_card_discard_actions,
+    legal_agent_card_icon_actions,
     legal_agent_card_influence_actions,
     legal_agent_card_intrigue_payment_actions,
     legal_agent_card_long_live_actions,
@@ -32,7 +33,10 @@ from dune_imperium.rules.board_effects import (
 )
 from dune_imperium.rules.combat_deployment import legal_combat_deployments
 from dune_imperium.rules.contracts import legal_contract_completion_actions
-from dune_imperium.rules.effects import current_agent_effect_context
+from dune_imperium.rules.effects import (
+    current_agent_effect_context,
+    pending_agent_icons,
+)
 from dune_imperium.rules.intrigue import legal_intrigue_play_actions
 from dune_imperium.rules.leader_abilities import (
     legal_feyd_track_actions,
@@ -102,7 +106,15 @@ def _pending_group_actions(
     context: dict[str, bool | int | str],
 ) -> tuple[DomainAction, ...]:
     actions: list[DomainAction] = []
-    if context["pending_agent_effect"] is True:
+    if context["pending_agent_effect"] is True and pending_agent_icons(context):
+        # A multi-icon Agent box: every pending icon is offered at once, the
+        # automatic ones through their keyed resolution and the choice icons
+        # (Steersman's recall, Dangerous Rhetoric's Faction) through their
+        # own providers (OQ-027).
+        actions.extend(legal_agent_card_icon_actions(state, player))
+        actions.extend(legal_agent_card_recall_actions(state, player))
+        actions.extend(legal_agent_card_influence_actions(state, player))
+    elif context["pending_agent_effect"] is True:
         choice_actions = tuple(
             action
             for provider in _AGENT_CARD_CHOICE_PROVIDERS

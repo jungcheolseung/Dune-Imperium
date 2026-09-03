@@ -9,6 +9,7 @@ audit documents under ``docs/implementation-audits/`` and the cited rules
 summaries under ``docs/rules/``.
 """
 
+from dune_imperium.display.actions import agent_card_icon_text, effect_action_text
 from dune_imperium.display.cards import personal_card_text
 from dune_imperium.display.effect_dsl_text import intrigue_card_text
 from dune_imperium.display.icons import ICON_NAMES, available_icons, icon_filename
@@ -36,12 +37,14 @@ __all__ = [
     "ICON_NAMES",
     "LEADER_FACE_TEXTS",
     "LeaderFaceText",
+    "agent_card_icon_text",
     "available_icons",
     "board_effect_action_text",
     "board_icon_text",
     "conflict_rewards_texts",
     "contract_condition_text",
     "contract_reward_text",
+    "effect_action_text",
     "icon_filename",
     "intrigue_card_text",
     "load_card_manifest",

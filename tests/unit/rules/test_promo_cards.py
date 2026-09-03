@@ -36,9 +36,11 @@ from dune_imperium.rules.acquisition import (
 from dune_imperium.rules.agent_effects import (
     apply_agent_card_payment,
     apply_agent_card_trash,
+    legal_agent_card_icon_actions,
     legal_agent_card_payment_actions,
     legal_agent_card_trash_actions,
     resolve_agent_card_effect,
+    resolve_agent_card_icon,
 )
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 from dune_imperium.rules.combat import (
@@ -327,17 +329,30 @@ def test_pivotal_gambit_trashes_itself_for_a_troop_and_a_wild_pledge() -> None:
     result = apply_agent_card_trash(placed, actions[1])
     after = result.state.players[0]
 
+    # The self-trash is the arrow cost; the troop and the first-place pledge
+    # are independent reward icons queued for their own actions (OQ-027).
     assert after.trashed == (gambit,)
     assert after.in_play == ()
-    assert after.troops_garrison == owner.troops_garrison + 1
-    assert _context(result.state)["troops_recruited"] == 1
-    assert _context(result.state)["pending_agent_effect"] is False
-    assert result.state.conflict_first_place_influence_bonus == 1
-    assert [event.kind for event in result.events] == [
-        "card_trashed",
-        "troops_recruited",
-        "first_place_influence_pledged",
+    assert after.troops_garrison == owner.troops_garrison
+    assert result.state.conflict_first_place_influence_bonus == 0
+    assert _context(result.state)["pending_agent_icons"] == "troops,pledge"
+    assert _context(result.state)["pending_agent_effect"] is True
+    assert [event.kind for event in result.events] == ["card_trashed"]
+
+    icon_actions = legal_agent_card_icon_actions(result.state, 0)
+    assert [dict(action.arguments)["effect"] for action in icon_actions] == [
+        "troops",
+        "pledge",
     ]
+    pledged = resolve_agent_card_icon(result.state, icon_actions[1])
+    assert pledged.state.conflict_first_place_influence_bonus == 1
+    assert pledged.events[0].kind == "first_place_influence_pledged"
+    recruited = resolve_agent_card_icon(
+        pledged.state, legal_agent_card_icon_actions(pledged.state, 0)[0]
+    )
+    assert recruited.state.players[0].troops_garrison == owner.troops_garrison + 1
+    assert _context(recruited.state)["troops_recruited"] == 1
+    assert _context(recruited.state)["pending_agent_effect"] is False
 
     declined = apply_agent_card_trash(placed, actions[0])
     assert declined.state.conflict_first_place_influence_bonus == 0
@@ -552,8 +567,8 @@ def test_beasts_spoils_with_no_face_up_icons_does_nothing() -> None:
 
 def test_promo_actions_round_trip_through_the_codec() -> None:
     codec = ActionCodec(PROMO)
-    assert codec.size == 4422
-    assert ActionCodec(RulesetConfig(choam_module=True, promo_cards=True)).size == 4708
+    assert codec.size == 4430
+    assert ActionCodec(RulesetConfig(choam_module=True, promo_cards=True)).size == 4716
     for action_id in (
         "pay_agent_card_spice_for_sandworm",
         "pay_agent_card_spice_for_sandworm_and_shield_wall",

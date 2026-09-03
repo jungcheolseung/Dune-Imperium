@@ -36,9 +36,10 @@ from dune_imperium.content.uprising.starting_cards import (
 )
 from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
 from dune_imperium.core.actions import ActionValue, DomainAction
+from dune_imperium.rules.agent_effects import AUTOMATIC_AGENT_ICONS
 from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 
-ACTION_CODEC_VERSION = 86
+ACTION_CODEC_VERSION = 87
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 
@@ -190,6 +191,15 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             arguments=(("effect", key),),
         )
         for key in AUTOMATIC_BOARD_ICONS
+    )
+    # One Agent-box resolution per printed automatic icon of a multi-icon
+    # card (OQ-027); single-effect boxes keep the argument-less template.
+    templates.extend(
+        ActionTemplate(
+            action_id="resolve_agent_card_effect",
+            arguments=(("effect", key),),
+        )
+        for key in AUTOMATIC_AGENT_ICONS
     )
     if config.choam_module:
         templates.extend(
