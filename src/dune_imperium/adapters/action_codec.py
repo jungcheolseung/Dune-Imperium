@@ -590,11 +590,6 @@ def _endgame_wild_templates(
     wild_card_ids = tuple(
         card_id for card_id, icon in battle_cards if icon is BattleIcon.WILD
     )
-    if config.promo_cards:
-        # Pivotal Gambit can pledge a wild icon onto any Conflict card, so
-        # every won Conflict is a possible wild side (OQ-025).
-        conflict_ids = (conflict.card.card_id for conflict in CONFLICTS)
-        wild_card_ids = tuple(dict.fromkeys((*wild_card_ids, *conflict_ids)))
     matching_card_ids = tuple(
         card_id for card_id, icon in battle_cards if icon not in (None, BattleIcon.WILD)
     )
@@ -608,7 +603,6 @@ def _endgame_wild_templates(
         )
         for wild_card_id in wild_card_ids
         for matching_card_id in matching_card_ids
-        if wild_card_id != matching_card_id
     )
 
 

@@ -61,13 +61,10 @@ class GameState:
     leader_draft_pool: tuple[str, ...] = ()
     reserve_stacks: tuple[tuple[str, int], ...] = ()
     shield_wall_present: bool = True
-    # Pivotal Gambit (Uprising promo): a wild battle icon pledged to the
-    # current Conflict's first-place reward; consumed when Combat finishes
-    # (OQ-025 project ruling).
-    conflict_wild_icon_bonus: bool = False
-    # Won Conflict cards that carry that extra wild battle icon in addition
-    # to their printed icon; they pair like a wild card during the Endgame.
-    wild_icon_conflict_ids: tuple[str, ...] = ()
+    # Pivotal Gambit (Uprising promo): "gain 1 Influence of your choice"
+    # rewards pledged to the current Conflict's first-place reward, paid out
+    # with that reward and cleared afterwards (OQ-025).
+    conflict_first_place_influence_bonus: int = 0
     maker_bonus_spice: tuple[tuple[str, int], ...] = (
         ("deep_desert", 0),
         ("hagga_basin", 0),

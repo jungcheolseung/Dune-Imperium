@@ -196,9 +196,9 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
             "Gain rewards for your face-up battle icons: Crysknife: You may trash"
             " a card, Desert Mouse: Gain 1 spice, Ornithopter: Recruit 1 troop"
         ),
-        PersonalCardAgentEffect.MAY_TRASH_SELF_FOR_TROOP_AND_WILD_BATTLE_ICON: (
-            "You may trash this card → Recruit 1 troop and add a wild battle icon"
-            " to this Conflict's first-place reward"
+        PersonalCardAgentEffect.MAY_TRASH_SELF_FOR_TROOP_AND_FIRST_PLACE_INFLUENCE: (
+            "You may trash this card → Recruit 1 troop and add 1 Influence of"
+            " your choice to this Conflict's first-place reward"
         ),
         PersonalCardAgentEffect.RECRUIT_ONE_IF_MAKER_SPACE: (
             "If you are at a Maker space: Recruit 1 troop"

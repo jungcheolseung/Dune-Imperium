@@ -41,11 +41,10 @@ from dune_imperium.rules.agent_effects import (
     resolve_agent_card_effect,
 )
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
-from dune_imperium.rules.combat import face_up_battle_icon_counts, finish_combat
-from dune_imperium.rules.effect_interpreter import flippable_battle_card_ids
-from dune_imperium.rules.endgame import (
-    begin_endgame_intrigue,
-    legal_endgame_intrigue_actions,
+from dune_imperium.rules.combat import (
+    face_up_battle_icons,
+    finish_combat,
+    resolve_combat_rewards,
 )
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.reveal_turn import begin_reveal_turn, legal_reveal_actions
@@ -103,6 +102,14 @@ def _place(state: GameState, space_id: str) -> GameState:
 
 def _context(state: GameState) -> dict[str, object]:
     return dict(state.decision_stack[-1].context)
+
+
+def _influence_frames(state: GameState) -> list[DecisionFrame]:
+    return [
+        frame
+        for frame in state.decision_stack
+        if frame.kind == "combat_reward_influence"
+    ]
 
 
 def _payment_ids(state: GameState) -> list[str]:
@@ -325,19 +332,101 @@ def test_pivotal_gambit_trashes_itself_for_a_troop_and_a_wild_pledge() -> None:
     assert after.troops_garrison == owner.troops_garrison + 1
     assert _context(result.state)["troops_recruited"] == 1
     assert _context(result.state)["pending_agent_effect"] is False
-    assert result.state.conflict_wild_icon_bonus is True
+    assert result.state.conflict_first_place_influence_bonus == 1
     assert [event.kind for event in result.events] == [
         "card_trashed",
         "troops_recruited",
-        "wild_battle_icon_pledged",
+        "first_place_influence_pledged",
     ]
 
     declined = apply_agent_card_trash(placed, actions[0])
-    assert declined.state.conflict_wild_icon_bonus is False
+    assert declined.state.conflict_first_place_influence_bonus == 0
     assert declined.state.players[0].in_play == (gambit,)
 
 
-def test_pledged_wild_icon_rides_on_the_conflict_card_to_the_winner() -> None:
+def test_pledged_influence_joins_the_first_place_reward() -> None:
+    players = tuple(
+        PlayerState(player_id=player, combat_strength=strength)
+        for player, strength in enumerate((8, 6, 0, 0))
+    )
+    state = GameState(
+        config=PROMO,
+        seed=1,
+        phase=GamePhase.COMBAT,
+        round_number=1,
+        first_player=0,
+        players=players,
+        current_conflict_ids=("skirmish_crysknife",),
+        combat_intrigue_complete=True,
+        intrigue_deck=("intrigue:0", "intrigue:1"),
+        conflict_first_place_influence_bonus=1,
+    )
+
+    result = resolve_combat_rewards(state)
+    baseline = resolve_combat_rewards(
+        replace(state, conflict_first_place_influence_bonus=0)
+    )
+
+    # The pledge adds exactly one Influence choice to the printed first-place
+    # reward, owned by the winner, and is then cleared.
+    frames = _influence_frames(result.state)
+    assert len(frames) == len(_influence_frames(baseline.state)) + 1
+    assert all(
+        isinstance(frame.decision, PlayerDecision) and frame.decision.owner == 0
+        for frame in frames
+    )
+    assert result.state.conflict_first_place_influence_bonus == 0
+
+    tied = replace(
+        state,
+        players=tuple(
+            replace(player, combat_strength=8 if player.player_id < 2 else 0)
+            for player in players
+        ),
+    )
+    no_winner = resolve_combat_rewards(tied)
+    tied_baseline = resolve_combat_rewards(
+        replace(tied, conflict_first_place_influence_bonus=0)
+    )
+    assert len(_influence_frames(no_winner.state)) == len(
+        _influence_frames(tied_baseline.state)
+    )
+    assert no_winner.state.conflict_first_place_influence_bonus == 0
+
+
+def test_a_sandworm_doubles_the_pledged_influence_like_the_printed_reward() -> None:
+    players = tuple(
+        PlayerState(
+            player_id=player,
+            combat_strength=strength,
+            sandworms_conflict=1 if player == 0 else 0,
+        )
+        for player, strength in enumerate((8, 6, 0, 0))
+    )
+    state = GameState(
+        config=PROMO,
+        seed=1,
+        phase=GamePhase.COMBAT,
+        round_number=1,
+        first_player=0,
+        players=players,
+        current_conflict_ids=("skirmish_crysknife",),
+        combat_intrigue_complete=True,
+        intrigue_deck=("intrigue:0", "intrigue:1"),
+        conflict_first_place_influence_bonus=1,
+    )
+
+    result = resolve_combat_rewards(state)
+    baseline = resolve_combat_rewards(
+        replace(state, conflict_first_place_influence_bonus=0)
+    )
+
+    assert len(_influence_frames(result.state)) == (
+        len(_influence_frames(baseline.state)) + 2
+    )
+
+
+def test_a_new_conflict_and_combat_cleanup_carry_no_stale_pledge() -> None:
     players = tuple(
         PlayerState(player_id=player, combat_strength=strength)
         for player, strength in enumerate((8, 6, 0, 0))
@@ -352,92 +441,37 @@ def test_pledged_wild_icon_rides_on_the_conflict_card_to_the_winner() -> None:
         current_conflict_ids=("skirmish_crysknife",),
         combat_intrigue_complete=True,
         combat_rewards_resolved=True,
-        conflict_wild_icon_bonus=True,
     )
-
-    result = finish_combat(state)
-
-    assert result.state.players[0].won_conflict_ids == ("skirmish_crysknife",)
-    assert result.state.wild_icon_conflict_ids == ("skirmish_crysknife",)
-    assert result.state.conflict_wild_icon_bonus is False
-    assert [event.kind for event in result.events] == [
+    finished = finish_combat(state)
+    assert finished.state.conflict_first_place_influence_bonus == 0
+    assert [event.kind for event in finished.events] == [
         "conflict_won",
-        "wild_battle_icon_awarded",
         "combat_cleaned_up",
     ]
-
-    tied = replace(
-        state,
-        players=tuple(
-            replace(player, combat_strength=8 if player.player_id < 2 else 0)
-            for player in players
-        ),
-    )
-    forfeited = finish_combat(tied)
-    assert forfeited.state.wild_icon_conflict_ids == ()
-    assert forfeited.state.conflict_wild_icon_bonus is False
-    assert [event.kind for event in forfeited.events] == [
-        "wild_battle_icon_forfeited",
-        "combat_cleaned_up",
-    ]
-
-
-def test_pledged_card_pairs_as_a_wild_icon_in_the_endgame() -> None:
-    holder = PlayerState(
-        player_id=0,
-        objective_ids=("objective_desert_mouse",),
-        won_conflict_ids=("skirmish_crysknife",),
-    )
-    state = GameState(
-        config=PROMO,
-        seed=1,
-        phase=GamePhase.ENDGAME,
-        first_player=0,
-        players=(holder, *(PlayerState(player_id=seat) for seat in range(1, 4))),
-        reveal_order=(0, 1, 2, 3),
-        wild_icon_conflict_ids=("skirmish_crysknife",),
-    )
-
-    opened = begin_endgame_intrigue(state).state
-    matches = [
-        dict(action.arguments)
-        for action in legal_endgame_intrigue_actions(opened, 0)
-        if action.action_id == "match_endgame_wild_icon"
-    ]
-    # The pledged Crysknife card is the wild side; it never pairs with itself.
-    assert matches == [
-        {
-            "matching_card_id": "objective_desert_mouse",
-            "wild_card_id": "skirmish_crysknife",
-        }
-    ]
-    assert flippable_battle_card_ids(holder, BattleIcon.ORNITHOPTER) == ()
-    assert flippable_battle_card_ids(
-        holder, BattleIcon.ORNITHOPTER, ("skirmish_crysknife",)
-    ) == ("skirmish_crysknife",)
 
 
 # --------------------------------------------------------- The Beast's Spoils
 
 
-def test_face_up_icon_counts_ignore_face_down_cards_and_wild() -> None:
+def test_face_up_icons_ignore_face_down_cards() -> None:
     player = PlayerState(
         player_id=0,
         objective_ids=("objective_crysknife_1", "objective_desert_mouse"),
-        won_conflict_ids=("skirmish_ornithopter", "propaganda", "skirmish_crysknife"),
+        won_conflict_ids=("skirmish_ornithopter", "propaganda"),
         face_down_battle_card_ids=("objective_desert_mouse",),
     )
-    assert face_up_battle_icon_counts(player) == {
-        BattleIcon.CRYSKNIFE: 2,
-        BattleIcon.DESERT_MOUSE: 0,
-        BattleIcon.ORNITHOPTER: 1,
-        BattleIcon.WILD: 1,
+    assert face_up_battle_icons(player) == {
+        BattleIcon.CRYSKNIFE,
+        BattleIcon.ORNITHOPTER,
+        BattleIcon.WILD,
     }
 
 
-def test_beasts_spoils_pays_out_per_face_up_icon_then_offers_each_trash() -> None:
+def test_beasts_spoils_pays_out_per_face_up_icon_then_offers_the_trash() -> None:
     spoils = _promo_instance("the_beast_s_spoils")
     dagger = _starter("dagger")
+    # One face-up card per icon, as immediate matching guarantees; the wild
+    # Propaganda counts as none of the three (OQ-024).
     owner = PlayerState(
         player_id=0,
         hand=(spoils, dagger),
@@ -446,10 +480,13 @@ def test_beasts_spoils_pays_out_per_face_up_icon_then_offers_each_trash() -> Non
         won_conflict_ids=(
             "skirmish_desert_mouse",
             "skirmish_ornithopter",
-            "skirmish_crysknife",
+            "propaganda",
         ),
     )
-    placed = _place(_turn_state(owner), "arrakeen")
+    placed = _place(
+        _turn_state(owner, current_conflict_ids=("skirmish_crysknife",)),
+        "arrakeen",
+    )
     # The trash choices wait for the automatic part to resolve first.
     assert legal_agent_card_trash_actions(placed, 0) == ()
 
@@ -459,10 +496,10 @@ def test_beasts_spoils_pays_out_per_face_up_icon_then_offers_each_trash() -> Non
     assert after.troops_garrison == owner.troops_garrison + 1
     assert _context(resolved.state)["troops_recruited"] == 1
     assert _context(resolved.state)["pending_agent_effect"] is True
-    assert _context(resolved.state)["crysknife_trashes_remaining"] == 2
+    assert _context(resolved.state)["crysknife_trashes_remaining"] == 1
     assert dict(resolved.events[0].payload) == {
         "card_id": spoils,
-        "crysknife": 2,
+        "crysknife": 1,
         "player": 0,
         "spice": 1,
         "troops": 1,
@@ -475,21 +512,20 @@ def test_beasts_spoils_pays_out_per_face_up_icon_then_offers_each_trash() -> Non
         _starter("diplomacy"),
         spoils,
     }
-    first = apply_agent_card_trash(
+    trashed = apply_agent_card_trash(
         resolved.state,
         next(a for a in actions if dict(a.arguments).get("card_id") == dagger),
     )
-    assert first.state.players[0].trashed == (dagger,)
-    assert _context(first.state)["pending_agent_effect"] is True
-    assert _context(first.state)["crysknife_trashes_remaining"] == 1
+    assert trashed.state.players[0].trashed == (dagger,)
+    assert _context(trashed.state)["pending_agent_effect"] is False
+    assert "crysknife_trashes_remaining" not in _context(trashed.state)
 
-    second_actions = legal_agent_card_trash_actions(first.state, 0)
     declined = apply_agent_card_trash(
-        first.state,
-        next(a for a in second_actions if a.action_id == "decline_agent_card_trash"),
+        resolved.state,
+        next(a for a in actions if a.action_id == "decline_agent_card_trash"),
     )
     assert _context(declined.state)["pending_agent_effect"] is False
-    assert "crysknife_trashes_remaining" not in _context(declined.state)
+    assert declined.state.players[0].trashed == ()
 
 
 def test_beasts_spoils_with_no_face_up_icons_does_nothing() -> None:
@@ -516,8 +552,8 @@ def test_beasts_spoils_with_no_face_up_icons_does_nothing() -> None:
 
 def test_promo_actions_round_trip_through_the_codec() -> None:
     codec = ActionCodec(PROMO)
-    assert codec.size == 4686
-    assert ActionCodec(RulesetConfig(choam_module=True, promo_cards=True)).size == 4972
+    assert codec.size == 4416
+    assert ActionCodec(RulesetConfig(choam_module=True, promo_cards=True)).size == 4702
     for action_id in (
         "pay_agent_card_spice_for_sandworm",
         "pay_agent_card_spice_for_sandworm_and_shield_wall",

@@ -335,7 +335,7 @@ def _agent_effect_is_available(
         return owner.maker_hooks and owner.resources.spice >= 2
     if effect in (
         PersonalCardAgentEffect.GAIN_REWARDS_PER_FACE_UP_BATTLE_ICON,
-        PersonalCardAgentEffect.MAY_TRASH_SELF_FOR_TROOP_AND_WILD_BATTLE_ICON,
+        PersonalCardAgentEffect.MAY_TRASH_SELF_FOR_TROOP_AND_FIRST_PLACE_INFLUENCE,
     ):
         # Both are judged at resolution: the icon rewards over the supply at
         # that time, the self-trash over whether the card is still in play.

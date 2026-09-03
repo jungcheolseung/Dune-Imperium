@@ -369,9 +369,7 @@ def legal_intrigue_choice_actions(
                     actor=player,
                     arguments=(("card_id", conflict_id),),
                 )
-                for conflict_id in flippable_battle_card_ids(
-                    owner, icon, state.wild_icon_conflict_ids
-                )
+                for conflict_id in flippable_battle_card_ids(owner, icon)
             )
         case SetAsideImperiumRowCard():
             actions.extend(

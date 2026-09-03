@@ -125,7 +125,6 @@ def _segment_lengths() -> tuple[tuple[str, int], ...]:
         ("imperium_removed", len(PERSONAL_CARD_IDS)),
         ("reveal_order", _SEATS),
         ("leader_draft_pool", _LEADER_DRAFT_SLOTS),
-        ("wild_icon_conflicts", len(CONFLICT_IDS)),
     ]
     for seat in range(_SEATS):
         lengths.extend(_seat_segment_lengths(seat))
@@ -210,7 +209,7 @@ def encode_player_view(view: PlayerView) -> tuple[int, ...]:
             int(view.combat_intrigue_complete),
             int(view.combat_rewards_resolved),
             len(view.current_conflict_ids),
-            int(view.conflict_wild_icon_bonus),
+            view.conflict_first_place_influence_bonus,
         ],
     )
     writer.write(
@@ -259,10 +258,6 @@ def encode_player_view(view: PlayerView) -> tuple[int, ...]:
     writer.write(
         "leader_draft_pool",
         pool_slots + [0] * (_LEADER_DRAFT_SLOTS - len(pool_slots)),
-    )
-    writer.write(
-        "wild_icon_conflicts",
-        _multi_hot(view.wild_icon_conflict_ids, CONFLICT_IDS),
     )
 
     for seat_offset in range(_SEATS):

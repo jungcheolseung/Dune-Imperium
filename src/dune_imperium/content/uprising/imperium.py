@@ -1023,7 +1023,7 @@ IMPERIUM_CARDS: Final = (
         factions=(Faction.FREMEN,),
         agent_icons=(AgentIcon.FREMEN, AgentIcon.CITY),
         agent_effect=(
-            PersonalCardAgentEffect.MAY_TRASH_SELF_FOR_TROOP_AND_WILD_BATTLE_ICON
+            PersonalCardAgentEffect.MAY_TRASH_SELF_FOR_TROOP_AND_FIRST_PLACE_INFLUENCE
         ),
         reveal_persuasion=1,
         reveal_strength=2,

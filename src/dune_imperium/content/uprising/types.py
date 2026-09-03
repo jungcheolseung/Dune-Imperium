@@ -102,8 +102,8 @@ class PersonalCardAgentEffect(StrEnum):
         "may_pay_two_spice_for_shield_wall_and_sandworm_if_maker_hooks"
     )
     GAIN_REWARDS_PER_FACE_UP_BATTLE_ICON = "gain_rewards_per_face_up_battle_icon"
-    MAY_TRASH_SELF_FOR_TROOP_AND_WILD_BATTLE_ICON = (
-        "may_trash_self_for_troop_and_wild_battle_icon"
+    MAY_TRASH_SELF_FOR_TROOP_AND_FIRST_PLACE_INFLUENCE = (
+        "may_trash_self_for_troop_and_first_place_influence"
     )
     DRAW_INTRIGUE_IF_SPY_RECALLED_THIS_TURN = (
         "draw_intrigue_if_spy_recalled_this_turn"

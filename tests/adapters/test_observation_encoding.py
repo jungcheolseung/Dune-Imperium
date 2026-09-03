@@ -29,7 +29,7 @@ def test_layout_is_versioned_and_contiguous() -> None:
     assert len(INTRIGUE_IDS) == 39
     assert len(CONFLICT_IDS) == 16
     assert len(BATTLE_CARD_IDS) == 21
-    assert OBSERVATION_SIZE == 2038
+    assert OBSERVATION_SIZE == 2022
 
     offset = 0
     for segment in OBSERVATION_SEGMENTS:

@@ -23,7 +23,7 @@ from dune_imperium.rules.card_bonds import has_faction_bond
 from dune_imperium.rules.card_discard import discard_personal_card_from_hand
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.card_trash import trash_personal_card
-from dune_imperium.rules.combat import face_up_battle_icon_counts
+from dune_imperium.rules.combat import face_up_battle_icons
 from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effects import (
     advance_after_effect,
@@ -782,7 +782,7 @@ def legal_agent_card_trash_actions(
         PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND,
         PersonalCardAgentEffect.MAY_TRASH_FOR_INTRIGUE_AND_TWO_TROOPS_IF_BENE_GESSERIT_ALLIANCE,
         PersonalCardAgentEffect.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE,
-        PersonalCardAgentEffect.MAY_TRASH_SELF_FOR_TROOP_AND_WILD_BATTLE_ICON,
+        PersonalCardAgentEffect.MAY_TRASH_SELF_FOR_TROOP_AND_FIRST_PLACE_INFLUENCE,
         PersonalCardAgentEffect.GAIN_REWARDS_PER_FACE_UP_BATTLE_ICON,
     ):
         return ()
@@ -799,7 +799,7 @@ def legal_agent_card_trash_actions(
     eligible = (*owner.hand, *owner.discard_pile, *owner.in_play)
     if (
         source_card.agent_effect
-        is PersonalCardAgentEffect.MAY_TRASH_SELF_FOR_TROOP_AND_WILD_BATTLE_ICON
+        is PersonalCardAgentEffect.MAY_TRASH_SELF_FOR_TROOP_AND_FIRST_PLACE_INFLUENCE
     ):
         # "Trash this card" is the arrow cost (OQ-022: a card already trashed
         # by another effect expired before this choice was offered).
@@ -899,10 +899,11 @@ def apply_agent_card_trash(state: GameState, action: DomainAction) -> RuleResult
         return RuleResult(state=next_state, events=trashed.events)
     if (
         source_card.agent_effect
-        is PersonalCardAgentEffect.MAY_TRASH_SELF_FOR_TROOP_AND_WILD_BATTLE_ICON
+        is PersonalCardAgentEffect.MAY_TRASH_SELF_FOR_TROOP_AND_FIRST_PLACE_INFLUENCE
     ):
-        # Pivotal Gambit: the trashed card pays for one troop and pledges a
-        # wild battle icon to this Conflict's first-place reward (OQ-025).
+        # Pivotal Gambit: the trashed card pays for one troop and adds "gain
+        # 1 Influence of your choice" to this Conflict's first-place reward
+        # (OQ-025).
         next_owner, recruited = recruit_troops(
             trashed.state.players[action.actor],
             1,
@@ -914,7 +915,9 @@ def apply_agent_card_trash(state: GameState, action: DomainAction) -> RuleResult
         pledged = replace(
             trashed.state,
             players=replace_player(trashed.state.players, next_owner),
-            conflict_wild_icon_bonus=True,
+            conflict_first_place_influence_bonus=(
+                trashed.state.conflict_first_place_influence_bonus + 1
+            ),
         )
         next_state = advance_after_effect(pledged, context, pledged.players)
         return RuleResult(
@@ -927,8 +930,8 @@ def apply_agent_card_trash(state: GameState, action: DomainAction) -> RuleResult
                     payload=(("amount", recruited), ("player", action.actor)),
                 ),
                 GameEvent(
-                    event_id=f"{source}:trash_reward:wild_battle_icon",
-                    kind="wild_battle_icon_pledged",
+                    event_id=f"{source}:trash_reward:first_place_influence",
+                    kind="first_place_influence_pledged",
                     payload=(
                         ("conflict_id", state.current_conflict_ids[-1]),
                         ("player", action.actor),
@@ -2100,12 +2103,15 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         next_owner = owner
         event_kind = "agent_card_effect_unavailable"
     elif effect is PersonalCardAgentEffect.GAIN_REWARDS_PER_FACE_UP_BATTLE_ICON:
-        # The Beast's Spoils: one reward per face-up printed icon in the
-        # owner's supply (OQ-024). Spice and troops resolve here; each
-        # Crysknife's optional trash is then offered one at a time.
-        counts = face_up_battle_icon_counts(owner)
-        spice = counts[BattleIcon.DESERT_MOUSE]
-        next_owner, recruited = recruit_troops(owner, counts[BattleIcon.ORNITHOPTER])
+        # The Beast's Spoils: one reward per printed battle icon kind that is
+        # face up in the owner's supply — immediate matching keeps at most
+        # one face-up card per icon [Main p. 14] (OQ-024). Spice and the
+        # troop resolve here; the Crysknife's optional trash is then offered.
+        icons = face_up_battle_icons(owner)
+        spice = int(BattleIcon.DESERT_MOUSE in icons)
+        next_owner, recruited = recruit_troops(
+            owner, int(BattleIcon.ORNITHOPTER in icons)
+        )
         next_owner = replace(
             next_owner,
             resources=replace(
@@ -2117,7 +2123,7 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         if isinstance(previous, bool) or not isinstance(previous, int):
             raise RuntimeError("Agent-turn effect frame has invalid recruit count")
         context["troops_recruited"] = previous + recruited
-        crysknives = counts[BattleIcon.CRYSKNIFE]
+        crysknives = int(BattleIcon.CRYSKNIFE in icons)
         event_kind = (
             "agent_card_effect_resolved"
             if spice or recruited or crysknives
