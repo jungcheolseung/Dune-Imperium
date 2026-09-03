@@ -128,6 +128,7 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 - **`6b9eae2` UI**: 게임 화면을 viewport 고정 3열 테이블로 재구성(좌: 좌석 카드 — 리더 썸네일·자원/Influence/병력 아이콘 스탯; 중: 보드 스테이지 + 공용 카드 띠(Conflict·Imperium Row·Reserve·Contract·Intrigue discard·draft 중 Leader pool); 우: 결정 패널·undo·검토 바·순위·행동 로그·종료 후 공개; 하단: 내 손패·Intrigue 카드 이미지). hotspot은 합법이면 발광, 클릭 시 합법 행동 1개면 즉시 적용·여러 개면 우측 목록 강조(`data-refs`)·없으면 popover. Agent 토큰·Control 플래그·Maker bonus spice·Spy(관측소 좌표)를 겹쳐 그린다. `ICON_RULES` glossary가 서버의 영어 효과 텍스트를 아이콘으로 재렌더(원문은 tooltip). popover는 fixed 위치(열이 각자 스크롤). 스캔 없으면 텍스트 보드 목록, 이미지 없으면 텍스트 카드, 아이콘 없으면 단어.
 - 에셋 저장소(`Dune-Imperium-assets` `c57fa72`)에 `icons/` 45장과 `board/map.jpg`를 추가했고 이 머신은 `downloads/icons`·(선택) `map.jpg` symlink로 연결한다. 새 머신 설정은 그 README.
 - 검증: pytest 1,015, Ruff(`src tests`), mypy. headless Chromium E2E(스크래치 Playwright + ALSA stub): 게임 생성 → hotspot 22개·보드 이미지 로드·아이콘 65개 → popover(아이콘 4개) → 손패/hotspot 클릭으로 12단계 진행 → 토큰 4개·로그 19건, JS 오류 0·서버 오류 0. 스크린샷 검토로 hotspot 좌표가 스캔과 일치함을 확인했다.
+- 후속 수정: 손패의 Dagger·Diplomacy·Dune the Desert Planet·Reconnaissance가 텍스트 카드로 보인다는 사용자 지적 → Uprising판 이미지가 Dune Cards Hub에 없어 `KNOWN_MISSING`이던 네 장을 동일 인쇄물인 기본판 `dune-imperium-other-*.webp`로 매핑(`required_images` 170장, `KNOWN_MISSING`은 빈 집합으로 유지).
 - 남은 개선: Influence·VP 트랙 마커를 보드 위에 그리기, 아이콘 키잉 tolerance(프레임형 Agent 아이콘 모서리의 잔여 베이지), 같은 카드 2장으로 생기는 중복 행동 라벨 구분.
 
 ## 2026-09-02 M11 슬라이스 6 세션 요약 (행동 되돌리기 + 실시간 행동 로그)
