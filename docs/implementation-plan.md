@@ -231,7 +231,7 @@ tests/
 - 인쇄된 Leader 9종의 능력과 Signet Ring이 모두 play된다 ([Leader audit](implementation-audits/leaders.md)).
 - Objective는 setup·battle icon·Endgame wild·Intrigue flip 상호작용 재감사를 마쳤고 OQ-005를 해소했다 ([Objective audit](implementation-audits/objectives.md)).
 
-남은 콘텐츠(2026-09-03 사용자 결정): **Uprising 프로모 Imperium 3장** — Arrakis Revolt(Fremen, 비용 6, acquire troop, City 아이콘; Reveal: Maker Hooks 조건으로 2 spice → Shield Wall 제거 + sandworm, 1 Persuasion 3 sword), The Beast's Spoils(Emperor, 비용 3, City 아이콘; Reveal: 공개된 battle icon마다 보상 — Crysknife: trash, Desert Mouse: 1 spice, Ornithopter: troop, 3 sword), Pivotal Gambit(Fremen, 비용 3, Fremen·City 아이콘; Reveal: 이 카드 trash → troop 그리고 이번 Conflict 1위 보상에 wild battle icon 추가, 1 Persuasion 2 sword). 정식 덱에 없는 후속 프로모지만 Uprising 양식이라 구현 대상이다(카드 텍스트는 위 요약이 아니라 에셋 저장소의 `uprising/promo/` 이미지로 검증한 뒤 전사한다; 덱 포함 여부는 ruleset option). 이미지 캐시의 다른 프로모 6장(Boundless Ambition, Duncan Loyal Blade, Jessica of Arrakis, Ruthless Leadership, Thumper, Piter Genius Advisor)은 다른 확장팩의 프로모라 범위 밖이다.
+남은 콘텐츠(2026-09-03 사용자 결정): **Uprising 프로모 Imperium 3장** — Arrakis Revolt(Fremen, 비용 6, acquire troop, City 아이콘; Reveal: Maker Hooks 조건으로 2 spice → Shield Wall 제거 + sandworm, 1 Persuasion 3 sword), The Beast's Spoils(Emperor, 비용 3, City 아이콘; Reveal: 공개된 battle icon마다 보상 — Crysknife: trash, Desert Mouse: 1 spice, Ornithopter: troop, 3 sword), Pivotal Gambit(Fremen, 비용 3, Fremen·City 아이콘; Reveal: 이 카드 trash → troop 그리고 이번 Conflict 1위 보상에 wild battle icon 추가, 1 Persuasion 2 sword). 정식 덱에 없는 후속 프로모지만 Uprising 양식이라 구현 대상이다(카드 텍스트는 위 요약이 아니라 에셋 저장소의 `uprising/promo/` 이미지로 검증한 뒤 전사한다; 덱 포함 여부는 ruleset option). 이미지 캐시의 다른 프로모 6장은 각 확장팩의 프로모(base: Duncan Loyal Blade·Jessica of Arrakis·Thumper, Rise of Ix: Boundless Ambition, Immortality: Piter Genius Advisor, Bloodlines: Ruthless Leadership)라 범위 밖이다. 이 슬라이스는 M9보다 먼저 진행한다(사용자 결정).
 
 마일스톤 범위:
 
@@ -338,4 +338,4 @@ tests/
 
 ## 8. 바로 다음 작업
 
-R0~M8과 M11(슬라이스 7까지)이 완료된 2026-09-03 기준으로 다음 작업은 **M9 평가 러너와 baseline**이다(마일스톤 절의 M9 완료 조건을 따른다). 최신 기준선과 세부 착수점은 [개발 인수인계](development-handoff.md)가 관리한다.
+R0~M8과 M11(슬라이스 7까지)이 완료된 2026-09-03 기준으로 다음 작업은 **Uprising 프로모 Imperium 3장 콘텐츠 슬라이스**(M6 절)이고 그 뒤가 **M9 평가 러너와 baseline**이다(마일스톤 절의 M9 완료 조건을 따른다). 최신 기준선과 세부 착수점은 [개발 인수인계](development-handoff.md)가 관리한다.
