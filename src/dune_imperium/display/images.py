@@ -42,18 +42,17 @@ FILENAME_OVERRIDES: Final[Mapping[tuple[str, str], str]] = MappingProxyType(
         ("location", "high_council"): "uprising-location-hight-council.webp",
         ("location", "arrakeen"): "uprising-location-arakeen.webp",
         ("location", "deep_desert"): "uprising-location-deet-desert.webp",
-        # Dune Cards Hub publishes several art variants of these shared
-        # starting cards (e.g. "...-emperor.webp" and "...-muad-dib.webp");
-        # the "emperor" variant is an arbitrary cosmetic pick.
+        # The four-player starting deck is the base game's, unchanged, and
+        # Dune Cards Hub publishes those seven cards only under the base
+        # game. Its "uprising-other-...-emperor/-muad-dib" files are the
+        # six-player Commander starting decks (Rules Supplements p. 7 and
+        # p. 14: the top-right icon marks a Shaddam / Muad'Dib starting
+        # card), so they are not the printed four-player cards.
         ("other", "convincing_argument"): (
-            "uprising-other-convincing-argument-emperor.webp"
+            "dune-imperium-other-convincing-argument.webp"
         ),
-        ("other", "seek_allies"): "uprising-other-seek-allies-emperor.webp",
-        ("other", "signet_ring"): "uprising-other-signet-ring-emperor.webp",
-        # Uprising reprints these four starting cards unchanged from the base
-        # game, and Dune Cards Hub publishes them only under the base game
-        # (no "uprising-other-..." file exists), so the base-game scan is
-        # the printed card.
+        ("other", "seek_allies"): "dune-imperium-other-seek-allies.webp",
+        ("other", "signet_ring"): "dune-imperium-other-signet-ring.webp",
         ("other", "dagger"): "dune-imperium-other-dagger.webp",
         ("other", "diplomacy"): "dune-imperium-other-diplomacy.webp",
         ("other", "dune_the_desert_planet"): (
@@ -63,7 +62,7 @@ FILENAME_OVERRIDES: Final[Mapping[tuple[str, str], str]] = MappingProxyType(
     }
 )
 
-# Content with no published image at all. Empty since 2026-09-03 (the four
+# Content with no published image at all. Empty since 2026-09-03 (four of the
 # base-game starting cards above were the only members); the mechanism stays
 # so future content without upstream art degrades to text deliberately.
 KNOWN_MISSING: Final[frozenset[tuple[str, str]]] = frozenset()

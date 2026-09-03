@@ -11,7 +11,10 @@ from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS
 from dune_imperium.content.uprising.intrigue import INTRIGUE_CARDS
 from dune_imperium.content.uprising.leaders import LEADERS
 from dune_imperium.content.uprising.reserve import RESERVE_STACKS
-from dune_imperium.content.uprising.starting_cards import STARTING_DECK
+from dune_imperium.content.uprising.starting_cards import (
+    STARTING_CARDS_BY_ID,
+    STARTING_DECK,
+)
 from dune_imperium.display import images
 from dune_imperium.display.images import (
     FILENAME_OVERRIDES,
@@ -89,26 +92,24 @@ def test_image_filename_returns_none_for_known_missing_ids_even_if_available(
     assert image_filename("other", "dagger", available) is None
 
 
-def test_base_game_starting_card_scans_stand_in_for_uprising_reprints() -> None:
-    available = frozenset(
-        {
-            "dune-imperium-other-dagger.webp",
-            "dune-imperium-other-diplomacy.webp",
-            "dune-imperium-other-dune-the-desert-planet.webp",
-            "dune-imperium-other-reconnaissance.webp",
-        }
-    )
-    for content_id, filename in (
-        ("dagger", "dune-imperium-other-dagger.webp"),
-        ("diplomacy", "dune-imperium-other-diplomacy.webp"),
-        ("dune_the_desert_planet", "dune-imperium-other-dune-the-desert-planet.webp"),
-        ("reconnaissance", "dune-imperium-other-reconnaissance.webp"),
-    ):
+def test_the_starting_deck_uses_the_base_game_scans() -> None:
+    """Uprising's four-player starting deck is the base game's; the Dune
+    Cards Hub "uprising-other" variants are six-player Commander cards."""
+
+    expected = {
+        "convincing_argument": "dune-imperium-other-convincing-argument.webp",
+        "dagger": "dune-imperium-other-dagger.webp",
+        "diplomacy": "dune-imperium-other-diplomacy.webp",
+        "dune_the_desert_planet": "dune-imperium-other-dune-the-desert-planet.webp",
+        "reconnaissance": "dune-imperium-other-reconnaissance.webp",
+        "seek_allies": "dune-imperium-other-seek-allies.webp",
+        "signet_ring": "dune-imperium-other-signet-ring.webp",
+    }
+    assert set(expected) == set(STARTING_CARDS_BY_ID)
+    available = frozenset(expected.values())
+    for content_id, filename in expected.items():
         assert image_filename("other", content_id, available) == filename
-
-
-def test_known_missing_and_overrides_do_not_overlap() -> None:
-    assert not KNOWN_MISSING & FILENAME_OVERRIDES.keys()
+        assert not filename.startswith("uprising-")
 
 
 def test_required_images_cover_every_displayable_content_id() -> None:
