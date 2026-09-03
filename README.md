@@ -6,7 +6,7 @@
 
 2026-08-30 기준으로 기본 보드 시스템, multi-round 상태 전이와 개인 덱 reshuffle, 기본 룰셋 Imperium 카드 50종과 CHOAM 전용 4종, 총 54종의 play data가 구현되어 있다. CHOAM Module은 standard contract 20장의 identity·setup·공개 시장·완료 조건·인쇄 보상과 전용 Imperium 카드 효과까지 연결돼 있다. 현재 action codec은 v79이며 기본 룰셋은 4,152개, CHOAM 룰셋은 4,429개다. 전체 테스트 842개, Ruff, mypy가 통과한다.
 
-코어 엔진은 Endgame Intrigue window(OQ-001 convention)까지 갖춰 random 4인 게임을 FINISHED까지 완주하고 replay할 수 있다. Intrigue 44장은 39개 identity 전부가 effect DSL로 play되어 완결됐고, 인쇄된 Leader 9종(기본 8 + CHOAM 전용 Shaddam)의 능력과 Signet Ring도 모두 play된다. `run_random_game`/`run_policy_game` 러너와 `dune_imperium_uprising_v1` PettingZoo adapter는 전체 게임을 하나의 episode로 실행하며, 관측은 버전이 붙은 1,967-int 전체 게임 인코딩(v3), 보상은 승자독식 zero-sum 종료 보상이다 ([학습 환경 설계](docs/rl-environment.md)). AI 상대로는 seeded random 외에 M11의 규칙 기반 `HeuristicAgent`가 있으며, 검증 sweep은 `--policy {random,heuristic}`으로 두 baseline을 모두 완주 검사할 수 있다. Leader 선택은 OQ-007의 6종 공개 draft convention을 `RulesetConfig(leader_draft=True)` 옵션(sweep `--leader-draft`)으로 켤 수 있다(공식 규칙 아님; 기본은 고정 배정). M11 사람용 플레이(완료)는 FastAPI 기반 로컬 서버(`uv sync --extra rl --extra ui` 후 `uv run dune-imperium-server`, 기본 http://127.0.0.1:8000)로 한다: 브라우저에서 좌석 배정(사람/AI)·CHOAM·leader draft 설정부터 텍스트 카드 보드·행동 선택·최종 순위까지 한 게임을 완주할 수 있고, 같은 API를 JSON으로도 쓸 수 있다. 진행 중이거나 끝난 게임은 `GameReplay` 직렬화 기반 로컬 저장 파일(`--saves-dir`, 기본 `~/.dune-imperium/saves`)로 저장·불러오기가 되며, 불러온 게임은 저장하지 않은 세션과 동일하게 이어진다. 끝난 게임은 모든 좌석 시점을 step 단위로 되돌려 보는 replay 검토 화면으로 복기할 수 있고, 종료 후에는 모든 비공개 존이 공개된다(OQ-010). 진행 중에는 실시간 행동 로그(이벤트를 좌석별 가시성으로 걸러 표시)와 행동 되돌리기(자기 연속 행동만, 무작위 결과·다른 좌석 행동·숨겨진 정보의 공개 이후로는 불가; 되돌린 행동은 로그에 남음)를 쓸 수 있다.
+코어 엔진은 Endgame Intrigue window(OQ-001 convention)까지 갖춰 random 4인 게임을 FINISHED까지 완주하고 replay할 수 있다. Intrigue 44장은 39개 identity 전부가 effect DSL로 play되어 완결됐고, 인쇄된 Leader 9종(기본 8 + CHOAM 전용 Shaddam)의 능력과 Signet Ring도 모두 play된다. `run_random_game`/`run_policy_game` 러너와 `dune_imperium_uprising_v1` PettingZoo adapter는 전체 게임을 하나의 episode로 실행하며, 관측은 버전이 붙은 1,967-int 전체 게임 인코딩(v3), 보상은 승자독식 zero-sum 종료 보상이다 ([학습 환경 설계](docs/rl-environment.md)). AI 상대로는 seeded random 외에 M11의 규칙 기반 `HeuristicAgent`가 있으며, 검증 sweep은 `--policy {random,heuristic}`으로 두 baseline을 모두 완주 검사할 수 있다. Leader 선택은 OQ-007의 6종 공개 draft convention을 `RulesetConfig(leader_draft=True)` 옵션(sweep `--leader-draft`)으로 켤 수 있다(공식 규칙 아님; 기본은 고정 배정). M11 사람용 플레이(완료)는 FastAPI 기반 로컬 서버(`uv sync --extra rl --extra ui` 후 `uv run dune-imperium-server`, 기본 http://127.0.0.1:8000)로 한다: 브라우저에서 좌석 배정(사람/AI)·CHOAM·leader draft 설정부터 한 화면 게임 테이블(로컬 보드 스캔 위에 합법 공간 발광·Agent 토큰·Control·Spy를 겹쳐 그리고, 카드는 인쇄 이미지, 효과는 공식 룰북에서 추출한 아이콘으로 표시; 스캔·이미지·아이콘이 없으면 텍스트로 대체)·행동 선택·최종 순위까지 한 게임을 완주할 수 있고, 같은 API를 JSON으로도 쓸 수 있다. 진행 중이거나 끝난 게임은 `GameReplay` 직렬화 기반 로컬 저장 파일(`--saves-dir`, 기본 `~/.dune-imperium/saves`)로 저장·불러오기가 되며, 불러온 게임은 저장하지 않은 세션과 동일하게 이어진다. 끝난 게임은 모든 좌석 시점을 step 단위로 되돌려 보는 replay 검토 화면으로 복기할 수 있고, 종료 후에는 모든 비공개 존이 공개된다(OQ-010). 진행 중에는 실시간 행동 로그(이벤트를 좌석별 가시성으로 걸러 표시)와 행동 되돌리기(자기 연속 행동만, 무작위 결과·다른 좌석 행동·숨겨진 정보의 공개 이후로는 불가; 되돌린 행동은 로그에 남음)를 쓸 수 있다.
 
 ## 프로젝트 비전
 
@@ -34,7 +34,7 @@ Dune: Imperium을 Python으로 정확하고 재현 가능하게 구현하고, �
 ## 아직 결정하지 않은 사항
 
 - 학습 알고리즘과 모델 구조(관측 인코딩 v1과 종료 보상은 [학습 환경 설계](docs/rl-environment.md)로 확정했다)
-- 사람용 UI의 세부 화면·조작 설계(형태는 로컬 웹 UI로 확정, 2026-08-30; 구현 순서도 M11을 M9·M10보다 앞으로 조정했다. 2026-08-31에 효과 정보 전면 표시 — 보드 공간 패널, 카드 popover와 로컬 이미지, 행동 효과 미리보기 — 를 추가했고, 그 이상의 화면 개선은 여전히 열려 있다)
+- 사람용 UI의 추가 조작 개선(형태는 로컬 웹 UI로 확정, 2026-08-30; 구현 순서도 M11을 M9·M10보다 앞으로 조정했다. 2026-08-31에 효과 정보 전면 표시를, 2026-09-03에 보드 스캔 기반 한 화면 테이블과 룰북 아이콘 표시를 추가했다. Influence·VP 트랙 마커를 보드 위에 그리는 일 등은 열려 있다)
 - CHOAM 이후 다른 확장팩을 추가할 범위와 순서
 
 규칙 코어는 특정 RL 라이브러리에 의존하지 않게 만들고, 첫 표준 다중 에이전트 adapter는 PettingZoo AEC로 한다. 나머지 결정은 규칙 엔진의 수직 조각과 처리량 기준선을 확인한 뒤 명시적인 설계 문서와 테스트 기준으로 확정한다.
@@ -65,6 +65,24 @@ uv run scripts/prepare_official_rules.py
 - 외부 구조화 데이터의 사용 범위와 검증 정책은 [카드 데이터 전사 출처](docs/card-data-sources.md)에 기록한다.
 
 Dune Cards Hub는 카드 및 시각 자료의 참고 출처로 사용한다. 규칙 설명과 카드 효과 해석이 충돌할 경우에는 Dire Wolf Digital의 공식 룰북과 공식 보충 자료를 우선한다. 이미지 파일을 프로젝트에 포함하거나 재배포하기 전에는 필요한 범위와 이용 조건을 별도로 확인한다.
+
+### 로컬 UI 이미지 준비
+
+카드·보드·아이콘 원본은 저작권 때문에 이 저장소에 넣지 않는다. 플레이 서버는
+아래 세 위치를 있을 때만 서빙하고, 없으면 텍스트(및 텍스트 보드 목록)로
+대체한다. 소유자의 머신에서는 비공개 `Dune-Imperium-assets` 저장소를 옆에
+clone해 symlink로 연결한다(그 README 참고).
+
+- `downloads/dunecardshub/cards/` (또는 `DUNE_IMPERIUM_CARD_IMAGE_DIR`): Dune
+  Cards Hub 카드 이미지 캐시. `uv run scripts/fetch_card_images.py`로 채운다.
+- `downloads/icons/` (또는 `DUNE_IMPERIUM_ICON_DIR`): 공식 Uprising Main
+  Rulebook의 Icon Guide(20쪽)와 Agent 아이콘(9쪽)에서 잘라낸 투명 PNG 45장.
+  `uv run --with pymupdf --with pillow scripts/extract_rulebook_icons.py`가
+  고정된 PDF를 내려받아 sha256을 검증한 뒤 추출한다(이름 목록은
+  `dune_imperium.display.icons`).
+- `map.jpg` (또는 `DUNE_IMPERIUM_BOARD_IMAGE`): 4인 보드 스캔. hotspot·관측소
+  좌표(`dune_imperium.display.board_layout`)는 소유자의 6012×6005 정사각형
+  스캔 기준 퍼센트 값이라 다른 프레이밍의 스캔은 재측정이 필요하다.
 
 ## 개발 환경
 

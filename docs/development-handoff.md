@@ -1,6 +1,6 @@
 # 개발 인수인계
 
-기준일: 2026-09-02
+기준일: 2026-09-03
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
@@ -17,11 +17,11 @@ uv run ruff check src tests
 uv run mypy src tests
 ```
 
-2026-09-02의 기준 결과는 pytest 1,003개 통과(카드 이미지 캐시가 없는 머신은 1,002 통과 + 1 skip), Ruff 통과, mypy 통과다. 현재 action codec은 `ACTION_CODEC_VERSION = 84`(기본 4,314개, CHOAM 4,600개)이고, 관측은 `OBSERVATION_VERSION = 3`의 1,967-int 전체 게임 인코딩이다 ([`rl-environment.md`](rl-environment.md)). 보드 22칸 완결 + 즉시 공개 + `fab266f`/`e6fc298` 수정 + sweep 확장(`853ecd4`) 반영 후의 교차 소크는 random 룰셋당 2,000판 + heuristic 룰셋당 1,000판(둘 다 `--rotate-leaders`) + draft 두 policy 각 룰셋당 500판, 전부 `--soundness-interval 25`를 켠 총 7,000판이 실패 0으로 통과한 상태다(2026-09-01, 아래 세션 요약. 그 전 단계에서는 random 룰셋당 3,000판 비회전 소크도 실패 0이었다).
+2026-09-03의 기준 결과는 pytest 1,015개 통과(카드 이미지 캐시가 없는 머신은 1,014 통과 + 1 skip), Ruff 통과, mypy 통과다. 현재 action codec은 `ACTION_CODEC_VERSION = 84`(기본 4,314개, CHOAM 4,600개)이고, 관측은 `OBSERVATION_VERSION = 3`의 1,967-int 전체 게임 인코딩이다 ([`rl-environment.md`](rl-environment.md)). 보드 22칸 완결 + 즉시 공개 + `fab266f`/`e6fc298` 수정 + sweep 확장(`853ecd4`) 반영 후의 교차 소크는 random 룰셋당 2,000판 + heuristic 룰셋당 1,000판(둘 다 `--rotate-leaders`) + draft 두 policy 각 룰셋당 500판, 전부 `--soundness-interval 25`를 켠 총 7,000판이 실패 0으로 통과한 상태다(2026-09-01, 아래 세션 요약. 그 전 단계에서는 random 룰셋당 3,000판 비회전 소크도 실패 0이었다).
 
 ## 현재 구현 기준선
 
-마지막 기능 커밋 묶음은 2026-09-01 검증 강화 캠페인의 보드 공간 완결 슬라이스들이다: `d7703ef`(Dutiful Service CHOAM contract), `e141492` (Shipping, codec v80), `63a8994`(Desert Tactics, codec v81), `49a5bb6` (Imperial Privilege, codec v82, OQ-023), `78fa1a3`(Secrets chance 강탈, SECRETS_STEAL frame), `881d88b`(Reveal 중 hand 진입 카드의 FAQ p. 3 즉시 공개, OQ-015(c) 해소), `fab266f`·`e6fc298`(소크가 적발한 mid-frame trash 충돌 두 계열의 OQ-022 확장 수정). 이로써 **4인 보드 22칸 전부가 배치·해결 가능**하고 Reveal 중 draw/hand-acquire Plot 보류도 사라졌다. 그 앞은 `4c175d1`(카드 이미지 캐시 다운로드 스크립트)이고, 그 앞에 UI 효과 표시 작업의 `3e2ae8f`(행동 효과 미리보기 + 전체 행동 라벨), `d275a66`(보드 공간 패널·popover·카드 이미지), `d34a2d1`(/catalog 효과 텍스트·이미지), `a4befd4`(display 패키지), `3c1cc69`(정적 보드 효과 테이블), 그리고 M11의 `e44900a`(저장/불러오기/검토 브라우저 UI), 슬라이스 5 서버 API `8ab3cd2`, 브라우저 UI `42be883`, FastAPI 세션 서버 `4fbd751`, Leader draft `c0c1795`, Treacherous Maneuver OQ-022 수정 `d70b353`, 슬라이스 1 묶음(`1a449f4`+`7a53c8f`+`ac4d6d4`)이 있다. 마일스톤 현황: **R0~M8, M11 완료**(M6 콘텐츠, M7 완주 검증, M8 CHOAM, M11 사람용 로컬 웹 UI — 완료 판정 근거는 `implementation-plan.md` M11 절), **다음은 M9**.
+마지막 기능 커밋 묶음은 2026-09-01 검증 강화 캠페인의 보드 공간 완결 슬라이스들이다: `d7703ef`(Dutiful Service CHOAM contract), `e141492` (Shipping, codec v80), `63a8994`(Desert Tactics, codec v81), `49a5bb6` (Imperial Privilege, codec v82, OQ-023), `78fa1a3`(Secrets chance 강탈, SECRETS_STEAL frame), `881d88b`(Reveal 중 hand 진입 카드의 FAQ p. 3 즉시 공개, OQ-015(c) 해소), `fab266f`·`e6fc298`(소크가 적발한 mid-frame trash 충돌 두 계열의 OQ-022 확장 수정). 이로써 **4인 보드 22칸 전부가 배치·해결 가능**하고 Reveal 중 draw/hand-acquire Plot 보류도 사라졌다. 그 앞은 `4c175d1`(카드 이미지 캐시 다운로드 스크립트)이고, 그 앞에 UI 효과 표시 작업의 `3e2ae8f`(행동 효과 미리보기 + 전체 행동 라벨), `d275a66`(보드 공간 패널·popover·카드 이미지), `d34a2d1`(/catalog 효과 텍스트·이미지), `a4befd4`(display 패키지), `3c1cc69`(정적 보드 효과 테이블), 그리고 M11의 `e44900a`(저장/불러오기/검토 브라우저 UI), 슬라이스 5 서버 API `8ab3cd2`, 브라우저 UI `42be883`, FastAPI 세션 서버 `4fbd751`, Leader draft `c0c1795`, Treacherous Maneuver OQ-022 수정 `d70b353`, 슬라이스 1 묶음(`1a449f4`+`7a53c8f`+`ac4d6d4`)이 있다. 마일스톤 현황: **R0~M8, M11 완료**(M6 콘텐츠, M7 완주 검증, M8 CHOAM, M11 사람용 로컬 웹 UI — 슬라이스 7까지, 완료 판정 근거는 `implementation-plan.md` M11 절), **다음은 M9**.
 
 - R0-M4는 완료됐다. 공식 규칙 자료, 엔진 커널, 4인 setup, 한 라운드 수직 조각, actor-neutral action codec과 PettingZoo AEC 계약이 있다.
 - M5의 주요 시스템은 연결돼 있다. Influence/Friendship/Alliance, Agent와 Reveal, Spy/Infiltrate/Gather Intelligence, 개인 덱 reshuffle chance, Combat 순위와 보상, sandworm·Shield Wall·control, Makers·Recall, Endgame window와 게임 종료까지 실행할 수 있다.
@@ -49,7 +49,7 @@ uv run mypy src tests
 
 2026-09-01의 **검증 강화 캠페인**(사용자 확정 범위: 전체 1→4)은 같은 날 완료했다: 1단계 보드 22칸 완결 + OQ-015(c), 2단계 sweep 확장 (`853ecd4`: 커버리지 census `--coverage-json`, 표본 주기 legal-action 전수 적용 + codec 왕복 `--soundness-interval`, seed별 리더 회전 `--rotate-leaders`), 3단계 교차 소크(아래), 4단계 대조(DIU 63종 전부 일치, open-questions 23건 재점검). 세부는 아래 세션 요약.
 
-0. (2026-09-02 완료) M11 슬라이스 6 행동 되돌리기 + 실시간 행동 로그 — 아래 세션 요약.
+0. (2026-09-03 완료) M11 슬라이스 7 보드 스캔 테이블 + 룰북 아이콘 — 아래 세션 요약. (2026-09-02 완료) 슬라이스 6 행동 되돌리기 + 실시간 행동 로그.
 1. **M9 평가 러너와 baseline.** 여러 게임을 병렬 구동하고 정책 추론만 batch하는 self-play 러너, random/heuristic(M11 상대에서 출발)/rollout baseline, 좌석·리더·first player·seed 교차 대회 도구 (`implementation-plan.md`의 M9). 관측·보상 계약은 [`rl-environment.md`](rl-environment.md)로 고정돼 있고, 병렬 실행 선례는 `simulation/sweep.py`다. 더 큰 야간 규모 재검증이 필요하면 `dune-imperium-sweep --games 50000 --ruleset both --workers 8 --rotate-leaders --soundness-interval 25 --coverage-json ...`을 커밋된 트리에서 돌린다.
 2. **M10 강화학습과 league self-play.** M9의 평가 행렬 위에서 시작한다 (`implementation-plan.md`의 M10).
 
@@ -118,7 +118,17 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 
 ## 원격 저장소 인계 주의
 
-2026-09-02 세션 시작 시점에 `origin/master`와 로컬은 `5b51928`로 일치했고, 이 날의 커밋들(`8bb3bfe`부터 슬라이스 6까지)은 로컬에만 있다(push는 사용자 판단으로 한다). 새 세션은 `git log origin/master..master`와 반대 방향을 모두 확인하고, checkout이 `853ecd4`보다 이전이면 이 문서의 989개 테스트·codec v84 기준선이 실제 코드와 일치하지 않는다. **다른 머신에서 이어서 작업한다면 먼저 이 머신에서 push가 필요하다.** 새 머신의 UI 카드 이미지는 비공개 `Dune-Imperium-assets` 저장소를 clone해 symlink로 연결하고(그 README 참고), 접근이 없을 때만 `uv run scripts/fetch_card_images.py`로 채운다 (선택; 없으면 텍스트만). 2026-09-01부터 이 머신의 캐시는 그 symlink다.
+2026-09-03 세션 시작 시점에 `origin/master`와 로컬은 `e4ac740`으로 일치했고, 이 날의 슬라이스 7 커밋들(`3d70e38`부터)은 로컬에만 있다(push는 사용자 판단으로 한다). 원격에는 병합하지 않은 `kyungtae` 브랜치가 있다. 새 세션은 `git log origin/master..master`와 반대 방향을 모두 확인하고, checkout이 `853ecd4`보다 이전이면 이 문서의 989개 테스트·codec v84 기준선이 실제 코드와 일치하지 않는다. **다른 머신에서 이어서 작업한다면 먼저 이 머신에서 push가 필요하다.** 새 머신의 UI 카드 이미지는 비공개 `Dune-Imperium-assets` 저장소를 clone해 symlink로 연결하고(그 README 참고), 접근이 없을 때만 `uv run scripts/fetch_card_images.py`로 채운다 (선택; 없으면 텍스트만). 2026-09-01부터 이 머신의 캐시는 그 symlink다.
+
+## 2026-09-03 M11 슬라이스 7 세션 요약 (보드 스캔 테이블 + 룰북 아이콘)
+
+- 친구의 원격 브랜치 `kyungtae`(`881849c`, timethinker-GoNe, 2026-09-01 "Build an immersive single-screen game table")를 검토했다. 방향(보드 이미지 위 hotspot, 좌석색 Agent 토큰, 카드 이미지 손패·Imperium Row)은 채택하되 base가 `af8ff7c`로 master보다 33커밋 뒤라 5개 파일 충돌, master의 v3 관측(`private.discard_pile` 제거)에서 런타임 오류, undo·로그·공개 패널이 들어갈 자리 없음 등이 있어 병합하지 않고 master 위에 새로 구현했다(사용자: "꼭 그대로 병합할 필요는 없다"). 브랜치는 원격에 그대로 남아 있다.
+- 사용자 판정: 보드 원본은 저장소 루트 `map.jpg`(Tabletop Simulator에서 가져온 6012×6005 스캔, gitignore); 효과 텍스트는 카드·보드처럼 아이콘으로 표시하고 아이콘은 룰북·카드에서 추출한다.
+- **`3d70e38` 서버·display**: `display/board_layout.py`(22칸 `SPACE_BOXES` + 관측소 13곳 `POST_POINTS`, 2% 격자 오버레이로 수측정, 테스트가 엔진 id 전수 커버와 비겹침을 고정), `display/icons.py`(공식 Uprising Main Rulebook 20쪽 Icon Guide + 9쪽 Agent 아이콘의 image xref 45개), `scripts/extract_rulebook_icons.py`(card-implementer 서브에이전트 구현: 공식 URL 다운로드·sha256 검증·PyMuPDF 추출·4-연결 flood fill 배경 키잉, `uv run --with pymupdf --with pillow`), 서버 `/board-image`(`map.jpg` 또는 `DUNE_IMPERIUM_BOARD_IMAGE`)·`/icons`(`downloads/icons` 또는 `DUNE_IMPERIUM_ICON_DIR`), catalog `spaces[id].box`·`posts`·`icons`·`board_image`. 없으면 null/빈 값.
+- **`6b9eae2` UI**: 게임 화면을 viewport 고정 3열 테이블로 재구성(좌: 좌석 카드 — 리더 썸네일·자원/Influence/병력 아이콘 스탯; 중: 보드 스테이지 + 공용 카드 띠(Conflict·Imperium Row·Reserve·Contract·Intrigue discard·draft 중 Leader pool); 우: 결정 패널·undo·검토 바·순위·행동 로그·종료 후 공개; 하단: 내 손패·Intrigue 카드 이미지). hotspot은 합법이면 발광, 클릭 시 합법 행동 1개면 즉시 적용·여러 개면 우측 목록 강조(`data-refs`)·없으면 popover. Agent 토큰·Control 플래그·Maker bonus spice·Spy(관측소 좌표)를 겹쳐 그린다. `ICON_RULES` glossary가 서버의 영어 효과 텍스트를 아이콘으로 재렌더(원문은 tooltip). popover는 fixed 위치(열이 각자 스크롤). 스캔 없으면 텍스트 보드 목록, 이미지 없으면 텍스트 카드, 아이콘 없으면 단어.
+- 에셋 저장소(`Dune-Imperium-assets` `c57fa72`)에 `icons/` 45장과 `board/map.jpg`를 추가했고 이 머신은 `downloads/icons`·(선택) `map.jpg` symlink로 연결한다. 새 머신 설정은 그 README.
+- 검증: pytest 1,015, Ruff(`src tests`), mypy. headless Chromium E2E(스크래치 Playwright + ALSA stub): 게임 생성 → hotspot 22개·보드 이미지 로드·아이콘 65개 → popover(아이콘 4개) → 손패/hotspot 클릭으로 12단계 진행 → 토큰 4개·로그 19건, JS 오류 0·서버 오류 0. 스크린샷 검토로 hotspot 좌표가 스캔과 일치함을 확인했다.
+- 남은 개선: Influence·VP 트랙 마커를 보드 위에 그리기, 아이콘 키잉 tolerance(프레임형 Agent 아이콘 모서리의 잔여 베이지), 같은 카드 2장으로 생기는 중복 행동 라벨 구분.
 
 ## 2026-09-02 M11 슬라이스 6 세션 요약 (행동 되돌리기 + 실시간 행동 로그)
 

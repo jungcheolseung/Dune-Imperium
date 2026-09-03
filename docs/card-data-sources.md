@@ -45,6 +45,21 @@ the file set `display.images.required_images()` enumerates; with the
 symlink in place the script also fills gaps for newly implemented content
 directly into the assets checkout for commit there.
 
+The table UI (2026-09-03) adds two more machine-local, never-committed
+assets under the same policy: the rulebook icon set (`downloads/icons/`,
+45 transparent PNGs that `scripts/extract_rulebook_icons.py` cuts out of
+the pinned official Uprising Main Rulebook by image xref — Icon Guide p. 20
+and the Agent-icon list p. 9 — after verifying the file's sha256; names in
+`display/icons.py`) and the owner's board scan (`map.jpg`, served at
+`/board-image`). The browser renders the generated effect text through an
+icon glossary (`ICON_RULES` in `static/app.js`): resources, troops, cards,
+Influence, Persuasion, swords, Spies and the like become the printed icons
+with the text kept as the tooltip, and without the icon set the words show
+as-is. Hotspot and observation-post coordinates live in
+`display/board_layout.py` as percentages of the scan and are pinned by
+tests to cover all 22 spaces and 13 posts. Both assets are mirrored in the
+private `Dune-Imperium-assets` repository (`icons/`, `board/`).
+
 ### Development audit workflow
 
 DIU is never discovered or loaded by the game runtime. A developer may pass an

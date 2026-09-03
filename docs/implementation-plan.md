@@ -1,6 +1,6 @@
 # Dune: Imperium - Uprising 구현 계획
 
-상태: 초안 7 (2026-08-30) — R0 규칙 명세, M0 개발 골격, M1 엔진 커널, M2 4인 setup과 정적 보드, M3 한 라운드 수직 조각, M4 RL 인터페이스 조기 검증 완료. M5의 기본 시스템 경계는 대부분 연결됐고 콘텐츠 의존 항목이 남아 있다. M6는 Leader 9종 능력·Signet Ring과 Objective 상호작용 재감사까지 마쳐 완료됐고, M8도 Shaddam의 Sardaukar contract와 CHOAM 전용 콘텐츠까지 연결돼 완료됐다. 전체 게임 러너와 PettingZoo 전체 게임 episode ([rl-environment.md](rl-environment.md)), 그리고 M7의 `dune-imperium-sweep` 완주 검증(룰셋당 10,000판 실패 0)까지 끝났다. M11 사람용 플레이 인터페이스(2026-08-30 순서 변경으로 M9·M10보다 선행)는 2026-08-31에 저장/불러오기와 replay 검토까지 완료됐다. 다음 마일스톤은 M9 평가 환경이고 M10 강화학습이 그 뒤를 잇는다.
+상태: 초안 7 (2026-08-30) — R0 규칙 명세, M0 개발 골격, M1 엔진 커널, M2 4인 setup과 정적 보드, M3 한 라운드 수직 조각, M4 RL 인터페이스 조기 검증 완료. M5의 기본 시스템 경계는 대부분 연결됐고 콘텐츠 의존 항목이 남아 있다. M6는 Leader 9종 능력·Signet Ring과 Objective 상호작용 재감사까지 마쳐 완료됐고, M8도 Shaddam의 Sardaukar contract와 CHOAM 전용 콘텐츠까지 연결돼 완료됐다. 전체 게임 러너와 PettingZoo 전체 게임 episode ([rl-environment.md](rl-environment.md)), 그리고 M7의 `dune-imperium-sweep` 완주 검증(룰셋당 10,000판 실패 0)까지 끝났다. M11 사람용 플레이 인터페이스(2026-08-30 순서 변경으로 M9·M10보다 선행)는 2026-08-31에 저장/불러오기와 replay 검토까지, 2026-09-03에 슬라이스 7(보드 스캔 테이블 + 아이콘)까지 완료됐다. 다음 마일스톤은 M9 평가 환경이고 M10 강화학습이 그 뒤를 잇는다.
 
 이 문서는 규칙 엔진부터 강화학습 AI와 사람용 플레이 인터페이스까지의 구현 순서와 각 단계의 완료 조건을 정의한다. 구현 중 새 규칙을 발견하더라도 핵심 계층의 책임을 유지하고, 마일스톤별 검증을 통과한 뒤 다음 범위로 진행한다.
 
@@ -268,6 +268,8 @@ tests/
 
 **슬라이스 6(완료, 2026-09-02): 행동 되돌리기 + 실시간 행동 로그.** 서버는 모든 단계를 기록하고 상태는 불변이므로, 되돌리기는 기록을 특정 단계까지 잘라내고 검토와 같은 방식으로 상태를 복원하는 서버·UI 작업이다(엔진 변경 없음). 구현: `server/session_log.py`(append-only 세션 로그 = 단계 + 그 단계의 이벤트 + 되돌림 마커, `reveals_hidden_information`은 `core.observation.known_card_seats`로 정보 흐름을 판정), `GameSessionManager.undo`/`log`, 저장 형식 v2(로그와 되돌린 구간 보관; v1도 읽음), `POST /games/{id}/undo`·`GET /games/{id}/log`, 검토 메타의 `undo_history`, UI의 되돌리기 버튼·행동 로그 패널·검토 마커. headless Chromium E2E로 확인했다. 허용 경계는 OQ-010의 정보 흐름 세 가지로 정한다: (1) 숨겨진 더미에서 누군가에게 흘러간 정보 — 자기 덱 draw(덱 맨 위를 본 뒤 다른 선택을 막기 위해 자기 draw 포함), Intrigue draw, Imperium Row 보충, Conflict 공개, contract bank 뒤집기, Secrets 강탈 — 는 되돌릴 수 없다; (2) 자기 비공개 존에서 공개 존으로 스스로 옮긴 정보(Intrigue play, hand discard·trash, Reveal)는 손해를 감수하고 되돌릴 수 있다; (3) 다른 좌석(AI 포함)이 행동한 뒤에는 그 이전으로 되돌릴 수 없다. 즉 되돌리기 창은 "마지막 무작위 결과 또는 다른 좌석의 행동 이후 자신이 연속으로 한 행동들"이고, 판정은 단계 적용 전후 상태 비교(비공개 존의 card id가 어느 좌석에게든 보이는 존에 나타났는지)로 구현해 새 콘텐츠에서도 자동으로 잡는다. 요청자는 되돌려지는 행동의 좌석 본인으로 한정하고, 되돌린 행동은 세션 로그(엔진 `event_log`가 아닌 서버 보관 로그)에 "되돌림"으로 공개 기록하며, 저장 파일에도 되돌린 구간을 보관해 검토 화면에서 보여 준다. 실시간 행동 로그(같은 세션 로그를 `visible_to`로 걸러 표시)도 이 슬라이스에서 함께 만든다.
 
+**슬라이스 7(완료, 2026-09-03): 보드 스캔 위의 한 화면 테이블 + 룰북 아이콘.** 방향은 친구의 `kyungtae` 브랜치(`881849c`, 보드 이미지 위 hotspot·좌석색 토큰·카드 이미지 손패)에서 가져오되, 그 브랜치가 master보다 33커밋 뒤처져 v3 관측·undo·로그·공개 패널과 충돌하므로 병합하지 않고 master 위에 새로 구현했다(사용자 결정). 사용자 판정 두 가지: 보드 원본은 `images/`가 아니라 저장소 루트의 `map.jpg`(gitignore)로 두고, 효과는 텍스트 대신 카드·보드처럼 아이콘으로 보여주되 아이콘은 룰북·카드에서 뽑아 만든다. 구현: `display/board_layout.py`(22칸 박스 + 관측소 13곳의 퍼센트 좌표, 소유자 스캔 기준 수측정), `display/icons.py` + `scripts/extract_rulebook_icons.py`(고정 공식 룰북 PDF의 image xref 45개를 sha256 검증 후 추출·배경 키잉), 서버 `/board-image`·`/icons`와 catalog의 `box`·`posts`·`icons`·`board_image`, 브라우저의 3열 고정 테이블(좌석/보드+공용 카드/결정·로그·공개)과 하단 손패, 아이콘 glossary(`ICON_RULES`)로 서버 효과 텍스트를 인쇄 아이콘으로 재렌더. 스캔·이미지·아이콘이 없으면 각각 텍스트 보드 목록·텍스트 카드·단어로 대체된다. headless Chromium E2E(JS·서버 오류 0)로 확인했다. 열린 항목: Influence·VP 트랙 마커의 보드 위 표시, 아이콘 키잉 tolerance 미세 조정(일부 프레임 아이콘 모서리의 잔여 베이지).
+
 - 한 사람과 세 AI, 좌석·리더 선택, 저장/불러오기, undo가 아닌 replay 검토를 지원한다. 저장/불러오기는 `GameReplay` 직렬화 위에 만든다.
 - AI 상대는 `RandomAgent`와 이 마일스톤에서 만드는 간단한 규칙 기반 heuristic agent로 시작한다. agent 교체 인터페이스를 유지해 M9·M10의 강한 baseline과 학습 모델로 갈아끼울 수 있게 한다.
 - 사람에게도 `PlayerView`만 전달해 비공개 정보가 UI에 새지 않게 한다.
@@ -334,4 +336,4 @@ tests/
 
 ## 8. 바로 다음 작업
 
-R0~M8과 M11(슬라이스 6까지)이 완료된 2026-09-02 기준으로 다음 작업은 **M9 평가 러너와 baseline**이다(마일스톤 절의 M9 완료 조건을 따른다). 최신 기준선과 세부 착수점은 [개발 인수인계](development-handoff.md)가 관리한다.
+R0~M8과 M11(슬라이스 7까지)이 완료된 2026-09-03 기준으로 다음 작업은 **M9 평가 러너와 baseline**이다(마일스톤 절의 M9 완료 조건을 따른다). 최신 기준선과 세부 착수점은 [개발 인수인계](development-handoff.md)가 관리한다.
