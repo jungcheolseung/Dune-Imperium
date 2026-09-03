@@ -98,7 +98,7 @@ uv run dune-imperium-sweep --games 100 --ruleset both --workers 8 --leader-draft
 uv run dune-imperium-server
 
 # UI 카드 이미지 캐시 (선택). 우선: 비공개 Dune-Imperium-assets 저장소를 형제
-# 디렉터리에 clone하고 그 README대로 downloads/cards·downloads/icons·map.jpg를 symlink.
+# 디렉터리에 clone하고 그 README대로 저장소 루트에 assets symlink 하나를 만든다.
 # 폴백/신규 카드 채움: 아래 fetch 스크립트 (빈 파일만 받는다)
 uv run scripts/fetch_card_images.py
 
@@ -119,7 +119,7 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 
 ## 원격 저장소 인계 주의
 
-2026-09-03 세션 시작 시점에 `origin/master`와 로컬은 `e4ac740`으로 일치했고, 이 날의 슬라이스 7 커밋들(`3d70e38`부터)은 로컬에만 있다(push는 사용자 판단으로 한다). 원격에는 병합하지 않은 `kyungtae` 브랜치가 있다. 새 세션은 `git log origin/master..master`와 반대 방향을 모두 확인하고, checkout이 `853ecd4`보다 이전이면 이 문서의 989개 테스트·codec v84 기준선이 실제 코드와 일치하지 않는다. **다른 머신에서 이어서 작업한다면 먼저 이 머신에서 push가 필요하다.** 새 머신의 UI 카드 이미지·아이콘·보드 스캔은 비공개 `Dune-Imperium-assets` 저장소를 clone해 symlink로 연결한다(그 README 참고; `downloads/cards`, `downloads/icons`, `map.jpg`). 카드 매핑은 그 저장소의 `cards/manifest.json`에만 있으므로 접근이 없으면 텍스트 UI로 동작한다.
+2026-09-03 세션 시작 시점에 `origin/master`와 로컬은 `e4ac740`으로 일치했고, 이 날의 슬라이스 7 커밋들(`3d70e38`부터)은 로컬에만 있다(push는 사용자 판단으로 한다). 원격에는 병합하지 않은 `kyungtae` 브랜치가 있다. 새 세션은 `git log origin/master..master`와 반대 방향을 모두 확인하고, checkout이 `853ecd4`보다 이전이면 이 문서의 989개 테스트·codec v84 기준선이 실제 코드와 일치하지 않는다. **다른 머신에서 이어서 작업한다면 먼저 이 머신에서 push가 필요하다.** 새 머신의 UI 카드 이미지·아이콘·보드 스캔은 비공개 `Dune-Imperium-assets` 저장소를 clone해 symlink로 연결한다(그 README 참고; 루트의 `assets` symlink 하나로 cards·icons·board·rulebooks를 모두 연결). 카드 매핑은 그 저장소의 `cards/manifest.json`에만 있으므로 접근이 없으면 텍스트 UI로 동작한다.
 
 ## 2026-09-03 M11 슬라이스 7 세션 요약 (보드 스캔 테이블 + 룰북 아이콘)
 

@@ -71,20 +71,20 @@ Dune Cards Hub는 카드 및 시각 자료의 참고 출처로 사용한다. 규
 카드·보드·아이콘 원본은 저작권 때문에 이 저장소에 넣지 않는다. 플레이 서버는
 아래 세 위치를 있을 때만 서빙하고, 없으면 텍스트(및 텍스트 보드 목록)로
 대체한다. 소유자의 머신에서는 비공개 `Dune-Imperium-assets` 저장소를 옆에
-clone해 symlink로 연결한다(그 README 참고).
+clone해 저장소 루트의 `assets` symlink 하나로 연결한다(그 README 참고).
 
-- `downloads/cards/` (또는 `DUNE_IMPERIUM_CARD_IMAGE_DIR`): 카드 스캔 체크아웃.
+- `assets/cards/` (또는 `DUNE_IMPERIUM_CARD_IMAGE_DIR`): 카드 스캔 체크아웃.
   `cards/manifest.json`이 `<세트>/<종류>/<인쇄 카드명>.<확장자>` 파일과 엔진
   content ID를 잇는 유일한 매핑이고, 서버가 시작 시 읽어 존재하는 파일만
   연결한다(`ko/` 스캔이 있으면 파일 단위로 우선, 없으면 `en/`).
   `uv run scripts/fetch_card_images.py`는 manifest가 기록한 출처에서 빠진
   파일만 내려받는다.
-- `downloads/icons/` (또는 `DUNE_IMPERIUM_ICON_DIR`): 공식 Uprising Main
+- `assets/icons/` (또는 `DUNE_IMPERIUM_ICON_DIR`): 공식 Uprising Main
   Rulebook의 Icon Guide(20쪽)와 Agent 아이콘(9쪽)에서 잘라낸 투명 PNG 45장.
   `uv run --with pymupdf --with pillow scripts/extract_rulebook_icons.py`가
   고정된 PDF를 내려받아 sha256을 검증한 뒤 추출한다(이름 목록은
   `dune_imperium.display.icons`).
-- `map.jpg` (또는 `DUNE_IMPERIUM_BOARD_IMAGE`): 4인 보드 스캔. hotspot·관측소
+- `assets/board/map.jpg` (또는 루트 `map.jpg`, `DUNE_IMPERIUM_BOARD_IMAGE`): 4인 보드 스캔. hotspot·관측소
   좌표(`dune_imperium.display.board_layout`)는 소유자의 6012×6005 정사각형
   스캔 기준 퍼센트 값이라 다른 프레이밍의 스캔은 재측정이 필요하다.
 

@@ -41,7 +41,8 @@ the printed card name, same-name cards carry the printed distinguisher in
 parentheses — and `cards/manifest.json` there is the only mapping between
 those names and the engine's content IDs (plus each file's Dune Cards Hub
 source URL and sha256). The server reads the manifest from the gitignored
-`downloads/cards` symlink at start-up (`display/images.py`), prefers a
+`assets/cards` directory at start-up (`assets` is a gitignored symlink to
+the assets checkout) (`display/images.py`), prefers a
 `ko/` scan per file over `en/`, and links only files that exist, so a
 machine without the assets checkout serves the same catalog with text.
 `tests/unit/display/test_images.py` pins that the manifest resolves all
@@ -61,7 +62,7 @@ against the images when that set is transcribed).
 manifest's sources.
 
 The table UI (2026-09-03) adds two more machine-local, never-committed
-assets under the same policy: the rulebook icon set (`downloads/icons/`,
+assets under the same policy: the rulebook icon set (`assets/icons/`,
 45 transparent PNGs that `scripts/extract_rulebook_icons.py` cuts out of
 the pinned official Uprising Main Rulebook by image xref — Icon Guide p. 20
 and the Agent-icon list p. 9 — after verifying the file's sha256; names in
