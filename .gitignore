@@ -174,14 +174,7 @@ pyrightconfig.json
 
 # End of https://www.toptal.com/developers/gitignore/api/python
 
-# Local rulebook copies are reference material and are not redistributed.
-# The path is a machine-local symlink into the private Dune-Imperium-assets
-# checkout (see docs/card-data-sources.md for the same pattern).
-rulebooks
-
 # Machine-local symlink to the private Dune-Imperium-assets checkout
 # (card scans, rulebook icons, board scan, rulebook PDFs); never
-# redistributed. See docs/card-data-sources.md. A root map.jpg is the
-# accepted fallback location for the board scan.
+# redistributed. See docs/card-data-sources.md.
 /assets
-/map.jpg

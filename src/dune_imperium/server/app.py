@@ -39,10 +39,9 @@ from dune_imperium.server.sessions import (
 )
 
 _STATIC_DIR = Path(__file__).parent / "static"
-_REPOSITORY_ROOT = Path(__file__).parents[3]
 # Gitignored symlink to the private Dune-Imperium-assets checkout (cards/,
 # icons/, board/, rulebooks/); every default below lives under it.
-_ASSETS_DIR = _REPOSITORY_ROOT / "assets"
+_ASSETS_DIR = Path(__file__).parents[3] / "assets"
 
 
 def default_card_images_directory() -> Path:
@@ -78,18 +77,14 @@ def default_board_image_path() -> Path:
     """Return the owner's local board scan location.
 
     ``DUNE_IMPERIUM_BOARD_IMAGE`` overrides the default
-    ``assets/board/map.jpg``; a gitignored ``map.jpg`` at the repository
-    root is accepted as a fallback. Without the file the UI falls back to
-    the text board.
+    ``assets/board/map.jpg``. Without the file the UI falls back to the
+    text board.
     """
 
     override = os.environ.get("DUNE_IMPERIUM_BOARD_IMAGE")
     if override:
         return Path(override)
-    in_assets = _ASSETS_DIR / "board" / "map.jpg"
-    if in_assets.is_file():
-        return in_assets
-    return _REPOSITORY_ROOT / "map.jpg"
+    return _ASSETS_DIR / "board" / "map.jpg"
 
 
 class CreateGameRequest(BaseModel):

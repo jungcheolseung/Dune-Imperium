@@ -1374,7 +1374,7 @@ function renderSpaceList(board, view) {
   board.appendChild(heading);
   const hint = document.createElement("div");
   hint.className = "muted";
-  hint.textContent = "보드 스캔(map.jpg)이 없어 목록으로 표시합니다.";
+  hint.textContent = "보드 스캔(assets/board/map.jpg)이 없어 목록으로 표시합니다.";
   board.appendChild(hint);
   const { occupants, controllers } = boardOccupancy(view);
   const makerSpice = new Map(view.maker_bonus_spice);
