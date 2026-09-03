@@ -1,6 +1,6 @@
 # 개발 인수인계
 
-기준일: 2026-09-03 (밤)
+기준일: 2026-09-04
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
@@ -17,11 +17,11 @@ uv run ruff check src tests
 uv run mypy src tests
 ```
 
-2026-09-03 심야의 기준 결과는 pytest 1,041개 통과(카드 이미지 에셋이 없는 머신은 1,040 통과 + 1 skip), Ruff 통과, mypy 통과다. 현재 action codec은 `ACTION_CODEC_VERSION = 87`(기본 4,330개, CHOAM 4,616개, `promo_cards` 옵션 시 4,430/4,716개)이고, 관측은 `OBSERVATION_VERSION = 4`의 2,022-int 전체 게임 인코딩이다 ([`rl-environment.md`](rl-environment.md)). 보드 22칸 완결 + 즉시 공개 + `fab266f`/`e6fc298` 수정 + sweep 확장(`853ecd4`) 반영 후의 교차 소크는 random 룰셋당 2,000판 + heuristic 룰셋당 1,000판(둘 다 `--rotate-leaders`) + draft 두 policy 각 룰셋당 500판, 전부 `--soundness-interval 25`를 켠 총 7,000판이 실패 0으로 통과한 상태다(2026-09-01, 아래 세션 요약. 그 전 단계에서는 random 룰셋당 3,000판 비회전 소크도 실패 0이었다).
+2026-09-04의 기준 결과는 pytest 1,045개 통과(카드 이미지 에셋이 없는 머신은 1,044 통과 + 1 skip), Ruff 통과, mypy 통과다. 현재 action codec은 `ACTION_CODEC_VERSION = 88`(기본 4,342개, CHOAM 4,628개, `promo_cards` 옵션 시 4,442/4,728개)이고, 관측은 `OBSERVATION_VERSION = 4`의 2,022-int 전체 게임 인코딩이다 ([`rl-environment.md`](rl-environment.md)). 보드 22칸 완결 + 즉시 공개 + `fab266f`/`e6fc298` 수정 + sweep 확장(`853ecd4`) 반영 후의 교차 소크는 random 룰셋당 2,000판 + heuristic 룰셋당 1,000판(둘 다 `--rotate-leaders`) + draft 두 policy 각 룰셋당 500판, 전부 `--soundness-interval 25`를 켠 총 7,000판이 실패 0으로 통과한 상태다(2026-09-01, 아래 세션 요약. 그 전 단계에서는 random 룰셋당 3,000판 비회전 소크도 실패 0이었다).
 
 ## 현재 구현 기준선
 
-마지막 기능 커밋 묶음은 2026-09-03 심야의 자율 작업 5건(카드 Agent box 아이콘 분리 codec v87, 턴 종료 확인·되돌리기 가능 표시·보드 마커 UI; 아래 세션 요약)이고, 그 앞이 같은 날 밤의 **보드 공간 아이콘 분리**(인쇄 아이콘마다 `resolve_board_effect(effect=<key>)` 행동 하나, codec v86, OQ-027)이며, 그 앞의 기능 커밋 묶음은 2026-09-01 검증 강화 캠페인의 보드 공간 완결 슬라이스들이다: `d7703ef`(Dutiful Service CHOAM contract), `e141492` (Shipping, codec v80), `63a8994`(Desert Tactics, codec v81), `49a5bb6` (Imperial Privilege, codec v82, OQ-023), `78fa1a3`(Secrets chance 강탈, SECRETS_STEAL frame), `881d88b`(Reveal 중 hand 진입 카드의 FAQ p. 3 즉시 공개, OQ-015(c) 해소), `fab266f`·`e6fc298`(소크가 적발한 mid-frame trash 충돌 두 계열의 OQ-022 확장 수정). 이로써 **4인 보드 22칸 전부가 배치·해결 가능**하고 Reveal 중 draw/hand-acquire Plot 보류도 사라졌다. 그 앞은 `4c175d1`(카드 이미지 캐시 다운로드 스크립트)이고, 그 앞에 UI 효과 표시 작업의 `3e2ae8f`(행동 효과 미리보기 + 전체 행동 라벨), `d275a66`(보드 공간 패널·popover·카드 이미지), `d34a2d1`(/catalog 효과 텍스트·이미지), `a4befd4`(display 패키지), `3c1cc69`(정적 보드 효과 테이블), 그리고 M11의 `e44900a`(저장/불러오기/검토 브라우저 UI), 슬라이스 5 서버 API `8ab3cd2`, 브라우저 UI `42be883`, FastAPI 세션 서버 `4fbd751`, Leader draft `c0c1795`, Treacherous Maneuver OQ-022 수정 `d70b353`, 슬라이스 1 묶음(`1a449f4`+`7a53c8f`+`ac4d6d4`)이 있다. 마일스톤 현황: **R0~M8, M11 완료**(M6 콘텐츠, M7 완주 검증, M8 CHOAM, M11 사람용 로컬 웹 UI — 슬라이스 7까지, 완료 판정 근거는 `implementation-plan.md` M11 절; Uprising 프로모 3장은 2026-09-03 저녁 `promo_cards` 옵션으로 구현 완료), **다음은 M9**.
+마지막 기능 커밋은 2026-09-04의 Reveal 선택형 효과 순서 자유화(`defer_reveal_choice`/`resume_reveal_choice`, codec v88; 아래 세션 요약)이고, 그 앞이 2026-09-03 심야의 자율 작업 5건(카드 Agent box 아이콘 분리 codec v87, 턴 종료 확인·되돌리기 가능 표시·보드 마커 UI)이며, 그 앞이 같은 날 밤의 **보드 공간 아이콘 분리**(인쇄 아이콘마다 `resolve_board_effect(effect=<key>)` 행동 하나, codec v86, OQ-027)이며, 그 앞의 기능 커밋 묶음은 2026-09-01 검증 강화 캠페인의 보드 공간 완결 슬라이스들이다: `d7703ef`(Dutiful Service CHOAM contract), `e141492` (Shipping, codec v80), `63a8994`(Desert Tactics, codec v81), `49a5bb6` (Imperial Privilege, codec v82, OQ-023), `78fa1a3`(Secrets chance 강탈, SECRETS_STEAL frame), `881d88b`(Reveal 중 hand 진입 카드의 FAQ p. 3 즉시 공개, OQ-015(c) 해소), `fab266f`·`e6fc298`(소크가 적발한 mid-frame trash 충돌 두 계열의 OQ-022 확장 수정). 이로써 **4인 보드 22칸 전부가 배치·해결 가능**하고 Reveal 중 draw/hand-acquire Plot 보류도 사라졌다. 그 앞은 `4c175d1`(카드 이미지 캐시 다운로드 스크립트)이고, 그 앞에 UI 효과 표시 작업의 `3e2ae8f`(행동 효과 미리보기 + 전체 행동 라벨), `d275a66`(보드 공간 패널·popover·카드 이미지), `d34a2d1`(/catalog 효과 텍스트·이미지), `a4befd4`(display 패키지), `3c1cc69`(정적 보드 효과 테이블), 그리고 M11의 `e44900a`(저장/불러오기/검토 브라우저 UI), 슬라이스 5 서버 API `8ab3cd2`, 브라우저 UI `42be883`, FastAPI 세션 서버 `4fbd751`, Leader draft `c0c1795`, Treacherous Maneuver OQ-022 수정 `d70b353`, 슬라이스 1 묶음(`1a449f4`+`7a53c8f`+`ac4d6d4`)이 있다. 마일스톤 현황: **R0~M8, M11 완료**(M6 콘텐츠, M7 완주 검증, M8 CHOAM, M11 사람용 로컬 웹 UI — 슬라이스 7까지, 완료 판정 근거는 `implementation-plan.md` M11 절; Uprising 프로모 3장은 2026-09-03 저녁 `promo_cards` 옵션으로 구현 완료), **다음은 M9**.
 
 - R0-M4는 완료됐다. 공식 규칙 자료, 엔진 커널, 4인 setup, 한 라운드 수직 조각, actor-neutral action codec과 PettingZoo AEC 계약이 있다.
 - M5의 주요 시스템은 연결돼 있다. Influence/Friendship/Alliance, Agent와 Reveal, Spy/Infiltrate/Gather Intelligence, 개인 덱 reshuffle chance, Combat 순위와 보상, sandworm·Shield Wall·control, Makers·Recall, Endgame window와 게임 종료까지 실행할 수 있다.
@@ -50,7 +50,8 @@ uv run mypy src tests
 2026-09-01의 **검증 강화 캠페인**(사용자 확정 범위: 전체 1→4)은 같은 날 완료했다: 1단계 보드 22칸 완결 + OQ-015(c), 2단계 sweep 확장 (`853ecd4`: 커버리지 census `--coverage-json`, 표본 주기 legal-action 전수 적용 + codec 왕복 `--soundness-interval`, seed별 리더 회전 `--rotate-leaders`), 3단계 교차 소크(아래), 4단계 대조(DIU 63종 전부 일치, open-questions 23건 재점검). 세부는 아래 세션 요약.
 
 0. (2026-09-03 완료) M11 슬라이스 7 보드 스캔 테이블 + 룰북 아이콘 — 아래 세션 요약. (2026-09-02 완료) 슬라이스 6 행동 되돌리기 + 실시간 행동 로그.
-0. (2026-09-03 심야 완료) 사용자 5건 중 4건 완료 + 1건 부분: 카드 Agent box 아이콘 분리(codec v87), 되돌리기 가능 표시, 턴 종료 확인, retreat 규칙 확인(문서), 보드 마커. **남은 것: Reveal 선택형 효과의 자유 순서**(OQ-027 Reveal 항목; 아래 세션 요약의 "다음 작업").
+0. (2026-09-04 완료) Reveal 선택형 효과 순서 자유화(codec v88) — 아래 세션 요약. 이로써 2026-09-03 심야의 사용자 5건이 모두 끝났다.
+0. (2026-09-03 심야 완료) 사용자 5건 중 4건 완료 + 1건 부분: 카드 Agent box 아이콘 분리(codec v87), 되돌리기 가능 표시, 턴 종료 확인, retreat 규칙 확인(문서), 보드 마커.
 0. (2026-09-03 밤 완료) 보드 공간 아이콘 분리(OQ-027, codec v86) — 아래 세션 요약.
 0. (2026-09-03 저녁 완료) Uprising 프로모 Imperium 3장 — 아래 세션 요약.
 1. **M9 평가 러너와 baseline.** 여러 게임을 병렬 구동하고 정책 추론만 batch하는 self-play 러너, random/heuristic(M11 상대에서 출발)/rollout baseline, 좌석·리더·first player·seed 교차 대회 도구 (`implementation-plan.md`의 M9). 관측·보상 계약은 [`rl-environment.md`](rl-environment.md)로 고정돼 있고, 병렬 실행 선례는 `simulation/sweep.py`다. 더 큰 야간 규모 재검증이 필요하면 `dune-imperium-sweep --games 50000 --ruleset both --workers 8 --rotate-leaders --soundness-interval 25 --coverage-json ...`을 커밋된 트리에서 돌린다.
@@ -121,7 +122,14 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 
 ## 원격 저장소 인계 주의
 
-2026-09-03 밤 세션 시작 시점에 `origin/master`와 로컬은 `8d7e59b`로 일치했다(저녁의 프로모 커밋 4개는 이미 push됨). 밤의 보드 아이콘 분리 커밋 2개(`b4e02cb`, `65bdfd6`)와 심야 자율 작업 커밋들(`b86a5c1` 카드 아이콘, `cab29f2` 서버·UI, 그리고 문서 커밋)은 세션 종료 시점에 로컬에만 있다(push는 사용자 판단으로 한다; 에셋 저장소의 `5b55e45` 1개 미push 여부는 그 저장소에서 확인). 원격에는 병합하지 않은 `kyungtae` 브랜치가 있다. 새 세션은 `git log origin/master..master`와 반대 방향을 모두 확인하고, checkout이 `853ecd4`보다 이전이면 이 문서의 989개 테스트·codec v84 기준선이 실제 코드와 일치하지 않는다. **다른 머신에서 이어서 작업한다면 먼저 이 머신에서 push가 필요하다.** 새 머신의 UI 카드 이미지·아이콘·보드 스캔은 비공개 `Dune-Imperium-assets` 저장소를 clone해 symlink로 연결한다(그 README 참고; 루트의 `assets` symlink 하나로 cards·icons·board·rulebooks를 모두 연결). 카드 매핑은 그 저장소의 `cards/manifest.json`에만 있으므로 접근이 없으면 텍스트 UI로 동작한다.
+2026-09-03 밤 세션 시작 시점에 `origin/master`와 로컬은 `8d7e59b`로 일치했다(저녁의 프로모 커밋 4개는 이미 push됨). 밤의 보드 아이콘 분리 커밋 2개(`b4e02cb`, `65bdfd6`), 심야 자율 작업 커밋들(`b86a5c1` 카드 아이콘, `cab29f2` 서버·UI, `a353c98` 문서), 그리고 2026-09-04의 Reveal 순서 커밋 쌍은 세션 종료 시점에 로컬에만 있다(push는 사용자 판단으로 한다; 에셋 저장소의 `5b55e45` 1개 미push 여부는 그 저장소에서 확인). 원격에는 병합하지 않은 `kyungtae` 브랜치가 있다. 새 세션은 `git log origin/master..master`와 반대 방향을 모두 확인하고, checkout이 `853ecd4`보다 이전이면 이 문서의 989개 테스트·codec v84 기준선이 실제 코드와 일치하지 않는다. **다른 머신에서 이어서 작업한다면 먼저 이 머신에서 push가 필요하다.** 새 머신의 UI 카드 이미지·아이콘·보드 스캔은 비공개 `Dune-Imperium-assets` 저장소를 clone해 symlink로 연결한다(그 README 참고; 루트의 `assets` symlink 하나로 cards·icons·board·rulebooks를 모두 연결). 카드 매핑은 그 저장소의 `cards/manifest.json`에만 있으므로 접근이 없으면 텍스트 UI로 동작한다.
+
+## 2026-09-04 Reveal 선택 효과 순서 자유화 세션 요약 (codec v88)
+
+- 사용자 지시("Reveal 선택 효과 순서 자유화도 이어서")로 심야 작업의 남은 항목을 구현했다. 설계: 직렬 `REVEAL_CHOICE` frame 구조는 유지하되, (1) 맨 위 선택 frame에 `defer_reveal_choice`(인자 없음)를 제시해 그 frame을 빼고 Reveal frame context `deferred_reveal_choices`("card|effect" 목록)에 넣는다 — 그러면 다음 선택 frame이나 Reveal frame(획득·Intrigue play·Leader Reveal 능력)이 드러난다; (2) Reveal frame에 미룬 종류마다 `resume_reveal_choice(effect=<kind>)`를 제시해 가장 오래된 해당 선택을 `_build_reveal_choice_frame`으로 다시 올린다(`reveal_choice_resumed` 표시 → 재미루기 불가, 순환 없음); (3) 되가져올 때 `_reveal_choice_effect_is_available`로 가용성을 재판정해 조건이 사라진 선택은 `reveal_choice_unavailable`로 소멸; (4) 이미 시작한 선택(`reveal_spy_recalled`)은 미룰 수 없음; (5) `legal_finish_reveal_actions`는 미룬 선택이 남아 있으면 비어 있다. 늦은 도착(OQ-015(c))의 `_insert_after_reveal_frame`은 그대로다. 이벤트 `reveal_choice_deferred`/`reveal_choice_resumed`/`reveal_choice_unavailable`.
+- codec v88: 인자 없는 `defer_reveal_choice` 1 + `resume_reveal_choice` 11(기본 4,342, CHOAM 4,628, 프로모 4,442/4,728). heuristic agent는 두 행동에 −5점을 줘 카드 순서대로 해결한다(random 정책은 미루기·재개를 섞어 쓰되 재미루기 금지로 항상 끝난다). UI 라벨과 서버 `detail`(재개 행동은 선택 frame의 prompt 문장)을 붙였다.
+- 검증: pytest 1,045(신규 3건: 미루기→다른 선택 먼저→Reveal frame에서 finish 보류·재개→재미루기 불가→마무리; 시작한 Spy 배치는 미루기 불가; 조건이 사라진 선택의 소멸), Ruff, mypy. 커밋 트리 소크: random 룰셋당 150판(`--rotate-leaders --soundness-interval 25`, 300/300)·heuristic 60판(120/120)·프로모 60판(120/120) 실패 0.
+- 남은 경계: 미룬 선택 frame을 되가져올 때 frame_id는 원래와 같다(되돌리기·replay에 영향 없음). Beast's Spoils·Arrakis Revolt의 Agent box 단위는 OQ-027대로 유지.
 
 ## 2026-09-03 심야 자율 작업 세션 요약 (사용자 부재 중 5건)
 
