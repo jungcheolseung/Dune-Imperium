@@ -45,33 +45,39 @@
     </section>
 
     <section id="game-screen" hidden>
-      <section id="decision-banner" class="panel">
-        <div id="decision-info"></div>
-        <div id="actions"></div>
-      </section>
-      <section id="review-bar" class="panel" hidden>
-        <div class="review-controls">
-          <label>검토 좌석 <select id="review-seat"></select></label>
-          <button id="review-first">⏮</button>
-          <button id="review-prev">◀</button>
-          <input type="range" id="review-slider" min="0" max="0" value="0">
-          <button id="review-next">▶</button>
-          <button id="review-last">⏭</button>
-          <button id="review-prev-own">이전 내 행동</button>
-          <button id="review-next-own">다음 내 행동</button>
-          <button id="review-exit">검토 종료</button>
+      <div id="table">
+        <aside id="seats" aria-label="좌석"></aside>
+        <div id="center">
+          <section id="board" aria-label="게임 보드"></section>
+          <section id="market" aria-label="공용 카드"></section>
         </div>
-        <div id="review-status" class="meta"></div>
-      </section>
-      <section id="standings" class="panel" hidden></section>
-      <section id="board" class="panel"></section>
-      <section id="spaces" class="panel"></section>
-      <section id="seats"></section>
-      <section id="action-log" class="panel" hidden></section>
-      <section id="private-zone" class="panel"></section>
-      <section id="disclosure" class="panel" hidden></section>
-      <p id="game-error" class="error" hidden></p>
-      <p id="game-note" class="muted" hidden></p>
+        <aside id="side">
+          <section id="decision-banner" class="panel">
+            <div id="decision-info"></div>
+            <div id="actions"></div>
+          </section>
+          <section id="review-bar" class="panel" hidden>
+            <div class="review-controls">
+              <label>검토 좌석 <select id="review-seat"></select></label>
+              <button id="review-first">⏮</button>
+              <button id="review-prev">◀</button>
+              <input type="range" id="review-slider" min="0" max="0" value="0">
+              <button id="review-next">▶</button>
+              <button id="review-last">⏭</button>
+              <button id="review-prev-own">이전 내 행동</button>
+              <button id="review-next-own">다음 내 행동</button>
+              <button id="review-exit">검토 종료</button>
+            </div>
+            <div id="review-status" class="meta"></div>
+          </section>
+          <p id="game-error" class="error" hidden></p>
+          <p id="game-note" class="muted" hidden></p>
+          <section id="standings" class="panel" hidden></section>
+          <section id="action-log" class="panel" hidden></section>
+          <section id="disclosure" class="panel" hidden></section>
+        </aside>
+      </div>
+      <section id="private-zone" aria-label="내 손패"></section>
     </section>
   </main>
 

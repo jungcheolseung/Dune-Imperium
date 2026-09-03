@@ -1,8 +1,10 @@
 "use strict";
 
-/* Minimal text-card UI over the local play API. Every game fact rendered
-   here comes from the server's PlayerView / summary / catalog payloads;
-   the client keeps no rules knowledge of its own. */
+/* Table UI over the local play API: the scanned board with the live state
+   drawn on top, printed card images, and the rulebook's icons in place of
+   effect text. Every game fact rendered here comes from the server's
+   PlayerView / summary / catalog payloads; the client keeps no rules
+   knowledge of its own (the icon glossary only re-renders server text). */
 
 const state = {
   catalog: null,
@@ -171,8 +173,6 @@ const ACTION_LABELS = {
   use_other_memories: "Other Memories 사용",
 };
 
-const RESOURCE_ICONS = { solari: "🪙", spice: "🌶", water: "💧" };
-
 /* Korean labels for session-log event kinds (M11 slice 6); falls back to
    prettify(kind) for anything not listed here. */
 const EVENT_LABELS = {
@@ -283,8 +283,8 @@ function cardDetail(instanceId) {
   if (card) {
     const bits = [];
     if (card.cost !== null) bits.push(`비용 ${card.cost}`);
-    if (card.persuasion) bits.push(`🗣${card.persuasion}`);
-    if (card.swords) bits.push(`⚔${card.swords}`);
+    if (card.persuasion) bits.push(`Persuasion ${card.persuasion}`);
+    if (card.swords) bits.push(`sword ${card.swords}`);
     if (card.factions.length) {
       bits.push(card.factions.map((f) => FACTION_LABELS[f] || f).join("/"));
     }
@@ -328,37 +328,38 @@ function spaceImplementedFor(entry) {
   return choamActive() ? entry.choam_implemented : entry.implemented;
 }
 
-function costText(cost) {
-  const parts = [];
-  for (const resource of ["solari", "spice", "water"]) {
-    if (cost[resource]) parts.push(`${cost[resource]}${RESOURCE_ICONS[resource]}`);
-  }
-  return parts.length ? parts.join(" ") : "무료";
-}
-
-function requirementText(requirement) {
+function requirementNode(requirement) {
   const label = FACTION_LABELS[requirement.faction] || requirement.faction;
-  return `요구: ${label} Influence ${requirement.amount}+`;
+  const line = document.createElement("div");
+  line.className = "popover-line requirement";
+  line.append(
+    "요구: ",
+    amount(`influence_${requirement.faction}`, `${label} Influence`, requirement.amount),
+    "+"
+  );
+  return line;
 }
 
-function popoverLines(entry) {
-  const lines = [];
-  if (entry.text) lines.push(...entry.text);
-  if (entry.condition) lines.push(`조건: ${entry.condition}`);
-  if (entry.reward) lines.push(`보상: ${entry.reward}`);
-  if (entry.rewards) lines.push(...entry.rewards);
+function popoverNodes(entry) {
+  const nodes = [];
+  if (entry.text) for (const text of entry.text) nodes.push(iconLine(text));
+  if (entry.condition) nodes.push(iconLine(`조건: ${entry.condition}`));
+  if (entry.reward) nodes.push(iconLine(`보상: ${entry.reward}`));
+  if (entry.rewards) for (const text of entry.rewards) nodes.push(iconLine(text));
   if (entry.options) {
-    if (entry.requirement) lines.push(requirementText(entry.requirement));
-    for (const option of spaceOptionsFor(entry)) {
-      lines.push(`[${costText(option.cost)}] ${option.effect}`);
-    }
+    if (entry.requirement) nodes.push(requirementNode(entry.requirement));
+    for (const option of spaceOptionsFor(entry)) nodes.push(spaceOptionLine(option));
   }
-  if (entry.ability_text) lines.push(`${entry.ability}: ${entry.ability_text}`);
+  if (entry.ability_text) {
+    nodes.push(iconLine(`${entry.ability}: ${entry.ability_text}`));
+  }
   if (entry.signet_text) {
-    lines.push(`Signet — ${entry.signet}: ${entry.signet_text}`);
+    nodes.push(iconLine(`Signet — ${entry.signet}: ${entry.signet_text}`));
   }
-  if (entry.notes) lines.push(...entry.notes);
-  return lines;
+  if (entry.notes) {
+    for (const text of entry.notes) nodes.push(iconLine(text, "popover-line muted"));
+  }
+  return nodes;
 }
 
 function openPopover(entry, anchor) {
@@ -370,31 +371,24 @@ function openPopover(entry, anchor) {
   title.textContent = entry.name;
   pop.appendChild(title);
 
-  const meta = [];
+  const meta = document.createElement("div");
+  meta.className = "meta stats";
   if (entry.cost !== undefined && entry.cost !== null) {
-    meta.push(`비용 ${entry.cost}`);
+    meta.appendChild(amount("persuasion", "비용 (Persuasion)", entry.cost));
   }
-  if (entry.persuasion) meta.push(`🗣${entry.persuasion}`);
-  if (entry.swords) meta.push(`⚔${entry.swords}`);
+  if (entry.persuasion) meta.appendChild(amount("persuasion", "Persuasion", entry.persuasion));
+  if (entry.swords) meta.appendChild(amount("sword", "sword", entry.swords));
+  const words = [];
   if (entry.factions && entry.factions.length) {
-    meta.push(entry.factions.map((f) => FACTION_LABELS[f] || f).join("/"));
+    words.push(entry.factions.map((f) => FACTION_LABELS[f] || f).join("/"));
   }
-  if (entry.timings) meta.push(`Intrigue (${entry.timings.join("/")})`);
-  if (entry.tier !== undefined) meta.push(`Conflict tier ${entry.tier}`);
-  if (entry.options && !spaceImplementedFor(entry)) meta.push("미구현 · 배치 불가");
-  if (meta.length) {
-    const line = document.createElement("div");
-    line.className = "meta";
-    line.textContent = meta.join(" · ");
-    pop.appendChild(line);
-  }
+  if (entry.timings) words.push(`Intrigue (${entry.timings.join("/")})`);
+  if (entry.tier !== undefined) words.push(`Conflict tier ${entry.tier}`);
+  if (entry.options && !spaceImplementedFor(entry)) words.push("미구현 · 배치 불가");
+  if (words.length) meta.append(words.join(" · "));
+  if (meta.childNodes.length) pop.appendChild(meta);
 
-  for (const text of popoverLines(entry)) {
-    const line = document.createElement("div");
-    line.className = "popover-line";
-    line.textContent = text;
-    pop.appendChild(line);
-  }
+  for (const node of popoverNodes(entry)) pop.appendChild(node);
   if (entry.image) {
     const image = document.createElement("img");
     image.loading = "lazy";
@@ -402,15 +396,24 @@ function openPopover(entry, anchor) {
     image.alt = entry.name;
     pop.appendChild(image);
   }
+  placePopover(pop, anchor, 340);
+}
 
+/* The popover is fixed-positioned (the table columns scroll on their own)
+   and flips above the anchor when it would run off the bottom. */
+function placePopover(pop, anchor, maxWidth) {
   pop.hidden = false;
   const rect = anchor.getBoundingClientRect();
-  const width = Math.min(340, window.innerWidth - 16);
+  const width = Math.min(maxWidth, window.innerWidth - 16);
   pop.style.width = `${width}px`;
-  const maxLeft = window.scrollX + window.innerWidth - width - 8;
-  const left = Math.min(rect.left + window.scrollX, Math.max(window.scrollX + 8, maxLeft));
+  const left = Math.min(rect.left, Math.max(8, window.innerWidth - width - 8));
   pop.style.left = `${left}px`;
-  pop.style.top = `${rect.bottom + window.scrollY + 6}px`;
+  pop.style.top = `${rect.bottom + 6}px`;
+  const height = pop.offsetHeight;
+  if (rect.bottom + 6 + height > window.innerHeight - 8) {
+    const above = rect.top - height - 6;
+    pop.style.top = `${Math.max(8, above >= 8 ? above : window.innerHeight - height - 8)}px`;
+  }
 }
 
 function closePopover() {
@@ -574,6 +577,7 @@ function enterGame(summary) {
   el("review-bar").hidden = true;
   el("setup-screen").hidden = true;
   el("game-screen").hidden = false;
+  document.body.classList.add("in-game");
   el("leave-game").hidden = false;
   el("save-game").hidden = false;
   applySummary(summary);
@@ -587,6 +591,7 @@ function leaveGame() {
   state.review = null;
   el("review-bar").hidden = true;
   el("game-screen").hidden = true;
+  document.body.classList.remove("in-game");
   el("leave-game").hidden = true;
   el("save-game").hidden = true;
   el("setup-screen").hidden = false;
@@ -814,6 +819,143 @@ function exitReview() {
 
 /* ---------- rendering ---------- */
 
+/* ---------- icons ---------- */
+
+/* Rulebook icons (catalog.icons, served from the machine-local extraction
+   of the official Icon Guide) with a text fallback when the set is absent. */
+const SEAT_COLORS = ["#2fb3ff", "#ff5a4e", "#7ddc6a", "#f4c542"];
+
+function iconUrl(name) {
+  const icons = state.catalog && state.catalog.icons;
+  return icons && icons[name] ? icons[name] : null;
+}
+
+function icon(name, label) {
+  const url = iconUrl(name);
+  if (url) {
+    const img = document.createElement("img");
+    img.className = "icon";
+    img.src = url;
+    img.alt = label;
+    img.title = label;
+    return img;
+  }
+  const span = document.createElement("span");
+  span.className = "icon-text";
+  span.textContent = label;
+  return span;
+}
+
+function amount(name, label, count) {
+  const wrap = document.createElement("span");
+  wrap.className = "amount";
+  wrap.title = `${count} ${label}`;
+  wrap.append(String(count), icon(name, label));
+  return wrap;
+}
+
+const FACTION_ICON_KEY = {
+  Emperor: "emperor",
+  "Spacing Guild": "spacing_guild",
+  "Bene Gesserit": "bene_gesserit",
+  Fremen: "fremen",
+};
+
+/* Glossary that turns the catalog's English effect text into the printed
+   iconography: each rule is tried at the current position (sticky), the
+   first match wins, and unmatched text is copied through. Only display —
+   the text itself stays the server's. */
+const ICON_RULES = [
+  [/(?:Gain |Pay )?(\d+) (solari|spice|water)\b/y, (m) => amount(m[2], m[2], m[1])],
+  [/\b(solari|spice|water)\b/y, (m) => icon(m[1], m[1])],
+  [/Draw (\d+) Intrigue cards?/y, (m) => amount("intrigue", "Intrigue card", m[1])],
+  [/Draw (\d+) cards?/y, (m) => amount("draw", "Draw", m[1])],
+  [/Intrigue cards?/y, () => icon("intrigue", "Intrigue card")],
+  [/(?:Recruit |Gain )?(\d+) troops?\b/y, (m) => amount("troop", "troop", m[1])],
+  [/\btroops?\b/y, () => icon("troop", "troop")],
+  [
+    /(?:Gain )?(\d+) (Emperor|Spacing Guild|Bene Gesserit|Fremen) Influence/y,
+    (m) => amount(`influence_${FACTION_ICON_KEY[m[2]]}`, `${m[2]} Influence`, m[1]),
+  ],
+  [
+    /(Emperor|Spacing Guild|Bene Gesserit|Fremen) Influence/y,
+    (m) => icon(`influence_${FACTION_ICON_KEY[m[1]]}`, `${m[1]} Influence`),
+  ],
+  [/Lose (\d+) Influence/y, (m) => amount("influence_lose", "Lose Influence", m[1])],
+  [/(?:Gain )?(\d+) Influence/y, (m) => amount("influence_any", "Influence", m[1])],
+  [/Influence with the visited Faction/y, () => icon("influence_any", "visited Faction Influence")],
+  [/(\d+) Persuasion/y, (m) => amount("persuasion", "Persuasion", m[1])],
+  [/\bPersuasion\b/y, () => icon("persuasion", "Persuasion")],
+  [/(\d+) (?:swords?|strength)\b/y, (m) => amount("sword", "sword", m[1])],
+  [/\bswords?\b/y, () => icon("sword", "sword")],
+  [/(?:Gain )?(\d+) (?:Victory Points?|VP)\b/y, (m) => amount("victory_point", "Victory Point", m[1])],
+  [/\b(?:Victory Points?|VP)\b/y, () => icon("victory_point", "Victory Point")],
+  [/\bTrash an Intrigue card\b/y, () => icon("trash_intrigue", "Trash an Intrigue card")],
+  [/\b[Tt]rash\b/y, () => icon("trash", "Trash")],
+  [/\b[Dd]iscard\b/y, () => icon("discard", "Discard")],
+  [/\b(?:a |an )?Sp(?:y|ies)\b/y, (m) => icon("spy", m[0].trim())],
+  [/\bAgents?\b/y, (m) => icon("agent", m[0])],
+  [/\b[Ss]andworms?\b/y, (m) => icon("sandworm", m[0])],
+  [/\bMaker Hooks\b/y, () => icon("maker_hooks", "Maker Hooks")],
+  [/\bShield Wall\b/y, () => icon("shield_wall", "Shield Wall")],
+  [/\bSignet Ring\b/y, () => icon("signet_ring", "Signet Ring")],
+  [/\bContracts?\b/y, (m) => icon("contract", m[0])],
+  [/→/y, () => icon("arrow_right", "→")],
+];
+
+function iconize(text) {
+  const fragment = document.createDocumentFragment();
+  let plain = "";
+  let index = 0;
+  const flush = () => {
+    if (plain) fragment.append(plain);
+    plain = "";
+  };
+  while (index < text.length) {
+    let matched = false;
+    for (const [pattern, build] of ICON_RULES) {
+      pattern.lastIndex = index;
+      const match = pattern.exec(text);
+      if (match && match.index === index) {
+        flush();
+        fragment.appendChild(build(match));
+        index += match[0].length;
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) {
+      plain += text[index];
+      index += 1;
+    }
+  }
+  flush();
+  return fragment;
+}
+
+function iconLine(text, className) {
+  const line = document.createElement("div");
+  line.className = className || "popover-line";
+  line.appendChild(iconize(text));
+  return line;
+}
+
+function costNode(cost) {
+  const wrap = document.createElement("span");
+  wrap.className = "cost";
+  let any = false;
+  for (const resource of ["solari", "spice", "water"]) {
+    if (cost[resource]) {
+      wrap.appendChild(amount(resource, resource, cost[resource]));
+      any = true;
+    }
+  }
+  if (!any) wrap.textContent = "무료";
+  return wrap;
+}
+
+/* ---------- rendering ---------- */
+
 function render() {
   const summary = state.summary;
   if (!summary) return;
@@ -828,7 +970,7 @@ function render() {
   renderBanner();
   renderStandings();
   renderBoard();
-  renderSpaces();
+  renderMarket();
   renderSeats();
   renderLog();
   renderPrivate();
@@ -972,7 +1114,16 @@ function actionPreviewEntries(action) {
   return entries;
 }
 
-function actionPreviewLines(action, entry) {
+function spaceOptionLine(option) {
+  const line = document.createElement("div");
+  line.className = "popover-line option-line";
+  line.appendChild(costNode(option.cost));
+  line.appendChild(icon("arrow_right", "→"));
+  line.appendChild(iconize(option.effect));
+  return line;
+}
+
+function actionPreviewNodes(action, entry) {
   if (entry.options) {
     const options = spaceOptionsFor(entry);
     const index =
@@ -980,11 +1131,11 @@ function actionPreviewLines(action, entry) {
         ? action.arguments.cost_option
         : 0;
     const option = options[index] || options[0];
-    const lines = [];
-    if (entry.requirement) lines.push(requirementText(entry.requirement));
-    lines.push(`[${costText(option.cost)}] ${option.effect}`);
-    lines.push(...entry.notes);
-    return lines;
+    const nodes = [];
+    if (entry.requirement) nodes.push(requirementNode(entry.requirement));
+    nodes.push(spaceOptionLine(option));
+    for (const text of entry.notes) nodes.push(iconLine(text, "popover-line muted"));
+    return nodes;
   }
   const optionIndex = action.arguments.option;
   if (
@@ -993,16 +1144,24 @@ function actionPreviewLines(action, entry) {
     typeof optionIndex === "number" &&
     entry.text[optionIndex]
   ) {
-    return [entry.text[optionIndex]];
+    return [iconLine(entry.text[optionIndex])];
   }
-  return popoverLines(entry);
+  return popoverNodes(entry);
+}
+
+/* Argument values that name a card instance or space, for hotspot and hand
+   click matching (data-refs) — the same strings describeAction resolves. */
+function actionRefs(action) {
+  return Object.values(action.arguments).filter((value) => typeof value === "string");
 }
 
 function actionItem(action) {
   const wrap = document.createElement("div");
   wrap.className = "action-item";
+  wrap.dataset.index = String(action.index);
+  wrap.dataset.refs = JSON.stringify(actionRefs(action));
   const button = document.createElement("button");
-  button.textContent = describeAction(action);
+  button.appendChild(iconize(describeAction(action)));
   button.disabled = state.busy;
   button.addEventListener("click", () => applyAction(action.index));
   wrap.appendChild(button);
@@ -1022,11 +1181,14 @@ function actionItem(action) {
       head.className = "popover-title";
       head.textContent = entry.name;
       detail.appendChild(head);
-      for (const text of actionPreviewLines(action, entry)) {
-        const line = document.createElement("div");
-        line.className = "popover-line";
-        line.textContent = text;
-        detail.appendChild(line);
+      for (const node of actionPreviewNodes(action, entry)) detail.appendChild(node);
+      if (entry.image && !entry.options) {
+        const image = document.createElement("img");
+        image.className = "detail-card";
+        image.loading = "lazy";
+        image.src = entry.image;
+        image.alt = entry.name;
+        detail.appendChild(image);
       }
     }
     info.addEventListener("click", (event) => {
@@ -1038,12 +1200,77 @@ function actionItem(action) {
   return wrap;
 }
 
+/* Highlight the legal actions that reference one card instance or space
+   and scroll the first one into view (table click with several options). */
+function focusActions(ref) {
+  let first = null;
+  for (const item of document.querySelectorAll(".action-item")) {
+    const refs = JSON.parse(item.dataset.refs || "[]");
+    const hit = refs.includes(ref);
+    item.classList.toggle("action-match", hit);
+    if (hit && !first) first = item;
+  }
+  if (first) first.scrollIntoView({ block: "nearest", behavior: "smooth" });
+}
+
+function legalActionsFor(ref) {
+  if (!state.actions) return [];
+  return state.actions.actions.filter((action) => actionRefs(action).includes(ref));
+}
+
+/* Click on a table object: one legal action applies directly, several
+   focus the action list, none shows the detail popover. */
+function tableClick(ref, entry, anchor) {
+  const legal = legalActionsFor(ref);
+  if (legal.length === 1) {
+    applyAction(legal[0].index);
+    return;
+  }
+  if (legal.length > 1) {
+    focusActions(ref);
+    note(`${entry ? entry.name : ref}: 선택지가 ${legal.length}개입니다. 오른쪽 행동 목록에서 고르세요.`);
+    return;
+  }
+  if (entry) openPopover(entry, anchor);
+}
+
 function section(parent, title) {
   const heading = document.createElement("h3");
   heading.textContent = title;
   const body = document.createElement("div");
   parent.append(heading, body);
   return body;
+}
+
+/* ---------- board ---------- */
+
+function boardOccupancy(view) {
+  const occupants = new Map();
+  const controllers = new Map();
+  const spies = new Map();
+  for (const player of view.players) {
+    for (const spaceId of player.agent_locations) {
+      if (!occupants.has(spaceId)) occupants.set(spaceId, []);
+      occupants.get(spaceId).push(player.player);
+    }
+    for (const spaceId of player.control_space_ids) {
+      controllers.set(spaceId, player.player);
+    }
+    for (const postId of player.spy_post_ids) {
+      if (!spies.has(postId)) spies.set(postId, []);
+      spies.get(postId).push(player.player);
+    }
+  }
+  return { occupants, controllers, spies };
+}
+
+function seatToken(seat, className) {
+  const token = document.createElement("span");
+  token.className = className;
+  token.style.background = SEAT_COLORS[seat];
+  token.textContent = String(seat);
+  token.title = `좌석 ${seat}`;
+  return token;
 }
 
 function renderBoard() {
@@ -1055,115 +1282,109 @@ function renderBoard() {
       '<span class="muted">사람 좌석이 없어 보드를 볼 수 없습니다.</span>';
     return;
   }
-  const heading = document.createElement("h2");
-  heading.textContent = "보드";
-  board.appendChild(heading);
-
-  if (view.leader_draft_pool.length) {
-    const picked = new Set(
-      view.players.map((p) => p.leader_id).filter(Boolean)
-    );
-    const pool = section(board, "Leader draft pool");
-    for (const leaderId of view.leader_draft_pool) {
-      const mark = chip(leaderId);
-      if (picked.has(leaderId)) {
-        mark.classList.add("muted");
-        mark.textContent += " (선택됨)";
-      }
-      pool.appendChild(mark);
-    }
-  }
-
-  const conflict = section(board, "현재 Conflict");
-  chipList(conflict, view.current_conflict_ids, "아직 공개되지 않음");
-  if (!view.shield_wall_present) {
-    const note = document.createElement("span");
-    note.className = "tag";
-    note.textContent = "Shield Wall 파괴됨";
-    conflict.appendChild(note);
-  }
-
-  const row = section(board, "Imperium Row");
-  chipList(row, view.imperium_row, "비어 있음");
-
-  const reserve = section(board, "Reserve");
-  reserve.textContent = "";
-  for (const [cardId, count] of view.reserve_stacks) {
-    const mark = chip(cardId);
-    mark.textContent += ` ×${count}`;
-    reserve.appendChild(mark);
-  }
-
-  if (state.summary.choam_module) {
-    const contracts = section(board, "Contract 시장");
-    chipList(contracts, view.face_up_contract_ids, "비어 있음");
-    const bank = document.createElement("span");
-    bank.className = "muted";
-    bank.textContent = ` bank ${view.contract_bank_size}장`;
-    contracts.appendChild(bank);
-    if (view.sardaukar_contract_ids.length) {
-      const aside = document.createElement("span");
-      aside.className = "muted";
-      aside.textContent = " · set-aside: ";
-      contracts.appendChild(aside);
-      for (const id of view.sardaukar_contract_ids)
-        contracts.appendChild(chip(id));
-    }
-  }
-
-  const maker = section(board, "Maker bonus spice");
-  maker.textContent = view.maker_bonus_spice
-    .map(([space, amount]) => `${nameOf(space)} ${amount}`)
-    .join(" · ");
-
-  if (view.intrigue_discard.length) {
-    const discard = section(board, "Intrigue discard");
-    chipList(discard, view.intrigue_discard.slice(-8), "");
+  if (state.catalog.board_image) {
+    renderBoardStage(board, view);
+  } else {
+    renderSpaceList(board, view);
   }
 }
 
-function renderSpaces() {
-  const panel = el("spaces");
-  panel.textContent = "";
-  const catalog = state.catalog;
-  if (!catalog) {
-    panel.hidden = true;
-    return;
-  }
-  panel.hidden = false;
+/* The scanned board with the live state on top: a hotspot per space
+   (catalog.spaces[id].box, percent of the image), Agent tokens, Control
+   flags, Maker bonus spice, and Spies on the observation posts. */
+function renderBoardStage(board, view) {
+  const stage = document.createElement("div");
+  stage.className = "board-stage";
+  const map = document.createElement("img");
+  map.className = "board-map";
+  map.src = state.catalog.board_image;
+  map.alt = "Dune: Imperium — Uprising board";
+  map.draggable = false;
+  stage.appendChild(map);
 
+  const { occupants, controllers, spies } = boardOccupancy(view);
+  const makerSpice = new Map(view.maker_bonus_spice);
+
+  for (const [spaceId, entry] of Object.entries(state.catalog.spaces)) {
+    const [left, top, width, height] = entry.box;
+    const hotspot = document.createElement("button");
+    hotspot.type = "button";
+    hotspot.className = "hotspot";
+    hotspot.style.left = `${left}%`;
+    hotspot.style.top = `${top}%`;
+    hotspot.style.width = `${width}%`;
+    hotspot.style.height = `${height}%`;
+    hotspot.title = entry.name;
+    hotspot.setAttribute("aria-label", entry.name);
+    const legal = legalActionsFor(spaceId);
+    if (legal.length) hotspot.classList.add("legal");
+    if (!spaceImplementedFor(entry)) hotspot.classList.add("unimplemented");
+    const seats = occupants.get(spaceId) || [];
+    if (seats.length) {
+      const tokens = document.createElement("span");
+      tokens.className = "agent-tokens";
+      for (const seat of seats) tokens.appendChild(seatToken(seat, "agent-token"));
+      hotspot.appendChild(tokens);
+    }
+    if (controllers.has(spaceId)) {
+      const flag = seatToken(controllers.get(spaceId), "control-flag");
+      flag.title = `Control: 좌석 ${controllers.get(spaceId)}`;
+      hotspot.appendChild(flag);
+    }
+    if (makerSpice.get(spaceId)) {
+      const bonus = amount("spice", "bonus spice", makerSpice.get(spaceId));
+      bonus.classList.add("maker-bonus");
+      hotspot.appendChild(bonus);
+    }
+    hotspot.addEventListener("click", (event) => {
+      event.stopPropagation();
+      tableClick(spaceId, entry, hotspot);
+    });
+    stage.appendChild(hotspot);
+  }
+
+  for (const [postId, [x, y]] of Object.entries(state.catalog.posts)) {
+    const seats = spies.get(postId) || [];
+    if (!seats.length) continue;
+    const post = document.createElement("span");
+    post.className = "spy-post";
+    post.style.left = `${x}%`;
+    post.style.top = `${y}%`;
+    post.title = `${prettify(postId)}: 좌석 ${seats.join(", ")}`;
+    for (const seat of seats) post.appendChild(seatToken(seat, "spy-token"));
+    stage.appendChild(post);
+  }
+
+  if (!view.shield_wall_present) {
+    const note = document.createElement("span");
+    note.className = "board-note";
+    note.appendChild(icon("shield_wall", "Shield Wall"));
+    note.append(" 파괴됨");
+    stage.appendChild(note);
+  }
+  board.appendChild(stage);
+}
+
+/* Text board for a machine without the board scan: the same data as a
+   list, grouped by Agent icon, with the live occupancy inline. */
+function renderSpaceList(board, view) {
+  const catalog = state.catalog;
   const heading = document.createElement("h2");
   heading.textContent = "보드 공간";
-  panel.appendChild(heading);
+  board.appendChild(heading);
   const hint = document.createElement("div");
   hint.className = "muted";
-  hint.textContent =
-    "Combat space 방문 시: 이번 turn에 recruit한 troop 전부와 garrison의 " +
-    "troop 최대 2개를 Conflict에 배치할 수 있습니다.";
-  panel.appendChild(hint);
+  hint.textContent = "보드 스캔(map.jpg)이 없어 목록으로 표시합니다.";
+  board.appendChild(hint);
+  const { occupants, controllers } = boardOccupancy(view);
+  const makerSpice = new Map(view.maker_bonus_spice);
 
-  const occupants = new Map();
-  const controllers = new Map();
-  const view = state.view;
-  if (view) {
-    for (const player of view.players) {
-      for (const spaceId of player.agent_locations) {
-        if (!occupants.has(spaceId)) occupants.set(spaceId, []);
-        occupants.get(spaceId).push(player.player);
-      }
-      for (const spaceId of player.control_space_ids) {
-        controllers.set(spaceId, player.player);
-      }
-    }
-  }
-  const makerSpice = new Map(view ? view.maker_bonus_spice : []);
-
-  for (const [icon, label] of AGENT_ICON_GROUPS) {
+  for (const [iconId, label] of AGENT_ICON_GROUPS) {
     const spaceIds = Object.keys(catalog.spaces).filter(
-      (spaceId) => catalog.spaces[spaceId].agent_icon === icon
+      (spaceId) => catalog.spaces[spaceId].agent_icon === iconId
     );
     if (!spaceIds.length) continue;
-    const body = section(panel, label);
+    const body = section(board, label);
     for (const spaceId of spaceIds) {
       body.appendChild(spaceRow(spaceId, occupants, controllers, makerSpice));
     }
@@ -1174,6 +1395,7 @@ function spaceRow(spaceId, occupants, controllers, makerSpice) {
   const entry = state.catalog.spaces[spaceId];
   const row = document.createElement("div");
   row.className = "space-row";
+  if (legalActionsFor(spaceId).length) row.classList.add("legal");
 
   const title = document.createElement("div");
   title.appendChild(chip(spaceId, entry));
@@ -1196,23 +1418,9 @@ function spaceRow(spaceId, occupants, controllers, makerSpice) {
   row.appendChild(title);
 
   const detail = document.createElement("div");
-  if (entry.requirement) {
-    const requirement = document.createElement("div");
-    requirement.className = "muted";
-    requirement.textContent = requirementText(entry.requirement);
-    detail.appendChild(requirement);
-  }
-  for (const option of spaceOptionsFor(entry)) {
-    const line = document.createElement("div");
-    line.textContent = `[${costText(option.cost)}] ${option.effect}`;
-    detail.appendChild(line);
-  }
-  for (const noteText of entry.notes) {
-    const line = document.createElement("div");
-    line.className = "muted";
-    line.textContent = noteText;
-    detail.appendChild(line);
-  }
+  if (entry.requirement) detail.appendChild(requirementNode(entry.requirement));
+  for (const option of spaceOptionsFor(entry)) detail.appendChild(spaceOptionLine(option));
+  for (const noteText of entry.notes) detail.appendChild(iconLine(noteText, "muted"));
   const status = [];
   const seats = occupants.get(spaceId);
   if (seats && seats.length) {
@@ -1231,15 +1439,145 @@ function spaceRow(spaceId, occupants, controllers, makerSpice) {
     detail.appendChild(line);
   }
   row.appendChild(detail);
+  row.addEventListener("click", (event) => {
+    if (event.target.closest(".tag")) return;
+    tableClick(spaceId, entry, row);
+  });
   return row;
 }
 
-function seatLine(container, label, text) {
+/* ---------- market strip (shared table zones) ---------- */
+
+/* One card as its printed image (or a text card without the cache), lit
+   when a legal action references it; a click applies or focuses. */
+function visualCard(instanceId, options = {}) {
+  const entry = options.entry || lookup(baseId(instanceId));
+  const card = document.createElement("button");
+  card.type = "button";
+  card.className = "vcard" + (options.className ? ` ${options.className}` : "");
+  const legal = legalActionsFor(instanceId);
+  if (legal.length) card.classList.add("legal");
+  if (entry && entry.image) {
+    const image = document.createElement("img");
+    image.src = entry.image;
+    image.alt = entry.name;
+    image.loading = "lazy";
+    image.draggable = false;
+    card.appendChild(image);
+  } else {
+    card.classList.add("textcard");
+    const name = document.createElement("span");
+    name.className = "vcard-name";
+    name.textContent = entry ? entry.name : prettify(baseId(instanceId));
+    card.appendChild(name);
+    const detail = cardDetail(instanceId);
+    if (detail) {
+      const meta = document.createElement("span");
+      meta.className = "vcard-meta";
+      meta.textContent = detail;
+      card.appendChild(meta);
+    }
+  }
+  if (options.badge) {
+    const badge = document.createElement("span");
+    badge.className = "vcard-badge";
+    badge.textContent = options.badge;
+    card.appendChild(badge);
+  }
+  card.title = entry ? entry.name : nameOf(instanceId);
+  card.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (options.onClick) options.onClick(entry, card);
+    else tableClick(instanceId, entry, card);
+  });
+  return card;
+}
+
+function cardStrip(parent, title, ids, emptyText, options = {}) {
+  const box = document.createElement("div");
+  box.className = "strip";
+  const heading = document.createElement("h3");
+  heading.textContent = title;
+  box.appendChild(heading);
+  const row = document.createElement("div");
+  row.className = "strip-cards";
+  if (!ids.length && emptyText) {
+    const empty = document.createElement("span");
+    empty.className = "muted";
+    empty.textContent = emptyText;
+    row.appendChild(empty);
+  }
+  for (const id of ids) {
+    row.appendChild(visualCard(id, typeof options === "function" ? options(id) : options));
+  }
+  box.appendChild(row);
+  parent.appendChild(box);
+  return row;
+}
+
+function renderMarket() {
+  const market = el("market");
+  market.textContent = "";
+  const view = state.view;
+  if (!view) return;
+
+  /* The draft pool stays in the view after every seat has picked; the
+     chosen Leaders then live on the seat cards, so the strip goes away. */
+  const drafting = view.players.some((p) => !p.leader_id);
+  if (view.leader_draft_pool.length && drafting) {
+    const picked = new Set(view.players.map((p) => p.leader_id).filter(Boolean));
+    cardStrip(market, "Leader draft", view.leader_draft_pool, "", (id) => ({
+      className: "leader" + (picked.has(id) ? " taken" : ""),
+      badge: picked.has(id) ? "선택됨" : null,
+    }));
+  }
+
+  cardStrip(market, "Conflict", view.current_conflict_ids, "아직 공개되지 않음", {
+    className: "conflict",
+  });
+  cardStrip(market, "Imperium Row", view.imperium_row, "비어 있음");
+  cardStrip(market, "Reserve", view.reserve_stacks.map(([cardId]) => cardId), "", (id) => {
+    const stack = view.reserve_stacks.find(([cardId]) => cardId === id);
+    return { badge: `×${stack ? stack[1] : 0}` };
+  });
+
+  if (state.summary.choam_module) {
+    const row = cardStrip(
+      market,
+      `Contracts · bank ${view.contract_bank_size}`,
+      view.face_up_contract_ids,
+      "비어 있음",
+      { className: "contract" }
+    );
+    for (const id of view.sardaukar_contract_ids) {
+      row.appendChild(visualCard(id, { className: "contract", badge: "set-aside" }));
+    }
+  }
+  if (view.intrigue_discard.length) {
+    cardStrip(market, "Intrigue discard", view.intrigue_discard.slice(-6), "", {
+      className: "intrigue",
+    });
+  }
+}
+
+/* ---------- seats ---------- */
+
+function statNode(name, label, value) {
+  const stat = document.createElement("span");
+  stat.className = "stat";
+  stat.title = label;
+  stat.append(icon(name, label), String(value));
+  return stat;
+}
+
+function seatLine(container, label, content) {
   const line = document.createElement("div");
   line.className = "cardline";
   const strong = document.createElement("strong");
   strong.textContent = `${label} `;
-  line.append(strong, text);
+  line.appendChild(strong);
+  if (typeof content === "string") line.append(content);
+  else line.appendChild(content);
   container.appendChild(line);
 }
 
@@ -1259,103 +1597,128 @@ function renderSeats() {
     const seat = player.player;
     const card = document.createElement("article");
     card.className = "seat" + (seat === decisionOwner ? " active" : "");
+    card.style.borderLeftColor = SEAT_COLORS[seat];
 
+    const head = document.createElement("div");
+    head.className = "seat-head";
+    const faceId = player.leader_face_id || player.leader_id;
+    const leaderEntry = faceId ? lookup(faceId) : null;
+    if (leaderEntry && leaderEntry.image) {
+      const image = document.createElement("img");
+      image.className = "leader-thumb";
+      image.src = leaderEntry.image;
+      image.alt = leaderEntry.name;
+      image.addEventListener("click", (event) => {
+        event.stopPropagation();
+        openPopover(leaderEntry, image);
+      });
+      head.appendChild(image);
+    }
     const who = document.createElement("div");
     who.className = "who";
-    const leader = player.leader_id ? nameOf(player.leader_id) : "Leader 미정";
-    who.textContent = `좌석 ${seat} · ${leader}`;
+    const seatMark = seatToken(seat, "seat-mark");
+    who.appendChild(seatMark);
+    const leaderName = document.createElement("span");
+    leaderName.textContent = player.leader_id ? nameOf(faceId) : "Leader 미정";
+    if (leaderEntry) {
+      leaderName.className = "clickable";
+      leaderName.addEventListener("click", (event) => {
+        event.stopPropagation();
+        openPopover(leaderEntry, leaderName);
+      });
+    }
+    who.appendChild(leaderName);
     if (summary.seats[seat] === "human") {
       const badge = document.createElement("span");
       badge.className = "badge";
       badge.textContent = seat === activeSeat() ? "YOU" : "사람";
       who.appendChild(badge);
+    } else {
+      const badge = document.createElement("span");
+      badge.className = "badge ai";
+      badge.textContent = summary.seats[seat];
+      who.appendChild(badge);
     }
     if (summary.first_player === seat) {
       const badge = document.createElement("span");
       badge.className = "badge";
-      badge.textContent = "First Player";
+      badge.textContent = "1st";
+      badge.title = "First Player";
       who.appendChild(badge);
     }
-    card.appendChild(who);
-    if (
-      player.leader_face_id &&
-      player.leader_id &&
-      player.leader_face_id !== player.leader_id
-    ) {
-      seatLine(card, "면", nameOf(player.leader_face_id));
-    }
+    head.appendChild(who);
+    card.appendChild(head);
 
-    seatLine(
-      card,
-      `🏆 ${player.victory_points}`,
-      ` ${RESOURCE_ICONS.solari}${player.resources.solari}` +
-        ` ${RESOURCE_ICONS.spice}${player.resources.spice}` +
-        ` ${RESOURCE_ICONS.water}${player.resources.water}`
+    const stats = document.createElement("div");
+    stats.className = "stats";
+    stats.append(
+      statNode("victory_point", "Victory Points", player.victory_points),
+      statNode("solari", "solari", player.resources.solari),
+      statNode("spice", "spice", player.resources.spice),
+      statNode("water", "water", player.resources.water)
     );
-    seatLine(
-      card,
-      "Influence",
-      Object.entries(FACTION_LABELS)
-        .map(([key, label]) => `${label} ${player.influence[key]}`)
-        .join(" · ")
+    card.appendChild(stats);
+
+    const influence = document.createElement("div");
+    influence.className = "stats";
+    for (const [key, label] of Object.entries(FACTION_LABELS)) {
+      const stat = statNode(`influence_${key}`, `${label} Influence`, player.influence[key]);
+      if (player.alliance_faction_ids.includes(key)) {
+        stat.classList.add("alliance");
+        stat.title += " · Alliance";
+      }
+      influence.appendChild(stat);
+    }
+    card.appendChild(influence);
+
+    const forces = document.createElement("div");
+    forces.className = "stats";
+    forces.append(
+      statNode("agent", "Agents 대기", player.agents_available),
+      statNode("troop", "garrison", player.troops_garrison),
+      statNode("sword", "Conflict 병력 · strength",
+        player.troops_conflict + (player.combat_strength ? ` (${player.combat_strength})` : "")),
+      statNode("spy", "Spy supply", player.spies_supply)
     );
-    const agents = player.agent_locations.map(nameOf).join(", ");
-    seatLine(
-      card,
-      "Agents",
-      `${player.agents_available}명 대기` +
-        (agents ? ` · 배치: ${agents}` : "") +
-        (player.swordmaster_acquired ? " · Swordmaster" : "")
-    );
-    seatLine(
-      card,
-      "병력",
-      `supply ${player.troops_supply} · garrison ${player.troops_garrison}` +
-        ` · conflict ${player.troops_conflict}` +
-        (player.sandworms_conflict ? ` · worm ${player.sandworms_conflict}` : "") +
-        (player.combat_strength ? ` · ⚔${player.combat_strength}` : "")
-    );
-    seatLine(
-      card,
-      "Spy",
-      `supply ${player.spies_supply}` +
-        (player.spy_post_ids.length
-          ? ` · ${player.spy_post_ids.map(prettify).join(", ")}`
-          : "")
-    );
+    if (player.sandworms_conflict) {
+      forces.appendChild(statNode("sandworm", "sandworm", player.sandworms_conflict));
+    }
+    card.appendChild(forces);
+
     const flags = [];
     if (player.high_council) flags.push("High Council");
     if (player.maker_hooks) flags.push("Maker Hooks");
+    if (player.swordmaster_acquired) flags.push("Swordmaster");
     if (player.has_revealed) flags.push("Revealed");
-    if (player.alliance_faction_ids.length) {
-      flags.push(
-        "Alliance: " +
-          player.alliance_faction_ids
-            .map((f) => FACTION_LABELS[f] || f)
-            .join("/")
-      );
-    }
     if (player.control_space_ids.length) {
       flags.push("Control: " + player.control_space_ids.map(nameOf).join("/"));
     }
-    if (flags.length) seatLine(card, "상태", flags.join(" · "));
+    if (flags.length) seatLine(card, "상태", iconize(flags.join(" · ")));
+    const agents = player.agent_locations.map(nameOf).join(", ");
+    if (agents) seatLine(card, "배치", agents);
 
-    const zones = [];
-    zones.push(`hand ${player.hand_size}`);
-    zones.push(`deck ${player.deck_size}`);
-    zones.push(`discard ${player.discard_pile.length}`);
-    zones.push(`intrigue ${player.intrigue_card_count}`);
-    seatLine(card, "존", zones.join(" · "));
+    const zones = document.createElement("div");
+    zones.className = "zones";
+    zones.textContent =
+      `hand ${player.hand_size} · deck ${player.deck_size}` +
+      ` · discard ${player.discard_pile.length} · intrigue ${player.intrigue_card_count}` +
+      ` · supply ${player.troops_supply}`;
+    if (player.discard_pile.length) {
+      zones.classList.add("clickable");
+      zones.title = "discard 더미 보기";
+      zones.addEventListener("click", (event) => {
+        event.stopPropagation();
+        openPileList(`좌석 ${seat} discard`, player.discard_pile, zones);
+      });
+    }
+    card.appendChild(zones);
 
-    const battle = [
-      ...player.objective_ids,
-      ...player.won_conflict_ids,
-    ];
+    const battle = [...player.objective_ids, ...player.won_conflict_ids];
     if (battle.length || player.face_down_battle_card_ids.length) {
       const line = document.createElement("div");
       line.className = "cardline";
       const strong = document.createElement("strong");
-      strong.textContent = "Battle cards ";
+      strong.textContent = "Battle ";
       line.appendChild(strong);
       for (const id of battle) line.appendChild(chip(id));
       for (const id of player.face_down_battle_card_ids) {
@@ -1366,10 +1729,7 @@ function renderSeats() {
       }
       card.appendChild(line);
     }
-    if (
-      player.active_contract_ids.length ||
-      player.completed_contract_ids.length
-    ) {
+    if (player.active_contract_ids.length || player.completed_contract_ids.length) {
       const line = document.createElement("div");
       line.className = "cardline";
       const strong = document.createElement("strong");
@@ -1406,10 +1766,7 @@ function renderSeats() {
       for (const id of player.hand_public) line.appendChild(chip(id));
       card.appendChild(line);
     }
-    if (
-      view.intrigue_resolving.length &&
-      view.decision_owner === player.player
-    ) {
+    if (view.intrigue_resolving.length && view.decision_owner === player.player) {
       const line = document.createElement("div");
       line.className = "cardline";
       const strong = document.createElement("strong");
@@ -1420,6 +1777,21 @@ function renderSeats() {
     }
     wrap.appendChild(card);
   }
+}
+
+/* A pile listing (discard, Intrigue hand) in the popover. */
+function openPileList(title, ids, anchor) {
+  const pop = el("card-popover");
+  pop.textContent = "";
+  const head = document.createElement("div");
+  head.className = "popover-title";
+  head.textContent = `${title} (${ids.length})`;
+  pop.appendChild(head);
+  const row = document.createElement("div");
+  row.className = "strip-cards wrap";
+  for (const id of ids) row.appendChild(visualCard(id, { className: "small" }));
+  pop.appendChild(row);
+  placePopover(pop, anchor, 420);
 }
 
 /* ---------- live action log (M11 slice 6) ---------- */
@@ -1508,6 +1880,8 @@ function renderLog() {
   list.scrollTop = list.scrollHeight;
 }
 
+/* ---------- own hand ---------- */
+
 function renderPrivate() {
   const panel = el("private-zone");
   panel.textContent = "";
@@ -1517,24 +1891,52 @@ function renderPrivate() {
     return;
   }
   panel.hidden = false;
-  const heading = document.createElement("h2");
-  heading.textContent = `내 카드 (좌석 ${activeSeat()})`;
-  panel.appendChild(heading);
+  const own = view.players[view.player];
 
-  const hand = section(panel, `Hand (${view.private.hand.length})`);
-  chipList(hand, view.private.hand, "비어 있음");
+  const label = document.createElement("div");
+  label.className = "hand-label";
+  const title = document.createElement("strong");
+  title.textContent = `내 손패 · 좌석 ${activeSeat()}`;
+  label.appendChild(title);
+  const counts = document.createElement("span");
+  counts.className = "hand-counts";
+  counts.append(
+    statNode("draw", "deck", view.private.deck_size),
+    statNode("discard", "discard", own.discard_pile.length),
+    statNode("intrigue", "Intrigue", view.private.intrigue_cards.length)
+  );
   /* Discard piles are public (OQ-010); the owner's copy lives in the seat's
      public block like everyone else's. */
-  const ownDiscard = view.players[view.player].discard_pile;
-  const discard = section(panel, `Discard (${ownDiscard.length})`);
-  chipList(discard, ownDiscard, "비어 있음");
-  const intrigue = section(
-    panel,
-    `Intrigue (${view.private.intrigue_cards.length})`
-  );
-  chipList(intrigue, view.private.intrigue_cards, "없음");
-  const deck = section(panel, "Deck");
-  deck.textContent = `${view.private.deck_size}장`;
+  counts.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (own.discard_pile.length) openPileList("내 discard", own.discard_pile, counts);
+  });
+  counts.classList.add("clickable");
+  label.appendChild(counts);
+  panel.appendChild(label);
+
+  const zones = document.createElement("div");
+  zones.className = "hand-zones";
+  const hand = document.createElement("div");
+  hand.className = "strip-cards hand-cards";
+  if (!view.private.hand.length) {
+    const empty = document.createElement("span");
+    empty.className = "muted";
+    empty.textContent = "손패 없음";
+    hand.appendChild(empty);
+  }
+  for (const cardId of view.private.hand) hand.appendChild(visualCard(cardId));
+  zones.appendChild(hand);
+
+  if (view.private.intrigue_cards.length) {
+    const intrigue = document.createElement("div");
+    intrigue.className = "strip-cards intrigue-cards";
+    for (const cardId of view.private.intrigue_cards) {
+      intrigue.appendChild(visualCard(cardId, { className: "intrigue" }));
+    }
+    zones.appendChild(intrigue);
+  }
+  panel.appendChild(zones);
 }
 
 function renderStandings() {
@@ -1582,8 +1984,6 @@ function renderStandings() {
     panel.appendChild(review);
   }
 }
-
-/* ---------- boot ---------- */
 
 async function init() {
   state.catalog = await api("/catalog");
