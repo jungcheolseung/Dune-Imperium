@@ -68,6 +68,10 @@ from a player's personal deck. General Agent, Reveal, and deck-building rules in
 | Chance and replay | Prepare the Way's draw uses the same personal discard reshuffle decision as board-space and Spy draws. | Its Reserve instance ID remains stable through discard, shuffle, hand, and in-play zones. |
 | RL encoding | Every transcribed physical card copy can take its Agent destinations, including Infiltrate variants. | Imperium batches grow the catalog through 832 in v8, 845 in v9, 857 in v10, 971 in v11, 991 in v12, 1001 in v13, 1014 in v14, 1060 in v15, 1068 in v16, 1114 in v17, 1133 in v18, 1146 in v19, 1162 in v20, 1196 in v21, 1200 in v22, 1277 in v23, 1328 in v24, 1341 in v25, 1428 in v26, 1454 in v27, 1509 in v28, 1637 in v29, 1688 in v30, 1715 in v31, 1729 in v32, 1752 in v33, 1822 in v34, 1920 in v35, 1936 in v36, 2039 in v37, 2072 in v38, 2142 in v39, 2193 in v40, 2337 in v41, 2533 in v42, 2549 in v43, 2601 in v44, 2633 in v45, 2648 in v46, 2724 in v47, 2740 in v48, 2769 in v49, 2830 in v50, 2906 in v51, 3111 in v52, 3123 in v53, 3326 in v54, and 3377 in v55. Codec v58 keeps the module-off catalog at 3,377 and expands only the CHOAM catalog to 3,598 with the four cards' Agent destinations and two Reveal choices. |
 
+| Arrakis Revolt (promo) | Fremen affiliation, City Agent icon, cost 6; acquiring it recruits one troop. With Maker Hooks its Agent box may pay two Spice to (optionally) remove the Shield Wall and summon one sandworm into the Conflict; Reveal gives one Persuasion and three swords. | Uprising promo card outside the retail deck (`RulesetConfig(promo_cards=True)`), transcribed from the card face. Maker Hooks gate the pending effect at placement; the Spice cost is re-judged at resolution. Paying while keeping the wall is offered only when the Conflict is not protected (OQ-026). |
+| The Beast's Spoils (promo) | Emperor affiliation, City Agent icon, cost 3. Its Agent box pays one reward per face-up battle icon in the owner's supply: Crysknife lets the owner trash a card, Desert Mouse gains one Spice, Ornithopter recruits one troop; Reveal gives three swords. | Promo card from the card face. One reward per face-up Objective or won Conflict card; a face-up wild counts as none of the three; each Crysknife trash is optional and offered one at a time after the automatic Spice and troops (OQ-024). |
+| Pivotal Gambit (promo) | Fremen affiliation, Fremen and City Agent icons, cost 3. Its Agent box may trash itself to recruit one troop and pledge a wild battle icon to the current Conflict's first-place reward; Reveal gives one Persuasion and two swords. | Promo card from the card face. The pledge rides on the Conflict card to whoever wins (forfeited on a first-place tie) and pairs as a wild side in the Endgame, never on arrival (OQ-025). |
+
 ## Card-level verification
 
 - The two printed card images linked by the Reserve content manifest were
@@ -118,6 +122,6 @@ from a player's personal deck. General Agent, Reveal, and deck-building rules in
 ## Deferred boundaries
 
 - Signet Ring resolves through per-Leader ability data (`rules/leader_abilities.py`, [leaders.md](leaders.md)); seats whose Leader is not implemented yet still have their Signet Ring placements withheld.
-- Every Reveal choice used by the fifty-four transcribed shared cards has a
-  serial or atomic decision path.
+- Every Reveal choice used by the fifty-seven transcribed shared cards (54
+  retail + 3 Uprising promo) has a serial or atomic decision path.
 - Acquisition bonuses without a local typed effect remain unavailable.

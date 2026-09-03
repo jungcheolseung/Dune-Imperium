@@ -130,6 +130,27 @@
 - Captured Mentat의 한 칸 Influence 감소로 실제 상태를 검토했다. 유효한 Alliance 보유자가 4에서 3으로 내려갈 때 Influence 4 이상인 다른 플레이어는 감소 직전 모두 보유자와 4에서 동률이므로 FAQ의 기존 보유자 선택 규칙이 적용된다. 보유자가 5 이상이면 한 칸 감소 뒤에도 4 이상이라 token 반환 조건에 들어가지 않는다. 여러 칸 감소도 한 칸씩 처리하면 같은 결론이 반복되므로, 직전 동률자가 아닌 복수 수령 후보 상태는 유효한 track 전이에서 발생하지 않는다. `[Main p. 7]` `[FAQ p. 1]`
 - 구현은 감소 직전 동률 후보가 여러 명이면 기존 보유자의 명시적 선택을 요구한다.
 
+## OQ-024 — The Beast's Spoils(프로모)의 battle icon별 보상 범위
+
+- 상태: `DECIDED` (project convention)
+- 카드면: "Gain rewards for your face-up battle icons: Crysknife: trash 아이콘, Desert Mouse: spice 1, Ornithopter: troop". 이 카드는 정식 덱 밖의 Uprising 프로모라 어떤 공식 문서에도 없다. `[card face]` 공식 문서는 battle icon을 Objective와 획득 Conflict 카드의 face-up 인쇄 아이콘으로만 정의하고 wild icon은 Endgame에서만 짝짓는다고 한다. `[Main pp. 14, 20]`
+- 필요한 답: (a) 같은 아이콘이 여러 장 face-up이면 장수만큼 보상하는지, (b) face-up wild(Propaganda)가 세 아이콘 중 하나로 세어지는지, (c) trash 보상이 선택인지.
+- 판정(2026-09-03, project convention): (a) 카드 한 장당 한 번 — "face-up battle icons"는 복수형이고 아이콘은 카드에 하나씩 인쇄되므로 face-up 카드마다 그 아이콘의 보상을 받는다. (b) wild는 세지 않는다 — wild는 Endgame에서 하나의 아이콘과 짝짓기 위해 선택하는 것이지 그 자체가 Crysknife 등이 아니다(`[Main p. 20]`). (c) trash는 선택이다 — "Trashing is optional unless it's paying a cost"(`[Main p. 20]`)이고 여기서는 보상이다. 구현: `GAIN_REWARDS_PER_FACE_UP_BATTLE_ICON`은 spice·troop을 먼저 자동 지급하고 Crysknife 장수만큼 trash 선택(hand·discard·in play, 거절 시 남은 trash 포기)을 차례로 제시한다. `tests/unit/rules/test_promo_cards.py`.
+
+## OQ-025 — Pivotal Gambit(프로모)의 "1위 보상에 wild battle icon 추가"
+
+- 상태: `DECIDED` (project convention)
+- 카드면: "Trash this card → troop AND Add [wild battle icon] to the first place reward for this conflict." 공식 문서는 Conflict 카드에 인쇄되지 않은 보상을 추가하는 절차나, 그렇게 얻은 wild icon이 카드 형태가 아닐 때의 취급을 다루지 않는다. `[card face]` `[Main pp. 14, 20]`
+- 필요한 답: (a) wild icon을 누가 받는가(카드를 낸 플레이어인가, 그 Conflict의 1위인가), (b) 1위가 없으면(동률) 어떻게 되는가, (c) 받은 wild icon을 언제 어떻게 짝짓는가.
+- 판정(2026-09-03, project convention): (a) 보상은 Conflict의 1위 보상에 붙으므로 누가 냈든 **그 Conflict의 1위**가 받는다. (b) 1위가 없으면 다른 1위 보상처럼 사라진다. (c) 받은 wild icon은 승자가 가져간 그 Conflict 카드에 붙은 것으로 취급한다: 도착 즉시 매칭은 인쇄 아이콘으로만 하고(`[Main p. 14]`), Endgame에서 그 카드를 wild 쪽으로 삼아 face-up 인쇄 아이콘 카드 한 장과 짝지을 수 있으며 자기 자신과는 짝짓지 못한다(`[Main p. 20]`). 도착 즉시 인쇄 아이콘으로 짝지어져 뒤집힌 카드의 wild는 함께 소모된다. Endgame Intrigue의 flip 비용(Crysknife 등)도 이 카드를 wild 카드처럼 대상으로 삼을 수 있다. 구현: `GameState.conflict_wild_icon_bonus`(이번 Conflict의 pledge) → `finish_combat`이 승자의 `wild_icon_conflict_ids`로 옮김 → `endgame`·`flippable_battle_card_ids`가 wild 쪽 후보에 포함. 관측 v4, codec v85(프로모 옵션 catalog는 모든 Conflict를 wild 후보로 가짐). `tests/unit/rules/test_promo_cards.py`.
+
+## OQ-026 — Arrakis Revolt(프로모)의 Shield Wall 제거 선택과 보호된 Conflict
+
+- 상태: `DECIDED` (project convention)
+- 카드면(Agent box): "Maker Hooks: 2 spice → [Shield Wall 아이콘] [sandworm 아이콘]". 공식 아이콘 정의는 Shield Wall 아이콘을 "You **may** remove the Shield Wall", sandworm을 "Does nothing if the current Conflict is protected by the Shield Wall. Otherwise, summon and deploy one sandworm"으로 둔다. `[Main p. 20]` `[card face]`
+- 필요한 답: 비용을 내고 Shield Wall을 남긴 채 보호된 Conflict에 sandworm을 소환하는(아무 효과 없는) 선택을 제시할지, 비용 재판정 시점.
+- 판정(2026-09-03, project convention): Maker Hooks는 배치 시 요구 조건이고 2 spice는 해결 시점에 다시 판정하는 화살표 비용이다(`[Main pp. 9, 20]`, 다른 화살표 비용과 같음). 선택지는 "지불 + Shield Wall 제거 + 소환"(벽이 있을 때)과 "지불 + 벽 유지 + 소환"(현재 Conflict가 보호되지 않을 때)이며, 보호된 Conflict에서 벽을 남기고 지불하는 무효 선택은 제시하지 않는다(2 spice로 아무것도 얻지 못하는 선택은 규칙상 가능하더라도 행동 공간에서 뺀다). Emperor of the Known Universe의 배치 차단(`[Main p. 17]`)은 sandworm 소환에도 적용된다. 구현: `MAY_PAY_TWO_SPICE_FOR_SHIELD_WALL_AND_SANDWORM_IF_MAKER_HOOKS`. `tests/unit/rules/test_promo_cards.py`.
+
 ## 판정이 생겼을 때 기록할 정보
 
 각 항목을 닫을 때 다음을 함께 남긴다. `DECIDED` 항목에 새 공식 답이 나왔을 때도 같다.

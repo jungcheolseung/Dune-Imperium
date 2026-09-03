@@ -34,6 +34,16 @@ Main은 최신 판정과 clarification을 FAQ에서 확인하라고 안내한다
 판단되는 경우 어느 한쪽을 조용히 버리지 않고 `open-questions.md`에 기록한다.
 `[Main p. 18]`
 
+### 프로모 카드의 출처
+
+Uprising 프로모 Imperium 3장(Arrakis Revolt, The Beast's Spoils, Pivotal
+Gambit)은 위 세 공식 문서 어디에도 실리지 않았다. 이 카드들의 유일한 근거는
+인쇄된 카드면이며, 콘텐츠 메타데이터에서는 `SourceDocument.CARD_FACE`(인용
+`[card face]`, page 1)로 표시한다. 카드면이 답하지 않는 상호작용은 공식 아이콘
+정의(`[Main p. 20]`)와 Combat·Endgame 규칙으로 풀되, 남는 공백은
+`open-questions.md`의 OQ-024~026에 project convention으로 기록했다. 카드
+이미지는 비공개 에셋 저장소 `cards/en/uprising/promo/`에 있다.
+
 ## 페이지와 인용
 
 - Main의 `[Main p. N]`은 표지 PDF 페이지가 아니라 본문에 인쇄된 쪽수를

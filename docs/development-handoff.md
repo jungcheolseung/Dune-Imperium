@@ -1,6 +1,6 @@
 # 개발 인수인계
 
-기준일: 2026-09-03
+기준일: 2026-09-03 (저녁)
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
@@ -17,11 +17,11 @@ uv run ruff check src tests
 uv run mypy src tests
 ```
 
-2026-09-03의 기준 결과는 pytest 1,011개 통과(카드 이미지 에셋이 없는 머신은 1,010 통과 + 1 skip), Ruff 통과, mypy 통과다. 현재 action codec은 `ACTION_CODEC_VERSION = 84`(기본 4,314개, CHOAM 4,600개)이고, 관측은 `OBSERVATION_VERSION = 3`의 1,967-int 전체 게임 인코딩이다 ([`rl-environment.md`](rl-environment.md)). 보드 22칸 완결 + 즉시 공개 + `fab266f`/`e6fc298` 수정 + sweep 확장(`853ecd4`) 반영 후의 교차 소크는 random 룰셋당 2,000판 + heuristic 룰셋당 1,000판(둘 다 `--rotate-leaders`) + draft 두 policy 각 룰셋당 500판, 전부 `--soundness-interval 25`를 켠 총 7,000판이 실패 0으로 통과한 상태다(2026-09-01, 아래 세션 요약. 그 전 단계에서는 random 룰셋당 3,000판 비회전 소크도 실패 0이었다).
+2026-09-03 저녁의 기준 결과는 pytest 1,026개 통과(카드 이미지 에셋이 없는 머신은 1,025 통과 + 1 skip), Ruff 통과, mypy 통과다. 현재 action codec은 `ACTION_CODEC_VERSION = 85`(기본 4,316개, CHOAM 4,602개, `promo_cards` 옵션 시 4,686/4,972개)이고, 관측은 `OBSERVATION_VERSION = 4`의 2,038-int 전체 게임 인코딩이다 ([`rl-environment.md`](rl-environment.md)). 보드 22칸 완결 + 즉시 공개 + `fab266f`/`e6fc298` 수정 + sweep 확장(`853ecd4`) 반영 후의 교차 소크는 random 룰셋당 2,000판 + heuristic 룰셋당 1,000판(둘 다 `--rotate-leaders`) + draft 두 policy 각 룰셋당 500판, 전부 `--soundness-interval 25`를 켠 총 7,000판이 실패 0으로 통과한 상태다(2026-09-01, 아래 세션 요약. 그 전 단계에서는 random 룰셋당 3,000판 비회전 소크도 실패 0이었다).
 
 ## 현재 구현 기준선
 
-마지막 기능 커밋 묶음은 2026-09-01 검증 강화 캠페인의 보드 공간 완결 슬라이스들이다: `d7703ef`(Dutiful Service CHOAM contract), `e141492` (Shipping, codec v80), `63a8994`(Desert Tactics, codec v81), `49a5bb6` (Imperial Privilege, codec v82, OQ-023), `78fa1a3`(Secrets chance 강탈, SECRETS_STEAL frame), `881d88b`(Reveal 중 hand 진입 카드의 FAQ p. 3 즉시 공개, OQ-015(c) 해소), `fab266f`·`e6fc298`(소크가 적발한 mid-frame trash 충돌 두 계열의 OQ-022 확장 수정). 이로써 **4인 보드 22칸 전부가 배치·해결 가능**하고 Reveal 중 draw/hand-acquire Plot 보류도 사라졌다. 그 앞은 `4c175d1`(카드 이미지 캐시 다운로드 스크립트)이고, 그 앞에 UI 효과 표시 작업의 `3e2ae8f`(행동 효과 미리보기 + 전체 행동 라벨), `d275a66`(보드 공간 패널·popover·카드 이미지), `d34a2d1`(/catalog 효과 텍스트·이미지), `a4befd4`(display 패키지), `3c1cc69`(정적 보드 효과 테이블), 그리고 M11의 `e44900a`(저장/불러오기/검토 브라우저 UI), 슬라이스 5 서버 API `8ab3cd2`, 브라우저 UI `42be883`, FastAPI 세션 서버 `4fbd751`, Leader draft `c0c1795`, Treacherous Maneuver OQ-022 수정 `d70b353`, 슬라이스 1 묶음(`1a449f4`+`7a53c8f`+`ac4d6d4`)이 있다. 마일스톤 현황: **R0~M8, M11 완료**(M6 콘텐츠, M7 완주 검증, M8 CHOAM, M11 사람용 로컬 웹 UI — 슬라이스 7까지, 완료 판정 근거는 `implementation-plan.md` M11 절), **다음은 Uprising 프로모 Imperium 3장 슬라이스, 그 뒤 M9**.
+마지막 기능 커밋 묶음은 2026-09-01 검증 강화 캠페인의 보드 공간 완결 슬라이스들이다: `d7703ef`(Dutiful Service CHOAM contract), `e141492` (Shipping, codec v80), `63a8994`(Desert Tactics, codec v81), `49a5bb6` (Imperial Privilege, codec v82, OQ-023), `78fa1a3`(Secrets chance 강탈, SECRETS_STEAL frame), `881d88b`(Reveal 중 hand 진입 카드의 FAQ p. 3 즉시 공개, OQ-015(c) 해소), `fab266f`·`e6fc298`(소크가 적발한 mid-frame trash 충돌 두 계열의 OQ-022 확장 수정). 이로써 **4인 보드 22칸 전부가 배치·해결 가능**하고 Reveal 중 draw/hand-acquire Plot 보류도 사라졌다. 그 앞은 `4c175d1`(카드 이미지 캐시 다운로드 스크립트)이고, 그 앞에 UI 효과 표시 작업의 `3e2ae8f`(행동 효과 미리보기 + 전체 행동 라벨), `d275a66`(보드 공간 패널·popover·카드 이미지), `d34a2d1`(/catalog 효과 텍스트·이미지), `a4befd4`(display 패키지), `3c1cc69`(정적 보드 효과 테이블), 그리고 M11의 `e44900a`(저장/불러오기/검토 브라우저 UI), 슬라이스 5 서버 API `8ab3cd2`, 브라우저 UI `42be883`, FastAPI 세션 서버 `4fbd751`, Leader draft `c0c1795`, Treacherous Maneuver OQ-022 수정 `d70b353`, 슬라이스 1 묶음(`1a449f4`+`7a53c8f`+`ac4d6d4`)이 있다. 마일스톤 현황: **R0~M8, M11 완료**(M6 콘텐츠, M7 완주 검증, M8 CHOAM, M11 사람용 로컬 웹 UI — 슬라이스 7까지, 완료 판정 근거는 `implementation-plan.md` M11 절; Uprising 프로모 3장은 2026-09-03 저녁 `promo_cards` 옵션으로 구현 완료), **다음은 M9**.
 
 - R0-M4는 완료됐다. 공식 규칙 자료, 엔진 커널, 4인 setup, 한 라운드 수직 조각, actor-neutral action codec과 PettingZoo AEC 계약이 있다.
 - M5의 주요 시스템은 연결돼 있다. Influence/Friendship/Alliance, Agent와 Reveal, Spy/Infiltrate/Gather Intelligence, 개인 덱 reshuffle chance, Combat 순위와 보상, sandworm·Shield Wall·control, Makers·Recall, Endgame window와 게임 종료까지 실행할 수 있다.
@@ -43,16 +43,16 @@ uv run mypy src tests
 - Shaddam Corrino IV의 set-aside Sardaukar Contract 경로는 Leader 능력과 함께 남아 있다. OQ-010(2026-09-02 확정), OQ-011 경계는 확정 판정(`DECIDED`)으로 유지된다.
 - 공식 문서가 침묵하는 규칙 판정은 [`rules/open-questions.md`](rules/open-questions.md)에 있다. 2026-09-01 확정 캠페인과 같은 날의 사용자 검토를 거쳐, 2026-09-02에 OQ-010까지 확정돼 `OPEN` 항목은 없고 전부 `DECIDED`/`RESOLVED`다. `DECIDED`는 확정 프로젝트 판정으로 새 공식 룰북·FAQ(또는 OQ-022처럼 명시된 상위 근거)가 답을 줄 때만 다시 연다. 새로 발견되는 규칙 공백은 여전히 코드로 임의 확정하지 않고 그 문서에 먼저 기록하며, 규칙 동작을 바꾸기 전에는 반드시 `docs/rules/`의 문장을 인용한다([`lessons.md`](lessons.md)).
 
-콘텐츠(카드·리더·계약·Intrigue·보드 22칸)는 이제 4인 base+CHOAM 게임 범위에서 완결이다. 예외는 2026-09-03에 사용자가 구현 대상으로 정한 Uprising 프로모 Imperium 3장(Arrakis Revolt, The Beast's Spoils, Pivotal Gambit; `implementation-plan.md` M6 절, 이미지는 에셋 저장소 `cards/en/uprising/promo/`)으로, 아직 content 패키지에 없다. 남은 경계는 공식 문서가 침묵하는 판정을 기록한 convention(open-questions.md)과 위의 엔진 경계·미래 콘텐츠 tripwire들이며, 이들은 "미구현 콘텐츠"가 아니라 문서화된 프로젝트 판정이다.
+콘텐츠(카드·리더·계약·Intrigue·보드 22칸)는 이제 4인 base+CHOAM 게임 범위에서 완결이다. Uprising 프로모 Imperium 3장(Arrakis Revolt, The Beast's Spoils, Pivotal Gambit)은 같은 날 저녁 `RulesetConfig(promo_cards=True)` 옵션 콘텐츠로 구현됐고(기본은 꺼짐), 공식 문서가 침묵하는 판정은 OQ-024~026 project convention이다. 남은 경계는 공식 문서가 침묵하는 판정을 기록한 convention(open-questions.md)과 위의 엔진 경계·미래 콘텐츠 tripwire들이며, 이들은 "미구현 콘텐츠"가 아니라 문서화된 프로젝트 판정이다.
 
 ## 다음 구현 순서
 
 2026-09-01의 **검증 강화 캠페인**(사용자 확정 범위: 전체 1→4)은 같은 날 완료했다: 1단계 보드 22칸 완결 + OQ-015(c), 2단계 sweep 확장 (`853ecd4`: 커버리지 census `--coverage-json`, 표본 주기 legal-action 전수 적용 + codec 왕복 `--soundness-interval`, seed별 리더 회전 `--rotate-leaders`), 3단계 교차 소크(아래), 4단계 대조(DIU 63종 전부 일치, open-questions 23건 재점검). 세부는 아래 세션 요약.
 
 0. (2026-09-03 완료) M11 슬라이스 7 보드 스캔 테이블 + 룰북 아이콘 — 아래 세션 요약. (2026-09-02 완료) 슬라이스 6 행동 되돌리기 + 실시간 행동 로그.
-1. **Uprising 프로모 Imperium 3장 콘텐츠 슬라이스**(M6 후속, 사용자 결정 2026-09-03: M9보다 먼저). `Play ...`/`Document ...` 쌍, 이미지 검증, `uprising/promo/` manifest 항목에 `content_id` 부여. The Beast's Spoils의 battle icon별 보상과 Pivotal Gambit의 1위 보상 wild icon 추가는 새 Reveal 효과 경계다.
-2. **M9 평가 러너와 baseline.** 여러 게임을 병렬 구동하고 정책 추론만 batch하는 self-play 러너, random/heuristic(M11 상대에서 출발)/rollout baseline, 좌석·리더·first player·seed 교차 대회 도구 (`implementation-plan.md`의 M9). 관측·보상 계약은 [`rl-environment.md`](rl-environment.md)로 고정돼 있고, 병렬 실행 선례는 `simulation/sweep.py`다. 더 큰 야간 규모 재검증이 필요하면 `dune-imperium-sweep --games 50000 --ruleset both --workers 8 --rotate-leaders --soundness-interval 25 --coverage-json ...`을 커밋된 트리에서 돌린다.
-3. **M10 강화학습과 league self-play.** M9의 평가 행렬 위에서 시작한다 (`implementation-plan.md`의 M10).
+0. (2026-09-03 저녁 완료) Uprising 프로모 Imperium 3장 — 아래 세션 요약.
+1. **M9 평가 러너와 baseline.** 여러 게임을 병렬 구동하고 정책 추론만 batch하는 self-play 러너, random/heuristic(M11 상대에서 출발)/rollout baseline, 좌석·리더·first player·seed 교차 대회 도구 (`implementation-plan.md`의 M9). 관측·보상 계약은 [`rl-environment.md`](rl-environment.md)로 고정돼 있고, 병렬 실행 선례는 `simulation/sweep.py`다. 더 큰 야간 규모 재검증이 필요하면 `dune-imperium-sweep --games 50000 --ruleset both --workers 8 --rotate-leaders --soundness-interval 25 --coverage-json ...`을 커밋된 트리에서 돌린다.
+2. **M10 강화학습과 league self-play.** M9의 평가 행렬 위에서 시작한다 (`implementation-plan.md`의 M10).
 
 각 묶음은 카드 이미지로 텍스트를 검증하고(`docs/card-data-sources.md`의 방법), `Play ...` / `Document ...` 커밋 쌍을 유지하며, 새 결정 경계는 `FrameKind` → frame `kind` → dispatcher 표 → codec 순으로 추가한다. 핸드오프의 카드 요약은 이미지 검증 전 참고일 뿐이다(Impress 비용, Spring the Trap 유형을 잘못 적었던 전례가 있다).
 
@@ -120,6 +120,15 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 ## 원격 저장소 인계 주의
 
 2026-09-03 세션 시작 시점에 `origin/master`와 로컬은 `e4ac740`으로 일치했고, 이 날의 슬라이스 7 커밋들(`3d70e38`부터)은 로컬에만 있다(push는 사용자 판단으로 한다). 원격에는 병합하지 않은 `kyungtae` 브랜치가 있다. 새 세션은 `git log origin/master..master`와 반대 방향을 모두 확인하고, checkout이 `853ecd4`보다 이전이면 이 문서의 989개 테스트·codec v84 기준선이 실제 코드와 일치하지 않는다. **다른 머신에서 이어서 작업한다면 먼저 이 머신에서 push가 필요하다.** 새 머신의 UI 카드 이미지·아이콘·보드 스캔은 비공개 `Dune-Imperium-assets` 저장소를 clone해 symlink로 연결한다(그 README 참고; 루트의 `assets` symlink 하나로 cards·icons·board·rulebooks를 모두 연결). 카드 매핑은 그 저장소의 `cards/manifest.json`에만 있으므로 접근이 없으면 텍스트 UI로 동작한다.
+
+## 2026-09-03 Uprising 프로모 3장 세션 요약 (`promo_cards` 옵션)
+
+- 사용자 결정: `promo/`의 9장 중 Arrakis Revolt·The Beast's Spoils·Pivotal Gambit은 Uprising 후속 프로모라 구현 대상, 순서는 M9 앞. 공식 FAQ·룰북에는 이 카드들이 없어 카드면이 유일한 출처다(`SourceDocument.CARD_FACE`, `[card face]`; `rules/sources.md`).
+- 카드면 확대 검증(`assets/cards/en/uprising/promo/`): 세 카드의 효과는 모두 **Agent box**(회색 상자)이고 파란 Reveal 상자는 Persuasion·검뿐이다(Desert Power·Priority Contracts 이미지로 상자 의미를 대조). Arrakis Revolt: Fremen, 6, City, acquire troop, Agent "Maker Hooks: 2 spice → Shield Wall 제거(선택) + sandworm", Reveal 1/3. The Beast's Spoils: Emperor, 3, City, Agent "face-up battle icon마다: Crysknife trash / Desert Mouse 1 spice / Ornithopter troop", Reveal 0/3. Pivotal Gambit: Fremen, 3, Fremen+City, Agent "이 카드 trash → troop + 이번 Conflict 1위 보상에 wild battle icon", Reveal 1/2.
+- **`Play` 커밋**: `RulesetConfig.promo_cards`(identifier `+promo`; 서버 `CreateGameRequest`·요약, UI 체크박스·상태줄, sweep `--promo-cards`·coverage). `DeckCardEntry.promo`, `imperium_cards_for_choam(choam, promo)`·`imperium_deck_instance_ids` 확장, DIU 감사는 프로모 제외. 새 enum 4종(위). 규칙: `agent_turn` 배치 조건(Revolt는 Maker Hooks+2 spice), `agent_effects`의 지불 provider(Revolt 두 변형: 벽 제거+소환 / 벽 유지+소환, 보호된 Conflict에서는 제거 변형만), trash provider(Gambit 자기 trash → troop + `GameState.conflict_wild_icon_bonus`; Beast는 자동 spice·troop 지급 뒤 Crysknife 장수만큼 trash 선택을 `crysknife_trashes_remaining`으로 순차 제시), `acquisition`의 `RECRUIT_ONE_TROOP`. Combat: `finish_combat`이 pledge를 승자의 `wild_icon_conflict_ids`로 옮기고(동률이면 forfeited 이벤트) Endgame wild 매칭·Intrigue flip 대상이 그 카드를 wild 쪽으로 인정(`face_up_battle_icon_counts` helper 추가). 관측 v4(전역 scalar 12개, `wild_icon_conflicts` 16칸, 개인 카드 66종 → 2,038-int), codec v85(no-arg 2개 추가로 기본 4,316/CHOAM 4,602; 프로모 catalog는 모든 Conflict를 wild 후보로 열거해 4,686/4,972). 표시 텍스트·UI 행동 라벨 추가.
+- 판정 기록: OQ-024(Beast: 카드당 1회, wild 미포함, trash 선택), OQ-025(Gambit: 1위가 받고 동률이면 소멸, Conflict 카드에 붙어 Endgame에서 wild로 짝짓기, 도착 즉시 매칭은 인쇄 아이콘만), OQ-026(Revolt: 보호된 Conflict에서 벽 유지 지불은 제시하지 않음). `implementation-audits/personal-cards.md`에 세 행 추가.
+- 검증: pytest 1,026(신규 `tests/unit/rules/test_promo_cards.py` 14건 + 서버 1건), ruff, mypy. sweep 소크: `--promo-cards --rotate-leaders --soundness-interval 25` random 룰셋당 200판(400/400) + heuristic 룰셋당 60판(120/120) 실패 0. 첫 150판 소크가 codec 왕복 실패(프로모 catalog에 wild 후보가 Propaganda뿐)를 잡아 `_endgame_wild_templates`를 고쳤다. 커버리지 census에서 Revolt의 지불은 random 정책으로는 거의 나오지 않아(150판 중 1회) 단위 테스트가 그 경로를 고정한다.
+- 남은 경계: 프로모 카드 명칭·효과의 한글 표시 없음(기존과 동일), Beast's Spoils의 trash 선택은 "남은 trash 전부 포기"만 제공(한 장만 trash하고 나머지 거절은 trash 후 거절로 가능).
 
 ## 2026-09-03 M11 슬라이스 7 세션 요약 (보드 스캔 테이블 + 룰북 아이콘)
 

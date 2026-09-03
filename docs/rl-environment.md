@@ -2,13 +2,13 @@
 
 상태: 확정 (2026-08-30). 이 문서는 전체 게임 RL 환경의 세 가지 설계 결정—관측 인코딩, 종료 보상, episode 메커니즘—을 기록한다. 규칙 가시성의 규범 근거는 [`rules/information-visibility.md`](rules/information-visibility.md)와 OQ-010이고, 구현은 `adapters/observation_encoding.py`, `adapters/pettingzoo_env.py`, `simulation/runner.py`에 있다.
 
-## 관측 인코딩 (v3)
+## 관측 인코딩 (v4)
 
 - 인코더 `encode_player_view`는 **`PlayerView`의 순수 함수**다. 공개/비공개 경계는 `core/observation.py`가 단독으로 결정하며, 인코더는 view에 없는 정보를 만들 수 없다.
-- 형태는 단일 평면 `int32` 벡터(현재 1,967개)다. `OBSERVATION_VERSION`(현재 3)과 이름 붙은 세그먼트 표 `OBSERVATION_SEGMENTS`(`name`, `offset`, `length`)를 함께 export하고, `segment_slice(name)`으로 조회한다. 학습 코드는 오프셋을 하드코딩하지 않는다. 레이아웃 변경은 반드시 `OBSERVATION_VERSION`을 올린다. v2는 OQ-007 leader draft option의 공개 6-Leader pool 세그먼트(`leader_draft_pool`, Leader identity 슬롯 6칸, 옵션 off면 0)를 추가했다; pick 결과는 기존 좌석별 Leader 슬롯으로 보인다. v3(2026-09-02, OQ-010 확정)은 좌석별 `seat{n}_hand_public`(공개 경로로 hand에 들어온 카드, 개인 카드 63종 카운트)·`seat{n}_discard`(63종 카운트)·`seat{n}_completed_contracts`(Contract 20종 multi-hot) 세그먼트와 전역 `intrigue_resolving`(play됐지만 선택 해결 중이라 아직 소유자 보유 존에 있는 Intrigue, 39종 카운트) 세그먼트를 추가하고, 중복이 된 `private_discard` 세그먼트와 좌석 scalar의 discard 장수·완료 contract 수를 제거했다(좌석 scalar 28→26).
+- 형태는 단일 평면 `int32` 벡터(현재 2,038개)다. `OBSERVATION_VERSION`(현재 4)과 이름 붙은 세그먼트 표 `OBSERVATION_SEGMENTS`(`name`, `offset`, `length`)를 함께 export하고, `segment_slice(name)`으로 조회한다. 학습 코드는 오프셋을 하드코딩하지 않는다. 레이아웃 변경은 반드시 `OBSERVATION_VERSION`을 올린다. v2는 OQ-007 leader draft option의 공개 6-Leader pool 세그먼트(`leader_draft_pool`, Leader identity 슬롯 6칸, 옵션 off면 0)를 추가했다; pick 결과는 기존 좌석별 Leader 슬롯으로 보인다. v3(2026-09-02, OQ-010 확정)은 좌석별 `seat{n}_hand_public`(공개 경로로 hand에 들어온 카드, 개인 카드 63종 카운트)·`seat{n}_discard`(63종 카운트)·`seat{n}_completed_contracts`(Contract 20종 multi-hot) 세그먼트와 전역 `intrigue_resolving`(play됐지만 선택 해결 중이라 아직 소유자 보유 존에 있는 Intrigue, 39종 카운트) 세그먼트를 추가하고, 중복이 된 `private_discard` 세그먼트와 좌석 scalar의 discard 장수·완료 contract 수를 제거했다(좌석 scalar 28→26). v4(2026-09-03, Uprising 프로모 3장)는 전역 scalar에 `conflict_wild_icon_bonus`(Pivotal Gambit이 이번 Conflict 1위 보상에 걸어 둔 wild battle icon, 11→12개)와 전역 `wild_icon_conflicts` 세그먼트(그 wild icon을 함께 지닌 획득 Conflict 카드, Conflict 16종 multi-hot)를 추가했고, 개인 카드 identity 우주가 63→66종으로 늘어 카운트 세그먼트들이 각 3칸씩 커졌다(총 1,967→2,038).
 - 인코딩 규칙 세 가지:
   - **순서 있는 슬롯**: `identity_index + 1`, 0은 빈칸(Imperium Row 5칸, 현재 Conflict, Agent 위치 3칸, reveal 순서 등).
-  - **순서 없는 카드 존**: identity별 카운트 벡터(자기 hand, 각자의 discard/in_play/trashed, Intrigue discard/trash 등). identity 우주는 콘텐츠 정의 순서로 고정한다: 개인 카드 63종(시작 7 + Reserve 2 + Imperium 54), Intrigue 39종, Contract 20종.
+  - **순서 없는 카드 존**: identity별 카운트 벡터(자기 hand, 각자의 discard/in_play/trashed, Intrigue discard/trash 등). identity 우주는 콘텐츠 정의 순서로 고정한다: 개인 카드 66종(시작 7 + Reserve 2 + Imperium 57 — 기본 50 + CHOAM 4 + Uprising 프로모 3; 프로모는 `promo_cards` 옵션이 꺼져 있으면 항상 0), Intrigue 39종, Contract 20종.
   - **상태 존**: multi-hot(alliance 4, control 3, spy post 13, contract 20)과 battle card 21칸의 tri-state(0=없음, 1=face-up, 2=face-down).
 - **egocentric 좌석 회전**: 상대 좌석 블록과 모든 좌석 참조 값(first player, 결정 소유자, reveal 순서)은 관측자를 상대 좌석 0으로 회전한 상대 인덱스다. self-play 가중치 공유를 위해서다.
 - **결정 컨텍스트**: top frame kind(24종), 결정 소유자, turn 소유자를 공개한다. frame별 세부 컨텍스트는 비공개 정보를 담을 수 있어 kind별 화이트리스트를 검토한 뒤에만 추가한다(후속 작업).
