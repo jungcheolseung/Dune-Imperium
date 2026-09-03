@@ -30,7 +30,7 @@ authoritative and update the handoff in the same work unit.
 - Prefer Dire Wolf Digital's official online resources:
   - https://www.direwolfdigital.com/dune-imperium/resources/
   - https://www.direwolfdigital.com/dune-imperium/resources/diu_rules
-- Files under `rulebooks/` are the user's local reading copies. Do not load,
+- Files under `assets/rulebooks/` (the private assets checkout) are the user's local reading copies. Do not load,
   extract, summarize, modify, or delete those PDFs by default.
 - Read a local PDF only when the user explicitly requests it or when the official
   source is unavailable and the task cannot otherwise proceed.

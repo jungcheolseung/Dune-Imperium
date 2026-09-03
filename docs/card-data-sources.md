@@ -66,7 +66,7 @@ assets under the same policy: the rulebook icon set (`assets/icons/`,
 45 transparent PNGs that `scripts/extract_rulebook_icons.py` cuts out of
 the pinned official Uprising Main Rulebook by image xref — Icon Guide p. 20
 and the Agent-icon list p. 9 — after verifying the file's sha256; names in
-`display/icons.py`) and the owner's board scan (`map.jpg`, served at
+`display/icons.py`) and the owner's board scan (`assets/board/map.jpg`, served at
 `/board-image`). The browser renders the generated effect text through an
 icon glossary (`ICON_RULES` in `static/app.js`): resources, troops, cards,
 Influence, Persuasion, swords, Spies and the like become the printed icons

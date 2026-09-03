@@ -67,6 +67,6 @@ read it at session start.
   `Document` commit.
 - Temporary files (official-rule working copies, scratch scripts) go under the
   session scratchpad or `/tmp`, never into the repository.
-- `rulebooks/*.pdf` are the user's local reading copies; use
+- `assets/rulebooks/*.pdf` are the user's local reading copies; use
   `scripts/prepare_official_rules.py` and the official URLs instead unless the
   user explicitly asks you to open a local PDF.

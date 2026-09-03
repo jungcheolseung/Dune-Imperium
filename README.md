@@ -17,7 +17,7 @@ Dune: Imperium을 Python으로 정확하고 재현 가능하게 구현하고, �
 - 최초 구현 대상은 **Dune: Imperium - Uprising 4인 플레이, CHOAM Module OFF**다. 기본 게임 완주 검증 뒤 CHOAM Module을 설정 옵션으로 추가한다.
 - 개발 및 실행 환경은 **Python 3.14**와 **uv**를 사용한다.
 - 현재 `dune/`의 코드는 이전 구현 시도의 참고 자료다. 호환성을 유지할 필요는 없으며, 더 적합한 구조를 위해 처음부터 다시 구현할 수 있다.
-- 규칙 구현과 검증에는 Dire Wolf Digital의 공식 온라인 자료를 우선 사용한다. `rulebooks/`의 PDF는 사용자가 로컬에서 열람하기 위한 사본이므로 자동으로 전체를 읽거나 분석하지 않는다. 애매한 규칙 해석과 선택한 판정은 문서화하고 테스트로 고정한다.
+- 규칙 구현과 검증에는 Dire Wolf Digital의 공식 온라인 자료를 우선 사용한다. `assets/rulebooks/`의 PDF는 사용자가 로컬에서 열람하기 위한 사본이므로 자동으로 전체를 읽거나 분석하지 않는다. 애매한 규칙 해석과 선택한 판정은 문서화하고 테스트로 고정한다.
 - 인접한 `../TabletopGames` 저장소는 보드게임 AI를 위한 구조적 참고 자료다. 특히 game state, forward model/rules, actions, parameters/components의 분리와 RL 연동 방식을 조사해 유용한 개념을 선택적으로 적용한다. 그대로 포팅하거나 런타임 의존성을 두는 것은 아직 결정하지 않았다.
 - 게임 규칙 엔진은 UI와 학습 코드에서 분리한다.
 - 학습 환경에 필요한 결정론적 실행과 seed 기반 난수, 합법 행동 열거 및 action mask, 플레이어별 관측과 비공개 정보, 상태 복제/직렬화, headless 병렬 실행을 처음부터 고려한다.
@@ -46,7 +46,7 @@ Dune: Imperium을 Python으로 정확하고 재현 가능하게 구현하고, �
 - [Uprising Board Space Guide와 보충 규칙](https://d19y2ttatozxjp.cloudfront.net/pdfs/DUNE_IMPERIUM_UPRISING_Rules_Supplements_23-10-12.pdf)
 - [공식 FAQ (2025-01-13)](https://d19y2ttatozxjp.cloudfront.net/pdfs/DUNE_IMPERIUM_FAQ_25-1-13.pdf)
 
-규칙 조사가 필요할 때는 위 공식 자료에서 해당 규칙과 관련된 부분만 확인한다. 로컬 `rulebooks/` PDF는 공식 자료에 접근할 수 없거나 사용자가 명시적으로 요청한 경우에만 사용한다.
+규칙 조사가 필요할 때는 위 공식 자료에서 해당 규칙과 관련된 부분만 확인한다. 로컬 `assets/rulebooks/` PDF는 공식 자료에 접근할 수 없거나 사용자가 명시적으로 요청한 경우에만 사용한다.
 
 ### 공식 룰 문서 작업 도구
 
@@ -84,7 +84,7 @@ clone해 저장소 루트의 `assets` symlink 하나로 연결한다(그 README 
   `uv run --with pymupdf --with pillow scripts/extract_rulebook_icons.py`가
   고정된 PDF를 내려받아 sha256을 검증한 뒤 추출한다(이름 목록은
   `dune_imperium.display.icons`).
-- `assets/board/map.jpg` (또는 루트 `map.jpg`, `DUNE_IMPERIUM_BOARD_IMAGE`): 4인 보드 스캔. hotspot·관측소
+- `assets/board/map.jpg` (또는 `DUNE_IMPERIUM_BOARD_IMAGE`): 4인 보드 스캔. hotspot·관측소
   좌표(`dune_imperium.display.board_layout`)는 소유자의 6012×6005 정사각형
   스캔 기준 퍼센트 값이라 다른 프레이밍의 스캔은 재측정이 필요하다.
 
