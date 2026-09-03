@@ -1,8 +1,8 @@
 """Download the Uprising card images the browser UI can display.
 
 Fetches exactly the file set enumerated by
-``dune_imperium.display.images.required_images()`` (166 files as of
-2026-08-31) from Dune Cards Hub into the gitignored local cache
+``dune_imperium.display.images.required_images()`` (170 files as of
+2026-09-03) from Dune Cards Hub into the gitignored local cache
 ``downloads/dunecardshub/cards/`` — the directory the play server mounts at
 ``/card-images``. Existing files are kept unless ``--force`` is given, so
 reruns only fill gaps.

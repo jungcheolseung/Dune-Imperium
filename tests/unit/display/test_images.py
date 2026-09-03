@@ -12,6 +12,7 @@ from dune_imperium.content.uprising.intrigue import INTRIGUE_CARDS
 from dune_imperium.content.uprising.leaders import LEADERS
 from dune_imperium.content.uprising.reserve import RESERVE_STACKS
 from dune_imperium.content.uprising.starting_cards import STARTING_DECK
+from dune_imperium.display import images
 from dune_imperium.display.images import (
     FILENAME_OVERRIDES,
     KNOWN_MISSING,
@@ -77,11 +78,33 @@ def test_image_filename_returns_none_when_the_file_is_absent() -> None:
     assert image_filename("imperium", "maula_pistol", available) is None
 
 
-def test_image_filename_returns_none_for_known_missing_ids_even_if_available() -> None:
-    kind, content_id = next(iter(KNOWN_MISSING))
-    available = frozenset({default_filename(kind, content_id)})
+def test_image_filename_returns_none_for_known_missing_ids_even_if_available(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The set is empty today; the mechanism is exercised with a stand-in.
+    assert not KNOWN_MISSING
+    monkeypatch.setattr(images, "KNOWN_MISSING", frozenset({("other", "dagger")}))
+    available = frozenset({FILENAME_OVERRIDES[("other", "dagger")]})
 
-    assert image_filename(kind, content_id, available) is None
+    assert image_filename("other", "dagger", available) is None
+
+
+def test_base_game_starting_card_scans_stand_in_for_uprising_reprints() -> None:
+    available = frozenset(
+        {
+            "dune-imperium-other-dagger.webp",
+            "dune-imperium-other-diplomacy.webp",
+            "dune-imperium-other-dune-the-desert-planet.webp",
+            "dune-imperium-other-reconnaissance.webp",
+        }
+    )
+    for content_id, filename in (
+        ("dagger", "dune-imperium-other-dagger.webp"),
+        ("diplomacy", "dune-imperium-other-diplomacy.webp"),
+        ("dune_the_desert_planet", "dune-imperium-other-dune-the-desert-planet.webp"),
+        ("reconnaissance", "dune-imperium-other-reconnaissance.webp"),
+    ):
+        assert image_filename("other", content_id, available) == filename
 
 
 def test_known_missing_and_overrides_do_not_overlap() -> None:
@@ -94,8 +117,8 @@ def test_required_images_cover_every_displayable_content_id() -> None:
     filenames = [filename for _, _, filename in entries]
 
     # 54 imperium + 39 intrigue + 20 contracts + 16 conflicts + 22 spaces
-    # + 10 leader faces + (7 starting - 4 without upstream image) + 2 reserve.
-    assert len(entries) == 166
+    # + 10 leader faces + 7 starting + 2 reserve.
+    assert len(entries) == 170
     assert len(set(filenames)) == len(filenames)
     assert not keys & KNOWN_MISSING
     assert keys == {

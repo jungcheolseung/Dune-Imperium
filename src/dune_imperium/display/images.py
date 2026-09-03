@@ -9,8 +9,9 @@ spaces), ``leader``, and ``other`` (starting and Reserve cards).
 
 ``FILENAME_OVERRIDES`` and ``KNOWN_MISSING`` were derived empirically by
 listing the cache and cross-checking it against every content ID in the
-Uprising manifests; they record upstream filename typos and content that has
-no published image, not a rules judgement.
+Uprising manifests; they record upstream filename typos, base-game files
+that stand in for unchanged Uprising reprints, and content that has no
+published image, not a rules judgement.
 
 ``required_images`` enumerates every file the display catalog can reference;
 ``scripts/fetch_card_images.py`` downloads exactly that set into the local
@@ -49,17 +50,23 @@ FILENAME_OVERRIDES: Final[Mapping[tuple[str, str], str]] = MappingProxyType(
         ),
         ("other", "seek_allies"): "uprising-other-seek-allies-emperor.webp",
         ("other", "signet_ring"): "uprising-other-signet-ring-emperor.webp",
+        # Uprising reprints these four starting cards unchanged from the base
+        # game, and Dune Cards Hub publishes them only under the base game
+        # (no "uprising-other-..." file exists), so the base-game scan is
+        # the printed card.
+        ("other", "dagger"): "dune-imperium-other-dagger.webp",
+        ("other", "diplomacy"): "dune-imperium-other-diplomacy.webp",
+        ("other", "dune_the_desert_planet"): (
+            "dune-imperium-other-dune-the-desert-planet.webp"
+        ),
+        ("other", "reconnaissance"): "dune-imperium-other-reconnaissance.webp",
     }
 )
 
-KNOWN_MISSING: Final[frozenset[tuple[str, str]]] = frozenset(
-    {
-        ("other", "dagger"),
-        ("other", "diplomacy"),
-        ("other", "dune_the_desert_planet"),
-        ("other", "reconnaissance"),
-    }
-)
+# Content with no published image at all. Empty since 2026-09-03 (the four
+# base-game starting cards above were the only members); the mechanism stays
+# so future content without upstream art degrades to text deliberately.
+KNOWN_MISSING: Final[frozenset[tuple[str, str]]] = frozenset()
 
 
 def image_filename(
