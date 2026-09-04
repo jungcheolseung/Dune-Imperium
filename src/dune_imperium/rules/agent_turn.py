@@ -313,135 +313,37 @@ def _agent_effect_is_available(
     space: BoardSpace,
     card_instance_id: str,
 ) -> bool:
+    """Return whether the played card's Agent box stays pending after placement.
+
+    Only conditions that no later effect of the same turn can change are
+    judged here: the visited space (its Faction, its Maker status) and
+    Faction Bonds among the cards already in play, which can only shrink.
+    Every other printed condition — an Influence threshold, a resource,
+    hand-size or Intrigue cost, an Alliance, sandworms in the Conflict — is
+    judged when the box is actually resolved, in the owner's chosen order
+    [Main pp. 7, 9]: a freely ordered board, Faction, Contract or Intrigue
+    effect of the same turn can still satisfy it (OQ-028).
+    """
+
     if effect is None:
         return False
-    if effect is PersonalCardAgentEffect.LOOK_AT_TOP_THREE:
-        # Long Live the Fighters checks its deck-size requirement when the
-        # Agent effect is actually resolved. Board and Faction effects may
-        # draw cards before that point in the same turn.
-        return True
-    if effect in (
-        PersonalCardAgentEffect.DRAW_PER_TWO_COMPLETED_CONTRACTS_UP_TO_TWO,
-        PersonalCardAgentEffect.MAY_DISCARD_TO_TAKE_CONTRACT,
-    ):
-        # Both conditions can become true after another freely ordered effect:
-        # a Contract can complete, or a board/card effect can draw a payment.
-        return True
     if (
         effect
         is PersonalCardAgentEffect.GAIN_TWO_VISITED_FACTION_INFLUENCE_AND_TRASH_SELF
     ):
         return space.faction is not None
-    if effect is PersonalCardAgentEffect.DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO:
-        return owner.influence.bene_gesserit >= 2
-    if effect is PersonalCardAgentEffect.PAY_TWO_WATER_TO_DRAW_TWO:
-        return owner.resources.water >= 2
-    if effect is PersonalCardAgentEffect.MAY_PAY_FOUR_SPICE_FOR_VP:
-        return owner.resources.spice >= 4
-    if (
-        effect
-        is PersonalCardAgentEffect
-        .MAY_PAY_TWO_SPICE_FOR_SHIELD_WALL_AND_SANDWORM_IF_MAKER_HOOKS
-    ):
-        # "Maker Hooks:" is a requirement [Main p. 20]; the arrow cost is
-        # judged again at resolution like the other arrow payments.
-        return owner.maker_hooks and owner.resources.spice >= 2
     if effect in (
-        PersonalCardAgentEffect.GAIN_REWARDS_PER_FACE_UP_BATTLE_ICON,
-        PersonalCardAgentEffect.MAY_TRASH_SELF_FOR_TROOP_AND_FIRST_PLACE_INFLUENCE,
+        PersonalCardAgentEffect.GAIN_SPICE_IF_MAKER_SPACE,
+        PersonalCardAgentEffect.GAIN_TWO_SPICE_IF_MAKER_SPACE,
+        PersonalCardAgentEffect.RECRUIT_ONE_IF_MAKER_SPACE,
     ):
-        # Both are judged at resolution: the icon rewards over the supply at
-        # that time, the self-trash over whether the card is still in play.
-        return True
-    if (
-        effect
-        is PersonalCardAgentEffect.MAY_DISCARD_TWO_AND_PAY_FIVE_SOLARI_FOR_VP
-    ):
-        return owner.resources.solari >= 5 and len(owner.hand) >= 3
-    if (
-        effect
-        is (
-            PersonalCardAgentEffect.MAY_TRASH_INTRIGUE_AND_PAY_TWO_SPICE_FOR_VP_IF_SPACING_GUILD_ALLIANCE
-        )
-    ):
-        return (
-            Faction.SPACING_GUILD.value in owner.alliance_faction_ids
-            and owner.resources.spice >= 2
-            and bool(owner.intrigue_cards)
-        )
-    if effect is PersonalCardAgentEffect.ACQUIRE_WITH_SOLARI_TO_HAND:
-        return owner.resources.solari > 0
-    if effect is PersonalCardAgentEffect.DRAW_PER_SANDWORM_IN_CONFLICT:
-        return owner.sandworms_conflict > 0
+        return space.maker
     if effect in (
-        PersonalCardAgentEffect.DISCARD_TO_DRAW_ONE_OR_TWO_IF_SPACING_GUILD,
-        PersonalCardAgentEffect.DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD,
-        PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD,
-        PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE_AND_INTRIGUE_IF_SPACING_GUILD,
+        PersonalCardAgentEffect.RECRUIT_TWO_IF_BENE_GESSERIT_BOND,
+        PersonalCardAgentEffect.RETURN_SELF_IF_BENE_GESSERIT_BOND,
+        PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND,
+        PersonalCardAgentEffect.GAIN_WATER_IF_BENE_GESSERIT_BOND,
     ):
-        return len(owner.hand) > 1
-    if (
-        effect
-        is PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO
-    ):
-        return owner.influence.bene_gesserit >= 2
-    if effect is PersonalCardAgentEffect.GAIN_SPICE_IF_MAKER_SPACE:
-        return space.maker
-    if effect is PersonalCardAgentEffect.GAIN_TWO_SPICE_IF_MAKER_SPACE:
-        return space.maker
-    if effect is PersonalCardAgentEffect.RECRUIT_ONE_IF_MAKER_SPACE:
-        return space.maker
-    if (
-        effect
-        is PersonalCardAgentEffect.GAIN_BY_BENE_GESSERIT_AND_FREMEN_INFLUENCE_TWO
-    ):
-        return (
-            owner.influence.bene_gesserit >= 2 or owner.influence.fremen >= 2
-        )
-    if (
-        effect
-        is PersonalCardAgentEffect.GAIN_BY_EMPEROR_AND_SPACING_GUILD_INFLUENCE_TWO
-    ):
-        return owner.influence.emperor >= 2 or owner.influence.spacing_guild >= 2
-    if effect is PersonalCardAgentEffect.RECRUIT_TWO_IF_BENE_GESSERIT_BOND:
-        return has_faction_bond(
-            (*owner.in_play, card_instance_id),
-            card_instance_id,
-            Faction.BENE_GESSERIT,
-        )
-    if effect is PersonalCardAgentEffect.RETURN_SELF_IF_BENE_GESSERIT_BOND:
-        return has_faction_bond(
-            (*owner.in_play, card_instance_id),
-            card_instance_id,
-            Faction.BENE_GESSERIT,
-        )
-    if (
-        effect
-        is PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND
-    ):
-        return has_faction_bond(
-            (*owner.in_play, card_instance_id),
-            card_instance_id,
-            Faction.BENE_GESSERIT,
-        )
-    if (
-        effect
-        is (
-            PersonalCardAgentEffect.MAY_TRASH_FOR_INTRIGUE_AND_TWO_TROOPS_IF_BENE_GESSERIT_ALLIANCE
-        )
-    ):
-        return Faction.BENE_GESSERIT.value in owner.alliance_faction_ids
-    if (
-        effect
-        is PersonalCardAgentEffect.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE
-    ):
-        return any(
-            candidate_id != card_instance_id
-            and Faction.EMPEROR
-            in personal_card_for_instance(candidate_id).factions
-            for candidate_id in owner.hand
-        )
-    if effect is PersonalCardAgentEffect.GAIN_WATER_IF_BENE_GESSERIT_BOND:
         return has_faction_bond(
             (*owner.in_play, card_instance_id),
             card_instance_id,

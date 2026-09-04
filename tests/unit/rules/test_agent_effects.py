@@ -49,7 +49,11 @@ from dune_imperium.rules.agent_effects import (
 )
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 from dune_imperium.rules.board_effects import (
+    apply_maker_space_action,
+    apply_sietch_tabr_action,
     legal_board_effect_actions,
+    legal_maker_space_actions,
+    legal_sietch_tabr_actions,
     resolve_board_effect,
 )
 from dune_imperium.rules.card_trash import trash_personal_card
@@ -245,8 +249,12 @@ def test_corrinth_city_cost_must_be_available_before_discard_effects() -> None:
 
     placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
 
-    assert legal_corrinth_city_payment_actions(placed, 0) == ()
-    assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False
+    # The full cost is judged when the payment resolves (OQ-028): only
+    # declining is offered while four Solari cannot pay it.
+    assert legal_corrinth_city_payment_actions(placed, 0) == (
+        DomainAction(action_id="decline_corrinth_city_payment", actor=0),
+    )
+    assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is True
 
 
 def test_faction_influence_reaches_friendship_and_awards_vp() -> None:
@@ -375,7 +383,12 @@ def test_prepare_the_way_has_no_agent_effect_below_required_influence() -> None:
 
     placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
 
-    assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False
+    # The Influence threshold is judged when the box resolves (OQ-028): the
+    # box stays pending and resolving it below two does nothing.
+    assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is True
+    resolved = resolve_agent_card_effect(placed)
+    assert resolved.events[0].kind == "agent_card_effect_unavailable"
+    assert resolved.state.players[0].hand == ()
 
 
 def test_prepare_the_way_draw_is_lost_when_influence_drops_before_resolving() -> None:
@@ -532,7 +545,17 @@ def test_hidden_missive_has_no_agent_effect_below_required_influence() -> None:
 
     placed = apply_agent_action(state, _action_to(state, "gather_support")).state
 
-    assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False
+    # Both icons stay pending (OQ-028) and resolve as unavailable below two
+    # Bene Gesserit Influence.
+    assert dict(placed.decision_stack[-1].context)["pending_agent_icons"] == (
+        "troops,cards"
+    )
+    troops = resolve_agent_card_icon(placed, _icon_action(placed, "troops"))
+    assert troops.events[-1].kind == "agent_card_effect_unavailable"
+    cards = resolve_agent_card_icon(troops.state, _icon_action(troops.state, "cards"))
+    assert cards.events[-1].kind == "agent_card_effect_unavailable"
+    assert cards.state.players[0].troops_garrison == 3
+    assert cards.state.players[0].hand == ()
 
 
 def test_desert_survival_may_trash_from_any_eligible_zone() -> None:
@@ -865,8 +888,12 @@ def test_treacherous_maneuver_needs_an_emperor_payment() -> None:
 
     placed = apply_agent_action(state, _action_to(state, "dutiful_service")).state
 
-    assert legal_agent_card_trash_actions(placed, 0) == ()
-    assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False
+    # The Emperor card in hand is judged when the payment resolves (OQ-028):
+    # a draw earlier in the turn could still provide one.
+    assert legal_agent_card_trash_actions(placed, 0) == (
+        DomainAction(action_id="decline_agent_card_trash", actor=0),
+    )
+    assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is True
 
 
 def test_chani_draws_intrigue_after_deploying_a_third_unit() -> None:
@@ -1111,8 +1138,12 @@ def test_junction_headquarters_requires_its_complete_cost(
 
     placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
 
-    assert legal_agent_card_intrigue_payment_actions(placed, 0) == ()
-    assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False
+    # Alliance, Spice and the Intrigue card are judged when the payment
+    # resolves (OQ-028); until the full cost holds only declining is offered.
+    assert legal_agent_card_intrigue_payment_actions(placed, 0) == (
+        DomainAction(action_id="decline_agent_card_intrigue_payment", actor=0),
+    )
+    assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is True
 
 
 def _junction_pending_state(
@@ -1410,8 +1441,11 @@ def test_smugglers_haven_skips_unaffordable_trade() -> None:
 
     placed = apply_agent_action(state, _action_to(state, "deliver_supplies")).state
 
-    assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False
-    assert legal_agent_card_payment_actions(placed, 0) == ()
+    # Four Spice are judged when the payment resolves (OQ-028).
+    assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is True
+    assert legal_agent_card_payment_actions(placed, 0) == (
+        DomainAction(action_id="decline_agent_card_payment", actor=0),
+    )
 
 
 def test_smugglers_haven_checks_trade_after_paying_the_board_space_cost() -> None:
@@ -1440,8 +1474,10 @@ def test_smugglers_haven_checks_trade_after_paying_the_board_space_cost() -> Non
     placed = apply_agent_action(state, _action_to(state, "shipping")).state
 
     assert placed.players[0].resources.spice == 1
-    assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False
-    assert legal_agent_card_payment_actions(placed, 0) == ()
+    assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is True
+    assert legal_agent_card_payment_actions(placed, 0) == (
+        DomainAction(action_id="decline_agent_card_payment", actor=0),
+    )
 
 
 def test_fedaykin_stilltent_recruits_a_deployable_troop_at_a_maker_space() -> None:
@@ -1613,7 +1649,15 @@ def test_maker_keeper_has_no_agent_effect_without_matching_influence() -> None:
 
     placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
 
-    assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False
+    # Both Influence thresholds are judged icon by icon at resolution
+    # (OQ-028): the icons stay pending and resolve as unavailable.
+    assert dict(placed.decision_stack[-1].context)["pending_agent_icons"] == (
+        "water,spice"
+    )
+    resolved = _resolve_agent_icons(placed)
+    assert resolved.players[0].resources.water == 1
+    assert resolved.players[0].resources.spice == 0
+    assert dict(resolved.decision_stack[-1].context)["pending_agent_effect"] is False
 
 
 def test_southern_elders_recruits_with_bene_gesserit_bond() -> None:
@@ -1819,7 +1863,63 @@ def test_ecological_testing_station_has_no_payment_without_two_water() -> None:
 
     placed = apply_agent_action(state, _action_to(state, "fremkit")).state
 
-    assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False
+    # Two water are judged when the payment resolves (OQ-028).
+    assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is True
+    assert legal_agent_card_payment_actions(placed, 0) == (
+        DomainAction(action_id="decline_agent_card_payment", actor=0),
+    )
+
+
+def test_ecological_testing_station_can_pay_with_water_gained_this_turn() -> None:
+    # Sietch Tabr's water icon resolved first lifts the owner to two water,
+    # after which the arrow payment opens in the same turn [Main pp. 7, 9]
+    # (OQ-028).
+    station = _imperium_instance("ecological_testing_station")
+    first = _instance("dagger")
+    second = _instance("convincing_argument")
+    owner = PlayerState(
+        player_id=0,
+        hand=(station,),
+        deck=(first, second),
+        resources=Resources(water=1),
+        influence=Influence(fremen=2),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+
+    placed = apply_agent_action(state, _action_to(state, "sietch_tabr")).state
+    assert legal_agent_card_payment_actions(placed, 0) == (
+        DomainAction(action_id="decline_agent_card_payment", actor=0),
+    )
+
+    water = next(
+        action
+        for action in legal_sietch_tabr_actions(placed, 0)
+        if action.action_id == "take_sietch_tabr_water"
+    )
+    watered = apply_sietch_tabr_action(placed, water).state
+    assert watered.players[0].resources.water == 2
+    pay = next(
+        action
+        for action in legal_agent_card_payment_actions(watered, 0)
+        if action.action_id == "pay_agent_card_water"
+    )
+    paid = apply_agent_card_payment(watered, pay).state
+
+    assert paid.players[0].resources.water == 0
+    assert paid.players[0].hand == (first, second)
 
 
 def test_paracompass_gains_two_solari_on_its_agent_turn() -> None:
@@ -2602,7 +2702,55 @@ def test_wheels_within_wheels_has_no_agent_effect_below_both_thresholds() -> Non
 
     placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
 
-    assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False
+    # Both thresholds are judged icon by icon at resolution (OQ-028).
+    assert dict(placed.decision_stack[-1].context)["pending_agent_icons"] == (
+        "solari,spice"
+    )
+    resolved = _resolve_agent_icons(placed)
+    assert resolved.players[0].resources.solari == 0
+    assert resolved.players[0].resources.spice == 0
+    assert dict(resolved.decision_stack[-1].context)["pending_agent_effect"] is False
+
+
+def test_wheels_within_wheels_solari_opens_after_the_visited_faction_step() -> None:
+    # Wheels Within Wheels reaches Dutiful Service through its Spy icon at
+    # one Emperor Influence; resolving the Faction step first lifts it to
+    # two, and the Solari icon then pays out in the same turn [Main pp. 7,
+    # 9] (OQ-028).
+    wheels = _imperium_instance("wheels_within_wheels")
+    owner = PlayerState(
+        player_id=0,
+        hand=(wheels,),
+        influence=Influence(emperor=1),
+        spies_supply=2,
+        spy_post_ids=("emperor-sardaukar-dutiful-service",),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+
+    placed = apply_agent_action(state, _action_to(state, "dutiful_service")).state
+    assert dict(placed.decision_stack[-1].context)["pending_agent_icons"] == (
+        "solari,spice"
+    )
+
+    stepped = resolve_faction_influence(placed).state
+    assert stepped.players[0].influence.emperor == 2
+    solari = resolve_agent_card_icon(stepped, _icon_action(stepped, "solari"))
+
+    assert solari.events[-1].kind == "agent_card_effect_resolved"
+    assert solari.state.players[0].resources.solari == 2
 
 
 def test_stilgar_recruits_two_deployable_troops() -> None:
@@ -2686,7 +2834,55 @@ def test_leadership_has_no_agent_effect_without_a_sandworm() -> None:
 
     placed = apply_agent_action(state, _action_to(state, "hagga_basin")).state
 
-    assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False
+    # Sandworms are judged when the box resolves (OQ-028): with none in the
+    # Conflict the draw does nothing.
+    assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is True
+    resolved = resolve_agent_card_effect(placed)
+    assert resolved.events[0].kind == "agent_card_effect_unavailable"
+    assert resolved.state.players[0].hand == ()
+
+
+def test_leadership_counts_a_sandworm_summoned_earlier_this_turn() -> None:
+    # Hagga Basin's sandworm summon resolved first puts a unit in the
+    # Conflict; Leadership's draw then counts it [Main pp. 7, 9] (OQ-028).
+    leadership = _imperium_instance("leadership")
+    drawn = _instance("dagger")
+    owner = PlayerState(
+        player_id=0,
+        hand=(leadership,),
+        deck=(drawn,),
+        resources=Resources(water=1),
+        maker_hooks=True,
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+
+    state = replace(state, current_conflict_ids=("skirmish_crysknife",))
+    placed = apply_agent_action(state, _action_to(state, "hagga_basin")).state
+
+    summon = next(
+        action
+        for action in legal_maker_space_actions(placed, 0)
+        if action.action_id == "summon_maker_sandworms"
+    )
+    summoned = apply_maker_space_action(placed, summon).state
+    assert summoned.players[0].sandworms_conflict == 1
+    resolved = resolve_agent_card_effect(summoned)
+
+    assert resolved.events[0].kind == "agent_card_effect_resolved"
+    assert resolved.state.players[0].hand == (drawn,)
 
 
 def test_desert_power_gains_two_spice_on_a_maker_space() -> None:
@@ -3430,7 +3626,12 @@ def test_space_time_folding_has_no_agent_effect_without_another_hand_card() -> N
 
     placed = apply_agent_action(state, _action_to(state, "deliver_supplies")).state
 
-    assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False
+    # The hand is judged when the discard resolves (OQ-028): a draw earlier
+    # in the turn could still supply a card, so only declining is offered.
+    assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is True
+    assert legal_agent_card_discard_actions(placed, 0) == (
+        DomainAction(action_id="decline_agent_card_discard", actor=0),
+    )
 
 
 @pytest.mark.parametrize(
@@ -3503,7 +3704,19 @@ def test_guild_envoy_has_no_agent_effect_without_another_hand_card() -> None:
 
     placed = apply_agent_action(state, _action_to(state, "deliver_supplies")).state
 
-    assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False
+    # The mandatory discard is judged when it resolves (OQ-028): with no
+    # other hand card it completes without a choice through the plain
+    # resolution action.
+    assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is True
+    assert legal_agent_card_discard_actions(placed, 0) == ()
+    assert DomainAction(action_id="resolve_agent_card_effect", actor=0) in (
+        UprisingRulesEngine().legal_actions(placed, 0)
+    )
+    resolved = resolve_agent_card_effect(placed)
+    assert resolved.events[0].kind == "agent_card_effect_unavailable"
+    assert dict(resolved.state.decision_stack[-1].context)["pending_agent_effect"] is (
+        False
+    )
 
 
 def test_captured_mentat_may_discard_to_draw_intrigue_and_personal_card() -> None:
@@ -4056,8 +4269,66 @@ def test_branching_path_agent_effect_requires_bene_gesserit_alliance() -> None:
 
     placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
 
-    assert legal_agent_card_trash_actions(placed, 0) == ()
-    assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False
+    # The Alliance is judged when the payment resolves (OQ-028): only
+    # declining is offered without it.
+    assert legal_agent_card_trash_actions(placed, 0) == (
+        DomainAction(action_id="decline_agent_card_trash", actor=0),
+    )
+    assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is True
+
+
+def test_branching_path_opens_after_the_visited_faction_step_grants_the_alliance() -> (
+    None
+):
+    # At three Bene Gesserit Influence, Branching Path's own visit to
+    # Espionage lifts the owner to four and the Alliance; resolving that
+    # Faction step first opens the trash payment in the same turn
+    # [Main pp. 7, 9] (OQ-028).
+    branching_path = _imperium_instance("branching_path")
+    dagger = _instance("dagger")
+    owner = PlayerState(
+        player_id=0,
+        hand=(branching_path, dagger),
+        resources=Resources(spice=1),
+        influence=Influence(bene_gesserit=3),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+
+    # The Bene Gesserit track's step to four also draws an Intrigue card, so
+    # the deck holds one for that bonus and one for Branching Path's reward.
+    state = replace(state, intrigue_deck=("intrigue:track_bonus", "intrigue:reward"))
+    placed = apply_agent_action(state, _action_to(state, "espionage")).state
+    assert legal_agent_card_trash_actions(placed, 0) == (
+        DomainAction(action_id="decline_agent_card_trash", actor=0),
+    )
+
+    allied = resolve_faction_influence(placed).state
+    assert allied.players[0].alliance_faction_ids == (Faction.BENE_GESSERIT.value,)
+    assert allied.players[0].intrigue_cards == ("intrigue:track_bonus",)
+    trash = next(
+        action
+        for action in legal_agent_card_trash_actions(allied, 0)
+        if dict(action.arguments).get("card_id") == dagger
+    )
+    paid = apply_agent_card_trash(allied, trash).state
+
+    assert paid.players[0].trashed == (dagger,)
+    assert dict(paid.decision_stack[-1].context)["pending_agent_icons"] == (
+        "intrigue,troops"
+    )
 
 
 def test_branching_path_cannot_trash_without_intrigue_reward() -> None:

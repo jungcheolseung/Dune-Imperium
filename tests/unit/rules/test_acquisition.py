@@ -670,8 +670,13 @@ def test_price_is_no_object_may_decline_its_acquisition() -> None:
 def test_price_is_no_object_skips_acquisition_without_solari() -> None:
     state = _price_agent_state(solari=0)
 
-    assert dict(state.decision_stack[-1].context)["pending_agent_effect"] is False
-    assert legal_agent_card_acquisitions(state, 0) == ()
+    # The Solari are judged when the box resolves (OQ-028): a freely ordered
+    # board effect could still pay for a card, so the box stays pending and
+    # only declining is offered until then.
+    assert dict(state.decision_stack[-1].context)["pending_agent_effect"] is True
+    assert legal_agent_card_acquisitions(state, 0) == (
+        DomainAction(action_id="decline_agent_card_acquisition", actor=0),
+    )
 
 
 def test_overthrow_acquisition_draws_an_intrigue_card() -> None:

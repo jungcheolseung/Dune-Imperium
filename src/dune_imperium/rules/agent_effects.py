@@ -888,6 +888,11 @@ def legal_agent_card_trash_actions(
                 is PersonalCardTrashEffect.DRAW_INTRIGUE_CARD
             )
         )
+        if Faction.BENE_GESSERIT.value not in owner.alliance_faction_ids:
+            # The Alliance is judged when the payment resolves [Main pp. 9,
+            # 20]; a Faction step of this turn may still grant it, so only
+            # declining is offered until then (OQ-028).
+            eligible = ()
     return (
         DomainAction(action_id="decline_agent_card_trash", actor=player),
         *(
@@ -2016,10 +2021,15 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             ),
         )
     elif effect is PersonalCardAgentEffect.DRAW_PER_SANDWORM_IN_CONFLICT:
-        if owner.sandworms_conflict == 0:
-            raise RuntimeError("conditional Agent effect is not available")
+        # Judged when the effect resolves [Main pp. 7, 9]: a sandworm summoned
+        # earlier in this turn at a Maker space counts; with none it draws
+        # nothing (OQ-028).
         next_owner = owner
-        event_kind = "agent_card_effect_resolved"
+        event_kind = (
+            "agent_card_effect_resolved"
+            if owner.sandworms_conflict
+            else "agent_card_effect_unavailable"
+        )
     elif effect is PersonalCardAgentEffect.DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO:
         # The Influence condition is judged when the effect resolves in the
         # player's chosen order, which can differ from the placement-time
@@ -2373,6 +2383,13 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             )
     elif effect is PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE:
         raise RuntimeError("Agent-card Influence effect requires a player choice")
+    elif effect is PersonalCardAgentEffect.DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD:
+        if owner.hand:
+            raise RuntimeError("Agent-card discard effect requires a player choice")
+        # Guild Envoy's mandatory discard has no card to take when it
+        # resolves: the effect completes without a choice (OQ-028).
+        next_owner = owner
+        event_kind = "agent_card_effect_unavailable"
     else:
         raise NotImplementedError(
             f"personal-card Agent effect is not implemented: {card.card.card_id}"

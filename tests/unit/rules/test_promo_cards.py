@@ -163,8 +163,13 @@ def test_arrakis_revolt_requires_maker_hooks_and_two_spice_to_open() -> None:
         ),
     ):
         placed = _place(_turn_state(owner), "arrakeen")
-        assert _context(placed)["pending_agent_effect"] is False
-        assert legal_agent_card_payment_actions(placed, 0) == ()
+        # Maker Hooks and the Spice are judged when the payment resolves
+        # (OQ-028): Sietch Tabr's supplies or a Maker harvest earlier in the
+        # turn can still open it, so only declining is offered until then.
+        assert _context(placed)["pending_agent_effect"] is True
+        assert legal_agent_card_payment_actions(placed, 0) == (
+            DomainAction(action_id="decline_agent_card_payment", actor=0),
+        )
 
 
 def test_arrakis_revolt_offers_wall_removal_only_while_the_wall_stands() -> None:
