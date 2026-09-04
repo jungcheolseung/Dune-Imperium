@@ -40,6 +40,12 @@
   해결한다. choose-one 줄과 문장형 효과의 단위 경계는
   [open-questions.md](open-questions.md)의 OQ-027 `DECIDED` 판정을 따른다.
   [Main p. 9]
+- 카드에 인쇄된 조건(Influence 문턱, 자원 비용, Alliance, sandworm 등)은 그
+  효과를 실제로 해결하는 시점에 판정한다. 같은 turn의 앞선 자유 순서 효과(예:
+  방문한 Faction의 Influence 단계, board의 water 아이콘, Maker sandworm 소환)로
+  조건이 성립하면 그 뒤에 해결해 이득을 얻을 수 있다. 판정 시점 규칙은
+  [open-questions.md](open-questions.md)의 OQ-028 `DECIDED` 판정을 따른다.
+  [Main pp. 7, 9]
 - CHOAM Module을 사용할 때 공간 진입으로 contract 조건을 충족하면 완료는
   의무다. 같은 공간을 조건으로 하는 contract가 여러 개면 한 번의 진입으로
   모두 완료하며, contract 효과도 공간 효과 및 Agent box 효과와 원하는 순서로
@@ -139,7 +145,7 @@
 1. 남은 Agent가 없거나 남은 Agent를 더 사용하지 않기로 하면 Reveal turn을 시작한다. [Main p. 8] [Main p. 12]
 2. hand에 남은 card를 모두 face-up으로 reveal해 play 영역에 놓고, 이전 Agent turn에 낸 card와 구분한다. [Main p. 12]
 3. 방금 reveal한 card들의 Reveal box 효과만 얻는다. 앞선 Agent turn에 낸 card의 Reveal box 효과는 얻지 않는다. [Main p. 12]
-4. Reveal 효과는 원하는 순서로 처리한다. Persuasion을 사용한 acquire는 Reveal 효과의 전, 사이, 뒤 어느 때든 할 수 있다. [Main p. 12]
+4. Reveal 효과는 원하는 순서로 처리한다. Persuasion을 사용한 acquire는 Reveal 효과의 전, 사이, 뒤 어느 때든 할 수 있다. [Main p. 12] 선택형 Reveal 효과는 미루기/재개로 순서를 고르고(OQ-027), 조건이 있는 Reveal 효과는 같은 Reveal 안의 뒤 선택(Spy 배치, High Council 구매, 늦게 도착한 카드, 획득으로 완료된 contract)으로 조건이 성립하면 그때 지급된다(OQ-028).
 5. Reveal 효과를 처리하는 동안 strength를 설정하고, strength가 바뀌면 갱신한다. strength 설정은 Reveal 효과 처리와 Clean Up 사이의 별도 고정 단계가 아니다. [Main p. 12] [Main p. 13]
 6. Clean Up 때 Agent turn과 Reveal turn에 face-up으로 낸 card를 모두 자신의 discard pile에 놓는다. [Main p. 12]
 
