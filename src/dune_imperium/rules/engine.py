@@ -165,6 +165,7 @@ from dune_imperium.rules.reveal_turn import (
     apply_reveal_troop_retreat,
     begin_reveal_turn,
     finish_reveal_turn,
+    grant_late_reveal_effects,
     legal_contract_reveal_choice_actions,
     legal_corrinth_city_reveal_actions,
     legal_defer_reveal_choice_actions,
@@ -481,7 +482,9 @@ class UprisingRulesEngine(RulesEngine):
             result = apply_round_start_reshuffle(state, outcome)
         # An Intrigue draw granted by a Reveal passive may queue a reshuffle,
         # so the automatic advance runs again after the passives.
-        result = grant_leader_reveal_passives(_advance_automatic(result))
+        result = grant_late_reveal_effects(
+            grant_leader_reveal_passives(_advance_automatic(result))
+        )
         return offer_deployment_triggers(
             expire_trashed_card_effects(_advance_automatic(result))
         )
@@ -507,9 +510,12 @@ class UprisingRulesEngine(RulesEngine):
 
     def _apply_legal(self, state: GameState, action: DomainAction) -> RuleResult:
         result = _advance_automatic(ACTION_HANDLERS[action.action_id](state, action))
-        # An Intrigue draw granted by a Reveal passive may queue a reshuffle,
-        # so the automatic advance runs again after the passives.
-        result = _advance_automatic(grant_leader_reveal_passives(result))
+        # An Intrigue draw granted by a Reveal passive or a late-met Reveal
+        # condition may queue a reshuffle, so the automatic advance runs
+        # again after them.
+        result = _advance_automatic(
+            grant_late_reveal_effects(grant_leader_reveal_passives(result))
+        )
         return offer_deployment_triggers(expire_trashed_card_effects(result))
 
     def observe(self, state: GameState, player: int) -> PlayerView:

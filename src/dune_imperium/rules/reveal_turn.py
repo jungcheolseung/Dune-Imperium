@@ -1240,6 +1240,247 @@ def _eligible_reveal_effects(
     )
 
 
+_GRANTED_EFFECTS_KEY = "granted_reveal_effects"
+
+
+def _granted_reveal_effects(
+    context: dict[str, ActionValue],
+) -> dict[str, int | None]:
+    """Decode which automatic Reveal effects already paid out this Reveal.
+
+    Keys are ``card#index`` over ``card.reveal_effects``; the value is the
+    completed-Contract count a per-Contract Persuasion effect was last paid
+    for, or None for every other effect.
+    """
+
+    value = context.get(_GRANTED_EFFECTS_KEY, "")
+    if not isinstance(value, str):
+        raise RuntimeError("Reveal frame has invalid granted effects")
+    granted: dict[str, int | None] = {}
+    for item in value.split(","):
+        if not item:
+            continue
+        key, separator, count = item.partition("=")
+        granted[key] = int(count) if separator else None
+    return granted
+
+
+def _encode_granted(granted: dict[str, int | None]) -> str:
+    return ",".join(
+        key if count is None else f"{key}={count}" for key, count in granted.items()
+    )
+
+
+def _granted_entries(
+    card_ids: tuple[str, ...],
+    cards: tuple[PersonalCardDefinition, ...],
+    owner: PlayerState,
+    cards_in_play: tuple[str, ...],
+    completed_contracts: int,
+) -> dict[str, int | None]:
+    """Return the granted-effect entries for the cards' currently eligible effects."""
+
+    entries: dict[str, int | None] = {}
+    for card_id, card in zip(card_ids, cards, strict=True):
+        for index, effect in enumerate(card.reveal_effects):
+            if _reveal_effect_is_eligible(owner, cards_in_play, card_id, card, effect):
+                entries[f"{card_id}#{index}"] = (
+                    completed_contracts
+                    if effect.persuasion_per_completed_contract
+                    else None
+                )
+    return entries
+
+
+def _record_granted_effects(
+    frames: tuple[DecisionFrame, ...],
+    entries: dict[str, int | None],
+) -> tuple[DecisionFrame, ...]:
+    """Merge granted-effect entries into the Reveal frame, wherever it sits."""
+
+    if not entries:
+        return frames
+    position = _reveal_frame_position(frames)
+    context = frame_context(frames[position])
+    granted = _granted_reveal_effects(context)
+    granted.update(entries)
+    context[_GRANTED_EFFECTS_KEY] = _encode_granted(granted)
+    return (
+        *frames[:position],
+        with_context(frames[position], context),
+        *frames[position + 1 :],
+    )
+
+
+def _add_reveal_sword(
+    frames: tuple[DecisionFrame, ...],
+    amount: int,
+    *,
+    counts_toward_combat: bool,
+) -> tuple[DecisionFrame, ...]:
+    """Add sword strength to the Reveal frame (counted only with a unit)."""
+
+    position = _reveal_frame_position(frames)
+    context = frame_context(frames[position])
+    context["sword_strength"] = (
+        context_int(context, "sword_strength", owner="Reveal frame") + amount
+    )
+    if counts_toward_combat:
+        context["strength"] = (
+            context_int(context, "strength", owner="Reveal frame") + amount
+        )
+    return (
+        *frames[:position],
+        with_context(frames[position], context),
+        *frames[position + 1 :],
+    )
+
+
+def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
+    """Pay out revealed cards' automatic effects whose condition came true later.
+
+    Automatic Reveal effects are applied when the Reveal begins. A printed
+    condition that fails at that moment — two Spies placed, a High Council
+    seat, a Faction Bond, spying on a Maker space, completed Contracts — can
+    still be met by the owner's later choices in the same Reveal: a Spy
+    placed by another card's Reveal effect, a seat bought through Corrinth
+    City, a Fremen card arriving late, an Acquire Contract completed by a
+    purchase. Reveal effects resolve in any order the owner likes
+    [Main p. 12], so each such effect pays out the first time its condition
+    holds during the Reveal and is recorded on the Reveal frame so it never
+    repeats; per-Contract Persuasion pays the increment for newly completed
+    Contracts (OQ-028).
+    """
+
+    state = result.state
+    position = next(
+        (
+            index
+            for index in range(len(state.decision_stack) - 1, -1, -1)
+            if state.decision_stack[index].kind == FrameKind.REVEAL
+        ),
+        None,
+    )
+    if position is None:
+        return result
+    frame = state.decision_stack[position]
+    if not isinstance(frame.decision, PlayerDecision):
+        return result
+    player = frame.decision.owner
+    context = frame_context(frame)
+    granted = _granted_reveal_effects(context)
+    owner = state.players[player]
+    revealed_ids = tuple(
+        context_str(context, f"revealed_card_{index:03d}", owner="Reveal frame")
+        for index in range(
+            context_int(context, "revealed_card_count", owner="Reveal frame")
+        )
+    )
+    revealed_cards = tuple(personal_card_for_instance(card_id) for card_id in revealed_ids)
+    completed = len(owner.completed_contract_ids)
+    units = owner.troops_conflict + owner.sandworms_conflict
+    frames = state.decision_stack
+    next_owner = owner
+    events: list[GameEvent] = list(result.events)
+    pending_draws: list[tuple[str, int]] = []
+    pending_influence: list[tuple[str, PersonalCardRevealEffect]] = []
+    newly_granted: dict[str, int | None] = {}
+    for card_id, card in zip(revealed_ids, revealed_cards, strict=True):
+        for index, effect in enumerate(card.reveal_effects):
+            key = f"{card_id}#{index}"
+            source = f"round:{state.round_number}:player:{player}:reveal_card:{card_id}"
+            if effect.persuasion_per_completed_contract:
+                counted = granted.get(key)
+                if counted is None or completed <= counted:
+                    continue
+                delta = effect.persuasion_per_completed_contract * (completed - counted)
+                frames = add_reveal_persuasion(frames, delta)
+                newly_granted[key] = completed
+                events.append(
+                    GameEvent(
+                        event_id=f"{source}:{index}:late_contracts:{completed}",
+                        kind="reveal_effect_granted_late",
+                        payload=(
+                            ("card_id", card_id),
+                            ("effect_index", index),
+                            ("persuasion", delta),
+                            ("player", player),
+                        ),
+                    )
+                )
+                continue
+            if key in granted or key in newly_granted:
+                continue
+            if not _reveal_effect_is_eligible(
+                next_owner, next_owner.in_play, card_id, card, effect
+            ):
+                continue
+            persuasion = _reveal_effect_persuasion(effect, revealed_cards, completed)
+            sword = _reveal_effect_strength(effect, revealed_cards)
+            if persuasion:
+                frames = add_reveal_persuasion(frames, persuasion)
+            if sword:
+                frames = _add_reveal_sword(frames, sword, counts_toward_combat=units > 0)
+            next_owner = replace(
+                next_owner,
+                resources=replace(
+                    next_owner.resources,
+                    solari=next_owner.resources.solari + effect.solari,
+                    spice=next_owner.resources.spice + effect.spice,
+                    water=next_owner.resources.water + effect.water,
+                ),
+                combat_strength=next_owner.combat_strength + (sword if units else 0),
+            )
+            if effect.recruit_troops:
+                next_owner, _ = recruit_troops(next_owner, effect.recruit_troops)
+            if effect.draw_intrigue:
+                pending_draws.append((f"{source}:{index}:late_intrigue", effect.draw_intrigue))
+            if effect.influence_faction is not None:
+                pending_influence.append((f"{source}:{index}", effect))
+            newly_granted[key] = None
+            events.append(
+                GameEvent(
+                    event_id=f"{source}:{index}:late",
+                    kind="reveal_effect_granted_late",
+                    payload=(
+                        ("card_id", card_id),
+                        ("effect_index", index),
+                        ("persuasion", persuasion),
+                        ("player", player),
+                        ("solari", effect.solari),
+                        ("spice", effect.spice),
+                        ("strength", sword),
+                        ("troops", effect.recruit_troops),
+                        ("water", effect.water),
+                    ),
+                )
+            )
+    if not newly_granted:
+        return result
+    frames = _record_granted_effects(frames, newly_granted)
+    working = replace(
+        state,
+        players=replace_player(state.players, next_owner),
+        decision_stack=frames,
+    )
+    for draw_source, count in pending_draws:
+        drawn = draw_or_queue_intrigue_cards(working, player, count, source=draw_source)
+        working = drawn.state
+        events.extend(drawn.events)
+    for influence_source, effect in pending_influence:
+        assert effect.influence_faction is not None
+        gained = gain_faction_influence(
+            working,
+            player,
+            Faction(effect.influence_faction.value),
+            effect.influence,
+            event_prefix=f"{influence_source}:influence:{effect.influence_faction.value}",
+        )
+        working = gained.state
+        events.extend(gained.events)
+    return RuleResult(state=working, events=tuple(events))
+
+
 def _reveal_effect_persuasion(
     effect: PersonalCardRevealEffect,
     revealed_cards: tuple[PersonalCardDefinition, ...],
@@ -1815,12 +2056,17 @@ def _late_reveal_one_card(
     next_state = replace(
         state,
         players=replace_player(state.players, next_owner),
-        decision_stack=_apply_late_reveal_frame_update(
-            state.decision_stack,
-            card_id,
-            persuasion_delta,
-            sword_delta,
-            counts_toward_combat=counts_toward_combat,
+        decision_stack=_record_granted_effects(
+            _apply_late_reveal_frame_update(
+                state.decision_stack,
+                card_id,
+                persuasion_delta,
+                sword_delta,
+                counts_toward_combat=counts_toward_combat,
+            ),
+            _granted_entries(
+                (card_id,), (card,), next_owner, cards_in_play, completed_contracts
+            ),
         ),
     )
     events: list[GameEvent] = [
@@ -2003,6 +2249,18 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         for player in state.players
     )
     context: list[tuple[str, ActionValue]] = [
+        (
+            _GRANTED_EFFECTS_KEY,
+            _encode_granted(
+                _granted_entries(
+                    revealed,
+                    cards,
+                    owner,
+                    cards_in_play,
+                    len(owner.completed_contract_ids),
+                )
+            ),
+        ),
         ("optional_sword_strength", 0),
         ("persuasion", persuasion),
         ("revealed_card_count", len(revealed)),

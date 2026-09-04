@@ -27,6 +27,7 @@ from dune_imperium.core import (
     PlayerState,
     Resources,
 )
+from dune_imperium.core.engine import RuleResult
 from dune_imperium.rules.card_draw import (
     apply_personal_draw_reshuffle,
     draw_or_request_personal_cards,
@@ -43,6 +44,7 @@ from dune_imperium.rules.reveal_turn import (
     apply_reveal_troop_retreat,
     begin_reveal_turn,
     finish_reveal_turn,
+    grant_late_reveal_effects,
     legal_contract_reveal_choice_actions,
     legal_corrinth_city_reveal_actions,
     legal_defer_reveal_choice_actions,
@@ -2298,3 +2300,133 @@ def test_an_unavailable_choice_opens_once_its_condition_holds() -> None:
     assert "finish_reveal" in {
         action.action_id for action in engine.legal_actions(paid, 0)
     }
+
+
+# ---------------------------------------------------------------- late conditions
+
+
+def test_operatives_spy_bonus_pays_out_once_a_reveal_placement_reaches_two_spies() -> (
+    None
+):
+    # Bene Gesserit Operative's "+2 Persuasion while two Spies are placed"
+    # fails at Reveal start with one Spy out; Wheels Within Wheels' Reveal
+    # placement puts the second Spy out and the bonus then pays at once,
+    # exactly once [Main p. 12] (OQ-028).
+    operative = _imperium_instance("bene_gesserit_operative")
+    wheels = _imperium_instance("wheels_within_wheels")
+    state = _state(
+        PlayerState(
+            player_id=0,
+            hand=(operative, wheels),
+            spies_supply=2,
+            spy_post_ids=("arrakis-hagga-basin",),
+        )
+    )
+    revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+    engine = UprisingRulesEngine()
+    assert dict(revealed.decision_stack[-2].context)["persuasion"] == 2
+
+    placement = next(
+        action
+        for action in engine.legal_actions(revealed, 0)
+        if action.action_id == "place_reveal_spy"
+    )
+    placed = engine.apply(revealed, placement)
+
+    assert placed.state.decision_stack[-1].kind == "reveal"
+    context = dict(placed.state.decision_stack[-1].context)
+    assert context["persuasion"] == 4
+    late = [
+        event for event in placed.events if event.kind == "reveal_effect_granted_late"
+    ]
+    assert [dict(event.payload)["card_id"] for event in late] == [operative]
+    assert dict(late[0].payload)["persuasion"] == 2
+    # Recorded on the frame: another transition does not pay it again.
+    again = grant_late_reveal_effects(RuleResult(state=placed.state))
+    assert again.state == placed.state
+    assert again.events == ()
+
+
+def test_paracompass_pays_out_after_a_council_seat_bought_this_reveal() -> None:
+    # Paracompass' High Council Persuasion (and its Swordmaster extra) fails
+    # at Reveal start; buying the seat through Corrinth City's Reveal choice
+    # satisfies it in the same Reveal, so it pays on top of the seat's own
+    # two Persuasion (OQ-028).
+    paracompass = _imperium_instance("paracompass")
+    corrinth = _imperium_instance("corrinth_city")
+    state = _state(
+        PlayerState(
+            player_id=0,
+            hand=(paracompass, corrinth),
+            resources=Resources(solari=5),
+            swordmaster_acquired=True,
+            agents_available=3,
+        )
+    )
+    revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+    engine = UprisingRulesEngine()
+    assert dict(revealed.decision_stack[-2].context)["persuasion"] == 0
+
+    seat = next(
+        action
+        for action in engine.legal_actions(revealed, 0)
+        if action.action_id == "take_high_council_from_reveal"
+    )
+    seated = engine.apply(revealed, seat)
+
+    assert seated.state.players[0].high_council is True
+    context = dict(seated.state.decision_stack[-1].context)
+    # Seat bonus 2 + Paracompass 2 + its Swordmaster extra 1.
+    assert context["persuasion"] == 5
+    late = [
+        event for event in seated.events if event.kind == "reveal_effect_granted_late"
+    ]
+    assert [dict(event.payload)["effect_index"] for event in late] == [0, 1]
+
+
+def test_a_late_fremen_arrival_completes_northern_watermasters_bond() -> None:
+    # Northern Watermaster's Fremen-Bond Spice fails at Reveal start; a Fremen
+    # card revealed late [FAQ p. 3] creates the Bond and the Spice pays out
+    # through the late-condition pass (OQ-028).
+    watermaster = _imperium_instance("northern_watermaster")
+    maula = _imperium_instance("maula_pistol")
+    state = _state(PlayerState(player_id=0, hand=(watermaster,)))
+    revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+    assert revealed.players[0].resources.spice == 0
+
+    arrived = reveal_late_arrivals(_with_late_hand(revealed, maula), 0, (maula,))
+    granted = grant_late_reveal_effects(arrived)
+
+    assert granted.state.players[0].resources.spice == 2
+    assert granted.events[-1].kind == "reveal_effect_granted_late"
+    assert dict(granted.events[-1].payload)["spice"] == 2
+    assert dict(granted.state.decision_stack[-1].context)["persuasion"] == 2
+    assert grant_late_reveal_effects(RuleResult(state=granted.state)).events == ()
+
+
+def test_interstellar_trade_pays_the_increment_for_contracts_completed_mid_reveal() -> (
+    None
+):
+    # Interstellar Trade's per-Contract Persuasion is counted when the
+    # Reveal begins and again for every Contract completed later in the same
+    # Reveal (an Acquire Contract met by a purchase), never twice (OQ-028).
+    interstellar = _imperium_instance("interstellar_trade", choam_module=True)
+    owner = PlayerState(
+        player_id=0,
+        hand=(interstellar,),
+        completed_contract_ids=("contract:arrakeen_i", "contract:arrakeen_ii"),
+    )
+    state = _state(owner, choam_module=True)
+    revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+    assert dict(revealed.decision_stack[-1].context)["persuasion"] == 2
+
+    completing = replace(
+        revealed.players[0],
+        completed_contract_ids=(*revealed.players[0].completed_contract_ids, "contract:x"),
+    )
+    completed = replace(revealed, players=(completing, *revealed.players[1:]))
+    granted = grant_late_reveal_effects(RuleResult(state=completed))
+
+    assert dict(granted.state.decision_stack[-1].context)["persuasion"] == 3
+    assert dict(granted.events[-1].payload)["persuasion"] == 1
+    assert grant_late_reveal_effects(RuleResult(state=granted.state)).events == ()
