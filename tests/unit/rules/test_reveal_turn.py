@@ -2422,7 +2422,10 @@ def test_interstellar_trade_pays_the_increment_for_contracts_completed_mid_revea
 
     completing = replace(
         revealed.players[0],
-        completed_contract_ids=(*revealed.players[0].completed_contract_ids, "contract:x"),
+        completed_contract_ids=(
+            *revealed.players[0].completed_contract_ids,
+            "contract:x",
+        ),
     )
     completed = replace(revealed, players=(completing, *revealed.players[1:]))
     granted = grant_late_reveal_effects(RuleResult(state=completed))

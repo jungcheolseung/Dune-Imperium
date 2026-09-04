@@ -1376,7 +1376,9 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
             context_int(context, "revealed_card_count", owner="Reveal frame")
         )
     )
-    revealed_cards = tuple(personal_card_for_instance(card_id) for card_id in revealed_ids)
+    revealed_cards = tuple(
+        personal_card_for_instance(card_id) for card_id in revealed_ids
+    )
     completed = len(owner.completed_contract_ids)
     units = owner.troops_conflict + owner.sandworms_conflict
     frames = state.decision_stack
@@ -1420,7 +1422,9 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
             if persuasion:
                 frames = add_reveal_persuasion(frames, persuasion)
             if sword:
-                frames = _add_reveal_sword(frames, sword, counts_toward_combat=units > 0)
+                frames = _add_reveal_sword(
+                    frames, sword, counts_toward_combat=units > 0
+                )
             next_owner = replace(
                 next_owner,
                 resources=replace(
@@ -1434,7 +1438,9 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
             if effect.recruit_troops:
                 next_owner, _ = recruit_troops(next_owner, effect.recruit_troops)
             if effect.draw_intrigue:
-                pending_draws.append((f"{source}:{index}:late_intrigue", effect.draw_intrigue))
+                pending_draws.append(
+                    (f"{source}:{index}:late_intrigue", effect.draw_intrigue)
+                )
             if effect.influence_faction is not None:
                 pending_influence.append((f"{source}:{index}", effect))
             newly_granted[key] = None
