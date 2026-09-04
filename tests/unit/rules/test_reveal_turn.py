@@ -2177,10 +2177,14 @@ def test_a_started_spy_placement_cannot_be_deferred() -> None:
     }
 
 
-def test_a_resumed_choice_whose_condition_lapsed_is_dropped() -> None:
+def test_a_deferred_choice_whose_condition_lapsed_waits_and_lapses_at_finish() -> (
+    None
+):
     # In High Places' two-Spy recall is deferred, Spy Network's required
-    # recall resolves first and leaves one Spy; brought back, the two-Spy
-    # choice is judged again at resolution [Main p. 12] and no longer opens.
+    # recall resolves first and leaves one Spy. The deferred choice cannot
+    # be brought back while its condition fails (judged at resolution
+    # [Main p. 12]), it does not block the Reveal's end, and it lapses when
+    # the Reveal finishes.
     in_high_places = _imperium_instance("in_high_places")
     spy_network = _imperium_instance("spy_network")
     posts = (
@@ -2217,20 +2221,80 @@ def test_a_resumed_choice_whose_condition_lapsed_is_dropped() -> None:
     assert len(recalled.players[0].spy_post_ids) == 1
     assert recalled.decision_stack[-1].kind == "reveal"
 
-    resume = next(
-        action
-        for action in engine.legal_actions(recalled, 0)
-        if action.action_id == "resume_reveal_choice"
+    action_ids = {action.action_id for action in engine.legal_actions(recalled, 0)}
+    assert "resume_reveal_choice" not in action_ids
+    assert "finish_reveal" in action_ids
+    reveal_context = dict(recalled.decision_stack[-1].context)
+    assert reveal_context["deferred_reveal_choices"] == (
+        f"{in_high_places}|may_recall_two_spies_for_two_persuasion"
     )
-    result = engine.apply(recalled, resume)
 
-    assert [event.kind for event in result.events] == [
-        "reveal_choice_resumed",
-        "reveal_choice_unavailable",
-    ]
-    assert result.state.decision_stack[-1].kind == "reveal"
-    reveal_context = dict(result.state.decision_stack[-1].context)
-    assert reveal_context["deferred_reveal_choices"] == ""
+    finished = engine.apply(
+        recalled, DomainAction(action_id="finish_reveal", actor=0)
+    )
+    assert finished.events[0].kind == "reveal_choice_unavailable"
+    assert dict(finished.events[0].payload)["card_id"] == in_high_places
+    assert finished.state.players[0].has_revealed is True
+
+
+def test_an_unavailable_choice_opens_once_its_condition_holds() -> None:
+    # In High Places' two-Spy recall fails at Reveal start (one Spy placed)
+    # and waits in the deferred queue instead of lapsing; Wheels Within
+    # Wheels' Reveal placement then puts a second Spy out, after which the
+    # owner may bring the recall back and take its two Persuasion
+    # [Main p. 12] — the owner's own choices can still satisfy a printed
+    # condition later in the same Reveal.
+    in_high_places = _imperium_instance("in_high_places")
+    wheels = _imperium_instance("wheels_within_wheels")
+    state = _state(
+        PlayerState(
+            player_id=0,
+            hand=(in_high_places, wheels),
+            spies_supply=2,
+            spy_post_ids=("arrakis-hagga-basin",),
+        )
+    )
+    revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+    engine = UprisingRulesEngine()
+    top = revealed.decision_stack[-1]
+    assert dict(top.context)["reveal_choice_effect"] == "place_spy"
+    reveal_context = dict(revealed.decision_stack[-2].context)
+    assert reveal_context["persuasion"] == 3
+    assert reveal_context["deferred_reveal_choices"] == (
+        f"{in_high_places}|may_recall_two_spies_for_two_persuasion"
+    )
+
+    placement = next(
+        action
+        for action in engine.legal_actions(revealed, 0)
+        if action.action_id == "place_reveal_spy"
+    )
+    placed = engine.apply(revealed, placement).state
+    assert len(placed.players[0].spy_post_ids) == 2
+    assert placed.decision_stack[-1].kind == "reveal"
+    actions = engine.legal_actions(placed, 0)
+    action_ids = {action.action_id for action in actions}
+    assert "finish_reveal" not in action_ids
+    resume = next(
+        action for action in actions if action.action_id == "resume_reveal_choice"
+    )
+    assert dict(resume.arguments) == {
+        "effect": "may_recall_two_spies_for_two_persuasion"
+    }
+
+    resumed = engine.apply(placed, resume).state
+    assert dict(resumed.decision_stack[-1].context)["reveal_choice_effect"] == (
+        "may_recall_two_spies_for_two_persuasion"
+    )
+    pair = next(
+        action
+        for action in engine.legal_actions(resumed, 0)
+        if action.action_id == "recall_spies_for_reveal"
+    )
+    paid = engine.apply(resumed, pair).state
+    assert paid.decision_stack[-1].kind == "reveal"
+    assert dict(paid.decision_stack[-1].context)["persuasion"] == 5
+    assert paid.players[0].spy_post_ids == ()
     assert "finish_reveal" in {
-        action.action_id for action in engine.legal_actions(result.state, 0)
+        action.action_id for action in engine.legal_actions(paid, 0)
     }

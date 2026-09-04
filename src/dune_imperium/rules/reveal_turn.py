@@ -5,8 +5,12 @@ before, between and after them [Main p. 12]. Choice effects are queued as
 serial ``REVEAL_CHOICE`` frames in card order; the owner may defer the frame
 on top (``defer_reveal_choice``) to reach the ones below or the Reveal frame
 itself, and later bring a deferred choice back with ``resume_reveal_choice``.
-A resumed choice cannot be deferred again, so the Reveal cannot cycle, and
-the Reveal turn cannot finish while a deferred choice is still waiting.
+A resumed choice cannot be deferred again, so the Reveal cannot cycle. A
+choice whose printed condition does not hold (too few Spies, not enough
+Spice) also waits in the deferred queue instead of lapsing, because the
+owner's later Reveal choices (a Spy placed, Spice gained) can still open it;
+the Reveal turn cannot finish while a deferred choice is currently available,
+and the ones still unavailable at the end simply never happen.
 """
 
 from dataclasses import replace
@@ -1461,6 +1465,48 @@ def _reveal_frame_position(frames: tuple[DecisionFrame, ...]) -> int:
     raise RuntimeError("Reveal choice is missing its Reveal frame")
 
 
+def _queue_deferred_choices(
+    frames: tuple[DecisionFrame, ...],
+    entries: tuple[tuple[str, str], ...],
+) -> tuple[DecisionFrame, ...]:
+    """Append (card, effect) entries to the Reveal frame's deferred queue."""
+
+    if not entries:
+        return frames
+    position = _reveal_frame_position(frames)
+    context = frame_context(frames[position])
+    context[_DEFERRED_CHOICES_KEY] = _encode_deferred(
+        (*_deferred_reveal_choices(context), *entries)
+    )
+    return (
+        *frames[:position],
+        with_context(frames[position], context),
+        *frames[position + 1 :],
+    )
+
+
+def _available_deferred_choices(
+    state: GameState,
+    player: int,
+    context: dict[str, ActionValue],
+) -> tuple[tuple[str, str], ...]:
+    """Return the deferred entries whose printed condition holds right now."""
+
+    owner = state.players[player]
+    return tuple(
+        (card_id, effect_value)
+        for card_id, effect_value in _deferred_reveal_choices(context)
+        if _reveal_choice_effect_is_available(
+            state,
+            player,
+            owner,
+            owner.in_play,
+            card_id,
+            PersonalCardRevealChoiceEffect(effect_value),
+        )
+    )
+
+
 def legal_defer_reveal_choice_actions(
     state: GameState,
     player: int,
@@ -1494,17 +1540,7 @@ def apply_defer_reveal_choice(state: GameState, action: DomainAction) -> RuleRes
     context = frame_context(frame)
     card_id = context_str(context, "reveal_card_id", owner=_CHOICE_FRAME)
     effect = context_str(context, "reveal_choice_effect", owner=_CHOICE_FRAME)
-    frames = state.decision_stack[:-1]
-    position = _reveal_frame_position(frames)
-    reveal_context = frame_context(frames[position])
-    reveal_context[_DEFERRED_CHOICES_KEY] = _encode_deferred(
-        (*_deferred_reveal_choices(reveal_context), (card_id, effect))
-    )
-    frames = (
-        *frames[:position],
-        with_context(frames[position], reveal_context),
-        *frames[position + 1 :],
-    )
+    frames = _queue_deferred_choices(state.decision_stack[:-1], ((card_id, effect),))
     return RuleResult(
         state=replace(state, decision_stack=frames),
         events=(
@@ -1528,13 +1564,18 @@ def legal_resume_reveal_choice_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Return one resume action per kind of deferred Reveal choice."""
+    """Return one resume action per kind of deferred choice that can open now.
+
+    A deferred choice whose printed condition currently fails stays queued
+    without an action: a later Reveal choice of the owner (a Spy placed,
+    Spice gained) can still satisfy it [Main p. 12].
+    """
 
     frame = owned_top_frame(state, FrameKind.REVEAL, player)
     if frame is None:
         return ()
     kinds: list[str] = []
-    for _, effect in _deferred_reveal_choices(frame_context(frame)):
+    for _, effect in _available_deferred_choices(state, player, frame_context(frame)):
         if effect not in kinds:
             kinds.append(effect)
     return tuple(
@@ -1548,11 +1589,11 @@ def legal_resume_reveal_choice_actions(
 
 
 def apply_resume_reveal_choice(state: GameState, action: DomainAction) -> RuleResult:
-    """Bring the oldest deferred choice of the named kind back on top.
+    """Bring the oldest openable deferred choice of the named kind back on top.
 
-    Its availability is judged again now, in the owner's chosen order
-    [Main p. 12] [Main pp. 9, 20]: a choice whose condition lapsed (Spies
-    recalled meanwhile, Spice spent) is dropped as unavailable.
+    Availability is judged now, in the owner's chosen order [Main p. 12]
+    [Main pp. 9, 20]; the action is only offered while some entry of that
+    kind can open.
     """
 
     if action not in legal_resume_reveal_choice_actions(state, action.actor):
@@ -1560,16 +1601,16 @@ def apply_resume_reveal_choice(state: GameState, action: DomainAction) -> RuleRe
     frame = state.decision_stack[-1]
     context = frame_context(frame)
     effect_value = str(dict(action.arguments)["effect"])
-    entries = list(_deferred_reveal_choices(context))
-    position = next(
-        index for index, (_, effect) in enumerate(entries) if effect == effect_value
+    player = action.actor
+    available = _available_deferred_choices(state, player, context)
+    card_id = next(
+        entry_card for entry_card, effect in available if effect == effect_value
     )
-    card_id, _ = entries.pop(position)
+    entries = list(_deferred_reveal_choices(context))
+    entries.remove((card_id, effect_value))
     context[_DEFERRED_CHOICES_KEY] = _encode_deferred(tuple(entries))
     reveal_frame = with_context(frame, context)
     effect = PersonalCardRevealChoiceEffect(effect_value)
-    player = action.actor
-    owner = state.players[player]
     source = (
         f"round:{state.round_number}:player:{player}:"
         f"reveal_card:{card_id}:{effect_value}"
@@ -1579,26 +1620,6 @@ def apply_resume_reveal_choice(state: GameState, action: DomainAction) -> RuleRe
         kind="reveal_choice_resumed",
         payload=(("card_id", card_id), ("effect", effect_value), ("player", player)),
     )
-    if not _reveal_choice_effect_is_available(
-        state, player, owner, owner.in_play, card_id, effect
-    ):
-        return RuleResult(
-            state=replace(
-                state, decision_stack=(*state.decision_stack[:-1], reveal_frame)
-            ),
-            events=(
-                resumed_event,
-                GameEvent(
-                    event_id=f"{source}:unavailable",
-                    kind="reveal_choice_unavailable",
-                    payload=(
-                        ("card_id", card_id),
-                        ("effect", effect_value),
-                        ("player", player),
-                    ),
-                ),
-            ),
-        )
     choice = _build_reveal_choice_frame(state.round_number, player, card_id, effect)
     choice_context = frame_context(choice)
     choice_context[_RESUMED_KEY] = True
@@ -1840,18 +1861,31 @@ def _late_reveal_one_card(
         events.extend(gained.events)
 
     latest_owner = next_state.players[player]
-    choice_frames = tuple(
-        _build_reveal_choice_frame(state.round_number, player, card_id, effect)
-        for effect in card.reveal_choice_effects
+    choice_frames: list[DecisionFrame] = []
+    late_deferred: list[tuple[str, str]] = []
+    for choice_effect in card.reveal_choice_effects:
         if _reveal_choice_effect_is_available(
-            next_state, player, latest_owner, cards_in_play, card_id, effect
-        )
-    )
+            next_state, player, latest_owner, cards_in_play, card_id, choice_effect
+        ):
+            choice_frames.append(
+                _build_reveal_choice_frame(
+                    state.round_number, player, card_id, choice_effect
+                )
+            )
+        else:
+            late_deferred.append((card_id, choice_effect.value))
     if choice_frames:
         next_state = replace(
             next_state,
             decision_stack=_insert_after_reveal_frame(
                 next_state.decision_stack, tuple(reversed(choice_frames))
+            ),
+        )
+    if late_deferred:
+        next_state = replace(
+            next_state,
+            decision_stack=_queue_deferred_choices(
+                next_state.decision_stack, tuple(late_deferred)
             ),
         )
 
@@ -1989,14 +2023,25 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         ),
         context=tuple(sorted(context)),
     )
-    choice_frames = tuple(
-        _build_reveal_choice_frame(state.round_number, action.actor, card_id, effect)
-        for card_id, card in zip(revealed, cards, strict=True)
-        for effect in card.reveal_choice_effects
-        if _reveal_choice_effect_is_available(
-            state, action.actor, owner, cards_in_play, card_id, effect
-        )
-    )
+    choice_frames: list[DecisionFrame] = []
+    deferred: list[tuple[str, str]] = []
+    for card_id, card in zip(revealed, cards, strict=True):
+        for choice_effect in card.reveal_choice_effects:
+            if _reveal_choice_effect_is_available(
+                state, action.actor, owner, cards_in_play, card_id, choice_effect
+            ):
+                choice_frames.append(
+                    _build_reveal_choice_frame(
+                        state.round_number, action.actor, card_id, choice_effect
+                    )
+                )
+            else:
+                # Queued rather than skipped: a later Reveal choice of the
+                # owner can still satisfy its printed condition [Main p. 12].
+                deferred.append((card_id, choice_effect.value))
+    reveal_context = frame_context(reveal_frame)
+    reveal_context[_DEFERRED_CHOICES_KEY] = _encode_deferred(tuple(deferred))
+    reveal_frame = with_context(reveal_frame, reveal_context)
     next_state = replace(
         state,
         players=players,
@@ -2083,8 +2128,9 @@ def legal_finish_reveal_actions(
     owner = context["turn_owner"]
     if isinstance(owner, bool) or not isinstance(owner, int) or owner != player:
         return ()
-    if _deferred_reveal_choices(context):
-        # A deferred choice still has to be brought back and resolved.
+    if _available_deferred_choices(state, player, context):
+        # A deferred choice that can open now still has to be resolved; the
+        # ones whose condition fails simply lapse when the Reveal ends.
         return ()
     return (DomainAction(action_id="finish_reveal", actor=player),)
 
@@ -2094,6 +2140,24 @@ def finish_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
 
     if action not in legal_finish_reveal_actions(state, action.actor):
         raise ValueError("action is not a legal Reveal cleanup")
+    # Deferred choices whose printed condition never came back lapse here.
+    lapsed_events = tuple(
+        GameEvent(
+            event_id=(
+                f"round:{state.round_number}:player:{action.actor}:"
+                f"reveal_card:{card_id}:{effect}:unavailable"
+            ),
+            kind="reveal_choice_unavailable",
+            payload=(
+                ("card_id", card_id),
+                ("effect", effect),
+                ("player", action.actor),
+            ),
+        )
+        for card_id, effect in _deferred_reveal_choices(
+            frame_context(state.decision_stack[-1])
+        )
+    )
     # Face-up Intrigue whose window was this Reveal turn expires with it.
     expired = expire_reveal_faceup_intrigue(state, action.actor)
     working = expired.state
@@ -2162,7 +2226,8 @@ def finish_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         payload=(("player", action.actor),),
     )
     return RuleResult(
-        state=next_state, events=(*expired.events, *removal_events, event)
+        state=next_state,
+        events=(*lapsed_events, *expired.events, *removal_events, event),
     )
 
 
