@@ -169,6 +169,13 @@
 - 이전 구현(~2026-09-04, 폐기): Agent box는 배치 시점에 조건이 거짓이면 아예 pending되지 않아 이후 성립해도 제시되지 않았고(핸드오프의 "알려진 엔진 경계"), Reveal의 선택형 효과는 시작 시점에 조건이 거짓이면 frame이 생기지 않았으며 되가져올 때 조건이 없으면 소멸했고, Reveal의 자동 조건부 이득은 시작 시점에만 판정됐다.
 - 확정(2026-09-04, 사용자 지적 "원래는 불가능했는데 플레이어의 선택으로 가능하게 변하는 조건들 확인"): 자유 순서 원칙의 귀결로, 조건은 **효과를 해결하는 시점**에 판정하며, 같은 turn 안에서 소유자의 뒤 선택으로 성립할 수 있는 조건은 그때까지 열려 있다. 구체 판정: (a) Agent box — 배치 시점에는 이후 어떤 효과로도 바뀔 수 없는 조건(방문한 space의 Faction·Maker 여부, 이미 play된 카드들 사이의 Faction Bond — Bond는 줄어들 수만 있음)만 판정하고, 나머지(Influence 문턱, 자원·손패·Intrigue 비용, Alliance, sandworm)는 box를 pending으로 두고 해결 시점에 판정한다. 화살표 지불은 비용이 성립할 때까지 decline만 제시하고, 조건이 거짓인 의무 효과는 해결 시 `agent_card_effect_unavailable`로 아무 것도 하지 않는다(Leadership, Guild Envoy). (b) Reveal 선택형 효과 — 시작 시점(또는 늦은 도착 시점)에 조건이 거짓이면 미룬 선택 큐에 넣고, `resume_reveal_choice`는 조건이 지금 성립하는 종류만 제시하며, `finish_reveal`은 지금 성립하는 미룬 선택이 없을 때만 제시한다(끝까지 성립하지 않은 선택은 `reveal_choice_unavailable`로 소멸). (c) Reveal 자동 조건부 이득 — Reveal 시작 시 지급된 효과를 frame에 기록(`granted_reveal_effects`)하고, 매 전이 뒤의 dispatcher pass(`grant_late_reveal_effects`)가 조건이 새로 성립한 효과를 한 번만 지급한다(Persuasion·자원·troop·Intrigue draw·Influence; 완료 contract당 Persuasion은 늘어난 수만큼 증분). OQ-020(한 번 성립하면 회수하지 않음)과 정합. 감사 결과 정적 조건은 그대로다: space 속성, Bond(감소만 가능), Swordmaster(Reveal 중 획득 불가), Intrigue deck 소진(reshuffle까지 포함해 0장이면 turn 안에 늘지 않음). 구현: `agent_turn._agent_effect_is_available`, `agent_effects`, `reveal_turn`(`_available_deferred_choices`, `grant_late_reveal_effects`), `engine`의 hook 순서. `tests/unit/rules/test_agent_effects.py`(Wheels Within Wheels·Branching Path·Ecological Testing Station·Leadership의 "뒤에 성립" 사례), `tests/unit/rules/test_reveal_turn.py`(In High Places·Bene Gesserit Operative·Paracompass·Northern Watermaster·Interstellar Trade)로 고정한다.
 
+## OQ-029 — Conflict에 배치한 troop의 임의 회수와 배치의 분할
+
+- 상태: `OPEN`
+- Main은 Combat space에 Agent를 보낼 때 troop을 배치할 수 있다고 하고(그 turn에 recruit한 troop 전부와 garrison의 troop 최대 2개) `[Main p. 10]` `[FAQ p. 4]`, Retreat는 "troop을 Conflict에서 garrison으로 옮긴다"는 효과 키워드로만 정의한다 `[Main p. 20]`. 배치한 뒤 같은 turn 안에서(예: 이후 draw나 Intrigue 결과를 보고) 마음을 바꿔 garrison으로 되돌릴 수 있는지, 배치를 한 turn 안에서 여러 번에 나눠(먼저 2개, 카드 효과로 recruit한 뒤 추가) 할 수 있는지는 어느 문서도 명시하지 않는다.
+- 필요한 답: (a) 효과 없는 임의 회수의 허용 여부, (b) 배치의 분할·추가 허용 여부에 대한 공식 판정 또는 프로젝트 판정.
+- 현재 구현(판정 아님, 2026-09-04): 배치는 Agent turn의 자유 순서 안에서 한 번의 행동이고 임의 회수 행동은 없다. 로컬 UI의 되돌리기(숨겨진 정보가 공개되기 전까지)가 편의 장치 역할을 한다. 원문 대조(2026-09-03 밤)로는 임의 회수 규칙이 발견되지 않았지만, 사용자가 "조금 더 고민이 필요"하다고 하여 확정하지 않고 `OPEN`으로 둔다. 판정이 나면 `player-turns.md`의 "troop recruit와 Combat deploy" 절과 `combat_deployment.py`를 함께 갱신한다.
+
 ## 판정이 생겼을 때 기록할 정보
 
 각 항목을 닫을 때 다음을 함께 남긴다. `DECIDED` 항목에 새 공식 답이 나왔을 때도 같다.

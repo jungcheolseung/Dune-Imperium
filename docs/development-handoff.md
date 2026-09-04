@@ -41,7 +41,7 @@ uv run mypy src tests
 - (2026-09-04 해소, OQ-028) 배치 시점 조건이 거짓이면 pending되지 않던 카드 효과 경계는 사라졌다. 이제 space 속성·Bond를 제외한 모든 인쇄 조건은 해결 시점에 판정한다.
 - Objective와 battle icon 상호작용은 2026-08-30에 재감사를 마쳤다 (`implementation-audits/objectives.md`, OQ-005 RESOLVED). Combat 다중 후보 guard는 미래 콘텐츠 대비 tripwire로 남는다.
 - Shaddam Corrino IV의 set-aside Sardaukar Contract 경로는 Leader 능력과 함께 남아 있다. OQ-010(2026-09-02 확정), OQ-011 경계는 확정 판정(`DECIDED`)으로 유지된다.
-- 공식 문서가 침묵하는 규칙 판정은 [`rules/open-questions.md`](rules/open-questions.md)에 있다. 2026-09-01 확정 캠페인과 같은 날의 사용자 검토를 거쳐, 2026-09-02에 OQ-010까지 확정돼 `OPEN` 항목은 없고 전부 `DECIDED`/`RESOLVED`다. `DECIDED`는 확정 프로젝트 판정으로 새 공식 룰북·FAQ(또는 OQ-022처럼 명시된 상위 근거)가 답을 줄 때만 다시 연다. 새로 발견되는 규칙 공백은 여전히 코드로 임의 확정하지 않고 그 문서에 먼저 기록하며, 규칙 동작을 바꾸기 전에는 반드시 `docs/rules/`의 문장을 인용한다([`lessons.md`](lessons.md)).
+- 공식 문서가 침묵하는 규칙 판정은 [`rules/open-questions.md`](rules/open-questions.md)에 있다. 2026-09-01 확정 캠페인과 같은 날의 사용자 검토를 거쳐, 2026-09-02에 OQ-010까지 확정돼 `DECIDED`/`RESOLVED`만 남았다가, 2026-09-04에 OQ-029(Conflict에 배치한 troop의 임의 회수·배치 분할)가 사용자 요청으로 `OPEN`으로 올라왔다 — 판정 전까지 엔진은 현재 구현(배치 1회, 회수 없음)을 유지한다. `DECIDED`는 확정 프로젝트 판정으로 새 공식 룰북·FAQ(또는 OQ-022처럼 명시된 상위 근거)가 답을 줄 때만 다시 연다. 새로 발견되는 규칙 공백은 여전히 코드로 임의 확정하지 않고 그 문서에 먼저 기록하며, 규칙 동작을 바꾸기 전에는 반드시 `docs/rules/`의 문장을 인용한다([`lessons.md`](lessons.md)).
 
 콘텐츠(카드·리더·계약·Intrigue·보드 22칸)는 이제 4인 base+CHOAM 게임 범위에서 완결이다. Uprising 프로모 Imperium 3장(Arrakis Revolt, The Beast's Spoils, Pivotal Gambit)은 같은 날 저녁 `RulesetConfig(promo_cards=True)` 옵션 콘텐츠로 구현됐고(기본은 꺼짐), 공식 문서가 침묵하는 판정은 OQ-024~026 project convention이다. 남은 경계는 공식 문서가 침묵하는 판정을 기록한 convention(open-questions.md)과 위의 엔진 경계·미래 콘텐츠 tripwire들이며, 이들은 "미구현 콘텐츠"가 아니라 문서화된 프로젝트 판정이다.
 
@@ -50,7 +50,7 @@ uv run mypy src tests
 2026-09-01의 **검증 강화 캠페인**(사용자 확정 범위: 전체 1→4)은 같은 날 완료했다: 1단계 보드 22칸 완결 + OQ-015(c), 2단계 sweep 확장 (`853ecd4`: 커버리지 census `--coverage-json`, 표본 주기 legal-action 전수 적용 + codec 왕복 `--soundness-interval`, seed별 리더 회전 `--rotate-leaders`), 3단계 교차 소크(아래), 4단계 대조(DIU 63종 전부 일치, open-questions 23건 재점검). 세부는 아래 세션 요약.
 
 0. (2026-09-03 완료) M11 슬라이스 7 보드 스캔 테이블 + 룰북 아이콘 — 아래 세션 요약. (2026-09-02 완료) 슬라이스 6 행동 되돌리기 + 실시간 행동 로그.
-0. (2026-09-04 완료) 조건 판정 시점 정리(OQ-028) — 아래 세션 요약.
+0. (2026-09-04 완료) 조건 판정 시점 정리(OQ-028) — 아래 세션 요약. 같은 날 병력 회수 규칙은 OQ-029 `OPEN`으로 등록했다(사용자 판정 대기; 엔진 변경 없음).
 0. (2026-09-04 완료) Reveal 선택형 효과 순서 자유화(codec v88) — 아래 세션 요약. 이로써 2026-09-03 심야의 사용자 5건이 모두 끝났다.
 0. (2026-09-03 심야 완료) 사용자 5건 중 4건 완료 + 1건 부분: 카드 Agent box 아이콘 분리(codec v87), 되돌리기 가능 표시, 턴 종료 확인, retreat 규칙 확인(문서), 보드 마커.
 0. (2026-09-03 밤 완료) 보드 공간 아이콘 분리(OQ-027, codec v86) — 아래 세션 요약.
@@ -123,7 +123,7 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 
 ## 원격 저장소 인계 주의
 
-2026-09-03 밤 세션 시작 시점에 `origin/master`와 로컬은 `8d7e59b`로 일치했다(저녁의 프로모 커밋 4개는 이미 push됨). 밤의 보드 아이콘 분리 커밋 2개(`b4e02cb`, `65bdfd6`), 심야 자율 작업 커밋들(`b86a5c1` 카드 아이콘, `cab29f2` 서버·UI, `a353c98` 문서), 2026-09-04의 Reveal 순서 커밋 쌍(`540cc83`, `31c587b`)과 조건 판정 시점 커밋들(`f78a4c9`, `cf8cb46`, `5ddb460`, `fb668e6`, 문서 커밋)은 세션 종료 시점에 로컬에만 있다(push는 사용자 판단으로 한다; 에셋 저장소의 `5b55e45` 1개 미push 여부는 그 저장소에서 확인). 원격에는 병합하지 않은 `kyungtae` 브랜치가 있다. 새 세션은 `git log origin/master..master`와 반대 방향을 모두 확인하고, checkout이 `853ecd4`보다 이전이면 이 문서의 989개 테스트·codec v84 기준선이 실제 코드와 일치하지 않는다. **다른 머신에서 이어서 작업한다면 먼저 이 머신에서 push가 필요하다.** 새 머신의 UI 카드 이미지·아이콘·보드 스캔은 비공개 `Dune-Imperium-assets` 저장소를 clone해 symlink로 연결한다(그 README 참고; 루트의 `assets` symlink 하나로 cards·icons·board·rulebooks를 모두 연결). 카드 매핑은 그 저장소의 `cards/manifest.json`에만 있으므로 접근이 없으면 텍스트 UI로 동작한다.
+2026-09-04 세션 종료 시점에 이 세션의 커밋 전부(보드·카드 아이콘 분리 v86/v87, 서버·UI 확인 흐름과 마커, Reveal 순서 v88, OQ-028 조건 판정 시점, OQ-029 등록)를 `origin/master`에 push했다. 새 세션은 `git fetch origin` 뒤 `git log origin/master..master`와 반대 방향을 확인하고, 일치하면 이 문서의 기준선을 그대로 쓴다. 에셋 저장소(`Dune-Imperium-assets`)의 `5b55e45` 1개 미push 여부는 그 저장소에서 확인한다. 원격에는 병합하지 않은 `kyungtae` 브랜치가 있다. 새 세션은 `git log origin/master..master`와 반대 방향을 모두 확인하고, checkout이 `853ecd4`보다 이전이면 이 문서의 989개 테스트·codec v84 기준선이 실제 코드와 일치하지 않는다. **다른 머신에서 이어서 작업한다면 먼저 이 머신에서 push가 필요하다.** 새 머신의 UI 카드 이미지·아이콘·보드 스캔은 비공개 `Dune-Imperium-assets` 저장소를 clone해 symlink로 연결한다(그 README 참고; 루트의 `assets` symlink 하나로 cards·icons·board·rulebooks를 모두 연결). 카드 매핑은 그 저장소의 `cards/manifest.json`에만 있으므로 접근이 없으면 텍스트 UI로 동작한다.
 
 ## 2026-09-04 조건 판정 시점 정리 세션 요약 (OQ-028)
 
@@ -147,7 +147,7 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 1. **카드 효과 아이콘 분리 — Agent box 완료, Reveal box 미완.** 감사 결과 Agent box에서 독립 아이콘이 묶여 있던 카드 9종을 OQ-027 모델로 분리했다(`b86a5c1`, codec v87): 배치 시 대기 — Hidden Missive(troop·card), Steersman(card·recall), Maker Keeper(water·spice), Wheels Within Wheels(Solari·spice), Dangerous Rhetoric(Influence 선택·"Trash this card."; 카드면 확인); 화살표 비용 뒤 보상 대기 — Captured Mentat(Intrigue·card), Guild Spy(card·Guild면 Intrigue), Branching Path(Intrigue·troop 2), Pivotal Gambit(troop·1위 보상 서약). 구현: `effects.py`의 `pending_agent_icons`/`arm_agent_icons`/`finish_agent_icon`, `agent_effects.py`의 `agent_card_icons_at_placement`·`legal_agent_card_icon_actions`·`resolve_agent_card_icon`(자동 키 8종 `AUTOMATIC_AGENT_ICONS`), `agent_effect_frame`의 아이콘 모드 분기, 자기 비용/아이콘으로 trash된 카드의 보상 유지(`agent_card_self_trashed`, OQ-022 예외), 서버 `detail`(`display/actions.py`)과 UI 라벨. 단위 유지: The Beast's Spoils, Arrakis Revolt, 문장형·화살표 비용쌍 카드. **Reveal box**: 자동 이득은 Reveal 시작 시 일괄 적용(결과 무관)이지만 선택형 Reveal 효과(`PersonalCardRevealChoiceEffect` 11종)는 카드 순서의 직렬 `REVEAL_CHOICE` frame이라 `[Main p. 12]`의 자유 순서·획득 사이 삽입이 안 된다. 다음 작업 제안: 선택 frame에 `defer_reveal_choice`(맨 뒤로 미루기)와 Reveal frame의 `resume_reveal_choice(effect=<kind>)`를 추가하고 `finish_reveal`은 미룬 선택이 남아 있으면 보류(codec +12). OQ-027에 기록.
 2. **행동별 되돌리기 가능 표시 완료.** `legal_actions`의 각 행동에 `undoable`(dry-run: 숨겨진 정보 공개 또는 chance 결정으로 이어지면 False)을 붙이고 UI가 "되돌리기 불가" 배지를 단다(`cab29f2`).
 3. **턴 종료 확인 완료.** 사람 좌석의 행동 뒤 다음 결정이 다른 좌석의 것이고 그 좌석의 되돌리기 창이 열려 있으면 세션이 `awaiting_confirmation`(요약 `confirmation`)으로 멈춘다. `POST /games/{id}/confirm`(`confirm_turn`)으로 확정해야 chance·AI가 진행되고, 되돌리기는 멈춤을 해제한다. 공개(reveal)로 끝난 턴은 창이 이미 닫혀 있으므로 예전처럼 바로 넘어간다. 저장 중 멈춤 상태는 복원 시 유지된다. 서버 테스트 helper(`_play`)는 자동 확정한다.
-4. **병력 회수 규칙 확인(문서).** Main p. 10·p. 20과 FAQ p. 3·4 원문 대조: 배치는 Combat space에 Agent를 보낼 때의 권한이고 Retreat는 효과 키워드로만 정의된다 — 임의 회수는 규칙에 없다. `player-turns.md`에 기록했고 엔진은 바꾸지 않았다(되돌리기가 공개 전까지의 편의 장치).
+4. **병력 회수 규칙 확인(문서).** Main p. 10·p. 20과 FAQ p. 3·4 원문 대조: 배치는 Combat space에 Agent를 보낼 때의 권한이고 Retreat는 효과 키워드로만 정의된다 — 임의 회수 규칙은 발견되지 않았다. 엔진은 바꾸지 않았고(되돌리기가 공개 전까지의 편의 장치), 사용자가 더 고민하겠다고 하여 2026-09-04에 OQ-029 `OPEN`으로 등록했다.
 5. **보드 마커 완료.** `display/board_layout.py`에 Influence 트랙(Emperor 기준 7단 y + Faction별 offset, 좌석별 x 4열, Alliance 지점), VP 트랙(0~12, 초과는 상단), 전투력 트랙(0~10 윗줄, 11~20 아랫줄), Conflict 4분면, High Council 좌석 4곳의 퍼센트 좌표를 0.5% 격자로 측정해 추가하고(`marker_layout`, catalog `tracks`), app.js `renderTrackMarkers`가 큐브·링·토큰·유닛 칩을 그린다. 브라우저에서 seed 14로 확인: 큐브 16개·VP 4개·전투력 2개·Conflict 칩 2개가 맞는 위치에 있고 Influence 획득 후 큐브가 한 칸 오른다.
 
 - 검증: pytest 1,041, Ruff, mypy. 1번 커밋 뒤 소크 random 룰셋당 150판(`--rotate-leaders --soundness-interval 25`, 300/300)·heuristic 60판(120/120)·프로모 60판(120/120) 실패 0. 브라우저 E2E(seed 14): 배치 → Solari 아이콘 → Influence → "행동을 마쳤습니다. 턴을 넘길까요?" 확인 패널 + 되돌리기 3단계 → 확정 후 AI 진행.
