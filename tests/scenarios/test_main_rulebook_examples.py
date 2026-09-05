@@ -80,10 +80,15 @@ def test_main_page_11_imperial_basin_deploys_at_most_two_garrison_troops() -> No
     state = engine.apply(state, harvest).state
     deployments = engine.legal_actions(state, 0)
 
-    assert tuple(dict(action.arguments)["count"] for action in deployments) == (
-        0,
-        1,
-        2,
+    # Two garrison troops at most [Main p. 11]; deploying none is the
+    # explicit turn end (OQ-029).
+    assert tuple(
+        (action.action_id, dict(action.arguments).get("count"))
+        for action in deployments
+    ) == (
+        ("deploy_troops", 1),
+        ("deploy_troops", 2),
+        ("finish_agent_turn", None),
     )
     deploy_two = DomainAction(
         action_id="deploy_troops",
@@ -91,6 +96,9 @@ def test_main_page_11_imperial_basin_deploys_at_most_two_garrison_troops() -> No
         arguments=(("count", 2),),
     )
     state = engine.apply(state, deploy_two).state
+    state = engine.apply(
+        state, DomainAction(action_id="finish_agent_turn", actor=0)
+    ).state
 
     assert state.players[0].resources.spice == 2
     assert state.players[0].troops_garrison == 1

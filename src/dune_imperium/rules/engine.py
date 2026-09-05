@@ -87,7 +87,11 @@ from dune_imperium.rules.combat import (
     legal_distinct_combat_reward_influence_actions,
     resolve_combat_rewards,
 )
-from dune_imperium.rules.combat_deployment import apply_combat_deployment
+from dune_imperium.rules.combat_deployment import (
+    apply_agent_turn_finish,
+    apply_combat_deployment,
+    apply_troop_withdrawal,
+)
 from dune_imperium.rules.contracts import (
     apply_contract_action,
     apply_contract_completion,
@@ -353,6 +357,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "discard_intrigue_for_imperial_privilege": apply_imperial_privilege_action,
     "recall_agent_for_imperial_privilege": apply_imperial_privilege_action,
     "deploy_troops": apply_combat_deployment,
+    "withdraw_troops": apply_troop_withdrawal,
+    "finish_agent_turn": apply_agent_turn_finish,
     # Agent-card serial choices
     "trash_agent_card": apply_agent_card_trash,
     "decline_agent_card_trash": apply_agent_card_trash,

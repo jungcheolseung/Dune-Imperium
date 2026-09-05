@@ -76,6 +76,9 @@ class PlayerState:
     combat_strength: int = 0
     units_deployed_turn: int = 0
     deploy_trigger_offered_at: int = 0
+    # Deployed-unit count an effect already consumed as its condition this
+    # turn (Distraction's Spy); a withdrawal may not drop below it (OQ-029).
+    units_deployed_committed: int = 0
     spice_at_turn_start: int = 0
     spice_spent_turn: int = 0
     has_revealed: bool = False
@@ -121,6 +124,7 @@ class PlayerState:
             self.combat_strength,
             self.units_deployed_turn,
             self.deploy_trigger_offered_at,
+            self.units_deployed_committed,
             self.spice_at_turn_start,
             self.spice_spent_turn,
         )

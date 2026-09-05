@@ -549,7 +549,8 @@ def test_contract_troops_increase_combat_deployment_limit() -> None:
     }
 
     assert completed.players[0].troops_garrison == 5
-    assert deployment_counts == {0, 1, 2, 3, 4}
+    # Deploying nothing is now the explicit turn end (OQ-029).
+    assert deployment_counts == {1, 2, 3, 4}
 
 
 def test_contract_completion_actions_replay_from_the_same_state() -> None:

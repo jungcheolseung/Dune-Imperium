@@ -43,7 +43,7 @@ from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.rules.agent_effects import AUTOMATIC_AGENT_ICONS
 from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 
-ACTION_CODEC_VERSION = 88
+ACTION_CODEC_VERSION = 89
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 
@@ -225,13 +225,23 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         )
     templates.extend(_agent_turn_templates(config))
     templates.extend(_endgame_wild_templates(config))
+    # Basic Combat deployment is adjustable until the explicit turn end
+    # (OQ-029): add, withdraw, finish.
     templates.extend(
         ActionTemplate(
             action_id="deploy_troops",
             arguments=(("count", count),),
         )
-        for count in range(MAX_DEPLOYMENT_COUNT + 1)
+        for count in range(1, MAX_DEPLOYMENT_COUNT + 1)
     )
+    templates.extend(
+        ActionTemplate(
+            action_id="withdraw_troops",
+            arguments=(("count", count),),
+        )
+        for count in range(1, MAX_DEPLOYMENT_COUNT + 1)
+    )
+    templates.append(ActionTemplate(action_id="finish_agent_turn"))
     templates.extend(
         ActionTemplate(
             action_id="recall_agent_for_agent_card",

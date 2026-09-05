@@ -195,37 +195,37 @@ def test_turn_end_waits_for_confirmation_while_steps_are_undoable() -> None:
     manager = GameSessionManager()
     summary = manager.create_game(HUMAN_FIRST, game_seed=14)
     game_id = str(summary["game_id"])
-    summary = _play_until_revision(manager, summary, 9)
+    summary = _play_until_revision(manager, summary, 12)
     summary = _play_raw(manager, summary)
     assert summary["confirmation"] is None
     influence = _action_index(manager, game_id, "resolve_faction_influence")
     summary = _play_raw(manager, summary, index=influence)
 
-    assert summary["revision"] == 11
+    assert summary["revision"] == 14
     assert summary["confirmation"] == 0
     assert _obj(summary["decision"])["owner"] != 0
     assert summary["undo"] == [{"seat": 0, "steps": 3}]
-    assert len(manager._get(game_id).steps) == 11
+    assert len(manager._get(game_id).steps) == 14
     assert manager.legal_actions(game_id, 0)["actions"] == []
     with pytest.raises(SessionError, match="another seat"):
-        manager.apply_action(game_id, seat=0, revision=11, index=0)
+        manager.apply_action(game_id, seat=0, revision=14, index=0)
     with pytest.raises(StaleRevisionError):
-        manager.confirm_turn(game_id, seat=0, revision=10)
+        manager.confirm_turn(game_id, seat=0, revision=13)
 
     # Taking a step back reopens the seat's own decision.
-    rewound = manager.undo(game_id, seat=0, revision=11, steps=1)
+    rewound = manager.undo(game_id, seat=0, revision=14, steps=1)
     assert rewound["confirmation"] is None
     assert _obj(rewound["decision"])["owner"] == 0
-    assert rewound["revision"] == 10
+    assert rewound["revision"] == 13
 
     # Redo the same step and confirm: only now do the other seats act.
     summary = _play_raw(manager, rewound, index=influence)
     assert summary["confirmation"] == 0
     confirmed = manager.confirm_turn(
-        game_id, seat=0, revision=11, undo_count=_int(summary["undo_count"])
+        game_id, seat=0, revision=14, undo_count=_int(summary["undo_count"])
     )
     assert confirmed["confirmation"] is None
-    assert _int(confirmed["revision"]) > 11
+    assert _int(confirmed["revision"]) > 14
     assert confirmed["undo"] == []
     with pytest.raises(SessionError, match="no turn end"):
         manager.confirm_turn(game_id, seat=0, revision=_int(confirmed["revision"]))
@@ -254,7 +254,7 @@ def test_legal_actions_report_whether_each_step_can_be_taken_back() -> None:
     manager = GameSessionManager()
     summary = manager.create_game(HUMAN_FIRST, game_seed=14)
     game_id = str(summary["game_id"])
-    summary = _play_until_revision(manager, summary, 9)
+    summary = _play_until_revision(manager, summary, 12)
     actions = _rows(manager.legal_actions(game_id, 0)["actions"])
 
     # Dutiful Service's Solari icon and the Emperor Influence reveal nothing.
@@ -268,7 +268,7 @@ def test_a_save_taken_during_the_pause_restores_the_pause() -> None:
     manager = GameSessionManager()
     summary = manager.create_game(HUMAN_FIRST, game_seed=14)
     game_id = str(summary["game_id"])
-    summary = _play_until_revision(manager, summary, 9)
+    summary = _play_until_revision(manager, summary, 12)
     summary = _play_raw(manager, summary)
     influence = _action_index(manager, game_id, "resolve_faction_influence")
     summary = _play_raw(manager, summary, index=influence)
@@ -277,7 +277,7 @@ def test_a_save_taken_during_the_pause_restores_the_pause() -> None:
     document = manager.save_game(game_id)
     restored = manager.restore_game(document)
     assert restored["confirmation"] == 0
-    assert restored["revision"] == 11
+    assert restored["revision"] == 14
     assert restored["undo"] == [{"seat": 0, "steps": 3}]
 
 
@@ -288,28 +288,28 @@ def test_undo_rewinds_to_the_seats_earlier_decision_and_keeps_the_log() -> None:
     manager = GameSessionManager()
     summary = manager.create_game(HUMAN_FIRST, game_seed=14)
     game_id = str(summary["game_id"])
-    summary = _play_until_revision(manager, summary, 9)
+    summary = _play_until_revision(manager, summary, 12)
     view_before = manager.view(game_id, 0)
     actions_before = manager.legal_actions(game_id, 0)
     steps_before = list(manager._get(game_id).steps)
     summary = _play(manager, summary)
-    assert summary["revision"] == 10
+    assert summary["revision"] == 13
     assert summary["undo"] == [{"seat": 0, "steps": 2}]
     undone_step = manager._get(game_id).steps[-1]
 
     with pytest.raises(StaleRevisionError):
-        manager.undo(game_id, seat=0, revision=9, steps=1)
+        manager.undo(game_id, seat=0, revision=12, steps=1)
     with pytest.raises(SessionError, match="at most 2"):
-        manager.undo(game_id, seat=0, revision=10, steps=3)
+        manager.undo(game_id, seat=0, revision=13, steps=3)
     with pytest.raises(SessionError, match="at most"):
-        manager.undo(game_id, seat=0, revision=10, steps=0)
+        manager.undo(game_id, seat=0, revision=13, steps=0)
     with pytest.raises(SeatAccessError):
-        manager.undo(game_id, seat=1, revision=10, steps=1)
+        manager.undo(game_id, seat=1, revision=13, steps=1)
 
     assert summary["undo_count"] == 0
-    rewound = manager.undo(game_id, seat=0, revision=10, steps=1, undo_count=0)
+    rewound = manager.undo(game_id, seat=0, revision=13, steps=1, undo_count=0)
 
-    assert rewound["revision"] == 9
+    assert rewound["revision"] == 12
     assert rewound["undo_count"] == 1
     assert rewound["undo"] == [{"seat": 0, "steps": 1}]
     assert manager.view(game_id, 0) == view_before
@@ -327,7 +327,7 @@ def test_undo_rewinds_to_the_seats_earlier_decision_and_keeps_the_log() -> None:
     # A different choice continues the game from the rewound decision.
     assert len(_rows(actions_before["actions"])) >= 2
     resumed = _play(manager, rewound, index=1)
-    assert _int(resumed["revision"]) >= 10
+    assert _int(resumed["revision"]) >= 13
     assert manager._get(game_id).steps[len(steps_before)] != undone_step
 
     # The undo generation guards a stale client: a request carrying the
@@ -352,8 +352,8 @@ def test_the_log_is_served_per_seat_with_undo_markers() -> None:
     manager = GameSessionManager()
     summary = manager.create_game(HUMAN_FIRST, game_seed=14)
     game_id = str(summary["game_id"])
-    summary = _play_until_revision(manager, summary, 9)
-    summary = manager.undo(game_id, seat=0, revision=9, steps=1)
+    summary = _play_until_revision(manager, summary, 12)
+    summary = manager.undo(game_id, seat=0, revision=12, steps=1)
 
     log = manager.log(game_id, 0)
     entries = _rows(log["entries"])
@@ -434,8 +434,8 @@ def test_log_entries_redact_hidden_arguments_and_private_events() -> None:
 def _game_with_an_undo(manager: GameSessionManager) -> JsonObject:
     summary = manager.create_game(HUMAN_FIRST, game_seed=14)
     game_id = str(summary["game_id"])
-    summary = _play_until_revision(manager, summary, 9)
-    summary = manager.undo(game_id, seat=0, revision=9, steps=1)
+    summary = _play_until_revision(manager, summary, 12)
+    summary = manager.undo(game_id, seat=0, revision=12, steps=1)
     return _play(manager, summary, index=1)
 
 
@@ -526,9 +526,9 @@ def test_review_reports_where_steps_were_taken_back() -> None:
     assert len(history) == 1
     assert history[0]["seat"] == 0
     assert history[0]["count"] == 1
-    # The undo rewound to live step 8 (revision 8 = eight steps applied).
-    assert history[0]["step"] == 8
+    # The undo rewound to live step 11 (revision 11 = eleven steps applied).
+    assert history[0]["step"] == 11
     undone = _rows(history[0]["undone"])
     assert len(undone) == 1
     assert undone[0]["type"] == "action" and undone[0]["actor"] == 0
-    assert _rows(review["steps"])[8] != undone[0]
+    assert _rows(review["steps"])[11] != undone[0]

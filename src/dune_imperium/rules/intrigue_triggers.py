@@ -260,10 +260,16 @@ def apply_trigger_spy_action(state: GameState, action: DomainAction) -> RuleResu
         )
 
     placed = place_spy(owner, post_id)
+    minimum = _deployment_trigger_minimum(card_id)
     used = replace(
         placed,
         intrigue_faceup=tuple(
             held for held in placed.intrigue_faceup if held != card_id
+        ),
+        # The card consumed this turn's deployment count as its condition:
+        # a later withdrawal may not undo it below the minimum (OQ-029).
+        units_deployed_committed=max(
+            placed.units_deployed_committed, minimum if minimum is not None else 0
         ),
     )
     next_state = replace(

@@ -347,7 +347,7 @@ def test_troops_recruited_before_placing_the_agent_may_still_be_deployed() -> No
         for action in engine.legal_actions(placed, 0)
         if action.action_id == "deploy_troops"
     }
-    assert deployments == {0, 1}
+    assert deployments == {1}
 
 
 def test_intrigue_spice_trades_keep_harvest_accounting_honest() -> None:
@@ -486,7 +486,7 @@ def test_troops_recruited_by_plot_during_an_agent_turn_may_be_deployed() -> None
         for action in engine.legal_actions(played, 0)
         if action.action_id == "deploy_troops"
     }
-    assert deployments == {0, 1}
+    assert deployments == {1}
 
 
 def test_plot_intrigue_is_offered_during_the_reveal_turn() -> None:
@@ -1965,13 +1965,13 @@ def test_distraction_fires_after_an_agent_deployment_ends_the_turn() -> None:
         DomainAction(action_id="deploy_troops", actor=0, arguments=(("count", 3),)),
     ).state
     assert deployed.players[0].units_deployed_turn == 3
-    # The deployment ended the Agent turn, so the trigger frame sits on the
-    # next player's turn frame.
+    # The deployment keeps the Agent turn open (OQ-029), so the trigger
+    # frame sits on the owner's own effect frame.
     frame = deployed.decision_stack[-1]
     assert frame.kind == "intrigue_trigger_spy"
     below = deployed.decision_stack[-2]
-    assert below.kind == "turn"
-    assert isinstance(below.decision, PlayerDecision) and below.decision.owner == 1
+    assert below.kind == "agent_effects"
+    assert isinstance(below.decision, PlayerDecision) and below.decision.owner == 0
 
     actions = engine.legal_actions(deployed, 0)
     assert _decline_trigger() in actions
@@ -1982,7 +1982,64 @@ def test_distraction_fires_after_an_agent_deployment_ends_the_turn() -> None:
     assert rival_post in done.players[1].spy_post_ids
     assert done.players[0].intrigue_faceup == ()
     assert done.intrigue_discard[-1] == card
-    assert done.decision_stack[-1].kind == "turn"
+    assert done.decision_stack[-1].kind == "agent_effects"
+    # The used card consumed "three or more units deployed this turn": the
+    # deployment may not be withdrawn below that minimum (OQ-029 exception),
+    # so with exactly three deployed no withdrawal is offered at all.
+    assert done.players[0].units_deployed_committed == 3
+    assert not any(
+        action.action_id == "withdraw_troops"
+        for action in engine.legal_actions(done, 0)
+    )
+    finished = engine.apply(
+        done, DomainAction(action_id="finish_agent_turn", actor=0)
+    ).state
+    assert finished.decision_stack[-1].kind == "turn"
+    assert finished.players[0].troops_conflict == 3
+
+
+def test_distraction_declined_does_not_block_withdrawal() -> None:
+    # Declining consumed nothing: the deployment may still be taken back
+    # (OQ-029 exception applies only to a used condition).
+    rival_post = _post(0)
+    state = _distraction_arrakeen_state(rival_post=rival_post)
+    engine = UprisingRulesEngine()
+    to_arrakeen = next(
+        action
+        for action in legal_agent_actions(state, 0)
+        if dict(action.arguments)["space_id"] == "arrakeen"
+    )
+    placed = engine.apply(state, to_arrakeen).state
+    recruited = engine.apply(
+        placed, _play(placed, _intrigue("shaddam_s_favor"))
+    ).state
+    board_done = _resolve_board_icons(engine, recruited, "troops", "cards")
+    deployed = engine.apply(
+        board_done,
+        DomainAction(action_id="deploy_troops", actor=0, arguments=(("count", 3),)),
+    ).state
+    declined = engine.apply(deployed, _decline_trigger()).state
+
+    assert declined.players[0].units_deployed_committed == 0
+    withdrawals = {
+        dict(action.arguments)["count"]
+        for action in engine.legal_actions(declined, 0)
+        if action.action_id == "withdraw_troops"
+    }
+    assert withdrawals == {1, 2, 3}
+    back = engine.apply(
+        declined,
+        DomainAction(action_id="withdraw_troops", actor=0, arguments=(("count", 1),)),
+    ).state
+    assert back.players[0].units_deployed_turn == 2
+    # Re-deploying to three does not re-offer the declined card this turn
+    # (OQ-016: only a count above the last offer re-opens it).
+    again = engine.apply(
+        back,
+        DomainAction(action_id="deploy_troops", actor=0, arguments=(("count", 1),)),
+    ).state
+    assert again.decision_stack[-1].kind == "agent_effects"
+    assert again.players[0].deploy_trigger_offered_at == 3
 
 
 def test_distraction_offer_can_be_declined_and_the_card_stays() -> None:
@@ -2009,7 +2066,7 @@ def test_distraction_offer_can_be_declined_and_the_card_stays() -> None:
     # Declining keeps the card face up for a later qualifying turn (OQ-016).
     assert declined.players[0].intrigue_faceup == (card,)
     assert card not in declined.intrigue_discard
-    assert declined.decision_stack[-1].kind == "turn"
+    assert declined.decision_stack[-1].kind == "agent_effects"
     assert declined.players[0].deploy_trigger_offered_at == 3
 
 
@@ -2073,7 +2130,7 @@ def test_distraction_needs_a_post_with_another_players_spy() -> None:
     ).state
 
     # No opponent Spy on the board: nothing is offered and the card waits.
-    assert deployed.decision_stack[-1].kind == "turn"
+    assert deployed.decision_stack[-1].kind == "agent_effects"
     assert deployed.players[0].intrigue_faceup == (_intrigue("distraction"),)
     assert deployed.players[0].deploy_trigger_offered_at == 0
 

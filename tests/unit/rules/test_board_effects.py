@@ -48,7 +48,7 @@ from dune_imperium.rules.board_effects import (
     static_board_effects,
 )
 from dune_imperium.rules.combat_deployment import (
-    apply_combat_deployment,
+    apply_agent_turn_finish,
     legal_combat_deployments,
 )
 from dune_imperium.rules.contracts import apply_contract_action, legal_contract_actions
@@ -969,15 +969,14 @@ def test_desert_tactics_can_trash_the_just_played_card_itself() -> None:
     assert played_card in resolved_owner.trashed
 
     trashed_state = _resolve_board(trashed_state, "troops")
-    deployment = next(
-        candidate
-        for candidate in legal_combat_deployments(trashed_state, 0)
-        if dict(candidate.arguments)["count"] == 0
-    )
-    deployed_state = apply_combat_deployment(trashed_state, deployment).state
     # Desert Tactics' Fremen icon leaves the generic Faction Influence choice
-    # pending independently of the board effect just resolved above.
-    finished = resolve_faction_influence(deployed_state).state
+    # pending independently of the board effect just resolved above; the
+    # Combat deployment window then closes with the explicit turn end
+    # (OQ-029).
+    influenced = resolve_faction_influence(trashed_state).state
+    finished = apply_agent_turn_finish(
+        influenced, DomainAction(action_id="finish_agent_turn", actor=0)
+    ).state
     decision = finished.decision_stack[-1].decision
 
     assert isinstance(decision, PlayerDecision)

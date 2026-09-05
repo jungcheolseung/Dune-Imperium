@@ -198,6 +198,7 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
         context=(
             ("board_icons", board_icons),
             ("card_id", card_instance_id),
+            ("combat_troops_deployed", 0),
             ("cost_option", cost_option),
             ("existing_troop_deployment_limit", 2 if space.combat else 0),
             ("pending_agent_effect", agent_effect_pending),

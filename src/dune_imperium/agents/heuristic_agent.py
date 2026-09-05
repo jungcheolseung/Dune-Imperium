@@ -71,6 +71,11 @@ _ACTION_SCORES: Final[dict[str, float]] = {
     # would gain; it resolves choices in card order and finishes.
     "defer_reveal_choice": -5.0,
     "resume_reveal_choice": -5.0,
+    # Deploy everything the engine allows, then close the turn. Taking
+    # troops back (OQ-029) ranks below every decline and pass so the agent
+    # never cycles withdraw/deploy instead of settling a pending choice.
+    "finish_agent_turn": 0.5,
+    "withdraw_troops": -10.0,
 }
 
 _IMPERIUM_ACQUISITIONS: Final = frozenset(

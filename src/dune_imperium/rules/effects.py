@@ -206,18 +206,11 @@ def advance_after_effect(
     owner = context["turn_owner"]
     if isinstance(owner, bool) or not isinstance(owner, int):
         raise RuntimeError("Agent-turn effect frame has invalid owner")
-    regular_pending = (
-        context.get("pending_gather_intelligence", False),
-        context.get("pending_leader_ability", False),
-        context.get("pending_leader_board_repeat", False),
-        context["pending_agent_effect"],
-        context["pending_board_effect"],
-        context["pending_combat_deployment"],
-        context["pending_faction_influence"],
-    )
     next_players = state.players if players is None else players
-    contracts_pending = bool(eligible_agent_contract_ids(context, next_players))
-    if any(value is True for value in regular_pending) or contracts_pending:
+    if (
+        context["pending_combat_deployment"] is True
+        or agent_turn_has_other_pending_effects(context, next_players)
+    ):
         frame = state.decision_stack[-1]
         next_frame = replace(frame, context=tuple(sorted(context.items())))
     else:
@@ -237,6 +230,29 @@ def advance_after_effect(
         players=next_players,
         decision_stack=(*state.decision_stack[:-1], next_frame),
     )
+
+
+def agent_turn_has_other_pending_effects(
+    context: dict[str, ActionValue],
+    players: tuple[PlayerState, ...],
+) -> bool:
+    """Return whether anything besides the Combat deployment is still pending.
+
+    The deployment window stays open until the owner finishes the turn
+    (OQ-029); every other group closes on its own resolution.
+    """
+
+    regular_pending = (
+        context.get("pending_gather_intelligence", False),
+        context.get("pending_leader_ability", False),
+        context.get("pending_leader_board_repeat", False),
+        context["pending_agent_effect"],
+        context["pending_board_effect"],
+        context["pending_faction_influence"],
+    )
+    if any(value is True for value in regular_pending):
+        return True
+    return bool(eligible_agent_contract_ids(context, players))
 
 
 def pending_agent_contract_ids(
