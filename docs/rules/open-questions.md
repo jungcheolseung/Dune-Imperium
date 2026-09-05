@@ -171,10 +171,17 @@
 
 ## OQ-029 — Conflict에 배치한 troop의 임의 회수와 배치의 분할
 
-- 상태: `OPEN`
+- 상태: `DECIDED`
 - Main은 Combat space에 Agent를 보낼 때 troop을 배치할 수 있다고 하고(그 turn에 recruit한 troop 전부와 garrison의 troop 최대 2개) `[Main p. 10]` `[FAQ p. 4]`, Retreat는 "troop을 Conflict에서 garrison으로 옮긴다"는 효과 키워드로만 정의한다 `[Main p. 20]`. 배치한 뒤 같은 turn 안에서(예: 이후 draw나 Intrigue 결과를 보고) 마음을 바꿔 garrison으로 되돌릴 수 있는지, 배치를 한 turn 안에서 여러 번에 나눠(먼저 2개, 카드 효과로 recruit한 뒤 추가) 할 수 있는지는 어느 문서도 명시하지 않는다.
 - 필요한 답: (a) 효과 없는 임의 회수의 허용 여부, (b) 배치의 분할·추가 허용 여부에 대한 공식 판정 또는 프로젝트 판정.
-- 현재 구현(판정 아님, 2026-09-04): 배치는 Agent turn의 자유 순서 안에서 한 번의 행동이고 임의 회수 행동은 없다. 로컬 UI의 되돌리기(숨겨진 정보가 공개되기 전까지)가 편의 장치 역할을 한다. 원문 대조(2026-09-03 밤)로는 임의 회수 규칙이 발견되지 않았지만, 사용자가 "조금 더 고민이 필요"하다고 하여 확정하지 않고 `OPEN`으로 둔다. 판정이 나면 `player-turns.md`의 "troop recruit와 Combat deploy" 절과 `combat_deployment.py`를 함께 갱신한다.
+- **확정(2026-09-05, 사용자 판정).** 공식 문서가 침묵함을 원문 대조(2026-09-03 밤)로 확인한 뒤 채택한 project convention이며 공식 규칙이 아니다. 근거는 `[Main p. 9]`의 Agent turn 자유 순서다: 배치는 turn의 다른 효과(draw, Intrigue 등)보다 뒤에 해도 되는 선택이므로, 먼저 했다는 이유만으로 되돌릴 수 없게 하면 실물 테이블에서 "카드를 다 본 뒤 배치한다"는 자연스러운 플레이보다 엄격해진다.
+  1. **(a) 임의 회수 허용.** 이번 Agent turn의 기본 배치(Combat space의 sword 아이콘, 또는 Sardaukar Coordination의 recruit troop 배치)로 Conflict에 넣은 troop은 그 turn이 끝나기 전까지 원하는 수만큼 garrison으로 되돌릴 수 있다. 이전 turn에 배치한 troop, 카드·Intrigue·Reveal 효과가 직접 배치한 troop(`deploy_intrigue_troops`, Reveal의 배치 효과, sandworm)은 효과 해결의 결과이므로 회수 대상이 아니다.
+  2. **(b) 분할·추가 허용.** 기본 배치는 한 turn 안에서 여러 번 나눠 할 수 있고, 뒤의 recruit로 한도가 늘면 추가 배치할 수 있다. 한도는 순배치 기준이다: turn 안의 기본 배치 순합계는 "그 turn에 recruit한 troop 수 + garrison troop 2개" 이하이며 `[Main p. 10]` `[FAQ p. 4]`, 되돌린 뒤 다시 배치해도 이 한도를 넘지 않는다.
+  3. **예외 — 배치 수를 조건으로 소비한 효과.** 이번 turn의 배치 수를 조건으로 이미 사용한 효과(현재 콘텐츠에서는 Distraction의 "이번 turn에 unit 3개 이상 배치" Spy 배치)가 있으면, 배치 수를 그 조건(최소 수) 아래로 내리는 회수는 허용하지 않는다. 그 효과까지 물리고 싶다면 로컬 UI의 되돌리기(OQ-010)로 Spy 배치와 Intrigue play를 먼저 되돌린 뒤 재배치한다. 조건을 판정했지만 사용하지 않은 효과(Distraction 거절)는 아무것도 소비하지 않았으므로 회수를 막지 않는다. 사용한 조건은 `PlayerState.units_deployed_committed`(turn마다 초기화)로 기록한다.
+  4. **turn 종료.** 기본 배치가 가능한 Agent turn은 다른 보류 효과가 모두 끝난 뒤 소유자가 `finish_agent_turn`으로 명시적으로 끝낸다(배치 0개는 배치 없이 종료). 배치가 불가능한 turn(비Combat space, Shaddam Signet의 배치 금지)은 이전처럼 마지막 효과와 함께 자동 종료한다.
+  5. 행동: `deploy_troops(count)`는 이번 배치에 `count`개를 **추가**하고, `withdraw_troops(count)`는 이번 turn 기본 배치분에서 `count`개를 garrison으로 되돌린다(codec v89). 회수 시 `units_deployed_turn`도 함께 줄어들어 Distraction의 재제시 기준(OQ-016: 마지막 제시 시점보다 늘었을 때만)이 그대로 적용된다.
+- 갱신 문서: [player-turns.md](player-turns.md) "troop recruit와 Combat deploy" 절. 구현 `rules/combat_deployment.py`, 테스트 `tests/unit/rules/test_combat_deployment.py`, `tests/unit/rules/test_intrigue.py`(Distraction 예외).
+- 재개 조건: 새 공식 룰북·FAQ가 배치의 회수·분할을 직접 정할 때.
 
 ## 판정이 생겼을 때 기록할 정보
 

@@ -127,10 +127,17 @@
 - Retreat는 "troop을 Conflict에서 garrison으로 옮긴다"는 효과 키워드로
   정의된다(Chani, Clever Tactician 등 카드 효과가 지시할 때). [Main p. 20]
   [FAQ p. 3] 배치한 troop을 같은 turn 안에서 임의로 되돌릴 수 있는지, 배치를
-  나눠서 할 수 있는지는 공식 문서에 없어
-  [open-questions.md](open-questions.md)의 OQ-029 `OPEN` 항목으로 남겨 두었다.
-  현재 엔진은 배치를 Agent turn의 자유 순서 안에서 한 번의 행동으로 두고 임의
-  회수 행동은 제공하지 않는다(판정이 아니라 현재 구현).
+  나눠서 할 수 있는지는 공식 문서에 없다. 프로젝트 판정(OQ-029 `DECIDED`,
+  2026-09-05, 공식 규칙이 아닌 convention): 이번 Agent turn의 기본 배치로
+  Conflict에 넣은 troop은 turn이 끝나기 전까지 원하는 수만큼 garrison으로
+  되돌릴 수 있고(`withdraw_troops`), 기본 배치는 여러 번 나눠 하거나 뒤의
+  recruit로 늘어난 한도만큼 추가할 수 있다(`deploy_troops`는 추가 배치).
+  한도는 순배치 기준으로 위의 "recruit한 troop 전부 + garrison 2개"다. 이번
+  turn의 배치 수를 조건으로 이미 사용한 효과(Distraction의 Spy 배치)가 있으면
+  그 조건 아래로 내리는 회수는 막히며, 로컬 UI의 되돌리기로 그 효과부터
+  물려야 한다. 기본 배치가 가능한 Agent turn은 다른 보류 효과가 끝난 뒤
+  `finish_agent_turn`으로 명시적으로 끝낸다. 자세한 근거는
+  [open-questions.md](open-questions.md)의 OQ-029.
 - Sardaukar Coordination으로 Agent를 보내면 Combat space가 아니어도 그 turn에
   실제로 recruit한 troop을 Conflict에 deploy할 수 있다. 이 예외는 기존
   garrison troop 두 개를 추가로 deploy하는 권한을 주지 않는다.
