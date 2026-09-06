@@ -19,6 +19,7 @@ from dune_imperium.rules.effects import (
     current_agent_effect_context,
     eligible_agent_contract_ids,
     pending_agent_contract_ids,
+    recruit_shortfall_events,
     recruit_troops,
 )
 from dune_imperium.rules.frames import FrameKind, replace_player
@@ -806,7 +807,12 @@ def _complete_contract_without_choices(
             ("water", reward.water),
         ),
     )
-    return RuleResult(state=next_state, events=(event, *influence_events))
+    shortfall_events = recruit_shortfall_events(
+        f"{source}:completed", player, reward.troops, recruited
+    )
+    return RuleResult(
+        state=next_state, events=(event, *influence_events, *shortfall_events)
+    )
 
 
 def _begin_contract_reward_choice(

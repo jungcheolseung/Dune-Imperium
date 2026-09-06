@@ -21,7 +21,7 @@ from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GamePhase, GameState
-from dune_imperium.rules.effects import recruit_troops
+from dune_imperium.rules.effects import recruit_shortfall_events, recruit_troops
 from dune_imperium.rules.frames import (
     FrameKind,
     owned_top_frame,
@@ -71,6 +71,7 @@ def fire_reveal_acquisition_intrigue(
             if isinstance(option.trigger, OnRevealAcquisitionThisRound)
         )
         recruited_total = 0
+        requested_total = 0
         for section in option.sections:
             for reward in section.rewards:
                 if not isinstance(reward, RecruitTroops):
@@ -79,15 +80,22 @@ def fire_reveal_acquisition_intrigue(
                     )
                 owner, recruited = recruit_troops(owner, reward.count)
                 recruited_total += recruited
+                requested_total += reward.count
+        trigger_source = f"{source}:reveal_trigger:{card_id}"
         events.append(
             GameEvent(
-                event_id=f"{source}:reveal_trigger:{card_id}",
+                event_id=trigger_source,
                 kind="intrigue_triggered",
                 payload=(
                     ("card_id", card_id),
                     ("player", player),
                     ("troops", recruited_total),
                 ),
+            )
+        )
+        events.extend(
+            recruit_shortfall_events(
+                trigger_source, player, requested_total, recruited_total
             )
         )
     if not events:

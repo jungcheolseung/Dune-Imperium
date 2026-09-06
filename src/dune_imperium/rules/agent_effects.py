@@ -42,6 +42,7 @@ from dune_imperium.rules.effects import (
     current_agent_effect_context,
     finish_agent_icon,
     pending_agent_icons,
+    recruit_shortfall_events,
     recruit_troops,
 )
 from dune_imperium.rules.frames import FrameKind, replace_player
@@ -1693,12 +1694,19 @@ def resolve_agent_card_icon(state: GameState, action: DomainAction) -> RuleResul
     )
     finish_agent_icon(context, key)
 
+    extra_events: tuple[GameEvent, ...] = ()
+
     def recruit(amount: int) -> PlayerState:
+        nonlocal extra_events
         recruited_owner, recruited = recruit_troops(owner, amount)
         previous = context.get("troops_recruited")
         if isinstance(previous, bool) or not isinstance(previous, int):
             raise RuntimeError("Agent-turn effect frame has invalid recruit count")
         context["troops_recruited"] = previous + recruited
+        extra_events = (
+            *extra_events,
+            *recruit_shortfall_events(f"{source}:{key}", player, amount, recruited),
+        )
         return recruited_owner
 
     def gain(*, solari: int = 0, spice: int = 0, water: int = 0) -> PlayerState:
@@ -1728,7 +1736,6 @@ def resolve_agent_card_icon(state: GameState, action: DomainAction) -> RuleResul
     available = True
     personal_draw_count = 0
     intrigue_draw_count = 0
-    extra_events: tuple[GameEvent, ...] = ()
     match key:
         case "cards":
             if hidden_missive and owner.influence.bene_gesserit < 2:
@@ -1845,6 +1852,10 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
     effect = card.agent_effect
 
     owner = state.players[player]
+    event_source = (
+        f"round:{state.round_number}:player:{player}:agent_card:{card_instance_id}"
+    )
+    recruit_shortfall: tuple[GameEvent, ...] = ()
     if effect is PersonalCardAgentEffect.LEADER_SIGNET:
         return resolve_leader_signet(state)
     if effect is PersonalCardAgentEffect.TRASH_SELF:
@@ -2051,6 +2062,9 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             if isinstance(previous, bool) or not isinstance(previous, int):
                 raise RuntimeError("Agent-turn effect frame has invalid recruit count")
             context["troops_recruited"] = previous + recruited
+            recruit_shortfall = recruit_shortfall_events(
+                event_source, player, 1, recruited
+            )
             event_kind = "agent_card_effect_resolved"
         else:
             next_owner = owner
@@ -2088,6 +2102,7 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         if isinstance(previous, bool) or not isinstance(previous, int):
             raise RuntimeError("Agent-turn effect frame has invalid recruit count")
         context["troops_recruited"] = previous + recruited
+        recruit_shortfall = recruit_shortfall_events(event_source, player, 1, recruited)
         event_kind = "agent_card_effect_resolved"
     elif effect is PersonalCardAgentEffect.RECRUIT_TWO_TROOPS:
         next_owner, recruited = recruit_troops(owner, 2)
@@ -2095,6 +2110,7 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         if isinstance(previous, bool) or not isinstance(previous, int):
             raise RuntimeError("Agent-turn effect frame has invalid recruit count")
         context["troops_recruited"] = previous + recruited
+        recruit_shortfall = recruit_shortfall_events(event_source, player, 2, recruited)
         event_kind = "agent_card_effect_resolved"
     elif effect is PersonalCardAgentEffect.GAIN_WATER:
         next_owner = replace(
@@ -2191,6 +2207,9 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             if isinstance(previous, bool) or not isinstance(previous, int):
                 raise RuntimeError("Agent-turn effect frame has invalid recruit count")
             context["troops_recruited"] = previous + recruited
+            recruit_shortfall = recruit_shortfall_events(
+                event_source, player, 2, recruited
+            )
             event_kind = "agent_card_effect_resolved"
         else:
             next_owner = owner
@@ -2248,6 +2267,9 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             if isinstance(previous, bool) or not isinstance(previous, int):
                 raise RuntimeError("Agent-turn effect frame has invalid recruit count")
             context["troops_recruited"] = previous + recruited
+            recruit_shortfall = recruit_shortfall_events(
+                event_source, player, 3, recruited
+            )
             event_kind = "agent_card_effect_resolved"
         else:
             next_owner = owner
@@ -2259,6 +2281,9 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             if isinstance(previous, bool) or not isinstance(previous, int):
                 raise RuntimeError("Agent-turn effect frame has invalid recruit count")
             context["troops_recruited"] = previous + recruited
+            recruit_shortfall = recruit_shortfall_events(
+                event_source, player, 2, recruited
+            )
             event_kind = "agent_card_effect_resolved"
         else:
             next_owner = owner
@@ -2348,6 +2373,9 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         if isinstance(previous, bool) or not isinstance(previous, int):
             raise RuntimeError("Agent-turn effect frame has invalid recruit count")
         context["troops_recruited"] = previous + recruited
+        recruit_shortfall = recruit_shortfall_events(
+            event_source, player, int(BattleIcon.ORNITHOPTER in icons), recruited
+        )
         crysknives = int(BattleIcon.CRYSKNIFE in icons)
         event_kind = (
             "agent_card_effect_resolved"
@@ -2379,6 +2407,7 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
                             ("troops", recruited),
                         ),
                     ),
+                    *recruit_shortfall,
                 ),
             )
     elif effect is PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE:
@@ -2422,7 +2451,7 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         else:
             draw_count = 1
         if draw_count == 0 or event_kind == "agent_card_effect_unavailable":
-            return RuleResult(state=next_state, events=(event,))
+            return RuleResult(state=next_state, events=(event, *recruit_shortfall))
         draw = draw_or_request_personal_cards(
             next_state,
             player,
@@ -2432,8 +2461,10 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
                 f"agent_card:{card.card.card_id}"
             ),
         )
-        return RuleResult(state=draw.state, events=(event, *draw.events))
-    return RuleResult(state=next_state, events=(event,))
+        return RuleResult(
+            state=draw.state, events=(event, *draw.events, *recruit_shortfall)
+        )
+    return RuleResult(state=next_state, events=(event, *recruit_shortfall))
 
 
 def resolve_faction_influence(state: GameState) -> RuleResult:

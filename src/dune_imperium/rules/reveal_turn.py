@@ -32,7 +32,7 @@ from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.card_bonds import has_faction_bond
 from dune_imperium.rules.card_trash import trash_personal_card
-from dune_imperium.rules.effects import recruit_troops
+from dune_imperium.rules.effects import recruit_shortfall_events, recruit_troops
 from dune_imperium.rules.frames import (
     FrameKind,
     context_int,
@@ -1435,8 +1435,11 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
                 ),
                 combat_strength=next_owner.combat_strength + (sword if units else 0),
             )
+            recruited = 0
             if effect.recruit_troops:
-                next_owner, _ = recruit_troops(next_owner, effect.recruit_troops)
+                next_owner, recruited = recruit_troops(
+                    next_owner, effect.recruit_troops
+                )
             if effect.draw_intrigue:
                 pending_draws.append(
                     (f"{source}:{index}:late_intrigue", effect.draw_intrigue)
@@ -1459,6 +1462,11 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
                         ("troops", effect.recruit_troops),
                         ("water", effect.water),
                     ),
+                )
+            )
+            events.extend(
+                recruit_shortfall_events(
+                    f"{source}:{index}:late", player, effect.recruit_troops, recruited
                 )
             )
     if not newly_granted:
@@ -2047,9 +2055,8 @@ def _late_reveal_one_card(
             + sum(effect.water for effect in eligible),
         ),
     )
-    next_owner, _ = recruit_troops(
-        next_owner, sum(effect.recruit_troops for effect in eligible)
-    )
+    troops_requested = sum(effect.recruit_troops for effect in eligible)
+    next_owner, troops_recruited = recruit_troops(next_owner, troops_requested)
 
     units = next_owner.troops_conflict + next_owner.sandworms_conflict
     counts_toward_combat = units > 0
@@ -2087,6 +2094,11 @@ def _late_reveal_one_card(
             ),
         )
     ]
+    events.extend(
+        recruit_shortfall_events(
+            f"{source}:late_reveal", player, troops_requested, troops_recruited
+        )
+    )
 
     for effect in eligible:
         if effect.draw_intrigue == 0:
@@ -2240,9 +2252,10 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
             + sum(effect.water for _, effect in reveal_effects),
         ),
     )
-    next_owner, _ = recruit_troops(
+    reveal_troops_requested = sum(effect.recruit_troops for _, effect in reveal_effects)
+    next_owner, reveal_troops_recruited = recruit_troops(
         next_owner,
-        sum(effect.recruit_troops for _, effect in reveal_effects),
+        reveal_troops_requested,
     )
     next_owner = replace(
         next_owner,
@@ -2326,6 +2339,14 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         ),
     )
     events: list[GameEvent] = [event]
+    events.extend(
+        recruit_shortfall_events(
+            event.event_id,
+            action.actor,
+            reveal_troops_requested,
+            reveal_troops_recruited,
+        )
+    )
     for card_id, effect in reveal_effects:
         if effect.draw_intrigue == 0:
             continue

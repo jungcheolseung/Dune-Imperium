@@ -194,6 +194,7 @@ const EVENT_LABELS = {
   intrigue_card_stolen: "Intrigue 강탈",
   troops_deployed: "병력 배치",
   troops_withdrawn: "병력 회수",
+  troops_recruit_short: "병력 recruit 부족 (supply 없음)",
   agent_turn_finished: "Agent turn 종료",
   troops_retreated: "병력 후퇴",
   influence_gained: "Influence 상승",

@@ -57,7 +57,7 @@ from dune_imperium.rules.acquisition import (
 )
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.contracts import begin_contract_gain
-from dune_imperium.rules.effects import recruit_troops
+from dune_imperium.rules.effects import recruit_shortfall_events, recruit_troops
 from dune_imperium.rules.frames import replace_player
 from dune_imperium.rules.influence import gain_faction_influence, influence_amount
 from dune_imperium.rules.intrigue_deck import draw_intrigue_cards
@@ -466,6 +466,11 @@ def apply_rewards(
             case RecruitTroops(count=count):
                 owner, recruited = recruit_troops(owner, count)
                 troops_recruited += recruited
+                events.extend(
+                    recruit_shortfall_events(
+                        f"{source}:recruit", player, count, recruited
+                    )
+                )
             case DrawPersonalCards(count=count):
                 personal_draws += count
             case DrawIntrigueCards(count=count):

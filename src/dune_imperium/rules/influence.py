@@ -7,6 +7,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import Influence, PlayerState
 from dune_imperium.core.state import GameState
+from dune_imperium.rules.effects import recruit_shortfall_events, recruit_troops
 from dune_imperium.rules.frames import replace_player
 
 MAX_INFLUENCE = 6
@@ -64,7 +65,13 @@ def gain_faction_influence(
             events.extend(bonus_events)
 
         if next_amount == 4:
-            players, intrigue_deck, bonus_payload, shortfall = _apply_track_bonus(
+            (
+                players,
+                intrigue_deck,
+                bonus_payload,
+                shortfall,
+                troops_requested,
+            ) = _apply_track_bonus(
                 players,
                 intrigue_deck,
                 player,
@@ -75,9 +82,10 @@ def gain_faction_influence(
                     *pending_draws,
                     (player, shortfall, f"{event_prefix}:track_bonus:{step}"),
                 )
+            track_bonus_source = f"{event_prefix}:track_bonus:{step}"
             events.append(
                 GameEvent(
-                    event_id=f"{event_prefix}:track_bonus:{step}",
+                    event_id=track_bonus_source,
                     kind="influence_track_bonus_gained",
                     payload=tuple(
                         sorted(
@@ -90,6 +98,17 @@ def gain_faction_influence(
                     ),
                 )
             )
+            if troops_requested:
+                recruited_troops = dict(bonus_payload).get("troops", 0)
+                assert isinstance(recruited_troops, int)
+                events.extend(
+                    recruit_shortfall_events(
+                        track_bonus_source,
+                        player,
+                        troops_requested,
+                        recruited_troops,
+                    )
+                )
 
         players, alliance_event = _update_alliance(
             players,
@@ -351,17 +370,15 @@ def _apply_track_bonus(
     tuple[str, ...],
     tuple[tuple[str, int | str], ...],
     int,
+    int,
 ]:
     owner = players[player]
     intrigue_shortfall = 0
+    troops_requested = 0
     match faction:
         case Faction.EMPEROR:
-            recruited = min(2, owner.troops_supply)
-            owner = replace(
-                owner,
-                troops_supply=owner.troops_supply - recruited,
-                troops_garrison=owner.troops_garrison + recruited,
-            )
+            troops_requested = 2
+            owner, recruited = recruit_troops(owner, troops_requested)
             payload: tuple[tuple[str, int | str], ...] = (("troops", recruited),)
         case Faction.SPACING_GUILD:
             owner = replace(
@@ -386,7 +403,13 @@ def _apply_track_bonus(
                 resources=replace(owner.resources, water=owner.resources.water + 1),
             )
             payload = (("water", 1),)
-    return replace_player(players, owner), intrigue_deck, payload, intrigue_shortfall
+    return (
+        replace_player(players, owner),
+        intrigue_deck,
+        payload,
+        intrigue_shortfall,
+        troops_requested,
+    )
 
 
 def _update_alliance(

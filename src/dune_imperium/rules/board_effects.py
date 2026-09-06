@@ -34,6 +34,7 @@ from dune_imperium.rules.effects import (
     current_agent_effect_context,
     finish_board_icon,
     pending_board_icons,
+    recruit_shortfall_events,
     recruit_troops,
 )
 from dune_imperium.rules.frames import (
@@ -445,6 +446,7 @@ def resolve_board_effect(state: GameState, action: DomainAction) -> RuleResult:
     next_owner = owner
     personal_draw_count = 0
     intrigue_draw_count = 0
+    recruit_shortfall: tuple[GameEvent, ...] = ()
     match _icon_effect(effects, key):
         case GainResourcesEffect() as effect:
             next_owner = _gain_resources(owner, effect)
@@ -457,6 +459,9 @@ def resolve_board_effect(state: GameState, action: DomainAction) -> RuleResult:
             context["troops_recruited"] = (
                 context_int(context, "troops_recruited", owner=_FRAME_LABEL)
                 + recruited
+            )
+            recruit_shortfall = recruit_shortfall_events(
+                f"{source}:{key}", player, effect.count, recruited
             )
         case None if key == BOARD_ICON_HIGH_COUNCIL:
             next_owner = replace(owner, high_council=True)
@@ -535,7 +540,14 @@ def resolve_board_effect(state: GameState, action: DomainAction) -> RuleResult:
     )
     return RuleResult(
         state=next_state,
-        events=(*intrigue_events, *draw_events, *contract_events, *steal_events, event),
+        events=(
+            *intrigue_events,
+            *draw_events,
+            *contract_events,
+            *steal_events,
+            event,
+            *recruit_shortfall,
+        ),
     )
 
 
@@ -761,11 +773,12 @@ def apply_sietch_tabr_action(
 
     finish_board_icon(context, BOARD_ICON_SIETCH_TABR)
     next_state = advance_after_effect(effect_state, context, effect_state.players)
+    sietch_source = (
+        f"round:{state.round_number}:player:{action.actor}:board:sietch_tabr"
+    )
     events.append(
         GameEvent(
-            event_id=(
-                f"round:{state.round_number}:player:{action.actor}:board:sietch_tabr"
-            ),
+            event_id=sietch_source,
             kind="board_effect_resolved",
             payload=(
                 ("action_id", action.action_id),
@@ -775,6 +788,10 @@ def apply_sietch_tabr_action(
             ),
         )
     )
+    if action.action_id == "take_sietch_tabr_supplies":
+        events.extend(
+            recruit_shortfall_events(sietch_source, action.actor, 1, recruited)
+        )
     return RuleResult(state=next_state, events=tuple(events))
 
 

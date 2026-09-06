@@ -15,6 +15,7 @@ from dune_imperium.core.player import PlayerState, Resources
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.contracts import contract_choice_frame
+from dune_imperium.rules.effects import recruit_shortfall_events, recruit_troops
 from dune_imperium.rules.frames import FrameKind, context_int, frame_context_int
 from dune_imperium.rules.influence import (
     MAX_INFLUENCE,
@@ -269,22 +270,22 @@ def resolve_combat_rewards(state: GameState) -> RuleResult:
                 ),
             )
         contract_solari = 0 if state.config.choam_module else reward.contracts * 2
-        recruited = min(owner.troops_supply, reward.troops * amount)
+        recruited_owner, recruited = recruit_troops(owner, reward.troops * amount)
         next_owner = replace(
-            owner,
+            recruited_owner,
             resources=Resources(
                 solari=(
-                    owner.resources.solari
+                    recruited_owner.resources.solari
                     + reward.solari * amount
                     + contract_solari * amount
                 ),
-                spice=owner.resources.spice + reward.spice * amount,
-                water=owner.resources.water + reward.water * amount,
+                spice=recruited_owner.resources.spice + reward.spice * amount,
+                water=recruited_owner.resources.water + reward.water * amount,
             ),
-            troops_supply=owner.troops_supply - recruited,
-            troops_garrison=owner.troops_garrison + recruited,
-            intrigue_cards=(*owner.intrigue_cards, *drawn),
-            victory_points=owner.victory_points + reward.victory_points * amount,
+            intrigue_cards=(*recruited_owner.intrigue_cards, *drawn),
+            victory_points=(
+                recruited_owner.victory_points + reward.victory_points * amount
+            ),
         )
         players[assignment.player] = next_owner
         if reward.influence_faction is not None:
@@ -410,7 +411,16 @@ def resolve_combat_rewards(state: GameState) -> RuleResult:
                     len(frames_in_order),
                 )
             )
-        events.append(_combat_reward_event(state, assignment, reward))
+        reward_event = _combat_reward_event(state, assignment, reward)
+        events.append(reward_event)
+        events.extend(
+            recruit_shortfall_events(
+                reward_event.event_id,
+                assignment.player,
+                reward.troops * amount,
+                recruited,
+            )
+        )
 
     _validate_influence_choices(tuple(players), tuple(choice_owners))
     frames = tuple(reversed(frames_in_order))

@@ -42,6 +42,7 @@ from dune_imperium.rules.effects import (
     advance_after_effect,
     current_agent_effect_context,
     rearm_board_icons,
+    recruit_shortfall_events,
     recruit_troops,
 )
 from dune_imperium.rules.frames import FrameKind, owned_top_frame, replace_player
@@ -108,6 +109,7 @@ def resolve_leader_signet(state: GameState) -> RuleResult:
     source = f"round:{state.round_number}:player:{player}:leader_signet"
 
     payload: tuple[tuple[str, ActionValue], ...]
+    recruit_shortfall: tuple[GameEvent, ...] = ()
     if owner.leader_id == "gurney_halleck":
         # Warmaster: recruit one troop [Gurney Halleck card]. A troop recruited
         # while visiting a Combat space stays deployable [FAQ p. 4].
@@ -116,6 +118,7 @@ def resolve_leader_signet(state: GameState) -> RuleResult:
         if isinstance(previous, bool) or not isinstance(previous, int):
             raise RuntimeError("Agent-turn effect frame has invalid recruit count")
         context["troops_recruited"] = previous + recruited
+        recruit_shortfall = recruit_shortfall_events(source, player, 1, recruited)
         payload = (("card_id", card_id), ("player", player), ("troops", recruited))
     elif owner.leader_id == "lady_amber_metulli":
         # Fill Coffers: gain one Solari, and one Spice while holding any
@@ -212,7 +215,7 @@ def resolve_leader_signet(state: GameState) -> RuleResult:
         kind="leader_signet_resolved",
         payload=payload,
     )
-    return RuleResult(state=next_state, events=(event,))
+    return RuleResult(state=next_state, events=(event, *recruit_shortfall))
 
 
 def _feyd_signet_context(
@@ -377,6 +380,9 @@ def apply_feyd_track_action(
                     kind="leader_signet_troops_recruited",
                     payload=(("player", player), ("troops", recruited)),
                 )
+            )
+            events.extend(
+                recruit_shortfall_events(f"{source}:troops", player, 1, recruited)
             )
         else:
             context["feyd_track_stage"] = target_id
@@ -925,6 +931,7 @@ def apply_shaddam_signet_choice(
                         ("troops", recruited),
                     ),
                 ),
+                *recruit_shortfall_events(source, player, 1, recruited),
             ),
         )
 

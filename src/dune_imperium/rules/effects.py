@@ -9,6 +9,7 @@ from dune_imperium.content.uprising.contracts import (
 )
 from dune_imperium.core.actions import ActionValue
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
+from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.frames import FrameKind, reset_turn_counters
@@ -83,6 +84,26 @@ def recruit_troops(player: PlayerState, count: int) -> tuple[PlayerState, int]:
             troops_garrison=player.troops_garrison + recruited,
         ),
         recruited,
+    )
+
+
+def recruit_shortfall_events(
+    source: str, player: int, requested: int, recruited: int
+) -> tuple[GameEvent, ...]:
+    """Return the public event noting a recruit the supply could not cover in full."""
+    if recruited >= requested:
+        return ()
+    return (
+        GameEvent(
+            event_id=f"{source}:recruit_short",
+            kind="troops_recruit_short",
+            payload=(
+                ("player", player),
+                ("recruited", recruited),
+                ("requested", requested),
+                ("short", requested - recruited),
+            ),
+        ),
     )
 
 

@@ -24,6 +24,7 @@ from dune_imperium.rules.contracts import (
 from dune_imperium.rules.effects import (
     advance_after_effect,
     current_agent_effect_context,
+    recruit_shortfall_events,
     recruit_troops,
 )
 from dune_imperium.rules.frames import FrameKind, replace_player, reveal_is_open_for
@@ -759,15 +760,17 @@ def _resolve_imperium_acquisition_bonus(
         # Arrakis Revolt's acquire box (promo): the troop goes to the garrison
         # like any recruit [Main p. 20].
         owner, recruited = recruit_troops(owner, 1)
+        troop_source = (
+            f"round:{state.round_number}:player:{player}:"
+            f"acquire:{instance_id}:troop"
+        )
         events = (
             GameEvent(
-                event_id=(
-                    f"round:{state.round_number}:player:{player}:"
-                    f"acquire:{instance_id}:troop"
-                ),
+                event_id=troop_source,
                 kind="acquisition_troop_recruited",
                 payload=(("amount", recruited), ("player", player)),
             ),
+            *recruit_shortfall_events(troop_source, player, 1, recruited),
         )
     return AcquisitionBonus(
         owner=owner,
