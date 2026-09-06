@@ -15,6 +15,7 @@ dune-imperium-debug = "dune_imperium.cli.debug:main"
 dune-imperium-server = "dune_imperium.cli.server:main"
 dune-imperium-sweep = "dune_imperium.cli.sweep:main"
 dune-imperium-tournament = "dune_imperium.cli.tournament:main"
+dune-imperium-selfplay = "dune_imperium.cli.selfplay:main"
 
 [project.optional-dependencies]
 rl = [
