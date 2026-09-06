@@ -121,6 +121,10 @@
 ## troop recruit와 Combat deploy
 
 - troop icon 하나를 처리할 때 자신의 supply에서 troop 하나를 가져와 board의 garrison에 놓는다. supply에 troop이 없으면 recruit할 수 없다. [Main p. 10]
+  엔진은 해결 시점에 supply에 있는 만큼만 recruit하고 부족분은 공개 이벤트
+  `troops_recruit_short`로 로그에 남긴다(판정이 아니라 현재 구현). 같은 turn
+  안에서 supply가 뒤늦게 늘어났을 때의 소급 recruit는
+  [open-questions.md](open-questions.md)의 OQ-030 `OPEN` 항목이다.
 - Agent turn의 기본 deploy는 Combat space에 Agent를 보냈을 때 할 수 있다. Combat space는 사막 그림과 교차한 sword 표시가 있는 space다. [Main p. 10]
 - Combat space에 들어간 turn에는 그 turn에 recruit한 troop을 원하는 수만큼 deploy하고, 그와 별도로 garrison의 troop을 최대 두 개 더 deploy할 수 있다. [Main p. 10]
 - 그 turn에 어떤 출처에서 recruit했든 새 troop은 Conflict에 deploy할 수 있다. 이미 garrison에 있던 troop을 다시 recruit한 것으로 취급해 두 개 제한을 우회할 수는 없다. [Main p. 10] [FAQ p. 4]

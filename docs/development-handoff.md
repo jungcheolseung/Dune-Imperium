@@ -1,6 +1,6 @@
 # 개발 인수인계
 
-기준일: 2026-09-05
+기준일: 2026-09-06
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
@@ -17,7 +17,7 @@ uv run ruff check src tests
 uv run mypy src tests
 ```
 
-2026-09-05의 기준 결과는 pytest 1,060개 통과(카드 이미지 에셋이 없는 머신은 1,059 통과 + 1 skip), Ruff 통과, mypy 통과다. 현재 action codec은 `ACTION_CODEC_VERSION = 89`(기본 4,354개, CHOAM 4,640개, `promo_cards` 옵션 시 4,454/4,740개)이고, 관측은 `OBSERVATION_VERSION = 4`의 2,022-int 전체 게임 인코딩이다 ([`rl-environment.md`](rl-environment.md)). 보드 22칸 완결 + 즉시 공개 + `fab266f`/`e6fc298` 수정 + sweep 확장(`853ecd4`) 반영 후의 교차 소크는 random 룰셋당 2,000판 + heuristic 룰셋당 1,000판(둘 다 `--rotate-leaders`) + draft 두 policy 각 룰셋당 500판, 전부 `--soundness-interval 25`를 켠 총 7,000판이 실패 0으로 통과한 상태다(2026-09-01, 아래 세션 요약. 그 전 단계에서는 random 룰셋당 3,000판 비회전 소크도 실패 0이었다).
+2026-09-06의 기준 결과는 pytest 1,067개 통과(카드 이미지 에셋이 없는 머신은 1,066 통과 + 1 skip), Ruff 통과, mypy 통과다. 현재 action codec은 `ACTION_CODEC_VERSION = 89`(기본 4,354개, CHOAM 4,640개, `promo_cards` 옵션 시 4,454/4,740개)이고, 관측은 `OBSERVATION_VERSION = 4`의 2,022-int 전체 게임 인코딩이다 ([`rl-environment.md`](rl-environment.md)). 보드 22칸 완결 + 즉시 공개 + `fab266f`/`e6fc298` 수정 + sweep 확장(`853ecd4`) 반영 후의 교차 소크는 random 룰셋당 2,000판 + heuristic 룰셋당 1,000판(둘 다 `--rotate-leaders`) + draft 두 policy 각 룰셋당 500판, 전부 `--soundness-interval 25`를 켠 총 7,000판이 실패 0으로 통과한 상태다(2026-09-01, 아래 세션 요약. 그 전 단계에서는 random 룰셋당 3,000판 비회전 소크도 실패 0이었다).
 
 ## 현재 구현 기준선
 
@@ -41,7 +41,7 @@ uv run mypy src tests
 - (2026-09-04 해소, OQ-028) 배치 시점 조건이 거짓이면 pending되지 않던 카드 효과 경계는 사라졌다. 이제 space 속성·Bond를 제외한 모든 인쇄 조건은 해결 시점에 판정한다.
 - Objective와 battle icon 상호작용은 2026-08-30에 재감사를 마쳤다 (`implementation-audits/objectives.md`, OQ-005 RESOLVED). Combat 다중 후보 guard는 미래 콘텐츠 대비 tripwire로 남는다.
 - Shaddam Corrino IV의 set-aside Sardaukar Contract 경로는 Leader 능력과 함께 남아 있다. OQ-010(2026-09-02 확정), OQ-011 경계는 확정 판정(`DECIDED`)으로 유지된다.
-- 공식 문서가 침묵하는 규칙 판정은 [`rules/open-questions.md`](rules/open-questions.md)에 있다. 2026-09-01 확정 캠페인과 같은 날의 사용자 검토를 거쳐, 2026-09-02에 OQ-010까지 확정돼 `DECIDED`/`RESOLVED`만 남았다가, 2026-09-04에 OQ-029(Conflict에 배치한 troop의 임의 회수·배치 분할)가 사용자 요청으로 `OPEN`으로 올라왔다가 2026-09-05 사용자 판정으로 `DECIDED`(회수·분할 허용, 소비된 조건은 예외)됐고 같은 날 구현했다. `DECIDED`는 확정 프로젝트 판정으로 새 공식 룰북·FAQ(또는 OQ-022처럼 명시된 상위 근거)가 답을 줄 때만 다시 연다. 새로 발견되는 규칙 공백은 여전히 코드로 임의 확정하지 않고 그 문서에 먼저 기록하며, 규칙 동작을 바꾸기 전에는 반드시 `docs/rules/`의 문장을 인용한다([`lessons.md`](lessons.md)).
+- 공식 문서가 침묵하는 규칙 판정은 [`rules/open-questions.md`](rules/open-questions.md)에 있다. 2026-09-01 확정 캠페인과 같은 날의 사용자 검토를 거쳐, 2026-09-02에 OQ-010까지 확정돼 `DECIDED`/`RESOLVED`만 남았다가, 2026-09-04에 OQ-029(Conflict에 배치한 troop의 임의 회수·배치 분할)가 사용자 요청으로 `OPEN`으로 올라왔다가 2026-09-05 사용자 판정으로 `DECIDED`(회수·분할 허용, 소비된 조건은 예외)됐고 같은 날 구현했다. 2026-09-06에는 OQ-030(supply 부족으로 못 한 recruit의 소급 여부)이 `OPEN`으로 올라왔다 — 판정 전까지 엔진은 현재 구현(해결 시점에 있는 만큼만 recruit, 부족분 소멸 + `troops_recruit_short` 이벤트)을 유지하며, 현재 콘텐츠에는 turn 중 troop을 supply로 돌려보내는 효과가 없다. `DECIDED`는 확정 프로젝트 판정으로 새 공식 룰북·FAQ(또는 OQ-022처럼 명시된 상위 근거)가 답을 줄 때만 다시 연다. 새로 발견되는 규칙 공백은 여전히 코드로 임의 확정하지 않고 그 문서에 먼저 기록하며, 규칙 동작을 바꾸기 전에는 반드시 `docs/rules/`의 문장을 인용한다([`lessons.md`](lessons.md)).
 
 콘텐츠(카드·리더·계약·Intrigue·보드 22칸)는 이제 4인 base+CHOAM 게임 범위에서 완결이다. Uprising 프로모 Imperium 3장(Arrakis Revolt, The Beast's Spoils, Pivotal Gambit)은 같은 날 저녁 `RulesetConfig(promo_cards=True)` 옵션 콘텐츠로 구현됐고(기본은 꺼짐), 공식 문서가 침묵하는 판정은 OQ-024~026 project convention이다. 남은 경계는 공식 문서가 침묵하는 판정을 기록한 convention(open-questions.md)과 위의 엔진 경계·미래 콘텐츠 tripwire들이며, 이들은 "미구현 콘텐츠"가 아니라 문서화된 프로젝트 판정이다.
 
@@ -50,6 +50,7 @@ uv run mypy src tests
 2026-09-01의 **검증 강화 캠페인**(사용자 확정 범위: 전체 1→4)은 같은 날 완료했다: 1단계 보드 22칸 완결 + OQ-015(c), 2단계 sweep 확장 (`853ecd4`: 커버리지 census `--coverage-json`, 표본 주기 legal-action 전수 적용 + codec 왕복 `--soundness-interval`, seed별 리더 회전 `--rotate-leaders`), 3단계 교차 소크(아래), 4단계 대조(DIU 63종 전부 일치, open-questions 23건 재점검). 세부는 아래 세션 요약.
 
 0. (2026-09-03 완료) M11 슬라이스 7 보드 스캔 테이블 + 룰북 아이콘 — 아래 세션 요약. (2026-09-02 완료) 슬라이스 6 행동 되돌리기 + 실시간 행동 로그.
+0. (2026-09-06 완료) OQ-029 구현 검토 + recruit 부족분 이벤트 + OQ-030 등록 — 아래 세션 요약.
 0. (2026-09-05 완료) OQ-029 판정 구현 — Combat 배치의 회수·분할과 `finish_agent_turn`(codec v89). 아래 세션 요약.
 0. (2026-09-04 완료) 조건 판정 시점 정리(OQ-028) — 아래 세션 요약. 같은 날 병력 회수 규칙은 OQ-029 `OPEN`으로 등록했고 2026-09-05에 판정·구현했다.
 0. (2026-09-04 완료) Reveal 선택형 효과 순서 자유화(codec v88) — 아래 세션 요약. 이로써 2026-09-03 심야의 사용자 5건이 모두 끝났다.
@@ -125,6 +126,14 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 ## 원격 저장소 인계 주의
 
 2026-09-04 세션 종료 시점에 이 세션의 커밋 전부(보드·카드 아이콘 분리 v86/v87, 서버·UI 확인 흐름과 마커, Reveal 순서 v88, OQ-028 조건 판정 시점, OQ-029 등록)를 `origin/master`에 push했다. 새 세션은 `git fetch origin` 뒤 `git log origin/master..master`와 반대 방향을 확인하고, 일치하면 이 문서의 기준선을 그대로 쓴다. 에셋 저장소(`Dune-Imperium-assets`)의 `5b55e45` 1개 미push 여부는 그 저장소에서 확인한다. 원격에는 병합하지 않은 `kyungtae` 브랜치가 있다. 새 세션은 `git log origin/master..master`와 반대 방향을 모두 확인하고, checkout이 `853ecd4`보다 이전이면 이 문서의 989개 테스트·codec v84 기준선이 실제 코드와 일치하지 않는다. **다른 머신에서 이어서 작업한다면 먼저 이 머신에서 push가 필요하다.** 새 머신의 UI 카드 이미지·아이콘·보드 스캔은 비공개 `Dune-Imperium-assets` 저장소를 clone해 symlink로 연결한다(그 README 참고; 루트의 `assets` symlink 하나로 cards·icons·board·rulebooks를 모두 연결). 카드 매핑은 그 저장소의 `cards/manifest.json`에만 있으므로 접근이 없으면 텍스트 UI로 동작한다.
+
+## 2026-09-06 OQ-029 검토·recruit 부족분 이벤트 세션 요약 (OQ-030 등록)
+
+- 사용자가 remote 세션이 끊겨 확인하지 못한 2026-09-05의 OQ-029 커밋 3개를 검토했다: 판정 문서·엔진·테스트가 사용자 판정(turn 안 자유 회수·분할, 소비된 조건은 Spy 배치와 Intrigue play를 먼저 되돌려야 함)과 일치한다. 스크립트로 Distraction 사용→회수 불가, 되돌리기(Spy 배치·Intrigue play 모두 되돌리기 가능)→거절→회수 재개, 저장 직렬화의 `units_deployed_committed` 포함을 확인했다. 효과가 직접 배치한 troop(Intrigue `deploy_intrigue_troops`, Reveal 배치, sandworm)이 회수 대상에서 빠진 것은 "카드 효과 해결 결과"라 판정 범위 밖으로 둔 것이며 사용자에게 설명했다(필요하면 OQ-029 확장).
+- 사용자 질문 "supply가 비었을 때 recruit": 엔진은 해결 시점에 `min(supply, count)`만 옮기고(`effects.recruit_troops`, `[Main p. 10]`) 부족분은 조용히 소멸했다. 사용자 요청으로 모든 recruit 경로(보드 아이콘, Sietch Tabr, Agent box 7종, Arrakis Revolt acquire, contract 보상, Intrigue DSL, reveal-acquisition trigger, Reveal 시작·늦은 Reveal·늦은 이득, Gurney/Feyd/Shaddam Signet, Combat 보상, Emperor track 보상)에 공개 이벤트 `troops_recruit_short`(player·requested·recruited·short)를 추가했다. 규칙 동작 변경 없음. UI 라벨 `병력 recruit 부족 (supply 없음)`. `tests/unit/rules/test_recruit_shortfall.py` 7건.
+- 사용자 질문 "turn 중에 supply가 다시 생기면 앞서 못 한 recruit는?": 공식 문서 침묵이라 OQ-030 `OPEN`으로 등록했다(판정 대기; 엔진은 현재 구현 유지). 콘텐츠 감사 결과 turn 중 garrison·Conflict의 troop을 supply로 돌려보내는 효과는 없고(RetreatTroops는 Conflict→garrison, Conflict→supply는 Combat 정리뿐), turn 중 supply 증가 경로는 Lady Jessica의 Other Memories뿐이라 자유 순서로 먼저 해결하면 손실이 없다.
+- 검증: pytest 1,067, Ruff, mypy.
+- 미push: 2026-09-05의 3개 + 이 세션의 커밋이 `origin/master`에 아직 없다. 다른 머신에서 이어가려면 먼저 push한다.
 
 ## 2026-09-05 OQ-029 판정 구현 세션 요약 (Combat 배치 회수·분할, codec v89)
 

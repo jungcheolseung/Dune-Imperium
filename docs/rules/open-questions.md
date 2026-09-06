@@ -183,6 +183,15 @@
 - 갱신 문서: [player-turns.md](player-turns.md) "troop recruit와 Combat deploy" 절. 구현 `rules/combat_deployment.py`, 테스트 `tests/unit/rules/test_combat_deployment.py`, `tests/unit/rules/test_intrigue.py`(Distraction 예외).
 - 재개 조건: 새 공식 룰북·FAQ가 배치의 회수·분할을 직접 정할 때.
 
+## OQ-030 — supply 부족으로 못 한 recruit와 같은 turn에 supply가 뒤늦게 늘어난 경우
+
+- 상태: `OPEN`
+- Main은 "supply에 troop이 없으면 recruit할 수 없다"고만 말한다 `[Main p. 10]`. recruit가 supply 부족으로 전부 또는 일부 실패한 뒤, 같은 turn 안에서 어떤 효과로 garrison·Conflict의 troop이 supply로 돌아가 다시 recruit가 가능해졌을 때, 앞서 못 한 recruit를 소급해서 할 수 있는지는 어느 문서도 다루지 않는다.
+- 필요한 답: 소급 recruit의 허용 여부. 허용한다면 어느 시점까지(그 효과의 해결 직후만, 아니면 turn 끝까지).
+- 현재 구현(판정 아님, 2026-09-06): recruit는 해결 시점에 supply에 있는 만큼만 일어나고 부족분은 소멸한다(`rules/effects.py`의 `recruit_troops`). 부족분은 공개 이벤트 `troops_recruit_short`(player·requested·recruited·short)로 남겨 UI 로그에 표시한다. 이는 OQ-028의 "조건은 효과를 해결하는 시점에 판정" 원칙과 같은 방향이다.
+- 콘텐츠 감사(2026-09-06): 4인 base+CHOAM+프로모 범위에서 turn 중에 garrison·Conflict의 troop을 supply로 돌려보내는 카드·Intrigue·보드 효과는 없다. effect DSL의 `RetreatTroops`는 Conflict→garrison 이동이고, Conflict의 troop이 supply로 돌아가는 것은 Combat 정리 `[Main p. 14]`뿐이다(라운드 경계라 보류된 recruit가 없다). turn 중에 supply가 늘어나는 유일한 경로는 Lady Jessica의 Other Memories(memories→supply, Agent turn의 Leader 능력)인데, 소유자가 자유 순서 `[Main p. 9]`로 recruit보다 먼저 해결할 수 있으므로, 현재 콘텐츠에서 이 질문이 실제 손실로 이어지는 것은 소유자가 순서를 잘못 고른 경우뿐이다. 판정이 나면 이 항목과 [player-turns.md](player-turns.md)의 "troop recruit와 Combat deploy" 절, `recruit_troops`를 함께 갱신한다.
+- 재개 조건: 사용자 판정, 또는 새 공식 룰북·FAQ, 또는 turn 중에 troop을 supply로 돌려보내는 새 콘텐츠.
+
 ## 판정이 생겼을 때 기록할 정보
 
 각 항목을 닫을 때 다음을 함께 남긴다. `DECIDED` 항목에 새 공식 답이 나왔을 때도 같다.
