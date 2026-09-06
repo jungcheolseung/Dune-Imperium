@@ -21,12 +21,13 @@ from collections.abc import Iterable
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 
-from dune_imperium.agents import Agent
+from dune_imperium.agents import Agent, StateAgent
 from dune_imperium.agents.registry import BASELINE_AGENT_FACTORIES, make_agent
 from dune_imperium.config import RulesetConfig
 from dune_imperium.content.uprising.leaders import leaders_for_choam
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.observation import PlayerView
+from dune_imperium.core.state import GameState
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.simulation.runner import run_policy_game
 
@@ -119,6 +120,28 @@ class _MeteredAgent:
     ) -> DomainAction:
         started = time.perf_counter()
         action = self._inner.choose_action(observation, legal_actions)
+        return self._record(action, legal_actions, started)
+
+    def choose_action_with_state(
+        self,
+        state: GameState,
+        observation: PlayerView,
+        legal_actions: tuple[DomainAction, ...],
+    ) -> DomainAction:
+        started = time.perf_counter()
+        action = (
+            self._inner.choose_action_with_state(state, observation, legal_actions)
+            if isinstance(self._inner, StateAgent)
+            else self._inner.choose_action(observation, legal_actions)
+        )
+        return self._record(action, legal_actions, started)
+
+    def _record(
+        self,
+        action: DomainAction,
+        legal_actions: tuple[DomainAction, ...],
+        started: float,
+    ) -> DomainAction:
         self.seconds += time.perf_counter() - started
         self.decisions += 1
         if action not in legal_actions:

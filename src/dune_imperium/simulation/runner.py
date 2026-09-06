@@ -3,7 +3,7 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from dune_imperium.agents import Agent, RandomAgent
+from dune_imperium.agents import Agent, RandomAgent, StateAgent
 from dune_imperium.config import RulesetConfig
 from dune_imperium.core.chance import ChanceResolver
 from dune_imperium.core.decisions import ChanceDecision, PlayerDecision
@@ -144,7 +144,12 @@ def _advance_one_decision(
     if not actions:
         raise RuntimeError("current player decision has no legal actions")
     observation = engine.observe(state, decision.owner)
-    action = agents[decision.owner].choose_action(observation, actions)
+    agent = agents[decision.owner]
+    action = (
+        agent.choose_action_with_state(state, observation, actions)
+        if isinstance(agent, StateAgent)
+        else agent.choose_action(observation, actions)
+    )
     steps.append(action)
     return engine.apply(state, action).state
 

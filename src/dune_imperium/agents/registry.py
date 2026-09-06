@@ -6,6 +6,7 @@ from typing import Final
 from dune_imperium.agents.base import Agent
 from dune_imperium.agents.heuristic_agent import HeuristicAgent
 from dune_imperium.agents.random_agent import RandomAgent
+from dune_imperium.agents.rollout_agent import RolloutAgent
 
 type AgentFactory = Callable[[int], Agent]
 
@@ -18,6 +19,10 @@ def _heuristic(seed: int) -> Agent:
     return HeuristicAgent(seed=seed)
 
 
+def _rollout(seed: int) -> Agent:
+    return RolloutAgent(seed=seed)
+
+
 # Every baseline an evaluation can name on the command line. A factory takes
 # the per-seat policy seed and returns a fresh agent; new baselines (rollout,
 # search, checkpointed policies) register here so tournaments and reports
@@ -25,6 +30,7 @@ def _heuristic(seed: int) -> Agent:
 BASELINE_AGENT_FACTORIES: Final[dict[str, AgentFactory]] = {
     "random": _random,
     "heuristic": _heuristic,
+    "rollout": _rollout,
 }
 
 
