@@ -295,3 +295,28 @@ def stack_episodes(episodes: Sequence[Episode]) -> TrainingBatch:
         ),
         episode_ids=np.asarray([episode_id for episode_id, _ in steps], dtype=np.int32),
     )
+
+
+def select_policy_steps(episodes: Sequence[Episode], name: str) -> TrainingBatch:
+    """Stack only the steps taken by seats the named policy controlled."""
+
+    batch = stack_episodes(episodes)
+    keep = np.asarray(
+        [
+            episodes[episode_id].lineup[seat] == name
+            for episode_id, seat in zip(
+                batch.episode_ids.tolist(), batch.seats.tolist(), strict=True
+            )
+        ],
+        dtype=bool,
+    )
+    if not keep.any():
+        raise ValueError(f"no steps were taken by policy {name!r}")
+    return TrainingBatch(
+        observations=batch.observations[keep],
+        masks=batch.masks[keep],
+        actions=batch.actions[keep],
+        seats=batch.seats[keep],
+        returns=batch.returns[keep],
+        episode_ids=batch.episode_ids[keep],
+    )

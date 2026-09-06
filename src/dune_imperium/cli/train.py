@@ -27,6 +27,12 @@ def _build_parser() -> argparse.ArgumentParser:
         default="cpu",
         help="cpu, mps, cuda, or auto (default: cpu)",
     )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="worker processes for self-play collection (default: 1)",
+    )
     parser.add_argument("--choam", action="store_true", help="use the CHOAM ruleset")
     parser.add_argument(
         "--hidden",
@@ -91,6 +97,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             games_per_iteration=arguments.games_per_iteration,
             seed=arguments.seed,
             device=arguments.device,
+            workers=arguments.workers,
             choam_module=arguments.choam,
             hidden=hidden,
             learner=LearnerConfig(

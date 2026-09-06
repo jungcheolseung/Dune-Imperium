@@ -24,17 +24,16 @@ from dune_imperium.agents.registry import CHECKPOINT_PREFIX, is_agent_kind
 from dune_imperium.config import RulesetConfig
 from dune_imperium.evaluation import run_tournament, summarize, tournament_specs
 from dune_imperium.training.checkpoint import load_checkpoint, save_checkpoint
+from dune_imperium.training.collect import Collector
 from dune_imperium.training.learner import Learner, LearnerConfig, UpdateStats
 from dune_imperium.training.network import DEFAULT_HIDDEN, PolicyValueNetwork
-from dune_imperium.training.policy import AgentBatchPolicy, BatchPolicy
 from dune_imperium.training.selfplay import (
     Episode,
     SelfPlayRunner,
     SelfPlaySpec,
-    TrainingBatch,
-    stack_episodes,
+    select_policy_steps,
 )
-from dune_imperium.training.torch_policy import TorchBatchPolicy, resolve_device
+from dune_imperium.training.torch_policy import resolve_device
 
 LEARNER = "learner"
 TRAINING_SEED_BASE = 2_000_000
@@ -47,6 +46,8 @@ class TrainConfig:
     games_per_iteration: int = 32
     seed: int = 0
     device: str = "cpu"
+    # Worker processes for collection; 1 collects in-process.
+    workers: int = 1
     choam_module: bool = False
     hidden: tuple[int, ...] = DEFAULT_HIDDEN
     learner: LearnerConfig = field(default_factory=LearnerConfig)
@@ -69,6 +70,8 @@ class TrainConfig:
             raise ValueError(f"unknown evaluation opponent: {self.eval_opponent!r}")
         if self.eval_every < 0 or self.eval_games < 1:
             raise ValueError("eval_every must not be negative; eval_games positive")
+        if self.workers < 1:
+            raise ValueError("workers must be positive")
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,29 +98,13 @@ class TrainResult:
     log_path: Path
 
 
-def select_policy_steps(episodes: tuple[Episode, ...], name: str) -> TrainingBatch:
-    """Stack only the steps taken by seats the named policy controlled."""
-
-    batch = stack_episodes(episodes)
-    keep = np.asarray(
-        [
-            episodes[episode_id].lineup[seat] == name
-            for episode_id, seat in zip(
-                batch.episode_ids.tolist(), batch.seats.tolist(), strict=True
-            )
-        ],
-        dtype=bool,
-    )
-    if not keep.any():
-        raise ValueError(f"no steps were taken by policy {name!r}")
-    return TrainingBatch(
-        observations=batch.observations[keep],
-        masks=batch.masks[keep],
-        actions=batch.actions[keep],
-        seats=batch.seats[keep],
-        returns=batch.returns[keep],
-        episode_ids=batch.episode_ids[keep],
-    )
+__all__ = [
+    "TrainConfig",
+    "IterationRecord",
+    "TrainResult",
+    "select_policy_steps",
+    "train",
+]
 
 
 def _iteration_specs(config: TrainConfig, iteration: int) -> tuple[SelfPlaySpec, ...]:
@@ -182,7 +169,7 @@ def train(
 
     device = resolve_device(config.device)
     ruleset = RulesetConfig(choam_module=config.choam_module)
-    runner = SelfPlayRunner(ruleset, max_steps=config.max_steps, record=True)
+    codec_size = SelfPlayRunner(ruleset, record=False).codec.size
     start_iteration = 0
     if config.resume is not None:
         network, info = load_checkpoint(config.resume)
@@ -191,29 +178,31 @@ def train(
         start_iteration = info.iteration
     else:
         torch.manual_seed(config.seed)
-        network = PolicyValueNetwork(runner.codec.size, hidden=config.hidden)
+        network = PolicyValueNetwork(codec_size, hidden=config.hidden)
     learner = Learner(network, device, config.learner, seed=config.seed)
-    policy = TorchBatchPolicy(
-        learner.network,
-        device,
-        seed=config.seed + 1,
-        sample=True,
+    collector = Collector(
+        ruleset,
+        workers=config.workers,
+        max_steps=config.max_steps,
         temperature=config.temperature,
+        opponent=config.opponent,
     )
-    policies: dict[str, BatchPolicy] = {LEARNER: policy}
-    if config.opponent is not None:
-        policies[config.opponent] = AgentBatchPolicy(config.opponent, config.seed + 2)
 
     config.out_dir.mkdir(parents=True, exist_ok=True)
     log_path = config.out_dir / "training.jsonl"
     latest = config.out_dir / "latest.pt"
     records: list[IterationRecord] = []
-    with log_path.open("a") as log:
+    with log_path.open("a") as log, collector:
         for iteration in range(start_iteration, start_iteration + config.iterations):
-            started = time.perf_counter()
-            result = runner.run(policies, _iteration_specs(config, iteration))
-            collect_seconds = time.perf_counter() - started
-            batch = select_policy_steps(result.episodes, LEARNER)
+            result = collector.collect(
+                learner.network,
+                device,
+                _iteration_specs(config, iteration),
+                policy_seed=config.seed + 1 + iteration * 1_000,
+                opponent_seed=config.seed + 2 + iteration * 1_000,
+            )
+            collect_seconds = result.duration_seconds
+            batch = result.batch
             started = time.perf_counter()
             stats = learner.update(batch)
             update_seconds = time.perf_counter() - started

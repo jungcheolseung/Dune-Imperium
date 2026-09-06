@@ -245,3 +245,47 @@ def test_train_cli_smoke(tmp_path: Path) -> None:
     assert (tmp_path / "cli" / "latest.pt").exists()
     with pytest.raises(SystemExit):
         train_main(["--out", str(tmp_path), "--opponent", "oracle"])
+
+
+def test_parallel_collection_matches_the_serial_contract(tmp_path: Path) -> None:
+    from dune_imperium.training.collect import Collector
+
+    config = RulesetConfig()
+    network = _network(SelfPlayRunner(config).codec.size)
+    specs = tuple(
+        SelfPlaySpec(
+            game_seed=seed, lineup=("learner", "heuristic", "heuristic", "heuristic")
+        )
+        for seed in range(30, 34)
+    )
+    with Collector(config, workers=2, opponent="heuristic") as collector:
+        result = collector.collect(network, _CPU, specs, policy_seed=5, opponent_seed=6)
+
+    assert [episode.game_seed for episode in result.episodes] == [30, 32, 31, 33]
+    assert all(episode.steps == () for episode in result.episodes)
+    assert result.decisions == sum(e.decisions for e in result.episodes)
+    batch = result.batch
+    assert batch.actions.shape[0] > 0
+    assert set(batch.seats.tolist()) == {0}
+    assert set(batch.episode_ids.tolist()) <= {0, 1, 2, 3}
+    for episode_id, value in zip(
+        batch.episode_ids.tolist(), batch.returns.tolist(), strict=True
+    ):
+        assert value == pytest.approx(result.episodes[episode_id].rewards[0])
+    assert batch.masks.shape[1] == network.action_size
+    with pytest.raises(ValueError, match="workers"):
+        Collector(config, workers=0)
+
+    parallel = train(
+        TrainConfig(
+            out_dir=tmp_path / "par",
+            iterations=1,
+            games_per_iteration=2,
+            seed=3,
+            hidden=(16,),
+            workers=2,
+            learner=LearnerConfig(minibatch_size=256),
+        )
+    )
+    assert parallel.records[0].games == 2
+    assert parallel.records[0].learner_steps > 0
