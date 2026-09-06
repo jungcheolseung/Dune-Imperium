@@ -154,6 +154,7 @@ button:disabled { opacity: 0.5; cursor: wait; }
    side by side. Narrow screens (media query at the end) move it back
    under the board. */
 #center {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) fit-content(22%);
   gap: 0.5rem;
@@ -166,6 +167,61 @@ button:disabled { opacity: 0.5; cursor: wait; }
   align-items: flex-start;
   min-height: 0;
   overflow: auto;
+}
+
+/* ---------- other seats' moves ---------- */
+
+.move-overlay {
+  position: absolute;
+  top: 0.6rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  width: min(560px, 92%);
+  padding: 0.5rem 0.7rem;
+  background: rgba(18, 14, 10, 0.94);
+  border: 2px solid var(--accent);
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.7);
+  color: var(--ink);
+  animation: move-in 0.25s ease-out;
+}
+@keyframes move-in {
+  from { opacity: 0; transform: translate(-50%, -8px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+.move-head { display: flex; align-items: center; gap: 0.45rem; margin-bottom: 0.3rem; }
+.move-head strong { font-size: 1.05em; }
+.move-counter { margin-left: auto; font-size: 0.8em; opacity: 0.7; }
+.move-body { display: flex; gap: 0.6rem; align-items: flex-start; }
+.move-lines { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.15rem; }
+.move-line { font-size: 0.95em; }
+.move-line .icon { height: 1.3em; }
+.move-cards { display: flex; gap: 0.3rem; flex: none; }
+.move-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid var(--line);
+}
+.move-where { font-weight: 700; }
+.move-where .icon { height: 1.3em; }
+.move-spacer { flex: 1; }
+.move-controls button { padding: 0.15rem 0.6rem; font-size: 0.9em; }
+
+/* The move's space or card on the table. */
+.spotlight {
+  outline: 3px solid #7fd7ff;
+  outline-offset: 2px;
+  box-shadow: 0 0 18px 4px rgba(127, 215, 255, 0.7), inset 0 0 18px rgba(127, 215, 255, 0.3);
+  animation: spotlight-pulse 1.2s ease-in-out infinite;
+  z-index: 3;
+}
+@keyframes spotlight-pulse {
+  0%, 100% { box-shadow: 0 0 12px 3px rgba(127, 215, 255, 0.55), inset 0 0 14px rgba(127, 215, 255, 0.25); }
+  50% { box-shadow: 0 0 24px 7px rgba(127, 215, 255, 0.85), inset 0 0 22px rgba(127, 215, 255, 0.4); }
 }
 
 /* Board scan with the live overlay: the stage keeps the scan's aspect

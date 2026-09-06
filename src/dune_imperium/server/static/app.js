@@ -653,6 +653,7 @@ function enterGame(summary) {
 }
 
 function leaveGame() {
+  stopMoveReplay();
   state.gameId = null;
   state.summary = null;
   state.view = null;
@@ -727,6 +728,7 @@ async function applySummary(summary) {
        its own timeline (meta.steps) instead. */
     if (!state.review) {
       state.log = await api(`/games/${state.gameId}/log?seat=${activeSeat()}`);
+      queueOtherSeatMoves();
     }
   }
   render();
@@ -1058,6 +1060,222 @@ function costNode(cost) {
   return wrap;
 }
 
+/* ---------- other seats' moves, replayed one turn at a time ----------
+
+   Every refresh may bring several steps by the other seats (AI turns run
+   to the next human decision). Instead of leaving the player to read the
+   log, the new steps are grouped by actor and shown one group at a time
+   in an overlay on the board: the seat, its lines, the cards involved,
+   and a spotlight on the space or card each step references. The board
+   itself already shows the final state; the overlay explains how it got
+   there and can be skipped. */
+
+const MOVE_BASE_MS = 3000;
+const MOVE_LINE_MS = 500;
+const MOVE_MAX_MS = 8000;
+/* After the pointer leaves the overlay (which pauses the auto-advance). */
+const MOVE_RESUME_MS = 1500;
+const MOVE_MAX_LINES = 8;
+/* Steps that only close a window and say nothing the player needs. */
+const MOVE_QUIET_ACTIONS = new Set(["finish_agent_turn", "finish_reveal", "pass"]);
+
+let moveQueue = [];
+let moveTimer = 0;
+let moveCurrent = null;
+let seenLog = { gameId: null, count: 0 };
+
+function queueOtherSeatMoves() {
+  const log = state.log;
+  if (!log) return;
+  if (seenLog.gameId !== state.gameId) {
+    /* First look at this game (new or loaded): nothing to catch up on. */
+    seenLog = { gameId: state.gameId, count: log.count };
+    stopMoveReplay();
+    return;
+  }
+  const fresh = log.entries.filter(
+    (entry) =>
+      entry.index >= seenLog.count &&
+      entry.type === "action" &&
+      !entry.undone &&
+      entry.actor !== state.viewSeat &&
+      !MOVE_QUIET_ACTIONS.has(entry.action_id)
+  );
+  seenLog.count = log.count;
+  if (!fresh.length) return;
+  const groups = [];
+  for (const entry of fresh) {
+    const last = groups[groups.length - 1];
+    if (last && last.actor === entry.actor) last.entries.push(entry);
+    else groups.push({ actor: entry.actor, entries: [entry] });
+  }
+  moveQueue.push(...groups);
+  if (!moveCurrent) nextMove();
+}
+
+/* Everything a step group points at on the table: spaces and cards named
+   by the action arguments or by the events (acquired card, placed Agent). */
+function moveTargets(group) {
+  const spaces = [];
+  const cards = [];
+  const seen = new Set();
+  const consider = (value) => {
+    if (typeof value !== "string" || seen.has(value)) return;
+    seen.add(value);
+    if (state.catalog.spaces[value]) spaces.push(value);
+    else if (lookup(baseId(value))) cards.push(value);
+  };
+  for (const entry of group.entries) {
+    for (const value of Object.values(entry.arguments)) consider(value);
+    for (const event of entry.events) {
+      if (!event.payload) continue;
+      for (const [key, value] of Object.entries(event.payload)) {
+        if (key === "card_id" || key === "space_id" || key.endsWith("instance_id")) {
+          consider(value);
+        }
+      }
+    }
+  }
+  return { spaces, cards };
+}
+
+function nextMove() {
+  window.clearTimeout(moveTimer);
+  moveCurrent = moveQueue.shift() || null;
+  const box = el("move-overlay");
+  if (!moveCurrent) {
+    box.hidden = true;
+    box.textContent = "";
+    applyMoveSpotlight();
+    return;
+  }
+  const group = moveCurrent;
+  const player = state.view && state.view.players[group.actor];
+  const leaderFace = player && (player.leader_face_id || player.leader_id);
+  const color = SEAT_COLORS[group.actor];
+  box.textContent = "";
+  box.style.borderColor = color;
+
+  const head = document.createElement("div");
+  head.className = "move-head";
+  head.append(seatToken(group.actor, "seat-mark"));
+  const who = document.createElement("strong");
+  who.textContent = leaderFace ? nameOf(leaderFace) : `좌석 ${group.actor}`;
+  head.appendChild(who);
+  const kind = state.summary.seats[group.actor];
+  if (kind && kind !== "human") {
+    const badge = document.createElement("span");
+    badge.className = "badge ai";
+    badge.textContent = kind;
+    head.appendChild(badge);
+  }
+  const counter = document.createElement("span");
+  counter.className = "move-counter";
+  counter.textContent = moveQueue.length ? `남은 턴 ${moveQueue.length}` : "마지막";
+  head.appendChild(counter);
+
+  const body = document.createElement("div");
+  body.className = "move-body";
+  const lines = document.createElement("div");
+  lines.className = "move-lines";
+  const shown = group.entries.slice(0, MOVE_MAX_LINES);
+  for (const entry of shown) {
+    const line = document.createElement("div");
+    line.className = "move-line";
+    line.appendChild(iconize(describeAction(entry)));
+    lines.appendChild(line);
+  }
+  if (group.entries.length > shown.length) {
+    const more = document.createElement("div");
+    more.className = "move-line muted";
+    more.textContent = `… 외 ${group.entries.length - shown.length}단계 (행동 로그 참고)`;
+    lines.appendChild(more);
+  }
+  body.appendChild(lines);
+
+  const targets = moveTargets(group);
+  if (targets.cards.length) {
+    const row = document.createElement("div");
+    row.className = "move-cards";
+    for (const id of targets.cards.slice(0, 3)) {
+      row.appendChild(visualCard(id, { className: "small", onClick: (entry, card) => {
+        if (entry) pinPopover(entry, card);
+      } }));
+    }
+    body.appendChild(row);
+  }
+
+  const controls = document.createElement("div");
+  controls.className = "move-controls";
+  if (targets.spaces.length) {
+    const where = document.createElement("span");
+    where.className = "move-where";
+    where.append(icon("agent", "Agent"), " ", targets.spaces.map(nameOf).join(", "));
+    controls.appendChild(where);
+  }
+  const spacer = document.createElement("span");
+  spacer.className = "move-spacer";
+  controls.appendChild(spacer);
+  const next = document.createElement("button");
+  next.type = "button";
+  next.textContent = moveQueue.length ? "다음 ▶" : "닫기";
+  next.addEventListener("click", nextMove);
+  controls.appendChild(next);
+  if (moveQueue.length) {
+    const skip = document.createElement("button");
+    skip.type = "button";
+    skip.textContent = "건너뛰기 ⏭";
+    skip.addEventListener("click", stopMoveReplay);
+    controls.appendChild(skip);
+  }
+
+  box.append(head, body, controls);
+  box.hidden = false;
+  applyMoveSpotlight();
+  const duration = Math.min(MOVE_MAX_MS, MOVE_BASE_MS + MOVE_LINE_MS * shown.length);
+  moveTimer = window.setTimeout(nextMove, duration);
+}
+
+/* Reading takes as long as it takes: the pointer resting on the overlay
+   holds the current move, leaving it restarts a short countdown. */
+function initMoveOverlay() {
+  const box = el("move-overlay");
+  box.addEventListener("mouseenter", () => window.clearTimeout(moveTimer));
+  box.addEventListener("mouseleave", () => {
+    if (moveCurrent) moveTimer = window.setTimeout(nextMove, MOVE_RESUME_MS);
+  });
+}
+
+function stopMoveReplay() {
+  window.clearTimeout(moveTimer);
+  moveQueue = [];
+  moveCurrent = null;
+  const box = el("move-overlay");
+  box.hidden = true;
+  box.textContent = "";
+  applyMoveSpotlight();
+}
+
+/* Light the current move's spaces and cards on the (freshly rendered)
+   table; clears every spotlight when no move is showing. */
+function applyMoveSpotlight() {
+  for (const node of document.querySelectorAll(".spotlight")) {
+    node.classList.remove("spotlight");
+  }
+  if (!moveCurrent) return;
+  const { spaces, cards } = moveTargets(moveCurrent);
+  for (const spaceId of spaces) {
+    for (const node of document.querySelectorAll(`[data-space="${spaceId}"]`)) {
+      node.classList.add("spotlight");
+    }
+  }
+  for (const id of cards) {
+    for (const node of document.querySelectorAll(`#game-screen [data-instance="${id}"]`)) {
+      if (!node.closest("#move-overlay")) node.classList.add("spotlight");
+    }
+  }
+}
+
 /* ---------- rendering ---------- */
 
 function render() {
@@ -1080,6 +1298,7 @@ function render() {
   renderLog();
   renderPrivate();
   renderDisclosure();
+  applyMoveSpotlight();
 }
 
 /* Post-game full disclosure (OQ-010 ruling 4): once a game has finished,
@@ -1482,6 +1701,7 @@ function renderBoardStage(board, view) {
     hotspot.style.width = `${width}%`;
     hotspot.style.height = `${height}%`;
     hotspot.title = entry.name;
+    hotspot.dataset.space = spaceId;
     hotspot.setAttribute("aria-label", entry.name);
     const legal = legalActionsFor(spaceId);
     if (legal.length) hotspot.classList.add("legal");
@@ -1792,6 +2012,7 @@ function visualCard(instanceId, options = {}) {
   const card = document.createElement("button");
   card.type = "button";
   card.className = "vcard" + (options.className ? ` ${options.className}` : "");
+  card.dataset.instance = instanceId;
   const legal = legalActionsFor(instanceId);
   if (legal.length) card.classList.add("legal");
   if (entry && entry.image) {
@@ -2337,6 +2558,7 @@ function renderStandings() {
 async function init() {
   state.catalog = await api("/catalog");
   buildSeatSelects();
+  initMoveOverlay();
   document.addEventListener("click", (event) => {
     const pop = el("card-popover");
     if (!pop.hidden && !pop.contains(event.target)) closePopover();
