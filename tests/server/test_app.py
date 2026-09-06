@@ -49,6 +49,11 @@ def test_root_serves_the_ui_and_static_assets(client: TestClient) -> None:
     assert script.status_code == 200
     style = client.get("/static/style.css")
     assert style.status_code == 200
+    # Browsers must revalidate the UI files so an edited app.js is picked
+    # up on a plain reload instead of served from the heuristic cache.
+    for response in (index, script, style):
+        assert response.headers["cache-control"] == "no-cache"
+    assert "cache-control" not in client.get("/catalog").headers
 
 
 def test_catalog_endpoint_serves_display_names(client: TestClient) -> None:

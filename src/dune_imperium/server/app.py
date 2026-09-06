@@ -12,11 +12,11 @@ outcomes and with them hidden deck orders.
 """
 
 import os
-from collections.abc import Iterator
+from collections.abc import Awaitable, Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -171,6 +171,19 @@ def create_app(
         board_image if board_image is not None else default_board_image_path()
     )
     app = FastAPI(title="Dune: Imperium - Uprising local play server")
+
+    @app.middleware("http")
+    async def revalidate_ui_files(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        # The UI is edited in place while the server runs; make browsers
+        # revalidate index.html and /static on every load (ETag keeps it
+        # cheap) instead of heuristically caching a stale app.js.
+        response = await call_next(request)
+        path = request.url.path
+        if path == "/" or path.startswith("/static/"):
+            response.headers["Cache-Control"] = "no-cache"
+        return response
 
     @app.get("/", include_in_schema=False)
     def index() -> FileResponse:
