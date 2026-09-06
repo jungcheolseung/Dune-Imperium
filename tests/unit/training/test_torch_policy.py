@@ -289,3 +289,34 @@ def test_parallel_collection_matches_the_serial_contract(tmp_path: Path) -> None
     )
     assert parallel.records[0].games == 2
     assert parallel.records[0].learner_steps > 0
+
+
+def test_sampling_policy_never_repeats_an_action_at_the_same_observation() -> None:
+    from dune_imperium.training.torch_policy import _CycleGuard
+
+    guard = _CycleGuard()
+    observation = np.zeros(4, dtype=np.int32)
+    logits = torch.tensor([0.0, 5.0, 1.0])
+    first = guard.greedy(1, observation, logits)
+    second = guard.greedy(1, observation, logits)
+    third = guard.greedy(1, observation, logits)
+    assert (first, second, third) == (1, 2, 0)
+    # Every legal action taken: the full set comes back rather than nothing.
+    assert torch.equal(guard.restrict(1, observation, logits), logits)
+    # A new round forgets the history.
+    assert guard.greedy(2, observation, logits) == 1
+
+    runner = SelfPlayRunner(RulesetConfig())
+    network = _network(runner.codec.size)
+    policy = TorchBatchPolicy(network, _CPU, seed=4, sample=True)
+    result = runner.run({"p": policy}, (SelfPlaySpec(game_seed=8, lineup=("p",) * 4),))
+    episode = result.episodes[0]
+    assert not episode.truncated
+    # The round number is part of the observation, so an identical
+    # (seat, observation) pair recurs only within a round; the guard must
+    # never let it repeat an action.
+    taken: dict[tuple[int, bytes], set[int]] = {}
+    for step in episode.steps:
+        key = (step.seat, step.observation.tobytes())
+        assert step.action not in taken.setdefault(key, set())
+        taken[key].add(step.action)

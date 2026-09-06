@@ -7,13 +7,15 @@ in the plain ``Agent`` contract so a trained policy enters tournaments by
 name: ``checkpoint:<path>`` resolves through ``agents.registry.make_agent``,
 which lets tournament worker processes load the file themselves.
 
-Greedy play needs a cycle guard: several legal actions are reversible
-(deploy/withdraw troops under OQ-029, defer/resume a Reveal choice), and a
+Both modes use a cycle guard: several legal actions are reversible
+(deploy/withdraw troops under OQ-029, defer/resume a Reveal choice), so a
 deterministic argmax that prefers the reversing pair never finishes the
-turn. ``_CycleGuard`` remembers which actions were already taken at an
-identical observation within the current round (the observation carries no
-revision counter, so a reversed move reproduces the same bytes) and masks
-them out on the next visit, so greedy play always makes progress.
+turn, and a sampling policy that learns to like the pair inflates every
+game with loops that carry no information about the outcome.
+``_CycleGuard`` remembers which actions were already taken at an identical
+observation within the current round (the observation carries no revision
+counter, so a reversed move reproduces the same bytes) and masks them out
+on the next visit, so play always makes progress.
 """
 
 import os
@@ -41,24 +43,37 @@ class _CycleGuard:
         self._round = -1
         self._taken: dict[bytes, set[int]] = {}
 
+    def restrict(
+        self, round_number: int, observation: np.ndarray, logits: torch.Tensor
+    ) -> torch.Tensor:
+        """Mask the actions already taken at this observation this round.
+
+        Returns the logits unchanged when every legal action was already
+        taken here, so a decision never loses its whole legal set.
+        """
+
+        if round_number != self._round:
+            self._round = round_number
+            self._taken.clear()
+        taken = self._taken.get(observation.tobytes())
+        if not taken:
+            return logits
+        candidate = logits.clone()
+        candidate[list(taken)] = MASKED_LOGIT
+        if bool((candidate > MASKED_LOGIT / 2).any()):
+            return candidate
+        return logits
+
+    def record(self, observation: np.ndarray, index: int) -> None:
+        self._taken.setdefault(observation.tobytes(), set()).add(index)
+
     def greedy(
         self, round_number: int, observation: np.ndarray, logits: torch.Tensor
     ) -> int:
         """Return the argmax over legal actions not yet taken here."""
 
-        if round_number != self._round:
-            self._round = round_number
-            self._taken.clear()
-        key = observation.tobytes()
-        taken = self._taken.setdefault(key, set())
-        candidate = logits.clone()
-        if taken:
-            candidate[list(taken)] = MASKED_LOGIT
-        if bool((candidate > MASKED_LOGIT / 2).any()):
-            index = int(candidate.argmax().item())
-        else:
-            index = int(logits.argmax().item())
-        taken.add(index)
+        index = int(self.restrict(round_number, observation, logits).argmax().item())
+        self.record(observation, index)
         return index
 
 
@@ -115,19 +130,37 @@ class TorchBatchPolicy:
         with torch.no_grad():
             logits, _ = self.network(observations, masks)
         logits = logits.to("cpu")
-        if self.sample:
-            probabilities = torch.softmax(logits / self.temperature, dim=-1)
-            chosen = torch.multinomial(probabilities, 1, generator=self._generator)
-            return tuple(int(index) for index in chosen.squeeze(-1).tolist())
         answers: list[int] = []
+        if self.sample:
+            # The guard applies to sampling too: an action already taken at
+            # this exact observation this round is a reversal loop, which
+            # costs collection time and teaches nothing about the outcome.
+            restricted = torch.stack(
+                [
+                    self._guard(request).restrict(
+                        request.view.round_number, request.observation, logits[row]
+                    )
+                    for row, request in enumerate(requests)
+                ]
+            )
+            probabilities = torch.softmax(restricted / self.temperature, dim=-1)
+            chosen = torch.multinomial(probabilities, 1, generator=self._generator)
+            for request, index in zip(
+                requests, chosen.squeeze(-1).tolist(), strict=True
+            ):
+                self._guard(request).record(request.observation, int(index))
+                answers.append(int(index))
+            return tuple(answers)
         for row, request in enumerate(requests):
-            guard = self._guards.setdefault((request.game, request.seat), _CycleGuard())
             answers.append(
-                guard.greedy(
+                self._guard(request).greedy(
                     request.view.round_number, request.observation, logits[row]
                 )
             )
         return tuple(answers)
+
+    def _guard(self, request: PolicyRequest) -> _CycleGuard:
+        return self._guards.setdefault((request.game, request.seat), _CycleGuard())
 
 
 class NetworkAgent:
