@@ -27,6 +27,7 @@ def test_marker_tables_cover_the_printed_tracks() -> None:
     strength = layout["strength"]
     assert isinstance(strength, dict)
     assert len(strength["cells"]) == 11 and len(strength["rows"]) == 2
+    assert len(strength["zero_box"]) == 4
     assert len(layout["garrisons"]) == 4
     assert len(layout["conflict_quadrants"]) == 4
     assert len(layout["council_seats"]) == 4
@@ -50,6 +51,7 @@ def test_marker_tables_cover_the_printed_tracks() -> None:
         layout["conflict_deck_slot"],
         layout["conflict_slot"],
         *layout["contract_slots"],
+        strength["zero_box"],
     )
     for left, top, width, height in slots:
         assert 0 <= left < left + width <= 100

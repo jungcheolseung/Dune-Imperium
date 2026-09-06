@@ -42,7 +42,7 @@ from dune_imperium.core.observation import PlayerView, PublicPlayerView
 from dune_imperium.core.state import GamePhase
 from dune_imperium.rules.frames import FrameKind
 
-OBSERVATION_VERSION: Final = 4
+OBSERVATION_VERSION: Final = 5
 _SEATS: Final = 4
 
 PERSONAL_CARD_IDS: Final = (

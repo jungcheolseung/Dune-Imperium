@@ -110,9 +110,14 @@ VICTORY_POINT_Y: Final = (
 VICTORY_POINT_OVERFLOW_Y: Final = 25.5
 
 # Combat strength track: two numbered rows along the bottom edge, cells
-# 0..10 on the upper row and 11..20 on the lower row (same columns).
+# 1..10 on the upper row and 11..20 on the lower row (same columns;
+# ``STRENGTH_CELL_X[n]`` is the column of printed number n, index 0 is
+# unused). A seat's strength token rests in the framed square left of
+# "1"/"11" while its strength is 0 (``STRENGTH_ZERO_BOX``, a box like the
+# hotspots) and flips to its "+20" face beyond 20.
 STRENGTH_CELL_X: Final = tuple(46.3 + index * 4.37 for index in range(11))
 STRENGTH_ROW_Y: Final = (93.2, 97.6)
+STRENGTH_ZERO_BOX: Final = (38.6, 89.3, 10.0, 9.2)
 
 # The Conflict area (re-measured 2026-09-06): the four bracketed circles in
 # its corners are the garrisons, and the central field between them is
@@ -154,7 +159,11 @@ def marker_layout() -> dict[str, Any]:
             "levels": list(VICTORY_POINT_Y),
             "overflow_y": VICTORY_POINT_OVERFLOW_Y,
         },
-        "strength": {"cells": list(STRENGTH_CELL_X), "rows": list(STRENGTH_ROW_Y)},
+        "strength": {
+            "cells": list(STRENGTH_CELL_X),
+            "rows": list(STRENGTH_ROW_Y),
+            "zero_box": list(STRENGTH_ZERO_BOX),
+        },
         "garrisons": [list(point) for point in GARRISON_POINTS],
         "conflict_quadrants": [list(point) for point in CONFLICT_QUADRANTS],
         "council_seats": [list(point) for point in COUNCIL_SEATS],

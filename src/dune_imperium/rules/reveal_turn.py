@@ -58,6 +58,7 @@ from dune_imperium.rules.spy_placement import (
     place_spy,
     recall_spy,
 )
+from dune_imperium.rules.strength import units_strength
 
 
 def legal_reveal_spy_actions(
@@ -2234,12 +2235,11 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         )
         for effect_card_id, effect in reveal_effects
     )
+    # One formula for the units' share (the engine keeps combat_strength
+    # equal to it after every step before the Reveal); the Reveal adds the
+    # revealed swords, and without a unit there is no strength [Main p. 12].
     units = owner.troops_conflict + owner.sandworms_conflict
-    strength = 0
-    if units > 0:
-        strength = (
-            owner.troops_conflict * 2 + owner.sandworms_conflict * 3 + sword_strength
-        )
+    strength = units_strength(owner) + sword_strength if units > 0 else 0
     next_owner = replace(
         owner,
         resources=replace(

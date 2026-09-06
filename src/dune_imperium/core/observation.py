@@ -43,6 +43,9 @@ class PublicPlayerView:
     spy_post_ids: tuple[str, ...]
     alliance_faction_ids: tuple[str, ...]
     control_space_ids: tuple[str, ...]
+    # Kept current by the engine after every step: before the seat's
+    # Reveal what its units in the Conflict provide, from the Reveal on the
+    # marker with the revealed swords and every later change [Main p. 12].
     combat_strength: int
     has_revealed: bool
     high_council: bool

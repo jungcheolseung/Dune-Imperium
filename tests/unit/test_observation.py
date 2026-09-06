@@ -251,3 +251,4 @@ def test_game_state_rejects_two_owners_of_one_alliance() -> None:
 
     with pytest.raises(ValueError, match="only one owner"):
         replace(state, players=(first, second, *state.players[2:]))
+
