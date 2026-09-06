@@ -953,13 +953,18 @@ def finish_combat(state: GameState) -> RuleResult:
                 )
             )
 
+    # Troops and Sardaukar Commanders return to the supply, sandworms to
+    # the bank, every marker to 0 [Main p. 14] [Bloodlines p. 4].
     players = tuple(
         replace(
             player,
             troops_supply=player.troops_supply + player.troops_conflict,
             troops_conflict=0,
             sandworms_conflict=0,
+            commanders_supply=player.commanders_supply + player.commanders_conflict,
+            commanders_conflict=0,
             combat_strength=0,
+            skill_strength_applied=0,
         )
         for player in players
     )
@@ -1290,7 +1295,7 @@ def _participants_from(state: GameState, first_player: int) -> tuple[int, ...]:
 
 
 def _has_conflict_units(player: PlayerState) -> bool:
-    return player.troops_conflict + player.sandworms_conflict > 0
+    return player.units_in_conflict > 0
 
 
 def _participants_from_mask(

@@ -168,7 +168,12 @@ def _agent_placement_catalog() -> frozenset[str]:
 
 
 def zero_coverage(
-    census: Census, *, choam_module: bool, promo_cards: bool = False
+    census: Census,
+    *,
+    choam_module: bool,
+    promo_cards: bool = False,
+    bloodlines: bool = False,
+    tech_module: bool = False,
 ) -> dict[str, list[str]]:
     """Return, per dimension with a well-defined catalog, the untouched IDs.
 
@@ -177,7 +182,12 @@ def zero_coverage(
     ``event_kinds``) is skipped rather than guessed at.
     """
 
-    config = RulesetConfig(choam_module=choam_module, promo_cards=promo_cards)
+    config = RulesetConfig(
+        choam_module=choam_module,
+        promo_cards=promo_cards,
+        bloodlines=bloodlines,
+        tech_module=tech_module,
+    )
     codec = ActionCodec(config)
 
     zero: dict[str, list[str]] = {}

@@ -24,12 +24,12 @@ from dune_imperium.simulation import run_random_game
 
 
 def test_layout_is_versioned_and_contiguous() -> None:
-    assert OBSERVATION_VERSION == 5
+    assert OBSERVATION_VERSION == 6
     assert len(PERSONAL_CARD_IDS) == 66
     assert len(INTRIGUE_IDS) == 39
     assert len(CONFLICT_IDS) == 16
     assert len(BATTLE_CARD_IDS) == 21
-    assert OBSERVATION_SIZE == 2022
+    assert OBSERVATION_SIZE == 2081
 
     offset = 0
     for segment in OBSERVATION_SEGMENTS:

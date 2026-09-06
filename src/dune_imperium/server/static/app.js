@@ -178,6 +178,13 @@ const ACTION_LABELS = {
   trash_leader_card: "카드 trash (Leader)",
   trash_reveal_card: "카드 trash",
   use_other_memories: "Other Memories 사용",
+  acquire_sardaukar_commander: "Sardaukar Commander 획득 (2 Solari)",
+  acquire_sardaukar_commander_without_skill: "Sardaukar Commander 획득 (Skill 없음)",
+  decline_sardaukar_commander: "Sardaukar Commander 거절",
+  recruit_sardaukar_commander: "Sardaukar Commander recruit (2 Solari)",
+  trash_skill_for_strength: "Skill trash → 검 3",
+  deploy_commanders: "Commander 배치",
+  withdraw_commanders: "Commander 회수",
 };
 
 /* Korean labels for session-log event kinds (M11 slice 6); falls back to
@@ -611,6 +618,8 @@ async function createGame(event) {
     choam_module: el("opt-choam").checked,
     leader_draft: el("opt-leader-draft").checked,
     promo_cards: el("opt-promo").checked,
+    bloodlines: el("opt-bloodlines").checked,
+    tech_module: el("opt-tech").checked,
   };
   const seed = el("opt-seed").value;
   if (seed !== "") payload.game_seed = Number(seed);
@@ -1133,6 +1142,8 @@ function render() {
     ` · seed ${summary.game_seed}` +
     (summary.choam_module ? " · CHOAM" : "") +
     (summary.promo_cards ? " · promo" : "") +
+    (summary.bloodlines ? " · Bloodlines" : "") +
+    (summary.tech_module ? " · Tech" : "") +
     (summary.leader_draft ? " · draft" : "") +
     (state.review ? " · 리플레이 검토" : "");
   el("decision-banner").hidden = Boolean(state.review);

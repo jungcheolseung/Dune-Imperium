@@ -126,6 +126,8 @@ class GameSessionManager:
         choam_module: bool = False,
         leader_draft: bool = False,
         promo_cards: bool = False,
+        bloodlines: bool = False,
+        tech_module: bool = False,
         game_seed: int | None = None,
         policy_seed: int | None = None,
     ) -> JsonObject:
@@ -135,6 +137,8 @@ class GameSessionManager:
             choam_module=choam_module,
             leader_draft=leader_draft,
             promo_cards=promo_cards,
+            bloodlines=bloodlines,
+            tech_module=tech_module,
         )
         _validate_seats(seats, config)
         if game_seed is None:
@@ -590,6 +594,8 @@ class GameSessionManager:
             "choam_module": session.config.choam_module,
             "leader_draft": session.config.leader_draft,
             "promo_cards": session.config.promo_cards,
+            "bloodlines": session.config.bloodlines,
+            "tech_module": session.config.tech_module,
             "seats": list(session.seats),
             "decision": decision,
             "finished": finished,

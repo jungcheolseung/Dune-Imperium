@@ -15,6 +15,7 @@ and the ones still unavailable at the end simply never happen.
 
 from dataclasses import replace
 
+from dune_imperium.content.bloodlines.sardaukar import skill_for_instance
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
 from dune_imperium.content.uprising.personal_cards import (
     PersonalCardDefinition,
@@ -311,7 +312,7 @@ def apply_reveal_sandworm_action(
     if not _can_summon_reveal_sandworm(state, action.actor):
         raise RuntimeError("Desert Power sandworm choice is unavailable")
     owner = state.players[action.actor]
-    previous_units = owner.troops_conflict + owner.sandworms_conflict
+    previous_units = owner.units_in_conflict
     reveal_context = _reveal_frame_context(state.decision_stack[:-1])
     current_strength = reveal_context.get("strength")
     sword_strength = reveal_context.get("sword_strength", 0)
@@ -664,7 +665,7 @@ def apply_reveal_troop_retreat(
     owner = state.players[action.actor]
     if owner.troops_conflict < 2:
         raise RuntimeError("Reveal troop-retreat payment requires two troops")
-    remaining_units = owner.troops_conflict - 2 + owner.sandworms_conflict
+    remaining_units = owner.units_in_conflict - 2
     next_strength = owner.combat_strength if remaining_units else 0
     next_owner = replace(
         owner,
@@ -740,7 +741,7 @@ def apply_reveal_card_trash(
         source=source,
     )
     owner = trashed.state.players[action.actor]
-    counted_strength = 3 if owner.troops_conflict + owner.sandworms_conflict else 0
+    counted_strength = 3 if owner.units_in_conflict else 0
     next_owner = replace(
         owner,
         combat_strength=owner.combat_strength + counted_strength,
@@ -922,7 +923,7 @@ def apply_reveal_spy_action(
     arguments = dict(action.arguments)
     if action.action_id == "gain_two_reveal_strength":
         owner = state.players[action.actor]
-        counted_strength = 2 if owner.troops_conflict + owner.sandworms_conflict else 0
+        counted_strength = 2 if owner.units_in_conflict else 0
         next_owner = replace(
             owner,
             combat_strength=owner.combat_strength + counted_strength,
@@ -1381,7 +1382,7 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
         personal_card_for_instance(card_id) for card_id in revealed_ids
     )
     completed = len(owner.completed_contract_ids)
-    units = owner.troops_conflict + owner.sandworms_conflict
+    units = owner.units_in_conflict
     frames = state.decision_stack
     next_owner = owner
     events: list[GameEvent] = list(result.events)
@@ -2059,7 +2060,7 @@ def _late_reveal_one_card(
     troops_requested = sum(effect.recruit_troops for effect in eligible)
     next_owner, troops_recruited = recruit_troops(next_owner, troops_requested)
 
-    units = next_owner.troops_conflict + next_owner.sandworms_conflict
+    units = next_owner.units_in_conflict
     counts_toward_combat = units > 0
     if counts_toward_combat and sword_delta:
         next_owner = replace(
@@ -2213,6 +2214,14 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         persuasion += 2
     if "assembly_hall" in owner.agent_locations:
         persuasion += 1
+    # Sardaukar Commander Skills pay their Reveal-turn bonus once while a
+    # Commander is in the Conflict [Bloodlines p. 4] [Skill tile faces].
+    active_skills = (
+        tuple(skill_for_instance(instance_id) for instance_id in owner.skill_ids)
+        if owner.commanders_conflict > 0
+        else ()
+    )
+    persuasion += sum(skill.reveal_persuasion for skill in active_skills)
 
     card_strengths = tuple(
         (
@@ -2238,8 +2247,13 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
     # One formula for the units' share (the engine keeps combat_strength
     # equal to it after every step before the Reveal); the Reveal adds the
     # revealed swords, and without a unit there is no strength [Main p. 12].
-    units = owner.troops_conflict + owner.sandworms_conflict
-    strength = units_strength(owner) + sword_strength if units > 0 else 0
+    units = owner.units_in_conflict
+    # The Skill strength already folded into the running value stays.
+    strength = (
+        units_strength(owner) + sword_strength + owner.skill_strength_applied
+        if units > 0
+        else 0
+    )
     next_owner = replace(
         owner,
         resources=replace(
@@ -2247,9 +2261,11 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
             solari=owner.resources.solari
             + sum(effect.solari for _, effect in reveal_effects),
             spice=owner.resources.spice
-            + sum(effect.spice for _, effect in reveal_effects),
+            + sum(effect.spice for _, effect in reveal_effects)
+            + sum(skill.reveal_spice for skill in active_skills),
             water=owner.resources.water
-            + sum(effect.water for _, effect in reveal_effects),
+            + sum(effect.water for _, effect in reveal_effects)
+            + sum(skill.reveal_water for skill in active_skills),
         ),
     )
     reveal_troops_requested = sum(effect.recruit_troops for _, effect in reveal_effects)
@@ -2339,6 +2355,21 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         ),
     )
     events: list[GameEvent] = [event]
+    events.extend(
+        GameEvent(
+            event_id=f"{event.event_id}:skill:{skill.skill_id}",
+            kind="skill_reveal_bonus",
+            payload=(
+                ("persuasion", skill.reveal_persuasion),
+                ("player", action.actor),
+                ("skill_id", skill.skill_id),
+                ("spice", skill.reveal_spice),
+                ("water", skill.reveal_water),
+            ),
+        )
+        for skill in active_skills
+        if skill.reveal_persuasion or skill.reveal_spice or skill.reveal_water
+    )
     events.extend(
         recruit_shortfall_events(
             event.event_id,
@@ -2545,7 +2576,7 @@ def add_units_to_reveal(
     value = 2 * troops + 3 * sandworms
     if value == 0:
         return RuleResult(state=state)
-    previous_units = owner.troops_conflict + owner.sandworms_conflict
+    previous_units = owner.units_in_conflict
     context = _reveal_frame_context(state.decision_stack)
     current_strength = context.get("strength")
     sword_strength = context.get("sword_strength", 0)
@@ -2582,7 +2613,7 @@ def add_units_to_reveal(
             GameEvent(
                 event_id=(
                     f"round:{state.round_number}:player:{player}:reveal:"
-                    f"units:{owner.troops_conflict + owner.sandworms_conflict}"
+                    f"units:{owner.units_in_conflict}"
                 ),
                 kind="reveal_strength_gained",
                 payload=(("amount", strength_delta), ("player", player)),

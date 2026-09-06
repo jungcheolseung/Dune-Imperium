@@ -24,6 +24,7 @@ from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effects import (
+    BOARD_ICON_COMMANDER,
     AutomaticEffect,
     DrawImperiumCardsEffect,
     DrawIntrigueCardsEffect,
@@ -88,6 +89,8 @@ BOARD_ICON_INFLUENCE: Final = "influence"  # Shipping: Influence with a chosen F
 BOARD_ICON_SIETCH_TABR: Final = "sietch_tabr"  # one printed choose-one row
 BOARD_ICON_MAKER: Final = "maker"  # bonus spice, then spice or sandworms
 BOARD_ICON_IMPERIAL_PRIVILEGE: Final = "imperial_privilege"  # written sentences
+# ``BOARD_ICON_COMMANDER`` (Bloodlines) is defined in ``effects`` and resolved
+# by ``rules.sardaukar``.
 
 # Board spaces with at least one icon that is resolved through a dedicated
 # choice rather than the generic ``resolve_board_effect`` action.
@@ -287,6 +290,10 @@ def board_icons_for(
             icons.append(BOARD_ICON_INFLUENCE)
         case "accept_contract" | "dutiful_service" if choam_module:
             icons.append(BOARD_ICON_CONTRACT)
+    if space_id in state.sardaukar_commander_space_ids:
+        # Bloodlines: the Commander waiting on the space may be bought as
+        # one more freely ordered effect of the visit [Bloodlines p. 4].
+        icons.append(BOARD_ICON_COMMANDER)
     if len(set(icons)) != len(icons):
         raise RuntimeError(f"board icons of {space_id} must be distinct: {icons}")
     return tuple(icons)

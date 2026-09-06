@@ -4,6 +4,12 @@ from dataclasses import dataclass, replace
 from typing import Final
 
 from dune_imperium.config import RulesetConfig
+from dune_imperium.content.bloodlines.sardaukar import (
+    COMMANDER_BANK_AT_SETUP,
+    COMMANDER_SETUP_SPACE_IDS,
+    SKILL_FACE_UP,
+    skill_tile_instance_ids,
+)
 from dune_imperium.content.uprising.conflicts import conflicts_by_tier
 from dune_imperium.content.uprising.contracts import contract_instance_ids
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
@@ -213,6 +219,62 @@ def apply_starting_deck_shuffle(
     return replace(player, deck=outcome.values)
 
 
+def skill_stack_decision() -> ChanceDecision:
+    """Shuffle the 14 Skill tiles face down [Bloodlines p. 3]."""
+
+    return _shuffle_decision(
+        "setup:skill_stack",
+        "Shuffle the Sardaukar Commander Skills",
+        skill_tile_instance_ids(),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class BloodlinesSetup:
+    """Bloodlines state fields fixed at setup [Bloodlines p. 3]."""
+
+    skill_face_up: tuple[str, ...]
+    skill_stack: tuple[str, ...]
+
+
+def _bloodlines_setup(
+    config: RulesetConfig,
+    resolver: ChanceResolver,
+) -> BloodlinesSetup | None:
+    """Deal the Skill tiles when the Bloodlines option is on.
+
+    The shuffled 14-tile stack shows four face up [Bloodlines p. 3]; the
+    Commander placement itself is static (``_with_bloodlines``).
+    """
+
+    if not config.bloodlines:
+        return None
+    skills = resolver.resolve(skill_stack_decision()).values
+    return BloodlinesSetup(
+        skill_face_up=skills[:SKILL_FACE_UP],
+        skill_stack=skills[SKILL_FACE_UP:],
+    )
+
+
+def _with_bloodlines(state: GameState, setup: BloodlinesSetup | None) -> GameState:
+    """Place the Commanders and the dealt Skills on a freshly built state.
+
+    Five Commanders go on their printed spaces plus one on Assembly Hall in
+    a four-player game, and the last one waits in the bank for Sardaukar
+    Standard [Bloodlines p. 3].
+    """
+
+    if setup is None:
+        return state
+    return replace(
+        state,
+        sardaukar_commander_space_ids=COMMANDER_SETUP_SPACE_IDS,
+        sardaukar_commanders_bank=COMMANDER_BANK_AT_SETUP,
+        skill_face_up=setup.skill_face_up,
+        skill_stack=setup.skill_stack,
+    )
+
+
 def create_initial_state(
     config: RulesetConfig,
     seed: int,
@@ -284,6 +346,7 @@ def create_initial_state(
         if config.choam_module
         else ()
     )
+    bloodlines = _bloodlines_setup(config, resolver)
     players = tuple(
         apply_starting_deck_shuffle(
             player,
@@ -313,6 +376,7 @@ def create_initial_state(
             (stack.card.card_id, stack.copies) for stack in RESERVE_STACKS
         ),
     )
+    state = _with_bloodlines(state, bloodlines)
     return SetupResult(state=state, chance_outcomes=resolver.outcomes)
 
 
@@ -384,6 +448,7 @@ def create_draft_initial_state(
         if config.choam_module
         else ()
     )
+    bloodlines = _bloodlines_setup(config, resolver)
     players = tuple(
         apply_starting_deck_shuffle(
             player,
@@ -430,6 +495,7 @@ def create_draft_initial_state(
             ),
         ),
     )
+    state = _with_bloodlines(state, bloodlines)
     return SetupResult(state=state, chance_outcomes=resolver.outcomes)
 
 

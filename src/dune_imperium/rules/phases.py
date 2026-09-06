@@ -321,9 +321,7 @@ def resolve_recall_or_endgame(state: GameState) -> RuleResult:
     if state.decision_stack:
         raise ValueError("Recall cannot resolve with a pending decision")
     if any(
-        player.troops_conflict > 0
-        or player.sandworms_conflict > 0
-        or player.combat_strength > 0
+        player.units_in_conflict > 0 or player.combat_strength > 0
         for player in state.players
     ):
         raise ValueError("Combat cleanup must finish before Recall")

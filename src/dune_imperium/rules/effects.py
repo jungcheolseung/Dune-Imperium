@@ -202,10 +202,18 @@ def finish_agent_icon(context: dict[str, ActionValue], key: str) -> None:
     context["pending_agent_effect"] = bool(remaining)
 
 
+# The Bloodlines Sardaukar Commander offer of a visited space: "an effect of
+# the space" ordered freely with the printed icons [Bloodlines p. 4], but not
+# a printed icon, so a repeat of the printed effects never re-arms it.
+BOARD_ICON_COMMANDER = "sardaukar_commander"
+
+
 def rearm_board_icons(context: dict[str, ActionValue]) -> None:
     """Queue every printed icon of the visit again (Reverend Mother's repeat)."""
 
-    icons = _icon_keys(context, "board_icons")
+    icons = tuple(
+        key for key in _icon_keys(context, "board_icons") if key != BOARD_ICON_COMMANDER
+    )
     context["pending_board_icons"] = ",".join(icons)
     context["pending_board_effect"] = bool(icons)
 

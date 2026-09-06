@@ -2317,7 +2317,7 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
                 ),
             )
     elif effect is PersonalCardAgentEffect.DRAW_INTRIGUE_IF_THREE_UNITS_IN_CONFLICT:
-        if owner.troops_conflict + owner.sandworms_conflict < 3:
+        if owner.units_in_conflict < 3:
             next_owner = owner
             event_kind = "agent_card_effect_unavailable"
         else:

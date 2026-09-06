@@ -8,6 +8,12 @@ once every other pending effect has been resolved. The net deployment of the
 turn never exceeds "every troop recruited this turn plus two garrison troops"
 [Main p. 10] [FAQ p. 4], and a withdrawal may not drop the turn's deployed
 unit count below a condition an effect already consumed (Distraction's Spy).
+
+Bloodlines Sardaukar Commanders are "troops" for this purpose: one recruited
+this turn or in the garrison deploys under the same limit, counted together
+with the troops [Bloodlines p. 4] (``deploy_commanders`` /
+``withdraw_commanders``; the frame tracks the Commander share separately so a
+withdrawal returns the right kind of unit).
 """
 
 from dataclasses import replace
@@ -74,6 +80,40 @@ def legal_combat_deployments(
     )
 
 
+def legal_commander_deployments(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Enumerate the Sardaukar Commander counts that may still deploy.
+
+    A Commander shares the turn's unit limit with the troops: every unit
+    recruited this turn plus two more from the garrison [Bloodlines p. 4]
+    [Main p. 10].
+    """
+
+    found = _deployment_context(state, player)
+    if found is None:
+        return ()
+    _, recruited, existing_limit, deployed = found
+    garrison = state.players[player].commanders_garrison
+    maximum = min(garrison, recruited + existing_limit - deployed)
+    return tuple(
+        DomainAction(
+            action_id="deploy_commanders",
+            actor=player,
+            arguments=(("count", count),),
+        )
+        for count in range(1, maximum + 1)
+    )
+
+
+def _commanders_deployed(context: dict[str, ActionValue]) -> int:
+    deployed = context.get("combat_commanders_deployed", 0)
+    if isinstance(deployed, bool) or not isinstance(deployed, int):
+        raise RuntimeError("Agent-turn effect frame has invalid Commander count")
+    return deployed
+
+
 def legal_troop_withdrawals(
     state: GameState,
     player: int,
@@ -83,13 +123,41 @@ def legal_troop_withdrawals(
     found = _deployment_context(state, player)
     if found is None:
         return ()
-    _, _, _, deployed = found
+    context, _, _, deployed = found
     owner = state.players[player]
     # A consumed deployment condition (Distraction) keeps its minimum deployed.
-    maximum = min(deployed, owner.units_deployed_turn - owner.units_deployed_committed)
+    maximum = min(
+        deployed - _commanders_deployed(context),
+        owner.units_deployed_turn - owner.units_deployed_committed,
+    )
     return tuple(
         DomainAction(
             action_id="withdraw_troops",
+            actor=player,
+            arguments=(("count", count),),
+        )
+        for count in range(1, maximum + 1)
+    )
+
+
+def legal_commander_withdrawals(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Enumerate how many of this turn's deployed Commanders may return."""
+
+    found = _deployment_context(state, player)
+    if found is None:
+        return ()
+    context, _, _, _ = found
+    owner = state.players[player]
+    maximum = min(
+        _commanders_deployed(context),
+        owner.units_deployed_turn - owner.units_deployed_committed,
+    )
+    return tuple(
+        DomainAction(
+            action_id="withdraw_commanders",
             actor=player,
             arguments=(("count", count),),
         )
@@ -124,16 +192,31 @@ def _move_troops(
     context: dict[str, ActionValue],
     player: int,
     delta: int,
+    *,
+    commanders: bool = False,
 ) -> GameState:
-    """Move ``delta`` troops garrison→Conflict (negative: back) and keep the frame."""
+    """Move ``delta`` units garrison→Conflict (negative: back) and keep the frame.
+
+    ``combat_troops_deployed`` counts every unit of the turn's basic
+    deployment; ``combat_commanders_deployed`` the Commander share of it.
+    """
 
     owner = state.players[player]
-    next_owner = replace(
-        owner,
-        troops_garrison=owner.troops_garrison - delta,
-        troops_conflict=owner.troops_conflict + delta,
-        units_deployed_turn=owner.units_deployed_turn + delta,
-    )
+    if commanders:
+        next_owner = replace(
+            owner,
+            commanders_garrison=owner.commanders_garrison - delta,
+            commanders_conflict=owner.commanders_conflict + delta,
+            units_deployed_turn=owner.units_deployed_turn + delta,
+        )
+        context["combat_commanders_deployed"] = _commanders_deployed(context) + delta
+    else:
+        next_owner = replace(
+            owner,
+            troops_garrison=owner.troops_garrison - delta,
+            troops_conflict=owner.troops_conflict + delta,
+            units_deployed_turn=owner.units_deployed_turn + delta,
+        )
     players = tuple(
         next_owner if seat.player_id == player else seat for seat in state.players
     )
@@ -189,6 +272,50 @@ def apply_troop_withdrawal(
             f"{next_state.players[action.actor].units_deployed_turn}"
         ),
         kind="troops_withdrawn",
+        payload=(("count", count), ("player", action.actor)),
+    )
+    return RuleResult(state=next_state, events=(event,))
+
+
+def apply_commander_deployment(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Add the selected Sardaukar Commander count to this turn's deployment."""
+
+    if action not in legal_commander_deployments(state, action.actor):
+        raise ValueError("action is not a legal Commander deployment")
+    count = _count_argument(action)
+    _, context = current_agent_effect_context(state)
+    next_state = _move_troops(state, context, action.actor, count, commanders=True)
+    event = GameEvent(
+        event_id=(
+            f"round:{state.round_number}:player:{action.actor}:deploy_commanders:"
+            f"{next_state.players[action.actor].units_deployed_turn}"
+        ),
+        kind="commanders_deployed",
+        payload=(("count", count), ("player", action.actor)),
+    )
+    return RuleResult(state=next_state, events=(event,))
+
+
+def apply_commander_withdrawal(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Return Commanders deployed this turn from the Conflict to the garrison."""
+
+    if action not in legal_commander_withdrawals(state, action.actor):
+        raise ValueError("action is not a legal Commander withdrawal")
+    count = _count_argument(action)
+    _, context = current_agent_effect_context(state)
+    next_state = _move_troops(state, context, action.actor, -count, commanders=True)
+    event = GameEvent(
+        event_id=(
+            f"round:{state.round_number}:player:{action.actor}:withdraw_commanders:"
+            f"{next_state.players[action.actor].units_deployed_turn}"
+        ),
+        kind="commanders_withdrawn",
         payload=(("count", count), ("player", action.actor)),
     )
     return RuleResult(state=next_state, events=(event,))

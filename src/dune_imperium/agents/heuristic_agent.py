@@ -76,6 +76,13 @@ _ACTION_SCORES: Final[dict[str, float]] = {
     # never cycles withdraw/deploy instead of settling a pending choice.
     "finish_agent_turn": 0.5,
     "withdraw_troops": -10.0,
+    # Bloodlines: a Sardaukar Commander is a 2-strength unit for 2 Solari
+    # plus a Skill; buying one from the board outranks a plain recruit.
+    "acquire_sardaukar_commander": 3.0,
+    "acquire_sardaukar_commander_without_skill": 2.0,
+    "recruit_sardaukar_commander": 1.5,
+    "trash_skill_for_strength": 1.0,
+    "withdraw_commanders": -10.0,
 }
 
 _IMPERIUM_ACQUISITIONS: Final = frozenset(
@@ -95,7 +102,9 @@ _RESERVE_ACQUISITIONS: Final = frozenset(
         "acquire_leader_reserve",
     }
 )
-_COUNT_DEPLOYMENTS: Final = frozenset({"deploy_troops", "deploy_intrigue_troops"})
+_COUNT_DEPLOYMENTS: Final = frozenset(
+    {"deploy_troops", "deploy_intrigue_troops", "deploy_commanders"}
+)
 
 _ACQUISITION_BASE: Final = 3.0
 _SPY_PLACEMENT_SCORE: Final = 3.0

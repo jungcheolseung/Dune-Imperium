@@ -860,7 +860,7 @@ def _retreat_units(
     owner = state.players[player]
     if troops < 1 or owner.troops_conflict < troops:
         raise RuntimeError("Intrigue retreat exceeds the troops in the Conflict")
-    remaining_units = owner.troops_conflict - troops + owner.sandworms_conflict
+    remaining_units = owner.units_in_conflict - troops
     next_strength = (
         max(owner.combat_strength - 2 * troops, 0) if remaining_units else 0
     )

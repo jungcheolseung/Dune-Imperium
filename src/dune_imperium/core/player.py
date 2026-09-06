@@ -87,6 +87,21 @@ class PlayerState:
     # Position of the Feyd token on the printed Training track; only used by
     # the Feyd-Rautha Harkonnen Leader and left on the start space otherwise.
     feyd_track_space: str = "start"
+    # Bloodlines Sardaukar Commanders: a "troop" worth 2 strength that returns
+    # to the supply after Combat and is recruited from the supply only by
+    # paying 2 Solari once per turn [Bloodlines p. 4]. All zero without the
+    # ``bloodlines`` option.
+    commanders_supply: int = 0
+    commanders_garrison: int = 0
+    commanders_conflict: int = 0
+    # Skill tile instances in the supply (public) [Bloodlines p. 4]; at most
+    # one of each Skill identity.
+    skill_ids: tuple[str, ...] = ()
+    # Whether the once-per-turn paid Commander recruit was used this turn.
+    commander_recruited_turn: bool = False
+    # The Skill strength currently folded into ``combat_strength`` so the
+    # running total can be re-derived when a Skill condition changes.
+    skill_strength_applied: int = 0
     deck: tuple[str, ...] = ()
     hand: tuple[str, ...] = ()
     # Hand cards whose identity every seat already knows because they
@@ -109,6 +124,22 @@ class PlayerState:
     active_contract_ids: tuple[str, ...] = ()
     completed_contract_ids: tuple[str, ...] = ()
 
+    @property
+    def units_in_conflict(self) -> int:
+        """Return every unit in the Conflict: troops, sandworms, Commanders."""
+
+        return self.troops_conflict + self.sandworms_conflict + self.commanders_conflict
+
+    @property
+    def commanders_total(self) -> int:
+        """Return the Sardaukar Commanders this player owns anywhere."""
+
+        return (
+            self.commanders_supply
+            + self.commanders_garrison
+            + self.commanders_conflict
+        )
+
     def __post_init__(self) -> None:
         if self.player_id < 0:
             raise ValueError("player_id must not be negative")
@@ -127,9 +158,20 @@ class PlayerState:
             self.units_deployed_committed,
             self.spice_at_turn_start,
             self.spice_spent_turn,
+            self.commanders_supply,
+            self.commanders_garrison,
+            self.commanders_conflict,
+            self.skill_strength_applied,
         )
         if min(quantities) < 0:
             raise ValueError("player component quantities must not be negative")
+        if len(self.skill_ids) != len(set(self.skill_ids)):
+            raise ValueError("a Skill tile cannot be held twice")
+        skill_identities = tuple(
+            instance_id.split(":")[1] for instance_id in self.skill_ids
+        )
+        if len(skill_identities) != len(set(skill_identities)):
+            raise ValueError("a player cannot hold two copies of one Skill")
 
         active_agents = 3 if self.swordmaster_acquired else 2
         if self.agents_available + len(self.agent_locations) != active_agents:

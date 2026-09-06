@@ -34,6 +34,8 @@ from dune_imperium.rules.board_effects import (
 from dune_imperium.rules.combat_deployment import (
     legal_agent_turn_finish_actions,
     legal_combat_deployments,
+    legal_commander_deployments,
+    legal_commander_withdrawals,
     legal_troop_withdrawals,
 )
 from dune_imperium.rules.contracts import legal_contract_completion_actions
@@ -47,6 +49,10 @@ from dune_imperium.rules.leader_abilities import (
     legal_leader_board_repeat_actions,
     legal_leader_placement_ability_actions,
     legal_leader_signet_actions,
+)
+from dune_imperium.rules.sardaukar import (
+    legal_commander_recruit_actions,
+    legal_sardaukar_commander_actions,
 )
 from dune_imperium.rules.spies import legal_gather_intelligence_actions
 
@@ -99,12 +105,16 @@ def legal_agent_effect_frame_actions(
         *legal_desert_tactics_actions(state, player),
         *legal_imperial_privilege_actions(state, player),
         *legal_maker_space_actions(state, player),
+        *legal_sardaukar_commander_actions(state, player),
+        *legal_commander_recruit_actions(state, player),
         *legal_combat_deployments(state, player),
+        *legal_commander_deployments(state, player),
         *legal_intrigue_play_actions(state, player),
         *legal_agent_turn_finish_actions(state, player),
         # Withdrawals last (OQ-029): a "first legal action" walk deploys up
         # to the limit and finishes instead of cycling deploy/withdraw.
         *legal_troop_withdrawals(state, player),
+        *legal_commander_withdrawals(state, player),
     )
 
 

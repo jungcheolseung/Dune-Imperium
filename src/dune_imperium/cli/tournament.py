@@ -84,6 +84,16 @@ def _build_parser() -> argparse.ArgumentParser:
         help="shuffle the three Uprising promo Imperium cards into the deck",
     )
     parser.add_argument(
+        "--bloodlines",
+        action="store_true",
+        help="play with the Bloodlines expansion",
+    )
+    parser.add_argument(
+        "--tech-module",
+        action="store_true",
+        help="add the Bloodlines Tech Module (requires --bloodlines)",
+    )
+    parser.add_argument(
         "--workers",
         type=int,
         default=1,
@@ -124,6 +134,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             rotate_seats=not arguments.no_rotate_seats,
             rotate_leaders=arguments.rotate_leaders,
             promo_cards=arguments.promo_cards,
+            bloodlines=arguments.bloodlines,
+            tech_module=arguments.tech_module,
             max_steps=arguments.max_steps,
         )
     except ValueError as error:

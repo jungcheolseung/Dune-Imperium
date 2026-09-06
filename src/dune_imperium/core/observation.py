@@ -51,6 +51,12 @@ class PublicPlayerView:
     high_council: bool
     maker_hooks: bool
     feyd_track_space: str
+    # Bloodlines Sardaukar Commanders and the public Skill tiles.
+    commanders_supply: int
+    commanders_garrison: int
+    commanders_conflict: int
+    skill_ids: tuple[str, ...]
+    commander_recruited_turn: bool
     in_play: tuple[str, ...]
     # Every card reaches a discard pile face up (acquired cards [Main p. 13],
     # played and revealed cards after Clean Up [Main pp. 9, 12, 20], cards
@@ -125,6 +131,13 @@ class PlayerView:
     # Conflict's first-place reward (OQ-025).
     conflict_first_place_influence_bonus: int = 0
     maker_bonus_spice: tuple[tuple[str, int], ...] = ()
+    # Bloodlines: Commanders still on the board and in the bank, and the
+    # Skill tiles (the stack order stays hidden; only its size is shown).
+    sardaukar_commander_space_ids: tuple[str, ...] = ()
+    sardaukar_commanders_bank: int = 0
+    skill_stack_size: int = 0
+    skill_face_up: tuple[str, ...] = ()
+    skill_trash: tuple[str, ...] = ()
     public_data: tuple[tuple[str, ActionValue], ...] = ()
     private_data: tuple[tuple[str, ActionValue], ...] = ()
 
@@ -286,6 +299,11 @@ def observe_state(state: GameState, player: int) -> PlayerView:
             state.conflict_first_place_influence_bonus
         ),
         maker_bonus_spice=state.maker_bonus_spice,
+        sardaukar_commander_space_ids=state.sardaukar_commander_space_ids,
+        sardaukar_commanders_bank=state.sardaukar_commanders_bank,
+        skill_stack_size=len(state.skill_stack),
+        skill_face_up=state.skill_face_up,
+        skill_trash=state.skill_trash,
     )
 
 
@@ -318,6 +336,11 @@ def _public_player_view(player: PlayerState) -> PublicPlayerView:
         high_council=player.high_council,
         maker_hooks=player.maker_hooks,
         feyd_track_space=player.feyd_track_space,
+        commanders_supply=player.commanders_supply,
+        commanders_garrison=player.commanders_garrison,
+        commanders_conflict=player.commanders_conflict,
+        skill_ids=player.skill_ids,
+        commander_recruited_turn=player.commander_recruited_turn,
         in_play=player.in_play,
         discard_pile=player.discard_pile,
         trashed=player.trashed,

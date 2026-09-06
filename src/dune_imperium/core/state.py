@@ -65,6 +65,15 @@ class GameState:
     # rewards pledged to the current Conflict's first-place reward, paid out
     # with that reward and cleared afterwards (OQ-025).
     conflict_first_place_influence_bonus: int = 0
+    # Bloodlines: board spaces still holding a Sardaukar Commander, the
+    # Commander kept in the bank for Sardaukar Standard, and the Skill tiles
+    # (face-down stack in hidden order, face-up choices, trashed)
+    # [Bloodlines pp. 3-4]. All empty without the ``bloodlines`` option.
+    sardaukar_commander_space_ids: tuple[str, ...] = ()
+    sardaukar_commanders_bank: int = 0
+    skill_stack: tuple[str, ...] = ()
+    skill_face_up: tuple[str, ...] = ()
+    skill_trash: tuple[str, ...] = ()
     maker_bonus_spice: tuple[tuple[str, int], ...] = (
         ("deep_desert", 0),
         ("hagga_basin", 0),
@@ -142,6 +151,28 @@ class GameState:
             raise ValueError("Reserve stack IDs must be unique")
         if any(not card_id or count < 0 for card_id, count in self.reserve_stacks):
             raise ValueError("Reserve stacks require IDs and non-negative counts")
+
+        if len(self.sardaukar_commander_space_ids) != len(
+            set(self.sardaukar_commander_space_ids)
+        ):
+            raise ValueError("a board space holds at most one Sardaukar Commander")
+        if self.sardaukar_commanders_bank < 0:
+            raise ValueError("the Commander bank must not be negative")
+        skills = (
+            *self.skill_stack,
+            *self.skill_face_up,
+            *self.skill_trash,
+            *(skill_id for player in self.players for skill_id in player.skill_ids),
+        )
+        if len(skills) != len(set(skills)):
+            raise ValueError("a Skill tile cannot occupy two zones")
+        if not self.config.bloodlines and (
+            skills
+            or self.sardaukar_commander_space_ids
+            or self.sardaukar_commanders_bank
+            or any(player.commanders_total for player in self.players)
+        ):
+            raise ValueError("Sardaukar Commanders require the Bloodlines expansion")
 
         maker_ids = tuple(space_id for space_id, _ in self.maker_bonus_spice)
         if maker_ids != ("deep_desert", "hagga_basin", "imperial_basin"):

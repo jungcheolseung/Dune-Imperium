@@ -150,6 +150,7 @@ def reset_turn_counters(
             units_deployed_committed=0,
             spice_at_turn_start=owner.resources.spice,
             spice_spent_turn=0,
+            commander_recruited_turn=False,
         ),
     )
 

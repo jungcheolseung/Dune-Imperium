@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from numbers import Integral
 
 from dune_imperium.config import RulesetConfig
+from dune_imperium.content.bloodlines.sardaukar import SKILLS
 from dune_imperium.content.uprising.board import (
     BOARD_SPACES,
     OBSERVATION_POSTS,
@@ -43,9 +44,11 @@ from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.rules.agent_effects import AUTOMATIC_AGENT_ICONS
 from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 
-ACTION_CODEC_VERSION = 89
+ACTION_CODEC_VERSION = 90
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
+# Seven Sardaukar Commanders exist [Bloodlines p. 2].
+MAX_COMMANDER_DEPLOYMENT = 7
 
 
 @dataclass(frozen=True, slots=True)
@@ -242,6 +245,8 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         for count in range(1, MAX_DEPLOYMENT_COUNT + 1)
     )
     templates.append(ActionTemplate(action_id="finish_agent_turn"))
+    if config.bloodlines:
+        templates.extend(_bloodlines_templates())
     templates.extend(
         ActionTemplate(
             action_id="recall_agent_for_agent_card",
@@ -557,6 +562,33 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     templates.extend(_trash_templates(config, "select_corrinth_city_discard"))
     templates.extend(_trash_templates(config, "pay_corrinth_city"))
     return tuple(sorted(templates, key=_template_sort_key))
+
+
+def _bloodlines_templates() -> tuple[ActionTemplate, ...]:
+    """Sardaukar Commander choices [Bloodlines p. 4] (``rules.sardaukar``)."""
+
+    templates: list[ActionTemplate] = [
+        ActionTemplate(action_id=action_id)
+        for action_id in (
+            "acquire_sardaukar_commander_without_skill",
+            "decline_sardaukar_commander",
+            "recruit_sardaukar_commander",
+        )
+    ]
+    for action_id in ("acquire_sardaukar_commander", "trash_skill_for_strength"):
+        templates.extend(
+            ActionTemplate(
+                action_id=action_id,
+                arguments=(("skill_id", skill.skill_id),),
+            )
+            for skill in SKILLS
+        )
+    for action_id in ("deploy_commanders", "withdraw_commanders"):
+        templates.extend(
+            ActionTemplate(action_id=action_id, arguments=(("count", count),))
+            for count in range(1, MAX_COMMANDER_DEPLOYMENT + 1)
+        )
+    return tuple(templates)
 
 
 def _agent_turn_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:

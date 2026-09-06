@@ -1477,7 +1477,7 @@ def apply_leader_reveal_action(
         post_id = dict(action.arguments).get("post_id")
         if not isinstance(post_id, str):
             raise RuntimeError("Devious Strength has an invalid post ID")
-        counted = 2 if owner.troops_conflict + owner.sandworms_conflict else 0
+        counted = 2 if owner.units_in_conflict else 0
         next_owner = replace(
             recall_spy(owner, post_id),
             combat_strength=owner.combat_strength + counted,
@@ -1511,7 +1511,7 @@ def apply_leader_reveal_action(
 
     # Desert Scouts retreats one troop from the Conflict to the garrison
     # [Main p. 20]. Without remaining units the revealed swords stop counting.
-    remaining_units = owner.troops_conflict - 1 + owner.sandworms_conflict
+    remaining_units = owner.units_in_conflict - 1
     next_strength = owner.combat_strength - 2 if remaining_units else 0
     strength_delta = next_strength - owner.combat_strength
     next_owner = replace(

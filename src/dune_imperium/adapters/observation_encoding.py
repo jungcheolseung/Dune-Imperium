@@ -18,6 +18,11 @@ Encoding rules:
 from dataclasses import dataclass
 from typing import Final
 
+from dune_imperium.content.bloodlines.sardaukar import (
+    COMMANDER_SETUP_SPACE_IDS,
+    SKILLS,
+    skill_for_instance,
+)
 from dune_imperium.content.uprising.board import (
     BOARD_SPACES_BY_ID,
     OBSERVATION_POSTS,
@@ -42,7 +47,7 @@ from dune_imperium.core.observation import PlayerView, PublicPlayerView
 from dune_imperium.core.state import GamePhase
 from dune_imperium.rules.frames import FrameKind
 
-OBSERVATION_VERSION: Final = 5
+OBSERVATION_VERSION: Final = 6
 _SEATS: Final = 4
 
 PERSONAL_CARD_IDS: Final = (
@@ -65,6 +70,8 @@ FACTION_IDS: Final = tuple(faction.value for faction in Faction)
 CONTROL_SPACE_IDS: Final = ("arrakeen", "spice_refinery", "imperial_basin")
 MAKER_SPACE_IDS: Final = ("deep_desert", "hagga_basin", "imperial_basin")
 RESERVE_STACK_IDS: Final = tuple(stack.card.card_id for stack in RESERVE_STACKS)
+SKILL_IDS: Final = tuple(skill.skill_id for skill in SKILLS)
+COMMANDER_SPACE_IDS: Final = COMMANDER_SETUP_SPACE_IDS
 
 _PHASES: Final = tuple(GamePhase)
 _FRAME_KINDS: Final = tuple(kind.value for kind in FrameKind)
@@ -92,7 +99,7 @@ class ObservationSegment:
 def _seat_segment_lengths(seat: int) -> tuple[tuple[str, int], ...]:
     prefix = f"seat{seat}"
     return (
-        (f"{prefix}_scalars", 26),
+        (f"{prefix}_scalars", 30),
         (f"{prefix}_alliances", len(FACTION_IDS)),
         (f"{prefix}_control", len(CONTROL_SPACE_IDS)),
         (f"{prefix}_agent_locations", _AGENT_LOCATION_SLOTS),
@@ -106,6 +113,7 @@ def _seat_segment_lengths(seat: int) -> tuple[tuple[str, int], ...]:
         (f"{prefix}_imperium_set_aside", _SET_ASIDE_SLOTS),
         (f"{prefix}_active_contracts", len(CONTRACT_IDS)),
         (f"{prefix}_completed_contracts", len(CONTRACT_IDS)),
+        (f"{prefix}_skills", len(SKILL_IDS)),
     )
 
 
@@ -125,6 +133,10 @@ def _segment_lengths() -> tuple[tuple[str, int], ...]:
         ("imperium_removed", len(PERSONAL_CARD_IDS)),
         ("reveal_order", _SEATS),
         ("leader_draft_pool", _LEADER_DRAFT_SLOTS),
+        ("commander_spaces", len(COMMANDER_SPACE_IDS)),
+        ("commander_bank", 1),
+        ("skill_stack_size", 1),
+        ("skill_face_up", len(SKILL_IDS)),
     ]
     for seat in range(_SEATS):
         lengths.extend(_seat_segment_lengths(seat))
@@ -259,6 +271,13 @@ def encode_player_view(view: PlayerView) -> tuple[int, ...]:
         "leader_draft_pool",
         pool_slots + [0] * (_LEADER_DRAFT_SLOTS - len(pool_slots)),
     )
+    writer.write(
+        "commander_spaces",
+        _multi_hot(view.sardaukar_commander_space_ids, COMMANDER_SPACE_IDS),
+    )
+    writer.write("commander_bank", [view.sardaukar_commanders_bank])
+    writer.write("skill_stack_size", [view.skill_stack_size])
+    writer.write("skill_face_up", _skill_counts(view.skill_face_up))
 
     for seat_offset in range(_SEATS):
         seat = (observer + seat_offset) % _SEATS
@@ -306,6 +325,10 @@ def _write_seat(writer: _Writer, seat_offset: int, player: PublicPlayerView) -> 
             player.hand_size,
             player.deck_size,
             player.intrigue_card_count,
+            player.commanders_supply,
+            player.commanders_garrison,
+            player.commanders_conflict,
+            int(player.commander_recruited_turn),
         ],
     )
     writer.write(
@@ -357,6 +380,7 @@ def _write_seat(writer: _Writer, seat_offset: int, player: PublicPlayerView) -> 
         f"{prefix}_completed_contracts",
         _contract_flags(player.completed_contract_ids),
     )
+    writer.write(f"{prefix}_skills", _skill_counts(player.skill_ids))
 
 
 def _identity_slots(
@@ -388,6 +412,13 @@ def _intrigue_counts(instance_ids: tuple[str, ...]) -> list[int]:
     for instance_id in instance_ids:
         card_id = INTRIGUE_CARDS_BY_INSTANCE[instance_id].card.card_id
         counts[_INTRIGUE_INDEX[card_id]] += 1
+    return counts
+
+
+def _skill_counts(instance_ids: tuple[str, ...]) -> list[int]:
+    counts = [0] * len(SKILL_IDS)
+    for instance_id in instance_ids:
+        counts[SKILL_IDS.index(skill_for_instance(instance_id).skill_id)] += 1
     return counts
 
 

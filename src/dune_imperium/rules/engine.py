@@ -91,6 +91,8 @@ from dune_imperium.rules.combat import (
 from dune_imperium.rules.combat_deployment import (
     apply_agent_turn_finish,
     apply_combat_deployment,
+    apply_commander_deployment,
+    apply_commander_withdrawal,
     apply_troop_withdrawal,
 )
 from dune_imperium.rules.contracts import (
@@ -184,6 +186,13 @@ from dune_imperium.rules.reveal_turn import (
     legal_reveal_spy_actions,
     legal_reveal_troop_retreat_actions,
 )
+from dune_imperium.rules.sardaukar import (
+    apply_commander_recruit,
+    apply_sardaukar_commander_action,
+    apply_skill_trash,
+    legal_commander_recruit_actions,
+    legal_skill_trash_actions,
+)
 from dune_imperium.rules.setup import create_draft_initial_state, create_initial_state
 from dune_imperium.rules.spies import apply_gather_intelligence_action
 from dune_imperium.rules.strength import refresh_pre_reveal_strength
@@ -268,6 +277,8 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         legal_imperium_acquisitions,
         legal_manipulated_acquisitions,
         legal_leader_reveal_actions,
+        legal_commander_recruit_actions,
+        legal_skill_trash_actions,
         legal_resume_reveal_choice_actions,
         legal_finish_reveal_actions,
         legal_intrigue_play_actions,
@@ -360,7 +371,15 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "recall_agent_for_imperial_privilege": apply_imperial_privilege_action,
     "deploy_troops": apply_combat_deployment,
     "withdraw_troops": apply_troop_withdrawal,
+    "deploy_commanders": apply_commander_deployment,
+    "withdraw_commanders": apply_commander_withdrawal,
     "finish_agent_turn": apply_agent_turn_finish,
+    # Bloodlines Sardaukar Commanders
+    "acquire_sardaukar_commander": apply_sardaukar_commander_action,
+    "acquire_sardaukar_commander_without_skill": apply_sardaukar_commander_action,
+    "decline_sardaukar_commander": apply_sardaukar_commander_action,
+    "recruit_sardaukar_commander": apply_commander_recruit,
+    "trash_skill_for_strength": apply_skill_trash,
     # Agent-card serial choices
     "trash_agent_card": apply_agent_card_trash,
     "decline_agent_card_trash": apply_agent_card_trash,
