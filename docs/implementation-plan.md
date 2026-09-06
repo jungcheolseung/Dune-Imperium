@@ -338,4 +338,4 @@ tests/
 
 ## 8. 바로 다음 작업
 
-R0~M8과 M11(슬라이스 7까지)이 완료된 2026-09-03 기준으로 다음 작업은 **Uprising 프로모 Imperium 3장 콘텐츠 슬라이스**(M6 절, 같은 날 완료)이고 그 뒤가 **M9 평가 러너와 baseline**이다(마일스톤 절의 M9 완료 조건을 따른다). M9는 2026-09-06에 착수해 첫 슬라이스(좌석·Leader·seed 교차 대회 도구와 지표 보고서, `dune-imperium-tournament`, 기준선 `evaluation/baseline-2026-09-06.md`)와 둘째 슬라이스(determinized rollout search baseline `RolloutAgent`, heuristic 3명 상대 48% 승률)를 끝냈다. 남은 M9 항목은 정책 추론을 batch하는 self-play 러너이며 M10의 학습 정책 인터페이스와 함께 만든다. 최신 기준선과 세부 착수점은 [개발 인수인계](development-handoff.md)가 관리한다.
+R0~M8과 M11(슬라이스 7까지)이 완료된 2026-09-03 기준으로 다음 작업은 **Uprising 프로모 Imperium 3장 콘텐츠 슬라이스**(M6 절, 같은 날 완료)이고 그 뒤가 **M9 평가 러너와 baseline**이다(마일스톤 절의 M9 완료 조건을 따른다). M9는 2026-09-06에 착수해 첫 슬라이스(좌석·Leader·seed 교차 대회 도구와 지표 보고서, `dune-imperium-tournament`, 기준선 `evaluation/baseline-2026-09-06.md`)와 둘째 슬라이스(determinized rollout search baseline `RolloutAgent`, heuristic 3명 상대 48% 승률)를 끝냈다. 셋째 슬라이스(lockstep self-play 러너 `training.SelfPlayRunner`와 `BatchPolicy` 계약, `dune-imperium-selfplay`)로 같은 날 M9를 완료했다. 다음은 **M10**이며, 첫 결정은 학습 라이브러리(torch 미포함)다 — 세부 착수점은 개발 인수인계의 "다음 구현 순서". 최신 기준선과 세부 착수점은 [개발 인수인계](development-handoff.md)가 관리한다.

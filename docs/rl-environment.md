@@ -26,6 +26,7 @@
 - 옵션: `choam_module`(룰셋 선택), `leader_draft`(OQ-007 draft setup; episode가 pick `PlayerDecision`들로 시작한다), `max_steps`(truncation 안전장치, 기본 30,000; truncation 시 보상 0). `pick_leader` 템플릿은 draft 여부와 무관하게 두 catalog에 항상 포함되어 action 공간이 옵션에 따라 달라지지 않는다(codec v79).
 - 러너: `run_random_game(engine, config, game_seed, policy_seed)`이 FINISHED까지 실행해 `GameSimulation(state, standings, replay)`를 돌려준다. 디버그 CLI와 `run_random_round`는 의도적으로 한 라운드 단위를 유지한다.
 - 처리량 기준(2026-08-30, 로컬 측정, 관측 v1 시점): env 경유 masked random full episode 약 4,100 agent step/s(매 step 전체 관측 인코딩 포함), `run_random_game` 직접 실행 약 48ms/판(약 9,000 step/s).
+- self-play 데이터 수집(2026-09-06, M9): `training.SelfPlayRunner`는 여러 판을 lockstep으로 돌리며 좌석별 정책 이름으로 요청을 묶어 정책당 한 번 `BatchPolicy.act`를 부른다. 요청은 위 관측 인코딩과 codec mask에 더해 `PlayerView`·합법 행동·상태(search baseline용)를 담고, 답은 합법 catalog 인덱스여야 한다. Episode의 보상은 위 종료 보상 규약과 같고(`pettingzoo_env`의 상수 재사용), truncation은 0이다. `stack_episodes`의 per-step return은 행동한 좌석의 종료 보상이다. 단일 프로세스 약 4,900 decisions/s.
 
 ## 검증 기준
 
