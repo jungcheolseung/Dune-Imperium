@@ -299,7 +299,7 @@ def test_parallel_collection_matches_the_serial_contract(tmp_path: Path) -> None
     assert parallel.records[0].learner_steps > 0
 
 
-def test_sampling_policy_never_repeats_an_action_at_the_same_observation() -> None:
+def test_cycle_guard_masks_taken_actions_for_greedy_play_only() -> None:
     from dune_imperium.training.torch_policy import _CycleGuard
 
     guard = _CycleGuard()
@@ -314,17 +314,10 @@ def test_sampling_policy_never_repeats_an_action_at_the_same_observation() -> No
     # A new round forgets the history.
     assert guard.greedy(2, observation, logits) == 1
 
+    # Sampling is unguarded: the same observation may repeat an action.
     runner = SelfPlayRunner(RulesetConfig())
     network = _network(runner.codec.size)
     policy = TorchBatchPolicy(network, _CPU, seed=4, sample=True)
     result = runner.run({"p": policy}, (SelfPlaySpec(game_seed=8, lineup=("p",) * 4),))
-    episode = result.episodes[0]
-    assert not episode.truncated
-    # The round number is part of the observation, so an identical
-    # (seat, observation) pair recurs only within a round; the guard must
-    # never let it repeat an action.
-    taken: dict[tuple[int, bytes], set[int]] = {}
-    for step in episode.steps:
-        key = (step.seat, step.observation.tobytes())
-        assert step.action not in taken.setdefault(key, set())
-        taken[key].add(step.action)
+    assert not result.episodes[0].truncated
+    assert not policy._guards
