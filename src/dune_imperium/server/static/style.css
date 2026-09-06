@@ -280,15 +280,15 @@ button:disabled { opacity: 0.5; cursor: wait; }
   font-size: 0.8em;
 }
 .council-token { width: 1.9em; height: 1.9em; }
-/* Per-seat force panel in the Conflict quadrant: deployed units on the
-   first row, the garrison on the second. */
-.force-panel {
+/* Per-seat force chips: the garrison count in the seat's circle and the
+   deployed units in its quadrant of the Conflict field. */
+.force-chip {
   position: absolute;
   transform: translate(-50%, -50%);
   display: flex;
-  flex-direction: column;
-  gap: 0.1em;
-  padding: 0.2em 0.45em;
+  align-items: center;
+  gap: 0.3em;
+  padding: 0.15em 0.45em;
   background: rgba(0, 0, 0, 0.72);
   border: 2px solid;
   border-radius: 8px;
@@ -297,17 +297,8 @@ button:disabled { opacity: 0.5; cursor: wait; }
   white-space: nowrap;
   font-size: 0.9em;
 }
-.force-row { display: flex; align-items: center; gap: 0.3em; }
-.force-row:not(.active) { opacity: 0.6; }
-.force-row .icon { height: 1.3em; }
-.force-row.garrison { padding-left: 0.2em; }
-.force-label {
-  font-size: 0.7em;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  opacity: 0.8;
-}
+.force-chip .icon { height: 1.3em; }
+.force-chip.garrison { border-style: dashed; }
 .force-strength {
   margin-left: 0.15em;
   padding: 0 0.35em;

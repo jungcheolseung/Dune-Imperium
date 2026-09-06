@@ -27,6 +27,7 @@ def test_marker_tables_cover_the_printed_tracks() -> None:
     strength = layout["strength"]
     assert isinstance(strength, dict)
     assert len(strength["cells"]) == 11 and len(strength["rows"]) == 2
+    assert len(layout["garrisons"]) == 4
     assert len(layout["conflict_quadrants"]) == 4
     assert len(layout["council_seats"]) == 4
     # Card slots are boxes like the hotspots: the Conflict deck and the
@@ -43,7 +44,7 @@ def test_marker_tables_cover_the_printed_tracks() -> None:
     assert all(inside(value) for value in influence["seat_x"])
     assert all(inside(value) for value in victory["levels"])
     assert all(inside(value) for value in strength["cells"])
-    for table in ("conflict_quadrants", "council_seats"):
+    for table in ("garrisons", "conflict_quadrants", "council_seats"):
         assert all(inside(point[0]) and inside(point[1]) for point in layout[table])
     slots = (
         layout["conflict_deck_slot"],

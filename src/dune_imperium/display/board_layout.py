@@ -114,10 +114,15 @@ VICTORY_POINT_OVERFLOW_Y: Final = 25.5
 STRENGTH_CELL_X: Final = tuple(46.3 + index * 4.37 for index in range(11))
 STRENGTH_ROW_Y: Final = (93.2, 97.6)
 
-# Conflict area quadrant centres, clockwise from the bottom-left one, used
-# for seats 0..3 ("keep your deployed units in the quadrant nearest to your
-# garrison" [Main p. 10]).
-CONFLICT_QUADRANTS: Final = ((45.5, 84.5), (45.5, 71.0), (86.0, 71.0), (86.0, 84.5))
+# The Conflict area (re-measured 2026-09-06): the four bracketed circles in
+# its corners are the garrisons, and the central field between them is
+# divided by a cross into four quadrants where deployed units go ("keep
+# your deployed units in the quadrant nearest to your garrison"
+# [Main p. 10]). Both tables run clockwise from the bottom-left corner for
+# seats 0..3: garrison circle centres, then the centre of each seat's
+# quadrant (kept toward its outer half, clear of the crossed swords).
+GARRISON_POINTS: Final = ((44.9, 83.1), (44.9, 71.8), (85.7, 71.8), (85.7, 83.1))
+CONFLICT_QUADRANTS: Final = ((56.5, 83.0), (56.5, 71.8), (74.0, 71.8), (74.0, 83.0))
 
 # The four High Council seats, left to right.
 COUNCIL_SEATS: Final = ((42.0, 5.5), (46.0, 5.5), (50.0, 5.5), (54.0, 5.5))
@@ -150,6 +155,7 @@ def marker_layout() -> dict[str, Any]:
             "overflow_y": VICTORY_POINT_OVERFLOW_Y,
         },
         "strength": {"cells": list(STRENGTH_CELL_X), "rows": list(STRENGTH_ROW_Y)},
+        "garrisons": [list(point) for point in GARRISON_POINTS],
         "conflict_quadrants": [list(point) for point in CONFLICT_QUADRANTS],
         "council_seats": [list(point) for point in COUNCIL_SEATS],
         "conflict_deck_slot": list(CONFLICT_DECK_SLOT),

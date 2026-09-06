@@ -1617,37 +1617,44 @@ function renderTrackMarkers(stage, view) {
       stage.appendChild(token);
     }
 
-    /* One force panel per seat in its Conflict quadrant: the units
-       deployed this round (with the strength) and the garrison, which
-       has no printed home on the main board [Main p. 10]. */
-    const [qx, qy] = tracks.conflict_quadrants[seat] || tracks.conflict_quadrants[0];
-    const panel = document.createElement("div");
-    panel.className = "force-panel";
-    panel.style.borderColor = color;
-    panel.title = `좌석 ${seat} · Conflict 병력과 garrison`;
-    const conflictRow = document.createElement("div");
-    conflictRow.className = "force-row" + (units > 0 ? " active" : "");
-    conflictRow.append(seatToken(seat, "seat-mark"), icon("sword", "Conflict"));
-    conflictRow.appendChild(amount("troop", "Conflict troop", player.troops_conflict || 0));
-    if (player.sandworms_conflict) {
-      conflictRow.appendChild(amount("sandworm", "sandworm", player.sandworms_conflict));
+    /* Garrison count in the seat's bracketed circle (always shown), and
+       the units deployed this round in the seat's quadrant of the central
+       field, with the strength [Main p. 10]. */
+    const [gx, gy] = tracks.garrisons[seat] || tracks.garrisons[0];
+    const garrison = document.createElement("div");
+    garrison.className = "force-chip garrison";
+    garrison.style.borderColor = color;
+    garrison.title = `좌석 ${seat} · garrison ${player.troops_garrison || 0}`;
+    garrison.append(
+      seatToken(seat, "seat-mark"),
+      amount("troop", "garrison troop", player.troops_garrison || 0)
+    );
+    placeAt(garrison, gx, gy);
+    stage.appendChild(garrison);
+
+    if (units > 0) {
+      const [qx, qy] = tracks.conflict_quadrants[seat] || tracks.conflict_quadrants[0];
+      const deployed = document.createElement("div");
+      deployed.className = "force-chip deployed";
+      deployed.style.borderColor = color;
+      deployed.title = `좌석 ${seat} · Conflict 병력`;
+      deployed.appendChild(seatToken(seat, "seat-mark"));
+      if (player.troops_conflict) {
+        deployed.appendChild(amount("troop", "Conflict troop", player.troops_conflict));
+      }
+      if (player.sandworms_conflict) {
+        deployed.appendChild(amount("sandworm", "sandworm", player.sandworms_conflict));
+      }
+      if (strength) {
+        const total = document.createElement("span");
+        total.className = "force-strength";
+        total.title = `전투력 ${strength}`;
+        total.textContent = String(strength);
+        deployed.appendChild(total);
+      }
+      placeAt(deployed, qx, qy);
+      stage.appendChild(deployed);
     }
-    if (strength) {
-      const total = document.createElement("span");
-      total.className = "force-strength";
-      total.title = `전투력 ${strength}`;
-      total.textContent = String(strength);
-      conflictRow.appendChild(total);
-    }
-    const garrisonRow = document.createElement("div");
-    garrisonRow.className = "force-row garrison";
-    const label = document.createElement("span");
-    label.className = "force-label";
-    label.textContent = "garrison";
-    garrisonRow.append(label, amount("troop", "garrison troop", player.troops_garrison || 0));
-    panel.append(conflictRow, garrisonRow);
-    placeAt(panel, qx, qy);
-    stage.appendChild(panel);
 
     if (player.high_council && councilSlot < tracks.council_seats.length) {
       const [cx, cy] = tracks.council_seats[councilSlot];
