@@ -137,15 +137,37 @@ button:disabled { opacity: 0.5; cursor: wait; }
 }
 #table {
   display: grid;
-  grid-template-columns: 250px minmax(0, 1fr) 380px;
+  grid-template-columns: 250px minmax(0, 1fr) clamp(380px, 34vw, 760px);
   gap: 0.5rem;
   min-height: 0;
   padding: 0.5rem 0.5rem 0;
 }
-#seats, #side {
+#seats {
   min-height: 0;
   overflow-y: auto;
   scrollbar-width: thin;
+}
+/* The right panel is two columns: the decision and its actions on the
+   left, the action log on the right, each scrolling on its own. Narrow
+   screens (media query at the end) stack them again. */
+#side {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0.5rem;
+  min-height: 0;
+}
+#side-main, #side-log {
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+#side-log { display: flex; flex-direction: column; }
+#side-log #action-log {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  margin-bottom: 0;
 }
 /* The board fills the centre; the shared card zones (Imperium Row,
    Reserve, draft pool, ...) stand in a column beside it so a wide screen
@@ -659,7 +681,8 @@ button:disabled { opacity: 0.5; cursor: wait; }
 /* ---------- action log ---------- */
 
 #action-log .log-list {
-  max-height: 28rem;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   scrollbar-width: thin;
   font-size: 0.8rem;
@@ -709,6 +732,13 @@ button:disabled { opacity: 0.5; cursor: wait; }
 .turn-cards .vcard.small { width: 54px; }
 .logevent { margin: 0.05rem 0 0.05rem 1.4rem; font-size: 0.72rem; opacity: 0.65; }
 
+@media (max-width: 1400px) {
+  #table { grid-template-columns: 250px minmax(0, 1fr) 380px; }
+  #side { grid-template-columns: minmax(0, 1fr); overflow-y: auto; }
+  #side-main, #side-log { overflow: visible; }
+  #side-log #action-log { flex: none; }
+  #action-log .log-list { max-height: 28rem; }
+}
 @media (max-width: 1100px) {
   #table { grid-template-columns: 200px minmax(0, 1fr) 300px; }
   #center { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
