@@ -1521,6 +1521,20 @@ function renderSlotCards(stage, view) {
     placeAt(card, cLeft + cWidth / 2, cTop + cHeight / 2);
     stage.appendChild(card);
   }
+  if (view.conflict_deck_size > 0 && tracks.conflict_deck_slot) {
+    const [dLeft, dTop, dWidth, dHeight] = tracks.conflict_deck_slot;
+    const deck = document.createElement("div");
+    deck.className = "slot-deck";
+    deck.style.width = `${dWidth}%`;
+    deck.style.height = `${dHeight}%`;
+    deck.title = `Conflict deck · ${view.conflict_deck_size}장 남음`;
+    const count = document.createElement("span");
+    count.className = "slot-deck-count";
+    count.textContent = String(view.conflict_deck_size);
+    deck.append(icon("sword", "Conflict"), count);
+    placeAt(deck, dLeft + dWidth / 2, dTop + dHeight / 2);
+    stage.appendChild(deck);
+  }
 
   if (!state.summary.choam_module) return;
   view.face_up_contract_ids.forEach((id, index) => {

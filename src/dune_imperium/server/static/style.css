@@ -295,6 +295,27 @@ button:disabled { opacity: 0.5; cursor: wait; }
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
 }
 .vcard.slot-card.legal { z-index: 2; }
+/* The face-down Conflict deck drawn as a card back with the count. */
+.slot-deck {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15em;
+  border-radius: 6px;
+  border: 2px solid #6b2a2a;
+  background:
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.04) 0 4px, transparent 4px 10px),
+    linear-gradient(160deg, #3a1d1d, #1c0f0f);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.8), inset 0 0 0 3px rgba(0, 0, 0, 0.35);
+  color: #f3e6d0;
+  font-weight: 800;
+  cursor: default;
+}
+.slot-deck .icon { width: 1.6em; height: 1.6em; }
+.slot-deck-count { font-size: 1.1em; line-height: 1; }
 .slot-bank {
   position: absolute;
   transform: translateY(-50%);

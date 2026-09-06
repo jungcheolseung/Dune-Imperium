@@ -97,6 +97,9 @@ class PlayerView:
     players: tuple[PublicPlayerView, ...] = ()
     private: PrivatePlayerView | None = None
     current_conflict_ids: tuple[str, ...] = ()
+    # Cards left in the face-down Conflict deck (their order and identity
+    # stay hidden); the browser draws the deck in its printed frame.
+    conflict_deck_size: int = 0
     combat_intrigue_complete: bool = False
     combat_rewards_resolved: bool = False
     imperium_row: tuple[str, ...] = ()
@@ -262,6 +265,7 @@ def observe_state(state: GameState, player: int) -> PlayerView:
             intrigue_cards=owner.intrigue_cards,
         ),
         current_conflict_ids=state.current_conflict_ids,
+        conflict_deck_size=len(state.conflict_deck),
         combat_intrigue_complete=state.combat_intrigue_complete,
         combat_rewards_resolved=state.combat_rewards_resolved,
         imperium_row=state.imperium_row,

@@ -186,6 +186,9 @@ def test_contract_market_is_public_but_hidden_contract_identities_are_redacted()
 
     assert view.face_up_contract_ids == ("contract:high_council_i",)
     assert view.contract_bank_size == 2
+    # The face-down Conflict deck is likewise exposed only as a count.
+    assert view.conflict_deck_size == len(state.conflict_deck)
+    assert not hasattr(view, "conflict_deck")
     assert view.players[0].active_contract_ids == ("contract:arrakeen_i",)
     # A completed Contract was face up while active and its completion was
     # announced before it flipped [Main p. 16], so the identity stays public
