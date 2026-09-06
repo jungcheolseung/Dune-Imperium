@@ -1617,21 +1617,37 @@ function renderTrackMarkers(stage, view) {
       stage.appendChild(token);
     }
 
-    if (units > 0) {
-      const [qx, qy] = tracks.conflict_quadrants[seat] || tracks.conflict_quadrants[0];
-      const chip = document.createElement("span");
-      chip.className = "conflict-units";
-      chip.style.borderColor = color;
-      chip.title = `좌석 ${seat} · Conflict 유닛`;
-      chip.appendChild(seatToken(seat, "seat-mark"));
-      if (player.troops_conflict) chip.appendChild(amount("troop", "troop", player.troops_conflict));
-      if (player.sandworms_conflict) {
-        chip.appendChild(amount("sandworm", "sandworm", player.sandworms_conflict));
-      }
-      if (strength) chip.append(` ${strength}`);
-      placeAt(chip, qx, qy);
-      stage.appendChild(chip);
+    /* One force panel per seat in its Conflict quadrant: the units
+       deployed this round (with the strength) and the garrison, which
+       has no printed home on the main board [Main p. 10]. */
+    const [qx, qy] = tracks.conflict_quadrants[seat] || tracks.conflict_quadrants[0];
+    const panel = document.createElement("div");
+    panel.className = "force-panel";
+    panel.style.borderColor = color;
+    panel.title = `좌석 ${seat} · Conflict 병력과 garrison`;
+    const conflictRow = document.createElement("div");
+    conflictRow.className = "force-row" + (units > 0 ? " active" : "");
+    conflictRow.append(seatToken(seat, "seat-mark"), icon("sword", "Conflict"));
+    conflictRow.appendChild(amount("troop", "Conflict troop", player.troops_conflict || 0));
+    if (player.sandworms_conflict) {
+      conflictRow.appendChild(amount("sandworm", "sandworm", player.sandworms_conflict));
     }
+    if (strength) {
+      const total = document.createElement("span");
+      total.className = "force-strength";
+      total.title = `전투력 ${strength}`;
+      total.textContent = String(strength);
+      conflictRow.appendChild(total);
+    }
+    const garrisonRow = document.createElement("div");
+    garrisonRow.className = "force-row garrison";
+    const label = document.createElement("span");
+    label.className = "force-label";
+    label.textContent = "garrison";
+    garrisonRow.append(label, amount("troop", "garrison troop", player.troops_garrison || 0));
+    panel.append(conflictRow, garrisonRow);
+    placeAt(panel, qx, qy);
+    stage.appendChild(panel);
 
     if (player.high_council && councilSlot < tracks.council_seats.length) {
       const [cx, cy] = tracks.council_seats[councilSlot];

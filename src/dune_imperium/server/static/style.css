@@ -280,19 +280,40 @@ button:disabled { opacity: 0.5; cursor: wait; }
   font-size: 0.8em;
 }
 .council-token { width: 1.9em; height: 1.9em; }
-.conflict-units {
+/* Per-seat force panel in the Conflict quadrant: deployed units on the
+   first row, the garrison on the second. */
+.force-panel {
   position: absolute;
   transform: translate(-50%, -50%);
   display: flex;
-  align-items: center;
-  gap: 0.3em;
-  padding: 0.15em 0.4em;
+  flex-direction: column;
+  gap: 0.1em;
+  padding: 0.2em 0.45em;
   background: rgba(0, 0, 0, 0.72);
   border: 2px solid;
   border-radius: 8px;
   color: #fff;
   font-weight: 700;
   white-space: nowrap;
+  font-size: 0.9em;
+}
+.force-row { display: flex; align-items: center; gap: 0.3em; }
+.force-row:not(.active) { opacity: 0.6; }
+.force-row .icon { height: 1.3em; }
+.force-row.garrison { padding-left: 0.2em; }
+.force-label {
+  font-size: 0.7em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.8;
+}
+.force-strength {
+  margin-left: 0.15em;
+  padding: 0 0.35em;
+  border-radius: 5px;
+  background: var(--glow);
+  color: #1a140c;
 }
 /* Cards in their printed slots: width is set inline as a percent of the
    stage, so they scale with the scan like the hotspots do. */
