@@ -21,7 +21,7 @@ specifics.
 4. Verify the baseline before changing code:
 
 ```bash
-uv sync --extra rl --extra ui
+uv sync --extra rl --extra ui --extra train
 uv run pytest -q
 uv run ruff check src tests
 uv run mypy src tests
