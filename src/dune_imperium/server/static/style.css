@@ -147,9 +147,16 @@ button:disabled { opacity: 0.5; cursor: wait; }
   overflow-y: auto;
   scrollbar-width: thin;
 }
+/* The board fills the centre; the shared card zones (Imperium Row,
+   Reserve, draft pool, ...) stand in a column beside it so a wide screen
+   spends its height on the board. The column takes what its widest strip
+   needs, capped at a fifth of the centre, and never less than two cards
+   side by side. Narrow screens (media query at the end) move it back
+   under the board. */
 #center {
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) fit-content(22%);
+  gap: 0.5rem;
   min-height: 0;
   min-width: 0;
 }
@@ -347,12 +354,17 @@ button:disabled { opacity: 0.5; cursor: wait; }
 
 #market {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.2rem 1rem;
-  padding: 0.3rem 0.2rem 0;
-  border-top: 1px solid var(--line);
-  margin-top: 0.3rem;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 190px;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  padding: 0 0.2rem 0 0.5rem;
+  border-left: 1px solid var(--line);
 }
+#market .strip { flex: none; }
+#market .strip-cards { flex-wrap: wrap; overflow: visible; }
 .strip h3 { margin: 0 0 0.2rem; }
 .strip-cards {
   display: flex;
@@ -608,4 +620,15 @@ button:disabled { opacity: 0.5; cursor: wait; }
 
 @media (max-width: 1100px) {
   #table { grid-template-columns: 200px minmax(0, 1fr) 300px; }
+  #center { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
+  #market {
+    flex-direction: row;
+    flex-wrap: wrap;
+    min-width: 0;
+    gap: 0.2rem 1rem;
+    padding: 0.3rem 0.2rem 0;
+    border-left: none;
+    border-top: 1px solid var(--line);
+  }
+  #market .strip-cards { flex-wrap: nowrap; overflow-x: auto; }
 }
