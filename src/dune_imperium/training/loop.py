@@ -13,9 +13,10 @@ tournament's default seeds so evaluation never replays a training game.
 
 import json
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import torch
@@ -179,15 +180,19 @@ def train(
     ruleset = RulesetConfig(choam_module=config.choam_module)
     codec_size = SelfPlayRunner(ruleset, record=False).codec.size
     start_iteration = 0
+    resumed_optimizer: Mapping[str, Any] | None = None
     if config.resume is not None:
         network, info = load_checkpoint(config.resume)
         if info.ruleset != ruleset.identifier:
             raise ValueError("resumed checkpoint belongs to a different ruleset")
         start_iteration = info.iteration
+        resumed_optimizer = info.optimizer_state
     else:
         torch.manual_seed(config.seed)
         network = PolicyValueNetwork(codec_size, hidden=config.hidden)
     learner = Learner(network, device, config.learner, seed=config.seed)
+    if resumed_optimizer is not None:
+        learner.restore_optimizer(resumed_optimizer)
     collector = Collector(
         ruleset,
         workers=config.workers,
@@ -221,6 +226,7 @@ def train(
                 ruleset=ruleset.identifier,
                 iteration=iteration + 1,
                 metadata={"config": _config_document(config)},
+                optimizer_state=learner.optimizer_state(),
             )
             save_checkpoint(
                 config.out_dir / f"iteration_{iteration + 1:05d}.pt",

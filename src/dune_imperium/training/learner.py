@@ -9,7 +9,9 @@ distribution from collapsing early. PPO-style clipping can replace the
 policy term later without changing the data contract.
 """
 
+from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 import torch
@@ -61,6 +63,16 @@ class Learner:
             self.network.parameters(), lr=self.config.learning_rate
         )
         self._generator = torch.Generator().manual_seed(seed)
+
+    def optimizer_state(self) -> dict[str, Any]:
+        """Return the optimizer state for a checkpoint."""
+
+        return dict(self.optimizer.state_dict())
+
+    def restore_optimizer(self, state: Mapping[str, Any]) -> None:
+        """Continue from a checkpoint's optimizer state (moments, step count)."""
+
+        self.optimizer.load_state_dict(dict(state))
 
     def update(self, batch: TrainingBatch) -> UpdateStats:
         """Run ``epochs`` passes of minibatch policy-gradient steps."""

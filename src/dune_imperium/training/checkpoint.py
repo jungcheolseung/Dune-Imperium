@@ -33,6 +33,8 @@ class CheckpointInfo:
     hidden: tuple[int, ...]
     iteration: int
     metadata: Mapping[str, Any]
+    # Optimizer state saved alongside the weights, if the writer had one.
+    optimizer_state: dict[str, Any] | None = None
 
 
 def save_checkpoint(
@@ -42,8 +44,9 @@ def save_checkpoint(
     ruleset: str,
     iteration: int,
     metadata: Mapping[str, Any] | None = None,
+    optimizer_state: Mapping[str, Any] | None = None,
 ) -> None:
-    """Write the network weights together with the encoding versions."""
+    """Write the network weights (and optionally optimizer state) with versions."""
 
     path.parent.mkdir(parents=True, exist_ok=True)
     document = {
@@ -59,8 +62,25 @@ def save_checkpoint(
         "state_dict": {
             key: value.detach().cpu() for key, value in network.state_dict().items()
         },
+        "optimizer_state": (
+            None if optimizer_state is None else _to_cpu(dict(optimizer_state))
+        ),
     }
     torch.save(document, path)
+
+
+def _to_cpu(value: Any) -> Any:
+    """Move every tensor inside a nested optimizer state to the CPU."""
+
+    if isinstance(value, torch.Tensor):
+        return value.detach().cpu()
+    if isinstance(value, dict):
+        return {key: _to_cpu(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_to_cpu(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_to_cpu(item) for item in value)
+    return value
 
 
 def load_checkpoint(path: Path) -> tuple[PolicyValueNetwork, CheckpointInfo]:
@@ -94,5 +114,6 @@ def load_checkpoint(path: Path) -> tuple[PolicyValueNetwork, CheckpointInfo]:
         hidden=network.hidden,
         iteration=int(document["iteration"]),
         metadata=dict(document.get("metadata", {})),
+        optimizer_state=document.get("optimizer_state"),
     )
     return network, info

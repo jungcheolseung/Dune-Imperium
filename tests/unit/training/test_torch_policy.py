@@ -195,7 +195,15 @@ def test_train_loop_writes_log_checkpoints_and_evaluates(tmp_path: Path) -> None
     assert len(lines) == 2
     assert json.loads(lines[1])["iteration"] == 2
 
-    # Resuming continues the iteration count from the checkpoint.
+    # latest.pt carries the optimizer state; numbered checkpoints do not.
+    _, latest_info = load_checkpoint(result.latest_checkpoint)
+    assert latest_info.optimizer_state is not None
+    assert "state" in latest_info.optimizer_state
+    _, numbered_info = load_checkpoint(tmp_path / "run" / "iteration_00002.pt")
+    assert numbered_info.optimizer_state is None
+
+    # Resuming continues the iteration count (and the optimizer) from the
+    # checkpoint.
     resumed = train(
         TrainConfig(
             out_dir=tmp_path / "run",
