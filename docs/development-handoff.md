@@ -17,7 +17,7 @@ uv run ruff check src tests
 uv run mypy src tests
 ```
 
-2026-09-06의 기준 결과는 pytest 1,094개 통과(카드 이미지 에셋이 없는 머신은 1,093 통과 + 1 skip; `train` extra가 없으면 추가로 8 skip), Ruff 통과, mypy 통과다. 현재 action codec은 `ACTION_CODEC_VERSION = 89`(기본 4,354개, CHOAM 4,640개, `promo_cards` 옵션 시 4,454/4,740개)이고, 관측은 `OBSERVATION_VERSION = 4`의 2,022-int 전체 게임 인코딩이다 ([`rl-environment.md`](rl-environment.md)). 보드 22칸 완결 + 즉시 공개 + `fab266f`/`e6fc298` 수정 + sweep 확장(`853ecd4`) 반영 후의 교차 소크는 random 룰셋당 2,000판 + heuristic 룰셋당 1,000판(둘 다 `--rotate-leaders`) + draft 두 policy 각 룰셋당 500판, 전부 `--soundness-interval 25`를 켠 총 7,000판이 실패 0으로 통과한 상태다(2026-09-01, 아래 세션 요약. 그 전 단계에서는 random 룰셋당 3,000판 비회전 소크도 실패 0이었다).
+2026-09-06의 기준 결과는 pytest 1,096개 통과(카드 이미지 에셋이 없는 머신은 1,095 통과 + 1 skip; `train` extra가 없으면 추가로 8 skip), Ruff 통과, mypy 통과다. 현재 action codec은 `ACTION_CODEC_VERSION = 89`(기본 4,354개, CHOAM 4,640개, `promo_cards` 옵션 시 4,454/4,740개)이고, 관측은 `OBSERVATION_VERSION = 4`의 2,022-int 전체 게임 인코딩이다 ([`rl-environment.md`](rl-environment.md)). 보드 22칸 완결 + 즉시 공개 + `fab266f`/`e6fc298` 수정 + sweep 확장(`853ecd4`) 반영 후의 교차 소크는 random 룰셋당 2,000판 + heuristic 룰셋당 1,000판(둘 다 `--rotate-leaders`) + draft 두 policy 각 룰셋당 500판, 전부 `--soundness-interval 25`를 켠 총 7,000판이 실패 0으로 통과한 상태다(2026-09-01, 아래 세션 요약. 그 전 단계에서는 random 룰셋당 3,000판 비회전 소크도 실패 0이었다).
 
 ## 현재 구현 기준선
 
@@ -50,7 +50,7 @@ uv run mypy src tests
 2026-09-01의 **검증 강화 캠페인**(사용자 확정 범위: 전체 1→4)은 같은 날 완료했다: 1단계 보드 22칸 완결 + OQ-015(c), 2단계 sweep 확장 (`853ecd4`: 커버리지 census `--coverage-json`, 표본 주기 legal-action 전수 적용 + codec 왕복 `--soundness-interval`, seed별 리더 회전 `--rotate-leaders`), 3단계 교차 소크(아래), 4단계 대조(DIU 63종 전부 일치, open-questions 23건 재점검). 세부는 아래 세션 요약.
 
 0. (2026-09-03 완료) M11 슬라이스 7 보드 스캔 테이블 + 룰북 아이콘 — 아래 세션 요약. (2026-09-02 완료) 슬라이스 6 행동 되돌리기 + 실시간 행동 로그.
-0. (2026-09-06 완료) M10 슬라이스 1 학습 루프(`train` extra, 네트워크·learner·체크포인트·`dune-imperium-train`) — 아래 세션 요약.
+0. (2026-09-06 완료) M10 슬라이스 1 학습 루프(`train` extra, 네트워크·learner·체크포인트·`dune-imperium-train`) + 첫 체크포인트(heuristic 3명 상대 56%) + Imperial Privilege 교착 수정 — 아래 세션 요약.
 0. (2026-09-06 완료) M9 슬라이스 3 lockstep self-play 러너(`training/`, `dune-imperium-selfplay`) — 아래 세션 요약. 이로써 M9 완료.
 0. (2026-09-06 완료) M9 슬라이스 2 rollout baseline(`RolloutAgent`, determinization, `StateAgent`) — 아래 세션 요약.
 0. (2026-09-06 완료) M9 슬라이스 1 대회 도구(`dune-imperium-tournament`) + 첫 기준선 보고서 — 아래 세션 요약.
@@ -62,7 +62,7 @@ uv run mypy src tests
 0. (2026-09-03 밤 완료) 보드 공간 아이콘 분리(OQ-027, codec v86) — 아래 세션 요약.
 0. (2026-09-03 저녁 완료) Uprising 프로모 Imperium 3장 — 아래 세션 요약.
 1. **M9 평가 러너와 baseline — 2026-09-06 완료.** (1) 대회 도구 + 지표(`dune-imperium-tournament`; 기준선 `docs/evaluation/baseline-2026-09-06.md`), (2) rollout/search baseline(`RolloutAgent`, registry 이름 `rollout`; heuristic 3명 상대 48% 승률, 결정당 약 25ms), (3) lockstep self-play 러너(`training.SelfPlayRunner`: 게임 여러 판을 한 번에 돌리며 좌석별 정책 이름으로 요청을 묶어 정책당 한 번 `act`; `Episode`/`stack_episodes`가 관측·mask·행동·좌석·종료 보상 배열을 내놓는다; `dune-imperium-selfplay` 처리량 약 4,900 decisions/s). 선택 과제(필요할 때): rollout 강화(후보·determinization 수, 2라운드 horizon, 값 함수 가중치)와 M11 서버 AI 좌석에 `rollout` 추가(서버 `sessions.py`는 아직 `choose_action`만 호출하므로 `StateAgent` 경로를 연결해야 한다).
-2. **M10 강화학습과 league self-play(진행 중).** 슬라이스 1(2026-09-06 완료): PyTorch `train` extra(사용자 결정: 이 Mac에서 시작, 코드는 `--device cpu|mps|cuda|auto`로 장치 독립, 규모 확장은 RTX 3080 PC에서), masked policy/value MLP(`training/network.py`), 체크포인트(관측 v4·codec v89·룰셋 기록, 불일치 거부), `TorchBatchPolicy`(표본/greedy + 순환 방지)와 `NetworkAgent`(`checkpoint:<경로>`로 대회 참가), REINFORCE + value baseline learner, `dune-imperium-train` 루프(수집 → 갱신 → JSONL 로그 → 체크포인트 → 주기적 대회 평가). 다음 슬라이스 후보: (a) **학습이 실제로 강해지는지 확인** — `--opponent heuristic`으로 수십 iteration을 돌려 eval 승률이 25%(무작위 기대)에서 올라가는지 본다(아래 세션 요약의 첫 smoke 결과 참고); 안 오르면 학습률·entropy·표본 온도·value 가중치·hidden 크기를 조정하고, 필요하면 PPO(clip + 여러 epoch; 수집 시 log-prob 기록 필요)로 바꾼다. (b) 수집 병렬화 — `SelfPlayRunner`는 단일 프로세스라 학습 시간의 대부분이 수집이다; worker 프로세스마다 네트워크 사본을 두고 episode를 모으는 방식이 가장 단순하다. (c) league — lineup에 과거 체크포인트(`checkpoint:` 이름은 `AgentBatchPolicy`로 바로 쓸 수 있다)와 rollout을 섞는다. (d) 관측 전처리 개선(카드 identity 임베딩 등)은 (a)가 안정된 뒤. 학습 seed(2,000,000 + seed×1,000,000부터)와 평가 seed(대회 기본 0부터, policy offset 900,000)는 분리돼 있다.
+2. **M10 강화학습과 league self-play(진행 중).** 슬라이스 1(2026-09-06 완료): PyTorch `train` extra(사용자 결정: 이 Mac에서 시작, 코드는 `--device cpu|mps|cuda|auto`로 장치 독립, 규모 확장은 RTX 3080 PC에서), masked policy/value MLP(`training/network.py`), 체크포인트(관측 v4·codec v89·룰셋 기록, 불일치 거부), `TorchBatchPolicy`(표본/greedy + 순환 방지)와 `NetworkAgent`(`checkpoint:<경로>`로 대회 참가), REINFORCE + value baseline learner, `dune-imperium-train` 루프(수집 → 갱신 → JSONL 로그 → 체크포인트 → 주기적 대회 평가). 첫 smoke(같은 날, `docs/evaluation/baseline-2026-09-06.md` 5절): pure self-play 30 iteration × 32판(약 6분, CPU)으로 만든 체크포인트가 random 3명 상대 100%, heuristic 3명 상대 56%(rollout 48%보다 높음). `--opponent heuristic`으로 시작하면 초기 정책이 한 판도 못 이겨 신호가 없으니(승률 0%로 20 iteration 정체) pure self-play로 시작한다. 다음 슬라이스 후보: (a) **더 길게 학습하고 champion 비교** — 100~300 iteration을 돌리며 `dune-imperium-tournament`로 이전 체크포인트·rollout과 직접 대전(3080 PC로 옮겨도 된다; 코드는 `--device auto`); 정체하면 학습률·entropy·표본 온도·value 가중치·hidden 크기를 조정하고, 필요하면 PPO(clip + 여러 epoch; 수집 시 log-prob 기록 필요)로 바꾼다. (b) 수집 병렬화 — `SelfPlayRunner`는 단일 프로세스라 학습 시간의 대부분이 수집이다; worker 프로세스마다 네트워크 사본을 두고 episode를 모으는 방식이 가장 단순하다. (c) league — lineup에 과거 체크포인트(`checkpoint:` 이름은 `AgentBatchPolicy`로 바로 쓸 수 있다)와 rollout을 섞는다. (d) 관측 전처리 개선(카드 identity 임베딩 등)은 (a)가 안정된 뒤. 학습 seed(2,000,000 + seed×1,000,000부터)와 평가 seed(대회 기본 0부터, policy offset 900,000)는 분리돼 있다.
 
 각 묶음은 카드 이미지로 텍스트를 검증하고(`docs/card-data-sources.md`의 방법), `Play ...` / `Document ...` 커밋 쌍을 유지하며, 새 결정 경계는 `FrameKind` → frame `kind` → dispatcher 표 → codec 순으로 추가한다. 핸드오프의 카드 요약은 이미지 검증 전 참고일 뿐이다(Impress 비용, Spring the Trap 유형을 잘못 적었던 전례가 있다).
 
@@ -134,6 +134,15 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 ## 원격 저장소 인계 주의
 
 2026-09-04 세션 종료 시점에 이 세션의 커밋 전부(보드·카드 아이콘 분리 v86/v87, 서버·UI 확인 흐름과 마커, Reveal 순서 v88, OQ-028 조건 판정 시점, OQ-029 등록)를 `origin/master`에 push했다. 새 세션은 `git fetch origin` 뒤 `git log origin/master..master`와 반대 방향을 확인하고, 일치하면 이 문서의 기준선을 그대로 쓴다. 에셋 저장소(`Dune-Imperium-assets`)의 `5b55e45` 1개 미push 여부는 그 저장소에서 확인한다. 원격에는 병합하지 않은 `kyungtae` 브랜치가 있다. 새 세션은 `git log origin/master..master`와 반대 방향을 모두 확인하고, checkout이 `853ecd4`보다 이전이면 이 문서의 989개 테스트·codec v84 기준선이 실제 코드와 일치하지 않는다. **다른 머신에서 이어서 작업한다면 먼저 이 머신에서 push가 필요하다.** 새 머신의 UI 카드 이미지·아이콘·보드 스캔은 비공개 `Dune-Imperium-assets` 저장소를 clone해 symlink로 연결한다(그 README 참고; 루트의 `assets` symlink 하나로 cards·icons·board·rulebooks를 모두 연결). 카드 매핑은 그 저장소의 `cards/manifest.json`에만 있으므로 접근이 없으면 텍스트 UI로 동작한다.
+
+## 2026-09-06 M10 슬라이스 1 세션 요약 (학습 루프, 첫 체크포인트, 교착 수정)
+
+- 사용자 결정: 이 Mac(Apple M4 10코어, 16GB)에서 시작하고 규모는 RTX 3080 PC에서 키운다. 병목은 GPU가 아니라 Python 엔진(수집)이라 코어 수가 중요하다는 판단. PyTorch 2.14를 새 `train` extra로 추가(표준 동기화 명령이 `--extra train`까지 포함하도록 README·CLAUDE.md·이 문서 갱신).
+- 구현: `training/network.py`(log1p 입력 → MLP 512×512 → 4,354 masked logits + value; 불법 행동 logit −1e9), `training/checkpoint.py`(관측 v4·codec v89·룰셋·hidden 기록, 불일치 거부), `training/torch_policy.py`(`TorchBatchPolicy` 표본/greedy, `NetworkAgent` greedy, `checkpoint:<경로>` 로더를 프로세스별 캐시), `training/learner.py`(REINFORCE + value baseline, advantage 정규화, entropy 보너스, grad clip), `training/loop.py`(`TrainConfig`·`train`: 수집 → learner 좌석 step만 선택 → 갱신 → JSONL → `latest.pt`+번호 체크포인트 → 주기적 대회 평가; 학습 seed는 2,000,000+seed×1,000,000부터), `cli/train.py`. registry에 `checkpoint:` 이름 지원(`is_agent_kind`; worker 프로세스가 파일을 직접 로드).
+- greedy 순환 방지: 되돌릴 수 있는 행동 쌍(deploy/withdraw, defer/resume)이 있어 학습 전 argmax는 turn을 못 끝냈다(30,000 step 한도까지 반복). `_CycleGuard`가 같은 라운드 안에서 동일 관측(관측에는 revision이 없어 되돌린 수는 같은 바이트)에서 이미 고른 행동을 다음 방문 때 가린다.
+- **엔진 교착 발견·수정**(`d9f11a5`): self-play 표본 정책이 seed 4000098에서 "합법 행동 없는 플레이어 결정"에 도달했다. Steersman으로 Imperial Privilege 방문 → Intrigue 슬롯 거절(그때는 다른 Agent가 있어 recall 보류) → Agent box의 recall로 그 Agent를 회수 → Imperial Privilege의 의무 recall에 대상이 없는데 아무 행동도 없었다. OQ-023의 "해결 시점 판정, 대상 없으면 recall만 건너뛰고 draw"를 매 전이 뒤 hook으로 적용해 해결(open-questions.md OQ-023 보강 항목). 7,000판 random 소크가 못 찾은 상태를 학습 정책이 4 iteration 만에 찾았다 — 학습 실행은 소크의 연장이기도 하다.
+- 결과: 위 "다음 구현 순서" 2와 `docs/evaluation/baseline-2026-09-06.md` 5절. 처리량은 수집 약 3,100~3,500 decisions/s(단일 프로세스, torch 추론 포함), 갱신 약 1초/iteration(2만 step).
+- 검증: pytest 1,096(신규 8건 torch 계열 + 교착 회귀 2건), Ruff, mypy.
 
 ## 2026-09-06 M9 슬라이스 3 세션 요약 (lockstep self-play 러너, M9 완료)
 
