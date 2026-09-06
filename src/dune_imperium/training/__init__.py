@@ -13,6 +13,7 @@ from dune_imperium.training.selfplay import (
     SelfPlaySpec,
     TrainingBatch,
     TrajectoryStep,
+    apply_step_penalty,
     select_policy_steps,
     stack_episodes,
 )
@@ -28,6 +29,7 @@ __all__ = [
     "SelfPlaySpec",
     "TrainingBatch",
     "TrajectoryStep",
+    "apply_step_penalty",
     "select_policy_steps",
     "stack_episodes",
 ]

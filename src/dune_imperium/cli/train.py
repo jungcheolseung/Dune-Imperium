@@ -53,7 +53,18 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--temperature", type=float, default=1.0)
-    parser.add_argument("--max-steps", type=int, default=30_000)
+    parser.add_argument(
+        "--step-penalty",
+        type=float,
+        default=0.0005,
+        help="learning-side cost per own decision (default: 0.0005; 0 disables)",
+    )
+    parser.add_argument(
+        "--max-steps",
+        type=int,
+        default=4_000,
+        help="decisions per training game before truncation (default: 4000)",
+    )
     parser.add_argument(
         "--eval-every",
         type=int,
@@ -109,6 +120,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             ),
             opponent=arguments.opponent,
             temperature=arguments.temperature,
+            step_penalty=arguments.step_penalty,
             max_steps=arguments.max_steps,
             eval_every=arguments.eval_every,
             eval_games=arguments.eval_games,

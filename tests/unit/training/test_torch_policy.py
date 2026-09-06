@@ -195,7 +195,15 @@ def test_train_loop_writes_log_checkpoints_and_evaluates(tmp_path: Path) -> None
     assert len(lines) == 2
     assert json.loads(lines[1])["iteration"] == 2
 
-    # Resuming continues the iteration count from the checkpoint.
+    # latest.pt carries the optimizer state; numbered checkpoints do not.
+    _, latest_info = load_checkpoint(result.latest_checkpoint)
+    assert latest_info.optimizer_state is not None
+    assert "state" in latest_info.optimizer_state
+    _, numbered_info = load_checkpoint(tmp_path / "run" / "iteration_00002.pt")
+    assert numbered_info.optimizer_state is None
+
+    # Resuming continues the iteration count (and the optimizer) from the
+    # checkpoint.
     resumed = train(
         TrainConfig(
             out_dir=tmp_path / "run",
@@ -289,3 +297,27 @@ def test_parallel_collection_matches_the_serial_contract(tmp_path: Path) -> None
     )
     assert parallel.records[0].games == 2
     assert parallel.records[0].learner_steps > 0
+
+
+def test_cycle_guard_masks_taken_actions_for_greedy_play_only() -> None:
+    from dune_imperium.training.torch_policy import _CycleGuard
+
+    guard = _CycleGuard()
+    observation = np.zeros(4, dtype=np.int32)
+    logits = torch.tensor([0.0, 5.0, 1.0])
+    first = guard.greedy(1, observation, logits)
+    second = guard.greedy(1, observation, logits)
+    third = guard.greedy(1, observation, logits)
+    assert (first, second, third) == (1, 2, 0)
+    # Every legal action taken: the full set comes back rather than nothing.
+    assert torch.equal(guard.restrict(1, observation, logits), logits)
+    # A new round forgets the history.
+    assert guard.greedy(2, observation, logits) == 1
+
+    # Sampling is unguarded: the same observation may repeat an action.
+    runner = SelfPlayRunner(RulesetConfig())
+    network = _network(runner.codec.size)
+    policy = TorchBatchPolicy(network, _CPU, seed=4, sample=True)
+    result = runner.run({"p": policy}, (SelfPlaySpec(game_seed=8, lineup=("p",) * 4),))
+    assert not result.episodes[0].truncated
+    assert not policy._guards

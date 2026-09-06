@@ -290,7 +290,7 @@ def legal_feyd_track_actions(
         # Spy stages place from supply on an empty observation post, first
         # recalling a Spy for no effect when the supply is empty
         # [Main pp. 11, 20].
-        if context.get("feyd_spy_recalled") is True or owner.spies_supply > 0:
+        if owner.spies_supply > 0:
             return tuple(
                 DomainAction(
                     action_id="place_leader_spy",
@@ -369,9 +369,7 @@ def apply_feyd_track_action(
             moved_owner, recruited = recruit_troops(moved_owner, 1)
             previous = context.get("troops_recruited")
             if isinstance(previous, bool) or not isinstance(previous, int):
-                raise RuntimeError(
-                    "Agent-turn effect frame has invalid recruit count"
-                )
+                raise RuntimeError("Agent-turn effect frame has invalid recruit count")
             context["troops_recruited"] = previous + recruited
             context["feyd_track_stage"] = target_id
             events.append(
@@ -531,9 +529,7 @@ def _leader_signet_context(
     return context
 
 
-LANDSRAAD_POST_IDS: Final = observation_post_ids_for_agent_icons(
-    (AgentIcon.LANDSRAAD,)
-)
+LANDSRAAD_POST_IDS: Final = observation_post_ids_for_agent_icons((AgentIcon.LANDSRAAD,))
 FACTION_POST_IDS: Final = observation_post_ids_for_factions(tuple(Faction))
 CITY_POST_IDS: Final = observation_post_ids_for_agent_icons((AgentIcon.CITY,))
 
@@ -549,12 +545,15 @@ def _leader_spy_placement_actions(
     Placement needs a Spy in supply on an empty (optionally restricted)
     observation post; without one the player first recalls a Spy for no
     effect [Main pp. 11, 20]. When no restricted post is empty, only recalls
-    from restricted posts can open one.
+    from restricted posts can open one. The supply is judged now, not when
+    an earlier recall happened: a freely ordered effect of the same turn
+    (a Distraction trigger, say) may have spent the recalled Spy, and then
+    the recall is offered again instead of a placement that cannot happen.
     """
 
     owner = state.players[player]
     placements = empty_observation_post_ids(state, allowed_post_ids)
-    if context.get("leader_spy_recalled") is True or owner.spies_supply > 0:
+    if owner.spies_supply > 0:
         return tuple(
             DomainAction(
                 action_id="place_leader_spy",
@@ -628,9 +627,7 @@ def legal_leader_signet_actions(
                     DomainAction(action_id="pay_leader_signet_solari", actor=player),
                 )
             return (
-                DomainAction(
-                    action_id="decline_leader_signet_payment", actor=player
-                ),
+                DomainAction(action_id="decline_leader_signet_payment", actor=player),
                 *payment,
             )
         return _leader_spy_placement_actions(state, player, context, None)
@@ -1604,8 +1601,7 @@ def grant_leader_reveal_passives(result: RuleResult) -> RuleResult:
                 player,
                 1,
                 source=(
-                    f"round:{state.round_number}:player:{player}:"
-                    "leader_reveal:intrigue"
+                    f"round:{state.round_number}:player:{player}:leader_reveal:intrigue"
                 ),
             )
             return RuleResult(
@@ -1626,9 +1622,7 @@ def _with_frame_flag(
     return tuple(
         replace(
             candidate,
-            context=tuple(
-                sorted({**dict(candidate.context), flag: True}.items())
-            ),
+            context=tuple(sorted({**dict(candidate.context), flag: True}.items())),
         )
         if candidate is frame
         else candidate

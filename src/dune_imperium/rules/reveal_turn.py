@@ -92,7 +92,7 @@ def legal_reveal_spy_actions(
                 ),
             )
         )
-        if context.get("reveal_spy_recalled") is True or owner.spies_supply > 0:
+        if owner.spies_supply > 0:
             return (
                 *strength_choice,
                 *(

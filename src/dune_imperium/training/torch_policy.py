@@ -13,7 +13,8 @@ deterministic argmax that prefers the reversing pair never finishes the
 turn. ``_CycleGuard`` remembers which actions were already taken at an
 identical observation within the current round (the observation carries no
 revision counter, so a reversed move reproduces the same bytes) and masks
-them out on the next visit, so greedy play always makes progress.
+them out on the next visit, so greedy play always makes progress. Sampled
+self-play is deliberately left unguarded (see ``act``).
 """
 
 import os
@@ -41,24 +42,37 @@ class _CycleGuard:
         self._round = -1
         self._taken: dict[bytes, set[int]] = {}
 
+    def restrict(
+        self, round_number: int, observation: np.ndarray, logits: torch.Tensor
+    ) -> torch.Tensor:
+        """Mask the actions already taken at this observation this round.
+
+        Returns the logits unchanged when every legal action was already
+        taken here, so a decision never loses its whole legal set.
+        """
+
+        if round_number != self._round:
+            self._round = round_number
+            self._taken.clear()
+        taken = self._taken.get(observation.tobytes())
+        if not taken:
+            return logits
+        candidate = logits.clone()
+        candidate[list(taken)] = MASKED_LOGIT
+        if bool((candidate > MASKED_LOGIT / 2).any()):
+            return candidate
+        return logits
+
+    def record(self, observation: np.ndarray, index: int) -> None:
+        self._taken.setdefault(observation.tobytes(), set()).add(index)
+
     def greedy(
         self, round_number: int, observation: np.ndarray, logits: torch.Tensor
     ) -> int:
         """Return the argmax over legal actions not yet taken here."""
 
-        if round_number != self._round:
-            self._round = round_number
-            self._taken.clear()
-        key = observation.tobytes()
-        taken = self._taken.setdefault(key, set())
-        candidate = logits.clone()
-        if taken:
-            candidate[list(taken)] = MASKED_LOGIT
-        if bool((candidate > MASKED_LOGIT / 2).any()):
-            index = int(candidate.argmax().item())
-        else:
-            index = int(logits.argmax().item())
-        taken.add(index)
+        index = int(self.restrict(round_number, observation, logits).argmax().item())
+        self.record(observation, index)
         return index
 
 
@@ -116,18 +130,26 @@ class TorchBatchPolicy:
             logits, _ = self.network(observations, masks)
         logits = logits.to("cpu")
         if self.sample:
+            # Sampling stays unguarded on purpose: masking already-taken
+            # actions changes the behaviour distribution without any
+            # correction in the learner, and a from-scratch comparison
+            # (2026-09-06, baseline report section 7) collapsed entropy to
+            # 0.2 and doubled decisions per game. Loops are priced by the
+            # step penalty and bounded by the game cap instead.
             probabilities = torch.softmax(logits / self.temperature, dim=-1)
             chosen = torch.multinomial(probabilities, 1, generator=self._generator)
             return tuple(int(index) for index in chosen.squeeze(-1).tolist())
         answers: list[int] = []
         for row, request in enumerate(requests):
-            guard = self._guards.setdefault((request.game, request.seat), _CycleGuard())
             answers.append(
-                guard.greedy(
+                self._guard(request).greedy(
                     request.view.round_number, request.observation, logits[row]
                 )
             )
         return tuple(answers)
+
+    def _guard(self, request: PolicyRequest) -> _CycleGuard:
+        return self._guards.setdefault((request.game, request.seat), _CycleGuard())
 
 
 class NetworkAgent:

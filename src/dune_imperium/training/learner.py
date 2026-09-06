@@ -9,7 +9,9 @@ distribution from collapsing early. PPO-style clipping can replace the
 policy term later without changing the data contract.
 """
 
+from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 import torch
@@ -62,6 +64,16 @@ class Learner:
         )
         self._generator = torch.Generator().manual_seed(seed)
 
+    def optimizer_state(self) -> dict[str, Any]:
+        """Return the optimizer state for a checkpoint."""
+
+        return dict(self.optimizer.state_dict())
+
+    def restore_optimizer(self, state: Mapping[str, Any]) -> None:
+        """Continue from a checkpoint's optimizer state (moments, step count)."""
+
+        self.optimizer.load_state_dict(dict(state))
+
     def update(self, batch: TrainingBatch) -> UpdateStats:
         """Run ``epochs`` passes of minibatch policy-gradient steps."""
 
@@ -74,9 +86,7 @@ class Learner:
         returns = torch.from_numpy(batch.returns).to(self.device)
 
         self.network.train()
-        with torch.no_grad():
-            _, baseline = self.network(observations, masks)
-        advantages = returns - baseline
+        advantages = returns - self._values(observations, masks)
         if self.config.normalize_advantages and steps > 1:
             advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
@@ -109,8 +119,7 @@ class Learner:
                 entropy_total += float(entropy.item())
                 minibatches += 1
 
-        with torch.no_grad():
-            _, fitted = self.network(observations, masks)
+        fitted = self._values(observations, masks)
         return UpdateStats(
             steps=steps,
             minibatches=minibatches,
@@ -122,6 +131,22 @@ class Learner:
                 fitted.to("cpu").numpy(), batch.returns
             ),
         )
+
+    def _values(self, observations: Tensor, masks: Tensor) -> Tensor:
+        """Value predictions over the whole batch, one minibatch at a time.
+
+        A single pass over every step would materialize the full logit
+        matrix (steps x actions in float32), which is gigabytes for a large
+        iteration; chunking keeps the peak at one minibatch.
+        """
+
+        chunks: list[Tensor] = []
+        with torch.no_grad():
+            for start in range(0, observations.shape[0], self.config.minibatch_size):
+                stop = start + self.config.minibatch_size
+                _, values = self.network(observations[start:stop], masks[start:stop])
+                chunks.append(values)
+        return torch.cat(chunks)
 
     def _losses(
         self,

@@ -76,7 +76,7 @@ def legal_acquisition_spy_actions(
     ):
         return ()
     owner = state.players[player]
-    if context.get("acquisition_spy_recalled") is True or owner.spies_supply > 0:
+    if owner.spies_supply > 0:
         return tuple(
             DomainAction(
                 action_id="place_acquisition_spy",

@@ -13,9 +13,10 @@ tournament's default seeds so evaluation never replays a training game.
 
 import json
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import torch
@@ -31,6 +32,7 @@ from dune_imperium.training.selfplay import (
     Episode,
     SelfPlayRunner,
     SelfPlaySpec,
+    apply_step_penalty,
     select_policy_steps,
 )
 from dune_imperium.training.torch_policy import resolve_device
@@ -55,7 +57,12 @@ class TrainConfig:
     # means pure self-play with the learner in every seat.
     opponent: str | None = None
     temperature: float = 1.0
-    max_steps: int = 30_000
+    # Learning-side shaping: cost per own decision charged against the
+    # terminal reward (see apply_step_penalty); 0 disables it.
+    step_penalty: float = 0.0005
+    # Decisions per training game before truncation (reward 0). A normal
+    # game takes about 650; the cap bounds a policy that learns to loop.
+    max_steps: int = 4_000
     eval_every: int = 0
     eval_games: int = 10
     eval_opponent: str = "heuristic"
@@ -72,6 +79,8 @@ class TrainConfig:
             raise ValueError("eval_every must not be negative; eval_games positive")
         if self.workers < 1:
             raise ValueError("workers must be positive")
+        if self.step_penalty < 0.0:
+            raise ValueError("step_penalty must not be negative")
 
 
 @dataclass(frozen=True, slots=True)
@@ -171,15 +180,19 @@ def train(
     ruleset = RulesetConfig(choam_module=config.choam_module)
     codec_size = SelfPlayRunner(ruleset, record=False).codec.size
     start_iteration = 0
+    resumed_optimizer: Mapping[str, Any] | None = None
     if config.resume is not None:
         network, info = load_checkpoint(config.resume)
         if info.ruleset != ruleset.identifier:
             raise ValueError("resumed checkpoint belongs to a different ruleset")
         start_iteration = info.iteration
+        resumed_optimizer = info.optimizer_state
     else:
         torch.manual_seed(config.seed)
         network = PolicyValueNetwork(codec_size, hidden=config.hidden)
     learner = Learner(network, device, config.learner, seed=config.seed)
+    if resumed_optimizer is not None:
+        learner.restore_optimizer(resumed_optimizer)
     collector = Collector(
         ruleset,
         workers=config.workers,
@@ -202,7 +215,7 @@ def train(
                 opponent_seed=config.seed + 2 + iteration * 1_000,
             )
             collect_seconds = result.duration_seconds
-            batch = result.batch
+            batch = apply_step_penalty(result.batch, config.step_penalty)
             started = time.perf_counter()
             stats = learner.update(batch)
             update_seconds = time.perf_counter() - started
@@ -213,6 +226,7 @@ def train(
                 ruleset=ruleset.identifier,
                 iteration=iteration + 1,
                 metadata={"config": _config_document(config)},
+                optimizer_state=learner.optimizer_state(),
             )
             save_checkpoint(
                 config.out_dir / f"iteration_{iteration + 1:05d}.pt",
