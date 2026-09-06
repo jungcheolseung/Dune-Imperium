@@ -1080,10 +1080,14 @@ function logTargets(group) {
   const cards = [];
   const seen = new Set();
   const consider = (value) => {
-    if (typeof value !== "string" || seen.has(value)) return;
-    seen.add(value);
+    if (typeof value !== "string") return;
+    /* An event may name a card both by kind (card_id) and by the exact
+       copy (instance_id); one image per printed card is enough. */
+    const key = state.catalog.spaces[value] ? value : baseId(value);
+    if (seen.has(key)) return;
+    seen.add(key);
     if (state.catalog.spaces[value]) spaces.push(value);
-    else if (lookup(baseId(value))) cards.push(value);
+    else if (lookup(key)) cards.push(value);
   };
   for (const entry of group.entries) {
     if (entry.type !== "action") continue;
@@ -2213,6 +2217,7 @@ function openPileList(title, ids, anchor) {
    through the catalog via nameOf; the "player" key renders as a seat label. */
 function logEventPayload(payload) {
   const parts = [];
+  const shownNames = new Set();
   for (const [key, value] of Object.entries(payload)) {
     if (key === "player") {
       parts.push(`좌석 ${value}`);
@@ -2226,6 +2231,9 @@ function logEventPayload(payload) {
       key === "post_id" ||
       key === "space_id";
     const shown = isIdField ? nameOf(value) : String(value);
+    /* card_id and instance_id of one event resolve to the same name. */
+    if (isIdField && shownNames.has(shown)) continue;
+    if (isIdField) shownNames.add(shown);
     parts.push(`${prettify(key)}: ${shown}`);
   }
   return parts.join(" · ");
@@ -2243,9 +2251,14 @@ function logEventLine(event) {
 /* Steps that only close a window; kept in the record but muted. */
 const QUIET_ACTIONS = new Set(["finish_agent_turn", "finish_reveal", "pass"]);
 
+/* Steps that stand as a card of their own (setup picks). */
+const SOLO_ACTIONS = new Set(["pick_leader"]);
+
 /* Group the log into turn cards: consecutive steps by one seat form a
-   group, chance steps join the open group as muted lines, an undo marker
-   closes it. */
+   group until a step closes the turn (finish_agent_turn, finish_reveal,
+   pass), chance steps join the open group as muted lines, an undo marker
+   closes it, and a Leader pick is a card of its own so the first
+   player's first turn does not merge into it. */
 function logGroups(entries) {
   const groups = [];
   let open = null;
@@ -2256,11 +2269,16 @@ function logGroups(entries) {
     } else if (entry.type === "chance") {
       if (open) open.entries.push(entry);
       else groups.push({ kind: "chance", entries: [entry] });
-    } else if (open && open.actor === entry.actor) {
-      open.entries.push(entry);
+    } else if (SOLO_ACTIONS.has(entry.action_id)) {
+      groups.push({ kind: "turn", actor: entry.actor, entries: [entry] });
+      open = null;
     } else {
-      open = { kind: "turn", actor: entry.actor, entries: [entry] };
-      groups.push(open);
+      if (open && open.actor === entry.actor) open.entries.push(entry);
+      else {
+        open = { kind: "turn", actor: entry.actor, entries: [entry] };
+        groups.push(open);
+      }
+      if (QUIET_ACTIONS.has(entry.action_id)) open = null;
     }
   }
   return groups;
