@@ -2230,6 +2230,8 @@ function logEventPayload(payload) {
       key === "card_id" ||
       key === "post_id" ||
       key === "space_id";
+    /* Combat rewards and the like list every field; zeros say nothing. */
+    if (value === 0 || value === "" || value === null || value === false) continue;
     const shown = isIdField ? nameOf(value) : String(value);
     /* card_id and instance_id of one event resolve to the same name. */
     if (isIdField && shownNames.has(shown)) continue;
@@ -2254,34 +2256,152 @@ const QUIET_ACTIONS = new Set(["finish_agent_turn", "finish_reveal", "pass"]);
 /* Steps that stand as a card of their own (setup picks). */
 const SOLO_ACTIONS = new Set(["pick_leader"]);
 
-/* Group the log into turn cards: consecutive steps by one seat form a
-   group until a step closes the turn (finish_agent_turn, finish_reveal,
-   pass), chance steps join the open group as muted lines, an undo marker
-   closes it, and a Leader pick is a card of its own so the first
-   player's first turn does not merge into it. */
+/* Events the game produces on its own once a step closes a window —
+   setup after the last Leader pick, combat resolution after the last
+   Reveal, the round change — rather than the acting seat's doing. From
+   the first of these in a step, the rest of that step's events belong to
+   the game too (the round-start draws follow the recall, the Victory
+   Points follow the combat reward). */
+const NEUTRAL_EVENT_KINDS = new Set([
+  "leader_draft_pool_revealed",
+  "leader_draft_unused",
+  "conflict_revealed",
+  "combat_intrigue_started",
+  "combat_intrigue_finished",
+  "combat_reward_gained",
+  "conflict_won",
+  "battle_icons_matched",
+  "battle_card_flipped",
+  "combat_cleaned_up",
+  "maker_spice_added",
+  "agents_recalled",
+  "endgame_started",
+  "endgame_wild_matched",
+  "game_finished",
+]);
+
+/* Split one step's events into the actor's own and the game's: a neutral
+   kind switches the rest of the step over, and an event aimed at another
+   seat (its draw, its loss) is never the actor's own. */
+function splitEntryEvents(entry) {
+  const own = [];
+  const neutral = [];
+  let flow = false;
+  for (const event of entry.events) {
+    if (!flow && NEUTRAL_EVENT_KINDS.has(event.kind)) flow = true;
+    const target = event.payload ? event.payload.player : undefined;
+    const other = typeof target === "number" && target !== entry.actor;
+    (flow || other ? neutral : own).push(event);
+  }
+  return { own, neutral };
+}
+
+/* Group the log into cards. A turn card holds consecutive steps by one
+   seat (with only their own events) until a step closes the turn
+   (finish_agent_turn, finish_reveal, pass); a Leader pick is a card of
+   its own. Everything the game does by itself — the neutral events above
+   and every chance step — goes into a "게임 진행" card between them, so
+   the round change never reads as the last actor's move. */
 function logGroups(entries) {
   const groups = [];
   let open = null;
+  let neutral = null;
+  const addNeutral = (index, items) => {
+    if (!items.length) return;
+    if (!neutral) {
+      neutral = { kind: "neutral", items: [], firstIndex: index, lastIndex: index };
+      groups.push(neutral);
+    }
+    neutral.items.push(...items);
+    neutral.lastIndex = index;
+    open = null;
+  };
   for (const entry of entries) {
     if (entry.type === "undo") {
       groups.push({ kind: "undo", entry });
       open = null;
-    } else if (entry.type === "chance") {
-      if (open) open.entries.push(entry);
-      else groups.push({ kind: "chance", entries: [entry] });
-    } else if (SOLO_ACTIONS.has(entry.action_id)) {
-      groups.push({ kind: "turn", actor: entry.actor, entries: [entry] });
+      neutral = null;
+      continue;
+    }
+    if (entry.type === "chance") {
+      addNeutral(entry.index, [{ chance: entry }]);
+      continue;
+    }
+    const { own, neutral: flow } = splitEntryEvents(entry);
+    const step = { ...entry, events: own };
+    if (SOLO_ACTIONS.has(entry.action_id)) {
+      groups.push({ kind: "turn", actor: entry.actor, entries: [step] });
       open = null;
     } else {
-      if (open && open.actor === entry.actor) open.entries.push(entry);
+      if (open && open.actor === entry.actor) open.entries.push(step);
       else {
-        open = { kind: "turn", actor: entry.actor, entries: [entry] };
+        open = { kind: "turn", actor: entry.actor, entries: [step] };
         groups.push(open);
       }
       if (QUIET_ACTIONS.has(entry.action_id)) open = null;
     }
+    neutral = null;
+    addNeutral(entry.index, flow.map((event) => ({ event, index: entry.index })));
   }
   return groups;
+}
+
+/* What a neutral card is about, from the kinds it carries. */
+function neutralTitle(group) {
+  const kinds = new Set(group.items.filter((item) => item.event).map((item) => item.event.kind));
+  const parts = [];
+  if (kinds.has("leader_draft_unused") || kinds.has("leader_draft_pool_revealed")) {
+    parts.push("게임 준비");
+  }
+  if (kinds.has("combat_intrigue_started")) parts.push("Combat Intrigue 창");
+  if (kinds.has("conflict_won") || kinds.has("combat_reward_gained")) parts.push("전투 해결");
+  if (kinds.has("agents_recalled") || kinds.has("conflict_revealed")) {
+    const revealed = group.items.find(
+      (item) => item.event && item.event.kind === "conflict_revealed"
+    );
+    const round = revealed && revealed.event.payload && revealed.event.payload.round;
+    parts.push(round ? `라운드 ${round} 시작` : "라운드 시작");
+  }
+  if (kinds.has("endgame_started")) parts.push("Endgame");
+  if (kinds.has("game_finished")) parts.push("게임 종료");
+  return parts.length ? parts.join(" · ") : "게임 진행";
+}
+
+function neutralCard(group, freshFrom) {
+  const card = document.createElement("div");
+  card.className = "turn-card neutral";
+  if (group.lastIndex >= freshFrom) card.classList.add("fresh");
+  const head = document.createElement("div");
+  head.className = "turn-head";
+  const mark = document.createElement("span");
+  mark.className = "neutral-mark";
+  mark.textContent = "⚙";
+  const who = document.createElement("strong");
+  who.textContent = neutralTitle(group);
+  head.append(mark, who);
+  card.appendChild(head);
+  const lines = document.createElement("div");
+  lines.className = "turn-lines";
+  for (const item of group.items) {
+    lines.appendChild(item.chance ? chanceLine(item.chance) : logEventLine(item.event));
+  }
+  card.appendChild(lines);
+  /* Spotlight what the game touched (Maker spice, the new Conflict). */
+  const pseudo = {
+    entries: [
+      {
+        type: "action",
+        actor: null,
+        arguments: {},
+        events: group.items.filter((item) => item.event).map((item) => item.event),
+      },
+    ],
+  };
+  card.addEventListener("mouseenter", () => setSpotlight(pseudo));
+  card.addEventListener("mouseleave", () => {
+    if (spotlightGroup === pseudo) setSpotlight(null);
+  });
+  return card;
 }
 
 function chanceLine(entry) {
@@ -2351,9 +2471,7 @@ function turnCard(group, freshFrom) {
   body.className = "turn-body";
   const lines = document.createElement("div");
   lines.className = "turn-lines";
-  for (const entry of group.entries) {
-    lines.appendChild(entry.type === "chance" ? chanceLine(entry) : turnLine(entry));
-  }
+  for (const entry of group.entries) lines.appendChild(turnLine(entry));
   body.appendChild(lines);
   if (targets.cards.length) {
     const row = document.createElement("div");
@@ -2413,12 +2531,8 @@ function renderLog() {
   list.className = "log-list";
   for (const group of logGroups(log.entries)) {
     if (group.kind === "undo") list.appendChild(undoRow(group.entry));
-    else if (group.kind === "chance") {
-      const row = document.createElement("div");
-      row.className = "turn-card chance-only";
-      for (const entry of group.entries) row.appendChild(chanceLine(entry));
-      list.appendChild(row);
-    } else list.appendChild(turnCard(group, logSeen.freshFrom));
+    else if (group.kind === "neutral") list.appendChild(neutralCard(group, logSeen.freshFrom));
+    else list.appendChild(turnCard(group, logSeen.freshFrom));
   }
   panel.appendChild(list);
   const first = list.querySelector(".turn-card.fresh");

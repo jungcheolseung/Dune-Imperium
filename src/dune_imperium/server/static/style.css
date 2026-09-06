@@ -684,7 +684,15 @@ button:disabled { opacity: 0.5; cursor: wait; }
 }
 .turn-card.undone { opacity: 0.55; }
 .turn-card.undo-marker { color: var(--accent); font-weight: 600; }
-.turn-card.chance-only { opacity: 0.7; }
+/* The game's own doings between the seats' turns. */
+.turn-card.neutral {
+  border-left-style: dashed;
+  border-left-color: var(--line);
+  background: rgba(0, 0, 0, 0.08);
+}
+.turn-card.neutral .turn-head strong { opacity: 0.85; font-size: 0.85rem; letter-spacing: 0.04em; }
+.turn-card.neutral .logevent { margin-left: 0.3rem; }
+.neutral-mark { opacity: 0.6; }
 .turn-head { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.25rem; }
 .turn-head strong { font-size: 0.95rem; }
 .turn-where { margin-left: auto; font-weight: 700; white-space: nowrap; }
