@@ -410,9 +410,7 @@ def test_personal_training_spy_space_places_a_spy() -> None:
     assert advanced.events[0].kind == "feyd_token_advanced"
 
     stage_actions = legal_feyd_track_actions(advanced.state, 0)
-    assert all(
-        action.action_id == "place_leader_spy" for action in stage_actions
-    )
+    assert all(action.action_id == "place_leader_spy" for action in stage_actions)
     placement = stage_actions[0]
     result = apply_feyd_track_action(advanced.state, placement)
 
@@ -444,9 +442,9 @@ def test_personal_training_paid_trash_pays_one_solari() -> None:
 
     assert result.state.players[0].resources.solari == 0
     assert dagger in result.state.players[0].trashed
-    assert dict(result.state.decision_stack[-1].context)[
-        "pending_agent_effect"
-    ] is False
+    assert (
+        dict(result.state.decision_stack[-1].context)["pending_agent_effect"] is False
+    )
 
 
 def test_personal_training_paid_trash_without_solari_only_declines() -> None:
@@ -462,13 +460,11 @@ def test_personal_training_paid_trash_without_solari_only_declines() -> None:
 
     # The one-Solari arrow cost cannot be paid, so only the decline remains
     # [Main pp. 9, 20].
-    assert [action.action_id for action in actions] == [
-        "decline_leader_card_trash"
-    ]
+    assert [action.action_id for action in actions] == ["decline_leader_card_trash"]
     result = apply_feyd_track_action(advanced, actions[0])
-    assert dict(result.state.decision_stack[-1].context)[
-        "pending_agent_effect"
-    ] is False
+    assert (
+        dict(result.state.decision_stack[-1].context)["pending_agent_effect"] is False
+    )
 
 
 def test_personal_training_double_spice_space_is_automatic() -> None:
@@ -497,9 +493,7 @@ def test_personal_training_final_space_recruits_and_places_a_spy() -> None:
     )
     advanced = apply_feyd_track_action(placed, advance)
     assert advanced.state.players[0].troops_garrison == 4
-    assert (
-        dict(advanced.state.decision_stack[-1].context)["troops_recruited"] == 1
-    )
+    assert dict(advanced.state.decision_stack[-1].context)["troops_recruited"] == 1
 
     stage_actions = legal_feyd_track_actions(advanced.state, 0)
     result = apply_feyd_track_action(advanced.state, stage_actions[0])
@@ -517,9 +511,9 @@ def test_personal_training_at_the_final_space_gives_no_reward() -> None:
     result = resolve_agent_card_effect(placed)
 
     assert result.events[0].kind == "agent_card_effect_unavailable"
-    assert dict(result.state.decision_stack[-1].context)[
-        "pending_agent_effect"
-    ] is False
+    assert (
+        dict(result.state.decision_stack[-1].context)["pending_agent_effect"] is False
+    )
 
 
 def test_personal_training_spy_stage_recalls_first_without_supply() -> None:
@@ -546,6 +540,45 @@ def test_personal_training_spy_stage_recalls_first_without_supply() -> None:
 
     assert result.state.players[0].spies_supply == 0
     assert len(result.state.players[0].spy_post_ids) == 3
+
+
+def test_spy_stage_recalls_again_when_the_recalled_spy_was_spent() -> None:
+    # The supply is judged when the placement resolves [Main pp. 11, 20]: a
+    # freely ordered effect of the same turn may spend the Spy that the
+    # recall freed (a Distraction trigger did, in a 2026-09-06 tournament
+    # game), and then a placement cannot be offered — the recall is offered
+    # again instead of an action that raises on apply.
+    posts = tuple(post.post_id for post in OBSERVATION_POSTS[:3])
+    placed = _feyd_effect_state(spies_supply=0, spy_post_ids=posts)
+    advance = next(
+        action
+        for action in legal_feyd_track_actions(placed, 0)
+        if dict(action.arguments)["space_id"] == "first_spy"
+    )
+    advanced = apply_feyd_track_action(placed, advance).state
+    recall = legal_feyd_track_actions(advanced, 0)[0]
+    recalled = apply_feyd_track_action(advanced, recall).state
+    assert recalled.players[0].spies_supply == 1
+
+    # Another effect places the freed Spy elsewhere before the stage resolves.
+    spent_owner = replace(
+        recalled.players[0],
+        spies_supply=0,
+        spy_post_ids=(*recalled.players[0].spy_post_ids, OBSERVATION_POSTS[3].post_id),
+    )
+    spent = replace(recalled, players=(spent_owner, *recalled.players[1:]))
+
+    offered = legal_feyd_track_actions(spent, 0)
+    assert offered
+    assert all(
+        action.action_id == "recall_spy_for_leader_placement" for action in offered
+    )
+    again = apply_feyd_track_action(spent, offered[0]).state
+    assert again.players[0].spies_supply == 1
+    assert all(
+        action.action_id == "place_leader_spy"
+        for action in legal_feyd_track_actions(again, 0)
+    )
 
 
 def test_devious_strength_recalls_a_spy_for_two_swords() -> None:
@@ -670,14 +703,12 @@ def test_spice_agony_without_spice_only_declines() -> None:
 
     actions = legal_leader_signet_actions(placed, 0)
 
-    assert [action.action_id for action in actions] == [
-        "decline_leader_signet_payment"
-    ]
+    assert [action.action_id for action in actions] == ["decline_leader_signet_payment"]
     result = apply_leader_signet_payment(placed, actions[0])
     assert result.state.players[0].memories == 0
-    assert dict(result.state.decision_stack[-1].context)[
-        "pending_agent_effect"
-    ] is False
+    assert (
+        dict(result.state.decision_stack[-1].context)["pending_agent_effect"] is False
+    )
 
 
 def test_spice_agony_with_an_empty_supply_still_draws_intrigue() -> None:
@@ -753,9 +784,7 @@ def test_other_memories_flips_and_draws_per_memory() -> None:
         "use_other_memories",
         "decline_other_memories",
     }
-    use = next(
-        action for action in actions if action.action_id == "use_other_memories"
-    )
+    use = next(action for action in actions if action.action_id == "use_other_memories")
     result = apply_leader_placement_ability(placed, use)
     resolved = result.state.players[0]
     context = dict(result.state.decision_stack[-1].context)
@@ -803,9 +832,9 @@ def test_other_memories_declining_keeps_the_lady_jessica_face() -> None:
 
     assert result.state.players[0].leader_face_id == "lady_jessica"
     assert result.state.players[0].memories == 1
-    assert dict(result.state.decision_stack[-1].context)[
-        "pending_leader_ability"
-    ] is False
+    assert (
+        dict(result.state.decision_stack[-1].context)["pending_leader_ability"] is False
+    )
 
 
 def test_other_memories_is_not_pending_outside_bene_gesserit_spaces() -> None:
@@ -873,13 +902,12 @@ def test_reverend_mother_repeat_without_water_only_declines() -> None:
 
     actions = legal_leader_board_repeat_actions(first.state, 0)
 
-    assert [action.action_id for action in actions] == [
-        "decline_leader_board_repeat"
-    ]
+    assert [action.action_id for action in actions] == ["decline_leader_board_repeat"]
     result = apply_leader_board_repeat(first.state, actions[0])
-    assert dict(result.state.decision_stack[-1].context)[
-        "pending_leader_board_repeat"
-    ] is False
+    assert (
+        dict(result.state.decision_stack[-1].context)["pending_leader_board_repeat"]
+        is False
+    )
 
 
 def test_reverend_mother_repeat_rearms_every_icon_of_the_space() -> None:
@@ -941,9 +969,9 @@ def test_lady_jessica_repeat_is_not_pending_before_the_flip() -> None:
     state = _turn_state(owner)
     placed = apply_agent_action(state, _signet_action_to_card(state, "fremkit")).state
 
-    assert dict(placed.decision_stack[-1].context)[
-        "pending_leader_board_repeat"
-    ] is False
+    assert (
+        dict(placed.decision_stack[-1].context)["pending_leader_board_repeat"] is False
+    )
 
 
 def test_setup_assigns_the_printed_leader_faces() -> None:
@@ -989,9 +1017,7 @@ def test_loyalty_grants_two_spice_on_reaching_two_bene_gesserit() -> None:
     # passing 2 within one multi-step gain counts [Main pp. 7, 17].
     assert resolved.influence.bene_gesserit == 2
     assert resolved.resources.spice == 2
-    assert any(
-        event.kind == "leader_influence_bonus_gained" for event in result.events
-    )
+    assert any(event.kind == "leader_influence_bonus_gained" for event in result.events)
 
 
 def test_loyalty_triggers_again_after_dropping_below_two() -> None:
@@ -1036,9 +1062,7 @@ def test_loyalty_ignores_other_factions_and_leaders() -> None:
     )
     assert other_faction.state.players[0].resources.spice == 0
 
-    gurney_state = _turn_state(
-        PlayerState(player_id=0, leader_id="gurney_halleck")
-    )
+    gurney_state = _turn_state(PlayerState(player_id=0, leader_id="gurney_halleck"))
     other_leader = gain_faction_influence(
         gurney_state,
         0,
@@ -1102,9 +1126,9 @@ def test_arrakis_informant_places_a_spy_only_next_to_city_spaces() -> None:
     }
     result = apply_leader_spy_action(placed, actions[0])
     assert result.state.players[0].spies_supply == 2
-    assert dict(result.state.decision_stack[-1].context)[
-        "pending_agent_effect"
-    ] is False
+    assert (
+        dict(result.state.decision_stack[-1].context)["pending_agent_effect"] is False
+    )
 
 
 def test_arrakis_informant_fizzles_when_every_city_post_is_taken() -> None:
@@ -1125,9 +1149,7 @@ def test_arrakis_informant_fizzles_when_every_city_post_is_taken() -> None:
         spy_post_ids=city_posts,
     )
     crowded = replace(state, players=(state.players[0], opponent, *state.players[2:]))
-    placed = apply_agent_action(
-        crowded, _signet_action_to(crowded, "arrakeen")
-    ).state
+    placed = apply_agent_action(crowded, _signet_action_to(crowded, "arrakeen")).state
 
     assert legal_leader_signet_actions(placed, 0) == ()
     result = resolve_agent_card_effect(placed)
@@ -1232,16 +1254,17 @@ def test_smuggle_spice_pays_staban_for_spied_maker_visits() -> None:
         players=(visitor, staban, *(_turn_state(visitor).players[2:])),
     )
 
-    result = apply_agent_action(state, _signet_action_to_card_id(
-        state, "hagga_basin", "player:0:starter:dune_the_desert_planet:0"
-    ))
+    result = apply_agent_action(
+        state,
+        _signet_action_to_card_id(
+            state, "hagga_basin", "player:0:starter:dune_the_desert_planet:0"
+        ),
+    )
 
     # Smuggle Spice: another player's Agent on a spied Maker space pays one
     # Spice [Staban Tuek card].
     assert result.state.players[1].resources.spice == 1
-    assert any(
-        event.kind == "leader_ability_spice_gained" for event in result.events
-    )
+    assert any(event.kind == "leader_ability_spice_gained" for event in result.events)
 
 
 def test_smuggle_spice_needs_a_spy_on_the_visited_maker_space() -> None:
@@ -1260,9 +1283,12 @@ def test_smuggle_spice_needs_a_spy_on_the_visited_maker_space() -> None:
         players=(visitor, staban, *(_turn_state(visitor).players[2:])),
     )
 
-    result = apply_agent_action(state, _signet_action_to_card_id(
-        state, "hagga_basin", "player:0:starter:dune_the_desert_planet:0"
-    ))
+    result = apply_agent_action(
+        state,
+        _signet_action_to_card_id(
+            state, "hagga_basin", "player:0:starter:dune_the_desert_planet:0"
+        ),
+    )
 
     assert result.state.players[1].resources.spice == 0
 
@@ -1277,9 +1303,12 @@ def test_smuggle_spice_ignores_stabans_own_maker_visits() -> None:
     )
     state = _turn_state(staban)
 
-    result = apply_agent_action(state, _signet_action_to_card_id(
-        state, "hagga_basin", "player:0:starter:dune_the_desert_planet:0"
-    ))
+    result = apply_agent_action(
+        state,
+        _signet_action_to_card_id(
+            state, "hagga_basin", "player:0:starter:dune_the_desert_planet:0"
+        ),
+    )
 
     assert result.state.players[0].resources.spice == 0
 
@@ -1297,8 +1326,7 @@ def test_unseen_network_offers_the_landsraad_bonus() -> None:
     placement = next(
         action
         for action in legal_leader_signet_actions(placed, 0)
-        if dict(action.arguments)["post_id"]
-        == "landsraad-assembly-hall-gather-support"
+        if dict(action.arguments)["post_id"] == "landsraad-assembly-hall-gather-support"
     )
     after_spy = apply_leader_spy_action(placed, placement)
     context = dict(after_spy.state.decision_stack[-1].context)
@@ -1319,9 +1347,9 @@ def test_unseen_network_offers_the_landsraad_bonus() -> None:
     # [Staban Tuek card].
     assert resolved.resources.spice == 0
     assert resolved.resources.solari == 3
-    assert dict(result.state.decision_stack[-1].context)[
-        "pending_agent_effect"
-    ] is False
+    assert (
+        dict(result.state.decision_stack[-1].context)["pending_agent_effect"] is False
+    )
 
 
 def test_unseen_network_offers_the_faction_bonus() -> None:
@@ -1389,16 +1417,13 @@ def test_unseen_network_bonus_without_funds_only_declines() -> None:
     placement = next(
         action
         for action in legal_leader_signet_actions(placed, 0)
-        if dict(action.arguments)["post_id"]
-        == "landsraad-assembly-hall-gather-support"
+        if dict(action.arguments)["post_id"] == "landsraad-assembly-hall-gather-support"
     )
     after_spy = apply_leader_spy_action(placed, placement)
 
     actions = legal_leader_signet_actions(after_spy.state, 0)
 
-    assert [action.action_id for action in actions] == [
-        "decline_leader_signet_payment"
-    ]
+    assert [action.action_id for action in actions] == ["decline_leader_signet_payment"]
     result = apply_leader_signet_payment(after_spy.state, actions[0])
     context = dict(result.state.decision_stack[-1].context)
     assert context["pending_agent_effect"] is False
@@ -1422,9 +1447,7 @@ def test_chroniclers_insight_acquires_a_one_cost_card_to_hand() -> None:
 
     actions = legal_leader_signet_actions(placed, 0)
     acquire = next(
-        action
-        for action in actions
-        if action.action_id == "acquire_leader_imperium"
+        action for action in actions if action.action_id == "acquire_leader_imperium"
     )
     assert dict(acquire.arguments)["instance_id"] == target
     result = apply_leader_signet_acquire(placed, acquire)
@@ -1434,9 +1457,9 @@ def test_chroniclers_insight_acquires_a_one_cost_card_to_hand() -> None:
     # [Princess Irulan card]; the Row refills at once [Main p. 13].
     assert target in resolved.hand
     assert refill in result.state.imperium_row
-    assert dict(result.state.decision_stack[-1].context)[
-        "pending_agent_effect"
-    ] is False
+    assert (
+        dict(result.state.decision_stack[-1].context)["pending_agent_effect"] is False
+    )
 
 
 def test_chroniclers_insight_trash_pays_spice_only_for_costed_cards() -> None:
@@ -1486,9 +1509,9 @@ def test_chroniclers_insight_can_decline_entirely() -> None:
     )
     result = apply_leader_signet_payment(placed, decline)
 
-    assert dict(result.state.decision_stack[-1].context)[
-        "pending_agent_effect"
-    ] is False
+    assert (
+        dict(result.state.decision_stack[-1].context)["pending_agent_effect"] is False
+    )
 
 
 def _choam_turn_state(owner: PlayerState) -> GameState:
@@ -1605,9 +1628,7 @@ def test_shaddam_may_take_a_set_aside_sardaukar_contract() -> None:
 
     # The set-aside tile is taken in place of a face-up one [FAQ p. 3]: the
     # market keeps its tile and nothing refills from the bank.
-    assert result.state.players[0].active_contract_ids == (
-        "contract:sardaukar_i",
-    )
+    assert result.state.players[0].active_contract_ids == ("contract:sardaukar_i",)
     assert result.state.sardaukar_contract_ids == ("contract:sardaukar_ii",)
     assert result.state.face_up_contract_ids == ("contract:immediate",)
     assert result.state.contract_bank == ("contract:deliver_supplies",)
@@ -1695,9 +1716,7 @@ def test_emperor_signet_gains_a_solari_and_a_deployable_free_troop() -> None:
     assert context["pending_combat_deployment"] is False
 
     actions = legal_leader_signet_actions(placed, 0)
-    assert [action.action_id for action in actions] == [
-        "gain_leader_signet_troop"
-    ]
+    assert [action.action_id for action in actions] == ["gain_leader_signet_troop"]
     result = apply_shaddam_signet_choice(placed, actions[0])
     resolved = result.state.players[0]
     next_context = dict(result.state.decision_stack[-1].context)
