@@ -653,7 +653,7 @@ function enterGame(summary) {
 }
 
 function leaveGame() {
-  stopMoveReplay();
+  setSpotlight(null);
   state.gameId = null;
   state.summary = null;
   state.view = null;
@@ -728,7 +728,6 @@ async function applySummary(summary) {
        its own timeline (meta.steps) instead. */
     if (!state.review) {
       state.log = await api(`/games/${state.gameId}/log?seat=${activeSeat()}`);
-      queueOtherSeatMoves();
     }
   }
   render();
@@ -1060,62 +1059,23 @@ function costNode(cost) {
   return wrap;
 }
 
-/* ---------- other seats' moves, replayed one turn at a time ----------
+/* ---------- board spotlight ----------
 
-   Every refresh may bring several steps by the other seats (AI turns run
-   to the next human decision). Instead of leaving the player to read the
-   log, the new steps are grouped by actor and shown one group at a time
-   in an overlay on the board: the seat, its lines, the cards involved,
-   and a spotlight on the space or card each step references. The board
-   itself already shows the final state; the overlay explains how it got
-   there and can be skipped. */
+   The action log's turn cards (renderLog) light what they refer to on the
+   table while the pointer rests on them: the spaces and cards named by
+   the steps' arguments or events. The stage is rebuilt by every render,
+   so the spotlight is re-applied afterwards. */
 
-const MOVE_BASE_MS = 3000;
-const MOVE_LINE_MS = 500;
-const MOVE_MAX_MS = 8000;
-/* After the pointer leaves the overlay (which pauses the auto-advance). */
-const MOVE_RESUME_MS = 1500;
-const MOVE_MAX_LINES = 8;
-/* Steps that only close a window and say nothing the player needs. */
-const MOVE_QUIET_ACTIONS = new Set(["finish_agent_turn", "finish_reveal", "pass"]);
+let spotlightGroup = null;
 
-let moveQueue = [];
-let moveTimer = 0;
-let moveCurrent = null;
-let seenLog = { gameId: null, count: 0 };
-
-function queueOtherSeatMoves() {
-  const log = state.log;
-  if (!log) return;
-  if (seenLog.gameId !== state.gameId) {
-    /* First look at this game (new or loaded): nothing to catch up on. */
-    seenLog = { gameId: state.gameId, count: log.count };
-    stopMoveReplay();
-    return;
-  }
-  const fresh = log.entries.filter(
-    (entry) =>
-      entry.index >= seenLog.count &&
-      entry.type === "action" &&
-      !entry.undone &&
-      entry.actor !== state.viewSeat &&
-      !MOVE_QUIET_ACTIONS.has(entry.action_id)
-  );
-  seenLog.count = log.count;
-  if (!fresh.length) return;
-  const groups = [];
-  for (const entry of fresh) {
-    const last = groups[groups.length - 1];
-    if (last && last.actor === entry.actor) last.entries.push(entry);
-    else groups.push({ actor: entry.actor, entries: [entry] });
-  }
-  moveQueue.push(...groups);
-  if (!moveCurrent) nextMove();
+function setSpotlight(group) {
+  spotlightGroup = group;
+  applySpotlight();
 }
 
-/* Everything a step group points at on the table: spaces and cards named
-   by the action arguments or by the events (acquired card, placed Agent). */
-function moveTargets(group) {
+/* Everything a group of steps points at: spaces and cards named by the
+   action arguments or by the events (acquired card, placed Agent). */
+function logTargets(group) {
   const spaces = [];
   const cards = [];
   const seen = new Set();
@@ -1126,6 +1086,7 @@ function moveTargets(group) {
     else if (lookup(baseId(value))) cards.push(value);
   };
   for (const entry of group.entries) {
+    if (entry.type !== "action") continue;
     for (const value of Object.values(entry.arguments)) consider(value);
     for (const event of entry.events) {
       if (!event.payload) continue;
@@ -1139,131 +1100,12 @@ function moveTargets(group) {
   return { spaces, cards };
 }
 
-function nextMove() {
-  window.clearTimeout(moveTimer);
-  moveCurrent = moveQueue.shift() || null;
-  const box = el("move-overlay");
-  if (!moveCurrent) {
-    box.hidden = true;
-    box.textContent = "";
-    applyMoveSpotlight();
-    return;
-  }
-  const group = moveCurrent;
-  const player = state.view && state.view.players[group.actor];
-  const leaderFace = player && (player.leader_face_id || player.leader_id);
-  const color = SEAT_COLORS[group.actor];
-  box.textContent = "";
-  box.style.borderColor = color;
-
-  const head = document.createElement("div");
-  head.className = "move-head";
-  head.append(seatToken(group.actor, "seat-mark"));
-  const who = document.createElement("strong");
-  who.textContent = leaderFace ? nameOf(leaderFace) : `좌석 ${group.actor}`;
-  head.appendChild(who);
-  const kind = state.summary.seats[group.actor];
-  if (kind && kind !== "human") {
-    const badge = document.createElement("span");
-    badge.className = "badge ai";
-    badge.textContent = kind;
-    head.appendChild(badge);
-  }
-  const counter = document.createElement("span");
-  counter.className = "move-counter";
-  counter.textContent = moveQueue.length ? `남은 턴 ${moveQueue.length}` : "마지막";
-  head.appendChild(counter);
-
-  const body = document.createElement("div");
-  body.className = "move-body";
-  const lines = document.createElement("div");
-  lines.className = "move-lines";
-  const shown = group.entries.slice(0, MOVE_MAX_LINES);
-  for (const entry of shown) {
-    const line = document.createElement("div");
-    line.className = "move-line";
-    line.appendChild(iconize(describeAction(entry)));
-    lines.appendChild(line);
-  }
-  if (group.entries.length > shown.length) {
-    const more = document.createElement("div");
-    more.className = "move-line muted";
-    more.textContent = `… 외 ${group.entries.length - shown.length}단계 (행동 로그 참고)`;
-    lines.appendChild(more);
-  }
-  body.appendChild(lines);
-
-  const targets = moveTargets(group);
-  if (targets.cards.length) {
-    const row = document.createElement("div");
-    row.className = "move-cards";
-    for (const id of targets.cards.slice(0, 3)) {
-      row.appendChild(visualCard(id, { className: "small", onClick: (entry, card) => {
-        if (entry) pinPopover(entry, card);
-      } }));
-    }
-    body.appendChild(row);
-  }
-
-  const controls = document.createElement("div");
-  controls.className = "move-controls";
-  if (targets.spaces.length) {
-    const where = document.createElement("span");
-    where.className = "move-where";
-    where.append(icon("agent", "Agent"), " ", targets.spaces.map(nameOf).join(", "));
-    controls.appendChild(where);
-  }
-  const spacer = document.createElement("span");
-  spacer.className = "move-spacer";
-  controls.appendChild(spacer);
-  const next = document.createElement("button");
-  next.type = "button";
-  next.textContent = moveQueue.length ? "다음 ▶" : "닫기";
-  next.addEventListener("click", nextMove);
-  controls.appendChild(next);
-  if (moveQueue.length) {
-    const skip = document.createElement("button");
-    skip.type = "button";
-    skip.textContent = "건너뛰기 ⏭";
-    skip.addEventListener("click", stopMoveReplay);
-    controls.appendChild(skip);
-  }
-
-  box.append(head, body, controls);
-  box.hidden = false;
-  applyMoveSpotlight();
-  const duration = Math.min(MOVE_MAX_MS, MOVE_BASE_MS + MOVE_LINE_MS * shown.length);
-  moveTimer = window.setTimeout(nextMove, duration);
-}
-
-/* Reading takes as long as it takes: the pointer resting on the overlay
-   holds the current move, leaving it restarts a short countdown. */
-function initMoveOverlay() {
-  const box = el("move-overlay");
-  box.addEventListener("mouseenter", () => window.clearTimeout(moveTimer));
-  box.addEventListener("mouseleave", () => {
-    if (moveCurrent) moveTimer = window.setTimeout(nextMove, MOVE_RESUME_MS);
-  });
-}
-
-function stopMoveReplay() {
-  window.clearTimeout(moveTimer);
-  moveQueue = [];
-  moveCurrent = null;
-  const box = el("move-overlay");
-  box.hidden = true;
-  box.textContent = "";
-  applyMoveSpotlight();
-}
-
-/* Light the current move's spaces and cards on the (freshly rendered)
-   table; clears every spotlight when no move is showing. */
-function applyMoveSpotlight() {
+function applySpotlight() {
   for (const node of document.querySelectorAll(".spotlight")) {
     node.classList.remove("spotlight");
   }
-  if (!moveCurrent) return;
-  const { spaces, cards } = moveTargets(moveCurrent);
+  if (!spotlightGroup) return;
+  const { spaces, cards } = logTargets(spotlightGroup);
   for (const spaceId of spaces) {
     for (const node of document.querySelectorAll(`[data-space="${spaceId}"]`)) {
       node.classList.add("spotlight");
@@ -1271,7 +1113,7 @@ function applyMoveSpotlight() {
   }
   for (const id of cards) {
     for (const node of document.querySelectorAll(`#game-screen [data-instance="${id}"]`)) {
-      if (!node.closest("#move-overlay")) node.classList.add("spotlight");
+      if (!node.closest("#action-log")) node.classList.add("spotlight");
     }
   }
 }
@@ -1298,7 +1140,7 @@ function render() {
   renderLog();
   renderPrivate();
   renderDisclosure();
-  applyMoveSpotlight();
+  applySpotlight();
 }
 
 /* Post-game full disclosure (OQ-010 ruling 4): once a game has finished,
@@ -2398,38 +2240,137 @@ function logEventLine(event) {
   return line;
 }
 
-function logEntryRow(entry) {
-  const row = document.createElement("div");
-  row.className = "logentry";
-  const head = document.createElement("div");
+/* Steps that only close a window; kept in the record but muted. */
+const QUIET_ACTIONS = new Set(["finish_agent_turn", "finish_reveal", "pass"]);
 
-  if (entry.type === "undo") {
-    row.classList.add("undo-marker");
-    head.textContent = `↩ 좌석 ${entry.seat}이(가) ${entry.count}단계 되돌림`;
-    row.appendChild(head);
-    return row;
-  }
-
-  if (entry.undone) row.classList.add("undone");
-  let text;
-  if (entry.type === "chance") {
-    text = `#${entry.index} chance: ${prettify(entry.decision_id)}`;
-    if (entry.values) {
-      const shown =
-        entry.values.length <= 3
-          ? entry.values.map(nameOf).join(", ")
-          : `${entry.values.slice(0, 3).map(nameOf).join(", ")} …`;
-      text += ` — ${shown}`;
+/* Group the log into turn cards: consecutive steps by one seat form a
+   group, chance steps join the open group as muted lines, an undo marker
+   closes it. */
+function logGroups(entries) {
+  const groups = [];
+  let open = null;
+  for (const entry of entries) {
+    if (entry.type === "undo") {
+      groups.push({ kind: "undo", entry });
+      open = null;
+    } else if (entry.type === "chance") {
+      if (open) open.entries.push(entry);
+      else groups.push({ kind: "chance", entries: [entry] });
+    } else if (open && open.actor === entry.actor) {
+      open.entries.push(entry);
+    } else {
+      open = { kind: "turn", actor: entry.actor, entries: [entry] };
+      groups.push(open);
     }
-  } else {
-    text = `#${entry.index} 좌석 ${entry.actor}: ${describeAction(entry)}`;
   }
-  if (entry.undone) text += " (되돌림)";
-  head.textContent = text;
-  row.appendChild(head);
-  for (const event of entry.events) row.appendChild(logEventLine(event));
+  return groups;
+}
+
+function chanceLine(entry) {
+  const line = document.createElement("div");
+  line.className = "turn-line chance";
+  let text = `chance: ${prettify(entry.decision_id)}`;
+  if (entry.values) {
+    const shown =
+      entry.values.length <= 3
+        ? entry.values.map(nameOf).join(", ")
+        : `${entry.values.slice(0, 3).map(nameOf).join(", ")} …`;
+    text += ` — ${shown}`;
+  }
+  line.textContent = text;
+  return line;
+}
+
+function turnLine(entry) {
+  const line = document.createElement("div");
+  line.className = "turn-line";
+  if (QUIET_ACTIONS.has(entry.action_id)) line.classList.add("quiet");
+  if (entry.undone) line.classList.add("undone");
+  const head = document.createElement("div");
+  head.className = "turn-line-head";
+  const index = document.createElement("span");
+  index.className = "turn-index";
+  index.textContent = `#${entry.index}`;
+  head.append(index, iconize(describeAction(entry)));
+  if (entry.undone) head.append(" (되돌림)");
+  line.appendChild(head);
+  for (const event of entry.events) line.appendChild(logEventLine(event));
+  return line;
+}
+
+function turnCard(group, freshFrom) {
+  const card = document.createElement("div");
+  card.className = "turn-card";
+  const color = SEAT_COLORS[group.actor];
+  card.style.borderLeftColor = color;
+  if (group.entries.some((entry) => entry.index >= freshFrom)) card.classList.add("fresh");
+  if (group.entries.every((entry) => entry.undone)) card.classList.add("undone");
+
+  const player = state.view && state.view.players[group.actor];
+  const leaderFace = player && (player.leader_face_id || player.leader_id);
+  const head = document.createElement("div");
+  head.className = "turn-head";
+  head.appendChild(seatToken(group.actor, "seat-mark"));
+  const who = document.createElement("strong");
+  who.textContent = leaderFace ? nameOf(leaderFace) : `좌석 ${group.actor}`;
+  head.appendChild(who);
+  const kind = state.summary.seats[group.actor];
+  const badge = document.createElement("span");
+  badge.className = kind === "human" ? "badge" : "badge ai";
+  badge.textContent =
+    kind === "human" ? (group.actor === activeSeat() ? "YOU" : "사람") : kind;
+  head.appendChild(badge);
+  const targets = logTargets(group);
+  if (targets.spaces.length) {
+    const where = document.createElement("span");
+    where.className = "turn-where";
+    where.append(icon("agent", "Agent"), " ", targets.spaces.map(nameOf).join(", "));
+    head.appendChild(where);
+  }
+  card.appendChild(head);
+
+  const body = document.createElement("div");
+  body.className = "turn-body";
+  const lines = document.createElement("div");
+  lines.className = "turn-lines";
+  for (const entry of group.entries) {
+    lines.appendChild(entry.type === "chance" ? chanceLine(entry) : turnLine(entry));
+  }
+  body.appendChild(lines);
+  if (targets.cards.length) {
+    const row = document.createElement("div");
+    row.className = "turn-cards";
+    for (const id of targets.cards.slice(0, 4)) {
+      row.appendChild(
+        visualCard(id, {
+          className: "small",
+          onClick: (entry, node) => {
+            if (entry) pinPopover(entry, node);
+          },
+        })
+      );
+    }
+    body.appendChild(row);
+  }
+  card.appendChild(body);
+
+  card.addEventListener("mouseenter", () => setSpotlight(group));
+  card.addEventListener("mouseleave", () => {
+    if (spotlightGroup === group) setSpotlight(null);
+  });
+  return card;
+}
+
+function undoRow(entry) {
+  const row = document.createElement("div");
+  row.className = "turn-card undo-marker";
+  row.textContent = `↩ 좌석 ${entry.seat}이(가) ${entry.count}단계 되돌림`;
   return row;
 }
+
+/* Entries from this index on arrived since the viewing seat last acted;
+   their turn cards are marked and the list scrolls to the first one. */
+let logSeen = { gameId: null, count: 0, freshFrom: 0 };
 
 function renderLog() {
   const panel = el("action-log");
@@ -2440,14 +2381,31 @@ function renderLog() {
     return;
   }
   panel.hidden = false;
+  if (logSeen.gameId !== state.gameId) {
+    logSeen = { gameId: state.gameId, count: log.count, freshFrom: log.count };
+  } else if (log.count !== logSeen.count) {
+    logSeen.freshFrom = logSeen.count;
+    logSeen.count = log.count;
+  }
+
   const heading = document.createElement("h2");
   heading.textContent = "행동 로그";
   panel.appendChild(heading);
   const list = document.createElement("div");
   list.className = "log-list";
-  for (const entry of log.entries) list.appendChild(logEntryRow(entry));
+  for (const group of logGroups(log.entries)) {
+    if (group.kind === "undo") list.appendChild(undoRow(group.entry));
+    else if (group.kind === "chance") {
+      const row = document.createElement("div");
+      row.className = "turn-card chance-only";
+      for (const entry of group.entries) row.appendChild(chanceLine(entry));
+      list.appendChild(row);
+    } else list.appendChild(turnCard(group, logSeen.freshFrom));
+  }
   panel.appendChild(list);
-  list.scrollTop = list.scrollHeight;
+  const first = list.querySelector(".turn-card.fresh");
+  if (first) list.scrollTop = Math.max(0, first.offsetTop - list.offsetTop - 6);
+  else list.scrollTop = list.scrollHeight;
 }
 
 /* ---------- own hand ---------- */
@@ -2558,7 +2516,6 @@ function renderStandings() {
 async function init() {
   state.catalog = await api("/catalog");
   buildSeatSelects();
-  initMoveOverlay();
   document.addEventListener("click", (event) => {
     const pop = el("card-popover");
     if (!pop.hidden && !pop.contains(event.target)) closePopover();
