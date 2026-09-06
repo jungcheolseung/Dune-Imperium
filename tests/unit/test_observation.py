@@ -251,3 +251,28 @@ def test_game_state_rejects_two_owners_of_one_alliance() -> None:
 
     with pytest.raises(ValueError, match="only one owner"):
         replace(state, players=(first, second, *state.players[2:]))
+
+
+def test_current_combat_strength_projects_units_before_the_reveal() -> None:
+    """Before the Reveal the marker is 0 but the units already count
+    (troop 2, sandworm 3, nothing without a unit); after the Reveal the
+    marker is the answer [Main p. 12]."""
+
+    from dune_imperium.core.observation import current_combat_strength
+
+    state = _state()
+    player = state.players[0]
+    idle = replace(player, troops_conflict=0, sandworms_conflict=0, combat_strength=0)
+    assert current_combat_strength(idle) == 0
+    deployed = replace(
+        idle,
+        troops_conflict=2,
+        troops_supply=idle.troops_supply - 2,
+        sandworms_conflict=1,
+    )
+    assert current_combat_strength(deployed) == 7
+    revealed = replace(deployed, has_revealed=True, combat_strength=9)
+    assert current_combat_strength(revealed) == 9
+    view = observe_state(replace(state, players=(deployed, *state.players[1:])), 0)
+    assert view.players[0].combat_strength == 0
+    assert view.players[0].combat_strength_now == 7
