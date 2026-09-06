@@ -1473,6 +1473,7 @@ function renderBoardStage(board, view) {
       event.stopPropagation();
       tableClick(spaceId, entry, hotspot);
     });
+    hoverPopover(hotspot, () => entry);
     stage.appendChild(hotspot);
   }
 
@@ -1665,6 +1666,7 @@ function spaceRow(spaceId, occupants, controllers, makerSpice) {
     if (event.target.closest(".tag")) return;
     tableClick(spaceId, entry, row);
   });
+  hoverPopover(row, () => entry);
   return row;
 }
 
