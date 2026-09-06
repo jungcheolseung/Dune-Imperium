@@ -1497,7 +1497,49 @@ function renderBoardStage(board, view) {
     stage.appendChild(note);
   }
   renderTrackMarkers(stage, view);
+  renderSlotCards(stage, view);
   board.appendChild(stage);
+}
+
+/* The Conflict card and the face-up CHOAM contracts drawn in their printed
+   slots (catalog.tracks.conflict_slot / contract_slots, percent boxes).
+   Every card is centred on its slot. The Conflict card is portrait in a
+   square slot, so it stands taller than the frame (nudged up to stay on
+   the scan); the landscape contracts are drawn a little larger than their
+   slot because the dark band around it is empty. Shaddam's set-aside
+   Sardaukar contracts have no printed home and stay in the market strip. */
+const CONTRACT_SLOT_SCALE = 1.2;
+
+function renderSlotCards(stage, view) {
+  const tracks = state.catalog.tracks;
+  if (!tracks || !tracks.conflict_slot) return;
+
+  const [cLeft, cTop, cWidth, cHeight] = tracks.conflict_slot;
+  for (const id of view.current_conflict_ids) {
+    const card = visualCard(id, { className: "conflict slot-card" });
+    card.style.width = `${cWidth * 0.8}%`;
+    placeAt(card, cLeft + cWidth / 2, cTop + cHeight / 2 - 0.3);
+    stage.appendChild(card);
+  }
+
+  if (!state.summary.choam_module) return;
+  view.face_up_contract_ids.forEach((id, index) => {
+    const box = tracks.contract_slots[index];
+    if (!box) return;
+    const [left, top, width, height] = box;
+    const card = visualCard(id, { className: "contract slot-card" });
+    card.style.width = `${width * CONTRACT_SLOT_SCALE}%`;
+    placeAt(card, left + width / 2, top + height / 2);
+    stage.appendChild(card);
+  });
+  const [left, top, width, height] = tracks.contract_slots[tracks.contract_slots.length - 1];
+  const bank = document.createElement("span");
+  bank.className = "slot-bank";
+  bank.title = "face-down contract bank";
+  bank.append(icon("contract", "Contract"), ` bank ${view.contract_bank_size}`);
+  const overhang = (width * (CONTRACT_SLOT_SCALE - 1)) / 2;
+  placeAt(bank, left + width + overhang + 0.8, top + height / 2);
+  stage.appendChild(bank);
 }
 
 function placeAt(node, x, y) {
@@ -1757,26 +1799,35 @@ function renderMarket() {
     }));
   }
 
-  cardStrip(market, "Conflict", view.current_conflict_ids, "아직 공개되지 않음", {
-    className: "conflict",
-  });
+  /* With the board scan the Conflict card and the face-up contracts sit
+     in their printed slots on the board (renderSlotCards); the strips
+     below only cover the text-board fallback. */
+  const onBoard = Boolean(state.catalog.board_image);
+  if (!onBoard) {
+    cardStrip(market, "Conflict", view.current_conflict_ids, "아직 공개되지 않음", {
+      className: "conflict",
+    });
+  }
   cardStrip(market, "Imperium Row", view.imperium_row, "비어 있음");
   cardStrip(market, "Reserve", view.reserve_stacks.map(([cardId]) => cardId), "", (id) => {
     const stack = view.reserve_stacks.find(([cardId]) => cardId === id);
     return { badge: `×${stack ? stack[1] : 0}` };
   });
 
-  if (state.summary.choam_module) {
-    const row = cardStrip(
+  if (state.summary.choam_module && !onBoard) {
+    cardStrip(
       market,
       `Contracts · bank ${view.contract_bank_size}`,
       view.face_up_contract_ids,
       "비어 있음",
       { className: "contract" }
     );
-    for (const id of view.sardaukar_contract_ids) {
-      row.appendChild(visualCard(id, { className: "contract", badge: "set-aside" }));
-    }
+  }
+  if (view.sardaukar_contract_ids.length) {
+    cardStrip(market, "Sardaukar contract · Shaddam 전용 set-aside", view.sardaukar_contract_ids, "", {
+      className: "contract",
+      badge: "set-aside",
+    });
   }
   if (view.intrigue_discard.length) {
     cardStrip(market, "Intrigue discard", view.intrigue_discard.slice(-6), "", {

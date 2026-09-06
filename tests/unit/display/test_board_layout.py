@@ -29,6 +29,10 @@ def test_marker_tables_cover_the_printed_tracks() -> None:
     assert len(strength["cells"]) == 11 and len(strength["rows"]) == 2
     assert len(layout["conflict_quadrants"]) == 4
     assert len(layout["council_seats"]) == 4
+    # Card slots are boxes like the hotspots: one Conflict card, two
+    # face-up contracts [Main p. 16].
+    assert len(layout["conflict_slot"]) == 4
+    assert len(layout["contract_slots"]) == 2
 
     def inside(value: object) -> bool:
         return isinstance(value, (int, float)) and 0.0 <= value <= 100.0
@@ -40,6 +44,10 @@ def test_marker_tables_cover_the_printed_tracks() -> None:
     assert all(inside(value) for value in strength["cells"])
     for table in ("conflict_quadrants", "council_seats"):
         assert all(inside(point[0]) and inside(point[1]) for point in layout[table])
+    slots = (layout["conflict_slot"], *layout["contract_slots"])
+    for left, top, width, height in slots:
+        assert 0 <= left < left + width <= 100
+        assert 0 <= top < top + height <= 100
 
 
 def test_every_board_space_has_exactly_one_hotspot_box() -> None:

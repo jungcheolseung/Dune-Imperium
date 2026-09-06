@@ -3,7 +3,8 @@
 The play server can serve one machine-local scan of the printed four-player
 board (``assets/board/map.jpg``, or ``DUNE_IMPERIUM_BOARD_IMAGE``)
 and the browser draws the live state on top of it: a clickable hotspot per
-board space, Agent tokens, Control flags and Spies on observation posts.
+board space, Agent tokens, Control flags, Spies on observation posts, and
+the Conflict and face-up contract cards in their printed slots.
 The coordinates below are the only thing that ties the UI to that scan.
 
 Every value is a percentage of the image's width or height, so any scan
@@ -121,6 +122,14 @@ CONFLICT_QUADRANTS: Final = ((45.5, 84.5), (45.5, 71.0), (86.0, 71.0), (86.0, 84
 # The four High Council seats, left to right.
 COUNCIL_SEATS: Final = ((42.0, 5.5), (46.0, 5.5), (50.0, 5.5), (54.0, 5.5))
 
+# Printed card slots, ``(left, top, width, height)`` like ``SPACE_BOXES``
+# (measured 2026-09-06). The current Conflict card sits in the framed square
+# left of the strength track; the two face-up CHOAM contracts sit in the
+# pair of slots under the Landsraad Council (the left one carries the
+# "contract = 2 Solari" legend) [Main p. 16].
+CONFLICT_SLOT: Final = (38.6, 89.3, 10.0, 9.2)
+CONTRACT_SLOTS: Final = ((29.1, 21.5, 10.5, 6.5), (40.3, 21.5, 10.6, 6.5))
+
 
 def marker_layout() -> dict[str, Any]:
     """Return every marker table as plain JSON-ready values."""
@@ -140,4 +149,6 @@ def marker_layout() -> dict[str, Any]:
         "strength": {"cells": list(STRENGTH_CELL_X), "rows": list(STRENGTH_ROW_Y)},
         "conflict_quadrants": [list(point) for point in CONFLICT_QUADRANTS],
         "council_seats": [list(point) for point in COUNCIL_SEATS],
+        "conflict_slot": list(CONFLICT_SLOT),
+        "contract_slots": [list(box) for box in CONTRACT_SLOTS],
     }

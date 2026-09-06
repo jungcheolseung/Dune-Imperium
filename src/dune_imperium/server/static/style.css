@@ -287,6 +287,29 @@ button:disabled { opacity: 0.5; cursor: wait; }
   font-weight: 700;
   white-space: nowrap;
 }
+/* Cards in their printed slots: width is set inline as a percent of the
+   stage, so they scale with the scan like the hotspots do. */
+.vcard.slot-card {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
+}
+.vcard.slot-card.legal { z-index: 2; }
+.slot-bank {
+  position: absolute;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2em;
+  padding: 0.1em 0.45em;
+  background: rgba(0, 0, 0, 0.72);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: #fff;
+  font-size: 0.75em;
+  font-weight: 700;
+  white-space: nowrap;
+}
 .board-note {
   position: absolute;
   right: 1%;
