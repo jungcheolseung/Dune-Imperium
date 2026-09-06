@@ -158,8 +158,10 @@ def _learner_outcomes(episodes: tuple[Episode, ...]) -> tuple[float, float]:
 def _evaluate(config: TrainConfig, checkpoint: Path) -> tuple[float, float]:
     """Tournament win rate and mean rank of the checkpoint vs the opponent."""
 
+    # One checkpoint seat against three opponents (a two-kind lineup would
+    # cycle to two checkpoint seats and cap the win rate at 50%).
     specs = tournament_specs(
-        agents=(f"{CHECKPOINT_PREFIX}{checkpoint}", config.eval_opponent),
+        agents=(f"{CHECKPOINT_PREFIX}{checkpoint}", *(config.eval_opponent,) * 3),
         games=config.eval_games,
         rulesets=(config.choam_module,),
         rotate_leaders=True,

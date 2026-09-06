@@ -188,6 +188,7 @@ def test_train_loop_writes_log_checkpoints_and_evaluates(tmp_path: Path) -> None
     assert first.eval_win_rate is None
     assert second.eval_win_rate is not None
     assert 0.0 <= second.eval_win_rate <= 1.0
+    assert second.eval_mean_rank is not None and 1.0 <= second.eval_mean_rank <= 4.0
     assert (tmp_path / "run" / "latest.pt").exists()
     assert (tmp_path / "run" / "iteration_00002.pt").exists()
     lines = result.log_path.read_text().splitlines()
