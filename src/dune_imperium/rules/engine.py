@@ -63,6 +63,7 @@ from dune_imperium.rules.board_effects import (
     board_effect_is_implemented,
     resolve_board_effect,
     secrets_steal_is_pending,
+    skip_impossible_imperial_privilege_recall,
 )
 from dune_imperium.rules.card_draw import (
     apply_personal_draw_reshuffle,
@@ -449,9 +450,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "decline_combat_reward_trash": apply_combat_reward_trash,
     "place_combat_reward_spy": apply_combat_reward_spy,
     "choose_combat_reward_influence": apply_combat_reward_influence,
-    "choose_distinct_combat_reward_influence": (
-        apply_distinct_combat_reward_influence
-    ),
+    "choose_distinct_combat_reward_influence": (apply_distinct_combat_reward_influence),
     # Endgame
     "match_endgame_wild_icon": apply_endgame_intrigue_action,
     "pass_endgame_intrigue": apply_endgame_intrigue_action,
@@ -491,9 +490,10 @@ class UprisingRulesEngine(RulesEngine):
         result = grant_late_reveal_effects(
             grant_leader_reveal_passives(_advance_automatic(result))
         )
-        return offer_deployment_triggers(
+        result = skip_impossible_imperial_privilege_recall(
             expire_trashed_card_effects(_advance_automatic(result))
         )
+        return offer_deployment_triggers(_advance_automatic(result))
 
     def legal_actions(
         self,
@@ -522,7 +522,13 @@ class UprisingRulesEngine(RulesEngine):
         result = _advance_automatic(
             grant_late_reveal_effects(grant_leader_reveal_passives(result))
         )
-        return offer_deployment_triggers(expire_trashed_card_effects(result))
+        # A freely ordered recall may have removed Imperial Privilege's last
+        # recall target after its Intrigue slot resolved (OQ-023); the skip
+        # draws a card, so the automatic advance runs once more.
+        result = skip_impossible_imperial_privilege_recall(
+            expire_trashed_card_effects(result)
+        )
+        return offer_deployment_triggers(_advance_automatic(result))
 
     def observe(self, state: GameState, player: int) -> PlayerView:
         return observe_state(state, player)

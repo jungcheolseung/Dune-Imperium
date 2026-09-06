@@ -13,7 +13,7 @@ from dataclasses import replace
 from typing import Final, assert_never
 
 from dune_imperium.content.uprising.board import Faction
-from dune_imperium.core.actions import DomainAction
+from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.chance import ChanceOutcome
 from dune_imperium.core.decisions import ChanceDecision, DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
@@ -457,8 +457,7 @@ def resolve_board_effect(state: GameState, action: DomainAction) -> RuleResult:
         case RecruitTroopsEffect() as effect:
             next_owner, recruited = recruit_troops(owner, effect.count)
             context["troops_recruited"] = (
-                context_int(context, "troops_recruited", owner=_FRAME_LABEL)
-                + recruited
+                context_int(context, "troops_recruited", owner=_FRAME_LABEL) + recruited
             )
             recruit_shortfall = recruit_shortfall_events(
                 f"{source}:{key}", player, effect.count, recruited
@@ -922,8 +921,7 @@ def apply_desert_tactics_action(
             action.actor,
             card_value,
             source=(
-                f"round:{state.round_number}:player:{action.actor}:board:"
-                "desert_tactics"
+                f"round:{state.round_number}:player:{action.actor}:board:desert_tactics"
             ),
         )
         effect_state = trashed.state
@@ -971,9 +969,7 @@ def legal_imperial_privilege_actions(
     owner = state.players[player]
     if context.get("imperial_privilege_intrigue_resolved") is not True:
         return (
-            DomainAction(
-                action_id="decline_imperial_privilege_intrigue", actor=player
-            ),
+            DomainAction(action_id="decline_imperial_privilege_intrigue", actor=player),
             *(
                 DomainAction(
                     action_id="discard_intrigue_for_imperial_privilege",
@@ -1090,47 +1086,91 @@ def apply_imperial_privilege_action(
         events.extend(drawn.events)
 
     context["imperial_privilege_intrigue_resolved"] = True
-    other_spaces = tuple(
-        location
-        for location in effect_state.players[action.actor].agent_locations
-        if location != "imperial_privilege"
-    )
-    if not other_spaces:
-        # With no other deployed Agent only the recall is skipped; the card
-        # draw is a separate printed effect and still resolves (OQ-023
-        # decided ruling, [Board Guide p. 2]).
-        finish_board_icon(context, BOARD_ICON_IMPERIAL_PRIVILEGE)
-        next_state = advance_after_effect(
-            effect_state, context, effect_state.players
+    if not _other_agent_spaces(effect_state, action.actor):
+        skipped = _skip_imperial_privilege_recall(
+            effect_state, context, action.actor, source, action.action_id
         )
-        draw = draw_or_request_personal_cards(
-            next_state, action.actor, 1, source=source
-        )
-        next_state = draw.state
-        events.append(
-            GameEvent(
-                event_id=f"{source}:recall_skipped",
-                kind="imperial_privilege_recall_skipped",
-                payload=(("player", action.actor),),
-            )
-        )
-        events.extend(draw.events)
-        events.append(
-            GameEvent(
-                event_id=source,
-                kind="board_effect_resolved",
-                payload=(
-                    ("action_id", action.action_id),
-                    ("effect", BOARD_ICON_IMPERIAL_PRIVILEGE),
-                    ("player", action.actor),
-                    ("space_id", "imperial_privilege"),
-                ),
-            )
-        )
-        return RuleResult(state=next_state, events=tuple(events))
+        return RuleResult(state=skipped.state, events=(*events, *skipped.events))
 
     next_state = advance_after_effect(effect_state, context, effect_state.players)
     return RuleResult(state=next_state, events=tuple(events))
+
+
+def _other_agent_spaces(state: GameState, player: int) -> tuple[str, ...]:
+    return tuple(
+        location
+        for location in state.players[player].agent_locations
+        if location != "imperial_privilege"
+    )
+
+
+def _skip_imperial_privilege_recall(
+    state: GameState,
+    context: dict[str, ActionValue],
+    player: int,
+    source: str,
+    action_id: str,
+) -> RuleResult:
+    """Skip the impossible recall and still draw the card (OQ-023)."""
+
+    # With no other deployed Agent only the recall is skipped; the card
+    # draw is a separate printed effect and still resolves (OQ-023 decided
+    # ruling, [Board Guide p. 2]).
+    finish_board_icon(context, BOARD_ICON_IMPERIAL_PRIVILEGE)
+    next_state = advance_after_effect(state, context, state.players)
+    draw = draw_or_request_personal_cards(next_state, player, 1, source=source)
+    events = (
+        GameEvent(
+            event_id=f"{source}:recall_skipped",
+            kind="imperial_privilege_recall_skipped",
+            payload=(("player", player),),
+        ),
+        *draw.events,
+        GameEvent(
+            event_id=source,
+            kind="board_effect_resolved",
+            payload=(
+                ("action_id", action_id),
+                ("effect", BOARD_ICON_IMPERIAL_PRIVILEGE),
+                ("player", player),
+                ("space_id", "imperial_privilege"),
+            ),
+        ),
+    )
+    return RuleResult(state=draw.state, events=events)
+
+
+def skip_impossible_imperial_privilege_recall(result: RuleResult) -> RuleResult:
+    """Resolve a pending Imperial Privilege recall that lost its last target.
+
+    The recall's target is judged when it resolves (OQ-023, [Main pp. 9,
+    20]): the Intrigue slot may have left another Agent on the board, and a
+    freely ordered effect of the same turn (Steersman's Agent-box recall)
+    may then bring that Agent home. Nothing is left for the owner to choose,
+    so the engine skips the recall and pays the separate card draw as it
+    would have at the slot's resolution.
+    """
+
+    state = result.state
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return result
+    if not isinstance(frame.decision, PlayerDecision):
+        return result
+    player = frame.decision.owner
+    if (
+        context.get("space_id") != "imperial_privilege"
+        or not board_icon_is_pending(context, BOARD_ICON_IMPERIAL_PRIVILEGE)
+        or context.get("imperial_privilege_intrigue_resolved") is not True
+        or _other_agent_spaces(state, player)
+    ):
+        return result
+    source = f"round:{state.round_number}:player:{player}:board:imperial_privilege"
+    skipped = _skip_imperial_privilege_recall(
+        state, context, player, source, "skip_imperial_privilege_recall"
+    )
+    return RuleResult(state=skipped.state, events=(*result.events, *skipped.events))
 
 
 def legal_maker_space_actions(
@@ -1266,4 +1306,3 @@ def _gain_resources(
             water=player.resources.water + effect.water,
         ),
     )
-

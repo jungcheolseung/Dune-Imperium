@@ -6,6 +6,7 @@ import pytest
 
 from dune_imperium import RulesetConfig
 from dune_imperium.content.uprising.board import BOARD_SPACES, Faction
+from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.core import (
     ChanceDecision,
@@ -21,6 +22,7 @@ from dune_imperium.core import (
     Resources,
     canonical_state_hash,
 )
+from dune_imperium.core.engine import RuleResult
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.agent_effects import resolve_faction_influence
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
@@ -45,6 +47,7 @@ from dune_imperium.rules.board_effects import (
     legal_shipping_actions,
     legal_sietch_tabr_actions,
     resolve_board_effect,
+    skip_impossible_imperial_privilege_recall,
     static_board_effects,
 )
 from dune_imperium.rules.combat_deployment import (
@@ -202,9 +205,7 @@ def test_dutiful_service_choam_opens_contract_market_and_grants_influence() -> N
     assert placed.state.players[0].resources == state.players[0].resources
     assert dict(placed.state.decision_stack[-1].context)["board_icons"] == "contract"
 
-    result = resolve_board_effect(
-        placed.state, _board_action(placed.state, "contract")
-    )
+    result = resolve_board_effect(placed.state, _board_action(placed.state, "contract"))
 
     assert result.state.players[0].resources.solari == 0
     assert len(legal_contract_actions(result.state, 0)) == 2
@@ -1157,6 +1158,119 @@ def test_imperial_privilege_skips_only_the_recall_without_another_agent() -> Non
     assert not any(event.kind == "agent_recalled" for event in result.events)
 
 
+def test_imperial_privilege_recall_that_lost_its_target_is_skipped_late() -> None:
+    # OQ-023 (decided): "recall 대상 유무는 Intrigue 슬롯이 해결된 뒤의 해결
+    # 시점에 판정한다" and, with no other deployed Agent, only the recall is
+    # skipped while the card draw still resolves [Board Guide p. 2]. The
+    # target may vanish after the slot resolved (a freely ordered recall of
+    # the same turn), so the skip must also fire then; the 2026-09-06
+    # self-play smoke found the deadlock this leaves otherwise.
+    state = _imperial_privilege_state(other_agent_space="arrakeen")
+    decline = next(
+        candidate
+        for candidate in legal_imperial_privilege_actions(state, 0)
+        if candidate.action_id == "decline_imperial_privilege_intrigue"
+    )
+    declined = apply_imperial_privilege_action(state, decline).state
+    assert legal_imperial_privilege_actions(declined, 0)
+    drawn = _instance("reconnaissance")
+    owner = replace(
+        declined.players[0],
+        deck=(drawn,),
+        agents_available=1,
+        agent_locations=("imperial_privilege",),
+    )
+    lost = replace(declined, players=(owner, *declined.players[1:]))
+    assert legal_imperial_privilege_actions(lost, 0) == ()
+
+    result = skip_impossible_imperial_privilege_recall(RuleResult(state=lost))
+
+    decision = result.state.decision_stack[-1].decision
+    assert isinstance(decision, PlayerDecision)
+    assert decision.owner == 1
+    assert drawn in result.state.players[0].hand
+    kinds = [event.kind for event in result.events]
+    assert kinds[0] == "imperial_privilege_recall_skipped"
+    assert kinds[-1] == "board_effect_resolved"
+    assert dict(result.events[-1].payload)["action_id"] == (
+        "skip_imperial_privilege_recall"
+    )
+    # Nothing to do when the recall still has a target or is not pending.
+    assert skip_impossible_imperial_privilege_recall(RuleResult(state=declined)) == (
+        RuleResult(state=declined)
+    )
+
+
+def test_steersman_recall_after_imperial_privilege_slot_does_not_deadlock() -> None:
+    # The self-play reproduction: Steersman visits Imperial Privilege, the
+    # Intrigue slot is declined while another Agent is still on the board,
+    # then the Agent box's recall brings that Agent home. OQ-023 judges the
+    # recall target at resolution time, so the impossible recall is skipped
+    # and its card draw resolves instead of leaving a decision with no
+    # legal action.
+    steersman = next(
+        instance
+        for instance in imperium_deck_instance_ids(False)
+        if ":steersman:" in instance
+    )
+    deck = tuple(starting_deck_instance_ids(0)[:2])
+    owner = PlayerState(
+        player_id=0,
+        hand=(steersman,),
+        deck=deck,
+        resources=Resources(solari=3),
+        influence=Influence(emperor=2),
+        agents_available=1,
+        agent_locations=("arrakeen",),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    engine = UprisingRulesEngine()
+    placed = engine.apply(state, _action_to(state, "imperial_privilege")).state
+    declined = engine.apply(
+        placed, DomainAction(action_id="decline_imperial_privilege_intrigue", actor=0)
+    ).state
+    assert any(
+        action.action_id == "recall_agent_for_imperial_privilege"
+        for action in engine.legal_actions(declined, 0)
+    )
+
+    transition = engine.apply(
+        declined,
+        DomainAction(
+            action_id="recall_agent_for_agent_card",
+            actor=0,
+            arguments=(("space_id", "arrakeen"),),
+        ),
+    )
+
+    recalled = transition.state
+    assert recalled.players[0].agent_locations == ("imperial_privilege",)
+    assert any(
+        event.kind == "imperial_privilege_recall_skipped" for event in transition.events
+    )
+    context = dict(recalled.decision_stack[-1].context)
+    assert context["pending_board_effect"] is False
+    assert deck[0] in recalled.players[0].hand
+    decision = recalled.decision_stack[-1].decision
+    assert isinstance(decision, PlayerDecision)
+    # Steersman's own card icon is still the owner's to resolve.
+    assert decision.owner == 0
+    assert engine.legal_actions(recalled, 0)
+
+
 def test_imperial_privilege_discard_draw_reshuffles_an_empty_deck() -> None:
     # The slot-1 draw goes through the reshuffle-safe path [FAQ p. 2], just
     # like Assembly Hall's Intrigue draw (mirrors
@@ -1588,8 +1702,7 @@ def test_board_icons_pin_every_printed_space_option() -> None:
             icons = board_icons_for(state, 0, space_id, option)
             assert ",".join(icons) == expected, (space_id, option, choam_module)
             assert all(
-                icon in AUTOMATIC_BOARD_ICONS or icon in _CHOICE_ICONS
-                for icon in icons
+                icon in AUTOMATIC_BOARD_ICONS or icon in _CHOICE_ICONS for icon in icons
             ), (space_id, option)
 
     # A seated Councilor turns High Council into its three revisit icons.
