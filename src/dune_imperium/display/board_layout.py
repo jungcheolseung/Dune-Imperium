@@ -116,18 +116,22 @@ STRENGTH_ROW_Y: Final = (93.2, 97.6)
 
 # Conflict area quadrant centres, clockwise from the bottom-left one, used
 # for seats 0..3 ("keep your deployed units in the quadrant nearest to your
-# garrison" [Main p. 10]).
-CONFLICT_QUADRANTS: Final = ((45.5, 84.5), (45.5, 71.0), (86.0, 71.0), (86.0, 84.5))
+# garrison" [Main p. 10]). The two left circles share their left part with
+# the printed Conflict card frames (``CONFLICT_SLOT`` below), so the unit
+# markers for seats 0 and 1 sit in the right part of their circle.
+CONFLICT_QUADRANTS: Final = ((48.5, 84.5), (48.5, 71.0), (86.0, 71.0), (86.0, 84.5))
 
 # The four High Council seats, left to right.
 COUNCIL_SEATS: Final = ((42.0, 5.5), (46.0, 5.5), (50.0, 5.5), (54.0, 5.5))
 
 # Printed card slots, ``(left, top, width, height)`` like ``SPACE_BOXES``
-# (measured 2026-09-06). The current Conflict card sits in the framed square
-# left of the strength track; the two face-up CHOAM contracts sit in the
-# pair of slots under the Landsraad Council (the left one carries the
-# "contract = 2 Solari" legend) [Main p. 16].
-CONFLICT_SLOT: Final = (38.6, 89.3, 10.0, 9.2)
+# (measured 2026-09-06). Two portrait frames stand under Deep Desert on the
+# left edge of the Conflict area: the upper one holds the face-down Conflict
+# deck and the lower one the current round's Conflict card. The two face-up
+# CHOAM contracts sit in the pair of slots under the Landsraad Council (the
+# left one carries the "contract = 2 Solari" legend) [Main p. 16].
+CONFLICT_DECK_SLOT: Final = (39.2, 66.7, 6.6, 10.1)
+CONFLICT_SLOT: Final = (39.2, 78.1, 6.6, 10.1)
 CONTRACT_SLOTS: Final = ((29.1, 21.5, 10.5, 6.5), (40.3, 21.5, 10.6, 6.5))
 
 
@@ -149,6 +153,7 @@ def marker_layout() -> dict[str, Any]:
         "strength": {"cells": list(STRENGTH_CELL_X), "rows": list(STRENGTH_ROW_Y)},
         "conflict_quadrants": [list(point) for point in CONFLICT_QUADRANTS],
         "council_seats": [list(point) for point in COUNCIL_SEATS],
+        "conflict_deck_slot": list(CONFLICT_DECK_SLOT),
         "conflict_slot": list(CONFLICT_SLOT),
         "contract_slots": [list(box) for box in CONTRACT_SLOTS],
     }

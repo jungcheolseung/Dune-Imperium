@@ -1496,18 +1496,18 @@ function renderBoardStage(board, view) {
     note.append(" 파괴됨");
     stage.appendChild(note);
   }
-  renderTrackMarkers(stage, view);
   renderSlotCards(stage, view);
+  renderTrackMarkers(stage, view);
   board.appendChild(stage);
 }
 
 /* The Conflict card and the face-up CHOAM contracts drawn in their printed
    slots (catalog.tracks.conflict_slot / contract_slots, percent boxes).
-   Every card is centred on its slot. The Conflict card is portrait in a
-   square slot, so it stands taller than the frame (nudged up to stay on
-   the scan); the landscape contracts are drawn a little larger than their
-   slot because the dark band around it is empty. Shaddam's set-aside
-   Sardaukar contracts have no printed home and stay in the market strip. */
+   Every card is centred on its slot and drawn before the live markers so
+   the unit counts stay on top. The Conflict card fills its portrait frame;
+   the landscape contracts are drawn a little larger than their slot
+   because the dark band around it is empty. Shaddam's set-aside Sardaukar
+   contracts have no printed home and stay in the market strip. */
 const CONTRACT_SLOT_SCALE = 1.2;
 
 function renderSlotCards(stage, view) {
@@ -1517,8 +1517,8 @@ function renderSlotCards(stage, view) {
   const [cLeft, cTop, cWidth, cHeight] = tracks.conflict_slot;
   for (const id of view.current_conflict_ids) {
     const card = visualCard(id, { className: "conflict slot-card" });
-    card.style.width = `${cWidth * 0.8}%`;
-    placeAt(card, cLeft + cWidth / 2, cTop + cHeight / 2 - 0.3);
+    card.style.width = `${cWidth}%`;
+    placeAt(card, cLeft + cWidth / 2, cTop + cHeight / 2);
     stage.appendChild(card);
   }
 
