@@ -178,3 +178,6 @@ pyrightconfig.json
 # (card scans, rulebook icons, board scan, rulebook PDFs); never
 # redistributed. See docs/card-data-sources.md.
 /assets
+
+# Trained policy checkpoints and training logs (14-40MB files; kept out of git)
+checkpoints/

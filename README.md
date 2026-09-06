@@ -88,6 +88,10 @@ clone해 저장소 루트의 `assets` symlink 하나로 연결한다(그 README 
   좌표(`dune_imperium.display.board_layout`)는 소유자의 6012×6005 정사각형
   스캔 기준 퍼센트 값이라 다른 프레이밍의 스캔은 재측정이 필요하다.
 
+## 학습 체크포인트
+
+학습된 정책 체크포인트(`dune-imperium-train`의 `latest.pt`, 14~40MB)와 학습 로그는 저장소 루트의 `checkpoints/`에 두며 git이 무시한다. 현재 champion은 `checkpoints/2026-09-06/champion_iter200.pt`이고, `checkpoint:<경로>` 이름으로 대회 도구에, `--resume <경로>`로 학습 루프에 넣는다. 다른 머신에서는 파일을 복사해 쓴다.
+
 ## 개발 환경
 
 ```bash
