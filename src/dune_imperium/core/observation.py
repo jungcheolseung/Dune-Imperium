@@ -43,12 +43,10 @@ class PublicPlayerView:
     spy_post_ids: tuple[str, ...]
     alliance_faction_ids: tuple[str, ...]
     control_space_ids: tuple[str, ...]
+    # Kept current by the engine after every step: before the seat's
+    # Reveal what its units in the Conflict provide, from the Reveal on the
+    # marker with the revealed swords and every later change [Main p. 12].
     combat_strength: int
-    # What the seat's Combat marker would show right now: before its
-    # Reveal turn the units in the Conflict alone (troop 2, sandworm 3,
-    # nothing without a unit), afterwards the marker itself, which the
-    # Reveal set and every later change updated [Main p. 12].
-    combat_strength_now: int
     has_revealed: bool
     high_council: bool
     maker_hooks: bool
@@ -291,24 +289,6 @@ def observe_state(state: GameState, player: int) -> PlayerView:
     )
 
 
-def current_combat_strength(player: PlayerState) -> int:
-    """Return the strength the seat's Combat marker would show right now.
-
-    The marker is set during the Reveal turn ("strength를 정하고, 이후
-    변화가 생기면 갱신한다" [Main p. 12]); before that turn the engine's
-    ``combat_strength`` is still 0, so the projection counts the units in
-    the Conflict the way the Reveal will: troop 2, sandworm 3, and 0
-    without a unit [Main p. 12]. Swords only arrive with the Reveal.
-    """
-
-    if player.has_revealed:
-        return player.combat_strength
-    units = player.troops_conflict + player.sandworms_conflict
-    if units <= 0:
-        return 0
-    return player.troops_conflict * 2 + player.sandworms_conflict * 3
-
-
 def _public_player_view(player: PlayerState) -> PublicPlayerView:
     return PublicPlayerView(
         player=player.player_id,
@@ -334,7 +314,6 @@ def _public_player_view(player: PlayerState) -> PublicPlayerView:
         alliance_faction_ids=player.alliance_faction_ids,
         control_space_ids=player.control_space_ids,
         combat_strength=player.combat_strength,
-        combat_strength_now=current_combat_strength(player),
         has_revealed=player.has_revealed,
         high_council=player.high_council,
         maker_hooks=player.maker_hooks,

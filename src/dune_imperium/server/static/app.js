@@ -1710,7 +1710,7 @@ function renderTrackMarkers(stage, view) {
        square left of 1/11 at strength 0 (four tokens in a 2×2), on the
        printed number otherwise, and on its "+20" face beyond 20 (23 is
        the token on 3 showing +20). */
-    const strength = player.combat_strength_now || 0;
+    const strength = player.combat_strength || 0;
     const token = seatToken(seat, "track-token strength-token");
     token.title = `좌석 ${seat} · 전투력 ${strength}`;
     if (strength <= 0) {
@@ -2110,7 +2110,7 @@ function renderSeats() {
     forces.append(
       statNode("agent", "Agents 대기", player.agents_available),
       statNode("troop", "garrison", player.troops_garrison),
-      statNode("sword", "전투력 (Reveal 전에는 배치 유닛 기준)", player.combat_strength_now || 0),
+      statNode("sword", "전투력", player.combat_strength || 0),
       statNode("spy", "Spy supply", player.spies_supply)
     );
     if (player.troops_conflict || player.sandworms_conflict) {

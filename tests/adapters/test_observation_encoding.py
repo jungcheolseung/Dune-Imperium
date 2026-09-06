@@ -24,7 +24,7 @@ from dune_imperium.simulation import run_random_game
 
 
 def test_layout_is_versioned_and_contiguous() -> None:
-    assert OBSERVATION_VERSION == 4
+    assert OBSERVATION_VERSION == 5
     assert len(PERSONAL_CARD_IDS) == 66
     assert len(INTRIGUE_IDS) == 39
     assert len(CONFLICT_IDS) == 16

@@ -9,6 +9,7 @@
 - Conflict의 troop 하나는 strength 2, sandworm 하나는 strength 3을 제공한다. garrison이나 supply의 유닛은 strength를 제공하지 않으며, 이번 Reveal turn에 공개한 sword 하나는 strength 1을 제공한다. [Main p. 12]
 - Conflict에 유닛이 하나도 없으면 sword가 있어도 strength는 0이다. 마지막 유닛이 제거되는 즉시 strength도 0이 된다. [Main p. 12]
 - strength를 공개하고 Combat marker를 Combat track의 해당 칸으로 옮긴다. 20을 넘으면 marker의 `+20` 면을 사용해 track 처음부터 남은 수치를 센다. [Main p. 12]
+  - 구현 메모(2026-09-06, 사용자 결정, 규칙 판정 아님): 엔진은 `combat_strength` 하나를 매 step 뒤 갱신해 둔다. Reveal 전에는 Conflict 유닛이 제공하는 값(troop 2, sandworm 3, 유닛 없으면 0)이고, Reveal 시작이 그 값에 공개한 sword를 더하며 이후 변화는 증분으로 반영한다(`rules/combat.py`의 `refresh_pre_reveal_strength`, `reveal_turn.py`의 `begin_reveal_turn`). marker를 옮기는 시점만 앞당긴 표현이며 Combat 결과는 규칙의 합계와 같다. UI는 이 값을 그대로 전투력 토큰으로 그린다.
 
 ## 2. Combat Intrigue 우선권과 pass
 

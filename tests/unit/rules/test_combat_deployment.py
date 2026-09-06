@@ -337,3 +337,26 @@ def test_sardaukar_coordination_deploys_only_troops_recruited_this_turn() -> Non
     assert deployed.players[0].troops_conflict == 2
     assert legal_combat_deployments(deployed, 0) == ()
     assert legal_agent_turn_finish_actions(deployed, 0) == (_finish(),)
+
+
+def test_running_strength_follows_deployment_before_the_reveal() -> None:
+    """The engine keeps one running combat_strength: what the units in the
+    Conflict provide (troop 2) as soon as they are deployed or withdrawn,
+    long before the Reveal sets the marker in the printed rule
+    [Main p. 12]; see the implementation note in combat-and-round-end.md.
+    """
+
+    from dune_imperium.rules.engine import UprisingRulesEngine
+
+    engine = UprisingRulesEngine()
+    state = _research_station_state()
+    state = engine.apply(state, _agent_action_to(state, "research_station")).state
+    assert state.players[0].combat_strength == 0
+
+    deployed = engine.apply(state, _deployment(state, 2)).state
+    assert deployed.players[0].troops_conflict == 2
+    assert deployed.players[0].combat_strength == 4
+
+    back = engine.apply(deployed, _withdrawal(2)).state
+    assert back.players[0].troops_conflict == 0
+    assert back.players[0].combat_strength == 0

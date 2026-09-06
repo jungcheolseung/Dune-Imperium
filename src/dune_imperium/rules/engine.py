@@ -186,6 +186,7 @@ from dune_imperium.rules.reveal_turn import (
 )
 from dune_imperium.rules.setup import create_draft_initial_state, create_initial_state
 from dune_imperium.rules.spies import apply_gather_intelligence_action
+from dune_imperium.rules.strength import refresh_pre_reveal_strength
 
 type LegalActionProvider = Callable[[GameState, int], tuple[DomainAction, ...]]
 type ActionHandler = Callable[[GameState, DomainAction], RuleResult]
@@ -493,7 +494,9 @@ class UprisingRulesEngine(RulesEngine):
         result = skip_impossible_imperial_privilege_recall(
             expire_trashed_card_effects(_advance_automatic(result))
         )
-        return offer_deployment_triggers(_advance_automatic(result))
+        return refresh_pre_reveal_strength(
+            offer_deployment_triggers(_advance_automatic(result))
+        )
 
     def legal_actions(
         self,
@@ -528,7 +531,10 @@ class UprisingRulesEngine(RulesEngine):
         result = skip_impossible_imperial_privilege_recall(
             expire_trashed_card_effects(result)
         )
-        return offer_deployment_triggers(_advance_automatic(result))
+        # Units moved this step: the running strength follows [Main p. 12].
+        return refresh_pre_reveal_strength(
+            offer_deployment_triggers(_advance_automatic(result))
+        )
 
     def observe(self, state: GameState, player: int) -> PlayerView:
         return observe_state(state, player)
