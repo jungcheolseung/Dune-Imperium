@@ -34,9 +34,30 @@ BASELINE_AGENT_FACTORIES: Final[dict[str, AgentFactory]] = {
 }
 
 
-def make_agent(kind: str, seed: int) -> Agent:
-    """Instantiate the named baseline with ``seed``."""
+# A trained policy enters by file: ``checkpoint:<path>``. Worker processes
+# resolve the path themselves, so no runtime registration has to cross a
+# process boundary. The training package (torch) is imported only then.
+CHECKPOINT_PREFIX: Final = "checkpoint:"
 
+
+def is_agent_kind(kind: str) -> bool:
+    """Return whether ``make_agent`` can build ``kind``."""
+
+    return kind in BASELINE_AGENT_FACTORIES or (
+        kind.startswith(CHECKPOINT_PREFIX) and len(kind) > len(CHECKPOINT_PREFIX)
+    )
+
+
+def make_agent(kind: str, seed: int) -> Agent:
+    """Instantiate the named baseline (or a checkpoint) with ``seed``."""
+
+    if kind.startswith(CHECKPOINT_PREFIX):
+        path = kind[len(CHECKPOINT_PREFIX) :]
+        if not path:
+            raise ValueError("checkpoint agent kind needs a path")
+        from dune_imperium.training.torch_policy import load_network_agent
+
+        return load_network_agent(path)
     try:
         factory = BASELINE_AGENT_FACTORIES[kind]
     except KeyError:

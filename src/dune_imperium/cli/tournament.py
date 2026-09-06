@@ -36,8 +36,8 @@ def _build_parser() -> argparse.ArgumentParser:
         default="heuristic,random",
         help=(
             "comma-separated agent kinds for the table, cycled to four seats "
-            f"(choices: {', '.join(sorted(BASELINE_AGENT_FACTORIES))}; "
-            "default: heuristic,random)"
+            f"(choices: {', '.join(sorted(BASELINE_AGENT_FACTORIES))}, or "
+            "checkpoint:<path> for a trained policy; default: heuristic,random)"
         ),
     )
     parser.add_argument(

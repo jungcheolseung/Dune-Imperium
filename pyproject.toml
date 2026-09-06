@@ -16,6 +16,7 @@ dune-imperium-server = "dune_imperium.cli.server:main"
 dune-imperium-sweep = "dune_imperium.cli.sweep:main"
 dune-imperium-tournament = "dune_imperium.cli.tournament:main"
 dune-imperium-selfplay = "dune_imperium.cli.selfplay:main"
+dune-imperium-train = "dune_imperium.cli.train:main"
 
 [project.optional-dependencies]
 rl = [
@@ -25,6 +26,9 @@ rl = [
 ui = [
     "fastapi>=0.115.0",
     "uvicorn>=0.30.0",
+]
+train = [
+    "torch>=2.9",
 ]
 
 [dependency-groups]

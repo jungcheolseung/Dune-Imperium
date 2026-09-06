@@ -22,7 +22,7 @@ from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 
 from dune_imperium.agents import Agent, StateAgent
-from dune_imperium.agents.registry import BASELINE_AGENT_FACTORIES, make_agent
+from dune_imperium.agents.registry import is_agent_kind, make_agent
 from dune_imperium.config import RulesetConfig
 from dune_imperium.content.uprising.leaders import leaders_for_choam
 from dune_imperium.core.actions import DomainAction
@@ -268,7 +268,7 @@ def fill_lineup(agents: tuple[str, ...], players: int = 4) -> tuple[str, ...]:
     if not 1 <= len(agents) <= players:
         raise ValueError(f"a lineup names between 1 and {players} agents")
     for kind in agents:
-        if kind not in BASELINE_AGENT_FACTORIES:
+        if not is_agent_kind(kind):
             raise ValueError(f"unknown agent kind: {kind!r}")
     return tuple(agents[index % len(agents)] for index in range(players))
 
