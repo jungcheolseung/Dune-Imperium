@@ -1333,17 +1333,51 @@ function actionItem(action) {
   return wrap;
 }
 
-/* Highlight the legal actions that reference one card instance or space
-   and scroll the first one into view (table click with several options). */
-function focusActions(ref) {
-  let first = null;
-  for (const item of document.querySelectorAll(".action-item")) {
-    const refs = JSON.parse(item.dataset.refs || "[]");
-    const hit = refs.includes(ref);
+/* Focus the action list on one card instance or space (table click with
+   several options): the matching actions move to the top under a header
+   that names the object, the rest stay below dimmed. The list is rebuilt
+   by every render, so the focus lasts until the next state change or the
+   header's "전체 보기". */
+function focusActions(ref, label) {
+  clearActionFocus();
+  const box = el("actions");
+  const items = [...box.querySelectorAll(".action-item")];
+  const matches = items.filter((item) =>
+    JSON.parse(item.dataset.refs || "[]").includes(ref)
+  );
+  if (!matches.length) return;
+  for (const item of items) {
+    const hit = matches.includes(item);
     item.classList.toggle("action-match", hit);
-    if (hit && !first) first = item;
+    item.classList.toggle("action-dim", !hit);
   }
-  if (first) first.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  const header = document.createElement("div");
+  header.className = "action-focus";
+  const text = document.createElement("span");
+  text.append(`${label || ref} · 선택지 ${matches.length}개`);
+  const clear = document.createElement("button");
+  clear.type = "button";
+  clear.textContent = "전체 보기";
+  clear.addEventListener("click", clearActionFocus);
+  header.append(text, clear);
+  box.prepend(header);
+  let anchor = header;
+  for (const item of matches) {
+    anchor.after(item);
+    anchor = item;
+  }
+  header.scrollIntoView({ block: "nearest", behavior: "smooth" });
+}
+
+function clearActionFocus() {
+  const box = el("actions");
+  const header = box.querySelector(".action-focus");
+  if (header) header.remove();
+  const items = [...box.querySelectorAll(".action-item")];
+  for (const item of items) item.classList.remove("action-match", "action-dim");
+  items
+    .sort((a, b) => Number(a.dataset.index) - Number(b.dataset.index))
+    .forEach((item) => box.appendChild(item));
 }
 
 function legalActionsFor(ref) {
@@ -1360,7 +1394,7 @@ function tableClick(ref, entry, anchor) {
     return;
   }
   if (legal.length > 1) {
-    focusActions(ref);
+    focusActions(ref, entry ? entry.name : ref);
     note(`${entry ? entry.name : ref}: 선택지가 ${legal.length}개입니다. 오른쪽 행동 목록에서 고르세요.`);
     return;
   }

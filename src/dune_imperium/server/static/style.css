@@ -510,7 +510,31 @@ button:disabled { opacity: 0.5; cursor: wait; }
   border-radius: 8px;
 }
 .action-item > button:first-child { flex: 1; }
-.action-item.action-match { outline: 2px solid var(--glow); outline-offset: 2px; }
+/* Focus on one object: its actions come first, lit like a legal hotspot;
+   the others fade. */
+.action-item.action-match > button:first-child {
+  background: var(--glow);
+  border-color: var(--glow);
+  color: #1a140c;
+  box-shadow: 0 0 12px 2px rgba(255, 207, 90, 0.55);
+}
+.action-item.action-match > button:first-child:hover:not(:disabled) {
+  background: #ffe08a;
+  color: #1a140c;
+}
+.action-item.action-dim { opacity: 0.4; }
+.action-focus {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  border-left: 3px solid var(--glow);
+  background: var(--accent-soft);
+  border-radius: 6px;
+  font-weight: 700;
+}
+.action-focus button { padding: 0.1rem 0.5rem; font-size: 0.85em; }
 .action-info {
   padding: 0.35rem 0.45rem;
   border-color: var(--line);
