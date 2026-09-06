@@ -195,6 +195,22 @@
 - 기각한 대안(기록용): 같은 turn 안에서 supply가 늘어나면 부족분만큼 늦게 recruit하는 방식. OQ-028(c)의 `granted_reveal_effects`처럼 frame에 부족분을 기록하고 자동 지급해야 하며 Combat space의 배치 한도(`troops_recruited`)도 함께 늘려야 해서, 새 공식 근거가 나오지 않는 한 채택하지 않는다.
 - 재개 조건: 새 공식 룰북·FAQ가 소급 recruit를 직접 정할 때. Immortality의 lose a troop·specimen을 구현 범위에 넣을 때는 이 판정을 그대로 적용하고 그 효과의 순서 선택이 UI에 드러나는지만 확인한다.
 
+## OQ-031 — 고를 수 있는 face-up Skill이 없을 때의 Sardaukar Commander 획득
+
+- 상태: `DECIDED` (project convention)
+- 룰북은 Commander를 acquire할 때마다 Skill 하나를 얻되 "이미 supply에 있는 Skill의 복사본은 고를 수 없다"고 한다 `[Bloodlines p. 4]`. Skill은 7종 2장씩이므로, 이미 여러 Skill을 가진 플레이어가 face-up 4장이 모두 자신이 가진 종류인 상황을 만날 수 있다. 그때 Commander 획득 자체가 막히는지, Skill 없이 획득하는지는 어느 문서도 말하지 않는다.
+- 필요한 답: 획득 가능 여부와 Skill 미지급 시 보충 여부에 대한 공식 판정.
+- 판정(2026-09-07, project convention — 공식 규칙이 아니다): 문장의 제한은 Skill **선택**에 걸린 것이고 Commander 획득의 전제 조건이 아니므로, 고를 수 있는 Skill이 없어도 2 Solari로 Commander를 획득할 수 있으며 Skill은 얻지 않고 face-up 보충도 없다(`acquire_sardaukar_commander_without_skill`; 이벤트의 `skill_id`가 빈 문자열). 고를 수 있는 Skill이 하나라도 있으면 반드시 하나를 골라야 한다(룰북의 "you gain a Skill"이 의무이므로 Skill 없는 획득은 제시하지 않는다).
+- 테스트: `tests/unit/rules/test_sardaukar.py`의 `test_without_a_choosable_skill_the_commander_is_bought_alone`.
+- 재개 조건: 새 공식 FAQ·룰북이 이 경우를 직접 정할 때.
+
+## OQ-032 — Skill의 Combat strength 조건을 판정하는 시점
+
+- 상태: `DECIDED` (project convention)
+- 룰북은 Skill이 "Combat을 해결할 때의 추가 strength"를 주고 Conflict에 Commander가 있는 동안 활성이라고만 한다 `[Bloodlines p. 4]`. Canny(Landsraad space의 Agent), Fierce(상대의 sandworm), Loyal(Emperor Influence 3)의 조건은 Reveal 뒤 Combat Intrigue로 바뀔 수 있다(예: Influence를 잃는 Intrigue, 뒤늦게 Reveal한 상대의 sandworm 소환).
+- 판정(2026-09-07, project convention): 조건은 매 step 뒤 현재 상태로 다시 판정하고 그 차이만큼 `combat_strength`를 조정한다(`rules/strength.py`의 `with_skill_strength`, 좌석의 `skill_strength_applied`). Combat 순위를 매기는 시점의 값이 "Combat을 해결할 때"의 값이며, Commander가 모두 Conflict를 떠나면 Skill strength도 사라진다(룰북 p. 4의 Go to Ground 예시와 일치). Desperate로 이미 얻은 검 3은 카드의 sword처럼 Reveal에서 확정된 값이라 Commander가 뒤에 떠나도 유닛이 남아 있는 한 유지한다.
+- 재개 조건: 공식 FAQ가 판정 시점을 정할 때.
+
 ## 판정이 생겼을 때 기록할 정보
 
 각 항목을 닫을 때 다음을 함께 남긴다. `DECIDED` 항목에 새 공식 답이 나왔을 때도 같다.

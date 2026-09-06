@@ -95,4 +95,6 @@ Uprising setup에 다음 단계를 더하거나 바꾼다. `[Bloodlines p. 3]`
 
 ## 8. 구현 상태
 
-2026-09-07: `RulesetConfig(bloodlines=True)`·`tech_module=True` 옵션과 이 명세만 있다. 콘텐츠와 엔진 동작은 [implementation-plan.md](../implementation-plan.md)의 M12 슬라이스 순서로 구현한다.
+- 2026-09-07 슬라이스 1: `RulesetConfig(bloodlines=True)`·`tech_module=True` 옵션과 이 명세.
+- 2026-09-07 슬라이스 2: 3절의 Sardaukar Commander 전부 — setup(6칸 + bank, Skill 14장 셔플·4장 공개), 방문한 space의 Commander를 2 Solari에 획득하며 Skill 선택(`acquire_sardaukar_commander`, 거절 `decline_sardaukar_commander`), supply에서 turn당 1회 지불 recruit(`recruit_sardaukar_commander`, Agent turn의 효과 frame과 Reveal turn), 기본 배치·회수에 Commander 포함(`deploy_commanders`/`withdraw_commanders`, garrison 2개 한도 공유), strength 2와 Skill의 Combat strength(Canny·Fierce·Loyal, 조건 변화 시 재계산), Reveal 보너스(Charismatic·Driven·Hardy), Desperate의 trash(`trash_skill_for_strength`), Combat 정리 때 supply 복귀, 관측 v6, codec v90. 세부와 미완 경계는 [implementation-audits/bloodlines.md](../implementation-audits/bloodlines.md). 남은 3절 항목: 기존 "troop" 효과(Intrigue retreat, Desert Scouts, lose a troop 등)에 Commander를 포함하는 것은 슬라이스 3에서 새 아이콘과 함께 처리한다.
+- 4~6절(새 아이콘, Tech Module)과 카드·Leader는 [implementation-plan.md](../implementation-plan.md)의 M12 슬라이스 순서로 구현한다.
