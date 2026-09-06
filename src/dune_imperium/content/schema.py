@@ -10,6 +10,9 @@ class SourceDocument(StrEnum):
     MAIN_RULEBOOK = "main_rulebook"
     BOARD_SPACE_GUIDE = "board_space_guide"
     FAQ = "faq"
+    # The Bloodlines expansion rulebook (``official-rule-sources.json`` key
+    # ``bloodlines``); cited as ``[Bloodlines p. N]`` with PDF page numbers.
+    BLOODLINES_RULEBOOK = "bloodlines_rulebook"
     # A card that no official document describes (the Uprising promo cards):
     # the printed card face itself is the source, cited as page 1.
     CARD_FACE = "card_face"

@@ -300,6 +300,22 @@ tests/
 
 완료 조건: 고정 평가 대회에서 이전 champion과 모든 baseline보다 유의미하게 강한 모델을 재현할 수 있다.
 
+### M12. Bloodlines 확장과 Tech Module
+
+2026-09-07 착수(사용자 결정: Tech Module까지 전부, 출처 등록 + 옵션 골격 + Sardaukar Commander부터). 규범 근거는 [`rules/bloodlines.md`](rules/bloodlines.md)이며, 확장은 `RulesetConfig(bloodlines=True)`, Tech Module은 `tech_module=True`(Bloodlines 필요) 옵션으로 켠다. 기본값은 둘 다 꺼짐이라 기존 룰셋의 codec·관측·체크포인트 호환성은 옵션을 켠 룰셋에서만 달라진다.
+
+슬라이스 순서:
+
+1. 출처 등록(`official-rule-sources.json`의 `bloodlines`, `sources.md`, `source-map.md`)과 규칙 명세, `RulesetConfig` 옵션 골격.
+2. Sardaukar Commander 핵심: setup(4인 6칸 + bank, Skill stack 셔플과 face-up 4장), space 효과로 2 Solari 획득·Skill 선택, supply에서 turn당 1회 지불 recruit, 기본 배치·회수에 Commander 포함, strength 2, Combat 정리 때 supply 복귀, Skill 7종의 Reveal 보너스와 Combat strength, 관측·codec 확장.
+3. 새 아이콘: Spy with Deep Cover, Command (6+), Combat 아이콘(garrison 2개 한도 공유), Trash an Intrigue card, wild battle icon끼리의 Endgame 매칭(OQ-005 tripwire를 실제 구현으로 교체).
+4. 카드: Imperium 25장 + Intrigue 15장 + Conflict 2장, CHOAM 병용의 Imperium 5장·Intrigue 1장·contract 8개. 카드면 이미지(에셋 저장소 `bloodlines/`)로 검증한 뒤 `Play`/`Document` 쌍으로 전사하며 Sardaukar Standard는 bank의 일곱 번째 Commander를 쓴다.
+5. Leader 8명과 전용 구성물: Chani(Tactics track), Count Hasimir Fenring, Duncan Idaho, Esmar Tuek(Tuek's Sietch Maker space), Gaius Helen Mohiam, Liet Kynes, Piter De Vries(Twisted Intrigue 12장), Steersman Y'rkoon(Navigation 10장; OQ-012 재검토).
+6. Tech Module: Ixian Embassy board와 Tech tile 18장(획득·할인·Flip·acquire 효과·능력), Tech 전용 Imperium 2장·Intrigue 2장, Kota Odax of Ix.
+7. 서버·UI 옵션, sweep·soak(`--bloodlines`, `--tech-module`), heuristic agent의 새 행동 처리, 학습 재개.
+
+완료 조건: `bloodlines`·`tech_module` 룰셋의 random·heuristic 소크가 실패 0으로 완주하고, 모든 Bloodlines 구성물이 카드면 검증을 거쳐 audit 문서에 기록되며, 공식 문서가 침묵하는 판정은 open-questions에 convention으로 남는다.
+
 ## 5. 테스트 전략
 
 - **콘텐츠 검증:** ID·수량·참조·덱 구성·출처의 정적 검사

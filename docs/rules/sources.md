@@ -2,13 +2,14 @@
 
 ## 규칙 권위
 
-현재 규칙 명세는 다음 세 공식 자료만을 규칙 근거로 사용한다.
+현재 규칙 명세는 다음 공식 자료만을 규칙 근거로 사용한다. 앞의 세 문서가 4인 Uprising 기본 룰셋의 근거이고, Bloodlines 룰북은 2026-09-07에 추가된 `bloodlines`·`tech_module` 옵션의 근거다.
 
 | 식별자 | 공식 자료 | 확인한 버전 | 현재 범위 |
 | --- | --- | --- | --- |
 | `Main` | [Uprising Main Rulebook](https://d19y2ttatozxjp.cloudfront.net/pdfs/DUNE_IMPERIUM_UPRISING_Main_Rulebook_23-10-12.pdf) | 공식 asset 이름 `23-10-12`, 20쪽 | 규범 규칙 pp. 3-17, 20; 범위·권위 확인 pp. 2, 18 |
 | `Board Guide` | [Uprising Rules Supplements](https://d19y2ttatozxjp.cloudfront.net/pdfs/DUNE_IMPERIUM_UPRISING_Rules_Supplements_23-10-12.pdf) | 공식 asset 이름 `23-10-12`, 14쪽 | pp. 1-2 |
 | `FAQ` | [Errata and Frequently Asked Questions](https://d19y2ttatozxjp.cloudfront.net/pdfs/DUNE_IMPERIUM_FAQ_25-1-13.pdf) | 문서 표기 `Last Updated January 13, 2025`, 4쪽 | 4인 Uprising에 적용되는 항목 |
+| `Bloodlines` | [Bloodlines Rulebook](https://d19y2ttatozxjp.cloudfront.net/pdfs/DUNE_IMPERIUM_BLOODLINES_Rulebook.pdf) | 공식 asset 이름에 날짜 없음, © 2024, 12쪽 | `bloodlines`/`tech_module` 옵션의 규범 규칙 pp. 2-7, 12; 범위 밖 pp. 8-10 |
 
 공식 진입점은 [Dire Wolf Digital 리소스 페이지](https://www.direwolfdigital.com/dune-imperium/resources/)와
 [Uprising 룰북 페이지](https://www.direwolfdigital.com/dune-imperium/resources/diu_rules)다.
@@ -23,6 +24,7 @@
 | `Main` | `0a8daa36f73c09316143d05bbd5d845183d1ae6f56ce211d93c59b360074f7db` |
 | `Board Guide` | `454ea3ef442f0622f4bf5b83b8368b24e34aaf4f0dc0f02d93dfba66e690c075` |
 | `FAQ` | `7b54c283357244e5107d1d0f4e87817d39297e914c2014239acbb2c460c0c6b9` |
+| `Bloodlines` | `5f0b4646ab59f467a1027b95e2b6f67809c77c224d98ddab26dd661d7e2b042a` |
 
 같은 URL과 checksum은 자동 검증 도구가 읽는
 [`scripts/official-rule-sources.json`](../../scripts/official-rule-sources.json)에
@@ -33,6 +35,15 @@ Main은 최신 판정과 clarification을 FAQ에서 확인하라고 안내한다
 명시적인 수정·clarification을 함께 적용한다. 두 공식 문서가 실제로 충돌한다고
 판단되는 경우 어느 한쪽을 조용히 버리지 않고 `open-questions.md`에 기록한다.
 `[Main p. 18]`
+
+### Bloodlines 룰북
+
+Bloodlines 룰북은 공식 리소스 페이지의 "Bloodlines Rules" 링크에서 2026-09-07에
+받아 위 checksum을 고정했다. 4인 게임에 적용되는 규칙(pp. 2-7)과 아이콘·용어·
+clarification(p. 12)만 [bloodlines.md](bloodlines.md)에 반영하며, Rivals(pp. 8-9),
+6인(p. 10), 원본 Dune: Imperium·Rise of Ix 조합 규칙은 범위 밖이다. 2025-01-13
+FAQ에는 Bloodlines 항목이 없다. Skill tile, Tech tile, 카드의 인쇄 텍스트는
+프로모 카드와 같이 카드면(`SourceDocument.CARD_FACE`)을 근거로 전사한다.
 
 ### 프로모 카드의 출처
 
@@ -48,7 +59,8 @@ Gambit)은 위 세 공식 문서 어디에도 실리지 않았다. 이 카드들
 
 - Main의 `[Main p. N]`은 표지 PDF 페이지가 아니라 본문에 인쇄된 쪽수를
   가리킨다. 인쇄 p. 2부터 PDF 페이지와 번호가 일치한다.
-- Board Guide와 FAQ는 PDF 페이지 번호를 그대로 쓴다.
+- Board Guide, FAQ, Bloodlines는 PDF 페이지 번호를 그대로 쓴다(Bloodlines는 인쇄
+  쪽수와 PDF 페이지가 같다).
 - 한 bullet의 모든 문장이 같은 근거를 공유하면 끝에 한 번 인용한다. 서로 다른
   출처를 결합한 경우 두 출처를 모두 붙인다.
 - 이 문서는 원문을 길게 복제하지 않고 규칙의 의미만 간결하게 바꾸어 적는다.

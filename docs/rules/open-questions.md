@@ -118,6 +118,7 @@
 - 확정(2026-09-01): 콘텐츠 완결 시점에서 자유 순서 그룹 밖의 동시 의무 효과 계열은 획득(acquire) 이벤트 하나뿐임을 확인하고, 구현된 고정 순서를 최종 판정으로 채택한다: 획득한 카드 자신의 acquire 보상(예: The Spice Must Flow의 VP) → in-play 카드의 acquire trigger(spied Faction Influence) → Acquire Contract 완료(Spacing Guild Influence 1 + 3 Solari) → face-up trigger Intrigue(Call to Arms의 troop recruit). 네 단계 모두 같은 획득자에게 주는 가환 이득이고, Influence도 동일 플레이어의 순차 획득이라 Alliance 전이 판정이 순서에 불변이므로, 현재 콘텐츠에서 어떤 순서든 최종 상태가 같다. Clean Up discard trigger는 OQ-013(RESOLVED), 배치 trigger의 제시 시점은 OQ-016이 다룬다. 서로 비가환인 새 trigger 콘텐츠가 추가되면 다시 연다.
 - 참고(2026-09-01): Faction 공간 방문의 Influence 상승 **시점**은 이 항목의 질문이 아니라 공식 자유 순서 규칙이 직접 답한다 — "If the board space belongs to one of the Factions, you also move your cube one space up on its Influence track. You may carry out all these effects in any order" `[Main p. 9]`. 즉 방문자가 board·card 효과와의 순서를 스스로 고르며, 엔진도 `resolve_faction_influence`를 자유 순서 그룹의 선택 행동으로 제시한다.
 - 재개 조건(2026-09-01, 사용자): 다음 확장 Bloodlines는 Influence 획득의 순서를 관측 가능하게 만드는 trigger를 추가할 수 있다. Bloodlines 콘텐츠를 도입할 때 이 항목을 다시 열어, acquire 계열 밖의 새 충돌과 비가환 Influence trigger를 재검토한다.
+- 진행(2026-09-07): Bloodlines 도입을 시작했다([bloodlines.md](bloodlines.md)). 룰북 p. 12는 Steersman Y'rkoon이 "같은 Faction에서 Influence 2에 여러 번 도달할 수 있고 그때마다 Navigation 카드를 play한다"고 하여 Influence 도달 trigger가 실제로 추가된다. 재검토는 M12의 Leader 슬라이스에서 Y'rkoon을 전사할 때 한다.
 
 ## OQ-013 — Clean Up 이동과 일반적인 `discard` 반응
 
