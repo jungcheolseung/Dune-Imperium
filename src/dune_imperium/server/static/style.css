@@ -127,6 +127,12 @@ button:disabled { opacity: 0.5; cursor: wait; }
 .stat { white-space: nowrap; }
 .stat .icon { height: 1.35em; margin-right: 0.1em; }
 .stat.alliance { outline: 2px solid var(--glow); outline-offset: 1px; border-radius: 4px; }
+.stat.deployed {
+  padding: 0 0.35em;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-size: 0.85em;
+}
 
 /* ---------- table layout ---------- */
 
@@ -316,6 +322,26 @@ button:disabled { opacity: 0.5; cursor: wait; }
   font-size: 0.8em;
 }
 .council-token { width: 1.9em; height: 1.9em; }
+/* The strength token's "+20" face: inverted colours and the printed +20. */
+.strength-token { position: absolute; }
+.strength-token.flipped {
+  background: #111 !important;
+  color: #fff;
+  border-color: #fff;
+}
+.strength-plus {
+  position: absolute;
+  top: -0.9em;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.6em;
+  line-height: 1;
+  padding: 0 0.25em;
+  border-radius: 3px;
+  background: var(--glow);
+  color: #1a140c;
+  white-space: nowrap;
+}
 /* Per-seat force chips: the garrison count in the seat's circle and the
    deployed units in its quadrant of the Conflict field. */
 .force-chip {

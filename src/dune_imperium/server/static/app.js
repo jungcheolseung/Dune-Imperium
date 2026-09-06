@@ -1706,16 +1706,31 @@ function renderTrackMarkers(stage, view) {
     stage.appendChild(vpToken);
 
     const units = (player.troops_conflict || 0) + (player.sandworms_conflict || 0);
+    /* Every seat's strength token is always on the track: in the framed
+       square left of 1/11 at strength 0 (four tokens in a 2×2), on the
+       printed number otherwise, and on its "+20" face beyond 20 (23 is
+       the token on 3 showing +20). */
     const strength = player.combat_strength || 0;
-    if (units > 0 || strength > 0) {
-      const capped = Math.min(strength, 20);
-      const row = capped > 10 ? 1 : 0;
-      const cell = capped > 10 ? capped - 10 : capped;
-      const token = seatToken(seat, "track-token strength-token");
-      token.title = `좌석 ${seat} · 전투력 ${strength}`;
+    const token = seatToken(seat, "track-token strength-token");
+    token.title = `좌석 ${seat} · 전투력 ${strength}`;
+    if (strength <= 0) {
+      const [zx, zy, zw, zh] = tracks.strength.zero_box;
+      placeAt(token, zx + zw * (0.3 + (seat % 2) * 0.4), zy + zh * (0.3 + Math.floor(seat / 2) * 0.4));
+    } else {
+      const flipped = strength > 20;
+      const shown = Math.min(flipped ? strength - 20 : strength, 20);
+      const row = shown > 10 ? 1 : 0;
+      const cell = shown > 10 ? shown - 10 : shown;
+      if (flipped) {
+        token.classList.add("flipped");
+        const plus = document.createElement("span");
+        plus.className = "strength-plus";
+        plus.textContent = "+20";
+        token.appendChild(plus);
+      }
       placeAt(token, tracks.strength.cells[cell] + (seat - 1.5) * 0.9, tracks.strength.rows[row]);
-      stage.appendChild(token);
     }
+    stage.appendChild(token);
 
     /* Garrison count in the seat's bracketed circle (always shown), and
        the units deployed this round in the seat's quadrant of the central
@@ -2089,15 +2104,27 @@ function renderSeats() {
 
     const forces = document.createElement("div");
     forces.className = "stats";
+    /* The sword is the printed strength icon, so it carries the strength
+       number; the units in the Conflict get the troop icon under a
+       "Conflict" tag so they do not read as the garrison. */
     forces.append(
       statNode("agent", "Agents 대기", player.agents_available),
       statNode("troop", "garrison", player.troops_garrison),
-      statNode("sword", "Conflict 병력 · strength",
-        player.troops_conflict + (player.combat_strength ? ` (${player.combat_strength})` : "")),
+      statNode("sword", "전투력", player.combat_strength || 0),
       statNode("spy", "Spy supply", player.spies_supply)
     );
-    if (player.sandworms_conflict) {
-      forces.appendChild(statNode("sandworm", "sandworm", player.sandworms_conflict));
+    if (player.troops_conflict || player.sandworms_conflict) {
+      const deployed = document.createElement("span");
+      deployed.className = "stat deployed";
+      deployed.title = "Conflict에 배치한 유닛";
+      deployed.append("Conflict ");
+      if (player.troops_conflict) {
+        deployed.append(icon("troop", "troop"), String(player.troops_conflict));
+      }
+      if (player.sandworms_conflict) {
+        deployed.append(" ", icon("sandworm", "sandworm"), String(player.sandworms_conflict));
+      }
+      forces.appendChild(deployed);
     }
     card.appendChild(forces);
 
