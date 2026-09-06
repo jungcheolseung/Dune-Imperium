@@ -52,7 +52,7 @@ class CollectionResult:
 
 @dataclass(frozen=True, slots=True)
 class _ChunkJob:
-    state_dict: dict[str, torch.Tensor]
+    weights_path: str
     hidden: tuple[int, ...]
     action_size: int
     choam_module: bool
@@ -93,7 +93,9 @@ def _policies(
 def _collect_chunk(job: _ChunkJob) -> _ChunkResult:
     torch.set_num_threads(1)
     network = PolicyValueNetwork(job.action_size, hidden=job.hidden)
-    network.load_state_dict(job.state_dict)
+    network.load_state_dict(
+        torch.load(job.weights_path, map_location="cpu", weights_only=True)
+    )
     network.eval()
     runner = SelfPlayRunner(
         RulesetConfig(choam_module=job.choam_module),
@@ -110,10 +112,12 @@ def _collect_chunk(job: _ChunkJob) -> _ChunkResult:
     )
     result = runner.run(policies, job.specs)
     batch = select_policy_steps(result.episodes, LEARNER)
+    if batch.observations.max(initial=0) > np.iinfo(np.int16).max:
+        raise RuntimeError("observation values exceed the int16 transport range")
     np.savez(
         job.out_path,
-        observations=batch.observations,
-        masks=batch.masks,
+        observations=batch.observations.astype(np.int16),
+        masks=np.packbits(batch.masks, axis=1),
         actions=batch.actions,
         seats=batch.seats,
         returns=batch.returns,
@@ -197,13 +201,18 @@ class Collector:
                 duration_seconds=time.perf_counter() - started,
             )
 
-        state_dict = {
-            key: value.detach().to("cpu") for key, value in network.state_dict().items()
-        }
+        weights_path = self._scratch / f"weights_{policy_seed}.pt"
+        torch.save(
+            {
+                key: value.detach().to("cpu")
+                for key, value in network.state_dict().items()
+            },
+            weights_path,
+        )
         chunks = [tuple(specs[index :: self.workers]) for index in range(self.workers)]
         jobs = [
             _ChunkJob(
-                state_dict=state_dict,
+                weights_path=str(weights_path),
                 hidden=network.hidden,
                 action_size=network.action_size,
                 choam_module=self.config.choam_module,
@@ -219,6 +228,7 @@ class Collector:
             if chunk
         ]
         results = list(self._pool.map(_collect_chunk, jobs))
+        os.remove(weights_path)
         episodes: list[Episode] = []
         parts: list[TrainingBatch] = []
         offset = 0
@@ -226,8 +236,10 @@ class Collector:
             with np.load(chunk_result.out_path) as arrays:
                 parts.append(
                     TrainingBatch(
-                        observations=arrays["observations"],
-                        masks=arrays["masks"],
+                        observations=arrays["observations"].astype(np.int32),
+                        masks=np.unpackbits(
+                            arrays["masks"], axis=1, count=network.action_size
+                        ).astype(np.int8),
                         actions=arrays["actions"],
                         seats=arrays["seats"],
                         returns=arrays["returns"],
