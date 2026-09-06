@@ -332,3 +332,46 @@ def test_stilgar_recruit_two_troops_with_empty_supply_reports_a_shortfall() -> N
         "requested": 2,
         "short": 2,
     }
+
+
+# ---------- OQ-030: no retroactive recruit once the supply grows later ----------
+
+
+def test_a_later_supply_increase_does_not_revive_the_lost_recruit() -> None:
+    # OQ-030 (docs/rules/player-turns.md, project convention 2026-09-06): the
+    # shortfall expires when the icon resolves; a troop that returns to the
+    # supply later in the same turn is not recruited retroactively.
+    state = _with_troops_supply(_research_station_state(), 0, 0)
+    state = apply_agent_action(
+        state,
+        _agent_action_to(state, "research_station"),
+    ).state
+    resolved = _resolve_troops_icon(state).state
+    assert dict(resolved.decision_stack[-1].context)["troops_recruited"] == 0
+
+    # A troop comes back to the supply (as an expansion "lose a troop" effect
+    # would do) while the Agent turn is still open.
+    owner = resolved.players[0]
+    replenished = replace(
+        resolved,
+        players=(
+            replace(
+                owner,
+                troops_supply=owner.troops_supply + 1,
+                troops_conflict=owner.troops_conflict - 1,
+            ),
+            *resolved.players[1:],
+        ),
+    )
+
+    assert replenished.players[0].troops_garrison == 3
+    assert dict(replenished.decision_stack[-1].context)["troops_recruited"] == 0
+    assert all(
+        dict(action.arguments)["effect"] != "troops"
+        for action in legal_board_effect_actions(replenished, 0)
+    )
+    counts = tuple(
+        dict(action.arguments)["count"]
+        for action in legal_combat_deployments(replenished, 0)
+    )
+    assert counts == (1, 2)
