@@ -31,6 +31,7 @@ from dune_imperium.training.selfplay import (
     Episode,
     SelfPlayRunner,
     SelfPlaySpec,
+    apply_step_penalty,
     select_policy_steps,
 )
 from dune_imperium.training.torch_policy import resolve_device
@@ -55,7 +56,12 @@ class TrainConfig:
     # means pure self-play with the learner in every seat.
     opponent: str | None = None
     temperature: float = 1.0
-    max_steps: int = 30_000
+    # Learning-side shaping: cost per own decision charged against the
+    # terminal reward (see apply_step_penalty); 0 disables it.
+    step_penalty: float = 0.0005
+    # Decisions per training game before truncation (reward 0). A normal
+    # game takes about 650; the cap bounds a policy that learns to loop.
+    max_steps: int = 4_000
     eval_every: int = 0
     eval_games: int = 10
     eval_opponent: str = "heuristic"
@@ -72,6 +78,8 @@ class TrainConfig:
             raise ValueError("eval_every must not be negative; eval_games positive")
         if self.workers < 1:
             raise ValueError("workers must be positive")
+        if self.step_penalty < 0.0:
+            raise ValueError("step_penalty must not be negative")
 
 
 @dataclass(frozen=True, slots=True)
@@ -202,7 +210,7 @@ def train(
                 opponent_seed=config.seed + 2 + iteration * 1_000,
             )
             collect_seconds = result.duration_seconds
-            batch = result.batch
+            batch = apply_step_penalty(result.batch, config.step_penalty)
             started = time.perf_counter()
             stats = learner.update(batch)
             update_seconds = time.perf_counter() - started

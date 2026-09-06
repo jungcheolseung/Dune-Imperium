@@ -74,9 +74,7 @@ class Learner:
         returns = torch.from_numpy(batch.returns).to(self.device)
 
         self.network.train()
-        with torch.no_grad():
-            _, baseline = self.network(observations, masks)
-        advantages = returns - baseline
+        advantages = returns - self._values(observations, masks)
         if self.config.normalize_advantages and steps > 1:
             advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
@@ -109,8 +107,7 @@ class Learner:
                 entropy_total += float(entropy.item())
                 minibatches += 1
 
-        with torch.no_grad():
-            _, fitted = self.network(observations, masks)
+        fitted = self._values(observations, masks)
         return UpdateStats(
             steps=steps,
             minibatches=minibatches,
@@ -122,6 +119,22 @@ class Learner:
                 fitted.to("cpu").numpy(), batch.returns
             ),
         )
+
+    def _values(self, observations: Tensor, masks: Tensor) -> Tensor:
+        """Value predictions over the whole batch, one minibatch at a time.
+
+        A single pass over every step would materialize the full logit
+        matrix (steps x actions in float32), which is gigabytes for a large
+        iteration; chunking keeps the peak at one minibatch.
+        """
+
+        chunks: list[Tensor] = []
+        with torch.no_grad():
+            for start in range(0, observations.shape[0], self.config.minibatch_size):
+                stop = start + self.config.minibatch_size
+                _, values = self.network(observations[start:stop], masks[start:stop])
+                chunks.append(values)
+        return torch.cat(chunks)
 
     def _losses(
         self,

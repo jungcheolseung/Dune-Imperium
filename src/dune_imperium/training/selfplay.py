@@ -320,3 +320,37 @@ def select_policy_steps(episodes: Sequence[Episode], name: str) -> TrainingBatch
         returns=batch.returns[keep],
         episode_ids=batch.episode_ids[keep],
     )
+
+
+def apply_step_penalty(batch: TrainingBatch, penalty: float) -> TrainingBatch:
+    """Charge every later decision of the same seat against a step's return.
+
+    Learning-side shaping (the environment itself pays terminal rewards
+    only): with ``penalty`` per decision, a step's return becomes the seat's
+    terminal reward minus ``penalty`` times the number of decisions that
+    seat still makes afterwards in the episode, so pointless reversible
+    loops (deploy/withdraw, defer/resume) cost a little instead of nothing.
+    Rows must be in chronological order within each episode, as
+    ``stack_episodes`` produces them.
+    """
+
+    if penalty < 0.0:
+        raise ValueError("step penalty must not be negative")
+    if penalty == 0.0 or batch.actions.shape[0] == 0:
+        return batch
+    keys = batch.episode_ids.astype(np.int64) * 64 + batch.seats.astype(np.int64)
+    remaining = np.zeros(keys.shape[0], dtype=np.float32)
+    later: dict[int, int] = {}
+    for index in range(keys.shape[0] - 1, -1, -1):
+        key = int(keys[index])
+        count = later.get(key, 0)
+        remaining[index] = count
+        later[key] = count + 1
+    return TrainingBatch(
+        observations=batch.observations,
+        masks=batch.masks,
+        actions=batch.actions,
+        seats=batch.seats,
+        returns=(batch.returns - penalty * remaining).astype(np.float32),
+        episode_ids=batch.episode_ids,
+    )

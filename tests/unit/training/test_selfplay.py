@@ -14,6 +14,8 @@ from dune_imperium.training import (
     RandomBatchPolicy,
     SelfPlayRunner,
     SelfPlaySpec,
+    TrainingBatch,
+    apply_step_penalty,
     stack_episodes,
 )
 
@@ -187,3 +189,25 @@ def test_selfplay_cli_reports_throughput(capsys: pytest.CaptureFixture[str]) -> 
     assert "batch: observations" in output
     with pytest.raises(SystemExit):
         selfplay_main(["--policy", "oracle"])
+
+
+def test_step_penalty_charges_each_seats_later_decisions() -> None:
+    batch = TrainingBatch(
+        observations=np.zeros((5, 3), dtype=np.int32),
+        masks=np.ones((5, 2), dtype=np.int8),
+        actions=np.zeros(5, dtype=np.int64),
+        seats=np.asarray([0, 1, 0, 0, 1], dtype=np.int8),
+        returns=np.asarray([1.0, -1 / 3, 1.0, 1.0, 2.0], dtype=np.float32),
+        episode_ids=np.asarray([0, 0, 0, 0, 1], dtype=np.int32),
+    )
+
+    shaped = apply_step_penalty(batch, 0.1)
+
+    # Seat 0 of episode 0 decides three times: 2, 1, 0 later decisions.
+    assert shaped.returns.tolist() == pytest.approx(
+        [1.0 - 0.2, -1 / 3, 1.0 - 0.1, 1.0, 2.0]
+    )
+    assert shaped.returns.dtype == np.float32
+    assert apply_step_penalty(batch, 0.0) is batch
+    with pytest.raises(ValueError, match="negative"):
+        apply_step_penalty(batch, -0.1)
