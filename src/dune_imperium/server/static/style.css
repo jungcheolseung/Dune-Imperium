@@ -520,6 +520,7 @@ button:disabled { opacity: 0.5; cursor: wait; }
   max-height: 80vh;
   overflow-y: auto;
 }
+.popover.hover { pointer-events: none; }
 .popover-title { font-weight: 700; margin-bottom: 0.2rem; }
 .popover .meta { font-size: 0.8rem; opacity: 0.85; margin-bottom: 0.3rem; }
 .popover-line { margin: 0.15rem 0; }

@@ -316,8 +316,9 @@ function chip(instanceId, entryOverride) {
     span.classList.add("clickable");
     span.addEventListener("click", (event) => {
       event.stopPropagation();
-      openPopover(entry, span);
+      pinPopover(entry, span);
     });
+    hoverPopover(span, () => entry);
   }
   return span;
 }
@@ -374,6 +375,7 @@ function popoverNodes(entry) {
 
 function openPopover(entry, anchor) {
   const pop = el("card-popover");
+  pop.classList.remove("hover");
   pop.textContent = "";
 
   const title = document.createElement("div");
@@ -427,7 +429,42 @@ function placePopover(pop, anchor, maxWidth) {
 }
 
 function closePopover() {
-  el("card-popover").hidden = true;
+  const pop = el("card-popover");
+  pop.hidden = true;
+  pop.classList.remove("hover");
+  popoverPinned = false;
+  clearTimeout(hoverTimer);
+}
+
+/* Hover preview: the popover opens after a short delay while the pointer
+   rests on a card and closes when it leaves, unless a click pinned it.
+   In hover mode it ignores pointer events so it never blocks the cards
+   it may overlap. */
+let popoverPinned = false;
+let hoverTimer = 0;
+const HOVER_DELAY_MS = 120;
+
+function hoverPopover(anchor, entryOf) {
+  anchor.addEventListener("mouseenter", () => {
+    clearTimeout(hoverTimer);
+    hoverTimer = setTimeout(() => {
+      const entry = entryOf();
+      if (!entry || popoverPinned) return;
+      openPopover(entry, anchor);
+      popoverPinned = false;
+      el("card-popover").classList.add("hover");
+    }, HOVER_DELAY_MS);
+  });
+  anchor.addEventListener("mouseleave", () => {
+    clearTimeout(hoverTimer);
+    if (!popoverPinned) closePopover();
+  });
+}
+
+/* A click pins the popover open until a click elsewhere or Escape. */
+function pinPopover(entry, anchor) {
+  openPopover(entry, anchor);
+  popoverPinned = true;
 }
 
 function chipList(container, ids, emptyText) {
@@ -1327,7 +1364,7 @@ function tableClick(ref, entry, anchor) {
     note(`${entry ? entry.name : ref}: 선택지가 ${legal.length}개입니다. 오른쪽 행동 목록에서 고르세요.`);
     return;
   }
-  if (entry) openPopover(entry, anchor);
+  if (entry) pinPopover(entry, anchor);
 }
 
 function section(parent, title) {
@@ -1675,6 +1712,7 @@ function visualCard(instanceId, options = {}) {
     if (options.onClick) options.onClick(entry, card);
     else tableClick(instanceId, entry, card);
   });
+  hoverPopover(card, () => entry);
   return card;
 }
 
@@ -1795,8 +1833,9 @@ function renderSeats() {
       image.alt = leaderEntry.name;
       image.addEventListener("click", (event) => {
         event.stopPropagation();
-        openPopover(leaderEntry, image);
+        pinPopover(leaderEntry, image);
       });
+      hoverPopover(image, () => leaderEntry);
       head.appendChild(image);
     }
     const who = document.createElement("div");
@@ -1809,8 +1848,9 @@ function renderSeats() {
       leaderName.className = "clickable";
       leaderName.addEventListener("click", (event) => {
         event.stopPropagation();
-        openPopover(leaderEntry, leaderName);
+        pinPopover(leaderEntry, leaderName);
       });
+      hoverPopover(leaderName, () => leaderEntry);
     }
     who.appendChild(leaderName);
     if (summary.seats[seat] === "human") {
