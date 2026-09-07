@@ -19,17 +19,36 @@ Skill 7종은 에셋 저장소 `cards/en/bloodlines/skill/*.webp`를 직접 판�
 | Strength | `units_strength`에 Commander 2를 더하고, `skill_strength`(Canny·Fierce·Loyal)는 매 step 뒤 `with_skill_strength`가 조건을 다시 판정해 차이만 반영한다(`skill_strength_applied`). Reveal 시작은 유닛 + sword + 적용된 Skill strength. Commander가 없으면 Skill은 비활성. | `[Bloodlines p. 4]`, OQ-032. Combat Intrigue 단계에서도 조건을 재판정한다. |
 | Reveal 보너스 | `begin_reveal_turn`이 Commander가 Conflict에 있을 때 Charismatic(Persuasion 1)·Driven(spice 1)·Hardy(water 1)를 한 번 준다(`skill_reveal_bonus` 이벤트). Desperate는 REVEAL frame의 선택 행동 `trash_skill_for_strength`로 tile을 `skill_trash`에 보내고 검 3을 더한다. | 라운드당 1회는 Reveal이 한 번뿐이므로 자연 충족. Reveal 도중 Commander가 처음 Conflict에 들어오는 경로는 아직 없다(Combat 아이콘 슬라이스에서 재검토). |
 | 정리 | `finish_combat`이 Commander를 supply로 돌려보내고 `skill_strength_applied`를 0으로 한다. | `[Bloodlines p. 4]` `[Main p. 14]`. |
-| 상태·관측 | `PlayerState.commanders_supply/garrison/conflict`, `skill_ids`, `commander_recruited_turn`, `skill_strength_applied`; `GameState.sardaukar_commander_space_ids`, `sardaukar_commanders_bank`, `skill_stack`(비공개 순서), `skill_face_up`, `skill_trash`. 불변식: Skill tile은 한 존에만, 한 플레이어는 종류당 1장, 옵션이 꺼지면 전부 비어 있어야 한다. 관측은 stack 크기만 노출한다. | 관측 v6, codec v90(`bloodlines` 룰셋만 +30 템플릿). |
+| 상태·관측 | `PlayerState.commanders_supply/garrison/conflict`, `skill_ids`, `commander_recruited_turn`, `contracts_completed_turn`, `skill_strength_applied`; `GameState.sardaukar_commander_space_ids`, `sardaukar_commanders_bank`, `skill_stack`(비공개 순서), `skill_face_up`, `skill_trash`. 불변식: Skill tile은 한 존에만, 한 플레이어는 종류당 1장, 옵션이 꺼지면 전부 비어 있어야 한다. 관측은 stack 크기만 노출한다. | 관측 v6, codec v90(`bloodlines` 룰셋만 +30 템플릿). |
 | UI·도구 | 서버 옵션 `bloodlines`/`tech_module`, UI 체크박스와 행동 라벨, sweep/tournament `--bloodlines --tech-module`, coverage census, 체크포인트 룰셋 식별자 파싱. | 보드 위 Commander 토큰·Skill 표시는 UI 슬라이스에서. |
 
 | Commander = troop (슬라이스 3) | Intrigue의 `RetreatTroops`·`DeployFromGarrison`은 `count`(전체)와 `commanders`(Commander 몫, 0이면 생략) 인자로 troop과 Commander를 섞어 고르고(`rules/intrigue.py`의 `_unit_count_arguments`), 비용·보상 가능성 판정도 둘을 합쳐 센다. Chani의 "troop 2개 retreat → 검 4"는 `commanders` 0~2, Desert Scouts는 `retreat_leader_commander`. Reveal 중 배치(`add_units_to_reveal`)도 Commander 2를 센다. | `[Bloodlines p. 4]` "It is a 'troop'". 이벤트 payload는 `commanders`가 0보다 클 때만 그 키를 싣는다. |
 | Conflict 카드 (슬라이스 3) | `content/uprising/conflicts.py`에 `bloodlines_only` 항목 2장: Skirmish (Wild) — I, 1위 trash 1 / 2위 water 1 + Solari 1 / 3위 Solari 2; Storms in the South — II, 1위 Spy 배치 + spice 2 / 2위 Intrigue 2 + Solari 2 / 3위 Intrigue 1 + Solari 2. 옵션을 켠 setup의 tier 풀에만 들어가고(`conflicts_by_tier(bloodlines=True)`, 미사용 8장), 관측의 Conflict identity 우주는 18종으로 늘었다(2,081→2,089). | 카드면 전사(에셋 `bloodlines/conflict/`). 이긴 wild Conflict는 도착 시 매칭하지 않는다(`combat._matching_battle_card`) `[Main p. 20]`. |
 | wild끼리 매칭 (슬라이스 3) | `endgame._endgame_wild_matches`와 codec `match_endgame_wild_icon` 템플릿이 wild 쌍(정렬 순서로 한 번)을 추가한다. `flip_battle_card`·wild 템플릿은 옵션을 켠 catalog에만 Bloodlines 카드를 넣는다. | `[Bloodlines p. 5]`. OQ-005의 Combat 다중 후보 tripwire는 인쇄 아이콘에만 남는다. |
 
+## 카드 (슬라이스 4)
+
+카탈로그 26+18종은 `content/uprising/imperium.py`·`intrigue.py`의 `bloodlines_only`(`tech_only`) 항목이며, `play_data_complete`(Intrigue는 `options`)가 채워진 카드만 `bloodlines` 옵션의 덱에 들어간다. 전사는 에셋 저장소 `cards/en/bloodlines/{imperium,intrigue}/` 카드면을 직접 판독했다. 금색 "?" 마름모는 Uprising 아이콘 가이드의 "Influence 1 선택"이다(`assets/icons/influence_any.png`와 대조); Conflict 카드의 배틀 아이콘 자리에 있는 것만 wild battle icon이다.
+
+| 카드 | 전사 | 구현 메모 |
+| --- | --- | --- |
+| Quash Rebellion ×2 | Emperor, 5, Emperor·Guild·Landsraad. Agent: 2 Solari. Reveal: 검 2; Commander가 Conflict에 있으면 Persuasion 2. | `requires_commander_in_conflict` 조건은 Reveal 시작과 late grant에서 판정. |
+| Shrouded Counsel | BG, 4, Spy. Agent: Intrigue. Reveal: 1 Persuasion; Command: 카드 trash. | `COMMAND_MAY_TRASH_CARD`: hand·discard·in play 대상, 선택(OQ-033). |
+| Eliminate Allies | Emperor, 2, Spy. "trash될 때: troop 2". Agent: 카드 trash. Reveal: 1 Persuasion, 검 1. | `PersonalCardTrashEffect.RECRUIT_TWO_TROOPS`; Agent turn 중이면 배치 가능 수에 합산. |
+| Imperial Throneship | Emperor, 7, 아이콘 6종 전부, 획득 시 Emperor Influence 1. Agent: Intrigue. Reveal: 2 Persuasion; garrison 유닛 4 이상이면 +1 Persuasion, 3 Solari. | `minimum_garrisoned_units`는 troop + Commander. 획득 보너스는 `GAIN_EMPEROR_INFLUENCE`(Reveal·Solari·manipulated 획득 경로 공통). |
+| Intelligence Training ×2 | Emperor, 3, Landsraad·City, 획득 시 Spy 배치. Reveal: 1 Persuasion, 검 1; Command: Spy 배치. | `COMMAND_PLACE_SPY`는 기존 Reveal Spy 배치 경로(recall-first 포함). |
+| Command Center | Emperor, 3, Emperor·City. Agent: Emperor Influence 2면 troop. Reveal: 1 Persuasion; troop 2개 retreat → +2 Persuasion. | `MAY_RETREAT_TWO_TROOPS_FOR_TWO_PERSUASION`(Commander 포함). |
+| I Believe | Fremen, 3, Fremen·City. Agent: [discard] → draw. Reveal: 1 Persuasion; Command: troop 2. | `MAY_DISCARD_TO_DRAW_ONE`(거절 가능); Command 자동 효과 `requires_command`. |
+| Pointing the Way | Fremen, 6, Fremen·City·SpiceTrade. Agent: sandworm이 Conflict에 있으면 Intrigue. Reveal: 1 Persuasion, 검 2; Command: Influence 1 선택. | `COMMAND_GAIN_CHOSEN_INFLUENCE` → 행동 `gain_reveal_influence(faction)`. |
+| Sandwalk ×2 | Fremen, 1, SpiceTrade. Agent: 이번 turn spice 2 이상 획득했으면 draw. Reveal: 1 Persuasion, 검 1; Fremen Bond +1 Persuasion. | 획득량 = 현재 spice − turn 시작 spice + turn 중 지출(`spice_gained_this_turn`, DSL의 `GainedSpiceThisTurn`과 같은 정의). |
+| Fremen War Name | Fremen, 4, Fremen·SpiceTrade. Agent: spice 2 이상 획득했으면 troop + draw. Reveal: 2 Persuasion; Fremen Bond 검 2. | OQ-027 다중 아이콘(troops·cards), 조건은 아이콘별 해결 시점 판정. |
+| Corrupt Bureaucrat (CHOAM) | Guild, 4, Guild·Landsraad·Spy. "discard될 때: 3 Solari". Agent: 이번 turn Spy를 recall했으면 contract. Reveal: 2 Persuasion. | `GAIN_THREE_SOLARI` discard trigger; contract는 `begin_contract_gain`(module 없으면 2 Solari). |
+| Mercantile Affairs (CHOAM) | BG, 5, BG·City·SpiceTrade·Spy, 획득 시 contract. Agent: 이번 turn contract를 완료했으면 Intrigue. Reveal: 2 Persuasion. | 새 좌석 카운터 `contracts_completed_turn`(관측 scalar, TURN frame에서 초기화). |
+
 ## 미완 경계
 
 - Endgame tiebreaker "garrison의 troop 수"에 Commander를 세는지는 공식 문서가 침묵한다(현재는 세지 않음; 콘텐츠 슬라이스에서 open question으로 올릴 예정).
-- 새 아이콘 4종(Spy with Deep Cover, Command, Combat, Trash an Intrigue card)은 인쇄된 카드와 함께 슬라이스 4에서. Sardaukar Standard(bank의 Commander)·Tech Module의 Commander 관련 tile도 뒤 슬라이스.
+- 남은 카드: Imperium 14종(Arrakis Observer, Bombast, CHOAM Demands, Delivery Logistics, Disruption Tactics, Elite Forces, Engineered Miracle, Holy War, Litany Against Fear, Possible Futures, Sardaukar Standard, Southern Faith, Urgent Shigawire, Tech 전용 Ixian Ambassador)과 Intrigue 18장 전부. 필요한 새 메커니즘: Spy with Deep Cover, Combat 아이콘(Agent·Reveal 배치 창), Intrigue trash 아이콘, 상대 troop 강제 retreat·Spy 이동(상대 결정), turn/round 한정 수정자(Urgent Shigawire, Emperor's Invitation, Insider Information, Honor Guard), turn 시작 대체 행동(Litany Against Fear), contract 임의 완료(CHOAM Demands), 동적 Agent 아이콘(Delivery Logistics), bank Commander 획득 + Skill 선택 frame(Sardaukar Standard), "lose a troop"(Holy War; 출처 garrison/Conflict 선택은 open question 예정).
 
 ## 검증
 

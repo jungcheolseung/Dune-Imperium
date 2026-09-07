@@ -212,6 +212,13 @@
 - 사용자 확인(2026-09-07): "매 step마다 계산하는 것이 맞고, 전투 중에도 조건 변동이 있으면 반영해야 한다." Combat Intrigue 단계의 조건 변화(Influence 상실, 뒤늦은 sandworm, Commander retreat)도 순위를 매기기 전에 반영한다.
 - 재개 조건: 공식 FAQ가 판정 시점을 정할 때.
 
+## OQ-033 — Command (6+)의 Persuasion 판정 시점
+
+- 상태: `DECIDED` (project convention)
+- 룰북은 "In a Reveal turn, you use the effect that follows if you generate 6 Persuasion or more"라고만 한다 `[Bloodlines p. 5]`. Reveal turn의 Persuasion은 Reveal 중의 선택(Corrinth City의 High Council, Reveal 중 draw한 카드, Command Center의 retreat 등)으로 늘어날 수 있어, Command를 Reveal 시작 시점에 한 번만 판정하는지 Reveal 도중 6에 도달해도 인정하는지가 열려 있다.
+- 판정(2026-09-07, project convention): OQ-028의 원칙(조건은 해결 시점에 판정하고 같은 turn의 뒤 선택으로 성립한 조건도 인정)을 그대로 적용한다. 자동 Command 효과(I Believe의 troop 2 등)는 Reveal 시작 시 Persuasion이 6 이상이면 지급되고, 미만이면 다른 자동 효과처럼 Reveal 도중 6에 도달하는 첫 시점에 지급된다(`grant_late_reveal_effects`). 선택형 Command 효과(Shrouded Counsel의 trash, Intelligence Training의 Spy, Pointing the Way의 Influence)는 6 미만이면 미뤄졌다가(`deferred_reveal_choices`) 6에 도달하면 다시 열리고, Reveal이 끝날 때까지 도달하지 못하면 소멸한다. Command 효과 자체는 Persuasion을 주지 않으므로(`PersonalCardRevealEffect.__post_init__`이 강제) 판정이 순환하지 않는다.
+- 재개 조건: 공식 FAQ가 Command의 판정 시점을 정할 때.
+
 ## 판정이 생겼을 때 기록할 정보
 
 각 항목을 닫을 때 다음을 함께 남긴다. `DECIDED` 항목에 새 공식 답이 나왔을 때도 같다.
