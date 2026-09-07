@@ -1348,13 +1348,16 @@ def test_shishakli_reveal_gains_fremen_influence_only_with_bond() -> None:
         without_bond,
         legal_reveal_actions(without_bond, 0)[0],
     )
-    with_result = begin_reveal_turn(
-        with_bond,
-        legal_reveal_actions(with_bond, 0)[0],
+    with_result = _with_gains(
+        begin_reveal_turn(
+            with_bond,
+            legal_reveal_actions(with_bond, 0)[0],
+        )
     )
 
     assert without_result.state.players[0].influence.fremen == 0
     assert without_result.state.players[0].combat_strength == 4
+    # The Bond Influence is a Reveal gain the owner takes (OQ-045).
     assert with_result.state.players[0].influence.fremen == 1
     assert with_result.state.players[0].combat_strength == 5
     assert tuple(event.kind for event in with_result.events) == (

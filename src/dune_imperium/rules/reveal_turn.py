@@ -1717,6 +1717,16 @@ def resource_gain_entry(
     return ("resources", f"{solari}/{spice}/{water}", source)
 
 
+def influence_gain_entry(
+    source: str, effect: PersonalCardRevealEffect
+) -> RevealGain | None:
+    """Return a pending fixed-Faction Influence gain, or None without one."""
+
+    if effect.influence_faction is None or effect.influence <= 0:
+        return None
+    return ("influence", f"{effect.influence_faction.value}/{effect.influence}", source)
+
+
 def _resource_payload(payload: str) -> tuple[int, int, int]:
     solari, spice, water = (int(part) for part in payload.split("/"))
     return solari, spice, water
@@ -1778,6 +1788,17 @@ def legal_reveal_gain_actions(
                 arguments=(("solari", solari), ("spice", spice), ("water", water)),
             )
         )
+    # Fixed-Faction Influence gains: one choice per Faction still pending.
+    for faction in dict.fromkeys(
+        payload.split("/")[0] for kind, payload, _ in pending if kind == "influence"
+    ):
+        actions.append(
+            DomainAction(
+                action_id="gain_reveal_faction_influence",
+                actor=player,
+                arguments=(("faction", faction),),
+            )
+        )
     return tuple(actions)
 
 
@@ -1800,6 +1821,13 @@ def apply_reveal_gain(state: GameState, action: DomainAction) -> RuleResult:
             for i, (kind, payload, _) in enumerate(pending)
             if kind == "resources" and payload == wanted_payload
         )
+    elif action.action_id == "gain_reveal_faction_influence":
+        wanted_faction = str(arguments["faction"])
+        index = next(
+            i
+            for i, (kind, payload, _) in enumerate(pending)
+            if kind == "influence" and payload.split("/")[0] == wanted_faction
+        )
     else:
         wanted = "troops" if action.action_id == "recruit_reveal_troops" else "intrigue"
         index = next(i for i, (kind, _, _) in enumerate(pending) if kind == wanted)
@@ -1807,6 +1835,19 @@ def apply_reveal_gain(state: GameState, action: DomainAction) -> RuleResult:
     context[REVEAL_GAINS_KEY] = _encode_gains((*pending[:index], *pending[index + 1 :]))
     event_id = f"round:{state.round_number}:player:{player}:reveal_gain:{source}"
     owner = state.players[player]
+    if kind == "influence":
+        faction_value, amount_text = payload.split("/")
+        settled = replace(
+            state,
+            decision_stack=(*state.decision_stack[:-1], with_context(frame, context)),
+        )
+        return gain_faction_influence(
+            settled,
+            player,
+            Faction(faction_value),
+            int(amount_text),
+            event_prefix=f"{event_id}:influence:{faction_value}",
+        )
     if kind == "resources":
         solari, spice, water = _resource_payload(payload)
         next_owner = replace(
@@ -1969,7 +2010,6 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
     next_owner = owner
     events: list[GameEvent] = list(result.events)
     late_gains: list[RevealGain] = []
-    pending_influence: list[tuple[str, PersonalCardRevealEffect]] = []
     pending_trashes: list[tuple[str, str]] = []
     pending_combat_icons = 0
     newly_granted: dict[str, int | None] = {}
@@ -2029,8 +2069,9 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
             )
             if resources is not None:
                 late_gains.append(resources)
-            if effect.influence_faction is not None:
-                pending_influence.append((f"{source}:{index}", effect))
+            influence = influence_gain_entry(card_id, effect)
+            if influence is not None:
+                late_gains.append(influence)
             if effect.trashes_self:
                 pending_trashes.append((f"{source}:{index}:late", card_id))
             if effect.grants_combat_icon:
@@ -2120,17 +2161,6 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
             events.extend(trashed.events)
     if pending_combat_icons:
         working = grant_combat_icon(working, player)
-    for influence_source, effect in pending_influence:
-        assert effect.influence_faction is not None
-        gained = gain_faction_influence(
-            working,
-            player,
-            Faction(effect.influence_faction.value),
-            effect.influence,
-            event_prefix=f"{influence_source}:influence:{effect.influence_faction.value}",
-        )
-        working = gained.state
-        events.extend(gained.events)
     return RuleResult(state=working, events=tuple(events))
 
 
@@ -2782,6 +2812,7 @@ def _late_reveal_one_card(
             resource_gain_entry(
                 card_id, solari=effect.solari, spice=effect.spice, water=effect.water
             ),
+            influence_gain_entry(card_id, effect),
         )
         if entry is not None
     )
@@ -2825,19 +2856,6 @@ def _late_reveal_one_card(
             ),
         )
     ]
-    for effect in eligible:
-        if effect.influence_faction is None:
-            continue
-        gained = gain_faction_influence(
-            next_state,
-            player,
-            Faction(effect.influence_faction.value),
-            effect.influence,
-            event_prefix=f"{source}:influence:{effect.influence_faction.value}",
-        )
-        next_state = gained.state
-        events.extend(gained.events)
-
     latest_owner = next_state.players[player]
     choice_frames: list[DecisionFrame] = []
     late_deferred: list[tuple[str, str]] = []
@@ -3049,6 +3067,14 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
             if effect.draw_intrigue
         ),
         *(entry for entry in resource_gains if entry is not None),
+        *(
+            entry
+            for entry in (
+                influence_gain_entry(card_id, effect)
+                for card_id, effect in reveal_effects
+            )
+            if entry is not None
+        ),
     )
     next_owner = replace(
         next_owner,
@@ -3201,21 +3227,6 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         for skill in active_skills
         if skill.reveal_persuasion or skill.reveal_spice or skill.reveal_water
     )
-    for card_id, effect in reveal_effects:
-        if effect.influence_faction is None:
-            continue
-        gained = gain_faction_influence(
-            next_state,
-            action.actor,
-            Faction(effect.influence_faction.value),
-            effect.influence,
-            event_prefix=(
-                f"round:{state.round_number}:player:{action.actor}:"
-                f"reveal_card:{card_id}:influence:{effect.influence_faction.value}"
-            ),
-        )
-        next_state = gained.state
-        events.extend(gained.events)
     return RuleResult(state=next_state, events=tuple(events))
 
 

@@ -157,7 +157,7 @@
 1. 남은 Agent가 없거나 남은 Agent를 더 사용하지 않기로 하면 Reveal turn을 시작한다. [Main p. 8] [Main p. 12]
 2. hand에 남은 card를 모두 face-up으로 reveal해 play 영역에 놓고, 이전 Agent turn에 낸 card와 구분한다. [Main p. 12]
 3. 방금 reveal한 card들의 Reveal box 효과만 얻는다. 앞선 Agent turn에 낸 card의 Reveal box 효과는 얻지 않는다. [Main p. 12]
-4. Reveal 효과는 원하는 순서로 처리한다. Persuasion을 사용한 acquire는 Reveal 효과의 전, 사이, 뒤 어느 때든 할 수 있다. [Main p. 12] 선택형 Reveal 효과는 미루기/재개로 순서를 고르고(OQ-027), troop recruit·Intrigue draw·자원 획득은 각각 소유자의 행동(`recruit_reveal_troops`·`draw_reveal_intrigue`·`gain_reveal_resources`)으로 시점을 고르며(OQ-045), 조건이 있는 Reveal 효과는 같은 Reveal 안의 뒤 선택(Spy 배치, High Council 구매, 늦게 도착한 카드, 획득으로 완료된 contract)으로 조건이 성립하면 그때 지급된다(OQ-028).
+4. Reveal 효과는 원하는 순서로 처리한다. Persuasion을 사용한 acquire는 Reveal 효과의 전, 사이, 뒤 어느 때든 할 수 있다. [Main p. 12] 선택형 Reveal 효과는 미루기/재개로 순서를 고르고(OQ-027), troop recruit·Intrigue draw·자원·고정 진영 Influence 획득은 각각 소유자의 행동(`recruit_reveal_troops`·`draw_reveal_intrigue`·`gain_reveal_resources`·`gain_reveal_faction_influence`)으로 시점을 고르며(OQ-045; Persuasion·검만 시작 시 합산), 조건이 있는 Reveal 효과는 같은 Reveal 안의 뒤 선택(Spy 배치, High Council 구매, 늦게 도착한 카드, 획득으로 완료된 contract)으로 조건이 성립하면 그때 지급된다(OQ-028).
 5. Reveal 효과를 처리하는 동안 strength를 설정하고, strength가 바뀌면 갱신한다. strength 설정은 Reveal 효과 처리와 Clean Up 사이의 별도 고정 단계가 아니다. [Main p. 12] [Main p. 13]
 6. Clean Up 때 Agent turn과 Reveal turn에 face-up으로 낸 card를 모두 자신의 discard pile에 놓는다. [Main p. 12]
 

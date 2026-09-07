@@ -80,6 +80,7 @@ _ACTION_SCORES: Final[dict[str, float]] = {
     "recruit_reveal_troops": 4.0,
     "draw_reveal_intrigue": 4.0,
     "gain_reveal_resources": 4.0,
+    "gain_reveal_faction_influence": 4.0,
     "withdraw_troops": -10.0,
     # Bloodlines: a Sardaukar Commander is a 2-strength unit for 2 Solari
     # plus a Skill; buying one from the board outranks a plain recruit.

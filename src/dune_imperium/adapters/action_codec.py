@@ -50,7 +50,7 @@ from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.rules.agent_effects import AUTOMATIC_AGENT_ICONS
 from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 
-ACTION_CODEC_VERSION = 93
+ACTION_CODEC_VERSION = 94
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -880,12 +880,22 @@ def _reveal_resource_templates() -> tuple[ActionTemplate, ...]:
         if skill.reveal_spice or skill.reveal_water:
             bundles.add((0, skill.reveal_spice, skill.reveal_water))
     bundles.add((2, 0, 0))  # Delivery Bay
-    return tuple(
-        ActionTemplate(
-            action_id="gain_reveal_resources",
-            arguments=(("solari", solari), ("spice", spice), ("water", water)),
-        )
-        for solari, spice, water in sorted(bundles)
+    return (
+        *(
+            ActionTemplate(
+                action_id="gain_reveal_resources",
+                arguments=(("solari", solari), ("spice", spice), ("water", water)),
+            )
+            for solari, spice, water in sorted(bundles)
+        ),
+        # Fixed-Faction Reveal Influence, one per Faction (codec v94).
+        *(
+            ActionTemplate(
+                action_id="gain_reveal_faction_influence",
+                arguments=(("faction", faction.value),),
+            )
+            for faction in Faction
+        ),
     )
 
 

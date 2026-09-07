@@ -215,6 +215,7 @@ const ACTION_LABELS = {
   recruit_reveal_troops: "Reveal: troop recruit",
   draw_reveal_intrigue: "Reveal: Intrigue draw",
   gain_reveal_resources: "Reveal: 자원 획득",
+  gain_reveal_faction_influence: "Reveal: Influence 획득",
   decline_skill: "Plasteel Blades 유지 (Skill 거절)",
   choose_secret_project: "Secret Project: 맨 아래 Tech tile 선택",
   gain_leader_signet_spice: "spice 1 (Signet)",
