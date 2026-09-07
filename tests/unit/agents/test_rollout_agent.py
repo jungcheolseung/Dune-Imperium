@@ -220,3 +220,15 @@ def test_rollout_agent_finishes_a_game_through_the_runner() -> None:
         state = engine.apply(state, action).state
     assert rollout_decisions > 0
     assert state.round_number >= 1
+
+
+def test_player_value_counts_bloodlines_assets() -> None:
+    from dune_imperium.core.player import PlayerState
+
+    base = PlayerState(player_id=0)
+    with_tech = replace(base, tech_ids=("glowglobes",))
+    assert player_value(with_tech) - player_value(base) == pytest.approx(1.0)
+    with_commander = replace(base, commanders_garrison=1)
+    assert player_value(with_commander) - player_value(base) == pytest.approx(1.2)
+    with_skill = replace(base, skill_ids=("skill:hardy:0",))
+    assert player_value(with_skill) - player_value(base) == pytest.approx(0.5)

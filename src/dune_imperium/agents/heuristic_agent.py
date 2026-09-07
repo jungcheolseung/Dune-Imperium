@@ -135,6 +135,23 @@ _SPACE_BONUSES: Final[dict[str, float]] = {
     "high_council": 2.0,
 }
 
+# Tech tiles (Bloodlines Tech Module) whose printed effect pays back at
+# once or scores: an acquire-time VP, an Endgame VP or Influence sweep, a
+# lasting discount, or units. Every other tile keeps the base score, so a
+# buy still outranks the decline whatever the tile.
+_TECH_BONUSES: Final[dict[str, float]] = {
+    "sardaukar_high_command": 2.0,
+    "choam_transports": 1.5,
+    "panopticon": 1.0,
+    "navigation_chamber": 1.0,
+    "ornithopter_fleet": 1.0,
+    "delivery_bay": 0.5,
+    "plasteel_blades": 0.5,
+    "spy_drones": 0.5,
+    "suspensor_suits": 0.5,
+    "training_depot": 0.5,
+}
+
 
 def score_action(action: DomainAction) -> float:
     """Rank one engine-legal action; higher is preferred."""
@@ -150,6 +167,10 @@ def score_action(action: DomainAction) -> float:
         space_id = _argument(action, "space_id")
         bonus = _SPACE_BONUSES.get(space_id, 0.0) if isinstance(space_id, str) else 0.0
         return _ACTION_SCORES["agent_turn"] + bonus
+    if action_id == "acquire_tech":
+        tech_id = _argument(action, "tech_id")
+        bonus = _TECH_BONUSES.get(tech_id, 0.0) if isinstance(tech_id, str) else 0.0
+        return _ACTION_SCORES["acquire_tech"] + bonus
     if action_id in _ACTION_SCORES:
         return _ACTION_SCORES[action_id]
     if action_id.startswith("decline_"):

@@ -155,3 +155,25 @@ def test_missing_cost_data_still_scores_as_an_acquisition() -> None:
     reveal = score_action(_action("reveal_turn"))
 
     assert nameless > reveal
+
+
+def test_tech_tiles_are_bought_and_the_scoring_ones_first() -> None:
+    # Bloodlines Tech Module: any buy outranks the decline; a tile that
+    # scores or pays back at once (Sardaukar High Command's VP) outranks a
+    # plain upgrade (Glowglobes).
+    decline = score_action(_action("decline_tech"))
+    plain = score_action(_action("acquire_tech", ("tech_id", "glowglobes")))
+    scoring = score_action(
+        _action("acquire_tech", ("tech_id", "sardaukar_high_command"))
+    )
+    reveal = score_action(_action("reveal_turn"))
+    assert scoring > plain > reveal > decline
+    chosen = HeuristicAgent(seed=1).choose_action(
+        _view(),
+        (
+            _action("decline_tech"),
+            _action("acquire_tech", ("tech_id", "glowglobes")),
+            _action("acquire_tech", ("tech_id", "sardaukar_high_command")),
+        ),
+    )
+    assert dict(chosen.arguments)["tech_id"] == "sardaukar_high_command"

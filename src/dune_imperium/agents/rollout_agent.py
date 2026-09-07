@@ -66,6 +66,12 @@ def player_value(player: PlayerState) -> float:
         + 0.5 * len(player.spy_post_ids)
         + 0.5 * len(player.control_space_ids)
         + 1.0 * len(player.active_contract_ids)
+        # Bloodlines: a Sardaukar Commander is a two-strength unit, a Skill
+        # a lasting bonus, and a Tech tile a permanent upgrade (a few also
+        # score at the end of the game).
+        + 1.2 * (player.commanders_garrison + player.commanders_conflict)
+        + 0.5 * len(player.skill_ids)
+        + 1.0 * len(player.tech_ids)
     )
 
 
