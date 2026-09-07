@@ -219,6 +219,14 @@
 - 판정(2026-09-07, project convention): OQ-028의 원칙(조건은 해결 시점에 판정하고 같은 turn의 뒤 선택으로 성립한 조건도 인정)을 그대로 적용한다. 자동 Command 효과(I Believe의 troop 2 등)는 Reveal 시작 시 Persuasion이 6 이상이면 지급되고, 미만이면 다른 자동 효과처럼 Reveal 도중 6에 도달하는 첫 시점에 지급된다(`grant_late_reveal_effects`). 선택형 Command 효과(Shrouded Counsel의 trash, Intelligence Training의 Spy, Pointing the Way의 Influence)는 6 미만이면 미뤄졌다가(`deferred_reveal_choices`) 6에 도달하면 다시 열리고, Reveal이 끝날 때까지 도달하지 못하면 소멸한다. Command 효과 자체는 Persuasion을 주지 않으므로(`PersonalCardRevealEffect.__post_init__`이 강제) 판정이 순환하지 않는다.
 - 재개 조건: 공식 FAQ가 Command의 판정 시점을 정할 때.
 
+## OQ-034 — Disruption Tactics의 "enemy troop" 선택과 Reveal 중 Combat 아이콘 배치의 회수
+
+- 상태: `DECIDED` (project convention)
+- Disruption Tactics의 Agent box "Force an enemy troop to retreat"(카드면)는 어느 상대의 어느 유닛인지, Sardaukar Commander도 "troop"인지 말하지 않는다. `[Bloodlines p. 4]`는 Commander를 "troop"으로 취급하라고 하므로 대상은 될 수 있지만, 상대가 troop과 Commander를 함께 두었을 때 누가 종류를 고르는지는 열려 있다.
+- 판정(2026-09-07, project convention): 카드를 play한 플레이어가 상대 좌석과 유닛 종류를 고른다(`retreat_opponent_troop(player, commanders)`). Conflict에 상대 유닛이 하나도 없으면 효과 없이 해결된다(OQ-028의 해결 시점 판정).
+- 같이 정한 것: Reveal turn 중 Combat 아이콘(Disruption Tactics, Adaptive Tactics 등)으로 여는 배치 창은 OQ-029의 Agent turn 기본 배치와 달리 회수(`withdraw_*`)를 제시하지 않는다. Reveal의 배치는 즉시 strength에 반영되는 `add_units_to_reveal` 경로를 쓰며, 되돌리기는 로컬 UI의 행동 되돌리기로 한다.
+- 재개 조건: 공식 FAQ가 대상 선택 주체를 정할 때.
+
 ## 판정이 생겼을 때 기록할 정보
 
 각 항목을 닫을 때 다음을 함께 남긴다. `DECIDED` 항목에 새 공식 답이 나왔을 때도 같다.
