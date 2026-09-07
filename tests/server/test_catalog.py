@@ -239,7 +239,16 @@ def test_catalog_cross_section_id_overlaps_are_pinned() -> None:
     ids explicitly against the spaces section to disambiguate."""
 
     catalog = build_catalog()
-    sections = ["cards", "intrigue", "contracts", "conflicts", "leaders", "spaces"]
+    sections = [
+        "cards",
+        "intrigue",
+        "contracts",
+        "conflicts",
+        "leaders",
+        "spaces",
+        "skills",
+        "tech",
+    ]
     overlaps: dict[tuple[str, str], set[str]] = {}
     for index, first in enumerate(sections):
         first_section = catalog[first]
@@ -251,3 +260,40 @@ def test_catalog_cross_section_id_overlaps_are_pinned() -> None:
             if shared:
                 overlaps[(first, second)] = shared
     assert overlaps == {("contracts", "spaces"): {"deliver_supplies"}}
+
+
+def test_catalog_serves_bloodlines_skills_and_tech_tiles() -> None:
+    from dune_imperium.content.bloodlines.sardaukar import SKILLS_BY_ID
+    from dune_imperium.content.bloodlines.tech import TECH_TILES_BY_ID
+
+    catalog = build_catalog()
+    skills = catalog["skills"]
+    assert isinstance(skills, dict)
+    assert set(skills) == set(SKILLS_BY_ID)
+    hardy = skills["hardy"]
+    assert isinstance(hardy, dict)
+    assert hardy["name"] == "Hardy"
+    assert hardy["kind"] in ("reveal", "combat", "passive")
+    assert isinstance(hardy["text"], list) and hardy["text"][0]
+    assert hardy["image"] is None or isinstance(hardy["image"], str)
+
+    tech = catalog["tech"]
+    assert isinstance(tech, dict)
+    assert set(tech) == set(TECH_TILES_BY_ID)
+    high_command = tech["sardaukar_high_command"]
+    assert isinstance(high_command, dict)
+    assert high_command["name"] == "Sardaukar High Command"
+    assert high_command["cost"] == 7
+    assert high_command["acquire"] == "Gain 1 VP"
+    assert high_command["text"] == [
+        "Acquire: Gain 1 VP",
+        str(high_command["ability"]),
+    ]
+    assert high_command["flips"] is False
+    plain = tech["training_depot"]
+    assert isinstance(plain, dict)
+    assert plain["acquire"] == ""
+    assert plain["text"] == [plain["ability"]]
+    embassy = catalog["embassy_image"]
+    assert embassy is None or isinstance(embassy, str)
+    json.dumps(catalog)

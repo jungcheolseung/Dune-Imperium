@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pytest
 
+from dune_imperium.content.bloodlines.sardaukar import SKILLS
+from dune_imperium.content.bloodlines.tech import TECH_TILES
 from dune_imperium.content.uprising.board import BOARD_SPACES
 from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.contracts import CONTRACTS
@@ -35,6 +37,9 @@ def _all_content_keys() -> set[tuple[str, str]]:
             keys.append(("leader", leader.alternate_face_id))
     keys += [("other", entry.card.card_id) for entry in STARTING_DECK]
     keys += [("other", stack.card.card_id) for stack in RESERVE_STACKS]
+    keys += [("skill", skill.skill_id) for skill in SKILLS]
+    keys += [("tech", tile.tech_id) for tile in TECH_TILES]
+    keys.append(("other", "ixian_embassy_board"))
     return set(keys)
 
 
@@ -148,8 +153,9 @@ def test_required_image_keys_cover_every_displayable_content_id() -> None:
     # 57 imperium (54 + 3 promo) + 39 intrigue + 20 contracts + 16 conflicts
     # + 22 spaces + 10 leader faces + 7 starting + 2 reserve.
     # Bloodlines: 44 cards, 12 Twisted Intrigue, 10 Navigation, eight
-    # Leaders, Tuek's Sietch, and the Tech Module's Kota Odax of Ix.
-    assert len(keys) == 175 + 44 + 12 + 10 + 8 + 1 + 1
+    # Leaders, Tuek's Sietch, the Tech Module's Kota Odax of Ix, 7 Skill
+    # tiles, 18 Tech tiles and the Ixian Embassy board.
+    assert len(keys) == 175 + 44 + 12 + 10 + 8 + 1 + 1 + 7 + 18 + 1
     assert len(set(keys)) == len(keys)
     assert set(keys) == _all_content_keys()
 

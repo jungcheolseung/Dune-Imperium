@@ -20,6 +20,8 @@ place the live state on that scan (``display.board_layout``).
 from functools import cache
 from urllib.parse import quote
 
+from dune_imperium.content.bloodlines.sardaukar import SKILLS
+from dune_imperium.content.bloodlines.tech import TECH_TILES
 from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID
 from dune_imperium.content.uprising.conflicts import CONFLICTS, ConflictDefinition
 from dune_imperium.content.uprising.contracts import CONTRACTS_BY_ID
@@ -42,11 +44,17 @@ from dune_imperium.display import (
     space_option_count,
     space_option_effects,
 )
+from dune_imperium.display.bloodlines import (
+    skill_effect_text,
+    tech_ability_text,
+    tech_acquire_text,
+)
 from dune_imperium.display.board_layout import (
     POST_POINTS,
     SPACE_BOXES,
     marker_layout,
 )
+from dune_imperium.display.images import IXIAN_EMBASSY_IMAGE_ID
 from dune_imperium.server.sessions import JsonObject, JsonValue
 
 
@@ -129,9 +137,43 @@ def build_catalog(
                 image_files=image_files,
             )
 
+    skills: dict[str, JsonValue] = {
+        skill.skill_id: {
+            "name": skill.name,
+            "kind": skill.kind.value,
+            "text": [skill_effect_text(skill)],
+            "image": _image_url("skill", skill.skill_id, image_files),
+        }
+        for skill in SKILLS
+    }
+    tech: dict[str, JsonValue] = {
+        tile.tech_id: {
+            "name": tile.name,
+            "cost": tile.cost,
+            "acquire": tech_acquire_text(tile),
+            "ability": tech_ability_text(tile),
+            "text": [
+                *(
+                    (f"Acquire: {tech_acquire_text(tile)}",)
+                    if tech_acquire_text(tile)
+                    else ()
+                ),
+                tech_ability_text(tile),
+            ],
+            "flips": tile.flips,
+            "choam_only": tile.choam_only,
+            "image": _image_url("tech", tile.tech_id, image_files),
+        }
+        for tile in TECH_TILES
+    }
+
     return {
         "cards": cards,
         "intrigue": intrigue,
+        # Bloodlines Skill tiles and Tech Module tiles, keyed by their ids.
+        "skills": skills,
+        "tech": tech,
+        "embassy_image": _image_url("other", IXIAN_EMBASSY_IMAGE_ID, image_files),
         "contracts": {
             contract_id: {
                 "name": definition.card.name,

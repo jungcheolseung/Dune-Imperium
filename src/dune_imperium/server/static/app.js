@@ -332,6 +332,8 @@ function lookup(id) {
     c.leaders[id] ||
     c.spaces[id] ||
     c.objectives[id] ||
+    (c.skills && c.skills[id]) ||
+    (c.tech && c.tech[id]) ||
     null
   );
 }
@@ -356,6 +358,10 @@ function cardDetail(instanceId) {
   }
   const intrigue = state.catalog && state.catalog.intrigue[id];
   if (intrigue) return `Intrigue (${intrigue.timings.join("/")})`;
+  const tile = state.catalog && state.catalog.tech && state.catalog.tech[id];
+  if (tile) return `Tech tile · 비용 ${tile.cost} spice`;
+  const skill = state.catalog && state.catalog.skills && state.catalog.skills[id];
+  if (skill) return "Sardaukar Commander Skill";
   return "";
 }
 
@@ -1627,6 +1633,15 @@ function renderBoardStage(board, view) {
       bonus.classList.add("maker-bonus");
       hotspot.appendChild(bonus);
     }
+    if ((view.sardaukar_commander_space_ids || []).includes(spaceId)) {
+      /* A Sardaukar Commander waits on the space: 2 Solari with a visit
+         [Bloodlines p. 4]. */
+      const mark = document.createElement("span");
+      mark.className = "commander-mark";
+      mark.textContent = "C";
+      mark.title = "Sardaukar Commander (2 Solari)";
+      hotspot.appendChild(mark);
+    }
     hotspot.addEventListener("click", (event) => {
       event.stopPropagation();
       tableClick(spaceId, entry, hotspot);
@@ -1763,7 +1778,11 @@ function renderTrackMarkers(stage, view) {
     placeAt(vpToken, tracks.victory_points.x + (seat - 1.5) * 1.3, vpY);
     stage.appendChild(vpToken);
 
-    const units = (player.troops_conflict || 0) + (player.sandworms_conflict || 0);
+    const units =
+      (player.troops_conflict || 0) +
+      (player.sandworms_conflict || 0) +
+      (player.commanders_conflict || 0) +
+      (player.agent_in_conflict || 0);
     /* Every seat's strength token is always on the track: in the framed
        square left of 1/11 at strength 0 (four tokens in a 2×2), on the
        printed number otherwise, and on its "+20" face beyond 20 (23 is
@@ -1802,6 +1821,13 @@ function renderTrackMarkers(stage, view) {
       seatToken(seat, "seat-mark"),
       amount("troop", "garrison troop", player.troops_garrison || 0)
     );
+    if (player.commanders_garrison) {
+      const commanders = document.createElement("span");
+      commanders.className = "commander-count";
+      commanders.title = `Sardaukar Commander ${player.commanders_garrison}`;
+      commanders.textContent = `C${player.commanders_garrison}`;
+      garrison.appendChild(commanders);
+    }
     placeAt(garrison, gx, gy);
     stage.appendChild(garrison);
 
@@ -1817,6 +1843,16 @@ function renderTrackMarkers(stage, view) {
       }
       if (player.sandworms_conflict) {
         deployed.appendChild(amount("sandworm", "sandworm", player.sandworms_conflict));
+      }
+      if (player.commanders_conflict) {
+        const commanders = document.createElement("span");
+        commanders.className = "commander-count";
+        commanders.title = `Sardaukar Commander ${player.commanders_conflict}`;
+        commanders.textContent = `C${player.commanders_conflict}`;
+        deployed.appendChild(commanders);
+      }
+      if (player.agent_in_conflict) {
+        deployed.appendChild(amount("agent", "Agent (Into the Fray)", player.agent_in_conflict));
       }
       if (strength) {
         const total = document.createElement("span");
@@ -2025,6 +2061,63 @@ function renderMarket() {
     return { badge: `×${stack ? stack[1] : 0}` };
   });
 
+  if (state.summary.bloodlines) {
+    /* Sardaukar Commanders still waiting on their setup spaces, the bank
+       Commander (Sardaukar Standard) and the four face-up Skills
+       [Bloodlines pp. 3-4]. */
+    const spaces = view.sardaukar_commander_space_ids || [];
+    const box = document.createElement("div");
+    box.className = "strip";
+    const heading = document.createElement("h3");
+    heading.textContent =
+      `Sardaukar Commander · 보드 ${spaces.length} · bank ${view.sardaukar_commanders_bank || 0}`;
+    box.appendChild(heading);
+    const row = document.createElement("div");
+    row.className = "strip-cards wrap";
+    if (!spaces.length) {
+      const empty = document.createElement("span");
+      empty.className = "muted";
+      empty.textContent = "보드에 남은 Commander 없음";
+      row.appendChild(empty);
+    }
+    for (const spaceId of spaces) row.appendChild(chip(spaceId));
+    box.appendChild(row);
+    market.appendChild(box);
+    cardStrip(
+      market,
+      `Skill (face-up) · stack ${view.skill_stack_size || 0}`,
+      (view.skill_face_up || []).map(skillIdOf),
+      "없음",
+      { className: "skill" }
+    );
+  }
+  if (state.summary.tech_module) {
+    /* The Ixian Embassy's three stacks: the face-up top of each with the
+       stack size; an emptied stack simply offers nothing [Bloodlines p. 7]. */
+    const box = document.createElement("div");
+    box.className = "strip";
+    const heading = document.createElement("h3");
+    heading.textContent = "Ixian Embassy · Tech tiles";
+    box.appendChild(heading);
+    const row = document.createElement("div");
+    row.className = "strip-cards";
+    (view.tech_face_up || []).forEach((tileId, index) => {
+      const size = (view.tech_stack_sizes || [])[index] || 0;
+      if (!tileId) {
+        const empty = document.createElement("span");
+        empty.className = "stack-empty";
+        empty.textContent = `stack ${index + 1} 비었음`;
+        row.appendChild(empty);
+        return;
+      }
+      row.appendChild(visualCard(tileId, { className: "tile", badge: `×${size}` }));
+    });
+    box.appendChild(row);
+    market.appendChild(box);
+    if ((view.tech_trash || []).length) {
+      cardStrip(market, "Tech trash", view.tech_trash, "", { className: "tile taken" });
+    }
+  }
   if (state.summary.choam_module && !onBoard) {
     cardStrip(
       market,
@@ -2171,7 +2264,29 @@ function renderSeats() {
       statNode("sword", "전투력", player.combat_strength || 0),
       statNode("spy", "Spy supply", player.spies_supply)
     );
-    if (player.troops_conflict || player.sandworms_conflict) {
+    const commanders =
+      (player.commanders_supply || 0) +
+      (player.commanders_garrison || 0) +
+      (player.commanders_conflict || 0);
+    if (commanders) {
+      /* Sardaukar Commanders (Bloodlines): 2-strength "troops" that return
+         to the supply after Combat [Bloodlines p. 4]. */
+      const mark = document.createElement("span");
+      mark.className = "stat commanders";
+      mark.title =
+        `Sardaukar Commander · garrison ${player.commanders_garrison || 0}` +
+        ` · supply ${player.commanders_supply || 0}`;
+      mark.textContent =
+        `Commander ${player.commanders_garrison || 0}` +
+        `/${player.commanders_supply || 0}`;
+      forces.appendChild(mark);
+    }
+    if (
+      player.troops_conflict ||
+      player.sandworms_conflict ||
+      player.commanders_conflict ||
+      player.agent_in_conflict
+    ) {
       const deployed = document.createElement("span");
       deployed.className = "stat deployed";
       deployed.title = "Conflict에 배치한 유닛";
@@ -2181,6 +2296,12 @@ function renderSeats() {
       }
       if (player.sandworms_conflict) {
         deployed.append(" ", icon("sandworm", "sandworm"), String(player.sandworms_conflict));
+      }
+      if (player.commanders_conflict) {
+        deployed.append(` Commander ${player.commanders_conflict}`);
+      }
+      if (player.agent_in_conflict) {
+        deployed.append(" ", icon("agent", "Agent"), "(Into the Fray)");
       }
       forces.appendChild(deployed);
     }
@@ -2194,7 +2315,39 @@ function renderSeats() {
     if (player.control_space_ids.length) {
       flags.push("Control: " + player.control_space_ids.map(nameOf).join("/"));
     }
+    /* Bloodlines Leader state: Chani's Tactics token, Piter's Twisted deck,
+       Y'rkoon's remaining Navigation slots, Kota's Secret Project tile. */
+    if (player.leader_id === "chani") flags.push(`Tactics ${player.tactics_track_space + 1}칸`);
+    if (player.twisted_deck_size) flags.push(`Twisted deck ${player.twisted_deck_size}`);
+    if (player.navigation_remaining) flags.push(`Navigation ${player.navigation_remaining}장 남음`);
+    if (player.has_secret_project) flags.push("Secret Project (face-down Tech tile)");
+    if (player.spies_boxed) flags.push(`Spy ${player.spies_boxed}개 box로`);
     if (flags.length) seatLine(card, "상태", iconize(flags.join(" · ")));
+    if (player.skill_ids && player.skill_ids.length) {
+      const line = document.createElement("div");
+      line.className = "cardline";
+      const strong = document.createElement("strong");
+      strong.textContent = "Skills ";
+      line.appendChild(strong);
+      for (const id of player.skill_ids) line.appendChild(chip(skillIdOf(id)));
+      card.appendChild(line);
+    }
+    if (player.tech_ids && player.tech_ids.length) {
+      const line = document.createElement("div");
+      line.className = "cardline";
+      const strong = document.createElement("strong");
+      strong.textContent = "Tech ";
+      line.appendChild(strong);
+      for (const id of player.tech_ids) {
+        const mark = chip(id);
+        if ((player.tech_flipped || []).includes(id)) {
+          mark.textContent += " (Flip됨)";
+          mark.classList.add("muted");
+        }
+        line.appendChild(mark);
+      }
+      card.appendChild(line);
+    }
     const agents = player.agent_locations.map(nameOf).join(", ");
     if (agents) seatLine(card, "배치", agents);
 
@@ -2278,6 +2431,12 @@ function renderSeats() {
     }
     wrap.appendChild(card);
   }
+}
+
+/* A Skill tile instance ("skill:<id>:<copy>") to its catalog id. */
+function skillIdOf(instanceId) {
+  const match = String(instanceId).match(/^skill:(.+):\d+$/);
+  return match ? match[1] : String(instanceId);
 }
 
 /* A pile listing (discard, Intrigue hand) in the popover. */
@@ -2680,6 +2839,26 @@ function renderPrivate() {
       intrigue.appendChild(visualCard(cardId, { className: "intrigue" }));
     }
     zones.appendChild(intrigue);
+  }
+  /* Owner-only peeks: the deck's top card (Controlled, Glowglobes) and
+     Kota Odax's face-down Secret Project tile. */
+  if (view.private.peeked_card_id || view.private.secret_project_tech_id) {
+    const peeks = document.createElement("div");
+    peeks.className = "strip-cards";
+    if (view.private.peeked_card_id) {
+      peeks.appendChild(
+        visualCard(view.private.peeked_card_id, { className: "small", badge: "덱 맨 위" })
+      );
+    }
+    if (view.private.secret_project_tech_id) {
+      peeks.appendChild(
+        visualCard(view.private.secret_project_tech_id, {
+          className: "tile",
+          badge: "Secret Project (−1)",
+        })
+      );
+    }
+    zones.appendChild(peeks);
   }
   panel.appendChild(zones);
 }

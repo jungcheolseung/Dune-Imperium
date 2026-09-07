@@ -44,6 +44,10 @@ _CATALOG_KIND: Final[Mapping[str, str]] = MappingProxyType(
     {"starting": "other", "reserve": "other", "promo": "imperium"}
 )
 
+# The Tech Module's Ixian Embassy board, keyed like the other one-off
+# images under the ``other`` kind.
+IXIAN_EMBASSY_IMAGE_ID: Final = "ixian_embassy_board"
+
 type ImageKey = tuple[str, str]
 """``(catalog kind, content_id)``: the key the display catalog resolves."""
 
@@ -103,6 +107,8 @@ def required_image_keys() -> tuple[ImageKey, ...]:
     importable without the full content package.
     """
 
+    from dune_imperium.content.bloodlines.sardaukar import SKILLS
+    from dune_imperium.content.bloodlines.tech import TECH_TILES
     from dune_imperium.content.uprising.board import BOARD_SPACES
     from dune_imperium.content.uprising.conflicts import CONFLICTS
     from dune_imperium.content.uprising.contracts import CONTRACTS
@@ -124,4 +130,8 @@ def required_image_keys() -> tuple[ImageKey, ...]:
             keys.append(("leader", leader.alternate_face_id))
     keys += [("other", card_id) for card_id in STARTING_CARDS_BY_ID]
     keys += [("other", stack.card.card_id) for stack in RESERVE_STACKS]
+    # Bloodlines: the Skill and Tech tile faces and the Ixian Embassy board.
+    keys += [("skill", skill.skill_id) for skill in SKILLS]
+    keys += [("tech", tile.tech_id) for tile in TECH_TILES]
+    keys.append(("other", IXIAN_EMBASSY_IMAGE_ID))
     return tuple(dict.fromkeys(keys))
