@@ -79,6 +79,11 @@ Leader identity와 setup은 `content/uprising/leaders.py`, 능력 규칙은 `rul
 - **Ginaz Swordmaster** — "The Swordmaster board space costs you 2 less." `agent_turn._effective_costs`가 좌석별로 8→6(다른 좌석이 먼저 샀을 때 6→4)을 적용한다.
 - **Into the Fray(Signet)** — "You may take the Agent you sent this turn and deploy it to the Conflict as a 2 strength unit that can't be retreated. If you have your Swordmaster, it has 3 strength instead." `deploy_leader_agent`: 좌석 `agent_in_conflict=1`, 그 Agent는 `agent_locations`에서 빠져 공간이 다시 비고(OQ-037), `units_strength`가 2/3을 더하며, retreat·손실 대상이 아니다. Combat 정리 때 `agents_available`로 돌아간다.
 
+### Esmar Tuek
+
+- **Tuek's Sietch(능력)** — "Whenever you send an Agent to Tuek's Sietch: 1 Solari. Whenever an opponent sends an Agent there: 1 Intrigue." `agent_turn.apply_agent_action`의 배치 hook. 보드 타일 Tuek's Sietch(Dire Wolf design diary 이미지, `assets/cards/en/bloodlines/location/Tuek's Sietch.png`)는 Spice Trade 아이콘·Combat·Maker·비용 없음·"1 spice OR draw 1 card". `BoardSpace.required_leader_id="esmar_tuek"`로 Esmar가 있을 때만 배치 대상이며, `maker_bonus_spice` 원장에 4번째 항목으로 들어가 Makers 단계에 spice가 쌓인다 `[Bloodlines p. 12]`. 방문 행은 `take_tuek_sietch_spice`/`take_tuek_sietch_card`(bonus spice는 어느 쪽이든 가져간다). 인쇄된 sandworm 선택지가 없으므로 Maker Hooks 소환은 없다. UI 박스는 Imperial Basin 아래 빈 사막에 그린다.
+- **Smuggle Spice(Signet)** — "Place 1 bonus spice on Tuek's Sietch. —OR— Take 1 bonus spice from a Maker board space." `place_leader_bonus_spice` / `take_leader_bonus_spice(space_id)`(bonus가 있는 Maker space만) / 거절. Signet을 먼저 해결하고 같은 turn의 방문 행으로 가져가는 순서는 자유 순서 그룹이 그대로 허용한다 `[Bloodlines p. 12]`.
+
 ### Gaius Helen Mohiam
 
 - **Clandestine** — "Each card you play has the Spy icon. Whenever you could recall a Spy to Gather Intelligence, you must." `card_can_access_space`가 그녀의 모든 카드에 Spy 아이콘 접근을 주고, `spies.legal_gather_intelligence_actions`는 회수 가능한 Spy가 있으면 거절을 빼고 제시한다. codec은 Bloodlines 카탈로그에서 모든 카드×모든 공간의 배치 템플릿을 갖는다.
@@ -91,7 +96,7 @@ Leader identity와 setup은 `content/uprising/leaders.py`, 능력 규칙은 `rul
 
 ### 남은 Bloodlines Leader
 
-Esmar Tuek(Tuek's Sietch board space), Piter De Vries(Twisted Intrigue 12장), Steersman Y'rkoon(Navigation 10장; OQ-012 재검토)은 슬라이스 5의 다음 부분에서, Kota Odax of Ix는 Tech Module과 함께.
+Piter De Vries(Twisted Intrigue 12장), Steersman Y'rkoon(Navigation 10장; OQ-012 재검토)은 슬라이스 5의 다음 부분에서, Kota Odax of Ix는 Tech Module과 함께.
 
 ## 남은 Leader
 
@@ -99,6 +104,6 @@ Esmar Tuek(Tuek's Sietch board space), Piter De Vries(Twisted Intrigue 12장), S
 
 ## 회귀 테스트
 
-`tests/unit/rules/test_bloodlines_leaders.py`(10건)가 Bloodlines Leader 5종의 능력과 Signet(Tactics 전진·reset, Fedaykin 후퇴·water 지불, Assassin, Corrino Liaison, Swordmaster 할인, Into the Fray와 비워진 공간, Clandestine 접근·강제 수집, Listeners 두 경로, Planetologist의 Sietch Tabr·sandworm 대체·선택 trash, Judge of the Change 세 아이콘)을 고정한다.
+`tests/unit/rules/test_bloodlines_leaders.py`(14건)가 Bloodlines Leader 6종의 능력과 Signet(Tuek's Sietch의 존재 조건·방문 행·상대 방문 Intrigue·Smuggle Spice·Makers 누적, Tactics 전진·reset, Fedaykin 후퇴·water 지불, Assassin, Corrino Liaison, Swordmaster 할인, Into the Fray와 비워진 공간, Clandestine 접근·강제 수집, Listeners 두 경로, Planetologist의 Sietch Tabr·sandworm 대체·선택 trash, Judge of the Change 세 아이콘)을 고정한다.
 
 `tests/unit/rules/test_leader_abilities.py`가 signet 자동 해결, Feyd 트랙 분기·단계·최종 칸, Devious/Desert Scouts의 Reveal 액션과 1회 제한, Always Smiling·Unpredictable Foe 문턱과 중복 방지, Jessica 지불·flip·repeat 경로, reach-2 보너스(통과·재도달·타 Faction 미발동), Margot·Staban의 Spy 배치 제한과 후속 지불, Chronicler's Insight의 획득·trash·거절, Limited Allies setup, Smuggle Spice 조건, setup 면 배정을 고정한다. 기본 4종과 신규 4종 각각의 random 4인 완주 soak에서 모든 신규 이벤트가 발동함을 확인했고 replay 검증을 통과했다.
