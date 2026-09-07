@@ -187,6 +187,15 @@ LEADERS: Final = (
         sources=BLOODLINES_LEADER_SOURCES,
     ),
     LeaderDefinition(
+        "esmar_tuek",
+        "Esmar Tuek",
+        _bloodlines_face("esmar-tuek"),
+        bloodlines_only=True,
+        ability_name="Tuek's Sietch",
+        signet_name="Smuggle Spice",
+        sources=BLOODLINES_LEADER_SOURCES,
+    ),
+    LeaderDefinition(
         "gaius_helen_mohiam",
         "Gaius Helen Mohiam",
         _bloodlines_face("gaius-helen-mohiam"),

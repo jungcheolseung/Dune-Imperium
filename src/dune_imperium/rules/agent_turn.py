@@ -48,6 +48,7 @@ from dune_imperium.rules.frames import (
     replace_player,
     reset_turn_counters,
 )
+from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
 from dune_imperium.rules.leader_abilities import apply_smuggle_spice
 
 
@@ -77,6 +78,11 @@ def legal_agent_actions(state: GameState, player: int) -> tuple[DomainAction, ..
         # icons", so every space's icon is satisfied.
         any_icon = card_is_boosted(card, owner)
         for space in BOARD_SPACES:
+            if space.required_leader_id is not None and all(
+                seat.leader_id != space.required_leader_id for seat in state.players
+            ):
+                # Tuek's Sietch is on the table only with Esmar Tuek.
+                continue
             if not card_can_access_space(icons, space, owner, any_icon=any_icon):
                 continue
             if space.space_id in owner.agent_locations:
@@ -386,6 +392,13 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
         *(() if control_event is None else (control_event,)),
         *smuggle_events,
     )
+    if space_id == "tuek_sietch":
+        # Tuek's Sietch (Esmar Tuek): the owner's own visit pays one Solari,
+        # an opponent's visit draws him an Intrigue card [Esmar Tuek card].
+        next_state, sietch_events = _apply_tuek_sietch_visit(
+            next_state, action.actor, state.round_number
+        )
+        events = (*events, *sietch_events)
     if boosted:
         # Urgent Shigawire: "added to its Agent box: draw a card". The draw
         # resolves with the placement (its box is freely ordered anyway).
@@ -407,6 +420,48 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
             *drawn.events,
         )
     return RuleResult(state=next_state, events=events)
+
+
+def _apply_tuek_sietch_visit(
+    state: GameState,
+    visitor: int,
+    round_number: int,
+) -> tuple[GameState, tuple[GameEvent, ...]]:
+    esmar = next(
+        (seat for seat in state.players if seat.leader_id == "esmar_tuek"), None
+    )
+    if esmar is None:
+        return state, ()
+    source = f"round:{round_number}:player:{visitor}:tuek_sietch_visit"
+    if esmar.player_id == visitor:
+        paid = replace(
+            esmar, resources=replace(esmar.resources, solari=esmar.resources.solari + 1)
+        )
+        return replace(state, players=replace_player(state.players, paid)), (
+            GameEvent(
+                event_id=source,
+                kind="leader_ability_resolved",
+                payload=(
+                    ("leader_id", "esmar_tuek"),
+                    ("player", esmar.player_id),
+                    ("solari", 1),
+                ),
+            ),
+        )
+    drawn = draw_or_queue_intrigue_cards(state, esmar.player_id, 1, source=source)
+    return drawn.state, (
+        GameEvent(
+            event_id=source,
+            kind="leader_ability_resolved",
+            payload=(
+                ("intrigue", 1),
+                ("leader_id", "esmar_tuek"),
+                ("player", esmar.player_id),
+                ("visitor", visitor),
+            ),
+        ),
+        *drawn.events,
+    )
 
 
 def legal_turn_start_card_actions(

@@ -182,7 +182,11 @@ class GameState:
             raise ValueError("Sardaukar Commanders require the Bloodlines expansion")
 
         maker_ids = tuple(space_id for space_id, _ in self.maker_bonus_spice)
-        if maker_ids != ("deep_desert", "hagga_basin", "imperial_basin"):
+        if maker_ids not in (
+            ("deep_desert", "hagga_basin", "imperial_basin"),
+            # Tuek's Sietch joins the Makers while Esmar Tuek plays.
+            ("deep_desert", "hagga_basin", "imperial_basin", "tuek_sietch"),
+        ):
             raise ValueError(
                 "Maker bonus spice must use the three spaces in rules order"
             )

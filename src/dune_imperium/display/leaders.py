@@ -152,6 +152,17 @@ LEADER_FACE_TEXTS: Mapping[str, LeaderFaceText] = MappingProxyType(
                 " (3 strength with your Swordmaster)"
             ),
         ),
+        "esmar_tuek": LeaderFaceText(
+            ability_text=(
+                "Tuek's Sietch: Whenever you send an Agent to Tuek's Sietch:"
+                " Gain 1 solari. Whenever an opponent sends an Agent there:"
+                " Draw 1 Intrigue card"
+            ),
+            signet_text=(
+                "Place 1 bonus spice on Tuek's Sietch — or take 1 bonus spice"
+                " from a Maker board space"
+            ),
+        ),
         "gaius_helen_mohiam": LeaderFaceText(
             ability_text=(
                 "Clandestine: Each card you play has the Spy icon. Whenever you"

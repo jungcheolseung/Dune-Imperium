@@ -361,3 +361,94 @@ def test_judge_of_the_change_rewards_the_visited_space_kind() -> None:
         resolved = resolve_leader_signet(placed).state
         assert resolved.players[0].resources == expected, space_id
     del engine
+
+
+# --- Esmar Tuek --------------------------------------------------------------
+
+
+def _esmar_state(owner: PlayerState, **overrides: object) -> GameState:
+    values: dict[str, object] = {
+        "maker_bonus_spice": (
+            ("deep_desert", 0),
+            ("hagga_basin", 2),
+            ("imperial_basin", 0),
+            ("tuek_sietch", 1),
+        )
+    }
+    values.update(overrides)
+    return _turn_state(owner, **values)
+
+
+def test_tueks_sietch_is_on_the_table_only_with_esmar_tuek() -> None:
+    from dune_imperium.rules.board_effects import (
+        apply_tuek_sietch_action,
+        legal_tuek_sietch_actions,
+    )
+
+    absent = _turn_state(PlayerState(player_id=0, leader_id="chani", hand=(DUNE,)))
+    assert not any(
+        dict(a.arguments)["space_id"] == "tuek_sietch"
+        for a in legal_agent_actions(absent, 0)
+    )
+    owner = PlayerState(
+        player_id=0, leader_id="esmar_tuek", hand=(DUNE,), deck=(RECON,)
+    )
+    state = _esmar_state(owner)
+    placed = _play(state, DUNE, "tuek_sietch")
+    # Own visit: one Solari; the printed row then takes the bonus spice
+    # plus one spice or a card.
+    assert placed.players[0].resources.solari == 1
+    actions = legal_tuek_sietch_actions(placed, 0)
+    assert [a.action_id for a in actions] == [
+        "take_tuek_sietch_spice",
+        "take_tuek_sietch_card",
+    ]
+    spiced = apply_tuek_sietch_action(placed, actions[0]).state
+    assert spiced.players[0].resources.spice == 1 + 1
+    assert dict(spiced.maker_bonus_spice)["tuek_sietch"] == 0
+    carded = apply_tuek_sietch_action(placed, actions[1]).state
+    assert carded.players[0].resources.spice == 1
+    assert len(carded.players[0].hand) == 1
+
+
+def test_an_opponent_visiting_tueks_sietch_draws_esmar_an_intrigue_card() -> None:
+    esmar = PlayerState(player_id=1, leader_id="esmar_tuek")
+    owner = PlayerState(player_id=0, leader_id="chani", hand=(DUNE,))
+    state = _esmar_state(owner)
+    state = replace(state, players=(state.players[0], esmar, *state.players[2:]))
+    placed = _play(state, DUNE, "tuek_sietch")
+    assert len(placed.players[1].intrigue_cards) == 1
+    assert placed.players[1].resources.solari == 0
+    assert placed.players[0].resources.solari == 0
+
+
+def test_smuggle_spice_moves_bonus_spice_on_or_off_maker_spaces() -> None:
+    from dune_imperium.rules.leader_abilities import apply_leader_bonus_spice
+
+    owner = PlayerState(player_id=0, leader_id="esmar_tuek", hand=(SIGNET,))
+    state = _play(_esmar_state(owner), SIGNET, "arrakeen")
+    actions = legal_leader_signet_actions(state, 0)
+    assert [tuple(a.arguments) for a in actions] == [
+        (),
+        (),
+        (("space_id", "hagga_basin"),),
+        (("space_id", "tuek_sietch"),),
+    ]
+    assert [a.action_id for a in actions[:2]] == [
+        "decline_leader_signet_payment",
+        "place_leader_bonus_spice",
+    ]
+    placed = apply_leader_bonus_spice(state, actions[1]).state
+    assert dict(placed.maker_bonus_spice)["tuek_sietch"] == 2
+    taken = apply_leader_bonus_spice(state, actions[2]).state
+    assert dict(taken.maker_bonus_spice)["hagga_basin"] == 1
+    assert taken.players[0].resources.spice == 1
+
+
+def test_makers_phase_feeds_tueks_sietch_like_the_other_maker_spaces() -> None:
+    from dune_imperium.rules.phases import resolve_makers
+
+    owner = PlayerState(player_id=0, leader_id="esmar_tuek")
+    state = _esmar_state(owner, phase=GamePhase.MAKERS, decision_stack=())
+    fed = resolve_makers(state).state
+    assert dict(fed.maker_bonus_spice)["tuek_sietch"] == 2

@@ -1624,6 +1624,7 @@ _BASE_EFFECT_TABLE: dict[str, dict[int, tuple[object, ...] | None]] = {
     "arrakeen": {0: (RecruitTroopsEffect(1), DrawImperiumCardsEffect(1))},
     "research_station": {0: (RecruitTroopsEffect(2), DrawImperiumCardsEffect(2))},
     "sietch_tabr": {0: None},
+    "tuek_sietch": {0: None},
     "spice_refinery": {
         0: (GainResourcesEffect(solari=2),),
         1: (GainResourcesEffect(solari=4),),
@@ -1659,6 +1660,7 @@ _BASE_ICON_TABLE: dict[str, dict[int, str]] = {
     "arrakeen": {0: "troops,cards"},
     "research_station": {0: "troops,cards"},
     "sietch_tabr": {0: "sietch_tabr"},
+    "tuek_sietch": {0: "tuek_sietch"},
     "spice_refinery": {0: "resources", 1: "resources"},
     "accept_contract": {0: "cards,resources"},
     "deep_desert": {0: "maker"},
@@ -1671,7 +1673,15 @@ _CHOAM_ICON_OVERRIDES: dict[str, dict[int, str]] = {
     "accept_contract": {0: "cards,contract"},
 }
 _CHOICE_ICONS = frozenset(
-    {"spy", "trash", "influence", "sietch_tabr", "maker", "imperial_privilege"}
+    {
+        "spy",
+        "trash",
+        "influence",
+        "sietch_tabr",
+        "maker",
+        "imperial_privilege",
+        "tuek_sietch",
+    }
 )
 
 

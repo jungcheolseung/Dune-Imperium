@@ -82,6 +82,7 @@ IMPLEMENTED_ABILITY_LEADER_IDS: Final = frozenset(
         "chani",
         "count_hasimir_fenring",
         "duncan_idaho",
+        "esmar_tuek",
         "gaius_helen_mohiam",
         "liet_kynes",
     }
@@ -237,6 +238,7 @@ def resolve_leader_signet(state: GameState) -> RuleResult:
         "chani",
         "count_hasimir_fenring",
         "duncan_idaho",
+        "esmar_tuek",
         "gaius_helen_mohiam",
     ):
         # Unseen Network always finds an empty post (thirteen posts outnumber
@@ -785,6 +787,29 @@ def legal_leader_signet_actions(
             *_leader_spy_placement_actions(state, player, context, EMPEROR_POST_IDS),
         )
 
+    if owner.leader_id == "esmar_tuek":
+        # Smuggle Spice: a bonus spice onto Tuek's Sietch, or one taken from
+        # any Maker space holding some [Esmar Tuek card]; the space's own
+        # visit may then collect it the same turn [Bloodlines p. 12].
+        bonus = dict(state.maker_bonus_spice)
+        return (
+            DomainAction(action_id="decline_leader_signet_payment", actor=player),
+            *(
+                (DomainAction(action_id="place_leader_bonus_spice", actor=player),)
+                if "tuek_sietch" in bonus
+                else ()
+            ),
+            *(
+                DomainAction(
+                    action_id="take_leader_bonus_spice",
+                    actor=player,
+                    arguments=(("space_id", space_id),),
+                )
+                for space_id, amount in state.maker_bonus_spice
+                if amount > 0
+            ),
+        )
+
     if owner.leader_id == "duncan_idaho":
         # Into the Fray: the Agent sent this turn may join the Conflict
         # [Duncan Idaho card].
@@ -1076,6 +1101,54 @@ def apply_leader_agent_deploy(
                 event_id=source,
                 kind="leader_agent_deployed",
                 payload=(("player", player), ("space_id", space_id)),
+            ),
+        ),
+    )
+
+
+def apply_leader_bonus_spice(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Smuggle Spice: move one bonus spice onto or off a Maker space."""
+
+    if action not in legal_leader_signet_actions(state, action.actor):
+        raise ValueError("action is not a legal Smuggle Spice choice")
+    _, context = current_agent_effect_context(state)
+    player = action.actor
+    owner = state.players[player]
+    source = f"round:{state.round_number}:player:{player}:leader_signet"
+    if action.action_id == "place_leader_bonus_spice":
+        space_id = "tuek_sietch"
+        delta = 1
+        next_owner = owner
+    else:
+        space_id = str(dict(action.arguments)["space_id"])
+        delta = -1
+        next_owner = replace(
+            owner, resources=replace(owner.resources, spice=owner.resources.spice + 1)
+        )
+    maker_bonus_spice = tuple(
+        (candidate, amount + delta if candidate == space_id else amount)
+        for candidate, amount in state.maker_bonus_spice
+    )
+    context["pending_agent_effect"] = False
+    next_state = advance_after_effect(
+        replace(state, maker_bonus_spice=maker_bonus_spice),
+        context,
+        replace_player(state.players, next_owner),
+    )
+    return RuleResult(
+        state=next_state,
+        events=(
+            GameEvent(
+                event_id=source,
+                kind="leader_signet_resolved",
+                payload=(
+                    ("bonus_spice", delta),
+                    ("player", player),
+                    ("space_id", space_id),
+                ),
             ),
         ),
     )

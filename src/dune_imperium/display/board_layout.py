@@ -57,6 +57,9 @@ SPACE_BOXES: Final[Mapping[str, tuple[float, float, float, float]]] = (
             "imperial_basin": (74.0, 43.5, 16.0, 7.0),
             "hagga_basin": (49.5, 49.5, 17.5, 7.5),
             "deep_desert": (31.0, 56.0, 18.0, 7.0),
+            # Bloodlines: Esmar Tuek's tile sits next to the board; drawn in
+            # the empty desert under Imperial Basin.
+            "tuek_sietch": (74.0, 53.0, 16.0, 7.0),
         }
     )
 )

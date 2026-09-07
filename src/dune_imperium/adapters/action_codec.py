@@ -3,11 +3,13 @@
 from dataclasses import dataclass, field
 from numbers import Integral
 
+from dune_imperium.adapters.observation_encoding import MAKER_SPACE_IDS
 from dune_imperium.config import RulesetConfig
 from dune_imperium.content.bloodlines.sardaukar import SKILLS
 from dune_imperium.content.uprising.board import (
     BOARD_SPACES,
     OBSERVATION_POSTS,
+    BoardSpace,
     Faction,
 )
 from dune_imperium.content.uprising.conflicts import CONFLICTS
@@ -256,14 +258,14 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             action_id="recall_agent_for_agent_card",
             arguments=(("space_id", space.space_id),),
         )
-        for space in BOARD_SPACES
+        for space in catalog_spaces(config)
     )
     templates.extend(
         ActionTemplate(
             action_id="recall_agent_for_imperial_privilege",
             arguments=(("space_id", space.space_id),),
         )
-        for space in BOARD_SPACES
+        for space in catalog_spaces(config)
     )
     templates.extend(
         ActionTemplate(
@@ -333,7 +335,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
                 action_id="recall_agent_for_contract",
                 arguments=(("space_id", space.space_id),),
             )
-            for space in BOARD_SPACES
+            for space in catalog_spaces(config)
         )
     templates.extend(
         ActionTemplate(
@@ -686,11 +688,20 @@ def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         for action_id in (
             "decline_spy_placement",
             "decline_intrigue_contract_trigger",
-            # Bloodlines Leaders: Duncan Idaho, Chani, Liet Kynes.
+            # Bloodlines Leaders: Duncan Idaho, Chani, Liet Kynes, Esmar Tuek.
             "deploy_leader_agent",
             "pay_leader_signet_water",
             "decline_optional_trash",
+            "take_tuek_sietch_spice",
+            "take_tuek_sietch_card",
+            "place_leader_bonus_spice",
         )
+    )
+    templates.extend(
+        ActionTemplate(
+            action_id="take_leader_bonus_spice", arguments=(("space_id", space_id),)
+        )
+        for space_id in MAKER_SPACE_IDS
     )
     templates.extend(_trash_templates(config, "trash_optional_card"))
     # Fedaykin Maneuver retreats any number, Commanders included.
@@ -742,11 +753,15 @@ def _agent_turn_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     templates: list[ActionTemplate] = []
     for starting_card in STARTING_DECK:
         templates.extend(
-            _agent_turn_templates_for_card("starter", starting_card, granted)
+            _agent_turn_templates_for_card(
+                "starter", starting_card, granted, catalog_spaces(config)
+            )
         )
     for reserve_card in RESERVE_STACKS:
         templates.extend(
-            _agent_turn_templates_for_card("reserve", reserve_card, granted)
+            _agent_turn_templates_for_card(
+                "reserve", reserve_card, granted, catalog_spaces(config)
+            )
         )
     for imperium_card in imperium_cards_for_choam(
         config.choam_module,
@@ -766,21 +781,32 @@ def _agent_turn_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             )
             templates.extend(
                 _agent_turn_templates_for_card(
-                    "imperium", imperium_card, card_granted
+                    "imperium", imperium_card, card_granted, catalog_spaces(config)
                 )
             )
     return tuple(templates)
+
+
+def catalog_spaces(config: RulesetConfig) -> tuple[BoardSpace, ...]:
+    """Board spaces a catalog holds: Leader-only spaces need Bloodlines."""
+
+    return tuple(
+        space
+        for space in BOARD_SPACES
+        if space.required_leader_id is None or config.bloodlines
+    )
 
 
 def _agent_turn_templates_for_card(
     prefix: str,
     card: StartingCardEntry | ReserveStackDefinition | ImperiumCardEntry,
     granted_icons: tuple[AgentIcon, ...] = (),
+    spaces: tuple[BoardSpace, ...] = BOARD_SPACES,
 ) -> tuple[ActionTemplate, ...]:
     templates: list[ActionTemplate] = []
     for copy in range(card.copies):
         card_id = f"{prefix}:{card.card.card_id}:{copy}"
-        for space in BOARD_SPACES:
+        for space in spaces:
             if (
                 space.agent_icon not in card.agent_icons
                 and space.agent_icon not in granted_icons

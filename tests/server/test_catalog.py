@@ -120,7 +120,7 @@ def test_catalog_spaces_carry_structured_board_data() -> None:
     catalog = build_catalog()
     spaces = catalog["spaces"]
     assert isinstance(spaces, dict)
-    assert len(spaces) == 22
+    assert len(spaces) == 22 + 1  # Tuek's Sietch (Bloodlines)
 
     sardaukar = spaces["sardaukar"]
     assert isinstance(sardaukar, dict)

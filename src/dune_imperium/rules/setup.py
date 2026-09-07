@@ -75,9 +75,7 @@ def create_unshuffled_players() -> tuple[PlayerState, ...]:
     )
 
 
-def conflict_setup_decisions(
-    *, bloodlines: bool = False
-) -> tuple[ChanceDecision, ...]:
+def conflict_setup_decisions(*, bloodlines: bool = False) -> tuple[ChanceDecision, ...]:
     """Return tier shuffles in the order prescribed by setup.
 
     Bloodlines adds its two Conflict cards to the pools the tiers are drawn
@@ -321,9 +319,7 @@ def create_initial_state(
             leader_id=leader_id,
             # Double-sided Leaders begin on their printed setup face
             # [Main p. 17]; every other Leader's face is its identity.
-            leader_face_id=(
-                LEADERS_BY_ID[leader_id].setup_face_id or leader_id
-            ),
+            leader_face_id=(LEADERS_BY_ID[leader_id].setup_face_id or leader_id),
             # Printed setup rules may remove starting cards (Staban Tuek's
             # Limited Allies); the shuffle decision below then covers the
             # reduced deck.
@@ -401,6 +397,7 @@ def create_initial_state(
         phase=GamePhase.ROUND_START,
         first_player=first_player,
         players=players,
+        maker_bonus_spice=maker_bonus_spice_for(leader_ids),
         conflict_deck=conflict.deck,
         unused_conflict_ids=conflict.unused,
         imperium_deck=imperium[5:],
@@ -550,6 +547,17 @@ def create_draft_initial_state(
     )
     state = _with_bloodlines(state, bloodlines)
     return SetupResult(state=state, chance_outcomes=resolver.outcomes)
+
+
+def maker_bonus_spice_for(leader_ids: tuple[str, ...]) -> tuple[tuple[str, int], ...]:
+    """Return the Maker spice ledger, with Tuek's Sietch while Esmar plays."""
+
+    spaces = ["deep_desert", "hagga_basin", "imperial_basin"]
+    if "esmar_tuek" in leader_ids:
+        # "During setup, place the Tuek's Sietch board space near the game
+        # board. It is a Maker board space" [Bloodlines p. 12].
+        spaces.append("tuek_sietch")
+    return tuple((space_id, 0) for space_id in spaces)
 
 
 def _validate_leader_selection(

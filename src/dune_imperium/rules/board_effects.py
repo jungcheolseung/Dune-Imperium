@@ -90,6 +90,7 @@ BOARD_ICON_INFLUENCE: Final = "influence"  # Shipping: Influence with a chosen F
 BOARD_ICON_SIETCH_TABR: Final = "sietch_tabr"  # one printed choose-one row
 BOARD_ICON_MAKER: Final = "maker"  # bonus spice, then spice or sandworms
 BOARD_ICON_IMPERIAL_PRIVILEGE: Final = "imperial_privilege"  # written sentences
+BOARD_ICON_TUEK_SIETCH: Final = "tuek_sietch"  # bonus spice, then spice or a card
 # ``BOARD_ICON_COMMANDER`` (Bloodlines) is defined in ``effects`` and resolved
 # by ``rules.sardaukar``.
 
@@ -105,6 +106,7 @@ CHOICE_DRIVEN_SPACE_IDS = frozenset(
         "shipping",
         "desert_tactics",
         "imperial_privilege",
+        "tuek_sietch",
     }
 )
 
@@ -276,6 +278,8 @@ def board_icons_for(
             return (BOARD_ICON_MAKER,)
         case "imperial_privilege":
             return (BOARD_ICON_IMPERIAL_PRIVILEGE,)
+        case "tuek_sietch":
+            return (BOARD_ICON_TUEK_SIETCH,)
     icons = [
         board_icon_for_effect(effect)
         for effect in visit_board_effects(
@@ -1179,6 +1183,76 @@ def skip_impossible_imperial_privilege_recall(result: RuleResult) -> RuleResult:
         state, context, player, source, "skip_imperial_privilege_recall"
     )
     return RuleResult(state=skipped.state, events=(*result.events, *skipped.events))
+
+
+def legal_tuek_sietch_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Tuek's Sietch: take the bonus spice, then one spice or one card."""
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return ()
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    if context.get("space_id") != "tuek_sietch" or not board_icon_is_pending(
+        context, BOARD_ICON_TUEK_SIETCH
+    ):
+        return ()
+    return (
+        DomainAction(action_id="take_tuek_sietch_spice", actor=player),
+        DomainAction(action_id="take_tuek_sietch_card", actor=player),
+    )
+
+
+def apply_tuek_sietch_action(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Resolve Tuek's Sietch: bonus spice plus the chosen printed reward."""
+
+    if action not in legal_tuek_sietch_actions(state, action.actor):
+        raise ValueError("action is not a legal Tuek's Sietch choice")
+    _, context = current_agent_effect_context(state)
+    bonus_by_space = dict(state.maker_bonus_spice)
+    bonus_spice = bonus_by_space.get("tuek_sietch", 0)
+    owner = state.players[action.actor]
+    spice = 1 if action.action_id == "take_tuek_sietch_spice" else 0
+    owner = replace(
+        owner,
+        resources=replace(
+            owner.resources, spice=owner.resources.spice + bonus_spice + spice
+        ),
+    )
+    players = replace_player(state.players, owner)
+    maker_bonus_spice = tuple(
+        (candidate, 0 if candidate == "tuek_sietch" else amount)
+        for candidate, amount in state.maker_bonus_spice
+    )
+    finish_board_icon(context, BOARD_ICON_TUEK_SIETCH)
+    effect_state = replace(state, players=players, maker_bonus_spice=maker_bonus_spice)
+    next_state = advance_after_effect(effect_state, context, players)
+    source = f"round:{state.round_number}:player:{action.actor}:board:tuek_sietch"
+    event = GameEvent(
+        event_id=source,
+        kind="board_effect_resolved",
+        payload=(
+            ("action_id", action.action_id),
+            ("bonus_spice", bonus_spice),
+            ("effect", BOARD_ICON_TUEK_SIETCH),
+            ("player", action.actor),
+            ("space_id", "tuek_sietch"),
+            ("spice", bonus_spice + spice),
+        ),
+    )
+    if spice:
+        return RuleResult(state=next_state, events=(event,))
+    drawn = draw_or_request_personal_cards(next_state, action.actor, 1, source=source)
+    return RuleResult(state=drawn.state, events=(event, *drawn.events))
 
 
 def legal_maker_space_actions(

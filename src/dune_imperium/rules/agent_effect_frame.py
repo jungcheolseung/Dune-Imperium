@@ -32,6 +32,7 @@ from dune_imperium.rules.board_effects import (
     legal_maker_space_actions,
     legal_shipping_actions,
     legal_sietch_tabr_actions,
+    legal_tuek_sietch_actions,
 )
 from dune_imperium.rules.combat_deployment import (
     legal_agent_turn_finish_actions,
@@ -105,6 +106,7 @@ def legal_agent_effect_frame_actions(
         *legal_contract_completion_actions(state, player),
         *legal_espionage_actions(state, player),
         *legal_sietch_tabr_actions(state, player),
+        *legal_tuek_sietch_actions(state, player),
         *legal_shipping_actions(state, player),
         *legal_desert_tactics_actions(state, player),
         *legal_imperial_privilege_actions(state, player),
