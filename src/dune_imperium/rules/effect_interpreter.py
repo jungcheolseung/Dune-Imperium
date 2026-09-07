@@ -298,7 +298,7 @@ def _choice_costs_feasible(
         total_influence >= influence_needed
         and len(player.hand) >= discards_needed
         and len(player.spy_post_ids) >= recalls_needed
-        and player.troops_conflict >= retreats_needed
+        and player.troops_conflict + player.commanders_conflict >= retreats_needed
     )
 
 
@@ -346,13 +346,15 @@ def _choice_rewards_feasible(
         for reward in section.rewards:
             match reward:
                 case DeployFromGarrison() if (
-                    owner.troops_garrison < 1
+                    owner.troops_garrison + owner.commanders_garrison < 1
                     or units_deployment_blocked(state, player)
                 ):
                     return False
                 case PlaceSpy() if not spy_placement_possible(state, player, reward):
                     return False
-                case RetreatTroops(minimum=minimum) if owner.troops_conflict < minimum:
+                case RetreatTroops(minimum=minimum) if (
+                    owner.troops_conflict + owner.commanders_conflict < minimum
+                ):
                     return False
                 case TakeContract() if not state.config.choam_module:
                     return False

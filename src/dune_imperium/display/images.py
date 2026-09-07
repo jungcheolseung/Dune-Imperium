@@ -20,12 +20,12 @@ Manifest entries look like::
 
 ``path`` is language neutral; the language directory is chosen here so a
 Korean scan at ``ko/<path>`` is preferred per file and falls back to
-``en/<path>``. Only entries of the Uprising set that carry a
-``content_id`` are indexed; the other sets in the manifest are archived
-for future expansions. The manifest's ``starting`` and ``reserve`` kinds
-both map to the catalog's ``other`` kind (starting and Reserve cards), and
-its ``promo`` kind (the three Uprising promo Imperium cards) to
-``imperium``.
+``en/<path>``. Only entries of the indexed sets (Uprising, and Bloodlines
+for the ``bloodlines`` option) that carry a ``content_id`` are indexed;
+the other sets in the manifest are archived for future expansions. The
+manifest's ``starting`` and ``reserve`` kinds both map to the catalog's
+``other`` kind (starting and Reserve cards), and its ``promo`` kind (the
+three Uprising promo Imperium cards) to ``imperium``.
 """
 
 import json
@@ -36,6 +36,7 @@ from typing import Final
 
 MANIFEST_FILENAME: Final = "manifest.json"
 UPRISING_SET: Final = "uprising"
+INDEXED_SETS: Final = frozenset({UPRISING_SET, "bloodlines"})
 DEFAULT_LANGUAGES: Final[tuple[str, ...]] = ("ko", "en")
 
 # Manifest kind -> catalog kind. Every other kind keeps its name.
@@ -50,7 +51,7 @@ type ImageKey = tuple[str, str]
 def load_card_manifest(path: Path) -> Mapping[ImageKey, str]:
     """Return ``{(catalog kind, content_id): language-neutral path}``.
 
-    Reads one ``manifest.json``; entries outside the Uprising set or
+    Reads one ``manifest.json``; entries outside the indexed sets or
     without a ``content_id`` are ignored. A duplicate key is an error in
     the manifest, not a tie to break silently.
     """
@@ -59,7 +60,7 @@ def load_card_manifest(path: Path) -> Mapping[ImageKey, str]:
     index: dict[ImageKey, str] = {}
     for entry in document["entries"]:
         content_id = entry.get("content_id")
-        if entry.get("set") != UPRISING_SET or not content_id:
+        if entry.get("set") not in INDEXED_SETS or not content_id:
             continue
         kind = _CATALOG_KIND.get(entry["kind"], entry["kind"])
         key = (kind, content_id)

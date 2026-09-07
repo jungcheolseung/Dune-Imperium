@@ -11,6 +11,7 @@ card to discard) open an ``INTRIGUE_CHOICE`` frame and resolve one choice slot
 per action; the card is discarded when the last slot completes.
 """
 
+from collections.abc import Mapping
 from dataclasses import replace
 
 from dune_imperium.content.uprising.board import Faction
@@ -121,10 +122,7 @@ def legal_intrigue_play_actions(
     elif state.phase is GamePhase.COMBAT and frame.kind == FrameKind.COMBAT_INTRIGUE:
         # Only the participant whose priority it is may play [Main p. 14].
         timing = IntrigueTiming.COMBAT
-    elif (
-        state.phase is GamePhase.ENDGAME
-        and frame.kind == FrameKind.ENDGAME_INTRIGUE
-    ):
+    elif state.phase is GamePhase.ENDGAME and frame.kind == FrameKind.ENDGAME_INTRIGUE:
         # Endgame Intrigue resolves in the owner's Endgame window
         # [Main pp. 7, 15].
         timing = IntrigueTiming.ENDGAME
@@ -179,9 +177,7 @@ def apply_intrigue_play(state: GameState, action: DomainAction) -> RuleResult:
     # causes cannot reshuffle the card itself and no card leaves every zone.
     played_state = replace(state, players=replace_player(state.players, paid_owner))
     if cost is not None and cost.spice:
-        played_state = _update_agent_turn_frame(
-            played_state, spice_spent=cost.spice
-        )
+        played_state = _update_agent_turn_frame(played_state, spice_spent=cost.spice)
     events: list[GameEvent] = [
         GameEvent(
             event_id=source,
@@ -247,9 +243,7 @@ def apply_intrigue_play(state: GameState, action: DomainAction) -> RuleResult:
                 ("source", source),
             ),
         )
-        return RuleResult(
-            state=played_state.push_decision(frame), events=tuple(events)
-        )
+        return RuleResult(state=played_state.push_decision(frame), events=tuple(events))
 
     finished = _finish_play(played_state, player, card_id, sections, source)
     return RuleResult(state=finished.state, events=(*events, *finished.events))
@@ -318,13 +312,20 @@ def legal_intrigue_choice_actions(
             actions.append(DomainAction(action_id="detonate_shield_wall", actor=player))
             actions.append(DomainAction(action_id="keep_shield_wall", actor=player))
         case DeployFromGarrison(up_to=up_to):
+            # A Sardaukar Commander in the garrison is a troop for this
+            # purpose [Bloodlines p. 4]; ``commanders`` names its share.
             actions.extend(
                 DomainAction(
                     action_id="deploy_intrigue_troops",
                     actor=player,
-                    arguments=(("count", count),),
+                    arguments=arguments,
                 )
-                for count in range(1, min(up_to, owner.troops_garrison) + 1)
+                for arguments in _unit_count_arguments(
+                    minimum=1,
+                    maximum=up_to,
+                    troops=owner.troops_garrison,
+                    commanders=owner.commanders_garrison,
+                )
             )
         case TrashPersonalCard():
             # The black trash icon is optional [Main p. 20].
@@ -349,18 +350,20 @@ def legal_intrigue_choice_actions(
                 for post_id in owner.spy_post_ids
             )
         case RetreatTroops(minimum=minimum, maximum=maximum):
-            limit = (
-                owner.troops_conflict
-                if maximum is None
-                else min(maximum, owner.troops_conflict)
-            )
+            # Commanders in the Conflict are troops for a retreat
+            # [Bloodlines p. 4]; ``commanders`` names its share.
             actions.extend(
                 DomainAction(
                     action_id="retreat_intrigue_troops",
                     actor=player,
-                    arguments=(("count", count),),
+                    arguments=arguments,
                 )
-                for count in range(minimum, limit + 1)
+                for arguments in _unit_count_arguments(
+                    minimum=minimum,
+                    maximum=maximum,
+                    troops=owner.troops_conflict,
+                    commanders=owner.commanders_conflict,
+                )
             )
         case FlipBattleCard(icon=icon):
             actions.extend(
@@ -433,9 +436,7 @@ def legal_intrigue_choice_actions(
                     for post_id in recallable
                 )
             # Placing the Spy is optional ("you may") [Main pp. 11, 20].
-            actions.append(
-                DomainAction(action_id="decline_intrigue_spy", actor=player)
-            )
+            actions.append(DomainAction(action_id="decline_intrigue_spy", actor=player))
     sections = _sections(context)
     if (
         context.get("rewards_applied") is not True
@@ -447,9 +448,7 @@ def legal_intrigue_choice_actions(
         # picks their order (OQ-015), so once every arrow cost is paid the
         # pending automatic rewards may resolve before, between, or after
         # the remaining reward slots.
-        actions.append(
-            DomainAction(action_id="resolve_intrigue_rewards", actor=player)
-        )
+        actions.append(DomainAction(action_id="resolve_intrigue_rewards", actor=player))
     return tuple(actions)
 
 
@@ -520,9 +519,10 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
                         event_id=f"{step_source}:set_aside:{instance_id}",
                         kind="imperium_row_card_set_aside",
                         payload=(
-                            ("card_id", imperium_card_for_instance(
-                                instance_id
-                            ).card.card_id),
+                            (
+                                "card_id",
+                                imperium_card_for_instance(instance_id).card.card_id,
+                            ),
                             ("instance_id", instance_id),
                             ("player", player),
                         ),
@@ -596,9 +596,10 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
                     ),
                 )
         case DeployFromGarrison():
-            count = arguments["count"]
-            assert isinstance(count, int)
-            result = _deploy_units(state, player, step_source, troops=count)
+            count, commanders = _unit_counts(arguments)
+            result = _deploy_units(
+                state, player, step_source, troops=count, commanders=commanders
+            )
         case TrashPersonalCard():
             if action.action_id == "decline_intrigue_trash":
                 result = RuleResult(
@@ -616,9 +617,10 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
                     state, player, str(arguments["card_id"]), source=step_source
                 )
         case RetreatTroops():
-            count = arguments["count"]
-            assert isinstance(count, int)
-            result = _retreat_units(state, player, step_source, troops=count)
+            count, commanders = _unit_counts(arguments)
+            result = _retreat_units(
+                state, player, step_source, troops=count, commanders=commanders
+            )
         case PlaceSpy() if action.action_id == "decline_intrigue_spy":
             # The Spy placement is optional [Main pp. 11, 20].
             result = RuleResult(
@@ -758,9 +760,7 @@ def _apply_section_rewards(
 ) -> RuleResult:
     """Apply the sections' automatic rewards and their turn bookkeeping."""
 
-    outcome = apply_rewards(
-        state, player, automatic_rewards(sections), source=source
-    )
+    outcome = apply_rewards(state, player, automatic_rewards(sections), source=source)
     next_state = outcome.result.state
     events: list[GameEvent] = list(outcome.result.events)
     if outcome.troops_recruited:
@@ -844,30 +844,71 @@ def _finish_play(
     return RuleResult(state=next_state, events=applied.events)
 
 
+def _unit_count_arguments(
+    *,
+    minimum: int,
+    maximum: int | None,
+    troops: int,
+    commanders: int,
+) -> tuple[tuple[tuple[str, ActionValue], ...], ...]:
+    """Enumerate ``count`` units split between troops and Commanders.
+
+    ``count`` is the total; ``commanders`` (omitted when zero) is the share
+    taken by Sardaukar Commanders [Bloodlines p. 4].
+    """
+
+    units = troops + commanders
+    limit = units if maximum is None else min(maximum, units)
+    return tuple(
+        (("count", count),) if share == 0 else (("commanders", share), ("count", count))
+        for count in range(minimum, limit + 1)
+        for share in range(max(0, count - troops), min(count, commanders) + 1)
+    )
+
+
+def _unit_counts(arguments: Mapping[str, ActionValue]) -> tuple[int, int]:
+    """Return (troops, commanders) from a unit-count action's arguments."""
+
+    count = arguments["count"]
+    commanders = arguments.get("commanders", 0)
+    assert isinstance(count, int) and isinstance(commanders, int)
+    return count - commanders, commanders
+
+
 def _retreat_units(
     state: GameState,
     player: int,
     step_source: str,
     *,
     troops: int,
+    commanders: int = 0,
 ) -> RuleResult:
-    """Return Conflict troops to the garrison, adjusting Combat strength.
+    """Return Conflict units to the garrison, adjusting Combat strength.
 
-    Each troop carried two strength; a player left without units keeps no
-    strength at all [Main pp. 12, 14].
+    Each troop or Commander carried two strength; a player left without
+    units keeps no strength at all [Main pp. 12, 14] [Bloodlines p. 4].
     """
 
     owner = state.players[player]
-    if troops < 1 or owner.troops_conflict < troops:
+    if (
+        troops < 0
+        or commanders < 0
+        or troops + commanders < 1
+        or owner.troops_conflict < troops
+        or owner.commanders_conflict < commanders
+    ):
         raise RuntimeError("Intrigue retreat exceeds the troops in the Conflict")
-    remaining_units = owner.units_in_conflict - troops
+    retreated = troops + commanders
+    remaining_units = owner.units_in_conflict - retreated
     next_strength = (
-        max(owner.combat_strength - 2 * troops, 0) if remaining_units else 0
+        max(owner.combat_strength - 2 * retreated, 0) if remaining_units else 0
     )
     next_owner = replace(
         owner,
         troops_garrison=owner.troops_garrison + troops,
         troops_conflict=owner.troops_conflict - troops,
+        commanders_garrison=owner.commanders_garrison + commanders,
+        commanders_conflict=owner.commanders_conflict - commanders,
         combat_strength=next_strength,
     )
     return RuleResult(
@@ -876,7 +917,11 @@ def _retreat_units(
             GameEvent(
                 event_id=f"{step_source}:retreat",
                 kind="troops_retreated",
-                payload=(("count", troops), ("player", player)),
+                payload=(
+                    *((("commanders", commanders),) if commanders else ()),
+                    ("count", retreated),
+                    ("player", player),
+                ),
             ),
         ),
     )
@@ -901,25 +946,40 @@ def _deploy_units(
     step_source: str,
     *,
     troops: int,
+    commanders: int = 0,
 ) -> RuleResult:
-    """Move garrison troops into the Conflict, counting strength mid-Reveal."""
+    """Move garrison units into the Conflict, counting strength mid-Reveal."""
 
     owner = state.players[player]
-    if troops < 1 or owner.troops_garrison < troops:
+    if (
+        troops < 0
+        or commanders < 0
+        or troops + commanders < 1
+        or owner.troops_garrison < troops
+        or owner.commanders_garrison < commanders
+    ):
         raise RuntimeError("Intrigue deployment exceeds the garrison")
     event = GameEvent(
         event_id=f"{step_source}:deploy",
         kind="troops_deployed",
-        payload=(("count", troops), ("player", player)),
+        payload=(
+            *((("commanders", commanders),) if commanders else ()),
+            ("count", troops + commanders),
+            ("player", player),
+        ),
     )
     if reveal_is_open_for(state, player):
-        counted = add_units_to_reveal(state, player, troops=troops)
+        counted = add_units_to_reveal(
+            state, player, troops=troops, commanders=commanders
+        )
         return RuleResult(state=counted.state, events=(event, *counted.events))
     next_owner = replace(
         owner,
         troops_garrison=owner.troops_garrison - troops,
         troops_conflict=owner.troops_conflict + troops,
-        units_deployed_turn=owner.units_deployed_turn + troops,
+        commanders_garrison=owner.commanders_garrison - commanders,
+        commanders_conflict=owner.commanders_conflict + commanders,
+        units_deployed_turn=owner.units_deployed_turn + troops + commanders,
     )
     return RuleResult(
         state=replace(state, players=replace_player(state.players, next_owner)),

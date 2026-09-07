@@ -378,6 +378,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             arguments=(("card_id", conflict.card.card_id),),
         )
         for conflict in CONFLICTS
+        if config.bloodlines or not conflict.bloodlines_only
     )
     for action_id in ("manipulate_imperium_row", "acquire_manipulated_imperium"):
         templates.extend(
@@ -587,6 +588,32 @@ def _bloodlines_templates() -> tuple[ActionTemplate, ...]:
             ActionTemplate(action_id=action_id, arguments=(("count", count),))
             for count in range(1, MAX_COMMANDER_DEPLOYMENT + 1)
         )
+    # Commanders are troops for retreats and garrison deployments
+    # [Bloodlines p. 4]: the ``commanders`` share of a unit count.
+    templates.extend(
+        ActionTemplate(
+            action_id="retreat_intrigue_troops",
+            arguments=(("commanders", share), ("count", count)),
+        )
+        for count in range(1, MAX_DEPLOYMENT_COUNT + 1)
+        for share in range(1, min(count, MAX_COMMANDER_DEPLOYMENT) + 1)
+    )
+    templates.extend(
+        ActionTemplate(
+            action_id="deploy_intrigue_troops",
+            arguments=(("commanders", share), ("count", count)),
+        )
+        for count in range(1, MAX_INTRIGUE_DEPLOYMENT + 1)
+        for share in range(1, count + 1)
+    )
+    templates.extend(
+        ActionTemplate(
+            action_id="retreat_two_troops_for_reveal",
+            arguments=(("commanders", share),),
+        )
+        for share in (1, 2)
+    )
+    templates.append(ActionTemplate(action_id="retreat_leader_commander"))
     return tuple(templates)
 
 
@@ -653,7 +680,11 @@ def _endgame_wild_templates(
     config: RulesetConfig,
 ) -> tuple[ActionTemplate, ...]:
     battle_cards = (
-        *((conflict.card.card_id, conflict.battle_icon) for conflict in CONFLICTS),
+        *(
+            (conflict.card.card_id, conflict.battle_icon)
+            for conflict in CONFLICTS
+            if config.bloodlines or not conflict.bloodlines_only
+        ),
         *(
             (objective.objective_id, objective.battle_icon)
             for objective in objectives_for_players(config.players)
@@ -665,7 +696,7 @@ def _endgame_wild_templates(
     matching_card_ids = tuple(
         card_id for card_id, icon in battle_cards if icon not in (None, BattleIcon.WILD)
     )
-    return tuple(
+    templates = [
         ActionTemplate(
             action_id="match_endgame_wild_icon",
             arguments=(
@@ -675,7 +706,18 @@ def _endgame_wild_templates(
         )
         for wild_card_id in wild_card_ids
         for matching_card_id in matching_card_ids
+    ]
+    # Wild-with-wild pairs [Bloodlines p. 5], once each in sorted order.
+    sorted_wild = sorted(wild_card_ids)
+    templates.extend(
+        ActionTemplate(
+            action_id="match_endgame_wild_icon",
+            arguments=(("matching_card_id", second), ("wild_card_id", first)),
+        )
+        for index, first in enumerate(sorted_wild)
+        for second in sorted_wild[index + 1 :]
     )
+    return tuple(templates)
 
 
 def _trash_templates(

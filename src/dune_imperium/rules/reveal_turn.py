@@ -426,11 +426,23 @@ def legal_reveal_troop_retreat_actions(
     ):
         return ()
     decline = DomainAction(action_id="decline_reveal_troop_retreat", actor=player)
-    if state.players[player].troops_conflict < 2:
-        return (decline,)
+    owner = state.players[player]
+    # Sardaukar Commanders are troops for the retreat [Bloodlines p. 4];
+    # ``commanders`` names their share of the two.
     return (
         decline,
-        DomainAction(action_id="retreat_two_troops_for_reveal", actor=player),
+        *(
+            DomainAction(
+                action_id="retreat_two_troops_for_reveal",
+                actor=player,
+                arguments=(
+                    () if commanders == 0 else (("commanders", commanders),)
+                ),
+            )
+            for commanders in range(3)
+            if owner.troops_conflict >= 2 - commanders
+            and owner.commanders_conflict >= commanders
+        ),
     )
 
 
@@ -663,14 +675,20 @@ def apply_reveal_troop_retreat(
         )
 
     owner = state.players[action.actor]
-    if owner.troops_conflict < 2:
+    commanders = dict(action.arguments).get("commanders", 0)
+    if isinstance(commanders, bool) or not isinstance(commanders, int):
+        raise RuntimeError("Reveal troop-retreat has an invalid Commander count")
+    troops = 2 - commanders
+    if owner.troops_conflict < troops or owner.commanders_conflict < commanders:
         raise RuntimeError("Reveal troop-retreat payment requires two troops")
     remaining_units = owner.units_in_conflict - 2
     next_strength = owner.combat_strength if remaining_units else 0
     next_owner = replace(
         owner,
-        troops_garrison=owner.troops_garrison + 2,
-        troops_conflict=owner.troops_conflict - 2,
+        troops_garrison=owner.troops_garrison + troops,
+        troops_conflict=owner.troops_conflict - troops,
+        commanders_garrison=owner.commanders_garrison + commanders,
+        commanders_conflict=owner.commanders_conflict - commanders,
         combat_strength=next_strength,
     )
     remaining = state.decision_stack[:-1]
@@ -1638,7 +1656,8 @@ def _reveal_choice_effect_is_available(
         or (
             effect
             is PersonalCardRevealChoiceEffect.MAY_RETREAT_TWO_TROOPS_FOR_FOUR_STRENGTH
-            and owner.troops_conflict >= 2
+            # Sardaukar Commanders are troops for the retreat [Bloodlines p. 4].
+            and owner.troops_conflict + owner.commanders_conflict >= 2
         )
         or effect
         is PersonalCardRevealChoiceEffect.GAIN_FIVE_SOLARI_OR_TAKE_HIGH_COUNCIL
@@ -2565,15 +2584,17 @@ def add_units_to_reveal(
     *,
     troops: int = 0,
     sandworms: int = 0,
+    commanders: int = 0,
 ) -> RuleResult:
     """Record units that entered the Conflict during ``player``'s Reveal turn.
 
     Mirrors Desert Power: the first units make the revealed sword strength
-    count, later units add their own value only [Main p. 13].
+    count, later units add their own value only [Main p. 13]. A Sardaukar
+    Commander is worth 2 like a troop [Bloodlines p. 4].
     """
 
     owner = state.players[player]
-    value = 2 * troops + 3 * sandworms
+    value = 2 * troops + 3 * sandworms + 2 * commanders
     if value == 0:
         return RuleResult(state=state)
     previous_units = owner.units_in_conflict
@@ -2600,8 +2621,12 @@ def add_units_to_reveal(
         troops_garrison=owner.troops_garrison - troops,
         troops_conflict=owner.troops_conflict + troops,
         sandworms_conflict=owner.sandworms_conflict + sandworms,
+        commanders_garrison=owner.commanders_garrison - commanders,
+        commanders_conflict=owner.commanders_conflict + commanders,
         combat_strength=owner.combat_strength + strength_delta,
-        units_deployed_turn=owner.units_deployed_turn + troops + sandworms,
+        units_deployed_turn=(
+            owner.units_deployed_turn + troops + sandworms + commanders
+        ),
     )
     return RuleResult(
         state=replace(

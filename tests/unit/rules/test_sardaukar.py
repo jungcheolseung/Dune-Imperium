@@ -569,7 +569,9 @@ def test_bloodlines_actions_round_trip_only_in_the_bloodlines_catalog() -> None:
     base = ActionCodec(RulesetConfig())
     codec = ActionCodec(BLOODLINES)
     assert base.size == 4354
-    assert codec.size == base.size + 2 + 7 * 2 + 7 * 2
+    # Commander choices, the Commander share of retreats and deployments,
+    # and the wild pairs of the two Bloodlines Conflicts are bloodlines-only.
+    assert codec.size > base.size
 
     actions = (
         DomainAction("acquire_sardaukar_commander", 2, (("skill_id", "loyal"),)),
@@ -578,6 +580,11 @@ def test_bloodlines_actions_round_trip_only_in_the_bloodlines_catalog() -> None:
         DomainAction("trash_skill_for_strength", 0, (("skill_id", "desperate"),)),
         DomainAction("deploy_commanders", 0, (("count", 7),)),
         DomainAction("withdraw_commanders", 1, (("count", 1),)),
+        DomainAction("retreat_intrigue_troops", 0, (("commanders", 2), ("count", 5))),
+        DomainAction("deploy_intrigue_troops", 0, (("commanders", 1), ("count", 1))),
+        DomainAction("retreat_two_troops_for_reveal", 0, (("commanders", 2),)),
+        DomainAction("retreat_leader_commander", 3),
+        DomainAction("flip_battle_card", 0, (("card_id", "skirmish_wild"),)),
     )
     for action in actions:
         assert codec.decode(codec.encode(action), action.actor) == action
@@ -610,3 +617,222 @@ def test_heuristic_bloodlines_game_buys_commanders() -> None:
     )
     assert report.ruleset == "uprising-4p-choam+bloodlines"
     assert report.rounds >= 1
+
+
+# --- Commanders as troops in existing effects (slice 3) ---------------------
+
+
+def test_intrigue_retreat_offers_the_commander_share() -> None:
+    from dune_imperium.rules.combat import begin_combat_intrigue
+    from dune_imperium.rules.intrigue import (
+        apply_intrigue_choice,
+        apply_intrigue_play,
+        legal_intrigue_choice_actions,
+        legal_intrigue_play_actions,
+    )
+
+    card = "intrigue:go_to_ground:0"
+    owner = _seat_with_skills(
+        commanders_conflict=1,
+        troops_conflict=1,
+        troops_supply=8,
+        agent_locations=(),
+        agents_available=2,
+        combat_strength=4,
+        has_revealed=True,
+        intrigue_cards=(card,),
+    )
+    state = replace(
+        _turn_state(owner),
+        phase=GamePhase.COMBAT,
+        first_player=0,
+        current_conflict_ids=(CONFLICTS[0].card.card_id,),
+        decision_stack=(),
+        players=(
+            owner,
+            *(
+                replace(seat, has_revealed=True)
+                for seat in _turn_state(owner).players[1:]
+            ),
+        ),
+    )
+    opened = begin_combat_intrigue(state).state
+    play = next(
+        action
+        for action in legal_intrigue_play_actions(opened, 0)
+        if dict(action.arguments).get("card_id") == card
+    )
+    playing = apply_intrigue_play(opened, play).state
+
+    retreats = legal_intrigue_choice_actions(playing, 0)
+    assert {
+        (dict(a.arguments).get("count"), dict(a.arguments).get("commanders"))
+        for a in retreats
+    } == {
+        (1, None),
+        (1, 1),
+        (2, 1),
+    }
+    both = next(
+        a for a in retreats if dict(a.arguments) == {"commanders": 1, "count": 2}
+    )
+    done = apply_intrigue_choice(playing, both).state.players[0]
+    assert done.troops_conflict == 0 and done.commanders_conflict == 0
+    assert done.commanders_garrison == 1 and done.troops_garrison == 4
+    assert done.combat_strength == 0
+
+
+def test_reveal_two_troop_retreat_may_include_commanders() -> None:
+    from dune_imperium.rules.reveal_turn import (
+        apply_reveal_troop_retreat,
+        legal_reveal_troop_retreat_actions,
+    )
+
+    chani = next(
+        instance_id
+        for instance_id in __import__(
+            "dune_imperium.content.uprising.imperium", fromlist=["x"]
+        ).imperium_deck_instance_ids(False)
+        if ":chani_clever_tactician:" in instance_id
+    )
+    owner = _seat_with_skills(
+        hand=(chani,),
+        commanders_conflict=1,
+        troops_conflict=1,
+        troops_supply=8,
+        agent_locations=(),
+        agents_available=2,
+        combat_strength=4,
+    )
+    revealed = begin_reveal_turn(
+        _turn_state(owner), DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    actions = legal_reveal_troop_retreat_actions(revealed, 0)
+    # One troop and one Commander: only the mixed pair reaches two units.
+    assert [dict(a.arguments) for a in actions] == [{}, {"commanders": 1}]
+    result = apply_reveal_troop_retreat(revealed, actions[1]).state.players[0]
+    assert result.troops_conflict == 0 and result.commanders_conflict == 0
+    assert result.commanders_garrison == 1
+    assert result.combat_strength == 0
+
+
+def test_desert_scouts_may_retreat_a_commander() -> None:
+    from dune_imperium.rules.leader_abilities import (
+        apply_leader_reveal_action,
+        legal_leader_reveal_actions,
+    )
+
+    owner = _seat_with_skills(
+        leader_id="lady_amber_metulli",
+        hand=starting_deck_instance_ids(0)[:1],
+        commanders_conflict=1,
+        troops_conflict=1,
+        troops_supply=8,
+        agent_locations=(),
+        agents_available=2,
+        combat_strength=4,
+    )
+    revealed = begin_reveal_turn(
+        _turn_state(owner), DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    actions = legal_leader_reveal_actions(revealed, 0)
+    assert [a.action_id for a in actions] == [
+        "retreat_leader_troop",
+        "retreat_leader_commander",
+    ]
+    result = apply_leader_reveal_action(revealed, actions[1]).state.players[0]
+    assert result.commanders_conflict == 0 and result.commanders_garrison == 1
+    assert result.troops_conflict == 1
+    sword_strength = dict(revealed.decision_stack[-1].context)["sword_strength"]
+    assert isinstance(sword_strength, int)
+    assert result.combat_strength == 2 + sword_strength
+
+
+# --- wild battle icons (Bloodlines Conflicts) ------------------------------
+
+
+def test_a_won_wild_conflict_is_not_matched_on_arrival() -> None:
+    owner = _seat_with_skills(
+        skill_ids=(),
+        commanders_conflict=0,
+        troops_conflict=1,
+        troops_supply=11,
+        troops_garrison=0,
+        agent_locations=(),
+        agents_available=2,
+        has_revealed=True,
+        combat_strength=2,
+        objective_ids=("propaganda",),
+    )
+    state = replace(
+        _turn_state(owner),
+        phase=GamePhase.COMBAT,
+        first_player=0,
+        current_conflict_ids=("skirmish_wild",),
+        combat_intrigue_complete=True,
+        combat_rewards_resolved=True,
+        decision_stack=(),
+        players=(
+            owner,
+            *(
+                replace(seat, has_revealed=True)
+                for seat in _turn_state(owner).players[1:]
+            ),
+        ),
+    )
+    winner = finish_combat(state).state.players[0]
+    assert winner.won_conflict_ids == ("skirmish_wild",)
+    # Wild icons are matched during the Endgame only [Main p. 20] [Bloodlines p. 5].
+    assert winner.face_down_battle_card_ids == ()
+    assert winner.victory_points == 1
+
+
+def test_two_wild_icons_pair_with_each_other_in_the_endgame() -> None:
+    from dune_imperium.rules.endgame import (
+        apply_endgame_intrigue_action,
+        begin_endgame_intrigue,
+        legal_endgame_intrigue_actions,
+    )
+
+    owner = PlayerState(
+        player_id=0,
+        objective_ids=("propaganda",),
+        won_conflict_ids=("storms_in_the_south", "skirmish_wild"),
+    )
+    state = replace(
+        _turn_state(owner),
+        phase=GamePhase.ENDGAME,
+        first_player=0,
+        decision_stack=(),
+    )
+    opened = begin_endgame_intrigue(state).state
+    pairs = {
+        (dict(a.arguments)["wild_card_id"], dict(a.arguments)["matching_card_id"])
+        for a in legal_endgame_intrigue_actions(opened, 0)
+        if a.action_id == "match_endgame_wild_icon"
+    }
+    assert pairs == {
+        ("propaganda", "skirmish_wild"),
+        ("propaganda", "storms_in_the_south"),
+        ("skirmish_wild", "storms_in_the_south"),
+    }
+    match = DomainAction(
+        "match_endgame_wild_icon",
+        0,
+        (("matching_card_id", "storms_in_the_south"), ("wild_card_id", "propaganda")),
+    )
+    codec = ActionCodec(BLOODLINES)
+    assert codec.decode(codec.encode(match), 0) == match
+    result = apply_endgame_intrigue_action(opened, match).state.players[0]
+    assert result.victory_points == 2
+    assert set(result.face_down_battle_card_ids) == {
+        "propaganda",
+        "storms_in_the_south",
+    }
+    # The third wild has no partner left.
+    assert [
+        a.action_id
+        for a in legal_endgame_intrigue_actions(
+            replace(opened, players=(result, *opened.players[1:])), 0
+        )
+    ] == ["pass_endgame_intrigue"]

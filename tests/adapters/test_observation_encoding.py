@@ -27,9 +27,10 @@ def test_layout_is_versioned_and_contiguous() -> None:
     assert OBSERVATION_VERSION == 6
     assert len(PERSONAL_CARD_IDS) == 66
     assert len(INTRIGUE_IDS) == 39
-    assert len(CONFLICT_IDS) == 16
-    assert len(BATTLE_CARD_IDS) == 21
-    assert OBSERVATION_SIZE == 2081
+    # 16 Uprising Conflicts plus the two Bloodlines cards (identity universe).
+    assert len(CONFLICT_IDS) == 18
+    assert len(BATTLE_CARD_IDS) == 23
+    assert OBSERVATION_SIZE == 2089
 
     offset = 0
     for segment in OBSERVATION_SEGMENTS:

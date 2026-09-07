@@ -49,13 +49,19 @@ from dune_imperium.content.uprising.types import (
 
 
 def test_conflict_manifest_has_the_official_tier_counts() -> None:
-    assert len(CONFLICTS) == 16
-    assert len({conflict.card.card_id for conflict in CONFLICTS}) == 16
-    assert Counter(conflict.tier for conflict in CONFLICTS) == {
+    # 16 Uprising cards plus the two Bloodlines cards (one I, one II), which
+    # only enter the pool with the option [Bloodlines p. 3].
+    assert len(CONFLICTS) == 18
+    assert len({conflict.card.card_id for conflict in CONFLICTS}) == 18
+    retail = tuple(conflict for conflict in CONFLICTS if not conflict.bloodlines_only)
+    assert Counter(conflict.tier for conflict in retail) == {
         ConflictTier.ONE: 3,
         ConflictTier.TWO: 9,
         ConflictTier.THREE: 4,
     }
+    assert Counter(
+        conflict.tier for conflict in CONFLICTS if conflict.bloodlines_only
+    ) == {ConflictTier.ONE: 1, ConflictTier.TWO: 1}
     assert all(conflict.card.catalog_url for conflict in CONFLICTS)
 
 

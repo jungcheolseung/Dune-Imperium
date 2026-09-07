@@ -45,8 +45,11 @@ class ConflictSetup:
     def __post_init__(self) -> None:
         if len(self.deck) != 10:
             raise ValueError("the four-player Conflict deck must contain 10 cards")
-        if len(self.unused) != 6:
-            raise ValueError("six Conflict cards must remain unused")
+        if len(self.unused) not in (6, 8):
+            # 16 retail cards, or 18 with the two Bloodlines cards.
+            raise ValueError(
+                "six (eight with Bloodlines) Conflict cards must remain unused"
+            )
         if set(self.deck) & set(self.unused):
             raise ValueError("selected and unused Conflict cards must be disjoint")
 
@@ -71,15 +74,22 @@ def create_unshuffled_players() -> tuple[PlayerState, ...]:
     )
 
 
-def conflict_setup_decisions() -> tuple[ChanceDecision, ...]:
-    """Return tier shuffles in the order prescribed by setup."""
+def conflict_setup_decisions(
+    *, bloodlines: bool = False
+) -> tuple[ChanceDecision, ...]:
+    """Return tier shuffles in the order prescribed by setup.
+
+    Bloodlines adds its two Conflict cards to the pools the tiers are drawn
+    from; the deck keeps its 1/5/4 shape [Bloodlines p. 3].
+    """
 
     return tuple(
         ChanceDecision(
             decision_id=f"setup:conflict:tier:{tier.value}",
             prompt=f"Shuffle and select Conflict tier {tier.value}",
             options=tuple(
-                conflict.card.card_id for conflict in conflicts_by_tier(tier)
+                conflict.card.card_id
+                for conflict in conflicts_by_tier(tier, bloodlines=bloodlines)
             ),
             count=count,
         )
@@ -93,10 +103,12 @@ def conflict_setup_decisions() -> tuple[ChanceDecision, ...]:
 
 def build_conflict_setup(
     outcomes: tuple[ChanceOutcome, ...],
+    *,
+    bloodlines: bool = False,
 ) -> ConflictSetup:
     """Build the top-to-bottom deck from the three recorded tier outcomes."""
 
-    decisions = conflict_setup_decisions()
+    decisions = conflict_setup_decisions(bloodlines=bloodlines)
     if len(outcomes) != len(decisions):
         raise ValueError("Conflict setup requires one outcome for each tier")
 
@@ -292,7 +304,11 @@ def create_initial_state(
     resolver = ChanceResolver(seed=seed, recorded=recorded_outcomes)
 
     conflict = build_conflict_setup(
-        tuple(resolver.resolve(decision) for decision in conflict_setup_decisions())
+        tuple(
+            resolver.resolve(decision)
+            for decision in conflict_setup_decisions(bloodlines=config.bloodlines)
+        ),
+        bloodlines=config.bloodlines,
     )
     players, first_player = assign_objectives(
         create_unshuffled_players(),
@@ -420,7 +436,11 @@ def create_draft_initial_state(
     resolver = ChanceResolver(seed=seed, recorded=recorded_outcomes)
 
     conflict = build_conflict_setup(
-        tuple(resolver.resolve(decision) for decision in conflict_setup_decisions())
+        tuple(
+            resolver.resolve(decision)
+            for decision in conflict_setup_decisions(bloodlines=config.bloodlines)
+        ),
+        bloodlines=config.bloodlines,
     )
     players, first_player = assign_objectives(
         create_unshuffled_players(),

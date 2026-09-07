@@ -989,6 +989,10 @@ def _matching_battle_card(player: PlayerState, conflict_id: str) -> str | None:
         raise NotImplementedError(
             f"Conflict battle icon is not transcribed: {conflict_id}"
         )
+    if battle_icon is BattleIcon.WILD:
+        # A wild battle icon is matched during the Endgame, by choice, not
+        # on arrival [Main p. 20] [Bloodlines p. 5].
+        return None
     face_up = (
         card_id
         for card_id in (*player.objective_ids, *player.won_conflict_ids)

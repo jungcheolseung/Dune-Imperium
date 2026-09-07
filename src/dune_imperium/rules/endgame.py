@@ -292,6 +292,13 @@ def _endgame_wild_matches(state: GameState) -> tuple[EndgameWildMatch, ...]:
             for wild_card_id in wild_ids
             for matching_card_id in matching_ids
         )
+        # Two wild icons may be paired with each other [Bloodlines p. 5];
+        # the pair is listed once, in sorted order.
+        matches.extend(
+            EndgameWildMatch(player.player_id, first, second)
+            for index, first in enumerate(wild_ids)
+            for second in wild_ids[index + 1 :]
+        )
     return tuple(matches)
 
 

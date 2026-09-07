@@ -78,9 +78,16 @@ class ConflictDefinition:
     battle_icon: BattleIcon | None = None
     shield_wall_protected: bool = False
     rewards: tuple[ConflictReward, ConflictReward, ConflictReward] | None = None
+    # Added to the tier pool only with ``RulesetConfig(bloodlines=True)``
+    # [Bloodlines p. 3].
+    bloodlines_only: bool = False
 
 
 MAIN_P3_P4: Final = (SourceRef(SourceDocument.MAIN_RULEBOOK, (3, 4)),)
+BLOODLINES_P3: Final = (
+    SourceRef(SourceDocument.BLOODLINES_RULEBOOK, (2, 3)),
+    SourceRef(SourceDocument.CARD_FACE, (1,)),
+)
 
 
 def _conflict(
@@ -357,13 +364,57 @@ CONFLICTS: Final = (
             ConflictReward(spice=3),
         ),
     ),
+    # Bloodlines adds one Conflict I and one Conflict II, both with a wild
+    # battle icon [Bloodlines pp. 2-3]; rewards transcribed from the card
+    # faces (asset repository ``cards/en/bloodlines/conflict/``).
+    ConflictDefinition(
+        card=CardDefinition(
+            "skirmish_wild",
+            "Skirmish (Wild)",
+            BLOODLINES_P3,
+            catalog_url="https://dunecardshub.com/images/bloodlines-conflict-skirmish.webp",
+        ),
+        tier=ConflictTier.ONE,
+        battle_icon=BattleIcon.WILD,
+        rewards=(
+            ConflictReward(trash_cards=1),
+            ConflictReward(water=1, solari=1),
+            ConflictReward(solari=2),
+        ),
+        bloodlines_only=True,
+    ),
+    ConflictDefinition(
+        card=CardDefinition(
+            "storms_in_the_south",
+            "Storms in the South",
+            BLOODLINES_P3,
+            catalog_url=(
+                "https://dunecardshub.com/images/"
+                "bloodlines-conflict-storms-in-the-south.webp"
+            ),
+        ),
+        tier=ConflictTier.TWO,
+        battle_icon=BattleIcon.WILD,
+        rewards=(
+            ConflictReward(place_spies=1, spice=2),
+            ConflictReward(intrigue=2, solari=2),
+            ConflictReward(intrigue=1, solari=2),
+        ),
+        bloodlines_only=True,
+    ),
 )
 
 
-def conflicts_by_tier(tier: ConflictTier) -> tuple[ConflictDefinition, ...]:
-    """Return all physical Conflict cards with the requested back."""
+def conflicts_by_tier(
+    tier: ConflictTier, *, bloodlines: bool = False
+) -> tuple[ConflictDefinition, ...]:
+    """Return the physical Conflict cards with the requested back in the pool."""
 
-    return tuple(conflict for conflict in CONFLICTS if conflict.tier is tier)
+    return tuple(
+        conflict
+        for conflict in CONFLICTS
+        if conflict.tier is tier and (bloodlines or not conflict.bloodlines_only)
+    )
 
 
 CONFLICTS_BY_ID: Final = {

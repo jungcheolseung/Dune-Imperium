@@ -184,6 +184,7 @@ const ACTION_LABELS = {
   trash_skill_for_strength: "Skill trash → 검 3",
   deploy_commanders: "Commander 배치",
   withdraw_commanders: "Commander 회수",
+  retreat_leader_commander: "Commander 1 retreat (Leader)",
 };
 
 /* Korean labels for session-log event kinds (M11 slice 6); falls back to

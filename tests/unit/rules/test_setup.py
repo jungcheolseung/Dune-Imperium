@@ -82,7 +82,11 @@ def test_conflict_setup_builds_tiered_deck_and_tracks_unused_cards() -> None:
     )
 
     setup = build_conflict_setup(outcomes)
-    tier_by_id = {conflict.card.card_id: conflict.tier for conflict in CONFLICTS}
+    tier_by_id = {
+        conflict.card.card_id: conflict.tier
+        for conflict in CONFLICTS
+        if not conflict.bloodlines_only
+    }
 
     assert len(setup.deck) == 10
     assert len(set(setup.unused)) == 6
@@ -92,6 +96,25 @@ def test_conflict_setup_builds_tiered_deck_and_tracks_unused_cards() -> None:
         *(ConflictTier.THREE for _ in range(4)),
     )
     assert set(setup.deck) | set(setup.unused) == set(tier_by_id)
+
+
+def test_bloodlines_adds_its_two_conflicts_to_the_tier_pools() -> None:
+    # One Conflict I and one Conflict II join the pools; the deck keeps its
+    # 1/5/4 shape [Bloodlines p. 3].
+    resolver = ChanceResolver(seed=123)
+    decisions = conflict_setup_decisions(bloodlines=True)
+    assert "skirmish_wild" in decisions[2].options
+    assert "storms_in_the_south" in decisions[1].options
+    outcomes = tuple(resolver.resolve(decision) for decision in decisions)
+
+    setup = build_conflict_setup(outcomes, bloodlines=True)
+    assert len(setup.deck) == 10
+    assert len(set(setup.unused)) == 8
+    assert set(setup.deck) | set(setup.unused) == {
+        conflict.card.card_id for conflict in CONFLICTS
+    }
+    with pytest.raises(ValueError):
+        build_conflict_setup(outcomes)
 
 
 def test_same_seed_repeats_conflict_setup() -> None:

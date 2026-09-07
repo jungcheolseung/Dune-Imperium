@@ -425,6 +425,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "acquire_reserve": apply_reserve_acquisition,
     "acquire_imperium": apply_imperium_acquisition,
     "retreat_leader_troop": apply_leader_reveal_action,
+    "retreat_leader_commander": apply_leader_reveal_action,
     "recall_spy_for_leader": apply_leader_reveal_action,
     "finish_reveal": finish_reveal_turn,
     "defer_reveal_choice": apply_defer_reveal_choice,

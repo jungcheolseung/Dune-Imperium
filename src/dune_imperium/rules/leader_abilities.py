@@ -1434,9 +1434,23 @@ def legal_leader_reveal_actions(
     if dict(frame.context).get("leader_reveal_ability_used") is True:
         return ()
     owner = state.players[player]
-    if owner.leader_id == "lady_amber_metulli" and owner.troops_conflict >= 1:
+    if owner.leader_id == "lady_amber_metulli" and (
+        owner.troops_conflict >= 1 or owner.commanders_conflict >= 1
+    ):
         # Desert Scouts: "Reveal Turn: You may retreat one of your troops."
-        return (DomainAction(action_id="retreat_leader_troop", actor=player),)
+        # A Sardaukar Commander is a troop for this purpose [Bloodlines p. 4].
+        return (
+            *(
+                (DomainAction(action_id="retreat_leader_troop", actor=player),)
+                if owner.troops_conflict >= 1
+                else ()
+            ),
+            *(
+                (DomainAction(action_id="retreat_leader_commander", actor=player),)
+                if owner.commanders_conflict >= 1
+                else ()
+            ),
+        )
     if owner.leader_id == "feyd_rautha_harkonnen" and owner.spy_post_ids:
         # Devious Strength: "Reveal Turn: recall one of your Spies for two
         # swords" — an arrow cost usable once per Reveal turn [Main p. 20]
@@ -1514,12 +1528,20 @@ def apply_leader_reveal_action(
     remaining_units = owner.units_in_conflict - 1
     next_strength = owner.combat_strength - 2 if remaining_units else 0
     strength_delta = next_strength - owner.combat_strength
-    next_owner = replace(
-        owner,
-        troops_garrison=owner.troops_garrison + 1,
-        troops_conflict=owner.troops_conflict - 1,
-        combat_strength=next_strength,
-    )
+    if action.action_id == "retreat_leader_commander":
+        next_owner = replace(
+            owner,
+            commanders_garrison=owner.commanders_garrison + 1,
+            commanders_conflict=owner.commanders_conflict - 1,
+            combat_strength=next_strength,
+        )
+    else:
+        next_owner = replace(
+            owner,
+            troops_garrison=owner.troops_garrison + 1,
+            troops_conflict=owner.troops_conflict - 1,
+            combat_strength=next_strength,
+        )
     if strength_delta:
         decision_stack = add_reveal_strength(decision_stack, strength_delta)
     return RuleResult(
