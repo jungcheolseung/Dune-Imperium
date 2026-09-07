@@ -208,7 +208,8 @@
 
 - 상태: `DECIDED` (project convention)
 - 룰북은 Skill이 "Combat을 해결할 때의 추가 strength"를 주고 Conflict에 Commander가 있는 동안 활성이라고만 한다 `[Bloodlines p. 4]`. Canny(Landsraad space의 Agent), Fierce(상대의 sandworm), Loyal(Emperor Influence 3)의 조건은 Reveal 뒤 Combat Intrigue로 바뀔 수 있다(예: Influence를 잃는 Intrigue, 뒤늦게 Reveal한 상대의 sandworm 소환).
-- 판정(2026-09-07, project convention): 조건은 매 step 뒤 현재 상태로 다시 판정하고 그 차이만큼 `combat_strength`를 조정한다(`rules/strength.py`의 `with_skill_strength`, 좌석의 `skill_strength_applied`). Combat 순위를 매기는 시점의 값이 "Combat을 해결할 때"의 값이며, Commander가 모두 Conflict를 떠나면 Skill strength도 사라진다(룰북 p. 4의 Go to Ground 예시와 일치). Desperate로 이미 얻은 검 3은 카드의 sword처럼 Reveal에서 확정된 값이라 Commander가 뒤에 떠나도 유닛이 남아 있는 한 유지한다.
+- 판정(2026-09-07, 사용자 확정, project convention): 조건은 매 step 뒤 현재 상태로 다시 판정하고 그 차이만큼 `combat_strength`를 조정한다(`rules/strength.py`의 `with_skill_strength`, 좌석의 `skill_strength_applied`). Combat 순위를 매기는 시점의 값이 "Combat을 해결할 때"의 값이며, Commander가 모두 Conflict를 떠나면 Skill strength도 사라진다(룰북 p. 4의 Go to Ground 예시와 일치). Desperate로 이미 얻은 검 3은 카드의 sword처럼 Reveal에서 확정된 값이라 Commander가 뒤에 떠나도 유닛이 남아 있는 한 유지한다.
+- 사용자 확인(2026-09-07): "매 step마다 계산하는 것이 맞고, 전투 중에도 조건 변동이 있으면 반영해야 한다." Combat Intrigue 단계의 조건 변화(Influence 상실, 뒤늦은 sandworm, Commander retreat)도 순위를 매기기 전에 반영한다.
 - 재개 조건: 공식 FAQ가 판정 시점을 정할 때.
 
 ## 판정이 생겼을 때 기록할 정보
