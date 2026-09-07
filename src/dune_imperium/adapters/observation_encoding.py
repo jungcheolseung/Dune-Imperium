@@ -80,9 +80,7 @@ _FRAME_KINDS: Final = tuple(kind.value for kind in FrameKind)
 _PERSONAL_INDEX: Final = {
     card_id: index for index, card_id in enumerate(PERSONAL_CARD_IDS)
 }
-_INTRIGUE_INDEX: Final = {
-    card_id: index for index, card_id in enumerate(INTRIGUE_IDS)
-}
+_INTRIGUE_INDEX: Final = {card_id: index for index, card_id in enumerate(INTRIGUE_IDS)}
 _AGENT_LOCATION_SLOTS: Final = 3
 _SET_ASIDE_SLOTS: Final = 2
 _IMPERIUM_ROW_SLOTS: Final = 5
@@ -101,7 +99,7 @@ class ObservationSegment:
 def _seat_segment_lengths(seat: int) -> tuple[tuple[str, int], ...]:
     prefix = f"seat{seat}"
     return (
-        (f"{prefix}_scalars", 39),
+        (f"{prefix}_scalars", 41),
         (f"{prefix}_alliances", len(FACTION_IDS)),
         (f"{prefix}_control", len(CONTROL_SPACE_IDS)),
         (f"{prefix}_agent_locations", _AGENT_LOCATION_SLOTS),
@@ -148,6 +146,7 @@ def _segment_lengths() -> tuple[tuple[str, int], ...]:
             ("private_hand", len(PERSONAL_CARD_IDS)),
             ("private_intrigue", len(INTRIGUE_IDS)),
             ("private_peeked_card", len(PERSONAL_CARD_IDS)),
+            ("private_navigation_slots", 4),
         )
     )
     return tuple(lengths)
@@ -263,14 +262,11 @@ def encode_player_view(view: PlayerView) -> tuple[int, ...]:
     writer.write("intrigue_trash", _intrigue_counts(view.intrigue_trash))
     writer.write("imperium_removed", _personal_counts(view.imperium_removed))
     reveal_slots = [relative(seat) for seat in view.reveal_order]
-    writer.write(
-        "reveal_order", reveal_slots + [0] * (_SEATS - len(reveal_slots))
-    )
+    writer.write("reveal_order", reveal_slots + [0] * (_SEATS - len(reveal_slots)))
     if len(view.leader_draft_pool) > _LEADER_DRAFT_SLOTS:
         raise ValueError("the Leader draft pool holds more than six Leaders")
     pool_slots = [
-        _index_plus_one(leader_id, LEADER_IDS)
-        for leader_id in view.leader_draft_pool
+        _index_plus_one(leader_id, LEADER_IDS) for leader_id in view.leader_draft_pool
     ]
     writer.write(
         "leader_draft_pool",
@@ -296,14 +292,19 @@ def encode_player_view(view: PlayerView) -> tuple[int, ...]:
             (view.private.peeked_card_id,) if view.private.peeked_card_id else ()
         ),
     )
+    # Face-down Navigation slots: identity index + 1 per slot, 0 when empty.
+    slots = [
+        _INTRIGUE_INDEX[INTRIGUE_CARDS_BY_INSTANCE[card_id].card.card_id] + 1
+        for card_id in view.private.navigation_slots
+    ]
+    writer.write("private_navigation_slots", slots + [0] * (4 - len(slots)))
     return writer.finish()
 
 
 def _write_seat(writer: _Writer, seat_offset: int, player: PublicPlayerView) -> None:
     prefix = f"seat{seat_offset}"
     leader_flipped = int(
-        player.leader_face_id is not None
-        and player.leader_face_id != player.leader_id
+        player.leader_face_id is not None and player.leader_face_id != player.leader_id
     )
     writer.write(
         f"{prefix}_scalars",
@@ -354,6 +355,8 @@ def _write_seat(writer: _Writer, seat_offset: int, player: PublicPlayerView) -> 
             player.tactics_track_space,
             player.agent_in_conflict,
             player.twisted_deck_size,
+            player.navigation_remaining,
+            player.reveal_persuasion_bonus,
         ],
     )
     writer.write(
@@ -385,9 +388,7 @@ def _write_seat(writer: _Writer, seat_offset: int, player: PublicPlayerView) -> 
     writer.write(f"{prefix}_in_play", _personal_counts(player.in_play))
     writer.write(f"{prefix}_discard", _personal_counts(player.discard_pile))
     writer.write(f"{prefix}_trashed", _personal_counts(player.trashed))
-    writer.write(
-        f"{prefix}_intrigue_faceup", _intrigue_counts(player.intrigue_faceup)
-    )
+    writer.write(f"{prefix}_intrigue_faceup", _intrigue_counts(player.intrigue_faceup))
     set_aside_slots = [
         _personal_identity_index(instance_id) + 1
         for instance_id in player.imperium_set_aside
@@ -415,9 +416,7 @@ def _identity_slots(
 ) -> list[int]:
     if len(instance_ids) > slots:
         raise RuntimeError(f"{zone_name} holds more cards than encoded slots")
-    values = [
-        _personal_identity_index(instance_id) + 1 for instance_id in instance_ids
-    ]
+    values = [_personal_identity_index(instance_id) + 1 for instance_id in instance_ids]
     return values + [0] * (slots - len(values))
 
 
@@ -449,8 +448,7 @@ def _skill_counts(instance_ids: tuple[str, ...]) -> list[int]:
 
 def _contract_flags(instance_ids: tuple[str, ...]) -> list[int]:
     identities = tuple(
-        contract_for_instance(instance_id).card.card_id
-        for instance_id in instance_ids
+        contract_for_instance(instance_id).card.card_id for instance_id in instance_ids
     )
     return _multi_hot(identities, CONTRACT_IDS)
 

@@ -42,6 +42,7 @@ from dune_imperium.content.uprising.intrigue import (
     INTRIGUE_CARDS_BY_INSTANCE,
     intrigue_card_for_instance,
 )
+from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
@@ -72,8 +73,8 @@ from dune_imperium.rules.effect_interpreter import (
     condition_holds,
     cost_slots,
     face_up_conflict_card_ids,
-    factions_where_opponent_leads,
     flippable_battle_card_ids,
+    influence_gain_candidates,
     option_is_playable,
     pay_cost,
     resource_cost,
@@ -289,7 +290,7 @@ def apply_intrigue_play(state: GameState, action: DomainAction) -> RuleResult:
         )
         return RuleResult(state=played_state.push_decision(frame), events=tuple(events))
 
-    finished = _finish_play(played_state, player, card_id, sections, source)
+    finished = finish_intrigue_play(played_state, player, card_id, sections, source)
     return RuleResult(state=finished.state, events=(*events, *finished.events))
 
 
@@ -330,16 +331,11 @@ def legal_intrigue_choice_actions(
                             arguments=arguments,
                         )
                     )
-        case GainInfluence(factions=allowed, distinct=distinct) as gain:
+        case GainInfluence(distinct=distinct) as gain:
             chosen = _chosen_factions(context)
-            faction_candidates = allowed if allowed is not None else tuple(Faction)
-            if gain.where_opponent_leads:
-                # Ambitious: only where an opponent has more Influence.
-                leading = factions_where_opponent_leads(state, player)
-                faction_candidates = tuple(
-                    faction for faction in faction_candidates if faction in leading
-                )
-            for faction in faction_candidates:
+            # Printed limits: Ambitious's "where an opponent leads",
+            # Navigation card 1's "different Faction where you have 2+".
+            for faction in influence_gain_candidates(state, player, gain):
                 if distinct and faction in chosen:
                     continue
                 actions.append(
@@ -740,7 +736,7 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
             result = _deploy_units(
                 state, player, step_source, troops=count, commanders=commanders
             )
-        case TrashPersonalCard():
+        case TrashPersonalCard(bonus_spice=bonus_spice, bonus_minimum_cost=minimum):
             if action.action_id == "decline_intrigue_trash":
                 result = RuleResult(
                     state=state,
@@ -753,9 +749,32 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
                     ),
                 )
             else:
+                trashed_id = str(arguments["card_id"])
                 result = trash_personal_card(
-                    state, player, str(arguments["card_id"]), source=step_source
+                    state, player, trashed_id, source=step_source
                 )
+                cost = getattr(
+                    personal_card_for_instance(trashed_id), "acquisition_cost", None
+                )
+                if bonus_spice and isinstance(cost, int) and cost >= minimum:
+                    # Navigation card 5: spice for a card printed with a cost.
+                    paid = result.state.players[player]
+                    result = RuleResult(
+                        state=replace(
+                            result.state,
+                            players=replace_player(
+                                result.state.players,
+                                replace(
+                                    paid,
+                                    resources=replace(
+                                        paid.resources,
+                                        spice=paid.resources.spice + bonus_spice,
+                                    ),
+                                ),
+                            ),
+                        ),
+                        events=result.events,
+                    )
         case RetreatTroops():
             count, commanders = _unit_counts(arguments)
             result = _retreat_units(
@@ -838,7 +857,7 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
     if slot_index + 1 < len(_slots(context)):
         return RuleResult(state=next_state, events=result.events)
 
-    finished = _finish_play(
+    finished = finish_intrigue_play(
         next_state.pop_decision(),
         player,
         card_id,
@@ -903,7 +922,7 @@ def _apply_intrigue_acquisition(
     if top is None or top.frame_id != frame.frame_id:
         raise RuntimeError("Intrigue acquisition buried its choice frame")
     if slot_index + 1 >= len(_slots(context)):
-        finished = _finish_play(
+        finished = finish_intrigue_play(
             next_state.pop_decision(),
             player,
             card_id,
@@ -949,6 +968,23 @@ def _apply_section_rewards(
         )
         next_state = replacement.state
         events.extend(replacement.events)
+    for reserve_card_id in outcome.reserve_acquisitions:
+        # Navigation card 4: acquire The Spice Must Flow (its acquisition
+        # Victory Point included) when a copy is left.
+        if dict(next_state.reserve_stacks).get(reserve_card_id, 0) < 1:
+            events.append(
+                GameEvent(
+                    event_id=f"{source}:reserve_exhausted:{reserve_card_id}",
+                    kind="reserve_acquisition_unavailable",
+                    payload=(("card_id", reserve_card_id), ("player", player)),
+                )
+            )
+            continue
+        acquired = acquire_reserve_for_intrigue(
+            next_state, player, reserve_card_id, to_hand=False, source=source
+        )
+        next_state = acquired.result.state
+        events.extend(acquired.result.events)
     if outcome.passes_turn:
         # Withdrawn: the turn ends at once; the seat stays unrevealed.
         next_state = open_next_turn(next_state, player)
@@ -1151,7 +1187,7 @@ def _resolve_peek(
     )
 
 
-def _finish_play(
+def finish_intrigue_play(
     state: GameState,
     player: int,
     card_id: str,
@@ -1173,6 +1209,25 @@ def _finish_play(
     )
     resolved = applied.state
     owner = resolved.players[player]
+    if intrigue_card_for_instance(card_id).navigation:
+        # A played Navigation card leaves its slot face up next to the
+        # Leader; the transient slot bookkeeping ends with it.
+        next_state = replace(
+            resolved,
+            players=replace_player(
+                resolved.players,
+                replace(
+                    owner,
+                    navigation_slots=tuple(
+                        held for held in owner.navigation_slots if held != card_id
+                    ),
+                    navigation_played=(*owner.navigation_played, card_id),
+                    navigation_active_slot=0,
+                    navigation_trigger_faction="",
+                ),
+            ),
+        )
+        return RuleResult(state=next_state, events=applied.events)
     next_state = replace(
         resolved,
         players=replace_player(

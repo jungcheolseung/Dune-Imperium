@@ -66,6 +66,9 @@ class PublicPlayerView:
     tactics_track_space: int
     agent_in_conflict: int
     twisted_deck_size: int
+    navigation_remaining: int
+    navigation_played: tuple[str, ...]
+    reveal_persuasion_bonus: int
     in_play: tuple[str, ...]
     # Every card reaches a discard pile face up (acquired cards [Main p. 13],
     # played and revealed cards after Clean Up [Main pp. 9, 12, 20], cards
@@ -95,6 +98,9 @@ class PrivatePlayerView:
     # Controlled (Twisted Intrigue): the deck's top card while the owner
     # decides what to do with it; "" otherwise.
     peeked_card_id: str = ""
+    # Steersman Y'rkoon's face-down Navigation slots, which he may look at
+    # any time [Bloodlines p. 12].
+    navigation_slots: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -191,13 +197,16 @@ def known_card_seats(state: GameState) -> dict[str, frozenset[int]]:
         *state.contract_bank,
         *state.conflict_deck,
         *state.twisted_deck_stock,
+        *state.navigation_stock,
     ):
         known[card_id] = nobody
     resolving = set(resolving_intrigue_ids(state))
     for player in state.players:
         owner = frozenset({player.player_id})
-        for card_id in (*player.deck, *player.twisted_deck):
+        for card_id in (*player.deck, *player.twisted_deck, *player.navigation_box):
             known[card_id] = nobody
+        for card_id in player.navigation_slots:
+            known[card_id] = owner
         public_hand = set(player.hand_public)
         for card_id in player.hand:
             if card_id not in public_hand:
@@ -294,6 +303,7 @@ def observe_state(state: GameState, player: int) -> PlayerView:
             hand=owner.hand,
             intrigue_cards=owner.intrigue_cards,
             peeked_card_id=peeked_card_id(state, player),
+            navigation_slots=owner.navigation_slots,
         ),
         current_conflict_ids=state.current_conflict_ids,
         conflict_deck_size=len(state.conflict_deck),
@@ -381,6 +391,9 @@ def _public_player_view(player: PlayerState) -> PublicPlayerView:
         tactics_track_space=player.tactics_track_space,
         agent_in_conflict=player.agent_in_conflict,
         twisted_deck_size=len(player.twisted_deck),
+        navigation_remaining=len(player.navigation_slots),
+        navigation_played=player.navigation_played,
+        reveal_persuasion_bonus=player.reveal_persuasion_bonus,
         in_play=player.in_play,
         discard_pile=player.discard_pile,
         trashed=player.trashed,

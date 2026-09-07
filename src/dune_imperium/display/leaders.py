@@ -184,6 +184,19 @@ LEADER_FACE_TEXTS: Mapping[str, LeaderFaceText] = MappingProxyType(
                 " this turn"
             ),
         ),
+        "steersman_y_rkoon": LeaderFaceText(
+            ability_text=(
+                "Strange Form: you start with no water and without Signet Ring"
+                " in your deck. Hungry for Spice: whenever you gain 3 or more"
+                " spice in a single turn: Draw 1 card"
+            ),
+            signet_text=(
+                "Plot Course (no Signet Ring): at game start shuffle the"
+                " Navigation cards, draw five and place four face down in"
+                " order. Whenever you reach 2 Influence with a Faction, play"
+                " the next Navigation card (from the left)"
+            ),
+        ),
         "liet_kynes": LeaderFaceText(
             ability_text=(
                 "Arrakis Planetologist: Ignore the Influence requirement of"

@@ -158,6 +158,7 @@ from dune_imperium.rules.leader_abilities import (
     apply_leader_spy_action,
     apply_leader_troop_retreat,
     apply_shaddam_signet_choice,
+    grant_hungry_for_spice,
     grant_leader_reveal_passives,
     leader_signet_is_implemented,
     legal_leader_reveal_actions,
@@ -165,6 +166,14 @@ from dune_imperium.rules.leader_abilities import (
 from dune_imperium.rules.leader_draft import (
     apply_leader_draft_pick,
     legal_leader_draft_actions,
+)
+from dune_imperium.rules.navigation import (
+    apply_navigation_play,
+    apply_navigation_setup_action,
+    begin_navigation_play,
+    legal_navigation_play_actions,
+    legal_navigation_setup_actions,
+    navigation_play_is_queued,
 )
 from dune_imperium.rules.optional_trash import (
     apply_optional_trash,
@@ -376,6 +385,8 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     FrameKind.SPY_PLACEMENT: (legal_spy_placement_actions,),
     FrameKind.INTRIGUE_TRIGGER_CONTRACT: (legal_trigger_contract_actions,),
     FrameKind.OPTIONAL_TRASH: (legal_optional_trash_actions,),
+    FrameKind.NAVIGATION_SETUP: (legal_navigation_setup_actions,),
+    FrameKind.NAVIGATION_CHOICE: (legal_navigation_play_actions,),
 }
 
 ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
@@ -479,6 +490,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "deploy_leader_agent": apply_leader_agent_deploy,
     "pay_leader_signet_water": apply_leader_signet_payment,
     "trash_optional_card": apply_optional_trash,
+    "place_navigation_card": apply_navigation_setup_action,
+    "play_navigation": apply_navigation_play,
     "decline_optional_trash": apply_optional_trash,
     "decline_leader_card_trash": apply_feyd_track_action,
     "place_leader_spy": apply_leader_spy_action,
@@ -577,6 +590,10 @@ class UprisingRulesEngine(RulesEngine):
             # engine's fixed leader_ids only serve the non-draft path.
             return create_draft_initial_state(config, seed).state
         setup = create_initial_state(config, seed, self._leader_ids)
+        if setup.state.phase is GamePhase.SETUP:
+            # Steersman Y'rkoon's Navigation picks pause the game in SETUP
+            # like the draft; Round Start follows once they are made.
+            return setup.state
         started = prepare_round_start(setup.state)
         return replace(started.state, event_log=started.events)
 
@@ -596,7 +613,9 @@ class UprisingRulesEngine(RulesEngine):
         # An Intrigue draw granted by a Reveal passive may queue a reshuffle,
         # so the automatic advance runs again after the passives.
         result = grant_late_reveal_effects(
-            grant_leader_reveal_passives(_advance_automatic(result))
+            grant_leader_reveal_passives(
+                grant_hungry_for_spice(_advance_automatic(result))
+            )
         )
         result = skip_impossible_imperial_privilege_recall(
             expire_trashed_card_effects(_advance_automatic(result))
@@ -630,7 +649,9 @@ class UprisingRulesEngine(RulesEngine):
         # condition may queue a reshuffle, so the automatic advance runs
         # again after them.
         result = _advance_automatic(
-            grant_late_reveal_effects(grant_leader_reveal_passives(result))
+            grant_late_reveal_effects(
+                grant_leader_reveal_passives(grant_hungry_for_spice(result))
+            )
         )
         # A freely ordered recall may have removed Imperial Privilege's last
         # recall target after its Intrigue slot resolved (OQ-023); the skip
@@ -657,6 +678,8 @@ def _advance_automatic(result: RuleResult) -> RuleResult:
             automatic = resolve_exhausted_contract_choice(state)
         elif skill_choice_is_queued(state):
             automatic = begin_skill_choice(state)
+        elif navigation_play_is_queued(state):
+            automatic = begin_navigation_play(state)
         elif state.decision_stack:
             break
         elif state.phase is GamePhase.COMBAT:

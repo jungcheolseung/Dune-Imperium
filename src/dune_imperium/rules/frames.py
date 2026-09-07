@@ -51,6 +51,10 @@ class FrameKind(StrEnum):
     INTRIGUE_TRIGGER_CONTRACT = "intrigue_trigger_contract"
     # An optional "[trash] icon" reward (Liet Kynes' sandworm replacement).
     OPTIONAL_TRASH = "optional_trash"
+    # Steersman Y'rkoon: choosing the four Navigation slots at setup, and
+    # choosing how to play the next Navigation card.
+    NAVIGATION_SETUP = "navigation_setup"
+    NAVIGATION_CHOICE = "navigation_choice"
 
 
 def top_frame(state: GameState) -> DecisionFrame | None:
@@ -168,6 +172,7 @@ def reset_turn_counters(
             ignores_influence_requirements_turn=False,
             granted_agent_icon_turn="",
             combat_icon_turn=False,
+            hungry_for_spice_granted_turn=False,
         ),
     )
 

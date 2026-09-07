@@ -12,6 +12,7 @@ from dune_imperium.content.schema import (
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireCardUpTo,
+    AcquireReserveCard,
     CommanderDiscountThisTurn,
     CommandersInConflictAtLeast,
     CompletedContractsAtLeast,
@@ -37,6 +38,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     HasHighCouncil,
     IgnoreInfluenceRequirementsThisTurn,
     InfluenceAtLeast,
+    InNavigationSlot,
     IntrigueOption,
     IntrigueTiming,
     LoseInfluence,
@@ -47,6 +49,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     PassTurn,
     PayResources,
     PeekTopCard,
+    PermanentRevealPersuasion,
     PlaceSpy,
     RecallSpy,
     RecruitTroops,
@@ -63,6 +66,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     TrashIntrigueCard,
     TrashPersonalCard,
     Trigger,
+    TriggeredByFaction,
     WaterAtLeast,
 )
 from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
@@ -89,6 +93,10 @@ class IntrigueCardEntry(DeckCardEntry):
     # Piter De Vries' Twisted Intrigue: never in the shared deck, dealt from
     # his own face-down deck; still an Intrigue card once held.
     twisted: bool = False
+    # Steersman Y'rkoon's Navigation cards: not Intrigue cards at all, but
+    # transcribed in the same effect DSL and resolved by the same choice
+    # frames (``rules.navigation``).
+    navigation: bool = False
 
     @property
     def play_data_complete(self) -> bool:
@@ -165,6 +173,25 @@ def _entry(
         tech_only=tech_only,
         options=options,
         twisted=twisted,
+    )
+
+
+def _navigation(number: int, *options: IntrigueOption) -> IntrigueCardEntry:
+    """One Navigation card (Steersman Y'rkoon), from the card face."""
+
+    return IntrigueCardEntry(
+        card=CardDefinition(
+            card_id=f"navigation_card_{number}",
+            name=f"Navigation Card {number}",
+            sources=BLOODLINES_SOURCES,
+            catalog_url=(
+                "https://dunecardshub.com/images/"
+                f"bloodlines-other-navigation-card-{number}.webp"
+            ),
+        ),
+        bloodlines_only=True,
+        options=options,
+        navigation=True,
     )
 
 
@@ -1082,6 +1109,93 @@ INTRIGUE_CARDS: Final = (
             turn_start_only=True,
         ),
     ),
+    # --- Navigation cards (Steersman Y'rkoon), card faces 2026-09-07 ------
+    _navigation(
+        1,
+        _plot(EffectSection(rewards=(GainResources(spice=1),))),
+        _plot(
+            EffectSection(
+                costs=(PayResources(solari=2),),
+                rewards=(GainInfluence(different_from_trigger=True, minimum_own=2),),
+            )
+        ),
+    ),
+    _navigation(
+        2,
+        _plot(EffectSection(rewards=(PlaceSpy(),))),
+        _plot(
+            EffectSection(
+                costs=(RecallSpy(1),),
+                rewards=(DrawIntrigueCards(1), GainResources(spice=2)),
+            )
+        ),
+    ),
+    _navigation(
+        3,
+        _plot(
+            EffectSection(rewards=(GainResources(solari=2),)),
+            EffectSection(
+                condition=InNavigationSlot(4),
+                rewards=(PermanentRevealPersuasion(1),),
+            ),
+        ),
+    ),
+    _navigation(
+        4,
+        _plot(EffectSection(rewards=(GainResources(spice=1),))),
+        _plot(
+            EffectSection(
+                condition=InNavigationSlot(1),
+                costs=(PayResources(water=1),),
+                rewards=(AcquireReserveCard("the_spice_must_flow"),),
+            )
+        ),
+    ),
+    _navigation(
+        5,
+        _plot(
+            EffectSection(
+                rewards=(TrashPersonalCard(bonus_spice=2, bonus_minimum_cost=1),)
+            )
+        ),
+    ),
+    _navigation(
+        6,
+        _plot(EffectSection(rewards=(RecruitTroops(1),))),
+        _plot(
+            EffectSection(costs=(PayResources(solari=3),), rewards=(RecruitTroops(3),))
+        ),
+    ),
+    _navigation(
+        7,
+        _plot(
+            EffectSection(rewards=(GainResources(spice=1),)),
+            EffectSection(condition=HasAlliance(), rewards=(DrawIntrigueCards(1),)),
+        ),
+    ),
+    _navigation(
+        8,
+        _plot(
+            EffectSection(rewards=(GainResources(water=1),)),
+            EffectSection(
+                condition=TriggeredByFaction(Faction.SPACING_GUILD),
+                rewards=(GainResources(spice=1),),
+            ),
+        ),
+    ),
+    _navigation(
+        9,
+        _plot(EffectSection(rewards=(DrawPersonalCards(1),))),
+        _plot(
+            EffectSection(
+                costs=(PayResources(spice=5),), rewards=(GainVictoryPoints(1),)
+            )
+        ),
+    ),
+    _navigation(
+        10,
+        _plot(EffectSection(costs=(LoseInfluence(1),), rewards=(GainInfluence(),))),
+    ),
 )
 
 
@@ -1112,6 +1226,7 @@ def intrigue_cards_for_choam(
         for entry in INTRIGUE_CARDS
         if (choam_module or not entry.choam_only)
         and not entry.twisted
+        and not entry.navigation
         and (
             not entry.bloodlines_only
             or (
@@ -1120,6 +1235,16 @@ def intrigue_cards_for_choam(
                 and (tech_module or not entry.tech_only)
             )
         )
+    )
+
+
+def navigation_card_instance_ids() -> tuple[str, ...]:
+    """Return the ten Navigation cards (Steersman Y'rkoon), in printed order."""
+
+    return tuple(
+        f"intrigue:{entry.card.card_id}:0"
+        for entry in INTRIGUE_CARDS
+        if entry.navigation
     )
 
 

@@ -217,6 +217,19 @@ LEADERS: Final = (
         sources=BLOODLINES_LEADER_SOURCES,
     ),
     LeaderDefinition(
+        "steersman_y_rkoon",
+        "Steersman Y'rkoon",
+        _bloodlines_face("steersman-y-rkoon"),
+        bloodlines_only=True,
+        ability_name="Strange Form / Hungry for Spice",
+        signet_name="Plot Course",
+        # Strange Form: "You start the game with no water and without
+        # Signet Ring in your deck."
+        removed_starting_card_ids=("signet_ring",),
+        starting_water=0,
+        sources=BLOODLINES_LEADER_SOURCES,
+    ),
+    LeaderDefinition(
         "liet_kynes",
         "Liet Kynes",
         _bloodlines_face("liet-kynes"),

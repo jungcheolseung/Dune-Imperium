@@ -12,6 +12,7 @@ from typing import assert_never
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireCardUpTo,
+    AcquireReserveCard,
     CommanderDiscountThisTurn,
     CommandersInConflictAtLeast,
     CompletedContractsAtLeast,
@@ -39,6 +40,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     HasHighCouncil,
     IgnoreInfluenceRequirementsThisTurn,
     InfluenceAtLeast,
+    InNavigationSlot,
     IntrigueOption,
     IntrigueTiming,
     LoseInfluence,
@@ -49,6 +51,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     PassTurn,
     PayResources,
     PeekTopCard,
+    PermanentRevealPersuasion,
     PlaceSpy,
     RecallSpy,
     RecruitTroops,
@@ -66,6 +69,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     TrashIntrigueCard,
     TrashPersonalCard,
     Trigger,
+    TriggeredByFaction,
     WaterAtLeast,
 )
 from dune_imperium.content.uprising.intrigue import IntrigueCardEntry
@@ -142,6 +146,13 @@ def condition_text(condition: Condition) -> str:
             return "you hold a High Council seat"
         case HasAlliance():
             return "you have an Alliance"
+        case InNavigationSlot(slot=slot):
+            return f"this is in Navigation slot {slot}"
+        case TriggeredByFaction(faction=faction):
+            return (
+                "you played this as a result of reaching 2 Influence with the"
+                f" {_faction_name(faction)}"
+            )
         case SpiesPlacedAtLeast(count=count):
             return f"you have {count} or more Spies on Observation Posts"
         case CompletedContractsAtLeast(count=count):
@@ -295,6 +306,13 @@ def reward_text(reward: Reward) -> str:
             return f"The card you play this turn has the {names} icons"
         case PassTurn():
             return "At the start of your turn: pass your turn"
+        case PermanentRevealPersuasion(amount=amount):
+            return (
+                f"For the rest of the game, during each of your Reveal turns,"
+                f" {amount} Persuasion"
+            )
+        case AcquireReserveCard(card_id=card_id):
+            return f"Acquire {card_id.replace('_', ' ').title()}"
         case RedirectSpiesOnTurnSpace():
             return (
                 "Each opponent spying on the board space where you sent an Agent "

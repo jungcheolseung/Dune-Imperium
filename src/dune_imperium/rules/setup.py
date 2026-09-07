@@ -15,6 +15,7 @@ from dune_imperium.content.uprising.contracts import contract_instance_ids
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.intrigue import (
     intrigue_deck_instance_ids,
+    navigation_card_instance_ids,
     twisted_intrigue_instance_ids,
 )
 from dune_imperium.content.uprising.leaders import LEADERS_BY_ID, leaders_for_choam
@@ -36,6 +37,7 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.navigation import assign_navigation_deck
 from dune_imperium.rules.tactics import TACTICS_TRACK_START
 
 
@@ -250,6 +252,17 @@ class BloodlinesSetup:
     skill_face_up: tuple[str, ...]
     skill_stack: tuple[str, ...]
     twisted_deck: tuple[str, ...] = ()
+    navigation_deck: tuple[str, ...] = ()
+
+
+def navigation_deck_decision() -> ChanceDecision:
+    """Shuffle Steersman Y'rkoon's ten Navigation cards [Steersman Y'rkoon card]."""
+
+    return _shuffle_decision(
+        "setup:navigation",
+        "Shuffle the Navigation cards",
+        navigation_card_instance_ids(),
+    )
 
 
 def twisted_deck_decision() -> ChanceDecision:
@@ -278,10 +291,12 @@ def _bloodlines_setup(
     # The Twisted deck is shuffled whether or not Piter is picked (the
     # draft chooses Leaders later); it waits in ``twisted_deck_stock``.
     twisted = resolver.resolve(twisted_deck_decision()).values
+    navigation = resolver.resolve(navigation_deck_decision()).values
     return BloodlinesSetup(
         skill_face_up=skills[:SKILL_FACE_UP],
         skill_stack=skills[SKILL_FACE_UP:],
         twisted_deck=twisted,
+        navigation_deck=navigation,
     )
 
 
@@ -295,14 +310,17 @@ def _with_bloodlines(state: GameState, setup: BloodlinesSetup | None) -> GameSta
 
     if setup is None:
         return state
-    return assign_twisted_deck(
-        replace(
-            state,
-            sardaukar_commander_space_ids=COMMANDER_SETUP_SPACE_IDS,
-            sardaukar_commanders_bank=COMMANDER_BANK_AT_SETUP,
-            skill_face_up=setup.skill_face_up,
-            skill_stack=setup.skill_stack,
-            twisted_deck_stock=setup.twisted_deck,
+    return assign_navigation_deck(
+        assign_twisted_deck(
+            replace(
+                state,
+                sardaukar_commander_space_ids=COMMANDER_SETUP_SPACE_IDS,
+                sardaukar_commanders_bank=COMMANDER_BANK_AT_SETUP,
+                skill_face_up=setup.skill_face_up,
+                skill_stack=setup.skill_stack,
+                twisted_deck_stock=setup.twisted_deck,
+                navigation_stock=setup.navigation_deck,
+            )
         )
     )
 

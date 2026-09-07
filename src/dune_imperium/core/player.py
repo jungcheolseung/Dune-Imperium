@@ -123,6 +123,19 @@ class PlayerState:
     # Piter De Vries' face-down Twisted Intrigue deck (hidden order; the
     # size is public) [Piter De Vries card].
     twisted_deck: tuple[str, ...] = ()
+    # Steersman Y'rkoon's Navigation cards [Steersman Y'rkoon card]: the
+    # face-down slots (known to the owner, in play order), the cards already
+    # played (public), and the cards returned to the box (hidden). While one
+    # resolves, its slot number and the Faction that triggered it.
+    navigation_slots: tuple[str, ...] = ()
+    navigation_played: tuple[str, ...] = ()
+    navigation_box: tuple[str, ...] = ()
+    navigation_active_slot: int = 0
+    navigation_trigger_faction: str = ""
+    # Navigation card 3 from slot 4: Persuasion at every later Reveal.
+    reveal_persuasion_bonus: int = 0
+    # Hungry for Spice fired this turn.
+    hungry_for_spice_granted_turn: bool = False
     # The Skill strength currently folded into ``combat_strength`` so the
     # running total can be re-derived when a Skill condition changes.
     skill_strength_applied: int = 0

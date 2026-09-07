@@ -94,6 +94,12 @@ class GameState:
     # Vries' seat (the draft picks Leaders after the shuffle); empty once
     # assigned or when no seat plays him.
     twisted_deck_stock: tuple[str, ...] = ()
+    # The shuffled Navigation deck dealt at setup, waiting for Steersman
+    # Y'rkoon's seat; empty once assigned or when nobody plays him.
+    navigation_stock: tuple[str, ...] = ()
+    # Navigation plays owed by Influence gains that reached two
+    # (player, faction, source), opened in order by the engine.
+    pending_navigation_plays: tuple[tuple[int, str, str], ...] = ()
     decision_stack: tuple[DecisionFrame, ...] = ()
     event_log: tuple[GameEvent, ...] = ()
 

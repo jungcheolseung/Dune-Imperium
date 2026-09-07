@@ -570,9 +570,11 @@ def _agent_effect_is_available(
 
     if effect is None:
         return False
-    if (
-        effect
-        is PersonalCardAgentEffect.GAIN_TWO_VISITED_FACTION_INFLUENCE_AND_TRASH_SELF
+    if effect in (
+        PersonalCardAgentEffect.GAIN_TWO_VISITED_FACTION_INFLUENCE_AND_TRASH_SELF,
+        # Reachable off a Faction space through a granted Spy or Agent icon
+        # (Clandestine, Resourceful, Urgent Shigawire): nothing to gain.
+        PersonalCardAgentEffect.GAIN_VISITED_FACTION_INFLUENCE,
     ):
         return space.faction is not None
     if effect in (

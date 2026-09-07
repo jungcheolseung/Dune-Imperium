@@ -180,6 +180,8 @@ const ACTION_LABELS = {
   put_back_top_card: "덱 맨 위 카드 되돌리기",
   discard_top_card: "덱 맨 위 카드 discard",
   draw_top_card_for_solari: "Solari 1 지불 → 덱 맨 위 카드 draw",
+  place_navigation_card: "Navigation 카드 슬롯에 놓기",
+  play_navigation: "Navigation 카드 play",
   trash_agent_card: "카드 trash",
   trash_card_for_desert_tactics: "카드 trash (Desert Tactics)",
   trash_combat_reward_card: "카드 trash (Combat 보상)",

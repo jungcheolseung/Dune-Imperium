@@ -66,10 +66,14 @@ def _all_intrigue_instances(state: GameState) -> Iterator[str]:
     yield from state.intrigue_discard
     yield from state.intrigue_trash
     yield from state.twisted_deck_stock
+    yield from state.navigation_stock
     for player in state.players:
         yield from player.intrigue_cards
         yield from player.intrigue_faceup
         yield from player.twisted_deck
+        yield from player.navigation_slots
+        yield from player.navigation_played
+        yield from player.navigation_box
 
 
 def _all_conflict_ids(state: GameState) -> Iterator[str]:
@@ -269,8 +273,15 @@ def _scramble_hidden_information(state: GameState, observer: int) -> GameState:
     resolving = set(resolving_intrigue_ids(state))
 
     for seat, player in enumerate(players):
-        # A face-down Twisted Intrigue deck only shows its size.
+        # A face-down Twisted Intrigue deck only shows its size; the
+        # Navigation box is hidden to everyone, the slots to opponents.
         twisted = tuple(reversed(player.twisted_deck))
+        box = tuple(reversed(player.navigation_box))
+        player = replace(player, navigation_box=box)
+        if seat != observer:
+            player = replace(
+                player, navigation_slots=tuple(reversed(player.navigation_slots))
+            )
         if seat == observer:
             # Controlled lets the owner see the top card while deciding: it
             # stays put and the rest of the deck reorders.
@@ -314,4 +325,5 @@ def _scramble_hidden_information(state: GameState, observer: int) -> GameState:
         intrigue_deck=reordered_intrigue[cursor:],
         imperium_deck=tuple(reversed(state.imperium_deck)),
         contract_bank=tuple(reversed(state.contract_bank)),
+        navigation_stock=tuple(reversed(state.navigation_stock)),
     )

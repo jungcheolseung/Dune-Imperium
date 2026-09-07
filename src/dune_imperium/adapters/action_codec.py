@@ -22,6 +22,7 @@ from dune_imperium.content.uprising.imperium import (
 from dune_imperium.content.uprising.intrigue import (
     intrigue_card_for_instance,
     intrigue_deck_instance_ids,
+    navigation_card_instance_ids,
     twisted_intrigue_instance_ids,
 )
 from dune_imperium.content.uprising.leaders import (
@@ -710,6 +711,17 @@ def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         ActionTemplate(action_id="lose_intrigue_troop", arguments=arguments)
         for zone in ("garrison", "conflict")
         for arguments in ((("zone", zone),), (("commanders", 1), ("zone", zone)))
+    )
+    # Steersman Y'rkoon: the four Navigation picks and the played option.
+    templates.extend(
+        ActionTemplate(
+            action_id="place_navigation_card", arguments=(("card_id", card_id),)
+        )
+        for card_id in navigation_card_instance_ids()
+    )
+    templates.extend(
+        ActionTemplate(action_id="play_navigation", arguments=(("option", option),))
+        for option in range(2)
     )
     twisted = twisted_intrigue_instance_ids()
     all_intrigue = (

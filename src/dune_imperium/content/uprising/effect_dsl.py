@@ -49,6 +49,28 @@ class HasAlliance:
 
 
 @dataclass(frozen=True, slots=True)
+class InNavigationSlot:
+    """The Navigation card being played sits in slot ``slot`` (1-4)."""
+
+    slot: int
+
+    def __post_init__(self) -> None:
+        if not 1 <= self.slot <= 4:
+            raise ValueError("Navigation slots run from 1 to 4")
+
+
+@dataclass(frozen=True, slots=True)
+class TriggeredByFaction:
+    """The Navigation card was played for reaching two Influence with ``faction``."""
+
+    faction: Faction
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.faction, Faction):
+            raise TypeError("trigger Faction condition requires a Faction")
+
+
+@dataclass(frozen=True, slots=True)
 class SpiesPlacedAtLeast:
     """The player has at least ``count`` Spies on Observation Posts."""
 
@@ -150,6 +172,8 @@ type Condition = (
     InfluenceAtLeast
     | HasHighCouncil
     | HasAlliance
+    | InNavigationSlot
+    | TriggeredByFaction
     | SpiesPlacedAtLeast
     | CompletedContractsAtLeast
     | SandwormsInConflictAtLeast
@@ -426,6 +450,10 @@ class GainInfluence:
     # Ambitious (Twisted Intrigue): only a Faction where some opponent has
     # more Influence than the player.
     where_opponent_leads: bool = False
+    # Navigation card 1: a Faction other than the one whose second Influence
+    # played the card, where the player already has ``minimum_own``.
+    different_from_trigger: bool = False
+    minimum_own: int = 0
 
     def __post_init__(self) -> None:
         if self.times < 1:
@@ -496,6 +524,10 @@ class TrashPersonalCard:
 
     hand_only: bool = False
     mandatory: bool = False
+    # Navigation card 5: spice when the trashed card is printed with a cost
+    # of at least ``bonus_minimum_cost`` Persuasion.
+    bonus_spice: int = 0
+    bonus_minimum_cost: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -604,6 +636,28 @@ class GrantAgentIconThisTurn:
 
 
 @dataclass(frozen=True, slots=True)
+class PermanentRevealPersuasion:
+    """Navigation card 3 in slot 4: ``amount`` Persuasion at every later Reveal."""
+
+    amount: int = 1
+
+    def __post_init__(self) -> None:
+        if self.amount < 1:
+            raise ValueError("permanent Persuasion must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class AcquireReserveCard:
+    """Acquire one named Reserve card to the discard pile (Navigation card 4)."""
+
+    card_id: str
+
+    def __post_init__(self) -> None:
+        if not self.card_id:
+            raise ValueError("Reserve acquisition needs a card")
+
+
+@dataclass(frozen=True, slots=True)
 class GainSolariPerUnitType:
     """Calculating (Twisted Intrigue): one Solari per kind of unit in the
     Conflict (troops, sandworms, Sardaukar Commanders, a fighting Agent)."""
@@ -682,6 +736,8 @@ type Reward = (
     | PeekTopCard
     | GrantAgentIconsThisTurn
     | PassTurn
+    | PermanentRevealPersuasion
+    | AcquireReserveCard
 )
 
 

@@ -25,7 +25,7 @@ from dune_imperium.content.uprising.types import (
     PersonalCardAgentEffect,
 )
 from dune_imperium.core.actions import ActionValue, DomainAction
-from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
+from dune_imperium.core.decisions import ChanceDecision, DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
@@ -86,6 +86,7 @@ IMPLEMENTED_ABILITY_LEADER_IDS: Final = frozenset(
         "gaius_helen_mohiam",
         "liet_kynes",
         "piter_de_vries",
+        "steersman_y_rkoon",
     }
 )
 
@@ -1932,6 +1933,50 @@ def apply_leader_reveal_action(
             ),
         ),
     )
+
+
+def grant_hungry_for_spice(result: RuleResult) -> RuleResult:
+    """Hungry for Spice: three spice gained in one turn draws a card.
+
+    "Whenever you gain 3 or more spice in a single turn: draw a card"
+    [Steersman Y'rkoon card]; once per turn, judged against the seat's
+    spice gained since its turn opened (``spice_gained_this_turn``).
+    """
+
+    state = result.state
+    if state.decision_stack and isinstance(
+        state.decision_stack[-1].decision, ChanceDecision
+    ):
+        # A pending reshuffle must resolve first; the draw would otherwise
+        # queue a second reshuffle of the same discard pile. The hook runs
+        # again after the next transition.
+        return result
+    events = list(result.events)
+    for seat in state.players:
+        if (
+            seat.leader_id != "steersman_y_rkoon"
+            or seat.hungry_for_spice_granted_turn
+            or seat.resources.spice - seat.spice_at_turn_start + seat.spice_spent_turn
+            < 3
+        ):
+            continue
+        flagged = replace(seat, hungry_for_spice_granted_turn=True)
+        state = replace(state, players=replace_player(state.players, flagged))
+        source = f"round:{state.round_number}:player:{seat.player_id}:hungry_for_spice"
+        drawn = draw_or_request_personal_cards(state, seat.player_id, 1, source=source)
+        state = drawn.state
+        events.append(
+            GameEvent(
+                event_id=source,
+                kind="leader_ability_resolved",
+                payload=(
+                    ("leader_id", "steersman_y_rkoon"),
+                    ("player", seat.player_id),
+                ),
+            )
+        )
+        events.extend(drawn.events)
+    return RuleResult(state=state, events=tuple(events))
 
 
 def grant_leader_reveal_passives(result: RuleResult) -> RuleResult:

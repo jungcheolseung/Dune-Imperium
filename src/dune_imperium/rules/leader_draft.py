@@ -19,6 +19,7 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.frames import FrameKind, replace_player, top_frame_of_kind
+from dune_imperium.rules.navigation import assign_navigation_deck
 from dune_imperium.rules.setup import (
     SARDAUKAR_CONTRACT_IDS,
     assign_twisted_deck,
@@ -164,18 +165,20 @@ def _finish_draft_setup(
         )
     )
     return RuleResult(
-        state=assign_twisted_deck(
-            replace(
-                state,
-                phase=GamePhase.ROUND_START,
-                players=players,
-                contract_bank=bank,
-                face_up_contract_ids=face_up,
-                sardaukar_contract_ids=sardaukar_set_aside,
-                maker_bonus_spice=maker_bonus_spice_for(
-                    tuple(player.leader_id or "" for player in players)
-                ),
-                decision_stack=state.decision_stack[:-1],
+        state=assign_navigation_deck(
+            assign_twisted_deck(
+                replace(
+                    state,
+                    phase=GamePhase.ROUND_START,
+                    players=players,
+                    contract_bank=bank,
+                    face_up_contract_ids=face_up,
+                    sardaukar_contract_ids=sardaukar_set_aside,
+                    maker_bonus_spice=maker_bonus_spice_for(
+                        tuple(player.leader_id or "" for player in players)
+                    ),
+                    decision_stack=state.decision_stack[:-1],
+                )
             )
         ),
         events=tuple(events),

@@ -112,7 +112,7 @@ def legal_reveal_spy_actions(
                         arguments=(("post_id", post_id),),
                     )
                     for post_id in empty_observation_post_ids(state)
-                )
+                ),
             )
         return (
             *strength_choice,
@@ -123,7 +123,7 @@ def legal_reveal_spy_actions(
                     arguments=(("post_id", post_id),),
                 )
                 for post_id in owner.spy_post_ids
-            )
+            ),
         )
     occupied = frozenset(state.players[player].spy_post_ids)
     post_ids = tuple(
@@ -139,9 +139,7 @@ def legal_reveal_spy_actions(
             # [Main pp. 9, 20]; a freely ordered recall (for example In High
             # Places) can leave fewer than two, and the required recall and
             # draw are then unavailable.
-            return (
-                DomainAction(action_id="decline_reveal_spy_recall", actor=player),
-            )
+            return (DomainAction(action_id="decline_reveal_spy_recall", actor=player),)
         return tuple(
             DomainAction(
                 action_id="recall_spy_for_reveal",
@@ -283,9 +281,7 @@ def apply_reveal_persuasion_or_contract(
     card_id = context.get("reveal_card_id")
     if not isinstance(card_id, str):
         raise RuntimeError("Reveal choice frame has invalid card ID")
-    source = (
-        f"round:{state.round_number}:player:{action.actor}:reveal_card:{card_id}"
-    )
+    source = f"round:{state.round_number}:player:{action.actor}:reveal_card:{card_id}"
     remaining = state.decision_stack[:-1]
     if action.action_id == "gain_reveal_persuasion":
         return RuleResult(
@@ -514,10 +510,7 @@ def apply_reveal_sandworm_action(
     card_id = context.get("reveal_card_id")
     if not isinstance(card_id, str):
         raise RuntimeError("Reveal sandworm frame has invalid card ID")
-    source = (
-        f"round:{state.round_number}:player:{action.actor}:"
-        f"reveal_card:{card_id}"
-    )
+    source = f"round:{state.round_number}:player:{action.actor}:reveal_card:{card_id}"
     if action.action_id == "decline_reveal_sandworm":
         return RuleResult(
             state=replace(state, decision_stack=state.decision_stack[:-1]),
@@ -688,9 +681,7 @@ def legal_reveal_troop_retreat_actions(
             DomainAction(
                 action_id="retreat_two_troops_for_reveal",
                 actor=player,
-                arguments=(
-                    () if commanders == 0 else (("commanders", commanders),)
-                ),
+                arguments=(() if commanders == 0 else (("commanders", commanders),)),
             )
             for commanders in range(3)
             if owner.troops_conflict >= 2 - commanders
@@ -745,10 +736,7 @@ def apply_corrinth_city_reveal(
     card_id = context.get("reveal_card_id")
     if not isinstance(card_id, str):
         raise RuntimeError("Corrinth City Reveal frame has invalid card ID")
-    source = (
-        f"round:{state.round_number}:player:{action.actor}:"
-        f"reveal_card:{card_id}"
-    )
+    source = f"round:{state.round_number}:player:{action.actor}:reveal_card:{card_id}"
     owner = state.players[action.actor]
     remaining = state.decision_stack[:-1]
     if action.action_id == "gain_five_reveal_solari":
@@ -808,14 +796,11 @@ def legal_contract_reveal_choice_actions(
         or frame.decision.owner != player
         or context.get("reveal_choice_effect")
         != (
-            PersonalCardRevealChoiceEffect
-            .KEEP_SPICE_OR_TRASH_SELF_FOR_VP_IF_FOUR_CONTRACTS.value
+            PersonalCardRevealChoiceEffect.KEEP_SPICE_OR_TRASH_SELF_FOR_VP_IF_FOUR_CONTRACTS.value
         )
     ):
         return ()
-    actions = [
-        DomainAction(action_id="keep_contract_reveal_spice", actor=player)
-    ]
+    actions = [DomainAction(action_id="keep_contract_reveal_spice", actor=player)]
     # The self-trash is the cost of the Victory Point, so it is adjudicated
     # at resolution time [Main pp. 9, 20]: a card another effect already
     # trashed while this choice was pending can no longer pay it.
@@ -911,10 +896,7 @@ def apply_reveal_troop_retreat(
     card_id = context.get("reveal_card_id")
     if not isinstance(card_id, str):
         raise RuntimeError("Reveal troop-retreat frame has invalid card ID")
-    source = (
-        f"round:{state.round_number}:player:{action.actor}:"
-        f"reveal_card:{card_id}"
-    )
+    source = f"round:{state.round_number}:player:{action.actor}:reveal_card:{card_id}"
     if action.action_id == "decline_reveal_troop_retreat":
         return RuleResult(
             state=replace(state, decision_stack=state.decision_stack[:-1]),
@@ -948,11 +930,8 @@ def apply_reveal_troop_retreat(
     strength_delta = next_strength - owner.combat_strength
     if strength_delta:
         remaining = add_reveal_strength(remaining, strength_delta)
-    if (
-        context.get("reveal_choice_effect")
-        == (
-            PersonalCardRevealChoiceEffect.MAY_RETREAT_TWO_TROOPS_FOR_TWO_PERSUASION.value
-        )
+    if context.get("reveal_choice_effect") == (
+        PersonalCardRevealChoiceEffect.MAY_RETREAT_TWO_TROOPS_FOR_TWO_PERSUASION.value
     ):
         # Command Center (Bloodlines): "Retreat two troops -> +2 Persuasion".
         remaining = add_reveal_persuasion(remaining, 2)
@@ -998,8 +977,7 @@ def apply_reveal_card_trash(
     if not isinstance(source_card_id, str):
         raise RuntimeError("Reveal trash frame has invalid card ID")
     source = (
-        f"round:{state.round_number}:player:{action.actor}:"
-        f"reveal_card:{source_card_id}"
+        f"round:{state.round_number}:player:{action.actor}:reveal_card:{source_card_id}"
     )
     if action.action_id == "decline_reveal_card_trash":
         return RuleResult(
@@ -1046,8 +1024,7 @@ def apply_reveal_card_trash(
             state=grant_combat_icon(popped, action.actor), events=trashed.events
         )
     if context.get("reveal_choice_effect") == (
-        PersonalCardRevealChoiceEffect
-        .MAY_TRASH_SELF_FOR_FOUR_INFLUENCE_IF_FOUR_CONTRACTS.value
+        PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_FOR_FOUR_INFLUENCE_IF_FOUR_CONTRACTS.value
     ):
         # CHOAM Demands: one Influence with each of the four Factions.
         working = replace(
@@ -1064,9 +1041,7 @@ def apply_reveal_card_trash(
             )
             working = gained.state
             influence_events.extend(gained.events)
-        return RuleResult(
-            state=working, events=(*trashed.events, *influence_events)
-        )
+        return RuleResult(state=working, events=(*trashed.events, *influence_events))
     owner = trashed.state.players[action.actor]
     counted_strength = 3 if owner.units_in_conflict else 0
     next_owner = replace(
@@ -1242,10 +1217,7 @@ def apply_reveal_spy_action(
     if not isinstance(card_id, str) or not isinstance(effect_value, str):
         raise RuntimeError("Reveal Spy frame has invalid context")
     effect = PersonalCardRevealChoiceEffect(effect_value)
-    source = (
-        f"round:{state.round_number}:player:{action.actor}:"
-        f"reveal_card:{card_id}"
-    )
+    source = f"round:{state.round_number}:player:{action.actor}:reveal_card:{card_id}"
 
     arguments = dict(action.arguments)
     if action.action_id == "gain_two_reveal_strength":
@@ -1290,9 +1262,7 @@ def apply_reveal_spy_action(
                 players=replace_player(state.players, next_owner),
                 decision_stack=(*state.decision_stack[:-1], next_frame),
             ),
-            events=(
-                _spy_recalled_event(state, action.actor, card_id, post_id),
-            ),
+            events=(_spy_recalled_event(state, action.actor, card_id, post_id),),
         )
 
     if action.action_id == "place_reveal_spy":
@@ -1452,7 +1422,6 @@ def _spy_recalled_event(
     )
 
 
-
 def add_reveal_persuasion(
     frames: tuple[DecisionFrame, ...],
     amount: int,
@@ -1508,9 +1477,8 @@ def add_reveal_optional_sword_strength(
         if "strength" not in context or "persuasion" not in context:
             continue
         optional_strength = context.get("optional_sword_strength", 0)
-        if (
-            isinstance(optional_strength, bool)
-            or not isinstance(optional_strength, int)
+        if isinstance(optional_strength, bool) or not isinstance(
+            optional_strength, int
         ):
             raise RuntimeError("Reveal frame has invalid optional sword strength")
         context["optional_sword_strength"] = optional_strength + amount
@@ -1595,15 +1563,13 @@ def _reveal_effect_is_eligible(
             )
         )
         and (
-            not effect.requires_spying_on_maker_space
-            or is_spying_on_maker_space(owner)
+            not effect.requires_spying_on_maker_space or is_spying_on_maker_space(owner)
         )
         and not (
             len(owner.completed_contract_ids) >= 4
             and effect.spice > 0
             and (
-                PersonalCardRevealChoiceEffect
-                .KEEP_SPICE_OR_TRASH_SELF_FOR_VP_IF_FOUR_CONTRACTS
+                PersonalCardRevealChoiceEffect.KEEP_SPICE_OR_TRASH_SELF_FOR_VP_IF_FOUR_CONTRACTS
                 in card.reveal_choice_effects
             )
         )
@@ -1915,14 +1881,18 @@ def _reveal_effect_persuasion(
 ) -> int:
     """Return one eligible effect's Persuasion over the given revealed set."""
 
-    return effect.persuasion * (
-        sum(
-            Faction(effect.per_revealed_faction.value) in card.factions
-            for card in revealed_cards
+    return (
+        effect.persuasion
+        * (
+            sum(
+                Faction(effect.per_revealed_faction.value) in card.factions
+                for card in revealed_cards
+            )
+            if effect.per_revealed_faction is not None
+            else 1
         )
-        if effect.per_revealed_faction is not None
-        else 1
-    ) + effect.persuasion_per_completed_contract * completed_contracts
+        + effect.persuasion_per_completed_contract * completed_contracts
+    )
 
 
 def _reveal_effect_strength(
@@ -1963,8 +1933,7 @@ def reveal_choice_prompt(effect: PersonalCardRevealChoiceEffect) -> str:
         "Trash this card for one Influence with each Faction, or decline"
         if effect
         is (
-            PersonalCardRevealChoiceEffect
-            .MAY_TRASH_SELF_FOR_FOUR_INFLUENCE_IF_FOUR_CONTRACTS
+            PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_FOR_FOUR_INFLUENCE_IF_FOUR_CONTRACTS
         )
         else "Choose one Persuasion or a Contract"
         if effect is PersonalCardRevealChoiceEffect.PERSUASION_OR_CONTRACT
@@ -1985,8 +1954,7 @@ def reveal_choice_prompt(effect: PersonalCardRevealChoiceEffect) -> str:
         if effect
         is PersonalCardRevealChoiceEffect.MAY_RETREAT_TWO_TROOPS_FOR_TWO_PERSUASION
         else "Choose Influence to lose and gain or decline this Reveal effect"
-        if effect
-        is PersonalCardRevealChoiceEffect.MAY_LOSE_INFLUENCE_TO_GAIN_INFLUENCE
+        if effect is PersonalCardRevealChoiceEffect.MAY_LOSE_INFLUENCE_TO_GAIN_INFLUENCE
         else "Pay three Spice for Influence or decline this Reveal effect"
         if effect is PersonalCardRevealChoiceEffect.MAY_PAY_THREE_SPICE_FOR_INFLUENCE
         else "Choose a Spy placement or gain two strength"
@@ -1995,31 +1963,22 @@ def reveal_choice_prompt(effect: PersonalCardRevealChoiceEffect) -> str:
         if effect is PersonalCardRevealChoiceEffect.PLACE_SPY
         else "Choose two Spies to recall or decline this Reveal effect"
         if effect
-        is (
-            PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_TWO_PERSUASION
-        )
+        is (PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_TWO_PERSUASION)
         else "Trash another Emperor card or decline this Reveal effect"
         if effect
-        is (
-            PersonalCardRevealChoiceEffect.MAY_TRASH_OTHER_EMPEROR_FOR_THREE_STRENGTH
-        )
+        is (PersonalCardRevealChoiceEffect.MAY_TRASH_OTHER_EMPEROR_FOR_THREE_STRENGTH)
         else "Retreat two troops for four strength or decline"
         if effect
-        is (
-            PersonalCardRevealChoiceEffect.MAY_RETREAT_TWO_TROOPS_FOR_FOUR_STRENGTH
-        )
+        is (PersonalCardRevealChoiceEffect.MAY_RETREAT_TWO_TROOPS_FOR_FOUR_STRENGTH)
         else "Gain five Solari or pay five for a High Council seat"
         if effect
-        is (
-            PersonalCardRevealChoiceEffect.GAIN_FIVE_SOLARI_OR_TAKE_HIGH_COUNCIL
-        )
+        is (PersonalCardRevealChoiceEffect.GAIN_FIVE_SOLARI_OR_TAKE_HIGH_COUNCIL)
         else "Keep two Persuasion or pay one Water for a sandworm"
         if effect is PersonalCardRevealChoiceEffect.MAY_PAY_WATER_FOR_SANDWORM
         else "Gain Spice or trash this card for one Victory Point"
         if effect
         is (
-            PersonalCardRevealChoiceEffect
-            .KEEP_SPICE_OR_TRASH_SELF_FOR_VP_IF_FOUR_CONTRACTS
+            PersonalCardRevealChoiceEffect.KEEP_SPICE_OR_TRASH_SELF_FOR_VP_IF_FOUR_CONTRACTS
         )
         else "Choose a Spy to recall for this Reveal effect"
     )
@@ -2080,8 +2039,7 @@ def _reveal_choice_effect_is_available(
         or (
             effect
             is (
-                PersonalCardRevealChoiceEffect
-                .MAY_TRASH_SELF_FOR_FOUR_INFLUENCE_IF_FOUR_CONTRACTS
+                PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_FOR_FOUR_INFLUENCE_IF_FOUR_CONTRACTS
             )
             and len(owner.completed_contract_ids) >= 4
             and card_id in cards_in_play
@@ -2094,13 +2052,11 @@ def _reveal_choice_effect_is_available(
             effect
             is PersonalCardRevealChoiceEffect.MAY_LOSE_INFLUENCE_TO_GAIN_INFLUENCE
             and any(
-                influence_amount(owner.influence, faction) > 0
-                for faction in Faction
+                influence_amount(owner.influence, faction) > 0 for faction in Faction
             )
         )
         or (
-            effect
-            is PersonalCardRevealChoiceEffect.MAY_PAY_THREE_SPICE_FOR_INFLUENCE
+            effect is PersonalCardRevealChoiceEffect.MAY_PAY_THREE_SPICE_FOR_INFLUENCE
             and owner.resources.spice >= 3
         )
         or effect
@@ -2113,8 +2069,7 @@ def _reveal_choice_effect_is_available(
             is PersonalCardRevealChoiceEffect.MAY_TRASH_OTHER_EMPEROR_FOR_THREE_STRENGTH
             and any(
                 candidate_id != card_id
-                and Faction.EMPEROR
-                in personal_card_for_instance(candidate_id).factions
+                and Faction.EMPEROR in personal_card_for_instance(candidate_id).factions
                 for candidate_id in cards_in_play
             )
         )
@@ -2127,8 +2082,7 @@ def _reveal_choice_effect_is_available(
         or effect
         is PersonalCardRevealChoiceEffect.GAIN_FIVE_SOLARI_OR_TAKE_HIGH_COUNCIL
         or (
-            effect
-            is PersonalCardRevealChoiceEffect.MAY_PAY_WATER_FOR_SANDWORM
+            effect is PersonalCardRevealChoiceEffect.MAY_PAY_WATER_FOR_SANDWORM
             and _can_summon_reveal_sandworm(state, player)
         )
         or (
@@ -2142,8 +2096,7 @@ def _reveal_choice_effect_is_available(
         or (
             effect
             is (
-                PersonalCardRevealChoiceEffect
-                .KEEP_SPICE_OR_TRASH_SELF_FOR_VP_IF_FOUR_CONTRACTS
+                PersonalCardRevealChoiceEffect.KEEP_SPICE_OR_TRASH_SELF_FOR_VP_IF_FOUR_CONTRACTS
             )
             and len(owner.completed_contract_ids) >= 4
         )
@@ -2161,8 +2114,7 @@ def _build_reveal_choice_frame(
     return DecisionFrame(
         kind=FrameKind.REVEAL_CHOICE,
         frame_id=(
-            f"round:{round_number}:player:{player}:"
-            f"reveal_spy:{card_id}:{effect.value}"
+            f"round:{round_number}:player:{player}:reveal_spy:{card_id}:{effect.value}"
         ),
         decision=PlayerDecision(owner=player, prompt=reveal_choice_prompt(effect)),
         context=(
@@ -2270,10 +2222,7 @@ def legal_defer_reveal_choice_actions(
     if frame is None:
         return ()
     context = frame_context(frame)
-    if (
-        context.get("reveal_spy_recalled") is True
-        or context.get(_RESUMED_KEY) is True
-    ):
+    if context.get("reveal_spy_recalled") is True or context.get(_RESUMED_KEY) is True:
         return ()
     return (DomainAction(action_id="defer_reveal_choice", actor=player),)
 
@@ -2419,8 +2368,7 @@ def _apply_late_reveal_frame_update(
             )
             if counts_toward_combat:
                 context["strength"] = (
-                    context_int(context, "strength", owner="Reveal frame")
-                    + sword_delta
+                    context_int(context, "strength", owner="Reveal frame") + sword_delta
                 )
         return (
             *frames[:index],
@@ -2557,10 +2505,8 @@ def _late_reveal_one_card(
             next_owner.resources,
             solari=next_owner.resources.solari
             + sum(effect.solari for effect in eligible),
-            spice=next_owner.resources.spice
-            + sum(effect.spice for effect in eligible),
-            water=next_owner.resources.water
-            + sum(effect.water for effect in eligible),
+            spice=next_owner.resources.spice + sum(effect.spice for effect in eligible),
+            water=next_owner.resources.water + sum(effect.water for effect in eligible),
         ),
     )
     troops_requested = sum(effect.recruit_troops for effect in eligible)
@@ -2751,6 +2697,9 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         else ()
     )
     persuasion += sum(skill.reveal_persuasion for skill in active_skills)
+    # Navigation card 3 from slot 4: "during each of your Reveal turns, 1
+    # Persuasion" for the rest of the game [Navigation card].
+    persuasion += owner.reveal_persuasion_bonus
 
     card_strengths = tuple(
         (
@@ -3181,6 +3130,3 @@ def add_units_to_reveal(
             ),
         ),
     )
-
-
-

@@ -13,6 +13,7 @@ from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireCardUpTo,
+    AcquireReserveCard,
     CommanderDiscountThisTurn,
     CommandersInConflictAtLeast,
     CompletedContractsAtLeast,
@@ -39,6 +40,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     HasHighCouncil,
     IgnoreInfluenceRequirementsThisTurn,
     InfluenceAtLeast,
+    InNavigationSlot,
     IntrigueOption,
     LoseInfluence,
     LoseTroops,
@@ -46,6 +48,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     PassTurn,
     PayResources,
     PeekTopCard,
+    PermanentRevealPersuasion,
     PlaceSpy,
     RecallSpy,
     RecruitTroops,
@@ -62,6 +65,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     TrashDiscardPileCard,
     TrashIntrigueCard,
     TrashPersonalCard,
+    TriggeredByFaction,
     WaterAtLeast,
 )
 from dune_imperium.content.uprising.types import BattleIcon
@@ -173,6 +177,10 @@ def condition_holds(state: GameState, player: int, condition: Condition) -> bool
             return owner.high_council
         case HasAlliance():
             return bool(owner.alliance_faction_ids)
+        case InNavigationSlot(slot=slot):
+            return owner.navigation_active_slot == slot
+        case TriggeredByFaction(faction=faction):
+            return owner.navigation_trigger_faction == faction.value
         case SpiesPlacedAtLeast(count=count):
             return len(owner.spy_post_ids) >= count
         case CompletedContractsAtLeast(count=count):
@@ -396,7 +404,12 @@ def _choice_costs_feasible(
         and units >= losses_needed
         and player.troops_conflict + player.commanders_conflict
         >= conflict_losses_needed
-        and len(player.intrigue_cards) >= intrigue_needed + 1
+        # The played card itself is still held while it resolves (a
+        # Navigation card is not held at all, so it needs no allowance).
+        and (
+            intrigue_needed == 0
+            or len(player.intrigue_cards) >= intrigue_needed + 1
+        )
     )
 
 
@@ -473,6 +486,10 @@ def _choice_rewards_feasible(
                     factions_where_opponent_leads(state, player)
                 ):
                     return False
+                case GainInfluence() as gain if (
+                    gain.different_from_trigger or gain.minimum_own
+                ) and not influence_gain_candidates(state, player, gain):
+                    return False
                 case RedirectSpiesOnTurnSpace() if (
                     agent_turn_space_id(state, player) is None
                 ):
@@ -482,6 +499,31 @@ def _choice_rewards_feasible(
                 case _:
                     pass
     return True
+
+
+def influence_gain_candidates(
+    state: GameState,
+    player: int,
+    gain: GainInfluence,
+) -> tuple[Faction, ...]:
+    """Factions a GainInfluence choice may pick, after its printed limits."""
+
+    owner = state.players[player]
+    candidates = gain.factions if gain.factions is not None else tuple(Faction)
+    if gain.where_opponent_leads:
+        leading = factions_where_opponent_leads(state, player)
+        candidates = tuple(f for f in candidates if f in leading)
+    if gain.different_from_trigger:
+        candidates = tuple(
+            f for f in candidates if f.value != owner.navigation_trigger_faction
+        )
+    if gain.minimum_own:
+        candidates = tuple(
+            f
+            for f in candidates
+            if influence_amount(owner.influence, f) >= gain.minimum_own
+        )
+    return candidates
 
 
 def factions_where_opponent_leads(
@@ -536,6 +578,7 @@ class RewardOutcome:
     redirects_turn_space_spies: bool = False
     sandworms_replaced: int = 0
     passes_turn: bool = False
+    reserve_acquisitions: tuple[str, ...] = ()
 
 
 def automatic_rewards(sections: tuple[EffectSection, ...]) -> tuple[Reward, ...]:
@@ -581,6 +624,7 @@ def apply_rewards(
     redirects_turn_space_spies = False
     sandworms_replaced = 0
     passes_turn = False
+    reserve_acquisitions: list[str] = []
     personal_draws = 0
     intrigue_draws = 0
     contracts = 0
@@ -701,6 +745,13 @@ def apply_rewards(
                 )
             case PassTurn():
                 passes_turn = True
+            case PermanentRevealPersuasion(amount=amount):
+                owner = replace(
+                    owner,
+                    reveal_persuasion_bonus=owner.reveal_persuasion_bonus + amount,
+                )
+            case AcquireReserveCard(card_id=card_id):
+                reserve_acquisitions.append(card_id)
             case GrantCombatDeployment():
                 combat_icons += 1
             case RedirectSpiesOnTurnSpace():
@@ -763,4 +814,5 @@ def apply_rewards(
         redirects_turn_space_spies=redirects_turn_space_spies,
         sandworms_replaced=sandworms_replaced,
         passes_turn=passes_turn,
+        reserve_acquisitions=tuple(reserve_acquisitions),
     )
