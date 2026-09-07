@@ -26,3 +26,23 @@ def test_unsupported_player_count_is_rejected(players: int) -> None:
         match="only four-player Uprising is currently supported",
     ):
         RulesetConfig(players=players)
+
+
+def test_bloodlines_and_tech_module_extend_the_identifier() -> None:
+    assert RulesetConfig(bloodlines=True).identifier == "uprising-4p-base+bloodlines"
+    assert (
+        RulesetConfig(choam_module=True, bloodlines=True, tech_module=True).identifier
+        == "uprising-4p-choam+bloodlines+tech"
+    )
+    assert (
+        RulesetConfig(promo_cards=True, bloodlines=True).identifier
+        == "uprising-4p-base+promo+bloodlines"
+    )
+
+
+def test_tech_module_requires_bloodlines() -> None:
+    with pytest.raises(
+        ValueError,
+        match="the Tech Module requires the Bloodlines expansion",
+    ):
+        RulesetConfig(tech_module=True)

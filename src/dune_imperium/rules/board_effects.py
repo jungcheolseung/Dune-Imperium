@@ -24,6 +24,7 @@ from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effects import (
+    BOARD_ICON_COMMANDER,
     AutomaticEffect,
     DrawImperiumCardsEffect,
     DrawIntrigueCardsEffect,
@@ -50,6 +51,7 @@ from dune_imperium.rules.intrigue_deck import (
     draw_or_queue_intrigue_cards,
 )
 from dune_imperium.rules.leader_abilities import units_deployment_blocked
+from dune_imperium.rules.planetologist import replace_sandworms, replaces_sandworms
 from dune_imperium.rules.shield_wall import (
     current_conflict_is_shield_wall_protected,
     destroy_shield_wall,
@@ -88,6 +90,9 @@ BOARD_ICON_INFLUENCE: Final = "influence"  # Shipping: Influence with a chosen F
 BOARD_ICON_SIETCH_TABR: Final = "sietch_tabr"  # one printed choose-one row
 BOARD_ICON_MAKER: Final = "maker"  # bonus spice, then spice or sandworms
 BOARD_ICON_IMPERIAL_PRIVILEGE: Final = "imperial_privilege"  # written sentences
+BOARD_ICON_TUEK_SIETCH: Final = "tuek_sietch"  # bonus spice, then spice or a card
+# ``BOARD_ICON_COMMANDER`` (Bloodlines) is defined in ``effects`` and resolved
+# by ``rules.sardaukar``.
 
 # Board spaces with at least one icon that is resolved through a dedicated
 # choice rather than the generic ``resolve_board_effect`` action.
@@ -101,6 +106,7 @@ CHOICE_DRIVEN_SPACE_IDS = frozenset(
         "shipping",
         "desert_tactics",
         "imperial_privilege",
+        "tuek_sietch",
     }
 )
 
@@ -272,6 +278,8 @@ def board_icons_for(
             return (BOARD_ICON_MAKER,)
         case "imperial_privilege":
             return (BOARD_ICON_IMPERIAL_PRIVILEGE,)
+        case "tuek_sietch":
+            return (BOARD_ICON_TUEK_SIETCH,)
     icons = [
         board_icon_for_effect(effect)
         for effect in visit_board_effects(
@@ -287,6 +295,10 @@ def board_icons_for(
             icons.append(BOARD_ICON_INFLUENCE)
         case "accept_contract" | "dutiful_service" if choam_module:
             icons.append(BOARD_ICON_CONTRACT)
+    if space_id in state.sardaukar_commander_space_ids:
+        # Bloodlines: the Commander waiting on the space may be bought as
+        # one more freely ordered effect of the visit [Bloodlines p. 4].
+        icons.append(BOARD_ICON_COMMANDER)
     if len(set(icons)) != len(icons):
         raise RuntimeError(f"board icons of {space_id} must be distinct: {icons}")
     return tuple(icons)
@@ -1173,6 +1185,76 @@ def skip_impossible_imperial_privilege_recall(result: RuleResult) -> RuleResult:
     return RuleResult(state=skipped.state, events=(*result.events, *skipped.events))
 
 
+def legal_tuek_sietch_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Tuek's Sietch: take the bonus spice, then one spice or one card."""
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return ()
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    if context.get("space_id") != "tuek_sietch" or not board_icon_is_pending(
+        context, BOARD_ICON_TUEK_SIETCH
+    ):
+        return ()
+    return (
+        DomainAction(action_id="take_tuek_sietch_spice", actor=player),
+        DomainAction(action_id="take_tuek_sietch_card", actor=player),
+    )
+
+
+def apply_tuek_sietch_action(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Resolve Tuek's Sietch: bonus spice plus the chosen printed reward."""
+
+    if action not in legal_tuek_sietch_actions(state, action.actor):
+        raise ValueError("action is not a legal Tuek's Sietch choice")
+    _, context = current_agent_effect_context(state)
+    bonus_by_space = dict(state.maker_bonus_spice)
+    bonus_spice = bonus_by_space.get("tuek_sietch", 0)
+    owner = state.players[action.actor]
+    spice = 1 if action.action_id == "take_tuek_sietch_spice" else 0
+    owner = replace(
+        owner,
+        resources=replace(
+            owner.resources, spice=owner.resources.spice + bonus_spice + spice
+        ),
+    )
+    players = replace_player(state.players, owner)
+    maker_bonus_spice = tuple(
+        (candidate, 0 if candidate == "tuek_sietch" else amount)
+        for candidate, amount in state.maker_bonus_spice
+    )
+    finish_board_icon(context, BOARD_ICON_TUEK_SIETCH)
+    effect_state = replace(state, players=players, maker_bonus_spice=maker_bonus_spice)
+    next_state = advance_after_effect(effect_state, context, players)
+    source = f"round:{state.round_number}:player:{action.actor}:board:tuek_sietch"
+    event = GameEvent(
+        event_id=source,
+        kind="board_effect_resolved",
+        payload=(
+            ("action_id", action.action_id),
+            ("bonus_spice", bonus_spice),
+            ("effect", BOARD_ICON_TUEK_SIETCH),
+            ("player", action.actor),
+            ("space_id", "tuek_sietch"),
+            ("spice", bonus_spice + spice),
+        ),
+    )
+    if spice:
+        return RuleResult(state=next_state, events=(event,))
+    drawn = draw_or_request_personal_cards(next_state, action.actor, 1, source=source)
+    return RuleResult(state=drawn.state, events=(event, *drawn.events))
+
+
 def legal_maker_space_actions(
     state: GameState,
     player: int,
@@ -1206,7 +1288,12 @@ def legal_maker_space_actions(
         space_id != "imperial_basin"
         and owner.maker_hooks
         and state.current_conflict_ids
-        and not current_conflict_is_shield_wall_protected(state)
+        # Arrakis Planetologist replaces the sandworms "even when the
+        # Conflict is protected by the Shield Wall" [Liet Kynes card].
+        and (
+            replaces_sandworms(owner)
+            or not current_conflict_is_shield_wall_protected(state)
+        )
         # A summoned sandworm is immediately deployed [Main p. 20], so the
         # Emperor of the Known Universe restriction withholds it.
         and not units_deployment_blocked(state, player)
@@ -1237,6 +1324,7 @@ def apply_maker_space_action(
     owner = state.players[action.actor]
     base_spice = 0
     sandworms = 0
+    replaced = 0
     if action.action_id == "harvest_maker_spice":
         base_spice = {
             "deep_desert": 4,
@@ -1248,6 +1336,15 @@ def apply_maker_space_action(
             resources=replace(
                 owner.resources,
                 spice=owner.resources.spice + bonus_spice + base_spice,
+            ),
+        )
+    elif replaces_sandworms(owner):
+        replaced = 2 if space_id == "deep_desert" else 1
+        owner = replace(
+            owner,
+            resources=replace(
+                owner.resources,
+                spice=owner.resources.spice + bonus_spice,
             ),
         )
     else:
@@ -1291,6 +1388,14 @@ def apply_maker_space_action(
             ("spice", bonus_spice + base_spice),
         ),
     )
+    if replaced:
+        replacement = replace_sandworms(
+            next_state,
+            action.actor,
+            replaced,
+            source=f"round:{state.round_number}:player:{action.actor}:board:{space_id}",
+        )
+        return RuleResult(state=replacement.state, events=(event, *replacement.events))
     return RuleResult(state=next_state, events=(event,))
 
 

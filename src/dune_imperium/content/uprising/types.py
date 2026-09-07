@@ -130,18 +130,82 @@ class PersonalCardAgentEffect(StrEnum):
     RECRUIT_ONE_AND_DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO = (
         "recruit_one_and_draw_if_bene_gesserit_influence_two"
     )
+    # Bloodlines (card faces, 2026-09-07).
+    DRAW_INTRIGUE_CARD = "draw_intrigue_card"
+    RECRUIT_ONE_IF_EMPEROR_INFLUENCE_TWO = "recruit_one_if_emperor_influence_two"
+    MAY_DISCARD_TO_DRAW_ONE = "may_discard_to_draw_one"
+    DRAW_INTRIGUE_IF_SANDWORM_IN_CONFLICT = "draw_intrigue_if_sandworm_in_conflict"
+    DRAW_ONE_IF_GAINED_TWO_SPICE_THIS_TURN = "draw_one_if_gained_two_spice_this_turn"
+    RECRUIT_ONE_AND_DRAW_ONE_IF_GAINED_TWO_SPICE_THIS_TURN = (
+        "recruit_one_and_draw_one_if_gained_two_spice_this_turn"
+    )
+    TAKE_CONTRACT_IF_SPY_RECALLED_THIS_TURN = (
+        "take_contract_if_spy_recalled_this_turn"
+    )
+    DRAW_INTRIGUE_IF_CONTRACT_COMPLETED_THIS_TURN = (
+        "draw_intrigue_if_contract_completed_this_turn"
+    )
+    # Elite Forces: "You may trash a card from your hand. If you trash an
+    # Emperor card: Intrigue, troop, Combat icon".
+    MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS = (
+        "may_trash_hand_card_for_emperor_rewards"
+    )
+    # Disruption Tactics: "Force an enemy troop to retreat."
+    FORCE_OPPONENT_TROOP_RETREAT = "force_opponent_troop_retreat"
+    # Arrakis Observer: "[discard] -> Spy with Deep Cover; if you discarded a
+    # Spacing Guild card: 2 spice".
+    MAY_DISCARD_FOR_DEEP_COVER_SPY = "may_discard_for_deep_cover_spy"
+    # Engineered Miracle: "[discard] -> water".
+    MAY_DISCARD_FOR_WATER = "may_discard_for_water"
+    # CHOAM Demands: "Complete one of your contracts."
+    COMPLETE_ONE_CONTRACT = "complete_one_contract"
+    # Urgent Shigawire: "The next Bene Gesserit card you play this round has
+    # all Agent icons and, added to its Agent box: draw a card."
+    BOOST_NEXT_BENE_GESSERIT_CARD_THIS_ROUND = (
+        "boost_next_bene_gesserit_card_this_round"
+    )
+    # Holy War: "Each opponent loses one troop. Each opponent spying on the
+    # board space where you sent an Agent this turn must move that Spy."
+    EACH_OPPONENT_LOSES_TROOP_AND_MOVES_SPY = (
+        "each_opponent_loses_troop_and_moves_spy"
+    )
+    # Southern Faith: "draw a card OR, if another Bene Gesserit card is in
+    # play, Bene Gesserit Influence".
+    DRAW_ONE_OR_BENE_GESSERIT_INFLUENCE_IF_BOND = (
+        "draw_one_or_bene_gesserit_influence_if_bond"
+    )
+    # Possible Futures: "Influence of your choice OR 2 troops; with another
+    # Bene Gesserit card in play, get both".
+    CHOSEN_INFLUENCE_OR_TWO_TROOPS_BOTH_IF_BOND = (
+        "chosen_influence_or_two_troops_both_if_bond"
+    )
 
 
 class PersonalCardTrashEffect(StrEnum):
     """Typed effects triggered when a personal card is trashed."""
 
     DRAW_INTRIGUE_CARD = "draw_intrigue_card"
+    # Eliminate Allies (Bloodlines): "When this card is trashed: 2 troops".
+    RECRUIT_TWO_TROOPS = "recruit_two_troops"
+    # Sardaukar Standard (Bloodlines): "When this card is trashed: acquire
+    # and recruit the Sardaukar Commander in the bank".
+    ACQUIRE_BANK_COMMANDER = "acquire_bank_commander"
+
+
+class PersonalCardTurnStartEffect(StrEnum):
+    """Printed alternatives a card offers at the start of its owner's turn."""
+
+    # Litany Against Fear (Bloodlines): "At the start of your turn: put this
+    # card into play -> draw a card and pass your turn."
+    PLAY_TO_DRAW_AND_PASS = "play_to_draw_and_pass"
 
 
 class PersonalCardDiscardEffect(StrEnum):
     """Typed effects triggered when a personal card is discarded from hand."""
 
     GAIN_TWO_SPICE = "gain_two_spice"
+    # Corrupt Bureaucrat (Bloodlines): "When this card is discarded: 3 Solari".
+    GAIN_THREE_SOLARI = "gain_three_solari"
 
 
 class PersonalCardAcquisitionEffect(StrEnum):
@@ -153,6 +217,10 @@ class PersonalCardAcquisitionEffect(StrEnum):
     GAIN_SPACING_GUILD_INFLUENCE = "gain_spacing_guild_influence"
     TAKE_CONTRACT = "take_contract"
     RECRUIT_ONE_TROOP = "recruit_one_troop"
+    # Imperial Throneship (Bloodlines): one Emperor Influence on acquisition.
+    GAIN_EMPEROR_INFLUENCE = "gain_emperor_influence"
+    # Possible Futures (Bloodlines): one water on acquisition.
+    GAIN_ONE_WATER = "gain_one_water"
 
 
 class PersonalCardRevealChoiceEffect(StrEnum):
@@ -183,6 +251,47 @@ class PersonalCardRevealChoiceEffect(StrEnum):
     KEEP_SPICE_OR_TRASH_SELF_FOR_VP_IF_FOUR_CONTRACTS = (
         "keep_spice_or_trash_self_for_vp_if_four_contracts"
     )
+    # Bloodlines. "Command (6+)" choices open only in a Reveal turn that
+    # generates six or more Persuasion [Bloodlines pp. 5, 12].
+    COMMAND_MAY_TRASH_CARD = "command_may_trash_card"
+    COMMAND_PLACE_SPY = "command_place_spy"
+    COMMAND_GAIN_CHOSEN_INFLUENCE = "command_gain_chosen_influence"
+    MAY_RETREAT_TWO_TROOPS_FOR_TWO_PERSUASION = (
+        "may_retreat_two_troops_for_two_persuasion"
+    )
+    # Disruption Tactics: "Trash this card -> Combat icon".
+    MAY_TRASH_SELF_FOR_COMBAT_ICON = "may_trash_self_for_combat_icon"
+    # Arrakis Observer: "[recall a Spy] -> 3 swords".
+    MAY_RECALL_SPY_FOR_THREE_STRENGTH = "may_recall_spy_for_three_strength"
+    # Engineered Miracle: "Command: Trash this card -> Acquire a card from
+    # the Imperium Row".
+    COMMAND_MAY_TRASH_SELF_TO_ACQUIRE_ROW_CARD = (
+        "command_may_trash_self_to_acquire_row_card"
+    )
+    # CHOAM Demands: "If you have completed four or more contracts: trash
+    # this card -> one Influence with each Faction".
+    MAY_TRASH_SELF_FOR_FOUR_INFLUENCE_IF_FOUR_CONTRACTS = (
+        "may_trash_self_for_four_influence_if_four_contracts"
+    )
+    # Delivery Logistics: "1 Persuasion OR a contract".
+    PERSUASION_OR_CONTRACT = "persuasion_or_contract"
+
+
+# Choice effects added by Bloodlines: their action templates join only the
+# option's catalogs so the retail catalogs keep their size.
+BLOODLINES_REVEAL_CHOICE_EFFECTS: frozenset[PersonalCardRevealChoiceEffect] = frozenset(
+    {
+        PersonalCardRevealChoiceEffect.COMMAND_MAY_TRASH_CARD,
+        PersonalCardRevealChoiceEffect.COMMAND_PLACE_SPY,
+        PersonalCardRevealChoiceEffect.COMMAND_GAIN_CHOSEN_INFLUENCE,
+        PersonalCardRevealChoiceEffect.MAY_RETREAT_TWO_TROOPS_FOR_TWO_PERSUASION,
+        PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_FOR_COMBAT_ICON,
+        PersonalCardRevealChoiceEffect.MAY_RECALL_SPY_FOR_THREE_STRENGTH,
+        PersonalCardRevealChoiceEffect.COMMAND_MAY_TRASH_SELF_TO_ACQUIRE_ROW_CARD,
+        PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_FOR_FOUR_INFLUENCE_IF_FOUR_CONTRACTS,
+        PersonalCardRevealChoiceEffect.PERSUASION_OR_CONTRACT,
+    }
+)
 
 
 class PersonalCardRevealAcquisitionEffect(StrEnum):
@@ -214,6 +323,19 @@ class PersonalCardRevealEffect:
     requires_spying_on_maker_space: bool = False
     per_revealed_faction: PersonalCardBond | None = None
     persuasion_per_completed_contract: int = 0
+    # Bloodlines conditions: a Sardaukar Commander in the Conflict (Quash
+    # Rebellion), a garrison size (Imperial Throneship: "four or more
+    # garrisoned units", troops and Commanders), and "Command (6+)": the
+    # Reveal turn generates six or more Persuasion [Bloodlines pp. 5, 12].
+    requires_commander_in_conflict: bool = False
+    minimum_garrisoned_units: int = 0
+    requires_command: bool = False
+    # Bombast: "Command: 3 Solari and trash this card" — the card leaves
+    # play when the effect pays out.
+    trashes_self: bool = False
+    # Holy War: "Fremen Bond: Combat icon" — deploy in this Reveal as though
+    # at a Combat space [Bloodlines p. 5].
+    grants_combat_icon: bool = False
 
     def __post_init__(self) -> None:
         if self.required_faction_bond is not None and not isinstance(
@@ -259,10 +381,14 @@ class PersonalCardRevealEffect:
             self.influence,
             self.persuasion_per_completed_contract,
         )
-        if min((*gains, self.minimum_spies_placed)) < 0:
+        if min((*gains, self.minimum_spies_placed, self.minimum_garrisoned_units)) < 0:
             raise ValueError("personal-card Reveal gains must not be negative")
-        if max(gains) == 0:
+        if max(gains) == 0 and not self.grants_combat_icon:
             raise ValueError("personal-card Reveal effect must gain something")
+        if self.requires_command and self.persuasion:
+            # The Persuasion total that satisfies Command must not depend on
+            # the Command reward itself.
+            raise ValueError("a Command effect cannot grant Persuasion")
 
 
 class BattleIcon(StrEnum):

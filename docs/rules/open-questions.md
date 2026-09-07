@@ -118,6 +118,8 @@
 - 확정(2026-09-01): 콘텐츠 완결 시점에서 자유 순서 그룹 밖의 동시 의무 효과 계열은 획득(acquire) 이벤트 하나뿐임을 확인하고, 구현된 고정 순서를 최종 판정으로 채택한다: 획득한 카드 자신의 acquire 보상(예: The Spice Must Flow의 VP) → in-play 카드의 acquire trigger(spied Faction Influence) → Acquire Contract 완료(Spacing Guild Influence 1 + 3 Solari) → face-up trigger Intrigue(Call to Arms의 troop recruit). 네 단계 모두 같은 획득자에게 주는 가환 이득이고, Influence도 동일 플레이어의 순차 획득이라 Alliance 전이 판정이 순서에 불변이므로, 현재 콘텐츠에서 어떤 순서든 최종 상태가 같다. Clean Up discard trigger는 OQ-013(RESOLVED), 배치 trigger의 제시 시점은 OQ-016이 다룬다. 서로 비가환인 새 trigger 콘텐츠가 추가되면 다시 연다.
 - 참고(2026-09-01): Faction 공간 방문의 Influence 상승 **시점**은 이 항목의 질문이 아니라 공식 자유 순서 규칙이 직접 답한다 — "If the board space belongs to one of the Factions, you also move your cube one space up on its Influence track. You may carry out all these effects in any order" `[Main p. 9]`. 즉 방문자가 board·card 효과와의 순서를 스스로 고르며, 엔진도 `resolve_faction_influence`를 자유 순서 그룹의 선택 행동으로 제시한다.
 - 재개 조건(2026-09-01, 사용자): 다음 확장 Bloodlines는 Influence 획득의 순서를 관측 가능하게 만드는 trigger를 추가할 수 있다. Bloodlines 콘텐츠를 도입할 때 이 항목을 다시 열어, acquire 계열 밖의 새 충돌과 비가환 Influence trigger를 재검토한다.
+- 재검토(2026-09-07, Bloodlines 슬라이스 5d): Steersman Y'rkoon의 Plot Course("Whenever you reach 2 Influence with a Faction, play the next Navigation card")가 예고된 비가환 Influence trigger다. 한 효과가 Influence를 여러 번 올리면(예: 2 Influence 보상, 카드 1·10의 Influence 획득이 다시 2에 닿는 경우) trigger 순서가 Navigation 카드의 slot 순서와 얽혀 결과가 달라질 수 있다. 판정(project convention, OQ-039와 같이): trigger는 **Influence가 2에 닿은 순서대로** 대기열(`pending_navigation_plays`)에 쌓이고, 그 Influence 획득을 일으킨 효과가 완전히 끝난 뒤 엔진이 하나씩 연다(Sardaukar Standard의 Skill 선택과 같은 방식). 그 사이 다른 자유 순서 효과는 끼어들지 않는다. Bloodlines의 다른 Influence trigger(Loyalty·Imperial Birthright 계열)는 여전히 즉시·가환이라 acquire 계열 밖의 새 충돌은 이것뿐이며, 기존 고정 순서 판정은 유지한다.
+- 진행(2026-09-07): Bloodlines 도입을 시작했다([bloodlines.md](bloodlines.md)). 룰북 p. 12는 Steersman Y'rkoon이 "같은 Faction에서 Influence 2에 여러 번 도달할 수 있고 그때마다 Navigation 카드를 play한다"고 하여 Influence 도달 trigger가 실제로 추가된다. 재검토는 M12의 Leader 슬라이스에서 Y'rkoon을 전사할 때 한다.
 
 ## OQ-013 — Clean Up 이동과 일반적인 `discard` 반응
 
@@ -193,6 +195,79 @@
 - 확장 콘텐츠의 실제 사례(2026-09-06, 사용자 지적; 모두 현재 구현 범위 밖이며 규범 근거가 아니라 참고다). Immortality 프로모 Imperium 카드 Piter, Genius Advisor의 Agent box는 "Lose a troop → 카드 2장 draw + specimen"이다 `[Piter, Genius Advisor card]`. "Lose a troop"의 정의는 원본 Dune: Imperium 룰북 용어집에 있다: "When you lose a troop, return it to your supply (not your garrison)" `[Dune: Imperium Rules 2020-10-26 p. 16]`. 따라서 Immortality를 합치면 Agent turn 중에 garrison·Conflict의 troop이 supply로 돌아가는 효과가 실제로 존재하고, 예컨대 supply 0으로 Combat space의 troop 아이콘을 먼저 해결(recruit 0)한 뒤 Piter의 box를 해결하면 이 질문이 그대로 발생한다. 같은 확장의 specimen(supply의 troop을 Axolotl tanks에 두는 것)도 supply 왕복 경로이며, 룰북은 "You may return any of your specimens to your supply at any time. (This could be useful if you need to recruit troops but have no more in your supply.)"라고 적어 `[Immortality Rules p. 8]`, recruit 시점에 supply가 있어야 하고 부족하면 플레이어가 **미리** 채우는 쪽을 전제한다(소급 recruit를 직접 말하지는 않는다). Bloodlines 솔로 Rival 규칙은 lose a troop을 garrison에서 먼저, 없으면 Conflict에서 잃는다고 하여 `[Bloodlines Rules p. 8]` lose a troop의 출처가 garrison·Conflict 양쪽임을 시사한다. 공식 URL: https://d19y2ttatozxjp.cloudfront.net/pdfs/DUNE_IMPERIUM_Rules_2020_10_26.pdf, https://d19y2ttatozxjp.cloudfront.net/pdfs/DUNE_IMPERIUM_IMMORTALITY_Rulebook.pdf, https://d19y2ttatozxjp.cloudfront.net/pdfs/DUNE_IMPERIUM_BLOODLINES_Rulebook.pdf (2026-09-06 확인).
 - 기각한 대안(기록용): 같은 turn 안에서 supply가 늘어나면 부족분만큼 늦게 recruit하는 방식. OQ-028(c)의 `granted_reveal_effects`처럼 frame에 부족분을 기록하고 자동 지급해야 하며 Combat space의 배치 한도(`troops_recruited`)도 함께 늘려야 해서, 새 공식 근거가 나오지 않는 한 채택하지 않는다.
 - 재개 조건: 새 공식 룰북·FAQ가 소급 recruit를 직접 정할 때. Immortality의 lose a troop·specimen을 구현 범위에 넣을 때는 이 판정을 그대로 적용하고 그 효과의 순서 선택이 UI에 드러나는지만 확인한다.
+
+## OQ-031 — 고를 수 있는 face-up Skill이 없을 때의 Sardaukar Commander 획득
+
+- 상태: `DECIDED` (project convention)
+- 룰북은 Commander를 acquire할 때마다 Skill 하나를 얻되 "이미 supply에 있는 Skill의 복사본은 고를 수 없다"고 한다 `[Bloodlines p. 4]`. Skill은 7종 2장씩이므로, 이미 여러 Skill을 가진 플레이어가 face-up 4장이 모두 자신이 가진 종류인 상황을 만날 수 있다. 그때 Commander 획득 자체가 막히는지, Skill 없이 획득하는지는 어느 문서도 말하지 않는다.
+- 필요한 답: 획득 가능 여부와 Skill 미지급 시 보충 여부에 대한 공식 판정.
+- 이전 판정(2026-09-07 오전, 폐기): 고를 수 있는 face-up Skill이 없으면 Commander 획득 자체를 막았다(거절만 제시).
+- 판정(2026-09-07 재판정, 사용자 판정, project convention — 공식 규칙이 아니다): 중복 때문에 고를 수 있는 face-up Skill이 하나도 없으면 **Skill은 얻지 못하고 Commander만 획득한다**(2 Solari, garrison에 recruit; `acquire_sardaukar_commander`를 `skill_id` 없이 제시). 고를 수 있는 Skill이 있으면 반드시 하나를 골라야 한다. 카드 효과의 획득(Sardaukar Standard, OQ-035)도 같다.
+- 테스트: `tests/unit/rules/test_sardaukar.py`의 `test_without_a_choosable_skill_the_commander_is_bought_without_one`, `tests/unit/rules/test_bloodlines_cards.py`의 Sardaukar Standard 테스트.
+- 재개 조건: 새 공식 FAQ·룰북이 이 경우를 직접 정할 때.
+
+## OQ-032 — Skill의 Combat strength 조건을 판정하는 시점
+
+- 상태: `DECIDED` (project convention)
+- 룰북은 Skill이 "Combat을 해결할 때의 추가 strength"를 주고 Conflict에 Commander가 있는 동안 활성이라고만 한다 `[Bloodlines p. 4]`. Canny(Landsraad space의 Agent), Fierce(상대의 sandworm), Loyal(Emperor Influence 3)의 조건은 Reveal 뒤 Combat Intrigue로 바뀔 수 있다(예: Influence를 잃는 Intrigue, 뒤늦게 Reveal한 상대의 sandworm 소환).
+- 판정(2026-09-07, 사용자 확정, project convention): 조건은 매 step 뒤 현재 상태로 다시 판정하고 그 차이만큼 `combat_strength`를 조정한다(`rules/strength.py`의 `with_skill_strength`, 좌석의 `skill_strength_applied`). Combat 순위를 매기는 시점의 값이 "Combat을 해결할 때"의 값이며, Commander가 모두 Conflict를 떠나면 Skill strength도 사라진다(룰북 p. 4의 Go to Ground 예시와 일치). Desperate로 이미 얻은 검 3은 카드의 sword처럼 Reveal에서 확정된 값이라 Commander가 뒤에 떠나도 유닛이 남아 있는 한 유지한다.
+- 사용자 확인(2026-09-07): "매 step마다 계산하는 것이 맞고, 전투 중에도 조건 변동이 있으면 반영해야 한다." Combat Intrigue 단계의 조건 변화(Influence 상실, 뒤늦은 sandworm, Commander retreat)도 순위를 매기기 전에 반영한다.
+- 재개 조건: 공식 FAQ가 판정 시점을 정할 때.
+
+## OQ-033 — Command (6+)의 Persuasion 판정 시점
+
+- 상태: `DECIDED` (project convention)
+- 룰북은 "In a Reveal turn, you use the effect that follows if you generate 6 Persuasion or more"라고만 한다 `[Bloodlines p. 5]`. Reveal turn의 Persuasion은 Reveal 중의 선택(Corrinth City의 High Council, Reveal 중 draw한 카드, Command Center의 retreat 등)으로 늘어날 수 있어, Command를 Reveal 시작 시점에 한 번만 판정하는지 Reveal 도중 6에 도달해도 인정하는지가 열려 있다.
+- 판정(2026-09-07, project convention): OQ-028의 원칙(조건은 해결 시점에 판정하고 같은 turn의 뒤 선택으로 성립한 조건도 인정)을 그대로 적용한다. 자동 Command 효과(I Believe의 troop 2 등)는 Reveal 시작 시 Persuasion이 6 이상이면 지급되고, 미만이면 다른 자동 효과처럼 Reveal 도중 6에 도달하는 첫 시점에 지급된다(`grant_late_reveal_effects`). 선택형 Command 효과(Shrouded Counsel의 trash, Intelligence Training의 Spy, Pointing the Way의 Influence)는 6 미만이면 미뤄졌다가(`deferred_reveal_choices`) 6에 도달하면 다시 열리고, Reveal이 끝날 때까지 도달하지 못하면 소멸한다. Command 효과 자체는 Persuasion을 주지 않으므로(`PersonalCardRevealEffect.__post_init__`이 강제) 판정이 순환하지 않는다.
+- 재개 조건: 공식 FAQ가 Command의 판정 시점을 정할 때.
+
+## OQ-034 — Disruption Tactics의 "enemy troop" 선택과 Reveal 중 Combat 아이콘 배치의 회수
+
+- 상태: `DECIDED` (project convention)
+- Disruption Tactics의 Agent box "Force an enemy troop to retreat"(카드면)는 어느 상대의 어느 유닛인지, Sardaukar Commander도 "troop"인지 말하지 않는다. `[Bloodlines p. 4]`는 Commander를 "troop"으로 취급하라고 하므로 대상은 될 수 있지만, 상대가 troop과 Commander를 함께 두었을 때 누가 종류를 고르는지는 열려 있다.
+- 판정(2026-09-07, project convention): 카드를 play한 플레이어가 상대 좌석과 유닛 종류를 고른다(`retreat_opponent_troop(player, commanders)`). Conflict에 상대 유닛이 하나도 없으면 효과 없이 해결된다(OQ-028의 해결 시점 판정).
+- 같이 정한 것: Reveal turn 중 Combat 아이콘(Disruption Tactics, Adaptive Tactics 등)으로 여는 배치 창은 OQ-029의 Agent turn 기본 배치와 달리 회수(`withdraw_*`)를 제시하지 않는다. Reveal의 배치는 즉시 strength에 반영되는 `add_units_to_reveal` 경로를 쓰며, 되돌리기는 로컬 UI의 행동 되돌리기로 한다.
+- 재개 조건: 공식 FAQ가 대상 선택 주체를 정할 때.
+
+## OQ-035 — Sardaukar Standard의 trash 트리거와 Skill 선택·시점
+
+- 상태: `DECIDED` (project convention)
+- Sardaukar Standard의 "When this card is trashed: acquire and recruit the Sardaukar Commander in the bank"(카드면)는 (a) bank의 Commander를 얻을 때 Skill 선택이 따라오는지, (b) 고를 수 있는 face-up Skill이 없을 때(보유 중인 Skill뿐이거나 row가 비었을 때) Commander만 얻는지, (c) trash가 다른 효과의 해결 도중(Intrigue의 trash 슬롯, Reveal의 trash 선택 등)에 일어났을 때 Skill 선택을 언제 하는지를 말하지 않는다. `[Bloodlines p. 4]`는 Commander 획득이 Skill 선택을 동반한다고만 한다.
+- 판정(2026-09-07, 사용자 판정, project convention): (a) Commander space 구매와 같이 Skill 선택이 따라온다. (b) 고를 수 있는 Skill이 없으면 OQ-031과 같이 **Skill 없이 Commander만** 얻는다(선택 frame 없이 바로 garrison으로). bank가 비었을 때만 아무것도 얻지 않고 공개 이벤트(`sardaukar_commander_unavailable`)를 남긴다. (c) Skill 선택은 trash를 일으킨 효과가 결정 스택을 놓은 뒤 엔진이 여는 별도 frame(`skill_choice`)에서 하며, 그 사이 bank나 Skill row가 바뀌면 그 시점 상태로 (b)를 다시 판정한다. 얻은 Commander는 garrison으로 가고 Agent turn 중이면 이번 turn recruit한 유닛으로 센다(`[Bloodlines p. 4]`).
+- 이전 판정(같은 날, 폐기): 고를 Skill이 없으면 Commander도 얻지 않았다.
+- 같이 정한 것: Urgent Shigawire의 "added to its Agent box: draw a card"는 부스트된 카드의 배치와 함께 즉시 해결한다(Agent box는 자유 순서라 draw를 먼저 두는 것이 소유자에게 불리하지 않다).
+- 재개 조건: 공식 FAQ가 Skill 없는 Commander 획득을 허용하거나 trash 트리거의 해결 시점을 정할 때.
+
+## OQ-036 — "lose a troop"의 출처와 강제 Spy 이동의 목적지
+
+- 상태: `DECIDED` (project convention)
+- Holy War의 "Each opponent loses one troop"(카드면)는 troop을 garrison에서 잃는지 Conflict에서 잃는지, 누가 고르는지, Sardaukar Commander도 대상인지를 말하지 않는다. Holy War와 False Orders의 "Each opponent spying on the board space where you sent an Agent this turn must move that Spy"는 Spy가 어디로 갈 수 있는지, 갈 곳이 없으면 어떻게 되는지를 말하지 않는다. `[Bloodlines p. 4]`는 Commander를 card 효과의 "troop"으로 취급하라고만 한다.
+- 판정(2026-09-07, 사용자 판정, project convention): (a) 잃는 좌석이 **zone(garrison/Conflict)과 유닛 종류(troop/Commander)를 모두 고른다**(`lose_unit(zone, commanders?)`); 선택지가 하나뿐이면 자동. Commander는 [Bloodlines p. 4]에 따라 card 효과의 troop이므로 대상이다. Conflict에서 잃으면 retreat와 같이 strength 2를 뺀다. 유닛이 없는 좌석은 공개 이벤트만 남긴다. (b) 강제 이동은 일반 배치 규칙을 따른다: **Spy를 옮기는 좌석이** 빈 observation post 아무 곳이나 고른다(`move_spy(post_id)`). 갈 곳이 없는 경우는 없다 — post는 13곳이고 게임의 Spy는 4인 × 3 = 12개라 항상 하나는 비어 있다(엔진은 이를 불변식으로 둔다). 이동 순서는 시계 방향 다음 좌석부터. (c) False Orders의 "Then you place a Spy on that space"는 상대의 이동이 모두 끝난 뒤 그 공간에 연결된 빈 post에 배치하며, supply에 Spy가 없으면 먼저 하나를 회수한다(`[Main pp. 11, 20]`); 배치할 곳이 없으면 배치 없이 끝난다. 이 카드는 이번 turn에 Agent를 보낸 뒤에만 낼 수 있다.
+- 같이 정한 것: Coercive Negotiation이 "trash"하는 contract 2장은 게임에서 제외되며 공개 zone `contract_trash`에 남긴다(인구 census와 관측 세그먼트).
+- 재개 조건: 공식 FAQ가 "lose a troop"의 출처나 강제 이동의 목적지를 정할 때.
+
+## OQ-037 — Into the Fray로 Conflict에 간 Agent와 Bloodlines Leader 카드면의 아이콘 읽기
+
+- 상태: `DECIDED` (project convention)
+- Duncan Idaho의 Into the Fray는 "take the Agent you sent this turn and deploy it to the Conflict as a 2 strength unit that can't be retreated"라고만 한다(카드면). 그 Agent가 떠난 board space가 다시 비는지(다른 플레이어가 같은 round에 갈 수 있는지, Makers 단계에 spice가 쌓이는지), Agent가 언제 돌아오는지, 유닛으로서 "lose a troop"·Chani의 Tactics 같은 troop 효과의 대상인지는 공식 문서가 말하지 않는다. `[Bloodlines p. 12]`에는 Duncan 항목이 없다.
+- 판정(2026-09-07, project convention): (a) 문장 그대로 Agent를 board space에서 치운다 — 공간은 비어서 다른 플레이어가 갈 수 있고 Maker space라면 Makers 단계에 spice가 쌓인다. 이미 해결된 방문 효과는 되돌리지 않는다. (b) Agent는 Combat 정리 때 소유자에게 돌아간다(Recall 단계에서 어차피 모두 회수). (c) Agent 유닛은 troop이 아니므로 retreat·"lose a troop"·Tactics의 대상이 아니고, `units_in_conflict`와 strength에는 포함된다(Swordmaster 보유 시 3).
+- 같이 정한 카드면 읽기: Liet Kynes의 대체 아이콘 "[trash][1 spice][1 Intrigue]"에서 trash는 선택(소유자가 거절 가능)으로 읽는다 — 이득 줄에 인쇄된 trash 아이콘은 Uprising의 Desert Tactics처럼 선택이다. Chani의 "troops"에는 Commander가 포함된다(`[Bloodlines p. 4]`).
+- 재개 조건: 공식 FAQ가 Into the Fray의 공간·귀환을 정할 때.
+
+## OQ-038 — "Lose troops" 비용의 출처와 Harkonnen Advisor의 배치 금지 troop
+
+- 상태: `DECIDED` (project convention)
+- Twisted Intrigue의 Ambitious("Lose three of your troops"), Sadistic·Sinister("Lose ... of your troops"), Shrewd("Lose one of your troops in the Conflict")는 Shrewd 외에는 troop을 어느 zone에서 잃는지 말하지 않고, Sardaukar Commander가 대상인지도 말하지 않는다. Piter De Vries의 Signet "1 troop. You can't deploy this troop to the Conflict this turn."은 troop이 서로 구별되지 않는 garrison에서 "이 troop"을 어떻게 가려내는지 말하지 않는다.
+- 판정(2026-09-07, project convention): (a) 잃는 플레이어가 troop마다 zone(garrison/Conflict)과 종류(troop/Commander, `[Bloodlines p. 4]`의 "troop" 취급)를 고른다(`lose_intrigue_troop(zone[, commanders])`); Shrewd는 Conflict로 제한한다. Conflict에서 잃으면 retreat처럼 strength 2를 빼고, Agent turn이면 그 turn의 배치 카운터도 함께 줄인다. 조건 판정(OQ-036의 Holy War와 같은 방향). (b) Harkonnen Advisor(2026-09-07, 사용자 판정): Warmaster와의 차이는 오직 "그 troop 하나를 이번 turn Conflict에 배치할 수 없다"는 것이다. 엔진은 troop을 garrison에 두되 recruit로 세지 않고, 이번 Agent turn의 배치 가능 garrison troop 수를 1 줄인다(frame context `undeployable_troops`; 기본 배치·Intrigue의 garrison 배치 모두 적용). 예: garrison에 그 troop만 있으면 이번 turn에는 아무것도 배치할 수 없다. troop은 구별되지 않으므로, 같은 turn에 garrison에서 troop을 잃으면(Sadistic 등) 잃은 troop을 그 troop으로 쳐서 배치 가능 수가 정상으로 돌아온다(사용자 판정).
+- 같이 정한 것: Controlled의 "Look at the top card of your deck"은 덱이 비어 있으면 낼 수 없다(discard를 섞지 않는다). Calculating의 "type of unit"에는 Into the Fray로 싸우는 Agent도 든다.
+- 재개 조건: 공식 FAQ가 "lose troops"의 출처나 Harkonnen Advisor의 troop 추적을 정할 때.
+
+## OQ-039 — Navigation 카드의 play 시점·선택 불가·slot 조건
+
+- 상태: `DECIDED` (project convention)
+- Steersman Y'rkoon의 Plot Course(카드면)와 `[Bloodlines p. 12]`(face-down 카드를 언제든 볼 수 있고, Influence를 잃었다가 다시 2에 닿으면 또 play한다)는 (a) Navigation 카드를 "play"하는 정확한 시점, (b) 카드의 어느 option도 지불·적용할 수 없을 때(예: 카드 10 "Lose 1 Influence"를 Influence 0에서, 카드 2를 Spy 없이) 카드가 소모되는지, (c) "If this is in Navigation slot N" 조건의 판정 기준, (d) play된 카드의 행방을 말하지 않는다.
+- 판정(2026-09-07, project convention): (a) trigger를 일으킨 Influence 획득 효과가 끝난 직후 엔진이 `navigation_choice` frame을 열고 소유자가 인쇄 option 중 play 가능한 것을 고른다(OQ-012 재검토 참조). (b) 어느 option도 play할 수 없으면 카드는 효과 없이 소모된다(공개 이벤트 `navigation_card_played`에 `fizzled`). (c) slot 번호는 setup 때 놓은 순서(왼쪽부터 1~4)이며, 카드는 항상 남은 가장 왼쪽 slot에서 play되므로 "play된 장수 + 1"이다. (d) play된 카드는 소유자 옆에 공개로 둔다(`navigation_played`); 남은 slot은 소유자만 아는 비공개 정보(관측 `private_navigation_slots`), box로 돌려보낸 6장은 아무도 모른다. 카드 5의 "trash a card"는 선택(icon)이며 비용 1 이상(starter·Reserve 제외)의 카드를 trash했을 때만 spice 2를 준다. 카드 4의 The Spice Must Flow 획득은 Reserve가 남아 있을 때만 이루어지고 획득 VP를 준다. 카드 1의 "different Faction where you have 2+"는 trigger 진영을 제외한 Influence 2 이상의 진영이다. Hungry for Spice는 turn당 1회, "이번 turn 얻은 spice"는 다른 카드와 같은 `spice_gained_this_turn` 기준이다.
+- 재개 조건: 공식 FAQ가 Navigation 카드의 play 시점이나 불발 처리를 정할 때.
 
 ## 판정이 생겼을 때 기록할 정보
 

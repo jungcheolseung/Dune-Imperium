@@ -10,6 +10,9 @@ class SourceDocument(StrEnum):
     MAIN_RULEBOOK = "main_rulebook"
     BOARD_SPACE_GUIDE = "board_space_guide"
     FAQ = "faq"
+    # The Bloodlines expansion rulebook (``official-rule-sources.json`` key
+    # ``bloodlines``); cited as ``[Bloodlines p. N]`` with PDF page numbers.
+    BLOODLINES_RULEBOOK = "bloodlines_rulebook"
     # A card that no official document describes (the Uprising promo cards):
     # the printed card face itself is the source, cited as page 1.
     CARD_FACE = "card_face"
@@ -57,11 +60,18 @@ class DeckCardEntry:
     # Promo card outside the retail deck; dealt only with
     # ``RulesetConfig(promo_cards=True)``.
     promo: bool = False
+    # Bloodlines expansion card; dealt only with ``RulesetConfig(bloodlines=True)``
+    # [Bloodlines p. 3]. ``tech_only`` marks the Tech Module cards, dealt
+    # only with ``tech_module=True`` as well [Bloodlines p. 6].
+    bloodlines_only: bool = False
+    tech_only: bool = False
     acquisition_cost: int | None = None
     has_acquisition_bonus: bool = False
 
     def __post_init__(self) -> None:
         if self.copies < 1:
             raise ValueError("deck-card copies must be positive")
+        if self.tech_only and not self.bloodlines_only:
+            raise ValueError("Tech Module cards belong to the Bloodlines set")
         if self.acquisition_cost is not None and self.acquisition_cost < 0:
             raise ValueError("acquisition cost must not be negative")

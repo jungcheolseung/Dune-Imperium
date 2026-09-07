@@ -69,6 +69,9 @@ class BoardSpace:
     dynamic_cost: DynamicCost | None = None
     requirement: InfluenceRequirement | None = None
     sources: tuple[SourceRef, ...] = ()
+    # A Leader's private board space (Tuek's Sietch): on the table only
+    # while that Leader is in play [Bloodlines p. 12].
+    required_leader_id: str | None = None
 
     def __post_init__(self) -> None:
         if not self.space_id or not self.name:
@@ -275,6 +278,20 @@ BOARD_SPACES: Final = (
         cost_options=(ResourceCost(spice=3),),
         requirement=InfluenceRequirement(Faction.SPACING_GUILD, 2),
         sources=GUIDE_P2,
+    ),
+    # Bloodlines: Esmar Tuek's Maker space, "1 spice OR draw 1 card"
+    # (board tile; Dire Wolf design diary image) [Bloodlines p. 12].
+    BoardSpace(
+        "tuek_sietch",
+        "Tuek's Sietch",
+        AgentIcon.SPICE_TRADE,
+        combat=True,
+        maker=True,
+        sources=(
+            SourceRef(SourceDocument.BLOODLINES_RULEBOOK, (12,)),
+            SourceRef(SourceDocument.CARD_FACE, (1,)),
+        ),
+        required_leader_id="esmar_tuek",
     ),
 )
 

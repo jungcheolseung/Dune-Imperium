@@ -12,9 +12,20 @@ from dune_imperium.content.uprising.board import (
     InfluenceRequirement,
     ResourceCost,
 )
+from dune_imperium.content.uprising.contracts import (
+    ContractConditionKind,
+    contract_for_instance,
+)
 from dune_imperium.content.uprising.imperium import ImperiumCardEntry
-from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
-from dune_imperium.content.uprising.types import AgentIcon, PersonalCardAgentEffect
+from dune_imperium.content.uprising.personal_cards import (
+    PersonalCardDefinition,
+    personal_card_for_instance,
+)
+from dune_imperium.content.uprising.types import (
+    AgentIcon,
+    PersonalCardAgentEffect,
+    PersonalCardTurnStartEffect,
+)
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
@@ -24,8 +35,20 @@ from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.agent_effects import agent_card_icons_at_placement
 from dune_imperium.rules.board_effects import board_icons_for
 from dune_imperium.rules.card_bonds import has_faction_bond
+from dune_imperium.rules.card_draw import (
+    draw_or_request_personal_cards,
+)
 from dune_imperium.rules.contracts import contract_candidates_for_agent_turn
-from dune_imperium.rules.frames import FrameKind, owned_top_frame
+from dune_imperium.rules.effects import (
+    next_unrevealed_player,
+)
+from dune_imperium.rules.frames import (
+    FrameKind,
+    owned_top_frame,
+    replace_player,
+    reset_turn_counters,
+)
+from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
 from dune_imperium.rules.leader_abilities import apply_smuggle_spice
 
 
@@ -50,8 +73,17 @@ def legal_agent_actions(state: GameState, player: int) -> tuple[DomainAction, ..
     actions: list[DomainAction] = []
     for card_instance_id in owner.hand:
         card = personal_card_for_instance(card_instance_id)
+        icons = effective_agent_icons(card, owner)
+        # Urgent Shigawire: the boosted Bene Gesserit card "has all Agent
+        # icons", so every space's icon is satisfied.
+        any_icon = card_is_boosted(card, owner)
         for space in BOARD_SPACES:
-            if not card_can_access_space(card.agent_icons, space, owner):
+            if space.required_leader_id is not None and all(
+                seat.leader_id != space.required_leader_id for seat in state.players
+            ):
+                # Tuek's Sietch is on the table only with Esmar Tuek.
+                continue
+            if not card_can_access_space(icons, space, owner, any_icon=any_icon):
                 continue
             if space.space_id in owner.agent_locations:
                 continue
@@ -61,6 +93,12 @@ def legal_agent_actions(state: GameState, player: int) -> tuple[DomainAction, ..
                 not (
                     isinstance(card, ImperiumCardEntry)
                     and card.ignores_influence_requirements
+                )
+                # Insider Information (Bloodlines) waives them for the turn;
+                # Arrakis Planetologist ignores Sietch Tabr's [Liet Kynes card].
+                and not owner.ignores_influence_requirements_turn
+                and not (
+                    owner.leader_id == "liet_kynes" and space.space_id == "sietch_tabr"
                 )
                 and not _meets_requirement(owner.influence, space.requirement)
             ):
@@ -101,10 +139,41 @@ def legal_agent_actions(state: GameState, player: int) -> tuple[DomainAction, ..
     return tuple(actions)
 
 
+def effective_agent_icons(
+    card: PersonalCardDefinition,
+    owner: PlayerState,
+) -> tuple[AgentIcon, ...]:
+    """Return the card's Agent icons as printed, plus any it borrows.
+
+    Delivery Logistics (Bloodlines) has "the Agent icons of all your
+    incomplete contracts": each active Contract that names a board space
+    lends that space's icon, and a harvest Contract lends the Spice Trade
+    icon of the Maker spaces.
+    """
+
+    icons = list(card.agent_icons)
+    if isinstance(card, ImperiumCardEntry) and card.agent_icons_from_contracts:
+        for instance_id in owner.active_contract_ids:
+            condition = contract_for_instance(instance_id).condition
+            if condition.kind is ContractConditionKind.BOARD_SPACE:
+                icons.append(BOARD_SPACES_BY_ID[condition.target].agent_icon)
+            elif condition.kind is ContractConditionKind.HARVEST_SPICE:
+                icons.append(AgentIcon.SPICE_TRADE)
+    return tuple(dict.fromkeys(icons))
+
+
+def card_is_boosted(card: PersonalCardDefinition, owner: PlayerState) -> bool:
+    """Return whether Urgent Shigawire's boost applies to this card."""
+
+    return owner.bene_gesserit_boost_pending and Faction.BENE_GESSERIT in card.factions
+
+
 def card_can_access_space(
     agent_icons: tuple[AgentIcon, ...],
     space: BoardSpace,
     owner: PlayerState,
+    *,
+    any_icon: bool = False,
 ) -> bool:
     """Return whether a card's Agent icons make ``space`` a destination.
 
@@ -113,9 +182,17 @@ def card_can_access_space(
     to the destination, without recalling that Spy.
     """
 
-    if space.agent_icon in agent_icons:
+    if any_icon or space.agent_icon in agent_icons:
         return True
-    if AgentIcon.SPY not in agent_icons:
+    # Emperor's Invitation (Bloodlines): "The card you play this turn has
+    # the [Emperor] icon."
+    if owner.granted_agent_icon_turn and space.agent_icon.value in (
+        owner.granted_agent_icon_turn.split(",")
+    ):
+        return True
+    # Clandestine: "Each card you play has the Spy icon" [Gaius Helen
+    # Mohiam card].
+    if AgentIcon.SPY not in agent_icons and owner.leader_id != "gaius_helen_mohiam":
         return False
     return bool(_connected_spy_post_ids(owner, space.space_id))
 
@@ -138,7 +215,9 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
 
     card = personal_card_for_instance(card_instance_id)
     space = BOARD_SPACES_BY_ID[space_id]
-    cost_option, cost = _selected_cost(state, space, arguments.get("cost_option"))
+    cost_option, cost = _selected_cost(
+        state, space, arguments.get("cost_option"), action.actor
+    )
     owner = state.players[action.actor]
     # Emperor of the Known Universe: playing Shaddam's Signet Ring blocks
     # unit deployment to the Conflict for this whole turn, effective
@@ -150,8 +229,10 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
     infiltrate_post_id = arguments.get("infiltrate_post_id")
     if infiltrate_post_id is not None and not isinstance(infiltrate_post_id, str):
         raise ValueError("Agent action infiltrate_post_id must be a string")
+    boosted = card_is_boosted(card, owner)
     next_owner = replace(
         owner,
+        bene_gesserit_boost_pending=owner.bene_gesserit_boost_pending and not boosted,
         resources=_pay_cost(owner.resources, cost),
         spice_spent_turn=owner.spice_spent_turn + cost.spice,
         agents_available=owner.agents_available - 1,
@@ -200,7 +281,12 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
             ("card_id", card_instance_id),
             ("combat_troops_deployed", 0),
             ("cost_option", cost_option),
-            ("existing_troop_deployment_limit", 2 if space.combat else 0),
+            # A Combat icon gained earlier this turn deploys like a Combat
+            # space, never more than two from the garrison [Bloodlines p. 5].
+            (
+                "existing_troop_deployment_limit",
+                2 if space.combat or owner.combat_icon_turn else 0,
+            ),
             ("pending_agent_effect", agent_effect_pending),
             ("pending_agent_icons", agent_icons),
             ("pending_board_effect", bool(board_icons)),
@@ -210,6 +296,7 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
                 not units_deploy_blocked
                 and (
                     space.combat
+                    or owner.combat_icon_turn
                     or (
                         isinstance(card, ImperiumCardEntry)
                         and card.allows_recruited_troop_deployment
@@ -305,7 +392,162 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
         *(() if control_event is None else (control_event,)),
         *smuggle_events,
     )
+    if space_id == "tuek_sietch":
+        # Tuek's Sietch (Esmar Tuek): the owner's own visit pays one Solari,
+        # an opponent's visit draws him an Intrigue card [Esmar Tuek card].
+        next_state, sietch_events = _apply_tuek_sietch_visit(
+            next_state, action.actor, state.round_number
+        )
+        events = (*events, *sietch_events)
+    if boosted:
+        # Urgent Shigawire: "added to its Agent box: draw a card". The draw
+        # resolves with the placement (its box is freely ordered anyway).
+        draw_source = (
+            f"round:{state.round_number}:player:{action.actor}:"
+            f"shigawire:{card_instance_id}"
+        )
+        drawn = draw_or_request_personal_cards(
+            next_state, action.actor, 1, source=draw_source
+        )
+        next_state = drawn.state
+        events = (
+            *events,
+            GameEvent(
+                event_id=draw_source,
+                kind="agent_card_boost_consumed",
+                payload=(("card_id", card_instance_id), ("player", action.actor)),
+            ),
+            *drawn.events,
+        )
     return RuleResult(state=next_state, events=events)
+
+
+def _apply_tuek_sietch_visit(
+    state: GameState,
+    visitor: int,
+    round_number: int,
+) -> tuple[GameState, tuple[GameEvent, ...]]:
+    esmar = next(
+        (seat for seat in state.players if seat.leader_id == "esmar_tuek"), None
+    )
+    if esmar is None:
+        return state, ()
+    source = f"round:{round_number}:player:{visitor}:tuek_sietch_visit"
+    if esmar.player_id == visitor:
+        paid = replace(
+            esmar, resources=replace(esmar.resources, solari=esmar.resources.solari + 1)
+        )
+        return replace(state, players=replace_player(state.players, paid)), (
+            GameEvent(
+                event_id=source,
+                kind="leader_ability_resolved",
+                payload=(
+                    ("leader_id", "esmar_tuek"),
+                    ("player", esmar.player_id),
+                    ("solari", 1),
+                ),
+            ),
+        )
+    drawn = draw_or_queue_intrigue_cards(state, esmar.player_id, 1, source=source)
+    return drawn.state, (
+        GameEvent(
+            event_id=source,
+            kind="leader_ability_resolved",
+            payload=(
+                ("intrigue", 1),
+                ("leader_id", "esmar_tuek"),
+                ("player", esmar.player_id),
+                ("visitor", visitor),
+            ),
+        ),
+        *drawn.events,
+    )
+
+
+def legal_turn_start_card_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Offer Litany Against Fear's turn-start alternative from the hand.
+
+    "At the start of your turn: put this card into play -> draw a card and
+    pass your turn" [Litany Against Fear card]: an alternative to the Agent
+    or Reveal turn, taken from the turn frame.
+    """
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    if state.phase is not GamePhase.PLAYER_TURNS or not state.decision_stack:
+        return ()
+    if owned_top_frame(state, FrameKind.TURN, player) is None:
+        return ()
+    owner = state.players[player]
+    return tuple(
+        DomainAction(
+            action_id="play_turn_start_card",
+            actor=player,
+            arguments=(("card_id", card_instance_id),),
+        )
+        for card_instance_id in owner.hand
+        if _turn_start_effect(card_instance_id)
+        is PersonalCardTurnStartEffect.PLAY_TO_DRAW_AND_PASS
+    )
+
+
+def _turn_start_effect(card_instance_id: str) -> PersonalCardTurnStartEffect | None:
+    card = personal_card_for_instance(card_instance_id)
+    return card.turn_start_effect if isinstance(card, ImperiumCardEntry) else None
+
+
+def apply_turn_start_card(state: GameState, action: DomainAction) -> RuleResult:
+    """Put the card into play, draw one card, and pass the turn."""
+
+    if action not in legal_turn_start_card_actions(state, action.actor):
+        raise ValueError("action is not a legal turn-start card play")
+    card_instance_id = str(dict(action.arguments)["card_id"])
+    owner = state.players[action.actor]
+    next_owner = replace(
+        owner,
+        hand=tuple(card_id for card_id in owner.hand if card_id != card_instance_id),
+        in_play=(*owner.in_play, card_instance_id),
+    )
+    players = replace_player(state.players, next_owner)
+    # "Pass your turn": the clockwise unrevealed player's turn opens, as
+    # after an Agent turn; this seat stays unrevealed and comes around again.
+    next_player = next_unrevealed_player(replace(state, players=players), action.actor)
+    players = reset_turn_counters(players, next_player)
+    passed = replace(
+        state,
+        players=players,
+        decision_stack=(
+            *state.decision_stack[:-1],
+            DecisionFrame(
+                kind=FrameKind.TURN,
+                frame_id=f"round:{state.round_number}:turn:{next_player}",
+                decision=PlayerDecision(
+                    owner=next_player,
+                    prompt="Choose an Agent turn or Reveal turn",
+                ),
+                context=(("round", state.round_number), ("turn_owner", next_player)),
+            ),
+        ),
+    )
+    source = (
+        f"round:{state.round_number}:player:{action.actor}:"
+        f"turn_start_card:{card_instance_id}"
+    )
+    drawn = draw_or_request_personal_cards(passed, action.actor, 1, source=source)
+    return RuleResult(
+        state=drawn.state,
+        events=(
+            GameEvent(
+                event_id=source,
+                kind="turn_start_card_played",
+                payload=(("card_id", card_instance_id), ("player", action.actor)),
+            ),
+            *drawn.events,
+        ),
+    )
 
 
 def _agent_effect_is_available(
@@ -328,9 +570,11 @@ def _agent_effect_is_available(
 
     if effect is None:
         return False
-    if (
-        effect
-        is PersonalCardAgentEffect.GAIN_TWO_VISITED_FACTION_INFLUENCE_AND_TRASH_SELF
+    if effect in (
+        PersonalCardAgentEffect.GAIN_TWO_VISITED_FACTION_INFLUENCE_AND_TRASH_SELF,
+        # Reachable off a Faction space through a granted Spy or Agent icon
+        # (Clandestine, Resourceful, Urgent Shigawire): nothing to gain.
+        PersonalCardAgentEffect.GAIN_VISITED_FACTION_INFLUENCE,
     ):
         return space.faction is not None
     if effect in (
@@ -371,7 +615,7 @@ def _actions_for_affordable_costs(
     state: GameState,
     infiltrate_post_id: str | None = None,
 ) -> tuple[DomainAction, ...]:
-    costs = _effective_costs(state, space)
+    costs = _effective_costs(state, space, player)
     include_choice = space.dynamic_cost is None and len(space.cost_options) > 1
     actions: list[DomainAction] = []
     for cost_option, cost in costs:
@@ -410,13 +654,19 @@ def _connected_spy_post_ids(
 def _effective_costs(
     state: GameState,
     space: BoardSpace,
+    player: int,
 ) -> tuple[tuple[int, ResourceCost], ...]:
     if space.dynamic_cost is DynamicCost.SWORDMASTER:
         someone_has_swordmaster = any(
             player.swordmaster_acquired for player in state.players
         )
         option = 1 if someone_has_swordmaster else 0
-        return ((option, space.cost_options[option]),)
+        cost = space.cost_options[option]
+        if state.players[player].leader_id == "duncan_idaho":
+            # Ginaz Swordmaster: "The Swordmaster board space costs you 2
+            # less" [Duncan Idaho card].
+            cost = replace(cost, solari=max(cost.solari - 2, 0))
+        return ((option, cost),)
     costs = space.cost_options or (ResourceCost(),)
     return tuple(enumerate(costs))
 
@@ -425,8 +675,9 @@ def _selected_cost(
     state: GameState,
     space: BoardSpace,
     requested_option: bool | int | str | None,
+    player: int,
 ) -> tuple[int, ResourceCost]:
-    costs = dict(_effective_costs(state, space))
+    costs = dict(_effective_costs(state, space, player))
     if requested_option is None:
         if len(costs) != 1:
             raise ValueError("Agent action must identify its cost option")

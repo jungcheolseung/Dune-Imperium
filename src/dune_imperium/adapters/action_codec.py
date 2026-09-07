@@ -3,22 +3,27 @@
 from dataclasses import dataclass, field
 from numbers import Integral
 
+from dune_imperium.adapters.observation_encoding import MAKER_SPACE_IDS
 from dune_imperium.config import RulesetConfig
+from dune_imperium.content.bloodlines.sardaukar import SKILLS
 from dune_imperium.content.uprising.board import (
     BOARD_SPACES,
     OBSERVATION_POSTS,
+    BoardSpace,
     Faction,
 )
 from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.contracts import contract_instance_ids
 from dune_imperium.content.uprising.imperium import (
-    IMPERIUM_CARDS,
     ImperiumCardEntry,
+    imperium_cards_for_choam,
     imperium_deck_instance_ids,
 )
 from dune_imperium.content.uprising.intrigue import (
     intrigue_card_for_instance,
     intrigue_deck_instance_ids,
+    navigation_card_instance_ids,
+    twisted_intrigue_instance_ids,
 )
 from dune_imperium.content.uprising.leaders import (
     FEYD_TRACK_START,
@@ -35,6 +40,7 @@ from dune_imperium.content.uprising.starting_cards import (
     StartingCardEntry,
 )
 from dune_imperium.content.uprising.types import (
+    BLOODLINES_REVEAL_CHOICE_EFFECTS,
     AgentIcon,
     BattleIcon,
     PersonalCardRevealChoiceEffect,
@@ -43,9 +49,11 @@ from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.rules.agent_effects import AUTOMATIC_AGENT_ICONS
 from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 
-ACTION_CODEC_VERSION = 89
+ACTION_CODEC_VERSION = 90
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
+# Seven Sardaukar Commanders exist [Bloodlines p. 2].
+MAX_COMMANDER_DEPLOYMENT = 7
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,7 +141,9 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             action_id="pick_leader",
             arguments=(("leader_id", leader.leader_id),),
         )
-        for leader in leaders_for_choam(config.choam_module)
+        for leader in leaders_for_choam(
+            config.choam_module, bloodlines=config.bloodlines
+        )
     ]
     templates.extend(
         ActionTemplate(action_id=action_id)
@@ -213,6 +223,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             arguments=(("effect", effect.value),),
         )
         for effect in PersonalCardRevealChoiceEffect
+        if config.bloodlines or effect not in BLOODLINES_REVEAL_CHOICE_EFFECTS
     )
     if config.choam_module:
         templates.extend(
@@ -242,19 +253,21 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         for count in range(1, MAX_DEPLOYMENT_COUNT + 1)
     )
     templates.append(ActionTemplate(action_id="finish_agent_turn"))
+    if config.bloodlines:
+        templates.extend(_bloodlines_templates(config))
     templates.extend(
         ActionTemplate(
             action_id="recall_agent_for_agent_card",
             arguments=(("space_id", space.space_id),),
         )
-        for space in BOARD_SPACES
+        for space in catalog_spaces(config)
     )
     templates.extend(
         ActionTemplate(
             action_id="recall_agent_for_imperial_privilege",
             arguments=(("space_id", space.space_id),),
         )
-        for space in BOARD_SPACES
+        for space in catalog_spaces(config)
     )
     templates.extend(
         ActionTemplate(
@@ -264,9 +277,20 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         for stack in RESERVE_STACKS
     )
     imperium_instances = imperium_deck_instance_ids(
-        config.choam_module, config.promo_cards
+        config.choam_module,
+        config.promo_cards,
+        bloodlines=config.bloodlines,
+        tech_module=config.tech_module,
     )
-    intrigue_instances = intrigue_deck_instance_ids(config.choam_module)
+    intrigue_instances = intrigue_deck_instance_ids(
+        config.choam_module,
+        bloodlines=config.bloodlines,
+        tech_module=config.tech_module,
+    )
+    if config.bloodlines:
+        # Piter De Vries' Twisted Intrigue cards are held and played like
+        # any Intrigue card once dealt.
+        intrigue_instances = (*intrigue_instances, *twisted_intrigue_instance_ids())
     templates.extend(
         ActionTemplate(
             action_id="acquire_imperium",
@@ -274,6 +298,35 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         )
         for instance_id in imperium_instances
     )
+    if config.bloodlines:
+        # Engineered Miracle's Command acquisition from the Imperium Row.
+        templates.extend(
+            ActionTemplate(
+                action_id="command_acquire_row_card",
+                arguments=(("instance_id", instance_id),),
+            )
+            for instance_id in imperium_instances
+        )
+        # Litany Against Fear's turn-start play from the hand.
+        templates.extend(
+            ActionTemplate(
+                action_id="play_turn_start_card",
+                arguments=(("card_id", instance_id),),
+            )
+            for instance_id in imperium_instances
+            if instance_id.startswith("imperium:litany_against_fear:")
+        )
+        if config.choam_module:
+            # CHOAM Demands completes any active Contract; Coercive
+            # Negotiation takes one of the bank's revealed Contracts.
+            templates.extend(
+                ActionTemplate(
+                    action_id=action_id,
+                    arguments=(("instance_id", instance_id),),
+                )
+                for action_id in ("complete_contract_by_card", "take_trigger_contract")
+                for instance_id in contract_instance_ids()
+            )
     if config.choam_module:
         for action_id in ("take_contract", "complete_contract"):
             templates.extend(
@@ -288,7 +341,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
                 action_id="recall_agent_for_contract",
                 arguments=(("space_id", space.space_id),),
             )
-            for space in BOARD_SPACES
+            for space in catalog_spaces(config)
         )
     templates.extend(
         ActionTemplate(
@@ -373,6 +426,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             arguments=(("card_id", conflict.card.card_id),),
         )
         for conflict in CONFLICTS
+        if config.bloodlines or not conflict.bloodlines_only
     )
     for action_id in ("manipulate_imperium_row", "acquire_manipulated_imperium"):
         templates.extend(
@@ -435,6 +489,11 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         "recall_spy_for_reveal",
         "recall_spy_for_reveal_placement",
         "resolve_espionage_place_spy",
+        *(
+            ("move_spy", "place_spy_on_space", "recall_spy_for_placement")
+            if config.bloodlines
+            else ()
+        ),
         *(
             ("place_contract_spy", "recall_spy_for_contract")
             if config.choam_module
@@ -559,32 +618,245 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     return tuple(sorted(templates, key=_template_sort_key))
 
 
+def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
+    """Sardaukar Commander choices [Bloodlines p. 4] (``rules.sardaukar``)."""
+
+    templates: list[ActionTemplate] = [
+        ActionTemplate(action_id=action_id)
+        for action_id in (
+            "decline_sardaukar_commander",
+            "recruit_sardaukar_commander",
+            # Bought without a Skill when none is choosable (OQ-031).
+            "acquire_sardaukar_commander",
+        )
+    ]
+    for action_id in (
+        "acquire_sardaukar_commander",
+        "trash_skill_for_strength",
+        "choose_skill",
+    ):
+        templates.extend(
+            ActionTemplate(
+                action_id=action_id,
+                arguments=(("skill_id", skill.skill_id),),
+            )
+            for skill in SKILLS
+        )
+    for action_id in ("deploy_commanders", "withdraw_commanders"):
+        templates.extend(
+            ActionTemplate(action_id=action_id, arguments=(("count", count),))
+            for count in range(1, MAX_COMMANDER_DEPLOYMENT + 1)
+        )
+    # Commanders are troops for retreats and garrison deployments
+    # [Bloodlines p. 4]: the ``commanders`` share of a unit count.
+    templates.extend(
+        ActionTemplate(
+            action_id="retreat_intrigue_troops",
+            arguments=(("commanders", share), ("count", count)),
+        )
+        for count in range(1, MAX_DEPLOYMENT_COUNT + 1)
+        for share in range(1, min(count, MAX_COMMANDER_DEPLOYMENT) + 1)
+    )
+    templates.extend(
+        ActionTemplate(
+            action_id="deploy_intrigue_troops",
+            arguments=(("commanders", share), ("count", count)),
+        )
+        for count in range(1, MAX_INTRIGUE_DEPLOYMENT + 1)
+        for share in range(1, count + 1)
+    )
+    templates.extend(
+        ActionTemplate(
+            action_id="retreat_two_troops_for_reveal",
+            arguments=(("commanders", share),),
+        )
+        for share in (1, 2)
+    )
+    templates.append(ActionTemplate(action_id="retreat_leader_commander"))
+    # Disruption Tactics: one enemy unit (troop or Commander) to retreat.
+    for seat in range(4):
+        templates.append(
+            ActionTemplate(
+                action_id="retreat_opponent_troop", arguments=(("player", seat),)
+            )
+        )
+        templates.append(
+            ActionTemplate(
+                action_id="retreat_opponent_troop",
+                arguments=(("commanders", 1), ("player", seat)),
+            )
+        )
+    templates.append(ActionTemplate(action_id="decline_command_acquisition"))
+    templates.append(ActionTemplate(action_id="gain_reveal_persuasion"))
+    templates.append(ActionTemplate(action_id="take_reveal_contract"))
+    templates.extend(
+        ActionTemplate(action_id=action_id)
+        for action_id in (
+            "decline_spy_placement",
+            "decline_intrigue_contract_trigger",
+            # Bloodlines Leaders: Duncan Idaho, Chani, Liet Kynes, Esmar Tuek.
+            "deploy_leader_agent",
+            "pay_leader_signet_water",
+            "decline_optional_trash",
+            "take_tuek_sietch_spice",
+            "take_tuek_sietch_card",
+            "place_leader_bonus_spice",
+            # Twisted Intrigue (Piter De Vries).
+            "put_back_top_card",
+            "discard_top_card",
+            "draw_top_card_for_solari",
+        )
+    )
+    templates.extend(
+        ActionTemplate(action_id="lose_intrigue_troop", arguments=arguments)
+        for zone in ("garrison", "conflict")
+        for arguments in ((("zone", zone),), (("commanders", 1), ("zone", zone)))
+    )
+    # Steersman Y'rkoon: the four Navigation picks and the played option.
+    templates.extend(
+        ActionTemplate(
+            action_id="place_navigation_card", arguments=(("card_id", card_id),)
+        )
+        for card_id in navigation_card_instance_ids()
+    )
+    templates.extend(
+        ActionTemplate(action_id="play_navigation", arguments=(("option", option),))
+        for option in range(2)
+    )
+    twisted = twisted_intrigue_instance_ids()
+    all_intrigue = (
+        *intrigue_deck_instance_ids(
+            config.choam_module, bloodlines=True, tech_module=config.tech_module
+        ),
+        *twisted,
+    )
+    templates.extend(
+        ActionTemplate(
+            action_id="trash_intrigue_hand_card", arguments=(("card_id", card_id),)
+        )
+        for card_id in all_intrigue
+    )
+    templates.extend(
+        ActionTemplate(
+            action_id="give_intrigue_card",
+            arguments=(("card_id", card_id), ("player", seat)),
+        )
+        for card_id in all_intrigue
+        for seat in range(config.players)
+    )
+    templates.extend(
+        ActionTemplate(
+            action_id="take_leader_bonus_spice", arguments=(("space_id", space_id),)
+        )
+        for space_id in MAKER_SPACE_IDS
+    )
+    templates.extend(_trash_templates(config, "trash_optional_card"))
+    # Fedaykin Maneuver retreats any number, Commanders included.
+    templates.extend(
+        ActionTemplate(action_id="retreat_leader_troops", arguments=(("count", count),))
+        for count in range(1, MAX_DEPLOYMENT_COUNT + 1)
+    )
+    templates.extend(
+        ActionTemplate(
+            action_id="retreat_leader_troops",
+            arguments=(("commanders", share), ("count", count)),
+        )
+        for count in range(1, MAX_DEPLOYMENT_COUNT + 1)
+        for share in range(1, min(count, MAX_COMMANDER_DEPLOYMENT) + 1)
+    )
+    # The loser picks the zone and the unit kind (OQ-036); ``commanders``
+    # marks a Sardaukar Commander like the retreat argument does.
+    templates.extend(
+        ActionTemplate(action_id="lose_unit", arguments=arguments)
+        for zone in ("garrison", "conflict")
+        for arguments in (
+            (("zone", zone),),
+            (("commanders", 1), ("zone", zone)),
+        )
+    )
+    # "Gain one Influence of your choice" as a Reveal choice (Pointing the Way).
+    templates.extend(
+        ActionTemplate(
+            action_id="gain_reveal_influence",
+            arguments=(("faction", faction.value),),
+        )
+        for faction in Faction
+    )
+    return tuple(templates)
+
+
 def _agent_turn_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
+    # Emperor's Invitation (Bloodlines) can give any card the Emperor icon
+    # for a turn, so the option's catalogs also hold every card's Emperor
+    # placements.
+    granted: tuple[AgentIcon, ...] = (AgentIcon.EMPEROR,) if config.bloodlines else ()
+    # Gaius Helen Mohiam gives every card the Spy icon, Urgent Shigawire
+    # gives the next Bene Gesserit card "all Agent icons" and Delivery
+    # Logistics borrows its Contracts' icons, so the option's catalogs hold
+    # every card's placement on every space.
+    every_icon = tuple(AgentIcon) if config.bloodlines else ()
+    if config.bloodlines:
+        granted = every_icon
     templates: list[ActionTemplate] = []
     for starting_card in STARTING_DECK:
-        templates.extend(_agent_turn_templates_for_card("starter", starting_card))
+        templates.extend(
+            _agent_turn_templates_for_card(
+                "starter", starting_card, granted, catalog_spaces(config)
+            )
+        )
     for reserve_card in RESERVE_STACKS:
-        templates.extend(_agent_turn_templates_for_card("reserve", reserve_card))
-    for imperium_card in IMPERIUM_CARDS:
-        if (
-            imperium_card.play_data_complete
-            and (config.choam_module or not imperium_card.choam_only)
-            and (config.promo_cards or not imperium_card.promo)
-        ):
-            templates.extend(_agent_turn_templates_for_card("imperium", imperium_card))
+        templates.extend(
+            _agent_turn_templates_for_card(
+                "reserve", reserve_card, granted, catalog_spaces(config)
+            )
+        )
+    for imperium_card in imperium_cards_for_choam(
+        config.choam_module,
+        config.promo_cards,
+        bloodlines=config.bloodlines,
+        tech_module=config.tech_module,
+    ):
+        if imperium_card.play_data_complete:
+            card_granted = (
+                every_icon
+                if config.bloodlines
+                and (
+                    Faction.BENE_GESSERIT in imperium_card.factions
+                    or imperium_card.agent_icons_from_contracts
+                )
+                else granted
+            )
+            templates.extend(
+                _agent_turn_templates_for_card(
+                    "imperium", imperium_card, card_granted, catalog_spaces(config)
+                )
+            )
     return tuple(templates)
+
+
+def catalog_spaces(config: RulesetConfig) -> tuple[BoardSpace, ...]:
+    """Board spaces a catalog holds: Leader-only spaces need Bloodlines."""
+
+    return tuple(
+        space
+        for space in BOARD_SPACES
+        if space.required_leader_id is None or config.bloodlines
+    )
 
 
 def _agent_turn_templates_for_card(
     prefix: str,
     card: StartingCardEntry | ReserveStackDefinition | ImperiumCardEntry,
+    granted_icons: tuple[AgentIcon, ...] = (),
+    spaces: tuple[BoardSpace, ...] = BOARD_SPACES,
 ) -> tuple[ActionTemplate, ...]:
     templates: list[ActionTemplate] = []
     for copy in range(card.copies):
         card_id = f"{prefix}:{card.card.card_id}:{copy}"
-        for space in BOARD_SPACES:
+        for space in spaces:
             if (
                 space.agent_icon not in card.agent_icons
+                and space.agent_icon not in granted_icons
                 and AgentIcon.SPY not in card.agent_icons
             ):
                 continue
@@ -622,7 +894,11 @@ def _endgame_wild_templates(
     config: RulesetConfig,
 ) -> tuple[ActionTemplate, ...]:
     battle_cards = (
-        *((conflict.card.card_id, conflict.battle_icon) for conflict in CONFLICTS),
+        *(
+            (conflict.card.card_id, conflict.battle_icon)
+            for conflict in CONFLICTS
+            if config.bloodlines or not conflict.bloodlines_only
+        ),
         *(
             (objective.objective_id, objective.battle_icon)
             for objective in objectives_for_players(config.players)
@@ -634,7 +910,7 @@ def _endgame_wild_templates(
     matching_card_ids = tuple(
         card_id for card_id, icon in battle_cards if icon not in (None, BattleIcon.WILD)
     )
-    return tuple(
+    templates = [
         ActionTemplate(
             action_id="match_endgame_wild_icon",
             arguments=(
@@ -644,7 +920,18 @@ def _endgame_wild_templates(
         )
         for wild_card_id in wild_card_ids
         for matching_card_id in matching_card_ids
+    ]
+    # Wild-with-wild pairs [Bloodlines p. 5], once each in sorted order.
+    sorted_wild = sorted(wild_card_ids)
+    templates.extend(
+        ActionTemplate(
+            action_id="match_endgame_wild_icon",
+            arguments=(("matching_card_id", second), ("wild_card_id", first)),
+        )
+        for index, first in enumerate(sorted_wild)
+        for second in sorted_wild[index + 1 :]
     )
+    return tuple(templates)
 
 
 def _trash_templates(
@@ -667,7 +954,12 @@ def _personal_card_instance_ids(config: RulesetConfig) -> tuple[str, ...]:
         for copy in range(card.copies)
     ]
     card_ids.extend(
-        imperium_deck_instance_ids(config.choam_module, config.promo_cards)
+        imperium_deck_instance_ids(
+            config.choam_module,
+            config.promo_cards,
+            bloodlines=config.bloodlines,
+            tech_module=config.tech_module,
+        )
     )
     card_ids.extend(
         f"reserve:{stack.card.card_id}:{copy}"

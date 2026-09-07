@@ -22,6 +22,8 @@ class LeaderDefinition:
     name: str
     catalog_url: str
     choam_only: bool = False
+    # Bloodlines Leaders join the pool only with that option on.
+    bloodlines_only: bool = False
     setup_face_id: str | None = None
     alternate_face_id: str | None = None
     uses_feyd_token: bool = False
@@ -32,6 +34,12 @@ class LeaderDefinition:
     # Starting cards this Leader's printed setup rule removes from their
     # ten-card deck (Staban Tuek's Limited Allies).
     removed_starting_card_ids: tuple[str, ...] = ()
+    # Printed setup deviations: Steersman Y'rkoon starts with no water;
+    # Chani's Tactics token starts on the four-player space of her track.
+    starting_water: int = 1
+    uses_tactics_track: bool = False
+    # Piter De Vries deals himself the Twisted Intrigue deck.
+    uses_twisted_intrigue: bool = False
     sources: tuple[SourceRef, ...] = (
         SourceRef(SourceDocument.MAIN_RULEBOOK, (3, 4, 17)),
     )
@@ -64,6 +72,18 @@ class LeaderDefinition:
 
 def _catalog(card_id: int, slug: str) -> str:
     return f"https://dunecardshub.com/cards/{card_id}/{slug}"
+
+
+def _bloodlines_face(slug: str) -> str:
+    """Dune Cards Hub's face image of a Bloodlines Leader (reference only)."""
+
+    return f"https://dunecardshub.com/images/bloodlines-leader-{slug}.webp"
+
+
+BLOODLINES_LEADER_SOURCES: Final = (
+    SourceRef(SourceDocument.BLOODLINES_RULEBOOK, (3, 12)),
+    SourceRef(SourceDocument.CARD_FACE, (1,)),
+)
 
 
 LEADERS: Final = (
@@ -138,6 +158,86 @@ LEADERS: Final = (
         ability_name="Sardaukar Commander",
         signet_name="Emperor of the Known Universe",
     ),
+    # Bloodlines Leaders, transcribed from the card faces (2026-09-07); the
+    # rulebook adds only their clarifications [Bloodlines pp. 3, 12].
+    LeaderDefinition(
+        "chani",
+        "Chani",
+        _bloodlines_face("chani"),
+        bloodlines_only=True,
+        uses_tactics_track=True,
+        ability_name="Tactician",
+        signet_name="Fedaykin Maneuver",
+        sources=BLOODLINES_LEADER_SOURCES,
+    ),
+    LeaderDefinition(
+        "count_hasimir_fenring",
+        "Count Hasimir Fenring",
+        _bloodlines_face("count-hasimir-fenring"),
+        bloodlines_only=True,
+        ability_name="Assassin",
+        signet_name="Corrino Liaison",
+        sources=BLOODLINES_LEADER_SOURCES,
+    ),
+    LeaderDefinition(
+        "duncan_idaho",
+        "Duncan Idaho",
+        _bloodlines_face("duncan-idaho"),
+        bloodlines_only=True,
+        ability_name="Ginaz Swordmaster",
+        signet_name="Into the Fray",
+        sources=BLOODLINES_LEADER_SOURCES,
+    ),
+    LeaderDefinition(
+        "esmar_tuek",
+        "Esmar Tuek",
+        _bloodlines_face("esmar-tuek"),
+        bloodlines_only=True,
+        ability_name="Tuek's Sietch",
+        signet_name="Smuggle Spice",
+        sources=BLOODLINES_LEADER_SOURCES,
+    ),
+    LeaderDefinition(
+        "gaius_helen_mohiam",
+        "Gaius Helen Mohiam",
+        _bloodlines_face("gaius-helen-mohiam"),
+        bloodlines_only=True,
+        ability_name="Clandestine",
+        signet_name="Listeners",
+        sources=BLOODLINES_LEADER_SOURCES,
+    ),
+    LeaderDefinition(
+        "piter_de_vries",
+        "Piter De Vries",
+        _bloodlines_face("piter-de-vries"),
+        bloodlines_only=True,
+        uses_twisted_intrigue=True,
+        ability_name="Twisted Genius",
+        signet_name="Harkonnen Advisor",
+        sources=BLOODLINES_LEADER_SOURCES,
+    ),
+    LeaderDefinition(
+        "steersman_y_rkoon",
+        "Steersman Y'rkoon",
+        _bloodlines_face("steersman-y-rkoon"),
+        bloodlines_only=True,
+        ability_name="Strange Form / Hungry for Spice",
+        signet_name="Plot Course",
+        # Strange Form: "You start the game with no water and without
+        # Signet Ring in your deck."
+        removed_starting_card_ids=("signet_ring",),
+        starting_water=0,
+        sources=BLOODLINES_LEADER_SOURCES,
+    ),
+    LeaderDefinition(
+        "liet_kynes",
+        "Liet Kynes",
+        _bloodlines_face("liet-kynes"),
+        bloodlines_only=True,
+        ability_name="Arrakis Planetologist",
+        signet_name="Judge of the Change",
+        sources=BLOODLINES_LEADER_SOURCES,
+    ),
 )
 
 
@@ -201,7 +301,16 @@ FEYD_TRACK_BY_ID: Final = {space.space_id: space for space in FEYD_TRAINING_TRAC
 FEYD_TRACK_START: Final = "start"
 
 
-def leaders_for_choam(choam_module: bool) -> tuple[LeaderDefinition, ...]:
+def leaders_for_choam(
+    choam_module: bool,
+    *,
+    bloodlines: bool = False,
+) -> tuple[LeaderDefinition, ...]:
     """Return Leader cards legal for the selected setup."""
 
-    return tuple(leader for leader in LEADERS if choam_module or not leader.choam_only)
+    return tuple(
+        leader
+        for leader in LEADERS
+        if (choam_module or not leader.choam_only)
+        and (bloodlines or not leader.bloodlines_only)
+    )

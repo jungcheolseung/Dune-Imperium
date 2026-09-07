@@ -55,6 +55,9 @@ class GameState:
     # Contracts set aside during setup for Shaddam Corrino IV; only he can
     # acquire them [Shaddam Corrino IV card] [FAQ p. 3].
     sardaukar_contract_ids: tuple[str, ...] = ()
+    # Contracts trashed by a card effect (Coercive Negotiation, Bloodlines):
+    # out of the game, kept public for the population census.
+    contract_trash: tuple[str, ...] = ()
     # Face-up six-Leader pool of the OQ-007 draft convention, in draw order.
     # Public for the whole game; Leaders picked from it appear on the seats
     # and the two unpicked Leaders stay unused.
@@ -65,6 +68,15 @@ class GameState:
     # rewards pledged to the current Conflict's first-place reward, paid out
     # with that reward and cleared afterwards (OQ-025).
     conflict_first_place_influence_bonus: int = 0
+    # Bloodlines: board spaces still holding a Sardaukar Commander, the
+    # Commander kept in the bank for Sardaukar Standard, and the Skill tiles
+    # (face-down stack in hidden order, face-up choices, trashed)
+    # [Bloodlines pp. 3-4]. All empty without the ``bloodlines`` option.
+    sardaukar_commander_space_ids: tuple[str, ...] = ()
+    sardaukar_commanders_bank: int = 0
+    skill_stack: tuple[str, ...] = ()
+    skill_face_up: tuple[str, ...] = ()
+    skill_trash: tuple[str, ...] = ()
     maker_bonus_spice: tuple[tuple[str, int], ...] = (
         ("deep_desert", 0),
         ("hagga_basin", 0),
@@ -74,6 +86,20 @@ class GameState:
     # dispatcher (reshuffling the discard through a chance decision) before the
     # next player decision: (player, count, event source).
     pending_intrigue_draws: tuple[tuple[int, int, str], ...] = ()
+    # Sardaukar Standard: Commander acquisitions owed by a trash trigger
+    # (player, card, source); each opens its Skill choice once the trashing
+    # effect has finished with the decision stack.
+    pending_skill_choices: tuple[tuple[int, str, str], ...] = ()
+    # The shuffled Twisted Intrigue deck dealt at setup, waiting for Piter De
+    # Vries' seat (the draft picks Leaders after the shuffle); empty once
+    # assigned or when no seat plays him.
+    twisted_deck_stock: tuple[str, ...] = ()
+    # The shuffled Navigation deck dealt at setup, waiting for Steersman
+    # Y'rkoon's seat; empty once assigned or when nobody plays him.
+    navigation_stock: tuple[str, ...] = ()
+    # Navigation plays owed by Influence gains that reached two
+    # (player, faction, source), opened in order by the engine.
+    pending_navigation_plays: tuple[tuple[int, str, str], ...] = ()
     decision_stack: tuple[DecisionFrame, ...] = ()
     event_log: tuple[GameEvent, ...] = ()
 
@@ -143,8 +169,34 @@ class GameState:
         if any(not card_id or count < 0 for card_id, count in self.reserve_stacks):
             raise ValueError("Reserve stacks require IDs and non-negative counts")
 
+        if len(self.sardaukar_commander_space_ids) != len(
+            set(self.sardaukar_commander_space_ids)
+        ):
+            raise ValueError("a board space holds at most one Sardaukar Commander")
+        if self.sardaukar_commanders_bank < 0:
+            raise ValueError("the Commander bank must not be negative")
+        skills = (
+            *self.skill_stack,
+            *self.skill_face_up,
+            *self.skill_trash,
+            *(skill_id for player in self.players for skill_id in player.skill_ids),
+        )
+        if len(skills) != len(set(skills)):
+            raise ValueError("a Skill tile cannot occupy two zones")
+        if not self.config.bloodlines and (
+            skills
+            or self.sardaukar_commander_space_ids
+            or self.sardaukar_commanders_bank
+            or any(player.commanders_total for player in self.players)
+        ):
+            raise ValueError("Sardaukar Commanders require the Bloodlines expansion")
+
         maker_ids = tuple(space_id for space_id, _ in self.maker_bonus_spice)
-        if maker_ids != ("deep_desert", "hagga_basin", "imperial_basin"):
+        if maker_ids not in (
+            ("deep_desert", "hagga_basin", "imperial_basin"),
+            # Tuek's Sietch joins the Makers while Esmar Tuek plays.
+            ("deep_desert", "hagga_basin", "imperial_basin", "tuek_sietch"),
+        ):
             raise ValueError(
                 "Maker bonus spice must use the three spaces in rules order"
             )

@@ -14,6 +14,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
+from dune_imperium.rules.contract_tiles import receive_contract
 from dune_imperium.rules.effects import (
     advance_after_effect,
     current_agent_effect_context,
@@ -492,38 +493,7 @@ def apply_contract_action(state: GameState, action: DomainAction) -> RuleResult:
             del market[market_index]
 
     definition = contract_for_instance(instance_value)
-    owner = state.players[action.actor]
-    if definition.completes_immediately:
-        reward = definition.reward
-        if any(
-            (
-                reward.water,
-                reward.troops,
-                reward.personal_cards,
-                reward.contracts,
-                reward.spies,
-                reward.influence,
-            )
-        ):
-            raise NotImplementedError(
-                "Immediate Contracts with non-Solari rewards are not implemented"
-            )
-        next_owner = replace(
-            owner,
-            resources=replace(
-                owner.resources,
-                solari=owner.resources.solari + reward.solari,
-            ),
-            completed_contract_ids=(
-                *owner.completed_contract_ids,
-                instance_value,
-            ),
-        )
-    else:
-        next_owner = replace(
-            owner,
-            active_contract_ids=(*owner.active_contract_ids, instance_value),
-        )
+    next_owner = receive_contract(state.players[action.actor], instance_value)
     players = tuple(
         next_owner if player.player_id == action.actor else player
         for player in state.players
@@ -740,6 +710,31 @@ def _gain_exhausted_market_solari(
     return RuleResult(state=next_state, events=(event,))
 
 
+def complete_contract_by_effect(
+    state: GameState,
+    player: int,
+    instance_id: str,
+    *,
+    source: str,
+) -> RuleResult:
+    """Complete one active Contract by a card effect, ignoring its condition.
+
+    CHOAM Demands (Bloodlines): "Complete one of your contracts." The
+    printed reward resolves as for a normal completion, its choices pushed
+    on top of the current decision stack.
+    """
+
+    completed = _complete_contract_without_choices(
+        state, player, instance_id, source=source
+    )
+    follow_up = _begin_contract_reward_choice(
+        completed.state, player, contract_for_instance(instance_id), source=source
+    )
+    return RuleResult(
+        state=follow_up.state, events=(*completed.events, *follow_up.events)
+    )
+
+
 def _complete_contract_without_choices(
     state: GameState,
     player: int,
@@ -769,6 +764,7 @@ def _complete_contract_without_choices(
             *next_owner.completed_contract_ids,
             instance_id,
         ),
+        contracts_completed_turn=next_owner.contracts_completed_turn + 1,
     )
     next_state = replace(
         state,

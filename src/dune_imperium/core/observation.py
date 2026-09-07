@@ -51,6 +51,24 @@ class PublicPlayerView:
     high_council: bool
     maker_hooks: bool
     feyd_track_space: str
+    # Bloodlines Sardaukar Commanders and the public Skill tiles.
+    commanders_supply: int
+    commanders_garrison: int
+    commanders_conflict: int
+    skill_ids: tuple[str, ...]
+    commander_recruited_turn: bool
+    contracts_completed_turn: int
+    commander_discount_turn: int
+    ignores_influence_requirements_turn: bool
+    granted_agent_icon_turn: str
+    combat_icon_turn: bool
+    bene_gesserit_boost_pending: bool
+    tactics_track_space: int
+    agent_in_conflict: int
+    twisted_deck_size: int
+    navigation_remaining: int
+    navigation_played: tuple[str, ...]
+    reveal_persuasion_bonus: int
     in_play: tuple[str, ...]
     # Every card reaches a discard pile face up (acquired cards [Main p. 13],
     # played and revealed cards after Clean Up [Main pp. 9, 12, 20], cards
@@ -77,6 +95,12 @@ class PrivatePlayerView:
     deck_size: int
     hand: tuple[str, ...]
     intrigue_cards: tuple[str, ...]
+    # Controlled (Twisted Intrigue): the deck's top card while the owner
+    # decides what to do with it; "" otherwise.
+    peeked_card_id: str = ""
+    # Steersman Y'rkoon's face-down Navigation slots, which he may look at
+    # any time [Bloodlines p. 12].
+    navigation_slots: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,6 +140,7 @@ class PlayerView:
     contract_bank_size: int = 0
     face_up_contract_ids: tuple[str, ...] = ()
     sardaukar_contract_ids: tuple[str, ...] = ()
+    contract_trash: tuple[str, ...] = ()
     # The face-up six-Leader pool of the OQ-007 draft option, public to
     # everyone for the whole game (empty without the option).
     leader_draft_pool: tuple[str, ...] = ()
@@ -125,6 +150,13 @@ class PlayerView:
     # Conflict's first-place reward (OQ-025).
     conflict_first_place_influence_bonus: int = 0
     maker_bonus_spice: tuple[tuple[str, int], ...] = ()
+    # Bloodlines: Commanders still on the board and in the bank, and the
+    # Skill tiles (the stack order stays hidden; only its size is shown).
+    sardaukar_commander_space_ids: tuple[str, ...] = ()
+    sardaukar_commanders_bank: int = 0
+    skill_stack_size: int = 0
+    skill_face_up: tuple[str, ...] = ()
+    skill_trash: tuple[str, ...] = ()
     public_data: tuple[tuple[str, ActionValue], ...] = ()
     private_data: tuple[tuple[str, ActionValue], ...] = ()
 
@@ -164,13 +196,17 @@ def known_card_seats(state: GameState) -> dict[str, frozenset[int]]:
         *state.intrigue_deck,
         *state.contract_bank,
         *state.conflict_deck,
+        *state.twisted_deck_stock,
+        *state.navigation_stock,
     ):
         known[card_id] = nobody
     resolving = set(resolving_intrigue_ids(state))
     for player in state.players:
         owner = frozenset({player.player_id})
-        for card_id in player.deck:
+        for card_id in (*player.deck, *player.twisted_deck, *player.navigation_box):
             known[card_id] = nobody
+        for card_id in player.navigation_slots:
+            known[card_id] = owner
         public_hand = set(player.hand_public)
         for card_id in player.hand:
             if card_id not in public_hand:
@@ -266,6 +302,8 @@ def observe_state(state: GameState, player: int) -> PlayerView:
             deck_size=len(owner.deck),
             hand=owner.hand,
             intrigue_cards=owner.intrigue_cards,
+            peeked_card_id=peeked_card_id(state, player),
+            navigation_slots=owner.navigation_slots,
         ),
         current_conflict_ids=state.current_conflict_ids,
         conflict_deck_size=len(state.conflict_deck),
@@ -279,6 +317,7 @@ def observe_state(state: GameState, player: int) -> PlayerView:
         contract_bank_size=len(state.contract_bank),
         face_up_contract_ids=state.face_up_contract_ids,
         sardaukar_contract_ids=state.sardaukar_contract_ids,
+        contract_trash=state.contract_trash,
         leader_draft_pool=state.leader_draft_pool,
         reserve_stacks=state.reserve_stacks,
         shield_wall_present=state.shield_wall_present,
@@ -286,7 +325,27 @@ def observe_state(state: GameState, player: int) -> PlayerView:
             state.conflict_first_place_influence_bonus
         ),
         maker_bonus_spice=state.maker_bonus_spice,
+        sardaukar_commander_space_ids=state.sardaukar_commander_space_ids,
+        sardaukar_commanders_bank=state.sardaukar_commanders_bank,
+        skill_stack_size=len(state.skill_stack),
+        skill_face_up=state.skill_face_up,
+        skill_trash=state.skill_trash,
     )
+
+
+def peeked_card_id(state: GameState, player: int) -> str:
+    """Return the deck card Controlled shows its owner, if that choice is up."""
+
+    if not state.decision_stack:
+        return ""
+    frame = state.decision_stack[-1]
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ""
+    peeked = dict(frame.context).get("peeked_card_id")
+    if not isinstance(peeked, str) or not peeked:
+        return ""
+    owner = state.players[player]
+    return peeked if owner.deck and owner.deck[0] == peeked else ""
 
 
 def _public_player_view(player: PlayerState) -> PublicPlayerView:
@@ -318,6 +377,23 @@ def _public_player_view(player: PlayerState) -> PublicPlayerView:
         high_council=player.high_council,
         maker_hooks=player.maker_hooks,
         feyd_track_space=player.feyd_track_space,
+        commanders_supply=player.commanders_supply,
+        commanders_garrison=player.commanders_garrison,
+        commanders_conflict=player.commanders_conflict,
+        skill_ids=player.skill_ids,
+        commander_recruited_turn=player.commander_recruited_turn,
+        contracts_completed_turn=player.contracts_completed_turn,
+        commander_discount_turn=player.commander_discount_turn,
+        ignores_influence_requirements_turn=player.ignores_influence_requirements_turn,
+        granted_agent_icon_turn=player.granted_agent_icon_turn,
+        combat_icon_turn=player.combat_icon_turn,
+        bene_gesserit_boost_pending=player.bene_gesserit_boost_pending,
+        tactics_track_space=player.tactics_track_space,
+        agent_in_conflict=player.agent_in_conflict,
+        twisted_deck_size=len(player.twisted_deck),
+        navigation_remaining=len(player.navigation_slots),
+        navigation_played=player.navigation_played,
+        reveal_persuasion_bonus=player.reveal_persuasion_bonus,
         in_play=player.in_play,
         discard_pile=player.discard_pile,
         trashed=player.trashed,

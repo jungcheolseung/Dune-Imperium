@@ -42,8 +42,23 @@ def begin_round(state: GameState) -> RuleResult:
             units_deployed_committed=0,
             spice_at_turn_start=player.resources.spice,
             spice_spent_turn=0,
+            # Urgent Shigawire's boost lasts "this round" only.
+            bene_gesserit_boost_pending=False,
         )
         for player, count in zip(state.players, draw_counts, strict=True)
+    )
+    # Twisted Genius: "Round Start: Draw a Twisted Intrigue card" [Piter De
+    # Vries card]; it is an Intrigue card in hand from then on.
+    twisted_draws = tuple(player.player_id for player in players if player.twisted_deck)
+    players = tuple(
+        replace(
+            player,
+            intrigue_cards=(*player.intrigue_cards, player.twisted_deck[0]),
+            twisted_deck=player.twisted_deck[1:],
+        )
+        if player.twisted_deck
+        else player
+        for player in players
     )
     opening_frame = _round_opening_frame(
         players,
@@ -80,6 +95,14 @@ def begin_round(state: GameState) -> RuleResult:
             )
             for player, count in zip(players, draw_counts, strict=True)
             if count > 0
+        ),
+        *(
+            GameEvent(
+                event_id=f"round:{round_number}:player:{seat}:twisted_draw",
+                kind="intrigue_card_drawn",
+                payload=(("count", 1), ("player", seat), ("twisted", 1)),
+            )
+            for seat in twisted_draws
         ),
     )
     return RuleResult(state=next_state, events=events)
@@ -321,9 +344,7 @@ def resolve_recall_or_endgame(state: GameState) -> RuleResult:
     if state.decision_stack:
         raise ValueError("Recall cannot resolve with a pending decision")
     if any(
-        player.troops_conflict > 0
-        or player.sandworms_conflict > 0
-        or player.combat_strength > 0
+        player.units_in_conflict > 0 or player.combat_strength > 0
         for player in state.players
     ):
         raise ValueError("Combat cleanup must finish before Recall")

@@ -126,6 +126,55 @@ AGENT_EFFECT_CONTEXT_KEYS = frozenset(
 )
 
 
+def open_next_turn(state: GameState, player: int) -> GameState:
+    """Replace ``player``'s turn frame with the next unrevealed seat's turn.
+
+    "Pass your turn" (Litany Against Fear, Withdrawn): the seat stays
+    unrevealed and comes around again this round.
+    """
+
+    next_player = next_unrevealed_player(state, player)
+    players = reset_turn_counters(state.players, next_player)
+    frames = list(state.decision_stack)
+    for index in range(len(frames) - 1, -1, -1):
+        frame = frames[index]
+        if frame.kind == FrameKind.TURN and isinstance(frame.decision, PlayerDecision):
+            if frame.decision.owner != player:
+                raise RuntimeError("only the turn owner can pass the turn")
+            frames[index] = DecisionFrame(
+                kind=FrameKind.TURN,
+                frame_id=f"round:{state.round_number}:turn:{next_player}",
+                decision=PlayerDecision(
+                    owner=next_player,
+                    prompt="Choose an Agent turn or Reveal turn",
+                ),
+                context=(("round", state.round_number), ("turn_owner", next_player)),
+            )
+            break
+    else:
+        raise RuntimeError("passing the turn needs an open turn frame")
+    return replace(state, players=players, decision_stack=tuple(frames))
+
+
+def agent_turn_space_id(state: GameState, player: int) -> str | None:
+    """Return the board space ``player`` sent an Agent to this turn, if any.
+
+    Read from the player's open Agent-turn effect frame anywhere in the
+    stack (an Intrigue choice may sit above it).
+    """
+
+    for frame in reversed(state.decision_stack):
+        if frame.kind != FrameKind.AGENT_EFFECTS or not isinstance(
+            frame.decision, PlayerDecision
+        ):
+            continue
+        if frame.decision.owner != player:
+            continue
+        space_id = dict(frame.context).get("space_id")
+        return space_id if isinstance(space_id, str) else None
+    return None
+
+
 def current_agent_effect_context(
     state: GameState,
 ) -> tuple[DecisionFrame, dict[str, ActionValue]]:
@@ -202,10 +251,18 @@ def finish_agent_icon(context: dict[str, ActionValue], key: str) -> None:
     context["pending_agent_effect"] = bool(remaining)
 
 
+# The Bloodlines Sardaukar Commander offer of a visited space: "an effect of
+# the space" ordered freely with the printed icons [Bloodlines p. 4], but not
+# a printed icon, so a repeat of the printed effects never re-arms it.
+BOARD_ICON_COMMANDER = "sardaukar_commander"
+
+
 def rearm_board_icons(context: dict[str, ActionValue]) -> None:
     """Queue every printed icon of the visit again (Reverend Mother's repeat)."""
 
-    icons = _icon_keys(context, "board_icons")
+    icons = tuple(
+        key for key in _icon_keys(context, "board_icons") if key != BOARD_ICON_COMMANDER
+    )
     context["pending_board_icons"] = ",".join(icons)
     context["pending_board_effect"] = bool(icons)
 
@@ -235,7 +292,7 @@ def advance_after_effect(
         frame = state.decision_stack[-1]
         next_frame = replace(frame, context=tuple(sorted(context.items())))
     else:
-        next_player = _next_unrevealed_player(state, owner)
+        next_player = next_unrevealed_player(state, owner)
         next_players = reset_turn_counters(next_players, next_player)
         next_frame = DecisionFrame(
             kind=FrameKind.TURN,
@@ -325,7 +382,9 @@ def eligible_agent_contract_ids(
     return tuple(eligible)
 
 
-def _next_unrevealed_player(state: GameState, owner: int) -> int:
+def next_unrevealed_player(state: GameState, owner: int) -> int:
+    """Return the next clockwise seat that has not taken its Reveal turn."""
+
     for offset in range(1, state.config.players + 1):
         candidate = (owner + offset) % state.config.players
         if not state.players[candidate].has_revealed:

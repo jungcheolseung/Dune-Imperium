@@ -94,6 +94,10 @@ _AUTHORED_OPTION_EFFECTS: Mapping[
             " Recruit 1 troop and Gain 1 water — or Gain 1 water,"
             " optionally destroying the Shield Wall",
         ),
+        ("tuek_sietch", None): (
+            "Take all bonus spice here, then choose: Gain 1 spice — or"
+            " Draw 1 card (Esmar Tuek's Maker space)",
+        ),
         ("deep_desert", None): (
             "Take all bonus spice here, then choose: Gain 4 spice — or,"
             " with Maker Hooks, summon 2 sandworms into the Conflict",

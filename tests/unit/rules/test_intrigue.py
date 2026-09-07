@@ -90,7 +90,8 @@ def _play(state: GameState, card_id: str, option: int = 0) -> DomainAction:
 def test_transcribed_intrigue_options_are_well_formed() -> None:
     transcribed = [entry for entry in INTRIGUE_CARDS if entry.play_data_complete]
 
-    assert len(transcribed) == 39
+    # Every Uprising identity; Bloodlines cards join as they are transcribed.
+    assert sum(not entry.bloodlines_only for entry in transcribed) == 39
     for entry in transcribed:
         assert entry.options
         for option in entry.options:
@@ -103,7 +104,13 @@ def test_transcribed_intrigue_options_are_well_formed() -> None:
 
 
 def test_every_intrigue_identity_is_transcribed() -> None:
-    assert all(entry.play_data_complete for entry in INTRIGUE_CARDS)
+    # Bloodlines cards are transcribed slice by slice (M12) and stay out of
+    # the deck until then.
+    assert all(
+        entry.play_data_complete
+        for entry in INTRIGUE_CARDS
+        if not entry.bloodlines_only
+    )
 
 
 def test_only_the_turn_owner_may_play_plot_intrigue() -> None:

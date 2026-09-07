@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from dune_imperium.content.uprising.board import Faction
-from dune_imperium.content.uprising.types import BattleIcon
+from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
 
 
 class IntrigueTiming(StrEnum):
@@ -41,6 +41,33 @@ class InfluenceAtLeast:
 @dataclass(frozen=True, slots=True)
 class HasHighCouncil:
     """The player holds a High Council seat."""
+
+
+@dataclass(frozen=True, slots=True)
+class HasAlliance:
+    """The player holds any Faction Alliance (Twisted Intrigue, Navigation)."""
+
+
+@dataclass(frozen=True, slots=True)
+class InNavigationSlot:
+    """The Navigation card being played sits in slot ``slot`` (1-4)."""
+
+    slot: int
+
+    def __post_init__(self) -> None:
+        if not 1 <= self.slot <= 4:
+            raise ValueError("Navigation slots run from 1 to 4")
+
+
+@dataclass(frozen=True, slots=True)
+class TriggeredByFaction:
+    """The Navigation card was played for reaching two Influence with ``faction``."""
+
+    faction: Faction
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.faction, Faction):
+            raise TypeError("trigger Faction condition requires a Faction")
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,15 +145,43 @@ class OpponentAllianceInfluenceAtLeast:
             raise ValueError("Influence condition amount must be positive")
 
 
+@dataclass(frozen=True, slots=True)
+class WaterAtLeast:
+    """The player has at least ``amount`` water (Sacred Pools, Bloodlines)."""
+
+    amount: int
+
+    def __post_init__(self) -> None:
+        if self.amount < 1:
+            raise ValueError("water condition amount must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class CommandersInConflictAtLeast:
+    """The player has ``count`` or more Sardaukar Commanders in the Conflict
+    (Bloodlines)."""
+
+    count: int = 1
+
+    def __post_init__(self) -> None:
+        if self.count < 1:
+            raise ValueError("Commander condition count must be positive")
+
+
 type Condition = (
     InfluenceAtLeast
     | HasHighCouncil
+    | HasAlliance
+    | InNavigationSlot
+    | TriggeredByFaction
     | SpiesPlacedAtLeast
     | CompletedContractsAtLeast
     | SandwormsInConflictAtLeast
     | GainedSpiceThisTurn
     | SpiceMustFlowCardsAtLeast
     | OpponentAllianceInfluenceAtLeast
+    | WaterAtLeast
+    | CommandersInConflictAtLeast
 )
 
 
@@ -182,6 +237,45 @@ class DiscardFromHand:
 
 
 @dataclass(frozen=True, slots=True)
+class LoseTroops:
+    """Lose ``count`` of the player's troops (each to the supply).
+
+    The player picks the zone of every troop, garrison or Conflict, and may
+    give up a Sardaukar Commander as a troop [Bloodlines p. 4] (OQ-038);
+    ``from_conflict`` limits the choice to units in the Conflict (Shrewd).
+    """
+
+    count: int = 1
+    from_conflict: bool = False
+
+    def __post_init__(self) -> None:
+        if self.count < 1:
+            raise ValueError("troop loss count must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class GiveIntrigueToOpponent:
+    """Give an opponent an Intrigue card from hand (Insidious).
+
+    ``bonus_spice_if_not_twisted`` pays extra when the gift is a regular
+    Intrigue card rather than a Twisted one.
+    """
+
+    bonus_spice_if_not_twisted: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class TrashIntrigueCard:
+    """Trash an Intrigue card of the player's choice from hand [Bloodlines p. 11].
+
+    ``troops_if_not_twisted`` recruits when the trashed card is a regular
+    Intrigue card rather than a Twisted one (Unnatural).
+    """
+
+    troops_if_not_twisted: int = 0
+
+
+@dataclass(frozen=True, slots=True)
 class RecallSpy:
     """Return ``count`` of the player's placed Spies to supply (player choice)."""
 
@@ -228,13 +322,43 @@ class FlipBattleCard:
             raise ValueError("the wild icon is always an alternative target")
 
 
+@dataclass(frozen=True, slots=True)
+class TrashDiscardPileCard:
+    """Trash one card from the player's discard pile costing ``minimum_cost``
+    or more (Tenuous Bond, Bloodlines). Starting cards have no cost and never
+    qualify."""
+
+    minimum_cost: int = 1
+
+    def __post_init__(self) -> None:
+        if self.minimum_cost < 0:
+            raise ValueError("trash cost floor must not be negative")
+
+
+@dataclass(frozen=True, slots=True)
+class FlipFaceUpConflictCard:
+    """Flip ``count`` of the player's face-up won Conflict cards face down,
+    whatever their icons (Grasp Arrakis, Bloodlines); one choice per card."""
+
+    count: int = 1
+
+    def __post_init__(self) -> None:
+        if self.count < 1:
+            raise ValueError("flip count must be positive")
+
+
 type Cost = (
     PayResources
     | LoseInfluence
     | DiscardFromHand
+    | LoseTroops
+    | GiveIntrigueToOpponent
+    | TrashIntrigueCard
     | RecallSpy
     | RetreatTroops
     | FlipBattleCard
+    | TrashDiscardPileCard
+    | FlipFaceUpConflictCard
 )
 
 
@@ -323,6 +447,13 @@ class GainInfluence:
     times: int = 1
     factions: tuple[Faction, ...] | None = None
     distinct: bool = False
+    # Ambitious (Twisted Intrigue): only a Faction where some opponent has
+    # more Influence than the player.
+    where_opponent_leads: bool = False
+    # Navigation card 1: a Faction other than the one whose second Influence
+    # played the card, where the player already has ``minimum_own``.
+    different_from_trigger: bool = False
+    minimum_own: int = 0
 
     def __post_init__(self) -> None:
         if self.times < 1:
@@ -386,8 +517,17 @@ class DeployFromGarrison:
 class TrashPersonalCard:
     """The black trash icon: optionally trash one card from hand, discard, or play.
 
-    Optional per [Main p. 20]; the player may decline.
+    Optional per [Main p. 20]; the player may decline. ``hand_only`` and
+    ``mandatory`` carry printed text such as Devious's "Trash a card from
+    your hand".
     """
+
+    hand_only: bool = False
+    mandatory: bool = False
+    # Navigation card 5: spice when the trashed card is printed with a cost
+    # of at least ``bonus_minimum_cost`` Persuasion.
+    bonus_spice: int = 0
+    bonus_minimum_cost: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -459,6 +599,116 @@ class SetAsideImperiumRowCard:
             raise ValueError("set-aside discount must be positive")
 
 
+@dataclass(frozen=True, slots=True)
+class CommanderDiscountThisTurn:
+    """Recruiting a Sardaukar Commander (including when acquiring one) costs
+    ``amount`` less Solari for the rest of this turn (Honor Guard, Bloodlines)."""
+
+    amount: int = 1
+
+    def __post_init__(self) -> None:
+        if self.amount < 1:
+            raise ValueError("Commander discount must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class IgnoreInfluenceRequirementsThisTurn:
+    """Board-space Influence requirements are ignored when sending an Agent
+    this turn (Insider Information, Bloodlines)."""
+
+
+@dataclass(frozen=True, slots=True)
+class GrantCombatDeployment:
+    """The Combat icon: this turn the owner may deploy to the Conflict as
+    though an Agent had been sent to a Combat space [Bloodlines pp. 5, 12]."""
+
+
+@dataclass(frozen=True, slots=True)
+class GrantAgentIconThisTurn:
+    """The card the owner plays this turn has ``icon`` as well (Emperor's
+    Invitation, Bloodlines)."""
+
+    icon: AgentIcon
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.icon, AgentIcon):
+            raise TypeError("granted Agent icon must use AgentIcon")
+
+
+@dataclass(frozen=True, slots=True)
+class PermanentRevealPersuasion:
+    """Navigation card 3 in slot 4: ``amount`` Persuasion at every later Reveal."""
+
+    amount: int = 1
+
+    def __post_init__(self) -> None:
+        if self.amount < 1:
+            raise ValueError("permanent Persuasion must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class AcquireReserveCard:
+    """Acquire one named Reserve card to the discard pile (Navigation card 4)."""
+
+    card_id: str
+
+    def __post_init__(self) -> None:
+        if not self.card_id:
+            raise ValueError("Reserve acquisition needs a card")
+
+
+@dataclass(frozen=True, slots=True)
+class GainSolariPerUnitType:
+    """Calculating (Twisted Intrigue): one Solari per kind of unit in the
+    Conflict (troops, sandworms, Sardaukar Commanders, a fighting Agent)."""
+
+
+@dataclass(frozen=True, slots=True)
+class PeekTopCard:
+    """Controlled (Twisted Intrigue): look at the top card of the deck and
+    put it back, discard it, or pay one Solari to draw it (player choice)."""
+
+
+@dataclass(frozen=True, slots=True)
+class GrantAgentIconsThisTurn:
+    """Resourceful (Twisted Intrigue): the card played this turn has these
+    Agent icons as well."""
+
+    icons: tuple[AgentIcon, ...]
+
+    def __post_init__(self) -> None:
+        if not self.icons or len(self.icons) != len(set(self.icons)):
+            raise ValueError("granted Agent icons must be unique and non-empty")
+        if any(not isinstance(icon, AgentIcon) for icon in self.icons):
+            raise TypeError("granted Agent icons must use AgentIcon")
+
+
+@dataclass(frozen=True, slots=True)
+class PassTurn:
+    """Withdrawn (Twisted Intrigue): "At the start of your turn: pass your
+    turn" — the option is playable only from the turn frame."""
+
+
+@dataclass(frozen=True, slots=True)
+class RedirectSpiesOnTurnSpace:
+    """False Orders (Bloodlines): each opponent spying on the board space the
+    owner sent an Agent to this turn must move that Spy; then the owner
+    places a Spy on that space. Needs an Agent placement this turn."""
+
+
+@dataclass(frozen=True, slots=True)
+class RevealContractsTakeOne:
+    """Coercive Negotiation (Bloodlines): reveal ``count`` Contracts from the
+    bank, take one and trash the others. Resolved by its deployment
+    trigger (``rules.intrigue_triggers``)."""
+
+    count: int = 3
+
+    def __post_init__(self) -> None:
+        if self.count < 1:
+            raise ValueError("revealed Contract count must be positive")
+
+
 type Reward = (
     GainResources
     | GainVictoryPoints
@@ -476,6 +726,18 @@ type Reward = (
     | TakeContract
     | AcquireCardUpTo
     | SetAsideImperiumRowCard
+    | CommanderDiscountThisTurn
+    | IgnoreInfluenceRequirementsThisTurn
+    | GrantAgentIconThisTurn
+    | GrantCombatDeployment
+    | RedirectSpiesOnTurnSpace
+    | RevealContractsTakeOne
+    | GainSolariPerUnitType
+    | PeekTopCard
+    | GrantAgentIconsThisTurn
+    | PassTurn
+    | PermanentRevealPersuasion
+    | AcquireReserveCard
 )
 
 
@@ -545,6 +807,9 @@ class IntrigueOption:
     timing: IntrigueTiming
     sections: tuple[EffectSection, ...]
     trigger: Trigger | None = None
+    # "At the start of your turn": playable only from the turn frame, before
+    # the Agent or Reveal choice (Withdrawn).
+    turn_start_only: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.timing, IntrigueTiming):

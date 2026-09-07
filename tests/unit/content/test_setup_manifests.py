@@ -49,13 +49,19 @@ from dune_imperium.content.uprising.types import (
 
 
 def test_conflict_manifest_has_the_official_tier_counts() -> None:
-    assert len(CONFLICTS) == 16
-    assert len({conflict.card.card_id for conflict in CONFLICTS}) == 16
-    assert Counter(conflict.tier for conflict in CONFLICTS) == {
+    # 16 Uprising cards plus the two Bloodlines cards (one I, one II), which
+    # only enter the pool with the option [Bloodlines p. 3].
+    assert len(CONFLICTS) == 18
+    assert len({conflict.card.card_id for conflict in CONFLICTS}) == 18
+    retail = tuple(conflict for conflict in CONFLICTS if not conflict.bloodlines_only)
+    assert Counter(conflict.tier for conflict in retail) == {
         ConflictTier.ONE: 3,
         ConflictTier.TWO: 9,
         ConflictTier.THREE: 4,
     }
+    assert Counter(
+        conflict.tier for conflict in CONFLICTS if conflict.bloodlines_only
+    ) == {ConflictTier.ONE: 1, ConflictTier.TWO: 1}
     assert all(conflict.card.catalog_url for conflict in CONFLICTS)
 
 
@@ -322,9 +328,10 @@ def test_reserve_instance_ids_resolve_and_validate_copy_bounds() -> None:
 
 
 def test_base_setup_excludes_only_the_choam_leader() -> None:
-    assert len(LEADERS) == 9
+    assert len(LEADERS) == 9 + 8
     assert len(leaders_for_choam(choam_module=False)) == 8
     assert len(leaders_for_choam(choam_module=True)) == 9
+    assert len(leaders_for_choam(choam_module=True, bloodlines=True)) == 9 + 8
     assert {leader.leader_id for leader in LEADERS if leader.choam_only} == {
         "shaddam_corrino_iv"
     }
@@ -375,8 +382,15 @@ def test_reserve_stacks_are_finite_and_have_no_foldspace() -> None:
 
 
 def test_imperium_manifest_matches_base_and_choam_counts() -> None:
-    assert len(IMPERIUM_CARDS) == 57
-    assert sum(entry.copies for entry in IMPERIUM_CARDS) == 72
+    # 57 Uprising identities (72 cards) plus the 26 Bloodlines identities
+    # (32 cards: 25 retail, 5 CHOAM-only, 2 Tech-only) [Bloodlines p. 2].
+    assert len(IMPERIUM_CARDS) == 57 + 26
+    assert sum(entry.copies for entry in IMPERIUM_CARDS) == 72 + 32
+    bloodlines = tuple(entry for entry in IMPERIUM_CARDS if entry.bloodlines_only)
+    assert sum(entry.copies for entry in bloodlines) == 32
+    assert sum(entry.copies for entry in bloodlines if entry.choam_only) == 5
+    assert sum(entry.copies for entry in bloodlines if entry.tech_only) == 2
+    assert all(entry.card.catalog_url for entry in bloodlines)
     assert sum(entry.copies for entry in imperium_cards_for_choam(False)) == 65
     # The three Uprising promo cards join either ruleset only on request.
     assert {entry.card.card_id for entry in IMPERIUM_CARDS if entry.promo} == {
@@ -387,7 +401,11 @@ def test_imperium_manifest_matches_base_and_choam_counts() -> None:
     assert sum(entry.copies for entry in imperium_cards_for_choam(False, True)) == 68
     assert sum(entry.copies for entry in imperium_cards_for_choam(True, True)) == 72
     assert not any(entry.promo and entry.choam_only for entry in IMPERIUM_CARDS)
-    assert {entry.card.card_id for entry in IMPERIUM_CARDS if entry.choam_only} == {
+    assert {
+        entry.card.card_id
+        for entry in IMPERIUM_CARDS
+        if entry.choam_only and not entry.bloodlines_only
+    } == {
         "cargo_runner",
         "delivery_agreement",
         "interstellar_trade",
@@ -397,10 +415,27 @@ def test_imperium_manifest_matches_base_and_choam_counts() -> None:
 
 
 def test_intrigue_manifest_matches_base_and_choam_counts() -> None:
-    assert len(INTRIGUE_CARDS) == 39
-    assert sum(entry.copies for entry in INTRIGUE_CARDS) == 44
+    # 39 Uprising identities (44 cards) plus 18 Bloodlines cards (15 retail,
+    # 1 CHOAM-only, 2 Tech-only) [Bloodlines p. 2].
+    # 18 Bloodlines Intrigue cards plus the 12 Twisted Intrigue cards and
+    # the 10 Navigation cards (Y'rkoon), which share the Intrigue schema.
+    assert len(INTRIGUE_CARDS) == 39 + 18 + 12 + 10
+    assert sum(entry.copies for entry in INTRIGUE_CARDS) == 44 + 18 + 12 + 10
+    bloodlines = tuple(
+        entry
+        for entry in INTRIGUE_CARDS
+        if entry.bloodlines_only and not entry.twisted and not entry.navigation
+    )
+    assert len(bloodlines) == 18
+    assert sum(entry.twisted for entry in INTRIGUE_CARDS) == 12
+    assert sum(entry.choam_only for entry in bloodlines) == 1
+    assert sum(entry.tech_only for entry in bloodlines) == 2
     assert sum(entry.copies for entry in intrigue_cards_for_choam(False)) == 40
-    assert {entry.card.card_id for entry in INTRIGUE_CARDS if entry.choam_only} == {
+    assert {
+        entry.card.card_id
+        for entry in INTRIGUE_CARDS
+        if entry.choam_only and not entry.bloodlines_only
+    } == {
         "backed_by_choam",
         "choam_profits",
         "leverage",
@@ -569,7 +604,11 @@ def test_standard_contract_manifest_transcribes_printed_conditions_and_rewards()
 
 
 def test_imperium_costs_cover_the_printed_range_and_resolve_instances() -> None:
-    costs = {entry.card.card_id: entry.acquisition_cost for entry in IMPERIUM_CARDS}
+    costs = {
+        entry.card.card_id: entry.acquisition_cost
+        for entry in IMPERIUM_CARDS
+        if not entry.bloodlines_only
+    }
 
     assert Counter(costs.values()) == {
         1: 5,
@@ -587,7 +626,9 @@ def test_imperium_costs_cover_the_printed_range_and_resolve_instances() -> None:
     assert costs["bene_gesserit_operative"] == 3
     assert costs["overthrow"] == 8
     assert {
-        entry.card.card_id for entry in IMPERIUM_CARDS if entry.has_acquisition_bonus
+        entry.card.card_id
+        for entry in IMPERIUM_CARDS
+        if entry.has_acquisition_bonus and not entry.bloodlines_only
     } == {
         "arrakis_revolt",
         "guild_spy",

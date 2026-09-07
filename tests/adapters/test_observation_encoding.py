@@ -24,12 +24,15 @@ from dune_imperium.simulation import run_random_game
 
 
 def test_layout_is_versioned_and_contiguous() -> None:
-    assert OBSERVATION_VERSION == 5
-    assert len(PERSONAL_CARD_IDS) == 66
-    assert len(INTRIGUE_IDS) == 39
-    assert len(CONFLICT_IDS) == 16
-    assert len(BATTLE_CARD_IDS) == 21
-    assert OBSERVATION_SIZE == 2022
+    assert OBSERVATION_VERSION == 8
+    # 66 Uprising personal-card identities plus 26 Bloodlines Imperium
+    # identities; 39 Uprising Intrigue identities plus 18 Bloodlines.
+    assert len(PERSONAL_CARD_IDS) == 66 + 26
+    assert len(INTRIGUE_IDS) == 39 + 18 + 12 + 10
+    # 16 Uprising Conflicts plus the two Bloodlines cards (identity universe).
+    assert len(CONFLICT_IDS) == 18
+    assert len(BATTLE_CARD_IDS) == 23
+    assert OBSERVATION_SIZE == 3038
 
     offset = 0
     for segment in OBSERVATION_SEGMENTS:
@@ -40,9 +43,9 @@ def test_layout_is_versioned_and_contiguous() -> None:
 
     assert segment_slice("global_scalars") == slice(0, 12)
     seat0_in_play = segment_slice("seat0_in_play")
-    assert seat0_in_play.stop - seat0_in_play.start == 66
-    private_intrigue = segment_slice("private_intrigue")
-    assert private_intrigue.stop == OBSERVATION_SIZE
+    assert seat0_in_play.stop - seat0_in_play.start == 66 + 26
+    private_navigation = segment_slice("private_navigation_slots")
+    assert private_navigation.stop == OBSERVATION_SIZE
 
 
 def test_reset_state_encodes_the_turn_decision_for_every_observer() -> None:

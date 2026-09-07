@@ -41,6 +41,8 @@ class MatchSpec:
     seat_agents: tuple[str, ...]
     choam_module: bool = False
     promo_cards: bool = False
+    bloodlines: bool = False
+    tech_module: bool = False
     leader_ids: tuple[str, ...] | None = None
     max_steps: int = 30_000
 
@@ -49,6 +51,8 @@ class MatchSpec:
         return RulesetConfig(
             choam_module=self.choam_module,
             promo_cards=self.promo_cards,
+            bloodlines=self.bloodlines,
+            tech_module=self.tech_module,
         )
 
 
@@ -283,6 +287,8 @@ def tournament_specs(
     rotate_seats: bool = True,
     rotate_leaders: bool = False,
     promo_cards: bool = False,
+    bloodlines: bool = False,
+    tech_module: bool = False,
     max_steps: int = 30_000,
 ) -> tuple[MatchSpec, ...]:
     """Cross a lineup over seats, rulesets, and a seed range.
@@ -306,8 +312,12 @@ def tournament_specs(
             seat_agents=rotation,
             choam_module=choam_module,
             promo_cards=promo_cards,
+            bloodlines=bloodlines,
+            tech_module=tech_module,
             leader_ids=(
-                _rotated_leader_ids(seed, choam_module) if rotate_leaders else None
+                _rotated_leader_ids(seed, choam_module, bloodlines)
+                if rotate_leaders
+                else None
             ),
             max_steps=max_steps,
         )
@@ -317,12 +327,17 @@ def tournament_specs(
     )
 
 
-def _rotated_leader_ids(seed: int, choam_module: bool) -> tuple[str, ...]:
+def _rotated_leader_ids(
+    seed: int, choam_module: bool, bloodlines: bool = False
+) -> tuple[str, ...]:
     # Same derivation as the verification sweep's --rotate-leaders so a
     # tournament seed reproduces the sweep's roster for that seed.
     return tuple(
         random.Random(seed).sample(
-            [leader.leader_id for leader in leaders_for_choam(choam_module)],
+            [
+                leader.leader_id
+                for leader in leaders_for_choam(choam_module, bloodlines=bloodlines)
+            ],
             k=4,
         )
     )

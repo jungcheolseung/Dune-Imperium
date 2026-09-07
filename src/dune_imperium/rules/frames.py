@@ -39,6 +39,22 @@ class FrameKind(StrEnum):
     INTRIGUE_TRIGGER_SPY = "intrigue_trigger_spy"
     LEADER_DRAFT = "leader_draft"
     SECRETS_STEAL = "secrets_steal"
+    # Sardaukar Standard's Skill choice for the Commander it acquires.
+    SKILL_CHOICE = "skill_choice"
+    # Bloodlines opponent decisions: a Spy forced off a post (Holy War,
+    # False Orders) and a unit lost from a chosen zone (Holy War).
+    OPPONENT_SPY_MOVE = "opponent_spy_move"
+    OPPONENT_UNIT_LOSS = "opponent_unit_loss"
+    # False Orders: the owner's Spy placement on the turn's board space.
+    SPY_PLACEMENT = "spy_placement"
+    # Coercive Negotiation: three Contracts revealed from the bank.
+    INTRIGUE_TRIGGER_CONTRACT = "intrigue_trigger_contract"
+    # An optional "[trash] icon" reward (Liet Kynes' sandworm replacement).
+    OPTIONAL_TRASH = "optional_trash"
+    # Steersman Y'rkoon: choosing the four Navigation slots at setup, and
+    # choosing how to play the next Navigation card.
+    NAVIGATION_SETUP = "navigation_setup"
+    NAVIGATION_CHOICE = "navigation_choice"
 
 
 def top_frame(state: GameState) -> DecisionFrame | None:
@@ -150,6 +166,13 @@ def reset_turn_counters(
             units_deployed_committed=0,
             spice_at_turn_start=owner.resources.spice,
             spice_spent_turn=0,
+            commander_recruited_turn=False,
+            contracts_completed_turn=0,
+            commander_discount_turn=0,
+            ignores_influence_requirements_turn=False,
+            granted_agent_icon_turn="",
+            combat_icon_turn=False,
+            hungry_for_spice_granted_turn=False,
         ),
     )
 

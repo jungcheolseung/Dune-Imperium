@@ -121,6 +121,13 @@ from a player's personal deck. General Agent, Reveal, and deck-building rules in
 - Main pp. 6, 9, 12-13, and 20 provide the general play, acquisition, Reveal,
   draw, and Reserve-return rules; card artwork supplies the card-specific data.
 
+## Bloodlines cards
+
+The Bloodlines Imperium cards (M12, `RulesetConfig(bloodlines=True)`) are
+audited card by card in [bloodlines.md](bloodlines.md); their catalog entries
+live beside the Uprising cards in `content/uprising/imperium.py` with
+`bloodlines_only=True` and join the deck only once transcribed.
+
 ## Deferred boundaries
 
 - Signet Ring resolves through per-Leader ability data (`rules/leader_abilities.py`, [leaders.md](leaders.md)); seats whose Leader is not implemented yet still have their Signet Ring placements withheld.

@@ -170,6 +170,18 @@ const ACTION_LABELS = {
   take_sietch_tabr_supplies: "Sietch Tabr 보급 (Maker Hooks)",
   take_sietch_tabr_water: "Sietch Tabr water",
   take_sietch_tabr_water_and_destroy_wall: "Water + Shield Wall 파괴",
+  take_tuek_sietch_spice: "Tuek's Sietch: spice 1",
+  take_tuek_sietch_card: "Tuek's Sietch: draw 1",
+  place_leader_bonus_spice: "Tuek's Sietch에 bonus spice 놓기 (Signet)",
+  take_leader_bonus_spice: "Maker space의 bonus spice 가져오기 (Signet)",
+  lose_intrigue_troop: "troop 잃기 (Intrigue)",
+  give_intrigue_card: "상대에게 Intrigue 카드 주기",
+  trash_intrigue_hand_card: "Intrigue 카드 trash",
+  put_back_top_card: "덱 맨 위 카드 되돌리기",
+  discard_top_card: "덱 맨 위 카드 discard",
+  draw_top_card_for_solari: "Solari 1 지불 → 덱 맨 위 카드 draw",
+  place_navigation_card: "Navigation 카드 슬롯에 놓기",
+  play_navigation: "Navigation 카드 play",
   trash_agent_card: "카드 trash",
   trash_card_for_desert_tactics: "카드 trash (Desert Tactics)",
   trash_combat_reward_card: "카드 trash (Combat 보상)",
@@ -178,6 +190,34 @@ const ACTION_LABELS = {
   trash_leader_card: "카드 trash (Leader)",
   trash_reveal_card: "카드 trash",
   use_other_memories: "Other Memories 사용",
+  acquire_sardaukar_commander: "Sardaukar Commander 획득 (2 Solari)",
+  decline_sardaukar_commander: "Sardaukar Commander 거절",
+  recruit_sardaukar_commander: "Sardaukar Commander recruit (2 Solari)",
+  trash_skill_for_strength: "Skill trash → 검 3",
+  deploy_commanders: "Commander 배치",
+  withdraw_commanders: "Commander 회수",
+  retreat_leader_commander: "Commander 1 retreat (Leader)",
+  gain_reveal_influence: "Influence 1 획득 (선택)",
+  retreat_opponent_troop: "상대 troop 강제 retreat",
+  command_acquire_row_card: "Command: 카드 trash 후 Imperium Row 카드 획득",
+  decline_command_acquisition: "Command 획득 거절",
+  gain_reveal_persuasion: "Persuasion 1 선택",
+  take_reveal_contract: "Contract 선택",
+  play_turn_start_card: "턴 시작: 카드 play 후 draw 1, 턴 넘기기",
+  complete_contract_by_card: "카드 효과로 contract 완료",
+  choose_skill: "Commander Skill 선택",
+  move_spy: "Spy 이동",
+  place_spy_on_space: "그 공간에 Spy 배치",
+  recall_spy_for_placement: "배치를 위해 Spy 회수",
+  decline_spy_placement: "Spy 배치 불가",
+  lose_unit: "유닛 1 잃기",
+  take_trigger_contract: "공개된 contract 선택",
+  decline_intrigue_contract_trigger: "Intrigue trigger 거절",
+  retreat_leader_troops: "Fedaykin Maneuver: troop 후퇴",
+  pay_leader_signet_water: "Water 지불 → troop 2 (Signet)",
+  deploy_leader_agent: "Into the Fray: Agent를 Conflict에 배치",
+  trash_optional_card: "카드 trash (선택)",
+  decline_optional_trash: "trash 거절",
 };
 
 /* Korean labels for session-log event kinds (M11 slice 6); falls back to
@@ -611,6 +651,8 @@ async function createGame(event) {
     choam_module: el("opt-choam").checked,
     leader_draft: el("opt-leader-draft").checked,
     promo_cards: el("opt-promo").checked,
+    bloodlines: el("opt-bloodlines").checked,
+    tech_module: el("opt-tech").checked,
   };
   const seed = el("opt-seed").value;
   if (seed !== "") payload.game_seed = Number(seed);
@@ -1133,6 +1175,8 @@ function render() {
     ` · seed ${summary.game_seed}` +
     (summary.choam_module ? " · CHOAM" : "") +
     (summary.promo_cards ? " · promo" : "") +
+    (summary.bloodlines ? " · Bloodlines" : "") +
+    (summary.tech_module ? " · Tech" : "") +
     (summary.leader_draft ? " · draft" : "") +
     (state.review ? " · 리플레이 검토" : "");
   el("decision-banner").hidden = Boolean(state.review);

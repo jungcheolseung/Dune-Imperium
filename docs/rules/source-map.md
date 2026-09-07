@@ -300,3 +300,23 @@ FAQ의 `See ...` 항목은 새 규칙이 없더라도 연결 대상의 coverage�
 | `troops`는 supply에서 recruit, garrison 재모집 금지, 그 turn의 모든 recruit 출처 deploy 가능 `[FAQ p. 4]` | `covered` | [player-turns.md](player-turns.md), [uprising-systems.md](uprising-systems.md) |
 | Score track을 넘어 12 VP 초과 가능 `[FAQ p. 4]` | `covered` | [setup-and-game-flow.md](setup-and-game-flow.md) |
 | `When you win a Conflict`는 공동 1위 제외, 보상으로 얻은 해당 Intrigue 즉시 사용 가능 `[FAQ p. 4]` | `covered` | [combat-and-round-end.md](combat-and-round-end.md) |
+
+## Bloodlines Rulebook
+
+`[Bloodlines p. N]`은 PDF 페이지다. `bloodlines`·`tech_module` 옵션에만 적용된다.
+
+| 출처 | 규칙 주제 | 상태 | 반영 위치 또는 처리 |
+| --- | --- | --- | --- |
+| `[Bloodlines p. 2]` | 구성물 수량, CHOAM Module 병용 구성물, Earn any Alliance·Immediate contract 주석 | `covered` | [bloodlines.md](bloodlines.md) 1절 |
+| `[Bloodlines p. 3]` | Sardaukar Commander 배치(4인 6칸 + bank), Skill stack과 face-up 4장, Conflict 2장 추가, Intrigue 15·Imperium 25·Leader 8 추가 | `covered` | [bloodlines.md](bloodlines.md) 2절 |
+| `[Bloodlines p. 3]` | 원본 Dune: Imperium과의 조합 | `out of scope` | 현재 룰셋에서 제외 |
+| `[Bloodlines p. 4]` | Commander 획득(2 Solari, space 효과, 자유 순서), Skill 선택·중복 금지·보충, supply에서 turn당 1회 지불 recruit, 유닛 취급(strength 2, garrison 2개 한도 포함, 정리 때 supply 복귀), Skill 활성 조건과 라운드당 1회 | `covered` | [bloodlines.md](bloodlines.md) 3절 |
+| `[Skill tile faces]` | Skill 7종의 인쇄 효과 | `deferred to content manifest` | [bloodlines.md](bloodlines.md) 3절 표 |
+| `[Bloodlines p. 5]` | Spy with Deep Cover, Command (6+), Combat 아이콘, wild battle icon끼리의 Endgame 매칭 | `covered` | [bloodlines.md](bloodlines.md) 4절 |
+| `[Bloodlines pp. 6-7]` | Tech Module setup, Acquire Tech(Landsraad space 방문 turn), 비용 할인 두 종류와 하한 0, Flip 능력의 라운드당 1회, tile 구성 | `covered` | [bloodlines.md](bloodlines.md) 5절 |
+| `[Bloodlines p. 7]` | Rise of Ix와의 조합 | `out of scope` | 현재 룰셋에서 제외 |
+| `[Bloodlines pp. 8-9]` | 1·2인 Rivals 규칙 | `out of scope` | 현재 룰셋에서 제외 |
+| `[Bloodlines p. 10]` | 6인 팀전 | `out of scope` | 현재 룰셋에서 제외 |
+| `[Bloodlines p. 11]` | 크레딧 | `out of scope` | 규칙이 아님 |
+| `[Bloodlines p. 12]` | 아이콘 정의(Acquire Tech·할인, Combat, Command, Discard, Flip, Spy with Deep Cover, Trash an Intrigue card, 표시용 아이콘) | `covered` | [bloodlines.md](bloodlines.md) 4·5절 |
+| `[Bloodlines p. 12]` | Chani·Fenring·Esmar Tuek·Steersman Y'rkoon clarification, Forbidden Weapons·Ornithopter Fleet | `deferred to content manifest` | [bloodlines.md](bloodlines.md) 5·6절; Leader·Tech 전사 때 연결 |

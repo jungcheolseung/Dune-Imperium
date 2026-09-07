@@ -19,5 +19,12 @@
     "sha256": "7b54c283357244e5107d1d0f4e87817d39297e914c2014239acbb2c460c0c6b9",
     "pdf_filename": "di-faq-2025-01-13.pdf",
     "text_filename": "di-faq-2025-01-13.txt"
+  },
+  "bloodlines": {
+    "label": "Bloodlines Rulebook",
+    "url": "https://d19y2ttatozxjp.cloudfront.net/pdfs/DUNE_IMPERIUM_BLOODLINES_Rulebook.pdf",
+    "sha256": "5f0b4646ab59f467a1027b95e2b6f67809c77c224d98ddab26dd661d7e2b042a",
+    "pdf_filename": "di-bloodlines.pdf",
+    "text_filename": "di-bloodlines.txt"
   }
 }

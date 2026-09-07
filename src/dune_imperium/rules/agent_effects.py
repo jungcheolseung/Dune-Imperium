@@ -35,7 +35,10 @@ from dune_imperium.rules.card_discard import discard_personal_card_from_hand
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.combat import face_up_battle_icons
-from dune_imperium.rules.contracts import begin_contract_gain
+from dune_imperium.rules.contracts import (
+    begin_contract_gain,
+    complete_contract_by_effect,
+)
 from dune_imperium.rules.effects import (
     advance_after_effect,
     arm_agent_icons,
@@ -45,23 +48,27 @@ from dune_imperium.rules.effects import (
     recruit_shortfall_events,
     recruit_troops,
 )
-from dune_imperium.rules.frames import FrameKind, replace_player
+from dune_imperium.rules.frames import FrameKind, context_int, replace_player
 from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
 from dune_imperium.rules.leader_abilities import (
     resolve_leader_signet,
     units_deployment_blocked,
 )
+from dune_imperium.rules.planetologist import replace_sandworms, replaces_sandworms
 from dune_imperium.rules.shield_wall import (
     current_conflict_is_shield_wall_protected,
     destroy_shield_wall,
 )
+from dune_imperium.rules.spy_moves import turn_space_spy_frames
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
     observation_post_ids_for_factions,
     place_spy,
     recall_spy,
 )
+from dune_imperium.rules.unit_loss import opponent_unit_loss_frames
+from dune_imperium.rules.units import retreat_units
 
 # Agent-box icon keys resolved by ``resolve_agent_card_effect`` with
 # ``effect=<key>``. Kept sorted: the action codec enumerates them.
@@ -115,6 +122,12 @@ _PLACEMENT_ICONS: Final[Mapping[PersonalCardAgentEffect, tuple[str, ...]]] = (
                 AGENT_ICON_INFLUENCE,
                 AGENT_ICON_TRASH_SELF,
             ),
+            # Fremen War Name (Bloodlines): troop and card draw once two spice
+            # were gained this turn.
+            _BOX.RECRUIT_ONE_AND_DRAW_ONE_IF_GAINED_TWO_SPICE_THIS_TURN: (
+                AGENT_ICON_TROOPS,
+                AGENT_ICON_CARDS,
+            ),
         }
     )
 )
@@ -144,15 +157,21 @@ def legal_agent_card_discard_actions(
     if pending_agent_icons(context):
         # The arrow cost is paid; only the queued reward icons remain.
         return ()
+    if context.get("agent_card_spy_pending") is True:
+        # Arrakis Observer's discard is paid; the Spy placement remains.
+        return ()
     _, source_card_id, _ = _effect_subject(context)
     source_card = personal_card_for_instance(source_card_id)
     effect = source_card.agent_effect
     if effect not in (
+        PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY,
+        PersonalCardAgentEffect.MAY_DISCARD_FOR_WATER,
         PersonalCardAgentEffect.DISCARD_TO_DRAW_ONE_OR_TWO_IF_SPACING_GUILD,
         PersonalCardAgentEffect.DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD,
         PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD,
         PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE_AND_INTRIGUE_IF_SPACING_GUILD,
         PersonalCardAgentEffect.MAY_DISCARD_TO_TAKE_CONTRACT,
+        PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE,
     ):
         return ()
     may_pay = (
@@ -169,6 +188,9 @@ def legal_agent_card_discard_actions(
                 PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD,
                 PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE_AND_INTRIGUE_IF_SPACING_GUILD,
                 PersonalCardAgentEffect.MAY_DISCARD_TO_TAKE_CONTRACT,
+                PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE,
+                PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY,
+                PersonalCardAgentEffect.MAY_DISCARD_FOR_WATER,
             )
             else ()
         ),
@@ -253,6 +275,50 @@ def apply_agent_card_discard(
             discarded.state.players,
         )
         return RuleResult(state=armed, events=discarded.events)
+    if source_card.agent_effect is PersonalCardAgentEffect.MAY_DISCARD_FOR_WATER:
+        # Engineered Miracle: the discard pays one water.
+        owner = discarded.state.players[action.actor]
+        watered = replace(
+            owner, resources=replace(owner.resources, water=owner.resources.water + 1)
+        )
+        return RuleResult(
+            state=advance_after_effect(
+                discarded.state,
+                context,
+                replace_player(discarded.state.players, watered),
+            ),
+            events=discarded.events,
+        )
+    if (
+        source_card.agent_effect
+        is PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY
+    ):
+        # Arrakis Observer: two spice for a Spacing Guild discard, then the
+        # Spy with Deep Cover placement stays pending for its own choice.
+        owner = discarded.state.players[action.actor]
+        events = list(discarded.events)
+        if Faction.SPACING_GUILD in discarded_card.factions:
+            owner = replace(
+                owner,
+                resources=replace(owner.resources, spice=owner.resources.spice + 2),
+            )
+            events.append(
+                GameEvent(
+                    event_id=f"{source}:{card_id}:spice",
+                    kind="agent_card_effect_resolved",
+                    payload=(("player", action.actor), ("spice", 2)),
+                )
+            )
+        context["pending_agent_effect"] = True
+        context["agent_card_spy_pending"] = True
+        return RuleResult(
+            state=advance_after_effect(
+                discarded.state,
+                context,
+                replace_player(discarded.state.players, owner),
+            ),
+            events=tuple(events),
+        )
     if (
         source_card.agent_effect
         is PersonalCardAgentEffect.MAY_DISCARD_TO_TAKE_CONTRACT
@@ -272,6 +338,9 @@ def apply_agent_card_discard(
         is PersonalCardAgentEffect.DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD
     ):
         draw_count = 2 if Faction.SPACING_GUILD in discarded_card.factions else 0
+    elif source_card.agent_effect is PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE:
+        # I Believe (Bloodlines): "[discard a card] -> draw a card".
+        draw_count = 1
     else:
         draw_count = 2 if Faction.SPACING_GUILD in discarded_card.factions else 1
     if draw_count == 0:
@@ -536,6 +605,46 @@ def legal_agent_card_influence_actions(
     _, source_card_id, _ = _effect_subject(context)
     source_card = personal_card_for_instance(source_card_id)
     effect = source_card.agent_effect
+    if effect is PersonalCardAgentEffect.DRAW_ONE_OR_BENE_GESSERIT_INFLUENCE_IF_BOND:
+        # Southern Faith: the draw is always there; the Influence needs
+        # another Bene Gesserit card in play, judged now (OQ-028).
+        owner = state.players[player]
+        if not has_faction_bond(owner.in_play, source_card_id, Faction.BENE_GESSERIT):
+            return ()
+        return (
+            DomainAction(action_id="resolve_agent_card_effect", actor=player),
+            DomainAction(
+                action_id="choose_agent_card_influence",
+                actor=player,
+                arguments=(("faction", Faction.BENE_GESSERIT.value),),
+            ),
+        )
+    if (
+        effect
+        is PersonalCardAgentEffect.CHOSEN_INFLUENCE_OR_TWO_TROOPS_BOTH_IF_BOND
+    ):
+        # Possible Futures: without the Bond it is a choice between the
+        # Influence and the two troops; with it the Influence choice pays
+        # both.
+        owner = state.players[player]
+        bond = has_faction_bond(owner.in_play, source_card_id, Faction.BENE_GESSERIT)
+        return (
+            *(
+                ()
+                if bond
+                else (
+                    DomainAction(action_id="resolve_agent_card_effect", actor=player),
+                )
+            ),
+            *(
+                DomainAction(
+                    action_id="choose_agent_card_influence",
+                    actor=player,
+                    arguments=(("faction", faction.value),),
+                )
+                for faction in Faction
+            ),
+        )
     if effect not in (
         PersonalCardAgentEffect.TRASH_SELF_AND_GAIN_CHOSEN_INFLUENCE,
         PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE_IF_SPY_RECALLED_THIS_TURN,
@@ -589,6 +698,8 @@ def apply_agent_card_influence(
         1,
         event_prefix=f"{source}:influence:{faction.value}",
     )
+    events: tuple[GameEvent, ...] = gained.events
+    players = gained.state.players
     if (
         source_card.agent_effect
         is PersonalCardAgentEffect.TRASH_SELF_AND_GAIN_CHOSEN_INFLUENCE
@@ -598,12 +709,103 @@ def apply_agent_card_influence(
         finish_agent_icon(context, AGENT_ICON_INFLUENCE)
     else:
         context["pending_agent_effect"] = False
+    if (
+        source_card.agent_effect
+        is PersonalCardAgentEffect.CHOSEN_INFLUENCE_OR_TWO_TROOPS_BOTH_IF_BOND
+    ):
+        # With the Bond the Influence choice also pays the two troops.
+        owner = players[action.actor]
+        if has_faction_bond(owner.in_play, source_card_id, Faction.BENE_GESSERIT):
+            recruited_owner, recruited = recruit_troops(owner, 2)
+            previous = context_int(
+                context, "troops_recruited", owner="Agent-turn effect frame"
+            )
+            context["troops_recruited"] = previous + recruited
+            players = replace_player(players, recruited_owner)
+            events = (
+                *events,
+                *recruit_shortfall_events(
+                    f"{source}:troops", action.actor, 2, recruited
+                ),
+            )
     next_state = advance_after_effect(
-        gained.state,
+        replace(gained.state, players=players),
         context,
-        gained.state.players,
+        players,
     )
-    return RuleResult(state=next_state, events=gained.events)
+    return RuleResult(state=next_state, events=events)
+
+
+def legal_agent_card_contract_completion_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """CHOAM Demands: "Complete one of your contracts" (any active one)."""
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return ()
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    if context.get("pending_agent_effect") is not True:
+        return ()
+    _, source_card_id, _ = _effect_subject(context)
+    source_card = personal_card_for_instance(source_card_id)
+    if source_card.agent_effect is not PersonalCardAgentEffect.COMPLETE_ONE_CONTRACT:
+        return ()
+    return tuple(
+        DomainAction(
+            action_id="complete_contract_by_card",
+            actor=player,
+            arguments=(("instance_id", instance_id),),
+        )
+        for instance_id in state.players[player].active_contract_ids
+    )
+
+
+def apply_agent_card_contract_completion(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Complete the chosen Contract regardless of its printed condition."""
+
+    if action not in legal_agent_card_contract_completion_actions(
+        state, action.actor
+    ):
+        raise ValueError("action is not a legal Agent-card Contract completion")
+    _, context = current_agent_effect_context(state)
+    _, source_card_id, _ = _effect_subject(context)
+    instance_id = str(dict(action.arguments)["instance_id"])
+    source = (
+        f"round:{state.round_number}:player:{action.actor}:"
+        f"agent_card:{source_card_id}:contract:{instance_id}"
+    )
+    garrison_before = state.players[action.actor].troops_garrison
+    completed = complete_contract_by_effect(
+        state, action.actor, instance_id, source=source
+    )
+    recruited = completed.state.players[action.actor].troops_garrison - garrison_before
+    if recruited:
+        previous = context_int(
+            context, "troops_recruited", owner="Agent-turn effect frame"
+        )
+        context["troops_recruited"] = previous + recruited
+    context["pending_agent_effect"] = False
+    # The reward's own choices (a Spy placement, a recall) were pushed by
+    # the completion above this frame; keep them on top of the advanced turn.
+    depth = len(state.decision_stack)
+    follow_up = completed.state.decision_stack[depth:]
+    base = replace(
+        completed.state, decision_stack=completed.state.decision_stack[:depth]
+    )
+    advanced = advance_after_effect(base, context, base.players)
+    next_state = replace(
+        advanced, decision_stack=(*advanced.decision_stack, *follow_up)
+    )
+    return RuleResult(state=next_state, events=completed.events)
 
 
 def legal_agent_card_spy_actions(
@@ -624,7 +826,12 @@ def legal_agent_card_spy_actions(
         return ()
     _, source_card_id, _ = _effect_subject(context)
     source_card = personal_card_for_instance(source_card_id)
-    if source_card.agent_effect not in (
+    deep_cover = (
+        source_card.agent_effect
+        is PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY
+        and context.get("agent_card_spy_pending") is True
+    )
+    if not deep_cover and source_card.agent_effect not in (
         PersonalCardAgentEffect.PLACE_SPY,
         PersonalCardAgentEffect.PLACE_SPY_ALLOW_SHARED_IF_SPYING_ON_VISITED_SPACE,
     ):
@@ -637,6 +844,14 @@ def legal_agent_card_spy_actions(
         else None
     )
     placements = empty_observation_post_ids(state, allowed_post_ids)
+    if deep_cover:
+        # Spy with Deep Cover: opponents' Spies may be ignored, never one's
+        # own [Bloodlines pp. 5, 12].
+        placements = tuple(
+            post.post_id
+            for post in OBSERVATION_POSTS
+            if post.post_id not in owner.spy_post_ids
+        )
     if (
         source_card.agent_effect
         is PersonalCardAgentEffect.PLACE_SPY_ALLOW_SHARED_IF_SPYING_ON_VISITED_SPACE
@@ -723,6 +938,7 @@ def apply_agent_card_spy_action(
 
     next_owner = place_spy(owner, post_id)
     context["pending_agent_effect"] = False
+    context.pop("agent_card_spy_pending", None)
     next_state = advance_after_effect(
         state,
         context,
@@ -814,6 +1030,94 @@ def apply_agent_card_recall(state: GameState, action: DomainAction) -> RuleResul
     )
 
 
+def legal_agent_card_opponent_retreat_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return Disruption Tactics' targets: one enemy unit to retreat.
+
+    "Force an enemy troop to retreat" (card face); a Sardaukar Commander is
+    a troop [Bloodlines p. 4]. OQ-034 project convention: the acting player
+    picks the opponent and, where both kinds are in the Conflict, which
+    kind retreats. With no enemy unit in the Conflict the box resolves
+    without effect through ``resolve_agent_card_effect``.
+    """
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return ()
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    if context.get("pending_agent_effect") is not True or pending_agent_icons(context):
+        return ()
+    _, source_card_id, _ = _effect_subject(context)
+    if (
+        personal_card_for_instance(source_card_id).agent_effect
+        is not PersonalCardAgentEffect.FORCE_OPPONENT_TROOP_RETREAT
+    ):
+        return ()
+    actions: list[DomainAction] = []
+    for seat in state.players:
+        if seat.player_id == player:
+            continue
+        if seat.troops_conflict > 0:
+            actions.append(
+                DomainAction(
+                    action_id="retreat_opponent_troop",
+                    actor=player,
+                    arguments=(("player", seat.player_id),),
+                )
+            )
+        if seat.commanders_conflict > 0:
+            actions.append(
+                DomainAction(
+                    action_id="retreat_opponent_troop",
+                    actor=player,
+                    arguments=(("commanders", 1), ("player", seat.player_id)),
+                )
+            )
+    return tuple(actions)
+
+
+def apply_agent_card_opponent_retreat(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Retreat one unit of the chosen opponent to their garrison."""
+
+    if action not in legal_agent_card_opponent_retreat_actions(state, action.actor):
+        raise ValueError("action is not a legal enemy retreat choice")
+    _, context = current_agent_effect_context(state)
+    _, source_card_id, _ = _effect_subject(context)
+    arguments = dict(action.arguments)
+    target = arguments["player"]
+    commanders = arguments.get("commanders", 0)
+    if isinstance(target, bool) or not isinstance(target, int):
+        raise RuntimeError("enemy retreat has an invalid target")
+    if isinstance(commanders, bool) or not isinstance(commanders, int):
+        raise RuntimeError("enemy retreat has an invalid unit kind")
+    source = (
+        f"round:{state.round_number}:player:{action.actor}:"
+        f"agent_card:{source_card_id}:opponent:{target}"
+    )
+    retreated = retreat_units(
+        state, target, source, troops=1 - commanders, commanders=commanders
+    )
+    context["pending_agent_effect"] = False
+    next_state = advance_after_effect(
+        retreated.state, context, retreated.state.players
+    )
+    event = GameEvent(
+        event_id=f"round:{state.round_number}:player:{action.actor}:agent_card:{source_card_id}",
+        kind="agent_card_effect_resolved",
+        payload=(("card_id", source_card_id), ("player", action.actor)),
+    )
+    return RuleResult(state=next_state, events=(event, *retreated.events))
+
+
 def legal_agent_card_trash_actions(
     state: GameState,
     player: int,
@@ -843,6 +1147,7 @@ def legal_agent_card_trash_actions(
         PersonalCardAgentEffect.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE,
         PersonalCardAgentEffect.MAY_TRASH_SELF_FOR_TROOP_AND_FIRST_PLACE_INFLUENCE,
         PersonalCardAgentEffect.GAIN_REWARDS_PER_FACE_UP_BATTLE_ICON,
+        PersonalCardAgentEffect.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS,
     ):
         return ()
     if (
@@ -856,6 +1161,12 @@ def legal_agent_card_trash_actions(
 
     owner = state.players[player]
     eligible = (*owner.hand, *owner.discard_pile, *owner.in_play)
+    if (
+        source_card.agent_effect
+        is PersonalCardAgentEffect.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS
+    ):
+        # Elite Forces: "a card from your hand".
+        eligible = owner.hand
     if (
         source_card.agent_effect
         is PersonalCardAgentEffect.MAY_TRASH_SELF_FOR_TROOP_AND_FIRST_PLACE_INFLUENCE
@@ -959,6 +1270,28 @@ def apply_agent_card_trash(state: GameState, action: DomainAction) -> RuleResult
             trashed.state,
             context,
             trashed.state.players,
+        )
+        return RuleResult(state=next_state, events=trashed.events)
+    if (
+        source_card.agent_effect
+        is PersonalCardAgentEffect.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS
+    ):
+        # Elite Forces: an Emperor card trashed from hand pays an Intrigue
+        # draw and a troop (queued icons, OQ-027) and the Combat icon: this
+        # turn deploys as though at a Combat space, never more than two
+        # units from the garrison [Bloodlines p. 5].
+        if Faction.EMPEROR in personal_card_for_instance(card_id).factions:
+            arm_agent_icons(context, (AGENT_ICON_INTRIGUE, AGENT_ICON_TROOPS))
+            if context.get("units_deploy_blocked") is not True:
+                context["pending_combat_deployment"] = True
+                limit = context_int(
+                    context,
+                    "existing_troop_deployment_limit",
+                    owner="Agent-turn effect frame",
+                )
+                context["existing_troop_deployment_limit"] = max(limit, 2)
+        next_state = advance_after_effect(
+            trashed.state, context, trashed.state.players
         )
         return RuleResult(state=next_state, events=trashed.events)
     if (
@@ -1554,7 +1887,11 @@ def _apply_arrakis_revolt_payment(
         paid = destroyed.state
         events.extend(destroyed.events)
     owner = paid.players[action.actor]
-    if current_conflict_is_shield_wall_protected(paid) or units_deployment_blocked(
+    replaced = 0
+    if replaces_sandworms(owner) and not units_deployment_blocked(paid, action.actor):
+        # Arrakis Planetologist, even under the Shield Wall [Liet Kynes card].
+        replaced = 1
+    elif current_conflict_is_shield_wall_protected(paid) or units_deployment_blocked(
         paid, action.actor
     ):
         # No effect against a Shield Wall-protected Conflict [Main p. 20] or
@@ -1581,6 +1918,13 @@ def _apply_arrakis_revolt_payment(
             )
         )
     next_state = advance_after_effect(paid, context, paid.players)
+    if replaced:
+        replacement = replace_sandworms(
+            next_state, action.actor, replaced, source=source
+        )
+        return RuleResult(
+            state=replacement.state, events=(*events, *replacement.events)
+        )
     return RuleResult(state=next_state, events=tuple(events))
 
 
@@ -1724,6 +2068,17 @@ def resolve_agent_card_icon(state: GameState, action: DomainAction) -> RuleResul
         effect
         is PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO
     )
+    # Fremen War Name: both icons need two spice gained this turn, judged
+    # when each icon resolves (OQ-028).
+    war_name_blocked = (
+        effect
+        is (
+            PersonalCardAgentEffect
+            .RECRUIT_ONE_AND_DRAW_ONE_IF_GAINED_TWO_SPICE_THIS_TURN
+        )
+        and spice_gained_this_turn(owner) < 2
+    )
+    missive_blocked = hidden_missive and owner.influence.bene_gesserit < 2
     maker_keeper = (
         effect is PersonalCardAgentEffect.GAIN_BY_BENE_GESSERIT_AND_FREMEN_INFLUENCE_TWO
     )
@@ -1738,14 +2093,14 @@ def resolve_agent_card_icon(state: GameState, action: DomainAction) -> RuleResul
     intrigue_draw_count = 0
     match key:
         case "cards":
-            if hidden_missive and owner.influence.bene_gesserit < 2:
+            if missive_blocked or war_name_blocked:
                 available = False
             else:
                 personal_draw_count = 1
         case "intrigue":
             intrigue_draw_count = 1
         case "troops":
-            if hidden_missive and owner.influence.bene_gesserit < 2:
+            if missive_blocked or war_name_blocked:
                 available = False
             else:
                 next_owner = recruit(
@@ -1956,6 +2311,100 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             if len(owner.completed_contract_ids) >= 2
             else "agent_card_effect_unavailable"
         )
+    elif effect is PersonalCardAgentEffect.FORCE_OPPONENT_TROOP_RETREAT:
+        if any(
+            seat.player_id != player and seat.troops_conflict + seat.commanders_conflict
+            for seat in state.players
+        ):
+            raise RuntimeError("enemy retreat requires a player choice")
+        # No enemy unit in the Conflict: nothing to retreat (OQ-028).
+        next_owner = owner
+        event_kind = "agent_card_effect_unavailable"
+    elif effect is PersonalCardAgentEffect.RECRUIT_ONE_IF_EMPEROR_INFLUENCE_TWO:
+        # Command Center (Bloodlines): "Emperor 2 Influence: troop", judged
+        # when the box resolves (OQ-028).
+        if owner.influence.emperor >= 2:
+            next_owner, recruited = recruit_troops(owner, 1)
+            previous = context.get("troops_recruited")
+            if isinstance(previous, bool) or not isinstance(previous, int):
+                raise RuntimeError("Agent-turn effect frame has invalid recruit count")
+            context["troops_recruited"] = previous + recruited
+            recruit_shortfall = recruit_shortfall_events(
+                event_source, player, 1, recruited
+            )
+            event_kind = "agent_card_effect_resolved"
+        else:
+            next_owner = owner
+            event_kind = "agent_card_effect_unavailable"
+    elif effect is PersonalCardAgentEffect.DRAW_ONE_IF_GAINED_TWO_SPICE_THIS_TURN:
+        # Sandwalk (Bloodlines): "If you gained 2 spice or more this turn:
+        # draw a card"; the draw follows the generic path below.
+        next_owner = owner
+        event_kind = (
+            "agent_card_effect_resolved"
+            if spice_gained_this_turn(owner) >= 2
+            else "agent_card_effect_unavailable"
+        )
+    elif effect in (
+        PersonalCardAgentEffect.DRAW_INTRIGUE_CARD,
+        PersonalCardAgentEffect.DRAW_INTRIGUE_IF_SANDWORM_IN_CONFLICT,
+        PersonalCardAgentEffect.DRAW_INTRIGUE_IF_CONTRACT_COMPLETED_THIS_TURN,
+    ):
+        # Imperial Throneship / Shrouded Counsel: an Intrigue draw; Pointing
+        # the Way: "If you have one or more sandworms in the Conflict:
+        # Intrigue"; Mercantile Affairs: "If you completed a contract this
+        # turn: Intrigue" (Bloodlines card faces).
+        met = (
+            owner.sandworms_conflict >= 1
+            if effect is PersonalCardAgentEffect.DRAW_INTRIGUE_IF_SANDWORM_IN_CONFLICT
+            else owner.contracts_completed_turn >= 1
+            if effect
+            is PersonalCardAgentEffect.DRAW_INTRIGUE_IF_CONTRACT_COMPLETED_THIS_TURN
+            else True
+        )
+        if not met:
+            next_owner = owner
+            event_kind = "agent_card_effect_unavailable"
+        else:
+            intrigue_draw = draw_or_queue_intrigue_cards(
+                state, player, 1, source=f"{event_source}:intrigue_draw"
+            )
+            context["pending_agent_effect"] = False
+            next_state = advance_after_effect(intrigue_draw.state, context)
+            return RuleResult(
+                state=next_state,
+                events=(
+                    GameEvent(
+                        event_id=event_source,
+                        kind="agent_card_effect_resolved",
+                        payload=(("card_id", card_instance_id), ("player", player)),
+                    ),
+                    *intrigue_draw.events,
+                ),
+            )
+    elif effect is PersonalCardAgentEffect.TAKE_CONTRACT_IF_SPY_RECALLED_THIS_TURN:
+        # Corrupt Bureaucrat (Bloodlines): "If you recalled a Spy this turn:
+        # contract" (2 Solari without the CHOAM Module [Main p. 20]).
+        if context.get("spy_recalled_this_turn") is not True:
+            next_owner = owner
+            event_kind = "agent_card_effect_unavailable"
+        else:
+            context["pending_agent_effect"] = False
+            resumed = advance_after_effect(state, context)
+            contracts = begin_contract_gain(
+                resumed, player, 1, source=event_source
+            )
+            return RuleResult(
+                state=contracts.state,
+                events=(
+                    GameEvent(
+                        event_id=event_source,
+                        kind="agent_card_effect_resolved",
+                        payload=(("card_id", card_instance_id), ("player", player)),
+                    ),
+                    *contracts.events,
+                ),
+            )
     elif effect is PersonalCardAgentEffect.TAKE_CONTRACT:
         context["pending_agent_effect"] = False
         resumed = advance_after_effect(state, context)
@@ -2104,7 +2553,33 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         context["troops_recruited"] = previous + recruited
         recruit_shortfall = recruit_shortfall_events(event_source, player, 1, recruited)
         event_kind = "agent_card_effect_resolved"
-    elif effect is PersonalCardAgentEffect.RECRUIT_TWO_TROOPS:
+    elif effect is PersonalCardAgentEffect.BOOST_NEXT_BENE_GESSERIT_CARD_THIS_ROUND:
+        # Urgent Shigawire arms the seat; the boost is spent by the next
+        # Bene Gesserit card played this round (``agent_turn``).
+        next_owner = replace(owner, bene_gesserit_boost_pending=True)
+        event_kind = "agent_card_effect_resolved"
+    elif effect is PersonalCardAgentEffect.EACH_OPPONENT_LOSES_TROOP_AND_MOVES_SPY:
+        # Holy War: the opponents' decisions are pushed once this frame has
+        # advanced (below).
+        next_owner = owner
+        event_kind = "agent_card_effect_resolved"
+    elif effect is PersonalCardAgentEffect.COMPLETE_ONE_CONTRACT:
+        # CHOAM Demands resolves through its own Contract choice; with no
+        # active Contract the box does nothing.
+        if owner.active_contract_ids:
+            raise ValueError("CHOAM Demands resolves through complete_contract_by_card")
+        next_owner = owner
+        event_kind = "agent_card_effect_unavailable"
+    elif effect is PersonalCardAgentEffect.DRAW_ONE_OR_BENE_GESSERIT_INFLUENCE_IF_BOND:
+        # Southern Faith's draw half; the draw follows the generic path.
+        next_owner = owner
+        event_kind = "agent_card_effect_resolved"
+    elif effect in (
+        PersonalCardAgentEffect.RECRUIT_TWO_TROOPS,
+        PersonalCardAgentEffect.CHOSEN_INFLUENCE_OR_TWO_TROOPS_BOTH_IF_BOND,
+    ):
+        # Possible Futures' two-troop half (the Bond case pays both through
+        # the Influence choice instead).
         next_owner, recruited = recruit_troops(owner, 2)
         previous = context.get("troops_recruited")
         if isinstance(previous, bool) or not isinstance(previous, int):
@@ -2317,7 +2792,7 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
                 ),
             )
     elif effect is PersonalCardAgentEffect.DRAW_INTRIGUE_IF_THREE_UNITS_IN_CONFLICT:
-        if owner.troops_conflict + owner.sandworms_conflict < 3:
+        if owner.units_in_conflict < 3:
             next_owner = owner
             event_kind = "agent_card_effect_unavailable"
         else:
@@ -2425,6 +2900,7 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         )
     players = replace_player(state.players, next_owner)
     context["pending_agent_effect"] = False
+    space_id_value = context.get("space_id")
     next_state = advance_after_effect(state, context, players)
     event = GameEvent(
         event_id=(
@@ -2434,12 +2910,24 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         kind=event_kind,
         payload=(("card_id", card_instance_id), ("player", player)),
     )
+    if effect is PersonalCardAgentEffect.EACH_OPPONENT_LOSES_TROOP_AND_MOVES_SPY:
+        if not isinstance(space_id_value, str):
+            raise RuntimeError("Agent-turn effect frame has invalid space")
+        losses = opponent_unit_loss_frames(next_state, player, source=event_source)
+        moves = turn_space_spy_frames(
+            losses.state, player, space_id_value, source=event_source
+        )
+        return RuleResult(
+            state=moves.state, events=(event, *losses.events, *moves.events)
+        )
     if effect in (
         PersonalCardAgentEffect.DRAW_PERSONAL_CARD,
         PersonalCardAgentEffect.DRAW_PER_SANDWORM_IN_CONFLICT,
         PersonalCardAgentEffect.DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO,
         PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO,
         PersonalCardAgentEffect.DRAW_PER_TWO_COMPLETED_CONTRACTS_UP_TO_TWO,
+        PersonalCardAgentEffect.DRAW_ONE_IF_GAINED_TWO_SPICE_THIS_TURN,
+        PersonalCardAgentEffect.DRAW_ONE_OR_BENE_GESSERIT_INFLUENCE_IF_BOND,
     ):
         if effect is PersonalCardAgentEffect.DRAW_PER_SANDWORM_IN_CONFLICT:
             draw_count = owner.sandworms_conflict
@@ -2494,6 +2982,17 @@ def resolve_faction_influence(state: GameState) -> RuleResult:
         gained.state.players,
     )
     return RuleResult(state=next_state, events=gained.events)
+
+
+def spice_gained_this_turn(owner: PlayerState) -> int:
+    """Return the spice the seat gained since its turn opened, before spending.
+
+    ``spice_at_turn_start`` is snapshotted when the turn frame opens and
+    every spend adds to ``spice_spent_turn``, so gains from any source count
+    (the same reading the Intrigue DSL uses for "gained N spice this turn").
+    """
+
+    return owner.resources.spice - owner.spice_at_turn_start + owner.spice_spent_turn
 
 
 def _effect_subject(context: dict[str, bool | int | str]) -> tuple[int, str, str]:

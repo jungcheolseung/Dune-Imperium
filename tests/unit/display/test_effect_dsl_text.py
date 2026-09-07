@@ -130,6 +130,9 @@ def test_option_text_joins_multiple_sections_with_a_semicolon() -> None:
 
 def test_intrigue_card_text_covers_every_card_with_non_empty_lines() -> None:
     for entry in INTRIGUE_CARDS:
+        if not entry.play_data_complete:
+            # Bloodlines cards awaiting transcription (M12) render no options.
+            continue
         lines = intrigue_card_text(entry)
 
         assert lines, f"{entry.card.card_id} produced no option lines"

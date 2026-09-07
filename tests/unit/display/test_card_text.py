@@ -17,10 +17,11 @@ _ALL_ENTRIES = (*IMPERIUM_CARDS, *STARTING_DECK, *RESERVE_STACKS)
 
 
 def test_covers_all_57_imperium_7_starting_2_reserve_entries() -> None:
-    assert len(IMPERIUM_CARDS) == 57
+    # Plus the 26 Bloodlines Imperium identities (M12).
+    assert len(IMPERIUM_CARDS) == 57 + 26
     assert len(STARTING_DECK) == 7
     assert len(RESERVE_STACKS) == 2
-    assert len(_ALL_ENTRIES) == 66
+    assert len(_ALL_ENTRIES) == 66 + 26
 
 
 def test_every_entry_produces_a_non_empty_list() -> None:
@@ -143,4 +144,10 @@ def test_untranscribed_imperium_card_reports_missing_play_data() -> None:
 
 
 def test_no_imperium_card_currently_has_incomplete_play_data() -> None:
-    assert all(entry.play_data_complete for entry in IMPERIUM_CARDS)
+    # Bloodlines cards are transcribed slice by slice (M12) and stay out of
+    # the deck until complete; every Uprising card is complete.
+    assert all(
+        entry.play_data_complete
+        for entry in IMPERIUM_CARDS
+        if not entry.bloodlines_only
+    )

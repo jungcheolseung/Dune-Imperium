@@ -11,11 +11,13 @@ from dune_imperium.core.decisions import PlayerDecision
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.acquisition import legal_agent_card_acquisitions
 from dune_imperium.rules.agent_effects import (
+    legal_agent_card_contract_completion_actions,
     legal_agent_card_discard_actions,
     legal_agent_card_icon_actions,
     legal_agent_card_influence_actions,
     legal_agent_card_intrigue_payment_actions,
     legal_agent_card_long_live_actions,
+    legal_agent_card_opponent_retreat_actions,
     legal_agent_card_payment_actions,
     legal_agent_card_recall_actions,
     legal_agent_card_spy_actions,
@@ -30,10 +32,13 @@ from dune_imperium.rules.board_effects import (
     legal_maker_space_actions,
     legal_shipping_actions,
     legal_sietch_tabr_actions,
+    legal_tuek_sietch_actions,
 )
 from dune_imperium.rules.combat_deployment import (
     legal_agent_turn_finish_actions,
     legal_combat_deployments,
+    legal_commander_deployments,
+    legal_commander_withdrawals,
     legal_troop_withdrawals,
 )
 from dune_imperium.rules.contracts import legal_contract_completion_actions
@@ -48,12 +53,18 @@ from dune_imperium.rules.leader_abilities import (
     legal_leader_placement_ability_actions,
     legal_leader_signet_actions,
 )
+from dune_imperium.rules.sardaukar import (
+    legal_commander_recruit_actions,
+    legal_sardaukar_commander_actions,
+)
 from dune_imperium.rules.spies import legal_gather_intelligence_actions
 
 # Serial Agent-card choices. When any of these offers an action, the generic
 # ``resolve_agent_card_effect`` action is withheld until the choice is made.
 _AGENT_CARD_CHOICE_PROVIDERS = (
     legal_agent_card_trash_actions,
+    legal_agent_card_contract_completion_actions,
+    legal_agent_card_opponent_retreat_actions,
     legal_agent_card_discard_actions,
     legal_agent_card_payment_actions,
     legal_corrinth_city_payment_actions,
@@ -95,16 +106,21 @@ def legal_agent_effect_frame_actions(
         *legal_contract_completion_actions(state, player),
         *legal_espionage_actions(state, player),
         *legal_sietch_tabr_actions(state, player),
+        *legal_tuek_sietch_actions(state, player),
         *legal_shipping_actions(state, player),
         *legal_desert_tactics_actions(state, player),
         *legal_imperial_privilege_actions(state, player),
         *legal_maker_space_actions(state, player),
+        *legal_sardaukar_commander_actions(state, player),
+        *legal_commander_recruit_actions(state, player),
         *legal_combat_deployments(state, player),
+        *legal_commander_deployments(state, player),
         *legal_intrigue_play_actions(state, player),
         *legal_agent_turn_finish_actions(state, player),
         # Withdrawals last (OQ-029): a "first legal action" walk deploys up
         # to the limit and finishes instead of cycling deploy/withdraw.
         *legal_troop_withdrawals(state, player),
+        *legal_commander_withdrawals(state, player),
     )
 
 

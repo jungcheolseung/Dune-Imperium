@@ -122,5 +122,93 @@ LEADER_FACE_TEXTS: Mapping[str, LeaderFaceText] = MappingProxyType(
                 " choice"
             ),
         ),
+        # Bloodlines Leaders (card faces, 2026-09-07).
+        "chani": LeaderFaceText(
+            ability_text=(
+                "Tactician: Whenever you retreat or lose any number of troops"
+                " from the Conflict, advance your Tactics token that many"
+                " spaces, earning rewards as you reach them (space 6: 1 spice;"
+                " end: 1 water, then reset to the starting space)"
+            ),
+            signet_text=(
+                "Retreat any number of your troops — or with 2 Fremen"
+                " Influence: pay 1 water → Recruit 2 troops"
+            ),
+        ),
+        "count_hasimir_fenring": LeaderFaceText(
+            ability_text="Assassin: Whenever you trash a card: Gain 1 solari",
+            signet_text=(
+                "You may trash a card in your play area — or place a Spy on an"
+                " Emperor observation post"
+            ),
+        ),
+        "duncan_idaho": LeaderFaceText(
+            ability_text=(
+                "Ginaz Swordmaster: The Swordmaster board space costs you 2 less"
+            ),
+            signet_text=(
+                "You may take the Agent you sent this turn and deploy it to the"
+                " Conflict as a 2-strength unit that can't be retreated"
+                " (3 strength with your Swordmaster)"
+            ),
+        ),
+        "esmar_tuek": LeaderFaceText(
+            ability_text=(
+                "Tuek's Sietch: Whenever you send an Agent to Tuek's Sietch:"
+                " Gain 1 solari. Whenever an opponent sends an Agent there:"
+                " Draw 1 Intrigue card"
+            ),
+            signet_text=(
+                "Place 1 bonus spice on Tuek's Sietch — or take 1 bonus spice"
+                " from a Maker board space"
+            ),
+        ),
+        "gaius_helen_mohiam": LeaderFaceText(
+            ability_text=(
+                "Clandestine: Each card you play has the Spy icon. Whenever you"
+                " could recall a Spy to Gather Intelligence, you must"
+            ),
+            signet_text=(
+                "Place a Spy on a Landsraad observation post — or pay 1 spice"
+                " → Place a Spy"
+            ),
+        ),
+        "piter_de_vries": LeaderFaceText(
+            ability_text=(
+                "Twisted Genius: Game start: shuffle the Twisted Intrigue deck"
+                " face down near you. Round start: draw a Twisted Intrigue card"
+                " (these count as Intrigue cards and can be stolen)"
+            ),
+            signet_text=(
+                "Recruit 1 troop; you can't deploy this troop to the Conflict"
+                " this turn"
+            ),
+        ),
+        "steersman_y_rkoon": LeaderFaceText(
+            ability_text=(
+                "Strange Form: you start with no water and without Signet Ring"
+                " in your deck. Hungry for Spice: whenever you gain 3 or more"
+                " spice in a single turn: Draw 1 card"
+            ),
+            signet_text=(
+                "Plot Course (no Signet Ring): at game start shuffle the"
+                " Navigation cards, draw five and place four face down in"
+                " order. Whenever you reach 2 Influence with a Faction, play"
+                " the next Navigation card (from the left)"
+            ),
+        ),
+        "liet_kynes": LeaderFaceText(
+            ability_text=(
+                "Arrakis Planetologist: Ignore the Influence requirement of"
+                " Sietch Tabr. You summon no sandworms; for each one you"
+                " would, instead: you may trash a card, Gain 1 spice and"
+                " Draw 1 Intrigue card (even under the Shield Wall)"
+            ),
+            signet_text=(
+                "If you sent an Agent this turn to a Landsraad space and have"
+                " 2 Emperor Influence: Gain 1 water; a City space: Gain 1"
+                " solari; a Spice Trade space: Gain 1 spice"
+            ),
+        ),
     }
 )

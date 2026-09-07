@@ -217,18 +217,78 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
             "If you have 2 or more Bene Gesserit Influence: Recruit 1 troop, "
             "Draw 1 card"
         ),
+        # Bloodlines
+        PersonalCardAgentEffect.DRAW_INTRIGUE_CARD: "Draw 1 Intrigue card",
+        PersonalCardAgentEffect.RECRUIT_ONE_IF_EMPEROR_INFLUENCE_TWO: (
+            "If you have 2 or more Emperor Influence: Recruit 1 troop"
+        ),
+        PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE: (
+            "You may discard a card → Draw 1 card"
+        ),
+        PersonalCardAgentEffect.DRAW_INTRIGUE_IF_SANDWORM_IN_CONFLICT: (
+            "If you have 1 or more sandworms in the Conflict: Draw 1 Intrigue card"
+        ),
+        PersonalCardAgentEffect.DRAW_ONE_IF_GAINED_TWO_SPICE_THIS_TURN: (
+            "If you gained 2 or more spice this turn: Draw 1 card"
+        ),
+        (
+            PersonalCardAgentEffect
+            .RECRUIT_ONE_AND_DRAW_ONE_IF_GAINED_TWO_SPICE_THIS_TURN
+        ): "If you gained 2 or more spice this turn: Recruit 1 troop, Draw 1 card",
+        PersonalCardAgentEffect.TAKE_CONTRACT_IF_SPY_RECALLED_THIS_TURN: (
+            "If you recalled a Spy this turn: Take a Contract"
+        ),
+        PersonalCardAgentEffect.DRAW_INTRIGUE_IF_CONTRACT_COMPLETED_THIS_TURN: (
+            "If you completed a Contract this turn: Draw 1 Intrigue card"
+        ),
+        PersonalCardAgentEffect.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS: (
+            "You may trash a card from your hand. If you trash an Emperor card: "
+            "Draw 1 Intrigue card, Recruit 1 troop, Combat"
+        ),
+        PersonalCardAgentEffect.FORCE_OPPONENT_TROOP_RETREAT: (
+            "Force an enemy troop to retreat"
+        ),
+        PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY: (
+            "You may discard a card → Place a Spy with Deep Cover; "
+            "if you discarded a Spacing Guild card: Gain 2 spice"
+        ),
+        PersonalCardAgentEffect.MAY_DISCARD_FOR_WATER: (
+            "You may discard a card → Gain 1 water"
+        ),
+        PersonalCardAgentEffect.COMPLETE_ONE_CONTRACT: "Complete one of your contracts",
+        PersonalCardAgentEffect.EACH_OPPONENT_LOSES_TROOP_AND_MOVES_SPY: (
+            "Each opponent loses one troop. Each opponent spying on the board "
+            "space where you sent an Agent this turn must move that Spy"
+        ),
+        PersonalCardAgentEffect.BOOST_NEXT_BENE_GESSERIT_CARD_THIS_ROUND: (
+            "The next Bene Gesserit card you play this round has all Agent icons "
+            "and, added to its Agent box: Draw 1 card"
+        ),
+        PersonalCardAgentEffect.DRAW_ONE_OR_BENE_GESSERIT_INFLUENCE_IF_BOND: (
+            "Choose one: Draw 1 card / If Bene Gesserit Bond: "
+            "Gain 1 Bene Gesserit Influence"
+        ),
+        PersonalCardAgentEffect.CHOSEN_INFLUENCE_OR_TWO_TROOPS_BOTH_IF_BOND: (
+            "Choose one: Gain 1 Influence with a chosen Faction / Recruit 2 troops; "
+            "if Bene Gesserit Bond: get both"
+        ),
     }
 )
 
 TRASH_EFFECT_TEXT: Final[Mapping[PersonalCardTrashEffect, str]] = MappingProxyType(
     {
         PersonalCardTrashEffect.DRAW_INTRIGUE_CARD: "Draw 1 Intrigue card",
+        PersonalCardTrashEffect.RECRUIT_TWO_TROOPS: "Recruit 2 troops",
+        PersonalCardTrashEffect.ACQUIRE_BANK_COMMANDER: (
+            "Acquire and recruit the Sardaukar Commander in the bank"
+        ),
     }
 )
 
 DISCARD_EFFECT_TEXT: Final[Mapping[PersonalCardDiscardEffect, str]] = MappingProxyType(
     {
         PersonalCardDiscardEffect.GAIN_TWO_SPICE: "Gain 2 spice",
+        PersonalCardDiscardEffect.GAIN_THREE_SOLARI: "Gain 3 solari",
     }
 )
 
@@ -243,6 +303,10 @@ ACQUISITION_EFFECT_TEXT: Final[Mapping[PersonalCardAcquisitionEffect, str]] = (
             ),
             PersonalCardAcquisitionEffect.TAKE_CONTRACT: "Take 1 face-up Contract",
             PersonalCardAcquisitionEffect.RECRUIT_ONE_TROOP: "Recruit 1 troop",
+            PersonalCardAcquisitionEffect.GAIN_EMPEROR_INFLUENCE: (
+                "Gain 1 Emperor Influence"
+            ),
+            PersonalCardAcquisitionEffect.GAIN_ONE_WATER: "Gain 1 water",
         }
     )
 )
@@ -309,6 +373,39 @@ REVEAL_CHOICE_EFFECT_TEXT: Final[Mapping[PersonalCardRevealChoiceEffect, str]] =
                 "If you have completed 4 or more Contracts: "
                 "Choose one: Keep the spice / Trash this card → Gain 1 VP"
             ),
+            # Bloodlines
+            PersonalCardRevealChoiceEffect.COMMAND_MAY_TRASH_CARD: (
+                "Command (6+ Persuasion): You may trash a card"
+            ),
+            PersonalCardRevealChoiceEffect.COMMAND_PLACE_SPY: (
+                "Command (6+ Persuasion): Place a Spy"
+            ),
+            PersonalCardRevealChoiceEffect.COMMAND_GAIN_CHOSEN_INFLUENCE: (
+                "Command (6+ Persuasion): Gain 1 Influence with a chosen Faction"
+            ),
+            PersonalCardRevealChoiceEffect.MAY_RETREAT_TWO_TROOPS_FOR_TWO_PERSUASION: (
+                "You may retreat 2 troops → +2 Persuasion"
+            ),
+            PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_FOR_COMBAT_ICON: (
+                "Trash this card → Combat (deploy as though at a Combat space)"
+            ),
+            PersonalCardRevealChoiceEffect.MAY_RECALL_SPY_FOR_THREE_STRENGTH: (
+                "You may recall a Spy → +3 swords"
+            ),
+            (
+                PersonalCardRevealChoiceEffect
+                .MAY_TRASH_SELF_FOR_FOUR_INFLUENCE_IF_FOUR_CONTRACTS
+            ): (
+                "If you have completed 4+ contracts: Trash this card → "
+                "Gain 1 Influence with each Faction"
+            ),
+            PersonalCardRevealChoiceEffect.PERSUASION_OR_CONTRACT: (
+                "Choose one: 1 Persuasion / Contract"
+            ),
+            PersonalCardRevealChoiceEffect.COMMAND_MAY_TRASH_SELF_TO_ACQUIRE_ROW_CARD: (
+                "Command (6+ Persuasion): Trash this card → "
+                "Acquire a card from the Imperium Row"
+            ),
         }
     )
 )
@@ -332,6 +429,11 @@ _HANDLED_REVEAL_FIELDS: Final[frozenset[str]] = frozenset(
         "requires_spying_on_maker_space",
         "per_revealed_faction",
         "persuasion_per_completed_contract",
+        "requires_commander_in_conflict",
+        "minimum_garrisoned_units",
+        "requires_command",
+        "trashes_self",
+        "grants_combat_icon",
     }
 )
 
@@ -362,6 +464,14 @@ def reveal_effect_text(effect: PersonalCardRevealEffect) -> str:
         )
     if effect.requires_spying_on_maker_space:
         conditions.append("you are spying on a Maker space")
+    if effect.requires_commander_in_conflict:
+        conditions.append("you have 1 or more Sardaukar Commanders in the Conflict")
+    if effect.minimum_garrisoned_units:
+        conditions.append(
+            f"you have {effect.minimum_garrisoned_units} or more garrisoned units"
+        )
+    if effect.requires_command:
+        conditions.append("Command (6+ Persuasion)")
 
     per_faction = (
         f" per revealed {_bond_name(effect.per_revealed_faction)} card"
@@ -404,6 +514,10 @@ def reveal_effect_text(effect: PersonalCardRevealEffect) -> str:
         gains.append(
             f"Gain {effect.influence} {_bond_name(effect.influence_faction)} Influence"
         )
+    if effect.trashes_self:
+        gains.append("Trash this card")
+    if effect.grants_combat_icon:
+        gains.append("Combat (deploy as though at a Combat space)")
 
     text = ", ".join(gains)
     if conditions:

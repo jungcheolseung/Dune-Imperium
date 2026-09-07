@@ -5,9 +5,12 @@ from dataclasses import replace
 from dune_imperium.content.uprising.imperium import imperium_card_for_instance
 from dune_imperium.content.uprising.reserve import RESERVE_STACKS_BY_ID
 from dune_imperium.content.uprising.types import PersonalCardTrashEffect
+from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GameState
+from dune_imperium.rules.effects import recruit_shortfall_events, recruit_troops
+from dune_imperium.rules.frames import FrameKind
 
 
 def trash_personal_card(
@@ -76,6 +79,69 @@ def trash_personal_card(
         )
     ]
     pending_intrigue_draws = state.pending_intrigue_draws
+    pending_skill_choices = state.pending_skill_choices
+    decision_stack = state.decision_stack
+    if next_owner.leader_id == "count_hasimir_fenring":
+        # Assassin: "Whenever you trash a card: 1 Solari" (personal cards
+        # only; not Intrigue cards [Bloodlines p. 12]).
+        next_owner = replace(
+            next_owner,
+            resources=replace(
+                next_owner.resources, solari=next_owner.resources.solari + 1
+            ),
+        )
+        events.append(
+            GameEvent(
+                event_id=f"{source}:trash:{card_id}:assassin",
+                kind="leader_ability_resolved",
+                payload=(
+                    ("leader_id", "count_hasimir_fenring"),
+                    ("player", player),
+                    ("solari", 1),
+                ),
+            )
+        )
+    if _trash_effect(card_id) is PersonalCardTrashEffect.RECRUIT_TWO_TROOPS:
+        # Eliminate Allies: "When this card is trashed: 2 troops". Troops
+        # recruited during an Agent turn join that turn's deployable count
+        # [Main p. 10] [FAQ p. 4].
+        next_owner, recruited = recruit_troops(next_owner, 2)
+        events.append(
+            GameEvent(
+                event_id=f"{source}:trash:{card_id}:troops",
+                kind="personal_card_trash_effect_resolved",
+                payload=(
+                    ("card_id", card_id),
+                    ("player", player),
+                    ("troops", recruited),
+                ),
+            )
+        )
+        events.extend(
+            recruit_shortfall_events(f"{source}:trash:{card_id}", player, 2, recruited)
+        )
+        decision_stack = _with_recruited_troops(decision_stack, player, recruited)
+    if _trash_effect(card_id) is PersonalCardTrashEffect.ACQUIRE_BANK_COMMANDER:
+        # Sardaukar Standard: "acquire and recruit the Sardaukar Commander in
+        # the bank". The acquisition comes with a face-up Skill choice, or
+        # without a Skill when none is choosable (OQ-031); with an empty
+        # bank nothing is gained (OQ-035).
+        # The choice is queued rather than pushed here: the trashing effect
+        # still owns the top frame and rewrites it when it finishes, so the
+        # engine opens the Skill choice afterwards (``sardaukar``).
+        if state.sardaukar_commanders_bank > 0:
+            pending_skill_choices = (
+                *pending_skill_choices,
+                (player, card_id, f"{source}:trash:{card_id}"),
+            )
+        else:
+            events.append(
+                GameEvent(
+                    event_id=f"{source}:trash:{card_id}:commander_unavailable",
+                    kind="sardaukar_commander_unavailable",
+                    payload=(("card_id", card_id), ("player", player)),
+                )
+            )
     if _trash_effect(card_id) is PersonalCardTrashEffect.DRAW_INTRIGUE_CARD:
         draw_source = f"{source}:trash:{card_id}:intrigue_draw"
         if intrigue_deck:
@@ -105,9 +171,45 @@ def trash_personal_card(
             reserve_stacks=reserve_stacks,
             intrigue_deck=intrigue_deck,
             pending_intrigue_draws=pending_intrigue_draws,
+            pending_skill_choices=pending_skill_choices,
+            decision_stack=decision_stack,
         ),
         events=tuple(events),
     )
+
+
+def with_recruited_units(
+    frames: tuple[DecisionFrame, ...],
+    player: int,
+    recruited: int,
+) -> tuple[DecisionFrame, ...]:
+    """Count units recruited mid-turn toward the owner's open Agent turn."""
+
+    return _with_recruited_troops(frames, player, recruited)
+
+
+def _with_recruited_troops(
+    frames: tuple[DecisionFrame, ...],
+    player: int,
+    recruited: int,
+) -> tuple[DecisionFrame, ...]:
+    """Count troops recruited mid-turn toward the owner's open Agent turn."""
+
+    if not recruited or not frames:
+        return frames
+    frame = frames[-1]
+    if frame.kind != FrameKind.AGENT_EFFECTS or not isinstance(
+        frame.decision, PlayerDecision
+    ):
+        return frames
+    if frame.decision.owner != player:
+        return frames
+    context = dict(frame.context)
+    previous = context.get("troops_recruited", 0)
+    if isinstance(previous, bool) or not isinstance(previous, int):
+        raise RuntimeError("Agent-turn effect frame has invalid recruit count")
+    context["troops_recruited"] = previous + recruited
+    return (*frames[:-1], replace(frame, context=tuple(sorted(context.items()))))
 
 
 def _trash_effect(card_id: str) -> PersonalCardTrashEffect | None:

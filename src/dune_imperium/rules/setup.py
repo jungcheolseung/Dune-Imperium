@@ -4,10 +4,20 @@ from dataclasses import dataclass, replace
 from typing import Final
 
 from dune_imperium.config import RulesetConfig
+from dune_imperium.content.bloodlines.sardaukar import (
+    COMMANDER_BANK_AT_SETUP,
+    COMMANDER_SETUP_SPACE_IDS,
+    SKILL_FACE_UP,
+    skill_tile_instance_ids,
+)
 from dune_imperium.content.uprising.conflicts import conflicts_by_tier
 from dune_imperium.content.uprising.contracts import contract_instance_ids
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
-from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
+from dune_imperium.content.uprising.intrigue import (
+    intrigue_deck_instance_ids,
+    navigation_card_instance_ids,
+    twisted_intrigue_instance_ids,
+)
 from dune_imperium.content.uprising.leaders import LEADERS_BY_ID, leaders_for_choam
 from dune_imperium.content.uprising.objectives import objectives_for_players
 from dune_imperium.content.uprising.reserve import RESERVE_STACKS
@@ -27,6 +37,8 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.navigation import assign_navigation_deck
+from dune_imperium.rules.tactics import TACTICS_TRACK_START
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,8 +51,11 @@ class ConflictSetup:
     def __post_init__(self) -> None:
         if len(self.deck) != 10:
             raise ValueError("the four-player Conflict deck must contain 10 cards")
-        if len(self.unused) != 6:
-            raise ValueError("six Conflict cards must remain unused")
+        if len(self.unused) not in (6, 8):
+            # 16 retail cards, or 18 with the two Bloodlines cards.
+            raise ValueError(
+                "six (eight with Bloodlines) Conflict cards must remain unused"
+            )
         if set(self.deck) & set(self.unused):
             raise ValueError("selected and unused Conflict cards must be disjoint")
 
@@ -65,15 +80,20 @@ def create_unshuffled_players() -> tuple[PlayerState, ...]:
     )
 
 
-def conflict_setup_decisions() -> tuple[ChanceDecision, ...]:
-    """Return tier shuffles in the order prescribed by setup."""
+def conflict_setup_decisions(*, bloodlines: bool = False) -> tuple[ChanceDecision, ...]:
+    """Return tier shuffles in the order prescribed by setup.
+
+    Bloodlines adds its two Conflict cards to the pools the tiers are drawn
+    from; the deck keeps its 1/5/4 shape [Bloodlines p. 3].
+    """
 
     return tuple(
         ChanceDecision(
             decision_id=f"setup:conflict:tier:{tier.value}",
             prompt=f"Shuffle and select Conflict tier {tier.value}",
             options=tuple(
-                conflict.card.card_id for conflict in conflicts_by_tier(tier)
+                conflict.card.card_id
+                for conflict in conflicts_by_tier(tier, bloodlines=bloodlines)
             ),
             count=count,
         )
@@ -87,10 +107,12 @@ def conflict_setup_decisions() -> tuple[ChanceDecision, ...]:
 
 def build_conflict_setup(
     outcomes: tuple[ChanceOutcome, ...],
+    *,
+    bloodlines: bool = False,
 ) -> ConflictSetup:
     """Build the top-to-bottom deck from the three recorded tier outcomes."""
 
-    decisions = conflict_setup_decisions()
+    decisions = conflict_setup_decisions(bloodlines=bloodlines)
     if len(outcomes) != len(decisions):
         raise ValueError("Conflict setup requires one outcome for each tier")
 
@@ -213,6 +235,114 @@ def apply_starting_deck_shuffle(
     return replace(player, deck=outcome.values)
 
 
+def skill_stack_decision() -> ChanceDecision:
+    """Shuffle the 14 Skill tiles face down [Bloodlines p. 3]."""
+
+    return _shuffle_decision(
+        "setup:skill_stack",
+        "Shuffle the Sardaukar Commander Skills",
+        skill_tile_instance_ids(),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class BloodlinesSetup:
+    """Bloodlines state fields fixed at setup [Bloodlines p. 3]."""
+
+    skill_face_up: tuple[str, ...]
+    skill_stack: tuple[str, ...]
+    twisted_deck: tuple[str, ...] = ()
+    navigation_deck: tuple[str, ...] = ()
+
+
+def navigation_deck_decision() -> ChanceDecision:
+    """Shuffle Steersman Y'rkoon's ten Navigation cards [Steersman Y'rkoon card]."""
+
+    return _shuffle_decision(
+        "setup:navigation",
+        "Shuffle the Navigation cards",
+        navigation_card_instance_ids(),
+    )
+
+
+def twisted_deck_decision() -> ChanceDecision:
+    """Shuffle Piter De Vries' twelve Twisted Intrigue cards [Piter De Vries card]."""
+
+    return _shuffle_decision(
+        "setup:twisted_intrigue",
+        "Shuffle the Twisted Intrigue deck",
+        twisted_intrigue_instance_ids(),
+    )
+
+
+def _bloodlines_setup(
+    config: RulesetConfig,
+    resolver: ChanceResolver,
+) -> BloodlinesSetup | None:
+    """Deal the Skill tiles when the Bloodlines option is on.
+
+    The shuffled 14-tile stack shows four face up [Bloodlines p. 3]; the
+    Commander placement itself is static (``_with_bloodlines``).
+    """
+
+    if not config.bloodlines:
+        return None
+    skills = resolver.resolve(skill_stack_decision()).values
+    # The Twisted deck is shuffled whether or not Piter is picked (the
+    # draft chooses Leaders later); it waits in ``twisted_deck_stock``.
+    twisted = resolver.resolve(twisted_deck_decision()).values
+    navigation = resolver.resolve(navigation_deck_decision()).values
+    return BloodlinesSetup(
+        skill_face_up=skills[:SKILL_FACE_UP],
+        skill_stack=skills[SKILL_FACE_UP:],
+        twisted_deck=twisted,
+        navigation_deck=navigation,
+    )
+
+
+def _with_bloodlines(state: GameState, setup: BloodlinesSetup | None) -> GameState:
+    """Place the Commanders and the dealt Skills on a freshly built state.
+
+    Five Commanders go on their printed spaces plus one on Assembly Hall in
+    a four-player game, and the last one waits in the bank for Sardaukar
+    Standard [Bloodlines p. 3].
+    """
+
+    if setup is None:
+        return state
+    return assign_navigation_deck(
+        assign_twisted_deck(
+            replace(
+                state,
+                sardaukar_commander_space_ids=COMMANDER_SETUP_SPACE_IDS,
+                sardaukar_commanders_bank=COMMANDER_BANK_AT_SETUP,
+                skill_face_up=setup.skill_face_up,
+                skill_stack=setup.skill_stack,
+                twisted_deck_stock=setup.twisted_deck,
+                navigation_stock=setup.navigation_deck,
+            )
+        )
+    )
+
+
+def assign_twisted_deck(state: GameState) -> GameState:
+    """Hand the shuffled Twisted Intrigue deck to Piter De Vries' seat."""
+
+    if not state.twisted_deck_stock:
+        return state
+    piter = next(
+        (seat for seat in state.players if seat.leader_id == "piter_de_vries"), None
+    )
+    if piter is None:
+        return state
+    dealt = replace(piter, twisted_deck=state.twisted_deck_stock)
+    return replace(
+        state,
+        players=tuple(dealt if seat is piter else seat for seat in state.players),
+        twisted_deck_stock=(),
+    )
+
+
 def create_initial_state(
     config: RulesetConfig,
     seed: int,
@@ -230,7 +360,11 @@ def create_initial_state(
     resolver = ChanceResolver(seed=seed, recorded=recorded_outcomes)
 
     conflict = build_conflict_setup(
-        tuple(resolver.resolve(decision) for decision in conflict_setup_decisions())
+        tuple(
+            resolver.resolve(decision)
+            for decision in conflict_setup_decisions(bloodlines=config.bloodlines)
+        ),
+        bloodlines=config.bloodlines,
     )
     players, first_player = assign_objectives(
         create_unshuffled_players(),
@@ -242,9 +376,7 @@ def create_initial_state(
             leader_id=leader_id,
             # Double-sided Leaders begin on their printed setup face
             # [Main p. 17]; every other Leader's face is its identity.
-            leader_face_id=(
-                LEADERS_BY_ID[leader_id].setup_face_id or leader_id
-            ),
+            leader_face_id=(LEADERS_BY_ID[leader_id].setup_face_id or leader_id),
             # Printed setup rules may remove starting cards (Staban Tuek's
             # Limited Allies); the shuffle decision below then covers the
             # reduced deck.
@@ -254,6 +386,17 @@ def create_initial_state(
                 if starting_card_for_instance(instance_id).card.card_id
                 not in LEADERS_BY_ID[leader_id].removed_starting_card_ids
             ),
+            # Strange Form: Steersman Y'rkoon starts with no water.
+            resources=replace(
+                player.resources, water=LEADERS_BY_ID[leader_id].starting_water
+            ),
+            # Tactician: the Tactics token starts on the four-player space
+            # [Bloodlines p. 12].
+            tactics_track_space=(
+                TACTICS_TRACK_START
+                if LEADERS_BY_ID[leader_id].uses_tactics_track
+                else 0
+            ),
         )
         for player, leader_id in zip(players, leader_ids, strict=True)
     )
@@ -262,14 +405,23 @@ def create_initial_state(
         _shuffle_decision(
             "setup:imperium_deck",
             "Shuffle the Imperium deck",
-            imperium_deck_instance_ids(config.choam_module, config.promo_cards),
+            imperium_deck_instance_ids(
+                config.choam_module,
+                config.promo_cards,
+                bloodlines=config.bloodlines,
+                tech_module=config.tech_module,
+            ),
         )
     ).values
     intrigue = resolver.resolve(
         _shuffle_decision(
             "setup:intrigue_deck",
             "Shuffle the Intrigue deck",
-            intrigue_deck_instance_ids(config.choam_module),
+            intrigue_deck_instance_ids(
+                config.choam_module,
+                bloodlines=config.bloodlines,
+                tech_module=config.tech_module,
+            ),
         )
     ).values
     # Sardaukar Commander sets aside both Sardaukar Contracts before the
@@ -284,6 +436,7 @@ def create_initial_state(
         if config.choam_module
         else ()
     )
+    bloodlines = _bloodlines_setup(config, resolver)
     players = tuple(
         apply_starting_deck_shuffle(
             player,
@@ -301,6 +454,7 @@ def create_initial_state(
         phase=GamePhase.ROUND_START,
         first_player=first_player,
         players=players,
+        maker_bonus_spice=maker_bonus_spice_for(leader_ids),
         conflict_deck=conflict.deck,
         unused_conflict_ids=conflict.unused,
         imperium_deck=imperium[5:],
@@ -313,6 +467,7 @@ def create_initial_state(
             (stack.card.card_id, stack.copies) for stack in RESERVE_STACKS
         ),
     )
+    state = _with_bloodlines(state, bloodlines)
     return SetupResult(state=state, chance_outcomes=resolver.outcomes)
 
 
@@ -326,7 +481,10 @@ def leader_draft_pool_decision(config: RulesetConfig) -> ChanceDecision:
         decision_id="setup:leader_draft_pool",
         prompt="Deal six face-up Leaders for the draft",
         options=tuple(
-            leader.leader_id for leader in leaders_for_choam(config.choam_module)
+            leader.leader_id
+            for leader in leaders_for_choam(
+                config.choam_module, bloodlines=config.bloodlines
+            )
         ),
         count=LEADER_DRAFT_POOL_SIZE,
     )
@@ -356,7 +514,11 @@ def create_draft_initial_state(
     resolver = ChanceResolver(seed=seed, recorded=recorded_outcomes)
 
     conflict = build_conflict_setup(
-        tuple(resolver.resolve(decision) for decision in conflict_setup_decisions())
+        tuple(
+            resolver.resolve(decision)
+            for decision in conflict_setup_decisions(bloodlines=config.bloodlines)
+        ),
+        bloodlines=config.bloodlines,
     )
     players, first_player = assign_objectives(
         create_unshuffled_players(),
@@ -367,14 +529,23 @@ def create_draft_initial_state(
         _shuffle_decision(
             "setup:imperium_deck",
             "Shuffle the Imperium deck",
-            imperium_deck_instance_ids(config.choam_module, config.promo_cards),
+            imperium_deck_instance_ids(
+                config.choam_module,
+                config.promo_cards,
+                bloodlines=config.bloodlines,
+                tech_module=config.tech_module,
+            ),
         )
     ).values
     intrigue = resolver.resolve(
         _shuffle_decision(
             "setup:intrigue_deck",
             "Shuffle the Intrigue deck",
-            intrigue_deck_instance_ids(config.choam_module),
+            intrigue_deck_instance_ids(
+                config.choam_module,
+                bloodlines=config.bloodlines,
+                tech_module=config.tech_module,
+            ),
         )
     ).values
     # The full Contract order is drawn now; whether the Sardaukar Contracts
@@ -384,6 +555,7 @@ def create_draft_initial_state(
         if config.choam_module
         else ()
     )
+    bloodlines = _bloodlines_setup(config, resolver)
     players = tuple(
         apply_starting_deck_shuffle(
             player,
@@ -430,7 +602,19 @@ def create_draft_initial_state(
             ),
         ),
     )
+    state = _with_bloodlines(state, bloodlines)
     return SetupResult(state=state, chance_outcomes=resolver.outcomes)
+
+
+def maker_bonus_spice_for(leader_ids: tuple[str, ...]) -> tuple[tuple[str, int], ...]:
+    """Return the Maker spice ledger, with Tuek's Sietch while Esmar plays."""
+
+    spaces = ["deep_desert", "hagga_basin", "imperial_basin"]
+    if "esmar_tuek" in leader_ids:
+        # "During setup, place the Tuek's Sietch board space near the game
+        # board. It is a Maker board space" [Bloodlines p. 12].
+        spaces.append("tuek_sietch")
+    return tuple((space_id, 0) for space_id in spaces)
 
 
 def _validate_leader_selection(
@@ -442,7 +626,12 @@ def _validate_leader_selection(
     if len(leader_ids) != len(set(leader_ids)):
         raise ValueError("selected Leaders must be unique physical cards")
 
-    available = {leader.leader_id for leader in leaders_for_choam(config.choam_module)}
+    available = {
+        leader.leader_id
+        for leader in leaders_for_choam(
+            config.choam_module, bloodlines=config.bloodlines
+        )
+    }
     unavailable = tuple(
         leader_id for leader_id in leader_ids if leader_id not in available
     )

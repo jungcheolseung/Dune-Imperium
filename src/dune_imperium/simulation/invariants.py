@@ -22,7 +22,11 @@ from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, replace
 
 from dune_imperium.core.events import GameEvent
-from dune_imperium.core.observation import observe_state, resolving_intrigue_ids
+from dune_imperium.core.observation import (
+    observe_state,
+    peeked_card_id,
+    resolving_intrigue_ids,
+)
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 
@@ -61,9 +65,15 @@ def _all_intrigue_instances(state: GameState) -> Iterator[str]:
     yield from state.intrigue_deck
     yield from state.intrigue_discard
     yield from state.intrigue_trash
+    yield from state.twisted_deck_stock
+    yield from state.navigation_stock
     for player in state.players:
         yield from player.intrigue_cards
         yield from player.intrigue_faceup
+        yield from player.twisted_deck
+        yield from player.navigation_slots
+        yield from player.navigation_played
+        yield from player.navigation_box
 
 
 def _all_conflict_ids(state: GameState) -> Iterator[str]:
@@ -78,6 +88,7 @@ def _all_contract_ids(state: GameState) -> Iterator[str]:
     yield from state.contract_bank
     yield from state.face_up_contract_ids
     yield from state.sardaukar_contract_ids
+    yield from state.contract_trash
     for player in state.players:
         yield from player.active_contract_ids
         yield from player.completed_contract_ids
@@ -262,8 +273,25 @@ def _scramble_hidden_information(state: GameState, observer: int) -> GameState:
     resolving = set(resolving_intrigue_ids(state))
 
     for seat, player in enumerate(players):
+        # A face-down Twisted Intrigue deck only shows its size; the
+        # Navigation box is hidden to everyone, the slots to opponents.
+        twisted = tuple(reversed(player.twisted_deck))
+        box = tuple(reversed(player.navigation_box))
+        player = replace(player, navigation_box=box)
+        if seat != observer:
+            player = replace(
+                player, navigation_slots=tuple(reversed(player.navigation_slots))
+            )
         if seat == observer:
-            players[seat] = replace(player, deck=tuple(reversed(player.deck)))
+            # Controlled lets the owner see the top card while deciding: it
+            # stays put and the rest of the deck reorders.
+            peeked = peeked_card_id(state, observer)
+            deck = (
+                (player.deck[0], *reversed(player.deck[1:]))
+                if peeked and player.deck and player.deck[0] == peeked
+                else tuple(reversed(player.deck))
+            )
+            players[seat] = replace(player, deck=deck, twisted_deck=twisted)
             continue
         # Publicly known hand cards stay in the hand; only the face-down
         # draws trade places with the deck.
@@ -274,7 +302,7 @@ def _scramble_hidden_information(state: GameState, observer: int) -> GameState:
         intrigue_pool.extend(
             card for card in player.intrigue_cards if card not in resolving
         )
-        players[seat] = replace(player, hand=hand, deck=deck)
+        players[seat] = replace(player, hand=hand, deck=deck, twisted_deck=twisted)
 
     reordered_intrigue = tuple(reversed(intrigue_pool))
     cursor = 0
@@ -297,4 +325,5 @@ def _scramble_hidden_information(state: GameState, observer: int) -> GameState:
         intrigue_deck=reordered_intrigue[cursor:],
         imperium_deck=tuple(reversed(state.imperium_deck)),
         contract_bank=tuple(reversed(state.contract_bank)),
+        navigation_stock=tuple(reversed(state.navigation_stock)),
     )

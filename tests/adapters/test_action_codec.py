@@ -14,7 +14,7 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     first = ActionCodec(RulesetConfig())
     second = ActionCodec(RulesetConfig())
 
-    assert ACTION_CODEC_VERSION == 89
+    assert ACTION_CODEC_VERSION == 90
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
     assert first.size == 4354
@@ -105,7 +105,8 @@ def test_agent_card_icons_round_trip_beside_the_bare_action() -> None:
 def test_reveal_choice_deferral_and_resumption_round_trip() -> None:
     # Free Reveal ordering [Main p. 12]: one bare deferral plus one resume
     # template per choice-effect kind (codec v88).
-    codec = ActionCodec(RulesetConfig())
+    # Bloodlines choice kinds join only the option's catalogs.
+    codec = ActionCodec(RulesetConfig(bloodlines=True))
     defer = DomainAction(action_id="defer_reveal_choice", actor=3)
     assert codec.decode(codec.encode(defer), actor=3) == defer
     for effect in PersonalCardRevealChoiceEffect:

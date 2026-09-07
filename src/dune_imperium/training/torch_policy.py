@@ -199,6 +199,9 @@ def load_network_agent(path: str) -> NetworkAgent:
     resolved = str(Path(path).expanduser())
     network, ruleset = _cached_network(resolved, os.path.getmtime(resolved))
     config = RulesetConfig(
-        choam_module="choam" in ruleset, promo_cards="+promo" in ruleset
+        choam_module="choam" in ruleset,
+        promo_cards="+promo" in ruleset,
+        bloodlines="+bloodlines" in ruleset,
+        tech_module="+tech" in ruleset,
     )
     return NetworkAgent(network, config)

@@ -10,6 +10,7 @@ from dune_imperium.content.uprising.types import (
     PersonalCardAcquisitionEffect,
     PersonalCardAgentEffect,
     PersonalCardRevealAcquisitionEffect,
+    PersonalCardRevealChoiceEffect,
 )
 from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
@@ -17,6 +18,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
+from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.contracts import (
     begin_contract_gain,
     complete_acquire_contracts,
@@ -360,18 +362,16 @@ def _acquire_imperium_to_hand_with_solari(
         pending_intrigue_draws=_with_pending_draw(state, bonus.pending_draw),
         decision_stack=(*state.decision_stack[:-1], base_frame),
     )
-    if (
-        definition.acquisition_effect
-        is PersonalCardAcquisitionEffect.GAIN_SPACING_GUILD_INFLUENCE
-    ):
+    faction = _acquisition_influence_faction(definition.acquisition_effect)
+    if faction is not None:
         gained = gain_faction_influence(
             prepared,
             action.actor,
-            Faction.SPACING_GUILD,
+            faction,
             1,
             event_prefix=(
                 f"round:{state.round_number}:player:{action.actor}:"
-                f"acquire_with_solari:{instance_id}:influence:spacing_guild"
+                f"acquire_with_solari:{instance_id}:influence:{faction.value}"
             ),
         )
         prepared = gained.state
@@ -630,18 +630,16 @@ def apply_imperium_acquisition(
         pending_intrigue_draws=_with_pending_draw(state, bonus.pending_draw),
         decision_stack=decision_stack,
     )
-    if (
-        definition.acquisition_effect
-        is PersonalCardAcquisitionEffect.GAIN_SPACING_GUILD_INFLUENCE
-    ):
+    faction = _acquisition_influence_faction(definition.acquisition_effect)
+    if faction is not None:
         gained = gain_faction_influence(
             next_state,
             action.actor,
-            Faction.SPACING_GUILD,
+            faction,
             1,
             event_prefix=(
                 f"round:{state.round_number}:player:{action.actor}:"
-                f"acquire:{instance_id}:influence:spacing_guild"
+                f"acquire:{instance_id}:influence:{faction.value}"
             ),
         )
         next_state = gained.state
@@ -699,6 +697,18 @@ class AcquisitionBonus:
     pending_draw: tuple[int, int, str] | None = None
 
 
+def _acquisition_influence_faction(
+    effect: PersonalCardAcquisitionEffect | None,
+) -> Faction | None:
+    """Return the Faction an acquisition bonus raises by one, if any."""
+
+    if effect is PersonalCardAcquisitionEffect.GAIN_SPACING_GUILD_INFLUENCE:
+        return Faction.SPACING_GUILD
+    if effect is PersonalCardAcquisitionEffect.GAIN_EMPEROR_INFLUENCE:
+        return Faction.EMPEROR
+    return None
+
+
 def _resolve_imperium_acquisition_bonus(
     state: GameState,
     player: int,
@@ -754,6 +764,22 @@ def _resolve_imperium_acquisition_bonus(
                     ("player", player),
                     ("resource", "solari"),
                 ),
+            ),
+        )
+    elif effect is PersonalCardAcquisitionEffect.GAIN_ONE_WATER:
+        # Possible Futures' acquire box (Bloodlines): one water.
+        owner = replace(
+            owner,
+            resources=replace(owner.resources, water=owner.resources.water + 1),
+        )
+        events = (
+            GameEvent(
+                event_id=(
+                    f"round:{state.round_number}:player:{player}:"
+                    f"acquire:{instance_id}:water"
+                ),
+                kind="acquisition_resource_gained",
+                payload=(("amount", 1), ("player", player), ("resource", "water")),
             ),
         )
     elif effect is PersonalCardAcquisitionEffect.RECRUIT_ONE_TROOP:
@@ -961,16 +987,14 @@ def apply_manipulated_acquisition(
         f"round:{state.round_number}:player:{action.actor}:"
         f"acquire_manipulated:{instance_id}"
     )
-    if (
-        definition.acquisition_effect
-        is PersonalCardAcquisitionEffect.GAIN_SPACING_GUILD_INFLUENCE
-    ):
+    faction = _acquisition_influence_faction(definition.acquisition_effect)
+    if faction is not None:
         gained = gain_faction_influence(
             next_state,
             action.actor,
-            Faction.SPACING_GUILD,
+            faction,
             1,
-            event_prefix=f"{source}:influence:spacing_guild",
+            event_prefix=f"{source}:influence:{faction.value}",
         )
         next_state = gained.state
         acquisition_events = (*acquisition_events, *gained.events)
@@ -1116,6 +1140,84 @@ def acquire_reserve_for_intrigue(
     )
 
 
+def legal_reveal_command_acquisition_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Engineered Miracle: "Command: Trash this card -> Acquire a card from
+    the Imperium Row" (any cost, no Persuasion), or decline the arrow."""
+
+    if not 0 <= player < state.config.players or not state.decision_stack:
+        return ()
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    expected = PersonalCardRevealChoiceEffect.COMMAND_MAY_TRASH_SELF_TO_ACQUIRE_ROW_CARD
+    if context.get("reveal_choice_effect") != expected.value:
+        return ()
+    return (
+        DomainAction(action_id="decline_command_acquisition", actor=player),
+        *(
+            DomainAction(
+                action_id="command_acquire_row_card",
+                actor=player,
+                arguments=(("instance_id", instance_id),),
+            )
+            for instance_id in state.imperium_row
+        ),
+    )
+
+
+def apply_reveal_command_acquisition(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Trash the revealed card and take the chosen Imperium Row card."""
+
+    if action not in legal_reveal_command_acquisition_actions(state, action.actor):
+        raise ValueError("action is not a legal Command acquisition choice")
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    source_card_id = context.get("reveal_card_id")
+    if not isinstance(source_card_id, str):
+        raise RuntimeError("Reveal acquisition frame has invalid card ID")
+    source = (
+        f"round:{state.round_number}:player:{action.actor}:"
+        f"reveal_card:{source_card_id}:command_acquisition"
+    )
+    popped = replace(state, decision_stack=state.decision_stack[:-1])
+    if action.action_id == "decline_command_acquisition":
+        return RuleResult(
+            state=popped,
+            events=(
+                GameEvent(
+                    event_id=f"{source}:declined",
+                    kind="reveal_card_trash_declined",
+                    payload=(("card_id", source_card_id), ("player", action.actor)),
+                ),
+            ),
+        )
+    instance_id = str(dict(action.arguments)["instance_id"])
+    trashed = trash_personal_card(popped, action.actor, source_card_id, source=source)
+    acquired = acquire_imperium_for_intrigue(
+        trashed.state, action.actor, instance_id, to_hand=False, source=source
+    )
+    next_state = acquired.result.state
+    events: tuple[GameEvent, ...] = (*trashed.events, *acquired.result.events)
+    if acquired.places_spy:
+        next_state = next_state.push_decision(
+            acquisition_spy_frame(next_state, action.actor, instance_id)
+        )
+    elif acquired.takes_contract:
+        contracts = begin_contract_gain(
+            next_state, action.actor, 1, source=f"{source}:acquisition_bonus"
+        )
+        next_state = contracts.state
+        events = (*events, *contracts.events)
+    return RuleResult(state=next_state, events=events)
+
+
 def acquire_imperium_for_intrigue(
     state: GameState,
     player: int,
@@ -1159,16 +1261,14 @@ def acquire_imperium_for_intrigue(
         pending_intrigue_draws=_with_pending_draw(state, bonus.pending_draw),
     )
     acquisition_events = bonus.events
-    if (
-        definition.acquisition_effect
-        is PersonalCardAcquisitionEffect.GAIN_SPACING_GUILD_INFLUENCE
-    ):
+    faction = _acquisition_influence_faction(definition.acquisition_effect)
+    if faction is not None:
         gained = gain_faction_influence(
             prepared,
             player,
-            Faction.SPACING_GUILD,
+            faction,
             1,
-            event_prefix=f"{source}:influence:spacing_guild",
+            event_prefix=f"{source}:influence:{faction.value}",
         )
         prepared = gained.state
         acquisition_events = (*acquisition_events, *gained.events)

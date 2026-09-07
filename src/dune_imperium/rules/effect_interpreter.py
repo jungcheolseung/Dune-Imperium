@@ -13,6 +13,9 @@ from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireCardUpTo,
+    AcquireReserveCard,
+    CommanderDiscountThisTurn,
+    CommandersInConflictAtLeast,
     CompletedContractsAtLeast,
     Condition,
     DeployFromGarrison,
@@ -22,21 +25,36 @@ from dune_imperium.content.uprising.effect_dsl import (
     DrawPersonalCards,
     EffectSection,
     FlipBattleCard,
+    FlipFaceUpConflictCard,
     GainCombatStrength,
     GainedSpiceThisTurn,
     GainInfluence,
     GainResources,
+    GainSolariPerUnitType,
     GainVictoryPoints,
+    GiveIntrigueToOpponent,
+    GrantAgentIconsThisTurn,
+    GrantAgentIconThisTurn,
+    GrantCombatDeployment,
+    HasAlliance,
     HasHighCouncil,
+    IgnoreInfluenceRequirementsThisTurn,
     InfluenceAtLeast,
+    InNavigationSlot,
     IntrigueOption,
     LoseInfluence,
+    LoseTroops,
     OpponentAllianceInfluenceAtLeast,
+    PassTurn,
     PayResources,
+    PeekTopCard,
+    PermanentRevealPersuasion,
     PlaceSpy,
     RecallSpy,
     RecruitTroops,
+    RedirectSpiesOnTurnSpace,
     RetreatTroops,
+    RevealContractsTakeOne,
     Reward,
     SandwormsInConflictAtLeast,
     SetAsideImperiumRowCard,
@@ -44,7 +62,11 @@ from dune_imperium.content.uprising.effect_dsl import (
     SpiesPlacedAtLeast,
     SummonSandworm,
     TakeContract,
+    TrashDiscardPileCard,
+    TrashIntrigueCard,
     TrashPersonalCard,
+    TriggeredByFaction,
+    WaterAtLeast,
 )
 from dune_imperium.content.uprising.types import BattleIcon
 from dune_imperium.core.engine import RuleResult
@@ -57,11 +79,16 @@ from dune_imperium.rules.acquisition import (
 )
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.contracts import begin_contract_gain
-from dune_imperium.rules.effects import recruit_shortfall_events, recruit_troops
+from dune_imperium.rules.effects import (
+    agent_turn_space_id,
+    recruit_shortfall_events,
+    recruit_troops,
+)
 from dune_imperium.rules.frames import replace_player
 from dune_imperium.rules.influence import gain_faction_influence, influence_amount
 from dune_imperium.rules.intrigue_deck import draw_intrigue_cards
 from dune_imperium.rules.leader_abilities import units_deployment_blocked
+from dune_imperium.rules.planetologist import replaces_sandworms
 from dune_imperium.rules.shield_wall import current_conflict_is_shield_wall_protected
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
@@ -82,6 +109,12 @@ type ChoiceSlot = (
     | AcquireCardUpTo
     | FlipBattleCard
     | SetAsideImperiumRowCard
+    | TrashDiscardPileCard
+    | FlipFaceUpConflictCard
+    | LoseTroops
+    | GiveIntrigueToOpponent
+    | TrashIntrigueCard
+    | PeekTopCard
 )
 
 
@@ -103,15 +136,51 @@ def flippable_battle_card_ids(
     )
 
 
+def face_up_conflict_card_ids(player: PlayerState) -> tuple[str, ...]:
+    """Return the player's face-up won Conflict cards (any icon)."""
+
+    face_down = set(player.face_down_battle_card_ids)
+    return tuple(
+        card_id for card_id in player.won_conflict_ids if card_id not in face_down
+    )
+
+
+def trashable_discard_pile_ids(
+    player: PlayerState, minimum_cost: int
+) -> tuple[str, ...]:
+    """Return discard-pile cards printed with a cost of ``minimum_cost`` or more."""
+
+    from dune_imperium.content.uprising.personal_cards import (
+        personal_card_for_instance,
+    )
+
+    candidates: list[str] = []
+    for card_id in player.discard_pile:
+        cost = getattr(personal_card_for_instance(card_id), "acquisition_cost", None)
+        if isinstance(cost, int) and cost >= minimum_cost:
+            candidates.append(card_id)
+    return tuple(candidates)
+
+
 def condition_holds(state: GameState, player: int, condition: Condition) -> bool:
     """Evaluate one DSL condition against the public game state."""
 
     owner = state.players[player]
     match condition:
+        case WaterAtLeast(amount=amount):
+            return owner.resources.water >= amount
+        case CommandersInConflictAtLeast(count=count):
+            return owner.commanders_conflict >= count
         case InfluenceAtLeast(faction=faction, amount=amount):
             return influence_amount(owner.influence, faction) >= amount
         case HasHighCouncil():
             return owner.high_council
+        case HasAlliance():
+            return bool(owner.alliance_faction_ids)
+        case InNavigationSlot(slot=slot):
+            return owner.navigation_active_slot == slot
+        case TriggeredByFaction(faction=faction):
+            return owner.navigation_trigger_faction == faction.value
         case SpiesPlacedAtLeast(count=count):
             return len(owner.spy_post_ids) >= count
         case CompletedContractsAtLeast(count=count):
@@ -226,10 +295,18 @@ def cost_slots(sections: tuple[EffectSection, ...]) -> tuple[ChoiceSlot, ...]:
     slots: list[ChoiceSlot] = []
     for section in sections:
         for cost in section.costs:
-            if isinstance(cost, LoseInfluence | DiscardFromHand | RecallSpy):
+            if isinstance(
+                cost, LoseInfluence | DiscardFromHand | RecallSpy | LoseTroops
+            ):
                 slots.extend([cost] * cost.count)
-            elif isinstance(cost, RetreatTroops | FlipBattleCard):
+            elif isinstance(cost, GiveIntrigueToOpponent | TrashIntrigueCard):
                 slots.append(cost)
+            elif isinstance(
+                cost, RetreatTroops | FlipBattleCard | TrashDiscardPileCard
+            ):
+                slots.append(cost)
+            elif isinstance(cost, FlipFaceUpConflictCard):
+                slots.extend([cost] * cost.count)
     return tuple(slots)
 
 
@@ -259,6 +336,7 @@ def choice_slots(
                     | RetreatTroops()
                     | AcquireCardUpTo()
                     | SetAsideImperiumRowCard()
+                    | PeekTopCard()
                 ):
                     slots.append(reward)
                 case _:
@@ -274,6 +352,9 @@ def _choice_costs_feasible(
     discards_needed = 0
     recalls_needed = 0
     retreats_needed = 0
+    losses_needed = 0
+    conflict_losses_needed = 0
+    intrigue_needed = 0
     for section in sections:
         for cost in section.costs:
             match cost:
@@ -281,6 +362,13 @@ def _choice_costs_feasible(
                     influence_needed += count
                 case DiscardFromHand(count=count):
                     discards_needed += count
+                case LoseTroops(count=count, from_conflict=from_conflict):
+                    losses_needed += count
+                    if from_conflict:
+                        conflict_losses_needed += count
+                case GiveIntrigueToOpponent() | TrashIntrigueCard():
+                    # The played card itself is still held while it resolves.
+                    intrigue_needed += 1
                 case RecallSpy(count=count):
                     recalls_needed += count
                 case RetreatTroops(minimum=minimum):
@@ -289,16 +377,39 @@ def _choice_costs_feasible(
                     player, icon
                 ):
                     return False
+                case FlipFaceUpConflictCard(count=count) if (
+                    len(face_up_conflict_card_ids(player)) < count
+                ):
+                    return False
+                case TrashDiscardPileCard(minimum_cost=minimum_cost) if (
+                    not trashable_discard_pile_ids(player, minimum_cost)
+                ):
+                    return False
                 case _:
                     pass
     total_influence = sum(
         influence_amount(player.influence, faction) for faction in Faction
     )
+    units = (
+        player.troops_garrison
+        + player.commanders_garrison
+        + player.troops_conflict
+        + player.commanders_conflict
+    )
     return (
         total_influence >= influence_needed
         and len(player.hand) >= discards_needed
         and len(player.spy_post_ids) >= recalls_needed
-        and player.troops_conflict >= retreats_needed
+        and player.troops_conflict + player.commanders_conflict >= retreats_needed
+        and units >= losses_needed
+        and player.troops_conflict + player.commanders_conflict
+        >= conflict_losses_needed
+        # The played card itself is still held while it resolves (a
+        # Navigation card is not held at all, so it needs no allowance).
+        and (
+            intrigue_needed == 0
+            or len(player.intrigue_cards) >= intrigue_needed + 1
+        )
     )
 
 
@@ -346,13 +457,15 @@ def _choice_rewards_feasible(
         for reward in section.rewards:
             match reward:
                 case DeployFromGarrison() if (
-                    owner.troops_garrison < 1
+                    owner.troops_garrison + owner.commanders_garrison < 1
                     or units_deployment_blocked(state, player)
                 ):
                     return False
                 case PlaceSpy() if not spy_placement_possible(state, player, reward):
                     return False
-                case RetreatTroops(minimum=minimum) if owner.troops_conflict < minimum:
+                case RetreatTroops(minimum=minimum) if (
+                    owner.troops_conflict + owner.commanders_conflict < minimum
+                ):
                     return False
                 case TakeContract() if not state.config.choam_module:
                     return False
@@ -363,9 +476,72 @@ def _choice_rewards_feasible(
                     return False
                 case SetAsideImperiumRowCard() if not state.imperium_row:
                     return False
+                case PeekTopCard() if not owner.deck:
+                    return False
+                case TrashPersonalCard(mandatory=True, hand_only=True) if (
+                    not owner.hand
+                ):
+                    return False
+                case GainInfluence(where_opponent_leads=True) if not (
+                    factions_where_opponent_leads(state, player)
+                ):
+                    return False
+                case GainInfluence() as gain if (
+                    gain.different_from_trigger or gain.minimum_own
+                ) and not influence_gain_candidates(state, player, gain):
+                    return False
+                case RedirectSpiesOnTurnSpace() if (
+                    agent_turn_space_id(state, player) is None
+                ):
+                    # "the board space where you sent an Agent this turn":
+                    # only after this turn's placement.
+                    return False
                 case _:
                     pass
     return True
+
+
+def influence_gain_candidates(
+    state: GameState,
+    player: int,
+    gain: GainInfluence,
+) -> tuple[Faction, ...]:
+    """Factions a GainInfluence choice may pick, after its printed limits."""
+
+    owner = state.players[player]
+    candidates = gain.factions if gain.factions is not None else tuple(Faction)
+    if gain.where_opponent_leads:
+        leading = factions_where_opponent_leads(state, player)
+        candidates = tuple(f for f in candidates if f in leading)
+    if gain.different_from_trigger:
+        candidates = tuple(
+            f for f in candidates if f.value != owner.navigation_trigger_faction
+        )
+    if gain.minimum_own:
+        candidates = tuple(
+            f
+            for f in candidates
+            if influence_amount(owner.influence, f) >= gain.minimum_own
+        )
+    return candidates
+
+
+def factions_where_opponent_leads(
+    state: GameState,
+    player: int,
+) -> tuple[Faction, ...]:
+    """Factions where some opponent has more Influence than ``player``."""
+
+    own = state.players[player].influence
+    return tuple(
+        faction
+        for faction in Faction
+        if any(
+            influence_amount(seat.influence, faction) > influence_amount(own, faction)
+            for seat in state.players
+            if seat.player_id != player
+        )
+    )
 
 
 def option_is_playable(
@@ -398,6 +574,11 @@ class RewardOutcome:
     result: RuleResult
     troops_recruited: int = 0
     sandworms_deployed: int = 0
+    combat_icons: int = 0
+    redirects_turn_space_spies: bool = False
+    sandworms_replaced: int = 0
+    passes_turn: bool = False
+    reserve_acquisitions: tuple[str, ...] = ()
 
 
 def automatic_rewards(sections: tuple[EffectSection, ...]) -> tuple[Reward, ...]:
@@ -416,7 +597,8 @@ def automatic_rewards(sections: tuple[EffectSection, ...]) -> tuple[Reward, ...]
             | PlaceSpy
             | RetreatTroops
             | AcquireCardUpTo
-            | SetAsideImperiumRowCard,
+            | SetAsideImperiumRowCard
+            | PeekTopCard,
         )
     )
 
@@ -438,6 +620,11 @@ def apply_rewards(
     events: list[GameEvent] = []
     troops_recruited = 0
     sandworms_deployed = 0
+    combat_icons = 0
+    redirects_turn_space_spies = False
+    sandworms_replaced = 0
+    passes_turn = False
+    reserve_acquisitions: list[str] = []
     personal_draws = 0
     intrigue_draws = 0
     contracts = 0
@@ -479,6 +666,15 @@ def apply_rewards(
                 fixed_influence.append(reward)
             case GainInfluence():
                 raise ValueError("Influence choices must be resolved as choice slots")
+            case SummonSandworm(count=count, requires_maker_hooks=needs_hooks) if (
+                replaces_sandworms(owner)
+                and not (needs_hooks and not owner.maker_hooks)
+                and state.current_conflict_ids
+                and not units_deployment_blocked(state, player)
+            ):
+                # Arrakis Planetologist: the replacement, even under the
+                # Shield Wall [Liet Kynes card]; paid by the caller.
+                sandworms_replaced += count
             case SummonSandworm(count=count, requires_maker_hooks=needs_hooks):
                 if (
                     (needs_hooks and not owner.maker_hooks)
@@ -511,6 +707,57 @@ def apply_rewards(
                     )
             case TakeContract(count=count):
                 contracts += count
+            case CommanderDiscountThisTurn(amount=amount):
+                # Honor Guard: the discount lasts for the rest of the turn.
+                owner = replace(
+                    owner,
+                    commander_discount_turn=owner.commander_discount_turn + amount,
+                )
+            case IgnoreInfluenceRequirementsThisTurn():
+                owner = replace(owner, ignores_influence_requirements_turn=True)
+            case GrantAgentIconThisTurn(icon=icon):
+                owner = replace(owner, granted_agent_icon_turn=icon.value)
+            case GrantAgentIconsThisTurn(icons=icons):
+                # Resourceful: several icons at once, comma-joined.
+                granted = [
+                    value for value in owner.granted_agent_icon_turn.split(",") if value
+                ]
+                granted.extend(
+                    icon.value for icon in icons if icon.value not in granted
+                )
+                owner = replace(owner, granted_agent_icon_turn=",".join(granted))
+            case GainSolariPerUnitType():
+                # Calculating: troops, sandworms, Commanders and a fighting
+                # Agent are each a kind of unit.
+                kinds = sum(
+                    (
+                        owner.troops_conflict > 0,
+                        owner.sandworms_conflict > 0,
+                        owner.commanders_conflict > 0,
+                        owner.agent_in_conflict > 0,
+                    )
+                )
+                owner = replace(
+                    owner,
+                    resources=replace(
+                        owner.resources, solari=owner.resources.solari + kinds
+                    ),
+                )
+            case PassTurn():
+                passes_turn = True
+            case PermanentRevealPersuasion(amount=amount):
+                owner = replace(
+                    owner,
+                    reveal_persuasion_bonus=owner.reveal_persuasion_bonus + amount,
+                )
+            case AcquireReserveCard(card_id=card_id):
+                reserve_acquisitions.append(card_id)
+            case GrantCombatDeployment():
+                combat_icons += 1
+            case RedirectSpiesOnTurnSpace():
+                redirects_turn_space_spies = True
+            case RevealContractsTakeOne():
+                raise ValueError("Contract reveals resolve through their trigger")
             case GainCombatStrength(amount=amount):
                 # Combat Intrigue strength changes update the marker at once
                 # [Main p. 14]; the caller only offers Combat options while
@@ -563,4 +810,9 @@ def apply_rewards(
         result=RuleResult(state=next_state, events=tuple(events)),
         troops_recruited=troops_recruited,
         sandworms_deployed=sandworms_deployed,
+        combat_icons=combat_icons,
+        redirects_turn_space_spies=redirects_turn_space_spies,
+        sandworms_replaced=sandworms_replaced,
+        passes_turn=passes_turn,
+        reserve_acquisitions=tuple(reserve_acquisitions),
     )

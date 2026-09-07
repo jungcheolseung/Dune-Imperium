@@ -12,6 +12,9 @@ from typing import assert_never
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireCardUpTo,
+    AcquireReserveCard,
+    CommanderDiscountThisTurn,
+    CommandersInConflictAtLeast,
     CompletedContractsAtLeast,
     Condition,
     Cost,
@@ -22,24 +25,39 @@ from dune_imperium.content.uprising.effect_dsl import (
     DrawPersonalCards,
     EffectSection,
     FlipBattleCard,
+    FlipFaceUpConflictCard,
     GainCombatStrength,
     GainedSpiceThisTurn,
     GainInfluence,
     GainResources,
+    GainSolariPerUnitType,
     GainVictoryPoints,
+    GiveIntrigueToOpponent,
+    GrantAgentIconsThisTurn,
+    GrantAgentIconThisTurn,
+    GrantCombatDeployment,
+    HasAlliance,
     HasHighCouncil,
+    IgnoreInfluenceRequirementsThisTurn,
     InfluenceAtLeast,
+    InNavigationSlot,
     IntrigueOption,
     IntrigueTiming,
     LoseInfluence,
+    LoseTroops,
     OnRevealAcquisitionThisRound,
     OnUnitsDeployedInTurn,
     OpponentAllianceInfluenceAtLeast,
+    PassTurn,
     PayResources,
+    PeekTopCard,
+    PermanentRevealPersuasion,
     PlaceSpy,
     RecallSpy,
     RecruitTroops,
+    RedirectSpiesOnTurnSpace,
     RetreatTroops,
+    RevealContractsTakeOne,
     Reward,
     SandwormsInConflictAtLeast,
     SetAsideImperiumRowCard,
@@ -47,8 +65,12 @@ from dune_imperium.content.uprising.effect_dsl import (
     SpiesPlacedAtLeast,
     SummonSandworm,
     TakeContract,
+    TrashDiscardPileCard,
+    TrashIntrigueCard,
     TrashPersonalCard,
     Trigger,
+    TriggeredByFaction,
+    WaterAtLeast,
 )
 from dune_imperium.content.uprising.intrigue import IntrigueCardEntry
 from dune_imperium.content.uprising.types import BattleIcon
@@ -122,6 +144,15 @@ def condition_text(condition: Condition) -> str:
             return f"you have {amount} or more {_faction_name(faction)} Influence"
         case HasHighCouncil():
             return "you hold a High Council seat"
+        case HasAlliance():
+            return "you have an Alliance"
+        case InNavigationSlot(slot=slot):
+            return f"this is in Navigation slot {slot}"
+        case TriggeredByFaction(faction=faction):
+            return (
+                "you played this as a result of reaching 2 Influence with the"
+                f" {_faction_name(faction)}"
+            )
         case SpiesPlacedAtLeast(count=count):
             return f"you have {count} or more Spies on Observation Posts"
         case CompletedContractsAtLeast(count=count):
@@ -139,6 +170,10 @@ def condition_text(condition: Condition) -> str:
                 f"you have {amount} or more Influence on a Faction track whose "
                 "Alliance token an opponent holds"
             )
+        case WaterAtLeast(amount=amount):
+            return f"you have {amount} or more water"
+        case CommandersInConflictAtLeast(count=count):
+            return f"you have {count} or more Sardaukar Commanders in the Conflict"
         case _:
             assert_never(condition)
 
@@ -158,6 +193,19 @@ def cost_text(cost: Cost) -> str:
             return "Pay " + ", ".join(parts)
         case LoseInfluence(count=count):
             return f"Lose {count} Influence"
+        case LoseTroops(count=count, from_conflict=from_conflict):
+            where = " in the Conflict" if from_conflict else ""
+            return f"Lose {_plural(count, 'troop')}{where}"
+        case GiveIntrigueToOpponent(bonus_spice_if_not_twisted=bonus):
+            extra = f" (+{bonus} spice if it is not a Twisted card)" if bonus else ""
+            return f"Give an opponent an Intrigue card from your hand{extra}"
+        case TrashIntrigueCard(troops_if_not_twisted=troops):
+            extra = (
+                f" (Recruit {_plural(troops, 'troop')} if it is not a Twisted card)"
+                if troops
+                else ""
+            )
+            return f"Trash an Intrigue card from your hand{extra}"
         case DiscardFromHand(count=1):
             return "Discard a card"
         case DiscardFromHand(count=count):
@@ -171,6 +219,14 @@ def cost_text(cost: Cost) -> str:
         case FlipBattleCard(icon=icon):
             icon_name = _BATTLE_ICON_NAMES[icon]
             return f"Flip a won Conflict card ({icon_name} icon) face down"
+        case FlipFaceUpConflictCard(count=1):
+            return "Flip a face-up won Conflict card face down"
+        case FlipFaceUpConflictCard(count=count):
+            return f"Flip {count} face-up won Conflict cards face down"
+        case TrashDiscardPileCard(minimum_cost=minimum_cost):
+            return (
+                f"Trash a card from your discard pile that costs {minimum_cost} or more"
+            )
         case _:
             assert_never(cost)
 
@@ -224,6 +280,46 @@ def reward_text(reward: Reward) -> str:
                 f"Acquire a card costing {max_cost} or less "
                 f"(to hand if {condition_text(to_hand_if)})"
             )
+        case CommanderDiscountThisTurn(amount=amount):
+            return (
+                f"Recruiting a Sardaukar Commander (including when you acquire one) "
+                f"costs you {amount} less this turn"
+            )
+        case IgnoreInfluenceRequirementsThisTurn():
+            return (
+                "Ignore Influence requirements on board spaces when sending an "
+                "Agent this turn"
+            )
+        case GrantAgentIconThisTurn(icon=icon):
+            return f"The card you play this turn has the {icon.value} icon"
+        case GrantCombatDeployment():
+            return "Combat: deploy this turn as though at a Combat space"
+        case GainSolariPerUnitType():
+            return "Gain 1 solari for each type of unit you have in the Conflict"
+        case PeekTopCard():
+            return (
+                "Look at the top card of your deck: put it back, discard it, or"
+                " pay 1 solari to draw it"
+            )
+        case GrantAgentIconsThisTurn(icons=icons):
+            names = ", ".join(icon.value for icon in icons)
+            return f"The card you play this turn has the {names} icons"
+        case PassTurn():
+            return "At the start of your turn: pass your turn"
+        case PermanentRevealPersuasion(amount=amount):
+            return (
+                f"For the rest of the game, during each of your Reveal turns,"
+                f" {amount} Persuasion"
+            )
+        case AcquireReserveCard(card_id=card_id):
+            return f"Acquire {card_id.replace('_', ' ').title()}"
+        case RedirectSpiesOnTurnSpace():
+            return (
+                "Each opponent spying on the board space where you sent an Agent "
+                "this turn must move that Spy. Then place a Spy on that space"
+            )
+        case RevealContractsTakeOne(count=count):
+            return f"Reveal {count} contracts from the bank: take one, trash the others"
         case SetAsideImperiumRowCard(discount=discount):
             return (
                 "Set aside an Imperium Row card "

@@ -31,6 +31,7 @@ def gain_faction_influence(
     players = state.players
     intrigue_deck = state.intrigue_deck
     pending_draws = state.pending_intrigue_draws
+    pending_navigation = state.pending_navigation_plays
     gained = 0
     events: list[GameEvent] = []
     for step in range(amount):
@@ -63,6 +64,15 @@ def gain_faction_influence(
                 )
             )
             events.extend(bonus_events)
+            if players[player].leader_id == "steersman_y_rkoon":
+                # Plot Course: "Whenever you reach 2 Influence with a
+                # Faction, play the next Navigation card" — queued and
+                # opened by the engine once this gain has finished, in
+                # gain order (OQ-012, OQ-039).
+                pending_navigation = (
+                    *pending_navigation,
+                    (player, faction.value, f"{event_prefix}:navigation:{step}"),
+                )
 
         if next_amount == 4:
             (
@@ -138,6 +148,7 @@ def gain_faction_influence(
             players=players,
             intrigue_deck=intrigue_deck,
             pending_intrigue_draws=pending_draws,
+            pending_navigation_plays=pending_navigation,
         ),
         events=tuple(events),
     )
@@ -507,4 +518,3 @@ def _transfer_or_return_alliance(
             ),
         ),
     )
-
