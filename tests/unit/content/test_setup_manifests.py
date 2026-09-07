@@ -618,7 +618,9 @@ def test_imperium_costs_cover_the_printed_range_and_resolve_instances() -> None:
     assert costs["bene_gesserit_operative"] == 3
     assert costs["overthrow"] == 8
     assert {
-        entry.card.card_id for entry in IMPERIUM_CARDS if entry.has_acquisition_bonus
+        entry.card.card_id
+        for entry in IMPERIUM_CARDS
+        if entry.has_acquisition_bonus and not entry.bloodlines_only
     } == {
         "arrakis_revolt",
         "guild_spy",

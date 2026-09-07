@@ -57,6 +57,26 @@ def discard_personal_card_from_hand(
                 ),
             )
         )
+    elif card.discard_effect is PersonalCardDiscardEffect.GAIN_THREE_SOLARI:
+        # Corrupt Bureaucrat: "When this card is discarded: 3 Solari".
+        next_owner = replace(
+            next_owner,
+            resources=replace(
+                next_owner.resources,
+                solari=next_owner.resources.solari + 3,
+            ),
+        )
+        events.append(
+            GameEvent(
+                event_id=f"{source}:discard:{card_id}:effect",
+                kind="personal_card_discard_effect_resolved",
+                payload=(
+                    ("card_id", card_id),
+                    ("player", player),
+                    ("solari", 3),
+                ),
+            )
+        )
     players = tuple(
         next_owner if candidate.player_id == player else candidate
         for candidate in state.players

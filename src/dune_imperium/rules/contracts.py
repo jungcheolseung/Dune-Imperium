@@ -518,6 +518,7 @@ def apply_contract_action(state: GameState, action: DomainAction) -> RuleResult:
                 *owner.completed_contract_ids,
                 instance_value,
             ),
+            contracts_completed_turn=owner.contracts_completed_turn + 1,
         )
     else:
         next_owner = replace(
@@ -769,6 +770,7 @@ def _complete_contract_without_choices(
             *next_owner.completed_contract_ids,
             instance_id,
         ),
+        contracts_completed_turn=next_owner.contracts_completed_turn + 1,
     )
     next_state = replace(
         state,

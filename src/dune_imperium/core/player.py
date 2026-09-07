@@ -99,6 +99,8 @@ class PlayerState:
     skill_ids: tuple[str, ...] = ()
     # Whether the once-per-turn paid Commander recruit was used this turn.
     commander_recruited_turn: bool = False
+    # Contracts completed during the current turn (Mercantile Affairs).
+    contracts_completed_turn: int = 0
     # The Skill strength currently folded into ``combat_strength`` so the
     # running total can be re-derived when a Skill condition changes.
     skill_strength_applied: int = 0
@@ -162,6 +164,7 @@ class PlayerState:
             self.commanders_garrison,
             self.commanders_conflict,
             self.skill_strength_applied,
+            self.contracts_completed_turn,
         )
         if min(quantities) < 0:
             raise ValueError("player component quantities must not be negative")

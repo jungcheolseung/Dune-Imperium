@@ -217,18 +217,44 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
             "If you have 2 or more Bene Gesserit Influence: Recruit 1 troop, "
             "Draw 1 card"
         ),
+        # Bloodlines
+        PersonalCardAgentEffect.DRAW_INTRIGUE_CARD: "Draw 1 Intrigue card",
+        PersonalCardAgentEffect.RECRUIT_ONE_IF_EMPEROR_INFLUENCE_TWO: (
+            "If you have 2 or more Emperor Influence: Recruit 1 troop"
+        ),
+        PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE: (
+            "You may discard a card → Draw 1 card"
+        ),
+        PersonalCardAgentEffect.DRAW_INTRIGUE_IF_SANDWORM_IN_CONFLICT: (
+            "If you have 1 or more sandworms in the Conflict: Draw 1 Intrigue card"
+        ),
+        PersonalCardAgentEffect.DRAW_ONE_IF_GAINED_TWO_SPICE_THIS_TURN: (
+            "If you gained 2 or more spice this turn: Draw 1 card"
+        ),
+        (
+            PersonalCardAgentEffect
+            .RECRUIT_ONE_AND_DRAW_ONE_IF_GAINED_TWO_SPICE_THIS_TURN
+        ): "If you gained 2 or more spice this turn: Recruit 1 troop, Draw 1 card",
+        PersonalCardAgentEffect.TAKE_CONTRACT_IF_SPY_RECALLED_THIS_TURN: (
+            "If you recalled a Spy this turn: Take a Contract"
+        ),
+        PersonalCardAgentEffect.DRAW_INTRIGUE_IF_CONTRACT_COMPLETED_THIS_TURN: (
+            "If you completed a Contract this turn: Draw 1 Intrigue card"
+        ),
     }
 )
 
 TRASH_EFFECT_TEXT: Final[Mapping[PersonalCardTrashEffect, str]] = MappingProxyType(
     {
         PersonalCardTrashEffect.DRAW_INTRIGUE_CARD: "Draw 1 Intrigue card",
+        PersonalCardTrashEffect.RECRUIT_TWO_TROOPS: "Recruit 2 troops",
     }
 )
 
 DISCARD_EFFECT_TEXT: Final[Mapping[PersonalCardDiscardEffect, str]] = MappingProxyType(
     {
         PersonalCardDiscardEffect.GAIN_TWO_SPICE: "Gain 2 spice",
+        PersonalCardDiscardEffect.GAIN_THREE_SOLARI: "Gain 3 solari",
     }
 )
 
@@ -243,6 +269,10 @@ ACQUISITION_EFFECT_TEXT: Final[Mapping[PersonalCardAcquisitionEffect, str]] = (
             ),
             PersonalCardAcquisitionEffect.TAKE_CONTRACT: "Take 1 face-up Contract",
             PersonalCardAcquisitionEffect.RECRUIT_ONE_TROOP: "Recruit 1 troop",
+            PersonalCardAcquisitionEffect.GAIN_EMPEROR_INFLUENCE: (
+                "Gain 1 Emperor Influence"
+            ),
+            PersonalCardAcquisitionEffect.GAIN_ONE_WATER: "Gain 1 water",
         }
     )
 )
@@ -309,6 +339,19 @@ REVEAL_CHOICE_EFFECT_TEXT: Final[Mapping[PersonalCardRevealChoiceEffect, str]] =
                 "If you have completed 4 or more Contracts: "
                 "Choose one: Keep the spice / Trash this card → Gain 1 VP"
             ),
+            # Bloodlines
+            PersonalCardRevealChoiceEffect.COMMAND_MAY_TRASH_CARD: (
+                "Command (6+ Persuasion): You may trash a card"
+            ),
+            PersonalCardRevealChoiceEffect.COMMAND_PLACE_SPY: (
+                "Command (6+ Persuasion): Place a Spy"
+            ),
+            PersonalCardRevealChoiceEffect.COMMAND_GAIN_CHOSEN_INFLUENCE: (
+                "Command (6+ Persuasion): Gain 1 Influence with a chosen Faction"
+            ),
+            PersonalCardRevealChoiceEffect.MAY_RETREAT_TWO_TROOPS_FOR_TWO_PERSUASION: (
+                "You may retreat 2 troops → +2 Persuasion"
+            ),
         }
     )
 )
@@ -332,6 +375,9 @@ _HANDLED_REVEAL_FIELDS: Final[frozenset[str]] = frozenset(
         "requires_spying_on_maker_space",
         "per_revealed_faction",
         "persuasion_per_completed_contract",
+        "requires_commander_in_conflict",
+        "minimum_garrisoned_units",
+        "requires_command",
     }
 )
 
@@ -362,6 +408,14 @@ def reveal_effect_text(effect: PersonalCardRevealEffect) -> str:
         )
     if effect.requires_spying_on_maker_space:
         conditions.append("you are spying on a Maker space")
+    if effect.requires_commander_in_conflict:
+        conditions.append("you have 1 or more Sardaukar Commanders in the Conflict")
+    if effect.minimum_garrisoned_units:
+        conditions.append(
+            f"you have {effect.minimum_garrisoned_units} or more garrisoned units"
+        )
+    if effect.requires_command:
+        conditions.append("Command (6+ Persuasion)")
 
     per_faction = (
         f" per revealed {_bond_name(effect.per_revealed_faction)} card"

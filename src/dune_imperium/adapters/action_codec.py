@@ -13,8 +13,8 @@ from dune_imperium.content.uprising.board import (
 from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.contracts import contract_instance_ids
 from dune_imperium.content.uprising.imperium import (
-    IMPERIUM_CARDS,
     ImperiumCardEntry,
+    imperium_cards_for_choam,
     imperium_deck_instance_ids,
 )
 from dune_imperium.content.uprising.intrigue import (
@@ -36,6 +36,7 @@ from dune_imperium.content.uprising.starting_cards import (
     StartingCardEntry,
 )
 from dune_imperium.content.uprising.types import (
+    BLOODLINES_REVEAL_CHOICE_EFFECTS,
     AgentIcon,
     BattleIcon,
     PersonalCardRevealChoiceEffect,
@@ -216,6 +217,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             arguments=(("effect", effect.value),),
         )
         for effect in PersonalCardRevealChoiceEffect
+        if config.bloodlines or effect not in BLOODLINES_REVEAL_CHOICE_EFFECTS
     )
     if config.choam_module:
         templates.extend(
@@ -621,6 +623,14 @@ def _bloodlines_templates() -> tuple[ActionTemplate, ...]:
         for share in (1, 2)
     )
     templates.append(ActionTemplate(action_id="retreat_leader_commander"))
+    # "Gain one Influence of your choice" as a Reveal choice (Pointing the Way).
+    templates.extend(
+        ActionTemplate(
+            action_id="gain_reveal_influence",
+            arguments=(("faction", faction.value),),
+        )
+        for faction in Faction
+    )
     return tuple(templates)
 
 
@@ -630,12 +640,13 @@ def _agent_turn_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         templates.extend(_agent_turn_templates_for_card("starter", starting_card))
     for reserve_card in RESERVE_STACKS:
         templates.extend(_agent_turn_templates_for_card("reserve", reserve_card))
-    for imperium_card in IMPERIUM_CARDS:
-        if (
-            imperium_card.play_data_complete
-            and (config.choam_module or not imperium_card.choam_only)
-            and (config.promo_cards or not imperium_card.promo)
-        ):
+    for imperium_card in imperium_cards_for_choam(
+        config.choam_module,
+        config.promo_cards,
+        bloodlines=config.bloodlines,
+        tech_module=config.tech_module,
+    ):
+        if imperium_card.play_data_complete:
             templates.extend(_agent_turn_templates_for_card("imperium", imperium_card))
     return tuple(templates)
 
