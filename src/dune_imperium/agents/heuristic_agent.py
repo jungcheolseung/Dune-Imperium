@@ -79,7 +79,6 @@ _ACTION_SCORES: Final[dict[str, float]] = {
     # Bloodlines: a Sardaukar Commander is a 2-strength unit for 2 Solari
     # plus a Skill; buying one from the board outranks a plain recruit.
     "acquire_sardaukar_commander": 3.0,
-    "acquire_sardaukar_commander_without_skill": 2.0,
     "recruit_sardaukar_commander": 1.5,
     "trash_skill_for_strength": 1.0,
     "withdraw_commanders": -10.0,

@@ -179,7 +179,6 @@ const ACTION_LABELS = {
   trash_reveal_card: "카드 trash",
   use_other_memories: "Other Memories 사용",
   acquire_sardaukar_commander: "Sardaukar Commander 획득 (2 Solari)",
-  acquire_sardaukar_commander_without_skill: "Sardaukar Commander 획득 (Skill 없음)",
   decline_sardaukar_commander: "Sardaukar Commander 거절",
   recruit_sardaukar_commander: "Sardaukar Commander recruit (2 Solari)",
   trash_skill_for_strength: "Skill trash → 검 3",

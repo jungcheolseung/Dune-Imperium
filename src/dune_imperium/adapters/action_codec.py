@@ -570,7 +570,6 @@ def _bloodlines_templates() -> tuple[ActionTemplate, ...]:
     templates: list[ActionTemplate] = [
         ActionTemplate(action_id=action_id)
         for action_id in (
-            "acquire_sardaukar_commander_without_skill",
             "decline_sardaukar_commander",
             "recruit_sardaukar_commander",
         )

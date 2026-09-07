@@ -376,7 +376,6 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "finish_agent_turn": apply_agent_turn_finish,
     # Bloodlines Sardaukar Commanders
     "acquire_sardaukar_commander": apply_sardaukar_commander_action,
-    "acquire_sardaukar_commander_without_skill": apply_sardaukar_commander_action,
     "decline_sardaukar_commander": apply_sardaukar_commander_action,
     "recruit_sardaukar_commander": apply_commander_recruit,
     "trash_skill_for_strength": apply_skill_trash,

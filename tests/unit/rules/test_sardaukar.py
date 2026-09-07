@@ -1,8 +1,8 @@
 """Tests for Bloodlines Sardaukar Commanders and their Skills.
 
 Rule source: ``docs/rules/bloodlines.md`` section 3 [Bloodlines pp. 3-4] and
-the Skill tile faces. The project convention for a Commander bought while no
-face-up Skill is choosable is OQ-031.
+the Skill tile faces. A Commander cannot be bought while no face-up Skill is
+choosable (OQ-031, user decision).
 """
 
 from dataclasses import replace
@@ -225,8 +225,8 @@ def test_a_held_skill_cannot_be_chosen_again() -> None:
     assert offered == {"charismatic", "desperate"}
 
 
-def test_without_a_choosable_skill_the_commander_is_bought_alone() -> None:
-    # OQ-031 project convention.
+def test_without_a_choosable_skill_the_commander_cannot_be_bought() -> None:
+    # OQ-031 (user decision 2026-09-07): no Skill, no acquisition.
     owner = _owner(skill_ids=(_skill("canny"), _skill("charismatic")))
     state = _turn_state(
         owner,
@@ -235,16 +235,12 @@ def test_without_a_choosable_skill_the_commander_is_bought_alone() -> None:
     )
     state = _visit(state, "dutiful_service")
 
-    actions = _commander_actions(state)
-    assert set(actions) == {
-        "decline_sardaukar_commander:",
-        "acquire_sardaukar_commander_without_skill:",
-    }
-    bought = apply_sardaukar_commander_action(
-        state, actions["acquire_sardaukar_commander_without_skill:"]
-    ).state
-    assert bought.players[0].commanders_garrison == 1
-    assert bought.players[0].skill_ids == (_skill("canny"), _skill("charismatic"))
+    assert set(_commander_actions(state)) == {"decline_sardaukar_commander:"}
+    with pytest.raises(ValueError, match="not a legal Sardaukar Commander choice"):
+        apply_sardaukar_commander_action(
+            state,
+            DomainAction("acquire_sardaukar_commander", 0, (("skill_id", "canny"),)),
+        )
 
 
 def test_without_two_solari_only_the_refusal_is_offered() -> None:
@@ -573,11 +569,10 @@ def test_bloodlines_actions_round_trip_only_in_the_bloodlines_catalog() -> None:
     base = ActionCodec(RulesetConfig())
     codec = ActionCodec(BLOODLINES)
     assert base.size == 4354
-    assert codec.size == base.size + 3 + 7 * 2 + 7 * 2
+    assert codec.size == base.size + 2 + 7 * 2 + 7 * 2
 
     actions = (
         DomainAction("acquire_sardaukar_commander", 2, (("skill_id", "loyal"),)),
-        DomainAction("acquire_sardaukar_commander_without_skill", 2),
         DomainAction("decline_sardaukar_commander", 1),
         DomainAction("recruit_sardaukar_commander", 3),
         DomainAction("trash_skill_for_strength", 0, (("skill_id", "desperate"),)),

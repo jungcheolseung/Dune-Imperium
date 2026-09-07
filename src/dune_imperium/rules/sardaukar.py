@@ -5,7 +5,8 @@ Three decision points are added when the option is on:
 - The Commander waiting on a visited board space is one more freely ordered
   effect of the visit: pay 2 Solari to acquire and recruit it and choose one
   face-up Skill (``acquire_sardaukar_commander``), or decline
-  (``decline_sardaukar_commander``) [Bloodlines p. 4].
+  (``decline_sardaukar_commander``) [Bloodlines p. 4]. Without a choosable
+  Skill the purchase is not offered (OQ-031).
 - Once per turn, Agent or Reveal, 2 Solari recruit one Commander from the
   supply to the garrison without a new Skill
   (``recruit_sardaukar_commander``) [Bloodlines p. 4].
@@ -76,7 +77,7 @@ def eligible_face_up_skill_ids(state: GameState, owner: PlayerState) -> tuple[st
 
     "You cannot choose a copy of a Sardaukar Commander Skill already in your
     supply" [Bloodlines p. 4]; two face-up copies of one Skill are one
-    choice.
+    choice. An empty result blocks the acquisition (OQ-031).
     """
 
     held = {_skill_identity(instance_id) for instance_id in owner.skill_ids}
@@ -108,14 +109,10 @@ def legal_sardaukar_commander_actions(
         return (decline,)
     skills = eligible_face_up_skill_ids(state, owner)
     if not skills:
-        # OQ-031 project convention: with no choosable Skill the Commander is
-        # still bought, without a Skill.
-        return (
-            decline,
-            DomainAction(
-                action_id="acquire_sardaukar_commander_without_skill", actor=player
-            ),
-        )
+        # OQ-031 (user decision 2026-09-07): gaining a Skill is part of the
+        # acquisition, so with no choosable Skill the Commander cannot be
+        # bought at all.
+        return (decline,)
     return (
         decline,
         *(
@@ -198,34 +195,32 @@ def apply_sardaukar_commander_action(
         ),
     )
     events: list[GameEvent] = []
-    skill_id: str | None = None
-    if action.action_id == "acquire_sardaukar_commander":
-        skill_id = str(dict(action.arguments)["skill_id"])
-        working, next_owner, instance_id, revealed = _take_face_up_skill(
-            working, next_owner, skill_id
+    skill_id = str(dict(action.arguments)["skill_id"])
+    working, next_owner, instance_id, revealed = _take_face_up_skill(
+        working, next_owner, skill_id
+    )
+    events.append(
+        GameEvent(
+            event_id=f"{source}:skill:{instance_id}",
+            kind="skill_gained",
+            payload=(
+                ("player", player),
+                ("skill_id", skill_id),
+                ("skill_instance_id", instance_id),
+            ),
         )
+    )
+    if revealed is not None:
         events.append(
             GameEvent(
-                event_id=f"{source}:skill:{instance_id}",
-                kind="skill_gained",
+                event_id=f"{source}:skill_revealed:{revealed}",
+                kind="skill_revealed",
                 payload=(
-                    ("player", player),
-                    ("skill_id", skill_id),
-                    ("skill_instance_id", instance_id),
+                    ("skill_id", _skill_identity(revealed)),
+                    ("skill_instance_id", revealed),
                 ),
             )
         )
-        if revealed is not None:
-            events.append(
-                GameEvent(
-                    event_id=f"{source}:skill_revealed:{revealed}",
-                    kind="skill_revealed",
-                    payload=(
-                        ("skill_id", _skill_identity(revealed)),
-                        ("skill_instance_id", revealed),
-                    ),
-                )
-            )
     # The Commander is recruited this turn, so it may join the turn's basic
     # deployment like a recruited troop [Bloodlines p. 4].
     context["troops_recruited"] = (
@@ -242,7 +237,7 @@ def apply_sardaukar_commander_action(
             kind="sardaukar_commander_acquired",
             payload=(
                 ("player", player),
-                ("skill_id", skill_id or ""),
+                ("skill_id", skill_id),
                 ("solari", COMMANDER_COST_SOLARI),
                 ("space_id", space_id),
             ),
