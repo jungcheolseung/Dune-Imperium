@@ -109,4 +109,5 @@ Uprising setup에 다음 단계를 더하거나 바꾼다. `[Bloodlines p. 3]`
 - 2026-09-07 슬라이스 5a: 6절의 Leader 중 Chani(Tactics track, `rules/tactics.py`), Count Hasimir Fenring, Duncan Idaho(OQ-037), Gaius Helen Mohiam, Liet Kynes(sandworm 대체, `rules/planetologist.py`)를 구현했다(관측 v8). 전사와 구현 노트는 [Leader audit](../implementation-audits/leaders.md)의 Bloodlines 절.
 - 2026-09-07 슬라이스 5b: Esmar Tuek과 Tuek's Sietch board space(Esmar가 있을 때만 존재하는 4번째 Maker space).
 - 2026-09-07 슬라이스 5c: Piter De Vries와 Twisted Intrigue 12장(전용 덱, round마다 1장; effect DSL에 troop 손실·Intrigue 증여·Intrigue trash 비용과 peek·pass turn 보상 추가; 4절의 Trash an Intrigue card 아이콘 포함), OQ-038.
-- 남은 Leader(Steersman Y'rkoon)는 슬라이스 5d에서; Tech 전용 카드 3종과 Kota Odax는 슬라이스 6(Tech Module)에서. 5~6절(Tech Module)과 Leader는 [implementation-plan.md](../implementation-plan.md)의 M12 슬라이스 순서를 따른다.
+- 2026-09-07 슬라이스 5d: Steersman Y'rkoon과 Navigation 10장(setup의 slot 선택 frame, Influence 2 도달 trigger 대기열, OQ-012 재검토·OQ-039). 이로써 6절의 Leader 8종이 모두 play된다.
+- Tech 전용 카드 3종과 Kota Odax는 슬라이스 6(Tech Module)에서. 5~6절(Tech Module)과 Leader는 [implementation-plan.md](../implementation-plan.md)의 M12 슬라이스 순서를 따른다.

@@ -118,6 +118,7 @@
 - 확정(2026-09-01): 콘텐츠 완결 시점에서 자유 순서 그룹 밖의 동시 의무 효과 계열은 획득(acquire) 이벤트 하나뿐임을 확인하고, 구현된 고정 순서를 최종 판정으로 채택한다: 획득한 카드 자신의 acquire 보상(예: The Spice Must Flow의 VP) → in-play 카드의 acquire trigger(spied Faction Influence) → Acquire Contract 완료(Spacing Guild Influence 1 + 3 Solari) → face-up trigger Intrigue(Call to Arms의 troop recruit). 네 단계 모두 같은 획득자에게 주는 가환 이득이고, Influence도 동일 플레이어의 순차 획득이라 Alliance 전이 판정이 순서에 불변이므로, 현재 콘텐츠에서 어떤 순서든 최종 상태가 같다. Clean Up discard trigger는 OQ-013(RESOLVED), 배치 trigger의 제시 시점은 OQ-016이 다룬다. 서로 비가환인 새 trigger 콘텐츠가 추가되면 다시 연다.
 - 참고(2026-09-01): Faction 공간 방문의 Influence 상승 **시점**은 이 항목의 질문이 아니라 공식 자유 순서 규칙이 직접 답한다 — "If the board space belongs to one of the Factions, you also move your cube one space up on its Influence track. You may carry out all these effects in any order" `[Main p. 9]`. 즉 방문자가 board·card 효과와의 순서를 스스로 고르며, 엔진도 `resolve_faction_influence`를 자유 순서 그룹의 선택 행동으로 제시한다.
 - 재개 조건(2026-09-01, 사용자): 다음 확장 Bloodlines는 Influence 획득의 순서를 관측 가능하게 만드는 trigger를 추가할 수 있다. Bloodlines 콘텐츠를 도입할 때 이 항목을 다시 열어, acquire 계열 밖의 새 충돌과 비가환 Influence trigger를 재검토한다.
+- 재검토(2026-09-07, Bloodlines 슬라이스 5d): Steersman Y'rkoon의 Plot Course("Whenever you reach 2 Influence with a Faction, play the next Navigation card")가 예고된 비가환 Influence trigger다. 한 효과가 Influence를 여러 번 올리면(예: 2 Influence 보상, 카드 1·10의 Influence 획득이 다시 2에 닿는 경우) trigger 순서가 Navigation 카드의 slot 순서와 얽혀 결과가 달라질 수 있다. 판정(project convention, OQ-039와 같이): trigger는 **Influence가 2에 닿은 순서대로** 대기열(`pending_navigation_plays`)에 쌓이고, 그 Influence 획득을 일으킨 효과가 완전히 끝난 뒤 엔진이 하나씩 연다(Sardaukar Standard의 Skill 선택과 같은 방식). 그 사이 다른 자유 순서 효과는 끼어들지 않는다. Bloodlines의 다른 Influence trigger(Loyalty·Imperial Birthright 계열)는 여전히 즉시·가환이라 acquire 계열 밖의 새 충돌은 이것뿐이며, 기존 고정 순서 판정은 유지한다.
 - 진행(2026-09-07): Bloodlines 도입을 시작했다([bloodlines.md](bloodlines.md)). 룰북 p. 12는 Steersman Y'rkoon이 "같은 Faction에서 Influence 2에 여러 번 도달할 수 있고 그때마다 Navigation 카드를 play한다"고 하여 Influence 도달 trigger가 실제로 추가된다. 재검토는 M12의 Leader 슬라이스에서 Y'rkoon을 전사할 때 한다.
 
 ## OQ-013 — Clean Up 이동과 일반적인 `discard` 반응
@@ -260,6 +261,13 @@
 - 판정(2026-09-07, project convention): (a) 잃는 플레이어가 troop마다 zone(garrison/Conflict)과 종류(troop/Commander, `[Bloodlines p. 4]`의 "troop" 취급)를 고른다(`lose_intrigue_troop(zone[, commanders])`); Shrewd는 Conflict로 제한한다. Conflict에서 잃으면 retreat처럼 strength 2를 빼고, Agent turn이면 그 turn의 배치 카운터도 함께 줄인다. 조건 판정(OQ-036의 Holy War와 같은 방향). (b) Harkonnen Advisor의 troop은 garrison에 두되 "이번 turn recruit한 유닛"으로 세지 않아 recruit 몫으로는 배치할 수 없고, garrison 몫 2개는 인쇄 규칙대로 남는다 — 구별 불가능한 troop에 대한 최소 해석이다.
 - 같이 정한 것: Controlled의 "Look at the top card of your deck"은 덱이 비어 있으면 낼 수 없다(discard를 섞지 않는다). Calculating의 "type of unit"에는 Into the Fray로 싸우는 Agent도 든다.
 - 재개 조건: 공식 FAQ가 "lose troops"의 출처나 Harkonnen Advisor의 troop 추적을 정할 때.
+
+## OQ-039 — Navigation 카드의 play 시점·선택 불가·slot 조건
+
+- 상태: `DECIDED` (project convention)
+- Steersman Y'rkoon의 Plot Course(카드면)와 `[Bloodlines p. 12]`(face-down 카드를 언제든 볼 수 있고, Influence를 잃었다가 다시 2에 닿으면 또 play한다)는 (a) Navigation 카드를 "play"하는 정확한 시점, (b) 카드의 어느 option도 지불·적용할 수 없을 때(예: 카드 10 "Lose 1 Influence"를 Influence 0에서, 카드 2를 Spy 없이) 카드가 소모되는지, (c) "If this is in Navigation slot N" 조건의 판정 기준, (d) play된 카드의 행방을 말하지 않는다.
+- 판정(2026-09-07, project convention): (a) trigger를 일으킨 Influence 획득 효과가 끝난 직후 엔진이 `navigation_choice` frame을 열고 소유자가 인쇄 option 중 play 가능한 것을 고른다(OQ-012 재검토 참조). (b) 어느 option도 play할 수 없으면 카드는 효과 없이 소모된다(공개 이벤트 `navigation_card_played`에 `fizzled`). (c) slot 번호는 setup 때 놓은 순서(왼쪽부터 1~4)이며, 카드는 항상 남은 가장 왼쪽 slot에서 play되므로 "play된 장수 + 1"이다. (d) play된 카드는 소유자 옆에 공개로 둔다(`navigation_played`); 남은 slot은 소유자만 아는 비공개 정보(관측 `private_navigation_slots`), box로 돌려보낸 6장은 아무도 모른다. 카드 5의 "trash a card"는 선택(icon)이며 비용 1 이상(starter·Reserve 제외)의 카드를 trash했을 때만 spice 2를 준다. 카드 4의 The Spice Must Flow 획득은 Reserve가 남아 있을 때만 이루어지고 획득 VP를 준다. 카드 1의 "different Faction where you have 2+"는 trigger 진영을 제외한 Influence 2 이상의 진영이다. Hungry for Spice는 turn당 1회, "이번 turn 얻은 spice"는 다른 카드와 같은 `spice_gained_this_turn` 기준이다.
+- 재개 조건: 공식 FAQ가 Navigation 카드의 play 시점이나 불발 처리를 정할 때.
 
 ## 판정이 생겼을 때 기록할 정보
 
