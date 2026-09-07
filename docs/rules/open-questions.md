@@ -200,8 +200,9 @@
 - 상태: `DECIDED` (project convention)
 - 룰북은 Commander를 acquire할 때마다 Skill 하나를 얻되 "이미 supply에 있는 Skill의 복사본은 고를 수 없다"고 한다 `[Bloodlines p. 4]`. Skill은 7종 2장씩이므로, 이미 여러 Skill을 가진 플레이어가 face-up 4장이 모두 자신이 가진 종류인 상황을 만날 수 있다. 그때 Commander 획득 자체가 막히는지, Skill 없이 획득하는지는 어느 문서도 말하지 않는다.
 - 필요한 답: 획득 가능 여부와 Skill 미지급 시 보충 여부에 대한 공식 판정.
-- 판정(2026-09-07, 사용자 판정, project convention — 공식 규칙이 아니다): Skill 획득은 Commander 획득의 일부("Whenever you acquire a Sardaukar Commander, you gain a Sardaukar Commander Skill")이므로, 고를 수 있는 face-up Skill이 하나도 없으면 그 space의 Commander를 획득할 수 없다(엔진은 거절만 제시). 고를 수 있는 Skill이 있으면 반드시 하나를 골라야 한다. 기각한 대안(기록용): Skill 없이 획득하는 방식 — 같은 날 먼저 구현했다가 사용자 판정으로 교체했다.
-- 테스트: `tests/unit/rules/test_sardaukar.py`의 `test_without_a_choosable_skill_the_commander_cannot_be_bought`.
+- 이전 판정(2026-09-07 오전, 폐기): 고를 수 있는 face-up Skill이 없으면 Commander 획득 자체를 막았다(거절만 제시).
+- 판정(2026-09-07 재판정, 사용자 판정, project convention — 공식 규칙이 아니다): 중복 때문에 고를 수 있는 face-up Skill이 하나도 없으면 **Skill은 얻지 못하고 Commander만 획득한다**(2 Solari, garrison에 recruit; `acquire_sardaukar_commander`를 `skill_id` 없이 제시). 고를 수 있는 Skill이 있으면 반드시 하나를 골라야 한다. 카드 효과의 획득(Sardaukar Standard, OQ-035)도 같다.
+- 테스트: `tests/unit/rules/test_sardaukar.py`의 `test_without_a_choosable_skill_the_commander_is_bought_without_one`, `tests/unit/rules/test_bloodlines_cards.py`의 Sardaukar Standard 테스트.
 - 재개 조건: 새 공식 FAQ·룰북이 이 경우를 직접 정할 때.
 
 ## OQ-032 — Skill의 Combat strength 조건을 판정하는 시점
@@ -231,7 +232,8 @@
 
 - 상태: `DECIDED` (project convention)
 - Sardaukar Standard의 "When this card is trashed: acquire and recruit the Sardaukar Commander in the bank"(카드면)는 (a) bank의 Commander를 얻을 때 Skill 선택이 따라오는지, (b) 고를 수 있는 face-up Skill이 없을 때(보유 중인 Skill뿐이거나 row가 비었을 때) Commander만 얻는지, (c) trash가 다른 효과의 해결 도중(Intrigue의 trash 슬롯, Reveal의 trash 선택 등)에 일어났을 때 Skill 선택을 언제 하는지를 말하지 않는다. `[Bloodlines p. 4]`는 Commander 획득이 Skill 선택을 동반한다고만 한다.
-- 판정(2026-09-07, project convention): (a) Commander space 구매와 같이 Skill 선택이 획득의 일부다(OQ-031과 같은 방향). (b) bank가 비었거나 고를 수 있는 Skill이 없으면 아무것도 얻지 않고 공개 이벤트(`sardaukar_commander_unavailable`)만 남긴다 — OQ-031이 "Skill 없이 Commander만"을 배제한 것과 일관되게 한다. (c) Skill 선택은 trash를 일으킨 효과가 결정 스택을 놓은 뒤 엔진이 여는 별도 frame(`skill_choice`)에서 하며, 그 사이 bank나 Skill row가 바뀌어 조건이 깨지면 (b)로 처리한다. 얻은 Commander는 garrison으로 가고 Agent turn 중이면 이번 turn recruit한 유닛으로 센다(`[Bloodlines p. 4]`).
+- 판정(2026-09-07, 사용자 판정, project convention): (a) Commander space 구매와 같이 Skill 선택이 따라온다. (b) 고를 수 있는 Skill이 없으면 OQ-031과 같이 **Skill 없이 Commander만** 얻는다(선택 frame 없이 바로 garrison으로). bank가 비었을 때만 아무것도 얻지 않고 공개 이벤트(`sardaukar_commander_unavailable`)를 남긴다. (c) Skill 선택은 trash를 일으킨 효과가 결정 스택을 놓은 뒤 엔진이 여는 별도 frame(`skill_choice`)에서 하며, 그 사이 bank나 Skill row가 바뀌면 그 시점 상태로 (b)를 다시 판정한다. 얻은 Commander는 garrison으로 가고 Agent turn 중이면 이번 turn recruit한 유닛으로 센다(`[Bloodlines p. 4]`).
+- 이전 판정(같은 날, 폐기): 고를 Skill이 없으면 Commander도 얻지 않았다.
 - 같이 정한 것: Urgent Shigawire의 "added to its Agent box: draw a card"는 부스트된 카드의 배치와 함께 즉시 해결한다(Agent box는 자유 순서라 draw를 먼저 두는 것이 소유자에게 불리하지 않다).
 - 재개 조건: 공식 FAQ가 Skill 없는 Commander 획득을 허용하거나 trash 트리거의 해결 시점을 정할 때.
 
@@ -239,7 +241,7 @@
 
 - 상태: `DECIDED` (project convention)
 - Holy War의 "Each opponent loses one troop"(카드면)는 troop을 garrison에서 잃는지 Conflict에서 잃는지, 누가 고르는지, Sardaukar Commander도 대상인지를 말하지 않는다. Holy War와 False Orders의 "Each opponent spying on the board space where you sent an Agent this turn must move that Spy"는 Spy가 어디로 갈 수 있는지, 갈 곳이 없으면 어떻게 되는지를 말하지 않는다. `[Bloodlines p. 4]`는 Commander를 card 효과의 "troop"으로 취급하라고만 한다.
-- 판정(2026-09-07, project convention): (a) 잃는 좌석이 garrison과 Conflict 둘 다에 유닛을 두었으면 그 좌석이 zone을 고른다(`lose_unit(zone)`); 한 zone에만 있으면 자동. 한 zone 안에서는 troop을 먼저, troop이 없을 때만 Commander를 잃는다(Commander는 [Bloodlines p. 4]에 따라 대상이 될 수 있지만 더 귀한 유닛이라 강제하지 않는다). Conflict에서 잃으면 retreat와 같이 strength 2를 뺀다. 유닛이 없는 좌석은 공개 이벤트만 남긴다. (b) 강제 이동은 일반 배치 규칙을 따른다: 그 좌석이 빈 observation post 아무 곳이나 고른다(`move_spy(post_id)`); 빈 post가 없으면 Spy는 supply로 돌아간다(`recall_moved_spy`). 이동 순서는 시계 방향 다음 좌석부터. (c) False Orders의 "Then you place a Spy on that space"는 상대의 이동이 모두 끝난 뒤 그 공간에 연결된 빈 post에 배치하며, supply에 Spy가 없으면 먼저 하나를 회수한다(`[Main pp. 11, 20]`); 배치할 곳이 없으면 배치 없이 끝난다. 이 카드는 이번 turn에 Agent를 보낸 뒤에만 낼 수 있다.
+- 판정(2026-09-07, 사용자 판정, project convention): (a) 잃는 좌석이 **zone(garrison/Conflict)과 유닛 종류(troop/Commander)를 모두 고른다**(`lose_unit(zone, commanders?)`); 선택지가 하나뿐이면 자동. Commander는 [Bloodlines p. 4]에 따라 card 효과의 troop이므로 대상이다. Conflict에서 잃으면 retreat와 같이 strength 2를 뺀다. 유닛이 없는 좌석은 공개 이벤트만 남긴다. (b) 강제 이동은 일반 배치 규칙을 따른다: **Spy를 옮기는 좌석이** 빈 observation post 아무 곳이나 고른다(`move_spy(post_id)`). 갈 곳이 없는 경우는 없다 — post는 13곳이고 게임의 Spy는 4인 × 3 = 12개라 항상 하나는 비어 있다(엔진은 이를 불변식으로 둔다). 이동 순서는 시계 방향 다음 좌석부터. (c) False Orders의 "Then you place a Spy on that space"는 상대의 이동이 모두 끝난 뒤 그 공간에 연결된 빈 post에 배치하며, supply에 Spy가 없으면 먼저 하나를 회수한다(`[Main pp. 11, 20]`); 배치할 곳이 없으면 배치 없이 끝난다. 이 카드는 이번 turn에 Agent를 보낸 뒤에만 낼 수 있다.
 - 같이 정한 것: Coercive Negotiation이 "trash"하는 contract 2장은 게임에서 제외되며 공개 zone `contract_trash`에 남긴다(인구 census와 관측 세그먼트).
 - 재개 조건: 공식 FAQ가 "lose a troop"의 출처나 강제 이동의 목적지를 정할 때.
 
