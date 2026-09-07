@@ -524,16 +524,26 @@ def _imperium_instance(
 
 
 def _take_reveal_gains(state: GameState) -> GameState:
-    """Take every pending troop recruit and Intrigue draw of the Reveal (OQ-045)."""
+    """Take every pending Reveal gain (troops, Intrigue, resources; OQ-045)."""
+
+    return _with_gains(RuleResult(state=state)).state
+
+
+def _with_gains(result: RuleResult) -> RuleResult:
+    """Take every pending Reveal gain, keeping the events in order."""
 
     from dune_imperium.rules.reveal_turn import (
         apply_reveal_gain,
         legal_reveal_gain_actions,
     )
 
+    state = result.state
+    events = list(result.events)
     while actions := legal_reveal_gain_actions(state, 0):
-        state = apply_reveal_gain(state, actions[0]).state
-    return state
+        step = apply_reveal_gain(state, actions[0])
+        state = step.state
+        events.extend(step.events)
+    return RuleResult(state=state, events=tuple(events))
 
 
 def _state(player: PlayerState, *, choam_module: bool = False) -> GameState:
@@ -700,6 +710,8 @@ def test_steersman_reveal_gains_persuasion_and_spice() -> None:
         DomainAction(action_id="reveal_turn", actor=0),
     )
 
+    result = _with_gains(result)
+
     assert dict(result.state.decision_stack[-1].context)["persuasion"] == 2
     assert result.state.players[0].resources.spice == 2
 
@@ -712,8 +724,8 @@ def test_junction_headquarters_reveal_gains_water_and_recruits() -> None:
         DomainAction(action_id="reveal_turn", actor=0),
     )
 
-    # Water is immediate; the troop is the owner's own Reveal action.
-    assert result.state.players[0].resources.water == 2
+    # Both the water and the troop are the owner's own Reveal actions.
+    assert result.state.players[0].resources.water == 1
     assert result.state.players[0].troops_garrison == 3
     state = _take_reveal_gains(result.state)
     owner = state.players[0]
@@ -772,6 +784,8 @@ def test_reliable_informant_reveals_for_persuasion_and_solari() -> None:
     state = _state(PlayerState(player_id=0, hand=(informant,)))
 
     result = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
+
+    result = _with_gains(result)
 
     assert dict(result.state.decision_stack[-1].context)["persuasion"] == 1
     assert result.state.players[0].resources.solari == 1
@@ -994,6 +1008,8 @@ def test_rebel_supplier_reveals_for_spice_and_strength() -> None:
     )
 
     result = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
+
+    result = _with_gains(result)
 
     assert dict(result.state.decision_stack[-1].context)["persuasion"] == 0
     assert result.state.players[0].resources.spice == 1
@@ -1526,6 +1542,8 @@ def test_smugglers_haven_gains_spice_while_spying_on_a_maker_space() -> None:
 
     result = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
 
+    result = _with_gains(result)
+
     assert dict(result.state.decision_stack[-1].context)["persuasion"] == 1
     assert result.state.players[0].resources.spice == 2
 
@@ -1552,6 +1570,8 @@ def test_price_is_no_object_reveals_for_persuasion_and_solari() -> None:
 
     result = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
 
+    result = _with_gains(result)
+
     assert dict(result.state.decision_stack[-1].context)["persuasion"] == 2
     assert result.state.players[0].resources.solari == 2
 
@@ -1561,6 +1581,8 @@ def test_subversive_advisor_reveals_for_one_solari() -> None:
     state = _state(PlayerState(player_id=0, hand=(subversive,)))
 
     result = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
+
+    result = _with_gains(result)
 
     assert dict(result.state.decision_stack[-1].context)["persuasion"] == 0
     assert result.state.players[0].resources.solari == 1
@@ -1601,6 +1623,8 @@ def test_delivery_agreement_gains_spice_automatically_below_four_contracts() -> 
     state = _state(owner, choam_module=True)
 
     result = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
+
+    result = _with_gains(result)
 
     assert result.state.players[0].resources.spice == 3
     assert dict(result.state.decision_stack[-1].context)["persuasion"] == 0
@@ -1687,6 +1711,8 @@ def test_fedaykin_stilltent_gains_water_when_revealed() -> None:
 
     result = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
 
+    result = _with_gains(result)
+
     assert result.state.players[0].resources.water == 2
     assert dict(result.state.decision_stack[-1].context)["persuasion"] == 0
 
@@ -1701,10 +1727,13 @@ def test_northern_watermaster_gains_spice_only_with_fremen_bond() -> None:
         without_bond,
         legal_reveal_actions(without_bond, 0)[0],
     )
+
+    without_result = _with_gains(without_result)
     with_result = begin_reveal_turn(
         with_bond,
         legal_reveal_actions(with_bond, 0)[0],
     )
+    with_result = _with_gains(with_result)
 
     assert without_result.state.players[0].resources.spice == 0
     assert with_result.state.players[0].resources.spice == 2
@@ -1730,10 +1759,13 @@ def test_southern_elders_applies_unconditional_and_bond_reveal_effects() -> None
         without_bond,
         legal_reveal_actions(without_bond, 0)[0],
     )
+
+    without_result = _with_gains(without_result)
     with_result = begin_reveal_turn(
         with_bond,
         legal_reveal_actions(with_bond, 0)[0],
     )
+    with_result = _with_gains(with_result)
 
     assert without_result.state.players[0].resources.water == 2
     assert dict(without_result.state.decision_stack[-1].context)["persuasion"] == 0
@@ -1769,10 +1801,13 @@ def test_ecological_testing_station_gains_water_with_fremen_bond() -> None:
         without_bond,
         legal_reveal_actions(without_bond, 0)[0],
     )
+
+    without_result = _with_gains(without_result)
     with_result = begin_reveal_turn(
         with_bond,
         legal_reveal_actions(with_bond, 0)[0],
     )
+    with_result = _with_gains(with_result)
 
     assert without_result.state.players[0].resources.water == 1
     assert with_result.state.players[0].resources.water == 2
@@ -2048,7 +2083,7 @@ def test_late_reveal_grants_resource_effects_at_arrival() -> None:
     revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
 
     arrived = _with_late_hand(revealed, stilltent)
-    result = reveal_late_arrivals(arrived, 0, (stilltent,))
+    result = _with_gains(reveal_late_arrivals(arrived, 0, (stilltent,)))
 
     assert result.state.players[0].resources.water == 2
     assert result.state.players[0].in_play == (stilltent,)
@@ -2429,11 +2464,14 @@ def test_a_late_fremen_arrival_completes_northern_watermasters_bond() -> None:
     arrived = reveal_late_arrivals(_with_late_hand(revealed, maula), 0, (maula,))
     granted = grant_late_reveal_effects(arrived)
 
-    assert granted.state.players[0].resources.spice == 2
-    assert granted.events[-1].kind == "reveal_effect_granted_late"
-    assert dict(granted.events[-1].payload)["spice"] == 2
-    assert dict(granted.state.decision_stack[-1].context)["persuasion"] == 2
-    assert grant_late_reveal_effects(RuleResult(state=granted.state)).events == ()
+    late = [e for e in granted.events if e.kind == "reveal_effect_granted_late"]
+    assert dict(late[-1].payload)["spice"] == 2
+    # The spice waits as a Reveal gain the owner takes (OQ-045).
+    assert granted.state.players[0].resources.spice == 0
+    taken = _with_gains(granted)
+    assert taken.state.players[0].resources.spice == 2
+    assert dict(taken.state.decision_stack[-1].context)["persuasion"] == 2
+    assert grant_late_reveal_effects(RuleResult(state=taken.state)).events == ()
 
 
 def test_interstellar_trade_pays_the_increment_for_contracts_completed_mid_reveal() -> (

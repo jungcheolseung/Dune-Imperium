@@ -50,7 +50,7 @@ from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.rules.agent_effects import AUTOMATIC_AGENT_ICONS
 from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 
-ACTION_CODEC_VERSION = 92
+ACTION_CODEC_VERSION = 93
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -243,6 +243,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         )
     templates.extend(_agent_turn_templates(config))
     templates.extend(_endgame_wild_templates(config))
+    templates.extend(_reveal_resource_templates())
     # Basic Combat deployment is adjustable until the explicit turn end
     # (OQ-029): add, withdraw, finish.
     templates.extend(
@@ -853,6 +854,39 @@ def _tech_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     )
     templates.append(ActionTemplate(action_id="gain_leader_signet_spice"))
     return tuple(templates)
+
+
+def _reveal_resource_templates() -> tuple[ActionTemplate, ...]:
+    """One ``gain_reveal_resources`` per distinct printed Reveal resource bundle.
+
+    Reveal resource gains are the owner's own actions (OQ-045, codec v93);
+    a bundle is the solari/spice/water of one printed Reveal effect, a
+    Skill's Reveal bonus, or Delivery Bay's Command Solari.
+    """
+
+    bundles: set[tuple[int, int, int]] = set()
+    cards: tuple[
+        StartingCardEntry | ReserveStackDefinition | ImperiumCardEntry, ...
+    ] = (
+        *STARTING_DECK,
+        *RESERVE_STACKS,
+        *imperium_cards_for_choam(True, True, bloodlines=True, tech_module=True),
+    )
+    for card in cards:
+        for effect in card.reveal_effects:
+            if effect.solari or effect.spice or effect.water:
+                bundles.add((effect.solari, effect.spice, effect.water))
+    for skill in SKILLS:
+        if skill.reveal_spice or skill.reveal_water:
+            bundles.add((0, skill.reveal_spice, skill.reveal_water))
+    bundles.add((2, 0, 0))  # Delivery Bay
+    return tuple(
+        ActionTemplate(
+            action_id="gain_reveal_resources",
+            arguments=(("solari", solari), ("spice", spice), ("water", water)),
+        )
+        for solari, spice, water in sorted(bundles)
+    )
 
 
 def _agent_turn_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:

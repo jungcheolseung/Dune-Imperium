@@ -551,6 +551,19 @@ def _reveal(state: GameState) -> RuleResult:
     return begin_reveal_turn(state, DomainAction(action_id="reveal_turn", actor=0))
 
 
+def _gains(state: GameState) -> GameState:
+    """Take every pending Reveal gain (OQ-045)."""
+
+    from dune_imperium.rules.reveal_turn import (
+        apply_reveal_gain,
+        legal_reveal_gain_actions,
+    )
+
+    while actions := legal_reveal_gain_actions(state, 0):
+        state = apply_reveal_gain(state, actions[0]).state
+    return state
+
+
 def test_navigation_chamber_offers_a_spice_or_solari_discount_on_placements() -> None:
     owner = _tech_owner(
         "navigation_chamber",
@@ -864,7 +877,8 @@ def test_command_tiles_pay_when_the_reveal_generates_six_persuasion() -> None:
     context = dict(result.state.decision_stack[0].context)
     persuasion = context["persuasion"]
     assert isinstance(persuasion, int) and persuasion >= 6
-    seat = result.state.players[0]
+    # Delivery Bay's Solari is a Reveal gain the owner takes (OQ-045).
+    seat = _gains(result.state).players[0]
     assert seat.resources.solari == 4 + 2
     assert context["tech_granted"] == "delivery_bay,training_depot"
     plain = _reveal(
@@ -896,10 +910,10 @@ def test_a_command_tile_pays_late_when_persuasion_reaches_six() -> None:
         decision_stack=add_reveal_persuasion(result.state.decision_stack, 6),
     )
     late = grant_late_reveal_effects(RuleResult(state=bumped))
-    assert late.state.players[0].resources.solari == 4 + 2
+    assert _gains(late.state).players[0].resources.solari == 4 + 2
     assert dict(late.state.decision_stack[0].context)["tech_granted"] == "delivery_bay"
     # A second pass does not pay again.
-    again = grant_late_reveal_effects(RuleResult(state=late.state))
+    again = grant_late_reveal_effects(RuleResult(state=_gains(late.state)))
     assert again.state.players[0].resources.solari == 4 + 2
 
 
@@ -1361,3 +1375,33 @@ def test_random_tech_games_with_kota_finish_under_every_check() -> None:
         engine=UprisingRulesEngine(leader_ids=("kota_odax_of_ix", *LEADERS[1:])),
     )
     assert report.rounds >= 1
+
+
+def test_reveal_spice_may_be_taken_after_forbidden_weapons_trashes() -> None:
+    from dune_imperium.rules.reveal_turn import (
+        apply_reveal_gain,
+        legal_reveal_gain_actions,
+    )
+    from dune_imperium.rules.tech import apply_tech_choice, legal_tech_reveal_actions
+
+    # Rebel Supplier: "Reveal: 1 spice, 1 sword" (retail card face).
+    supplier = "imperium:rebel_supplier:0"
+    owner = _tech_owner(
+        "forbidden_weapons", hand=(supplier,), resources=Resources(spice=2)
+    )
+    state = _reveal(_turn_state(owner, stacks=((), (), ()))).state
+    # The spice is a pending gain, not yet in the supply.
+    assert state.players[0].resources.spice == 2
+    gains = legal_reveal_gain_actions(state, 0)
+    assert [dict(a.arguments) for a in gains] == [{"solari": 0, "spice": 1, "water": 0}]
+    trash = next(
+        a
+        for a in legal_tech_reveal_actions(state, 0)
+        if a.action_id == "choose_tech_trash"
+    )
+    trashed = apply_tech_choice(state, trash).state
+    assert trashed.players[0].resources.spice == 0
+    # Taken afterwards, the revealed spice survives the trash (OQ-045).
+    kept = apply_reveal_gain(trashed, gains[0]).state
+    assert kept.players[0].resources.spice == 1
+    assert legal_reveal_gain_actions(kept, 0) == ()

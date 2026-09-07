@@ -419,6 +419,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "reveal_turn": begin_reveal_turn,
     "recruit_reveal_troops": apply_reveal_gain,
     "draw_reveal_intrigue": apply_reveal_gain,
+    "gain_reveal_resources": apply_reveal_gain,
     "play_intrigue": apply_intrigue_play,
     "choose_intrigue_faction": apply_intrigue_choice,
     "choose_intrigue_discard": apply_intrigue_choice,

@@ -434,13 +434,23 @@ def test_reveal_bonuses_pay_once_and_keep_the_skill_strength() -> None:
     state = refresh_pre_reveal_strength(RuleResult(state=_turn_state(owner))).state
     assert state.players[0].combat_strength == 6  # 2 + 2 + Canny 2
 
+    from dune_imperium.rules.reveal_turn import (
+        apply_reveal_gain,
+        legal_reveal_gain_actions,
+    )
+
     result = begin_reveal_turn(state, DomainAction(action_id="reveal_turn", actor=0))
-    revealed = result.state.players[0]
-    context = dict(result.state.decision_stack[0].context)
     bonus_events = [
         event for event in result.events if event.kind == "skill_reveal_bonus"
     ]
     assert len(bonus_events) == 3
+    # Driven's spice and Hardy's water are the owner's own Reveal actions
+    # (OQ-045); Charismatic's Persuasion is totalled at once.
+    taken = result.state
+    while gains := legal_reveal_gain_actions(taken, 0):
+        taken = apply_reveal_gain(taken, gains[0]).state
+    revealed = taken.players[0]
+    context = dict(taken.decision_stack[0].context)
     assert revealed.resources.spice == 1 and revealed.resources.water == 2
     sword_strength = context["sword_strength"]
     assert isinstance(sword_strength, int)
@@ -581,7 +591,7 @@ def test_observation_shows_face_up_skills_but_hides_the_stack_order() -> None:
 def test_bloodlines_actions_round_trip_only_in_the_bloodlines_catalog() -> None:
     base = ActionCodec(RulesetConfig())
     codec = ActionCodec(BLOODLINES)
-    assert base.size == 4354 + 2
+    assert base.size == 4354 + 8
     # Commander choices, the Commander share of retreats and deployments,
     # and the wild pairs of the two Bloodlines Conflicts are bloodlines-only.
     assert codec.size > base.size

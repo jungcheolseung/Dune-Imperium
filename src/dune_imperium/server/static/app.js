@@ -214,6 +214,7 @@ const ACTION_LABELS = {
   place_tech_spy: "Panopticon: Spy 배치",
   recruit_reveal_troops: "Reveal: troop recruit",
   draw_reveal_intrigue: "Reveal: Intrigue draw",
+  gain_reveal_resources: "Reveal: 자원 획득",
   decline_skill: "Plasteel Blades 유지 (Skill 거절)",
   choose_secret_project: "Secret Project: 맨 아래 Tech tile 선택",
   gain_leader_signet_spice: "spice 1 (Signet)",

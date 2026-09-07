@@ -1675,37 +1675,56 @@ def _granted_entries(
 
 
 # Reveal gains the owner resolves as their own actions, in any order
-# [Main p. 12]: troop recruits and Intrigue draws. Their timing matters —
-# the supply may fill (a troop lost to a Twisted Intrigue cost) or a tile
-# may arrive (Suspensor Suits through Rapid Engineering) during the Reveal —
-# so they wait on the Reveal frame as ``kind|count|source`` entries.
+# [Main p. 12] (OQ-045): troop recruits, Intrigue draws and resource gains.
+# Their timing matters — the supply may fill (a troop lost to a Twisted
+# Intrigue cost), a tile may arrive (Suspensor Suits through Rapid
+# Engineering), or spice may be spent before Forbidden Weapons' trash — so
+# they wait on the Reveal frame as ``kind|payload|source`` entries: the
+# payload is a count for troops and Intrigue and ``solari/spice/water`` for
+# resources.
 REVEAL_GAINS_KEY = "reveal_pending_gains"
+RevealGain = tuple[str, str, str]
 
 
 def reveal_pending_gains(
     context: Mapping[str, ActionValue],
-) -> tuple[tuple[str, int, str], ...]:
-    """Return the (kind, count, source) gains still waiting in this Reveal."""
+) -> tuple[RevealGain, ...]:
+    """Return the (kind, payload, source) gains still waiting in this Reveal."""
 
     value = context.get(REVEAL_GAINS_KEY, "")
     if not isinstance(value, str):
         raise RuntimeError("Reveal frame has invalid pending gains")
-    entries: list[tuple[str, int, str]] = []
+    entries: list[RevealGain] = []
     for item in value.split(","):
         if not item:
             continue
-        kind, count, source = item.split("|", 2)
-        entries.append((kind, int(count), source))
+        kind, payload, source = item.split("|", 2)
+        entries.append((kind, payload, source))
     return tuple(entries)
 
 
-def _encode_gains(entries: tuple[tuple[str, int, str], ...]) -> str:
-    return ",".join(f"{kind}|{count}|{source}" for kind, count, source in entries)
+def _encode_gains(entries: tuple[RevealGain, ...]) -> str:
+    return ",".join(f"{kind}|{payload}|{source}" for kind, payload, source in entries)
+
+
+def resource_gain_entry(
+    source: str, *, solari: int = 0, spice: int = 0, water: int = 0
+) -> RevealGain | None:
+    """Return a pending resource gain, or None when nothing is gained."""
+
+    if not (solari or spice or water):
+        return None
+    return ("resources", f"{solari}/{spice}/{water}", source)
+
+
+def _resource_payload(payload: str) -> tuple[int, int, int]:
+    solari, spice, water = (int(part) for part in payload.split("/"))
+    return solari, spice, water
 
 
 def _append_reveal_gains(
     frames: tuple[DecisionFrame, ...],
-    entries: tuple[tuple[str, int, str], ...],
+    entries: tuple[RevealGain, ...],
 ) -> tuple[DecisionFrame, ...]:
     """Queue more troop or Intrigue gains on the Reveal frame, wherever it sits."""
 
@@ -1739,12 +1758,26 @@ def legal_reveal_gain_actions(
     frame = owned_top_frame(state, FrameKind.REVEAL, player)
     if frame is None:
         return ()
-    kinds = {kind for kind, _, _ in reveal_pending_gains(dict(frame.context))}
+    pending = reveal_pending_gains(dict(frame.context))
+    kinds = {kind for kind, _, _ in pending}
     actions: list[DomainAction] = []
     if "troops" in kinds:
         actions.append(DomainAction(action_id="recruit_reveal_troops", actor=player))
     if "intrigue" in kinds:
         actions.append(DomainAction(action_id="draw_reveal_intrigue", actor=player))
+    # Resource gains differ in what they give, so each distinct bundle is
+    # its own choice; equal bundles are interchangeable.
+    for payload in dict.fromkeys(
+        payload for kind, payload, _ in pending if kind == "resources"
+    ):
+        solari, spice, water = _resource_payload(payload)
+        actions.append(
+            DomainAction(
+                action_id="gain_reveal_resources",
+                actor=player,
+                arguments=(("solari", solari), ("spice", spice), ("water", water)),
+            )
+        )
     return tuple(actions)
 
 
@@ -1756,13 +1789,59 @@ def apply_reveal_gain(state: GameState, action: DomainAction) -> RuleResult:
     player = action.actor
     frame = state.decision_stack[-1]
     context = frame_context(frame)
-    wanted = "troops" if action.action_id == "recruit_reveal_troops" else "intrigue"
     pending = reveal_pending_gains(context)
-    index = next(i for i, (kind, _, _) in enumerate(pending) if kind == wanted)
-    kind, count, source = pending[index]
+    arguments = dict(action.arguments)
+    if action.action_id == "gain_reveal_resources":
+        wanted_payload = "/".join(
+            str(arguments.get(name, 0)) for name in ("solari", "spice", "water")
+        )
+        index = next(
+            i
+            for i, (kind, payload, _) in enumerate(pending)
+            if kind == "resources" and payload == wanted_payload
+        )
+    else:
+        wanted = "troops" if action.action_id == "recruit_reveal_troops" else "intrigue"
+        index = next(i for i, (kind, _, _) in enumerate(pending) if kind == wanted)
+    kind, payload, source = pending[index]
     context[REVEAL_GAINS_KEY] = _encode_gains((*pending[:index], *pending[index + 1 :]))
     event_id = f"round:{state.round_number}:player:{player}:reveal_gain:{source}"
     owner = state.players[player]
+    if kind == "resources":
+        solari, spice, water = _resource_payload(payload)
+        next_owner = replace(
+            owner,
+            resources=replace(
+                owner.resources,
+                solari=owner.resources.solari + solari,
+                spice=owner.resources.spice + spice,
+                water=owner.resources.water + water,
+            ),
+        )
+        return RuleResult(
+            state=replace(
+                state,
+                players=replace_player(state.players, next_owner),
+                decision_stack=(
+                    *state.decision_stack[:-1],
+                    with_context(frame, context),
+                ),
+            ),
+            events=(
+                GameEvent(
+                    event_id=event_id,
+                    kind="reveal_resources_gained",
+                    payload=(
+                        ("player", player),
+                        ("solari", solari),
+                        ("source", source),
+                        ("spice", spice),
+                        ("water", water),
+                    ),
+                ),
+            ),
+        )
+    count = int(payload)
     if kind == "troops":
         next_owner, recruited = recruit_troops(owner, count)
         context["reveal_troops_recruited"] = (
@@ -1889,7 +1968,7 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
     frames = state.decision_stack
     next_owner = owner
     events: list[GameEvent] = list(result.events)
-    late_gains: list[tuple[str, int, str]] = []
+    late_gains: list[RevealGain] = []
     pending_influence: list[tuple[str, PersonalCardRevealEffect]] = []
     pending_trashes: list[tuple[str, str]] = []
     pending_combat_icons = 0
@@ -1939,18 +2018,17 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
                 )
             next_owner = replace(
                 next_owner,
-                resources=replace(
-                    next_owner.resources,
-                    solari=next_owner.resources.solari + effect.solari,
-                    spice=next_owner.resources.spice + effect.spice,
-                    water=next_owner.resources.water + effect.water,
-                ),
                 combat_strength=next_owner.combat_strength + (sword if units else 0),
             )
             if effect.recruit_troops:
-                late_gains.append(("troops", effect.recruit_troops, card_id))
+                late_gains.append(("troops", str(effect.recruit_troops), card_id))
             if effect.draw_intrigue:
-                late_gains.append(("intrigue", effect.draw_intrigue, card_id))
+                late_gains.append(("intrigue", str(effect.draw_intrigue), card_id))
+            resources = resource_gain_entry(
+                card_id, solari=effect.solari, spice=effect.spice, water=effect.water
+            )
+            if resources is not None:
+                late_gains.append(resources)
             if effect.influence_faction is not None:
                 pending_influence.append((f"{source}:{index}", effect))
             if effect.trashes_self:
@@ -1998,11 +2076,11 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
             frames = _add_reveal_sword(frames, sword, counts_toward_combat=units > 0)
         next_owner = replace(
             next_owner,
-            resources=replace(
-                next_owner.resources, solari=next_owner.resources.solari + solari
-            ),
             combat_strength=next_owner.combat_strength + (sword if units else 0),
         )
+        tile_resources = resource_gain_entry(f"tech:{tech_id}", solari=solari)
+        if tile_resources is not None:
+            late_gains.append(tile_resources)
         events.append(
             GameEvent(
                 event_id=f"round:{state.round_number}:player:{player}:tech:{tech_id}:late",
@@ -2689,26 +2767,23 @@ def _late_reveal_one_card(
                 sword_delta += effect.strength_per_other_sword_card
     persuasion_delta = persuasion_gain + persuasion_increment
 
-    next_owner = replace(
-        next_owner,
-        resources=replace(
-            next_owner.resources,
-            solari=next_owner.resources.solari
-            + sum(effect.solari for effect in eligible),
-            spice=next_owner.resources.spice + sum(effect.spice for effect in eligible),
-            water=next_owner.resources.water + sum(effect.water for effect in eligible),
-        ),
-    )
-    # Troop recruits and Intrigue draws join the Reveal's pending gains so
-    # the owner keeps choosing their order [Main p. 12].
-    late_gains = tuple(
-        (kind, count, card_id)
+    # Troop recruits, Intrigue draws and resources join the Reveal's pending
+    # gains so the owner keeps choosing their order [Main p. 12] (OQ-045).
+    late_gains: tuple[RevealGain, ...] = tuple(
+        entry
         for effect in eligible
-        for kind, count in (
-            ("troops", effect.recruit_troops),
-            ("intrigue", effect.draw_intrigue),
+        for entry in (
+            ("troops", str(effect.recruit_troops), card_id)
+            if effect.recruit_troops
+            else None,
+            ("intrigue", str(effect.draw_intrigue), card_id)
+            if effect.draw_intrigue
+            else None,
+            resource_gain_entry(
+                card_id, solari=effect.solari, spice=effect.spice, water=effect.water
+            ),
         )
-        if count
+        if entry is not None
     )
 
     units = next_owner.units_in_conflict
@@ -2898,7 +2973,6 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         for tech_id, ability in _COMMAND_TECH
         if persuasion >= COMMAND_PERSUASION and has_tech(owner.tech_ids, ability)
     )
-    tech_solari = 2 if "delivery_bay" in tech_granted else 0
     tech_sword = 2 if "training_depot" in tech_granted else 0
 
     card_strengths = tuple(
@@ -2936,38 +3010,45 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         if units > 0
         else 0
     )
-    next_owner = replace(
-        owner,
-        resources=replace(
-            owner.resources,
-            solari=owner.resources.solari
-            + sum(effect.solari for _, effect in reveal_effects)
-            + tech_solari,
-            spice=owner.resources.spice
-            + sum(effect.spice for _, effect in reveal_effects)
-            + sum(skill.reveal_spice for skill in active_skills),
-            water=owner.resources.water
-            + sum(effect.water for _, effect in reveal_effects)
-            + sum(skill.reveal_water for skill in active_skills),
-        ),
-    )
+    next_owner = owner
     # Panopticon: "Reveal Turn: a Spy and a troop" [Panopticon Tech tile];
     # the Spy placement opens below.
     panopticon = has_tech(owner.tech_ids, TechAbility.PANOPTICON)
-    # Troop recruits and Intrigue draws wait for the owner's order (below).
+    # Troop recruits, Intrigue draws and resource gains wait for the owner's
+    # order (OQ-045).
     reveal_troops_recruited = 0
-    pending_gains: tuple[tuple[str, int, str], ...] = (
+    resource_gains = (
         *(
-            ("troops", effect.recruit_troops, card_id)
+            resource_gain_entry(
+                card_id, solari=effect.solari, spice=effect.spice, water=effect.water
+            )
+            for card_id, effect in reveal_effects
+        ),
+        *(
+            resource_gain_entry(
+                f"skill:{skill.skill_id}",
+                spice=skill.reveal_spice,
+                water=skill.reveal_water,
+            )
+            for skill in active_skills
+        ),
+        resource_gain_entry(
+            "tech:delivery_bay", solari=2 if "delivery_bay" in tech_granted else 0
+        ),
+    )
+    pending_gains: tuple[RevealGain, ...] = (
+        *(
+            ("troops", str(effect.recruit_troops), card_id)
             for card_id, effect in reveal_effects
             if effect.recruit_troops
         ),
-        *((("troops", 1, "tech:panopticon"),) if panopticon else ()),
+        *((("troops", "1", "tech:panopticon"),) if panopticon else ()),
         *(
-            ("intrigue", effect.draw_intrigue, card_id)
+            ("intrigue", str(effect.draw_intrigue), card_id)
             for card_id, effect in reveal_effects
             if effect.draw_intrigue
         ),
+        *(entry for entry in resource_gains if entry is not None),
     )
     next_owner = replace(
         next_owner,
