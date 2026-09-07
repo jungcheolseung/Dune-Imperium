@@ -235,6 +235,14 @@
 - 같이 정한 것: Urgent Shigawire의 "added to its Agent box: draw a card"는 부스트된 카드의 배치와 함께 즉시 해결한다(Agent box는 자유 순서라 draw를 먼저 두는 것이 소유자에게 불리하지 않다).
 - 재개 조건: 공식 FAQ가 Skill 없는 Commander 획득을 허용하거나 trash 트리거의 해결 시점을 정할 때.
 
+## OQ-036 — "lose a troop"의 출처와 강제 Spy 이동의 목적지
+
+- 상태: `DECIDED` (project convention)
+- Holy War의 "Each opponent loses one troop"(카드면)는 troop을 garrison에서 잃는지 Conflict에서 잃는지, 누가 고르는지, Sardaukar Commander도 대상인지를 말하지 않는다. Holy War와 False Orders의 "Each opponent spying on the board space where you sent an Agent this turn must move that Spy"는 Spy가 어디로 갈 수 있는지, 갈 곳이 없으면 어떻게 되는지를 말하지 않는다. `[Bloodlines p. 4]`는 Commander를 card 효과의 "troop"으로 취급하라고만 한다.
+- 판정(2026-09-07, project convention): (a) 잃는 좌석이 garrison과 Conflict 둘 다에 유닛을 두었으면 그 좌석이 zone을 고른다(`lose_unit(zone)`); 한 zone에만 있으면 자동. 한 zone 안에서는 troop을 먼저, troop이 없을 때만 Commander를 잃는다(Commander는 [Bloodlines p. 4]에 따라 대상이 될 수 있지만 더 귀한 유닛이라 강제하지 않는다). Conflict에서 잃으면 retreat와 같이 strength 2를 뺀다. 유닛이 없는 좌석은 공개 이벤트만 남긴다. (b) 강제 이동은 일반 배치 규칙을 따른다: 그 좌석이 빈 observation post 아무 곳이나 고른다(`move_spy(post_id)`); 빈 post가 없으면 Spy는 supply로 돌아간다(`recall_moved_spy`). 이동 순서는 시계 방향 다음 좌석부터. (c) False Orders의 "Then you place a Spy on that space"는 상대의 이동이 모두 끝난 뒤 그 공간에 연결된 빈 post에 배치하며, supply에 Spy가 없으면 먼저 하나를 회수한다(`[Main pp. 11, 20]`); 배치할 곳이 없으면 배치 없이 끝난다. 이 카드는 이번 turn에 Agent를 보낸 뒤에만 낼 수 있다.
+- 같이 정한 것: Coercive Negotiation이 "trash"하는 contract 2장은 게임에서 제외되며 공개 zone `contract_trash`에 남긴다(인구 census와 관측 세그먼트).
+- 재개 조건: 공식 FAQ가 "lose a troop"의 출처나 강제 이동의 목적지를 정할 때.
+
 ## 판정이 생겼을 때 기록할 정보
 
 각 항목을 닫을 때 다음을 함께 남긴다. `DECIDED` 항목에 새 공식 답이 나왔을 때도 같다.

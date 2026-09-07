@@ -75,11 +75,14 @@ Skill 7종은 에셋 저장소 `cards/en/bloodlines/skill/*.webp`를 직접 판�
 | Litany Against Fear (Imperium) | BG, 3, 아이콘 없음. 턴 시작: 이 카드를 play → draw 1, 턴 넘기기. Reveal: 2 Persuasion. | `ImperiumCardEntry.turn_start_effect=PLAY_TO_DRAW_AND_PASS`; TURN frame 행동 `play_turn_start_card(card_id)` → hand→in play, draw 1(reshuffle frame 가능), 다음 미공개 좌석의 turn 개시(좌석은 미공개 상태 유지). Agent 아이콘이 없어 Agent turn으로는 낼 수 없다. |
 | Delivery Logistics (Imperium, CHOAM) | Guild, 2(×2). Agent 아이콘: 미완료 contract들의 아이콘. Reveal: 1 Persuasion OR contract. | `agent_icons_from_contracts=True` → `effective_agent_icons`(board_space contract는 그 공간 아이콘, harvest contract는 Spice Trade). Reveal 선택 `PERSUASION_OR_CONTRACT` → `gain_reveal_persuasion` / `take_reveal_contract`(`begin_contract_gain`). |
 | CHOAM Demands (Imperium, CHOAM) | Guild, 6, Landsraad·City·SpiceTrade. Agent: 자신의 contract 하나 완료. Reveal: 완료 contract 4+면 이 카드 trash → 4 진영 Influence 1씩. | `COMPLETE_ONE_CONTRACT` → `complete_contract_by_card(instance_id)`(조건 무시, `contracts.complete_contract_by_effect`; 보상 선택 frame은 진행된 turn 위에 유지). Reveal 선택 `MAY_TRASH_SELF_FOR_FOUR_INFLUENCE_IF_FOUR_CONTRACTS`(trash 선택 경로, `gain_faction_influence` 4회). |
+| Holy War (Imperium) | Fremen, 5, Emperor·Guild·BG·Landsraad. Agent: 상대마다 troop 1 잃음 + 그 공간을 보는 상대 Spy 강제 이동. Reveal: 1 Persuasion + troop 1; Fremen Bond: Combat 아이콘. | `EACH_OPPONENT_LOSES_TROOP_AND_MOVES_SPY` → `unit_loss.opponent_unit_loss_frames`(zone 선택 frame `opponent_unit_loss`/자동) + `spy_moves.turn_space_spy_frames`(`opponent_spy_move` frame: `move_spy`/`recall_moved_spy`), OQ-036. Reveal 효과 `grants_combat_icon`(늦은 도착 포함) → `grant_combat_icon`. |
+| False Orders (Intrigue) | Plot: 이번 turn Agent를 보낸 공간을 보는 상대 Spy 강제 이동, 그 뒤 자신이 그 공간에 Spy 배치. | DSL 보상 `RedirectSpiesOnTurnSpace` → `RewardOutcome.redirects_turn_space_spies` → 소유자의 `spy_placement` frame(`place_spy_on_space`/`recall_spy_for_placement`/`decline_spy_placement`)을 먼저 밀고 그 위에 상대 이동 frame. `agent_turn_space_id`가 없으면(배치 전) 낼 수 없다. |
+| Coercive Negotiation (Intrigue, CHOAM) | Plot trigger: 한 turn에 3+ 유닛 배치 시 bank contract 3장 공개 → 1장 획득, 2장 trash. | `_plot_trigger(OnUnitsDeployedInTurn(3), RevealContractsTakeOne(3))`; `offer_deployment_triggers`가 카드별 frame 종류를 고른다(Distraction은 `intrigue_trigger_spy`, 이 카드는 `intrigue_trigger_contract`; bank가 비면 열리지 않음). `take_trigger_contract(instance_id)`/`decline_intrigue_contract_trigger`; 나머지 2장은 `GameState.contract_trash`(관측 `contract_trash` 20칸, 총 2,745). |
 
 ## 미완 경계
 
 - Endgame tiebreaker "garrison의 troop 수"에 Commander를 세는지는 공식 문서가 침묵한다(현재는 세지 않음; 콘텐츠 슬라이스에서 open question으로 올릴 예정).
-- 남은 카드: Imperium 2종(Holy War, Tech 전용 Ixian Ambassador)과 Intrigue 4장(Coercive Negotiation, False Orders, Tech 전용 Battlefield Research·Rapid Engineering). 필요한 새 메커니즘: Intrigue trash 아이콘(Tech), 상대 Spy 이동(상대 결정; Holy War·False Orders), "lose a troop"(Holy War; 출처 garrison/Conflict 선택은 open question 예정), 한 turn 3+ 유닛 배치 trigger + contract 3장 공개 선택(Coercive Negotiation).
+- 남은 카드: Tech Module 전용 3종(Ixian Ambassador ×2, Battlefield Research, Rapid Engineering)과 4절의 Trash an Intrigue card 아이콘 — 슬라이스 6(Tech Module)에서.
 
 ## 검증
 
