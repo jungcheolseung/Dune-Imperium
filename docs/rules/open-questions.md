@@ -227,6 +227,14 @@
 - 같이 정한 것: Reveal turn 중 Combat 아이콘(Disruption Tactics, Adaptive Tactics 등)으로 여는 배치 창은 OQ-029의 Agent turn 기본 배치와 달리 회수(`withdraw_*`)를 제시하지 않는다. Reveal의 배치는 즉시 strength에 반영되는 `add_units_to_reveal` 경로를 쓰며, 되돌리기는 로컬 UI의 행동 되돌리기로 한다.
 - 재개 조건: 공식 FAQ가 대상 선택 주체를 정할 때.
 
+## OQ-035 — Sardaukar Standard의 trash 트리거와 Skill 선택·시점
+
+- 상태: `DECIDED` (project convention)
+- Sardaukar Standard의 "When this card is trashed: acquire and recruit the Sardaukar Commander in the bank"(카드면)는 (a) bank의 Commander를 얻을 때 Skill 선택이 따라오는지, (b) 고를 수 있는 face-up Skill이 없을 때(보유 중인 Skill뿐이거나 row가 비었을 때) Commander만 얻는지, (c) trash가 다른 효과의 해결 도중(Intrigue의 trash 슬롯, Reveal의 trash 선택 등)에 일어났을 때 Skill 선택을 언제 하는지를 말하지 않는다. `[Bloodlines p. 4]`는 Commander 획득이 Skill 선택을 동반한다고만 한다.
+- 판정(2026-09-07, project convention): (a) Commander space 구매와 같이 Skill 선택이 획득의 일부다(OQ-031과 같은 방향). (b) bank가 비었거나 고를 수 있는 Skill이 없으면 아무것도 얻지 않고 공개 이벤트(`sardaukar_commander_unavailable`)만 남긴다 — OQ-031이 "Skill 없이 Commander만"을 배제한 것과 일관되게 한다. (c) Skill 선택은 trash를 일으킨 효과가 결정 스택을 놓은 뒤 엔진이 여는 별도 frame(`skill_choice`)에서 하며, 그 사이 bank나 Skill row가 바뀌어 조건이 깨지면 (b)로 처리한다. 얻은 Commander는 garrison으로 가고 Agent turn 중이면 이번 turn recruit한 유닛으로 센다(`[Bloodlines p. 4]`).
+- 같이 정한 것: Urgent Shigawire의 "added to its Agent box: draw a card"는 부스트된 카드의 배치와 함께 즉시 해결한다(Agent box는 자유 순서라 draw를 먼저 두는 것이 소유자에게 불리하지 않다).
+- 재개 조건: 공식 FAQ가 Skill 없는 Commander 획득을 허용하거나 trash 트리거의 해결 시점을 정할 때.
+
 ## 판정이 생겼을 때 기록할 정보
 
 각 항목을 닫을 때 다음을 함께 남긴다. `DECIDED` 항목에 새 공식 답이 나왔을 때도 같다.
