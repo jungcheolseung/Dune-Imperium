@@ -319,4 +319,6 @@ FAQ의 `See ...` 항목은 새 규칙이 없더라도 연결 대상의 coverage�
 | `[Bloodlines p. 10]` | 6인 팀전 | `out of scope` | 현재 룰셋에서 제외 |
 | `[Bloodlines p. 11]` | 크레딧 | `out of scope` | 규칙이 아님 |
 | `[Bloodlines p. 12]` | 아이콘 정의(Acquire Tech·할인, Combat, Command, Discard, Flip, Spy with Deep Cover, Trash an Intrigue card, 표시용 아이콘) | `covered` | [bloodlines.md](bloodlines.md) 4·5절 |
-| `[Bloodlines p. 12]` | Chani·Fenring·Esmar Tuek·Steersman Y'rkoon clarification, Forbidden Weapons·Ornithopter Fleet | `deferred to content manifest` | [bloodlines.md](bloodlines.md) 5·6절; Leader·Tech 전사 때 연결 |
+| `[Bloodlines p. 12]` | Chani·Fenring·Esmar Tuek·Steersman Y'rkoon clarification, Forbidden Weapons·Ornithopter Fleet | `covered` | [bloodlines.md](bloodlines.md) 5·6절; Leader는 [implementation-audits/leaders.md](../implementation-audits/leaders.md), tile 2종은 `rules/tech.py`·`rules/ornithopter.py`·`rules/effect_interpreter.py` |
+| `[Tech tile faces]` | Tech tile 18장의 비용·획득 효과·능력 | `deferred to content manifest` | [bloodlines.md](bloodlines.md) 5절 표, `content/bloodlines/tech.py`; 공식 문서가 침묵하는 세부는 OQ-040~044 |
+| `[Bloodlines p. 6]` | Kota Odax of Ix를 Leader로 고를 수 있음(Tech Module 전용) | `covered` | `content/uprising/leaders.py` `tech_only`, [implementation-audits/leaders.md](../implementation-audits/leaders.md) |

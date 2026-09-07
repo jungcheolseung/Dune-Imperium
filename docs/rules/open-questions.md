@@ -269,6 +269,41 @@
 - 판정(2026-09-07, project convention): (a) trigger를 일으킨 Influence 획득 효과가 끝난 직후 엔진이 `navigation_choice` frame을 열고 소유자가 인쇄 option 중 play 가능한 것을 고른다(OQ-012 재검토 참조). (b) 어느 option도 play할 수 없으면 카드는 효과 없이 소모된다(공개 이벤트 `navigation_card_played`에 `fizzled`). (c) slot 번호는 setup 때 놓은 순서(왼쪽부터 1~4)이며, 카드는 항상 남은 가장 왼쪽 slot에서 play되므로 "play된 장수 + 1"이다. (d) play된 카드는 소유자 옆에 공개로 둔다(`navigation_played`); 남은 slot은 소유자만 아는 비공개 정보(관측 `private_navigation_slots`), box로 돌려보낸 6장은 아무도 모른다. 카드 5의 "trash a card"는 선택(icon)이며 비용 1 이상(starter·Reserve 제외)의 카드를 trash했을 때만 spice 2를 준다. 카드 4의 The Spice Must Flow 획득은 Reserve가 남아 있을 때만 이루어지고 획득 VP를 준다. 카드 1의 "different Faction where you have 2+"는 trigger 진영을 제외한 Influence 2 이상의 진영이다. Hungry for Spice는 turn당 1회, "이번 turn 얻은 spice"는 다른 카드와 같은 `spice_gained_this_turn` 기준이다.
 - 재개 조건: 공식 FAQ가 Navigation 카드의 play 시점이나 불발 처리를 정할 때.
 
+## OQ-040 — Tech tile의 Endgame 효과 시점
+
+- 상태: `DECIDED` (project convention)
+- CHOAM Transports("Endgame: 완료 contract 4+면 VP 1")와 Panopticon("Endgame: Influence 1 이하인 진영마다 Influence 1")은 Endgame에 작동한다고만 적혀 있고, Endgame Intrigue window(OQ-001)와의 순서는 어디에도 없다 `[Tech tile faces]` `[Main p. 15]`.
+- 판정(2026-09-07): 두 효과는 Endgame 단계에 들어서는 순간(`endgame_started` 직후), 어떤 Endgame Intrigue window보다 먼저, 좌석 순서로 자동 해결한다(`rules/tech.py` `apply_endgame_tech_effects`). Panopticon의 Influence 획득은 일반 획득이라 Alliance·VP·Navigation trigger를 그대로 일으킨다. 근거: 두 효과 모두 선택이 없고 소유자 자신에게만 작용하므로 window 안에서 순서를 고를 이유가 없고, 먼저 해결해야 Endgame Intrigue의 조건 판정(예: Influence 기준)이 확정 상태를 본다.
+- 재개 조건: 공식 FAQ가 Tech tile의 Endgame 효과 순서를 정할 때.
+
+## OQ-041 — Secret Project tile의 취급과 Kota의 기억
+
+- 상태: `DECIDED` (project convention)
+- Kota Odax of Ix의 Secret Project는 stack 맨 아래 tile 하나를 Leader 위에 face-down으로 두고 "acquire할 수 있을 때마다" 1 spice 싸게 고를 수 있게 한다. (a) 그 tile이 "보유한 Tech tile"(Ixian Ambassador의 2장, Battlefield Research·Rapid Engineering의 3장 조건)에 드는지, (b) 세 stack의 맨 아래를 본 기억을 어떻게 다루는지는 카드에 없다 `[Kota Odax of Ix card]`.
+- 판정(2026-09-07): (a) 들지 않는다 — Leader 위의 face-down tile은 supply에 있지 않고 능력도 작동하지 않으며, acquire해 supply로 옮긴 뒤에야 센다. (b) 선택되지 않은 두 tile의 identity는 소유자의 기억이지만 관측에는 인코딩하지 않는다(관측·determinization은 stack의 맨 위 아래 순서를 비공개로 다룬다). 선택한 tile의 identity는 소유자 전용 관측(`private_secret_project`)이고 상대에게는 보유 여부만 보인다. Secret Project의 할인은 High Council·Tech Discount 아이콘 할인과 합산되며 하한은 0이다(`[Bloodlines p. 7]`의 두 할인 문장을 그대로 확장).
+- 재개 조건: 공식 FAQ가 Secret Project tile의 취급을 정할 때.
+
+## OQ-042 — Suspensor Suits의 "자기 turn"과 배치 불가
+
+- 상태: `DECIDED` (project convention)
+- Suspensor Suits("자기 turn에 Intrigue 카드를 draw하거나 훔칠 때마다 troop 1을 Conflict에 배치")는 (a) "자기 turn"의 범위, (b) supply에 troop이 없거나 배치가 금지된 경우(Emperor of the Known Universe), (c) Conflict가 없는 시점을 말하지 않는다 `[Tech tile face]`.
+- 판정(2026-09-07): (a) 자기 Agent turn 또는 Reveal turn frame이 열려 있는 동안(그 위에 쌓인 상대 결정 포함)의 draw·Secrets 강탈만 센다; Combat 보상·Endgame·상대 turn 중의 획득은 세지 않는다. (b)(c) 엔진이 전이 뒤에 빚진 수만큼 supply에서 Conflict로 옮기고(Reveal 중이면 Reveal 전투력 계산에 합산), supply가 모자라거나 배치가 막혔거나 Conflict가 없으면 부족분은 소멸하고 소급하지 않는다(OQ-030과 같은 방향; 이벤트 `suspensor_deployment_unavailable`). Reveal 중 배치는 그 Reveal의 배치 카운터에 합산된다.
+- 재개 조건: 공식 FAQ가 Suspensor Suits의 시점을 정할 때.
+
+## OQ-043 — Command (6+) 판정에 세는 Persuasion의 범위
+
+- 상태: `DECIDED` (project convention)
+- `[Bloodlines pp. 5, 12]`는 "Persuasion을 6 이상 생성한 Reveal turn"이라고만 한다. 카드가 아닌 출처 — Charismatic Skill의 Persuasion 1, Navigation 카드 3(slot 4)의 영구 Persuasion 1, Self-Destroying Messages의 Persuasion 1, High Council 자리 2, Assembly Hall 1 — 를 포함하는지는 명시하지 않는다.
+- 판정(2026-09-07): 모두 포함한다. 그 Reveal turn에 생성된 Persuasion이면 출처를 가리지 않으며, Command 효과 자신의 Persuasion만 제외한다(기존 판정). 이전 구현은 Skill·Navigation 보너스를 Command 판정 뒤에 더했는데(슬라이스 4b·5d), 이 판정으로 `begin_reveal_turn`의 합계에 함께 넣었다.
+- 재개 조건: 공식 FAQ가 Command (6+)의 합계 기준을 정할 때.
+
+## OQ-044 — Forbidden Weapons·Panopticon·Plasteel Blades의 해결 세부
+
+- 상태: `DECIDED` (project convention)
+- (a) Forbidden Weapons의 "검 3 + Influence 1 잃기(가능하면)"에서 어느 진영을 잃는지, Alliance token이 넘어갈 상대가 여럿일 때의 처리; (b) Panopticon의 Reveal Turn Spy 배치 규칙과 배치 불가 시 처리; (c) Plasteel Blades의 "Commander를 recruit할 때"에 획득이 포함되는지와 추가 Skill 선택 시점; (d) Spy Drones의 "이번 turn Spy를 recall했으면"의 범위는 tile 면에 없다 `[Tech tile faces]`.
+- 판정(2026-09-07): (a) 소유자가 Influence 1 이상인 진영 중 하나를 고르고, Alliance 이전 대상이 여럿이면 Intrigue의 `LoseInfluence`와 같은 방식으로 함께 고른다; Influence가 전혀 없으면 손실 없이 검 3만 얻는다("if possible" `[Bloodlines p. 12]`). 검 3은 유닛이 Conflict에 있을 때만 즉시 세고, 없으면 나중에 유닛이 들어올 때 센다(Reveal의 optional sword 처리). trash 선택은 spice를 0으로 만들고 tile을 `tech_trash`로 보낸다. 선택은 Reveal 시작 시 `tech_choice` frame으로 반드시 해결한다. (b) 일반 Spy 배치 규칙(빈 post, supply가 비면 recall 먼저 `[Main pp. 11, 20]`)을 Reveal 시작 시 `spy_placement` frame으로 제시하고, 배치할 수 없으면 소멸한다; troop 1은 Reveal recruit로 합산돼 Combat 아이콘 배치 창의 한도에 든다. (c) 포함한다 — Sardaukar High Command가 "recruit(획득 포함)"라고 적은 것과 `[Bloodlines p. 4]`의 "acquire하고 즉시 recruit"에 따라 획득·지불 recruit·Sardaukar Standard 모두 trigger이며, 추가 Skill 선택은 그 recruit 효과가 끝난 뒤 Skill 선택 대기열(OQ-035와 같은 큐)로 열리고 거절할 수 있다(`decline_skill`); 고를 Skill이 없으면 열리지 않는다. (d) 이번 Agent 또는 Reveal turn에 자신의 Spy를 supply로 되돌린 모든 경로(Infiltrate·Gather Intelligence·카드·Signet·acquire 보너스)를 세며(좌석 카운터 `spies_recalled_turn`), Advanced Data Analysis로 box에 보낸 Spy는 recall이 아니다.
+- 재개 조건: 공식 FAQ가 해당 tile의 해결을 정할 때.
+
 ## 판정이 생겼을 때 기록할 정보
 
 각 항목을 닫을 때 다음을 함께 남긴다. `DECIDED` 항목에 새 공식 답이 나왔을 때도 같다.

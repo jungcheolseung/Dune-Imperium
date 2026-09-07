@@ -107,9 +107,11 @@ Leader identity와 setup은 `content/uprising/leaders.py`, 능력 규칙은 `rul
 - **Arrakis Planetologist** — "Ignore the Influence requirement of Sietch Tabr. You summon no sandworms. For each one you would, instead: [trash a card] [1 spice] [1 Intrigue]. (Even when the Conflict is protected by the Shield Wall.)" 첫 문장은 `legal_agent_actions`의 요구 검사에서 예외. 대체는 `rules/planetologist.py`: spice와 Intrigue draw는 즉시, trash는 sandworm마다 `optional_trash` frame(`trash_optional_card`/`decline_optional_trash`; hand·discard·in play)으로 제시한다 — trash 아이콘을 선택으로 읽은 것은 project convention(OQ-037 부기). 소환 경로 다섯 곳(Maker space, Desert Power Reveal, Arrakis Revolt, Intrigue DSL `SummonSandworm`, Reveal 중 Intrigue)이 모두 대체를 쓰며 Shield Wall 검사만 건너뛴다(Maker Hooks·Conflict 존재·Shaddam의 배치 금지는 그대로).
 - **Judge of the Change(Signet)** — "If you sent an Agent this turn to... [Landsraad]: [Emperor] 2 Influence: water. [City]: 1 Solari. [Spice Trade]: 1 spice." 자동 해결: 방문 공간의 Agent 아이콘으로 판정하고, Landsraad는 Emperor Influence 2 이상일 때만 water.
 
-### 남은 Bloodlines Leader
+### Kota Odax of Ix (Tech Module 전용, 2026-09-07)
 
-Kota Odax of Ix는 Tech Module과 함께(슬라이스 6).
+- **Secret Project** — "Game Start: Peek at the bottom Tech tile of each stack. Place one face down here. Whenever you could acquire a Tech tile, you may choose this one. It costs 1 less." setup에서 Kota 좌석이 정해지면(고정 setup 즉시, draft는 pick 뒤; Y'rkoon의 Navigation setup 위에 쌓인다) `tech_secret_project` frame(`choose_secret_project(tech_id)`, 후보는 비지 않은 stack의 맨 아래 tile)이 열려 게임을 SETUP에 멈춘다. 고른 tile은 stack에서 빠져 `PlayerState.secret_project_tech_id`(소유자 전용 관측 `private_secret_project`, 상대에게는 `has_secret_project`)에 놓이고, 이후 모든 Acquire Tech(Landsraad 방문·Tech Discount 아이콘)에서 한 후보로 더 제시되며 `tech_cost`가 1을 뺀다(High Council·아이콘 할인과 합산, 하한 0). 획득하면 일반 tile처럼 supply로 간다. "보유 Tech tile" 수에는 들지 않고, 나머지 두 bottom tile을 본 기억은 관측에 넣지 않는다(OQ-041).
+- **Reverse Engineering(Signet)** — "1 spice — OR — Trash one of your Tech tiles → Intrigue 1, draw 1." 효과 frame의 `gain_leader_signet_spice` / `trash_leader_tech(tech_id)`(보유 tile마다 하나; `apply_kota_signet_action`). trash한 tile은 `tech_trash`로 가고 flip 상태도 지운다; Intrigue는 `draw_or_queue_intrigue_cards`, 카드는 `draw_or_request_personal_cards`로 Signet 해결 뒤에 뽑는다.
+- Leader pool: `LeaderDefinition.tech_only=True`이며 `leaders_for_choam(..., tech_module=True)`에서만 나온다(고정 setup 검증·draft pool·codec `pick_leader`·sweep/tournament 회전 모두 같은 필터). 카드면은 에셋 저장소 `bloodlines/leader/Kota Odax of Ix.webp`(content id `kota_odax_of_ix`).
 
 ## 남은 Leader
 

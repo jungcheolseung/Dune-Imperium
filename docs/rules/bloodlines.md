@@ -1,6 +1,6 @@
 # Bloodlines 확장
 
-Bloodlines는 Dune: Imperium — Uprising의 확장이다. 이 문서는 4인 Uprising 게임에 Bloodlines를 더했을 때 바뀌거나 추가되는 규칙을 구현 단위로 정리한다. 규범 근거는 [공식 Bloodlines 룰북](sources.md)이며, `[Bloodlines p. N]`은 그 PDF의 페이지 번호다(인쇄된 쪽수와 같다). 프로젝트는 확장을 `RulesetConfig(bloodlines=True)` 옵션으로, 함께 든 Tech Module을 `tech_module=True` 옵션(Bloodlines 필요)으로 취급하며 둘 다 기본값은 꺼짐이다.
+Bloodlines는 Dune: Imperium — Uprising의 확장이다. 이 문서는 4인 Uprising 게임에 Bloodlines를 더했을 때 바뀌거나 추가되는 규칙을 구현 단위로 정리한다. 규범 근거는 [공식 Bloodlines 룰북](sources.md)이며, `[Bloodlines p. N]`은 그 PDF의 페이지 번호다(인쇄된 쪽수와 같다). 프로젝트는 확장을 `RulesetConfig(bloodlines=True)` 옵션으로, 함께 든 Tech Module을 `tech_module=True` 옵션(Bloodlines 필요)으로 취급하며 둘 다 기본값은 꺼짐이다. 공식 문서가 침묵하는 Tech Module 판정은 [open-questions.md](open-questions.md)의 OQ-040~044다.
 
 범위 밖: 1·2인 Rivals 규칙 `[Bloodlines pp. 8-9]`, 6인 팀전 `[Bloodlines p. 10]`, 원본 Dune: Imperium과의 조합 `[Bloodlines p. 3]`, Rise of Ix와의 조합 `[Bloodlines p. 7]`. 2025-01-13 FAQ에는 Bloodlines 항목이 없다(2026-09-07 확인; "Sardaukar Commander" 검색 결과는 Shaddam Corrino IV의 능력명뿐이다).
 
@@ -80,6 +80,38 @@ Uprising setup에 다음 단계를 더하거나 바꾼다. `[Bloodlines p. 3]`
 - Forbidden Weapons에서 strength 3 선택지를 고르면 Influence가 1 이상인 Faction에서 Influence 1을 잃어야 한다(가능하면). `[Bloodlines p. 12]`
 - Ornithopter Fleet을 가진 동안 자신의 모든 battle icon(wild 포함)은 Ornithopter로 취급한다. acquire하는 순간 battle icon 일치가 일어날 수 있고, Crysknife·Desert Mouse Intrigue로 VP를 얻을 수 없다. `[Bloodlines p. 12]`
 
+### Tech tile 18장
+
+에셋 저장소 `cards/en/bloodlines/tech/*.webp`의 tile 면을 직접 판독해 전사했다(2026-09-07). 아이콘은 Uprising 아이콘 가이드와 대조했다: 회색 정육면체 = troop, 초록 줄무늬 카드 = draw, 금색 카드 = Intrigue, 회색 원기둥 = Spy, 노란 후드가 붙은 원기둥 = Spy with Deep Cover, 흰 X 검 = Combat 아이콘, 황갈색 벽 조각 + 붉은 파편 = Shield Wall 파괴, X 카드 = trash, 금색 ? 마름모 = Influence 1 선택. 오른쪽 아래 조개 표시는 솔로 전용 Rival Tech 표시다. `[Tech tile faces]` `[Bloodlines p. 7]`
+
+| Tile | 비용 | 획득 효과(1회) | 능력 |
+| --- | --- | --- | --- |
+| Advanced Data Analysis | 3 | 획득 조건: 보드의 자기 Spy 하나를 trash(box로) | Flip → Intrigue 1 |
+| CHOAM Transports (CHOAM 전용) | 6 | contract 1 | contract를 완료할 때마다 draw 1. Endgame: 완료 contract 4+면 VP 1 |
+| Delivery Bay | 3 | draw 1 | Reveal Turn: Command (6+): Solari 2 |
+| Forbidden Weapons | 2 | Shield Wall 파괴(선택) + troop 1 | Reveal Turn: 반드시 선택 — 검 3(+ Influence 1 이상인 진영에서 Influence 1 잃기, 가능하면) 또는 spice 전부 잃고 이 tile trash |
+| Gene-Locked Vault | 2 | Intrigue 1 또는 draw 1 | 자신의 Intrigue 카드는 5장 이상일 때만 도둑맞는다 |
+| Glowglobes | 2 | Influence 1 선택 | 언제든 자기 덱 맨 위 카드를 볼 수 있다 |
+| Navigation Chamber | 5 | Influence 1 선택 | board space 비용이 spice 1 또는 Solari 1 줄어든다 |
+| Ornithopter Fleet | 4 | troop 2 | 자신의 모든 battle icon은 Ornithopter |
+| Panopticon | 5 | — | Reveal Turn: Spy 배치 + troop 1. Endgame: Influence 1 이하인 진영마다 Influence 1 |
+| Planetary Array | 2 | trash 1(선택) | Conflict에서 이길 때마다 draw 1 |
+| Plasteel Blades | 3 | Solari 4 | Sardaukar Commander를 recruit할 때마다: 이 tile trash → Skill 1 추가 획득 |
+| Rapid Dropships | 4 | troop 2 | Agent Turn: Flip → Combat 아이콘 |
+| Sardaukar High Command | 7 | VP 1 | Commander recruit(획득 포함) 비용 Solari 1 감소 |
+| Self-Destroying Messages | 4 | Intrigue 2 | Reveal Turn: Persuasion 1 |
+| Servo-Receivers | 2 | Shield Wall 파괴(선택) | 자신의 Signet Ring은 Emperor·Guild·BG·Fremen Agent 아이콘을 가진다 |
+| Spy Drones | 5 | Spy with Deep Cover 2 | Flip → Solari 1; 이번 turn Spy를 recall했으면 trash 1(선택) |
+| Suspensor Suits | 3 | — | 자기 turn에 Intrigue 카드를 draw하거나 훔칠 때마다 troop 1을 Conflict에 배치 |
+| Training Depot | 1 | — | Reveal Turn: Command (6+): 검 2 |
+
+### Tech 전용 카드와 Leader
+
+- **Ixian Ambassador ×2**(Imperium, 4, 진영 없음, Landsraad 아이콘): Agent: spice 1. Reveal: Persuasion 1; Tech tile 2장 이상이면 Influence 1 선택. `[card face]`
+- **Battlefield Research**(Intrigue, Combat/Endgame): troop 1~2 retreat → Acquire Tech(spice 1 할인) — OR — Tech tile 3장 이상이면 VP 1. `[card face]`
+- **Rapid Engineering**(Intrigue, Plot): 카드 1장 discard → Acquire Tech(spice 1 할인) — OR — Tech tile 3장 이상이면 네 진영 중 둘을 골라 Influence 1씩. `[card face]`
+- **Kota Odax of Ix**(Leader, Tech Module 전용 `[Bloodlines p. 6]`): **Secret Project** — "Game Start: 각 stack의 맨 아래 Tech tile을 본다. 하나를 face-down으로 여기에 둔다. Tech tile을 acquire할 수 있을 때마다 이 tile을 고를 수 있고, 비용이 spice 1 적다." **Reverse Engineering(Signet)** — spice 1 — OR — 자신의 Tech tile 하나를 trash → Intrigue 1 + draw 1. `[card face]`
+
 ## 6. Leader 관련 clarification
 
 - Chani: setup 때 Leader에 인쇄된 track의 인원수 칸에 Tactics token을 놓는다. token이 맨 오른쪽 칸에 도달하면 시작 칸으로 되돌려 reset한다. track 끝을 넘길 만큼 troop을 잃거나 retreat해도 시작 칸으로 reset할 뿐 초과분만큼 더 나아가지 않는다. `[Bloodlines p. 12]`
@@ -110,4 +142,6 @@ Uprising setup에 다음 단계를 더하거나 바꾼다. `[Bloodlines p. 3]`
 - 2026-09-07 슬라이스 5b: Esmar Tuek과 Tuek's Sietch board space(Esmar가 있을 때만 존재하는 4번째 Maker space).
 - 2026-09-07 슬라이스 5c: Piter De Vries와 Twisted Intrigue 12장(전용 덱, round마다 1장; effect DSL에 troop 손실·Intrigue 증여·Intrigue trash 비용과 peek·pass turn 보상 추가; 4절의 Trash an Intrigue card 아이콘 포함), OQ-038.
 - 2026-09-07 슬라이스 5d: Steersman Y'rkoon과 Navigation 10장(setup의 slot 선택 frame, Influence 2 도달 trigger 대기열, OQ-012 재검토·OQ-039). 이로써 6절의 Leader 8종이 모두 play된다.
-- Tech 전용 카드 3종과 Kota Odax는 슬라이스 6(Tech Module)에서. 5~6절(Tech Module)과 Leader는 [implementation-plan.md](../implementation-plan.md)의 M12 슬라이스 순서를 따른다.
+- 2026-09-07 슬라이스 6a: 5절의 Ixian Embassy — setup의 세 stack(6·6·6, CHOAM 없이는 6·6·5), Landsraad 방문마다 자유 순서 효과로 열리는 Acquire Tech(`acquire_tech`/`decline_tech`, High Council 할인, 하한 0), 다음 tile 공개, 획득 효과 18종(Spy trash·Influence 선택·Intrigue/draw 선택·Shield Wall 파괴·선택 trash·Deep Cover Spy 2·Ornithopter Fleet의 즉시 매칭 포함), 카드의 Tech Discount 아이콘이 여는 `tech_acquisition` frame. 관측 v9, codec v91.
+- 2026-09-07 슬라이스 6b: 위 표의 능력 18종 전부 — 상시 효과(Navigation Chamber·Servo-Receivers·Sardaukar High Command·Gene-Locked Vault·Glowglobes·Ornithopter Fleet), Reveal turn 효과(Self-Destroying Messages·Delivery Bay·Training Depot의 Command (6+)와 늦은 지급·Panopticon·Forbidden Weapons의 의무 선택 `tech_choice` frame), trigger(Planetary Array·CHOAM Transports·Suspensor Suits·Plasteel Blades), Flip 3종과 Round Start 복귀, Endgame 효과(OQ-040). 카드 밖에서 생성된 Persuasion(Skill·Navigation·tile)도 Command (6+) 판정에 센다(OQ-043).
+- 2026-09-07 슬라이스 6c·6d: Tech 전용 카드 3종(effect DSL `TechTilesAtLeast`·`AcquireTech`)과 Kota Odax of Ix(Secret Project의 `tech_secret_project` setup frame, 비공개 tile, 할인 후보, Reverse Engineering Signet). 이로써 Bloodlines 구성물 전부가 play된다; 남은 것은 슬라이스 7(UI 표시·heuristic 가중치·대규모 소크·학습 재개)이다. 세부는 [implementation-audits/bloodlines.md](../implementation-audits/bloodlines.md)의 Tech Module 절.

@@ -314,7 +314,7 @@ tests/
 6. Tech Module: Ixian Embassy board와 Tech tile 18장(획득·할인·Flip·acquire 효과·능력), Tech 전용 Imperium 2장·Intrigue 2장, Kota Odax of Ix.
 7. 서버·UI 옵션, sweep·soak(`--bloodlines`, `--tech-module`), heuristic agent의 새 행동 처리, 학습 재개.
 
-진행(2026-09-07): 슬라이스 1~5 완료(Imperium 25종·Intrigue 16장·Leader 8종; Tech 전용 카드 3종은 슬라이스 6으로). 슬라이스 6~7 남음.
+진행(2026-09-07): 슬라이스 1~6 완료 — 슬라이스 6은 Ixian Embassy와 Tech tile 18장(획득·할인·Flip·획득 효과·능력), Tech 전용 Imperium 2장·Intrigue 2장, Kota Odax of Ix까지(관측 v9, codec v91; 판정 OQ-040~044). 슬라이스 7(서버·UI의 Tech tile 표시, heuristic 가중치 정비, `--bloodlines --tech-module` 대규모 소크, 관측 v9 기준 학습 재개) 남음.
 
 완료 조건: `bloodlines`·`tech_module` 룰셋의 random·heuristic 소크가 실패 0으로 완주하고, 모든 Bloodlines 구성물이 카드면 검증을 거쳐 audit 문서에 기록되며, 공식 문서가 침묵하는 판정은 open-questions에 convention으로 남는다.
 

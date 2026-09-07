@@ -1,6 +1,6 @@
 # Bloodlines implementation audit
 
-기준일: 2026-09-07 — M12 슬라이스 2(Sardaukar Commander와 Skill) 완료.
+기준일: 2026-09-07 — M12 슬라이스 2(Sardaukar Commander와 Skill)부터 슬라이스 6(Tech Module)까지 완료.
 
 규범 근거는 [`rules/bloodlines.md`](../rules/bloodlines.md)이며, 콘텐츠 정의는 `content/bloodlines/sardaukar.py`, 규칙은 `rules/sardaukar.py`(획득·recruit·Desperate), `rules/combat_deployment.py`(배치·회수), `rules/strength.py`(strength와 Skill), `rules/setup.py`(setup)가 소유한다. 모든 동작은 `RulesetConfig(bloodlines=True)`에서만 켜지고, 옵션을 끈 룰셋의 상태·관측 레이아웃·codec 카탈로그는 바뀌지 않는다(관측 v6는 옵션과 무관하게 0으로 채운 세그먼트를 갖는다).
 
@@ -79,13 +79,35 @@ Skill 7종은 에셋 저장소 `cards/en/bloodlines/skill/*.webp`를 직접 판�
 | False Orders (Intrigue) | Plot: 이번 turn Agent를 보낸 공간을 보는 상대 Spy 강제 이동, 그 뒤 자신이 그 공간에 Spy 배치. | DSL 보상 `RedirectSpiesOnTurnSpace` → `RewardOutcome.redirects_turn_space_spies` → 소유자의 `spy_placement` frame(`place_spy_on_space`/`recall_spy_for_placement`/`decline_spy_placement`)을 먼저 밀고 그 위에 상대 이동 frame. `agent_turn_space_id`가 없으면(배치 전) 낼 수 없다. |
 | Coercive Negotiation (Intrigue, CHOAM) | Plot trigger: 한 turn에 3+ 유닛 배치 시 bank contract 3장 공개 → 1장 획득, 2장 trash. | `_plot_trigger(OnUnitsDeployedInTurn(3), RevealContractsTakeOne(3))`; `offer_deployment_triggers`가 카드별 frame 종류를 고른다(Distraction은 `intrigue_trigger_spy`, 이 카드는 `intrigue_trigger_contract`; bank가 비면 열리지 않음). `take_trigger_contract(instance_id)`/`decline_intrigue_contract_trigger`; 나머지 2장은 `GameState.contract_trash`(관측 `contract_trash` 20칸, 총 2,745). |
 
+## Tech Module (슬라이스 6, `tech_module` 옵션)
+
+규범 근거는 [`rules/bloodlines.md`](../rules/bloodlines.md) 5절(tile 18장 표 포함), 콘텐츠는 `content/bloodlines/tech.py`(`TechTile`·`TechAbility`), 규칙은 `rules/tech.py`(획득·Flip·Forbidden Weapons 선택·Suspensor hook·빚진 draw hook·Endgame 효과·Secret Project), `rules/ornithopter.py`(Ornithopter Fleet 매칭)가 소유하고, 나머지 능력은 해당 규칙 모듈에 조건으로 들어가 있다. 판정은 OQ-040~044.
+
+| 영역 | 구현 | 규칙 민감 메모 |
+| --- | --- | --- |
+| Setup | seeded chance `setup:tech_tiles`가 tile을 섞고 `deal_tech_stacks`가 세 stack(6·6·6, CHOAM 없이는 CHOAM Transports를 뺀 6·6·5)으로 나눈다. `GameState.tech_stacks`(index 0이 face-up 맨 위, 그 아래는 비공개 순서), `tech_trash`. | `[Bloodlines p. 6]`. 관측은 맨 위와 크기만(`tech_face_up`·`tech_stack_sizes`), determinize·privacy scramble은 맨 위 아래를 섞는다. |
+| Landsraad 방문의 Acquire Tech | `board_icons_for`가 Landsraad 공간 방문에 `BOARD_ICON_TECH`를 붙여 자유 순서 효과로 연다(Reverend Mother 반복에는 재장전 안 됨). `acquire_tech(tech_id[, faction\|choice\|post_id\|destroy_shield_wall])`/`decline_tech`. 비용 = 인쇄 − High Council 1 − 아이콘 할인 − Secret Project 1, 하한 0. | `[Bloodlines pp. 7, 12]`. 방문당 1장. 획득한 troop은 `troops_recruited`에 합산돼 Combat 배치 창에 든다. |
+| 카드의 Tech Discount | DSL `AcquireTech(discount)` → `push_tech_acquisition`이 `tech_acquisition` frame(할인 문맥)을 연다; 살 tile이 없으면 `tech_acquisition_unavailable`. | Battlefield Research(Combat)·Rapid Engineering(Plot). |
+| 획득 효과 | 자원·troop·Intrigue·draw·VP·contract(`begin_contract_gain`)·Influence 선택(faction 인자)·Intrigue/draw 선택(choice 인자)·Shield Wall 파괴(선택 인자, 벽이 있을 때만 변형 제시)·선택 trash(`optional_trash` frame)·Spy with Deep Cover 2(`spy_placement` frame의 `deep_cover` 문맥: 자기 Spy가 없는 모든 post)·Advanced Data Analysis의 Spy trash(`post_id` 인자, `spies_boxed`로 3개 census 유지). Ornithopter Fleet은 획득 즉시 face-up battle card를 정렬 순서로 짝지어 뒤집고 VP를 준다(`match_all_battle_icons`). | `[Bloodlines p. 7]` "acquire할 때 한 번". draw는 `draw_or_request_personal_cards`(reshuffle chance frame은 획득 frame 정리 뒤에 민다). |
+| 상시 능력 | Navigation Chamber: `_actions_for_affordable_costs`가 spice/Solari 1 할인 변형(`discount` 인자)을 더한다. Servo-Receivers: `effective_agent_icons`가 Signet Ring에 네 진영 아이콘을 준다. Sardaukar High Command: `commander_cost` −1. Gene-Locked Vault: `_secrets_victims` 기준 4→5. Glowglobes: `peeked_card_id`가 덱 맨 위를 소유자 관측에 항상 넣고 determinize도 그 카드를 고정한다. Ornithopter Fleet: `finish_combat`의 승리 매칭이 `match_all_battle_icons`로 바뀌고, `flippable_battle_card_ids`는 Crysknife·Desert Mouse를 막고 Ornithopter flip은 모든 face-up 카드를 허용하며, `face_up_battle_icons`는 {Ornithopter}를 돌려준다. | 각 tile 면; Fleet은 `[Bloodlines p. 12]`. |
+| Reveal turn | `begin_reveal_turn`: Self-Destroying Messages Persuasion 1(Command 합계에 포함, OQ-043), Delivery Bay Solari 2·Training Depot 검 2는 Persuasion ≥ 6일 때 즉시(`tech_granted` 문맥 키), 늦게 6에 닿으면 `grant_late_reveal_effects`가 지급; Panopticon은 troop 1을 Reveal recruit로 더하고 `spy_placement` frame을 연다; Forbidden Weapons는 `tech_choice` frame(`choose_tech_strength[(faction[, alliance_recipient])]`/`choose_tech_trash`)을 Reveal 시작 시 밀어 반드시 고르게 한다. | OQ-043·OQ-044. |
+| Trigger | Planetary Array(승리)·CHOAM Transports(계약 완료: `contract_tiles.owe_contract_completion_draw`, 즉시 완료 계약 포함)는 `tech_cards_owed`에 빚을 적고 엔진 hook `draw_owed_tech_cards`가 전이 뒤 뽑는다(완료 효과 안에서 reshuffle frame을 밀면 호출자가 최상위 frame을 덮어쓴다 — 소크가 잡은 결함). Suspensor Suits: `_draw_available`·Secrets 강탈이 turn 소유자(`frames.turn_owner_of`)의 `suspensor_owed`를 올리고 hook `deploy_suspensor_troops`가 supply→Conflict(Reveal 중이면 `add_units_to_reveal`). Plasteel Blades: 모든 Commander recruit 경로가 `queue_plasteel_blades`로 Skill 선택 대기열에 `tech:plasteel_blades` 항목을 넣고, 그 frame은 `decline_skill`을 더 제시하며 `choose_skill`이 tile을 trash하고 Skill만 준다. | OQ-042·OQ-044. |
+| Flip | `flip_tech(tech_id)`는 TURN·AGENT_EFFECTS·REVEAL frame에서(Rapid Dropships는 AGENT_EFFECTS만, `grant_combat_icon`), Advanced Data Analysis는 Intrigue 1, Spy Drones는 Solari 1 + `spies_recalled_turn > 0`이면 `optional_trash`. `tech_flipped`는 Round Start에 비운다. | `[Bloodlines pp. 7, 12]` "자기 turn에 라운드당 한 번". |
+| Endgame | `resolve_recall_or_endgame`이 ENDGAME 진입 직후 `apply_endgame_tech_effects`(CHOAM Transports VP, Panopticon Influence)를 해결한다. | OQ-040. |
+| Tech 전용 카드 | Ixian Ambassador(`GAIN_ONE_SPICE`, Reveal 선택 `GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH` — 2장 미만이면 미뤄졌다가 같은 Reveal의 획득으로 열린다), Battlefield Research(`RetreatTroops(1, 2)` → `AcquireTech(1)`; `TechTilesAtLeast(3)` → VP, Combat과 Endgame option), Rapid Engineering(`DiscardFromHand(1)` → `AcquireTech(1)`; 3장이면 `GainInfluence(times=2, distinct=True)`). | 카드면 전사. |
+| Kota Odax of Ix | [Leader audit](leaders.md)의 Kota 절. | OQ-041. |
+| 관측·codec | 관측 v9(`tech_face_up`·`tech_stack_sizes`·`tech_trash`, 좌석 `seat{n}_tech` tri-state, scalar `has_secret_project`·`spies_boxed`·`spies_recalled_turn`, 관측자 전용 `private_secret_project`, 총 3,147), codec v91(`tech_module` 카탈로그에만 획득·Flip·선택·할인 변형·Secret Project·Signet 템플릿과 Kota의 `pick_leader`). | retail·bloodlines 카탈로그 크기 불변. |
+
 ## 미완 경계
 
-- Endgame tiebreaker "garrison의 troop 수"에 Commander를 세는지는 공식 문서가 침묵한다(현재는 세지 않음; 콘텐츠 슬라이스에서 open question으로 올릴 예정).
-- 남은 카드: Tech Module 전용 3종(Ixian Ambassador ×2, Battlefield Research, Rapid Engineering)과 4절의 Trash an Intrigue card 아이콘 — 슬라이스 6(Tech Module)에서.
+- Endgame tiebreaker "garrison의 troop 수"에 Commander를 세는지는 공식 문서가 침묵한다(현재는 세지 않음; open question으로 올릴 예정).
+- UI: Ixian Embassy·보유 Tech tile·Secret Project의 화면 표시와 tile 이미지 키는 슬라이스 7에서(행동 라벨만 있다). heuristic agent는 tile을 비용과 무관하게 같은 가중치로 산다.
+- Kota Odax가 Secret Project에서 본 나머지 두 bottom tile의 identity는 관측에 넣지 않는다(OQ-041).
 
 ## 검증
 
 - `tests/unit/rules/test_sardaukar.py` 26건: setup(고정·draft), 획득과 Skill 선택·중복 금지·OQ-031(고를 Skill이 없으면 Skill 없이 획득), Solari 부족 시 거절만, 지불 recruit의 turn당 1회와 Reveal turn, 배치 한도 공유와 running strength, Skill strength 조건(Landsraad Agent·상대 sandworm·Emperor 3)과 비활성, Reveal 보너스, Desperate, 정리, 상태 불변식, 관측 비노출, codec 왕복, random 3판·heuristic 1판 soundness 검사.
 - 2026-09-07 소크(`--soundness-interval 25`): random `--ruleset both --bloodlines` 30판씩(60판, 41,508 step), heuristic `--rotate-leaders` 15판씩(30판, 19,584 step), 실패 0.
 - 슬라이스 3 테스트(같은 파일 +5): Intrigue retreat의 Commander 몫 열거·적용, Chani retreat의 혼합 쌍, Desert Scouts의 Commander, wild Conflict 승리 시 즉시 매칭 없음, Endgame의 wild 쌍 3가지와 codec 왕복. 슬라이스 3 소크는 handoff 세션 요약.
+- 슬라이스 6 테스트: `tests/unit/rules/test_tech.py` 58건 — 콘텐츠 수량·setup(6·6·6/6·6·5, draft, 옵션 없음), Landsraad 방문의 제시·비용·할인·거절·빈 stack, 획득 효과(Spy trash, Shield Wall 변형, 자원·Intrigue·VP·draw·troop, 선택 trash, Deep Cover 2, Fleet 즉시 매칭), 카드 할인 frame, 상시 능력 6종, Reveal 효과(Command 즉시·늦은 지급, Forbidden Weapons 두 선택, Panopticon), trigger(Planetary Array 빚, Suspensor 배치, Plasteel Blades 선택, CHOAM Transports 빚·Endgame), Flip 3종과 Round Start 복귀, Tech 카드 3종, Kota(pool 필터·Secret Project 선택·할인 획득·Signet 두 갈래), 관측 비노출·privacy, codec 왕복, random·heuristic·Kota 소크 게임. `tests/unit/rules/test_navigation.py`에 대기열 직렬화 회귀 1건.
+- 2026-09-07 소크(`--soundness-interval 25`, `--tech-module`): random `--rotate-leaders` 100판씩(200판), heuristic `--rotate-leaders` 50판씩(100판), `--leader-draft` random 50판씩(100판), 실패 0. 소크가 잡은 결함: 계약 완료 안의 reshuffle frame 덮어쓰기(빚진 draw hook으로 수정), Navigation 대기열이 한꺼번에 열려 카드가 두 번 play되던 문제(Panopticon Endgame이 노출; `navigation_play_is_queued` 직렬화), Kota의 `pick_leader` 템플릿 누락.
