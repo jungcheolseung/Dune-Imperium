@@ -201,6 +201,11 @@ const ACTION_LABELS = {
   lose_unit: "유닛 1 잃기",
   take_trigger_contract: "공개된 contract 선택",
   decline_intrigue_contract_trigger: "Intrigue trigger 거절",
+  retreat_leader_troops: "Fedaykin Maneuver: troop 후퇴",
+  pay_leader_signet_water: "Water 지불 → troop 2 (Signet)",
+  deploy_leader_agent: "Into the Fray: Agent를 Conflict에 배치",
+  trash_optional_card: "카드 trash (선택)",
+  decline_optional_trash: "trash 거절",
 };
 
 /* Korean labels for session-log event kinds (M11 slice 6); falls back to

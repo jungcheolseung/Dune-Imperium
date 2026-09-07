@@ -45,6 +45,9 @@ def units_strength(player: PlayerState) -> int:
         player.troops_conflict * 2
         + player.sandworms_conflict * 3
         + player.commanders_conflict * COMMANDER_STRENGTH
+        # Into the Fray: the Agent fights with 2 strength, 3 with the
+        # Swordmaster [Duncan Idaho card].
+        + player.agent_in_conflict * (3 if player.swordmaster_acquired else 2)
     )
 
 

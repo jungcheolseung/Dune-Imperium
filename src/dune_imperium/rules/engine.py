@@ -146,6 +146,7 @@ from dune_imperium.rules.intrigue_triggers import (
 )
 from dune_imperium.rules.leader_abilities import (
     apply_feyd_track_action,
+    apply_leader_agent_deploy,
     apply_leader_board_repeat,
     apply_leader_card_trash,
     apply_leader_placement_ability,
@@ -153,6 +154,7 @@ from dune_imperium.rules.leader_abilities import (
     apply_leader_signet_acquire,
     apply_leader_signet_payment,
     apply_leader_spy_action,
+    apply_leader_troop_retreat,
     apply_shaddam_signet_choice,
     grant_leader_reveal_passives,
     leader_signet_is_implemented,
@@ -161,6 +163,10 @@ from dune_imperium.rules.leader_abilities import (
 from dune_imperium.rules.leader_draft import (
     apply_leader_draft_pick,
     legal_leader_draft_actions,
+)
+from dune_imperium.rules.optional_trash import (
+    apply_optional_trash,
+    legal_optional_trash_actions,
 )
 from dune_imperium.rules.phases import (
     apply_control_defense_action,
@@ -367,6 +373,7 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     FrameKind.OPPONENT_UNIT_LOSS: (legal_unit_loss_actions,),
     FrameKind.SPY_PLACEMENT: (legal_spy_placement_actions,),
     FrameKind.INTRIGUE_TRIGGER_CONTRACT: (legal_trigger_contract_actions,),
+    FrameKind.OPTIONAL_TRASH: (legal_optional_trash_actions,),
 }
 
 ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
@@ -456,6 +463,11 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     # Leader Signet Ring and placement-triggered Leader abilities
     "advance_feyd_track": apply_feyd_track_action,
     "trash_leader_card": apply_leader_card_trash,
+    "retreat_leader_troops": apply_leader_troop_retreat,
+    "deploy_leader_agent": apply_leader_agent_deploy,
+    "pay_leader_signet_water": apply_leader_signet_payment,
+    "trash_optional_card": apply_optional_trash,
+    "decline_optional_trash": apply_optional_trash,
     "decline_leader_card_trash": apply_feyd_track_action,
     "place_leader_spy": apply_leader_spy_action,
     "recall_spy_for_leader_placement": apply_leader_spy_action,

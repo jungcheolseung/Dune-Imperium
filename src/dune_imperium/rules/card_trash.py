@@ -81,6 +81,26 @@ def trash_personal_card(
     pending_intrigue_draws = state.pending_intrigue_draws
     pending_skill_choices = state.pending_skill_choices
     decision_stack = state.decision_stack
+    if next_owner.leader_id == "count_hasimir_fenring":
+        # Assassin: "Whenever you trash a card: 1 Solari" (personal cards
+        # only; not Intrigue cards [Bloodlines p. 12]).
+        next_owner = replace(
+            next_owner,
+            resources=replace(
+                next_owner.resources, solari=next_owner.resources.solari + 1
+            ),
+        )
+        events.append(
+            GameEvent(
+                event_id=f"{source}:trash:{card_id}:assassin",
+                kind="leader_ability_resolved",
+                payload=(
+                    ("leader_id", "count_hasimir_fenring"),
+                    ("player", player),
+                    ("solari", 1),
+                ),
+            )
+        )
     if _trash_effect(card_id) is PersonalCardTrashEffect.RECRUIT_TWO_TROOPS:
         # Eliminate Allies: "When this card is trashed: 2 troops". Troops
         # recruited during an Agent turn join that turn's deployable count

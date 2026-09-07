@@ -114,6 +114,12 @@ class PlayerState:
     # Urgent Shigawire (Bloodlines): the next Bene Gesserit card played this
     # round has every Agent icon and draws a card; cleared at Round Start.
     bene_gesserit_boost_pending: bool = False
+    # Chani's Tactics token: index on her printed eleven-space track (0 for
+    # every other Leader) [Chani card] [Bloodlines p. 12].
+    tactics_track_space: int = 0
+    # Duncan Idaho's Into the Fray: the Agent sent this turn fighting in the
+    # Conflict as a unit that cannot retreat (0 or 1) [Duncan Idaho card].
+    agent_in_conflict: int = 0
     # The Skill strength currently folded into ``combat_strength`` so the
     # running total can be re-derived when a Skill condition changes.
     skill_strength_applied: int = 0
@@ -143,7 +149,12 @@ class PlayerState:
     def units_in_conflict(self) -> int:
         """Return every unit in the Conflict: troops, sandworms, Commanders."""
 
-        return self.troops_conflict + self.sandworms_conflict + self.commanders_conflict
+        return (
+            self.troops_conflict
+            + self.sandworms_conflict
+            + self.commanders_conflict
+            + self.agent_in_conflict
+        )
 
     @property
     def commanders_total(self) -> int:
@@ -191,8 +202,13 @@ class PlayerState:
             raise ValueError("a player cannot hold two copies of one Skill")
 
         active_agents = 3 if self.swordmaster_acquired else 2
-        if self.agents_available + len(self.agent_locations) != active_agents:
+        if (
+            self.agents_available + len(self.agent_locations) + self.agent_in_conflict
+            != active_agents
+        ):
             raise ValueError("available and placed agents must equal active agents")
+        if self.agent_in_conflict not in (0, 1) or self.tactics_track_space < 0:
+            raise ValueError("Leader token positions must be non-negative")
         if len(self.agent_locations) != len(set(self.agent_locations)):
             raise ValueError("a player cannot place two agents in one space")
         if (

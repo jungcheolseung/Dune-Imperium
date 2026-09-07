@@ -33,6 +33,7 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.tactics import TACTICS_TRACK_START
 
 
 @dataclass(frozen=True, slots=True)
@@ -332,6 +333,17 @@ def create_initial_state(
                 if starting_card_for_instance(instance_id).card.card_id
                 not in LEADERS_BY_ID[leader_id].removed_starting_card_ids
             ),
+            # Strange Form: Steersman Y'rkoon starts with no water.
+            resources=replace(
+                player.resources, water=LEADERS_BY_ID[leader_id].starting_water
+            ),
+            # Tactician: the Tactics token starts on the four-player space
+            # [Bloodlines p. 12].
+            tactics_track_space=(
+                TACTICS_TRACK_START
+                if LEADERS_BY_ID[leader_id].uses_tactics_track
+                else 0
+            ),
         )
         for player, leader_id in zip(players, leader_ids, strict=True)
     )
@@ -415,7 +427,10 @@ def leader_draft_pool_decision(config: RulesetConfig) -> ChanceDecision:
         decision_id="setup:leader_draft_pool",
         prompt="Deal six face-up Leaders for the draft",
         options=tuple(
-            leader.leader_id for leader in leaders_for_choam(config.choam_module)
+            leader.leader_id
+            for leader in leaders_for_choam(
+                config.choam_module, bloodlines=config.bloodlines
+            )
         ),
         count=LEADER_DRAFT_POOL_SIZE,
     )
@@ -546,7 +561,12 @@ def _validate_leader_selection(
     if len(leader_ids) != len(set(leader_ids)):
         raise ValueError("selected Leaders must be unique physical cards")
 
-    available = {leader.leader_id for leader in leaders_for_choam(config.choam_module)}
+    available = {
+        leader.leader_id
+        for leader in leaders_for_choam(
+            config.choam_module, bloodlines=config.bloodlines
+        )
+    }
     unavailable = tuple(
         leader_id for leader_id in leader_ids if leader_id not in available
     )

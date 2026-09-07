@@ -55,6 +55,7 @@ from dune_imperium.rules.leader_abilities import (
     resolve_leader_signet,
     units_deployment_blocked,
 )
+from dune_imperium.rules.planetologist import replace_sandworms, replaces_sandworms
 from dune_imperium.rules.shield_wall import (
     current_conflict_is_shield_wall_protected,
     destroy_shield_wall,
@@ -1886,7 +1887,11 @@ def _apply_arrakis_revolt_payment(
         paid = destroyed.state
         events.extend(destroyed.events)
     owner = paid.players[action.actor]
-    if current_conflict_is_shield_wall_protected(paid) or units_deployment_blocked(
+    replaced = 0
+    if replaces_sandworms(owner) and not units_deployment_blocked(paid, action.actor):
+        # Arrakis Planetologist, even under the Shield Wall [Liet Kynes card].
+        replaced = 1
+    elif current_conflict_is_shield_wall_protected(paid) or units_deployment_blocked(
         paid, action.actor
     ):
         # No effect against a Shield Wall-protected Conflict [Main p. 20] or
@@ -1913,6 +1918,13 @@ def _apply_arrakis_revolt_payment(
             )
         )
     next_state = advance_after_effect(paid, context, paid.players)
+    if replaced:
+        replacement = replace_sandworms(
+            next_state, action.actor, replaced, source=source
+        )
+        return RuleResult(
+            state=replacement.state, events=(*events, *replacement.events)
+        )
     return RuleResult(state=next_state, events=tuple(events))
 
 

@@ -12,7 +12,7 @@ through ``leader_signet_is_implemented``.
 from dataclasses import replace
 from typing import Final
 
-from dune_imperium.content.uprising.board import Faction
+from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID, Faction
 from dune_imperium.content.uprising.imperium import imperium_card_for_instance
 from dune_imperium.content.uprising.leaders import (
     FEYD_TRACK_BY_ID,
@@ -37,6 +37,7 @@ from dune_imperium.rules.acquisition import (
 )
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.card_trash import trash_personal_card
+from dune_imperium.rules.combat_deployment import reconcile_deployment_after_retreat
 from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effects import (
     advance_after_effect,
@@ -61,6 +62,7 @@ from dune_imperium.rules.spy_placement import (
     place_spy,
     recall_spy,
 )
+from dune_imperium.rules.units import retreat_units
 
 # Leaders whose ability and Signet Ring behaviour is fully implemented. The
 # dispatcher withholds Signet Ring placements for every other Leader so that
@@ -76,6 +78,12 @@ IMPLEMENTED_ABILITY_LEADER_IDS: Final = frozenset(
         "princess_irulan",
         "shaddam_corrino_iv",
         "staban_tuek",
+        # Bloodlines (card faces, 2026-09-07).
+        "chani",
+        "count_hasimir_fenring",
+        "duncan_idaho",
+        "gaius_helen_mohiam",
+        "liet_kynes",
     }
 )
 
@@ -196,10 +204,45 @@ def resolve_leader_signet(state: GameState) -> RuleResult:
                 ),
             ),
         )
-    elif owner.leader_id in ("staban_tuek", "princess_irulan"):
+    elif owner.leader_id == "liet_kynes":
+        # Judge of the Change: by the icon of the space visited this turn —
+        # Landsraad with two Emperor Influence: water; City: one Solari;
+        # Spice Trade: one spice [Liet Kynes card].
+        space_id = context.get("space_id")
+        if not isinstance(space_id, str):
+            raise RuntimeError("Agent-turn effect frame has invalid space")
+        icon = BOARD_SPACES_BY_ID[space_id].agent_icon
+        water = int(icon is AgentIcon.LANDSRAAD and owner.influence.emperor >= 2)
+        solari = int(icon is AgentIcon.CITY)
+        spice = int(icon is AgentIcon.SPICE_TRADE)
+        next_owner = replace(
+            owner,
+            resources=replace(
+                owner.resources,
+                solari=owner.resources.solari + solari,
+                spice=owner.resources.spice + spice,
+                water=owner.resources.water + water,
+            ),
+        )
+        payload = (
+            ("card_id", card_id),
+            ("player", player),
+            ("solari", solari),
+            ("spice", spice),
+            ("water", water),
+        )
+    elif owner.leader_id in (
+        "staban_tuek",
+        "princess_irulan",
+        "chani",
+        "count_hasimir_fenring",
+        "duncan_idaho",
+        "gaius_helen_mohiam",
+    ):
         # Unseen Network always finds an empty post (thirteen posts outnumber
         # the twelve Spies) and Chronicler's Insight always offers a decline,
-        # so their choice providers never leave the generic resolution.
+        # so their choice providers never leave the generic resolution; the
+        # Bloodlines Signets above all carry a decline or a sure choice.
         raise RuntimeError("this Leader's Signet Ring requires a player choice")
     else:
         raise RuntimeError("this Leader's Signet Ring ability is not implemented")
@@ -532,6 +575,7 @@ def _leader_signet_context(
 LANDSRAAD_POST_IDS: Final = observation_post_ids_for_agent_icons((AgentIcon.LANDSRAAD,))
 FACTION_POST_IDS: Final = observation_post_ids_for_factions(tuple(Faction))
 CITY_POST_IDS: Final = observation_post_ids_for_agent_icons((AgentIcon.CITY,))
+EMPEROR_POST_IDS: Final = observation_post_ids_for_factions((Faction.EMPEROR,))
 
 
 def _leader_spy_placement_actions(
@@ -697,6 +741,78 @@ def legal_leader_signet_actions(
         )
         return tuple(actions)
 
+    if owner.leader_id == "chani":
+        # Fedaykin Maneuver: retreat any number of troops (Commanders are
+        # troops [Bloodlines p. 4]; zero is the decline), or with two Fremen
+        # Influence pay one water for two troops [Chani card].
+        retreats = [
+            DomainAction(
+                action_id="retreat_leader_troops",
+                actor=player,
+                arguments=(
+                    *((("commanders", share),) if share else ()),
+                    ("count", count),
+                ),
+            )
+            for count in range(1, owner.troops_conflict + owner.commanders_conflict + 1)
+            for share in range(0, min(count, owner.commanders_conflict) + 1)
+            if count - share <= owner.troops_conflict
+        ]
+        return (
+            DomainAction(action_id="decline_leader_signet_payment", actor=player),
+            *retreats,
+            *(
+                (DomainAction(action_id="pay_leader_signet_water", actor=player),)
+                if owner.influence.fremen >= 2 and owner.resources.water >= 1
+                else ()
+            ),
+        )
+
+    if owner.leader_id == "count_hasimir_fenring":
+        # Corrino Liaison: trash a card in play (any, the Signet Ring
+        # included), or a Spy next to the Emperor [Count Hasimir Fenring
+        # card].
+        return (
+            DomainAction(action_id="decline_leader_signet_payment", actor=player),
+            *(
+                DomainAction(
+                    action_id="trash_leader_card",
+                    actor=player,
+                    arguments=(("card_id", card_id),),
+                )
+                for card_id in owner.in_play
+            ),
+            *_leader_spy_placement_actions(state, player, context, EMPEROR_POST_IDS),
+        )
+
+    if owner.leader_id == "duncan_idaho":
+        # Into the Fray: the Agent sent this turn may join the Conflict
+        # [Duncan Idaho card].
+        return (
+            DomainAction(action_id="decline_leader_signet_payment", actor=player),
+            *(
+                (DomainAction(action_id="deploy_leader_agent", actor=player),)
+                if state.current_conflict_ids
+                and not units_deployment_blocked(state, player)
+                else ()
+            ),
+        )
+
+    if owner.leader_id == "gaius_helen_mohiam":
+        # Listeners: a Spy next to the Landsraad, or one spice for a Spy
+        # anywhere [Gaius Helen Mohiam card].
+        if context.get("listeners_paid") is True:
+            return _leader_spy_placement_actions(state, player, context, None)
+        return (
+            DomainAction(action_id="decline_leader_signet_payment", actor=player),
+            *_leader_spy_placement_actions(state, player, context, LANDSRAAD_POST_IDS),
+            *(
+                (DomainAction(action_id="pay_leader_signet_spice", actor=player),)
+                if owner.resources.spice >= 1
+                else ()
+            ),
+        )
+
     return ()
 
 
@@ -712,8 +828,16 @@ def apply_leader_signet_payment(
     player = action.actor
     owner = state.players[player]
     source = f"round:{state.round_number}:player:{player}:leader_signet"
+    if owner.leader_id == "chani" and action.action_id == "pay_leader_signet_water":
+        return _apply_chani_water_payment(state, context, action, source)
+    if (
+        owner.leader_id == "gaius_helen_mohiam"
+        and action.action_id == "pay_leader_signet_spice"
+    ):
+        return _apply_listeners_payment(state, context, action, source)
     context["pending_agent_effect"] = False
     context.pop("staban_bonus_post", None)
+    context.pop("listeners_paid", None)
 
     if action.action_id == "decline_leader_signet_payment":
         next_state = advance_after_effect(state, context, state.players)
@@ -807,6 +931,172 @@ def apply_leader_signet_payment(
         state=next_state,
         events=(*events, *intrigue_draw.events),
     )
+
+
+def _apply_chani_water_payment(
+    state: GameState,
+    context: dict[str, ActionValue],
+    action: DomainAction,
+    source: str,
+) -> RuleResult:
+    """Fedaykin Maneuver's paid half: one water for two troops [Chani card]."""
+
+    player = action.actor
+    owner = state.players[player]
+    if owner.resources.water < 1 or owner.influence.fremen < 2:
+        raise RuntimeError("Fedaykin Maneuver's payment is unavailable")
+    paid = replace(
+        owner, resources=replace(owner.resources, water=owner.resources.water - 1)
+    )
+    recruited_owner, recruited = recruit_troops(paid, 2)
+    previous = context.get("troops_recruited")
+    if isinstance(previous, bool) or not isinstance(previous, int):
+        raise RuntimeError("Agent-turn effect frame has invalid recruit count")
+    context["troops_recruited"] = previous + recruited
+    context["pending_agent_effect"] = False
+    next_state = advance_after_effect(
+        state, context, replace_player(state.players, recruited_owner)
+    )
+    return RuleResult(
+        state=next_state,
+        events=(
+            GameEvent(
+                event_id=source,
+                kind="leader_signet_resolved",
+                payload=(("player", player), ("troops", recruited), ("water", 1)),
+            ),
+            *recruit_shortfall_events(source, player, 2, recruited),
+        ),
+    )
+
+
+def _apply_listeners_payment(
+    state: GameState,
+    context: dict[str, ActionValue],
+    action: DomainAction,
+    source: str,
+) -> RuleResult:
+    """Listeners' paid half: one spice opens a Spy placement anywhere."""
+
+    player = action.actor
+    owner = state.players[player]
+    if owner.resources.spice < 1:
+        raise RuntimeError("Listeners' payment requires one spice")
+    previous_spent = context.get("spice_spent_after_placement", 0)
+    if isinstance(previous_spent, bool) or not isinstance(previous_spent, int):
+        raise RuntimeError("Agent-turn effect frame has invalid Spice spending")
+    context["spice_spent_after_placement"] = previous_spent + 1
+    context["listeners_paid"] = True
+    paid = replace(
+        owner,
+        resources=replace(owner.resources, spice=owner.resources.spice - 1),
+        spice_spent_turn=owner.spice_spent_turn + 1,
+    )
+    # The Signet stays pending: the placement follows in the same frame.
+    next_state = advance_after_effect(
+        state, context, replace_player(state.players, paid)
+    )
+    return RuleResult(
+        state=next_state,
+        events=(
+            GameEvent(
+                event_id=f"{source}:spice_paid",
+                kind="leader_signet_spice_paid",
+                payload=(("amount", 1), ("player", player)),
+            ),
+        ),
+    )
+
+
+def apply_leader_troop_retreat(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Fedaykin Maneuver: retreat the chosen troops and Commanders [Chani card]."""
+
+    if action not in legal_leader_signet_actions(state, action.actor):
+        raise ValueError("action is not a legal Leader Signet retreat")
+    _, context = current_agent_effect_context(state)
+    player = action.actor
+    arguments = dict(action.arguments)
+    count = arguments.get("count")
+    share = arguments.get("commanders", 0)
+    if not isinstance(count, int) or not isinstance(share, int):
+        raise RuntimeError("Leader Signet retreat has invalid counts")
+    source = f"round:{state.round_number}:player:{player}:leader_signet"
+    retreated = retreat_units(
+        state, player, source, troops=count - share, commanders=share
+    )
+    reconciled = reconcile_deployment_after_retreat(
+        retreated.state, player, troops=count - share, commanders=share
+    )
+    # The frame context was rewritten by the reconciliation; re-read it.
+    _, context = current_agent_effect_context(reconciled)
+    context["pending_agent_effect"] = False
+    next_state = advance_after_effect(reconciled, context, reconciled.players)
+    return RuleResult(state=next_state, events=retreated.events)
+
+
+def apply_leader_agent_deploy(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Into the Fray: the Agent leaves its space and fights [Duncan Idaho card].
+
+    The Agent is taken off the board space (which is free again), fights as
+    a unit that cannot retreat, and returns to the player after the Combat
+    (OQ-037).
+    """
+
+    if action not in legal_leader_signet_actions(state, action.actor):
+        raise ValueError("action is not a legal Leader Signet deployment")
+    _, context = current_agent_effect_context(state)
+    player = action.actor
+    owner = state.players[player]
+    space_id = context.get("space_id")
+    if not isinstance(space_id, str) or space_id not in owner.agent_locations:
+        raise RuntimeError("Into the Fray needs this turn's Agent on the board")
+    next_owner = replace(
+        owner,
+        agent_locations=tuple(
+            candidate for candidate in owner.agent_locations if candidate != space_id
+        ),
+        agent_in_conflict=1,
+        units_deployed_turn=owner.units_deployed_turn + 1,
+    )
+    context["pending_agent_effect"] = False
+    next_state = advance_after_effect(
+        state, context, replace_player(state.players, next_owner)
+    )
+    source = f"round:{state.round_number}:player:{player}:leader_signet"
+    return RuleResult(
+        state=next_state,
+        events=(
+            GameEvent(
+                event_id=source,
+                kind="leader_agent_deployed",
+                payload=(("player", player), ("space_id", space_id)),
+            ),
+        ),
+    )
+
+
+def apply_fenring_signet_trash(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Corrino Liaison: trash the chosen card in play [Count Hasimir Fenring card]."""
+
+    if action not in legal_leader_signet_actions(state, action.actor):
+        raise ValueError("action is not a legal Leader Signet trash")
+    _, context = current_agent_effect_context(state)
+    player = action.actor
+    card_id = str(dict(action.arguments)["card_id"])
+    source = f"round:{state.round_number}:player:{player}:leader_signet"
+    trashed = trash_personal_card(state, player, card_id, source=source)
+    context["pending_agent_effect"] = False
+    next_state = advance_after_effect(trashed.state, context, trashed.state.players)
+    return RuleResult(state=next_state, events=trashed.events)
 
 
 def _apply_staban_bonus_payment(
@@ -1029,6 +1319,7 @@ def apply_leader_signet_spy(
 
     next_owner = place_spy(owner, post_id)
     context.pop("leader_spy_recalled", None)
+    context.pop("listeners_paid", None)
     if owner.leader_id == "staban_tuek" and (
         post_id in LANDSRAAD_POST_IDS or post_id in FACTION_POST_IDS
     ):
@@ -1136,6 +1427,8 @@ def apply_leader_card_trash(
 
     if state.players[action.actor].leader_id == "feyd_rautha_harkonnen":
         return apply_feyd_track_action(state, action)
+    if state.players[action.actor].leader_id == "count_hasimir_fenring":
+        return apply_fenring_signet_trash(state, action)
     return apply_irulan_signet_trash(state, action)
 
 

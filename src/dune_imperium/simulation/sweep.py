@@ -365,7 +365,9 @@ def sweep_specs(
                     random.Random(seed).sample(
                         [
                             leader.leader_id
-                            for leader in leaders_for_choam(choam_module)
+                            for leader in leaders_for_choam(
+                                choam_module, bloodlines=bloodlines
+                            )
                         ],
                         k=4,
                     )

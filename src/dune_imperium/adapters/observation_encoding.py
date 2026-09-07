@@ -48,7 +48,7 @@ from dune_imperium.core.observation import PlayerView, PublicPlayerView
 from dune_imperium.core.state import GamePhase
 from dune_imperium.rules.frames import FrameKind
 
-OBSERVATION_VERSION: Final = 7
+OBSERVATION_VERSION: Final = 8
 _SEATS: Final = 4
 
 PERSONAL_CARD_IDS: Final = (
@@ -101,7 +101,7 @@ class ObservationSegment:
 def _seat_segment_lengths(seat: int) -> tuple[tuple[str, int], ...]:
     prefix = f"seat{seat}"
     return (
-        (f"{prefix}_scalars", 36),
+        (f"{prefix}_scalars", 38),
         (f"{prefix}_alliances", len(FACTION_IDS)),
         (f"{prefix}_control", len(CONTROL_SPACE_IDS)),
         (f"{prefix}_agent_locations", _AGENT_LOCATION_SLOTS),
@@ -343,6 +343,8 @@ def _write_seat(writer: _Writer, seat_offset: int, player: PublicPlayerView) -> 
             ),
             int(player.combat_icon_turn),
             int(player.bene_gesserit_boost_pending),
+            player.tactics_track_space,
+            player.agent_in_conflict,
         ],
     )
     writer.write(

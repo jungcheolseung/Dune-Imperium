@@ -54,7 +54,10 @@ from dune_imperium.rules.acquisition import (
 from dune_imperium.rules.card_discard import discard_personal_card_from_hand
 from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.combat import refresh_combat_participants
-from dune_imperium.rules.combat_deployment import grant_combat_icon
+from dune_imperium.rules.combat_deployment import (
+    grant_combat_icon,
+    reconcile_deployment_after_retreat,
+)
 from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effect_interpreter import (
     ChoiceSlot,
@@ -91,6 +94,7 @@ from dune_imperium.rules.influence import (
     influence_amount,
     lose_faction_influence,
 )
+from dune_imperium.rules.planetologist import replace_sandworms
 from dune_imperium.rules.reveal_turn import add_units_to_reveal
 from dune_imperium.rules.shield_wall import destroy_shield_wall
 from dune_imperium.rules.spy_moves import (
@@ -806,6 +810,12 @@ def _apply_section_rewards(
         )
     if outcome.combat_icons:
         next_state = grant_combat_icon(next_state, player)
+    if outcome.sandworms_replaced:
+        replacement = replace_sandworms(
+            next_state, player, outcome.sandworms_replaced, source=source
+        )
+        next_state = replacement.state
+        events.extend(replacement.events)
     if outcome.redirects_turn_space_spies:
         # False Orders: the owner's placement waits beneath the opponents'
         # forced moves so it resolves after them ("Then you place a Spy").
@@ -934,10 +944,20 @@ def _retreat_units(
     troops: int,
     commanders: int = 0,
 ) -> RuleResult:
-    """Return Conflict units to the garrison (see ``rules.units``)."""
+    """Return Conflict units to the garrison (see ``rules.units``).
 
-    return retreat_units(
+    An Agent-turn retreat also shrinks the turn's deployment counters so
+    the withdrawal window cannot underflow (``combat_deployment``).
+    """
+
+    retreated = retreat_units(
         state, player, step_source, troops=troops, commanders=commanders
+    )
+    return RuleResult(
+        state=reconcile_deployment_after_retreat(
+            retreated.state, player, troops=troops, commanders=commanders
+        ),
+        events=retreated.events,
     )
 
 

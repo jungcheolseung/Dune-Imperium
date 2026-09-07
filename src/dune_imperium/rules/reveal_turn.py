@@ -54,6 +54,7 @@ from dune_imperium.rules.influence import (
 )
 from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
 from dune_imperium.rules.intrigue_triggers import expire_reveal_faceup_intrigue
+from dune_imperium.rules.planetologist import replace_sandworms, replaces_sandworms
 from dune_imperium.rules.shield_wall import current_conflict_is_shield_wall_protected
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
@@ -532,6 +533,19 @@ def apply_reveal_sandworm_action(
     if not _can_summon_reveal_sandworm(state, action.actor):
         raise RuntimeError("Desert Power sandworm choice is unavailable")
     owner = state.players[action.actor]
+    if replaces_sandworms(owner):
+        # Arrakis Planetologist: the water still buys the choice, the
+        # sandworm becomes its replacement [Liet Kynes card].
+        paid = replace(
+            owner, resources=replace(owner.resources, water=owner.resources.water - 1)
+        )
+        remaining = add_reveal_persuasion(state.decision_stack[:-1], -2)
+        popped = replace(
+            state,
+            players=replace_player(state.players, paid),
+            decision_stack=remaining,
+        )
+        return replace_sandworms(popped, action.actor, 1, source=source)
     previous_units = owner.units_in_conflict
     reveal_context = _reveal_frame_context(state.decision_stack[:-1])
     current_strength = reveal_context.get("strength")
@@ -1516,7 +1530,11 @@ def _can_summon_reveal_sandworm(state: GameState, player: int) -> bool:
         owner.maker_hooks
         and owner.resources.water >= 1
         and bool(state.current_conflict_ids)
-        and not current_conflict_is_shield_wall_protected(state)
+        # Arrakis Planetologist's replacement ignores the Shield Wall.
+        and (
+            replaces_sandworms(owner)
+            or not current_conflict_is_shield_wall_protected(state)
+        )
     )
 
 

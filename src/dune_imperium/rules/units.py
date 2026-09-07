@@ -6,6 +6,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.frames import replace_player
+from dune_imperium.rules.tactics import advance_tactics_token
 
 
 def retreat_units(
@@ -45,6 +46,11 @@ def retreat_units(
         commanders_conflict=owner.commanders_conflict - commanders,
         combat_strength=next_strength,
     )
+    # Tactician: Chani's token advances one space per troop retreated or
+    # lost from the Conflict; Commanders are troops here [Bloodlines p. 4].
+    next_owner, tactics_events = advance_tactics_token(
+        next_owner, retreated, source=step_source
+    )
     return RuleResult(
         state=replace(state, players=replace_player(state.players, next_owner)),
         events=(
@@ -57,5 +63,6 @@ def retreat_units(
                     ("player", player),
                 ),
             ),
+            *tactics_events,
         ),
     )

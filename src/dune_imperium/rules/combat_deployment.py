@@ -28,7 +28,7 @@ from dune_imperium.rules.effects import (
     agent_turn_has_other_pending_effects,
     current_agent_effect_context,
 )
-from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.frames import FrameKind, replace_player
 
 
 def _deployment_context(
@@ -254,6 +254,57 @@ def apply_combat_deployment(
         payload=(("count", count), ("player", action.actor)),
     )
     return RuleResult(state=next_state, events=(event,))
+
+
+def reconcile_deployment_after_retreat(
+    state: GameState,
+    player: int,
+    *,
+    troops: int,
+    commanders: int = 0,
+) -> GameState:
+    """Shrink the open Agent turn's deployment counters after a retreat.
+
+    A Signet Ring or Plot Intrigue may retreat units the turn's basic
+    deployment just moved (Fedaykin Maneuver); the withdrawal window keeps
+    offering the counters it recorded, so they follow the retreat down.
+    The per-turn deployment count also drops, never below the count a
+    trigger already consumed (OQ-029).
+    """
+
+    total = troops + commanders
+    if total < 1:
+        return state
+    owner = state.players[player]
+    players = replace_player(
+        state.players,
+        replace(
+            owner,
+            units_deployed_turn=max(
+                owner.units_deployed_committed, owner.units_deployed_turn - total
+            ),
+        ),
+    )
+    frames = list(state.decision_stack)
+    for index in range(len(frames) - 1, -1, -1):
+        frame = frames[index]
+        if frame.kind != FrameKind.AGENT_EFFECTS or not isinstance(
+            frame.decision, PlayerDecision
+        ):
+            continue
+        if frame.decision.owner != player:
+            continue
+        context = dict(frame.context)
+        deployed = context.get("combat_troops_deployed", 0)
+        if isinstance(deployed, bool) or not isinstance(deployed, int):
+            raise RuntimeError("Agent-turn effect frame has invalid deployment count")
+        context["combat_troops_deployed"] = max(0, deployed - total)
+        context["combat_commanders_deployed"] = max(
+            0, _commanders_deployed(context) - commanders
+        )
+        frames[index] = replace(frame, context=tuple(sorted(context.items())))
+        break
+    return replace(state, players=players, decision_stack=tuple(frames))
 
 
 def apply_troop_withdrawal(

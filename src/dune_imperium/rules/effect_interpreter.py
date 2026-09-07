@@ -76,6 +76,7 @@ from dune_imperium.rules.frames import replace_player
 from dune_imperium.rules.influence import gain_faction_influence, influence_amount
 from dune_imperium.rules.intrigue_deck import draw_intrigue_cards
 from dune_imperium.rules.leader_abilities import units_deployment_blocked
+from dune_imperium.rules.planetologist import replaces_sandworms
 from dune_imperium.rules.shield_wall import current_conflict_is_shield_wall_protected
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
@@ -466,6 +467,7 @@ class RewardOutcome:
     sandworms_deployed: int = 0
     combat_icons: int = 0
     redirects_turn_space_spies: bool = False
+    sandworms_replaced: int = 0
 
 
 def automatic_rewards(sections: tuple[EffectSection, ...]) -> tuple[Reward, ...]:
@@ -508,6 +510,7 @@ def apply_rewards(
     sandworms_deployed = 0
     combat_icons = 0
     redirects_turn_space_spies = False
+    sandworms_replaced = 0
     personal_draws = 0
     intrigue_draws = 0
     contracts = 0
@@ -549,6 +552,15 @@ def apply_rewards(
                 fixed_influence.append(reward)
             case GainInfluence():
                 raise ValueError("Influence choices must be resolved as choice slots")
+            case SummonSandworm(count=count, requires_maker_hooks=needs_hooks) if (
+                replaces_sandworms(owner)
+                and not (needs_hooks and not owner.maker_hooks)
+                and state.current_conflict_ids
+                and not units_deployment_blocked(state, player)
+            ):
+                # Arrakis Planetologist: the replacement, even under the
+                # Shield Wall [Liet Kynes card]; paid by the caller.
+                sandworms_replaced += count
             case SummonSandworm(count=count, requires_maker_hooks=needs_hooks):
                 if (
                     (needs_hooks and not owner.maker_hooks)
@@ -651,4 +663,5 @@ def apply_rewards(
         sandworms_deployed=sandworms_deployed,
         combat_icons=combat_icons,
         redirects_turn_space_spies=redirects_turn_space_spies,
+        sandworms_replaced=sandworms_replaced,
     )

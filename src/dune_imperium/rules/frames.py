@@ -49,6 +49,8 @@ class FrameKind(StrEnum):
     SPY_PLACEMENT = "spy_placement"
     # Coercive Negotiation: three Contracts revealed from the bank.
     INTRIGUE_TRIGGER_CONTRACT = "intrigue_trigger_contract"
+    # An optional "[trash] icon" reward (Liet Kynes' sandworm replacement).
+    OPTIONAL_TRASH = "optional_trash"
 
 
 def top_frame(state: GameState) -> DecisionFrame | None:

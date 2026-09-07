@@ -88,8 +88,12 @@ def legal_agent_actions(state: GameState, player: int) -> tuple[DomainAction, ..
                     isinstance(card, ImperiumCardEntry)
                     and card.ignores_influence_requirements
                 )
-                # Insider Information (Bloodlines) waives them for the turn.
+                # Insider Information (Bloodlines) waives them for the turn;
+                # Arrakis Planetologist ignores Sietch Tabr's [Liet Kynes card].
                 and not owner.ignores_influence_requirements_turn
+                and not (
+                    owner.leader_id == "liet_kynes" and space.space_id == "sietch_tabr"
+                )
                 and not _meets_requirement(owner.influence, space.requirement)
             ):
                 continue
@@ -180,7 +184,9 @@ def card_can_access_space(
         owner.granted_agent_icon_turn
     ):
         return True
-    if AgentIcon.SPY not in agent_icons:
+    # Clandestine: "Each card you play has the Spy icon" [Gaius Helen
+    # Mohiam card].
+    if AgentIcon.SPY not in agent_icons and owner.leader_id != "gaius_helen_mohiam":
         return False
     return bool(_connected_spy_post_ids(owner, space.space_id))
 
@@ -203,7 +209,9 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
 
     card = personal_card_for_instance(card_instance_id)
     space = BOARD_SPACES_BY_ID[space_id]
-    cost_option, cost = _selected_cost(state, space, arguments.get("cost_option"))
+    cost_option, cost = _selected_cost(
+        state, space, arguments.get("cost_option"), action.actor
+    )
     owner = state.players[action.actor]
     # Emperor of the Known Universe: playing Shaddam's Signet Ring blocks
     # unit deployment to the Conflict for this whole turn, effective
@@ -550,7 +558,7 @@ def _actions_for_affordable_costs(
     state: GameState,
     infiltrate_post_id: str | None = None,
 ) -> tuple[DomainAction, ...]:
-    costs = _effective_costs(state, space)
+    costs = _effective_costs(state, space, player)
     include_choice = space.dynamic_cost is None and len(space.cost_options) > 1
     actions: list[DomainAction] = []
     for cost_option, cost in costs:
@@ -589,13 +597,19 @@ def _connected_spy_post_ids(
 def _effective_costs(
     state: GameState,
     space: BoardSpace,
+    player: int,
 ) -> tuple[tuple[int, ResourceCost], ...]:
     if space.dynamic_cost is DynamicCost.SWORDMASTER:
         someone_has_swordmaster = any(
             player.swordmaster_acquired for player in state.players
         )
         option = 1 if someone_has_swordmaster else 0
-        return ((option, space.cost_options[option]),)
+        cost = space.cost_options[option]
+        if state.players[player].leader_id == "duncan_idaho":
+            # Ginaz Swordmaster: "The Swordmaster board space costs you 2
+            # less" [Duncan Idaho card].
+            cost = replace(cost, solari=max(cost.solari - 2, 0))
+        return ((option, cost),)
     costs = space.cost_options or (ResourceCost(),)
     return tuple(enumerate(costs))
 
@@ -604,8 +618,9 @@ def _selected_cost(
     state: GameState,
     space: BoardSpace,
     requested_option: bool | int | str | None,
+    player: int,
 ) -> tuple[int, ResourceCost]:
-    costs = dict(_effective_costs(state, space))
+    costs = dict(_effective_costs(state, space, player))
     if requested_option is None:
         if len(costs) != 1:
             raise ValueError("Agent action must identify its cost option")

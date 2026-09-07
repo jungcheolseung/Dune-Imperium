@@ -963,6 +963,10 @@ def finish_combat(state: GameState) -> RuleResult:
             sandworms_conflict=0,
             commanders_supply=player.commanders_supply + player.commanders_conflict,
             commanders_conflict=0,
+            # Into the Fray's Agent comes back too (it is recalled with the
+            # others in the Recall phase either way) [Duncan Idaho card].
+            agents_available=player.agents_available + player.agent_in_conflict,
+            agent_in_conflict=0,
             combat_strength=0,
             skill_strength_applied=0,
         )

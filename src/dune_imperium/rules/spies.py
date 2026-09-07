@@ -52,6 +52,10 @@ def legal_gather_intelligence_actions(
             for post_id in owner.spy_post_ids
             if post_id in connected_post_ids
         )
+    if owner.leader_id == "gaius_helen_mohiam" and len(actions) > 1:
+        # Clandestine: "Whenever you could recall a Spy to Gather
+        # Intelligence, you must" [Gaius Helen Mohiam card].
+        return tuple(actions[1:])
     return tuple(actions)
 
 

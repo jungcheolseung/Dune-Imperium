@@ -51,6 +51,7 @@ from dune_imperium.rules.intrigue_deck import (
     draw_or_queue_intrigue_cards,
 )
 from dune_imperium.rules.leader_abilities import units_deployment_blocked
+from dune_imperium.rules.planetologist import replace_sandworms, replaces_sandworms
 from dune_imperium.rules.shield_wall import (
     current_conflict_is_shield_wall_protected,
     destroy_shield_wall,
@@ -1213,7 +1214,12 @@ def legal_maker_space_actions(
         space_id != "imperial_basin"
         and owner.maker_hooks
         and state.current_conflict_ids
-        and not current_conflict_is_shield_wall_protected(state)
+        # Arrakis Planetologist replaces the sandworms "even when the
+        # Conflict is protected by the Shield Wall" [Liet Kynes card].
+        and (
+            replaces_sandworms(owner)
+            or not current_conflict_is_shield_wall_protected(state)
+        )
         # A summoned sandworm is immediately deployed [Main p. 20], so the
         # Emperor of the Known Universe restriction withholds it.
         and not units_deployment_blocked(state, player)
@@ -1244,6 +1250,7 @@ def apply_maker_space_action(
     owner = state.players[action.actor]
     base_spice = 0
     sandworms = 0
+    replaced = 0
     if action.action_id == "harvest_maker_spice":
         base_spice = {
             "deep_desert": 4,
@@ -1255,6 +1262,15 @@ def apply_maker_space_action(
             resources=replace(
                 owner.resources,
                 spice=owner.resources.spice + bonus_spice + base_spice,
+            ),
+        )
+    elif replaces_sandworms(owner):
+        replaced = 2 if space_id == "deep_desert" else 1
+        owner = replace(
+            owner,
+            resources=replace(
+                owner.resources,
+                spice=owner.resources.spice + bonus_spice,
             ),
         )
     else:
@@ -1298,6 +1314,14 @@ def apply_maker_space_action(
             ("spice", bonus_spice + base_spice),
         ),
     )
+    if replaced:
+        replacement = replace_sandworms(
+            next_state,
+            action.actor,
+            replaced,
+            source=f"round:{state.round_number}:player:{action.actor}:board:{space_id}",
+        )
+        return RuleResult(state=replacement.state, events=(event, *replacement.events))
     return RuleResult(state=next_state, events=(event,))
 
 

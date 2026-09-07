@@ -137,7 +137,9 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             action_id="pick_leader",
             arguments=(("leader_id", leader.leader_id),),
         )
-        for leader in leaders_for_choam(config.choam_module)
+        for leader in leaders_for_choam(
+            config.choam_module, bloodlines=config.bloodlines
+        )
     ]
     templates.extend(
         ActionTemplate(action_id=action_id)
@@ -248,7 +250,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     )
     templates.append(ActionTemplate(action_id="finish_agent_turn"))
     if config.bloodlines:
-        templates.extend(_bloodlines_templates())
+        templates.extend(_bloodlines_templates(config))
     templates.extend(
         ActionTemplate(
             action_id="recall_agent_for_agent_card",
@@ -608,7 +610,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     return tuple(sorted(templates, key=_template_sort_key))
 
 
-def _bloodlines_templates() -> tuple[ActionTemplate, ...]:
+def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     """Sardaukar Commander choices [Bloodlines p. 4] (``rules.sardaukar``)."""
 
     templates: list[ActionTemplate] = [
@@ -681,7 +683,28 @@ def _bloodlines_templates() -> tuple[ActionTemplate, ...]:
     templates.append(ActionTemplate(action_id="take_reveal_contract"))
     templates.extend(
         ActionTemplate(action_id=action_id)
-        for action_id in ("decline_spy_placement", "decline_intrigue_contract_trigger")
+        for action_id in (
+            "decline_spy_placement",
+            "decline_intrigue_contract_trigger",
+            # Bloodlines Leaders: Duncan Idaho, Chani, Liet Kynes.
+            "deploy_leader_agent",
+            "pay_leader_signet_water",
+            "decline_optional_trash",
+        )
+    )
+    templates.extend(_trash_templates(config, "trash_optional_card"))
+    # Fedaykin Maneuver retreats any number, Commanders included.
+    templates.extend(
+        ActionTemplate(action_id="retreat_leader_troops", arguments=(("count", count),))
+        for count in range(1, MAX_DEPLOYMENT_COUNT + 1)
+    )
+    templates.extend(
+        ActionTemplate(
+            action_id="retreat_leader_troops",
+            arguments=(("commanders", share), ("count", count)),
+        )
+        for count in range(1, MAX_DEPLOYMENT_COUNT + 1)
+        for share in range(1, min(count, MAX_COMMANDER_DEPLOYMENT) + 1)
     )
     # The loser picks the zone and the unit kind (OQ-036); ``commanders``
     # marks a Sardaukar Commander like the retreat argument does.
@@ -709,10 +732,13 @@ def _agent_turn_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     # for a turn, so the option's catalogs also hold every card's Emperor
     # placements.
     granted: tuple[AgentIcon, ...] = (AgentIcon.EMPEROR,) if config.bloodlines else ()
-    # Urgent Shigawire gives the next Bene Gesserit card "all Agent icons",
-    # and Delivery Logistics borrows its Contracts' icons, so those cards
-    # hold every placement in the option's catalogs.
+    # Gaius Helen Mohiam gives every card the Spy icon, Urgent Shigawire
+    # gives the next Bene Gesserit card "all Agent icons" and Delivery
+    # Logistics borrows its Contracts' icons, so the option's catalogs hold
+    # every card's placement on every space.
     every_icon = tuple(AgentIcon) if config.bloodlines else ()
+    if config.bloodlines:
+        granted = every_icon
     templates: list[ActionTemplate] = []
     for starting_card in STARTING_DECK:
         templates.extend(
