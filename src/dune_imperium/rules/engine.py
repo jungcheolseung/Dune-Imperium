@@ -242,7 +242,13 @@ from dune_imperium.rules.spy_moves import (
 from dune_imperium.rules.strength import refresh_pre_reveal_strength
 from dune_imperium.rules.tech import (
     apply_tech_acquisition,
+    apply_tech_choice,
+    apply_tech_flip,
+    deploy_suspensor_troops,
+    draw_owed_tech_cards,
     legal_tech_acquisition_actions,
+    legal_tech_choice_actions,
+    legal_tech_flip_actions,
 )
 from dune_imperium.rules.unit_loss import apply_unit_loss, legal_unit_loss_actions
 
@@ -328,6 +334,7 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         legal_turn_start_card_actions,
         legal_reveal_actions,
         legal_intrigue_play_actions,
+        legal_tech_flip_actions,
     ),
     FrameKind.AGENT_EFFECTS: (legal_agent_effect_frame_actions,),
     FrameKind.OPPONENT_CARD_DISCARD: (legal_opponent_card_discard_actions,),
@@ -343,6 +350,7 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         legal_resume_reveal_choice_actions,
         legal_finish_reveal_actions,
         legal_intrigue_play_actions,
+        legal_tech_flip_actions,
     ),
     FrameKind.REVEAL_CHOICE: (
         legal_defer_reveal_choice_actions,
@@ -392,6 +400,7 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     FrameKind.NAVIGATION_SETUP: (legal_navigation_setup_actions,),
     FrameKind.NAVIGATION_CHOICE: (legal_navigation_play_actions,),
     FrameKind.TECH_ACQUISITION: (legal_tech_acquisition_actions,),
+    FrameKind.TECH_CHOICE: (legal_tech_choice_actions,),
 }
 
 ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
@@ -461,6 +470,10 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "acquire_sardaukar_commander": apply_sardaukar_commander_action,
     "acquire_tech": apply_tech_acquisition,
     "decline_tech": apply_tech_acquisition,
+    "flip_tech": apply_tech_flip,
+    "choose_tech_strength": apply_tech_choice,
+    "choose_tech_trash": apply_tech_choice,
+    "decline_skill": apply_skill_choice,
     "decline_sardaukar_commander": apply_sardaukar_commander_action,
     "recruit_sardaukar_commander": apply_commander_recruit,
     "trash_skill_for_strength": apply_skill_trash,
@@ -627,6 +640,10 @@ class UprisingRulesEngine(RulesEngine):
         result = skip_impossible_imperial_privilege_recall(
             expire_trashed_card_effects(_advance_automatic(result))
         )
+        # Suspensor Suits pays the troops owed by this step's Intrigue gains.
+        result = deploy_suspensor_troops(
+            draw_owed_tech_cards(_advance_automatic(result))
+        )
         return refresh_pre_reveal_strength(
             offer_deployment_triggers(_advance_automatic(result))
         )
@@ -667,6 +684,10 @@ class UprisingRulesEngine(RulesEngine):
             expire_trashed_card_effects(result)
         )
         # Units moved this step: the running strength follows [Main p. 12].
+        # Suspensor Suits pays the troops owed by this step's Intrigue gains.
+        result = deploy_suspensor_troops(
+            draw_owed_tech_cards(_advance_automatic(result))
+        )
         return refresh_pre_reveal_strength(
             offer_deployment_triggers(_advance_automatic(result))
         )

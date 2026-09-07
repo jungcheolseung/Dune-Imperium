@@ -7,6 +7,7 @@ and are never reshuffled [Main p. 20].
 
 from dataclasses import replace
 
+from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
 from dune_imperium.core.chance import ChanceOutcome
 from dune_imperium.core.decisions import ChanceDecision, DecisionFrame
 from dune_imperium.core.engine import RuleResult
@@ -18,6 +19,7 @@ from dune_imperium.rules.frames import (
     context_str,
     replace_player,
     top_frame_of_kind,
+    turn_owner_of,
 )
 
 
@@ -169,6 +171,14 @@ def _draw_available(
         return RuleResult(state=state)
     owner = state.players[player]
     next_owner = replace(owner, intrigue_cards=(*owner.intrigue_cards, *drawn))
+    if turn_owner_of(state) == player and has_tech(
+        owner.tech_ids, TechAbility.INTRIGUE_DRAW_TROOP
+    ):
+        # Suspensor Suits: each card drawn during the owner's turn owes a
+        # troop to the Conflict, paid by the engine after the transition.
+        next_owner = replace(
+            next_owner, suspensor_owed=next_owner.suspensor_owed + len(drawn)
+        )
     next_state = replace(
         state,
         players=replace_player(state.players, next_owner),

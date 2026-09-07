@@ -11,6 +11,7 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.tech import apply_endgame_tech_effects
 
 
 def begin_round(state: GameState) -> RuleResult:
@@ -360,7 +361,9 @@ def resolve_recall_or_endgame(state: GameState) -> RuleResult:
             event_id=f"round:{state.round_number}:endgame",
             kind="endgame_started",
         )
-        return RuleResult(state=next_state, events=(event,))
+        # Tech tiles with an Endgame line pay as the Endgame opens (OQ-040).
+        tech = apply_endgame_tech_effects(next_state)
+        return RuleResult(state=tech.state, events=(event, *tech.events))
 
     players = tuple(
         replace(

@@ -15,7 +15,7 @@ state, which the tests pin.
 import random
 from dataclasses import replace
 
-from dune_imperium.core.observation import resolving_intrigue_ids
+from dune_imperium.core.observation import peeked_card_id, resolving_intrigue_ids
 from dune_imperium.core.state import GameState
 
 
@@ -30,9 +30,13 @@ def determinize(state: GameState, observer: int, rng: random.Random) -> GameStat
 
     for seat, player in enumerate(players):
         if seat == observer:
-            own_deck = list(player.deck)
+            # Glowglobes (and Controlled's peek) show the observer the top
+            # card, which therefore stays in place.
+            known_top = peeked_card_id(state, observer)
+            top = list(player.deck[:1]) if known_top else []
+            own_deck = list(player.deck[len(top) :])
             rng.shuffle(own_deck)
-            players[seat] = replace(player, deck=tuple(own_deck))
+            players[seat] = replace(player, deck=(*top, *own_deck))
             continue
         # Hand cards that entered the hand publicly stay known (OQ-010);
         # the face-down draws and the deck are one unknown pool.

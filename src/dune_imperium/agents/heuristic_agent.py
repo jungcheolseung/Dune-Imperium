@@ -85,6 +85,11 @@ _ACTION_SCORES: Final[dict[str, float]] = {
     # Tech Module: a tile is a permanent upgrade; buying outranks most
     # minor picks and never blocks a turn (the decline still ranks lowest).
     "acquire_tech": 2.5,
+    # Flips are free once per round; Forbidden Weapons' swords beat losing
+    # all spice, and Plasteel Blades' extra Skill is worth the tile.
+    "flip_tech": 1.5,
+    "choose_tech_strength": 1.0,
+    "choose_tech_trash": -1.0,
 }
 
 _IMPERIUM_ACQUISITIONS: Final = frozenset(

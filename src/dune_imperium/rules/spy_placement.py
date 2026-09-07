@@ -154,6 +154,7 @@ def recall_spy(player: PlayerState, post_id: str) -> PlayerState:
     return replace(
         player,
         spies_supply=player.spies_supply + 1,
+        spies_recalled_turn=player.spies_recalled_turn + 1,
         spy_post_ids=tuple(
             candidate for candidate in player.spy_post_ids if candidate != post_id
         ),

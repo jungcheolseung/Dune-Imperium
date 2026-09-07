@@ -25,6 +25,7 @@ from dune_imperium.content.bloodlines.sardaukar import (
     SKILLS_BY_ID,
     skill_for_instance,
 )
+from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
 from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.decisions import ChanceDecision, DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
@@ -78,7 +79,33 @@ def commander_cost(owner: PlayerState) -> int:
     (Intrigue card face), never below zero.
     """
 
-    return max(0, COMMANDER_COST_SOLARI - owner.commander_discount_turn)
+    # Sardaukar High Command: "Recruiting a Sardaukar Commander (including
+    # when you acquire one) costs you 1 less" [Tech tile face].
+    high_command = int(has_tech(owner.tech_ids, TechAbility.COMMANDER_DISCOUNT))
+    return max(0, COMMANDER_COST_SOLARI - owner.commander_discount_turn - high_command)
+
+
+PLASTEEL_BLADES_CARD_ID = "tech:plasteel_blades"
+
+
+def queue_plasteel_blades(state: GameState, player: int, source: str) -> GameState:
+    """Plasteel Blades: "Whenever you recruit a Sardaukar Commander: trash
+    this -> gain an additional Skill" [Tech tile face].
+
+    The optional trash opens as a Skill choice once the recruiting effect
+    has finished with the decision stack (the same queue Sardaukar Standard
+    uses); acquiring a Commander recruits it [Bloodlines p. 4].
+    """
+
+    if not has_tech(state.players[player].tech_ids, TechAbility.PLASTEEL_BLADES):
+        return state
+    return replace(
+        state,
+        pending_skill_choices=(
+            *state.pending_skill_choices,
+            (player, PLASTEEL_BLADES_CARD_ID, f"{source}:plasteel_blades"),
+        ),
+    )
 
 
 def _skill_identity(instance_id: str) -> str:
@@ -217,8 +244,10 @@ def apply_sardaukar_commander_action(
         context_int(context, "troops_recruited", owner=_FRAME_LABEL) + 1
     )
     players = replace_player(working.players, next_owner)
-    next_state = advance_after_effect(
-        replace(working, players=players), context, players
+    next_state = queue_plasteel_blades(
+        advance_after_effect(replace(working, players=players), context, players),
+        player,
+        source,
     )
     events.insert(
         0,
@@ -308,7 +337,11 @@ def _acquire_bank_commander(
         ),
     )
     return RuleResult(
-        state=replace(working, players=players, decision_stack=decision_stack),
+        state=queue_plasteel_blades(
+            replace(working, players=players, decision_stack=decision_stack),
+            player,
+            source,
+        ),
         events=tuple(events),
     )
 
@@ -329,6 +362,23 @@ def begin_skill_choice(state: GameState) -> RuleResult:
         raise ValueError("there is no pending Skill choice")
     player, card_id, source = state.pending_skill_choices[0]
     remaining = replace(state, pending_skill_choices=state.pending_skill_choices[1:])
+    if card_id == PLASTEEL_BLADES_CARD_ID:
+        owner = remaining.players[player]
+        if not has_tech(
+            owner.tech_ids, TechAbility.PLASTEEL_BLADES
+        ) or not eligible_face_up_skill_ids(remaining, owner):
+            # The tile left play, or no Skill could be gained: nothing to ask.
+            return RuleResult(state=remaining)
+        frame = DecisionFrame(
+            kind=FrameKind.SKILL_CHOICE,
+            frame_id=f"{source}:skill_choice",
+            decision=PlayerDecision(
+                owner=player,
+                prompt="Trash Plasteel Blades for an additional Skill, or keep it",
+            ),
+            context=(("card_id", card_id), ("player", player), ("source", source)),
+        )
+        return RuleResult(state=remaining.push_decision(frame))
     if remaining.sardaukar_commanders_bank >= 1 and not eligible_face_up_skill_ids(
         remaining, remaining.players[player]
     ):
@@ -368,13 +418,18 @@ def legal_skill_choice_actions(
     frame = owned_top_frame(state, FrameKind.SKILL_CHOICE, player)
     if frame is None:
         return ()
-    return tuple(
-        DomainAction(
-            action_id="choose_skill",
-            actor=player,
-            arguments=(("skill_id", skill_id),),
-        )
-        for skill_id in eligible_face_up_skill_ids(state, state.players[player])
+    plasteel = dict(frame.context).get("card_id") == PLASTEEL_BLADES_CARD_ID
+    return (
+        # Plasteel Blades' trash is an optional arrow: keeping the tile is legal.
+        *((DomainAction(action_id="decline_skill", actor=player),) if plasteel else ()),
+        *(
+            DomainAction(
+                action_id="choose_skill",
+                actor=player,
+                arguments=(("skill_id", skill_id),),
+            )
+            for skill_id in eligible_face_up_skill_ids(state, state.players[player])
+        ),
     )
 
 
@@ -387,9 +442,50 @@ def apply_skill_choice(state: GameState, action: DomainAction) -> RuleResult:
     context = dict(frame.context)
     source = context_str(context, "source", owner="Skill choice frame")
     card_id = context_str(context, "card_id", owner="Skill choice frame")
+    popped = state.pop_decision()
+    if action.action_id == "decline_skill":
+        return RuleResult(
+            state=popped,
+            events=(
+                GameEvent(
+                    event_id=f"{source}:kept",
+                    kind="tech_trash_declined",
+                    payload=(("player", action.actor), ("tech_id", "plasteel_blades")),
+                ),
+            ),
+        )
     skill_id = str(dict(action.arguments)["skill_id"])
+    if card_id == PLASTEEL_BLADES_CARD_ID:
+        owner = popped.players[action.actor]
+        trashed = replace(
+            owner,
+            tech_ids=tuple(
+                held for held in owner.tech_ids if held != "plasteel_blades"
+            ),
+            tech_flipped=tuple(
+                held for held in owner.tech_flipped if held != "plasteel_blades"
+            ),
+        )
+        # One replace: the tile must never sit in two zones between steps.
+        working = replace(
+            popped,
+            players=replace_player(popped.players, trashed),
+            tech_trash=(*popped.tech_trash, "plasteel_blades"),
+        )
+        working, trashed, events = _gain_skill(working, trashed, skill_id, source)
+        return RuleResult(
+            state=replace(working, players=replace_player(working.players, trashed)),
+            events=(
+                GameEvent(
+                    event_id=f"{source}:trashed",
+                    kind="tech_trashed",
+                    payload=(("player", action.actor), ("tech_id", "plasteel_blades")),
+                ),
+                *events,
+            ),
+        )
     return _acquire_bank_commander(
-        state.pop_decision(), action.actor, card_id, skill_id, source=source
+        popped, action.actor, card_id, skill_id, source=source
     )
 
 
@@ -449,11 +545,13 @@ def apply_commander_recruit(state: GameState, action: DomainAction) -> RuleResul
             context_int(context, "troops_recruited", owner=_FRAME_LABEL) + 1
         )
         next_state = advance_after_effect(next_state, context, players)
+    recruit_source = (
+        f"round:{state.round_number}:player:{player}:recruit_commander:"
+        f"{next_owner.commanders_total - next_owner.commanders_supply}"
+    )
+    next_state = queue_plasteel_blades(next_state, player, recruit_source)
     event = GameEvent(
-        event_id=(
-            f"round:{state.round_number}:player:{player}:recruit_commander:"
-            f"{next_owner.commanders_total - next_owner.commanders_supply}"
-        ),
+        event_id=recruit_source,
         kind="sardaukar_commander_recruited",
         payload=(("player", player), ("solari", cost)),
     )

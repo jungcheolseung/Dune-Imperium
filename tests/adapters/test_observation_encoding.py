@@ -32,8 +32,8 @@ def test_layout_is_versioned_and_contiguous() -> None:
     # 16 Uprising Conflicts plus the two Bloodlines cards (identity universe).
     assert len(CONFLICT_IDS) == 18
     assert len(BATTLE_CARD_IDS) == 23
-    # v9: Tech Module segments (24 global, 20 per seat, 1 private).
-    assert OBSERVATION_SIZE == 3038 + 24 + 4 * 20 + 1
+    # v9: Tech Module segments (24 global, 21 per seat, 1 private).
+    assert OBSERVATION_SIZE == 3038 + 24 + 4 * 21 + 1
 
     offset = 0
     for segment in OBSERVATION_SEGMENTS:

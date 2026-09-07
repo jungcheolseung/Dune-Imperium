@@ -88,6 +88,7 @@ from dune_imperium.rules.frames import replace_player
 from dune_imperium.rules.influence import gain_faction_influence, influence_amount
 from dune_imperium.rules.intrigue_deck import draw_intrigue_cards
 from dune_imperium.rules.leader_abilities import units_deployment_blocked
+from dune_imperium.rules.ornithopter import has_ornithopter_fleet
 from dune_imperium.rules.planetologist import replaces_sandworms
 from dune_imperium.rules.shield_wall import current_conflict_is_shield_wall_protected
 from dune_imperium.rules.spy_placement import (
@@ -128,6 +129,16 @@ def flippable_battle_card_ids(
     """
 
     face_down = set(player.face_down_battle_card_ids)
+    if has_ornithopter_fleet(player):
+        # Ornithopter Fleet: every icon is an Ornithopter, so "the Crysknife
+        # and Desert Mouse Intrigue cards can't be used to gain a Victory
+        # Point" [Bloodlines p. 12] while any Ornithopter flip may pick any
+        # face-up card.
+        if icon is not BattleIcon.ORNITHOPTER:
+            return ()
+        return tuple(
+            card_id for card_id in player.won_conflict_ids if card_id not in face_down
+        )
     return tuple(
         card_id
         for card_id in player.won_conflict_ids

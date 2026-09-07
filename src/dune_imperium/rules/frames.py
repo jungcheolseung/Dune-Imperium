@@ -6,7 +6,7 @@ from enum import StrEnum
 from dune_imperium.core.actions import ActionValue
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.player import PlayerState
-from dune_imperium.core.state import GameState
+from dune_imperium.core.state import GamePhase, GameState
 
 type FrameContext = dict[str, ActionValue]
 
@@ -178,8 +178,30 @@ def reset_turn_counters(
             granted_agent_icon_turn="",
             combat_icon_turn=False,
             hungry_for_spice_granted_turn=False,
+            spies_recalled_turn=0,
+            suspensor_owed=0,
         ),
     )
+
+
+def turn_owner_of(state: GameState) -> int | None:
+    """Return whose Agent or Reveal turn is in progress, if any.
+
+    The turn's own frame (turn, Agent effects or Reveal) sits lowest on the
+    stack during Player Turns; frames above it belong to that turn's
+    effects, whoever decides them.
+    """
+
+    if state.phase is not GamePhase.PLAYER_TURNS:
+        return None
+    for frame in state.decision_stack:
+        if frame.kind in (
+            FrameKind.TURN,
+            FrameKind.AGENT_EFFECTS,
+            FrameKind.REVEAL,
+        ) and isinstance(frame.decision, PlayerDecision):
+            return frame.decision.owner
+    return None
 
 
 def reveal_is_open_for(state: GameState, player: int) -> bool:

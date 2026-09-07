@@ -2,6 +2,7 @@
 
 from dataclasses import replace
 
+from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
 from dune_imperium.content.uprising.board import (
     BOARD_SPACES,
     BOARD_SPACES_BY_ID,
@@ -152,6 +153,19 @@ def effective_agent_icons(
     """
 
     icons = list(card.agent_icons)
+    if card.card.card_id == "signet_ring" and has_tech(
+        owner.tech_ids, TechAbility.SIGNET_FACTION_ICONS
+    ):
+        # Servo-Receivers: "Your Signet Ring has the following icons": the
+        # four Faction Agent icons [Tech tile face].
+        icons.extend(
+            (
+                AgentIcon.EMPEROR,
+                AgentIcon.SPACING_GUILD,
+                AgentIcon.BENE_GESSERIT,
+                AgentIcon.FREMEN,
+            )
+        )
     if isinstance(card, ImperiumCardEntry) and card.agent_icons_from_contracts:
         for instance_id in owner.active_contract_ids:
             condition = contract_for_instance(instance_id).condition
@@ -218,6 +232,11 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
     cost_option, cost = _selected_cost(
         state, space, arguments.get("cost_option"), action.actor
     )
+    discount = arguments.get("discount")
+    if discount == "spice":
+        cost = replace(cost, spice=cost.spice - 1)
+    elif discount == "solari":
+        cost = replace(cost, solari=cost.solari - 1)
     owner = state.players[action.actor]
     # Emperor of the Known Universe: playing Shaddam's Signet Ring blocks
     # unit deployment to the Conflict for this whole turn, effective
@@ -238,6 +257,8 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
         agents_available=owner.agents_available - 1,
         agent_locations=(*owner.agent_locations, space_id),
         spies_supply=owner.spies_supply + int(infiltrate_post_id is not None),
+        spies_recalled_turn=owner.spies_recalled_turn
+        + int(infiltrate_post_id is not None),
         spy_post_ids=tuple(
             post_id for post_id in owner.spy_post_ids if post_id != infiltrate_post_id
         ),
@@ -619,21 +640,34 @@ def _actions_for_affordable_costs(
     include_choice = space.dynamic_cost is None and len(space.cost_options) > 1
     actions: list[DomainAction] = []
     for cost_option, cost in costs:
-        if not _can_afford(owner, cost):
-            continue
-        argument_items: list[tuple[str, str | int]] = [("card_id", card_instance_id)]
-        if include_choice:
-            argument_items.append(("cost_option", cost_option))
-        if infiltrate_post_id is not None:
-            argument_items.append(("infiltrate_post_id", infiltrate_post_id))
-        argument_items.append(("space_id", space.space_id))
-        actions.append(
-            DomainAction(
-                action_id="agent_turn",
-                actor=player,
-                arguments=tuple(argument_items),
+        # Navigation Chamber: "Board spaces cost you 1 spice or 1 Solari
+        # less" [Tech tile face]; each discount is its own placement choice.
+        variants: list[tuple[str | None, ResourceCost]] = [(None, cost)]
+        if has_tech(owner.tech_ids, TechAbility.SPACE_DISCOUNT):
+            if cost.spice >= 1:
+                variants.append(("spice", replace(cost, spice=cost.spice - 1)))
+            if cost.solari >= 1:
+                variants.append(("solari", replace(cost, solari=cost.solari - 1)))
+        for discount, effective in variants:
+            if not _can_afford(owner, effective):
+                continue
+            argument_items: list[tuple[str, str | int]] = [
+                ("card_id", card_instance_id)
+            ]
+            if include_choice:
+                argument_items.append(("cost_option", cost_option))
+            if discount is not None:
+                argument_items.append(("discount", discount))
+            if infiltrate_post_id is not None:
+                argument_items.append(("infiltrate_post_id", infiltrate_post_id))
+            argument_items.append(("space_id", space.space_id))
+            actions.append(
+                DomainAction(
+                    action_id="agent_turn",
+                    actor=player,
+                    arguments=tuple(argument_items),
+                )
             )
-        )
     return tuple(actions)
 
 

@@ -815,6 +815,28 @@ def _tech_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             ActionTemplate(action_id="acquire_tech", arguments=arguments)
             for arguments in variants
         )
+        if tile.flips:
+            templates.append(ActionTemplate(action_id="flip_tech", arguments=base))
+    # Forbidden Weapons' Reveal choice: swords with an Influence loss (and
+    # the Alliance recipient when several opponents tie), or the trash.
+    templates.append(ActionTemplate(action_id="choose_tech_strength"))
+    templates.extend(
+        ActionTemplate(
+            action_id="choose_tech_strength", arguments=(("faction", faction.value),)
+        )
+        for faction in Faction
+    )
+    templates.extend(
+        ActionTemplate(
+            action_id="choose_tech_strength",
+            arguments=(("alliance_recipient", seat), ("faction", faction.value)),
+        )
+        for faction in Faction
+        for seat in range(config.players)
+    )
+    templates.append(ActionTemplate(action_id="choose_tech_trash"))
+    # Plasteel Blades' optional trash for an extra Skill.
+    templates.append(ActionTemplate(action_id="decline_skill"))
     return tuple(templates)
 
 
@@ -834,13 +856,21 @@ def _agent_turn_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     for starting_card in STARTING_DECK:
         templates.extend(
             _agent_turn_templates_for_card(
-                "starter", starting_card, granted, catalog_spaces(config)
+                "starter",
+                starting_card,
+                granted,
+                catalog_spaces(config),
+                space_discounts=config.tech_module,
             )
         )
     for reserve_card in RESERVE_STACKS:
         templates.extend(
             _agent_turn_templates_for_card(
-                "reserve", reserve_card, granted, catalog_spaces(config)
+                "reserve",
+                reserve_card,
+                granted,
+                catalog_spaces(config),
+                space_discounts=config.tech_module,
             )
         )
     for imperium_card in imperium_cards_for_choam(
@@ -861,7 +891,11 @@ def _agent_turn_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             )
             templates.extend(
                 _agent_turn_templates_for_card(
-                    "imperium", imperium_card, card_granted, catalog_spaces(config)
+                    "imperium",
+                    imperium_card,
+                    card_granted,
+                    catalog_spaces(config),
+                    space_discounts=config.tech_module,
                 )
             )
     return tuple(templates)
@@ -882,6 +916,8 @@ def _agent_turn_templates_for_card(
     card: StartingCardEntry | ReserveStackDefinition | ImperiumCardEntry,
     granted_icons: tuple[AgentIcon, ...] = (),
     spaces: tuple[BoardSpace, ...] = BOARD_SPACES,
+    *,
+    space_discounts: bool = False,
 ) -> tuple[ActionTemplate, ...]:
     templates: list[ActionTemplate] = []
     for copy in range(card.copies):
@@ -898,6 +934,19 @@ def _agent_turn_templates_for_card(
                 if space.dynamic_cost is None and len(space.cost_options) > 1
                 else (None,)
             )
+            # Navigation Chamber (Tech Module): one spice or one Solari off.
+            discounts: tuple[str | None, ...] = (None,)
+            if space_discounts:
+                discounts = (
+                    None,
+                    *(
+                        kind
+                        for kind in ("spice", "solari")
+                        if any(
+                            getattr(option, kind) > 0 for option in space.cost_options
+                        )
+                    ),
+                )
             infiltration_post_ids: tuple[str | None, ...] = (
                 None,
                 *(
@@ -907,19 +956,26 @@ def _agent_turn_templates_for_card(
                 ),
             )
             for cost_option in cost_options:
-                for infiltrate_post_id in infiltration_post_ids:
-                    arguments: list[tuple[str, ActionValue]] = [("card_id", card_id)]
-                    if cost_option is not None:
-                        arguments.append(("cost_option", cost_option))
-                    if infiltrate_post_id is not None:
-                        arguments.append(("infiltrate_post_id", infiltrate_post_id))
-                    arguments.append(("space_id", space.space_id))
-                    templates.append(
-                        ActionTemplate(
-                            action_id="agent_turn",
-                            arguments=tuple(arguments),
+                for discount in discounts:
+                    for infiltrate_post_id in infiltration_post_ids:
+                        arguments: list[tuple[str, ActionValue]] = [
+                            ("card_id", card_id)
+                        ]
+                        if cost_option is not None:
+                            arguments.append(("cost_option", cost_option))
+                        if discount is not None:
+                            arguments.append(("discount", discount))
+                        if infiltrate_post_id is not None:
+                            arguments.append(
+                                ("infiltrate_post_id", infiltrate_post_id)
+                            )
+                        arguments.append(("space_id", space.space_id))
+                        templates.append(
+                            ActionTemplate(
+                                action_id="agent_turn",
+                                arguments=tuple(arguments),
+                            )
                         )
-                    )
     return tuple(templates)
 
 

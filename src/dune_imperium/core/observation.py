@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 
+from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
 from dune_imperium.core.actions import ActionValue
 from dune_imperium.core.decisions import PlayerDecision
 from dune_imperium.core.player import Influence, PlayerState, Resources
@@ -76,6 +77,7 @@ class PublicPlayerView:
     tech_flipped: tuple[str, ...]
     has_secret_project: bool
     spies_boxed: int
+    spies_recalled_turn: int
     in_play: tuple[str, ...]
     # Every card reaches a discard pile face up (acquired cards [Main p. 13],
     # played and revealed cards after Clean Up [Main pp. 9, 12, 20], cards
@@ -353,8 +355,16 @@ def observe_state(state: GameState, player: int) -> PlayerView:
 
 
 def peeked_card_id(state: GameState, player: int) -> str:
-    """Return the deck card Controlled shows its owner, if that choice is up."""
+    """Return the deck card the owner may see: Controlled's peek, or Glowglobes.
 
+    Controlled shows the top card while its choice is up; Glowglobes lets
+    the owner "look at the top card of your deck at any time" [Glowglobes
+    Tech tile].
+    """
+
+    owner = state.players[player]
+    if owner.deck and has_tech(owner.tech_ids, TechAbility.PEEK_TOP_CARD):
+        return owner.deck[0]
     if not state.decision_stack:
         return ""
     frame = state.decision_stack[-1]
@@ -363,7 +373,6 @@ def peeked_card_id(state: GameState, player: int) -> str:
     peeked = dict(frame.context).get("peeked_card_id")
     if not isinstance(peeked, str) or not peeked:
         return ""
-    owner = state.players[player]
     return peeked if owner.deck and owner.deck[0] == peeked else ""
 
 
@@ -417,6 +426,7 @@ def _public_player_view(player: PlayerState) -> PublicPlayerView:
         tech_flipped=player.tech_flipped,
         has_secret_project=bool(player.secret_project_tech_id),
         spies_boxed=player.spies_boxed,
+        spies_recalled_turn=player.spies_recalled_turn,
         in_play=player.in_play,
         discard_pile=player.discard_pile,
         trashed=player.trashed,

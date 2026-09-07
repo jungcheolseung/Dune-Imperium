@@ -14,7 +14,10 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
-from dune_imperium.rules.contract_tiles import receive_contract
+from dune_imperium.rules.contract_tiles import (
+    owe_contract_completion_draw,
+    receive_contract,
+)
 from dune_imperium.rules.effects import (
     advance_after_effect,
     current_agent_effect_context,
@@ -541,11 +544,12 @@ def apply_contract_action(state: GameState, action: DomainAction) -> RuleResult:
         )
     ]
     if definition.completes_immediately:
+        completion_id = (
+            f"{source_value}:contract_completed:{action.actor}:{instance_value}"
+        )
         events.append(
             GameEvent(
-                event_id=(
-                    f"{source_value}:contract_completed:{action.actor}:{instance_value}"
-                ),
+                event_id=completion_id,
                 kind="contract_completed",
                 payload=(
                     ("contract_id", instance_value),
@@ -766,6 +770,8 @@ def _complete_contract_without_choices(
         ),
         contracts_completed_turn=next_owner.contracts_completed_turn + 1,
     )
+    # CHOAM Transports' draw is owed to the engine's post-step draw.
+    next_owner = owe_contract_completion_draw(next_owner)
     next_state = replace(
         state,
         players=replace_player(state.players, next_owner),

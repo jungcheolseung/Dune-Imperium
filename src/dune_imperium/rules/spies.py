@@ -77,6 +77,7 @@ def apply_gather_intelligence_action(
         owner = replace(
             owner,
             spies_supply=owner.spies_supply + 1,
+            spies_recalled_turn=owner.spies_recalled_turn + 1,
             spy_post_ids=tuple(
                 candidate for candidate in owner.spy_post_ids if candidate != post_id
             ),

@@ -16,6 +16,7 @@ and the ones still unavailable at the end simply never happen.
 from dataclasses import replace
 
 from dune_imperium.content.bloodlines.sardaukar import skill_for_instance
+from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
 from dune_imperium.content.uprising.personal_cards import (
     PersonalCardDefinition,
@@ -56,6 +57,7 @@ from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
 from dune_imperium.rules.intrigue_triggers import expire_reveal_faceup_intrigue
 from dune_imperium.rules.planetologist import replace_sandworms, replaces_sandworms
 from dune_imperium.rules.shield_wall import current_conflict_is_shield_wall_protected
+from dune_imperium.rules.spy_moves import spy_placement_frame
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
     is_spying_on_maker_space,
@@ -1520,6 +1522,35 @@ def _reveal_frame_context(
 COMMAND_PERSUASION = 6
 """Persuasion a Reveal turn must generate for "Command (6+)" [Bloodlines p. 5]."""
 
+# Tech tiles with a "Reveal Turn: Command (6+)" line, and the Reveal-frame
+# key recording which have paid this Reveal.
+_COMMAND_TECH = (
+    ("delivery_bay", TechAbility.COMMAND_TWO_SOLARI),
+    ("training_depot", TechAbility.COMMAND_TWO_STRENGTH),
+)
+_TECH_GRANTED_KEY = "tech_granted"
+
+
+def forbidden_weapons_frame(player: int, *, source: str) -> DecisionFrame:
+    """Return Forbidden Weapons' mandatory Reveal-turn choice frame."""
+
+    return DecisionFrame(
+        kind=FrameKind.TECH_CHOICE,
+        frame_id=f"{source}:forbidden_weapons",
+        decision=PlayerDecision(
+            owner=player,
+            prompt=(
+                "Forbidden Weapons: three swords and lose one Influence, or lose "
+                "all your spice and trash the tile"
+            ),
+        ),
+        context=(
+            ("player", player),
+            ("source", source),
+            ("tech_id", "forbidden_weapons"),
+        ),
+    )
+
 
 def _reveal_effect_is_eligible(
     owner: PlayerState,
@@ -1839,7 +1870,56 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
                     f"{source}:{index}:late", player, effect.recruit_troops, recruited
                 )
             )
-    if not newly_granted:
+    # Tech tiles whose Command (6+) line opens late pay the same way.
+    late_persuasion = _frame_persuasion(frames)
+    reveal_context = frame_context(frames[_reveal_frame_position(frames)])
+    tech_granted = tuple(
+        key
+        for key in str(reveal_context.get(_TECH_GRANTED_KEY, "")).split(",")
+        if key
+    )
+    late_tech = tuple(
+        tech_id
+        for tech_id, ability in _COMMAND_TECH
+        if late_persuasion is not None
+        and late_persuasion >= COMMAND_PERSUASION
+        and tech_id not in tech_granted
+        and has_tech(next_owner.tech_ids, ability)
+    )
+    for tech_id in late_tech:
+        solari = 2 if tech_id == "delivery_bay" else 0
+        sword = 2 if tech_id == "training_depot" else 0
+        if sword:
+            frames = _add_reveal_sword(frames, sword, counts_toward_combat=units > 0)
+        next_owner = replace(
+            next_owner,
+            resources=replace(
+                next_owner.resources, solari=next_owner.resources.solari + solari
+            ),
+            combat_strength=next_owner.combat_strength + (sword if units else 0),
+        )
+        events.append(
+            GameEvent(
+                event_id=f"round:{state.round_number}:player:{player}:tech:{tech_id}:late",
+                kind="tech_reveal_bonus",
+                payload=(
+                    ("player", player),
+                    ("solari", solari),
+                    ("strength", sword),
+                    ("tech_id", tech_id),
+                ),
+            )
+        )
+    if late_tech:
+        position = _reveal_frame_position(frames)
+        reveal_context = frame_context(frames[position])
+        reveal_context[_TECH_GRANTED_KEY] = ",".join((*tech_granted, *late_tech))
+        frames = (
+            *frames[:position],
+            with_context(frames[position], reveal_context),
+            *frames[position + 1 :],
+        )
+    if not newly_granted and not late_tech:
         return result
     frames = _record_granted_effects(frames, newly_granted)
     working = replace(
@@ -2671,6 +2751,14 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
             )
         )
 
+    # Sardaukar Commander Skills pay their Reveal-turn bonus once while a
+    # Commander is in the Conflict [Bloodlines p. 4] [Skill tile faces].
+    active_skills = (
+        tuple(skill_for_instance(instance_id) for instance_id in owner.skill_ids)
+        if owner.commanders_conflict > 0
+        else ()
+    )
+
     def total_persuasion(
         effects: tuple[tuple[str, PersonalCardRevealEffect], ...],
     ) -> int:
@@ -2682,6 +2770,15 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
             total += 2
         if "assembly_hall" in owner.agent_locations:
             total += 1
+        # Persuasion generated in this Reveal turn from outside the cards
+        # counts toward "Command (6+)" too [Bloodlines p. 5]: Charismatic,
+        # Navigation card 3 from slot 4 ("during each of your Reveal turns,
+        # 1 Persuasion") and Self-Destroying Messages ("Reveal Turn: 1
+        # Persuasion").
+        total += sum(skill.reveal_persuasion for skill in active_skills)
+        total += owner.reveal_persuasion_bonus
+        if has_tech(owner.tech_ids, TechAbility.REVEAL_PERSUASION):
+            total += 1
         return total
 
     # "Command (6+)" effects open on the Persuasion the other effects
@@ -2689,17 +2786,15 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
     persuasion = total_persuasion(eligible_effects(None))
     reveal_effects = eligible_effects(persuasion)
     persuasion = total_persuasion(reveal_effects)
-    # Sardaukar Commander Skills pay their Reveal-turn bonus once while a
-    # Commander is in the Conflict [Bloodlines p. 4] [Skill tile faces].
-    active_skills = (
-        tuple(skill_for_instance(instance_id) for instance_id in owner.skill_ids)
-        if owner.commanders_conflict > 0
-        else ()
+    # Tech tiles with "Reveal Turn: Command (6+)" lines pay once the total
+    # is known; a later Command opening pays them late [Bloodlines p. 5].
+    tech_granted = tuple(
+        tech_id
+        for tech_id, ability in _COMMAND_TECH
+        if persuasion >= COMMAND_PERSUASION and has_tech(owner.tech_ids, ability)
     )
-    persuasion += sum(skill.reveal_persuasion for skill in active_skills)
-    # Navigation card 3 from slot 4: "during each of your Reveal turns, 1
-    # Persuasion" for the rest of the game [Navigation card].
-    persuasion += owner.reveal_persuasion_bonus
+    tech_solari = 2 if "delivery_bay" in tech_granted else 0
+    tech_sword = 2 if "training_depot" in tech_granted else 0
 
     card_strengths = tuple(
         (
@@ -2713,14 +2808,18 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         )
         for card_id, card in zip(revealed, cards, strict=True)
     )
-    sword_strength = sum(strength for _, strength in card_strengths) + sum(
-        effect.strength_per_other_sword_card
-        * sum(
-            strength > 0
-            for card_id, strength in card_strengths
-            if card_id != effect_card_id
+    sword_strength = (
+        sum(strength for _, strength in card_strengths)
+        + sum(
+            effect.strength_per_other_sword_card
+            * sum(
+                strength > 0
+                for card_id, strength in card_strengths
+                if card_id != effect_card_id
+            )
+            for effect_card_id, effect in reveal_effects
         )
-        for effect_card_id, effect in reveal_effects
+        + tech_sword
     )
     # One formula for the units' share (the engine keeps combat_strength
     # equal to it after every step before the Reveal); the Reveal adds the
@@ -2737,7 +2836,8 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         resources=replace(
             owner.resources,
             solari=owner.resources.solari
-            + sum(effect.solari for _, effect in reveal_effects),
+            + sum(effect.solari for _, effect in reveal_effects)
+            + tech_solari,
             spice=owner.resources.spice
             + sum(effect.spice for _, effect in reveal_effects)
             + sum(skill.reveal_spice for skill in active_skills),
@@ -2746,7 +2846,12 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
             + sum(skill.reveal_water for skill in active_skills),
         ),
     )
-    reveal_troops_requested = sum(effect.recruit_troops for _, effect in reveal_effects)
+    # Panopticon: "Reveal Turn: a Spy and a troop" [Panopticon Tech tile];
+    # the Spy placement opens below.
+    panopticon = has_tech(owner.tech_ids, TechAbility.PANOPTICON)
+    reveal_troops_requested = sum(
+        effect.recruit_troops for _, effect in reveal_effects
+    ) + int(panopticon)
     next_owner, reveal_troops_recruited = recruit_troops(
         next_owner,
         reveal_troops_requested,
@@ -2786,6 +2891,7 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         ("revealed_card_count", len(revealed)),
         ("strength", strength),
         ("sword_strength", sword_strength),
+        (_TECH_GRANTED_KEY, ",".join(tech_granted)),
         ("turn_owner", action.actor),
     ]
     context.extend(
@@ -2826,6 +2932,11 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
     reveal_context = frame_context(reveal_frame)
     reveal_context[_DEFERRED_CHOICES_KEY] = _encode_deferred(tuple(deferred))
     reveal_frame = with_context(reveal_frame, reveal_context)
+    reveal_id = f"round:{state.round_number}:player:{action.actor}:reveal"
+    tech_frames: list[DecisionFrame] = []
+    if has_tech(owner.tech_ids, TechAbility.FORBIDDEN_WEAPONS):
+        # "Reveal Turn: You must choose" [Forbidden Weapons Tech tile].
+        tech_frames.append(forbidden_weapons_frame(action.actor, source=reveal_id))
     next_state = replace(
         state,
         players=players,
@@ -2833,8 +2944,16 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
             *state.decision_stack[:-1],
             reveal_frame,
             *reversed(choice_frames),
+            *tech_frames,
         ),
     )
+    if panopticon and (next_owner.spies_supply > 0 or next_owner.spy_post_ids):
+        next_state = spy_placement_frame(
+            next_state,
+            action.actor,
+            tuple(post.post_id for post in OBSERVATION_POSTS),
+            source=f"{reveal_id}:panopticon",
+        )
     event = GameEvent(
         event_id=f"round:{state.round_number}:player:{action.actor}:reveal",
         kind="reveal_started",
@@ -2859,6 +2978,19 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
             # Holy War's Fremen Bond: this Reveal may deploy as though at a
             # Combat space [Bloodlines p. 5].
             next_state = grant_combat_icon(next_state, action.actor)
+    events.extend(
+        GameEvent(
+            event_id=f"{event.event_id}:tech:{tech_id}",
+            kind="tech_reveal_bonus",
+            payload=(
+                ("player", action.actor),
+                ("solari", 2 if tech_id == "delivery_bay" else 0),
+                ("strength", 2 if tech_id == "training_depot" else 0),
+                ("tech_id", tech_id),
+            ),
+        )
+        for tech_id in tech_granted
+    )
     events.extend(
         GameEvent(
             event_id=f"{event.event_id}:skill:{skill.skill_id}",

@@ -22,17 +22,20 @@ from dataclasses import replace
 from dune_imperium.content.bloodlines.tech import (
     HIGH_COUNCIL_TECH_DISCOUNT,
     TECH_TILES_BY_ID,
+    TechAbility,
     TechTile,
+    has_tech,
 )
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
 from dune_imperium.core.actions import ActionValue, DomainAction
-from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
+from dune_imperium.core.decisions import ChanceDecision, DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
-from dune_imperium.core.state import GameState
+from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.card_trash import with_recruited_units
+from dune_imperium.rules.combat_deployment import grant_combat_icon
 from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effects import (
     BOARD_ICON_TECH,
@@ -49,13 +52,25 @@ from dune_imperium.rules.frames import (
     context_str,
     owned_top_frame,
     replace_player,
+    reveal_is_open_for,
 )
-from dune_imperium.rules.influence import gain_faction_influence
+from dune_imperium.rules.influence import (
+    alliance_recipients_after_influence_loss,
+    gain_faction_influence,
+    influence_amount,
+    lose_faction_influence,
+)
 from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
+from dune_imperium.rules.leader_abilities import units_deployment_blocked
 from dune_imperium.rules.optional_trash import optional_trash_frame
 from dune_imperium.rules.ornithopter import (
     has_ornithopter_fleet,
     match_all_battle_icons,
+)
+from dune_imperium.rules.reveal_turn import (
+    add_reveal_optional_sword_strength,
+    add_reveal_strength,
+    add_units_to_reveal,
 )
 from dune_imperium.rules.shield_wall import destroy_shield_wall
 from dune_imperium.rules.spy_moves import spy_placement_frame
@@ -459,3 +474,362 @@ def apply_tech_acquisition(state: GameState, action: DomainAction) -> RuleResult
         working = drawn.state
         events.extend(drawn.events)
     return RuleResult(state=working, events=tuple(events))
+
+
+# --- abilities ----------------------------------------------------------------
+
+PLASTEEL_BLADES_CARD_ID = "tech:plasteel_blades"
+_TURN_FRAME_KINDS = (FrameKind.TURN, FrameKind.AGENT_EFFECTS, FrameKind.REVEAL)
+
+
+def _owned_turn_frame(state: GameState, player: int) -> DecisionFrame | None:
+    """Return the top frame if it is one of the owner's turn frames."""
+
+    if state.phase is not GamePhase.PLAYER_TURNS or not state.decision_stack:
+        return None
+    frame = state.decision_stack[-1]
+    if (
+        frame.kind not in _TURN_FRAME_KINDS
+        or not isinstance(frame.decision, PlayerDecision)
+        or frame.decision.owner != player
+    ):
+        return None
+    return frame
+
+
+def legal_tech_flip_actions(state: GameState, player: int) -> tuple[DomainAction, ...]:
+    """Offer the owner's unflipped Flip tiles during one of their turns.
+
+    "An ability with this icon is used during one of your turns, and can be
+    used only once per round" [Bloodlines p. 7]. Rapid Dropships prints
+    "Agent Turn", so its Combat icon is offered after the Agent placement
+    only; the other two flip from the turn, Agent-effect or Reveal frame.
+    """
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    if not state.config.tech_module:
+        return ()
+    frame = _owned_turn_frame(state, player)
+    if frame is None:
+        return ()
+    owner = state.players[player]
+    actions: list[DomainAction] = []
+    for tech_id in owner.tech_ids:
+        tile = TECH_TILES_BY_ID[tech_id]
+        if not tile.flips or tech_id in owner.tech_flipped:
+            continue
+        if tile.ability is TechAbility.FLIP_COMBAT_ICON and (
+            frame.kind != FrameKind.AGENT_EFFECTS
+            or not state.current_conflict_ids
+            or units_deployment_blocked(state, player)
+        ):
+            continue
+        actions.append(
+            DomainAction(
+                action_id="flip_tech", actor=player, arguments=(("tech_id", tech_id),)
+            )
+        )
+    return tuple(actions)
+
+
+def apply_tech_flip(state: GameState, action: DomainAction) -> RuleResult:
+    """Flip the tile face down and resolve its printed ability."""
+
+    if action not in legal_tech_flip_actions(state, action.actor):
+        raise ValueError("action is not a legal Tech flip")
+    player = action.actor
+    tech_id = str(dict(action.arguments)["tech_id"])
+    tile = TECH_TILES_BY_ID[tech_id]
+    owner = state.players[player]
+    source = f"round:{state.round_number}:player:{player}:tech:{tech_id}:flip"
+    flipped = replace(owner, tech_flipped=(*owner.tech_flipped, tech_id))
+    events: list[GameEvent] = [
+        GameEvent(
+            event_id=source,
+            kind="tech_flipped",
+            payload=(("player", player), ("tech_id", tech_id)),
+        )
+    ]
+    working = replace(state, players=replace_player(state.players, flipped))
+    if tile.ability is TechAbility.FLIP_DRAW_INTRIGUE:
+        drawn = draw_or_queue_intrigue_cards(working, player, 1, source=source)
+        working = drawn.state
+        events.extend(drawn.events)
+    elif tile.ability is TechAbility.FLIP_COMBAT_ICON:
+        working = grant_combat_icon(working, player)
+    elif tile.ability is TechAbility.FLIP_SOLARI_AND_TRASH:
+        seat = working.players[player]
+        seat = replace(
+            seat, resources=replace(seat.resources, solari=seat.resources.solari + 1)
+        )
+        working = replace(working, players=replace_player(working.players, seat))
+        if seat.spies_recalled_turn > 0:
+            # "If you recalled a Spy this turn: trash a card" (the trash icon
+            # is optional, like every printed trash).
+            working = working.push_decision(optional_trash_frame(player, source))
+    return RuleResult(state=working, events=tuple(events))
+
+
+def legal_tech_choice_actions(
+    state: GameState, player: int
+) -> tuple[DomainAction, ...]:
+    """Offer Forbidden Weapons' two options [Forbidden Weapons Tech tile].
+
+    The strength option "must lose one Influence with a Faction where you
+    have at least one Influence (if possible)" [Bloodlines p. 12]: one
+    action per such Faction (with the Alliance recipient when the loss
+    hands a token to one of several opponents), or a bare action when the
+    owner has no Influence at all.
+    """
+
+    frame = owned_top_frame(state, FrameKind.TECH_CHOICE, player)
+    if frame is None:
+        return ()
+    owner = state.players[player]
+    actions: list[DomainAction] = []
+    for faction in Faction:
+        if influence_amount(owner.influence, faction) == 0:
+            continue
+        recipients = alliance_recipients_after_influence_loss(state, player, faction)
+        recipient_options: tuple[int | None, ...] = (
+            tuple(recipients) if len(recipients) > 1 else (None,)
+        )
+        for recipient in recipient_options:
+            arguments: tuple[tuple[str, ActionValue], ...] = (
+                ("faction", faction.value),
+            )
+            if recipient is not None:
+                arguments = (("alliance_recipient", recipient), *arguments)
+            actions.append(
+                DomainAction(
+                    action_id="choose_tech_strength", actor=player, arguments=arguments
+                )
+            )
+    if not actions:
+        actions.append(DomainAction(action_id="choose_tech_strength", actor=player))
+    actions.append(DomainAction(action_id="choose_tech_trash", actor=player))
+    return tuple(actions)
+
+
+def apply_tech_choice(state: GameState, action: DomainAction) -> RuleResult:
+    """Resolve Forbidden Weapons: swords and an Influence loss, or spice and trash."""
+
+    if action not in legal_tech_choice_actions(state, action.actor):
+        raise ValueError("action is not a legal Forbidden Weapons choice")
+    player = action.actor
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    source = context_str(context, "source", owner="Tech choice frame")
+    tech_id = context_str(context, "tech_id", owner="Tech choice frame")
+    owner = state.players[player]
+    popped = state.pop_decision()
+    if action.action_id == "choose_tech_trash":
+        trashed = replace(
+            owner,
+            resources=replace(owner.resources, spice=0),
+            tech_ids=tuple(held for held in owner.tech_ids if held != tech_id),
+            tech_flipped=tuple(held for held in owner.tech_flipped if held != tech_id),
+        )
+        return RuleResult(
+            state=replace(
+                popped,
+                players=replace_player(popped.players, trashed),
+                tech_trash=(*popped.tech_trash, tech_id),
+            ),
+            events=(
+                GameEvent(
+                    event_id=f"{source}:trashed",
+                    kind="tech_trashed",
+                    payload=(
+                        ("player", player),
+                        ("spice", owner.resources.spice),
+                        ("tech_id", tech_id),
+                    ),
+                ),
+            ),
+        )
+    swords = 3
+    units = owner.units_in_conflict
+    frames = add_reveal_optional_sword_strength(popped.decision_stack, swords)
+    next_owner = owner
+    if units > 0:
+        # The swords count at once with a unit in the Conflict [Main p. 12].
+        frames = add_reveal_strength(frames, swords)
+        next_owner = replace(owner, combat_strength=owner.combat_strength + swords)
+    working = replace(
+        popped,
+        players=replace_player(popped.players, next_owner),
+        decision_stack=frames,
+    )
+    events: list[GameEvent] = [
+        GameEvent(
+            event_id=f"{source}:strength",
+            kind="reveal_strength_gained",
+            payload=(("amount", swords), ("player", player)),
+        )
+    ]
+    arguments = dict(action.arguments)
+    faction_value = arguments.get("faction")
+    if isinstance(faction_value, str):
+        recipient = arguments.get("alliance_recipient")
+        assert recipient is None or isinstance(recipient, int)
+        lost = lose_faction_influence(
+            working,
+            player,
+            Faction(faction_value),
+            1,
+            event_prefix=f"{source}:lost:{faction_value}",
+            alliance_recipient=recipient,
+        )
+        working = lost.state
+        events.extend(lost.events)
+    return RuleResult(state=working, events=tuple(events))
+
+
+def deploy_suspensor_troops(result: RuleResult) -> RuleResult:
+    """Suspensor Suits: a troop into the Conflict per Intrigue card gained.
+
+    "For each Intrigue card you draw or steal during your turn: troop,
+    deploy it to the Conflict" [Suspensor Suits Tech tile]. The draw paths
+    record the cards gained by the turn owner in ``suspensor_owed``; this
+    hook pays them out after the transition, from the supply, into the
+    Conflict (through the Reveal bookkeeping when the Reveal is open), and
+    drops what the supply or a blocked deployment cannot honour (OQ-030).
+    """
+
+    state = result.state
+    if not any(seat.suspensor_owed for seat in state.players):
+        return result
+    events = list(result.events)
+    for seat in state.players:
+        if seat.suspensor_owed <= 0:
+            continue
+        owed = seat.suspensor_owed
+        player = seat.player_id
+        cleared = replace(seat, suspensor_owed=0)
+        state = replace(state, players=replace_player(state.players, cleared))
+        source = f"round:{state.round_number}:player:{player}:suspensor_suits"
+        count = min(owed, cleared.troops_supply)
+        if (
+            count == 0
+            or not state.current_conflict_ids
+            or units_deployment_blocked(state, player)
+        ):
+            events.append(
+                GameEvent(
+                    event_id=f"{source}:unavailable",
+                    kind="suspensor_deployment_unavailable",
+                    payload=(("player", player), ("troops", owed)),
+                )
+            )
+            continue
+        if reveal_is_open_for(state, player):
+            staged = replace(
+                cleared,
+                troops_supply=cleared.troops_supply - count,
+                troops_garrison=cleared.troops_garrison + count,
+            )
+            state = replace(state, players=replace_player(state.players, staged))
+            deployed = add_units_to_reveal(state, player, troops=count)
+            state = deployed.state
+            events.extend(deployed.events)
+        else:
+            deployed_seat = replace(
+                cleared,
+                troops_supply=cleared.troops_supply - count,
+                troops_conflict=cleared.troops_conflict + count,
+                units_deployed_turn=cleared.units_deployed_turn + count,
+            )
+            state = replace(state, players=replace_player(state.players, deployed_seat))
+        events.append(
+            GameEvent(
+                event_id=f"{source}:deployed",
+                kind="troops_deployed",
+                payload=(("count", count), ("player", player), ("source", "tech")),
+            )
+        )
+    return RuleResult(state=state, events=tuple(events))
+
+
+def apply_endgame_tech_effects(state: GameState) -> RuleResult:
+    """Pay the Endgame lines of CHOAM Transports and Panopticon.
+
+    "Endgame: worth 1 VP if you have completed four or more contracts"
+    [CHOAM Transports Tech tile]; "Endgame: gain 1 Influence with each
+    Faction where you have 1 or less Influence" [Panopticon Tech tile].
+    Resolved as the Endgame opens, before the Endgame Intrigue window
+    (project convention, OQ-040).
+    """
+
+    events: list[GameEvent] = []
+    for seat in state.players:
+        player = seat.player_id
+        source = f"round:{state.round_number}:player:{player}:endgame_tech"
+        if (
+            has_tech(seat.tech_ids, TechAbility.CONTRACT_COMPLETION_DRAW)
+            and len(seat.completed_contract_ids) >= 4
+        ):
+            scored = replace(seat, victory_points=seat.victory_points + 1)
+            state = replace(state, players=replace_player(state.players, scored))
+            events.append(
+                GameEvent(
+                    event_id=f"{source}:choam_transports",
+                    kind="victory_points_gained",
+                    payload=(("amount", 1), ("player", player), ("source", "tech")),
+                )
+            )
+        if has_tech(seat.tech_ids, TechAbility.PANOPTICON):
+            for faction in Faction:
+                if influence_amount(state.players[player].influence, faction) > 1:
+                    continue
+                gained = gain_faction_influence(
+                    state,
+                    player,
+                    faction,
+                    1,
+                    event_prefix=f"{source}:panopticon:{faction.value}",
+                )
+                state = gained.state
+                events.extend(gained.events)
+    return RuleResult(state=state, events=tuple(events))
+
+
+def draw_owed_tech_cards(result: RuleResult) -> RuleResult:
+    """Draw the cards CHOAM Transports and Planetary Array owe after a step.
+
+    Both tiles pay inside another effect's resolution (a contract
+    completion, the Combat cleanup), where a discard reshuffle could not be
+    pushed safely; the owing seat records the count and this hook draws
+    once the transition has settled. A pending chance frame defers it to
+    the next transition, like Hungry for Spice.
+    """
+
+    state = result.state
+    if not any(seat.tech_cards_owed for seat in state.players):
+        return result
+    if state.decision_stack and isinstance(
+        state.decision_stack[-1].decision, ChanceDecision
+    ):
+        return result
+    events = list(result.events)
+    for seat in state.players:
+        if seat.tech_cards_owed <= 0:
+            continue
+        owed = seat.tech_cards_owed
+        cleared = replace(seat, tech_cards_owed=0)
+        state = replace(state, players=replace_player(state.players, cleared))
+        drawn = draw_or_request_personal_cards(
+            state,
+            seat.player_id,
+            owed,
+            source=f"round:{state.round_number}:player:{seat.player_id}:tech_draw",
+        )
+        state = drawn.state
+        events.extend(drawn.events)
+        if state.decision_stack and isinstance(
+            state.decision_stack[-1].decision, ChanceDecision
+        ):
+            # One reshuffle at a time; the next seat waits for the next step.
+            break
+    return RuleResult(state=state, events=tuple(events))

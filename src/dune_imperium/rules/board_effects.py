@@ -12,6 +12,7 @@ dedicated actions further down this module.
 from dataclasses import replace
 from typing import Final, assert_never
 
+from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
 from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID, Faction
 from dune_imperium.content.uprising.types import AgentIcon
 from dune_imperium.core.actions import ActionValue, DomainAction
@@ -358,7 +359,16 @@ def _secrets_victims(state: GameState, thief: int) -> tuple[int, ...]:
     return tuple(
         seat
         for seat in ((thief + offset) % players for offset in range(1, players))
-        if len(state.players[seat].intrigue_cards) >= 4
+        if len(state.players[seat].intrigue_cards)
+        >= (
+            # Gene-Locked Vault: "can't be stolen unless you have five or
+            # more" [Gene-Locked Vault Tech tile].
+            5
+            if has_tech(
+                state.players[seat].tech_ids, TechAbility.INTRIGUE_STEAL_PROTECTION
+            )
+            else 4
+        )
     )
 
 
@@ -412,6 +422,10 @@ def apply_secrets_steal(state: GameState, outcome: ChanceOutcome) -> RuleResult:
     next_thief = replace(
         thief_state, intrigue_cards=(*thief_state.intrigue_cards, card_id)
     )
+    if has_tech(thief_state.tech_ids, TechAbility.INTRIGUE_DRAW_TROOP):
+        # Suspensor Suits counts a stolen card like a drawn one; Secrets is
+        # always the thief's own turn.
+        next_thief = replace(next_thief, suspensor_owed=next_thief.suspensor_owed + 1)
     players = tuple(
         next_victim
         if candidate.player_id == victim

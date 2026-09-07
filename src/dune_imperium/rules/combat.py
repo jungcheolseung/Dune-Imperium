@@ -3,6 +3,7 @@
 from dataclasses import dataclass, replace
 from enum import IntEnum
 
+from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID, ConflictReward
 from dune_imperium.content.uprising.objectives import OBJECTIVES_BY_ID
@@ -16,11 +17,20 @@ from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.contracts import contract_choice_frame
 from dune_imperium.rules.effects import recruit_shortfall_events, recruit_troops
-from dune_imperium.rules.frames import FrameKind, context_int, frame_context_int
+from dune_imperium.rules.frames import (
+    FrameKind,
+    context_int,
+    frame_context_int,
+    replace_player,
+)
 from dune_imperium.rules.influence import (
     MAX_INFLUENCE,
     gain_faction_influence,
     influence_amount,
+)
+from dune_imperium.rules.ornithopter import (
+    has_ornithopter_fleet,
+    match_all_battle_icons,
 )
 
 
@@ -911,9 +921,11 @@ def finish_combat(state: GameState) -> RuleResult:
     players = state.players
     current_conflict_ids = state.current_conflict_ids
     events: list[GameEvent] = []
+    match_events: tuple[GameEvent, ...] = ()
     if ranking.winner is not None:
         winner = players[ranking.winner]
-        matched_card_id = _matching_battle_card(winner, conflict_id)
+        fleet = has_ornithopter_fleet(winner)
+        matched_card_id = None if fleet else _matching_battle_card(winner, conflict_id)
         face_down = winner.face_down_battle_card_ids
         victory_points = winner.victory_points
         if matched_card_id is not None:
@@ -925,6 +937,12 @@ def finish_combat(state: GameState) -> RuleResult:
             won_conflict_ids=(*winner.won_conflict_ids, conflict_id),
             face_down_battle_card_ids=face_down,
         )
+        if fleet:
+            # Ornithopter Fleet: every icon is an Ornithopter, so the new
+            # card pairs with any face-up one [Bloodlines p. 12].
+            winner, match_events = match_all_battle_icons(
+                winner, source=f"round:{state.round_number}:conflict_won"
+            )
         players = tuple(
             winner if player.player_id == ranking.winner else player
             for player in players
@@ -952,6 +970,7 @@ def finish_combat(state: GameState) -> RuleResult:
                     ),
                 )
             )
+        events.extend(match_events)
 
     # Troops and Sardaukar Commanders return to the supply, sandworms to
     # the bank, every marker to 0 [Main p. 14] [Bloodlines p. 4].
@@ -984,6 +1003,20 @@ def finish_combat(state: GameState) -> RuleResult:
             kind="combat_cleaned_up",
         )
     )
+    if ranking.winner is not None and has_tech(
+        next_state.players[ranking.winner].tech_ids, TechAbility.CONFLICT_WIN_DRAW
+    ):
+        # Planetary Array: "When you win a Conflict: draw a card" — a sole
+        # winner only [FAQ p. 4] [Planetary Array Tech tile]; owed to the
+        # engine's post-step draw.
+        seat = next_state.players[ranking.winner]
+        next_state = replace(
+            next_state,
+            players=replace_player(
+                next_state.players,
+                replace(seat, tech_cards_owed=seat.tech_cards_owed + 1),
+            ),
+        )
     return RuleResult(state=next_state, events=tuple(events))
 
 
@@ -1016,10 +1049,20 @@ def face_up_battle_icons(player: PlayerState) -> frozenset[BattleIcon]:
     Immediate matching flips every same-icon pair on arrival [Main p. 14],
     so at most one face-up card per printed icon exists and the set of
     icons is the whole information. A face-up wild card (Propaganda)
-    reports ``BattleIcon.WILD``, never one of the three printed icons.
+    reports ``BattleIcon.WILD``, never one of the three printed icons. With
+    Ornithopter Fleet every icon is an Ornithopter [Bloodlines p. 12].
     """
 
     face_down = set(player.face_down_battle_card_ids)
+    if has_ornithopter_fleet(player):
+        return (
+            frozenset({BattleIcon.ORNITHOPTER})
+            if any(
+                card_id not in face_down
+                for card_id in (*player.objective_ids, *player.won_conflict_ids)
+            )
+            else frozenset()
+        )
     return frozenset(
         _battle_icon_for(card_id)
         for card_id in (*player.objective_ids, *player.won_conflict_ids)

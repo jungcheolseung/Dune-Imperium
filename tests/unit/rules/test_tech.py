@@ -35,6 +35,7 @@ from dune_imperium.core import (
     Resources,
     observe_state,
 )
+from dune_imperium.core.engine import RuleResult
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 from dune_imperium.rules.board_effects import (
     legal_board_effect_actions,
@@ -535,3 +536,480 @@ def test_has_tech_helper_reads_abilities() -> None:
     assert has_tech(("glowglobes",), TechAbility.PEEK_TOP_CARD)
     assert not has_tech(("glowglobes",), TechAbility.SPACE_DISCOUNT)
     assert Influence().fremen == 0
+
+
+# --- abilities (slice 6b) -------------------------------------------------------
+
+
+def _tech_owner(*tech_ids: str, **overrides: object) -> PlayerState:
+    return _owner(tech_ids=tech_ids, **overrides)
+
+
+def _reveal(state: GameState) -> RuleResult:
+    from dune_imperium.rules.reveal_turn import begin_reveal_turn
+
+    return begin_reveal_turn(state, DomainAction(action_id="reveal_turn", actor=0))
+
+
+def test_navigation_chamber_offers_a_spice_or_solari_discount_on_placements() -> None:
+    owner = _tech_owner(
+        "navigation_chamber",
+        hand=starting_deck_instance_ids(0),
+        deck=(),
+        resources=Resources(solari=1, spice=0, water=1),
+    )
+    state = _turn_state(owner)
+    high_council = [
+        action
+        for action in legal_agent_actions(state, 0)
+        if dict(action.arguments)["space_id"] == "high_council"
+    ]
+    # Five Solari are out of reach; four with the discount are not.
+    assert high_council == []
+    richer = replace(
+        state,
+        players=(
+            replace(owner, resources=Resources(solari=4, water=1)),
+            *state.players[1:],
+        ),
+    )
+    discounted = [
+        action
+        for action in legal_agent_actions(richer, 0)
+        if dict(action.arguments)["space_id"] == "high_council"
+    ]
+    assert {dict(a.arguments).get("discount") for a in discounted} == {"solari"}
+    placed = apply_agent_action(richer, discounted[0]).state
+    assert placed.players[0].resources.solari == 0
+    assert placed.players[0].agent_locations == ("high_council",)
+
+
+def test_servo_receivers_give_the_signet_ring_the_faction_icons() -> None:
+    signet = "player:0:starter:signet_ring:0"
+    owner = _tech_owner("servo_receivers", hand=(signet,), deck=())
+    state = _turn_state(owner, stacks=((), (), ()))
+    spaces = {
+        str(dict(action.arguments)["space_id"])
+        for action in legal_agent_actions(state, 0)
+    }
+    faction_spaces = {"sardaukar", "heighliner", "espionage", "desert_tactics"}
+    assert faction_spaces <= spaces
+    without = replace(state, players=(replace(owner, tech_ids=()), *state.players[1:]))
+    plain = {
+        str(dict(action.arguments)["space_id"])
+        for action in legal_agent_actions(without, 0)
+    }
+    # The printed Signet Ring reaches no Faction space on its own.
+    assert not (faction_spaces & plain)
+
+
+def test_sardaukar_high_command_takes_one_solari_off_every_commander() -> None:
+    from dune_imperium.rules.sardaukar import commander_cost
+
+    assert commander_cost(_tech_owner("sardaukar_high_command")) == 1
+    assert (
+        commander_cost(_tech_owner("sardaukar_high_command", commander_discount_turn=1))
+        == 0
+    )
+    assert commander_cost(_owner()) == 2
+
+
+def test_plasteel_blades_offers_an_extra_skill_after_a_commander_recruit() -> None:
+    from dune_imperium.content.bloodlines.sardaukar import skill_tile_instance_ids
+    from dune_imperium.rules.sardaukar import (
+        apply_commander_recruit,
+        apply_skill_choice,
+        begin_skill_choice,
+        legal_skill_choice_actions,
+    )
+
+    skills = skill_tile_instance_ids()
+    owner = _tech_owner(
+        "plasteel_blades", commanders_supply=1, resources=Resources(solari=2)
+    )
+    state = replace(
+        _turn_state(owner, stacks=((), (), ())),
+        skill_face_up=skills[:4],
+        skill_stack=skills[4:],
+        sardaukar_commanders_bank=1,
+    )
+    state = _visit(state, "assembly_hall")
+    recruited = apply_commander_recruit(
+        state, DomainAction(action_id="recruit_sardaukar_commander", actor=0)
+    ).state
+    assert recruited.pending_skill_choices[0][1] == "tech:plasteel_blades"
+    opened = begin_skill_choice(recruited).state
+    assert opened.decision_stack[-1].kind == "skill_choice"
+    actions = legal_skill_choice_actions(opened, 0)
+    assert actions[0].action_id == "decline_skill"
+    kept = apply_skill_choice(opened, actions[0]).state
+    assert kept.players[0].tech_ids == ("plasteel_blades",)
+    taken = apply_skill_choice(opened, actions[1]).state
+    seat = taken.players[0]
+    assert seat.tech_ids == ()
+    assert taken.tech_trash == ("plasteel_blades",)
+    assert len(seat.skill_ids) == 1
+    assert seat.commanders_garrison == 1  # no second Commander
+
+
+def test_gene_locked_vault_raises_the_secrets_threshold_to_five() -> None:
+    from dune_imperium.rules.board_effects import _secrets_victims
+
+    victim = replace(
+        PlayerState(player_id=1),
+        intrigue_cards=tuple(f"intrigue:test:{i}" for i in range(4)),
+        tech_ids=("gene_locked_vault",),
+    )
+    state = _turn_state(_owner(), stacks=((), (), ()))
+    state = replace(state, players=(state.players[0], victim, *state.players[2:]))
+    assert _secrets_victims(state, 0) == ()
+    five = replace(victim, intrigue_cards=(*victim.intrigue_cards, "intrigue:test:4"))
+    assert _secrets_victims(
+        replace(state, players=(state.players[0], five, *state.players[2:])), 0
+    ) == (1,)
+
+
+def test_glowglobes_shows_only_the_owner_the_top_card() -> None:
+    owner = _tech_owner("glowglobes")
+    state = _turn_state(owner, stacks=((), (), ()))
+    mine = observe_state(state, 0).private
+    theirs = observe_state(state, 1).private
+    assert mine is not None and theirs is not None
+    assert mine.peeked_card_id == owner.deck[0]
+    assert theirs.peeked_card_id == ""
+    check_observation_privacy(state)
+
+
+def test_ornithopter_fleet_matches_a_won_conflict_with_any_face_up_card() -> None:
+    from dune_imperium.rules.combat import finish_combat
+
+    owner = _tech_owner(
+        "ornithopter_fleet",
+        objective_ids=("propaganda",),
+        troops_supply=11,
+        troops_garrison=0,
+        troops_conflict=1,
+        combat_strength=2,
+        has_revealed=True,
+        hand=(),
+        deck=(),
+    )
+    state = replace(
+        _turn_state(owner, stacks=((), (), ())),
+        phase=GamePhase.COMBAT,
+        first_player=0,
+        current_conflict_ids=("skirmish_wild",),
+        combat_intrigue_complete=True,
+        combat_rewards_resolved=True,
+        decision_stack=(),
+        players=(
+            owner,
+            *(
+                replace(seat, has_revealed=True)
+                for seat in _turn_state(owner).players[1:]
+            ),
+        ),
+    )
+    winner = finish_combat(state).state.players[0]
+    assert winner.face_down_battle_card_ids == ("propaganda", "skirmish_wild")
+    assert winner.victory_points == 2
+
+
+def test_ornithopter_fleet_blocks_crysknife_flips_but_frees_ornithopter_ones() -> None:
+    from dune_imperium.content.uprising.types import BattleIcon
+    from dune_imperium.rules.effect_interpreter import flippable_battle_card_ids
+
+    seat = _tech_owner("ornithopter_fleet", won_conflict_ids=("skirmish_wild",))
+    assert flippable_battle_card_ids(seat, BattleIcon.CRYSKNIFE) == ()
+    assert flippable_battle_card_ids(seat, BattleIcon.ORNITHOPTER) == ("skirmish_wild",)
+
+
+def test_planetary_array_owes_a_card_the_engine_draws_after_the_win() -> None:
+    from dune_imperium.rules.combat import finish_combat
+    from dune_imperium.rules.tech import draw_owed_tech_cards
+
+    owner = _tech_owner(
+        "planetary_array",
+        troops_supply=11,
+        troops_garrison=0,
+        troops_conflict=1,
+        combat_strength=2,
+        has_revealed=True,
+        hand=(),
+    )
+    state = replace(
+        _turn_state(owner, stacks=((), (), ())),
+        phase=GamePhase.COMBAT,
+        first_player=0,
+        combat_intrigue_complete=True,
+        combat_rewards_resolved=True,
+        decision_stack=(),
+        players=(
+            owner,
+            *(
+                replace(seat, has_revealed=True)
+                for seat in _turn_state(owner).players[1:]
+            ),
+        ),
+    )
+    finished = finish_combat(state)
+    assert finished.state.players[0].tech_cards_owed == 1
+    drawn = draw_owed_tech_cards(finished).state
+    assert drawn.players[0].tech_cards_owed == 0
+    assert len(drawn.players[0].hand) == 1
+
+
+def test_suspensor_suits_deploys_a_troop_per_intrigue_gained_in_the_owners_turn() -> (
+    None
+):
+    from dune_imperium.rules.intrigue_deck import draw_intrigue_cards
+    from dune_imperium.rules.tech import deploy_suspensor_troops
+
+    state = _turn_state(_tech_owner("suspensor_suits"), stacks=((), (), ()))
+    drawn = draw_intrigue_cards(state, 0, 2, source="test")
+    assert drawn.state.players[0].suspensor_owed == 2
+    deployed = deploy_suspensor_troops(drawn).state
+    seat = deployed.players[0]
+    assert seat.suspensor_owed == 0
+    assert seat.troops_conflict == 2 and seat.troops_supply == 9 - 2
+    # Another seat's turn: no deployment.
+    other = replace(
+        state,
+        players=(
+            replace(state.players[0], tech_ids=()),
+            replace(state.players[1], tech_ids=("suspensor_suits",)),
+            *state.players[2:],
+        ),
+    )
+    quiet = draw_intrigue_cards(other, 1, 1, source="test")
+    assert quiet.state.players[1].suspensor_owed == 0
+
+
+def test_flip_tiles_are_offered_once_per_round_and_return_at_round_start() -> None:
+    from dune_imperium.rules.phases import begin_round
+    from dune_imperium.rules.tech import apply_tech_flip, legal_tech_flip_actions
+
+    owner = _tech_owner("advanced_data_analysis", "spy_drones", "rapid_dropships")
+    state = _turn_state(owner, stacks=((), (), ()))
+    offered = {
+        str(dict(a.arguments)["tech_id"]) for a in legal_tech_flip_actions(state, 0)
+    }
+    # Rapid Dropships prints "Agent Turn": only after the placement.
+    assert offered == {"advanced_data_analysis", "spy_drones"}
+    flipped = apply_tech_flip(
+        state, DomainAction("flip_tech", 0, (("tech_id", "advanced_data_analysis"),))
+    ).state
+    assert flipped.players[0].tech_flipped == ("advanced_data_analysis",)
+    assert len(flipped.players[0].intrigue_cards) == 1
+    assert "advanced_data_analysis" not in {
+        str(dict(a.arguments)["tech_id"]) for a in legal_tech_flip_actions(flipped, 0)
+    }
+    # Spy Drones: one Solari, and a trash only after a Spy recall this turn.
+    drones = apply_tech_flip(
+        flipped, DomainAction("flip_tech", 0, (("tech_id", "spy_drones"),))
+    )
+    assert drones.state.players[0].resources.solari == 4 + 1
+    assert drones.state.decision_stack[-1].kind == "turn"
+    recalled = replace(
+        flipped,
+        players=(
+            replace(flipped.players[0], spies_recalled_turn=1),
+            *flipped.players[1:],
+        ),
+    )
+    drones = apply_tech_flip(
+        recalled, DomainAction("flip_tech", 0, (("tech_id", "spy_drones"),))
+    )
+    assert drones.state.decision_stack[-1].kind == "optional_trash"
+
+    # Round Start turns every flipped tile face up again.
+    fresh = create_initial_state(TECH, seed=3, leader_ids=LEADERS).state
+    stacks = tuple(
+        tuple(t for t in stack if t != "spy_drones") for stack in fresh.tech_stacks
+    )
+    seat = replace(
+        fresh.players[0], tech_ids=("spy_drones",), tech_flipped=("spy_drones",)
+    )
+    fresh = replace(fresh, tech_stacks=stacks, players=(seat, *fresh.players[1:]))
+    assert begin_round(fresh).state.players[0].tech_flipped == ()
+
+
+def test_rapid_dropships_flip_opens_the_combat_deployment_after_the_placement() -> None:
+    from dune_imperium.rules.combat_deployment import legal_combat_deployments
+    from dune_imperium.rules.tech import apply_tech_flip, legal_tech_flip_actions
+
+    state = _visit(
+        _turn_state(_tech_owner("rapid_dropships"), stacks=((), (), ())),
+        "assembly_hall",
+    )
+    assert legal_combat_deployments(state, 0) == ()
+    (flip,) = legal_tech_flip_actions(state, 0)
+    opened = apply_tech_flip(state, flip).state
+    assert [
+        dict(a.arguments)["count"] for a in legal_combat_deployments(opened, 0)
+    ] == [1, 2]
+
+
+def test_command_tiles_pay_when_the_reveal_generates_six_persuasion() -> None:
+    owner = _tech_owner(
+        "delivery_bay",
+        "training_depot",
+        "self_destroying_messages",
+        hand=starting_deck_instance_ids(0)[:5],
+        high_council=True,
+        troops_conflict=1,
+        troops_supply=8,
+    )
+    result = _reveal(_turn_state(owner, stacks=((), (), ())))
+    context = dict(result.state.decision_stack[0].context)
+    persuasion = context["persuasion"]
+    assert isinstance(persuasion, int) and persuasion >= 6
+    seat = result.state.players[0]
+    assert seat.resources.solari == 4 + 2
+    assert context["tech_granted"] == "delivery_bay,training_depot"
+    plain = _reveal(
+        _turn_state(
+            replace(owner, tech_ids=("training_depot",), high_council=False),
+            stacks=((), (), ()),
+        )
+    )
+    plain_context = dict(plain.state.decision_stack[0].context)
+    plain_persuasion = plain_context["persuasion"]
+    plain_swords = plain_context["sword_strength"]
+    assert isinstance(plain_persuasion, int) and isinstance(plain_swords, int)
+    assert plain_persuasion < 6
+    assert plain_context["tech_granted"] == ""
+    assert context["sword_strength"] == plain_swords + 2
+
+
+def test_a_command_tile_pays_late_when_persuasion_reaches_six() -> None:
+    from dune_imperium.rules.reveal_turn import (
+        add_reveal_persuasion,
+        grant_late_reveal_effects,
+    )
+
+    owner = _tech_owner("delivery_bay", hand=starting_deck_instance_ids(0)[:5])
+    result = _reveal(_turn_state(owner, stacks=((), (), ())))
+    assert dict(result.state.decision_stack[0].context)["tech_granted"] == ""
+    bumped = replace(
+        result.state,
+        decision_stack=add_reveal_persuasion(result.state.decision_stack, 6),
+    )
+    late = grant_late_reveal_effects(RuleResult(state=bumped))
+    assert late.state.players[0].resources.solari == 4 + 2
+    assert dict(late.state.decision_stack[0].context)["tech_granted"] == "delivery_bay"
+    # A second pass does not pay again.
+    again = grant_late_reveal_effects(RuleResult(state=late.state))
+    assert again.state.players[0].resources.solari == 4 + 2
+
+
+def test_forbidden_weapons_demands_its_choice_every_reveal() -> None:
+    from dune_imperium.rules.tech import apply_tech_choice, legal_tech_choice_actions
+
+    owner = _tech_owner(
+        "forbidden_weapons",
+        hand=starting_deck_instance_ids(0)[:5],
+        influence=Influence(emperor=1, fremen=2),
+        troops_conflict=1,
+        troops_supply=8,
+        combat_strength=2,
+    )
+    result = _reveal(_turn_state(owner, stacks=((), (), ())))
+    state = result.state
+    assert state.decision_stack[-1].kind == "tech_choice"
+    actions = legal_tech_choice_actions(state, 0)
+    assert [a.action_id for a in actions] == [
+        "choose_tech_strength",
+        "choose_tech_strength",
+        "choose_tech_trash",
+    ]
+    assert {dict(a.arguments).get("faction") for a in actions[:2]} == {
+        "emperor",
+        "fremen",
+    }
+    strength_before = state.players[0].combat_strength
+    swords = apply_tech_choice(state, actions[1]).state
+    assert swords.players[0].combat_strength == strength_before + 3
+    assert swords.players[0].influence.fremen == 1
+    assert swords.decision_stack[-1].kind == "reveal"
+    trashed = apply_tech_choice(state, actions[2]).state
+    assert trashed.players[0].resources.spice == 0
+    assert trashed.players[0].tech_ids == ()
+    assert trashed.tech_trash == ("forbidden_weapons",)
+
+
+def test_panopticon_recruits_a_troop_and_places_a_spy_in_the_reveal() -> None:
+    owner = _tech_owner("panopticon", hand=starting_deck_instance_ids(0)[:5])
+    result = _reveal(_turn_state(owner, stacks=((), (), ())))
+    state = result.state
+    assert state.players[0].troops_garrison == 3 + 1
+    assert state.decision_stack[-1].kind == "spy_placement"
+    placed = apply_spy_placement(state, legal_spy_placement_actions(state, 0)[0]).state
+    assert placed.players[0].spies_supply == 2
+    assert placed.decision_stack[-1].kind == "reveal"
+
+
+def test_choam_transports_draws_on_completion_and_scores_at_the_endgame() -> None:
+    from dune_imperium.rules.contract_tiles import receive_contract
+    from dune_imperium.rules.phases import resolve_recall_or_endgame
+    from dune_imperium.rules.tech import draw_owed_tech_cards
+
+    owner = _tech_owner("choam_transports", "panopticon")
+    completed = (
+        receive_contract(owner, "contract:immediate_solari_i") if False else owner
+    )
+    owed = replace(completed, tech_cards_owed=1)
+    state = _turn_state(owed, stacks=((), (), ()), config=TECH_CHOAM)
+    drawn = draw_owed_tech_cards(RuleResult(state=state)).state
+    assert len(drawn.players[0].hand) == 5 + 1
+
+    four = replace(
+        owner,
+        completed_contract_ids=tuple(f"contract:test_{i}" for i in range(4))
+        if False
+        else (),
+        influence=Influence(emperor=2, spacing_guild=1),
+        hand=(),
+        deck=(),
+    )
+    endgame = replace(
+        _turn_state(four, stacks=((), (), ()), config=TECH_CHOAM),
+        phase=GamePhase.RECALL_OR_ENDGAME,
+        first_player=0,
+        conflict_deck=(),
+        decision_stack=(),
+        reveal_order=(0, 1, 2, 3),
+    )
+    ended = resolve_recall_or_endgame(endgame).state
+    seat = ended.players[0]
+    assert ended.phase is GamePhase.ENDGAME
+    # Panopticon: Guild 1 -> 2, BG 0 -> 1, Fremen 0 -> 1; Emperor stays at 2.
+    assert (seat.influence.emperor, seat.influence.spacing_guild) == (2, 2)
+    assert (seat.influence.bene_gesserit, seat.influence.fremen) == (1, 1)
+
+
+def test_ability_actions_round_trip_in_the_tech_catalog() -> None:
+    codec = ActionCodec(TECH)
+    actions = (
+        DomainAction("flip_tech", 0, (("tech_id", "spy_drones"),)),
+        DomainAction("choose_tech_strength", 1),
+        DomainAction("choose_tech_strength", 1, (("faction", "emperor"),)),
+        DomainAction(
+            "choose_tech_strength",
+            2,
+            (("alliance_recipient", 0), ("faction", "fremen")),
+        ),
+        DomainAction("choose_tech_trash", 3),
+        DomainAction("decline_skill", 0),
+        DomainAction(
+            "agent_turn",
+            0,
+            (
+                ("card_id", "player:0:starter:dagger:0"),
+                ("discount", "solari"),
+                ("space_id", "high_council"),
+            ),
+        ),
+    )
+    for action in actions:
+        assert codec.decode(codec.encode(action), action.actor) == action

@@ -149,6 +149,15 @@ class PlayerState:
     tech_flipped: tuple[str, ...] = ()
     secret_project_tech_id: str = ""
     spies_boxed: int = 0
+    # Spies recalled since this seat's turn opened (Spy Drones' "if you
+    # recalled a Spy this turn") and Intrigue cards gained this turn that
+    # Suspensor Suits still has to answer with a deployed troop.
+    spies_recalled_turn: int = 0
+    suspensor_owed: int = 0
+    # Cards owed by CHOAM Transports (a contract completed) and Planetary
+    # Array (a Conflict won), drawn by the engine after the transition so a
+    # reshuffle never lands inside another effect's frame bookkeeping.
+    tech_cards_owed: int = 0
     deck: tuple[str, ...] = ()
     hand: tuple[str, ...] = ()
     # Hand cards whose identity every seat already knows because they
@@ -215,6 +224,9 @@ class PlayerState:
             self.contracts_completed_turn,
             self.commander_discount_turn,
             self.spies_boxed,
+            self.spies_recalled_turn,
+            self.suspensor_owed,
+            self.tech_cards_owed,
         )
         if min(quantities) < 0:
             raise ValueError("player component quantities must not be negative")
