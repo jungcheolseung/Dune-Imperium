@@ -195,6 +195,7 @@ from dune_imperium.rules.reveal_turn import (
     apply_resume_reveal_choice,
     apply_reveal_card_trash,
     apply_reveal_deployment,
+    apply_reveal_gain,
     apply_reveal_influence_exchange,
     apply_reveal_influence_gain,
     apply_reveal_persuasion_or_contract,
@@ -213,6 +214,7 @@ from dune_imperium.rules.reveal_turn import (
     legal_reveal_actions,
     legal_reveal_card_trash_actions,
     legal_reveal_deployments,
+    legal_reveal_gain_actions,
     legal_reveal_influence_exchange_actions,
     legal_reveal_influence_gain_actions,
     legal_reveal_persuasion_or_contract_actions,
@@ -356,6 +358,7 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         legal_intrigue_play_actions,
         legal_tech_flip_actions,
         legal_tech_reveal_actions,
+        legal_reveal_gain_actions,
     ),
     FrameKind.REVEAL_CHOICE: (
         legal_defer_reveal_choice_actions,
@@ -414,6 +417,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     # Turn choice and Plot Intrigue
     "agent_turn": apply_agent_action,
     "reveal_turn": begin_reveal_turn,
+    "recruit_reveal_troops": apply_reveal_gain,
+    "draw_reveal_intrigue": apply_reveal_gain,
     "play_intrigue": apply_intrigue_play,
     "choose_intrigue_faction": apply_intrigue_choice,
     "choose_intrigue_discard": apply_intrigue_choice,

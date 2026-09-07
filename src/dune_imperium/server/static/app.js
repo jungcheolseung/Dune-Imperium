@@ -212,6 +212,8 @@ const ACTION_LABELS = {
   choose_tech_strength: "Forbidden Weapons: 검 3 + Influence 1 잃기",
   choose_tech_trash: "Forbidden Weapons: spice 전부 잃고 trash",
   place_tech_spy: "Panopticon: Spy 배치",
+  recruit_reveal_troops: "Reveal: troop recruit",
+  draw_reveal_intrigue: "Reveal: Intrigue draw",
   decline_skill: "Plasteel Blades 유지 (Skill 거절)",
   choose_secret_project: "Secret Project: 맨 아래 Tech tile 선택",
   gain_leader_signet_spice: "spice 1 (Signet)",

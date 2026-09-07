@@ -980,14 +980,20 @@ def test_forbidden_weapons_trash_may_wait_until_the_spice_is_spent() -> None:
 
 def test_panopticon_places_its_spy_when_the_owner_chooses_during_the_reveal() -> None:
     from dune_imperium.rules.reveal_turn import (
+        apply_reveal_gain,
         finish_reveal_turn,
         legal_finish_reveal_actions,
+        legal_reveal_gain_actions,
     )
     from dune_imperium.rules.tech import apply_place_tech_spy, legal_tech_reveal_actions
 
     owner = _tech_owner("panopticon", hand=starting_deck_instance_ids(0)[:5])
     result = _reveal(_turn_state(owner, stacks=((), (), ())))
     state = result.state
+    # The troop is a Reveal action of its own (OQ-045), the Spy another.
+    (gain,) = legal_reveal_gain_actions(state, 0)
+    assert gain.action_id == "recruit_reveal_troops"
+    state = apply_reveal_gain(state, gain).state
     assert state.players[0].troops_garrison == 3 + 1
     assert state.decision_stack[-1].kind == "reveal"
     (place,) = legal_tech_reveal_actions(state, 0)
@@ -1012,6 +1018,7 @@ def test_panopticon_places_its_spy_when_the_owner_chooses_during_the_reveal() ->
         spies_boxed=3,
     )
     lapsing = _reveal(_turn_state(boxed, stacks=((), (), ()))).state
+    lapsing = apply_reveal_gain(lapsing, legal_reveal_gain_actions(lapsing, 0)[0]).state
     assert legal_tech_reveal_actions(lapsing, 0) == ()
     (finish,) = legal_finish_reveal_actions(lapsing, 0)
     finished = finish_reveal_turn(lapsing, finish)

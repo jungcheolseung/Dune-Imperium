@@ -50,7 +50,7 @@ from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.rules.agent_effects import AUTOMATIC_AGENT_ICONS
 from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 
-ACTION_CODEC_VERSION = 91
+ACTION_CODEC_VERSION = 92
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -173,7 +173,11 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "decline_reveal_troop_retreat",
             "defer_reveal_choice",
             "deploy_control_defense",
+            # Reveal troop recruits and Intrigue draws in the owner's order
+            # (OQ-045, codec v92).
+            "draw_reveal_intrigue",
             "finish_reveal",
+            "recruit_reveal_troops",
             "gain_five_reveal_solari",
             "gain_leader_signet_troop",
             "gain_two_reveal_strength",

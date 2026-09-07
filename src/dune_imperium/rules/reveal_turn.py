@@ -1674,6 +1674,129 @@ def _granted_entries(
     return entries
 
 
+# Reveal gains the owner resolves as their own actions, in any order
+# [Main p. 12]: troop recruits and Intrigue draws. Their timing matters —
+# the supply may fill (a troop lost to a Twisted Intrigue cost) or a tile
+# may arrive (Suspensor Suits through Rapid Engineering) during the Reveal —
+# so they wait on the Reveal frame as ``kind|count|source`` entries.
+REVEAL_GAINS_KEY = "reveal_pending_gains"
+
+
+def reveal_pending_gains(
+    context: Mapping[str, ActionValue],
+) -> tuple[tuple[str, int, str], ...]:
+    """Return the (kind, count, source) gains still waiting in this Reveal."""
+
+    value = context.get(REVEAL_GAINS_KEY, "")
+    if not isinstance(value, str):
+        raise RuntimeError("Reveal frame has invalid pending gains")
+    entries: list[tuple[str, int, str]] = []
+    for item in value.split(","):
+        if not item:
+            continue
+        kind, count, source = item.split("|", 2)
+        entries.append((kind, int(count), source))
+    return tuple(entries)
+
+
+def _encode_gains(entries: tuple[tuple[str, int, str], ...]) -> str:
+    return ",".join(f"{kind}|{count}|{source}" for kind, count, source in entries)
+
+
+def _append_reveal_gains(
+    frames: tuple[DecisionFrame, ...],
+    entries: tuple[tuple[str, int, str], ...],
+) -> tuple[DecisionFrame, ...]:
+    """Queue more troop or Intrigue gains on the Reveal frame, wherever it sits."""
+
+    if not entries:
+        return frames
+    position = _reveal_frame_position(frames)
+    context = frame_context(frames[position])
+    context[REVEAL_GAINS_KEY] = _encode_gains(
+        (*reveal_pending_gains(context), *entries)
+    )
+    return (
+        *frames[:position],
+        with_context(frames[position], context),
+        *frames[position + 1 :],
+    )
+
+
+def legal_reveal_gain_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Offer the pending troop recruit and Intrigue draw of the owner's Reveal.
+
+    Each resolves the oldest pending entry of its kind; entries of one kind
+    are interchangeable (the same supply, the same deck), so no argument is
+    needed. Both must be taken before the Reveal ends.
+    """
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    frame = owned_top_frame(state, FrameKind.REVEAL, player)
+    if frame is None:
+        return ()
+    kinds = {kind for kind, _, _ in reveal_pending_gains(dict(frame.context))}
+    actions: list[DomainAction] = []
+    if "troops" in kinds:
+        actions.append(DomainAction(action_id="recruit_reveal_troops", actor=player))
+    if "intrigue" in kinds:
+        actions.append(DomainAction(action_id="draw_reveal_intrigue", actor=player))
+    return tuple(actions)
+
+
+def apply_reveal_gain(state: GameState, action: DomainAction) -> RuleResult:
+    """Recruit the next pending troops or draw the next pending Intrigue."""
+
+    if action not in legal_reveal_gain_actions(state, action.actor):
+        raise ValueError("action is not a legal Reveal gain")
+    player = action.actor
+    frame = state.decision_stack[-1]
+    context = frame_context(frame)
+    wanted = "troops" if action.action_id == "recruit_reveal_troops" else "intrigue"
+    pending = reveal_pending_gains(context)
+    index = next(i for i, (kind, _, _) in enumerate(pending) if kind == wanted)
+    kind, count, source = pending[index]
+    context[REVEAL_GAINS_KEY] = _encode_gains((*pending[:index], *pending[index + 1 :]))
+    event_id = f"round:{state.round_number}:player:{player}:reveal_gain:{source}"
+    owner = state.players[player]
+    if kind == "troops":
+        next_owner, recruited = recruit_troops(owner, count)
+        context["reveal_troops_recruited"] = (
+            context_int(context, "reveal_troops_recruited", owner="Reveal frame")
+            + recruited
+        )
+        next_state = replace(
+            state,
+            players=replace_player(state.players, next_owner),
+            decision_stack=(*state.decision_stack[:-1], with_context(frame, context)),
+        )
+        return RuleResult(
+            state=next_state,
+            events=(
+                GameEvent(
+                    event_id=event_id,
+                    kind="reveal_troops_recruited",
+                    payload=(
+                        ("player", player),
+                        ("source", source),
+                        ("troops", recruited),
+                    ),
+                ),
+                *recruit_shortfall_events(event_id, player, count, recruited),
+            ),
+        )
+    queued = replace(
+        state,
+        decision_stack=(*state.decision_stack[:-1], with_context(frame, context)),
+    )
+    drawn = draw_or_queue_intrigue_cards(queued, player, count, source=event_id)
+    return RuleResult(state=drawn.state, events=drawn.events)
+
+
 def _record_granted_effects(
     frames: tuple[DecisionFrame, ...],
     entries: dict[str, int | None],
@@ -1766,7 +1889,7 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
     frames = state.decision_stack
     next_owner = owner
     events: list[GameEvent] = list(result.events)
-    pending_draws: list[tuple[str, int]] = []
+    late_gains: list[tuple[str, int, str]] = []
     pending_influence: list[tuple[str, PersonalCardRevealEffect]] = []
     pending_trashes: list[tuple[str, str]] = []
     pending_combat_icons = 0
@@ -1824,15 +1947,10 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
                 ),
                 combat_strength=next_owner.combat_strength + (sword if units else 0),
             )
-            recruited = 0
             if effect.recruit_troops:
-                next_owner, recruited = recruit_troops(
-                    next_owner, effect.recruit_troops
-                )
+                late_gains.append(("troops", effect.recruit_troops, card_id))
             if effect.draw_intrigue:
-                pending_draws.append(
-                    (f"{source}:{index}:late_intrigue", effect.draw_intrigue)
-                )
+                late_gains.append(("intrigue", effect.draw_intrigue, card_id))
             if effect.influence_faction is not None:
                 pending_influence.append((f"{source}:{index}", effect))
             if effect.trashes_self:
@@ -1855,11 +1973,6 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
                         ("troops", effect.recruit_troops),
                         ("water", effect.water),
                     ),
-                )
-            )
-            events.extend(
-                recruit_shortfall_events(
-                    f"{source}:{index}:late", player, effect.recruit_troops, recruited
                 )
             )
     # Tech tiles whose Command (6+) line opens late pay the same way.
@@ -1914,15 +2027,12 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
     if not newly_granted and not late_tech:
         return result
     frames = _record_granted_effects(frames, newly_granted)
+    frames = _append_reveal_gains(frames, tuple(late_gains))
     working = replace(
         state,
         players=replace_player(state.players, next_owner),
         decision_stack=frames,
     )
-    for draw_source, count in pending_draws:
-        drawn = draw_or_queue_intrigue_cards(working, player, count, source=draw_source)
-        working = drawn.state
-        events.extend(drawn.events)
     for trash_source, trashed_card_id in pending_trashes:
         if trashed_card_id in working.players[player].in_play:
             trashed = trash_personal_card(
@@ -2589,8 +2699,17 @@ def _late_reveal_one_card(
             water=next_owner.resources.water + sum(effect.water for effect in eligible),
         ),
     )
-    troops_requested = sum(effect.recruit_troops for effect in eligible)
-    next_owner, troops_recruited = recruit_troops(next_owner, troops_requested)
+    # Troop recruits and Intrigue draws join the Reveal's pending gains so
+    # the owner keeps choosing their order [Main p. 12].
+    late_gains = tuple(
+        (kind, count, card_id)
+        for effect in eligible
+        for kind, count in (
+            ("troops", effect.recruit_troops),
+            ("intrigue", effect.draw_intrigue),
+        )
+        if count
+    )
 
     units = next_owner.units_in_conflict
     counts_toward_combat = units > 0
@@ -2603,17 +2722,20 @@ def _late_reveal_one_card(
     next_state = replace(
         state,
         players=replace_player(state.players, next_owner),
-        decision_stack=_record_granted_effects(
-            _apply_late_reveal_frame_update(
-                state.decision_stack,
-                card_id,
-                persuasion_delta,
-                sword_delta,
-                counts_toward_combat=counts_toward_combat,
+        decision_stack=_append_reveal_gains(
+            _record_granted_effects(
+                _apply_late_reveal_frame_update(
+                    state.decision_stack,
+                    card_id,
+                    persuasion_delta,
+                    sword_delta,
+                    counts_toward_combat=counts_toward_combat,
+                ),
+                _granted_entries(
+                    (card_id,), (card,), next_owner, cards_in_play, completed_contracts
+                ),
             ),
-            _granted_entries(
-                (card_id,), (card,), next_owner, cards_in_play, completed_contracts
-            ),
+            late_gains,
         ),
     )
     events: list[GameEvent] = [
@@ -2628,23 +2750,6 @@ def _late_reveal_one_card(
             ),
         )
     ]
-    events.extend(
-        recruit_shortfall_events(
-            f"{source}:late_reveal", player, troops_requested, troops_recruited
-        )
-    )
-
-    for effect in eligible:
-        if effect.draw_intrigue == 0:
-            continue
-        drawn = draw_or_queue_intrigue_cards(
-            next_state,
-            player,
-            effect.draw_intrigue,
-            source=f"{source}:intrigue_draw",
-        )
-        next_state = drawn.state
-        events.extend(drawn.events)
     for effect in eligible:
         if effect.influence_faction is None:
             continue
@@ -2849,12 +2954,20 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
     # Panopticon: "Reveal Turn: a Spy and a troop" [Panopticon Tech tile];
     # the Spy placement opens below.
     panopticon = has_tech(owner.tech_ids, TechAbility.PANOPTICON)
-    reveal_troops_requested = sum(
-        effect.recruit_troops for _, effect in reveal_effects
-    ) + int(panopticon)
-    next_owner, reveal_troops_recruited = recruit_troops(
-        next_owner,
-        reveal_troops_requested,
+    # Troop recruits and Intrigue draws wait for the owner's order (below).
+    reveal_troops_recruited = 0
+    pending_gains: tuple[tuple[str, int, str], ...] = (
+        *(
+            ("troops", effect.recruit_troops, card_id)
+            for card_id, effect in reveal_effects
+            if effect.recruit_troops
+        ),
+        *((("troops", 1, "tech:panopticon"),) if panopticon else ()),
+        *(
+            ("intrigue", effect.draw_intrigue, card_id)
+            for card_id, effect in reveal_effects
+            if effect.draw_intrigue
+        ),
     )
     next_owner = replace(
         next_owner,
@@ -2887,6 +3000,7 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         ("optional_sword_strength", 0),
         ("persuasion", persuasion),
         ("reveal_troops_recruited", reveal_troops_recruited),
+        (REVEAL_GAINS_KEY, _encode_gains(pending_gains)),
         ("reveal_units_deployed", 0),
         ("revealed_card_count", len(revealed)),
         ("strength", strength),
@@ -3006,28 +3120,6 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         for skill in active_skills
         if skill.reveal_persuasion or skill.reveal_spice or skill.reveal_water
     )
-    events.extend(
-        recruit_shortfall_events(
-            event.event_id,
-            action.actor,
-            reveal_troops_requested,
-            reveal_troops_recruited,
-        )
-    )
-    for card_id, effect in reveal_effects:
-        if effect.draw_intrigue == 0:
-            continue
-        intrigue_draw = draw_or_queue_intrigue_cards(
-            next_state,
-            action.actor,
-            effect.draw_intrigue,
-            source=(
-                f"round:{state.round_number}:player:{action.actor}:"
-                f"reveal_card:{card_id}:intrigue_draw"
-            ),
-        )
-        next_state = intrigue_draw.state
-        events.extend(intrigue_draw.events)
     for card_id, effect in reveal_effects:
         if effect.influence_faction is None:
             continue
@@ -3083,6 +3175,9 @@ def legal_finish_reveal_actions(
     if _available_deferred_choices(state, player, context):
         # A deferred choice that can open now still has to be resolved; the
         # ones whose condition fails simply lapse when the Reveal ends.
+        return ()
+    if reveal_pending_gains(context):
+        # Every troop recruit and Intrigue draw must be taken (OQ-045).
         return ()
     pending_tech = tech_reveal_pending(context)
     if "forbidden_weapons" in pending_tech or (

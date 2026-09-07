@@ -523,6 +523,19 @@ def _imperium_instance(
     )[copy]
 
 
+def _take_reveal_gains(state: GameState) -> GameState:
+    """Take every pending troop recruit and Intrigue draw of the Reveal (OQ-045)."""
+
+    from dune_imperium.rules.reveal_turn import (
+        apply_reveal_gain,
+        legal_reveal_gain_actions,
+    )
+
+    while actions := legal_reveal_gain_actions(state, 0):
+        state = apply_reveal_gain(state, actions[0]).state
+    return state
+
+
 def _state(player: PlayerState, *, choam_module: bool = False) -> GameState:
     return GameState(
         config=RulesetConfig(choam_module=choam_module),
@@ -554,35 +567,49 @@ def test_treacherous_maneuver_reveal_draws_intrigue() -> None:
     owner = PlayerState(player_id=0, hand=(maneuver,))
     state = replace(_state(owner), intrigue_deck=("intrigue:test",))
 
+    from dune_imperium.rules.reveal_turn import (
+        apply_reveal_gain,
+        legal_reveal_gain_actions,
+    )
+
     result = begin_reveal_turn(
         state,
         DomainAction(action_id="reveal_turn", actor=0),
     )
 
-    assert result.state.players[0].intrigue_cards == ("intrigue:test",)
-    assert result.state.intrigue_deck == ()
-    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 1
-    assert [event.kind for event in result.events] == [
-        "reveal_started",
-        "intrigue_card_drawn",
-    ]
+    # The draw waits for the owner's order in the Reveal (OQ-045).
+    assert result.state.players[0].intrigue_cards == ()
+    assert [event.kind for event in result.events] == ["reveal_started"]
+    (gain,) = legal_reveal_gain_actions(result.state, 0)
+    assert gain.action_id == "draw_reveal_intrigue"
+    drawn = apply_reveal_gain(result.state, gain)
+    assert drawn.state.players[0].intrigue_cards == ("intrigue:test",)
+    assert drawn.state.intrigue_deck == ()
+    assert dict(drawn.state.decision_stack[-1].context)["persuasion"] == 1
+    assert [event.kind for event in drawn.events] == ["intrigue_card_drawn"]
+    assert legal_reveal_gain_actions(drawn.state, 0) == ()
 
 
 def test_treacherous_maneuver_reveal_tolerates_an_empty_intrigue_deck() -> None:
     maneuver = _imperium_instance("treacherous_maneuver")
 
-    result = begin_reveal_turn(
+    from dune_imperium.rules.reveal_turn import apply_reveal_gain
+
+    revealed = begin_reveal_turn(
         _state(PlayerState(player_id=0, hand=(maneuver,))),
         DomainAction(action_id="reveal_turn", actor=0),
+    )
+    result = apply_reveal_gain(
+        revealed.state, DomainAction(action_id="draw_reveal_intrigue", actor=0)
     )
 
     assert result.state.players[0].intrigue_cards == ()
     # With the deck empty the draw is owed to the dispatcher, which reshuffles
     # the discard [FAQ p. 2] or stops short when there is nothing to shuffle.
-    assert [event.kind for event in result.events] == ["reveal_started"]
+    assert result.events == ()
     (owed,) = result.state.pending_intrigue_draws
     assert owed[:2] == (0, 1)
-    assert owed[2].endswith("treacherous_maneuver:0:intrigue_draw")
+    assert owed[2].endswith("reveal_gain:imperium:treacherous_maneuver:0")
 
 
 def test_chani_retreats_two_troops_for_four_strength() -> None:
@@ -685,9 +712,12 @@ def test_junction_headquarters_reveal_gains_water_and_recruits() -> None:
         DomainAction(action_id="reveal_turn", actor=0),
     )
 
-    owner = result.state.players[0]
-    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 1
-    assert owner.resources.water == 2
+    # Water is immediate; the troop is the owner's own Reveal action.
+    assert result.state.players[0].resources.water == 2
+    assert result.state.players[0].troops_garrison == 3
+    state = _take_reveal_gains(result.state)
+    owner = state.players[0]
+    assert dict(state.decision_stack[-1].context)["persuasion"] == 1
     assert owner.troops_supply == 8
     assert owner.troops_garrison == 4
 
@@ -1168,10 +1198,11 @@ def test_unswerving_loyalty_reveals_for_persuasion_and_recruits_one() -> None:
     state = _state(PlayerState(player_id=0, hand=(loyalty,)))
 
     result = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
+    revealed = _take_reveal_gains(result.state)
 
-    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 1
-    assert result.state.players[0].troops_supply == 8
-    assert result.state.players[0].troops_garrison == 4
+    assert dict(revealed.decision_stack[-1].context)["persuasion"] == 1
+    assert revealed.players[0].troops_supply == 8
+    assert revealed.players[0].troops_garrison == 4
 
 
 def test_stilgar_counts_only_fremen_cards_revealed_this_turn() -> None:
@@ -1794,8 +1825,9 @@ def test_overthrow_recruits_and_contributes_reveal_values() -> None:
     )
 
     result = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
-    owner = result.state.players[0]
-    context = dict(result.state.decision_stack[-1].context)
+    revealed = _take_reveal_gains(result.state)
+    owner = revealed.players[0]
+    context = dict(revealed.decision_stack[-1].context)
 
     assert owner.troops_supply == 7
     assert owner.troops_garrison == 4

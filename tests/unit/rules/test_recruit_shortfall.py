@@ -210,7 +210,13 @@ def test_reveal_start_troop_recruit_with_empty_supply_reports_a_shortfall() -> N
     )
     state = _with_troops_supply(state, 0, 0)
 
-    result = begin_reveal_turn(state, DomainAction(action_id="reveal_turn", actor=0))
+    from dune_imperium.rules.reveal_turn import apply_reveal_gain
+
+    revealed = begin_reveal_turn(state, DomainAction(action_id="reveal_turn", actor=0))
+    # The troop icon is taken as the owner's own Reveal action (OQ-045).
+    result = apply_reveal_gain(
+        revealed.state, DomainAction(action_id="recruit_reveal_troops", actor=0)
+    )
 
     updated = result.state.players[0]
     assert updated.troops_supply == 0

@@ -106,9 +106,19 @@ def _play(state: GameState, card_id: str, space_id: str | None = None) -> GameSt
 
 
 def _reveal(state: GameState) -> GameState:
-    return begin_reveal_turn(
+    """Reveal and take every pending troop recruit and Intrigue draw at once."""
+
+    from dune_imperium.rules.reveal_turn import (
+        apply_reveal_gain,
+        legal_reveal_gain_actions,
+    )
+
+    revealed = begin_reveal_turn(
         state, DomainAction(action_id="reveal_turn", actor=0)
     ).state
+    while actions := legal_reveal_gain_actions(revealed, 0):
+        revealed = apply_reveal_gain(revealed, actions[0]).state
+    return revealed
 
 
 def _reveal_context(state: GameState) -> dict[str, object]:
