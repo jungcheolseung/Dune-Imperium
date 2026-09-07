@@ -68,6 +68,16 @@ def _owned_effect_context(
     return context
 
 
+def commander_cost(owner: PlayerState) -> int:
+    """Return the Solari a Commander costs the owner this turn.
+
+    2 Solari [Bloodlines p. 4], less Honor Guard's discount for the turn
+    (Intrigue card face), never below zero.
+    """
+
+    return max(0, COMMANDER_COST_SOLARI - owner.commander_discount_turn)
+
+
 def _skill_identity(instance_id: str) -> str:
     return skill_for_instance(instance_id).skill_id
 
@@ -104,7 +114,7 @@ def legal_sardaukar_commander_actions(
     owner = state.players[player]
     if (
         space_id not in state.sardaukar_commander_space_ids
-        or owner.resources.solari < COMMANDER_COST_SOLARI
+        or owner.resources.solari < commander_cost(owner)
     ):
         return (decline,)
     skills = eligible_face_up_skill_ids(state, owner)
@@ -179,11 +189,10 @@ def apply_sardaukar_commander_action(
         )
 
     owner = state.players[player]
+    cost = commander_cost(owner)
     next_owner = replace(
         owner,
-        resources=replace(
-            owner.resources, solari=owner.resources.solari - COMMANDER_COST_SOLARI
-        ),
+        resources=replace(owner.resources, solari=owner.resources.solari - cost),
         commanders_garrison=owner.commanders_garrison + 1,
     )
     working = replace(
@@ -238,7 +247,7 @@ def apply_sardaukar_commander_action(
             payload=(
                 ("player", player),
                 ("skill_id", skill_id),
-                ("solari", COMMANDER_COST_SOLARI),
+                ("solari", cost),
                 ("space_id", space_id),
             ),
         ),
@@ -250,7 +259,7 @@ def _can_pay_commander_recruit(owner: PlayerState) -> bool:
     return (
         not owner.commander_recruited_turn
         and owner.commanders_supply > 0
-        and owner.resources.solari >= COMMANDER_COST_SOLARI
+        and owner.resources.solari >= commander_cost(owner)
     )
 
 
@@ -286,11 +295,10 @@ def apply_commander_recruit(state: GameState, action: DomainAction) -> RuleResul
         raise ValueError("action is not a legal Commander recruit")
     player = action.actor
     owner = state.players[player]
+    cost = commander_cost(owner)
     next_owner = replace(
         owner,
-        resources=replace(
-            owner.resources, solari=owner.resources.solari - COMMANDER_COST_SOLARI
-        ),
+        resources=replace(owner.resources, solari=owner.resources.solari - cost),
         commanders_supply=owner.commanders_supply - 1,
         commanders_garrison=owner.commanders_garrison + 1,
         commander_recruited_turn=True,
@@ -309,7 +317,7 @@ def apply_commander_recruit(state: GameState, action: DomainAction) -> RuleResul
             f"{next_owner.commanders_total - next_owner.commanders_supply}"
         ),
         kind="sardaukar_commander_recruited",
-        payload=(("player", player), ("solari", COMMANDER_COST_SOLARI)),
+        payload=(("player", player), ("solari", cost)),
     )
     return RuleResult(state=next_state, events=(event,))
 

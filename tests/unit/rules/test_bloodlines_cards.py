@@ -716,3 +716,116 @@ def test_grasp_arrakis_flips_two_conflict_cards_for_a_point() -> None:
     assert [a.action_id for a in engine.legal_actions(single, 0)] == [
         "pass_endgame_intrigue"
     ]
+
+
+# --- turn-scoped Plot modifiers (slice 4c-2a) --------------------------------
+
+
+def test_honor_guard_recruits_and_discounts_the_commander_this_turn() -> None:
+    from dune_imperium.rules.sardaukar import (
+        apply_sardaukar_commander_action,
+        legal_sardaukar_commander_actions,
+    )
+
+    card = _intrigue("honor_guard")
+    engine = UprisingRulesEngine()
+    owner = _owner(
+        intrigue_cards=(card,), hand=STARTERS[4:10], resources=Resources(solari=1)
+    )
+    state = replace(
+        _state(owner),
+        sardaukar_commander_space_ids=("dutiful_service",),
+        skill_face_up=("skill:canny:0",),
+    )
+    played = engine.apply(state, _play_intrigue(card)).state
+    assert played.players[0].troops_garrison == 4
+    assert played.players[0].commander_discount_turn == 1
+
+    # Any card that reaches Dutiful Service works; pick the first legal one.
+    action = next(
+        a
+        for a in legal_agent_actions(played, 0)
+        if dict(a.arguments)["space_id"] == "dutiful_service"
+    )
+    visited = apply_agent_action(played, action).state
+    for board_action in legal_board_effect_actions(visited, 0):
+        visited = resolve_board_effect(visited, board_action).state
+    buy = next(
+        a
+        for a in legal_sardaukar_commander_actions(visited, 0)
+        if a.action_id == "acquire_sardaukar_commander"
+    )
+    bought = apply_sardaukar_commander_action(visited, buy)
+    assert bought.state.players[0].resources.solari == 1 + 2 - 1
+    assert dict(bought.events[0].payload)["solari"] == 1
+
+
+def test_insider_information_waives_influence_requirements_this_turn() -> None:
+    card = _intrigue("insider_information")
+    engine = UprisingRulesEngine()
+    owner = _owner(intrigue_cards=(card,), hand=STARTERS[4:10])
+    state = _state(owner)
+    # Sietch Tabr needs two Fremen Influence [Board Guide p. 1].
+    assert not any(
+        dict(a.arguments)["space_id"] == "sietch_tabr"
+        for a in legal_agent_actions(state, 0)
+    )
+    waived = engine.apply(state, _play_intrigue(card, 1)).state
+    assert waived.players[0].ignores_influence_requirements_turn is True
+    assert any(
+        dict(a.arguments)["space_id"] == "sietch_tabr"
+        for a in legal_agent_actions(waived, 0)
+    )
+
+
+def test_insider_information_recalls_a_spy_to_trash_and_draw() -> None:
+    card = _intrigue("insider_information")
+    engine = UprisingRulesEngine()
+    owner = _owner(
+        intrigue_cards=(card,),
+        hand=(STARTERS[4],),
+        spies_supply=2,
+        spy_post_ids=("emperor-sardaukar-dutiful-service",),
+    )
+    opened = engine.apply(_state(owner), _play_intrigue(card, 0)).state
+    recall = next(
+        a
+        for a in engine.legal_actions(opened, 0)
+        if a.action_id == "recall_spy_for_intrigue"
+    )
+    recalled = engine.apply(opened, recall).state
+    trash = next(
+        a
+        for a in engine.legal_actions(recalled, 0)
+        if a.action_id == "trash_intrigue_card"
+        and dict(a.arguments)["card_id"] == STARTERS[4]
+    )
+    done = engine.apply(recalled, trash).state
+    owner_after = done.players[0]
+    assert owner_after.spies_supply == 3
+    assert owner_after.trashed == (STARTERS[4],)
+    assert len(owner_after.hand) == 1  # the drawn card
+
+
+def test_emperors_invitation_lends_the_emperor_icon_for_the_turn() -> None:
+    from dune_imperium.adapters import ActionCodec
+
+    card = _intrigue("emperor_s_invitation")
+    engine = UprisingRulesEngine()
+    dagger = next(c for c in STARTERS if ":dagger:" in c)
+    state = _state(_owner(intrigue_cards=(card,), hand=(dagger,), deck=()))
+    assert not any(
+        dict(a.arguments)["space_id"] == "dutiful_service"
+        for a in legal_agent_actions(state, 0)
+    )
+    invited = engine.apply(state, _play_intrigue(card, 1)).state
+    assert invited.players[0].granted_agent_icon_turn == "emperor"
+    action = next(
+        a
+        for a in legal_agent_actions(invited, 0)
+        if dict(a.arguments)["space_id"] == "dutiful_service"
+    )
+    codec = ActionCodec(BLOODLINES)
+    assert codec.decode(codec.encode(action), 0) == action
+    placed = apply_agent_action(invited, action).state
+    assert "dutiful_service" in placed.players[0].agent_locations

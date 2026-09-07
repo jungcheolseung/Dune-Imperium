@@ -12,6 +12,7 @@ from typing import assert_never
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireCardUpTo,
+    CommanderDiscountThisTurn,
     CommandersInConflictAtLeast,
     CompletedContractsAtLeast,
     Condition,
@@ -29,7 +30,9 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainInfluence,
     GainResources,
     GainVictoryPoints,
+    GrantAgentIconThisTurn,
     HasHighCouncil,
+    IgnoreInfluenceRequirementsThisTurn,
     InfluenceAtLeast,
     IntrigueOption,
     IntrigueTiming,
@@ -240,6 +243,18 @@ def reward_text(reward: Reward) -> str:
                 f"Acquire a card costing {max_cost} or less "
                 f"(to hand if {condition_text(to_hand_if)})"
             )
+        case CommanderDiscountThisTurn(amount=amount):
+            return (
+                f"Recruiting a Sardaukar Commander (including when you acquire one) "
+                f"costs you {amount} less this turn"
+            )
+        case IgnoreInfluenceRequirementsThisTurn():
+            return (
+                "Ignore Influence requirements on board spaces when sending an "
+                "Agent this turn"
+            )
+        case GrantAgentIconThisTurn(icon=icon):
+            return f"The card you play this turn has the {icon.value} icon"
         case SetAsideImperiumRowCard(discount=discount):
             return (
                 "Set aside an Imperium Row card "

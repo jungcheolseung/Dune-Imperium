@@ -635,11 +635,19 @@ def _bloodlines_templates() -> tuple[ActionTemplate, ...]:
 
 
 def _agent_turn_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
+    # Emperor's Invitation (Bloodlines) can give any card the Emperor icon
+    # for a turn, so the option's catalogs also hold every card's Emperor
+    # placements.
+    granted: tuple[AgentIcon, ...] = (AgentIcon.EMPEROR,) if config.bloodlines else ()
     templates: list[ActionTemplate] = []
     for starting_card in STARTING_DECK:
-        templates.extend(_agent_turn_templates_for_card("starter", starting_card))
+        templates.extend(
+            _agent_turn_templates_for_card("starter", starting_card, granted)
+        )
     for reserve_card in RESERVE_STACKS:
-        templates.extend(_agent_turn_templates_for_card("reserve", reserve_card))
+        templates.extend(
+            _agent_turn_templates_for_card("reserve", reserve_card, granted)
+        )
     for imperium_card in imperium_cards_for_choam(
         config.choam_module,
         config.promo_cards,
@@ -647,13 +655,16 @@ def _agent_turn_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         tech_module=config.tech_module,
     ):
         if imperium_card.play_data_complete:
-            templates.extend(_agent_turn_templates_for_card("imperium", imperium_card))
+            templates.extend(
+                _agent_turn_templates_for_card("imperium", imperium_card, granted)
+            )
     return tuple(templates)
 
 
 def _agent_turn_templates_for_card(
     prefix: str,
     card: StartingCardEntry | ReserveStackDefinition | ImperiumCardEntry,
+    granted_icons: tuple[AgentIcon, ...] = (),
 ) -> tuple[ActionTemplate, ...]:
     templates: list[ActionTemplate] = []
     for copy in range(card.copies):
@@ -661,6 +672,7 @@ def _agent_turn_templates_for_card(
         for space in BOARD_SPACES:
             if (
                 space.agent_icon not in card.agent_icons
+                and space.agent_icon not in granted_icons
                 and AgentIcon.SPY not in card.agent_icons
             ):
                 continue

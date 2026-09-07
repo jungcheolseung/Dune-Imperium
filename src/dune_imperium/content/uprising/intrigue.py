@@ -12,6 +12,7 @@ from dune_imperium.content.schema import (
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireCardUpTo,
+    CommanderDiscountThisTurn,
     CommandersInConflictAtLeast,
     CompletedContractsAtLeast,
     DeployFromGarrison,
@@ -27,7 +28,9 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainInfluence,
     GainResources,
     GainVictoryPoints,
+    GrantAgentIconThisTurn,
     HasHighCouncil,
+    IgnoreInfluenceRequirementsThisTurn,
     InfluenceAtLeast,
     IntrigueOption,
     IntrigueTiming,
@@ -51,7 +54,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     Trigger,
     WaterAtLeast,
 )
-from dune_imperium.content.uprising.types import BattleIcon
+from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
 
 BASE_SOURCES: Final = (SourceRef(SourceDocument.MAIN_RULEBOOK, (3, 4)),)
 CHOAM_SOURCES: Final = (SourceRef(SourceDocument.MAIN_RULEBOOK, (3, 4, 16)),)
@@ -697,7 +700,16 @@ INTRIGUE_CARDS: Final = (
             ),
         ),
     ),
-    _entry(113, "emperor-s-invitation", "Emperor's Invitation", bloodlines_only=True),
+    _entry(
+        113,
+        "emperor-s-invitation",
+        "Emperor's Invitation",
+        bloodlines_only=True,
+        options=(
+            _plot(EffectSection(rewards=(DrawPersonalCards(1),))),
+            _plot(EffectSection(rewards=(GrantAgentIconThisTurn(AgentIcon.EMPEROR),))),
+        ),
+    ),
     _entry(114, "false-orders", "False Orders", bloodlines_only=True),
     _entry(
         115,
@@ -720,8 +732,34 @@ INTRIGUE_CARDS: Final = (
             ),
         ),
     ),
-    _entry(116, "honor-guard", "Honor Guard", bloodlines_only=True),
-    _entry(117, "insider-information", "Insider Information", bloodlines_only=True),
+    _entry(
+        116,
+        "honor-guard",
+        "Honor Guard",
+        bloodlines_only=True,
+        options=(
+            _plot(
+                EffectSection(
+                    rewards=(RecruitTroops(1), CommanderDiscountThisTurn(1)),
+                )
+            ),
+        ),
+    ),
+    _entry(
+        117,
+        "insider-information",
+        "Insider Information",
+        bloodlines_only=True,
+        options=(
+            _plot(
+                EffectSection(
+                    costs=(RecallSpy(1),),
+                    rewards=(TrashPersonalCard(), DrawPersonalCards(1)),
+                )
+            ),
+            _plot(EffectSection(rewards=(IgnoreInfluenceRequirementsThisTurn(),))),
+        ),
+    ),
     _entry(
         118,
         "rapid-engineering",

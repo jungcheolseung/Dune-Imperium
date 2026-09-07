@@ -13,6 +13,7 @@ from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireCardUpTo,
+    CommanderDiscountThisTurn,
     CommandersInConflictAtLeast,
     CompletedContractsAtLeast,
     Condition,
@@ -29,7 +30,9 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainInfluence,
     GainResources,
     GainVictoryPoints,
+    GrantAgentIconThisTurn,
     HasHighCouncil,
+    IgnoreInfluenceRequirementsThisTurn,
     InfluenceAtLeast,
     IntrigueOption,
     LoseInfluence,
@@ -561,6 +564,16 @@ def apply_rewards(
                     )
             case TakeContract(count=count):
                 contracts += count
+            case CommanderDiscountThisTurn(amount=amount):
+                # Honor Guard: the discount lasts for the rest of the turn.
+                owner = replace(
+                    owner,
+                    commander_discount_turn=owner.commander_discount_turn + amount,
+                )
+            case IgnoreInfluenceRequirementsThisTurn():
+                owner = replace(owner, ignores_influence_requirements_turn=True)
+            case GrantAgentIconThisTurn(icon=icon):
+                owner = replace(owner, granted_agent_icon_turn=icon.value)
             case GainCombatStrength(amount=amount):
                 # Combat Intrigue strength changes update the marker at once
                 # [Main p. 14]; the caller only offers Combat options while

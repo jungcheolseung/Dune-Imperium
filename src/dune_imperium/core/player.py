@@ -101,6 +101,12 @@ class PlayerState:
     commander_recruited_turn: bool = False
     # Contracts completed during the current turn (Mercantile Affairs).
     contracts_completed_turn: int = 0
+    # Turn-scoped Plot modifiers (Bloodlines): Honor Guard's Commander
+    # discount, Insider Information's requirement waiver, and the Agent icon
+    # Emperor's Invitation grants to the card played this turn ("" = none).
+    commander_discount_turn: int = 0
+    ignores_influence_requirements_turn: bool = False
+    granted_agent_icon_turn: str = ""
     # The Skill strength currently folded into ``combat_strength`` so the
     # running total can be re-derived when a Skill condition changes.
     skill_strength_applied: int = 0
@@ -165,6 +171,7 @@ class PlayerState:
             self.commanders_conflict,
             self.skill_strength_applied,
             self.contracts_completed_turn,
+            self.commander_discount_turn,
         )
         if min(quantities) < 0:
             raise ValueError("player component quantities must not be negative")

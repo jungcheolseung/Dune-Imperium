@@ -62,6 +62,8 @@ def legal_agent_actions(state: GameState, player: int) -> tuple[DomainAction, ..
                     isinstance(card, ImperiumCardEntry)
                     and card.ignores_influence_requirements
                 )
+                # Insider Information (Bloodlines) waives them for the turn.
+                and not owner.ignores_influence_requirements_turn
                 and not _meets_requirement(owner.influence, space.requirement)
             ):
                 continue
@@ -114,6 +116,12 @@ def card_can_access_space(
     """
 
     if space.agent_icon in agent_icons:
+        return True
+    # Emperor's Invitation (Bloodlines): "The card you play this turn has
+    # the [Emperor] icon."
+    if owner.granted_agent_icon_turn and space.agent_icon.value == (
+        owner.granted_agent_icon_turn
+    ):
         return True
     if AgentIcon.SPY not in agent_icons:
         return False

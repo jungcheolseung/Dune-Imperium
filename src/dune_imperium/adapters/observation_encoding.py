@@ -43,6 +43,7 @@ from dune_imperium.content.uprising.objectives import OBJECTIVES
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.content.uprising.reserve import RESERVE_STACKS
 from dune_imperium.content.uprising.starting_cards import STARTING_CARDS_BY_ID
+from dune_imperium.content.uprising.types import AgentIcon
 from dune_imperium.core.observation import PlayerView, PublicPlayerView
 from dune_imperium.core.state import GamePhase
 from dune_imperium.rules.frames import FrameKind
@@ -74,6 +75,7 @@ SKILL_IDS: Final = tuple(skill.skill_id for skill in SKILLS)
 COMMANDER_SPACE_IDS: Final = COMMANDER_SETUP_SPACE_IDS
 
 _PHASES: Final = tuple(GamePhase)
+_AGENT_ICONS: Final = tuple(icon.value for icon in AgentIcon)
 _FRAME_KINDS: Final = tuple(kind.value for kind in FrameKind)
 _PERSONAL_INDEX: Final = {
     card_id: index for index, card_id in enumerate(PERSONAL_CARD_IDS)
@@ -99,7 +101,7 @@ class ObservationSegment:
 def _seat_segment_lengths(seat: int) -> tuple[tuple[str, int], ...]:
     prefix = f"seat{seat}"
     return (
-        (f"{prefix}_scalars", 31),
+        (f"{prefix}_scalars", 34),
         (f"{prefix}_alliances", len(FACTION_IDS)),
         (f"{prefix}_control", len(CONTROL_SPACE_IDS)),
         (f"{prefix}_agent_locations", _AGENT_LOCATION_SLOTS),
@@ -330,6 +332,13 @@ def _write_seat(writer: _Writer, seat_offset: int, player: PublicPlayerView) -> 
             player.commanders_conflict,
             int(player.commander_recruited_turn),
             player.contracts_completed_turn,
+            player.commander_discount_turn,
+            int(player.ignores_influence_requirements_turn),
+            (
+                _AGENT_ICONS.index(player.granted_agent_icon_turn) + 1
+                if player.granted_agent_icon_turn
+                else 0
+            ),
         ],
     )
     writer.write(

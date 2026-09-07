@@ -58,6 +58,9 @@ class PublicPlayerView:
     skill_ids: tuple[str, ...]
     commander_recruited_turn: bool
     contracts_completed_turn: int
+    commander_discount_turn: int
+    ignores_influence_requirements_turn: bool
+    granted_agent_icon_turn: str
     in_play: tuple[str, ...]
     # Every card reaches a discard pile face up (acquired cards [Main p. 13],
     # played and revealed cards after Clean Up [Main pp. 9, 12, 20], cards
@@ -343,6 +346,9 @@ def _public_player_view(player: PlayerState) -> PublicPlayerView:
         skill_ids=player.skill_ids,
         commander_recruited_turn=player.commander_recruited_turn,
         contracts_completed_turn=player.contracts_completed_turn,
+        commander_discount_turn=player.commander_discount_turn,
+        ignores_influence_requirements_turn=player.ignores_influence_requirements_turn,
+        granted_agent_icon_turn=player.granted_agent_icon_turn,
         in_play=player.in_play,
         discard_pile=player.discard_pile,
         trashed=player.trashed,

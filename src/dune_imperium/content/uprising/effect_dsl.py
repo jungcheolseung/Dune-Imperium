@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from dune_imperium.content.uprising.board import Faction
-from dune_imperium.content.uprising.types import BattleIcon
+from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
 
 
 class IntrigueTiming(StrEnum):
@@ -511,6 +511,36 @@ class SetAsideImperiumRowCard:
             raise ValueError("set-aside discount must be positive")
 
 
+@dataclass(frozen=True, slots=True)
+class CommanderDiscountThisTurn:
+    """Recruiting a Sardaukar Commander (including when acquiring one) costs
+    ``amount`` less Solari for the rest of this turn (Honor Guard, Bloodlines)."""
+
+    amount: int = 1
+
+    def __post_init__(self) -> None:
+        if self.amount < 1:
+            raise ValueError("Commander discount must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class IgnoreInfluenceRequirementsThisTurn:
+    """Board-space Influence requirements are ignored when sending an Agent
+    this turn (Insider Information, Bloodlines)."""
+
+
+@dataclass(frozen=True, slots=True)
+class GrantAgentIconThisTurn:
+    """The card the owner plays this turn has ``icon`` as well (Emperor's
+    Invitation, Bloodlines)."""
+
+    icon: AgentIcon
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.icon, AgentIcon):
+            raise TypeError("granted Agent icon must use AgentIcon")
+
+
 type Reward = (
     GainResources
     | GainVictoryPoints
@@ -528,6 +558,9 @@ type Reward = (
     | TakeContract
     | AcquireCardUpTo
     | SetAsideImperiumRowCard
+    | CommanderDiscountThisTurn
+    | IgnoreInfluenceRequirementsThisTurn
+    | GrantAgentIconThisTurn
 )
 
 
