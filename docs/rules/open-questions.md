@@ -253,6 +253,14 @@
 - 같이 정한 카드면 읽기: Liet Kynes의 대체 아이콘 "[trash][1 spice][1 Intrigue]"에서 trash는 선택(소유자가 거절 가능)으로 읽는다 — 이득 줄에 인쇄된 trash 아이콘은 Uprising의 Desert Tactics처럼 선택이다. Chani의 "troops"에는 Commander가 포함된다(`[Bloodlines p. 4]`).
 - 재개 조건: 공식 FAQ가 Into the Fray의 공간·귀환을 정할 때.
 
+## OQ-038 — "Lose troops" 비용의 출처와 Harkonnen Advisor의 배치 금지 troop
+
+- 상태: `DECIDED` (project convention)
+- Twisted Intrigue의 Ambitious("Lose three of your troops"), Sadistic·Sinister("Lose ... of your troops"), Shrewd("Lose one of your troops in the Conflict")는 Shrewd 외에는 troop을 어느 zone에서 잃는지 말하지 않고, Sardaukar Commander가 대상인지도 말하지 않는다. Piter De Vries의 Signet "1 troop. You can't deploy this troop to the Conflict this turn."은 troop이 서로 구별되지 않는 garrison에서 "이 troop"을 어떻게 가려내는지 말하지 않는다.
+- 판정(2026-09-07, project convention): (a) 잃는 플레이어가 troop마다 zone(garrison/Conflict)과 종류(troop/Commander, `[Bloodlines p. 4]`의 "troop" 취급)를 고른다(`lose_intrigue_troop(zone[, commanders])`); Shrewd는 Conflict로 제한한다. Conflict에서 잃으면 retreat처럼 strength 2를 빼고, Agent turn이면 그 turn의 배치 카운터도 함께 줄인다. 조건 판정(OQ-036의 Holy War와 같은 방향). (b) Harkonnen Advisor의 troop은 garrison에 두되 "이번 turn recruit한 유닛"으로 세지 않아 recruit 몫으로는 배치할 수 없고, garrison 몫 2개는 인쇄 규칙대로 남는다 — 구별 불가능한 troop에 대한 최소 해석이다.
+- 같이 정한 것: Controlled의 "Look at the top card of your deck"은 덱이 비어 있으면 낼 수 없다(discard를 섞지 않는다). Calculating의 "type of unit"에는 Into the Fray로 싸우는 Agent도 든다.
+- 재개 조건: 공식 FAQ가 "lose troops"의 출처나 Harkonnen Advisor의 troop 추적을 정할 때.
+
 ## 판정이 생겼을 때 기록할 정보
 
 각 항목을 닫을 때 다음을 함께 남긴다. `DECIDED` 항목에 새 공식 답이 나왔을 때도 같다.

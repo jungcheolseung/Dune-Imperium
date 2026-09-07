@@ -89,6 +89,12 @@ Leader identity와 setup은 `content/uprising/leaders.py`, 능력 규칙은 `rul
 - **Clandestine** — "Each card you play has the Spy icon. Whenever you could recall a Spy to Gather Intelligence, you must." `card_can_access_space`가 그녀의 모든 카드에 Spy 아이콘 접근을 주고, `spies.legal_gather_intelligence_actions`는 회수 가능한 Spy가 있으면 거절을 빼고 제시한다. codec은 Bloodlines 카탈로그에서 모든 카드×모든 공간의 배치 템플릿을 갖는다.
 - **Listeners(Signet)** — "Spy on [Landsraad] —OR— 1 spice → Spy." Landsraad post에 `place_leader_spy`, 또는 `pay_leader_signet_spice`(frame context `listeners_paid`) 뒤 아무 post에 배치, 또는 거절.
 
+### Piter De Vries
+
+- **Twisted Genius** — "Game Start: Shuffle the Twisted Intrigue deck and place it face down near you. Round Start: Draw a Twisted Intrigue card. (These count as Intrigue cards and can be stolen.)" setup의 chance `setup:twisted_intrigue`가 12장을 섞어 `GameState.twisted_deck_stock`에 두고, 고정 setup은 즉시·draft는 pick 뒤 `assign_twisted_deck`으로 Piter 좌석의 `twisted_deck`(순서 비공개, 장수 공개 — 관측 좌석 scalar `twisted_deck_size`)에 옮긴다. `phases.begin_round`가 매 round 1장을 `intrigue_cards`로 뽑는다. Twisted 카드는 `IntrigueCardEntry.twisted`로 표시된 Intrigue identity(관측 우주 57→69종)이며 공용 Intrigue 덱에는 절대 들어가지 않고, 손에 들어온 뒤에는 Secrets의 절도·Insidious의 증여·trash의 대상이 된다.
+- **Harkonnen Advisor(Signet)** — "1 troop. You can't deploy this troop to the Conflict this turn." troop을 garrison에 recruit하되 `troops_recruited`에 세지 않아 이번 turn의 기본 배치 한도를 늘리지 않는다(OQ-038; garrison 몫 2개는 그대로).
+- **Twisted Intrigue 12장**(카드면 전사, `content/uprising/intrigue.py`의 `_twisted`): Ambitious(Plot: troop 3 잃기 → 상대가 더 앞선 진영의 Influence 1, `GainInfluence(where_opponent_leads=True)`), Calculating(Plot: Conflict의 유닛 종류당 Solari 1 — troop·sandworm·Commander·Into the Fray의 Agent, `GainSolariPerUnitType`), Controlled(Plot: 덱 맨 위 카드를 보고 되돌리기/discard/Solari 1로 draw, `PeekTopCard`; Combat: 검 1), Devious(Plot: hand 카드 의무 trash `TrashPersonalCard(hand_only, mandatory)` OR garrison에서 최대 2 배치), Discerning(Plot: discard → draw OR Alliance 보유 시 draw, `HasAlliance`), Insidious(Plot: 상대에게 hand의 Intrigue 1장 증여 → spice 1, 일반 Intrigue면 +1, `GiveIntrigueToOpponent`; 증여 카드 identity는 두 좌석에게만 보이는 이벤트), Resourceful(Plot: 이번 turn play하는 카드에 Landsraad·City·Spice Trade 아이콘, `GrantAgentIconsThisTurn`), Sadistic(Plot: troop 1 잃기 → draw), Shrewd(Combat: Conflict의 troop 1 잃기 → spice 1), Sinister(Combat: troop 2 잃기 → Intrigue 1 + Solari 1), Unnatural(Plot: hand의 Intrigue 1장 trash → Intrigue draw, 일반 Intrigue였으면 troop 1, `TrashIntrigueCard` — 4절의 "Trash an Intrigue card" 아이콘 구현), Withdrawn(Plot, 턴 시작에만: 턴 넘기기, `PassTurn` + `IntrigueOption.turn_start_only`). "lose troops" 비용 `LoseTroops(count, from_conflict)`는 잃는 플레이어가 zone과 종류(Commander 포함)를 고른다(OQ-038); Conflict에서 잃으면 retreat와 같이 strength를 빼고 배치 카운터를 맞춘다.
+
 ### Liet Kynes
 
 - **Arrakis Planetologist** — "Ignore the Influence requirement of Sietch Tabr. You summon no sandworms. For each one you would, instead: [trash a card] [1 spice] [1 Intrigue]. (Even when the Conflict is protected by the Shield Wall.)" 첫 문장은 `legal_agent_actions`의 요구 검사에서 예외. 대체는 `rules/planetologist.py`: spice와 Intrigue draw는 즉시, trash는 sandworm마다 `optional_trash` frame(`trash_optional_card`/`decline_optional_trash`; hand·discard·in play)으로 제시한다 — trash 아이콘을 선택으로 읽은 것은 project convention(OQ-037 부기). 소환 경로 다섯 곳(Maker space, Desert Power Reveal, Arrakis Revolt, Intrigue DSL `SummonSandworm`, Reveal 중 Intrigue)이 모두 대체를 쓰며 Shield Wall 검사만 건너뛴다(Maker Hooks·Conflict 존재·Shaddam의 배치 금지는 그대로).
@@ -96,7 +102,7 @@ Leader identity와 setup은 `content/uprising/leaders.py`, 능력 규칙은 `rul
 
 ### 남은 Bloodlines Leader
 
-Piter De Vries(Twisted Intrigue 12장), Steersman Y'rkoon(Navigation 10장; OQ-012 재검토)은 슬라이스 5의 다음 부분에서, Kota Odax of Ix는 Tech Module과 함께.
+Steersman Y'rkoon(Navigation 10장; OQ-012 재검토)은 슬라이스 5d에서, Kota Odax of Ix는 Tech Module과 함께.
 
 ## 남은 Leader
 
@@ -104,6 +110,6 @@ Piter De Vries(Twisted Intrigue 12장), Steersman Y'rkoon(Navigation 10장; OQ-0
 
 ## 회귀 테스트
 
-`tests/unit/rules/test_bloodlines_leaders.py`(14건)가 Bloodlines Leader 6종의 능력과 Signet(Tuek's Sietch의 존재 조건·방문 행·상대 방문 Intrigue·Smuggle Spice·Makers 누적, Tactics 전진·reset, Fedaykin 후퇴·water 지불, Assassin, Corrino Liaison, Swordmaster 할인, Into the Fray와 비워진 공간, Clandestine 접근·강제 수집, Listeners 두 경로, Planetologist의 Sietch Tabr·sandworm 대체·선택 trash, Judge of the Change 세 아이콘)을 고정한다.
+`tests/unit/rules/test_twisted_intrigue.py`(12건)가 Piter De Vries의 setup·round start·Signet과 Twisted Intrigue 12장의 play 경로(Controlled의 비공개 peek 포함)를 고정한다. `tests/unit/rules/test_bloodlines_leaders.py`(14건)가 Bloodlines Leader 6종의 능력과 Signet(Tuek's Sietch의 존재 조건·방문 행·상대 방문 Intrigue·Smuggle Spice·Makers 누적, Tactics 전진·reset, Fedaykin 후퇴·water 지불, Assassin, Corrino Liaison, Swordmaster 할인, Into the Fray와 비워진 공간, Clandestine 접근·강제 수집, Listeners 두 경로, Planetologist의 Sietch Tabr·sandworm 대체·선택 trash, Judge of the Change 세 아이콘)을 고정한다.
 
 `tests/unit/rules/test_leader_abilities.py`가 signet 자동 해결, Feyd 트랙 분기·단계·최종 칸, Devious/Desert Scouts의 Reveal 액션과 1회 제한, Always Smiling·Unpredictable Foe 문턱과 중복 방지, Jessica 지불·flip·repeat 경로, reach-2 보너스(통과·재도달·타 Faction 미발동), Margot·Staban의 Spy 배치 제한과 후속 지불, Chronicler's Insight의 획득·trash·거절, Limited Allies setup, Smuggle Spice 조건, setup 면 배정을 고정한다. 기본 4종과 신규 4종 각각의 random 4인 완주 soak에서 모든 신규 이벤트가 발동함을 확인했고 replay 검증을 통과했다.
