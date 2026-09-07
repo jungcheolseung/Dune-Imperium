@@ -255,13 +255,20 @@ def finish_agent_icon(context: dict[str, ActionValue], key: str) -> None:
 # the space" ordered freely with the printed icons [Bloodlines p. 4], but not
 # a printed icon, so a repeat of the printed effects never re-arms it.
 BOARD_ICON_COMMANDER = "sardaukar_commander"
+# The Tech Module's Acquire Tech offer of a Landsraad visit: the Ixian
+# Embassy board "gives you this option each time you send an Agent to a
+# Landsraad board space" [Bloodlines pp. 7, 12]; like the Commander it is an
+# effect of the visit, not a printed icon.
+BOARD_ICON_TECH = "tech"
 
 
 def rearm_board_icons(context: dict[str, ActionValue]) -> None:
     """Queue every printed icon of the visit again (Reverend Mother's repeat)."""
 
     icons = tuple(
-        key for key in _icon_keys(context, "board_icons") if key != BOARD_ICON_COMMANDER
+        key
+        for key in _icon_keys(context, "board_icons")
+        if key not in (BOARD_ICON_COMMANDER, BOARD_ICON_TECH)
     )
     context["pending_board_icons"] = ",".join(icons)
     context["pending_board_effect"] = bool(icons)
@@ -285,10 +292,9 @@ def advance_after_effect(
     if isinstance(owner, bool) or not isinstance(owner, int):
         raise RuntimeError("Agent-turn effect frame has invalid owner")
     next_players = state.players if players is None else players
-    if (
-        context["pending_combat_deployment"] is True
-        or agent_turn_has_other_pending_effects(context, next_players)
-    ):
+    if context[
+        "pending_combat_deployment"
+    ] is True or agent_turn_has_other_pending_effects(context, next_players):
         frame = state.decision_stack[-1]
         next_frame = replace(frame, context=tuple(sorted(context.items())))
     else:

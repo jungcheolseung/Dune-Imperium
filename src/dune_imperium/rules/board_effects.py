@@ -12,7 +12,8 @@ dedicated actions further down this module.
 from dataclasses import replace
 from typing import Final, assert_never
 
-from dune_imperium.content.uprising.board import Faction
+from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID, Faction
+from dune_imperium.content.uprising.types import AgentIcon
 from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.chance import ChanceOutcome
 from dune_imperium.core.decisions import ChanceDecision, DecisionFrame, PlayerDecision
@@ -25,6 +26,7 @@ from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effects import (
     BOARD_ICON_COMMANDER,
+    BOARD_ICON_TECH,
     AutomaticEffect,
     DrawImperiumCardsEffect,
     DrawIntrigueCardsEffect,
@@ -299,6 +301,13 @@ def board_icons_for(
         # Bloodlines: the Commander waiting on the space may be bought as
         # one more freely ordered effect of the visit [Bloodlines p. 4].
         icons.append(BOARD_ICON_COMMANDER)
+    if (
+        state.config.tech_module
+        and BOARD_SPACES_BY_ID[space_id].agent_icon is AgentIcon.LANDSRAAD
+    ):
+        # Tech Module: the Ixian Embassy's Acquire Tech "each time you send
+        # an Agent to a Landsraad board space" [Bloodlines pp. 7, 12].
+        icons.append(BOARD_ICON_TECH)
     if len(set(icons)) != len(icons):
         raise RuntimeError(f"board icons of {space_id} must be distinct: {icons}")
     return tuple(icons)

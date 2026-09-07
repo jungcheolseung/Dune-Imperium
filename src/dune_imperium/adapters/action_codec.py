@@ -6,6 +6,7 @@ from numbers import Integral
 from dune_imperium.adapters.observation_encoding import MAKER_SPACE_IDS
 from dune_imperium.config import RulesetConfig
 from dune_imperium.content.bloodlines.sardaukar import SKILLS
+from dune_imperium.content.bloodlines.tech import TECH_TILES
 from dune_imperium.content.uprising.board import (
     BOARD_SPACES,
     OBSERVATION_POSTS,
@@ -49,7 +50,7 @@ from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.rules.agent_effects import AUTOMATIC_AGENT_ICONS
 from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 
-ACTION_CODEC_VERSION = 90
+ACTION_CODEC_VERSION = 91
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -255,6 +256,8 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     templates.append(ActionTemplate(action_id="finish_agent_turn"))
     if config.bloodlines:
         templates.extend(_bloodlines_templates(config))
+    if config.tech_module:
+        templates.extend(_tech_templates(config))
     templates.extend(
         ActionTemplate(
             action_id="recall_agent_for_agent_card",
@@ -782,6 +785,36 @@ def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         )
         for faction in Faction
     )
+    return tuple(templates)
+
+
+def _tech_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
+    """Tech Module choices [Bloodlines pp. 6-7] (``rules.tech``)."""
+
+    templates: list[ActionTemplate] = [ActionTemplate(action_id="decline_tech")]
+    for tile in TECH_TILES:
+        base: tuple[tuple[str, ActionValue], ...] = (("tech_id", tile.tech_id),)
+        variants: list[tuple[tuple[str, ActionValue], ...]] = []
+        if tile.acquire_requires_spy_trash:
+            # Advanced Data Analysis: the Spy trashed from the board.
+            variants.extend(
+                (("post_id", post.post_id), *base) for post in OBSERVATION_POSTS
+            )
+        elif tile.acquire_influence_choice:
+            variants.extend((("faction", faction.value), *base) for faction in Faction)
+        elif tile.acquire_intrigue_or_card:
+            variants.extend(
+                (("choice", choice), *base) for choice in ("card", "intrigue")
+            )
+        elif tile.acquire_may_destroy_shield_wall:
+            variants.append(base)
+            variants.append((("destroy_shield_wall", True), *base))
+        else:
+            variants.append(base)
+        templates.extend(
+            ActionTemplate(action_id="acquire_tech", arguments=arguments)
+            for arguments in variants
+        )
     return tuple(templates)
 
 

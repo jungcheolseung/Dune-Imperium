@@ -69,6 +69,12 @@ def determinize(state: GameState, observer: int, rng: random.Random) -> GameStat
     rng.shuffle(contract_bank)
     conflict_deck = list(state.conflict_deck)
     rng.shuffle(conflict_deck)
+    # Below each face-up top the Tech stacks are face down [Bloodlines p. 6].
+    tech_stacks: list[tuple[str, ...]] = []
+    for stack in state.tech_stacks:
+        below = list(stack[1:])
+        rng.shuffle(below)
+        tech_stacks.append((*stack[:1], *below))
     return replace(
         state,
         players=tuple(players),
@@ -76,4 +82,5 @@ def determinize(state: GameState, observer: int, rng: random.Random) -> GameStat
         imperium_deck=tuple(imperium_deck),
         contract_bank=tuple(contract_bank),
         conflict_deck=tuple(conflict_deck),
+        tech_stacks=tuple(tech_stacks),
     )

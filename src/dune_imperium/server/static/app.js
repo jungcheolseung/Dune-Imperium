@@ -206,6 +206,8 @@ const ACTION_LABELS = {
   play_turn_start_card: "턴 시작: 카드 play 후 draw 1, 턴 넘기기",
   complete_contract_by_card: "카드 효과로 contract 완료",
   choose_skill: "Commander Skill 선택",
+  acquire_tech: "Tech tile 획득",
+  decline_tech: "Tech tile 획득 거절",
   move_spy: "Spy 이동",
   place_spy_on_space: "그 공간에 Spy 배치",
   recall_spy_for_placement: "배치를 위해 Spy 회수",

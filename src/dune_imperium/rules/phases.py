@@ -44,6 +44,9 @@ def begin_round(state: GameState) -> RuleResult:
             spice_spent_turn=0,
             # Urgent Shigawire's boost lasts "this round" only.
             bene_gesserit_boost_pending=False,
+            # Flipped Tech tiles return face up at Round Start
+            # [Bloodlines pp. 7, 12].
+            tech_flipped=(),
         )
         for player, count in zip(state.players, draw_counts, strict=True)
     )

@@ -69,6 +69,13 @@ class PublicPlayerView:
     navigation_remaining: int
     navigation_played: tuple[str, ...]
     reveal_persuasion_bonus: int
+    # Tech Module: the tiles in the supply (public), the ones flipped face
+    # down this round, whether a Secret Project tile waits on the Leader
+    # (its identity is the owner's) and the Spies returned to the box.
+    tech_ids: tuple[str, ...]
+    tech_flipped: tuple[str, ...]
+    has_secret_project: bool
+    spies_boxed: int
     in_play: tuple[str, ...]
     # Every card reaches a discard pile face up (acquired cards [Main p. 13],
     # played and revealed cards after Clean Up [Main pp. 9, 12, 20], cards
@@ -101,6 +108,8 @@ class PrivatePlayerView:
     # Steersman Y'rkoon's face-down Navigation slots, which he may look at
     # any time [Bloodlines p. 12].
     navigation_slots: tuple[str, ...] = ()
+    # Kota Odax's face-down Secret Project tile [Kota Odax of Ix card].
+    secret_project_tech_id: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -157,6 +166,12 @@ class PlayerView:
     skill_stack_size: int = 0
     skill_face_up: tuple[str, ...] = ()
     skill_trash: tuple[str, ...] = ()
+    # Tech Module: the face-up top of each Ixian Embassy stack ("" for an
+    # empty stack), the stack sizes (the order below the top is hidden) and
+    # the trashed tiles.
+    tech_face_up: tuple[str, ...] = ()
+    tech_stack_sizes: tuple[int, ...] = ()
+    tech_trash: tuple[str, ...] = ()
     public_data: tuple[tuple[str, ActionValue], ...] = ()
     private_data: tuple[tuple[str, ActionValue], ...] = ()
 
@@ -304,6 +319,7 @@ def observe_state(state: GameState, player: int) -> PlayerView:
             intrigue_cards=owner.intrigue_cards,
             peeked_card_id=peeked_card_id(state, player),
             navigation_slots=owner.navigation_slots,
+            secret_project_tech_id=owner.secret_project_tech_id,
         ),
         current_conflict_ids=state.current_conflict_ids,
         conflict_deck_size=len(state.conflict_deck),
@@ -330,6 +346,9 @@ def observe_state(state: GameState, player: int) -> PlayerView:
         skill_stack_size=len(state.skill_stack),
         skill_face_up=state.skill_face_up,
         skill_trash=state.skill_trash,
+        tech_face_up=tuple(stack[0] if stack else "" for stack in state.tech_stacks),
+        tech_stack_sizes=tuple(len(stack) for stack in state.tech_stacks),
+        tech_trash=state.tech_trash,
     )
 
 
@@ -394,6 +413,10 @@ def _public_player_view(player: PlayerState) -> PublicPlayerView:
         navigation_remaining=len(player.navigation_slots),
         navigation_played=player.navigation_played,
         reveal_persuasion_bonus=player.reveal_persuasion_bonus,
+        tech_ids=player.tech_ids,
+        tech_flipped=player.tech_flipped,
+        has_secret_project=bool(player.secret_project_tech_id),
+        spies_boxed=player.spies_boxed,
         in_play=player.in_play,
         discard_pile=player.discard_pile,
         trashed=player.trashed,

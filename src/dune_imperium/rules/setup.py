@@ -10,6 +10,7 @@ from dune_imperium.content.bloodlines.sardaukar import (
     SKILL_FACE_UP,
     skill_tile_instance_ids,
 )
+from dune_imperium.content.bloodlines.tech import TECH_STACKS, tech_tiles_for
 from dune_imperium.content.uprising.conflicts import conflicts_by_tier
 from dune_imperium.content.uprising.contracts import contract_instance_ids
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
@@ -253,6 +254,35 @@ class BloodlinesSetup:
     skill_stack: tuple[str, ...]
     twisted_deck: tuple[str, ...] = ()
     navigation_deck: tuple[str, ...] = ()
+    # Tech Module: the three Ixian Embassy stacks, top first.
+    tech_stacks: tuple[tuple[str, ...], ...] = ()
+
+
+def tech_tiles_decision(choam_module: bool) -> ChanceDecision:
+    """Shuffle the Tech tiles face down [Bloodlines p. 6]."""
+
+    return _shuffle_decision(
+        "setup:tech_tiles",
+        "Shuffle the Tech tiles",
+        tuple(tile.tech_id for tile in tech_tiles_for(choam_module)),
+    )
+
+
+def deal_tech_stacks(shuffled: tuple[str, ...]) -> tuple[tuple[str, ...], ...]:
+    """Divide the shuffled tiles into three stacks, as evenly as possible.
+
+    Eighteen tiles make three stacks of six; without CHOAM Transports the
+    seventeen are split 6-6-5 [Bloodlines p. 6].
+    """
+
+    base, extra = divmod(len(shuffled), TECH_STACKS)
+    stacks: list[tuple[str, ...]] = []
+    cursor = 0
+    for index in range(TECH_STACKS):
+        size = base + (1 if index < extra else 0)
+        stacks.append(shuffled[cursor : cursor + size])
+        cursor += size
+    return tuple(stacks)
 
 
 def navigation_deck_decision() -> ChanceDecision:
@@ -292,11 +322,17 @@ def _bloodlines_setup(
     # draft chooses Leaders later); it waits in ``twisted_deck_stock``.
     twisted = resolver.resolve(twisted_deck_decision()).values
     navigation = resolver.resolve(navigation_deck_decision()).values
+    tech_stacks: tuple[tuple[str, ...], ...] = ()
+    if config.tech_module:
+        tech_stacks = deal_tech_stacks(
+            resolver.resolve(tech_tiles_decision(config.choam_module)).values
+        )
     return BloodlinesSetup(
         skill_face_up=skills[:SKILL_FACE_UP],
         skill_stack=skills[SKILL_FACE_UP:],
         twisted_deck=twisted,
         navigation_deck=navigation,
+        tech_stacks=tech_stacks,
     )
 
 
@@ -320,6 +356,7 @@ def _with_bloodlines(state: GameState, setup: BloodlinesSetup | None) -> GameSta
                 skill_stack=setup.skill_stack,
                 twisted_deck_stock=setup.twisted_deck,
                 navigation_stock=setup.navigation_deck,
+                tech_stacks=setup.tech_stacks,
             )
         )
     )

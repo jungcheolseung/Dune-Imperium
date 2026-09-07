@@ -139,6 +139,16 @@ class PlayerState:
     # The Skill strength currently folded into ``combat_strength`` so the
     # running total can be re-derived when a Skill condition changes.
     skill_strength_applied: int = 0
+    # Tech Module [Bloodlines pp. 6-7]: the Tech tiles in the supply
+    # (public), the ones flipped face down this round (a subset, returned
+    # face up at Round Start), Kota Odax's face-down Secret Project tile
+    # (identity known to the owner only; "" when none) and the Spies
+    # returned to the box by Advanced Data Analysis. All empty or zero
+    # without the ``tech_module`` option.
+    tech_ids: tuple[str, ...] = ()
+    tech_flipped: tuple[str, ...] = ()
+    secret_project_tech_id: str = ""
+    spies_boxed: int = 0
     deck: tuple[str, ...] = ()
     hand: tuple[str, ...] = ()
     # Hand cards whose identity every seat already knows because they
@@ -177,9 +187,7 @@ class PlayerState:
         """Return the Sardaukar Commanders this player owns anywhere."""
 
         return (
-            self.commanders_supply
-            + self.commanders_garrison
-            + self.commanders_conflict
+            self.commanders_supply + self.commanders_garrison + self.commanders_conflict
         )
 
     def __post_init__(self) -> None:
@@ -206,11 +214,18 @@ class PlayerState:
             self.skill_strength_applied,
             self.contracts_completed_turn,
             self.commander_discount_turn,
+            self.spies_boxed,
         )
         if min(quantities) < 0:
             raise ValueError("player component quantities must not be negative")
         if len(self.skill_ids) != len(set(self.skill_ids)):
             raise ValueError("a Skill tile cannot be held twice")
+        if len(self.tech_ids) != len(set(self.tech_ids)):
+            raise ValueError("a Tech tile cannot be held twice")
+        if not set(self.tech_flipped) <= set(self.tech_ids) or len(
+            self.tech_flipped
+        ) != len(set(self.tech_flipped)):
+            raise ValueError("flipped Tech tiles must be held tiles")
         skill_identities = tuple(
             instance_id.split(":")[1] for instance_id in self.skill_ids
         )
@@ -235,7 +250,8 @@ class PlayerState:
             != 12
         ):
             raise ValueError("a player must always account for all 12 troops")
-        if self.spies_supply + len(self.spy_post_ids) != 3:
+        # Advanced Data Analysis returns a Spy to the box [Tech tile face].
+        if self.spies_supply + len(self.spy_post_ids) + self.spies_boxed != 3:
             raise ValueError("a player must always account for all three spies")
         if len(self.spy_post_ids) != len(set(self.spy_post_ids)):
             raise ValueError("a player cannot place two spies on one post")

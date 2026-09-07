@@ -82,6 +82,9 @@ _ACTION_SCORES: Final[dict[str, float]] = {
     "recruit_sardaukar_commander": 1.5,
     "trash_skill_for_strength": 1.0,
     "withdraw_commanders": -10.0,
+    # Tech Module: a tile is a permanent upgrade; buying outranks most
+    # minor picks and never blocks a turn (the decline still ranks lowest).
+    "acquire_tech": 2.5,
 }
 
 _IMPERIUM_ACQUISITIONS: Final = frozenset(

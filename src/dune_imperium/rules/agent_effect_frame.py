@@ -58,6 +58,7 @@ from dune_imperium.rules.sardaukar import (
     legal_sardaukar_commander_actions,
 )
 from dune_imperium.rules.spies import legal_gather_intelligence_actions
+from dune_imperium.rules.tech import legal_tech_acquisition_actions
 
 # Serial Agent-card choices. When any of these offers an action, the generic
 # ``resolve_agent_card_effect`` action is withheld until the choice is made.
@@ -112,6 +113,7 @@ def legal_agent_effect_frame_actions(
         *legal_imperial_privilege_actions(state, player),
         *legal_maker_space_actions(state, player),
         *legal_sardaukar_commander_actions(state, player),
+        *legal_tech_acquisition_actions(state, player),
         *legal_commander_recruit_actions(state, player),
         *legal_combat_deployments(state, player),
         *legal_commander_deployments(state, player),

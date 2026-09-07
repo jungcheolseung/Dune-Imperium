@@ -24,7 +24,7 @@ from dune_imperium.simulation import run_random_game
 
 
 def test_layout_is_versioned_and_contiguous() -> None:
-    assert OBSERVATION_VERSION == 8
+    assert OBSERVATION_VERSION == 9
     # 66 Uprising personal-card identities plus 26 Bloodlines Imperium
     # identities; 39 Uprising Intrigue identities plus 18 Bloodlines.
     assert len(PERSONAL_CARD_IDS) == 66 + 26
@@ -32,7 +32,8 @@ def test_layout_is_versioned_and_contiguous() -> None:
     # 16 Uprising Conflicts plus the two Bloodlines cards (identity universe).
     assert len(CONFLICT_IDS) == 18
     assert len(BATTLE_CARD_IDS) == 23
-    assert OBSERVATION_SIZE == 3038
+    # v9: Tech Module segments (24 global, 20 per seat, 1 private).
+    assert OBSERVATION_SIZE == 3038 + 24 + 4 * 20 + 1
 
     offset = 0
     for segment in OBSERVATION_SEGMENTS:
@@ -44,8 +45,8 @@ def test_layout_is_versioned_and_contiguous() -> None:
     assert segment_slice("global_scalars") == slice(0, 12)
     seat0_in_play = segment_slice("seat0_in_play")
     assert seat0_in_play.stop - seat0_in_play.start == 66 + 26
-    private_navigation = segment_slice("private_navigation_slots")
-    assert private_navigation.stop == OBSERVATION_SIZE
+    private_secret_project = segment_slice("private_secret_project")
+    assert private_secret_project.stop == OBSERVATION_SIZE
 
 
 def test_reset_state_encodes_the_turn_decision_for_every_observer() -> None:

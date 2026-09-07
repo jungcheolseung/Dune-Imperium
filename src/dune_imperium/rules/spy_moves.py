@@ -144,18 +144,29 @@ def spy_placement_frame(
     allowed_post_ids: tuple[str, ...],
     *,
     source: str,
+    deep_cover: bool = False,
 ) -> GameState:
-    """Push the owner's placement of a Spy on one of ``allowed_post_ids``."""
+    """Push the owner's placement of a Spy on one of ``allowed_post_ids``.
+
+    With ``deep_cover`` the placement ignores opponents' Spies (Spy with
+    Deep Cover [Bloodlines pp. 5, 12]); only the owner's own Spies block.
+    """
 
     return state.push_decision(
         DecisionFrame(
             kind=FrameKind.SPY_PLACEMENT,
             frame_id=f"{source}:spy_placement",
             decision=PlayerDecision(
-                owner=player, prompt="Place a Spy on the watched space"
+                owner=player,
+                prompt=(
+                    "Place a Spy with Deep Cover"
+                    if deep_cover
+                    else "Place a Spy on the watched space"
+                ),
             ),
             context=(
                 ("allowed_post_ids", ",".join(allowed_post_ids)),
+                ("deep_cover", deep_cover),
                 ("player", player),
                 ("source", source),
             ),
@@ -176,8 +187,15 @@ def legal_spy_placement_actions(
     allowed = frozenset(
         context_str(context, "allowed_post_ids", owner="Spy placement frame").split(",")
     )
-    targets = empty_observation_post_ids(state, allowed)
     owner = state.players[player]
+    if context.get("deep_cover") is True:
+        targets = tuple(
+            post.post_id
+            for post in OBSERVATION_POSTS
+            if post.post_id in allowed and post.post_id not in owner.spy_post_ids
+        )
+    else:
+        targets = empty_observation_post_ids(state, allowed)
     if targets and owner.spies_supply > 0:
         return tuple(
             DomainAction(

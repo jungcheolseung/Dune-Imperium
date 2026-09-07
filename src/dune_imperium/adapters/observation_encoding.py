@@ -23,6 +23,7 @@ from dune_imperium.content.bloodlines.sardaukar import (
     SKILLS,
     skill_for_instance,
 )
+from dune_imperium.content.bloodlines.tech import TECH_IDS, TECH_STACKS
 from dune_imperium.content.uprising.board import (
     BOARD_SPACES_BY_ID,
     OBSERVATION_POSTS,
@@ -48,7 +49,7 @@ from dune_imperium.core.observation import PlayerView, PublicPlayerView
 from dune_imperium.core.state import GamePhase
 from dune_imperium.rules.frames import FrameKind
 
-OBSERVATION_VERSION: Final = 8
+OBSERVATION_VERSION: Final = 9
 _SEATS: Final = 4
 
 PERSONAL_CARD_IDS: Final = (
@@ -99,7 +100,7 @@ class ObservationSegment:
 def _seat_segment_lengths(seat: int) -> tuple[tuple[str, int], ...]:
     prefix = f"seat{seat}"
     return (
-        (f"{prefix}_scalars", 41),
+        (f"{prefix}_scalars", 43),
         (f"{prefix}_alliances", len(FACTION_IDS)),
         (f"{prefix}_control", len(CONTROL_SPACE_IDS)),
         (f"{prefix}_agent_locations", _AGENT_LOCATION_SLOTS),
@@ -114,6 +115,8 @@ def _seat_segment_lengths(seat: int) -> tuple[tuple[str, int], ...]:
         (f"{prefix}_active_contracts", len(CONTRACT_IDS)),
         (f"{prefix}_completed_contracts", len(CONTRACT_IDS)),
         (f"{prefix}_skills", len(SKILL_IDS)),
+        # Tri-state per tile: 0 absent, 1 face up, 2 flipped this round.
+        (f"{prefix}_tech", len(TECH_IDS)),
     )
 
 
@@ -138,6 +141,11 @@ def _segment_lengths() -> tuple[tuple[str, int], ...]:
         ("commander_bank", 1),
         ("skill_stack_size", 1),
         ("skill_face_up", len(SKILL_IDS)),
+        # Tech Module: the face-up top of each stack (identity index + 1),
+        # the stack sizes and the trashed tiles.
+        ("tech_face_up", TECH_STACKS),
+        ("tech_stack_sizes", TECH_STACKS),
+        ("tech_trash", len(TECH_IDS)),
     ]
     for seat in range(_SEATS):
         lengths.extend(_seat_segment_lengths(seat))
@@ -147,6 +155,7 @@ def _segment_lengths() -> tuple[tuple[str, int], ...]:
             ("private_intrigue", len(INTRIGUE_IDS)),
             ("private_peeked_card", len(PERSONAL_CARD_IDS)),
             ("private_navigation_slots", 4),
+            ("private_secret_project", 1),
         )
     )
     return tuple(lengths)
@@ -279,6 +288,14 @@ def encode_player_view(view: PlayerView) -> tuple[int, ...]:
     writer.write("commander_bank", [view.sardaukar_commanders_bank])
     writer.write("skill_stack_size", [view.skill_stack_size])
     writer.write("skill_face_up", _skill_counts(view.skill_face_up))
+    tops = [
+        _index_plus_one(tech_id, TECH_IDS) if tech_id else 0
+        for tech_id in view.tech_face_up
+    ]
+    writer.write("tech_face_up", tops + [0] * (TECH_STACKS - len(tops)))
+    sizes = list(view.tech_stack_sizes)
+    writer.write("tech_stack_sizes", sizes + [0] * (TECH_STACKS - len(sizes)))
+    writer.write("tech_trash", _multi_hot(view.tech_trash, TECH_IDS))
 
     for seat_offset in range(_SEATS):
         seat = (observer + seat_offset) % _SEATS
@@ -298,6 +315,10 @@ def encode_player_view(view: PlayerView) -> tuple[int, ...]:
         for card_id in view.private.navigation_slots
     ]
     writer.write("private_navigation_slots", slots + [0] * (4 - len(slots)))
+    secret = view.private.secret_project_tech_id
+    writer.write(
+        "private_secret_project", [_index_plus_one(secret, TECH_IDS) if secret else 0]
+    )
     return writer.finish()
 
 
@@ -357,6 +378,8 @@ def _write_seat(writer: _Writer, seat_offset: int, player: PublicPlayerView) -> 
             player.twisted_deck_size,
             player.navigation_remaining,
             player.reveal_persuasion_bonus,
+            int(player.has_secret_project),
+            player.spies_boxed,
         ],
     )
     writer.write(
@@ -407,6 +430,15 @@ def _write_seat(writer: _Writer, seat_offset: int, player: PublicPlayerView) -> 
         _contract_flags(player.completed_contract_ids),
     )
     writer.write(f"{prefix}_skills", _skill_counts(player.skill_ids))
+    flipped = set(player.tech_flipped)
+    held_tech = set(player.tech_ids)
+    writer.write(
+        f"{prefix}_tech",
+        [
+            0 if tech_id not in held_tech else (2 if tech_id in flipped else 1)
+            for tech_id in TECH_IDS
+        ],
+    )
 
 
 def _identity_slots(

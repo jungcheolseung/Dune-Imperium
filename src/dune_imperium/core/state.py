@@ -77,6 +77,11 @@ class GameState:
     skill_stack: tuple[str, ...] = ()
     skill_face_up: tuple[str, ...] = ()
     skill_trash: tuple[str, ...] = ()
+    # Tech Module [Bloodlines pp. 6-7]: the Ixian Embassy's three stacks
+    # (each in hidden order, index 0 the face-up top) and the trashed tiles.
+    # Both empty without the ``tech_module`` option.
+    tech_stacks: tuple[tuple[str, ...], ...] = ()
+    tech_trash: tuple[str, ...] = ()
     maker_bonus_spice: tuple[tuple[str, int], ...] = (
         ("deep_desert", 0),
         ("hagga_basin", 0),
@@ -190,6 +195,28 @@ class GameState:
             or any(player.commanders_total for player in self.players)
         ):
             raise ValueError("Sardaukar Commanders require the Bloodlines expansion")
+        tech = (
+            *(tech_id for stack in self.tech_stacks for tech_id in stack),
+            *self.tech_trash,
+            *(
+                tech_id
+                for player in self.players
+                for tech_id in (
+                    *player.tech_ids,
+                    *(
+                        (player.secret_project_tech_id,)
+                        if player.secret_project_tech_id
+                        else ()
+                    ),
+                )
+            ),
+        )
+        if len(tech) != len(set(tech)):
+            raise ValueError("a Tech tile cannot occupy two zones")
+        if not self.config.tech_module and (
+            tech or any(player.spies_boxed for player in self.players)
+        ):
+            raise ValueError("Tech tiles require the Tech Module")
 
         maker_ids = tuple(space_id for space_id, _ in self.maker_bonus_spice)
         if maker_ids not in (

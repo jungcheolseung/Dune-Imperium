@@ -240,6 +240,10 @@ from dune_imperium.rules.spy_moves import (
     legal_spy_placement_actions,
 )
 from dune_imperium.rules.strength import refresh_pre_reveal_strength
+from dune_imperium.rules.tech import (
+    apply_tech_acquisition,
+    legal_tech_acquisition_actions,
+)
 from dune_imperium.rules.unit_loss import apply_unit_loss, legal_unit_loss_actions
 
 type LegalActionProvider = Callable[[GameState, int], tuple[DomainAction, ...]]
@@ -387,6 +391,7 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     FrameKind.OPTIONAL_TRASH: (legal_optional_trash_actions,),
     FrameKind.NAVIGATION_SETUP: (legal_navigation_setup_actions,),
     FrameKind.NAVIGATION_CHOICE: (legal_navigation_play_actions,),
+    FrameKind.TECH_ACQUISITION: (legal_tech_acquisition_actions,),
 }
 
 ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
@@ -454,6 +459,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "finish_agent_turn": apply_agent_turn_finish,
     # Bloodlines Sardaukar Commanders
     "acquire_sardaukar_commander": apply_sardaukar_commander_action,
+    "acquire_tech": apply_tech_acquisition,
+    "decline_tech": apply_tech_acquisition,
     "decline_sardaukar_commander": apply_sardaukar_commander_action,
     "recruit_sardaukar_commander": apply_commander_recruit,
     "trash_skill_for_strength": apply_skill_trash,

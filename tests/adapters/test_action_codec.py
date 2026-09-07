@@ -14,7 +14,7 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     first = ActionCodec(RulesetConfig())
     second = ActionCodec(RulesetConfig())
 
-    assert ACTION_CODEC_VERSION == 90
+    assert ACTION_CODEC_VERSION == 91
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
     assert first.size == 4354

@@ -218,7 +218,12 @@ def _hidden_instances(state: GameState) -> frozenset[str]:
     hidden.update(state.intrigue_deck)
     hidden.update(state.contract_bank)
     hidden.update(state.conflict_deck)
+    for stack in state.tech_stacks:
+        hidden.update(stack[1:])
     for player in state.players:
+        if player.secret_project_tech_id:
+            # Kota Odax's Secret Project tile is face down on the Leader.
+            hidden.add(player.secret_project_tech_id)
         hidden.update(player.hand)
         hidden.update(player.deck)
         hidden.update(player.intrigue_cards)
@@ -326,4 +331,8 @@ def _scramble_hidden_information(state: GameState, observer: int) -> GameState:
         imperium_deck=tuple(reversed(state.imperium_deck)),
         contract_bank=tuple(reversed(state.contract_bank)),
         navigation_stock=tuple(reversed(state.navigation_stock)),
+        # Each Tech stack is face down below its top [Bloodlines p. 6].
+        tech_stacks=tuple(
+            (*stack[:1], *reversed(stack[1:])) for stack in state.tech_stacks
+        ),
     )
