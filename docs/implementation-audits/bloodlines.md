@@ -101,7 +101,7 @@ Skill 7종은 에셋 저장소 `cards/en/bloodlines/skill/*.webp`를 직접 판�
 ## 미완 경계
 
 - Endgame tiebreaker "garrison의 troop 수"에 Commander를 세는지는 공식 문서가 침묵한다(현재는 세지 않음; open question으로 올릴 예정).
-- UI: Ixian Embassy·보유 Tech tile·Secret Project의 화면 표시와 tile 이미지 키는 슬라이스 7에서(행동 라벨만 있다). heuristic agent는 tile을 비용과 무관하게 같은 가중치로 산다.
+- (2026-09-07 밤 해소) UI는 좌석 패널의 Commander·Skill·Tech chip(Flip 면·Secret Project·box의 Spy 포함), 공용 열의 Sardaukar Commander 칸·bank, face-up Skill, Ixian Embassy 세 stack(face-up tile 이미지·남은 수)과 Tech trash, 보드 병력 칩의 Commander 표시, tile 호버 상세(`display/bloodlines.py`의 텍스트)를 갖췄다. heuristic은 `_TECH_BONUSES`로 즉시 득점·상시 할인 tile을 먼저 사고(비용·잔여 spice는 여전히 보지 않는다 — 행동만 보는 설계), rollout의 `player_value`는 Commander 1.2·Skill 0.5·Tech tile 1.0을 자산으로 센다.
 - Kota Odax가 Secret Project에서 본 나머지 두 bottom tile의 identity는 관측에 넣지 않는다(OQ-041).
 
 ## 검증
@@ -109,5 +109,6 @@ Skill 7종은 에셋 저장소 `cards/en/bloodlines/skill/*.webp`를 직접 판�
 - `tests/unit/rules/test_sardaukar.py` 26건: setup(고정·draft), 획득과 Skill 선택·중복 금지·OQ-031(고를 Skill이 없으면 Skill 없이 획득), Solari 부족 시 거절만, 지불 recruit의 turn당 1회와 Reveal turn, 배치 한도 공유와 running strength, Skill strength 조건(Landsraad Agent·상대 sandworm·Emperor 3)과 비활성, Reveal 보너스, Desperate, 정리, 상태 불변식, 관측 비노출, codec 왕복, random 3판·heuristic 1판 soundness 검사.
 - 2026-09-07 소크(`--soundness-interval 25`): random `--ruleset both --bloodlines` 30판씩(60판, 41,508 step), heuristic `--rotate-leaders` 15판씩(30판, 19,584 step), 실패 0.
 - 슬라이스 3 테스트(같은 파일 +5): Intrigue retreat의 Commander 몫 열거·적용, Chani retreat의 혼합 쌍, Desert Scouts의 Commander, wild Conflict 승리 시 즉시 매칭 없음, Endgame의 wild 쌍 3가지와 codec 왕복. 슬라이스 3 소크는 handoff 세션 요약.
+- 슬라이스 7 소크(2026-09-07 밤, `--soundness-interval 25`, 결함 수정 뒤 재실행): random `--ruleset both --bloodlines --tech-module --rotate-leaders` 2,000판씩(4,000판), heuristic 같은 조건 1,000판씩(2,000판), `--leader-draft` random·heuristic 500판씩(1,000판) — 총 7,000판 실패 0. 첫 실행이 적발한 결함 3계열(seed 901·936 Engineered Miracle, 138·309·251·249·347 Detonation/Twisted Devious 교착, 411·263·202 Treacherous Maneuver)은 `642419b`로 수정했다. 같은 룰셋의 `dune-imperium-tournament` heuristic 대 random(`--rotate-leaders`, 12판)은 heuristic 50%(2인 lineup 순환, 기대 50%)·random 0%, 불법 행동 0.
 - 슬라이스 6 테스트: `tests/unit/rules/test_tech.py` 58건 — 콘텐츠 수량·setup(6·6·6/6·6·5, draft, 옵션 없음), Landsraad 방문의 제시·비용·할인·거절·빈 stack, 획득 효과(Spy trash, Shield Wall 변형, 자원·Intrigue·VP·draw·troop, 선택 trash, Deep Cover 2, Fleet 즉시 매칭), 카드 할인 frame, 상시 능력 6종, Reveal 효과(Command 즉시·늦은 지급, Forbidden Weapons 두 선택, Panopticon), trigger(Planetary Array 빚, Suspensor 배치, Plasteel Blades 선택, CHOAM Transports 빚·Endgame), Flip 3종과 Round Start 복귀, Tech 카드 3종, Kota(pool 필터·Secret Project 선택·할인 획득·Signet 두 갈래), 관측 비노출·privacy, codec 왕복, random·heuristic·Kota 소크 게임. `tests/unit/rules/test_navigation.py`에 대기열 직렬화 회귀 1건.
 - 2026-09-07 소크(`--soundness-interval 25`, `--tech-module`): random `--rotate-leaders` 100판씩(200판), heuristic `--rotate-leaders` 50판씩(100판), `--leader-draft` random 50판씩(100판), 실패 0. 소크가 잡은 결함: 계약 완료 안의 reshuffle frame 덮어쓰기(빚진 draw hook으로 수정), Navigation 대기열이 한꺼번에 열려 카드가 두 번 play되던 문제(Panopticon Endgame이 노출; `navigation_play_is_queued` 직렬화), Kota의 `pick_leader` 템플릿 누락.
