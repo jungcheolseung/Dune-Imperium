@@ -60,10 +60,45 @@ Leader identity와 setup은 `content/uprising/leaders.py`, 능력 규칙은 `rul
 - **Sardaukar Commander** — "Set aside both Sardaukar contracts. Only you can acquire them during the game." Shaddam이 선택된 CHOAM setup은 셔플 전에 Sardaukar 2장을 `GameState.sardaukar_contract_ids`로 빼고 남은 18장을 섞는다(6인 보충 규칙의 base-CHOAM setup 지시와 일치). contract 시장 frame이 열려 있는 동안 Shaddam의 선택지에 set-aside가 추가되고, 가져가면 face-up 대신이므로 시장 보충이 없다 `[FAQ p. 3]`. 시장·bank가 모두 소진된 뒤에도 set-aside가 남아 있으면 그의 아이콘은 2 Solari와 set-aside 획득 중 하나를 선택한다(`take_exhausted_contract_solari`, OQ-021 재판정 2026-09-02); set-aside까지 소진되면 자동 2 Solari 전환으로 돌아간다.
 - **Emperor of the Known Universe(Signet)** — "Units can't be deployed to the Conflict this turn." + (Solari 1 + troop 1) —OR— (Solari 3 → 임의 Faction Influence 1). 제한은 Signet Ring 배치 즉시 발효되고 `[Main p. 17]` 그 turn에만 적용된다 `[FAQ p. 3]`. frame context의 `units_deploy_blocked`가 Combat 배치(pending 자체를 열지 않음), Maker sandworm 소환, Plot Intrigue의 배치 option(Detonation)을 막고, Intrigue SummonSandworm은 Shield Wall 규칙과 같은 무효 경로로 처리한다. 보상 선택은 의무이며 Solari 3 미만이면 troop 옵션만 제시된다. recruit된 troop은 같은 제한 때문에 그 turn에 배치할 수 없다.
 
+## Bloodlines Leader (2026-09-07, `bloodlines` 옵션 전용)
+
+카드면(`assets/cards/en/bloodlines/leader/*.webp`)을 직접 판독해 전사했다. 아이콘은 `assets/icons`와 대조했다(Emperor=회색 뿔 투구, Fremen=파란 원 sietch, Landsraad=초록 오각형, City=파란 원, Spice Trade=노란 삼각형, Spy=눈, Intrigue=노란 카드, draw=초록 카드, trash=X 카드). 룰북은 설정과 clarification만 더한다 `[Bloodlines pp. 3, 12]`. 새 상태는 관측 v8의 좌석 scalar `tactics_track_space`·`agent_in_conflict`다.
+
+### Chani
+
+- **Tactician** — "Whenever you retreat or lose any number of troops from the Conflict, advance your Tactics token that many spaces, earning rewards as you reach them. Reset the token after reaching the end of the track." 11칸 track: 4인은 3번째 칸(index 2)에서 시작, 6번째 칸 spice 1, 마지막 칸 water 1 뒤 시작 칸으로 reset; 끝을 넘기는 초과분은 버린다 `[Bloodlines p. 12]`. `rules/tactics.py`가 leaf `units.retreat_units` 안에서 호출되므로 모든 retreat 경로(Reveal·Intrigue·Signet)와 Conflict에서의 유닛 손실(`unit_loss`, Holy War)이 자동으로 센다. Commander는 troop으로 센다 `[Bloodlines p. 4]`. Combat 종료 후 garrison으로 돌아가는 유닛은 retreat가 아니다.
+- **Fedaykin Maneuver(Signet)** — "Retreat any number of your troops. —OR— [Fremen] 2 Influence: water → 2 troops." `retreat_leader_troops(count[, commanders])`(0은 `decline_leader_signet_payment`), `pay_leader_signet_water`(Fremen Influence 2+, water 1+). Agent turn 중의 retreat는 `combat_deployment.reconcile_deployment_after_retreat`로 이번 turn의 배치 카운터를 함께 줄인다(회수 창 언더플로 방지; Intrigue의 Agent turn retreat도 같은 경로).
+
+### Count Hasimir Fenring
+
+- **Assassin** — "Whenever you trash a card: 1 Solari." `card_trash.trash_personal_card`에서 지급; Intrigue trash는 제외 `[Bloodlines p. 12]`.
+- **Corrino Liaison(Signet)** — "You may trash a card in your play area. —OR— Spy on [Emperor]." play area의 어떤 카드든(Signet Ring 자신 포함) `trash_leader_card`, 또는 Emperor observation post에 `place_leader_spy`(supply가 비면 회수 먼저), 또는 거절.
+
+### Duncan Idaho
+
+- **Ginaz Swordmaster** — "The Swordmaster board space costs you 2 less." `agent_turn._effective_costs`가 좌석별로 8→6(다른 좌석이 먼저 샀을 때 6→4)을 적용한다.
+- **Into the Fray(Signet)** — "You may take the Agent you sent this turn and deploy it to the Conflict as a 2 strength unit that can't be retreated. If you have your Swordmaster, it has 3 strength instead." `deploy_leader_agent`: 좌석 `agent_in_conflict=1`, 그 Agent는 `agent_locations`에서 빠져 공간이 다시 비고(OQ-037), `units_strength`가 2/3을 더하며, retreat·손실 대상이 아니다. Combat 정리 때 `agents_available`로 돌아간다.
+
+### Gaius Helen Mohiam
+
+- **Clandestine** — "Each card you play has the Spy icon. Whenever you could recall a Spy to Gather Intelligence, you must." `card_can_access_space`가 그녀의 모든 카드에 Spy 아이콘 접근을 주고, `spies.legal_gather_intelligence_actions`는 회수 가능한 Spy가 있으면 거절을 빼고 제시한다. codec은 Bloodlines 카탈로그에서 모든 카드×모든 공간의 배치 템플릿을 갖는다.
+- **Listeners(Signet)** — "Spy on [Landsraad] —OR— 1 spice → Spy." Landsraad post에 `place_leader_spy`, 또는 `pay_leader_signet_spice`(frame context `listeners_paid`) 뒤 아무 post에 배치, 또는 거절.
+
+### Liet Kynes
+
+- **Arrakis Planetologist** — "Ignore the Influence requirement of Sietch Tabr. You summon no sandworms. For each one you would, instead: [trash a card] [1 spice] [1 Intrigue]. (Even when the Conflict is protected by the Shield Wall.)" 첫 문장은 `legal_agent_actions`의 요구 검사에서 예외. 대체는 `rules/planetologist.py`: spice와 Intrigue draw는 즉시, trash는 sandworm마다 `optional_trash` frame(`trash_optional_card`/`decline_optional_trash`; hand·discard·in play)으로 제시한다 — trash 아이콘을 선택으로 읽은 것은 project convention(OQ-037 부기). 소환 경로 다섯 곳(Maker space, Desert Power Reveal, Arrakis Revolt, Intrigue DSL `SummonSandworm`, Reveal 중 Intrigue)이 모두 대체를 쓰며 Shield Wall 검사만 건너뛴다(Maker Hooks·Conflict 존재·Shaddam의 배치 금지는 그대로).
+- **Judge of the Change(Signet)** — "If you sent an Agent this turn to... [Landsraad]: [Emperor] 2 Influence: water. [City]: 1 Solari. [Spice Trade]: 1 spice." 자동 해결: 방문 공간의 Agent 아이콘으로 판정하고, Landsraad는 Emperor Influence 2 이상일 때만 water.
+
+### 남은 Bloodlines Leader
+
+Esmar Tuek(Tuek's Sietch board space), Piter De Vries(Twisted Intrigue 12장), Steersman Y'rkoon(Navigation 10장; OQ-012 재검토)은 슬라이스 5의 다음 부분에서, Kota Odax of Ix는 Tech Module과 함께.
+
 ## 남은 Leader
 
 없음 — 인쇄된 Uprising Leader 9종(기본 8 + CHOAM 전용 Shaddam)의 능력과 Signet Ring이 모두 구현됐다. Sardaukar II contract의 Agent recall 보상은 [contracts audit](contracts.md)의 2026-08-30 manifest 수정과 함께 들어갔다.
 
 ## 회귀 테스트
+
+`tests/unit/rules/test_bloodlines_leaders.py`(10건)가 Bloodlines Leader 5종의 능력과 Signet(Tactics 전진·reset, Fedaykin 후퇴·water 지불, Assassin, Corrino Liaison, Swordmaster 할인, Into the Fray와 비워진 공간, Clandestine 접근·강제 수집, Listeners 두 경로, Planetologist의 Sietch Tabr·sandworm 대체·선택 trash, Judge of the Change 세 아이콘)을 고정한다.
 
 `tests/unit/rules/test_leader_abilities.py`가 signet 자동 해결, Feyd 트랙 분기·단계·최종 칸, Devious/Desert Scouts의 Reveal 액션과 1회 제한, Always Smiling·Unpredictable Foe 문턱과 중복 방지, Jessica 지불·flip·repeat 경로, reach-2 보너스(통과·재도달·타 Faction 미발동), Margot·Staban의 Spy 배치 제한과 후속 지불, Chronicler's Insight의 획득·trash·거절, Limited Allies setup, Smuggle Spice 조건, setup 면 배정을 고정한다. 기본 4종과 신규 4종 각각의 random 4인 완주 soak에서 모든 신규 이벤트가 발동함을 확인했고 replay 검증을 통과했다.
