@@ -223,7 +223,12 @@ def zero_coverage(
     _report("conflicts", {conflict.card.card_id for conflict in CONFLICTS})
     _report_by_identity(
         "leader_events",
-        {leader.leader_id for leader in leaders_for_choam(choam_module)},
+        {
+            leader.leader_id
+            for leader in leaders_for_choam(
+                choam_module, bloodlines=bloodlines, tech_module=tech_module
+            )
+        },
     )
 
     return zero

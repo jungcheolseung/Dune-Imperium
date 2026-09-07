@@ -315,7 +315,7 @@ def tournament_specs(
             bloodlines=bloodlines,
             tech_module=tech_module,
             leader_ids=(
-                _rotated_leader_ids(seed, choam_module, bloodlines)
+                _rotated_leader_ids(seed, choam_module, bloodlines, tech_module)
                 if rotate_leaders
                 else None
             ),
@@ -328,7 +328,10 @@ def tournament_specs(
 
 
 def _rotated_leader_ids(
-    seed: int, choam_module: bool, bloodlines: bool = False
+    seed: int,
+    choam_module: bool,
+    bloodlines: bool = False,
+    tech_module: bool = False,
 ) -> tuple[str, ...]:
     # Same derivation as the verification sweep's --rotate-leaders so a
     # tournament seed reproduces the sweep's roster for that seed.
@@ -336,7 +339,9 @@ def _rotated_leader_ids(
         random.Random(seed).sample(
             [
                 leader.leader_id
-                for leader in leaders_for_choam(choam_module, bloodlines=bloodlines)
+                for leader in leaders_for_choam(
+                    choam_module, bloodlines=bloodlines, tech_module=tech_module
+                )
             ],
             k=4,
         )

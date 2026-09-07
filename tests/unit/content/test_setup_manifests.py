@@ -328,10 +328,15 @@ def test_reserve_instance_ids_resolve_and_validate_copy_bounds() -> None:
 
 
 def test_base_setup_excludes_only_the_choam_leader() -> None:
-    assert len(LEADERS) == 9 + 8
+    assert len(LEADERS) == 9 + 8 + 1
     assert len(leaders_for_choam(choam_module=False)) == 8
     assert len(leaders_for_choam(choam_module=True)) == 9
     assert len(leaders_for_choam(choam_module=True, bloodlines=True)) == 9 + 8
+    # Kota Odax of Ix needs the Tech Module [Bloodlines p. 6].
+    assert (
+        len(leaders_for_choam(choam_module=True, bloodlines=True, tech_module=True))
+        == 9 + 8 + 1
+    )
     assert {leader.leader_id for leader in LEADERS if leader.choam_only} == {
         "shaddam_corrino_iv"
     }

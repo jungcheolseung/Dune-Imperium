@@ -40,6 +40,7 @@ from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.navigation import assign_navigation_deck
 from dune_imperium.rules.tactics import TACTICS_TRACK_START
+from dune_imperium.rules.tech import assign_secret_project
 
 
 @dataclass(frozen=True, slots=True)
@@ -346,17 +347,19 @@ def _with_bloodlines(state: GameState, setup: BloodlinesSetup | None) -> GameSta
 
     if setup is None:
         return state
-    return assign_navigation_deck(
-        assign_twisted_deck(
-            replace(
-                state,
-                sardaukar_commander_space_ids=COMMANDER_SETUP_SPACE_IDS,
+    return assign_secret_project(
+        assign_navigation_deck(
+            assign_twisted_deck(
+                replace(
+                    state,
+                    sardaukar_commander_space_ids=COMMANDER_SETUP_SPACE_IDS,
                 sardaukar_commanders_bank=COMMANDER_BANK_AT_SETUP,
                 skill_face_up=setup.skill_face_up,
                 skill_stack=setup.skill_stack,
-                twisted_deck_stock=setup.twisted_deck,
-                navigation_stock=setup.navigation_deck,
-                tech_stacks=setup.tech_stacks,
+                    twisted_deck_stock=setup.twisted_deck,
+                    navigation_stock=setup.navigation_deck,
+                    tech_stacks=setup.tech_stacks,
+                )
             )
         )
     )
@@ -520,7 +523,9 @@ def leader_draft_pool_decision(config: RulesetConfig) -> ChanceDecision:
         options=tuple(
             leader.leader_id
             for leader in leaders_for_choam(
-                config.choam_module, bloodlines=config.bloodlines
+                config.choam_module,
+                bloodlines=config.bloodlines,
+                tech_module=config.tech_module,
             )
         ),
         count=LEADER_DRAFT_POOL_SIZE,
@@ -666,7 +671,9 @@ def _validate_leader_selection(
     available = {
         leader.leader_id
         for leader in leaders_for_choam(
-            config.choam_module, bloodlines=config.bloodlines
+            config.choam_module,
+            bloodlines=config.bloodlines,
+            tech_module=config.tech_module,
         )
     }
     unavailable = tuple(

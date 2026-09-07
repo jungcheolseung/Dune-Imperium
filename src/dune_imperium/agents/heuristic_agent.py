@@ -90,6 +90,9 @@ _ACTION_SCORES: Final[dict[str, float]] = {
     "flip_tech": 1.5,
     "choose_tech_strength": 1.0,
     "choose_tech_trash": -1.0,
+    "choose_secret_project": 1.0,
+    "gain_leader_signet_spice": 1.5,
+    "trash_leader_tech": 0.5,
 }
 
 _IMPERIUM_ACQUISITIONS: Final = frozenset(

@@ -152,6 +152,7 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
             "If you are at a Maker space: Gain 2 spice"
         ),
         PersonalCardAgentEffect.GAIN_TWO_SOLARI: "Gain 2 solari",
+        PersonalCardAgentEffect.GAIN_ONE_SPICE: "Gain 1 spice",
         PersonalCardAgentEffect.PLACE_SPY: "Place a Spy",
         PersonalCardAgentEffect.PLACE_SPY_ALLOW_SHARED_IF_SPYING_ON_VISITED_SPACE: (
             "Place a Spy (may share a post with an opponent's Spy if you are "
@@ -342,6 +343,10 @@ REVEAL_CHOICE_EFFECT_TEXT: Final[Mapping[PersonalCardRevealChoiceEffect, str]] =
                 "You may recall 2 Spies → +2 Persuasion"
             ),
             PersonalCardRevealChoiceEffect.PLACE_SPY: "Place a Spy",
+            PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH: (
+                "If you have 2 or more Tech tiles: "
+                "Gain 1 Influence with a chosen Faction"
+            ),
             PersonalCardRevealChoiceEffect.PLACE_SPY_OR_GAIN_TWO_STRENGTH: (
                 "Choose one: Place a Spy / +2 swords"
             ),

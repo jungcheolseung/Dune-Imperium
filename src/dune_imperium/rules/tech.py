@@ -833,3 +833,109 @@ def draw_owed_tech_cards(result: RuleResult) -> RuleResult:
             # One reshuffle at a time; the next seat waits for the next step.
             break
     return RuleResult(state=state, events=tuple(events))
+
+
+# --- Kota Odax of Ix: Secret Project ----------------------------------------------
+
+
+def assign_secret_project(state: GameState) -> GameState:
+    """Open Kota Odax's game-start pick of a bottom Tech tile.
+
+    "Game Start: Peek at the bottom Tech tile of each stack. Place one face
+    down here" [Kota Odax of Ix card]. The frame pauses the game in SETUP
+    (like the Navigation setup) until the owner has chosen.
+    """
+
+    if not state.config.tech_module or not any(state.tech_stacks):
+        return state
+    seat = next(
+        (
+            candidate
+            for candidate in state.players
+            if candidate.leader_id == "kota_odax_of_ix"
+        ),
+        None,
+    )
+    if seat is None or seat.secret_project_tech_id:
+        return state
+    candidates = tuple(stack[-1] for stack in state.tech_stacks if stack)
+    frame = DecisionFrame(
+        kind=FrameKind.TECH_SECRET_PROJECT,
+        frame_id=f"setup:secret_project:{seat.player_id}",
+        decision=PlayerDecision(
+            owner=seat.player_id,
+            prompt="Secret Project: place one bottom Tech tile on your Leader",
+        ),
+        context=(
+            ("candidates", ",".join(candidates)),
+            ("player", seat.player_id),
+            ("resume_phase", state.phase.value),
+        ),
+    )
+    return replace(
+        state, phase=GamePhase.SETUP, decision_stack=(*state.decision_stack, frame)
+    )
+
+
+def legal_secret_project_actions(
+    state: GameState, player: int
+) -> tuple[DomainAction, ...]:
+    """Offer the bottom tile of each stack (the owner alone sees them)."""
+
+    frame = owned_top_frame(state, FrameKind.TECH_SECRET_PROJECT, player)
+    if frame is None:
+        return ()
+    candidates = context_str(
+        dict(frame.context), "candidates", owner="Secret Project frame"
+    )
+    return tuple(
+        DomainAction(
+            action_id="choose_secret_project",
+            actor=player,
+            arguments=(("tech_id", tech_id),),
+        )
+        for tech_id in candidates.split(",")
+        if tech_id
+    )
+
+
+def apply_secret_project(state: GameState, action: DomainAction) -> RuleResult:
+    """Move the chosen bottom tile face down onto Kota Odax's Leader card."""
+
+    if action not in legal_secret_project_actions(state, action.actor):
+        raise ValueError("action is not a legal Secret Project choice")
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    tech_id = str(dict(action.arguments)["tech_id"])
+    stacks = tuple(
+        stack[:-1] if stack and stack[-1] == tech_id else stack
+        for stack in state.tech_stacks
+    )
+    owner = state.players[action.actor]
+    chosen = replace(owner, secret_project_tech_id=tech_id)
+    resume = GamePhase(
+        context_str(context, "resume_phase", owner="Secret Project frame")
+    )
+    return RuleResult(
+        state=replace(
+            state,
+            phase=resume,
+            tech_stacks=stacks,
+            players=replace_player(state.players, chosen),
+            decision_stack=state.decision_stack[:-1],
+        ),
+        events=(
+            # The identity is the owner's; everyone sees that a tile left.
+            GameEvent(
+                event_id=f"{frame.frame_id}:chosen",
+                kind="secret_project_chosen",
+                payload=(("player", action.actor),),
+            ),
+            GameEvent(
+                event_id=f"{frame.frame_id}:identity",
+                kind="secret_project_identity",
+                payload=(("player", action.actor), ("tech_id", tech_id)),
+                visible_to=(action.actor,),
+            ),
+        ),
+    )

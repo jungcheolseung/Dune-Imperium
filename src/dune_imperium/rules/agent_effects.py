@@ -2605,6 +2605,13 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             ),
         )
         event_kind = "agent_card_effect_resolved"
+    elif effect is PersonalCardAgentEffect.GAIN_ONE_SPICE:
+        # Ixian Ambassador: "1 spice" [card face].
+        next_owner = replace(
+            owner,
+            resources=replace(owner.resources, spice=owner.resources.spice + 1),
+        )
+        event_kind = "agent_card_effect_resolved"
     elif effect is PersonalCardAgentEffect.GAIN_VISITED_FACTION_INFLUENCE:
         space_id = context.get("space_id")
         if not isinstance(space_id, str):

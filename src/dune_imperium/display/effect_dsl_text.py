@@ -13,6 +13,7 @@ from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireCardUpTo,
     AcquireReserveCard,
+    AcquireTech,
     CommanderDiscountThisTurn,
     CommandersInConflictAtLeast,
     CompletedContractsAtLeast,
@@ -65,6 +66,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     SpiesPlacedAtLeast,
     SummonSandworm,
     TakeContract,
+    TechTilesAtLeast,
     TrashDiscardPileCard,
     TrashIntrigueCard,
     TrashPersonalCard,
@@ -174,6 +176,8 @@ def condition_text(condition: Condition) -> str:
             return f"you have {amount} or more water"
         case CommandersInConflictAtLeast(count=count):
             return f"you have {count} or more Sardaukar Commanders in the Conflict"
+        case TechTilesAtLeast(count=count):
+            return f"you have {count} or more Tech tiles"
         case _:
             assert_never(condition)
 
@@ -313,6 +317,10 @@ def reward_text(reward: Reward) -> str:
             )
         case AcquireReserveCard(card_id=card_id):
             return f"Acquire {card_id.replace('_', ' ').title()}"
+        case AcquireTech(discount=0):
+            return "Acquire a Tech tile"
+        case AcquireTech(discount=discount):
+            return f"Acquire a Tech tile ({discount} spice off)"
         case RedirectSpiesOnTurnSpace():
             return (
                 "Each opponent spying on the board space where you sent an Agent "

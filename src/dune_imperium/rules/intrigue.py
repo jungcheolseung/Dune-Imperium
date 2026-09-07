@@ -120,6 +120,7 @@ from dune_imperium.rules.spy_placement import (
     recall_spy,
     solo_occupied_post_ids,
 )
+from dune_imperium.rules.tech import push_tech_acquisition
 from dune_imperium.rules.unit_loss import lose_unit
 from dune_imperium.rules.units import retreat_units
 
@@ -988,6 +989,14 @@ def _apply_section_rewards(
         )
         next_state = acquired.result.state
         events.extend(acquired.result.events)
+    for discount in outcome.tech_acquisitions:
+        # Battlefield Research / Rapid Engineering: the Tech Discount icon
+        # opens its own Acquire Tech [Bloodlines pp. 7, 12].
+        opened = push_tech_acquisition(
+            next_state, player, discount=discount, source=source
+        )
+        next_state = opened.state
+        events.extend(opened.events)
     if outcome.passes_turn:
         # Withdrawn: the turn ends at once; the seat stays unrevealed.
         next_state = open_next_turn(next_state, player)

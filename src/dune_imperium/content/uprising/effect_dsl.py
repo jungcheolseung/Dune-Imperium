@@ -168,6 +168,17 @@ class CommandersInConflictAtLeast:
             raise ValueError("Commander condition count must be positive")
 
 
+@dataclass(frozen=True, slots=True)
+class TechTilesAtLeast:
+    """The player holds ``count`` or more Tech tiles (Tech Module)."""
+
+    count: int = 1
+
+    def __post_init__(self) -> None:
+        if self.count < 1:
+            raise ValueError("Tech tile condition count must be positive")
+
+
 type Condition = (
     InfluenceAtLeast
     | HasHighCouncil
@@ -182,6 +193,7 @@ type Condition = (
     | OpponentAllianceInfluenceAtLeast
     | WaterAtLeast
     | CommandersInConflictAtLeast
+    | TechTilesAtLeast
 )
 
 
@@ -658,6 +670,19 @@ class AcquireReserveCard:
 
 
 @dataclass(frozen=True, slots=True)
+class AcquireTech:
+    """The Acquire Tech icon with a ``discount`` (Tech Module): open the
+    owner's choice of a face-up Tech tile at ``discount`` spice off
+    [Bloodlines pp. 7, 12]."""
+
+    discount: int = 1
+
+    def __post_init__(self) -> None:
+        if self.discount < 0:
+            raise ValueError("Tech discount must not be negative")
+
+
+@dataclass(frozen=True, slots=True)
 class GainSolariPerUnitType:
     """Calculating (Twisted Intrigue): one Solari per kind of unit in the
     Conflict (troops, sandworms, Sardaukar Commanders, a fighting Agent)."""
@@ -738,6 +763,7 @@ type Reward = (
     | PassTurn
     | PermanentRevealPersuasion
     | AcquireReserveCard
+    | AcquireTech
 )
 
 

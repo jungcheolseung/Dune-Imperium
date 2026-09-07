@@ -13,6 +13,7 @@ from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireCardUpTo,
     AcquireReserveCard,
+    AcquireTech,
     CommanderDiscountThisTurn,
     CommandersInConflictAtLeast,
     CompletedContractsAtLeast,
@@ -62,6 +63,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     SpiesPlacedAtLeast,
     SummonSandworm,
     TakeContract,
+    TechTilesAtLeast,
     TrashDiscardPileCard,
     TrashIntrigueCard,
     TrashPersonalCard,
@@ -746,12 +748,35 @@ INTRIGUE_CARDS: Final = (
             ),
         ),
     ),
+    # Battlefield Research (Tech Module, card face): "Retreat one or two of
+    # your troops -> Acquire Tech (1 spice off) — OR — If you have three or
+    # more Tech tiles: 1 VP", Combat / Endgame.
     _entry(
         110,
         "battlefield-research",
         "Battlefield Research",
         bloodlines_only=True,
         tech_only=True,
+        options=(
+            _combat(
+                EffectSection(
+                    costs=(RetreatTroops(1, 2),),
+                    rewards=(AcquireTech(1),),
+                )
+            ),
+            _combat(
+                EffectSection(
+                    condition=TechTilesAtLeast(3),
+                    rewards=(GainVictoryPoints(1),),
+                )
+            ),
+            _endgame(
+                EffectSection(
+                    condition=TechTilesAtLeast(3),
+                    rewards=(GainVictoryPoints(1),),
+                )
+            ),
+        ),
     ),
     _entry(
         111,
@@ -846,12 +871,29 @@ INTRIGUE_CARDS: Final = (
             _plot(EffectSection(rewards=(IgnoreInfluenceRequirementsThisTurn(),))),
         ),
     ),
+    # Rapid Engineering (Tech Module, card face): "Discard a card -> Acquire
+    # Tech (1 spice off) — OR — If you have three or more Tech tiles: choose
+    # two: Emperor / Guild / Bene Gesserit / Fremen Influence", Plot.
     _entry(
         118,
         "rapid-engineering",
         "Rapid Engineering",
         bloodlines_only=True,
         tech_only=True,
+        options=(
+            _plot(
+                EffectSection(
+                    costs=(DiscardFromHand(1),),
+                    rewards=(AcquireTech(1),),
+                )
+            ),
+            _plot(
+                EffectSection(
+                    condition=TechTilesAtLeast(3),
+                    rewards=(GainInfluence(times=2, distinct=True),),
+                )
+            ),
+        ),
     ),
     _entry(
         119,

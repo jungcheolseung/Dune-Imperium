@@ -25,6 +25,7 @@ from dune_imperium.rules.setup import (
     assign_twisted_deck,
     maker_bonus_spice_for,
 )
+from dune_imperium.rules.tech import assign_secret_project
 
 
 def draft_pick_order(first_player: int, players: int) -> tuple[int, ...]:
@@ -165,19 +166,21 @@ def _finish_draft_setup(
         )
     )
     return RuleResult(
-        state=assign_navigation_deck(
-            assign_twisted_deck(
-                replace(
-                    state,
-                    phase=GamePhase.ROUND_START,
-                    players=players,
-                    contract_bank=bank,
-                    face_up_contract_ids=face_up,
-                    sardaukar_contract_ids=sardaukar_set_aside,
-                    maker_bonus_spice=maker_bonus_spice_for(
-                        tuple(player.leader_id or "" for player in players)
-                    ),
-                    decision_stack=state.decision_stack[:-1],
+        state=assign_secret_project(
+            assign_navigation_deck(
+                assign_twisted_deck(
+                    replace(
+                        state,
+                        phase=GamePhase.ROUND_START,
+                        players=players,
+                        contract_bank=bank,
+                        face_up_contract_ids=face_up,
+                        sardaukar_contract_ids=sardaukar_set_aside,
+                        maker_bonus_spice=maker_bonus_spice_for(
+                            tuple(player.leader_id or "" for player in players)
+                        ),
+                        decision_stack=state.decision_stack[:-1],
+                    )
                 )
             )
         ),

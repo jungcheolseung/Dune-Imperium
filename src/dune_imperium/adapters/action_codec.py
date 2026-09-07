@@ -143,7 +143,9 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             arguments=(("leader_id", leader.leader_id),),
         )
         for leader in leaders_for_choam(
-            config.choam_module, bloodlines=config.bloodlines
+            config.choam_module,
+            bloodlines=config.bloodlines,
+            tech_module=config.tech_module,
         )
     ]
     templates.extend(
@@ -837,6 +839,13 @@ def _tech_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     templates.append(ActionTemplate(action_id="choose_tech_trash"))
     # Plasteel Blades' optional trash for an extra Skill.
     templates.append(ActionTemplate(action_id="decline_skill"))
+    # Kota Odax of Ix: the Secret Project pick and Reverse Engineering.
+    templates.extend(
+        ActionTemplate(action_id=action_id, arguments=(("tech_id", tile.tech_id),))
+        for action_id in ("choose_secret_project", "trash_leader_tech")
+        for tile in TECH_TILES
+    )
+    templates.append(ActionTemplate(action_id="gain_leader_signet_spice"))
     return tuple(templates)
 
 

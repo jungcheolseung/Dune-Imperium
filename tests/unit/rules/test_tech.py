@@ -1013,3 +1013,275 @@ def test_ability_actions_round_trip_in_the_tech_catalog() -> None:
     )
     for action in actions:
         assert codec.decode(codec.encode(action), action.actor) == action
+
+
+# --- Tech-only cards and Kota Odax of Ix (slices 6c-6d) --------------------------
+
+
+def test_ixian_ambassador_gains_spice_and_influence_with_two_tiles() -> None:
+    from dune_imperium.rules.agent_effects import resolve_agent_card_effect
+    from dune_imperium.rules.reveal_turn import (
+        apply_reveal_influence_gain,
+        legal_reveal_influence_gain_actions,
+    )
+
+    card = "imperium:ixian_ambassador:0"
+    owner = _tech_owner("glowglobes", "training_depot", hand=(card,), deck=())
+    state = _turn_state(owner, stacks=((), (), ()))
+    placed = _visit(state, "assembly_hall")
+    assert placed.players[0].resources.spice == 6
+    resolved = resolve_agent_card_effect(placed).state
+    assert resolved.players[0].resources.spice == 6 + 1
+
+    # Reveal: two tiles open the Influence choice; one tile defers it.
+    revealed = _reveal(_turn_state(replace(owner, hand=(card,)), stacks=((), (), ())))
+    frame = revealed.state.decision_stack[-1]
+    assert frame.kind == "reveal_choice"
+    choices = legal_reveal_influence_gain_actions(revealed.state, 0)
+    assert len(choices) == 4
+    gained = apply_reveal_influence_gain(revealed.state, choices[3]).state
+    assert gained.players[0].influence.fremen == 1
+    single = _reveal(
+        _turn_state(
+            replace(owner, hand=(card,), tech_ids=("glowglobes",)), stacks=((), (), ())
+        )
+    )
+    assert single.state.decision_stack[-1].kind == "reveal"
+
+
+def test_rapid_engineering_discards_for_a_discounted_tile_or_two_influence() -> None:
+    from dune_imperium.rules.intrigue import (
+        apply_intrigue_choice,
+        apply_intrigue_play,
+        legal_intrigue_choice_actions,
+        legal_intrigue_play_actions,
+    )
+
+    card = "intrigue:rapid_engineering:0"
+    owner = _owner(intrigue_cards=(card,), resources=Resources(spice=1))
+    state = _turn_state(owner)
+    plays = legal_intrigue_play_actions(state, 0)
+    # Without three tiles only the discard option is playable.
+    assert [dict(a.arguments)["option"] for a in plays] == [0]
+    played = apply_intrigue_play(state, plays[0]).state
+    discards = legal_intrigue_choice_actions(played, 0)
+    chosen = apply_intrigue_choice(played, discards[0]).state
+    assert chosen.decision_stack[-1].kind == "tech_acquisition"
+    assert dict(chosen.decision_stack[-1].context)["discount"] == 1
+    # Gene-Locked Vault costs 2, one spice with the icon's discount.
+    bought = _acquire(chosen, "gene_locked_vault:choice=card")
+    assert bought.players[0].resources.spice == 0
+    assert bought.players[0].tech_ids == ("gene_locked_vault",)
+
+    rich = _turn_state(
+        _tech_owner(
+            "glowglobes", "training_depot", "panopticon", intrigue_cards=(card,)
+        ),
+        stacks=((), (), ()),
+    )
+    options = [
+        dict(a.arguments)["option"] for a in legal_intrigue_play_actions(rich, 0)
+    ]
+    assert options == [0, 1]
+    influence = apply_intrigue_play(
+        rich, DomainAction("play_intrigue", 0, (("card_id", card), ("option", 1)))
+    ).state
+    first = legal_intrigue_choice_actions(influence, 0)
+    after_first = apply_intrigue_choice(influence, first[0]).state
+    second = legal_intrigue_choice_actions(after_first, 0)
+    # "Choose two": the second pick excludes the first Faction.
+    assert len(second) == 3
+    done = apply_intrigue_choice(after_first, second[0]).state
+    seat = done.players[0]
+    assert (
+        sum(
+            (
+                seat.influence.emperor,
+                seat.influence.spacing_guild,
+                seat.influence.bene_gesserit,
+                seat.influence.fremen,
+            )
+        )
+        == 2
+    )
+
+
+def test_battlefield_research_retreats_for_a_tile_or_scores_with_three() -> None:
+    from dune_imperium.rules.combat import begin_combat_intrigue
+    from dune_imperium.rules.intrigue import (
+        apply_intrigue_choice,
+        apply_intrigue_play,
+        legal_intrigue_choice_actions,
+        legal_intrigue_play_actions,
+    )
+
+    card = "intrigue:battlefield_research:0"
+    owner = _tech_owner(
+        "glowglobes",
+        "training_depot",
+        "panopticon",
+        intrigue_cards=(card,),
+        troops_supply=8,
+        troops_garrison=1,
+        troops_conflict=3,
+        combat_strength=6,
+        has_revealed=True,
+        hand=(),
+        resources=Resources(spice=2),
+    )
+    state = replace(
+        _turn_state(
+            owner,
+            stacks=(("plasteel_blades",), ("delivery_bay",), ("servo_receivers",)),
+        ),
+        phase=GamePhase.COMBAT,
+        first_player=0,
+        decision_stack=(),
+        players=(
+            owner,
+            *(
+                replace(PlayerState(player_id=seat), has_revealed=True)
+                for seat in range(1, 4)
+            ),
+        ),
+    )
+    combat = begin_combat_intrigue(state).state
+    plays = legal_intrigue_play_actions(combat, 0)
+    assert [dict(a.arguments)["option"] for a in plays] == [0, 1]
+    scored = apply_intrigue_play(combat, plays[1]).state
+    assert scored.players[0].victory_points == 1 + 1
+
+    retreat = apply_intrigue_play(combat, plays[0]).state
+    counts = sorted(
+        dict(a.arguments)["count"] for a in legal_intrigue_choice_actions(retreat, 0)
+    )
+    assert counts == [1, 2]
+    picked = apply_intrigue_choice(
+        retreat, legal_intrigue_choice_actions(retreat, 0)[0]
+    ).state
+    assert picked.players[0].troops_conflict in (1, 2)
+    assert picked.decision_stack[-1].kind == "tech_acquisition"
+    # Plasteel Blades costs 3; the icon's discount brings it to the two spice held.
+    assert "plasteel_blades" in _tech_actions(picked)
+    bought = _acquire(picked, "plasteel_blades")
+    assert bought.players[0].resources.spice == 0
+    assert "plasteel_blades" in bought.players[0].tech_ids
+    assert bought.decision_stack[-1].kind == "combat_intrigue"
+
+
+def test_kota_odax_needs_the_tech_module_and_picks_a_secret_project() -> None:
+    from dune_imperium.content.uprising.leaders import leaders_for_choam
+    from dune_imperium.rules.tech import (
+        apply_secret_project,
+        legal_secret_project_actions,
+    )
+
+    assert "kota_odax_of_ix" not in {
+        leader.leader_id for leader in leaders_for_choam(True, bloodlines=True)
+    }
+    with pytest.raises(ValueError, match="not available"):
+        create_initial_state(
+            RulesetConfig(bloodlines=True),
+            seed=3,
+            leader_ids=("kota_odax_of_ix", *LEADERS[1:]),
+        )
+    setup = create_initial_state(
+        TECH_CHOAM, seed=3, leader_ids=("kota_odax_of_ix", *LEADERS[1:])
+    ).state
+    assert setup.phase is GamePhase.SETUP
+    assert setup.decision_stack[-1].kind == "tech_secret_project"
+    bottoms = tuple(stack[-1] for stack in setup.tech_stacks)
+    picks = legal_secret_project_actions(setup, 0)
+    assert {dict(a.arguments)["tech_id"] for a in picks} == set(bottoms)
+    chosen = apply_secret_project(setup, picks[1]).state
+    assert chosen.phase is GamePhase.ROUND_START
+    seat = chosen.players[0]
+    assert seat.secret_project_tech_id == bottoms[1]
+    assert tuple(len(stack) for stack in chosen.tech_stacks) == (6, 5, 6)
+    # Opponents learn that a tile waits, not which one.
+    rival = observe_state(chosen, 1)
+    assert rival.players[0].has_secret_project
+    own = observe_state(chosen, 0).private
+    assert own is not None and own.secret_project_tech_id == bottoms[1]
+    check_observation_privacy(chosen)
+
+
+def test_the_secret_project_tile_is_one_spice_cheaper_wherever_tech_is_acquired() -> (
+    None
+):
+    owner = _owner(
+        leader_id="kota_odax_of_ix",
+        secret_project_tech_id="sardaukar_high_command",
+        resources=Resources(spice=6),
+    )
+    state = _visit(_turn_state(owner), "assembly_hall")
+    offered = _tech_actions(state)
+    # Seven spice printed, six as the Secret Project.
+    assert "sardaukar_high_command" in offered
+    bought = _acquire(state, "sardaukar_high_command")
+    seat = bought.players[0]
+    assert seat.resources.spice == 0
+    assert seat.secret_project_tech_id == ""
+    assert seat.tech_ids == ("sardaukar_high_command",)
+    assert seat.victory_points == 2
+    assert bought.tech_stacks == STACKS
+
+
+def test_reverse_engineering_takes_spice_or_trades_a_tile_for_cards() -> None:
+    from dune_imperium.rules.leader_abilities import (
+        apply_kota_signet_action,
+        legal_leader_signet_actions,
+    )
+
+    signet = "player:0:starter:signet_ring:0"
+    owner = _tech_owner(
+        "glowglobes",
+        leader_id="kota_odax_of_ix",
+        hand=(signet,),
+        deck=tuple(c for c in starting_deck_instance_ids(0) if c != signet),
+    )
+    state = _turn_state(owner, stacks=((), (), ()))
+    action = next(
+        action
+        for action in legal_agent_actions(state, 0)
+        if dict(action.arguments)["space_id"] == "assembly_hall"
+    )
+    placed = apply_agent_action(state, action).state
+    actions = legal_leader_signet_actions(placed, 0)
+    assert [a.action_id for a in actions] == [
+        "gain_leader_signet_spice",
+        "trash_leader_tech",
+    ]
+    spice = apply_kota_signet_action(placed, actions[0]).state
+    assert spice.players[0].resources.spice == 6 + 1
+    traded = apply_kota_signet_action(placed, actions[1]).state
+    seat = traded.players[0]
+    assert seat.tech_ids == ()
+    assert traded.tech_trash == ("glowglobes",)
+    # Assembly Hall's own Intrigue icon is still pending: only the Signet's.
+    assert len(seat.intrigue_cards) == 1
+    assert len(seat.hand) == 1
+
+
+def test_kota_actions_round_trip_in_the_tech_catalog() -> None:
+    codec = ActionCodec(TECH)
+    actions = (
+        DomainAction("choose_secret_project", 0, (("tech_id", "glowglobes"),)),
+        DomainAction("gain_leader_signet_spice", 2),
+        DomainAction("trash_leader_tech", 1, (("tech_id", "panopticon"),)),
+        DomainAction("gain_reveal_influence", 3, (("faction", "emperor"),)),
+    )
+    for action in actions:
+        assert codec.decode(codec.encode(action), action.actor) == action
+
+
+def test_random_tech_games_with_kota_finish_under_every_check() -> None:
+    report = run_checked_game(
+        TECH_CHOAM,
+        game_seed=51,
+        policy_seed=900_051,
+        privacy_interval=10,
+        soundness_interval=10,
+        engine=UprisingRulesEngine(leader_ids=("kota_odax_of_ix", *LEADERS[1:])),
+    )
+    assert report.rounds >= 1

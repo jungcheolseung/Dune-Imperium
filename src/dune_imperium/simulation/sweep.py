@@ -366,7 +366,9 @@ def sweep_specs(
                         [
                             leader.leader_id
                             for leader in leaders_for_choam(
-                                choam_module, bloodlines=bloodlines
+                                choam_module,
+                                bloodlines=bloodlines,
+                                tech_module=tech_module,
                             )
                         ],
                         k=4,

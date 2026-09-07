@@ -14,6 +14,7 @@ from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireCardUpTo,
     AcquireReserveCard,
+    AcquireTech,
     CommanderDiscountThisTurn,
     CommandersInConflictAtLeast,
     CompletedContractsAtLeast,
@@ -62,6 +63,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     SpiesPlacedAtLeast,
     SummonSandworm,
     TakeContract,
+    TechTilesAtLeast,
     TrashDiscardPileCard,
     TrashIntrigueCard,
     TrashPersonalCard,
@@ -182,6 +184,8 @@ def condition_holds(state: GameState, player: int, condition: Condition) -> bool
             return owner.resources.water >= amount
         case CommandersInConflictAtLeast(count=count):
             return owner.commanders_conflict >= count
+        case TechTilesAtLeast(count=count):
+            return len(owner.tech_ids) >= count
         case InfluenceAtLeast(faction=faction, amount=amount):
             return influence_amount(owner.influence, faction) >= amount
         case HasHighCouncil():
@@ -590,6 +594,8 @@ class RewardOutcome:
     sandworms_replaced: int = 0
     passes_turn: bool = False
     reserve_acquisitions: tuple[str, ...] = ()
+    # Acquire Tech icons to open, one discount per icon (Tech Module).
+    tech_acquisitions: tuple[int, ...] = ()
 
 
 def automatic_rewards(sections: tuple[EffectSection, ...]) -> tuple[Reward, ...]:
@@ -636,6 +642,7 @@ def apply_rewards(
     sandworms_replaced = 0
     passes_turn = False
     reserve_acquisitions: list[str] = []
+    tech_acquisitions: list[int] = []
     personal_draws = 0
     intrigue_draws = 0
     contracts = 0
@@ -763,6 +770,8 @@ def apply_rewards(
                 )
             case AcquireReserveCard(card_id=card_id):
                 reserve_acquisitions.append(card_id)
+            case AcquireTech(discount=discount):
+                tech_acquisitions.append(discount)
             case GrantCombatDeployment():
                 combat_icons += 1
             case RedirectSpiesOnTurnSpace():
@@ -826,4 +835,5 @@ def apply_rewards(
         sandworms_replaced=sandworms_replaced,
         passes_turn=passes_turn,
         reserve_acquisitions=tuple(reserve_acquisitions),
+        tech_acquisitions=tuple(tech_acquisitions),
     )

@@ -86,6 +86,8 @@ class PersonalCardAgentEffect(StrEnum):
     GAIN_SPICE_IF_MAKER_SPACE = "gain_spice_if_maker_space"
     GAIN_TWO_SPICE_IF_MAKER_SPACE = "gain_two_spice_if_maker_space"
     GAIN_TWO_SOLARI = "gain_two_solari"
+    # Ixian Ambassador (Tech Module): "1 spice".
+    GAIN_ONE_SPICE = "gain_one_spice"
     PLACE_SPY = "place_spy"
     PLACE_SPY_ALLOW_SHARED_IF_SPYING_ON_VISITED_SPACE = (
         "place_spy_allow_shared_if_spying_on_visited_space"
@@ -275,6 +277,9 @@ class PersonalCardRevealChoiceEffect(StrEnum):
     )
     # Delivery Logistics: "1 Persuasion OR a contract".
     PERSUASION_OR_CONTRACT = "persuasion_or_contract"
+    # Ixian Ambassador (Tech Module): "If you have two or more Tech tiles:
+    # gain 1 Influence of your choice".
+    GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH = "gain_chosen_influence_if_two_tech"
 
 
 # Choice effects added by Bloodlines: their action templates join only the
@@ -290,6 +295,7 @@ BLOODLINES_REVEAL_CHOICE_EFFECTS: frozenset[PersonalCardRevealChoiceEffect] = fr
         PersonalCardRevealChoiceEffect.COMMAND_MAY_TRASH_SELF_TO_ACQUIRE_ROW_CARD,
         PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_FOR_FOUR_INFLUENCE_IF_FOUR_CONTRACTS,
         PersonalCardRevealChoiceEffect.PERSUASION_OR_CONTRACT,
+        PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH,
     }
 )
 

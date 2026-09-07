@@ -1294,6 +1294,9 @@ IMPERIUM_CARDS: Final = (
         reveal_choice_effects=(PersonalCardRevealChoiceEffect.COMMAND_PLACE_SPY,),
         play_data_complete=True,
     ),
+    # Ixian Ambassador (Tech Module, card face): no Faction, Landsraad icon.
+    # Agent: 1 spice. Reveal: 1 Persuasion; "If you have two or more Tech
+    # tiles: gain 1 Influence of your choice".
     _entry(
         106,
         "ixian-ambassador",
@@ -1302,6 +1305,13 @@ IMPERIUM_CARDS: Final = (
         copies=2,
         bloodlines_only=True,
         tech_only=True,
+        agent_icons=(AgentIcon.LANDSRAAD,),
+        agent_effect=PersonalCardAgentEffect.GAIN_ONE_SPICE,
+        reveal_persuasion=1,
+        reveal_choice_effects=(
+            PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH,
+        ),
+        play_data_complete=True,
     ),
     _entry(
         107,

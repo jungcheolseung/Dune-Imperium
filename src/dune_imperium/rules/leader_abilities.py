@@ -87,6 +87,8 @@ IMPLEMENTED_ABILITY_LEADER_IDS: Final = frozenset(
         "liet_kynes",
         "piter_de_vries",
         "steersman_y_rkoon",
+        # Tech Module (card face, 2026-09-07).
+        "kota_odax_of_ix",
     }
 )
 
@@ -256,6 +258,7 @@ def resolve_leader_signet(state: GameState) -> RuleResult:
         "duncan_idaho",
         "esmar_tuek",
         "gaius_helen_mohiam",
+        "kota_odax_of_ix",
     ):
         # Unseen Network always finds an empty post (thirteen posts outnumber
         # the twelve Spies) and Chronicler's Insight always offers a decline,
@@ -836,6 +839,21 @@ def legal_leader_signet_actions(
                 if state.current_conflict_ids
                 and not units_deployment_blocked(state, player)
                 else ()
+            ),
+        )
+
+    if owner.leader_id == "kota_odax_of_ix":
+        # Reverse Engineering: one spice, or trash one of your Tech tiles for
+        # an Intrigue card and a card [Kota Odax of Ix card].
+        return (
+            DomainAction(action_id="gain_leader_signet_spice", actor=player),
+            *(
+                DomainAction(
+                    action_id="trash_leader_tech",
+                    actor=player,
+                    arguments=(("tech_id", tech_id),),
+                )
+                for tech_id in owner.tech_ids
             ),
         )
 
@@ -1506,6 +1524,61 @@ def apply_leader_signet_acquire(
             events=(*acquired.result.events, *contracts.events),
         )
     return RuleResult(state=next_state, events=acquired.result.events)
+
+
+def apply_kota_signet_action(state: GameState, action: DomainAction) -> RuleResult:
+    """Reverse Engineering: one spice, or a Tech tile for an Intrigue and a card."""
+
+    if action not in legal_leader_signet_actions(state, action.actor):
+        raise ValueError("action is not a legal Reverse Engineering choice")
+    _, context = current_agent_effect_context(state)
+    player = action.actor
+    owner = state.players[player]
+    source = f"round:{state.round_number}:player:{player}:leader_signet"
+    context["pending_agent_effect"] = False
+    if action.action_id == "gain_leader_signet_spice":
+        next_owner = replace(
+            owner, resources=replace(owner.resources, spice=owner.resources.spice + 1)
+        )
+        next_state = advance_after_effect(
+            state, context, replace_player(state.players, next_owner)
+        )
+        return RuleResult(
+            state=next_state,
+            events=(
+                GameEvent(
+                    event_id=source,
+                    kind="leader_signet_resolved",
+                    payload=(("player", player), ("spice", 1)),
+                ),
+            ),
+        )
+    tech_id = str(dict(action.arguments)["tech_id"])
+    next_owner = replace(
+        owner,
+        tech_ids=tuple(held for held in owner.tech_ids if held != tech_id),
+        tech_flipped=tuple(held for held in owner.tech_flipped if held != tech_id),
+    )
+    players = replace_player(state.players, next_owner)
+    working = replace(state, players=players, tech_trash=(*state.tech_trash, tech_id))
+    working = advance_after_effect(working, context, players)
+    events: list[GameEvent] = [
+        GameEvent(
+            event_id=f"{source}:tech_trashed",
+            kind="tech_trashed",
+            payload=(("player", player), ("tech_id", tech_id)),
+        ),
+        GameEvent(
+            event_id=source,
+            kind="leader_signet_resolved",
+            payload=(("cards", 1), ("intrigue", 1), ("player", player)),
+        ),
+    ]
+    intrigue = draw_or_queue_intrigue_cards(working, player, 1, source=source)
+    events.extend(intrigue.events)
+    drawn = draw_or_request_personal_cards(intrigue.state, player, 1, source=source)
+    events.extend(drawn.events)
+    return RuleResult(state=drawn.state, events=tuple(events))
 
 
 def apply_leader_card_trash(

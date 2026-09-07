@@ -197,6 +197,17 @@ LEADER_FACE_TEXTS: Mapping[str, LeaderFaceText] = MappingProxyType(
                 " the next Navigation card (from the left)"
             ),
         ),
+        "kota_odax_of_ix": LeaderFaceText(
+            ability_text=(
+                "Secret Project: Game Start: Peek at the bottom Tech tile of each"
+                " stack. Place one face down here. Whenever you could acquire a"
+                " Tech tile, you may choose this one. It costs 1 spice less"
+            ),
+            signet_text=(
+                "Gain 1 spice — or trash one of your Tech tiles → Draw 1 Intrigue"
+                " card, Draw 1 card"
+            ),
+        ),
         "liet_kynes": LeaderFaceText(
             ability_text=(
                 "Arrakis Planetologist: Ignore the Influence requirement of"

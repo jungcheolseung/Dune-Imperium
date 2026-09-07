@@ -22,8 +22,10 @@ class LeaderDefinition:
     name: str
     catalog_url: str
     choam_only: bool = False
-    # Bloodlines Leaders join the pool only with that option on.
+    # Bloodlines Leaders join the pool only with that option on; Kota Odax
+    # of Ix needs the Tech Module as well [Bloodlines p. 6].
     bloodlines_only: bool = False
+    tech_only: bool = False
     setup_face_id: str | None = None
     alternate_face_id: str | None = None
     uses_feyd_token: bool = False
@@ -68,6 +70,8 @@ class LeaderDefinition:
             raise ValueError("removed starting cards must be unique")
         if not self.sources:
             raise ValueError("leaders require official source references")
+        if self.tech_only and not self.bloodlines_only:
+            raise ValueError("Tech Module Leaders belong to the Bloodlines set")
 
 
 def _catalog(card_id: int, slug: str) -> str:
@@ -238,6 +242,21 @@ LEADERS: Final = (
         signet_name="Judge of the Change",
         sources=BLOODLINES_LEADER_SOURCES,
     ),
+    # Tech Module: "A player has the option to choose Kota Odax of Ix as
+    # their Leader" [Bloodlines p. 6]; card face transcribed 2026-09-07.
+    LeaderDefinition(
+        "kota_odax_of_ix",
+        "Kota Odax of Ix",
+        _bloodlines_face("kota-odax-of-ix"),
+        bloodlines_only=True,
+        tech_only=True,
+        ability_name="Secret Project",
+        signet_name="Reverse Engineering",
+        sources=(
+            SourceRef(SourceDocument.BLOODLINES_RULEBOOK, (6,)),
+            SourceRef(SourceDocument.CARD_FACE, (1,)),
+        ),
+    ),
 )
 
 
@@ -305,6 +324,7 @@ def leaders_for_choam(
     choam_module: bool,
     *,
     bloodlines: bool = False,
+    tech_module: bool = False,
 ) -> tuple[LeaderDefinition, ...]:
     """Return Leader cards legal for the selected setup."""
 
@@ -313,4 +333,5 @@ def leaders_for_choam(
         for leader in LEADERS
         if (choam_module or not leader.choam_only)
         and (bloodlines or not leader.bloodlines_only)
+        and (tech_module or not leader.tech_only)
     )

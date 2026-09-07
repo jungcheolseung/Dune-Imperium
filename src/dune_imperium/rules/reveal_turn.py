@@ -322,9 +322,9 @@ def legal_reveal_influence_gain_actions(
     context = dict(frame.context)
     if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
         return ()
-    if (
-        context.get("reveal_choice_effect")
-        != PersonalCardRevealChoiceEffect.COMMAND_GAIN_CHOSEN_INFLUENCE.value
+    if context.get("reveal_choice_effect") not in (
+        PersonalCardRevealChoiceEffect.COMMAND_GAIN_CHOSEN_INFLUENCE.value,
+        PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH.value,
     ):
         return ()
     return tuple(
@@ -2030,6 +2030,8 @@ def reveal_choice_prompt(effect: PersonalCardRevealChoiceEffect) -> str:
         if effect is PersonalCardRevealChoiceEffect.COMMAND_PLACE_SPY
         else "Command: choose a Faction to gain one Influence with"
         if effect is PersonalCardRevealChoiceEffect.COMMAND_GAIN_CHOSEN_INFLUENCE
+        else "Two or more Tech tiles: choose a Faction to gain one Influence with"
+        if effect is PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH
         else "Retreat two troops for two Persuasion or decline"
         if effect
         is PersonalCardRevealChoiceEffect.MAY_RETREAT_TWO_TROOPS_FOR_TWO_PERSUASION
@@ -2093,6 +2095,12 @@ def _reveal_choice_effect_is_available(
                 PersonalCardRevealChoiceEffect.COMMAND_GAIN_CHOSEN_INFLUENCE,
             )
             and command_open
+        )
+        or (
+            # Ixian Ambassador: judged when the choice opens (OQ-028); a
+            # Plot acquisition during the Reveal can still meet it.
+            effect is PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH
+            and len(owner.tech_ids) >= 2
         )
         or (
             effect is PersonalCardRevealChoiceEffect.COMMAND_MAY_TRASH_CARD

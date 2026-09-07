@@ -147,6 +147,7 @@ from dune_imperium.rules.intrigue_triggers import (
 )
 from dune_imperium.rules.leader_abilities import (
     apply_feyd_track_action,
+    apply_kota_signet_action,
     apply_leader_agent_deploy,
     apply_leader_board_repeat,
     apply_leader_bonus_spice,
@@ -241,11 +242,13 @@ from dune_imperium.rules.spy_moves import (
 )
 from dune_imperium.rules.strength import refresh_pre_reveal_strength
 from dune_imperium.rules.tech import (
+    apply_secret_project,
     apply_tech_acquisition,
     apply_tech_choice,
     apply_tech_flip,
     deploy_suspensor_troops,
     draw_owed_tech_cards,
+    legal_secret_project_actions,
     legal_tech_acquisition_actions,
     legal_tech_choice_actions,
     legal_tech_flip_actions,
@@ -401,6 +404,7 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     FrameKind.NAVIGATION_CHOICE: (legal_navigation_play_actions,),
     FrameKind.TECH_ACQUISITION: (legal_tech_acquisition_actions,),
     FrameKind.TECH_CHOICE: (legal_tech_choice_actions,),
+    FrameKind.TECH_SECRET_PROJECT: (legal_secret_project_actions,),
 }
 
 ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
@@ -471,6 +475,9 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "acquire_tech": apply_tech_acquisition,
     "decline_tech": apply_tech_acquisition,
     "flip_tech": apply_tech_flip,
+    "choose_secret_project": apply_secret_project,
+    "gain_leader_signet_spice": apply_kota_signet_action,
+    "trash_leader_tech": apply_kota_signet_action,
     "choose_tech_strength": apply_tech_choice,
     "choose_tech_trash": apply_tech_choice,
     "decline_skill": apply_skill_choice,
