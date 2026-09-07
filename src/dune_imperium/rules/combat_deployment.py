@@ -40,6 +40,39 @@ def undeployable_troops(context: dict[str, ActionValue]) -> int:
     return value
 
 
+def release_undeployable_troops(
+    state: GameState,
+    player: int,
+    count: int,
+) -> GameState:
+    """A garrison troop lost this turn counts as the undeployable one.
+
+    Troops are indistinguishable, so a player who must lose a garrison
+    troop while Harkonnen Advisor's troop sits there gives up that troop
+    first and the deployable count returns to normal (OQ-038).
+    """
+
+    if count < 1:
+        return state
+    frames = list(state.decision_stack)
+    for index in range(len(frames) - 1, -1, -1):
+        frame = frames[index]
+        if frame.kind != FrameKind.AGENT_EFFECTS or not isinstance(
+            frame.decision, PlayerDecision
+        ):
+            continue
+        if frame.decision.owner != player:
+            continue
+        context = dict(frame.context)
+        undeployable = undeployable_troops(context)
+        if not undeployable:
+            return state
+        context["undeployable_troops"] = max(0, undeployable - count)
+        frames[index] = replace(frame, context=tuple(sorted(context.items())))
+        return replace(state, decision_stack=tuple(frames))
+    return state
+
+
 def _deployment_context(
     state: GameState,
     player: int,
@@ -81,7 +114,9 @@ def legal_combat_deployments(
     # Harkonnen Advisor's troop "can't be deployed to the Conflict this
     # turn": it sits in the garrison but is not available [Piter De Vries
     # card] (OQ-038).
-    garrison = state.players[player].troops_garrison - undeployable_troops(context)
+    garrison = max(
+        0, state.players[player].troops_garrison - undeployable_troops(context)
+    )
     maximum = min(garrison, recruited + existing_limit - deployed)
     return tuple(
         DomainAction(

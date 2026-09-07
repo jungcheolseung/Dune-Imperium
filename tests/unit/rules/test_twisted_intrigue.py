@@ -152,6 +152,28 @@ def test_harkonnen_advisor_troop_is_not_deployable_this_turn() -> None:
         ),
     )
     assert legal_combat_deployments(thin, 0) == ()
+    # Losing a garrison troop (Sadistic) gives up the undeployable one, so
+    # the deployable count returns to normal.
+    sadistic = _twisted("sadistic")
+    armed = replace(
+        resolved,
+        players=(
+            replace(seat, intrigue_cards=(sadistic,), deck=(RECON,)),
+            *resolved.players[1:],
+        ),
+    )
+    losing = ENGINE.apply(armed, _play(sadistic)).state
+    released = ENGINE.apply(
+        losing,
+        DomainAction(
+            action_id="lose_intrigue_troop", actor=0, arguments=(("zone", "garrison"),)
+        ),
+    ).state
+    assert dict(released.decision_stack[-1].context)["undeployable_troops"] == 0
+    assert {
+        dict(a.arguments)["count"] for a in legal_combat_deployments(released, 0)
+    } == {1, 2}
+    assert released.players[0].troops_garrison == 3
 
 
 # --- Twisted Intrigue --------------------------------------------------------

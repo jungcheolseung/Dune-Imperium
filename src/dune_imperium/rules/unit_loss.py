@@ -13,6 +13,7 @@ from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GameState
+from dune_imperium.rules.combat_deployment import release_undeployable_troops
 from dune_imperium.rules.frames import (
     FrameKind,
     context_str,
@@ -81,6 +82,9 @@ def lose_unit(
             troops_garrison=owner.troops_garrison - 1,
             troops_supply=owner.troops_supply + 1,
         )
+    if zone == "garrison" and not commander:
+        # The lost troop is Harkonnen Advisor's undeployable one first.
+        working = release_undeployable_troops(working, player, 1)
     events.append(
         GameEvent(
             event_id=f"{source}:lost",
