@@ -173,6 +173,17 @@ LEADER_FACE_TEXTS: Mapping[str, LeaderFaceText] = MappingProxyType(
                 " → Place a Spy"
             ),
         ),
+        "piter_de_vries": LeaderFaceText(
+            ability_text=(
+                "Twisted Genius: Game start: shuffle the Twisted Intrigue deck"
+                " face down near you. Round start: draw a Twisted Intrigue card"
+                " (these count as Intrigue cards and can be stolen)"
+            ),
+            signet_text=(
+                "Recruit 1 troop; you can't deploy this troop to the Conflict"
+                " this turn"
+            ),
+        ),
         "liet_kynes": LeaderFaceText(
             ability_text=(
                 "Arrakis Planetologist: Ignore the Influence requirement of"

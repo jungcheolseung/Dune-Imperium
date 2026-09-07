@@ -29,19 +29,26 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainedSpiceThisTurn,
     GainInfluence,
     GainResources,
+    GainSolariPerUnitType,
     GainVictoryPoints,
+    GiveIntrigueToOpponent,
+    GrantAgentIconsThisTurn,
     GrantAgentIconThisTurn,
     GrantCombatDeployment,
+    HasAlliance,
     HasHighCouncil,
     IgnoreInfluenceRequirementsThisTurn,
     InfluenceAtLeast,
     IntrigueOption,
     IntrigueTiming,
     LoseInfluence,
+    LoseTroops,
     OnRevealAcquisitionThisRound,
     OnUnitsDeployedInTurn,
     OpponentAllianceInfluenceAtLeast,
+    PassTurn,
     PayResources,
+    PeekTopCard,
     PlaceSpy,
     RecallSpy,
     RecruitTroops,
@@ -56,6 +63,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     SummonSandworm,
     TakeContract,
     TrashDiscardPileCard,
+    TrashIntrigueCard,
     TrashPersonalCard,
     Trigger,
     WaterAtLeast,
@@ -132,6 +140,8 @@ def condition_text(condition: Condition) -> str:
             return f"you have {amount} or more {_faction_name(faction)} Influence"
         case HasHighCouncil():
             return "you hold a High Council seat"
+        case HasAlliance():
+            return "you have an Alliance"
         case SpiesPlacedAtLeast(count=count):
             return f"you have {count} or more Spies on Observation Posts"
         case CompletedContractsAtLeast(count=count):
@@ -172,6 +182,19 @@ def cost_text(cost: Cost) -> str:
             return "Pay " + ", ".join(parts)
         case LoseInfluence(count=count):
             return f"Lose {count} Influence"
+        case LoseTroops(count=count, from_conflict=from_conflict):
+            where = " in the Conflict" if from_conflict else ""
+            return f"Lose {_plural(count, 'troop')}{where}"
+        case GiveIntrigueToOpponent(bonus_spice_if_not_twisted=bonus):
+            extra = f" (+{bonus} spice if it is not a Twisted card)" if bonus else ""
+            return f"Give an opponent an Intrigue card from your hand{extra}"
+        case TrashIntrigueCard(troops_if_not_twisted=troops):
+            extra = (
+                f" (Recruit {_plural(troops, 'troop')} if it is not a Twisted card)"
+                if troops
+                else ""
+            )
+            return f"Trash an Intrigue card from your hand{extra}"
         case DiscardFromHand(count=1):
             return "Discard a card"
         case DiscardFromHand(count=count):
@@ -260,15 +283,25 @@ def reward_text(reward: Reward) -> str:
             return f"The card you play this turn has the {icon.value} icon"
         case GrantCombatDeployment():
             return "Combat: deploy this turn as though at a Combat space"
+        case GainSolariPerUnitType():
+            return "Gain 1 solari for each type of unit you have in the Conflict"
+        case PeekTopCard():
+            return (
+                "Look at the top card of your deck: put it back, discard it, or"
+                " pay 1 solari to draw it"
+            )
+        case GrantAgentIconsThisTurn(icons=icons):
+            names = ", ".join(icon.value for icon in icons)
+            return f"The card you play this turn has the {names} icons"
+        case PassTurn():
+            return "At the start of your turn: pass your turn"
         case RedirectSpiesOnTurnSpace():
             return (
                 "Each opponent spying on the board space where you sent an Agent "
                 "this turn must move that Spy. Then place a Spy on that space"
             )
         case RevealContractsTakeOne(count=count):
-            return (
-                f"Reveal {count} contracts from the bank: take one, trash the others"
-            )
+            return f"Reveal {count} contracts from the bank: take one, trash the others"
         case SetAsideImperiumRowCard(discount=discount):
             return (
                 "Set aside an Imperium Row card "

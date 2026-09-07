@@ -147,8 +147,8 @@ def test_required_image_keys_cover_every_displayable_content_id() -> None:
     keys = required_image_keys()
     # 57 imperium (54 + 3 promo) + 39 intrigue + 20 contracts + 16 conflicts
     # + 22 spaces + 10 leader faces + 7 starting + 2 reserve.
-    # Bloodlines: 44 cards, six Leaders and Tuek's Sietch so far.
-    assert len(keys) == 175 + 44 + 6 + 1
+    # Bloodlines: 44 cards, 12 Twisted Intrigue, seven Leaders, Tuek's Sietch.
+    assert len(keys) == 175 + 44 + 12 + 7 + 1
     assert len(set(keys)) == len(keys)
     assert set(keys) == _all_content_keys()
 

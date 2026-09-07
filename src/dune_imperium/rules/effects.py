@@ -126,6 +126,36 @@ AGENT_EFFECT_CONTEXT_KEYS = frozenset(
 )
 
 
+def open_next_turn(state: GameState, player: int) -> GameState:
+    """Replace ``player``'s turn frame with the next unrevealed seat's turn.
+
+    "Pass your turn" (Litany Against Fear, Withdrawn): the seat stays
+    unrevealed and comes around again this round.
+    """
+
+    next_player = next_unrevealed_player(state, player)
+    players = reset_turn_counters(state.players, next_player)
+    frames = list(state.decision_stack)
+    for index in range(len(frames) - 1, -1, -1):
+        frame = frames[index]
+        if frame.kind == FrameKind.TURN and isinstance(frame.decision, PlayerDecision):
+            if frame.decision.owner != player:
+                raise RuntimeError("only the turn owner can pass the turn")
+            frames[index] = DecisionFrame(
+                kind=FrameKind.TURN,
+                frame_id=f"round:{state.round_number}:turn:{next_player}",
+                decision=PlayerDecision(
+                    owner=next_player,
+                    prompt="Choose an Agent turn or Reveal turn",
+                ),
+                context=(("round", state.round_number), ("turn_owner", next_player)),
+            )
+            break
+    else:
+        raise RuntimeError("passing the turn needs an open turn frame")
+    return replace(state, players=players, decision_stack=tuple(frames))
+
+
 def agent_turn_space_id(state: GameState, player: int) -> str | None:
     """Return the board space ``player`` sent an Agent to this turn, if any.
 

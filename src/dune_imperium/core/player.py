@@ -120,6 +120,9 @@ class PlayerState:
     # Duncan Idaho's Into the Fray: the Agent sent this turn fighting in the
     # Conflict as a unit that cannot retreat (0 or 1) [Duncan Idaho card].
     agent_in_conflict: int = 0
+    # Piter De Vries' face-down Twisted Intrigue deck (hidden order; the
+    # size is public) [Piter De Vries card].
+    twisted_deck: tuple[str, ...] = ()
     # The Skill strength currently folded into ``combat_strength`` so the
     # running total can be re-derived when a Skill condition changes.
     skill_strength_applied: int = 0

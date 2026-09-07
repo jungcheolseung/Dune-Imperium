@@ -27,19 +27,26 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainedSpiceThisTurn,
     GainInfluence,
     GainResources,
+    GainSolariPerUnitType,
     GainVictoryPoints,
+    GiveIntrigueToOpponent,
+    GrantAgentIconsThisTurn,
     GrantAgentIconThisTurn,
     GrantCombatDeployment,
+    HasAlliance,
     HasHighCouncil,
     IgnoreInfluenceRequirementsThisTurn,
     InfluenceAtLeast,
     IntrigueOption,
     IntrigueTiming,
     LoseInfluence,
+    LoseTroops,
     OnRevealAcquisitionThisRound,
     OnUnitsDeployedInTurn,
     OpponentAllianceInfluenceAtLeast,
+    PassTurn,
     PayResources,
+    PeekTopCard,
     PlaceSpy,
     RecallSpy,
     RecruitTroops,
@@ -53,6 +60,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     SummonSandworm,
     TakeContract,
     TrashDiscardPileCard,
+    TrashIntrigueCard,
     TrashPersonalCard,
     Trigger,
     WaterAtLeast,
@@ -78,6 +86,9 @@ class IntrigueCardEntry(DeckCardEntry):
     """
 
     options: tuple[IntrigueOption, ...] = ()
+    # Piter De Vries' Twisted Intrigue: never in the shared deck, dealt from
+    # his own face-down deck; still an Intrigue card once held.
+    twisted: bool = False
 
     @property
     def play_data_complete(self) -> bool:
@@ -132,6 +143,7 @@ def _entry(
     bloodlines_only: bool = False,
     tech_only: bool = False,
     options: tuple[IntrigueOption, ...] = (),
+    twisted: bool = False,
 ) -> IntrigueCardEntry:
     expansion = "bloodlines" if bloodlines_only else "uprising"
     return IntrigueCardEntry(
@@ -152,6 +164,25 @@ def _entry(
         bloodlines_only=bloodlines_only,
         tech_only=tech_only,
         options=options,
+        twisted=twisted,
+    )
+
+
+def _twisted(slug: str, name: str, *options: IntrigueOption) -> IntrigueCardEntry:
+    """One Twisted Intrigue card (Piter De Vries), from the card face."""
+
+    return IntrigueCardEntry(
+        card=CardDefinition(
+            card_id=f"twisted_{slug.replace('-', '_')}",
+            name=f"Twisted Intrigue: {name}",
+            sources=BLOODLINES_SOURCES,
+            catalog_url=(
+                f"https://dunecardshub.com/images/bloodlines-other-twisted-intrigue-{slug}.webp"
+            ),
+        ),
+        bloodlines_only=True,
+        options=options,
+        twisted=True,
     )
 
 
@@ -946,6 +977,111 @@ INTRIGUE_CARDS: Final = (
             ),
         ),
     ),
+    # --- Twisted Intrigue (Piter De Vries), card faces 2026-09-07 ---------
+    _twisted(
+        "ambitious",
+        "Ambitious",
+        _plot(
+            EffectSection(
+                costs=(LoseTroops(3),),
+                rewards=(GainInfluence(where_opponent_leads=True),),
+            )
+        ),
+    ),
+    _twisted(
+        "calculating",
+        "Calculating",
+        _plot(EffectSection(rewards=(GainSolariPerUnitType(),))),
+    ),
+    _twisted(
+        "controlled",
+        "Controlled",
+        _plot(EffectSection(rewards=(PeekTopCard(),))),
+        _combat(EffectSection(rewards=(GainCombatStrength(1),))),
+    ),
+    _twisted(
+        "devious",
+        "Devious",
+        _plot(
+            EffectSection(rewards=(TrashPersonalCard(hand_only=True, mandatory=True),))
+        ),
+        _plot(EffectSection(rewards=(DeployFromGarrison(2),))),
+    ),
+    _twisted(
+        "discerning",
+        "Discerning",
+        _plot(
+            EffectSection(costs=(DiscardFromHand(1),), rewards=(DrawPersonalCards(1),))
+        ),
+        _plot(EffectSection(condition=HasAlliance(), rewards=(DrawPersonalCards(1),))),
+    ),
+    _twisted(
+        "insidious",
+        "Insidious",
+        _plot(
+            EffectSection(
+                costs=(GiveIntrigueToOpponent(bonus_spice_if_not_twisted=1),),
+                rewards=(GainResources(spice=1),),
+            )
+        ),
+    ),
+    _twisted(
+        "resourceful",
+        "Resourceful",
+        _plot(
+            EffectSection(
+                rewards=(
+                    GrantAgentIconsThisTurn(
+                        (AgentIcon.LANDSRAAD, AgentIcon.CITY, AgentIcon.SPICE_TRADE)
+                    ),
+                )
+            )
+        ),
+    ),
+    _twisted(
+        "sadistic",
+        "Sadistic",
+        _plot(EffectSection(costs=(LoseTroops(1),), rewards=(DrawPersonalCards(1),))),
+    ),
+    _twisted(
+        "shrewd",
+        "Shrewd",
+        _combat(
+            EffectSection(
+                costs=(LoseTroops(1, from_conflict=True),),
+                rewards=(GainResources(spice=1),),
+            )
+        ),
+    ),
+    _twisted(
+        "sinister",
+        "Sinister",
+        _combat(
+            EffectSection(
+                costs=(LoseTroops(2),),
+                rewards=(DrawIntrigueCards(1), GainResources(solari=1)),
+            )
+        ),
+    ),
+    _twisted(
+        "unnatural",
+        "Unnatural",
+        _plot(
+            EffectSection(
+                costs=(TrashIntrigueCard(troops_if_not_twisted=1),),
+                rewards=(DrawIntrigueCards(1),),
+            )
+        ),
+    ),
+    _twisted(
+        "withdrawn",
+        "Withdrawn",
+        IntrigueOption(
+            timing=IntrigueTiming.PLOT,
+            sections=(EffectSection(rewards=(PassTurn(),)),),
+            turn_start_only=True,
+        ),
+    ),
 )
 
 
@@ -975,6 +1111,7 @@ def intrigue_cards_for_choam(
         entry
         for entry in INTRIGUE_CARDS
         if (choam_module or not entry.choam_only)
+        and not entry.twisted
         and (
             not entry.bloodlines_only
             or (
@@ -983,6 +1120,14 @@ def intrigue_cards_for_choam(
                 and (tech_module or not entry.tech_only)
             )
         )
+    )
+
+
+def twisted_intrigue_instance_ids() -> tuple[str, ...]:
+    """Return the twelve Twisted Intrigue cards (Piter De Vries)."""
+
+    return tuple(
+        f"intrigue:{entry.card.card_id}:0" for entry in INTRIGUE_CARDS if entry.twisted
     )
 
 

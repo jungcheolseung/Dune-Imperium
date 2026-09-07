@@ -90,6 +90,10 @@ class GameState:
     # (player, card, source); each opens its Skill choice once the trashing
     # effect has finished with the decision stack.
     pending_skill_choices: tuple[tuple[int, str, str], ...] = ()
+    # The shuffled Twisted Intrigue deck dealt at setup, waiting for Piter De
+    # Vries' seat (the draft picks Leaders after the shuffle); empty once
+    # assigned or when no seat plays him.
+    twisted_deck_stock: tuple[str, ...] = ()
     decision_stack: tuple[DecisionFrame, ...] = ()
     event_log: tuple[GameEvent, ...] = ()
 

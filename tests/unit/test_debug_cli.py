@@ -21,6 +21,7 @@ def test_snapshot_contains_current_players_view_and_legal_actions() -> None:
         "deck_size": 5,
         "hand": state.players[decision.owner].hand,
         "intrigue_cards": (),
+        "peeked_card_id": "",
     }
     actions = snapshot["legal_actions"]
     assert isinstance(actions, list)

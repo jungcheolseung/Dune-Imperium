@@ -328,10 +328,10 @@ def test_reserve_instance_ids_resolve_and_validate_copy_bounds() -> None:
 
 
 def test_base_setup_excludes_only_the_choam_leader() -> None:
-    assert len(LEADERS) == 9 + 6
+    assert len(LEADERS) == 9 + 7
     assert len(leaders_for_choam(choam_module=False)) == 8
     assert len(leaders_for_choam(choam_module=True)) == 9
-    assert len(leaders_for_choam(choam_module=True, bloodlines=True)) == 9 + 6
+    assert len(leaders_for_choam(choam_module=True, bloodlines=True)) == 9 + 7
     assert {leader.leader_id for leader in LEADERS if leader.choam_only} == {
         "shaddam_corrino_iv"
     }
@@ -417,10 +417,14 @@ def test_imperium_manifest_matches_base_and_choam_counts() -> None:
 def test_intrigue_manifest_matches_base_and_choam_counts() -> None:
     # 39 Uprising identities (44 cards) plus 18 Bloodlines cards (15 retail,
     # 1 CHOAM-only, 2 Tech-only) [Bloodlines p. 2].
-    assert len(INTRIGUE_CARDS) == 39 + 18
-    assert sum(entry.copies for entry in INTRIGUE_CARDS) == 44 + 18
-    bloodlines = tuple(entry for entry in INTRIGUE_CARDS if entry.bloodlines_only)
+    # 18 Bloodlines Intrigue cards plus the 12 Twisted Intrigue cards.
+    assert len(INTRIGUE_CARDS) == 39 + 18 + 12
+    assert sum(entry.copies for entry in INTRIGUE_CARDS) == 44 + 18 + 12
+    bloodlines = tuple(
+        entry for entry in INTRIGUE_CARDS if entry.bloodlines_only and not entry.twisted
+    )
     assert len(bloodlines) == 18
+    assert sum(entry.twisted for entry in INTRIGUE_CARDS) == 12
     assert sum(entry.choam_only for entry in bloodlines) == 1
     assert sum(entry.tech_only for entry in bloodlines) == 2
     assert sum(entry.copies for entry in intrigue_cards_for_choam(False)) == 40

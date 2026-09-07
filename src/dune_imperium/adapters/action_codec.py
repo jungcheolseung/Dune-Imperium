@@ -22,6 +22,7 @@ from dune_imperium.content.uprising.imperium import (
 from dune_imperium.content.uprising.intrigue import (
     intrigue_card_for_instance,
     intrigue_deck_instance_ids,
+    twisted_intrigue_instance_ids,
 )
 from dune_imperium.content.uprising.leaders import (
     FEYD_TRACK_START,
@@ -285,6 +286,10 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         bloodlines=config.bloodlines,
         tech_module=config.tech_module,
     )
+    if config.bloodlines:
+        # Piter De Vries' Twisted Intrigue cards are held and played like
+        # any Intrigue card once dealt.
+        intrigue_instances = (*intrigue_instances, *twisted_intrigue_instance_ids())
     templates.extend(
         ActionTemplate(
             action_id="acquire_imperium",
@@ -695,7 +700,37 @@ def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "take_tuek_sietch_spice",
             "take_tuek_sietch_card",
             "place_leader_bonus_spice",
+            # Twisted Intrigue (Piter De Vries).
+            "put_back_top_card",
+            "discard_top_card",
+            "draw_top_card_for_solari",
         )
+    )
+    templates.extend(
+        ActionTemplate(action_id="lose_intrigue_troop", arguments=arguments)
+        for zone in ("garrison", "conflict")
+        for arguments in ((("zone", zone),), (("commanders", 1), ("zone", zone)))
+    )
+    twisted = twisted_intrigue_instance_ids()
+    all_intrigue = (
+        *intrigue_deck_instance_ids(
+            config.choam_module, bloodlines=True, tech_module=config.tech_module
+        ),
+        *twisted,
+    )
+    templates.extend(
+        ActionTemplate(
+            action_id="trash_intrigue_hand_card", arguments=(("card_id", card_id),)
+        )
+        for card_id in all_intrigue
+    )
+    templates.extend(
+        ActionTemplate(
+            action_id="give_intrigue_card",
+            arguments=(("card_id", card_id), ("player", seat)),
+        )
+        for card_id in all_intrigue
+        for seat in range(config.players)
     )
     templates.extend(
         ActionTemplate(
@@ -908,11 +943,11 @@ def _personal_card_instance_ids(config: RulesetConfig) -> tuple[str, ...]:
     ]
     card_ids.extend(
         imperium_deck_instance_ids(
-        config.choam_module,
-        config.promo_cards,
-        bloodlines=config.bloodlines,
-        tech_module=config.tech_module,
-    )
+            config.choam_module,
+            config.promo_cards,
+            bloodlines=config.bloodlines,
+            tech_module=config.tech_module,
+        )
     )
     card_ids.extend(
         f"reserve:{stack.card.card_id}:{copy}"

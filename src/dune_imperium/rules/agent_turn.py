@@ -186,8 +186,8 @@ def card_can_access_space(
         return True
     # Emperor's Invitation (Bloodlines): "The card you play this turn has
     # the [Emperor] icon."
-    if owner.granted_agent_icon_turn and space.agent_icon.value == (
-        owner.granted_agent_icon_turn
+    if owner.granted_agent_icon_turn and space.agent_icon.value in (
+        owner.granted_agent_icon_turn.split(",")
     ):
         return True
     # Clandestine: "Each card you play has the Spy icon" [Gaius Helen

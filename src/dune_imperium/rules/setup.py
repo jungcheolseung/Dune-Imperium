@@ -13,7 +13,10 @@ from dune_imperium.content.bloodlines.sardaukar import (
 from dune_imperium.content.uprising.conflicts import conflicts_by_tier
 from dune_imperium.content.uprising.contracts import contract_instance_ids
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
-from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
+from dune_imperium.content.uprising.intrigue import (
+    intrigue_deck_instance_ids,
+    twisted_intrigue_instance_ids,
+)
 from dune_imperium.content.uprising.leaders import LEADERS_BY_ID, leaders_for_choam
 from dune_imperium.content.uprising.objectives import objectives_for_players
 from dune_imperium.content.uprising.reserve import RESERVE_STACKS
@@ -246,6 +249,17 @@ class BloodlinesSetup:
 
     skill_face_up: tuple[str, ...]
     skill_stack: tuple[str, ...]
+    twisted_deck: tuple[str, ...] = ()
+
+
+def twisted_deck_decision() -> ChanceDecision:
+    """Shuffle Piter De Vries' twelve Twisted Intrigue cards [Piter De Vries card]."""
+
+    return _shuffle_decision(
+        "setup:twisted_intrigue",
+        "Shuffle the Twisted Intrigue deck",
+        twisted_intrigue_instance_ids(),
+    )
 
 
 def _bloodlines_setup(
@@ -261,9 +275,13 @@ def _bloodlines_setup(
     if not config.bloodlines:
         return None
     skills = resolver.resolve(skill_stack_decision()).values
+    # The Twisted deck is shuffled whether or not Piter is picked (the
+    # draft chooses Leaders later); it waits in ``twisted_deck_stock``.
+    twisted = resolver.resolve(twisted_deck_decision()).values
     return BloodlinesSetup(
         skill_face_up=skills[:SKILL_FACE_UP],
         skill_stack=skills[SKILL_FACE_UP:],
+        twisted_deck=twisted,
     )
 
 
@@ -277,12 +295,33 @@ def _with_bloodlines(state: GameState, setup: BloodlinesSetup | None) -> GameSta
 
     if setup is None:
         return state
+    return assign_twisted_deck(
+        replace(
+            state,
+            sardaukar_commander_space_ids=COMMANDER_SETUP_SPACE_IDS,
+            sardaukar_commanders_bank=COMMANDER_BANK_AT_SETUP,
+            skill_face_up=setup.skill_face_up,
+            skill_stack=setup.skill_stack,
+            twisted_deck_stock=setup.twisted_deck,
+        )
+    )
+
+
+def assign_twisted_deck(state: GameState) -> GameState:
+    """Hand the shuffled Twisted Intrigue deck to Piter De Vries' seat."""
+
+    if not state.twisted_deck_stock:
+        return state
+    piter = next(
+        (seat for seat in state.players if seat.leader_id == "piter_de_vries"), None
+    )
+    if piter is None:
+        return state
+    dealt = replace(piter, twisted_deck=state.twisted_deck_stock)
     return replace(
         state,
-        sardaukar_commander_space_ids=COMMANDER_SETUP_SPACE_IDS,
-        sardaukar_commanders_bank=COMMANDER_BANK_AT_SETUP,
-        skill_face_up=setup.skill_face_up,
-        skill_stack=setup.skill_stack,
+        players=tuple(dealt if seat is piter else seat for seat in state.players),
+        twisted_deck_stock=(),
     )
 
 

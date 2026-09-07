@@ -47,6 +47,19 @@ def begin_round(state: GameState) -> RuleResult:
         )
         for player, count in zip(state.players, draw_counts, strict=True)
     )
+    # Twisted Genius: "Round Start: Draw a Twisted Intrigue card" [Piter De
+    # Vries card]; it is an Intrigue card in hand from then on.
+    twisted_draws = tuple(player.player_id for player in players if player.twisted_deck)
+    players = tuple(
+        replace(
+            player,
+            intrigue_cards=(*player.intrigue_cards, player.twisted_deck[0]),
+            twisted_deck=player.twisted_deck[1:],
+        )
+        if player.twisted_deck
+        else player
+        for player in players
+    )
     opening_frame = _round_opening_frame(
         players,
         conflict_id,
@@ -82,6 +95,14 @@ def begin_round(state: GameState) -> RuleResult:
             )
             for player, count in zip(players, draw_counts, strict=True)
             if count > 0
+        ),
+        *(
+            GameEvent(
+                event_id=f"round:{round_number}:player:{seat}:twisted_draw",
+                kind="intrigue_card_drawn",
+                payload=(("count", 1), ("player", seat), ("twisted", 1)),
+            )
+            for seat in twisted_draws
         ),
     )
     return RuleResult(state=next_state, events=events)

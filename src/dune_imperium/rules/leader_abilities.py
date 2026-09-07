@@ -85,6 +85,7 @@ IMPLEMENTED_ABILITY_LEADER_IDS: Final = frozenset(
         "esmar_tuek",
         "gaius_helen_mohiam",
         "liet_kynes",
+        "piter_de_vries",
     }
 )
 
@@ -205,6 +206,13 @@ def resolve_leader_signet(state: GameState) -> RuleResult:
                 ),
             ),
         )
+    elif owner.leader_id == "piter_de_vries":
+        # Harkonnen Advisor: one troop that "can't be deployed to the
+        # Conflict this turn" — it joins the garrison without counting as
+        # recruited for the turn's basic deployment (OQ-038).
+        next_owner, recruited = recruit_troops(owner, 1)
+        recruit_shortfall = recruit_shortfall_events(source, player, 1, recruited)
+        payload = (("card_id", card_id), ("player", player), ("troops", recruited))
     elif owner.leader_id == "liet_kynes":
         # Judge of the Change: by the icon of the space visited this turn —
         # Landsraad with two Emperor Influence: water; City: one Solari;

@@ -38,6 +38,8 @@ class LeaderDefinition:
     # Chani's Tactics token starts on the four-player space of her track.
     starting_water: int = 1
     uses_tactics_track: bool = False
+    # Piter De Vries deals himself the Twisted Intrigue deck.
+    uses_twisted_intrigue: bool = False
     sources: tuple[SourceRef, ...] = (
         SourceRef(SourceDocument.MAIN_RULEBOOK, (3, 4, 17)),
     )
@@ -202,6 +204,16 @@ LEADERS: Final = (
         bloodlines_only=True,
         ability_name="Clandestine",
         signet_name="Listeners",
+        sources=BLOODLINES_LEADER_SOURCES,
+    ),
+    LeaderDefinition(
+        "piter_de_vries",
+        "Piter De Vries",
+        _bloodlines_face("piter-de-vries"),
+        bloodlines_only=True,
+        uses_twisted_intrigue=True,
+        ability_name="Twisted Genius",
+        signet_name="Harkonnen Advisor",
         sources=BLOODLINES_LEADER_SOURCES,
     ),
     LeaderDefinition(

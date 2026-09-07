@@ -101,7 +101,7 @@ class ObservationSegment:
 def _seat_segment_lengths(seat: int) -> tuple[tuple[str, int], ...]:
     prefix = f"seat{seat}"
     return (
-        (f"{prefix}_scalars", 38),
+        (f"{prefix}_scalars", 39),
         (f"{prefix}_alliances", len(FACTION_IDS)),
         (f"{prefix}_control", len(CONTROL_SPACE_IDS)),
         (f"{prefix}_agent_locations", _AGENT_LOCATION_SLOTS),
@@ -147,6 +147,7 @@ def _segment_lengths() -> tuple[tuple[str, int], ...]:
         (
             ("private_hand", len(PERSONAL_CARD_IDS)),
             ("private_intrigue", len(INTRIGUE_IDS)),
+            ("private_peeked_card", len(PERSONAL_CARD_IDS)),
         )
     )
     return tuple(lengths)
@@ -289,6 +290,12 @@ def encode_player_view(view: PlayerView) -> tuple[int, ...]:
 
     writer.write("private_hand", _personal_counts(view.private.hand))
     writer.write("private_intrigue", _intrigue_counts(view.private.intrigue_cards))
+    writer.write(
+        "private_peeked_card",
+        _personal_counts(
+            (view.private.peeked_card_id,) if view.private.peeked_card_id else ()
+        ),
+    )
     return writer.finish()
 
 
@@ -336,15 +343,17 @@ def _write_seat(writer: _Writer, seat_offset: int, player: PublicPlayerView) -> 
             player.contracts_completed_turn,
             player.commander_discount_turn,
             int(player.ignores_influence_requirements_turn),
-            (
-                _AGENT_ICONS.index(player.granted_agent_icon_turn) + 1
-                if player.granted_agent_icon_turn
-                else 0
+            # Granted Agent icons as a bit mask (Resourceful grants three).
+            sum(
+                1 << _AGENT_ICONS.index(value)
+                for value in player.granted_agent_icon_turn.split(",")
+                if value
             ),
             int(player.combat_icon_turn),
             int(player.bene_gesserit_boost_pending),
             player.tactics_track_space,
             player.agent_in_conflict,
+            player.twisted_deck_size,
         ],
     )
     writer.write(

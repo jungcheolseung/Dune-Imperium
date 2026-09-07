@@ -22,7 +22,11 @@ from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, replace
 
 from dune_imperium.core.events import GameEvent
-from dune_imperium.core.observation import observe_state, resolving_intrigue_ids
+from dune_imperium.core.observation import (
+    observe_state,
+    peeked_card_id,
+    resolving_intrigue_ids,
+)
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 
@@ -61,9 +65,11 @@ def _all_intrigue_instances(state: GameState) -> Iterator[str]:
     yield from state.intrigue_deck
     yield from state.intrigue_discard
     yield from state.intrigue_trash
+    yield from state.twisted_deck_stock
     for player in state.players:
         yield from player.intrigue_cards
         yield from player.intrigue_faceup
+        yield from player.twisted_deck
 
 
 def _all_conflict_ids(state: GameState) -> Iterator[str]:
@@ -263,8 +269,18 @@ def _scramble_hidden_information(state: GameState, observer: int) -> GameState:
     resolving = set(resolving_intrigue_ids(state))
 
     for seat, player in enumerate(players):
+        # A face-down Twisted Intrigue deck only shows its size.
+        twisted = tuple(reversed(player.twisted_deck))
         if seat == observer:
-            players[seat] = replace(player, deck=tuple(reversed(player.deck)))
+            # Controlled lets the owner see the top card while deciding: it
+            # stays put and the rest of the deck reorders.
+            peeked = peeked_card_id(state, observer)
+            deck = (
+                (player.deck[0], *reversed(player.deck[1:]))
+                if peeked and player.deck and player.deck[0] == peeked
+                else tuple(reversed(player.deck))
+            )
+            players[seat] = replace(player, deck=deck, twisted_deck=twisted)
             continue
         # Publicly known hand cards stay in the hand; only the face-down
         # draws trade places with the deck.
@@ -275,7 +291,7 @@ def _scramble_hidden_information(state: GameState, observer: int) -> GameState:
         intrigue_pool.extend(
             card for card in player.intrigue_cards if card not in resolving
         )
-        players[seat] = replace(player, hand=hand, deck=deck)
+        players[seat] = replace(player, hand=hand, deck=deck, twisted_deck=twisted)
 
     reordered_intrigue = tuple(reversed(intrigue_pool))
     cursor = 0

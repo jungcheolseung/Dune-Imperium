@@ -65,6 +65,7 @@ class PublicPlayerView:
     bene_gesserit_boost_pending: bool
     tactics_track_space: int
     agent_in_conflict: int
+    twisted_deck_size: int
     in_play: tuple[str, ...]
     # Every card reaches a discard pile face up (acquired cards [Main p. 13],
     # played and revealed cards after Clean Up [Main pp. 9, 12, 20], cards
@@ -91,6 +92,9 @@ class PrivatePlayerView:
     deck_size: int
     hand: tuple[str, ...]
     intrigue_cards: tuple[str, ...]
+    # Controlled (Twisted Intrigue): the deck's top card while the owner
+    # decides what to do with it; "" otherwise.
+    peeked_card_id: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -186,12 +190,13 @@ def known_card_seats(state: GameState) -> dict[str, frozenset[int]]:
         *state.intrigue_deck,
         *state.contract_bank,
         *state.conflict_deck,
+        *state.twisted_deck_stock,
     ):
         known[card_id] = nobody
     resolving = set(resolving_intrigue_ids(state))
     for player in state.players:
         owner = frozenset({player.player_id})
-        for card_id in player.deck:
+        for card_id in (*player.deck, *player.twisted_deck):
             known[card_id] = nobody
         public_hand = set(player.hand_public)
         for card_id in player.hand:
@@ -288,6 +293,7 @@ def observe_state(state: GameState, player: int) -> PlayerView:
             deck_size=len(owner.deck),
             hand=owner.hand,
             intrigue_cards=owner.intrigue_cards,
+            peeked_card_id=peeked_card_id(state, player),
         ),
         current_conflict_ids=state.current_conflict_ids,
         conflict_deck_size=len(state.conflict_deck),
@@ -315,6 +321,21 @@ def observe_state(state: GameState, player: int) -> PlayerView:
         skill_face_up=state.skill_face_up,
         skill_trash=state.skill_trash,
     )
+
+
+def peeked_card_id(state: GameState, player: int) -> str:
+    """Return the deck card Controlled shows its owner, if that choice is up."""
+
+    if not state.decision_stack:
+        return ""
+    frame = state.decision_stack[-1]
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ""
+    peeked = dict(frame.context).get("peeked_card_id")
+    if not isinstance(peeked, str) or not peeked:
+        return ""
+    owner = state.players[player]
+    return peeked if owner.deck and owner.deck[0] == peeked else ""
 
 
 def _public_player_view(player: PlayerState) -> PublicPlayerView:
@@ -359,6 +380,7 @@ def _public_player_view(player: PlayerState) -> PublicPlayerView:
         bene_gesserit_boost_pending=player.bene_gesserit_boost_pending,
         tactics_track_space=player.tactics_track_space,
         agent_in_conflict=player.agent_in_conflict,
+        twisted_deck_size=len(player.twisted_deck),
         in_play=player.in_play,
         discard_pile=player.discard_pile,
         trashed=player.trashed,

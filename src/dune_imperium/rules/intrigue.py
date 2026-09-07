@@ -24,13 +24,17 @@ from dune_imperium.content.uprising.effect_dsl import (
     FlipBattleCard,
     FlipFaceUpConflictCard,
     GainInfluence,
+    GiveIntrigueToOpponent,
     IntrigueTiming,
     LoseInfluence,
+    LoseTroops,
+    PeekTopCard,
     PlaceSpy,
     RecallSpy,
     RetreatTroops,
     SetAsideImperiumRowCard,
     TrashDiscardPileCard,
+    TrashIntrigueCard,
     TrashPersonalCard,
 )
 from dune_imperium.content.uprising.imperium import imperium_card_for_instance
@@ -68,6 +72,7 @@ from dune_imperium.rules.effect_interpreter import (
     condition_holds,
     cost_slots,
     face_up_conflict_card_ids,
+    factions_where_opponent_leads,
     flippable_battle_card_ids,
     option_is_playable,
     pay_cost,
@@ -75,7 +80,12 @@ from dune_imperium.rules.effect_interpreter import (
     spy_placement_targets,
     trashable_discard_pile_ids,
 )
-from dune_imperium.rules.effects import agent_turn_space_id
+from dune_imperium.rules.effects import (
+    agent_turn_space_id,
+    open_next_turn,
+    recruit_shortfall_events,
+    recruit_troops,
+)
 from dune_imperium.rules.frames import (
     FrameKind,
     context_int,
@@ -108,6 +118,7 @@ from dune_imperium.rules.spy_placement import (
     recall_spy,
     solo_occupied_post_ids,
 )
+from dune_imperium.rules.unit_loss import lose_unit
 from dune_imperium.rules.units import retreat_units
 
 # Frames during which the owner is inside their own Agent or Reveal turn.
@@ -152,6 +163,10 @@ def legal_intrigue_play_actions(
             continue
         for index, option in enumerate(entry.options):
             if option.timing is not timing:
+                continue
+            if option.turn_start_only and frame.kind != FrameKind.TURN:
+                # "At the start of your turn" (Withdrawn): only before the
+                # Agent or Reveal choice.
                 continue
             if option_is_playable(state, player, option):
                 actions.append(
@@ -253,6 +268,19 @@ def apply_intrigue_play(state: GameState, action: DomainAction) -> RuleResult:
                 ("card_id", card_id),
                 ("chosen_factions", ""),
                 ("option", option_index),
+                # Controlled: the deck's top card, seen by the owner only
+                # (the observation's private view surfaces it).
+                (
+                    "peeked_card_id",
+                    paid_owner.deck[0]
+                    if paid_owner.deck
+                    and any(
+                        isinstance(reward, PeekTopCard)
+                        for section in sections
+                        for reward in section.rewards
+                    )
+                    else "",
+                ),
                 ("sections", ",".join(str(index) for index in section_indexes)),
                 ("shield_wall_at_play", state.shield_wall_present),
                 ("slot", 0),
@@ -302,9 +330,16 @@ def legal_intrigue_choice_actions(
                             arguments=arguments,
                         )
                     )
-        case GainInfluence(factions=allowed, distinct=distinct):
+        case GainInfluence(factions=allowed, distinct=distinct) as gain:
             chosen = _chosen_factions(context)
-            for faction in allowed if allowed is not None else tuple(Faction):
+            faction_candidates = allowed if allowed is not None else tuple(Faction)
+            if gain.where_opponent_leads:
+                # Ambitious: only where an opponent has more Influence.
+                leading = factions_where_opponent_leads(state, player)
+                faction_candidates = tuple(
+                    faction for faction in faction_candidates if faction in leading
+                )
+            for faction in faction_candidates:
                 if distinct and faction in chosen:
                     continue
                 actions.append(
@@ -343,10 +378,17 @@ def legal_intrigue_choice_actions(
                     commanders=owner.commanders_garrison,
                 )
             )
-        case TrashPersonalCard():
-            # The black trash icon is optional [Main p. 20].
-            actions.append(
-                DomainAction(action_id="decline_intrigue_trash", actor=player)
+        case TrashPersonalCard(hand_only=hand_only, mandatory=mandatory):
+            # The black trash icon is optional [Main p. 20]; Devious's
+            # "Trash a card from your hand" is neither optional nor wider.
+            if not mandatory:
+                actions.append(
+                    DomainAction(action_id="decline_intrigue_trash", actor=player)
+                )
+            candidates = (
+                owner.hand
+                if hand_only
+                else (*owner.hand, *owner.discard_pile, *owner.in_play)
             )
             actions.extend(
                 DomainAction(
@@ -354,8 +396,65 @@ def legal_intrigue_choice_actions(
                     actor=player,
                     arguments=(("card_id", owned),),
                 )
-                for owned in (*owner.hand, *owner.discard_pile, *owner.in_play)
+                for owned in candidates
             )
+        case LoseTroops(from_conflict=from_conflict):
+            # The player picks the zone and, for a Sardaukar Commander, the
+            # kind [Bloodlines p. 4] (OQ-038).
+            zones = ("conflict",) if from_conflict else ("garrison", "conflict")
+            for zone in zones:
+                troops = getattr(owner, f"troops_{zone}")
+                commanders = getattr(owner, f"commanders_{zone}")
+                if troops:
+                    actions.append(
+                        DomainAction(
+                            action_id="lose_intrigue_troop",
+                            actor=player,
+                            arguments=(("zone", zone),),
+                        )
+                    )
+                if commanders:
+                    actions.append(
+                        DomainAction(
+                            action_id="lose_intrigue_troop",
+                            actor=player,
+                            arguments=(("commanders", 1), ("zone", zone)),
+                        )
+                    )
+        case GiveIntrigueToOpponent():
+            played = context_str(context, "card_id", owner=_CHOICE_FRAME)
+            actions.extend(
+                DomainAction(
+                    action_id="give_intrigue_card",
+                    actor=player,
+                    arguments=(("card_id", held), ("player", seat.player_id)),
+                )
+                for held in owner.intrigue_cards
+                if held != played
+                for seat in state.players
+                if seat.player_id != player
+            )
+        case TrashIntrigueCard():
+            played = context_str(context, "card_id", owner=_CHOICE_FRAME)
+            actions.extend(
+                DomainAction(
+                    action_id="trash_intrigue_hand_card",
+                    actor=player,
+                    arguments=(("card_id", held),),
+                )
+                for held in owner.intrigue_cards
+                if held != played
+            )
+        case PeekTopCard():
+            if owner.deck:
+                actions.append(
+                    DomainAction(action_id="put_back_top_card", actor=player)
+                )
+                actions.append(DomainAction(action_id="discard_top_card", actor=player))
+                if owner.resources.solari >= 1:
+                    actions.append(
+                        DomainAction(action_id="draw_top_card_for_solari", actor=player)
+                    )
         case RecallSpy():
             actions.extend(
                 DomainAction(
@@ -662,6 +761,40 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
             result = _retreat_units(
                 state, player, step_source, troops=count, commanders=commanders
             )
+        case LoseTroops():
+            zone = str(arguments["zone"])
+            result = lose_unit(
+                state,
+                player,
+                zone,
+                commander=arguments.get("commanders") == 1,
+                source=step_source,
+            )
+            if zone == "conflict":
+                result = RuleResult(
+                    state=reconcile_deployment_after_retreat(
+                        result.state,
+                        player,
+                        troops=int(arguments.get("commanders") != 1),
+                        commanders=int(arguments.get("commanders") == 1),
+                    ),
+                    events=result.events,
+                )
+        case GiveIntrigueToOpponent(bonus_spice_if_not_twisted=bonus):
+            result = _give_intrigue_card(
+                state,
+                player,
+                str(arguments["card_id"]),
+                arguments["player"],
+                bonus,
+                step_source,
+            )
+        case TrashIntrigueCard(troops_if_not_twisted=troops_bonus):
+            result = _trash_intrigue_hand_card(
+                state, player, str(arguments["card_id"]), troops_bonus, step_source
+            )
+        case PeekTopCard():
+            result = _resolve_peek(state, player, action.action_id, step_source)
         case PlaceSpy() if action.action_id == "decline_intrigue_spy":
             # The Spy placement is optional [Main pp. 11, 20].
             result = RuleResult(
@@ -816,6 +949,16 @@ def _apply_section_rewards(
         )
         next_state = replacement.state
         events.extend(replacement.events)
+    if outcome.passes_turn:
+        # Withdrawn: the turn ends at once; the seat stays unrevealed.
+        next_state = open_next_turn(next_state, player)
+        events.append(
+            GameEvent(
+                event_id=f"{source}:turn_passed",
+                kind="turn_passed",
+                payload=(("player", player),),
+            )
+        )
     if outcome.redirects_turn_space_spies:
         # False Orders: the owner's placement waits beneath the opponents'
         # forced moves so it resolves after them ("Then you place a Spy").
@@ -864,6 +1007,148 @@ def _apply_section_rewards(
             ),
         )
     return RuleResult(state=next_state, events=tuple(events))
+
+
+def _give_intrigue_card(
+    state: GameState,
+    player: int,
+    card_id: str,
+    recipient: ActionValue,
+    bonus_spice: int,
+    step_source: str,
+) -> RuleResult:
+    """Insidious: hand an Intrigue card to an opponent, extra spice if regular."""
+
+    if isinstance(recipient, bool) or not isinstance(recipient, int):
+        raise RuntimeError("Intrigue gift has an invalid recipient")
+    owner = state.players[player]
+    target = state.players[recipient]
+    twisted = intrigue_card_for_instance(card_id).twisted
+    extra = 0 if twisted else bonus_spice
+    giver = replace(
+        owner,
+        intrigue_cards=tuple(held for held in owner.intrigue_cards if held != card_id),
+        resources=replace(owner.resources, spice=owner.resources.spice + extra),
+    )
+    receiver = replace(target, intrigue_cards=(*target.intrigue_cards, card_id))
+    players = replace_player(replace_player(state.players, giver), receiver)
+    return RuleResult(
+        state=replace(state, players=players),
+        events=(
+            # The table sees a card change hands; only the two seats
+            # involved learn which one [Main p. 7].
+            GameEvent(
+                event_id=f"{step_source}:given",
+                kind="intrigue_card_given",
+                payload=(
+                    ("bonus_spice", extra),
+                    ("player", player),
+                    ("recipient", recipient),
+                ),
+            ),
+            GameEvent(
+                event_id=f"{step_source}:given:card",
+                kind="intrigue_card_given_identity",
+                payload=(
+                    ("card_id", card_id),
+                    ("player", player),
+                    ("recipient", recipient),
+                ),
+                visible_to=(player, recipient),
+            ),
+        ),
+    )
+
+
+def _trash_intrigue_hand_card(
+    state: GameState,
+    player: int,
+    card_id: str,
+    troops_bonus: int,
+    step_source: str,
+) -> RuleResult:
+    """Trash an Intrigue card from hand [Bloodlines p. 11]; Unnatural's troop."""
+
+    owner = state.players[player]
+    twisted = intrigue_card_for_instance(card_id).twisted
+    next_owner = replace(
+        owner,
+        intrigue_cards=tuple(held for held in owner.intrigue_cards if held != card_id),
+    )
+    recruited = 0
+    events: list[GameEvent] = [
+        GameEvent(
+            event_id=f"{step_source}:intrigue_trashed",
+            kind="intrigue_card_trashed",
+            payload=(("card_id", card_id), ("player", player)),
+        )
+    ]
+    if not twisted and troops_bonus:
+        next_owner, recruited = recruit_troops(next_owner, troops_bonus)
+        events.extend(
+            recruit_shortfall_events(step_source, player, troops_bonus, recruited)
+        )
+    next_state = replace(
+        state,
+        players=replace_player(state.players, next_owner),
+        intrigue_trash=(*state.intrigue_trash, card_id),
+    )
+    if recruited:
+        next_state = _update_agent_turn_frame(next_state, troops_recruited=recruited)
+    return RuleResult(state=next_state, events=tuple(events))
+
+
+def _resolve_peek(
+    state: GameState,
+    player: int,
+    action_id: str,
+    step_source: str,
+) -> RuleResult:
+    """Controlled: put the top card back, discard it, or pay a Solari to draw it."""
+
+    owner = state.players[player]
+    if not owner.deck:
+        raise RuntimeError("Controlled needs a card on top of the deck")
+    top = owner.deck[0]
+    if action_id == "put_back_top_card":
+        return RuleResult(
+            state=state,
+            events=(
+                GameEvent(
+                    event_id=f"{step_source}:put_back",
+                    kind="top_card_put_back",
+                    payload=(("player", player),),
+                ),
+            ),
+        )
+    if action_id == "discard_top_card":
+        next_owner = replace(
+            owner, deck=owner.deck[1:], discard_pile=(*owner.discard_pile, top)
+        )
+        kind = "top_card_discarded"
+    else:
+        if owner.resources.solari < 1:
+            raise RuntimeError("drawing the peeked card costs one Solari")
+        next_owner = replace(
+            owner,
+            deck=owner.deck[1:],
+            hand=(*owner.hand, top),
+            resources=replace(owner.resources, solari=owner.resources.solari - 1),
+        )
+        kind = "top_card_drawn"
+    return RuleResult(
+        state=replace(state, players=replace_player(state.players, next_owner)),
+        events=(
+            GameEvent(
+                event_id=f"{step_source}:{kind}",
+                kind=kind,
+                payload=(
+                    *((("card_id", top),) if kind == "top_card_discarded" else ()),
+                    ("player", player),
+                ),
+            ),
+        ),
+    )
 
 
 def _finish_play(

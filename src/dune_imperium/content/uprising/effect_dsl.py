@@ -44,6 +44,11 @@ class HasHighCouncil:
 
 
 @dataclass(frozen=True, slots=True)
+class HasAlliance:
+    """The player holds any Faction Alliance (Twisted Intrigue, Navigation)."""
+
+
+@dataclass(frozen=True, slots=True)
 class SpiesPlacedAtLeast:
     """The player has at least ``count`` Spies on Observation Posts."""
 
@@ -144,6 +149,7 @@ class CommandersInConflictAtLeast:
 type Condition = (
     InfluenceAtLeast
     | HasHighCouncil
+    | HasAlliance
     | SpiesPlacedAtLeast
     | CompletedContractsAtLeast
     | SandwormsInConflictAtLeast
@@ -204,6 +210,45 @@ class DiscardFromHand:
     def __post_init__(self) -> None:
         if self.count < 1:
             raise ValueError("hand discard count must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class LoseTroops:
+    """Lose ``count`` of the player's troops (each to the supply).
+
+    The player picks the zone of every troop, garrison or Conflict, and may
+    give up a Sardaukar Commander as a troop [Bloodlines p. 4] (OQ-038);
+    ``from_conflict`` limits the choice to units in the Conflict (Shrewd).
+    """
+
+    count: int = 1
+    from_conflict: bool = False
+
+    def __post_init__(self) -> None:
+        if self.count < 1:
+            raise ValueError("troop loss count must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class GiveIntrigueToOpponent:
+    """Give an opponent an Intrigue card from hand (Insidious).
+
+    ``bonus_spice_if_not_twisted`` pays extra when the gift is a regular
+    Intrigue card rather than a Twisted one.
+    """
+
+    bonus_spice_if_not_twisted: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class TrashIntrigueCard:
+    """Trash an Intrigue card of the player's choice from hand [Bloodlines p. 11].
+
+    ``troops_if_not_twisted`` recruits when the trashed card is a regular
+    Intrigue card rather than a Twisted one (Unnatural).
+    """
+
+    troops_if_not_twisted: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -282,6 +327,9 @@ type Cost = (
     PayResources
     | LoseInfluence
     | DiscardFromHand
+    | LoseTroops
+    | GiveIntrigueToOpponent
+    | TrashIntrigueCard
     | RecallSpy
     | RetreatTroops
     | FlipBattleCard
@@ -375,6 +423,9 @@ class GainInfluence:
     times: int = 1
     factions: tuple[Faction, ...] | None = None
     distinct: bool = False
+    # Ambitious (Twisted Intrigue): only a Faction where some opponent has
+    # more Influence than the player.
+    where_opponent_leads: bool = False
 
     def __post_init__(self) -> None:
         if self.times < 1:
@@ -438,8 +489,13 @@ class DeployFromGarrison:
 class TrashPersonalCard:
     """The black trash icon: optionally trash one card from hand, discard, or play.
 
-    Optional per [Main p. 20]; the player may decline.
+    Optional per [Main p. 20]; the player may decline. ``hand_only`` and
+    ``mandatory`` carry printed text such as Devious's "Trash a card from
+    your hand".
     """
+
+    hand_only: bool = False
+    mandatory: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -548,6 +604,38 @@ class GrantAgentIconThisTurn:
 
 
 @dataclass(frozen=True, slots=True)
+class GainSolariPerUnitType:
+    """Calculating (Twisted Intrigue): one Solari per kind of unit in the
+    Conflict (troops, sandworms, Sardaukar Commanders, a fighting Agent)."""
+
+
+@dataclass(frozen=True, slots=True)
+class PeekTopCard:
+    """Controlled (Twisted Intrigue): look at the top card of the deck and
+    put it back, discard it, or pay one Solari to draw it (player choice)."""
+
+
+@dataclass(frozen=True, slots=True)
+class GrantAgentIconsThisTurn:
+    """Resourceful (Twisted Intrigue): the card played this turn has these
+    Agent icons as well."""
+
+    icons: tuple[AgentIcon, ...]
+
+    def __post_init__(self) -> None:
+        if not self.icons or len(self.icons) != len(set(self.icons)):
+            raise ValueError("granted Agent icons must be unique and non-empty")
+        if any(not isinstance(icon, AgentIcon) for icon in self.icons):
+            raise TypeError("granted Agent icons must use AgentIcon")
+
+
+@dataclass(frozen=True, slots=True)
+class PassTurn:
+    """Withdrawn (Twisted Intrigue): "At the start of your turn: pass your
+    turn" — the option is playable only from the turn frame."""
+
+
+@dataclass(frozen=True, slots=True)
 class RedirectSpiesOnTurnSpace:
     """False Orders (Bloodlines): each opponent spying on the board space the
     owner sent an Agent to this turn must move that Spy; then the owner
@@ -590,6 +678,10 @@ type Reward = (
     | GrantCombatDeployment
     | RedirectSpiesOnTurnSpace
     | RevealContractsTakeOne
+    | GainSolariPerUnitType
+    | PeekTopCard
+    | GrantAgentIconsThisTurn
+    | PassTurn
 )
 
 
@@ -659,6 +751,9 @@ class IntrigueOption:
     timing: IntrigueTiming
     sections: tuple[EffectSection, ...]
     trigger: Trigger | None = None
+    # "At the start of your turn": playable only from the turn frame, before
+    # the Agent or Reveal choice (Withdrawn).
+    turn_start_only: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.timing, IntrigueTiming):
