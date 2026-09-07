@@ -45,10 +45,25 @@ Skill 7종은 에셋 저장소 `cards/en/bloodlines/skill/*.webp`를 직접 판�
 | Corrupt Bureaucrat (CHOAM) | Guild, 4, Guild·Landsraad·Spy. "discard될 때: 3 Solari". Agent: 이번 turn Spy를 recall했으면 contract. Reveal: 2 Persuasion. | `GAIN_THREE_SOLARI` discard trigger; contract는 `begin_contract_gain`(module 없으면 2 Solari). |
 | Mercantile Affairs (CHOAM) | BG, 5, BG·City·SpiceTrade·Spy, 획득 시 contract. Agent: 이번 turn contract를 완료했으면 Intrigue. Reveal: 2 Persuasion. | 새 좌석 카운터 `contracts_completed_turn`(관측 scalar, TURN frame에서 초기화). |
 
+### Intrigue (슬라이스 4c-1)
+
+| 카드 | 전사(DSL) | 메모 |
+| --- | --- | --- |
+| Desert Support | Combat: water 1 → 검 5 | |
+| Ripples in the Sand | Combat: 검 3; sandworm이 Conflict에 있으면 Intrigue 1 | |
+| Return the Favor | Combat: 검 1; Influence 2 이상인 Faction마다 +검 1 | Faction별 조건 줄 4개(`InfluenceAtLeast(faction, 2)`). |
+| Sacred Pools | Plot: [discard] → water 1; Endgame: water 3 이상이면 VP 1 | 새 조건 `WaterAtLeast`. |
+| Seize Production | Plot: Solari 2; OR Commander가 Conflict에 있으면 spice 2 | 새 조건 `CommandersInConflictAtLeast`. |
+| Sleeper Unit | Plot: Solari 1 → Spy 배치; OR [Spy recall] → troop 2 | |
+| Tenuous Bond | Plot/Combat: Influence 1 잃기 → Influence 1 선택; OR discard 더미의 비용 1 이상 카드 trash → 검 4 | 새 비용 `TrashDiscardPileCard(1)`(시작 카드는 비용이 없어 대상 밖); 두 시점을 각각 option으로 전사. |
+| The Strong Survive | Combat: 검 3; OR troop 1 retreat → 카드 trash(선택) | Commander도 retreat 대상. |
+| Withdrawal Agreement | Combat: troop 3 retreat → Influence 1 선택 | |
+| Grasp Arrakis | Combat/Endgame: 검 3; OR face-up Conflict 카드 2장 뒤집기 → VP 1 | 새 비용 `FlipFaceUpConflictCard(2)`(아이콘 무관, 카드마다 한 번 선택; wild 포함). |
+
 ## 미완 경계
 
 - Endgame tiebreaker "garrison의 troop 수"에 Commander를 세는지는 공식 문서가 침묵한다(현재는 세지 않음; 콘텐츠 슬라이스에서 open question으로 올릴 예정).
-- 남은 카드: Imperium 14종(Arrakis Observer, Bombast, CHOAM Demands, Delivery Logistics, Disruption Tactics, Elite Forces, Engineered Miracle, Holy War, Litany Against Fear, Possible Futures, Sardaukar Standard, Southern Faith, Urgent Shigawire, Tech 전용 Ixian Ambassador)과 Intrigue 18장 전부. 필요한 새 메커니즘: Spy with Deep Cover, Combat 아이콘(Agent·Reveal 배치 창), Intrigue trash 아이콘, 상대 troop 강제 retreat·Spy 이동(상대 결정), turn/round 한정 수정자(Urgent Shigawire, Emperor's Invitation, Insider Information, Honor Guard), turn 시작 대체 행동(Litany Against Fear), contract 임의 완료(CHOAM Demands), 동적 Agent 아이콘(Delivery Logistics), bank Commander 획득 + Skill 선택 frame(Sardaukar Standard), "lose a troop"(Holy War; 출처 garrison/Conflict 선택은 open question 예정).
+- 남은 카드: Imperium 14종(Arrakis Observer, Bombast, CHOAM Demands, Delivery Logistics, Disruption Tactics, Elite Forces, Engineered Miracle, Holy War, Litany Against Fear, Possible Futures, Sardaukar Standard, Southern Faith, Urgent Shigawire, Tech 전용 Ixian Ambassador)과 Intrigue 8장(Adaptive Tactics, Coercive Negotiation, Emperor's Invitation, False Orders, Honor Guard, Insider Information, Tech 전용 Battlefield Research·Rapid Engineering). 필요한 새 메커니즘: Spy with Deep Cover, Combat 아이콘(Agent·Reveal 배치 창), Intrigue trash 아이콘, 상대 troop 강제 retreat·Spy 이동(상대 결정), turn/round 한정 수정자(Urgent Shigawire, Emperor's Invitation, Insider Information, Honor Guard), turn 시작 대체 행동(Litany Against Fear), contract 임의 완료(CHOAM Demands), 동적 Agent 아이콘(Delivery Logistics), bank Commander 획득 + Skill 선택 frame(Sardaukar Standard), "lose a troop"(Holy War; 출처 garrison/Conflict 선택은 open question 예정).
 
 ## 검증
 
