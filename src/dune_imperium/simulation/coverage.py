@@ -206,13 +206,17 @@ def zero_coverage(
     _report("agent_placements", _agent_placement_catalog())
     imperium_identities = {
         normalize_instance_id(instance_id)
-        for instance_id in imperium_deck_instance_ids(choam_module, promo_cards)
+        for instance_id in imperium_deck_instance_ids(
+            choam_module, promo_cards, bloodlines=bloodlines, tech_module=tech_module
+        )
     }
     reserve_identities = {stack.card.card_id for stack in RESERVE_STACKS}
     _report("cards_acquired", imperium_identities | reserve_identities)
     intrigue_identities = {
         normalize_instance_id(instance_id)
-        for instance_id in intrigue_deck_instance_ids(choam_module)
+        for instance_id in intrigue_deck_instance_ids(
+            choam_module, bloodlines=bloodlines, tech_module=tech_module
+        )
     }
     _report_by_identity("intrigue_played", intrigue_identities)
     _report("contracts", set(contract_instance_ids()))

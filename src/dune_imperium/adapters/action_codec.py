@@ -269,9 +269,16 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         for stack in RESERVE_STACKS
     )
     imperium_instances = imperium_deck_instance_ids(
-        config.choam_module, config.promo_cards
+        config.choam_module,
+        config.promo_cards,
+        bloodlines=config.bloodlines,
+        tech_module=config.tech_module,
     )
-    intrigue_instances = intrigue_deck_instance_ids(config.choam_module)
+    intrigue_instances = intrigue_deck_instance_ids(
+        config.choam_module,
+        bloodlines=config.bloodlines,
+        tech_module=config.tech_module,
+    )
     templates.extend(
         ActionTemplate(
             action_id="acquire_imperium",
@@ -740,7 +747,12 @@ def _personal_card_instance_ids(config: RulesetConfig) -> tuple[str, ...]:
         for copy in range(card.copies)
     ]
     card_ids.extend(
-        imperium_deck_instance_ids(config.choam_module, config.promo_cards)
+        imperium_deck_instance_ids(
+        config.choam_module,
+        config.promo_cards,
+        bloodlines=config.bloodlines,
+        tech_module=config.tech_module,
+    )
     )
     card_ids.extend(
         f"reserve:{stack.card.card_id}:{copy}"

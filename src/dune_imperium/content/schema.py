@@ -60,11 +60,18 @@ class DeckCardEntry:
     # Promo card outside the retail deck; dealt only with
     # ``RulesetConfig(promo_cards=True)``.
     promo: bool = False
+    # Bloodlines expansion card; dealt only with ``RulesetConfig(bloodlines=True)``
+    # [Bloodlines p. 3]. ``tech_only`` marks the Tech Module cards, dealt
+    # only with ``tech_module=True`` as well [Bloodlines p. 6].
+    bloodlines_only: bool = False
+    tech_only: bool = False
     acquisition_cost: int | None = None
     has_acquisition_bonus: bool = False
 
     def __post_init__(self) -> None:
         if self.copies < 1:
             raise ValueError("deck-card copies must be positive")
+        if self.tech_only and not self.bloodlines_only:
+            raise ValueError("Tech Module cards belong to the Bloodlines set")
         if self.acquisition_cost is not None and self.acquisition_cost < 0:
             raise ValueError("acquisition cost must not be negative")

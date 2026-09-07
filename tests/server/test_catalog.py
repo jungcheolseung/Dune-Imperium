@@ -69,8 +69,12 @@ def test_catalog_serves_generated_effect_text() -> None:
 
     intrigue = catalog["intrigue"]
     assert isinstance(intrigue, dict)
-    for entry in intrigue.values():
+    for card_id, entry in intrigue.items():
         assert isinstance(entry, dict)
+        # Bloodlines Intrigue awaiting transcription (M12) has no option text
+        # yet and never enters a deck until it does.
+        if entry["text"] == [] and INTRIGUE_CARDS_BY_ID[card_id].bloodlines_only:
+            continue
         assert entry["text"]
 
     contracts = catalog["contracts"]

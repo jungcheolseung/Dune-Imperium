@@ -143,7 +143,7 @@ def expected_imperium_cards() -> tuple[ExpectedImperiumCard, ...]:
             choam_only=entry.choam_only,
         )
         for entry in IMPERIUM_CARDS
-        if not entry.promo
+        if not entry.promo and not entry.bloodlines_only
     )
     return (*starting, *reserve, *shared)
 

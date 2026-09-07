@@ -340,14 +340,23 @@ def create_initial_state(
         _shuffle_decision(
             "setup:imperium_deck",
             "Shuffle the Imperium deck",
-            imperium_deck_instance_ids(config.choam_module, config.promo_cards),
+            imperium_deck_instance_ids(
+                config.choam_module,
+                config.promo_cards,
+                bloodlines=config.bloodlines,
+                tech_module=config.tech_module,
+            ),
         )
     ).values
     intrigue = resolver.resolve(
         _shuffle_decision(
             "setup:intrigue_deck",
             "Shuffle the Intrigue deck",
-            intrigue_deck_instance_ids(config.choam_module),
+            intrigue_deck_instance_ids(
+                config.choam_module,
+                bloodlines=config.bloodlines,
+                tech_module=config.tech_module,
+            ),
         )
     ).values
     # Sardaukar Commander sets aside both Sardaukar Contracts before the
@@ -451,14 +460,23 @@ def create_draft_initial_state(
         _shuffle_decision(
             "setup:imperium_deck",
             "Shuffle the Imperium deck",
-            imperium_deck_instance_ids(config.choam_module, config.promo_cards),
+            imperium_deck_instance_ids(
+                config.choam_module,
+                config.promo_cards,
+                bloodlines=config.bloodlines,
+                tech_module=config.tech_module,
+            ),
         )
     ).values
     intrigue = resolver.resolve(
         _shuffle_decision(
             "setup:intrigue_deck",
             "Shuffle the Intrigue deck",
-            intrigue_deck_instance_ids(config.choam_module),
+            intrigue_deck_instance_ids(
+                config.choam_module,
+                bloodlines=config.bloodlines,
+                tech_module=config.tech_module,
+            ),
         )
     ).values
     # The full Contract order is drawn now; whether the Sardaukar Contracts
