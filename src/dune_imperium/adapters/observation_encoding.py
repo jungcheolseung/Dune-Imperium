@@ -101,7 +101,7 @@ class ObservationSegment:
 def _seat_segment_lengths(seat: int) -> tuple[tuple[str, int], ...]:
     prefix = f"seat{seat}"
     return (
-        (f"{prefix}_scalars", 34),
+        (f"{prefix}_scalars", 35),
         (f"{prefix}_alliances", len(FACTION_IDS)),
         (f"{prefix}_control", len(CONTROL_SPACE_IDS)),
         (f"{prefix}_agent_locations", _AGENT_LOCATION_SLOTS),
@@ -339,6 +339,7 @@ def _write_seat(writer: _Writer, seat_offset: int, player: PublicPlayerView) -> 
                 if player.granted_agent_icon_turn
                 else 0
             ),
+            int(player.combat_icon_turn),
         ],
     )
     writer.write(

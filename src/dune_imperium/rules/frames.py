@@ -155,6 +155,7 @@ def reset_turn_counters(
             commander_discount_turn=0,
             ignores_influence_requirements_turn=False,
             granted_agent_icon_turn="",
+            combat_icon_turn=False,
         ),
     )
 

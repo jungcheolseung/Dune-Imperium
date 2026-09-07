@@ -241,6 +241,13 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.DRAW_INTRIGUE_IF_CONTRACT_COMPLETED_THIS_TURN: (
             "If you completed a Contract this turn: Draw 1 Intrigue card"
         ),
+        PersonalCardAgentEffect.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS: (
+            "You may trash a card from your hand. If you trash an Emperor card: "
+            "Draw 1 Intrigue card, Recruit 1 troop, Combat"
+        ),
+        PersonalCardAgentEffect.FORCE_OPPONENT_TROOP_RETREAT: (
+            "Force an enemy troop to retreat"
+        ),
     }
 )
 
@@ -351,6 +358,9 @@ REVEAL_CHOICE_EFFECT_TEXT: Final[Mapping[PersonalCardRevealChoiceEffect, str]] =
             ),
             PersonalCardRevealChoiceEffect.MAY_RETREAT_TWO_TROOPS_FOR_TWO_PERSUASION: (
                 "You may retreat 2 troops → +2 Persuasion"
+            ),
+            PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_FOR_COMBAT_ICON: (
+                "Trash this card → Combat (deploy as though at a Combat space)"
             ),
         }
     )

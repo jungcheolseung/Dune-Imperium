@@ -31,6 +31,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainResources,
     GainVictoryPoints,
     GrantAgentIconThisTurn,
+    GrantCombatDeployment,
     HasHighCouncil,
     IgnoreInfluenceRequirementsThisTurn,
     InfluenceAtLeast,
@@ -255,6 +256,8 @@ def reward_text(reward: Reward) -> str:
             )
         case GrantAgentIconThisTurn(icon=icon):
             return f"The card you play this turn has the {icon.value} icon"
+        case GrantCombatDeployment():
+            return "Combat: deploy this turn as though at a Combat space"
         case SetAsideImperiumRowCard(discount=discount):
             return (
                 "Set aside an Imperium Row card "

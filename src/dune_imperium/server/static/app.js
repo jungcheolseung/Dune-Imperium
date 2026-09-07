@@ -186,6 +186,7 @@ const ACTION_LABELS = {
   withdraw_commanders: "Commander 회수",
   retreat_leader_commander: "Commander 1 retreat (Leader)",
   gain_reveal_influence: "Influence 1 획득 (선택)",
+  retreat_opponent_troop: "상대 troop 강제 retreat",
 };
 
 /* Korean labels for session-log event kinds (M11 slice 6); falls back to

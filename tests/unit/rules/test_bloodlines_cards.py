@@ -829,3 +829,168 @@ def test_emperors_invitation_lends_the_emperor_icon_for_the_turn() -> None:
     assert codec.decode(codec.encode(action), 0) == action
     placed = apply_agent_action(invited, action).state
     assert "dutiful_service" in placed.players[0].agent_locations
+
+
+# --- Combat icon (slice 4c-2b) ----------------------------------------------
+
+
+def test_adaptive_tactics_before_placement_opens_a_deployment_at_any_space() -> None:
+    from dune_imperium.rules.combat_deployment import legal_combat_deployments
+
+    card = _intrigue("adaptive_tactics")
+    engine = UprisingRulesEngine()
+    owner = _owner(
+        intrigue_cards=(card,), hand=STARTERS[4:10], resources=Resources(spice=1)
+    )
+    played = engine.apply(_state(owner), _play_intrigue(card)).state
+    assert played.players[0].combat_icon_turn is True
+    assert played.players[0].troops_garrison == 4
+    # Dutiful Service is not a Combat space, yet the icon opens the window:
+    # the recruited troop plus up to two from the garrison.
+    visited = _play(played, STARTERS[4], "dutiful_service")
+    assert [
+        dict(a.arguments)["count"] for a in legal_combat_deployments(visited, 0)
+    ] == [1, 2, 3]
+
+
+def test_adaptive_tactics_during_the_reveal_deploys_with_strength() -> None:
+    from dune_imperium.rules.reveal_turn import (
+        apply_reveal_deployment,
+        legal_reveal_deployments,
+    )
+
+    card = _intrigue("adaptive_tactics")
+    engine = UprisingRulesEngine()
+    owner = _owner(
+        intrigue_cards=(card,),
+        hand=(STARTERS[4],),
+        resources=Resources(spice=1),
+        commanders_garrison=1,
+    )
+    revealed = _reveal(_state(owner))
+    assert legal_reveal_deployments(revealed, 0) == ()
+    played = engine.apply(revealed, _play_intrigue(card)).state
+    context = _reveal_context(played)
+    assert context["combat_deployment"] is True
+    assert context["reveal_troops_recruited"] == 1
+    counts = {
+        (a.action_id, dict(a.arguments)["count"])
+        for a in legal_reveal_deployments(played, 0)
+    }
+    # One recruited troop plus two from the garrison: three troops, or the
+    # Commander as one of the garrison units.
+    assert counts == {
+        ("deploy_troops", 1),
+        ("deploy_troops", 2),
+        ("deploy_troops", 3),
+        ("deploy_commanders", 1),
+    }
+    deployed = apply_reveal_deployment(
+        played, DomainAction("deploy_commanders", 0, (("count", 1),))
+    ).state
+    assert deployed.players[0].commanders_conflict == 1
+    sword_strength = _reveal_context(deployed)["sword_strength"]
+    assert isinstance(sword_strength, int)
+    assert deployed.players[0].combat_strength == 2 + sword_strength
+    more = apply_reveal_deployment(
+        deployed, DomainAction("deploy_troops", 0, (("count", 2),))
+    ).state
+    assert more.players[0].troops_conflict == 2
+    assert _reveal_context(more)["reveal_units_deployed"] == 3
+    assert legal_reveal_deployments(more, 0) == ()
+
+
+def test_elite_forces_rewards_an_emperor_trash_from_hand() -> None:
+    from dune_imperium.rules.agent_effects import (
+        apply_agent_card_trash,
+        legal_agent_card_trash_actions,
+    )
+    from dune_imperium.rules.combat_deployment import legal_combat_deployments
+
+    card = _card("elite_forces")
+    emperor = _card("quash_rebellion")
+    state = _play(
+        _state(_owner(hand=(card, emperor, STARTERS[4]))), card, "dutiful_service"
+    )
+    actions = legal_agent_card_trash_actions(state, 0)
+    assert actions[0].action_id == "decline_agent_card_trash"
+    assert {dict(a.arguments)["card_id"] for a in actions[1:]} == {emperor, STARTERS[4]}
+    trash_emperor = next(
+        a for a in actions[1:] if dict(a.arguments)["card_id"] == emperor
+    )
+    rewarded = apply_agent_card_trash(state, trash_emperor).state
+    keys = {
+        dict(a.arguments)["effect"] for a in legal_agent_card_icon_actions(rewarded, 0)
+    }
+    assert keys == {"intrigue", "troops"}
+    assert (
+        dict(rewarded.decision_stack[-1].context)["pending_combat_deployment"] is True
+    )
+    # Resolve the troop icon: the recruit may then deploy (Combat icon).
+    troops = next(
+        a
+        for a in legal_agent_card_icon_actions(rewarded, 0)
+        if dict(a.arguments)["effect"] == "troops"
+    )
+    resolved = resolve_agent_card_icon(rewarded, troops).state
+    assert [
+        dict(a.arguments)["count"] for a in legal_combat_deployments(resolved, 0)
+    ] == [1, 2, 3]
+
+    plain = next(a for a in actions[1:] if dict(a.arguments)["card_id"] == STARTERS[4])
+    nothing = apply_agent_card_trash(state, plain).state
+    assert legal_agent_card_icon_actions(nothing, 0) == ()
+    assert (
+        dict(nothing.decision_stack[-1].context)["pending_combat_deployment"] is False
+    )
+
+
+def test_disruption_tactics_forces_an_enemy_unit_back_and_trashes_for_the_icon() -> (
+    None
+):
+    from dune_imperium.rules.agent_effects import (
+        apply_agent_card_opponent_retreat,
+        legal_agent_card_opponent_retreat_actions,
+    )
+    from dune_imperium.rules.reveal_turn import (
+        apply_reveal_card_trash,
+        legal_reveal_card_trash_actions,
+        legal_reveal_deployments,
+    )
+
+    card = _card("disruption_tactics")
+    enemy = replace(
+        PlayerState(player_id=1),
+        troops_supply=8,
+        troops_conflict=1,
+        commanders_conflict=1,
+        combat_strength=4,
+    )
+    base = _state(_owner(hand=(card,)))
+    base = replace(base, players=(base.players[0], enemy, *base.players[2:]))
+    state = _play(base, card)
+    actions = legal_agent_card_opponent_retreat_actions(state, 0)
+    assert {tuple(dict(a.arguments).items()) for a in actions} == {
+        (("player", 1),),
+        (("commanders", 1), ("player", 1)),
+    }
+    pushed = apply_agent_card_opponent_retreat(state, actions[1]).state
+    assert pushed.players[1].commanders_conflict == 0
+    assert pushed.players[1].commanders_garrison == 1
+    assert pushed.players[1].combat_strength == 2
+
+    revealed = _reveal(_state(_owner(hand=(card,), troops_garrison=3)))
+    frame = revealed.decision_stack[-1]
+    assert (
+        dict(frame.context)["reveal_choice_effect"] == "may_trash_self_for_combat_icon"
+    )
+    trash_actions = legal_reveal_card_trash_actions(revealed, 0)
+    assert [a.action_id for a in trash_actions] == [
+        "decline_reveal_card_trash",
+        "trash_reveal_card",
+    ]
+    trashed = apply_reveal_card_trash(revealed, trash_actions[1]).state
+    assert card in trashed.players[0].trashed
+    assert [
+        dict(a.arguments)["count"] for a in legal_reveal_deployments(trashed, 0)
+    ] == [1, 2]

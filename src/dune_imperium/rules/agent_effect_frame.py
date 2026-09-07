@@ -16,6 +16,7 @@ from dune_imperium.rules.agent_effects import (
     legal_agent_card_influence_actions,
     legal_agent_card_intrigue_payment_actions,
     legal_agent_card_long_live_actions,
+    legal_agent_card_opponent_retreat_actions,
     legal_agent_card_payment_actions,
     legal_agent_card_recall_actions,
     legal_agent_card_spy_actions,
@@ -60,6 +61,7 @@ from dune_imperium.rules.spies import legal_gather_intelligence_actions
 # ``resolve_agent_card_effect`` action is withheld until the choice is made.
 _AGENT_CARD_CHOICE_PROVIDERS = (
     legal_agent_card_trash_actions,
+    legal_agent_card_opponent_retreat_actions,
     legal_agent_card_discard_actions,
     legal_agent_card_payment_actions,
     legal_corrinth_city_payment_actions,

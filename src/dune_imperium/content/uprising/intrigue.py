@@ -29,6 +29,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainResources,
     GainVictoryPoints,
     GrantAgentIconThisTurn,
+    GrantCombatDeployment,
     HasHighCouncil,
     IgnoreInfluenceRequirementsThisTurn,
     InfluenceAtLeast,
@@ -671,7 +672,20 @@ INTRIGUE_CARDS: Final = (
     # Bloodlines Intrigue cards (2026-09-07): 15 retail + 1 CHOAM-only + 2
     # Tech-only [Bloodlines pp. 2-3]; options are transcribed from the card
     # faces slice by slice (an entry without options stays out of the deck).
-    _entry(109, "adaptive-tactics", "Adaptive Tactics", bloodlines_only=True),
+    _entry(
+        109,
+        "adaptive-tactics",
+        "Adaptive Tactics",
+        bloodlines_only=True,
+        options=(
+            _plot(
+                EffectSection(
+                    costs=(PayResources(spice=1),),
+                    rewards=(RecruitTroops(1), GrantCombatDeployment()),
+                )
+            ),
+        ),
+    ),
     _entry(
         110,
         "battlefield-research",

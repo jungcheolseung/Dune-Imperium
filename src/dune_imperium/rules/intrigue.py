@@ -54,6 +54,7 @@ from dune_imperium.rules.acquisition import (
 from dune_imperium.rules.card_discard import discard_personal_card_from_hand
 from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.combat import refresh_combat_participants
+from dune_imperium.rules.combat_deployment import grant_combat_icon
 from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effect_interpreter import (
     ChoiceSlot,
@@ -97,6 +98,7 @@ from dune_imperium.rules.spy_placement import (
     recall_spy,
     solo_occupied_post_ids,
 )
+from dune_imperium.rules.units import retreat_units
 
 # Frames during which the owner is inside their own Agent or Reveal turn.
 PLOT_FRAME_KINDS = frozenset(
@@ -796,6 +798,8 @@ def _apply_section_rewards(
         next_state = _update_agent_turn_frame(
             next_state, troops_recruited=outcome.troops_recruited
         )
+    if outcome.combat_icons:
+        next_state = grant_combat_icon(next_state, player)
     if outcome.sandworms_deployed and reveal_is_open_for(next_state, player):
         # The interpreter moved the sandworms; during a Reveal turn their
         # strength must also join the revealed total [Main p. 13].
@@ -912,47 +916,10 @@ def _retreat_units(
     troops: int,
     commanders: int = 0,
 ) -> RuleResult:
-    """Return Conflict units to the garrison, adjusting Combat strength.
+    """Return Conflict units to the garrison (see ``rules.units``)."""
 
-    Each troop or Commander carried two strength; a player left without
-    units keeps no strength at all [Main pp. 12, 14] [Bloodlines p. 4].
-    """
-
-    owner = state.players[player]
-    if (
-        troops < 0
-        or commanders < 0
-        or troops + commanders < 1
-        or owner.troops_conflict < troops
-        or owner.commanders_conflict < commanders
-    ):
-        raise RuntimeError("Intrigue retreat exceeds the troops in the Conflict")
-    retreated = troops + commanders
-    remaining_units = owner.units_in_conflict - retreated
-    next_strength = (
-        max(owner.combat_strength - 2 * retreated, 0) if remaining_units else 0
-    )
-    next_owner = replace(
-        owner,
-        troops_garrison=owner.troops_garrison + troops,
-        troops_conflict=owner.troops_conflict - troops,
-        commanders_garrison=owner.commanders_garrison + commanders,
-        commanders_conflict=owner.commanders_conflict - commanders,
-        combat_strength=next_strength,
-    )
-    return RuleResult(
-        state=replace(state, players=replace_player(state.players, next_owner)),
-        events=(
-            GameEvent(
-                event_id=f"{step_source}:retreat",
-                kind="troops_retreated",
-                payload=(
-                    *((("commanders", commanders),) if commanders else ()),
-                    ("count", retreated),
-                    ("player", player),
-                ),
-            ),
-        ),
+    return retreat_units(
+        state, player, step_source, troops=troops, commanders=commanders
     )
 
 
@@ -1060,6 +1027,22 @@ def _update_agent_turn_frame(
 
     for index in range(len(state.decision_stack) - 1, -1, -1):
         frame = state.decision_stack[index]
+        if frame.kind == FrameKind.REVEAL:
+            # Recruits during a Reveal turn feed its Combat-icon deployment
+            # [Bloodlines p. 5].
+            context = frame_context(frame)
+            recruited = context.get("reveal_troops_recruited", 0)
+            if isinstance(recruited, bool) or not isinstance(recruited, int):
+                raise RuntimeError("Reveal frame has an invalid recruit count")
+            context["reveal_troops_recruited"] = recruited + troops_recruited
+            return replace(
+                state,
+                decision_stack=(
+                    *state.decision_stack[:index],
+                    with_context(frame, context),
+                    *state.decision_stack[index + 1 :],
+                ),
+            )
         if frame.kind not in (FrameKind.AGENT_EFFECTS, FrameKind.TURN):
             continue
         context = frame_context(frame)

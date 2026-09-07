@@ -530,6 +530,12 @@ class IgnoreInfluenceRequirementsThisTurn:
 
 
 @dataclass(frozen=True, slots=True)
+class GrantCombatDeployment:
+    """The Combat icon: this turn the owner may deploy to the Conflict as
+    though an Agent had been sent to a Combat space [Bloodlines pp. 5, 12]."""
+
+
+@dataclass(frozen=True, slots=True)
 class GrantAgentIconThisTurn:
     """The card the owner plays this turn has ``icon`` as well (Emperor's
     Invitation, Bloodlines)."""
@@ -561,6 +567,7 @@ type Reward = (
     | CommanderDiscountThisTurn
     | IgnoreInfluenceRequirementsThisTurn
     | GrantAgentIconThisTurn
+    | GrantCombatDeployment
 )
 
 

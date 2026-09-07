@@ -145,6 +145,13 @@ class PersonalCardAgentEffect(StrEnum):
     DRAW_INTRIGUE_IF_CONTRACT_COMPLETED_THIS_TURN = (
         "draw_intrigue_if_contract_completed_this_turn"
     )
+    # Elite Forces: "You may trash a card from your hand. If you trash an
+    # Emperor card: Intrigue, troop, Combat icon".
+    MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS = (
+        "may_trash_hand_card_for_emperor_rewards"
+    )
+    # Disruption Tactics: "Force an enemy troop to retreat."
+    FORCE_OPPONENT_TROOP_RETREAT = "force_opponent_troop_retreat"
 
 
 class PersonalCardTrashEffect(StrEnum):
@@ -214,6 +221,8 @@ class PersonalCardRevealChoiceEffect(StrEnum):
     MAY_RETREAT_TWO_TROOPS_FOR_TWO_PERSUASION = (
         "may_retreat_two_troops_for_two_persuasion"
     )
+    # Disruption Tactics: "Trash this card -> Combat icon".
+    MAY_TRASH_SELF_FOR_COMBAT_ICON = "may_trash_self_for_combat_icon"
 
 
 # Choice effects added by Bloodlines: their action templates join only the
@@ -224,6 +233,7 @@ BLOODLINES_REVEAL_CHOICE_EFFECTS: frozenset[PersonalCardRevealChoiceEffect] = fr
         PersonalCardRevealChoiceEffect.COMMAND_PLACE_SPY,
         PersonalCardRevealChoiceEffect.COMMAND_GAIN_CHOSEN_INFLUENCE,
         PersonalCardRevealChoiceEffect.MAY_RETREAT_TWO_TROOPS_FOR_TWO_PERSUASION,
+        PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_FOR_COMBAT_ICON,
     }
 )
 

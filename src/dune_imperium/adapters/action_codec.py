@@ -623,6 +623,19 @@ def _bloodlines_templates() -> tuple[ActionTemplate, ...]:
         for share in (1, 2)
     )
     templates.append(ActionTemplate(action_id="retreat_leader_commander"))
+    # Disruption Tactics: one enemy unit (troop or Commander) to retreat.
+    for seat in range(4):
+        templates.append(
+            ActionTemplate(
+                action_id="retreat_opponent_troop", arguments=(("player", seat),)
+            )
+        )
+        templates.append(
+            ActionTemplate(
+                action_id="retreat_opponent_troop",
+                arguments=(("commanders", 1), ("player", seat)),
+            )
+        )
     # "Gain one Influence of your choice" as a Reveal choice (Pointing the Way).
     templates.extend(
         ActionTemplate(

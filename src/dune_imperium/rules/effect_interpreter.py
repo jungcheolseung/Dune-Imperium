@@ -31,6 +31,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainResources,
     GainVictoryPoints,
     GrantAgentIconThisTurn,
+    GrantCombatDeployment,
     HasHighCouncil,
     IgnoreInfluenceRequirementsThisTurn,
     InfluenceAtLeast,
@@ -451,6 +452,7 @@ class RewardOutcome:
     result: RuleResult
     troops_recruited: int = 0
     sandworms_deployed: int = 0
+    combat_icons: int = 0
 
 
 def automatic_rewards(sections: tuple[EffectSection, ...]) -> tuple[Reward, ...]:
@@ -491,6 +493,7 @@ def apply_rewards(
     events: list[GameEvent] = []
     troops_recruited = 0
     sandworms_deployed = 0
+    combat_icons = 0
     personal_draws = 0
     intrigue_draws = 0
     contracts = 0
@@ -574,6 +577,8 @@ def apply_rewards(
                 owner = replace(owner, ignores_influence_requirements_turn=True)
             case GrantAgentIconThisTurn(icon=icon):
                 owner = replace(owner, granted_agent_icon_turn=icon.value)
+            case GrantCombatDeployment():
+                combat_icons += 1
             case GainCombatStrength(amount=amount):
                 # Combat Intrigue strength changes update the marker at once
                 # [Main p. 14]; the caller only offers Combat options while
@@ -626,4 +631,5 @@ def apply_rewards(
         result=RuleResult(state=next_state, events=tuple(events)),
         troops_recruited=troops_recruited,
         sandworms_deployed=sandworms_deployed,
+        combat_icons=combat_icons,
     )

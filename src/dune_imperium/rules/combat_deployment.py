@@ -28,6 +28,7 @@ from dune_imperium.rules.effects import (
     agent_turn_has_other_pending_effects,
     current_agent_effect_context,
 )
+from dune_imperium.rules.frames import FrameKind
 
 
 def _deployment_context(
@@ -319,6 +320,65 @@ def apply_commander_withdrawal(
         payload=(("count", count), ("player", action.actor)),
     )
     return RuleResult(state=next_state, events=(event,))
+
+
+def grant_combat_icon(state: GameState, player: int) -> GameState:
+    """Let ``player`` deploy this turn as if at a Combat space [Bloodlines p. 5].
+
+    Inside the owner's Agent-turn effect frame the basic deployment window
+    opens (or stays open) with the garrison share capped at two whatever
+    the number of icons; inside the owner's Reveal frame the Reveal-turn
+    deployment opens (``reveal_turn``); before the placement the flag waits
+    on the seat for the placement to read. Emperor of the Known Universe
+    still blocks deployment for the turn [Main p. 17].
+    """
+
+    for index in range(len(state.decision_stack) - 1, -1, -1):
+        frame = state.decision_stack[index]
+        if not isinstance(frame.decision, PlayerDecision) or (
+            frame.decision.owner != player
+        ):
+            continue
+        if frame.kind == FrameKind.AGENT_EFFECTS:
+            context = dict(frame.context)
+            if context.get("units_deploy_blocked") is True:
+                return state
+            context["pending_combat_deployment"] = True
+            limit = context.get("existing_troop_deployment_limit", 0)
+            if isinstance(limit, bool) or not isinstance(limit, int):
+                raise RuntimeError(
+                    "Agent-turn effect frame has invalid deployment limit"
+                )
+            context["existing_troop_deployment_limit"] = max(limit, 2)
+            return replace(
+                state,
+                decision_stack=(
+                    *state.decision_stack[:index],
+                    replace(frame, context=tuple(sorted(context.items()))),
+                    *state.decision_stack[index + 1 :],
+                ),
+            )
+        if frame.kind == FrameKind.REVEAL:
+            context = dict(frame.context)
+            context["combat_deployment"] = True
+            return replace(
+                state,
+                decision_stack=(
+                    *state.decision_stack[:index],
+                    replace(frame, context=tuple(sorted(context.items()))),
+                    *state.decision_stack[index + 1 :],
+                ),
+            )
+        if frame.kind == FrameKind.TURN:
+            break
+    owner = state.players[player]
+    return replace(
+        state,
+        players=tuple(
+            replace(seat, combat_icon_turn=True) if seat.player_id == player else seat
+            for seat in state.players
+        ),
+    ) if not owner.combat_icon_turn else state
 
 
 def apply_agent_turn_finish(

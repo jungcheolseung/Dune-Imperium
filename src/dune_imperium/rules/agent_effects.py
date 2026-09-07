@@ -45,7 +45,7 @@ from dune_imperium.rules.effects import (
     recruit_shortfall_events,
     recruit_troops,
 )
-from dune_imperium.rules.frames import FrameKind, replace_player
+from dune_imperium.rules.frames import FrameKind, context_int, replace_player
 from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
 from dune_imperium.rules.leader_abilities import (
@@ -62,6 +62,7 @@ from dune_imperium.rules.spy_placement import (
     place_spy,
     recall_spy,
 )
+from dune_imperium.rules.units import retreat_units
 
 # Agent-box icon keys resolved by ``resolve_agent_card_effect`` with
 # ``effect=<key>``. Kept sorted: the action codec enumerates them.
@@ -825,6 +826,94 @@ def apply_agent_card_recall(state: GameState, action: DomainAction) -> RuleResul
     )
 
 
+def legal_agent_card_opponent_retreat_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return Disruption Tactics' targets: one enemy unit to retreat.
+
+    "Force an enemy troop to retreat" (card face); a Sardaukar Commander is
+    a troop [Bloodlines p. 4]. OQ-034 project convention: the acting player
+    picks the opponent and, where both kinds are in the Conflict, which
+    kind retreats. With no enemy unit in the Conflict the box resolves
+    without effect through ``resolve_agent_card_effect``.
+    """
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return ()
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    if context.get("pending_agent_effect") is not True or pending_agent_icons(context):
+        return ()
+    _, source_card_id, _ = _effect_subject(context)
+    if (
+        personal_card_for_instance(source_card_id).agent_effect
+        is not PersonalCardAgentEffect.FORCE_OPPONENT_TROOP_RETREAT
+    ):
+        return ()
+    actions: list[DomainAction] = []
+    for seat in state.players:
+        if seat.player_id == player:
+            continue
+        if seat.troops_conflict > 0:
+            actions.append(
+                DomainAction(
+                    action_id="retreat_opponent_troop",
+                    actor=player,
+                    arguments=(("player", seat.player_id),),
+                )
+            )
+        if seat.commanders_conflict > 0:
+            actions.append(
+                DomainAction(
+                    action_id="retreat_opponent_troop",
+                    actor=player,
+                    arguments=(("commanders", 1), ("player", seat.player_id)),
+                )
+            )
+    return tuple(actions)
+
+
+def apply_agent_card_opponent_retreat(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Retreat one unit of the chosen opponent to their garrison."""
+
+    if action not in legal_agent_card_opponent_retreat_actions(state, action.actor):
+        raise ValueError("action is not a legal enemy retreat choice")
+    _, context = current_agent_effect_context(state)
+    _, source_card_id, _ = _effect_subject(context)
+    arguments = dict(action.arguments)
+    target = arguments["player"]
+    commanders = arguments.get("commanders", 0)
+    if isinstance(target, bool) or not isinstance(target, int):
+        raise RuntimeError("enemy retreat has an invalid target")
+    if isinstance(commanders, bool) or not isinstance(commanders, int):
+        raise RuntimeError("enemy retreat has an invalid unit kind")
+    source = (
+        f"round:{state.round_number}:player:{action.actor}:"
+        f"agent_card:{source_card_id}:opponent:{target}"
+    )
+    retreated = retreat_units(
+        state, target, source, troops=1 - commanders, commanders=commanders
+    )
+    context["pending_agent_effect"] = False
+    next_state = advance_after_effect(
+        retreated.state, context, retreated.state.players
+    )
+    event = GameEvent(
+        event_id=f"round:{state.round_number}:player:{action.actor}:agent_card:{source_card_id}",
+        kind="agent_card_effect_resolved",
+        payload=(("card_id", source_card_id), ("player", action.actor)),
+    )
+    return RuleResult(state=next_state, events=(event, *retreated.events))
+
+
 def legal_agent_card_trash_actions(
     state: GameState,
     player: int,
@@ -854,6 +943,7 @@ def legal_agent_card_trash_actions(
         PersonalCardAgentEffect.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE,
         PersonalCardAgentEffect.MAY_TRASH_SELF_FOR_TROOP_AND_FIRST_PLACE_INFLUENCE,
         PersonalCardAgentEffect.GAIN_REWARDS_PER_FACE_UP_BATTLE_ICON,
+        PersonalCardAgentEffect.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS,
     ):
         return ()
     if (
@@ -867,6 +957,12 @@ def legal_agent_card_trash_actions(
 
     owner = state.players[player]
     eligible = (*owner.hand, *owner.discard_pile, *owner.in_play)
+    if (
+        source_card.agent_effect
+        is PersonalCardAgentEffect.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS
+    ):
+        # Elite Forces: "a card from your hand".
+        eligible = owner.hand
     if (
         source_card.agent_effect
         is PersonalCardAgentEffect.MAY_TRASH_SELF_FOR_TROOP_AND_FIRST_PLACE_INFLUENCE
@@ -970,6 +1066,28 @@ def apply_agent_card_trash(state: GameState, action: DomainAction) -> RuleResult
             trashed.state,
             context,
             trashed.state.players,
+        )
+        return RuleResult(state=next_state, events=trashed.events)
+    if (
+        source_card.agent_effect
+        is PersonalCardAgentEffect.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS
+    ):
+        # Elite Forces: an Emperor card trashed from hand pays an Intrigue
+        # draw and a troop (queued icons, OQ-027) and the Combat icon: this
+        # turn deploys as though at a Combat space, never more than two
+        # units from the garrison [Bloodlines p. 5].
+        if Faction.EMPEROR in personal_card_for_instance(card_id).factions:
+            arm_agent_icons(context, (AGENT_ICON_INTRIGUE, AGENT_ICON_TROOPS))
+            if context.get("units_deploy_blocked") is not True:
+                context["pending_combat_deployment"] = True
+                limit = context_int(
+                    context,
+                    "existing_troop_deployment_limit",
+                    owner="Agent-turn effect frame",
+                )
+                context["existing_troop_deployment_limit"] = max(limit, 2)
+        next_state = advance_after_effect(
+            trashed.state, context, trashed.state.players
         )
         return RuleResult(state=next_state, events=trashed.events)
     if (
@@ -1978,6 +2096,15 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             if len(owner.completed_contract_ids) >= 2
             else "agent_card_effect_unavailable"
         )
+    elif effect is PersonalCardAgentEffect.FORCE_OPPONENT_TROOP_RETREAT:
+        if any(
+            seat.player_id != player and seat.troops_conflict + seat.commanders_conflict
+            for seat in state.players
+        ):
+            raise RuntimeError("enemy retreat requires a player choice")
+        # No enemy unit in the Conflict: nothing to retreat (OQ-028).
+        next_owner = owner
+        event_kind = "agent_card_effect_unavailable"
     elif effect is PersonalCardAgentEffect.RECRUIT_ONE_IF_EMPEROR_INFLUENCE_TWO:
         # Command Center (Bloodlines): "Emperor 2 Influence: troop", judged
         # when the box resolves (OQ-028).

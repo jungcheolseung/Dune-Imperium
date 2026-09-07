@@ -39,6 +39,7 @@ from dune_imperium.rules.agent_effects import (
     apply_agent_card_influence,
     apply_agent_card_intrigue_payment,
     apply_agent_card_long_live_action,
+    apply_agent_card_opponent_retreat,
     apply_agent_card_payment,
     apply_agent_card_recall,
     apply_agent_card_spy_action,
@@ -114,7 +115,7 @@ from dune_imperium.rules.endgame import (
     finish_endgame_without_pending_effects,
     legal_endgame_intrigue_actions,
 )
-from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.frames import FrameKind, owned_top_frame
 from dune_imperium.rules.intrigue import (
     apply_intrigue_choice,
     apply_intrigue_play,
@@ -165,6 +166,7 @@ from dune_imperium.rules.reveal_turn import (
     apply_defer_reveal_choice,
     apply_resume_reveal_choice,
     apply_reveal_card_trash,
+    apply_reveal_deployment,
     apply_reveal_influence_exchange,
     apply_reveal_influence_gain,
     apply_reveal_sandworm_action,
@@ -181,6 +183,7 @@ from dune_imperium.rules.reveal_turn import (
     legal_resume_reveal_choice_actions,
     legal_reveal_actions,
     legal_reveal_card_trash_actions,
+    legal_reveal_deployments,
     legal_reveal_influence_exchange_actions,
     legal_reveal_influence_gain_actions,
     legal_reveal_sandworm_actions,
@@ -228,6 +231,16 @@ def _apply_decline_combat_reward(
     if state.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_OPTIONAL:
         return apply_combat_reward_optional_payment(state, action)
     return apply_combat_reward_spy_recall(state, action)
+
+
+def _apply_deployment(state: GameState, action: DomainAction) -> RuleResult:
+    """Route a deployment to the Reveal-turn Combat icon or the Agent turn."""
+
+    if owned_top_frame(state, FrameKind.REVEAL, action.actor) is not None:
+        return apply_reveal_deployment(state, action)
+    if action.action_id == "deploy_commanders":
+        return apply_commander_deployment(state, action)
+    return apply_combat_deployment(state, action)
 
 
 def _executable_agent_actions(
@@ -281,6 +294,7 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         legal_leader_reveal_actions,
         legal_commander_recruit_actions,
         legal_skill_trash_actions,
+        legal_reveal_deployments,
         legal_resume_reveal_choice_actions,
         legal_finish_reveal_actions,
         legal_intrigue_play_actions,
@@ -372,9 +386,9 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "decline_imperial_privilege_intrigue": apply_imperial_privilege_action,
     "discard_intrigue_for_imperial_privilege": apply_imperial_privilege_action,
     "recall_agent_for_imperial_privilege": apply_imperial_privilege_action,
-    "deploy_troops": apply_combat_deployment,
+    "deploy_troops": _apply_deployment,
     "withdraw_troops": apply_troop_withdrawal,
-    "deploy_commanders": apply_commander_deployment,
+    "deploy_commanders": _apply_deployment,
     "withdraw_commanders": apply_commander_withdrawal,
     "finish_agent_turn": apply_agent_turn_finish,
     # Bloodlines Sardaukar Commanders
@@ -384,6 +398,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "trash_skill_for_strength": apply_skill_trash,
     # Agent-card serial choices
     "trash_agent_card": apply_agent_card_trash,
+    "retreat_opponent_troop": apply_agent_card_opponent_retreat,
     "decline_agent_card_trash": apply_agent_card_trash,
     "discard_agent_card": apply_agent_card_discard,
     "decline_agent_card_discard": apply_agent_card_discard,

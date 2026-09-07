@@ -107,6 +107,10 @@ class PlayerState:
     commander_discount_turn: int = 0
     ignores_influence_requirements_turn: bool = False
     granted_agent_icon_turn: str = ""
+    # A Combat icon gained before this turn's Agent placement (Adaptive
+    # Tactics played from the turn frame): the placement deploys as if to a
+    # Combat space [Bloodlines pp. 5, 12].
+    combat_icon_turn: bool = False
     # The Skill strength currently folded into ``combat_strength`` so the
     # running total can be re-derived when a Skill condition changes.
     skill_strength_applied: int = 0

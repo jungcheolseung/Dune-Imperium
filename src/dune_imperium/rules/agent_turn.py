@@ -208,7 +208,12 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
             ("card_id", card_instance_id),
             ("combat_troops_deployed", 0),
             ("cost_option", cost_option),
-            ("existing_troop_deployment_limit", 2 if space.combat else 0),
+            # A Combat icon gained earlier this turn deploys like a Combat
+            # space, never more than two from the garrison [Bloodlines p. 5].
+            (
+                "existing_troop_deployment_limit",
+                2 if space.combat or owner.combat_icon_turn else 0,
+            ),
             ("pending_agent_effect", agent_effect_pending),
             ("pending_agent_icons", agent_icons),
             ("pending_board_effect", bool(board_icons)),
@@ -218,6 +223,7 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
                 not units_deploy_blocked
                 and (
                     space.combat
+                    or owner.combat_icon_turn
                     or (
                         isinstance(card, ImperiumCardEntry)
                         and card.allows_recruited_troop_deployment

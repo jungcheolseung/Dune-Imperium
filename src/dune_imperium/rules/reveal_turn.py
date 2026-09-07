@@ -33,6 +33,7 @@ from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.card_bonds import has_faction_bond
 from dune_imperium.rules.card_trash import trash_personal_card
+from dune_imperium.rules.combat_deployment import grant_combat_icon
 from dune_imperium.rules.effects import recruit_shortfall_events, recruit_troops
 from dune_imperium.rules.frames import (
     FrameKind,
@@ -41,6 +42,7 @@ from dune_imperium.rules.frames import (
     frame_context,
     owned_top_frame,
     replace_player,
+    replace_top_frame,
     reset_turn_counters,
     with_context,
 )
@@ -289,6 +291,72 @@ def apply_reveal_influence_gain(
     )
 
 
+def legal_reveal_deployments(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Offer the Combat-icon deployment during the owner's Reveal turn.
+
+    "You may deploy any units you recruit this turn and up to two more from
+    your garrison", never more than two from the garrison however many
+    icons [Bloodlines p. 5]; troops and Sardaukar Commanders share the
+    limit [Bloodlines p. 4].
+    """
+
+    frame = owned_top_frame(state, FrameKind.REVEAL, player)
+    if frame is None:
+        return ()
+    context = dict(frame.context)
+    if context.get("combat_deployment") is not True:
+        return ()
+    recruited = context_int(context, "reveal_troops_recruited", owner="Reveal frame")
+    deployed = context_int(context, "reveal_units_deployed", owner="Reveal frame")
+    remaining = recruited + 2 - deployed
+    owner = state.players[player]
+    actions: list[DomainAction] = []
+    for action_id, garrison in (
+        ("deploy_troops", owner.troops_garrison),
+        ("deploy_commanders", owner.commanders_garrison),
+    ):
+        actions.extend(
+            DomainAction(
+                action_id=action_id, actor=player, arguments=(("count", count),)
+            )
+            for count in range(1, min(garrison, remaining) + 1)
+        )
+    return tuple(actions)
+
+
+def apply_reveal_deployment(state: GameState, action: DomainAction) -> RuleResult:
+    """Deploy garrison units during the Reveal turn (Combat icon)."""
+
+    if action not in legal_reveal_deployments(state, action.actor):
+        raise ValueError("action is not a legal Reveal deployment")
+    count = dict(action.arguments)["count"]
+    if isinstance(count, bool) or not isinstance(count, int):
+        raise RuntimeError("Reveal deployment has an invalid count")
+    commanders = count if action.action_id == "deploy_commanders" else 0
+    troops = count - commanders
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    context["reveal_units_deployed"] = (
+        context_int(context, "reveal_units_deployed", owner="Reveal frame") + count
+    )
+    prepared = replace_top_frame(state, with_context(frame, context))
+    counted = add_units_to_reveal(
+        prepared, action.actor, troops=troops, commanders=commanders
+    )
+    event = GameEvent(
+        event_id=(
+            f"round:{state.round_number}:player:{action.actor}:reveal_deploy:"
+            f"{context['reveal_units_deployed']}"
+        ),
+        kind="commanders_deployed" if commanders else "troops_deployed",
+        payload=(("count", count), ("player", action.actor)),
+    )
+    return RuleResult(state=counted.state, events=(event, *counted.events))
+
+
 def legal_reveal_spice_influence_actions(
     state: GameState,
     player: int,
@@ -462,6 +530,7 @@ def legal_reveal_card_trash_actions(
     if effect_value not in (
         PersonalCardRevealChoiceEffect.MAY_TRASH_OTHER_EMPEROR_FOR_THREE_STRENGTH.value,
         PersonalCardRevealChoiceEffect.COMMAND_MAY_TRASH_CARD.value,
+        PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_FOR_COMBAT_ICON.value,
     ):
         return ()
     source_card_id = context.get("reveal_card_id")
@@ -472,6 +541,13 @@ def legal_reveal_card_trash_actions(
         # Shrouded Counsel's "Command: trash a card": the black trash icon
         # targets hand, discard pile or in play and is optional [Main p. 20].
         candidates: tuple[str, ...] = (*owner.hand, *owner.discard_pile, *owner.in_play)
+    elif (
+        effect_value
+        == PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_FOR_COMBAT_ICON.value
+    ):
+        # Disruption Tactics: "Trash this card -> Combat icon" (an arrow, so
+        # optional); the card is in play while it is revealed.
+        candidates = (source_card_id,) if source_card_id in owner.in_play else ()
     else:
         candidates = tuple(
             card_id
@@ -863,6 +939,18 @@ def apply_reveal_card_trash(
                 trashed.state, decision_stack=trashed.state.decision_stack[:-1]
             ),
             events=trashed.events,
+        )
+    if (
+        context.get("reveal_choice_effect")
+        == PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_FOR_COMBAT_ICON.value
+    ):
+        # Disruption Tactics: the Combat icon opens this Reveal's deployment
+        # window [Bloodlines p. 5].
+        popped = replace(
+            trashed.state, decision_stack=trashed.state.decision_stack[:-1]
+        )
+        return RuleResult(
+            state=grant_combat_icon(popped, action.actor), events=trashed.events
         )
     owner = trashed.state.players[action.actor]
     counted_strength = 3 if owner.units_in_conflict else 0
@@ -1705,7 +1793,9 @@ def reveal_choice_prompt(effect: PersonalCardRevealChoiceEffect) -> str:
     """Return the REVEAL_CHOICE frame prompt text for one choice effect."""
 
     return (
-        "Command: trash a card or decline"
+        "Trash this card for the Combat icon or decline"
+        if effect is PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_FOR_COMBAT_ICON
+        else "Command: trash a card or decline"
         if effect is PersonalCardRevealChoiceEffect.COMMAND_MAY_TRASH_CARD
         else "Command: choose where to place a Spy"
         if effect is PersonalCardRevealChoiceEffect.COMMAND_PLACE_SPY
@@ -1795,6 +1885,7 @@ def _reveal_choice_effect_is_available(
             is PersonalCardRevealChoiceEffect.MAY_RETREAT_TWO_TROOPS_FOR_TWO_PERSUASION
             and owner.troops_conflict + owner.commanders_conflict >= 2
         )
+        or effect is PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_FOR_COMBAT_ICON
         or (
             effect
             is PersonalCardRevealChoiceEffect.MAY_LOSE_INFLUENCE_TO_GAIN_INFLUENCE
@@ -2531,8 +2622,14 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
                 )
             ),
         ),
+        # Combat-icon deployment during the Reveal [Bloodlines p. 5]: open
+        # when an icon arrived earlier this turn, counting this Reveal's
+        # recruits toward the limit.
+        ("combat_deployment", owner.combat_icon_turn),
         ("optional_sword_strength", 0),
         ("persuasion", persuasion),
+        ("reveal_troops_recruited", reveal_troops_recruited),
+        ("reveal_units_deployed", 0),
         ("revealed_card_count", len(revealed)),
         ("strength", strength),
         ("sword_strength", sword_strength),
