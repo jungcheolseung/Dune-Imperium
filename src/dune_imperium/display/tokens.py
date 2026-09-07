@@ -248,6 +248,21 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.FORCE_OPPONENT_TROOP_RETREAT: (
             "Force an enemy troop to retreat"
         ),
+        PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY: (
+            "You may discard a card → Place a Spy with Deep Cover; "
+            "if you discarded a Spacing Guild card: Gain 2 spice"
+        ),
+        PersonalCardAgentEffect.MAY_DISCARD_FOR_WATER: (
+            "You may discard a card → Gain 1 water"
+        ),
+        PersonalCardAgentEffect.DRAW_ONE_OR_BENE_GESSERIT_INFLUENCE_IF_BOND: (
+            "Choose one: Draw 1 card / If Bene Gesserit Bond: "
+            "Gain 1 Bene Gesserit Influence"
+        ),
+        PersonalCardAgentEffect.CHOSEN_INFLUENCE_OR_TWO_TROOPS_BOTH_IF_BOND: (
+            "Choose one: Gain 1 Influence with a chosen Faction / Recruit 2 troops; "
+            "if Bene Gesserit Bond: get both"
+        ),
     }
 )
 
@@ -362,6 +377,13 @@ REVEAL_CHOICE_EFFECT_TEXT: Final[Mapping[PersonalCardRevealChoiceEffect, str]] =
             PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_FOR_COMBAT_ICON: (
                 "Trash this card → Combat (deploy as though at a Combat space)"
             ),
+            PersonalCardRevealChoiceEffect.MAY_RECALL_SPY_FOR_THREE_STRENGTH: (
+                "You may recall a Spy → +3 swords"
+            ),
+            PersonalCardRevealChoiceEffect.COMMAND_MAY_TRASH_SELF_TO_ACQUIRE_ROW_CARD: (
+                "Command (6+ Persuasion): Trash this card → "
+                "Acquire a card from the Imperium Row"
+            ),
         }
     )
 )
@@ -388,6 +410,7 @@ _HANDLED_REVEAL_FIELDS: Final[frozenset[str]] = frozenset(
         "requires_commander_in_conflict",
         "minimum_garrisoned_units",
         "requires_command",
+        "trashes_self",
     }
 )
 
@@ -468,6 +491,8 @@ def reveal_effect_text(effect: PersonalCardRevealEffect) -> str:
         gains.append(
             f"Gain {effect.influence} {_bond_name(effect.influence_faction)} Influence"
         )
+    if effect.trashes_self:
+        gains.append("Trash this card")
 
     text = ", ".join(gains)
     if conditions:

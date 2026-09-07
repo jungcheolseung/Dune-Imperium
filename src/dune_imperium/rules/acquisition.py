@@ -10,6 +10,7 @@ from dune_imperium.content.uprising.types import (
     PersonalCardAcquisitionEffect,
     PersonalCardAgentEffect,
     PersonalCardRevealAcquisitionEffect,
+    PersonalCardRevealChoiceEffect,
 )
 from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
@@ -17,6 +18,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
+from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.contracts import (
     begin_contract_gain,
     complete_acquire_contracts,
@@ -1136,6 +1138,84 @@ def acquire_reserve_for_intrigue(
         result=RuleResult(state=result_state, events=result_events),
         instance_id=instance_id,
     )
+
+
+def legal_reveal_command_acquisition_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Engineered Miracle: "Command: Trash this card -> Acquire a card from
+    the Imperium Row" (any cost, no Persuasion), or decline the arrow."""
+
+    if not 0 <= player < state.config.players or not state.decision_stack:
+        return ()
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    expected = PersonalCardRevealChoiceEffect.COMMAND_MAY_TRASH_SELF_TO_ACQUIRE_ROW_CARD
+    if context.get("reveal_choice_effect") != expected.value:
+        return ()
+    return (
+        DomainAction(action_id="decline_command_acquisition", actor=player),
+        *(
+            DomainAction(
+                action_id="command_acquire_row_card",
+                actor=player,
+                arguments=(("instance_id", instance_id),),
+            )
+            for instance_id in state.imperium_row
+        ),
+    )
+
+
+def apply_reveal_command_acquisition(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Trash the revealed card and take the chosen Imperium Row card."""
+
+    if action not in legal_reveal_command_acquisition_actions(state, action.actor):
+        raise ValueError("action is not a legal Command acquisition choice")
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    source_card_id = context.get("reveal_card_id")
+    if not isinstance(source_card_id, str):
+        raise RuntimeError("Reveal acquisition frame has invalid card ID")
+    source = (
+        f"round:{state.round_number}:player:{action.actor}:"
+        f"reveal_card:{source_card_id}:command_acquisition"
+    )
+    popped = replace(state, decision_stack=state.decision_stack[:-1])
+    if action.action_id == "decline_command_acquisition":
+        return RuleResult(
+            state=popped,
+            events=(
+                GameEvent(
+                    event_id=f"{source}:declined",
+                    kind="reveal_card_trash_declined",
+                    payload=(("card_id", source_card_id), ("player", action.actor)),
+                ),
+            ),
+        )
+    instance_id = str(dict(action.arguments)["instance_id"])
+    trashed = trash_personal_card(popped, action.actor, source_card_id, source=source)
+    acquired = acquire_imperium_for_intrigue(
+        trashed.state, action.actor, instance_id, to_hand=False, source=source
+    )
+    next_state = acquired.result.state
+    events: tuple[GameEvent, ...] = (*trashed.events, *acquired.result.events)
+    if acquired.places_spy:
+        next_state = next_state.push_decision(
+            acquisition_spy_frame(next_state, action.actor, instance_id)
+        )
+    elif acquired.takes_contract:
+        contracts = begin_contract_gain(
+            next_state, action.actor, 1, source=f"{source}:acquisition_bonus"
+        )
+        next_state = contracts.state
+        events = (*events, *contracts.events)
+    return RuleResult(state=next_state, events=events)
 
 
 def acquire_imperium_for_intrigue(

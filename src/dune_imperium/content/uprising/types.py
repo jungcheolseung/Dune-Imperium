@@ -152,6 +152,21 @@ class PersonalCardAgentEffect(StrEnum):
     )
     # Disruption Tactics: "Force an enemy troop to retreat."
     FORCE_OPPONENT_TROOP_RETREAT = "force_opponent_troop_retreat"
+    # Arrakis Observer: "[discard] -> Spy with Deep Cover; if you discarded a
+    # Spacing Guild card: 2 spice".
+    MAY_DISCARD_FOR_DEEP_COVER_SPY = "may_discard_for_deep_cover_spy"
+    # Engineered Miracle: "[discard] -> water".
+    MAY_DISCARD_FOR_WATER = "may_discard_for_water"
+    # Southern Faith: "draw a card OR, if another Bene Gesserit card is in
+    # play, Bene Gesserit Influence".
+    DRAW_ONE_OR_BENE_GESSERIT_INFLUENCE_IF_BOND = (
+        "draw_one_or_bene_gesserit_influence_if_bond"
+    )
+    # Possible Futures: "Influence of your choice OR 2 troops; with another
+    # Bene Gesserit card in play, get both".
+    CHOSEN_INFLUENCE_OR_TWO_TROOPS_BOTH_IF_BOND = (
+        "chosen_influence_or_two_troops_both_if_bond"
+    )
 
 
 class PersonalCardTrashEffect(StrEnum):
@@ -223,6 +238,13 @@ class PersonalCardRevealChoiceEffect(StrEnum):
     )
     # Disruption Tactics: "Trash this card -> Combat icon".
     MAY_TRASH_SELF_FOR_COMBAT_ICON = "may_trash_self_for_combat_icon"
+    # Arrakis Observer: "[recall a Spy] -> 3 swords".
+    MAY_RECALL_SPY_FOR_THREE_STRENGTH = "may_recall_spy_for_three_strength"
+    # Engineered Miracle: "Command: Trash this card -> Acquire a card from
+    # the Imperium Row".
+    COMMAND_MAY_TRASH_SELF_TO_ACQUIRE_ROW_CARD = (
+        "command_may_trash_self_to_acquire_row_card"
+    )
 
 
 # Choice effects added by Bloodlines: their action templates join only the
@@ -234,6 +256,8 @@ BLOODLINES_REVEAL_CHOICE_EFFECTS: frozenset[PersonalCardRevealChoiceEffect] = fr
         PersonalCardRevealChoiceEffect.COMMAND_GAIN_CHOSEN_INFLUENCE,
         PersonalCardRevealChoiceEffect.MAY_RETREAT_TWO_TROOPS_FOR_TWO_PERSUASION,
         PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_FOR_COMBAT_ICON,
+        PersonalCardRevealChoiceEffect.MAY_RECALL_SPY_FOR_THREE_STRENGTH,
+        PersonalCardRevealChoiceEffect.COMMAND_MAY_TRASH_SELF_TO_ACQUIRE_ROW_CARD,
     }
 )
 
@@ -274,6 +298,9 @@ class PersonalCardRevealEffect:
     requires_commander_in_conflict: bool = False
     minimum_garrisoned_units: int = 0
     requires_command: bool = False
+    # Bombast: "Command: 3 Solari and trash this card" — the card leaves
+    # play when the effect pays out.
+    trashes_self: bool = False
 
     def __post_init__(self) -> None:
         if self.required_faction_bond is not None and not isinstance(

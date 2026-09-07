@@ -187,6 +187,8 @@ const ACTION_LABELS = {
   retreat_leader_commander: "Commander 1 retreat (Leader)",
   gain_reveal_influence: "Influence 1 획득 (선택)",
   retreat_opponent_troop: "상대 troop 강제 retreat",
+  command_acquire_row_card: "Command: 카드 trash 후 Imperium Row 카드 획득",
+  decline_command_acquisition: "Command 획득 거절",
 };
 
 /* Korean labels for session-log event kinds (M11 slice 6); falls back to

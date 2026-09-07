@@ -149,6 +149,19 @@ def legal_reveal_spy_actions(
             )
             for post_id in post_ids
         )
+    if effect is PersonalCardRevealChoiceEffect.MAY_RECALL_SPY_FOR_THREE_STRENGTH:
+        # Arrakis Observer: "[recall a Spy] -> 3 swords", an arrow cost.
+        return (
+            DomainAction(action_id="decline_reveal_spy_recall", actor=player),
+            *(
+                DomainAction(
+                    action_id="recall_spy_for_reveal",
+                    actor=player,
+                    arguments=(("post_id", post_id),),
+                )
+                for post_id in post_ids
+            ),
+        )
     if effect is PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_TWO_PERSUASION:
         return (
             DomainAction(action_id="decline_reveal_spy_recall", actor=player),
@@ -1221,6 +1234,39 @@ def apply_reveal_spy_action(
     intrigue_deck = state.intrigue_deck
     pending_draws = state.pending_intrigue_draws
     remaining = state.decision_stack[:-1]
+    if effect is PersonalCardRevealChoiceEffect.MAY_RECALL_SPY_FOR_THREE_STRENGTH:
+        post_id = arguments.get("post_id")
+        if not isinstance(post_id, str):
+            raise RuntimeError("Reveal Spy choice has invalid post ID")
+        # Like Devious Strength: the swords count only while units are in
+        # the Conflict [Main pp. 12-13].
+        counted = 3 if owner.units_in_conflict else 0
+        next_owner = replace(
+            recall_spy(owner, post_id),
+            combat_strength=owner.combat_strength + counted,
+        )
+        remaining = add_reveal_optional_sword_strength(remaining, 3)
+        if counted:
+            remaining = add_reveal_strength(remaining, counted)
+        return RuleResult(
+            state=replace(
+                state,
+                players=replace_player(state.players, next_owner),
+                decision_stack=remaining,
+            ),
+            events=(
+                _spy_recalled_event(state, action.actor, card_id, post_id),
+                GameEvent(
+                    event_id=f"{source}:strength",
+                    kind="reveal_strength_gained",
+                    payload=(
+                        ("amount", 3),
+                        ("card_id", card_id),
+                        ("player", action.actor),
+                    ),
+                ),
+            ),
+        )
     if (
         effect
         is PersonalCardRevealChoiceEffect.RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED
@@ -1627,6 +1673,7 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
     events: list[GameEvent] = list(result.events)
     pending_draws: list[tuple[str, int]] = []
     pending_influence: list[tuple[str, PersonalCardRevealEffect]] = []
+    pending_trashes: list[tuple[str, str]] = []
     newly_granted: dict[str, int | None] = {}
     for card_id, card in zip(revealed_ids, revealed_cards, strict=True):
         for index, effect in enumerate(card.reveal_effects):
@@ -1692,6 +1739,8 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
                 )
             if effect.influence_faction is not None:
                 pending_influence.append((f"{source}:{index}", effect))
+            if effect.trashes_self:
+                pending_trashes.append((f"{source}:{index}:late", card_id))
             newly_granted[key] = None
             events.append(
                 GameEvent(
@@ -1727,6 +1776,13 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
         drawn = draw_or_queue_intrigue_cards(working, player, count, source=draw_source)
         working = drawn.state
         events.extend(drawn.events)
+    for trash_source, trashed_card_id in pending_trashes:
+        if trashed_card_id in working.players[player].in_play:
+            trashed = trash_personal_card(
+                working, player, trashed_card_id, source=trash_source
+            )
+            working = trashed.state
+            events.extend(trashed.events)
     for influence_source, effect in pending_influence:
         assert effect.influence_faction is not None
         gained = gain_faction_influence(
@@ -1793,7 +1849,12 @@ def reveal_choice_prompt(effect: PersonalCardRevealChoiceEffect) -> str:
     """Return the REVEAL_CHOICE frame prompt text for one choice effect."""
 
     return (
-        "Trash this card for the Combat icon or decline"
+        "Recall a Spy for three swords or decline"
+        if effect is PersonalCardRevealChoiceEffect.MAY_RECALL_SPY_FOR_THREE_STRENGTH
+        else "Command: trash this card to acquire an Imperium Row card, or decline"
+        if effect
+        is PersonalCardRevealChoiceEffect.COMMAND_MAY_TRASH_SELF_TO_ACQUIRE_ROW_CARD
+        else "Trash this card for the Combat icon or decline"
         if effect is PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_FOR_COMBAT_ICON
         else "Command: trash a card or decline"
         if effect is PersonalCardRevealChoiceEffect.COMMAND_MAY_TRASH_CARD
@@ -1886,6 +1947,17 @@ def _reveal_choice_effect_is_available(
             and owner.troops_conflict + owner.commanders_conflict >= 2
         )
         or effect is PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_FOR_COMBAT_ICON
+        or (
+            effect is PersonalCardRevealChoiceEffect.MAY_RECALL_SPY_FOR_THREE_STRENGTH
+            and len(owner.spy_post_ids) >= 1
+        )
+        or (
+            effect
+            is PersonalCardRevealChoiceEffect.COMMAND_MAY_TRASH_SELF_TO_ACQUIRE_ROW_CARD
+            and command_open
+            and bool(state.imperium_row)
+            and card_id in cards_in_play
+        )
         or (
             effect
             is PersonalCardRevealChoiceEffect.MAY_LOSE_INFLUENCE_TO_GAIN_INFLUENCE
@@ -2693,6 +2765,15 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         ),
     )
     events: list[GameEvent] = [event]
+    for card_id, effect in reveal_effects:
+        if effect.trashes_self:
+            # Bombast: "3 Solari and trash this card" — the card leaves play
+            # once its Command effect pays out.
+            trashed = trash_personal_card(
+                next_state, action.actor, card_id, source=f"{event.event_id}:{card_id}"
+            )
+            next_state = trashed.state
+            events.extend(trashed.events)
     events.extend(
         GameEvent(
             event_id=f"{event.event_id}:skill:{skill.skill_id}",

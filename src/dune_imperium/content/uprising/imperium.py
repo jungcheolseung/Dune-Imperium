@@ -1040,8 +1040,37 @@ IMPERIUM_CARDS: Final = (
     # Play data is transcribed from the card faces slice by slice; a card
     # whose data is not complete yet stays out of the deck (see
     # ``imperium_cards_for_choam``).
-    _entry(88, "arrakis-observer", "Arrakis Observer", 3, bloodlines_only=True),
-    _entry(89, "bombast", "Bombast", 1, bloodlines_only=True),
+    _entry(
+        88,
+        "arrakis-observer",
+        "Arrakis Observer",
+        3,
+        bloodlines_only=True,
+        factions=(Faction.SPACING_GUILD,),
+        agent_icons=(AgentIcon.CITY, AgentIcon.SPICE_TRADE),
+        agent_effect=PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY,
+        reveal_persuasion=1,
+        reveal_choice_effects=(
+            PersonalCardRevealChoiceEffect.MAY_RECALL_SPY_FOR_THREE_STRENGTH,
+        ),
+        play_data_complete=True,
+    ),
+    _entry(
+        89,
+        "bombast",
+        "Bombast",
+        1,
+        bloodlines_only=True,
+        factions=(Faction.EMPEROR,),
+        agent_icons=(AgentIcon.LANDSRAAD,),
+        reveal_persuasion=1,
+        reveal_effects=(
+            PersonalCardRevealEffect(
+                solari=3, requires_command=True, trashes_self=True
+            ),
+        ),
+        play_data_complete=True,
+    ),
     _entry(
         90, "choam-demands", "CHOAM Demands", 6, bloodlines_only=True, choam_only=True
     ),
@@ -1125,7 +1154,21 @@ IMPERIUM_CARDS: Final = (
         reveal_strength=1,
         play_data_complete=True,
     ),
-    _entry(98, "engineered-miracle", "Engineered Miracle", 3, bloodlines_only=True),
+    _entry(
+        98,
+        "engineered-miracle",
+        "Engineered Miracle",
+        3,
+        bloodlines_only=True,
+        factions=(Faction.BENE_GESSERIT,),
+        agent_icons=(AgentIcon.FREMEN, AgentIcon.SPICE_TRADE),
+        agent_effect=PersonalCardAgentEffect.MAY_DISCARD_FOR_WATER,
+        reveal_persuasion=1,
+        reveal_choice_effects=(
+            PersonalCardRevealChoiceEffect.COMMAND_MAY_TRASH_SELF_TO_ACQUIRE_ROW_CARD,
+        ),
+        play_data_complete=True,
+    ),
     _entry(
         99,
         "fremen-war-name",
@@ -1257,6 +1300,16 @@ IMPERIUM_CARDS: Final = (
         "Possible Futures",
         8,
         bloodlines_only=True,
+        has_acquisition_bonus=True,
+        acquisition_effect=PersonalCardAcquisitionEffect.GAIN_ONE_WATER,
+        factions=(Faction.BENE_GESSERIT, Faction.FREMEN),
+        agent_icons=(AgentIcon.LANDSRAAD, AgentIcon.CITY, AgentIcon.SPICE_TRADE),
+        agent_effect=(
+            PersonalCardAgentEffect.CHOSEN_INFLUENCE_OR_TWO_TROOPS_BOTH_IF_BOND
+        ),
+        reveal_persuasion=2,
+        reveal_effects=(PersonalCardRevealEffect(water=1),),
+        play_data_complete=True,
     ),
     _entry(
         80,
@@ -1307,7 +1360,22 @@ IMPERIUM_CARDS: Final = (
         reveal_choice_effects=(PersonalCardRevealChoiceEffect.COMMAND_MAY_TRASH_CARD,),
         play_data_complete=True,
     ),
-    _entry(87, "southern-faith", "Southern Faith", 5, bloodlines_only=True),
+    _entry(
+        87,
+        "southern-faith",
+        "Southern Faith",
+        5,
+        bloodlines_only=True,
+        factions=(Faction.BENE_GESSERIT, Faction.FREMEN),
+        agent_icons=(AgentIcon.FREMEN, AgentIcon.CITY),
+        agent_effect=(
+            PersonalCardAgentEffect.DRAW_ONE_OR_BENE_GESSERIT_INFLUENCE_IF_BOND
+        ),
+        reveal_persuasion=1,
+        reveal_strength=2,
+        reveal_effects=(PersonalCardRevealEffect(spice=2, requires_command=True),),
+        play_data_complete=True,
+    ),
     _entry(
         85, "urgent-shigawire", "Urgent Shigawire", 2, copies=2, bloodlines_only=True
     ),

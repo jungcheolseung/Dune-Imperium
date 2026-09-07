@@ -288,6 +288,15 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         )
         for instance_id in imperium_instances
     )
+    if config.bloodlines:
+        # Engineered Miracle's Command acquisition from the Imperium Row.
+        templates.extend(
+            ActionTemplate(
+                action_id="command_acquire_row_card",
+                arguments=(("instance_id", instance_id),),
+            )
+            for instance_id in imperium_instances
+        )
     if config.choam_module:
         for action_id in ("take_contract", "complete_contract"):
             templates.extend(
@@ -636,6 +645,7 @@ def _bloodlines_templates() -> tuple[ActionTemplate, ...]:
                 arguments=(("commanders", 1), ("player", seat)),
             )
         )
+    templates.append(ActionTemplate(action_id="decline_command_acquisition"))
     # "Gain one Influence of your choice" as a Reveal choice (Pointing the Way).
     templates.extend(
         ActionTemplate(

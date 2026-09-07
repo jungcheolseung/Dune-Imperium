@@ -28,10 +28,12 @@ from dune_imperium.rules.acquisition import (
     apply_imperium_acquisition,
     apply_manipulated_acquisition,
     apply_reserve_acquisition,
+    apply_reveal_command_acquisition,
     legal_acquisition_spy_actions,
     legal_imperium_acquisitions,
     legal_manipulated_acquisitions,
     legal_reserve_acquisitions,
+    legal_reveal_command_acquisition_actions,
 )
 from dune_imperium.rules.agent_effect_frame import legal_agent_effect_frame_actions
 from dune_imperium.rules.agent_effects import (
@@ -301,6 +303,7 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     ),
     FrameKind.REVEAL_CHOICE: (
         legal_defer_reveal_choice_actions,
+        legal_reveal_command_acquisition_actions,
         legal_corrinth_city_reveal_actions,
         legal_contract_reveal_choice_actions,
         legal_reveal_card_trash_actions,
@@ -465,6 +468,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "decline_reveal_spy_recall": apply_reveal_spy_action,
     "exchange_reveal_influence": apply_reveal_influence_exchange,
     "gain_reveal_influence": apply_reveal_influence_gain,
+    "command_acquire_row_card": apply_reveal_command_acquisition,
+    "decline_command_acquisition": apply_reveal_command_acquisition,
     "decline_reveal_influence_exchange": apply_reveal_influence_exchange,
     "pay_reveal_water_for_sandworm": apply_reveal_sandworm_action,
     "decline_reveal_sandworm": apply_reveal_sandworm_action,

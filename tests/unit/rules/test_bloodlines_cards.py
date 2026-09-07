@@ -994,3 +994,227 @@ def test_disruption_tactics_forces_an_enemy_unit_back_and_trashes_for_the_icon()
     assert [
         dict(a.arguments)["count"] for a in legal_reveal_deployments(trashed, 0)
     ] == [1, 2]
+
+
+# --- Bloodlines Imperium (slice 4d-1) --------------------------------------
+
+
+def test_arrakis_observer_discard_places_a_deep_cover_spy() -> None:
+    from dune_imperium.rules.agent_effects import (
+        apply_agent_card_spy_action,
+        legal_agent_card_spy_actions,
+    )
+
+    card = _card("arrakis_observer")
+    guild = _card("guild_envoy")
+    filler = STARTERS[4]
+    rival = replace(
+        PlayerState(player_id=1),
+        spies_supply=2,
+        spy_post_ids=("emperor-sardaukar-dutiful-service",),
+    )
+    base = _state(
+        _owner(
+            hand=(card, guild, filler),
+            spies_supply=2,
+            spy_post_ids=("landsraad-assembly-hall-gather-support",),
+        )
+    )
+    base = replace(base, players=(base.players[0], rival, *base.players[2:]))
+    state = _play(base, card, "arrakeen")
+    actions = legal_agent_card_discard_actions(state, 0)
+    assert actions[0].action_id == "decline_agent_card_discard"
+    discard_guild = next(
+        a for a in actions[1:] if dict(a.arguments)["card_id"] == guild
+    )
+    discarded = apply_agent_card_discard(state, discard_guild).state
+    assert discarded.players[0].resources.spice == 2
+    # The Spy with Deep Cover may share a post with a rival, never with its
+    # own Spy; the discard offer is spent.
+    assert legal_agent_card_discard_actions(discarded, 0) == ()
+    posts = {
+        dict(a.arguments)["post_id"] for a in legal_agent_card_spy_actions(discarded, 0)
+    }
+    assert "emperor-sardaukar-dutiful-service" in posts
+    assert "landsraad-assembly-hall-gather-support" not in posts
+    placed = apply_agent_card_spy_action(
+        discarded,
+        DomainAction(
+            action_id="place_agent_card_spy",
+            actor=0,
+            arguments=(("post_id", "emperor-sardaukar-dutiful-service"),),
+        ),
+    ).state
+    assert "emperor-sardaukar-dutiful-service" in placed.players[0].spy_post_ids
+    assert legal_agent_card_spy_actions(placed, 0) == ()
+
+    # A non-Guild discard still buys the Spy, without spice.
+    discard_plain = next(
+        a for a in actions[1:] if dict(a.arguments)["card_id"] == filler
+    )
+    plain = apply_agent_card_discard(state, discard_plain).state
+    assert plain.players[0].resources.spice == 0
+    assert legal_agent_card_spy_actions(plain, 0) != ()
+
+
+def test_arrakis_observer_recalls_a_spy_for_three_swords() -> None:
+    from dune_imperium.rules.reveal_turn import apply_reveal_spy_action
+
+    card = _card("arrakis_observer")
+    owner = _owner(
+        hand=(card,),
+        spies_supply=2,
+        spy_post_ids=("landsraad-assembly-hall-gather-support",),
+        troops_supply=8,
+        troops_conflict=1,
+        combat_strength=2,
+    )
+    revealed = _reveal(_state(owner))
+    frame = revealed.decision_stack[-1]
+    assert (
+        dict(frame.context)["reveal_choice_effect"]
+        == "may_recall_spy_for_three_strength"
+    )
+    actions = legal_reveal_spy_actions(revealed, 0)
+    assert [a.action_id for a in actions] == [
+        "decline_reveal_spy_recall",
+        "recall_spy_for_reveal",
+    ]
+    recalled = apply_reveal_spy_action(revealed, actions[1]).state
+    assert recalled.players[0].spy_post_ids == ()
+    assert recalled.players[0].combat_strength == 2 + 3
+    assert _reveal_context(recalled)["strength"] == 2 + 3
+    assert _reveal_context(recalled)["optional_sword_strength"] == 3
+    # No Spy on the board: the arrow cost cannot be paid, no choice opens.
+    none = _reveal(_state(_owner(hand=(card,), spies_supply=3)))
+    assert none.decision_stack[-1].kind == "reveal"
+
+
+def test_bombast_command_pays_three_solari_and_trashes_itself() -> None:
+    card = _card("bombast")
+    revealed = _reveal(_state(_six_persuasion_hand(card)))
+    owner = revealed.players[0]
+    assert owner.resources.solari == 3
+    assert card in owner.trashed
+    assert card not in owner.in_play
+    below = _reveal(_state(_owner(hand=(card,))))
+    assert below.players[0].resources.solari == 0
+    assert card in below.players[0].in_play
+
+
+def test_engineered_miracle_discards_for_water_and_commands_a_row_card() -> None:
+    from dune_imperium.rules.acquisition import (
+        apply_reveal_command_acquisition,
+        legal_reveal_command_acquisition_actions,
+    )
+
+    card = _card("engineered_miracle")
+    filler = STARTERS[4]
+    state = _play(_state(_owner(hand=(card, filler))), card)
+    discard = next(
+        a
+        for a in legal_agent_card_discard_actions(state, 0)
+        if a.action_id == "discard_agent_card"
+    )
+    assert (
+        apply_agent_card_discard(state, discard).state.players[0].resources.water == 1
+    )
+
+    row = (_card("guild_envoy"), _card("sandwalk", 1))
+    base = replace(_state(_six_persuasion_hand(card)), imperium_row=row)
+    revealed = _reveal(base)
+    frame = revealed.decision_stack[-1]
+    assert (
+        dict(frame.context)["reveal_choice_effect"]
+        == "command_may_trash_self_to_acquire_row_card"
+    )
+    actions = legal_reveal_command_acquisition_actions(revealed, 0)
+    assert actions[0].action_id == "decline_command_acquisition"
+    assert {dict(a.arguments)["instance_id"] for a in actions[1:]} == set(row)
+    acquired = apply_reveal_command_acquisition(revealed, actions[1]).state
+    owner = acquired.players[0]
+    assert card in owner.trashed
+    assert row[0] in owner.discard_pile
+    assert row[0] not in acquired.imperium_row
+    assert acquired.decision_stack[-1].kind == "reveal"
+    # Persuasion is untouched: the card came for free.
+    assert _reveal_context(acquired)["persuasion"] == 7
+    declined = apply_reveal_command_acquisition(revealed, actions[0]).state
+    assert card in declined.players[0].in_play
+    # Below Command the choice waits; an empty Row offers nothing.
+    assert _reveal(_state(_owner(hand=(card,)))).decision_stack[-1].kind == "reveal"
+    assert _reveal(_state(_six_persuasion_hand(card))).decision_stack[-1].kind == (
+        "reveal"
+    )
+
+
+def test_southern_faith_draws_or_takes_bene_gesserit_influence_with_a_bond() -> None:
+    from dune_imperium.rules.agent_effects import (
+        apply_agent_card_influence,
+        legal_agent_card_influence_actions,
+    )
+
+    card = _card("southern_faith")
+    state = _play(_state(_owner(hand=(card,))), card, "arrakeen")
+    assert legal_agent_card_influence_actions(state, 0) == ()
+    before = len(state.players[0].hand)
+    assert len(resolve_agent_card_effect(state).state.players[0].hand) == before + 1
+
+    bonded = _play(
+        _state(_owner(hand=(card,), in_play=(_card("branching_path"),))),
+        card,
+        "arrakeen",
+    )
+    actions = legal_agent_card_influence_actions(bonded, 0)
+    assert [a.action_id for a in actions] == [
+        "resolve_agent_card_effect",
+        "choose_agent_card_influence",
+    ]
+    assert dict(actions[1].arguments)["faction"] == "bene_gesserit"
+    gained = apply_agent_card_influence(bonded, actions[1]).state
+    assert gained.players[0].influence.bene_gesserit == 1
+    assert len(gained.players[0].hand) == len(bonded.players[0].hand)
+
+    revealed = _reveal(_state(_owner(hand=(card,))))
+    assert _reveal_context(revealed)["persuasion"] == 1
+    assert _reveal_context(revealed)["sword_strength"] == 2
+    assert revealed.players[0].resources.spice == 0
+    commanded = _reveal(_state(_six_persuasion_hand(card)))
+    assert commanded.players[0].resources.spice == 2
+
+
+def test_possible_futures_pays_both_halves_with_a_bene_gesserit_bond() -> None:
+    from dune_imperium.rules.agent_effects import (
+        apply_agent_card_influence,
+        legal_agent_card_influence_actions,
+    )
+
+    card = _card("possible_futures")
+    state = _play(_state(_owner(hand=(card,))), card, "arrakeen")
+    actions = legal_agent_card_influence_actions(state, 0)
+    assert actions[0].action_id == "resolve_agent_card_effect"
+    assert len(actions) == 1 + 4
+    # Arrakeen already recruited one troop.
+    garrison = state.players[0].troops_garrison
+    troops = resolve_agent_card_effect(state).state.players[0]
+    assert troops.troops_garrison == garrison + 2
+    assert troops.influence.emperor == 0
+    only_influence = apply_agent_card_influence(state, actions[1]).state.players[0]
+    assert only_influence.troops_garrison == garrison
+    assert only_influence.influence.emperor == 1
+
+    bonded = _play(
+        _state(_owner(hand=(card,), in_play=(_card("branching_path"),))),
+        card,
+        "arrakeen",
+    )
+    actions = legal_agent_card_influence_actions(bonded, 0)
+    assert all(a.action_id == "choose_agent_card_influence" for a in actions)
+    both = apply_agent_card_influence(bonded, actions[0]).state
+    assert both.players[0].troops_garrison == garrison + 2
+    assert both.players[0].influence.emperor == 1
+    assert dict(both.decision_stack[-1].context)["troops_recruited"] == 1 + 2
+
+    revealed = _reveal(_state(_owner(hand=(card,))))
+    assert _reveal_context(revealed)["persuasion"] == 2
+    assert revealed.players[0].resources.water == 1 + 1
