@@ -161,12 +161,21 @@ def apply_navigation_setup_action(
 
 
 def navigation_play_is_queued(state: GameState) -> bool:
-    """Return whether an owed Navigation play can open now."""
+    """Return whether an owed Navigation play can open now.
 
+    Queued plays open one at a time (OQ-012 re-review, OQ-039): while the
+    seat's previous Navigation card is still resolving (its slot stays
+    armed until ``finish_intrigue_play``), the next trigger waits, and a
+    pending chance frame always resolves first.
+    """
+
+    if not state.pending_navigation_plays:
+        return False
     frame = state.decision_stack[-1] if state.decision_stack else None
-    return bool(state.pending_navigation_plays) and (
-        frame is None or not isinstance(frame.decision, ChanceDecision)
-    )
+    if frame is not None and isinstance(frame.decision, ChanceDecision):
+        return False
+    player = state.pending_navigation_plays[0][0]
+    return state.players[player].navigation_active_slot == 0
 
 
 def begin_navigation_play(state: GameState) -> RuleResult:

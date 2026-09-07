@@ -295,3 +295,31 @@ def test_card_five_pays_spice_for_trashing_a_costed_card() -> None:
     dagger = next(a for a in options if dict(a.arguments).get("card_id") == DAGGER)
     unpaid = ENGINE.apply(trashing, dagger).state
     assert unpaid.players[0].resources.spice == 0
+
+
+def test_two_triggers_in_one_effect_open_one_play_at_a_time() -> None:
+    # OQ-012 re-review / OQ-039: triggers queue in the order Influence
+    # reached two and the engine opens them one by one; a second frame for
+    # the same slot would play one card twice.
+    owner = _steersman(
+        (_card(6), _card(7)), influence=Influence(emperor=1, spacing_guild=1)
+    )
+    state = _turn_state(owner)
+    first = gain_faction_influence(state, 0, Faction.EMPEROR, 1, event_prefix="a")
+    second = gain_faction_influence(
+        first.state, 0, Faction.SPACING_GUILD, 1, event_prefix="b"
+    )
+    assert len(second.state.pending_navigation_plays) == 2
+    opened = begin_navigation_play(second.state).state
+    assert dict(opened.decision_stack[-1].context)["card_id"] == _card(6)
+    # The second trigger waits for the first card to finish.
+    assert not navigation_play_is_queued(opened)
+    played = _play_option(opened, 0)
+    assert navigation_play_is_queued(played)
+    reopened = begin_navigation_play(played).state
+    assert dict(reopened.decision_stack[-1].context)["card_id"] == _card(7)
+    finished = _play_option(reopened, 0)
+    seat = finished.players[0]
+    assert seat.navigation_played == (_card(6), _card(7))
+    assert seat.navigation_slots == ()
+    assert finished.pending_navigation_plays == ()
