@@ -209,9 +209,16 @@ def resolve_leader_signet(state: GameState) -> RuleResult:
         )
     elif owner.leader_id == "piter_de_vries":
         # Harkonnen Advisor: one troop that "can't be deployed to the
-        # Conflict this turn" — it joins the garrison without counting as
-        # recruited for the turn's basic deployment (OQ-038).
+        # Conflict this turn" — exactly Warmaster minus the deployment: it
+        # joins the garrison, is not counted as recruited, and one garrison
+        # troop stays undeployable for the rest of the turn (OQ-038).
         next_owner, recruited = recruit_troops(owner, 1)
+        previous_undeployable = context.get("undeployable_troops", 0)
+        if isinstance(previous_undeployable, bool) or not isinstance(
+            previous_undeployable, int
+        ):
+            raise RuntimeError("Agent-turn effect frame has invalid undeployable count")
+        context["undeployable_troops"] = previous_undeployable + recruited
         recruit_shortfall = recruit_shortfall_events(source, player, 1, recruited)
         payload = (("card_id", card_id), ("player", player), ("troops", recruited))
     elif owner.leader_id == "liet_kynes":

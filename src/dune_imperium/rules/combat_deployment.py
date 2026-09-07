@@ -31,6 +31,15 @@ from dune_imperium.rules.effects import (
 from dune_imperium.rules.frames import FrameKind, replace_player
 
 
+def undeployable_troops(context: dict[str, ActionValue]) -> int:
+    """Return the garrison troops the turn's effects forbid deploying."""
+
+    value = context.get("undeployable_troops", 0)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise RuntimeError("Agent-turn effect frame has invalid undeployable count")
+    return value
+
+
 def _deployment_context(
     state: GameState,
     player: int,
@@ -68,8 +77,11 @@ def legal_combat_deployments(
     found = _deployment_context(state, player)
     if found is None:
         return ()
-    _, recruited, existing_limit, deployed = found
-    garrison = state.players[player].troops_garrison
+    context, recruited, existing_limit, deployed = found
+    # Harkonnen Advisor's troop "can't be deployed to the Conflict this
+    # turn": it sits in the garrison but is not available [Piter De Vries
+    # card] (OQ-038).
+    garrison = state.players[player].troops_garrison - undeployable_troops(context)
     maximum = min(garrison, recruited + existing_limit - deployed)
     return tuple(
         DomainAction(
@@ -423,13 +435,19 @@ def grant_combat_icon(state: GameState, player: int) -> GameState:
         if frame.kind == FrameKind.TURN:
             break
     owner = state.players[player]
-    return replace(
-        state,
-        players=tuple(
-            replace(seat, combat_icon_turn=True) if seat.player_id == player else seat
-            for seat in state.players
-        ),
-    ) if not owner.combat_icon_turn else state
+    return (
+        replace(
+            state,
+            players=tuple(
+                replace(seat, combat_icon_turn=True)
+                if seat.player_id == player
+                else seat
+                for seat in state.players
+            ),
+        )
+        if not owner.combat_icon_turn
+        else state
+    )
 
 
 def apply_agent_turn_finish(

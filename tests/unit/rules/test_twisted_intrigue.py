@@ -135,7 +135,23 @@ def test_harkonnen_advisor_troop_is_not_deployable_this_turn() -> None:
     seat = resolved.players[0]
     # Arrakeen's own troop is still pending; the Signet troop arrived.
     assert seat.troops_garrison == 3 + 1
-    assert dict(resolved.decision_stack[-1].context)["troops_recruited"] == 0
+    context = dict(resolved.decision_stack[-1].context)
+    assert context["troops_recruited"] == 0
+    assert context["undeployable_troops"] == 1
+    # Arrakeen is a Combat space: two garrison troops may deploy, but the
+    # Signet troop is not one of them, so only three are available.
+    from dune_imperium.rules.combat_deployment import legal_combat_deployments
+
+    counts = {dict(a.arguments)["count"] for a in legal_combat_deployments(resolved, 0)}
+    assert counts == {1, 2}
+    thin = replace(
+        resolved,
+        players=(
+            replace(seat, troops_supply=seat.troops_supply + 3, troops_garrison=1),
+            *resolved.players[1:],
+        ),
+    )
+    assert legal_combat_deployments(thin, 0) == ()
 
 
 # --- Twisted Intrigue --------------------------------------------------------
