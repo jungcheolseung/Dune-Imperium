@@ -208,6 +208,9 @@ def build_save_document(
             "players": config.players,
             "choam_module": config.choam_module,
             "leader_draft": config.leader_draft,
+            "promo_cards": config.promo_cards,
+            "bloodlines": config.bloodlines,
+            "tech_module": config.tech_module,
         },
         "game_seed": replay.seed,
         "policy_seed": policy_seed,
@@ -256,9 +259,20 @@ def parse_save_document(document: object) -> ParsedSave:
         raise SaveError(
             "the save ruleset needs players, choam_module, and leader_draft"
         )
+    # Optional module flags; documents written before they existed (or a
+    # base game) leave them out, which means "off".
+    modules: dict[str, bool] = {}
+    for key in ("promo_cards", "bloodlines", "tech_module"):
+        flag = ruleset_value.get(key, False)
+        if not isinstance(flag, bool):
+            raise SaveError(f"the save ruleset {key} must be a boolean")
+        modules[key] = flag
     try:
         config = RulesetConfig(
-            players=players, choam_module=choam_module, leader_draft=leader_draft
+            players=players,
+            choam_module=choam_module,
+            leader_draft=leader_draft,
+            **modules,
         )
     except ValueError as error:
         raise SaveError(str(error)) from error

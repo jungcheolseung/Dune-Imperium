@@ -12,6 +12,7 @@ from dune_imperium.server.persistence import (
     SaveError,
     SaveStore,
     UnknownSaveError,
+    parse_save_document,
 )
 from dune_imperium.server.sessions import (
     GameSessionManager,
@@ -288,3 +289,37 @@ def test_review_requires_a_finished_game() -> None:
         manager.review_state(game_id, 0, 0)
     # Disclosure is a post-game convention only (OQ-010 ruling 4).
     assert "disclosure" not in manager.view(game_id, 0)
+
+
+def test_saves_keep_the_expansion_and_module_flags() -> None:
+    # A save used to record only players/CHOAM/draft, so a Bloodlines + Tech
+    # Module game reloaded as a base game and its recorded steps no longer
+    # replayed. Older documents without the keys still read as "off".
+    manager = GameSessionManager()
+    created = manager.create_game(
+        HUMAN_FIRST, game_seed=31, promo_cards=True, bloodlines=True, tech_module=True
+    )
+    original = _advance(manager, created, 5)
+
+    document = manager.save_game(_text(original["game_id"]))
+    ruleset = _obj(document["ruleset"])
+    assert ruleset["promo_cards"] is True
+    assert ruleset["bloodlines"] is True
+    assert ruleset["tech_module"] is True
+
+    restored = manager.restore_game(_roundtrip(document))
+    for field in ("revision", "phase", "round_number", "decision", "seats"):
+        assert restored[field] == original[field], field
+    assert restored["bloodlines"] is True
+    assert restored["tech_module"] is True
+
+    legacy = _obj(_roundtrip(manager.save_game(_text(original["game_id"]))))
+    legacy_ruleset = dict(_obj(legacy["ruleset"]))
+    for key in ("promo_cards", "bloodlines", "tech_module"):
+        del legacy_ruleset[key]
+    parsed = parse_save_document({**legacy, "ruleset": legacy_ruleset})
+    assert parsed.replay.ruleset.bloodlines is False
+    with pytest.raises(SaveError):
+        parse_save_document(
+            {**legacy, "ruleset": {**legacy_ruleset, "bloodlines": "yes"}}
+        )
