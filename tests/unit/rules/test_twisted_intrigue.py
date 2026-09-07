@@ -470,3 +470,43 @@ def test_withdrawn_passes_the_turn_and_only_at_its_start() -> None:
     # After an Agent placement the turn has started: not playable.
     placed = _placed(state, DAGGER, "assembly_hall")
     assert _play(card) not in legal_intrigue_play_actions(placed, 0)
+
+
+def test_harkonnen_advisor_troop_does_not_make_a_deploy_plot_playable() -> None:
+    # Detonation's "deploy up to 4 troops from your garrison" is judged on
+    # the troops that may actually deploy this turn: the Signet troop can't
+    # (OQ-038), so alone it neither makes the option playable nor leaves
+    # the choice frame without a legal action (soak seed 138 deadlock).
+    detonation = "intrigue:detonation:0"
+    owner = PlayerState(
+        player_id=0,
+        leader_id="piter_de_vries",
+        hand=(SIGNET,),
+        intrigue_cards=(detonation,),
+        troops_supply=12,
+        troops_garrison=0,
+    )
+    resolved = resolve_leader_signet(
+        _placed(_turn_state(owner), SIGNET, "arrakeen")
+    ).state
+    assert resolved.players[0].troops_garrison == 1
+    assert dict(resolved.decision_stack[-1].context)["undeployable_troops"] == 1
+    plays = [
+        dict(a.arguments)["option"]
+        for a in legal_intrigue_play_actions(resolved, 0)
+        if dict(a.arguments)["card_id"] == detonation
+    ]
+    assert plays == [0]
+
+    # With one more garrison troop the option opens for exactly that troop.
+    two = replace(
+        resolved,
+        players=(
+            replace(resolved.players[0], troops_supply=10, troops_garrison=2),
+            *resolved.players[1:],
+        ),
+    )
+    opened = ENGINE.apply(two, _play(detonation, 1)).state
+    assert [
+        dict(a.arguments)["count"] for a in legal_intrigue_choice_actions(opened, 0)
+    ] == [1]

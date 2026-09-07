@@ -1610,3 +1610,24 @@ def test_coercive_negotiation_reveals_three_contracts_on_a_big_deployment() -> N
         RuleResult(state=replace(base, contract_bank=()))
     ).state
     assert quiet.decision_stack[-1].kind == "turn"
+
+
+def test_engineered_miracle_command_lapses_once_the_card_left_play() -> None:
+    # The Command choice waits in the freely ordered Reveal; if another
+    # effect trashes Engineered Miracle first, its box can't be activated
+    # any more (OQ-022), so only the refusal remains (soak seed 901).
+    from dune_imperium.rules.acquisition import (
+        apply_reveal_command_acquisition,
+        legal_reveal_command_acquisition_actions,
+    )
+
+    card = _card("engineered_miracle")
+    row = (_card("guild_envoy"),)
+    revealed = _reveal(replace(_state(_six_persuasion_hand(card)), imperium_row=row))
+    assert len(legal_reveal_command_acquisition_actions(revealed, 0)) == 2
+    gone = trash_personal_card(revealed, 0, card, source="test").state
+    actions = legal_reveal_command_acquisition_actions(gone, 0)
+    assert [a.action_id for a in actions] == ["decline_command_acquisition"]
+    declined = apply_reveal_command_acquisition(gone, actions[0]).state
+    assert declined.decision_stack[-1].kind == "reveal"
+    assert declined.imperium_row == row

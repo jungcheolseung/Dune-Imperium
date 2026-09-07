@@ -1178,11 +1178,23 @@ def legal_agent_card_trash_actions(
         source_card.agent_effect
         is PersonalCardAgentEffect.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE
     ):
-        eligible = tuple(
-            card_id
-            for card_id in owner.hand
-            if card_id != source_card_id
-            and Faction.EMPEROR in personal_card_for_instance(card_id).factions
+        # "Gain 1 additional Influence with the Faction you visited": an
+        # Agent infiltrated onto a space without a Faction [Main p. 11]
+        # has no Influence to gain, so the arrow cost is not offered
+        # (OQ-046).
+        space_id = context.get("space_id")
+        visited_faction = (
+            BOARD_SPACES_BY_ID[space_id].faction if isinstance(space_id, str) else None
+        )
+        eligible = (
+            tuple(
+                card_id
+                for card_id in owner.hand
+                if card_id != source_card_id
+                and Faction.EMPEROR in personal_card_for_instance(card_id).factions
+            )
+            if visited_faction is not None
+            else ()
         )
     if (
         source_card.agent_effect

@@ -4585,3 +4585,47 @@ def test_agent_card_spy_placement_needs_a_spy_in_supply_at_that_moment() -> None
     assert "place_agent_card_spy" not in offered
     assert "recall_spy_for_agent_card" in offered
 
+
+
+def test_treacherous_maneuver_offers_no_trash_on_a_space_without_a_faction() -> None:
+    # Gaius Helen Mohiam's Clandestine gives every card the Spy icon, so a
+    # connected Spy lets Treacherous Maneuver visit a Landsraad space; there
+    # is no "Faction you visited", so the arrow cost is not offered
+    # (OQ-046, soak seed 411).
+    maneuver = _imperium_instance("treacherous_maneuver")
+    sardaukar = _imperium_instance("sardaukar_soldier")
+    owner = PlayerState(
+        player_id=0,
+        leader_id="gaius_helen_mohiam",
+        hand=(maneuver, sardaukar),
+        spies_supply=2,
+        spy_post_ids=("landsraad-assembly-hall-gather-support",),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        intrigue_deck=("intrigue:test",),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    visit = next(
+        action
+        for action in legal_agent_actions(state, 0)
+        if dict(action.arguments)["space_id"] == "assembly_hall"
+        and dict(action.arguments)["card_id"] == maneuver
+    )
+    placed = apply_agent_action(state, visit).state
+    assert placed.players[0].spy_post_ids == (
+        "landsraad-assembly-hall-gather-support",
+    )
+    assert [a.action_id for a in legal_agent_card_trash_actions(placed, 0)] == [
+        "decline_agent_card_trash"
+    ]

@@ -62,7 +62,7 @@ from dune_imperium.rules.combat import refresh_combat_participants
 from dune_imperium.rules.combat_deployment import (
     grant_combat_icon,
     reconcile_deployment_after_retreat,
-    undeployable_troops,
+    undeployable_troops_this_turn,
 )
 from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effect_interpreter import (
@@ -374,7 +374,7 @@ def legal_intrigue_choice_actions(
                     maximum=up_to,
                     # Harkonnen Advisor's troop is not available this turn.
                     troops=owner.troops_garrison
-                    - _undeployable_troops_this_turn(state, player),
+                    - undeployable_troops_this_turn(state, player),
                     commanders=owner.commanders_garrison,
                 )
             )
@@ -1055,20 +1055,6 @@ def _apply_section_rewards(
             ),
         )
     return RuleResult(state=next_state, events=tuple(events))
-
-
-def _undeployable_troops_this_turn(state: GameState, player: int) -> int:
-    """Troops the player's open Agent turn forbids deploying (OQ-038)."""
-
-    for frame in reversed(state.decision_stack):
-        if frame.kind != FrameKind.AGENT_EFFECTS or not isinstance(
-            frame.decision, PlayerDecision
-        ):
-            continue
-        if frame.decision.owner != player:
-            continue
-        return undeployable_troops(dict(frame.context))
-    return 0
 
 
 def _give_intrigue_card(

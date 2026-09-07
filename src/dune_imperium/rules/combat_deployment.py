@@ -40,6 +40,25 @@ def undeployable_troops(context: dict[str, ActionValue]) -> int:
     return value
 
 
+def undeployable_troops_this_turn(state: GameState, player: int) -> int:
+    """Troops the player's open Agent turn forbids deploying (OQ-038).
+
+    Zero outside an Agent turn; every deployment that reads the garrison
+    (basic deployment, Intrigue and Navigation "deploy from garrison"
+    effects) must subtract this before judging what is possible.
+    """
+
+    for frame in reversed(state.decision_stack):
+        if frame.kind != FrameKind.AGENT_EFFECTS or not isinstance(
+            frame.decision, PlayerDecision
+        ):
+            continue
+        if frame.decision.owner != player:
+            continue
+        return undeployable_troops(dict(frame.context))
+    return 0
+
+
 def release_undeployable_troops(
     state: GameState,
     player: int,

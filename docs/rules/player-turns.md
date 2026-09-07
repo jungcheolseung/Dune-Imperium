@@ -69,7 +69,9 @@
 - Treacherous Maneuver는 Agent box의 화살표를 선택하면 이 카드와 hand의 다른
   Emperor card 한 장을 함께 trash하고, 방문한 Faction의 Influence를 기본 1 대신
   총 2 얻는다. 비용을 지불하지 않고 생략할 수 있으며 discard pile이나 이미
-  play 영역에 있던 Emperor card는 비용으로 고를 수 없다.
+  play 영역에 있던 Emperor card는 비용으로 고를 수 없다. Faction이 없는 space에
+  놓였으면(Clandestine 등으로 연결된 Spy를 통해) 얻을 Influence가 없으므로 화살표
+  비용을 제시하지 않는다(OQ-046).
   `[Treacherous Maneuver card]` `[Main p. 9]`
 - Chani, Clever Tactician은 Agent box를 처리하는 시점에 Conflict에 troop과
   sandworm을 합쳐 unit이 3개 이상이면 Intrigue card 1장을 얻는다. 같은 Agent

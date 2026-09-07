@@ -1156,6 +1156,12 @@ def legal_reveal_command_acquisition_actions(
     expected = PersonalCardRevealChoiceEffect.COMMAND_MAY_TRASH_SELF_TO_ACQUIRE_ROW_CARD
     if context.get("reveal_choice_effect") != expected.value:
         return ()
+    source_card_id = context.get("reveal_card_id")
+    if source_card_id not in state.players[player].in_play:
+        # The card already left play (another effect trashed it while this
+        # choice waited): an effect of a trashed card can't be activated
+        # (OQ-022), so only the refusal remains.
+        return (DomainAction(action_id="decline_command_acquisition", actor=player),)
     return (
         DomainAction(action_id="decline_command_acquisition", actor=player),
         *(

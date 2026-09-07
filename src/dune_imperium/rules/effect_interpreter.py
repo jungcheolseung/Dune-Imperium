@@ -80,6 +80,7 @@ from dune_imperium.rules.acquisition import (
     acquirable_reserve_card_ids,
 )
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
+from dune_imperium.rules.combat_deployment import undeployable_troops_this_turn
 from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effects import (
     agent_turn_space_id,
@@ -472,7 +473,12 @@ def _choice_rewards_feasible(
         for reward in section.rewards:
             match reward:
                 case DeployFromGarrison() if (
-                    owner.troops_garrison + owner.commanders_garrison < 1
+                    # Harkonnen Advisor's troop can't deploy this turn
+                    # (OQ-038), so it doesn't make the option playable.
+                    owner.troops_garrison
+                    - undeployable_troops_this_turn(state, player)
+                    + owner.commanders_garrison
+                    < 1
                     or units_deployment_blocked(state, player)
                 ):
                     return False
