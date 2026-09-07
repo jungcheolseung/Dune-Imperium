@@ -59,12 +59,14 @@ from dune_imperium.rules.shield_wall import (
     current_conflict_is_shield_wall_protected,
     destroy_shield_wall,
 )
+from dune_imperium.rules.spy_moves import turn_space_spy_frames
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
     observation_post_ids_for_factions,
     place_spy,
     recall_spy,
 )
+from dune_imperium.rules.unit_loss import opponent_unit_loss_frames
 from dune_imperium.rules.units import retreat_units
 
 # Agent-box icon keys resolved by ``resolve_agent_card_effect`` with
@@ -2544,6 +2546,11 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         # Bene Gesserit card played this round (``agent_turn``).
         next_owner = replace(owner, bene_gesserit_boost_pending=True)
         event_kind = "agent_card_effect_resolved"
+    elif effect is PersonalCardAgentEffect.EACH_OPPONENT_LOSES_TROOP_AND_MOVES_SPY:
+        # Holy War: the opponents' decisions are pushed once this frame has
+        # advanced (below).
+        next_owner = owner
+        event_kind = "agent_card_effect_resolved"
     elif effect is PersonalCardAgentEffect.COMPLETE_ONE_CONTRACT:
         # CHOAM Demands resolves through its own Contract choice; with no
         # active Contract the box does nothing.
@@ -2881,6 +2888,7 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         )
     players = replace_player(state.players, next_owner)
     context["pending_agent_effect"] = False
+    space_id_value = context.get("space_id")
     next_state = advance_after_effect(state, context, players)
     event = GameEvent(
         event_id=(
@@ -2890,6 +2898,16 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         kind=event_kind,
         payload=(("card_id", card_instance_id), ("player", player)),
     )
+    if effect is PersonalCardAgentEffect.EACH_OPPONENT_LOSES_TROOP_AND_MOVES_SPY:
+        if not isinstance(space_id_value, str):
+            raise RuntimeError("Agent-turn effect frame has invalid space")
+        losses = opponent_unit_loss_frames(next_state, player, source=event_source)
+        moves = turn_space_spy_frames(
+            losses.state, player, space_id_value, source=event_source
+        )
+        return RuleResult(
+            state=moves.state, events=(event, *losses.events, *moves.events)
+        )
     if effect in (
         PersonalCardAgentEffect.DRAW_PERSONAL_CARD,
         PersonalCardAgentEffect.DRAW_PER_SANDWORM_IN_CONFLICT,

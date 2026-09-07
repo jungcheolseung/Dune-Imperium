@@ -42,7 +42,9 @@ from dune_imperium.content.uprising.effect_dsl import (
     PlaceSpy,
     RecallSpy,
     RecruitTroops,
+    RedirectSpiesOnTurnSpace,
     RetreatTroops,
+    RevealContractsTakeOne,
     Reward,
     SandwormsInConflictAtLeast,
     SetAsideImperiumRowCard,
@@ -65,7 +67,11 @@ from dune_imperium.rules.acquisition import (
 )
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.contracts import begin_contract_gain
-from dune_imperium.rules.effects import recruit_shortfall_events, recruit_troops
+from dune_imperium.rules.effects import (
+    agent_turn_space_id,
+    recruit_shortfall_events,
+    recruit_troops,
+)
 from dune_imperium.rules.frames import replace_player
 from dune_imperium.rules.influence import gain_faction_influence, influence_amount
 from dune_imperium.rules.intrigue_deck import draw_intrigue_cards
@@ -417,6 +423,12 @@ def _choice_rewards_feasible(
                     return False
                 case SetAsideImperiumRowCard() if not state.imperium_row:
                     return False
+                case RedirectSpiesOnTurnSpace() if (
+                    agent_turn_space_id(state, player) is None
+                ):
+                    # "the board space where you sent an Agent this turn":
+                    # only after this turn's placement.
+                    return False
                 case _:
                     pass
     return True
@@ -453,6 +465,7 @@ class RewardOutcome:
     troops_recruited: int = 0
     sandworms_deployed: int = 0
     combat_icons: int = 0
+    redirects_turn_space_spies: bool = False
 
 
 def automatic_rewards(sections: tuple[EffectSection, ...]) -> tuple[Reward, ...]:
@@ -494,6 +507,7 @@ def apply_rewards(
     troops_recruited = 0
     sandworms_deployed = 0
     combat_icons = 0
+    redirects_turn_space_spies = False
     personal_draws = 0
     intrigue_draws = 0
     contracts = 0
@@ -579,6 +593,10 @@ def apply_rewards(
                 owner = replace(owner, granted_agent_icon_turn=icon.value)
             case GrantCombatDeployment():
                 combat_icons += 1
+            case RedirectSpiesOnTurnSpace():
+                redirects_turn_space_spies = True
+            case RevealContractsTakeOne():
+                raise ValueError("Contract reveals resolve through their trigger")
             case GainCombatStrength(amount=amount):
                 # Combat Intrigue strength changes update the marker at once
                 # [Main p. 14]; the caller only offers Combat options while
@@ -632,4 +650,5 @@ def apply_rewards(
         troops_recruited=troops_recruited,
         sandworms_deployed=sandworms_deployed,
         combat_icons=combat_icons,
+        redirects_turn_space_spies=redirects_turn_space_spies,
     )

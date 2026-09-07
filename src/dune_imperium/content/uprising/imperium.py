@@ -1214,7 +1214,29 @@ IMPERIUM_CARDS: Final = (
         ),
         play_data_complete=True,
     ),
-    _entry(100, "holy-war", "Holy War", 5, bloodlines_only=True),
+    _entry(
+        99,
+        "holy-war",
+        "Holy War",
+        5,
+        bloodlines_only=True,
+        factions=(Faction.FREMEN,),
+        agent_icons=(
+            AgentIcon.EMPEROR,
+            AgentIcon.SPACING_GUILD,
+            AgentIcon.BENE_GESSERIT,
+            AgentIcon.LANDSRAAD,
+        ),
+        agent_effect=PersonalCardAgentEffect.EACH_OPPONENT_LOSES_TROOP_AND_MOVES_SPY,
+        reveal_effects=(
+            PersonalCardRevealEffect(persuasion=1, recruit_troops=1),
+            PersonalCardRevealEffect(
+                grants_combat_icon=True,
+                required_faction_bond=PersonalCardBond.FREMEN,
+            ),
+        ),
+        play_data_complete=True,
+    ),
     _entry(
         101,
         "i-believe",

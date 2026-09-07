@@ -256,6 +256,10 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
             "You may discard a card → Gain 1 water"
         ),
         PersonalCardAgentEffect.COMPLETE_ONE_CONTRACT: "Complete one of your contracts",
+        PersonalCardAgentEffect.EACH_OPPONENT_LOSES_TROOP_AND_MOVES_SPY: (
+            "Each opponent loses one troop. Each opponent spying on the board "
+            "space where you sent an Agent this turn must move that Spy"
+        ),
         PersonalCardAgentEffect.BOOST_NEXT_BENE_GESSERIT_CARD_THIS_ROUND: (
             "The next Bene Gesserit card you play this round has all Agent icons "
             "and, added to its Agent box: Draw 1 card"
@@ -429,6 +433,7 @@ _HANDLED_REVEAL_FIELDS: Final[frozenset[str]] = frozenset(
         "minimum_garrisoned_units",
         "requires_command",
         "trashes_self",
+        "grants_combat_icon",
     }
 )
 
@@ -511,6 +516,8 @@ def reveal_effect_text(effect: PersonalCardRevealEffect) -> str:
         )
     if effect.trashes_self:
         gains.append("Trash this card")
+    if effect.grants_combat_icon:
+        gains.append("Combat (deploy as though at a Combat space)")
 
     text = ", ".join(gains)
     if conditions:

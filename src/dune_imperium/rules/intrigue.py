@@ -72,6 +72,7 @@ from dune_imperium.rules.effect_interpreter import (
     spy_placement_targets,
     trashable_discard_pile_ids,
 )
+from dune_imperium.rules.effects import agent_turn_space_id
 from dune_imperium.rules.frames import (
     FrameKind,
     context_int,
@@ -92,6 +93,11 @@ from dune_imperium.rules.influence import (
 )
 from dune_imperium.rules.reveal_turn import add_units_to_reveal
 from dune_imperium.rules.shield_wall import destroy_shield_wall
+from dune_imperium.rules.spy_moves import (
+    connected_post_ids,
+    spy_placement_frame,
+    turn_space_spy_frames,
+)
 from dune_imperium.rules.spy_placement import (
     observation_post_ids_for_factions,
     place_spy,
@@ -800,6 +806,18 @@ def _apply_section_rewards(
         )
     if outcome.combat_icons:
         next_state = grant_combat_icon(next_state, player)
+    if outcome.redirects_turn_space_spies:
+        # False Orders: the owner's placement waits beneath the opponents'
+        # forced moves so it resolves after them ("Then you place a Spy").
+        space_id = agent_turn_space_id(next_state, player)
+        if space_id is None:
+            raise RuntimeError("False Orders needs this turn's Agent placement")
+        next_state = spy_placement_frame(
+            next_state, player, connected_post_ids(space_id), source=source
+        )
+        moved = turn_space_spy_frames(next_state, player, space_id, source=source)
+        next_state = moved.state
+        events.extend(moved.events)
     if outcome.sandworms_deployed and reveal_is_open_for(next_state, player):
         # The interpreter moved the sandworms; during a Reveal turn their
         # strength must also join the revealed total [Main p. 13].

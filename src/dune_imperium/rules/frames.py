@@ -41,6 +41,14 @@ class FrameKind(StrEnum):
     SECRETS_STEAL = "secrets_steal"
     # Sardaukar Standard's Skill choice for the Commander it acquires.
     SKILL_CHOICE = "skill_choice"
+    # Bloodlines opponent decisions: a Spy forced off a post (Holy War,
+    # False Orders) and a unit lost from a chosen zone (Holy War).
+    OPPONENT_SPY_MOVE = "opponent_spy_move"
+    OPPONENT_UNIT_LOSS = "opponent_unit_loss"
+    # False Orders: the owner's Spy placement on the turn's board space.
+    SPY_PLACEMENT = "spy_placement"
+    # Coercive Negotiation: three Contracts revealed from the bank.
+    INTRIGUE_TRIGGER_CONTRACT = "intrigue_trigger_contract"
 
 
 def top_frame(state: GameState) -> DecisionFrame | None:

@@ -1762,6 +1762,7 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
     pending_draws: list[tuple[str, int]] = []
     pending_influence: list[tuple[str, PersonalCardRevealEffect]] = []
     pending_trashes: list[tuple[str, str]] = []
+    pending_combat_icons = 0
     newly_granted: dict[str, int | None] = {}
     for card_id, card in zip(revealed_ids, revealed_cards, strict=True):
         for index, effect in enumerate(card.reveal_effects):
@@ -1829,6 +1830,8 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
                 pending_influence.append((f"{source}:{index}", effect))
             if effect.trashes_self:
                 pending_trashes.append((f"{source}:{index}:late", card_id))
+            if effect.grants_combat_icon:
+                pending_combat_icons += 1
             newly_granted[key] = None
             events.append(
                 GameEvent(
@@ -1871,6 +1874,8 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
             )
             working = trashed.state
             events.extend(trashed.events)
+    if pending_combat_icons:
+        working = grant_combat_icon(working, player)
     for influence_source, effect in pending_influence:
         assert effect.influence_faction is not None
         gained = gain_faction_influence(
@@ -2883,6 +2888,10 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
             )
             next_state = trashed.state
             events.extend(trashed.events)
+        if effect.grants_combat_icon:
+            # Holy War's Fremen Bond: this Reveal may deploy as though at a
+            # Combat space [Bloodlines p. 5].
+            next_state = grant_combat_icon(next_state, action.actor)
     events.extend(
         GameEvent(
             event_id=f"{event.event_id}:skill:{skill.skill_id}",

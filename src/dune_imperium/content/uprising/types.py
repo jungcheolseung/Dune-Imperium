@@ -164,6 +164,11 @@ class PersonalCardAgentEffect(StrEnum):
     BOOST_NEXT_BENE_GESSERIT_CARD_THIS_ROUND = (
         "boost_next_bene_gesserit_card_this_round"
     )
+    # Holy War: "Each opponent loses one troop. Each opponent spying on the
+    # board space where you sent an Agent this turn must move that Spy."
+    EACH_OPPONENT_LOSES_TROOP_AND_MOVES_SPY = (
+        "each_opponent_loses_troop_and_moves_spy"
+    )
     # Southern Faith: "draw a card OR, if another Bene Gesserit card is in
     # play, Bene Gesserit Influence".
     DRAW_ONE_OR_BENE_GESSERIT_INFLUENCE_IF_BOND = (
@@ -328,6 +333,9 @@ class PersonalCardRevealEffect:
     # Bombast: "Command: 3 Solari and trash this card" — the card leaves
     # play when the effect pays out.
     trashes_self: bool = False
+    # Holy War: "Fremen Bond: Combat icon" — deploy in this Reveal as though
+    # at a Combat space [Bloodlines p. 5].
+    grants_combat_icon: bool = False
 
     def __post_init__(self) -> None:
         if self.required_faction_bond is not None and not isinstance(
@@ -375,7 +383,7 @@ class PersonalCardRevealEffect:
         )
         if min((*gains, self.minimum_spies_placed, self.minimum_garrisoned_units)) < 0:
             raise ValueError("personal-card Reveal gains must not be negative")
-        if max(gains) == 0:
+        if max(gains) == 0 and not self.grants_combat_icon:
             raise ValueError("personal-card Reveal effect must gain something")
         if self.requires_command and self.persuasion:
             # The Persuasion total that satisfies Command must not depend on

@@ -43,7 +43,9 @@ from dune_imperium.content.uprising.effect_dsl import (
     PlaceSpy,
     RecallSpy,
     RecruitTroops,
+    RedirectSpiesOnTurnSpace,
     RetreatTroops,
+    RevealContractsTakeOne,
     SandwormsInConflictAtLeast,
     SetAsideImperiumRowCard,
     SpiceMustFlowCardsAtLeast,
@@ -699,6 +701,12 @@ INTRIGUE_CARDS: Final = (
         "Coercive Negotiation",
         bloodlines_only=True,
         choam_only=True,
+        options=(
+            _plot_trigger(
+                OnUnitsDeployedInTurn(3),
+                EffectSection(rewards=(RevealContractsTakeOne(3),)),
+            ),
+        ),
     ),
     _entry(
         112,
@@ -724,7 +732,13 @@ INTRIGUE_CARDS: Final = (
             _plot(EffectSection(rewards=(GrantAgentIconThisTurn(AgentIcon.EMPEROR),))),
         ),
     ),
-    _entry(114, "false-orders", "False Orders", bloodlines_only=True),
+    _entry(
+        114,
+        "false-orders",
+        "False Orders",
+        bloodlines_only=True,
+        options=(_plot(EffectSection(rewards=(RedirectSpiesOnTurnSpace(),))),),
+    ),
     _entry(
         115,
         "grasp-arrakis",

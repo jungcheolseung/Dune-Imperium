@@ -126,6 +126,25 @@ AGENT_EFFECT_CONTEXT_KEYS = frozenset(
 )
 
 
+def agent_turn_space_id(state: GameState, player: int) -> str | None:
+    """Return the board space ``player`` sent an Agent to this turn, if any.
+
+    Read from the player's open Agent-turn effect frame anywhere in the
+    stack (an Intrigue choice may sit above it).
+    """
+
+    for frame in reversed(state.decision_stack):
+        if frame.kind != FrameKind.AGENT_EFFECTS or not isinstance(
+            frame.decision, PlayerDecision
+        ):
+            continue
+        if frame.decision.owner != player:
+            continue
+        space_id = dict(frame.context).get("space_id")
+        return space_id if isinstance(space_id, str) else None
+    return None
+
+
 def current_agent_effect_context(
     state: GameState,
 ) -> tuple[DecisionFrame, dict[str, ActionValue]]:

@@ -547,6 +547,26 @@ class GrantAgentIconThisTurn:
             raise TypeError("granted Agent icon must use AgentIcon")
 
 
+@dataclass(frozen=True, slots=True)
+class RedirectSpiesOnTurnSpace:
+    """False Orders (Bloodlines): each opponent spying on the board space the
+    owner sent an Agent to this turn must move that Spy; then the owner
+    places a Spy on that space. Needs an Agent placement this turn."""
+
+
+@dataclass(frozen=True, slots=True)
+class RevealContractsTakeOne:
+    """Coercive Negotiation (Bloodlines): reveal ``count`` Contracts from the
+    bank, take one and trash the others. Resolved by its deployment
+    trigger (``rules.intrigue_triggers``)."""
+
+    count: int = 3
+
+    def __post_init__(self) -> None:
+        if self.count < 1:
+            raise ValueError("revealed Contract count must be positive")
+
+
 type Reward = (
     GainResources
     | GainVictoryPoints
@@ -568,6 +588,8 @@ type Reward = (
     | IgnoreInfluenceRequirementsThisTurn
     | GrantAgentIconThisTurn
     | GrantCombatDeployment
+    | RedirectSpiesOnTurnSpace
+    | RevealContractsTakeOne
 )
 
 

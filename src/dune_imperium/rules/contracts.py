@@ -14,6 +14,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
+from dune_imperium.rules.contract_tiles import receive_contract
 from dune_imperium.rules.effects import (
     advance_after_effect,
     current_agent_effect_context,
@@ -492,39 +493,7 @@ def apply_contract_action(state: GameState, action: DomainAction) -> RuleResult:
             del market[market_index]
 
     definition = contract_for_instance(instance_value)
-    owner = state.players[action.actor]
-    if definition.completes_immediately:
-        reward = definition.reward
-        if any(
-            (
-                reward.water,
-                reward.troops,
-                reward.personal_cards,
-                reward.contracts,
-                reward.spies,
-                reward.influence,
-            )
-        ):
-            raise NotImplementedError(
-                "Immediate Contracts with non-Solari rewards are not implemented"
-            )
-        next_owner = replace(
-            owner,
-            resources=replace(
-                owner.resources,
-                solari=owner.resources.solari + reward.solari,
-            ),
-            completed_contract_ids=(
-                *owner.completed_contract_ids,
-                instance_value,
-            ),
-            contracts_completed_turn=owner.contracts_completed_turn + 1,
-        )
-    else:
-        next_owner = replace(
-            owner,
-            active_contract_ids=(*owner.active_contract_ids, instance_value),
-        )
+    next_owner = receive_contract(state.players[action.actor], instance_value)
     players = tuple(
         next_owner if player.player_id == action.actor else player
         for player in state.players

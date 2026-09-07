@@ -307,12 +307,14 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             if instance_id.startswith("imperium:litany_against_fear:")
         )
         if config.choam_module:
-            # CHOAM Demands completes any active Contract.
+            # CHOAM Demands completes any active Contract; Coercive
+            # Negotiation takes one of the bank's revealed Contracts.
             templates.extend(
                 ActionTemplate(
-                    action_id="complete_contract_by_card",
+                    action_id=action_id,
                     arguments=(("instance_id", instance_id),),
                 )
+                for action_id in ("complete_contract_by_card", "take_trigger_contract")
                 for instance_id in contract_instance_ids()
             )
     if config.choam_module:
@@ -477,6 +479,11 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         "recall_spy_for_reveal",
         "recall_spy_for_reveal_placement",
         "resolve_espionage_place_spy",
+        *(
+            ("move_spy", "place_spy_on_space", "recall_spy_for_placement")
+            if config.bloodlines
+            else ()
+        ),
         *(
             ("place_contract_spy", "recall_spy_for_contract")
             if config.choam_module
@@ -670,6 +677,18 @@ def _bloodlines_templates() -> tuple[ActionTemplate, ...]:
     templates.append(ActionTemplate(action_id="decline_command_acquisition"))
     templates.append(ActionTemplate(action_id="gain_reveal_persuasion"))
     templates.append(ActionTemplate(action_id="take_reveal_contract"))
+    templates.extend(
+        ActionTemplate(action_id=action_id)
+        for action_id in (
+            "recall_moved_spy",
+            "decline_spy_placement",
+            "decline_intrigue_contract_trigger",
+        )
+    )
+    templates.extend(
+        ActionTemplate(action_id="lose_unit", arguments=(("zone", zone),))
+        for zone in ("garrison", "conflict")
+    )
     # "Gain one Influence of your choice" as a Reveal choice (Pointing the Way).
     templates.extend(
         ActionTemplate(

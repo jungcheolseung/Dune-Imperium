@@ -55,6 +55,9 @@ class GameState:
     # Contracts set aside during setup for Shaddam Corrino IV; only he can
     # acquire them [Shaddam Corrino IV card] [FAQ p. 3].
     sardaukar_contract_ids: tuple[str, ...] = ()
+    # Contracts trashed by a card effect (Coercive Negotiation, Bloodlines):
+    # out of the game, kept public for the population census.
+    contract_trash: tuple[str, ...] = ()
     # Face-up six-Leader pool of the OQ-007 draft convention, in draw order.
     # Public for the whole game; Leaders picked from it appear on the seats
     # and the two unpicked Leaders stay unused.

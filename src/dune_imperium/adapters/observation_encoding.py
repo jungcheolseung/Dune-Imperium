@@ -129,6 +129,7 @@ def _segment_lengths() -> tuple[tuple[str, int], ...]:
         ("contract_bank_size", 1),
         ("face_up_contracts", len(CONTRACT_IDS)),
         ("sardaukar_contracts", len(CONTRACT_IDS)),
+        ("contract_trash", len(CONTRACT_IDS)),
         ("intrigue_resolving", len(INTRIGUE_IDS)),
         ("intrigue_discard", len(INTRIGUE_IDS)),
         ("intrigue_trash", len(INTRIGUE_IDS)),
@@ -255,6 +256,7 @@ def encode_player_view(view: PlayerView) -> tuple[int, ...]:
     writer.write("contract_bank_size", [view.contract_bank_size])
     writer.write("face_up_contracts", _contract_flags(view.face_up_contract_ids))
     writer.write("sardaukar_contracts", _contract_flags(view.sardaukar_contract_ids))
+    writer.write("contract_trash", _contract_flags(view.contract_trash))
     writer.write("intrigue_resolving", _intrigue_counts(view.intrigue_resolving))
     writer.write("intrigue_discard", _intrigue_counts(view.intrigue_discard))
     writer.write("intrigue_trash", _intrigue_counts(view.intrigue_trash))

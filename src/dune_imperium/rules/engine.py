@@ -138,7 +138,9 @@ from dune_imperium.rules.intrigue_deck import (
     resolve_pending_intrigue_draw,
 )
 from dune_imperium.rules.intrigue_triggers import (
+    apply_trigger_contract_action,
     apply_trigger_spy_action,
+    legal_trigger_contract_actions,
     legal_trigger_spy_actions,
     offer_deployment_triggers,
 )
@@ -214,7 +216,14 @@ from dune_imperium.rules.sardaukar import (
 )
 from dune_imperium.rules.setup import create_draft_initial_state, create_initial_state
 from dune_imperium.rules.spies import apply_gather_intelligence_action
+from dune_imperium.rules.spy_moves import (
+    apply_spy_move,
+    apply_spy_placement,
+    legal_spy_move_actions,
+    legal_spy_placement_actions,
+)
 from dune_imperium.rules.strength import refresh_pre_reveal_strength
+from dune_imperium.rules.unit_loss import apply_unit_loss, legal_unit_loss_actions
 
 type LegalActionProvider = Callable[[GameState, int], tuple[DomainAction, ...]]
 type ActionHandler = Callable[[GameState, DomainAction], RuleResult]
@@ -354,6 +363,10 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     FrameKind.INTRIGUE_TRIGGER_SPY: (legal_trigger_spy_actions,),
     FrameKind.LEADER_DRAFT: (legal_leader_draft_actions,),
     FrameKind.SKILL_CHOICE: (legal_skill_choice_actions,),
+    FrameKind.OPPONENT_SPY_MOVE: (legal_spy_move_actions,),
+    FrameKind.OPPONENT_UNIT_LOSS: (legal_unit_loss_actions,),
+    FrameKind.SPY_PLACEMENT: (legal_spy_placement_actions,),
+    FrameKind.INTRIGUE_TRIGGER_CONTRACT: (legal_trigger_contract_actions,),
 }
 
 ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
@@ -489,6 +502,14 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "play_turn_start_card": apply_turn_start_card,
     "complete_contract_by_card": apply_agent_card_contract_completion,
     "choose_skill": apply_skill_choice,
+    "move_spy": apply_spy_move,
+    "recall_moved_spy": apply_spy_move,
+    "place_spy_on_space": apply_spy_placement,
+    "recall_spy_for_placement": apply_spy_placement,
+    "decline_spy_placement": apply_spy_placement,
+    "lose_unit": apply_unit_loss,
+    "take_trigger_contract": apply_trigger_contract_action,
+    "decline_intrigue_contract_trigger": apply_trigger_contract_action,
     "decline_command_acquisition": apply_reveal_command_acquisition,
     "decline_reveal_influence_exchange": apply_reveal_influence_exchange,
     "pay_reveal_water_for_sandworm": apply_reveal_sandworm_action,

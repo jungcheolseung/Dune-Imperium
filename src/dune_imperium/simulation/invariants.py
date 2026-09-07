@@ -78,6 +78,7 @@ def _all_contract_ids(state: GameState) -> Iterator[str]:
     yield from state.contract_bank
     yield from state.face_up_contract_ids
     yield from state.sardaukar_contract_ids
+    yield from state.contract_trash
     for player in state.players:
         yield from player.active_contract_ids
         yield from player.completed_contract_ids

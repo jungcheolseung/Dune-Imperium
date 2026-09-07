@@ -1432,3 +1432,145 @@ def test_choam_demands_completes_a_contract_and_trashes_for_influence() -> None:
         _state(_owner(hand=(card,), completed_contract_ids=four[:3]), CHOAM_BLOODLINES)
     )
     assert below.decision_stack[-1].kind == "reveal"
+
+
+# --- Bloodlines slice 4d-3: Holy War, False Orders, Coercive Negotiation --
+
+
+ASSEMBLY_POST = "landsraad-assembly-hall-gather-support"
+
+
+def test_holy_war_makes_each_opponent_lose_a_unit_and_move_its_spy() -> None:
+    from dune_imperium.rules.spy_moves import apply_spy_move, legal_spy_move_actions
+    from dune_imperium.rules.unit_loss import (
+        apply_unit_loss,
+        legal_unit_loss_actions,
+    )
+
+    card = _card("holy_war")
+    watcher = replace(
+        PlayerState(player_id=1),
+        spies_supply=2,
+        spy_post_ids=(ASSEMBLY_POST,),
+        troops_supply=8,
+        troops_garrison=2,
+        troops_conflict=2,
+        combat_strength=4,
+    )
+    garrisoned = replace(PlayerState(player_id=2), troops_supply=11, troops_garrison=1)
+    empty = replace(PlayerState(player_id=3), troops_supply=12, troops_garrison=0)
+    base = _state(_owner(hand=(card,)))
+    base = replace(base, players=(base.players[0], watcher, garrisoned, empty))
+    state = _play(base, card, "assembly_hall")
+    result = resolve_agent_card_effect(state)
+    kinds = [event.kind for event in result.events]
+    assert "unit_lost" in kinds and "unit_loss_unavailable" in kinds
+    # Seat 2 lost its only-zone troop at once; seat 3 had nothing to lose.
+    assert result.state.players[2].troops_garrison == 0
+    assert result.state.players[2].troops_supply == 12
+    # Seat 1 moves its Spy, then chooses the zone; both frames are on top.
+    stack = result.state.decision_stack
+    assert [frame.kind for frame in stack[-2:]] == [
+        "opponent_unit_loss",
+        "opponent_spy_move",
+    ]
+    moves = legal_spy_move_actions(result.state, 1)
+    targets = {dict(a.arguments)["post_id"] for a in moves}
+    assert ASSEMBLY_POST not in targets and targets
+    moved = apply_spy_move(result.state, moves[0]).state
+    assert ASSEMBLY_POST not in moved.players[1].spy_post_ids
+    assert len(moved.players[1].spy_post_ids) == 1
+    actions = legal_unit_loss_actions(moved, 1)
+    assert [dict(a.arguments)["zone"] for a in actions] == ["garrison", "conflict"]
+    lost = apply_unit_loss(moved, actions[1]).state
+    assert lost.players[1].troops_conflict == 1
+    assert lost.players[1].troops_supply == 9
+    assert lost.players[1].combat_strength == 2
+    # Nothing else was pending in the Agent turn, so the next turn opened.
+    assert lost.decision_stack[-1].kind == "turn"
+
+
+def test_holy_war_reveal_recruits_and_bonds_for_the_combat_icon() -> None:
+    card = _card("holy_war")
+    plain = _reveal(_state(_owner(hand=(card,))))
+    assert _reveal_context(plain)["persuasion"] == 1
+    assert plain.players[0].troops_garrison == 3 + 1
+    assert _reveal_context(plain)["combat_deployment"] is False
+    bonded = _reveal(_state(_owner(hand=(card,), in_play=(_card("desert_power"),))))
+    assert _reveal_context(bonded)["combat_deployment"] is True
+
+
+def test_false_orders_moves_watching_spies_then_places_one() -> None:
+    from dune_imperium.rules.intrigue import legal_intrigue_play_actions
+    from dune_imperium.rules.spy_moves import (
+        apply_spy_move,
+        apply_spy_placement,
+        legal_spy_move_actions,
+        legal_spy_placement_actions,
+    )
+
+    card = _intrigue("false_orders")
+    watcher = replace(
+        PlayerState(player_id=1), spies_supply=2, spy_post_ids=(ASSEMBLY_POST,)
+    )
+    landsraad = _card("branching_path")
+    base = _state(_owner(hand=(landsraad,), intrigue_cards=(card,)))
+    base = replace(base, players=(base.players[0], watcher, *base.players[2:]))
+    # Before any placement there is no "space where you sent an Agent".
+    assert _play_intrigue(card) not in legal_intrigue_play_actions(base, 0)
+    state = _play(base, landsraad, "assembly_hall")
+    assert _play_intrigue(card) in legal_intrigue_play_actions(state, 0)
+    engine = UprisingRulesEngine()
+    played = engine.apply(state, _play_intrigue(card)).state
+    assert [frame.kind for frame in played.decision_stack[-2:]] == [
+        "spy_placement",
+        "opponent_spy_move",
+    ]
+    moves = legal_spy_move_actions(played, 1)
+    moved = apply_spy_move(played, moves[0]).state
+    assert ASSEMBLY_POST not in moved.players[1].spy_post_ids
+    placements = legal_spy_placement_actions(moved, 0)
+    assert [dict(a.arguments)["post_id"] for a in placements] == [ASSEMBLY_POST]
+    placed = apply_spy_placement(moved, placements[0]).state
+    assert ASSEMBLY_POST in placed.players[0].spy_post_ids
+    assert placed.decision_stack[-1].kind == "agent_effects"
+
+
+def test_coercive_negotiation_reveals_three_contracts_on_a_big_deployment() -> None:
+    from dune_imperium.content.uprising.contracts import contract_instance_ids
+    from dune_imperium.core.engine import RuleResult
+    from dune_imperium.rules.intrigue_triggers import (
+        apply_trigger_contract_action,
+        legal_trigger_contract_actions,
+        offer_deployment_triggers,
+    )
+
+    card = _intrigue("coercive_negotiation")
+    bank = contract_instance_ids()[:5]
+    base = replace(
+        _state(
+            _owner(intrigue_faceup=(card,), units_deployed_turn=3), CHOAM_BLOODLINES
+        ),
+        contract_bank=bank,
+    )
+    offered = offer_deployment_triggers(RuleResult(state=base)).state
+    frame = offered.decision_stack[-1]
+    assert frame.kind == "intrigue_trigger_contract"
+    actions = legal_trigger_contract_actions(offered, 0)
+    assert actions[0].action_id == "decline_intrigue_contract_trigger"
+    assert [dict(a.arguments)["instance_id"] for a in actions[1:]] == list(bank[:3])
+    taken = apply_trigger_contract_action(offered, actions[2]).state
+    owner = taken.players[0]
+    assert owner.active_contract_ids == (bank[1],)
+    assert owner.intrigue_faceup == ()
+    assert card in taken.intrigue_discard
+    assert taken.contract_bank == bank[3:]
+    assert taken.contract_trash == (bank[0], bank[2])
+    # Declining keeps the card face up for a later qualifying turn (OQ-016).
+    declined = apply_trigger_contract_action(offered, actions[0]).state
+    assert declined.players[0].intrigue_faceup == (card,)
+    # Without the CHOAM bank the trigger has nothing to reveal.
+    quiet = offer_deployment_triggers(
+        RuleResult(state=replace(base, contract_bank=()))
+    ).state
+    assert quiet.decision_stack[-1].kind == "turn"
