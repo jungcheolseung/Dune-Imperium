@@ -22,13 +22,17 @@ Skill 7종은 에셋 저장소 `cards/en/bloodlines/skill/*.webp`를 직접 판�
 | 상태·관측 | `PlayerState.commanders_supply/garrison/conflict`, `skill_ids`, `commander_recruited_turn`, `skill_strength_applied`; `GameState.sardaukar_commander_space_ids`, `sardaukar_commanders_bank`, `skill_stack`(비공개 순서), `skill_face_up`, `skill_trash`. 불변식: Skill tile은 한 존에만, 한 플레이어는 종류당 1장, 옵션이 꺼지면 전부 비어 있어야 한다. 관측은 stack 크기만 노출한다. | 관측 v6, codec v90(`bloodlines` 룰셋만 +30 템플릿). |
 | UI·도구 | 서버 옵션 `bloodlines`/`tech_module`, UI 체크박스와 행동 라벨, sweep/tournament `--bloodlines --tech-module`, coverage census, 체크포인트 룰셋 식별자 파싱. | 보드 위 Commander 토큰·Skill 표시는 UI 슬라이스에서. |
 
+| Commander = troop (슬라이스 3) | Intrigue의 `RetreatTroops`·`DeployFromGarrison`은 `count`(전체)와 `commanders`(Commander 몫, 0이면 생략) 인자로 troop과 Commander를 섞어 고르고(`rules/intrigue.py`의 `_unit_count_arguments`), 비용·보상 가능성 판정도 둘을 합쳐 센다. Chani의 "troop 2개 retreat → 검 4"는 `commanders` 0~2, Desert Scouts는 `retreat_leader_commander`. Reveal 중 배치(`add_units_to_reveal`)도 Commander 2를 센다. | `[Bloodlines p. 4]` "It is a 'troop'". 이벤트 payload는 `commanders`가 0보다 클 때만 그 키를 싣는다. |
+| Conflict 카드 (슬라이스 3) | `content/uprising/conflicts.py`에 `bloodlines_only` 항목 2장: Skirmish (Wild) — I, 1위 trash 1 / 2위 water 1 + Solari 1 / 3위 Solari 2; Storms in the South — II, 1위 Spy 배치 + spice 2 / 2위 Intrigue 2 + Solari 2 / 3위 Intrigue 1 + Solari 2. 옵션을 켠 setup의 tier 풀에만 들어가고(`conflicts_by_tier(bloodlines=True)`, 미사용 8장), 관측의 Conflict identity 우주는 18종으로 늘었다(2,081→2,089). | 카드면 전사(에셋 `bloodlines/conflict/`). 이긴 wild Conflict는 도착 시 매칭하지 않는다(`combat._matching_battle_card`) `[Main p. 20]`. |
+| wild끼리 매칭 (슬라이스 3) | `endgame._endgame_wild_matches`와 codec `match_endgame_wild_icon` 템플릿이 wild 쌍(정렬 순서로 한 번)을 추가한다. `flip_battle_card`·wild 템플릿은 옵션을 켠 catalog에만 Bloodlines 카드를 넣는다. | `[Bloodlines p. 5]`. OQ-005의 Combat 다중 후보 tripwire는 인쇄 아이콘에만 남는다. |
+
 ## 미완 경계
 
-- 기존 "troop" 대상 효과에 Commander 포함: Intrigue의 RetreatTroops·Go to Ground, Desert Scouts, Reveal의 retreat 두 개는 유닛 수 조건에는 `units_in_conflict`를 쓰지만 retreat 대상은 아직 troop만이다. 슬라이스 3에서 새 아이콘과 함께 처리한다.
 - Endgame tiebreaker "garrison의 troop 수"에 Commander를 세는지는 공식 문서가 침묵한다(현재는 세지 않음; 콘텐츠 슬라이스에서 open question으로 올릴 예정).
-- Combat 아이콘·Sardaukar Standard·Tech Module(Plasteel Blades, Sardaukar High Command 등 Commander 관련 tile)은 뒤 슬라이스.
+- 새 아이콘 4종(Spy with Deep Cover, Command, Combat, Trash an Intrigue card)은 인쇄된 카드와 함께 슬라이스 4에서. Sardaukar Standard(bank의 Commander)·Tech Module의 Commander 관련 tile도 뒤 슬라이스.
 
 ## 검증
 
 - `tests/unit/rules/test_sardaukar.py` 26건: setup(고정·draft), 획득과 Skill 선택·중복 금지·OQ-031(고를 Skill이 없으면 획득 불가), Solari 부족 시 거절만, 지불 recruit의 turn당 1회와 Reveal turn, 배치 한도 공유와 running strength, Skill strength 조건(Landsraad Agent·상대 sandworm·Emperor 3)과 비활성, Reveal 보너스, Desperate, 정리, 상태 불변식, 관측 비노출, codec 왕복, random 3판·heuristic 1판 soundness 검사.
 - 2026-09-07 소크(`--soundness-interval 25`): random `--ruleset both --bloodlines` 30판씩(60판, 41,508 step), heuristic `--rotate-leaders` 15판씩(30판, 19,584 step), 실패 0.
+- 슬라이스 3 테스트(같은 파일 +5): Intrigue retreat의 Commander 몫 열거·적용, Chani retreat의 혼합 쌍, Desert Scouts의 Commander, wild Conflict 승리 시 즉시 매칭 없음, Endgame의 wild 쌍 3가지와 codec 왕복. 슬라이스 3 소크는 handoff 세션 요약.
