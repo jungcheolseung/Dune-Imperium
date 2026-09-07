@@ -13,6 +13,7 @@ the Reveal turn cannot finish while a deferred choice is currently available,
 and the ones still unavailable at the end simply never happen.
 """
 
+from collections.abc import Mapping
 from dataclasses import replace
 
 from dune_imperium.content.bloodlines.sardaukar import skill_for_instance
@@ -57,7 +58,6 @@ from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
 from dune_imperium.rules.intrigue_triggers import expire_reveal_faceup_intrigue
 from dune_imperium.rules.planetologist import replace_sandworms, replaces_sandworms
 from dune_imperium.rules.shield_wall import current_conflict_is_shield_wall_protected
-from dune_imperium.rules.spy_moves import spy_placement_frame
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
     is_spying_on_maker_space,
@@ -1529,27 +1529,19 @@ _COMMAND_TECH = (
     ("training_depot", TechAbility.COMMAND_TWO_STRENGTH),
 )
 _TECH_GRANTED_KEY = "tech_granted"
+# Reveal-turn tile effects the owner still has to take, in any order the
+# owner likes [Main p. 12] (OQ-044): Forbidden Weapons' mandatory choice and
+# Panopticon's Spy placement.
+TECH_PENDING_KEY = "tech_reveal_pending"
 
 
-def forbidden_weapons_frame(player: int, *, source: str) -> DecisionFrame:
-    """Return Forbidden Weapons' mandatory Reveal-turn choice frame."""
+def tech_reveal_pending(context: Mapping[str, ActionValue]) -> tuple[str, ...]:
+    """Return the tile ids whose Reveal-turn effect is still pending."""
 
-    return DecisionFrame(
-        kind=FrameKind.TECH_CHOICE,
-        frame_id=f"{source}:forbidden_weapons",
-        decision=PlayerDecision(
-            owner=player,
-            prompt=(
-                "Forbidden Weapons: three swords and lose one Influence, or lose "
-                "all your spice and trash the tile"
-            ),
-        ),
-        context=(
-            ("player", player),
-            ("source", source),
-            ("tech_id", "forbidden_weapons"),
-        ),
-    )
+    value = context.get(TECH_PENDING_KEY, "")
+    if not isinstance(value, str):
+        raise RuntimeError("Reveal frame has invalid pending tile effects")
+    return tuple(key for key in value.split(",") if key)
 
 
 def _reveal_effect_is_eligible(
@@ -2940,11 +2932,19 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
     reveal_context = frame_context(reveal_frame)
     reveal_context[_DEFERRED_CHOICES_KEY] = _encode_deferred(tuple(deferred))
     reveal_frame = with_context(reveal_frame, reveal_context)
-    reveal_id = f"round:{state.round_number}:player:{action.actor}:reveal"
-    tech_frames: list[DecisionFrame] = []
-    if has_tech(owner.tech_ids, TechAbility.FORBIDDEN_WEAPONS):
-        # "Reveal Turn: You must choose" [Forbidden Weapons Tech tile].
-        tech_frames.append(forbidden_weapons_frame(action.actor, source=reveal_id))
+    # Forbidden Weapons' "Reveal Turn: You must choose" and Panopticon's Spy
+    # wait on the Reveal frame for the owner's order (OQ-044).
+    reveal_context[TECH_PENDING_KEY] = ",".join(
+        (
+            *(
+                ("forbidden_weapons",)
+                if has_tech(owner.tech_ids, TechAbility.FORBIDDEN_WEAPONS)
+                else ()
+            ),
+            *(("panopticon",) if panopticon else ()),
+        )
+    )
+    reveal_frame = with_context(reveal_frame, reveal_context)
     next_state = replace(
         state,
         players=players,
@@ -2952,16 +2952,8 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
             *state.decision_stack[:-1],
             reveal_frame,
             *reversed(choice_frames),
-            *tech_frames,
         ),
     )
-    if panopticon and (next_owner.spies_supply > 0 or next_owner.spy_post_ids):
-        next_state = spy_placement_frame(
-            next_state,
-            action.actor,
-            tuple(post.post_id for post in OBSERVATION_POSTS),
-            source=f"{reveal_id}:panopticon",
-        )
     event = GameEvent(
         event_id=f"round:{state.round_number}:player:{action.actor}:reveal",
         kind="reveal_started",
@@ -3092,6 +3084,17 @@ def legal_finish_reveal_actions(
         # A deferred choice that can open now still has to be resolved; the
         # ones whose condition fails simply lapse when the Reveal ends.
         return ()
+    pending_tech = tech_reveal_pending(context)
+    if "forbidden_weapons" in pending_tech or (
+        "panopticon" in pending_tech
+        and (
+            state.players[player].spies_supply > 0
+            or bool(state.players[player].spy_post_ids)
+        )
+    ):
+        # Forbidden Weapons must be chosen; Panopticon's Spy must be placed
+        # while a Spy can still reach a post (OQ-044).
+        return ()
     return (DomainAction(action_id="finish_reveal", actor=player),)
 
 
@@ -3117,6 +3120,21 @@ def finish_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         for card_id, effect in _deferred_reveal_choices(
             frame_context(state.decision_stack[-1])
         )
+    )
+    # A tile effect nobody could take (Panopticon without a Spy) lapses too.
+    lapsed_events = (
+        *lapsed_events,
+        *(
+            GameEvent(
+                event_id=(
+                    f"round:{state.round_number}:player:{action.actor}:"
+                    f"reveal:{tech_id}:unavailable"
+                ),
+                kind="tech_reveal_unavailable",
+                payload=(("player", action.actor), ("tech_id", tech_id)),
+            )
+            for tech_id in tech_reveal_pending(frame_context(state.decision_stack[-1]))
+        ),
     )
     # Face-up Intrigue whose window was this Reveal turn expires with it.
     expired = expire_reveal_faceup_intrigue(state, action.actor)

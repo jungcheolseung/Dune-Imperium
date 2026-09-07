@@ -68,9 +68,11 @@ from dune_imperium.rules.ornithopter import (
     match_all_battle_icons,
 )
 from dune_imperium.rules.reveal_turn import (
+    TECH_PENDING_KEY,
     add_reveal_optional_sword_strength,
     add_reveal_strength,
     add_units_to_reveal,
+    tech_reveal_pending,
 )
 from dune_imperium.rules.shield_wall import destroy_shield_wall
 from dune_imperium.rules.spy_moves import spy_placement_frame
@@ -571,59 +573,118 @@ def apply_tech_flip(state: GameState, action: DomainAction) -> RuleResult:
     return RuleResult(state=working, events=tuple(events))
 
 
-def legal_tech_choice_actions(
-    state: GameState, player: int
-) -> tuple[DomainAction, ...]:
-    """Offer Forbidden Weapons' two options [Forbidden Weapons Tech tile].
+def _reveal_top(state: GameState, player: int) -> DecisionFrame | None:
+    """Return the owner's Reveal frame while it is the top decision."""
 
-    The strength option "must lose one Influence with a Faction where you
-    have at least one Influence (if possible)" [Bloodlines p. 12]: one
-    action per such Faction (with the Alliance recipient when the loss
-    hands a token to one of several opponents), or a bare action when the
-    owner has no Influence at all.
+    return owned_top_frame(state, FrameKind.REVEAL, player)
+
+
+def panopticon_spy_possible(owner: PlayerState) -> bool:
+    """Return whether Panopticon's Spy can still be placed this Reveal.
+
+    Thirteen posts outnumber the twelve Spies, so a Spy in supply or one
+    to recall first [Main pp. 11, 20] always finds a post; only a seat
+    whose Spies all left for the box (Advanced Data Analysis) has none.
     """
 
-    frame = owned_top_frame(state, FrameKind.TECH_CHOICE, player)
+    return owner.spies_supply > 0 or bool(owner.spy_post_ids)
+
+
+def legal_tech_reveal_actions(
+    state: GameState, player: int
+) -> tuple[DomainAction, ...]:
+    """Offer the Reveal-turn tile effects still pending, in the owner's order.
+
+    Reveal effects resolve in any order the owner likes [Main p. 12], so
+    Forbidden Weapons' mandatory choice and Panopticon's Spy wait on the
+    Reveal frame until the owner takes them (OQ-044). The strength option
+    "must lose one Influence with a Faction where you have at least one
+    Influence (if possible)" [Bloodlines p. 12]: one action per such
+    Faction (with the Alliance recipient when the loss hands a token to
+    one of several opponents), or a bare action when the owner has no
+    Influence at all.
+    """
+
+    frame = _reveal_top(state, player)
     if frame is None:
         return ()
+    pending = tech_reveal_pending(dict(frame.context))
     owner = state.players[player]
     actions: list[DomainAction] = []
-    for faction in Faction:
-        if influence_amount(owner.influence, faction) == 0:
-            continue
-        recipients = alliance_recipients_after_influence_loss(state, player, faction)
-        recipient_options: tuple[int | None, ...] = (
-            tuple(recipients) if len(recipients) > 1 else (None,)
-        )
-        for recipient in recipient_options:
-            arguments: tuple[tuple[str, ActionValue], ...] = (
-                ("faction", faction.value),
+    if "forbidden_weapons" in pending:
+        strength: list[DomainAction] = []
+        for faction in Faction:
+            if influence_amount(owner.influence, faction) == 0:
+                continue
+            recipients = alliance_recipients_after_influence_loss(
+                state, player, faction
             )
-            if recipient is not None:
-                arguments = (("alliance_recipient", recipient), *arguments)
-            actions.append(
-                DomainAction(
-                    action_id="choose_tech_strength", actor=player, arguments=arguments
+            recipient_options: tuple[int | None, ...] = (
+                tuple(recipients) if len(recipients) > 1 else (None,)
+            )
+            for recipient in recipient_options:
+                arguments: tuple[tuple[str, ActionValue], ...] = (
+                    ("faction", faction.value),
                 )
+                if recipient is not None:
+                    arguments = (("alliance_recipient", recipient), *arguments)
+                strength.append(
+                    DomainAction(
+                        action_id="choose_tech_strength",
+                        actor=player,
+                        arguments=arguments,
+                    )
+                )
+        if not strength:
+            strength.append(
+                DomainAction(action_id="choose_tech_strength", actor=player)
             )
-    if not actions:
-        actions.append(DomainAction(action_id="choose_tech_strength", actor=player))
-    actions.append(DomainAction(action_id="choose_tech_trash", actor=player))
+        actions.extend(strength)
+        actions.append(DomainAction(action_id="choose_tech_trash", actor=player))
+    if "panopticon" in pending and panopticon_spy_possible(owner):
+        actions.append(DomainAction(action_id="place_tech_spy", actor=player))
     return tuple(actions)
+
+
+def _settle_tech_reveal(state: GameState, player: int, tech_id: str) -> GameState:
+    """Drop ``tech_id`` from the Reveal frame's pending tile effects."""
+
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    remaining = tuple(key for key in tech_reveal_pending(context) if key != tech_id)
+    context[TECH_PENDING_KEY] = ",".join(remaining)
+    return replace(
+        state,
+        decision_stack=(
+            *state.decision_stack[:-1],
+            replace(frame, context=tuple(sorted(context.items()))),
+        ),
+    )
+
+
+def apply_place_tech_spy(state: GameState, action: DomainAction) -> RuleResult:
+    """Panopticon: open the Spy placement on any Observation Post."""
+
+    if action not in legal_tech_reveal_actions(state, action.actor):
+        raise ValueError("action is not a legal Panopticon Spy placement")
+    player = action.actor
+    source = f"round:{state.round_number}:player:{player}:reveal:panopticon"
+    settled = _settle_tech_reveal(state, player, "panopticon")
+    return RuleResult(
+        state=spy_placement_frame(settled, player, ALL_POST_IDS, source=source)
+    )
 
 
 def apply_tech_choice(state: GameState, action: DomainAction) -> RuleResult:
     """Resolve Forbidden Weapons: swords and an Influence loss, or spice and trash."""
 
-    if action not in legal_tech_choice_actions(state, action.actor):
+    if action not in legal_tech_reveal_actions(state, action.actor):
         raise ValueError("action is not a legal Forbidden Weapons choice")
     player = action.actor
-    frame = state.decision_stack[-1]
-    context = dict(frame.context)
-    source = context_str(context, "source", owner="Tech choice frame")
-    tech_id = context_str(context, "tech_id", owner="Tech choice frame")
+    tech_id = "forbidden_weapons"
+    source = f"round:{state.round_number}:player:{player}:reveal:{tech_id}"
     owner = state.players[player]
-    popped = state.pop_decision()
+    settled = _settle_tech_reveal(state, player, tech_id)
     if action.action_id == "choose_tech_trash":
         trashed = replace(
             owner,
@@ -633,9 +694,9 @@ def apply_tech_choice(state: GameState, action: DomainAction) -> RuleResult:
         )
         return RuleResult(
             state=replace(
-                popped,
-                players=replace_player(popped.players, trashed),
-                tech_trash=(*popped.tech_trash, tech_id),
+                settled,
+                players=replace_player(settled.players, trashed),
+                tech_trash=(*settled.tech_trash, tech_id),
             ),
             events=(
                 GameEvent(
@@ -651,15 +712,15 @@ def apply_tech_choice(state: GameState, action: DomainAction) -> RuleResult:
         )
     swords = 3
     units = owner.units_in_conflict
-    frames = add_reveal_optional_sword_strength(popped.decision_stack, swords)
+    frames = add_reveal_optional_sword_strength(settled.decision_stack, swords)
     next_owner = owner
     if units > 0:
         # The swords count at once with a unit in the Conflict [Main p. 12].
         frames = add_reveal_strength(frames, swords)
         next_owner = replace(owner, combat_strength=owner.combat_strength + swords)
     working = replace(
-        popped,
-        players=replace_player(popped.players, next_owner),
+        settled,
+        players=replace_player(settled.players, next_owner),
         decision_stack=frames,
     )
     events: list[GameEvent] = [

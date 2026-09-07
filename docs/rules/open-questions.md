@@ -280,7 +280,7 @@
 
 - 상태: `DECIDED` (project convention)
 - Kota Odax of Ix의 Secret Project는 stack 맨 아래 tile 하나를 Leader 위에 face-down으로 두고 "acquire할 수 있을 때마다" 1 spice 싸게 고를 수 있게 한다. (a) 그 tile이 "보유한 Tech tile"(Ixian Ambassador의 2장, Battlefield Research·Rapid Engineering의 3장 조건)에 드는지, (b) 세 stack의 맨 아래를 본 기억을 어떻게 다루는지는 카드에 없다 `[Kota Odax of Ix card]`.
-- 판정(2026-09-07): (a) 들지 않는다 — Leader 위의 face-down tile은 supply에 있지 않고 능력도 작동하지 않으며, acquire해 supply로 옮긴 뒤에야 센다. (b) 선택되지 않은 두 tile의 identity는 소유자의 기억이지만 관측에는 인코딩하지 않는다(관측·determinization은 stack의 맨 위 아래 순서를 비공개로 다룬다). 선택한 tile의 identity는 소유자 전용 관측(`private_secret_project`)이고 상대에게는 보유 여부만 보인다. Secret Project의 할인은 High Council·Tech Discount 아이콘 할인과 합산되며 하한은 0이다(`[Bloodlines p. 7]`의 두 할인 문장을 그대로 확장).
+- 판정(2026-09-07): (a) 들지 않는다 — Leader 위의 face-down tile은 supply에 있지 않고 능력도 작동하지 않으며, acquire해 supply로 옮긴 뒤에야 센다. (b) 선택되지 않은 두 tile의 identity는 소유자의 기억이지만 관측에는 인코딩하지 않는다(관측·determinization은 stack의 맨 위 아래 순서를 비공개로 다룬다). 선택한 tile의 identity는 소유자 전용 관측(`private_secret_project`)이고 상대에게는 보유 여부만 보인다. Secret Project의 할인은 High Council·Tech Discount 아이콘 할인과 합산되며 하한은 0이다(`[Bloodlines p. 7]`의 두 할인 문장을 그대로 확장) — 사용자 확인(2026-09-07): High Council 자리가 있으면 찜한 tile은 2 싸고, 카드의 Tech Discount 아이콘으로 사면 3 싸다.
 - 재개 조건: 공식 FAQ가 Secret Project tile의 취급을 정할 때.
 
 ## OQ-042 — Suspensor Suits의 "자기 turn"과 배치 불가
@@ -294,14 +294,14 @@
 
 - 상태: `DECIDED` (project convention)
 - `[Bloodlines pp. 5, 12]`는 "Persuasion을 6 이상 생성한 Reveal turn"이라고만 한다. 카드가 아닌 출처 — Charismatic Skill의 Persuasion 1, Navigation 카드 3(slot 4)의 영구 Persuasion 1, Self-Destroying Messages의 Persuasion 1, High Council 자리 2, Assembly Hall 1 — 를 포함하는지는 명시하지 않는다.
-- 판정(2026-09-07): 모두 포함한다. 그 Reveal turn에 생성된 Persuasion이면 출처를 가리지 않으며, Command 효과 자신의 Persuasion만 제외한다(기존 판정). 이전 구현은 Skill·Navigation 보너스를 Command 판정 뒤에 더했는데(슬라이스 4b·5d), 이 판정으로 `begin_reveal_turn`의 합계에 함께 넣었다.
+- 판정(2026-09-07, 사용자 확인): 모두 포함한다. 그 Reveal turn에 생성된 Persuasion이면 출처를 가리지 않으며, Command 효과 자신의 Persuasion만 제외한다(기존 판정). 이전 구현은 Skill·Navigation 보너스를 Command 판정 뒤에 더했는데(슬라이스 4b·5d), 이 판정으로 `begin_reveal_turn`의 합계에 함께 넣었다.
 - 재개 조건: 공식 FAQ가 Command (6+)의 합계 기준을 정할 때.
 
 ## OQ-044 — Forbidden Weapons·Panopticon·Plasteel Blades의 해결 세부
 
 - 상태: `DECIDED` (project convention)
 - (a) Forbidden Weapons의 "검 3 + Influence 1 잃기(가능하면)"에서 어느 진영을 잃는지, Alliance token이 넘어갈 상대가 여럿일 때의 처리; (b) Panopticon의 Reveal Turn Spy 배치 규칙과 배치 불가 시 처리; (c) Plasteel Blades의 "Commander를 recruit할 때"에 획득이 포함되는지와 추가 Skill 선택 시점; (d) Spy Drones의 "이번 turn Spy를 recall했으면"의 범위는 tile 면에 없다 `[Tech tile faces]`.
-- 판정(2026-09-07): (a) 소유자가 Influence 1 이상인 진영 중 하나를 고르고, Alliance 이전 대상이 여럿이면 Intrigue의 `LoseInfluence`와 같은 방식으로 함께 고른다; Influence가 전혀 없으면 손실 없이 검 3만 얻는다("if possible" `[Bloodlines p. 12]`). 검 3은 유닛이 Conflict에 있을 때만 즉시 세고, 없으면 나중에 유닛이 들어올 때 센다(Reveal의 optional sword 처리). trash 선택은 spice를 0으로 만들고 tile을 `tech_trash`로 보낸다. 선택은 Reveal 시작 시 `tech_choice` frame으로 반드시 해결한다. (b) 일반 Spy 배치 규칙(빈 post, supply가 비면 recall 먼저 `[Main pp. 11, 20]`)을 Reveal 시작 시 `spy_placement` frame으로 제시하고, 배치할 수 없으면 소멸한다; troop 1은 Reveal recruit로 합산돼 Combat 아이콘 배치 창의 한도에 든다. (c) 포함한다 — Sardaukar High Command가 "recruit(획득 포함)"라고 적은 것과 `[Bloodlines p. 4]`의 "acquire하고 즉시 recruit"에 따라 획득·지불 recruit·Sardaukar Standard 모두 trigger이며, 추가 Skill 선택은 그 recruit 효과가 끝난 뒤 Skill 선택 대기열(OQ-035와 같은 큐)로 열리고 거절할 수 있다(`decline_skill`); 고를 Skill이 없으면 열리지 않는다. (d) 이번 Agent 또는 Reveal turn에 자신의 Spy를 supply로 되돌린 모든 경로(Infiltrate·Gather Intelligence·카드·Signet·acquire 보너스)를 세며(좌석 카운터 `spies_recalled_turn`), Advanced Data Analysis로 box에 보낸 Spy는 recall이 아니다.
+- 판정(2026-09-07, 시점은 사용자 지적으로 재판정): Reveal 효과는 소유자가 원하는 순서로 해결하므로(`[Main p. 12]`) 두 tile의 Reveal 효과도 Reveal 시작 시 강제하지 않고 Reveal frame의 행동으로 두어 다른 획득·선택·Plot 사이 어느 시점에든 고르게 한다. (a) Forbidden Weapons: 소유자가 Influence 1 이상인 진영 중 하나를 고르고(`choose_tech_strength`), Alliance 이전 대상이 여럿이면 Intrigue의 `LoseInfluence`와 같은 방식으로 함께 고른다; Influence가 전혀 없으면 손실 없이 검 3만 얻는다("if possible" `[Bloodlines p. 12]`). 검 3은 유닛이 Conflict에 있을 때만 즉시 세고, 없으면 나중에 유닛이 들어올 때 센다(Reveal의 optional sword 처리). trash 선택(`choose_tech_trash`)은 그 시점의 spice를 0으로 만들고 tile을 `tech_trash`로 보내므로 spice를 먼저 써 버린 뒤 골라도 된다. 둘 중 하나를 고르기 전에는 Reveal을 끝낼 수 없다("You must choose"). (b) Panopticon: troop 1은 Reveal 시작 시 recruit로 합산돼 Combat 아이콘 배치 창의 한도에 들고, Spy는 소유자가 `place_tech_spy`를 고른 시점에 일반 Spy 배치 규칙(빈 post, supply가 비면 recall 먼저 `[Main pp. 11, 20]`)의 `spy_placement` frame으로 놓는다 — 다른 효과로 Spy를 먼저 회수·재배치한 뒤 놓을 수 있다. Spy를 놓을 수 있는 동안은 Reveal을 끝낼 수 없고, Spy가 전부 box로 갔으면 Reveal 종료 시 소멸한다(`tech_reveal_unavailable`). (c) 포함한다 — Sardaukar High Command가 "recruit(획득 포함)"라고 적은 것과 `[Bloodlines p. 4]`의 "acquire하고 즉시 recruit"에 따라 획득·지불 recruit·Sardaukar Standard 모두 trigger이며, 추가 Skill 선택은 그 recruit 효과가 끝난 뒤 Skill 선택 대기열(OQ-035와 같은 큐)로 열리고 거절할 수 있다(`decline_skill`); 고를 Skill이 없으면 열리지 않는다. (d) 이번 Agent 또는 Reveal turn에 자신의 Spy를 supply로 되돌린 모든 경로(Infiltrate·Gather Intelligence·카드·Signet·acquire 보너스)를 세며(좌석 카운터 `spies_recalled_turn`), Advanced Data Analysis로 box에 보낸 Spy는 recall이 아니다.
 - 재개 조건: 공식 FAQ가 해당 tile의 해결을 정할 때.
 
 ## 판정이 생겼을 때 기록할 정보

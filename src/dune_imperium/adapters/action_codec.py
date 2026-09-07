@@ -837,6 +837,8 @@ def _tech_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         for seat in range(config.players)
     )
     templates.append(ActionTemplate(action_id="choose_tech_trash"))
+    # Panopticon's Reveal-turn Spy, taken in the owner's order.
+    templates.append(ActionTemplate(action_id="place_tech_spy"))
     # Plasteel Blades' optional trash for an extra Skill.
     templates.append(ActionTemplate(action_id="decline_skill"))
     # Kota Odax of Ix: the Secret Project pick and Reverse Engineering.

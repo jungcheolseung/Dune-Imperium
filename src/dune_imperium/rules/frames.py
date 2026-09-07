@@ -55,10 +55,9 @@ class FrameKind(StrEnum):
     # choosing how to play the next Navigation card.
     NAVIGATION_SETUP = "navigation_setup"
     NAVIGATION_CHOICE = "navigation_choice"
-    # Tech Module: a card-granted Acquire Tech (with its discount), Forbidden
-    # Weapons' mandatory Reveal choice, and Kota Odax's Secret Project pick.
+    # Tech Module: a card-granted Acquire Tech (with its discount) and Kota
+    # Odax's Secret Project pick.
     TECH_ACQUISITION = "tech_acquisition"
-    TECH_CHOICE = "tech_choice"
     TECH_SECRET_PROJECT = "tech_secret_project"
 
 

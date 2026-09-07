@@ -903,8 +903,9 @@ def test_a_command_tile_pays_late_when_persuasion_reaches_six() -> None:
     assert again.state.players[0].resources.solari == 4 + 2
 
 
-def test_forbidden_weapons_demands_its_choice_every_reveal() -> None:
-    from dune_imperium.rules.tech import apply_tech_choice, legal_tech_choice_actions
+def test_forbidden_weapons_demands_its_choice_in_the_owners_order() -> None:
+    from dune_imperium.rules.reveal_turn import legal_finish_reveal_actions
+    from dune_imperium.rules.tech import apply_tech_choice, legal_tech_reveal_actions
 
     owner = _tech_owner(
         "forbidden_weapons",
@@ -916,8 +917,10 @@ def test_forbidden_weapons_demands_its_choice_every_reveal() -> None:
     )
     result = _reveal(_turn_state(owner, stacks=((), (), ())))
     state = result.state
-    assert state.decision_stack[-1].kind == "tech_choice"
-    actions = legal_tech_choice_actions(state, 0)
+    # The choice waits on the Reveal frame [Main p. 12] but blocks the finish.
+    assert state.decision_stack[-1].kind == "reveal"
+    assert legal_finish_reveal_actions(state, 0) == ()
+    actions = legal_tech_reveal_actions(state, 0)
     assert [a.action_id for a in actions] == [
         "choose_tech_strength",
         "choose_tech_strength",
@@ -931,22 +934,88 @@ def test_forbidden_weapons_demands_its_choice_every_reveal() -> None:
     swords = apply_tech_choice(state, actions[1]).state
     assert swords.players[0].combat_strength == strength_before + 3
     assert swords.players[0].influence.fremen == 1
-    assert swords.decision_stack[-1].kind == "reveal"
+    assert legal_tech_reveal_actions(swords, 0) == ()
+    assert legal_finish_reveal_actions(swords, 0) != ()
     trashed = apply_tech_choice(state, actions[2]).state
     assert trashed.players[0].resources.spice == 0
     assert trashed.players[0].tech_ids == ()
     assert trashed.tech_trash == ("forbidden_weapons",)
 
 
-def test_panopticon_recruits_a_troop_and_places_a_spy_in_the_reveal() -> None:
+def test_forbidden_weapons_trash_may_wait_until_the_spice_is_spent() -> None:
+    from dune_imperium.rules.acquisition import legal_reserve_acquisitions
+    from dune_imperium.rules.tech import apply_tech_choice, legal_tech_reveal_actions
+
+    owner = _tech_owner(
+        "forbidden_weapons",
+        hand=starting_deck_instance_ids(0)[:5],
+        resources=Resources(spice=3),
+    )
+    state = _reveal(
+        _turn_state(
+            owner,
+            stacks=((), (), ()),
+            reserve_stacks=(("prepare_the_way", 8), ("the_spice_must_flow", 10)),
+        )
+    ).state
+    # Reveal effects resolve in any order: buy with the spice first...
+    purchases = legal_reserve_acquisitions(state, 0)
+    assert purchases, "the revealed hand should afford a Reserve card"
+    bought = state
+    for action in purchases[:1]:
+        from dune_imperium.rules.acquisition import apply_reserve_acquisition
+
+        bought = apply_reserve_acquisition(state, action).state
+    assert bought.players[0].resources.spice <= 3
+    # ...then lose "all your spice" — whatever is left.
+    trash = next(
+        a
+        for a in legal_tech_reveal_actions(bought, 0)
+        if a.action_id == "choose_tech_trash"
+    )
+    after = apply_tech_choice(bought, trash).state
+    assert after.players[0].resources.spice == 0
+    assert after.tech_trash == ("forbidden_weapons",)
+
+
+def test_panopticon_places_its_spy_when_the_owner_chooses_during_the_reveal() -> None:
+    from dune_imperium.rules.reveal_turn import (
+        finish_reveal_turn,
+        legal_finish_reveal_actions,
+    )
+    from dune_imperium.rules.tech import apply_place_tech_spy, legal_tech_reveal_actions
+
     owner = _tech_owner("panopticon", hand=starting_deck_instance_ids(0)[:5])
     result = _reveal(_turn_state(owner, stacks=((), (), ())))
     state = result.state
     assert state.players[0].troops_garrison == 3 + 1
-    assert state.decision_stack[-1].kind == "spy_placement"
-    placed = apply_spy_placement(state, legal_spy_placement_actions(state, 0)[0]).state
+    assert state.decision_stack[-1].kind == "reveal"
+    (place,) = legal_tech_reveal_actions(state, 0)
+    assert place.action_id == "place_tech_spy"
+    # Mandatory while a Spy can reach a post.
+    assert legal_finish_reveal_actions(state, 0) == ()
+    opened = apply_place_tech_spy(state, place).state
+    assert opened.decision_stack[-1].kind == "spy_placement"
+    placed = apply_spy_placement(
+        opened, legal_spy_placement_actions(opened, 0)[0]
+    ).state
     assert placed.players[0].spies_supply == 2
     assert placed.decision_stack[-1].kind == "reveal"
+    assert legal_tech_reveal_actions(placed, 0) == ()
+    assert legal_finish_reveal_actions(placed, 0) != ()
+
+    # Without any Spy left (all boxed) the effect lapses at the finish.
+    boxed = _tech_owner(
+        "panopticon",
+        hand=starting_deck_instance_ids(0)[:5],
+        spies_supply=0,
+        spies_boxed=3,
+    )
+    lapsing = _reveal(_turn_state(boxed, stacks=((), (), ()))).state
+    assert legal_tech_reveal_actions(lapsing, 0) == ()
+    (finish,) = legal_finish_reveal_actions(lapsing, 0)
+    finished = finish_reveal_turn(lapsing, finish)
+    assert any(e.kind == "tech_reveal_unavailable" for e in finished.events)
 
 
 def test_choam_transports_draws_on_completion_and_scores_at_the_endgame() -> None:

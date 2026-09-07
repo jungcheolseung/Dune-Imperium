@@ -242,6 +242,7 @@ from dune_imperium.rules.spy_moves import (
 )
 from dune_imperium.rules.strength import refresh_pre_reveal_strength
 from dune_imperium.rules.tech import (
+    apply_place_tech_spy,
     apply_secret_project,
     apply_tech_acquisition,
     apply_tech_choice,
@@ -250,8 +251,8 @@ from dune_imperium.rules.tech import (
     draw_owed_tech_cards,
     legal_secret_project_actions,
     legal_tech_acquisition_actions,
-    legal_tech_choice_actions,
     legal_tech_flip_actions,
+    legal_tech_reveal_actions,
 )
 from dune_imperium.rules.unit_loss import apply_unit_loss, legal_unit_loss_actions
 
@@ -354,6 +355,7 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         legal_finish_reveal_actions,
         legal_intrigue_play_actions,
         legal_tech_flip_actions,
+        legal_tech_reveal_actions,
     ),
     FrameKind.REVEAL_CHOICE: (
         legal_defer_reveal_choice_actions,
@@ -403,7 +405,6 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     FrameKind.NAVIGATION_SETUP: (legal_navigation_setup_actions,),
     FrameKind.NAVIGATION_CHOICE: (legal_navigation_play_actions,),
     FrameKind.TECH_ACQUISITION: (legal_tech_acquisition_actions,),
-    FrameKind.TECH_CHOICE: (legal_tech_choice_actions,),
     FrameKind.TECH_SECRET_PROJECT: (legal_secret_project_actions,),
 }
 
@@ -480,6 +481,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "trash_leader_tech": apply_kota_signet_action,
     "choose_tech_strength": apply_tech_choice,
     "choose_tech_trash": apply_tech_choice,
+    "place_tech_spy": apply_place_tech_spy,
     "decline_skill": apply_skill_choice,
     "decline_sardaukar_commander": apply_sardaukar_commander_action,
     "recruit_sardaukar_commander": apply_commander_recruit,
