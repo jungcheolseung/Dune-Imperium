@@ -118,6 +118,29 @@ class OpponentAllianceInfluenceAtLeast:
             raise ValueError("Influence condition amount must be positive")
 
 
+@dataclass(frozen=True, slots=True)
+class WaterAtLeast:
+    """The player has at least ``amount`` water (Sacred Pools, Bloodlines)."""
+
+    amount: int
+
+    def __post_init__(self) -> None:
+        if self.amount < 1:
+            raise ValueError("water condition amount must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class CommandersInConflictAtLeast:
+    """The player has ``count`` or more Sardaukar Commanders in the Conflict
+    (Bloodlines)."""
+
+    count: int = 1
+
+    def __post_init__(self) -> None:
+        if self.count < 1:
+            raise ValueError("Commander condition count must be positive")
+
+
 type Condition = (
     InfluenceAtLeast
     | HasHighCouncil
@@ -127,6 +150,8 @@ type Condition = (
     | GainedSpiceThisTurn
     | SpiceMustFlowCardsAtLeast
     | OpponentAllianceInfluenceAtLeast
+    | WaterAtLeast
+    | CommandersInConflictAtLeast
 )
 
 
@@ -228,6 +253,31 @@ class FlipBattleCard:
             raise ValueError("the wild icon is always an alternative target")
 
 
+@dataclass(frozen=True, slots=True)
+class TrashDiscardPileCard:
+    """Trash one card from the player's discard pile costing ``minimum_cost``
+    or more (Tenuous Bond, Bloodlines). Starting cards have no cost and never
+    qualify."""
+
+    minimum_cost: int = 1
+
+    def __post_init__(self) -> None:
+        if self.minimum_cost < 0:
+            raise ValueError("trash cost floor must not be negative")
+
+
+@dataclass(frozen=True, slots=True)
+class FlipFaceUpConflictCard:
+    """Flip ``count`` of the player's face-up won Conflict cards face down,
+    whatever their icons (Grasp Arrakis, Bloodlines); one choice per card."""
+
+    count: int = 1
+
+    def __post_init__(self) -> None:
+        if self.count < 1:
+            raise ValueError("flip count must be positive")
+
+
 type Cost = (
     PayResources
     | LoseInfluence
@@ -235,6 +285,8 @@ type Cost = (
     | RecallSpy
     | RetreatTroops
     | FlipBattleCard
+    | TrashDiscardPileCard
+    | FlipFaceUpConflictCard
 )
 
 

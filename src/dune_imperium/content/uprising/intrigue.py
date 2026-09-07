@@ -12,6 +12,7 @@ from dune_imperium.content.schema import (
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireCardUpTo,
+    CommandersInConflictAtLeast,
     CompletedContractsAtLeast,
     DeployFromGarrison,
     DestroyShieldWall,
@@ -20,6 +21,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     DrawPersonalCards,
     EffectSection,
     FlipBattleCard,
+    FlipFaceUpConflictCard,
     GainCombatStrength,
     GainedSpiceThisTurn,
     GainInfluence,
@@ -44,8 +46,10 @@ from dune_imperium.content.uprising.effect_dsl import (
     SpiesPlacedAtLeast,
     SummonSandworm,
     TakeContract,
+    TrashDiscardPileCard,
     TrashPersonalCard,
     Trigger,
+    WaterAtLeast,
 )
 from dune_imperium.content.uprising.types import BattleIcon
 
@@ -679,10 +683,43 @@ INTRIGUE_CARDS: Final = (
         bloodlines_only=True,
         choam_only=True,
     ),
-    _entry(112, "desert-support", "Desert Support", bloodlines_only=True),
+    _entry(
+        112,
+        "desert-support",
+        "Desert Support",
+        bloodlines_only=True,
+        options=(
+            _combat(
+                EffectSection(
+                    costs=(PayResources(water=1),),
+                    rewards=(GainCombatStrength(5),),
+                )
+            ),
+        ),
+    ),
     _entry(113, "emperor-s-invitation", "Emperor's Invitation", bloodlines_only=True),
     _entry(114, "false-orders", "False Orders", bloodlines_only=True),
-    _entry(115, "grasp-arrakis", "Grasp Arrakis", bloodlines_only=True),
+    _entry(
+        115,
+        "grasp-arrakis",
+        "Grasp Arrakis",
+        bloodlines_only=True,
+        options=(
+            _combat(EffectSection(rewards=(GainCombatStrength(3),))),
+            _combat(
+                EffectSection(
+                    costs=(FlipFaceUpConflictCard(2),),
+                    rewards=(GainVictoryPoints(1),),
+                )
+            ),
+            _endgame(
+                EffectSection(
+                    costs=(FlipFaceUpConflictCard(2),),
+                    rewards=(GainVictoryPoints(1),),
+                )
+            ),
+        ),
+    ),
     _entry(116, "honor-guard", "Honor Guard", bloodlines_only=True),
     _entry(117, "insider-information", "Insider Information", bloodlines_only=True),
     _entry(
@@ -692,14 +729,157 @@ INTRIGUE_CARDS: Final = (
         bloodlines_only=True,
         tech_only=True,
     ),
-    _entry(119, "return-the-favor", "Return the Favor", bloodlines_only=True),
-    _entry(120, "ripples-in-the-sand", "Ripples in the Sand", bloodlines_only=True),
-    _entry(121, "sacred-pools", "Sacred Pools", bloodlines_only=True),
-    _entry(122, "seize-production", "Seize Production", bloodlines_only=True),
-    _entry(123, "sleeper-unit", "Sleeper Unit", bloodlines_only=True),
-    _entry(124, "tenuous-bond", "Tenuous Bond", bloodlines_only=True),
-    _entry(125, "the-strong-survive", "The Strong Survive", bloodlines_only=True),
-    _entry(126, "withdrawal-agreement", "Withdrawal Agreement", bloodlines_only=True),
+    _entry(
+        119,
+        "return-the-favor",
+        "Return the Favor",
+        bloodlines_only=True,
+        options=(
+            # "1 sword. For each Faction where you have 2 Influence (or
+            # more): +1 sword": one conditional line per Faction.
+            _combat(
+                EffectSection(rewards=(GainCombatStrength(1),)),
+                *(
+                    EffectSection(
+                        condition=InfluenceAtLeast(faction, 2),
+                        rewards=(GainCombatStrength(1),),
+                    )
+                    for faction in Faction
+                ),
+            ),
+        ),
+    ),
+    _entry(
+        120,
+        "ripples-in-the-sand",
+        "Ripples in the Sand",
+        bloodlines_only=True,
+        options=(
+            _combat(
+                EffectSection(rewards=(GainCombatStrength(3),)),
+                EffectSection(
+                    condition=SandwormsInConflictAtLeast(1),
+                    rewards=(DrawIntrigueCards(1),),
+                ),
+            ),
+        ),
+    ),
+    _entry(
+        121,
+        "sacred-pools",
+        "Sacred Pools",
+        bloodlines_only=True,
+        options=(
+            _plot(
+                EffectSection(
+                    costs=(DiscardFromHand(1),),
+                    rewards=(GainResources(water=1),),
+                )
+            ),
+            _endgame(
+                EffectSection(
+                    condition=WaterAtLeast(3),
+                    rewards=(GainVictoryPoints(1),),
+                )
+            ),
+        ),
+    ),
+    _entry(
+        122,
+        "seize-production",
+        "Seize Production",
+        bloodlines_only=True,
+        options=(
+            _plot(EffectSection(rewards=(GainResources(solari=2),))),
+            _plot(
+                EffectSection(
+                    condition=CommandersInConflictAtLeast(1),
+                    rewards=(GainResources(spice=2),),
+                )
+            ),
+        ),
+    ),
+    _entry(
+        123,
+        "sleeper-unit",
+        "Sleeper Unit",
+        bloodlines_only=True,
+        options=(
+            _plot(
+                EffectSection(
+                    costs=(PayResources(solari=1),),
+                    rewards=(PlaceSpy(),),
+                )
+            ),
+            _plot(
+                EffectSection(
+                    costs=(RecallSpy(1),),
+                    rewards=(RecruitTroops(2),),
+                )
+            ),
+        ),
+    ),
+    _entry(
+        124,
+        "tenuous-bond",
+        "Tenuous Bond",
+        bloodlines_only=True,
+        options=(
+            _plot(
+                EffectSection(
+                    costs=(LoseInfluence(1),),
+                    rewards=(GainInfluence(),),
+                )
+            ),
+            _combat(
+                EffectSection(
+                    costs=(LoseInfluence(1),),
+                    rewards=(GainInfluence(),),
+                )
+            ),
+            _plot(
+                EffectSection(
+                    costs=(TrashDiscardPileCard(1),),
+                    rewards=(GainCombatStrength(4),),
+                )
+            ),
+            _combat(
+                EffectSection(
+                    costs=(TrashDiscardPileCard(1),),
+                    rewards=(GainCombatStrength(4),),
+                )
+            ),
+        ),
+    ),
+    _entry(
+        125,
+        "the-strong-survive",
+        "The Strong Survive",
+        bloodlines_only=True,
+        options=(
+            _combat(EffectSection(rewards=(GainCombatStrength(3),))),
+            _combat(
+                EffectSection(
+                    costs=(RetreatTroops(1, 1),),
+                    rewards=(TrashPersonalCard(),),
+                )
+            ),
+        ),
+    ),
+    _entry(
+        126,
+        "withdrawal-agreement",
+        "Withdrawal Agreement",
+        bloodlines_only=True,
+        options=(
+            _combat(
+                EffectSection(
+                    costs=(RetreatTroops(3, 3),),
+                    rewards=(GainInfluence(),),
+                )
+            ),
+        ),
+    ),
 )
 
 

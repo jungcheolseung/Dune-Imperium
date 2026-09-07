@@ -22,6 +22,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     DiscardFromHand,
     EffectSection,
     FlipBattleCard,
+    FlipFaceUpConflictCard,
     GainInfluence,
     IntrigueTiming,
     LoseInfluence,
@@ -29,6 +30,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     RecallSpy,
     RetreatTroops,
     SetAsideImperiumRowCard,
+    TrashDiscardPileCard,
     TrashPersonalCard,
 )
 from dune_imperium.content.uprising.imperium import imperium_card_for_instance
@@ -61,11 +63,13 @@ from dune_imperium.rules.effect_interpreter import (
     choice_slots,
     condition_holds,
     cost_slots,
+    face_up_conflict_card_ids,
     flippable_battle_card_ids,
     option_is_playable,
     pay_cost,
     resource_cost,
     spy_placement_targets,
+    trashable_discard_pile_ids,
 )
 from dune_imperium.rules.frames import (
     FrameKind,
@@ -374,6 +378,27 @@ def legal_intrigue_choice_actions(
                 )
                 for conflict_id in flippable_battle_card_ids(owner, icon)
             )
+        case FlipFaceUpConflictCard():
+            # Grasp Arrakis: any face-up won Conflict card, one per slot.
+            actions.extend(
+                DomainAction(
+                    action_id="flip_battle_card",
+                    actor=player,
+                    arguments=(("card_id", conflict_id),),
+                )
+                for conflict_id in face_up_conflict_card_ids(owner)
+            )
+        case TrashDiscardPileCard(minimum_cost=minimum_cost):
+            # Tenuous Bond: a discard-pile card costing 1 or more, as a cost
+            # (mandatory once the option is played [FAQ p. 3]).
+            actions.extend(
+                DomainAction(
+                    action_id="trash_intrigue_card",
+                    actor=player,
+                    arguments=(("card_id", owned),),
+                )
+                for owned in trashable_discard_pile_ids(owner, minimum_cost)
+            )
         case SetAsideImperiumRowCard():
             actions.extend(
                 DomainAction(
@@ -529,7 +554,11 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
                     ),
                 ),
             )
-        case FlipBattleCard():
+        case TrashDiscardPileCard():
+            result = trash_personal_card(
+                state, player, str(arguments["card_id"]), source=step_source
+            )
+        case FlipBattleCard() | FlipFaceUpConflictCard():
             flipped_id = str(arguments["card_id"])
             owner = state.players[player]
             flipped_owner = replace(

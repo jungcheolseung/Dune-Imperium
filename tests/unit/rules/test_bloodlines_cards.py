@@ -421,3 +421,298 @@ def test_heuristic_choam_bloodlines_game_finishes() -> None:
         engine=UprisingRulesEngine(leader_ids=LEADERS),
     )
     assert report.rounds >= 1
+
+
+# --- Bloodlines Intrigue (slice 4c-1) ---------------------------------------
+
+
+def _intrigue(card_id: str) -> str:
+    return f"intrigue:{card_id}:0"
+
+
+def _play_intrigue(card_id: str, option: int = 0) -> DomainAction:
+    return DomainAction(
+        action_id="play_intrigue",
+        actor=0,
+        arguments=(("card_id", card_id), ("option", option)),
+    )
+
+
+def _combat_state(owner: PlayerState, *others: PlayerState) -> GameState:
+    from dune_imperium.content.uprising.conflicts import CONFLICTS
+    from dune_imperium.rules.combat import begin_combat_intrigue
+
+    seats = [owner, *others]
+    seats.extend(PlayerState(player_id=seat) for seat in range(len(seats), 4))
+    state = GameState(
+        config=BLOODLINES,
+        seed=1,
+        phase=GamePhase.COMBAT,
+        round_number=1,
+        first_player=0,
+        current_conflict_ids=(CONFLICTS[0].card.card_id,),
+        intrigue_deck=intrigue_deck_instance_ids(False)[:3],
+        players=tuple(replace(seat, has_revealed=True) for seat in seats),
+    )
+    return begin_combat_intrigue(state).state
+
+
+def _endgame_window(owner: PlayerState) -> GameState:
+    from dune_imperium.rules.endgame import begin_endgame_intrigue
+
+    state = GameState(
+        config=BLOODLINES,
+        seed=1,
+        phase=GamePhase.ENDGAME,
+        first_player=0,
+        reveal_order=(0, 1, 2, 3),
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+    )
+    return begin_endgame_intrigue(state).state
+
+
+def _fighter(troops: int, **extra: object) -> PlayerState:
+    values: dict[str, object] = {
+        "player_id": 0,
+        "troops_supply": 12 - troops,
+        "troops_garrison": 0,
+        "troops_conflict": troops,
+        "combat_strength": 2 * troops,
+    }
+    values.update(extra)
+    return PlayerState(**values)  # type: ignore[arg-type]
+
+
+def test_desert_support_pays_water_for_five_swords() -> None:
+    card = _intrigue("desert_support")
+    state = _combat_state(
+        _fighter(1, intrigue_cards=(card,), resources=Resources(water=1))
+    )
+    engine = UprisingRulesEngine()
+    done = engine.apply(state, _play_intrigue(card)).state
+    assert done.players[0].resources.water == 0
+    assert done.players[0].combat_strength == 2 + 5
+
+
+def test_ripples_in_the_sand_adds_intrigue_with_a_sandworm() -> None:
+    card = _intrigue("ripples_in_the_sand")
+    engine = UprisingRulesEngine()
+    plain = engine.apply(
+        _combat_state(_fighter(1, intrigue_cards=(card,))), _play_intrigue(card)
+    ).state
+    assert plain.players[0].combat_strength == 5
+    assert plain.players[0].intrigue_cards == ()
+
+    worm = _fighter(1, intrigue_cards=(card,), sandworms_conflict=1, combat_strength=5)
+    with_worm = engine.apply(_combat_state(worm), _play_intrigue(card)).state
+    assert with_worm.players[0].combat_strength == 8
+    assert len(with_worm.players[0].intrigue_cards) == 1
+
+
+def test_return_the_favor_counts_factions_at_two_influence() -> None:
+    card = _intrigue("return_the_favor")
+    owner = _fighter(
+        1,
+        intrigue_cards=(card,),
+        influence=Influence(emperor=2, fremen=3, bene_gesserit=1),
+    )
+    done = UprisingRulesEngine().apply(_combat_state(owner), _play_intrigue(card)).state
+    assert done.players[0].combat_strength == 2 + 1 + 2
+
+
+def test_sacred_pools_discards_for_water_or_scores_at_three_water() -> None:
+    card = _intrigue("sacred_pools")
+    filler = STARTERS[5]
+    state = _state(_owner(hand=(filler,), intrigue_cards=(card,)))
+    engine = UprisingRulesEngine()
+    opened = engine.apply(state, _play_intrigue(card, 0)).state
+    discard = next(
+        a
+        for a in engine.legal_actions(opened, 0)
+        if a.action_id == "choose_intrigue_discard"
+    )
+    done = engine.apply(opened, discard).state
+    assert done.players[0].resources.water == 2
+    assert filler in done.players[0].discard_pile
+
+    dry = _endgame_window(_owner(intrigue_cards=(card,), resources=Resources(water=2)))
+    assert [a.action_id for a in engine.legal_actions(dry, 0)] == [
+        "pass_endgame_intrigue"
+    ]
+    wet = _endgame_window(_owner(intrigue_cards=(card,), resources=Resources(water=3)))
+    scored = engine.apply(wet, _play_intrigue(card, 1)).state
+    assert scored.players[0].victory_points == 2
+
+
+def test_seize_production_spice_needs_a_commander_in_the_conflict() -> None:
+    card = _intrigue("seize_production")
+    engine = UprisingRulesEngine()
+    plain = _state(_owner(intrigue_cards=(card,)))
+    assert [
+        dict(a.arguments)["option"]
+        for a in engine.legal_actions(plain, 0)
+        if a.action_id == "play_intrigue"
+    ] == [0]
+    solari = engine.apply(plain, _play_intrigue(card, 0)).state
+    assert solari.players[0].resources.solari == 2
+
+    commanded = _state(_owner(intrigue_cards=(card,), commanders_conflict=1))
+    spice = engine.apply(commanded, _play_intrigue(card, 1)).state
+    assert spice.players[0].resources.spice == 2
+
+
+def test_sleeper_unit_pays_for_a_spy_or_recalls_one_for_troops() -> None:
+    card = _intrigue("sleeper_unit")
+    engine = UprisingRulesEngine()
+    paying = _state(_owner(intrigue_cards=(card,), resources=Resources(solari=1)))
+    opened = engine.apply(paying, _play_intrigue(card, 0)).state
+    assert opened.players[0].resources.solari == 0
+    assert {a.action_id for a in engine.legal_actions(opened, 0)} == {
+        "place_intrigue_spy",
+        "decline_intrigue_spy",
+    }
+
+    posted = _state(
+        _owner(
+            intrigue_cards=(card,),
+            spies_supply=2,
+            spy_post_ids=("emperor-sardaukar-dutiful-service",),
+        )
+    )
+    recalled = engine.apply(posted, _play_intrigue(card, 1)).state
+    recall = next(
+        a
+        for a in engine.legal_actions(recalled, 0)
+        if a.action_id == "recall_spy_for_intrigue"
+    )
+    done = engine.apply(recalled, recall).state
+    assert done.players[0].spies_supply == 3
+    assert done.players[0].troops_garrison == 5
+
+
+def test_tenuous_bond_trashes_a_costly_discard_for_four_swords() -> None:
+    card = _intrigue("tenuous_bond")
+    engine = UprisingRulesEngine()
+    cheap = _fighter(1, intrigue_cards=(card,), discard_pile=(STARTERS[0],))
+    # Starting cards have no printed cost: only the Influence swap is playable.
+    options = [
+        dict(a.arguments)["option"]
+        for a in engine.legal_actions(_combat_state(cheap), 0)
+        if a.action_id == "play_intrigue"
+    ]
+    assert options == []  # no Influence to lose either
+    costly = _fighter(
+        1,
+        intrigue_cards=(card,),
+        discard_pile=(STARTERS[0], _card("sandwalk")),
+        influence=Influence(fremen=1),
+    )
+    state = _combat_state(costly)
+    options = [
+        dict(a.arguments)["option"]
+        for a in engine.legal_actions(state, 0)
+        if a.action_id == "play_intrigue"
+    ]
+    assert options == [1, 3]
+    opened = engine.apply(state, _play_intrigue(card, 3)).state
+    trash_actions = engine.legal_actions(opened, 0)
+    assert [dict(a.arguments)["card_id"] for a in trash_actions] == [_card("sandwalk")]
+    done = engine.apply(opened, trash_actions[0]).state
+    assert done.players[0].trashed == (_card("sandwalk"),)
+    assert done.players[0].combat_strength == 2 + 4
+
+
+def test_the_strong_survive_retreats_one_troop_to_trash_a_card() -> None:
+    card = _intrigue("the_strong_survive")
+    engine = UprisingRulesEngine()
+    owner = _fighter(2, intrigue_cards=(card,), hand=(STARTERS[0],))
+    state = _combat_state(owner)
+    swords = engine.apply(state, _play_intrigue(card, 0)).state
+    assert swords.players[0].combat_strength == 4 + 3
+
+    opened = engine.apply(state, _play_intrigue(card, 1)).state
+    retreat = next(
+        a
+        for a in engine.legal_actions(opened, 0)
+        if a.action_id == "retreat_intrigue_troops"
+    )
+    retreated = engine.apply(opened, retreat).state
+    assert retreated.players[0].troops_conflict == 1
+    assert retreated.players[0].combat_strength == 2
+    trash = next(
+        a
+        for a in engine.legal_actions(retreated, 0)
+        if a.action_id == "trash_intrigue_card"
+    )
+    done = engine.apply(retreated, trash).state
+    assert done.players[0].trashed == (STARTERS[0],)
+
+
+def test_withdrawal_agreement_retreats_three_for_influence() -> None:
+    card = _intrigue("withdrawal_agreement")
+    engine = UprisingRulesEngine()
+    from dune_imperium.rules.intrigue import (
+        apply_intrigue_choice,
+        legal_intrigue_choice_actions,
+    )
+
+    state = _combat_state(_fighter(3, intrigue_cards=(card,)))
+    opened = engine.apply(state, _play_intrigue(card)).state
+    retreat = next(
+        a
+        for a in engine.legal_actions(opened, 0)
+        if a.action_id == "retreat_intrigue_troops"
+    )
+    assert dict(retreat.arguments)["count"] == 3
+    # Resolve the slots without the dispatcher: the last unit leaving the
+    # Conflict would otherwise run the round to its end.
+    retreated = apply_intrigue_choice(opened, retreat).state
+    choice = next(
+        a
+        for a in legal_intrigue_choice_actions(retreated, 0)
+        if a.action_id == "choose_intrigue_faction"
+        and dict(a.arguments)["faction"] == "emperor"
+    )
+    done = apply_intrigue_choice(retreated, choice).state
+    assert done.players[0].influence.emperor == 1
+    assert done.players[0].troops_garrison == 3
+    assert done.players[0].combat_strength == 0
+
+
+def test_grasp_arrakis_flips_two_conflict_cards_for_a_point() -> None:
+    card = _intrigue("grasp_arrakis")
+    engine = UprisingRulesEngine()
+    owner = _fighter(
+        1,
+        intrigue_cards=(card,),
+        won_conflict_ids=("skirmish_ornithopter", "storms_in_the_south"),
+    )
+    state = _combat_state(owner)
+    options = [
+        dict(a.arguments)["option"]
+        for a in engine.legal_actions(state, 0)
+        if a.action_id == "play_intrigue"
+    ]
+    assert options == [0, 1]
+    opened = engine.apply(state, _play_intrigue(card, 1)).state
+    first = engine.legal_actions(opened, 0)
+    assert {dict(a.arguments)["card_id"] for a in first} == {
+        "skirmish_ornithopter",
+        "storms_in_the_south",
+    }
+    flipped_one = engine.apply(opened, first[0]).state
+    second = engine.legal_actions(flipped_one, 0)
+    assert len(second) == 1
+    done = engine.apply(flipped_one, second[0]).state
+    assert done.players[0].victory_points == 2
+    assert set(done.players[0].face_down_battle_card_ids) == {
+        "skirmish_ornithopter",
+        "storms_in_the_south",
+    }
+    # With one card left face up the Endgame half is not offered.
+    single = _endgame_window(
+        _owner(intrigue_cards=(card,), won_conflict_ids=("skirmish_ornithopter",))
+    )
+    assert [a.action_id for a in engine.legal_actions(single, 0)] == [
+        "pass_endgame_intrigue"
+    ]

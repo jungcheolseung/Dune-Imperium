@@ -13,6 +13,7 @@ from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireCardUpTo,
+    CommandersInConflictAtLeast,
     CompletedContractsAtLeast,
     Condition,
     DeployFromGarrison,
@@ -22,6 +23,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     DrawPersonalCards,
     EffectSection,
     FlipBattleCard,
+    FlipFaceUpConflictCard,
     GainCombatStrength,
     GainedSpiceThisTurn,
     GainInfluence,
@@ -44,7 +46,9 @@ from dune_imperium.content.uprising.effect_dsl import (
     SpiesPlacedAtLeast,
     SummonSandworm,
     TakeContract,
+    TrashDiscardPileCard,
     TrashPersonalCard,
+    WaterAtLeast,
 )
 from dune_imperium.content.uprising.types import BattleIcon
 from dune_imperium.core.engine import RuleResult
@@ -82,6 +86,8 @@ type ChoiceSlot = (
     | AcquireCardUpTo
     | FlipBattleCard
     | SetAsideImperiumRowCard
+    | TrashDiscardPileCard
+    | FlipFaceUpConflictCard
 )
 
 
@@ -103,11 +109,41 @@ def flippable_battle_card_ids(
     )
 
 
+def face_up_conflict_card_ids(player: PlayerState) -> tuple[str, ...]:
+    """Return the player's face-up won Conflict cards (any icon)."""
+
+    face_down = set(player.face_down_battle_card_ids)
+    return tuple(
+        card_id for card_id in player.won_conflict_ids if card_id not in face_down
+    )
+
+
+def trashable_discard_pile_ids(
+    player: PlayerState, minimum_cost: int
+) -> tuple[str, ...]:
+    """Return discard-pile cards printed with a cost of ``minimum_cost`` or more."""
+
+    from dune_imperium.content.uprising.personal_cards import (
+        personal_card_for_instance,
+    )
+
+    candidates: list[str] = []
+    for card_id in player.discard_pile:
+        cost = getattr(personal_card_for_instance(card_id), "acquisition_cost", None)
+        if isinstance(cost, int) and cost >= minimum_cost:
+            candidates.append(card_id)
+    return tuple(candidates)
+
+
 def condition_holds(state: GameState, player: int, condition: Condition) -> bool:
     """Evaluate one DSL condition against the public game state."""
 
     owner = state.players[player]
     match condition:
+        case WaterAtLeast(amount=amount):
+            return owner.resources.water >= amount
+        case CommandersInConflictAtLeast(count=count):
+            return owner.commanders_conflict >= count
         case InfluenceAtLeast(faction=faction, amount=amount):
             return influence_amount(owner.influence, faction) >= amount
         case HasHighCouncil():
@@ -228,8 +264,12 @@ def cost_slots(sections: tuple[EffectSection, ...]) -> tuple[ChoiceSlot, ...]:
         for cost in section.costs:
             if isinstance(cost, LoseInfluence | DiscardFromHand | RecallSpy):
                 slots.extend([cost] * cost.count)
-            elif isinstance(cost, RetreatTroops | FlipBattleCard):
+            elif isinstance(
+                cost, RetreatTroops | FlipBattleCard | TrashDiscardPileCard
+            ):
                 slots.append(cost)
+            elif isinstance(cost, FlipFaceUpConflictCard):
+                slots.extend([cost] * cost.count)
     return tuple(slots)
 
 
@@ -287,6 +327,14 @@ def _choice_costs_feasible(
                     retreats_needed += minimum
                 case FlipBattleCard(icon=icon) if not flippable_battle_card_ids(
                     player, icon
+                ):
+                    return False
+                case FlipFaceUpConflictCard(count=count) if (
+                    len(face_up_conflict_card_ids(player)) < count
+                ):
+                    return False
+                case TrashDiscardPileCard(minimum_cost=minimum_cost) if (
+                    not trashable_discard_pile_ids(player, minimum_cost)
                 ):
                     return False
                 case _:

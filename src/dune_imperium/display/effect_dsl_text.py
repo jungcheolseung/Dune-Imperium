@@ -12,6 +12,7 @@ from typing import assert_never
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireCardUpTo,
+    CommandersInConflictAtLeast,
     CompletedContractsAtLeast,
     Condition,
     Cost,
@@ -22,6 +23,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     DrawPersonalCards,
     EffectSection,
     FlipBattleCard,
+    FlipFaceUpConflictCard,
     GainCombatStrength,
     GainedSpiceThisTurn,
     GainInfluence,
@@ -47,8 +49,10 @@ from dune_imperium.content.uprising.effect_dsl import (
     SpiesPlacedAtLeast,
     SummonSandworm,
     TakeContract,
+    TrashDiscardPileCard,
     TrashPersonalCard,
     Trigger,
+    WaterAtLeast,
 )
 from dune_imperium.content.uprising.intrigue import IntrigueCardEntry
 from dune_imperium.content.uprising.types import BattleIcon
@@ -139,6 +143,10 @@ def condition_text(condition: Condition) -> str:
                 f"you have {amount} or more Influence on a Faction track whose "
                 "Alliance token an opponent holds"
             )
+        case WaterAtLeast(amount=amount):
+            return f"you have {amount} or more water"
+        case CommandersInConflictAtLeast(count=count):
+            return f"you have {count} or more Sardaukar Commanders in the Conflict"
         case _:
             assert_never(condition)
 
@@ -171,6 +179,14 @@ def cost_text(cost: Cost) -> str:
         case FlipBattleCard(icon=icon):
             icon_name = _BATTLE_ICON_NAMES[icon]
             return f"Flip a won Conflict card ({icon_name} icon) face down"
+        case FlipFaceUpConflictCard(count=1):
+            return "Flip a face-up won Conflict card face down"
+        case FlipFaceUpConflictCard(count=count):
+            return f"Flip {count} face-up won Conflict cards face down"
+        case TrashDiscardPileCard(minimum_cost=minimum_cost):
+            return (
+                f"Trash a card from your discard pile that costs {minimum_cost} or more"
+            )
         case _:
             assert_never(cost)
 
