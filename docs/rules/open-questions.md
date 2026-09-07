@@ -200,8 +200,8 @@
 - 상태: `DECIDED` (project convention)
 - 룰북은 Commander를 acquire할 때마다 Skill 하나를 얻되 "이미 supply에 있는 Skill의 복사본은 고를 수 없다"고 한다 `[Bloodlines p. 4]`. Skill은 7종 2장씩이므로, 이미 여러 Skill을 가진 플레이어가 face-up 4장이 모두 자신이 가진 종류인 상황을 만날 수 있다. 그때 Commander 획득 자체가 막히는지, Skill 없이 획득하는지는 어느 문서도 말하지 않는다.
 - 필요한 답: 획득 가능 여부와 Skill 미지급 시 보충 여부에 대한 공식 판정.
-- 판정(2026-09-07, project convention — 공식 규칙이 아니다): 문장의 제한은 Skill **선택**에 걸린 것이고 Commander 획득의 전제 조건이 아니므로, 고를 수 있는 Skill이 없어도 2 Solari로 Commander를 획득할 수 있으며 Skill은 얻지 않고 face-up 보충도 없다(`acquire_sardaukar_commander_without_skill`; 이벤트의 `skill_id`가 빈 문자열). 고를 수 있는 Skill이 하나라도 있으면 반드시 하나를 골라야 한다(룰북의 "you gain a Skill"이 의무이므로 Skill 없는 획득은 제시하지 않는다).
-- 테스트: `tests/unit/rules/test_sardaukar.py`의 `test_without_a_choosable_skill_the_commander_is_bought_alone`.
+- 판정(2026-09-07, 사용자 판정, project convention — 공식 규칙이 아니다): Skill 획득은 Commander 획득의 일부("Whenever you acquire a Sardaukar Commander, you gain a Sardaukar Commander Skill")이므로, 고를 수 있는 face-up Skill이 하나도 없으면 그 space의 Commander를 획득할 수 없다(엔진은 거절만 제시). 고를 수 있는 Skill이 있으면 반드시 하나를 골라야 한다. 기각한 대안(기록용): Skill 없이 획득하는 방식 — 같은 날 먼저 구현했다가 사용자 판정으로 교체했다.
+- 테스트: `tests/unit/rules/test_sardaukar.py`의 `test_without_a_choosable_skill_the_commander_cannot_be_bought`.
 - 재개 조건: 새 공식 FAQ·룰북이 이 경우를 직접 정할 때.
 
 ## OQ-032 — Skill의 Combat strength 조건을 판정하는 시점
