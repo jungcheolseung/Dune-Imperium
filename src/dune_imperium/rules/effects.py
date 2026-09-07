@@ -243,7 +243,7 @@ def advance_after_effect(
         frame = state.decision_stack[-1]
         next_frame = replace(frame, context=tuple(sorted(context.items())))
     else:
-        next_player = _next_unrevealed_player(state, owner)
+        next_player = next_unrevealed_player(state, owner)
         next_players = reset_turn_counters(next_players, next_player)
         next_frame = DecisionFrame(
             kind=FrameKind.TURN,
@@ -333,7 +333,9 @@ def eligible_agent_contract_ids(
     return tuple(eligible)
 
 
-def _next_unrevealed_player(state: GameState, owner: int) -> int:
+def next_unrevealed_player(state: GameState, owner: int) -> int:
+    """Return the next clockwise seat that has not taken its Reveal turn."""
+
     for offset in range(1, state.config.players + 1):
         candidate = (owner + offset) % state.config.players
         if not state.players[candidate].has_revealed:

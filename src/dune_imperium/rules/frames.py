@@ -39,6 +39,8 @@ class FrameKind(StrEnum):
     INTRIGUE_TRIGGER_SPY = "intrigue_trigger_spy"
     LEADER_DRAFT = "leader_draft"
     SECRETS_STEAL = "secrets_steal"
+    # Sardaukar Standard's Skill choice for the Commander it acquires.
+    SKILL_CHOICE = "skill_choice"
 
 
 def top_frame(state: GameState) -> DecisionFrame | None:

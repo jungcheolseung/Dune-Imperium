@@ -247,6 +247,70 @@ def _frame_persuasion(frames: tuple[DecisionFrame, ...]) -> int | None:
     return None
 
 
+def legal_reveal_persuasion_or_contract_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Delivery Logistics: "1 Persuasion OR a contract"."""
+
+    if not 0 <= player < state.config.players or not state.decision_stack:
+        return ()
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    if (
+        context.get("reveal_choice_effect")
+        != PersonalCardRevealChoiceEffect.PERSUASION_OR_CONTRACT.value
+    ):
+        return ()
+    return (
+        DomainAction(action_id="gain_reveal_persuasion", actor=player),
+        DomainAction(action_id="take_reveal_contract", actor=player),
+    )
+
+
+def apply_reveal_persuasion_or_contract(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Add one Persuasion to the Reveal, or open the Contract market."""
+
+    if action not in legal_reveal_persuasion_or_contract_actions(state, action.actor):
+        raise ValueError("action is not a legal Persuasion-or-Contract choice")
+    context = dict(state.decision_stack[-1].context)
+    card_id = context.get("reveal_card_id")
+    if not isinstance(card_id, str):
+        raise RuntimeError("Reveal choice frame has invalid card ID")
+    source = (
+        f"round:{state.round_number}:player:{action.actor}:reveal_card:{card_id}"
+    )
+    remaining = state.decision_stack[:-1]
+    if action.action_id == "gain_reveal_persuasion":
+        return RuleResult(
+            state=replace(state, decision_stack=add_reveal_persuasion(remaining, 1)),
+            events=(
+                GameEvent(
+                    event_id=f"{source}:persuasion",
+                    kind="reveal_persuasion_gained",
+                    payload=(
+                        ("amount", 1),
+                        ("card_id", card_id),
+                        ("player", action.actor),
+                    ),
+                ),
+            ),
+        )
+    from dune_imperium.rules.contracts import begin_contract_gain
+
+    return begin_contract_gain(
+        replace(state, decision_stack=remaining),
+        action.actor,
+        1,
+        source=f"{source}:contract",
+    )
+
+
 def legal_reveal_influence_gain_actions(
     state: GameState,
     player: int,
@@ -544,6 +608,7 @@ def legal_reveal_card_trash_actions(
         PersonalCardRevealChoiceEffect.MAY_TRASH_OTHER_EMPEROR_FOR_THREE_STRENGTH.value,
         PersonalCardRevealChoiceEffect.COMMAND_MAY_TRASH_CARD.value,
         PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_FOR_COMBAT_ICON.value,
+        PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_FOR_FOUR_INFLUENCE_IF_FOUR_CONTRACTS.value,
     ):
         return ()
     source_card_id = context.get("reveal_card_id")
@@ -554,12 +619,13 @@ def legal_reveal_card_trash_actions(
         # Shrouded Counsel's "Command: trash a card": the black trash icon
         # targets hand, discard pile or in play and is optional [Main p. 20].
         candidates: tuple[str, ...] = (*owner.hand, *owner.discard_pile, *owner.in_play)
-    elif (
-        effect_value
-        == PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_FOR_COMBAT_ICON.value
+    elif effect_value in (
+        PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_FOR_COMBAT_ICON.value,
+        PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_FOR_FOUR_INFLUENCE_IF_FOUR_CONTRACTS.value,
     ):
-        # Disruption Tactics: "Trash this card -> Combat icon" (an arrow, so
-        # optional); the card is in play while it is revealed.
+        # Disruption Tactics: "Trash this card -> Combat icon"; CHOAM
+        # Demands: "trash this card -> Influence with each Faction" (arrows,
+        # so optional); the card is in play while it is revealed.
         candidates = (source_card_id,) if source_card_id in owner.in_play else ()
     else:
         candidates = tuple(
@@ -964,6 +1030,28 @@ def apply_reveal_card_trash(
         )
         return RuleResult(
             state=grant_combat_icon(popped, action.actor), events=trashed.events
+        )
+    if context.get("reveal_choice_effect") == (
+        PersonalCardRevealChoiceEffect
+        .MAY_TRASH_SELF_FOR_FOUR_INFLUENCE_IF_FOUR_CONTRACTS.value
+    ):
+        # CHOAM Demands: one Influence with each of the four Factions.
+        working = replace(
+            trashed.state, decision_stack=trashed.state.decision_stack[:-1]
+        )
+        influence_events: list[GameEvent] = []
+        for faction in Faction:
+            gained = gain_faction_influence(
+                working,
+                action.actor,
+                faction,
+                1,
+                event_prefix=f"{source}:influence:{faction.value}",
+            )
+            working = gained.state
+            influence_events.extend(gained.events)
+        return RuleResult(
+            state=working, events=(*trashed.events, *influence_events)
         )
     owner = trashed.state.players[action.actor]
     counted_strength = 3 if owner.units_in_conflict else 0
@@ -1849,7 +1937,15 @@ def reveal_choice_prompt(effect: PersonalCardRevealChoiceEffect) -> str:
     """Return the REVEAL_CHOICE frame prompt text for one choice effect."""
 
     return (
-        "Recall a Spy for three swords or decline"
+        "Trash this card for one Influence with each Faction, or decline"
+        if effect
+        is (
+            PersonalCardRevealChoiceEffect
+            .MAY_TRASH_SELF_FOR_FOUR_INFLUENCE_IF_FOUR_CONTRACTS
+        )
+        else "Choose one Persuasion or a Contract"
+        if effect is PersonalCardRevealChoiceEffect.PERSUASION_OR_CONTRACT
+        else "Recall a Spy for three swords or decline"
         if effect is PersonalCardRevealChoiceEffect.MAY_RECALL_SPY_FOR_THREE_STRENGTH
         else "Command: trash this card to acquire an Imperium Row card, or decline"
         if effect
@@ -1957,6 +2053,19 @@ def _reveal_choice_effect_is_available(
             and command_open
             and bool(state.imperium_row)
             and card_id in cards_in_play
+        )
+        or (
+            effect
+            is (
+                PersonalCardRevealChoiceEffect
+                .MAY_TRASH_SELF_FOR_FOUR_INFLUENCE_IF_FOUR_CONTRACTS
+            )
+            and len(owner.completed_contract_ids) >= 4
+            and card_id in cards_in_play
+        )
+        or (
+            effect is PersonalCardRevealChoiceEffect.PERSUASION_OR_CONTRACT
+            and state.config.choam_module
         )
         or (
             effect

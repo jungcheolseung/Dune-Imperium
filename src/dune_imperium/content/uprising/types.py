@@ -157,6 +157,13 @@ class PersonalCardAgentEffect(StrEnum):
     MAY_DISCARD_FOR_DEEP_COVER_SPY = "may_discard_for_deep_cover_spy"
     # Engineered Miracle: "[discard] -> water".
     MAY_DISCARD_FOR_WATER = "may_discard_for_water"
+    # CHOAM Demands: "Complete one of your contracts."
+    COMPLETE_ONE_CONTRACT = "complete_one_contract"
+    # Urgent Shigawire: "The next Bene Gesserit card you play this round has
+    # all Agent icons and, added to its Agent box: draw a card."
+    BOOST_NEXT_BENE_GESSERIT_CARD_THIS_ROUND = (
+        "boost_next_bene_gesserit_card_this_round"
+    )
     # Southern Faith: "draw a card OR, if another Bene Gesserit card is in
     # play, Bene Gesserit Influence".
     DRAW_ONE_OR_BENE_GESSERIT_INFLUENCE_IF_BOND = (
@@ -175,6 +182,17 @@ class PersonalCardTrashEffect(StrEnum):
     DRAW_INTRIGUE_CARD = "draw_intrigue_card"
     # Eliminate Allies (Bloodlines): "When this card is trashed: 2 troops".
     RECRUIT_TWO_TROOPS = "recruit_two_troops"
+    # Sardaukar Standard (Bloodlines): "When this card is trashed: acquire
+    # and recruit the Sardaukar Commander in the bank".
+    ACQUIRE_BANK_COMMANDER = "acquire_bank_commander"
+
+
+class PersonalCardTurnStartEffect(StrEnum):
+    """Printed alternatives a card offers at the start of its owner's turn."""
+
+    # Litany Against Fear (Bloodlines): "At the start of your turn: put this
+    # card into play -> draw a card and pass your turn."
+    PLAY_TO_DRAW_AND_PASS = "play_to_draw_and_pass"
 
 
 class PersonalCardDiscardEffect(StrEnum):
@@ -245,6 +263,13 @@ class PersonalCardRevealChoiceEffect(StrEnum):
     COMMAND_MAY_TRASH_SELF_TO_ACQUIRE_ROW_CARD = (
         "command_may_trash_self_to_acquire_row_card"
     )
+    # CHOAM Demands: "If you have completed four or more contracts: trash
+    # this card -> one Influence with each Faction".
+    MAY_TRASH_SELF_FOR_FOUR_INFLUENCE_IF_FOUR_CONTRACTS = (
+        "may_trash_self_for_four_influence_if_four_contracts"
+    )
+    # Delivery Logistics: "1 Persuasion OR a contract".
+    PERSUASION_OR_CONTRACT = "persuasion_or_contract"
 
 
 # Choice effects added by Bloodlines: their action templates join only the
@@ -258,6 +283,8 @@ BLOODLINES_REVEAL_CHOICE_EFFECTS: frozenset[PersonalCardRevealChoiceEffect] = fr
         PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_FOR_COMBAT_ICON,
         PersonalCardRevealChoiceEffect.MAY_RECALL_SPY_FOR_THREE_STRENGTH,
         PersonalCardRevealChoiceEffect.COMMAND_MAY_TRASH_SELF_TO_ACQUIRE_ROW_CARD,
+        PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_FOR_FOUR_INFLUENCE_IF_FOUR_CONTRACTS,
+        PersonalCardRevealChoiceEffect.PERSUASION_OR_CONTRACT,
     }
 )
 

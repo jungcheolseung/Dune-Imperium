@@ -20,6 +20,7 @@ from dune_imperium.content.uprising.types import (
     PersonalCardRevealChoiceEffect,
     PersonalCardRevealEffect,
     PersonalCardTrashEffect,
+    PersonalCardTurnStartEffect,
 )
 
 BASE_SOURCES: Final = (SourceRef(SourceDocument.MAIN_RULEBOOK, (3, 4)),)
@@ -53,6 +54,11 @@ class ImperiumCardEntry(DeckCardEntry):
     reveal_effects: tuple[PersonalCardRevealEffect, ...] = ()
     reveal_choice_effects: tuple[PersonalCardRevealChoiceEffect, ...] = ()
     play_data_complete: bool = False
+    # Delivery Logistics: its Agent icons are those of the owner's
+    # incomplete Contracts, judged when the card is played.
+    agent_icons_from_contracts: bool = False
+    # Litany Against Fear: the card's turn-start alternative.
+    turn_start_effect: PersonalCardTurnStartEffect | None = None
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -124,6 +130,8 @@ def _entry(
     reveal_effects: tuple[PersonalCardRevealEffect, ...] = (),
     reveal_choice_effects: tuple[PersonalCardRevealChoiceEffect, ...] = (),
     play_data_complete: bool = False,
+    agent_icons_from_contracts: bool = False,
+    turn_start_effect: PersonalCardTurnStartEffect | None = None,
 ) -> ImperiumCardEntry:
     return ImperiumCardEntry(
         card=CardDefinition(
@@ -167,6 +175,8 @@ def _entry(
         reveal_effects=reveal_effects,
         reveal_choice_effects=reveal_choice_effects,
         play_data_complete=play_data_complete,
+        agent_icons_from_contracts=agent_icons_from_contracts,
+        turn_start_effect=turn_start_effect,
     )
 
 
@@ -1072,7 +1082,19 @@ IMPERIUM_CARDS: Final = (
         play_data_complete=True,
     ),
     _entry(
-        90, "choam-demands", "CHOAM Demands", 6, bloodlines_only=True, choam_only=True
+        90,
+        "choam-demands",
+        "CHOAM Demands",
+        6,
+        bloodlines_only=True,
+        choam_only=True,
+        factions=(Faction.SPACING_GUILD,),
+        agent_icons=(AgentIcon.LANDSRAAD, AgentIcon.CITY, AgentIcon.SPICE_TRADE),
+        agent_effect=PersonalCardAgentEffect.COMPLETE_ONE_CONTRACT,
+        reveal_choice_effects=(
+            PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_FOR_FOUR_INFLUENCE_IF_FOUR_CONTRACTS,
+        ),
+        play_data_complete=True,
     ),
     _entry(
         91,
@@ -1111,6 +1133,10 @@ IMPERIUM_CARDS: Final = (
         copies=2,
         bloodlines_only=True,
         choam_only=True,
+        factions=(Faction.SPACING_GUILD,),
+        agent_icons_from_contracts=True,
+        reveal_choice_effects=(PersonalCardRevealChoiceEffect.PERSUASION_OR_CONTRACT,),
+        play_data_complete=True,
     ),
     _entry(
         95,
@@ -1255,7 +1281,17 @@ IMPERIUM_CARDS: Final = (
         bloodlines_only=True,
         tech_only=True,
     ),
-    _entry(107, "litany-against-fear", "Litany Against Fear", 3, bloodlines_only=True),
+    _entry(
+        107,
+        "litany-against-fear",
+        "Litany Against Fear",
+        3,
+        bloodlines_only=True,
+        factions=(Faction.BENE_GESSERIT,),
+        turn_start_effect=PersonalCardTurnStartEffect.PLAY_TO_DRAW_AND_PASS,
+        reveal_persuasion=2,
+        play_data_complete=True,
+    ),
     _entry(
         108,
         "mercantile-affairs",
@@ -1346,7 +1382,19 @@ IMPERIUM_CARDS: Final = (
         ),
         play_data_complete=True,
     ),
-    _entry(83, "sardaukar-standard", "Sardaukar Standard", 4, bloodlines_only=True),
+    _entry(
+        83,
+        "sardaukar-standard",
+        "Sardaukar Standard",
+        4,
+        bloodlines_only=True,
+        factions=(Faction.EMPEROR,),
+        agent_icons=(AgentIcon.EMPEROR, AgentIcon.CITY),
+        trash_effect=PersonalCardTrashEffect.ACQUIRE_BANK_COMMANDER,
+        reveal_persuasion=2,
+        reveal_effects=(PersonalCardRevealEffect(recruit_troops=1),),
+        play_data_complete=True,
+    ),
     _entry(
         86,
         "shrouded-counsel",
@@ -1377,7 +1425,17 @@ IMPERIUM_CARDS: Final = (
         play_data_complete=True,
     ),
     _entry(
-        85, "urgent-shigawire", "Urgent Shigawire", 2, copies=2, bloodlines_only=True
+        85,
+        "urgent-shigawire",
+        "Urgent Shigawire",
+        2,
+        copies=2,
+        bloodlines_only=True,
+        factions=(Faction.BENE_GESSERIT,),
+        agent_icons=(AgentIcon.BENE_GESSERIT, AgentIcon.CITY),
+        agent_effect=(PersonalCardAgentEffect.BOOST_NEXT_BENE_GESSERIT_CARD_THIS_ROUND),
+        reveal_persuasion=1,
+        play_data_complete=True,
     ),
 )
 

@@ -111,6 +111,9 @@ class PlayerState:
     # Tactics played from the turn frame): the placement deploys as if to a
     # Combat space [Bloodlines pp. 5, 12].
     combat_icon_turn: bool = False
+    # Urgent Shigawire (Bloodlines): the next Bene Gesserit card played this
+    # round has every Agent icon and draws a card; cleared at Round Start.
+    bene_gesserit_boost_pending: bool = False
     # The Skill strength currently folded into ``combat_strength`` so the
     # running total can be re-derived when a Skill condition changes.
     skill_strength_applied: int = 0

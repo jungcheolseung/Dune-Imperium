@@ -2,12 +2,18 @@
 
 from dataclasses import replace
 
+from dune_imperium.content.bloodlines.sardaukar import (
+    skill_for_instance,
+)
 from dune_imperium.content.uprising.imperium import imperium_card_for_instance
 from dune_imperium.content.uprising.reserve import RESERVE_STACKS_BY_ID
 from dune_imperium.content.uprising.types import PersonalCardTrashEffect
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
+from dune_imperium.core.player import (
+    PlayerState,
+)
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.effects import recruit_shortfall_events, recruit_troops
 from dune_imperium.rules.frames import FrameKind
@@ -79,6 +85,7 @@ def trash_personal_card(
         )
     ]
     pending_intrigue_draws = state.pending_intrigue_draws
+    pending_skill_choices = state.pending_skill_choices
     decision_stack = state.decision_stack
     if _trash_effect(card_id) is PersonalCardTrashEffect.RECRUIT_TWO_TROOPS:
         # Eliminate Allies: "When this card is trashed: 2 troops". Troops
@@ -100,6 +107,28 @@ def trash_personal_card(
             recruit_shortfall_events(f"{source}:trash:{card_id}", player, 2, recruited)
         )
         decision_stack = _with_recruited_troops(decision_stack, player, recruited)
+    if _trash_effect(card_id) is PersonalCardTrashEffect.ACQUIRE_BANK_COMMANDER:
+        # Sardaukar Standard: "acquire and recruit the Sardaukar Commander in
+        # the bank". Gaining a Skill is part of the acquisition (OQ-031), so
+        # the owner chooses one in its own frame; with an empty bank or no
+        # choosable Skill nothing is gained (OQ-035).
+        # The choice is queued rather than pushed here: the trashing effect
+        # still owns the top frame and rewrites it when it finishes, so the
+        # engine opens the Skill choice afterwards (``sardaukar``).
+        skill_ids = _choosable_skill_ids(state, next_owner)
+        if state.sardaukar_commanders_bank > 0 and skill_ids:
+            pending_skill_choices = (
+                *pending_skill_choices,
+                (player, card_id, f"{source}:trash:{card_id}"),
+            )
+        else:
+            events.append(
+                GameEvent(
+                    event_id=f"{source}:trash:{card_id}:commander_unavailable",
+                    kind="sardaukar_commander_unavailable",
+                    payload=(("card_id", card_id), ("player", player)),
+                )
+            )
     if _trash_effect(card_id) is PersonalCardTrashEffect.DRAW_INTRIGUE_CARD:
         draw_source = f"{source}:trash:{card_id}:intrigue_draw"
         if intrigue_deck:
@@ -129,10 +158,33 @@ def trash_personal_card(
             reserve_stacks=reserve_stacks,
             intrigue_deck=intrigue_deck,
             pending_intrigue_draws=pending_intrigue_draws,
+            pending_skill_choices=pending_skill_choices,
             decision_stack=decision_stack,
         ),
         events=tuple(events),
     )
+
+
+def _choosable_skill_ids(state: GameState, owner: PlayerState) -> tuple[str, ...]:
+    """Face-up Skill identities the owner does not hold yet [Bloodlines p. 4]."""
+
+    held = {skill_for_instance(instance_id).skill_id for instance_id in owner.skill_ids}
+    seen: list[str] = []
+    for instance_id in state.skill_face_up:
+        skill_id = skill_for_instance(instance_id).skill_id
+        if skill_id not in held and skill_id not in seen:
+            seen.append(skill_id)
+    return tuple(seen)
+
+
+def with_recruited_units(
+    frames: tuple[DecisionFrame, ...],
+    player: int,
+    recruited: int,
+) -> tuple[DecisionFrame, ...]:
+    """Count units recruited mid-turn toward the owner's open Agent turn."""
+
+    return _with_recruited_troops(frames, player, recruited)
 
 
 def _with_recruited_troops(

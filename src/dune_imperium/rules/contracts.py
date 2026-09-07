@@ -741,6 +741,31 @@ def _gain_exhausted_market_solari(
     return RuleResult(state=next_state, events=(event,))
 
 
+def complete_contract_by_effect(
+    state: GameState,
+    player: int,
+    instance_id: str,
+    *,
+    source: str,
+) -> RuleResult:
+    """Complete one active Contract by a card effect, ignoring its condition.
+
+    CHOAM Demands (Bloodlines): "Complete one of your contracts." The
+    printed reward resolves as for a normal completion, its choices pushed
+    on top of the current decision stack.
+    """
+
+    completed = _complete_contract_without_choices(
+        state, player, instance_id, source=source
+    )
+    follow_up = _begin_contract_reward_choice(
+        completed.state, player, contract_for_instance(instance_id), source=source
+    )
+    return RuleResult(
+        state=follow_up.state, events=(*completed.events, *follow_up.events)
+    )
+
+
 def _complete_contract_without_choices(
     state: GameState,
     player: int,

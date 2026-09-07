@@ -255,6 +255,11 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.MAY_DISCARD_FOR_WATER: (
             "You may discard a card → Gain 1 water"
         ),
+        PersonalCardAgentEffect.COMPLETE_ONE_CONTRACT: "Complete one of your contracts",
+        PersonalCardAgentEffect.BOOST_NEXT_BENE_GESSERIT_CARD_THIS_ROUND: (
+            "The next Bene Gesserit card you play this round has all Agent icons "
+            "and, added to its Agent box: Draw 1 card"
+        ),
         PersonalCardAgentEffect.DRAW_ONE_OR_BENE_GESSERIT_INFLUENCE_IF_BOND: (
             "Choose one: Draw 1 card / If Bene Gesserit Bond: "
             "Gain 1 Bene Gesserit Influence"
@@ -270,6 +275,9 @@ TRASH_EFFECT_TEXT: Final[Mapping[PersonalCardTrashEffect, str]] = MappingProxyTy
     {
         PersonalCardTrashEffect.DRAW_INTRIGUE_CARD: "Draw 1 Intrigue card",
         PersonalCardTrashEffect.RECRUIT_TWO_TROOPS: "Recruit 2 troops",
+        PersonalCardTrashEffect.ACQUIRE_BANK_COMMANDER: (
+            "Acquire and recruit the Sardaukar Commander in the bank"
+        ),
     }
 )
 
@@ -379,6 +387,16 @@ REVEAL_CHOICE_EFFECT_TEXT: Final[Mapping[PersonalCardRevealChoiceEffect, str]] =
             ),
             PersonalCardRevealChoiceEffect.MAY_RECALL_SPY_FOR_THREE_STRENGTH: (
                 "You may recall a Spy → +3 swords"
+            ),
+            (
+                PersonalCardRevealChoiceEffect
+                .MAY_TRASH_SELF_FOR_FOUR_INFLUENCE_IF_FOUR_CONTRACTS
+            ): (
+                "If you have completed 4+ contracts: Trash this card → "
+                "Gain 1 Influence with each Faction"
+            ),
+            PersonalCardRevealChoiceEffect.PERSUASION_OR_CONTRACT: (
+                "Choose one: 1 Persuasion / Contract"
             ),
             PersonalCardRevealChoiceEffect.COMMAND_MAY_TRASH_SELF_TO_ACQUIRE_ROW_CARD: (
                 "Command (6+ Persuasion): Trash this card → "

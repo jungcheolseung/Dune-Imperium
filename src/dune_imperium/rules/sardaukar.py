@@ -26,11 +26,14 @@ from dune_imperium.content.bloodlines.sardaukar import (
     skill_for_instance,
 )
 from dune_imperium.core.actions import ActionValue, DomainAction
-from dune_imperium.core.decisions import PlayerDecision
+from dune_imperium.core.decisions import ChanceDecision, DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
+from dune_imperium.rules.card_trash import (
+    with_recruited_units,
+)
 from dune_imperium.rules.effects import (
     BOARD_ICON_COMMANDER,
     advance_after_effect,
@@ -253,6 +256,133 @@ def apply_sardaukar_commander_action(
         ),
     )
     return RuleResult(state=next_state, events=tuple(events))
+
+
+def skill_choice_is_queued(state: GameState) -> bool:
+    """Return whether an owed Commander acquisition can open its choice now."""
+
+    frame = state.decision_stack[-1] if state.decision_stack else None
+    return bool(state.pending_skill_choices) and (
+        frame is None or not isinstance(frame.decision, ChanceDecision)
+    )
+
+
+def begin_skill_choice(state: GameState) -> RuleResult:
+    """Open the oldest owed Skill choice, or drop it if nothing can be gained."""
+
+    if not state.pending_skill_choices:
+        raise ValueError("there is no pending Skill choice")
+    player, card_id, source = state.pending_skill_choices[0]
+    remaining = replace(state, pending_skill_choices=state.pending_skill_choices[1:])
+    if remaining.sardaukar_commanders_bank < 1 or not eligible_face_up_skill_ids(
+        remaining, remaining.players[player]
+    ):
+        # The bank or the Skill row changed while the trash effect finished
+        # (OQ-035): nothing is gained.
+        return RuleResult(
+            state=remaining,
+            events=(
+                GameEvent(
+                    event_id=f"{source}:commander_unavailable",
+                    kind="sardaukar_commander_unavailable",
+                    payload=(("card_id", card_id), ("player", player)),
+                ),
+            ),
+        )
+    frame = DecisionFrame(
+        kind=FrameKind.SKILL_CHOICE,
+        frame_id=f"{source}:skill_choice",
+        decision=PlayerDecision(
+            owner=player,
+            prompt="Choose the Skill for the acquired Sardaukar Commander",
+        ),
+        context=(("card_id", card_id), ("player", player), ("source", source)),
+    )
+    return RuleResult(state=remaining.push_decision(frame))
+
+
+def legal_skill_choice_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Offer the choosable Skills for a Commander acquired by a card effect."""
+
+    frame = owned_top_frame(state, FrameKind.SKILL_CHOICE, player)
+    if frame is None:
+        return ()
+    return tuple(
+        DomainAction(
+            action_id="choose_skill",
+            actor=player,
+            arguments=(("skill_id", skill_id),),
+        )
+        for skill_id in eligible_face_up_skill_ids(state, state.players[player])
+    )
+
+
+def apply_skill_choice(state: GameState, action: DomainAction) -> RuleResult:
+    """Take the bank's Commander into the garrison with the chosen Skill."""
+
+    if action not in legal_skill_choice_actions(state, action.actor):
+        raise ValueError("action is not a legal Skill choice")
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    source = context_str(context, "source", owner="Skill choice frame")
+    card_id = context_str(context, "card_id", owner="Skill choice frame")
+    player = action.actor
+    owner = state.players[player]
+    if state.sardaukar_commanders_bank < 1:
+        raise RuntimeError("Skill choice frame has no Commander in the bank")
+    skill_id = str(dict(action.arguments)["skill_id"])
+    working = replace(
+        state,
+        sardaukar_commanders_bank=state.sardaukar_commanders_bank - 1,
+        decision_stack=state.decision_stack[:-1],
+    )
+    next_owner = replace(owner, commanders_garrison=owner.commanders_garrison + 1)
+    working, next_owner, instance_id, revealed = _take_face_up_skill(
+        working, next_owner, skill_id
+    )
+    players = replace_player(working.players, next_owner)
+    # Recruited this turn: it may join an open Agent turn's basic deployment
+    # like a recruited troop [Bloodlines p. 4].
+    decision_stack = with_recruited_units(working.decision_stack, player, 1)
+    events = [
+        GameEvent(
+            event_id=f"{source}:commander",
+            kind="sardaukar_commander_acquired",
+            payload=(
+                ("card_id", card_id),
+                ("player", player),
+                ("skill_id", skill_id),
+                ("solari", 0),
+            ),
+        ),
+        GameEvent(
+            event_id=f"{source}:skill:{instance_id}",
+            kind="skill_gained",
+            payload=(
+                ("player", player),
+                ("skill_id", skill_id),
+                ("skill_instance_id", instance_id),
+            ),
+        ),
+    ]
+    if revealed is not None:
+        events.append(
+            GameEvent(
+                event_id=f"{source}:skill_revealed:{revealed}",
+                kind="skill_revealed",
+                payload=(
+                    ("skill_id", _skill_identity(revealed)),
+                    ("skill_instance_id", revealed),
+                ),
+            )
+        )
+    return RuleResult(
+        state=replace(working, players=players, decision_stack=decision_stack),
+        events=tuple(events),
+    )
 
 
 def _can_pay_commander_recruit(owner: PlayerState) -> bool:

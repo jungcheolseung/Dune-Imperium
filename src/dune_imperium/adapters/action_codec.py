@@ -297,6 +297,24 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             )
             for instance_id in imperium_instances
         )
+        # Litany Against Fear's turn-start play from the hand.
+        templates.extend(
+            ActionTemplate(
+                action_id="play_turn_start_card",
+                arguments=(("card_id", instance_id),),
+            )
+            for instance_id in imperium_instances
+            if instance_id.startswith("imperium:litany_against_fear:")
+        )
+        if config.choam_module:
+            # CHOAM Demands completes any active Contract.
+            templates.extend(
+                ActionTemplate(
+                    action_id="complete_contract_by_card",
+                    arguments=(("instance_id", instance_id),),
+                )
+                for instance_id in contract_instance_ids()
+            )
     if config.choam_module:
         for action_id in ("take_contract", "complete_contract"):
             templates.extend(
@@ -593,7 +611,11 @@ def _bloodlines_templates() -> tuple[ActionTemplate, ...]:
             "recruit_sardaukar_commander",
         )
     ]
-    for action_id in ("acquire_sardaukar_commander", "trash_skill_for_strength"):
+    for action_id in (
+        "acquire_sardaukar_commander",
+        "trash_skill_for_strength",
+        "choose_skill",
+    ):
         templates.extend(
             ActionTemplate(
                 action_id=action_id,
@@ -646,6 +668,8 @@ def _bloodlines_templates() -> tuple[ActionTemplate, ...]:
             )
         )
     templates.append(ActionTemplate(action_id="decline_command_acquisition"))
+    templates.append(ActionTemplate(action_id="gain_reveal_persuasion"))
+    templates.append(ActionTemplate(action_id="take_reveal_contract"))
     # "Gain one Influence of your choice" as a Reveal choice (Pointing the Way).
     templates.extend(
         ActionTemplate(
@@ -662,6 +686,10 @@ def _agent_turn_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     # for a turn, so the option's catalogs also hold every card's Emperor
     # placements.
     granted: tuple[AgentIcon, ...] = (AgentIcon.EMPEROR,) if config.bloodlines else ()
+    # Urgent Shigawire gives the next Bene Gesserit card "all Agent icons",
+    # and Delivery Logistics borrows its Contracts' icons, so those cards
+    # hold every placement in the option's catalogs.
+    every_icon = tuple(AgentIcon) if config.bloodlines else ()
     templates: list[ActionTemplate] = []
     for starting_card in STARTING_DECK:
         templates.extend(
@@ -678,8 +706,19 @@ def _agent_turn_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         tech_module=config.tech_module,
     ):
         if imperium_card.play_data_complete:
+            card_granted = (
+                every_icon
+                if config.bloodlines
+                and (
+                    Faction.BENE_GESSERIT in imperium_card.factions
+                    or imperium_card.agent_icons_from_contracts
+                )
+                else granted
+            )
             templates.extend(
-                _agent_turn_templates_for_card("imperium", imperium_card, granted)
+                _agent_turn_templates_for_card(
+                    "imperium", imperium_card, card_granted
+                )
             )
     return tuple(templates)
 

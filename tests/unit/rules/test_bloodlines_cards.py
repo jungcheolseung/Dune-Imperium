@@ -1218,3 +1218,217 @@ def test_possible_futures_pays_both_halves_with_a_bene_gesserit_bond() -> None:
     revealed = _reveal(_state(_owner(hand=(card,))))
     assert _reveal_context(revealed)["persuasion"] == 2
     assert revealed.players[0].resources.water == 1 + 1
+
+
+# --- Bloodlines Imperium (slice 4d-2) --------------------------------------
+
+
+def test_urgent_shigawire_boosts_the_next_bene_gesserit_card() -> None:
+    from dune_imperium.rules.agent_turn import legal_agent_actions as legal
+
+    card = _card("urgent_shigawire")
+    state = _play(_state(_owner(hand=(card,))), card, "arrakeen")
+    armed = resolve_agent_card_effect(state).state
+    assert armed.players[0].bene_gesserit_boost_pending is True
+
+    # Branching Path prints Bene Gesserit + Landsraad; boosted it reaches a
+    # City space too, and its Agent box draws a card.
+    bene_gesserit = _card("branching_path")
+    guild = _card("guild_envoy")
+    boosted = _state(
+        _owner(hand=(bene_gesserit, guild), bene_gesserit_boost_pending=True)
+    )
+    spaces = {
+        dict(a.arguments)["space_id"]
+        for a in legal(boosted, 0)
+        if dict(a.arguments)["card_id"] == bene_gesserit
+    }
+    assert "arrakeen" in spaces
+    # A non-Bene Gesserit card keeps its printed icons.
+    guild_spaces = {
+        dict(a.arguments)["space_id"]
+        for a in legal(boosted, 0)
+        if dict(a.arguments)["card_id"] == guild
+    }
+    assert "arrakeen" not in guild_spaces
+    played = _play(boosted, bene_gesserit, "arrakeen")
+    owner = played.players[0]
+    assert owner.bene_gesserit_boost_pending is False
+    # Arrakeen's own draw plus the boost's draw: the hand lost one card and
+    # gained two.
+    assert len(owner.hand) == 2 - 1 + 2
+
+
+def test_sardaukar_standard_acquires_the_bank_commander_when_trashed() -> None:
+    from dune_imperium.content.bloodlines.sardaukar import skill_tile_instance_ids
+    from dune_imperium.rules.sardaukar import (
+        apply_skill_choice,
+        begin_skill_choice,
+        legal_skill_choice_actions,
+    )
+
+    card = _card("sardaukar_standard")
+    skills = skill_tile_instance_ids()
+    base = replace(
+        _state(_owner(hand=(card,))),
+        skill_face_up=skills[:4],
+        skill_stack=skills[4:],
+    )
+    state = _play(base, card, "arrakeen")
+    result = trash_personal_card(state, 0, card, source="test")
+    # The trashing effect still owns the top frame; the choice is queued and
+    # the engine opens it afterwards.
+    assert result.state.decision_stack[-1].kind == "agent_effects"
+    assert result.state.pending_skill_choices == ((0, card, "test:trash:" + card),)
+    opened = begin_skill_choice(result.state).state
+    assert opened.pending_skill_choices == ()
+    frame = opened.decision_stack[-1]
+    assert frame.kind == "skill_choice"
+    actions = legal_skill_choice_actions(opened, 0)
+    assert len(actions) == len({dict(a.arguments)["skill_id"] for a in actions})
+    chosen = apply_skill_choice(opened, actions[0]).state
+    owner = chosen.players[0]
+    assert chosen.sardaukar_commanders_bank == 0
+    assert owner.commanders_garrison == 1
+    assert len(owner.skill_ids) == 1
+    assert chosen.decision_stack[-1].kind == "agent_effects"
+    # Recruited this turn: it joins the basic deployment count.
+    assert dict(chosen.decision_stack[-1].context)["troops_recruited"] == 1 + 1
+
+    empty = replace(state, sardaukar_commanders_bank=0)
+    nothing = trash_personal_card(empty, 0, card, source="test")
+    assert nothing.state.pending_skill_choices == ()
+    assert nothing.events[-1].kind == "sardaukar_commander_unavailable"
+
+
+def test_litany_against_fear_draws_and_passes_the_turn() -> None:
+    from dune_imperium.rules.agent_turn import (
+        apply_turn_start_card,
+        legal_turn_start_card_actions,
+    )
+
+    card = _card("litany_against_fear")
+    state = _state(_owner(hand=(card,)))
+    actions = legal_turn_start_card_actions(state, 0)
+    assert [dict(a.arguments)["card_id"] for a in actions] == [card]
+    assert actions[0] in UprisingRulesEngine().legal_actions(state, 0)
+    # No Agent icons: the card cannot be sent anywhere.
+    assert legal_agent_actions(state, 0) == ()
+    passed = apply_turn_start_card(state, actions[0]).state
+    owner = passed.players[0]
+    assert card in owner.in_play
+    assert len(owner.hand) == 1
+    assert owner.agents_available == 2
+    assert owner.has_revealed is False
+    frame = passed.decision_stack[-1]
+    assert frame.kind == "turn"
+    assert dict(frame.context)["turn_owner"] == 1
+
+
+def test_delivery_logistics_borrows_its_contract_icons() -> None:
+    from dune_imperium.rules.reveal_turn import (
+        apply_reveal_persuasion_or_contract,
+        legal_reveal_persuasion_or_contract_actions,
+    )
+
+    card = _card("delivery_logistics")
+    none = _state(_owner(hand=(card,)), CHOAM_BLOODLINES)
+    assert legal_agent_actions(none, 0) == ()
+    contracted = _state(
+        _owner(
+            hand=(card,),
+            active_contract_ids=("contract:arrakeen_i", "contract:harvest_3"),
+        ),
+        CHOAM_BLOODLINES,
+    )
+    spaces = {dict(a.arguments)["space_id"] for a in legal_agent_actions(contracted, 0)}
+    assert {"arrakeen", "imperial_basin"} <= spaces
+    assert "assembly_hall" not in spaces
+
+    revealed = _reveal(
+        replace(
+            _state(_owner(hand=(card,)), CHOAM_BLOODLINES),
+            face_up_contract_ids=("contract:heighliner_i",),
+        )
+    )
+    frame = revealed.decision_stack[-1]
+    assert dict(frame.context)["reveal_choice_effect"] == "persuasion_or_contract"
+    actions = legal_reveal_persuasion_or_contract_actions(revealed, 0)
+    assert [a.action_id for a in actions] == [
+        "gain_reveal_persuasion",
+        "take_reveal_contract",
+    ]
+    persuaded = apply_reveal_persuasion_or_contract(revealed, actions[0]).state
+    assert _reveal_context(persuaded)["persuasion"] == 1
+    assert persuaded.decision_stack[-1].kind == "reveal"
+    contracted_reveal = apply_reveal_persuasion_or_contract(revealed, actions[1]).state
+    assert contracted_reveal.decision_stack[-1].kind == "contract_market"
+    assert _reveal_context(contracted_reveal)["persuasion"] == 0
+
+
+def test_choam_demands_completes_a_contract_and_trashes_for_influence() -> None:
+    from dune_imperium.rules.agent_effects import (
+        apply_agent_card_contract_completion,
+        legal_agent_card_contract_completion_actions,
+    )
+
+    card = _card("choam_demands")
+    idle = _play(_state(_owner(hand=(card,)), CHOAM_BLOODLINES), card, "arrakeen")
+    assert legal_agent_card_contract_completion_actions(idle, 0) == ()
+    assert (
+        resolve_agent_card_effect(idle).events[0].kind
+        == "agent_card_effect_unavailable"
+    )
+
+    contracted = _play(
+        _state(
+            _owner(hand=(card,), active_contract_ids=("contract:heighliner_ii",)),
+            CHOAM_BLOODLINES,
+        ),
+        card,
+        "arrakeen",
+    )
+    actions = legal_agent_card_contract_completion_actions(contracted, 0)
+    assert [dict(a.arguments)["instance_id"] for a in actions] == [
+        "contract:heighliner_ii"
+    ]
+    garrison = contracted.players[0].troops_garrison
+    completed = apply_agent_card_contract_completion(contracted, actions[0]).state
+    owner = completed.players[0]
+    assert owner.active_contract_ids == ()
+    assert owner.completed_contract_ids == ("contract:heighliner_ii",)
+    assert owner.troops_garrison == garrison + 2
+    assert owner.contracts_completed_turn == 1
+    context = dict(completed.decision_stack[-1].context)
+    assert context["pending_agent_effect"] is False
+    assert context["troops_recruited"] == 1 + 2
+
+    four = (
+        "contract:arrakeen_i",
+        "contract:arrakeen_ii",
+        "contract:harvest_3",
+        "contract:harvest_4",
+    )
+    revealed = _reveal(
+        _state(_owner(hand=(card,), completed_contract_ids=four), CHOAM_BLOODLINES)
+    )
+    frame = revealed.decision_stack[-1]
+    assert (
+        dict(frame.context)["reveal_choice_effect"]
+        == "may_trash_self_for_four_influence_if_four_contracts"
+    )
+    actions = legal_reveal_card_trash_actions(revealed, 0)
+    assert [a.action_id for a in actions] == [
+        "decline_reveal_card_trash",
+        "trash_reveal_card",
+    ]
+    trashed = apply_reveal_card_trash(revealed, actions[1]).state
+    owner = trashed.players[0]
+    assert card in owner.trashed
+    assert owner.influence == Influence(
+        emperor=1, spacing_guild=1, bene_gesserit=1, fremen=1
+    )
+    below = _reveal(
+        _state(_owner(hand=(card,), completed_contract_ids=four[:3]), CHOAM_BLOODLINES)
+    )
+    assert below.decision_stack[-1].kind == "reveal"

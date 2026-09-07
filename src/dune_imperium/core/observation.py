@@ -62,6 +62,7 @@ class PublicPlayerView:
     ignores_influence_requirements_turn: bool
     granted_agent_icon_turn: str
     combat_icon_turn: bool
+    bene_gesserit_boost_pending: bool
     in_play: tuple[str, ...]
     # Every card reaches a discard pile face up (acquired cards [Main p. 13],
     # played and revealed cards after Clean Up [Main pp. 9, 12, 20], cards
@@ -351,6 +352,7 @@ def _public_player_view(player: PlayerState) -> PublicPlayerView:
         ignores_influence_requirements_turn=player.ignores_influence_requirements_turn,
         granted_agent_icon_turn=player.granted_agent_icon_turn,
         combat_icon_turn=player.combat_icon_turn,
+        bene_gesserit_boost_pending=player.bene_gesserit_boost_pending,
         in_play=player.in_play,
         discard_pile=player.discard_pile,
         trashed=player.trashed,

@@ -37,6 +37,7 @@ from dune_imperium.rules.acquisition import (
 )
 from dune_imperium.rules.agent_effect_frame import legal_agent_effect_frame_actions
 from dune_imperium.rules.agent_effects import (
+    apply_agent_card_contract_completion,
     apply_agent_card_discard,
     apply_agent_card_influence,
     apply_agent_card_intrigue_payment,
@@ -54,7 +55,12 @@ from dune_imperium.rules.agent_effects import (
     resolve_agent_card_icon,
     resolve_faction_influence,
 )
-from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
+from dune_imperium.rules.agent_turn import (
+    apply_agent_action,
+    apply_turn_start_card,
+    legal_agent_actions,
+    legal_turn_start_card_actions,
+)
 from dune_imperium.rules.board_effects import (
     apply_desert_tactics_action,
     apply_espionage_action,
@@ -171,6 +177,7 @@ from dune_imperium.rules.reveal_turn import (
     apply_reveal_deployment,
     apply_reveal_influence_exchange,
     apply_reveal_influence_gain,
+    apply_reveal_persuasion_or_contract,
     apply_reveal_sandworm_action,
     apply_reveal_spice_influence,
     apply_reveal_spy_action,
@@ -188,6 +195,7 @@ from dune_imperium.rules.reveal_turn import (
     legal_reveal_deployments,
     legal_reveal_influence_exchange_actions,
     legal_reveal_influence_gain_actions,
+    legal_reveal_persuasion_or_contract_actions,
     legal_reveal_sandworm_actions,
     legal_reveal_spice_influence_actions,
     legal_reveal_spy_actions,
@@ -196,9 +204,13 @@ from dune_imperium.rules.reveal_turn import (
 from dune_imperium.rules.sardaukar import (
     apply_commander_recruit,
     apply_sardaukar_commander_action,
+    apply_skill_choice,
     apply_skill_trash,
+    begin_skill_choice,
     legal_commander_recruit_actions,
+    legal_skill_choice_actions,
     legal_skill_trash_actions,
+    skill_choice_is_queued,
 )
 from dune_imperium.rules.setup import create_draft_initial_state, create_initial_state
 from dune_imperium.rules.spies import apply_gather_intelligence_action
@@ -283,6 +295,7 @@ def _agent_action_is_executable(state: GameState, action: DomainAction) -> bool:
 LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     FrameKind.TURN: (
         _executable_agent_actions,
+        legal_turn_start_card_actions,
         legal_reveal_actions,
         legal_intrigue_play_actions,
     ),
@@ -304,6 +317,7 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     FrameKind.REVEAL_CHOICE: (
         legal_defer_reveal_choice_actions,
         legal_reveal_command_acquisition_actions,
+        legal_reveal_persuasion_or_contract_actions,
         legal_corrinth_city_reveal_actions,
         legal_contract_reveal_choice_actions,
         legal_reveal_card_trash_actions,
@@ -339,6 +353,7 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     FrameKind.INTRIGUE_CHOICE: (legal_intrigue_choice_actions,),
     FrameKind.INTRIGUE_TRIGGER_SPY: (legal_trigger_spy_actions,),
     FrameKind.LEADER_DRAFT: (legal_leader_draft_actions,),
+    FrameKind.SKILL_CHOICE: (legal_skill_choice_actions,),
 }
 
 ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
@@ -469,6 +484,11 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "exchange_reveal_influence": apply_reveal_influence_exchange,
     "gain_reveal_influence": apply_reveal_influence_gain,
     "command_acquire_row_card": apply_reveal_command_acquisition,
+    "gain_reveal_persuasion": apply_reveal_persuasion_or_contract,
+    "take_reveal_contract": apply_reveal_persuasion_or_contract,
+    "play_turn_start_card": apply_turn_start_card,
+    "complete_contract_by_card": apply_agent_card_contract_completion,
+    "choose_skill": apply_skill_choice,
     "decline_command_acquisition": apply_reveal_command_acquisition,
     "decline_reveal_influence_exchange": apply_reveal_influence_exchange,
     "pay_reveal_water_for_sandworm": apply_reveal_sandworm_action,
@@ -591,6 +611,8 @@ def _advance_automatic(result: RuleResult) -> RuleResult:
             automatic = resolve_pending_intrigue_draw(state)
         elif exhausted_contract_choice_is_pending(state):
             automatic = resolve_exhausted_contract_choice(state)
+        elif skill_choice_is_queued(state):
+            automatic = begin_skill_choice(state)
         elif state.decision_stack:
             break
         elif state.phase is GamePhase.COMBAT:

@@ -189,6 +189,11 @@ const ACTION_LABELS = {
   retreat_opponent_troop: "상대 troop 강제 retreat",
   command_acquire_row_card: "Command: 카드 trash 후 Imperium Row 카드 획득",
   decline_command_acquisition: "Command 획득 거절",
+  gain_reveal_persuasion: "Persuasion 1 선택",
+  take_reveal_contract: "Contract 선택",
+  play_turn_start_card: "턴 시작: 카드 play 후 draw 1, 턴 넘기기",
+  complete_contract_by_card: "카드 효과로 contract 완료",
+  choose_skill: "Commander Skill 선택",
 };
 
 /* Korean labels for session-log event kinds (M11 slice 6); falls back to

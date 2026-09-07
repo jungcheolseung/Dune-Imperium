@@ -83,6 +83,10 @@ class GameState:
     # dispatcher (reshuffling the discard through a chance decision) before the
     # next player decision: (player, count, event source).
     pending_intrigue_draws: tuple[tuple[int, int, str], ...] = ()
+    # Sardaukar Standard: Commander acquisitions owed by a trash trigger
+    # (player, card, source); each opens its Skill choice once the trashing
+    # effect has finished with the decision stack.
+    pending_skill_choices: tuple[tuple[int, str, str], ...] = ()
     decision_stack: tuple[DecisionFrame, ...] = ()
     event_log: tuple[GameEvent, ...] = ()
 

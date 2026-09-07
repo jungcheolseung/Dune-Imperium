@@ -35,7 +35,10 @@ from dune_imperium.rules.card_discard import discard_personal_card_from_hand
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.combat import face_up_battle_icons
-from dune_imperium.rules.contracts import begin_contract_gain
+from dune_imperium.rules.contracts import (
+    begin_contract_gain,
+    complete_contract_by_effect,
+)
 from dune_imperium.rules.effects import (
     advance_after_effect,
     arm_agent_icons,
@@ -728,6 +731,78 @@ def apply_agent_card_influence(
         players,
     )
     return RuleResult(state=next_state, events=events)
+
+
+def legal_agent_card_contract_completion_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """CHOAM Demands: "Complete one of your contracts" (any active one)."""
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return ()
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    if context.get("pending_agent_effect") is not True:
+        return ()
+    _, source_card_id, _ = _effect_subject(context)
+    source_card = personal_card_for_instance(source_card_id)
+    if source_card.agent_effect is not PersonalCardAgentEffect.COMPLETE_ONE_CONTRACT:
+        return ()
+    return tuple(
+        DomainAction(
+            action_id="complete_contract_by_card",
+            actor=player,
+            arguments=(("instance_id", instance_id),),
+        )
+        for instance_id in state.players[player].active_contract_ids
+    )
+
+
+def apply_agent_card_contract_completion(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Complete the chosen Contract regardless of its printed condition."""
+
+    if action not in legal_agent_card_contract_completion_actions(
+        state, action.actor
+    ):
+        raise ValueError("action is not a legal Agent-card Contract completion")
+    _, context = current_agent_effect_context(state)
+    _, source_card_id, _ = _effect_subject(context)
+    instance_id = str(dict(action.arguments)["instance_id"])
+    source = (
+        f"round:{state.round_number}:player:{action.actor}:"
+        f"agent_card:{source_card_id}:contract:{instance_id}"
+    )
+    garrison_before = state.players[action.actor].troops_garrison
+    completed = complete_contract_by_effect(
+        state, action.actor, instance_id, source=source
+    )
+    recruited = completed.state.players[action.actor].troops_garrison - garrison_before
+    if recruited:
+        previous = context_int(
+            context, "troops_recruited", owner="Agent-turn effect frame"
+        )
+        context["troops_recruited"] = previous + recruited
+    context["pending_agent_effect"] = False
+    # The reward's own choices (a Spy placement, a recall) were pushed by
+    # the completion above this frame; keep them on top of the advanced turn.
+    depth = len(state.decision_stack)
+    follow_up = completed.state.decision_stack[depth:]
+    base = replace(
+        completed.state, decision_stack=completed.state.decision_stack[:depth]
+    )
+    advanced = advance_after_effect(base, context, base.players)
+    next_state = replace(
+        advanced, decision_stack=(*advanced.decision_stack, *follow_up)
+    )
+    return RuleResult(state=next_state, events=completed.events)
 
 
 def legal_agent_card_spy_actions(
@@ -2464,6 +2539,18 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         context["troops_recruited"] = previous + recruited
         recruit_shortfall = recruit_shortfall_events(event_source, player, 1, recruited)
         event_kind = "agent_card_effect_resolved"
+    elif effect is PersonalCardAgentEffect.BOOST_NEXT_BENE_GESSERIT_CARD_THIS_ROUND:
+        # Urgent Shigawire arms the seat; the boost is spent by the next
+        # Bene Gesserit card played this round (``agent_turn``).
+        next_owner = replace(owner, bene_gesserit_boost_pending=True)
+        event_kind = "agent_card_effect_resolved"
+    elif effect is PersonalCardAgentEffect.COMPLETE_ONE_CONTRACT:
+        # CHOAM Demands resolves through its own Contract choice; with no
+        # active Contract the box does nothing.
+        if owner.active_contract_ids:
+            raise ValueError("CHOAM Demands resolves through complete_contract_by_card")
+        next_owner = owner
+        event_kind = "agent_card_effect_unavailable"
     elif effect is PersonalCardAgentEffect.DRAW_ONE_OR_BENE_GESSERIT_INFLUENCE_IF_BOND:
         # Southern Faith's draw half; the draw follows the generic path.
         next_owner = owner

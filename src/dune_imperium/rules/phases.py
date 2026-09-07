@@ -42,6 +42,8 @@ def begin_round(state: GameState) -> RuleResult:
             units_deployed_committed=0,
             spice_at_turn_start=player.resources.spice,
             spice_spent_turn=0,
+            # Urgent Shigawire's boost lasts "this round" only.
+            bene_gesserit_boost_pending=False,
         )
         for player, count in zip(state.players, draw_counts, strict=True)
     )
