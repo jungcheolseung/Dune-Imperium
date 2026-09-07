@@ -1,8 +1,8 @@
 """Tests for Bloodlines Sardaukar Commanders and their Skills.
 
 Rule source: ``docs/rules/bloodlines.md`` section 3 [Bloodlines pp. 3-4] and
-the Skill tile faces. A Commander cannot be bought while no face-up Skill is
-choosable (OQ-031, user decision).
+the Skill tile faces. A Commander is bought without a Skill while no face-up
+Skill is choosable (OQ-031, user decision).
 """
 
 from dataclasses import replace
@@ -225,8 +225,9 @@ def test_a_held_skill_cannot_be_chosen_again() -> None:
     assert offered == {"charismatic", "desperate"}
 
 
-def test_without_a_choosable_skill_the_commander_cannot_be_bought() -> None:
-    # OQ-031 (user decision 2026-09-07): no Skill, no acquisition.
+def test_without_a_choosable_skill_the_commander_is_bought_without_one() -> None:
+    # OQ-031 (user decision 2026-09-07): the Commander still comes, the
+    # Skill does not.
     owner = _owner(skill_ids=(_skill("canny"), _skill("charismatic")))
     state = _turn_state(
         owner,
@@ -235,12 +236,24 @@ def test_without_a_choosable_skill_the_commander_cannot_be_bought() -> None:
     )
     state = _visit(state, "dutiful_service")
 
-    assert set(_commander_actions(state)) == {"decline_sardaukar_commander:"}
+    assert set(_commander_actions(state)) == {
+        "decline_sardaukar_commander:",
+        "acquire_sardaukar_commander:",
+    }
     with pytest.raises(ValueError, match="not a legal Sardaukar Commander choice"):
         apply_sardaukar_commander_action(
             state,
             DomainAction("acquire_sardaukar_commander", 0, (("skill_id", "canny"),)),
         )
+    bought = apply_sardaukar_commander_action(
+        state, DomainAction(action_id="acquire_sardaukar_commander", actor=0)
+    )
+    owner = bought.state.players[0]
+    assert owner.commanders_garrison == 1
+    assert owner.resources.solari == state.players[0].resources.solari - 2
+    assert len(owner.skill_ids) == 2
+    assert bought.state.skill_face_up == state.skill_face_up
+    assert [event.kind for event in bought.events] == ["sardaukar_commander_acquired"]
 
 
 def test_without_two_solari_only_the_refusal_is_offered() -> None:

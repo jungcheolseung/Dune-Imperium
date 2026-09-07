@@ -37,6 +37,7 @@ from dune_imperium.rules.board_effects import (
 from dune_imperium.rules.card_discard import discard_personal_card_from_hand
 from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.engine import UprisingRulesEngine
+from dune_imperium.rules.frames import replace_player
 from dune_imperium.rules.reveal_turn import (
     apply_reveal_card_trash,
     apply_reveal_influence_gain,
@@ -1300,6 +1301,23 @@ def test_sardaukar_standard_acquires_the_bank_commander_when_trashed() -> None:
     assert nothing.state.pending_skill_choices == ()
     assert nothing.events[-1].kind == "sardaukar_commander_unavailable"
 
+    # Every face-up Skill already held: the Commander comes without a Skill
+    # and no choice frame opens (OQ-031, OQ-035).
+    held = replace(
+        state,
+        skill_face_up=(skills[1], skills[3]),
+        players=replace_player(
+            state.players, replace(state.players[0], skill_ids=(skills[0], skills[2]))
+        ),
+    )
+    queued = trash_personal_card(held, 0, card, source="test").state
+    direct = begin_skill_choice(queued)
+    assert direct.state.decision_stack[-1].kind == "agent_effects"
+    assert direct.state.sardaukar_commanders_bank == 0
+    assert direct.state.players[0].commanders_garrison == 1
+    assert len(direct.state.players[0].skill_ids) == 2
+    assert direct.events[0].kind == "sardaukar_commander_acquired"
+
 
 def test_litany_against_fear_draws_and_passes_the_turn() -> None:
     from dune_imperium.rules.agent_turn import (
@@ -1455,7 +1473,9 @@ def test_holy_war_makes_each_opponent_lose_a_unit_and_move_its_spy() -> None:
         troops_supply=8,
         troops_garrison=2,
         troops_conflict=2,
-        combat_strength=4,
+        commanders_supply=0,
+        commanders_conflict=1,
+        combat_strength=6,
     )
     garrisoned = replace(PlayerState(player_id=2), troops_supply=11, troops_garrison=1)
     empty = replace(PlayerState(player_id=3), troops_supply=12, troops_garrison=0)
@@ -1480,12 +1500,18 @@ def test_holy_war_makes_each_opponent_lose_a_unit_and_move_its_spy() -> None:
     moved = apply_spy_move(result.state, moves[0]).state
     assert ASSEMBLY_POST not in moved.players[1].spy_post_ids
     assert len(moved.players[1].spy_post_ids) == 1
+    # The loser picks the zone and the unit kind (OQ-036).
     actions = legal_unit_loss_actions(moved, 1)
-    assert [dict(a.arguments)["zone"] for a in actions] == ["garrison", "conflict"]
-    lost = apply_unit_loss(moved, actions[1]).state
-    assert lost.players[1].troops_conflict == 1
-    assert lost.players[1].troops_supply == 9
-    assert lost.players[1].combat_strength == 2
+    assert [tuple(a.arguments) for a in actions] == [
+        (("zone", "garrison"),),
+        (("zone", "conflict"),),
+        (("commanders", 1), ("zone", "conflict")),
+    ]
+    lost = apply_unit_loss(moved, actions[2]).state
+    assert lost.players[1].commanders_conflict == 0
+    assert lost.players[1].commanders_supply == 1
+    assert lost.players[1].troops_conflict == 2
+    assert lost.players[1].combat_strength == 4
     # Nothing else was pending in the Agent turn, so the next turn opened.
     assert lost.decision_stack[-1].kind == "turn"
 

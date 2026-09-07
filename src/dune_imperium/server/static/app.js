@@ -195,7 +195,6 @@ const ACTION_LABELS = {
   complete_contract_by_card: "카드 효과로 contract 완료",
   choose_skill: "Commander Skill 선택",
   move_spy: "Spy 이동",
-  recall_moved_spy: "Spy 회수 (갈 곳 없음)",
   place_spy_on_space: "그 공간에 Spy 배치",
   recall_spy_for_placement: "배치를 위해 Spy 회수",
   decline_spy_placement: "Spy 배치 불가",

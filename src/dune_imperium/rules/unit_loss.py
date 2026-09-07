@@ -1,9 +1,9 @@
 """Units lost to an opponent's card effect (Holy War, Bloodlines).
 
 "Each opponent loses one troop" does not say from where. The project
-convention (OQ-036) lets the losing player choose the zone when both the
-garrison and the Conflict hold units; within a zone a troop is lost before
-a Sardaukar Commander, which is a troop for card effects [Bloodlines p. 4].
+convention (OQ-036, user decision) lets the losing player choose both the
+zone (garrison or Conflict) and the unit, a troop or a Sardaukar Commander,
+which is a troop for card effects [Bloodlines p. 4].
 """
 
 from dataclasses import replace
@@ -25,14 +25,20 @@ from dune_imperium.rules.units import retreat_units
 UNIT_ZONES: tuple[str, ...] = ("garrison", "conflict")
 
 
-def _zones_with_units(state: GameState, player: int) -> tuple[str, ...]:
+def _loss_options(state: GameState, player: int) -> tuple[tuple[str, bool], ...]:
+    """Return the (zone, commander) pairs the player can lose a unit from."""
+
     owner = state.players[player]
-    zones: list[str] = []
-    if owner.troops_garrison + owner.commanders_garrison > 0:
-        zones.append("garrison")
-    if owner.troops_conflict + owner.commanders_conflict > 0:
-        zones.append("conflict")
-    return tuple(zones)
+    options: list[tuple[str, bool]] = []
+    if owner.troops_garrison > 0:
+        options.append(("garrison", False))
+    if owner.commanders_garrison > 0:
+        options.append(("garrison", True))
+    if owner.troops_conflict > 0:
+        options.append(("conflict", False))
+    if owner.commanders_conflict > 0:
+        options.append(("conflict", True))
+    return tuple(options)
 
 
 def lose_unit(
@@ -40,17 +46,19 @@ def lose_unit(
     player: int,
     zone: str,
     *,
+    commander: bool = False,
     source: str,
 ) -> RuleResult:
     """Return one unit of ``player`` from ``zone`` to the supply."""
 
     if zone not in UNIT_ZONES:
         raise ValueError("unit loss zone must be garrison or conflict")
+    if (zone, commander) not in _loss_options(state, player):
+        raise ValueError("the player has no such unit to lose")
     owner = state.players[player]
     events: list[GameEvent] = []
     working = state
     if zone == "conflict":
-        commander = owner.troops_conflict == 0
         retreated = retreat_units(
             working,
             player,
@@ -61,8 +69,6 @@ def lose_unit(
         working = retreated.state
         events.extend(retreated.events)
         owner = working.players[player]
-    else:
-        commander = owner.troops_garrison == 0
     if commander:
         next_owner = replace(
             owner,
@@ -98,15 +104,15 @@ def opponent_unit_loss_frames(
     *,
     source: str,
 ) -> RuleResult:
-    """Each opponent loses one unit: chosen zone when both hold units."""
+    """Each opponent loses one unit, choosing which when more than one kind."""
 
     working = state
     events: list[GameEvent] = []
     frames: list[DecisionFrame] = []
     for seat in opponent_seats(state, actor):
-        zones = _zones_with_units(working, seat)
+        options = _loss_options(working, seat)
         seat_source = f"{source}:unit_loss:{seat}"
-        if not zones:
+        if not options:
             events.append(
                 GameEvent(
                     event_id=f"{seat_source}:none",
@@ -114,8 +120,11 @@ def opponent_unit_loss_frames(
                     payload=(("player", seat),),
                 )
             )
-        elif len(zones) == 1:
-            lost = lose_unit(working, seat, zones[0], source=seat_source)
+        elif len(options) == 1:
+            zone, commander = options[0]
+            lost = lose_unit(
+                working, seat, zone, commander=commander, source=seat_source
+            )
             working = lost.state
             events.extend(lost.events)
         else:
@@ -139,14 +148,21 @@ def legal_unit_loss_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Offer each zone that still holds a unit."""
+    """Offer every zone and unit kind the player still holds."""
 
     frame = owned_top_frame(state, FrameKind.OPPONENT_UNIT_LOSS, player)
     if frame is None:
         return ()
     return tuple(
-        DomainAction(action_id="lose_unit", actor=player, arguments=(("zone", zone),))
-        for zone in _zones_with_units(state, player)
+        DomainAction(
+            action_id="lose_unit",
+            actor=player,
+            arguments=(
+                *((("commanders", 1),) if commander else ()),
+                ("zone", zone),
+            ),
+        )
+        for zone, commander in _loss_options(state, player)
     )
 
 
@@ -157,5 +173,9 @@ def apply_unit_loss(state: GameState, action: DomainAction) -> RuleResult:
         raise ValueError("action is not a legal unit loss choice")
     frame = state.decision_stack[-1]
     source = context_str(dict(frame.context), "source", owner="Unit loss frame")
-    zone = str(dict(action.arguments)["zone"])
-    return lose_unit(state.pop_decision(), action.actor, zone, source=source)
+    arguments = dict(action.arguments)
+    zone = str(arguments["zone"])
+    commander = arguments.get("commanders") == 1
+    return lose_unit(
+        state.pop_decision(), action.actor, zone, commander=commander, source=source
+    )

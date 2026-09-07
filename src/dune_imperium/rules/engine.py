@@ -503,7 +503,6 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "complete_contract_by_card": apply_agent_card_contract_completion,
     "choose_skill": apply_skill_choice,
     "move_spy": apply_spy_move,
-    "recall_moved_spy": apply_spy_move,
     "place_spy_on_space": apply_spy_placement,
     "recall_spy_for_placement": apply_spy_placement,
     "decline_spy_placement": apply_spy_placement,

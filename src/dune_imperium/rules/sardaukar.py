@@ -6,7 +6,7 @@ Three decision points are added when the option is on:
   effect of the visit: pay 2 Solari to acquire and recruit it and choose one
   face-up Skill (``acquire_sardaukar_commander``), or decline
   (``decline_sardaukar_commander``) [Bloodlines p. 4]. Without a choosable
-  Skill the purchase is not offered (OQ-031).
+  Skill the Commander is acquired without one (OQ-031).
 - Once per turn, Agent or Reveal, 2 Solari recruit one Commander from the
   supply to the garrison without a new Skill
   (``recruit_sardaukar_commander``) [Bloodlines p. 4].
@@ -90,7 +90,7 @@ def eligible_face_up_skill_ids(state: GameState, owner: PlayerState) -> tuple[st
 
     "You cannot choose a copy of a Sardaukar Commander Skill already in your
     supply" [Bloodlines p. 4]; two face-up copies of one Skill are one
-    choice. An empty result blocks the acquisition (OQ-031).
+    choice. An empty result means the Commander comes without a Skill (OQ-031).
     """
 
     held = {_skill_identity(instance_id) for instance_id in owner.skill_ids}
@@ -122,10 +122,12 @@ def legal_sardaukar_commander_actions(
         return (decline,)
     skills = eligible_face_up_skill_ids(state, owner)
     if not skills:
-        # OQ-031 (user decision 2026-09-07): gaining a Skill is part of the
-        # acquisition, so with no choosable Skill the Commander cannot be
-        # bought at all.
-        return (decline,)
+        # OQ-031 (user decision 2026-09-07): every face-up Skill is one the
+        # owner already holds, so the Commander is bought without a Skill.
+        return (
+            decline,
+            DomainAction(action_id="acquire_sardaukar_commander", actor=player),
+        )
     return (
         decline,
         *(
@@ -206,33 +208,9 @@ def apply_sardaukar_commander_action(
             if candidate != space_id
         ),
     )
-    events: list[GameEvent] = []
-    skill_id = str(dict(action.arguments)["skill_id"])
-    working, next_owner, instance_id, revealed = _take_face_up_skill(
-        working, next_owner, skill_id
-    )
-    events.append(
-        GameEvent(
-            event_id=f"{source}:skill:{instance_id}",
-            kind="skill_gained",
-            payload=(
-                ("player", player),
-                ("skill_id", skill_id),
-                ("skill_instance_id", instance_id),
-            ),
-        )
-    )
-    if revealed is not None:
-        events.append(
-            GameEvent(
-                event_id=f"{source}:skill_revealed:{revealed}",
-                kind="skill_revealed",
-                payload=(
-                    ("skill_id", _skill_identity(revealed)),
-                    ("skill_instance_id", revealed),
-                ),
-            )
-        )
+    skill_value = dict(action.arguments).get("skill_id")
+    skill_id = str(skill_value) if skill_value is not None else ""
+    working, next_owner, events = _gain_skill(working, next_owner, skill_id, source)
     # The Commander is recruited this turn, so it may join the turn's basic
     # deployment like a recruited troop [Bloodlines p. 4].
     context["troops_recruited"] = (
@@ -258,6 +236,83 @@ def apply_sardaukar_commander_action(
     return RuleResult(state=next_state, events=tuple(events))
 
 
+def _gain_skill(
+    state: GameState,
+    owner: PlayerState,
+    skill_id: str,
+    source: str,
+) -> tuple[GameState, PlayerState, list[GameEvent]]:
+    """Take the chosen face-up Skill; an empty ``skill_id`` takes none (OQ-031)."""
+
+    if not skill_id:
+        return state, owner, []
+    state, owner, instance_id, revealed = _take_face_up_skill(state, owner, skill_id)
+    events = [
+        GameEvent(
+            event_id=f"{source}:skill:{instance_id}",
+            kind="skill_gained",
+            payload=(
+                ("player", owner.player_id),
+                ("skill_id", skill_id),
+                ("skill_instance_id", instance_id),
+            ),
+        )
+    ]
+    if revealed is not None:
+        events.append(
+            GameEvent(
+                event_id=f"{source}:skill_revealed:{revealed}",
+                kind="skill_revealed",
+                payload=(
+                    ("skill_id", _skill_identity(revealed)),
+                    ("skill_instance_id", revealed),
+                ),
+            )
+        )
+    return state, owner, events
+
+
+def _acquire_bank_commander(
+    state: GameState,
+    player: int,
+    card_id: str,
+    skill_id: str,
+    *,
+    source: str,
+) -> RuleResult:
+    """Move the bank's Commander to the garrison with ``skill_id`` (or none)."""
+
+    if state.sardaukar_commanders_bank < 1:
+        raise RuntimeError("no Sardaukar Commander is left in the bank")
+    owner = state.players[player]
+    working = replace(
+        state, sardaukar_commanders_bank=state.sardaukar_commanders_bank - 1
+    )
+    next_owner = replace(owner, commanders_garrison=owner.commanders_garrison + 1)
+    working, next_owner, events = _gain_skill(working, next_owner, skill_id, source)
+    players = replace_player(working.players, next_owner)
+    # Recruited this turn: it may join an open Agent turn's basic deployment
+    # like a recruited troop [Bloodlines p. 4].
+    decision_stack = with_recruited_units(working.decision_stack, player, 1)
+    events.insert(
+        0,
+        GameEvent(
+            event_id=f"{source}:commander",
+            kind="sardaukar_commander_acquired",
+            payload=(
+                ("card_id", card_id),
+                ("player", player),
+                ("skill_id", skill_id),
+                ("solari", 0),
+            ),
+        ),
+    )
+    return RuleResult(
+        state=replace(working, players=players, decision_stack=decision_stack),
+        events=tuple(events),
+    )
+
+
 def skill_choice_is_queued(state: GameState) -> bool:
     """Return whether an owed Commander acquisition can open its choice now."""
 
@@ -274,11 +329,14 @@ def begin_skill_choice(state: GameState) -> RuleResult:
         raise ValueError("there is no pending Skill choice")
     player, card_id, source = state.pending_skill_choices[0]
     remaining = replace(state, pending_skill_choices=state.pending_skill_choices[1:])
-    if remaining.sardaukar_commanders_bank < 1 or not eligible_face_up_skill_ids(
+    if remaining.sardaukar_commanders_bank >= 1 and not eligible_face_up_skill_ids(
         remaining, remaining.players[player]
     ):
-        # The bank or the Skill row changed while the trash effect finished
-        # (OQ-035): nothing is gained.
+        # Every face-up Skill is already held: the Commander comes without
+        # a Skill and needs no choice (OQ-031, OQ-035).
+        return _acquire_bank_commander(remaining, player, card_id, "", source=source)
+    if remaining.sardaukar_commanders_bank < 1:
+        # The bank emptied while the trash effect finished (OQ-035).
         return RuleResult(
             state=remaining,
             events=(
@@ -329,59 +387,9 @@ def apply_skill_choice(state: GameState, action: DomainAction) -> RuleResult:
     context = dict(frame.context)
     source = context_str(context, "source", owner="Skill choice frame")
     card_id = context_str(context, "card_id", owner="Skill choice frame")
-    player = action.actor
-    owner = state.players[player]
-    if state.sardaukar_commanders_bank < 1:
-        raise RuntimeError("Skill choice frame has no Commander in the bank")
     skill_id = str(dict(action.arguments)["skill_id"])
-    working = replace(
-        state,
-        sardaukar_commanders_bank=state.sardaukar_commanders_bank - 1,
-        decision_stack=state.decision_stack[:-1],
-    )
-    next_owner = replace(owner, commanders_garrison=owner.commanders_garrison + 1)
-    working, next_owner, instance_id, revealed = _take_face_up_skill(
-        working, next_owner, skill_id
-    )
-    players = replace_player(working.players, next_owner)
-    # Recruited this turn: it may join an open Agent turn's basic deployment
-    # like a recruited troop [Bloodlines p. 4].
-    decision_stack = with_recruited_units(working.decision_stack, player, 1)
-    events = [
-        GameEvent(
-            event_id=f"{source}:commander",
-            kind="sardaukar_commander_acquired",
-            payload=(
-                ("card_id", card_id),
-                ("player", player),
-                ("skill_id", skill_id),
-                ("solari", 0),
-            ),
-        ),
-        GameEvent(
-            event_id=f"{source}:skill:{instance_id}",
-            kind="skill_gained",
-            payload=(
-                ("player", player),
-                ("skill_id", skill_id),
-                ("skill_instance_id", instance_id),
-            ),
-        ),
-    ]
-    if revealed is not None:
-        events.append(
-            GameEvent(
-                event_id=f"{source}:skill_revealed:{revealed}",
-                kind="skill_revealed",
-                payload=(
-                    ("skill_id", _skill_identity(revealed)),
-                    ("skill_instance_id", revealed),
-                ),
-            )
-        )
-    return RuleResult(
-        state=replace(working, players=players, decision_stack=decision_stack),
-        events=tuple(events),
+    return _acquire_bank_commander(
+        state.pop_decision(), action.actor, card_id, skill_id, source=source
     )
 
 

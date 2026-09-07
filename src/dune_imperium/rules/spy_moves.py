@@ -3,9 +3,9 @@
 Holy War and False Orders read "each opponent spying on the board space
 where you sent an Agent this turn must move that Spy"; False Orders then
 lets its owner place a Spy on that space. Where a Spy may move is not
-printed: the project convention (OQ-036) applies the normal placement
-rule, so it moves to any empty Observation Post, and a Spy with nowhere
-to go returns to its owner's supply.
+printed: the project convention (OQ-036, user decision) applies the normal
+placement rule, so its owner moves it to any empty Observation Post. One
+is always free: thirteen posts hold at most the twelve Spies in the game.
 """
 
 from dataclasses import replace
@@ -88,14 +88,14 @@ def legal_spy_move_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Offer every empty post, or the recall when none is empty (OQ-036)."""
+    """Offer every empty post; the mover chooses (OQ-036)."""
 
     frame = owned_top_frame(state, FrameKind.OPPONENT_SPY_MOVE, player)
     if frame is None:
         return ()
     targets = empty_observation_post_ids(state)
     if not targets:
-        return (DomainAction(action_id="recall_moved_spy", actor=player),)
+        raise RuntimeError("thirteen posts cannot all be occupied by twelve Spies")
     return tuple(
         DomainAction(
             action_id="move_spy",
@@ -107,7 +107,7 @@ def legal_spy_move_actions(
 
 
 def apply_spy_move(state: GameState, action: DomainAction) -> RuleResult:
-    """Move the Spy to the chosen post, or return it to supply."""
+    """Move the Spy to the chosen post."""
 
     if action not in legal_spy_move_actions(state, action.actor):
         raise ValueError("action is not a legal Spy move")
@@ -123,17 +123,15 @@ def apply_spy_move(state: GameState, action: DomainAction) -> RuleResult:
             payload=(("player", action.actor), ("post_id", origin)),
         )
     ]
-    next_owner = recalled
-    if action.action_id == "move_spy":
-        target = str(dict(action.arguments)["post_id"])
-        next_owner = place_spy(recalled, target)
-        events.append(
-            GameEvent(
-                event_id=f"{frame.frame_id}:placed:{target}",
-                kind="spy_placed",
-                payload=(("player", action.actor), ("post_id", target)),
-            )
+    target = str(dict(action.arguments)["post_id"])
+    next_owner = place_spy(recalled, target)
+    events.append(
+        GameEvent(
+            event_id=f"{frame.frame_id}:placed:{target}",
+            kind="spy_placed",
+            payload=(("player", action.actor), ("post_id", target)),
         )
+    )
     next_state = replace(
         state.pop_decision(), players=replace_player(state.players, next_owner)
     )

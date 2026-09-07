@@ -616,6 +616,8 @@ def _bloodlines_templates() -> tuple[ActionTemplate, ...]:
         for action_id in (
             "decline_sardaukar_commander",
             "recruit_sardaukar_commander",
+            # Bought without a Skill when none is choosable (OQ-031).
+            "acquire_sardaukar_commander",
         )
     ]
     for action_id in (
@@ -679,15 +681,17 @@ def _bloodlines_templates() -> tuple[ActionTemplate, ...]:
     templates.append(ActionTemplate(action_id="take_reveal_contract"))
     templates.extend(
         ActionTemplate(action_id=action_id)
-        for action_id in (
-            "recall_moved_spy",
-            "decline_spy_placement",
-            "decline_intrigue_contract_trigger",
-        )
+        for action_id in ("decline_spy_placement", "decline_intrigue_contract_trigger")
     )
+    # The loser picks the zone and the unit kind (OQ-036); ``commanders``
+    # marks a Sardaukar Commander like the retreat argument does.
     templates.extend(
-        ActionTemplate(action_id="lose_unit", arguments=(("zone", zone),))
+        ActionTemplate(action_id="lose_unit", arguments=arguments)
         for zone in ("garrison", "conflict")
+        for arguments in (
+            (("zone", zone),),
+            (("commanders", 1), ("zone", zone)),
+        )
     )
     # "Gain one Influence of your choice" as a Reveal choice (Pointing the Way).
     templates.extend(

@@ -2,18 +2,12 @@
 
 from dataclasses import replace
 
-from dune_imperium.content.bloodlines.sardaukar import (
-    skill_for_instance,
-)
 from dune_imperium.content.uprising.imperium import imperium_card_for_instance
 from dune_imperium.content.uprising.reserve import RESERVE_STACKS_BY_ID
 from dune_imperium.content.uprising.types import PersonalCardTrashEffect
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
-from dune_imperium.core.player import (
-    PlayerState,
-)
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.effects import recruit_shortfall_events, recruit_troops
 from dune_imperium.rules.frames import FrameKind
@@ -109,14 +103,13 @@ def trash_personal_card(
         decision_stack = _with_recruited_troops(decision_stack, player, recruited)
     if _trash_effect(card_id) is PersonalCardTrashEffect.ACQUIRE_BANK_COMMANDER:
         # Sardaukar Standard: "acquire and recruit the Sardaukar Commander in
-        # the bank". Gaining a Skill is part of the acquisition (OQ-031), so
-        # the owner chooses one in its own frame; with an empty bank or no
-        # choosable Skill nothing is gained (OQ-035).
+        # the bank". The acquisition comes with a face-up Skill choice, or
+        # without a Skill when none is choosable (OQ-031); with an empty
+        # bank nothing is gained (OQ-035).
         # The choice is queued rather than pushed here: the trashing effect
         # still owns the top frame and rewrites it when it finishes, so the
         # engine opens the Skill choice afterwards (``sardaukar``).
-        skill_ids = _choosable_skill_ids(state, next_owner)
-        if state.sardaukar_commanders_bank > 0 and skill_ids:
+        if state.sardaukar_commanders_bank > 0:
             pending_skill_choices = (
                 *pending_skill_choices,
                 (player, card_id, f"{source}:trash:{card_id}"),
@@ -163,18 +156,6 @@ def trash_personal_card(
         ),
         events=tuple(events),
     )
-
-
-def _choosable_skill_ids(state: GameState, owner: PlayerState) -> tuple[str, ...]:
-    """Face-up Skill identities the owner does not hold yet [Bloodlines p. 4]."""
-
-    held = {skill_for_instance(instance_id).skill_id for instance_id in owner.skill_ids}
-    seen: list[str] = []
-    for instance_id in state.skill_face_up:
-        skill_id = skill_for_instance(instance_id).skill_id
-        if skill_id not in held and skill_id not in seen:
-            seen.append(skill_id)
-    return tuple(seen)
 
 
 def with_recruited_units(
