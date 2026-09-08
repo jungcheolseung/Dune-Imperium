@@ -55,6 +55,14 @@ Gambit)은 위 세 공식 문서 어디에도 실리지 않았다. 이 카드들
 `open-questions.md`의 OQ-024~026에 project convention으로 기록했다. 카드
 이미지는 비공개 에셋 저장소 `cards/en/uprising/promo/`에 있다.
 
+Bloodlines 프로모 Imperium 1장(Ruthless Leadership, 2026-09-08 구현)도 같은
+방식이다: Bloodlines 룰북에 실리지 않았고 근거는 카드면뿐이며(`[card face]`),
+Sardaukar Commander를 읽는 Agent box 때문에 `promo_cards`와 `bloodlines`
+옵션을 함께 켤 때만 덱에 들어간다. 아이콘 해석은 공식 정의(`[Main p. 20]`의
+검은 trash 아이콘, `[Bloodlines pp. 5, 12]`의 Command (6+)·Combat 아이콘)를
+따르고, 조건 판정 시점은 OQ-028을 따른다. 이미지는 비공개 에셋 저장소
+`cards/en/bloodlines/promo/`에 있다.
+
 ## 페이지와 인용
 
 - Main의 `[Main p. N]`은 표지 PDF 페이지가 아니라 본문에 인쇄된 쪽수를

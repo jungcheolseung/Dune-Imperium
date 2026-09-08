@@ -53,7 +53,9 @@ scans (the manifest notes the copy); the "Commander" variants Dune Cards
 Hub files as "uprising-other" are six-player cards (Rules Supplements
 p. 7, 14) and sit under `uprising/six-player/`; the three later Uprising promo
 cards (Arrakis Revolt, The Beast's Spoils, Pivotal Gambit) sit under
-`uprising/promo/` awaiting implementation; the other expansions' promo
+`uprising/promo/` and the Bloodlines promo (Ruthless Leadership) under
+`bloodlines/promo/`, all implemented behind `RulesetConfig(promo_cards=True)`
+(the Bloodlines one also needs `bloodlines=True`); the other expansions' promo
 cards sit under their own set's `promo/` (owner's classification). The other expansions in
 the manifest are archived for future implementation with names derived
 from the upstream slugs (`name_source: "upstream-slug"`, to be verified
