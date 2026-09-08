@@ -329,7 +329,7 @@ tests/
 3. Tleilaxu Row: Reveal turn의 specimen 획득(`acquire_tleilaxu`), Reclaimed Forces의 선택 효과, 첫 genetic marker 뒤 deck 맨 위 배치 선택, Row 보충, Harvest Cells의 Combat 중 획득. **완료(2026-09-08; Harvest Cells의 진입점은 카드 슬라이스에서).**
 4. Graft: Agent turn의 두 장 play(아이콘 선택, 두 카드 모두 "보낸" 것, 자유 순서 효과), "if grafted"·"the other grafted card", Ghola의 box 복사, Usurp의 Imperium Row graft와 turn 끝 trash, Chairdog의 Reveal 시작 반환, Tleilaxu Infiltrator의 점유 무시. **완료(2026-09-08; Ghola·Usurp·Chairdog는 카드 슬라이스로 이월).**
 5. 카드 play data: Tleilaxu 18 + 프로모 Piter, Imperium 25종(27장), Intrigue 11장 — 전사표 기준으로 `Play`/`Document` 쌍. 새 효과: Research·Tleilaxu·specimen 아이콘, genetic marker 조건, Combat 아이콘 재사용, "lose troops" 비용, Tleilaxu Master의 조건부 획득, Shadout Mapes의 Reveal 배치/retreat, Stillsuit Manufacturer의 hand 반환, Imperium Ceremony의 Intrigue peek. **진행(2026-09-08): 5a Intrigue 11장, 5b Imperium 25종 전부 완료(codec v97, 관측 v14, OQ-052~053); 5c Tleilaxu 18장 + Piter 완료(관측 v15, OQ-052~055) — 카드 play data 전부 완결.**
-6. 서버·UI 표시(Bene Tleilax board, Tleilaxu Row, specimen, token 위치, Graft 행동), heuristic·rollout 가중치, `--immortality` 소크(단독과 `--bloodlines --tech-module` 교차), census.
+6. 서버·UI 표시(Bene Tleilax board, Tleilaxu Row, specimen, token 위치, Graft 행동), heuristic·rollout 가중치, `--immortality` 소크(단독과 `--bloodlines --tech-module` 교차), census. **완료(2026-09-08): UI 패널, 830판 소크 실패 0, census 0회 없음 — M13 완료.**
 
 완료 조건: `immortality` 룰셋(단독·Bloodlines 교차)의 random·heuristic 소크가 실패 0으로 완주하고, 모든 Immortality 구성물이 카드면 검증을 거쳐 audit 문서에 기록되며, 공식 문서가 침묵하는 판정은 open-questions에 convention으로 남는다.
 
