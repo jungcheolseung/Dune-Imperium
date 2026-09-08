@@ -1,6 +1,6 @@
 # Immortality implementation audit
 
-기준일: 2026-09-08 — 슬라이스 1(출처·명세·옵션 골격·카탈로그), 슬라이스 2(Bene Tleilax board·specimen·Research Station·Experimentation·Family Atomics), 슬라이스 3(Tleilaxu Row·Reclaimed Forces·첫 카드 3장), 슬라이스 4(Graft와 Graft 카드 8장), 슬라이스 5a(Intrigue 11장), 슬라이스 5b-1(Imperium 15종), 슬라이스 5b-2(Imperium 8종 — Imperium 25종 전부) 완료.
+기준일: 2026-09-08 — 슬라이스 1(출처·명세·옵션 골격·카탈로그), 슬라이스 2(Bene Tleilax board·specimen·Research Station·Experimentation·Family Atomics), 슬라이스 3(Tleilaxu Row·Reclaimed Forces·첫 카드 3장), 슬라이스 4(Graft와 Graft 카드 8장), 슬라이스 5a(Intrigue 11장), 슬라이스 5b-1(Imperium 15종), 슬라이스 5b-2(Imperium 8종 — Imperium 25종 전부), 슬라이스 5c-1(Tleilaxu 6종 + 프로모 Piter) 완료.
 
 규범 근거는 [`rules/immortality.md`](../rules/immortality.md)이며, 콘텐츠 정의는 `content/immortality/board.py`(research·Tleilaxu track), `content/immortality/tleilaxu.py`(Tleilaxu deck·Reclaimed Forces), `content/uprising/imperium.py`·`intrigue.py`의 `immortality_only` 항목이 소유한다. 모든 동작은 `RulesetConfig(immortality=True)`에서만 켜진다.
 
@@ -174,8 +174,20 @@ For Humanity와 Interstellar Conspiracy의 "◇?" 아이콘은 카드면 확대�
 
 부수 수정(소크 heuristic seed 11이 적발): 획득한 카드의 Research 획득 box(Spiritual Fervor)가 여는 `RESEARCH_ADVANCE` frame이 (1) Intrigue 획득 slot의 choice frame을 묻어 `RuntimeError`, (2) Price is No Object의 `advance_after_effect`가 frame을 덮어쓰고, (3) Leader Signet 획득도 같은 구조였다. `intrigue.py`의 `_lift_pushed_frames`/`_restack`이 slot 처리 뒤 밀어 올린 frame을 다시 얹고(late reveal이 아래에 끼워 넣는 frame은 그대로), 나머지 두 경로는 box를 먼저 닫은 뒤 획득한다.
 
+## 슬라이스 5c-1: Tleilaxu 6종 + Piter
+
+| 카드 | 구현 | 규칙 민감 메모 |
+| --- | --- | --- |
+| Industrial Espionage | `DRAW_ONE_AND_RESEARCH_AND_SPECIMEN_IF_GRAFTED`: box를 닫은 뒤 graft면 specimen·research(방향 frame은 turn 위에), 그 다음 draw. | `is_grafted`는 해결 시점 판정. |
+| Scientific Breakthrough | `RESEARCH_AND_MAY_TRASH_SELF_FOR_VP_IF_TWO_MARKERS`: marker 2 이상이면 지불 provider가 `resolve_agent_card_effect`(research만)와 `trash_agent_card_self_for_vp`(자기 trash + VP + research)를 연다. 자기 trash는 `agent_card_self_trashed`(OQ-022: 자기 비용이라 보상 유지). | 두 번째 marker 뒤의 Research는 draw(슬라이스 2 판정). |
+| Guild Impersonator | `GAIN_SPACING_GUILD_INFLUENCE_IF_GAINED_SPICE_THIS_TURN`: `spice_gained_this_turn(owner)`(turn 시작 대비 순증가 + 지출) ≥ 1이면 Guild Influence, 아니면 불발. | 해결 시점 판정(OQ-028): Hagga Basin의 spice를 먼저 받으면 성립. |
+| Slig Farmer | `GAIN_SOLARI_PER_PARTNER_ICON_AND_MAY_PAY_FIVE_SOLARI_FOR_TLEILAXU`: 상대 카드의 *인쇄된* Agent 아이콘 수만큼 Solari(`_partner_icon_count`); 받은 뒤 5 이상이면 `pay_agent_card_five_solari_for_tleilaxu`로 Tleilaxu 1칸. | Blank Slate의 graft 시 추가 아이콘은 인쇄 아이콘이 아니라 세지 않는다(project convention). |
+| Stitched Horror | `CHOOSE_TWO_OF_WATER_TROOP_TRASH_TLEILAXU`: `choose_agent_card_reward(reward)`를 두 번, 같은 보상은 두 번 고를 수 없다(`rewards_chosen`). water·troop은 즉시, tleilaxu는 `advance_tleilaxu`, trash는 `optional_trash` frame(첫 선택이면 효과 frame 위에, 둘째면 turn을 닫은 뒤). | "Choose two"의 순차 선택은 Long Reach와 같은 기계. |
+| Beguiling Pheromones | `MAY_TRASH_GRAFTED_CARD_FOR_VISITED_FACTION_INFLUENCE`: 방문 space에 진영이 있고 graft일 때 `trash_grafted_card_for_influence(card_id)`로 두 grafted 카드 중 하나(play 영역에 있는 것)를 trash → 그 진영 Influence 1. 상대를 trash하면 상대의 미발동 box 소멸(`graft_pending_effect=False`), 자기를 trash하면 `agent_card_self_trashed`. | `[FAQ p. 1]`의 Beguiling Pheromones 판정(OQ-022). Faction 방문 여부는 `space_id`의 인쇄 진영. |
+| Piter, Genius Advisor(프로모) | `MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH`: `lose_agent_card_troop(zone)`(garrison/Conflict, OQ-038의 존 선택; Conflict면 전투력·배치 카운터 조정) → box를 닫고 research(방향 frame) → draw 2. | `promo_cards`+`immortality`일 때만 덱에. |
+
 ## 미완 경계
 
-- 슬라이스 5c: Tleilaxu 9(Beguiling Pheromones, Chairdog, Ghola, Guild Impersonator, Industrial Espionage, Scientific Breakthrough, Slig Farmer, Stitched Horror, Usurp) + Piter; Ghola의 box 복사(활성 카드의 `agent_effect` 읽기 41곳을 접근자로 모아야 한다), Usurp의 Imperium Row 상대(turn 끝 trash), Chairdog의 Reveal 시작 반환.
+- 슬라이스 5c-2: Tleilaxu 3종 — Ghola의 box 복사(활성 카드의 `agent_effect` 읽기를 접근자로 모아 상대 카드의 box를 돌려준다; 배치 시점 `agent_effect_is_available`·`agent_card_icons_at_placement`도 상대 기준), Usurp의 Imperium Row 상대(Usurp는 아이콘이 없어 Row 카드의 아이콘으로 배치, 상대는 Row 카드, turn이 닫힐 때 `imperium_removed`로), Chairdog의 Reveal 시작 반환(`chairdog_return_card_id` → `begin_reveal_turn` 앞에서 hand로).
 - 슬라이스 6: UI 표시(board·token·specimen·Row·Graft 프롬프트).
 - 공식 문서가 침묵하는 판정 가운데 아직 등록하지 않은 것: "lose a troop"의 출처 존 선택(카드 슬라이스에서).
