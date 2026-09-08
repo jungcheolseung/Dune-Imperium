@@ -33,6 +33,7 @@ Uprising setup에 다음 단계를 더하거나 바꾼다. `[Bloodlines p. 3]`
 - recruit한 Commander는 대부분 다른 유닛과 같이 쓴다. garrison에 두거나, 이번 turn에 Combat space에 Agent를 보냈다면 Conflict에 deploy할 수 있다. 나중에 garrison에 있을 때 Combat space에 Agent를 보내면 garrison에서 deploy하는 `up to two` 유닛 중 하나가 될 수 있다. `[Bloodlines p. 4]`
 - Commander는 Conflict에서 strength 2인 "troop"이다. troop을 대상으로 하는 효과(예: Go to Ground의 retreat)는 Commander에도 적용된다. `[Bloodlines p. 4]`
 - Combat이 해결되고 보상이 지급되면 Commander는 소유자의 supply로 돌아간다. `[Bloodlines p. 4]`
+- Endgame의 최종 tiebreaker "garrison의 troop 수" `[Main p. 15]`에는 garrison에 있는 Commander도 troop으로 센다. 공식 문서는 이 경우를 다루지 않으며, "Commander는 troop이다"의 연장으로 프로젝트가 확정했다(OQ-047 project convention). supply나 Conflict에 있는 Commander는 세지 않는다.
 
 ### Sardaukar Commander Skill
 
@@ -144,4 +145,5 @@ Uprising setup에 다음 단계를 더하거나 바꾼다. `[Bloodlines p. 3]`
 - 2026-09-07 슬라이스 5d: Steersman Y'rkoon과 Navigation 10장(setup의 slot 선택 frame, Influence 2 도달 trigger 대기열, OQ-012 재검토·OQ-039). 이로써 6절의 Leader 8종이 모두 play된다.
 - 2026-09-07 슬라이스 6a: 5절의 Ixian Embassy — setup의 세 stack(6·6·6, CHOAM 없이는 6·6·5), Landsraad 방문마다 자유 순서 효과로 열리는 Acquire Tech(`acquire_tech`/`decline_tech`, High Council 할인, 하한 0), 다음 tile 공개, 획득 효과 18종(Spy trash·Influence 선택·Intrigue/draw 선택·Shield Wall 파괴·선택 trash·Deep Cover Spy 2·Ornithopter Fleet의 즉시 매칭 포함), 카드의 Tech Discount 아이콘이 여는 `tech_acquisition` frame. 관측 v9, codec v91.
 - 2026-09-07 슬라이스 6b: 위 표의 능력 18종 전부 — 상시 효과(Navigation Chamber·Servo-Receivers·Sardaukar High Command·Gene-Locked Vault·Glowglobes·Ornithopter Fleet), Reveal turn 효과(Self-Destroying Messages·Delivery Bay·Training Depot의 Command (6+)와 늦은 지급·Panopticon의 Spy·Forbidden Weapons의 의무 선택 — 둘 다 Reveal 안에서 소유자가 순서를 고른다), trigger(Planetary Array·CHOAM Transports·Suspensor Suits·Plasteel Blades), Flip 3종과 Round Start 복귀, Endgame 효과(OQ-040). 카드 밖에서 생성된 Persuasion(Skill·Navigation·tile)도 Command (6+) 판정에 센다(OQ-043).
+- 2026-09-08: Endgame tiebreaker의 garrison troop 수에 Commander를 포함(OQ-047, 3절).
 - 2026-09-07 슬라이스 6c·6d: Tech 전용 카드 3종(effect DSL `TechTilesAtLeast`·`AcquireTech`)과 Kota Odax of Ix(Secret Project의 `tech_secret_project` setup frame, 비공개 tile, 할인 후보, Reverse Engineering Signet). 이로써 Bloodlines 구성물 전부가 play된다; 남은 것은 슬라이스 7(UI 표시·heuristic 가중치·대규모 소크·학습 재개)이다. 세부는 [implementation-audits/bloodlines.md](../implementation-audits/bloodlines.md)의 Tech Module 절.

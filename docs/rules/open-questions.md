@@ -320,6 +320,13 @@
 - 판정(2026-09-07): 얻을 Influence가 없으므로 화살표 비용(자기 trash + Emperor 카드 trash)을 제시하지 않고 Agent box는 거절만 남는다. 비용을 내고 아무것도 얻지 않는 선택은 `[Main p. 20]`의 "화살표: 비용을 내면 보상을 얻는다"에서 보상이 정의되지 않으므로 열지 않는다(OQ-022의 "만료된 효과는 발동할 수 없다"와 같은 방향). Bloodlines+Tech 대규모 soak(seed 411·263·202, draft·heuristic)에서 이 조합이 `RuntimeError`로 드러나 고쳤다. `tests/unit/rules/test_agent_effects.py::test_treacherous_maneuver_offers_no_trash_on_a_space_without_a_faction`으로 고정한다.
 - 재개 조건: 공식 FAQ가 Faction이 없는 space에서의 "Faction you visited" 효과를 정할 때.
 
+## OQ-047 — Endgame tiebreaker의 "garrison의 troop 수"와 Sardaukar Commander
+
+- 상태: `DECIDED` (project convention)
+- Uprising의 최종 동률 규칙은 spice, Solari, water, "garrison의 troop 수" 순서로 비교한다 `[Main p. 15]`. Bloodlines 룰북은 Commander를 "Conflict에서 strength 2인 troop"으로 다루고 troop 대상 효과가 Commander에도 적용된다고 하지만 `[Bloodlines p. 4]`, Endgame tiebreaker를 언급하지 않는다. 2025-01-13 FAQ에도 Bloodlines 항목이 없다.
+- 판정(2026-09-08, 사용자 판정): garrison에 있는 Commander는 tiebreaker의 troop 수에 **포함**해 센다. supply(아직 recruit하지 않았거나 Combat 뒤 돌아간 것)와 Conflict의 Commander는 garrison이 아니므로 세지 않는다. 구현은 `rules/endgame.py`의 `_ranking_key`(`troops_garrison + commanders_garrison`)와 `FinalStanding.commanders_garrison`, 테스트는 `tests/unit/rules/test_endgame.py::test_garrisoned_commanders_count_as_troops_in_the_tiebreak`.
+- 재개 조건: 공식 FAQ나 새 Bloodlines 룰북이 Endgame tiebreaker에서 Commander의 취급을 정할 때.
+
 ## 판정이 생겼을 때 기록할 정보
 
 각 항목을 닫을 때 다음을 함께 남긴다. `DECIDED` 항목에 새 공식 답이 나왔을 때도 같다.

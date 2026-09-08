@@ -26,6 +26,9 @@ class FinalStanding:
     water: int
     troops_garrison: int
     reveal_position: int
+    # Bloodlines: garrisoned Sardaukar Commanders count with the troops in
+    # the "troops in garrison" tiebreak (OQ-047 project convention).
+    commanders_garrison: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,6 +77,7 @@ def final_standings(state: GameState) -> tuple[FinalStanding, ...]:
             water=player.resources.water,
             troops_garrison=player.troops_garrison,
             reveal_position=reveal_positions[player.player_id],
+            commanders_garrison=player.commanders_garrison,
         )
         for rank, player in enumerate(ranked, start=1)
     )
@@ -314,6 +318,9 @@ def _ranking_key(player: PlayerState, reveal_position: int) -> tuple[int, ...]:
         player.resources.spice,
         player.resources.solari,
         player.resources.water,
-        player.troops_garrison,
+        # "Troops in garrison" [Main p. 15]: a Sardaukar Commander is a
+        # "troop" [Bloodlines p. 4], so garrisoned Commanders count too
+        # (OQ-047).
+        player.troops_garrison + player.commanders_garrison,
         reveal_position,
     )

@@ -24,10 +24,12 @@ from dune_imperium.rules.endgame import (
 
 
 def _state(
-    *players: PlayerState, reveal_order: tuple[int, ...] = (0, 1, 2, 3)
+    *players: PlayerState,
+    reveal_order: tuple[int, ...] = (0, 1, 2, 3),
+    config: RulesetConfig | None = None,
 ) -> GameState:
     return GameState(
-        config=RulesetConfig(),
+        config=config or RulesetConfig(),
         seed=1,
         phase=GamePhase.ENDGAME,
         first_player=0,
@@ -48,6 +50,7 @@ def _player(
     solari: int = 0,
     water: int = 1,
     troops_garrison: int = 3,
+    commanders_garrison: int = 0,
 ) -> PlayerState:
     return PlayerState(
         player_id=player,
@@ -55,6 +58,7 @@ def _player(
         resources=Resources(solari=solari, spice=spice, water=water),
         troops_supply=12 - troops_garrison,
         troops_garrison=troops_garrison,
+        commanders_garrison=commanders_garrison,
     )
 
 
@@ -83,6 +87,37 @@ def test_final_tiebreakers_apply_in_rules_order(
 
     assert tuple(standing.player for standing in standings[:2]) == (0, 1)
     assert tuple(standing.rank for standing in standings) == (1, 2, 3, 4)
+
+
+def test_garrisoned_commanders_count_as_troops_in_the_tiebreak() -> None:
+    # "Troops in garrison" [Main p. 15] counts Sardaukar Commanders, which
+    # are "troops" [Bloodlines p. 4] (OQ-047 project convention): two
+    # troops plus a Commander beat three troops on the more recent Reveal
+    # of player 1 only because the Commander pushes player 0 ahead first.
+    state = _state(
+        _player(0, troops_garrison=2, commanders_garrison=1),
+        _player(1, troops_garrison=2),
+        _player(2, victory_points=8),
+        _player(3, victory_points=7),
+        reveal_order=(2, 3, 0, 1),
+        config=RulesetConfig(bloodlines=True),
+    )
+
+    standings = final_standings(state)
+
+    assert tuple(standing.player for standing in standings[:2]) == (0, 1)
+    assert standings[0].troops_garrison == 2
+    assert standings[0].commanders_garrison == 1
+    # A Commander in the Conflict or the supply is not garrisoned.
+    tied = _state(
+        _player(0, troops_garrison=2),
+        replace(_player(1, troops_garrison=2), commanders_supply=1),
+        _player(2, victory_points=8),
+        _player(3, victory_points=7),
+        reveal_order=(2, 3, 0, 1),
+        config=RulesetConfig(bloodlines=True),
+    )
+    assert tuple(standing.player for standing in final_standings(tied)[:2]) == (1, 0)
 
 
 def test_most_recent_reveal_breaks_an_otherwise_exact_tie() -> None:

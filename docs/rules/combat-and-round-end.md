@@ -87,4 +87,5 @@
 - 같은 순위에 묶인 여러 플레이어의 보상 해결 순서: 동률 그룹이 받는 2·3위 줄에는 상호작용하는 보상이 없고, 좌석 번호 오름차순으로 해결한다(OQ-002 `DECIDED`). [Main p. 14]
 - Combat Intrigue 중 유닛 수 변화와 우선권 순환: 유닛을 늘리는 카드가 없어 진입은 불가능하고, 마지막 유닛을 잃은 참가자는 즉시 순환에서 빠진다(OQ-003 `DECIDED`). [Main p. 14]
 - Endgame Intrigue 순서와 wild matching 시점: First Player부터 시계 방향 단일 순회 window 안에서 자유 순서로 처리한다(OQ-001 `DECIDED`). [Main p. 15] [Main p. 20]
+- Bloodlines의 "garrison의 troop 수" tiebreaker: garrison의 Sardaukar Commander를 troop과 함께 센다(OQ-047 `DECIDED`; [bloodlines.md](bloodlines.md) 3절). [Main p. 15] `[Bloodlines p. 4]`
 - 일치하는 face-up 카드가 여러 장일 때의 pair 선택: Combat 즉시 matching은 공식 콘텐츠에서 다중 후보가 성립하지 않고, Endgame wild는 소유자가 고른다(OQ-005 `RESOLVED`). [Main p. 14] [Main p. 20]

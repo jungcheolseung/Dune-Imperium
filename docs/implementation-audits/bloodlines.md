@@ -100,7 +100,7 @@ Skill 7종은 에셋 저장소 `cards/en/bloodlines/skill/*.webp`를 직접 판�
 
 ## 미완 경계
 
-- Endgame tiebreaker "garrison의 troop 수"에 Commander를 세는지는 공식 문서가 침묵한다(현재는 세지 않음; open question으로 올릴 예정).
+- (2026-09-08 해소) Endgame tiebreaker "garrison의 troop 수"에 garrison의 Commander를 포함해 센다(OQ-047 project convention, 사용자 판정; `rules/endgame.py`, `FinalStanding.commanders_garrison`).
 - (2026-09-07 밤 해소) UI는 좌석 패널의 Commander·Skill·Tech chip(Flip 면·Secret Project·box의 Spy 포함), 공용 열의 Sardaukar Commander 칸·bank, face-up Skill, Ixian Embassy 세 stack(face-up tile 이미지·남은 수)과 Tech trash, 보드 병력 칩의 Commander 표시, tile 호버 상세(`display/bloodlines.py`의 텍스트)를 갖췄다. heuristic은 `_TECH_BONUSES`로 즉시 득점·상시 할인 tile을 먼저 사고(비용·잔여 spice는 여전히 보지 않는다 — 행동만 보는 설계), rollout의 `player_value`는 Commander 1.2·Skill 0.5·Tech tile 1.0을 자산으로 센다.
 - Kota Odax가 Secret Project에서 본 나머지 두 bottom tile의 identity는 관측에 넣지 않는다(OQ-041).
 
