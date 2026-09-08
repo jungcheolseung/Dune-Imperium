@@ -14,9 +14,12 @@ per action; the card is discarded when the last slot completes.
 from collections.abc import Mapping
 from dataclasses import replace
 
+from dune_imperium.content.immortality.board import genetic_markers_reached
+from dune_imperium.content.immortality.tleilaxu import tleilaxu_card_for_instance
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireCardUpTo,
+    AcquireTleilaxuCard,
     DeployFromGarrison,
     DestroyShieldWall,
     DiscardFromHand,
@@ -25,6 +28,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     FlipFaceUpConflictCard,
     GainInfluence,
     GiveIntrigueToOpponent,
+    IntrigueOption,
     IntrigueTiming,
     LoseInfluence,
     LoseTroops,
@@ -121,6 +125,7 @@ from dune_imperium.rules.spy_placement import (
     solo_occupied_post_ids,
 )
 from dune_imperium.rules.tech import push_tech_acquisition
+from dune_imperium.rules.tleilaxu_row import acquire_tleilaxu_card
 from dune_imperium.rules.unit_loss import lose_unit
 from dune_imperium.rules.units import retreat_units
 
@@ -199,9 +204,6 @@ def apply_intrigue_play(state: GameState, action: DomainAction) -> RuleResult:
     sections = applicable_sections(
         state, player, option, shield_wall_present=state.shield_wall_present
     )
-    section_indexes = tuple(
-        index for index, section in enumerate(option.sections) if section in sections
-    )
     cost = resource_cost(sections)
 
     paid_owner = pay_cost(owner, cost)
@@ -212,6 +214,17 @@ def apply_intrigue_play(state: GameState, action: DomainAction) -> RuleResult:
     played_state = replace(state, players=replace_player(state.players, paid_owner))
     if cost is not None and cost.spice:
         played_state = _update_agent_turn_frame(played_state, spice_spent=cost.spice)
+    if (
+        option.timing is IntrigueTiming.COMBAT
+        and state.phase is GamePhase.COMBAT
+        and player not in played_state.combat_intrigue_players
+    ):
+        # Counterattack (Immortality): "If an opponent played a Combat
+        # Intrigue card in this Conflict".
+        played_state = replace(
+            played_state,
+            combat_intrigue_players=(*played_state.combat_intrigue_players, player),
+        )
     events: list[GameEvent] = [
         GameEvent(
             event_id=source,
@@ -262,6 +275,73 @@ def apply_intrigue_play(state: GameState, action: DomainAction) -> RuleResult:
             events=tuple(events),
         )
 
+    return _resolve_paid_option(
+        played_state, player, card_id, option_index, option, sections, source, events
+    )
+
+
+def resolve_faceup_trigger_option(
+    state: GameState,
+    player: int,
+    card_id: str,
+    *,
+    source: str,
+) -> RuleResult:
+    """Fire a face-up trigger card's option now (Harvest Cells at cleanup).
+
+    The card returns from the face-up zone to the owner's hand of played
+    cards so the ordinary finish path discards it; its sections then open
+    their choices or resolve at once.
+    """
+
+    owner = state.players[player]
+    if card_id not in owner.intrigue_faceup:
+        raise ValueError("the trigger card is not face up")
+    entry = intrigue_card_for_instance(card_id)
+    option_index = next(
+        index for index, option in enumerate(entry.options) if option.trigger
+    )
+    option = entry.options[option_index]
+    sections = applicable_sections(
+        state, player, option, shield_wall_present=state.shield_wall_present
+    )
+    moved = replace(
+        owner,
+        intrigue_faceup=tuple(
+            held for held in owner.intrigue_faceup if held != card_id
+        ),
+        intrigue_cards=(*owner.intrigue_cards, card_id),
+    )
+    prepared = replace(state, players=replace_player(state.players, moved))
+    events: list[GameEvent] = [
+        GameEvent(
+            event_id=f"{source}:fired",
+            kind="intrigue_trigger_fired",
+            payload=(("card_id", card_id), ("player", player)),
+        )
+    ]
+    return _resolve_paid_option(
+        prepared, player, card_id, option_index, option, sections, source, events
+    )
+
+
+def _resolve_paid_option(
+    played_state: GameState,
+    player: int,
+    card_id: str,
+    option_index: int,
+    option: IntrigueOption,
+    sections: tuple[EffectSection, ...],
+    source: str,
+    events: list[GameEvent],
+) -> RuleResult:
+    """Open the option's choice frame, or finish it when nothing is chosen."""
+
+    state = played_state
+    paid_owner = played_state.players[player]
+    section_indexes = tuple(
+        index for index, section in enumerate(option.sections) if section in sections
+    )
     if choice_slots(sections, shield_wall_present=state.shield_wall_present):
         frame = DecisionFrame(
             kind=FrameKind.INTRIGUE_CHOICE,
@@ -444,6 +524,38 @@ def legal_intrigue_choice_actions(
                 )
                 for held in owner.intrigue_cards
                 if held != played
+            )
+        case AcquireTleilaxuCard():
+            # Harvest Cells: "You may also acquire a Tleilaxu card (paying
+            # its normal cost)" [card face].
+            deck_top_allowed = bool(owner.research_space) and (
+                genetic_markers_reached(owner.research_space) >= 1
+            )
+            for instance_id in state.tleilaxu_row:
+                if tleilaxu_card_for_instance(instance_id).specimen_cost > (
+                    owner.specimens
+                ):
+                    continue
+                actions.append(
+                    DomainAction(
+                        action_id="acquire_intrigue_tleilaxu",
+                        actor=player,
+                        arguments=(("instance_id", instance_id),),
+                    )
+                )
+                if deck_top_allowed:
+                    actions.append(
+                        DomainAction(
+                            action_id="acquire_intrigue_tleilaxu",
+                            actor=player,
+                            arguments=(
+                                ("instance_id", instance_id),
+                                ("to_deck_top", True),
+                            ),
+                        )
+                    )
+            actions.append(
+                DomainAction(action_id="decline_intrigue_tleilaxu", actor=player)
             )
         case PeekTopCard():
             if owner.deck:
@@ -669,6 +781,26 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
             result = trash_personal_card(
                 state, player, str(arguments["card_id"]), source=step_source
             )
+        case AcquireTleilaxuCard():
+            if action.action_id == "decline_intrigue_tleilaxu":
+                result = RuleResult(
+                    state=state,
+                    events=(
+                        GameEvent(
+                            event_id=f"{step_source}:tleilaxu_declined",
+                            kind="intrigue_tleilaxu_acquisition_declined",
+                            payload=(("player", player),),
+                        ),
+                    ),
+                )
+            else:
+                result = acquire_tleilaxu_card(
+                    state,
+                    player,
+                    str(arguments["instance_id"]),
+                    to_deck_top=arguments.get("to_deck_top") is True,
+                    source=step_source,
+                )
         case FlipBattleCard() | FlipFaceUpConflictCard():
             flipped_id = str(arguments["card_id"])
             owner = state.players[player]

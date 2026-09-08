@@ -466,10 +466,15 @@ def test_intrigue_manifest_matches_base_and_choam_counts() -> None:
     assert sum(entry.copies for entry in INTRIGUE_CARDS) == 44 + 18 + 12 + 10 + 11
     immortality = tuple(entry for entry in INTRIGUE_CARDS if entry.immortality_only)
     assert len(immortality) == 11
-    assert not any(
-        entry.immortality_only
-        for entry in intrigue_cards_for_choam(True, immortality=True)
+    assert all(entry.play_data_complete for entry in immortality)
+    assert (
+        sum(
+            entry.immortality_only
+            for entry in intrigue_cards_for_choam(True, immortality=True)
+        )
+        == 11
     )
+    assert not any(entry.immortality_only for entry in intrigue_cards_for_choam(True))
     bloodlines = tuple(
         entry
         for entry in INTRIGUE_CARDS

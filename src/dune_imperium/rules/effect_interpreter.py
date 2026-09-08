@@ -9,12 +9,16 @@ decision at a time; everything else is applied automatically.
 
 from dataclasses import dataclass, replace
 
+from dune_imperium.content.immortality.board import genetic_markers_reached
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireCardUpTo,
     AcquireReserveCard,
     AcquireTech,
+    AcquireTleilaxuCard,
+    AdvanceTleilaxu,
+    AllConditions,
     CommanderDiscountThisTurn,
     CommandersInConflictAtLeast,
     CompletedContractsAtLeast,
@@ -33,6 +37,8 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainResources,
     GainSolariPerUnitType,
     GainVictoryPoints,
+    GenerateSpecimens,
+    GeneticMarkersAtLeast,
     GiveIntrigueToOpponent,
     GrantAgentIconsThisTurn,
     GrantAgentIconThisTurn,
@@ -46,6 +52,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     LoseInfluence,
     LoseTroops,
     OpponentAllianceInfluenceAtLeast,
+    OpponentPlayedCombatIntrigue,
     PassTurn,
     PayResources,
     PeekTopCard,
@@ -54,11 +61,15 @@ from dune_imperium.content.uprising.effect_dsl import (
     RecallSpy,
     RecruitTroops,
     RedirectSpiesOnTurnSpace,
+    Research,
     RetreatTroops,
     RevealContractsTakeOne,
+    RevealPersuasionThisRound,
     Reward,
     SandwormsInConflictAtLeast,
     SetAsideImperiumRowCard,
+    SolariAtLeast,
+    SpiceAtLeast,
     SpiceMustFlowCardsAtLeast,
     SpiesPlacedAtLeast,
     SummonSandworm,
@@ -88,12 +99,14 @@ from dune_imperium.rules.effects import (
     recruit_troops,
 )
 from dune_imperium.rules.frames import replace_player
+from dune_imperium.rules.immortality import advance_research, advance_tleilaxu
 from dune_imperium.rules.influence import gain_faction_influence, influence_amount
 from dune_imperium.rules.intrigue_deck import draw_intrigue_cards
 from dune_imperium.rules.leader_abilities import units_deployment_blocked
 from dune_imperium.rules.ornithopter import has_ornithopter_fleet
 from dune_imperium.rules.planetologist import replaces_sandworms
 from dune_imperium.rules.shield_wall import current_conflict_is_shield_wall_protected
+from dune_imperium.rules.specimens import generate_specimens
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
     observation_post_ids_for_factions,
@@ -119,6 +132,7 @@ type ChoiceSlot = (
     | GiveIntrigueToOpponent
     | TrashIntrigueCard
     | PeekTopCard
+    | AcquireTleilaxuCard
 )
 
 
@@ -187,6 +201,20 @@ def condition_holds(state: GameState, player: int, condition: Condition) -> bool
             return owner.commanders_conflict >= count
         case TechTilesAtLeast(count=count):
             return len(owner.tech_ids) >= count
+        case GeneticMarkersAtLeast(count=count):
+            return bool(owner.research_space) and (
+                genetic_markers_reached(owner.research_space) >= count
+            )
+        case SolariAtLeast(amount=amount):
+            return owner.resources.solari >= amount
+        case SpiceAtLeast(amount=amount):
+            return owner.resources.spice >= amount
+        case OpponentPlayedCombatIntrigue():
+            return any(
+                seat != player for seat in state.combat_intrigue_players
+            )
+        case AllConditions(conditions=conditions):
+            return all(condition_holds(state, player, item) for item in conditions)
         case InfluenceAtLeast(faction=faction, amount=amount):
             return influence_amount(owner.influence, faction) >= amount
         case HasHighCouncil():
@@ -353,6 +381,7 @@ def choice_slots(
                     | AcquireCardUpTo()
                     | SetAsideImperiumRowCard()
                     | PeekTopCard()
+                    | AcquireTleilaxuCard()
                 ):
                     slots.append(reward)
                 case _:
@@ -621,7 +650,8 @@ def automatic_rewards(sections: tuple[EffectSection, ...]) -> tuple[Reward, ...]
             | RetreatTroops
             | AcquireCardUpTo
             | SetAsideImperiumRowCard
-            | PeekTopCard,
+            | PeekTopCard
+            | AcquireTleilaxuCard,
         )
     )
 
@@ -653,8 +683,26 @@ def apply_rewards(
     intrigue_draws = 0
     contracts = 0
     fixed_influence: list[GainInfluence] = []
+    # Immortality: Bene Tleilax board moves resolve on the state after the
+    # resource gains (a research advance may open a direction choice).
+    specimens = 0
+    tleilaxu_advances = 0
+    researches = 0
     for reward in rewards:
         match reward:
+            case Research():
+                researches += 1
+            case AdvanceTleilaxu(count=count):
+                tleilaxu_advances += count
+            case GenerateSpecimens(count=count):
+                specimens += count
+            case RevealPersuasionThisRound(amount=amount):
+                owner = replace(
+                    owner,
+                    reveal_persuasion_round_bonus=(
+                        owner.reveal_persuasion_round_bonus + amount
+                    ),
+                )
             case GainResources(solari=solari, spice=spice, water=water):
                 owner = replace(
                     owner,
@@ -820,6 +868,24 @@ def apply_rewards(
         )
         next_state = drawn.state
         events.extend(drawn.events)
+    if specimens:
+        generated = generate_specimens(
+            next_state, player, specimens, source=f"{source}:specimens"
+        )
+        next_state = generated.state
+        events.extend(generated.events)
+    if tleilaxu_advances:
+        advanced = advance_tleilaxu(
+            next_state, player, tleilaxu_advances, source=f"{source}:tleilaxu"
+        )
+        next_state = advanced.state
+        events.extend(advanced.events)
+    for index in range(researches):
+        researched = advance_research(
+            next_state, player, source=f"{source}:research:{index}"
+        )
+        next_state = researched.state
+        events.extend(researched.events)
     if personal_draws:
         drawn = draw_or_request_personal_cards(
             next_state, player, personal_draws, source=f"{source}:draw"

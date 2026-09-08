@@ -3004,6 +3004,9 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         # Persuasion").
         total += sum(skill.reveal_persuasion for skill in active_skills)
         total += owner.reveal_persuasion_bonus
+        # Tleilaxu Puppet: "Gain 1 Persuasion during your Reveal turn this
+        # round" [card face].
+        total += owner.reveal_persuasion_round_bonus
         if has_tech(owner.tech_ids, TechAbility.REVEAL_PERSUASION):
             total += 1
         return total

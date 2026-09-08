@@ -227,6 +227,8 @@ const ACTION_LABELS = {
   generate_reveal_specimens: "Reveal: specimen",
   acquire_tleilaxu: "Tleilaxu 카드 획득",
   acquire_reclaimed_forces: "Reclaimed Forces",
+  acquire_intrigue_tleilaxu: "Harvest Cells: Tleilaxu 카드 획득",
+  decline_intrigue_tleilaxu: "Harvest Cells: 획득 안 함",
   choose_graft_partner: "Graft: 함께 play할 카드",
   switch_graft_card: "Graft: 다른 카드의 Agent box 해결",
   decline_agent_card_recall: "Agent recall 거절",

@@ -24,7 +24,7 @@ from dune_imperium.simulation import run_random_game
 
 
 def test_layout_is_versioned_and_contiguous() -> None:
-    assert OBSERVATION_VERSION == 12
+    assert OBSERVATION_VERSION == 13
     # 66 Uprising personal-card identities plus 26 Bloodlines Imperium
     # identities, the Bloodlines promo, 25 Immortality Imperium identities,
     # Experimentation and the 19 Tleilaxu deck cards (promo included); 39
@@ -43,7 +43,9 @@ def test_layout_is_versioned_and_contiguous() -> None:
     # v12: Experimentation and the Tleilaxu deck (20 identities), four seat
     # scalars (research space, Tleilaxu space, specimens, Family Atomics)
     # and the Tleilaxu Row/deck/track spice segments (3,729 -> 4,129).
-    assert OBSERVATION_SIZE == 3038 + 24 + 4 * 21 + 1 + 19 + 563 + 400
+    # v13: the round's Reveal Persuasion bonus per seat and the Combat
+    # Intrigue players segment (4,129 -> 4,137).
+    assert OBSERVATION_SIZE == 3038 + 24 + 4 * 21 + 1 + 19 + 563 + 400 + 8
 
     offset = 0
     for segment in OBSERVATION_SEGMENTS:

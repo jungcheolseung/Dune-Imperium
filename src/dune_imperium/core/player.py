@@ -166,6 +166,9 @@ class PlayerState:
     tleilaxu_space: int = 0
     specimens: int = 0
     family_atomics: bool = False
+    # Tleilaxu Puppet: Persuasion granted for this round's Reveal turn only
+    # (cleared at Round Start).
+    reveal_persuasion_round_bonus: int = 0
     deck: tuple[str, ...] = ()
     hand: tuple[str, ...] = ()
     # Hand cards whose identity every seat already knows because they
@@ -237,6 +240,7 @@ class PlayerState:
             self.tech_cards_owed,
             self.tleilaxu_space,
             self.specimens,
+            self.reveal_persuasion_round_bonus,
         )
         if min(quantities) < 0:
             raise ValueError("player component quantities must not be negative")

@@ -45,6 +45,8 @@ def begin_round(state: GameState) -> RuleResult:
             spice_spent_turn=0,
             # Urgent Shigawire's boost lasts "this round" only.
             bene_gesserit_boost_pending=False,
+            # Tleilaxu Puppet's Reveal Persuasion lasts "this round" only.
+            reveal_persuasion_round_bonus=0,
             # Flipped Tech tiles return face up at Round Start
             # [Bloodlines pp. 7, 12].
             tech_flipped=(),
@@ -81,6 +83,7 @@ def begin_round(state: GameState) -> RuleResult:
         conflict_first_place_influence_bonus=0,
         combat_intrigue_complete=False,
         combat_rewards_resolved=False,
+        combat_intrigue_players=(),
         decision_stack=(opening_frame,),
     )
     events = (

@@ -179,6 +179,57 @@ class TechTilesAtLeast:
             raise ValueError("Tech tile condition count must be positive")
 
 
+@dataclass(frozen=True, slots=True)
+class GeneticMarkersAtLeast:
+    """The owner's research token has reached ``count`` genetic markers
+    [Immortality pp. 6, 16]."""
+
+    count: int
+
+    def __post_init__(self) -> None:
+        if self.count not in (1, 2):
+            raise ValueError("there are two genetic markers")
+
+
+@dataclass(frozen=True, slots=True)
+class SolariAtLeast:
+    """The owner holds at least ``amount`` Solari (Economic Positioning)."""
+
+    amount: int
+
+    def __post_init__(self) -> None:
+        if self.amount < 1:
+            raise ValueError("Solari threshold must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class SpiceAtLeast:
+    """The owner holds at least ``amount`` spice (Study Melange)."""
+
+    amount: int
+
+    def __post_init__(self) -> None:
+        if self.amount < 1:
+            raise ValueError("spice threshold must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class OpponentPlayedCombatIntrigue:
+    """An opponent played a Combat Intrigue card in this Conflict
+    (Counterattack)."""
+
+
+@dataclass(frozen=True, slots=True)
+class AllConditions:
+    """Every listed condition holds (Study Melange: spice and two markers)."""
+
+    conditions: tuple[Condition, ...]
+
+    def __post_init__(self) -> None:
+        if len(self.conditions) < 2:
+            raise ValueError("a conjunction needs at least two conditions")
+
+
 type Condition = (
     InfluenceAtLeast
     | HasHighCouncil
@@ -194,6 +245,11 @@ type Condition = (
     | WaterAtLeast
     | CommandersInConflictAtLeast
     | TechTilesAtLeast
+    | GeneticMarkersAtLeast
+    | SolariAtLeast
+    | SpiceAtLeast
+    | OpponentPlayedCombatIntrigue
+    | AllConditions
 )
 
 
@@ -734,6 +790,51 @@ class RevealContractsTakeOne:
             raise ValueError("revealed Contract count must be positive")
 
 
+@dataclass(frozen=True, slots=True)
+class Research:
+    """Trigger one Research icon [Immortality pp. 6, 16]."""
+
+
+@dataclass(frozen=True, slots=True)
+class AdvanceTleilaxu:
+    """Advance the Tleilaxu token ``count`` spaces [Immortality pp. 7, 16]."""
+
+    count: int = 1
+
+    def __post_init__(self) -> None:
+        if self.count < 1:
+            raise ValueError("Tleilaxu advance must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class GenerateSpecimens:
+    """Generate ``count`` specimens from the supply [Immortality pp. 8, 16]."""
+
+    count: int = 1
+
+    def __post_init__(self) -> None:
+        if self.count < 1:
+            raise ValueError("specimen count must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class AcquireTleilaxuCard:
+    """You may acquire a Tleilaxu Row card, paying its specimen cost
+    (Harvest Cells) [Immortality p. 8]."""
+
+
+@dataclass(frozen=True, slots=True)
+class RevealPersuasionThisRound:
+    """Gain ``amount`` Persuasion during the owner's Reveal turn this round
+    (Tleilaxu Puppet)."""
+
+    amount: int = 1
+
+    def __post_init__(self) -> None:
+        if self.amount < 1:
+            raise ValueError("Persuasion bonus must be positive")
+
+
 type Reward = (
     GainResources
     | GainVictoryPoints
@@ -764,6 +865,11 @@ type Reward = (
     | PermanentRevealPersuasion
     | AcquireReserveCard
     | AcquireTech
+    | Research
+    | AdvanceTleilaxu
+    | GenerateSpecimens
+    | AcquireTleilaxuCard
+    | RevealPersuasionThisRound
 )
 
 
@@ -797,7 +903,26 @@ class OnUnitsDeployedInTurn:
             raise ValueError("deployment trigger minimum must be positive")
 
 
-type Trigger = OnRevealAcquisitionThisRound | OnUnitsDeployedInTurn
+@dataclass(frozen=True, slots=True)
+class OnTroopsLostAtConflictEnd:
+    """When the owner loses ``minimum`` or more troops at the end of a
+    Conflict (Harvest Cells).
+
+    Troops (and Sardaukar Commanders, being troops) that return to the
+    supply at Combat cleanup are "lost" [FAQ p. 1, Chani]; the card waits
+    face up through the Combat and expires at cleanup if the loss is short.
+    """
+
+    minimum: int = 3
+
+    def __post_init__(self) -> None:
+        if self.minimum < 1:
+            raise ValueError("loss trigger minimum must be positive")
+
+
+type Trigger = (
+    OnRevealAcquisitionThisRound | OnUnitsDeployedInTurn | OnTroopsLostAtConflictEnd
+)
 
 
 # --- Composition ------------------------------------------------------------
@@ -843,7 +968,14 @@ class IntrigueOption:
         if not self.sections:
             raise ValueError("an Intrigue option needs at least one section")
         if self.trigger is not None:
-            if self.timing is not IntrigueTiming.PLOT:
+            # A Conflict-end loss trigger is played during Combat (Harvest
+            # Cells); every other trigger card is a Plot card.
+            expected = (
+                IntrigueTiming.COMBAT
+                if isinstance(self.trigger, OnTroopsLostAtConflictEnd)
+                else IntrigueTiming.PLOT
+            )
+            if self.timing is not expected:
                 raise ValueError("triggered Intrigue options must use Plot timing")
             for section in self.sections:
                 if section.costs or section.condition is not None:

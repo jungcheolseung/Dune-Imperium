@@ -54,7 +54,7 @@ from dune_imperium.core.observation import PlayerView, PublicPlayerView
 from dune_imperium.core.state import GamePhase
 from dune_imperium.rules.frames import FrameKind
 
-OBSERVATION_VERSION: Final = 12
+OBSERVATION_VERSION: Final = 13
 _SEATS: Final = 4
 
 PERSONAL_CARD_IDS: Final = (
@@ -110,8 +110,9 @@ def _seat_segment_lengths(seat: int) -> tuple[tuple[str, int], ...]:
     prefix = f"seat{seat}"
     return (
         # v12: research space (index + 1), Tleilaxu space, specimens,
-        # Family Atomics (44 -> 48).
-        (f"{prefix}_scalars", 48),
+        # Family Atomics (44 -> 48). v13: this round's Reveal Persuasion
+        # bonus (48 -> 49).
+        (f"{prefix}_scalars", 49),
         (f"{prefix}_alliances", len(FACTION_IDS)),
         (f"{prefix}_control", len(CONTROL_SPACE_IDS)),
         (f"{prefix}_agent_locations", _AGENT_LOCATION_SLOTS),
@@ -162,6 +163,9 @@ def _segment_lengths() -> tuple[tuple[str, int], ...]:
         ("tleilaxu_row", TLEILAXU_ROW_SIZE),
         ("tleilaxu_deck_size", 1),
         ("tleilaxu_track_spice", 1),
+        # v13: seats (relative to the observer) that played a Combat
+        # Intrigue card in this Conflict.
+        ("combat_intrigue_players", _SEATS),
     ]
     for seat in range(_SEATS):
         lengths.extend(_seat_segment_lengths(seat))
@@ -318,6 +322,11 @@ def encode_player_view(view: PlayerView) -> tuple[int, ...]:
     )
     writer.write("tleilaxu_deck_size", [view.tleilaxu_deck_size])
     writer.write("tleilaxu_track_spice", [view.tleilaxu_track_spice])
+    combat_seats = [0] * _SEATS
+    for seat in view.combat_intrigue_players:
+        # ``relative`` is 1-based (0 marks "nobody" in the ordered slots).
+        combat_seats[relative(seat) - 1] = 1
+    writer.write("combat_intrigue_players", combat_seats)
 
     for seat_offset in range(_SEATS):
         seat = (observer + seat_offset) % _SEATS
@@ -409,6 +418,7 @@ def _write_seat(writer: _Writer, seat_offset: int, player: PublicPlayerView) -> 
             player.tleilaxu_space,
             player.specimens,
             int(player.family_atomics),
+            player.reveal_persuasion_round_bonus,
         ],
     )
     writer.write(

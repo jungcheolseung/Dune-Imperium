@@ -839,9 +839,14 @@ def _immortality_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     templates.extend(_trash_templates(config, "trash_for_research_bonus"))
     if not config.bloodlines:
         # The trash-and-specimen research spaces open the generic optional
-        # trash frame, which Bloodlines catalogs already hold.
+        # trash frame, and Gruesome Sacrifice's troop loss the unit-loss
+        # choice; Bloodlines catalogs already hold both.
         templates.append(ActionTemplate(action_id="decline_optional_trash"))
         templates.extend(_trash_templates(config, "trash_optional_card"))
+        templates.extend(
+            ActionTemplate(action_id="lose_intrigue_troop", arguments=(("zone", zone),))
+            for zone in ("garrison", "conflict")
+        )
     # The Tleilaxu Row: each deck card to the discard pile or, past the
     # first genetic marker, on top of the deck; Reclaimed Forces' two
     # effects [Immortality pp. 6, 9].
@@ -873,6 +878,22 @@ def _immortality_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     )
     templates.append(ActionTemplate(action_id="switch_graft_card"))
     templates.append(ActionTemplate(action_id="decline_agent_card_recall"))
+    # Harvest Cells' offer: a Row card (to the discard pile or the deck
+    # top) or the decline.
+    for instance_id in tleilaxu_deck_instance_ids(config.promo_cards):
+        templates.append(
+            ActionTemplate(
+                action_id="acquire_intrigue_tleilaxu",
+                arguments=(("instance_id", instance_id),),
+            )
+        )
+        templates.append(
+            ActionTemplate(
+                action_id="acquire_intrigue_tleilaxu",
+                arguments=(("instance_id", instance_id), ("to_deck_top", True)),
+            )
+        )
+    templates.append(ActionTemplate(action_id="decline_intrigue_tleilaxu"))
     return tuple(templates)
 
 

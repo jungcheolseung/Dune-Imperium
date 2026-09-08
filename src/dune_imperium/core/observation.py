@@ -84,6 +84,7 @@ class PublicPlayerView:
     tleilaxu_space: int
     specimens: int
     family_atomics: bool
+    reveal_persuasion_round_bonus: int
     in_play: tuple[str, ...]
     # Every card reaches a discard pile face up (acquired cards [Main p. 13],
     # played and revealed cards after Clean Up [Main pp. 9, 12, 20], cards
@@ -185,6 +186,8 @@ class PlayerView:
     tleilaxu_row: tuple[str, ...] = ()
     tleilaxu_deck_size: int = 0
     tleilaxu_track_spice: int = 0
+    # Seats that played a Combat Intrigue card in this Conflict (public).
+    combat_intrigue_players: tuple[int, ...] = ()
     public_data: tuple[tuple[str, ActionValue], ...] = ()
     private_data: tuple[tuple[str, ActionValue], ...] = ()
 
@@ -365,6 +368,7 @@ def observe_state(state: GameState, player: int) -> PlayerView:
         tleilaxu_row=state.tleilaxu_row,
         tleilaxu_deck_size=len(state.tleilaxu_deck),
         tleilaxu_track_spice=state.tleilaxu_track_spice,
+        combat_intrigue_players=state.combat_intrigue_players,
     )
 
 
@@ -445,6 +449,7 @@ def _public_player_view(player: PlayerState) -> PublicPlayerView:
         tleilaxu_space=player.tleilaxu_space,
         specimens=player.specimens,
         family_atomics=player.family_atomics,
+        reveal_persuasion_round_bonus=player.reveal_persuasion_round_bonus,
         in_play=player.in_play,
         discard_pile=player.discard_pile,
         trashed=player.trashed,

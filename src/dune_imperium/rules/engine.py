@@ -469,6 +469,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "retreat_intrigue_troops": apply_intrigue_choice,
     "acquire_intrigue_imperium": apply_intrigue_choice,
     "acquire_intrigue_reserve": apply_intrigue_choice,
+    "acquire_intrigue_tleilaxu": apply_intrigue_choice,
+    "decline_intrigue_tleilaxu": apply_intrigue_choice,
     "flip_battle_card": apply_intrigue_choice,
     "manipulate_imperium_row": apply_intrigue_choice,
     "resolve_intrigue_rewards": apply_intrigue_rewards,

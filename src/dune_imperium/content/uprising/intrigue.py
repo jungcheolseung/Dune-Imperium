@@ -14,6 +14,9 @@ from dune_imperium.content.uprising.effect_dsl import (
     AcquireCardUpTo,
     AcquireReserveCard,
     AcquireTech,
+    AcquireTleilaxuCard,
+    AdvanceTleilaxu,
+    AllConditions,
     CommanderDiscountThisTurn,
     CommandersInConflictAtLeast,
     CompletedContractsAtLeast,
@@ -31,6 +34,8 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainResources,
     GainSolariPerUnitType,
     GainVictoryPoints,
+    GenerateSpecimens,
+    GeneticMarkersAtLeast,
     GiveIntrigueToOpponent,
     GrantAgentIconsThisTurn,
     GrantAgentIconThisTurn,
@@ -45,8 +50,10 @@ from dune_imperium.content.uprising.effect_dsl import (
     LoseInfluence,
     LoseTroops,
     OnRevealAcquisitionThisRound,
+    OnTroopsLostAtConflictEnd,
     OnUnitsDeployedInTurn,
     OpponentAllianceInfluenceAtLeast,
+    OpponentPlayedCombatIntrigue,
     PassTurn,
     PayResources,
     PeekTopCard,
@@ -55,10 +62,14 @@ from dune_imperium.content.uprising.effect_dsl import (
     RecallSpy,
     RecruitTroops,
     RedirectSpiesOnTurnSpace,
+    Research,
     RetreatTroops,
     RevealContractsTakeOne,
+    RevealPersuasionThisRound,
     SandwormsInConflictAtLeast,
     SetAsideImperiumRowCard,
+    SolariAtLeast,
+    SpiceAtLeast,
     SpiceMustFlowCardsAtLeast,
     SpiesPlacedAtLeast,
     SummonSandworm,
@@ -1257,17 +1268,186 @@ INTRIGUE_CARDS: Final = (
     # docs/implementation-audits/immortality.md). Options are transcribed
     # from the card faces slice by slice (an entry without options stays
     # out of the deck).
-    _entry(392, "breakthrough", "Breakthrough", immortality_only=True),
-    _entry(393, "counterattack", "Counterattack", immortality_only=True),
-    _entry(394, "disguised-bureaucrat", "Disguised Bureaucrat", immortality_only=True),
-    _entry(395, "economic-positioning", "Economic Positioning", immortality_only=True),
-    _entry(396, "gruesome-sacrifice", "Gruesome Sacrifice", immortality_only=True),
-    _entry(397, "harvest-cells", "Harvest Cells", immortality_only=True),
-    _entry(398, "illicit-dealings", "Illicit Dealings", immortality_only=True),
-    _entry(399, "shadowy-bargain", "Shadowy Bargain", immortality_only=True),
-    _entry(400, "study-melange", "Study Melange", immortality_only=True),
-    _entry(401, "tleilaxu-puppet", "Tleilaxu Puppet", immortality_only=True),
-    _entry(402, "vicious-talents", "Vicious Talents", immortality_only=True),
+    # Breakthrough (Plot): Research.
+    _entry(
+        392,
+        "breakthrough",
+        "Breakthrough",
+        immortality_only=True,
+        options=(_plot(EffectSection(rewards=(Research(),))),),
+    ),
+    # Counterattack (Plot / Combat): deploy up to two garrison troops —OR—
+    # if an opponent played a Combat Intrigue card in this Conflict: 4 swords.
+    _entry(
+        393,
+        "counterattack",
+        "Counterattack",
+        immortality_only=True,
+        options=(
+            _plot(EffectSection(rewards=(DeployFromGarrison(2),))),
+            _combat(
+                EffectSection(
+                    condition=OpponentPlayedCombatIntrigue(),
+                    rewards=(GainCombatStrength(4),),
+                )
+            ),
+        ),
+    ),
+    # Disguised Bureaucrat (Plot): one genetic marker: 1 spice; two: an
+    # Influence of your choice.
+    _entry(
+        394,
+        "disguised-bureaucrat",
+        "Disguised Bureaucrat",
+        immortality_only=True,
+        options=(
+            _plot(
+                EffectSection(
+                    condition=GeneticMarkersAtLeast(1),
+                    rewards=(GainResources(spice=1),),
+                ),
+                EffectSection(
+                    condition=GeneticMarkersAtLeast(2),
+                    rewards=(GainInfluence(),),
+                ),
+            ),
+        ),
+    ),
+    # Economic Positioning (Combat / Endgame): retreat two troops -> 3
+    # Solari —OR— if you have 10 or more Solari: 1 VP.
+    _entry(
+        395,
+        "economic-positioning",
+        "Economic Positioning",
+        immortality_only=True,
+        options=(
+            _combat(
+                EffectSection(
+                    costs=(RetreatTroops(2, 2),),
+                    rewards=(GainResources(solari=3),),
+                )
+            ),
+            _endgame(
+                EffectSection(
+                    condition=SolariAtLeast(10),
+                    rewards=(GainVictoryPoints(1),),
+                )
+            ),
+        ),
+    ),
+    # Gruesome Sacrifice (Combat): lose two of your troops in the Conflict
+    # -> Tleilaxu and 2 specimens.
+    _entry(
+        396,
+        "gruesome-sacrifice",
+        "Gruesome Sacrifice",
+        immortality_only=True,
+        options=(
+            _combat(
+                EffectSection(
+                    costs=(LoseTroops(2, from_conflict=True),),
+                    rewards=(AdvanceTleilaxu(1), GenerateSpecimens(2)),
+                )
+            ),
+        ),
+    ),
+    # Harvest Cells (Combat): when you lose at least three troops at the
+    # end of a Conflict: 2 specimens; you may also acquire a Tleilaxu card.
+    _entry(
+        397,
+        "harvest-cells",
+        "Harvest Cells",
+        immortality_only=True,
+        options=(
+            IntrigueOption(
+                timing=IntrigueTiming.COMBAT,
+                sections=(
+                    EffectSection(
+                        rewards=(GenerateSpecimens(2), AcquireTleilaxuCard())
+                    ),
+                ),
+                trigger=OnTroopsLostAtConflictEnd(3),
+            ),
+        ),
+    ),
+    # Illicit Dealings (Plot): Tleilaxu.
+    _entry(
+        398,
+        "illicit-dealings",
+        "Illicit Dealings",
+        immortality_only=True,
+        options=(_plot(EffectSection(rewards=(AdvanceTleilaxu(1),))),),
+    ),
+    # Shadowy Bargain (Plot / Endgame): a specimen —OR— Tleilaxu.
+    _entry(
+        399,
+        "shadowy-bargain",
+        "Shadowy Bargain",
+        immortality_only=True,
+        options=(
+            _plot(EffectSection(rewards=(GenerateSpecimens(1),))),
+            _endgame(EffectSection(rewards=(AdvanceTleilaxu(1),))),
+        ),
+    ),
+    # Study Melange (Plot / Endgame): 1 spice —OR— if you have 3 or more
+    # spice, at two genetic markers: 1 VP.
+    _entry(
+        400,
+        "study-melange",
+        "Study Melange",
+        immortality_only=True,
+        options=(
+            _plot(EffectSection(rewards=(GainResources(spice=1),))),
+            _endgame(
+                EffectSection(
+                    condition=AllConditions(
+                        (SpiceAtLeast(3), GeneticMarkersAtLeast(2))
+                    ),
+                    rewards=(GainVictoryPoints(1),),
+                ),
+            ),
+        ),
+    ),
+    # Tleilaxu Puppet (Plot / Endgame): 1 Persuasion during your Reveal
+    # turn this round —OR— with a High Council seat, at two genetic
+    # markers: 1 VP.
+    _entry(
+        401,
+        "tleilaxu-puppet",
+        "Tleilaxu Puppet",
+        immortality_only=True,
+        options=(
+            _plot(EffectSection(rewards=(RevealPersuasionThisRound(1),))),
+            _endgame(
+                EffectSection(
+                    condition=AllConditions(
+                        (HasHighCouncil(), GeneticMarkersAtLeast(2))
+                    ),
+                    rewards=(GainVictoryPoints(1),),
+                ),
+            ),
+        ),
+    ),
+    # Vicious Talents (Combat): 2 swords; one genetic marker: +2; two: +2.
+    _entry(
+        402,
+        "vicious-talents",
+        "Vicious Talents",
+        immortality_only=True,
+        options=(
+            _combat(
+                EffectSection(rewards=(GainCombatStrength(2),)),
+                EffectSection(
+                    condition=GeneticMarkersAtLeast(1),
+                    rewards=(GainCombatStrength(2),),
+                ),
+                EffectSection(
+                    condition=GeneticMarkersAtLeast(2),
+                    rewards=(GainCombatStrength(2),),
+                ),
+            ),
+        ),
+    ),
 )
 
 

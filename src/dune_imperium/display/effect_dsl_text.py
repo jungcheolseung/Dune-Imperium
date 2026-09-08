@@ -14,6 +14,9 @@ from dune_imperium.content.uprising.effect_dsl import (
     AcquireCardUpTo,
     AcquireReserveCard,
     AcquireTech,
+    AcquireTleilaxuCard,
+    AdvanceTleilaxu,
+    AllConditions,
     CommanderDiscountThisTurn,
     CommandersInConflictAtLeast,
     CompletedContractsAtLeast,
@@ -33,6 +36,8 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainResources,
     GainSolariPerUnitType,
     GainVictoryPoints,
+    GenerateSpecimens,
+    GeneticMarkersAtLeast,
     GiveIntrigueToOpponent,
     GrantAgentIconsThisTurn,
     GrantAgentIconThisTurn,
@@ -47,8 +52,10 @@ from dune_imperium.content.uprising.effect_dsl import (
     LoseInfluence,
     LoseTroops,
     OnRevealAcquisitionThisRound,
+    OnTroopsLostAtConflictEnd,
     OnUnitsDeployedInTurn,
     OpponentAllianceInfluenceAtLeast,
+    OpponentPlayedCombatIntrigue,
     PassTurn,
     PayResources,
     PeekTopCard,
@@ -57,11 +64,15 @@ from dune_imperium.content.uprising.effect_dsl import (
     RecallSpy,
     RecruitTroops,
     RedirectSpiesOnTurnSpace,
+    Research,
     RetreatTroops,
     RevealContractsTakeOne,
+    RevealPersuasionThisRound,
     Reward,
     SandwormsInConflictAtLeast,
     SetAsideImperiumRowCard,
+    SolariAtLeast,
+    SpiceAtLeast,
     SpiceMustFlowCardsAtLeast,
     SpiesPlacedAtLeast,
     SummonSandworm,
@@ -178,6 +189,17 @@ def condition_text(condition: Condition) -> str:
             return f"you have {count} or more Sardaukar Commanders in the Conflict"
         case TechTilesAtLeast(count=count):
             return f"you have {count} or more Tech tiles"
+        case GeneticMarkersAtLeast(count=count):
+            noun = "marker" if count == 1 else "markers"
+            return f"you have reached {count} genetic {noun}"
+        case SolariAtLeast(amount=amount):
+            return f"you have {amount} or more solari"
+        case SpiceAtLeast(amount=amount):
+            return f"you have {amount} or more spice"
+        case OpponentPlayedCombatIntrigue():
+            return "an opponent played a Combat Intrigue card in this Conflict"
+        case AllConditions(conditions=conditions):
+            return " and ".join(condition_text(item) for item in conditions)
         case _:
             assert_never(condition)
 
@@ -333,6 +355,18 @@ def reward_text(reward: Reward) -> str:
                 "Set aside an Imperium Row card "
                 f"({discount} Persuasion off for you this round)"
             )
+        case Research():
+            return "Research (advance your research token)"
+        case AdvanceTleilaxu(count=1):
+            return "Tleilaxu (advance your Tleilaxu token)"
+        case AdvanceTleilaxu(count=count):
+            return f"Tleilaxu ×{count} (advance your Tleilaxu token {count} spaces)"
+        case GenerateSpecimens(count=count):
+            return f"Generate {count} {_plural(count, 'specimen')}"
+        case AcquireTleilaxuCard():
+            return "You may acquire a Tleilaxu card (paying its specimen cost)"
+        case RevealPersuasionThisRound(amount=amount):
+            return f"Gain {amount} Persuasion during your Reveal turn this round"
         case _:
             assert_never(reward)
 
@@ -345,6 +379,8 @@ def trigger_text(trigger: Trigger) -> str:
             return "Whenever you acquire a card during your Reveal turn this round"
         case OnUnitsDeployedInTurn(minimum=minimum):
             return f"When you deploy {minimum} or more units in a turn"
+        case OnTroopsLostAtConflictEnd(minimum=minimum):
+            return f"When you lose {minimum} or more troops at the end of a Conflict"
         case _:
             assert_never(trigger)
 

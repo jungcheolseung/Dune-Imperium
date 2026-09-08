@@ -94,11 +94,15 @@ _ACTION_SCORES: Final[dict[str, float]] = {
     # is the fallback use of three specimens.
     "acquire_tleilaxu": 2.5,
     "acquire_reclaimed_forces": 1.0,
-    # Graft: the partner is mandatory once a grafted placement was chosen;
-    # resolving the other box ranks with the ordinary effect resolutions.
+    # Graft: the partner is mandatory once a grafted placement was chosen.
+    # Switching to the other card's box ranks below every box resolution
+    # and decline, or the agent would switch back and forth forever
+    # (2026-09-08 all-option soak, seeds 3 and 6).
     "choose_graft_partner": 4.0,
-    "switch_graft_card": 2.0,
+    "switch_graft_card": 0.2,
     "decline_agent_card_recall": 0.5,
+    "acquire_intrigue_tleilaxu": 2.5,
+    "decline_intrigue_tleilaxu": 0.5,
     "gain_reveal_resources": 4.0,
     "gain_reveal_faction_influence": 4.0,
     "withdraw_troops": -10.0,

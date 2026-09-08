@@ -6,6 +6,8 @@ from enum import IntEnum
 from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID, ConflictReward
+from dune_imperium.content.uprising.effect_dsl import OnTroopsLostAtConflictEnd
+from dune_imperium.content.uprising.intrigue import INTRIGUE_CARDS_BY_INSTANCE
 from dune_imperium.content.uprising.objectives import OBJECTIVES_BY_ID
 from dune_imperium.content.uprising.types import BattleIcon
 from dune_imperium.core.actions import DomainAction
@@ -258,8 +260,7 @@ def resolve_combat_rewards(state: GameState) -> RuleResult:
             reward = replace(
                 reward,
                 choose_influence=(
-                    reward.choose_influence
-                    + state.conflict_first_place_influence_bonus
+                    reward.choose_influence + state.conflict_first_place_influence_bonus
                 ),
             )
         amount = assignment.multiplier
@@ -972,6 +973,12 @@ def finish_combat(state: GameState) -> RuleResult:
             )
         events.extend(match_events)
 
+    # Harvest Cells (Immortality): troops returning to the supply at
+    # cleanup are "lost" [FAQ p. 1]; the face-up card fires when enough
+    # were, and expires otherwise.
+    losses = tuple(
+        player.troops_conflict + player.commanders_conflict for player in players
+    )
     # Troops and Sardaukar Commanders return to the supply, sandworms to
     # the bank, every marker to 0 [Main p. 14] [Bloodlines p. 4].
     players = tuple(
@@ -996,7 +1003,10 @@ def finish_combat(state: GameState) -> RuleResult:
         phase=GamePhase.MAKERS,
         players=players,
         current_conflict_ids=current_conflict_ids,
+        combat_intrigue_players=(),
     )
+    next_state, loss_events = _fire_troop_loss_triggers(next_state, losses)
+    events.extend(loss_events)
     events.append(
         GameEvent(
             event_id=f"round:{state.round_number}:combat_cleanup",
@@ -1385,8 +1395,6 @@ def _combat_intrigue_frame(
     )
 
 
-
-
 def _rewards(
     players: tuple[PlayerState, ...],
     recipients: tuple[int, ...],
@@ -1449,3 +1457,58 @@ def refresh_combat_participants(state: GameState) -> GameState:
     )
     return replace(state, decision_stack=(*state.decision_stack[:-1], next_frame))
 
+
+def _fire_troop_loss_triggers(
+    state: GameState, losses: tuple[int, ...]
+) -> tuple[GameState, tuple[GameEvent, ...]]:
+    """Resolve or expire face-up Intrigue waiting on a Conflict-end troop loss."""
+
+    from dune_imperium.rules.intrigue import resolve_faceup_trigger_option
+
+    next_state = state
+    events: list[GameEvent] = []
+    for player, lost in zip(range(state.config.players), losses, strict=True):
+        for card_id in state.players[player].intrigue_faceup:
+            entry = INTRIGUE_CARDS_BY_INSTANCE.get(card_id)
+            if entry is None:
+                continue
+            minimum = next(
+                (
+                    option.trigger.minimum
+                    for option in entry.options
+                    if isinstance(option.trigger, OnTroopsLostAtConflictEnd)
+                ),
+                None,
+            )
+            if minimum is None:
+                continue
+            source = (
+                f"round:{state.round_number}:player:{player}:conflict_end:{card_id}"
+            )
+            if lost >= minimum:
+                fired = resolve_faceup_trigger_option(
+                    next_state, player, card_id, source=source
+                )
+                next_state = fired.state
+                events.extend(fired.events)
+                continue
+            owner = next_state.players[player]
+            expired = replace(
+                owner,
+                intrigue_faceup=tuple(
+                    held for held in owner.intrigue_faceup if held != card_id
+                ),
+            )
+            next_state = replace(
+                next_state,
+                players=replace_player(next_state.players, expired),
+                intrigue_discard=(*next_state.intrigue_discard, card_id),
+            )
+            events.append(
+                GameEvent(
+                    event_id=f"{source}:expired",
+                    kind="intrigue_expired",
+                    payload=(("card_id", card_id), ("player", player)),
+                )
+            )
+    return next_state, tuple(events)

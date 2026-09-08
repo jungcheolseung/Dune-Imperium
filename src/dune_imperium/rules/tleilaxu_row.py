@@ -108,9 +108,33 @@ def apply_tleilaxu_acquisition(state: GameState, action: DomainAction) -> RuleRe
     source = f"round:{state.round_number}:player:{player}:acquire_tleilaxu"
     if action.action_id == "acquire_reclaimed_forces":
         return _apply_reclaimed_forces(state, player, str(arguments["choice"]), source)
-    instance_id = str(arguments["instance_id"])
-    to_deck_top = arguments.get("to_deck_top") is True
+    return acquire_tleilaxu_card(
+        state,
+        player,
+        str(arguments["instance_id"]),
+        to_deck_top=arguments.get("to_deck_top") is True,
+        source=source,
+    )
+
+
+def acquire_tleilaxu_card(
+    state: GameState,
+    player: int,
+    instance_id: str,
+    *,
+    to_deck_top: bool,
+    source: str,
+) -> RuleResult:
+    """Take a Row card for its specimens (also for Harvest Cells' offer)."""
+
+    if instance_id not in state.tleilaxu_row:
+        raise ValueError("the card is not in the Tleilaxu Row")
     definition = tleilaxu_card_for_instance(instance_id)
+    if (
+        to_deck_top
+        and genetic_markers_reached(state.players[player].research_space) < 1
+    ):
+        raise ValueError("the deck top needs the first genetic marker")
     owner = spend_specimens(state.players[player], definition.specimen_cost)
     next_owner = replace(
         owner,

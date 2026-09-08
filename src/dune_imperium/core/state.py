@@ -44,6 +44,9 @@ class GameState:
     current_conflict_ids: tuple[str, ...] = ()
     combat_intrigue_complete: bool = False
     combat_rewards_resolved: bool = False
+    # Seats that played a Combat Intrigue card in the current Conflict
+    # (Counterattack, Immortality); cleared when the Combat phase resets.
+    combat_intrigue_players: tuple[int, ...] = ()
     imperium_deck: tuple[str, ...] = ()
     imperium_row: tuple[str, ...] = ()
     intrigue_deck: tuple[str, ...] = ()
@@ -125,6 +128,8 @@ class GameState:
             raise ValueError("first_player must identify a configured player")
         if len(self.reveal_order) != len(set(self.reveal_order)):
             raise ValueError("a player can appear in the Reveal order only once")
+        if len(self.combat_intrigue_players) != len(set(self.combat_intrigue_players)):
+            raise ValueError("a player is listed once among Combat Intrigue players")
         if any(not 0 <= player < self.config.players for player in self.reveal_order):
             raise ValueError("Reveal order must contain configured players")
         if self.players and len(self.players) != self.config.players:

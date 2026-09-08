@@ -90,8 +90,16 @@ def _play(state: GameState, card_id: str, option: int = 0) -> DomainAction:
 def test_transcribed_intrigue_options_are_well_formed() -> None:
     transcribed = [entry for entry in INTRIGUE_CARDS if entry.play_data_complete]
 
-    # Every Uprising identity; Bloodlines cards join as they are transcribed.
-    assert sum(not entry.bloodlines_only for entry in transcribed) == 39
+    # Every Uprising identity and the 11 Immortality cards; Bloodlines cards
+    # join as they are transcribed.
+    assert (
+        sum(
+            not entry.bloodlines_only and not entry.immortality_only
+            for entry in transcribed
+        )
+        == 39
+    )
+    assert sum(entry.immortality_only for entry in transcribed) == 11
     for entry in transcribed:
         assert entry.options
         for option in entry.options:
