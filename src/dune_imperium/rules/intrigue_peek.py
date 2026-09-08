@@ -2,14 +2,16 @@
 
 The owner sees both cards while the choice is open (``PrivatePlayerView
 .peeked_intrigue_ids``); the card not kept stays on top of the deck.
-With fewer than two cards face down the box falls back to a plain draw
-(OQ-052 project convention).
+With fewer than two cards face down, the discard pile is shuffled into a
+new deck beneath the card(s) still on top and the peek then looks at two
+(OQ-052, user ruling); only when nothing is left to shuffle does the box
+take the single remaining card.
 """
 
 from dataclasses import replace
 
 from dune_imperium.core.actions import DomainAction
-from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
+from dune_imperium.core.decisions import ChanceDecision, DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.observation import peeked_intrigue_ids
@@ -30,9 +32,32 @@ def begin_intrigue_peek(state: GameState, player: int, *, source: str) -> RuleRe
     """Open the keep-one choice, or draw one card when the deck is short."""
 
     top = state.intrigue_deck[:PEEK_COUNT]
+    if len(top) < PEEK_COUNT and state.intrigue_discard:
+        # OQ-052 (user ruling): the discard is shuffled into a new deck
+        # beneath the remaining top card, then two cards are looked at.
+        decision_id = f"{source}:intrigue_shuffle"
+        frame = DecisionFrame(
+            kind=FrameKind.INTRIGUE_RESHUFFLE,
+            frame_id=f"{decision_id}:intrigue_reshuffle",
+            decision=ChanceDecision(
+                decision_id=decision_id,
+                prompt="Shuffle the Intrigue discard pile into a new deck",
+                options=state.intrigue_discard,
+                count=len(state.intrigue_discard),
+            ),
+            context=(
+                ("count", 0),
+                ("player", player),
+                ("purpose", "peek"),
+                ("source", source),
+            ),
+        )
+        return RuleResult(state=state.push_decision(frame))
     if len(top) < PEEK_COUNT:
-        # OQ-052: fewer than two face-down cards -> the ordinary draw (its
-        # reshuffle included) instead of a peek into a reshuffled deck.
+        # Nothing left to shuffle: the single face-down card (if any) is all
+        # there is to look at, so it is kept.
+        if not top:
+            return RuleResult(state=state)
         return draw_or_queue_intrigue_cards(state, player, 1, source=f"{source}:draw")
     frame = DecisionFrame(
         kind=FrameKind.INTRIGUE_PEEK,

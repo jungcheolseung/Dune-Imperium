@@ -446,7 +446,7 @@
 - 상태: `DECIDED`
 - Imperium Ceremony의 Agent box는 "Intrigue deck 맨 위 두 장을 보고 한 장을 keep, 나머지는 맨 위로"라고만 한다 `[card face]`. deck에 한 장뿐이거나 비었을 때 discard를 섞어 두 장을 채우는지, 있는 만큼만 보는지 말하지 않는다.
 - 필요한 답: 두 장 미만일 때의 처리.
-- 확정(2026-09-08, project convention — 공식 규칙이 아니다; 사용자 검토 2026-09-08): 두 장이 face down으로 있을 때만 peek 선택(`INTRIGUE_PEEK` frame)이 열린다. 그보다 적으면 box는 보통의 Intrigue draw 1장으로 처리한다(deck이 비면 "Intrigue Deck이 바닥나면 버린 Intrigue 카드를 섞어 새 Intrigue Deck을 만든다" `[FAQ p. 2]`(player-turns.md)에 따라 discard를 섞고, 한 장뿐이면 그 한 장). 섞인 뒤의 deck을 들여다보는 효과로 확장하지 않기 위해서다. 구현: `rules/intrigue_peek.py`의 `begin_intrigue_peek`. peek한 두 장은 소유자만 보는 비공개 정보로 관측(`PrivatePlayerView.peeked_intrigue_ids`, v14)·determinize·invariant에서 deck 맨 위 자리를 유지한다.
+- 확정(2026-09-08, 사용자 판정 "2장 보려면 맨 윗장 빼고 밑에 새 더미를 섞어 만들어야 한다"): face down 카드가 두 장 미만이고 discard가 있으면, 남은 맨 윗장은 그대로 두고 그 **밑에** discard를 섞어 새 deck을 만든 뒤(`[FAQ p. 2]`의 소진 규칙 "Intrigue Deck이 바닥나면 버린 Intrigue 카드를 섞어 새 Intrigue Deck을 만든다", player-turns.md — 셔플 chance frame의 context `purpose=peek`) 두 장을 본다(맨 윗장이 첫 장). 섞을 discard도 없으면 남은 한 장이 볼 수 있는 전부이므로 그 한 장을 keep하고, 아무것도 없으면 효과가 없다. (처음 구현했던 "두 장 미만이면 보통의 draw 1장"은 자의적이라 사용자가 정정했다.) 구현: `rules/intrigue_peek.py`의 `begin_intrigue_peek`, `rules/intrigue_deck.py`의 `apply_intrigue_reshuffle`. peek한 두 장은 소유자만 보는 비공개 정보로 관측(`PrivatePlayerView.peeked_intrigue_ids`, v14)·determinize·invariant에서 deck 맨 위 자리를 유지한다.
 
 ## OQ-053 — Tleilaxu Surgeon: "Lose two troops"의 출처 존
 

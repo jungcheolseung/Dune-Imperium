@@ -143,6 +143,7 @@ def apply_intrigue_reshuffle(
     source = context_str(context, "source", owner=owner_label)
 
     shuffled_ids = set(outcome.values)
+    # The new deck forms beneath whatever still lay face down on top.
     shuffled = replace(
         state.pop_decision(),
         intrigue_deck=(*state.intrigue_deck, *outcome.values),
@@ -156,6 +157,14 @@ def apply_intrigue_reshuffle(
         kind="intrigue_discard_shuffled",
         payload=(("count", len(outcome.values)),),
     )
+    if context.get("purpose") == "peek":
+        # Imperium Ceremony asked for the shuffle to have two cards to look
+        # at (OQ-052); the peek opens now. Imported here: the peek module
+        # draws through this one.
+        from dune_imperium.rules.intrigue_peek import begin_intrigue_peek
+
+        peek = begin_intrigue_peek(shuffled, player, source=source)
+        return RuleResult(state=peek.state, events=(event, *peek.events))
     drawn = _draw_available(shuffled, player, count, source)
     return RuleResult(state=drawn.state, events=(event, *drawn.events))
 

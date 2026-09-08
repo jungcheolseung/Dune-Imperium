@@ -22,6 +22,8 @@ from dune_imperium.core import (
     PlayerState,
     Resources,
 )
+from dune_imperium.core.chance import ChanceResolver
+from dune_imperium.core.decisions import ChanceDecision
 from dune_imperium.core.observation import observe_state, peeked_intrigue_ids
 from dune_imperium.rules.acquisition import (
     apply_agent_card_acquisition,
@@ -293,16 +295,54 @@ def test_imperium_ceremony_peeks_two_intrigue_cards_and_keeps_one() -> None:
     for action in actions:
         assert codec.decode(codec.encode(action), 0) == action
 
-    # OQ-052: with one card face down the box is a plain draw.
+    # OQ-052 (user ruling): with one card face down and a discard pile, the
+    # discard is shuffled into a new deck beneath that card and the peek
+    # then looks at two — the old top card first.
     short = resolve_agent_card_effect(
         _place(
-            _state(_owner((ceremony,)), intrigue_deck=INTRIGUE[:1]),
+            _state(
+                _owner((ceremony,)),
+                intrigue_deck=INTRIGUE[:1],
+                intrigue_discard=INTRIGUE[1:4],
+            ),
             ceremony,
             "assembly_hall",
         )
     )
-    assert short.state.players[0].intrigue_cards == (INTRIGUE[0],)
-    assert short.state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert short.state.decision_stack[-1].kind == FrameKind.INTRIGUE_RESHUFFLE
+    assert dict(short.state.decision_stack[-1].context)["purpose"] == "peek"
+    engine = UprisingRulesEngine()
+    decision = engine.current_decision(short.state)
+    assert isinstance(decision, ChanceDecision)
+    shuffled = engine.apply(short.state, ChanceResolver(seed=5).resolve(decision)).state
+    assert shuffled.decision_stack[-1].kind == FrameKind.INTRIGUE_PEEK
+    assert shuffled.intrigue_discard == ()
+    peeked = peeked_intrigue_ids(shuffled, 0)
+    assert peeked[0] == INTRIGUE[0] and peeked[1] in INTRIGUE[1:4]
+    assert len(shuffled.intrigue_deck) == 4
+    # An empty deck shuffles too; with nothing to shuffle the single card
+    # is simply kept.
+    empty = resolve_agent_card_effect(
+        _place(
+            _state(
+                _owner((ceremony,)), intrigue_deck=(), intrigue_discard=INTRIGUE[:3]
+            ),
+            ceremony,
+            "assembly_hall",
+        )
+    )
+    assert empty.state.decision_stack[-1].kind == FrameKind.INTRIGUE_RESHUFFLE
+    lone = resolve_agent_card_effect(
+        _place(
+            _state(
+                _owner((ceremony,)), intrigue_deck=INTRIGUE[:1], intrigue_discard=()
+            ),
+            ceremony,
+            "assembly_hall",
+        )
+    )
+    assert lone.state.players[0].intrigue_cards == (INTRIGUE[0],)
+    assert lone.state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
 
 
 def test_imperium_ceremony_through_the_engine() -> None:
