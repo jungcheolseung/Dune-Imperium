@@ -13,6 +13,7 @@ from dataclasses import replace
 from types import MappingProxyType
 from typing import Final
 
+from dune_imperium.content.immortality.board import genetic_markers_reached
 from dune_imperium.content.uprising.board import (
     BOARD_SPACES_BY_ID,
     OBSERVATION_POSTS,
@@ -52,7 +53,7 @@ from dune_imperium.rules.effects import (
     recruit_troops,
 )
 from dune_imperium.rules.frames import FrameKind, context_int, replace_player
-from dune_imperium.rules.immortality import advance_research
+from dune_imperium.rules.immortality import advance_research, advance_tleilaxu
 from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
 from dune_imperium.rules.leader_abilities import (
@@ -2659,6 +2660,40 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             resources=replace(owner.resources, spice=owner.resources.spice + 1),
         )
         event_kind = "agent_card_effect_resolved"
+    elif effect in (
+        PersonalCardAgentEffect.ADVANCE_TLEILAXU,
+        PersonalCardAgentEffect.ADVANCE_TLEILAXU_IF_ONE_MARKER,
+    ):
+        # Contaminator's Tleilaxu icon; Subject X-137 needs the first genetic
+        # marker, judged now (OQ-028) [Immortality pp. 6-7, 16].
+        context["pending_agent_effect"] = False
+        next_state = advance_after_effect(state, context)
+        if (
+            effect is PersonalCardAgentEffect.ADVANCE_TLEILAXU_IF_ONE_MARKER
+            and genetic_markers_reached(owner.research_space) < 1
+        ):
+            return RuleResult(
+                state=next_state,
+                events=(
+                    GameEvent(
+                        event_id=event_source,
+                        kind="agent_card_effect_unavailable",
+                        payload=(("card_id", card_instance_id), ("player", player)),
+                    ),
+                ),
+            )
+        advanced = advance_tleilaxu(next_state, player, 1, source=event_source)
+        return RuleResult(
+            state=advanced.state,
+            events=(
+                GameEvent(
+                    event_id=event_source,
+                    kind="agent_card_effect_resolved",
+                    payload=(("card_id", card_instance_id), ("player", player)),
+                ),
+                *advanced.events,
+            ),
+        )
     elif effect is PersonalCardAgentEffect.RESEARCH:
         # Experimentation: the Research icon [Immortality pp. 6, 16]. The
         # advance (and its direction choice) follows the frame bookkeeping.

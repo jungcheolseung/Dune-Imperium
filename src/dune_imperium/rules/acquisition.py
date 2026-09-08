@@ -2,8 +2,12 @@
 
 from dataclasses import dataclass, replace
 
+from dune_imperium.content.immortality.tleilaxu import tleilaxu_card_for_instance
 from dune_imperium.content.uprising.board import Faction
-from dune_imperium.content.uprising.imperium import imperium_card_for_instance
+from dune_imperium.content.uprising.imperium import (
+    ImperiumCardEntry,
+    imperium_card_for_instance,
+)
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.content.uprising.reserve import RESERVE_STACKS_BY_ID
 from dune_imperium.content.uprising.types import (
@@ -30,6 +34,7 @@ from dune_imperium.rules.effects import (
     recruit_troops,
 )
 from dune_imperium.rules.frames import FrameKind, replace_player, reveal_is_open_for
+from dune_imperium.rules.immortality import advance_research, advance_tleilaxu
 from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.intrigue_triggers import fire_reveal_acquisition_intrigue
 from dune_imperium.rules.reveal_turn import current_reveal_context, reveal_late_arrivals
@@ -376,6 +381,11 @@ def _acquire_imperium_to_hand_with_solari(
         )
         prepared = gained.state
         acquisition_events = (*acquisition_events, *gained.events)
+    tracked = apply_acquisition_track_effects(
+        prepared, action.actor, definition, source=source
+    )
+    prepared = tracked.state
+    acquisition_events = (*acquisition_events, *tracked.events)
     completed = complete_acquire_contracts(
         prepared,
         action.actor,
@@ -644,6 +654,14 @@ def apply_imperium_acquisition(
         )
         next_state = gained.state
         acquisition_events = (*acquisition_events, *gained.events)
+    tracked = apply_acquisition_track_effects(
+        next_state,
+        action.actor,
+        definition,
+        source=f"round:{state.round_number}:player:{action.actor}:acquire:{instance_id}",
+    )
+    next_state = tracked.state
+    acquisition_events = (*acquisition_events, *tracked.events)
     completed = complete_acquire_contracts(
         next_state,
         action.actor,
@@ -697,6 +715,38 @@ class AcquisitionBonus:
     pending_draw: tuple[int, int, str] | None = None
 
 
+def _acquired_definition(instance_id: str) -> ImperiumCardEntry:
+    """Return the Imperium-style definition behind a Row or Tleilaxu instance."""
+
+    if instance_id.startswith("tleilaxu:"):
+        return tleilaxu_card_for_instance(instance_id)
+    return imperium_card_for_instance(instance_id)
+
+
+def apply_acquisition_track_effects(
+    state: GameState,
+    player: int,
+    definition: ImperiumCardEntry,
+    *,
+    source: str,
+) -> RuleResult:
+    """Pay an acquire box that moves a Bene Tleilax token (Immortality).
+
+    Spiritual Fervor's box researches and Subject X-137's advances the
+    Tleilaxu token [card faces]; both resolve after the card has reached
+    its zone, and the research may open a direction choice.
+    """
+
+    effect = definition.acquisition_effect
+    if effect is PersonalCardAcquisitionEffect.RESEARCH:
+        return advance_research(state, player, source=f"{source}:acquisition_bonus")
+    if effect is PersonalCardAcquisitionEffect.ADVANCE_TLEILAXU:
+        return advance_tleilaxu(
+            state, player, 1, source=f"{source}:acquisition_bonus"
+        )
+    return RuleResult(state=state)
+
+
 def _acquisition_influence_faction(
     effect: PersonalCardAcquisitionEffect | None,
 ) -> Faction | None:
@@ -717,7 +767,7 @@ def _resolve_imperium_acquisition_bonus(
 ) -> AcquisitionBonus:
     """Apply one supported acquisition bonus before its follow-up choice."""
 
-    definition = imperium_card_for_instance(instance_id)
+    definition = _acquired_definition(instance_id)
     effect = definition.acquisition_effect
     intrigue_deck = state.intrigue_deck
     events: tuple[GameEvent, ...] = ()
@@ -815,6 +865,11 @@ def _with_pending_draw(
     if pending_draw is None:
         return state.pending_intrigue_draws
     return (*state.pending_intrigue_draws, pending_draw)
+
+
+# Shared with the Tleilaxu Row acquisition (``rules.tleilaxu_row``).
+resolve_acquisition_bonus = _resolve_imperium_acquisition_bonus
+with_pending_draw = _with_pending_draw
 
 
 def next_reserve_instance_id(state: GameState, card_id: str) -> str:
@@ -998,6 +1053,11 @@ def apply_manipulated_acquisition(
         )
         next_state = gained.state
         acquisition_events = (*acquisition_events, *gained.events)
+    tracked = apply_acquisition_track_effects(
+        next_state, action.actor, definition, source=source
+    )
+    next_state = tracked.state
+    acquisition_events = (*acquisition_events, *tracked.events)
     completed = complete_acquire_contracts(
         next_state,
         action.actor,
@@ -1278,6 +1338,11 @@ def acquire_imperium_for_intrigue(
         )
         prepared = gained.state
         acquisition_events = (*acquisition_events, *gained.events)
+    tracked = apply_acquisition_track_effects(
+        prepared, player, definition, source=source
+    )
+    prepared = tracked.state
+    acquisition_events = (*acquisition_events, *tracked.events)
     completed = complete_acquire_contracts(
         prepared,
         player,

@@ -179,6 +179,13 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.GAIN_WATER: "Gain 1 water",
         # Immortality (card faces).
         PersonalCardAgentEffect.RESEARCH: "Research (advance your research token)",
+        PersonalCardAgentEffect.ADVANCE_TLEILAXU: (
+            "Tleilaxu (advance your Tleilaxu token)"
+        ),
+        PersonalCardAgentEffect.ADVANCE_TLEILAXU_IF_ONE_MARKER: (
+            "If you have reached one genetic marker: Tleilaxu "
+            "(advance your Tleilaxu token)"
+        ),
         PersonalCardAgentEffect.GAIN_BY_BENE_GESSERIT_AND_FREMEN_INFLUENCE_TWO: (
             "If you have 2 or more Bene Gesserit Influence: Gain 1 water, "
             "If you have 2 or more Fremen Influence: Gain 1 spice"
@@ -314,6 +321,12 @@ ACQUISITION_EFFECT_TEXT: Final[Mapping[PersonalCardAcquisitionEffect, str]] = (
                 "Gain 1 Emperor Influence"
             ),
             PersonalCardAcquisitionEffect.GAIN_ONE_WATER: "Gain 1 water",
+            PersonalCardAcquisitionEffect.RESEARCH: (
+                "Research (advance your research token)"
+            ),
+            PersonalCardAcquisitionEffect.ADVANCE_TLEILAXU: (
+                "Tleilaxu (advance your Tleilaxu token)"
+            ),
         }
     )
 )

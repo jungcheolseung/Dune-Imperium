@@ -266,6 +266,10 @@ from dune_imperium.rules.tech import (
     legal_tech_flip_actions,
     legal_tech_reveal_actions,
 )
+from dune_imperium.rules.tleilaxu_row import (
+    apply_tleilaxu_acquisition,
+    legal_tleilaxu_acquisitions,
+)
 from dune_imperium.rules.unit_loss import apply_unit_loss, legal_unit_loss_actions
 
 type LegalActionProvider = Callable[[GameState, int], tuple[DomainAction, ...]]
@@ -373,6 +377,7 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         legal_reveal_gain_actions,
         legal_specimen_return_actions,
         legal_family_atomics_actions,
+        legal_tleilaxu_acquisitions,
     ),
     FrameKind.REVEAL_CHOICE: (
         legal_defer_reveal_choice_actions,
@@ -503,6 +508,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "decline_research_bonus": apply_research_bonus,
     "return_specimen": apply_specimen_return,
     "use_family_atomics": apply_family_atomics,
+    "acquire_tleilaxu": apply_tleilaxu_acquisition,
+    "acquire_reclaimed_forces": apply_tleilaxu_acquisition,
     # Bloodlines Sardaukar Commanders
     "acquire_sardaukar_commander": apply_sardaukar_commander_action,
     "acquire_tech": apply_tech_acquisition,

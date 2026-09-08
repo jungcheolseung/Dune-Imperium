@@ -11,6 +11,10 @@ from dune_imperium.content.immortality.board import (
     RESEARCH_SPACES_BY_ID,
     RESEARCH_START_ID,
 )
+from dune_imperium.content.immortality.tleilaxu import (
+    tleilaxu_cards_for,
+    tleilaxu_deck_instance_ids,
+)
 from dune_imperium.content.uprising.board import (
     BOARD_SPACES,
     OBSERVATION_POSTS,
@@ -832,6 +836,32 @@ def _immortality_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         for faction in Faction
     )
     templates.extend(_trash_templates(config, "trash_for_research_bonus"))
+    if not config.bloodlines:
+        # The trash-and-specimen research spaces open the generic optional
+        # trash frame, which Bloodlines catalogs already hold.
+        templates.append(ActionTemplate(action_id="decline_optional_trash"))
+        templates.extend(_trash_templates(config, "trash_optional_card"))
+    # The Tleilaxu Row: each deck card to the discard pile or, past the
+    # first genetic marker, on top of the deck; Reclaimed Forces' two
+    # effects [Immortality pp. 6, 9].
+    for instance_id in tleilaxu_deck_instance_ids(config.promo_cards):
+        templates.append(
+            ActionTemplate(
+                action_id="acquire_tleilaxu", arguments=(("instance_id", instance_id),)
+            )
+        )
+        templates.append(
+            ActionTemplate(
+                action_id="acquire_tleilaxu",
+                arguments=(("instance_id", instance_id), ("to_deck_top", True)),
+            )
+        )
+    templates.extend(
+        ActionTemplate(
+            action_id="acquire_reclaimed_forces", arguments=(("choice", choice),)
+        )
+        for choice in ("troops", "tleilaxu")
+    )
     return tuple(templates)
 
 
@@ -1000,6 +1030,17 @@ def _agent_turn_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
                     space_discounts=config.tech_module,
                 )
             )
+    if config.immortality:
+        for tleilaxu_card in tleilaxu_cards_for(config.promo_cards):
+            templates.extend(
+                _agent_turn_templates_for_card(
+                    "tleilaxu",
+                    tleilaxu_card,
+                    granted,
+                    catalog_spaces(config),
+                    space_discounts=config.tech_module,
+                )
+            )
     return tuple(templates)
 
 
@@ -1158,6 +1199,8 @@ def _personal_card_instance_ids(config: RulesetConfig) -> tuple[str, ...]:
         for stack in RESERVE_STACKS
         for copy in range(stack.copies)
     )
+    if config.immortality:
+        card_ids.extend(tleilaxu_deck_instance_ids(config.promo_cards))
     return tuple(card_ids)
 
 

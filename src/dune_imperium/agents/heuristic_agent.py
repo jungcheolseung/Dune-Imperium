@@ -90,6 +90,10 @@ _ACTION_SCORES: Final[dict[str, float]] = {
     "decline_research_bonus": 0.5,
     "use_family_atomics": 0.3,
     "return_specimen": -2.0,
+    # A Tleilaxu card for specimens is a free acquisition; Reclaimed Forces
+    # is the fallback use of three specimens.
+    "acquire_tleilaxu": 2.5,
+    "acquire_reclaimed_forces": 1.0,
     "gain_reveal_resources": 4.0,
     "gain_reveal_faction_influence": 4.0,
     "withdraw_troops": -10.0,

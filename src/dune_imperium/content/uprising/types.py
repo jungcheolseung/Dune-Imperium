@@ -191,6 +191,11 @@ class PersonalCardAgentEffect(StrEnum):
     # Immortality (card faces, 2026-09-08). Experimentation: the Research
     # icon [Immortality pp. 6, 16].
     RESEARCH = "research"
+    # Contaminator: the Tleilaxu icon [Immortality pp. 7, 16].
+    ADVANCE_TLEILAXU = "advance_tleilaxu"
+    # Subject X-137: "[one genetic marker]: Tleilaxu", judged when the box
+    # resolves (OQ-028).
+    ADVANCE_TLEILAXU_IF_ONE_MARKER = "advance_tleilaxu_if_one_marker"
 
 
 class PersonalCardTrashEffect(StrEnum):
@@ -233,6 +238,10 @@ class PersonalCardAcquisitionEffect(StrEnum):
     GAIN_EMPEROR_INFLUENCE = "gain_emperor_influence"
     # Possible Futures (Bloodlines): one water on acquisition.
     GAIN_ONE_WATER = "gain_one_water"
+    # Immortality acquire boxes: Spiritual Fervor researches, Subject X-137
+    # advances the Tleilaxu token [card faces].
+    RESEARCH = "research"
+    ADVANCE_TLEILAXU = "advance_tleilaxu"
 
 
 class PersonalCardRevealChoiceEffect(StrEnum):

@@ -22,7 +22,14 @@ from dune_imperium.content.schema import (
     SourceDocument,
     SourceRef,
 )
+from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.imperium import ImperiumCardEntry
+from dune_imperium.content.uprising.types import (
+    AgentIcon,
+    PersonalCardAcquisitionEffect,
+    PersonalCardAgentEffect,
+    PersonalCardRevealEffect,
+)
 
 TLEILAXU_SOURCES: Final = (
     SourceRef(SourceDocument.IMMORTALITY_RULEBOOK, (3, 8, 9)),
@@ -60,6 +67,13 @@ def _entry(
     *,
     promo: bool = False,
     graft: bool = False,
+    factions: tuple[Faction, ...] = (),
+    agent_icons: tuple[AgentIcon, ...] = (),
+    agent_effect: PersonalCardAgentEffect | None = None,
+    acquisition_effect: PersonalCardAcquisitionEffect | None = None,
+    reveal_persuasion: int = 0,
+    reveal_strength: int = 0,
+    reveal_effects: tuple[PersonalCardRevealEffect, ...] = (),
     play_data_complete: bool = False,
 ) -> TleilaxuCardEntry:
     return TleilaxuCardEntry(
@@ -77,6 +91,14 @@ def _entry(
         immortality_only=True,
         specimen_cost=specimen_cost,
         graft=graft,
+        factions=factions,
+        agent_icons=agent_icons,
+        agent_effect=agent_effect,
+        acquisition_effect=acquisition_effect,
+        has_acquisition_bonus=acquisition_effect is not None,
+        reveal_persuasion=reveal_persuasion,
+        reveal_strength=reveal_strength,
+        reveal_effects=reveal_effects,
         play_data_complete=play_data_complete,
     )
 
@@ -86,18 +108,54 @@ def _entry(
 TLEILAXU_CARDS: Final[tuple[TleilaxuCardEntry, ...]] = (
     _entry(403, "beguiling-pheromones", "Beguiling Pheromones", 3, graft=True),
     _entry(404, "chairdog", "Chairdog", 2, graft=True),
-    _entry(405, "contaminator", "Contaminator", 1),
+    # Contaminator (Fremen): Fremen icon; Agent: Tleilaxu; Reveal: 1
+    # Persuasion [card face].
+    _entry(
+        405,
+        "contaminator",
+        "Contaminator",
+        1,
+        factions=(Faction.FREMEN,),
+        agent_icons=(AgentIcon.FREMEN,),
+        agent_effect=PersonalCardAgentEffect.ADVANCE_TLEILAXU,
+        reveal_persuasion=1,
+        play_data_complete=True,
+    ),
     _entry(406, "corrino-genes", "Corrino Genes", 1),
     _entry(407, "face-dancer", "Face Dancer", 2, graft=True),
     _entry(408, "face-dancer-initiate", "Face Dancer Initiate", 1, graft=True),
-    _entry(409, "from-the-tanks", "From the Tanks", 2),
+    # From the Tanks: Landsraad icon; Agent: 2 troops; Reveal: 1 Persuasion
+    # [card face].
+    _entry(
+        409,
+        "from-the-tanks",
+        "From the Tanks",
+        2,
+        agent_icons=(AgentIcon.LANDSRAAD,),
+        agent_effect=PersonalCardAgentEffect.RECRUIT_TWO_TROOPS,
+        reveal_persuasion=1,
+        play_data_complete=True,
+    ),
     _entry(410, "ghola", "Ghola", 3, graft=True),
     _entry(411, "guild-impersonator", "Guild Impersonator", 2, graft=True),
     _entry(412, "industrial-espionage", "Industrial Espionage", 1),
     _entry(414, "scientific-breakthrough", "Scientific Breakthrough", 3),
     _entry(415, "slig-farmer", "Slig Farmer", 2, graft=True),
     _entry(416, "stitched-horror", "Stitched Horror", 3, graft=True),
-    _entry(417, "subject-x-137", "Subject X-137", 2),
+    # Subject X-137: acquire box Tleilaxu; Landsraad and Spice Trade icons;
+    # Agent: "[one genetic marker]: Tleilaxu"; Reveal: 1 Persuasion [card
+    # face].
+    _entry(
+        417,
+        "subject-x-137",
+        "Subject X-137",
+        2,
+        agent_icons=(AgentIcon.LANDSRAAD, AgentIcon.SPICE_TRADE),
+        agent_effect=PersonalCardAgentEffect.ADVANCE_TLEILAXU_IF_ONE_MARKER,
+        acquisition_effect=PersonalCardAcquisitionEffect.ADVANCE_TLEILAXU,
+        reveal_persuasion=1,
+        play_data_complete=True,
+    ),
     _entry(418, "tleilaxu-infiltrator", "Tleilaxu Infiltrator", 2, graft=True),
     _entry(419, "twisted-mentat", "Twisted Mentat", 4, graft=True),
     _entry(420, "unnatural-reflexes", "Unnatural Reflexes", 3, graft=True),

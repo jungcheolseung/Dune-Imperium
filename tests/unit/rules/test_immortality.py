@@ -15,6 +15,7 @@ from dune_imperium.content.immortality.board import (
     RESEARCH_START_ID,
     TLEILAXU_TRACK_END,
 )
+from dune_imperium.content.immortality.tleilaxu import tleilaxu_deck_instance_ids
 from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
@@ -133,8 +134,9 @@ def test_setup_places_tokens_spice_experimentation_and_family_atomics() -> None:
     state = create_initial_state(IMMORTALITY, 7, LEADERS).state
 
     assert state.tleilaxu_track_spice == 2
-    # No Tleilaxu card has play data yet, so the deck and Row are empty.
-    assert state.tleilaxu_deck == () and state.tleilaxu_row == ()
+    # The Row shows two cards; the rest of the transcribed deck waits.
+    assert len(state.tleilaxu_row) == 2
+    assert len(state.tleilaxu_deck) == len(tleilaxu_deck_instance_ids()) - 2
     for player in state.players:
         assert player.research_space == RESEARCH_START_ID
         assert player.tleilaxu_space == 0

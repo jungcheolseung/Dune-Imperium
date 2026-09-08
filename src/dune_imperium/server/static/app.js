@@ -225,6 +225,8 @@ const ACTION_LABELS = {
   recruit_reveal_troops: "Reveal: troop recruit",
   draw_reveal_intrigue: "Reveal: Intrigue draw",
   generate_reveal_specimens: "Reveal: specimen",
+  acquire_tleilaxu: "Tleilaxu 카드 획득",
+  acquire_reclaimed_forces: "Reclaimed Forces",
   choose_research_space: "Research: advance to",
   choose_research_influence: "Research bonus: Influence",
   trash_for_research_bonus: "Research bonus: trash → card + Intrigue",

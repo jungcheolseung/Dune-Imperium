@@ -131,9 +131,14 @@ def test_tleilaxu_catalog_has_the_official_deck_and_reclaimed_forces() -> None:
         SourceDocument.IMMORTALITY_RULEBOOK,
         SourceDocument.CARD_FACE,
     }
-    # Nothing has play data yet, so nothing joins the deck.
-    assert tleilaxu_cards_for(promo_cards=True) == ()
-    assert tleilaxu_deck_instance_ids(promo_cards=True) == ()
+    # Only transcribed cards join the deck; the promo needs promo_cards.
+    transcribed = {entry.card.card_id for entry in tleilaxu_cards_for(promo_cards=True)}
+    assert transcribed == {"contaminator", "from_the_tanks", "subject_x_137"}
+    assert all(
+        instance_id.startswith("tleilaxu:")
+        for instance_id in tleilaxu_deck_instance_ids(promo_cards=True)
+    )
+    assert "tleilaxu:piter_genius_advisor:0" not in tleilaxu_deck_instance_ids()
 
 
 def test_tleilaxu_instance_ids_resolve_and_validate() -> None:
