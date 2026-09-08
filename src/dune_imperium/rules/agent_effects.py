@@ -34,6 +34,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
+from dune_imperium.rules.agent_icons import effective_agent_icons
 from dune_imperium.rules.card_bonds import has_faction_bond
 from dune_imperium.rules.card_discard import discard_personal_card_from_hand
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
@@ -646,13 +647,26 @@ def apply_opponent_card_discard(
     return RuleResult(state=popped, events=discarded.events)
 
 
-def _partner_icon_count(context: Mapping[str, ActionValue]) -> int:
-    """Slig Farmer: the printed Agent icons of the other grafted card."""
+def _partner_icon_count(state: GameState, context: Mapping[str, ActionValue]) -> int:
+    """Slig Farmer: the Agent icons the other grafted card has right now.
+
+    Borrowed and conditional icons count too — Blank Slate's grafted Faction
+    icons, Servo-Receivers' Signet icons, a met Long Reach condition — since
+    the card carries them (OQ-055, user ruling 2026-09-08).
+    """
 
     partner = other_grafted_card_id(context)
     if not partner:
         return 0
-    return len(personal_card_for_instance(partner).agent_icons)
+    player = context.get("turn_owner")
+    if isinstance(player, bool) or not isinstance(player, int):
+        raise RuntimeError("Agent-turn effect frame has invalid owner")
+    owner = state.players[player]
+    opponents = tuple(seat for seat in state.players if seat.player_id != player)
+    partner_card = personal_card_for_instance(partner)
+    return len(
+        effective_agent_icons(partner_card, owner, grafted=True, opponents=opponents)
+    )
 
 
 def _chosen_rewards(context: Mapping[str, ActionValue]) -> tuple[str, ...]:
@@ -1879,7 +1893,10 @@ def legal_agent_card_payment_actions(
         )
     if source_card.agent_effect is _SOLARI_PER_PARTNER_ICON:
         # Slig Farmer: the Solari land first, so they may pay the five.
-        if owner.resources.solari + _partner_icon_count(context) < SLIG_FARMER_PRICE:
+        if (
+            owner.resources.solari + _partner_icon_count(state, context)
+            < SLIG_FARMER_PRICE
+        ):
             return ()
         return (
             DomainAction(action_id="resolve_agent_card_effect", actor=player),
@@ -2255,7 +2272,7 @@ def apply_agent_card_payment(state: GameState, action: DomainAction) -> RuleResu
         )
     if action.action_id == "pay_agent_card_five_solari_for_tleilaxu":
         # Slig Farmer: the per-icon Solari land, then five pay the track.
-        icon_solari = _partner_icon_count(context)
+        icon_solari = _partner_icon_count(state, context)
         paid_owner = replace(
             owner,
             resources=replace(
@@ -3466,7 +3483,7 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         )
     elif effect is _SOLARI_PER_PARTNER_ICON:
         # Slig Farmer without the payment: the per-icon Solari alone.
-        gained_solari = _partner_icon_count(context)
+        gained_solari = _partner_icon_count(state, context)
         next_owner = replace(
             owner,
             resources=replace(

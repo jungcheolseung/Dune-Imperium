@@ -250,6 +250,18 @@ def test_slig_farmer_pays_per_partner_icon_and_may_buy_a_track_step() -> None:
     assert paid.resources.solari == 2 + 3 - 5  # Face Dancer: 3 icons
     assert paid.tleilaxu_space == 1
 
+    # Borrowed icons count too (OQ-055): Blank Slate grafted has its three
+    # printed icons plus the four Faction icons.
+    slate = "imperium:blank_slate:0"
+    borrowed = _graft(
+        _state(_owner((farmer, slate), resources=Resources(solari=0))),
+        farmer,
+        "assembly_hall",
+        slate,
+    )
+    resolved = resolve_agent_card_effect(borrowed)
+    assert resolved.state.players[0].resources.solari == 7
+
 
 def test_stitched_horror_pays_two_distinct_rewards() -> None:
     horror = _tleilaxu("stitched_horror")

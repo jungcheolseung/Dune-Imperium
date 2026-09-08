@@ -35,11 +35,8 @@ from dune_imperium.rules.agent_effects import (
     resolve_agent_card_effect,
     resolve_agent_card_icon,
 )
-from dune_imperium.rules.agent_turn import (
-    apply_agent_action,
-    effective_agent_icons,
-    legal_agent_actions,
-)
+from dune_imperium.rules.agent_icons import effective_agent_icons
+from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.effects import current_agent_effect_context
 from dune_imperium.rules.frames import FrameKind

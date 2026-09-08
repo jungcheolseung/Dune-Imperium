@@ -13,10 +13,6 @@ from dune_imperium.content.uprising.board import (
     InfluenceRequirement,
     ResourceCost,
 )
-from dune_imperium.content.uprising.contracts import (
-    ContractConditionKind,
-    contract_for_instance,
-)
 from dune_imperium.content.uprising.imperium import ImperiumCardEntry
 from dune_imperium.content.uprising.personal_cards import (
     PersonalCardDefinition,
@@ -27,7 +23,6 @@ from dune_imperium.content.uprising.personal_cards import (
 from dune_imperium.content.uprising.types import (
     AgentIcon,
     PersonalCardAgentEffect,
-    PersonalCardIconCondition,
     PersonalCardTurnStartEffect,
 )
 from dune_imperium.core.actions import DomainAction
@@ -37,6 +32,7 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import Influence, PlayerState, Resources
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.agent_effects import agent_card_icons_at_placement
+from dune_imperium.rules.agent_icons import card_is_boosted, effective_agent_icons
 from dune_imperium.rules.board_effects import board_icons_for
 from dune_imperium.rules.card_bonds import has_faction_bond
 from dune_imperium.rules.card_draw import (
@@ -253,79 +249,6 @@ def _placements_for_card(
                 )
             )
     return tuple(actions)
-
-
-def effective_agent_icons(
-    card: PersonalCardDefinition,
-    owner: PlayerState,
-    *,
-    grafted: bool = False,
-    opponents: tuple[PlayerState, ...] = (),
-) -> tuple[AgentIcon, ...]:
-    """Return the card's Agent icons as printed, plus any it borrows.
-
-    Delivery Logistics (Bloodlines) has "the Agent icons of all your
-    incomplete contracts": each active Contract that names a board space
-    lends that space's icon, and a harvest Contract lends the Spice Trade
-    icon of the Maker spaces.
-    """
-
-    icons = list(card.agent_icons)
-    if isinstance(card, ImperiumCardEntry) and card.icon_condition is not None:
-        # Greyed icons that a printed condition turns on, judged as the card
-        # is played (Long Reach, Show of Strength) [card faces].
-        icon_condition = card.icon_condition
-        if icon_condition is PersonalCardIconCondition.BENE_GESSERIT_BOND:
-            met = any(
-                Faction.BENE_GESSERIT in personal_card_for_instance(other).factions
-                for other in owner.in_play
-            )
-        else:
-            met = all(
-                owner.troops_conflict + owner.commanders_conflict
-                > seat.troops_conflict + seat.commanders_conflict
-                for seat in opponents
-            )
-        if not met:
-            icons = []
-    if card.card.card_id == "signet_ring" and has_tech(
-        owner.tech_ids, TechAbility.SIGNET_FACTION_ICONS
-    ):
-        # Servo-Receivers: "Your Signet Ring has the following icons": the
-        # four Faction Agent icons [Tech tile face].
-        icons.extend(
-            (
-                AgentIcon.EMPEROR,
-                AgentIcon.SPACING_GUILD,
-                AgentIcon.BENE_GESSERIT,
-                AgentIcon.FREMEN,
-            )
-        )
-    if grafted and card.card.card_id == "blank_slate":
-        # Blank Slate: "If grafted: this has [Emperor], [Guild], [Bene
-        # Gesserit], and [Fremen]" [card face].
-        icons.extend(
-            (
-                AgentIcon.EMPEROR,
-                AgentIcon.SPACING_GUILD,
-                AgentIcon.BENE_GESSERIT,
-                AgentIcon.FREMEN,
-            )
-        )
-    if isinstance(card, ImperiumCardEntry) and card.agent_icons_from_contracts:
-        for instance_id in owner.active_contract_ids:
-            condition = contract_for_instance(instance_id).condition
-            if condition.kind is ContractConditionKind.BOARD_SPACE:
-                icons.append(BOARD_SPACES_BY_ID[condition.target].agent_icon)
-            elif condition.kind is ContractConditionKind.HARVEST_SPICE:
-                icons.append(AgentIcon.SPICE_TRADE)
-    return tuple(dict.fromkeys(icons))
-
-
-def card_is_boosted(card: PersonalCardDefinition, owner: PlayerState) -> bool:
-    """Return whether Urgent Shigawire's boost applies to this card."""
-
-    return owner.bene_gesserit_boost_pending and Faction.BENE_GESSERIT in card.factions
 
 
 def card_can_access_space(

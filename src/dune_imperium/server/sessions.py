@@ -28,6 +28,7 @@ from dune_imperium.config import RulesetConfig
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceOutcome, ChanceResolver
 from dune_imperium.core.decisions import ChanceDecision, PlayerDecision
+from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.observation import PlayerView, disclose_hidden_zones
 from dune_imperium.core.replay import ReplayStep
 from dune_imperium.core.state import GamePhase, GameState, canonical_state_hash
@@ -887,25 +888,62 @@ def _serialize_action(
     reveals hidden information or hands the game to a chance outcome).
     """
 
+    outcome = _dry_run(session, action)
     return {
         "index": index,
         "action_id": action.action_id,
         "arguments": _jsonify(dict(action.arguments)),
         "detail": effect_action_text(session.state, action),
-        "undoable": _action_is_undoable(session, action),
+        "undoable": _action_is_undoable(session, action, outcome),
+        "warning": shortfall_warning(outcome),
     }
 
 
-def _action_is_undoable(session: GameSession, action: DomainAction) -> bool:
-    """Dry-run ``action`` and apply the undo-window rules to its outcome."""
+def _dry_run(session: GameSession, action: DomainAction) -> RuleResult | None:
+    """Apply ``action`` to a copy of the state; None when the engine refuses."""
 
     try:
-        after = session.engine.apply(session.state, action).state
-    except Exception:  # noqa: BLE001 - a failing dry run is simply not undoable
+        transition = session.engine.apply(session.state, action)
+    except Exception:  # noqa: BLE001 - a failing dry run is reported as such
+        return None
+    return RuleResult(state=transition.state, events=transition.events)
+
+
+def _action_is_undoable(
+    session: GameSession, action: DomainAction, outcome: RuleResult | None
+) -> bool:
+    """Apply the undo-window rules to a dry run's outcome."""
+
+    if outcome is None:
         return False
+    after = outcome.state
     if reveals_hidden_information(session.state, after, action.actor):
         return False
     return not isinstance(session.engine.current_decision(after), ChanceDecision)
+
+
+def shortfall_warning(outcome: RuleResult | None) -> str | None:
+    """Describe a supply shortfall the action would run into, if any.
+
+    Specimens and recruits come from the troop supply and a short supply
+    simply yields fewer (OQ-030, OQ-049); the choice stays legal, so the
+    player is told beforehand what the action will actually do.
+    """
+
+    if outcome is None:
+        return None
+    notes: list[str] = []
+    for event in outcome.events:
+        payload = dict(event.payload)
+        if event.kind == "specimens_short":
+            notes.append(
+                "supply 부족: specimen "
+                f"{payload.get('requested')}개 중 {payload.get('generated')}개만 생성"
+            )
+        elif event.kind == "troops_recruit_short":
+            requested, recruited = payload.get("requested"), payload.get("recruited")
+            notes.append(f"supply 부족: troop {requested}개 중 {recruited}개만 recruit")
+    return " · ".join(notes) if notes else None
 
 
 def _jsonify(value: object) -> JsonValue:

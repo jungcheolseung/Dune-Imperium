@@ -418,14 +418,14 @@
 - 상태: `DECIDED`
 - Immortality 룰북은 Tleilaxu 아이콘마다 token을 한 칸 전진하고 도달한 칸의 보너스를 얻는다고만 하며 `[Immortality pp. 7, 16]`, token이 마지막 칸(VP 칸)에 있을 때 Tleilaxu 아이콘을 또 얻으면 어떻게 되는지는 말하지 않는다. track에는 마지막 칸 뒤에 칸이 없다 `[Immortality p. 3 board artwork]`.
 - 필요한 답: 마지막 칸에서의 Tleilaxu 아이콘이 아무 효과도 없는지, 아니면 다른 보상으로 바뀌는지.
-- 확정(2026-09-08, project convention — 공식 규칙이 아니다): 마지막 칸에서는 token이 그대로 있고 아이콘은 효과 없이 소비된다(`tleilaxu_track_end` 공개 이벤트). 룰북이 두 번째 genetic marker 뒤의 Research 아이콘에는 명시적 대체(draw)를 두면서 Tleilaxu track에는 두지 않았으므로, 대체 보상을 만들어 내지 않는다. 구현: `rules/immortality.py`의 `advance_tleilaxu`. 테스트: `tests/unit/rules/test_immortality.py`.
+- 확정(2026-09-08, 사용자 확인 "끝까지 가고 나면 뭐 없는 게 맞다"): 마지막 칸에서는 token이 그대로 있고 아이콘은 효과 없이 소비된다(`tleilaxu_track_end` 공개 이벤트). 룰북이 두 번째 genetic marker 뒤의 Research 아이콘에는 명시적 대체(draw)를 두면서 Tleilaxu track에는 두지 않았으므로, 대체 보상을 만들어 내지 않는다. 구현: `rules/immortality.py`의 `advance_tleilaxu`. 테스트: `tests/unit/rules/test_immortality.py`.
 
 ## OQ-049 — supply가 빈 상태의 specimen 생성
 
 - 상태: `DECIDED`
 - specimen은 "take a troop from your supply and place it in the Axolotl tanks"로 정의되고 `[Immortality pp. 8, 16]`, supply에 troop이 없을 때 specimen 아이콘이 무엇을 하는지는 설명하지 않는다.
 - 필요한 답: supply가 비었을 때 specimen 아이콘의 처리.
-- 확정(2026-09-08, project convention — 공식 규칙이 아니다): OQ-030의 recruit 판정과 같은 모양이다. 해결 시점에 supply에 있는 만큼만 specimen이 되고 부족분은 소멸하며 소급하지 않는다(`specimens_short` 공개 이벤트). 플레이어는 자유 순서로 specimen 반환·troop 손실 효과를 먼저 해결해 대비한다. 구현: `rules/specimens.py`의 `generate_specimens`.
+- 확정(2026-09-08, project convention — 공식 규칙이 아니다; 사용자 검토 2026-09-08): OQ-030의 recruit 판정과 같은 모양이다. 해결 시점에 supply에 있는 만큼만 specimen이 되고 부족분은 소멸하며 소급하지 않는다(`specimens_short` 공개 이벤트). 플레이어는 자유 순서로 specimen 반환·troop 손실 효과를 먼저 해결해 대비한다. 사용자 요청으로 UI가 이를 미리 알린다: 서버가 합법 행동을 dry-run해 `specimens_short`/`troops_recruit_short`가 나면 행동 목록에 `warning`("supply 부족: specimen 2개 중 1개만 생성")을 붙이고, 선택은 그대로 할 수 있다(`sessions.shortfall_warning`). 구현: `rules/specimens.py`의 `generate_specimens`.
 
 ## OQ-050 — "언제든" 가능한 specimen 반환의 결정 창
 
@@ -446,14 +446,14 @@
 - 상태: `DECIDED`
 - Imperium Ceremony의 Agent box는 "Intrigue deck 맨 위 두 장을 보고 한 장을 keep, 나머지는 맨 위로"라고만 한다 `[card face]`. deck에 한 장뿐이거나 비었을 때 discard를 섞어 두 장을 채우는지, 있는 만큼만 보는지 말하지 않는다.
 - 필요한 답: 두 장 미만일 때의 처리.
-- 확정(2026-09-08, project convention — 공식 규칙이 아니다): 두 장이 face down으로 있을 때만 peek 선택(`INTRIGUE_PEEK` frame)이 열린다. 그보다 적으면 box는 보통의 Intrigue draw 1장으로 처리한다(deck이 비면 draw 규칙대로 discard를 섞고 `[Main p. 7]`, 한 장뿐이면 그 한 장). 섞인 뒤의 deck을 들여다보는 효과로 확장하지 않기 위해서다. 구현: `rules/intrigue_peek.py`의 `begin_intrigue_peek`. peek한 두 장은 소유자만 보는 비공개 정보로 관측(`PrivatePlayerView.peeked_intrigue_ids`, v14)·determinize·invariant에서 deck 맨 위 자리를 유지한다.
+- 확정(2026-09-08, project convention — 공식 규칙이 아니다; 사용자 검토 2026-09-08): 두 장이 face down으로 있을 때만 peek 선택(`INTRIGUE_PEEK` frame)이 열린다. 그보다 적으면 box는 보통의 Intrigue draw 1장으로 처리한다(deck이 비면 "Intrigue Deck이 바닥나면 버린 Intrigue 카드를 섞어 새 Intrigue Deck을 만든다" `[FAQ p. 2]`(player-turns.md)에 따라 discard를 섞고, 한 장뿐이면 그 한 장). 섞인 뒤의 deck을 들여다보는 효과로 확장하지 않기 위해서다. 구현: `rules/intrigue_peek.py`의 `begin_intrigue_peek`. peek한 두 장은 소유자만 보는 비공개 정보로 관측(`PrivatePlayerView.peeked_intrigue_ids`, v14)·determinize·invariant에서 deck 맨 위 자리를 유지한다.
 
 ## OQ-053 — Tleilaxu Surgeon: "Lose two troops"의 출처 존
 
 - 상태: `DECIDED`
 - Tleilaxu Surgeon의 Reveal box "troop 두 개를 잃기 ▶ specimen 2"는 `[card face]` 잃는 troop을 garrison에서 내는지 Conflict에서 내는지, 섞어 낼 수 있는지 말하지 않는다. Intrigue의 "lose a troop"은 OQ-038에서 소유자가 존을 고르는 것으로 확정돼 있다.
 - 필요한 답: 두 troop의 존과 혼합 허용 여부.
-- 확정(2026-09-08, project convention — 공식 규칙이 아니다): OQ-038과 같이 소유자가 존을 고르되, 두 troop은 같은 존(garrison 또는 Conflict)에서 낸다(`lose_reveal_troops_for_specimens(zone)`). 한 존에 두 개가 없으면 선택이 열리지 않는다. Sardaukar Commander는 이 비용에 쓰지 않는다(Commander는 troop 12개 불변식 밖의 유닛이고, specimen은 troop 공급에서만 나온다 `[Immortality p. 8]`). Conflict에서 잃으면 전투력이 그만큼 줄고(`retreat_units`의 규칙), 잃은 troop이 supply로 돌아간 뒤 specimen 2개가 supply에서 tank로 간다(supply 부족은 OQ-049). 구현: `rules/reveal_turn.py`의 `apply_reveal_troop_sacrifice`.
+- 확정(2026-09-08, 사용자 판정 "garrison, conflict 각각 하나씩 잃어도 된다"): OQ-038과 같이 소유자가 troop마다 존을 고른다 — 둘 다 garrison, 둘 다 Conflict, 또는 각각 하나씩(`lose_reveal_troops_for_specimens(zones)`). 두 존을 합쳐 troop이 두 개 미만이면 선택이 열리지 않는다. (처음 구현했던 "같은 존에서만"은 근거가 없어 사용자가 정정했다.) Sardaukar Commander는 이 비용에 쓰지 않는다(Commander는 troop 12개 불변식 밖의 유닛이고, specimen은 troop 공급에서만 나온다 `[Immortality p. 8]`). Conflict에서 잃으면 전투력이 그만큼 줄고(`retreat_units`의 규칙), 잃은 troop이 supply로 돌아간 뒤 specimen 2개가 supply에서 tank로 간다(supply 부족은 OQ-049). 구현: `rules/reveal_turn.py`의 `apply_reveal_troop_sacrifice`.
 
 ## OQ-054 — Usurp로 빌린 Imperium Row 카드의 "trash"
 
@@ -467,5 +467,5 @@
 - 상태: `DECIDED`
 - Slig Farmer는 "1 Solari per Agent icon on the other grafted card"라고만 한다 `[card face]`. Blank Slate가 graft 시 얻는 진영 아이콘 4개, Long Reach·Show of Strength의 회색 조건부 아이콘, Servo-Receivers가 Signet Ring에 주는 아이콘을 세는지 말하지 않는다.
 - 필요한 답: 세는 아이콘의 범위.
-- 확정(2026-09-08, project convention — 공식 규칙이 아니다): 카드에 *인쇄된* Agent 아이콘만 센다(`card.agent_icons`; 회색 조건부 아이콘은 인쇄돼 있으므로 포함). 조건·타일로 붙는 아이콘은 세지 않는다. 구현: `rules/agent_effects.py`의 `_partner_icon_count`.
+- 확정(2026-09-08, 사용자 판정 "추가된 Agent 아이콘도 세는 게 맞다 — 어쨌든 카드에 그 아이콘이 있는 것"): 그 순간 상대 카드가 가진 Agent 아이콘 전부를 센다(`rules/agent_icons.py`의 `effective_agent_icons`, graft 기준): Blank Slate가 graft로 얻는 진영 4개, Servo-Receivers가 Signet Ring에 주는 4개, Delivery Logistics의 계약 아이콘, 조건이 성립한 Long Reach·Show of Strength의 회색 아이콘 모두 포함이고, 조건이 성립하지 않은 회색 아이콘은 없는 것으로 친다. (처음 구현했던 "인쇄 아이콘만"은 사용자가 정정했다.) 구현: `rules/agent_effects.py`의 `_partner_icon_count`.
 

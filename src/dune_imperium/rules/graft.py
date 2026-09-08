@@ -29,11 +29,10 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.acquisition import take_imperium_row_card
 from dune_imperium.rules.agent_effects import agent_card_icons_at_placement
+from dune_imperium.rules.agent_icons import card_is_boosted, effective_agent_icons
 from dune_imperium.rules.agent_turn import (
     agent_effect_is_available,
     card_can_access_space,
-    card_is_boosted,
-    effective_agent_icons,
     is_tleilaxu_infiltrator,
 )
 from dune_imperium.rules.card_trash import trash_personal_card

@@ -452,24 +452,37 @@ def test_tleilaxu_surgeon_spends_specimens_and_sacrifices_troops() -> None:
     )
     assert revealed.decision_stack[-1].kind == FrameKind.REVEAL_CHOICE
     actions = legal_reveal_troop_sacrifice_actions(revealed, 0)
-    assert [(a.action_id, dict(a.arguments).get("zone")) for a in actions] == [
+    assert [(a.action_id, dict(a.arguments).get("zones")) for a in actions] == [
         ("decline_reveal_troop_sacrifice", None),
-        ("lose_reveal_troops_for_specimens", "garrison"),
-        ("lose_reveal_troops_for_specimens", "conflict"),
+        ("lose_reveal_troops_for_specimens", "garrison,garrison"),
+        ("lose_reveal_troops_for_specimens", "garrison,conflict"),
+        ("lose_reveal_troops_for_specimens", "conflict,conflict"),
     ]
     garrison = apply_reveal_troop_sacrifice(revealed, actions[1]).state.players[0]
     assert garrison.troops_garrison == 0 and garrison.specimens == 2
     assert garrison.troops_supply == 8  # two lost, two into the tanks
-    conflict = apply_reveal_troop_sacrifice(revealed, actions[2])
+    conflict = apply_reveal_troop_sacrifice(revealed, actions[3])
     owner = conflict.state.players[0]
     assert owner.troops_conflict == 0 and owner.specimens == 2
     assert dict(conflict.state.decision_stack[-1].context)["strength"] == 0
+    # One from each zone (OQ-053, user ruling): the Conflict troop's two
+    # strength leaves with it.
+    mixed = apply_reveal_troop_sacrifice(revealed, actions[2])
+    owner = mixed.state.players[0]
+    assert owner.troops_garrison == 1 and owner.troops_conflict == 1
+    assert owner.specimens == 2
+    assert dict(mixed.state.decision_stack[-1].context)["strength"] == 2
     one_each = _reveal(
         _state(
             _owner((surgeon,), troops_garrison=1, troops_conflict=1, troops_supply=10)
         )
     )
-    assert one_each.decision_stack[-1].kind == FrameKind.REVEAL  # OQ-053
+    # A troop in each zone still makes two (OQ-053).
+    assert one_each.decision_stack[-1].kind == FrameKind.REVEAL_CHOICE
+    assert [
+        dict(a.arguments).get("zones")
+        for a in legal_reveal_troop_sacrifice_actions(one_each, 0)
+    ] == [None, "garrison,conflict"]
 
 
 def test_the_codec_holds_the_slice_choices_only_with_immortality() -> None:
@@ -491,7 +504,9 @@ def test_the_codec_holds_the_slice_choices_only_with_immortality() -> None:
         ),
         DomainAction("deploy_reveal_card_troop", 0),
         DomainAction("retreat_reveal_card_troop", 0),
-        DomainAction("lose_reveal_troops_for_specimens", 0, (("zone", "conflict"),)),
+        DomainAction(
+            "lose_reveal_troops_for_specimens", 0, (("zones", "garrison,conflict"),)
+        ),
         DomainAction("decline_reveal_troop_sacrifice", 0),
         DomainAction(
             "resume_reveal_choice", 0, (("effect", "may_deploy_or_retreat_one_troop"),)

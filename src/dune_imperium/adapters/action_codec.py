@@ -842,9 +842,9 @@ def _immortality_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     ]
     templates.extend(
         ActionTemplate(
-            action_id="lose_reveal_troops_for_specimens", arguments=(("zone", zone),)
+            action_id="lose_reveal_troops_for_specimens", arguments=(("zones", zones),)
         )
-        for zone in ("garrison", "conflict")
+        for zones in ("garrison,garrison", "garrison,conflict", "conflict,conflict")
     )
     # Piter's troop cost, Stitched Horror's picks, Beguiling Pheromones'
     # grafted-card trash.

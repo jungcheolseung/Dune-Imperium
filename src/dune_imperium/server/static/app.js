@@ -239,7 +239,7 @@ const ACTION_LABELS = {
   deploy_reveal_card_troop: "troop 1 배치",
   retreat_reveal_card_troop: "troop 1 후퇴",
   decline_reveal_troop_move: "troop 이동 안 함",
-  lose_reveal_troops_for_specimens: "troop 2 잃기 → specimen 2",
+  lose_reveal_troops_for_specimens: "troop 2 잃기 (존 선택) → specimen 2",
   trash_agent_card_self_for_vp: "이 카드 trash → VP 1",
   pay_agent_card_five_solari_for_tleilaxu: "Solari 5 지불 → Tleilaxu",
   trash_grafted_card_for_influence: "graft한 카드 trash → 그 진영 Influence 1",
@@ -1475,6 +1475,16 @@ function actionItem(action) {
     badge.textContent = "되돌리기 불가";
     badge.title =
       "이 행동 뒤에는 되돌릴 수 없습니다 (숨겨진 정보가 공개되거나 무작위 결과가 정해집니다)";
+    button.appendChild(badge);
+  }
+  if (action.warning) {
+    /* The server dry-ran the step: the troop supply cannot cover what the
+       effect asks for (OQ-030, OQ-049), so the action does less than printed. */
+    wrap.classList.add("shortfall");
+    const badge = document.createElement("span");
+    badge.className = "shortfall-badge";
+    badge.textContent = action.warning;
+    badge.title = "선택은 할 수 있지만 supply가 부족해 인쇄된 만큼 되지 않습니다";
     button.appendChild(badge);
   }
   wrap.appendChild(button);

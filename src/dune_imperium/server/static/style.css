@@ -642,6 +642,16 @@ button:disabled { opacity: 0.5; cursor: wait; }
 .confirm-row button:hover:not(:disabled) { background: var(--good); color: #111; }
 
 .action-item.irreversible > button:first-child { border-style: dashed; }
+.shortfall-badge {
+  display: inline-block;
+  margin-left: 0.4em;
+  padding: 0 0.35em;
+  border-radius: 4px;
+  font-size: 0.72em;
+  font-weight: 700;
+  color: #ffb347;
+  border: 1px solid #ffb347;
+}
 .irreversible-badge {
   display: inline-block;
   margin-left: 0.4em;

@@ -135,10 +135,7 @@ def test_apply_guards_revision_owner_and_index() -> None:
     if not advanced["finished"]:
         # Either the seat still decides, or its turn ended and the hand-over
         # waits for confirmation while the steps are undoable.
-        assert (
-            _obj(advanced["decision"])["owner"] == 0
-            or advanced["confirmation"] == 0
-        )
+        assert _obj(advanced["decision"])["owner"] == 0 or advanced["confirmation"] == 0
 
 
 def test_a_human_game_can_be_played_to_the_end() -> None:
@@ -176,9 +173,7 @@ def test_a_leader_draft_game_starts_on_the_pick_frame() -> None:
 
     decision = _obj(summary["decision"])
     assert decision["kind"] == "leader_draft"
-    listing = manager.legal_actions(
-        _text(summary["game_id"]), _int(decision["owner"])
-    )
+    listing = manager.legal_actions(_text(summary["game_id"]), _int(decision["owner"]))
     actions = _rows(listing["actions"])
     assert len(actions) == 6
     assert {entry["action_id"] for entry in actions} == {"pick_leader"}
@@ -262,3 +257,117 @@ def test_unknown_games_and_deletion() -> None:
         manager.summary(game_id)
     with pytest.raises(UnknownGameError):
         manager.delete(game_id)
+
+
+def test_shortfall_warning_reports_short_supply_outcomes() -> None:
+    from dune_imperium.core.engine import RuleResult
+    from dune_imperium.core.events import GameEvent
+    from dune_imperium.server.sessions import shortfall_warning
+
+    assert shortfall_warning(None) is None
+    quiet = RuleResult(state=None, events=())  # type: ignore[arg-type]
+    assert shortfall_warning(quiet) is None
+    short = RuleResult(
+        state=None,  # type: ignore[arg-type]
+        events=(
+            GameEvent(
+                event_id="x:specimens_short",
+                kind="specimens_short",
+                payload=(
+                    ("generated", 1),
+                    ("player", 0),
+                    ("requested", 2),
+                    ("short", 1),
+                ),
+            ),
+            GameEvent(
+                event_id="x:recruit_short",
+                kind="troops_recruit_short",
+                payload=(
+                    ("player", 0),
+                    ("recruited", 0),
+                    ("requested", 2),
+                    ("short", 2),
+                ),
+            ),
+        ),
+    )
+    assert shortfall_warning(short) == (
+        "supply 부족: specimen 2개 중 1개만 생성"
+        " · supply 부족: troop 2개 중 0개만 recruit"
+    )
+
+
+def test_serialized_actions_warn_about_a_short_troop_supply() -> None:
+    """OQ-049 (user request): a specimen the supply cannot provide is flagged
+    on the action itself, while the action stays legal."""
+
+    from types import SimpleNamespace
+
+    from dune_imperium import RulesetConfig
+    from dune_imperium.content.immortality.board import RESEARCH_START_ID
+    from dune_imperium.content.uprising.conflicts import CONFLICTS
+    from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
+    from dune_imperium.core import (
+        DecisionFrame,
+        GamePhase,
+        GameState,
+        PlayerDecision,
+        PlayerState,
+    )
+    from dune_imperium.rules import UprisingRulesEngine
+    from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
+    from dune_imperium.server.sessions import _serialize_action
+
+    lab = "imperium:bene_tleilax_lab:0"
+    seats = [
+        PlayerState(
+            player_id=0,
+            hand=(lab,),
+            research_space=RESEARCH_START_ID,
+            troops_supply=0,
+            troops_garrison=12,
+        ),
+        *(
+            PlayerState(player_id=seat, research_space=RESEARCH_START_ID)
+            for seat in range(1, 4)
+        ),
+    ]
+    imperium = imperium_deck_instance_ids(False)
+    state = GameState(
+        config=RulesetConfig(immortality=True),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        current_conflict_ids=(CONFLICTS[0].card.card_id,),
+        imperium_row=imperium[:5],
+        imperium_deck=imperium[5:20],
+        players=tuple(seats),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placement = next(
+        action
+        for action in legal_agent_actions(state, 0)
+        if dict(action.arguments)["space_id"] == "arrakeen"
+    )
+    placed = apply_agent_action(state, placement).state
+    engine = UprisingRulesEngine()
+    session = SimpleNamespace(engine=engine, state=placed)
+    serialized = {
+        entry["action_id"]: entry
+        for entry in (
+            _serialize_action(index, action, session)  # type: ignore[arg-type]
+            for index, action in enumerate(engine.legal_actions(placed, 0))
+        )
+    }
+    # Bene Tleilax Lab's specimen has no troop to take from the supply.
+    assert serialized["resolve_agent_card_effect"]["warning"] == (
+        "supply 부족: specimen 1개 중 0개만 생성"
+    )
+    assert serialized["resolve_board_effect"]["warning"] is None

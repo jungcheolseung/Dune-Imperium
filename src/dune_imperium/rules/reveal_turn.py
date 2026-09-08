@@ -77,6 +77,13 @@ _LOSE_INFLUENCE_FOR_VP = (
 _LOSE_TROOPS_FOR_SPECIMENS = (
     PersonalCardRevealChoiceEffect.MAY_LOSE_TWO_TROOPS_FOR_TWO_SPECIMENS
 )
+# Tleilaxu Surgeon's two troops: (zones argument, garrison needed, Conflict
+# needed).
+SURGEON_ZONE_PAIRS = (
+    ("garrison,garrison", 2, 0),
+    ("garrison,conflict", 1, 1),
+    ("conflict,conflict", 0, 2),
+)
 
 
 def legal_reveal_spy_actions(
@@ -1189,7 +1196,11 @@ def legal_reveal_troop_sacrifice_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Tleilaxu Surgeon: "Lose two troops -> two specimens" (one zone, OQ-053)."""
+    """Tleilaxu Surgeon: "Lose two troops -> two specimens" (OQ-053).
+
+    The owner picks the zone of each troop: both from the garrison, both
+    from the Conflict, or one from each.
+    """
 
     context = _reveal_choice_frame_context(state, player, _LOSE_TROOPS_FOR_SPECIMENS)
     if context is None:
@@ -1201,10 +1212,10 @@ def legal_reveal_troop_sacrifice_actions(
             DomainAction(
                 action_id="lose_reveal_troops_for_specimens",
                 actor=player,
-                arguments=(("zone", zone),),
+                arguments=(("zones", zones),),
             )
-            for zone in ("garrison", "conflict")
-            if getattr(owner, f"troops_{zone}") >= 2
+            for zones, garrison, conflict in SURGEON_ZONE_PAIRS
+            if owner.troops_garrison >= garrison and owner.troops_conflict >= conflict
         ),
     )
 
@@ -1233,11 +1244,11 @@ def apply_reveal_troop_sacrifice(
                 ),
             ),
         )
-    zone = str(dict(action.arguments)["zone"])
+    zones = str(dict(action.arguments)["zones"]).split(",")
     before = popped.players[action.actor].combat_strength
     working = popped
     events: list[GameEvent] = []
-    for index in range(2):
+    for index, zone in enumerate(zones):
         lost = lose_unit(working, action.actor, zone, source=f"{source}:{index}")
         working = lost.state
         events.extend(lost.events)
@@ -2677,9 +2688,9 @@ def _reveal_choice_effect_is_available(
             and (owner.troops_garrison >= 1 or owner.troops_conflict >= 1)
         )
         or (
-            # Tleilaxu Surgeon: two troops from one zone (OQ-053).
+            # Tleilaxu Surgeon: any two troops, from either zone (OQ-053).
             effect is _LOSE_TROOPS_FOR_SPECIMENS
-            and (owner.troops_garrison >= 2 or owner.troops_conflict >= 2)
+            and owner.troops_garrison + owner.troops_conflict >= 2
         )
         or (
             effect
