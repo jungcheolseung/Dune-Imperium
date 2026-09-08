@@ -1341,6 +1341,7 @@ INTRIGUE_CARDS: Final = (
         396,
         "gruesome-sacrifice",
         "Gruesome Sacrifice",
+        copies=2,
         immortality_only=True,
         options=(
             _combat(
@@ -1357,6 +1358,7 @@ INTRIGUE_CARDS: Final = (
         397,
         "harvest-cells",
         "Harvest Cells",
+        copies=2,
         immortality_only=True,
         options=(
             IntrigueOption(
@@ -1375,6 +1377,7 @@ INTRIGUE_CARDS: Final = (
         398,
         "illicit-dealings",
         "Illicit Dealings",
+        copies=2,
         immortality_only=True,
         options=(_plot(EffectSection(rewards=(AdvanceTleilaxu(1),))),),
     ),
@@ -1433,6 +1436,7 @@ INTRIGUE_CARDS: Final = (
         402,
         "vicious-talents",
         "Vicious Talents",
+        copies=2,
         immortality_only=True,
         options=(
             _combat(

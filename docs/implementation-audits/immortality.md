@@ -8,7 +8,7 @@
 
 - 룰북: 공식 URL의 PDF를 scratchpad에서 받아(sha256 고정, 저장소에 넣지 않음) 텍스트를 추출하고, Bene Tleilax board는 p. 3의 board 그림을 500 dpi로 잘라 판독했다. 아이콘은 `assets/icons/`의 Uprising 아이콘(Solari = 회색 원, spice = 주황 육각, VP = 금색 구, Intrigue = 금색 카드, trash = 검은 카드의 X, Influence 선택 = 금색 ?)과 대조했다.
 - 카드: 에셋 저장소 `cards/en/immortality/{imperium,intrigue,tleilaxu,starting,promo}/` 57장을 전부 직접 판독했고, Agent 아이콘 열은 `assets/icons/agent_icon_*.png`와 나란히 대조했다(Fremen = 파란 원 문양, City = 파란 원, Emperor = 투구, Guild = 붉은 ∞, BG = 보라 가면, Landsraad = 초록 오각, Spice Trade = 노란 삼각). 흰 X 검 두 자루는 Combat 아이콘(trash 아이콘은 검은 카드 위의 흰 ✕)이다.
-- 수량: Dune Cards Hub의 `/api/cards`(`physicalCopies`)로 확인했다. Imperium 25종 27장, Intrigue 11종 11장, Tleilaxu 18종 18장. 룰북 p. 3의 Imperium 30장·Intrigue 15장과 어긋나는 Imperium 3장·Intrigue 4장은 어느 identity의 추가 사본인지 확인하지 못했다(하브에는 없음). 카탈로그 수량을 채택했고, 실물 확인이 되면 `copies`와 census 테스트를 갱신한다.
+- 수량: 처음엔 Dune Cards Hub의 `/api/cards`(`physicalCopies`: Imperium 27장·Intrigue 11장)를 썼으나 룰북 p. 3의 30·15장과 어긋났다. 2026-09-08 사용자가 알려준 BGG 카드 인벤토리 시트(Uprising 69장·Bloodlines 32장이 우리 전사와 정확히 일치해 신뢰; 에셋 저장소 `reference/bgg-card-inventory/`에 CSV 보관)로 확정: Imperium 30장(High Priority Travel·Planned Coupling·Spiritual Fervor도 2장씩), Intrigue 15장(Gruesome Sacrifice·Harvest Cells·Illicit Dealings·Vicious Talents 2장씩), Tleilaxu 18장(각 1장). 시트의 `Compatibility` 열은 Immortality 카드 중 Bene Tleilax 요소를 쓰는 카드(`Immortality`)와 어느 조합에서든 쓰는 카드(`All`)를 구분한다.
 
 ## 카드 전사 (슬라이스 1, 카드면)
 

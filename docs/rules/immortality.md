@@ -7,7 +7,7 @@ Immortality는 원본 Dune: Imperium의 두 번째 확장이며, Uprising Main R
 ## 1. 구성물
 
 - Bene Tleilax board 1장, Imperium 카드 30장, Intrigue 카드 15장, Tleilaxu deck 카드 18장(뒷면은 Imperium 카드와 같다), Reserve 카드 Reclaimed Forces 1장, Research Station overlay 1장, House Hagal 카드 4장(솔로 전용). 플레이어별: disc 2개(Research token·Tleilaxu token), Family Atomics token 1개, 시작 카드 Experimentation 2장. `[Immortality p. 3]`
-- 카드 수량: Dune Cards Hub 카탈로그는 Imperium 25종 27장(Dissecting Kit·Tleilaxu Master 2장씩), Intrigue 11종 11장, Tleilaxu 18종 18장을 싣는다. 룰북의 30·15장과 다른 Imperium 3장·Intrigue 4장의 identity는 확인하지 못했다([implementation-audits/immortality.md](../implementation-audits/immortality.md)). 카탈로그 수량을 채택하고 확인되면 갱신한다.
+- 카드 수량: Imperium 25종 30장(Dissecting Kit·Tleilaxu Master·High Priority Travel·Planned Coupling·Spiritual Fervor 2장씩), Intrigue 11종 15장(Gruesome Sacrifice·Harvest Cells·Illicit Dealings·Vicious Talents 2장씩), Tleilaxu 18종 18장 — 룰북의 30·15장과 일치한다. 사본 수는 사용자가 알려준 BGG 카드 인벤토리 시트(에셋 저장소 `reference/bgg-card-inventory/`)로 확정했다; Dune Cards Hub는 Imperium 27장·Intrigue 11장으로 적게 세었다([implementation-audits/immortality.md](../implementation-audits/immortality.md)). 카탈로그 수량을 채택하고 확인되면 갱신한다.
 - 룰북 밖의 프로모 Tleilaxu 카드 1장(Piter, Genius Advisor)은 `promo_cards` 옵션을 함께 켤 때만 Tleilaxu deck에 섞는다. 근거는 카드면뿐이다. `[card face]`
 
 ## 2. Setup 변경

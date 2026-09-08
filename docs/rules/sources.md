@@ -113,6 +113,11 @@ Sardaukar Commander를 읽는 Agent box 때문에 `promo_cards`와 `bloodlines`
 확인에만 사용한다. 규칙 권위가 아니며, 이미지 파일을 저장하거나 재배포하기
 전에는 이용 조건을 따로 확인한다.
 
+BGG 사용자의 [Dune_Imperium_Card_Inventory 시트](https://docs.google.com/spreadsheets/d/e/2PACX-1vQFH3aNsVktHt0FmbbN5fzXjZsa1GwgvLgrMl3amCd4UTMiCmnPls_hdeatdkSZN2Kk2_9QY0XluMkA/pubhtml)는
+세트별 **카드 사본 수**(`Count`)와 호환 표기(`Compatibility`)의 참고 자료다(2026-09-08, 사용자 제공).
+Uprising·Bloodlines의 수량이 우리 전사와 정확히 일치해 Immortality의 룰북 총량(30·15장)을 이 시트로 맞췄다.
+탭별 CSV 사본과 알려진 오탈자 목록은 에셋 저장소 `reference/bgg-card-inventory/`에 있다. 규칙 권위가 아니다.
+
 [Dire Wolf의 Uprising Design Diary 2](https://news.direwolfdigital.com/dune-imperium-uprising-design-diary-2-sandworms-conflicts-and-the-shield-wall/)는
 Objective 카드의 battle icon, 인원 표시, First Player 표시처럼 룰북 본문에서
 개별 카드별로 열거하지 않은 **구성물 식별**을 공식 이미지와 대조하는 데만

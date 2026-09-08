@@ -390,13 +390,14 @@ def test_imperium_manifest_matches_base_and_choam_counts() -> None:
     # 57 Uprising identities (72 cards) plus the 26 Bloodlines identities
     # (32 cards: 25 retail, 5 CHOAM-only, 2 Tech-only) [Bloodlines p. 2],
     # the Bloodlines promo Ruthless Leadership, and the 25 Immortality
-    # identities (27 copies per the Dune Cards Hub catalog; the rulebook
-    # counts 30 [Immortality p. 3]).
+    # identities, 30 cards [Immortality p. 3] (Dissecting Kit, Tleilaxu
+    # Master, High Priority Travel, Planned Coupling and Spiritual Fervor
+    # twice — the BGG card inventory, 2026-09-08).
     assert len(IMPERIUM_CARDS) == 57 + 26 + 1 + 25
-    assert sum(entry.copies for entry in IMPERIUM_CARDS) == 72 + 32 + 1 + 27
+    assert sum(entry.copies for entry in IMPERIUM_CARDS) == 72 + 32 + 1 + 30
     immortality = tuple(entry for entry in IMPERIUM_CARDS if entry.immortality_only)
     assert len(immortality) == 25
-    assert sum(entry.copies for entry in immortality) == 27
+    assert sum(entry.copies for entry in immortality) == 30
     assert all(entry.card.catalog_url for entry in immortality)
     assert not any(entry.promo or entry.choam_only for entry in immortality)
     # Only transcribed Immortality cards join the option's deck, and none
@@ -486,10 +487,11 @@ def test_intrigue_manifest_matches_base_and_choam_counts() -> None:
     # 1 CHOAM-only, 2 Tech-only) [Bloodlines p. 2].
     # 18 Bloodlines Intrigue cards plus the 12 Twisted Intrigue cards and
     # the 10 Navigation cards (Y'rkoon), which share the Intrigue schema,
-    # and the 11 Immortality identities the Dune Cards Hub catalog lists
-    # (the rulebook counts 15 cards [Immortality p. 3]).
+    # and the 11 Immortality identities, 15 cards [Immortality p. 3]
+    # (Gruesome Sacrifice, Harvest Cells, Illicit Dealings and Vicious
+    # Talents twice — the BGG card inventory, 2026-09-08).
     assert len(INTRIGUE_CARDS) == 39 + 18 + 12 + 10 + 11
-    assert sum(entry.copies for entry in INTRIGUE_CARDS) == 44 + 18 + 12 + 10 + 11
+    assert sum(entry.copies for entry in INTRIGUE_CARDS) == 44 + 18 + 12 + 10 + 15
     immortality = tuple(entry for entry in INTRIGUE_CARDS if entry.immortality_only)
     assert len(immortality) == 11
     assert all(entry.play_data_complete for entry in immortality)

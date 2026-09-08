@@ -62,6 +62,11 @@ authoritative and update the handoff in the same work unit.
 - Treat Dune Cards Hub as a card and visual reference, not as the authority for
   rules adjudication. Official Dire Wolf Digital rules and supplements take
   precedence when sources conflict.
+- For per-card physical copy counts use the BGG community card inventory
+  sheet kept in the assets repo (`assets/reference/bgg-card-inventory/`,
+  README there has the URL and its known spelling slips); it matched the
+  Uprising and Bloodlines transcriptions exactly and settled Immortality's
+  counts, whereas Dune Cards Hub under-counts some expansions.
 - Before adding or redistributing image files in the project, verify the needed
   scope and applicable usage terms.
 
