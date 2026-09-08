@@ -412,3 +412,32 @@
 - 이전 convention(2026-09-01, 폐기): recall 대상이 없으면 절 전체(recall과 draw)를 무효화했다. 같은 날 사용자 재검토로 아래 판정으로 교체됐다.
 - 확정(2026-09-01, 사용자 재판정): 인쇄문 "Recall one of your other Agents from the board, and draw a card"의 recall과 draw는 **별개의 효과**다. recall은 대상이 있으면 의무이고 소유자가 대상을 고르며, 다른 배치된 Agent가 없으면 불가능한 recall만 건너뛰고 card draw는 그대로 해결한다(의무 효과는 수행 가능한 부분을 수행한다는 원칙, `[FAQ p. 3]`의 의무 효과 판정과 정합). recall 대상 유무는 Intrigue 슬롯이 해결된 뒤의 해결 시점에 판정한다(`[Main pp. 9, 20]`). 엔진 반영은 `bce829e`, `tests/unit/rules/test_board_effects.py`로 고정한다.
 - 보강(2026-09-06, 판정 변경 없음): 엔진은 이 판정을 Intrigue 슬롯이 해결되는 순간에만 적용해, 그때는 다른 Agent가 있었다가 같은 turn의 자유 순서 효과(Steersman Agent box의 recall)로 마지막 대상이 사라지면 recall 결정에 합법 행동이 없는 교착이 생겼다(M10 self-play smoke, seed 4000098에서 발견). 이제 매 전이 뒤 hook(`board_effects.skip_impossible_imperial_privilege_recall`)이 대상이 없어진 보류 recall을 건너뛰고 card draw를 해결한다(`d9f11a5`). 같은 파일의 `test_steersman_recall_after_imperial_privilege_slot_does_not_deadlock`로 고정.
+
+## OQ-048 — Tleilaxu track 마지막 칸에서의 추가 전진
+
+- 상태: `DECIDED`
+- Immortality 룰북은 Tleilaxu 아이콘마다 token을 한 칸 전진하고 도달한 칸의 보너스를 얻는다고만 하며 `[Immortality pp. 7, 16]`, token이 마지막 칸(VP 칸)에 있을 때 Tleilaxu 아이콘을 또 얻으면 어떻게 되는지는 말하지 않는다. track에는 마지막 칸 뒤에 칸이 없다 `[Immortality p. 3 board artwork]`.
+- 필요한 답: 마지막 칸에서의 Tleilaxu 아이콘이 아무 효과도 없는지, 아니면 다른 보상으로 바뀌는지.
+- 확정(2026-09-08, project convention — 공식 규칙이 아니다): 마지막 칸에서는 token이 그대로 있고 아이콘은 효과 없이 소비된다(`tleilaxu_track_end` 공개 이벤트). 룰북이 두 번째 genetic marker 뒤의 Research 아이콘에는 명시적 대체(draw)를 두면서 Tleilaxu track에는 두지 않았으므로, 대체 보상을 만들어 내지 않는다. 구현: `rules/immortality.py`의 `advance_tleilaxu`. 테스트: `tests/unit/rules/test_immortality.py`.
+
+## OQ-049 — supply가 빈 상태의 specimen 생성
+
+- 상태: `DECIDED`
+- specimen은 "take a troop from your supply and place it in the Axolotl tanks"로 정의되고 `[Immortality pp. 8, 16]`, supply에 troop이 없을 때 specimen 아이콘이 무엇을 하는지는 설명하지 않는다.
+- 필요한 답: supply가 비었을 때 specimen 아이콘의 처리.
+- 확정(2026-09-08, project convention — 공식 규칙이 아니다): OQ-030의 recruit 판정과 같은 모양이다. 해결 시점에 supply에 있는 만큼만 specimen이 되고 부족분은 소멸하며 소급하지 않는다(`specimens_short` 공개 이벤트). 플레이어는 자유 순서로 specimen 반환·troop 손실 효과를 먼저 해결해 대비한다. 구현: `rules/specimens.py`의 `generate_specimens`.
+
+## OQ-050 — "언제든" 가능한 specimen 반환의 결정 창
+
+- 상태: `DECIDED`
+- "You may return any of your specimens to your supply at any time" `[Immortality p. 8]`는 결정 시점을 정하지 않는다. 엔진은 결정 frame에서만 행동을 받으므로 어느 frame에서 반환을 제시할지 정해야 한다.
+- 필요한 답: 반환을 제시하는 결정 창.
+- 확정(2026-09-08, project convention — 공식 규칙이 아니다): 소유자의 Agent turn(turn frame과 효과 frame)과 Reveal turn의 모든 결정에서 `return_specimen`(한 번에 하나)을 제시한다. 룰북이 든 용례("recruit할 troop이 supply에 없을 때")가 모두 자기 turn 안의 recruit이고, 다른 플레이어의 turn이나 Combat 중에 supply를 채워야 하는 효과는 현재 콘텐츠에 없기 때문이다. Combat 중 자기 troop 손실 비용(Gruesome Sacrifice)은 supply를 늘리는 쪽이라 반환이 필요 없다. 그런 효과가 추가되면 창을 넓힌다. 구현: `rules/immortality.py`의 `legal_specimen_return_actions`.
+
+## OQ-051 — Family Atomics로 제거한 Imperium Row 카드의 행선지
+
+- 상태: `DECIDED`
+- Family Atomics는 "remove all cards from the Imperium Row, then deal a new Imperium Row"라고만 하고 `[Immortality p. 12]`, 제거한 카드가 box로 가는지 Imperium deck 아래로 가는지 말하지 않는다.
+- 필요한 답: 제거한 카드의 행선지.
+- 확정(2026-09-08, project convention — 공식 규칙이 아니다): 제거한 카드는 게임에서 빠진다(`imperium_removed`, Reveal의 Imperium Row 정리와 같은 공개 존). "remove"가 deck 재투입을 뜻했다면 룰북이 그렇게 적었을 것이고, 원본 Dune: Imperium의 다른 Row 제거 효과와도 일관된다. deck이 5장 미만이면 남은 만큼만 새 Row를 만든다(OQ-004의 고갈 판정). 구현: `rules/immortality.py`의 `apply_family_atomics`.
+

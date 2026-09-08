@@ -1,6 +1,6 @@
 # Immortality implementation audit
 
-기준일: 2026-09-08 — 슬라이스 1(출처·명세·옵션 골격·카탈로그) 완료.
+기준일: 2026-09-08 — 슬라이스 1(출처·명세·옵션 골격·카탈로그)과 슬라이스 2(Bene Tleilax board·specimen·Research Station·Experimentation·Family Atomics) 완료.
 
 규범 근거는 [`rules/immortality.md`](../rules/immortality.md)이며, 콘텐츠 정의는 `content/immortality/board.py`(research·Tleilaxu track), `content/immortality/tleilaxu.py`(Tleilaxu deck·Reclaimed Forces), `content/uprising/imperium.py`·`intrigue.py`의 `immortality_only` 항목이 소유한다. 모든 동작은 `RulesetConfig(immortality=True)`에서만 켜진다.
 
@@ -101,7 +101,22 @@ Spice Trade 아이콘. Agent: Research. Reveal: ◆1 specimen 1. 카드 이름 �
 | 카탈로그 | Imperium 25종(`immortality_only`), Intrigue 11종, Tleilaxu deck 18종 + Reclaimed Forces + 프로모 Piter(`content/immortality/tleilaxu.py`, instance `tleilaxu:<id>:<copy>`). play data가 없는 카드는 옵션을 켜도 덱에 들어가지 않는다. | 관측 identity 우주에 Imperium 25·Intrigue 11이 들어와 관측 v11. Tleilaxu 카드는 아직 관측 우주 밖(슬라이스 2). |
 | board 전사 | research track 22칸(시작 포함)과 인접 규칙 `research_next_space_ids`, genetic marker 열 4·8, Tleilaxu track 8칸의 보너스, setup spice 2·네 번째 칸, Row 2장. | `[Immortality pp. 3-7, 16]`. |
 
+## 슬라이스 2: Bene Tleilax board
+
+| 영역 | 구현 | 규칙 민감 메모 |
+| --- | --- | --- |
+| 상태 | `PlayerState.research_space`(칸 ID, 옵션 off ""), `tleilaxu_space`(0~7), `specimens`(troop 12개 불변식에 포함), `family_atomics`; `GameState.tleilaxu_deck`(비공개 순서)·`tleilaxu_row`·`tleilaxu_track_spice`. 옵션이 꺼지면 전부 비어 있어야 한다. | `[Immortality pp. 4-8, 12]`. |
+| Setup | `create_unshuffled_players(immortality=)`가 Dune, the Desert Planet 2장을 Experimentation 2장으로 바꾸고, `_immortality_setup`이 Tleilaxu deck을 seeded chance `setup:tleilaxu_deck`으로 섞어(play data가 있는 카드가 없으면 생략) Row 2장을 deal하며, `_with_immortality`가 token·spice 2·Family Atomics를 놓는다. 고정 Leader setup과 draft setup 모두. Bloodlines 결정 뒤에 해결해 기존 chance 순서를 보존. | `[Immortality pp. 4-5]`. |
+| Research 전진 | `advance_research`: 두 번째 marker 열이면 card draw 대체, 다음 칸이 하나면 즉시 이동, 둘이면 `research_advance` frame(`choose_research_space`). `move_research_token`이 칸 보너스를 즉시 해결하고 marker 도달 이벤트를 낸다. research 보너스 칸은 재귀로 다시 전진한다. | `[Immortality pp. 6, 16]`. 보드 아이콘·Agent box 모두 frame 정리 뒤에 전진을 열어 방향 선택 frame이 그 위에 놓인다. |
+| 보너스 | specimen·Tleilaxu·Solari·spice는 자동; trash+specimen은 specimen 뒤 `optional_trash` frame(검은 trash 아이콘은 선택 `[Main p. 20]`); Influence 선택·trash→draw+Intrigue·Solari 7→Tleilaxu 2는 `research_bonus` frame. arrow 비용을 낼 수 없으면(trash할 카드 없음, Solari 부족) frame 없이 `research_bonus_unavailable`. | `[Immortality p. 3 board artwork]`. c8r6은 저해상도 판독이라 UI 슬라이스에서 재확인. |
+| Tleilaxu track | `advance_tleilaxu(steps)`: 칸 2·6 Intrigue, 4 VP + 첫 도달자 spice 2(`tleilaxu_track_spice` 소진), 7 VP; 끝에서는 `tleilaxu_track_end`(OQ-048). | `[Immortality p. 7]`. |
+| Specimen | `rules/specimens.py`: `generate_specimens`(supply만큼, 부족분 `specimens_short`, OQ-049), `spend_specimens`; `return_specimen`은 소유자의 turn·효과·Reveal frame에서 하나씩(OQ-050). Reveal 카드의 specimen은 `reveal_pending_gains`의 `specimens` 항목 → `generate_reveal_specimens`(OQ-045). | `[Immortality p. 8]`. |
+| Research Station | `static_board_effects(..., immortality=True)`가 `(Draw 2, ResearchEffect)`; 아이콘 키 `research`는 `AUTOMATIC_BOARD_ICONS`에 들어가 `resolve_board_effect(effect=research)`로 해결한다. | `[Immortality pp. 5, 16]` `[Main p. 18]`. |
+| Experimentation | `PersonalCardAgentEffect.RESEARCH`, `PersonalCardRevealEffect(specimens=1)`; `STARTING_CARDS_BY_ID`에 포함되지만 `STARTING_DECK`(7종)은 그대로. | `[Immortality p. 5]` `[card face]`. |
+| Family Atomics | `use_family_atomics`: 소유자의 turn frame들에서 1회, Row 전부를 `imperium_removed`로 보내고 deck 맨 위 5장으로 새 Row(OQ-051). | `[Immortality p. 12]`. |
+| 관측·codec | 관측 v12(위 상태 전부 공개), codec v96: `immortality` 카탈로그에 `choose_research_space` ×21·`choose_research_influence` ×4·`trash_for_research_bonus`(카드마다)·`pay/decline_research_bonus`·`return_specimen`·`use_family_atomics`·`generate_reveal_specimens`; 기본 카탈로그는 `resolve_board_effect(research)` 1개만 늘었다. heuristic 우선순위와 UI 라벨을 추가. | 소크: random·heuristic 각 6판에서 모든 경로가 발화(연쇄·marker·atomics 포함). |
+
 ## 미완 경계
 
-- 슬라이스 2 이후: Bene Tleilax board의 상태·행동(research 전진 선택, Tleilaxu track, specimen 생성·반환·지출), 개정 Research Station, Experimentation 시작 덱, Family Atomics, Tleilaxu Row 획득과 Reclaimed Forces, Graft, 카드 play data, UI 표시.
-- 공식 문서가 침묵하는 판정(슬라이스 2에서 open-questions에 등록): Tleilaxu track 끝에서의 추가 전진, supply가 빈 상태의 specimen 생성, specimen 자유 반환의 결정 창, Family Atomics로 제거한 카드의 행선지, "lose a troop"의 출처 존 선택.
+- 슬라이스 3 이후: Tleilaxu Row 획득과 Reclaimed Forces, 첫 marker 뒤 deck 맨 위 배치, Graft, 카드 play data(Tleilaxu 18 + Piter, Imperium 25, Intrigue 11), UI 표시(board·token·specimen·Row).
+- 공식 문서가 침묵하는 판정 가운데 아직 등록하지 않은 것: "lose a troop"의 출처 존 선택(카드 슬라이스에서).
