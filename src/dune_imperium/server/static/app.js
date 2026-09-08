@@ -25,8 +25,18 @@ let noteTimer = 0;
 const SEAT_KINDS = [
   ["human", "사람"],
   ["heuristic", "휴리스틱 AI"],
+  ["rollout", "롤아웃 탐색 AI"],
   ["random", "랜덤 AI"],
+  ["checkpoint", "학습 체크포인트 (아래 경로)"],
 ];
+
+/* A seat assignment is "human", a registry agent name, or
+   "checkpoint:<path>"; the label hides the path. */
+function seatKindLabel(kind) {
+  const key = kind.startsWith("checkpoint:") ? "checkpoint" : kind;
+  const found = SEAT_KINDS.find(([value]) => value === key);
+  return found ? found[1] : kind;
+}
 
 const PHASE_LABELS = {
   setup: "Setup",
@@ -606,7 +616,7 @@ async function loadGameList() {
       ? "종료됨"
       : `라운드 ${summary.round_number}`;
     item.append(
-      `seed ${summary.game_seed} · ${summary.seats.join(", ")} · ${label} `
+      `seed ${summary.game_seed} · ${summary.seats.map(seatKindLabel).join(", ")} · ${label} `
     );
     const button = document.createElement("button");
     button.textContent = "이어서";
@@ -663,8 +673,10 @@ async function loadSaveList() {
 
 async function createGame(event) {
   event.preventDefault();
+  const checkpoint = el("opt-checkpoint").value.trim();
   const seats = [...el("seat-selects").querySelectorAll("select")].map(
-    (select) => select.value
+    (select) =>
+      select.value === "checkpoint" ? `checkpoint:${checkpoint}` : select.value
   );
   const payload = {
     seats,
@@ -904,8 +916,7 @@ async function enterReview(seat) {
   state.summary.seats.forEach((kind, reviewSeat) => {
     const option = document.createElement("option");
     option.value = String(reviewSeat);
-    const kindLabel = (SEAT_KINDS.find(([value]) => value === kind) || [kind, kind])[1];
-    option.textContent = `좌석 ${reviewSeat} (${kindLabel})`;
+    option.textContent = `좌석 ${reviewSeat} (${seatKindLabel(kind)})`;
     select.appendChild(option);
   });
   select.value = String(seat);
@@ -2218,7 +2229,8 @@ function renderSeats() {
     } else {
       const badge = document.createElement("span");
       badge.className = "badge ai";
-      badge.textContent = summary.seats[seat];
+      badge.textContent = seatKindLabel(summary.seats[seat]);
+      badge.title = summary.seats[seat];
       who.appendChild(badge);
     }
     if (summary.first_player === seat) {
@@ -2700,7 +2712,11 @@ function turnCard(group, freshFrom) {
   const badge = document.createElement("span");
   badge.className = kind === "human" ? "badge" : "badge ai";
   badge.textContent =
-    kind === "human" ? (group.actor === activeSeat() ? "YOU" : "사람") : kind;
+    kind === "human"
+      ? group.actor === activeSeat()
+        ? "YOU"
+        : "사람"
+      : seatKindLabel(kind);
   head.appendChild(badge);
   const targets = logTargets(group);
   if (targets.spaces.length) {

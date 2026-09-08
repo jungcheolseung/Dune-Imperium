@@ -22,7 +22,8 @@ from dataclasses import asdict, dataclass, field, replace
 from enum import StrEnum
 from typing import Final
 
-from dune_imperium.agents import Agent, HeuristicAgent, RandomAgent
+from dune_imperium.agents import Agent, StateAgent, make_agent
+from dune_imperium.agents.registry import is_agent_kind
 from dune_imperium.config import RulesetConfig
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceOutcome, ChanceResolver
@@ -57,10 +58,11 @@ from dune_imperium.server.session_log import (
 )
 
 HUMAN_SEAT: Final = "human"
-AGENT_SEATS: Final[dict[str, type[RandomAgent] | type[HeuristicAgent]]] = {
-    "random": RandomAgent,
-    "heuristic": HeuristicAgent,
-}
+# Every other seat names an agent of the evaluation registry
+# (``dune_imperium.agents.make_agent``): ``random``, ``heuristic``, the
+# determinized-search ``rollout``, or a trained policy ``checkpoint:<path>``.
+# Search agents receive the authoritative state like the tournament runner
+# does; their contract keeps them from reading hidden zones.
 # Matches the sweep's policy seed convention so one game seed names one game.
 _DEFAULT_POLICY_OFFSET: Final = 700_000
 _MAX_AUTO_STEPS: Final = 30_000
@@ -160,11 +162,7 @@ class GameSessionManager:
             engine=engine,
             state=engine.reset(config, game_seed),
             chance=ChanceResolver(seed=game_seed),
-            agents={
-                seat: AGENT_SEATS[assignment](seed=policy_seed + seat)
-                for seat, assignment in enumerate(seats)
-                if assignment in AGENT_SEATS
-            },
+            agents=_build_agents(seats, policy_seed),
         )
         with session.lock:
             self._advance_locked(session)
@@ -405,11 +403,7 @@ class GameSessionManager:
             engine=engine,
             state=engine.reset(config, parsed.replay.seed),
             chance=ChanceResolver(seed=parsed.replay.seed),
-            agents={
-                seat: AGENT_SEATS[assignment](seed=parsed.policy_seed + seat)
-                for seat, assignment in enumerate(parsed.seats)
-                if assignment in AGENT_SEATS
-            },
+            agents=_build_agents(parsed.seats, parsed.policy_seed),
         )
         with session.lock:
             _replay_recorded_steps(session, parsed.replay.steps)
@@ -548,16 +542,11 @@ class GameSessionManager:
                 raise RuntimeError(f"unknown decision type: {decision!r}")
             if session.seats[decision.owner] == HUMAN_SEAT:
                 return
-            actions = engine.legal_actions(session.state, decision.owner)
-            if not actions:
+            if not engine.legal_actions(session.state, decision.owner):
                 raise RuntimeError(
                     f"seat {decision.owner} has no legal action to auto-play"
                 )
-            observation = engine.observe(session.state, decision.owner)
-            action = session.agents[decision.owner].choose_action(
-                observation, actions
-            )
-            _apply_step(session, action)
+            _apply_step(session, _agent_action(session, decision.owner))
         raise RuntimeError("auto-advance exceeded the step limit")
 
     def _summary_locked(self, session: GameSession) -> JsonObject:
@@ -611,8 +600,41 @@ def _validate_seats(seats: tuple[str, ...], config: RulesetConfig) -> None:
     if len(seats) != config.players:
         raise SessionError("exactly one seat assignment per player is required")
     for assignment in seats:
-        if assignment != HUMAN_SEAT and assignment not in AGENT_SEATS:
+        if assignment != HUMAN_SEAT and not is_agent_kind(assignment):
             raise SessionError(f"unknown seat assignment: {assignment!r}")
+
+
+def _build_agents(seats: tuple[str, ...], policy_seed: int) -> dict[int, Agent]:
+    """Instantiate one registry agent per non-human seat.
+
+    A checkpoint seat loads its network here, so a missing file, a foreign
+    observation or codec version, or an absent ``train`` extra surfaces as
+    a session error instead of a crash while the game advances.
+    """
+
+    agents: dict[int, Agent] = {}
+    for seat, assignment in enumerate(seats):
+        if assignment == HUMAN_SEAT:
+            continue
+        try:
+            agents[seat] = make_agent(assignment, policy_seed + seat)
+        except (ValueError, OSError, ImportError, RuntimeError) as error:
+            raise SessionError(
+                f"cannot build seat {seat} agent {assignment!r}: {error}"
+            ) from error
+    return agents
+
+
+def _agent_action(session: GameSession, seat: int) -> DomainAction:
+    """Ask the seat's agent for its move, branching from the state if it can."""
+
+    engine = session.engine
+    actions = engine.legal_actions(session.state, seat)
+    observation = engine.observe(session.state, seat)
+    agent = session.agents[seat]
+    if isinstance(agent, StateAgent):
+        return agent.choose_action_with_state(session.state, observation, actions)
+    return agent.choose_action(observation, actions)
 
 
 def _replay_recorded_steps(
@@ -640,11 +662,7 @@ def _replay_recorded_steps(
             isinstance(decision, PlayerDecision) and decision.owner == recorded.actor
         ):
             if recorded.actor in session.agents:
-                observation = engine.observe(session.state, recorded.actor)
-                actions = engine.legal_actions(session.state, recorded.actor)
-                regenerated = session.agents[recorded.actor].choose_action(
-                    observation, actions
-                )
+                regenerated = _agent_action(session, recorded.actor)
             else:
                 regenerated = recorded
         else:

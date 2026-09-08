@@ -398,3 +398,15 @@ def test_undo_and_log_over_http(client: TestClient) -> None:
     )
     assert [entry["index"] for entry in tail.json()["entries"]] == [len(entries) - 1]
     assert client.get(f"/games/{game_id}/log", params={"seat": 1}).status_code == 403
+
+
+def test_the_api_accepts_registry_agent_seats() -> None:
+    client = TestClient(create_app(GameSessionManager()))
+    summary = _create(client, seats=["human", "rollout", "heuristic", "random"])
+    assert summary["seats"] == ["human", "rollout", "heuristic", "random"]
+    rejected = client.post(
+        "/games",
+        json={"seats": ["human", "checkpoint:/nonexistent.pt", "random", "random"]},
+    )
+    assert rejected.status_code == 400
+    assert "cannot build seat 1" in rejected.json()["detail"]

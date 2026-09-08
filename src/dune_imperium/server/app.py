@@ -94,7 +94,11 @@ class CreateGameRequest(BaseModel):
         default=["human", "heuristic", "heuristic", "heuristic"],
         min_length=4,
         max_length=4,
-        description="Per-seat assignment: 'human', 'heuristic', or 'random'.",
+        description=(
+            "Per-seat assignment: 'human', or an agent kind of the evaluation "
+            "registry: 'heuristic', 'random', 'rollout' (determinized search), "
+            "or 'checkpoint:<path>' (a trained policy; needs the train extra)."
+        ),
     )
     choam_module: bool = False
     leader_draft: bool = False

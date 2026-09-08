@@ -184,6 +184,56 @@ def test_a_leader_draft_game_starts_on_the_pick_frame() -> None:
     assert {entry["action_id"] for entry in actions} == {"pick_leader"}
 
 
+def test_registry_agents_take_seats_and_search_agents_get_the_state() -> None:
+    from dune_imperium.agents import RolloutAgent
+
+    manager = GameSessionManager()
+    seats = ("human", "rollout", "heuristic", "random")
+
+    summary = manager.create_game(seats, game_seed=14)
+
+    assert summary["seats"] == list(seats)
+    assert _obj(summary["decision"])["owner"] == 0
+    session = manager._sessions[_text(summary["game_id"])]
+    assert isinstance(session.agents[1], RolloutAgent)
+    # The same seed reproduces the search agent's decisions too.
+    again = manager.create_game(seats, game_seed=14)
+    assert again["revision"] == summary["revision"]
+    assert again["decision"] == summary["decision"]
+
+
+def test_a_rollout_seat_acts_between_human_turns() -> None:
+    manager = GameSessionManager()
+    seats = ("human", "rollout", "heuristic", "random")
+    summary = manager.create_game(seats, game_seed=15)
+    game_id = _text(summary["game_id"])
+    human_steps = 0
+    # Play seat 0's first Agent turn: the AI seats, the rollout one included,
+    # then take their turns until the decision returns to the human.
+    for _ in range(40):
+        if summary["finished"]:
+            break
+        if summary["confirmation"] == 0:
+            summary = manager.confirm_turn(
+                game_id, seat=0, revision=_int(summary["revision"])
+            )
+            if _obj(summary["decision"])["owner"] == 0 and human_steps > 0:
+                break
+            continue
+        summary = manager.apply_action(
+            game_id, seat=0, revision=_int(summary["revision"]), index=0
+        )
+        human_steps += 1
+    assert _obj(summary["decision"])["owner"] == 0
+    assert _int(summary["revision"]) > human_steps
+    actors = {
+        entry.get("actor")
+        for entry in _rows(manager.log(game_id, 0)["entries"])
+        if isinstance(entry.get("actor"), int)
+    }
+    assert {1, 2, 3} <= actors
+
+
 def test_creation_validates_seats_and_seeds() -> None:
     manager = GameSessionManager()
 
@@ -191,6 +241,11 @@ def test_creation_validates_seats_and_seeds() -> None:
         manager.create_game(("human", "heuristic"))
     with pytest.raises(SessionError, match="unknown seat assignment"):
         manager.create_game(("human", "alien", "random", "random"))
+    with pytest.raises(SessionError, match="unknown seat assignment"):
+        manager.create_game(("human", "checkpoint:", "random", "random"))
+    # A checkpoint seat loads its file when the game is created.
+    with pytest.raises(SessionError, match="cannot build seat 1"):
+        manager.create_game(("human", "checkpoint:/nonexistent.pt", "random", "random"))
     with pytest.raises(SessionError, match="not be negative"):
         manager.create_game(ALL_AI, game_seed=-1)
 

@@ -133,6 +133,19 @@ def test_a_restored_game_continues_like_the_unsaved_session() -> None:
     assert restored_end["revision"] == original_end["revision"]
 
 
+def test_a_search_agent_seat_restores_from_a_save() -> None:
+    manager = GameSessionManager()
+    seats = ("human", "rollout", "heuristic", "random")
+    original = _advance(manager, manager.create_game(seats, game_seed=34), 8)
+
+    document = manager.save_game(_text(original["game_id"]))
+    restored = manager.restore_game(_roundtrip(document))
+
+    assert restored["seats"] == list(seats)
+    for field in ("revision", "phase", "round_number", "decision"):
+        assert restored[field] == original[field], field
+
+
 def test_a_finished_game_can_be_saved_and_restored(
     finished_game: tuple[GameSessionManager, JsonObject],
 ) -> None:
