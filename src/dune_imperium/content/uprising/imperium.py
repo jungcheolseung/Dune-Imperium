@@ -75,6 +75,9 @@ class ImperiumCardEntry(DeckCardEntry):
     agent_icons_from_contracts: bool = False
     # Litany Against Fear: the card's turn-start alternative.
     turn_start_effect: PersonalCardTurnStartEffect | None = None
+    # Immortality: a Graft Agent box — the card is played together with a
+    # second card and never alone [Immortality p. 10].
+    graft: bool = False
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -149,6 +152,7 @@ def _entry(
     play_data_complete: bool = False,
     agent_icons_from_contracts: bool = False,
     turn_start_effect: PersonalCardTurnStartEffect | None = None,
+    graft: bool = False,
 ) -> ImperiumCardEntry:
     return ImperiumCardEntry(
         card=CardDefinition(
@@ -197,6 +201,7 @@ def _entry(
         play_data_complete=play_data_complete,
         agent_icons_from_contracts=agent_icons_from_contracts,
         turn_start_effect=turn_start_effect,
+        graft=graft,
     )
 
 
@@ -1525,12 +1530,23 @@ IMPERIUM_CARDS: Final = (
     # immortality.md. Play data is transcribed from the card faces slice by
     # slice; a card whose data is not complete stays out of the deck.
     _entry(367, "bene-tleilax-lab", "Bene Tleilax Lab", 2, immortality_only=True),
+    # Bene Tleilax Researcher: Landsraad; GRAFT: Research; Reveal: 1
+    # Persuasion, +1 at one genetic marker, +1 more at two [card face].
     _entry(
         368,
         "bene-tleilax-researcher",
         "Bene Tleilax Researcher",
         4,
         immortality_only=True,
+        graft=True,
+        agent_icons=(AgentIcon.LANDSRAAD,),
+        agent_effect=PersonalCardAgentEffect.RESEARCH,
+        reveal_persuasion=1,
+        reveal_effects=(
+            PersonalCardRevealEffect(persuasion=1, minimum_genetic_markers=1),
+            PersonalCardRevealEffect(persuasion=1, minimum_genetic_markers=2),
+        ),
+        play_data_complete=True,
     ),
     _entry(369, "blank-slate", "Blank Slate", 1, immortality_only=True),
     _entry(370, "clandestine-meeting", "Clandestine Meeting", 4, immortality_only=True),
@@ -1553,7 +1569,21 @@ IMPERIUM_CARDS: Final = (
     _entry(379, "long-reach", "Long Reach", 6, immortality_only=True),
     _entry(380, "occupation", "Occupation", 8, immortality_only=True),
     _entry(381, "organ-merchants", "Organ Merchants", 3, immortality_only=True),
-    _entry(382, "planned-coupling", "Planned Coupling", 3, immortality_only=True),
+    # Planned Coupling (Bene Gesserit): BG icon; GRAFT: draw a card;
+    # Reveal: 1 Persuasion [card face].
+    _entry(
+        382,
+        "planned-coupling",
+        "Planned Coupling",
+        3,
+        immortality_only=True,
+        graft=True,
+        factions=(Faction.BENE_GESSERIT,),
+        agent_icons=(AgentIcon.BENE_GESSERIT,),
+        agent_effect=PersonalCardAgentEffect.DRAW_PERSONAL_CARD,
+        reveal_persuasion=1,
+        play_data_complete=True,
+    ),
     _entry(383, "replacement-eyes", "Replacement Eyes", 5, immortality_only=True),
     _entry(
         384,

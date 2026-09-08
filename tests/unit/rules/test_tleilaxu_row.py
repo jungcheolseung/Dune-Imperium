@@ -116,7 +116,7 @@ def _actions(state: GameState) -> dict[str, DomainAction]:
 
 
 def test_the_three_cards_have_the_printed_data_and_join_the_deck() -> None:
-    assert tleilaxu_deck_instance_ids() == (CONTAMINATOR, FROM_THE_TANKS, SUBJECT)
+    assert {CONTAMINATOR, FROM_THE_TANKS, SUBJECT} <= set(tleilaxu_deck_instance_ids())
     contaminator = tleilaxu_card_for_instance(CONTAMINATOR)
     assert contaminator.specimen_cost == 1 and contaminator.reveal_persuasion == 1
     subject = tleilaxu_card_for_instance(SUBJECT)
@@ -126,7 +126,7 @@ def test_the_three_cards_have_the_printed_data_and_join_the_deck() -> None:
 def test_setup_shuffles_the_deck_and_deals_two_to_the_row() -> None:
     state = create_initial_state(IMMORTALITY, 7, LEADERS).state
     assert len(state.tleilaxu_row) == 2
-    assert len(state.tleilaxu_deck) == 1
+    assert len(state.tleilaxu_deck) == len(tleilaxu_deck_instance_ids()) - 2
     assert set(state.tleilaxu_row) | set(state.tleilaxu_deck) == set(
         tleilaxu_deck_instance_ids()
     )

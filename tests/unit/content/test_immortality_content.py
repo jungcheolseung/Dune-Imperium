@@ -133,7 +133,17 @@ def test_tleilaxu_catalog_has_the_official_deck_and_reclaimed_forces() -> None:
     }
     # Only transcribed cards join the deck; the promo needs promo_cards.
     transcribed = {entry.card.card_id for entry in tleilaxu_cards_for(promo_cards=True)}
-    assert transcribed == {"contaminator", "from_the_tanks", "subject_x_137"}
+    assert transcribed == {
+        "contaminator",
+        "corrino_genes",
+        "face_dancer",
+        "face_dancer_initiate",
+        "from_the_tanks",
+        "subject_x_137",
+        "tleilaxu_infiltrator",
+        "twisted_mentat",
+        "unnatural_reflexes",
+    }
     assert all(
         instance_id.startswith("tleilaxu:")
         for instance_id in tleilaxu_deck_instance_ids(promo_cards=True)

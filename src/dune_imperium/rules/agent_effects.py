@@ -48,6 +48,8 @@ from dune_imperium.rules.effects import (
     arm_agent_icons,
     current_agent_effect_context,
     finish_agent_icon,
+    is_grafted,
+    other_grafted_card_id,
     pending_agent_icons,
     recruit_shortfall_events,
     recruit_troops,
@@ -133,6 +135,15 @@ _PLACEMENT_ICONS: Final[Mapping[PersonalCardAgentEffect, tuple[str, ...]]] = (
                 AGENT_ICON_TROOPS,
                 AGENT_ICON_CARDS,
             ),
+            # Tleilaxu Infiltrator (Immortality): card draw and, at two
+            # genetic markers, an Intrigue card.
+            _BOX.DRAW_ONE_AND_INTRIGUE_IF_TWO_MARKERS: (
+                AGENT_ICON_CARDS,
+                AGENT_ICON_INTRIGUE,
+            ),
+            # Twisted Mentat (Immortality): an optional recall of the Agent
+            # sent this turn.
+            _BOX.MAY_RECALL_AGENT_SENT_THIS_TURN: (AGENT_ICON_RECALL,),
         }
     )
 )
@@ -979,6 +990,28 @@ def legal_agent_card_recall_actions(
         return ()
     if AGENT_ICON_RECALL not in pending_agent_icons(context):
         return ()
+    _, source_card_id, turn_space_id = _effect_subject(context)
+    if (
+        personal_card_for_instance(source_card_id).agent_effect
+        is PersonalCardAgentEffect.MAY_RECALL_AGENT_SENT_THIS_TURN
+    ):
+        # Twisted Mentat: "You may recall the Agent you sent this turn."
+        locations = tuple(
+            space_id
+            for space_id in state.players[player].agent_locations
+            if space_id == turn_space_id
+        )
+        return (
+            DomainAction(action_id="decline_agent_card_recall", actor=player),
+            *(
+                DomainAction(
+                    action_id="recall_agent_for_agent_card",
+                    actor=player,
+                    arguments=(("space_id", space_id),),
+                )
+                for space_id in locations
+            ),
+        )
     return tuple(
         DomainAction(
             action_id="recall_agent_for_agent_card",
@@ -996,6 +1029,21 @@ def apply_agent_card_recall(state: GameState, action: DomainAction) -> RuleResul
         raise ValueError("action is not a legal Agent-card recall choice")
     _, context = current_agent_effect_context(state)
     _, source_card_id, _ = _effect_subject(context)
+    if action.action_id == "decline_agent_card_recall":
+        finish_agent_icon(context, AGENT_ICON_RECALL)
+        return RuleResult(
+            state=advance_after_effect(state, context),
+            events=(
+                GameEvent(
+                    event_id=(
+                        f"round:{state.round_number}:player:{action.actor}:"
+                        f"agent_card:{source_card_id}:recall_declined"
+                    ),
+                    kind="agent_card_effect_declined",
+                    payload=(("card_id", source_card_id), ("player", action.actor)),
+                ),
+            ),
+        )
     space_id = dict(action.arguments).get("space_id")
     if not isinstance(space_id, str):
         raise RuntimeError("Agent-card recall choice has invalid space ID")
@@ -2000,27 +2048,45 @@ def expire_trashed_card_effects(result: RuleResult) -> RuleResult:
     ):
         return result
     context = dict(frame.context)
-    if context.get("pending_agent_effect") is not True:
-        return result
-    if context.get("agent_card_self_trashed") is True:
+    player, card_instance_id, _ = _effect_subject(context)
+    owner = state.players[player]
+    expired: list[str] = []
+    if (
+        context.get("pending_agent_effect") is True
         # The card left play through its own printed cost or icon; its
         # remaining printed rewards still pay out (OQ-022 designer ruling).
+        and context.get("agent_card_self_trashed") is not True
+        and not _still_owned(owner, card_instance_id)
+    ):
+        context["pending_agent_effect"] = False
+        context["pending_agent_icons"] = ""
+        expired.append(card_instance_id)
+    graft_card_id = other_grafted_card_id(context)
+    if (
+        context.get("graft_pending_effect") is True
+        and graft_card_id
+        and not _still_owned(owner, graft_card_id)
+    ):
+        # The grafted partner's un-activated box expires the same way
+        # (Beguiling Pheromones trashing it, FAQ p. 1).
+        context["graft_pending_effect"] = False
+        context["graft_pending_icons"] = ""
+        expired.append(graft_card_id)
+    if not expired:
         return result
-    player, card_instance_id, _ = _effect_subject(context)
-    if _still_owned(state.players[player], card_instance_id):
-        return result
-    context["pending_agent_effect"] = False
-    context["pending_agent_icons"] = ""
     next_state = advance_after_effect(state, context)
-    event = GameEvent(
-        event_id=(
-            f"round:{state.round_number}:player:{player}:"
-            f"agent_card:{card_instance_id}:effect_expired"
-        ),
-        kind="agent_card_effect_expired",
-        payload=(("card_id", card_instance_id), ("player", player)),
+    events = tuple(
+        GameEvent(
+            event_id=(
+                f"round:{state.round_number}:player:{player}:"
+                f"agent_card:{expired_id}:effect_expired"
+            ),
+            kind="agent_card_effect_expired",
+            payload=(("card_id", expired_id), ("player", player)),
+        )
+        for expired_id in expired
     )
-    return RuleResult(state=next_state, events=(*result.events, event))
+    return RuleResult(state=next_state, events=(*result.events, *events))
 
 
 def agent_card_icons_at_placement(
@@ -2146,7 +2212,15 @@ def resolve_agent_card_icon(state: GameState, action: DomainAction) -> RuleResul
             else:
                 personal_draw_count = 1
         case "intrigue":
-            intrigue_draw_count = 1
+            if (
+                effect is PersonalCardAgentEffect.DRAW_ONE_AND_INTRIGUE_IF_TWO_MARKERS
+                and genetic_markers_reached(owner.research_space) < 2
+            ):
+                # Tleilaxu Infiltrator: the Intrigue needs both genetic
+                # markers, judged when the icon resolves (OQ-028).
+                available = False
+            else:
+                intrigue_draw_count = 1
         case "troops":
             if missive_blocked or war_name_blocked:
                 available = False
@@ -2660,9 +2734,18 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             resources=replace(owner.resources, spice=owner.resources.spice + 1),
         )
         event_kind = "agent_card_effect_resolved"
+    elif effect is PersonalCardAgentEffect.DRAW_TWO_IF_ONE_MARKER:
+        # Unnatural Reflexes: "[one genetic marker]: draw two cards".
+        if genetic_markers_reached(owner.research_space) >= 1:
+            next_owner = owner
+            event_kind = "agent_card_effect_resolved"
+        else:
+            next_owner = owner
+            event_kind = "agent_card_effect_unavailable"
     elif effect in (
         PersonalCardAgentEffect.ADVANCE_TLEILAXU,
         PersonalCardAgentEffect.ADVANCE_TLEILAXU_IF_ONE_MARKER,
+        PersonalCardAgentEffect.ADVANCE_TLEILAXU_IF_GRAFTED,
     ):
         # Contaminator's Tleilaxu icon; Subject X-137 needs the first genetic
         # marker, judged now (OQ-028) [Immortality pp. 6-7, 16].
@@ -2671,6 +2754,10 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         if (
             effect is PersonalCardAgentEffect.ADVANCE_TLEILAXU_IF_ONE_MARKER
             and genetic_markers_reached(owner.research_space) < 1
+        ) or (
+            # Corrino Genes: "If grafted: Tleilaxu" [Immortality p. 11].
+            effect is PersonalCardAgentEffect.ADVANCE_TLEILAXU_IF_GRAFTED
+            and not is_grafted(context)
         ):
             return RuleResult(
                 state=next_state,
@@ -3041,9 +3128,12 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         PersonalCardAgentEffect.DRAW_PER_TWO_COMPLETED_CONTRACTS_UP_TO_TWO,
         PersonalCardAgentEffect.DRAW_ONE_IF_GAINED_TWO_SPICE_THIS_TURN,
         PersonalCardAgentEffect.DRAW_ONE_OR_BENE_GESSERIT_INFLUENCE_IF_BOND,
+        PersonalCardAgentEffect.DRAW_TWO_IF_ONE_MARKER,
     ):
         if effect is PersonalCardAgentEffect.DRAW_PER_SANDWORM_IN_CONFLICT:
             draw_count = owner.sandworms_conflict
+        elif effect is PersonalCardAgentEffect.DRAW_TWO_IF_ONE_MARKER:
+            draw_count = 2
         elif (
             effect
             is PersonalCardAgentEffect.DRAW_PER_TWO_COMPLETED_CONTRACTS_UP_TO_TWO

@@ -186,6 +186,19 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
             "If you have reached one genetic marker: Tleilaxu "
             "(advance your Tleilaxu token)"
         ),
+        PersonalCardAgentEffect.ADVANCE_TLEILAXU_IF_GRAFTED: (
+            "If grafted: Tleilaxu (advance your Tleilaxu token)"
+        ),
+        PersonalCardAgentEffect.DRAW_TWO_IF_ONE_MARKER: (
+            "If you have reached one genetic marker: Draw 2 cards"
+        ),
+        PersonalCardAgentEffect.DRAW_ONE_AND_INTRIGUE_IF_TWO_MARKERS: (
+            "Enemy Agents don't block your Agent this turn. Draw 1 card, "
+            "If you have reached two genetic markers: Draw 1 Intrigue card"
+        ),
+        PersonalCardAgentEffect.MAY_RECALL_AGENT_SENT_THIS_TURN: (
+            "You may recall the Agent you sent this turn"
+        ),
         PersonalCardAgentEffect.GAIN_BY_BENE_GESSERIT_AND_FREMEN_INFLUENCE_TWO: (
             "If you have 2 or more Bene Gesserit Influence: Gain 1 water, "
             "If you have 2 or more Fremen Influence: Gain 1 spice"
@@ -459,6 +472,7 @@ _HANDLED_REVEAL_FIELDS: Final[frozenset[str]] = frozenset(
         "trashes_self",
         "grants_combat_icon",
         "specimens",
+        "minimum_genetic_markers",
     }
 )
 
@@ -491,6 +505,11 @@ def reveal_effect_text(effect: PersonalCardRevealEffect) -> str:
         conditions.append("you are spying on a Maker space")
     if effect.requires_commander_in_conflict:
         conditions.append("you have 1 or more Sardaukar Commanders in the Conflict")
+    if effect.minimum_genetic_markers:
+        noun = "marker" if effect.minimum_genetic_markers == 1 else "markers"
+        conditions.append(
+            f"you have reached {effect.minimum_genetic_markers} genetic {noun}"
+        )
     if effect.minimum_garrisoned_units:
         conditions.append(
             f"you have {effect.minimum_garrisoned_units} or more garrisoned units"

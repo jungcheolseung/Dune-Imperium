@@ -122,6 +122,11 @@ AGENT_EFFECT_CONTEXT_KEYS = frozenset(
         "board_icons",
         "card_id",
         "cost_option",
+        # Immortality Graft [Immortality p. 10]: the second played card and
+        # its own pending Agent box ("" / False / "" for a single-card play).
+        "graft_card_id",
+        "graft_pending_effect",
+        "graft_pending_icons",
         "pending_agent_effect",
         "pending_board_effect",
         "pending_board_icons",
@@ -272,6 +277,24 @@ BOARD_ICON_COMMANDER = "sardaukar_commander"
 BOARD_ICON_TECH = "tech"
 
 
+def is_grafted(context: Mapping[str, ActionValue]) -> bool:
+    """Return whether this Agent turn plays two grafted cards [Immortality p. 11]."""
+
+    return bool(context.get("graft_card_id"))
+
+
+def other_grafted_card_id(context: Mapping[str, ActionValue]) -> str:
+    """Return "the other grafted card" of the box being resolved ("" if none).
+
+    The active box's card sits in ``card_id`` and its partner in
+    ``graft_card_id``; ``switch_graft_card`` swaps them, so the partner is
+    always the inactive one.
+    """
+
+    value = context.get("graft_card_id", "")
+    return value if isinstance(value, str) else ""
+
+
 def rearm_board_icons(context: dict[str, ActionValue]) -> None:
     """Queue every printed icon of the visit again (Reverend Mother's repeat)."""
 
@@ -341,6 +364,7 @@ def agent_turn_has_other_pending_effects(
         context.get("pending_leader_ability", False),
         context.get("pending_leader_board_repeat", False),
         context["pending_agent_effect"],
+        context.get("graft_pending_effect", False),
         context["pending_board_effect"],
         context["pending_faction_influence"],
     )

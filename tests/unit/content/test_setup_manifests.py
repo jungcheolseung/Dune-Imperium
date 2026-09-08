@@ -399,11 +399,15 @@ def test_imperium_manifest_matches_base_and_choam_counts() -> None:
     assert sum(entry.copies for entry in immortality) == 27
     assert all(entry.card.catalog_url for entry in immortality)
     assert not any(entry.promo or entry.choam_only for entry in immortality)
-    # Until their play data lands, the Immortality cards stay out of every
-    # deck, option or not.
-    assert not any(
-        entry.immortality_only
+    # Only transcribed Immortality cards join the option's deck, and none
+    # joins without the option.
+    assert {
+        entry.card.card_id
         for entry in imperium_cards_for_choam(True, True, immortality=True)
+        if entry.immortality_only
+    } == {"bene_tleilax_researcher", "planned_coupling"}
+    assert not any(
+        entry.immortality_only for entry in imperium_cards_for_choam(True, True)
     )
     bloodlines = tuple(
         entry for entry in IMPERIUM_CARDS if entry.bloodlines_only and not entry.promo

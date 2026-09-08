@@ -18,6 +18,7 @@ from dataclasses import replace
 
 from dune_imperium.content.bloodlines.sardaukar import skill_for_instance
 from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
+from dune_imperium.content.immortality.board import genetic_markers_reached
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
 from dune_imperium.content.uprising.personal_cards import (
     PersonalCardDefinition,
@@ -1567,6 +1568,16 @@ def _reveal_effect_is_eligible(
         (not effect.requires_high_council or owner.high_council)
         and (
             not effect.requires_commander_in_conflict or owner.commanders_conflict >= 1
+        )
+        # Immortality: "[genetic marker]: ..." lines need the research token
+        # in the marker's column [Immortality pp. 6, 16].
+        and (
+            effect.minimum_genetic_markers == 0
+            or (
+                bool(owner.research_space)
+                and genetic_markers_reached(owner.research_space)
+                >= effect.minimum_genetic_markers
+            )
         )
         and (
             owner.troops_garrison + owner.commanders_garrison

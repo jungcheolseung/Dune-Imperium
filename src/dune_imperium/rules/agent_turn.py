@@ -20,6 +20,7 @@ from dune_imperium.content.uprising.contracts import (
 from dune_imperium.content.uprising.imperium import ImperiumCardEntry
 from dune_imperium.content.uprising.personal_cards import (
     PersonalCardDefinition,
+    card_is_graft,
     personal_card_for_instance,
 )
 from dune_imperium.content.uprising.types import (
@@ -72,77 +73,139 @@ def legal_agent_actions(state: GameState, player: int) -> tuple[DomainAction, ..
     if owner.agents_available == 0:
         return ()
     actions: list[DomainAction] = []
+    immortality = state.config.immortality
     for card_instance_id in owner.hand:
         card = personal_card_for_instance(card_instance_id)
-        icons = effective_agent_icons(card, owner)
-        # Urgent Shigawire: the boosted Bene Gesserit card "has all Agent
-        # icons", so every space's icon is satisfied.
-        any_icon = card_is_boosted(card, owner)
-        for space in BOARD_SPACES:
-            if space.required_leader_id is not None and all(
-                seat.leader_id != space.required_leader_id for seat in state.players
-            ):
-                # Tuek's Sietch is on the table only with Esmar Tuek.
-                continue
-            if not card_can_access_space(icons, space, owner, any_icon=any_icon):
-                continue
-            if space.space_id in owner.agent_locations:
-                continue
-            if space.space_id == "swordmaster" and owner.swordmaster_acquired:
-                continue
-            if (
-                not (
-                    isinstance(card, ImperiumCardEntry)
-                    and card.ignores_influence_requirements
+        # Immortality Graft [Immortality p. 10]: a Graft card "can't be
+        # played alone. You must play two cards"; a plain card may join a
+        # Graft partner. The partner is chosen after the placement.
+        may_graft = immortality and graft_partner_exists(owner, card_instance_id)
+        graft_variants: tuple[bool, ...] = (
+            *(() if card_is_graft(card) else (False,)),
+            *((True,) if may_graft else ()),
+        )
+        for graft in graft_variants:
+            actions.extend(
+                _placements_for_card(
+                    state, player, owner, card_instance_id, card, graft
                 )
-                # Insider Information (Bloodlines) waives them for the turn;
-                # Arrakis Planetologist ignores Sietch Tabr's [Liet Kynes card].
-                and not owner.ignores_influence_requirements_turn
-                and not (
-                    owner.leader_id == "liet_kynes" and space.space_id == "sietch_tabr"
-                )
-                and not _meets_requirement(owner.influence, space.requirement)
-            ):
-                continue
-            occupying_opponents = tuple(
-                candidate.player_id
-                for candidate in state.players
-                if candidate.player_id != player
-                and space.space_id in candidate.agent_locations
             )
-            if not occupying_opponents:
-                actions.extend(
-                    _actions_for_affordable_costs(
-                        player,
-                        card_instance_id,
-                        space,
-                        owner,
-                        state,
-                    )
+    return tuple(actions)
+
+
+def graft_partner_exists(owner: PlayerState, card_instance_id: str) -> bool:
+    """Return whether the hand holds a card that may be grafted to this one."""
+
+    card = personal_card_for_instance(card_instance_id)
+    return any(
+        other_id != card_instance_id
+        and (card_is_graft(card) or card_is_graft(personal_card_for_instance(other_id)))
+        for other_id in owner.hand
+    )
+
+
+def _infiltrator_may_join(owner: PlayerState) -> bool:
+    """Tleilaxu Infiltrator: "Enemy Agents don't block your Agent this turn".
+
+    True when the Infiltrator is in the hand: it is either the placed card
+    or, being a Graft card, always a legal partner; the partner choice then
+    insists on it for an occupied space.
+    """
+
+    return any(is_tleilaxu_infiltrator(other_id) for other_id in owner.hand)
+
+
+def is_tleilaxu_infiltrator(card_instance_id: str) -> bool:
+    """Return whether the card is Tleilaxu Infiltrator [card face]."""
+
+    return (
+        personal_card_for_instance(card_instance_id).agent_effect
+        is PersonalCardAgentEffect.DRAW_ONE_AND_INTRIGUE_IF_TWO_MARKERS
+    )
+
+
+def _placements_for_card(
+    state: GameState,
+    player: int,
+    owner: PlayerState,
+    card_instance_id: str,
+    card: PersonalCardDefinition,
+    graft: bool,
+) -> tuple[DomainAction, ...]:
+    actions: list[DomainAction] = []
+    icons = effective_agent_icons(card, owner, grafted=graft)
+    # Urgent Shigawire: the boosted Bene Gesserit card "has all Agent
+    # icons", so every space's icon is satisfied.
+    any_icon = card_is_boosted(card, owner)
+    for space in BOARD_SPACES:
+        if space.required_leader_id is not None and all(
+            seat.leader_id != space.required_leader_id for seat in state.players
+        ):
+            # Tuek's Sietch is on the table only with Esmar Tuek.
+            continue
+        if not card_can_access_space(icons, space, owner, any_icon=any_icon):
+            continue
+        if space.space_id in owner.agent_locations:
+            continue
+        if space.space_id == "swordmaster" and owner.swordmaster_acquired:
+            continue
+        if (
+            not (
+                isinstance(card, ImperiumCardEntry)
+                and card.ignores_influence_requirements
+            )
+            # Insider Information (Bloodlines) waives them for the turn;
+            # Arrakis Planetologist ignores Sietch Tabr's [Liet Kynes card].
+            and not owner.ignores_influence_requirements_turn
+            and not (
+                owner.leader_id == "liet_kynes" and space.space_id == "sietch_tabr"
+            )
+            and not _meets_requirement(owner.influence, space.requirement)
+        ):
+            continue
+        occupying_opponents = tuple(
+            candidate.player_id
+            for candidate in state.players
+            if candidate.player_id != player
+            and space.space_id in candidate.agent_locations
+        )
+        if not occupying_opponents or (graft and _infiltrator_may_join(owner)):
+            actions.extend(
+                _actions_for_affordable_costs(
+                    player,
+                    card_instance_id,
+                    space,
+                    owner,
+                    state,
+                    graft=graft,
                 )
-                continue
-            # OQ-006 decided convention: Infiltrate's trigger is the
-            # occupied-by-another-player predicate and its printed cost is one
-            # connected Spy recall, so a single recall ignores the opposing
-            # occupancy however many opponent Agents share the space
-            # [Main p. 11].
-            for post_id in _connected_spy_post_ids(owner, space.space_id):
-                actions.extend(
-                    _actions_for_affordable_costs(
-                        player,
-                        card_instance_id,
-                        space,
-                        owner,
-                        state,
-                        infiltrate_post_id=post_id,
-                    )
+            )
+            continue
+        # OQ-006 decided convention: Infiltrate's trigger is the
+        # occupied-by-another-player predicate and its printed cost is one
+        # connected Spy recall, so a single recall ignores the opposing
+        # occupancy however many opponent Agents share the space
+        # [Main p. 11].
+        for post_id in _connected_spy_post_ids(owner, space.space_id):
+            actions.extend(
+                _actions_for_affordable_costs(
+                    player,
+                    card_instance_id,
+                    space,
+                    owner,
+                    state,
+                    infiltrate_post_id=post_id,
+                    graft=graft,
                 )
+            )
     return tuple(actions)
 
 
 def effective_agent_icons(
     card: PersonalCardDefinition,
     owner: PlayerState,
+    *,
+    grafted: bool = False,
 ) -> tuple[AgentIcon, ...]:
     """Return the card's Agent icons as printed, plus any it borrows.
 
@@ -158,6 +221,17 @@ def effective_agent_icons(
     ):
         # Servo-Receivers: "Your Signet Ring has the following icons": the
         # four Faction Agent icons [Tech tile face].
+        icons.extend(
+            (
+                AgentIcon.EMPEROR,
+                AgentIcon.SPACING_GUILD,
+                AgentIcon.BENE_GESSERIT,
+                AgentIcon.FREMEN,
+            )
+        )
+    if grafted and card.card.card_id == "blank_slate":
+        # Blank Slate: "If grafted: this has [Emperor], [Guild], [Bene
+        # Gesserit], and [Fremen]" [card face].
         icons.extend(
             (
                 AgentIcon.EMPEROR,
@@ -248,6 +322,7 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
     infiltrate_post_id = arguments.get("infiltrate_post_id")
     if infiltrate_post_id is not None and not isinstance(infiltrate_post_id, str):
         raise ValueError("Agent action infiltrate_post_id must be a string")
+    graft = arguments.get("graft") is True
     boosted = card_is_boosted(card, owner)
     next_owner = replace(
         owner,
@@ -279,7 +354,7 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
     board_icons = ",".join(
         board_icons_for(state, action.actor, space_id, cost_option)
     )
-    agent_effect_pending = _agent_effect_is_available(
+    agent_effect_pending = agent_effect_is_available(
         card.agent_effect,
         replace(owner, resources=next_owner.resources),
         space,
@@ -297,79 +372,112 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
             owner=action.actor,
             prompt="Choose the next Agent-turn effect to resolve",
         ),
-        context=(
-            ("board_icons", board_icons),
-            ("card_id", card_instance_id),
-            ("combat_troops_deployed", 0),
-            ("cost_option", cost_option),
-            # A Combat icon gained earlier this turn deploys like a Combat
-            # space, never more than two from the garrison [Bloodlines p. 5].
-            (
-                "existing_troop_deployment_limit",
-                2 if space.combat or owner.combat_icon_turn else 0,
-            ),
-            ("pending_agent_effect", agent_effect_pending),
-            ("pending_agent_icons", agent_icons),
-            ("pending_board_effect", bool(board_icons)),
-            ("pending_board_icons", board_icons),
-            (
-                "pending_combat_deployment",
-                not units_deploy_blocked
-                and (
-                    space.combat
-                    or owner.combat_icon_turn
-                    or (
-                        isinstance(card, ImperiumCardEntry)
-                        and card.allows_recruited_troop_deployment
-                    )
-                ),
-            ),
-            ("pending_contract_ids", ",".join(pending_contract_ids)),
-            (
-                "pending_faction_influence",
-                space.faction is not None
-                and card.agent_effect
-                is not (
-                    PersonalCardAgentEffect.GAIN_TWO_VISITED_FACTION_INFLUENCE_AND_TRASH_SELF
-                ),
-            ),
-            (
-                "pending_gather_intelligence",
-                any(
-                    space_id in post.connected_space_ids
-                    and post.post_id in next_owner.spy_post_ids
-                    for post in OBSERVATION_POSTS
-                ),
-            ),
-            (
-                # Other Memories triggers when Lady Jessica sends an Agent to
-                # a Bene Gesserit board space [Lady Jessica card].
-                "pending_leader_ability",
-                space.faction is Faction.BENE_GESSERIT
-                and owner.leader_face_id == "lady_jessica",
-            ),
-            (
-                # Reverend Mother offers one paid repeat of the printed space
-                # effects per turn on a Bene Gesserit or Fremen board space
-                # [Reverend Mother Jessica card].
-                "pending_leader_board_repeat",
-                space.faction in (Faction.BENE_GESSERIT, Faction.FREMEN)
-                and owner.leader_face_id == "reverend_mother_jessica",
-            ),
-            ("space_id", space_id),
-            ("spice_at_placement", next_owner.resources.spice),
-            ("spice_spent_after_placement", 0),
-            ("spy_recalled_this_turn", infiltrate_post_id is not None),
-            ("troops_recruited", _troops_recruited_before_placement(state)),
-            ("turn_owner", action.actor),
-            ("units_deploy_blocked", units_deploy_blocked),
+        context=tuple(
+            sorted(
+                (
+                    ("board_icons", board_icons),
+                    ("card_id", card_instance_id),
+                    ("combat_troops_deployed", 0),
+                    ("cost_option", cost_option),
+                    # Filled in by the Graft partner choice [Immortality p. 10].
+                    ("graft_card_id", ""),
+                    ("graft_pending_effect", False),
+                    ("graft_pending_icons", ""),
+                    # A Combat icon gained earlier this turn deploys like a Combat
+                    # space, never more than two from the garrison [Bloodlines p. 5].
+                    (
+                        "existing_troop_deployment_limit",
+                        2 if space.combat or owner.combat_icon_turn else 0,
+                    ),
+                    ("pending_agent_effect", agent_effect_pending),
+                    ("pending_agent_icons", agent_icons),
+                    ("pending_board_effect", bool(board_icons)),
+                    ("pending_board_icons", board_icons),
+                    (
+                        "pending_combat_deployment",
+                        not units_deploy_blocked
+                        and (
+                            space.combat
+                            or owner.combat_icon_turn
+                            or (
+                                isinstance(card, ImperiumCardEntry)
+                                and card.allows_recruited_troop_deployment
+                            )
+                        ),
+                    ),
+                    ("pending_contract_ids", ",".join(pending_contract_ids)),
+                    (
+                        "pending_faction_influence",
+                        space.faction is not None
+                        and card.agent_effect
+                        is not (
+                            PersonalCardAgentEffect.GAIN_TWO_VISITED_FACTION_INFLUENCE_AND_TRASH_SELF
+                        ),
+                    ),
+                    (
+                        "pending_gather_intelligence",
+                        any(
+                            space_id in post.connected_space_ids
+                            and post.post_id in next_owner.spy_post_ids
+                            for post in OBSERVATION_POSTS
+                        ),
+                    ),
+                    (
+                        # Other Memories triggers when Lady Jessica sends an Agent to
+                        # a Bene Gesserit board space [Lady Jessica card].
+                        "pending_leader_ability",
+                        space.faction is Faction.BENE_GESSERIT
+                        and owner.leader_face_id == "lady_jessica",
+                    ),
+                    (
+                        # Reverend Mother offers one paid repeat of the printed space
+                        # effects per turn on a Bene Gesserit or Fremen board space
+                        # [Reverend Mother Jessica card].
+                        "pending_leader_board_repeat",
+                        space.faction in (Faction.BENE_GESSERIT, Faction.FREMEN)
+                        and owner.leader_face_id == "reverend_mother_jessica",
+                    ),
+                    ("space_id", space_id),
+                    ("spice_at_placement", next_owner.resources.spice),
+                    ("spice_spent_after_placement", 0),
+                    ("spy_recalled_this_turn", infiltrate_post_id is not None),
+                    ("troops_recruited", _troops_recruited_before_placement(state)),
+                    ("turn_owner", action.actor),
+                    ("units_deploy_blocked", units_deploy_blocked),
+                )
+            )
         ),
     )
-    next_state = replace(
-        state,
-        players=players,
-        decision_stack=(*state.decision_stack[:-1], effect_frame),
-    )
+    frames: tuple[DecisionFrame, ...] = (*state.decision_stack[:-1], effect_frame)
+    if graft:
+        # The second card is chosen next; its box joins the effect frame.
+        frames = (
+            *frames,
+            DecisionFrame(
+                kind=FrameKind.GRAFT_PARTNER,
+                frame_id=(
+                    f"round:{state.round_number}:player:{action.actor}:graft_partner"
+                ),
+                decision=PlayerDecision(
+                    owner=action.actor, prompt="Choose the card to graft"
+                ),
+                context=(
+                    ("card_id", card_instance_id),
+                    (
+                        "occupied",
+                        infiltrate_post_id is None
+                        and any(
+                            space_id in seat.agent_locations
+                            for seat in state.players
+                            if seat.player_id != action.actor
+                        ),
+                    ),
+                    ("player", action.actor),
+                    ("space_id", space_id),
+                ),
+            ),
+        )
+    next_state = replace(state, players=players, decision_stack=frames)
     placement_event = GameEvent(
         event_id=(f"round:{state.round_number}:player:{action.actor}:agent:{space_id}"),
         kind="agent_placed",
@@ -571,7 +679,7 @@ def apply_turn_start_card(state: GameState, action: DomainAction) -> RuleResult:
     )
 
 
-def _agent_effect_is_available(
+def agent_effect_is_available(
     effect: PersonalCardAgentEffect | None,
     owner: PlayerState,
     space: BoardSpace,
@@ -635,6 +743,8 @@ def _actions_for_affordable_costs(
     owner: PlayerState,
     state: GameState,
     infiltrate_post_id: str | None = None,
+    *,
+    graft: bool = False,
 ) -> tuple[DomainAction, ...]:
     costs = _effective_costs(state, space, player)
     include_choice = space.dynamic_cost is None and len(space.cost_options) > 1
@@ -651,13 +761,15 @@ def _actions_for_affordable_costs(
         for discount, effective in variants:
             if not _can_afford(owner, effective):
                 continue
-            argument_items: list[tuple[str, str | int]] = [
+            argument_items: list[tuple[str, str | int | bool]] = [
                 ("card_id", card_instance_id)
             ]
             if include_choice:
                 argument_items.append(("cost_option", cost_option))
             if discount is not None:
                 argument_items.append(("discount", discount))
+            if graft:
+                argument_items.append(("graft", True))
             if infiltrate_post_id is not None:
                 argument_items.append(("infiltrate_post_id", infiltrate_post_id))
             argument_items.append(("space_id", space.space_id))

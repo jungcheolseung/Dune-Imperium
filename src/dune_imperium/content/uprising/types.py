@@ -196,6 +196,15 @@ class PersonalCardAgentEffect(StrEnum):
     # Subject X-137: "[one genetic marker]: Tleilaxu", judged when the box
     # resolves (OQ-028).
     ADVANCE_TLEILAXU_IF_ONE_MARKER = "advance_tleilaxu_if_one_marker"
+    # Corrino Genes: "If grafted: Tleilaxu" [Immortality p. 11].
+    ADVANCE_TLEILAXU_IF_GRAFTED = "advance_tleilaxu_if_grafted"
+    # Unnatural Reflexes (Graft): "[one genetic marker]: draw two cards".
+    DRAW_TWO_IF_ONE_MARKER = "draw_two_if_one_marker"
+    # Tleilaxu Infiltrator (Graft): "Enemy Agents don't block your Agent this
+    # turn. Draw a card —AND— [two genetic markers]: Intrigue".
+    DRAW_ONE_AND_INTRIGUE_IF_TWO_MARKERS = "draw_one_and_intrigue_if_two_markers"
+    # Twisted Mentat (Graft): "You may recall the Agent you sent this turn."
+    MAY_RECALL_AGENT_SENT_THIS_TURN = "may_recall_agent_sent_this_turn"
 
 
 class PersonalCardTrashEffect(StrEnum):
@@ -362,8 +371,10 @@ class PersonalCardRevealEffect:
     # at a Combat space [Bloodlines p. 5].
     grants_combat_icon: bool = False
     # Immortality: specimens generated from the supply [Immortality p. 8]
-    # (Experimentation, Spiritual Fervor, Twisted Mentat, Usurp).
+    # (Experimentation, Spiritual Fervor, Twisted Mentat, Usurp), and the
+    # genetic markers a marked Reveal line needs [Immortality pp. 6, 16].
     specimens: int = 0
+    minimum_genetic_markers: int = 0
 
     def __post_init__(self) -> None:
         if self.required_faction_bond is not None and not isinstance(
@@ -410,7 +421,17 @@ class PersonalCardRevealEffect:
             self.persuasion_per_completed_contract,
             self.specimens,
         )
-        if min((*gains, self.minimum_spies_placed, self.minimum_garrisoned_units)) < 0:
+        if (
+            min(
+                (
+                    *gains,
+                    self.minimum_spies_placed,
+                    self.minimum_garrisoned_units,
+                    self.minimum_genetic_markers,
+                )
+            )
+            < 0
+        ):
             raise ValueError("personal-card Reveal gains must not be negative")
         if max(gains) == 0 and not self.grants_combat_icon:
             raise ValueError("personal-card Reveal effect must gain something")

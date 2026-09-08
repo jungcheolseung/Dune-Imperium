@@ -63,6 +63,8 @@ class FrameKind(StrEnum):
     # or chosen bonuses of a research space [Immortality p. 6].
     RESEARCH_ADVANCE = "research_advance"
     RESEARCH_BONUS = "research_bonus"
+    # Immortality Graft: choosing the second card of a two-card play.
+    GRAFT_PARTNER = "graft_partner"
 
 
 def top_frame(state: GameState) -> DecisionFrame | None:

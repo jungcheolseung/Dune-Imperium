@@ -125,6 +125,11 @@ from dune_imperium.rules.endgame import (
     legal_endgame_intrigue_actions,
 )
 from dune_imperium.rules.frames import FrameKind, owned_top_frame
+from dune_imperium.rules.graft import (
+    apply_graft_partner,
+    apply_graft_switch,
+    legal_graft_partner_actions,
+)
 from dune_imperium.rules.immortality import (
     apply_family_atomics,
     apply_research_advance,
@@ -430,6 +435,7 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     FrameKind.TECH_SECRET_PROJECT: (legal_secret_project_actions,),
     FrameKind.RESEARCH_ADVANCE: (legal_research_advance_actions,),
     FrameKind.RESEARCH_BONUS: (legal_research_bonus_actions,),
+    FrameKind.GRAFT_PARTNER: (legal_graft_partner_actions,),
 }
 
 ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
@@ -510,6 +516,9 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "use_family_atomics": apply_family_atomics,
     "acquire_tleilaxu": apply_tleilaxu_acquisition,
     "acquire_reclaimed_forces": apply_tleilaxu_acquisition,
+    "choose_graft_partner": apply_graft_partner,
+    "switch_graft_card": apply_graft_switch,
+    "decline_agent_card_recall": apply_agent_card_recall,
     # Bloodlines Sardaukar Commanders
     "acquire_sardaukar_commander": apply_sardaukar_commander_action,
     "acquire_tech": apply_tech_acquisition,

@@ -46,6 +46,7 @@ from dune_imperium.rules.effects import (
     current_agent_effect_context,
     pending_agent_icons,
 )
+from dune_imperium.rules.graft import legal_graft_switch_actions
 from dune_imperium.rules.immortality import (
     legal_family_atomics_actions,
     legal_specimen_return_actions,
@@ -109,6 +110,7 @@ def legal_agent_effect_frame_actions(
 
     return (
         *pending_groups,
+        *legal_graft_switch_actions(state, player),
         *legal_leader_placement_ability_actions(state, player),
         *legal_leader_board_repeat_actions(state, player),
         *legal_contract_completion_actions(state, player),

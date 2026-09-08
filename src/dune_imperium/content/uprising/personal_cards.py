@@ -45,3 +45,9 @@ def personal_card_for_instance(
             )
         return tleilaxu
     raise ValueError("unknown personal-card instance ID")
+
+
+def card_is_graft(card: PersonalCardDefinition) -> bool:
+    """Return whether the card's Agent box is a Graft box [Immortality p. 10]."""
+
+    return isinstance(card, ImperiumCardEntry) and card.graft

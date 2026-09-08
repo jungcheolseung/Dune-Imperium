@@ -94,6 +94,11 @@ _ACTION_SCORES: Final[dict[str, float]] = {
     # is the fallback use of three specimens.
     "acquire_tleilaxu": 2.5,
     "acquire_reclaimed_forces": 1.0,
+    # Graft: the partner is mandatory once a grafted placement was chosen;
+    # resolving the other box ranks with the ordinary effect resolutions.
+    "choose_graft_partner": 4.0,
+    "switch_graft_card": 2.0,
+    "decline_agent_card_recall": 0.5,
     "gain_reveal_resources": 4.0,
     "gain_reveal_faction_influence": 4.0,
     "withdraw_troops": -10.0,

@@ -40,6 +40,7 @@ from dune_imperium.content.uprising.leaders import (
     leaders_for_choam,
 )
 from dune_imperium.content.uprising.objectives import objectives_for_players
+from dune_imperium.content.uprising.personal_cards import card_is_graft
 from dune_imperium.content.uprising.reserve import (
     RESERVE_STACKS,
     ReserveStackDefinition,
@@ -862,6 +863,16 @@ def _immortality_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         )
         for choice in ("troops", "tleilaxu")
     )
+    # Graft [Immortality p. 10]: the partner choice over every personal
+    # card, the box switch, and Twisted Mentat's recall decline.
+    templates.extend(
+        ActionTemplate(
+            action_id="choose_graft_partner", arguments=(("card_id", card_id),)
+        )
+        for card_id in _personal_card_instance_ids(config)
+    )
+    templates.append(ActionTemplate(action_id="switch_graft_card"))
+    templates.append(ActionTemplate(action_id="decline_agent_card_recall"))
     return tuple(templates)
 
 
@@ -992,6 +1003,7 @@ def _agent_turn_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
                 granted,
                 catalog_spaces(config),
                 space_discounts=config.tech_module,
+                graft=config.immortality,
             )
         )
     for reserve_card in RESERVE_STACKS:
@@ -1002,6 +1014,7 @@ def _agent_turn_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
                 granted,
                 catalog_spaces(config),
                 space_discounts=config.tech_module,
+                graft=config.immortality,
             )
         )
     for imperium_card in imperium_cards_for_choam(
@@ -1028,6 +1041,7 @@ def _agent_turn_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
                     card_granted,
                     catalog_spaces(config),
                     space_discounts=config.tech_module,
+                    graft=config.immortality,
                 )
             )
     if config.immortality:
@@ -1039,6 +1053,7 @@ def _agent_turn_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
                     granted,
                     catalog_spaces(config),
                     space_discounts=config.tech_module,
+                    graft=config.immortality,
                 )
             )
     return tuple(templates)
@@ -1061,64 +1076,110 @@ def _agent_turn_templates_for_card(
     spaces: tuple[BoardSpace, ...] = BOARD_SPACES,
     *,
     space_discounts: bool = False,
+    graft: bool = False,
 ) -> tuple[ActionTemplate, ...]:
     templates: list[ActionTemplate] = []
+    # Immortality: a Graft card is only ever played grafted; any other card
+    # may also be played grafted (the partner is chosen next), and Blank
+    # Slate grafted has the four Faction icons [card face].
+    if not graft:
+        graft_variants: tuple[bool, ...] = (False,)
+    elif card_is_graft(card):
+        graft_variants = (True,)
+    else:
+        graft_variants = (False, True)
+    grafted_icons: tuple[AgentIcon, ...] = (
+        (
+            AgentIcon.EMPEROR,
+            AgentIcon.SPACING_GUILD,
+            AgentIcon.BENE_GESSERIT,
+            AgentIcon.FREMEN,
+        )
+        if card.card.card_id == "blank_slate"
+        else ()
+    )
     for copy in range(card.copies):
         card_id = f"{prefix}:{card.card.card_id}:{copy}"
         for space in spaces:
-            if (
-                space.agent_icon not in card.agent_icons
-                and space.agent_icon not in granted_icons
-                and AgentIcon.SPY not in card.agent_icons
-            ):
-                continue
-            cost_options: tuple[int | None, ...] = (
-                tuple(range(len(space.cost_options)))
-                if space.dynamic_cost is None and len(space.cost_options) > 1
-                else (None,)
-            )
-            # Navigation Chamber (Tech Module): one spice or one Solari off.
-            discounts: tuple[str | None, ...] = (None,)
-            if space_discounts:
-                discounts = (
-                    None,
-                    *(
-                        kind
-                        for kind in ("spice", "solari")
-                        if any(
-                            getattr(option, kind) > 0 for option in space.cost_options
-                        )
-                    ),
+            for grafted in graft_variants:
+                templates.extend(
+                    _placement_templates(
+                        card,
+                        card_id,
+                        space,
+                        (*granted_icons, *(grafted_icons if grafted else ())),
+                        space_discounts=space_discounts,
+                        grafted=grafted,
+                    )
                 )
-            infiltration_post_ids: tuple[str | None, ...] = (
-                None,
-                *(
-                    post.post_id
-                    for post in OBSERVATION_POSTS
-                    if space.space_id in post.connected_space_ids
-                ),
-            )
-            for cost_option in cost_options:
-                for discount in discounts:
-                    for infiltrate_post_id in infiltration_post_ids:
-                        arguments: list[tuple[str, ActionValue]] = [
-                            ("card_id", card_id)
-                        ]
-                        if cost_option is not None:
-                            arguments.append(("cost_option", cost_option))
-                        if discount is not None:
-                            arguments.append(("discount", discount))
-                        if infiltrate_post_id is not None:
-                            arguments.append(
-                                ("infiltrate_post_id", infiltrate_post_id)
-                            )
-                        arguments.append(("space_id", space.space_id))
-                        templates.append(
-                            ActionTemplate(
-                                action_id="agent_turn",
-                                arguments=tuple(arguments),
-                            )
-                        )
+    return tuple(templates)
+
+
+def _placement_templates(
+    card: StartingCardEntry | ReserveStackDefinition | ImperiumCardEntry,
+    card_id: str,
+    space: BoardSpace,
+    granted_icons: tuple[AgentIcon, ...],
+    *,
+    space_discounts: bool,
+    grafted: bool,
+) -> tuple[ActionTemplate, ...]:
+    templates: list[ActionTemplate] = []
+    if (
+        space.agent_icon not in card.agent_icons
+        and space.agent_icon not in granted_icons
+        and AgentIcon.SPY not in card.agent_icons
+    ):
+        return ()
+    cost_options: tuple[int | None, ...] = (
+        tuple(range(len(space.cost_options)))
+        if space.dynamic_cost is None and len(space.cost_options) > 1
+        else (None,)
+    )
+    # Navigation Chamber (Tech Module): one spice or one Solari off.
+    discounts: tuple[str | None, ...] = (None,)
+    if space_discounts:
+        discounts = (
+            None,
+            *(
+                kind
+                for kind in ("spice", "solari")
+                if any(
+                    getattr(option, kind) > 0 for option in space.cost_options
+                )
+            ),
+        )
+    infiltration_post_ids: tuple[str | None, ...] = (
+        None,
+        *(
+            post.post_id
+            for post in OBSERVATION_POSTS
+            if space.space_id in post.connected_space_ids
+        ),
+    )
+    for cost_option in cost_options:
+        for discount in discounts:
+            for infiltrate_post_id in infiltration_post_ids:
+                arguments: list[tuple[str, ActionValue]] = [
+                    ("card_id", card_id)
+                ]
+                if cost_option is not None:
+                    arguments.append(("cost_option", cost_option))
+                if discount is not None:
+                    arguments.append(("discount", discount))
+                if grafted:
+                    arguments.append(("graft", True))
+                if infiltrate_post_id is not None:
+                    arguments.append(
+                        ("infiltrate_post_id", infiltrate_post_id)
+                    )
+                arguments.append(("space_id", space.space_id))
+                templates.append(
+                    ActionTemplate(
+                        action_id="agent_turn",
+                        arguments=tuple(arguments),
+                    )
+                )
     return tuple(templates)
 
 

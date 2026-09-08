@@ -47,9 +47,6 @@ class TleilaxuCardEntry(ImperiumCardEntry):
     # "paying the specimen cost shown in the top right corner" [Immortality
     # p. 8].
     specimen_cost: int = 0
-    # A modified Agent box "with a special background and the word Graft
-    # above it" [Immortality p. 10].
-    graft: bool = False
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -121,9 +118,47 @@ TLEILAXU_CARDS: Final[tuple[TleilaxuCardEntry, ...]] = (
         reveal_persuasion=1,
         play_data_complete=True,
     ),
-    _entry(406, "corrino-genes", "Corrino Genes", 1),
-    _entry(407, "face-dancer", "Face Dancer", 2, graft=True),
-    _entry(408, "face-dancer-initiate", "Face Dancer Initiate", 1, graft=True),
+    # Corrino Genes (Emperor): acquire box 2 Solari; Emperor icon; Agent:
+    # "If grafted: Tleilaxu"; Reveal: 1 Persuasion [card face].
+    _entry(
+        406,
+        "corrino-genes",
+        "Corrino Genes",
+        1,
+        factions=(Faction.EMPEROR,),
+        agent_icons=(AgentIcon.EMPEROR,),
+        agent_effect=PersonalCardAgentEffect.ADVANCE_TLEILAXU_IF_GRAFTED,
+        acquisition_effect=PersonalCardAcquisitionEffect.GAIN_TWO_SOLARI,
+        reveal_persuasion=1,
+        play_data_complete=True,
+    ),
+    # Face Dancer (Emperor, Guild, Fremen): three Faction icons; GRAFT: draw
+    # a card; Reveal: 1 Persuasion [card face].
+    _entry(
+        407,
+        "face-dancer",
+        "Face Dancer",
+        2,
+        graft=True,
+        factions=(Faction.EMPEROR, Faction.SPACING_GUILD, Faction.FREMEN),
+        agent_icons=(AgentIcon.EMPEROR, AgentIcon.SPACING_GUILD, AgentIcon.FREMEN),
+        agent_effect=PersonalCardAgentEffect.DRAW_PERSONAL_CARD,
+        reveal_persuasion=1,
+        play_data_complete=True,
+    ),
+    # Face Dancer Initiate (Emperor, Guild, Fremen): three Faction icons;
+    # GRAFT with an empty box; Reveal: 1 Persuasion [card face].
+    _entry(
+        408,
+        "face-dancer-initiate",
+        "Face Dancer Initiate",
+        1,
+        graft=True,
+        factions=(Faction.EMPEROR, Faction.SPACING_GUILD, Faction.FREMEN),
+        agent_icons=(AgentIcon.EMPEROR, AgentIcon.SPACING_GUILD, AgentIcon.FREMEN),
+        reveal_persuasion=1,
+        play_data_complete=True,
+    ),
     # From the Tanks: Landsraad icon; Agent: 2 troops; Reveal: 1 Persuasion
     # [card face].
     _entry(
@@ -156,9 +191,49 @@ TLEILAXU_CARDS: Final[tuple[TleilaxuCardEntry, ...]] = (
         reveal_persuasion=1,
         play_data_complete=True,
     ),
-    _entry(418, "tleilaxu-infiltrator", "Tleilaxu Infiltrator", 2, graft=True),
-    _entry(419, "twisted-mentat", "Twisted Mentat", 4, graft=True),
-    _entry(420, "unnatural-reflexes", "Unnatural Reflexes", 3, graft=True),
+    # Tleilaxu Infiltrator: City; GRAFT: enemy Agents do not block, draw a
+    # card, and at two genetic markers an Intrigue card; Reveal: 1
+    # Persuasion [card face].
+    _entry(
+        418,
+        "tleilaxu-infiltrator",
+        "Tleilaxu Infiltrator",
+        2,
+        graft=True,
+        agent_icons=(AgentIcon.CITY,),
+        agent_effect=PersonalCardAgentEffect.DRAW_ONE_AND_INTRIGUE_IF_TWO_MARKERS,
+        reveal_persuasion=1,
+        play_data_complete=True,
+    ),
+    # Twisted Mentat: Landsraad, City; GRAFT: may recall the Agent sent this
+    # turn; Reveal: 1 Persuasion, 1 sword, a specimen [card face].
+    _entry(
+        419,
+        "twisted-mentat",
+        "Twisted Mentat",
+        4,
+        graft=True,
+        agent_icons=(AgentIcon.LANDSRAAD, AgentIcon.CITY),
+        agent_effect=PersonalCardAgentEffect.MAY_RECALL_AGENT_SENT_THIS_TURN,
+        reveal_persuasion=1,
+        reveal_strength=1,
+        reveal_effects=(PersonalCardRevealEffect(specimens=1),),
+        play_data_complete=True,
+    ),
+    # Unnatural Reflexes: Spice Trade; GRAFT: at one genetic marker draw two
+    # cards; Reveal: 1 Persuasion, 1 sword [card face].
+    _entry(
+        420,
+        "unnatural-reflexes",
+        "Unnatural Reflexes",
+        3,
+        graft=True,
+        agent_icons=(AgentIcon.SPICE_TRADE,),
+        agent_effect=PersonalCardAgentEffect.DRAW_TWO_IF_ONE_MARKER,
+        reveal_persuasion=1,
+        reveal_strength=1,
+        play_data_complete=True,
+    ),
     _entry(421, "usurp", "Usurp", 4, graft=True),
     # Promo card in the Tleilaxu layout (asset repository
     # ``cards/en/immortality/promo/``): joins the Tleilaxu deck only with
