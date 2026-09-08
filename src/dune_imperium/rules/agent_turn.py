@@ -21,6 +21,7 @@ from dune_imperium.content.uprising.imperium import ImperiumCardEntry
 from dune_imperium.content.uprising.personal_cards import (
     PersonalCardDefinition,
     card_is_graft,
+    card_is_usurp,
     personal_card_for_instance,
 )
 from dune_imperium.content.uprising.types import (
@@ -80,7 +81,11 @@ def legal_agent_actions(state: GameState, player: int) -> tuple[DomainAction, ..
         # Immortality Graft [Immortality p. 10]: a Graft card "can't be
         # played alone. You must play two cards"; a plain card may join a
         # Graft partner. The partner is chosen after the placement.
-        may_graft = immortality and graft_partner_exists(owner, card_instance_id)
+        # Usurp may graft with an Imperium Row card instead [card face].
+        may_graft = immortality and (
+            graft_partner_exists(owner, card_instance_id)
+            or (card_is_usurp(card) and bool(state.imperium_row))
+        )
         graft_variants: tuple[bool, ...] = (
             *(() if card_is_graft(card) else (False,)),
             *((True,) if may_graft else ()),
@@ -134,12 +139,24 @@ def _placements_for_card(
     graft: bool,
 ) -> tuple[DomainAction, ...]:
     actions: list[DomainAction] = []
-    icons = effective_agent_icons(
-        card,
-        owner,
-        grafted=graft,
-        opponents=tuple(seat for seat in state.players if seat.player_id != player),
-    )
+    opponents = tuple(seat for seat in state.players if seat.player_id != player)
+    icons = effective_agent_icons(card, owner, grafted=graft, opponents=opponents)
+    if graft and card_is_usurp(card):
+        # Usurp has no icons of its own; "you may use an Agent icon from
+        # either card" [Immortality p. 10], so any Row card's icons open
+        # the space and the partner choice keeps only the cards that fit.
+        icons = tuple(
+            dict.fromkeys(
+                icon
+                for row_id in state.imperium_row
+                for icon in effective_agent_icons(
+                    personal_card_for_instance(row_id),
+                    owner,
+                    grafted=True,
+                    opponents=opponents,
+                )
+            )
+        )
     # Urgent Shigawire: the boosted Bene Gesserit card "has all Agent
     # icons", so every space's icon is satisfied.
     any_icon = card_is_boosted(card, owner)

@@ -3319,6 +3319,50 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
 
     if action not in legal_reveal_actions(state, action.actor):
         raise ValueError("action is not a legal Reveal turn")
+    returned = _return_chairdog_cards(state, action.actor)
+    revealed_turn = _begin_reveal_turn(returned.state, action)
+    return RuleResult(
+        state=revealed_turn.state, events=(*returned.events, *revealed_turn.events)
+    )
+
+
+def _return_chairdog_cards(state: GameState, player: int) -> RuleResult:
+    """Chairdog: "At the start of your Reveal turn, return the other grafted
+    card from play to your hand" [card face]; the card is then revealed with
+    the hand. A card that already left play is simply forgotten."""
+
+    owner = state.players[player]
+    if not owner.chairdog_return_card_ids:
+        return RuleResult(state=state)
+    returned = tuple(
+        card_id
+        for card_id in owner.chairdog_return_card_ids
+        if card_id in owner.in_play
+    )
+    next_owner = replace(
+        owner,
+        in_play=tuple(card_id for card_id in owner.in_play if card_id not in returned),
+        hand=(*owner.hand, *returned),
+        hand_public=(*owner.hand_public, *returned),
+        chairdog_return_card_ids=(),
+    )
+    return RuleResult(
+        state=replace(state, players=replace_player(state.players, next_owner)),
+        events=tuple(
+            GameEvent(
+                event_id=(
+                    f"round:{state.round_number}:player:{player}:"
+                    f"chairdog_return:{card_id}"
+                ),
+                kind="card_returned_to_hand",
+                payload=(("card_id", card_id), ("player", player)),
+            )
+            for card_id in returned
+        ),
+    )
+
+
+def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
     owner = state.players[action.actor]
     revealed = owner.hand
     cards = tuple(personal_card_for_instance(card_id) for card_id in revealed)

@@ -51,3 +51,15 @@ def card_is_graft(card: PersonalCardDefinition) -> bool:
     """Return whether the card's Agent box is a Graft box [Immortality p. 10]."""
 
     return isinstance(card, ImperiumCardEntry) and card.graft
+
+
+def card_is_ghola(card: PersonalCardDefinition) -> bool:
+    """Ghola: "This card has the same Agent box as the other grafted card"."""
+
+    return isinstance(card, ImperiumCardEntry) and card.card.card_id == "ghola"
+
+
+def card_is_usurp(card: PersonalCardDefinition) -> bool:
+    """Usurp: may graft with an Imperium Row card instead of a hand card."""
+
+    return isinstance(card, ImperiumCardEntry) and card.card.card_id == "usurp"

@@ -287,6 +287,15 @@ class HeuristicAgent:
         if any(action.actor != observation.player for action in legal_actions):
             raise ValueError("every legal action must belong to the observing player")
         scored = tuple(score_action(action) for action in legal_actions)
+        if any(action.action_id.startswith("decline_") for action in legal_actions):
+            # A box that only offers its decline is closed by declining;
+            # switching to the other grafted card first (and back, when that
+            # box also only declines) would loop forever (Ghola copying
+            # Corrinth City, 2026-09-08 seed 11).
+            scored = tuple(
+                _DECLINE_SCORE - 0.5 if action.action_id == "switch_graft_card" else s
+                for action, s in zip(legal_actions, scored, strict=True)
+            )
         best = max(scored)
         top = tuple(
             action

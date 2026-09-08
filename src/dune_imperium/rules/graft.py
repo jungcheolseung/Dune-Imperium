@@ -19,6 +19,7 @@ from dataclasses import replace
 from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID
 from dune_imperium.content.uprising.personal_cards import (
     card_is_graft,
+    card_is_usurp,
     personal_card_for_instance,
 )
 from dune_imperium.core.actions import DomainAction
@@ -26,12 +27,19 @@ from dune_imperium.core.decisions import PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GameState
+from dune_imperium.rules.acquisition import take_imperium_row_card
 from dune_imperium.rules.agent_effects import agent_card_icons_at_placement
 from dune_imperium.rules.agent_turn import (
     agent_effect_is_available,
+    card_can_access_space,
+    card_is_boosted,
+    effective_agent_icons,
     is_tleilaxu_infiltrator,
 )
-from dune_imperium.rules.effects import current_agent_effect_context
+from dune_imperium.rules.effects import (
+    borrowed_agent_card,
+    current_agent_effect_context,
+)
 from dune_imperium.rules.frames import (
     FrameKind,
     context_str,
@@ -58,15 +66,26 @@ def legal_graft_partner_actions(
     placed = personal_card_for_instance(placed_id)
     occupied = context.get("occupied") is True
     owner = state.players[player]
+    space = BOARD_SPACES_BY_ID[context_str(context, "space_id", owner=_PARTNER_LABEL)]
+    opponents = tuple(seat for seat in state.players if seat.player_id != player)
+    # A placed card without icons of its own (Usurp) reached the space on
+    # the partner's icons, so only partners that fit the space qualify.
+    partner_must_fit = not effective_agent_icons(
+        placed, owner, grafted=True, opponents=opponents
+    )
+    candidates: tuple[str, ...] = (
+        *(card_id for card_id in owner.hand if card_id != placed_id),
+        # Usurp: "graft this card with a card from the Imperium Row".
+        *(state.imperium_row if card_is_usurp(placed) else ()),
+    )
     return tuple(
         DomainAction(
             action_id="choose_graft_partner",
             actor=player,
             arguments=(("card_id", card_id),),
         )
-        for card_id in owner.hand
-        if card_id != placed_id
-        and (
+        for card_id in candidates
+        if (
             card_is_graft(placed) or card_is_graft(personal_card_for_instance(card_id))
         )
         # An occupied space was entered on Tleilaxu Infiltrator's promise.
@@ -74,6 +93,20 @@ def legal_graft_partner_actions(
             not occupied
             or is_tleilaxu_infiltrator(placed_id)
             or is_tleilaxu_infiltrator(card_id)
+        )
+        and (
+            not partner_must_fit
+            or card_can_access_space(
+                effective_agent_icons(
+                    personal_card_for_instance(card_id),
+                    owner,
+                    grafted=True,
+                    opponents=opponents,
+                ),
+                space,
+                owner,
+                any_icon=card_is_boosted(personal_card_for_instance(card_id), owner),
+            )
         )
     )
 
@@ -88,16 +121,29 @@ def apply_graft_partner(state: GameState, action: DomainAction) -> RuleResult:
     frame = state.decision_stack[-1]
     context = dict(frame.context)
     space_id = context_str(context, "space_id", owner=_PARTNER_LABEL)
+    placed_id = context_str(context, "card_id", owner=_PARTNER_LABEL)
     owner = state.players[player]
+    from_row = partner_id in state.imperium_row
+    imperium_row, imperium_deck = (
+        take_imperium_row_card(state, partner_id)
+        if from_row
+        else (state.imperium_row, state.imperium_deck)
+    )
     next_owner = replace(
         owner,
         hand=tuple(card_id for card_id in owner.hand if card_id != partner_id),
         in_play=(*owner.in_play, partner_id),
+        # Usurp: the borrowed Row card is trashed when the turn closes.
+        usurped_row_card_id=partner_id if from_row else owner.usurped_row_card_id,
     )
-    partner = personal_card_for_instance(partner_id)
+    # Ghola borrows the other card's box, whichever side it is on.
+    partner = borrowed_agent_card(personal_card_for_instance(partner_id), placed_id)
+    placed = borrowed_agent_card(personal_card_for_instance(placed_id), partner_id)
     popped = replace(
         state,
         players=replace_player(state.players, next_owner),
+        imperium_row=imperium_row,
+        imperium_deck=imperium_deck,
         decision_stack=state.decision_stack[:-1],
     )
     effect_frame, effect_context = current_agent_effect_context(popped)
@@ -114,9 +160,8 @@ def apply_graft_partner(state: GameState, action: DomainAction) -> RuleResult:
     )
     if effect_context["pending_agent_effect"] is not True:
         # The placed card's Bond-gated box was judged before the partner
-        # was in play; the partner may provide the Bond now.
-        placed_id = context_str(context, "card_id", owner=_PARTNER_LABEL)
-        placed = personal_card_for_instance(placed_id)
+        # was in play; the partner may provide the Bond now, and Ghola's
+        # box is the partner's.
         if agent_effect_is_available(placed.agent_effect, next_owner, space, placed_id):
             effect_context["pending_agent_effect"] = True
             effect_context["pending_agent_icons"] = ",".join(
@@ -139,10 +184,72 @@ def apply_graft_partner(state: GameState, action: DomainAction) -> RuleResult:
                 kind="card_grafted",
                 payload=(
                     ("card_id", partner_id),
-                    ("placed_card_id", context_str(context, "card_id")),
+                    ("from_row", from_row),
+                    ("placed_card_id", placed_id),
                     ("player", player),
                     ("space_id", space_id),
                 ),
+            ),
+        ),
+    )
+
+
+def _agent_turn_is_open_for(state: GameState, player: int) -> bool:
+    return any(
+        frame.kind == FrameKind.AGENT_EFFECTS
+        and isinstance(frame.decision, PlayerDecision)
+        and frame.decision.owner == player
+        for frame in state.decision_stack
+    )
+
+
+def usurp_trash_is_queued(state: GameState) -> bool:
+    """Return whether a borrowed Row card's Agent turn has closed."""
+
+    return any(
+        seat.usurped_row_card_id and not _agent_turn_is_open_for(state, seat.player_id)
+        for seat in state.players
+    )
+
+
+def resolve_usurp_trash(state: GameState) -> RuleResult:
+    """Usurp: "trash that card at the end of the turn" [card face].
+
+    The card was never the owner's, so it leaves the game like a Row card
+    removed by Family Atomics (OQ-051's zone) wherever it ended up.
+    """
+
+    owner = next(
+        seat
+        for seat in state.players
+        if seat.usurped_row_card_id
+        and not _agent_turn_is_open_for(state, seat.player_id)
+    )
+    card_id = owner.usurped_row_card_id
+    next_owner = replace(
+        owner,
+        hand=tuple(card for card in owner.hand if card != card_id),
+        hand_public=tuple(card for card in owner.hand_public if card != card_id),
+        deck=tuple(card for card in owner.deck if card != card_id),
+        discard_pile=tuple(card for card in owner.discard_pile if card != card_id),
+        in_play=tuple(card for card in owner.in_play if card != card_id),
+        trashed=tuple(card for card in owner.trashed if card != card_id),
+        usurped_row_card_id="",
+    )
+    return RuleResult(
+        state=replace(
+            state,
+            players=replace_player(state.players, next_owner),
+            imperium_removed=(*state.imperium_removed, card_id),
+        ),
+        events=(
+            GameEvent(
+                event_id=(
+                    f"round:{state.round_number}:player:{owner.player_id}:"
+                    f"usurp_trash:{card_id}"
+                ),
+                kind="usurped_card_removed",
+                payload=(("card_id", card_id), ("player", owner.player_id)),
             ),
         ),
     )

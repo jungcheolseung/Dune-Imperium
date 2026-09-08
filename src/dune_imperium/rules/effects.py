@@ -7,6 +7,11 @@ from dune_imperium.content.uprising.contracts import (
     ContractConditionKind,
     contract_for_instance,
 )
+from dune_imperium.content.uprising.personal_cards import (
+    PersonalCardDefinition,
+    card_is_ghola,
+    personal_card_for_instance,
+)
 from dune_imperium.core.actions import ActionValue
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.events import GameEvent
@@ -293,6 +298,32 @@ def other_grafted_card_id(context: Mapping[str, ActionValue]) -> str:
 
     value = context.get("graft_card_id", "")
     return value if isinstance(value, str) else ""
+
+
+def borrowed_agent_card(
+    card: PersonalCardDefinition, partner_id: str
+) -> PersonalCardDefinition:
+    """Return ``card`` with Ghola's borrowed box: the other grafted card's.
+
+    "This card has the same Agent box as the other grafted card" [Ghola
+    card face]; every other card keeps its own definition.
+    """
+
+    if not partner_id or not card_is_ghola(card):
+        return card
+    partner = personal_card_for_instance(partner_id)
+    return replace(card, agent_effect=partner.agent_effect)
+
+
+def active_agent_card(context: Mapping[str, ActionValue]) -> PersonalCardDefinition:
+    """Return the definition whose Agent box the effect frame is resolving."""
+
+    card_id = context.get("card_id")
+    if not isinstance(card_id, str) or not card_id:
+        raise RuntimeError("Agent-turn effect frame has invalid card ID")
+    return borrowed_agent_card(
+        personal_card_for_instance(card_id), other_grafted_card_id(context)
+    )
 
 
 def rearm_board_icons(context: dict[str, ActionValue]) -> None:

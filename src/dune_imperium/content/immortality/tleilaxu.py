@@ -121,7 +121,22 @@ TLEILAXU_CARDS: Final[tuple[TleilaxuCardEntry, ...]] = (
         reveal_strength=1,
         play_data_complete=True,
     ),
-    _entry(404, "chairdog", "Chairdog", 2, graft=True),
+    # Chairdog: City; GRAFT: "At the start of your Reveal turn, return the
+    # other grafted card from play to your hand"; Reveal: 1 Persuasion
+    # [card face].
+    _entry(
+        404,
+        "chairdog",
+        "Chairdog",
+        2,
+        graft=True,
+        agent_icons=(AgentIcon.CITY,),
+        agent_effect=(
+            PersonalCardAgentEffect.RETURN_OTHER_GRAFTED_TO_HAND_AT_REVEAL_START
+        ),
+        reveal_persuasion=1,
+        play_data_complete=True,
+    ),
     # Contaminator (Fremen): Fremen icon; Agent: Tleilaxu; Reveal: 1
     # Persuasion [card face].
     _entry(
@@ -188,7 +203,20 @@ TLEILAXU_CARDS: Final[tuple[TleilaxuCardEntry, ...]] = (
         reveal_persuasion=1,
         play_data_complete=True,
     ),
-    _entry(410, "ghola", "Ghola", 3, graft=True),
+    # Ghola: City; GRAFT: "This card has the same Agent box as the other
+    # grafted card" (``rules.effects.active_agent_card`` borrows the
+    # partner's box); Reveal: 1 Persuasion, 1 sword [card face].
+    _entry(
+        410,
+        "ghola",
+        "Ghola",
+        3,
+        graft=True,
+        agent_icons=(AgentIcon.CITY,),
+        reveal_persuasion=1,
+        reveal_strength=1,
+        play_data_complete=True,
+    ),
     # Guild Impersonator (Spacing Guild): Guild icon; GRAFT: "If you gained
     # spice this turn: Spacing Guild Influence"; Reveal: 1 Persuasion [card
     # face].
@@ -320,7 +348,21 @@ TLEILAXU_CARDS: Final[tuple[TleilaxuCardEntry, ...]] = (
         reveal_strength=1,
         play_data_complete=True,
     ),
-    _entry(421, "usurp", "Usurp", 4, graft=True),
+    # Usurp: no Agent icons; GRAFT: "You may graft this card with a card
+    # from the Imperium Row instead of one from your hand. If you do, trash
+    # that card at the end of the turn" (``rules.graft``); Reveal: 1
+    # Persuasion, 1 sword, a specimen [card face].
+    _entry(
+        421,
+        "usurp",
+        "Usurp",
+        4,
+        graft=True,
+        reveal_persuasion=1,
+        reveal_strength=1,
+        reveal_effects=(PersonalCardRevealEffect(specimens=1),),
+        play_data_complete=True,
+    ),
     # Promo card in the Tleilaxu layout (asset repository
     # ``cards/en/immortality/promo/``): joins the Tleilaxu deck only with
     # ``promo_cards`` as well.

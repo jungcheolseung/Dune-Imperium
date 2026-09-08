@@ -6,6 +6,8 @@ rules [Immortality pp. 10-11] and the FAQ's Beguiling Pheromones ruling
 [FAQ p. 1] (a trashed partner's un-activated box expires, OQ-022).
 """
 
+from dataclasses import replace
+
 from dune_imperium import RulesetConfig
 from dune_imperium.adapters import ActionCodec
 from dune_imperium.content.immortality.board import RESEARCH_START_ID
@@ -23,6 +25,7 @@ from dune_imperium.core import (
     PlayerState,
     Resources,
 )
+from dune_imperium.core.observation import observe_state
 from dune_imperium.rules.agent_effects import (
     apply_agent_card_payment,
     legal_agent_card_payment_actions,
@@ -38,6 +41,7 @@ from dune_imperium.rules.graft import (
     legal_graft_partner_actions,
     legal_graft_switch_actions,
 )
+from dune_imperium.rules.reveal_turn import begin_reveal_turn
 
 IMMORTALITY = RulesetConfig(immortality=True, promo_cards=True)
 STARTERS = starting_deck_instance_ids(0, immortality=True)
@@ -204,10 +208,14 @@ def test_guild_impersonator_needs_spice_gained_this_turn() -> None:
     assert early.events[0].kind == "agent_card_effect_unavailable"
     assert early.state.players[0].influence.spacing_guild == 0
 
-    spiced = UprisingRulesEngine().apply(
-        switched,
-        DomainAction("harvest_maker_spice", 0, (("space_id", "hagga_basin"),)),
-    ).state
+    spiced = (
+        UprisingRulesEngine()
+        .apply(
+            switched,
+            DomainAction("harvest_maker_spice", 0, (("space_id", "hagga_basin"),)),
+        )
+        .state
+    )
     late = resolve_agent_card_effect(spiced)
     assert late.events[0].kind == "agent_card_effect_resolved"
     assert late.state.players[0].influence.spacing_guild == 1
@@ -373,3 +381,149 @@ def test_the_codec_holds_the_tleilaxu_choices() -> None:
     ):
         assert codec.decode(codec.encode(action), 0) == action
         assert action.action_id not in base
+
+
+def _engine_finish_turn(state: GameState) -> GameState:
+    """Resolve the owner's pending boxes through the engine until the turn closes."""
+
+    engine = UprisingRulesEngine()
+    for _ in range(20):
+        frame = state.decision_stack[-1]
+        if frame.kind == FrameKind.TURN:
+            return state
+        actions = engine.legal_actions(state, 0)
+        preferred = [
+            a
+            for a in actions
+            if a.action_id
+            in (
+                "resolve_agent_card_effect",
+                "resolve_board_effect",
+                "finish_agent_turn",
+            )
+        ] or [a for a in actions if not a.action_id.startswith("deploy")]
+        state = engine.apply(state, preferred[0]).state
+    raise AssertionError("the Agent turn did not close")
+
+
+def test_ghola_borrows_the_other_grafted_box_on_either_side() -> None:
+    ghola = _tleilaxu("ghola")
+    tanks = _tleilaxu("from_the_tanks")
+    # Ghola placed first: its box is From the Tanks' two troops, then the
+    # switch resolves From the Tanks' own box.
+    grafted = _graft(
+        _state(_owner((ghola, tanks), troops_supply=9)), ghola, "arrakeen", tanks
+    )
+    _, context = current_agent_effect_context(grafted)
+    assert context["pending_agent_effect"] is True
+    assert context["graft_pending_effect"] is True
+    first = resolve_agent_card_effect(grafted)
+    assert first.state.players[0].troops_garrison == 5
+    switched = _switch(first.state)
+    second = resolve_agent_card_effect(switched)
+    assert second.state.players[0].troops_garrison == 7
+
+    # Ghola as the partner of Face Dancer (placed on its Emperor icon): its
+    # box draws a card too.
+    grafted = _graft(
+        _state(_owner((FACE_DANCER, ghola))), FACE_DANCER, "dutiful_service", ghola
+    )
+    _, context = current_agent_effect_context(grafted)
+    assert context["graft_pending_effect"] is True
+    drawn = resolve_agent_card_effect(_switch(resolve_agent_card_effect(grafted).state))
+    assert len(drawn.state.players[0].hand) == 2
+
+    # Without a partner box (Face Dancer Initiate's empty box) Ghola has none.
+    initiate = _tleilaxu("face_dancer_initiate")
+    grafted = _graft(_state(_owner((ghola, initiate))), ghola, "arrakeen", initiate)
+    _, context = current_agent_effect_context(grafted)
+    assert context["pending_agent_effect"] is False
+
+
+def test_chairdog_returns_the_other_grafted_card_when_the_reveal_starts() -> None:
+    chairdog = _tleilaxu("chairdog")
+    grafted = _graft(_state(_owner((chairdog, DAGGER))), chairdog, "arrakeen", DAGGER)
+    resolved = resolve_agent_card_effect(grafted)
+    owner = resolved.state.players[0]
+    assert owner.chairdog_return_card_ids == (DAGGER,)
+    assert DAGGER in owner.in_play
+    closed = _engine_finish_turn(resolved.state)
+    # The next seat's turn opened; give seat 0 its Reveal turn directly.
+    state = replace(
+        closed,
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0b",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    revealed = begin_reveal_turn(state, DomainAction("reveal_turn", 0))
+    owner = revealed.state.players[0]
+    # The card came back to the hand and was revealed with it.
+    assert revealed.events[0].kind == "card_returned_to_hand"
+    context = dict(revealed.state.decision_stack[-1].context)
+    assert DAGGER in owner.in_play and owner.chairdog_return_card_ids == ()
+    assert DAGGER in {
+        value for key, value in context.items() if key.startswith("revealed_card_")
+    }
+    # The public seat view reports the pending return while it is scheduled.
+    assert observe_state(resolved.state, 1).players[0].chairdog_return_card_ids == (
+        DAGGER,
+    )
+
+
+def test_usurp_grafts_a_row_card_that_leaves_the_game_when_the_turn_closes() -> None:
+    usurp = _tleilaxu("usurp")
+    occupation = "imperium:occupation:0"
+    imperium = imperium_deck_instance_ids(False)
+    state = _state(
+        _owner((usurp,), troops_supply=9),
+        imperium_row=(occupation, *imperium[1:5]),
+        imperium_deck=imperium[5:20],
+    )
+    # Usurp alone has no icons: only the graft variant, on the Row's icons.
+    placements = {
+        (dict(a.arguments)["space_id"], dict(a.arguments).get("graft"))
+        for a in legal_agent_actions(state, 0)
+        if dict(a.arguments)["card_id"] == usurp
+    }
+    assert ("arrakeen", True) in placements and ("arrakeen", None) not in placements
+    placed = _place(state, usurp, "arrakeen", graft=True)
+    partners = [
+        dict(a.arguments)["card_id"] for a in legal_graft_partner_actions(placed, 0)
+    ]
+    # Only Row cards whose icons reach Arrakeen (Occupation's City icon).
+    assert occupation in partners
+    assert all(card in state.imperium_row for card in partners)
+    grafted = apply_graft_partner(
+        placed, DomainAction("choose_graft_partner", 0, (("card_id", occupation),))
+    )
+    owner = grafted.state.players[0]
+    assert occupation in owner.in_play and owner.usurped_row_card_id == occupation
+    assert occupation not in grafted.state.imperium_row
+    assert len(grafted.state.imperium_row) == 5  # refilled at once
+    assert dict(grafted.events[0].payload)["from_row"] is True
+    _, context = current_agent_effect_context(grafted.state)
+    assert context["graft_pending_effect"] is True
+
+    # Occupation's box (draw and the Combat icon) resolves like any partner.
+    drawn = resolve_agent_card_effect(_switch(grafted.state))
+    assert len(drawn.state.players[0].hand) == 1
+    closed = _engine_finish_turn(drawn.state)
+    owner = closed.players[0]
+    assert occupation not in owner.in_play and occupation in closed.imperium_removed
+    assert owner.usurped_row_card_id == ""
+    assert observe_state(closed, 1).players[0].usurped_row_card_id == ""
+
+
+def test_usurp_may_still_partner_a_hand_card_placed_first() -> None:
+    usurp = _tleilaxu("usurp")
+    grafted = _graft(
+        _state(_owner((FACE_DANCER, usurp))), FACE_DANCER, "dutiful_service", usurp
+    )
+    owner = grafted.players[0]
+    assert usurp in owner.in_play and owner.usurped_row_card_id == ""
+    _, context = current_agent_effect_context(grafted)
+    assert context["graft_pending_effect"] is False  # Usurp has no box

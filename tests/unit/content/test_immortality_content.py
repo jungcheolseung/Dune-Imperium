@@ -135,11 +135,13 @@ def test_tleilaxu_catalog_has_the_official_deck_and_reclaimed_forces() -> None:
     transcribed = {entry.card.card_id for entry in tleilaxu_cards_for(promo_cards=True)}
     assert transcribed == {
         "beguiling_pheromones",
+        "chairdog",
         "contaminator",
         "corrino_genes",
         "face_dancer",
         "face_dancer_initiate",
         "from_the_tanks",
+        "ghola",
         "guild_impersonator",
         "industrial_espionage",
         "piter_genius_advisor",
@@ -150,6 +152,7 @@ def test_tleilaxu_catalog_has_the_official_deck_and_reclaimed_forces() -> None:
         "tleilaxu_infiltrator",
         "twisted_mentat",
         "unnatural_reflexes",
+        "usurp",
     }
     assert all(
         instance_id.startswith("tleilaxu:")

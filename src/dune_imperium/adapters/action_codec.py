@@ -40,7 +40,7 @@ from dune_imperium.content.uprising.leaders import (
     leaders_for_choam,
 )
 from dune_imperium.content.uprising.objectives import objectives_for_players
-from dune_imperium.content.uprising.personal_cards import card_is_graft
+from dune_imperium.content.uprising.personal_cards import card_is_graft, card_is_usurp
 from dune_imperium.content.uprising.reserve import (
     RESERVE_STACKS,
     ReserveStackDefinition,
@@ -1244,6 +1244,8 @@ def _placement_templates(
         space.agent_icon not in card.agent_icons
         and space.agent_icon not in granted_icons
         and AgentIcon.SPY not in card.agent_icons
+        # Usurp reaches any space on a Row card's icons [card face].
+        and not (grafted and card_is_usurp(card))
     ):
         return ()
     cost_options: tuple[int | None, ...] = (

@@ -47,6 +47,10 @@ def begin_round(state: GameState) -> RuleResult:
             bene_gesserit_boost_pending=False,
             # Tleilaxu Puppet's Reveal Persuasion lasts "this round" only.
             reveal_persuasion_round_bonus=0,
+            # Chairdog's return and Usurp's borrowed card never outlive the
+            # round (both are consumed earlier in ordinary play).
+            chairdog_return_card_ids=(),
+            usurped_row_card_id="",
             # Flipped Tech tiles return face up at Round Start
             # [Bloodlines pp. 7, 12].
             tech_flipped=(),

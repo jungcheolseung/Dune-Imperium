@@ -40,6 +40,7 @@ from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.combat_deployment import reconcile_deployment_after_retreat
 from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effects import (
+    active_agent_card,
     advance_after_effect,
     current_agent_effect_context,
     rearm_board_icons,
@@ -298,7 +299,7 @@ def _feyd_signet_context(
         return None
     card_id = context.get("card_id")
     if not isinstance(card_id, str) or (
-        personal_card_for_instance(card_id).agent_effect
+        active_agent_card(context).agent_effect
         is not PersonalCardAgentEffect.LEADER_SIGNET
     ):
         return None
@@ -586,7 +587,7 @@ def _leader_signet_context(
         return None
     card_id = context.get("card_id")
     if not isinstance(card_id, str) or (
-        personal_card_for_instance(card_id).agent_effect
+        active_agent_card(context).agent_effect
         is not PersonalCardAgentEffect.LEADER_SIGNET
     ):
         return None

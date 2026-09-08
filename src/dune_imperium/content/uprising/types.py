@@ -294,6 +294,11 @@ class PersonalCardAgentEffect(StrEnum):
     MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH = (
         "may_lose_troop_to_draw_two_and_research"
     )
+    # Chairdog (Graft): "At the start of your Reveal turn, return the other
+    # grafted card from play to your hand".
+    RETURN_OTHER_GRAFTED_TO_HAND_AT_REVEAL_START = (
+        "return_other_grafted_to_hand_at_reveal_start"
+    )
 
 
 class PersonalCardTrashEffect(StrEnum):

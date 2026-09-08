@@ -24,7 +24,7 @@ from dune_imperium.simulation import run_random_game
 
 
 def test_layout_is_versioned_and_contiguous() -> None:
-    assert OBSERVATION_VERSION == 14
+    assert OBSERVATION_VERSION == 15
     # 66 Uprising personal-card identities plus 26 Bloodlines Imperium
     # identities, the Bloodlines promo, 25 Immortality Imperium identities,
     # Experimentation and the 19 Tleilaxu deck cards (promo included); 39
@@ -47,7 +47,9 @@ def test_layout_is_versioned_and_contiguous() -> None:
     # Intrigue players segment (4,129 -> 4,137).
     # v14: Imperium Ceremony's peek at the Intrigue deck's top two cards,
     # one count per Intrigue identity (4,137 -> 4,227).
-    assert OBSERVATION_SIZE == 3038 + 24 + 4 * 21 + 1 + 19 + 563 + 400 + 8 + 90
+    # v15: Chairdog's pending returns and Usurp's borrowed Row card per seat
+    # (4,227 -> 4,235).
+    assert OBSERVATION_SIZE == 3038 + 24 + 4 * 21 + 1 + 19 + 563 + 400 + 8 + 90 + 8
 
     offset = 0
     for segment in OBSERVATION_SEGMENTS:

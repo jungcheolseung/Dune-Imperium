@@ -85,6 +85,10 @@ class PublicPlayerView:
     specimens: int
     family_atomics: bool
     reveal_persuasion_round_bonus: int
+    # Chairdog's pending returns and Usurp's borrowed Row card (public,
+    # both cards are face up in play).
+    chairdog_return_card_ids: tuple[str, ...]
+    usurped_row_card_id: str
     in_play: tuple[str, ...]
     # Every card reaches a discard pile face up (acquired cards [Main p. 13],
     # played and revealed cards after Clean Up [Main pp. 9, 12, 20], cards
@@ -478,6 +482,8 @@ def _public_player_view(player: PlayerState) -> PublicPlayerView:
         specimens=player.specimens,
         family_atomics=player.family_atomics,
         reveal_persuasion_round_bonus=player.reveal_persuasion_round_bonus,
+        chairdog_return_card_ids=player.chairdog_return_card_ids,
+        usurped_row_card_id=player.usurped_row_card_id,
         in_play=player.in_play,
         discard_pile=player.discard_pile,
         trashed=player.trashed,

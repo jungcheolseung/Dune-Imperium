@@ -129,6 +129,8 @@ from dune_imperium.rules.graft import (
     apply_graft_partner,
     apply_graft_switch,
     legal_graft_partner_actions,
+    resolve_usurp_trash,
+    usurp_trash_is_queued,
 )
 from dune_imperium.rules.immortality import (
     apply_family_atomics,
@@ -798,6 +800,8 @@ def _advance_automatic(result: RuleResult) -> RuleResult:
     while True:
         if intrigue_draw_is_queued(state):
             automatic = resolve_pending_intrigue_draw(state)
+        elif usurp_trash_is_queued(state):
+            automatic = resolve_usurp_trash(state)
         elif exhausted_contract_choice_is_pending(state):
             automatic = resolve_exhausted_contract_choice(state)
         elif skill_choice_is_queued(state):

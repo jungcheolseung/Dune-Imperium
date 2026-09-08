@@ -169,6 +169,12 @@ class PlayerState:
     # Tleilaxu Puppet: Persuasion granted for this round's Reveal turn only
     # (cleared at Round Start).
     reveal_persuasion_round_bonus: int = 0
+    # Chairdog: grafted cards that return from play to the hand when the
+    # owner's Reveal turn starts [card face].
+    chairdog_return_card_ids: tuple[str, ...] = ()
+    # Usurp: the Imperium Row card grafted without acquiring it; it leaves
+    # the game when the Agent turn closes [card face].
+    usurped_row_card_id: str = ""
     deck: tuple[str, ...] = ()
     hand: tuple[str, ...] = ()
     # Hand cards whose identity every seat already knows because they

@@ -48,6 +48,7 @@ from dune_imperium.rules.contracts import (
     complete_contract_by_effect,
 )
 from dune_imperium.rules.effects import (
+    active_agent_card,
     advance_after_effect,
     arm_agent_icons,
     current_agent_effect_context,
@@ -220,7 +221,7 @@ def legal_agent_card_discard_actions(
         # Arrakis Observer's discard is paid; the Spy placement remains.
         return ()
     _, source_card_id, _ = _effect_subject(context)
-    source_card = personal_card_for_instance(source_card_id)
+    source_card = active_agent_card(context)
     effect = source_card.agent_effect
     if effect not in (
         PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY,
@@ -439,7 +440,7 @@ def legal_agent_card_long_live_actions(
     if context.get("pending_agent_effect") is not True:
         return ()
     _, source_card_id, _ = _effect_subject(context)
-    source_card = personal_card_for_instance(source_card_id)
+    source_card = active_agent_card(context)
     if source_card.agent_effect is not PersonalCardAgentEffect.LOOK_AT_TOP_THREE:
         return ()
     if context.get(_LONG_LIVE_SELECTION_STARTED) is not True:
@@ -738,7 +739,7 @@ def legal_agent_card_influence_actions(
     if context.get("pending_agent_effect") is not True:
         return ()
     _, source_card_id, _ = _effect_subject(context)
-    source_card = personal_card_for_instance(source_card_id)
+    source_card = active_agent_card(context)
     effect = source_card.agent_effect
     if effect is PersonalCardAgentEffect.DRAW_ONE_OR_BENE_GESSERIT_INFLUENCE_IF_BOND:
         # Southern Faith: the draw is always there; the Influence needs
@@ -867,7 +868,7 @@ def apply_agent_card_influence(
     if not isinstance(faction_value, str):
         raise RuntimeError("Agent-card Influence choice has invalid Faction")
     faction = Faction(faction_value)
-    source_card = personal_card_for_instance(source_card_id)
+    source_card = active_agent_card(context)
     source = (
         f"round:{state.round_number}:player:{action.actor}:"
         f"agent_card:{source_card_id}"
@@ -960,7 +961,7 @@ def legal_agent_card_contract_completion_actions(
     if context.get("pending_agent_effect") is not True:
         return ()
     _, source_card_id, _ = _effect_subject(context)
-    source_card = personal_card_for_instance(source_card_id)
+    source_card = active_agent_card(context)
     if source_card.agent_effect is not PersonalCardAgentEffect.COMPLETE_ONE_CONTRACT:
         return ()
     return tuple(
@@ -1032,7 +1033,7 @@ def legal_agent_card_spy_actions(
     if context.get("pending_agent_effect") is not True:
         return ()
     _, source_card_id, _ = _effect_subject(context)
-    source_card = personal_card_for_instance(source_card_id)
+    source_card = active_agent_card(context)
     deep_cover = (
         source_card.agent_effect
         is PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY
@@ -1183,7 +1184,7 @@ def legal_agent_card_recall_actions(
         return ()
     _, source_card_id, turn_space_id = _effect_subject(context)
     if (
-        personal_card_for_instance(source_card_id).agent_effect
+        active_agent_card(context).agent_effect
         is PersonalCardAgentEffect.MAY_RECALL_AGENT_SENT_THIS_TURN
     ):
         # Twisted Mentat: "You may recall the Agent you sent this turn."
@@ -1299,7 +1300,7 @@ def legal_agent_card_opponent_retreat_actions(
         return ()
     _, source_card_id, _ = _effect_subject(context)
     if (
-        personal_card_for_instance(source_card_id).agent_effect
+        active_agent_card(context).agent_effect
         is not PersonalCardAgentEffect.FORCE_OPPONENT_TROOP_RETREAT
     ):
         return ()
@@ -1382,7 +1383,7 @@ def legal_agent_card_trash_actions(
         # The arrow cost is paid; only the queued reward icons remain.
         return ()
     _, source_card_id, _ = _effect_subject(context)
-    source_card = personal_card_for_instance(source_card_id)
+    source_card = active_agent_card(context)
     if source_card.agent_effect not in (
         PersonalCardAgentEffect.TRASH_PERSONAL_CARD,
         PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE,
@@ -1492,7 +1493,7 @@ def apply_agent_card_trash(state: GameState, action: DomainAction) -> RuleResult
         raise ValueError("action is not a legal Agent-card trash choice")
     _, context = current_agent_effect_context(state)
     _, source_card_id, _ = _effect_subject(context)
-    source_card = personal_card_for_instance(source_card_id)
+    source_card = active_agent_card(context)
     context["pending_agent_effect"] = False
     source = f"round:{state.round_number}:player:{action.actor}:agent_card"
     if action.action_id == "decline_agent_card_trash":
@@ -1674,7 +1675,7 @@ def legal_agent_card_intrigue_payment_actions(
     if context.get("pending_agent_effect") is not True:
         return ()
     _, source_card_id, _ = _effect_subject(context)
-    effect = personal_card_for_instance(source_card_id).agent_effect
+    effect = active_agent_card(context).agent_effect
     if (
         effect
         is not (
@@ -1810,7 +1811,7 @@ def legal_agent_card_payment_actions(
     if context.get("pending_agent_effect") is not True:
         return ()
     _, source_card_id, _ = _effect_subject(context)
-    source_card = personal_card_for_instance(source_card_id)
+    source_card = active_agent_card(context)
     if (
         source_card.agent_effect
         is PersonalCardAgentEffect
@@ -1981,7 +1982,7 @@ def legal_corrinth_city_payment_actions(
     if context.get("pending_agent_effect") is not True:
         return ()
     _, source_card_id, _ = _effect_subject(context)
-    source_card = personal_card_for_instance(source_card_id)
+    source_card = active_agent_card(context)
     if (
         source_card.agent_effect
         is not PersonalCardAgentEffect.MAY_DISCARD_TWO_AND_PAY_FIVE_SOLARI_FOR_VP
@@ -2668,7 +2669,7 @@ def resolve_agent_card_icon(state: GameState, action: DomainAction) -> RuleResul
         raise ValueError("action is not a legal Agent-card icon resolution")
     _, context = current_agent_effect_context(state)
     player, card_instance_id, _ = _effect_subject(context)
-    card = personal_card_for_instance(card_instance_id)
+    card = active_agent_card(context)
     effect = card.agent_effect
     key = str(dict(action.arguments)["effect"])
     owner = state.players[player]
@@ -2857,7 +2858,7 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
     if pending_agent_icons(context):
         raise ValueError("this Agent box resolves icon by icon")
     player, card_instance_id, _ = _effect_subject(context)
-    card = personal_card_for_instance(card_instance_id)
+    card = active_agent_card(context)
     effect = card.agent_effect
 
     owner = state.players[player]
@@ -3365,6 +3366,21 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         # grafted partner, no genetic marker, no Faction space.
         next_owner = owner
         event_kind = "agent_card_effect_unavailable"
+    elif effect is (
+        PersonalCardAgentEffect.RETURN_OTHER_GRAFTED_TO_HAND_AT_REVEAL_START
+    ):
+        # Chairdog: the return is scheduled for the owner's Reveal turn
+        # (``begin_reveal_turn``); without a partner in play nothing is.
+        partner = other_grafted_card_id(context)
+        if partner and partner in owner.in_play:
+            next_owner = replace(
+                owner,
+                chairdog_return_card_ids=(*owner.chairdog_return_card_ids, partner),
+            )
+            event_kind = "agent_card_effect_resolved"
+        else:
+            next_owner = owner
+            event_kind = "agent_card_effect_unavailable"
     elif effect is _DRAW_RESEARCH_SPECIMEN:
         # Industrial Espionage: the draw always; grafted, a specimen and a
         # research step whose direction choice opens above the turn.

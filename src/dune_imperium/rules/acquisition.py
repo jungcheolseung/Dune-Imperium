@@ -29,6 +29,7 @@ from dune_imperium.rules.contracts import (
     complete_acquire_contracts,
 )
 from dune_imperium.rules.effects import (
+    active_agent_card,
     advance_after_effect,
     current_agent_effect_context,
     recruit_shortfall_events,
@@ -186,10 +187,7 @@ def legal_agent_card_acquisitions(
         or context.get("pending_agent_effect") is not True
     ):
         return ()
-    source_id = context.get("card_id")
-    if not isinstance(source_id, str):
-        raise RuntimeError("Agent acquisition frame has invalid card ID")
-    source = personal_card_for_instance(source_id)
+    source = active_agent_card(context)
     if (
         source.agent_effect
         is PersonalCardAgentEffect.MAY_ACQUIRE_CARD_UP_TO_SIX_IF_ONE_MARKER
