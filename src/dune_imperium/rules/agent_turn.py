@@ -141,20 +141,34 @@ def _placements_for_card(
     actions: list[DomainAction] = []
     opponents = tuple(seat for seat in state.players if seat.player_id != player)
     icons = effective_agent_icons(card, owner, grafted=graft, opponents=opponents)
-    if graft and card_is_usurp(card):
+    usurp = graft and card_is_usurp(card)
+    usurp_partners: tuple[tuple[str, tuple[AgentIcon, ...], bool], ...] = ()
+    if usurp:
         # Usurp has no icons of its own; "you may use an Agent icon from
-        # either card" [Immortality p. 10], so any Row card's icons open
-        # the space and the partner choice keeps only the cards that fit.
-        icons = tuple(
-            dict.fromkeys(
-                icon
-                for row_id in state.imperium_row
-                for icon in effective_agent_icons(
-                    personal_card_for_instance(row_id),
+        # either card" [Immortality p. 10], so a partner's icons (a Row
+        # card's, or a hand card's) open the space and the partner choice
+        # keeps only the cards that fit.
+        usurp_partners = tuple(
+            (
+                partner_id,
+                effective_agent_icons(
+                    personal_card_for_instance(partner_id),
                     owner,
                     grafted=True,
                     opponents=opponents,
-                )
+                ),
+                card_is_boosted(personal_card_for_instance(partner_id), owner),
+            )
+            for partner_id in (
+                *state.imperium_row,
+                *(other for other in owner.hand if other != card_instance_id),
+            )
+        )
+        icons = tuple(
+            dict.fromkeys(
+                icon
+                for _, partner_icons, _ in usurp_partners
+                for icon in partner_icons
             )
         )
     # Urgent Shigawire: the boosted Bene Gesserit card "has all Agent
@@ -192,7 +206,24 @@ def _placements_for_card(
             if candidate.player_id != player
             and space.space_id in candidate.agent_locations
         )
-        if not occupying_opponents or (graft and _infiltrator_may_join(owner)):
+        infiltrator_partner_fits = True
+        if usurp:
+            # The partner choice must have something to offer: a partner
+            # whose icons reach the space and, on an occupied space entered
+            # on Tleilaxu Infiltrator's promise, the Infiltrator itself.
+            fitting = tuple(
+                partner_id
+                for partner_id, partner_icons, boosted in usurp_partners
+                if card_can_access_space(partner_icons, space, owner, any_icon=boosted)
+            )
+            if not fitting:
+                continue
+            infiltrator_partner_fits = any(
+                is_tleilaxu_infiltrator(partner_id) for partner_id in fitting
+            )
+        if not occupying_opponents or (
+            graft and _infiltrator_may_join(owner) and infiltrator_partner_fits
+        ):
             actions.extend(
                 _actions_for_affordable_costs(
                     player,

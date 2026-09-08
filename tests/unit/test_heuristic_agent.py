@@ -100,9 +100,7 @@ def test_prefers_the_more_expensive_reserve_stack() -> None:
 
 
 def test_prefers_full_troop_deployment() -> None:
-    actions = tuple(
-        _action("deploy_troops", ("count", count)) for count in range(4)
-    )
+    actions = tuple(_action("deploy_troops", ("count", count)) for count in range(4))
 
     chosen = HeuristicAgent(seed=6).choose_action(_view(), actions)
     assert chosen.arguments == (("count", 3),)
@@ -177,3 +175,18 @@ def test_tech_tiles_are_bought_and_the_scoring_ones_first() -> None:
         ),
     )
     assert dict(chosen.arguments)["tech_id"] == "sardaukar_high_command"
+
+
+def test_switch_graft_card_never_outranks_a_resolvable_box() -> None:
+    """Two grafted boxes whose offers rank below the switch would otherwise
+    loop forever (Ghola copying CHOAM Demands, 2026-09-08 sweep seed 32)."""
+
+    agent = HeuristicAgent(seed=1)
+    complete = _action("complete_contract_by_card", ("instance_id", "contract:acquire"))
+    decline = _action("decline_agent_card_payment")
+    switch = _action("switch_graft_card")
+    assert agent.choose_action(_view(), (switch, complete)) == complete
+    assert agent.choose_action(_view(), (switch, decline)) == decline
+    # With nothing of the box left to resolve, the switch is the way on.
+    withdraw = _action("withdraw_troops", ("count", 1))
+    assert agent.choose_action(_view(), (withdraw, switch)) == switch

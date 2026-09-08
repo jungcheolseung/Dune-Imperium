@@ -28,6 +28,31 @@ def draw_or_request_personal_cards(
         raise ValueError("personal card draw source must not be empty")
     owner = state.players[player]
     if len(owner.deck) < count and owner.discard_pile:
+        # A second short draw before the pending shuffle resolves (two
+        # Research icons past the second marker, 2026-09-08 sweep seed 66)
+        # joins that shuffle instead of shuffling the same discard twice.
+        for index in range(len(state.decision_stack) - 1, -1, -1):
+            pending = state.decision_stack[index]
+            if pending.kind != FrameKind.PERSONAL_DRAW_RESHUFFLE:
+                continue
+            pending_context = dict(pending.context)
+            if pending_context.get("player") != player:
+                continue
+            pending_count = pending_context.get("count")
+            if isinstance(pending_count, bool) or not isinstance(pending_count, int):
+                raise RuntimeError("personal draw reshuffle has invalid count")
+            pending_context["count"] = pending_count + count
+            merged = replace(pending, context=tuple(sorted(pending_context.items())))
+            return RuleResult(
+                state=replace(
+                    state,
+                    decision_stack=(
+                        *state.decision_stack[:index],
+                        merged,
+                        *state.decision_stack[index + 1 :],
+                    ),
+                )
+            )
         decision_id = f"{source}:discard_shuffle"
         frame = DecisionFrame(
             kind=FrameKind.PERSONAL_DRAW_RESHUFFLE,

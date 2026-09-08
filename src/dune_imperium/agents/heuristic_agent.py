@@ -30,6 +30,7 @@ from dune_imperium.core.observation import PlayerView
 _ACTION_SCORES: Final[dict[str, float]] = {
     # Direct victory points and Objective progress.
     "complete_contract": 8.0,
+    "complete_contract_by_card": 8.0,
     "trash_contract_reveal_for_vp": 8.0,
     "flip_battle_card": 7.0,
     "match_endgame_wild_icon": 7.0,
@@ -173,6 +174,20 @@ _COUNT_DEPLOYMENTS: Final = frozenset(
     {"deploy_troops", "deploy_intrigue_troops", "deploy_commanders"}
 )
 
+# Actions that leave a grafted card's box untouched; when only these
+# accompany the switch, switching is the way forward.
+_SWITCH_NEUTRAL_ACTIONS: Final = frozenset(
+    {
+        "switch_graft_card",
+        "withdraw_troops",
+        "withdraw_commanders",
+        "deploy_troops",
+        "deploy_commanders",
+        "return_specimen",
+        "use_family_atomics",
+        "finish_agent_turn",
+    }
+)
 _ACQUISITION_BASE: Final = 3.0
 _SPY_PLACEMENT_SCORE: Final = 3.0
 _MINOR_ACTION_SCORE: Final = 1.0
@@ -287,13 +302,16 @@ class HeuristicAgent:
         if any(action.actor != observation.player for action in legal_actions):
             raise ValueError("every legal action must belong to the observing player")
         scored = tuple(score_action(action) for action in legal_actions)
-        if any(action.action_id.startswith("decline_") for action in legal_actions):
-            # A box that only offers its decline is closed by declining;
-            # switching to the other grafted card first (and back, when that
-            # box also only declines) would loop forever (Ghola copying
-            # Corrinth City, 2026-09-08 seed 11).
+        if any(
+            action.action_id not in _SWITCH_NEUTRAL_ACTIONS for action in legal_actions
+        ):
+            # Switching to the other grafted card only reorders the boxes;
+            # whenever the active box (or a decline of it) can be resolved,
+            # that comes first, or two boxes whose offers rank below the
+            # switch loop forever (Ghola copying Corrinth City or CHOAM
+            # Demands, 2026-09-08 seeds 11 and 32).
             scored = tuple(
-                _DECLINE_SCORE - 0.5 if action.action_id == "switch_graft_card" else s
+                min(scored) - 1.0 if action.action_id == "switch_graft_card" else s
                 for action, s in zip(legal_actions, scored, strict=True)
             )
         best = max(scored)

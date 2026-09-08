@@ -44,10 +44,12 @@ from dune_imperium.rules.intrigue_peek import (
     legal_intrigue_peek_actions,
 )
 from dune_imperium.rules.reveal_turn import (
+    apply_reveal_gain,
     apply_reveal_influence_loss,
     apply_reveal_troop_move,
     apply_reveal_troop_sacrifice,
     begin_reveal_turn,
+    legal_reveal_gain_actions,
     legal_reveal_influence_loss_actions,
     legal_reveal_troop_move_actions,
     legal_reveal_troop_sacrifice_actions,
@@ -561,3 +563,29 @@ def test_an_acquired_research_box_stacks_above_the_acquiring_frame() -> None:
     assert below.kind == FrameKind.AGENT_EFFECTS
     assert dict(below.context)["pending_agent_effect"] is False
     assert fervor in done.players[0].hand
+
+
+def test_two_research_draws_share_one_pending_reshuffle() -> None:
+    """Past the second marker Tleilaxu Master's two Reveal Research icons draw
+    twice; with an empty deck the second draw joins the pending shuffle instead
+    of shuffling the same discard pile twice (2026-09-08 sweep seed 66)."""
+
+    master = _card("tleilaxu_master")
+    owner = _owner(
+        (master,),
+        deck=(),
+        discard_pile=tuple(card for card in STARTERS if "dagger" not in card)[:4],
+        research_space="c8r4",
+    )
+    revealed = _reveal(_state(owner))
+    state = revealed
+    while actions := legal_reveal_gain_actions(state, 0):
+        state = apply_reveal_gain(state, actions[0]).state
+    reshuffles = [
+        frame
+        for frame in state.decision_stack
+        if frame.kind == FrameKind.PERSONAL_DRAW_RESHUFFLE
+    ]
+    assert len(reshuffles) == 1
+    assert dict(reshuffles[0].context)["count"] == 2
+    assert state.decision_stack[-1].kind == FrameKind.PERSONAL_DRAW_RESHUFFLE

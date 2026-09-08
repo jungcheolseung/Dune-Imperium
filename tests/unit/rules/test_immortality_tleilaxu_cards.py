@@ -527,3 +527,35 @@ def test_usurp_may_still_partner_a_hand_card_placed_first() -> None:
     assert usurp in owner.in_play and owner.usurped_row_card_id == ""
     _, context = current_agent_effect_context(grafted)
     assert context["graft_pending_effect"] is False  # Usurp has no box
+
+
+def test_usurp_is_offered_only_where_a_partner_can_follow() -> None:
+    """An occupied space entered on Tleilaxu Infiltrator's promise needs the
+    Infiltrator as the partner, so Usurp may go there only where the
+    Infiltrator's own City icon reaches (2026-09-08 sweep seed 34 deadlock)."""
+
+    usurp = _tleilaxu("usurp")
+    infiltrator = _tleilaxu("tleilaxu_infiltrator")
+    occupation = "imperium:occupation:0"
+    imperium = imperium_deck_instance_ids(False)
+    rival = replace(_seat(1), agent_locations=("assembly_hall",), agents_available=1)
+    state = _state(
+        _owner((usurp, infiltrator), troops_supply=9),
+        imperium_row=(occupation, *imperium[1:5]),
+        imperium_deck=imperium[5:20],
+    )
+    state = replace(state, players=(state.players[0], rival, *state.players[2:]))
+    spaces = {
+        dict(a.arguments)["space_id"]
+        for a in legal_agent_actions(state, 0)
+        if dict(a.arguments)["card_id"] == usurp
+    }
+    # Occupation's Landsraad icon would reach Assembly Hall, but the seat
+    # there is occupied and the Infiltrator cannot follow: not offered.
+    assert "assembly_hall" not in spaces
+    assert "arrakeen" in spaces
+    placed = _place(state, usurp, "arrakeen", graft=True)
+    partners = {
+        dict(a.arguments)["card_id"] for a in legal_graft_partner_actions(placed, 0)
+    }
+    assert occupation in partners and infiltrator in partners
