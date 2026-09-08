@@ -388,23 +388,42 @@ def test_reserve_stacks_are_finite_and_have_no_foldspace() -> None:
 
 def test_imperium_manifest_matches_base_and_choam_counts() -> None:
     # 57 Uprising identities (72 cards) plus the 26 Bloodlines identities
-    # (32 cards: 25 retail, 5 CHOAM-only, 2 Tech-only) [Bloodlines p. 2].
-    assert len(IMPERIUM_CARDS) == 57 + 26
-    assert sum(entry.copies for entry in IMPERIUM_CARDS) == 72 + 32
-    bloodlines = tuple(entry for entry in IMPERIUM_CARDS if entry.bloodlines_only)
+    # (32 cards: 25 retail, 5 CHOAM-only, 2 Tech-only) [Bloodlines p. 2]
+    # and the Bloodlines promo Ruthless Leadership.
+    assert len(IMPERIUM_CARDS) == 57 + 26 + 1
+    assert sum(entry.copies for entry in IMPERIUM_CARDS) == 72 + 32 + 1
+    bloodlines = tuple(
+        entry for entry in IMPERIUM_CARDS if entry.bloodlines_only and not entry.promo
+    )
     assert sum(entry.copies for entry in bloodlines) == 32
     assert sum(entry.copies for entry in bloodlines if entry.choam_only) == 5
     assert sum(entry.copies for entry in bloodlines if entry.tech_only) == 2
     assert all(entry.card.catalog_url for entry in bloodlines)
     assert sum(entry.copies for entry in imperium_cards_for_choam(False)) == 65
-    # The three Uprising promo cards join either ruleset only on request.
+    # The three Uprising promo cards join either ruleset only on request;
+    # the Bloodlines promo needs the expansion as well.
     assert {entry.card.card_id for entry in IMPERIUM_CARDS if entry.promo} == {
         "arrakis_revolt",
         "pivotal_gambit",
         "the_beast_s_spoils",
+        "ruthless_leadership",
     }
     assert sum(entry.copies for entry in imperium_cards_for_choam(False, True)) == 68
     assert sum(entry.copies for entry in imperium_cards_for_choam(True, True)) == 72
+    assert (
+        sum(
+            entry.copies
+            for entry in imperium_cards_for_choam(False, True, bloodlines=True)
+        )
+        == 65 + 25 + 3 + 1
+    )
+    assert (
+        sum(
+            entry.copies
+            for entry in imperium_cards_for_choam(False, False, bloodlines=True)
+        )
+        == 65 + 25
+    )
     assert not any(entry.promo and entry.choam_only for entry in IMPERIUM_CARDS)
     assert {
         entry.card.card_id

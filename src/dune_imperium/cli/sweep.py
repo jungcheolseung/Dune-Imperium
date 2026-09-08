@@ -79,8 +79,9 @@ def _build_parser() -> argparse.ArgumentParser:
         "--promo-cards",
         action="store_true",
         help=(
-            "shuffle the three Uprising promo Imperium cards (Arrakis Revolt, "
-            "The Beast's Spoils, Pivotal Gambit) into the deck"
+            "shuffle the promo Imperium cards into the deck: the three Uprising "
+            "promos (Arrakis Revolt, The Beast's Spoils, Pivotal Gambit) and, "
+            "with --bloodlines, Ruthless Leadership"
         ),
     )
     parser.add_argument(

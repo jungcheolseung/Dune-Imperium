@@ -98,8 +98,9 @@ class CreateGameRequest(BaseModel):
     )
     choam_module: bool = False
     leader_draft: bool = False
-    # Shuffle in the three Uprising promo Imperium cards (not in the retail
-    # deck; see docs/implementation-plan.md M6).
+    # Shuffle in the promo Imperium cards (not in the retail decks): the
+    # three Uprising promos, plus the Bloodlines promo Ruthless Leadership
+    # when the expansion is on (see docs/implementation-plan.md M6, M12).
     promo_cards: bool = False
     # The Bloodlines expansion and its Tech Module (docs/rules/bloodlines.md).
     bloodlines: bool = False

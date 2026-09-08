@@ -18,7 +18,10 @@ from dune_imperium.content.uprising.board import (
     OBSERVATION_POSTS,
     Faction,
 )
-from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
+from dune_imperium.content.uprising.personal_cards import (
+    PersonalCardDefinition,
+    personal_card_for_instance,
+)
 from dune_imperium.content.uprising.types import (
     BattleIcon,
     PersonalCardAgentEffect,
@@ -1148,15 +1151,26 @@ def legal_agent_card_trash_actions(
         PersonalCardAgentEffect.MAY_TRASH_SELF_FOR_TROOP_AND_FIRST_PLACE_INFLUENCE,
         PersonalCardAgentEffect.GAIN_REWARDS_PER_FACE_UP_BATTLE_ICON,
         PersonalCardAgentEffect.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS,
+        PersonalCardAgentEffect.MAY_TRASH_TWO_CARDS_IF_COMMANDER_IN_CONFLICT,
     ):
         return ()
     if (
         source_card.agent_effect
         is PersonalCardAgentEffect.GAIN_REWARDS_PER_FACE_UP_BATTLE_ICON
-        and _crysknife_trashes_remaining(context) == 0
+        and _trashes_remaining(context) == 0
     ):
         # The Beast's Spoils resolves its automatic rewards first; only the
         # Crysknife trashes it counted are then offered one at a time.
+        return ()
+    if (
+        source_card.agent_effect
+        is PersonalCardAgentEffect.MAY_TRASH_TWO_CARDS_IF_COMMANDER_IN_CONFLICT
+        and state.players[player].commanders_conflict < 1
+    ):
+        # Ruthless Leadership: "If you have one or more Sardaukar Commanders
+        # in the Conflict" is judged when the box resolves (OQ-028); without
+        # one, neither trash icon is offered and the box resolves without
+        # effect.
         return ()
 
     owner = state.players[player]
@@ -1241,7 +1255,7 @@ def apply_agent_card_trash(state: GameState, action: DomainAction) -> RuleResult
     context["pending_agent_effect"] = False
     source = f"round:{state.round_number}:player:{action.actor}:agent_card"
     if action.action_id == "decline_agent_card_trash":
-        context.pop("crysknife_trashes_remaining", None)
+        context.pop("trashes_remaining", None)
         next_state = advance_after_effect(state, context)
         event = GameEvent(
             event_id=f"{source}:trash_declined",
@@ -1259,15 +1273,17 @@ def apply_agent_card_trash(state: GameState, action: DomainAction) -> RuleResult
         card_id,
         source=source,
     )
-    if (
-        source_card.agent_effect
-        is PersonalCardAgentEffect.GAIN_REWARDS_PER_FACE_UP_BATTLE_ICON
+    if source_card.agent_effect in (
+        PersonalCardAgentEffect.GAIN_REWARDS_PER_FACE_UP_BATTLE_ICON,
+        PersonalCardAgentEffect.MAY_TRASH_TWO_CARDS_IF_COMMANDER_IN_CONFLICT,
     ):
-        remaining = _crysknife_trashes_remaining(context) - 1
+        remaining = (
+            _trashes_remaining(context, default=_pending_trash_icons(source_card)) - 1
+        )
         if remaining > 0:
-            # More Crysknife icons: keep the box pending for the next trash.
+            # More trash icons: keep the box pending for the next trash.
             context["pending_agent_effect"] = True
-            context["crysknife_trashes_remaining"] = remaining
+            context["trashes_remaining"] = remaining
             frame = trashed.state.decision_stack[-1]
             next_frame = replace(frame, context=tuple(sorted(context.items())))
             return RuleResult(
@@ -1277,7 +1293,7 @@ def apply_agent_card_trash(state: GameState, action: DomainAction) -> RuleResult
                 ),
                 events=trashed.events,
             )
-        context.pop("crysknife_trashes_remaining", None)
+        context.pop("trashes_remaining", None)
         next_state = advance_after_effect(
             trashed.state,
             context,
@@ -1823,11 +1839,29 @@ _ARRAKIS_REVOLT_ACTION_IDS = frozenset(
 )
 
 
-def _crysknife_trashes_remaining(context: dict[str, ActionValue]) -> int:
-    remaining = context.get("crysknife_trashes_remaining", 0)
+def _trashes_remaining(context: dict[str, ActionValue], default: int = 0) -> int:
+    """Return how many optional trash icons of the current box are still open.
+
+    The Beast's Spoils sets the counter to its Crysknife count when its
+    automatic rewards resolve; Ruthless Leadership's two printed icons start
+    from ``default`` on the first offer.
+    """
+
+    remaining = context.get("trashes_remaining", default)
     if isinstance(remaining, bool) or not isinstance(remaining, int):
-        raise RuntimeError("Agent-turn effect frame has invalid Crysknife count")
+        raise RuntimeError("Agent-turn effect frame has invalid trash count")
     return remaining
+
+
+def _pending_trash_icons(card: PersonalCardDefinition) -> int:
+    """Return the printed optional trash icons a box offers before any counter."""
+
+    if (
+        getattr(card, "agent_effect", None)
+        is PersonalCardAgentEffect.MAY_TRASH_TWO_CARDS_IF_COMMANDER_IN_CONFLICT
+    ):
+        return 2
+    return 0
 
 
 def _arrakis_revolt_payment_actions(
@@ -2877,7 +2911,7 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             else "agent_card_effect_unavailable"
         )
         if crysknives:
-            context["crysknife_trashes_remaining"] = crysknives
+            context["trashes_remaining"] = crysknives
             frame = state.decision_stack[-1]
             next_frame = replace(frame, context=tuple(sorted(context.items())))
             return RuleResult(
@@ -2904,6 +2938,13 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
                     *recruit_shortfall,
                 ),
             )
+    elif effect is PersonalCardAgentEffect.MAY_TRASH_TWO_CARDS_IF_COMMANDER_IN_CONFLICT:
+        if owner.commanders_conflict >= 1:
+            raise RuntimeError("Agent-card trash effect requires a player choice")
+        # Ruthless Leadership without a Sardaukar Commander in the Conflict,
+        # judged now (OQ-028): the box resolves without effect.
+        next_owner = owner
+        event_kind = "agent_card_effect_unavailable"
     elif effect is PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE:
         raise RuntimeError("Agent-card Influence effect requires a player choice")
     elif effect is PersonalCardAgentEffect.DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD:

@@ -81,7 +81,10 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--promo-cards",
         action="store_true",
-        help="shuffle the three Uprising promo Imperium cards into the deck",
+        help=(
+            "shuffle the promo Imperium cards into the deck (three Uprising "
+            "promos; with --bloodlines also Ruthless Leadership)"
+        ),
     )
     parser.add_argument(
         "--bloodlines",

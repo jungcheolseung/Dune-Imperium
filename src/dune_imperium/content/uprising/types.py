@@ -181,6 +181,13 @@ class PersonalCardAgentEffect(StrEnum):
     CHOSEN_INFLUENCE_OR_TWO_TROOPS_BOTH_IF_BOND = (
         "chosen_influence_or_two_troops_both_if_bond"
     )
+    # Ruthless Leadership (Bloodlines promo, card face): "If you have one or
+    # more Sardaukar Commanders in the Conflict:" two black trash icons —
+    # each an optional trash of a card from hand, discard pile or in play
+    # [Main p. 20]; the condition is judged when the box resolves (OQ-028).
+    MAY_TRASH_TWO_CARDS_IF_COMMANDER_IN_CONFLICT = (
+        "may_trash_two_cards_if_commander_in_conflict"
+    )
 
 
 class PersonalCardTrashEffect(StrEnum):

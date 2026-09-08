@@ -516,7 +516,7 @@ def test_beasts_spoils_pays_out_per_face_up_icon_then_offers_the_trash() -> None
     assert after.troops_garrison == owner.troops_garrison + 1
     assert _context(resolved.state)["troops_recruited"] == 1
     assert _context(resolved.state)["pending_agent_effect"] is True
-    assert _context(resolved.state)["crysknife_trashes_remaining"] == 1
+    assert _context(resolved.state)["trashes_remaining"] == 1
     assert dict(resolved.events[0].payload) == {
         "card_id": spoils,
         "crysknife": 1,
@@ -538,7 +538,7 @@ def test_beasts_spoils_pays_out_per_face_up_icon_then_offers_the_trash() -> None
     )
     assert trashed.state.players[0].trashed == (dagger,)
     assert _context(trashed.state)["pending_agent_effect"] is False
-    assert "crysknife_trashes_remaining" not in _context(trashed.state)
+    assert "trashes_remaining" not in _context(trashed.state)
 
     declined = apply_agent_card_trash(
         resolved.state,

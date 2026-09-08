@@ -1631,3 +1631,182 @@ def test_engineered_miracle_command_lapses_once_the_card_left_play() -> None:
     declined = apply_reveal_command_acquisition(gone, actions[0]).state
     assert declined.decision_stack[-1].kind == "reveal"
     assert declined.imperium_row == row
+
+
+# --- Ruthless Leadership (Bloodlines promo, card face) ------------------------
+
+PROMO_BLOODLINES = RulesetConfig(bloodlines=True, promo_cards=True)
+
+
+def test_ruthless_leadership_is_transcribed_and_needs_both_options() -> None:
+    from dune_imperium.content.uprising.imperium import (
+        IMPERIUM_CARDS_BY_ID,
+        imperium_deck_instance_ids,
+    )
+
+    entry = IMPERIUM_CARDS_BY_ID["ruthless_leadership"]
+    assert entry.promo and entry.bloodlines_only and entry.play_data_complete
+    assert entry.card.catalog_url is None
+    assert (entry.acquisition_cost, entry.reveal_persuasion, entry.reveal_strength) == (
+        4,
+        1,
+        1,
+    )
+    assert [icon.value for icon in entry.agent_icons] == ["emperor", "spice_trade"]
+    (command,) = entry.reveal_effects
+    assert command.requires_command and command.grants_combat_icon
+    card = _card("ruthless_leadership")
+    # Outside the retail decks: dealt only with the promo option and the
+    # expansion together, since its Agent box reads the Commanders.
+    assert card not in imperium_deck_instance_ids(False, True)
+    assert card not in imperium_deck_instance_ids(False, False, bloodlines=True)
+    assert card in imperium_deck_instance_ids(False, True, bloodlines=True)
+    assert card in imperium_deck_instance_ids(
+        True, True, bloodlines=True, tech_module=True
+    )
+    assert PROMO_BLOODLINES.identifier == "uprising-4p-base+promo+bloodlines"
+
+
+def test_ruthless_leadership_trashes_up_to_two_cards_with_a_commander() -> None:
+    from dune_imperium.rules.agent_effects import (
+        apply_agent_card_trash,
+        legal_agent_card_trash_actions,
+    )
+
+    card = _card("ruthless_leadership")
+    filler = STARTERS[4]
+    discarded = STARTERS[5]
+    owner = _owner(
+        hand=(card, filler), discard_pile=(discarded,), commanders_conflict=1
+    )
+    state = _play(_state(owner, PROMO_BLOODLINES), card, "dutiful_service")
+    # Two black trash icons: each an optional trash from hand, discard pile
+    # or in play [Main p. 20], offered one at a time.
+    actions = legal_agent_card_trash_actions(state, 0)
+    assert actions[0].action_id == "decline_agent_card_trash"
+    assert {dict(a.arguments)["card_id"] for a in actions[1:]} == {
+        card,
+        filler,
+        discarded,
+    }
+    first = next(a for a in actions[1:] if dict(a.arguments)["card_id"] == discarded)
+    once = apply_agent_card_trash(state, first).state
+    assert discarded in once.players[0].trashed
+    context = dict(once.decision_stack[-1].context)
+    assert context["pending_agent_effect"] is True
+    assert context["trashes_remaining"] == 1
+    again = legal_agent_card_trash_actions(once, 0)
+    assert again[0].action_id == "decline_agent_card_trash"
+    assert {dict(a.arguments)["card_id"] for a in again[1:]} == {card, filler}
+    second = next(a for a in again[1:] if dict(a.arguments)["card_id"] == card)
+    twice = apply_agent_card_trash(once, second).state
+    assert {discarded, card} <= set(twice.players[0].trashed)
+    assert legal_agent_card_trash_actions(twice, 0) == ()
+    assert all("trashes_remaining" not in dict(f.context) for f in twice.decision_stack)
+    # Declining after the first trash closes the box with the card in play.
+    declined = apply_agent_card_trash(once, again[0]).state
+    assert legal_agent_card_trash_actions(declined, 0) == ()
+    assert card in declined.players[0].in_play
+    assert declined.players[0].trashed == (discarded,)
+
+
+def test_ruthless_leadership_without_a_commander_resolves_without_effect() -> None:
+    from dune_imperium.rules.agent_effect_frame import legal_agent_effect_frame_actions
+    from dune_imperium.rules.agent_effects import legal_agent_card_trash_actions
+
+    card = _card("ruthless_leadership")
+    state = _play(
+        _state(_owner(hand=(card, STARTERS[4])), PROMO_BLOODLINES),
+        card,
+        "dutiful_service",
+    )
+    # The condition is judged when the box resolves (OQ-028); a Commander in
+    # the garrison or the supply does not count.
+    garrisoned = replace_player(
+        state.players, replace(state.players[0], commanders_garrison=1)
+    )
+    state = replace(state, players=garrisoned)
+    assert legal_agent_card_trash_actions(state, 0) == ()
+    resolve = DomainAction(action_id="resolve_agent_card_effect", actor=0)
+    assert resolve in legal_agent_effect_frame_actions(state, 0)
+    result = resolve_agent_card_effect(state)
+    kinds = [e.kind for e in result.events if e.kind.startswith("agent_card_effect")]
+    assert kinds == ["agent_card_effect_unavailable"]
+    assert result.state.players[0].trashed == ()
+    assert card in result.state.players[0].in_play
+
+
+def test_ruthless_leadership_reveal_gives_a_sword_and_commands_the_combat_icon() -> (
+    None
+):
+    from dune_imperium.rules.reveal_turn import legal_reveal_deployments
+
+    card = _card("ruthless_leadership")
+    below = _reveal(_state(_owner(hand=(card,)), PROMO_BLOODLINES))
+    context = _reveal_context(below)
+    assert context["persuasion"] == 1
+    assert context["sword_strength"] == 1
+    assert context["combat_deployment"] is False
+    assert legal_reveal_deployments(below, 0) == ()
+    # Command (6+): the Combat icon opens this Reveal's deployment window
+    # for up to two garrison units [Bloodlines pp. 5, 12].
+    commanded = _reveal(_state(_six_persuasion_hand(card), PROMO_BLOODLINES))
+    context = _reveal_context(commanded)
+    assert context["persuasion"] == 2 + 2 + 2 + 1
+    assert context["combat_deployment"] is True
+    counts = {
+        (a.action_id, dict(a.arguments)["count"])
+        for a in legal_reveal_deployments(commanded, 0)
+    }
+    assert counts == {("deploy_troops", 1), ("deploy_troops", 2)}
+
+
+def test_ruthless_leadership_round_trips_and_is_dealt_in_random_games() -> None:
+    from dune_imperium.adapters import ActionCodec
+    from dune_imperium.simulation import run_random_game
+
+    codec = ActionCodec(PROMO_BLOODLINES)
+    assert codec.size == 10159 + 292
+    action = DomainAction(
+        action_id="trash_agent_card",
+        actor=2,
+        arguments=(("card_id", _card("ruthless_leadership")),),
+    )
+    assert codec.decode(codec.encode(action), actor=2) == action
+    for config in (
+        PROMO_BLOODLINES,
+        RulesetConfig(
+            choam_module=True, promo_cards=True, bloodlines=True, tech_module=True
+        ),
+    ):
+        report = run_checked_game(
+            config,
+            game_seed=41,
+            policy_seed=900_041,
+            privacy_interval=10,
+            soundness_interval=10,
+            engine=UprisingRulesEngine(leader_ids=LEADERS),
+        )
+        assert report.rounds >= 1
+        state = run_random_game(UprisingRulesEngine(), config, 41, 141).state
+        assert state.phase is GamePhase.FINISHED
+        dealt = {
+            instance.split(":")[1]
+            for instance in (
+                *state.imperium_deck,
+                *state.imperium_row,
+                *state.imperium_removed,
+                *(
+                    card
+                    for player in state.players
+                    for card in (
+                        *player.hand,
+                        *player.deck,
+                        *player.discard_pile,
+                        *player.in_play,
+                        *player.trashed,
+                    )
+                ),
+            )
+        }
+        assert "ruthless_leadership" in dealt

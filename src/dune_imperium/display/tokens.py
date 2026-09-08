@@ -249,6 +249,10 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.FORCE_OPPONENT_TROOP_RETREAT: (
             "Force an enemy troop to retreat"
         ),
+        PersonalCardAgentEffect.MAY_TRASH_TWO_CARDS_IF_COMMANDER_IN_CONFLICT: (
+            "If you have one or more Sardaukar Commanders in the Conflict: "
+            "You may trash a card, You may trash a card"
+        ),
         PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY: (
             "You may discard a card → Place a Spy with Deep Cover; "
             "if you discarded a Spacing Guild card: Gain 2 spice"

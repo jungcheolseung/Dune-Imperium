@@ -152,10 +152,11 @@ def test_required_image_keys_cover_every_displayable_content_id() -> None:
     keys = required_image_keys()
     # 57 imperium (54 + 3 promo) + 39 intrigue + 20 contracts + 16 conflicts
     # + 22 spaces + 10 leader faces + 7 starting + 2 reserve.
-    # Bloodlines: 44 cards, 12 Twisted Intrigue, 10 Navigation, eight
-    # Leaders, Tuek's Sietch, the Tech Module's Kota Odax of Ix, 7 Skill
-    # tiles, 18 Tech tiles and the Ixian Embassy board.
-    assert len(keys) == 175 + 44 + 12 + 10 + 8 + 1 + 1 + 7 + 18 + 1
+    # Bloodlines: 44 cards plus the promo Ruthless Leadership, 12 Twisted
+    # Intrigue, 10 Navigation, eight Leaders, Tuek's Sietch, the Tech
+    # Module's Kota Odax of Ix, 7 Skill tiles, 18 Tech tiles and the Ixian
+    # Embassy board.
+    assert len(keys) == 175 + 44 + 1 + 12 + 10 + 8 + 1 + 1 + 7 + 18 + 1
     assert len(set(keys)) == len(keys)
     assert set(keys) == _all_content_keys()
 

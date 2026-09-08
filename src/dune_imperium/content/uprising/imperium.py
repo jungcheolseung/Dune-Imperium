@@ -1045,6 +1045,32 @@ IMPERIUM_CARDS: Final = (
         reveal_strength=3,
         play_data_complete=True,
     ),
+    # Bloodlines promo card (2026-09-08): printed in the Bloodlines layout
+    # and outside the retail deck; dealt only with both
+    # RulesetConfig(promo_cards=True) and bloodlines=True, since its Agent
+    # box reads the Sardaukar Commanders. Transcribed from the card face.
+    _entry(
+        None,
+        "ruthless-leadership",
+        "Ruthless Leadership",
+        4,
+        promo=True,
+        bloodlines_only=True,
+        factions=(Faction.EMPEROR,),
+        agent_icons=(AgentIcon.EMPEROR, AgentIcon.SPICE_TRADE),
+        agent_effect=(
+            PersonalCardAgentEffect.MAY_TRASH_TWO_CARDS_IF_COMMANDER_IN_CONFLICT
+        ),
+        reveal_persuasion=1,
+        reveal_strength=1,
+        # "Command (6+): Combat icon" — deploy in this Reveal as though at a
+        # Combat space [Bloodlines p. 5] once the Reveal generates six or
+        # more Persuasion [Bloodlines pp. 5, 12].
+        reveal_effects=(
+            PersonalCardRevealEffect(grants_combat_icon=True, requires_command=True),
+        ),
+        play_data_complete=True,
+    ),
     # Bloodlines Imperium cards (2026-09-07): 25 retail + 5 CHOAM-only + 2
     # Tech-only [Bloodlines pp. 2-3]; copies from the Dune Cards Hub catalog.
     # Play data is transcribed from the card faces slice by slice; a card
