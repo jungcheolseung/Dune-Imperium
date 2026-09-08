@@ -1057,7 +1057,10 @@ IMPERIUM_CARDS: Final = (
         promo=True,
         bloodlines_only=True,
         factions=(Faction.EMPEROR,),
-        agent_icons=(AgentIcon.EMPEROR, AgentIcon.SPICE_TRADE),
+        # Blue circle (City) and yellow triangle (Spice Trade), checked
+        # against assets/icons/agent_icon_*.png: the Emperor icon is the
+        # helmet, which this card does not print.
+        agent_icons=(AgentIcon.CITY, AgentIcon.SPICE_TRADE),
         agent_effect=(
             PersonalCardAgentEffect.MAY_TRASH_TWO_CARDS_IF_COMMANDER_IN_CONFLICT
         ),

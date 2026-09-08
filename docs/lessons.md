@@ -20,3 +20,9 @@
 - 무슨 일: Tech Module 슬라이스 중 새 파일을 정리하려고 `uv run ruff format src tests`를 실행했다. 이 저장소는 `ruff check`만 통과 상태이고 `ruff format` 기준으로는 정리돼 있지 않아, 손대지 않은 69개 파일이 재포맷됐다. 내 변경 파일 목록을 기준으로 나머지를 `git checkout`으로 되돌려 복구했다.
 - 원인: 검증 명령(`ruff check`, `mypy`)과 포매터의 기준이 다르다는 것을 확인하지 않고 트리 전체를 포맷했다.
 - 재발 방지: 포매터는 이 세션에서 새로 만든 파일에만, 파일 이름을 지정해 실행한다(`uv run ruff format <새 파일>`). 기존 파일의 긴 줄은 손으로 고친다. 트리 전체 포맷은 사용자가 명시적으로 요청할 때만 별도 커밋으로 한다.
+
+## 2026-09-08 — 카드 Agent 아이콘을 색만 보고 판독해 잘못 전사함
+
+- 무슨 일: Bloodlines 프로모 Ruthless Leadership의 Agent 아이콘 두 개(파란 원, 노란 삼각형)를 "Emperor·Spice Trade"로 전사해 커밋했다(`52e9c22`). 카드가 Emperor 진영이라 파란 원을 Emperor 아이콘으로 넘겨짚었다. 사용자가 지적해 `assets/icons/agent_icon_*.png`와 대조하니 파란 원은 **City**, Emperor는 투구 모양이었다.
+- 원인: Agent box의 trash·Combat 아이콘과 Reveal의 검 아이콘은 기존 카드 이미지와 대조했으면서, 왼쪽의 진영 아이콘은 대조 없이 색과 진영 이름으로 추정했다.
+- 재발 방지: 카드를 전사할 때 Agent 아이콘 열은 반드시 `assets/icons/agent_icon_*.png`(룰북 추출 아이콘)와 나란히 놓고 대조한다. 카드의 진영(제목 아래 띠)과 Agent 아이콘은 별개이며, 진영이 Emperor라도 Emperor 아이콘이 없는 카드가 흔하다. 검증 테스트는 아이콘 값을 명시적으로 고정한다.

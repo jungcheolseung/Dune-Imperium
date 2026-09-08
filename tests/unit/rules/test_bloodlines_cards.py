@@ -1652,7 +1652,7 @@ def test_ruthless_leadership_is_transcribed_and_needs_both_options() -> None:
         1,
         1,
     )
-    assert [icon.value for icon in entry.agent_icons] == ["emperor", "spice_trade"]
+    assert [icon.value for icon in entry.agent_icons] == ["city", "spice_trade"]
     (command,) = entry.reveal_effects
     assert command.requires_command and command.grants_combat_icon
     card = _card("ruthless_leadership")
@@ -1679,7 +1679,7 @@ def test_ruthless_leadership_trashes_up_to_two_cards_with_a_commander() -> None:
     owner = _owner(
         hand=(card, filler), discard_pile=(discarded,), commanders_conflict=1
     )
-    state = _play(_state(owner, PROMO_BLOODLINES), card, "dutiful_service")
+    state = _play(_state(owner, PROMO_BLOODLINES), card, "imperial_basin")
     # Two black trash icons: each an optional trash from hand, discard pile
     # or in play [Main p. 20], offered one at a time.
     actions = legal_agent_card_trash_actions(state, 0)
@@ -1718,7 +1718,7 @@ def test_ruthless_leadership_without_a_commander_resolves_without_effect() -> No
     state = _play(
         _state(_owner(hand=(card, STARTERS[4])), PROMO_BLOODLINES),
         card,
-        "dutiful_service",
+        "imperial_basin",
     )
     # The condition is judged when the box resolves (OQ-028); a Commander in
     # the garrison or the supply does not count.
