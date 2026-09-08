@@ -65,6 +65,8 @@ class FrameKind(StrEnum):
     RESEARCH_BONUS = "research_bonus"
     # Immortality Graft: choosing the second card of a two-card play.
     GRAFT_PARTNER = "graft_partner"
+    # Imperium Ceremony: keep one of the Intrigue deck's top two cards.
+    INTRIGUE_PEEK = "intrigue_peek"
 
 
 def top_frame(state: GameState) -> DecisionFrame | None:

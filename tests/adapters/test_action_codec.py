@@ -108,8 +108,9 @@ def test_agent_card_icons_round_trip_beside_the_bare_action() -> None:
 def test_reveal_choice_deferral_and_resumption_round_trip() -> None:
     # Free Reveal ordering [Main p. 12]: one bare deferral plus one resume
     # template per choice-effect kind (codec v88).
-    # Bloodlines choice kinds join only the option's catalogs.
-    codec = ActionCodec(RulesetConfig(bloodlines=True))
+    # Bloodlines and Immortality choice kinds join only the option's
+    # catalogs.
+    codec = ActionCodec(RulesetConfig(bloodlines=True, immortality=True))
     defer = DomainAction(action_id="defer_reveal_choice", actor=3)
     assert codec.decode(codec.encode(defer), actor=3) == defer
     for effect in PersonalCardRevealChoiceEffect:

@@ -989,9 +989,10 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
             raise RuntimeError("Intrigue choice frame has an unsupported slot")
 
     context["slot"] = slot_index + 1
-    next_state = replace_top_frame(result.state, with_context(frame, context))
+    lifted, pushed = _lift_pushed_frames(frame.frame_id, result.state)
+    next_state = replace_top_frame(lifted, with_context(frame, context))
     if slot_index + 1 < len(_slots(context)):
-        return RuleResult(state=next_state, events=result.events)
+        return RuleResult(state=_restack(next_state, pushed), events=result.events)
 
     finished = finish_intrigue_play(
         next_state.pop_decision(),
@@ -1002,9 +1003,43 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
         skip_rewards=context.get("rewards_applied") is True,
     )
     return RuleResult(
-        state=finished.state,
+        state=_restack(finished.state, pushed),
         events=(*result.events, *finished.events),
     )
+
+
+def _lift_pushed_frames(
+    frame_id: str, after: GameState
+) -> tuple[GameState, tuple[DecisionFrame, ...]]:
+    """Split off the frames a slot pushed above the choice frame ``frame_id``.
+
+    An acquired card's Research box (Spiritual Fervor, Immortality) opens
+    its direction choice at once; the slot bookkeeping must still address
+    the choice frame, so the pushed frames are lifted and restacked on top
+    afterwards. Frames a late reveal slid in below the choice frame stay
+    where they are.
+    """
+
+    index = next(
+        (
+            position
+            for position, frame in enumerate(after.decision_stack)
+            if frame.frame_id == frame_id
+        ),
+        None,
+    )
+    if index is None:
+        raise RuntimeError("Intrigue choice frame vanished during its slot")
+    pushed = after.decision_stack[index + 1 :]
+    return replace(after, decision_stack=after.decision_stack[: index + 1]), pushed
+
+
+def _restack(state: GameState, pushed: tuple[DecisionFrame, ...]) -> GameState:
+    """Put the lifted frames back on top of ``state``."""
+
+    if not pushed:
+        return state
+    return replace(state, decision_stack=(*state.decision_stack, *pushed))
 
 
 def _apply_intrigue_acquisition(
@@ -1052,7 +1087,7 @@ def _apply_intrigue_acquisition(
             to_hand=to_hand,
             source=step_source,
         )
-    next_state = acquired.result.state
+    next_state, pushed = _lift_pushed_frames(frame.frame_id, acquired.result.state)
     events = acquired.result.events
     top = top_frame(next_state)
     if top is None or top.frame_id != frame.frame_id:
@@ -1068,6 +1103,7 @@ def _apply_intrigue_acquisition(
         )
         next_state = finished.state
         events = (*events, *finished.events)
+    next_state = _restack(next_state, pushed)
     if acquired.places_spy:
         next_state = next_state.push_decision(
             acquisition_spy_frame(next_state, player, acquired.instance_id)

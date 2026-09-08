@@ -25,6 +25,7 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.observation import (
     observe_state,
     peeked_card_id,
+    peeked_intrigue_ids,
     resolving_intrigue_ids,
 )
 from dune_imperium.core.player import PlayerState
@@ -275,7 +276,10 @@ def _split_reversed(
 
 
 def _scramble_hidden_information(state: GameState, observer: int) -> GameState:
-    intrigue_pool: list[str] = list(state.intrigue_deck)
+    # Imperium Ceremony shows the observer the deck's top cards, which
+    # therefore stay in place.
+    peeked_intrigue = peeked_intrigue_ids(state, observer)
+    intrigue_pool: list[str] = list(state.intrigue_deck[len(peeked_intrigue) :])
     players = list(state.players)
     resolving = set(resolving_intrigue_ids(state))
 
@@ -329,7 +333,7 @@ def _scramble_hidden_information(state: GameState, observer: int) -> GameState:
     return replace(
         state,
         players=tuple(players),
-        intrigue_deck=reordered_intrigue[cursor:],
+        intrigue_deck=(*peeked_intrigue, *reordered_intrigue[cursor:]),
         imperium_deck=tuple(reversed(state.imperium_deck)),
         contract_bank=tuple(reversed(state.contract_bank)),
         navigation_stock=tuple(reversed(state.navigation_stock)),

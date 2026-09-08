@@ -229,6 +229,33 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.MAY_PAY_SPECIMEN_FOR_FOUR_SOLARI: (
             "You may spend 1 specimen → Gain 4 solari"
         ),
+        PersonalCardAgentEffect.MAY_TRASH_OTHER_GRAFTED_FOR_SPECIMEN: (
+            "You may trash the other grafted card → Generate 1 specimen"
+        ),
+        (
+            PersonalCardAgentEffect
+            .DRAW_ONE_OR_COMBAT_ICON_IF_SPACING_GUILD_INFLUENCE_TWO
+        ): (
+            "If you have 2 or more Spacing Guild Influence: "
+            "Choose one: Draw 1 card / Combat (deploy as though at a Combat space)"
+        ),
+        PersonalCardAgentEffect.PEEK_TWO_INTRIGUE_KEEP_ONE: (
+            "Look at the top 2 Intrigue cards, keep 1 and put the other back on top"
+        ),
+        (
+            PersonalCardAgentEffect
+            .GAIN_SPICE_AND_CHOSEN_INFLUENCE_IF_GRAFTED_WITH_EMPEROR_OR_GUILD
+        ): (
+            "Gain 1 spice, If grafted with an Emperor or Spacing Guild card: "
+            "Gain 1 Influence with a chosen Faction"
+        ),
+        PersonalCardAgentEffect.MAY_ACQUIRE_CARD_UP_TO_SIX_IF_ONE_MARKER: (
+            "If 1 genetic marker: You may acquire a card costing 6 or less, "
+            "If 2 genetic markers: put it in your hand"
+        ),
+        PersonalCardAgentEffect.MAY_PAY_TWO_SPECIMENS_FOR_TWO_TLEILAXU: (
+            "You may spend 2 specimens → Advance the Tleilaxu track twice"
+        ),
         PersonalCardAgentEffect.GAIN_BY_BENE_GESSERIT_AND_FREMEN_INFLUENCE_TWO: (
             "If you have 2 or more Bene Gesserit Influence: Gain 1 water, "
             "If you have 2 or more Fremen Influence: Gain 1 spice"
@@ -429,6 +456,16 @@ REVEAL_CHOICE_EFFECT_TEXT: Final[Mapping[PersonalCardRevealChoiceEffect, str]] =
             ),
             PersonalCardRevealChoiceEffect.MAY_RETREAT_TWO_TROOPS_FOR_FOUR_STRENGTH: (
                 "You may retreat 2 troops → +4 swords"
+            ),
+            (
+                PersonalCardRevealChoiceEffect
+                .MAY_LOSE_INFLUENCE_FOR_VP_IF_BENE_GESSERIT_ALLIANCE
+            ): ("Bene Gesserit Alliance: You may lose 1 Influence → Gain 1 VP"),
+            PersonalCardRevealChoiceEffect.MAY_DEPLOY_OR_RETREAT_ONE_TROOP: (
+                "You may deploy or retreat 1 troop"
+            ),
+            PersonalCardRevealChoiceEffect.MAY_LOSE_TWO_TROOPS_FOR_TWO_SPECIMENS: (
+                "You may lose 2 troops → Generate 2 specimens"
             ),
             PersonalCardRevealChoiceEffect.GAIN_FIVE_SOLARI_OR_TAKE_HIGH_COUNCIL: (
                 "Choose one: Gain 5 solari / "

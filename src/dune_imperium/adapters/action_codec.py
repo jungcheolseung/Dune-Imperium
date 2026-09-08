@@ -52,6 +52,7 @@ from dune_imperium.content.uprising.starting_cards import (
 )
 from dune_imperium.content.uprising.types import (
     BLOODLINES_REVEAL_CHOICE_EFFECTS,
+    IMMORTALITY_REVEAL_CHOICE_EFFECTS,
     AgentIcon,
     BattleIcon,
     PersonalCardRevealChoiceEffect,
@@ -240,7 +241,8 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             arguments=(("effect", effect.value),),
         )
         for effect in PersonalCardRevealChoiceEffect
-        if config.bloodlines or effect not in BLOODLINES_REVEAL_CHOICE_EFFECTS
+        if (config.bloodlines or effect not in BLOODLINES_REVEAL_CHOICE_EFFECTS)
+        and (config.immortality or effect not in IMMORTALITY_REVEAL_CHOICE_EFFECTS)
     )
     if config.choam_module:
         templates.extend(
@@ -823,8 +825,75 @@ def _immortality_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "advance_reveal_tleilaxu",
             "advance_reveal_research",
             "pay_agent_card_specimen",
+            # Tleilaxu Surgeon, Dissecting Kit, High Priority Travel.
+            "pay_agent_card_two_specimens",
+            "trash_grafted_card_for_specimen",
+            "take_agent_card_combat_icon",
+            # For Humanity, Shadout Mapes, Tleilaxu Surgeon Reveal choices.
+            "decline_reveal_influence_loss",
+            "deploy_reveal_card_troop",
+            "retreat_reveal_card_troop",
+            "decline_reveal_troop_move",
+            "decline_reveal_troop_sacrifice",
         )
     ]
+    templates.extend(
+        ActionTemplate(
+            action_id="lose_reveal_troops_for_specimens", arguments=(("zone", zone),)
+        )
+        for zone in ("garrison", "conflict")
+    )
+    templates.extend(
+        ActionTemplate(
+            action_id="lose_reveal_influence_for_vp",
+            arguments=(("faction", faction.value),),
+        )
+        for faction in Faction
+    )
+    templates.extend(
+        ActionTemplate(
+            action_id="lose_reveal_influence_for_vp",
+            arguments=(("alliance_recipient", recipient), ("faction", faction.value)),
+        )
+        for faction in Faction
+        for recipient in range(config.players)
+    )
+    # Imperium Ceremony's keep-one choice over any Intrigue card.
+    peekable = intrigue_deck_instance_ids(
+        config.choam_module,
+        bloodlines=config.bloodlines,
+        tech_module=config.tech_module,
+        immortality=True,
+    )
+    if config.bloodlines:
+        peekable = (*peekable, *twisted_intrigue_instance_ids())
+    templates.extend(
+        ActionTemplate(
+            action_id="keep_peeked_intrigue", arguments=(("instance_id", instance_id),)
+        )
+        for instance_id in peekable
+    )
+    # Tleilaxu Master's free acquisition of a card costing 6 or less.
+    templates.extend(
+        ActionTemplate(
+            action_id="acquire_reserve_by_card",
+            arguments=(("card_id", stack.card.card_id),),
+        )
+        for stack in RESERVE_STACKS
+    )
+    templates.extend(
+        ActionTemplate(
+            action_id="acquire_imperium_by_card",
+            arguments=(("instance_id", instance_id),),
+        )
+        for instance_id in imperium_deck_instance_ids(
+            config.choam_module,
+            config.promo_cards,
+            bloodlines=config.bloodlines,
+            tech_module=config.tech_module,
+            immortality=True,
+        )
+    )
     templates.extend(
         ActionTemplate(
             action_id="choose_research_space", arguments=(("space_id", space_id),)

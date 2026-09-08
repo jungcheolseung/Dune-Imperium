@@ -1479,12 +1479,16 @@ def apply_leader_signet_acquire(
     arguments = dict(action.arguments)
     source = f"round:{state.round_number}:player:{player}:leader_signet"
 
+    # The box settles first so an acquire box that opens a frame (a
+    # Research direction, Immortality) stacks above the turn.
+    context["pending_agent_effect"] = False
+    settled = advance_after_effect(state, context)
     if action.action_id == "acquire_leader_reserve":
         card_id = arguments.get("card_id")
         if not isinstance(card_id, str):
             raise RuntimeError("Leader Signet acquisition has invalid card ID")
         acquired = acquire_reserve_for_intrigue(
-            state,
+            settled,
             player,
             card_id,
             to_hand=True,
@@ -1495,18 +1499,13 @@ def apply_leader_signet_acquire(
         if not isinstance(instance_id, str):
             raise RuntimeError("Leader Signet acquisition has invalid instance ID")
         acquired = acquire_imperium_for_intrigue(
-            state,
+            settled,
             player,
             instance_id,
             to_hand=True,
             source=source,
         )
-    context["pending_agent_effect"] = False
-    next_state = advance_after_effect(
-        acquired.result.state,
-        context,
-        acquired.result.state.players,
-    )
+    next_state = acquired.result.state
     if acquired.places_spy:
         next_state = next_state.push_decision(
             acquisition_spy_frame(next_state, player, acquired.instance_id)

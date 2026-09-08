@@ -67,6 +67,16 @@ from dune_imperium.rules.spy_placement import (
     recall_spy,
 )
 from dune_imperium.rules.strength import units_strength
+from dune_imperium.rules.unit_loss import lose_unit
+from dune_imperium.rules.units import retreat_units
+
+# Immortality Reveal choices whose enum names do not fit a comparison line.
+_LOSE_INFLUENCE_FOR_VP = (
+    PersonalCardRevealChoiceEffect.MAY_LOSE_INFLUENCE_FOR_VP_IF_BENE_GESSERIT_ALLIANCE
+)
+_LOSE_TROOPS_FOR_SPECIMENS = (
+    PersonalCardRevealChoiceEffect.MAY_LOSE_TWO_TROOPS_FOR_TWO_SPECIMENS
+)
 
 
 def legal_reveal_spy_actions(
@@ -966,6 +976,278 @@ def apply_reveal_troop_retreat(
             reward_event,
         ),
     )
+
+
+def _reveal_choice_frame_context(
+    state: GameState,
+    player: int,
+    effect: PersonalCardRevealChoiceEffect,
+) -> dict[str, ActionValue] | None:
+    """Return the top REVEAL_CHOICE context if it is ``player``'s ``effect``."""
+
+    if not 0 <= player < state.config.players or not state.decision_stack:
+        return None
+    frame = state.decision_stack[-1]
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return None
+    context = dict(frame.context)
+    if context.get("reveal_choice_effect") != effect.value:
+        return None
+    return context
+
+
+def _reveal_choice_card_source(
+    state: GameState,
+    player: int,
+    context: dict[str, ActionValue],
+    suffix: str,
+) -> tuple[str, str]:
+    card_id = context.get("reveal_card_id")
+    if not isinstance(card_id, str):
+        raise RuntimeError("Reveal choice frame has invalid card ID")
+    return (
+        card_id,
+        f"round:{state.round_number}:player:{player}:reveal_card:{card_id}:{suffix}",
+    )
+
+
+def legal_reveal_influence_loss_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """For Humanity: "Bene Gesserit Alliance: lose one Influence -> 1 VP"."""
+
+    context = _reveal_choice_frame_context(state, player, _LOSE_INFLUENCE_FOR_VP)
+    if context is None:
+        return ()
+    actions: list[DomainAction] = [
+        DomainAction(action_id="decline_reveal_influence_loss", actor=player)
+    ]
+    owner = state.players[player]
+    for faction in Faction:
+        if influence_amount(owner.influence, faction) == 0:
+            continue
+        recipients = alliance_recipients_after_influence_loss(state, player, faction)
+        recipient_options: tuple[int | None, ...] = (
+            tuple(recipients) if len(recipients) > 1 else (None,)
+        )
+        for recipient in recipient_options:
+            arguments: tuple[tuple[str, ActionValue], ...] = (
+                ("faction", faction.value),
+            )
+            if recipient is not None:
+                arguments = (("alliance_recipient", recipient), *arguments)
+            actions.append(
+                DomainAction(
+                    action_id="lose_reveal_influence_for_vp",
+                    actor=player,
+                    arguments=arguments,
+                )
+            )
+    return tuple(actions)
+
+
+def apply_reveal_influence_loss(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Decline, or lose one Influence step for a Victory Point."""
+
+    if action not in legal_reveal_influence_loss_actions(state, action.actor):
+        raise ValueError("action is not a legal Reveal Influence loss")
+    context = dict(state.decision_stack[-1].context)
+    card_id, source = _reveal_choice_card_source(
+        state, action.actor, context, "influence_loss"
+    )
+    popped = state.pop_decision()
+    if action.action_id == "decline_reveal_influence_loss":
+        return RuleResult(
+            state=popped,
+            events=(
+                GameEvent(
+                    event_id=f"{source}:declined",
+                    kind="reveal_influence_loss_declined",
+                    payload=(("card_id", card_id), ("player", action.actor)),
+                ),
+            ),
+        )
+    arguments = dict(action.arguments)
+    faction_value = arguments.get("faction")
+    recipient = arguments.get("alliance_recipient")
+    if not isinstance(faction_value, str):
+        raise RuntimeError("Reveal Influence loss has invalid Faction")
+    if recipient is not None and (
+        isinstance(recipient, bool) or not isinstance(recipient, int)
+    ):
+        raise RuntimeError("Reveal Influence loss has invalid recipient")
+    lost = lose_faction_influence(
+        popped,
+        action.actor,
+        Faction(faction_value),
+        1,
+        event_prefix=f"{source}:lost:{faction_value}",
+        alliance_recipient=recipient,
+    )
+    owner = lost.state.players[action.actor]
+    next_owner = replace(owner, victory_points=owner.victory_points + 1)
+    return RuleResult(
+        state=replace(
+            lost.state, players=replace_player(lost.state.players, next_owner)
+        ),
+        events=(
+            *lost.events,
+            GameEvent(
+                event_id=f"{source}:victory_point",
+                kind="reveal_victory_point_gained",
+                payload=(
+                    ("card_id", card_id),
+                    ("player", action.actor),
+                    ("victory_points", 1),
+                ),
+            ),
+        ),
+    )
+
+
+def legal_reveal_troop_move_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Shadout Mapes: "You may deploy or retreat one troop"."""
+
+    context = _reveal_choice_frame_context(
+        state, player, PersonalCardRevealChoiceEffect.MAY_DEPLOY_OR_RETREAT_ONE_TROOP
+    )
+    if context is None:
+        return ()
+    owner = state.players[player]
+    return (
+        DomainAction(action_id="decline_reveal_troop_move", actor=player),
+        *(
+            (DomainAction(action_id="deploy_reveal_card_troop", actor=player),)
+            if owner.troops_garrison >= 1
+            else ()
+        ),
+        *(
+            (DomainAction(action_id="retreat_reveal_card_troop", actor=player),)
+            if owner.troops_conflict >= 1
+            else ()
+        ),
+    )
+
+
+def apply_reveal_troop_move(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Decline, deploy one garrison troop, or retreat one Conflict troop."""
+
+    if action not in legal_reveal_troop_move_actions(state, action.actor):
+        raise ValueError("action is not a legal Reveal troop move")
+    context = dict(state.decision_stack[-1].context)
+    card_id, source = _reveal_choice_card_source(
+        state, action.actor, context, "troop_move"
+    )
+    popped = state.pop_decision()
+    if action.action_id == "decline_reveal_troop_move":
+        return RuleResult(
+            state=popped,
+            events=(
+                GameEvent(
+                    event_id=f"{source}:declined",
+                    kind="reveal_troop_move_declined",
+                    payload=(("card_id", card_id), ("player", action.actor)),
+                ),
+            ),
+        )
+    if action.action_id == "deploy_reveal_card_troop":
+        counted = add_units_to_reveal(popped, action.actor, troops=1)
+        return RuleResult(
+            state=counted.state,
+            events=(
+                GameEvent(
+                    event_id=f"{source}:deployed",
+                    kind="troops_deployed",
+                    payload=(("count", 1), ("player", action.actor)),
+                ),
+                *counted.events,
+            ),
+        )
+    before = popped.players[action.actor].combat_strength
+    retreated = retreat_units(popped, action.actor, source, troops=1)
+    delta = retreated.state.players[action.actor].combat_strength - before
+    next_state = retreated.state
+    if delta:
+        next_state = replace(
+            next_state,
+            decision_stack=add_reveal_strength(next_state.decision_stack, delta),
+        )
+    return RuleResult(state=next_state, events=retreated.events)
+
+
+def legal_reveal_troop_sacrifice_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Tleilaxu Surgeon: "Lose two troops -> two specimens" (one zone, OQ-053)."""
+
+    context = _reveal_choice_frame_context(state, player, _LOSE_TROOPS_FOR_SPECIMENS)
+    if context is None:
+        return ()
+    owner = state.players[player]
+    return (
+        DomainAction(action_id="decline_reveal_troop_sacrifice", actor=player),
+        *(
+            DomainAction(
+                action_id="lose_reveal_troops_for_specimens",
+                actor=player,
+                arguments=(("zone", zone),),
+            )
+            for zone in ("garrison", "conflict")
+            if getattr(owner, f"troops_{zone}") >= 2
+        ),
+    )
+
+
+def apply_reveal_troop_sacrifice(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Decline, or return two troops of one zone to the supply for two specimens."""
+
+    if action not in legal_reveal_troop_sacrifice_actions(state, action.actor):
+        raise ValueError("action is not a legal Reveal troop sacrifice")
+    context = dict(state.decision_stack[-1].context)
+    card_id, source = _reveal_choice_card_source(
+        state, action.actor, context, "troop_sacrifice"
+    )
+    popped = state.pop_decision()
+    if action.action_id == "decline_reveal_troop_sacrifice":
+        return RuleResult(
+            state=popped,
+            events=(
+                GameEvent(
+                    event_id=f"{source}:declined",
+                    kind="reveal_troop_sacrifice_declined",
+                    payload=(("card_id", card_id), ("player", action.actor)),
+                ),
+            ),
+        )
+    zone = str(dict(action.arguments)["zone"])
+    before = popped.players[action.actor].combat_strength
+    working = popped
+    events: list[GameEvent] = []
+    for index in range(2):
+        lost = lose_unit(working, action.actor, zone, source=f"{source}:{index}")
+        working = lost.state
+        events.extend(lost.events)
+    delta = working.players[action.actor].combat_strength - before
+    if delta:
+        working = replace(
+            working, decision_stack=add_reveal_strength(working.decision_stack, delta)
+        )
+    generated = generate_specimens(working, action.actor, 2, source=source)
+    return RuleResult(state=generated.state, events=(*events, *generated.events))
 
 
 def apply_reveal_card_trash(
@@ -2295,7 +2577,14 @@ def reveal_choice_prompt(effect: PersonalCardRevealChoiceEffect) -> str:
     """Return the REVEAL_CHOICE frame prompt text for one choice effect."""
 
     return (
-        "Trash this card for one Influence with each Faction, or decline"
+        "Bene Gesserit Alliance: lose one Influence for a Victory Point, or decline"
+        if effect
+        is _LOSE_INFLUENCE_FOR_VP
+        else "Deploy or retreat one troop, or decline"
+        if effect is PersonalCardRevealChoiceEffect.MAY_DEPLOY_OR_RETREAT_ONE_TROOP
+        else "Lose two troops for two specimens, or decline"
+        if effect is _LOSE_TROOPS_FOR_SPECIMENS
+        else "Trash this card for one Influence with each Faction, or decline"
         if effect
         is (
             PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_FOR_FOUR_INFLUENCE_IF_FOUR_CONTRACTS
@@ -2374,6 +2663,25 @@ def _reveal_choice_effect_is_available(
     command_open = persuasion is not None and persuasion >= COMMAND_PERSUASION
     return (
         (
+            # For Humanity: the Alliance and an Influence to lose, judged
+            # when the choice opens (OQ-028).
+            effect
+            is _LOSE_INFLUENCE_FOR_VP
+            and Faction.BENE_GESSERIT.value in owner.alliance_faction_ids
+            and any(
+                influence_amount(owner.influence, faction) > 0 for faction in Faction
+            )
+        )
+        or (
+            effect is PersonalCardRevealChoiceEffect.MAY_DEPLOY_OR_RETREAT_ONE_TROOP
+            and (owner.troops_garrison >= 1 or owner.troops_conflict >= 1)
+        )
+        or (
+            # Tleilaxu Surgeon: two troops from one zone (OQ-053).
+            effect is _LOSE_TROOPS_FOR_SPECIMENS
+            and (owner.troops_garrison >= 2 or owner.troops_conflict >= 2)
+        )
+        or (
             effect
             in (
                 PersonalCardRevealChoiceEffect.COMMAND_PLACE_SPY,

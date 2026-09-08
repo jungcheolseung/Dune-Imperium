@@ -228,6 +228,19 @@ const ACTION_LABELS = {
   advance_reveal_tleilaxu: "Reveal: Tleilaxu",
   advance_reveal_research: "Reveal: Research",
   pay_agent_card_specimen: "specimen 1 지불 → Solari 4",
+  pay_agent_card_two_specimens: "specimen 2 지불 → Tleilaxu ×2",
+  trash_grafted_card_for_specimen: "graft한 다른 카드 trash → specimen",
+  take_agent_card_combat_icon: "Combat 아이콘",
+  keep_peeked_intrigue: "Intrigue 카드 keep",
+  acquire_reserve_by_card: "Tleilaxu Master: Reserve 카드 획득",
+  acquire_imperium_by_card: "Tleilaxu Master: Imperium Row 카드 획득",
+  lose_reveal_influence_for_vp: "Influence 1 잃기 → VP 1",
+  decline_reveal_influence_loss: "Influence 잃지 않음",
+  deploy_reveal_card_troop: "troop 1 배치",
+  retreat_reveal_card_troop: "troop 1 후퇴",
+  decline_reveal_troop_move: "troop 이동 안 함",
+  lose_reveal_troops_for_specimens: "troop 2 잃기 → specimen 2",
+  decline_reveal_troop_sacrifice: "troop 잃지 않음",
   acquire_tleilaxu: "Tleilaxu 카드 획득",
   acquire_reclaimed_forces: "Reclaimed Forces",
   acquire_intrigue_tleilaxu: "Harvest Cells: Tleilaxu 카드 획득",
@@ -2932,12 +2945,22 @@ function renderPrivate() {
   }
   /* Owner-only peeks: the deck's top card (Controlled, Glowglobes) and
      Kota Odax's face-down Secret Project tile. */
-  if (view.private.peeked_card_id || view.private.secret_project_tech_id) {
+  const peekedIntrigue = view.private.peeked_intrigue_ids || [];
+  if (
+    view.private.peeked_card_id ||
+    view.private.secret_project_tech_id ||
+    peekedIntrigue.length
+  ) {
     const peeks = document.createElement("div");
     peeks.className = "strip-cards";
     if (view.private.peeked_card_id) {
       peeks.appendChild(
         visualCard(view.private.peeked_card_id, { className: "small", badge: "덱 맨 위" })
+      );
+    }
+    for (const cardId of peekedIntrigue) {
+      peeks.appendChild(
+        visualCard(cardId, { className: "small", badge: "Intrigue 덱 맨 위" })
       );
     }
     if (view.private.secret_project_tech_id) {

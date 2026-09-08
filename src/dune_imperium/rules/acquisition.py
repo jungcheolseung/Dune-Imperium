@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass, replace
 
+from dune_imperium.content.immortality.board import genetic_markers_reached
 from dune_imperium.content.immortality.tleilaxu import tleilaxu_card_for_instance
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.imperium import (
@@ -191,6 +192,35 @@ def legal_agent_card_acquisitions(
     source = personal_card_for_instance(source_id)
     if (
         source.agent_effect
+        is PersonalCardAgentEffect.MAY_ACQUIRE_CARD_UP_TO_SIX_IF_ONE_MARKER
+    ):
+        # Tleilaxu Master: "[one genetic marker]: you may acquire a card
+        # costing 6 or less" [card face], judged now (OQ-028).
+        if genetic_markers_reached(state.players[player].research_space) < 1:
+            return ()
+        return (
+            DomainAction(action_id="decline_agent_card_acquisition", actor=player),
+            *(
+                DomainAction(
+                    action_id="acquire_reserve_by_card",
+                    actor=player,
+                    arguments=(("card_id", card_id),),
+                )
+                for card_id in acquirable_reserve_card_ids(state, TLEILAXU_MASTER_COST)
+            ),
+            *(
+                DomainAction(
+                    action_id="acquire_imperium_by_card",
+                    actor=player,
+                    arguments=(("instance_id", instance_id),),
+                )
+                for instance_id in acquirable_imperium_instance_ids(
+                    state, TLEILAXU_MASTER_COST
+                )
+            ),
+        )
+    if (
+        source.agent_effect
         is not PersonalCardAgentEffect.ACQUIRE_WITH_SOLARI_TO_HAND
     ):
         return ()
@@ -255,7 +285,57 @@ def apply_agent_card_acquisition(
 
     if action.action_id == "acquire_reserve_with_solari":
         return _acquire_reserve_to_hand_with_solari(state, action, context)
+    if action.action_id in ("acquire_reserve_by_card", "acquire_imperium_by_card"):
+        return _acquire_by_agent_card(state, action, context)
     return _acquire_imperium_to_hand_with_solari(state, action, context)
+
+
+TLEILAXU_MASTER_COST = 6
+
+
+def _acquire_by_agent_card(
+    state: GameState,
+    action: DomainAction,
+    context: dict[str, ActionValue],
+) -> RuleResult:
+    """Tleilaxu Master: a free acquisition; two markers send it to the hand."""
+
+    owner = state.players[action.actor]
+    to_hand = genetic_markers_reached(owner.research_space) >= 2
+    source = f"round:{state.round_number}:player:{action.actor}:agent_acquisition"
+    # The box has resolved; the acquisition's own follow-ups (a Research
+    # direction, a Spy post, the Contract market) stack above the turn.
+    next_state = advance_after_effect(state, context)
+    arguments = dict(action.arguments)
+    if action.action_id == "acquire_reserve_by_card":
+        acquired = acquire_reserve_for_intrigue(
+            next_state,
+            action.actor,
+            str(arguments["card_id"]),
+            to_hand=to_hand,
+            source=source,
+        )
+    else:
+        acquired = acquire_imperium_for_intrigue(
+            next_state,
+            action.actor,
+            str(arguments["instance_id"]),
+            to_hand=to_hand,
+            source=source,
+        )
+    result_state = acquired.result.state
+    events = acquired.result.events
+    if acquired.places_spy:
+        result_state = result_state.push_decision(
+            acquisition_spy_frame(result_state, action.actor, acquired.instance_id)
+        )
+    elif acquired.takes_contract:
+        contracts = begin_contract_gain(
+            result_state, action.actor, 1, source=f"{source}:acquisition_bonus"
+        )
+        result_state = contracts.state
+        events = (*events, *contracts.events)
+    return RuleResult(state=result_state, events=events)
 
 
 def _acquire_reserve_to_hand_with_solari(
@@ -381,11 +461,6 @@ def _acquire_imperium_to_hand_with_solari(
         )
         prepared = gained.state
         acquisition_events = (*acquisition_events, *gained.events)
-    tracked = apply_acquisition_track_effects(
-        prepared, action.actor, definition, source=source
-    )
-    prepared = tracked.state
-    acquisition_events = (*acquisition_events, *tracked.events)
     completed = complete_acquire_contracts(
         prepared,
         action.actor,
@@ -422,6 +497,13 @@ def _acquire_imperium_to_hand_with_solari(
             context,
             prepared.players,
         )
+    # A Research box (Immortality) opens its direction choice above the
+    # settled effect frame, never inside it.
+    tracked = apply_acquisition_track_effects(
+        next_state, action.actor, definition, source=source
+    )
+    next_state = tracked.state
+    acquisition_events = (*acquisition_events, *tracked.events)
     event = GameEvent(
         event_id=source,
         kind="card_acquired",

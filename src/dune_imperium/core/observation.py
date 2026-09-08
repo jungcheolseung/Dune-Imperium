@@ -114,6 +114,9 @@ class PrivatePlayerView:
     # Controlled (Twisted Intrigue): the deck's top card while the owner
     # decides what to do with it; "" otherwise.
     peeked_card_id: str = ""
+    # Imperium Ceremony: the Intrigue deck's top cards while the owner
+    # keeps one of them; () otherwise.
+    peeked_intrigue_ids: tuple[str, ...] = ()
     # Steersman Y'rkoon's face-down Navigation slots, which he may look at
     # any time [Bloodlines p. 12].
     navigation_slots: tuple[str, ...] = ()
@@ -245,6 +248,9 @@ def known_card_seats(state: GameState) -> dict[str, frozenset[int]]:
         for card_id in player.intrigue_cards:
             if card_id not in resolving:
                 known[card_id] = owner
+        # Imperium Ceremony's peek shows the deck's top cards to its owner.
+        for card_id in peeked_intrigue_ids(state, player.player_id):
+            known[card_id] = owner
     return known
 
 
@@ -334,6 +340,7 @@ def observe_state(state: GameState, player: int) -> PlayerView:
             hand=owner.hand,
             intrigue_cards=owner.intrigue_cards,
             peeked_card_id=peeked_card_id(state, player),
+            peeked_intrigue_ids=peeked_intrigue_ids(state, player),
             navigation_slots=owner.navigation_slots,
             secret_project_tech_id=owner.secret_project_tech_id,
         ),
@@ -392,6 +399,27 @@ def peeked_card_id(state: GameState, player: int) -> str:
     if not isinstance(peeked, str) or not peeked:
         return ""
     return peeked if owner.deck and owner.deck[0] == peeked else ""
+
+
+def peeked_intrigue_ids(state: GameState, player: int) -> tuple[str, ...]:
+    """Return the Intrigue deck cards the owner may see (Imperium Ceremony).
+
+    The keep-one choice shows the deck's top two cards to its owner only;
+    they are reported while they still sit on top of the deck.
+    """
+
+    if not state.decision_stack:
+        return ()
+    frame = state.decision_stack[-1]
+    if str(frame.kind) != "intrigue_peek":
+        return ()
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    value = dict(frame.context).get("peeked_intrigue_ids")
+    if not isinstance(value, str) or not value:
+        return ()
+    peeked = tuple(value.split(","))
+    return peeked if state.intrigue_deck[: len(peeked)] == peeked else ()
 
 
 def _public_player_view(player: PlayerState) -> PublicPlayerView:

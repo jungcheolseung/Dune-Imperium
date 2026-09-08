@@ -59,6 +59,7 @@ from dune_imperium.rules.frames import FrameKind, context_int, replace_player
 from dune_imperium.rules.immortality import advance_research, advance_tleilaxu
 from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
+from dune_imperium.rules.intrigue_peek import begin_intrigue_peek
 from dune_imperium.rules.leader_abilities import (
     resolve_leader_signet,
     units_deployment_blocked,
@@ -79,6 +80,15 @@ from dune_imperium.rules.spy_placement import (
 )
 from dune_imperium.rules.unit_loss import opponent_unit_loss_frames
 from dune_imperium.rules.units import retreat_units
+
+# Immortality boxes whose enum names do not fit a comparison line.
+_DRAW_ONE_OR_COMBAT_ICON = (
+    PersonalCardAgentEffect.DRAW_ONE_OR_COMBAT_ICON_IF_SPACING_GUILD_INFLUENCE_TWO
+)
+_SPICE_AND_GRAFTED_INFLUENCE = (
+    PersonalCardAgentEffect
+    .GAIN_SPICE_AND_CHOSEN_INFLUENCE_IF_GRAFTED_WITH_EMPEROR_OR_GUILD
+)
 
 # Agent-box icon keys resolved by ``resolve_agent_card_effect`` with
 # ``effect=<key>``. Kept sorted: the action codec enumerates them.
@@ -683,6 +693,24 @@ def legal_agent_card_influence_actions(
             for faction in Faction
             if faction.value not in chosen
         )
+    if (
+        effect
+        is _SPICE_AND_GRAFTED_INFLUENCE
+    ):
+        # Interstellar Conspiracy: the Influence needs an Emperor or Guild
+        # partner; otherwise the plain resolution pays the spice alone.
+        if not _grafted_with_factions(
+            context, (Faction.EMPEROR, Faction.SPACING_GUILD)
+        ):
+            return ()
+        return tuple(
+            DomainAction(
+                action_id="choose_agent_card_influence",
+                actor=player,
+                arguments=(("faction", faction.value),),
+            )
+            for faction in Faction
+        )
     if effect not in (
         PersonalCardAgentEffect.TRASH_SELF_AND_GAIN_CHOSEN_INFLUENCE,
         PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE_IF_SPY_RECALLED_THIS_TURN,
@@ -707,6 +735,21 @@ def legal_agent_card_influence_actions(
             arguments=(("faction", faction.value),),
         )
         for faction in Faction
+    )
+
+
+def _grafted_with_factions(
+    context: Mapping[str, ActionValue],
+    factions: tuple[Faction, ...],
+) -> bool:
+    """Return whether the other grafted card carries one of ``factions``."""
+
+    partner = other_grafted_card_id(context)
+    if not partner:
+        return False
+    return any(
+        faction in personal_card_for_instance(partner).factions
+        for faction in factions
     )
 
 
@@ -779,6 +822,19 @@ def apply_agent_card_influence(
                     f"{source}:troops", action.actor, 2, recruited
                 ),
             )
+    if (
+        source_card.agent_effect
+        is _SPICE_AND_GRAFTED_INFLUENCE
+    ):
+        # Interstellar Conspiracy: the spice comes with the Influence.
+        spiced = players[action.actor]
+        players = replace_player(
+            players,
+            replace(
+                spiced,
+                resources=replace(spiced.resources, spice=spiced.resources.spice + 1),
+            ),
+        )
     next_state = advance_after_effect(
         replace(gained.state, players=players),
         context,
@@ -1673,6 +1729,43 @@ def legal_agent_card_payment_actions(
             decline,
             DomainAction(action_id="pay_agent_card_specimen", actor=player),
         )
+    if (
+        source_card.agent_effect
+        is PersonalCardAgentEffect.MAY_PAY_TWO_SPECIMENS_FOR_TWO_TLEILAXU
+    ):
+        # Tleilaxu Surgeon: "2 specimens -> Tleilaxu Tleilaxu" [card face].
+        decline = DomainAction(action_id="decline_agent_card_payment", actor=player)
+        if state.players[player].specimens < 2:
+            return (decline,)
+        return (
+            decline,
+            DomainAction(action_id="pay_agent_card_two_specimens", actor=player),
+        )
+    if (
+        source_card.agent_effect
+        is PersonalCardAgentEffect.MAY_TRASH_OTHER_GRAFTED_FOR_SPECIMEN
+    ):
+        # Dissecting Kit: "Trash the other grafted card -> a specimen"
+        # [card face]; without a partner still in play the box does nothing.
+        partner = other_grafted_card_id(context)
+        if not partner or partner not in state.players[player].in_play:
+            return ()
+        return (
+            DomainAction(action_id="decline_agent_card_payment", actor=player),
+            DomainAction(action_id="trash_grafted_card_for_specimen", actor=player),
+        )
+    if (
+        source_card.agent_effect
+        is _DRAW_ONE_OR_COMBAT_ICON
+    ):
+        # High Priority Travel: "[Guild] 2 Influence: draw a card —OR—
+        # Combat" [card face]; the draw is the box's plain resolution.
+        if state.players[player].influence.spacing_guild < 2:
+            return ()
+        return (
+            DomainAction(action_id="resolve_agent_card_effect", actor=player),
+            DomainAction(action_id="take_agent_card_combat_icon", actor=player),
+        )
     if source_card.agent_effect not in (
         PersonalCardAgentEffect.PAY_TWO_WATER_TO_DRAW_TWO,
         PersonalCardAgentEffect.MAY_PAY_FOUR_SPICE_FOR_VP,
@@ -1884,6 +1977,81 @@ def apply_agent_card_payment(state: GameState, action: DomainAction) -> RuleResu
         return _apply_arrakis_revolt_payment(state, action, context, source)
 
     owner = state.players[action.actor]
+    if action.action_id == "pay_agent_card_two_specimens":
+        # Tleilaxu Surgeon: two specimens return to the supply as they are
+        # spent [Immortality p. 8]; the token advances twice.
+        paid_owner = spend_specimens(owner, 2)
+        next_state = advance_after_effect(
+            state, context, replace_player(state.players, paid_owner)
+        )
+        advanced = advance_tleilaxu(
+            next_state, action.actor, 2, source=f"{source}:tleilaxu"
+        )
+        return RuleResult(
+            state=advanced.state,
+            events=(
+                GameEvent(
+                    event_id=f"{source}:paid",
+                    kind="agent_card_payment_resolved",
+                    payload=(
+                        ("player", action.actor),
+                        ("resource", "specimen"),
+                        ("spent", 2),
+                    ),
+                ),
+                *advanced.events,
+            ),
+        )
+    if action.action_id == "trash_grafted_card_for_specimen":
+        # Dissecting Kit: the other grafted card leaves play; its
+        # un-activated box expires with it (OQ-022 designer ruling).
+        partner = other_grafted_card_id(context)
+        context["graft_pending_effect"] = False
+        context["graft_pending_icons"] = ""
+        next_state = advance_after_effect(state, context)
+        trashed = trash_personal_card(
+            next_state, action.actor, partner, source=f"{source}:trash"
+        )
+        generated = generate_specimens(
+            trashed.state, action.actor, 1, source=f"{source}:specimen"
+        )
+        return RuleResult(
+            state=generated.state,
+            events=(
+                GameEvent(
+                    event_id=f"{source}:paid",
+                    kind="agent_card_payment_resolved",
+                    payload=(
+                        ("card_id", partner),
+                        ("player", action.actor),
+                        ("resource", "card"),
+                        ("spent", 1),
+                    ),
+                ),
+                *trashed.events,
+                *generated.events,
+            ),
+        )
+    if action.action_id == "take_agent_card_combat_icon":
+        # High Priority Travel's Combat half; the grant writes the frame, so
+        # the context is re-read before the box closes.
+        with_icon = grant_combat_icon(state, action.actor)
+        _, granted = current_agent_effect_context(with_icon)
+        granted["pending_agent_effect"] = False
+        next_state = advance_after_effect(with_icon, granted, with_icon.players)
+        return RuleResult(
+            state=next_state,
+            events=(
+                GameEvent(
+                    event_id=f"{source}:combat_icon",
+                    kind="agent_card_effect_resolved",
+                    payload=(
+                        ("card_id", _effect_subject(context)[1]),
+                        ("player", action.actor),
+                    ),
+                ),
+            ),
+        )
     if action.action_id == "pay_agent_card_specimen":
         # Organ Merchants: the specimen returns to the supply as it is spent
         # [Immortality p. 8].
@@ -2862,6 +3030,55 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
                 *advanced.events,
             ),
         )
+    elif effect is PersonalCardAgentEffect.PEEK_TWO_INTRIGUE_KEEP_ONE:
+        # Imperium Ceremony: the keep-one choice opens once the box has
+        # resolved (OQ-052 for a short deck).
+        context["pending_agent_effect"] = False
+        next_state = advance_after_effect(state, context)
+        peek = begin_intrigue_peek(next_state, player, source=event_source)
+        return RuleResult(
+            state=peek.state,
+            events=(
+                GameEvent(
+                    event_id=event_source,
+                    kind="agent_card_effect_resolved",
+                    payload=(("card_id", card_instance_id), ("player", player)),
+                ),
+                *peek.events,
+            ),
+        )
+    elif (
+        effect
+        is _DRAW_ONE_OR_COMBAT_ICON
+    ):
+        # High Priority Travel's draw half; the Influence is judged now
+        # (OQ-028).
+        next_owner = owner
+        event_kind = (
+            "agent_card_effect_resolved"
+            if owner.influence.spacing_guild >= 2
+            else "agent_card_effect_unavailable"
+        )
+    elif (
+        effect
+        is _SPICE_AND_GRAFTED_INFLUENCE
+    ):
+        # Interstellar Conspiracy without an Emperor or Guild partner: the
+        # spice alone (the Influence choice pays both otherwise).
+        next_owner = replace(
+            owner,
+            resources=replace(owner.resources, spice=owner.resources.spice + 1),
+        )
+        event_kind = "agent_card_effect_resolved"
+    elif effect in (
+        PersonalCardAgentEffect.MAY_TRASH_OTHER_GRAFTED_FOR_SPECIMEN,
+        PersonalCardAgentEffect.MAY_ACQUIRE_CARD_UP_TO_SIX_IF_ONE_MARKER,
+        PersonalCardAgentEffect.MAY_PAY_TWO_SPECIMENS_FOR_TWO_TLEILAXU,
+    ):
+        # Reached only when the box's choice provider offered nothing: no
+        # grafted partner, no genetic marker.
+        next_owner = owner
+        event_kind = "agent_card_effect_unavailable"
     elif effect is PersonalCardAgentEffect.GENERATE_SPECIMEN:
         # Bene Tleilax Lab: a specimen [Immortality p. 8].
         context["pending_agent_effect"] = False
@@ -2950,9 +3167,12 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         return RuleResult(state=next_state, events=gained.events)
     elif effect is PersonalCardAgentEffect.DRAW_ONE_AND_COMBAT_ICON:
         # Occupation: draw a card and the Combat icon [Immortality p. 16].
-        context["pending_agent_effect"] = False
+        # The grant writes the frame, so the context is re-read before the
+        # box closes.
         with_icon = grant_combat_icon(state, player)
-        next_state = advance_after_effect(with_icon, context, with_icon.players)
+        _, granted = current_agent_effect_context(with_icon)
+        granted["pending_agent_effect"] = False
+        next_state = advance_after_effect(with_icon, granted, with_icon.players)
         drawn = draw_or_request_personal_cards(
             next_state, player, 1, source=f"{event_source}:draw"
         )
@@ -3369,6 +3589,7 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         PersonalCardAgentEffect.DRAW_ONE_OR_BENE_GESSERIT_INFLUENCE_IF_BOND,
         PersonalCardAgentEffect.DRAW_TWO_IF_ONE_MARKER,
         PersonalCardAgentEffect.DRAW_TWO_CARDS,
+        PersonalCardAgentEffect.DRAW_ONE_OR_COMBAT_ICON_IF_SPACING_GUILD_INFLUENCE_TWO,
     ):
         if effect is PersonalCardAgentEffect.DRAW_PER_SANDWORM_IN_CONFLICT:
             draw_count = owner.sandworms_conflict

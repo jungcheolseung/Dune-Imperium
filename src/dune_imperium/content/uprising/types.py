@@ -238,6 +238,27 @@ class PersonalCardAgentEffect(StrEnum):
     GAIN_TWO_DISTINCT_CHOSEN_INFLUENCE = "gain_two_distinct_chosen_influence"
     # Organ Merchants: "specimen -> 4 Solari".
     MAY_PAY_SPECIMEN_FOR_FOUR_SOLARI = "may_pay_specimen_for_four_solari"
+    # Dissecting Kit (Graft): "Trash the other grafted card -> a specimen".
+    MAY_TRASH_OTHER_GRAFTED_FOR_SPECIMEN = "may_trash_other_grafted_for_specimen"
+    # High Priority Travel: "[Guild] 2 Influence: draw a card —OR— Combat".
+    DRAW_ONE_OR_COMBAT_ICON_IF_SPACING_GUILD_INFLUENCE_TWO = (
+        "draw_one_or_combat_icon_if_spacing_guild_influence_two"
+    )
+    # Imperium Ceremony: "Look at the top two Intrigue cards. Keep one and
+    # put the other back on top".
+    PEEK_TWO_INTRIGUE_KEEP_ONE = "peek_two_intrigue_keep_one"
+    # Interstellar Conspiracy (Graft): "1 spice —AND— If grafted with an
+    # Emperor or Spacing Guild card: Influence of your choice".
+    GAIN_SPICE_AND_CHOSEN_INFLUENCE_IF_GRAFTED_WITH_EMPEROR_OR_GUILD = (
+        "gain_spice_and_chosen_influence_if_grafted_with_emperor_or_guild"
+    )
+    # Tleilaxu Master: "[one marker]: you may acquire a card costing 6 or
+    # less. [two markers]: put that card in your hand".
+    MAY_ACQUIRE_CARD_UP_TO_SIX_IF_ONE_MARKER = (
+        "may_acquire_card_up_to_six_if_one_marker"
+    )
+    # Tleilaxu Surgeon: "2 specimens -> Tleilaxu Tleilaxu".
+    MAY_PAY_TWO_SPECIMENS_FOR_TWO_TLEILAXU = "may_pay_two_specimens_for_two_tleilaxu"
 
 
 class PersonalCardTrashEffect(StrEnum):
@@ -361,6 +382,15 @@ class PersonalCardRevealChoiceEffect(StrEnum):
     # Ixian Ambassador (Tech Module): "If you have two or more Tech tiles:
     # gain 1 Influence of your choice".
     GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH = "gain_chosen_influence_if_two_tech"
+    # Immortality (card faces). For Humanity: "Bene Gesserit Alliance: lose
+    # one Influence -> 1 Victory Point".
+    MAY_LOSE_INFLUENCE_FOR_VP_IF_BENE_GESSERIT_ALLIANCE = (
+        "may_lose_influence_for_vp_if_bene_gesserit_alliance"
+    )
+    # Shadout Mapes: "You may deploy or retreat one troop".
+    MAY_DEPLOY_OR_RETREAT_ONE_TROOP = "may_deploy_or_retreat_one_troop"
+    # Tleilaxu Surgeon: "Lose two troops -> two specimens".
+    MAY_LOSE_TWO_TROOPS_FOR_TWO_SPECIMENS = "may_lose_two_troops_for_two_specimens"
 
 
 # Choice effects added by Bloodlines: their action templates join only the
@@ -378,6 +408,18 @@ BLOODLINES_REVEAL_CHOICE_EFFECTS: frozenset[PersonalCardRevealChoiceEffect] = fr
         PersonalCardRevealChoiceEffect.PERSUASION_OR_CONTRACT,
         PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH,
     }
+)
+
+# Choice effects added by Immortality; like the Bloodlines set their
+# templates join only the option's catalogs.
+IMMORTALITY_REVEAL_CHOICE_EFFECTS: frozenset[PersonalCardRevealChoiceEffect] = (
+    frozenset(
+        {
+            PersonalCardRevealChoiceEffect.MAY_LOSE_INFLUENCE_FOR_VP_IF_BENE_GESSERIT_ALLIANCE,
+            PersonalCardRevealChoiceEffect.MAY_DEPLOY_OR_RETREAT_ONE_TROOP,
+            PersonalCardRevealChoiceEffect.MAY_LOSE_TWO_TROOPS_FOR_TWO_SPECIMENS,
+        }
+    )
 )
 
 

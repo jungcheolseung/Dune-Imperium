@@ -1609,18 +1609,96 @@ IMPERIUM_CARDS: Final = (
         reveal_strength=1,
         play_data_complete=True,
     ),
-    _entry(372, "dissecting-kit", "Dissecting Kit", 2, copies=2, immortality_only=True),
-    _entry(373, "for-humanity", "For Humanity", 7, immortality_only=True),
+    # Dissecting Kit (no Faction, Graft): Landsraad, City; Agent: "Trash the
+    # other grafted card -> a specimen"; Reveal: 1 Persuasion and "[one
+    # genetic marker]: Tleilaxu" [card face].
     _entry(
-        374, "high-priority-travel", "High Priority Travel", 1, immortality_only=True
+        372,
+        "dissecting-kit",
+        "Dissecting Kit",
+        2,
+        copies=2,
+        immortality_only=True,
+        graft=True,
+        agent_icons=(AgentIcon.LANDSRAAD, AgentIcon.CITY),
+        agent_effect=PersonalCardAgentEffect.MAY_TRASH_OTHER_GRAFTED_FOR_SPECIMEN,
+        reveal_persuasion=1,
+        reveal_effects=(
+            PersonalCardRevealEffect(tleilaxu=1, minimum_genetic_markers=1),
+        ),
+        play_data_complete=True,
     ),
-    _entry(375, "imperium-ceremony", "Imperium Ceremony", 6, immortality_only=True),
+    # For Humanity (Bene Gesserit): BG, Landsraad, Spice Trade; Agent:
+    # Influence of your choice; Reveal: 2 Persuasion and "Bene Gesserit
+    # Alliance: lose one Influence -> 1 Victory Point" [card face].
+    _entry(
+        373,
+        "for-humanity",
+        "For Humanity",
+        7,
+        immortality_only=True,
+        factions=(Faction.BENE_GESSERIT,),
+        agent_icons=(
+            AgentIcon.BENE_GESSERIT,
+            AgentIcon.LANDSRAAD,
+            AgentIcon.SPICE_TRADE,
+        ),
+        agent_effect=PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE,
+        reveal_persuasion=2,
+        reveal_choice_effects=(
+            PersonalCardRevealChoiceEffect.MAY_LOSE_INFLUENCE_FOR_VP_IF_BENE_GESSERIT_ALLIANCE,
+        ),
+        play_data_complete=True,
+    ),
+    # High Priority Travel (Spacing Guild): Landsraad, Spice Trade; Agent:
+    # "[Guild] 2 Influence: draw a card —OR— Combat"; Reveal: 1 Persuasion
+    # and 1 Solari [card face].
+    _entry(
+        374,
+        "high-priority-travel",
+        "High Priority Travel",
+        1,
+        immortality_only=True,
+        factions=(Faction.SPACING_GUILD,),
+        agent_icons=(AgentIcon.LANDSRAAD, AgentIcon.SPICE_TRADE),
+        agent_effect=(
+            PersonalCardAgentEffect.DRAW_ONE_OR_COMBAT_ICON_IF_SPACING_GUILD_INFLUENCE_TWO
+        ),
+        reveal_persuasion=1,
+        reveal_effects=(PersonalCardRevealEffect(solari=1),),
+        play_data_complete=True,
+    ),
+    # Imperium Ceremony (Emperor, Spacing Guild): Emperor, Guild, Landsraad;
+    # Agent: "Look at the top two cards of the Intrigue deck. Keep one and
+    # put the other back on top"; Reveal: 3 Persuasion [card face].
+    _entry(
+        375,
+        "imperium-ceremony",
+        "Imperium Ceremony",
+        6,
+        immortality_only=True,
+        factions=(Faction.EMPEROR, Faction.SPACING_GUILD),
+        agent_icons=(AgentIcon.EMPEROR, AgentIcon.SPACING_GUILD, AgentIcon.LANDSRAAD),
+        agent_effect=PersonalCardAgentEffect.PEEK_TWO_INTRIGUE_KEEP_ONE,
+        reveal_persuasion=3,
+        play_data_complete=True,
+    ),
+    # Interstellar Conspiracy (no Faction, Graft): City; Agent: "1 spice
+    # —AND— If grafted with an Emperor or Spacing Guild card: Influence of
+    # your choice"; Reveal: 2 Persuasion [card face].
     _entry(
         376,
         "interstellar-conspiracy",
         "Interstellar Conspiracy",
         4,
         immortality_only=True,
+        graft=True,
+        agent_icons=(AgentIcon.CITY,),
+        agent_effect=(
+            PersonalCardAgentEffect.GAIN_SPICE_AND_CHOSEN_INFLUENCE_IF_GRAFTED_WITH_EMPEROR_OR_GUILD
+        ),
+        reveal_persuasion=2,
+        play_data_complete=True,
     ),
     # Keys to Power (Guild, Bene Gesserit): Guild, BG, Landsraad; Agent:
     # "[Emperor] 2 Influence: 2 spice"; Reveal: 2 Persuasion [card face].
@@ -1767,7 +1845,24 @@ IMPERIUM_CARDS: Final = (
         reveal_strength=2,
         play_data_complete=True,
     ),
-    _entry(385, "shadout-mapes", "Shadout Mapes", 2, immortality_only=True),
+    # Shadout Mapes (Fremen): Fremen, Spice Trade; no Agent box; Reveal: 1
+    # Persuasion, 1 sword and "You may deploy or retreat one troop" [card
+    # face].
+    _entry(
+        385,
+        "shadout-mapes",
+        "Shadout Mapes",
+        2,
+        immortality_only=True,
+        factions=(Faction.FREMEN,),
+        agent_icons=(AgentIcon.FREMEN, AgentIcon.SPICE_TRADE),
+        reveal_persuasion=1,
+        reveal_strength=1,
+        reveal_choice_effects=(
+            PersonalCardRevealChoiceEffect.MAY_DEPLOY_OR_RETREAT_ONE_TROOP,
+        ),
+        play_data_complete=True,
+    ),
     # Show of Strength (Emperor, Fremen): with more deployed troops than
     # each opponent the greyed Landsraad and Spice Trade icons; Agent: draw
     # two cards; Reveal: 1 Persuasion, 2 swords [card face].
@@ -1843,10 +1938,40 @@ IMPERIUM_CARDS: Final = (
         ),
         play_data_complete=True,
     ),
+    # Tleilaxu Master (no Faction): Landsraad, Spice Trade; Agent: "[one
+    # genetic marker]: you may acquire a card costing 6 or less. [two
+    # markers]: put that card in your hand"; Reveal: 1 Persuasion and two
+    # Research icons [card face].
     _entry(
-        390, "tleilaxu-master", "Tleilaxu Master", 5, copies=2, immortality_only=True
+        390,
+        "tleilaxu-master",
+        "Tleilaxu Master",
+        5,
+        copies=2,
+        immortality_only=True,
+        agent_icons=(AgentIcon.LANDSRAAD, AgentIcon.SPICE_TRADE),
+        agent_effect=PersonalCardAgentEffect.MAY_ACQUIRE_CARD_UP_TO_SIX_IF_ONE_MARKER,
+        reveal_persuasion=1,
+        reveal_effects=(PersonalCardRevealEffect(research=2),),
+        play_data_complete=True,
     ),
-    _entry(391, "tleilaxu-surgeon", "Tleilaxu Surgeon", 3, immortality_only=True),
+    # Tleilaxu Surgeon (no Faction): Emperor, City; Agent: "2 specimens ->
+    # Tleilaxu Tleilaxu"; Reveal: 2 Persuasion and "Lose two troops -> two
+    # specimens" [card face].
+    _entry(
+        391,
+        "tleilaxu-surgeon",
+        "Tleilaxu Surgeon",
+        3,
+        immortality_only=True,
+        agent_icons=(AgentIcon.EMPEROR, AgentIcon.CITY),
+        agent_effect=PersonalCardAgentEffect.MAY_PAY_TWO_SPECIMENS_FOR_TWO_TLEILAXU,
+        reveal_persuasion=2,
+        reveal_choice_effects=(
+            PersonalCardRevealChoiceEffect.MAY_LOSE_TWO_TROOPS_FOR_TWO_SPECIMENS,
+        ),
+        play_data_complete=True,
+    ),
 )
 
 IMPERIUM_CARDS_BY_ID: Final = {entry.card.card_id: entry for entry in IMPERIUM_CARDS}

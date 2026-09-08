@@ -411,6 +411,11 @@ def test_imperium_manifest_matches_base_and_choam_counts() -> None:
         "blank_slate",
         "clandestine_meeting",
         "corrupt_smuggler",
+        "dissecting_kit",
+        "for_humanity",
+        "high_priority_travel",
+        "imperium_ceremony",
+        "interstellar_conspiracy",
         "keys_to_power",
         "lisan_al_gaib",
         "long_reach",
@@ -419,10 +424,13 @@ def test_imperium_manifest_matches_base_and_choam_counts() -> None:
         "planned_coupling",
         "replacement_eyes",
         "sardaukar_quartermaster",
+        "shadout_mapes",
         "show_of_strength",
         "spiritual_fervor",
         "stillsuit_manufacturer",
         "throne_room_politics",
+        "tleilaxu_master",
+        "tleilaxu_surgeon",
     }
     assert not any(
         entry.immortality_only for entry in imperium_cards_for_choam(True, True)

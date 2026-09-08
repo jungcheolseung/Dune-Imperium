@@ -153,6 +153,10 @@ from dune_imperium.rules.intrigue_deck import (
     intrigue_reshuffle_is_pending,
     resolve_pending_intrigue_draw,
 )
+from dune_imperium.rules.intrigue_peek import (
+    apply_intrigue_peek,
+    legal_intrigue_peek_actions,
+)
 from dune_imperium.rules.intrigue_triggers import (
     apply_trigger_contract_action,
     apply_trigger_spy_action,
@@ -213,11 +217,14 @@ from dune_imperium.rules.reveal_turn import (
     apply_reveal_gain,
     apply_reveal_influence_exchange,
     apply_reveal_influence_gain,
+    apply_reveal_influence_loss,
     apply_reveal_persuasion_or_contract,
     apply_reveal_sandworm_action,
     apply_reveal_spice_influence,
     apply_reveal_spy_action,
+    apply_reveal_troop_move,
     apply_reveal_troop_retreat,
+    apply_reveal_troop_sacrifice,
     begin_reveal_turn,
     finish_reveal_turn,
     grant_late_reveal_effects,
@@ -232,11 +239,14 @@ from dune_imperium.rules.reveal_turn import (
     legal_reveal_gain_actions,
     legal_reveal_influence_exchange_actions,
     legal_reveal_influence_gain_actions,
+    legal_reveal_influence_loss_actions,
     legal_reveal_persuasion_or_contract_actions,
     legal_reveal_sandworm_actions,
     legal_reveal_spice_influence_actions,
     legal_reveal_spy_actions,
+    legal_reveal_troop_move_actions,
     legal_reveal_troop_retreat_actions,
+    legal_reveal_troop_sacrifice_actions,
 )
 from dune_imperium.rules.sardaukar import (
     apply_commander_recruit,
@@ -397,6 +407,9 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         legal_reveal_sandworm_actions,
         legal_reveal_spice_influence_actions,
         legal_reveal_troop_retreat_actions,
+        legal_reveal_influence_loss_actions,
+        legal_reveal_troop_move_actions,
+        legal_reveal_troop_sacrifice_actions,
     ),
     FrameKind.CONTRACT_MARKET: (legal_contract_actions,),
     FrameKind.CONTRACT_REWARD_SPY: (legal_contract_spy_actions,),
@@ -436,6 +449,7 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     FrameKind.RESEARCH_ADVANCE: (legal_research_advance_actions,),
     FrameKind.RESEARCH_BONUS: (legal_research_bonus_actions,),
     FrameKind.GRAFT_PARTNER: (legal_graft_partner_actions,),
+    FrameKind.INTRIGUE_PEEK: (legal_intrigue_peek_actions,),
 }
 
 ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
@@ -450,6 +464,10 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "advance_reveal_tleilaxu": apply_reveal_gain,
     "advance_reveal_research": apply_reveal_gain,
     "pay_agent_card_specimen": apply_agent_card_payment,
+    "pay_agent_card_two_specimens": apply_agent_card_payment,
+    "trash_grafted_card_for_specimen": apply_agent_card_payment,
+    "take_agent_card_combat_icon": apply_agent_card_payment,
+    "keep_peeked_intrigue": apply_intrigue_peek,
     "gain_reveal_resources": apply_reveal_gain,
     "gain_reveal_faction_influence": apply_reveal_gain,
     "play_intrigue": apply_intrigue_play,
@@ -562,6 +580,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "acquire_imperium_with_solari": apply_agent_card_acquisition,
     "acquire_reserve_with_solari": apply_agent_card_acquisition,
     "decline_agent_card_acquisition": apply_agent_card_acquisition,
+    "acquire_reserve_by_card": apply_agent_card_acquisition,
+    "acquire_imperium_by_card": apply_agent_card_acquisition,
     "select_long_live_fighters_draw": apply_agent_card_long_live_action,
     "select_long_live_fighters_discard": apply_agent_card_long_live_action,
     "discard_opponent_card": apply_opponent_card_discard,
@@ -636,6 +656,15 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "decline_reveal_spice_influence": apply_reveal_spice_influence,
     "retreat_two_troops_for_reveal": apply_reveal_troop_retreat,
     "decline_reveal_troop_retreat": apply_reveal_troop_retreat,
+    # Immortality Reveal choices (For Humanity, Shadout Mapes, Tleilaxu
+    # Surgeon)
+    "lose_reveal_influence_for_vp": apply_reveal_influence_loss,
+    "decline_reveal_influence_loss": apply_reveal_influence_loss,
+    "deploy_reveal_card_troop": apply_reveal_troop_move,
+    "retreat_reveal_card_troop": apply_reveal_troop_move,
+    "decline_reveal_troop_move": apply_reveal_troop_move,
+    "lose_reveal_troops_for_specimens": apply_reveal_troop_sacrifice,
+    "decline_reveal_troop_sacrifice": apply_reveal_troop_sacrifice,
     # Contracts
     "take_contract": apply_contract_action,
     "take_exhausted_contract_solari": apply_exhausted_contract_solari,

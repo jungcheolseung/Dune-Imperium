@@ -15,7 +15,11 @@ state, which the tests pin.
 import random
 from dataclasses import replace
 
-from dune_imperium.core.observation import peeked_card_id, resolving_intrigue_ids
+from dune_imperium.core.observation import (
+    peeked_card_id,
+    peeked_intrigue_ids,
+    resolving_intrigue_ids,
+)
 from dune_imperium.core.state import GameState
 
 
@@ -26,7 +30,9 @@ def determinize(state: GameState, observer: int, rng: random.Random) -> GameStat
         raise ValueError("observer must identify a configured player")
     resolving = frozenset(resolving_intrigue_ids(state))
     players = list(state.players)
-    intrigue_pool: list[str] = list(state.intrigue_deck)
+    # Imperium Ceremony's peek keeps the deck's top cards in place.
+    peeked_intrigue = peeked_intrigue_ids(state, observer)
+    intrigue_pool: list[str] = list(state.intrigue_deck[len(peeked_intrigue) :])
 
     for seat, player in enumerate(players):
         if seat == observer:
@@ -82,7 +88,7 @@ def determinize(state: GameState, observer: int, rng: random.Random) -> GameStat
     return replace(
         state,
         players=tuple(players),
-        intrigue_deck=tuple(intrigue_pool[cursor:]),
+        intrigue_deck=(*peeked_intrigue, *intrigue_pool[cursor:]),
         imperium_deck=tuple(imperium_deck),
         contract_bank=tuple(contract_bank),
         conflict_deck=tuple(conflict_deck),

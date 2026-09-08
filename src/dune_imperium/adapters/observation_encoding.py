@@ -54,7 +54,7 @@ from dune_imperium.core.observation import PlayerView, PublicPlayerView
 from dune_imperium.core.state import GamePhase
 from dune_imperium.rules.frames import FrameKind
 
-OBSERVATION_VERSION: Final = 13
+OBSERVATION_VERSION: Final = 14
 _SEATS: Final = 4
 
 PERSONAL_CARD_IDS: Final = (
@@ -174,6 +174,8 @@ def _segment_lengths() -> tuple[tuple[str, int], ...]:
             ("private_hand", len(PERSONAL_CARD_IDS)),
             ("private_intrigue", len(INTRIGUE_IDS)),
             ("private_peeked_card", len(PERSONAL_CARD_IDS)),
+            # v14: Imperium Ceremony's peek at the Intrigue deck's top two.
+            ("private_peeked_intrigue", len(INTRIGUE_IDS)),
             ("private_navigation_slots", 4),
             ("private_secret_project", 1),
         )
@@ -339,6 +341,9 @@ def encode_player_view(view: PlayerView) -> tuple[int, ...]:
         _personal_counts(
             (view.private.peeked_card_id,) if view.private.peeked_card_id else ()
         ),
+    )
+    writer.write(
+        "private_peeked_intrigue", _intrigue_counts(view.private.peeked_intrigue_ids)
     )
     # Face-down Navigation slots: identity index + 1 per slot, 0 when empty.
     slots = [
