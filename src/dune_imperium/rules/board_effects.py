@@ -33,6 +33,7 @@ from dune_imperium.rules.effects import (
     DrawIntrigueCardsEffect,
     GainResourcesEffect,
     RecruitTroopsEffect,
+    ResearchEffect,
     advance_after_effect,
     board_icon_is_pending,
     current_agent_effect_context,
@@ -48,6 +49,7 @@ from dune_imperium.rules.frames import (
     replace_player,
     top_frame_of_kind,
 )
+from dune_imperium.rules.immortality import advance_research
 from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.intrigue_deck import (
     draw_intrigue_cards,
@@ -76,11 +78,15 @@ BOARD_ICON_INTRIGUE: Final = "intrigue"
 BOARD_ICON_RESOURCES: Final = "resources"
 BOARD_ICON_SWORDMASTER: Final = "swordmaster"
 BOARD_ICON_TROOPS: Final = "troops"
+# Immortality's revised Research Station: "Draw two cards and research"
+# [Immortality p. 16]; the research advance may open a direction choice.
+BOARD_ICON_RESEARCH: Final = "research"
 AUTOMATIC_BOARD_ICONS: Final = (
     BOARD_ICON_CARDS,
     BOARD_ICON_CONTRACT,
     BOARD_ICON_HIGH_COUNCIL,
     BOARD_ICON_INTRIGUE,
+    BOARD_ICON_RESEARCH,
     BOARD_ICON_RESOURCES,
     BOARD_ICON_SWORDMASTER,
     BOARD_ICON_TROOPS,
@@ -154,6 +160,7 @@ def board_effects_for(
         space_id,
         cost_option,
         choam_module=state.config.choam_module,
+        immortality=state.config.immortality,
     )
 
 
@@ -162,6 +169,7 @@ def static_board_effects(
     cost_option: int,
     *,
     choam_module: bool,
+    immortality: bool = False,
 ) -> tuple[AutomaticEffect, ...]:
     """Return the printed automatic effects of one paid board-space option.
 
@@ -204,6 +212,10 @@ def static_board_effects(
             return (RecruitTroopsEffect(2),)
         case "gather_support", 1:
             return (RecruitTroopsEffect(2), GainResourcesEffect(water=1))
+        case "research_station", 0 if immortality:
+            # The Research Station overlay: "Draw two cards and research"
+            # [Immortality pp. 5, 16] [Main p. 18].
+            return (DrawImperiumCardsEffect(2), ResearchEffect())
         case "research_station", 0:
             return (RecruitTroopsEffect(2), DrawImperiumCardsEffect(2))
         case "spice_refinery", 0:
@@ -228,12 +240,15 @@ def visit_board_effects(
     cost_option: int,
     *,
     choam_module: bool,
+    immortality: bool = False,
 ) -> tuple[AutomaticEffect, ...]:
     """Return the automatic icons one visit by ``owner`` resolves."""
 
     if space_id == "high_council":
         return HIGH_COUNCIL_REVISIT_EFFECTS if owner.high_council else ()
-    return static_board_effects(space_id, cost_option, choam_module=choam_module)
+    return static_board_effects(
+        space_id, cost_option, choam_module=choam_module, immortality=immortality
+    )
 
 
 def board_icon_for_effect(effect: AutomaticEffect) -> str:
@@ -248,6 +263,8 @@ def board_icon_for_effect(effect: AutomaticEffect) -> str:
             return BOARD_ICON_INTRIGUE
         case RecruitTroopsEffect():
             return BOARD_ICON_TROOPS
+        case ResearchEffect():
+            return BOARD_ICON_RESEARCH
         case _:
             assert_never(effect)
 
@@ -286,7 +303,11 @@ def board_icons_for(
     icons = [
         board_icon_for_effect(effect)
         for effect in visit_board_effects(
-            owner, space_id, cost_option, choam_module=choam_module
+            owner,
+            space_id,
+            cost_option,
+            choam_module=choam_module,
+            immortality=state.config.immortality,
         )
     ]
     match space_id:
@@ -473,7 +494,11 @@ def resolve_board_effect(state: GameState, action: DomainAction) -> RuleResult:
     key = str(dict(action.arguments)["effect"])
     owner = state.players[player]
     effects = visit_board_effects(
-        owner, space_id, cost_option, choam_module=state.config.choam_module
+        owner,
+        space_id,
+        cost_option,
+        choam_module=state.config.choam_module,
+        immortality=state.config.immortality,
     )
     source = f"round:{state.round_number}:player:{player}:board:{space_id}"
     finish_board_icon(context, key)
@@ -481,8 +506,11 @@ def resolve_board_effect(state: GameState, action: DomainAction) -> RuleResult:
     next_owner = owner
     personal_draw_count = 0
     intrigue_draw_count = 0
+    research = False
     recruit_shortfall: tuple[GameEvent, ...] = ()
     match _icon_effect(effects, key):
+        case ResearchEffect():
+            research = True
         case GainResourcesEffect() as effect:
             next_owner = _gain_resources(owner, effect)
         case DrawImperiumCardsEffect() as effect:
@@ -539,6 +567,12 @@ def resolve_board_effect(state: GameState, action: DomainAction) -> RuleResult:
         contracts = begin_contract_gain(next_state, player, 1, source=source)
         next_state = contracts.state
         contract_events = contracts.events
+    if research:
+        # The advance (and any direction choice it opens) follows the
+        # frame bookkeeping, like the card draw.
+        advanced = advance_research(next_state, player, source=source)
+        next_state = advanced.state
+        contract_events = (*contract_events, *advanced.events)
     steal_events: tuple[GameEvent, ...] = ()
     if key == BOARD_ICON_INTRIGUE and space_id == "secrets":
         # The random steal is printed text that follows the Intrigue draw

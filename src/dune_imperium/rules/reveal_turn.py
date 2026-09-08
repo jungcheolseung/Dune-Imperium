@@ -58,6 +58,7 @@ from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
 from dune_imperium.rules.intrigue_triggers import expire_reveal_faceup_intrigue
 from dune_imperium.rules.planetologist import replace_sandworms, replaces_sandworms
 from dune_imperium.rules.shield_wall import current_conflict_is_shield_wall_protected
+from dune_imperium.rules.specimens import generate_specimens
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
     is_spying_on_maker_space,
@@ -1775,6 +1776,10 @@ def legal_reveal_gain_actions(
         actions.append(DomainAction(action_id="recruit_reveal_troops", actor=player))
     if "intrigue" in kinds:
         actions.append(DomainAction(action_id="draw_reveal_intrigue", actor=player))
+    if "specimens" in kinds:
+        actions.append(
+            DomainAction(action_id="generate_reveal_specimens", actor=player)
+        )
     # Resource gains differ in what they give, so each distinct bundle is
     # its own choice; equal bundles are interchangeable.
     for payload in dict.fromkeys(
@@ -1829,7 +1834,11 @@ def apply_reveal_gain(state: GameState, action: DomainAction) -> RuleResult:
             if kind == "influence" and payload.split("/")[0] == wanted_faction
         )
     else:
-        wanted = "troops" if action.action_id == "recruit_reveal_troops" else "intrigue"
+        wanted = {
+            "recruit_reveal_troops": "troops",
+            "draw_reveal_intrigue": "intrigue",
+            "generate_reveal_specimens": "specimens",
+        }[action.action_id]
         index = next(i for i, (kind, _, _) in enumerate(pending) if kind == wanted)
     kind, payload, source = pending[index]
     context[REVEAL_GAINS_KEY] = _encode_gains((*pending[:index], *pending[index + 1 :]))
@@ -1883,6 +1892,12 @@ def apply_reveal_gain(state: GameState, action: DomainAction) -> RuleResult:
             ),
         )
     count = int(payload)
+    if kind == "specimens":
+        settled = replace(
+            state,
+            decision_stack=(*state.decision_stack[:-1], with_context(frame, context)),
+        )
+        return generate_specimens(settled, player, count, source=event_id)
     if kind == "troops":
         next_owner, recruited = recruit_troops(owner, count)
         context["reveal_troops_recruited"] = (
@@ -2064,6 +2079,8 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
                 late_gains.append(("troops", str(effect.recruit_troops), card_id))
             if effect.draw_intrigue:
                 late_gains.append(("intrigue", str(effect.draw_intrigue), card_id))
+            if effect.specimens:
+                late_gains.append(("specimens", str(effect.specimens), card_id))
             resources = resource_gain_entry(
                 card_id, solari=effect.solari, spice=effect.spice, water=effect.water
             )
@@ -2809,6 +2826,7 @@ def _late_reveal_one_card(
             ("intrigue", str(effect.draw_intrigue), card_id)
             if effect.draw_intrigue
             else None,
+            ("specimens", str(effect.specimens), card_id) if effect.specimens else None,
             resource_gain_entry(
                 card_id, solari=effect.solari, spice=effect.spice, water=effect.water
             ),
@@ -3065,6 +3083,13 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
             ("intrigue", str(effect.draw_intrigue), card_id)
             for card_id, effect in reveal_effects
             if effect.draw_intrigue
+        ),
+        # Specimens come from the supply like troops [Immortality p. 8], so
+        # their timing is the owner's too (OQ-045).
+        *(
+            ("specimens", str(effect.specimens), card_id)
+            for card_id, effect in reveal_effects
+            if effect.specimens
         ),
         *(entry for entry in resource_gains if entry is not None),
         *(

@@ -177,6 +177,8 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
             "Gain 1 additional Influence with the visited Faction"
         ),
         PersonalCardAgentEffect.GAIN_WATER: "Gain 1 water",
+        # Immortality (card faces).
+        PersonalCardAgentEffect.RESEARCH: "Research (advance your research token)",
         PersonalCardAgentEffect.GAIN_BY_BENE_GESSERIT_AND_FREMEN_INFLUENCE_TWO: (
             "If you have 2 or more Bene Gesserit Influence: Gain 1 water, "
             "If you have 2 or more Fremen Influence: Gain 1 spice"
@@ -443,6 +445,7 @@ _HANDLED_REVEAL_FIELDS: Final[frozenset[str]] = frozenset(
         "requires_command",
         "trashes_self",
         "grants_combat_icon",
+        "specimens",
     }
 )
 
@@ -527,6 +530,10 @@ def reveal_effect_text(effect: PersonalCardRevealEffect) -> str:
         gains.append("Trash this card")
     if effect.grants_combat_icon:
         gains.append("Combat (deploy as though at a Combat space)")
+    if effect.specimens:
+        gains.append(
+            f"Generate {effect.specimens} {_plural(effect.specimens, 'specimen')}"
+        )
 
     text = ", ".join(gains)
     if conditions:

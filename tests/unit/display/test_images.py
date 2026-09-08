@@ -18,7 +18,7 @@ from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS
 from dune_imperium.content.uprising.intrigue import INTRIGUE_CARDS
 from dune_imperium.content.uprising.leaders import LEADERS
 from dune_imperium.content.uprising.reserve import RESERVE_STACKS
-from dune_imperium.content.uprising.starting_cards import STARTING_DECK
+from dune_imperium.content.uprising.starting_cards import STARTING_CARDS_BY_ID
 from dune_imperium.display.images import (
     load_card_manifest,
     required_image_keys,
@@ -39,7 +39,7 @@ def _all_content_keys() -> set[tuple[str, str]]:
         keys.append(("leader", leader.leader_id))
         if leader.alternate_face_id is not None:
             keys.append(("leader", leader.alternate_face_id))
-    keys += [("other", entry.card.card_id) for entry in STARTING_DECK]
+    keys += [("other", card_id) for card_id in STARTING_CARDS_BY_ID]
     keys += [("other", stack.card.card_id) for stack in RESERVE_STACKS]
     keys += [("skill", skill.skill_id) for skill in SKILLS]
     keys += [("tech", tile.tech_id) for tile in TECH_TILES]
@@ -163,9 +163,9 @@ def test_required_image_keys_cover_every_displayable_content_id() -> None:
     # Module's Kota Odax of Ix, 7 Skill tiles, 18 Tech tiles and the Ixian
     # Embassy board.
     # Immortality: 25 Imperium, 11 Intrigue, 18 Tleilaxu plus the promo
-    # Piter, Genius Advisor, and Reclaimed Forces.
+    # Piter, Genius Advisor, Reclaimed Forces, and Experimentation.
     assert len(keys) == (
-        175 + 44 + 1 + 12 + 10 + 8 + 1 + 1 + 7 + 18 + 1 + 25 + 11 + 19 + 1
+        175 + 44 + 1 + 12 + 10 + 8 + 1 + 1 + 7 + 18 + 1 + 25 + 11 + 19 + 1 + 1
     )
     assert len(set(keys)) == len(keys)
     assert set(keys) == _all_content_keys()

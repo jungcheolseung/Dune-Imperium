@@ -125,6 +125,16 @@ from dune_imperium.rules.endgame import (
     legal_endgame_intrigue_actions,
 )
 from dune_imperium.rules.frames import FrameKind, owned_top_frame
+from dune_imperium.rules.immortality import (
+    apply_family_atomics,
+    apply_research_advance,
+    apply_research_bonus,
+    apply_specimen_return,
+    legal_family_atomics_actions,
+    legal_research_advance_actions,
+    legal_research_bonus_actions,
+    legal_specimen_return_actions,
+)
 from dune_imperium.rules.intrigue import (
     apply_intrigue_choice,
     apply_intrigue_play,
@@ -341,6 +351,8 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         legal_reveal_actions,
         legal_intrigue_play_actions,
         legal_tech_flip_actions,
+        legal_specimen_return_actions,
+        legal_family_atomics_actions,
     ),
     FrameKind.AGENT_EFFECTS: (legal_agent_effect_frame_actions,),
     FrameKind.OPPONENT_CARD_DISCARD: (legal_opponent_card_discard_actions,),
@@ -359,6 +371,8 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         legal_tech_flip_actions,
         legal_tech_reveal_actions,
         legal_reveal_gain_actions,
+        legal_specimen_return_actions,
+        legal_family_atomics_actions,
     ),
     FrameKind.REVEAL_CHOICE: (
         legal_defer_reveal_choice_actions,
@@ -409,6 +423,8 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     FrameKind.NAVIGATION_CHOICE: (legal_navigation_play_actions,),
     FrameKind.TECH_ACQUISITION: (legal_tech_acquisition_actions,),
     FrameKind.TECH_SECRET_PROJECT: (legal_secret_project_actions,),
+    FrameKind.RESEARCH_ADVANCE: (legal_research_advance_actions,),
+    FrameKind.RESEARCH_BONUS: (legal_research_bonus_actions,),
 }
 
 ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
@@ -419,6 +435,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "reveal_turn": begin_reveal_turn,
     "recruit_reveal_troops": apply_reveal_gain,
     "draw_reveal_intrigue": apply_reveal_gain,
+    "generate_reveal_specimens": apply_reveal_gain,
     "gain_reveal_resources": apply_reveal_gain,
     "gain_reveal_faction_influence": apply_reveal_gain,
     "play_intrigue": apply_intrigue_play,
@@ -478,6 +495,14 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "deploy_commanders": _apply_deployment,
     "withdraw_commanders": apply_commander_withdrawal,
     "finish_agent_turn": apply_agent_turn_finish,
+    # Immortality: the Bene Tleilax board and Family Atomics
+    "choose_research_space": apply_research_advance,
+    "choose_research_influence": apply_research_bonus,
+    "trash_for_research_bonus": apply_research_bonus,
+    "pay_research_bonus": apply_research_bonus,
+    "decline_research_bonus": apply_research_bonus,
+    "return_specimen": apply_specimen_return,
+    "use_family_atomics": apply_family_atomics,
     # Bloodlines Sardaukar Commanders
     "acquire_sardaukar_commander": apply_sardaukar_commander_action,
     "acquire_tech": apply_tech_acquisition,

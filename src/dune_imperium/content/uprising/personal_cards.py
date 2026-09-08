@@ -1,5 +1,6 @@
 """Resolution of playable cards in one player's personal deck."""
 
+from dune_imperium.content.immortality.tleilaxu import tleilaxu_card_for_instance
 from dune_imperium.content.uprising.imperium import (
     ImperiumCardEntry,
     imperium_card_for_instance,
@@ -34,4 +35,13 @@ def personal_card_for_instance(
                 "Imperium-card play data is not transcribed: " + instance_id
             )
         return definition
+    if instance_id.startswith("tleilaxu:"):
+        # Immortality: Tleilaxu cards are Imperium-style cards bought with
+        # specimens [Immortality p. 8].
+        tleilaxu = tleilaxu_card_for_instance(instance_id)
+        if not tleilaxu.play_data_complete:
+            raise NotImplementedError(
+                "Tleilaxu-card play data is not transcribed: " + instance_id
+            )
+        return tleilaxu
     raise ValueError("unknown personal-card instance ID")

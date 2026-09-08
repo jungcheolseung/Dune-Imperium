@@ -24,6 +24,11 @@ from dune_imperium.content.bloodlines.sardaukar import (
     skill_for_instance,
 )
 from dune_imperium.content.bloodlines.tech import TECH_IDS, TECH_STACKS
+from dune_imperium.content.immortality.board import (
+    RESEARCH_SPACES_BY_ID,
+    TLEILAXU_ROW_SIZE,
+)
+from dune_imperium.content.immortality.tleilaxu import TLEILAXU_CARDS_BY_ID
 from dune_imperium.content.uprising.board import (
     BOARD_SPACES_BY_ID,
     OBSERVATION_POSTS,
@@ -49,14 +54,18 @@ from dune_imperium.core.observation import PlayerView, PublicPlayerView
 from dune_imperium.core.state import GamePhase
 from dune_imperium.rules.frames import FrameKind
 
-OBSERVATION_VERSION: Final = 11
+OBSERVATION_VERSION: Final = 12
 _SEATS: Final = 4
 
 PERSONAL_CARD_IDS: Final = (
     *STARTING_CARDS_BY_ID,
     *(stack.card.card_id for stack in RESERVE_STACKS),
     *IMPERIUM_CARDS_BY_ID,
+    # Immortality: the Tleilaxu deck (its promo included) joins the
+    # personal-card universe; Reclaimed Forces never enters a deck.
+    *TLEILAXU_CARDS_BY_ID,
 )
+RESEARCH_SPACE_IDS: Final = tuple(RESEARCH_SPACES_BY_ID)
 INTRIGUE_IDS: Final = tuple(INTRIGUE_CARDS_BY_ID)
 CONTRACT_IDS: Final = tuple(CONTRACTS_BY_ID)
 CONFLICT_IDS: Final = tuple(conflict.card.card_id for conflict in CONFLICTS)
@@ -100,7 +109,9 @@ class ObservationSegment:
 def _seat_segment_lengths(seat: int) -> tuple[tuple[str, int], ...]:
     prefix = f"seat{seat}"
     return (
-        (f"{prefix}_scalars", 44),
+        # v12: research space (index + 1), Tleilaxu space, specimens,
+        # Family Atomics (44 -> 48).
+        (f"{prefix}_scalars", 48),
         (f"{prefix}_alliances", len(FACTION_IDS)),
         (f"{prefix}_control", len(CONTROL_SPACE_IDS)),
         (f"{prefix}_agent_locations", _AGENT_LOCATION_SLOTS),
@@ -146,6 +157,11 @@ def _segment_lengths() -> tuple[tuple[str, int], ...]:
         ("tech_face_up", TECH_STACKS),
         ("tech_stack_sizes", TECH_STACKS),
         ("tech_trash", len(TECH_IDS)),
+        # Immortality: the Tleilaxu Row slots (identity index + 1), the
+        # deck size and the setup spice left on the Tleilaxu track.
+        ("tleilaxu_row", TLEILAXU_ROW_SIZE),
+        ("tleilaxu_deck_size", 1),
+        ("tleilaxu_track_spice", 1),
     ]
     for seat in range(_SEATS):
         lengths.extend(_seat_segment_lengths(seat))
@@ -296,6 +312,12 @@ def encode_player_view(view: PlayerView) -> tuple[int, ...]:
     sizes = list(view.tech_stack_sizes)
     writer.write("tech_stack_sizes", sizes + [0] * (TECH_STACKS - len(sizes)))
     writer.write("tech_trash", _multi_hot(view.tech_trash, TECH_IDS))
+    writer.write(
+        "tleilaxu_row",
+        _identity_slots(view.tleilaxu_row, TLEILAXU_ROW_SIZE, "the Tleilaxu Row"),
+    )
+    writer.write("tleilaxu_deck_size", [view.tleilaxu_deck_size])
+    writer.write("tleilaxu_track_spice", [view.tleilaxu_track_spice])
 
     for seat_offset in range(_SEATS):
         seat = (observer + seat_offset) % _SEATS
@@ -381,6 +403,12 @@ def _write_seat(writer: _Writer, seat_offset: int, player: PublicPlayerView) -> 
             int(player.has_secret_project),
             player.spies_boxed,
             player.spies_recalled_turn,
+            _index_plus_one(player.research_space, RESEARCH_SPACE_IDS)
+            if player.research_space
+            else 0,
+            player.tleilaxu_space,
+            player.specimens,
+            int(player.family_atomics),
         ],
     )
     writer.write(

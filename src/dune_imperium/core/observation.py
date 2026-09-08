@@ -78,6 +78,12 @@ class PublicPlayerView:
     has_secret_project: bool
     spies_boxed: int
     spies_recalled_turn: int
+    # Immortality: the tokens on the Bene Tleilax board, the specimens in
+    # the Axolotl tanks and the unused Family Atomics token (all public).
+    research_space: str
+    tleilaxu_space: int
+    specimens: int
+    family_atomics: bool
     in_play: tuple[str, ...]
     # Every card reaches a discard pile face up (acquired cards [Main p. 13],
     # played and revealed cards after Clean Up [Main pp. 9, 12, 20], cards
@@ -174,6 +180,11 @@ class PlayerView:
     tech_face_up: tuple[str, ...] = ()
     tech_stack_sizes: tuple[int, ...] = ()
     tech_trash: tuple[str, ...] = ()
+    # Immortality: the face-up Tleilaxu Row (Reclaimed Forces is fixed), the
+    # face-down deck's size, and the setup spice still on the Tleilaxu track.
+    tleilaxu_row: tuple[str, ...] = ()
+    tleilaxu_deck_size: int = 0
+    tleilaxu_track_spice: int = 0
     public_data: tuple[tuple[str, ActionValue], ...] = ()
     private_data: tuple[tuple[str, ActionValue], ...] = ()
 
@@ -351,6 +362,9 @@ def observe_state(state: GameState, player: int) -> PlayerView:
         tech_face_up=tuple(stack[0] if stack else "" for stack in state.tech_stacks),
         tech_stack_sizes=tuple(len(stack) for stack in state.tech_stacks),
         tech_trash=state.tech_trash,
+        tleilaxu_row=state.tleilaxu_row,
+        tleilaxu_deck_size=len(state.tleilaxu_deck),
+        tleilaxu_track_spice=state.tleilaxu_track_spice,
     )
 
 
@@ -427,6 +441,10 @@ def _public_player_view(player: PlayerState) -> PublicPlayerView:
         has_secret_project=bool(player.secret_project_tech_id),
         spies_boxed=player.spies_boxed,
         spies_recalled_turn=player.spies_recalled_turn,
+        research_space=player.research_space,
+        tleilaxu_space=player.tleilaxu_space,
+        specimens=player.specimens,
+        family_atomics=player.family_atomics,
         in_play=player.in_play,
         discard_pile=player.discard_pile,
         trashed=player.trashed,

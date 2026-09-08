@@ -158,6 +158,14 @@ class PlayerState:
     # Array (a Conflict won), drawn by the engine after the transition so a
     # reshuffle never lands inside another effect's frame bookkeeping.
     tech_cards_owed: int = 0
+    # Immortality [Immortality pp. 4-8, 12]: the research token's space on
+    # the Bene Tleilax board ("" without the option), the Tleilaxu token's
+    # space (0 = start), the troops resting in the Axolotl tanks as
+    # specimens, and the once-per-game Family Atomics token.
+    research_space: str = ""
+    tleilaxu_space: int = 0
+    specimens: int = 0
+    family_atomics: bool = False
     deck: tuple[str, ...] = ()
     hand: tuple[str, ...] = ()
     # Hand cards whose identity every seat already knows because they
@@ -227,6 +235,8 @@ class PlayerState:
             self.spies_recalled_turn,
             self.suspensor_owed,
             self.tech_cards_owed,
+            self.tleilaxu_space,
+            self.specimens,
         )
         if min(quantities) < 0:
             raise ValueError("player component quantities must not be negative")
@@ -254,11 +264,14 @@ class PlayerState:
             raise ValueError("Leader token positions must be non-negative")
         if len(self.agent_locations) != len(set(self.agent_locations)):
             raise ValueError("a player cannot place two agents in one space")
+        # Specimens are troops from the supply in the Axolotl tanks
+        # [Immortality p. 8].
         if (
             self.troops_supply
             + self.troops_garrison
             + self.troops_conflict
             + self.memories
+            + self.specimens
             != 12
         ):
             raise ValueError("a player must always account for all 12 troops")

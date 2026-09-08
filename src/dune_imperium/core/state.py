@@ -82,6 +82,14 @@ class GameState:
     # Both empty without the ``tech_module`` option.
     tech_stacks: tuple[tuple[str, ...], ...] = ()
     tech_trash: tuple[str, ...] = ()
+    # Immortality [Immortality pp. 4, 7, 9]: the face-down Tleilaxu deck
+    # (hidden order), the face-up Tleilaxu Row (Reclaimed Forces is fixed
+    # and not listed), and the setup spice waiting on the Tleilaxu track's
+    # fourth space for the first player to reach it. All empty without the
+    # ``immortality`` option.
+    tleilaxu_deck: tuple[str, ...] = ()
+    tleilaxu_row: tuple[str, ...] = ()
+    tleilaxu_track_spice: int = 0
     maker_bonus_spice: tuple[tuple[str, int], ...] = (
         ("deep_desert", 0),
         ("hagga_basin", 0),
@@ -217,6 +225,24 @@ class GameState:
             tech or any(player.spies_boxed for player in self.players)
         ):
             raise ValueError("Tech tiles require the Tech Module")
+
+        tleilaxu_cards = (*self.tleilaxu_deck, *self.tleilaxu_row)
+        if len(tleilaxu_cards) != len(set(tleilaxu_cards)):
+            raise ValueError("a Tleilaxu card cannot occupy two zones")
+        if self.tleilaxu_track_spice < 0:
+            raise ValueError("the Tleilaxu track spice must not be negative")
+        if not self.config.immortality and (
+            tleilaxu_cards
+            or self.tleilaxu_track_spice
+            or any(
+                player.research_space
+                or player.tleilaxu_space
+                or player.specimens
+                or player.family_atomics
+                for player in self.players
+            )
+        ):
+            raise ValueError("the Bene Tleilax board requires Immortality")
 
         maker_ids = tuple(space_id for space_id, _ in self.maker_bonus_spice)
         if maker_ids not in (

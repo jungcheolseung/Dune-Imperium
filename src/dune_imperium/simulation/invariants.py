@@ -57,6 +57,8 @@ def _all_personal_instances(state: GameState) -> Iterator[str]:
     yield from state.imperium_deck
     yield from state.imperium_row
     yield from state.imperium_removed
+    yield from state.tleilaxu_deck
+    yield from state.tleilaxu_row
     for player in state.players:
         yield from _personal_zone_instances(player)
 

@@ -46,6 +46,10 @@ from dune_imperium.rules.effects import (
     current_agent_effect_context,
     pending_agent_icons,
 )
+from dune_imperium.rules.immortality import (
+    legal_family_atomics_actions,
+    legal_specimen_return_actions,
+)
 from dune_imperium.rules.intrigue import legal_intrigue_play_actions
 from dune_imperium.rules.leader_abilities import (
     legal_feyd_track_actions,
@@ -122,6 +126,8 @@ def legal_agent_effect_frame_actions(
         *legal_combat_deployments(state, player),
         *legal_commander_deployments(state, player),
         *legal_intrigue_play_actions(state, player),
+        *legal_specimen_return_actions(state, player),
+        *legal_family_atomics_actions(state, player),
         *legal_agent_turn_finish_actions(state, player),
         # Withdrawals last (OQ-029): a "first legal action" walk deploys up
         # to the limit and finishes instead of cycling deploy/withdraw.

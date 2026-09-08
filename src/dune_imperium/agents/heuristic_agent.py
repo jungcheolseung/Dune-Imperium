@@ -79,6 +79,17 @@ _ACTION_SCORES: Final[dict[str, float]] = {
     # agent, so it takes them before shopping.
     "recruit_reveal_troops": 4.0,
     "draw_reveal_intrigue": 4.0,
+    # Immortality: take the Reveal's specimens, answer research choices,
+    # and prefer the paid research bonus; returning specimens is a last
+    # resort so the heuristic does not undo its own tanks.
+    "generate_reveal_specimens": 4.0,
+    "choose_research_space": 3.0,
+    "choose_research_influence": 3.0,
+    "pay_research_bonus": 2.5,
+    "trash_for_research_bonus": 1.0,
+    "decline_research_bonus": 0.5,
+    "use_family_atomics": 0.3,
+    "return_specimen": -2.0,
     "gain_reveal_resources": 4.0,
     "gain_reveal_faction_influence": 4.0,
     "withdraw_troops": -10.0,

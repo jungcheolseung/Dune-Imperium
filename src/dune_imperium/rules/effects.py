@@ -63,11 +63,21 @@ class RecruitTroopsEffect:
             raise ValueError("troop recruit count must be positive")
 
 
+@dataclass(frozen=True, slots=True)
+class ResearchEffect:
+    """Advance the research token (Immortality's revised Research Station).
+
+    "Draw two cards and research" [Immortality p. 16]; the advance may open
+    a direction choice for the owner [Immortality p. 6].
+    """
+
+
 type AutomaticEffect = (
     GainResourcesEffect
     | DrawImperiumCardsEffect
     | DrawIntrigueCardsEffect
     | RecruitTroopsEffect
+    | ResearchEffect
 )
 
 

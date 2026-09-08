@@ -7,6 +7,10 @@ from dune_imperium.adapters.observation_encoding import MAKER_SPACE_IDS
 from dune_imperium.config import RulesetConfig
 from dune_imperium.content.bloodlines.sardaukar import SKILLS
 from dune_imperium.content.bloodlines.tech import TECH_TILES
+from dune_imperium.content.immortality.board import (
+    RESEARCH_SPACES_BY_ID,
+    RESEARCH_START_ID,
+)
 from dune_imperium.content.uprising.board import (
     BOARD_SPACES,
     OBSERVATION_POSTS,
@@ -39,6 +43,7 @@ from dune_imperium.content.uprising.reserve import (
 from dune_imperium.content.uprising.starting_cards import (
     STARTING_DECK,
     StartingCardEntry,
+    starting_deck_entries,
 )
 from dune_imperium.content.uprising.types import (
     BLOODLINES_REVEAL_CHOICE_EFFECTS,
@@ -50,7 +55,7 @@ from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.rules.agent_effects import AUTOMATIC_AGENT_ICONS
 from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 
-ACTION_CODEC_VERSION = 95
+ACTION_CODEC_VERSION = 96
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -265,6 +270,8 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         templates.extend(_bloodlines_templates(config))
     if config.tech_module:
         templates.extend(_tech_templates(config))
+    if config.immortality:
+        templates.extend(_immortality_templates(config))
     templates.extend(
         ActionTemplate(
             action_id="recall_agent_for_agent_card",
@@ -797,6 +804,37 @@ def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     return tuple(templates)
 
 
+def _immortality_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
+    """Bene Tleilax board choices [Immortality pp. 6-8, 12] (``rules.immortality``)."""
+
+    templates: list[ActionTemplate] = [
+        ActionTemplate(action_id=action_id)
+        for action_id in (
+            "decline_research_bonus",
+            "pay_research_bonus",
+            "return_specimen",
+            "use_family_atomics",
+            "generate_reveal_specimens",
+        )
+    ]
+    templates.extend(
+        ActionTemplate(
+            action_id="choose_research_space", arguments=(("space_id", space_id),)
+        )
+        for space_id in RESEARCH_SPACES_BY_ID
+        if space_id != RESEARCH_START_ID
+    )
+    templates.extend(
+        ActionTemplate(
+            action_id="choose_research_influence",
+            arguments=(("faction", faction.value),),
+        )
+        for faction in Faction
+    )
+    templates.extend(_trash_templates(config, "trash_for_research_bonus"))
+    return tuple(templates)
+
+
 def _tech_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     """Tech Module choices [Bloodlines pp. 6-7] (``rules.tech``)."""
 
@@ -916,7 +954,7 @@ def _agent_turn_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     if config.bloodlines:
         granted = every_icon
     templates: list[ActionTemplate] = []
-    for starting_card in STARTING_DECK:
+    for starting_card in starting_deck_entries(immortality=config.immortality):
         templates.extend(
             _agent_turn_templates_for_card(
                 "starter",
@@ -1103,7 +1141,7 @@ def _trash_templates(
 def _personal_card_instance_ids(config: RulesetConfig) -> tuple[str, ...]:
     card_ids = [
         f"starter:{card.card.card_id}:{copy}"
-        for card in STARTING_DECK
+        for card in starting_deck_entries(immortality=config.immortality)
         for copy in range(card.copies)
     ]
     card_ids.extend(

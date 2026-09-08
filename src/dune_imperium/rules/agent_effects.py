@@ -52,6 +52,7 @@ from dune_imperium.rules.effects import (
     recruit_troops,
 )
 from dune_imperium.rules.frames import FrameKind, context_int, replace_player
+from dune_imperium.rules.immortality import advance_research
 from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
 from dune_imperium.rules.leader_abilities import (
@@ -2658,6 +2659,23 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             resources=replace(owner.resources, spice=owner.resources.spice + 1),
         )
         event_kind = "agent_card_effect_resolved"
+    elif effect is PersonalCardAgentEffect.RESEARCH:
+        # Experimentation: the Research icon [Immortality pp. 6, 16]. The
+        # advance (and its direction choice) follows the frame bookkeeping.
+        context["pending_agent_effect"] = False
+        next_state = advance_after_effect(state, context)
+        advanced = advance_research(next_state, player, source=event_source)
+        return RuleResult(
+            state=advanced.state,
+            events=(
+                GameEvent(
+                    event_id=event_source,
+                    kind="agent_card_effect_resolved",
+                    payload=(("card_id", card_instance_id), ("player", player)),
+                ),
+                *advanced.events,
+            ),
+        )
     elif effect is PersonalCardAgentEffect.GAIN_VISITED_FACTION_INFLUENCE:
         space_id = context.get("space_id")
         if not isinstance(space_id, str):

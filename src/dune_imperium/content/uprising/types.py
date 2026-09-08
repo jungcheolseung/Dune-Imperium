@@ -188,6 +188,9 @@ class PersonalCardAgentEffect(StrEnum):
     MAY_TRASH_TWO_CARDS_IF_COMMANDER_IN_CONFLICT = (
         "may_trash_two_cards_if_commander_in_conflict"
     )
+    # Immortality (card faces, 2026-09-08). Experimentation: the Research
+    # icon [Immortality pp. 6, 16].
+    RESEARCH = "research"
 
 
 class PersonalCardTrashEffect(StrEnum):
@@ -349,6 +352,9 @@ class PersonalCardRevealEffect:
     # Holy War: "Fremen Bond: Combat icon" — deploy in this Reveal as though
     # at a Combat space [Bloodlines p. 5].
     grants_combat_icon: bool = False
+    # Immortality: specimens generated from the supply [Immortality p. 8]
+    # (Experimentation, Spiritual Fervor, Twisted Mentat, Usurp).
+    specimens: int = 0
 
     def __post_init__(self) -> None:
         if self.required_faction_bond is not None and not isinstance(
@@ -393,6 +399,7 @@ class PersonalCardRevealEffect:
             self.draw_intrigue,
             self.influence,
             self.persuasion_per_completed_contract,
+            self.specimens,
         )
         if min((*gains, self.minimum_spies_placed, self.minimum_garrisoned_units)) < 0:
             raise ValueError("personal-card Reveal gains must not be negative")

@@ -126,9 +126,43 @@ STARTING_DECK: Final = (
     ),
 )
 
+# Immortality: "Each player removes the two copies of Dune, the Desert
+# Planet from their starting deck ... and replaces them with two copies of
+# Experimentation" [Immortality p. 5]. Printed face: Spice Trade icon;
+# Agent: Research; Reveal: 1 Persuasion and a specimen [card face].
+EXPERIMENTATION: Final = StartingCardEntry(
+    CardDefinition(
+        "experimentation",
+        "Experimentation",
+        (
+            SourceRef(SourceDocument.IMMORTALITY_RULEBOOK, (3, 5)),
+            SourceRef(SourceDocument.CARD_FACE, (1,)),
+        ),
+    ),
+    copies=2,
+    agent_icons=(AgentIcon.SPICE_TRADE,),
+    agent_effect=PersonalCardAgentEffect.RESEARCH,
+    reveal_persuasion=1,
+    reveal_effects=(PersonalCardRevealEffect(specimens=1),),
+)
+REPLACED_BY_EXPERIMENTATION: Final = "dune_the_desert_planet"
+
 STARTING_CARDS_BY_ID: Final = {
-    entry.card.card_id: entry for entry in STARTING_DECK
+    entry.card.card_id: entry for entry in (*STARTING_DECK, EXPERIMENTATION)
 }
+
+
+def starting_deck_entries(
+    *, immortality: bool = False
+) -> tuple[StartingCardEntry, ...]:
+    """Return the ten-card starting deck of the selected setup."""
+
+    if not immortality:
+        return STARTING_DECK
+    return tuple(
+        EXPERIMENTATION if entry.card.card_id == REPLACED_BY_EXPERIMENTATION else entry
+        for entry in STARTING_DECK
+    )
 
 
 def starting_card_for_instance(instance_id: str) -> StartingCardEntry:
@@ -149,13 +183,15 @@ def starting_card_for_instance(instance_id: str) -> StartingCardEntry:
     return entry
 
 
-def starting_deck_instance_ids(player: int) -> tuple[str, ...]:
+def starting_deck_instance_ids(
+    player: int, *, immortality: bool = False
+) -> tuple[str, ...]:
     """Create stable IDs for one player's unshuffled starting cards."""
 
     if player < 0:
         raise ValueError("player must not be negative")
     return tuple(
         f"player:{player}:starter:{entry.card.card_id}:{copy}"
-        for entry in STARTING_DECK
+        for entry in starting_deck_entries(immortality=immortality)
         for copy in range(entry.copies)
     )

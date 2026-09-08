@@ -11,6 +11,12 @@ from dune_imperium.content.bloodlines.sardaukar import (
     skill_tile_instance_ids,
 )
 from dune_imperium.content.bloodlines.tech import TECH_STACKS, tech_tiles_for
+from dune_imperium.content.immortality.board import (
+    RESEARCH_START_ID,
+    TLEILAXU_ROW_SIZE,
+    TLEILAXU_SETUP_SPICE,
+)
+from dune_imperium.content.immortality.tleilaxu import tleilaxu_deck_instance_ids
 from dune_imperium.content.uprising.conflicts import conflicts_by_tier
 from dune_imperium.content.uprising.contracts import contract_instance_ids
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
@@ -70,13 +76,20 @@ class SetupResult:
     chance_outcomes: tuple[ChanceOutcome, ...]
 
 
-def create_unshuffled_players() -> tuple[PlayerState, ...]:
-    """Create four players before leader, objective, and shuffle decisions."""
+def create_unshuffled_players(
+    *, immortality: bool = False
+) -> tuple[PlayerState, ...]:
+    """Create four players before leader, objective, and shuffle decisions.
+
+    With Immortality the two Dune, the Desert Planet become Experimentation
+    [Immortality p. 5]; the Bene Tleilax tokens and Family Atomics are
+    placed by ``_with_immortality``.
+    """
 
     return tuple(
         PlayerState(
             player_id=player,
-            deck=starting_deck_instance_ids(player),
+            deck=starting_deck_instance_ids(player, immortality=immortality),
         )
         for player in range(4)
     )
@@ -365,6 +378,63 @@ def _with_bloodlines(state: GameState, setup: BloodlinesSetup | None) -> GameSta
     )
 
 
+def tleilaxu_deck_decision(promo_cards: bool) -> ChanceDecision | None:
+    """Shuffle the Tleilaxu deck [Immortality p. 4], or None while it is empty."""
+
+    instance_ids = tleilaxu_deck_instance_ids(promo_cards)
+    if not instance_ids:
+        return None
+    return _shuffle_decision(
+        "setup:tleilaxu_deck", "Shuffle the Tleilaxu deck", instance_ids
+    )
+
+
+def _immortality_setup(
+    config: RulesetConfig,
+    resolver: ChanceResolver,
+) -> tuple[str, ...] | None:
+    """Shuffle the Tleilaxu deck when the Immortality option is on.
+
+    Resolved after the Bloodlines decisions so the chance stream of every
+    earlier option keeps its order.
+    """
+
+    if not config.immortality:
+        return None
+    decision = tleilaxu_deck_decision(config.promo_cards)
+    if decision is None:
+        return ()
+    return resolver.resolve(decision).values
+
+
+def _with_immortality(state: GameState, deck: tuple[str, ...] | None) -> GameState:
+    """Place the Bene Tleilax board pieces on a freshly built state.
+
+    Two spice wait on the Tleilaxu track's fourth space, every token starts
+    on the leftmost space, the Tleilaxu Row shows two cards next to the
+    fixed Reclaimed Forces, and each player holds a Family Atomics token
+    [Immortality pp. 4-5].
+    """
+
+    if deck is None:
+        return state
+    return replace(
+        state,
+        players=tuple(
+            replace(
+                player,
+                research_space=RESEARCH_START_ID,
+                tleilaxu_space=0,
+                family_atomics=True,
+            )
+            for player in state.players
+        ),
+        tleilaxu_row=deck[:TLEILAXU_ROW_SIZE],
+        tleilaxu_deck=deck[TLEILAXU_ROW_SIZE:],
+        tleilaxu_track_spice=TLEILAXU_SETUP_SPICE,
+    )
+
+
 def assign_twisted_deck(state: GameState) -> GameState:
     """Hand the shuffled Twisted Intrigue deck to Piter De Vries' seat."""
 
@@ -407,7 +477,7 @@ def create_initial_state(
         bloodlines=config.bloodlines,
     )
     players, first_player = assign_objectives(
-        create_unshuffled_players(),
+        create_unshuffled_players(immortality=config.immortality),
         resolver.resolve(objective_setup_decision()),
     )
     players = tuple(
@@ -479,6 +549,7 @@ def create_initial_state(
         else ()
     )
     bloodlines = _bloodlines_setup(config, resolver)
+    immortality = _immortality_setup(config, resolver)
     players = tuple(
         apply_starting_deck_shuffle(
             player,
@@ -509,7 +580,7 @@ def create_initial_state(
             (stack.card.card_id, stack.copies) for stack in RESERVE_STACKS
         ),
     )
-    state = _with_bloodlines(state, bloodlines)
+    state = _with_immortality(_with_bloodlines(state, bloodlines), immortality)
     return SetupResult(state=state, chance_outcomes=resolver.outcomes)
 
 
@@ -565,7 +636,7 @@ def create_draft_initial_state(
         bloodlines=config.bloodlines,
     )
     players, first_player = assign_objectives(
-        create_unshuffled_players(),
+        create_unshuffled_players(immortality=config.immortality),
         resolver.resolve(objective_setup_decision()),
     )
     pool = resolver.resolve(leader_draft_pool_decision(config)).values
@@ -602,6 +673,7 @@ def create_draft_initial_state(
         else ()
     )
     bloodlines = _bloodlines_setup(config, resolver)
+    immortality = _immortality_setup(config, resolver)
     players = tuple(
         apply_starting_deck_shuffle(
             player,
@@ -648,7 +720,7 @@ def create_draft_initial_state(
             ),
         ),
     )
-    state = _with_bloodlines(state, bloodlines)
+    state = _with_immortality(_with_bloodlines(state, bloodlines), immortality)
     return SetupResult(state=state, chance_outcomes=resolver.outcomes)
 
 

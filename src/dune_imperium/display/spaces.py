@@ -34,6 +34,7 @@ from dune_imperium.rules.effects import (
     DrawIntrigueCardsEffect,
     GainResourcesEffect,
     RecruitTroopsEffect,
+    ResearchEffect,
     current_agent_effect_context,
 )
 
@@ -196,6 +197,7 @@ def board_effect_action_text(state: GameState, action: DomainAction) -> str | No
         space_id,
         cost_option,
         choam_module=state.config.choam_module,
+        immortality=state.config.immortality,
     )
     return board_icon_text(key, effects)
 
@@ -285,5 +287,7 @@ def automatic_effect_texts(effect: AutomaticEffect) -> tuple[str, ...]:
         case DrawIntrigueCardsEffect():
             noun = "Intrigue card" if effect.count == 1 else "Intrigue cards"
             return (f"Draw {effect.count} {noun}",)
+        case ResearchEffect():
+            return ("Research (advance your research token)",)
         case _:
             assert_never(effect)

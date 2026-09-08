@@ -59,6 +59,10 @@ class FrameKind(StrEnum):
     # Odax's Secret Project pick.
     TECH_ACQUISITION = "tech_acquisition"
     TECH_SECRET_PROJECT = "tech_secret_project"
+    # Immortality: the research token's direction choice and the optional
+    # or chosen bonuses of a research space [Immortality p. 6].
+    RESEARCH_ADVANCE = "research_advance"
+    RESEARCH_BONUS = "research_bonus"
 
 
 def top_frame(state: GameState) -> DecisionFrame | None:
