@@ -16,6 +16,7 @@ from dune_imperium.content.uprising.types import (
     PersonalCardAgentEffect,
     PersonalCardBond,
     PersonalCardDiscardEffect,
+    PersonalCardIconCondition,
     PersonalCardRevealAcquisitionEffect,
     PersonalCardRevealChoiceEffect,
     PersonalCardRevealEffect,
@@ -78,6 +79,10 @@ class ImperiumCardEntry(DeckCardEntry):
     # Immortality: a Graft Agent box — the card is played together with a
     # second card and never alone [Immortality p. 10].
     graft: bool = False
+    # Immortality: greyed Agent icons that a printed condition turns on
+    # (Long Reach, Show of Strength); ``agent_icons`` lists them and the
+    # condition is judged at play time.
+    icon_condition: PersonalCardIconCondition | None = None
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -153,6 +158,7 @@ def _entry(
     agent_icons_from_contracts: bool = False,
     turn_start_effect: PersonalCardTurnStartEffect | None = None,
     graft: bool = False,
+    icon_condition: PersonalCardIconCondition | None = None,
 ) -> ImperiumCardEntry:
     return ImperiumCardEntry(
         card=CardDefinition(
@@ -202,6 +208,7 @@ def _entry(
         agent_icons_from_contracts=agent_icons_from_contracts,
         turn_start_effect=turn_start_effect,
         graft=graft,
+        icon_condition=icon_condition,
     )
 
 
@@ -1529,7 +1536,20 @@ IMPERIUM_CARDS: Final = (
     # copies short of the rulebook's count; see docs/implementation-audits/
     # immortality.md. Play data is transcribed from the card faces slice by
     # slice; a card whose data is not complete stays out of the deck.
-    _entry(367, "bene-tleilax-lab", "Bene Tleilax Lab", 2, immortality_only=True),
+    # Bene Tleilax Lab: City, Spice Trade; Agent: a specimen; Reveal: 1
+    # Persuasion, +1 spice at one genetic marker [card face].
+    _entry(
+        367,
+        "bene-tleilax-lab",
+        "Bene Tleilax Lab",
+        2,
+        immortality_only=True,
+        agent_icons=(AgentIcon.CITY, AgentIcon.SPICE_TRADE),
+        agent_effect=PersonalCardAgentEffect.GENERATE_SPECIMEN,
+        reveal_persuasion=1,
+        reveal_effects=(PersonalCardRevealEffect(spice=1, minimum_genetic_markers=1),),
+        play_data_complete=True,
+    ),
     # Bene Tleilax Researcher: Landsraad; GRAFT: Research; Reveal: 1
     # Persuasion, +1 at one genetic marker, +1 more at two [card face].
     _entry(
@@ -1548,9 +1568,47 @@ IMPERIUM_CARDS: Final = (
         ),
         play_data_complete=True,
     ),
-    _entry(369, "blank-slate", "Blank Slate", 1, immortality_only=True),
-    _entry(370, "clandestine-meeting", "Clandestine Meeting", 4, immortality_only=True),
-    _entry(371, "corrupt-smuggler", "Corrupt Smuggler", 3, immortality_only=True),
+    # Blank Slate: Landsraad, City, Spice Trade; "If grafted: this has" the
+    # four Faction icons (``effective_agent_icons``); Reveal: 1 Persuasion.
+    _entry(
+        369,
+        "blank-slate",
+        "Blank Slate",
+        1,
+        immortality_only=True,
+        agent_icons=(AgentIcon.LANDSRAAD, AgentIcon.CITY, AgentIcon.SPICE_TRADE),
+        reveal_persuasion=1,
+        play_data_complete=True,
+    ),
+    # Clandestine Meeting (Bene Gesserit): no Agent icons (played grafted
+    # [Immortality p. 14]); Agent: Bene Gesserit Influence and an Intrigue
+    # card; Reveal: 2 Persuasion [card face].
+    _entry(
+        370,
+        "clandestine-meeting",
+        "Clandestine Meeting",
+        4,
+        immortality_only=True,
+        factions=(Faction.BENE_GESSERIT,),
+        agent_effect=PersonalCardAgentEffect.GAIN_BENE_GESSERIT_INFLUENCE_AND_INTRIGUE,
+        reveal_persuasion=2,
+        play_data_complete=True,
+    ),
+    # Corrupt Smuggler (Guild, Fremen): Guild, Spice Trade; Agent: "If
+    # grafted: 2 spice"; Reveal: 1 Persuasion, 1 sword [card face].
+    _entry(
+        371,
+        "corrupt-smuggler",
+        "Corrupt Smuggler",
+        3,
+        immortality_only=True,
+        factions=(Faction.SPACING_GUILD, Faction.FREMEN),
+        agent_icons=(AgentIcon.SPACING_GUILD, AgentIcon.SPICE_TRADE),
+        agent_effect=PersonalCardAgentEffect.GAIN_TWO_SPICE_IF_GRAFTED,
+        reveal_persuasion=1,
+        reveal_strength=1,
+        play_data_complete=True,
+    ),
     _entry(372, "dissecting-kit", "Dissecting Kit", 2, copies=2, immortality_only=True),
     _entry(373, "for-humanity", "For Humanity", 7, immortality_only=True),
     _entry(
@@ -1564,11 +1622,105 @@ IMPERIUM_CARDS: Final = (
         4,
         immortality_only=True,
     ),
-    _entry(377, "keys-to-power", "Keys to Power", 5, immortality_only=True),
-    _entry(378, "lisan-al-gaib", "Lisan al Gaib", 4, immortality_only=True),
-    _entry(379, "long-reach", "Long Reach", 6, immortality_only=True),
-    _entry(380, "occupation", "Occupation", 8, immortality_only=True),
-    _entry(381, "organ-merchants", "Organ Merchants", 3, immortality_only=True),
+    # Keys to Power (Guild, Bene Gesserit): Guild, BG, Landsraad; Agent:
+    # "[Emperor] 2 Influence: 2 spice"; Reveal: 2 Persuasion [card face].
+    _entry(
+        377,
+        "keys-to-power",
+        "Keys to Power",
+        5,
+        immortality_only=True,
+        factions=(Faction.SPACING_GUILD, Faction.BENE_GESSERIT),
+        agent_icons=(
+            AgentIcon.SPACING_GUILD,
+            AgentIcon.BENE_GESSERIT,
+            AgentIcon.LANDSRAAD,
+        ),
+        agent_effect=PersonalCardAgentEffect.GAIN_TWO_SPICE_IF_EMPEROR_INFLUENCE_TWO,
+        reveal_persuasion=2,
+        play_data_complete=True,
+    ),
+    # Lisan al Gaib (Bene Gesserit, Fremen): acquire box 1 spice; Fremen,
+    # City, Spice Trade; Agent: with another Bene Gesserit card in play,
+    # Fremen Influence; Reveal: 1 Persuasion, Fremen Bond 2 swords.
+    _entry(
+        378,
+        "lisan-al-gaib",
+        "Lisan al Gaib",
+        4,
+        immortality_only=True,
+        has_acquisition_bonus=True,
+        acquisition_effect=PersonalCardAcquisitionEffect.GAIN_ONE_SPICE,
+        factions=(Faction.BENE_GESSERIT, Faction.FREMEN),
+        agent_icons=(AgentIcon.FREMEN, AgentIcon.CITY, AgentIcon.SPICE_TRADE),
+        agent_effect=(
+            PersonalCardAgentEffect.GAIN_FREMEN_INFLUENCE_IF_BENE_GESSERIT_BOND
+        ),
+        reveal_persuasion=1,
+        reveal_effects=(
+            PersonalCardRevealEffect(
+                strength=2, required_faction_bond=PersonalCardBond.FREMEN
+            ),
+        ),
+        play_data_complete=True,
+    ),
+    # Long Reach (Bene Gesserit): with another Bene Gesserit card in play
+    # the greyed Landsraad, City and Spice Trade icons; Agent: choose two
+    # Faction Influences; Reveal: 1 Persuasion, an Intrigue card.
+    _entry(
+        379,
+        "long-reach",
+        "Long Reach",
+        6,
+        immortality_only=True,
+        factions=(Faction.BENE_GESSERIT,),
+        agent_icons=(AgentIcon.LANDSRAAD, AgentIcon.CITY, AgentIcon.SPICE_TRADE),
+        icon_condition=PersonalCardIconCondition.BENE_GESSERIT_BOND,
+        agent_effect=PersonalCardAgentEffect.GAIN_TWO_DISTINCT_CHOSEN_INFLUENCE,
+        reveal_persuasion=1,
+        reveal_effects=(PersonalCardRevealEffect(draw_intrigue=1),),
+        play_data_complete=True,
+    ),
+    # Occupation (Guild): acquire box 3 troops; the four Faction icons plus
+    # City and Spice Trade; Agent: draw a card and the Combat icon; Reveal:
+    # 1 water, 1 spice, 1 troop [card face].
+    _entry(
+        380,
+        "occupation",
+        "Occupation",
+        8,
+        immortality_only=True,
+        has_acquisition_bonus=True,
+        acquisition_effect=PersonalCardAcquisitionEffect.RECRUIT_THREE_TROOPS,
+        factions=(Faction.SPACING_GUILD,),
+        agent_icons=(
+            AgentIcon.EMPEROR,
+            AgentIcon.SPACING_GUILD,
+            AgentIcon.BENE_GESSERIT,
+            AgentIcon.FREMEN,
+            AgentIcon.CITY,
+            AgentIcon.SPICE_TRADE,
+        ),
+        agent_effect=PersonalCardAgentEffect.DRAW_ONE_AND_COMBAT_ICON,
+        reveal_effects=(
+            PersonalCardRevealEffect(water=1, spice=1, recruit_troops=1),
+        ),
+        play_data_complete=True,
+    ),
+    # Organ Merchants: City, Spice Trade; Agent: "specimen -> 4 Solari";
+    # Reveal: 1 Persuasion, 1 Solari [card face].
+    _entry(
+        381,
+        "organ-merchants",
+        "Organ Merchants",
+        3,
+        immortality_only=True,
+        agent_icons=(AgentIcon.CITY, AgentIcon.SPICE_TRADE),
+        agent_effect=PersonalCardAgentEffect.MAY_PAY_SPECIMEN_FOR_FOUR_SOLARI,
+        reveal_persuasion=1,
+        reveal_effects=(PersonalCardRevealEffect(solari=1),),
+        play_data_complete=True,
+    ),
     # Planned Coupling (Bene Gesserit): BG icon; GRAFT: draw a card;
     # Reveal: 1 Persuasion [card face].
     _entry(
@@ -1584,26 +1736,112 @@ IMPERIUM_CARDS: Final = (
         reveal_persuasion=1,
         play_data_complete=True,
     ),
-    _entry(383, "replacement-eyes", "Replacement Eyes", 5, immortality_only=True),
+    # Replacement Eyes: City; GRAFT: "When this card is trashed: Tleilaxu";
+    # "[trash] -> draw a card"; Reveal: 1 Persuasion, 1 sword [card face].
+    _entry(
+        383,
+        "replacement-eyes",
+        "Replacement Eyes",
+        5,
+        immortality_only=True,
+        graft=True,
+        agent_icons=(AgentIcon.CITY,),
+        agent_effect=PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE,
+        trash_effect=PersonalCardTrashEffect.ADVANCE_TLEILAXU,
+        reveal_persuasion=1,
+        reveal_strength=1,
+        play_data_complete=True,
+    ),
+    # Sardaukar Quartermaster (Emperor): Landsraad, City; Agent: "If grafted:
+    # troop, draw a card"; Reveal: 1 Persuasion, 2 swords [card face].
     _entry(
         384,
         "sardaukar-quartermaster",
         "Sardaukar Quartermaster",
         2,
         immortality_only=True,
+        factions=(Faction.EMPEROR,),
+        agent_icons=(AgentIcon.LANDSRAAD, AgentIcon.CITY),
+        agent_effect=PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_ONE_IF_GRAFTED,
+        reveal_persuasion=1,
+        reveal_strength=2,
+        play_data_complete=True,
     ),
     _entry(385, "shadout-mapes", "Shadout Mapes", 2, immortality_only=True),
-    _entry(386, "show-of-strength", "Show of Strength", 3, immortality_only=True),
-    _entry(387, "spiritual-fervor", "Spiritual Fervor", 3, immortality_only=True),
+    # Show of Strength (Emperor, Fremen): with more deployed troops than
+    # each opponent the greyed Landsraad and Spice Trade icons; Agent: draw
+    # two cards; Reveal: 1 Persuasion, 2 swords [card face].
+    _entry(
+        386,
+        "show-of-strength",
+        "Show of Strength",
+        3,
+        immortality_only=True,
+        factions=(Faction.EMPEROR, Faction.FREMEN),
+        agent_icons=(AgentIcon.LANDSRAAD, AgentIcon.SPICE_TRADE),
+        icon_condition=(
+            PersonalCardIconCondition.MORE_DEPLOYED_TROOPS_THAN_EACH_OPPONENT
+        ),
+        agent_effect=PersonalCardAgentEffect.DRAW_TWO_CARDS,
+        reveal_persuasion=1,
+        reveal_strength=2,
+        play_data_complete=True,
+    ),
+    # Spiritual Fervor: acquire box Research; Spice Trade; empty Agent box;
+    # Reveal: 1 Persuasion, a specimen [card face].
+    _entry(
+        387,
+        "spiritual-fervor",
+        "Spiritual Fervor",
+        3,
+        immortality_only=True,
+        has_acquisition_bonus=True,
+        acquisition_effect=PersonalCardAcquisitionEffect.RESEARCH,
+        agent_icons=(AgentIcon.SPICE_TRADE,),
+        reveal_persuasion=1,
+        reveal_effects=(PersonalCardRevealEffect(specimens=1),),
+        play_data_complete=True,
+    ),
+    # Stillsuit Manufacturer (Fremen): Fremen, City; Agent: water —AND—
+    # Fremen Alliance: return this card from play to your hand; Reveal: 1
+    # Persuasion —AND— Fremen Bond: 2 spice [card face].
     _entry(
         388,
         "stillsuit-manufacturer",
         "Stillsuit Manufacturer",
         5,
         immortality_only=True,
+        factions=(Faction.FREMEN,),
+        agent_icons=(AgentIcon.FREMEN, AgentIcon.CITY),
+        agent_effect=(
+            PersonalCardAgentEffect.GAIN_WATER_AND_RETURN_SELF_IF_FREMEN_ALLIANCE
+        ),
+        reveal_persuasion=1,
+        reveal_effects=(
+            PersonalCardRevealEffect(
+                spice=2, required_faction_bond=PersonalCardBond.FREMEN
+            ),
+        ),
+        play_data_complete=True,
     ),
+    # Throne Room Politics (Emperor, Bene Gesserit): Emperor; Agent: a troop
+    # and a trash icon; Reveal: 1 Persuasion, Bene Gesserit Influence.
     _entry(
-        389, "throne-room-politics", "Throne Room Politics", 4, immortality_only=True
+        389,
+        "throne-room-politics",
+        "Throne Room Politics",
+        4,
+        immortality_only=True,
+        factions=(Faction.EMPEROR, Faction.BENE_GESSERIT),
+        agent_icons=(AgentIcon.EMPEROR,),
+        agent_effect=PersonalCardAgentEffect.RECRUIT_ONE_AND_MAY_TRASH,
+        reveal_persuasion=1,
+        reveal_effects=(
+            PersonalCardRevealEffect(
+                influence=1, influence_faction=PersonalCardBond.BENE_GESSERIT
+            ),
+        ),
+        play_data_complete=True,
     ),
     _entry(
         390, "tleilaxu-master", "Tleilaxu Master", 5, copies=2, immortality_only=True

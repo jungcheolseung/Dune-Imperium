@@ -39,6 +39,7 @@ from dune_imperium.rules.card_discard import discard_personal_card_from_hand
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.combat import face_up_battle_icons
+from dune_imperium.rules.combat_deployment import grant_combat_icon
 from dune_imperium.rules.contracts import (
     begin_contract_gain,
     complete_contract_by_effect,
@@ -62,11 +63,13 @@ from dune_imperium.rules.leader_abilities import (
     resolve_leader_signet,
     units_deployment_blocked,
 )
+from dune_imperium.rules.optional_trash import optional_trash_frame
 from dune_imperium.rules.planetologist import replace_sandworms, replaces_sandworms
 from dune_imperium.rules.shield_wall import (
     current_conflict_is_shield_wall_protected,
     destroy_shield_wall,
 )
+from dune_imperium.rules.specimens import generate_specimens, spend_specimens
 from dune_imperium.rules.spy_moves import turn_space_spy_frames
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
@@ -144,6 +147,12 @@ _PLACEMENT_ICONS: Final[Mapping[PersonalCardAgentEffect, tuple[str, ...]]] = (
             # Twisted Mentat (Immortality): an optional recall of the Agent
             # sent this turn.
             _BOX.MAY_RECALL_AGENT_SENT_THIS_TURN: (AGENT_ICON_RECALL,),
+            # Sardaukar Quartermaster (Immortality): "If grafted: troop, draw
+            # a card".
+            _BOX.RECRUIT_ONE_AND_DRAW_ONE_IF_GRAFTED: (
+                AGENT_ICON_TROOPS,
+                AGENT_ICON_CARDS,
+            ),
         }
     )
 )
@@ -661,6 +670,19 @@ def legal_agent_card_influence_actions(
                 for faction in Faction
             ),
         )
+    if effect is PersonalCardAgentEffect.GAIN_TWO_DISTINCT_CHOSEN_INFLUENCE:
+        # Long Reach: "Choose two" of the four Factions, one pick at a time.
+        chosen_value = context.get("influence_chosen", "")
+        chosen = str(chosen_value).split(",") if chosen_value else []
+        return tuple(
+            DomainAction(
+                action_id="choose_agent_card_influence",
+                actor=player,
+                arguments=(("faction", faction.value),),
+            )
+            for faction in Faction
+            if faction.value not in chosen
+        )
     if effect not in (
         PersonalCardAgentEffect.TRASH_SELF_AND_GAIN_CHOSEN_INFLUENCE,
         PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE_IF_SPY_RECALLED_THIS_TURN,
@@ -723,6 +745,19 @@ def apply_agent_card_influence(
         # "Trash this card." is the box's other printed icon, resolved by its
         # own action in the owner's order (OQ-027).
         finish_agent_icon(context, AGENT_ICON_INFLUENCE)
+    elif (
+        source_card.agent_effect
+        is PersonalCardAgentEffect.GAIN_TWO_DISTINCT_CHOSEN_INFLUENCE
+    ):
+        # Long Reach: the box stays pending until the second, different
+        # Faction is chosen.
+        chosen_value = context.get("influence_chosen", "")
+        chosen = [
+            *(str(chosen_value).split(",") if chosen_value else []),
+            faction.value,
+        ]
+        context["influence_chosen"] = ",".join(chosen)
+        context["pending_agent_effect"] = len(chosen) < 2
     else:
         context["pending_agent_effect"] = False
     if (
@@ -1626,6 +1661,18 @@ def legal_agent_card_payment_actions(
         .MAY_PAY_TWO_SPICE_FOR_SHIELD_WALL_AND_SANDWORM_IF_MAKER_HOOKS
     ):
         return _arrakis_revolt_payment_actions(state, player)
+    if (
+        source_card.agent_effect
+        is PersonalCardAgentEffect.MAY_PAY_SPECIMEN_FOR_FOUR_SOLARI
+    ):
+        # Organ Merchants: "specimen -> 4 Solari" [card face].
+        decline = DomainAction(action_id="decline_agent_card_payment", actor=player)
+        if state.players[player].specimens < 1:
+            return (decline,)
+        return (
+            decline,
+            DomainAction(action_id="pay_agent_card_specimen", actor=player),
+        )
     if source_card.agent_effect not in (
         PersonalCardAgentEffect.PAY_TWO_WATER_TO_DRAW_TWO,
         PersonalCardAgentEffect.MAY_PAY_FOUR_SPICE_FOR_VP,
@@ -1837,6 +1884,33 @@ def apply_agent_card_payment(state: GameState, action: DomainAction) -> RuleResu
         return _apply_arrakis_revolt_payment(state, action, context, source)
 
     owner = state.players[action.actor]
+    if action.action_id == "pay_agent_card_specimen":
+        # Organ Merchants: the specimen returns to the supply as it is spent
+        # [Immortality p. 8].
+        paid_owner = spend_specimens(owner, 1)
+        paid_owner = replace(
+            paid_owner,
+            resources=replace(
+                paid_owner.resources, solari=paid_owner.resources.solari + 4
+            ),
+        )
+        next_state = advance_after_effect(
+            state, context, replace_player(state.players, paid_owner)
+        )
+        return RuleResult(
+            state=next_state,
+            events=(
+                GameEvent(
+                    event_id=f"{source}:paid",
+                    kind="agent_card_payment_resolved",
+                    payload=(
+                        ("player", action.actor),
+                        ("resource", "specimen"),
+                        ("spent", 1),
+                    ),
+                ),
+            ),
+        )
     source_card = personal_card_for_instance(_effect_subject(context)[1])
     pays_water = (
         source_card.agent_effect
@@ -2192,7 +2266,14 @@ def resolve_agent_card_icon(state: GameState, action: DomainAction) -> RuleResul
         )
         and spice_gained_this_turn(owner) < 2
     )
-    missive_blocked = hidden_missive and owner.influence.bene_gesserit < 2
+    # Sardaukar Quartermaster: both icons need the card to be grafted.
+    quartermaster_blocked = (
+        effect is PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_ONE_IF_GRAFTED
+        and not is_grafted(context)
+    )
+    missive_blocked = (
+        hidden_missive and owner.influence.bene_gesserit < 2
+    ) or quartermaster_blocked
     maker_keeper = (
         effect is PersonalCardAgentEffect.GAIN_BY_BENE_GESSERIT_AND_FREMEN_INFLUENCE_TWO
     )
@@ -2781,6 +2862,164 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
                 *advanced.events,
             ),
         )
+    elif effect is PersonalCardAgentEffect.GENERATE_SPECIMEN:
+        # Bene Tleilax Lab: a specimen [Immortality p. 8].
+        context["pending_agent_effect"] = False
+        next_state = advance_after_effect(state, context)
+        generated = generate_specimens(next_state, player, 1, source=event_source)
+        return RuleResult(
+            state=generated.state,
+            events=(
+                GameEvent(
+                    event_id=event_source,
+                    kind="agent_card_effect_resolved",
+                    payload=(("card_id", card_instance_id), ("player", player)),
+                ),
+                *generated.events,
+            ),
+        )
+    elif effect is PersonalCardAgentEffect.GAIN_BENE_GESSERIT_INFLUENCE_AND_INTRIGUE:
+        # Clandestine Meeting: Bene Gesserit Influence and an Intrigue card.
+        gained = gain_faction_influence(
+            state,
+            player,
+            Faction.BENE_GESSERIT,
+            1,
+            event_prefix=f"{event_source}:influence:bene_gesserit",
+        )
+        drawn = draw_or_queue_intrigue_cards(
+            gained.state, player, 1, source=f"{event_source}:intrigue"
+        )
+        context["pending_agent_effect"] = False
+        next_state = advance_after_effect(drawn.state, context, drawn.state.players)
+        return RuleResult(
+            state=next_state,
+            events=(
+                GameEvent(
+                    event_id=event_source,
+                    kind="agent_card_effect_resolved",
+                    payload=(("card_id", card_instance_id), ("player", player)),
+                ),
+                *gained.events,
+                *drawn.events,
+            ),
+        )
+    elif effect in (
+        PersonalCardAgentEffect.GAIN_TWO_SPICE_IF_GRAFTED,
+        PersonalCardAgentEffect.GAIN_TWO_SPICE_IF_EMPEROR_INFLUENCE_TWO,
+    ):
+        # Corrupt Smuggler ("If grafted") and Keys to Power ("[Emperor] 2
+        # Influence"), judged when the box resolves (OQ-028).
+        met = (
+            is_grafted(context)
+            if effect is PersonalCardAgentEffect.GAIN_TWO_SPICE_IF_GRAFTED
+            else owner.influence.emperor >= 2
+        )
+        if met:
+            next_owner = replace(
+                owner,
+                resources=replace(owner.resources, spice=owner.resources.spice + 2),
+            )
+            event_kind = "agent_card_effect_resolved"
+        else:
+            next_owner = owner
+            event_kind = "agent_card_effect_unavailable"
+    elif effect is PersonalCardAgentEffect.GAIN_FREMEN_INFLUENCE_IF_BENE_GESSERIT_BOND:
+        # Lisan al Gaib: the Bond is judged when the effect resolves
+        # [Main pp. 9, 20] (a grafted partner may provide it).
+        context["pending_agent_effect"] = False
+        if not has_faction_bond(owner.in_play, card_instance_id, Faction.BENE_GESSERIT):
+            return RuleResult(
+                state=advance_after_effect(state, context),
+                events=(
+                    GameEvent(
+                        event_id=event_source,
+                        kind="agent_card_effect_unavailable",
+                        payload=(("card_id", card_instance_id), ("player", player)),
+                    ),
+                ),
+            )
+        gained = gain_faction_influence(
+            state,
+            player,
+            Faction.FREMEN,
+            1,
+            event_prefix=f"{event_source}:influence:fremen",
+        )
+        next_state = advance_after_effect(gained.state, context, gained.state.players)
+        return RuleResult(state=next_state, events=gained.events)
+    elif effect is PersonalCardAgentEffect.DRAW_ONE_AND_COMBAT_ICON:
+        # Occupation: draw a card and the Combat icon [Immortality p. 16].
+        context["pending_agent_effect"] = False
+        with_icon = grant_combat_icon(state, player)
+        next_state = advance_after_effect(with_icon, context, with_icon.players)
+        drawn = draw_or_request_personal_cards(
+            next_state, player, 1, source=f"{event_source}:draw"
+        )
+        return RuleResult(
+            state=drawn.state,
+            events=(
+                GameEvent(
+                    event_id=event_source,
+                    kind="agent_card_effect_resolved",
+                    payload=(("card_id", card_instance_id), ("player", player)),
+                ),
+                *drawn.events,
+            ),
+        )
+    elif effect is PersonalCardAgentEffect.DRAW_TWO_CARDS:
+        # Show of Strength: draw two cards.
+        next_owner = owner
+        event_kind = "agent_card_effect_resolved"
+    elif (
+        effect
+        is PersonalCardAgentEffect.GAIN_WATER_AND_RETURN_SELF_IF_FREMEN_ALLIANCE
+    ):
+        # Stillsuit Manufacturer: water, and with the Fremen Alliance the
+        # card returns from play to the hand (judged now, OQ-028).
+        next_owner = replace(
+            owner, resources=replace(owner.resources, water=owner.resources.water + 1)
+        )
+        if (
+            Faction.FREMEN.value in owner.alliance_faction_ids
+            and card_instance_id in owner.in_play
+        ):
+            # Face up in play, so everyone keeps knowing it (OQ-010).
+            next_owner = replace(
+                next_owner,
+                hand=(*next_owner.hand, card_instance_id),
+                hand_public=(*next_owner.hand_public, card_instance_id),
+                in_play=tuple(
+                    candidate
+                    for candidate in next_owner.in_play
+                    if candidate != card_instance_id
+                ),
+            )
+        event_kind = "agent_card_effect_resolved"
+    elif effect is PersonalCardAgentEffect.RECRUIT_ONE_AND_MAY_TRASH:
+        # Throne Room Politics: a troop and a black trash icon (optional
+        # [Main p. 20]); the trash opens after the recruit.
+        next_owner, recruited = recruit_troops(owner, 1)
+        previous = context.get("troops_recruited")
+        if isinstance(previous, bool) or not isinstance(previous, int):
+            raise RuntimeError("Agent-turn effect frame has invalid recruit count")
+        context["troops_recruited"] = previous + recruited
+        recruit_shortfall = recruit_shortfall_events(event_source, player, 1, recruited)
+        context["pending_agent_effect"] = False
+        next_state = advance_after_effect(
+            state, context, replace_player(state.players, next_owner)
+        )
+        return RuleResult(
+            state=next_state.push_decision(optional_trash_frame(player, event_source)),
+            events=(
+                GameEvent(
+                    event_id=event_source,
+                    kind="agent_card_effect_resolved",
+                    payload=(("card_id", card_instance_id), ("player", player)),
+                ),
+                *recruit_shortfall,
+            ),
+        )
     elif effect is PersonalCardAgentEffect.RESEARCH:
         # Experimentation: the Research icon [Immortality pp. 6, 16]. The
         # advance (and its direction choice) follows the frame bookkeeping.
@@ -3129,10 +3368,14 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         PersonalCardAgentEffect.DRAW_ONE_IF_GAINED_TWO_SPICE_THIS_TURN,
         PersonalCardAgentEffect.DRAW_ONE_OR_BENE_GESSERIT_INFLUENCE_IF_BOND,
         PersonalCardAgentEffect.DRAW_TWO_IF_ONE_MARKER,
+        PersonalCardAgentEffect.DRAW_TWO_CARDS,
     ):
         if effect is PersonalCardAgentEffect.DRAW_PER_SANDWORM_IN_CONFLICT:
             draw_count = owner.sandworms_conflict
-        elif effect is PersonalCardAgentEffect.DRAW_TWO_IF_ONE_MARKER:
+        elif effect in (
+            PersonalCardAgentEffect.DRAW_TWO_IF_ONE_MARKER,
+            PersonalCardAgentEffect.DRAW_TWO_CARDS,
+        ):
             draw_count = 2
         elif (
             effect

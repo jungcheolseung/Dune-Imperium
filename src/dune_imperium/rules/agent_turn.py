@@ -26,6 +26,7 @@ from dune_imperium.content.uprising.personal_cards import (
 from dune_imperium.content.uprising.types import (
     AgentIcon,
     PersonalCardAgentEffect,
+    PersonalCardIconCondition,
     PersonalCardTurnStartEffect,
 )
 from dune_imperium.core.actions import DomainAction
@@ -133,7 +134,12 @@ def _placements_for_card(
     graft: bool,
 ) -> tuple[DomainAction, ...]:
     actions: list[DomainAction] = []
-    icons = effective_agent_icons(card, owner, grafted=graft)
+    icons = effective_agent_icons(
+        card,
+        owner,
+        grafted=graft,
+        opponents=tuple(seat for seat in state.players if seat.player_id != player),
+    )
     # Urgent Shigawire: the boosted Bene Gesserit card "has all Agent
     # icons", so every space's icon is satisfied.
     any_icon = card_is_boosted(card, owner)
@@ -206,6 +212,7 @@ def effective_agent_icons(
     owner: PlayerState,
     *,
     grafted: bool = False,
+    opponents: tuple[PlayerState, ...] = (),
 ) -> tuple[AgentIcon, ...]:
     """Return the card's Agent icons as printed, plus any it borrows.
 
@@ -216,6 +223,23 @@ def effective_agent_icons(
     """
 
     icons = list(card.agent_icons)
+    if isinstance(card, ImperiumCardEntry) and card.icon_condition is not None:
+        # Greyed icons that a printed condition turns on, judged as the card
+        # is played (Long Reach, Show of Strength) [card faces].
+        icon_condition = card.icon_condition
+        if icon_condition is PersonalCardIconCondition.BENE_GESSERIT_BOND:
+            met = any(
+                Faction.BENE_GESSERIT in personal_card_for_instance(other).factions
+                for other in owner.in_play
+            )
+        else:
+            met = all(
+                owner.troops_conflict + owner.commanders_conflict
+                > seat.troops_conflict + seat.commanders_conflict
+                for seat in opponents
+            )
+        if not met:
+            icons = []
     if card.card.card_id == "signet_ring" and has_tech(
         owner.tech_ids, TechAbility.SIGNET_FACTION_ICONS
     ):

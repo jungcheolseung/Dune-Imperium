@@ -591,7 +591,7 @@ def test_observation_shows_face_up_skills_but_hides_the_stack_order() -> None:
 def test_bloodlines_actions_round_trip_only_in_the_bloodlines_catalog() -> None:
     base = ActionCodec(RulesetConfig())
     codec = ActionCodec(BLOODLINES)
-    assert base.size == 4354 + 12 + 1
+    assert base.size == 4354 + 12 + 1 + 1  # v97: Occupation's Reveal bundle
     # Commander choices, the Commander share of retreats and deployments,
     # and the wild pairs of the two Bloodlines Conflicts are bloodlines-only.
     assert codec.size > base.size

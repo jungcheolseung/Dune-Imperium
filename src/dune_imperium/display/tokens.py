@@ -199,6 +199,36 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.MAY_RECALL_AGENT_SENT_THIS_TURN: (
             "You may recall the Agent you sent this turn"
         ),
+        PersonalCardAgentEffect.GENERATE_SPECIMEN: "Generate 1 specimen",
+        PersonalCardAgentEffect.GAIN_BENE_GESSERIT_INFLUENCE_AND_INTRIGUE: (
+            "Gain 1 Bene Gesserit Influence, Draw 1 Intrigue card"
+        ),
+        PersonalCardAgentEffect.GAIN_TWO_SPICE_IF_GRAFTED: "If grafted: Gain 2 spice",
+        PersonalCardAgentEffect.GAIN_TWO_SPICE_IF_EMPEROR_INFLUENCE_TWO: (
+            "If you have 2 or more Emperor Influence: Gain 2 spice"
+        ),
+        PersonalCardAgentEffect.GAIN_FREMEN_INFLUENCE_IF_BENE_GESSERIT_BOND: (
+            "If Bene Gesserit Bond: Gain 1 Fremen Influence"
+        ),
+        PersonalCardAgentEffect.DRAW_ONE_AND_COMBAT_ICON: (
+            "Draw 1 card, Combat (deploy as though at a Combat space)"
+        ),
+        PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_ONE_IF_GRAFTED: (
+            "If grafted: Recruit 1 troop, Draw 1 card"
+        ),
+        PersonalCardAgentEffect.DRAW_TWO_CARDS: "Draw 2 cards",
+        PersonalCardAgentEffect.GAIN_WATER_AND_RETURN_SELF_IF_FREMEN_ALLIANCE: (
+            "Gain 1 water, Fremen Alliance: return this card from play to your hand"
+        ),
+        PersonalCardAgentEffect.RECRUIT_ONE_AND_MAY_TRASH: (
+            "Recruit 1 troop, You may trash a card"
+        ),
+        PersonalCardAgentEffect.GAIN_TWO_DISTINCT_CHOSEN_INFLUENCE: (
+            "Choose two Factions: Gain 1 Influence with each"
+        ),
+        PersonalCardAgentEffect.MAY_PAY_SPECIMEN_FOR_FOUR_SOLARI: (
+            "You may spend 1 specimen → Gain 4 solari"
+        ),
         PersonalCardAgentEffect.GAIN_BY_BENE_GESSERIT_AND_FREMEN_INFLUENCE_TWO: (
             "If you have 2 or more Bene Gesserit Influence: Gain 1 water, "
             "If you have 2 or more Fremen Influence: Gain 1 spice"
@@ -309,6 +339,9 @@ TRASH_EFFECT_TEXT: Final[Mapping[PersonalCardTrashEffect, str]] = MappingProxyTy
         PersonalCardTrashEffect.ACQUIRE_BANK_COMMANDER: (
             "Acquire and recruit the Sardaukar Commander in the bank"
         ),
+        PersonalCardTrashEffect.ADVANCE_TLEILAXU: (
+            "Tleilaxu (advance your Tleilaxu token)"
+        ),
     }
 )
 
@@ -340,6 +373,8 @@ ACQUISITION_EFFECT_TEXT: Final[Mapping[PersonalCardAcquisitionEffect, str]] = (
             PersonalCardAcquisitionEffect.ADVANCE_TLEILAXU: (
                 "Tleilaxu (advance your Tleilaxu token)"
             ),
+            PersonalCardAcquisitionEffect.GAIN_ONE_SPICE: "Gain 1 spice",
+            PersonalCardAcquisitionEffect.RECRUIT_THREE_TROOPS: "Recruit 3 troops",
         }
     )
 )
@@ -473,6 +508,8 @@ _HANDLED_REVEAL_FIELDS: Final[frozenset[str]] = frozenset(
         "grants_combat_icon",
         "specimens",
         "minimum_genetic_markers",
+        "tleilaxu",
+        "research",
     }
 )
 
@@ -565,6 +602,14 @@ def reveal_effect_text(effect: PersonalCardRevealEffect) -> str:
     if effect.specimens:
         gains.append(
             f"Generate {effect.specimens} {_plural(effect.specimens, 'specimen')}"
+        )
+    if effect.tleilaxu:
+        gains.append("Tleilaxu (advance your Tleilaxu token)" * 1)
+    if effect.research:
+        gains.append(
+            "Research (advance your research token)"
+            if effect.research == 1
+            else f"Research ×{effect.research} (advance your research token twice)"
         )
 
     text = ", ".join(gains)

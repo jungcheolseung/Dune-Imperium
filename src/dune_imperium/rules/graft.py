@@ -103,14 +103,25 @@ def apply_graft_partner(state: GameState, action: DomainAction) -> RuleResult:
     effect_frame, effect_context = current_agent_effect_context(popped)
     if not isinstance(effect_frame.decision, PlayerDecision):
         raise RuntimeError("the Graft partner needs the owner's effect frame")
+    space = BOARD_SPACES_BY_ID[space_id]
     pending = agent_effect_is_available(
-        partner.agent_effect, next_owner, BOARD_SPACES_BY_ID[space_id], partner_id
+        partner.agent_effect, next_owner, space, partner_id
     )
     effect_context["graft_card_id"] = partner_id
     effect_context["graft_pending_effect"] = pending
     effect_context["graft_pending_icons"] = ",".join(
         agent_card_icons_at_placement(partner.agent_effect) if pending else ()
     )
+    if effect_context["pending_agent_effect"] is not True:
+        # The placed card's Bond-gated box was judged before the partner
+        # was in play; the partner may provide the Bond now.
+        placed_id = context_str(context, "card_id", owner=_PARTNER_LABEL)
+        placed = personal_card_for_instance(placed_id)
+        if agent_effect_is_available(placed.agent_effect, next_owner, space, placed_id):
+            effect_context["pending_agent_effect"] = True
+            effect_context["pending_agent_icons"] = ",".join(
+                agent_card_icons_at_placement(placed.agent_effect)
+            )
     next_state = replace(
         popped,
         decision_stack=(

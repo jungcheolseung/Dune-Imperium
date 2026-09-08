@@ -1764,6 +1764,14 @@ def _append_reveal_gains(
     )
 
 
+def _append_reveal_gains_state(
+    state: GameState, entries: tuple[RevealGain, ...]
+) -> GameState:
+    return replace(
+        state, decision_stack=_append_reveal_gains(state.decision_stack, entries)
+    )
+
+
 def legal_reveal_gain_actions(
     state: GameState,
     player: int,
@@ -1791,6 +1799,10 @@ def legal_reveal_gain_actions(
         actions.append(
             DomainAction(action_id="generate_reveal_specimens", actor=player)
         )
+    if "tleilaxu" in kinds:
+        actions.append(DomainAction(action_id="advance_reveal_tleilaxu", actor=player))
+    if "research" in kinds:
+        actions.append(DomainAction(action_id="advance_reveal_research", actor=player))
     # Resource gains differ in what they give, so each distinct bundle is
     # its own choice; equal bundles are interchangeable.
     for payload in dict.fromkeys(
@@ -1849,6 +1861,8 @@ def apply_reveal_gain(state: GameState, action: DomainAction) -> RuleResult:
             "recruit_reveal_troops": "troops",
             "draw_reveal_intrigue": "intrigue",
             "generate_reveal_specimens": "specimens",
+            "advance_reveal_tleilaxu": "tleilaxu",
+            "advance_reveal_research": "research",
         }[action.action_id]
         index = next(i for i, (kind, _, _) in enumerate(pending) if kind == wanted)
     kind, payload, source = pending[index]
@@ -1903,12 +1917,41 @@ def apply_reveal_gain(state: GameState, action: DomainAction) -> RuleResult:
             ),
         )
     count = int(payload)
-    if kind == "specimens":
+    if kind in ("specimens", "tleilaxu", "research"):
+        # Imported here: the research module imports the card draw, which
+        # imports this module.
+        from dune_imperium.rules.immortality import (
+            advance_research,
+            advance_tleilaxu,
+        )
+
         settled = replace(
             state,
             decision_stack=(*state.decision_stack[:-1], with_context(frame, context)),
         )
-        return generate_specimens(settled, player, count, source=event_id)
+        if kind == "specimens":
+            return generate_specimens(settled, player, count, source=event_id)
+        if kind == "tleilaxu":
+            return advance_tleilaxu(settled, player, count, source=event_id)
+        # A Reveal-box Research icon (Tleilaxu Master): the advance may open
+        # a direction choice above the Reveal frame.
+        researched = RuleResult(state=settled)
+        for index in range(count):
+            researched = advance_research(
+                researched.state, player, source=f"{event_id}:{index}"
+            )
+            if researched.state.decision_stack[-1].kind == FrameKind.RESEARCH_ADVANCE:
+                # The rest of the icons wait for the choice: re-queue them.
+                remaining = count - index - 1
+                if remaining:
+                    researched = RuleResult(
+                        state=_append_reveal_gains_state(
+                            researched.state, (("research", str(remaining), source),)
+                        ),
+                        events=researched.events,
+                    )
+                break
+        return researched
     if kind == "troops":
         next_owner, recruited = recruit_troops(owner, count)
         context["reveal_troops_recruited"] = (
@@ -2092,6 +2135,10 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
                 late_gains.append(("intrigue", str(effect.draw_intrigue), card_id))
             if effect.specimens:
                 late_gains.append(("specimens", str(effect.specimens), card_id))
+            if effect.tleilaxu:
+                late_gains.append(("tleilaxu", str(effect.tleilaxu), card_id))
+            if effect.research:
+                late_gains.append(("research", str(effect.research), card_id))
             resources = resource_gain_entry(
                 card_id, solari=effect.solari, spice=effect.spice, water=effect.water
             )
@@ -2838,6 +2885,8 @@ def _late_reveal_one_card(
             if effect.draw_intrigue
             else None,
             ("specimens", str(effect.specimens), card_id) if effect.specimens else None,
+            ("tleilaxu", str(effect.tleilaxu), card_id) if effect.tleilaxu else None,
+            ("research", str(effect.research), card_id) if effect.research else None,
             resource_gain_entry(
                 card_id, solari=effect.solari, spice=effect.spice, water=effect.water
             ),
@@ -3104,6 +3153,16 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
             ("specimens", str(effect.specimens), card_id)
             for card_id, effect in reveal_effects
             if effect.specimens
+        ),
+        *(
+            ("tleilaxu", str(effect.tleilaxu), card_id)
+            for card_id, effect in reveal_effects
+            if effect.tleilaxu
+        ),
+        *(
+            ("research", str(effect.research), card_id)
+            for card_id, effect in reveal_effects
+            if effect.research
         ),
         *(entry for entry in resource_gains if entry is not None),
         *(

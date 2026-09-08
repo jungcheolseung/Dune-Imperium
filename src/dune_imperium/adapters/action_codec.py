@@ -60,7 +60,7 @@ from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.rules.agent_effects import AUTOMATIC_AGENT_ICONS
 from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 
-ACTION_CODEC_VERSION = 96
+ACTION_CODEC_VERSION = 97
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -820,6 +820,9 @@ def _immortality_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "return_specimen",
             "use_family_atomics",
             "generate_reveal_specimens",
+            "advance_reveal_tleilaxu",
+            "advance_reveal_research",
+            "pay_agent_card_specimen",
         )
     ]
     templates.extend(

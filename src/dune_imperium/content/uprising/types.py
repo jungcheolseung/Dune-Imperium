@@ -205,6 +205,39 @@ class PersonalCardAgentEffect(StrEnum):
     DRAW_ONE_AND_INTRIGUE_IF_TWO_MARKERS = "draw_one_and_intrigue_if_two_markers"
     # Twisted Mentat (Graft): "You may recall the Agent you sent this turn."
     MAY_RECALL_AGENT_SENT_THIS_TURN = "may_recall_agent_sent_this_turn"
+    # Immortality Imperium cards (card faces).
+    # Bene Tleilax Lab: a specimen.
+    GENERATE_SPECIMEN = "generate_specimen"
+    # Clandestine Meeting: Bene Gesserit Influence and an Intrigue card.
+    GAIN_BENE_GESSERIT_INFLUENCE_AND_INTRIGUE = (
+        "gain_bene_gesserit_influence_and_intrigue"
+    )
+    # Corrupt Smuggler: "If grafted: 2 spice".
+    GAIN_TWO_SPICE_IF_GRAFTED = "gain_two_spice_if_grafted"
+    # Keys to Power: "[Emperor] 2 Influence: 2 spice".
+    GAIN_TWO_SPICE_IF_EMPEROR_INFLUENCE_TWO = "gain_two_spice_if_emperor_influence_two"
+    # Lisan al Gaib: "If you have another Bene Gesserit card in play: Fremen
+    # Influence".
+    GAIN_FREMEN_INFLUENCE_IF_BENE_GESSERIT_BOND = (
+        "gain_fremen_influence_if_bene_gesserit_bond"
+    )
+    # Occupation: draw a card and the Combat icon.
+    DRAW_ONE_AND_COMBAT_ICON = "draw_one_and_combat_icon"
+    # Sardaukar Quartermaster: "If grafted: troop, draw a card".
+    RECRUIT_ONE_AND_DRAW_ONE_IF_GRAFTED = "recruit_one_and_draw_one_if_grafted"
+    # Show of Strength: draw two cards.
+    DRAW_TWO_CARDS = "draw_two_cards"
+    # Stillsuit Manufacturer: water —AND— Fremen Alliance: return this card
+    # from play to your hand.
+    GAIN_WATER_AND_RETURN_SELF_IF_FREMEN_ALLIANCE = (
+        "gain_water_and_return_self_if_fremen_alliance"
+    )
+    # Throne Room Politics: a troop and a (black, optional) trash icon.
+    RECRUIT_ONE_AND_MAY_TRASH = "recruit_one_and_may_trash"
+    # Long Reach: "Choose two:" of the four Faction Influences.
+    GAIN_TWO_DISTINCT_CHOSEN_INFLUENCE = "gain_two_distinct_chosen_influence"
+    # Organ Merchants: "specimen -> 4 Solari".
+    MAY_PAY_SPECIMEN_FOR_FOUR_SOLARI = "may_pay_specimen_for_four_solari"
 
 
 class PersonalCardTrashEffect(StrEnum):
@@ -216,6 +249,23 @@ class PersonalCardTrashEffect(StrEnum):
     # Sardaukar Standard (Bloodlines): "When this card is trashed: acquire
     # and recruit the Sardaukar Commander in the bank".
     ACQUIRE_BANK_COMMANDER = "acquire_bank_commander"
+    # Replacement Eyes (Immortality): "When this card is trashed: Tleilaxu".
+    ADVANCE_TLEILAXU = "advance_tleilaxu"
+
+
+class PersonalCardIconCondition(StrEnum):
+    """A printed condition under which greyed Agent icons become real.
+
+    Long Reach: "If you have another Bene Gesserit card in play, this has
+    [Landsraad], [City] and [Spice Trade]"; Show of Strength: "If you have
+    more deployed troops than each opponent, this has [Landsraad] and
+    [Spice Trade]" [card faces]. Judged when the card is played.
+    """
+
+    BENE_GESSERIT_BOND = "bene_gesserit_bond"
+    MORE_DEPLOYED_TROOPS_THAN_EACH_OPPONENT = (
+        "more_deployed_troops_than_each_opponent"
+    )
 
 
 class PersonalCardTurnStartEffect(StrEnum):
@@ -248,9 +298,12 @@ class PersonalCardAcquisitionEffect(StrEnum):
     # Possible Futures (Bloodlines): one water on acquisition.
     GAIN_ONE_WATER = "gain_one_water"
     # Immortality acquire boxes: Spiritual Fervor researches, Subject X-137
-    # advances the Tleilaxu token [card faces].
+    # advances the Tleilaxu token, Lisan al Gaib gains a spice, Occupation
+    # recruits three troops [card faces].
     RESEARCH = "research"
     ADVANCE_TLEILAXU = "advance_tleilaxu"
+    GAIN_ONE_SPICE = "gain_one_spice"
+    RECRUIT_THREE_TROOPS = "recruit_three_troops"
 
 
 class PersonalCardRevealChoiceEffect(StrEnum):
@@ -375,6 +428,10 @@ class PersonalCardRevealEffect:
     # genetic markers a marked Reveal line needs [Immortality pp. 6, 16].
     specimens: int = 0
     minimum_genetic_markers: int = 0
+    # Tleilaxu advances (Dissecting Kit) and Research icons (Tleilaxu
+    # Master) printed in a Reveal box; owner-timed like the other gains.
+    tleilaxu: int = 0
+    research: int = 0
 
     def __post_init__(self) -> None:
         if self.required_faction_bond is not None and not isinstance(
@@ -420,6 +477,8 @@ class PersonalCardRevealEffect:
             self.influence,
             self.persuasion_per_completed_contract,
             self.specimens,
+            self.tleilaxu,
+            self.research,
         )
         if (
             min(

@@ -14,12 +14,12 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     first = ActionCodec(RulesetConfig())
     second = ActionCodec(RulesetConfig())
 
-    assert ACTION_CODEC_VERSION == 96
+    assert ACTION_CODEC_VERSION == 97
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
-    # v92/v93: the Reveal gain actions join every catalog (troops, Intrigue,
-    # and six distinct printed resource bundles).
-    assert first.size == 4354 + 2 + 6 + 4 + 1
+    # v92/v93/v97: the Reveal gain actions join every catalog (troops, Intrigue,
+    # and seven distinct printed resource bundles — Occupation adds water+spice).
+    assert first.size == 4354 + 2 + 7 + 4 + 1
 
 
 def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
@@ -32,7 +32,7 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
 
     assert codec.decode(codec.encode(action), actor=2) == action
     # v96: the research icon's board-effect resolution (Immortality).
-    assert codec.size == 4640 + 2 + 6 + 4 + 1
+    assert codec.size == 4640 + 2 + 7 + 4 + 1
 
     try:
         ActionCodec(RulesetConfig()).encode(action)

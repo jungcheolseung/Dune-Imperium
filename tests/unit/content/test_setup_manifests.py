@@ -405,7 +405,25 @@ def test_imperium_manifest_matches_base_and_choam_counts() -> None:
         entry.card.card_id
         for entry in imperium_cards_for_choam(True, True, immortality=True)
         if entry.immortality_only
-    } == {"bene_tleilax_researcher", "planned_coupling"}
+    } == {
+        "bene_tleilax_lab",
+        "bene_tleilax_researcher",
+        "blank_slate",
+        "clandestine_meeting",
+        "corrupt_smuggler",
+        "keys_to_power",
+        "lisan_al_gaib",
+        "long_reach",
+        "occupation",
+        "organ_merchants",
+        "planned_coupling",
+        "replacement_eyes",
+        "sardaukar_quartermaster",
+        "show_of_strength",
+        "spiritual_fervor",
+        "stillsuit_manufacturer",
+        "throne_room_politics",
+    }
     assert not any(
         entry.immortality_only for entry in imperium_cards_for_choam(True, True)
     )
@@ -682,7 +700,9 @@ def test_imperium_costs_cover_the_printed_range_and_resolve_instances() -> None:
     assert {
         entry.card.card_id
         for entry in IMPERIUM_CARDS
-        if entry.has_acquisition_bonus and not entry.bloodlines_only
+        if entry.has_acquisition_bonus
+        and not entry.bloodlines_only
+        and not entry.immortality_only
     } == {
         "arrakis_revolt",
         "guild_spy",
@@ -695,5 +715,10 @@ def test_imperium_costs_cover_the_printed_range_and_resolve_instances() -> None:
         "strike_fleet",
         "subversive_advisor",
     }
+    assert {
+        entry.card.card_id
+        for entry in IMPERIUM_CARDS
+        if entry.has_acquisition_bonus and entry.immortality_only
+    } == {"lisan_al_gaib", "occupation", "spiritual_fervor"}
     instance = imperium_deck_instance_ids(False)[0]
     assert imperium_card_for_instance(instance).card.card_id in costs

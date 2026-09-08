@@ -832,10 +832,16 @@ def _resolve_imperium_acquisition_bonus(
                 payload=(("amount", 1), ("player", player), ("resource", "water")),
             ),
         )
-    elif effect is PersonalCardAcquisitionEffect.RECRUIT_ONE_TROOP:
-        # Arrakis Revolt's acquire box (promo): the troop goes to the garrison
-        # like any recruit [Main p. 20].
-        owner, recruited = recruit_troops(owner, 1)
+    elif effect in (
+        PersonalCardAcquisitionEffect.RECRUIT_ONE_TROOP,
+        PersonalCardAcquisitionEffect.RECRUIT_THREE_TROOPS,
+    ):
+        # Arrakis Revolt's (promo) and Occupation's (Immortality) acquire
+        # boxes: the troops go to the garrison like any recruit [Main p. 20].
+        wanted = (
+            3 if effect is PersonalCardAcquisitionEffect.RECRUIT_THREE_TROOPS else 1
+        )
+        owner, recruited = recruit_troops(owner, wanted)
         troop_source = (
             f"round:{state.round_number}:player:{player}:"
             f"acquire:{instance_id}:troop"
@@ -846,7 +852,23 @@ def _resolve_imperium_acquisition_bonus(
                 kind="acquisition_troop_recruited",
                 payload=(("amount", recruited), ("player", player)),
             ),
-            *recruit_shortfall_events(troop_source, player, 1, recruited),
+            *recruit_shortfall_events(troop_source, player, wanted, recruited),
+        )
+    elif effect is PersonalCardAcquisitionEffect.GAIN_ONE_SPICE:
+        # Lisan al Gaib's acquire box (Immortality): one spice.
+        owner = replace(
+            owner,
+            resources=replace(owner.resources, spice=owner.resources.spice + 1),
+        )
+        events = (
+            GameEvent(
+                event_id=(
+                    f"round:{state.round_number}:player:{player}:"
+                    f"acquire:{instance_id}:spice"
+                ),
+                kind="acquisition_resource_gained",
+                payload=(("amount", 1), ("player", player), ("resource", "spice")),
+            ),
         )
     return AcquisitionBonus(
         owner=owner,

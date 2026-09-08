@@ -164,7 +164,7 @@ def trash_personal_card(
         next_owner if candidate.player_id == player else candidate
         for candidate in state.players
     )
-    return RuleResult(
+    result = RuleResult(
         state=replace(
             state,
             players=players,
@@ -176,6 +176,19 @@ def trash_personal_card(
         ),
         events=tuple(events),
     )
+    if _trash_effect(card_id) is PersonalCardTrashEffect.ADVANCE_TLEILAXU:
+        # Replacement Eyes (Immortality): "When this card is trashed:
+        # Tleilaxu" [card face]. Imported here: the research modules
+        # import this one.
+        from dune_imperium.rules.immortality import advance_tleilaxu
+
+        advanced = advance_tleilaxu(
+            result.state, player, 1, source=f"{source}:trash:{card_id}"
+        )
+        result = RuleResult(
+            state=advanced.state, events=(*result.events, *advanced.events)
+        )
+    return result
 
 
 def with_recruited_units(

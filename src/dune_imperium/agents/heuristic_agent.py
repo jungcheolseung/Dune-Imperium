@@ -83,6 +83,9 @@ _ACTION_SCORES: Final[dict[str, float]] = {
     # and prefer the paid research bonus; returning specimens is a last
     # resort so the heuristic does not undo its own tanks.
     "generate_reveal_specimens": 4.0,
+    "advance_reveal_tleilaxu": 4.0,
+    "advance_reveal_research": 4.0,
+    "pay_agent_card_specimen": 2.0,
     "choose_research_space": 3.0,
     "choose_research_influence": 3.0,
     "pay_research_bonus": 2.5,
