@@ -269,6 +269,22 @@ button:disabled { opacity: 0.5; cursor: wait; }
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
 }
 .agent-token { width: 1.9em; height: 1.9em; }
+/* A just-placed Agent flies in from its seat panel (renderBoard FLIP) or,
+   without an origin, pops in. */
+.agent-token.flying {
+  transition: transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1);
+  position: relative;
+  z-index: 3;
+}
+.agent-token.placed { animation: token-pop 0.3s ease-out; }
+@keyframes token-pop {
+  from { transform: scale(0.3); }
+  to { transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .agent-token.flying { transition: none; }
+  .agent-token.placed { animation: none; }
+}
 .control-flag {
   position: absolute;
   left: 8%;
@@ -758,12 +774,17 @@ button:disabled { opacity: 0.5; cursor: wait; }
 .turn-cards .vcard.small { width: 54px; }
 .logevent { margin: 0.05rem 0 0.05rem 1.4rem; font-size: 0.72rem; opacity: 0.65; }
 
-@media (max-width: 1400px) {
-  #table { grid-template-columns: 250px minmax(0, 1fr) 380px; }
+/* Below about 1700px the right panel's two columns (34vw ≈ 540px at
+   1600px) squeeze the action list and the log to ~270px each, so they
+   stack again earlier than the table columns shrink. */
+@media (max-width: 1700px) {
   #side { grid-template-columns: minmax(0, 1fr); overflow-y: auto; }
   #side-main, #side-log { overflow: visible; }
   #side-log #action-log { flex: none; }
   #action-log .log-list { max-height: 28rem; }
+}
+@media (max-width: 1400px) {
+  #table { grid-template-columns: 250px minmax(0, 1fr) 380px; }
 }
 @media (max-width: 1100px) {
   #table { grid-template-columns: 200px minmax(0, 1fr) 300px; }

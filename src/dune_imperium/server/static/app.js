@@ -1577,11 +1577,63 @@ function seatToken(seat, className) {
   token.style.background = SEAT_COLORS[seat];
   token.textContent = String(seat);
   token.title = `좌석 ${seat}`;
+  token.dataset.seat = String(seat);
   return token;
+}
+
+/* Agent tokens keyed by seat and space, with their screen rectangles, so
+   a re-render can animate the ones that were just placed. */
+function agentTokenRects(board) {
+  const rects = new Map();
+  for (const hotspot of board.querySelectorAll(".hotspot")) {
+    for (const token of hotspot.querySelectorAll(".agent-token")) {
+      rects.set(
+        `${token.dataset.seat}:${hotspot.dataset.space}`,
+        token.getBoundingClientRect()
+      );
+    }
+  }
+  return rects;
+}
+
+/* A newly placed Agent token flies in from its seat's mark in the seat
+   panel (FLIP: start translated at the origin, then transition to rest).
+   Tokens that were already on their space, and the first paint of a
+   board, stay still. */
+function animatePlacedAgents(board, before) {
+  if (before === null) return;
+  for (const hotspot of board.querySelectorAll(".hotspot")) {
+    for (const token of hotspot.querySelectorAll(".agent-token")) {
+      if (before.has(`${token.dataset.seat}:${hotspot.dataset.space}`)) continue;
+      const origin = document.querySelector(
+        `#seats .seat[data-seat="${token.dataset.seat}"] .seat-mark`
+      );
+      const target = token.getBoundingClientRect();
+      if (!origin || !target.width) {
+        token.classList.add("placed");
+        continue;
+      }
+      const from = origin.getBoundingClientRect();
+      const dx = from.left + from.width / 2 - (target.left + target.width / 2);
+      const dy = from.top + from.height / 2 - (target.top + target.height / 2);
+      token.style.transition = "none";
+      token.style.transform = `translate(${dx}px, ${dy}px) scale(0.7)`;
+      token.getBoundingClientRect();
+      token.style.transition = "";
+      token.classList.add("flying");
+      token.style.transform = "";
+      token.addEventListener(
+        "transitionend",
+        () => token.classList.remove("flying"),
+        { once: true }
+      );
+    }
+  }
 }
 
 function renderBoard() {
   const board = el("board");
+  const before = board.querySelector(".board-stage") ? agentTokenRects(board) : null;
   board.textContent = "";
   const view = state.view;
   if (!view) {
@@ -1591,6 +1643,7 @@ function renderBoard() {
   }
   if (state.catalog.board_image) {
     renderBoardStage(board, view);
+    animatePlacedAgents(board, before);
   } else {
     renderSpaceList(board, view);
   }
@@ -2188,6 +2241,7 @@ function renderSeats() {
     const seat = player.player;
     const card = document.createElement("article");
     card.className = "seat" + (seat === decisionOwner ? " active" : "");
+    card.dataset.seat = String(seat);
     card.style.borderLeftColor = SEAT_COLORS[seat];
 
     const head = document.createElement("div");
