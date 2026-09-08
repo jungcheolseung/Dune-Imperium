@@ -1,6 +1,6 @@
 # Immortality implementation audit
 
-기준일: 2026-09-08 — 슬라이스 1(출처·명세·옵션 골격·카탈로그)과 슬라이스 2(Bene Tleilax board·specimen·Research Station·Experimentation·Family Atomics) 완료.
+기준일: 2026-09-08 — 슬라이스 1(출처·명세·옵션 골격·카탈로그), 슬라이스 2(Bene Tleilax board·specimen·Research Station·Experimentation·Family Atomics), 슬라이스 3(Tleilaxu Row·Reclaimed Forces·첫 카드 3장) 완료.
 
 규범 근거는 [`rules/immortality.md`](../rules/immortality.md)이며, 콘텐츠 정의는 `content/immortality/board.py`(research·Tleilaxu track), `content/immortality/tleilaxu.py`(Tleilaxu deck·Reclaimed Forces), `content/uprising/imperium.py`·`intrigue.py`의 `immortality_only` 항목이 소유한다. 모든 동작은 `RulesetConfig(immortality=True)`에서만 켜진다.
 
@@ -116,7 +116,17 @@ Spice Trade 아이콘. Agent: Research. Reveal: ◆1 specimen 1. 카드 이름 �
 | Family Atomics | `use_family_atomics`: 소유자의 turn frame들에서 1회, Row 전부를 `imperium_removed`로 보내고 deck 맨 위 5장으로 새 Row(OQ-051). | `[Immortality p. 12]`. |
 | 관측·codec | 관측 v12(위 상태 전부 공개), codec v96: `immortality` 카탈로그에 `choose_research_space` ×21·`choose_research_influence` ×4·`trash_for_research_bonus`(카드마다)·`pay/decline_research_bonus`·`return_specimen`·`use_family_atomics`·`generate_reveal_specimens`; 기본 카탈로그는 `resolve_board_effect(research)` 1개만 늘었다. heuristic 우선순위와 UI 라벨을 추가. | 소크: random·heuristic 각 6판에서 모든 경로가 발화(연쇄·marker·atomics 포함). |
 
+## 슬라이스 3: Tleilaxu Row
+
+| 영역 | 구현 | 규칙 민감 메모 |
+| --- | --- | --- |
+| 획득 | `rules/tleilaxu_row.py`: REVEAL frame 소유자에게 Row 카드마다 `acquire_tleilaxu(instance_id)`(specimen ≥ 비용), 첫 genetic marker 뒤에는 `to_deck_top=True` 변형도. 지불은 `spend_specimens`(tanks→supply), 카드는 discard pile 또는 deck 맨 위, Row는 deck 맨 위에서 보충(`refill_tleilaxu_row`), 획득 box는 Imperium과 같은 `resolve_acquisition_bonus`(Tleilaxu-aware) + `apply_acquisition_track_effects`. deck 맨 위로 보낸 카드의 instance는 이벤트에 싣지 않는다(deck 순서는 비공개, OQ-010). | `[Immortality pp. 6, 8-9]`. Imperium Row 획득 효과·Persuasion 효과는 Row를 보지 않으므로 자연히 배제된다. |
+| Reclaimed Forces | `acquire_reclaimed_forces(choice)`: specimen 3, `troops`(recruit 2, `reveal_troops_recruited`에 합산) 또는 `tleilaxu`(1 전진); 카드는 Row에 남는다. | `[Immortality p. 9]` `[Reclaimed Forces card]`. |
+| 획득 box | `PersonalCardAcquisitionEffect.RESEARCH`·`ADVANCE_TLEILAXU`는 카드가 존에 들어간 뒤 state 수준에서 해결(`apply_acquisition_track_effects`; research는 방향 선택 frame을 열 수 있다). Imperium 획득 경로 4곳과 Tleilaxu 경로 모두. | Subject X-137, (슬라이스 5의) Spiritual Fervor. |
+| 카드 | Contaminator(Fremen, `ADVANCE_TLEILAXU`), From the Tanks(`RECRUIT_TWO_TROOPS`), Subject X-137(`ADVANCE_TLEILAXU_IF_ONE_MARKER`, 해결 시점 판정 OQ-028; 획득 box Tleilaxu). Graft 카드는 슬라이스 4 전까지 덱 밖. | 카드면 전사표와 일치. |
+| codec | `immortality` 카탈로그에 `acquire_tleilaxu` ×2/카드, `acquire_reclaimed_forces` ×2, Tleilaxu 카드의 Agent 배치 템플릿, trash 계열 템플릿의 Tleilaxu instance; Bloodlines 없이도 `optional_trash` 템플릿(trash+specimen 칸). | codec v96 그대로(옵션 카탈로그만 커짐: 4,490→4,578). |
+
 ## 미완 경계
 
-- 슬라이스 3 이후: Tleilaxu Row 획득과 Reclaimed Forces, 첫 marker 뒤 deck 맨 위 배치, Graft, 카드 play data(Tleilaxu 18 + Piter, Imperium 25, Intrigue 11), UI 표시(board·token·specimen·Row).
+- 슬라이스 4 이후: Graft, 카드 play data(Tleilaxu 15 + Piter, Imperium 25, Intrigue 11), Harvest Cells의 Combat 중 Tleilaxu 획득, UI 표시(board·token·specimen·Row).
 - 공식 문서가 침묵하는 판정 가운데 아직 등록하지 않은 것: "lose a troop"의 출처 존 선택(카드 슬라이스에서).
