@@ -200,7 +200,7 @@ heuristic: 활성 box가 decline만 제공할 때 `switch_graft_card`를 decline
 
 | 영역 | 구현 | 메모 |
 | --- | --- | --- |
-| UI | 카탈로그에 Tleilaxu deck + Reclaimed Forces(specimen 비용·Graft 표시·이미지)와 `bene_tleilax` 절(research hex의 열·행·보너스, genetic marker 열, Tleilaxu track). market에 Tleilaxu Row(deck 수, specimen 배지, Reclaimed Forces)와 Bene Tleilax board 패널(research grid 위 좌석 token, Tleilaxu track 위 token과 bank spice); 좌석 카드에 specimen·research/Tleilaxu 위치·Family Atomics·Chairdog 반환 대기·Usurp 빌린 카드. headless Chromium으로 렌더 확인. | Bene Tleilax board 스캔은 없어 합성 grid로 그린다. |
+| UI | 카탈로그에 Tleilaxu deck + Reclaimed Forces(specimen 비용·Graft 표시·이미지)와 `bene_tleilax` 절(research hex의 열·행·보너스, genetic marker 열, Tleilaxu track, 스캔 URL과 percent 레이아웃). market에 Tleilaxu Row(deck 수, specimen 배지, Reclaimed Forces)와 Bene Tleilax board 패널 — 사용자가 가져온 스캔(`assets/board/bene_tleilax.jpg`, 5551x3952, `/bene-tleilax-image`) 위에 좌석의 research token·Tleilaxu token·bank spice를 percent 좌표(`display/bene_tleilax_layout.py`, 5% grid로 측정)로 그리고, 스캔이 없으면 합성 grid로 대체; 좌석 카드에 specimen·research/Tleilaxu 위치·Family Atomics·Chairdog 반환 대기·Usurp 빌린 카드. headless Chromium으로 렌더·정렬 확인. | 스캔으로 research track 22칸 보너스와 Tleilaxu track 배치를 대조했고 전사와 전부 일치한다(c8r6 "Solari 7 → Tleilaxu 2" 포함). |
 | 소크 | `dune-imperium-sweep --rotate-leaders --soundness-interval 25`: immortality+promo random 300·heuristic 150, 전 옵션(base·CHOAM × promo+Bloodlines+Tech+Immortality) random 200·heuristic 120, immortality draft 60 — 830판 실패 0. 첫 실행이 적발한 결함 3계열은 아래. | |
 | census | Immortality Imperium 25·Intrigue 11·Tleilaxu 19 전부 play/acquire 0회 없음(Clandestine Meeting은 graft 상대로만 play되므로 census가 `card_grafted`를 세도록 보강). `immortality` 카탈로그 전용 행동 가운데 0회는 `decline_agent_card_recall`(Twisted Mentat의 recall 거절)과 `decline_reveal_influence_loss`(For Humanity, BG Alliance 필요)뿐이며 둘 다 단위 테스트가 덮는다. research 보너스·Family Atomics·Tleilaxu track 끝(OQ-048)·specimen 부족(OQ-049)·반환 모두 발화. | |
 
@@ -208,4 +208,4 @@ heuristic: 활성 box가 decline만 제공할 때 `switch_graft_card`를 decline
 
 ## 미완 경계
 
-- 카드 play data·UI·소크·census는 끝났다. 남은 것은 콘텐츠 밖의 후속: Bene Tleilax board 스캔이 들어오면 합성 grid를 오버레이로 바꾸는 것, heuristic의 Immortality 가치(Tleilaxu 카드 구매·research 방향은 고정 prior뿐)와 rollout 가중치 조정, 학습(M10) 재개 시 관측 v15 체크포인트 새로 시작.
+- 카드 play data·UI(스캔 오버레이 포함)·소크·census는 끝났다. 남은 것은 콘텐츠 밖의 후속: heuristic의 Immortality 가치(Tleilaxu 카드 구매·research 방향은 고정 prior뿐)와 rollout 가중치 조정, 학습(M10) 재개 시 관측 v15 체크포인트 새로 시작.

@@ -23,6 +23,7 @@ def client(tmp_path: Path) -> TestClient:
             card_images_dir=tmp_path / "no-images",
             icons_dir=tmp_path / "no-icons",
             board_image=tmp_path / "no-map.jpg",
+            bene_tleilax_image=tmp_path / "no-bene-tleilax.jpg",
         )
     )
 
@@ -348,6 +349,23 @@ def test_board_scan_and_icons_are_served_when_present(tmp_path: Path) -> None:
         served = image_client.get("/board-image")
         assert served.status_code == 200
         assert served.content == b"jpeg-board"
+
+    bene_tleilax = tmp_path / "bene_tleilax.jpg"
+    bene_tleilax.write_bytes(b"jpeg-bene-tleilax")
+    with TestClient(
+        create_app(
+            saves_dir=tmp_path / "saves",
+            card_images_dir=tmp_path / "no-images",
+            icons_dir=icons,
+            board_image=board,
+            bene_tleilax_image=bene_tleilax,
+        )
+    ) as scan_client:
+        catalog = scan_client.get("/catalog").json()
+        assert catalog["bene_tleilax"]["image"] == "/bene-tleilax-image"
+        served = scan_client.get("/bene-tleilax-image")
+        assert served.status_code == 200
+        assert served.content == b"jpeg-bene-tleilax"
 
 
 def test_undo_and_log_over_http(client: TestClient) -> None:

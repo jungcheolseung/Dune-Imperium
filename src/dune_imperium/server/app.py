@@ -87,6 +87,20 @@ def default_board_image_path() -> Path:
     return _ASSETS_DIR / "board" / "map.jpg"
 
 
+def default_bene_tleilax_image_path() -> Path:
+    """Return the owner's local Bene Tleilax board scan (Immortality).
+
+    ``DUNE_IMPERIUM_BENE_TLEILAX_IMAGE`` overrides the default
+    ``assets/board/bene_tleilax.jpg``. Without the file the UI draws a
+    synthetic research grid instead.
+    """
+
+    override = os.environ.get("DUNE_IMPERIUM_BENE_TLEILAX_IMAGE")
+    if override:
+        return Path(override)
+    return _ASSETS_DIR / "board" / "bene_tleilax.jpg"
+
+
 class CreateGameRequest(BaseModel):
     """Configuration for one new game."""
 
@@ -155,6 +169,7 @@ def create_app(
     card_images_dir: Path | None = None,
     icons_dir: Path | None = None,
     board_image: Path | None = None,
+    bene_tleilax_image: Path | None = None,
 ) -> FastAPI:
     """Build the local play server around one session manager."""
 
@@ -180,6 +195,11 @@ def create_app(
     board_path = (
         board_image if board_image is not None else default_board_image_path()
     )
+    bene_tleilax_path = (
+        bene_tleilax_image
+        if bene_tleilax_image is not None
+        else default_bene_tleilax_image_path()
+    )
     app = FastAPI(title="Dune: Imperium - Uprising local play server")
 
     @app.middleware("http")
@@ -201,13 +221,24 @@ def create_app(
 
     @app.get("/catalog")
     def catalog() -> JsonObject:
-        return build_catalog(image_index, icon_files, board_path.is_file())
+        return build_catalog(
+            image_index,
+            icon_files,
+            board_path.is_file(),
+            bene_tleilax_image=bene_tleilax_path.is_file(),
+        )
 
     @app.get("/board-image", include_in_schema=False)
     def board_image_file() -> FileResponse:
         if not board_path.is_file():
             raise HTTPException(status_code=404, detail="no board image")
         return FileResponse(board_path)
+
+    @app.get("/bene-tleilax-image", include_in_schema=False)
+    def bene_tleilax_image_file() -> FileResponse:
+        if not bene_tleilax_path.is_file():
+            raise HTTPException(status_code=404, detail="no Bene Tleilax board image")
+        return FileResponse(bene_tleilax_path)
 
     @app.post("/games")
     def create_game(request: CreateGameRequest) -> JsonObject:

@@ -2304,8 +2304,15 @@ function renderBeneTleilax(market, view) {
   const heading = document.createElement("h3");
   heading.textContent = "Bene Tleilax board";
   box.appendChild(heading);
+  if (layout.image) {
+    /* The owner's scan with the live tokens drawn over it
+       (catalog.bene_tleilax.layout, percent of the image). */
+    box.appendChild(renderBeneTleilaxScan(layout, view));
+    market.appendChild(box);
+    return;
+  }
 
-  /* Research track: the 22 hexes as a column/row grid; each seat's
+  /* Without a scan: the 22 hexes as a column/row grid; each seat's
      research token sits on its space, the genetic-marker columns are
      tinted. */
   const grid = document.createElement("div");
@@ -2371,6 +2378,78 @@ function renderBeneTleilax(market, view) {
   box.appendChild(trackHead);
   box.appendChild(track);
   market.appendChild(box);
+}
+
+function renderBeneTleilaxScan(layout, view) {
+  const stage = document.createElement("div");
+  stage.className = "bt-stage";
+  const map = document.createElement("img");
+  map.className = "bt-map";
+  map.src = layout.image;
+  map.alt = "Bene Tleilax board";
+  map.draggable = false;
+  stage.appendChild(map);
+  const overlay = layout.layout;
+  const [hexWidth, hexHeight] = overlay.hex_size;
+
+  /* Research hexes: a titled hotspot per space and the seats' tokens in
+     its dark upper half, above the printed bonus. */
+  const tokensBySpace = {};
+  for (const player of view.players) {
+    if (!player.research_space) continue;
+    (tokensBySpace[player.research_space] ||= []).push(player.player);
+  }
+  const bonusOf = {};
+  for (const space of layout.research_spaces) bonusOf[space.id] = space.bonus;
+  for (const [spaceId, [x, y]] of Object.entries(overlay.research_points)) {
+    const hex = document.createElement("div");
+    hex.className = "bt-hex";
+    hex.style.left = `${x - hexWidth / 2}%`;
+    hex.style.top = `${y - hexHeight / 2}%`;
+    hex.style.width = `${hexWidth}%`;
+    hex.style.height = `${hexHeight}%`;
+    hex.title =
+      spaceId === layout.research_start
+        ? "Research 시작"
+        : `${spaceId} · ${RESEARCH_BONUS_LABELS[bonusOf[spaceId]] || "보너스 없음"}`;
+    stage.appendChild(hex);
+    const seats = tokensBySpace[spaceId] || [];
+    seats.forEach((seat, index) => {
+      const token = seatToken(seat, "bt-token");
+      placeAt(token, x - 2.2 + (index % 2) * 2.6, y - 6.5 + Math.floor(index / 2) * 3.4);
+      stage.appendChild(token);
+    });
+  }
+
+  /* Tleilaxu track: tokens along the top band, the bank's spice on the
+     fourth space until a token first arrives [Immortality p. 4]. */
+  const [bandTop, bandHeight] = overlay.track_band;
+  overlay.track_cells.forEach(([left, width], index) => {
+    const cell = document.createElement("div");
+    cell.className = "bt-track-cell";
+    cell.style.left = `${left}%`;
+    cell.style.top = `${bandTop}%`;
+    cell.style.width = `${width}%`;
+    cell.style.height = `${bandHeight}%`;
+    const bonus = layout.tleilaxu_track[index];
+    cell.title = `Tleilaxu track ${index}${TLEILAXU_TRACK_LABELS[bonus] ? " · " + TLEILAXU_TRACK_LABELS[bonus] : ""}`;
+    stage.appendChild(cell);
+    const seats = view.players.filter((p) => (p.tleilaxu_space || 0) === index);
+    seats.forEach((player, slot) => {
+      const token = seatToken(player.player, "bt-token");
+      placeAt(token, left + 1.0 + slot * 2.7, bandTop + bandHeight - 5.5);
+      stage.appendChild(token);
+    });
+  });
+  if (view.tleilaxu_track_spice) {
+    const spice = document.createElement("span");
+    spice.className = "bt-spice";
+    spice.append(icon("spice", "spice"), String(view.tleilaxu_track_spice));
+    spice.title = "첫 도달자가 가져가는 spice";
+    placeAt(spice, overlay.spice_point[0], overlay.spice_point[1]);
+    stage.appendChild(spice);
+  }
+  return stage;
 }
 
 /* ---------- seats ---------- */

@@ -322,3 +322,28 @@ def test_catalog_serves_bloodlines_skills_and_tech_tiles() -> None:
     embassy = catalog["embassy_image"]
     assert embassy is None or isinstance(embassy, str)
     json.dumps(catalog)
+
+
+def test_catalog_bene_tleilax_layout_covers_the_board() -> None:
+    """The scan overlay names every research space and all eight track
+    spaces, and the image URL appears only when the scan is present."""
+
+    from dune_imperium.content.immortality.board import RESEARCH_SPACES_BY_ID
+
+    without = build_catalog()["bene_tleilax"]
+    assert isinstance(without, dict)
+    assert without["image"] is None
+    layout = without["layout"]
+    assert isinstance(layout, dict)
+    points = layout["research_points"]
+    assert isinstance(points, dict)
+    assert set(points) == set(RESEARCH_SPACES_BY_ID)
+    for point in points.values():
+        assert isinstance(point, list) and len(point) == 2
+        for value in point:
+            assert isinstance(value, float) and 0 <= value <= 100
+    cells = layout["track_cells"]
+    assert isinstance(cells, list) and len(cells) == 8
+    with_scan = build_catalog(bene_tleilax_image=True)["bene_tleilax"]
+    assert isinstance(with_scan, dict)
+    assert with_scan["image"] == "/bene-tleilax-image"

@@ -56,6 +56,7 @@ from dune_imperium.display import (
     space_option_count,
     space_option_effects,
 )
+from dune_imperium.display.bene_tleilax_layout import bene_tleilax_layout
 from dune_imperium.display.bloodlines import (
     skill_effect_text,
     tech_ability_text,
@@ -75,6 +76,8 @@ def build_catalog(
     image_index: frozenset[tuple[str, str, str]] = frozenset(),
     icon_files: frozenset[str] = frozenset(),
     board_image: bool = False,
+    *,
+    bene_tleilax_image: bool = False,
 ) -> JsonObject:
     """Return every display mapping the browser UI needs, keyed by ID."""
 
@@ -219,6 +222,10 @@ def build_catalog(
             ],
             "tleilaxu_track": [bonus.value for bonus in TLEILAXU_TRACK],
             "tleilaxu_spice_space": TLEILAXU_SETUP_SPICE_SPACE,
+            # The owner's scan and the percent layout drawn over it; without
+            # the scan the client draws a synthetic grid.
+            "image": "/bene-tleilax-image" if bene_tleilax_image else None,
+            "layout": bene_tleilax_layout(),
         },
         # Bloodlines Skill tiles and Tech Module tiles, keyed by their ids.
         "skills": skills,

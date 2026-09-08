@@ -895,3 +895,35 @@ button:disabled { opacity: 0.5; cursor: wait; }
 }
 .vcard.reclaimed { outline: 1px dashed var(--line); }
 
+/* The Bene Tleilax board scan with tokens drawn over it. */
+.bt-stage { position: relative; width: 100%; }
+.bt-map { display: block; width: 100%; height: auto; border-radius: 6px; user-select: none; }
+.bt-hex, .bt-track-cell { position: absolute; }
+.bt-hex:hover, .bt-track-cell:hover { outline: 2px solid var(--glow); border-radius: 8px; }
+.bt-token {
+  position: absolute;
+  width: 2.4%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  font-size: 0.6rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #111;
+  font-weight: 700;
+  box-shadow: 0 0 0 1px #111;
+  pointer-events: none;
+}
+.bt-spice {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 4px;
+  padding: 0 0.2em;
+  font-size: 0.7rem;
+  color: #ffd27a;
+  white-space: nowrap;
+}
+.bt-spice .icon { height: 1.2em; }
+

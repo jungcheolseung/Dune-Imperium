@@ -29,7 +29,7 @@ Uprising setup에 다음 단계를 더하거나 바꾼다. `[Immortality pp. 4-5
 - research 칸의 Research 아이콘은 곧바로 또 한 번 전진하게 한다(예시: "triggering another research icon and immediately advancing her token again"). `[Immortality p. 6]`
 - **Genetic marker**: token이 아래에 genetic marker가 있는 열에 도달하면 남은 게임 동안 그 아이콘이 붙은 카드 효과가 활성화된다. 첫 marker 하나로 작동하는 효과와 track 끝의 두 번째 marker까지 필요한 효과가 있다. `[Immortality pp. 6, 16]`
 - 첫 genetic marker에 도달하면 남은 게임 동안 acquire한 Tleilaxu 카드를 deck 맨 위에 둘 수 있다. 두 번째 genetic marker에 도달하면 남은 게임 동안 Research 아이콘은 token을 전진시키지 않고 대신 card 1장을 draw한다. `[Immortality pp. 6, 16]`
-- 칸의 배치와 보너스는 룰북에 실린 공식 board 그림에서 전사했다(`[Immortality p. 3 board artwork]`; `content/immortality/board.py`). 열 0이 시작 칸, 열 4 아래에 첫 genetic marker, 열 8(마지막 열) 아래에 두 번째 marker가 있다. 표의 좌표 `c열r행`은 프로젝트의 전사 좌표다.
+- 칸의 배치와 보너스는 룰북에 실린 공식 board 그림에서 전사했고(`[Immortality p. 3 board artwork]`; `content/immortality/board.py`), 2026-09-08 사용자의 고해상도 board 스캔(`assets/board/bene_tleilax.jpg`)과 22칸 전부 대조해 일치를 확인했다. 열 0이 시작 칸, 열 4 아래에 첫 genetic marker, 열 8(마지막 열) 아래에 두 번째 marker가 있다. 표의 좌표 `c열r행`은 프로젝트의 전사 좌표다.
 
 | 칸 | 보너스 | 다음 칸 |
 | --- | --- | --- |
