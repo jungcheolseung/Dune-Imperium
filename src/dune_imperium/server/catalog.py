@@ -22,6 +22,18 @@ from urllib.parse import quote
 
 from dune_imperium.content.bloodlines.sardaukar import SKILLS
 from dune_imperium.content.bloodlines.tech import TECH_TILES
+from dune_imperium.content.immortality.board import (
+    FIRST_GENETIC_MARKER_COLUMN,
+    RESEARCH_SPACES,
+    RESEARCH_START_ID,
+    SECOND_GENETIC_MARKER_COLUMN,
+    TLEILAXU_SETUP_SPICE_SPACE,
+    TLEILAXU_TRACK,
+)
+from dune_imperium.content.immortality.tleilaxu import (
+    RECLAIMED_FORCES,
+    TLEILAXU_CARDS_BY_ID,
+)
 from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID
 from dune_imperium.content.uprising.conflicts import CONFLICTS, ConflictDefinition
 from dune_imperium.content.uprising.contracts import CONTRACTS_BY_ID
@@ -103,6 +115,24 @@ def build_catalog(
             text=personal_card_text(entry),
             image=_image_url("imperium", card_id, image_files),
         )
+    # Immortality: the Tleilaxu deck (bought with specimens, not Persuasion)
+    # and the fixed Reclaimed Forces card of the Tleilaxu Row.
+    for card_id, tleilaxu_entry in (
+        *TLEILAXU_CARDS_BY_ID.items(),
+        (RECLAIMED_FORCES.card.card_id, RECLAIMED_FORCES),
+    ):
+        cards[card_id] = _personal_card(
+            tleilaxu_entry.card.name,
+            cost=None,
+            persuasion=tleilaxu_entry.reveal_persuasion,
+            swords=tleilaxu_entry.reveal_strength,
+            factions=tuple(faction.value for faction in tleilaxu_entry.factions),
+            agent_icons=tuple(icon.value for icon in tleilaxu_entry.agent_icons),
+            text=personal_card_text(tleilaxu_entry),
+            image=_image_url("tleilaxu", card_id, image_files),
+            specimens=tleilaxu_entry.specimen_cost,
+            graft=tleilaxu_entry.graft,
+        )
 
     intrigue: dict[str, JsonValue] = {}
     for intrigue_id, intrigue_entry in INTRIGUE_CARDS_BY_ID.items():
@@ -170,6 +200,26 @@ def build_catalog(
     return {
         "cards": cards,
         "intrigue": intrigue,
+        # Immortality: the Bene Tleilax board's research hexes (column,
+        # row, printed bonus) and Tleilaxu track, for the board panel.
+        "bene_tleilax": {
+            "research_spaces": [
+                {
+                    "id": space.space_id,
+                    "column": space.column,
+                    "row": space.row,
+                    "bonus": space.bonus.value,
+                }
+                for space in RESEARCH_SPACES
+            ],
+            "research_start": RESEARCH_START_ID,
+            "genetic_marker_columns": [
+                FIRST_GENETIC_MARKER_COLUMN,
+                SECOND_GENETIC_MARKER_COLUMN,
+            ],
+            "tleilaxu_track": [bonus.value for bonus in TLEILAXU_TRACK],
+            "tleilaxu_spice_space": TLEILAXU_SETUP_SPICE_SPACE,
+        },
         # Bloodlines Skill tiles and Tech Module tiles, keyed by their ids.
         "skills": skills,
         "tech": tech,
@@ -237,8 +287,10 @@ def _personal_card(
     agent_icons: tuple[str, ...],
     text: list[str],
     image: str | None,
+    specimens: int | None = None,
+    graft: bool = False,
 ) -> JsonObject:
-    return {
+    entry: JsonObject = {
         "name": name,
         "cost": cost,
         "persuasion": persuasion,
@@ -248,6 +300,12 @@ def _personal_card(
         "text": list(text),
         "image": image,
     }
+    if specimens is not None:
+        # Tleilaxu cards cost specimens [Immortality p. 8].
+        entry["specimens"] = specimens
+    if graft:
+        entry["graft"] = True
+    return entry
 
 
 def _leader_face(

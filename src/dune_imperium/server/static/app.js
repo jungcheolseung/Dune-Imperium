@@ -360,7 +360,7 @@ function baseId(instanceId) {
   const value = String(instanceId);
   const starter = value.match(/^player:\d+:starter:(.+):\d+$/);
   if (starter) return starter[1];
-  const shared = value.match(/^(?:imperium|reserve|intrigue):(.+):\d+$/);
+  const shared = value.match(/^(?:imperium|reserve|intrigue|tleilaxu):(.+):\d+$/);
   if (shared) return shared[1];
   const contract = value.match(/^contract:(.+)$/);
   if (contract) return contract[1];
@@ -395,6 +395,8 @@ function cardDetail(instanceId) {
   if (card) {
     const bits = [];
     if (card.cost !== null) bits.push(`비용 ${card.cost}`);
+    if (card.specimens !== undefined) bits.push(`specimen ${card.specimens}`);
+    if (card.graft) bits.push("Graft");
     if (card.persuasion) bits.push(`Persuasion ${card.persuasion}`);
     if (card.swords) bits.push(`sword ${card.swords}`);
     if (card.factions.length) {
@@ -2220,6 +2222,7 @@ function renderMarket() {
       cardStrip(market, "Tech trash", view.tech_trash, "", { className: "tile taken" });
     }
   }
+  if (state.summary.immortality) renderBeneTleilax(market, view);
   if (state.summary.choam_module && !onBoard) {
     cardStrip(
       market,
@@ -2240,6 +2243,124 @@ function renderMarket() {
       className: "intrigue",
     });
   }
+}
+
+/* ---------- Immortality: the Tleilaxu Row and the Bene Tleilax board ---------- */
+
+const RESEARCH_BONUS_LABELS = {
+  none: "",
+  specimen: "specimen",
+  tleilaxu: "Tleilaxu",
+  research: "Research",
+  trash_and_specimen: "trash · specimen",
+  tleilaxu_and_specimen: "Tleilaxu · specimen",
+  solari_one: "Solari 1",
+  spice_one: "spice 1",
+  spice_two: "spice 2",
+  influence_any: "Influence 1",
+  trash_for_card_and_intrigue: "trash → card + Intrigue",
+  seven_solari_for_two_tleilaxu: "7 Solari → Tleilaxu ×2",
+};
+const TLEILAXU_TRACK_LABELS = {
+  none: "",
+  intrigue: "Intrigue",
+  victory_point_and_first_spice: "VP · 첫 도달 spice",
+  victory_point: "VP",
+};
+
+function renderBeneTleilax(market, view) {
+  /* The Tleilaxu Row: two deck cards bought with specimens plus the fixed
+     Reclaimed Forces card [Immortality pp. 6, 9]. */
+  const rowIds = [...(view.tleilaxu_row || []), "reclaimed_forces"];
+  cardStrip(
+    market,
+    `Tleilaxu Row · deck ${view.tleilaxu_deck_size || 0}`,
+    rowIds,
+    "",
+    (id) => {
+      const entry = lookup(baseId(id));
+      const specimens = entry && entry.specimens !== undefined ? entry.specimens : null;
+      return {
+        className: id === "reclaimed_forces" ? "reclaimed" : "",
+        badge: specimens === null ? null : `specimen ×${specimens}`,
+      };
+    }
+  );
+
+  const layout = state.catalog && state.catalog.bene_tleilax;
+  if (!layout) return;
+  const box = document.createElement("div");
+  box.className = "strip bene-tleilax";
+  const heading = document.createElement("h3");
+  heading.textContent = "Bene Tleilax board";
+  box.appendChild(heading);
+
+  /* Research track: the 22 hexes as a column/row grid; each seat's
+     research token sits on its space, the genetic-marker columns are
+     tinted. */
+  const grid = document.createElement("div");
+  grid.className = "research-grid";
+  const columns = Math.max(...layout.research_spaces.map((s) => s.column)) + 1;
+  const rows = Math.max(...layout.research_spaces.map((s) => s.row)) + 1;
+  grid.style.gridTemplateColumns = `repeat(${columns}, minmax(3.6rem, 1fr))`;
+  grid.style.gridTemplateRows = `repeat(${rows}, auto)`;
+  const tokensBySpace = {};
+  for (const player of view.players) {
+    if (!player.research_space) continue;
+    (tokensBySpace[player.research_space] ||= []).push(player.player);
+  }
+  for (const space of layout.research_spaces) {
+    const cell = document.createElement("div");
+    cell.className = "hex";
+    if (layout.genetic_marker_columns.includes(space.column)) cell.classList.add("marker");
+    if (space.id === layout.research_start) cell.classList.add("start");
+    cell.style.gridColumn = String(space.column + 1);
+    cell.style.gridRow = String(space.row + 1);
+    const label = document.createElement("span");
+    label.className = "hex-label";
+    label.textContent =
+      space.id === layout.research_start ? "시작" : RESEARCH_BONUS_LABELS[space.bonus] || space.bonus;
+    cell.appendChild(label);
+    const tokens = document.createElement("span");
+    tokens.className = "hex-tokens";
+    for (const seat of tokensBySpace[space.id] || []) tokens.appendChild(seatToken(seat, "rtoken"));
+    cell.appendChild(tokens);
+    cell.title = `${space.id} · ${RESEARCH_BONUS_LABELS[space.bonus] || "보너스 없음"}`;
+    grid.appendChild(cell);
+  }
+  box.appendChild(grid);
+
+  /* Tleilaxu track: eight spaces, the bank's spice on the fourth until a
+     token first arrives [Immortality p. 4]. */
+  const track = document.createElement("div");
+  track.className = "tleilaxu-track";
+  layout.tleilaxu_track.forEach((bonus, index) => {
+    const cell = document.createElement("div");
+    cell.className = "track-cell";
+    const label = document.createElement("span");
+    label.className = "hex-label";
+    label.textContent = `${index}${TLEILAXU_TRACK_LABELS[bonus] ? " · " + TLEILAXU_TRACK_LABELS[bonus] : ""}`;
+    cell.appendChild(label);
+    if (index === layout.tleilaxu_spice_space && view.tleilaxu_track_spice) {
+      const spice = document.createElement("span");
+      spice.className = "stat";
+      spice.append(icon("spice", "spice"), String(view.tleilaxu_track_spice));
+      cell.appendChild(spice);
+    }
+    const tokens = document.createElement("span");
+    tokens.className = "hex-tokens";
+    for (const player of view.players) {
+      if ((player.tleilaxu_space || 0) === index) tokens.appendChild(seatToken(player.player, "rtoken"));
+    }
+    cell.appendChild(tokens);
+    track.appendChild(cell);
+  });
+  const trackHead = document.createElement("div");
+  trackHead.className = "muted";
+  trackHead.textContent = "Tleilaxu track";
+  box.appendChild(trackHead);
+  box.appendChild(track);
+  market.appendChild(box);
 }
 
 /* ---------- seats ---------- */
@@ -2426,6 +2547,23 @@ function renderSeats() {
     if (player.navigation_remaining) flags.push(`Navigation ${player.navigation_remaining}장 남음`);
     if (player.has_secret_project) flags.push("Secret Project (face-down Tech tile)");
     if (player.spies_boxed) flags.push(`Spy ${player.spies_boxed}개 box로`);
+    /* Immortality: specimens in the Axolotl tanks, the two Bene Tleilax
+       tokens, the Family Atomics token, and the grafted-card promises. */
+    if (state.summary.immortality) {
+      flags.push(`specimen ${player.specimens || 0}`);
+      if (player.research_space) flags.push(`Research ${player.research_space}`);
+      flags.push(`Tleilaxu ${player.tleilaxu_space || 0}`);
+      if (player.family_atomics) flags.push("Family Atomics");
+      if ((player.chairdog_return_card_ids || []).length) {
+        flags.push(
+          "Chairdog: Reveal 시작 때 hand로 " +
+            player.chairdog_return_card_ids.map(nameOf).join("/")
+        );
+      }
+      if (player.usurped_row_card_id) {
+        flags.push(`Usurp: turn 끝에 ${nameOf(player.usurped_row_card_id)} 제거`);
+      }
+    }
     if (flags.length) seatLine(card, "상태", iconize(flags.join(" · ")));
     if (player.skill_ids && player.skill_ids.length) {
       const line = document.createElement("div");

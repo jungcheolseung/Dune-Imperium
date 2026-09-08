@@ -836,3 +836,52 @@ button:disabled { opacity: 0.5; cursor: wait; }
   color: #ffb3b3;
 }
 .stat.commanders { color: #ffb3b3; }
+
+/* Immortality: the Bene Tleilax board panel (research hexes as a grid, the
+   Tleilaxu track as a row) and the Tleilaxu Row's fixed card. */
+.bene-tleilax .research-grid {
+  display: grid;
+  gap: 3px;
+  align-items: stretch;
+  overflow-x: auto;
+  padding: 3px;
+}
+.bene-tleilax .hex {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.2rem 0.3rem;
+  min-height: 2.6rem;
+  font-size: 0.7rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  background: rgba(127, 127, 127, 0.08);
+}
+.bene-tleilax .hex.marker { background: rgba(244, 197, 66, 0.18); border-color: #c9a227; }
+.bene-tleilax .hex.start { background: rgba(47, 179, 255, 0.15); }
+.bene-tleilax .hex-label { opacity: 0.85; line-height: 1.15; }
+.bene-tleilax .hex-tokens { display: flex; gap: 2px; flex-wrap: wrap; min-height: 1.1rem; }
+.bene-tleilax .rtoken {
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  font-size: 0.65rem;
+  line-height: 1rem;
+  text-align: center;
+  color: #111;
+  font-weight: 700;
+}
+.bene-tleilax .tleilaxu-track { display: flex; gap: 3px; overflow-x: auto; padding: 3px; }
+.bene-tleilax .track-cell {
+  flex: 1 0 4.5rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.2rem 0.3rem;
+  font-size: 0.7rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.vcard.reclaimed { outline: 1px dashed var(--line); }
+

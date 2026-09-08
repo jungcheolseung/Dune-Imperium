@@ -21,6 +21,30 @@ def test_catalog_is_json_serializable_and_covers_every_card() -> None:
     assert set(intrigue) == set(INTRIGUE_CARDS_BY_ID)
 
 
+def test_catalog_serves_the_tleilaxu_deck_and_the_bene_tleilax_board() -> None:
+    from dune_imperium.content.immortality.board import RESEARCH_SPACES
+    from dune_imperium.content.immortality.tleilaxu import TLEILAXU_CARDS_BY_ID
+
+    catalog = build_catalog()
+    cards = catalog["cards"]
+    assert isinstance(cards, dict)
+    for card_id in (*TLEILAXU_CARDS_BY_ID, "reclaimed_forces"):
+        assert card_id in cards
+    ghola = cards["ghola"]
+    assert isinstance(ghola, dict)
+    # Tleilaxu cards cost specimens, never Persuasion [Immortality p. 8].
+    assert ghola["cost"] is None and ghola["specimens"] == 3
+    assert ghola["graft"] is True
+    board = catalog["bene_tleilax"]
+    assert isinstance(board, dict)
+    spaces = board["research_spaces"]
+    assert isinstance(spaces, list) and len(spaces) == len(RESEARCH_SPACES)
+    assert board["genetic_marker_columns"] == [4, 8]
+    assert board["research_start"] == "c0r3"
+    track = board["tleilaxu_track"]
+    assert isinstance(track, list) and len(track) == 8
+
+
 def test_catalog_names_and_details_match_the_manifests() -> None:
     catalog = build_catalog()
     cards = catalog["cards"]
