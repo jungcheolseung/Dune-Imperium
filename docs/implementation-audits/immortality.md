@@ -1,6 +1,6 @@
 # Immortality implementation audit
 
-기준일: 2026-09-08 — 슬라이스 1(출처·명세·옵션 골격·카탈로그), 슬라이스 2(Bene Tleilax board·specimen·Research Station·Experimentation·Family Atomics), 슬라이스 3(Tleilaxu Row·Reclaimed Forces·첫 카드 3장), 슬라이스 4(Graft와 Graft 카드 8장), 슬라이스 5a(Intrigue 11장) 완료.
+기준일: 2026-09-08 — 슬라이스 1(출처·명세·옵션 골격·카탈로그), 슬라이스 2(Bene Tleilax board·specimen·Research Station·Experimentation·Family Atomics), 슬라이스 3(Tleilaxu Row·Reclaimed Forces·첫 카드 3장), 슬라이스 4(Graft와 Graft 카드 8장), 슬라이스 5a(Intrigue 11장), 슬라이스 5b-1(Imperium 15종) 완료.
 
 규범 근거는 [`rules/immortality.md`](../rules/immortality.md)이며, 콘텐츠 정의는 `content/immortality/board.py`(research·Tleilaxu track), `content/immortality/tleilaxu.py`(Tleilaxu deck·Reclaimed Forces), `content/uprising/imperium.py`·`intrigue.py`의 `immortality_only` 항목이 소유한다. 모든 동작은 `RulesetConfig(immortality=True)`에서만 켜진다.
 
@@ -147,8 +147,19 @@ Spice Trade 아이콘. Agent: Research. Reveal: ◆1 specimen 1. 카드 이름 �
 | Tleilaxu Puppet | `PlayerState.reveal_persuasion_round_bonus`: Round Start에 0, `begin_reveal_turn`의 Persuasion 합계에 더한다(Command (6+) 판정에도 포함). | "this round". |
 | heuristic | `switch_graft_card` 우선순위를 0.2로 낮췄다(전 옵션 소크에서 두 box를 무한히 오가는 seed 발견). | |
 
+## 슬라이스 5b-1: Imperium 15종
+
+| 영역 | 구현 | 규칙 민감 메모 |
+| --- | --- | --- |
+| 단일 box | `GENERATE_SPECIMEN`(Lab), `GAIN_BENE_GESSERIT_INFLUENCE_AND_INTRIGUE`(Clandestine Meeting — 아이콘이 없어 graft 상대로만 play), `GAIN_TWO_SPICE_IF_GRAFTED`(Corrupt Smuggler), `GAIN_TWO_SPICE_IF_EMPEROR_INFLUENCE_TWO`(Keys to Power), `GAIN_FREMEN_INFLUENCE_IF_BENE_GESSERIT_BOND`(Lisan al Gaib), `DRAW_ONE_AND_COMBAT_ICON`(Occupation), `DRAW_TWO_CARDS`(Show of Strength), `GAIN_WATER_AND_RETURN_SELF_IF_FREMEN_ALLIANCE`(Stillsuit Manufacturer — hand으로 돌아온 카드는 `hand_public`), `RECRUIT_ONE_AND_MAY_TRASH`(Throne Room Politics — recruit 뒤 `optional_trash` frame). 모두 해결 시점 판정(OQ-028). | 카드면. |
+| 선택 box | Long Reach `GAIN_TWO_DISTINCT_CHOSEN_INFLUENCE`: `choose_agent_card_influence`를 두 번, 두 번째는 다른 진영만(`influence_chosen` 컨텍스트). Organ Merchants `MAY_PAY_SPECIMEN_FOR_FOUR_SOLARI`: `pay_agent_card_specimen`/거절. Sardaukar Quartermaster `RECRUIT_ONE_AND_DRAW_ONE_IF_GRAFTED`: troops·cards 아이콘, graft 아닐 때 둘 다 불발. | |
+| 조건부 아이콘 | `ImperiumCardEntry.icon_condition`: Long Reach(다른 BG 카드가 play 중), Show of Strength(배치 troop이 각 상대보다 많음 — `effective_agent_icons(opponents=)`). 조건이 없으면 아이콘 0개(play 불가). Blank Slate는 graft 시 진영 4개 추가. | play 시점 판정. graft 상대가 BG면 Long Reach는 첫 카드로 쓸 수 없고 상대로 play한다(첫 카드의 아이콘만 space를 연다). |
+| 획득·trash·Reveal | 획득 box `GAIN_ONE_SPICE`(Lisan)·`RECRUIT_THREE_TROOPS`(Occupation)·`RESEARCH`(Spiritual Fervor); trash trigger `ADVANCE_TLEILAXU`(Replacement Eyes, `card_trash.py` 지역 import); Reveal 필드 `tleilaxu`·`research`(Dissecting Kit·Tleilaxu Master용; Research는 방향 frame이 열리면 남은 아이콘을 다시 대기열에), Occupation의 water·spice·troop, Bene Tleilax Lab의 (1M) spice. | `[Immortality pp. 6-8]`. |
+| Graft 보강 | `apply_graft_partner`가 첫 카드의 Bond 조건 box를 상대가 들어온 뒤 다시 판정해 대기시킨다(Lisan al Gaib + BG 상대). | OQ-028의 연장. |
+
 ## 미완 경계
 
-- 슬라이스 5b·5c: 남은 카드 play data — Imperium 23종, Tleilaxu 9(Beguiling Pheromones, Chairdog, Ghola, Guild Impersonator, Industrial Espionage, Scientific Breakthrough, Slig Farmer, Stitched Horror, Usurp) + Piter; Ghola의 box 복사(활성 카드의 `agent_effect` 읽기 41곳을 접근자로 모아야 한다), Usurp의 Imperium Row 상대(turn 끝 trash), Chairdog의 Reveal 시작 반환.
+- 슬라이스 5b-2: Imperium 8종 — Dissecting Kit(GRAFT: 상대 trash → specimen), For Humanity(BG Alliance: Influence 잃기 → VP), High Priority Travel(Guild 2: draw 또는 Combat 아이콘), Imperium Ceremony(Intrigue 2장 보고 1장 keep), Interstellar Conspiracy(spice + Emperor/Guild 상대면 Influence 선택), Shadout Mapes(Reveal: troop 배치/후퇴), Tleilaxu Master((1M) 6 이하 카드 획득, (2M) hand로), Tleilaxu Surgeon(specimen 2 → Tleilaxu 2; Reveal: troop 2 잃기 → specimen 2).
+- 슬라이스 5c: Tleilaxu 9(Beguiling Pheromones, Chairdog, Ghola, Guild Impersonator, Industrial Espionage, Scientific Breakthrough, Slig Farmer, Stitched Horror, Usurp) + Piter; Ghola의 box 복사(활성 카드의 `agent_effect` 읽기 41곳을 접근자로 모아야 한다), Usurp의 Imperium Row 상대(turn 끝 trash), Chairdog의 Reveal 시작 반환.
 - 슬라이스 6: UI 표시(board·token·specimen·Row·Graft 프롬프트).
 - 공식 문서가 침묵하는 판정 가운데 아직 등록하지 않은 것: "lose a troop"의 출처 존 선택(카드 슬라이스에서).
