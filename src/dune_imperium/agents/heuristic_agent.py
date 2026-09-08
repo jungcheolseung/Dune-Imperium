@@ -121,6 +121,14 @@ _ACTION_SCORES: Final[dict[str, float]] = {
     "decline_reveal_troop_move": 0.5,
     "lose_reveal_troops_for_specimens": 0.4,
     "decline_reveal_troop_sacrifice": 0.6,
+    # Tleilaxu deck boxes: a Victory Point for a card, five Solari for a
+    # track step, and Piter's troop for two cards are all worth taking;
+    # trashing a grafted card for one Influence is not.
+    "trash_agent_card_self_for_vp": 3.0,
+    "pay_agent_card_five_solari_for_tleilaxu": 2.2,
+    "trash_grafted_card_for_influence": 0.3,
+    "lose_agent_card_troop": 1.2,
+    "choose_agent_card_reward": 2.0,
     "gain_reveal_resources": 4.0,
     "gain_reveal_faction_influence": 4.0,
     "withdraw_troops": -10.0,

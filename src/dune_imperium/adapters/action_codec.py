@@ -829,6 +829,9 @@ def _immortality_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "pay_agent_card_two_specimens",
             "trash_grafted_card_for_specimen",
             "take_agent_card_combat_icon",
+            # Scientific Breakthrough, Slig Farmer.
+            "trash_agent_card_self_for_vp",
+            "pay_agent_card_five_solari_for_tleilaxu",
             # For Humanity, Shadout Mapes, Tleilaxu Surgeon Reveal choices.
             "decline_reveal_influence_loss",
             "deploy_reveal_card_troop",
@@ -842,6 +845,25 @@ def _immortality_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             action_id="lose_reveal_troops_for_specimens", arguments=(("zone", zone),)
         )
         for zone in ("garrison", "conflict")
+    )
+    # Piter's troop cost, Stitched Horror's picks, Beguiling Pheromones'
+    # grafted-card trash.
+    templates.extend(
+        ActionTemplate(action_id="lose_agent_card_troop", arguments=(("zone", zone),))
+        for zone in ("garrison", "conflict")
+    )
+    templates.extend(
+        ActionTemplate(
+            action_id="choose_agent_card_reward", arguments=(("reward", reward),)
+        )
+        for reward in ("water", "troop", "trash", "tleilaxu")
+    )
+    templates.extend(
+        ActionTemplate(
+            action_id="trash_grafted_card_for_influence",
+            arguments=(("card_id", card_id),),
+        )
+        for card_id in _personal_card_instance_ids(config)
     )
     templates.extend(
         ActionTemplate(

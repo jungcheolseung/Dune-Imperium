@@ -103,7 +103,24 @@ def _entry(
 # The 18 Tleilaxu deck cards [Immortality p. 3], in catalog order. Play data
 # is transcribed from the card faces slice by slice.
 TLEILAXU_CARDS: Final[tuple[TleilaxuCardEntry, ...]] = (
-    _entry(403, "beguiling-pheromones", "Beguiling Pheromones", 3, graft=True),
+    # Beguiling Pheromones: City, Spice Trade; GRAFT: "If you sent your
+    # Agent to a Faction board space this turn: trash a grafted card -> 1
+    # Influence with that Faction"; Reveal: 1 Persuasion, 1 sword [card
+    # face].
+    _entry(
+        403,
+        "beguiling-pheromones",
+        "Beguiling Pheromones",
+        3,
+        graft=True,
+        agent_icons=(AgentIcon.CITY, AgentIcon.SPICE_TRADE),
+        agent_effect=(
+            PersonalCardAgentEffect.MAY_TRASH_GRAFTED_CARD_FOR_VISITED_FACTION_INFLUENCE
+        ),
+        reveal_persuasion=1,
+        reveal_strength=1,
+        play_data_complete=True,
+    ),
     _entry(404, "chairdog", "Chairdog", 2, graft=True),
     # Contaminator (Fremen): Fremen icon; Agent: Tleilaxu; Reveal: 1
     # Persuasion [card face].
@@ -172,11 +189,80 @@ TLEILAXU_CARDS: Final[tuple[TleilaxuCardEntry, ...]] = (
         play_data_complete=True,
     ),
     _entry(410, "ghola", "Ghola", 3, graft=True),
-    _entry(411, "guild-impersonator", "Guild Impersonator", 2, graft=True),
-    _entry(412, "industrial-espionage", "Industrial Espionage", 1),
-    _entry(414, "scientific-breakthrough", "Scientific Breakthrough", 3),
-    _entry(415, "slig-farmer", "Slig Farmer", 2, graft=True),
-    _entry(416, "stitched-horror", "Stitched Horror", 3, graft=True),
+    # Guild Impersonator (Spacing Guild): Guild icon; GRAFT: "If you gained
+    # spice this turn: Spacing Guild Influence"; Reveal: 1 Persuasion [card
+    # face].
+    _entry(
+        411,
+        "guild-impersonator",
+        "Guild Impersonator",
+        2,
+        graft=True,
+        factions=(Faction.SPACING_GUILD,),
+        agent_icons=(AgentIcon.SPACING_GUILD,),
+        agent_effect=(
+            PersonalCardAgentEffect.GAIN_SPACING_GUILD_INFLUENCE_IF_GAINED_SPICE_THIS_TURN
+        ),
+        reveal_persuasion=1,
+        play_data_complete=True,
+    ),
+    # Industrial Espionage: Landsraad; Agent: "Draw a card. If grafted:
+    # Research and a specimen"; Reveal: 1 Persuasion [card face].
+    _entry(
+        412,
+        "industrial-espionage",
+        "Industrial Espionage",
+        1,
+        agent_icons=(AgentIcon.LANDSRAAD,),
+        agent_effect=PersonalCardAgentEffect.DRAW_ONE_AND_RESEARCH_AND_SPECIMEN_IF_GRAFTED,
+        reveal_persuasion=1,
+        play_data_complete=True,
+    ),
+    # Scientific Breakthrough: Landsraad, City, Spice Trade; Agent:
+    # "Research. [two genetic markers]: trash this card -> 1 Victory Point";
+    # Reveal: 1 Persuasion, 1 sword [card face].
+    _entry(
+        414,
+        "scientific-breakthrough",
+        "Scientific Breakthrough",
+        3,
+        agent_icons=(AgentIcon.LANDSRAAD, AgentIcon.CITY, AgentIcon.SPICE_TRADE),
+        agent_effect=(
+            PersonalCardAgentEffect.RESEARCH_AND_MAY_TRASH_SELF_FOR_VP_IF_TWO_MARKERS
+        ),
+        reveal_persuasion=1,
+        reveal_strength=1,
+        play_data_complete=True,
+    ),
+    # Slig Farmer: Landsraad; GRAFT: "1 Solari per Agent icon on the other
+    # grafted card. 5 Solari -> Tleilaxu"; Reveal: 1 Persuasion [card face].
+    _entry(
+        415,
+        "slig-farmer",
+        "Slig Farmer",
+        2,
+        graft=True,
+        agent_icons=(AgentIcon.LANDSRAAD,),
+        agent_effect=(
+            PersonalCardAgentEffect.GAIN_SOLARI_PER_PARTNER_ICON_AND_MAY_PAY_FIVE_SOLARI_FOR_TLEILAXU
+        ),
+        reveal_persuasion=1,
+        play_data_complete=True,
+    ),
+    # Stitched Horror: City; GRAFT: "Choose two: water, troop, trash,
+    # Tleilaxu"; Reveal: 1 Persuasion, 1 sword [card face].
+    _entry(
+        416,
+        "stitched-horror",
+        "Stitched Horror",
+        3,
+        graft=True,
+        agent_icons=(AgentIcon.CITY,),
+        agent_effect=PersonalCardAgentEffect.CHOOSE_TWO_OF_WATER_TROOP_TRASH_TLEILAXU,
+        reveal_persuasion=1,
+        reveal_strength=1,
+        play_data_complete=True,
+    ),
     # Subject X-137: acquire box Tleilaxu; Landsraad and Spice Trade icons;
     # Agent: "[one genetic marker]: Tleilaxu"; Reveal: 1 Persuasion [card
     # face].
@@ -238,7 +324,21 @@ TLEILAXU_CARDS: Final[tuple[TleilaxuCardEntry, ...]] = (
     # Promo card in the Tleilaxu layout (asset repository
     # ``cards/en/immortality/promo/``): joins the Tleilaxu deck only with
     # ``promo_cards`` as well.
-    _entry(None, "piter-genius-advisor", "Piter, Genius Advisor", 3, promo=True),
+    # Piter, Genius Advisor: Landsraad, Spice Trade; Agent: "Lose a troop
+    # -> draw two cards and Research"; Reveal: 1 Persuasion, 1 sword [card
+    # face].
+    _entry(
+        None,
+        "piter-genius-advisor",
+        "Piter, Genius Advisor",
+        3,
+        promo=True,
+        agent_icons=(AgentIcon.LANDSRAAD, AgentIcon.SPICE_TRADE),
+        agent_effect=PersonalCardAgentEffect.MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH,
+        reveal_persuasion=1,
+        reveal_strength=1,
+        play_data_complete=True,
+    ),
 )
 TLEILAXU_CARDS_BY_ID: Final = {entry.card.card_id: entry for entry in TLEILAXU_CARDS}
 

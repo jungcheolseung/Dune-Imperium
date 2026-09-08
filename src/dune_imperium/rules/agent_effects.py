@@ -39,7 +39,10 @@ from dune_imperium.rules.card_discard import discard_personal_card_from_hand
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.combat import face_up_battle_icons
-from dune_imperium.rules.combat_deployment import grant_combat_icon
+from dune_imperium.rules.combat_deployment import (
+    grant_combat_icon,
+    reconcile_deployment_after_retreat,
+)
 from dune_imperium.rules.contracts import (
     begin_contract_gain,
     complete_contract_by_effect,
@@ -78,7 +81,7 @@ from dune_imperium.rules.spy_placement import (
     place_spy,
     recall_spy,
 )
-from dune_imperium.rules.unit_loss import opponent_unit_loss_frames
+from dune_imperium.rules.unit_loss import lose_unit, opponent_unit_loss_frames
 from dune_imperium.rules.units import retreat_units
 
 # Immortality boxes whose enum names do not fit a comparison line.
@@ -89,6 +92,27 @@ _SPICE_AND_GRAFTED_INFLUENCE = (
     PersonalCardAgentEffect
     .GAIN_SPICE_AND_CHOSEN_INFLUENCE_IF_GRAFTED_WITH_EMPEROR_OR_GUILD
 )
+_DRAW_RESEARCH_SPECIMEN = (
+    PersonalCardAgentEffect.DRAW_ONE_AND_RESEARCH_AND_SPECIMEN_IF_GRAFTED
+)
+_RESEARCH_AND_TRASH_FOR_VP = (
+    PersonalCardAgentEffect.RESEARCH_AND_MAY_TRASH_SELF_FOR_VP_IF_TWO_MARKERS
+)
+_GUILD_INFLUENCE_IF_SPICE = (
+    PersonalCardAgentEffect.GAIN_SPACING_GUILD_INFLUENCE_IF_GAINED_SPICE_THIS_TURN
+)
+_SOLARI_PER_PARTNER_ICON = (
+    PersonalCardAgentEffect
+    .GAIN_SOLARI_PER_PARTNER_ICON_AND_MAY_PAY_FIVE_SOLARI_FOR_TLEILAXU
+)
+_CHOOSE_TWO_REWARDS = PersonalCardAgentEffect.CHOOSE_TWO_OF_WATER_TROOP_TRASH_TLEILAXU
+_TRASH_GRAFTED_FOR_INFLUENCE = (
+    PersonalCardAgentEffect.MAY_TRASH_GRAFTED_CARD_FOR_VISITED_FACTION_INFLUENCE
+)
+_LOSE_TROOP_FOR_CARDS = PersonalCardAgentEffect.MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH
+# Stitched Horror's four printed rewards, in card order.
+STITCHED_HORROR_REWARDS: Final = ("water", "troop", "trash", "tleilaxu")
+SLIG_FARMER_PRICE: Final = 5
 
 # Agent-box icon keys resolved by ``resolve_agent_card_effect`` with
 # ``effect=<key>``. Kept sorted: the action codec enumerates them.
@@ -619,6 +643,82 @@ def apply_opponent_card_discard(
         # open the next turn when no group in that frame is still pending.
         popped = advance_after_effect(popped, dict(base_frame.context))
     return RuleResult(state=popped, events=discarded.events)
+
+
+def _partner_icon_count(context: Mapping[str, ActionValue]) -> int:
+    """Slig Farmer: the printed Agent icons of the other grafted card."""
+
+    partner = other_grafted_card_id(context)
+    if not partner:
+        return 0
+    return len(personal_card_for_instance(partner).agent_icons)
+
+
+def _chosen_rewards(context: Mapping[str, ActionValue]) -> tuple[str, ...]:
+    value = context.get("rewards_chosen", "")
+    return tuple(str(value).split(",")) if value else ()
+
+
+def _apply_stitched_horror_reward(
+    state: GameState,
+    action: DomainAction,
+    context: dict[str, ActionValue],
+    source: str,
+) -> RuleResult:
+    """Pay one of Stitched Horror's picks; the box closes after the second."""
+
+    player = action.actor
+    reward = str(dict(action.arguments)["reward"])
+    chosen = (*_chosen_rewards(context), reward)
+    context["rewards_chosen"] = ",".join(chosen)
+    context["pending_agent_effect"] = len(chosen) < 2
+    owner = state.players[player]
+    events: list[GameEvent] = [
+        GameEvent(
+            event_id=f"{source}:reward:{reward}",
+            kind="agent_card_reward_chosen",
+            payload=(("player", player), ("reward", reward)),
+        )
+    ]
+    players = state.players
+    if reward == "water":
+        players = replace_player(
+            players,
+            replace(
+                owner,
+                resources=replace(owner.resources, water=owner.resources.water + 1),
+            ),
+        )
+    elif reward == "troop":
+        recruited_owner, recruited = recruit_troops(owner, 1)
+        context["troops_recruited"] = (
+            context_int(context, "troops_recruited", owner="Agent-turn effect frame")
+            + recruited
+        )
+        players = replace_player(players, recruited_owner)
+        events.extend(recruit_shortfall_events(source, player, 1, recruited))
+    frame = state.decision_stack[-1]
+    if context["pending_agent_effect"] is True:
+        # The first pick: the box stays open for the second.
+        next_state = replace(
+            state,
+            players=players,
+            decision_stack=(
+                *state.decision_stack[:-1],
+                replace(frame, context=tuple(sorted(context.items()))),
+            ),
+        )
+    else:
+        next_state = advance_after_effect(state, context, players)
+    if reward == "tleilaxu":
+        advanced = advance_tleilaxu(next_state, player, 1, source=f"{source}:tleilaxu")
+        next_state = advanced.state
+        events.extend(advanced.events)
+    elif reward == "trash":
+        next_state = next_state.push_decision(
+            optional_trash_frame(player, f"{source}:{len(chosen)}")
+        )
+    return RuleResult(state=next_state, events=tuple(events))
 
 
 def legal_agent_card_influence_actions(
@@ -1766,6 +1866,71 @@ def legal_agent_card_payment_actions(
             DomainAction(action_id="resolve_agent_card_effect", actor=player),
             DomainAction(action_id="take_agent_card_combat_icon", actor=player),
         )
+    owner = state.players[player]
+    if source_card.agent_effect is _RESEARCH_AND_TRASH_FOR_VP:
+        # Scientific Breakthrough: at two genetic markers the research may
+        # come with "trash this card -> 1 Victory Point" [card face].
+        if genetic_markers_reached(owner.research_space) < 2:
+            return ()
+        return (
+            DomainAction(action_id="resolve_agent_card_effect", actor=player),
+            DomainAction(action_id="trash_agent_card_self_for_vp", actor=player),
+        )
+    if source_card.agent_effect is _SOLARI_PER_PARTNER_ICON:
+        # Slig Farmer: the Solari land first, so they may pay the five.
+        if owner.resources.solari + _partner_icon_count(context) < SLIG_FARMER_PRICE:
+            return ()
+        return (
+            DomainAction(action_id="resolve_agent_card_effect", actor=player),
+            DomainAction(
+                action_id="pay_agent_card_five_solari_for_tleilaxu", actor=player
+            ),
+        )
+    if source_card.agent_effect is _TRASH_GRAFTED_FOR_INFLUENCE:
+        # Beguiling Pheromones: a Faction space visited this turn and a
+        # grafted card (either one) still in play [card face] [FAQ p. 1].
+        _, _, space_id = _effect_subject(context)
+        if BOARD_SPACES_BY_ID[space_id].faction is None or not is_grafted(context):
+            return ()
+        return (
+            DomainAction(action_id="decline_agent_card_payment", actor=player),
+            *(
+                DomainAction(
+                    action_id="trash_grafted_card_for_influence",
+                    actor=player,
+                    arguments=(("card_id", card_id),),
+                )
+                for card_id in (source_card_id, other_grafted_card_id(context))
+                if card_id in owner.in_play
+            ),
+        )
+    if source_card.agent_effect is _LOSE_TROOP_FOR_CARDS:
+        # Piter, Genius Advisor: "Lose a troop -> draw two cards and
+        # Research"; the owner picks the zone like an Intrigue loss (OQ-038).
+        return (
+            DomainAction(action_id="decline_agent_card_payment", actor=player),
+            *(
+                DomainAction(
+                    action_id="lose_agent_card_troop",
+                    actor=player,
+                    arguments=(("zone", zone),),
+                )
+                for zone in ("garrison", "conflict")
+                if getattr(owner, f"troops_{zone}") >= 1
+            ),
+        )
+    if source_card.agent_effect is _CHOOSE_TWO_REWARDS:
+        # Stitched Horror: "Choose two" of the four rewards, one at a time.
+        chosen = _chosen_rewards(context)
+        return tuple(
+            DomainAction(
+                action_id="choose_agent_card_reward",
+                actor=player,
+                arguments=(("reward", reward),),
+            )
+            for reward in STITCHED_HORROR_REWARDS
+            if reward not in chosen
+        )
     if source_card.agent_effect not in (
         PersonalCardAgentEffect.PAY_TWO_WATER_TO_DRAW_TWO,
         PersonalCardAgentEffect.MAY_PAY_FOUR_SPICE_FOR_VP,
@@ -2052,6 +2217,124 @@ def apply_agent_card_payment(state: GameState, action: DomainAction) -> RuleResu
                 ),
             ),
         )
+    if action.action_id == "trash_agent_card_self_for_vp":
+        # Scientific Breakthrough: the card trashes itself as its own cost,
+        # so its research still pays out (OQ-022); the direction choice
+        # opens above the settled turn.
+        card_instance_id = _effect_subject(context)[1]
+        context["agent_card_self_trashed"] = True
+        trashed = trash_personal_card(
+            state, action.actor, card_instance_id, source=f"{source}:trash"
+        )
+        trashed_owner = trashed.state.players[action.actor]
+        rewarded = replace(
+            trashed_owner, victory_points=trashed_owner.victory_points + 1
+        )
+        next_state = advance_after_effect(
+            trashed.state, context, replace_player(trashed.state.players, rewarded)
+        )
+        researched = advance_research(
+            next_state, action.actor, source=f"{source}:research"
+        )
+        return RuleResult(
+            state=researched.state,
+            events=(
+                GameEvent(
+                    event_id=f"{source}:victory_point",
+                    kind="agent_card_trashed_for_vp",
+                    payload=(
+                        ("card_id", card_instance_id),
+                        ("player", action.actor),
+                        ("victory_points", 1),
+                    ),
+                ),
+                *trashed.events,
+                *researched.events,
+            ),
+        )
+    if action.action_id == "pay_agent_card_five_solari_for_tleilaxu":
+        # Slig Farmer: the per-icon Solari land, then five pay the track.
+        icon_solari = _partner_icon_count(context)
+        paid_owner = replace(
+            owner,
+            resources=replace(
+                owner.resources,
+                solari=owner.resources.solari + icon_solari - SLIG_FARMER_PRICE,
+            ),
+        )
+        next_state = advance_after_effect(
+            state, context, replace_player(state.players, paid_owner)
+        )
+        advanced = advance_tleilaxu(
+            next_state, action.actor, 1, source=f"{source}:tleilaxu"
+        )
+        return RuleResult(
+            state=advanced.state,
+            events=(
+                GameEvent(
+                    event_id=f"{source}:paid",
+                    kind="agent_card_payment_resolved",
+                    payload=(
+                        ("gained", icon_solari),
+                        ("player", action.actor),
+                        ("resource", "solari"),
+                        ("spent", SLIG_FARMER_PRICE),
+                    ),
+                ),
+                *advanced.events,
+            ),
+        )
+    if action.action_id == "trash_grafted_card_for_influence":
+        # Beguiling Pheromones: trashing the other grafted card expires its
+        # un-activated box (OQ-022, FAQ p. 1); trashing itself keeps the
+        # Influence (its own cost).
+        _, active_id, space_id = _effect_subject(context)
+        trashed_id = str(dict(action.arguments)["card_id"])
+        if trashed_id == active_id:
+            context["agent_card_self_trashed"] = True
+        else:
+            context["graft_pending_effect"] = False
+            context["graft_pending_icons"] = ""
+        faction = BOARD_SPACES_BY_ID[space_id].faction
+        if faction is None:
+            raise RuntimeError("Beguiling Pheromones needs a Faction space")
+        next_state = advance_after_effect(state, context)
+        trashed = trash_personal_card(
+            next_state, action.actor, trashed_id, source=f"{source}:trash"
+        )
+        gained = gain_faction_influence(
+            trashed.state,
+            action.actor,
+            faction,
+            1,
+            event_prefix=f"{source}:influence:{faction.value}",
+        )
+        return RuleResult(
+            state=gained.state, events=(*trashed.events, *gained.events)
+        )
+    if action.action_id == "lose_agent_card_troop":
+        # Piter, Genius Advisor: the troop is the cost; the two cards and
+        # the research follow once the box has settled.
+        zone = str(dict(action.arguments)["zone"])
+        lost = lose_unit(state, action.actor, zone, source=f"{source}:troop")
+        lost_state = lost.state
+        if zone == "conflict":
+            lost_state = reconcile_deployment_after_retreat(
+                lost_state, action.actor, troops=1
+            )
+        next_state = advance_after_effect(lost_state, context, lost_state.players)
+        researched = advance_research(
+            next_state, action.actor, source=f"{source}:research"
+        )
+        drawn = draw_or_request_personal_cards(
+            researched.state, action.actor, 2, source=f"{source}:draw"
+        )
+        return RuleResult(
+            state=drawn.state,
+            events=(*lost.events, *researched.events, *drawn.events),
+        )
+    if action.action_id == "choose_agent_card_reward":
+        return _apply_stitched_horror_reward(state, action, context, source)
     if action.action_id == "pay_agent_card_specimen":
         # Organ Merchants: the specimen returns to the supply as it is spent
         # [Immortality p. 8].
@@ -3074,11 +3357,107 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         PersonalCardAgentEffect.MAY_TRASH_OTHER_GRAFTED_FOR_SPECIMEN,
         PersonalCardAgentEffect.MAY_ACQUIRE_CARD_UP_TO_SIX_IF_ONE_MARKER,
         PersonalCardAgentEffect.MAY_PAY_TWO_SPECIMENS_FOR_TWO_TLEILAXU,
+        _TRASH_GRAFTED_FOR_INFLUENCE,
+        _CHOOSE_TWO_REWARDS,
+        _LOSE_TROOP_FOR_CARDS,
     ):
         # Reached only when the box's choice provider offered nothing: no
-        # grafted partner, no genetic marker.
+        # grafted partner, no genetic marker, no Faction space.
         next_owner = owner
         event_kind = "agent_card_effect_unavailable"
+    elif effect is _DRAW_RESEARCH_SPECIMEN:
+        # Industrial Espionage: the draw always; grafted, a specimen and a
+        # research step whose direction choice opens above the turn.
+        context["pending_agent_effect"] = False
+        grafted = is_grafted(context)
+        next_state = advance_after_effect(state, context)
+        extra: list[GameEvent] = []
+        if grafted:
+            generated = generate_specimens(
+                next_state, player, 1, source=f"{event_source}:specimen"
+            )
+            researched = advance_research(
+                generated.state, player, source=f"{event_source}:research"
+            )
+            next_state = researched.state
+            extra.extend((*generated.events, *researched.events))
+        drawn = draw_or_request_personal_cards(
+            next_state, player, 1, source=f"{event_source}:draw"
+        )
+        return RuleResult(
+            state=drawn.state,
+            events=(
+                GameEvent(
+                    event_id=event_source,
+                    kind="agent_card_effect_resolved",
+                    payload=(("card_id", card_instance_id), ("player", player)),
+                ),
+                *extra,
+                *drawn.events,
+            ),
+        )
+    elif effect is _RESEARCH_AND_TRASH_FOR_VP:
+        # Scientific Breakthrough without (or declining) the trash: research.
+        context["pending_agent_effect"] = False
+        next_state = advance_after_effect(state, context)
+        researched = advance_research(
+            next_state, player, source=f"{event_source}:research"
+        )
+        return RuleResult(
+            state=researched.state,
+            events=(
+                GameEvent(
+                    event_id=event_source,
+                    kind="agent_card_effect_resolved",
+                    payload=(("card_id", card_instance_id), ("player", player)),
+                ),
+                *researched.events,
+            ),
+        )
+    elif effect is _GUILD_INFLUENCE_IF_SPICE:
+        # Guild Impersonator: judged when the box resolves (OQ-028), so a
+        # spice space resolved first counts.
+        context["pending_agent_effect"] = False
+        if spice_gained_this_turn(owner) < 1:
+            return RuleResult(
+                state=advance_after_effect(state, context),
+                events=(
+                    GameEvent(
+                        event_id=event_source,
+                        kind="agent_card_effect_unavailable",
+                        payload=(("card_id", card_instance_id), ("player", player)),
+                    ),
+                ),
+            )
+        gained = gain_faction_influence(
+            state,
+            player,
+            Faction.SPACING_GUILD,
+            1,
+            event_prefix=f"{event_source}:influence:spacing_guild",
+        )
+        next_state = advance_after_effect(gained.state, context, gained.state.players)
+        return RuleResult(
+            state=next_state,
+            events=(
+                GameEvent(
+                    event_id=event_source,
+                    kind="agent_card_effect_resolved",
+                    payload=(("card_id", card_instance_id), ("player", player)),
+                ),
+                *gained.events,
+            ),
+        )
+    elif effect is _SOLARI_PER_PARTNER_ICON:
+        # Slig Farmer without the payment: the per-icon Solari alone.
+        gained_solari = _partner_icon_count(context)
+        next_owner = replace(
+            owner,
+            resources=replace(
+                owner.resources, solari=owner.resources.solari + gained_solari
+            ),
+        )
+        event_kind = "agent_card_effect_resolved"
     elif effect is PersonalCardAgentEffect.GENERATE_SPECIMEN:
         # Bene Tleilax Lab: a specimen [Immortality p. 8].
         context["pending_agent_effect"] = False

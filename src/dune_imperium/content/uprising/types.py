@@ -259,6 +259,41 @@ class PersonalCardAgentEffect(StrEnum):
     )
     # Tleilaxu Surgeon: "2 specimens -> Tleilaxu Tleilaxu".
     MAY_PAY_TWO_SPECIMENS_FOR_TWO_TLEILAXU = "may_pay_two_specimens_for_two_tleilaxu"
+    # Tleilaxu deck (card faces). Industrial Espionage: "Draw a card. If
+    # grafted: Research and a specimen".
+    DRAW_ONE_AND_RESEARCH_AND_SPECIMEN_IF_GRAFTED = (
+        "draw_one_and_research_and_specimen_if_grafted"
+    )
+    # Scientific Breakthrough: "Research. [two genetic markers]: trash this
+    # card -> 1 Victory Point".
+    RESEARCH_AND_MAY_TRASH_SELF_FOR_VP_IF_TWO_MARKERS = (
+        "research_and_may_trash_self_for_vp_if_two_markers"
+    )
+    # Guild Impersonator (Graft): "If you gained spice this turn: Spacing
+    # Guild Influence".
+    GAIN_SPACING_GUILD_INFLUENCE_IF_GAINED_SPICE_THIS_TURN = (
+        "gain_spacing_guild_influence_if_gained_spice_this_turn"
+    )
+    # Slig Farmer (Graft): "1 Solari per Agent icon on the other grafted
+    # card. 5 Solari -> Tleilaxu".
+    GAIN_SOLARI_PER_PARTNER_ICON_AND_MAY_PAY_FIVE_SOLARI_FOR_TLEILAXU = (
+        "gain_solari_per_partner_icon_and_may_pay_five_solari_for_tleilaxu"
+    )
+    # Stitched Horror (Graft): "Choose two: water, troop, trash, Tleilaxu".
+    CHOOSE_TWO_OF_WATER_TROOP_TRASH_TLEILAXU = (
+        "choose_two_of_water_troop_trash_tleilaxu"
+    )
+    # Beguiling Pheromones (Graft): "If you sent your Agent to a Faction
+    # board space this turn: trash a grafted card -> 1 Influence with that
+    # Faction".
+    MAY_TRASH_GRAFTED_CARD_FOR_VISITED_FACTION_INFLUENCE = (
+        "may_trash_grafted_card_for_visited_faction_influence"
+    )
+    # Piter, Genius Advisor (promo): "Lose a troop -> draw two cards and
+    # Research".
+    MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH = (
+        "may_lose_troop_to_draw_two_and_research"
+    )
 
 
 class PersonalCardTrashEffect(StrEnum):

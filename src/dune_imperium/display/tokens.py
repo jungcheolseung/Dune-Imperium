@@ -256,6 +256,37 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.MAY_PAY_TWO_SPECIMENS_FOR_TWO_TLEILAXU: (
             "You may spend 2 specimens → Advance the Tleilaxu track twice"
         ),
+        PersonalCardAgentEffect.DRAW_ONE_AND_RESEARCH_AND_SPECIMEN_IF_GRAFTED: (
+            "Draw 1 card, If grafted: Research, Generate 1 specimen"
+        ),
+        PersonalCardAgentEffect.RESEARCH_AND_MAY_TRASH_SELF_FOR_VP_IF_TWO_MARKERS: (
+            "Research, If 2 genetic markers: You may trash this card → Gain 1 VP"
+        ),
+        (
+            PersonalCardAgentEffect
+            .GAIN_SPACING_GUILD_INFLUENCE_IF_GAINED_SPICE_THIS_TURN
+        ): "If you gained spice this turn: Gain 1 Spacing Guild Influence",
+        (
+            PersonalCardAgentEffect
+            .GAIN_SOLARI_PER_PARTNER_ICON_AND_MAY_PAY_FIVE_SOLARI_FOR_TLEILAXU
+        ): (
+            "Gain 1 solari per Agent icon on the other grafted card, "
+            "You may pay 5 solari → Advance the Tleilaxu track"
+        ),
+        PersonalCardAgentEffect.CHOOSE_TWO_OF_WATER_TROOP_TRASH_TLEILAXU: (
+            "Choose two: Gain 1 water / Recruit 1 troop / Trash a card / "
+            "Advance the Tleilaxu track"
+        ),
+        (
+            PersonalCardAgentEffect
+            .MAY_TRASH_GRAFTED_CARD_FOR_VISITED_FACTION_INFLUENCE
+        ): (
+            "If you sent your Agent to a Faction space this turn: "
+            "You may trash a grafted card → Gain 1 Influence with that Faction"
+        ),
+        PersonalCardAgentEffect.MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH: (
+            "You may lose 1 troop → Draw 2 cards, Research"
+        ),
         PersonalCardAgentEffect.GAIN_BY_BENE_GESSERIT_AND_FREMEN_INFLUENCE_TWO: (
             "If you have 2 or more Bene Gesserit Influence: Gain 1 water, "
             "If you have 2 or more Fremen Influence: Gain 1 spice"
