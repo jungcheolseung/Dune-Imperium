@@ -112,9 +112,11 @@ def collect_game_coverage(
             card_id = payload.get("card_id")
             if isinstance(card_id, str):
                 _bump(census, "cards_acquired", normalize_instance_id(card_id))
-        elif event.kind == "personal_card_late_revealed":
-            # The Reveal-turn immediate reveal of an arriving card is the
-            # only other place a specific personal card "plays" itself.
+        elif event.kind in ("personal_card_late_revealed", "card_grafted"):
+            # The Reveal-turn immediate reveal of an arriving card and a
+            # Graft partner (Immortality: a card without Agent icons, such
+            # as Clandestine Meeting, only ever plays this way) are the
+            # other places a specific personal card "plays" itself.
             card_id = payload.get("card_id")
             if isinstance(card_id, str):
                 _bump(census, "cards_played", normalize_instance_id(card_id))
