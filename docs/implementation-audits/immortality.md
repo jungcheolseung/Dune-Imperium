@@ -1,6 +1,6 @@
 # Immortality implementation audit
 
-기준일: 2026-09-08 — 슬라이스 1(출처·명세·옵션 골격·카탈로그), 슬라이스 2(Bene Tleilax board·specimen·Research Station·Experimentation·Family Atomics), 슬라이스 3(Tleilaxu Row·Reclaimed Forces·첫 카드 3장), 슬라이스 4(Graft와 Graft 카드 8장), 슬라이스 5a(Intrigue 11장), 슬라이스 5b-1(Imperium 15종), 슬라이스 5b-2(Imperium 8종 — Imperium 25종 전부), 슬라이스 5c-1(Tleilaxu 6종 + 프로모 Piter) 완료.
+기준일: 2026-09-08 — 슬라이스 1(출처·명세·옵션 골격·카탈로그), 슬라이스 2(Bene Tleilax board·specimen·Research Station·Experimentation·Family Atomics), 슬라이스 3(Tleilaxu Row·Reclaimed Forces·첫 카드 3장), 슬라이스 4(Graft와 Graft 카드 8장), 슬라이스 5a(Intrigue 11장), 슬라이스 5b-1(Imperium 15종), 슬라이스 5b-2(Imperium 8종 — Imperium 25종 전부), 슬라이스 5c-1(Tleilaxu 6종 + 프로모 Piter), 슬라이스 5c-2(Ghola·Chairdog·Usurp — 카드 play data 전부) 완료.
 
 규범 근거는 [`rules/immortality.md`](../rules/immortality.md)이며, 콘텐츠 정의는 `content/immortality/board.py`(research·Tleilaxu track), `content/immortality/tleilaxu.py`(Tleilaxu deck·Reclaimed Forces), `content/uprising/imperium.py`·`intrigue.py`의 `immortality_only` 항목이 소유한다. 모든 동작은 `RulesetConfig(immortality=True)`에서만 켜진다.
 
@@ -186,8 +186,17 @@ For Humanity와 Interstellar Conspiracy의 "◇?" 아이콘은 카드면 확대�
 | Beguiling Pheromones | `MAY_TRASH_GRAFTED_CARD_FOR_VISITED_FACTION_INFLUENCE`: 방문 space에 진영이 있고 graft일 때 `trash_grafted_card_for_influence(card_id)`로 두 grafted 카드 중 하나(play 영역에 있는 것)를 trash → 그 진영 Influence 1. 상대를 trash하면 상대의 미발동 box 소멸(`graft_pending_effect=False`), 자기를 trash하면 `agent_card_self_trashed`. | `[FAQ p. 1]`의 Beguiling Pheromones 판정(OQ-022). Faction 방문 여부는 `space_id`의 인쇄 진영. |
 | Piter, Genius Advisor(프로모) | `MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH`: `lose_agent_card_troop(zone)`(garrison/Conflict, OQ-038의 존 선택; Conflict면 전투력·배치 카운터 조정) → box를 닫고 research(방향 frame) → draw 2. | `promo_cards`+`immortality`일 때만 덱에. |
 
+## 슬라이스 5c-2: Ghola·Chairdog·Usurp
+
+| 카드 | 구현 | 규칙 민감 메모 |
+| --- | --- | --- |
+| Ghola | 정의에는 box가 없고(`agent_effect=None`), `rules/effects.py`의 `borrowed_agent_card`/`active_agent_card(context)`가 활성 카드가 Ghola면 상대 카드의 `agent_effect`를 끼운 정의를 돌려준다. `agent_effects.py`의 활성 카드 조회 17곳, `acquisition.py`(Tleilaxu Master·Price is No Object provider), `leader_abilities.py`(Signet 판정)가 이 접근자를 쓴다. `apply_graft_partner`는 양쪽을 빌린 box로 판정해 `pending_*`/`graft_pending_*`을 채운다. | 상대 box가 비어 있으면(Face Dancer Initiate) Ghola도 비어 있다. 상대가 self-trash box면 Ghola 자신이 trash된다(`card_id`가 Ghola). |
+| Chairdog | `RETURN_OTHER_GRAFTED_TO_HAND_AT_REVEAL_START`: 해결 시 상대 카드 id를 좌석의 `chairdog_return_card_ids`에 적고, `begin_reveal_turn`이 `_return_chairdog_cards`로 play 영역에서 hand(`hand_public`)로 되돌린 뒤 그 hand를 Reveal한다. Round Start에 비운다. 관측 v15 좌석 scalar(대기 수). | 상대가 이미 play 영역을 떠났으면 무시. |
+| Usurp | 아이콘·box 없음. 배치: graft 변형만, Row 카드 아이콘의 합집합으로 space 결정(`_placements_for_card`; codec은 graft 변형을 모든 space에 둔다). 상대 선택: Row 카드 + hand 카드 중 그 space에 닿는 카드(`legal_graft_partner_actions`). Row 상대는 `take_imperium_row_card`로 빠지고 Row가 즉시 채워지며 좌석의 `usurped_row_card_id`에 남는다. turn이 닫히면(`usurp_trash_is_queued`, 소유자의 효과 frame이 사라진 뒤) `resolve_usurp_trash`가 어느 존에 있든 `imperium_removed`로 보낸다(OQ-054). 관측 v15 좌석 scalar(빌린 카드 여부). | hand 카드를 먼저 놓고 Usurp를 상대로 고르는 보통의 graft도 그대로 된다(Usurp box 없음). |
+
+heuristic: 활성 box가 decline만 제공할 때 `switch_graft_card`를 decline 아래로 내린다(Ghola가 Corrinth City의 box를 복사한 seed 11에서 두 box가 decline만 제공해 무한 switch).
+
 ## 미완 경계
 
-- 슬라이스 5c-2: Tleilaxu 3종 — Ghola의 box 복사(활성 카드의 `agent_effect` 읽기를 접근자로 모아 상대 카드의 box를 돌려준다; 배치 시점 `agent_effect_is_available`·`agent_card_icons_at_placement`도 상대 기준), Usurp의 Imperium Row 상대(Usurp는 아이콘이 없어 Row 카드의 아이콘으로 배치, 상대는 Row 카드, turn이 닫힐 때 `imperium_removed`로), Chairdog의 Reveal 시작 반환(`chairdog_return_card_id` → `begin_reveal_turn` 앞에서 hand로).
 - 슬라이스 6: UI 표시(board·token·specimen·Row·Graft 프롬프트).
 - 공식 문서가 침묵하는 판정 가운데 아직 등록하지 않은 것: "lose a troop"의 출처 존 선택(카드 슬라이스에서).

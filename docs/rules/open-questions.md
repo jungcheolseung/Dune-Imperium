@@ -454,3 +454,18 @@
 - Tleilaxu Surgeon의 Reveal box "troop 두 개를 잃기 ▶ specimen 2"는 `[card face]` 잃는 troop을 garrison에서 내는지 Conflict에서 내는지, 섞어 낼 수 있는지 말하지 않는다. Intrigue의 "lose a troop"은 OQ-038에서 소유자가 존을 고르는 것으로 확정돼 있다.
 - 필요한 답: 두 troop의 존과 혼합 허용 여부.
 - 확정(2026-09-08, project convention — 공식 규칙이 아니다): OQ-038과 같이 소유자가 존을 고르되, 두 troop은 같은 존(garrison 또는 Conflict)에서 낸다(`lose_reveal_troops_for_specimens(zone)`). 한 존에 두 개가 없으면 선택이 열리지 않는다. Sardaukar Commander는 이 비용에 쓰지 않는다(Commander는 troop 12개 불변식 밖의 유닛이고, specimen은 troop 공급에서만 나온다 `[Immortality p. 8]`). Conflict에서 잃으면 전투력이 그만큼 줄고(`retreat_units`의 규칙), 잃은 troop이 supply로 돌아간 뒤 specimen 2개가 supply에서 tank로 간다(supply 부족은 OQ-049). 구현: `rules/reveal_turn.py`의 `apply_reveal_troop_sacrifice`.
+
+## OQ-054 — Usurp로 빌린 Imperium Row 카드의 "trash"
+
+- 상태: `DECIDED`
+- Usurp는 "graft this card with a card from the Imperium Row instead of one from your hand. If you do, trash that card at the end of the turn"이라고만 한다 `[card face]`. 빌린 카드는 누구의 소유도 아니어서 개인 trash 더미에 두는 것이 맞는지, turn 중 다른 효과로 이미 play 영역을 떠났으면(Stillsuit Manufacturer가 자기를 hand로 되돌리는 경우, 다른 효과로 trash된 경우) 어떻게 하는지 말하지 않는다.
+- 필요한 답: 카드의 행선지와 turn 중 이동한 경우의 처리.
+- 확정(2026-09-08, project convention — 공식 규칙이 아니다): turn이 닫힐 때(소유자의 Agent-turn 효과 frame이 더 이상 없을 때, 자동 dispatcher) 그 카드는 어느 존에 있든 게임에서 빠진다(`imperium_removed`, OQ-051과 같은 공개 존). 소유자의 trash 더미에 두지 않는 것은 그 더미가 소유 카드의 census 기준이기 때문이며, 게임 밖으로 나가는 결과는 같다. Row는 카드가 빠지는 즉시 채운다 `[Main p. 13]`. Usurp 자체는 아이콘이 없으므로 단독 배치는 graft 변형뿐이고, 도달 가능한 space는 Row 카드 아이콘의 합집합, 상대 선택은 그 space에 닿는 Row 카드(와 hand 카드)로 제한한다. 구현: `rules/graft.py`(`legal_graft_partner_actions`, `resolve_usurp_trash`), `rules/agent_turn.py`.
+
+## OQ-055 — Slig Farmer의 "Agent 아이콘마다"에 조건부·부여 아이콘이 드는지
+
+- 상태: `DECIDED`
+- Slig Farmer는 "1 Solari per Agent icon on the other grafted card"라고만 한다 `[card face]`. Blank Slate가 graft 시 얻는 진영 아이콘 4개, Long Reach·Show of Strength의 회색 조건부 아이콘, Servo-Receivers가 Signet Ring에 주는 아이콘을 세는지 말하지 않는다.
+- 필요한 답: 세는 아이콘의 범위.
+- 확정(2026-09-08, project convention — 공식 규칙이 아니다): 카드에 *인쇄된* Agent 아이콘만 센다(`card.agent_icons`; 회색 조건부 아이콘은 인쇄돼 있으므로 포함). 조건·타일로 붙는 아이콘은 세지 않는다. 구현: `rules/agent_effects.py`의 `_partner_icon_count`.
+
