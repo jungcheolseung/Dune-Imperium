@@ -36,7 +36,7 @@ from typing import Final
 
 MANIFEST_FILENAME: Final = "manifest.json"
 UPRISING_SET: Final = "uprising"
-INDEXED_SETS: Final = frozenset({UPRISING_SET, "bloodlines"})
+INDEXED_SETS: Final = frozenset({UPRISING_SET, "bloodlines", "immortality"})
 DEFAULT_LANGUAGES: Final[tuple[str, ...]] = ("ko", "en")
 
 # Manifest kind -> catalog kind. Every other kind keeps its name.
@@ -109,6 +109,10 @@ def required_image_keys() -> tuple[ImageKey, ...]:
 
     from dune_imperium.content.bloodlines.sardaukar import SKILLS
     from dune_imperium.content.bloodlines.tech import TECH_TILES
+    from dune_imperium.content.immortality.tleilaxu import (
+        RECLAIMED_FORCES,
+        TLEILAXU_CARDS,
+    )
     from dune_imperium.content.uprising.board import BOARD_SPACES
     from dune_imperium.content.uprising.conflicts import CONFLICTS
     from dune_imperium.content.uprising.contracts import CONTRACTS
@@ -134,4 +138,8 @@ def required_image_keys() -> tuple[ImageKey, ...]:
     keys += [("skill", skill.skill_id) for skill in SKILLS]
     keys += [("tech", tile.tech_id) for tile in TECH_TILES]
     keys.append(("other", IXIAN_EMBASSY_IMAGE_ID))
+    # Immortality: the Tleilaxu deck (its promo included) and Reclaimed
+    # Forces; its Imperium and Intrigue cards are in the lists above.
+    keys += [("tleilaxu", entry.card.card_id) for entry in TLEILAXU_CARDS]
+    keys.append(("tleilaxu", RECLAIMED_FORCES.card.card_id))
     return tuple(dict.fromkeys(keys))

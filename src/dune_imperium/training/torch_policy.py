@@ -203,5 +203,6 @@ def load_network_agent(path: str) -> NetworkAgent:
         promo_cards="+promo" in ruleset,
         bloodlines="+bloodlines" in ruleset,
         tech_module="+tech" in ruleset,
+        immortality="+immortality" in ruleset,
     )
     return NetworkAgent(network, config)

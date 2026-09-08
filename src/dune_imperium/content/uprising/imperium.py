@@ -33,6 +33,22 @@ BLOODLINES_SOURCES: Final = (
     SourceRef(SourceDocument.BLOODLINES_RULEBOOK, (2, 3)),
     SourceRef(SourceDocument.CARD_FACE, (1,)),
 )
+# Immortality cards: the rulebook lists their count and setup [Immortality
+# pp. 3-5]; the printed text comes from the card face.
+IMMORTALITY_SOURCES: Final = (
+    SourceRef(SourceDocument.IMMORTALITY_RULEBOOK, (3, 4, 5)),
+    SourceRef(SourceDocument.CARD_FACE, (1,)),
+)
+
+
+def _catalog_set(bloodlines_only: bool, immortality_only: bool) -> str:
+    """Return the Dune Cards Hub set slug the card's catalog URL uses."""
+
+    if bloodlines_only:
+        return "bloodlines"
+    if immortality_only:
+        return "immortality"
+    return "uprising"
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,6 +130,7 @@ def _entry(
     promo: bool = False,
     bloodlines_only: bool = False,
     tech_only: bool = False,
+    immortality_only: bool = False,
     has_acquisition_bonus: bool = False,
     factions: tuple[Faction, ...] = (),
     agent_icons: tuple[AgentIcon, ...] = (),
@@ -142,6 +159,8 @@ def _entry(
                 if promo
                 else BLOODLINES_SOURCES
                 if bloodlines_only
+                else IMMORTALITY_SOURCES
+                if immortality_only
                 else CHOAM_SOURCES
                 if choam_only
                 else BASE_SOURCES
@@ -150,7 +169,7 @@ def _entry(
                 None
                 if catalog_id is None
                 else f"https://dunecardshub.com/cards/{catalog_id}/"
-                f"{'bloodlines' if bloodlines_only else 'uprising'}-{slug}"
+                f"{_catalog_set(bloodlines_only, immortality_only)}-{slug}"
             ),
         ),
         copies=copies,
@@ -158,6 +177,7 @@ def _entry(
         promo=promo,
         bloodlines_only=bloodlines_only,
         tech_only=tech_only,
+        immortality_only=immortality_only,
         acquisition_cost=acquisition_cost,
         has_acquisition_bonus=has_acquisition_bonus,
         factions=factions,
@@ -1498,6 +1518,67 @@ IMPERIUM_CARDS: Final = (
         reveal_persuasion=1,
         play_data_complete=True,
     ),
+    # Immortality Imperium cards (2026-09-08): 30 cards [Immortality p. 3].
+    # Identities and copies follow the Dune Cards Hub catalog (25 identities,
+    # 27 copies: Dissecting Kit and Tleilaxu Master twice), which is three
+    # copies short of the rulebook's count; see docs/implementation-audits/
+    # immortality.md. Play data is transcribed from the card faces slice by
+    # slice; a card whose data is not complete stays out of the deck.
+    _entry(367, "bene-tleilax-lab", "Bene Tleilax Lab", 2, immortality_only=True),
+    _entry(
+        368,
+        "bene-tleilax-researcher",
+        "Bene Tleilax Researcher",
+        4,
+        immortality_only=True,
+    ),
+    _entry(369, "blank-slate", "Blank Slate", 1, immortality_only=True),
+    _entry(370, "clandestine-meeting", "Clandestine Meeting", 4, immortality_only=True),
+    _entry(371, "corrupt-smuggler", "Corrupt Smuggler", 3, immortality_only=True),
+    _entry(372, "dissecting-kit", "Dissecting Kit", 2, copies=2, immortality_only=True),
+    _entry(373, "for-humanity", "For Humanity", 7, immortality_only=True),
+    _entry(
+        374, "high-priority-travel", "High Priority Travel", 1, immortality_only=True
+    ),
+    _entry(375, "imperium-ceremony", "Imperium Ceremony", 6, immortality_only=True),
+    _entry(
+        376,
+        "interstellar-conspiracy",
+        "Interstellar Conspiracy",
+        4,
+        immortality_only=True,
+    ),
+    _entry(377, "keys-to-power", "Keys to Power", 5, immortality_only=True),
+    _entry(378, "lisan-al-gaib", "Lisan al Gaib", 4, immortality_only=True),
+    _entry(379, "long-reach", "Long Reach", 6, immortality_only=True),
+    _entry(380, "occupation", "Occupation", 8, immortality_only=True),
+    _entry(381, "organ-merchants", "Organ Merchants", 3, immortality_only=True),
+    _entry(382, "planned-coupling", "Planned Coupling", 3, immortality_only=True),
+    _entry(383, "replacement-eyes", "Replacement Eyes", 5, immortality_only=True),
+    _entry(
+        384,
+        "sardaukar-quartermaster",
+        "Sardaukar Quartermaster",
+        2,
+        immortality_only=True,
+    ),
+    _entry(385, "shadout-mapes", "Shadout Mapes", 2, immortality_only=True),
+    _entry(386, "show-of-strength", "Show of Strength", 3, immortality_only=True),
+    _entry(387, "spiritual-fervor", "Spiritual Fervor", 3, immortality_only=True),
+    _entry(
+        388,
+        "stillsuit-manufacturer",
+        "Stillsuit Manufacturer",
+        5,
+        immortality_only=True,
+    ),
+    _entry(
+        389, "throne-room-politics", "Throne Room Politics", 4, immortality_only=True
+    ),
+    _entry(
+        390, "tleilaxu-master", "Tleilaxu Master", 5, copies=2, immortality_only=True
+    ),
+    _entry(391, "tleilaxu-surgeon", "Tleilaxu Surgeon", 3, immortality_only=True),
 )
 
 IMPERIUM_CARDS_BY_ID: Final = {entry.card.card_id: entry for entry in IMPERIUM_CARDS}
@@ -1509,12 +1590,14 @@ def imperium_cards_for_choam(
     *,
     bloodlines: bool = False,
     tech_module: bool = False,
+    immortality: bool = False,
 ) -> tuple[ImperiumCardEntry, ...]:
     """Return physical card entries included by the selected setup.
 
-    Bloodlines cards join only with the option [Bloodlines p. 3], and only
-    once their play data is complete: an incomplete card would be inert in
-    a hand, so it waits out of the deck until its slice lands.
+    Bloodlines cards join only with the option [Bloodlines p. 3] and
+    Immortality cards only with theirs [Immortality p. 4], and only once
+    their play data is complete: an incomplete card would be inert in a
+    hand, so it waits out of the deck until its slice lands.
     """
 
     return tuple(
@@ -1530,6 +1613,10 @@ def imperium_cards_for_choam(
                 and (tech_module or not entry.tech_only)
             )
         )
+        and (
+            not entry.immortality_only
+            or (immortality and entry.play_data_complete)
+        )
     )
 
 
@@ -1539,13 +1626,18 @@ def imperium_deck_instance_ids(
     *,
     bloodlines: bool = False,
     tech_module: bool = False,
+    immortality: bool = False,
 ) -> tuple[str, ...]:
     """Return stable IDs for every physical Imperium card copy."""
 
     return tuple(
         f"imperium:{entry.card.card_id}:{copy}"
         for entry in imperium_cards_for_choam(
-            choam_module, promo_cards, bloodlines=bloodlines, tech_module=tech_module
+            choam_module,
+            promo_cards,
+            bloodlines=bloodlines,
+            tech_module=tech_module,
+            immortality=immortality,
         )
         for copy in range(entry.copies)
     )

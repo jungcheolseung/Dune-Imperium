@@ -79,6 +79,10 @@ BLOODLINES_SOURCES: Final = (
     SourceRef(SourceDocument.BLOODLINES_RULEBOOK, (2, 3)),
     SourceRef(SourceDocument.CARD_FACE, (1,)),
 )
+IMMORTALITY_SOURCES: Final = (
+    SourceRef(SourceDocument.IMMORTALITY_RULEBOOK, (3, 5)),
+    SourceRef(SourceDocument.CARD_FACE, (1,)),
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -152,10 +156,17 @@ def _entry(
     choam_only: bool = False,
     bloodlines_only: bool = False,
     tech_only: bool = False,
+    immortality_only: bool = False,
     options: tuple[IntrigueOption, ...] = (),
     twisted: bool = False,
 ) -> IntrigueCardEntry:
-    expansion = "bloodlines" if bloodlines_only else "uprising"
+    expansion = (
+        "bloodlines"
+        if bloodlines_only
+        else "immortality"
+        if immortality_only
+        else "uprising"
+    )
     return IntrigueCardEntry(
         card=CardDefinition(
             card_id=slug.replace("-", "_"),
@@ -163,6 +174,8 @@ def _entry(
             sources=(
                 BLOODLINES_SOURCES
                 if bloodlines_only
+                else IMMORTALITY_SOURCES
+                if immortality_only
                 else CHOAM_SOURCES
                 if choam_only
                 else BASE_SOURCES
@@ -173,6 +186,7 @@ def _entry(
         choam_only=choam_only,
         bloodlines_only=bloodlines_only,
         tech_only=tech_only,
+        immortality_only=immortality_only,
         options=options,
         twisted=twisted,
     )
@@ -1238,6 +1252,22 @@ INTRIGUE_CARDS: Final = (
         10,
         _plot(EffectSection(costs=(LoseInfluence(1),), rewards=(GainInfluence(),))),
     ),
+    # Immortality Intrigue cards (2026-09-08): 15 cards [Immortality p. 3];
+    # the Dune Cards Hub catalog lists 11 identities, one copy each (see
+    # docs/implementation-audits/immortality.md). Options are transcribed
+    # from the card faces slice by slice (an entry without options stays
+    # out of the deck).
+    _entry(392, "breakthrough", "Breakthrough", immortality_only=True),
+    _entry(393, "counterattack", "Counterattack", immortality_only=True),
+    _entry(394, "disguised-bureaucrat", "Disguised Bureaucrat", immortality_only=True),
+    _entry(395, "economic-positioning", "Economic Positioning", immortality_only=True),
+    _entry(396, "gruesome-sacrifice", "Gruesome Sacrifice", immortality_only=True),
+    _entry(397, "harvest-cells", "Harvest Cells", immortality_only=True),
+    _entry(398, "illicit-dealings", "Illicit Dealings", immortality_only=True),
+    _entry(399, "shadowy-bargain", "Shadowy Bargain", immortality_only=True),
+    _entry(400, "study-melange", "Study Melange", immortality_only=True),
+    _entry(401, "tleilaxu-puppet", "Tleilaxu Puppet", immortality_only=True),
+    _entry(402, "vicious-talents", "Vicious Talents", immortality_only=True),
 )
 
 
@@ -1255,12 +1285,14 @@ def intrigue_cards_for_choam(
     *,
     bloodlines: bool = False,
     tech_module: bool = False,
+    immortality: bool = False,
 ) -> tuple[IntrigueCardEntry, ...]:
     """Return physical card entries included by the selected setup.
 
-    Bloodlines cards join only with the option [Bloodlines p. 3] and only
-    once their options are transcribed (an untranscribed card cannot be
-    played, so it waits out of the deck).
+    Bloodlines cards join only with the option [Bloodlines p. 3] and
+    Immortality cards only with theirs [Immortality p. 5], and only once
+    their options are transcribed (an untranscribed card cannot be played,
+    so it waits out of the deck).
     """
 
     return tuple(
@@ -1276,6 +1308,10 @@ def intrigue_cards_for_choam(
                 and entry.play_data_complete
                 and (tech_module or not entry.tech_only)
             )
+        )
+        and (
+            not entry.immortality_only
+            or (immortality and entry.play_data_complete)
         )
     )
 
@@ -1303,13 +1339,17 @@ def intrigue_deck_instance_ids(
     *,
     bloodlines: bool = False,
     tech_module: bool = False,
+    immortality: bool = False,
 ) -> tuple[str, ...]:
     """Return stable IDs for every physical Intrigue card copy."""
 
     return tuple(
         f"intrigue:{entry.card.card_id}:{copy}"
         for entry in intrigue_cards_for_choam(
-            choam_module, bloodlines=bloodlines, tech_module=tech_module
+            choam_module,
+            bloodlines=bloodlines,
+            tech_module=tech_module,
+            immortality=immortality,
         )
         for copy in range(entry.copies)
     )

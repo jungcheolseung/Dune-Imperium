@@ -310,7 +310,12 @@ def test_saves_keep_the_expansion_and_module_flags() -> None:
     # replayed. Older documents without the keys still read as "off".
     manager = GameSessionManager()
     created = manager.create_game(
-        HUMAN_FIRST, game_seed=31, promo_cards=True, bloodlines=True, tech_module=True
+        HUMAN_FIRST,
+        game_seed=31,
+        promo_cards=True,
+        bloodlines=True,
+        tech_module=True,
+        immortality=True,
     )
     original = _advance(manager, created, 5)
 
@@ -319,16 +324,18 @@ def test_saves_keep_the_expansion_and_module_flags() -> None:
     assert ruleset["promo_cards"] is True
     assert ruleset["bloodlines"] is True
     assert ruleset["tech_module"] is True
+    assert ruleset["immortality"] is True
 
     restored = manager.restore_game(_roundtrip(document))
     for field in ("revision", "phase", "round_number", "decision", "seats"):
         assert restored[field] == original[field], field
     assert restored["bloodlines"] is True
     assert restored["tech_module"] is True
+    assert restored["immortality"] is True
 
     legacy = _obj(_roundtrip(manager.save_game(_text(original["game_id"]))))
     legacy_ruleset = dict(_obj(legacy["ruleset"]))
-    for key in ("promo_cards", "bloodlines", "tech_module"):
+    for key in ("promo_cards", "bloodlines", "tech_module", "immortality"):
         del legacy_ruleset[key]
     parsed = parse_save_document({**legacy, "ruleset": legacy_ruleset})
     assert parsed.replay.ruleset.bloodlines is False

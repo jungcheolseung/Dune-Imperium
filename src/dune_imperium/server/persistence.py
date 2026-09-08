@@ -211,6 +211,7 @@ def build_save_document(
             "promo_cards": config.promo_cards,
             "bloodlines": config.bloodlines,
             "tech_module": config.tech_module,
+            "immortality": config.immortality,
         },
         "game_seed": replay.seed,
         "policy_seed": policy_seed,
@@ -262,7 +263,7 @@ def parse_save_document(document: object) -> ParsedSave:
     # Optional module flags; documents written before they existed (or a
     # base game) leave them out, which means "off".
     modules: dict[str, bool] = {}
-    for key in ("promo_cards", "bloodlines", "tech_module"):
+    for key in ("promo_cards", "bloodlines", "tech_module", "immortality"):
         flag = ruleset_value.get(key, False)
         if not isinstance(flag, bool):
             raise SaveError(f"the save ruleset {key} must be a boolean")

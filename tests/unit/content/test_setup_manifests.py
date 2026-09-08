@@ -388,10 +388,23 @@ def test_reserve_stacks_are_finite_and_have_no_foldspace() -> None:
 
 def test_imperium_manifest_matches_base_and_choam_counts() -> None:
     # 57 Uprising identities (72 cards) plus the 26 Bloodlines identities
-    # (32 cards: 25 retail, 5 CHOAM-only, 2 Tech-only) [Bloodlines p. 2]
-    # and the Bloodlines promo Ruthless Leadership.
-    assert len(IMPERIUM_CARDS) == 57 + 26 + 1
-    assert sum(entry.copies for entry in IMPERIUM_CARDS) == 72 + 32 + 1
+    # (32 cards: 25 retail, 5 CHOAM-only, 2 Tech-only) [Bloodlines p. 2],
+    # the Bloodlines promo Ruthless Leadership, and the 25 Immortality
+    # identities (27 copies per the Dune Cards Hub catalog; the rulebook
+    # counts 30 [Immortality p. 3]).
+    assert len(IMPERIUM_CARDS) == 57 + 26 + 1 + 25
+    assert sum(entry.copies for entry in IMPERIUM_CARDS) == 72 + 32 + 1 + 27
+    immortality = tuple(entry for entry in IMPERIUM_CARDS if entry.immortality_only)
+    assert len(immortality) == 25
+    assert sum(entry.copies for entry in immortality) == 27
+    assert all(entry.card.catalog_url for entry in immortality)
+    assert not any(entry.promo or entry.choam_only for entry in immortality)
+    # Until their play data lands, the Immortality cards stay out of every
+    # deck, option or not.
+    assert not any(
+        entry.immortality_only
+        for entry in imperium_cards_for_choam(True, True, immortality=True)
+    )
     bloodlines = tuple(
         entry for entry in IMPERIUM_CARDS if entry.bloodlines_only and not entry.promo
     )
@@ -442,9 +455,17 @@ def test_intrigue_manifest_matches_base_and_choam_counts() -> None:
     # 39 Uprising identities (44 cards) plus 18 Bloodlines cards (15 retail,
     # 1 CHOAM-only, 2 Tech-only) [Bloodlines p. 2].
     # 18 Bloodlines Intrigue cards plus the 12 Twisted Intrigue cards and
-    # the 10 Navigation cards (Y'rkoon), which share the Intrigue schema.
-    assert len(INTRIGUE_CARDS) == 39 + 18 + 12 + 10
-    assert sum(entry.copies for entry in INTRIGUE_CARDS) == 44 + 18 + 12 + 10
+    # the 10 Navigation cards (Y'rkoon), which share the Intrigue schema,
+    # and the 11 Immortality identities the Dune Cards Hub catalog lists
+    # (the rulebook counts 15 cards [Immortality p. 3]).
+    assert len(INTRIGUE_CARDS) == 39 + 18 + 12 + 10 + 11
+    assert sum(entry.copies for entry in INTRIGUE_CARDS) == 44 + 18 + 12 + 10 + 11
+    immortality = tuple(entry for entry in INTRIGUE_CARDS if entry.immortality_only)
+    assert len(immortality) == 11
+    assert not any(
+        entry.immortality_only
+        for entry in intrigue_cards_for_choam(True, immortality=True)
+    )
     bloodlines = tuple(
         entry
         for entry in INTRIGUE_CARDS
@@ -631,7 +652,7 @@ def test_imperium_costs_cover_the_printed_range_and_resolve_instances() -> None:
     costs = {
         entry.card.card_id: entry.acquisition_cost
         for entry in IMPERIUM_CARDS
-        if not entry.bloodlines_only
+        if not entry.bloodlines_only and not entry.immortality_only
     }
 
     assert Counter(costs.values()) == {

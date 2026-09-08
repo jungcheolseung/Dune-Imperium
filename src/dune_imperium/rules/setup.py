@@ -450,6 +450,7 @@ def create_initial_state(
                 config.promo_cards,
                 bloodlines=config.bloodlines,
                 tech_module=config.tech_module,
+                immortality=config.immortality,
             ),
         )
     ).values
@@ -461,6 +462,7 @@ def create_initial_state(
                 config.choam_module,
                 bloodlines=config.bloodlines,
                 tech_module=config.tech_module,
+                immortality=config.immortality,
             ),
         )
     ).values
@@ -576,6 +578,7 @@ def create_draft_initial_state(
                 config.promo_cards,
                 bloodlines=config.bloodlines,
                 tech_module=config.tech_module,
+                immortality=config.immortality,
             ),
         )
     ).values
@@ -587,6 +590,7 @@ def create_draft_initial_state(
                 config.choam_module,
                 bloodlines=config.bloodlines,
                 tech_module=config.tech_module,
+                immortality=config.immortality,
             ),
         )
     ).values

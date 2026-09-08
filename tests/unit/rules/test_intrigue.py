@@ -109,7 +109,7 @@ def test_every_intrigue_identity_is_transcribed() -> None:
     assert all(
         entry.play_data_complete
         for entry in INTRIGUE_CARDS
-        if not entry.bloodlines_only
+        if not entry.bloodlines_only and not entry.immortality_only
     )
 
 

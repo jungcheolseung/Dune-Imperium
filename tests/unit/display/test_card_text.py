@@ -17,12 +17,12 @@ _ALL_ENTRIES = (*IMPERIUM_CARDS, *STARTING_DECK, *RESERVE_STACKS)
 
 
 def test_covers_all_57_imperium_7_starting_2_reserve_entries() -> None:
-    # Plus the 26 Bloodlines Imperium identities (M12) and the Bloodlines
-    # promo Ruthless Leadership.
-    assert len(IMPERIUM_CARDS) == 57 + 26 + 1
+    # Plus the 26 Bloodlines Imperium identities (M12), the Bloodlines
+    # promo Ruthless Leadership, and the 25 Immortality identities.
+    assert len(IMPERIUM_CARDS) == 57 + 26 + 1 + 25
     assert len(STARTING_DECK) == 7
     assert len(RESERVE_STACKS) == 2
-    assert len(_ALL_ENTRIES) == 66 + 26 + 1
+    assert len(_ALL_ENTRIES) == 66 + 26 + 1 + 25
 
 
 def test_every_entry_produces_a_non_empty_list() -> None:
@@ -150,5 +150,5 @@ def test_no_imperium_card_currently_has_incomplete_play_data() -> None:
     assert all(
         entry.play_data_complete
         for entry in IMPERIUM_CARDS
-        if not entry.bloodlines_only
+        if not entry.bloodlines_only and not entry.immortality_only
     )

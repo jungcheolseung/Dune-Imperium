@@ -685,6 +685,7 @@ async function createGame(event) {
     promo_cards: el("opt-promo").checked,
     bloodlines: el("opt-bloodlines").checked,
     tech_module: el("opt-tech").checked,
+    immortality: el("opt-immortality").checked,
   };
   const seed = el("opt-seed").value;
   if (seed !== "") payload.game_seed = Number(seed);
@@ -1208,6 +1209,7 @@ function render() {
     (summary.promo_cards ? " · promo" : "") +
     (summary.bloodlines ? " · Bloodlines" : "") +
     (summary.tech_module ? " · Tech" : "") +
+    (summary.immortality ? " · Immortality" : "") +
     (summary.leader_draft ? " · draft" : "") +
     (state.review ? " · 리플레이 검토" : "");
   el("decision-banner").hidden = Boolean(state.review);

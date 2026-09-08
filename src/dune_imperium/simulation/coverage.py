@@ -174,6 +174,7 @@ def zero_coverage(
     promo_cards: bool = False,
     bloodlines: bool = False,
     tech_module: bool = False,
+    immortality: bool = False,
 ) -> dict[str, list[str]]:
     """Return, per dimension with a well-defined catalog, the untouched IDs.
 
@@ -187,6 +188,7 @@ def zero_coverage(
         promo_cards=promo_cards,
         bloodlines=bloodlines,
         tech_module=tech_module,
+        immortality=immortality,
     )
     codec = ActionCodec(config)
 
@@ -207,7 +209,11 @@ def zero_coverage(
     imperium_identities = {
         normalize_instance_id(instance_id)
         for instance_id in imperium_deck_instance_ids(
-            choam_module, promo_cards, bloodlines=bloodlines, tech_module=tech_module
+            choam_module,
+            promo_cards,
+            bloodlines=bloodlines,
+            tech_module=tech_module,
+            immortality=immortality,
         )
     }
     reserve_identities = {stack.card.card_id for stack in RESERVE_STACKS}
@@ -215,7 +221,10 @@ def zero_coverage(
     intrigue_identities = {
         normalize_instance_id(instance_id)
         for instance_id in intrigue_deck_instance_ids(
-            choam_module, bloodlines=bloodlines, tech_module=tech_module
+            choam_module,
+            bloodlines=bloodlines,
+            tech_module=tech_module,
+            immortality=immortality,
         )
     }
     _report_by_identity("intrigue_played", intrigue_identities)

@@ -97,6 +97,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="add the Bloodlines Tech Module (requires --bloodlines)",
     )
     parser.add_argument(
+        "--immortality",
+        action="store_true",
+        help="play with the Immortality expansion",
+    )
+    parser.add_argument(
         "--workers",
         type=int,
         default=1,
@@ -139,6 +144,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             promo_cards=arguments.promo_cards,
             bloodlines=arguments.bloodlines,
             tech_module=arguments.tech_module,
+            immortality=arguments.immortality,
             max_steps=arguments.max_steps,
         )
     except ValueError as error:

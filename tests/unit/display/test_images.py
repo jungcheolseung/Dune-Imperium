@@ -7,6 +7,10 @@ import pytest
 
 from dune_imperium.content.bloodlines.sardaukar import SKILLS
 from dune_imperium.content.bloodlines.tech import TECH_TILES
+from dune_imperium.content.immortality.tleilaxu import (
+    RECLAIMED_FORCES,
+    TLEILAXU_CARDS,
+)
 from dune_imperium.content.uprising.board import BOARD_SPACES
 from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.contracts import CONTRACTS
@@ -40,6 +44,8 @@ def _all_content_keys() -> set[tuple[str, str]]:
     keys += [("skill", skill.skill_id) for skill in SKILLS]
     keys += [("tech", tile.tech_id) for tile in TECH_TILES]
     keys.append(("other", "ixian_embassy_board"))
+    keys += [("tleilaxu", entry.card.card_id) for entry in TLEILAXU_CARDS]
+    keys.append(("tleilaxu", RECLAIMED_FORCES.card.card_id))
     return set(keys)
 
 
@@ -156,7 +162,11 @@ def test_required_image_keys_cover_every_displayable_content_id() -> None:
     # Intrigue, 10 Navigation, eight Leaders, Tuek's Sietch, the Tech
     # Module's Kota Odax of Ix, 7 Skill tiles, 18 Tech tiles and the Ixian
     # Embassy board.
-    assert len(keys) == 175 + 44 + 1 + 12 + 10 + 8 + 1 + 1 + 7 + 18 + 1
+    # Immortality: 25 Imperium, 11 Intrigue, 18 Tleilaxu plus the promo
+    # Piter, Genius Advisor, and Reclaimed Forces.
+    assert len(keys) == (
+        175 + 44 + 1 + 12 + 10 + 8 + 1 + 1 + 7 + 18 + 1 + 25 + 11 + 19 + 1
+    )
     assert len(set(keys)) == len(keys)
     assert set(keys) == _all_content_keys()
 

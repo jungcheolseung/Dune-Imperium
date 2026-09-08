@@ -22,6 +22,7 @@ def _ruleset_options(identifier: str) -> dict[str, bool]:
         "promo_cards": "+promo" in identifier,
         "bloodlines": "+bloodlines" in identifier,
         "tech_module": "+tech" in identifier,
+        "immortality": "+immortality" in identifier,
     }
 
 _RULESETS = {
@@ -93,6 +94,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--tech-module",
         action="store_true",
         help="add the Bloodlines Tech Module (requires --bloodlines)",
+    )
+    parser.add_argument(
+        "--immortality",
+        action="store_true",
+        help="play with the Immortality expansion (docs/rules/immortality.md)",
     )
     parser.add_argument(
         "--rotate-leaders",
@@ -202,6 +208,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         promo_cards=arguments.promo_cards,
         bloodlines=arguments.bloodlines,
         tech_module=arguments.tech_module,
+        immortality=arguments.immortality,
         rotate_leaders=arguments.rotate_leaders,
         collect_coverage=arguments.coverage_json is not None,
     )

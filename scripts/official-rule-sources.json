@@ -26,5 +26,12 @@
     "sha256": "5f0b4646ab59f467a1027b95e2b6f67809c77c224d98ddab26dd661d7e2b042a",
     "pdf_filename": "di-bloodlines.pdf",
     "text_filename": "di-bloodlines.txt"
+  },
+  "immortality": {
+    "label": "Immortality Rulebook",
+    "url": "https://d19y2ttatozxjp.cloudfront.net/pdfs/DUNE_IMPERIUM_IMMORTALITY_Rulebook.pdf",
+    "sha256": "2a7ba3b8129bc108a82c3b2677d7ce27ffc64be88532b691f55836bf48666a79",
+    "pdf_filename": "di-immortality.pdf",
+    "text_filename": "di-immortality.txt"
   }
 }

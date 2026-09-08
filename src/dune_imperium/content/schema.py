@@ -13,6 +13,9 @@ class SourceDocument(StrEnum):
     # The Bloodlines expansion rulebook (``official-rule-sources.json`` key
     # ``bloodlines``); cited as ``[Bloodlines p. N]`` with PDF page numbers.
     BLOODLINES_RULEBOOK = "bloodlines_rulebook"
+    # The Immortality expansion rulebook (``official-rule-sources.json`` key
+    # ``immortality``); cited as ``[Immortality p. N]`` with PDF page numbers.
+    IMMORTALITY_RULEBOOK = "immortality_rulebook"
     # A card that no official document describes (the Uprising promo cards):
     # the printed card face itself is the source, cited as page 1.
     CARD_FACE = "card_face"
@@ -65,6 +68,9 @@ class DeckCardEntry:
     # only with ``tech_module=True`` as well [Bloodlines p. 6].
     bloodlines_only: bool = False
     tech_only: bool = False
+    # Immortality expansion card; dealt only with
+    # ``RulesetConfig(immortality=True)`` [Immortality pp. 3-5].
+    immortality_only: bool = False
     acquisition_cost: int | None = None
     has_acquisition_bonus: bool = False
 
@@ -73,5 +79,7 @@ class DeckCardEntry:
             raise ValueError("deck-card copies must be positive")
         if self.tech_only and not self.bloodlines_only:
             raise ValueError("Tech Module cards belong to the Bloodlines set")
+        if self.immortality_only and self.bloodlines_only:
+            raise ValueError("a card belongs to one expansion set")
         if self.acquisition_cost is not None and self.acquisition_cost < 0:
             raise ValueError("acquisition cost must not be negative")

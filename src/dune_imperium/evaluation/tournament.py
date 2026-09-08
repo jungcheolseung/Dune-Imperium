@@ -43,6 +43,7 @@ class MatchSpec:
     promo_cards: bool = False
     bloodlines: bool = False
     tech_module: bool = False
+    immortality: bool = False
     leader_ids: tuple[str, ...] | None = None
     max_steps: int = 30_000
 
@@ -53,6 +54,7 @@ class MatchSpec:
             promo_cards=self.promo_cards,
             bloodlines=self.bloodlines,
             tech_module=self.tech_module,
+            immortality=self.immortality,
         )
 
 
@@ -289,6 +291,7 @@ def tournament_specs(
     promo_cards: bool = False,
     bloodlines: bool = False,
     tech_module: bool = False,
+    immortality: bool = False,
     max_steps: int = 30_000,
 ) -> tuple[MatchSpec, ...]:
     """Cross a lineup over seats, rulesets, and a seed range.
@@ -314,6 +317,7 @@ def tournament_specs(
             promo_cards=promo_cards,
             bloodlines=bloodlines,
             tech_module=tech_module,
+            immortality=immortality,
             leader_ids=(
                 _rotated_leader_ids(seed, choam_module, bloodlines, tech_module)
                 if rotate_leaders

@@ -291,11 +291,13 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         config.promo_cards,
         bloodlines=config.bloodlines,
         tech_module=config.tech_module,
+        immortality=config.immortality,
     )
     intrigue_instances = intrigue_deck_instance_ids(
         config.choam_module,
         bloodlines=config.bloodlines,
         tech_module=config.tech_module,
+        immortality=config.immortality,
     )
     if config.bloodlines:
         # Piter De Vries' Twisted Intrigue cards are held and played like
@@ -870,7 +872,9 @@ def _reveal_resource_templates() -> tuple[ActionTemplate, ...]:
     ] = (
         *STARTING_DECK,
         *RESERVE_STACKS,
-        *imperium_cards_for_choam(True, True, bloodlines=True, tech_module=True),
+        *imperium_cards_for_choam(
+            True, True, bloodlines=True, tech_module=True, immortality=True
+        ),
     )
     for card in cards:
         for effect in card.reveal_effects:
@@ -937,6 +941,7 @@ def _agent_turn_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         config.promo_cards,
         bloodlines=config.bloodlines,
         tech_module=config.tech_module,
+        immortality=config.immortality,
     ):
         if imperium_card.play_data_complete:
             card_granted = (
@@ -1107,6 +1112,7 @@ def _personal_card_instance_ids(config: RulesetConfig) -> tuple[str, ...]:
             config.promo_cards,
             bloodlines=config.bloodlines,
             tech_module=config.tech_module,
+            immortality=config.immortality,
         )
     )
     card_ids.extend(

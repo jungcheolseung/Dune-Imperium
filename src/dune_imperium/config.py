@@ -34,6 +34,12 @@ class RulesetConfig:
     # board, Tech tiles, its two Imperium and two Intrigue cards, Kota Odax
     # of Ix) [Bloodlines pp. 6-7]. Requires ``bloodlines``.
     tech_module: bool = False
+    # The Immortality expansion (``docs/rules/immortality.md``): the Bene
+    # Tleilax board (research and Tleilaxu tracks, specimens), the Tleilaxu
+    # Row, Graft, the revised Research Station, Experimentation starting
+    # cards, Family Atomics, and its Imperium/Intrigue cards. Off by default;
+    # independent of ``bloodlines`` (the two may be combined) [Main p. 18].
+    immortality: bool = False
 
     def __post_init__(self) -> None:
         if self.players != 4:
@@ -51,4 +57,5 @@ class RulesetConfig:
         promo = "+promo" if self.promo_cards else ""
         bloodlines = "+bloodlines" if self.bloodlines else ""
         tech = "+tech" if self.tech_module else ""
-        return f"uprising-4p-{module}{promo}{bloodlines}{tech}"
+        immortality = "+immortality" if self.immortality else ""
+        return f"uprising-4p-{module}{promo}{bloodlines}{tech}{immortality}"

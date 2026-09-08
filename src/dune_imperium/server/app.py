@@ -109,6 +109,8 @@ class CreateGameRequest(BaseModel):
     # The Bloodlines expansion and its Tech Module (docs/rules/bloodlines.md).
     bloodlines: bool = False
     tech_module: bool = False
+    # The Immortality expansion (docs/rules/immortality.md).
+    immortality: bool = False
     game_seed: int | None = None
     policy_seed: int | None = None
 
@@ -217,6 +219,7 @@ def create_app(
                 promo_cards=request.promo_cards,
                 bloodlines=request.bloodlines,
                 tech_module=request.tech_module,
+                immortality=request.immortality,
                 game_seed=request.game_seed,
                 policy_seed=request.policy_seed,
             )

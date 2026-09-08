@@ -130,6 +130,7 @@ class GameSessionManager:
         promo_cards: bool = False,
         bloodlines: bool = False,
         tech_module: bool = False,
+        immortality: bool = False,
         game_seed: int | None = None,
         policy_seed: int | None = None,
     ) -> JsonObject:
@@ -141,6 +142,7 @@ class GameSessionManager:
             promo_cards=promo_cards,
             bloodlines=bloodlines,
             tech_module=tech_module,
+            immortality=immortality,
         )
         _validate_seats(seats, config)
         if game_seed is None:
@@ -585,6 +587,7 @@ class GameSessionManager:
             "promo_cards": session.config.promo_cards,
             "bloodlines": session.config.bloodlines,
             "tech_module": session.config.tech_module,
+            "immortality": session.config.immortality,
             "seats": list(session.seats),
             "decision": decision,
             "finished": finished,

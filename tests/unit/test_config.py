@@ -40,6 +40,16 @@ def test_bloodlines_and_tech_module_extend_the_identifier() -> None:
     )
 
 
+def test_immortality_extends_the_identifier_independently() -> None:
+    assert RulesetConfig(immortality=True).identifier == "uprising-4p-base+immortality"
+    assert (
+        RulesetConfig(
+            choam_module=True, bloodlines=True, tech_module=True, immortality=True
+        ).identifier
+        == "uprising-4p-choam+bloodlines+tech+immortality"
+    )
+
+
 def test_tech_module_requires_bloodlines() -> None:
     with pytest.raises(
         ValueError,
