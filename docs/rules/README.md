@@ -22,6 +22,7 @@
 - [Immortality 확장](immortality.md)
 - [공식 clarification과 FAQ 색인](official-rulings-index.md)
 - [공식 문서만으로 확정할 수 없는 항목](open-questions.md)
+- [디자이너 커뮤니티 판정 대조(2026-09-08)](designer-rulings-audit.md): 공식 문서 밖의 Paul Dennen 판정과 엔진의 불일치 목록, 반영 미결정
 
 ## 읽는 법
 
