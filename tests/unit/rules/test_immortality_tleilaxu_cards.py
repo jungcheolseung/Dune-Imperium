@@ -513,9 +513,63 @@ def test_usurp_grafts_a_row_card_that_leaves_the_game_when_the_turn_closes() -> 
     assert len(drawn.state.players[0].hand) == 1
     closed = _engine_finish_turn(drawn.state)
     owner = closed.players[0]
-    assert occupation not in owner.in_play and occupation in closed.imperium_removed
+    # The turn's close trashes the borrowed card automatically (OQ-054).
+    assert occupation not in owner.in_play and occupation in owner.trashed
+    assert occupation not in closed.imperium_removed
     assert owner.usurped_row_card_id == ""
     assert observe_state(closed, 1).players[0].usurped_row_card_id == ""
+
+
+def test_usurp_trash_fires_the_borrowed_cards_trash_trigger() -> None:
+    """Replacement Eyes' "when this card is trashed: Tleilaxu" resolves when
+    Usurp's automatic end-of-turn trash removes it (user ruling, OQ-054)."""
+
+    usurp = _tleilaxu("usurp")
+    eyes = "imperium:replacement_eyes:0"
+    imperium = imperium_deck_instance_ids(False)
+    state = _state(
+        _owner((usurp,)),
+        imperium_row=(eyes, *imperium[1:5]),
+        imperium_deck=imperium[5:20],
+    )
+    placed = _place(state, usurp, "arrakeen", graft=True)
+    grafted = apply_graft_partner(
+        placed, DomainAction("choose_graft_partner", 0, (("card_id", eyes),))
+    ).state
+    engine = UprisingRulesEngine()
+    result = None
+    for _ in range(20):
+        if grafted.decision_stack[-1].kind == FrameKind.TURN:
+            break
+        actions = engine.legal_actions(grafted, 0)
+        preferred = [a for a in actions if not a.action_id.startswith("deploy")]
+        result = engine.apply(grafted, preferred[0])
+        grafted = result.state
+    owner = grafted.players[0]
+    assert eyes in owner.trashed and owner.usurped_row_card_id == ""
+    assert owner.tleilaxu_space == 1
+    assert result is not None
+    kinds = [event.kind for event in result.events]
+    assert "usurped_card_trashed" in kinds and "card_trashed" in kinds
+
+
+def test_usurp_placed_first_may_take_a_hand_partner_instead_of_the_row() -> None:
+    """ "You may graft ... with a card from the Imperium Row": the hand stays
+    an option, and a hand partner is never trashed at the turn's end."""
+
+    usurp = _tleilaxu("usurp")
+    state = _state(_owner((usurp, FACE_DANCER)))
+    placed = _place(state, usurp, "dutiful_service", graft=True)
+    partners = {
+        dict(a.arguments)["card_id"] for a in legal_graft_partner_actions(placed, 0)
+    }
+    assert FACE_DANCER in partners
+    grafted = apply_graft_partner(
+        placed, DomainAction("choose_graft_partner", 0, (("card_id", FACE_DANCER),))
+    ).state
+    owner = grafted.players[0]
+    assert FACE_DANCER in owner.in_play and owner.usurped_row_card_id == ""
+    assert len(grafted.imperium_row) == 5
 
 
 def test_usurp_may_still_partner_a_hand_card_placed_first() -> None:

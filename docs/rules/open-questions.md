@@ -460,7 +460,7 @@
 - 상태: `DECIDED`
 - Usurp는 "graft this card with a card from the Imperium Row instead of one from your hand. If you do, trash that card at the end of the turn"이라고만 한다 `[card face]`. 빌린 카드는 누구의 소유도 아니어서 개인 trash 더미에 두는 것이 맞는지, turn 중 다른 효과로 이미 play 영역을 떠났으면(Stillsuit Manufacturer가 자기를 hand로 되돌리는 경우, 다른 효과로 trash된 경우) 어떻게 하는지 말하지 않는다.
 - 필요한 답: 카드의 행선지와 turn 중 이동한 경우의 처리.
-- 확정(2026-09-08, project convention — 공식 규칙이 아니다): turn이 닫힐 때(소유자의 Agent-turn 효과 frame이 더 이상 없을 때, 자동 dispatcher) 그 카드는 어느 존에 있든 게임에서 빠진다(`imperium_removed`, OQ-051과 같은 공개 존). 소유자의 trash 더미에 두지 않는 것은 그 더미가 소유 카드의 census 기준이기 때문이며, 게임 밖으로 나가는 결과는 같다. Row는 카드가 빠지는 즉시 채운다 `[Main p. 13]`. Usurp 자체는 아이콘이 없으므로 단독 배치는 graft 변형뿐이고, 도달 가능한 space는 Row 카드 아이콘의 합집합, 상대 선택은 그 space에 닿는 Row 카드(와 hand 카드)로 제한한다. 구현: `rules/graft.py`(`legal_graft_partner_actions`, `resolve_usurp_trash`), `rules/agent_turn.py`.
+- 확정(2026-09-08, 사용자 판정): turn이 닫힐 때(소유자의 Agent-turn 효과 frame이 더 이상 없을 때, 자동 dispatcher) 그 카드는 **보통의 trash로 자동 폐기**된다 — 소유자의 trash 더미로 가고, `card_trashed` 이벤트와 "이 카드가 trash될 때" 트리거(Replacement Eyes의 Tleilaxu, Eliminate Allies의 troop 2 등)가 그대로 발동한다. turn 중 다른 효과로 이미 소유 존(hand·deck·discard·play)을 떠났으면 더 할 일이 없다. (처음 구현했던 "게임 밖 `imperium_removed`로 조용히 제거"는 trash 트리거를 건너뛰어 사용자가 정정했다.) Row는 카드가 빠지는 즉시 채운다 `[Main p. 13]`. "may"이므로 Usurp는 hand 카드와도 graft할 수 있다: Usurp를 먼저 놓으면 상대 선택에 Row 카드와 hand 카드가 모두 오르고(그 space에 닿는 카드만), hand 카드를 먼저 놓고 Usurp를 상대로 고르는 보통의 graft도 된다. hand 상대는 turn 끝에 폐기되지 않는다. Usurp 자체는 아이콘이 없으므로 단독 배치는 graft 변형뿐이고, 도달 가능한 space는 후보 상대 카드 아이콘의 합집합이다. 구현: `rules/graft.py`(`legal_graft_partner_actions`, `resolve_usurp_trash`), `rules/agent_turn.py`.
 
 ## OQ-055 — Slig Farmer의 "Agent 아이콘마다"에 조건부·부여 아이콘이 드는지
 

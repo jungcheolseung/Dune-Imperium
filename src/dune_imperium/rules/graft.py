@@ -36,6 +36,7 @@ from dune_imperium.rules.agent_turn import (
     effective_agent_icons,
     is_tleilaxu_infiltrator,
 )
+from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.effects import (
     borrowed_agent_card,
     current_agent_effect_context,
@@ -215,8 +216,11 @@ def usurp_trash_is_queued(state: GameState) -> bool:
 def resolve_usurp_trash(state: GameState) -> RuleResult:
     """Usurp: "trash that card at the end of the turn" [card face].
 
-    The card was never the owner's, so it leaves the game like a Row card
-    removed by Family Atomics (OQ-051's zone) wherever it ended up.
+    The turn's close trashes the borrowed card automatically, as an ordinary
+    trash: it reaches the owner's trash pile and its "when this card is
+    trashed" trigger resolves (OQ-054, user ruling 2026-09-08). A card that
+    already left every owned zone (trashed earlier in the turn) needs
+    nothing more.
     """
 
     owner = next(
@@ -226,33 +230,22 @@ def resolve_usurp_trash(state: GameState) -> RuleResult:
         and not _agent_turn_is_open_for(state, seat.player_id)
     )
     card_id = owner.usurped_row_card_id
-    next_owner = replace(
-        owner,
-        hand=tuple(card for card in owner.hand if card != card_id),
-        hand_public=tuple(card for card in owner.hand_public if card != card_id),
-        deck=tuple(card for card in owner.deck if card != card_id),
-        discard_pile=tuple(card for card in owner.discard_pile if card != card_id),
-        in_play=tuple(card for card in owner.in_play if card != card_id),
-        trashed=tuple(card for card in owner.trashed if card != card_id),
-        usurped_row_card_id="",
+    source = f"round:{state.round_number}:player:{owner.player_id}:usurp_trash"
+    cleared = replace(
+        state,
+        players=replace_player(state.players, replace(owner, usurped_row_card_id="")),
     )
-    return RuleResult(
-        state=replace(
-            state,
-            players=replace_player(state.players, next_owner),
-            imperium_removed=(*state.imperium_removed, card_id),
-        ),
-        events=(
-            GameEvent(
-                event_id=(
-                    f"round:{state.round_number}:player:{owner.player_id}:"
-                    f"usurp_trash:{card_id}"
-                ),
-                kind="usurped_card_removed",
-                payload=(("card_id", card_id), ("player", owner.player_id)),
-            ),
-        ),
+    event = GameEvent(
+        event_id=f"{source}:{card_id}",
+        kind="usurped_card_trashed",
+        payload=(("card_id", card_id), ("player", owner.player_id)),
     )
+    if card_id not in (*owner.hand, *owner.deck, *owner.discard_pile, *owner.in_play):
+        return RuleResult(state=cleared, events=(event,))
+    trashed = trash_personal_card(
+        cleared, owner.player_id, card_id, source=source, allow_deck=True
+    )
+    return RuleResult(state=trashed.state, events=(event, *trashed.events))
 
 
 def legal_graft_switch_actions(

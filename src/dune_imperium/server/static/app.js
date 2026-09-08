@@ -2561,7 +2561,7 @@ function renderSeats() {
         );
       }
       if (player.usurped_row_card_id) {
-        flags.push(`Usurp: turn 끝에 ${nameOf(player.usurped_row_card_id)} 제거`);
+        flags.push(`Usurp: turn 끝에 ${nameOf(player.usurped_row_card_id)} trash`);
       }
     }
     if (flags.length) seatLine(card, "상태", iconize(flags.join(" · ")));
