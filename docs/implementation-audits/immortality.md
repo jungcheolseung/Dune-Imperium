@@ -1,6 +1,6 @@
 # Immortality implementation audit
 
-기준일: 2026-09-08 — 슬라이스 1(출처·명세·옵션 골격·카탈로그), 슬라이스 2(Bene Tleilax board·specimen·Research Station·Experimentation·Family Atomics), 슬라이스 3(Tleilaxu Row·Reclaimed Forces·첫 카드 3장), 슬라이스 4(Graft와 Graft 카드 8장), 슬라이스 5a(Intrigue 11장), 슬라이스 5b-1(Imperium 15종) 완료.
+기준일: 2026-09-08 — 슬라이스 1(출처·명세·옵션 골격·카탈로그), 슬라이스 2(Bene Tleilax board·specimen·Research Station·Experimentation·Family Atomics), 슬라이스 3(Tleilaxu Row·Reclaimed Forces·첫 카드 3장), 슬라이스 4(Graft와 Graft 카드 8장), 슬라이스 5a(Intrigue 11장), 슬라이스 5b-1(Imperium 15종), 슬라이스 5b-2(Imperium 8종 — Imperium 25종 전부) 완료.
 
 규범 근거는 [`rules/immortality.md`](../rules/immortality.md)이며, 콘텐츠 정의는 `content/immortality/board.py`(research·Tleilaxu track), `content/immortality/tleilaxu.py`(Tleilaxu deck·Reclaimed Forces), `content/uprising/imperium.py`·`intrigue.py`의 `immortality_only` 항목이 소유한다. 모든 동작은 `RulesetConfig(immortality=True)`에서만 켜진다.
 
@@ -157,9 +157,25 @@ Spice Trade 아이콘. Agent: Research. Reveal: ◆1 specimen 1. 카드 이름 �
 | 획득·trash·Reveal | 획득 box `GAIN_ONE_SPICE`(Lisan)·`RECRUIT_THREE_TROOPS`(Occupation)·`RESEARCH`(Spiritual Fervor); trash trigger `ADVANCE_TLEILAXU`(Replacement Eyes, `card_trash.py` 지역 import); Reveal 필드 `tleilaxu`·`research`(Dissecting Kit·Tleilaxu Master용; Research는 방향 frame이 열리면 남은 아이콘을 다시 대기열에), Occupation의 water·spice·troop, Bene Tleilax Lab의 (1M) spice. | `[Immortality pp. 6-8]`. |
 | Graft 보강 | `apply_graft_partner`가 첫 카드의 Bond 조건 box를 상대가 들어온 뒤 다시 판정해 대기시킨다(Lisan al Gaib + BG 상대). | OQ-028의 연장. |
 
+## 슬라이스 5b-2: Imperium 8종
+
+For Humanity와 Interstellar Conspiracy의 "◇?" 아이콘은 카드면 확대로 "원하는 진영의 Influence 1"로 확인했다.
+
+| 카드 | 구현 | 규칙 민감 메모 |
+| --- | --- | --- |
+| Dissecting Kit | `MAY_TRASH_OTHER_GRAFTED_FOR_SPECIMEN`: 지불 provider의 `trash_grafted_card_for_specimen`/거절. 상대 카드가 play 영역에 없으면 box 불발. trash 전에 상대의 `graft_pending_effect`를 끄고(OQ-022) 효과 frame을 정리한 뒤 trash·specimen 생성. Reveal (1M) Tleilaxu. | Graft 카드라 단독 play 불가 `[Immortality p. 10]`. |
+| For Humanity | Agent `GAIN_CHOSEN_INFLUENCE`(기존). Reveal choice `MAY_LOSE_INFLUENCE_FOR_VP_IF_BENE_GESSERIT_ALLIANCE`: `lose_reveal_influence_for_vp(faction[, alliance_recipient])`/거절. 열리는 조건: BG Alliance 보유 + 잃을 Influence 존재(OQ-028, 선택이 열릴 때 판정). | Influence 손실의 Alliance 이전은 OQ-015·`lose_faction_influence`와 동일. |
+| High Priority Travel | `DRAW_ONE_OR_COMBAT_ICON_IF_SPACING_GUILD_INFLUENCE_TWO`: Guild 2 이상이면 `resolve_agent_card_effect`(draw)와 `take_agent_card_combat_icon` 중 선택, 아니면 불발. Combat 아이콘은 `grant_combat_icon`이 frame에 쓰므로 컨텍스트를 다시 읽고 닫는다(Occupation도 같은 수정). Reveal 1 Solari. | |
+| Imperium Ceremony | `PEEK_TWO_INTRIGUE_KEEP_ONE` → `rules/intrigue_peek.py`의 `INTRIGUE_PEEK` frame(`keep_peeked_intrigue(instance_id)`). 소유자만 두 장을 본다: `PrivatePlayerView.peeked_intrigue_ids`(관측 v14 세그먼트 `private_peeked_intrigue`), `known_card_seats`, determinize·privacy invariant가 deck 맨 위 두 장을 고정. keep 이벤트는 공개 `intrigue_card_drawn`(수만) + 소유자 전용 `intrigue_card_kept`. | OQ-052(두 장 미만). |
+| Interstellar Conspiracy | `GAIN_SPICE_AND_CHOSEN_INFLUENCE_IF_GRAFTED_WITH_EMPEROR_OR_GUILD`: 상대 카드에 Emperor/Guild 진영이 있으면 Influence provider가 4진영 선택을 열고 spice 1을 함께 지급, 아니면 일반 해결로 spice 1만. | Graft 카드. |
+| Shadout Mapes | Agent box 없음. Reveal choice `MAY_DEPLOY_OR_RETREAT_ONE_TROOP`: `deploy_reveal_card_troop`(`add_units_to_reveal`)·`retreat_reveal_card_troop`(`retreat_units`, 전투력 차이를 Reveal frame `strength`에 반영)·거절. | 배치는 Combat 아이콘 없이 카드 효과로 한다. |
+| Tleilaxu Master | `MAY_ACQUIRE_CARD_UP_TO_SIX_IF_ONE_MARKER`: 획득 provider(`legal_agent_card_acquisitions`)가 marker 1 이상일 때 `acquire_reserve_by_card`/`acquire_imperium_by_card`(비용 6 이하, `acquirable_*` 헬퍼)·거절을 연다. marker 2 이상이면 hand로(`hand_public`). box를 먼저 닫고(`advance_after_effect`) `acquire_*_for_intrigue`로 획득해 Spy·Contract·Research 후속 frame이 turn 위에 쌓인다. Reveal Research ×2. | (1M)/(2M) 모두 해결 시점 판정(OQ-028). |
+| Tleilaxu Surgeon | `MAY_PAY_TWO_SPECIMENS_FOR_TWO_TLEILAXU`: `pay_agent_card_two_specimens`/거절 → `advance_tleilaxu` 2칸. Reveal choice `MAY_LOSE_TWO_TROOPS_FOR_TWO_SPECIMENS`: `lose_reveal_troops_for_specimens(zone)`/거절 → `lose_unit` ×2, 전투력 차이 반영, specimen 2. | OQ-053(한 존에서 2개, Commander 제외). |
+
+부수 수정(소크 heuristic seed 11이 적발): 획득한 카드의 Research 획득 box(Spiritual Fervor)가 여는 `RESEARCH_ADVANCE` frame이 (1) Intrigue 획득 slot의 choice frame을 묻어 `RuntimeError`, (2) Price is No Object의 `advance_after_effect`가 frame을 덮어쓰고, (3) Leader Signet 획득도 같은 구조였다. `intrigue.py`의 `_lift_pushed_frames`/`_restack`이 slot 처리 뒤 밀어 올린 frame을 다시 얹고(late reveal이 아래에 끼워 넣는 frame은 그대로), 나머지 두 경로는 box를 먼저 닫은 뒤 획득한다.
+
 ## 미완 경계
 
-- 슬라이스 5b-2: Imperium 8종 — Dissecting Kit(GRAFT: 상대 trash → specimen), For Humanity(BG Alliance: Influence 잃기 → VP), High Priority Travel(Guild 2: draw 또는 Combat 아이콘), Imperium Ceremony(Intrigue 2장 보고 1장 keep), Interstellar Conspiracy(spice + Emperor/Guild 상대면 Influence 선택), Shadout Mapes(Reveal: troop 배치/후퇴), Tleilaxu Master((1M) 6 이하 카드 획득, (2M) hand로), Tleilaxu Surgeon(specimen 2 → Tleilaxu 2; Reveal: troop 2 잃기 → specimen 2).
 - 슬라이스 5c: Tleilaxu 9(Beguiling Pheromones, Chairdog, Ghola, Guild Impersonator, Industrial Espionage, Scientific Breakthrough, Slig Farmer, Stitched Horror, Usurp) + Piter; Ghola의 box 복사(활성 카드의 `agent_effect` 읽기 41곳을 접근자로 모아야 한다), Usurp의 Imperium Row 상대(turn 끝 trash), Chairdog의 Reveal 시작 반환.
 - 슬라이스 6: UI 표시(board·token·specimen·Row·Graft 프롬프트).
 - 공식 문서가 침묵하는 판정 가운데 아직 등록하지 않은 것: "lose a troop"의 출처 존 선택(카드 슬라이스에서).

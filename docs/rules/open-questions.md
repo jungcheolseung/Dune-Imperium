@@ -441,3 +441,16 @@
 - 필요한 답: 제거한 카드의 행선지.
 - 확정(2026-09-08, project convention — 공식 규칙이 아니다): 제거한 카드는 게임에서 빠진다(`imperium_removed`, Reveal의 Imperium Row 정리와 같은 공개 존). "remove"가 deck 재투입을 뜻했다면 룰북이 그렇게 적었을 것이고, 원본 Dune: Imperium의 다른 Row 제거 효과와도 일관된다. deck이 5장 미만이면 남은 만큼만 새 Row를 만든다(OQ-004의 고갈 판정). 구현: `rules/immortality.py`의 `apply_family_atomics`.
 
+## OQ-052 — Imperium Ceremony: Intrigue deck이 두 장 미만일 때의 peek
+
+- 상태: `DECIDED`
+- Imperium Ceremony의 Agent box는 "Intrigue deck 맨 위 두 장을 보고 한 장을 keep, 나머지는 맨 위로"라고만 한다 `[card face]`. deck에 한 장뿐이거나 비었을 때 discard를 섞어 두 장을 채우는지, 있는 만큼만 보는지 말하지 않는다.
+- 필요한 답: 두 장 미만일 때의 처리.
+- 확정(2026-09-08, project convention — 공식 규칙이 아니다): 두 장이 face down으로 있을 때만 peek 선택(`INTRIGUE_PEEK` frame)이 열린다. 그보다 적으면 box는 보통의 Intrigue draw 1장으로 처리한다(deck이 비면 draw 규칙대로 discard를 섞고 `[Main p. 7]`, 한 장뿐이면 그 한 장). 섞인 뒤의 deck을 들여다보는 효과로 확장하지 않기 위해서다. 구현: `rules/intrigue_peek.py`의 `begin_intrigue_peek`. peek한 두 장은 소유자만 보는 비공개 정보로 관측(`PrivatePlayerView.peeked_intrigue_ids`, v14)·determinize·invariant에서 deck 맨 위 자리를 유지한다.
+
+## OQ-053 — Tleilaxu Surgeon: "Lose two troops"의 출처 존
+
+- 상태: `DECIDED`
+- Tleilaxu Surgeon의 Reveal box "troop 두 개를 잃기 ▶ specimen 2"는 `[card face]` 잃는 troop을 garrison에서 내는지 Conflict에서 내는지, 섞어 낼 수 있는지 말하지 않는다. Intrigue의 "lose a troop"은 OQ-038에서 소유자가 존을 고르는 것으로 확정돼 있다.
+- 필요한 답: 두 troop의 존과 혼합 허용 여부.
+- 확정(2026-09-08, project convention — 공식 규칙이 아니다): OQ-038과 같이 소유자가 존을 고르되, 두 troop은 같은 존(garrison 또는 Conflict)에서 낸다(`lose_reveal_troops_for_specimens(zone)`). 한 존에 두 개가 없으면 선택이 열리지 않는다. Sardaukar Commander는 이 비용에 쓰지 않는다(Commander는 troop 12개 불변식 밖의 유닛이고, specimen은 troop 공급에서만 나온다 `[Immortality p. 8]`). Conflict에서 잃으면 전투력이 그만큼 줄고(`retreat_units`의 규칙), 잃은 troop이 supply로 돌아간 뒤 specimen 2개가 supply에서 tank로 간다(supply 부족은 OQ-049). 구현: `rules/reveal_turn.py`의 `apply_reveal_troop_sacrifice`.
