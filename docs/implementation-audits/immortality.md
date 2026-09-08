@@ -1,6 +1,6 @@
 # Immortality implementation audit
 
-기준일: 2026-09-08 — 슬라이스 1(출처·명세·옵션 골격·카탈로그), 슬라이스 2(Bene Tleilax board·specimen·Research Station·Experimentation·Family Atomics), 슬라이스 3(Tleilaxu Row·Reclaimed Forces·첫 카드 3장) 완료.
+기준일: 2026-09-08 — 슬라이스 1(출처·명세·옵션 골격·카탈로그), 슬라이스 2(Bene Tleilax board·specimen·Research Station·Experimentation·Family Atomics), 슬라이스 3(Tleilaxu Row·Reclaimed Forces·첫 카드 3장), 슬라이스 4(Graft와 Graft 카드 8장) 완료.
 
 규범 근거는 [`rules/immortality.md`](../rules/immortality.md)이며, 콘텐츠 정의는 `content/immortality/board.py`(research·Tleilaxu track), `content/immortality/tleilaxu.py`(Tleilaxu deck·Reclaimed Forces), `content/uprising/imperium.py`·`intrigue.py`의 `immortality_only` 항목이 소유한다. 모든 동작은 `RulesetConfig(immortality=True)`에서만 켜진다.
 
@@ -126,7 +126,18 @@ Spice Trade 아이콘. Agent: Research. Reveal: ◆1 specimen 1. 카드 이름 �
 | 카드 | Contaminator(Fremen, `ADVANCE_TLEILAXU`), From the Tanks(`RECRUIT_TWO_TROOPS`), Subject X-137(`ADVANCE_TLEILAXU_IF_ONE_MARKER`, 해결 시점 판정 OQ-028; 획득 box Tleilaxu). Graft 카드는 슬라이스 4 전까지 덱 밖. | 카드면 전사표와 일치. |
 | codec | `immortality` 카탈로그에 `acquire_tleilaxu` ×2/카드, `acquire_reclaimed_forces` ×2, Tleilaxu 카드의 Agent 배치 템플릿, trash 계열 템플릿의 Tleilaxu instance; Bloodlines 없이도 `optional_trash` 템플릿(trash+specimen 칸). | codec v96 그대로(옵션 카탈로그만 커짐: 4,490→4,578). |
 
+## 슬라이스 4: Graft
+
+| 영역 | 구현 | 규칙 민감 메모 |
+| --- | --- | --- |
+| 배치 | `legal_agent_actions`: Graft 카드(`ImperiumCardEntry.graft`)는 `graft=True` 변형만, 일반 카드는 단독과 (hand에 Graft 상대가 있으면) graft 변형. 아이콘은 첫 카드 기준(`effective_agent_icons(grafted=)`; Blank Slate는 진영 4개 추가). 상대 Agent가 점유한 space는 hand에 Tleilaxu Infiltrator가 있을 때 graft 배치로 열린다. | `[Immortality p. 10]` "You may use an Agent icon from either card": 아이콘을 내는 카드를 첫 카드로 두면 어떤 쌍이든 표현된다. |
+| 상대 선택 | `apply_agent_action(graft)`가 효과 frame 위에 `graft_partner` frame을 밀고, `choose_graft_partner(card_id)`는 hand의 카드 중 (첫 카드 또는 후보가 Graft) 조건을 만족하는 것만; 점유 space였으면 둘 중 하나가 Infiltrator여야 한다. 상대는 hand→in play, 효과 frame의 `graft_card_id`·`graft_pending_effect`·`graft_pending_icons`에 자기 box가 대기한다(`agent_effect_is_available`로 판정). | 두 카드 모두 "보낸" 것: Bond·"in play" 판정은 in_play로 자연 성립. |
+| 해결 | `switch_graft_card`(효과 frame, 상대 box가 대기 중이고 Long Live 선택 중이 아닐 때)가 `card_id`↔`graft_card_id`와 pending 플래그·아이콘을 맞바꿔 기존 Agent box 기계로 해결한다. `agent_turn_has_other_pending_effects`가 `graft_pending_effect`를 본다. `expire_trashed_card_effects`는 상대 카드의 미발동 box도 만료한다(FAQ의 Beguiling Pheromones 판정). | `[Immortality pp. 10-11]` `[FAQ p. 1]`. `is_grafted`/`other_grafted_card_id`(`rules/effects.py`). |
+| 카드 | Face Dancer(GRAFT draw 1), Face Dancer Initiate(빈 box), Planned Coupling(Imperium, GRAFT draw 1), Bene Tleilax Researcher(Imperium, GRAFT Research; Reveal (1M)+1·(2M)+1 Persuasion → `minimum_genetic_markers`), Corrino Genes(`ADVANCE_TLEILAXU_IF_GRAFTED`), Unnatural Reflexes(`DRAW_TWO_IF_ONE_MARKER`), Tleilaxu Infiltrator(`DRAW_ONE_AND_INTRIGUE_IF_TWO_MARKERS`: cards·intrigue 아이콘, Intrigue는 해결 시점에 marker 2 판정), Twisted Mentat(`MAY_RECALL_AGENT_SENT_THIS_TURN`: recall 아이콘을 이번 turn의 space로 한정 + `decline_agent_card_recall`). | 조건은 해결 시점 판정(OQ-028). |
+| codec | `immortality` 카탈로그: 모든 카드의 배치 템플릿에 `graft` 변형(Graft 카드는 graft만), `choose_graft_partner` ×개인 카드, `switch_graft_card`, `decline_agent_card_recall`. 기본 카탈로그 불변(4,367). | 4,578→6,857. |
+
 ## 미완 경계
 
-- 슬라이스 4 이후: Graft, 카드 play data(Tleilaxu 15 + Piter, Imperium 25, Intrigue 11), Harvest Cells의 Combat 중 Tleilaxu 획득, UI 표시(board·token·specimen·Row).
+- 슬라이스 5: 남은 카드 play data — Tleilaxu 7(Beguiling Pheromones, Chairdog, Ghola, Guild Impersonator, Industrial Espionage, Scientific Breakthrough, Slig Farmer, Stitched Horror, Usurp) + Piter, Imperium 23, Intrigue 11; Harvest Cells의 Combat 중 Tleilaxu 획득; Ghola의 box 복사(활성 카드의 `agent_effect` 읽기 41곳을 접근자로 모아야 한다), Usurp의 Imperium Row 상대(turn 끝 trash), Chairdog의 Reveal 시작 반환.
+- 슬라이스 6: UI 표시(board·token·specimen·Row·Graft 프롬프트).
 - 공식 문서가 침묵하는 판정 가운데 아직 등록하지 않은 것: "lose a troop"의 출처 존 선택(카드 슬라이스에서).
