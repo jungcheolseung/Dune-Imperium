@@ -2,7 +2,7 @@
 
 ## 규칙 권위
 
-현재 규칙 명세는 다음 공식 자료만을 규칙 근거로 사용한다. 앞의 세 문서가 4인 Uprising 기본 룰셋의 근거이고, Bloodlines 룰북은 2026-09-07에 추가된 `bloodlines`·`tech_module` 옵션의 근거다.
+현재 규칙 명세는 다음 공식 자료만을 규칙 근거로 사용한다. 앞의 세 문서가 4인 Uprising 기본 룰셋의 근거이고, Bloodlines 룰북은 2026-09-07에 추가된 `bloodlines`·`tech_module` 옵션의, Immortality 룰북은 2026-09-08에 추가된 `immortality` 옵션의 근거다.
 
 | 식별자 | 공식 자료 | 확인한 버전 | 현재 범위 |
 | --- | --- | --- | --- |
@@ -10,6 +10,7 @@
 | `Board Guide` | [Uprising Rules Supplements](https://d19y2ttatozxjp.cloudfront.net/pdfs/DUNE_IMPERIUM_UPRISING_Rules_Supplements_23-10-12.pdf) | 공식 asset 이름 `23-10-12`, 14쪽 | pp. 1-2 |
 | `FAQ` | [Errata and Frequently Asked Questions](https://d19y2ttatozxjp.cloudfront.net/pdfs/DUNE_IMPERIUM_FAQ_25-1-13.pdf) | 문서 표기 `Last Updated January 13, 2025`, 4쪽 | 4인 Uprising에 적용되는 항목 |
 | `Bloodlines` | [Bloodlines Rulebook](https://d19y2ttatozxjp.cloudfront.net/pdfs/DUNE_IMPERIUM_BLOODLINES_Rulebook.pdf) | 공식 asset 이름에 날짜 없음, © 2024, 12쪽 | `bloodlines`/`tech_module` 옵션의 규범 규칙 pp. 2-7, 12; 범위 밖 pp. 8-10 |
+| `Immortality` | [Immortality Rulebook](https://d19y2ttatozxjp.cloudfront.net/pdfs/DUNE_IMPERIUM_IMMORTALITY_Rulebook.pdf) | 공식 asset 이름에 날짜 없음, © 2022, 16쪽 | `immortality` 옵션의 규범 규칙 pp. 3-12, 14, 16; 범위 밖 p. 13 |
 
 공식 진입점은 [Dire Wolf Digital 리소스 페이지](https://www.direwolfdigital.com/dune-imperium/resources/)와
 [Uprising 룰북 페이지](https://www.direwolfdigital.com/dune-imperium/resources/diu_rules)다.
@@ -25,6 +26,7 @@
 | `Board Guide` | `454ea3ef442f0622f4bf5b83b8368b24e34aaf4f0dc0f02d93dfba66e690c075` |
 | `FAQ` | `7b54c283357244e5107d1d0f4e87817d39297e914c2014239acbb2c460c0c6b9` |
 | `Bloodlines` | `5f0b4646ab59f467a1027b95e2b6f67809c77c224d98ddab26dd661d7e2b042a` |
+| `Immortality` | `2a7ba3b8129bc108a82c3b2677d7ce27ffc64be88532b691f55836bf48666a79` |
 
 같은 URL과 checksum은 자동 검증 도구가 읽는
 [`scripts/official-rule-sources.json`](../../scripts/official-rule-sources.json)에
@@ -44,6 +46,19 @@ clarification(p. 12)만 [bloodlines.md](bloodlines.md)에 반영하며, Rivals(p
 6인(p. 10), 원본 Dune: Imperium·Rise of Ix 조합 규칙은 범위 밖이다. 2025-01-13
 FAQ에는 Bloodlines 항목이 없다. Skill tile, Tech tile, 카드의 인쇄 텍스트는
 프로모 카드와 같이 카드면(`SourceDocument.CARD_FACE`)을 근거로 전사한다.
+
+### Immortality 룰북
+
+Immortality 룰북은 공식 리소스 페이지의 "Immortality Rules" 링크(위 URL)에서
+2026-09-08에 받아 위 checksum을 고정했다. Uprising Main Rulebook p. 18의 "Adding
+Immortality"가 Uprising과의 조합을 공식 지원하므로(Research Station overlay만
+지시) 4인 게임에 적용되는 규칙(pp. 3-12)과 clarification(p. 14), 아이콘 정의
+(p. 16)를 [immortality.md](immortality.md)에 반영하며, 솔로 규칙(p. 13)과
+Rise of Ix 조합 변형(p. 12)은 범위 밖이다. 2025-01-13 FAQ의 Immortality 항목
+(Beguiling Pheromones, Chairdog, Ghola, Tleilaxu track)은 적용한다. Bene
+Tleilax board의 research·Tleilaxu track은 룰북에 실린 공식 board 그림
+(`[Immortality p. 3 board artwork]`)에서 전사했고, 카드의 인쇄 텍스트는 카드면
+(`SourceDocument.CARD_FACE`)을 근거로 전사한다.
 
 ### 프로모 카드의 출처
 
@@ -83,7 +98,8 @@ Sardaukar Commander를 읽는 Agent box 때문에 `promo_cards`와 `bloodlines`
 - FAQ는 모든 제품을 다루므로 일반 규칙 또는 현재 Uprising 구성물에 적용되는
   항목만 규범 규칙으로 반영한다. 다른 제품의 리더·카드·Tech·Rivals 판정은
   현재 룰셋에 끌어오지 않는다.
-- Main p. 18의 Rise of Ix, Immortality, 원본 Dune: Imperium 혼합 규칙은 현재
+- Main p. 18의 혼합 규칙 가운데 Immortality 조합(Research Station overlay)은
+  `immortality` 옵션으로 포함하고, Rise of Ix와 원본 Dune: Imperium 혼합은 현재
   구현 범위 밖이다.
 - Main의 전략 조언과 세계관 설명은 규칙이 아니므로 명세에서 제외한다.
 

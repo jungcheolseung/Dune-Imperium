@@ -295,7 +295,7 @@ FAQ의 `See ...` 항목은 새 규칙이 없더라도 연결 대상의 coverage�
 | timing 미지정 `Tech tiles`는 자기 turn에 사용 `[FAQ p. 4]` | `out of scope` | Tech tile을 쓰는 확장 조합 제외 |
 | `Test of Humanity`의 discard 참조 `[FAQ p. 4]` | `deferred to content manifest` | 일반 discard는 [player-turns.md](player-turns.md); card 소속과 효과 연결은 content manifest |
 | `tiebreaker`의 Endgame 참조 `[FAQ p. 4]` | `covered` | [combat-and-round-end.md](combat-and-round-end.md) |
-| `Tleilaxu track`은 Faction이 아님 `[FAQ p. 4]` | `out of scope` | Immortality track 제외 |
+| `Tleilaxu track`은 Faction이 아님 `[FAQ p. 4]` | `covered` | [immortality.md](immortality.md) 3절(`immortality` 옵션) |
 | `To the Victor…`의 Intrigue timing 참조 `[FAQ p. 4]` | `deferred to content manifest` | card 데이터와 `official-rulings-index.md`; 일반 timing은 [player-turns.md](player-turns.md) |
 | `troops`는 supply에서 recruit, garrison 재모집 금지, 그 turn의 모든 recruit 출처 deploy 가능 `[FAQ p. 4]` | `covered` | [player-turns.md](player-turns.md), [uprising-systems.md](uprising-systems.md) |
 | Score track을 넘어 12 VP 초과 가능 `[FAQ p. 4]` | `covered` | [setup-and-game-flow.md](setup-and-game-flow.md) |
@@ -322,3 +322,31 @@ FAQ의 `See ...` 항목은 새 규칙이 없더라도 연결 대상의 coverage�
 | `[Bloodlines p. 12]` | Chani·Fenring·Esmar Tuek·Steersman Y'rkoon clarification, Forbidden Weapons·Ornithopter Fleet | `covered` | [bloodlines.md](bloodlines.md) 5·6절; Leader는 [implementation-audits/leaders.md](../implementation-audits/leaders.md), tile 2종은 `rules/tech.py`·`rules/ornithopter.py`·`rules/effect_interpreter.py` |
 | `[Tech tile faces]` | Tech tile 18장의 비용·획득 효과·능력 | `deferred to content manifest` | [bloodlines.md](bloodlines.md) 5절 표, `content/bloodlines/tech.py`; 공식 문서가 침묵하는 세부는 OQ-040~044 |
 | `[Bloodlines p. 6]` | Kota Odax of Ix를 Leader로 고를 수 있음(Tech Module 전용) | `covered` | `content/uprising/leaders.py` `tech_only`, [implementation-audits/leaders.md](../implementation-audits/leaders.md) |
+
+## Immortality Rulebook
+
+`[Immortality p. N]`은 PDF 페이지다. `immortality` 옵션에만 적용된다. Uprising과의 조합은 `[Main p. 18]`("Adding Immortality": Research Station overlay)이 승인한다.
+
+| 출처 | 규칙 주제 | 상태 | 반영 위치 또는 처리 |
+| --- | --- | --- | --- |
+| `[Main p. 18]` | Uprising에 Immortality를 더할 때 Research Station overlay 사용 | `covered` | [immortality.md](immortality.md) 6절 |
+| `[Immortality p. 2]` | 세계관 설명 | `out of scope` | 규칙이 아님 |
+| `[Immortality p. 3]` | 구성물 수량, 플레이어 구성물, 솔로 전용 House Hagal | `covered` | [immortality.md](immortality.md) 1절 |
+| `[Immortality p. 3 board artwork]` | Bene Tleilax board의 research track 칸·보너스·genetic marker 열, Tleilaxu track 보너스 | `covered` | [immortality.md](immortality.md) 3절, `content/immortality/board.py` |
+| `[Immortality pp. 4-5]` | setup: Imperium 30장, board와 spice 2, token 2개, Tleilaxu Row(Reclaimed Forces + 2장), overlay, Family Atomics, Experimentation 교체, Intrigue 15장 | `covered` | [immortality.md](immortality.md) 2절 |
+| `[Immortality p. 6]` | research track 전진 규칙, 보너스 즉시 획득, genetic marker의 카드 효과 활성화, 첫 marker의 deck 맨 위 배치, 두 번째 marker의 draw 대체 | `covered` | [immortality.md](immortality.md) 3절 |
+| `[Immortality p. 7]` | Tleilaxu track 전진과 보너스, VP 칸의 첫 도달 spice 2 | `covered` | [immortality.md](immortality.md) 3절 |
+| `[Immortality p. 8]` | Tleilaxu 카드의 획득·play, specimen 생성·지출·자유 반환 | `covered` | [immortality.md](immortality.md) 3·4절 |
+| `[Immortality p. 9]` | Tleilaxu Row 2장 + Reclaimed Forces 유지·보충, Reclaimed Forces의 선택 효과, Imperium Row·Persuasion 효과로 획득 불가 | `covered` | [immortality.md](immortality.md) 4절 |
+| `[Immortality pp. 10-11]` | Graft: 두 장 play, 아이콘 선택, 두 카드 모두 "보낸" 것, 효과 자유 순서, Reveal 사용, "if grafted"·"the other grafted card" | `covered` | [immortality.md](immortality.md) 5절 |
+| `[Immortality p. 12]` | Family Atomics | `covered` | [immortality.md](immortality.md) 7절 |
+| `[Immortality p. 12]` | Rise of Ix Epic Game Mode 조합, Go to 11 변형 | `out of scope` | 현재 룰셋에서 제외 |
+| `[Immortality p. 13]` | 솔로 Rivals 규칙과 House Hagal 카드 | `out of scope` | 현재 룰셋에서 제외 |
+| `[Immortality p. 14]` | Clandestine Meeting·Ghola·Usurp clarification | `covered` | [immortality.md](immortality.md) 5절 |
+| `[Immortality p. 14]` | Dispatch an Envoy·Ilesa Ecaz·Kwisatz Haderach·Spaceport(원본·Rise of Ix 카드) | `out of scope` | 해당 카드가 현재 룰셋에 없음 |
+| `[Immortality p. 15]` | 크레딧 | `out of scope` | 규칙이 아님 |
+| `[Immortality p. 16]` | 아이콘 정의(Combat, Genetic markers, Immortality, Research, Specimen, Tleilaxu, Trash an Intrigue card), 개정 Research Station | `covered` | [immortality.md](immortality.md) 3·6절 |
+| `[FAQ pp. 1-2]` | Beguiling Pheromones, Chairdog, Ghola | `covered` | [immortality.md](immortality.md) 5절 |
+| `[FAQ p. 4]` | Tleilaxu track은 Faction이 아님 | `covered` | [immortality.md](immortality.md) 3절 |
+| `[Tleilaxu card faces]` `[card face]` | Tleilaxu 18장, Reclaimed Forces, Imperium 25종, Intrigue 11종, Experimentation, 프로모 Piter의 인쇄 텍스트 | `deferred to content manifest` | [implementation-audits/immortality.md](../implementation-audits/immortality.md) |
+
