@@ -1,6 +1,6 @@
 # Immortality implementation audit
 
-기준일: 2026-09-08 — 슬라이스 1(출처·명세·옵션 골격·카탈로그), 슬라이스 2(Bene Tleilax board·specimen·Research Station·Experimentation·Family Atomics), 슬라이스 3(Tleilaxu Row·Reclaimed Forces·첫 카드 3장), 슬라이스 4(Graft와 Graft 카드 8장), 슬라이스 5a(Intrigue 11장), 슬라이스 5b-1(Imperium 15종), 슬라이스 5b-2(Imperium 8종 — Imperium 25종 전부), 슬라이스 5c-1(Tleilaxu 6종 + 프로모 Piter), 슬라이스 5c-2(Ghola·Chairdog·Usurp — 카드 play data 전부), 슬라이스 6(UI·대규모 소크·census) 완료 — **M13 마감**.
+기준일: 2026-09-08 — 슬라이스 1(출처·명세·옵션 골격·카탈로그), 슬라이스 2(Bene Tleilax board·specimen·Research Station·Experimentation·Family Atomics), 슬라이스 3(Tleilaxu Row·Reclaimed Forces·첫 카드 3장), 슬라이스 4(Graft와 Graft 카드 8장), 슬라이스 5a(Intrigue 11장), 슬라이스 5b-1(Imperium 15종), 슬라이스 5b-2(Imperium 8종 — Imperium 25종 전부), 슬라이스 5c-1(Tleilaxu 6종 + 프로모 Piter), 슬라이스 5c-2(Ghola·Chairdog·Usurp — 카드 play data 전부), 슬라이스 6(UI·대규모 소크·census) 완료 — **M13 마감**. 2026-09-09에 baseline agent의 Immortality 가치를 더했다(아래 절).
 
 규범 근거는 [`rules/immortality.md`](../rules/immortality.md)이며, 콘텐츠 정의는 `content/immortality/board.py`(research·Tleilaxu track), `content/immortality/tleilaxu.py`(Tleilaxu deck·Reclaimed Forces), `content/uprising/imperium.py`·`intrigue.py`의 `immortality_only` 항목이 소유한다. 모든 동작은 `RulesetConfig(immortality=True)`에서만 켜진다.
 
@@ -206,6 +206,22 @@ heuristic: 활성 box가 decline만 제공할 때 `switch_graft_card`를 decline
 
 첫 소크가 적발한 결함(`37fa1b7`): (1) 두 번째 marker 뒤 Research ×2의 draw가 빈 deck에서 discard 셔플 chance frame을 두 번 밀어 같은 카드가 두 존에 — `draw_or_request_personal_cards`가 같은 좌석의 대기 중인 셔플에 합류; (2) Usurp를 Infiltrator 약속으로 점유된 space에 놓았는데 Infiltrator가 그 space에 닿지 않아 상대 선택이 비는 교착 — 배치 시점에 따라올 수 있는 상대가 있는 space만 제공; (3) Ghola가 CHOAM Demands를 복사한 두 box에서 heuristic이 `switch_graft_card`(0.2)를 `complete_contract_by_card`(0.0)보다 골라 무한 반복 — 해결 가능한 box 행동이 있으면 switch를 최하위로.
 
+## baseline agent의 Immortality 가치 (2026-09-09)
+
+heuristic은 Tleilaxu 카드를 전부 2.5, research 분기를 전부 3.0으로 매기는 고정 prior였고 rollout의 `player_value`에는 Immortality 항이 아예 없었다. 두 baseline에 같은 축척으로 넣었다.
+
+| 대상 | 채점 | 근거 |
+| --- | --- | --- |
+| `acquire_tleilaxu` | 기본 2.5 + 인쇄된 specimen 비용 + `_TLEILAXU_BONUSES` + deck-top 0.5 | Imperium 획득과 같은 구조("Tleilaxu cards ... cost specimens to acquire rather than persuasion" `[Immortality p. 8]`). 보너스는 획득 box가 즉시 값을 치르거나 득점하는 5종(Subject X-137 1.0, Scientific Breakthrough 1.0, Corrino Genes 0.5, Twisted Mentat 0.5, Usurp 0.5). deck-top은 첫 genetic marker가 여는 무료 상향 `[Immortality p. 6]` |
+| `choose_research_space` | 기본 3.0 + 도착 칸의 인쇄 보너스(`_RESEARCH_BONUS_SCORES`) | Research 2.0이 최고 — "triggering another research icon and immediately advancing her token again" `[Immortality p. 6]`. 나머지는 `player_value`의 자산 계수(Influence 1.5, specimen·Tleilaxu 0.5, spice 0.4, Solari 0.25)에 맞춤 |
+| `acquire_reclaimed_forces` | troops 0.7 / tleilaxu 0.5 | 같은 specimen 3의 두 선택 `[Immortality p. 9]`; garrison troop 2개(0.6×2)가 track 한 칸(0.5)보다 크다 |
+| `player_value` | specimen 0.5, research 열 0.4, Tleilaxu 칸 0.5, Family Atomics 0.3 | specimen은 Axolotl tanks에 있는 supply troop이고 `[Immortality p. 8]` supply의 troop은 0점이므로 순증가다. 두 track은 영구 진행(Tleilaxu track은 칸 4·7에서 VP) |
+
+A/B(변경 전 스냅샷을 별도 baseline으로 등록해 같은 seed·좌석 회전으로 대전, `--immortality --rotate-leaders`, 400 seed × 4 회전 = 1,599 매치, 2:2 미러): 새 가중치 승률 27.9%·평균 순위 2.403·평균 VP 7.20, 스냅샷 22.1%·2.597·6.92. 미러의 기준선 25% 대비 +2.9%p이고 독립 seed 블록 4개 전부에서 평균 순위가 개선됐다.
+
+같은 A/B가 엔진 교착 1건을 적발했다(seed 78): Ghola가 Steersman의 "draw 1 + recall" box를 복사하면 첫 box의 recall이 이번 turn의 유일한 Agent를 되돌린 뒤 복사본의 recall 아이콘에 대상이 없어지는데, 불발 판정이 아이콘이 남은 box를 즉시 "불발 아님"으로 처리해 `finish_agent_turn`이 제시되지 않았다. OQ-057 (1)의 확정 판정("의무 box는 turn 종료까지 보류되고 그때 불발")을 아이콘 box에도 적용하도록 고쳤다(`_pending_icons_offer_nothing`, `fizzle_pending_agent_icons`; 회귀 테스트는 `tests/unit/rules/test_immortality_tleilaxu_cards.py`).
+
 ## 미완 경계
 
-- 카드 play data·UI(스캔 오버레이 포함)·소크·census는 끝났다. 남은 것은 콘텐츠 밖의 후속: heuristic의 Immortality 가치(Tleilaxu 카드 구매·research 방향은 고정 prior뿐)와 rollout 가중치 조정, 학습(M10) 재개 시 관측 v15 체크포인트 새로 시작.
+- 카드 play data·UI(스캔 오버레이 포함)·소크·census는 끝났고, 2026-09-09에 heuristic·rollout의 Immortality 가치도 넣었다(위 절). 남은 것은 학습(M10) 재개 시 관측 v18 체크포인트 새로 시작.
+- `choose_research_influence`(c6r6의 "Influence 1 선택")는 여전히 네 진영이 같은 점수다. `score_action`은 상태를 보지 않으므로 어느 진영이 Alliance·VP에 가까운지 알 수 없다 — 진영 선택의 차등은 rollout·학습 정책의 몫으로 남긴다.
