@@ -257,6 +257,33 @@ def test_into_the_fray_sends_the_agent_to_fight() -> None:
 
 
 
+
+def test_into_the_fray_is_not_offered_once_the_agent_has_left_its_space() -> None:
+    # Ghola's copy of the Signet box (or any second look at it) after the
+    # Agent already deployed has nothing to move (heuristic soak seed 5006).
+    owner = PlayerState(player_id=0, leader_id="duncan_idaho", hand=(SIGNET,))
+    state = _play(_turn_state(owner), SIGNET, "arrakeen")
+    deploy = next(
+        action
+        for action in legal_leader_signet_actions(state, 0)
+        if action.action_id == "deploy_leader_agent"
+    )
+    fighting = apply_leader_agent_deploy(state, deploy).state
+    assert fighting.players[0].agent_in_conflict == 1
+    frame = fighting.decision_stack[-1]
+    context = dict(frame.context)
+    context["pending_agent_effect"] = True
+    reopened = replace(
+        fighting,
+        decision_stack=(
+            *fighting.decision_stack[:-1],
+            replace(frame, context=tuple(sorted(context.items()))),
+        ),
+    )
+    assert [a.action_id for a in legal_leader_signet_actions(reopened, 0)] == [
+        "decline_leader_signet_payment"
+    ]
+
 def test_imperial_privilege_may_recall_the_into_the_fray_agent() -> None:
     # Designer ruling (Message from designer, designer-rulings-audit.md): the
     # Agent Duncan sent into the Conflict is still one of his Agents, so a

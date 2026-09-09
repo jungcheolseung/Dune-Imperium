@@ -62,7 +62,7 @@ from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.rules.agent_effects import AUTOMATIC_AGENT_ICONS
 from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 
-ACTION_CODEC_VERSION = 101
+ACTION_CODEC_VERSION = 102
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -755,7 +755,12 @@ def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     twisted = twisted_intrigue_instance_ids()
     all_intrigue = (
         *intrigue_deck_instance_ids(
-            config.choam_module, bloodlines=True, tech_module=config.tech_module
+            config.choam_module,
+            bloodlines=True,
+            tech_module=config.tech_module,
+            # Immortality Intrigue can be given or trashed too (soak seed
+            # 5038 found Gruesome Sacrifice missing from give_intrigue_card).
+            immortality=config.immortality,
         ),
         *twisted,
     )

@@ -832,13 +832,18 @@ def legal_leader_signet_actions(
 
     if owner.leader_id == "duncan_idaho":
         # Into the Fray: the Agent sent this turn may join the Conflict
-        # [Duncan Idaho card].
+        # [Duncan Idaho card]. Once it has left its space (Ghola's copy of
+        # the Signet box after the original already deployed it; soak seed
+        # 5006) there is nothing to deploy.
+        space_id = context.get("space_id")
         return (
             DomainAction(action_id="decline_leader_signet_payment", actor=player),
             *(
                 (DomainAction(action_id="deploy_leader_agent", actor=player),)
                 if state.current_conflict_ids
                 and not units_deployment_blocked(state, player)
+                and isinstance(space_id, str)
+                and space_id in owner.agent_locations
                 else ()
             ),
         )
