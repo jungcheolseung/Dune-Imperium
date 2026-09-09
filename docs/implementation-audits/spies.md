@@ -25,9 +25,14 @@ truth for the transition code.
 | Reveal placement alternative | Undercover Asset chooses between placing one Spy and gaining two strength. | Before a Spy is recalled, either branch remains available. Recalling for an empty supply commits to placement so the recall cannot be taken before switching to strength. |
 | Spied Factions | Guild Spy treats a Faction as spied on when one of its owner's Observation Posts is connected to a space of that Faction. | Acquiring The Spice Must Flow during that Reveal gains one Influence for each distinct matching Faction; multiple posts connected to the same Faction do not duplicate it. |
 
-## Deferred Spy systems
+## Spy boundaries
 
-- General `Recall Spy` icons and remaining card-specific Spy effects.
+- (2026-09-10) No Spy effect is left untranscribed. The current content prints
+  no standalone "Recall Spy" Agent icon — `AgentIcon` carries the seven board
+  icons plus `SPY` — and every card-specific recall is its own effect member
+  (`RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED`,
+  `MAY_RECALL_SPY_FOR_THREE_STRENGTH`, and the turn-scoped recall flags above).
+  A future expansion that prints a standalone recall icon would need one.
 - The multiple-opponent Infiltrate interpretation (OQ-006) and the Gather
   Intelligence/contract ordering (OQ-011) are now decided project rulings in
   `docs/rules/open-questions.md`; they reopen only if an official ruling

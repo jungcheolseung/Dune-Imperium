@@ -128,9 +128,9 @@ audited card by card in [bloodlines.md](bloodlines.md); their catalog entries
 live beside the Uprising cards in `content/uprising/imperium.py` with
 `bloodlines_only=True` and join the deck only once transcribed.
 
-## Deferred boundaries
+## Boundaries
 
-- Signet Ring resolves through per-Leader ability data (`rules/leader_abilities.py`, [leaders.md](leaders.md)); seats whose Leader is not implemented yet still have their Signet Ring placements withheld.
+- Signet Ring resolves through per-Leader ability data (`rules/leader_abilities.py`, [leaders.md](leaders.md)). (2026-09-10) Every Leader in the catalog is implemented — all 18 ids are in `IMPLEMENTED_ABILITY_LEADER_IDS` — so `leader_signet_is_implemented` withholds nothing today and remains a tripwire for future Leaders.
 - Every Reveal choice used by the fifty-seven transcribed shared cards (54
   retail + 3 Uprising promo) has a serial or atomic decision path.
 - Acquisition bonuses without a local typed effect remain unavailable.
