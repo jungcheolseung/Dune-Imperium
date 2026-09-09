@@ -182,5 +182,5 @@ pyrightconfig.json
 # Trained policy checkpoints and training logs (14-40MB files; kept out of git)
 checkpoints/
 
-# Claude Code preview server config (machine- and session-local paths)
-/.claude/launch.json
+# Local play-server save files written by .claude/launch.json's ui-server
+/saves/

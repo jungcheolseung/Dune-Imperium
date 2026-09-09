@@ -1,0 +1,18 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "ui-server",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": [
+        "run",
+        "dune-imperium-server",
+        "--port",
+        "8000",
+        "--saves-dir",
+        "saves"
+      ],
+      "port": 8000
+    }
+  ]
+}
