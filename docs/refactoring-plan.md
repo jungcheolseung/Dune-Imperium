@@ -75,6 +75,20 @@ A와 B는 codec version 변경 없이 기존 테스트로 검증한다. 각 단�
 - Reserve copy ID는 zone 스캔 대신 stack별 발급 카운터를 state에 두는 편이 안전하다.
 - `ACTION_HANDLERS`를 `(FrameKind, action_id)`로 키잉하고 chance handler도 표로 두면 `_apply_decline_combat_reward` 같은 kind 분기와 `_apply_chance`의 if/elif가 사라진다.
 - `PayResources`/`GainResources` 등 DSL 자원 record와 `rules/effects.py`·`board.ResourceCost`의 중복은 Imperium 효과를 DSL로 이관할 때 한쪽으로 합친다.
-- Long Live the Fighters와 Corrinth City의 카드 전용 context flag는 `INTRIGUE_CHOICE`와 같은 범용 슬롯 frame으로 대체할 수 있다.
+- (2026-09-10 부분 완료) Long Live the Fighters의 카드 전용 context flag는 전용
+  frame `FrameKind.LONG_LIVE_FIGHTERS`로 바꿨다. 이제 배타성이 구조적이다 — pick이
+  열려 있는 동안 Agent effect frame이 스택 맨 위가 아니므로 아무것도 제시하지
+  않는다. 이로써 `rules/agent_effect_frame.py`와 `rules/graft.py`가
+  `"long_live_fighters_selection_started"` 문자열을 직접 읽던 결합 2곳이 사라졌다.
+  관측은 frame kind를 인코딩하므로(`adapters/observation_encoding.py`의
+  `_FRAME_KINDS`) `OBSERVATION_VERSION`을 v19로 올렸다. codec은 action id가 그대로라
+  v103 유지.
+- **Corrinth City는 이 항목에서 제외한다.** 두 카드를 같은 묶음으로 적었지만 배타성
+  기준으로는 정반대다. Corrinth City의 부분 선택은 **일부러 중단 가능**하다 —
+  `rules/agent_effects.py`의 해당 주석이 "자유 순서 효과(예: Intrigue discard 비용)가
+  저장된 첫 선택을 소비할 수 있고, 그러면 원자적 비용이 선택 없음에서 다시
+  시작한다 `[Main pp. 9, 20]`"라고 적고 있고, Agent turn 효과의 자유 순서 자체가
+  OQ-011·OQ-027의 확정 판정이다. 배타적 슬롯 frame으로 바꾸면 그 끼어들기가
+  사라져 **규칙 동작이 바뀐다**. 바꾸려면 먼저 판정이 필요하다.
 - Covert Operation처럼 자식 frame을 쌓는 효과의 부모 frame 재개는 자식이 부모를 들여다보는 대신 engine의 `_advance_automatic`에서 처리하는 편이 일반적이다.
 
