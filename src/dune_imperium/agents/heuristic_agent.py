@@ -98,7 +98,10 @@ _ACTION_SCORES: Final[dict[str, float]] = {
     "trash_for_research_bonus": 1.0,
     "decline_research_bonus": 0.5,
     "use_family_atomics": 0.3,
-    "return_specimen": -2.0,
+    # Strictly below ``_DECLINE_SCORE``: at -2.0 this tied with every
+    # decline, so the agent emptied its own tanks instead of declining a
+    # Tech tile or a Commander (12-game probe, all options on).
+    "return_specimen": -2.5,
     # A Tleilaxu card costs specimens instead of Persuasion, so it is
     # ranked the way Imperium cards are: a base plus the printed cost,
     # plus ``_TLEILAXU_BONUSES``. Reclaimed Forces is the fallback use of
@@ -139,6 +142,19 @@ _ACTION_SCORES: Final[dict[str, float]] = {
     "choose_agent_card_reward": 2.0,
     "gain_reveal_resources": 4.0,
     "gain_reveal_faction_influence": 4.0,
+    # An Intrigue card's separate printed lines are used one at a time and
+    # paid when used (OQ-058). Using a line ranks with the other paid arrow
+    # effects and finishing the card with the other frame closers, or the
+    # two tie at zero and the agent abandons half the lines it played the
+    # card for (12-game probe, all options on).
+    "use_intrigue_effect": 2.5,
+    "finish_intrigue_effects": 0.5,
+    # Delivery Logistics' "1 Persuasion OR a contract" and the Bloodlines
+    # Immediate's contract: a contract is a Victory Point path, so both
+    # rank with ``take_contract`` rather than at zero.
+    "take_reveal_contract": 2.0,
+    "take_trigger_contract": 2.0,
+    "gain_reveal_persuasion": 1.0,
     "withdraw_troops": -10.0,
     # Bloodlines: a Sardaukar Commander is a 2-strength unit for 2 Solari
     # plus a Skill; buying one from the board outranks a plain recruit.

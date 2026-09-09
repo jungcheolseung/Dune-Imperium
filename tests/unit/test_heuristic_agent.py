@@ -267,3 +267,53 @@ def test_reclaimed_forces_takes_the_troops_over_one_track_step() -> None:
     troops = score_action(_action("acquire_reclaimed_forces", ("choice", "troops")))
     tleilaxu = score_action(_action("acquire_reclaimed_forces", ("choice", "tleilaxu")))
     assert troops > tleilaxu > 0.0
+
+
+def test_intrigue_lines_are_used_before_the_card_is_finished() -> None:
+    """An Intrigue card's separate printed lines are used one at a time and
+    paid when used (OQ-058); at equal scores the agent abandoned half of
+    them (12-game probe with every option on, 20 coin flips)."""
+
+    use = score_action(_action("use_intrigue_effect", ("section", 0)))
+    finish = score_action(_action("finish_intrigue_effects"))
+    assert use > finish > 0.0
+    chosen = HeuristicAgent(seed=1).choose_action(
+        _view(),
+        (
+            _action("finish_intrigue_effects"),
+            _action("use_intrigue_effect", ("section", 0)),
+        ),
+    )
+    assert chosen.action_id == "use_intrigue_effect"
+
+
+def test_returning_a_specimen_ranks_below_every_decline() -> None:
+    """Specimens are the agent's own tanks; returning one is the last
+    resort [Immortality p. 8], not an equal of declining a purchase."""
+
+    return_specimen = score_action(_action("return_specimen"))
+    assert return_specimen < score_action(_action("decline_tech"))
+    assert return_specimen < score_action(_action("decline_sardaukar_commander"))
+    assert return_specimen > score_action(_action("pass_combat_intrigue"))
+    for decline in ("decline_tech", "decline_sardaukar_commander"):
+        chosen = HeuristicAgent(seed=1).choose_action(
+            _view(), (_action("return_specimen"), _action(decline))
+        )
+        assert chosen.action_id == decline
+
+
+def test_a_contract_outranks_the_persuasion_it_is_offered_against() -> None:
+    """Delivery Logistics offers "1 Persuasion OR a contract"; a contract
+    is a Victory Point path, so it ranks with ``take_contract``."""
+
+    contract = score_action(_action("take_reveal_contract"))
+    persuasion = score_action(_action("gain_reveal_persuasion"))
+    assert contract == score_action(_action("take_contract")) > persuasion > 0.0
+    assert score_action(
+        _action("take_trigger_contract", ("instance_id", "contract:0"))
+    ) == contract
+    chosen = HeuristicAgent(seed=1).choose_action(
+        _view(),
+        (_action("gain_reveal_persuasion"), _action("take_reveal_contract")),
+    )
+    assert chosen.action_id == "take_reveal_contract"
