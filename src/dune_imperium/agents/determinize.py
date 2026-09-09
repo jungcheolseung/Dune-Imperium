@@ -21,6 +21,22 @@ from dune_imperium.core.observation import (
     resolving_intrigue_ids,
 )
 from dune_imperium.core.state import GameState
+from dune_imperium.rules.frames import FrameKind, owned_top_frame
+
+
+def secret_project_candidates(state: GameState, observer: int) -> tuple[str, ...]:
+    """Return the bottom Tech tiles ``observer`` is currently choosing between.
+
+    Empty unless a Secret Project frame owned by ``observer`` is open.
+    """
+
+    frame = owned_top_frame(state, FrameKind.TECH_SECRET_PROJECT, observer)
+    if frame is None:
+        return ()
+    candidates = dict(frame.context).get("candidates")
+    if not isinstance(candidates, str):
+        return ()
+    return tuple(tech_id for tech_id in candidates.split(",") if tech_id)
 
 
 def determinize(state: GameState, observer: int, rng: random.Random) -> GameState:
@@ -80,8 +96,22 @@ def determinize(state: GameState, observer: int, rng: random.Random) -> GameStat
     conflict_deck = list(state.conflict_deck)
     rng.shuffle(conflict_deck)
     # Below each face-up top the Tech stacks are face down [Bloodlines p. 6].
+    # Kota Odax's Secret Project is the exception while its frame is open:
+    # "Game Start: 각 stack의 맨 아래 Tech tile을 본다" [Bloodlines p. 6], so
+    # that seat knows the bottom tiles it is choosing between and they must
+    # stay where the frame's recorded candidates say they are. Shuffling them
+    # out of the bottom would leave the sampled world inconsistent with the
+    # frame, and applying the choice would then leave the tile both on a
+    # stack and on the Leader card. The knowledge is not carried past the
+    # frame: OQ-041 keeps the two unchosen identities out of the observation.
+    known_bottoms = frozenset(secret_project_candidates(state, observer))
     tech_stacks: list[tuple[str, ...]] = []
     for stack in state.tech_stacks:
+        if len(stack) > 1 and stack[-1] in known_bottoms:
+            middle = list(stack[1:-1])
+            rng.shuffle(middle)
+            tech_stacks.append((*stack[:1], *middle, stack[-1]))
+            continue
         below = list(stack[1:])
         rng.shuffle(below)
         tech_stacks.append((*stack[:1], *below))

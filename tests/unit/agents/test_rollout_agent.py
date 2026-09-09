@@ -57,6 +57,45 @@ def _card_census(state: GameState) -> Counter[str]:
     return cards
 
 
+def test_determinize_keeps_the_secret_project_bottoms_the_owner_has_seen() -> None:
+    """Kota Odax's owner has seen the bottom tile of every stack.
+
+    "Game Start: 각 stack의 맨 아래 Tech tile을 본다" [Bloodlines p. 6], so a
+    sampled world must keep those tiles where the open frame says they are.
+    Shuffling them deeper made the frame's own choice unappliable: the tile
+    stayed on its stack and also landed on the Leader card.
+    """
+
+    from dune_imperium.content.uprising.leaders import LEADERS
+    from dune_imperium.rules.setup import create_initial_state
+    from dune_imperium.rules.tech import (
+        apply_secret_project,
+        legal_secret_project_actions,
+    )
+
+    leader_ids = ("kota_odax_of_ix", *(leader.leader_id for leader in LEADERS[1:4]))
+    setup = create_initial_state(
+        RulesetConfig(bloodlines=True, tech_module=True),
+        seed=3,
+        leader_ids=leader_ids,
+    ).state
+    candidates = {
+        dict(action.arguments)["tech_id"]
+        for action in legal_secret_project_actions(setup, 0)
+    }
+    assert candidates == {stack[-1] for stack in setup.tech_stacks}
+
+    for seed in range(25):
+        world = determinize(setup, 0, random.Random(seed))
+        assert {stack[-1] for stack in world.tech_stacks} == candidates
+        # Every offered choice still applies, which is what the rollout does.
+        for action in legal_secret_project_actions(world, 0):
+            chosen = apply_secret_project(world, action).state
+            tile = dict(action.arguments)["tech_id"]
+            assert chosen.players[0].secret_project_tech_id == tile
+            assert tile not in {t for stack in chosen.tech_stacks for t in stack}
+
+
 def test_determinize_keeps_the_observers_view_and_every_card() -> None:
     state = _play_rounds(seed=21, rounds=4)
     # Give an opponent a publicly known hand card and some held Intrigue so
