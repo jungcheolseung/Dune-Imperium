@@ -219,6 +219,55 @@ def test_train_loop_writes_log_checkpoints_and_evaluates(tmp_path: Path) -> None
         TrainConfig(out_dir=tmp_path, opponent="oracle")
 
 
+def test_train_config_expansion_flags_shape_the_checkpoint_ruleset(
+    tmp_path: Path,
+) -> None:
+    config = TrainConfig(
+        out_dir=tmp_path / "run",
+        iterations=1,
+        games_per_iteration=1,
+        seed=1,
+        hidden=(32,),
+        learner=LearnerConfig(minibatch_size=512),
+        opponent="heuristic",
+        bloodlines=True,
+        tech_module=True,
+    )
+
+    result = train(config)
+
+    _, info = load_checkpoint(result.latest_checkpoint)
+    assert info.ruleset == "uprising-4p-base+bloodlines+tech"
+
+
+def test_train_loop_rejects_resuming_into_a_different_ruleset(tmp_path: Path) -> None:
+    base = train(
+        TrainConfig(
+            out_dir=tmp_path / "run",
+            iterations=1,
+            games_per_iteration=1,
+            seed=1,
+            hidden=(32,),
+            learner=LearnerConfig(minibatch_size=512),
+            opponent="heuristic",
+        )
+    )
+
+    with pytest.raises(ValueError, match="different ruleset"):
+        train(
+            TrainConfig(
+                out_dir=tmp_path / "run",
+                iterations=1,
+                games_per_iteration=1,
+                seed=1,
+                hidden=(32,),
+                opponent="heuristic",
+                bloodlines=True,
+                resume=base.latest_checkpoint,
+            )
+        )
+
+
 def test_select_policy_steps_keeps_only_the_named_seats() -> None:
     runner = SelfPlayRunner(RulesetConfig(), max_steps=40)
     network = _network(runner.codec.size)
@@ -253,6 +302,37 @@ def test_train_cli_smoke(tmp_path: Path) -> None:
     assert (tmp_path / "cli" / "latest.pt").exists()
     with pytest.raises(SystemExit):
         train_main(["--out", str(tmp_path), "--opponent", "oracle"])
+
+
+def test_train_cli_parses_expansion_flags_into_the_config(tmp_path: Path) -> None:
+    exit_code = train_main(
+        [
+            "--out",
+            str(tmp_path / "cli"),
+            "--iterations",
+            "1",
+            "--games-per-iteration",
+            "1",
+            "--hidden",
+            "16",
+            "--minibatch",
+            "256",
+            "--opponent",
+            "heuristic",
+            "--promo-cards",
+            "--bloodlines",
+            "--tech-module",
+            "--immortality",
+        ]
+    )
+    assert exit_code == 0
+    _, info = load_checkpoint(tmp_path / "cli" / "latest.pt")
+    document = info.metadata["config"]
+    assert document["promo_cards"] is True
+    assert document["bloodlines"] is True
+    assert document["tech_module"] is True
+    assert document["immortality"] is True
+    assert info.ruleset == "uprising-4p-base+promo+bloodlines+tech+immortality"
 
 
 def test_parallel_collection_matches_the_serial_contract(tmp_path: Path) -> None:
@@ -297,6 +377,26 @@ def test_parallel_collection_matches_the_serial_contract(tmp_path: Path) -> None
     )
     assert parallel.records[0].games == 2
     assert parallel.records[0].learner_steps > 0
+
+
+def test_parallel_collection_pickles_an_expansion_ruleset(tmp_path: Path) -> None:
+    from dune_imperium.training.collect import Collector
+
+    config = RulesetConfig(bloodlines=True, tech_module=True)
+    network = _network(SelfPlayRunner(config).codec.size)
+    specs = tuple(
+        SelfPlaySpec(
+            game_seed=seed, lineup=("learner", "heuristic", "heuristic", "heuristic")
+        )
+        for seed in range(40, 42)
+    )
+    with Collector(config, workers=2, opponent="heuristic") as collector:
+        result = collector.collect(network, _CPU, specs, policy_seed=7, opponent_seed=8)
+
+    assert len(result.episodes) == 2
+    assert all(episode.steps == () for episode in result.episodes)
+    assert result.batch.actions.shape[0] > 0
+    assert result.batch.masks.shape[1] == network.action_size
 
 
 def test_cycle_guard_masks_taken_actions_for_greedy_play_only() -> None:

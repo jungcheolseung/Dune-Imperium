@@ -35,6 +35,30 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--choam", action="store_true", help="use the CHOAM ruleset")
     parser.add_argument(
+        "--promo-cards",
+        action="store_true",
+        help=(
+            "shuffle the promo Imperium cards into the deck: the three Uprising "
+            "promos (Arrakis Revolt, The Beast's Spoils, Pivotal Gambit) and, "
+            "with --bloodlines, Ruthless Leadership"
+        ),
+    )
+    parser.add_argument(
+        "--bloodlines",
+        action="store_true",
+        help="play with the Bloodlines expansion (docs/rules/bloodlines.md)",
+    )
+    parser.add_argument(
+        "--tech-module",
+        action="store_true",
+        help="add the Bloodlines Tech Module (requires --bloodlines)",
+    )
+    parser.add_argument(
+        "--immortality",
+        action="store_true",
+        help="play with the Immortality expansion (docs/rules/immortality.md)",
+    )
+    parser.add_argument(
         "--hidden",
         default=",".join(str(width) for width in DEFAULT_HIDDEN),
         help="comma-separated hidden widths (default: 512,512)",
@@ -110,6 +134,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             device=arguments.device,
             workers=arguments.workers,
             choam_module=arguments.choam,
+            promo_cards=arguments.promo_cards,
+            bloodlines=arguments.bloodlines,
+            tech_module=arguments.tech_module,
+            immortality=arguments.immortality,
             hidden=hidden,
             learner=LearnerConfig(
                 learning_rate=arguments.learning_rate,

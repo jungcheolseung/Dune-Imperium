@@ -55,7 +55,7 @@ class _ChunkJob:
     weights_path: str
     hidden: tuple[int, ...]
     action_size: int
-    choam_module: bool
+    ruleset: RulesetConfig
     specs: tuple[SelfPlaySpec, ...]
     policy_seed: int
     temperature: float
@@ -98,7 +98,7 @@ def _collect_chunk(job: _ChunkJob) -> _ChunkResult:
     )
     network.eval()
     runner = SelfPlayRunner(
-        RulesetConfig(choam_module=job.choam_module),
+        job.ruleset,
         max_steps=job.max_steps,
         record=True,
     )
@@ -215,7 +215,7 @@ class Collector:
                 weights_path=str(weights_path),
                 hidden=network.hidden,
                 action_size=network.action_size,
-                choam_module=self.config.choam_module,
+                ruleset=self.config,
                 specs=chunk,
                 policy_seed=policy_seed + index * 7_919,
                 temperature=self.temperature,

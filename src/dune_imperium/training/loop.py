@@ -51,6 +51,14 @@ class TrainConfig:
     # Worker processes for collection; 1 collects in-process.
     workers: int = 1
     choam_module: bool = False
+    # Shuffle the promo Imperium cards into the deck (see RulesetConfig).
+    promo_cards: bool = False
+    # Play with the Bloodlines expansion (docs/rules/bloodlines.md).
+    bloodlines: bool = False
+    # The Bloodlines Tech Module; requires bloodlines.
+    tech_module: bool = False
+    # Play with the Immortality expansion (docs/rules/immortality.md).
+    immortality: bool = False
     hidden: tuple[int, ...] = DEFAULT_HIDDEN
     learner: LearnerConfig = field(default_factory=LearnerConfig)
     # Baseline kind seated in the three other seats during collection; None
@@ -161,6 +169,10 @@ def _evaluate(config: TrainConfig, checkpoint: Path) -> tuple[float, float]:
         games=config.eval_games,
         rulesets=(config.choam_module,),
         rotate_leaders=True,
+        promo_cards=config.promo_cards,
+        bloodlines=config.bloodlines,
+        tech_module=config.tech_module,
+        immortality=config.immortality,
     )
     summary = summarize(run_tournament(specs))
     entry = next(
@@ -177,7 +189,13 @@ def train(
     """Run the loop and return every iteration's record."""
 
     device = resolve_device(config.device)
-    ruleset = RulesetConfig(choam_module=config.choam_module)
+    ruleset = RulesetConfig(
+        choam_module=config.choam_module,
+        promo_cards=config.promo_cards,
+        bloodlines=config.bloodlines,
+        tech_module=config.tech_module,
+        immortality=config.immortality,
+    )
     codec_size = SelfPlayRunner(ruleset, record=False).codec.size
     start_iteration = 0
     resumed_optimizer: Mapping[str, Any] | None = None
