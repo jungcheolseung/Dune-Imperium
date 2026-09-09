@@ -26,3 +26,9 @@
 - 무슨 일: Bloodlines 프로모 Ruthless Leadership의 Agent 아이콘 두 개(파란 원, 노란 삼각형)를 "Emperor·Spice Trade"로 전사해 커밋했다(`52e9c22`). 카드가 Emperor 진영이라 파란 원을 Emperor 아이콘으로 넘겨짚었다. 사용자가 지적해 `assets/icons/agent_icon_*.png`와 대조하니 파란 원은 **City**, Emperor는 투구 모양이었다.
 - 원인: Agent box의 trash·Combat 아이콘과 Reveal의 검 아이콘은 기존 카드 이미지와 대조했으면서, 왼쪽의 진영 아이콘은 대조 없이 색과 진영 이름으로 추정했다.
 - 재발 방지: 카드를 전사할 때 Agent 아이콘 열은 반드시 `assets/icons/agent_icon_*.png`(룰북 추출 아이콘)와 나란히 놓고 대조한다. 카드의 진영(제목 아래 띠)과 Agent 아이콘은 별개이며, 진영이 Emperor라도 Emperor 아이콘이 없는 카드가 흔하다. 검증 테스트는 아이콘 값을 명시적으로 고정한다.
+
+## 2026-09-09 — 일반 trash 아이콘을 "Trash this card"로 전사함
+
+- 무슨 일: Calculus of Power의 Agent box를 "자기 자신 trash"(`TRASH_SELF`, 의무)로 전사해 오래 유지했다. 카드면은 일반 trash 아이콘(X 카드)이라 "hand·discard·play 중 카드 1장을 선택적으로 trash"가 맞다. 사용자가 적발했다.
+- 원인: 같은 X 카드 아이콘을 Desert Survival에서는 선택 trash로 읽고 Calculus of Power에서는 자기 trash로 읽었는데, 두 카드를 나란히 대조하지 않았고 용어집 `[Main p. 20]`("trash는 비용을 지불하거나 카드가 자기 자신을 trash하라고 지시하는 경우가 아니면 선택")을 전사 검토 항목에 두지 않았다.
+- 재발 방지: 문장("Trash this card.", Seek Allies)과 아이콘(일반 trash)을 구분해 읽고, trash·discard 아이콘이 있는 카드는 용어집의 선택/의무 기준으로 한 번 더 판정한다. 전사 표에 "선택/의무" 열을 명시한다.
