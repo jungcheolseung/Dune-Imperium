@@ -247,6 +247,12 @@ def legal_tech_acquisition_actions(
             )
             for variant in _acquisition_variants(state, owner, tile)
         )
+    if len(actions) > 1 and _pending_board_context(state, player) is None:
+        # A card's Tech Discount icon (Battlefield Research, Rapid
+        # Engineering) must be used once the card is played and a tile is
+        # affordable (designer ruling, OQ-057); only the Landsraad visit's
+        # "may acquire" keeps its refusal [Bloodlines p. 7].
+        actions = actions[1:]
     return tuple(actions)
 
 

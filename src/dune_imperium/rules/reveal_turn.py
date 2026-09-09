@@ -2226,24 +2226,19 @@ def apply_reveal_gain(state: GameState, action: DomainAction) -> RuleResult:
             return generate_specimens(settled, player, count, source=event_id)
         if kind == "tleilaxu":
             return advance_tleilaxu(settled, player, count, source=event_id)
-        # A Reveal-box Research icon (Tleilaxu Master): the advance may open
-        # a direction choice above the Reveal frame.
-        researched = RuleResult(state=settled)
-        for index in range(count):
-            researched = advance_research(
-                researched.state, player, source=f"{event_id}:{index}"
+        # A Reveal-box Research icon (Tleilaxu Master): each action advances
+        # once, so the two icons may be resolved apart with other Reveal
+        # effects between them (designer ruling, OQ-057); the advance may
+        # open a direction choice above the Reveal frame.
+        researched = advance_research(settled, player, source=f"{event_id}:{count}")
+        remaining = count - 1
+        if remaining:
+            researched = RuleResult(
+                state=_append_reveal_gains_state(
+                    researched.state, (("research", str(remaining), source),)
+                ),
+                events=researched.events,
             )
-            if researched.state.decision_stack[-1].kind == FrameKind.RESEARCH_ADVANCE:
-                # The rest of the icons wait for the choice: re-queue them.
-                remaining = count - index - 1
-                if remaining:
-                    researched = RuleResult(
-                        state=_append_reveal_gains_state(
-                            researched.state, (("research", str(remaining), source),)
-                        ),
-                        events=researched.events,
-                    )
-                break
         return researched
     if kind == "troops":
         next_owner, recruited = recruit_troops(owner, count)

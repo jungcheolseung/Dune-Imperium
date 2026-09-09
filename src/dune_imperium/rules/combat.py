@@ -79,15 +79,23 @@ class CombatRanking:
             raise ValueError("winner must be the sole first-place recipient")
 
 
-def rank_combat(players: tuple[PlayerState, ...]) -> CombatRanking:
-    """Apply the official four-player tie and zero-strength reward rules."""
+def rank_combat(
+    players: tuple[PlayerState, ...],
+    *,
+    first_player: int | None = None,
+) -> CombatRanking:
+    """Apply the official four-player tie and zero-strength reward rules.
+
+    Players sharing a reward line are listed in turn order from the First
+    Player when one is given (designer ruling, OQ-002), else by seat.
+    """
 
     if len(players) != 4 or tuple(player.player_id for player in players) != tuple(
         range(4)
     ):
         raise ValueError("Combat ranking requires players in seat order 0 through 3")
 
-    groups = _positive_strength_groups(players)
+    groups = _positive_strength_groups(players, first_player)
     if not groups:
         return CombatRanking(rewards=(), winner=None)
 
@@ -240,7 +248,7 @@ def resolve_combat_rewards(state: GameState) -> RuleResult:
             f"Conflict rewards are not transcribed: {conflict_id}"
         )
 
-    ranking = rank_combat(state.players)
+    ranking = rank_combat(state.players, first_player=state.first_player)
     _validate_supported_rewards(state, ranking, conflict.rewards)
     players = list(state.players)
     intrigue_deck = state.intrigue_deck
@@ -1332,14 +1340,23 @@ def _spy_placement_frame(
 
 def _positive_strength_groups(
     players: tuple[PlayerState, ...],
+    first_player: int | None = None,
 ) -> tuple[tuple[int, ...], ...]:
     strengths = sorted(
         {player.combat_strength for player in players if player.combat_strength > 0},
         reverse=True,
     )
+    ordered = (
+        tuple(
+            players[(first_player + offset) % len(players)]
+            for offset in range(len(players))
+        )
+        if first_player is not None
+        else players
+    )
     return tuple(
         tuple(
-            player.player_id for player in players if player.combat_strength == strength
+            player.player_id for player in ordered if player.combat_strength == strength
         )
         for strength in strengths
     )
@@ -1467,7 +1484,12 @@ def _fire_troop_loss_triggers(
 
     next_state = state
     events: list[GameEvent] = []
-    for player, lost in zip(range(state.config.players), losses, strict=True):
+    # Turn order from the First Player when several seats fire (designer
+    # ruling, OQ-002).
+    first = state.first_player or 0
+    for offset in range(state.config.players):
+        player = (first + offset) % state.config.players
+        lost = losses[player]
         for card_id in state.players[player].intrigue_faceup:
             entry = INTRIGUE_CARDS_BY_INSTANCE.get(card_id)
             if entry is None:

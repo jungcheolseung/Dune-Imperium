@@ -3615,6 +3615,10 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         if (
             Faction.FREMEN.value in owner.alliance_faction_ids
             and card_instance_id in owner.in_play
+            # A Row card borrowed by Usurp is not "in play" and cannot
+            # return to a hand (designer ruling, OQ-054); it is trashed
+            # when the turn closes.
+            and card_instance_id != owner.usurped_row_card_id
         ):
             # Face up in play, so everyone keeps knowing it (OQ-010).
             next_owner = replace(

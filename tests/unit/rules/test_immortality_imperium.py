@@ -297,6 +297,43 @@ def test_long_reach_icons_and_two_distinct_influences() -> None:
     assert owner.influence.fremen == 1 and owner.influence.emperor == 1
 
 
+
+def test_ghola_grafted_to_long_reach_turns_its_greyed_icons_on() -> None:
+    # Designer ruling (Email, TTS Discord; OQ-057): Long Reach grafted with
+    # Ghola has all three icons. With Ghola in hand the graft placement
+    # reaches the Landsraad, and only Ghola may then be the partner.
+    reach = _card("long_reach")
+    ghola = "tleilaxu:ghola:0"
+    state = _state(_owner((reach, ghola, DAGGER)))
+    placements = {
+        (dict(a.arguments)["space_id"], dict(a.arguments).get("graft"))
+        for a in legal_agent_actions(state, 0)
+        if dict(a.arguments)["card_id"] == reach
+    }
+    assert ("assembly_hall", True) in placements
+    assert ("assembly_hall", None) not in placements
+    assert ("arrakeen", True) in placements
+
+    placed = _place(state, reach, "assembly_hall", graft=True)
+    partners = [
+        dict(a.arguments)["card_id"] for a in legal_graft_partner_actions(placed, 0)
+    ]
+    assert partners == [ghola]
+    grafted = apply_graft_partner(placed, legal_graft_partner_actions(placed, 0)[0])
+    _, context = current_agent_effect_context(grafted.state)
+    assert context["pending_agent_effect"] is True
+    picks = {
+        dict(a.arguments)["faction"]
+        for a in legal_agent_card_influence_actions(grafted.state, 0)
+    }
+    assert picks == {"emperor", "spacing_guild", "bene_gesserit", "fremen"}
+
+    # Without Ghola a plain Dagger partner leaves the greyed icons off.
+    plain = _state(_owner((reach, DAGGER)))
+    assert not any(
+        dict(a.arguments)["card_id"] == reach for a in legal_agent_actions(plain, 0)
+    )
+
 def test_occupation_draws_and_grants_the_combat_icon() -> None:
     occupation = _card("occupation")
     state = _place(

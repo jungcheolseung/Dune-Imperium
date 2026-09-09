@@ -5,6 +5,8 @@ Rule source: the card faces transcribed in
 deck) and OQ-053 (the Surgeon's two troops from one zone).
 """
 
+from dataclasses import replace
+
 from dune_imperium import RulesetConfig
 from dune_imperium.adapters import ActionCodec
 from dune_imperium.content.immortality.board import RESEARCH_START_ID
@@ -620,27 +622,74 @@ def test_an_acquired_research_box_stacks_above_the_acquiring_frame() -> None:
     assert fervor in done.players[0].hand
 
 
-def test_two_research_draws_share_one_pending_reshuffle() -> None:
-    """Past the second marker Tleilaxu Master's two Reveal Research icons draw
-    twice; with an empty deck the second draw joins the pending shuffle instead
-    of shuffling the same discard pile twice (2026-09-08 sweep seed 66)."""
+def test_reveal_research_icons_resolve_one_per_action_and_share_a_shuffle() -> None:
+    """Tleilaxu Master's two Reveal Research icons resolve apart (designer
+    ruling, OQ-057): each action advances once. Past the second marker each
+    advance draws; with an empty deck the first draw shuffles the discard and
+    the second draws from the new deck without a second shuffle."""
+
+    from dune_imperium.core.chance import ChanceOutcome
+    from dune_imperium.rules.card_draw import apply_personal_draw_reshuffle
 
     master = _card("tleilaxu_master")
-    owner = _owner(
-        (master,),
-        deck=(),
-        discard_pile=tuple(card for card in STARTERS if "dagger" not in card)[:4],
-        research_space="c8r4",
-    )
+    discard = tuple(card for card in STARTERS if "dagger" not in card)[:4]
+    owner = _owner((master,), deck=(), discard_pile=discard, research_space="c8r4")
     revealed = _reveal(_state(owner))
-    state = revealed
-    while actions := legal_reveal_gain_actions(state, 0):
-        state = apply_reveal_gain(state, actions[0]).state
-    reshuffles = [
-        frame
-        for frame in state.decision_stack
-        if frame.kind == FrameKind.PERSONAL_DRAW_RESHUFFLE
-    ]
-    assert len(reshuffles) == 1
-    assert dict(reshuffles[0].context)["count"] == 2
-    assert state.decision_stack[-1].kind == FrameKind.PERSONAL_DRAW_RESHUFFLE
+
+    first = apply_reveal_gain(revealed, legal_reveal_gain_actions(revealed, 0)[0]).state
+    reveal = next(frame for frame in first.decision_stack if frame.kind == "reveal")
+    assert dict(reveal.context)["reveal_pending_gains"] == (
+        "research|1|imperium:tleilaxu_master:0"
+    )
+    reshuffle = first.decision_stack[-1]
+    assert reshuffle.kind == FrameKind.PERSONAL_DRAW_RESHUFFLE
+    assert dict(reshuffle.context)["count"] == 1
+    assert isinstance(reshuffle.decision, ChanceDecision)
+
+    shuffled = apply_personal_draw_reshuffle(
+        first, ChanceOutcome(reshuffle.decision.decision_id, discard)
+    ).state
+    # A card drawn during the owner's Reveal is revealed at once [FAQ p. 3].
+    assert len(shuffled.players[0].in_play) == 2
+    assert shuffled.decision_stack[-1].kind == "reveal"
+    actions = legal_reveal_gain_actions(shuffled, 0)
+    assert [action.action_id for action in actions] == ["advance_reveal_research"]
+    second = apply_reveal_gain(shuffled, actions[0]).state
+    assert len(second.players[0].in_play) == 3
+    assert not any(
+        frame.kind == FrameKind.PERSONAL_DRAW_RESHUFFLE
+        for frame in second.decision_stack
+    )
+    assert legal_reveal_gain_actions(second, 0) == ()
+
+
+def test_imperium_ceremony_keep_owes_a_suspensor_suits_troop() -> None:
+    # Designer ruling (Message from designer, OQ-057): Imperium Ceremony's
+    # "keep one" is an Intrigue draw, so Suspensor Suits pays its troop.
+    from dune_imperium.core.engine import RuleResult
+    from dune_imperium.rules.tech import deploy_suspensor_troops
+
+    ceremony = _card("imperium_ceremony")
+    base = _state(_owner((ceremony,)))
+    state = replace(
+        base,
+        config=RulesetConfig(immortality=True, bloodlines=True, tech_module=True),
+        tech_stacks=(("glowglobes",), (), ()),
+        players=(
+            replace(base.players[0], tech_ids=("suspensor_suits",)),
+            *base.players[1:],
+        ),
+    )
+    placed = _place(state, ceremony, "assembly_hall")
+    peeking = resolve_agent_card_effect(placed).state
+    kept = apply_intrigue_peek(peeking, legal_intrigue_peek_actions(peeking, 0)[0])
+    owner = kept.state.players[0]
+    assert len(owner.intrigue_cards) == 1
+    assert owner.suspensor_owed == 1
+
+    deployed = deploy_suspensor_troops(RuleResult(state=kept.state)).state
+    assert deployed.players[0].suspensor_owed == 0
+    assert deployed.players[0].troops_conflict == 1
+    assert deployed.players[0].troops_supply == 8
+
+

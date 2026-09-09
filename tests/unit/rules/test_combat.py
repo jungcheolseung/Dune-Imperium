@@ -309,12 +309,10 @@ def test_ornithopter_rewards_draw_intrigue_in_rank_order() -> None:
     assert result.state.intrigue_deck == ("intrigue:3",)
 
 
-def test_tied_reward_group_resolves_in_seat_order_not_first_player_order() -> None:
-    # OQ-002 decided convention: recipients tied at the same rank resolve in
-    # ascending seat order regardless of the First Player marker. With the
-    # complete Conflict set, tied groups only ever take the second and third
-    # reward rows, so the shared Intrigue deck split pinned here is the only
-    # state the order can change.
+def test_tied_reward_group_resolves_in_turn_order_from_the_first_player() -> None:
+    # OQ-002 (designer ruling, 2026-09-09): when the order of Combat rewards
+    # can matter, tied recipients resolve in turn order from the First
+    # Player. The shared Intrigue deck split pins it here.
     tied = replace(
         _reward_state("skirmish_ornithopter", strengths=(8, 8, 4, 0)),
         first_player=1,
@@ -322,16 +320,15 @@ def test_tied_reward_group_resolves_in_seat_order_not_first_player_order() -> No
 
     result = resolve_combat_rewards(tied)
 
-    assert result.state.players[0].intrigue_cards == ("intrigue:0",)
-    assert result.state.players[1].intrigue_cards == ("intrigue:1",)
+    assert result.state.players[1].intrigue_cards == ("intrigue:0",)
+    assert result.state.players[0].intrigue_cards == ("intrigue:1",)
     assert result.state.players[2].intrigue_cards == ("intrigue:2",)
     assert result.state.intrigue_deck == ("intrigue:3",)
 
 
-def test_tied_trash_choices_open_in_seat_order() -> None:
-    # OQ-002 decided convention: the tied players' public trash choices are
-    # offered in ascending seat order as well, even when a later seat holds
-    # the First Player marker.
+def test_tied_trash_choices_open_in_turn_order_from_the_first_player() -> None:
+    # OQ-002 (designer ruling): the tied players' public trash choices open
+    # in turn order too, the First Player's first.
     tied = _reward_state("trade_dispute", strengths=(8, 8, 4, 0))
     players = tuple(
         replace(player, hand=(f"p{player.player_id}:hand",))
@@ -344,7 +341,20 @@ def test_tied_trash_choices_open_in_seat_order() -> None:
     result = resolve_combat_rewards(tied)
     stack = result.state.decision_stack
 
-    assert tuple(dict(frame.context)["player"] for frame in reversed(stack)) == (0, 1)
+    assert tuple(dict(frame.context)["player"] for frame in reversed(stack)) == (1, 0)
+
+
+def test_rank_combat_lists_tied_recipients_from_the_first_player() -> None:
+    from dune_imperium.rules.combat import rank_combat
+
+    players = _players((8, 8, 4, 0))
+    assert [reward.player for reward in rank_combat(players).rewards] == [0, 1, 2]
+    assert [
+        reward.player for reward in rank_combat(players, first_player=1).rewards
+    ] == [1, 0, 2]
+    assert [
+        reward.player for reward in rank_combat(players, first_player=3).rewards
+    ] == [0, 1, 2]
 
 
 def test_sandworm_doubles_the_assigned_reward_row() -> None:

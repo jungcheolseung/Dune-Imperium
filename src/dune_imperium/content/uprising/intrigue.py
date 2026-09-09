@@ -289,6 +289,8 @@ INTRIGUE_CARDS: Final = (
         135,
         "change-allegiances",
         "Change Allegiances",
+        # "You may use one or both effects" (designer ruling, OQ-057): the
+        # third option takes both lines in printed order.
         options=(
             _plot(EffectSection(costs=(LoseInfluence(1),), rewards=(GainInfluence(),))),
             _plot(
@@ -296,6 +298,13 @@ INTRIGUE_CARDS: Final = (
                     costs=(PayResources(spice=3),),
                     rewards=(GainInfluence(),),
                 )
+            ),
+            _plot(
+                EffectSection(costs=(LoseInfluence(1),), rewards=(GainInfluence(),)),
+                EffectSection(
+                    costs=(PayResources(spice=3),),
+                    rewards=(GainInfluence(),),
+                ),
             ),
         ),
     ),

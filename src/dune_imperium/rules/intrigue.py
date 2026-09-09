@@ -633,15 +633,15 @@ def legal_intrigue_choice_actions(
                 for instance_id in state.imperium_row
             )
         case AcquireCardUpTo(max_cost=max_cost):
-            actions.extend(
+            acquisitions = [
                 DomainAction(
                     action_id="acquire_intrigue_reserve",
                     actor=player,
                     arguments=(("card_id", card_id),),
                 )
                 for card_id in acquirable_reserve_card_ids(state, max_cost)
-            )
-            actions.extend(
+            ]
+            acquisitions.extend(
                 DomainAction(
                     action_id="acquire_intrigue_imperium",
                     actor=player,
@@ -649,6 +649,14 @@ def legal_intrigue_choice_actions(
                 )
                 for instance_id in acquirable_imperium_instance_ids(state, max_cost)
             )
+            if not acquisitions:
+                # Nothing within the cap: the card is still played and the
+                # acquisition part alone fizzles (designer ruling, Impress;
+                # OQ-057).
+                acquisitions.append(
+                    DomainAction(action_id="skip_intrigue_acquisition", actor=player)
+                )
+            actions.extend(acquisitions)
         case PlaceSpy():
             targets = spy_placement_targets(state, player, slot)
             if owner.spies_supply > 0:
@@ -1072,6 +1080,27 @@ def _apply_intrigue_acquisition(
     context["slot"] = slot_index + 1
     advanced = replace_top_frame(state, with_context(frame, context))
     arguments = dict(action.arguments)
+    if action.action_id == "skip_intrigue_acquisition":
+        skipped_events: tuple[GameEvent, ...] = (
+            GameEvent(
+                event_id=f"{step_source}:acquisition_unavailable",
+                kind="intrigue_acquisition_unavailable",
+                payload=(("card_id", card_id), ("player", player)),
+            ),
+        )
+        if slot_index + 1 >= len(_slots(context)):
+            finished = finish_intrigue_play(
+                advanced.pop_decision(),
+                player,
+                card_id,
+                _sections(context),
+                source,
+                skip_rewards=context.get("rewards_applied") is True,
+            )
+            return RuleResult(
+                state=finished.state, events=(*skipped_events, *finished.events)
+            )
+        return RuleResult(state=advanced, events=skipped_events)
     if action.action_id == "acquire_intrigue_reserve":
         acquired = acquire_reserve_for_intrigue(
             advanced,

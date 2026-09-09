@@ -1766,7 +1766,8 @@ def test_ruthless_leadership_round_trips_and_is_dealt_in_random_games() -> None:
     from dune_imperium.simulation import run_random_game
 
     codec = ActionCodec(PROMO_BLOODLINES)
-    assert codec.size == 10159 + 292 + 1 + 1 + 1  # v97 Occupation bundle, v99 recall
+    # v97 Occupation bundle, v99 Duncan recall, v100 skip + Change Allegiances.
+    assert codec.size == 10159 + 292 + 1 + 1 + 1 + 2
     action = DomainAction(
         action_id="trash_agent_card",
         actor=2,

@@ -532,6 +532,32 @@ def test_usurp_grafts_a_row_card_that_leaves_the_game_when_the_turn_closes() -> 
     assert observe_state(closed, 1).players[0].usurped_row_card_id == ""
 
 
+
+def test_usurps_borrowed_stillsuit_manufacturer_never_returns_to_hand() -> None:
+    # Designer ruling (BGG, OQ-054): a Row card borrowed through Usurp is not
+    # "in play", so Stillsuit Manufacturer's Fremen-Alliance return to hand
+    # does not happen; the card is trashed when the turn closes.
+    usurp = _tleilaxu("usurp")
+    stillsuit = "imperium:stillsuit_manufacturer:0"
+    imperium = imperium_deck_instance_ids(False)
+    state = _state(
+        _owner((usurp,), alliance_faction_ids=("fremen",)),
+        imperium_row=(stillsuit, *imperium[1:5]),
+        imperium_deck=imperium[5:20],
+    )
+    placed = _place(state, usurp, "arrakeen", graft=True)
+    grafted = apply_graft_partner(
+        placed, DomainAction("choose_graft_partner", 0, (("card_id", stillsuit),))
+    ).state
+    resolved = resolve_agent_card_effect(_switch(grafted))
+    owner = resolved.state.players[0]
+    assert owner.resources.water == 3
+    assert stillsuit in owner.in_play and stillsuit not in owner.hand
+    closed = _engine_finish_turn(resolved.state)
+    owner = closed.players[0]
+    assert stillsuit in owner.trashed
+    assert stillsuit not in owner.hand and stillsuit not in owner.in_play
+
 def test_usurp_trash_fires_the_borrowed_cards_trash_trigger() -> None:
     """Replacement Eyes' "when this card is trashed: Tleilaxu" resolves when
     Usurp's automatic end-of-turn trash removes it (user ruling, OQ-054)."""

@@ -20,19 +20,29 @@ from dune_imperium.content.uprising.types import AgentIcon, PersonalCardIconCond
 from dune_imperium.core.player import PlayerState
 
 
+def is_ghola(card_instance_id: str) -> bool:
+    """Return whether the instance is Ghola (Immortality), the copying graft."""
+
+    return personal_card_for_instance(card_instance_id).card.card_id == "ghola"
+
+
 def effective_agent_icons(
     card: PersonalCardDefinition,
     owner: PlayerState,
     *,
     grafted: bool = False,
     opponents: tuple[PlayerState, ...] = (),
+    ghola_partner: bool = False,
 ) -> tuple[AgentIcon, ...]:
     """Return the card's Agent icons as printed, plus any it borrows.
 
     Delivery Logistics (Bloodlines) has "the Agent icons of all your
     incomplete contracts": each active Contract that names a board space
     lends that space's icon, and a harvest Contract lends the Spice Trade
-    icon of the Maker spaces.
+    icon of the Maker spaces. With ``ghola_partner`` the card is (or may
+    be) grafted with Ghola, whose copy satisfies the card's own Bene
+    Gesserit Bond icons (designer ruling: Ghola + Long Reach has all three
+    icons; OQ-057).
     """
 
     icons = list(card.agent_icons)
@@ -41,7 +51,7 @@ def effective_agent_icons(
         # is played (Long Reach, Show of Strength) [card faces].
         icon_condition = card.icon_condition
         if icon_condition is PersonalCardIconCondition.BENE_GESSERIT_BOND:
-            met = any(
+            met = ghola_partner or any(
                 Faction.BENE_GESSERIT in personal_card_for_instance(other).factions
                 for other in owner.in_play
             )

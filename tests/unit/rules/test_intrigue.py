@@ -602,9 +602,12 @@ def test_change_allegiances_loss_requires_influence_and_offers_both_options() ->
         poor, influence=Influence(bene_gesserit=1), resources=Resources(spice=3)
     )
     state = _turn_state(owner)
+    # "One or both effects" (designer ruling, OQ-057): the third option
+    # takes both lines.
     assert legal_intrigue_play_actions(state, 0) == (
         _play(state, card, 0),
         _play(state, card, 1),
+        _play(state, card, 2),
     )
     engine = UprisingRulesEngine()
     opened = engine.apply(state, _play(state, card, 0)).state
@@ -616,6 +619,38 @@ def test_change_allegiances_loss_requires_influence_and_offers_both_options() ->
     assert gained.players[0].influence.fremen == 1
     assert gained.players[0].resources.spice == 3
     assert gained.decision_stack == state.decision_stack
+
+
+def test_change_allegiances_may_use_both_effects_in_printed_order() -> None:
+    # Designer ruling (Message from designer, OQ-057): Change Allegiances may
+    # use one effect or both. The engine takes the spice up front, so paying
+    # the second line with spice the first line produced (Lady Margot's
+    # Loyalty) is a documented residual gap.
+    card = _intrigue("change_allegiances")
+    owner = PlayerState(
+        player_id=0,
+        intrigue_cards=(card,),
+        influence=Influence(bene_gesserit=1),
+        resources=Resources(spice=3),
+    )
+    state = _turn_state(owner)
+    engine = UprisingRulesEngine()
+    both = engine.apply(state, _play(state, card, 2)).state
+    assert both.players[0].resources.spice == 0
+    lost = engine.apply(both, _choose_faction("bene_gesserit")).state
+    assert lost.players[0].influence.bene_gesserit == 0
+    first = engine.apply(lost, _choose_faction("fremen")).state
+    assert first.players[0].influence.fremen == 1
+    second = engine.apply(first, _choose_faction("emperor")).state
+    assert second.players[0].influence.emperor == 1
+    assert second.decision_stack[-1].kind == "turn"
+    assert card in second.intrigue_discard
+
+    poor = _turn_state(replace(owner, resources=Resources(spice=2)))
+    assert [
+        dict(action.arguments)["option"]
+        for action in legal_intrigue_play_actions(poor, 0)
+    ] == [0]
 
 
 def test_losing_influence_for_intrigue_offers_alliance_recipients() -> None:
@@ -1570,7 +1605,9 @@ def test_inspire_awe_puts_the_card_in_hand_with_a_sandworm_in_the_conflict() -> 
     assert done.intrigue_discard == (card,)
 
 
-def test_inspire_awe_is_unplayable_without_a_target_within_the_cap() -> None:
+def test_inspire_awe_without_a_target_is_played_and_its_acquisition_fizzles() -> None:
+    # Designer ruling (Impress, OQ-057): an Intrigue card may be played when
+    # nothing within its cap is acquirable; only the acquisition part fizzles.
     card = _intrigue("inspire_awe")
     owner = PlayerState(player_id=0, intrigue_cards=(card,))
     state = replace(
@@ -1579,7 +1616,19 @@ def test_inspire_awe_is_unplayable_without_a_target_within_the_cap() -> None:
         imperium_deck=(_imperium_instance("maula_pistol"),),
         reserve_stacks=(("prepare_the_way", 0), ("the_spice_must_flow", 10)),
     )
-    assert legal_intrigue_play_actions(state, 0) == ()
+    assert legal_intrigue_play_actions(state, 0) == (_play(state, card),)
+    engine = UprisingRulesEngine()
+    opened = engine.apply(state, _play(state, card)).state
+    assert [action.action_id for action in engine.legal_actions(opened, 0)] == [
+        "skip_intrigue_acquisition"
+    ]
+    done = engine.apply(
+        opened, DomainAction(action_id="skip_intrigue_acquisition", actor=0)
+    )
+    assert done.events[0].kind == "intrigue_acquisition_unavailable"
+    assert card in done.state.intrigue_discard
+    assert done.state.players[0].discard_pile == ()
+    assert done.state.decision_stack == state.decision_stack
 
 
 def test_inspire_awe_to_hand_immediately_reveals_during_the_owners_reveal_turn() -> (
@@ -1699,10 +1748,26 @@ def test_impress_adds_strength_and_acquires_during_combat() -> None:
     assert frame.decision.owner == 1
 
 
-def test_impress_is_not_offered_without_an_affordable_target() -> None:
+def test_impress_without_an_affordable_target_still_adds_its_strength() -> None:
+    # Designer ruling (Message from designer, OQ-057): Impress may be played
+    # with no card of cost 3 or less available; the two swords land and the
+    # acquisition alone fizzles.
     card = _intrigue("impress")
     state = _combat_state(_fighter(0, 1, intrigue_cards=(card,)))
-    assert legal_intrigue_play_actions(state, 0) == ()
+    assert legal_intrigue_play_actions(state, 0) == (_play(state, card),)
+    engine = UprisingRulesEngine()
+    opened = engine.apply(state, _play(state, card)).state
+    # The swords may be taken first (OQ-015); the acquisition can only be skipped.
+    assert {action.action_id for action in engine.legal_actions(opened, 0)} == {
+        "resolve_intrigue_rewards",
+        "skip_intrigue_acquisition",
+    }
+    done = engine.apply(
+        opened, DomainAction(action_id="skip_intrigue_acquisition", actor=0)
+    ).state
+    assert done.players[0].combat_strength == 2 + 2
+    assert card in done.intrigue_discard
+    assert done.decision_stack[-1].kind == "combat_intrigue"
 
 
 def test_impress_acquiring_spy_network_opens_the_spy_frame_after_the_card() -> None:

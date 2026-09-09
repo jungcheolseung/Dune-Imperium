@@ -1196,6 +1196,41 @@ def test_rapid_engineering_discards_for_a_discounted_tile_or_two_influence() -> 
     )
 
 
+
+def test_a_cards_tech_discount_must_be_used_when_a_tile_is_affordable() -> None:
+    # Designer ruling (Message from designer, OQ-057): Battlefield Research
+    # and Rapid Engineering must acquire a tile once played; only an
+    # unaffordable offer may be declined. The Landsraad visit's own Acquire
+    # Tech stays a "may" [Bloodlines p. 7].
+    from dune_imperium.rules.intrigue import (
+        apply_intrigue_choice,
+        apply_intrigue_play,
+        legal_intrigue_choice_actions,
+        legal_intrigue_play_actions,
+    )
+
+    card = "intrigue:rapid_engineering:0"
+
+    def opened(spice: int, stacks: tuple[tuple[str, ...], ...] = STACKS) -> GameState:
+        owner = _owner(intrigue_cards=(card,), resources=Resources(spice=spice))
+        state = _turn_state(owner, stacks=stacks)
+        played = apply_intrigue_play(state, legal_intrigue_play_actions(state, 0)[0])
+        return apply_intrigue_choice(
+            played.state, legal_intrigue_choice_actions(played.state, 0)[0]
+        ).state
+
+    # Gene-Locked Vault costs 2, one spice with the icon's discount.
+    affordable = opened(1)
+    assert "decline_tech" not in _tech_actions(affordable)
+    assert "gene_locked_vault:choice=card" in _tech_actions(affordable)
+
+    # Plasteel Blades (3), Panopticon (5), Spy Drones (5): nothing for one spice.
+    broke = opened(1, (("plasteel_blades",), ("panopticon",), ("spy_drones",)))
+    assert list(_tech_actions(broke)) == ["decline_tech"]
+
+    visit = _visit(_turn_state(_owner()), "assembly_hall")
+    assert "decline_tech" in _tech_actions(visit)
+
 def test_battlefield_research_retreats_for_a_tile_or_scores_with_three() -> None:
     from dune_imperium.rules.combat import begin_combat_intrigue
     from dune_imperium.rules.intrigue import (

@@ -29,7 +29,11 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.acquisition import take_imperium_row_card
 from dune_imperium.rules.agent_effects import agent_card_icons_at_placement
-from dune_imperium.rules.agent_icons import card_is_boosted, effective_agent_icons
+from dune_imperium.rules.agent_icons import (
+    card_is_boosted,
+    effective_agent_icons,
+    is_ghola,
+)
 from dune_imperium.rules.agent_turn import (
     agent_effect_is_available,
     card_can_access_space,
@@ -70,9 +74,24 @@ def legal_graft_partner_actions(
     opponents = tuple(seat for seat in state.players if seat.player_id != player)
     # A placed card without icons of its own (Usurp) reached the space on
     # the partner's icons, so only partners that fit the space qualify.
-    partner_must_fit = not effective_agent_icons(
+    placed_icons = effective_agent_icons(
         placed, owner, grafted=True, opponents=opponents
     )
+    partner_must_fit = not placed_icons
+    # Long Reach entered on the promise of Ghola's copy (OQ-057): only Ghola
+    # may then be the partner.
+    needs_ghola = False
+    if not partner_must_fit and not card_can_access_space(
+        placed_icons, space, owner, any_icon=card_is_boosted(placed, owner)
+    ):
+        needs_ghola = card_can_access_space(
+            effective_agent_icons(
+                placed, owner, grafted=True, opponents=opponents, ghola_partner=True
+            ),
+            space,
+            owner,
+            any_icon=card_is_boosted(placed, owner),
+        )
     candidates: tuple[str, ...] = (
         *(card_id for card_id in owner.hand if card_id != placed_id),
         # Usurp: "graft this card with a card from the Imperium Row".
@@ -88,6 +107,7 @@ def legal_graft_partner_actions(
         if (
             card_is_graft(placed) or card_is_graft(personal_card_for_instance(card_id))
         )
+        and (not needs_ghola or is_ghola(card_id))
         # An occupied space was entered on Tleilaxu Infiltrator's promise.
         and (
             not occupied

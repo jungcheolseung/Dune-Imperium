@@ -86,10 +86,6 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
-from dune_imperium.rules.acquisition import (
-    acquirable_imperium_instance_ids,
-    acquirable_reserve_card_ids,
-)
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.combat_deployment import undeployable_troops_this_turn
 from dune_imperium.rules.contracts import begin_contract_gain
@@ -518,11 +514,6 @@ def _choice_rewards_feasible(
                 ):
                     return False
                 case TakeContract() if not state.config.choam_module:
-                    return False
-                case AcquireCardUpTo(max_cost=max_cost) if not (
-                    acquirable_reserve_card_ids(state, max_cost)
-                    or acquirable_imperium_instance_ids(state, max_cost)
-                ):
                     return False
                 case SetAsideImperiumRowCard() if not state.imperium_row:
                     return False

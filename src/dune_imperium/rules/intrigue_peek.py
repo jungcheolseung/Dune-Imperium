@@ -10,6 +10,7 @@ take the single remaining card.
 
 from dataclasses import replace
 
+from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import ChanceDecision, DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
@@ -21,6 +22,7 @@ from dune_imperium.rules.frames import (
     context_str,
     owned_top_frame,
     replace_player,
+    turn_owner_of,
 )
 from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
 
@@ -112,6 +114,14 @@ def apply_intrigue_peek(state: GameState, action: DomainAction) -> RuleResult:
     peeked = peeked_intrigue_ids(state, action.actor)
     owner = state.players[action.actor]
     next_owner = replace(owner, intrigue_cards=(*owner.intrigue_cards, kept))
+    if turn_owner_of(state) == action.actor and has_tech(
+        owner.tech_ids, TechAbility.INTRIGUE_DRAW_TROOP
+    ):
+        # "Keep one" is an Intrigue draw: Suspensor Suits owes its troop
+        # (designer ruling, OQ-057), paid by the engine after the step.
+        next_owner = replace(
+            next_owner, suspensor_owed=next_owner.suspensor_owed + 1
+        )
     remaining = tuple(card for card in peeked if card != kept)
     next_state = replace(
         state.pop_decision(),

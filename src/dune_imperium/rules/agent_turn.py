@@ -32,7 +32,11 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import Influence, PlayerState, Resources
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.agent_effects import agent_card_icons_at_placement
-from dune_imperium.rules.agent_icons import card_is_boosted, effective_agent_icons
+from dune_imperium.rules.agent_icons import (
+    card_is_boosted,
+    effective_agent_icons,
+    is_ghola,
+)
 from dune_imperium.rules.board_effects import board_icons_for
 from dune_imperium.rules.card_bonds import has_faction_bond
 from dune_imperium.rules.card_draw import (
@@ -136,7 +140,14 @@ def _placements_for_card(
 ) -> tuple[DomainAction, ...]:
     actions: list[DomainAction] = []
     opponents = tuple(seat for seat in state.players if seat.player_id != player)
-    icons = effective_agent_icons(card, owner, grafted=graft, opponents=opponents)
+    # Grafting with Ghola in hand may turn the card's Bond icons on
+    # (OQ-057); the partner choice then keeps Ghola alone when it must.
+    ghola_partner = graft and any(
+        is_ghola(other) for other in owner.hand if other != card_instance_id
+    )
+    icons = effective_agent_icons(
+        card, owner, grafted=graft, opponents=opponents, ghola_partner=ghola_partner
+    )
     usurp = graft and card_is_usurp(card)
     usurp_partners: tuple[tuple[str, tuple[AgentIcon, ...], bool], ...] = ()
     if usurp:
