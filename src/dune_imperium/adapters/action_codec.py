@@ -61,7 +61,7 @@ from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.rules.agent_effects import AUTOMATIC_AGENT_ICONS
 from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 
-ACTION_CODEC_VERSION = 98
+ACTION_CODEC_VERSION = 99
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -722,6 +722,7 @@ def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "decline_intrigue_contract_trigger",
             # Bloodlines Leaders: Duncan Idaho, Chani, Liet Kynes, Esmar Tuek.
             "deploy_leader_agent",
+            "recall_conflict_agent_for_imperial_privilege",
             "pay_leader_signet_water",
             "decline_optional_trash",
             "take_tuek_sietch_spice",

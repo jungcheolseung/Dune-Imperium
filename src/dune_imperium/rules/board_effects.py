@@ -1048,14 +1048,29 @@ def legal_imperial_privilege_actions(
                 for card_id in owner.intrigue_cards
             ),
         )
-    return tuple(
-        DomainAction(
-            action_id="recall_agent_for_imperial_privilege",
-            actor=player,
-            arguments=(("space_id", space_id),),
-        )
-        for space_id in owner.agent_locations
-        if space_id != "imperial_privilege"
+    return (
+        *(
+            DomainAction(
+                action_id="recall_agent_for_imperial_privilege",
+                actor=player,
+                arguments=(("space_id", space_id),),
+            )
+            for space_id in owner.agent_locations
+            if space_id != "imperial_privilege"
+        ),
+        # Duncan Idaho's Into the Fray Agent is still "one of your Agents"
+        # [Board Guide p. 2]: the designer confirmed Imperial Privilege may
+        # recall it from the Conflict (OQ-037(d)).
+        *(
+            (
+                DomainAction(
+                    action_id="recall_conflict_agent_for_imperial_privilege",
+                    actor=player,
+                ),
+            )
+            if owner.agent_in_conflict
+            else ()
+        ),
     )
 
 
@@ -1073,17 +1088,33 @@ def apply_imperial_privilege_action(
         f"round:{state.round_number}:player:{action.actor}:board:imperial_privilege"
     )
 
-    if action.action_id == "recall_agent_for_imperial_privilege":
-        space_id = dict(action.arguments).get("space_id")
-        if not isinstance(space_id, str):
-            raise RuntimeError("Imperial Privilege recall has invalid space ID")
-        next_owner = replace(
-            owner,
-            agents_available=owner.agents_available + 1,
-            agent_locations=tuple(
-                location for location in owner.agent_locations if location != space_id
-            ),
-        )
+    if action.action_id in (
+        "recall_agent_for_imperial_privilege",
+        "recall_conflict_agent_for_imperial_privilege",
+    ):
+        if action.action_id == "recall_conflict_agent_for_imperial_privilege":
+            # Into the Fray's Agent leaves the Conflict as a unit and returns
+            # to the Leader (OQ-037(d)); the running strength follows.
+            space_id = "conflict"
+            next_owner = replace(
+                owner,
+                agents_available=owner.agents_available + 1,
+                agent_in_conflict=0,
+            )
+        else:
+            space_value = dict(action.arguments).get("space_id")
+            if not isinstance(space_value, str):
+                raise RuntimeError("Imperial Privilege recall has invalid space ID")
+            space_id = space_value
+            next_owner = replace(
+                owner,
+                agents_available=owner.agents_available + 1,
+                agent_locations=tuple(
+                    location
+                    for location in owner.agent_locations
+                    if location != space_id
+                ),
+            )
         players = tuple(
             next_owner if candidate.player_id == action.actor else candidate
             for candidate in state.players
@@ -1166,10 +1197,16 @@ def apply_imperial_privilege_action(
 
 
 def _other_agent_spaces(state: GameState, player: int) -> tuple[str, ...]:
-    return tuple(
-        location
-        for location in state.players[player].agent_locations
-        if location != "imperial_privilege"
+    """Return where Imperial Privilege may recall from ("conflict" for Duncan)."""
+
+    owner = state.players[player]
+    return (
+        *(
+            location
+            for location in owner.agent_locations
+            if location != "imperial_privilege"
+        ),
+        *(("conflict",) if owner.agent_in_conflict else ()),
     )
 
 

@@ -535,6 +535,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "decline_imperial_privilege_intrigue": apply_imperial_privilege_action,
     "discard_intrigue_for_imperial_privilege": apply_imperial_privilege_action,
     "recall_agent_for_imperial_privilege": apply_imperial_privilege_action,
+    "recall_conflict_agent_for_imperial_privilege": apply_imperial_privilege_action,
     "deploy_troops": _apply_deployment,
     "withdraw_troops": apply_troop_withdrawal,
     "deploy_commanders": _apply_deployment,

@@ -301,6 +301,48 @@ def test_calculus_of_power_trashes_another_emperor_for_strength() -> None:
     ]
 
 
+
+def test_leadership_counts_sword_cards_once_and_ignores_a_later_trash() -> None:
+    # Designer ruling (In person, designer-rulings-audit.md): Leadership
+    # counts the other sword cards at one moment and a trashed card cannot be
+    # counted. Counting at the Reveal's start gives the same +1 as counting
+    # after Calculus of Power trashes Sardaukar Soldier (Calculus then shows
+    # swords, Sardaukar is gone), and Sardaukar's already-pooled sword stays
+    # (OQ-022).
+    leadership = _imperium_instance("leadership")
+    calculus = _imperium_instance("calculus_of_power")
+    sardaukar = _imperium_instance("sardaukar_soldier")
+    owner = PlayerState(
+        player_id=0,
+        troops_supply=8,
+        troops_garrison=3,
+        troops_conflict=1,
+        hand=(leadership, calculus, sardaukar),
+    )
+    state = replace(_state(owner), intrigue_deck=("intrigue:test",))
+    revealed = begin_reveal_turn(
+        state, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    reveal = next(frame for frame in revealed.decision_stack if frame.kind == "reveal")
+    # troop 2 + Leadership 1 + Sardaukar 1 + Leadership's one other sword card.
+    assert dict(reveal.context)["sword_strength"] == 3
+    assert revealed.players[0].combat_strength == 5
+
+    trash = next(
+        action
+        for action in legal_reveal_card_trash_actions(revealed, 0)
+        if action.action_id == "trash_reveal_card"
+    )
+    result = apply_reveal_card_trash(revealed, trash)
+    reveal = next(
+        frame for frame in result.state.decision_stack if frame.kind == "reveal"
+    )
+    assert result.state.players[0].trashed == (sardaukar,)
+    assert dict(reveal.context)["sword_strength"] == 3
+    assert dict(reveal.context)["optional_sword_strength"] == 3
+    # Not 9: Calculus becoming a sword card does not recount Leadership.
+    assert result.state.players[0].combat_strength == 8
+
 def test_calculus_of_power_cannot_pay_with_itself() -> None:
     calculus = _imperium_instance("calculus_of_power")
     revealed = begin_reveal_turn(

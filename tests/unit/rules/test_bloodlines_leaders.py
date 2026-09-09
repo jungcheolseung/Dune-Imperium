@@ -256,6 +256,57 @@ def test_into_the_fray_sends_the_agent_to_fight() -> None:
     )
 
 
+
+def test_imperial_privilege_may_recall_the_into_the_fray_agent() -> None:
+    # Designer ruling (Message from designer, designer-rulings-audit.md): the
+    # Agent Duncan sent into the Conflict is still one of his Agents, so a
+    # later Imperial Privilege visit may recall it [Board Guide p. 2]
+    # (OQ-037(d)).
+    from dune_imperium.rules.board_effects import (
+        apply_imperial_privilege_action,
+        legal_imperial_privilege_actions,
+    )
+
+    owner = PlayerState(
+        player_id=0,
+        leader_id="duncan_idaho",
+        hand=(DAGGER,),
+        deck=(RECON,),
+        resources=Resources(solari=3),
+        influence=Influence(emperor=2),
+        agents_available=1,
+        agent_in_conflict=1,
+    )
+    state = _play(_turn_state(owner), DAGGER, "imperial_privilege")
+    assert state.players[0].units_in_conflict == 1
+    decline = next(
+        action
+        for action in legal_imperial_privilege_actions(state, 0)
+        if action.action_id == "decline_imperial_privilege_intrigue"
+    )
+    declined = apply_imperial_privilege_action(state, decline).state
+    recalls = legal_imperial_privilege_actions(declined, 0)
+    assert [action.action_id for action in recalls] == [
+        "recall_conflict_agent_for_imperial_privilege"
+    ]
+
+    result = apply_imperial_privilege_action(declined, recalls[0])
+    seat = result.state.players[0]
+    assert seat.agent_in_conflict == 0
+    assert seat.units_in_conflict == 0
+    assert seat.agents_available == 1
+    assert seat.agent_locations == ("imperial_privilege",)
+    assert seat.hand == (RECON,)
+    recalled = next(event for event in result.events if event.kind == "agent_recalled")
+    assert dict(recalled.payload)["space_id"] == "conflict"
+    # The recall was available, so nothing was skipped.
+    assert not any(
+        event.kind == "imperial_privilege_recall_skipped" for event in result.events
+    )
+    engine = UprisingRulesEngine()
+    assert result.state.players[0].combat_strength == 0
+    assert engine.legal_actions(result.state, 0) == ()
+
 # --- Gaius Helen Mohiam ------------------------------------------------------
 
 

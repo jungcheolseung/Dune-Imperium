@@ -1,5 +1,7 @@
 """Tests for the fixed integer Uprising action codec."""
 
+import pytest
+
 from dune_imperium import RulesetConfig
 from dune_imperium.adapters import ACTION_CODEC_VERSION, ActionCodec
 from dune_imperium.content.uprising.types import PersonalCardRevealChoiceEffect
@@ -14,7 +16,7 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     first = ActionCodec(RulesetConfig())
     second = ActionCodec(RulesetConfig())
 
-    assert ACTION_CODEC_VERSION == 98
+    assert ACTION_CODEC_VERSION == 99
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
     # v92/v93/v97: the Reveal gain actions join every catalog (troops, Intrigue,
@@ -41,6 +43,40 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
     else:
         raise AssertionError("module-off codec accepted a Contract action")
 
+
+
+def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
+    # v98: the eight Bloodlines contract tokens and the Immediate's Intrigue
+    # trash join the CHOAM+Bloodlines catalog; v99: Imperial Privilege may
+    # recall Duncan Idaho's Into the Fray Agent (OQ-037(d)).
+    both = ActionCodec(RulesetConfig(choam_module=True, bloodlines=True))
+    actions = (
+        DomainAction(
+            action_id="take_contract",
+            actor=1,
+            arguments=(("instance_id", "contract:bloodlines_earn_any_alliance"),),
+        ),
+        DomainAction(
+            action_id="trash_intrigue_for_contract",
+            actor=1,
+            arguments=(("card_id", "intrigue:backed_by_choam:0"),),
+        ),
+        DomainAction(
+            action_id="recall_conflict_agent_for_imperial_privilege", actor=1
+        ),
+    )
+    for action in actions:
+        assert both.decode(both.encode(action), actor=1) == action
+    assert both.size == 11097
+
+    choam_only = ActionCodec(RulesetConfig(choam_module=True))
+    for action in actions:
+        with pytest.raises(ValueError, match="not present"):
+            choam_only.encode(action)
+    bloodlines_only = ActionCodec(RulesetConfig(bloodlines=True))
+    for action in actions[:2]:
+        with pytest.raises(ValueError, match="not present"):
+            bloodlines_only.encode(action)
 
 def test_choam_contract_completion_and_spy_choices_round_trip() -> None:
     codec = ActionCodec(RulesetConfig(choam_module=True))

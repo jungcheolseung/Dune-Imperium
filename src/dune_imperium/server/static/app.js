@@ -148,6 +148,7 @@ const ACTION_LABELS = {
   recall_agent_for_agent_card: "Agent 회수",
   recall_agent_for_contract: "Agent 회수",
   recall_agent_for_imperial_privilege: "Agent 회수",
+  recall_conflict_agent_for_imperial_privilege: "Conflict의 Agent 회수 (Into the Fray)",
   recall_spies_for_combat_reward: "Spy 회수",
   recall_spies_for_reveal: "Spy 회수",
   recall_spy_for_acquisition: "Spy 회수",
