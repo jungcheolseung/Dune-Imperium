@@ -62,7 +62,7 @@
 | 4 | (2026-09-09 반영: OQ-057, 두 선택을 먼저 받고 해결) "Choose Two"(Propaganda, Stitched Horror, Rapid Engineering)는 둘을 먼저 정하고 나서 해결. BG 4단계 Intrigue를 보고 두 번째를 고를 수 없다(Message from designer) | 첫 선택의 Influence·Tleilaxu 전진이 즉시 해결된 뒤 두 번째 선택 | `rules/combat.py:832` `apply_distinct_combat_reward_influence`, `rules/agent_effects.py` `_apply_stitched_horror_reward`, `rules/intrigue.py:416` | 두 선택을 한 frame에 모아 받은 뒤 순서대로 적용하면 됨. Propaganda를 worm으로 이기면 두 세트 사이에는 다른 효과 허용 |
 | 5 | (2026-09-09 반영: OQ-002 재판정, `rank_combat(first_player=)`) Combat 보상 순서가 결과에 영향을 주면 First Player부터 턴 순서(Message from designer); Harvest Cells 두 명은 턴 순서 | OQ-002: 좌석 번호순 convention(당시 "순서가 관측 불가" 전제) | `rules/combat.py` `rank_combat`/`_rewards` | Immortality의 Imperium Ceremony(Intrigue 덱 상단 열람)와 Harvest Cells로 전제가 깨짐. OQ-002 재개 조건 충족 |
 | 6 | (2026-09-09 반영: OQ-057, `skip_intrigue_acquisition`) Impress는 3 이하 카드가 없어도 play 가능, 획득 부분만 불발(Message from designer) | 획득 대상이 없으면 play 자체 불가(검 2도 못 받음) | `rules/effect_interpreter.py:522` `AcquireCardUpTo` 가드 | Inspire Awe 등 같은 가드를 쓰는 카드도 재검토 |
-| 7 | (2026-09-09 반영: OQ-057, 세 번째 option; Loyalty/Navigation 자원으로 두 번째 비용 지불은 잔여 경계) Change Allegiances는 한 효과만 또는 둘 다 사용 가능; 첫 효과로 얻은 자원(Margot Loyalty spice, Y'rkoon Navigation)으로 두 번째 비용 지불 가능(Message from designer) | 두 효과가 배타 `_plot` 옵션 | `content/uprising/intrigue.py:292` | Strategic Stockpiling처럼 한 옵션 안의 두 section으로 바꾸면 됨 |
+| 7 | (2026-09-09 반영: OQ-058 — 줄마다 따로 쓰고 쓸 때 지불; Loyalty 자원으로 두 번째 비용 지불 가능) Change Allegiances는 한 효과만 또는 둘 다 사용 가능; 첫 효과로 얻은 자원(Margot Loyalty spice, Y'rkoon Navigation)으로 두 번째 비용 지불 가능(Message from designer) | 두 효과가 배타 `_plot` 옵션 | `content/uprising/intrigue.py:292` | Strategic Stockpiling처럼 한 옵션 안의 두 section으로 바꾸면 됨 |
 | 8 | (2026-09-09 반영: OQ-054 보강) Usurp로 빌린 Stillsuit Manufacturer는 "in play"가 아니므로 hand로 돌아올 수 없다(BGG) | 빌린 Row 카드가 `in_play`에 들어가 Fremen Alliance면 hand로 이동 | `rules/graft.py:135`, `rules/agent_effects.py:3606` | OQ-054 보강 |
 | 9 | (2026-09-09 반영: OQ-057) Battlefield Research·Rapid Engineering(·Machine Culture)은 play했으면 반드시 Tech 획득(Message from designer) | Tech 획득 frame에 항상 `decline_tech` | `rules/tech.py:237` | Intrigue 출처 frame에서만 decline 제거 |
 | 10 | (2026-09-09 반영: OQ-057) Imperium Ceremony의 "keep one"은 draw 1 → Suspensor Suits troop 1(Message from designer) | peek keep 경로는 `suspensor_owed`를 올리지 않음 | `rules/intrigue_peek.py:114` | Tech+Immortality 조합 |
@@ -82,7 +82,7 @@
 
 ## 반영 현황 (2026-09-09)
 
-사용자 결정: 13건 전부 디자이너 판정을 따른다. 13건 모두 반영했다(표의 각 행 앞 표시; 판정 등록은 [OQ-057](open-questions.md#oq-057--디자이너-커뮤니티-판정의-일괄-채택-2026-09-09), OQ-002·OQ-028·OQ-037·OQ-054 보강). 잔여 경계는 7번의 순차 지불(첫 효과로 얻은 자원으로 두 번째 비용)이다.
+사용자 결정: 13건 전부 디자이너 판정을 따른다. 13건 모두 반영했다(표의 각 행 앞 표시; 판정 등록은 [OQ-057](open-questions.md#oq-057--디자이너-커뮤니티-판정의-일괄-채택-2026-09-09), OQ-002·OQ-028·OQ-037·OQ-054 보강). 7번의 순차 지불도 같은 날 OQ-058(사용자 판정: Intrigue 줄은 각각 따로 쓰고 쓸 때 지불)로 해소했다.
 
 ## 다음 단계 제안
 

@@ -68,17 +68,17 @@ Printed text was checked against the Dune Cards Hub card image for each card.
 | CHOAM Profits | 1 (CHOAM) | Endgame: with four or more completed Contracts, gain 1 VP. | Pure Endgame card; unplayable with the module off. |
 | Secure Spice Trade | 1 | Endgame: with at least two The Spice Must Flow, gain 1 VP and 2 Spice. | Copies in the deck, hand, discard and play count; a trashed copy has left the game. |
 | Shadow Alliance | 1 | Endgame: with 4 or more Influence on a Faction track where an opponent has the Alliance, gain 1 VP. | DIU omits the opponent-Alliance clause; the printed card requires it. Holding the Alliance oneself does not qualify. |
-| Depart for Arrakis | 1 | Plot: pay 2 Spice → recruit 3 troops; Spacing Guild 3 Influence: draw 1 card. | The Spice cost is mandatory; the draw is a separate conditional line. |
+| Depart for Arrakis | 1 | Plot: pay 2 Spice → recruit 3 troops; Spacing Guild 3 Influence: draw 1 card. | The Guild draw resolves as the card is played; the Spice line is a separate optional action paid when used (OQ-058). |
 | Intelligence Report | 1 | Plot: draw 1 card; with two or more Spies on the board, draw 1 more. | Spies are counted on Observation Posts. |
 | Manipulate | 1 | Plot: remove and replace an Imperium Row card; during your Reveal turn this round you may acquire it for 1 less. | Owner-only at the discount; unacquired cards leave the game with that Reveal turn [FAQ p. 3]. DIU models the card as an opaque custom effect. |
 | Leverage | 1 (CHOAM) | Plot: if you gained Spice this turn, take a Contract and gain 1 Solari. | Every Spice source counts and spending does not reduce the total; offered only while the condition holds [FAQ p. 2]. DIU records a personal-card draw where the printed card shows the Contract icon. |
 | Market Opportunity | 1 | Plot: pay 2 Spice → 5 Solari, or pay 5 Solari → 5 Spice. | Two options; each is offered only when affordable. |
 | Mercenaries | 1 | Plot: pay 3 Solari → draw 1 Intrigue and recruit 2 troops. | Uses the shared Intrigue draw with reshuffle. |
 | Shaddam's Favor | 1 | Plot: recruit 1 troop; Emperor 3 Influence: gain 3 Solari. | The troop is unconditional. |
-| Strategic Stockpiling | 1 | Plot: pay 5 Spice → 1 VP; Fremen 3 Influence: pay 3 Water → 1 VP. | With Fremen 3 both costs are mandatory (OQ-015). |
+| Strategic Stockpiling | 1 | Plot: two separate lines — pay 5 Spice → 1 VP; Fremen 3 Influence: pay 3 Water → 1 VP (OQ-058). | Each line is used separately and paid when used; neither is mandatory (OQ-058, 2026-09-09). |
 | Buy Access | 1 | Plot: pay 5 Solari → gain 1 Influence with each of two different Factions. | "Choose two" is read as two distinct Factions. |
 | Call to Arms | 1 | Plot: during your Reveal turn this round, whenever you acquire a card, recruit 1 troop. | Waits face up until the owner's Reveal turn [FAQ p. 2]; fires per acquisition, including one an Intrigue effect makes mid-Reveal; expires with that Reveal turn (OQ-016). |
-| Change Allegiances | 1 | Plot: lose 1 Influence → gain 1 Influence; or pay 3 Spice → gain 1 Influence. | The loss option needs at least one Influence anywhere; the gained Faction may equal the lost one. |
+| Change Allegiances | 1 | Plot: two separate lines — lose 1 Influence → gain 1 Influence; pay 3 Spice → gain 1 Influence (OQ-058). | Both lines open on play (`intrigue_effects` frame); the Spice line may be paid with spice the first line produced (OQ-058). The loss line needs at least one Influence; the gained Faction may equal the lost one. |
 | Imperium Politics | 1 | Plot: pay 1 Solari → gain 1 Emperor or Spacing Guild Influence. | DIU lists Spacing Guild/Bene Gesserit; the printed card shows Emperor/Spacing Guild. |
 | Impress | 1 | Combat: 2 strength; acquire a card that costs 3 or less. | The printed cap is 3 (the handoff briefly recorded 4). The strength lands when the card finishes, after the acquisition slot. |
 | Inspire Awe | 1 | Plot: acquire a card that costs 3 or less; with a sandworm in the Conflict the card goes to hand. | The sandworm sentence only changes the destination; it never gates playability. The to-hand form is withheld during the owner's Reveal turn (OQ-015). |
@@ -86,8 +86,8 @@ Printed text was checked against the Dune Cards Hub card image for each card.
 | Sietch Ritual | 1 | Plot: discard a card from hand → gain 1 Bene Gesserit or Fremen Influence. | Unplayable with an empty hand, so effectively an Agent-turn card. The discarded card's hand-discard trigger fires. |
 | Backed by CHOAM | 1 (CHOAM) | Plot: lose 1 Influence → 4 Solari. Combat: with two or more completed Contracts, 4 strength. | DIU lists four completed Contracts; the printed card says two. |
 | Weirding Combat | 1 | Combat: 3 strength; Bene Gesserit 3 Influence: +2. | Conditional line, no cost. |
-| Questionable Methods | 1 | Combat: 1 strength; lose 1 Influence → +4. | The Influence line is mandatory under OQ-015(b), so the card needs at least one Influence to play. |
-| Find Weakness | 1 | Combat: 2 strength; recall a Spy → +3. | The recall line is mandatory under OQ-015(b), so the card needs a placed Spy to play. |
+| Questionable Methods | 1 | Combat: 1 strength; lose 1 Influence → +4. | The sword lands on play; the Influence line is a separate optional action (OQ-058), so the card is playable without Influence. |
+| Find Weakness | 1 | Combat: 2 strength; recall a Spy → +3. | The two swords land on play; the recall line is a separate optional action (OQ-058), so the card is playable without a Spy. |
 | Devour | 1 | Combat: 2 strength; with a sandworm in the Conflict, +2 and an optional trash. | Trash slot resolves before the strength is added; both belong to the same section. |
 | Go to Ground | 1 | Combat: retreat one or two troops → place a Spy. | The Spy placement still resolves even if the retreat emptied the Conflict; the player then leaves the loop. |
 | Spring the Trap | 1 | Combat: recall two of your placed Spies for 7 strength. | Pure icon card; the handoff's earlier "when you win" guess was wrong. |

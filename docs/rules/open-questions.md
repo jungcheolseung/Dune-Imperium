@@ -340,6 +340,8 @@
 3. 구현에 선택지가 남았다면 공식 규칙과 project convention의 명확한 구분
 4. 해당 edge case를 재현하는 scenario test
 
+- 재판정(2026-09-09, 사용자 판정, [OQ-058](#oq-058--intrigue-카드의-인쇄-줄은-각각-따로-쓰고-쓸-때-지불한다)): (b)를 폐기한다. "—OR—" 없이 따로 인쇄된 화살표 줄은 각각 독립된 행동이며 의무가 아니다. Strategic Stockpiling은 Fremen 3이어도 두 줄 중 하나만 써도 되고, 각 줄의 비용은 그 줄을 쓸 때 낸다.
+
 ## OQ-016 — face-up trigger Intrigue의 수명
 
 - 상태: `DECIDED`
@@ -496,4 +498,13 @@
 - (1) **조건이 거짓인 의무 Agent box는 turn 종료까지 보류**(Hidden Assets Discord, Guiding Principles): 의무 효과를 조건이 거짓인 동안 "발동해 불발"시킬 수 없다. Guild Envoy가 유일한 손패여도 그 turn에 카드를 뽑으면 discard해야 하고, turn이 끝날 때까지 불가능할 때만 불발한다. OQ-028(a)의 "해결 시 `agent_card_effect_unavailable`로 종료"를 "소유자의 요청으로는 불발 불가"로 재판정한다. 구현: `agent_effects.agent_card_effect_is_unavailable`이 해결을 dry-run해 불발이 될 box면 `resolve_agent_card_effect`를 제시하지 않고, `finish_agent_turn`(OQ-029의 명시적 turn 종료)을 다른 의무 효과가 모두 끝났을 때 제시해 그때 box를 불발 처리한다(Combat 배치 창과 무관하게). Intrigue play 같은 선택 행동은 그동안 열려 있으므로 뒤에 뽑은 카드로 조건이 성립하면 box가 다시 의무가 된다. graft로 두 box가 열려 있으면 살아 있는 상대 box로 전환(`switch_graft_card`)할 수 있고, 두 box가 모두 불발일 때만 전환을 숨기고 turn 종료가 둘을 차례로 불발 처리한다(heuristic이 전환을 무한 반복하던 graft 소크 실패로 확인).
 - (2) **Interstellar Trade는 한 번만**(In person): Reveal 중 완료된 contract(Acquire contract를 The Spice Must Flow 구매로 완료)는 Persuasion을 더 주지 않는다. OQ-028(c)의 "증분 지급"을 폐기하고 Reveal 시작(또는 늦게 도착한 시점)의 완료 수를 한 번 센다. 다른 늦은 지급(Command 6+, Bond 성립 등)은 OQ-028(b)대로 유지한다.
 - (3) **Guild Spy**(In person): The Spice Must Flow를 두 장 사도 Guild Spy 한 장은 한 번만 발동한다; Reveal 중 늦게 뽑힌 Guild Spy도 이미 산 SMF에 반응한다; Emperor bump로 얻은 Spy나 Sleeper Unit로 나중에 놓은 Spy는 그 발동에 세지 않는다(발동 순간의 Spy만). 구현: Reveal frame 문맥 `spice_must_flow_acquired`·`guild_spy_fired`; `reveal_turn.fire_guild_spy_on_spice_must_flow`가 구매 시(revealed·미발동 Guild Spy 전부)와 늦은 도착 시(그 카드)에 발동한다. Reveal box이므로 소유자의 Reveal 밖(Agent turn의 Intrigue 획득 등)에서는 발동하지 않는다.
-- 이로써 13건 전부를 채택했다. 잔여 경계: (7)의 순차 지불(Loyalty/Navigation 자원으로 두 번째 비용).
+- 이로써 13건 전부를 채택했다. (7)의 순차 지불은 같은 날 [OQ-058](#oq-058--intrigue-카드의-인쇄-줄은-각각-따로-쓰고-쓸-때-지불한다)로 해소했다.
+
+## OQ-058 — Intrigue 카드의 인쇄 줄은 각각 따로 쓰고, 쓸 때 지불한다
+
+- 상태: `DECIDED`
+- FAQ는 "Intrigue를 play하려면 조건을 충족하고 비용을 지불해야 한다"고만 한다 `[FAQ pp. 2-3]`. 한 카드에 "—OR—" 없이 화살표 줄이 둘 인쇄돼 있을 때(Change Allegiances, Strategic Stockpiling; Find Weakness·Questionable Methods의 검 줄 + 화살표 줄; Depart for Arrakis의 화살표 줄 + 조건 줄) 비용을 play 시점에 합쳐 내는지, 줄마다 따로 내는지, 줄을 골라 쓸 수 있는지는 말하지 않는다. 디자이너는 Change Allegiances에 대해 "한 효과만 또는 둘 다, 첫 효과로 얻은 자원으로 두 번째 비용 지불 가능"이라고 했다([designer-rulings-audit.md](designer-rulings-audit.md) 7).
+- 필요한 답: 복수 줄 Intrigue의 비용 지불 시점과 줄의 선택 가능 여부.
+- 확정(2026-09-09, 사용자 판정 "책략 하나가 통으로 비용 계산이 되는 게 아니고, 책략을 사용하면 그 책략에 있는 동작을 진행할 수 있게 되는 거고, 여러 효과가 있다면 각각 분리되어서 사용할 수 있어야지"): Intrigue를 play하면 그 카드의 줄들이 열린다. 비용이 없는 줄(검, 조건부 draw 등)은 play 즉시 해결되고, 화살표 줄은 각각 별개 행동(`use_intrigue_effect(section)`)으로 원하는 순서에 쓰며 그 줄의 비용을 **그때** 낸다. 어느 줄도 의무가 아니고, 남은 줄을 쓰지 않으려면 `finish_intrigue_effects`로 카드를 마무리한다(남은 줄이 없으면 자동 마무리). play 조건은 "지금 쓸 수 있는 줄이 하나 이상"이다. 따라서 Change Allegiances를 spice 1로 play해 첫 줄의 Influence로 Lady Margot의 Loyalty spice를 얻은 뒤 두 번째 줄을 낼 수 있다. "—OR—"로 나뉜 카드(Market Opportunity, Cunning, Tactical Option, Rapid Engineering 등)는 그대로 배타 option이다.
+- 적용 카드(카드면 확인, `IntrigueOption.separate`): Change Allegiances, Strategic Stockpiling, Depart for Arrakis, Find Weakness, Questionable Methods. 조건만 다른 자동 줄들(Weirding Combat, Shaddam's Favor, Intelligence Report, Devour, Return the Favor, Vicious Talents 등)은 비용이 없어 결과가 같으므로 기존 모델을 유지한다. OQ-015(b)는 폐기.
+- 구현: `rules/intrigue.py`의 `intrigue_effects` frame(`_play_separate_lines`, `legal_intrigue_effect_actions`, `apply_intrigue_effect`, `_settle_effects_frame`), `effect_interpreter.section_is_usable`, `finish_intrigue_play(discard=False)`; 마무리 전까지 카드는 소유자의 Intrigue hand에 남되 공개 상태(`resolving_intrigue_ids`). 관측 v18(frame 종류), codec v103.
