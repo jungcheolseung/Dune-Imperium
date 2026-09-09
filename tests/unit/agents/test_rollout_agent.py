@@ -232,3 +232,26 @@ def test_player_value_counts_bloodlines_assets() -> None:
     assert player_value(with_commander) - player_value(base) == pytest.approx(1.2)
     with_skill = replace(base, skill_ids=("skill:hardy:0",))
     assert player_value(with_skill) - player_value(base) == pytest.approx(0.5)
+
+
+def test_player_value_counts_immortality_assets() -> None:
+    from dune_imperium.core.player import PlayerState
+
+    base = PlayerState(player_id=0)
+    # A specimen is a supply troop moved to the Axolotl tanks, where it
+    # buys Tleilaxu cards [Immortality p. 8]; supply itself scores nothing.
+    with_specimen = replace(
+        base, specimens=1, troops_supply=base.troops_supply - 1
+    )
+    assert player_value(with_specimen) - player_value(base) == pytest.approx(0.5)
+    # The research token's column is permanent progress toward the genetic
+    # markers [Immortality p. 6]; c4r2 sits in the fourth column.
+    with_research = replace(base, research_space="c4r2")
+    assert player_value(with_research) - player_value(base) == pytest.approx(1.6)
+    with_tleilaxu = replace(base, tleilaxu_space=3)
+    assert player_value(with_tleilaxu) - player_value(base) == pytest.approx(1.5)
+    with_atomics = replace(base, family_atomics=True)
+    assert player_value(with_atomics) - player_value(base) == pytest.approx(0.3)
+    # Without the expansion the research space is empty and adds nothing.
+    assert base.research_space == ""
+    assert player_value(base) == pytest.approx(player_value(replace(base)))

@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 
 from dune_imperium.agents.determinize import determinize
 from dune_imperium.agents.heuristic_agent import HeuristicAgent, score_action
+from dune_imperium.content.immortality.board import RESEARCH_SPACES_BY_ID
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceResolver
 from dune_imperium.core.decisions import ChanceDecision, PlayerDecision
@@ -33,6 +34,13 @@ from dune_imperium.rules.endgame import final_standings
 _STARTING_DECK_SIZE = 10
 _WIN_VALUE = 100.0
 _RANK_STEP = 30.0
+
+
+def _research_column(space_id: str) -> int:
+    """Columns the research token has advanced; 0 without Immortality."""
+
+    space = RESEARCH_SPACES_BY_ID.get(space_id)
+    return 0 if space is None else space.column
 
 
 def player_value(player: PlayerState) -> float:
@@ -72,6 +80,16 @@ def player_value(player: PlayerState) -> float:
         + 1.2 * (player.commanders_garrison + player.commanders_conflict)
         + 0.5 * len(player.skill_ids)
         + 1.0 * len(player.tech_ids)
+        # Immortality: a specimen is a troop resting in the Axolotl tanks
+        # that buys Tleilaxu cards, and both Bene Tleilax tracks are
+        # permanent progress -- the Tleilaxu track scores a Victory Point
+        # at spaces 4 and 7, the research track pays a bonus every column
+        # and unlocks the genetic markers. An unspent Family Atomics token
+        # is one free Imperium Row refresh.
+        + 0.5 * player.specimens
+        + 0.4 * _research_column(player.research_space)
+        + 0.5 * player.tleilaxu_space
+        + 0.3 * player.family_atomics
     )
 
 

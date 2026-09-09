@@ -18,6 +18,11 @@ import random
 from dataclasses import dataclass, field
 from typing import Final
 
+from dune_imperium.content.immortality.board import (
+    RESEARCH_SPACES_BY_ID,
+    ResearchBonus,
+)
+from dune_imperium.content.immortality.tleilaxu import tleilaxu_card_for_instance
 from dune_imperium.content.uprising.imperium import imperium_card_for_instance
 from dune_imperium.content.uprising.reserve import RESERVE_STACKS_BY_ID
 from dune_imperium.core.actions import ActionValue, DomainAction
@@ -94,8 +99,10 @@ _ACTION_SCORES: Final[dict[str, float]] = {
     "decline_research_bonus": 0.5,
     "use_family_atomics": 0.3,
     "return_specimen": -2.0,
-    # A Tleilaxu card for specimens is a free acquisition; Reclaimed Forces
-    # is the fallback use of three specimens.
+    # A Tleilaxu card costs specimens instead of Persuasion, so it is
+    # ranked the way Imperium cards are: a base plus the printed cost,
+    # plus ``_TLEILAXU_BONUSES``. Reclaimed Forces is the fallback use of
+    # three specimens and scores by the option chosen.
     "acquire_tleilaxu": 2.5,
     "acquire_reclaimed_forces": 1.0,
     # Graft: the partner is mandatory once a grafted placement was chosen.
@@ -218,6 +225,54 @@ _TECH_BONUSES: Final[dict[str, float]] = {
     "training_depot": 0.5,
 }
 
+# Tleilaxu cards (Immortality) whose printed box pays back the moment the
+# card is bought or scores outright: an acquisition box, a Victory Point,
+# or a Reveal box that puts a specimen back in the tanks every round. Every
+# other card keeps the cost-scaled score, so a buy still outranks a decline
+# whatever the card [Immortality pp. 8-9] [Tleilaxu card faces].
+_TLEILAXU_BONUSES: Final[dict[str, float]] = {
+    "subject_x_137": 1.0,
+    "scientific_breakthrough": 1.0,
+    "corrino_genes": 0.5,
+    "twisted_mentat": 0.5,
+    "usurp": 0.5,
+}
+
+# The research track's branch choice is worth what the destination space
+# pays. The scale mirrors ``rollout_agent.player_value`` so both baselines
+# rank the same step the same way: an Influence is 1.5 there, a specimen
+# and a Tleilaxu step 0.5, spice 0.4, Solari 0.25. A Research space is the
+# best of all because it "triggers another research icon and immediately
+# advances her token again" [Immortality p. 6], a free extra space.
+_RESEARCH_BONUS_SCORES: Final[dict[ResearchBonus, float]] = {
+    ResearchBonus.RESEARCH: 2.0,
+    ResearchBonus.INFLUENCE_ANY: 1.5,
+    ResearchBonus.TLEILAXU_AND_SPECIMEN: 1.0,
+    ResearchBonus.TRASH_FOR_CARD_AND_INTRIGUE: 1.0,
+    ResearchBonus.SEVEN_SOLARI_FOR_TWO_TLEILAXU: 1.0,
+    ResearchBonus.SPICE_TWO: 0.8,
+    ResearchBonus.TRASH_AND_SPECIMEN: 0.75,
+    ResearchBonus.SPECIMEN: 0.5,
+    ResearchBonus.TLEILAXU: 0.5,
+    ResearchBonus.SPICE_ONE: 0.4,
+    ResearchBonus.SOLARI_ONE: 0.25,
+    ResearchBonus.NONE: 0.0,
+}
+
+# Reclaimed Forces' two options for the same three specimens: "recruit 2
+# troops" or "advance the Tleilaxu token 1 space" [Immortality p. 9]. Two
+# garrison troops outweigh one track step on the same ``player_value``
+# scale (0.6 each against 0.5), so the units are the static default.
+_RECLAIMED_FORCES_SCORES: Final[dict[str, float]] = {
+    "troops": 0.7,
+    "tleilaxu": 0.5,
+}
+
+# Putting an acquired Tleilaxu card straight on the deck instead of in the
+# discard pile is a free upgrade once the first genetic marker is reached
+# [Immortality p. 6]; it draws the card a whole reshuffle sooner.
+_TLEILAXU_DECK_TOP_BONUS: Final = 0.5
+
 
 def score_action(action: DomainAction) -> float:
     """Rank one engine-legal action; higher is preferred."""
@@ -237,6 +292,23 @@ def score_action(action: DomainAction) -> float:
         tech_id = _argument(action, "tech_id")
         bonus = _TECH_BONUSES.get(tech_id, 0.0) if isinstance(tech_id, str) else 0.0
         return _ACTION_SCORES["acquire_tech"] + bonus
+    if action_id == "acquire_tleilaxu":
+        return _ACTION_SCORES["acquire_tleilaxu"] + _tleilaxu_acquisition_bonus(action)
+    if action_id == "acquire_reclaimed_forces":
+        choice = _argument(action, "choice")
+        bonus = (
+            _RECLAIMED_FORCES_SCORES.get(choice, 0.0)
+            if isinstance(choice, str)
+            else 0.0
+        )
+        return _ACTION_SCORES["acquire_reclaimed_forces"] + bonus
+    if action_id == "choose_research_space":
+        space_id = _argument(action, "space_id")
+        space = (
+            RESEARCH_SPACES_BY_ID.get(space_id) if isinstance(space_id, str) else None
+        )
+        bonus = 0.0 if space is None else _RESEARCH_BONUS_SCORES.get(space.bonus, 0.0)
+        return _ACTION_SCORES["choose_research_space"] + bonus
     if action_id in _ACTION_SCORES:
         return _ACTION_SCORES[action_id]
     if action_id.startswith("decline_"):
@@ -257,6 +329,22 @@ def _argument(action: DomainAction, name: str) -> ActionValue | None:
         if key == name:
             return value
     return None
+
+
+def _tleilaxu_acquisition_bonus(action: DomainAction) -> float:
+    """Printed specimen cost, card bonus, and deck-top bonus of a buy."""
+
+    instance_id = _argument(action, "instance_id")
+    if not isinstance(instance_id, str):
+        return 0.0
+    try:
+        entry = tleilaxu_card_for_instance(instance_id)
+    except ValueError:
+        return 0.0
+    bonus = float(entry.specimen_cost) + _TLEILAXU_BONUSES.get(entry.card.card_id, 0.0)
+    if _argument(action, "to_deck_top"):
+        bonus += _TLEILAXU_DECK_TOP_BONUS
+    return bonus
 
 
 def _acquisition_cost(action: DomainAction) -> int | None:

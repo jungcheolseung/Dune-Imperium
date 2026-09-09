@@ -190,3 +190,80 @@ def test_switch_graft_card_never_outranks_a_resolvable_box() -> None:
     # With nothing of the box left to resolve, the switch is the way on.
     withdraw = _action("withdraw_troops", ("count", 1))
     assert agent.choose_action(_view(), (withdraw, switch)) == switch
+
+
+def test_tleilaxu_acquisition_scales_with_the_printed_specimen_cost() -> None:
+    """A Tleilaxu card is ranked like an Imperium card: base plus cost.
+
+    "Tleilaxu cards come from the Tleilaxu Row and cost specimens to
+    acquire rather than persuasion" [Immortality p. 8].
+    """
+
+    cheap = score_action(
+        _action("acquire_tleilaxu", ("instance_id", "tleilaxu:contaminator:0"))
+    )
+    dear = score_action(
+        _action("acquire_tleilaxu", ("instance_id", "tleilaxu:twisted_mentat:0"))
+    )
+    # Contaminator costs one specimen, Twisted Mentat four.
+    assert dear - cheap == pytest.approx(3.5)
+    assert cheap > score_action(_action("decline_agent_card_acquisition"))
+    # An unknown instance ID degrades to the flat base instead of failing.
+    assert score_action(
+        _action("acquire_tleilaxu", ("instance_id", "tleilaxu:nonesuch:0"))
+    ) == pytest.approx(2.5)
+
+
+def test_tleilaxu_acquisition_prefers_paying_boxes_and_the_deck_top() -> None:
+    """Acquisition boxes and the first genetic marker's deck-top option."""
+
+    plain = score_action(
+        _action("acquire_tleilaxu", ("instance_id", "tleilaxu:face_dancer:0"))
+    )
+    paying = score_action(
+        _action("acquire_tleilaxu", ("instance_id", "tleilaxu:subject_x_137:0"))
+    )
+    # Both cost two specimens; Subject X-137 also advances the Tleilaxu
+    # track the moment it is bought.
+    assert paying - plain == pytest.approx(1.0)
+    to_deck_top = score_action(
+        _action(
+            "acquire_tleilaxu",
+            ("instance_id", "tleilaxu:face_dancer:0"),
+            ("to_deck_top", True),
+        )
+    )
+    assert to_deck_top - plain == pytest.approx(0.5)
+
+
+def test_research_branch_prefers_the_richer_destination_space() -> None:
+    """A Research space "triggers another research icon and immediately
+    advances her token again" [Immortality p. 6], so it leads the table."""
+
+    research = score_action(_action("choose_research_space", ("space_id", "c3r1")))
+    influence = score_action(_action("choose_research_space", ("space_id", "c6r6")))
+    specimen = score_action(_action("choose_research_space", ("space_id", "c1r3")))
+    solari = score_action(_action("choose_research_space", ("space_id", "c5r5")))
+    assert research > influence > specimen > solari
+    assert solari > score_action(_action("decline_research_bonus"))
+    # An unknown space degrades to the flat base.
+    assert score_action(
+        _action("choose_research_space", ("space_id", "c9r9"))
+    ) == pytest.approx(3.0)
+    chosen = HeuristicAgent(seed=1).choose_action(
+        _view(),
+        (
+            _action("choose_research_space", ("space_id", "c3r3")),
+            _action("choose_research_space", ("space_id", "c3r1")),
+        ),
+    )
+    assert dict(chosen.arguments)["space_id"] == "c3r1"
+
+
+def test_reclaimed_forces_takes_the_troops_over_one_track_step() -> None:
+    """Three specimens buy "recruit 2 troops" or one Tleilaxu advance
+    [Immortality p. 9]; two units outweigh one step on the same scale."""
+
+    troops = score_action(_action("acquire_reclaimed_forces", ("choice", "troops")))
+    tleilaxu = score_action(_action("acquire_reclaimed_forces", ("choice", "tleilaxu")))
+    assert troops > tleilaxu > 0.0
