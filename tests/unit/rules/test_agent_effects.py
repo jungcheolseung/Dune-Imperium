@@ -3542,6 +3542,17 @@ def test_tread_in_darkness_may_trash_and_draw_with_bene_gesserit_bond() -> None:
     assert result.state.players[0].hand == (drawn_card,)
     assert result.state.players[0].in_play == (bond_card, tread)
 
+    # Two icons, no arrow: declining the optional trash [Main p. 20] still
+    # draws the card (user ruling 2026-09-09, OQ-058).
+    decline = next(
+        action
+        for action in legal_agent_card_trash_actions(placed, 0)
+        if action.action_id == "decline_agent_card_trash"
+    )
+    kept = apply_agent_card_trash(placed, decline)
+    assert kept.state.players[0].trashed == ()
+    assert kept.state.players[0].hand == (trashed_card, drawn_card)
+
 
 def test_tread_in_darkness_has_no_agent_effect_without_bond() -> None:
     tread = _imperium_instance("tread_in_darkness")
@@ -4245,7 +4256,7 @@ def test_double_agent_cannot_share_post_without_spying_on_visited_space() -> Non
     assert opponent_post not in post_ids
 
 
-def test_calculus_of_power_trashes_itself_on_agent_turn() -> None:
+def test_calculus_of_power_agent_box_is_an_optional_trash() -> None:
     calculus = _imperium_instance("calculus_of_power")
     owner = PlayerState(
         player_id=0,
@@ -4269,11 +4280,19 @@ def test_calculus_of_power_trashes_itself_on_agent_turn() -> None:
     )
     placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
 
-    result = resolve_agent_card_effect(placed)
-
-    assert result.state.players[0].in_play == ()
-    assert result.state.players[0].trashed == (calculus,)
-    assert result.events[0].kind == "card_trashed"
+    # The Agent box is the plain trash icon: optionally trash one card from
+    # hand, discard pile, or play [Main p. 20]; it never trashes itself on
+    # its own (the self-trash was a transcription bug, fixed 2026-09-09).
+    actions = legal_agent_card_trash_actions(placed, 0)
+    assert [action.action_id for action in actions] == [
+        "decline_agent_card_trash",
+        "trash_agent_card",
+    ]
+    assert dict(actions[1].arguments)["card_id"] == calculus
+    declined = apply_agent_card_trash(placed, actions[0])
+    assert declined.state.players[0].in_play == (calculus,)
+    assert declined.state.players[0].trashed == ()
+    assert declined.events[0].kind == "agent_card_trash_declined"
 
 
 def test_branching_path_alliance_trash_draws_intrigue_and_recruits_two() -> None:

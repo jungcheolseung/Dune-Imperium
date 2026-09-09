@@ -251,7 +251,10 @@ IMPERIUM_CARDS: Final = (
         copies=2,
         factions=(Faction.EMPEROR,),
         agent_icons=(AgentIcon.LANDSRAAD, AgentIcon.SPY),
-        agent_effect=PersonalCardAgentEffect.TRASH_SELF,
+        # The Agent box prints the plain trash icon: optionally trash one card
+        # from hand, discard pile, or play [Main p. 20] (not "trash this
+        # card"; the self-trash was a transcription bug fixed 2026-09-09).
+        agent_effect=PersonalCardAgentEffect.TRASH_PERSONAL_CARD,
         reveal_persuasion=2,
         reveal_choice_effects=(
             PersonalCardRevealChoiceEffect.MAY_TRASH_OTHER_EMPEROR_FOR_THREE_STRENGTH,

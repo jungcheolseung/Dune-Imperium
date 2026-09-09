@@ -33,6 +33,8 @@ class PersonalCardAgentEffect(StrEnum):
         "gain_two_visited_faction_influence_and_trash_self"
     )
     LOOK_AT_TOP_THREE = "look_at_top_three"
+    # "Trash this card." printed as a sentence (Seek Allies): mandatory
+    # [Main p. 20]; the plain trash icon is TRASH_PERSONAL_CARD instead.
     TRASH_SELF = "trash_self"
     TRASH_PERSONAL_CARD = "trash_personal_card"
     TRASH_PERSONAL_CARD_TO_DRAW_ONE = "trash_personal_card_to_draw_one"

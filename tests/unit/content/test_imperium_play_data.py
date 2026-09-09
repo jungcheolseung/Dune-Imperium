@@ -653,7 +653,8 @@ def test_calculus_of_power_play_data_trashes_self_or_another_emperor() -> None:
     assert card.copies == 2
     assert card.factions == (Faction.EMPEROR,)
     assert card.agent_icons == (AgentIcon.LANDSRAAD, AgentIcon.SPY)
-    assert card.agent_effect is PersonalCardAgentEffect.TRASH_SELF
+    # The plain trash icon, not "trash this card" (bug fixed 2026-09-09).
+    assert card.agent_effect is PersonalCardAgentEffect.TRASH_PERSONAL_CARD
     assert card.reveal_persuasion == 2
     assert card.reveal_choice_effects == (
         PersonalCardRevealChoiceEffect.MAY_TRASH_OTHER_EMPEROR_FOR_THREE_STRENGTH,

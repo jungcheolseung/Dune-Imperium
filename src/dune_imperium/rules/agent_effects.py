@@ -124,6 +124,9 @@ AGENT_ICON_PLEDGE: Final = "pledge"  # Pivotal Gambit's first-place Influence
 AGENT_ICON_SOLARI: Final = "solari"
 AGENT_ICON_SPICE: Final = "spice"
 AGENT_ICON_TRASH_SELF: Final = "trash_self"
+_TRASH_TO_DRAW_IF_BOND: Final = (
+    PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND
+)
 AGENT_ICON_TROOPS: Final = "troops"
 AGENT_ICON_WATER: Final = "water"
 AUTOMATIC_AGENT_ICONS: Final = (
@@ -1556,6 +1559,14 @@ def apply_agent_card_trash(state: GameState, action: DomainAction) -> RuleResult
             kind="agent_card_trash_declined",
             payload=(("player", action.actor),),
         )
+        if source_card.agent_effect is _TRASH_TO_DRAW_IF_BOND:
+            # Tread in Darkness prints two icons, not an arrow: the trash is
+            # optional [Main p. 20] and the draw still happens (user ruling
+            # 2026-09-09, OQ-058).
+            drawn = draw_or_request_personal_cards(
+                next_state, action.actor, 1, source=f"{source}:trash_draw"
+            )
+            return RuleResult(state=drawn.state, events=(event, *drawn.events))
         return RuleResult(state=next_state, events=(event,))
 
     card_id = dict(action.arguments).get("card_id")
@@ -2990,8 +3001,9 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
     if effect is PersonalCardAgentEffect.LEADER_SIGNET:
         return resolve_leader_signet(state)
     if effect is PersonalCardAgentEffect.TRASH_SELF:
-        # A card trashed by a freely ordered effect expires before this
-        # resolution is offered (OQ-022), so the card is still in play here.
+        # "Trash this card." (Seek Allies) is mandatory [Main p. 20]. A card
+        # trashed by a freely ordered effect expires before this resolution
+        # is offered (OQ-022), so the card is still in play here.
         trashed = trash_personal_card(
             state,
             player,
@@ -3005,7 +3017,7 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             trashed.state.players,
         )
         return RuleResult(state=next_state, events=trashed.events)
-    elif (
+    if (
         effect
         is PersonalCardAgentEffect.GAIN_TWO_VISITED_FACTION_INFLUENCE_AND_TRASH_SELF
     ):
