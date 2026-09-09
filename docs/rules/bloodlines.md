@@ -137,6 +137,7 @@ Uprising setup에 다음 단계를 더하거나 바꾼다. `[Bloodlines p. 3]`
 
 - Chani: setup 때 Leader에 인쇄된 track의 인원수 칸에 Tactics token을 놓는다. token이 맨 오른쪽 칸에 도달하면 시작 칸으로 되돌려 reset한다. track 끝을 넘길 만큼 troop을 잃거나 retreat해도 시작 칸으로 reset할 뿐 초과분만큼 더 나아가지 않는다. `[Bloodlines p. 12]`
 - Count Hasimir Fenring: Intrigue 카드를 trash할 때 Solari를 얻지 않는다. `[Bloodlines p. 12]`
+- Duncan Idaho: Into the Fray로 Conflict에 보낸 Agent는 여전히 자신의 Agent라서 뒤의 turn에 Imperial Privilege의 recall 대상이 된다(디자이너 판정, [OQ-037](open-questions.md#oq-037--into-the-fray로-conflict에-간-agent와-bloodlines-leader-카드면의-아이콘-읽기)(d)). `[Board Guide p. 2]` `[Duncan Idaho card]`
 - Esmar Tuek: setup 때 Tuek's Sietch board space를 game board 옆에 놓는다. Maker board space이므로 spice가 쌓인다. Signet Ring으로 Tuek's Sietch에 bonus spice를 놓고 같은 turn에 그곳으로 보낸 Agent로 그 spice를 가져갈 수 있다. `[Bloodlines p. 12]`
 - Steersman Y'rkoon: 자신의 face-down Navigation 카드를 언제든 볼 수 있다. Influence를 잃었다가 다시 얻으면 같은 Faction에서 Influence 2에 여러 번 도달할 수 있고, 그때마다 Navigation 카드를 play한다. `[Bloodlines p. 12]`
 

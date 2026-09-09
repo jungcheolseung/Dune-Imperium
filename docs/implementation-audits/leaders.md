@@ -77,7 +77,7 @@ Leader identity와 setup은 `content/uprising/leaders.py`, 능력 규칙은 `rul
 ### Duncan Idaho
 
 - **Ginaz Swordmaster** — "The Swordmaster board space costs you 2 less." `agent_turn._effective_costs`가 좌석별로 8→6(다른 좌석이 먼저 샀을 때 6→4)을 적용한다.
-- **Into the Fray(Signet)** — "You may take the Agent you sent this turn and deploy it to the Conflict as a 2 strength unit that can't be retreated. If you have your Swordmaster, it has 3 strength instead." `deploy_leader_agent`: 좌석 `agent_in_conflict=1`, 그 Agent는 `agent_locations`에서 빠져 공간이 다시 비고(OQ-037), `units_strength`가 2/3을 더하며, retreat·손실 대상이 아니다. Combat 정리 때 `agents_available`로 돌아간다.
+- **Into the Fray(Signet)** — "You may take the Agent you sent this turn and deploy it to the Conflict as a 2 strength unit that can't be retreated. If you have your Swordmaster, it has 3 strength instead." `deploy_leader_agent`: 좌석 `agent_in_conflict=1`, 그 Agent는 `agent_locations`에서 빠져 공간이 다시 비고(OQ-037), `units_strength`가 2/3을 더하며, retreat·손실 대상이 아니다. Combat 정리 때 `agents_available`로 돌아간다. 뒤의 turn에 Imperial Privilege로 recall할 수 있다(`recall_conflict_agent_for_imperial_privilege`, 디자이너 판정, OQ-037(d), 2026-09-09).
 
 ### Esmar Tuek
 

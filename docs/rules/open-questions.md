@@ -253,6 +253,7 @@
 - Duncan Idaho의 Into the Fray는 "take the Agent you sent this turn and deploy it to the Conflict as a 2 strength unit that can't be retreated"라고만 한다(카드면). 그 Agent가 떠난 board space가 다시 비는지(다른 플레이어가 같은 round에 갈 수 있는지, Makers 단계에 spice가 쌓이는지), Agent가 언제 돌아오는지, 유닛으로서 "lose a troop"·Chani의 Tactics 같은 troop 효과의 대상인지는 공식 문서가 말하지 않는다. `[Bloodlines p. 12]`에는 Duncan 항목이 없다.
 - 판정(2026-09-07, project convention): (a) 문장 그대로 Agent를 board space에서 치운다 — 공간은 비어서 다른 플레이어가 갈 수 있고 Maker space라면 Makers 단계에 spice가 쌓인다. 이미 해결된 방문 효과는 되돌리지 않는다. (b) Agent는 Combat 정리 때 소유자에게 돌아간다(Recall 단계에서 어차피 모두 회수). (c) Agent 유닛은 troop이 아니므로 retreat·"lose a troop"·Tactics의 대상이 아니고, `units_in_conflict`와 strength에는 포함된다(Swordmaster 보유 시 3).
 - 같이 정한 카드면 읽기: Liet Kynes의 대체 아이콘 "[trash][1 spice][1 Intrigue]"에서 trash는 선택(소유자가 거절 가능)으로 읽는다 — 이득 줄에 인쇄된 trash 아이콘은 Uprising의 Desert Tactics처럼 선택이다. Chani의 "troops"에는 Commander가 포함된다(`[Bloodlines p. 4]`).
+- 추가(2026-09-09, 디자이너 판정 채택 — 사용자 지시 "디자이너 판정을 무조건 따른다"): (d) Conflict에 있는 Into the Fray의 Agent는 여전히 "자신의 Agent"이므로 뒤의 turn에 Imperial Privilege("자신의 다른 Agent 1개를 recall" `[Board Guide p. 2]`)로 recall할 수 있다(Message from designer, [designer-rulings-audit.md](designer-rulings-audit.md)). recall된 Agent는 유닛으로서 Conflict를 떠나 Leader로 돌아오고(전투력 갱신), 다른 Agent가 board에 없어도 recall이 불발되지 않는다. 구현: `recall_conflict_agent_for_imperial_privilege`(`rules/board_effects.py`).
 - 재개 조건: 공식 FAQ가 Into the Fray의 공간·귀환을 정할 때.
 
 ## OQ-038 — "Lose troops" 비용의 출처와 Harkonnen Advisor의 배치 금지 troop

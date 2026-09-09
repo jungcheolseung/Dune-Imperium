@@ -76,8 +76,8 @@
 
 ## 추가 확인이 필요한 항목
 
-- Leadership + Calculus of Power + Sardaukar Soldier: "Leadership은 한 순간에 세고 trash된 카드는 못 센다"(In person). Reveal 시작 시 `strength_per_other_sword_card` 집계와 뒤의 trash 상호작용을 고정한 테스트가 없다.
-- Duncan Idaho(Bloodlines) Into the Fray의 Agent를 Imperial Privilege로 recall 가능(Message from designer): 스카우트 보고만 있고 코드로 확정하지 않았다.
+- (2026-09-09 해소) Leadership + Calculus of Power + Sardaukar Soldier: "Leadership은 한 순간에 세고 trash된 카드는 못 센다"(In person). 엔진은 Reveal 시작에 한 번 세고(Sardaukar 1장 → +1) Calculus가 Sardaukar를 trash해도 다시 세지 않는다 — trash 뒤에 세어도 Calculus가 검 카드가 되고 Sardaukar가 빠져 같은 +1이므로 어느 순간에 세든 결과가 같다. Sardaukar의 이미 모인 검 1은 OQ-022대로 남는다. `tests/unit/rules/test_reveal_turn.py::test_leadership_counts_sword_cards_once_and_ignores_a_later_trash`(총 8, 9가 아님).
+- (2026-09-09 반영) Duncan Idaho(Bloodlines) Into the Fray의 Agent를 Imperial Privilege로 recall 가능(Message from designer): 엔진은 `agent_locations`만 후보로 봐 불가능했다. `recall_conflict_agent_for_imperial_privilege` 행동을 더해 Conflict의 Agent를 Leader로 되돌리고(OQ-037(d), codec v99), 다른 Agent가 없어도 recall을 불발시키지 않는다. `tests/unit/rules/test_bloodlines_leaders.py::test_imperial_privilege_may_recall_the_into_the_fray_agent`.
 - Combat 보상으로 Tech를 얻는 Conflict는 현재 카탈로그에 없어 "Trade Monopoly" 계열 판정은 해당 없음(확인만).
 
 ## 다음 단계 제안
