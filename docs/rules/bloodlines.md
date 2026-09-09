@@ -12,6 +12,25 @@ Bloodlines는 Dune: Imperium — Uprising의 확장이다. 이 문서는 4인 Up
 - 새 contract 중 Earn any Alliance는 아직 갖고 있지 않은 Alliance token을 다음에 가져갈 때 완료된다. 새 Immediate contract는 trash할 Intrigue 카드가 없으면 가져갈 수 없다. `[Bloodlines p. 2]`
 - 룰북 밖의 프로모 Imperium 1장(Ruthless Leadership)은 `promo_cards` 옵션을 함께 켤 때만 Imperium deck에 섞는다. 근거는 카드면뿐이다([sources.md](sources.md) "프로모 카드의 출처"). `[card face]`
 
+### CHOAM Module contract token 8개
+
+CHOAM Module과 함께 쓸 때만 기존 contract 20개에 섞는 token 8개다(1개씩; BGG 카드 인벤토리 시트와 일치). 아래 표는 에셋 저장소 `cards/en/bloodlines/contract/*.webp`의 인쇄면을 판독해 전사했고, 아이콘은 5절 Tech tile 전사와 같은 Uprising 아이콘 기준을 썼다(회색 원기둥 = Spy, 노란 후드가 붙은 원기둥 = Spy with Deep Cover, 회색 정육면체 = troop, 초록 줄무늬 카드 = draw, 금색 카드 = Intrigue, X 카드 = trash). Dune Cards Hub는 Bloodlines 카탈로그를 클라이언트에서 그려 카드 페이지 ID를 얻을 수 없어 카드면 이미지 URL을 참조로 둔다. `[Bloodlines p. 2]` `[contract token faces]`
+
+| token | 완료 조건 | 보상 | 메모 |
+| --- | --- | --- | --- |
+| Deliver Supplies | Deliver Supplies에 Agent | Solari 1, Spy with Deep Cover 1 | Deep Cover 배치는 4절: 상대 Spy 무시, 자기 Spy가 있는 post만 제외 |
+| Earn Any Alliance | 아직 갖고 있지 않은 Alliance token을 가져갈 때 | Solari 2, troop 2 | 아래 "Earn Any Alliance" 참조 |
+| Harvest 3+ | Maker space에 Agent, 그 turn spice 3+ | Solari 2, Spy 1 | Uprising Harvest와 같은 조건 `[Main p. 16]` |
+| Harvest 4+ | Maker space에 Agent, 그 turn spice 4+ | Solari 3, Spy 1 | |
+| High Council | High Council에 Agent | Agent 1 recall | Sardaukar II와 같은 보상; 방금 보낸 Agent는 대상이 아니다 `[Main p. 20]` |
+| Immediate ("Requires an Intrigue card") | 가져오는 즉시 | Intrigue 카드 1장 trash → Intrigue 1 + draw 1 | 아래 "새 Immediate" 참조 |
+| Secrets | Secrets에 Agent | Solari 2, draw 1 | |
+| Spice Refinery | Spice Refinery에 Agent | troop 2 | |
+
+- **Earn Any Alliance**: 완료 조건은 Agent 방문이 아니라 Alliance token 자체다. 따라서 Uprising의 "Agent를 보낼 당시 보유해야 한다"는 소급 금지 `[Main p. 16]`는 적용되지 않고, 같은 turn에 이 token을 가져온 뒤 그 turn의 Influence 상승으로 Alliance를 얻어도 완료된다(디자이너 판정, [designer-rulings-audit.md](designer-rulings-audit.md)). 이미 갖고 있는 진영의 Influence가 더 올라가는 것은 "새 token"이 아니므로 완료하지 않는다. 상대가 Influence를 잃어 token이 자신에게 넘어오는 경우도 "token을 가져가는" 것으로 본다([OQ-056](open-questions.md#oq-056--earn-any-alliance의-완료-시점과-alliance-이전) project convention). `[Bloodlines p. 2]`
+- **새 Immediate**: hand에 trash할 Intrigue 카드가 없으면 가져갈 수 없다(시장의 다른 token은 여전히 고를 수 있다). 가져오면 hand의 Intrigue 카드 하나를 골라 trash하고 즉시 완료하며, Intrigue 1장과 카드 1장을 뽑는다. 구현은 trash할 카드를 고르는 동안만 token을 active 영역에 두고(그동안 다른 효과가 이 token을 건드릴 수 없다) 고르면 completed로 옮긴다. `[Bloodlines p. 2]` `[Main p. 16]`
+- 보상의 troop은 다른 turn 중 recruit와 같이 그 turn의 배치 몫에 들어가고(Agent turn의 `troops_recruited`, Reveal turn의 Combat 아이콘 몫), Deep Cover Spy·recall·draw 보상은 Uprising contract와 같은 frame으로 해결한다.
+
 ## 2. Setup 변경
 
 Uprising setup에 다음 단계를 더하거나 바꾼다. `[Bloodlines p. 3]`
@@ -148,3 +167,4 @@ Uprising setup에 다음 단계를 더하거나 바꾼다. `[Bloodlines p. 3]`
 - 2026-09-07 슬라이스 6b: 위 표의 능력 18종 전부 — 상시 효과(Navigation Chamber·Servo-Receivers·Sardaukar High Command·Gene-Locked Vault·Glowglobes·Ornithopter Fleet), Reveal turn 효과(Self-Destroying Messages·Delivery Bay·Training Depot의 Command (6+)와 늦은 지급·Panopticon의 Spy·Forbidden Weapons의 의무 선택 — 둘 다 Reveal 안에서 소유자가 순서를 고른다), trigger(Planetary Array·CHOAM Transports·Suspensor Suits·Plasteel Blades), Flip 3종과 Round Start 복귀, Endgame 효과(OQ-040). 카드 밖에서 생성된 Persuasion(Skill·Navigation·tile)도 Command (6+) 판정에 센다(OQ-043).
 - 2026-09-08: Endgame tiebreaker의 garrison troop 수에 Commander를 포함(OQ-047, 3절). 같은 날 프로모 Ruthless Leadership(1절; Agent: Conflict에 Commander가 있으면 trash 아이콘 2개, Reveal: 1 Persuasion + 검 1, Command: Combat 아이콘)을 `promo_cards`+`bloodlines` 옵션 콘텐츠로 구현했다.
 - 2026-09-07 슬라이스 6c·6d: Tech 전용 카드 3종(effect DSL `TechTilesAtLeast`·`AcquireTech`)과 Kota Odax of Ix(Secret Project의 `tech_secret_project` setup frame, 비공개 tile, 할인 후보, Reverse Engineering Signet). 이로써 Bloodlines 구성물 전부가 play된다; 남은 것은 슬라이스 7(UI 표시·heuristic 가중치·대규모 소크·학습 재개)이다. 세부는 [implementation-audits/bloodlines.md](../implementation-audits/bloodlines.md)의 Tech Module 절.
+- 2026-09-09: 1절의 CHOAM Module contract token 8개를 전사·구현했다(`ContractConditionKind.EARN_ALLIANCE`·`IMMEDIATE_INTRIGUE_TRASH`, 보상 필드 `intrigue_cards`·`deep_cover_spies`, `contract_intrigue_trash` frame, Alliance 이벤트 후속 hook `complete_alliance_contracts`; 관측 v16, codec v98; OQ-056). 세부는 [Bloodlines audit](../implementation-audits/bloodlines.md)의 "Contract token" 절.

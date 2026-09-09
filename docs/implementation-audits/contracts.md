@@ -23,6 +23,7 @@ visual reference.
 | Zones | The authoritative state keeps bank, face-up market, active player Contracts, and completed player Contracts disjoint. | Active and completed Contract IDs are observed by every seat (OQ-010 ruling 2, 2026-09-02: a completed Contract was face up and its completion announced); only the bank order is redacted. |
 | Gather Intelligence | Gather Intelligence's immediate window resolves before Contract completion actions. | Official relative ordering remains unanswered under OQ-011; this is an explicit tested project convention. |
 | Action codec | `take_contract` and `complete_contract` have one actor-neutral template per standard Contract; Contract Spy placement/recall uses post-ID templates. | Codec v58 keeps the base catalog at 3,377; CHOAM Imperium destinations and choices expand the module catalog to 3,598. |
+| Bloodlines tokens | With `bloodlines` and the CHOAM Module the eight Bloodlines contract tokens (one copy each) shuffle into the same bank: Deliver Supplies, Earn Any Alliance, Harvest 3+, Harvest 4+, High Council, Immediate ("Requires an Intrigue card"), Secrets, Spice Refinery. Two new condition kinds (`earn_alliance`, `immediate_intrigue_trash`) and two reward fields (`intrigue_cards`, `deep_cover_spies`). | Transcribed from the card faces on 2026-09-09 and cross-checked against the BGG card inventory; details in the [Bloodlines audit](bloodlines.md) and [rules/bloodlines.md](../rules/bloodlines.md) section 1 [Bloodlines p. 2]. Earn Any Alliance completes through a post-step hook on the step's Alliance events (no Agent-visit snapshot; OQ-056), the new Immediate cannot be taken without a hand Intrigue card, waits in the active zone only while the `contract_intrigue_trash` frame is open, and completes when the card is trashed. |
 
 ## Deferred boundaries
 
@@ -53,3 +54,5 @@ visual reference.
   Contracts, no retroactive completion, Gather ordering, troop deployment,
   observation redaction, deterministic action replay, and codec round trips have
   regression tests.
+- The eight Bloodlines tokens have their own regression file
+  (`tests/unit/rules/test_bloodlines_contracts.py`, 2026-09-09).

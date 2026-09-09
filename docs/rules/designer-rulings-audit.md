@@ -72,7 +72,7 @@
 
 ## 대조하지 못한 항목 (콘텐츠 공백)
 
-- **Bloodlines contract token 8개**("Earn any Alliance" 포함)가 전사되지 않았다. `content/uprising/contracts.py`는 표준 20개뿐이고 `ContractConditionKind`에 Alliance 조건이 없다. [bloodlines.md](bloodlines.md) 1절은 이 token을 언급하지만 구현 절과 [implementation-audits/bloodlines.md](../implementation-audits/bloodlines.md)는 다루지 않는다. "이미 Alliance가 있으면 완료되지 않음", "같은 turn에 contract를 받고 bump로 완료 가능"의 두 판정은 전사 뒤 대조한다.
+- (2026-09-09 해소) **Bloodlines contract token 8개**를 전사·구현했다([bloodlines.md](bloodlines.md) 1절, [implementation-audits/bloodlines.md](../implementation-audits/bloodlines.md) "Contract token" 절). 두 판정을 대조한 결과 모두 일치한다: "이미 Alliance가 있으면 완료되지 않음" — `_update_alliance`는 이미 보유한 진영에서는 Alliance 이벤트를 내지 않아 hook이 완료하지 않는다(`test_earn_any_alliance_waits_for_a_new_alliance_token`); "같은 turn에 contract를 받고 bump로 완료 가능" — 완료는 Agent 방문 snapshot이 아니라 Alliance 이벤트 후속 hook이라 같은 turn에 성립한다(`test_earn_any_alliance_taken_this_turn_completes_on_this_turns_bump`). 공식 문서가 침묵하는 "상대의 Influence 손실로 넘어온 token"은 OQ-056 convention(완료로 본다).
 
 ## 추가 확인이 필요한 항목
 

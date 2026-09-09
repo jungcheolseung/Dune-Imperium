@@ -469,3 +469,9 @@
 - 필요한 답: 세는 아이콘의 범위.
 - 확정(2026-09-08, 사용자 판정 "추가된 Agent 아이콘도 세는 게 맞다 — 어쨌든 카드에 그 아이콘이 있는 것"): 그 순간 상대 카드가 가진 Agent 아이콘 전부를 센다(`rules/agent_icons.py`의 `effective_agent_icons`, graft 기준): Blank Slate가 graft로 얻는 진영 4개, Servo-Receivers가 Signet Ring에 주는 4개, Delivery Logistics의 계약 아이콘, 조건이 성립한 Long Reach·Show of Strength의 회색 아이콘 모두 포함이고, 조건이 성립하지 않은 회색 아이콘은 없는 것으로 친다. (처음 구현했던 "인쇄 아이콘만"은 사용자가 정정했다.) 구현: `rules/agent_effects.py`의 `_partner_icon_count`.
 
+## OQ-056 — Earn Any Alliance의 완료 시점과 Alliance 이전
+
+- 상태: `DECIDED`
+- Bloodlines 룰북은 "Earn any Alliance는 아직 갖고 있지 않은 Alliance token을 다음에 가져갈 때 완료된다"고만 한다 `[Bloodlines p. 2]`. (a) 상대가 Influence를 잃어 자신이 token을 넘겨받는 경우(Uprising의 Alliance 이전 `[Main p. 7]`)가 "가져가는" 것인지, (b) 같은 turn에 token을 가져온 뒤 그 turn의 Influence 상승으로 Alliance를 얻으면 완료되는지(Uprising contract의 Agent 방문 snapshot `[Main p. 16]`이 적용되는지)는 말하지 않는다.
+- 필요한 답: 완료를 일으키는 Alliance 획득 경로와 같은 turn 획득의 취급.
+- 확정(2026-09-09, 사용자 지시 "디자이너 판정을 무조건 따른다"): (b)는 디자이너 판정(BGG, [designer-rulings-audit.md](designer-rulings-audit.md))대로 완료된다 — 조건이 Agent 방문이 아니라 Alliance token 자체이므로 snapshot이 없다. (a)는 project convention으로 완료로 본다: 이전도 "갖고 있지 않던 token을 가져가는" 사건이며, 엔진의 `alliance_transferred` 이벤트(`to_player`)가 `alliance_gained`와 같은 hook(`contracts.complete_alliance_contracts`)을 거친다. 이미 갖고 있는 진영의 Influence 상승은 완료하지 않는다(디자이너 판정과 일치). 공식 문서가 (a)에 답하면 재검토한다.
