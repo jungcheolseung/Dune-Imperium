@@ -404,6 +404,74 @@ def test_harvest_cells_fires_at_cleanup_when_three_troops_are_lost() -> None:
     assert card in played.intrigue_discard
 
 
+
+def _pass_through_combat(engine: UprisingRulesEngine, state: GameState) -> GameState:
+    while state.phase is GamePhase.COMBAT and state.decision_stack:
+        frame = state.decision_stack[-1]
+        if not isinstance(frame.decision, PlayerDecision):
+            break
+        if frame.kind == FrameKind.CONFLICT_END_TRIGGER:
+            break
+        actions = engine.legal_actions(state, frame.decision.owner)
+        passing = next(
+            (a for a in actions if a.action_id.startswith("pass_")), actions[0]
+        )
+        state = engine.apply(state, passing).state
+    return state
+
+
+def test_harvest_cells_in_hand_may_be_played_after_the_rewards() -> None:
+    # Designer ruling (BGG, OQ-057): Harvest Cells received as a Combat
+    # reward can be played in that same Combat. After the rewards and before
+    # the cleanup, a seat holding the card with enough troops to lose gets a
+    # window to play it (or decline).
+    card = _intrigue("harvest_cells")
+    engine = UprisingRulesEngine()
+    state = _combat_state(
+        _fighter(3, intrigue_cards=(card,), specimens=0),
+        _seat(
+            1, troops_supply=7, troops_conflict=2, combat_strength=4, has_revealed=True
+        ),
+    )
+    window = _pass_through_combat(engine, state)
+    frame = window.decision_stack[-1]
+    assert frame.kind == FrameKind.CONFLICT_END_TRIGGER
+    assert isinstance(frame.decision, PlayerDecision) and frame.decision.owner == 0
+    assert window.combat_rewards_resolved and window.combat_end_triggers_offered
+    # Seat 1 loses only two troops: no window of its own.
+    assert len(window.decision_stack) == 1
+    actions = engine.legal_actions(window, 0)
+    assert [(a.action_id, dict(a.arguments).get("card_id")) for a in actions] == [
+        ("decline_conflict_end_intrigue", None),
+        ("play_conflict_end_intrigue", card),
+    ]
+
+    played = engine.apply(window, actions[1]).state
+    assert card not in played.players[0].intrigue_faceup
+    assert played.decision_stack[-1].kind == FrameKind.INTRIGUE_CHOICE
+    rewarded = engine.apply(
+        played, DomainAction(action_id="resolve_intrigue_rewards", actor=0)
+    ).state
+    assert rewarded.players[0].specimens == 2
+    finished = engine.apply(
+        rewarded, DomainAction(action_id="decline_intrigue_tleilaxu", actor=0)
+    ).state
+    assert card in finished.intrigue_discard
+    assert finished.phase is not GamePhase.COMBAT
+    assert finished.players[0].troops_conflict == 0
+
+    declined = engine.apply(window, actions[0]).state
+    assert declined.phase is not GamePhase.COMBAT
+    assert card in declined.players[0].intrigue_cards
+    assert declined.players[0].specimens == 0
+
+    # Two troops lost: no window at all, straight to the cleanup.
+    short = _pass_through_combat(
+        engine, _combat_state(_fighter(2, intrigue_cards=(card,)))
+    )
+    assert short.phase is not GamePhase.COMBAT
+    assert card in short.players[0].intrigue_cards
+
 def test_immortality_intrigue_choices_round_trip_through_the_codec() -> None:
     codec = ActionCodec(IMMORTALITY)
     card = _intrigue("gruesome_sacrifice")

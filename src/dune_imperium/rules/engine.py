@@ -86,6 +86,7 @@ from dune_imperium.rules.combat import (
     apply_combat_reward_spy,
     apply_combat_reward_spy_recall,
     apply_combat_reward_trash,
+    apply_conflict_end_trigger,
     apply_distinct_combat_reward_influence,
     begin_combat_intrigue,
     finish_combat,
@@ -95,7 +96,9 @@ from dune_imperium.rules.combat import (
     legal_combat_reward_spy_actions,
     legal_combat_reward_spy_recall_actions,
     legal_combat_reward_trash_actions,
+    legal_conflict_end_trigger_actions,
     legal_distinct_combat_reward_influence_actions,
+    offer_conflict_end_triggers,
     resolve_combat_rewards,
 )
 from dune_imperium.rules.combat_deployment import (
@@ -428,6 +431,7 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     FrameKind.COMBAT_REWARD_OPTIONAL: (legal_combat_reward_optional_payment_actions,),
     FrameKind.COMBAT_REWARD_SPY_RECALL: (legal_combat_reward_spy_recall_actions,),
     FrameKind.COMBAT_REWARD_TRASH: (legal_combat_reward_trash_actions,),
+    FrameKind.CONFLICT_END_TRIGGER: (legal_conflict_end_trigger_actions,),
     FrameKind.COMBAT_REWARD_SPY: (legal_combat_reward_spy_actions,),
     FrameKind.COMBAT_REWARD_INFLUENCE: (legal_combat_reward_influence_actions,),
     FrameKind.COMBAT_REWARD_DISTINCT_INFLUENCE: (
@@ -694,6 +698,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "decline_combat_reward": _apply_decline_combat_reward,
     "trash_combat_reward_card": apply_combat_reward_trash,
     "decline_combat_reward_trash": apply_combat_reward_trash,
+    "play_conflict_end_intrigue": apply_conflict_end_trigger,
+    "decline_conflict_end_intrigue": apply_conflict_end_trigger,
     "place_combat_reward_spy": apply_combat_reward_spy,
     "choose_combat_reward_influence": apply_combat_reward_influence,
     "choose_distinct_combat_reward_influence": (apply_distinct_combat_reward_influence),
@@ -826,6 +832,8 @@ def _advance_automatic(result: RuleResult) -> RuleResult:
                 automatic = begin_combat_intrigue(state)
             elif not state.combat_rewards_resolved:
                 automatic = resolve_combat_rewards(state)
+            elif not state.combat_end_triggers_offered:
+                automatic = offer_conflict_end_triggers(state)
             else:
                 automatic = finish_combat(state)
         elif state.phase is GamePhase.MAKERS:

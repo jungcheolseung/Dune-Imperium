@@ -562,13 +562,16 @@ def test_buy_access_opens_two_distinct_faction_choices() -> None:
     assert engine.legal_actions(opened.state, 1) == ()
 
     first = engine.apply(opened.state, _choose_faction("fremen"))
-    assert first.state.players[0].influence.fremen == 1
+    # "Two different Factions": both are named before either Influence moves
+    # (designer ruling on "Choose two", OQ-057).
+    assert first.state.players[0].influence.fremen == 0
     remaining = {
         dict(a.arguments)["faction"] for a in engine.legal_actions(first.state, 0)
     }
     assert "fremen" not in remaining and len(remaining) == 3
 
     second = engine.apply(first.state, _choose_faction("emperor"))
+    assert second.state.players[0].influence.fremen == 1
     assert second.state.players[0].influence.emperor == 1
     assert second.state.decision_stack == state.decision_stack
     assert second.state.intrigue_discard == (card,)

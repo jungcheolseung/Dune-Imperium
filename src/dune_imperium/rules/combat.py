@@ -23,6 +23,7 @@ from dune_imperium.rules.frames import (
     FrameKind,
     context_int,
     frame_context_int,
+    owned_top_frame,
     replace_player,
 )
 from dune_imperium.rules.influence import (
@@ -853,31 +854,62 @@ def apply_distinct_combat_reward_influence(
     choice_index = context_int(context, "choice_index")
     group = context_int(context, "group")
     chosen_mask = context_int(context, "chosen_mask")
+    previous = tuple(
+        Faction(value)
+        for value in str(context.get("chosen_factions", "")).split(",")
+        if value
+    )
     faction_index = tuple(Faction).index(faction)
-    gained = gain_faction_influence(
-        state,
-        action.actor,
-        faction,
-        1,
-        event_prefix=(
-            f"round:{state.round_number}:combat_reward:distinct_influence:"
-            f"{choice_index}:{action.actor}:{faction.value}"
-        ),
+    prefix = (
+        f"round:{state.round_number}:combat_reward:distinct_influence:"
+        f"{choice_index}:{action.actor}:{faction.value}"
     )
     remaining = state.decision_stack[:-1]
     if remaining and frame_context_int(remaining[-1], "group") == group:
+        # "Choose two": both Factions are named before either Influence
+        # moves (designer ruling, OQ-057), so the second pick cannot be made
+        # after seeing what the first one drew.
         next_context = dict(remaining[-1].context)
         next_context["chosen_mask"] = chosen_mask | (1 << faction_index)
+        next_context["chosen_factions"] = ",".join(
+            pick.value for pick in (*previous, faction)
+        )
         remaining = (
             *remaining[:-1],
             replace(remaining[-1], context=tuple(sorted(next_context.items()))),
         )
-    next_state = replace(
-        gained.state,
-        decision_stack=remaining,
-        combat_rewards_resolved=not remaining,
+        return RuleResult(
+            state=replace(
+                state,
+                decision_stack=remaining,
+                combat_rewards_resolved=not remaining,
+            ),
+            events=(
+                GameEvent(
+                    event_id=f"{prefix}:chosen",
+                    kind="combat_reward_influence_chosen",
+                    payload=(("faction", faction.value), ("player", action.actor)),
+                ),
+            ),
+        )
+    working = replace(
+        state, decision_stack=remaining, combat_rewards_resolved=not remaining
     )
-    return RuleResult(state=next_state, events=gained.events)
+    events: list[GameEvent] = []
+    for pick in (*previous, faction):
+        gained = gain_faction_influence(
+            working,
+            action.actor,
+            pick,
+            1,
+            event_prefix=(
+                f"round:{state.round_number}:combat_reward:distinct_influence:"
+                f"{choice_index}:{action.actor}:{pick.value}"
+            ),
+        )
+        working = gained.state
+        events.extend(gained.events)
+    return RuleResult(state=working, events=tuple(events))
 
 
 def apply_combat_reward_influence(
@@ -911,6 +943,168 @@ def apply_combat_reward_influence(
         combat_rewards_resolved=not remaining,
     )
     return RuleResult(state=next_state, events=gained.events)
+
+
+def _conflict_end_trigger_cards(
+    state: GameState, player: int, lost: int
+) -> tuple[str, ...]:
+    """Hand Intrigue whose Conflict-end trigger would fire now and is playable."""
+
+    from dune_imperium.rules.effect_interpreter import option_is_playable
+
+    cards: list[str] = []
+    for card_id in state.players[player].intrigue_cards:
+        entry = INTRIGUE_CARDS_BY_INSTANCE.get(card_id)
+        if entry is None:
+            continue
+        for option in entry.options:
+            trigger = option.trigger
+            if (
+                isinstance(trigger, OnTroopsLostAtConflictEnd)
+                and lost >= trigger.minimum
+                and option_is_playable(state, player, option)
+            ):
+                cards.append(card_id)
+                break
+    return tuple(cards)
+
+
+def _conflict_losses(state: GameState) -> tuple[int, ...]:
+    return tuple(
+        player.troops_conflict + player.commanders_conflict for player in state.players
+    )
+
+
+def offer_conflict_end_triggers(state: GameState) -> RuleResult:
+    """Open the window for Intrigue that triggers at this Conflict's end.
+
+    Harvest Cells received as a Combat reward may be played in this same
+    Combat (designer ruling, OQ-057): after the rewards and before the
+    cleanup each seat, in turn order from the First Player, may play a hand
+    card whose Conflict-end trigger would fire. Without candidates the
+    window closes at once.
+    """
+
+    if state.phase is not GamePhase.COMBAT:
+        raise ValueError("Conflict-end triggers can be offered only during Combat")
+    if not state.combat_rewards_resolved or state.decision_stack:
+        raise ValueError("Conflict-end triggers follow the resolved rewards")
+    if state.combat_end_triggers_offered:
+        raise ValueError("Conflict-end triggers were already offered")
+    losses = _conflict_losses(state)
+    first = state.first_player or 0
+    frames: list[DecisionFrame] = []
+    for offset in range(state.config.players):
+        player = (first + offset) % state.config.players
+        if not _conflict_end_trigger_cards(state, player, losses[player]):
+            continue
+        frames.append(
+            DecisionFrame(
+                kind=FrameKind.CONFLICT_END_TRIGGER,
+                frame_id=f"round:{state.round_number}:conflict_end_trigger:{player}",
+                decision=PlayerDecision(
+                    owner=player,
+                    prompt=(
+                        "Play an Intrigue card that triggers at this Conflict's "
+                        "end, or decline"
+                    ),
+                ),
+                context=(("player", player),),
+            )
+        )
+    next_state = replace(
+        state,
+        combat_end_triggers_offered=True,
+        decision_stack=tuple(reversed(frames)),
+    )
+    return RuleResult(
+        state=next_state,
+        events=tuple(
+            GameEvent(
+                event_id=f"{frame.frame_id}:offered",
+                kind="conflict_end_trigger_offered",
+                payload=(("player", dict(frame.context)["player"]),),
+            )
+            for frame in frames
+        ),
+    )
+
+
+def legal_conflict_end_trigger_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Play one of the seat's Conflict-end trigger cards now, or decline."""
+
+    frame = owned_top_frame(state, FrameKind.CONFLICT_END_TRIGGER, player)
+    if frame is None:
+        return ()
+    losses = _conflict_losses(state)
+    return (
+        DomainAction(action_id="decline_conflict_end_intrigue", actor=player),
+        *(
+            DomainAction(
+                action_id="play_conflict_end_intrigue",
+                actor=player,
+                arguments=(("card_id", card_id),),
+            )
+            for card_id in _conflict_end_trigger_cards(state, player, losses[player])
+        ),
+    )
+
+
+def apply_conflict_end_trigger(state: GameState, action: DomainAction) -> RuleResult:
+    """Fire the chosen hand card as if it had waited face up, or close the window."""
+
+    from dune_imperium.rules.intrigue import resolve_faceup_trigger_option
+
+    if action not in legal_conflict_end_trigger_actions(state, action.actor):
+        raise ValueError("action is not a legal Conflict-end Intrigue choice")
+    player = action.actor
+    frame = state.decision_stack[-1]
+    if action.action_id == "decline_conflict_end_intrigue":
+        return RuleResult(
+            state=state.pop_decision(),
+            events=(
+                GameEvent(
+                    event_id=f"{frame.frame_id}:declined",
+                    kind="conflict_end_trigger_declined",
+                    payload=(("player", player),),
+                ),
+            ),
+        )
+    card_id = str(dict(action.arguments)["card_id"])
+    losses = _conflict_losses(state)
+    others = tuple(
+        held
+        for held in _conflict_end_trigger_cards(state, player, losses[player])
+        if held != card_id
+    )
+    base = state if others else state.pop_decision()
+    owner = base.players[player]
+    staged = replace(
+        owner,
+        intrigue_cards=tuple(held for held in owner.intrigue_cards if held != card_id),
+        intrigue_faceup=(*owner.intrigue_faceup, card_id),
+    )
+    prepared = replace(base, players=replace_player(base.players, staged))
+    fired = resolve_faceup_trigger_option(
+        prepared,
+        player,
+        card_id,
+        source=f"round:{state.round_number}:player:{player}:conflict_end:{card_id}",
+    )
+    return RuleResult(
+        state=fired.state,
+        events=(
+            GameEvent(
+                event_id=f"{frame.frame_id}:played:{card_id}",
+                kind="intrigue_played",
+                payload=(("card_id", card_id), ("player", player)),
+            ),
+            *fired.events,
+        ),
+    )
 
 
 def finish_combat(state: GameState) -> RuleResult:
@@ -1296,6 +1490,7 @@ def _distinct_influence_frame(
         ),
         context=(
             ("choice_index", index),
+            ("chosen_factions", ""),
             ("chosen_mask", 0),
             ("group", group),
             ("player", player),

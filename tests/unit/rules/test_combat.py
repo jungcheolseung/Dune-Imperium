@@ -440,6 +440,9 @@ def test_propaganda_requires_two_distinct_factions() -> None:
         if dict(action.arguments)["faction"] == "emperor"
     )
     state = apply_distinct_combat_reward_influence(state, emperor).state
+    # "Choose two": nothing moves until both Factions are named (designer
+    # ruling, OQ-057), so the second pick cannot follow the first's Intrigue.
+    assert state.players[0].influence.emperor == 0
 
     second_actions = legal_distinct_combat_reward_influence_actions(state, 0)
 

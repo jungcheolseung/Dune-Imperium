@@ -23,6 +23,7 @@ from dune_imperium.content.uprising.board import (
 )
 from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.contracts import contract_instance_ids
+from dune_imperium.content.uprising.effect_dsl import OnTroopsLostAtConflictEnd
 from dune_imperium.content.uprising.imperium import (
     ImperiumCardEntry,
     imperium_cards_for_choam,
@@ -61,7 +62,7 @@ from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.rules.agent_effects import AUTOMATIC_AGENT_ICONS
 from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 
-ACTION_CODEC_VERSION = 100
+ACTION_CODEC_VERSION = 101
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -829,6 +830,9 @@ def _immortality_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         ActionTemplate(action_id=action_id)
         for action_id in (
             "decline_research_bonus",
+            # Harvest Cells gained as a Combat reward, played before the
+            # cleanup (OQ-057).
+            "decline_conflict_end_intrigue",
             "pay_research_bonus",
             "return_specimen",
             "use_family_atomics",
@@ -999,6 +1003,22 @@ def _immortality_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             )
         )
     templates.append(ActionTemplate(action_id="decline_intrigue_tleilaxu"))
+    templates.extend(
+        ActionTemplate(
+            action_id="play_conflict_end_intrigue",
+            arguments=(("card_id", instance_id),),
+        )
+        for instance_id in intrigue_deck_instance_ids(
+            config.choam_module,
+            bloodlines=config.bloodlines,
+            tech_module=config.tech_module,
+            immortality=True,
+        )
+        if any(
+            isinstance(option.trigger, OnTroopsLostAtConflictEnd)
+            for option in intrigue_card_for_instance(instance_id).options
+        )
+    )
     return tuple(templates)
 
 

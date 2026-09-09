@@ -1178,8 +1178,17 @@ def test_rapid_engineering_discards_for_a_discounted_tile_or_two_influence() -> 
     ).state
     first = legal_intrigue_choice_actions(influence, 0)
     after_first = apply_intrigue_choice(influence, first[0]).state
+    # "Choose two": both Factions are named before either Influence moves
+    # (designer ruling, OQ-057).
+    seat = after_first.players[0]
+    assert (
+        seat.influence.emperor
+        + seat.influence.spacing_guild
+        + seat.influence.bene_gesserit
+        + seat.influence.fremen
+    ) == 0
     second = legal_intrigue_choice_actions(after_first, 0)
-    # "Choose two": the second pick excludes the first Faction.
+    # The second pick excludes the first Faction.
     assert len(second) == 3
     done = apply_intrigue_choice(after_first, second[0]).state
     seat = done.players[0]

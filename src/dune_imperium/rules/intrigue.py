@@ -844,18 +844,51 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
                 event_prefix=f"{step_source}:lost:{faction.value}",
                 alliance_recipient=recipient,
             )
-        case GainInfluence():
+        case GainInfluence(distinct=distinct):
             faction = Faction(str(arguments["faction"]))
-            result = gain_faction_influence(
-                state,
-                player,
-                faction,
-                1,
-                event_prefix=f"{step_source}:gained:{faction.value}",
-            )
             context["chosen_factions"] = ",".join(
                 (*(f.value for f in _chosen_factions(context)), faction.value)
             )
+            deferred = tuple(
+                Faction(value)
+                for value in str(context.get("deferred_factions", "")).split(",")
+                if value
+            )
+            later_distinct = distinct and any(
+                isinstance(later, GainInfluence) and later.distinct
+                for later in _slots(context)[slot_index + 1 :]
+            )
+            if later_distinct:
+                # "Choose two" (Rapid Engineering): both Factions are named
+                # before either Influence moves (designer ruling, OQ-057).
+                context["deferred_factions"] = ",".join(
+                    pick.value for pick in (*deferred, faction)
+                )
+                result = RuleResult(
+                    state=state,
+                    events=(
+                        GameEvent(
+                            event_id=f"{step_source}:chosen:{faction.value}",
+                            kind="intrigue_influence_chosen",
+                            payload=(("faction", faction.value), ("player", player)),
+                        ),
+                    ),
+                )
+            else:
+                context["deferred_factions"] = ""
+                working = state
+                gained_events: list[GameEvent] = []
+                for pick in (*deferred, faction):
+                    gained = gain_faction_influence(
+                        working,
+                        player,
+                        pick,
+                        1,
+                        event_prefix=f"{step_source}:gained:{pick.value}",
+                    )
+                    working = gained.state
+                    gained_events.extend(gained.events)
+                result = RuleResult(state=working, events=tuple(gained_events))
         case DiscardFromHand():
             result = discard_personal_card_from_hand(
                 state, player, str(arguments["card_id"]), source=step_source

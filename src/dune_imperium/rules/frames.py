@@ -31,6 +31,7 @@ class FrameKind(StrEnum):
     COMBAT_REWARD_OPTIONAL = "combat_reward_optional"
     COMBAT_REWARD_SPY_RECALL = "combat_reward_spy_recall"
     COMBAT_REWARD_TRASH = "combat_reward_trash"
+    CONFLICT_END_TRIGGER = "conflict_end_trigger"
     COMBAT_REWARD_SPY = "combat_reward_spy"
     ENDGAME_INTRIGUE = "endgame_intrigue"
     ROUND_START_RESHUFFLE = "round_start_reshuffle"

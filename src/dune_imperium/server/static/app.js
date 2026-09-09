@@ -145,6 +145,8 @@ const ACTION_LABELS = {
   place_reveal_spy: "Spy 배치",
   place_trigger_spy: "Spy 배치",
   play_intrigue: "Intrigue 사용",
+  play_conflict_end_intrigue: "Conflict 종료 trigger Intrigue play (Harvest Cells)",
+  decline_conflict_end_intrigue: "Conflict 종료 trigger Intrigue 사용 안 함",
   recall_agent_for_agent_card: "Agent 회수",
   recall_agent_for_contract: "Agent 회수",
   recall_agent_for_imperial_privilege: "Agent 회수",

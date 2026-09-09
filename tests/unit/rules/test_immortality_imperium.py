@@ -280,6 +280,8 @@ def test_long_reach_icons_and_two_distinct_influences() -> None:
     first = apply_agent_card_influence(bonded, picks["fremen"]).state
     _, context = current_agent_effect_context(first)
     assert context["pending_agent_effect"] is True
+    # "Choose two": both picks first, then both gains (designer ruling, OQ-057).
+    assert first.players[0].influence.fremen == 0
     second_picks = {
         dict(a.arguments)["faction"]
         for a in legal_agent_card_influence_actions(first, 0)

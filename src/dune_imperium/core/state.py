@@ -44,6 +44,9 @@ class GameState:
     current_conflict_ids: tuple[str, ...] = ()
     combat_intrigue_complete: bool = False
     combat_rewards_resolved: bool = False
+    # Whether the Conflict-end trigger window (Harvest Cells gained as a
+    # reward, OQ-057) has been offered for the current Combat.
+    combat_end_triggers_offered: bool = False
     # Seats that played a Combat Intrigue card in the current Conflict
     # (Counterattack, Immortality); cleared when the Combat phase resets.
     combat_intrigue_players: tuple[int, ...] = ()

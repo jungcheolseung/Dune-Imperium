@@ -680,14 +680,17 @@ def _apply_stitched_horror_reward(
     context: dict[str, ActionValue],
     source: str,
 ) -> RuleResult:
-    """Pay one of Stitched Horror's picks; the box closes after the second."""
+    """Record one of Stitched Horror's picks; both pay out after the second.
+
+    "Choose two" names both rewards before either resolves (designer ruling,
+    OQ-057), so the second pick cannot depend on what the first produced.
+    """
 
     player = action.actor
     reward = str(dict(action.arguments)["reward"])
     chosen = (*_chosen_rewards(context), reward)
     context["rewards_chosen"] = ",".join(chosen)
     context["pending_agent_effect"] = len(chosen) < 2
-    owner = state.players[player]
     events: list[GameEvent] = [
         GameEvent(
             event_id=f"{source}:reward:{reward}",
@@ -695,44 +698,52 @@ def _apply_stitched_horror_reward(
             payload=(("player", player), ("reward", reward)),
         )
     ]
-    players = state.players
-    if reward == "water":
-        players = replace_player(
-            players,
-            replace(
-                owner,
-                resources=replace(owner.resources, water=owner.resources.water + 1),
-            ),
-        )
-    elif reward == "troop":
-        recruited_owner, recruited = recruit_troops(owner, 1)
-        context["troops_recruited"] = (
-            context_int(context, "troops_recruited", owner="Agent-turn effect frame")
-            + recruited
-        )
-        players = replace_player(players, recruited_owner)
-        events.extend(recruit_shortfall_events(source, player, 1, recruited))
     frame = state.decision_stack[-1]
     if context["pending_agent_effect"] is True:
         # The first pick: the box stays open for the second.
-        next_state = replace(
-            state,
-            players=players,
-            decision_stack=(
-                *state.decision_stack[:-1],
-                replace(frame, context=tuple(sorted(context.items()))),
+        return RuleResult(
+            state=replace(
+                state,
+                decision_stack=(
+                    *state.decision_stack[:-1],
+                    replace(frame, context=tuple(sorted(context.items()))),
+                ),
             ),
+            events=tuple(events),
         )
-    else:
-        next_state = advance_after_effect(state, context, players)
-    if reward == "tleilaxu":
-        advanced = advance_tleilaxu(next_state, player, 1, source=f"{source}:tleilaxu")
-        next_state = advanced.state
-        events.extend(advanced.events)
-    elif reward == "trash":
-        next_state = next_state.push_decision(
-            optional_trash_frame(player, f"{source}:{len(chosen)}")
-        )
+    players = state.players
+    for pick in chosen:
+        owner = players[player]
+        if pick == "water":
+            players = replace_player(
+                players,
+                replace(
+                    owner,
+                    resources=replace(owner.resources, water=owner.resources.water + 1),
+                ),
+            )
+        elif pick == "troop":
+            recruited_owner, recruited = recruit_troops(owner, 1)
+            context["troops_recruited"] = (
+                context_int(
+                    context, "troops_recruited", owner="Agent-turn effect frame"
+                )
+                + recruited
+            )
+            players = replace_player(players, recruited_owner)
+            events.extend(recruit_shortfall_events(source, player, 1, recruited))
+    next_state = advance_after_effect(state, context, players)
+    for index, pick in enumerate(chosen):
+        if pick == "tleilaxu":
+            advanced = advance_tleilaxu(
+                next_state, player, 1, source=f"{source}:tleilaxu"
+            )
+            next_state = advanced.state
+            events.extend(advanced.events)
+        elif pick == "trash":
+            next_state = next_state.push_decision(
+                optional_trash_frame(player, f"{source}:{index + 1}")
+            )
     return RuleResult(state=next_state, events=tuple(events))
 
 
@@ -887,28 +898,13 @@ def apply_agent_card_influence(
         f"round:{state.round_number}:player:{action.actor}:"
         f"agent_card:{source_card_id}"
     )
-    gained = gain_faction_influence(
-        state,
-        action.actor,
-        faction,
-        1,
-        event_prefix=f"{source}:influence:{faction.value}",
-    )
-    events: tuple[GameEvent, ...] = gained.events
-    players = gained.state.players
     if (
-        source_card.agent_effect
-        is PersonalCardAgentEffect.TRASH_SELF_AND_GAIN_CHOSEN_INFLUENCE
-    ):
-        # "Trash this card." is the box's other printed icon, resolved by its
-        # own action in the owner's order (OQ-027).
-        finish_agent_icon(context, AGENT_ICON_INFLUENCE)
-    elif (
         source_card.agent_effect
         is PersonalCardAgentEffect.GAIN_TWO_DISTINCT_CHOSEN_INFLUENCE
     ):
-        # Long Reach: the box stays pending until the second, different
-        # Faction is chosen.
+        # Long Reach: "Choose two" names both Factions before either
+        # Influence moves (designer ruling, OQ-057); the box stays pending
+        # until the second, different Faction is chosen.
         chosen_value = context.get("influence_chosen", "")
         chosen = [
             *(str(chosen_value).split(",") if chosen_value else []),
@@ -916,8 +912,50 @@ def apply_agent_card_influence(
         ]
         context["influence_chosen"] = ",".join(chosen)
         context["pending_agent_effect"] = len(chosen) < 2
+        if len(chosen) < 2:
+            gained = RuleResult(
+                state=state,
+                events=(
+                    GameEvent(
+                        event_id=f"{source}:influence:{faction.value}:chosen",
+                        kind="agent_card_influence_chosen",
+                        payload=(("faction", faction.value), ("player", action.actor)),
+                    ),
+                ),
+            )
+        else:
+            working = state
+            picked_events: list[GameEvent] = []
+            for pick in chosen:
+                step = gain_faction_influence(
+                    working,
+                    action.actor,
+                    Faction(pick),
+                    1,
+                    event_prefix=f"{source}:influence:{pick}",
+                )
+                working = step.state
+                picked_events.extend(step.events)
+            gained = RuleResult(state=working, events=tuple(picked_events))
     else:
-        context["pending_agent_effect"] = False
+        gained = gain_faction_influence(
+            state,
+            action.actor,
+            faction,
+            1,
+            event_prefix=f"{source}:influence:{faction.value}",
+        )
+        if (
+            source_card.agent_effect
+            is PersonalCardAgentEffect.TRASH_SELF_AND_GAIN_CHOSEN_INFLUENCE
+        ):
+            # "Trash this card." is the box's other printed icon, resolved by
+            # its own action in the owner's order (OQ-027).
+            finish_agent_icon(context, AGENT_ICON_INFLUENCE)
+        else:
+            context["pending_agent_effect"] = False
+    events: tuple[GameEvent, ...] = gained.events
+    players = gained.state.players
     if (
         source_card.agent_effect
         is PersonalCardAgentEffect.CHOSEN_INFLUENCE_OR_TWO_TROOPS_BOTH_IF_BOND

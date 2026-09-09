@@ -276,7 +276,8 @@ def test_stitched_horror_pays_two_distinct_rewards() -> None:
         state, _payment(state, "choose_agent_card_reward", reward="water")
     )
     owner = first.state.players[0]
-    assert owner.resources.water == 3
+    # "Choose two" names both before either pays out (designer ruling, OQ-057).
+    assert owner.resources.water == 2
     _, context = current_agent_effect_context(first.state)
     assert context["pending_agent_effect"] is True
     second_picks = {
@@ -289,6 +290,7 @@ def test_stitched_horror_pays_two_distinct_rewards() -> None:
         _payment(first.state, "choose_agent_card_reward", reward="tleilaxu"),
     )
     owner = second.state.players[0]
+    assert owner.resources.water == 3
     assert owner.tleilaxu_space == 1
     _, context = current_agent_effect_context(second.state)
     assert context["pending_agent_effect"] is False
@@ -296,12 +298,15 @@ def test_stitched_horror_pays_two_distinct_rewards() -> None:
     trashing = apply_agent_card_payment(
         state, _payment(state, "choose_agent_card_reward", reward="trash")
     )
-    assert trashing.state.decision_stack[-1].kind == FrameKind.OPTIONAL_TRASH
-    assert trashing.state.decision_stack[-2].kind == FrameKind.AGENT_EFFECTS
-    troops = apply_agent_card_payment(
-        state, _payment(state, "choose_agent_card_reward", reward="troop")
-    ).state.players[0]
-    assert troops.troops_garrison == 4
+    # The trash waits for the second pick too.
+    assert trashing.state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    trashed_and_troop = apply_agent_card_payment(
+        trashing.state,
+        _payment(trashing.state, "choose_agent_card_reward", reward="troop"),
+    ).state
+    assert trashed_and_troop.decision_stack[-1].kind == FrameKind.OPTIONAL_TRASH
+    assert trashed_and_troop.decision_stack[-2].kind == FrameKind.AGENT_EFFECTS
+    assert trashed_and_troop.players[0].troops_garrison == 4
 
 
 def test_beguiling_pheromones_trades_a_grafted_card_for_the_visited_faction() -> None:
