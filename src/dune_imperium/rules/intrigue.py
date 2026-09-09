@@ -102,6 +102,7 @@ from dune_imperium.rules.frames import (
     replace_top_frame,
     reveal_is_open_for,
     top_frame,
+    update_turn_recruits,
     with_context,
 )
 from dune_imperium.rules.influence import (
@@ -213,7 +214,7 @@ def apply_intrigue_play(state: GameState, action: DomainAction) -> RuleResult:
     # causes cannot reshuffle the card itself and no card leaves every zone.
     played_state = replace(state, players=replace_player(state.players, paid_owner))
     if cost is not None and cost.spice:
-        played_state = _update_agent_turn_frame(played_state, spice_spent=cost.spice)
+        played_state = update_turn_recruits(played_state, spice_spent=cost.spice)
     if (
         option.timing is IntrigueTiming.COMBAT
         and state.phase is GamePhase.COMBAT
@@ -1129,7 +1130,7 @@ def _apply_section_rewards(
     next_state = outcome.result.state
     events: list[GameEvent] = list(outcome.result.events)
     if outcome.troops_recruited:
-        next_state = _update_agent_turn_frame(
+        next_state = update_turn_recruits(
             next_state, troops_recruited=outcome.troops_recruited
         )
     if outcome.combat_icons:
@@ -1310,7 +1311,7 @@ def _trash_intrigue_hand_card(
         intrigue_trash=(*state.intrigue_trash, card_id),
     )
     if recruited:
-        next_state = _update_agent_turn_frame(next_state, troops_recruited=recruited)
+        next_state = update_turn_recruits(next_state, troops_recruited=recruited)
     return RuleResult(state=next_state, events=tuple(events))
 
 
@@ -1565,59 +1566,3 @@ def _current_slot(context: dict[str, ActionValue]) -> ChoiceSlot:
 def _chosen_factions(context: dict[str, ActionValue]) -> tuple[Faction, ...]:
     raw = context_str(context, "chosen_factions", owner=_CHOICE_FRAME)
     return tuple(Faction(value) for value in raw.split(",") if value)
-
-
-def _update_agent_turn_frame(
-    state: GameState,
-    *,
-    troops_recruited: int = 0,
-    spice_spent: int = 0,
-) -> GameState:
-    """Keep the owner's turn bookkeeping in step with an Intrigue effect.
-
-    Troops recruited during the owner's turn join that turn's deployment
-    allowance whether the Plot was played before or after placing the Agent.
-    Spice paid for the card is recorded as spent so that Harvest Spice
-    Contracts, which count Spice gained from every source during the turn
-    [Main p. 16], still see the full amount gained; Spice the card grants
-    counts toward those Contracts like any other gain.
-    """
-
-    for index in range(len(state.decision_stack) - 1, -1, -1):
-        frame = state.decision_stack[index]
-        if frame.kind == FrameKind.REVEAL:
-            # Recruits during a Reveal turn feed its Combat-icon deployment
-            # [Bloodlines p. 5].
-            context = frame_context(frame)
-            recruited = context.get("reveal_troops_recruited", 0)
-            if isinstance(recruited, bool) or not isinstance(recruited, int):
-                raise RuntimeError("Reveal frame has an invalid recruit count")
-            context["reveal_troops_recruited"] = recruited + troops_recruited
-            return replace(
-                state,
-                decision_stack=(
-                    *state.decision_stack[:index],
-                    with_context(frame, context),
-                    *state.decision_stack[index + 1 :],
-                ),
-            )
-        if frame.kind not in (FrameKind.AGENT_EFFECTS, FrameKind.TURN):
-            continue
-        context = frame_context(frame)
-        previous = context.get("troops_recruited", 0)
-        if isinstance(previous, bool) or not isinstance(previous, int):
-            raise RuntimeError("turn frame has an invalid recruit count")
-        context["troops_recruited"] = previous + troops_recruited
-        if frame.kind == FrameKind.AGENT_EFFECTS:
-            spent = context_int(context, "spice_spent_after_placement")
-            context["spice_spent_after_placement"] = spent + spice_spent
-        updated = with_context(frame, context)
-        return replace(
-            state,
-            decision_stack=(
-                *state.decision_stack[:index],
-                updated,
-                *state.decision_stack[index + 1 :],
-            ),
-        )
-    return state

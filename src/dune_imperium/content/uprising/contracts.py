@@ -1,4 +1,9 @@
-"""Standard Contract identities for the Uprising CHOAM Module."""
+"""Contract identities for the Uprising CHOAM Module.
+
+The 20 standard tiles come from the Uprising box [Main p. 16]; the eight
+Bloodlines tiles join them only with the ``bloodlines`` option
+[Bloodlines p. 2].
+"""
 
 from dataclasses import dataclass
 from enum import StrEnum
@@ -15,6 +20,20 @@ class ContractConditionKind(StrEnum):
     HARVEST_SPICE = "harvest_spice"
     ACQUIRE_CARD = "acquire_card"
     IMMEDIATE = "immediate"
+    # Bloodlines: "Earn any Alliance" completes the next time the holder
+    # takes an Alliance token they do not already hold [Bloodlines p. 2].
+    EARN_ALLIANCE = "earn_alliance"
+    # Bloodlines: the new Immediate tile costs an Intrigue card trashed from
+    # hand and cannot be taken without one [Bloodlines p. 2].
+    IMMEDIATE_INTRIGUE_TRASH = "immediate_intrigue_trash"
+
+
+IMMEDIATE_CONDITION_KINDS: Final = frozenset(
+    {
+        ContractConditionKind.IMMEDIATE,
+        ContractConditionKind.IMMEDIATE_INTRIGUE_TRASH,
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,7 +55,7 @@ class ContractCondition:
             if self.target or self.amount < 1:
                 raise ValueError("Harvest Contracts require a positive Spice amount")
         elif self.target or self.amount:
-            raise ValueError("Immediate Contracts have no target or amount")
+            raise ValueError("this Contract condition has no target or amount")
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,6 +71,8 @@ class ContractReward:
     recall_agents: int = 0
     influence_faction: Faction | None = None
     influence: int = 0
+    intrigue_cards: int = 0
+    deep_cover_spies: int = 0
 
     def __post_init__(self) -> None:
         quantities = (
@@ -63,6 +84,8 @@ class ContractReward:
             self.spies,
             self.recall_agents,
             self.influence,
+            self.intrigue_cards,
+            self.deep_cover_spies,
         )
         if min(quantities) < 0:
             raise ValueError("Contract rewards must not be negative")
@@ -79,15 +102,25 @@ class ContractDefinition:
     card: CardDefinition
     condition: ContractCondition
     reward: ContractReward
+    bloodlines_only: bool = False
 
     @property
     def completes_immediately(self) -> bool:
         """Return whether taking this Contract completes it immediately."""
 
-        return self.condition.kind is ContractConditionKind.IMMEDIATE
+        return self.condition.kind in IMMEDIATE_CONDITION_KINDS
+
+    @property
+    def requires_intrigue_trash(self) -> bool:
+        """Return whether taking this Contract costs an Intrigue card from hand."""
+
+        return self.condition.kind is ContractConditionKind.IMMEDIATE_INTRIGUE_TRASH
 
 
 CONTRACT_SOURCES: Final = (SourceRef(SourceDocument.MAIN_RULEBOOK, (16,)),)
+BLOODLINES_CONTRACT_SOURCES: Final = (
+    SourceRef(SourceDocument.BLOODLINES_RULEBOOK, (2,)),
+)
 
 
 def _contract(
@@ -112,7 +145,32 @@ def _contract(
     )
 
 
-CONTRACTS: Final = (
+def _bloodlines_contract(
+    slug: str,
+    name: str,
+    *,
+    condition: ContractCondition,
+    reward: ContractReward,
+) -> ContractDefinition:
+    # Dune Cards Hub renders its Bloodlines catalog client-side and its
+    # sitemap stops before the expansion, so the card face image is the
+    # stable reference (the same URL the private asset manifest records).
+    return ContractDefinition(
+        card=CardDefinition(
+            card_id=f"bloodlines_{slug.replace('-', '_')}",
+            name=name,
+            sources=BLOODLINES_CONTRACT_SOURCES,
+            catalog_url=(
+                f"https://dunecardshub.com/images/bloodlines-contract-{slug}.webp"
+            ),
+        ),
+        condition=condition,
+        reward=reward,
+        bloodlines_only=True,
+    )
+
+
+STANDARD_CONTRACTS: Final = (
     _contract(
         517,
         "acquire",
@@ -310,13 +368,98 @@ CONTRACTS: Final = (
     ),
 )
 
+# Bloodlines' eight contract tokens, transcribed from the printed faces
+# (assets ``bloodlines/contract/*.webp``) and cross-checked against the BGG
+# card inventory sheet (one copy each) [Bloodlines p. 2].
+BLOODLINES_CONTRACTS: Final = (
+    _bloodlines_contract(
+        "deliver-supplies",
+        "Deliver Supplies",
+        condition=ContractCondition(
+            ContractConditionKind.BOARD_SPACE,
+            target="deliver_supplies",
+        ),
+        reward=ContractReward(solari=1, deep_cover_spies=1),
+    ),
+    _bloodlines_contract(
+        "earn-any-alliance",
+        "Earn Any Alliance",
+        condition=ContractCondition(ContractConditionKind.EARN_ALLIANCE),
+        reward=ContractReward(solari=2, troops=2),
+    ),
+    _bloodlines_contract(
+        "harvest-3",
+        "Harvest 3+",
+        condition=ContractCondition(ContractConditionKind.HARVEST_SPICE, amount=3),
+        reward=ContractReward(solari=2, spies=1),
+    ),
+    _bloodlines_contract(
+        "harvest-4",
+        "Harvest 4+",
+        condition=ContractCondition(ContractConditionKind.HARVEST_SPICE, amount=4),
+        reward=ContractReward(solari=3, spies=1),
+    ),
+    _bloodlines_contract(
+        "high-council",
+        "High Council",
+        condition=ContractCondition(
+            ContractConditionKind.BOARD_SPACE,
+            target="high_council",
+        ),
+        # Recall one of your Agents; as with Sardaukar II the Agent just
+        # sent is not a valid target [Main p. 20].
+        reward=ContractReward(recall_agents=1),
+    ),
+    _bloodlines_contract(
+        "immediate",
+        "Immediate",
+        # "Requires an Intrigue card": trash an Intrigue card -> draw an
+        # Intrigue card and a card [card face] [Bloodlines p. 2].
+        condition=ContractCondition(ContractConditionKind.IMMEDIATE_INTRIGUE_TRASH),
+        reward=ContractReward(intrigue_cards=1, personal_cards=1),
+    ),
+    _bloodlines_contract(
+        "secrets",
+        "Secrets",
+        condition=ContractCondition(
+            ContractConditionKind.BOARD_SPACE,
+            target="secrets",
+        ),
+        reward=ContractReward(solari=2, personal_cards=1),
+    ),
+    _bloodlines_contract(
+        "spice-refinery",
+        "Spice Refinery",
+        condition=ContractCondition(
+            ContractConditionKind.BOARD_SPACE,
+            target="spice_refinery",
+        ),
+        reward=ContractReward(troops=2),
+    ),
+)
+
+CONTRACTS: Final = (*STANDARD_CONTRACTS, *BLOODLINES_CONTRACTS)
+
 CONTRACTS_BY_ID: Final = {contract.card.card_id: contract for contract in CONTRACTS}
 
 
-def contract_instance_ids() -> tuple[str, ...]:
-    """Return stable IDs for the 20 unique standard Contracts."""
+def contracts_for(*, bloodlines: bool = False) -> tuple[ContractDefinition, ...]:
+    """Return the Contract tiles a setup shuffles into the bank."""
 
-    return tuple(f"contract:{contract.card.card_id}" for contract in CONTRACTS)
+    return CONTRACTS if bloodlines else STANDARD_CONTRACTS
+
+
+def contract_instance_ids(*, bloodlines: bool = False) -> tuple[str, ...]:
+    """Return stable IDs for the unique Contract tiles in play.
+
+    The 20 standard tiles always; Bloodlines adds its eight tokens to the
+    same bank when the option is on [Bloodlines p. 2].
+    """
+
+    return tuple(
+        f"contract:{contract.card.card_id}"
+        for contract in contracts_for(bloodlines=bloodlines)
+    )
 
 
 def contract_for_instance(instance_id: str) -> ContractDefinition:

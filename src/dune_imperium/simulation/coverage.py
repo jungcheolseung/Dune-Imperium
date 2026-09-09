@@ -230,7 +230,7 @@ def zero_coverage(
         )
     }
     _report_by_identity("intrigue_played", intrigue_identities)
-    _report("contracts", set(contract_instance_ids()))
+    _report("contracts", set(contract_instance_ids(bloodlines=bloodlines)))
     _report("conflicts", {conflict.card.card_id for conflict in CONFLICTS})
     _report_by_identity(
         "leader_events",

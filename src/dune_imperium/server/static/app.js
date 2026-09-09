@@ -187,6 +187,7 @@ const ACTION_LABELS = {
   lose_intrigue_troop: "troop 잃기 (Intrigue)",
   give_intrigue_card: "상대에게 Intrigue 카드 주기",
   trash_intrigue_hand_card: "Intrigue 카드 trash",
+  trash_intrigue_for_contract: "Intrigue 카드 trash (Immediate Contract)",
   put_back_top_card: "덱 맨 위 카드 되돌리기",
   discard_top_card: "덱 맨 위 카드 discard",
   draw_top_card_for_solari: "Solari 1 지불 → 덱 맨 위 카드 draw",

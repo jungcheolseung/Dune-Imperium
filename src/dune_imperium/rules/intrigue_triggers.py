@@ -10,6 +10,7 @@ going through the effect interpreter.
 from dataclasses import replace
 
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS
+from dune_imperium.content.uprising.contracts import contract_for_instance
 from dune_imperium.content.uprising.effect_dsl import (
     OnRevealAcquisitionThisRound,
     OnUnitsDeployedInTurn,
@@ -23,7 +24,10 @@ from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GamePhase, GameState
-from dune_imperium.rules.contract_tiles import receive_contract
+from dune_imperium.rules.contract_tiles import (
+    contract_intrigue_trash_frame,
+    receive_contract,
+)
 from dune_imperium.rules.effects import recruit_shortfall_events, recruit_troops
 from dune_imperium.rules.frames import (
     FrameKind,
@@ -352,6 +356,7 @@ def legal_trigger_contract_actions(
     card_id = dict(frame.context).get("card_id")
     reward = _deployment_trigger_reward(card_id) if isinstance(card_id, str) else None
     count = reward.count if isinstance(reward, RevealContractsTakeOne) else 0
+    holds_intrigue = bool(state.players[player].intrigue_cards)
     return (
         DomainAction(action_id="decline_intrigue_contract_trigger", actor=player),
         *(
@@ -361,6 +366,10 @@ def legal_trigger_contract_actions(
                 arguments=(("instance_id", instance_id),),
             )
             for instance_id in state.contract_bank[:count]
+            # The Bloodlines Immediate needs an Intrigue card in hand to be
+            # taken [Bloodlines p. 2]; the played Plot is already face up.
+            if holds_intrigue
+            or not contract_for_instance(instance_id).requires_intrigue_trash
         ),
     )
 
@@ -394,6 +403,7 @@ def apply_trigger_contract_action(
     count = reward.count if isinstance(reward, RevealContractsTakeOne) else 0
     revealed = state.contract_bank[:count]
     instance_id = str(dict(action.arguments)["instance_id"])
+    definition = contract_for_instance(instance_id)
     owner = receive_contract(state.players[player], instance_id)
     minimum = _deployment_trigger_minimum(card_id)
     used = replace(
@@ -405,8 +415,15 @@ def apply_trigger_contract_action(
             owner.units_deployed_committed, minimum if minimum is not None else 0
         ),
     )
+    popped = state.pop_decision()
+    if definition.requires_intrigue_trash:
+        popped = popped.push_decision(
+            contract_intrigue_trash_frame(
+                player, instance_id, source=f"{source}:contract:{instance_id}"
+            )
+        )
     next_state = replace(
-        state.pop_decision(),
+        popped,
         players=replace_player(state.players, used),
         contract_bank=state.contract_bank[count:],
         contract_trash=(

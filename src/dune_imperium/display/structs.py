@@ -69,6 +69,10 @@ def contract_condition_text(condition: ContractCondition) -> str:
             return f"Acquire {_card_name(condition.target)}"
         case ContractConditionKind.IMMEDIATE:
             return "Complete immediately when taken"
+        case ContractConditionKind.EARN_ALLIANCE:
+            return "Take an Alliance token you do not already hold"
+        case ContractConditionKind.IMMEDIATE_INTRIGUE_TRASH:
+            return "Requires an Intrigue card: trash one when taken, completing at once"
         case _:
             assert_never(condition.kind)
 
@@ -84,6 +88,8 @@ _HANDLED_CONTRACT_REWARD_FIELDS: frozenset[str] = frozenset(
         "recall_agents",
         "influence_faction",
         "influence",
+        "intrigue_cards",
+        "deep_cover_spies",
     }
 )
 
@@ -105,8 +111,15 @@ def contract_reward_text(reward: ContractReward) -> str:
     if reward.contracts:
         contracts_noun = _plural(reward.contracts, "Contract")
         parts.append(f"Take {reward.contracts} {contracts_noun}")
+    if reward.intrigue_cards:
+        parts.append(
+            f"Draw {reward.intrigue_cards} Intrigue "
+            f"{_plural(reward.intrigue_cards, 'card')}"
+        )
     if reward.spies:
         parts.append(_spy_text(reward.spies))
+    if reward.deep_cover_spies:
+        parts.append(f"{_spy_text(reward.deep_cover_spies)} with Deep Cover")
     if reward.recall_agents:
         parts.append(
             f"Recall {reward.recall_agents} {_plural(reward.recall_agents, 'Agent')}"

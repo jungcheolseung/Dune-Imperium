@@ -2,7 +2,7 @@
 
 from dataclasses import replace
 
-from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID
+from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID, OBSERVATION_POSTS
 from dune_imperium.content.uprising.contracts import (
     ContractConditionKind,
     ContractDefinition,
@@ -15,6 +15,7 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.contract_tiles import (
+    contract_intrigue_trash_frame,
     owe_contract_completion_draw,
     receive_contract,
 )
@@ -26,8 +27,15 @@ from dune_imperium.rules.effects import (
     recruit_shortfall_events,
     recruit_troops,
 )
-from dune_imperium.rules.frames import FrameKind, replace_player
+from dune_imperium.rules.frames import (
+    FrameKind,
+    owned_top_frame,
+    replace_player,
+    turn_owner_of,
+    update_turn_recruits,
+)
 from dune_imperium.rules.influence import gain_faction_influence
+from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
     place_spy,
@@ -211,13 +219,23 @@ def legal_contract_spy_actions(
         return ()
     owner = state.players[player]
     if owner.spies_supply > 0:
+        if context.get("deep_cover") is True:
+            # Spy with Deep Cover ignores opponents' Spies; only the owner's
+            # own Spies block a post [Bloodlines pp. 5, 12].
+            targets = tuple(
+                post.post_id
+                for post in OBSERVATION_POSTS
+                if post.post_id not in owner.spy_post_ids
+            )
+        else:
+            targets = empty_observation_post_ids(state)
         return tuple(
             DomainAction(
                 action_id="place_contract_spy",
                 actor=player,
                 arguments=(("post_id", post_id),),
             )
-            for post_id in empty_observation_post_ids(state)
+            for post_id in targets
         )
     return tuple(
         DomainAction(
@@ -435,6 +453,7 @@ def legal_contract_actions(
         if state.players[player].leader_id == "shaddam_corrino_iv"
         else ()
     )
+    holds_intrigue = bool(state.players[player].intrigue_cards)
     actions = [
         DomainAction(
             action_id="take_contract",
@@ -442,6 +461,10 @@ def legal_contract_actions(
             arguments=(("instance_id", instance_id),),
         )
         for instance_id in (*state.face_up_contract_ids, *set_aside)
+        # The Bloodlines Immediate "cannot be taken without an Intrigue
+        # card to trash" [Bloodlines p. 2].
+        if holds_intrigue
+        or not contract_for_instance(instance_id).requires_intrigue_trash
     ]
     if set_aside and not state.face_up_contract_ids:
         # With every generally available Contract taken, each of Shaddam's
@@ -515,6 +538,17 @@ def apply_contract_action(state: GameState, action: DomainAction) -> RuleResult:
                 ),
             ),
         )
+    if definition.requires_intrigue_trash:
+        # The Bloodlines Immediate is paid by trashing an Intrigue card
+        # [Bloodlines p. 2]; the taker chooses which one before it completes.
+        remaining_stack = (
+            *remaining_stack,
+            contract_intrigue_trash_frame(
+                action.actor,
+                instance_value,
+                source=f"{source_value}:contract:{instance_value}",
+            ),
+        )
     next_state = replace(
         state,
         players=players,
@@ -543,7 +577,7 @@ def apply_contract_action(state: GameState, action: DomainAction) -> RuleResult:
             ),
         )
     ]
-    if definition.completes_immediately:
+    if definition.completes_immediately and not definition.requires_intrigue_trash:
         completion_id = (
             f"{source_value}:contract_completed:{action.actor}:{instance_value}"
         )
@@ -832,6 +866,7 @@ def _begin_contract_reward_choice(
             reward.personal_cards,
             reward.contracts,
             reward.spies,
+            reward.deep_cover_spies,
             reward.recall_agents,
         )
     )
@@ -887,20 +922,194 @@ def _begin_contract_reward_choice(
             reward.contracts,
             source=f"{source}:reward",
         )
-    if reward.spies:
+    if reward.spies or reward.deep_cover_spies:
+        deep_cover = bool(reward.deep_cover_spies)
         frame = DecisionFrame(
             kind=FrameKind.CONTRACT_REWARD_SPY,
             frame_id=f"{source}:reward:spy",
             decision=PlayerDecision(
                 owner=player,
-                prompt="Choose an Observation Post for the Contract Spy",
+                prompt=(
+                    "Choose an Observation Post for the Contract Spy with Deep Cover"
+                    if deep_cover
+                    else "Choose an Observation Post for the Contract Spy"
+                ),
             ),
             context=(
                 ("contract_spy_id", f"contract:{definition.card.card_id}"),
+                ("deep_cover", deep_cover),
                 ("source", source),
                 ("turn_owner", player),
             ),
         )
         return RuleResult(state=state.push_decision(frame))
     return RuleResult(state=state)
+
+
+# --- Bloodlines Immediate: trash an Intrigue card -----------------------------------
+
+
+def legal_contract_intrigue_trash_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return the hand Intrigue cards the Bloodlines Immediate may trash."""
+
+    frame = owned_top_frame(state, FrameKind.CONTRACT_INTRIGUE_TRASH, player)
+    if frame is None:
+        return ()
+    return tuple(
+        DomainAction(
+            action_id="trash_intrigue_for_contract",
+            actor=player,
+            arguments=(("card_id", card_id),),
+        )
+        for card_id in state.players[player].intrigue_cards
+    )
+
+
+def apply_contract_intrigue_trash(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Trash the chosen Intrigue card and complete the Bloodlines Immediate.
+
+    "Requires an Intrigue card": trash an Intrigue card -> draw an Intrigue
+    card and a card [card face] [Bloodlines p. 2]. The tile waits in the
+    active zone only while this frame is open; nothing else can act on it
+    there, and it moves to the completed zone here.
+    """
+
+    if action not in legal_contract_intrigue_trash_actions(state, action.actor):
+        raise ValueError("action is not a legal Contract Intrigue trash")
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    instance_id = context.get("contract_id")
+    source = context.get("source")
+    if not isinstance(instance_id, str) or not isinstance(source, str):
+        raise RuntimeError("Contract Intrigue trash frame has invalid context")
+    card_id = str(dict(action.arguments)["card_id"])
+    player = action.actor
+    definition = contract_for_instance(instance_id)
+    reward = definition.reward
+    owner = state.players[player]
+    if instance_id not in owner.active_contract_ids:
+        raise RuntimeError("the Immediate Contract awaiting its trash must be active")
+    next_owner = owe_contract_completion_draw(
+        replace(
+            owner,
+            intrigue_cards=tuple(
+                held for held in owner.intrigue_cards if held != card_id
+            ),
+            active_contract_ids=tuple(
+                held for held in owner.active_contract_ids if held != instance_id
+            ),
+            completed_contract_ids=(*owner.completed_contract_ids, instance_id),
+            contracts_completed_turn=owner.contracts_completed_turn + 1,
+        )
+    )
+    remaining = state.decision_stack[:-1]
+    next_state = replace(
+        state,
+        players=replace_player(state.players, next_owner),
+        intrigue_trash=(*state.intrigue_trash, card_id),
+        decision_stack=remaining,
+        combat_rewards_resolved=(
+            not remaining
+            if state.phase is GamePhase.COMBAT
+            else state.combat_rewards_resolved
+        ),
+    )
+    events: list[GameEvent] = [
+        GameEvent(
+            event_id=f"{source}:intrigue_trashed",
+            kind="intrigue_card_trashed",
+            payload=(("card_id", card_id), ("player", player)),
+        ),
+        GameEvent(
+            event_id=f"{source}:completed",
+            kind="contract_completed",
+            payload=(
+                ("contract_id", instance_id),
+                ("intrigue_cards", reward.intrigue_cards),
+                ("personal_cards", reward.personal_cards),
+                ("player", player),
+            ),
+        ),
+    ]
+    if reward.intrigue_cards:
+        drawn = draw_or_queue_intrigue_cards(
+            next_state,
+            player,
+            reward.intrigue_cards,
+            source=f"{source}:reward:intrigue",
+        )
+        next_state = drawn.state
+        events.extend(drawn.events)
+    if reward.personal_cards:
+        drawn = draw_or_request_personal_cards(
+            next_state,
+            player,
+            reward.personal_cards,
+            source=f"{source}:reward:personal_draw",
+        )
+        next_state = drawn.state
+        events.extend(drawn.events)
+    return RuleResult(state=next_state, events=tuple(events))
+
+
+# --- Bloodlines Earn Any Alliance -----------------------------------------------------
+
+
+def complete_alliance_contracts(result: RuleResult) -> RuleResult:
+    """Complete Earn Any Alliance when its holder takes a new Alliance token.
+
+    "Earn any Alliance is completed the next time you take an Alliance token
+    you do not already have" [Bloodlines p. 2]. The engine runs this after
+    each transition on the step's Alliance events, so the completion never
+    interrupts the effect that moved the Influence, and a tile taken earlier
+    in the same turn completes on a later bump of that turn (no placement
+    snapshot applies: the condition is the Alliance itself, not an Agent
+    visit). Troops recruited during the holder's own turn join that turn's
+    deployment allowance like any other mid-turn recruit.
+    """
+
+    state = result.state
+    if not state.config.choam_module or not state.config.bloodlines:
+        return result
+    recipients: list[int] = []
+    for event in result.events:
+        if event.kind not in ("alliance_gained", "alliance_transferred"):
+            continue
+        to_player = dict(event.payload).get("to_player")
+        if (
+            isinstance(to_player, int)
+            and not isinstance(to_player, bool)
+            and 0 <= to_player < state.config.players
+            and to_player not in recipients
+        ):
+            recipients.append(to_player)
+    if not recipients:
+        return result
+    events = list(result.events)
+    for player in recipients:
+        for instance_id in state.players[player].active_contract_ids:
+            condition = contract_for_instance(instance_id).condition
+            if condition.kind is not ContractConditionKind.EARN_ALLIANCE:
+                continue
+            garrison_before = state.players[player].troops_garrison
+            completed = _complete_contract_without_choices(
+                state,
+                player,
+                instance_id,
+                source=(
+                    f"round:{state.round_number}:player:{player}:contract:{instance_id}"
+                ),
+            )
+            state = completed.state
+            events.extend(completed.events)
+            recruited = state.players[player].troops_garrison - garrison_before
+            if recruited and turn_owner_of(state) == player:
+                state = update_turn_recruits(state, troops_recruited=recruited)
+    return RuleResult(state=state, events=tuple(events))
 

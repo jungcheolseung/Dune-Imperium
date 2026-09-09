@@ -12,7 +12,9 @@ from dune_imperium.content.uprising.conflicts import (
     conflicts_by_tier,
 )
 from dune_imperium.content.uprising.contracts import (
+    BLOODLINES_CONTRACTS,
     CONTRACTS,
+    STANDARD_CONTRACTS,
     ContractCondition,
     ContractConditionKind,
     ContractReward,
@@ -555,12 +557,13 @@ def test_shared_deck_manifests_have_unique_ids_urls_and_instances() -> None:
 def test_standard_contract_manifest_has_twenty_unique_physical_tiles() -> None:
     instances = contract_instance_ids()
 
-    assert len(CONTRACTS) == len(instances) == len(set(instances)) == 20
-    assert len({contract.card.card_id for contract in CONTRACTS}) == 20
+    assert len(STANDARD_CONTRACTS) == len(instances) == len(set(instances)) == 20
+    assert len({contract.card.card_id for contract in STANDARD_CONTRACTS}) == 20
     assert all(contract.card.catalog_url for contract in CONTRACTS)
+    assert not any(contract.bloodlines_only for contract in STANDARD_CONTRACTS)
     assert {
         contract.card.card_id
-        for contract in CONTRACTS
+        for contract in STANDARD_CONTRACTS
         if contract.completes_immediately
     } == {"immediate"}
     assert contract_for_instance("contract:high_council_ii").card.name == (
@@ -568,12 +571,78 @@ def test_standard_contract_manifest_has_twenty_unique_physical_tiles() -> None:
     )
 
 
+def test_bloodlines_contract_manifest_adds_eight_tokens_to_the_same_bank() -> None:
+    # Eight contract tokens shuffle into the existing contracts with the
+    # CHOAM Module [Bloodlines p. 2]; one copy each (BGG card inventory).
+    instances = contract_instance_ids(bloodlines=True)
+
+    assert len(BLOODLINES_CONTRACTS) == 8
+    assert all(contract.bloodlines_only for contract in BLOODLINES_CONTRACTS)
+    assert len(CONTRACTS) == len(instances) == len(set(instances)) == 28
+    assert len({contract.card.card_id for contract in CONTRACTS}) == 28
+    assert instances[:20] == contract_instance_ids()
+    assert {
+        contract.card.card_id
+        for contract in CONTRACTS
+        if contract.completes_immediately
+    } == {"immediate", "bloodlines_immediate"}
+    immediate = contract_for_instance("contract:bloodlines_immediate")
+    assert immediate.requires_intrigue_trash
+    assert not contract_for_instance("contract:immediate").requires_intrigue_trash
+
+
+def test_bloodlines_contract_manifest_transcribes_printed_faces() -> None:
+    printed = {
+        contract.card.card_id: (contract.condition, contract.reward)
+        for contract in BLOODLINES_CONTRACTS
+    }
+
+    assert printed == {
+        "bloodlines_deliver_supplies": (
+            ContractCondition(
+                ContractConditionKind.BOARD_SPACE, target="deliver_supplies"
+            ),
+            ContractReward(solari=1, deep_cover_spies=1),
+        ),
+        "bloodlines_earn_any_alliance": (
+            ContractCondition(ContractConditionKind.EARN_ALLIANCE),
+            ContractReward(solari=2, troops=2),
+        ),
+        "bloodlines_harvest_3": (
+            ContractCondition(ContractConditionKind.HARVEST_SPICE, amount=3),
+            ContractReward(solari=2, spies=1),
+        ),
+        "bloodlines_harvest_4": (
+            ContractCondition(ContractConditionKind.HARVEST_SPICE, amount=4),
+            ContractReward(solari=3, spies=1),
+        ),
+        "bloodlines_high_council": (
+            ContractCondition(ContractConditionKind.BOARD_SPACE, target="high_council"),
+            ContractReward(recall_agents=1),
+        ),
+        "bloodlines_immediate": (
+            ContractCondition(ContractConditionKind.IMMEDIATE_INTRIGUE_TRASH),
+            ContractReward(intrigue_cards=1, personal_cards=1),
+        ),
+        "bloodlines_secrets": (
+            ContractCondition(ContractConditionKind.BOARD_SPACE, target="secrets"),
+            ContractReward(solari=2, personal_cards=1),
+        ),
+        "bloodlines_spice_refinery": (
+            ContractCondition(
+                ContractConditionKind.BOARD_SPACE, target="spice_refinery"
+            ),
+            ContractReward(troops=2),
+        ),
+    }
+
+
 def test_standard_contract_manifest_transcribes_printed_conditions_and_rewards() -> (
     None
 ):
     printed = {
         contract.card.card_id: (contract.condition, contract.reward)
-        for contract in CONTRACTS
+        for contract in STANDARD_CONTRACTS
     }
 
     assert printed == {

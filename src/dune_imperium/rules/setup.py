@@ -179,17 +179,20 @@ SARDAUKAR_CONTRACT_IDS: Final = ("contract:sardaukar_i", "contract:sardaukar_ii"
 
 def contract_setup_decision(
     set_aside_ids: tuple[str, ...] = (),
+    *,
+    bloodlines: bool = False,
 ) -> ChanceDecision:
-    """Return the setup shuffle for the standard Contracts.
+    """Return the setup shuffle for the Contract tiles.
 
     When Shaddam Corrino IV is in play, both Sardaukar Contracts are set
     aside before the shuffle [Shaddam Corrino IV card] and are excluded from
-    the shuffled pool.
+    the shuffled pool. Bloodlines shuffles its eight tokens into the same
+    bank [Bloodlines p. 2].
     """
 
     contracts = tuple(
         instance_id
-        for instance_id in contract_instance_ids()
+        for instance_id in contract_instance_ids(bloodlines=bloodlines)
         if instance_id not in set_aside_ids
     )
     return _shuffle_decision(
@@ -544,7 +547,9 @@ def create_initial_state(
         else ()
     )
     contracts = (
-        resolver.resolve(contract_setup_decision(sardaukar_set_aside)).values
+        resolver.resolve(
+            contract_setup_decision(sardaukar_set_aside, bloodlines=config.bloodlines)
+        ).values
         if config.choam_module
         else ()
     )
@@ -668,7 +673,7 @@ def create_draft_initial_state(
     # The full Contract order is drawn now; whether the Sardaukar Contracts
     # leave it is only known after the picks, so the market is dealt then.
     contracts = (
-        resolver.resolve(contract_setup_decision()).values
+        resolver.resolve(contract_setup_decision(bloodlines=config.bloodlines)).values
         if config.choam_module
         else ()
     )

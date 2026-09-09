@@ -164,8 +164,9 @@ def test_required_image_keys_cover_every_displayable_content_id() -> None:
     # Embassy board.
     # Immortality: 25 Imperium, 11 Intrigue, 18 Tleilaxu plus the promo
     # Piter, Genius Advisor, Reclaimed Forces, and Experimentation.
+    # Bloodlines' eight contract tokens (CHOAM Module).
     assert len(keys) == (
-        175 + 44 + 1 + 12 + 10 + 8 + 1 + 1 + 7 + 18 + 1 + 25 + 11 + 19 + 1 + 1
+        175 + 44 + 1 + 12 + 10 + 8 + 1 + 1 + 7 + 18 + 1 + 25 + 11 + 19 + 1 + 1 + 8
     )
     assert len(set(keys)) == len(keys)
     assert set(keys) == _all_content_keys()

@@ -23,6 +23,7 @@ class FrameKind(StrEnum):
     CONTRACT_MARKET = "contract_market"
     CONTRACT_REWARD_SPY = "contract_reward_spy"
     CONTRACT_REWARD_RECALL = "contract_reward_recall"
+    CONTRACT_INTRIGUE_TRASH = "contract_intrigue_trash"
     CONTROL_DEFENSE = "control_defense"
     COMBAT_INTRIGUE = "combat_intrigue"
     COMBAT_REWARD_INFLUENCE = "combat_reward_influence"
@@ -220,3 +221,57 @@ def reveal_is_open_for(state: GameState, player: int) -> bool:
         and frame.decision.owner == player
         for frame in state.decision_stack
     )
+
+
+def update_turn_recruits(
+    state: GameState,
+    *,
+    troops_recruited: int = 0,
+    spice_spent: int = 0,
+) -> GameState:
+    """Keep the turn owner's bookkeeping in step with a mid-turn effect.
+
+    Troops recruited during the owner's turn join that turn's deployment
+    allowance whether the effect resolved before or after placing the Agent
+    (a Reveal turn's recruits feed its Combat-icon deployment
+    [Bloodlines p. 5]). Spice paid for an effect is recorded as spent so
+    that Harvest Spice Contracts, which count Spice gained from every source
+    during the turn [Main p. 16], still see the full amount gained.
+    """
+
+    for index in range(len(state.decision_stack) - 1, -1, -1):
+        frame = state.decision_stack[index]
+        if frame.kind == FrameKind.REVEAL:
+            context = frame_context(frame)
+            recruited = context.get("reveal_troops_recruited", 0)
+            if isinstance(recruited, bool) or not isinstance(recruited, int):
+                raise RuntimeError("Reveal frame has an invalid recruit count")
+            context["reveal_troops_recruited"] = recruited + troops_recruited
+            return replace(
+                state,
+                decision_stack=(
+                    *state.decision_stack[:index],
+                    with_context(frame, context),
+                    *state.decision_stack[index + 1 :],
+                ),
+            )
+        if frame.kind not in (FrameKind.AGENT_EFFECTS, FrameKind.TURN):
+            continue
+        context = frame_context(frame)
+        previous = context.get("troops_recruited", 0)
+        if isinstance(previous, bool) or not isinstance(previous, int):
+            raise RuntimeError("turn frame has an invalid recruit count")
+        context["troops_recruited"] = previous + troops_recruited
+        if frame.kind == FrameKind.AGENT_EFFECTS:
+            spent = context_int(context, "spice_spent_after_placement")
+            context["spice_spent_after_placement"] = spent + spice_spent
+        updated = with_context(frame, context)
+        return replace(
+            state,
+            decision_stack=(
+                *state.decision_stack[:index],
+                updated,
+                *state.decision_stack[index + 1 :],
+            ),
+        )
+    return state

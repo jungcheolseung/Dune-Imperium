@@ -61,7 +61,7 @@ from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.rules.agent_effects import AUTOMATIC_AGENT_ICONS
 from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 
-ACTION_CODEC_VERSION = 97
+ACTION_CODEC_VERSION = 98
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -351,7 +351,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
                     arguments=(("instance_id", instance_id),),
                 )
                 for action_id in ("complete_contract_by_card", "take_trigger_contract")
-                for instance_id in contract_instance_ids()
+                for instance_id in contract_instance_ids(bloodlines=config.bloodlines)
             )
     if config.choam_module:
         for action_id in ("take_contract", "complete_contract"):
@@ -360,7 +360,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
                     action_id=action_id,
                     arguments=(("instance_id", instance_id),),
                 )
-                for instance_id in contract_instance_ids()
+                for instance_id in contract_instance_ids(bloodlines=config.bloodlines)
             )
         templates.extend(
             ActionTemplate(
@@ -762,6 +762,15 @@ def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         )
         for card_id in all_intrigue
     )
+    if config.choam_module:
+        # The Bloodlines Immediate Contract trashes a hand Intrigue card.
+        templates.extend(
+            ActionTemplate(
+                action_id="trash_intrigue_for_contract",
+                arguments=(("card_id", card_id),),
+            )
+            for card_id in all_intrigue
+        )
     templates.extend(
         ActionTemplate(
             action_id="give_intrigue_card",
