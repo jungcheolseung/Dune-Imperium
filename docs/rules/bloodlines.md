@@ -92,7 +92,7 @@ Uprising setup에 다음 단계를 더하거나 바꾼다. `[Bloodlines p. 3]`
 
 - Acquire Tech 아이콘이 Tech tile을 얻는 유일한 방법이다. 기본 경로는 Ixian Embassy board 위에 적혀 있다: Landsraad board space에 Agent를 보낸 turn에 Tech tile 하나를 acquire할 수 있다. 보유 수 제한은 없다. `[Bloodlines pp. 7, 12]`
 - acquire할 때는 세 stack 맨 위의 face-up tile 중 하나를 골라 표시된 spice 비용을 내고 자신의 supply(공개)에 둔 뒤 그 stack의 다음 tile을 face-up으로 뒤집는다. stack이 비면 남은 게임 동안 선택지가 줄어든다. `[Bloodlines p. 7]`
-- 비용 감소는 두 가지이며 비용은 0 아래로 내려가지 않는다. High Council 자리가 있으면 Ixian Embassy board의 할인으로 tile마다 spice 1을 덜 낸다. 카드의 Tech Discount 아이콘은 tile 하나를 spice 1 할인으로 acquire하게 하며 High Council 할인과 합칠 수 있지만, Tech Discount 아이콘 둘 이상을 합칠 수는 없다. `[Bloodlines pp. 7, 12]`
+- 비용 감소는 두 가지이며 비용은 0 아래로 내려가지 않는다. High Council 자리가 있으면 Ixian Embassy board의 할인으로 tile마다 spice 1을 덜 낸다. 카드의 Tech Discount 아이콘은 tile 하나를 spice 1 할인으로 acquire하게 하며 High Council 할인과 합칠 수 있지만, Tech Discount 아이콘 둘 이상을 합칠 수는 없다. `[Bloodlines pp. 7, 12]` Intrigue 카드(Battlefield Research·Rapid Engineering)의 Tech Discount 아이콘은 play한 뒤 살 수 있는 tile이 있으면 반드시 acquire한다(디자이너 판정 채택, [OQ-057](open-questions.md#oq-057--디자이너-커뮤니티-판정의-일괄-채택-2026-09-09)); Landsraad 방문의 Acquire Tech만 "할 수 있다"다. Imperium Ceremony(Immortality)의 "keep one"은 Intrigue draw라 Suspensor Suits의 troop을 낸다(같은 OQ).
 
 ### Tech tile 사용
 
@@ -169,3 +169,4 @@ Uprising setup에 다음 단계를 더하거나 바꾼다. `[Bloodlines p. 3]`
 - 2026-09-08: Endgame tiebreaker의 garrison troop 수에 Commander를 포함(OQ-047, 3절). 같은 날 프로모 Ruthless Leadership(1절; Agent: Conflict에 Commander가 있으면 trash 아이콘 2개, Reveal: 1 Persuasion + 검 1, Command: Combat 아이콘)을 `promo_cards`+`bloodlines` 옵션 콘텐츠로 구현했다.
 - 2026-09-07 슬라이스 6c·6d: Tech 전용 카드 3종(effect DSL `TechTilesAtLeast`·`AcquireTech`)과 Kota Odax of Ix(Secret Project의 `tech_secret_project` setup frame, 비공개 tile, 할인 후보, Reverse Engineering Signet). 이로써 Bloodlines 구성물 전부가 play된다; 남은 것은 슬라이스 7(UI 표시·heuristic 가중치·대규모 소크·학습 재개)이다. 세부는 [implementation-audits/bloodlines.md](../implementation-audits/bloodlines.md)의 Tech Module 절.
 - 2026-09-09: 1절의 CHOAM Module contract token 8개를 전사·구현했다(`ContractConditionKind.EARN_ALLIANCE`·`IMMEDIATE_INTRIGUE_TRASH`, 보상 필드 `intrigue_cards`·`deep_cover_spies`, `contract_intrigue_trash` frame, Alliance 이벤트 후속 hook `complete_alliance_contracts`; 관측 v16, codec v98; OQ-056). 세부는 [Bloodlines audit](../implementation-audits/bloodlines.md)의 "Contract token" 절.
+- 2026-09-09: 디자이너 판정 채택(OQ-057) — 카드 출처 Acquire Tech의 거절 제거(살 수 있을 때), Imperium Ceremony의 Suspensor troop, Combat 보상 동률의 turn 순서(OQ-002).

@@ -84,7 +84,7 @@
 
 다음 네 항목은 두 출처에 명시되어 있지 않으며, [open-questions.md](open-questions.md)의 확정 판정 또는 해소 결과를 따른다.
 
-- 같은 순위에 묶인 여러 플레이어의 보상 해결 순서: 동률 그룹이 받는 2·3위 줄에는 상호작용하는 보상이 없고, 좌석 번호 오름차순으로 해결한다(OQ-002 `DECIDED`). [Main p. 14]
+- 같은 순위에 묶인 여러 플레이어의 보상 해결 순서: 순서가 결과에 영향을 줄 수 있으면 First Player부터 turn 순서로 해결한다(디자이너 판정 채택, OQ-002 `DECIDED` 2026-09-09 재판정; Harvest Cells를 여럿이 발동하는 경우도 같다). [Main p. 14]
 - Combat Intrigue 중 유닛 수 변화와 우선권 순환: 유닛을 늘리는 카드가 없어 진입은 불가능하고, 마지막 유닛을 잃은 참가자는 즉시 순환에서 빠진다(OQ-003 `DECIDED`). [Main p. 14]
 - Endgame Intrigue 순서와 wild matching 시점: First Player부터 시계 방향 단일 순회 window 안에서 자유 순서로 처리한다(OQ-001 `DECIDED`). [Main p. 15] [Main p. 20]
 - Bloodlines의 "garrison의 troop 수" tiebreaker: garrison의 Sardaukar Commander를 troop과 함께 센다(OQ-047 `DECIDED`; [bloodlines.md](bloodlines.md) 3절). [Main p. 15] `[Bloodlines p. 4]`

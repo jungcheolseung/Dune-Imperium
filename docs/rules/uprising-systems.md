@@ -23,6 +23,7 @@
 - board space나 play한 카드의 효과는 원칙적으로 의무다. `may`라고 적힌 효과, arrow의 비용을 지불할지 선택하는 효과, 검은색 trash 아이콘으로 trash하는 효과는 선택이다. 단, 카드가 arrow 없이 자기 자신을 trash하라고 지시하면 의무다. `[FAQ p. 3]`
 - arrow의 왼쪽 또는 위쪽은 비용이고 오른쪽 또는 아래쪽은 결과다. 비용을 지불하지 않으면 결과를 받지 않는다. 같은 arrow 비용-결과는 한 turn에 한 번만 사용할 수 있다. Combat reward를 sandworm으로 배가하는 경우는 별도 예외다. `[Main pp. 9, 20]` `[FAQ p. 3]`
 - Intrigue card를 play할 때는 그 카드의 조건을 만족하고 비용을 지불해야 한다. Intrigue의 비용은 일반적인 선택형 arrow와 달리 play를 선택했다면 필수다. `[FAQ pp. 2-3]`
+- 효과의 일부(예: Impress·Inspire Awe의 "비용 3 이하 카드 acquire")를 실행할 대상이 없어도 play 조건은 아니다: 카드를 play할 수 있고 그 부분만 불발한다(디자이너 판정 채택, [OQ-057](open-questions.md#oq-057--디자이너-커뮤니티-판정의-일괄-채택-2026-09-09)). `[FAQ p. 2]`
 - 검은색 trash 아이콘에 의한 trash는 선택이지만, 비용으로 trash하거나 카드가 자기 자신을 trash하라고 지시하면 선택이 아니다. `[Main p. 20]`
 - 카드 규칙은 일반 규칙을 바꿀 수 있다. `[Main p. 6]`
 

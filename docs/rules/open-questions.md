@@ -28,6 +28,7 @@
 - 공식 문서는 각 동률자의 reward 종류는 정하지만, 같은 rank의 여러 플레이어가 선택을 포함한 reward를 어떤 순서로 resolve하는지는 정하지 않는다. `[Main p. 14]`
 - 필요한 답: 실제 Conflict reward 전사 후 순서가 상태에 영향을 주는 사례가 있는지 확인하고, 있다면 공식 판정을 찾는다.
 - 확정(2026-09-01): 전사된 Conflict 15종 전수 검산으로 닫는다. 동률 규칙상 여러 플레이어가 같은 보상 줄을 받는 경우는 항상 2위·3위 줄이며(1위 동률 → 전원 2위 보상, 2위 동률 → 전원 3위 보상 `[Main p. 14]`), 그 두 줄에 인쇄된 보상은 Solari·spice·water·troop·Intrigue draw·(Trade Dispute 2위 줄의) 선택형 trash뿐이다. Influence 선택, contract, Spy 배치, VP, 선택형 지불, control은 전부 1위 줄 전용이라 단독 승자만 받는다. 따라서 동률자 사이의 순서가 바꿀 수 있는 상태는 공유 Intrigue 덱의 배분(비공개 무작위)과 각자 자기 카드에만 작용하는 공개 trash 선택의 제시 순서뿐이고, 플레이어 선택이 상호작용하는 사례는 없다. 확정 convention: 동률 그룹은 First Player 위치와 무관하게 좌석 번호 오름차순으로 해결한다(구현 그대로). `tests/unit/rules/test_combat.py`의 tied-order 테스트 2건으로 고정한다. 상호작용하는 동률 보상이 새 콘텐츠로 추가되면 다시 연다.
+- 재판정(2026-09-09, 디자이너 판정 채택 — 사용자 지시 "디자이너 판정을 무조건 따른다"): 순서가 결과에 영향을 줄 수 있으면 **First Player부터 turn 순서**로 해결한다(Message from designer; Harvest Cells를 두 명이 발동하는 경우도 turn 순서). 2026-09-01의 "관측 불가" 전제는 Immortality의 Imperium Ceremony(Intrigue 덱 상단 열람)와 Harvest Cells로 깨졌다. 구현: `rank_combat(players, first_player=)`가 같은 rank의 수령자를 First Player부터 나열하고, `_fire_troop_loss_triggers`도 같은 순서를 쓴다. 좌석 번호순 convention은 폐기.
 
 ## OQ-003 — Combat Intrigue 도중 참가 자격 변화
 
@@ -462,6 +463,7 @@
 - Usurp는 "graft this card with a card from the Imperium Row instead of one from your hand. If you do, trash that card at the end of the turn"이라고만 한다 `[card face]`. 빌린 카드는 누구의 소유도 아니어서 개인 trash 더미에 두는 것이 맞는지, turn 중 다른 효과로 이미 play 영역을 떠났으면(Stillsuit Manufacturer가 자기를 hand로 되돌리는 경우, 다른 효과로 trash된 경우) 어떻게 하는지 말하지 않는다.
 - 필요한 답: 카드의 행선지와 turn 중 이동한 경우의 처리.
 - 확정(2026-09-08, 사용자 판정): turn이 닫힐 때(소유자의 Agent-turn 효과 frame이 더 이상 없을 때, 자동 dispatcher) 그 카드는 **보통의 trash로 자동 폐기**된다 — 소유자의 trash 더미로 가고, `card_trashed` 이벤트와 "이 카드가 trash될 때" 트리거(Replacement Eyes의 Tleilaxu, Eliminate Allies의 troop 2 등)가 그대로 발동한다. turn 중 다른 효과로 이미 소유 존(hand·deck·discard·play)을 떠났으면 더 할 일이 없다. (처음 구현했던 "게임 밖 `imperium_removed`로 조용히 제거"는 trash 트리거를 건너뛰어 사용자가 정정했다.) Row는 카드가 빠지는 즉시 채운다 `[Main p. 13]`. "may"이므로 Usurp는 hand 카드와도 graft할 수 있다: Usurp를 먼저 놓으면 상대 선택에 Row 카드와 hand 카드가 모두 오르고(그 space에 닿는 카드만), hand 카드를 먼저 놓고 Usurp를 상대로 고르는 보통의 graft도 된다. hand 상대는 turn 끝에 폐기되지 않는다. Usurp 자체는 아이콘이 없으므로 단독 배치는 graft 변형뿐이고, 도달 가능한 space는 후보 상대 카드 아이콘의 합집합이다. 구현: `rules/graft.py`(`legal_graft_partner_actions`, `resolve_usurp_trash`), `rules/agent_turn.py`.
+- 보강(2026-09-09, 디자이너 판정 채택): Usurp로 빌린 Row 카드는 "in play"가 아니다(BGG; Immortality p. 14 clarification과 같은 방향). 따라서 Stillsuit Manufacturer를 빌렸을 때 Fremen Alliance가 있어도 hand로 돌아오지 않고, turn이 닫힐 때 위 판정대로 trash된다. 구현: `rules/agent_effects.py`의 Stillsuit 분기가 `usurped_row_card_id`를 제외한다.
 
 ## OQ-055 — Slig Farmer의 "Agent 아이콘마다"에 조건부·부여 아이콘이 드는지
 
@@ -476,3 +478,15 @@
 - Bloodlines 룰북은 "Earn any Alliance는 아직 갖고 있지 않은 Alliance token을 다음에 가져갈 때 완료된다"고만 한다 `[Bloodlines p. 2]`. (a) 상대가 Influence를 잃어 자신이 token을 넘겨받는 경우(Uprising의 Alliance 이전 `[Main p. 7]`)가 "가져가는" 것인지, (b) 같은 turn에 token을 가져온 뒤 그 turn의 Influence 상승으로 Alliance를 얻으면 완료되는지(Uprising contract의 Agent 방문 snapshot `[Main p. 16]`이 적용되는지)는 말하지 않는다.
 - 필요한 답: 완료를 일으키는 Alliance 획득 경로와 같은 turn 획득의 취급.
 - 확정(2026-09-09, 사용자 지시 "디자이너 판정을 무조건 따른다"): (b)는 디자이너 판정(BGG, [designer-rulings-audit.md](designer-rulings-audit.md))대로 완료된다 — 조건이 Agent 방문이 아니라 Alliance token 자체이므로 snapshot이 없다. (a)는 project convention으로 완료로 본다: 이전도 "갖고 있지 않던 token을 가져가는" 사건이며, 엔진의 `alliance_transferred` 이벤트(`to_player`)가 `alliance_gained`와 같은 hook(`contracts.complete_alliance_contracts`)을 거친다. 이미 갖고 있는 진영의 Influence 상승은 완료하지 않는다(디자이너 판정과 일치). 공식 문서가 (a)에 답하면 재검토한다.
+
+## OQ-057 — 디자이너 커뮤니티 판정의 일괄 채택 (2026-09-09)
+
+- 상태: `DECIDED`
+- [designer-rulings-audit.md](designer-rulings-audit.md)의 불일치 13건은 공식 룰북·FAQ가 침묵하는 지점에 대한 Paul Dennen의 포럼·Discord 답변이다. 사용자 지시(2026-09-09) "디자이너 판정을 무조건 따른다"에 따라 프로젝트 판정으로 채택한다. 출처가 공식 문서가 아니므로 `DECIDED`로 두고, 공식 FAQ에 인쇄되면 `RESOLVED`로 올린다. 아래는 이 항목으로 묶어 처리한 판정(기존 OQ에 속하는 것은 그 OQ에 보강했다: 5번 → OQ-002, 8번 → OQ-054, Duncan → OQ-037(d)).
+- (6) **Impress**(Message from designer): 비용 3 이하 카드가 없어도 play할 수 있고 획득 부분만 불발한다. FAQ의 play 조건은 "조건 충족 + 비용 지불" `[FAQ p. 2]`뿐이므로 획득 대상 유무는 play 조건이 아니다. 같은 가드를 쓰던 Inspire Awe도 같은 원칙으로 play할 수 있다(획득 불발). 구현: `effect_interpreter._choice_rewards_feasible`의 `AcquireCardUpTo` 가드 제거, 획득 slot에 대상이 없으면 `skip_intrigue_acquisition`(codec v100).
+- (7) **Change Allegiances**(Message from designer): 한 효과만 또는 둘 다 쓸 수 있다. 세 번째 option(두 줄을 인쇄 순서로)으로 전사했다. 디자이너는 첫 효과로 얻은 자원(Lady Margot의 Loyalty spice, Y'rkoon의 Navigation)으로 두 번째 비용을 낼 수 있다고 했지만, 엔진은 Intrigue의 자원 비용을 play 시점에 한꺼번에 받으므로 이 경우는 **미구현 잔여 경계**다(Intrigue 비용의 순차 지불 모델이 필요).
+- (9) **Battlefield Research·Rapid Engineering**(Message from designer): play했으면 Tech를 반드시 acquire한다. 카드 출처의 `tech_acquisition` frame은 살 수 있는 tile이 있으면 `decline_tech`를 제시하지 않는다(살 수 없으면 거절만). Landsraad 방문의 Acquire Tech는 "may" `[Bloodlines p. 7]`이므로 그대로다.
+- (10) **Imperium Ceremony + Suspensor Suits**(Message from designer): "keep one"은 Intrigue draw 1이므로 Suspensor Suits의 troop을 낸다(`intrigue_peek.apply_intrigue_peek`가 `suspensor_owed`를 올린다).
+- (12) **Ghola + Long Reach**(Email, TTS Discord): 세 아이콘(Landsraad·City·Spice Trade)을 모두 얻는다. Ghola의 복사가 Long Reach의 BG Bond 아이콘 조건을 충족시키는 것으로 모델링했다(`effective_agent_icons(..., ghola_partner=True)`): hand에 Ghola가 있으면 graft 배치가 조건부 아이콘으로 공간에 닿고, 그 아이콘으로만 닿은 공간이면 partner는 Ghola로 제한된다. Immortality p. 14의 "Ghola 자체는 BG 카드가 아니다"는 다른 카드의 Bond(Ghola를 세지 않음)에 그대로 적용된다.
+- (13) **Tleilaxu Master**(BGG): Reveal의 Research 2개는 따로 해결할 수 있다 — `advance_reveal_research` 행동 하나가 아이콘 하나만 전진시키고 나머지를 다시 대기열에 둔다(사이에 다른 Reveal 효과·획득 가능).
+- 남은 항목 4(Choose Two 원자성)·11(Harvest Cells 즉시 play)·1·2·3(발동 시점 하나)은 후속 커밋에서 같은 OQ 아래 보강한다.
