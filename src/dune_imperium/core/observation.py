@@ -199,7 +199,8 @@ class PlayerView:
     private_data: tuple[tuple[str, ActionValue], ...] = ()
 
 
-_RESOLVING_INTRIGUE_FRAME_KINDS = frozenset({"intrigue_choice"})
+# A separate-lines card (OQ-058) stays in play under ``intrigue_effects``.
+_RESOLVING_INTRIGUE_FRAME_KINDS = frozenset({"intrigue_choice", "intrigue_effects"})
 
 
 def resolving_intrigue_ids(state: GameState) -> tuple[str, ...]:

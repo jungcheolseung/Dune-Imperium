@@ -16,13 +16,15 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     first = ActionCodec(RulesetConfig())
     second = ActionCodec(RulesetConfig())
 
-    assert ACTION_CODEC_VERSION == 102
+    assert ACTION_CODEC_VERSION == 103
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
     # v92/v93/v97: the Reveal gain actions join every catalog (troops, Intrigue,
     # and seven distinct printed resource bundles — Occupation adds water+spice).
     # v100: skip_intrigue_acquisition and Change Allegiances' third option.
-    assert first.size == 4354 + 2 + 7 + 4 + 1 + 2
+    # v103: separate Intrigue lines (use_intrigue_effect x2, finish; Change
+    # Allegiances back to one option).
+    assert first.size == 4354 + 2 + 7 + 4 + 1 + 2 + 1
 
 
 def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
@@ -35,7 +37,7 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
 
     assert codec.decode(codec.encode(action), actor=2) == action
     # v96: the research icon's board-effect resolution (Immortality).
-    assert codec.size == 4640 + 2 + 7 + 4 + 1 + 2
+    assert codec.size == 4640 + 2 + 7 + 4 + 1 + 2 + 1
 
     try:
         ActionCodec(RulesetConfig()).encode(action)
@@ -68,7 +70,7 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
     )
     for action in actions:
         assert both.decode(both.encode(action), actor=1) == action
-    assert both.size == 11099
+    assert both.size == 11100
 
     choam_only = ActionCodec(RulesetConfig(choam_module=True))
     for action in actions:

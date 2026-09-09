@@ -150,9 +150,11 @@ from dune_imperium.rules.immortality import (
 )
 from dune_imperium.rules.intrigue import (
     apply_intrigue_choice,
+    apply_intrigue_effect,
     apply_intrigue_play,
     apply_intrigue_rewards,
     legal_intrigue_choice_actions,
+    legal_intrigue_effect_actions,
     legal_intrigue_play_actions,
 )
 from dune_imperium.rules.intrigue_deck import (
@@ -444,6 +446,7 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     # Chance frames never reach this table: legal_actions returns () for any
     # frame whose decision is not a PlayerDecision.
     FrameKind.INTRIGUE_CHOICE: (legal_intrigue_choice_actions,),
+    FrameKind.INTRIGUE_EFFECTS: (legal_intrigue_effect_actions,),
     FrameKind.INTRIGUE_TRIGGER_SPY: (legal_trigger_spy_actions,),
     FrameKind.LEADER_DRAFT: (legal_leader_draft_actions,),
     FrameKind.SKILL_CHOICE: (legal_skill_choice_actions,),
@@ -487,6 +490,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "gain_reveal_faction_influence": apply_reveal_gain,
     "play_intrigue": apply_intrigue_play,
     "choose_intrigue_faction": apply_intrigue_choice,
+    "use_intrigue_effect": apply_intrigue_effect,
+    "finish_intrigue_effects": apply_intrigue_effect,
     "choose_intrigue_discard": apply_intrigue_choice,
     "detonate_shield_wall": apply_intrigue_choice,
     "keep_shield_wall": apply_intrigue_choice,

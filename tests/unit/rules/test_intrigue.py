@@ -210,27 +210,66 @@ def test_shaddams_favor_conditional_section_applies_independently() -> None:
     assert favored.state.players[0].resources.solari == 3
 
 
-def test_strategic_stockpiling_makes_every_applicable_cost_mandatory() -> None:
+def _use_line(section: int, actor: int = 0) -> DomainAction:
+    return DomainAction(
+        action_id="use_intrigue_effect", actor=actor, arguments=(("section", section),)
+    )
+
+
+def _finish_lines(actor: int = 0) -> DomainAction:
+    return DomainAction(action_id="finish_intrigue_effects", actor=actor)
+
+
+def test_strategic_stockpiling_lines_are_used_and_paid_separately() -> None:
+    # Two arrow lines with no "—OR—" (OQ-058, user ruling): playing the card
+    # opens its lines; each is paid when used and none is mandatory.
     card = _intrigue("strategic_stockpiling")
-    # Without Fremen 3 only the Spice line applies.
     owner = PlayerState(
         player_id=0, intrigue_cards=(card,), resources=Resources(spice=5)
     )
+    engine = UprisingRulesEngine()
     state = _turn_state(owner)
-    result = apply_intrigue_play(state, _play(state, card))
-    assert result.state.players[0].victory_points == 2
-    assert result.state.players[0].resources.spice == 0
+    opened = engine.apply(state, _play(state, card)).state
+    assert opened.decision_stack[-1].kind == "intrigue_effects"
+    assert engine.legal_actions(opened, 0) == (_finish_lines(), _use_line(0))
+    paid = engine.apply(opened, _use_line(0)).state
+    assert paid.players[0].victory_points == 2
+    assert paid.players[0].resources.spice == 0
+    # Without Fremen 3 no line can follow: the card closes on its own.
+    assert paid.decision_stack[-1].kind == "turn"
+    assert card in paid.intrigue_discard
 
-    # With Fremen 3 the Water line also applies, so both costs are required.
-    fremen = replace(owner, influence=Influence(fremen=3))
-    assert legal_intrigue_play_actions(_turn_state(fremen), 0) == ()
-    funded = _turn_state(replace(fremen, resources=Resources(spice=5, water=3)))
-    both = apply_intrigue_play(funded, _play(funded, card))
-    assert both.state.players[0].victory_points == 3
-    assert both.state.players[0].resources == Resources(spice=0, water=0)
+    # With Fremen 3 the Water line is open too but not mandatory: short of
+    # water the owner finishes with the Spice line alone.
+    fremen = _turn_state(replace(owner, influence=Influence(fremen=3)))
+    opened = engine.apply(fremen, _play(fremen, card)).state
+    assert engine.legal_actions(opened, 0) == (_finish_lines(), _use_line(0))
+    paid = engine.apply(opened, _use_line(0)).state
+    assert engine.legal_actions(paid, 0) == (_finish_lines(),)
+    done = engine.apply(paid, _finish_lines()).state
+    assert done.players[0].victory_points == 2
+    assert card in done.intrigue_discard
+
+    funded = _turn_state(
+        replace(
+            owner,
+            influence=Influence(fremen=3),
+            resources=Resources(spice=5, water=3),
+        )
+    )
+    opened = engine.apply(funded, _play(funded, card)).state
+    assert engine.legal_actions(opened, 0) == (
+        _finish_lines(),
+        _use_line(0),
+        _use_line(1),
+    )
+    both = engine.apply(engine.apply(opened, _use_line(1)).state, _use_line(0)).state
+    assert both.players[0].victory_points == 3
+    assert both.players[0].resources == Resources(spice=0, water=0)
+    assert both.decision_stack[-1].kind == "turn"
 
 
-def test_depart_for_arrakis_recruits_and_draws_with_guild_influence() -> None:
+def test_depart_for_arrakis_draws_at_once_and_recruits_on_its_spice_line() -> None:
     card = _intrigue("depart_for_arrakis")
     deck = (_starter("dagger"),)
     owner = PlayerState(
@@ -240,15 +279,27 @@ def test_depart_for_arrakis_recruits_and_draws_with_guild_influence() -> None:
         influence=Influence(spacing_guild=3),
         deck=deck,
     )
+    engine = UprisingRulesEngine()
     state = _turn_state(owner)
 
-    result = apply_intrigue_play(state, _play(state, card))
-
-    player = result.state.players[0]
+    # The cost-free Guild line resolves as the card is played (OQ-058); the
+    # Spice line waits to be used.
+    opened = engine.apply(state, _play(state, card)).state
+    assert opened.players[0].hand == deck
+    assert opened.decision_stack[-1].kind == "intrigue_effects"
+    recruited = engine.apply(opened, _use_line(0)).state
+    player = recruited.players[0]
     assert player.troops_garrison == 6
     assert player.troops_supply == 6
     assert player.resources.spice == 0
-    assert player.hand == deck
+    assert card in recruited.intrigue_discard
+
+    # Without spice the Guild draw alone makes the card playable.
+    broke = _turn_state(replace(owner, resources=Resources()))
+    assert legal_intrigue_play_actions(broke, 0) == (_play(broke, card),)
+    drawn = engine.apply(broke, _play(broke, card)).state
+    assert drawn.players[0].hand == deck
+    assert engine.legal_actions(drawn, 0) == (_finish_lines(),)
 
 
 def test_intelligence_report_draws_more_with_two_spies() -> None:
@@ -596,7 +647,7 @@ def test_imperium_politics_limits_the_choice_to_emperor_or_guild() -> None:
     assert done.decision_stack == state.decision_stack
 
 
-def test_change_allegiances_loss_requires_influence_and_offers_both_options() -> None:
+def test_change_allegiances_opens_both_lines_and_either_may_be_used() -> None:
     card = _intrigue("change_allegiances")
     poor = PlayerState(player_id=0, intrigue_cards=(card,))
     assert legal_intrigue_play_actions(_turn_state(poor), 0) == ()
@@ -605,55 +656,63 @@ def test_change_allegiances_loss_requires_influence_and_offers_both_options() ->
         poor, influence=Influence(bene_gesserit=1), resources=Resources(spice=3)
     )
     state = _turn_state(owner)
-    # "One or both effects" (designer ruling, OQ-057): the third option
-    # takes both lines.
-    assert legal_intrigue_play_actions(state, 0) == (
-        _play(state, card, 0),
-        _play(state, card, 1),
-        _play(state, card, 2),
-    )
+    # One option: playing the card opens its two lines (OQ-058).
+    assert legal_intrigue_play_actions(state, 0) == (_play(state, card, 0),)
     engine = UprisingRulesEngine()
     opened = engine.apply(state, _play(state, card, 0)).state
+    assert engine.legal_actions(opened, 0) == (
+        _finish_lines(),
+        _use_line(0),
+        _use_line(1),
+    )
+    losing = engine.apply(opened, _use_line(0)).state
     # Only Factions where the player still has Influence can be lost.
-    assert engine.legal_actions(opened, 0) == (_choose_faction("bene_gesserit"),)
-    lost = engine.apply(opened, _choose_faction("bene_gesserit")).state
+    assert engine.legal_actions(losing, 0) == (_choose_faction("bene_gesserit"),)
+    lost = engine.apply(losing, _choose_faction("bene_gesserit")).state
     assert lost.players[0].influence.bene_gesserit == 0
     gained = engine.apply(lost, _choose_faction("fremen")).state
     assert gained.players[0].influence.fremen == 1
     assert gained.players[0].resources.spice == 3
-    assert gained.decision_stack == state.decision_stack
+    # The Spice line is still open; the owner may finish without it.
+    assert engine.legal_actions(gained, 0) == (_finish_lines(), _use_line(1))
+    done = engine.apply(gained, _finish_lines()).state
+    assert done.decision_stack[-1].kind == "turn"
+    assert card in done.intrigue_discard
+    assert done.players[0].resources.spice == 3
 
 
-def test_change_allegiances_may_use_both_effects_in_printed_order() -> None:
-    # Designer ruling (Message from designer, OQ-057): Change Allegiances may
-    # use one effect or both. The engine takes the spice up front, so paying
-    # the second line with spice the first line produced (Lady Margot's
-    # Loyalty) is a documented residual gap.
+def test_change_allegiances_second_line_may_be_paid_with_spice_the_first_produced() -> (
+    None
+):
+    # User ruling (OQ-058): the lines are separate actions, each paid when
+    # used, so Lady Margot's Loyalty spice from the first line can pay the
+    # second even though the card was played with too little spice.
     card = _intrigue("change_allegiances")
     owner = PlayerState(
         player_id=0,
+        leader_id="lady_margot_fenring",
         intrigue_cards=(card,),
-        influence=Influence(bene_gesserit=1),
-        resources=Resources(spice=3),
+        influence=Influence(bene_gesserit=1, fremen=1),
+        resources=Resources(spice=1),
     )
     state = _turn_state(owner)
     engine = UprisingRulesEngine()
-    both = engine.apply(state, _play(state, card, 2)).state
-    assert both.players[0].resources.spice == 0
-    lost = engine.apply(both, _choose_faction("bene_gesserit")).state
-    assert lost.players[0].influence.bene_gesserit == 0
-    first = engine.apply(lost, _choose_faction("fremen")).state
-    assert first.players[0].influence.fremen == 1
-    second = engine.apply(first, _choose_faction("emperor")).state
+    opened = engine.apply(state, _play(state, card, 0)).state
+    assert engine.legal_actions(opened, 0) == (_finish_lines(), _use_line(0))
+    losing = engine.apply(opened, _use_line(0)).state
+    lost = engine.apply(losing, _choose_faction("fremen")).state
+    gained = engine.apply(lost, _choose_faction("bene_gesserit")).state
+    # Loyalty: reaching 2 Bene Gesserit Influence pays 2 spice.
+    assert gained.players[0].influence.bene_gesserit == 2
+    assert gained.players[0].resources.spice == 3
+    assert engine.legal_actions(gained, 0) == (_finish_lines(), _use_line(1))
+    paying = engine.apply(gained, _use_line(1)).state
+    assert paying.players[0].resources.spice == 0
+    second = engine.apply(paying, _choose_faction("emperor")).state
     assert second.players[0].influence.emperor == 1
+    # Both lines used: the card closes on its own.
     assert second.decision_stack[-1].kind == "turn"
     assert card in second.intrigue_discard
-
-    poor = _turn_state(replace(owner, resources=Resources(spice=2)))
-    assert [
-        dict(action.arguments)["option"]
-        for action in legal_intrigue_play_actions(poor, 0)
-    ] == [0]
 
 
 def test_losing_influence_for_intrigue_offers_alliance_recipients() -> None:
@@ -673,11 +732,12 @@ def test_losing_influence_for_intrigue_offers_alliance_recipients() -> None:
     engine = UprisingRulesEngine()
 
     opened = engine.apply(state, _play(state, card, 0)).state
-    assert engine.legal_actions(opened, 0) == (
+    losing = engine.apply(opened, _use_line(0)).state
+    assert engine.legal_actions(losing, 0) == (
         _choose_faction("fremen", recipient=1),
         _choose_faction("fremen", recipient=2),
     )
-    lost = engine.apply(opened, _choose_faction("fremen", recipient=2)).state
+    lost = engine.apply(losing, _choose_faction("fremen", recipient=2)).state
     assert lost.players[0].alliance_faction_ids == ()
     assert lost.players[2].alliance_faction_ids == ("fremen",)
 
@@ -1336,7 +1396,9 @@ def test_playing_combat_intrigue_restarts_the_consecutive_pass_count() -> None:
     assert twice.combat_intrigue_complete is True
 
 
-def test_questionable_methods_requires_losing_influence_for_the_bonus() -> None:
+def test_questionable_methods_sword_is_automatic_and_the_influence_line_optional() -> (
+    None
+):
     card = _intrigue("questionable_methods")
     fighter = PlayerState(
         player_id=0,
@@ -1350,18 +1412,28 @@ def test_questionable_methods_requires_losing_influence_for_the_bonus() -> None:
     state = _combat_state(fighter)
     engine = UprisingRulesEngine()
 
+    # The sword line has no cost and lands as the card is played (OQ-058).
     opened = engine.apply(state, _play(state, card)).state
-    assert opened.decision_stack[-1].kind == "intrigue_choice"
-    assert engine.legal_actions(opened, 0) == (_choose_faction("fremen"),)
-    done = engine.apply(opened, _choose_faction("fremen")).state
+    assert opened.players[0].combat_strength == 3
+    assert opened.decision_stack[-1].kind == "intrigue_effects"
+    assert engine.legal_actions(opened, 0) == (_finish_lines(), _use_line(1))
+    choosing = engine.apply(opened, _use_line(1)).state
+    assert engine.legal_actions(choosing, 0) == (_choose_faction("fremen"),)
+    done = engine.apply(choosing, _choose_faction("fremen")).state
     assert done.players[0].influence.fremen == 0
     assert done.players[0].combat_strength == 7
     assert done.decision_stack[-1].kind == "combat_intrigue"
 
-    # Under OQ-015(b) the Influence line is mandatory, so a player without
-    # any Influence cannot play the card at all.
+    # Without any Influence the card is still playable for its sword; the
+    # arrow line cannot be used and the owner finishes.
     broke = _combat_state(replace(fighter, influence=Influence()))
-    assert legal_intrigue_play_actions(broke, 0) == ()
+    assert legal_intrigue_play_actions(broke, 0) == (_play(broke, card),)
+    sword = engine.apply(broke, _play(broke, card)).state
+    assert sword.players[0].combat_strength == 3
+    assert engine.legal_actions(sword, 0) == (_finish_lines(),)
+    finished = engine.apply(sword, _finish_lines()).state
+    assert card in finished.intrigue_discard
+    assert finished.decision_stack[-1].kind == "combat_intrigue"
 
 
 def test_find_weakness_recalls_a_spy_for_the_bonus() -> None:
@@ -1380,14 +1452,18 @@ def test_find_weakness_recalls_a_spy_for_the_bonus() -> None:
     engine = UprisingRulesEngine()
 
     opened = engine.apply(state, _play(state, card)).state
-    assert engine.legal_actions(opened, 0) == (
+    assert opened.players[0].combat_strength == 4
+    assert engine.legal_actions(opened, 0) == (_finish_lines(), _use_line(1))
+    recalling = engine.apply(opened, _use_line(1)).state
+    assert engine.legal_actions(recalling, 0) == (
         _recall_spy("landsraad-assembly-hall-gather-support"),
     )
     done = engine.apply(
-        opened, _recall_spy("landsraad-assembly-hall-gather-support")
+        recalling, _recall_spy("landsraad-assembly-hall-gather-support")
     ).state
     assert done.players[0].spies_supply == 3
     assert done.players[0].combat_strength == 7
+    assert card in done.intrigue_discard
 
 
 def test_combat_intrigue_is_not_offered_during_player_turns() -> None:

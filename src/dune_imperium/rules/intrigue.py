@@ -83,6 +83,7 @@ from dune_imperium.rules.effect_interpreter import (
     option_is_playable,
     pay_cost,
     resource_cost,
+    section_is_usable,
     spy_placement_targets,
     trashable_discard_pile_ids,
 )
@@ -202,13 +203,17 @@ def apply_intrigue_play(state: GameState, action: DomainAction) -> RuleResult:
     player = action.actor
     owner = state.players[player]
     option = intrigue_card_for_instance(card_id).options[option_index]
+    source = f"round:{state.round_number}:player:{player}:intrigue:{card_id}"
+    if option.separate:
+        return _play_separate_lines(
+            state, player, card_id, option_index, option, source
+        )
     sections = applicable_sections(
         state, player, option, shield_wall_present=state.shield_wall_present
     )
     cost = resource_cost(sections)
 
     paid_owner = pay_cost(owner, cost)
-    source = f"round:{state.round_number}:player:{player}:intrigue:{card_id}"
     # Reveal and pay first. The card stays in the owner's Intrigue hand while
     # it resolves and reaches the discard pile only at the end, so a draw it
     # causes cannot reshuffle the card itself and no card leaves every zone.
@@ -335,8 +340,15 @@ def _resolve_paid_option(
     sections: tuple[EffectSection, ...],
     source: str,
     events: list[GameEvent],
+    *,
+    separate: bool = False,
 ) -> RuleResult:
-    """Open the option's choice frame, or finish it when nothing is chosen."""
+    """Open the option's choice frame, or finish it when nothing is chosen.
+
+    With ``separate`` the sections are lines of a card whose
+    ``intrigue_effects`` frame stays open beneath: finishing them applies
+    their rewards but leaves the card in play (OQ-058).
+    """
 
     state = played_state
     paid_owner = played_state.players[player]
@@ -366,6 +378,7 @@ def _resolve_paid_option(
                     else "",
                 ),
                 ("sections", ",".join(str(index) for index in section_indexes)),
+                ("separate_effect", separate),
                 ("shield_wall_at_play", state.shield_wall_present),
                 ("slot", 0),
                 ("source", source),
@@ -373,8 +386,233 @@ def _resolve_paid_option(
         )
         return RuleResult(state=played_state.push_decision(frame), events=tuple(events))
 
-    finished = finish_intrigue_play(played_state, player, card_id, sections, source)
+    finished = finish_intrigue_play(
+        played_state, player, card_id, sections, source, discard=not separate
+    )
     return RuleResult(state=finished.state, events=(*events, *finished.events))
+
+
+# --- Separate printed lines (OQ-058) --------------------------------------------------
+
+_EFFECTS_FRAME = "Intrigue effects frame"
+
+
+def _used_lines(context: dict[str, ActionValue]) -> tuple[int, ...]:
+    raw = str(context.get("used", ""))
+    return tuple(int(index) for index in raw.split(",") if index)
+
+
+def _effects_option(
+    context: dict[str, ActionValue],
+) -> tuple[str, int, IntrigueOption]:
+    card_id = context_str(context, "card_id", owner=_EFFECTS_FRAME)
+    option_index = context_int(context, "option", owner=_EFFECTS_FRAME)
+    option = intrigue_card_for_instance(card_id).options[option_index]
+    return card_id, option_index, option
+
+
+def _play_separate_lines(
+    state: GameState,
+    player: int,
+    card_id: str,
+    option_index: int,
+    option: IntrigueOption,
+    source: str,
+) -> RuleResult:
+    """Open the card's lines: cost-free lines resolve now, arrow lines wait."""
+
+    events: list[GameEvent] = [
+        GameEvent(
+            event_id=source,
+            kind="intrigue_played",
+            payload=(
+                ("card_id", card_id),
+                ("option", option_index),
+                ("player", player),
+            ),
+        )
+    ]
+    working = state
+    if (
+        option.timing is IntrigueTiming.COMBAT
+        and state.phase is GamePhase.COMBAT
+        and player not in working.combat_intrigue_players
+    ):
+        working = replace(
+            working,
+            combat_intrigue_players=(*working.combat_intrigue_players, player),
+        )
+    automatic = tuple(
+        index
+        for index, section in enumerate(option.sections)
+        if not section.costs
+        and (
+            section.condition is None
+            or condition_holds(working, player, section.condition)
+        )
+    )
+    frame = DecisionFrame(
+        kind=FrameKind.INTRIGUE_EFFECTS,
+        frame_id=f"{source}:effects",
+        decision=PlayerDecision(
+            owner=player, prompt="Use one of the card's lines, or finish the card"
+        ),
+        context=(
+            ("card_id", card_id),
+            ("option", option_index),
+            ("player", player),
+            ("source", source),
+            ("used", ",".join(str(index) for index in automatic)),
+        ),
+    )
+    working = working.push_decision(frame)
+    if automatic:
+        return _resolve_paid_option(
+            working,
+            player,
+            card_id,
+            option_index,
+            option,
+            tuple(option.sections[index] for index in automatic),
+            f"{source}:auto",
+            events,
+            separate=True,
+        )
+    settled = _settle_effects_frame(working, player, card_id)
+    return RuleResult(state=settled.state, events=(*events, *settled.events))
+
+
+def _remaining_lines(
+    state: GameState, player: int, context: dict[str, ActionValue]
+) -> tuple[int, ...]:
+    """Unused arrow lines whose printed condition holds (cost aside)."""
+
+    _, _, option = _effects_option(context)
+    used = _used_lines(context)
+    return tuple(
+        index
+        for index, section in enumerate(option.sections)
+        if index not in used
+        and section.costs
+        and (
+            section.condition is None
+            or condition_holds(state, player, section.condition)
+        )
+    )
+
+
+def _settle_effects_frame(state: GameState, player: int, card_id: str) -> RuleResult:
+    """Close the effects frame and discard the card once no line can follow."""
+
+    frame = owned_top_frame(state, FrameKind.INTRIGUE_EFFECTS, player)
+    if frame is None:
+        return RuleResult(state=state)
+    context = frame_context(frame)
+    if context_str(context, "card_id", owner=_EFFECTS_FRAME) != card_id:
+        return RuleResult(state=state)
+    if _remaining_lines(state, player, context):
+        return RuleResult(state=state)
+    source = context_str(context, "source", owner=_EFFECTS_FRAME)
+    return finish_intrigue_play(state.pop_decision(), player, card_id, (), source)
+
+
+def legal_intrigue_effect_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Use one of the card's unused arrow lines now, or finish the card."""
+
+    frame = owned_top_frame(state, FrameKind.INTRIGUE_EFFECTS, player)
+    if frame is None:
+        return ()
+    context = frame_context(frame)
+    _, _, option = _effects_option(context)
+    used = _used_lines(context)
+    return (
+        DomainAction(action_id="finish_intrigue_effects", actor=player),
+        *(
+            DomainAction(
+                action_id="use_intrigue_effect",
+                actor=player,
+                arguments=(("section", index),),
+            )
+            for index, section in enumerate(option.sections)
+            if index not in used
+            and section.costs
+            and section_is_usable(state, player, section)
+        ),
+    )
+
+
+def apply_intrigue_effect(state: GameState, action: DomainAction) -> RuleResult:
+    """Pay for and resolve one printed line, or finish the card (OQ-058)."""
+
+    if action not in legal_intrigue_effect_actions(state, action.actor):
+        raise ValueError("action is not a legal Intrigue line choice")
+    player = action.actor
+    frame = state.decision_stack[-1]
+    context = frame_context(frame)
+    card_id, option_index, option = _effects_option(context)
+    source = context_str(context, "source", owner=_EFFECTS_FRAME)
+    if action.action_id == "finish_intrigue_effects":
+        finished = finish_intrigue_play(
+            state.pop_decision(), player, card_id, (), source
+        )
+        return RuleResult(
+            state=finished.state,
+            events=(
+                GameEvent(
+                    event_id=f"{source}:finished",
+                    kind="intrigue_effects_finished",
+                    payload=(("card_id", card_id), ("player", player)),
+                ),
+                *finished.events,
+            ),
+        )
+    index = context_int(dict(action.arguments), "section", owner=_EFFECTS_FRAME)
+    section = option.sections[index]
+    cost = resource_cost((section,))
+    owner = state.players[player]
+    paid_owner = pay_cost(owner, cost)
+    context["used"] = ",".join(str(value) for value in (*_used_lines(context), index))
+    working = replace_top_frame(
+        replace(state, players=replace_player(state.players, paid_owner)),
+        with_context(frame, context),
+    )
+    if cost is not None and cost.spice:
+        working = update_turn_recruits(working, spice_spent=cost.spice)
+    line_source = f"{source}:line:{index}"
+    events: list[GameEvent] = [
+        GameEvent(
+            event_id=line_source,
+            kind="intrigue_effect_used",
+            payload=(("card_id", card_id), ("player", player), ("section", index)),
+        )
+    ]
+    if cost is not None:
+        events.append(
+            GameEvent(
+                event_id=f"{line_source}:cost",
+                kind="intrigue_cost_paid",
+                payload=(
+                    ("player", player),
+                    ("solari", cost.solari),
+                    ("spice", cost.spice),
+                    ("water", cost.water),
+                ),
+            )
+        )
+    return _resolve_paid_option(
+        working,
+        player,
+        card_id,
+        option_index,
+        option,
+        (section,),
+        line_source,
+        events,
+        separate=True,
+    )
 
 
 def legal_intrigue_choice_actions(
@@ -1043,6 +1281,7 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
         _sections(context),
         source,
         skip_rewards=context.get("rewards_applied") is True,
+        discard=context.get("separate_effect") is not True,
     )
     return RuleResult(
         state=_restack(finished.state, pushed),
@@ -1129,6 +1368,7 @@ def _apply_intrigue_acquisition(
                 _sections(context),
                 source,
                 skip_rewards=context.get("rewards_applied") is True,
+                discard=context.get("separate_effect") is not True,
             )
             return RuleResult(
                 state=finished.state, events=(*skipped_events, *finished.events)
@@ -1163,6 +1403,7 @@ def _apply_intrigue_acquisition(
             _sections(context),
             source,
             skip_rewards=context.get("rewards_applied") is True,
+            discard=context.get("separate_effect") is not True,
         )
         next_state = finished.state
         events = (*events, *finished.events)
@@ -1438,11 +1679,15 @@ def finish_intrigue_play(
     source: str,
     *,
     skip_rewards: bool = False,
+    discard: bool = True,
 ) -> RuleResult:
     """Apply pending automatic rewards, discard the card, and update turns.
 
     ``skip_rewards`` marks that the owner already resolved the automatic
-    rewards mid-frame at a point of their choosing (OQ-015).
+    rewards mid-frame at a point of their choosing (OQ-015). Without
+    ``discard`` only one line of a separate-lines card finished: the card
+    stays in play under its ``intrigue_effects`` frame, which closes on its
+    own once no line can follow (OQ-058).
     """
 
     applied = (
@@ -1451,6 +1696,11 @@ def finish_intrigue_play(
         else _apply_section_rewards(state, player, sections, source)
     )
     resolved = applied.state
+    if not discard:
+        settled = _settle_effects_frame(resolved, player, card_id)
+        return RuleResult(
+            state=settled.state, events=(*applied.events, *settled.events)
+        )
     owner = resolved.players[player]
     if intrigue_card_for_instance(card_id).navigation:
         # A played Navigation card leaves its slot face up next to the

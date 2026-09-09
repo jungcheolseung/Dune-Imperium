@@ -1777,7 +1777,7 @@ def test_ruthless_leadership_round_trips_and_is_dealt_in_random_games() -> None:
 
     codec = ActionCodec(PROMO_BLOODLINES)
     # v97 Occupation bundle, v99 Duncan recall, v100 skip + Change Allegiances.
-    assert codec.size == 10159 + 292 + 1 + 1 + 1 + 2
+    assert codec.size == 10159 + 292 + 1 + 1 + 1 + 2 + 1  # v103 separate lines
     action = DomainAction(
         action_id="trash_agent_card",
         actor=2,

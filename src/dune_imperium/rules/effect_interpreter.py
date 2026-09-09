@@ -585,14 +585,46 @@ def factions_where_opponent_leads(
     )
 
 
+def section_is_usable(
+    state: GameState,
+    player: int,
+    section: EffectSection,
+) -> bool:
+    """A separate printed line is usable when it applies and its cost is payable now."""
+
+    owner = state.players[player]
+    if section.condition is not None and not condition_holds(
+        state, player, section.condition
+    ):
+        return False
+    if not state.shield_wall_present and all(
+        isinstance(reward, DestroyShieldWall) for reward in section.rewards
+    ):
+        return False
+    sections = (section,)
+    return (
+        can_afford(owner, resource_cost(sections))
+        and _choice_costs_feasible(owner, sections)
+        and _choice_rewards_feasible(state, player, sections)
+    )
+
+
 def option_is_playable(
     state: GameState,
     player: int,
     option: IntrigueOption,
 ) -> bool:
-    """An option is playable when a section applies and every cost is payable."""
+    """An option is playable when a section applies and every cost is payable.
+
+    Separate printed lines (``separate``) make the card playable as soon as
+    one line is usable; each line is paid when it is used (OQ-058).
+    """
 
     owner = state.players[player]
+    if option.separate and option.trigger is None:
+        return any(
+            section_is_usable(state, player, section) for section in option.sections
+        )
     sections = applicable_sections(
         state, player, option, shield_wall_present=state.shield_wall_present
     )

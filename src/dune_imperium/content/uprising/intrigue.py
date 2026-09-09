@@ -132,6 +132,18 @@ def _plot(*sections: EffectSection) -> IntrigueOption:
     return IntrigueOption(timing=IntrigueTiming.PLOT, sections=sections)
 
 
+def _plot_lines(*sections: EffectSection) -> IntrigueOption:
+    """Separate printed lines (no ``—OR—``), each used on its own (OQ-058)."""
+
+    return IntrigueOption(timing=IntrigueTiming.PLOT, sections=sections, separate=True)
+
+
+def _combat_lines(*sections: EffectSection) -> IntrigueOption:
+    return IntrigueOption(
+        timing=IntrigueTiming.COMBAT, sections=sections, separate=True
+    )
+
+
 def _plot_trigger(trigger: Trigger, *sections: EffectSection) -> IntrigueOption:
     return IntrigueOption(
         timing=IntrigueTiming.PLOT, sections=sections, trigger=trigger
@@ -289,17 +301,10 @@ INTRIGUE_CARDS: Final = (
         135,
         "change-allegiances",
         "Change Allegiances",
-        # "You may use one or both effects" (designer ruling, OQ-057): the
-        # third option takes both lines in printed order.
+        # Two arrow lines, no "—OR—" [card face]: one or both, each paid when
+        # used (designer ruling OQ-057; OQ-058).
         options=(
-            _plot(EffectSection(costs=(LoseInfluence(1),), rewards=(GainInfluence(),))),
-            _plot(
-                EffectSection(
-                    costs=(PayResources(spice=3),),
-                    rewards=(GainInfluence(),),
-                )
-            ),
-            _plot(
+            _plot_lines(
                 EffectSection(costs=(LoseInfluence(1),), rewards=(GainInfluence(),)),
                 EffectSection(
                     costs=(PayResources(spice=3),),
@@ -370,7 +375,7 @@ INTRIGUE_CARDS: Final = (
         "depart-for-arrakis",
         "Depart For Arrakis",
         options=(
-            _plot(
+            _plot_lines(
                 EffectSection(
                     costs=(PayResources(spice=2),),
                     rewards=(RecruitTroops(3),),
@@ -429,7 +434,7 @@ INTRIGUE_CARDS: Final = (
         "find-weakness",
         "Find Weakness",
         options=(
-            _combat(
+            _combat_lines(
                 EffectSection(rewards=(GainCombatStrength(2),)),
                 EffectSection(
                     costs=(RecallSpy(1),),
@@ -584,7 +589,7 @@ INTRIGUE_CARDS: Final = (
         "questionable-methods",
         "Questionable Methods",
         options=(
-            _combat(
+            _combat_lines(
                 EffectSection(rewards=(GainCombatStrength(1),)),
                 EffectSection(
                     costs=(LoseInfluence(1),),
@@ -716,7 +721,7 @@ INTRIGUE_CARDS: Final = (
         "strategic-stockpiling",
         "Strategic Stockpiling",
         options=(
-            _plot(
+            _plot_lines(
                 EffectSection(
                     costs=(PayResources(spice=5),),
                     rewards=(GainVictoryPoints(1),),

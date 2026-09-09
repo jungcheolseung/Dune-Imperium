@@ -62,7 +62,7 @@ from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.rules.agent_effects import AUTOMATIC_AGENT_ICONS
 from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 
-ACTION_CODEC_VERSION = 102
+ACTION_CODEC_VERSION = 103
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -181,6 +181,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "decline_reveal_influence_exchange",
             "decline_reveal_card_trash",
             "skip_intrigue_acquisition",
+            "finish_intrigue_effects",
             "decline_reveal_sandworm",
             "decline_reveal_spice_influence",
             "decline_reveal_troop_retreat",
@@ -392,6 +393,17 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         )
         for instance_id in intrigue_instances
         for option in range(len(intrigue_card_for_instance(instance_id).options))
+    )
+    # Separate printed lines (OQ-058): one template per line index.
+    line_count = max(
+        len(option.sections)
+        for instance_id in intrigue_instances
+        for option in intrigue_card_for_instance(instance_id).options
+        if option.separate
+    )
+    templates.extend(
+        ActionTemplate(action_id="use_intrigue_effect", arguments=(("section", index),))
+        for index in range(line_count)
     )
     templates.extend(
         ActionTemplate(

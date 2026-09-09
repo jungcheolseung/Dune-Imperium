@@ -38,6 +38,7 @@ class FrameKind(StrEnum):
     PERSONAL_DRAW_RESHUFFLE = "personal_draw_reshuffle"
     INTRIGUE_RESHUFFLE = "intrigue_reshuffle"
     INTRIGUE_CHOICE = "intrigue_choice"
+    INTRIGUE_EFFECTS = "intrigue_effects"
     INTRIGUE_TRIGGER_SPY = "intrigue_trigger_spy"
     LEADER_DRAFT = "leader_draft"
     SECRETS_STEAL = "secrets_steal"

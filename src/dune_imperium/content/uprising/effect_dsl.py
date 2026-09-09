@@ -961,6 +961,11 @@ class IntrigueOption:
     # "At the start of your turn": playable only from the turn frame, before
     # the Agent or Reveal choice (Withdrawn).
     turn_start_only: bool = False
+    # Separate printed lines with no ``—OR—`` between them (Change
+    # Allegiances, Strategic Stockpiling, Find Weakness): playing the card
+    # opens its lines, cost-free lines resolve at once, and each arrow line
+    # is used separately, paid when it is used (OQ-058, user ruling).
+    separate: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.timing, IntrigueTiming):
