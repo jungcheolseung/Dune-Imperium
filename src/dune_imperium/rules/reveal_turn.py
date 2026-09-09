@@ -25,6 +25,7 @@ from dune_imperium.content.uprising.personal_cards import (
     personal_card_for_instance,
 )
 from dune_imperium.content.uprising.types import (
+    PersonalCardRevealAcquisitionEffect,
     PersonalCardRevealChoiceEffect,
     PersonalCardRevealEffect,
 )
@@ -47,6 +48,7 @@ from dune_imperium.rules.frames import (
     replace_player,
     replace_top_frame,
     reset_turn_counters,
+    reveal_is_open_for,
     with_context,
 )
 from dune_imperium.rules.influence import (
@@ -65,6 +67,7 @@ from dune_imperium.rules.spy_placement import (
     is_spying_on_maker_space,
     place_spy,
     recall_spy,
+    spied_factions,
 )
 from dune_imperium.rules.strength import units_strength
 from dune_imperium.rules.unit_loss import lose_unit
@@ -1814,6 +1817,93 @@ def _reveal_frame_context(
     raise RuntimeError("Reveal choice is missing its Reveal frame")
 
 
+def _update_reveal_frame(
+    frames: tuple[DecisionFrame, ...],
+    updates: dict[str, ActionValue],
+) -> tuple[DecisionFrame, ...]:
+    """Write ``updates`` into the Reveal frame below any serial choice frames."""
+
+    for index in range(len(frames) - 1, -1, -1):
+        if frames[index].kind == FrameKind.REVEAL:
+            context = dict(frames[index].context)
+            context.update(updates)
+            return (
+                *frames[:index],
+                replace(frames[index], context=tuple(sorted(context.items()))),
+                *frames[index + 1 :],
+            )
+    raise RuntimeError("Reveal update is missing its Reveal frame")
+
+
+SPICE_MUST_FLOW_ACQUIRED_KEY = "spice_must_flow_acquired"
+GUILD_SPY_FIRED_KEY = "guild_spy_fired"
+_GUILD_SPY_EFFECT = (
+    PersonalCardRevealAcquisitionEffect.GAIN_INFLUENCE_FOR_EACH_SPIED_FACTION_ON_SPICE_MUST_FLOW
+)
+
+
+def fire_guild_spy_on_spice_must_flow(
+    state: GameState,
+    player: int,
+    *,
+    acquired: bool,
+) -> RuleResult:
+    """Guild Spy's Reveal box on The Spice Must Flow, once per copy per Reveal.
+
+    Designer ruling (OQ-057): buying two copies bumps once per Guild Spy,
+    a Guild Spy revealed later in the Reveal still reacts to a purchase made
+    earlier in it, and only the Spies on the board at that moment count.
+    With ``acquired`` the card was just bought: the Reveal remembers it and
+    every revealed, unfired Guild Spy fires; without it a Guild Spy that
+    just arrived fires if the purchase already happened this Reveal. The
+    box is a Reveal effect, so nothing fires outside the owner's Reveal.
+    """
+
+    if not reveal_is_open_for(state, player):
+        return RuleResult(state=state)
+    context = _reveal_frame_context(state.decision_stack)
+    bought = acquired or context.get(SPICE_MUST_FLOW_ACQUIRED_KEY) is True
+    fired = {
+        card_id
+        for card_id in str(context.get(GUILD_SPY_FIRED_KEY, "")).split(",")
+        if card_id
+    }
+    frames = state.decision_stack
+    if acquired:
+        frames = _update_reveal_frame(frames, {SPICE_MUST_FLOW_ACQUIRED_KEY: True})
+    working = replace(state, decision_stack=frames)
+    events: list[GameEvent] = []
+    if not bought:
+        return RuleResult(state=working)
+    for card_id in working.players[player].in_play:
+        if card_id in fired or (
+            personal_card_for_instance(card_id).reveal_acquisition_effect
+            is not _GUILD_SPY_EFFECT
+        ):
+            continue
+        for faction in spied_factions(working.players[player]):
+            gained = gain_faction_influence(
+                working,
+                player,
+                faction,
+                1,
+                event_prefix=(
+                    f"round:{state.round_number}:player:{player}:"
+                    f"reveal_card:{card_id}:spice_must_flow:{faction.value}"
+                ),
+            )
+            working = gained.state
+            events.extend(gained.events)
+        fired.add(card_id)
+    working = replace(
+        working,
+        decision_stack=_update_reveal_frame(
+            working.decision_stack, {GUILD_SPY_FIRED_KEY: ",".join(sorted(fired))}
+        ),
+    )
+    return RuleResult(state=working, events=tuple(events))
+
+
 COMMAND_PERSUASION = 6
 """Persuasion a Reveal turn must generate for "Command (6+)" [Bloodlines p. 5]."""
 
@@ -2374,25 +2464,10 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
         for index, effect in enumerate(card.reveal_effects):
             key = f"{card_id}#{index}"
             source = f"round:{state.round_number}:player:{player}:reveal_card:{card_id}"
-            if effect.persuasion_per_completed_contract:
-                counted = granted.get(key)
-                if counted is None or completed <= counted:
-                    continue
-                delta = effect.persuasion_per_completed_contract * (completed - counted)
-                frames = add_reveal_persuasion(frames, delta)
-                newly_granted[key] = completed
-                events.append(
-                    GameEvent(
-                        event_id=f"{source}:{index}:late_contracts:{completed}",
-                        kind="reveal_effect_granted_late",
-                        payload=(
-                            ("card_id", card_id),
-                            ("effect_index", index),
-                            ("persuasion", delta),
-                            ("player", player),
-                        ),
-                    )
-                )
+            if effect.persuasion_per_completed_contract and key in granted:
+                # Interstellar Trade counts its completed Contracts once, when
+                # it resolves (designer ruling "triggers once", OQ-057): a
+                # Contract completed later in the same Reveal adds nothing.
                 continue
             if key in granted or key in newly_granted:
                 continue
@@ -3236,6 +3311,13 @@ def _late_reveal_one_card(
             late_gains,
         ),
     )
+    guild_spy_events: tuple[GameEvent, ...] = ()
+    if card.reveal_acquisition_effect is _GUILD_SPY_EFFECT:
+        # A Guild Spy revealed late still reacts to The Spice Must Flow
+        # bought earlier in this Reveal (designer ruling, OQ-057).
+        reacted = fire_guild_spy_on_spice_must_flow(next_state, player, acquired=False)
+        next_state = reacted.state
+        guild_spy_events = reacted.events
     events: list[GameEvent] = [
         GameEvent(
             event_id=f"{source}:late_reveal",
@@ -3283,7 +3365,7 @@ def _late_reveal_one_card(
             ),
         )
 
-    return RuleResult(state=next_state, events=tuple(events))
+    return RuleResult(state=next_state, events=(*events, *guild_spy_events))
 
 
 def reveal_late_arrivals(

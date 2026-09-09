@@ -2519,12 +2519,10 @@ def test_a_late_fremen_arrival_completes_northern_watermasters_bond() -> None:
     assert grant_late_reveal_effects(RuleResult(state=taken.state)).events == ()
 
 
-def test_interstellar_trade_pays_the_increment_for_contracts_completed_mid_reveal() -> (
-    None
-):
-    # Interstellar Trade's per-Contract Persuasion is counted when the
-    # Reveal begins and again for every Contract completed later in the same
-    # Reveal (an Acquire Contract met by a purchase), never twice (OQ-028).
+def test_interstellar_trade_counts_its_contracts_once_at_the_reveal() -> None:
+    # Designer ruling (In person, OQ-057): Interstellar Trade "triggers
+    # once" — a Contract completed later in the same Reveal (an Acquire
+    # Contract met by buying The Spice Must Flow) adds no Persuasion.
     interstellar = _imperium_instance("interstellar_trade", choam_module=True)
     owner = PlayerState(
         player_id=0,
@@ -2545,6 +2543,5 @@ def test_interstellar_trade_pays_the_increment_for_contracts_completed_mid_revea
     completed = replace(revealed, players=(completing, *revealed.players[1:]))
     granted = grant_late_reveal_effects(RuleResult(state=completed))
 
-    assert dict(granted.state.decision_stack[-1].context)["persuasion"] == 3
-    assert dict(granted.events[-1].payload)["persuasion"] == 1
-    assert grant_late_reveal_effects(RuleResult(state=granted.state)).events == ()
+    assert dict(granted.state.decision_stack[-1].context)["persuasion"] == 2
+    assert granted.events == ()

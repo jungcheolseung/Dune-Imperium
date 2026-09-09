@@ -1727,8 +1727,18 @@ def test_ruthless_leadership_without_a_commander_resolves_without_effect() -> No
     )
     state = replace(state, players=garrisoned)
     assert legal_agent_card_trash_actions(state, 0) == ()
+    # The stalled mandatory box is not offered to fizzle on demand; only the
+    # explicit turn end resolves it (designer ruling, OQ-057).
     resolve = DomainAction(action_id="resolve_agent_card_effect", actor=0)
-    assert resolve in legal_agent_effect_frame_actions(state, 0)
+    frame_actions = legal_agent_effect_frame_actions(state, 0)
+    assert resolve not in frame_actions
+    finish = DomainAction(action_id="finish_agent_turn", actor=0)
+    assert finish not in frame_actions  # the Maker harvest is still pending
+    harvested = UprisingRulesEngine().apply(
+        state,
+        next(a for a in frame_actions if a.action_id == "harvest_maker_spice"),
+    ).state
+    assert finish in legal_agent_effect_frame_actions(harvested, 0)
     result = resolve_agent_card_effect(state)
     kinds = [e.kind for e in result.events if e.kind.startswith("agent_card_effect")]
     assert kinds == ["agent_card_effect_unavailable"]

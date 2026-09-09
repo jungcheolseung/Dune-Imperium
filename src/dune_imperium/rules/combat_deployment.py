@@ -236,13 +236,31 @@ def legal_agent_turn_finish_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Offer the explicit turn end once only the deployment stays open."""
+    """Offer the explicit turn end once only the deployment stays open.
 
-    found = _deployment_context(state, player)
-    if found is None:
+    The end is also offered when the only other pending group is a mandatory
+    Agent box that can only fizzle (its condition is false and nothing else
+    of the turn remains to meet it): the box waits for the turn's end rather
+    than fizzling on demand (designer ruling, OQ-057).
+    """
+
+    from dune_imperium.rules.agent_effects import graft_boxes_are_stalled
+
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
         return ()
-    context = found[0]
-    if agent_turn_has_other_pending_effects(context, state.players):
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    deployment_open = context["pending_combat_deployment"] is True
+    stalled_box = context["pending_agent_effect"] is True and graft_boxes_are_stalled(
+        state
+    )
+    if not deployment_open and not stalled_box:
+        return ()
+    if agent_turn_has_other_pending_effects(
+        context, state.players, ignore_agent_effect=stalled_box
+    ):
         return ()
     return (DomainAction(action_id="finish_agent_turn", actor=player),)
 
@@ -510,14 +528,57 @@ def apply_agent_turn_finish(
 ) -> RuleResult:
     """Close the deployment window and hand the turn over."""
 
+    from dune_imperium.rules.agent_effects import (
+        agent_card_effect_is_unavailable,
+        resolve_agent_card_effect,
+    )
+    from dune_imperium.rules.graft import apply_graft_switch, legal_graft_switch_actions
+
     if action not in legal_agent_turn_finish_actions(state, action.actor):
         raise ValueError("the Agent turn cannot be finished yet")
     _, context = current_agent_effect_context(state)
-    context["pending_combat_deployment"] = False
-    next_state = advance_after_effect(state, context)
+    working = state
+    events: list[GameEvent] = []
+    for _ in range(4):
+        # Mandatory boxes that could not be met by the turn's end fizzle now
+        # (OQ-057), the grafted partner's after a switch. Their own advance
+        # may already hand the turn over.
+        try:
+            _, context = current_agent_effect_context(working)
+        except ValueError:
+            break
+        if context["pending_agent_effect"] is True and (
+            agent_card_effect_is_unavailable(working)
+        ):
+            fizzled = resolve_agent_card_effect(working)
+            working = fizzled.state
+            events.extend(fizzled.events)
+            continue
+        if context["pending_agent_effect"] is not True and (
+            context.get("graft_pending_effect") is True
+        ):
+            switches = legal_graft_switch_actions(working, action.actor)
+            if not switches:
+                break
+            switched = apply_graft_switch(working, switches[0])
+            working = switched.state
+            events.extend(switched.events)
+            continue
+        break
     event = GameEvent(
         event_id=f"round:{state.round_number}:player:{action.actor}:finish_agent_turn",
         kind="agent_turn_finished",
         payload=(("player", action.actor),),
     )
-    return RuleResult(state=next_state, events=(event,))
+    try:
+        frame, context = current_agent_effect_context(working)
+    except ValueError:
+        return RuleResult(state=working, events=(*events, event))
+    if (
+        isinstance(frame.decision, PlayerDecision)
+        and frame.decision.owner == action.actor
+        and context["pending_combat_deployment"] is True
+    ):
+        context["pending_combat_deployment"] = False
+        working = advance_after_effect(working, context)
+    return RuleResult(state=working, events=(*events, event))

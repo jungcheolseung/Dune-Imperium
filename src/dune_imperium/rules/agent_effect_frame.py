@@ -11,6 +11,8 @@ from dune_imperium.core.decisions import PlayerDecision
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.acquisition import legal_agent_card_acquisitions
 from dune_imperium.rules.agent_effects import (
+    agent_card_effect_is_unavailable,
+    graft_boxes_are_stalled,
     legal_agent_card_contract_completion_actions,
     legal_agent_card_discard_actions,
     legal_agent_card_icon_actions,
@@ -110,7 +112,7 @@ def legal_agent_effect_frame_actions(
 
     return (
         *pending_groups,
-        *legal_graft_switch_actions(state, player),
+        *_graft_switch_actions(state, player),
         *legal_leader_placement_ability_actions(state, player),
         *legal_leader_board_repeat_actions(state, player),
         *legal_contract_completion_actions(state, player),
@@ -138,6 +140,23 @@ def legal_agent_effect_frame_actions(
     )
 
 
+def _graft_switch_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Offer the graft switch unless both boxes could only fizzle (OQ-057).
+
+    With the active box stalled the owner may still switch to a live partner
+    box; when the partner's box would fizzle too, only the turn end remains
+    (otherwise a policy could switch back and forth forever).
+    """
+
+    actions = legal_graft_switch_actions(state, player)
+    if not actions or not graft_boxes_are_stalled(state):
+        return actions
+    return ()
+
+
 def _pending_group_actions(
     state: GameState,
     player: int,
@@ -160,7 +179,10 @@ def _pending_group_actions(
         )
         if choice_actions:
             actions.extend(choice_actions)
-        else:
+        elif not agent_card_effect_is_unavailable(state):
+            # A mandatory box whose condition is false waits for the turn's
+            # end instead of fizzling now (OQ-057); ``finish_agent_turn``
+            # resolves it then.
             actions.append(
                 DomainAction(action_id="resolve_agent_card_effect", actor=player)
             )

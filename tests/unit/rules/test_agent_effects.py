@@ -2153,18 +2153,32 @@ def test_reliable_informant_finishes_when_every_target_post_is_unavailable() -> 
         _action_to(state, "deliver_supplies"),
     ).state
     engine = UprisingRulesEngine()
-    unavailable = next(
-        action
+    # A mandatory box that cannot be met is not offered to fizzle on demand
+    # (designer ruling, OQ-057); the visit's other effects resolve first.
+    assert not any(
+        action.action_id in ("resolve_agent_card_effect", "finish_agent_turn")
         for action in engine.legal_actions(placed_agent, 0)
-        if action.action_id == "resolve_agent_card_effect"
+    )
+    settled = placed_agent
+    for board_action in legal_board_effect_actions(settled, 0):
+        settled = engine.apply(settled, board_action).state
+    settled = engine.apply(
+        settled, DomainAction(action_id="resolve_faction_influence", actor=0)
+    ).state
+    assert [action.action_id for action in engine.legal_actions(settled, 0)] == [
+        "finish_agent_turn"
+    ]
+
+    result = engine.apply(
+        settled, DomainAction(action_id="finish_agent_turn", actor=0)
     )
 
-    result = engine.apply(placed_agent, unavailable)
-
-    assert result.events[0].kind == "agent_card_effect_unavailable"
-    assert (
-        dict(result.state.decision_stack[-1].context)["pending_agent_effect"] is False
-    )
+    assert [event.kind for event in result.events] == [
+        "agent_card_effect_unavailable",
+        "agent_turn_finished",
+    ]
+    assert result.state.decision_stack[-1].kind == "turn"
+    assert result.state.decision_stack[-1].decision.owner == 1  # type: ignore[union-attr]
 
 
 def test_strike_fleet_recruits_three_after_gathering_intelligence() -> None:
@@ -3703,20 +3717,92 @@ def test_guild_envoy_has_no_agent_effect_without_another_hand_card() -> None:
     )
 
     placed = apply_agent_action(state, _action_to(state, "deliver_supplies")).state
+    engine = UprisingRulesEngine()
 
-    # The mandatory discard is judged when it resolves (OQ-028): with no
-    # other hand card it completes without a choice through the plain
-    # resolution action.
+    # Designer ruling (OQ-057): with no other hand card the mandatory discard
+    # cannot be "fired to fizzle" while the turn goes on; it waits, and only
+    # the explicit turn end resolves it without a choice.
     assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is True
     assert legal_agent_card_discard_actions(placed, 0) == ()
-    assert DomainAction(action_id="resolve_agent_card_effect", actor=0) in (
-        UprisingRulesEngine().legal_actions(placed, 0)
+    legal = engine.legal_actions(placed, 0)
+    assert DomainAction(action_id="resolve_agent_card_effect", actor=0) not in legal
+    assert DomainAction(action_id="finish_agent_turn", actor=0) not in legal
+    settled = placed
+    for board_action in legal_board_effect_actions(settled, 0):
+        settled = engine.apply(settled, board_action).state
+    settled = engine.apply(
+        settled, DomainAction(action_id="resolve_faction_influence", actor=0)
+    ).state
+    assert [action.action_id for action in engine.legal_actions(settled, 0)] == [
+        "finish_agent_turn"
+    ]
+    finished = engine.apply(
+        settled, DomainAction(action_id="finish_agent_turn", actor=0)
     )
+    assert [event.kind for event in finished.events] == [
+        "agent_card_effect_unavailable",
+        "agent_turn_finished",
+    ]
+    assert finished.state.decision_stack[-1].kind == "turn"
+    # The direct resolution still fizzles on request (the turn end uses it).
     resolved = resolve_agent_card_effect(placed)
     assert resolved.events[0].kind == "agent_card_effect_unavailable"
-    assert dict(resolved.state.decision_stack[-1].context)["pending_agent_effect"] is (
-        False
+
+
+def test_guild_envoy_must_discard_a_card_drawn_later_in_the_turn() -> None:
+    # Designer ruling (Hidden Assets Discord, Guiding Principles; OQ-057): if
+    # Guild Envoy is the only hand card and the owner draws a card later in
+    # the turn, the discard must happen; the box fizzles only when the turn
+    # ends without a card.
+    envoy = _imperium_instance("guild_envoy")
+    cunning = "intrigue:cunning:0"
+    drawn = _instance("dagger")
+    owner = PlayerState(
+        player_id=0, hand=(envoy,), deck=(drawn,), intrigue_cards=(cunning,)
     )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    engine = UprisingRulesEngine()
+    placed = apply_agent_action(state, _action_to(state, "deliver_supplies")).state
+    settled = placed
+    for board_action in legal_board_effect_actions(settled, 0):
+        settled = engine.apply(settled, board_action).state
+    settled = engine.apply(
+        settled, DomainAction(action_id="resolve_faction_influence", actor=0)
+    ).state
+    offered = {action.action_id for action in engine.legal_actions(settled, 0)}
+    assert offered == {"finish_agent_turn", "play_intrigue"}
+
+    # Cunning draws a card: the discard is now possible and mandatory.
+    drew = engine.apply(
+        settled,
+        DomainAction(
+            action_id="play_intrigue",
+            actor=0,
+            arguments=(("card_id", cunning), ("option", 0)),
+        ),
+    ).state
+    assert drew.players[0].hand == (drawn,)
+    offered = {action.action_id for action in engine.legal_actions(drew, 0)}
+    assert "finish_agent_turn" not in offered
+    assert "resolve_agent_card_effect" not in offered
+    discards = legal_agent_card_discard_actions(drew, 0)
+    assert [dict(action.arguments)["card_id"] for action in discards] == [drawn]
+    discarded = engine.apply(drew, discards[0]).state
+    assert discarded.players[0].discard_pile == (drawn,)
+    assert discarded.decision_stack[-1].kind == "turn"
 
 
 def test_captured_mentat_may_discard_to_draw_intrigue_and_personal_card() -> None:

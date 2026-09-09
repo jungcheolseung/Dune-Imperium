@@ -2904,6 +2904,72 @@ def resolve_agent_card_icon(state: GameState, action: DomainAction) -> RuleResul
     )
 
 
+_UNAVAILABLE_CACHE: list[tuple[GameState, bool]] = []
+_UNAVAILABLE_CACHE_SIZE: Final = 8
+
+
+def agent_card_effect_is_unavailable(state: GameState) -> bool:
+    """Return whether the pending Agent box would resolve without effect now.
+
+    A mandatory box whose printed condition is false cannot be "fired to
+    fizzle" while the turn goes on (designer ruling, OQ-057): a later effect
+    of the same turn may still meet it (Guild Envoy's discard after a draw),
+    so the box waits and fizzles only when the owner ends the turn. The
+    check dry-runs the resolution on the immutable state; the last few
+    answers are kept by state identity because the legal-action providers
+    ask several times per step.
+    """
+
+    for cached_state, cached in _UNAVAILABLE_CACHE:
+        if cached_state is state:
+            return cached
+    answer = _dry_run_effect_is_unavailable(state)
+    _UNAVAILABLE_CACHE.append((state, answer))
+    if len(_UNAVAILABLE_CACHE) > _UNAVAILABLE_CACHE_SIZE:
+        del _UNAVAILABLE_CACHE[0]
+    return answer
+
+
+def _dry_run_effect_is_unavailable(state: GameState) -> bool:
+    try:
+        _, context = current_agent_effect_context(state)
+    except ValueError:
+        return False
+    if context.get("pending_agent_effect") is not True or pending_agent_icons(context):
+        return False
+    try:
+        dry_run = resolve_agent_card_effect(state)
+    except (NotImplementedError, RuntimeError, ValueError):
+        return False
+    return bool(dry_run.events) and (
+        dry_run.events[0].kind == "agent_card_effect_unavailable"
+    )
+
+
+def graft_boxes_are_stalled(state: GameState) -> bool:
+    """Return whether the pending box, and the grafted partner's if any, only fizzle.
+
+    With a graft the owner may switch to the other card's box; the turn is
+    stalled only when that box would fizzle as well (or has none).
+    """
+
+    if not agent_card_effect_is_unavailable(state):
+        return False
+    try:
+        _, context = current_agent_effect_context(state)
+    except ValueError:
+        return False
+    if context.get("graft_pending_effect") is not True:
+        return True
+    from dune_imperium.rules.graft import apply_graft_switch, legal_graft_switch_actions
+
+    switches = legal_graft_switch_actions(state, context_int(context, "turn_owner"))
+    if not switches:
+        return True
+    switched = apply_graft_switch(state, switches[0]).state
+    return agent_card_effect_is_unavailable(switched)
+
+
 def resolve_agent_card_effect(state: GameState) -> RuleResult:
     """Resolve the supported Agent box in the current effect frame."""
 

@@ -880,6 +880,71 @@ def test_guild_spy_gains_influence_for_spied_factions_on_spice_must_flow() -> No
     ]
 
 
+
+def test_guild_spy_bumps_once_per_reveal_and_a_late_guild_spy_still_reacts() -> None:
+    # Designer ruling (In person, OQ-057): buying The Spice Must Flow twice
+    # bumps once per Guild Spy, and a Guild Spy revealed later in the Reveal
+    # still reacts to the earlier purchase.
+    from dune_imperium.rules.reveal_turn import reveal_late_arrivals
+
+    guild_spy = next(
+        card for card in imperium_deck_instance_ids(False) if ":guild_spy:" in card
+    )
+    posts = (
+        "emperor-sardaukar-dutiful-service",
+        "spacing-guild-heighliner-deliver-supplies",
+    )
+
+    def rich_reveal(*cards: str) -> GameState:
+        state = _reveal_state(*cards)
+        owner = replace(state.players[0], spies_supply=1, spy_post_ids=posts)
+        frame = state.decision_stack[-1]
+        context = dict(frame.context)
+        context["persuasion"] = 20
+        return replace(
+            state,
+            players=(owner, *state.players[1:]),
+            decision_stack=(
+                *state.decision_stack[:-1],
+                replace(frame, context=tuple(sorted(context.items()))),
+            ),
+        )
+
+    def buy(current: GameState) -> GameState:
+        action = next(
+            action
+            for action in legal_reserve_acquisitions(current, 0)
+            if dict(action.arguments)["card_id"] == "the_spice_must_flow"
+        )
+        return apply_reserve_acquisition(current, action).state
+
+    once = buy(rich_reveal(guild_spy, _instance("diplomacy")))
+    assert once.players[0].influence.emperor == 1
+    assert once.players[0].influence.spacing_guild == 1
+    twice = buy(once)
+    assert twice.players[0].influence.emperor == 1
+    assert twice.players[0].influence.spacing_guild == 1
+    context = dict(twice.decision_stack[-1].context)
+    assert context["spice_must_flow_acquired"] is True
+    assert context["guild_spy_fired"] == guild_spy
+
+    # Guild Spy drawn after the purchase is revealed at once [FAQ p. 3] and
+    # reacts to the purchase already made this Reveal.
+    bought_first = buy(rich_reveal(_instance("diplomacy")))
+    assert bought_first.players[0].influence.emperor == 0
+    holding = replace(bought_first.players[0], hand=(guild_spy,))
+    arrived = reveal_late_arrivals(
+        replace(bought_first, players=(holding, *bought_first.players[1:])),
+        0,
+        (guild_spy,),
+    ).state
+    assert arrived.players[0].influence.emperor == 1
+    assert arrived.players[0].influence.spacing_guild == 1
+    assert dict(arrived.decision_stack[-1].context)["guild_spy_fired"] == guild_spy
+    # A further purchase does not bump the same copy again.
+    again = buy(arrived)
+    assert again.players[0].influence.emperor == 1
+
 def test_strike_fleet_acquisition_recalls_before_placing_with_empty_supply() -> None:
     state = _reveal_state(
         _instance("convincing_argument", 0),

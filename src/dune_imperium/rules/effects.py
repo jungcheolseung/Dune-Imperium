@@ -383,19 +383,23 @@ def advance_after_effect(
 def agent_turn_has_other_pending_effects(
     context: dict[str, ActionValue],
     players: tuple[PlayerState, ...],
+    *,
+    ignore_agent_effect: bool = False,
 ) -> bool:
     """Return whether anything besides the Combat deployment is still pending.
 
     The deployment window stays open until the owner finishes the turn
-    (OQ-029); every other group closes on its own resolution.
+    (OQ-029); every other group closes on its own resolution. With
+    ``ignore_agent_effect`` a pending Agent box is left out — the explicit
+    turn end asks this when that box can only fizzle (OQ-057).
     """
 
     regular_pending = (
         context.get("pending_gather_intelligence", False),
         context.get("pending_leader_ability", False),
         context.get("pending_leader_board_repeat", False),
-        context["pending_agent_effect"],
-        context.get("graft_pending_effect", False),
+        False if ignore_agent_effect else context["pending_agent_effect"],
+        False if ignore_agent_effect else context.get("graft_pending_effect", False),
         context["pending_board_effect"],
         context["pending_faction_influence"],
     )

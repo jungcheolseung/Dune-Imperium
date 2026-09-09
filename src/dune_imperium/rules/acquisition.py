@@ -9,12 +9,10 @@ from dune_imperium.content.uprising.imperium import (
     ImperiumCardEntry,
     imperium_card_for_instance,
 )
-from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.content.uprising.reserve import RESERVE_STACKS_BY_ID
 from dune_imperium.content.uprising.types import (
     PersonalCardAcquisitionEffect,
     PersonalCardAgentEffect,
-    PersonalCardRevealAcquisitionEffect,
     PersonalCardRevealChoiceEffect,
 )
 from dune_imperium.core.actions import ActionValue, DomainAction
@@ -39,12 +37,15 @@ from dune_imperium.rules.frames import FrameKind, replace_player, reveal_is_open
 from dune_imperium.rules.immortality import advance_research, advance_tleilaxu
 from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.intrigue_triggers import fire_reveal_acquisition_intrigue
-from dune_imperium.rules.reveal_turn import current_reveal_context, reveal_late_arrivals
+from dune_imperium.rules.reveal_turn import (
+    current_reveal_context,
+    fire_guild_spy_on_spice_must_flow,
+    reveal_late_arrivals,
+)
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
     place_spy,
     recall_spy,
-    spied_factions,
 )
 
 
@@ -1277,7 +1278,10 @@ def acquire_reserve_for_intrigue(
         players=replace_player(state.players, next_owner),
         reserve_stacks=reserve_stacks,
     )
-    completed = complete_acquire_contracts(prepared, player, card_id, source=source)
+    triggered = _resolve_reveal_acquisition_triggers(prepared, player, card_id)
+    completed = complete_acquire_contracts(
+        triggered.state, player, card_id, source=source
+    )
     fired = fire_reveal_acquisition_intrigue(completed.state, player, source=source)
     event = GameEvent(
         event_id=f"{source}:acquired:{instance_id}",
@@ -1289,7 +1293,12 @@ def acquire_reserve_for_intrigue(
         ),
     )
     result_state = fired.state
-    result_events: tuple[GameEvent, ...] = (event, *completed.events, *fired.events)
+    result_events: tuple[GameEvent, ...] = (
+        event,
+        *triggered.events,
+        *completed.events,
+        *fired.events,
+    )
     if to_hand and reveal_is_open_for(result_state, player):
         # A card acquired to hand during the owner's own Reveal turn is
         # revealed and used at once rather than withheld [FAQ p. 3].
@@ -1490,29 +1499,6 @@ def _resolve_reveal_acquisition_triggers(
 ) -> RuleResult:
     if acquired_card_id != "the_spice_must_flow":
         return RuleResult(state=state)
-    trigger_cards = tuple(
-        played_card_id
-        for played_card_id in state.players[player].in_play
-        if personal_card_for_instance(played_card_id).reveal_acquisition_effect
-        is (
-            PersonalCardRevealAcquisitionEffect.GAIN_INFLUENCE_FOR_EACH_SPIED_FACTION_ON_SPICE_MUST_FLOW
-        )
-    )
-    next_state = state
-    events: tuple[GameEvent, ...] = ()
-    for trigger_card_id in trigger_cards:
-        for faction in spied_factions(next_state.players[player]):
-            gained = gain_faction_influence(
-                next_state,
-                player,
-                faction,
-                1,
-                event_prefix=(
-                    f"round:{state.round_number}:player:{player}:"
-                    f"reveal_card:{trigger_card_id}:spice_must_flow:"
-                    f"{faction.value}"
-                ),
-            )
-            next_state = gained.state
-            events = (*events, *gained.events)
-    return RuleResult(state=next_state, events=events)
+    # Guild Spy: once per copy per Reveal, only during the owner's Reveal
+    # (designer ruling, OQ-057).
+    return fire_guild_spy_on_spice_must_flow(state, player, acquired=True)
