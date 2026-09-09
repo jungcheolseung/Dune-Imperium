@@ -285,8 +285,6 @@ def legal_graft_switch_actions(
         return ()
     if context.get("graft_pending_effect") is not True:
         return ()
-    if context.get("long_live_fighters_selection_started") is True:
-        return ()
     return (DomainAction(action_id="switch_graft_card", actor=player),)
 
 

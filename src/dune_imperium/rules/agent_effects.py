@@ -60,7 +60,14 @@ from dune_imperium.rules.effects import (
     recruit_shortfall_events,
     recruit_troops,
 )
-from dune_imperium.rules.frames import FrameKind, context_int, replace_player
+from dune_imperium.rules.frames import (
+    FrameKind,
+    context_int,
+    context_str,
+    owned_top_frame,
+    replace_player,
+    with_context,
+)
 from dune_imperium.rules.immortality import advance_research, advance_tleilaxu
 from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
@@ -196,7 +203,6 @@ _PLACEMENT_ICONS: Final[Mapping[PersonalCardAgentEffect, tuple[str, ...]]] = (
     )
 )
 
-_LONG_LIVE_SELECTION_STARTED = "long_live_fighters_selection_started"
 _LONG_LIVE_DRAW_CARD_ID = "long_live_fighters_draw_card_id"
 _LONG_LIVE_DRAW_ACTION_ID = "select_long_live_fighters_draw"
 _LONG_LIVE_DISCARD_ACTION_ID = "select_long_live_fighters_discard"
@@ -421,34 +427,51 @@ def apply_agent_card_discard(
     )
 
 
+def long_live_fighters_frame(
+    player: int,
+    source: str,
+    source_card_id: str,
+) -> DecisionFrame:
+    """Return the frame holding Long Live the Fighters' two-step pick.
+
+    The pick is one atomic card effect, so it gets its own frame: while it is
+    open the Agent effect frame is not on top of the stack and therefore
+    offers nothing, which is what keeps the two choices from being split by
+    another freely ordered effect.
+    """
+
+    return DecisionFrame(
+        kind=FrameKind.LONG_LIVE_FIGHTERS,
+        frame_id=f"{source}:pick",
+        decision=PlayerDecision(
+            owner=player, prompt="Choose the card to draw, then the one to discard"
+        ),
+        context=(
+            ("player", player),
+            ("source", source),
+            ("source_card_id", source_card_id),
+        ),
+    )
+
+
 def legal_agent_card_long_live_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
     """Return Long Live the Fighters' two private top-card choices.
 
-    The first choice is exposed only after the Agent effect has explicitly
-    started resolving. This preserves the free ordering of the board,
-    Faction, and card effect groups while still checking the three-card
-    requirement at the point of resolution.
+    The frame is pushed only once the Agent effect has explicitly started
+    resolving, so the free ordering of the board, Faction, and card effect
+    groups is preserved and the three-card requirement is checked at the
+    point of resolution.
     """
 
     if not 0 <= player < state.config.players:
         raise ValueError("player must identify a configured seat")
-    try:
-        frame, context = current_agent_effect_context(state)
-    except ValueError:
+    frame = owned_top_frame(state, FrameKind.LONG_LIVE_FIGHTERS, player)
+    if frame is None:
         return ()
-    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
-        return ()
-    if context.get("pending_agent_effect") is not True:
-        return ()
-    _, source_card_id, _ = _effect_subject(context)
-    source_card = active_agent_card(context)
-    if source_card.agent_effect is not PersonalCardAgentEffect.LOOK_AT_TOP_THREE:
-        return ()
-    if context.get(_LONG_LIVE_SELECTION_STARTED) is not True:
-        return ()
+    context = dict(frame.context)
 
     top_cards = state.players[player].deck[:3]
     if len(top_cards) < 3:
@@ -491,24 +514,28 @@ def apply_agent_card_long_live_action(
 
     if action not in legal_agent_card_long_live_actions(state, action.actor):
         raise ValueError("action is not a legal Long Live the Fighters choice")
-    _, context = current_agent_effect_context(state)
-    player, source_card_id, _ = _effect_subject(context)
+    player = action.actor
+    frame = state.decision_stack[-1]
+    frame_context = dict(frame.context)
+    source = context_str(
+        frame_context, "source", owner="Long Live the Fighters frame"
+    )
+    source_card_id = context_str(
+        frame_context, "source_card_id", owner="Long Live the Fighters frame"
+    )
     card_id = dict(action.arguments).get("card_id")
     if not isinstance(card_id, str):
         raise RuntimeError("Long Live the Fighters choice has invalid card ID")
 
-    source = (
-        f"round:{state.round_number}:player:{player}:"
-        f"agent_card:{source_card_id}:long_live_fighters"
-    )
     if action.action_id == _LONG_LIVE_DRAW_ACTION_ID:
-        context[_LONG_LIVE_DRAW_CARD_ID] = card_id
-        frame = state.decision_stack[-1]
-        next_frame = replace(frame, context=tuple(sorted(context.items())))
+        frame_context[_LONG_LIVE_DRAW_CARD_ID] = card_id
         return RuleResult(
             state=replace(
                 state,
-                decision_stack=(*state.decision_stack[:-1], next_frame),
+                decision_stack=(
+                    *state.decision_stack[:-1],
+                    with_context(frame, frame_context),
+                ),
             ),
             events=(
                 GameEvent(
@@ -519,9 +546,13 @@ def apply_agent_card_long_live_action(
             ),
         )
 
-    draw_card_id = context.get(_LONG_LIVE_DRAW_CARD_ID)
+    draw_card_id = frame_context.get(_LONG_LIVE_DRAW_CARD_ID)
     if not isinstance(draw_card_id, str):
         raise RuntimeError("Long Live the Fighters frame is missing its draw card")
+    # The pick is done: close its frame so the Agent effect frame is on top
+    # again for the shared trash transition and the effect advance.
+    state = replace(state, decision_stack=state.decision_stack[:-1])
+    _, context = current_agent_effect_context(state)
     top_cards = state.players[player].deck[:3]
     if len(top_cards) < 3 or draw_card_id not in top_cards or card_id not in top_cards:
         raise RuntimeError("Long Live the Fighters frame has invalid top cards")
@@ -560,8 +591,6 @@ def apply_agent_card_long_live_action(
     )
     next_owner = trashed.state.players[player]
     context["pending_agent_effect"] = False
-    context.pop(_LONG_LIVE_SELECTION_STARTED, None)
-    context.pop(_LONG_LIVE_DRAW_CARD_ID, None)
     next_state = advance_after_effect(
         trashed.state,
         context,
@@ -3114,17 +3143,10 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             events=(*gained.events, *trashed.events),
         )
     elif effect is PersonalCardAgentEffect.LOOK_AT_TOP_THREE:
-        if context.get(_LONG_LIVE_SELECTION_STARTED) is True:
-            raise RuntimeError(
-                "Long Live the Fighters selection is already in progress"
-            )
         if len(owner.deck) < 3:
             next_owner = owner
             event_kind = "agent_card_effect_unavailable"
         else:
-            context[_LONG_LIVE_SELECTION_STARTED] = True
-            frame = state.decision_stack[-1]
-            next_frame = replace(frame, context=tuple(sorted(context.items())))
             source = (
                 f"round:{state.round_number}:player:{player}:"
                 f"agent_card:{card_instance_id}:long_live_fighters"
@@ -3132,7 +3154,10 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             return RuleResult(
                 state=replace(
                     state,
-                    decision_stack=(*state.decision_stack[:-1], next_frame),
+                    decision_stack=(
+                        *state.decision_stack,
+                        long_live_fighters_frame(player, source, card_instance_id),
+                    ),
                 ),
                 events=(
                     GameEvent(

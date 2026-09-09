@@ -68,6 +68,7 @@ from dune_imperium.rules.contracts import (
     legal_contract_completion_actions,
 )
 from dune_imperium.rules.engine import UprisingRulesEngine
+from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.spies import (
     apply_gather_intelligence_action,
     legal_gather_intelligence_actions,
@@ -3184,6 +3185,59 @@ def test_long_live_the_fighters_commits_draw_discard_and_trash_atomically() -> N
         "card_trashed",
         "agent_card_effect_resolved",
     ]
+
+
+def test_long_live_the_fighters_pick_owns_its_frame_and_excludes_everything() -> None:
+    """The exclusivity is structural: the pick's own frame is what hides the
+    other freely ordered effects, not a flag on the Agent effect frame."""
+
+    first = _instance("dagger")
+    second = _instance("convincing_argument")
+    third = _instance("dune_the_desert_planet")
+    tail = _instance("reconnaissance")
+    state = _long_live_state((first, second, third, tail))
+    engine = UprisingRulesEngine()
+
+    placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
+    ready = engine.apply(
+        placed,
+        DomainAction(action_id="resolve_agent_card_effect", actor=0),
+    ).state
+
+    # The pick's frame is on top, so the board effect and troop deployment
+    # that were offered a moment ago are gone until it closes.
+    assert ready.decision_stack[-1].kind is FrameKind.LONG_LIVE_FIGHTERS
+    assert ready.decision_stack[-2].kind is FrameKind.AGENT_EFFECTS
+    assert {action.action_id for action in engine.legal_actions(ready, 0)} == {
+        "select_long_live_fighters_draw"
+    }
+
+    selected = engine.apply(
+        ready,
+        next(
+            action
+            for action in legal_agent_card_long_live_actions(ready, 0)
+            if dict(action.arguments)["card_id"] == first
+        ),
+    ).state
+    assert selected.decision_stack[-1].kind is FrameKind.LONG_LIVE_FIGHTERS
+    assert {action.action_id for action in engine.legal_actions(selected, 0)} == {
+        "select_long_live_fighters_discard"
+    }
+
+    done = engine.apply(
+        selected,
+        next(
+            action
+            for action in legal_agent_card_long_live_actions(selected, 0)
+            if dict(action.arguments)["card_id"] == second
+        ),
+    ).state
+    # The frame is closed and the Agent effect frame is on top again.
+    assert done.decision_stack[-1].kind is FrameKind.AGENT_EFFECTS
+    assert "resolve_board_effect" in {
+        action.action_id for action in engine.legal_actions(done, 0)
+    }
 
 
 def test_long_live_the_fighters_only_offers_the_top_three_and_preserves_tail() -> None:

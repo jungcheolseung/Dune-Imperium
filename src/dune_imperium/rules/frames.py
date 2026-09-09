@@ -70,6 +70,12 @@ class FrameKind(StrEnum):
     GRAFT_PARTNER = "graft_partner"
     # Imperium Ceremony: keep one of the Intrigue deck's top two cards.
     INTRIGUE_PEEK = "intrigue_peek"
+    # Long Live the Fighters: the atomic draw-then-discard pick over the top
+    # three personal cards. It owns a frame rather than a flag on the Agent
+    # effect frame so the exclusivity is structural: while the pick is open no
+    # other Agent-turn effect is offered, because the effect frame is not on
+    # top of the stack.
+    LONG_LIVE_FIGHTERS = "long_live_fighters"
 
 
 def top_frame(state: GameState) -> DecisionFrame | None:

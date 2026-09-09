@@ -18,7 +18,6 @@ from dune_imperium.rules.agent_effects import (
     legal_agent_card_icon_actions,
     legal_agent_card_influence_actions,
     legal_agent_card_intrigue_payment_actions,
-    legal_agent_card_long_live_actions,
     legal_agent_card_opponent_retreat_actions,
     legal_agent_card_payment_actions,
     legal_agent_card_recall_actions,
@@ -99,11 +98,6 @@ def legal_agent_effect_frame_actions(
     if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
         return ()
 
-    if context.get("long_live_fighters_selection_started") is True:
-        # Long Live the Fighters is one atomic card effect. Once its private
-        # selection starts, no board/Faction/combat choice may be interleaved
-        # before the second card selection commits.
-        return legal_agent_card_long_live_actions(state, player)
     pending_groups = _pending_group_actions(state, player, context)
 
     gather_intelligence_actions = legal_gather_intelligence_actions(state, player)
