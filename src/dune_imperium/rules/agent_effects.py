@@ -2946,14 +2946,73 @@ def _dry_run_effect_is_unavailable(state: GameState) -> bool:
         _, context = current_agent_effect_context(state)
     except ValueError:
         return False
-    if context.get("pending_agent_effect") is not True or pending_agent_icons(context):
+    if context.get("pending_agent_effect") is not True:
         return False
+    if pending_agent_icons(context):
+        return _pending_icons_offer_nothing(state, context)
     try:
         dry_run = resolve_agent_card_effect(state)
     except (NotImplementedError, RuntimeError, ValueError):
         return False
     return bool(dry_run.events) and (
         dry_run.events[0].kind == "agent_card_effect_unavailable"
+    )
+
+
+def _pending_icons_offer_nothing(
+    state: GameState,
+    context: dict[str, ActionValue],
+) -> bool:
+    """Return whether a multi-icon box has icons nothing can resolve.
+
+    A multi-icon box resolves icon by icon through exactly three providers
+    (OQ-027), so when all three are empty the icons cannot be resolved at
+    all. Ghola copying Steersman's "draw a card, recall an Agent" box
+    reaches this: the first box already recalled the seat's last Agent, so
+    the copy's recall icon has no target. Like any other mandatory box
+    whose condition is false it now waits for the turn's end instead of
+    stalling it (OQ-057), and a later effect that gives the icon a target
+    makes it resolvable again.
+    """
+
+    player = context_int(context, "turn_owner")
+    return not (
+        legal_agent_card_icon_actions(state, player)
+        or legal_agent_card_recall_actions(state, player)
+        or legal_agent_card_influence_actions(state, player)
+    )
+
+
+def fizzle_pending_agent_icons(state: GameState) -> RuleResult:
+    """Retire a multi-icon Agent box whose icons nothing can resolve.
+
+    The counterpart of ``resolve_agent_card_effect``'s unavailable branch
+    for boxes that resolve icon by icon; ``finish_agent_turn`` calls it so
+    the turn's end fizzles the box (OQ-057).
+    """
+
+    _, context = current_agent_effect_context(state)
+    keys = pending_agent_icons(context)
+    if context.get("pending_agent_effect") is not True or not keys:
+        raise ValueError("the pending Agent box has no icons to retire")
+    player, card_instance_id, _ = _effect_subject(context)
+    source = f"round:{state.round_number}:player:{player}:agent_card:{card_instance_id}"
+    for key in keys:
+        finish_agent_icon(context, key)
+    return RuleResult(
+        state=advance_after_effect(state, context),
+        events=tuple(
+            GameEvent(
+                event_id=f"{source}:{key}:resolved",
+                kind="agent_card_effect_unavailable",
+                payload=(
+                    ("card_id", card_instance_id),
+                    ("effect", key),
+                    ("player", player),
+                ),
+            )
+            for key in keys
+        ),
     )
 
 

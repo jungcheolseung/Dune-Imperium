@@ -530,8 +530,10 @@ def apply_agent_turn_finish(
 
     from dune_imperium.rules.agent_effects import (
         agent_card_effect_is_unavailable,
+        fizzle_pending_agent_icons,
         resolve_agent_card_effect,
     )
+    from dune_imperium.rules.effects import pending_agent_icons
     from dune_imperium.rules.graft import apply_graft_switch, legal_graft_switch_actions
 
     if action not in legal_agent_turn_finish_actions(state, action.actor):
@@ -550,7 +552,13 @@ def apply_agent_turn_finish(
         if context["pending_agent_effect"] is True and (
             agent_card_effect_is_unavailable(working)
         ):
-            fizzled = resolve_agent_card_effect(working)
+            # A box that resolves icon by icon retires every icon at once;
+            # ``resolve_agent_card_effect`` only handles single-effect boxes.
+            fizzled = (
+                fizzle_pending_agent_icons(working)
+                if pending_agent_icons(context)
+                else resolve_agent_card_effect(working)
+            )
             working = fizzled.state
             events.extend(fizzled.events)
             continue

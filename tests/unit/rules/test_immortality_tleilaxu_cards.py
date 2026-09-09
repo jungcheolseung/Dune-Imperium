@@ -656,3 +656,67 @@ def test_usurp_is_offered_only_where_a_partner_can_follow() -> None:
         dict(a.arguments)["card_id"] for a in legal_graft_partner_actions(placed, 0)
     }
     assert occupation in partners and infiltrator in partners
+
+
+def test_ghola_copying_steersman_can_end_the_turn_with_no_agent_to_recall() -> None:
+    """Steersman's box is "draw a card, recall an Agent"; Ghola copies it,
+    so the second box's recall icon has no Agent left once the first box
+    recalled the only one. A mandatory box whose condition is false waits
+    for the turn's end and fizzles there (OQ-057), and before this the turn
+    stalled with no legal action at all (soak seed 78, --immortality)."""
+
+    ghola = _tleilaxu("ghola")
+    steersman = "imperium:steersman:0"
+    engine = UprisingRulesEngine()
+    state = _graft(
+        _state(_owner((steersman, ghola), family_atomics=False)),
+        steersman,
+        "arrakeen",
+        ghola,
+    )
+
+    # Both boxes queue (cards, recall); resolve the active one and let its
+    # recall take the Agent this turn placed.
+    def _apply(state: GameState, action_id: str, **arguments: object) -> GameState:
+        action = next(
+            action
+            for action in engine.legal_actions(state, 0)
+            if action.action_id == action_id
+            and all(
+                dict(action.arguments).get(key) == value
+                for key, value in arguments.items()
+            )
+        )
+        return engine.apply(state, action).state
+
+    while any(
+        action.action_id == "resolve_board_effect"
+        for action in engine.legal_actions(state, 0)
+    ):
+        state = _apply(state, "resolve_board_effect")
+    state = _apply(state, "resolve_agent_card_effect", effect="cards")
+    state = _apply(state, "recall_agent_for_agent_card", space_id="arrakeen")
+    assert state.players[0].agent_locations == ()
+    state = _apply(state, "switch_graft_card")
+    state = _apply(state, "resolve_agent_card_effect", effect="cards")
+
+    context = dict(state.decision_stack[-1].context)
+    assert context["pending_agent_effect"] is True
+    assert context["pending_agent_icons"] == "recall"
+    # Nothing can resolve the icon, and no provider offers it; the turn end
+    # is what carries the turn on (before the fix nothing was offered).
+    offered = {action.action_id for action in engine.legal_actions(state, 0)}
+    assert "finish_agent_turn" in offered
+    assert not offered & {
+        "resolve_agent_card_effect",
+        "recall_agent_for_agent_card",
+        "switch_graft_card",
+    }
+    finished = engine.apply(
+        state, DomainAction(action_id="finish_agent_turn", actor=0)
+    )
+    assert [event.kind for event in finished.events] == [
+        "agent_card_effect_unavailable",
+        "agent_turn_finished",
+    ]
+    assert finished.state.decision_stack[-1].kind == "turn"
