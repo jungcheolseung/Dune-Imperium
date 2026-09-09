@@ -56,9 +56,9 @@
 
 | # | 판정(출처) | 엔진 현재 동작 | 위치 | 비고 |
 | --- | --- | --- | --- | --- |
-| 1 | 조건이 거짓인 동안 의무 효과를 "발동해 불발"시킬 수 없다. Guild Envoy가 유일한 손패여도 그 turn에 카드를 뽑으면 discard해야 하며, turn이 끝날 때까지 불가능할 때만 불발(Hidden Assets Discord, Guiding Principles) | OQ-028(a): Agent box는 소유자가 고른 시점에 해결하고 조건이 거짓이면 `agent_card_effect_unavailable`로 종료. 먼저 해결한 뒤 draw하면 discard를 피할 수 있다 | `rules/agent_effects.py:3961`(Guild Envoy), Leadership 등 같은 경로 | Reveal 쪽 (b)·(c)는 미루기/늦은 지급이라 이미 판정과 같은 방향. Agent box도 "turn 종료까지 보류"로 바꾸면 일관됨 |
-| 2 | Interstellar Trade로 The Spice Must Flow를 사서 contract가 완료돼도 Persuasion을 더 받지 않는다 — "한 번만 trigger"(In person) | OQ-028(c): Reveal 중 완료된 contract만큼 증분 지급 | `tests/unit/rules/test_reveal_turn.py:2480` | 디자이너 모델은 "발동 시점을 하나 고른다"(Leadership 항목도 동일). OQ-028(c) 전체를 재검토할 사안 |
-| 3 | Guild Spy: SMF를 두 장 사도 bump는 한 번(In person); Reveal 중 늦게 뽑힌 Guild Spy도 이미 산 SMF에 반응(In person); Emperor bump로 얻은 Spy는 같은 발동에 못 셈; Sleeper Unit로 나중에 놓은 Spy도 못 셈 | SMF 획득마다 in-play Guild Spy가 매번 발동(1회 가드 없음); 늦게 뽑힌 Guild Spy는 이후 SMF 획득에만 반응; Emperor Spy·Sleeper Unit 쪽은 일치 | `rules/acquisition.py:603` `_resolve_reveal_acquisition_triggers` | 두 방향 모두 어긋남 |
+| 1 | (2026-09-09 반영: OQ-057, dry-run으로 불발 box 숨김 + `finish_agent_turn`) 조건이 거짓인 동안 의무 효과를 "발동해 불발"시킬 수 없다. Guild Envoy가 유일한 손패여도 그 turn에 카드를 뽑으면 discard해야 하며, turn이 끝날 때까지 불가능할 때만 불발(Hidden Assets Discord, Guiding Principles) | OQ-028(a): Agent box는 소유자가 고른 시점에 해결하고 조건이 거짓이면 `agent_card_effect_unavailable`로 종료. 먼저 해결한 뒤 draw하면 discard를 피할 수 있다 | `rules/agent_effects.py:3961`(Guild Envoy), Leadership 등 같은 경로 | Reveal 쪽 (b)·(c)는 미루기/늦은 지급이라 이미 판정과 같은 방향. Agent box도 "turn 종료까지 보류"로 바꾸면 일관됨 |
+| 2 | (2026-09-09 반영: OQ-057, OQ-028(c) 폐기) Interstellar Trade로 The Spice Must Flow를 사서 contract가 완료돼도 Persuasion을 더 받지 않는다 — "한 번만 trigger"(In person) | OQ-028(c): Reveal 중 완료된 contract만큼 증분 지급 | `tests/unit/rules/test_reveal_turn.py:2480` | 디자이너 모델은 "발동 시점을 하나 고른다"(Leadership 항목도 동일). OQ-028(c) 전체를 재검토할 사안 |
+| 3 | (2026-09-09 반영: OQ-057, `fire_guild_spy_on_spice_must_flow`) Guild Spy: SMF를 두 장 사도 bump는 한 번(In person); Reveal 중 늦게 뽑힌 Guild Spy도 이미 산 SMF에 반응(In person); Emperor bump로 얻은 Spy는 같은 발동에 못 셈; Sleeper Unit로 나중에 놓은 Spy도 못 셈 | SMF 획득마다 in-play Guild Spy가 매번 발동(1회 가드 없음); 늦게 뽑힌 Guild Spy는 이후 SMF 획득에만 반응; Emperor Spy·Sleeper Unit 쪽은 일치 | `rules/acquisition.py:603` `_resolve_reveal_acquisition_triggers` | 두 방향 모두 어긋남 |
 | 4 | (2026-09-09 반영: OQ-057, 두 선택을 먼저 받고 해결) "Choose Two"(Propaganda, Stitched Horror, Rapid Engineering)는 둘을 먼저 정하고 나서 해결. BG 4단계 Intrigue를 보고 두 번째를 고를 수 없다(Message from designer) | 첫 선택의 Influence·Tleilaxu 전진이 즉시 해결된 뒤 두 번째 선택 | `rules/combat.py:832` `apply_distinct_combat_reward_influence`, `rules/agent_effects.py` `_apply_stitched_horror_reward`, `rules/intrigue.py:416` | 두 선택을 한 frame에 모아 받은 뒤 순서대로 적용하면 됨. Propaganda를 worm으로 이기면 두 세트 사이에는 다른 효과 허용 |
 | 5 | (2026-09-09 반영: OQ-002 재판정, `rank_combat(first_player=)`) Combat 보상 순서가 결과에 영향을 주면 First Player부터 턴 순서(Message from designer); Harvest Cells 두 명은 턴 순서 | OQ-002: 좌석 번호순 convention(당시 "순서가 관측 불가" 전제) | `rules/combat.py` `rank_combat`/`_rewards` | Immortality의 Imperium Ceremony(Intrigue 덱 상단 열람)와 Harvest Cells로 전제가 깨짐. OQ-002 재개 조건 충족 |
 | 6 | (2026-09-09 반영: OQ-057, `skip_intrigue_acquisition`) Impress는 3 이하 카드가 없어도 play 가능, 획득 부분만 불발(Message from designer) | 획득 대상이 없으면 play 자체 불가(검 2도 못 받음) | `rules/effect_interpreter.py:522` `AcquireCardUpTo` 가드 | Inspire Awe 등 같은 가드를 쓰는 카드도 재검토 |
@@ -82,7 +82,7 @@
 
 ## 반영 현황 (2026-09-09)
 
-사용자 결정: 13건 전부 디자이너 판정을 따른다. 4·5·6·7·8·9·10·11·12·13은 반영했다(표의 각 행 앞 표시; 판정 등록은 [OQ-057](open-questions.md#oq-057--디자이너-커뮤니티-판정의-일괄-채택-2026-09-09), OQ-002·OQ-054 보강). 1·2·3 묶음은 진행 중이다.
+사용자 결정: 13건 전부 디자이너 판정을 따른다. 13건 모두 반영했다(표의 각 행 앞 표시; 판정 등록은 [OQ-057](open-questions.md#oq-057--디자이너-커뮤니티-판정의-일괄-채택-2026-09-09), OQ-002·OQ-028·OQ-037·OQ-054 보강). 잔여 경계는 7번의 순차 지불(첫 효과로 얻은 자원으로 두 번째 비용)이다.
 
 ## 다음 단계 제안
 
