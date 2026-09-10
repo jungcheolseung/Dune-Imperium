@@ -79,25 +79,33 @@ class AgentBatchPolicy:
         self.kind = kind
         self.seed = seed
         self._players = players
-        self._agents: dict[tuple[int, int], Agent] = {}
+        self._agents: dict[tuple[int, int], tuple[Agent, StateAgent | None]] = {}
 
-    def _agent(self, game: int, seat: int) -> Agent:
+    def _agent(self, game: int, seat: int) -> tuple[Agent, StateAgent | None]:
+        """Return the seat's agent, and the same agent narrowed to ``StateAgent``.
+
+        The narrowing is cached with the agent because isinstance() against the
+        runtime-checkable ``StateAgent`` Protocol costs about 5us, which
+        collection would otherwise pay once per decision.
+        """
+
         key = (game, seat)
-        agent = self._agents.get(key)
-        if agent is None:
+        entry = self._agents.get(key)
+        if entry is None:
             agent = make_agent(self.kind, self.seed + game * self._players + seat)
-            self._agents[key] = agent
-        return agent
+            entry = (agent, agent if isinstance(agent, StateAgent) else None)
+            self._agents[key] = entry
+        return entry
 
     def act(self, requests: Sequence[PolicyRequest]) -> Sequence[int]:
         answers: list[int] = []
         for request in requests:
-            agent = self._agent(request.game, request.seat)
+            agent, searcher = self._agent(request.game, request.seat)
             action = (
-                agent.choose_action_with_state(
+                searcher.choose_action_with_state(
                     request.state, request.view, request.legal_actions
                 )
-                if isinstance(agent, StateAgent)
+                if searcher is not None
                 else agent.choose_action(request.view, request.legal_actions)
             )
             position = request.legal_actions.index(action)

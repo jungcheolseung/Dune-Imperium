@@ -115,6 +115,12 @@ class _MeteredAgent:
 
     def __init__(self, inner: Agent) -> None:
         self._inner = inner
+        # Narrowed once here rather than once per decision: isinstance()
+        # against a runtime-checkable Protocol costs about 5us, and inside the
+        # metered region it was charged to the agent as decision time.
+        self._searcher: StateAgent | None = (
+            inner if isinstance(inner, StateAgent) else None
+        )
         self.decisions = 0
         self.illegal_actions = 0
         self.seconds = 0.0
@@ -136,8 +142,8 @@ class _MeteredAgent:
     ) -> DomainAction:
         started = time.perf_counter()
         action = (
-            self._inner.choose_action_with_state(state, observation, legal_actions)
-            if isinstance(self._inner, StateAgent)
+            self._searcher.choose_action_with_state(state, observation, legal_actions)
+            if self._searcher is not None
             else self._inner.choose_action(observation, legal_actions)
         )
         return self._record(action, legal_actions, started)

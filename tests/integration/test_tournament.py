@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from dune_imperium import RulesetConfig
-from dune_imperium.agents import make_agent
+from dune_imperium.agents import StateAgent, make_agent
 from dune_imperium.cli.tournament import main as tournament_main
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import PlayerDecision
@@ -20,12 +20,14 @@ from dune_imperium.evaluation import (
     summary_to_json,
     tournament_specs,
 )
+from dune_imperium.evaluation import tournament as tournament_module
 from dune_imperium.evaluation.tournament import (
     _MeteredAgent,
     fill_lineup,
     seat_rotations,
 )
 from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.simulation import runner as runner_module
 
 
 def test_lineup_fill_and_seat_rotations() -> None:
@@ -205,3 +207,45 @@ def test_run_tournament_summary_and_report(tmp_path: Path) -> None:
 def test_cli_rejects_unknown_agents() -> None:
     with pytest.raises(SystemExit):
         tournament_main(["--agents", "oracle", "--games", "1"])
+
+
+class _CountingProtocolCheck(type):
+    """Stand in for ``StateAgent`` and count the isinstance() calls."""
+
+    checks: int
+
+    def __instancecheck__(cls, instance: object) -> bool:
+        cls.checks += 1
+        return isinstance(instance, StateAgent)
+
+
+def test_the_state_agent_protocol_is_asked_per_seat_not_per_decision(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``StateAgent`` is a runtime-checkable Protocol, so one isinstance()
+    against it walks the members through ``inspect.getattr_static`` -- about
+    5us. Asking once per decision charged that to every agent's metered
+    decision time, which is what the 2026-09-10 baseline saw when heuristic
+    (0.005 -> 0.010 ms) and random (0.001 -> 0.006 ms) each gained the same
+    +0.005 ms. Seating cannot change mid-game, so the answer is asked once.
+    """
+
+    class _Counted(metaclass=_CountingProtocolCheck):
+        checks = 0
+
+    monkeypatch.setattr(runner_module, "StateAgent", _Counted)
+    monkeypatch.setattr(tournament_module, "StateAgent", _Counted)
+
+    result = play_match(
+        MatchSpec(
+            game_seed=3,
+            policy_seed=900_003,
+            seat_agents=("heuristic", "random", "random", "random"),
+        )
+    )
+
+    decisions = sum(seat.decisions for seat in result.seats)
+    assert decisions > 100, "the match must really have made many decisions"
+    # Two call sites -- the runner's seating and the metered wrapper -- ask
+    # once per seat each, and nothing scales with the decision count.
+    assert _Counted.checks == 2 * len(result.seats)

@@ -48,6 +48,7 @@ def run_random_round(
     agents = tuple(
         RandomAgent(seed=policy_seed + player) for player in range(config.players)
     )
+    searchers = _state_agents(agents)
     state = engine.reset(config, game_seed)
     started_round = state.round_number
     chance = ChanceResolver(seed=game_seed)
@@ -59,7 +60,9 @@ def run_random_round(
                 state=state,
                 replay=_replay_record(config, game_seed, steps, state),
             )
-        state = _advance_one_decision(engine, state, agents, chance, steps)
+        state = _advance_one_decision(
+            engine, state, agents, searchers, chance, steps
+        )
 
     raise RuntimeError(f"one round exceeded the {max_steps}-action limit")
 
@@ -110,6 +113,11 @@ def run_policy_game(
         raise ValueError("max_steps must be positive")
 
     seat_agents = tuple(agents)
+    # ``StateAgent`` is a runtime-checkable Protocol, so every isinstance()
+    # against it walks the members through inspect.getattr_static (about 5us a
+    # call). The seating never changes during a game, so ask once per seat
+    # instead of once per decision.
+    seat_searchers = _state_agents(seat_agents)
     state = engine.reset(config, game_seed)
     chance = ChanceResolver(seed=game_seed)
     steps: list[ReplayStep] = []
@@ -121,15 +129,29 @@ def run_policy_game(
                 standings=final_standings(state),
                 replay=_replay_record(config, game_seed, steps, state),
             )
-        state = _advance_one_decision(engine, state, seat_agents, chance, steps)
+        state = _advance_one_decision(
+            engine, state, seat_agents, seat_searchers, chance, steps
+        )
 
     raise RuntimeError(f"the game exceeded the {max_steps}-action limit")
+
+
+def _state_agents(agents: tuple[Agent, ...]) -> tuple[StateAgent | None, ...]:
+    """Return each seat's agent narrowed to ``StateAgent``, or ``None``.
+
+    Callers keep the result for the whole game: ``StateAgent`` is a
+    runtime-checkable Protocol, and one isinstance() against it costs about
+    5us, which is real money once per decision.
+    """
+
+    return tuple(agent if isinstance(agent, StateAgent) else None for agent in agents)
 
 
 def _advance_one_decision(
     engine: RulesEngine,
     state: GameState,
     agents: tuple[Agent, ...],
+    searchers: tuple[StateAgent | None, ...],
     chance: ChanceResolver,
     steps: list[ReplayStep],
 ) -> GameState:
@@ -144,11 +166,11 @@ def _advance_one_decision(
     if not actions:
         raise RuntimeError("current player decision has no legal actions")
     observation = engine.observe(state, decision.owner)
-    agent = agents[decision.owner]
+    searcher = searchers[decision.owner]
     action = (
-        agent.choose_action_with_state(state, observation, actions)
-        if isinstance(agent, StateAgent)
-        else agent.choose_action(observation, actions)
+        searcher.choose_action_with_state(state, observation, actions)
+        if searcher is not None
+        else agents[decision.owner].choose_action(observation, actions)
     )
     steps.append(action)
     return engine.apply(state, action).state
