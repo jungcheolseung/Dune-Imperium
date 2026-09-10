@@ -52,7 +52,9 @@
 | Count Hasimir Fenring: Intrigue trash에는 Solari 없음 | `rules/card_trash.py:85` |
 | Feyd(track 끝), Lady Jessica(Spice Agony 1 spice에 둘 다, Reverend Mother 비용 1회·Combat 아이콘 중복 없음), Chani, Esmar Tuek, Y'rkoon(Navigation 자동 trigger), Shaddam(Signet play 시점부터 제한), Kota | `rules/leader_abilities.py`, `rules/navigation.py`, `rules/tactics.py`; `tests/unit/rules/test_leader_abilities.py`, `test_bloodlines_leaders.py`, `test_navigation.py` |
 
-## 불일치 항목 (영향 큰 순, 반영 여부는 사용자 결정)
+## 불일치 항목 (영향 큰 순, 13건 전부 반영 완료)
+
+사용자 결정(2026-09-09)은 13건 전부 디자이너 판정을 따르는 것이었고 13건 모두 반영됐다. 각 행의 맨 앞에 반영 경로를 적었고 전체 요약은 아래 [반영 현황](#반영-현황-2026-09-09) 절에 있다.
 
 | # | 판정(출처) | 엔진 현재 동작 | 위치 | 비고 |
 | --- | --- | --- | --- | --- |
@@ -86,6 +88,6 @@
 
 ## 다음 단계 제안
 
-1. 사용자가 반영할 항목을 고른다. 1·2·3은 OQ-028·OQ-002·OQ-022의 연장이라 하나의 판정("효과는 발동 시점을 하나 고르며, 조건이 거짓이면 turn 종료까지 보류")으로 묶어 OQ 항목 하나로 등록하는 편이 낫다.
+1. (2026-09-09 완료) 사용자가 반영할 항목을 고른다 — 13건 전부 반영으로 결정됐다. 1·2·3은 OQ-028·OQ-002·OQ-022의 연장이라 하나의 판정("효과는 발동 시점을 하나 고르며, 조건이 거짓이면 turn 종료까지 보류")으로 묶어 OQ 항목 하나로 등록하는 편이 낫다.
 2. 각 항목은 OQ 등록 → 규칙 문서 인용 → 테스트 → 엔진 수정 순서로, `Play`/`Document` 커밋 쌍을 따른다. 출처가 포럼·Discord이므로 상태는 `DECIDED`로 두고 공식 문서에 인쇄되면 `RESOLVED`로 올린다.
-3. Bloodlines contract token 8개는 별도 전사 슬라이스(카드면은 Dune Cards Hub, 수량은 BGG 인벤토리 시트).
+3. (2026-09-09 완료) Bloodlines contract token 8개는 별도 전사 슬라이스(카드면은 Dune Cards Hub, 수량은 BGG 인벤토리 시트).
