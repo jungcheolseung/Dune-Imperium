@@ -89,6 +89,18 @@ def _play_until_revision(
     return summary
 
 
+def _play_until_window_closes(
+    manager: GameSessionManager, summary: JsonObject
+) -> JsonObject:
+    """Play seat 0 until an AI seat's turn has closed its undo window."""
+
+    for _ in range(40):
+        summary = _play(manager, summary)
+        if summary["undo"] == []:
+            return summary
+    raise AssertionError("the undo window never closed")
+
+
 def _live_log(manager: GameSessionManager, game_id: str) -> list[LoggedStep]:
     return [
         entry
@@ -159,30 +171,33 @@ def test_undo_window_holds_own_consecutive_steps_and_closes_on_reveals() -> None
     summary = _play(manager, summary)
     assert summary["undo"] == [{"seat": 0, "steps": 1}]
 
-    # The AI seats act next, which closes the window; the human's next
-    # four consecutive choices (an Arrakeen placement, the Feyd track, a
-    # declined trash, and Arrakeen's troop icon) reopen and grow it.
-    summary = _play_until_revision(manager, summary, 12)
-    assert summary["undo"] == []
-    summary = _play_until_revision(manager, summary, 16)
-    assert summary["undo"] == [{"seat": 0, "steps": 4}]
-    live = _live_log(manager, game_id)
-    assert [entry.actor for entry in live[-4:]] == [0, 0, 0, 0]
-    assert not any(entry.reveals for entry in live[-4:])
+    # From here the window is checked as a property of the log rather than at
+    # scripted revisions: it must always equal the trailing run of seat 0's own
+    # steps that revealed nothing. The AI seats are heuristics, so retuning
+    # their preferences changes how many steps their turns take and which
+    # choices seat 0 is offered next -- but never this invariant.
+    widest = 0
+    closed_by_a_reveal = False
+    for _ in range(60):
+        summary = _play(manager, summary)
+        live = _live_log(manager, game_id)
+        expected = 0
+        for entry in reversed(live):
+            if entry.actor != 0 or entry.reveals:
+                break
+            expected += 1
+        assert summary["undo"] == (
+            [] if expected == 0 else [{"seat": 0, "steps": expected}]
+        )
+        assert undo_window(manager._get(game_id).log, 0) == expected
+        widest = max(widest, expected)
+        if expected == 0 and live[-1].actor == 0 and live[-1].reveals:
+            closed_by_a_reveal = True
 
-    # The next step resolves Arrakeen's card-draw icon: the deck top is now
-    # known to the drawer, so that step (and everything before it) can no
-    # longer be taken back.
-    summary = _play(manager, summary)
-    assert summary["revision"] == 17
-    live = _live_log(manager, game_id)
-    assert live[-1].actor == 0
-    assert isinstance(live[-1].step, DomainAction)
-    assert live[-1].step.action_id == "resolve_board_effect"
-    assert dict(live[-1].step.arguments) == {"effect": "cards"}
-    assert live[-1].reveals is True
-    assert summary["undo"] == []
-    assert undo_window(manager._get(game_id).log, 0) == 0
+    # The run has to have exercised both halves, or the invariant above held
+    # only because the window never opened.
+    assert widest >= 2, "seat 0 never accumulated consecutive undoable steps"
+    assert closed_by_a_reveal, "no revealing step ever closed the window"
 
 
 # ---------------------------------------------------------------- turn end
