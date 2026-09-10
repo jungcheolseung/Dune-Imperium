@@ -28,7 +28,7 @@ CHOAM Module과 함께 쓸 때만 기존 contract 20개에 섞는 token 8개다(
 | Spice Refinery | Spice Refinery에 Agent | troop 2 | |
 
 - **Earn Any Alliance**: 완료 조건은 Agent 방문이 아니라 Alliance token 자체다. 따라서 Uprising의 "Agent를 보낼 당시 보유해야 한다"는 소급 금지 `[Main p. 16]`는 적용되지 않고, 같은 turn에 이 token을 가져온 뒤 그 turn의 Influence 상승으로 Alliance를 얻어도 완료된다(디자이너 판정, [designer-rulings-audit.md](designer-rulings-audit.md)). 이미 갖고 있는 진영의 Influence가 더 올라가는 것은 "새 token"이 아니므로 완료하지 않는다. 상대가 Influence를 잃어 token이 자신에게 넘어오는 경우도 "token을 가져가는" 것으로 본다([OQ-056](open-questions.md#oq-056--earn-any-alliance의-완료-시점과-alliance-이전) project convention). `[Bloodlines p. 2]`
-- **새 Immediate**: hand에 trash할 Intrigue 카드가 없으면 가져갈 수 없다(시장의 다른 token은 여전히 고를 수 있다). 가져오면 hand의 Intrigue 카드 하나를 골라 trash하고 즉시 완료하며, Intrigue 1장과 카드 1장을 뽑는다. 구현은 trash할 카드를 고르는 동안만 token을 active 영역에 두고(그동안 다른 효과가 이 token을 건드릴 수 없다) 고르면 completed로 옮긴다. `[Bloodlines p. 2]` `[Main p. 16]`
+- **새 Immediate**: hand에 trash할 Intrigue 카드가 없으면 가져갈 수 없다. (원문은 이 한 문장뿐이다; 시장의 다른 token을 고를 수 있다는 것은 프로젝트 해석이고, 고를 token이 **하나도** 없을 때의 판정은 [OQ-059](open-questions.md#oq-059--시장에-face-up-contract가-남았지만-아무것도-가져갈-수-없을-때의-contract-아이콘)다.) 가져오면 hand의 Intrigue 카드 하나를 골라 trash하고 즉시 완료하며, Intrigue 1장과 카드 1장을 뽑는다. 구현은 trash할 카드를 고르는 동안만 token을 active 영역에 두고(그동안 다른 효과가 이 token을 건드릴 수 없다) 고르면 completed로 옮긴다. `[Bloodlines p. 2]` `[Main p. 16]`
 - 보상의 troop은 다른 turn 중 recruit와 같이 그 turn의 배치 몫에 들어가고(Agent turn의 `troops_recruited`, Reveal turn의 Combat 아이콘 몫), Deep Cover Spy·recall·draw 보상은 Uprising contract와 같은 frame으로 해결한다.
 
 ## 2. Setup 변경

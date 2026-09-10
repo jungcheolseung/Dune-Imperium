@@ -510,3 +510,60 @@
 - 적용 카드(카드면 확인, `IntrigueOption.separate`): Change Allegiances, Strategic Stockpiling, Depart for Arrakis, Find Weakness, Questionable Methods.
 - trash 아이콘(사용자 판정, 같은 날): 룰북 용어집대로 "trash는 비용을 지불하는 경우나 카드가 자기 자신을 trash하라고 지시하는 경우가 아니면 선택"이다 `[Main p. 20]`. 따라서 일반 trash 아이콘은 모두 선택(hand·discard·play 중 1장)이고, "Trash this card." 문장(Seek Allies)과 Subversive Advisor의 조건부 문장, Guild Envoy의 discard 아이콘은 의무다. 이 기준으로 Calculus of Power의 Agent box가 "자기 자신 trash"로 잘못 전사돼 있던 것을 일반 선택 trash로 고쳤고(사용자 적발), Tread in Darkness의 "[trash][draw]"는 화살표가 아니므로 trash를 거절해도 draw는 한다. Twisted Intrigue Devious의 "Trash a card from your hand."는 문장 option을 고른 것이라 의무로 둔다. 조건만 다른 자동 줄들(Weirding Combat, Shaddam's Favor, Intelligence Report, Devour, Return the Favor, Vicious Talents 등)은 비용이 없어 결과가 같으므로 기존 모델을 유지한다. OQ-015(b)는 폐기.
 - 구현: `rules/intrigue.py`의 `intrigue_effects` frame(`_play_separate_lines`, `legal_intrigue_effect_actions`, `apply_intrigue_effect`, `_settle_effects_frame`), `effect_interpreter.section_is_usable`, `finish_intrigue_play(discard=False)`; 마무리 전까지 카드는 소유자의 Intrigue hand에 남되 공개 상태(`resolving_intrigue_ids`). 관측 v18(frame 종류), codec v103.
+
+## OQ-059 — 시장에 face-up contract가 남았지만 아무것도 가져갈 수 없을 때의 contract 아이콘
+
+- 상태: `DECIDED` (엔진 미구현)
+- CHOAM Module의 contract 아이콘은 contract를 가져가는 대신 2 Solari를 줄 수 있고
+  `[Main pp. 16, 20]`, 시장이 마르면 2 Solari로 돌아간다 — 다만 그 조건은 "**모든
+  contract가 플레이어에게 넘어가 face-up contract도 남지 않았을 때**"로 적혀 있다
+  `[Main p. 16]`([choam-module.md](choam-module.md) 19행).
+- Bloodlines의 새 Immediate contract는 "trash할 Intrigue 카드가 없으면 가져갈 수
+  없다"이고, 룰북은 그 경우 "**시장의 다른 token은 여전히 고를 수 있다**"고만 덧붙인다
+  `[Bloodlines p. 2]`([bloodlines.md](bloodlines.md) 12·31행). 즉 다른 token이 있다는
+  전제 아래 쓰인 문장이다.
+- 공백: **face-up contract가 남아 있지만 그것이 전부 Immediate이고 소유자에게 trash할
+  Intrigue가 없을 때** contract 아이콘이 어떻게 해결되는지 두 문서 모두 침묵한다.
+  시장은 비어 있지 않으므로 `[Main p. 16]`의 2 Solari 전환 조건에 걸리지 않고, 가져갈 수
+  있는 token은 하나도 없다.
+- 발견: 2026-09-10 Bloodlines+Tech A/B, game seed 110의 양쪽 rotation에서 Priority
+  Contracts의 두 번째 contract 아이콘이 이 상태에 도달해 **합법 행동이 하나도 없는
+  교착**으로 끝났다(`RuntimeError: current player decision has no legal actions`,
+  2,000판 중 2판). 엔진의 `exhausted_contract_choice_is_pending`은 `face_up_contract_ids`가
+  비었는지만 보므로 이 경우를 소진으로 치지 않고, provider는 Immediate을 걸러내 아무것도
+  제시하지 않는다.
+- 필요한 답: 가져갈 수 있는 token이 없는 시장을 아이콘 해결 시점에 "소진"으로 볼지.
+  후보 (a) 2 Solari로 전환한다 — 해결 시점에 가져갈 수 있는 것이 없다는 점에서 빈 시장과
+  같고, [OQ-030](#oq-030--supply-부족으로-하지-못한-recruit의-소급-여부)의 확정 원칙
+  ("해결하는 시점에 있는 만큼만, 소급 없음")과 결이 같다. 후보 (b) 아이콘이 아무 보상
+  없이 불발한다 — `[Main p. 16]`의 전환 조건을 문자 그대로 읽는다.
+- 공식 원문 확인(2026-09-10, `scripts/prepare_official_rules.py`, checksum 일치):
+  - Main p. 16 "TAKING CONTRACTS": "this icon means that you take one of the two
+    face-up contracts on the board... **(If all contracts have been taken by
+    players, the icon reverts to giving you 2 Solari.)**" — 전환 조건은 "모든
+    contract를 플레이어들이 **가져갔을** 때"다. board에 남은 Immediate은 아무도
+    가져가지 않았으므로 조건이 성립하지 않는다.
+  - Bloodlines p. 2: "You can't take the new Immediate contract unless you have
+    an Intrigue card to trash." — 이 한 문장이 전부다. 이 문서 [bloodlines.md]의
+    "(시장의 다른 token은 여전히 고를 수 있다)"는 원문에 없는 프로젝트 해석이다.
+  - 공식 FAQ(2025-01-13) p. 1 contract 항목은 완료 의무와 같은 공간 복수 완료만
+    다루며 이 경우를 언급하지 않는다.
+- 디자이너 커뮤니티 판정([designer-rulings-audit.md](designer-rulings-audit.md)의
+  정리본 전문, 2026-06-07판)에도 이 경우는 없지만 **대상이 없는 효과는 불발**이라는
+  판정이 일관된다: Sardaukar recall contract("the reward simply fizzles, since you
+  have no other agent to recall"), Impress("That part of the effect fizzles",
+  OQ-057(6)으로 채택), Acquire Dreadnought("simply fizzles"), Know Their Ways,
+  High Priority Travel의 Combat 심볼. 2 Solari 전환은 별개 조건이 붙은 인쇄 대체
+  보상이므로 그 조건이 거짓이면 남는 것은 "대상 없는 take"뿐이다.
+- 확정(2026-09-10, 사용자 판정 "보류 후 불발"): 가져갈 수 있는 token이 없어도 시장이
+  비지 않았으면 **2 Solari로 전환하지 않는다**. 아이콘은 [OQ-057](#oq-057--디자이너-커뮤니티-판정의-일괄-채택-2026-09-09)(1)의
+  확정 원칙대로 **turn 종료까지 보류**하고, 그 사이 Intrigue를 얻어 Immediate을 가져갈
+  수 있게 되면 가져가야 하며, turn이 끝날 때까지 불가능하면 보상 없이 불발한다.
+  소유자가 임의로 미리 불발시킬 수는 없다.
+- **미구현**(2026-09-10): 엔진은 아직 이 판정을 따르지 않는다. `CONTRACT_MARKET`
+  frame이 그 자리에서 막고, `exhausted_contract_choice_is_pending`이
+  `face_up_contract_ids`가 비었는지만 보므로 위 상황은 **교착**으로 끝난다(재현:
+  Bloodlines+Tech `--rotate-leaders` game seed 110, 양쪽 rotation). 보류를 구현하려면
+  frame을 미는 11개 호출부(`acquisition.py` 5, `agent_effects.py` 3,
+  `board_effects.py` 1 등)가 Agent turn과 Reveal turn 양쪽에 걸쳐 있어 각 문맥의
+  "turn 종료" 지점을 정해야 한다 — 별도 슬라이스다.
