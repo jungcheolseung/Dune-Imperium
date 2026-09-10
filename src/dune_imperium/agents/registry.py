@@ -6,6 +6,7 @@ from typing import Final
 from dune_imperium.agents.base import Agent
 from dune_imperium.agents.heuristic_agent import (
     SPACE_BONUSES_BEFORE_RETUNE,
+    UPRISING_SPACE_BONUSES,
     HeuristicAgent,
 )
 from dune_imperium.agents.random_agent import RandomAgent
@@ -47,6 +48,20 @@ def _heuristic_flat_cards(seed: int) -> Agent:
     return HeuristicAgent(seed=seed, spent_card_value=None)
 
 
+def _heuristic_uprising_table(seed: int) -> Agent:
+    """The heuristic with the priced Uprising space ranking on every ruleset.
+
+    Every ruleset uses that ranking now except one: the Tech Module keeps the
+    two-entry table, because a Tech tile is bought on a Landsraad visit
+    [Bloodlines p. 7] and the priced ranking puts the cheap Landsraad spaces
+    at the bottom (-6.6pp and -4.8pp, docs/evaluation/baseline-2026-09-10.md
+    section 15). This variant is the other side of that one open A/B, so
+    pricing a Tech ranking can be measured against it from the committed tree.
+    """
+
+    return HeuristicAgent(seed=seed, space_bonuses=UPRISING_SPACE_BONUSES)
+
+
 def _rollout(seed: int) -> Agent:
     return RolloutAgent(seed=seed)
 
@@ -60,6 +75,7 @@ BASELINE_AGENT_FACTORIES: Final[dict[str, AgentFactory]] = {
     "heuristic": _heuristic,
     "heuristic_untuned": _heuristic_untuned,
     "heuristic_flat_cards": _heuristic_flat_cards,
+    "heuristic_uprising_table": _heuristic_uprising_table,
     "rollout": _rollout,
 }
 

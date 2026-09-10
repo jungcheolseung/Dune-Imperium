@@ -250,7 +250,7 @@ _RETREAT_SCORE: Final = -1.0
 # with several cost options is one value, so Gather Support's two Solari for a
 # water and Spice Refinery's spice for two more Solari still tie; that and the
 # ``card_id`` half of an ``agent_turn`` tie are the remaining argument ties.
-_SPACE_BONUSES: Final[Mapping[str, float]] = MappingProxyType(
+UPRISING_SPACE_BONUSES: Final[Mapping[str, float]] = MappingProxyType(
     {
         # Permanent upgrades keep their established values.
         "swordmaster": 3.0,
@@ -292,38 +292,44 @@ SPACE_BONUSES_BEFORE_RETUNE: Final[Mapping[str, float]] = MappingProxyType(
 )
 
 
-# Which board space ranking applies. The retuned table above prices each
-# space's printed Uprising yield and measured +4.9pp and +5.1pp against the old
-# two-entry ranking on base+CHOAM, over two independent 2,000-match blocks
-# (2026-09-10, docs/evaluation/baseline-2026-09-10.md). With every expansion on
-# the same table measured -5.6pp, and an attempt to overlay the spaces the
-# expansions upgrade -- Immortality's revised Research Station
-# [Immortality pp. 5, 16], the Landsraad route to a Tech tile
-# [Bloodlines pp. 7, 12], the spaces holding a Commander [Bloodlines pp. 4, 12]
-# -- measured far worse still at -34pp, because lifting those mostly
-# non-Combat spaces pulled the agent out of Conflicts (Combat placements
-# 46.1% -> 39.7%, mean VP 8.20 -> 5.73). So the retune is scoped to the
-# rulesets it is measured on and an expansion table keeps the ranking it had;
-# pricing expansion spaces wants the Combat balance rebuilt with it, not a
-# bonus added on top.
+# Which board space ranking applies.
+#
+# The table above prices each space's printed Uprising yield and measured
+# +4.9pp and +5.1pp on base+CHOAM against the two-entry ranking it replaced
+# (2026-09-10). It was then scoped away from every expansion on one
+# all-expansion run that measured -5.6pp. Re-measuring per expansion, with the
+# expansions separated instead of stacked, says that -5.6pp was two effects
+# cancelling and that only one expansion dislikes the table
+# (docs/evaluation/baseline-2026-09-10.md section 15; 4,000 agent-games each):
+#
+#   Immortality only          +16.0pp   the table is what that ruleset wants
+#   Bloodlines only            +3.8pp
+#   Bloodlines + Tech Module   -6.6pp, -4.8pp on a second seed block
+#   all four expansions        -0.2pp, -0.8pp   the two above cancelling
+#
+# The Tech Module is the one that punishes it, and the reason is printed on
+# the Ixian Embassy: "during a turn in which you send an Agent to a Landsraad
+# board space, you may acquire one Tech tile" `[Bloodlines p. 7]`. The Tech
+# tile has no board space of its own -- the offer rides on whichever of the
+# five Landsraad spaces the Agent named -- and this table ranks the cheap ones
+# near the bottom (Assembly Hall 0.50, Gather Support 0.40). So the agent stops
+# visiting Landsraad and stops buying tiles: 2.48 -> 1.16 tiles a seat, with
+# Commanders 0.62 -> 0.35, over a 30-game all-option probe.
+#
+# Until a Tech ranking is priced and measured, that one ruleset keeps the
+# two-entry table it was measured with and every other ruleset uses the priced
+# one.
 def space_bonuses_for(observation: PlayerView) -> Mapping[str, float]:
     """Return the board space ranking measured for this view's ruleset.
 
-    The expansions are read off the observation, never a config the agent is
-    not given: a three-entry ``tech_stack_sizes`` means the Tech Module is on,
-    a seat's ``research_space`` is set only under Immortality, and a Skill
-    stack or a Commander on the board means Bloodlines. Every marker survives
-    a late game -- the stacks stay three once emptied, the Research tokens
-    never leave the track -- so the ranking cannot flip mid-game.
+    The Tech Module is read off the observation, never a config the agent is
+    not given: ``tech_stack_sizes`` has one entry per Ixian Embassy stack, and
+    the stacks stay on the board once emptied, so the ranking cannot flip
+    mid-game.
     """
 
-    expansion = (
-        len(observation.tech_stack_sizes) == 3
-        or any(seat.research_space for seat in observation.players)
-        or bool(observation.skill_stack_size)
-        or bool(observation.sardaukar_commander_space_ids)
-    )
-    return SPACE_BONUSES_BEFORE_RETUNE if expansion else _SPACE_BONUSES
+    tech_module = len(observation.tech_stack_sizes) == 3
+    return SPACE_BONUSES_BEFORE_RETUNE if tech_module else UPRISING_SPACE_BONUSES
 
 
 # Which card an Agent turn spends, once the board space is settled.
@@ -526,7 +532,7 @@ _TLEILAXU_DECK_TOP_BONUS: Final = 0.5
 def score_action(
     action: DomainAction,
     *,
-    space_bonuses: Mapping[str, float] = _SPACE_BONUSES,
+    space_bonuses: Mapping[str, float] = UPRISING_SPACE_BONUSES,
 ) -> float:
     """Rank one engine-legal action; higher is preferred.
 

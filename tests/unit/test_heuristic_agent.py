@@ -324,10 +324,10 @@ def test_every_board_space_is_ranked() -> None:
     # other 21 spaces tied at ``agent_turn``'s base and the agent picked among
     # them almost uniformly. New board content must come with a preference or
     # it silently rejoins that tie.
-    from dune_imperium.agents.heuristic_agent import _SPACE_BONUSES
+    from dune_imperium.agents.heuristic_agent import UPRISING_SPACE_BONUSES
     from dune_imperium.content.uprising.board import BOARD_SPACES
 
-    unranked = {space.space_id for space in BOARD_SPACES} - set(_SPACE_BONUSES)
+    unranked = {space.space_id for space in BOARD_SPACES} - set(UPRISING_SPACE_BONUSES)
 
     assert unranked == set()
 
@@ -386,27 +386,38 @@ def _view_for(**options: bool) -> PlayerView:
 
 
 def test_the_retuned_ranking_is_used_for_the_rulesets_it_was_measured_on() -> None:
-    from dune_imperium.agents.heuristic_agent import _SPACE_BONUSES, space_bonuses_for
+    from dune_imperium.agents.heuristic_agent import (
+        UPRISING_SPACE_BONUSES,
+        space_bonuses_for,
+    )
 
-    assert space_bonuses_for(_view_for()) is _SPACE_BONUSES
-    assert space_bonuses_for(_view_for(choam_module=True)) is _SPACE_BONUSES
-    assert space_bonuses_for(_view_for(promo_cards=True)) is _SPACE_BONUSES
+    assert space_bonuses_for(_view_for()) is UPRISING_SPACE_BONUSES
+    assert space_bonuses_for(_view_for(choam_module=True)) is UPRISING_SPACE_BONUSES
+    assert space_bonuses_for(_view_for(promo_cards=True)) is UPRISING_SPACE_BONUSES
 
 
-def test_an_expansion_table_keeps_the_ranking_it_was_measured_with() -> None:
-    # The retuned table measured +5pp on base+CHOAM but -5.6pp with every
-    # expansion on, and overlaying the spaces the expansions upgrade measured
-    # -34pp because it pulled the agent out of Conflicts. Until an expansion
-    # ranking is built and measured, those rulesets keep the old one.
+def test_only_the_tech_module_keeps_the_two_entry_ranking() -> None:
+    # Measured per expansion instead of with all of them stacked
+    # (docs/evaluation/baseline-2026-09-10.md section 15, 4,000 agent-games
+    # each): the priced table is worth +16.0pp under Immortality and +3.8pp
+    # under Bloodlines, and only the Tech Module rejects it (-6.6pp, -4.8pp).
+    # The all-expansion -0.2pp that scoped the table away from every expansion
+    # was those two cancelling.
     from dune_imperium.agents.heuristic_agent import (
         SPACE_BONUSES_BEFORE_RETUNE,
+        UPRISING_SPACE_BONUSES,
         space_bonuses_for,
     )
 
     for options in (
         {"bloodlines": True},
-        {"bloodlines": True, "tech_module": True},
         {"immortality": True},
+        {"bloodlines": True, "immortality": True},
+    ):
+        assert space_bonuses_for(_view_for(**options)) is UPRISING_SPACE_BONUSES
+
+    for options in (
+        {"bloodlines": True, "tech_module": True},
         {"bloodlines": True, "tech_module": True, "immortality": True},
     ):
         assert space_bonuses_for(_view_for(**options)) is SPACE_BONUSES_BEFORE_RETUNE
@@ -414,8 +425,8 @@ def test_an_expansion_table_keeps_the_ranking_it_was_measured_with() -> None:
 
 def test_the_ruleset_is_read_from_markers_that_outlive_their_supply() -> None:
     # Detection must not flip mid-game and hand a seat a different ranking
-    # than it started with: the Tech stacks stay three entries once emptied and
-    # the Research tokens never leave the track.
+    # than it started with: the Ixian Embassy keeps its three stacks on the
+    # board once they are emptied.
     from dataclasses import replace
 
     from dune_imperium.agents.heuristic_agent import (
