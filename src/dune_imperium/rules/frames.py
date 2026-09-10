@@ -189,6 +189,10 @@ def reset_turn_counters(
             spice_spent_turn=0,
             commander_recruited_turn=False,
             contracts_completed_turn=0,
+            # A held Contract icon never outlives the turn it was gained on
+            # (OQ-059); the turn's close fizzles it with an event and this is
+            # the belt-and-braces reset.
+            held_contract_icons=0,
             commander_discount_turn=0,
             ignores_influence_requirements_turn=False,
             granted_agent_icon_turn="",

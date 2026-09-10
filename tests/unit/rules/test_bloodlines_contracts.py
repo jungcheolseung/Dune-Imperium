@@ -456,3 +456,92 @@ def test_bloodlines_tiles_render_their_printed_conditions(
     assert contract_reward_text(contract_for_instance(DELIVER_SUPPLIES).reward) == (
         "Gain 1 solari, Place a Spy with Deep Cover"
     )
+
+
+def test_an_unreachable_market_holds_the_icon_instead_of_paying_solari() -> None:
+    # The market is not empty, so the printed conversion does not apply: "If
+    # all contracts have been taken by players, the icon reverts to giving you
+    # 2 Solari" [Main p. 16]. But the only token left is the Immediate, which
+    # "cannot be taken without an Intrigue card to trash" [Bloodlines p. 2].
+    # The icon waits for the turn instead of blocking it, and it pays nothing
+    # (OQ-059, user ruling 2026-09-10).
+    from dune_imperium.rules.contracts import (
+        contract_icons_must_be_held,
+        hold_contract_icons,
+    )
+
+    owner = _owner(intrigue_cards=())
+    state = _state(owner, market=(IMMEDIATE,))
+    opened = begin_contract_gain(state, 0, 1, source="probe").state
+
+    assert legal_contract_actions(opened, 0) == ()
+    assert contract_icons_must_be_held(opened)
+
+    held = hold_contract_icons(opened)
+    seat = held.state.players[0]
+    assert seat.held_contract_icons == 1
+    # No Solari, and the market is untouched.
+    assert seat.resources.solari == owner.resources.solari
+    assert held.state.face_up_contract_ids == (IMMEDIATE,)
+    assert held.state.decision_stack[-1].kind != "contract_market"
+    assert held.events[0].kind == "contract_icons_held"
+
+
+def test_a_held_icon_reopens_when_an_intrigue_card_arrives() -> None:
+    # Taking is not optional, so the icon must resolve if the turn makes it
+    # possible (OQ-057(1)).
+    from dune_imperium.rules.contracts import (
+        held_contract_icons_can_open,
+        open_held_contract_icons,
+    )
+
+    without = _owner(held_contract_icons=1, intrigue_cards=())
+    state = _state(without, market=(IMMEDIATE,))
+    assert not held_contract_icons_can_open(state, 0)
+
+    gained = replace(
+        state,
+        players=(
+            replace(without, intrigue_cards=(INTRIGUE[0],)),
+            *state.players[1:],
+        ),
+    )
+    assert held_contract_icons_can_open(gained, 0)
+
+    reopened = open_held_contract_icons(gained, 0)
+    assert reopened.state.players[0].held_contract_icons == 0
+    assert reopened.state.decision_stack[-1].kind == "contract_market"
+    assert dict(reopened.state.decision_stack[-1].context)["remaining"] == 1
+    assert [a.action_id for a in legal_contract_actions(reopened.state, 0)] == [
+        "take_contract"
+    ]
+
+
+def test_a_held_icon_fizzles_with_the_turn_and_pays_nothing() -> None:
+    from dune_imperium.rules.contracts import fizzle_held_contract_icons
+
+    owner = _owner(held_contract_icons=2, intrigue_cards=())
+    state = _state(owner, market=(IMMEDIATE,))
+
+    fizzled = fizzle_held_contract_icons(state, 0, source="probe")
+    seat = fizzled.state.players[0]
+
+    assert seat.held_contract_icons == 0
+    assert seat.resources.solari == owner.resources.solari
+    assert fizzled.events[0].kind == "contract_icons_fizzled"
+    assert dict(fizzled.events[0].payload)["count"] == 2
+    # Nothing to do when none are held.
+    assert fizzle_held_contract_icons(fizzled.state, 0, source="probe").events == ()
+
+
+def test_an_empty_market_still_converts_to_two_solari() -> None:
+    # The held path must not swallow the printed conversion [Main p. 16].
+    from dune_imperium.rules.contracts import contract_icons_must_be_held
+
+    owner = _owner(intrigue_cards=())
+    state = _state(owner, market=())
+    result = begin_contract_gain(state, 0, 2, source="probe")
+
+    assert result.state.players[0].resources.solari == owner.resources.solari + 4
+    assert result.state.players[0].held_contract_icons == 0
+    assert not contract_icons_must_be_held(result.state)

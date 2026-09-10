@@ -24,7 +24,7 @@ from dune_imperium.simulation import run_random_game
 
 
 def test_layout_is_versioned_and_contiguous() -> None:
-    assert OBSERVATION_VERSION == 19
+    assert OBSERVATION_VERSION == 20
     # 66 Uprising personal-card identities plus 26 Bloodlines Imperium
     # identities, the Bloodlines promo, 25 Immortality Imperium identities,
     # Experimentation and the 19 Tleilaxu deck cards (promo included); 39
@@ -50,8 +50,10 @@ def test_layout_is_versioned_and_contiguous() -> None:
     # v15: Chairdog's pending returns and Usurp's borrowed Row card per seat
     # (4,227 -> 4,235).
     # v16: Bloodlines' eight contract tokens in each of the 11 contract segments.
+    # v20: one seat scalar for the Contract icons held to the turn's end when
+    # nothing in a non-empty market could be taken (OQ-059).
     assert OBSERVATION_SIZE == (
-        3038 + 24 + 4 * 21 + 1 + 19 + 563 + 400 + 8 + 90 + 8 + 11 * 8
+        3038 + 24 + 4 * 21 + 1 + 19 + 563 + 400 + 8 + 90 + 8 + 11 * 8 + 4
     )
 
     offset = 0

@@ -549,6 +549,7 @@ def apply_agent_turn_finish(
         fizzle_pending_agent_icons,
         resolve_agent_card_effect,
     )
+    from dune_imperium.rules.contracts import fizzle_held_contract_icons
     from dune_imperium.rules.effects import pending_agent_icons
     from dune_imperium.rules.graft import apply_graft_switch, legal_graft_switch_actions
 
@@ -589,6 +590,15 @@ def apply_agent_turn_finish(
             events.extend(switched.events)
             continue
         break
+    # A Contract icon that never found a token it could take fizzles with the
+    # turn, without the two-Solari conversion (OQ-059).
+    fizzled_contracts = fizzle_held_contract_icons(
+        working,
+        action.actor,
+        source=f"round:{state.round_number}:player:{action.actor}:finish_agent_turn",
+    )
+    working = fizzled_contracts.state
+    events.extend(fizzled_contracts.events)
     event = GameEvent(
         event_id=f"round:{state.round_number}:player:{action.actor}:finish_agent_turn",
         kind="agent_turn_finished",

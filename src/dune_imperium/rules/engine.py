@@ -117,11 +117,15 @@ from dune_imperium.rules.contracts import (
     apply_contract_spy_action,
     apply_exhausted_contract_solari,
     complete_alliance_contracts,
+    contract_icons_must_be_held,
     exhausted_contract_choice_is_pending,
+    held_contract_icons_can_open,
+    hold_contract_icons,
     legal_contract_actions,
     legal_contract_intrigue_trash_actions,
     legal_contract_recall_actions,
     legal_contract_spy_actions,
+    open_held_contract_icons,
     resolve_exhausted_contract_choice,
 )
 from dune_imperium.rules.endgame import (
@@ -131,7 +135,7 @@ from dune_imperium.rules.endgame import (
     finish_endgame_without_pending_effects,
     legal_endgame_intrigue_actions,
 )
-from dune_imperium.rules.frames import FrameKind, owned_top_frame
+from dune_imperium.rules.frames import FrameKind, owned_top_frame, turn_owner_of
 from dune_imperium.rules.graft import (
     apply_graft_partner,
     apply_graft_switch,
@@ -818,6 +822,16 @@ class UprisingRulesEngine(RulesEngine):
         return observe_state(state, player)
 
 
+
+def _held_contract_owner(state: GameState) -> int | None:
+    """Turn owner whose held Contract icons can reopen the market now."""
+
+    player = turn_owner_of(state)
+    if player is None or not held_contract_icons_can_open(state, player):
+        return None
+    return player
+
+
 def _advance_automatic(result: RuleResult) -> RuleResult:
     state = result.state
     events: list[GameEvent] = list(result.events)
@@ -828,6 +842,15 @@ def _advance_automatic(result: RuleResult) -> RuleResult:
             automatic = resolve_usurp_trash(state)
         elif exhausted_contract_choice_is_pending(state):
             automatic = resolve_exhausted_contract_choice(state)
+        elif contract_icons_must_be_held(state):
+            # Nothing in a non-empty market is reachable, so the icon waits for
+            # the rest of the turn rather than blocking it (OQ-059).
+            automatic = hold_contract_icons(state)
+        elif (held_owner := _held_contract_owner(state)) is not None:
+            # The wait ended inside the same turn -- an Intrigue card arrived,
+            # or a token the owner can take was flipped up. Taking is not
+            # optional, so the market reopens on its own (OQ-057(1)).
+            automatic = open_held_contract_icons(state, held_owner)
         elif skill_choice_is_queued(state):
             automatic = begin_skill_choice(state)
         elif navigation_play_is_queued(state):

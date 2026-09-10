@@ -101,6 +101,15 @@ class PlayerState:
     commander_recruited_turn: bool = False
     # Contracts completed during the current turn (Mercantile Affairs).
     contracts_completed_turn: int = 0
+    # Contract icons this turn that found nothing they could take. The market
+    # was not empty -- so the printed two-Solari conversion does not apply,
+    # its condition being "if all contracts have been taken by players"
+    # [Main p. 16] -- but every face-up token was unreachable, which happens
+    # when only the Bloodlines Immediate is left and there is no Intrigue card
+    # to trash [Bloodlines p. 2]. The icon waits here until the turn ends,
+    # resolving if the owner gains an Intrigue meanwhile and fizzling with no
+    # reward otherwise (OQ-059).
+    held_contract_icons: int = 0
     # Turn-scoped Plot modifiers (Bloodlines): Honor Guard's Commander
     # discount, Insider Information's requirement waiver, and the Agent icon
     # Emperor's Invitation grants to the card played this turn ("" = none).
@@ -239,6 +248,7 @@ class PlayerState:
             self.commanders_conflict,
             self.skill_strength_applied,
             self.contracts_completed_turn,
+            self.held_contract_icons,
             self.commander_discount_turn,
             self.spies_boxed,
             self.spies_recalled_turn,

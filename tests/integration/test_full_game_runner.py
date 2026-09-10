@@ -113,3 +113,43 @@ def test_policy_runner_requires_one_agent_per_seat() -> None:
             game_seed=16,
             agents=(HeuristicAgent(seed=1),),
         )
+
+
+def test_the_seeds_that_deadlocked_on_an_unreachable_market_now_finish() -> None:
+    # Bloodlines+Tech tournament seed 110 reached a Contract icon whose market
+    # held only the Immediate with no Intrigue card to trash, so nothing was
+    # takeable, the market was not empty, and the turn had no legal action
+    # (OQ-059). The icon is held to the turn's end and fizzles now.
+    from dune_imperium.agents.registry import make_agent
+    from dune_imperium.evaluation.tournament import tournament_specs
+
+    specs = [
+        spec
+        for spec in tournament_specs(
+            agents=(
+                "heuristic",
+                "heuristic_untuned",
+                "heuristic",
+                "heuristic_untuned",
+            ),
+            games=500,
+            start_seed=0,
+            rulesets=(True,),
+            rotate_leaders=True,
+            bloodlines=True,
+            tech_module=True,
+        )
+        if spec.game_seed == 110
+    ]
+    assert len(specs) == 2
+
+    for spec in specs:
+        assert spec.leader_ids is not None
+        engine = UprisingRulesEngine(leader_ids=spec.leader_ids)
+        agents = tuple(
+            make_agent(kind, spec.policy_seed + seat)
+            for seat, kind in enumerate(spec.seat_agents)
+        )
+        result = run_policy_game(engine, spec.config, spec.game_seed, agents)
+        assert result.state.phase is GamePhase.FINISHED
+        assert replay_game(engine, result.replay).phase is GamePhase.FINISHED

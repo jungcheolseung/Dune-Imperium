@@ -3883,12 +3883,28 @@ def finish_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         working = replace(
             working, imperium_removed=(*working.imperium_removed, *removed)
         )
+    # A Contract icon that never found a token it could take lapses with the
+    # turn, without the two-Solari conversion (OQ-059).
+    held_contracts = owner.held_contract_icons
+    if held_contracts:
+        lapsed_events = (
+            *lapsed_events,
+            GameEvent(
+                event_id=(
+                    f"round:{working.round_number}:player:{action.actor}:"
+                    f"finish_reveal:contract_icons_fizzled:{held_contracts}"
+                ),
+                kind="contract_icons_fizzled",
+                payload=(("count", held_contracts), ("player", action.actor)),
+            ),
+        )
     next_owner = replace(
         owner,
         has_revealed=True,
         discard_pile=(*owner.discard_pile, *owner.in_play),
         in_play=(),
         imperium_set_aside=(),
+        held_contract_icons=0,
     )
     players = tuple(
         next_owner if player.player_id == action.actor else player
