@@ -225,7 +225,9 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
     Reveal turn 양쪽에 걸쳐 있어 별도 슬라이스다.
 - registry에 **`heuristic_uprising_table`**(재정비 표를 모든 룰셋에 고정)을 남겨 두었다 —
   남은 Tech 표 A/B의 반대편이다.
-- 검증: pytest **1,498**(신규 3), Ruff, mypy 통과.
+- 검증: pytest **1,498**(신규 3), Ruff, mypy 통과. 소크: 표가 바뀐 룰셋 3종 각 150판
+  (`--soundness-interval 10`, Immortality는 `--privacy-interval 3`도) 실패 0. A/B는
+  이 세션 전체에서 약 3만 match를 돌았고 실패는 위 결함 3건이 전부다.
 
 ## 2026-09-10 심야 spent-card 동점 세션 요약 (master, 관측 v19, codec v104)
 
