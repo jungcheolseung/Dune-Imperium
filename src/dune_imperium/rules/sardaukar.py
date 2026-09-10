@@ -136,6 +136,8 @@ def legal_sardaukar_commander_actions(
 ) -> tuple[DomainAction, ...]:
     """Offer the visited space's Commander for 2 Solari, or its refusal."""
 
+    if not state.config.bloodlines:
+        return ()
     context = _owned_effect_context(state, player)
     if context is None or not board_icon_is_pending(context, BOARD_ICON_COMMANDER):
         return ()
@@ -566,6 +568,8 @@ def legal_skill_trash_actions(
 
     if not 0 <= player < state.config.players:
         raise ValueError("player must identify a configured seat")
+    if not state.config.bloodlines:
+        return ()
     if owned_top_frame(state, FrameKind.REVEAL, player) is None:
         return ()
     owner = state.players[player]

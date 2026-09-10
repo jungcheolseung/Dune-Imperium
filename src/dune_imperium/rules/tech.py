@@ -611,6 +611,8 @@ def legal_tech_reveal_actions(
     Influence at all.
     """
 
+    if not state.config.tech_module:
+        return ()
     frame = _reveal_top(state, player)
     if frame is None:
         return ()

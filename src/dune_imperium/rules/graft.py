@@ -281,6 +281,8 @@ def legal_graft_switch_actions(
     atomic selection of the active box is under way.
     """
 
+    if not state.config.immortality:
+        return ()
     try:
         frame, context = current_agent_effect_context(state)
     except ValueError:

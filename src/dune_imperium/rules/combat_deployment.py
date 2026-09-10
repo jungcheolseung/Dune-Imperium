@@ -158,6 +158,8 @@ def legal_commander_deployments(
     [Main p. 10].
     """
 
+    if not state.config.bloodlines:
+        return ()
     found = _deployment_context(state, player)
     if found is None:
         return ()
@@ -221,6 +223,8 @@ def legal_commander_withdrawals(
 ) -> tuple[DomainAction, ...]:
     """Enumerate how many of this turn's deployed Commanders may return."""
 
+    if not state.config.bloodlines:
+        return ()
     found = _deployment_context(state, player)
     if found is None:
         return ()
