@@ -268,12 +268,19 @@ def card_can_access_space(
     owner: PlayerState,
     *,
     any_icon: bool = False,
+    recalled_post_id: str | None = None,
 ) -> bool:
     """Return whether a card's Agent icons make ``space`` a destination.
 
     A printed icon grants direct access. The Spy Agent icon instead grants
     access when at least one of the owner's currently placed Spies is connected
     to the destination, without recalling that Spy.
+
+    ``recalled_post_id`` counts one post the owner no longer holds a Spy on.
+    An Infiltrate on the same placement recalls a Spy as its own cost
+    `[Main p. 11]` `[FAQ p. 4]`, and the Graft partner choice that follows has
+    to judge access in the state the placement was judged in, not after that
+    cost was paid.
     """
 
     if any_icon or space.agent_icon in agent_icons:
@@ -288,7 +295,12 @@ def card_can_access_space(
     # Mohiam card].
     if AgentIcon.SPY not in agent_icons and owner.leader_id != "gaius_helen_mohiam":
         return False
-    return bool(_connected_spy_post_ids(owner, space.space_id))
+    if _connected_spy_post_ids(owner, space.space_id):
+        return True
+    return recalled_post_id is not None and any(
+        post.post_id == recalled_post_id and space.space_id in post.connected_space_ids
+        for post in OBSERVATION_POSTS
+    )
 
 
 def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
@@ -469,6 +481,14 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
                 ),
                 context=(
                     ("card_id", card_instance_id),
+                    # The Spy icon "이 아이콘을 사용하기 위해 Spy를 회수하지는
+                    # 않는다" `[Main p. 11]`, but an Infiltrate on the same
+                    # placement recalls a Spy as its own cost `[Main p. 11]`
+                    # `[FAQ p. 4]`. When the access the partner supplies was
+                    # that Spy's, it is gone by the time the partner is picked,
+                    # so the post is recorded and the partner choice judges
+                    # access with the Spy still on it.
+                    ("infiltrate_post_id", infiltrate_post_id or ""),
                     (
                         "occupied",
                         infiltrate_post_id is None

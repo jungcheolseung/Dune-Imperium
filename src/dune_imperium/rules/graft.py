@@ -81,6 +81,18 @@ def legal_graft_partner_actions(
     # that fit Bene Gesserit; with none in hand the turn had no legal action at
     # all (2026-09-10 all-expansion A/B, game seed 499).
     placed_reaches = context.get("placed_reaches") is True
+    # The same spent access on the partner's side. A Spy icon reaches every
+    # space connected to a post the owner has a Spy on and "이 아이콘을
+    # 사용하기 위해 Spy를 회수하지는 않는다" `[Main p. 11]`, but an Infiltrate
+    # on the same placement recalls a Spy as its own cost `[Main p. 11]`
+    # `[FAQ p. 4]`. A card with no icons of its own leans entirely on the
+    # partner (Usurp), so when that partner's access was the Infiltrated Spy's
+    # every candidate filtered out and the turn had no legal action at all
+    # (2026-09-10 Immortality A/B, game seeds 70254 and 70804). Access is
+    # judged with the Spy back on the post it was recalled from, which is the
+    # state the placement was judged in.
+    recalled = context.get("infiltrate_post_id")
+    recalled_post_id = recalled if isinstance(recalled, str) and recalled else None
     # Long Reach entered on the promise of Ghola's copy (OQ-057): only Ghola
     # may then be the partner.
     needs_ghola = False
@@ -92,6 +104,7 @@ def legal_graft_partner_actions(
             space,
             owner,
             any_icon=card_is_boosted(placed, owner),
+            recalled_post_id=recalled_post_id,
         )
     # Only a placed card that cannot reach the space by any means of its own
     # (Usurp, which has no icons) leans on the partner for access.
@@ -130,6 +143,7 @@ def legal_graft_partner_actions(
                 space,
                 owner,
                 any_icon=card_is_boosted(personal_card_for_instance(card_id), owner),
+                recalled_post_id=recalled_post_id,
             )
         )
     )

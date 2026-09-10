@@ -447,3 +447,60 @@ def test_a_graft_placed_on_a_leaders_icon_keeps_its_partners() -> None:
     assert opened.decision_stack[-1].kind == "graft_partner"
     assert dict(opened.decision_stack[-1].context)["placed_reaches"] is True
     assert set(_partners(opened)) == {partner}
+
+
+def test_an_infiltrating_usurp_keeps_the_partner_whose_spy_let_it_in() -> None:
+    # The partner-side half of the same trap. Usurp prints no Agent icon at
+    # all, so the access is always the partner's: Guild Spy's Spy icon reaches
+    # "현재 자신의 Spy가 놓인 관측소와 연결된 공간" and "이 아이콘을 사용하기
+    # 위해 Spy를 회수하지는 않는다" [Main p. 11]. Infiltrate on the same
+    # placement does recall that Spy as its own cost [Main p. 11] [FAQ p. 4],
+    # so re-deriving partner access afterwards filtered every candidate out and
+    # the turn had no legal action (2026-09-10 Immortality A/B, game seeds
+    # 70254 and 70804).
+    placed = "tleilaxu:usurp:0"
+    partner = "imperium:guild_spy:0"
+    owner = _owner(
+        (placed, partner),
+        spy_post_ids=("bene-gesserit-espionage-secrets",),
+        spies_supply=2,
+    )
+    blocker = PlayerState(
+        player_id=1,
+        research_space=RESEARCH_START_ID,
+        family_atomics=True,
+        agents_available=1,
+        agent_locations=("secrets",),
+    )
+    state = _state(
+        owner,
+        players=(
+            owner,
+            blocker,
+            *(
+                PlayerState(
+                    player_id=seat,
+                    research_space=RESEARCH_START_ID,
+                    family_atomics=True,
+                )
+                for seat in (2, 3)
+            ),
+        ),
+    )
+
+    placement = next(
+        action
+        for action in legal_agent_actions(state, 0)
+        if dict(action.arguments).get("space_id") == "secrets"
+        and dict(action.arguments).get("card_id") == placed
+        and dict(action.arguments).get("graft") is True
+    )
+    opened = apply_agent_action(state, placement).state
+
+    # Usurp reaches nothing on its own, and the Spy that let the partner in is
+    # spent -- so the frame has to carry the post it was recalled from.
+    assert opened.players[0].spy_post_ids == ()
+    context = dict(opened.decision_stack[-1].context)
+    assert context["placed_reaches"] is False
+    assert context["infiltrate_post_id"] == "bene-gesserit-espionage-secrets"
+    assert partner in _partners(opened)
