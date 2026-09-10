@@ -8,7 +8,10 @@ import pytest
 
 from dune_imperium import RulesetConfig
 from dune_imperium.cli.sweep import main as sweep_main
-from dune_imperium.core import GamePhase
+from dune_imperium.content.bloodlines import SKILLS, tech_tiles_for
+from dune_imperium.content.immortality import tleilaxu_cards_for
+from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
+from dune_imperium.core import GamePhase, GameState
 from dune_imperium.core.observation import observe_state
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.simulation import (
@@ -171,6 +174,14 @@ def test_small_sweep_covers_both_rulesets() -> None:
     assert report.total_steps > 200
 
 
+def _expansion_state() -> GameState:
+    """A fresh setup with every expansion zone the census now covers filled."""
+
+    return UprisingRulesEngine().reset(
+        RulesetConfig(bloodlines=True, tech_module=True, immortality=True), seed=68
+    )
+
+
 def test_census_detects_a_vanished_card() -> None:
     engine = UprisingRulesEngine()
     state = engine.reset(RulesetConfig(), seed=63)
@@ -198,6 +209,42 @@ def test_census_detects_cross_player_duplication() -> None:
     )
 
     with pytest.raises(InvariantViolation, match="two zones"):
+        check_state_invariants(corrupted, census)
+
+
+def test_census_detects_a_vanished_tech_tile() -> None:
+    state = _expansion_state()
+    census = CardCensus.from_state(state)
+    assert any(state.tech_stacks)
+
+    head, *rest = state.tech_stacks
+    corrupted = replace(state, tech_stacks=(head[:-1], *rest))
+
+    with pytest.raises(InvariantViolation, match="Tech tile instances changed"):
+        check_state_invariants(corrupted, census)
+
+
+def test_census_detects_a_vanished_skill_tile() -> None:
+    state = _expansion_state()
+    census = CardCensus.from_state(state)
+    assert state.skill_stack
+
+    corrupted = replace(state, skill_stack=state.skill_stack[1:])
+
+    with pytest.raises(InvariantViolation, match="Skill tile instances changed"):
+        check_state_invariants(corrupted, census)
+
+
+def test_census_detects_a_lost_sardaukar_commander() -> None:
+    state = _expansion_state()
+    census = CardCensus.from_state(state)
+    assert state.sardaukar_commanders_bank
+
+    corrupted = replace(
+        state, sardaukar_commanders_bank=state.sardaukar_commanders_bank - 1
+    )
+
+    with pytest.raises(InvariantViolation, match="Sardaukar Commander count changed"):
         check_state_invariants(corrupted, census)
 
 
@@ -230,6 +277,44 @@ def test_privacy_scramble_changes_hidden_state_but_not_the_view() -> None:
     assert known in scrambled_marked.players[1].hand
     assert scrambled_marked.players[1].hand_public == (known,)
     check_observation_privacy(marked)
+
+
+def test_privacy_scramble_reorders_the_expansion_hidden_zones() -> None:
+    # The Conflict deck [Main p. 4], the face-down Skill stack
+    # [Bloodlines p. 3] and the Tleilaxu deck [Immortality p. 4] are observed
+    # as sizes only; the scramble must still move them, or the privacy check
+    # is blind to any later leak out of those zones.
+    state = _expansion_state()
+    assert len(state.conflict_deck) > 1
+    assert len(state.skill_stack) > 1
+    assert len(state.tleilaxu_deck) > 1
+
+    scrambled = _scramble_hidden_information(state, observer=0)
+
+    assert scrambled.conflict_deck != state.conflict_deck
+    assert scrambled.skill_stack != state.skill_stack
+    assert scrambled.tleilaxu_deck != state.tleilaxu_deck
+    # hidden_card_owners maps the undealt Twisted stock to nobody, so it is a
+    # hidden global zone like the decks above.
+    assert len(state.twisted_deck_stock) > 1
+    assert scrambled.twisted_deck_stock != state.twisted_deck_stock
+    # Each zone's public counterpart must stay exactly in place.
+    assert scrambled.current_conflict_ids == state.current_conflict_ids
+    assert scrambled.skill_face_up == state.skill_face_up
+    assert scrambled.tleilaxu_row == state.tleilaxu_row
+
+    # The unused I and II Conflicts went to the box face down [Main p. 4], so
+    # they are hidden too and share each tier's pool with the deck: the boxed
+    # set must move, while the publicly layered tier at every deck depth
+    # ("위에서부터 I 1장, II 5장, III 4장" [Main p. 4]) must not.
+    assert set(scrambled.unused_conflict_ids) != set(state.unused_conflict_ids)
+    tiers = [CONFLICTS_BY_ID[card].tier for card in state.conflict_deck]
+    assert [CONFLICTS_BY_ID[card].tier for card in scrambled.conflict_deck] == tiers
+    assert set(scrambled.conflict_deck) | set(scrambled.unused_conflict_ids) == set(
+        state.conflict_deck
+    ) | set(state.unused_conflict_ids)
+
+    check_observation_privacy(state)
 
 
 def test_event_visibility_rejects_a_public_event_naming_a_hidden_card() -> None:
@@ -357,6 +442,7 @@ def test_normalize_instance_id_strips_prefix_and_copy_index() -> None:
         == "smuggler_s_harvester"
     )
     assert normalize_instance_id("intrigue:cunning:1") == "cunning"
+    assert normalize_instance_id("tleilaxu:face_dancer:0") == "face_dancer"
     assert normalize_instance_id("player:2:starter:signet_ring:0") == "signet_ring"
     assert normalize_instance_id("bare_identity") == "bare_identity"
 
@@ -391,6 +477,103 @@ def test_coverage_census_reports_normalized_identities() -> None:
     zero = zero_coverage(coverage, choam_module=False)
     # This Conflict never gets drawn into this seeded ten-card deck.
     assert "seize_spice_refinery" in zero["conflicts"]
+
+
+def test_coverage_census_records_expansion_components() -> None:
+    report = run_checked_game(
+        RulesetConfig(bloodlines=True, tech_module=True, immortality=True),
+        game_seed=61,
+        policy_seed=700061,
+        privacy_interval=0,
+        verify_replay=False,
+        collect_coverage=True,
+    )
+    coverage = report.coverage
+    assert coverage is not None
+
+    # Every expansion component a game takes has its own dimension, so the
+    # census can name the individual tile, card, or Skill instead of only the
+    # acquire action.
+    tech_seen = coverage["tech_acquired"]
+    tleilaxu_seen = coverage["tleilaxu_acquired"]
+    skills_seen = coverage["skills_taken"]
+    assert tech_seen
+    assert tleilaxu_seen
+    assert skills_seen
+
+    assert set(tech_seen) <= {tile.tech_id for tile in tech_tiles_for(True)}
+    assert set(skills_seen) <= {skill.skill_id for skill in SKILLS}
+    # Tleilaxu Row cards are per-copy personal card instances, so this
+    # dimension (and cards_played) counts identities with no copy index.
+    assert set(tleilaxu_seen) <= {
+        entry.card.card_id for entry in tleilaxu_cards_for(True)
+    }
+    for key in coverage["cards_played"]:
+        assert not key.rsplit(":", 1)[-1].isdigit()
+
+    zero = zero_coverage(
+        coverage,
+        choam_module=False,
+        bloodlines=True,
+        tech_module=True,
+        immortality=True,
+    )
+    for dimension, seen in (
+        ("tech_acquired", tech_seen),
+        ("tleilaxu_acquired", tleilaxu_seen),
+        ("skills_taken", skills_seen),
+    ):
+        assert zero[dimension]
+        assert set(zero[dimension]).isdisjoint(seen)
+
+
+def test_zero_coverage_reports_unseen_expansion_components() -> None:
+    census = {
+        "tech_acquired": {"delivery_bay": 3},
+        "tleilaxu_acquired": {"chairdog": 2},
+        "skills_taken": {"hardy": 1},
+    }
+
+    zero = zero_coverage(
+        census,
+        choam_module=True,
+        promo_cards=True,
+        bloodlines=True,
+        tech_module=True,
+        immortality=True,
+    )
+
+    assert zero["tech_acquired"] == sorted(
+        {tile.tech_id for tile in tech_tiles_for(True)} - {"delivery_bay"}
+    )
+    assert zero["skills_taken"] == sorted(
+        {skill.skill_id for skill in SKILLS} - {"hardy"}
+    )
+    assert zero["tleilaxu_acquired"] == sorted(
+        {entry.card.card_id for entry in tleilaxu_cards_for(True)} - {"chairdog"}
+    )
+    # The CHOAM Module's tile and the Tleilaxu promo belong to the universe
+    # only when their own option deals them.
+    assert "choam_transports" in zero["tech_acquired"]
+    assert "piter_genius_advisor" in zero["tleilaxu_acquired"]
+
+
+def test_zero_coverage_expansion_universes_follow_the_ruleset_options() -> None:
+    without_modules = zero_coverage({}, choam_module=False)
+
+    assert without_modules["tech_acquired"] == []
+    assert without_modules["tleilaxu_acquired"] == []
+    assert without_modules["skills_taken"] == []
+
+    with_modules = zero_coverage(
+        {}, choam_module=False, bloodlines=True, tech_module=True, immortality=True
+    )
+
+    assert "choam_transports" not in with_modules["tech_acquired"]
+    assert len(with_modules["tech_acquired"]) == len(tech_tiles_for(False))
+    assert "piter_genius_advisor" not in with_modules["tleilaxu_acquired"]
+    assert len(with_modules["tleilaxu_acquired"]) == len(tleilaxu_cards_for(False))
+    assert len(with_modules["skills_taken"]) == len(SKILLS)
 
 
 def test_rotate_leaders_specs_are_deterministic_with_four_distinct_ids() -> None:

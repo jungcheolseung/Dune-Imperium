@@ -4,8 +4,9 @@
 accumulated ``event_log`` and buckets what content the game actually touched:
 which action IDs were applied, which board spaces (and cost options) hosted
 an agent, which cards were played, acquired, or revealed, which Intrigue
-cards, Contracts, Conflicts, and Leader events fired, and which chance
-decision families and event kinds occurred. ``merge_coverage`` sums two
+cards, Contracts, Conflicts, and Leader events fired, which expansion
+components (Tech tiles, Skills, Tleilaxu cards) were taken, and which
+chance decision families and event kinds occurred. ``merge_coverage`` sums two
 censuses together (e.g. across every game in a sweep), and ``zero_coverage``
 compares a merged census against the content catalogs the engine actually
 offers for one ruleset, reporting which catalog entries were never touched.
@@ -21,6 +22,9 @@ from typing import Final
 
 from dune_imperium.adapters.action_codec import ActionCodec
 from dune_imperium.config import RulesetConfig
+from dune_imperium.content.bloodlines.sardaukar import SKILLS
+from dune_imperium.content.bloodlines.tech import tech_tiles_for
+from dune_imperium.content.immortality.tleilaxu import tleilaxu_deck_instance_ids
 from dune_imperium.content.uprising.board import BOARD_SPACES
 from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.contracts import contract_instance_ids
@@ -36,10 +40,11 @@ from dune_imperium.core.state import GameState
 type Census = dict[str, dict[str, int]]
 
 # Per-copy instance IDs look like "imperium:<slug>:<copy>",
-# "reserve:<slug>:<copy>", "intrigue:<slug>:<copy>", or
+# "reserve:<slug>:<copy>", "intrigue:<slug>:<copy>", "tleilaxu:<slug>:<copy>"
+# (Immortality Row cards are personal card instances too), or
 # "player:<seat>:starter:<slug>:<copy>"; every dimension that counts cards
 # instead of physical copies normalizes down to the shared "<slug>" identity.
-_INSTANCE_PREFIXES: Final = ("imperium:", "reserve:", "intrigue:")
+_INSTANCE_PREFIXES: Final = ("imperium:", "reserve:", "intrigue:", "tleilaxu:")
 _STARTER_INSTANCE: Final = re.compile(r"^player:\d+:starter:(?P<identity>.+):\d+$")
 _INTEGER_TOKEN: Final = re.compile(r":\d+")
 
@@ -139,6 +144,26 @@ def collect_game_coverage(
             conflict_id = payload.get("conflict_id")
             if isinstance(conflict_id, str):
                 _bump(census, "conflicts", conflict_id)
+        elif event.kind == "tech_acquired":
+            # The only place a Tech tile leaves the Ixian Embassy stacks for
+            # a player's tableau [Bloodlines pp. 6-7].
+            tech_id = payload.get("tech_id")
+            if isinstance(tech_id, str):
+                _bump(census, "tech_acquired", tech_id)
+        elif event.kind == "tleilaxu_card_acquired":
+            # The payload already names the Row card's identity, not its
+            # copy, but normalizing keeps this dimension's keys shaped like
+            # every other card dimension's.
+            card_id = payload.get("card_id")
+            if isinstance(card_id, str):
+                _bump(census, "tleilaxu_acquired", normalize_instance_id(card_id))
+        elif event.kind == "skill_gained":
+            # Recruiting a Sardaukar Commander, and Plasteel Blades' trash,
+            # both take a face-up Skill through this one event
+            # [Bloodlines pp. 4, 7].
+            skill_id = payload.get("skill_id")
+            if isinstance(skill_id, str):
+                _bump(census, "skills_taken", skill_id)
         elif event.kind.startswith("leader_") or event.kind == "feyd_token_advanced":
             leader_id = _leader_id_for_event(final_state, payload)
             if leader_id is not None:
@@ -232,6 +257,27 @@ def zero_coverage(
     _report_by_identity("intrigue_played", intrigue_identities)
     _report("contracts", set(contract_instance_ids(bloodlines=bloodlines)))
     _report("conflicts", {conflict.card.card_id for conflict in CONFLICTS})
+    # Each expansion catalog is the one ``rules.setup`` actually deals: the
+    # Tech stacks only hold CHOAM Transports with the CHOAM Module
+    # [Bloodlines pp. 2, 6], and the Tleilaxu deck only holds the promo with
+    # ``promo_cards``. Without the option the universe is empty, so the
+    # dimension is reported as fully covered instead of guessed at.
+    _report(
+        "tech_acquired",
+        {tile.tech_id for tile in tech_tiles_for(choam_module)} if tech_module else (),
+    )
+    _report(
+        "tleilaxu_acquired",
+        (
+            {
+                normalize_instance_id(instance_id)
+                for instance_id in tleilaxu_deck_instance_ids(promo_cards)
+            }
+            if immortality
+            else ()
+        ),
+    )
+    _report("skills_taken", {skill.skill_id for skill in SKILLS} if bloodlines else ())
     _report_by_identity(
         "leader_events",
         {

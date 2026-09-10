@@ -8,7 +8,8 @@ sweep can see across containers and time:
 - global card conservation: every tracked instance sits in exactly one zone
   and the game-wide set never changes after setup (Reserve copies instead
   satisfy a stack-plus-live-count equation because trashed Reserve cards
-  return to their stacks and copy IDs are re-issued);
+  return to their stacks and copy IDs are re-issued, and Sardaukar Commanders
+  are counters, so their total is conserved instead of a set);
 - progress: a pending player decision must offer at least one legal action;
 - visibility: a player's observation must not depend on hidden information
   (deck orders, opponents' hand and Intrigue identities [Main p. 7], the
@@ -21,6 +22,8 @@ sweep can see across containers and time:
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, replace
 
+from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
+from dune_imperium.content.uprising.types import ConflictTier
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.observation import (
     observe_state,
@@ -97,6 +100,48 @@ def _all_contract_ids(state: GameState) -> Iterator[str]:
         yield from player.completed_contract_ids
 
 
+def _all_tech_ids(state: GameState) -> Iterator[str]:
+    """Yield every Tech tile in play: 18 tiles, 17 without CHOAM Transports.
+
+    The Ixian Embassy's three stacks hold them face down below the top
+    [Bloodlines pp. 2, 6]; a tile then sits on a player board, face down on
+    Kota Odax's Leader as the Secret Project, or in the trash.
+    """
+
+    for stack in state.tech_stacks:
+        yield from stack
+    yield from state.tech_trash
+    for player in state.players:
+        yield from player.tech_ids
+        if player.secret_project_tech_id:
+            yield player.secret_project_tech_id
+
+
+def _all_skill_ids(state: GameState) -> Iterator[str]:
+    """Yield every one of the 14 Skill tiles, two per Skill [Bloodlines p. 3]."""
+
+    yield from state.skill_stack
+    yield from state.skill_face_up
+    yield from state.skill_trash
+    for player in state.players:
+        yield from player.skill_ids
+
+
+def _commander_count(state: GameState) -> int:
+    """Count the seven Sardaukar Commanders [Bloodlines p. 3].
+
+    Commanders are counters rather than identified tokens, so conservation is
+    a total instead of a set: the bank, the board spaces still holding one,
+    and every seat's supply, garrison and Conflict Commanders.
+    """
+
+    return (
+        state.sardaukar_commanders_bank
+        + len(state.sardaukar_commander_space_ids)
+        + sum(player.commanders_total for player in state.players)
+    )
+
+
 def _reserve_totals(state: GameState) -> tuple[tuple[str, int], ...]:
     totals = dict(state.reserve_stacks)
     for instance_id in _all_personal_instances(state):
@@ -116,6 +161,12 @@ class CardCensus:
     conflicts: frozenset[str]
     contracts: frozenset[str]
     objectives: tuple[tuple[str, ...], ...]
+    # Expansion components: Tech tiles and Skill tiles are identified
+    # instances, Sardaukar Commanders only a count. All three are empty or
+    # zero while their option is off.
+    tech: frozenset[str]
+    skills: frozenset[str]
+    commanders: int
 
     @classmethod
     def from_state(cls, state: GameState) -> CardCensus:
@@ -130,6 +181,9 @@ class CardCensus:
             conflicts=frozenset(_all_conflict_ids(state)),
             contracts=frozenset(_all_contract_ids(state)),
             objectives=tuple(player.objective_ids for player in state.players),
+            tech=frozenset(_all_tech_ids(state)),
+            skills=frozenset(_all_skill_ids(state)),
+            commanders=_commander_count(state),
         )
 
 
@@ -183,6 +237,27 @@ def check_state_invariants(state: GameState, census: CardCensus) -> None:
             raise InvariantViolation(
                 f"player {player.player_id} Objectives changed from {dealt}"
             )
+
+    tech = frozenset(_require_unique(_all_tech_ids(state), "Tech"))
+    if tech != census.tech:
+        raise InvariantViolation(
+            "Tech tile instances changed: "
+            f"missing={sorted(census.tech - tech)} "
+            f"new={sorted(tech - census.tech)}"
+        )
+    skills = frozenset(_require_unique(_all_skill_ids(state), "Skill"))
+    if skills != census.skills:
+        raise InvariantViolation(
+            "Skill tile instances changed: "
+            f"missing={sorted(census.skills - skills)} "
+            f"new={sorted(skills - census.skills)}"
+        )
+    commanders = _commander_count(state)
+    if commanders != census.commanders:
+        raise InvariantViolation(
+            f"the Sardaukar Commander count changed: {commanders} "
+            f"!= {census.commanders}"
+        )
 
 
 def check_observation_privacy(state: GameState) -> None:
@@ -275,11 +350,43 @@ def _split_reversed(
     return reordered[:first_length], reordered[first_length:]
 
 
+def _scramble_conflicts(state: GameState) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Reshuffle the Conflict deck within each tier, boxed cards included.
+
+    Tiers are printed on the Conflict backs and the deck is layered in the
+    open -- "Conflict 카드를 I, II, III 뒷면별로 나눈다" and the finished deck
+    is "위에서부터 I 1장, II 5장, III 4장" [Main p. 4] -- so which tier sits
+    at each depth is public and must stay put. Which card of that tier sits
+    there is not: the unused I and II cards go to the box "앞면을 보지 않고"
+    [Main p. 4], so no seat has seen them either, and knowing that set is
+    knowing the deck's contents. Both zones therefore share one hidden pool
+    per tier.
+    """
+
+    def tier_of(conflict_id: str) -> ConflictTier:
+        return CONFLICTS_BY_ID[conflict_id].tier
+
+    # Each tier's pool lists the deck cards in depth order and then the boxed
+    # ones, so dealing from its end hands the deck the boxed cards first and
+    # reverses what is left: every position gets a different card of the same
+    # tier whenever that tier holds more than one.
+    pools: dict[ConflictTier, list[str]] = {}
+    for conflict_id in (*state.conflict_deck, *state.unused_conflict_ids):
+        pools.setdefault(tier_of(conflict_id), []).append(conflict_id)
+
+    deck = tuple(
+        pools[tier_of(conflict_id)].pop() for conflict_id in state.conflict_deck
+    )
+    unused = tuple(sorted(card for pool in pools.values() for card in pool))
+    return deck, unused
+
+
 def _scramble_hidden_information(state: GameState, observer: int) -> GameState:
     # Imperium Ceremony shows the observer the deck's top cards, which
     # therefore stay in place.
     peeked_intrigue = peeked_intrigue_ids(state, observer)
     intrigue_pool: list[str] = list(state.intrigue_deck[len(peeked_intrigue) :])
+    scrambled_conflict_deck, scrambled_unused_conflicts = _scramble_conflicts(state)
     players = list(state.players)
     resolving = set(resolving_intrigue_ids(state))
 
@@ -341,4 +448,19 @@ def _scramble_hidden_information(state: GameState, observer: int) -> GameState:
         tech_stacks=tuple(
             (*stack[:1], *reversed(stack[1:])) for stack in state.tech_stacks
         ),
+        # The Conflict deck's tier layering is public but its contents are
+        # not, so the scramble permutes within each tier band and across the
+        # boxed cards of that tier (see ``_scramble_conflicts``).
+        conflict_deck=scrambled_conflict_deck,
+        unused_conflict_ids=scrambled_unused_conflicts,
+        # The Skill stack is face down below the four face-up tiles
+        # [Bloodlines p. 3]; ``skill_face_up`` is the public counterpart.
+        skill_stack=tuple(reversed(state.skill_stack)),
+        # The Tleilaxu deck sits face down on the Imperium deck
+        # [Immortality p. 4]; ``tleilaxu_row`` is the public counterpart.
+        tleilaxu_deck=tuple(reversed(state.tleilaxu_deck)),
+        # The undealt Twisted Intrigue stock is the last global zone
+        # ``hidden_card_owners`` maps to nobody, so it moves too; the
+        # per-seat ``twisted_deck`` is reversed above.
+        twisted_deck_stock=tuple(reversed(state.twisted_deck_stock)),
     )
