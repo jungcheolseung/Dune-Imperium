@@ -478,6 +478,29 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
                             if seat.player_id != action.actor
                         ),
                     ),
+                    # Whether the placed card reached this space on its own,
+                    # decided here because the partner choice cannot re-derive
+                    # it: Infiltrate recalls the very Spy that Mohiam's
+                    # Clandestine icon needed, so by then the access is gone
+                    # and only Usurp-style cards would look partner-dependent.
+                    (
+                        "placed_reaches",
+                        card_can_access_space(
+                            effective_agent_icons(
+                                card,
+                                owner,
+                                grafted=True,
+                                opponents=tuple(
+                                    seat
+                                    for seat in state.players
+                                    if seat.player_id != action.actor
+                                ),
+                            ),
+                            space,
+                            owner,
+                            any_icon=card_is_boosted(card, owner),
+                        ),
+                    ),
                     ("player", action.actor),
                     ("space_id", space_id),
                 ),

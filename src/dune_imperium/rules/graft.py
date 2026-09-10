@@ -72,18 +72,19 @@ def legal_graft_partner_actions(
     owner = state.players[player]
     space = BOARD_SPACES_BY_ID[context_str(context, "space_id", owner=_PARTNER_LABEL)]
     opponents = tuple(seat for seat in state.players if seat.player_id != player)
-    # A placed card without icons of its own (Usurp) reached the space on
-    # the partner's icons, so only partners that fit the space qualify.
-    placed_icons = effective_agent_icons(
-        placed, owner, grafted=True, opponents=opponents
-    )
-    partner_must_fit = not placed_icons
+    # The placement recorded whether the placed card reached this space on its
+    # own; it cannot be re-derived here. Mohiam's Clandestine -- "Each card you
+    # play has the Spy icon" [Gaius Helen Mohiam card] -- let an icon-less
+    # starter Infiltrate into Secrets, and Infiltrate recalls the very Spy that
+    # icon needed, so the access is already spent by now. Reading the empty
+    # icon tuple as "it came in on the partner's icons" then demanded a partner
+    # that fit Bene Gesserit; with none in hand the turn had no legal action at
+    # all (2026-09-10 all-expansion A/B, game seed 499).
+    placed_reaches = context.get("placed_reaches") is True
     # Long Reach entered on the promise of Ghola's copy (OQ-057): only Ghola
     # may then be the partner.
     needs_ghola = False
-    if not partner_must_fit and not card_can_access_space(
-        placed_icons, space, owner, any_icon=card_is_boosted(placed, owner)
-    ):
+    if not placed_reaches:
         needs_ghola = card_can_access_space(
             effective_agent_icons(
                 placed, owner, grafted=True, opponents=opponents, ghola_partner=True
@@ -92,6 +93,9 @@ def legal_graft_partner_actions(
             owner,
             any_icon=card_is_boosted(placed, owner),
         )
+    # Only a placed card that cannot reach the space by any means of its own
+    # (Usurp, which has no icons) leans on the partner for access.
+    partner_must_fit = not placed_reaches and not needs_ghola
     candidates: tuple[str, ...] = (
         *(card_id for card_id in owner.hand if card_id != placed_id),
         # Usurp: "graft this card with a card from the Imperium Row".

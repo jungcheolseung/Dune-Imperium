@@ -387,3 +387,63 @@ def test_the_engine_never_offers_a_lone_graft_card() -> None:
         actions = engine.legal_actions(state, frame.decision.owner)
         assert actions
         state = engine.apply(state, actions[-1]).state
+
+
+def test_a_graft_placed_on_a_leaders_icon_keeps_its_partners() -> None:
+    # Mohiam's Clandestine gives "Each card you play has the Spy icon"
+    # [Gaius Helen Mohiam card], so a starter with no printed icon of its own
+    # reaches a Bene Gesserit space through a connected Spy -- and Infiltrate's
+    # cost recalls that very Spy [Main p. 11]. The partner choice used to infer
+    # space access from the placed card's printed icons, find none, and demand a
+    # partner that fit Bene Gesserit; with none in hand the turn had no legal
+    # action at all and the game died with "current player decision has no
+    # legal actions" (2026-09-10 all-expansion A/B, game seed 499).
+    placed = "player:0:starter:convincing_argument:0"
+    partner = "tleilaxu:chairdog:0"
+    owner = _owner(
+        (placed, partner),
+        leader_id="gaius_helen_mohiam",
+        leader_face_id="gaius_helen_mohiam",
+        spy_post_ids=("bene-gesserit-espionage-secrets",),
+        spies_supply=2,
+    )
+    # An opponent Agent on Secrets makes Infiltrate the only way in, so the
+    # placement spends the Spy that granted the icon.
+    blocker = PlayerState(
+        player_id=1,
+        research_space=RESEARCH_START_ID,
+        family_atomics=True,
+        agents_available=1,
+        agent_locations=("secrets",),
+    )
+    state = _state(
+        owner,
+        players=(
+            owner,
+            blocker,
+            *(
+                PlayerState(
+                    player_id=seat,
+                    research_space=RESEARCH_START_ID,
+                    family_atomics=True,
+                )
+                for seat in (2, 3)
+            ),
+        ),
+    )
+
+    placement = next(
+        action
+        for action in legal_agent_actions(state, 0)
+        if dict(action.arguments).get("space_id") == "secrets"
+        and dict(action.arguments).get("card_id") == placed
+        and dict(action.arguments).get("graft") is True
+    )
+    opened = apply_agent_action(state, placement).state
+
+    # The Spy that granted access is gone when the partner is chosen, so the
+    # frame has to carry the placement's own answer.
+    assert opened.players[0].spy_post_ids == ()
+    assert opened.decision_stack[-1].kind == "graft_partner"
+    assert dict(opened.decision_stack[-1].context)["placed_reaches"] is True
+    assert set(_partners(opened)) == {partner}
