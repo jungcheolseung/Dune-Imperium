@@ -513,7 +513,7 @@
 
 ## OQ-059 — 시장에 face-up contract가 남았지만 아무것도 가져갈 수 없을 때의 contract 아이콘
 
-- 상태: `DECIDED` (엔진 미구현)
+- 상태: `DECIDED`
 - CHOAM Module의 contract 아이콘은 contract를 가져가는 대신 2 Solari를 줄 수 있고
   `[Main pp. 16, 20]`, 시장이 마르면 2 Solari로 돌아간다 — 다만 그 조건은 "**모든
   contract가 플레이어에게 넘어가 face-up contract도 남지 않았을 때**"로 적혀 있다
@@ -560,10 +560,13 @@
   확정 원칙대로 **turn 종료까지 보류**하고, 그 사이 Intrigue를 얻어 Immediate을 가져갈
   수 있게 되면 가져가야 하며, turn이 끝날 때까지 불가능하면 보상 없이 불발한다.
   소유자가 임의로 미리 불발시킬 수는 없다.
-- **미구현**(2026-09-10): 엔진은 아직 이 판정을 따르지 않는다. `CONTRACT_MARKET`
-  frame이 그 자리에서 막고, `exhausted_contract_choice_is_pending`이
-  `face_up_contract_ids`가 비었는지만 보므로 위 상황은 **교착**으로 끝난다(재현:
-  Bloodlines+Tech `--rotate-leaders` game seed 110, 양쪽 rotation). 보류를 구현하려면
-  frame을 미는 11개 호출부(`acquisition.py` 5, `agent_effects.py` 3,
-  `board_effects.py` 1 등)가 Agent turn과 Reveal turn 양쪽에 걸쳐 있어 각 문맥의
-  "turn 종료" 지점을 정해야 한다 — 별도 슬라이스다.
+- 구현(2026-09-10, 같은 날): 좌석의 `held_contract_icons`가 보류 중인 아이콘 수를 든다.
+  `contract_icons_must_be_held`는 열려 있는 `CONTRACT_MARKET` frame에 가져갈 token이
+  하나도 없고 시장은 비지 않았을 때 참이고, `_advance_automatic`이 그때 frame을 닫아
+  아이콘을 좌석으로 옮긴다(`hold_contract_icons`) — 그래서 turn이 막히지 않는다. 같은
+  turn 안에서 가져갈 수 있게 되면(`held_contract_icons_can_open`) 의무이므로 자동으로
+  시장을 다시 연다(`open_held_contract_icons`). turn이 닫힐 때
+  `fizzle_held_contract_icons`(Agent turn)와 `finish_reveal_turn`(Reveal turn)이 보상 없이
+  불발시키고 `contract_icons_fizzled` 이벤트를 남긴다. 좌석 scalar가 하나 늘어 관측은
+  **v20**(좌석 scalar 51→52), action id는 그대로라 codec은 v104 유지. 가져갈 수 있는지의
+  판정은 provider와 보류가 같은 `takeable_contract_ids`를 쓴다.

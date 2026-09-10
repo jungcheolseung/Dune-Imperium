@@ -17,7 +17,7 @@ CHOAM Module은 Uprising에 포함된 mini-expansion이다. 공식 룰북은 먼
 
 - contract icon을 resolve하면 board의 face-up contract 하나를 골라 자신의 supply에 face-up으로 놓는다. face-down bank에 contract가 남아 있으면 그중 하나를 face-up으로 뒤집어 빈자리를 보충한다. `[Main p. 16]`
 - bank의 face-down stack이 비었더라도 board에 face-up contract가 남아 있으면 남은 contract를 가져간다. 모든 contract가 플레이어에게 넘어가 face-up contract도 남지 않았을 때 contract icon은 2 Solari로 돌아간다. `[Main p. 16]`
-- 시장에 face-up contract가 남아 있지만 그 전부를 소유자가 가져갈 수 없을 때(Bloodlines의 새 Immediate만 남고 trash할 Intrigue가 없을 때)는 2 Solari로 전환하지 않는다 — 전환 조건은 "모든 contract를 플레이어들이 가져갔을 때"다 `[Main p. 16]`. 아이콘은 turn 종료까지 보류하고 그때까지 불가능하면 불발한다([OQ-059](open-questions.md#oq-059--시장에-face-up-contract가-남았지만-아무것도-가져갈-수-없을-때의-contract-아이콘), 사용자 판정 2026-09-10; 엔진 미구현).
+- 시장에 face-up contract가 남아 있지만 그 전부를 소유자가 가져갈 수 없을 때(Bloodlines의 새 Immediate만 남고 trash할 Intrigue가 없을 때)는 2 Solari로 전환하지 않는다 — 전환 조건은 "모든 contract를 플레이어들이 가져갔을 때"다 `[Main p. 16]`. 아이콘은 turn 종료까지 보류하고 그때까지 불가능하면 불발한다([OQ-059](open-questions.md#oq-059--시장에-face-up-contract가-남았지만-아무것도-가져갈-수-없을-때의-contract-아이콘), 사용자 판정 2026-09-10).
 
 ## contract 완료 조건
 
