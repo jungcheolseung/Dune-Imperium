@@ -1,9 +1,12 @@
 """Validation tests for serializable engine primitives."""
 
+from collections.abc import Callable
+
 import pytest
 
 from dune_imperium import RulesetConfig
 from dune_imperium.core import DecisionFrame, DomainAction, GameState, PlayerDecision
+from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import canonical_state_hash
 
 
@@ -57,3 +60,95 @@ def test_player_state_forgets_public_hand_cards_that_leave_the_hand() -> None:
 
     with pytest.raises(ValueError, match="publicly known twice"):
         PlayerState(player_id=0, hand=("a",), hand_public=("a", "a"))
+
+
+# Each module's zones are only scanned for duplicates when the module is on;
+# with it off the state must instead hold nothing at all. Both halves of that
+# gate are pinned here, because a copy of the state runs these checks several
+# times per engine step and the cheap half is the one a base game takes.
+_MODULE_ZONES: tuple[
+    tuple[
+        RulesetConfig,
+        Callable[[RulesetConfig], GameState],
+        Callable[[RulesetConfig], GameState],
+        str,
+        str,
+    ],
+    ...,
+] = (
+    (
+        RulesetConfig(choam_module=True),
+        lambda config: GameState(config=config, seed=1, contract_bank=("choam_a",)),
+        lambda config: GameState(
+            config=config,
+            seed=1,
+            contract_bank=("choam_a",),
+            face_up_contract_ids=("choam_a",),
+        ),
+        "Contracts require the CHOAM Module",
+        "a Contract cannot occupy two zones",
+    ),
+    (
+        RulesetConfig(bloodlines=True),
+        lambda config: GameState(config=config, seed=1, skill_stack=("skill_a",)),
+        lambda config: GameState(
+            config=config,
+            seed=1,
+            skill_stack=("skill_a",),
+            skill_face_up=("skill_a",),
+        ),
+        "Sardaukar Commanders require the Bloodlines expansion",
+        "a Skill tile cannot occupy two zones",
+    ),
+    (
+        RulesetConfig(bloodlines=True, tech_module=True),
+        lambda config: GameState(config=config, seed=1, tech_trash=("tech_a",)),
+        lambda config: GameState(
+            config=config,
+            seed=1,
+            tech_stacks=(("tech_a",),),
+            tech_trash=("tech_a",),
+        ),
+        "Tech tiles require the Tech Module",
+        "a Tech tile cannot occupy two zones",
+    ),
+    (
+        RulesetConfig(immortality=True),
+        lambda config: GameState(config=config, seed=1, tleilaxu_deck=("tleilaxu_a",)),
+        lambda config: GameState(
+            config=config,
+            seed=1,
+            tleilaxu_deck=("tleilaxu_a",),
+            tleilaxu_row=("tleilaxu_a",),
+        ),
+        "the Bene Tleilax board requires Immortality",
+        "a Tleilaxu card cannot occupy two zones",
+    ),
+)
+
+
+@pytest.mark.parametrize(
+    ("enabled", "content", "duplicate", "off_message", "on_message"),
+    _MODULE_ZONES,
+    ids=[row[3].split()[0] for row in _MODULE_ZONES],
+)
+def test_module_zones_are_rejected_when_off_and_deduplicated_when_on(
+    enabled: RulesetConfig,
+    content: Callable[[RulesetConfig], GameState],
+    duplicate: Callable[[RulesetConfig], GameState],
+    off_message: str,
+    on_message: str,
+) -> None:
+    with pytest.raises(ValueError, match=off_message):
+        content(RulesetConfig())
+
+    with pytest.raises(ValueError, match=on_message):
+        duplicate(enabled)
+
+    # The same contents are legal once the module is on and nothing repeats.
+    content(enabled)
+
+
+def test_a_flipped_tech_tile_must_be_a_held_tile_even_with_none_held() -> None:
+    with pytest.raises(ValueError, match="flipped Tech tiles must be held tiles"):
+        PlayerState(player_id=0, tech_flipped=("tech_a",))

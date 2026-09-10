@@ -146,22 +146,35 @@ class GameState:
         if len(self.face_up_contract_ids) > 2:
             raise ValueError("the Contract market cannot contain more than two tiles")
 
-        contracts = (
-            *self.contract_bank,
-            *self.face_up_contract_ids,
-            *self.sardaukar_contract_ids,
-            *(
-                contract_id
+        # Every module's zones are re-checked on each state copy, and a copy
+        # happens several times per engine step, so the module flag gates the
+        # scan: with the module off the only legal contents are none at all,
+        # which an emptiness test settles without building tuples and sets.
+        if self.config.choam_module:
+            contracts = (
+                *self.contract_bank,
+                *self.face_up_contract_ids,
+                *self.sardaukar_contract_ids,
+                *(
+                    contract_id
+                    for player in self.players
+                    for contract_id in (
+                        *player.active_contract_ids,
+                        *player.completed_contract_ids,
+                    )
+                ),
+            )
+            if len(contracts) != len(set(contracts)):
+                raise ValueError("a Contract cannot occupy two zones")
+        elif (
+            self.contract_bank
+            or self.face_up_contract_ids
+            or self.sardaukar_contract_ids
+            or any(
+                player.active_contract_ids or player.completed_contract_ids
                 for player in self.players
-                for contract_id in (
-                    *player.active_contract_ids,
-                    *player.completed_contract_ids,
-                )
-            ),
-        )
-        if len(contracts) != len(set(contracts)):
-            raise ValueError("a Contract cannot occupy two zones")
-        if not self.config.choam_module and contracts:
+            )
+        ):
             raise ValueError("Contracts require the CHOAM Module")
 
         shared_cards = (
@@ -190,57 +203,70 @@ class GameState:
         if any(not card_id or count < 0 for card_id, count in self.reserve_stacks):
             raise ValueError("Reserve stacks require IDs and non-negative counts")
 
-        if len(self.sardaukar_commander_space_ids) != len(
-            set(self.sardaukar_commander_space_ids)
-        ):
-            raise ValueError("a board space holds at most one Sardaukar Commander")
         if self.sardaukar_commanders_bank < 0:
             raise ValueError("the Commander bank must not be negative")
-        skills = (
-            *self.skill_stack,
-            *self.skill_face_up,
-            *self.skill_trash,
-            *(skill_id for player in self.players for skill_id in player.skill_ids),
-        )
-        if len(skills) != len(set(skills)):
-            raise ValueError("a Skill tile cannot occupy two zones")
-        if not self.config.bloodlines and (
-            skills
+        if self.config.bloodlines:
+            if len(self.sardaukar_commander_space_ids) != len(
+                set(self.sardaukar_commander_space_ids)
+            ):
+                raise ValueError("a board space holds at most one Sardaukar Commander")
+            skills = (
+                *self.skill_stack,
+                *self.skill_face_up,
+                *self.skill_trash,
+                *(skill_id for player in self.players for skill_id in player.skill_ids),
+            )
+            if len(skills) != len(set(skills)):
+                raise ValueError("a Skill tile cannot occupy two zones")
+        elif (
+            self.skill_stack
+            or self.skill_face_up
+            or self.skill_trash
             or self.sardaukar_commander_space_ids
             or self.sardaukar_commanders_bank
-            or any(player.commanders_total for player in self.players)
+            or any(
+                player.skill_ids or player.commanders_total for player in self.players
+            )
         ):
             raise ValueError("Sardaukar Commanders require the Bloodlines expansion")
-        tech = (
-            *(tech_id for stack in self.tech_stacks for tech_id in stack),
-            *self.tech_trash,
-            *(
-                tech_id
+        if self.config.tech_module:
+            tech = (
+                *(tech_id for stack in self.tech_stacks for tech_id in stack),
+                *self.tech_trash,
+                *(
+                    tech_id
+                    for player in self.players
+                    for tech_id in (
+                        *player.tech_ids,
+                        *(
+                            (player.secret_project_tech_id,)
+                            if player.secret_project_tech_id
+                            else ()
+                        ),
+                    )
+                ),
+            )
+            if len(tech) != len(set(tech)):
+                raise ValueError("a Tech tile cannot occupy two zones")
+        elif (
+            any(self.tech_stacks)
+            or self.tech_trash
+            or any(
+                player.tech_ids or player.secret_project_tech_id or player.spies_boxed
                 for player in self.players
-                for tech_id in (
-                    *player.tech_ids,
-                    *(
-                        (player.secret_project_tech_id,)
-                        if player.secret_project_tech_id
-                        else ()
-                    ),
-                )
-            ),
-        )
-        if len(tech) != len(set(tech)):
-            raise ValueError("a Tech tile cannot occupy two zones")
-        if not self.config.tech_module and (
-            tech or any(player.spies_boxed for player in self.players)
+            )
         ):
             raise ValueError("Tech tiles require the Tech Module")
 
-        tleilaxu_cards = (*self.tleilaxu_deck, *self.tleilaxu_row)
-        if len(tleilaxu_cards) != len(set(tleilaxu_cards)):
-            raise ValueError("a Tleilaxu card cannot occupy two zones")
         if self.tleilaxu_track_spice < 0:
             raise ValueError("the Tleilaxu track spice must not be negative")
-        if not self.config.immortality and (
-            tleilaxu_cards
+        if self.config.immortality:
+            tleilaxu_cards = (*self.tleilaxu_deck, *self.tleilaxu_row)
+            if len(tleilaxu_cards) != len(set(tleilaxu_cards)):
+                raise ValueError("a Tleilaxu card cannot occupy two zones")
+        elif (
+            self.tleilaxu_deck
+            or self.tleilaxu_row
             or self.tleilaxu_track_spice
             or any(
                 player.research_space

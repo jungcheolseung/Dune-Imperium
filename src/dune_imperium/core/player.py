@@ -250,19 +250,24 @@ class PlayerState:
         )
         if min(quantities) < 0:
             raise ValueError("player component quantities must not be negative")
-        if len(self.skill_ids) != len(set(self.skill_ids)):
-            raise ValueError("a Skill tile cannot be held twice")
-        if len(self.tech_ids) != len(set(self.tech_ids)):
-            raise ValueError("a Tech tile cannot be held twice")
-        if not set(self.tech_flipped) <= set(self.tech_ids) or len(
-            self.tech_flipped
-        ) != len(set(self.tech_flipped)):
-            raise ValueError("flipped Tech tiles must be held tiles")
-        skill_identities = tuple(
-            instance_id.split(":")[1] for instance_id in self.skill_ids
-        )
-        if len(skill_identities) != len(set(skill_identities)):
-            raise ValueError("a player cannot hold two copies of one Skill")
+        # A seat is copied several times per engine step, so the expansion
+        # collections are only scanned once something is in them; empty ones
+        # satisfy every check here by construction.
+        if self.skill_ids:
+            if len(self.skill_ids) != len(set(self.skill_ids)):
+                raise ValueError("a Skill tile cannot be held twice")
+            skill_identities = tuple(
+                instance_id.split(":")[1] for instance_id in self.skill_ids
+            )
+            if len(skill_identities) != len(set(skill_identities)):
+                raise ValueError("a player cannot hold two copies of one Skill")
+        if self.tech_ids or self.tech_flipped:
+            if len(self.tech_ids) != len(set(self.tech_ids)):
+                raise ValueError("a Tech tile cannot be held twice")
+            if not set(self.tech_flipped) <= set(self.tech_ids) or len(
+                self.tech_flipped
+            ) != len(set(self.tech_flipped)):
+                raise ValueError("flipped Tech tiles must be held tiles")
 
         active_agents = 3 if self.swordmaster_acquired else 2
         if (
