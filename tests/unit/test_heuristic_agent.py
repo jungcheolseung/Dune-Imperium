@@ -432,3 +432,244 @@ def test_the_ruleset_is_read_from_markers_that_outlive_their_supply() -> None:
     )
 
     assert space_bonuses_for(spent) is SPACE_BONUSES_BEFORE_RETUNE
+
+
+def _placement(card_id: str, space_id: str) -> DomainAction:
+    return _action("agent_turn", ("card_id", card_id), ("space_id", space_id))
+
+
+def test_a_placement_spends_the_card_whose_reveal_box_costs_least() -> None:
+    # "Agent turn에는 낸 card의 Agent box만 처리하고 그 card의 Reveal box는
+    # 무시한다" [Main p. 8] [Main p. 9] and "앞선 Agent turn에 낸 card의 Reveal
+    # box 효과는 얻지 않는다" [Main p. 12] (docs/rules/player-turns.md 60, 161),
+    # so every card that reaches one space costs what its Reveal box would have
+    # paid this round. Seek Allies prints nothing, Diplomacy one Persuasion,
+    # Long Live the Fighters two Persuasion and three swords.
+    from dune_imperium.agents.heuristic_agent import (
+        SPENT_CARD_VALUE,
+        cheapest_card_for_the_same_space,
+    )
+
+    free = _placement("player:0:starter:seek_allies:0", "espionage")
+    one = _placement("player:0:starter:diplomacy:0", "espionage")
+    dear = _placement("imperium:long_live_the_fighters:0", "espionage")
+    tied = (dear, one, free)
+
+    for drawn in tied:
+        assert cheapest_card_for_the_same_space(drawn, tied, SPENT_CARD_VALUE) is free
+
+
+def test_the_tie_break_never_moves_the_agent_to_another_board_space() -> None:
+    # This is the invariant the measurement bought. Scoring the card cost --
+    # even scaled to fit inside the board table's smallest gap -- let the
+    # cheapest card pick the space and cost -8.6pp with every expansion on,
+    # where 21 spaces share one rank (docs/evaluation/baseline-2026-09-10.md
+    # section 14). The tie-break only ever compares placements that already
+    # name the same space.
+    from dune_imperium.agents.heuristic_agent import (
+        SPENT_CARD_VALUE,
+        cheapest_card_for_the_same_space,
+    )
+
+    # A free card reaches Assembly Hall; only a dear one reaches Espionage.
+    cheap_elsewhere = _placement("player:0:starter:dagger:0", "assembly_hall")
+    dear_here = _placement("imperium:long_live_the_fighters:0", "espionage")
+    tied = (dear_here, cheap_elsewhere)
+
+    assert (
+        cheapest_card_for_the_same_space(dear_here, tied, SPENT_CARD_VALUE) is dear_here
+    )
+    assert (
+        cheapest_card_for_the_same_space(cheap_elsewhere, tied, SPENT_CARD_VALUE)
+        is cheap_elsewhere
+    )
+
+
+def test_the_tie_break_leaves_every_other_action_alone() -> None:
+    from dune_imperium.agents.heuristic_agent import (
+        SPENT_CARD_VALUE,
+        cheapest_card_for_the_same_space,
+    )
+
+    reveal = _action("reveal_turn")
+    placement = _placement("imperium:long_live_the_fighters:0", "espionage")
+    tied = (reveal, placement)
+
+    assert cheapest_card_for_the_same_space(reveal, tied, SPENT_CARD_VALUE) is reveal
+    # A lone placement has nothing to be re-spent on.
+    assert (
+        cheapest_card_for_the_same_space(placement, tied, SPENT_CARD_VALUE) is placement
+    )
+
+
+def test_an_unpriced_card_keeps_the_drawn_placement() -> None:
+    # New or untranscribed content degrades to the earlier behaviour instead of
+    # failing, the way an unknown action ID scores 0. An unknown card prices at
+    # 0.0, which is the cheapest there is, so it must not displace a card the
+    # manifests do price.
+    from dune_imperium.agents.heuristic_agent import (
+        SPENT_CARD_VALUE,
+        cheapest_card_for_the_same_space,
+        reveal_value_forfeited,
+    )
+
+    unknown = _placement("nonsense:not_a_card:0", "espionage")
+    assert reveal_value_forfeited(unknown, SPENT_CARD_VALUE) == 0.0
+    assert reveal_value_forfeited(_action("agent_turn"), SPENT_CARD_VALUE) == 0.0
+
+    free = _placement("player:0:starter:seek_allies:0", "espionage")
+    tied = (unknown, free)
+    assert cheapest_card_for_the_same_space(unknown, tied, SPENT_CARD_VALUE) is unknown
+
+
+def test_every_sendable_card_is_priced_from_its_printed_reveal_box() -> None:
+    # The price is derived per card instead of tabulated, so new content is
+    # priced the moment it is transcribed. This pins that every card the engine
+    # can send to a space resolves, and that the printed integers are what the
+    # two weights multiply.
+    from dune_imperium.agents.heuristic_agent import (
+        SPENT_CARD_VALUE,
+        reveal_value_forfeited,
+    )
+    from dune_imperium.content.immortality.tleilaxu import TLEILAXU_CARDS
+    from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS
+    from dune_imperium.content.uprising.starting_cards import (
+        EXPERIMENTATION,
+        STARTING_DECK,
+    )
+
+    sendable: list[tuple[str, int, int]] = [
+        (
+            f"player:0:starter:{entry.card.card_id}:0",
+            entry.reveal_persuasion,
+            entry.reveal_strength,
+        )
+        for entry in (*STARTING_DECK, EXPERIMENTATION)
+        if entry.agent_icons
+    ]
+    sendable += [
+        (
+            f"imperium:{entry.card.card_id}:0",
+            entry.reveal_persuasion,
+            entry.reveal_strength,
+        )
+        for entry in IMPERIUM_CARDS
+        if entry.agent_icons and entry.play_data_complete
+    ]
+    sendable += [
+        (
+            f"tleilaxu:{entry.card.card_id}:0",
+            entry.reveal_persuasion,
+            entry.reveal_strength,
+        )
+        for entry in TLEILAXU_CARDS
+        if entry.agent_icons and entry.play_data_complete
+    ]
+    assert len(sendable) > 100
+
+    for instance_id, persuasion, strength in sendable:
+        expected = (
+            SPENT_CARD_VALUE.persuasion * persuasion
+            + SPENT_CARD_VALUE.sword * strength
+        )
+        action = _placement(instance_id, "espionage")
+        assert reveal_value_forfeited(action, SPENT_CARD_VALUE) == pytest.approx(
+            expected
+        )
+
+
+def test_the_flat_card_variant_reproduces_the_earlier_behaviour() -> None:
+    # The registry carries the pre-2026-09-10 spent-card behaviour so the
+    # paired A/B for this tie-break runs from the committed tree, the way
+    # ``heuristic_untuned`` does for the board space table.
+    from dune_imperium.agents.heuristic_agent import (
+        cheapest_card_for_the_same_space,
+    )
+    from dune_imperium.agents.registry import BASELINE_AGENT_FACTORIES, make_agent
+
+    assert "heuristic_flat_cards" in BASELINE_AGENT_FACTORIES
+    flat = make_agent("heuristic_flat_cards", seed=3)
+    assert isinstance(flat, HeuristicAgent)
+    assert flat.spent_card_value is None
+
+    free = _placement("player:0:starter:seek_allies:0", "espionage")
+    dear = _placement("imperium:long_live_the_fighters:0", "espionage")
+    assert cheapest_card_for_the_same_space(dear, (dear, free), None) is dear
+
+
+def test_the_swap_changes_the_card_and_nothing_else() -> None:
+    # A card is offered once per cost option and once more per Navigation
+    # Chamber discount, and every variant forfeits the same Reveal box. Taking
+    # the first cheapest would quietly move the cost option the draw made and
+    # drop a discount that costs nothing to keep.
+    from dune_imperium.agents.heuristic_agent import (
+        SPENT_CARD_VALUE,
+        cheapest_card_for_the_same_space,
+    )
+
+    def variant(card_id: str, cost_option: str, discount: str | None) -> DomainAction:
+        arguments: list[tuple[str, ActionValue]] = [("card_id", card_id)]
+        arguments.append(("cost_option", cost_option))
+        if discount is not None:
+            arguments.append(("discount", discount))
+        arguments.append(("space_id", "spice_refinery"))
+        return _action("agent_turn", *arguments)
+
+    dear = "imperium:long_live_the_fighters:0"
+    free = "player:0:starter:seek_allies:0"
+    # The cheap card is offered in both cost options, undiscounted first.
+    tied = (
+        variant(dear, "paid", "spice"),
+        variant(free, "free", None),
+        variant(free, "paid", None),
+        variant(free, "paid", "spice"),
+    )
+
+    swapped = cheapest_card_for_the_same_space(tied[0], tied, SPENT_CARD_VALUE)
+
+    assert dict(swapped.arguments)["card_id"] == free
+    assert dict(swapped.arguments)["cost_option"] == "paid"
+    assert dict(swapped.arguments)["discount"] == "spice"
+
+    # With no matching variant the first cheapest is still taken.
+    without_match = (variant(dear, "paid", "spice"), variant(free, "free", None))
+    fallback = cheapest_card_for_the_same_space(
+        without_match[0], without_match, SPENT_CARD_VALUE
+    )
+    assert fallback is without_match[1]
+
+
+def test_the_swap_keeps_a_graft_and_an_infiltrate_as_drawn() -> None:
+    # ``graft`` and ``infiltrate_post_id`` are placement terms too: a Graft
+    # plays a second card [Immortality p. 10] and an Infiltrate recalls a Spy
+    # [Main p. 11], so a swap must not add or drop either.
+    from dune_imperium.agents.heuristic_agent import (
+        SPENT_CARD_VALUE,
+        cheapest_card_for_the_same_space,
+    )
+
+    dear = "imperium:long_live_the_fighters:0"
+    free = "player:0:starter:seek_allies:0"
+    plain_dear = _placement(dear, "espionage")
+    plain_free = _placement(free, "espionage")
+    infiltrating_free = _action(
+        "agent_turn",
+        ("card_id", free),
+        ("infiltrate_post_id", "post_a"),
+        ("space_id", "espionage"),
+    )
+    infiltrating_dear = _action(
+        "agent_turn",
+        ("card_id", dear),
+        ("infiltrate_post_id", "post_a"),
+        ("space_id", "espionage"),
+    )
+    tied = (plain_dear, infiltrating_dear, plain_free, infiltrating_free)
+
+    # A plain draw stays plain; an Infiltrate draw keeps its post.
+    assert cheapest_card_for_the_same_space(plain_dear, tied, SPENT_CARD_VALUE) is (
+        plain_free
+    )
+    assert cheapest_card_for_the_same_space(
+        infiltrating_dear, tied, SPENT_CARD_VALUE
+    ) is infiltrating_free

@@ -9,9 +9,10 @@ state.
 The policy is a static strategy preference over engine-legal actions, not a
 rules judgment: the engine alone decides legality and the agent only ranks
 what it is offered. Rankings may read printed public card data (acquisition
-costs) through the content manifests, exactly as a human reads card text at
-the table. Unknown action IDs score 0, so new content degrades to a seeded
-uniform choice instead of failing.
+costs, the Persuasion and swords in a Reveal box) through the content
+manifests, exactly as a human reads card text at the table. Unknown action IDs
+score 0, so new content degrades to a seeded uniform choice instead of
+failing.
 """
 
 import random
@@ -26,6 +27,7 @@ from dune_imperium.content.immortality.board import (
 )
 from dune_imperium.content.immortality.tleilaxu import tleilaxu_card_for_instance
 from dune_imperium.content.uprising.imperium import imperium_card_for_instance
+from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.content.uprising.reserve import RESERVE_STACKS_BY_ID
 from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.observation import PlayerView
@@ -324,6 +326,141 @@ def space_bonuses_for(observation: PlayerView) -> Mapping[str, float]:
     return SPACE_BONUSES_BEFORE_RETUNE if expansion else _SPACE_BONUSES
 
 
+# Which card an Agent turn spends, once the board space is settled.
+#
+# "Agent turn에는 낸 card의 Agent box만 처리하고 그 card의 Reveal box는
+# 무시한다." `[Main p. 8]` `[Main p. 9]`, and on the Reveal turn "앞선 Agent
+# turn에 낸 card의 Reveal box 효과는 얻지 않는다." `[Main p. 12]`
+# (``docs/rules/player-turns.md`` lines 60 and 161). So sending the same Agent
+# to the same space costs a different amount depending on which hand card
+# carries it: the Persuasion and swords printed in the Reveal box that card
+# will never open this round.
+#
+# Both weights come off the rubric the board space table is priced on:
+#
+#   Persuasion 1  0.20  Assembly Hall is ranked 0.5 and pays "Intrigue 1장
+#                       draw" plus "Persuasion 1" `[Board Guide p. 1]`; the
+#                       rubric prices an Intrigue at 0.30, leaving 0.20.
+#   sword 1       0.09  "Conflict의 troop 하나는 strength 2 ... reveal한 sword
+#                       하나는 strength 1" `[Main p. 12]`, and the rubric
+#                       prices a recruited troop at 0.18 -- half a troop's
+#                       combat contribution, which is what one sword is.
+#
+# Only the ratio between the two is load-bearing: the tie-break takes an
+# argmin, so scaling both weights together changes nothing. They are kept on
+# the board rubric anyway, so a later change that does compare a card against a
+# space starts from a value that is already comparable to one.
+#
+# This is applied as a tie-break *inside one space*, never as a term added to
+# ``score_action``. Adding it to the score was measured and rejected: at full
+# rubric weight it is the size of a space bonus and reorders the spaces instead
+# of the cards -- the cheapest card to send (Dagger: no Persuasion, one sword)
+# carries only the Landsraad icon, so Dagger placements doubled, Assembly Hall
+# and Gather Support absorbed them, the Combat placement share fell
+# 50.2% -> 46.5%, and three paired blocks measured -2.2pp, -6.0pp and -8.6pp.
+# Scaling it down to fit inside the board table's smallest gap fixed
+# base+CHOAM (-0.2pp, +0.2pp) but reproduced the expansion loss *exactly*, to
+# the decision count: an expansion ruleset keeps the two-entry table
+# (``space_bonuses_for``), so 21 spaces are equal there and any card term at
+# all -- at any scale -- picks the space. Only a tie-break that never compares
+# two spaces is safe in both. Numbers in
+# ``docs/evaluation/baseline-2026-09-10.md`` section 14.
+#
+# Two limits are deliberate, and both understate the cost rather than invent a
+# value. The printed integers are priced but a Reveal box's *effects* are not
+# (67 of the 105 Imperium cards that can be sent carry one). And a Graft
+# placement names only its own card; the partner is chosen in a later frame
+# `[Immortality p. 10]`, so the partner's Reveal box is not counted.
+#
+# The Agent box a card *pays* is not priced either. That half needs a value for
+# each transcribed Agent effect and is a separate measurement; leaving it out
+# keeps this change attributable to one term.
+@dataclass(frozen=True, slots=True)
+class RevealValue:
+    """Per-unit price of the Reveal box an Agent turn gives up."""
+
+    persuasion: float
+    sword: float
+
+
+SPENT_CARD_VALUE: Final = RevealValue(persuasion=0.20, sword=0.09)
+
+
+def reveal_value_forfeited(
+    action: DomainAction, weights: RevealValue | None
+) -> float:
+    """Reveal value the placement's card forfeits, or 0.0 when unpriced."""
+
+    if weights is None or action.action_id != "agent_turn":
+        return 0.0
+    instance_id = _argument(action, "card_id")
+    if not isinstance(instance_id, str):
+        return 0.0
+    try:
+        card = personal_card_for_instance(instance_id)
+    except (ValueError, NotImplementedError):
+        # New or untranscribed content falls back to the flat ranking rather
+        # than failing, exactly as an unknown action ID scores 0.
+        return 0.0
+    return (
+        weights.persuasion * card.reveal_persuasion
+        + weights.sword * card.reveal_strength
+    )
+
+
+def cheapest_card_for_the_same_space(
+    chosen: DomainAction,
+    tied: tuple[DomainAction, ...],
+    weights: RevealValue | None,
+) -> DomainAction:
+    """Re-spend ``chosen``'s placement on its cheapest tied hand card.
+
+    ``chosen`` already fixes the board space -- it was drawn from ``tied`` by
+    the seeded tie-break, so the space distribution is untouched. Only the card
+    carrying the Agent there is reconsidered, among the tied placements that
+    name the same space. Anything but an ``agent_turn`` is returned unchanged.
+    """
+
+    if weights is None or chosen.action_id != "agent_turn":
+        return chosen
+    space_id = _argument(chosen, "space_id")
+    same_space = tuple(
+        action
+        for action in tied
+        if action.action_id == "agent_turn"
+        and _argument(action, "space_id") == space_id
+    )
+    if len(same_space) < 2:
+        return chosen
+    priced = tuple(
+        (reveal_value_forfeited(action, weights), action) for action in same_space
+    )
+    cheapest = min(cost for cost, _ in priced)
+    if reveal_value_forfeited(chosen, weights) == cheapest:
+        # The draw already spends one of the cheapest cards; leave it alone so
+        # everything else it settled stays settled.
+        return chosen
+    winners = tuple(action for cost, action in priced if cost == cheapest)
+    # Swap the card and nothing else. One card reaches one space once per cost
+    # option, once more per Navigation Chamber discount, and again for a Graft
+    # or an Infiltrate, and every one of those forfeits the same Reveal box --
+    # so taking the first cheapest would quietly move the cost option the draw
+    # made, drop a discount that costs nothing to keep (97 of 6,198 separating
+    # swaps over a 40-game all-option probe, and 777 with several cost
+    # options), or spend a Spy on an Infiltrate the draw did not ask for.
+    terms = _placement_terms(chosen)
+    return next(
+        (action for action in winners if _placement_terms(action) == terms),
+        winners[0],
+    )
+
+
+def _placement_terms(action: DomainAction) -> tuple[tuple[str, ActionValue], ...]:
+    """Everything an ``agent_turn`` settles except which card pays for it."""
+
+    return tuple((key, value) for key, value in action.arguments if key != "card_id")
+
+
 _TECH_BONUSES: Final[dict[str, float]] = {
     "sardaukar_high_command": 2.0,
     "choam_transports": 1.5,
@@ -395,7 +532,9 @@ def score_action(
 
     ``space_bonuses`` is the board space preference to rank ``agent_turn``
     with. Passing an earlier table reproduces an earlier ranking, which is how
-    the registry offers a paired A/B opponent from the committed tree.
+    the registry offers a paired A/B opponent from the committed tree. Which
+    card an ``agent_turn`` spends is not scored here; it is settled after the
+    tie-break by ``cheapest_card_for_the_same_space``.
     """
 
     action_id = action.action_id
@@ -497,6 +636,10 @@ class HeuristicAgent:
     # variant so an A/B against the earlier ranking is reproducible from the
     # committed tree.
     space_bonuses: Mapping[str, float] | None = None
+    # How the Reveal box a placement forfeits is priced, or None to leave every
+    # card the same price. The registry pins None on one variant for the same
+    # reason.
+    spent_card_value: RevealValue | None = SPENT_CARD_VALUE
     _rng: random.Random = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -541,4 +684,7 @@ class HeuristicAgent:
             for action, score in zip(legal_actions, scored, strict=True)
             if score == best
         )
-        return self._rng.choice(top)
+        chosen = self._rng.choice(top)
+        # The draw settles the board space; the card carrying the Agent there
+        # is then the cheapest Reveal box among the placements that reach it.
+        return cheapest_card_for_the_same_space(chosen, top, self.spent_card_value)

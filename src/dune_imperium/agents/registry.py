@@ -35,6 +35,18 @@ def _heuristic_untuned(seed: int) -> Agent:
     return HeuristicAgent(seed=seed, space_bonuses=SPACE_BONUSES_BEFORE_RETUNE)
 
 
+def _heuristic_flat_cards(seed: int) -> Agent:
+    """The heuristic before the 2026-09-10 spent-card ranking.
+
+    Every card that reaches a board space cost the same to send, so the choice
+    among them fell to the tie-break RNG. Pinning that here keeps the paired
+    A/B for the Reveal-box pricing reproducible from the committed tree, the
+    way ``heuristic_untuned`` does for the board space table.
+    """
+
+    return HeuristicAgent(seed=seed, spent_card_value=None)
+
+
 def _rollout(seed: int) -> Agent:
     return RolloutAgent(seed=seed)
 
@@ -47,6 +59,7 @@ BASELINE_AGENT_FACTORIES: Final[dict[str, AgentFactory]] = {
     "random": _random,
     "heuristic": _heuristic,
     "heuristic_untuned": _heuristic_untuned,
+    "heuristic_flat_cards": _heuristic_flat_cards,
     "rollout": _rollout,
 }
 
