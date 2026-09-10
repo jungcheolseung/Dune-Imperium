@@ -317,3 +317,118 @@ def test_a_contract_outranks_the_persuasion_it_is_offered_against() -> None:
         (_action("gain_reveal_persuasion"), _action("take_reveal_contract")),
     )
     assert chosen.action_id == "take_reveal_contract"
+
+
+def test_every_board_space_is_ranked() -> None:
+    # Before 2026-09-10 only Swordmaster and High Council were ranked, so the
+    # other 21 spaces tied at ``agent_turn``'s base and the agent picked among
+    # them almost uniformly. New board content must come with a preference or
+    # it silently rejoins that tie.
+    from dune_imperium.agents.heuristic_agent import _SPACE_BONUSES
+    from dune_imperium.content.uprising.board import BOARD_SPACES
+
+    unranked = {space.space_id for space in BOARD_SPACES} - set(_SPACE_BONUSES)
+
+    assert unranked == set()
+
+
+def test_board_space_ranking_separates_the_placements_it_offers() -> None:
+    from dune_imperium.content.uprising.board import BOARD_SPACES
+
+    scores = {
+        space.space_id: score_action(
+            _action("agent_turn", ("space_id", space.space_id))
+        )
+        for space in BOARD_SPACES
+    }
+
+    # The permanent upgrades stay above every one-shot yield: a third Agent
+    # for the rest of the game, then a Council seat's standing Persuasion.
+    upgrades = {"swordmaster", "high_council"}
+    one_shot = {k: v for k, v in scores.items() if k not in upgrades}
+    assert scores["swordmaster"] > scores["high_council"] > max(one_shot.values())
+    # Costed spaces rank below their uncosted counterparts in the same family:
+    # Research Station buys two cards and two troops for two water, while
+    # Arrakeen gives a card and a troop for nothing [Board Guide pp. 1-2].
+    assert scores["arrakeen"] > scores["research_station"]
+    # Nearly every placement must still separate from some other one.
+    assert len(set(scores.values())) >= 12
+
+
+def test_the_untuned_variant_reproduces_the_earlier_ranking() -> None:
+    # The registry carries the pre-retune table so a paired A/B runs from the
+    # committed tree; the 2026-09-09 retune needed a scratch module because
+    # there was no variant slot.
+    from dune_imperium.agents.heuristic_agent import SPACE_BONUSES_BEFORE_RETUNE
+    from dune_imperium.agents.registry import BASELINE_AGENT_FACTORIES, make_agent
+
+    assert "heuristic_untuned" in BASELINE_AGENT_FACTORIES
+    untuned = make_agent("heuristic_untuned", seed=3)
+    assert isinstance(untuned, HeuristicAgent)
+    assert untuned.space_bonuses == SPACE_BONUSES_BEFORE_RETUNE
+
+    sietch = _action("agent_turn", ("space_id", "sietch_tabr"))
+    fremkit = _action("agent_turn", ("space_id", "fremkit"))
+    old = SPACE_BONUSES_BEFORE_RETUNE
+    assert score_action(sietch, space_bonuses=old) == score_action(
+        fremkit, space_bonuses=old
+    )
+    assert score_action(sietch) != score_action(fremkit)
+
+
+def _view_for(**options: bool) -> PlayerView:
+    from dune_imperium import RulesetConfig
+    from dune_imperium.core.observation import observe_state
+    from dune_imperium.rules import UprisingRulesEngine
+
+    config = RulesetConfig(**options)
+    return observe_state(UprisingRulesEngine().reset(config, seed=2), 0)
+
+
+def test_the_retuned_ranking_is_used_for_the_rulesets_it_was_measured_on() -> None:
+    from dune_imperium.agents.heuristic_agent import _SPACE_BONUSES, space_bonuses_for
+
+    assert space_bonuses_for(_view_for()) is _SPACE_BONUSES
+    assert space_bonuses_for(_view_for(choam_module=True)) is _SPACE_BONUSES
+    assert space_bonuses_for(_view_for(promo_cards=True)) is _SPACE_BONUSES
+
+
+def test_an_expansion_table_keeps_the_ranking_it_was_measured_with() -> None:
+    # The retuned table measured +5pp on base+CHOAM but -5.6pp with every
+    # expansion on, and overlaying the spaces the expansions upgrade measured
+    # -34pp because it pulled the agent out of Conflicts. Until an expansion
+    # ranking is built and measured, those rulesets keep the old one.
+    from dune_imperium.agents.heuristic_agent import (
+        SPACE_BONUSES_BEFORE_RETUNE,
+        space_bonuses_for,
+    )
+
+    for options in (
+        {"bloodlines": True},
+        {"bloodlines": True, "tech_module": True},
+        {"immortality": True},
+        {"bloodlines": True, "tech_module": True, "immortality": True},
+    ):
+        assert space_bonuses_for(_view_for(**options)) is SPACE_BONUSES_BEFORE_RETUNE
+
+
+def test_the_ruleset_is_read_from_markers_that_outlive_their_supply() -> None:
+    # Detection must not flip mid-game and hand a seat a different ranking
+    # than it started with: the Tech stacks stay three entries once emptied and
+    # the Research tokens never leave the track.
+    from dataclasses import replace
+
+    from dune_imperium.agents.heuristic_agent import (
+        SPACE_BONUSES_BEFORE_RETUNE,
+        space_bonuses_for,
+    )
+
+    spent = replace(
+        _view_for(bloodlines=True, tech_module=True, immortality=True),
+        tech_stack_sizes=(0, 0, 0),
+        tleilaxu_deck_size=0,
+        skill_stack_size=0,
+        sardaukar_commander_space_ids=(),
+    )
+
+    assert space_bonuses_for(spent) is SPACE_BONUSES_BEFORE_RETUNE

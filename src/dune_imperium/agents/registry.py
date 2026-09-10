@@ -4,7 +4,10 @@ from collections.abc import Callable
 from typing import Final
 
 from dune_imperium.agents.base import Agent
-from dune_imperium.agents.heuristic_agent import HeuristicAgent
+from dune_imperium.agents.heuristic_agent import (
+    SPACE_BONUSES_BEFORE_RETUNE,
+    HeuristicAgent,
+)
 from dune_imperium.agents.random_agent import RandomAgent
 from dune_imperium.agents.rollout_agent import RolloutAgent
 
@@ -19,6 +22,19 @@ def _heuristic(seed: int) -> Agent:
     return HeuristicAgent(seed=seed)
 
 
+def _heuristic_untuned(seed: int) -> Agent:
+    """The heuristic with the board space ranking from before 2026-09-10.
+
+    A retune of the score tables is only believable against the ranking it
+    replaced, on the same seeds and seat rotations. Registering the old table
+    here keeps that A/B reproducible from the committed tree; the 2026-09-09
+    retune had to register a scratch module at runtime because the registry
+    had no slot for a variant.
+    """
+
+    return HeuristicAgent(seed=seed, space_bonuses=SPACE_BONUSES_BEFORE_RETUNE)
+
+
 def _rollout(seed: int) -> Agent:
     return RolloutAgent(seed=seed)
 
@@ -30,6 +46,7 @@ def _rollout(seed: int) -> Agent:
 BASELINE_AGENT_FACTORIES: Final[dict[str, AgentFactory]] = {
     "random": _random,
     "heuristic": _heuristic,
+    "heuristic_untuned": _heuristic_untuned,
     "rollout": _rollout,
 }
 

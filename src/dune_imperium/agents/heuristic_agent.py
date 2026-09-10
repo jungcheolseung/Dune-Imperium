@@ -15,7 +15,9 @@ uniform choice instead of failing.
 """
 
 import random
+from collections.abc import Mapping
 from dataclasses import dataclass, field
+from types import MappingProxyType
 from typing import Final
 
 from dune_imperium.content.immortality.board import (
@@ -218,16 +220,110 @@ _DECLINE_SCORE: Final = -2.0
 _PASS_SCORE: Final = -3.0
 _RETREAT_SCORE: Final = -1.0
 
-# Board spaces granting permanent upgrades outrank other placements.
-_SPACE_BONUSES: Final[dict[str, float]] = {
-    "swordmaster": 3.0,
-    "high_council": 2.0,
-}
+# Board space preference. Only Swordmaster and High Council were ranked
+# before 2026-09-10, so the other 21 spaces tied at ``agent_turn``'s base and
+# the agent picked among them almost uniformly -- 1,652 of 15,296 legal-action
+# sets in a 20-game all-option probe were ``agent_turn`` argument ties, the
+# single largest tie family by an order of magnitude.
+#
+# The values below are strategy preference, not a rules judgment (see the
+# module docstring): each space's printed yield comes from
+# ``docs/rules/board-spaces.md`` `[Board Guide pp. 1-2]`, and that yield is
+# priced on one rubric and reduced by the printed cost, so the numbers stay
+# comparable to each other and to the reward scores in ``_ACTION_SCORES``:
+#
+#   Influence 1   0.45   (a Victory Point at 2 and an Alliance at 4)
+#   sandworm 1    0.45   Maker Hooks 0.35   control location 0.35
+#   Intrigue 1    0.30   Spy placement 0.25   water 1 0.22
+#   card 1        0.20   troop 1 0.18   spice 1 0.12   Solari 1 0.07
+#
+# Permanent upgrades stay on top at their established values: a third Agent
+# for the rest of the game and a Council seat's standing +2 Persuasion are
+# worth more than any one-shot yield, so every priced space lands below them.
+#
+# Two limits are deliberate. ``score_action`` sees only the action, so a space
+# whose yield depends on the ruleset is priced on its base reward -- Dutiful
+# Service and Accept Contract pay 2 Solari here rather than a CHOAM contract,
+# and Research Station omits the Immortality research advance. And a space
+# with several cost options is one value, so Gather Support's two Solari for a
+# water and Spice Refinery's spice for two more Solari still tie; that and the
+# ``card_id`` half of an ``agent_turn`` tie are the remaining argument ties.
+_SPACE_BONUSES: Final[Mapping[str, float]] = MappingProxyType(
+    {
+        # Permanent upgrades keep their established values.
+        "swordmaster": 3.0,
+        "high_council": 2.0,
+        # Influence plus a big recruit, or Intrigue plus the steal from every
+        # opponent holding four or more.
+        "sardaukar": 1.0,
+        "secrets": 1.0,
+        # A second placement this turn, behind Emperor Influence 2.
+        "imperial_privilege": 0.9,
+        # A control location that also pays spice every round.
+        "imperial_basin": 0.85,
+        "espionage": 0.8,
+        "heighliner": 0.8,
+        "arrakeen": 0.75,
+        "sietch_tabr": 0.75,
+        "deliver_supplies": 0.7,
+        "fremkit": 0.65,
+        "deep_desert": 0.6,
+        "dutiful_service": 0.6,
+        "hagga_basin": 0.6,
+        "tuek_sietch": 0.55,
+        "assembly_hall": 0.5,
+        "desert_tactics": 0.5,
+        "spice_refinery": 0.5,
+        "shipping": 0.45,
+        "gather_support": 0.4,
+        # Both pay the least once their cost is priced in.
+        "accept_contract": 0.35,
+        "research_station": 0.35,
+    }
+)
 
-# Tech tiles (Bloodlines Tech Module) whose printed effect pays back at
-# once or scores: an acquire-time VP, an Endgame VP or Influence sweep, a
-# lasting discount, or units. Every other tile keeps the base score, so a
-# buy still outranks the decline whatever the tile.
+# The ranking before the 2026-09-10 retune, kept so the registry's
+# ``heuristic_untuned`` baseline reproduces it for a paired A/B from the
+# committed tree instead of needing a scratch module.
+SPACE_BONUSES_BEFORE_RETUNE: Final[Mapping[str, float]] = MappingProxyType(
+    {"swordmaster": 3.0, "high_council": 2.0}
+)
+
+
+# Which board space ranking applies. The retuned table above prices each
+# space's printed Uprising yield and measured +4.9pp and +5.1pp against the old
+# two-entry ranking on base+CHOAM, over two independent 2,000-match blocks
+# (2026-09-10, docs/evaluation/baseline-2026-09-10.md). With every expansion on
+# the same table measured -5.6pp, and an attempt to overlay the spaces the
+# expansions upgrade -- Immortality's revised Research Station
+# [Immortality pp. 5, 16], the Landsraad route to a Tech tile
+# [Bloodlines pp. 7, 12], the spaces holding a Commander [Bloodlines pp. 4, 12]
+# -- measured far worse still at -34pp, because lifting those mostly
+# non-Combat spaces pulled the agent out of Conflicts (Combat placements
+# 46.1% -> 39.7%, mean VP 8.20 -> 5.73). So the retune is scoped to the
+# rulesets it is measured on and an expansion table keeps the ranking it had;
+# pricing expansion spaces wants the Combat balance rebuilt with it, not a
+# bonus added on top.
+def space_bonuses_for(observation: PlayerView) -> Mapping[str, float]:
+    """Return the board space ranking measured for this view's ruleset.
+
+    The expansions are read off the observation, never a config the agent is
+    not given: a three-entry ``tech_stack_sizes`` means the Tech Module is on,
+    a seat's ``research_space`` is set only under Immortality, and a Skill
+    stack or a Commander on the board means Bloodlines. Every marker survives
+    a late game -- the stacks stay three once emptied, the Research tokens
+    never leave the track -- so the ranking cannot flip mid-game.
+    """
+
+    expansion = (
+        len(observation.tech_stack_sizes) == 3
+        or any(seat.research_space for seat in observation.players)
+        or bool(observation.skill_stack_size)
+        or bool(observation.sardaukar_commander_space_ids)
+    )
+    return SPACE_BONUSES_BEFORE_RETUNE if expansion else _SPACE_BONUSES
+
+
 _TECH_BONUSES: Final[dict[str, float]] = {
     "sardaukar_high_command": 2.0,
     "choam_transports": 1.5,
@@ -290,8 +386,17 @@ _RECLAIMED_FORCES_SCORES: Final[dict[str, float]] = {
 _TLEILAXU_DECK_TOP_BONUS: Final = 0.5
 
 
-def score_action(action: DomainAction) -> float:
-    """Rank one engine-legal action; higher is preferred."""
+def score_action(
+    action: DomainAction,
+    *,
+    space_bonuses: Mapping[str, float] = _SPACE_BONUSES,
+) -> float:
+    """Rank one engine-legal action; higher is preferred.
+
+    ``space_bonuses`` is the board space preference to rank ``agent_turn``
+    with. Passing an earlier table reproduces an earlier ranking, which is how
+    the registry offers a paired A/B opponent from the committed tree.
+    """
 
     action_id = action.action_id
     if action_id in _COUNT_DEPLOYMENTS:
@@ -302,7 +407,7 @@ def score_action(action: DomainAction) -> float:
         return _ACQUISITION_BASE + (float(cost) if cost is not None else 0.0)
     if action_id == "agent_turn":
         space_id = _argument(action, "space_id")
-        bonus = _SPACE_BONUSES.get(space_id, 0.0) if isinstance(space_id, str) else 0.0
+        bonus = space_bonuses.get(space_id, 0.0) if isinstance(space_id, str) else 0.0
         return _ACTION_SCORES["agent_turn"] + bonus
     if action_id == "acquire_tech":
         tech_id = _argument(action, "tech_id")
@@ -387,6 +492,11 @@ class HeuristicAgent:
     """Pick a highest-scoring legal action, breaking ties with a seeded RNG."""
 
     seed: int
+    # A fixed board space ranking, or None to derive one per observation with
+    # ``space_bonuses_for``. The registry pins the pre-retune table on one
+    # variant so an A/B against the earlier ranking is reproducible from the
+    # committed tree.
+    space_bonuses: Mapping[str, float] | None = None
     _rng: random.Random = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -405,7 +515,14 @@ class HeuristicAgent:
             raise ValueError("a heuristic agent requires at least one legal action")
         if any(action.actor != observation.player for action in legal_actions):
             raise ValueError("every legal action must belong to the observing player")
-        scored = tuple(score_action(action) for action in legal_actions)
+        bonuses = (
+            space_bonuses_for(observation)
+            if self.space_bonuses is None
+            else self.space_bonuses
+        )
+        scored = tuple(
+            score_action(action, space_bonuses=bonuses) for action in legal_actions
+        )
         if any(
             action.action_id not in _SWITCH_NEUTRAL_ACTIONS for action in legal_actions
         ):
