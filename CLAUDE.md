@@ -60,6 +60,23 @@ the docs are silent, add an entry to `docs/rules/open-questions.md` instead of
 guessing. Past failures of this discipline are logged in `docs/lessons.md`;
 read it at session start.
 
+## Long-running commands
+
+Soaks, sweeps, tournaments and the full test suite take minutes. Run them with
+`run_in_background: true` and then **do other work** -- a completion
+notification arrives on its own. Do not write a shell loop to wait for them.
+
+- To block on a task deliberately, use `TaskOutput` with `block: true`. To end
+  one, use `TaskStop` with its task id; `pkill` on the id does not deregister
+  it.
+- If a shell wait is unavoidable, wait on a file or a sentinel string, never on
+  process presence. `pgrep -f <pattern>` matches full command lines
+  **including the waiting shell itself**, so `until ! pgrep -f "pytest"` never
+  exits. Use `pgrep -x`, or `pgrep -f pat | grep -vw $$`.
+- Stop a task as soon as it stops being useful, and sweep for leftovers before
+  wrapping up. When reporting what is running, check the task list, not `ps` --
+  they are tracked separately (`docs/lessons.md`, 2026-09-10).
+
 ## Conventions worth knowing
 
 - Card slices follow the `Play <Card>` / `Document <Card>` commit pairing; keep
