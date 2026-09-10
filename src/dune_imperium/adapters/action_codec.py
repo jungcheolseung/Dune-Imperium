@@ -62,7 +62,7 @@ from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.rules.agent_effects import AUTOMATIC_AGENT_ICONS
 from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 
-ACTION_CODEC_VERSION = 103
+ACTION_CODEC_VERSION = 104
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -688,14 +688,22 @@ def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             for count in range(1, MAX_COMMANDER_DEPLOYMENT + 1)
         )
     # Commanders are troops for retreats and garrison deployments
-    # [Bloodlines p. 4]: the ``commanders`` share of a unit count.
+    # [Bloodlines p. 4]: the ``commanders`` share of a unit count. A Commander
+    # is its own component, not one of the twelve troops, so a seat's units in
+    # the Conflict reach MAX_DEPLOYMENT_COUNT + MAX_COMMANDER_DEPLOYMENT and
+    # Tactical Option's unbounded "retreat any number" offers every one of
+    # them; stopping the count at the troop total left the engine able to
+    # offer a retreat this codec could not encode (2026-09-10).
     templates.extend(
         ActionTemplate(
             action_id="retreat_intrigue_troops",
             arguments=(("commanders", share), ("count", count)),
         )
-        for count in range(1, MAX_DEPLOYMENT_COUNT + 1)
-        for share in range(1, min(count, MAX_COMMANDER_DEPLOYMENT) + 1)
+        for count in range(1, MAX_DEPLOYMENT_COUNT + MAX_COMMANDER_DEPLOYMENT + 1)
+        for share in range(
+            max(1, count - MAX_DEPLOYMENT_COUNT),
+            min(count, MAX_COMMANDER_DEPLOYMENT) + 1,
+        )
     )
     templates.extend(
         ActionTemplate(

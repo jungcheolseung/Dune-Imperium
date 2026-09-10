@@ -16,7 +16,7 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     first = ActionCodec(RulesetConfig())
     second = ActionCodec(RulesetConfig())
 
-    assert ACTION_CODEC_VERSION == 103
+    assert ACTION_CODEC_VERSION == 104
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
     # v92/v93/v97: the Reveal gain actions join every catalog (troops, Intrigue,
@@ -70,7 +70,9 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
     )
     for action in actions:
         assert both.decode(both.encode(action), actor=1) == action
-    assert both.size == 11100
+    # v104: the Commander share of a retreat reaches 12 troops + 7
+    # Commanders, which adds 28 unit-count templates [Bloodlines p. 4].
+    assert both.size == 11100 + 28
 
     choam_only = ActionCodec(RulesetConfig(choam_module=True))
     for action in actions:

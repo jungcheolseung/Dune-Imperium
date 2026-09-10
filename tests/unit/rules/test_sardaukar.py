@@ -616,6 +616,34 @@ def test_bloodlines_actions_round_trip_only_in_the_bloodlines_catalog() -> None:
             base.encode(action)
 
 
+def test_every_reachable_unit_retreat_is_encodable() -> None:
+    # A Commander is its own component, not one of the twelve troops
+    # [Bloodlines p. 4], so a seat's units in the Conflict reach 12 + 7 and
+    # Tactical Option retreats "any number" of them (RetreatTroops(1, None)).
+    # The catalog stopped at the troop total, so a 2026-09-10 collection run
+    # reached retreat_intrigue_troops(commanders=1, count=13) -- legal for the
+    # engine, unencodable for the codec.
+    from dune_imperium.adapters.action_codec import (
+        MAX_COMMANDER_DEPLOYMENT,
+        MAX_DEPLOYMENT_COUNT,
+    )
+    from dune_imperium.rules.intrigue import _unit_count_arguments
+
+    codec = ActionCodec(BLOODLINES)
+    reachable = _unit_count_arguments(
+        minimum=1,
+        maximum=None,
+        troops=MAX_DEPLOYMENT_COUNT,
+        commanders=MAX_COMMANDER_DEPLOYMENT,
+    )
+
+    counts = [dict(arguments)["count"] for arguments in reachable]
+    assert max(counts) == MAX_DEPLOYMENT_COUNT + MAX_COMMANDER_DEPLOYMENT
+    for arguments in reachable:
+        action = DomainAction("retreat_intrigue_troops", 0, arguments)
+        assert codec.decode(codec.encode(action), 0) == action
+
+
 @pytest.mark.parametrize("game_seed", [11, 12, 13])
 def test_random_bloodlines_games_finish_under_every_check(game_seed: int) -> None:
     report = run_checked_game(
