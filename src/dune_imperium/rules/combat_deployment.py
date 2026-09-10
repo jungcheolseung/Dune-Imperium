@@ -193,9 +193,17 @@ def legal_troop_withdrawals(
     context, _, _, deployed = found
     owner = state.players[player]
     # A consumed deployment condition (Distraction) keeps its minimum deployed.
+    # The units actually in the Conflict bound this too: a troop deployed this
+    # turn can leave it again before the turn closes, and "when you lose a
+    # troop, return it to your supply (not your garrison)"
+    # [Dune: Imperium Rules 2020-10-26 p. 16], so the frame's deployment count
+    # outruns the Conflict. A withdrawal acts on what is there when it
+    # resolves, the way a recruit does (OQ-030); offering more advertised a
+    # move that drove the seat's troops negative (2026-09-10 soak, seed 34).
     maximum = min(
         deployed - _commanders_deployed(context),
         owner.units_deployed_turn - owner.units_deployed_committed,
+        owner.troops_conflict,
     )
     return tuple(
         DomainAction(
@@ -218,9 +226,13 @@ def legal_commander_withdrawals(
         return ()
     context, _, _, _ = found
     owner = state.players[player]
+    # Bounded by the Commanders actually in the Conflict, for the same reason
+    # the troop withdrawal is: Bloodlines loses a Commander from the garrison
+    # or the Conflict [Bloodlines Rules p. 8].
     maximum = min(
         _commanders_deployed(context),
         owner.units_deployed_turn - owner.units_deployed_committed,
+        owner.commanders_conflict,
     )
     return tuple(
         DomainAction(

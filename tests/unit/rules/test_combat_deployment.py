@@ -360,3 +360,49 @@ def test_running_strength_follows_deployment_before_the_reveal() -> None:
     back = engine.apply(deployed, _withdrawal(2)).state
     assert back.players[0].troops_conflict == 0
     assert back.players[0].combat_strength == 0
+
+
+def test_a_troop_lost_after_deploying_is_not_offered_back() -> None:
+    # "When you lose a troop, return it to your supply (not your garrison)"
+    # [Dune: Imperium Rules 2020-10-26 p. 16], so a troop deployed this turn
+    # can leave the Conflict before the turn closes and the frame's deployment
+    # count outruns what is actually there. A withdrawal acts on what is in the
+    # Conflict when it resolves, the way a recruit does (OQ-030); offering more
+    # advertised a move that drove the seat's troops negative (soak seed 34).
+    from dune_imperium.rules.combat_deployment import (
+        legal_commander_withdrawals,
+        legal_troop_withdrawals,
+    )
+
+    state = _research_station_state()
+    state = apply_agent_action(
+        state, _agent_action_to(state, "research_station")
+    ).state
+    state = _resolve_board_icons(state)
+    deploy_two = DomainAction(
+        action_id="deploy_troops", actor=0, arguments=(("count", 2),)
+    )
+    state = apply_combat_deployment(state, deploy_two).state
+
+    offered = [
+        dict(action.arguments)["count"] for action in legal_troop_withdrawals(state, 0)
+    ]
+    assert offered == [1, 2]
+
+    # Lose one of the two to the supply, leaving the frame's count at two.
+    seat = state.players[0]
+    lost = replace(
+        seat,
+        troops_conflict=seat.troops_conflict - 1,
+        troops_supply=seat.troops_supply + 1,
+    )
+    state = replace(state, players=(lost, *state.players[1:]))
+
+    offered = [
+        dict(action.arguments)["count"] for action in legal_troop_withdrawals(state, 0)
+    ]
+    assert offered == [1]
+    for action in legal_troop_withdrawals(state, 0):
+        apply_troop_withdrawal(state, action)
+    # The Commander twin is bounded the same way and offers nothing here.
+    assert legal_commander_withdrawals(state, 0) == ()
