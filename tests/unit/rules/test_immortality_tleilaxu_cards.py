@@ -27,7 +27,9 @@ from dune_imperium.core import (
 )
 from dune_imperium.core.observation import observe_state
 from dune_imperium.rules.agent_effects import (
+    apply_agent_card_discard,
     apply_agent_card_payment,
+    legal_agent_card_discard_actions,
     legal_agent_card_payment_actions,
     resolve_agent_card_effect,
 )
@@ -720,3 +722,65 @@ def test_ghola_copying_steersman_can_end_the_turn_with_no_agent_to_recall() -> N
         "agent_turn_finished",
     ]
     assert finished.state.decision_stack[-1].kind == "turn"
+
+
+def test_ghola_pays_the_borrowed_box_in_the_borrowed_box_s_resource() -> None:
+    # "Ghola는 상대 카드의 Agent box 전체("Trash this card" 포함)를 복사하고"
+    # `[Immortality p. 14]` (docs/rules/immortality.md 88), so an arrow cost on
+    # the borrowed box is the borrowed box's cost. The provider read that
+    # through ``active_agent_card`` while the apply read Ghola's own empty
+    # face, so a Ghola copying Ecological Testing Station's "2 water: draw 2"
+    # was charged four spice and a Victory Point instead -- and crashed when
+    # the seat had no spice to take (all-option tournament seed 70620).
+    ghola = _tleilaxu("ghola")
+    station = "imperium:ecological_testing_station:0"
+    grafted = _graft(
+        _state(
+            _owner(
+                (ghola, station),
+                resources=Resources(solari=4, spice=1, water=2),
+            )
+        ),
+        ghola,
+        "arrakeen",
+        station,
+    )
+
+    before = grafted.players[0]
+    payment = _payment(grafted, "pay_agent_card_water")
+    paid = apply_agent_card_payment(grafted, payment).state
+    owner = paid.players[0]
+
+    # Two water, not four spice; two cards drawn, and no Victory Point. Before
+    # the fix this spent spice, scored a point, and drew nothing.
+    assert owner.resources.water == before.resources.water - 2
+    assert owner.resources.spice == before.resources.spice
+    assert owner.victory_points == before.victory_points
+    assert len(owner.hand) == len(before.hand) + 2
+
+
+def test_ghola_borrowing_a_discard_box_still_pays_out_its_rewards() -> None:
+    # The same borrowed box `[Immortality p. 14]` on the discard branch:
+    # ``apply_agent_card_discard`` read the printed card too, so a Ghola
+    # copying Captured Mentat spent the discard and gained nothing.
+    ghola = _tleilaxu("ghola")
+    mentat = "imperium:captured_mentat:0"
+    grafted = _graft(
+        _state(_owner((ghola, mentat, DAGGER))), ghola, "arrakeen", mentat
+    )
+
+    discard = next(
+        action
+        for action in legal_agent_card_discard_actions(grafted, 0)
+        if dict(action.arguments).get("card_id") == DAGGER
+    )
+    after = apply_agent_card_discard(grafted, discard).state
+    owner = after.players[0]
+    _, context = current_agent_effect_context(after)
+
+    assert DAGGER in owner.discard_pile
+    # Captured Mentat pays an Intrigue card and a personal card for the
+    # discard, queued as their own icons in the owner's order (OQ-027).
+    # Before the fix the discard was spent and neither reward was queued.
+    assert context["pending_agent_icons"] == "intrigue,cards"
+    assert context["pending_agent_effect"] is True

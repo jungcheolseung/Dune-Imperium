@@ -323,7 +323,12 @@ def apply_agent_card_discard(
         context,
         discarded.state.players,
     )
-    source_card = personal_card_for_instance(_effect_subject(context)[1])
+    # Ghola "상대 카드의 Agent box 전체를 복사" `[Immortality p. 14]`, so the box
+    # being resolved is the borrowed one, not Ghola's own empty face. The
+    # provider (``legal_agent_card_discard_actions``) already reads it through
+    # ``active_agent_card``; reading the printed card here instead let a Ghola
+    # take the discard and pay out nothing.
+    source_card = active_agent_card(context)
     if source_card.agent_effect in (
         PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD,
         PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE_AND_INTRIGUE_IF_SPACING_GUILD,
@@ -2458,7 +2463,13 @@ def apply_agent_card_payment(state: GameState, action: DomainAction) -> RuleResu
                 ),
             ),
         )
-    source_card = personal_card_for_instance(_effect_subject(context)[1])
+    # The same borrowed box `[Immortality p. 14]`. The provider checks the
+    # arrow's cost against the borrowed effect's own resource, so reading the
+    # printed card here sent a Ghola down the other branch: it charged four
+    # spice and a Victory Point for a box that asks two water and draws two
+    # cards, and crashed outright when the seat could not pay in the resource
+    # it was never asked for.
+    source_card = active_agent_card(context)
     pays_water = (
         source_card.agent_effect
         is PersonalCardAgentEffect.PAY_TWO_WATER_TO_DRAW_TWO
