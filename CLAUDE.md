@@ -51,6 +51,20 @@ in the same work unit.
   task fits neither project subagent.
 - Review every delegated diff and rerun pytest/ruff/mypy before committing.
 
+### Workflow (ultracode) model policy
+
+A workflow `agent()` call that omits `model` inherits the main session's
+model, so an ultracode run on Fable spends Fable tokens on every subagent
+(noticed 2026-09-11). Apply the delegation policy inside workflow scripts too:
+
+- Finder, scout, collection and mechanical-edit stages: `model: 'sonnet'`
+  (or `'haiku'` for read-only searches) with `effort: 'low'`, or reuse the
+  project subagents via `agentType: 'repo-scout'` / `agentType:
+  'card-implementer'`, whose frontmatter sets the cheap model.
+- Only verify/refute, judge and synthesis stages inherit the session model.
+- Do not reach for ultracode on a bounded slice (one card, one known-cause
+  fix); a single `card-implementer` Agent call is cheaper than a workflow.
+
 ## Rule changes: verify before you act
 
 Never change what the engine does under a rule — including "fixing" it after a
