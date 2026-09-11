@@ -36,6 +36,7 @@
 
 - 네 Faction은 Emperor, Spacing Guild, Bene Gesserit, Fremen이다. 각 플레이어의 cube는 각 Influence track 맨 아래에서 시작한다. `[Main pp. 5, 7]`
 - Faction board space에 Agent를 보내면 해당 Faction Influence를 1 올린다. 카드나 다른 효과도 Influence를 올리거나 내릴 수 있다. `[Main p. 7]`
+- track은 6칸이다. 이미 6인 cube에 대한 추가 Influence 획득과, 고를 진영이 전부 6인 "진영을 골라 Influence" 보상의 처리는 공식 문서가 침묵한다 — [OQ-060](open-questions.md#oq-060--influence-track-맨-위6에서의-진영을-골라-influence-보상) project convention(획득 소멸).
 - Influence 2에 도달하면 1 VP를 얻는다. 이후 2 아래로 내려가면 그 VP를 잃는다. 여러 Influence를 한 번에 얻으며 2를 지나가는 것도 `reach 2`이고, 내려갈 때가 아니라 올라갈 때만 `reach`로 본다. Influence를 잃었다가 다시 올라오면 다시 도달할 수 있다. `[Main pp. 7, 17]`
 - Influence 4에 도달하면 track에 표시된 보너스를 얻는다. Emperor는 troop 2개, Spacing Guild는 water 3, Bene Gesserit은 Intrigue card 1장, Fremen은 water 1을 얻는다. 이 값은 공식 setup board artwork와 p. 7의 Bene Gesserit track 예시를 함께 전사했다. 4 아래로 내려가도 보너스를 반환하지 않으며, 다시 4에 도달하면 같은 보너스를 다시 받을 수 있다. `[Main pp. 4, 7 board artwork]`
 

@@ -570,3 +570,31 @@
   불발시키고 `contract_icons_fizzled` 이벤트를 남긴다. 좌석 scalar가 하나 늘어 관측은
   **v20**(좌석 scalar 51→52), action id는 그대로라 codec은 v104 유지. 가져갈 수 있는지의
   판정은 provider와 보류가 같은 `takeable_contract_ids`를 쓴다.
+
+## OQ-060 — Influence track 맨 위(6)에서의 "진영을 골라 Influence" 보상
+
+- 상태: `OPEN` (구현 convention 적용, 사용자 확정 대기)
+- 각 Influence track은 6칸이고 cube는 맨 아래에서 시작한다 `[Main pp. 5, 7]`
+  ([uprising-systems.md](uprising-systems.md) "Faction Influence"). 엔진은 처음부터 6에 있는
+  cube에 대한 Influence 획득을 **버린다**(`rules/influence.py`의 `MAX_INFLUENCE`; 한 칸씩
+  올리다 6이면 멈춘다). 공식 문서는 맨 위에서의 추가 획득을 따로 말하지 않는다.
+- 공백: Conflict 보상의 **"진영을 골라 Influence 1"**(Skirmish (Crysknife) 등)과 **"서로 다른
+  진영 둘"**(Propaganda)에서 고를 수 있는 진영이 하나도 없을 때(해당 진영이 전부 6) 보상이
+  어떻게 되는지 Main·Board Guide·FAQ 모두 침묵한다. Propaganda를 sandworm으로 이겨 두 세트를
+  받으면 첫 세트가 track을 채워 둘째 세트가 빌 수도 있다.
+- 발견: 2026-09-11 heuristic 공간 표 A/B(Immortality, seed 102)에서 Influence 위주로 배치하는
+  변형이 세 진영을 6까지 올린 채 Propaganda를 이겨, 엔진의 옛 tripwire
+  `NotImplementedError("Influence 4 bonuses and Alliances are not implemented")`(보상 해결
+  전 검사)로 게임이 죽었다(2,000판 중 1판). 메시지는 초기 구현의 잔재이고 Influence 4
+  보너스·Alliance는 구현돼 있다.
+- 필요한 답: 고를 진영이 없는 선택형 Influence 보상을 (a) 소멸시킬지, (b) 다른 보상으로
+  바꿀지(공식 문서에 대체 보상은 없다).
+- 구현 convention(2026-09-11): **(a)** 맨 위에 있는 cube의 일반 Influence 획득이 버려지는
+  것과 같은 방향으로, 고를 진영이 없는 선택 frame은 엔진이 자동으로 걷어내고 공개 이벤트
+  `combat_reward_influence_unavailable`을 남긴다(`combat_influence_choice_is_unavailable` →
+  `fizzle_combat_influence_choice`, `_advance_automatic`). "서로 다른 진영 둘"은 OQ-057의
+  원자성대로 먼저 이름 붙인 진영은 그대로 지급하고 고를 수 없는 나머지만 소멸한다 — 남은
+  진영이 하나면 하나만 오른다. 두 세트(sandworm)는 세트 사이에 첫 세트가 해결되므로 둘째
+  세트는 채워진 track을 보고 판정한다. 합법 행동 provider는 이미 6인 진영을 제시하지 않으므로
+  선택 자체의 규칙은 바뀌지 않았다. `tests/unit/rules/test_combat.py`의 OQ-060 테스트 3건으로
+  고정한다. 사용자가 (b)를 고르면 이 항목을 다시 연다.

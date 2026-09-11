@@ -250,11 +250,9 @@ def resolve_combat_rewards(state: GameState) -> RuleResult:
         )
 
     ranking = rank_combat(state.players, first_player=state.first_player)
-    _validate_supported_rewards(state, ranking, conflict.rewards)
     players = list(state.players)
     intrigue_deck = state.intrigue_deck
     pending_draws = state.pending_intrigue_draws
-    choice_owners: list[int] = []
     frames_in_order: list[DecisionFrame] = []
     events: list[GameEvent] = []
     for assignment in ranking.rewards:
@@ -350,7 +348,6 @@ def resolve_combat_rewards(state: GameState) -> RuleResult:
             )
         for _ in range(amount):
             for _ in range(reward.choose_influence):
-                choice_owners.append(assignment.player)
                 frames_in_order.append(
                     _influence_choice_frame(
                         state,
@@ -442,7 +439,6 @@ def resolve_combat_rewards(state: GameState) -> RuleResult:
             )
         )
 
-    _validate_influence_choices(tuple(players), tuple(choice_owners))
     frames = tuple(reversed(frames_in_order))
     next_state = replace(
         state,
@@ -945,6 +941,85 @@ def apply_combat_reward_influence(
     return RuleResult(state=next_state, events=gained.events)
 
 
+_INFLUENCE_CHOICE_FRAMES: frozenset[FrameKind] = frozenset(
+    {FrameKind.COMBAT_REWARD_INFLUENCE, FrameKind.COMBAT_REWARD_DISTINCT_INFLUENCE}
+)
+
+
+def combat_influence_choice_is_unavailable(state: GameState) -> bool:
+    """Return whether the top Combat reward Influence choice has no faction left.
+
+    A cube at the top of its track cannot rise, so a "choose a Faction"
+    reward with every eligible Faction at 6 has nothing to offer (OQ-060).
+    """
+
+    if not state.decision_stack:
+        return False
+    frame = state.decision_stack[-1]
+    if frame.kind not in _INFLUENCE_CHOICE_FRAMES:
+        return False
+    decision = frame.decision
+    if not isinstance(decision, PlayerDecision):
+        return False
+    owner = decision.owner
+    if frame.kind is FrameKind.COMBAT_REWARD_INFLUENCE:
+        return not legal_combat_reward_influence_actions(state, owner)
+    return not legal_distinct_combat_reward_influence_actions(state, owner)
+
+
+def fizzle_combat_influence_choice(state: GameState) -> RuleResult:
+    """Drop the top Influence choice no faction can take (OQ-060).
+
+    The choice is lost the way a plain Influence gain is lost at the top of
+    the track. A "choose two" group still pays the Factions its earlier pick
+    named, since those were chosen before this one ran out of options.
+    """
+
+    if not combat_influence_choice_is_unavailable(state):
+        raise ValueError("the top frame is an Influence choice with a faction to take")
+    frame = state.decision_stack[-1]
+    decision = frame.decision
+    if not isinstance(decision, PlayerDecision):
+        raise RuntimeError("Influence choice frame has no owner")
+    player = decision.owner
+    context = dict(frame.context)
+    choice_index = context_int(context, "choice_index")
+    remaining = state.decision_stack[:-1]
+    working = replace(
+        state, decision_stack=remaining, combat_rewards_resolved=not remaining
+    )
+    prefix = (
+        f"round:{state.round_number}:combat_reward:influence_unavailable:"
+        f"{choice_index}:{player}"
+    )
+    events: list[GameEvent] = [
+        GameEvent(
+            event_id=prefix,
+            kind="combat_reward_influence_unavailable",
+            payload=(("choice_index", choice_index), ("player", player)),
+        )
+    ]
+    if frame.kind is FrameKind.COMBAT_REWARD_DISTINCT_INFLUENCE:
+        for pick in (
+            Faction(value)
+            for value in str(context.get("chosen_factions", "")).split(",")
+            if value
+        ):
+            gained = gain_faction_influence(
+                working,
+                player,
+                pick,
+                1,
+                event_prefix=(
+                    f"round:{state.round_number}:combat_reward:distinct_influence:"
+                    f"{choice_index}:{player}:{pick.value}"
+                ),
+            )
+            working = gained.state
+            events.extend(gained.events)
+    return RuleResult(state=working, events=tuple(events))
+
+
 def _conflict_end_trigger_cards(
     state: GameState, player: int, lost: int
 ) -> tuple[str, ...]:
@@ -1332,30 +1407,6 @@ def _combat_reward_event(
     )
 
 
-def _validate_supported_rewards(
-    state: GameState,
-    ranking: CombatRanking,
-    rewards: tuple[ConflictReward, ConflictReward, ConflictReward],
-) -> None:
-    for assignment in ranking.rewards:
-        reward = rewards[assignment.rank - 1]
-        if reward.choose_distinct_influence:
-            influence = state.players[assignment.player].influence
-            available = sum(
-                influence_amount(influence, faction) < MAX_INFLUENCE
-                for faction in Faction
-            )
-            capacity = sum(
-                max(0, MAX_INFLUENCE - influence_amount(influence, faction))
-                for faction in Faction
-            )
-            required = reward.choose_distinct_influence * assignment.multiplier
-            if available < reward.choose_distinct_influence or capacity < required:
-                raise NotImplementedError(
-                    "Influence 4 bonuses and Alliances are not implemented"
-                )
-
-
 def _apply_control(
     players: tuple[PlayerState, ...],
     winner: int,
@@ -1379,22 +1430,6 @@ def _apply_control(
         )
         for player in players
     )
-
-
-def _validate_influence_choices(
-    players: tuple[PlayerState, ...],
-    choice_owners: tuple[int, ...],
-) -> None:
-    for player in players:
-        required = choice_owners.count(player.player_id)
-        capacity = sum(
-            max(0, MAX_INFLUENCE - influence_amount(player.influence, faction))
-            for faction in Faction
-        )
-        if required > capacity:
-            raise NotImplementedError(
-                "Influence 4 bonuses and Alliances are not implemented"
-            )
 
 
 def _influence_choice_frame(

@@ -25,7 +25,9 @@ from dune_imperium.rules.combat import (
     apply_combat_reward_trash,
     apply_distinct_combat_reward_influence,
     begin_combat_intrigue,
+    combat_influence_choice_is_unavailable,
     finish_combat,
+    fizzle_combat_influence_choice,
     legal_combat_intrigue_actions,
     legal_combat_reward_influence_actions,
     legal_combat_reward_optional_payment_actions,
@@ -486,6 +488,93 @@ def test_sandworm_restarts_propaganda_distinct_group() -> None:
     assert state.players[0].influence.spacing_guild == 2
     assert state.players[0].victory_points == 3
     assert state.combat_rewards_resolved is True
+
+
+def _with_influence(state: GameState, player: int, influence: Influence) -> GameState:
+    players = list(state.players)
+    players[player] = replace(players[player], influence=influence)
+    return replace(state, players=tuple(players))
+
+
+def test_influence_choice_with_no_faction_below_the_top_fizzles() -> None:
+    # OQ-060: a cube at the top of its track cannot rise, so Skirmish
+    # (Crysknife)'s "choose a Faction" has nothing to offer once every track
+    # is at 6. The choice is lost, like a plain gain at the top, instead of
+    # blocking the Combat phase.
+    full = Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6)
+    state = _with_influence(_reward_state("skirmish_crysknife"), 0, full)
+
+    resolved = resolve_combat_rewards(state).state
+
+    assert legal_combat_reward_influence_actions(resolved, 0) == ()
+    assert combat_influence_choice_is_unavailable(resolved)
+    result = fizzle_combat_influence_choice(resolved)
+    assert result.state.decision_stack == ()
+    assert result.state.combat_rewards_resolved is True
+    assert result.state.players[0].influence == full
+    assert [event.kind for event in result.events] == [
+        "combat_reward_influence_unavailable"
+    ]
+    with pytest.raises(ValueError, match="faction to take"):
+        fizzle_combat_influence_choice(result.state)
+
+
+def test_propaganda_with_one_faction_below_the_top_pays_that_one() -> None:
+    # "Choose two" with only one Faction left below 6: the first pick is
+    # named, the second frame has no Faction to offer, and the fizzle still
+    # pays the named pick (OQ-060 with OQ-057's choose-two atomicity).
+    state = _with_influence(
+        _reward_state("propaganda"),
+        0,
+        Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=1),
+    )
+    resolved = resolve_combat_rewards(state).state
+
+    actions = legal_distinct_combat_reward_influence_actions(resolved, 0)
+    assert [dict(action.arguments)["faction"] for action in actions] == ["fremen"]
+    named = apply_distinct_combat_reward_influence(resolved, actions[0]).state
+    assert named.players[0].influence.fremen == 1
+    assert combat_influence_choice_is_unavailable(named)
+
+    result = fizzle_combat_influence_choice(named)
+
+    assert result.state.players[0].influence.fremen == 2
+    # One Victory Point for the tier-III win, one for reaching Fremen 2.
+    assert result.state.players[0].victory_points == 2
+    assert result.state.combat_rewards_resolved is True
+    assert result.events[0].kind == "combat_reward_influence_unavailable"
+
+
+def test_sandworm_propaganda_second_set_fizzles_once_the_tracks_fill() -> None:
+    # The second set of a doubled Propaganda is judged after the first set
+    # moved the cubes: with Emperor and Guild at 5 and the others at 6, the
+    # first set fills both tracks and the second set has nothing left.
+    state = _with_influence(
+        _reward_state("propaganda", sandworm_players=(0,)),
+        0,
+        Influence(emperor=5, spacing_guild=5, bene_gesserit=6, fremen=6),
+    )
+    working = resolve_combat_rewards(state).state
+    assert len(working.decision_stack) == 4
+    for faction in ("emperor", "spacing_guild"):
+        action = next(
+            candidate
+            for candidate in legal_distinct_combat_reward_influence_actions(
+                working, 0
+            )
+            if dict(candidate.arguments)["faction"] == faction
+        )
+        working = apply_distinct_combat_reward_influence(working, action).state
+    assert working.players[0].influence.emperor == 6
+    assert working.players[0].influence.spacing_guild == 6
+
+    for _ in range(2):
+        assert combat_influence_choice_is_unavailable(working)
+        working = fizzle_combat_influence_choice(working).state
+
+    assert working.decision_stack == ()
+    assert working.combat_rewards_resolved is True
+    assert not combat_influence_choice_is_unavailable(working)
 
 
 def test_tier_two_resources_troops_and_fixed_influence_resolve() -> None:

@@ -90,7 +90,9 @@ from dune_imperium.rules.combat import (
     apply_conflict_end_trigger,
     apply_distinct_combat_reward_influence,
     begin_combat_intrigue,
+    combat_influence_choice_is_unavailable,
     finish_combat,
+    fizzle_combat_influence_choice,
     legal_combat_intrigue_actions,
     legal_combat_reward_influence_actions,
     legal_combat_reward_optional_payment_actions,
@@ -855,6 +857,10 @@ def _advance_automatic(result: RuleResult) -> RuleResult:
             automatic = begin_skill_choice(state)
         elif navigation_play_is_queued(state):
             automatic = begin_navigation_play(state)
+        elif combat_influence_choice_is_unavailable(state):
+            # Every eligible Faction is at the top of its track, so the
+            # choice is lost like any other Influence gain there (OQ-060).
+            automatic = fizzle_combat_influence_choice(state)
         elif state.decision_stack:
             break
         elif state.phase is GamePhase.COMBAT:
