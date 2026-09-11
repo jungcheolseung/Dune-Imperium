@@ -481,6 +481,16 @@ def _placement_terms(action: DomainAction) -> tuple[tuple[str, ActionValue], ...
     return tuple((key, value) for key, value in action.arguments if key != "card_id")
 
 
+# Which Tech tile to buy when more than one face-up tile is affordable: the
+# ones that score or pay back at once first. Re-pricing this table was
+# measured and rejected (docs/evaluation/baseline-2026-09-10.md section 17;
+# 2,000 agent-games a cell, Bloodlines + Tech Module, against the committed
+# table): an all-18-tile table built from the printed effects, and the same
+# table tilted by cost either way, all land within +-2.2pp of this one, and
+# only a deliberately cheap-first table loses (-4.8pp). The buys spread
+# almost evenly over the tiles (0.09 to 0.18 a seat each), so the offer and
+# the seat's spice settle most purchases before the ranking is consulted.
+# ``HeuristicAgent(tech_bonuses=...)`` is the slot for re-running that A/B.
 _TECH_BONUSES: Final[dict[str, float]] = {
     "sardaukar_high_command": 2.0,
     "choam_transports": 1.5,
@@ -547,14 +557,16 @@ def score_action(
     action: DomainAction,
     *,
     space_bonuses: Mapping[str, float] = UPRISING_SPACE_BONUSES,
+    tech_bonuses: Mapping[str, float] = _TECH_BONUSES,
 ) -> float:
     """Rank one engine-legal action; higher is preferred.
 
     ``space_bonuses`` is the board space preference to rank ``agent_turn``
-    with. Passing an earlier table reproduces an earlier ranking, which is how
-    the registry offers a paired A/B opponent from the committed tree. Which
-    card an ``agent_turn`` spends is not scored here; it is settled after the
-    tie-break by ``cheapest_card_for_the_same_space``.
+    with, and ``tech_bonuses`` the Tech tile preference to rank
+    ``acquire_tech`` with. Passing an earlier table reproduces an earlier
+    ranking, which is how the registry offers a paired A/B opponent from the
+    committed tree. Which card an ``agent_turn`` spends is not scored here; it
+    is settled after the tie-break by ``cheapest_card_for_the_same_space``.
     """
 
     action_id = action.action_id
@@ -570,7 +582,7 @@ def score_action(
         return _ACTION_SCORES["agent_turn"] + bonus
     if action_id == "acquire_tech":
         tech_id = _argument(action, "tech_id")
-        bonus = _TECH_BONUSES.get(tech_id, 0.0) if isinstance(tech_id, str) else 0.0
+        bonus = tech_bonuses.get(tech_id, 0.0) if isinstance(tech_id, str) else 0.0
         return _ACTION_SCORES["acquire_tech"] + bonus
     if action_id == "acquire_tleilaxu":
         return _ACTION_SCORES["acquire_tleilaxu"] + _tleilaxu_acquisition_bonus(action)
@@ -660,6 +672,8 @@ class HeuristicAgent:
     # card the same price. The registry pins None on one variant for the same
     # reason.
     spent_card_value: RevealValue | None = SPENT_CARD_VALUE
+    # A fixed Tech tile ranking, or None for the committed ``_TECH_BONUSES``.
+    tech_bonuses: Mapping[str, float] | None = None
     _rng: random.Random = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -683,8 +697,12 @@ class HeuristicAgent:
             if self.space_bonuses is None
             else self.space_bonuses
         )
+        tech_bonuses = (
+            _TECH_BONUSES if self.tech_bonuses is None else self.tech_bonuses
+        )
         scored = tuple(
-            score_action(action, space_bonuses=bonuses) for action in legal_actions
+            score_action(action, space_bonuses=bonuses, tech_bonuses=tech_bonuses)
+            for action in legal_actions
         )
         if any(
             action.action_id not in _SWITCH_NEUTRAL_ACTIONS for action in legal_actions

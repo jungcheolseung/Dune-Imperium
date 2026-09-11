@@ -177,6 +177,25 @@ def test_tech_tiles_are_bought_and_the_scoring_ones_first() -> None:
     assert dict(chosen.arguments)["tech_id"] == "sardaukar_high_command"
 
 
+def test_a_pinned_tech_table_reorders_the_tiles() -> None:
+    # ``tech_bonuses`` is the Tech tile slot of the paired A/B, the way
+    # ``space_bonuses`` is for the board space ranking: a table passed in
+    # replaces the committed ranking for ``acquire_tech`` and nothing else.
+    table = {"glowglobes": 3.0, "sardaukar_high_command": 0.0}
+    glowglobes = _action("acquire_tech", ("tech_id", "glowglobes"))
+    command = _action("acquire_tech", ("tech_id", "sardaukar_high_command"))
+    assert score_action(glowglobes, tech_bonuses=table) > score_action(
+        command, tech_bonuses=table
+    )
+    assert score_action(glowglobes) < score_action(command)
+    offer = (_action("decline_tech"), command, glowglobes)
+    pinned = HeuristicAgent(seed=1, tech_bonuses=table)
+    assert dict(pinned.choose_action(_view(), offer).arguments)["tech_id"] == (
+        "glowglobes"
+    )
+    assert HeuristicAgent(seed=1).choose_action(_view(), offer) == command
+
+
 def test_switch_graft_card_never_outranks_a_resolvable_box() -> None:
     """Two grafted boxes whose offers rank below the switch would otherwise
     loop forever (Ghola copying CHOAM Demands, 2026-09-08 sweep seed 32)."""
