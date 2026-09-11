@@ -53,10 +53,12 @@ def _heuristic_uprising_table(seed: int) -> Agent:
 
     Every ruleset uses that ranking now except one: the Tech Module keeps the
     two-entry table, because a Tech tile is bought on a Landsraad visit
-    [Bloodlines p. 7] and the priced ranking puts the cheap Landsraad spaces
-    at the bottom (-6.6pp and -4.8pp, docs/evaluation/baseline-2026-09-10.md
-    section 15). This variant is the other side of that one open A/B, so
-    pricing a Tech ranking can be measured against it from the committed tree.
+    [Bloodlines p. 7] and the priced ranking loses there (-11.8pp over 1,000
+    seeds without CHOAM and -6.5pp with it, docs/evaluation/baseline-2026-09-10.md
+    section 16). Pricing the Acquire Tech onto the Landsraad spaces was measured
+    against this variant and against ``heuristic_untuned`` and rejected
+    (section 16); it stays registered so that measurement, and any later
+    Tech ranking, can be re-run from the committed tree.
     """
 
     return HeuristicAgent(seed=seed, space_bonuses=UPRISING_SPACE_BONUSES)

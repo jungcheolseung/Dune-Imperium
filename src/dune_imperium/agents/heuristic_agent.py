@@ -314,11 +314,25 @@ SPACE_BONUSES_BEFORE_RETUNE: Final[Mapping[str, float]] = MappingProxyType(
 # five Landsraad spaces the Agent named -- and this table ranks the cheap ones
 # near the bottom (Assembly Hall 0.50, Gather Support 0.40). So the agent stops
 # visiting Landsraad and stops buying tiles: 2.48 -> 1.16 tiles a seat, with
-# Commanders 0.62 -> 0.35, over a 30-game all-option probe.
+# Commanders 0.62 -> 0.35, over a 30-game all-option probe -- a symptom, as
+# the next paragraph shows, not the cause.
 #
-# Until a Tech ranking is priced and measured, that one ruleset keeps the
-# two-entry table it was measured with and every other ruleset uses the priced
-# one.
+# Pricing the Acquire Tech onto the five Landsraad spaces was then measured
+# and rejected (docs/evaluation/baseline-2026-09-10.md section 16; 2,000
+# agent-games a cell, Bloodlines + Tech Module without CHOAM, against the
+# two-entry table). A flat bonus loses more the larger it is (-17.0pp at
+# 0.15, -32.1pp at 0.50); a bonus that applies only while the seat can pay
+# for a face-up tile lands where the priced table already is (-14.0 to
+# -16.0pp against -13.6pp), even at a size that sends every affordable visit
+# to Landsraad; gating it on a tile ``_TECH_BONUSES`` values beats the
+# priced table by +3.4pp pooled over four seed blocks and still loses to the
+# two-entry table in every one of them (-7.3, -9.9, -1.1, -4.7pp). The tile
+# count was never the lever: the gated agent buys 2.4 to 4.1 tiles a seat
+# against the two-entry table's 2.3 to 2.8, and its own Conflict wins and VP
+# do not move, while the two-entry table turns spice it would otherwise
+# leave unspent into tiles that do score; why only one side's tiles pay is
+# not settled there. So that one ruleset keeps the two-entry table it was
+# measured with and every other ruleset uses the priced one.
 def space_bonuses_for(observation: PlayerView) -> Mapping[str, float]:
     """Return the board space ranking measured for this view's ruleset.
 
