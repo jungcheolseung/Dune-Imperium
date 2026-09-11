@@ -5,8 +5,8 @@ from typing import Final
 
 from dune_imperium.agents.base import Agent
 from dune_imperium.agents.heuristic_agent import (
+    SPACE_BONUSES_BEFORE_DEMOTION,
     SPACE_BONUSES_BEFORE_RETUNE,
-    UPRISING_SPACE_BONUSES,
     HeuristicAgent,
 )
 from dune_imperium.agents.random_agent import RandomAgent
@@ -49,19 +49,17 @@ def _heuristic_flat_cards(seed: int) -> Agent:
 
 
 def _heuristic_uprising_table(seed: int) -> Agent:
-    """The heuristic with the priced Uprising space ranking on every ruleset.
+    """The heuristic with the rubric-priced space ranking of 2026-09-10.
 
-    Every ruleset uses that ranking now except one: the Tech Module keeps the
-    two-entry table, because a Tech tile is bought on a Landsraad visit
-    [Bloodlines p. 7] and the priced ranking loses there (-11.8pp over 1,000
-    seeds without CHOAM and -6.5pp with it, docs/evaluation/baseline-2026-09-10.md
-    section 16). Pricing the Acquire Tech onto the Landsraad spaces was measured
-    against this variant and against ``heuristic_untuned`` and rejected
-    (section 16); it stays registered so that measurement, and any later
-    Tech ranking, can be re-run from the committed tree.
+    That ranking priced every space on one rubric and beat the two-entry table
+    on base+CHOAM, Bloodlines and Immortality but lost on the Tech Module
+    (docs/evaluation/baseline-2026-09-10.md sections 13 to 16). Demoting its
+    three most-visited spaces (Imperial Basin, Secrets, Arrakeen) beats it on
+    every ruleset (section 18), so the demoted table is ``heuristic`` now and
+    this variant pins the rubric-priced one for the paired A/B.
     """
 
-    return HeuristicAgent(seed=seed, space_bonuses=UPRISING_SPACE_BONUSES)
+    return HeuristicAgent(seed=seed, space_bonuses=SPACE_BONUSES_BEFORE_DEMOTION)
 
 
 def _rollout(seed: int) -> Agent:

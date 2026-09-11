@@ -368,8 +368,14 @@ def test_board_space_ranking_separates_the_placements_it_offers() -> None:
     assert scores["swordmaster"] > scores["high_council"] > max(one_shot.values())
     # Costed spaces rank below their uncosted counterparts in the same family:
     # Research Station buys two cards and two troops for two water, while
-    # Arrakeen gives a card and a troop for nothing [Board Guide pp. 1-2].
-    assert scores["arrakeen"] > scores["research_station"]
+    # Fremkit gives a card and Influence for nothing [Board Guide pp. 1-2].
+    assert scores["fremkit"] > scores["research_station"]
+    # The three spaces the rubric-priced table lived on sit below every other
+    # yield (docs/evaluation/baseline-2026-09-10.md section 18).
+    demoted = {"imperial_basin", "secrets", "arrakeen"}
+    assert max(scores[k] for k in demoted) < min(
+        v for k, v in one_shot.items() if k not in demoted
+    )
     # Nearly every placement must still separate from some other one.
     assert len(set(scores.values())) >= 12
 
@@ -404,64 +410,49 @@ def _view_for(**options: bool) -> PlayerView:
     return observe_state(UprisingRulesEngine().reset(config, seed=2), 0)
 
 
-def test_the_retuned_ranking_is_used_for_the_rulesets_it_was_measured_on() -> None:
-    from dune_imperium.agents.heuristic_agent import (
-        UPRISING_SPACE_BONUSES,
-        space_bonuses_for,
-    )
+def test_one_ranking_serves_every_ruleset() -> None:
+    # The Tech Module kept the two-entry table while the rubric-priced table
+    # lost there (sections 15 and 16); the demoted table wins on every
+    # ruleset (section 18), so the agent no longer reads the ruleset off the
+    # observation to pick a table.
+    from dune_imperium.agents.heuristic_agent import UPRISING_SPACE_BONUSES
 
-    assert space_bonuses_for(_view_for()) is UPRISING_SPACE_BONUSES
-    assert space_bonuses_for(_view_for(choam_module=True)) is UPRISING_SPACE_BONUSES
-    assert space_bonuses_for(_view_for(promo_cards=True)) is UPRISING_SPACE_BONUSES
-
-
-def test_only_the_tech_module_keeps_the_two_entry_ranking() -> None:
-    # Measured per expansion instead of with all of them stacked
-    # (docs/evaluation/baseline-2026-09-10.md section 15, 4,000 agent-games
-    # each): the priced table is worth +16.0pp under Immortality and +3.8pp
-    # under Bloodlines, and only the Tech Module rejects it (-6.6pp, -4.8pp).
-    # The all-expansion -0.2pp that scoped the table away from every expansion
-    # was those two cancelling.
-    from dune_imperium.agents.heuristic_agent import (
-        SPACE_BONUSES_BEFORE_RETUNE,
-        UPRISING_SPACE_BONUSES,
-        space_bonuses_for,
-    )
-
+    agent = HeuristicAgent(seed=1)
     for options in (
-        {"bloodlines": True},
-        {"immortality": True},
-        {"bloodlines": True, "immortality": True},
-    ):
-        assert space_bonuses_for(_view_for(**options)) is UPRISING_SPACE_BONUSES
-
-    for options in (
+        {},
+        {"choam_module": True},
         {"bloodlines": True, "tech_module": True},
         {"bloodlines": True, "tech_module": True, "immortality": True},
     ):
-        assert space_bonuses_for(_view_for(**options)) is SPACE_BONUSES_BEFORE_RETUNE
+        view = _view_for(**options)
+        secrets = _placement("card", "secrets")
+        espionage = _placement("card", "espionage")
+        assert agent.choose_action(view, (secrets, espionage)) == espionage
+    assert score_action(_placement("card", "espionage")) == score_action(
+        _placement("card", "espionage"), space_bonuses=UPRISING_SPACE_BONUSES
+    )
 
 
-def test_the_ruleset_is_read_from_markers_that_outlive_their_supply() -> None:
-    # Detection must not flip mid-game and hand a seat a different ranking
-    # than it started with: the Ixian Embassy keeps its three stacks on the
-    # board once they are emptied.
-    from dataclasses import replace
-
+def test_the_uprising_table_variant_pins_the_rubric_priced_ranking() -> None:
+    # The registry keeps the 2026-09-10 table so the demotion A/B reruns from
+    # the committed tree.
     from dune_imperium.agents.heuristic_agent import (
-        SPACE_BONUSES_BEFORE_RETUNE,
-        space_bonuses_for,
+        SPACE_BONUSES_BEFORE_DEMOTION,
+        UPRISING_SPACE_BONUSES,
     )
+    from dune_imperium.agents.registry import BASELINE_AGENT_FACTORIES, make_agent
 
-    spent = replace(
-        _view_for(bloodlines=True, tech_module=True, immortality=True),
-        tech_stack_sizes=(0, 0, 0),
-        tleilaxu_deck_size=0,
-        skill_stack_size=0,
-        sardaukar_commander_space_ids=(),
-    )
-
-    assert space_bonuses_for(spent) is SPACE_BONUSES_BEFORE_RETUNE
+    assert "heuristic_uprising_table" in BASELINE_AGENT_FACTORIES
+    priced = make_agent("heuristic_uprising_table", seed=3)
+    assert isinstance(priced, HeuristicAgent)
+    assert priced.space_bonuses == SPACE_BONUSES_BEFORE_DEMOTION
+    assert SPACE_BONUSES_BEFORE_DEMOTION["imperial_basin"] == 0.85
+    assert SPACE_BONUSES_BEFORE_DEMOTION["secrets"] == 1.0
+    assert SPACE_BONUSES_BEFORE_DEMOTION["arrakeen"] == 0.75
+    assert {
+        k for k, v in SPACE_BONUSES_BEFORE_DEMOTION.items()
+        if UPRISING_SPACE_BONUSES[k] != v
+    } == {"imperial_basin", "secrets", "arrakeen"}
 
 
 def _placement(card_id: str, space_id: str) -> DomainAction:

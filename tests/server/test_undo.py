@@ -25,7 +25,17 @@ from dune_imperium.server.sessions import (
     _log_entry_json,
 )
 
-HUMAN_FIRST = ("human", "heuristic", "heuristic", "heuristic")
+# The AI seats play the rubric-priced 2026-09-10 table pinned in the registry,
+# not ``heuristic``: the scripted revisions below follow that table's moves,
+# and ``heuristic`` is retuned as the baseline improves (2026-09-11 demoted
+# three spaces and every scripted revision moved). The undo mechanics under
+# test do not depend on which table the AI seats use.
+HUMAN_FIRST = (
+    "human",
+    "heuristic_uprising_table",
+    "heuristic_uprising_table",
+    "heuristic_uprising_table",
+)
 
 
 def _obj(value: object) -> dict[str, object]:

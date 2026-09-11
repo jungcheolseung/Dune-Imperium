@@ -243,6 +243,24 @@ _RETREAT_SCORE: Final = -1.0
 # for the rest of the game and a Council seat's standing +2 Persuasion are
 # worth more than any one-shot yield, so every priced space lands below them.
 #
+# Three spaces are ranked below what the rubric says, at the bottom of the
+# table: Imperial Basin, Secrets and Arrakeen. Priced by the rubric (0.85,
+# 1.0, 0.75) they took 56% of the agent's placements, and demoting them was
+# measured to be the largest single lever this table has
+# (docs/evaluation/baseline-2026-09-10.md section 18; 2,000 agent-games a
+# cell, paired 2:2 mirrors, ``--rotate-leaders``): the demoted table beats
+# the rubric-priced one by +9.8pp on base+CHOAM, +15.2pp on Bloodlines and
+# +7.4pp on Immortality, and beats the two-entry table on the Tech Module,
+# where the rubric-priced table lost by -13.6pp, by +6.2pp and +3.6pp on two
+# seed blocks. The mechanism is the placement mix: the Agents go to the
+# Faction spaces instead (Espionage, Deliver Supplies, Sietch Tabr, Sardaukar,
+# Fremkit, Hagga Basin), the seat ends with 11.0 Influence against 9.1 and
+# scores from the tracks while winning fewer Conflicts (1.86 against 2.51).
+# Demoting only to the median (0.6) is worth less (-4.8pp head to head), and
+# re-deriving the rubric with the control-location term at 0 (Imperial Basin
+# 0.5, Arrakeen 0.4, Secrets 0.75) is worth less still (-6.8pp), so the
+# three sit below every other yielding space rather than at a repriced spot.
+#
 # Two limits are deliberate. ``score_action`` sees only the action, so a space
 # whose yield depends on the ruleset is priced on its base reward -- Dutiful
 # Service and Accept Contract pay 2 Solari here rather than a CHOAM contract,
@@ -255,17 +273,12 @@ UPRISING_SPACE_BONUSES: Final[Mapping[str, float]] = MappingProxyType(
         # Permanent upgrades keep their established values.
         "swordmaster": 3.0,
         "high_council": 2.0,
-        # Influence plus a big recruit, or Intrigue plus the steal from every
-        # opponent holding four or more.
+        # Influence plus a big recruit.
         "sardaukar": 1.0,
-        "secrets": 1.0,
         # A second placement this turn, behind Emperor Influence 2.
         "imperial_privilege": 0.9,
-        # A control location that also pays spice every round.
-        "imperial_basin": 0.85,
         "espionage": 0.8,
         "heighliner": 0.8,
-        "arrakeen": 0.75,
         "sietch_tabr": 0.75,
         "deliver_supplies": 0.7,
         "fremkit": 0.65,
@@ -281,69 +294,36 @@ UPRISING_SPACE_BONUSES: Final[Mapping[str, float]] = MappingProxyType(
         # Both pay the least once their cost is priced in.
         "accept_contract": 0.35,
         "research_station": 0.35,
+        # Demoted below every other yield (section 18): the rubric priced
+        # them 1.0, 0.85 and 0.75 and the agent lived on them.
+        "secrets": 0.3,
+        "imperial_basin": 0.3,
+        "arrakeen": 0.3,
+    }
+)
+
+# The rubric-priced ranking of 2026-09-10, before the three spaces above were
+# demoted (2026-09-11). Kept so the registry's ``heuristic_uprising_table``
+# reproduces it for a paired A/B from the committed tree.
+SPACE_BONUSES_BEFORE_DEMOTION: Final[Mapping[str, float]] = MappingProxyType(
+    {
+        **UPRISING_SPACE_BONUSES,
+        "secrets": 1.0,
+        "imperial_basin": 0.85,
+        "arrakeen": 0.75,
     }
 )
 
 # The ranking before the 2026-09-10 retune, kept so the registry's
 # ``heuristic_untuned`` baseline reproduces it for a paired A/B from the
-# committed tree instead of needing a scratch module.
+# committed tree instead of needing a scratch module. Until 2026-09-11 it was
+# also the table the Tech Module used: the rubric-priced table lost there
+# (-13.6pp without CHOAM, -6.2pp with it) and every overlay on top of it was
+# rejected (docs/evaluation/baseline-2026-09-10.md sections 15 and 16). The
+# demoted table wins there too, so one table now serves every ruleset.
 SPACE_BONUSES_BEFORE_RETUNE: Final[Mapping[str, float]] = MappingProxyType(
     {"swordmaster": 3.0, "high_council": 2.0}
 )
-
-
-# Which board space ranking applies.
-#
-# The table above prices each space's printed Uprising yield and measured
-# +4.9pp and +5.1pp on base+CHOAM against the two-entry ranking it replaced
-# (2026-09-10). It was then scoped away from every expansion on one
-# all-expansion run that measured -5.6pp. Re-measuring per expansion, with the
-# expansions separated instead of stacked, says that -5.6pp was two effects
-# cancelling and that only one expansion dislikes the table
-# (docs/evaluation/baseline-2026-09-10.md section 15; 4,000 agent-games each):
-#
-#   Immortality only          +16.0pp   the table is what that ruleset wants
-#   Bloodlines only            +3.8pp
-#   Bloodlines + Tech Module   -6.6pp, -4.8pp on a second seed block
-#   all four expansions        -0.2pp, -0.8pp   the two above cancelling
-#
-# The Tech Module is the one that punishes it, and the reason is printed on
-# the Ixian Embassy: "during a turn in which you send an Agent to a Landsraad
-# board space, you may acquire one Tech tile" `[Bloodlines p. 7]`. The Tech
-# tile has no board space of its own -- the offer rides on whichever of the
-# five Landsraad spaces the Agent named -- and this table ranks the cheap ones
-# near the bottom (Assembly Hall 0.50, Gather Support 0.40). So the agent stops
-# visiting Landsraad and stops buying tiles: 2.48 -> 1.16 tiles a seat, with
-# Commanders 0.62 -> 0.35, over a 30-game all-option probe -- a symptom, as
-# the next paragraph shows, not the cause.
-#
-# Pricing the Acquire Tech onto the five Landsraad spaces was then measured
-# and rejected (docs/evaluation/baseline-2026-09-10.md section 16; 2,000
-# agent-games a cell, Bloodlines + Tech Module without CHOAM, against the
-# two-entry table). A flat bonus loses more the larger it is (-17.0pp at
-# 0.15, -32.1pp at 0.50); a bonus that applies only while the seat can pay
-# for a face-up tile lands where the priced table already is (-14.0 to
-# -16.0pp against -13.6pp), even at a size that sends every affordable visit
-# to Landsraad; gating it on a tile ``_TECH_BONUSES`` values beats the
-# priced table by +3.4pp pooled over four seed blocks and still loses to the
-# two-entry table in every one of them (-7.3, -9.9, -1.1, -4.7pp). The tile
-# count was never the lever: the gated agent buys 2.4 to 4.1 tiles a seat
-# against the two-entry table's 2.3 to 2.8, and its own Conflict wins and VP
-# do not move, while the two-entry table turns spice it would otherwise
-# leave unspent into tiles that do score; why only one side's tiles pay is
-# not settled there. So that one ruleset keeps the two-entry table it was
-# measured with and every other ruleset uses the priced one.
-def space_bonuses_for(observation: PlayerView) -> Mapping[str, float]:
-    """Return the board space ranking measured for this view's ruleset.
-
-    The Tech Module is read off the observation, never a config the agent is
-    not given: ``tech_stack_sizes`` has one entry per Ixian Embassy stack, and
-    the stacks stay on the board once emptied, so the ranking cannot flip
-    mid-game.
-    """
-
-    tech_module = len(observation.tech_stack_sizes) == 3
-    return SPACE_BONUSES_BEFORE_RETUNE if tech_module else UPRISING_SPACE_BONUSES
 
 
 # Which card an Agent turn spends, once the board space is settled.
@@ -380,8 +360,8 @@ def space_bonuses_for(observation: PlayerView) -> Mapping[str, float]:
 # 50.2% -> 46.5%, and three paired blocks measured -2.2pp, -6.0pp and -8.6pp.
 # Scaling it down to fit inside the board table's smallest gap fixed
 # base+CHOAM (-0.2pp, +0.2pp) but reproduced the expansion loss *exactly*, to
-# the decision count: an expansion ruleset keeps the two-entry table
-# (``space_bonuses_for``), so 21 spaces are equal there and any card term at
+# the decision count: an expansion ruleset kept the two-entry table then
+# (``SPACE_BONUSES_BEFORE_RETUNE``), so 21 spaces were equal there and any card term at
 # all -- at any scale -- picks the space. Only a tie-break that never compares
 # two spaces is safe in both. Numbers in
 # ``docs/evaluation/baseline-2026-09-10.md`` section 14.
@@ -663,10 +643,9 @@ class HeuristicAgent:
     """Pick a highest-scoring legal action, breaking ties with a seeded RNG."""
 
     seed: int
-    # A fixed board space ranking, or None to derive one per observation with
-    # ``space_bonuses_for``. The registry pins the pre-retune table on one
-    # variant so an A/B against the earlier ranking is reproducible from the
-    # committed tree.
+    # A fixed board space ranking, or None for ``UPRISING_SPACE_BONUSES``. The
+    # registry pins the earlier tables on variants so an A/B against them is
+    # reproducible from the committed tree.
     space_bonuses: Mapping[str, float] | None = None
     # How the Reveal box a placement forfeits is priced, or None to leave every
     # card the same price. The registry pins None on one variant for the same
@@ -693,7 +672,7 @@ class HeuristicAgent:
         if any(action.actor != observation.player for action in legal_actions):
             raise ValueError("every legal action must belong to the observing player")
         bonuses = (
-            space_bonuses_for(observation)
+            UPRISING_SPACE_BONUSES
             if self.space_bonuses is None
             else self.space_bonuses
         )

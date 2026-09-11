@@ -369,7 +369,14 @@ def test_board_scan_and_icons_are_served_when_present(tmp_path: Path) -> None:
 
 
 def test_undo_and_log_over_http(client: TestClient) -> None:
-    summary = _create(client, game_seed=14)
+    # The scripted revisions follow the AI seats' moves, so they play the
+    # registry's pinned 2026-09-10 table rather than the retunable
+    # ``heuristic`` (see tests/server/test_undo.py).
+    summary = _create(
+        client,
+        game_seed=14,
+        seats=["human"] + ["heuristic_uprising_table"] * 3,
+    )
     game_id = str(summary["game_id"])
     while int(str(summary["revision"])) < 13:
         response = client.post(
