@@ -77,6 +77,29 @@ notification arrives on its own. Do not write a shell loop to wait for them.
   wrapping up. When reporting what is running, check the task list, not `ps` --
   they are tracked separately (`docs/lessons.md`, 2026-09-10).
 
+### Background-task ledger (mandatory; broken three times, see `docs/lessons.md` 2026-09-11)
+
+The harness has no "list tasks" tool, so the task list is one you keep yourself:
+
+1. **Right after every launch** that returns a task id (`run_in_background`
+   Bash, Monitor, Agent, Workflow), append one line
+   `<task id>  <what it does>` to `<scratchpad>/tasks.md`. No exceptions, no
+   "I'll remember it".
+2. **Before saying anything about what is or is not running** -- "정리 완료",
+   "남은 작업 없음", the closing recap, an answer to "지금 뭐 돌아가?" -- open
+   that file and call `TaskOutput` with `block: false` on **every** id in it.
+   Report from those results only. Log files, exit sentinels and `ps` say
+   what the *job* did, not whether the *task* is still registered.
+3. **Never use Monitor for a single completion.** A `tail -f | grep | while`
+   pipeline keeps running after its own `exit`, because `tail -f` only dies on
+   the next write to a log that has gone quiet. For "tell me when X finishes"
+   use `run_in_background` Bash with a sentinel wait
+   (`until grep -q 'exit=' log; do sleep 10; done`); the harness then sends
+   one completion notification. Monitor is only for streams that go on
+   producing events.
+4. `TaskStop` every id in the ledger that is no longer useful, then mark it
+   done in the file. A wrap-up with an unmarked id is not finished.
+
 ## Conventions worth knowing
 
 - Card slices follow the `Play <Card>` / `Document <Card>` commit pairing; keep
