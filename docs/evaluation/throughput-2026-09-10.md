@@ -218,3 +218,12 @@ step 수·결정 수는 두 모드가 동일(base 24,945 / 24,147, CHOAM 24,943 
 값어치는 없다. `legal_actions`는 이제 결정당 한 번으로 누적 0.82s(25%), `observe_state` 0.44s(13%;
 결정당 `_public_player_view` 4회), `current_agent_effect_context` 72,535회 0.11s(3%)라 provider의
 context 재구성(항목 2 전반부)은 90곳을 손볼 만큼 크지 않다.
+
+**같은 날 저녁 적용한 5절 항목 4(`observe_state`).** 결정마다 좌석 넷의 `PublicPlayerView`를 새로
+만들었는데, 그 뷰는 불변 `PlayerState`의 순수 함수이고 연속된 두 결정 사이에 대부분의 좌석은 바뀌지
+않는다. 상태 객체 identity로 키를 잡은 유한 캐시(객체를 붙들어 id 재사용을 막는다)가 같은 객체의 뷰를
+돌려준다(커밋 `62718a4`). 같은 실행 안에서 캐시 유무를 번갈아 잰 단일 프로세스 heuristic 미러 40판:
+base 4.34 → 4.04s, CHOAM도 **−7.0%**(1.075×), step 수 동일. 회귀 테스트는 불변식이다(같은 상태의 뷰는
+같은 객체, 바뀐 좌석만 새 뷰). 남은 후보: `legal_agent_actions`의 `_placements_for_card`(step 시간의 약
+11%; 카드마다 22칸을 훑으며 점유·요구치·비용을 다시 계산한다)와 Agent effect frame의
+`_pending_group_actions`(약 7%; provider 15개 fan-out).
