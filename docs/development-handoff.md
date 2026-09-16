@@ -64,6 +64,12 @@ CPU가 약 1.6배**가 된 것이고, 원인은 한 곳이 아니라 확장 4종
 **재정비 표 자체의 상위 세 칸이 틀렸다**는 발견으로 끝나 표 하나를 전 룰셋에 쓰게 바꿨다(18절). 그 마감
 측정 두 가지는 2026-09-16에 끝났고 수준은 0.6으로 올렸다(아래 0번, 18절(g)·(h)).
 
+0. (2026-09-16 **다음 작업**) **Deliver Supplies 소거 후속.** 18절(k)의 소거가 Deliver Supplies(0.7)를 0.3으로
+   내리면 base +9.0·CHOAM +4.3·Tech +4.9·Immortality +4.2%p라고 했다. 이 절의 규칙대로 (1) 그 표를 축별(base·
+   CHOAM·Bloodlines·Immortality·Tech 양쪽·CHOAM+Tech+Imm)·둘째 seed 블록으로 `heuristic` 상대 재고, (2) 이기면
+   채택(0.3 아래 어디에 둘지 — 0.35 묶음 위/아래 — 두 수준), (3) 채택한 표의 상위 항목을 다시 소거하고 probe로
+   배치 mix를 적는다(스크래치 `space-table-closeout/run_round2.sh`·`make_variants.py`가 이 순서를 자동화한다).
+   Hagga Basin(+2.7, 경계)은 둘째 블록으로 판정한다.
 0. (2026-09-16 **완료**) **공간 표 강등의 마감 측정.** 커밋된 표(Imperial
    Basin·Secrets·Arrakeen 0.3, 전 룰셋 공통)는 스크래치 변형 셀로만 검증됐다(18절). 할 일 순서:
    (1) (2026-09-16 완료 → 18절(g): Tech·Bloodlines·Immortality 소수점까지 재현, base+CHOAM 4,000판 중 4승 차) **커밋 트리 확인 셀** 6개 — 아래 명령을 그대로 돌려 18절(b)·(d)와 맞춘다(Tech CHOAM 없음
@@ -252,7 +258,19 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 - **처리량**(throughput 7절, 커밋 `9b435e2`): `RulesEngine.apply`가 runner가 방금 만든 legal 집합을 받아
   재열거 대신 membership 검사만 하게 했다(가드 유지). 단일 프로세스 heuristic 미러 벽시계 **−13.6%**(base·CHOAM),
   `legal_actions` 호출/결정 2.00 → 1.00, step 수 동일. 불변식 테스트 3건.
-- 검증: pytest **1,510**, Ruff, mypy 통과. README 테스트 수 1,510.
+- **소거 후속 → 표 분리 채택**(18절(j)·(k), 커밋 `f2a5006`): Imperial Basin 0.3 하나로 전 축 +3.5 ~ +11.7%p,
+  Secrets 수준은 무관, Arrakeen은 올릴수록 좋다가 Sardaukar(1.0) 위에서 고원(1.0·1.2·1.5·2.0 동률; 1.2와 1.5는
+  결정까지 동일). **채택: Imperial Basin 0.3 · Secrets 0.6 · Arrakeen 1.2**(영구 업그레이드 바로 아래의 엄격한
+  순서). 0.6 표 상대 base +17.2/+16.8, CHOAM +16.2/+12.7, Bloodlines +15.8, Immortality +10.6/+7.8, Tech CHOAM 없음
+  +15.9/+14.8, Tech CHOAM +14.5, CHOAM+Tech+Imm +11.5%p. 0.6 표는 `heuristic_median_table`로 고정. 커밋 트리
+  확인 4축 결정 수까지 동일. probe: Arrakeen 배치 좌석당 4.91, Conflict 승 1.66 → 2.61, Influence 유지.
+- **새 표의 소거**(18절(k)): Arrakeen 내리면 −10%p(확인), Espionage 무차이, Hagga Basin 경계(+2.7),
+  **Deliver Supplies(0.7 → 0.3) 전 축 +4.2 ~ +9.0%p** — 다음 손잡이(아래 "다음 구현 순서" 0번).
+- **엔진 결함 1건 수정**(커밋 `8738b34`): 전 확장 기준선 seed 42의 교착 — 점유된 칸의 graft 배치가 "Ghola가
+  partner"(Bond 아이콘)와 "Infiltrator가 partner"(점유) 두 약속을 한 partner에 요구해 partner 선택에 합법
+  행동이 없었다. 배치 provider가 Ghola 약속 없이 닿는 카드에만 제시하도록 고쳤다([rules/immortality.md](rules/immortality.md)
+  구현 목록, 18절(k) 결함 항목). 규칙 판정 아님(`[Immortality p. 10]` 두 장만). 기준선 12셀은 수정 뒤 다시 쟀다.
+- 검증: pytest **1,513**, Ruff, mypy 통과. README 테스트 수 1,513.
 
 ## 2026-09-11 보드 공간 표 강등·OQ-060 세션 요약 (master, 관측 v20, codec v104, 표 변경·마감 미완)
 
