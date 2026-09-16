@@ -371,4 +371,11 @@ tests/
 
 ## 8. 바로 다음 작업
 
-R0~M8과 M11(슬라이스 7까지)이 완료된 2026-09-03 기준으로 다음 작업은 **Uprising 프로모 Imperium 3장 콘텐츠 슬라이스**(M6 절, 같은 날 완료)이고 그 뒤가 **M9 평가 러너와 baseline**이다(마일스톤 절의 M9 완료 조건을 따른다). M9는 2026-09-06에 착수해 첫 슬라이스(좌석·Leader·seed 교차 대회 도구와 지표 보고서, `dune-imperium-tournament`, 기준선 `evaluation/baseline-2026-09-06.md`)와 둘째 슬라이스(determinized rollout search baseline `RolloutAgent`, heuristic 3명 상대 48% 승률)를 끝냈다. 셋째 슬라이스(lockstep self-play 러너 `training.SelfPlayRunner`와 `BatchPolicy` 계약, `dune-imperium-selfplay`)로 같은 날 M9를 완료했다. M10은 같은 날 착수해 첫 슬라이스(PyTorch `train` extra, masked policy/value 네트워크, 버전 고정 체크포인트, REINFORCE learner, `dune-imperium-train` 루프와 대회 평가 연동)를 끝냈다. 다음은 학습이 실제로 강해지는지 확인하고 수집을 병렬화하는 것 — 세부 착수점은 개발 인수인계의 "다음 구현 순서". 최신 기준선과 세부 착수점은 [개발 인수인계](development-handoff.md)가 관리한다.
+2026-09-16 기준으로 R0~M9, M11, M12, M13이 완료됐고 M10은 첫 슬라이스(학습 루프·체크포인트·대회 연동)만
+끝난 상태다. 9월 10~16일은 구현 대신 **기준선 정비**에 썼다: heuristic의 보드 공간 표를 축별 A/B와 소거로
+재정비해 random 3명 상대 89 → 98%가 됐고(표는 양방향 국소 최적, `evaluation/baseline-2026-09-10.md` 13~18절),
+rollout 탐색을 같은 예산에서 재정비해 heuristic 3명 상대 28 → 44%가 됐으며(`evaluation/baseline-2026-09-16.md`
+13절), 처리량 결함 3건과 병목 2건을 고쳤고(`evaluation/throughput-2026-09-10.md`), A/B 실행이 찾은 엔진 결함
+5건을 수정했다. 다음은 **M10 학습 재개**(사용자 결정으로 최후순위; 관측 v20·codec v104라 체크포인트는 전부
+새로 시작)이며, 학습 밖의 남은 후보(heuristic의 표 밖 항, rollout 가치 함수, 처리량의 남은 병목, 리팩토링
+후속)는 [개발 인수인계](development-handoff.md)의 "다음 구현 순서"가 관리한다.
