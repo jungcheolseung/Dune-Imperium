@@ -380,10 +380,11 @@ def test_board_space_ranking_separates_the_placements_it_offers() -> None:
     )
     assert scores["secrets"] == scores["hagga_basin"]
     assert scores["deliver_supplies"] == scores["gather_support"]
-    assert scores["hagga_basin"] < scores["fremkit"] < scores["espionage"]
+    assert scores["hagga_basin"] < scores["fremkit"] < scores["heighliner"]
+    assert scores["espionage"] == scores["hagga_basin"]
     assert scores["hagga_basin"] > scores["assembly_hall"] > scores["accept_contract"]
     assert scores["arrakeen"] > scores["sardaukar"]
-    assert scores["arrakeen"] > scores["espionage"]
+    assert scores["arrakeen"] > scores["heighliner"]
     assert scores["arrakeen"] < scores["high_council"]
     # Nearly every placement must still separate from some other one.
     assert len(set(scores.values())) >= 12
@@ -435,10 +436,10 @@ def test_one_ranking_serves_every_ruleset() -> None:
     ):
         view = _view_for(**options)
         secrets = _placement("card", "secrets")
-        espionage = _placement("card", "espionage")
-        assert agent.choose_action(view, (secrets, espionage)) == espionage
-    assert score_action(_placement("card", "espionage")) == score_action(
-        _placement("card", "espionage"), space_bonuses=UPRISING_SPACE_BONUSES
+        basin = _placement("card", "imperial_basin")
+        assert agent.choose_action(view, (secrets, basin)) == secrets
+    assert score_action(_placement("card", "secrets")) == score_action(
+        _placement("card", "secrets"), space_bonuses=UPRISING_SPACE_BONUSES
     )
 
 
@@ -461,7 +462,7 @@ def test_the_uprising_table_variant_pins_the_rubric_priced_ranking() -> None:
     assert {
         k for k, v in SPACE_BONUSES_BEFORE_DEMOTION.items()
         if UPRISING_SPACE_BONUSES[k] != v
-    } == {"imperial_basin", "secrets", "arrakeen", "deliver_supplies"}
+    } == {"imperial_basin", "secrets", "arrakeen", "deliver_supplies", "espionage"}
 
 
 def test_the_floor_table_variant_pins_the_first_demotion() -> None:
@@ -489,7 +490,7 @@ def test_the_floor_table_variant_pins_the_first_demotion() -> None:
     assert {
         k for k, v in SPACE_BONUSES_DEMOTED_TO_FLOOR.items()
         if UPRISING_SPACE_BONUSES[k] != v
-    } == {"secrets", "arrakeen", "deliver_supplies"}
+    } == {"secrets", "arrakeen", "deliver_supplies", "espionage"}
 
 
 def test_the_median_table_variant_pins_the_morning_demotion() -> None:
@@ -513,7 +514,7 @@ def test_the_median_table_variant_pins_the_morning_demotion() -> None:
     assert {
         k for k, v in SPACE_BONUSES_MEDIAN_DEMOTION.items()
         if UPRISING_SPACE_BONUSES[k] != v
-    } == {"imperial_basin", "arrakeen", "deliver_supplies"}
+    } == {"imperial_basin", "arrakeen", "deliver_supplies", "espionage"}
 
 
 def test_the_split_table_variant_pins_the_noon_table() -> None:
@@ -541,10 +542,33 @@ def test_the_split_table_variant_pins_the_noon_table() -> None:
         SPACE_BONUSES_SPLIT_DEMOTION,
     ):
         assert pinned["deliver_supplies"] == 0.7
+        assert pinned["espionage"] == 0.8
     assert {
         k for k, v in SPACE_BONUSES_SPLIT_DEMOTION.items()
         if UPRISING_SPACE_BONUSES[k] != v
-    } == {"deliver_supplies"}
+    } == {"deliver_supplies", "espionage"}
+
+
+def test_the_supplies_table_variant_pins_the_afternoon_table() -> None:
+    # The registry keeps the Deliver Supplies table (Espionage still 0.8) so
+    # the ablation that sent Espionage down (section 18(m)) reruns from the
+    # committed tree.
+    from dune_imperium.agents.heuristic_agent import (
+        SPACE_BONUSES_BEFORE_ESPIONAGE,
+        UPRISING_SPACE_BONUSES,
+    )
+    from dune_imperium.agents.registry import BASELINE_AGENT_FACTORIES, make_agent
+
+    assert "heuristic_supplies_table" in BASELINE_AGENT_FACTORIES
+    supplies = make_agent("heuristic_supplies_table", seed=3)
+    assert isinstance(supplies, HeuristicAgent)
+    assert supplies.space_bonuses == SPACE_BONUSES_BEFORE_ESPIONAGE
+    assert SPACE_BONUSES_BEFORE_ESPIONAGE["espionage"] == 0.8
+    assert UPRISING_SPACE_BONUSES["espionage"] == 0.6
+    assert {
+        k for k, v in SPACE_BONUSES_BEFORE_ESPIONAGE.items()
+        if UPRISING_SPACE_BONUSES[k] != v
+    } == {"espionage"}
 
 
 def _placement(card_id: str, space_id: str) -> DomainAction:

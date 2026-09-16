@@ -6,6 +6,7 @@ from typing import Final
 from dune_imperium.agents.base import Agent
 from dune_imperium.agents.heuristic_agent import (
     SPACE_BONUSES_BEFORE_DEMOTION,
+    SPACE_BONUSES_BEFORE_ESPIONAGE,
     SPACE_BONUSES_BEFORE_RETUNE,
     SPACE_BONUSES_DEMOTED_TO_FLOOR,
     SPACE_BONUSES_MEDIAN_DEMOTION,
@@ -103,6 +104,17 @@ def _heuristic_split_table(seed: int) -> Agent:
     return HeuristicAgent(seed=seed, space_bonuses=SPACE_BONUSES_SPLIT_DEMOTION)
 
 
+def _heuristic_supplies_table(seed: int) -> Agent:
+    """The heuristic with the Deliver Supplies table of 2026-09-16 afternoon.
+
+    Espionage still at its rubric price; that table's own ablation then sent
+    Espionage down (docs/evaluation/baseline-2026-09-10.md section 18(m)), so
+    this variant pins it for the paired A/B.
+    """
+
+    return HeuristicAgent(seed=seed, space_bonuses=SPACE_BONUSES_BEFORE_ESPIONAGE)
+
+
 def _rollout(seed: int) -> Agent:
     return RolloutAgent(seed=seed)
 
@@ -120,6 +132,7 @@ BASELINE_AGENT_FACTORIES: Final[dict[str, AgentFactory]] = {
     "heuristic_floor_table": _heuristic_floor_table,
     "heuristic_median_table": _heuristic_median_table,
     "heuristic_split_table": _heuristic_split_table,
+    "heuristic_supplies_table": _heuristic_supplies_table,
     "rollout": _rollout,
 }
 
