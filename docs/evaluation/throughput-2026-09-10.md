@@ -227,3 +227,70 @@ base 4.34 → 4.04s, CHOAM도 **−7.0%**(1.075×), step 수 동일. 회귀 테�
 같은 객체, 바뀐 좌석만 새 뷰). 남은 후보: `legal_agent_actions`의 `_placements_for_card`(step 시간의 약
 11%; 카드마다 22칸을 훑으며 점유·요구치·비용을 다시 계산한다)와 Agent effect frame의
 `_pending_group_actions`(약 7%; provider 15개 fan-out).
+
+## 8. 2026-09-16 밤 — M10 수집 경로의 관측 인코더와 배치 handler의 guard (**적용**)
+
+M10 학습 재개 전에 **학습이 실제로 지나가는 경로**(`SelfPlayRunner` → `legal_actions` → `observe` →
+`encode_player_view` → codec → `apply`)를 처음으로 따로 프로파일했다(스크래치 `profile_selfplay.py`,
+heuristic 4좌석, 기록 켬, 8판 5,167 결정). 1~7절이 잰 대회 경로에는 없는 항이 가장 컸다.
+
+| 항목 (cProfile, 8판) | 호출 | 누적 | 비중 |
+| --- | ---: | ---: | ---: |
+| `encode_player_view` | 5,167 | 1.58s | **31%** |
+| `np.asarray(관측 튜플)` | 5,167 | 0.44s | 8.7% |
+| `legal_actions` | 5,167 | 0.76s | 15% |
+| `observe_state` | 5,167 | 0.25s | 5% |
+| `RulesEngine.apply` (handler + 복사 + 자동 진행) | 5,335 | 2.00s | 39% |
+
+인코더 안은 전부 Python 오버헤드였다: 세그먼트마다 이름을 대조하는 `_Writer.write` 496,032회(0.41s),
+좌석·존마다 카드 instance를 identity로 다시 푸는 `personal_card_for_instance` 249,215회(0.36s), 우주
+전체를 훑는 `_multi_hot` 129,175회(0.22s), `tuple.index`의 선형 탐색.
+
+### (a) 인코더 — 미리 잡은 offset에 쓰고 identity 조회를 memoize (커밋 `cf67b96`)
+
+출력·`OBSERVATION_VERSION`(20)·export 이름·예외는 그대로 두고 생산 방식만 바꿨다: `[0] * OBSERVATION_SIZE`에
+세그먼트별 offset으로 직접 쓰고, instance → identity index를 `functools.cache`로(Reserve 사본은 실행 중
+발급되므로 정적 표가 아니라 lazy memo), 모든 우주를 dict로 색인하고, membership 존은 우주가 아니라
+구성원을 순회한다. 옛 인코더와 새 인코더를 같은 프로세스에서 random 게임 5룰셋의 모든 관측(약 14,000
+벡터)에 대해 벡터 단위로 대조해 동일함을 확인했고, 그 다섯 판의 SHA-256을 golden 테스트로 고정했다
+(random 좌석이라 heuristic 조정에 흔들리지 않는다; `acdb36c`는 처음에 heuristic 좌석으로 고정했다가
+같은 세션의 heuristic 변경에 깨져 바꿨다).
+
+같은 실행 안에서 옛/새 인코더를 번갈아 5회 잰 수집 경로 벽시계(이 Mac, 조용한 상태, 단일 프로세스,
+`SelfPlayRunner` heuristic 4좌석 기록 켬; 스크래치 `bench_encoder.py`):
+
+| 룰셋 | 옛 인코더 | 새 인코더 | 벽시계 | dec/s |
+| --- | ---: | ---: | ---: | ---: |
+| base, 16판 10,068 결정 | 2.98s | 2.50s | **−16.1%** (1.192×) | 3,380 → 4,028 |
+| CHOAM+Bloodlines+Tech+Immortality, 12판 9,145 결정 | 3.01s | 2.47s | **−17.9%** (1.218×) | 3,043 → 3,706 |
+
+인코더 자체의 프로파일 누적 시간은 1.52s → 0.70s(같은 8판 측정, 32% → 10%). 남은 항은 좌석 scalar
+52개 리스트 구성(`_write_seat` tottime 0.26s)과 `np.asarray` 변환(85us/벡터)이다.
+
+### (b) 배치 handler의 guard — 낸 카드의 배치만 재열거 (커밋 `78da90c`)
+
+5절 항목 2의 마지막 조각. 대회 경로에서 `apply_agent_action`은 dispatcher가 이미 전체 legal 집합으로
+검증한 행동을 **모든 hand 카드의 배치를 다시 열거해** 재검증했다: 10판 heuristic 게임에서 배치 열거
+2,238회 중 906회가 이 guard였고 cProfile 3.56s 중 0.198s(5.6%). handler 114개의 같은 guard를 전부
+합쳐도 7.2%이고 그중 78%가 이 하나다(스크래치 `profile_guards.py`, callers 기준). guard는 유지하되
+낸 카드의 배치(`legal_agent_actions_for_card`; 전체 집합에서 그 카드를 이름하는 조각과 정확히 같다는
+것을 random 전 확장 게임의 모든 Agent turn에서 대조하는 테스트)만 열거하게 했다. 같은 커밋에서
+`usurp_trash_is_queued`(매 전이 후 자동 진행이 물음, base 10판에 27,005회)를 Immortality 플래그로 먼저
+답하게 했다.
+
+같은 실행 안에서 옛/새를 번갈아 5회 잰 대회 경로 벽시계(`run_policy_game` heuristic 미러, 조용한 상태,
+단일 프로세스; 스크래치 `bench_guard.py`가 `legal_agent_actions_for_card`와 `usurp_trash_is_queued`를
+monkeypatch해 옛 동작을 "전"으로 삼는다):
+
+| 룰셋 | 전 | 후 | 벽시계 | step |
+| --- | ---: | ---: | ---: | ---: |
+| base, 40판 | 4.05s | 3.90s | **−3.8%** (1.040×) | 26,241 = 26,241 |
+| CHOAM+Bloodlines+Tech+Immortality, 30판 | 4.24s | 4.11s | **−3.1%** (1.032×) | 23,257 = 23,257 |
+
+### (c) 남은 후보
+
+수집 경로에서 인코더 다음은 여전히 `RulesEngine.apply`의 상태 복사(5절 항목 1, 구조 변경)와
+`legal_actions`(15%: `_placements_for_card`의 카드×22칸 루프, Agent effect frame의 provider fan-out)다.
+handler guard 113개(합쳐 약 1.6%)는 dispatcher가 보증한 행동을 `contextvars`로 표시해 건너뛰는 한 번의
+기계적 변경으로 없앨 수 있지만, 1.6%에 114곳을 손대는 값어치는 없다. 대회 경로에서만 드는
+`canonical_state_hash`(게임 종료 시 replay 기록용, 10판 프로파일의 6.5%)는 학습에는 무관하다.
