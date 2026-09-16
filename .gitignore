@@ -184,3 +184,6 @@ checkpoints/
 
 # Local play-server save files written by .claude/launch.json's ui-server
 /saves/
+
+# Output of the A/B, soak and profiling tools under scripts/ab (see its README)
+ab-runs/
