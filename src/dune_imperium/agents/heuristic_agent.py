@@ -693,10 +693,13 @@ def _intrigue_faction_choice_is_loss(
 ) -> bool | None:
     """Whether a ``choose_intrigue_faction`` set pays a LoseInfluence cost.
 
-    The frame does not say; the resolving card and the offered tracks do. A
-    gain offers empty tracks and never a full one, a loss offers only
-    occupied tracks. ``None`` when the card has such a cost but the tracks
-    cannot tell the two steps apart (every track occupied and offered).
+    The frame does not say; the resolving card and the offered tracks do. The
+    loss step offers exactly the occupied tracks, while the card's gain step
+    is unrestricted and offers all four (a full track too: the engine lets
+    that gain fizzle, ``influence_gain_candidates`` does not filter it). So
+    fewer than four tracks offered is the loss; four offered with an empty
+    track is the gain; ``None`` when every track is occupied and offered,
+    where the two steps look alike.
     """
 
     lose_cost = False
@@ -713,13 +716,10 @@ def _intrigue_faction_choice_is_loss(
         )
     if not lose_cost:
         return False
+    if len(offered) < len(_FACTIONS):
+        return True
     me = _own_seat(view)
-    empty = {faction for faction in _FACTIONS if _influence_of(me, faction) == 0}
-    if empty and not (empty & offered):
-        return True
-    if any(_influence_of(me, faction) >= _TOP_OF_TRACK for faction in offered):
-        return True
-    if empty & offered:
+    if any(_influence_of(me, faction) == 0 for faction in _FACTIONS):
         return False
     return None
 

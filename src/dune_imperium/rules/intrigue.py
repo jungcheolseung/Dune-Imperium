@@ -1778,7 +1778,7 @@ def _follow_reveal_strength(
     """Keep the Reveal frame's counted strength in step with the seat's total.
 
     A Plot Intrigue played during the owner's Reveal turn may pay a cost
-    that removes units from the Conflict (Ambitious, Fedaykin Maneuver).
+    that removes units from the Conflict (Twisted Ambitious's three troops).
     ``retreat_units`` already sets the running ``combat_strength`` -- "마지막
     unit이 제거되면 sword가 남아 있어도 strength는 0이 된다" [Main p. 12]
     (docs/rules/player-turns.md 231) -- but the Reveal frame keeps its own
@@ -1786,7 +1786,9 @@ def _follow_reveal_strength(
     stale tally made the next Combat-icon deployment count a negative
     delta (2026-09-16 A/B, CHOAM+Bloodlines+Tech seed 262). The two Reveal
     handlers that remove units (``apply_reveal_troop_sacrifice`` and the
-    card troop retreat) already do this; the Intrigue costs join them.
+    card troop retreat) already do this; the Intrigue costs join them. The
+    RetreatTroops branch is defensive: today every Intrigue retreat is
+    Combat-timed, when no Reveal frame is open, so it is a no-op there.
     """
 
     if not reveal_in_progress(state, player):
