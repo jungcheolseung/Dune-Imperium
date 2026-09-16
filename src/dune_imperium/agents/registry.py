@@ -8,6 +8,7 @@ from dune_imperium.agents.heuristic_agent import (
     SPACE_BONUSES_BEFORE_DEMOTION,
     SPACE_BONUSES_BEFORE_RETUNE,
     SPACE_BONUSES_DEMOTED_TO_FLOOR,
+    SPACE_BONUSES_MEDIAN_DEMOTION,
     HeuristicAgent,
 )
 from dune_imperium.agents.random_agent import RandomAgent
@@ -76,6 +77,19 @@ def _heuristic_floor_table(seed: int) -> Agent:
     return HeuristicAgent(seed=seed, space_bonuses=SPACE_BONUSES_DEMOTED_TO_FLOOR)
 
 
+def _heuristic_median_table(seed: int) -> Agent:
+    """The heuristic with the three demoted spaces at the median (2026-09-16 am).
+
+    Ablating that table one space at a time showed Imperial Basin alone at
+    the floor beats it on every axis while Arrakeen wants to be higher
+    (docs/evaluation/baseline-2026-09-10.md sections 18(i) and 18(j)), so the
+    split table is ``heuristic`` now and this variant pins the median one for
+    the paired A/B.
+    """
+
+    return HeuristicAgent(seed=seed, space_bonuses=SPACE_BONUSES_MEDIAN_DEMOTION)
+
+
 def _rollout(seed: int) -> Agent:
     return RolloutAgent(seed=seed)
 
@@ -91,6 +105,7 @@ BASELINE_AGENT_FACTORIES: Final[dict[str, AgentFactory]] = {
     "heuristic_flat_cards": _heuristic_flat_cards,
     "heuristic_uprising_table": _heuristic_uprising_table,
     "heuristic_floor_table": _heuristic_floor_table,
+    "heuristic_median_table": _heuristic_median_table,
     "rollout": _rollout,
 }
 

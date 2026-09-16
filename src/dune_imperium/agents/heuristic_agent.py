@@ -262,19 +262,22 @@ _RETREAT_SCORE: Final = -1.0
 # the floor on the Tech Module.
 #
 # The level was then measured one ruleset axis at a time against the floor
-# (section 18(h), 2026-09-16). The median beats the floor by +4.5pp on base,
-# +8.2pp on CHOAM and +5.6/+7.4pp on Immortality, ties Bloodlines and the
-# Tech Module with CHOAM, and loses the Tech Module without CHOAM by
-# -4.9/-5.9pp, where it still beats the two-entry table by +3.4/+2.2pp;
-# 0.45 is indistinguishable from the floor, 0.5 is halfway, and 0.75 (the
-# rubric's Arrakeen) loses on every axis. At the median the seat keeps the
-# demotion's Influence (10.4) and trades Landsraad visits for Imperial Basin
-# and Arrakeen, both Combat spaces: Conflict wins 1.74 -> 2.54 on base+CHOAM
-# for +0.33 VP. On the Tech Module those Landsraad visits were the tile
-# purchases, which is the one place the trade loses. The tie with the 0.6
-# group is part of the effect (a strict order just above it, 0.62/0.61/0.59,
-# measured -6.0pp on Tech), so the three share the median rather than sitting
-# at a repriced spot of their own.
+# (section 18(h), 2026-09-16): the median (all three at 0.6) beat the floor on
+# base, CHOAM and Immortality and lost the Tech Module without CHOAM. Ablating
+# that table's most-visited spaces one at a time (section 18(i)) showed the
+# trade-off was two conclusions on one lever: Imperial Basin alone at the
+# floor beats the median table on every axis (+9.1pp on base, +7.1pp on CHOAM,
+# +4.6pp on Immortality, +7.7pp on the Tech Module without CHOAM), while
+# Arrakeen at the floor loses everywhere (-6.8 to -12.4pp), and Espionage or
+# Deliver Supplies at the floor changes nothing. Raising Arrakeen with
+# Imperial Basin at the floor keeps paying up to the Faction spaces' top
+# (section 18(j)); the committed table, Imperial Basin 0.3 / Secrets 0.6 /
+# Arrakeen 1.2, measures +17.2/+16.8pp on base, +16.2/+12.7pp on CHOAM,
+# +15.8pp on Bloodlines, +10.6/+7.8pp on Immortality, +15.9/+14.8pp on the
+# Tech Module without CHOAM, +14.5pp on the Tech Module with CHOAM, +11.5pp on
+# CHOAM + Tech + Immortality against the median table. The placement mix
+# behind the split is recorded in section 18(k). The median table stays pinned
+# on ``heuristic_median_table``, the floor table on ``heuristic_floor_table``.
 #
 # Two limits are deliberate. ``score_action`` sees only the action, so a space
 # whose yield depends on the ruleset is priced on its base reward -- Dutiful
@@ -288,6 +291,10 @@ UPRISING_SPACE_BONUSES: Final[Mapping[str, float]] = MappingProxyType(
         # Permanent upgrades keep their established values.
         "swordmaster": 3.0,
         "high_council": 2.0,
+        # Arrakeen ranks with the Faction spaces' top, just below the
+        # permanent upgrades: raised from the median once Imperial Basin
+        # left it (section 18(j)).
+        "arrakeen": 1.2,
         # Influence plus a big recruit.
         "sardaukar": 1.0,
         # A second placement this turn, behind Emperor Influence 2.
@@ -300,12 +307,9 @@ UPRISING_SPACE_BONUSES: Final[Mapping[str, float]] = MappingProxyType(
         "deep_desert": 0.6,
         "dutiful_service": 0.6,
         "hagga_basin": 0.6,
-        # Demoted from the rubric's 1.0, 0.85 and 0.75 to the median, tied
-        # with the three spaces above (section 18(h)): the agent lived on
-        # them at the rubric's prices, and the floor gave up Conflicts.
+        # Secrets, priced 1.0 by the rubric, sits at the median with the
+        # three spaces above; its level barely moves the result (18(j)).
         "secrets": 0.6,
-        "imperial_basin": 0.6,
-        "arrakeen": 0.6,
         "tuek_sietch": 0.55,
         "assembly_hall": 0.5,
         "desert_tactics": 0.5,
@@ -315,6 +319,10 @@ UPRISING_SPACE_BONUSES: Final[Mapping[str, float]] = MappingProxyType(
         # Both pay the least once their cost is priced in.
         "accept_contract": 0.35,
         "research_station": 0.35,
+        # Imperial Basin, priced 0.85 by the rubric, sits at the floor below
+        # every other yield: demoting it alone is the largest lever the table
+        # has (sections 18(i) and 18(j)).
+        "imperial_basin": 0.3,
     }
 )
 
@@ -327,6 +335,18 @@ SPACE_BONUSES_DEMOTED_TO_FLOOR: Final[Mapping[str, float]] = MappingProxyType(
         "secrets": 0.3,
         "imperial_basin": 0.3,
         "arrakeen": 0.3,
+    }
+)
+
+# The median demotion of 2026-09-16 morning (the three spaces at 0.6), kept
+# so the registry's ``heuristic_median_table`` reproduces the ablation and
+# its follow-up (sections 18(i) and 18(j)) from the committed tree.
+SPACE_BONUSES_MEDIAN_DEMOTION: Final[Mapping[str, float]] = MappingProxyType(
+    {
+        **UPRISING_SPACE_BONUSES,
+        "secrets": 0.6,
+        "imperial_basin": 0.6,
+        "arrakeen": 0.6,
     }
 )
 

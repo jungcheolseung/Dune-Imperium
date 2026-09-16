@@ -370,14 +370,20 @@ def test_board_space_ranking_separates_the_placements_it_offers() -> None:
     # Research Station buys two cards and two troops for two water, while
     # Fremkit gives a card and Influence for nothing [Board Guide pp. 1-2].
     assert scores["fremkit"] > scores["research_station"]
-    # The three spaces the rubric-priced table lived on are demoted to the
-    # median, tied with the 0.6 group: below the Faction spaces the demotion
-    # sends the Agents to, above the costed and Solari spaces
-    # (docs/evaluation/baseline-2026-09-10.md sections 18 and 18(h)).
-    demoted = {"imperial_basin", "secrets", "arrakeen"}
-    assert {scores[k] for k in demoted} == {scores["hagga_basin"]}
+    # The three spaces the rubric-priced table lived on went three ways
+    # (docs/evaluation/baseline-2026-09-10.md sections 18 to 18(j)): Imperial
+    # Basin sits at the floor below every other yield, Secrets at the median
+    # with the 0.6 group, and Arrakeen with the Faction spaces' top, below
+    # the permanent upgrades.
+    assert scores["imperial_basin"] < min(
+        v for k, v in one_shot.items() if k != "imperial_basin"
+    )
+    assert scores["secrets"] == scores["hagga_basin"]
     assert scores["hagga_basin"] < scores["fremkit"] < scores["espionage"]
     assert scores["hagga_basin"] > scores["assembly_hall"] > scores["accept_contract"]
+    assert scores["arrakeen"] > scores["sardaukar"]
+    assert scores["arrakeen"] > scores["espionage"]
+    assert scores["arrakeen"] < scores["high_council"]
     # Nearly every placement must still separate from some other one.
     assert len(set(scores.values())) >= 12
 
@@ -474,13 +480,39 @@ def test_the_floor_table_variant_pins_the_first_demotion() -> None:
     assert {k: SPACE_BONUSES_DEMOTED_TO_FLOOR[k] for k in demoted} == dict.fromkeys(
         demoted, 0.3
     )
-    assert {k: UPRISING_SPACE_BONUSES[k] for k in demoted} == dict.fromkeys(
-        demoted, 0.6
-    )
+    assert {k: UPRISING_SPACE_BONUSES[k] for k in demoted} == {
+        "imperial_basin": 0.3,
+        "secrets": 0.6,
+        "arrakeen": 1.2,
+    }
     assert {
         k for k, v in SPACE_BONUSES_DEMOTED_TO_FLOOR.items()
         if UPRISING_SPACE_BONUSES[k] != v
-    } == set(demoted)
+    } == {"secrets", "arrakeen"}
+
+
+def test_the_median_table_variant_pins_the_morning_demotion() -> None:
+    # The registry keeps the 2026-09-16 morning table (all three at 0.6) so
+    # the ablation and its follow-up (sections 18(i) and 18(j)) rerun from
+    # the committed tree.
+    from dune_imperium.agents.heuristic_agent import (
+        SPACE_BONUSES_MEDIAN_DEMOTION,
+        UPRISING_SPACE_BONUSES,
+    )
+    from dune_imperium.agents.registry import BASELINE_AGENT_FACTORIES, make_agent
+
+    assert "heuristic_median_table" in BASELINE_AGENT_FACTORIES
+    median = make_agent("heuristic_median_table", seed=3)
+    assert isinstance(median, HeuristicAgent)
+    assert median.space_bonuses == SPACE_BONUSES_MEDIAN_DEMOTION
+    demoted = ("imperial_basin", "secrets", "arrakeen")
+    assert {k: SPACE_BONUSES_MEDIAN_DEMOTION[k] for k in demoted} == dict.fromkeys(
+        demoted, 0.6
+    )
+    assert {
+        k for k, v in SPACE_BONUSES_MEDIAN_DEMOTION.items()
+        if UPRISING_SPACE_BONUSES[k] != v
+    } == {"imperial_basin", "arrakeen"}
 
 
 def _placement(card_id: str, space_id: str) -> DomainAction:
