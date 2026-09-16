@@ -155,6 +155,42 @@ def test_the_seeds_that_deadlocked_on_an_unreachable_market_now_finish() -> None
         assert replay_game(engine, result.replay).phase is GamePhase.FINISHED
 
 
+def test_the_seed_that_deadlocked_on_two_graft_promises_now_finishes() -> None:
+    # All-expansion heuristic mirror seed 42 offered Long Reach a graft
+    # placement onto an occupied Arrakeen: its Bond icons needed Ghola as the
+    # partner while the occupation needed Tleilaxu Infiltrator, so the partner
+    # choice had no legal action. The placement is no longer offered.
+    from dune_imperium.agents.registry import make_agent
+    from dune_imperium.evaluation.tournament import tournament_specs
+
+    specs = [
+        spec
+        for spec in tournament_specs(
+            agents=("heuristic",),
+            games=100,
+            rulesets=(False, True),
+            rotate_leaders=True,
+            promo_cards=True,
+            bloodlines=True,
+            tech_module=True,
+            immortality=True,
+        )
+        if spec.game_seed == 42 and not spec.choam_module
+    ]
+    assert len(specs) == 1
+
+    spec = specs[0]
+    assert spec.leader_ids is not None
+    engine = UprisingRulesEngine(leader_ids=spec.leader_ids)
+    agents = tuple(
+        make_agent(kind, spec.policy_seed + seat)
+        for seat, kind in enumerate(spec.seat_agents)
+    )
+    result = run_policy_game(engine, spec.config, spec.game_seed, agents)
+    assert result.state.phase is GamePhase.FINISHED
+    assert replay_game(engine, result.replay).phase is GamePhase.FINISHED
+
+
 def test_the_runner_enumerates_the_legal_set_once_per_player_decision() -> None:
     # The kernel used to enumerate the legal set a second time to validate
     # the action the runner had just chosen from it; the runner now vouches

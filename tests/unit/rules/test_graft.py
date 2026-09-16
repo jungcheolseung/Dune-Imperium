@@ -293,6 +293,41 @@ def test_an_occupied_space_needs_the_infiltrator_as_a_partner() -> None:
     assert set(_partners(placed.state)) == {INFILTRATOR}
 
 
+def test_an_occupied_space_is_not_offered_on_two_different_promises() -> None:
+    # Long Reach's icons are Bene Gesserit Bond icons: in hand they switch on
+    # only on the promise that Ghola will be the partner (OQ-057). An occupied
+    # space is entered on the promise that Tleilaxu Infiltrator will be the
+    # partner. A turn plays two cards only [Immortality p. 10], so one
+    # partner cannot keep both promises and the placement is not offered;
+    # offering it left the partner choice with no legal action (2026-09-16
+    # all-expansion baseline, game seed 42).
+    long_reach = "imperium:long_reach:0"
+    ghola = "tleilaxu:ghola:0"
+    blocker = PlayerState(
+        player_id=1,
+        research_space=RESEARCH_START_ID,
+        family_atomics=True,
+        agents_available=1,
+        agent_locations=("arrakeen",),
+    )
+    open_state = _state(_owner((long_reach, ghola, INFILTRATOR)))
+    blocked = replace(
+        open_state, players=(open_state.players[0], blocker, *open_state.players[2:])
+    )
+
+    # Unoccupied: Long Reach enters on Ghola's promise and Ghola is the partner.
+    assert (long_reach, "arrakeen", True) in _placements(open_state)
+    placed = apply_agent_action(
+        open_state, _placements(open_state)[(long_reach, "arrakeen", True)]
+    )
+    assert set(_partners(placed.state)) == {ghola}
+    # Occupied: the two promises need two different partners, so no offer;
+    # the Infiltrator itself still enters on its own City icon.
+    blocked_placements = _placements(blocked)
+    assert (long_reach, "arrakeen", True) not in blocked_placements
+    assert (INFILTRATOR, "arrakeen", True) in blocked_placements
+
+
 def test_twisted_mentat_may_recall_the_agent_sent_this_turn() -> None:
     state = _state(
         _owner((MENTAT, DAGGER), agent_locations=("arrakeen",), agents_available=1)

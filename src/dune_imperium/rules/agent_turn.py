@@ -148,6 +148,15 @@ def _placements_for_card(
     icons = effective_agent_icons(
         card, owner, grafted=graft, opponents=opponents, ghola_partner=ghola_partner
     )
+    # The card's reach without Ghola's promise: an occupied space is entered
+    # on Tleilaxu Infiltrator's promise instead, and a turn plays two cards
+    # only [Immortality p. 10], so a card that reaches the space only with
+    # Ghola as its partner cannot also have the Infiltrator as its partner.
+    icons_without_ghola = (
+        effective_agent_icons(card, owner, grafted=graft, opponents=opponents)
+        if ghola_partner
+        else icons
+    )
     usurp = graft and card_is_usurp(card)
     usurp_partners: tuple[tuple[str, tuple[AgentIcon, ...], bool], ...] = ()
     if usurp:
@@ -227,6 +236,20 @@ def _placements_for_card(
                 continue
             infiltrator_partner_fits = any(
                 is_tleilaxu_infiltrator(partner_id) for partner_id in fitting
+            )
+        elif (
+            graft
+            and occupying_opponents
+            and not is_tleilaxu_infiltrator(card_instance_id)
+        ):
+            # The Infiltrator must be the partner here, so the placed card
+            # has to reach the space without Ghola's promise (OQ-057); the
+            # partner choice would otherwise have no card that satisfies both
+            # (2026-09-16 baseline re-measurement, all expansions, game seed
+            # 42: Long Reach's Bond icons needed Ghola, the occupied Arrakeen
+            # needed the Infiltrator, and the turn had no legal action).
+            infiltrator_partner_fits = card_can_access_space(
+                icons_without_ghola, space, owner, any_icon=any_icon
             )
         if not occupying_opponents or (
             graft and _infiltrator_may_join(owner) and infiltrator_partner_fits
