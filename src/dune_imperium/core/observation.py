@@ -342,7 +342,7 @@ def observe_state(state: GameState, player: int) -> PlayerView:
         turn_owner=turn_owner_value,
         reveal_order=state.reveal_order,
         endgame_intrigue_complete=state.endgame_intrigue_complete,
-        players=tuple(_public_player_view(candidate) for candidate in state.players),
+        players=tuple(_cached_public_player_view(seat) for seat in state.players),
         private=PrivatePlayerView(
             deck_size=len(owner.deck),
             hand=owner.hand,
@@ -428,6 +428,27 @@ def peeked_intrigue_ids(state: GameState, player: int) -> tuple[str, ...]:
         return ()
     peeked = tuple(value.split(","))
     return peeked if state.intrigue_deck[: len(peeked)] == peeked else ()
+
+
+# One public view per ``PlayerState`` object. A seat's state is immutable and
+# most seats do not change between two consecutive decisions, so the view
+# built for a state object is reused while that object is alive; the entry
+# keeps the object alive so its id cannot be recycled under it. Bounded so a
+# long self-play run does not grow it (throughput report, section 7).
+_PUBLIC_VIEW_CACHE: dict[int, tuple[PlayerState, PublicPlayerView]] = {}
+_PUBLIC_VIEW_CACHE_LIMIT = 512
+
+
+def _cached_public_player_view(player: PlayerState) -> PublicPlayerView:
+    key = id(player)
+    entry = _PUBLIC_VIEW_CACHE.get(key)
+    if entry is not None and entry[0] is player:
+        return entry[1]
+    view = _public_player_view(player)
+    if len(_PUBLIC_VIEW_CACHE) >= _PUBLIC_VIEW_CACHE_LIMIT:
+        _PUBLIC_VIEW_CACHE.clear()
+    _PUBLIC_VIEW_CACHE[key] = (player, view)
+    return view
 
 
 def _public_player_view(player: PlayerState) -> PublicPlayerView:

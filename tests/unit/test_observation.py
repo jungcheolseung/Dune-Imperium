@@ -252,3 +252,24 @@ def test_game_state_rejects_two_owners_of_one_alliance() -> None:
     with pytest.raises(ValueError, match="only one owner"):
         replace(state, players=(first, second, *state.players[2:]))
 
+
+
+def test_public_views_are_reused_for_unchanged_seats() -> None:
+    # A seat's public view is built once per state object: between two
+    # decisions most seats do not change, so their views come back from the
+    # identity cache unchanged while a replaced seat gets a fresh view.
+    state = _state()
+    first = observe_state(state, 0)
+    again = observe_state(state, 0)
+    assert again.players == first.players
+    assert all(a is b for a, b in zip(again.players, first.players, strict=True))
+
+    seat = state.players[2]
+    richer = replace(seat, victory_points=seat.victory_points + 1)
+    changed = replace(
+        state, players=(*state.players[:2], richer, *state.players[3:])
+    )
+    view = observe_state(changed, 0)
+    assert view.players[2] is not first.players[2]
+    assert view.players[2].victory_points == first.players[2].victory_points + 1
+    assert all(view.players[i] is first.players[i] for i in (0, 1, 3))
