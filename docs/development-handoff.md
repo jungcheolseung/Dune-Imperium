@@ -242,6 +242,13 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
   셀과 결정 수·승수까지 동일.
 - 이 Mac(Apple M4 10코어)은 1,000 match 셀이 30초라 A/B 셀 40개 + probe를 한 세션에 끝냈다.
   스크래치는 세션 scratchpad `space-table-closeout/`(정의는 18절에 있어 재작성 가능).
+- **기준선 재측정**: 09-10 문서 1~12절(두 칸 표의 heuristic으로 잰 값)을 같은 명령으로 다시 재
+  [evaluation/baseline-2026-09-16.md](evaluation/baseline-2026-09-16.md)를 현행 기준선으로 뒀다 —
+  heuristic vs random 3: base 89.2 → **94.9%**(800판), CHOAM 84.4 → **95.5%**; rollout vs heuristic 3:
+  43.0 → **51.0%**(전 확장 41.7 → 46.7%). README의 수치·링크를 갱신했다.
+- **상위 항목 소거**(18절(i)): lessons 09-11 규칙대로 0.6 표의 상위 네 칸을 하나씩 0.3으로 내려 쟀다.
+  **Imperial Basin만 바닥으로 내리면 전 축에서 +4.6 ~ +9.1%p**, Arrakeen을 내리면 전 축 −6.8 ~ −12.4%p,
+  Espionage·Deliver Supplies는 무차이. 후속 셀(나머지 축·둘째 블록·Secrets/Arrakeen 변형)은 18절(j).
 - 검증: pytest **1,507**, Ruff, mypy 통과. README 테스트 수 1,507.
 
 ## 2026-09-11 보드 공간 표 강등·OQ-060 세션 요약 (master, 관측 v20, codec v104, 표 변경·마감 미완)
