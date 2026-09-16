@@ -142,8 +142,27 @@ def _rollout_untuned(seed: int) -> Agent:
     """
 
     return RolloutAgent(
-        seed=seed, rollouts=2, candidates=6, horizon_rounds=1, paired_playouts=False
+        seed=seed,
+        rollouts=2,
+        candidates=6,
+        horizon_rounds=1,
+        paired_playouts=False,
+        opponent_reference="max",
+        deck_by_value=False,
     )
+
+
+def _rollout_count_max(seed: int) -> Agent:
+    """The rollout search with the 2026-09-16 evening value function.
+
+    Playouts read against the strongest opponent and the deck counted by
+    card; re-measured on 2026-09-16 night against three tie-break heuristics
+    (docs/evaluation/baseline-2026-09-16.md section 15), where the mean
+    reference with the printed-value deck won. Pinned here so the paired
+    A/B reruns from the committed tree.
+    """
+
+    return RolloutAgent(seed=seed, opponent_reference="max", deck_by_value=False)
 
 
 def _rollout_strong(seed: int) -> Agent:
@@ -177,6 +196,7 @@ BASELINE_AGENT_FACTORIES: Final[dict[str, AgentFactory]] = {
     "heuristic_uniform_ties": _heuristic_uniform_ties,
     "rollout": _rollout,
     "rollout_untuned": _rollout_untuned,
+    "rollout_count_max": _rollout_count_max,
     "rollout_strong": _rollout_strong,
 }
 

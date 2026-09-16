@@ -404,6 +404,46 @@ def test_the_untuned_rollout_variant_pins_the_first_knobs() -> None:
     assert (strong.rollouts, strong.candidates, strong.paired_playouts) == (8, 3, True)
 
 
+def test_position_value_reads_the_opponents_mean_and_the_deck_by_value() -> None:
+    # Section 15: the mean reference and the printed-value deck are the
+    # defaults; the strongest-opponent, by-card function stays pinned.
+    from dune_imperium.agents.heuristic_agent import card_printed_value
+    from dune_imperium.agents.registry import BASELINE_AGENT_FACTORIES, make_agent
+
+    state = _play_rounds(seed=5, rounds=2)
+    own = player_value(state.players[0])
+    others = [player_value(p) for p in state.players[1:]]
+    assert position_value(state, 0) == pytest.approx(own - sum(others) / 3)
+    assert position_value(state, 0, opponent_reference="max") == pytest.approx(
+        own - max(others)
+    )
+    with pytest.raises(ValueError, match="opponent_reference"):
+        position_value(state, 0, opponent_reference="median")
+
+    seat = state.players[0]
+    zones = (seat.deck, seat.hand, seat.discard_pile, seat.in_play)
+    printed = sum(card_printed_value(card) for zone in zones for card in zone)
+    empty = replace(seat, deck=(), hand=(), discard_pile=(), in_play=())
+    assert own - player_value(empty) == pytest.approx(0.1 * printed)
+    cards = sum(len(zone) for zone in zones)
+    by_count = player_value(seat, deck_by_value=False)
+    assert by_count - player_value(empty, deck_by_value=False) == pytest.approx(
+        0.5 * max(0, cards - 10)
+    )
+
+    assert RolloutAgent(seed=1).opponent_reference == "mean"
+    assert RolloutAgent(seed=1).deck_by_value is True
+    assert "rollout_count_max" in BASELINE_AGENT_FACTORIES
+    pinned = make_agent("rollout_count_max", seed=1)
+    assert isinstance(pinned, RolloutAgent)
+    assert (pinned.opponent_reference, pinned.deck_by_value) == ("max", False)
+    untuned = make_agent("rollout_untuned", seed=1)
+    assert isinstance(untuned, RolloutAgent)
+    assert (untuned.opponent_reference, untuned.deck_by_value) == ("max", False)
+    with pytest.raises(ValueError, match="opponent_reference"):
+        RolloutAgent(seed=1, opponent_reference="median")
+
+
 def test_player_value_counts_bloodlines_assets() -> None:
     from dune_imperium.core.player import PlayerState
 
