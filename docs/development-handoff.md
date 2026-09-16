@@ -64,7 +64,13 @@ CPU가 약 1.6배**가 된 것이고, 원인은 한 곳이 아니라 확장 4종
 **재정비 표 자체의 상위 세 칸이 틀렸다**는 발견으로 끝나 표 하나를 전 룰셋에 쓰게 바꿨다(18절). 그 마감
 측정 두 가지는 2026-09-16에 끝났고 수준은 0.6으로 올렸다(아래 0번, 18절(g)·(h)).
 
-0. (2026-09-16 **다음 작업**) **Espionage 소거 후속.** 18절(l)의 소거가 Espionage(0.8)를 0.3으로 내리면 base +4.6·
+0. (2026-09-16 저녁, **다음 작업 후보**) 보드 공간 표의 좌표 하강은 18절(m)에서 멈췄다(상위 네 칸 소거 전부 ≤ 0).
+   남은 후보: (a) **rollout 정비** — heuristic 3명 상대 28%로 내려왔다. `_candidates`가 `score_action`으로 후보를
+   자르므로 표가 강해질수록 heuristic과 겹친다; 후보 수·rollout 수·horizon·`position_value` 가중을 축별 A/B로 잰다.
+   (b) 표의 **하위 칸을 올려 보는** 소거(Imperial Basin·Deliver Supplies·Espionage 되돌리기, 두 칸 동시 변경).
+   (c) 아침 목록의 나머지: 처리량 후보([evaluation/throughput-2026-09-10.md](evaluation/throughput-2026-09-10.md)
+   5·7절), 리팩토링 후속([refactoring-plan.md](refactoring-plan.md)), M10(최후순위).
+0. (2026-09-16 **완료**) **Espionage 소거 후속.** 18절(l)의 소거가 Espionage(0.8)를 0.3으로 내리면 base +4.6·
    CHOAM +2.9·Tech +5.5·Immortality +5.2%p라고 했다. 같은 절차: (1) 0.3과 중간 수준 하나를 축별·둘째 블록으로
    `heuristic` 상대 재고, (2) 이기면 채택(이전 표를 registry에 고정하고 **모든 고정 표에 그 항목을 명시**), (3)
    채택한 표의 상위 항목을 다시 소거하고 probe로 mix를 적고, (4) 기준선 12셀을 다시 잰다. 스크래치
@@ -285,7 +291,14 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 - **엔진 결함 2건째 수정**(커밋 `7635aac`): rollout 좌석 base seed 1 — Long Live the Fighters 선택 frame이 열린 채
   `determinize`가 관측자 덱을 다 섞어 실제 합법 선택이 sampled world에서 불법(`IllegalActionError`). 관측자가 본
   상단 카드 수(Long Live 3, peek 1)만큼 제자리에 둔다. rollout 셀 `b04`·`b12`만 다시 쟀다.
-- 검증: pytest **1,515**, Ruff, mypy 통과. README 테스트 수 1,515.
+- **Espionage 채택**(18절(m), 커밋 `aaa9788`): 0.3·0.6 모두 전 축·두 블록 +2.7 ~ +8.8%p, **0.6 채택**(0.6 묶음).
+  Deliver Supplies 표는 `heuristic_supplies_table`로 고정(고정 표 다섯 모두 Espionage 0.8 명시). 커밋 트리 확인 4축
+  결정 수까지 동일. probe: 배치가 Fremkit·Sietch Tabr로, Conflict 승 1.92 → 2.34, VP 7.32 → 7.67. **새 표의 소거는
+  손잡이를 내지 않았다**(상위 네 칸 모두 손해 또는 잡음) — 좌표 하강은 여기서 멈춘다.
+- 최종 기준선([evaluation/baseline-2026-09-16.md](evaluation/baseline-2026-09-16.md), 하루의 표 다섯 열): heuristic vs
+  random 3 base 800판 89.2 → **97.8%**, CHOAM 84.4 → **98.4%**; rollout vs heuristic 3은 43.0 → **28.0%**(전 확장
+  41.7 → 31.7%) — rollout의 후보 pruning이 같은 `score_action`을 쓰므로 표가 강해질수록 우위가 준다(열린 항목).
+- 검증: pytest **1,516**, Ruff, mypy 통과. README 테스트 수 1,516.
 
 ## 2026-09-11 보드 공간 표 강등·OQ-060 세션 요약 (master, 관측 v20, codec v104, 표 변경·마감 미완)
 
