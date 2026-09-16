@@ -157,7 +157,8 @@ context에 있지만 게이트는 여전히 플래그가 맞다 — `agent_turn.
 2. **legal action 열거** — frame 종류별 provider가 대략 두 배가 됐고(TURN 3→7, REVEAL 7→16),
    `core/engine.py:112`가 runner가 이미 만든 legal 집합을 검증하려고 **한 번 더 전부 열거한다**
    (실측: `legal_actions` 호출이 결정 수의 정확히 2배). 후자는 이 구간 이전부터 있던 안전
-   가드이므로 없애는 것은 성능이 아니라 **설계 판정**이다. 게이트가 없던 provider 6개는
+   가드이므로 없애는 것은 성능이 아니라 **설계 판정**이다 — 2026-09-16에 가드는 그대로 두고
+   호출자가 방금 만든 집합을 넘기면 재열거만 생략하게 했다(7절, 단일 프로세스 −13.6%). 게이트가 없던 provider 6개는
    3(c)로 끝냈다. 남은 것은 provider가 각자 `current_agent_effect_context`로 frame context를
    다시 만드는 부분이다(`agent_effect_frame.py:95`가 이미 만들어 들고 있는 것을 넘겨주면 된다).
 3. **자동 진행 사슬** — `_advance_automatic`의 sweep이 2 → 4, 훅이 3 → 6이 됐고 일부는 게이트가
@@ -179,3 +180,29 @@ OQ-057의 의미(조건이 거짓인 의무 box는 turn이 끝날 때까지 기�
 
 용의자 지목이 틀렸다는 것 자체보다, **읽어서 고른 용의자를 재보지 않고 인수인계에 적은 절차**가
 문제였다. [lessons.md](../lessons.md)의 2026-09-10 항목에 남겼다.
+
+## 7. 2026-09-16 — 결정마다 두 번 열거하던 legal 집합을 한 번으로 (5절 항목 2, **적용**)
+
+5절 항목 2의 후반부다. runner는 에이전트에게 줄 legal 집합을 열거하고, `RulesEngine.apply`는 그
+행동이 합법인지 검증하려고 **같은 상태의 같은 집합을 다시 열거**했다(실측 `legal_actions` 호출 =
+결정 수의 정확히 2배). 가드를 없애는 대신 `apply(state, action, legal_actions=...)`로 호출자가
+**방금 그 상태에서 만든 집합**을 넘기면 검증이 재열거 대신 그 튜플의 membership 검사가 되게 했다.
+소유자 검사와 빈 집합 거부는 그대로다. 넘기는 곳은 `simulation/runner.py`(`run_policy_game`),
+`training/selfplay.py`, `simulation/sweep.py`의 본 루프, `agents/rollout_agent.py`의 rollout
+루프다. 서버·replay 검증·sweep의 soundness 재적용·rollout의 determinized 분기(실제 상태의 집합을
+다른 world에 적용하므로 검증이 의미 있다)는 계속 전부 열거한다. 커밋 `9b435e2`.
+
+측정(이 Mac, Apple M4 10코어, **단일 프로세스**, `run_policy_game` heuristic 미러 40판, 같은 실행
+안에서 두 모드를 번갈아 5회(CHOAM 3회) 재고 중앙값; 스크래치 `bench_vouch.py`가 `RulesEngine.apply`를
+monkeypatch해 튜플을 무시하는 쪽을 "전"으로 삼는다 — 2절의 규칙대로 비교는 같은 실행 안에서만):
+
+| 룰셋 | 전(재열거) | 후(튜플) | 벽시계 | `legal_actions` 호출/결정 |
+|---|---:|---:|---:|---:|
+| base | 4.85s | 4.19s | **−13.6%** (1.157×) | 2.00 → 1.00 |
+| CHOAM | 4.89s | 4.22s | **−13.6%** (1.157×) | 2.00 → 1.00 |
+
+step 수·결정 수는 두 모드가 동일(base 24,945 / 24,147, CHOAM 24,943 / 24,163)해 게임이 달라지지
+않았다. 회귀 테스트는 시간이 아니라 불변식이다: kernel 테스트 2건(튜플이 있으면 재열거하지 않고,
+튜플은 집합으로만 신뢰한다)과 runner 통합 테스트 1건(한 판의 `legal_actions` 호출 수 = 플레이어 결정
+수). 5절의 나머지 — 상태 레코드 폭, provider의 frame context 재구성(`current_agent_effect_context`
+호출부 90곳), 자동 진행 사슬, `observe_state`, 이벤트 로그 — 는 그대로 후보다.

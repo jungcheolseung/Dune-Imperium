@@ -249,7 +249,10 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 - **상위 항목 소거**(18절(i)): lessons 09-11 규칙대로 0.6 표의 상위 네 칸을 하나씩 0.3으로 내려 쟀다.
   **Imperial Basin만 바닥으로 내리면 전 축에서 +4.6 ~ +9.1%p**, Arrakeen을 내리면 전 축 −6.8 ~ −12.4%p,
   Espionage·Deliver Supplies는 무차이. 후속 셀(나머지 축·둘째 블록·Secrets/Arrakeen 변형)은 18절(j).
-- 검증: pytest **1,507**, Ruff, mypy 통과. README 테스트 수 1,507.
+- **처리량**(throughput 7절, 커밋 `9b435e2`): `RulesEngine.apply`가 runner가 방금 만든 legal 집합을 받아
+  재열거 대신 membership 검사만 하게 했다(가드 유지). 단일 프로세스 heuristic 미러 벽시계 **−13.6%**(base·CHOAM),
+  `legal_actions` 호출/결정 2.00 → 1.00, step 수 동일. 불변식 테스트 3건.
+- 검증: pytest **1,510**, Ruff, mypy 통과. README 테스트 수 1,510.
 
 ## 2026-09-11 보드 공간 표 강등·OQ-060 세션 요약 (master, 관측 v20, codec v104, 표 변경·마감 미완)
 
