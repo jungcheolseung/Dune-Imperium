@@ -133,6 +133,58 @@ def test_determinize_keeps_the_long_live_fighters_top_three_in_place() -> None:
     )
 
 
+def test_determinize_keeps_the_contracts_coercive_negotiation_revealed() -> None:
+    """Coercive Negotiation's choice names the bank's top three Contracts.
+
+    The owner has seen them, so a sampled world must keep them on top: with
+    the bank reshuffled underneath the frame, the real-legal picks were
+    illegal in the world and the rollout raised on its own branch
+    (2026-09-16 rollout cells, CHOAM+Bloodlines+Tech, 16 of 200 games).
+    """
+
+    from dataclasses import replace
+
+    from dune_imperium.core.decisions import DecisionFrame
+    from dune_imperium.rules.frames import FrameKind
+    from dune_imperium.rules.intrigue_triggers import legal_trigger_contract_actions
+
+    engine = UprisingRulesEngine()
+    config = RulesetConfig(choam_module=True, bloodlines=True)
+    state = engine.reset(config, 3)
+    chance = ChanceResolver(seed=3)
+    policy = HeuristicAgent(seed=3)
+    while state.round_number < 2 and state.phase is not GamePhase.FINISHED:
+        decision = engine.current_decision(state)
+        if isinstance(decision, ChanceDecision):
+            state = engine.apply(state, chance.resolve(decision)).state
+            continue
+        assert isinstance(decision, PlayerDecision)
+        actions = engine.legal_actions(state, decision.owner)
+        action = policy.choose_action(engine.observe(state, decision.owner), actions)
+        state = engine.apply(state, action).state
+    assert len(state.contract_bank) >= 5
+    frame = DecisionFrame(
+        kind=FrameKind.INTRIGUE_TRIGGER_CONTRACT,
+        frame_id="round:2:player:0:intrigue_trigger:test",
+        decision=PlayerDecision(owner=0, prompt="Coercive Negotiation"),
+        context=(("card_id", "intrigue:coercive_negotiation:0"), ("turn_owner", 0)),
+    )
+    state = replace(state, decision_stack=(*state.decision_stack, frame))
+    real = legal_trigger_contract_actions(state, 0)
+    assert len(real) >= 3
+
+    for seed in range(6):
+        world = determinize(state, 0, random.Random(seed))
+        assert world.contract_bank[:3] == state.contract_bank[:3]
+        assert legal_trigger_contract_actions(world, 0) == real
+    # The rest of the bank is still re-dealt.
+    assert any(
+        determinize(state, 0, random.Random(seed)).contract_bank[3:]
+        != state.contract_bank[3:]
+        for seed in range(6)
+    )
+
+
 def test_determinize_keeps_the_observers_view_and_every_card() -> None:
     state = _play_rounds(seed=21, rounds=4)
     # Give an opponent a publicly known hand card and some held Intrigue so
