@@ -2,7 +2,9 @@
 
 import importlib.util
 import sys
+from collections.abc import Iterator
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -19,7 +21,7 @@ _PYPATH = Path(__file__).resolve().parents[2] / "scripts" / "ab" / "pypath"
 
 
 @pytest.fixture(scope="module")
-def hvariants():
+def hvariants() -> Iterator[ModuleType]:
     spec = importlib.util.spec_from_file_location("hvariants", _PYPATH / "hvariants.py")
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -34,7 +36,9 @@ def hvariants():
     sys.modules.pop("hvariants", None)
 
 
-def test_the_null_heuristic_variant_equals_the_committed_agent(hvariants) -> None:
+def test_the_null_heuristic_variant_equals_the_committed_agent(
+    hvariants: ModuleType,
+) -> None:
     engine = UprisingRulesEngine()
     for flags in ({}, {"choam_module": True, "bloodlines": True, "immortality": True}):
         config = RulesetConfig(**flags)
@@ -51,7 +55,7 @@ def test_the_null_heuristic_variant_equals_the_committed_agent(hvariants) -> Non
 
 
 def test_the_null_rollout_variant_values_a_position_like_the_committed_agent(
-    hvariants,
+    hvariants: ModuleType,
 ) -> None:
     # The whole playout loop is the committed one; the value read at the
     # horizon is what a variant changes, so it is compared on real states.
