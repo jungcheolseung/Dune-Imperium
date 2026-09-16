@@ -153,3 +153,35 @@ def test_the_seeds_that_deadlocked_on_an_unreachable_market_now_finish() -> None
         result = run_policy_game(engine, spec.config, spec.game_seed, agents)
         assert result.state.phase is GamePhase.FINISHED
         assert replay_game(engine, result.replay).phase is GamePhase.FINISHED
+
+
+def test_the_runner_enumerates_the_legal_set_once_per_player_decision() -> None:
+    # The kernel used to enumerate the legal set a second time to validate
+    # the action the runner had just chosen from it; the runner now vouches
+    # for the set it built, so one enumeration serves both.
+    from dune_imperium.core import DomainAction, GameState
+
+    class CountingEngine(UprisingRulesEngine):
+        enumerations = 0
+
+        def legal_actions(
+            self,
+            state: GameState,
+            player: int,
+        ) -> tuple[DomainAction, ...]:
+            type(self).enumerations += 1
+            return super().legal_actions(state, player)
+
+    simulation = run_policy_game(
+        CountingEngine(),
+        RulesetConfig(),
+        3,
+        [RandomAgent(seed=seat) for seat in range(4)],
+    )
+
+    player_decisions = sum(
+        isinstance(step, DomainAction) for step in simulation.replay.steps
+    )
+    assert player_decisions > 0
+    assert CountingEngine.enumerations == player_decisions
+

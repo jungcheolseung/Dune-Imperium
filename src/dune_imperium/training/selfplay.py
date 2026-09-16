@@ -240,7 +240,11 @@ class SelfPlayRunner:
                 )
             )
         engine = self._engine(game.spec.leader_ids)
-        game.state = engine.apply(game.state, request.legal_actions[position]).state
+        game.state = engine.apply(
+            game.state,
+            request.legal_actions[position],
+            legal_actions=request.legal_actions,
+        ).state
         game.decisions += 1
 
     def _finish(self, game: _Game, *, truncated: bool) -> Episode:

@@ -173,7 +173,7 @@ def _advance_one_decision(
         else agents[decision.owner].choose_action(observation, actions)
     )
     steps.append(action)
-    return engine.apply(state, action).state
+    return engine.apply(state, action, legal_actions=actions).state
 
 
 def _replay_record(

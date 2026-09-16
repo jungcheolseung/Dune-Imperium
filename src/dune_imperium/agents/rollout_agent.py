@@ -214,5 +214,5 @@ class RolloutAgent:
                     engine.observe(state, decision.owner), actions
                 )
             )
-            state = engine.apply(state, action).state
+            state = engine.apply(state, action, legal_actions=actions).state
         return position_value(state, seat)

@@ -158,7 +158,7 @@ def run_checked_game(
             observation = engine.observe(state, decision.owner)
             action = agents[decision.owner].choose_action(observation, actions)
             steps.append(action)
-            transition = engine.apply(state, action)
+            transition = engine.apply(state, action, legal_actions=actions)
         state = transition.state
         try:
             check_event_visibility(state, transition.events)

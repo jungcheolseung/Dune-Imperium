@@ -88,17 +88,31 @@ class RulesEngine(ABC):
         self,
         state: GameState,
         action: DomainAction | ChanceOutcome,
+        *,
+        legal_actions: tuple[DomainAction, ...] | None = None,
     ) -> Transition:
-        """Validate and apply a player action or chance outcome."""
+        """Validate and apply a player action or chance outcome.
+
+        ``legal_actions`` lets a caller that has just enumerated the legal set
+        of ``state`` for the deciding player (a runner handing that set to an
+        agent) pass it back, so the legality check is a membership test on
+        that tuple instead of a second enumeration -- the enumeration is the
+        largest single cost of a step (docs/evaluation/throughput-2026-09-10.md
+        section 5). The kernel trusts it only as the set: the tuple must be
+        exactly ``self.legal_actions(state, owner)`` for this very ``state``,
+        so callers pass what they computed for it and never keep one across
+        transitions. The owner check and the empty-set rejection are unchanged.
+        """
 
         if isinstance(action, ChanceOutcome):
             return self._apply_chance_outcome(state, action)
-        return self._apply_player_action(state, action)
+        return self._apply_player_action(state, action, legal_actions)
 
     def _apply_player_action(
         self,
         state: GameState,
         action: DomainAction,
+        legal_actions: tuple[DomainAction, ...] | None,
     ) -> Transition:
         """Validate and apply one player-owned action."""
 
@@ -109,7 +123,9 @@ class RulesEngine(ABC):
             )
         if action.actor != decision.owner:
             raise IllegalActionError("action actor does not own the current decision")
-        if action not in self.legal_actions(state, action.actor):
+        if legal_actions is None:
+            legal_actions = self.legal_actions(state, action.actor)
+        if action not in legal_actions:
             raise IllegalActionError("action is not legal in the current state")
 
         original_hash = self._input_hash(state)

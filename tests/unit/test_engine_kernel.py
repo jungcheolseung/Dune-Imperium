@@ -150,3 +150,53 @@ def test_rules_cannot_change_revision_directly() -> None:
 
     with pytest.raises(RuntimeError, match="revision updates"):
         engine.apply(state, engine.legal_actions(state, 0)[0])
+
+
+class CountingEngine(PassAroundEngine):
+    """Count how often the kernel asks for the legal set."""
+
+    enumerations = 0
+
+    def legal_actions(
+        self,
+        state: GameState,
+        player: int,
+    ) -> tuple[DomainAction, ...]:
+        type(self).enumerations += 1
+        return super().legal_actions(state, player)
+
+
+def test_a_vouched_legal_set_replaces_the_second_enumeration() -> None:
+    # A runner has just enumerated the legal set of this state so an agent
+    # could choose; handing it back makes the legality check a membership
+    # test instead of a second enumeration (throughput report 2026-09-10,
+    # section 5, item 2).
+    engine = CountingEngine()
+    CountingEngine.enumerations = 0
+    state = engine.reset(RulesetConfig(), seed=1)
+    legal = engine.legal_actions(state, 0)
+    assert CountingEngine.enumerations == 1
+
+    vouched = engine.apply(state, legal[0], legal_actions=legal)
+
+    assert CountingEngine.enumerations == 1
+    checked = engine.apply(state, legal[0])
+    assert CountingEngine.enumerations == 2
+    assert vouched.state == checked.state
+    assert vouched.events == checked.events
+
+
+def test_a_vouched_legal_set_is_trusted_only_as_the_set() -> None:
+    engine = PassAroundEngine()
+    state = engine.reset(RulesetConfig(), seed=1)
+    legal = engine.legal_actions(state, 0)
+
+    # The owner check still runs before the membership test.
+    foreign = DomainAction(action_id="pass", actor=1)
+    with pytest.raises(IllegalActionError):
+        engine.apply(state, foreign, legal_actions=(foreign,))
+    # A legal action outside the vouched tuple is rejected: the tuple is the
+    # set, not a hint.
+    with pytest.raises(IllegalActionError):
+        engine.apply(state, legal[0], legal_actions=())
+
