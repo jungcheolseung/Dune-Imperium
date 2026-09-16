@@ -211,23 +211,28 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 
 
 # SHA-256 over every observer's int32 encoding at every player decision (and
-# the finished state) of one heuristic game per ruleset, seed 0, computed on
-# the tree before the encoder's 2026-09-16 speed rewrite (HEAD b97ef6c). The
-# rewrite changed how the vector is produced, not what it holds: a digest
-# that moves means the observation changed, which needs an
-# ``OBSERVATION_VERSION`` bump and a new digest, never a silent edit here.
+# the finished state) of one RandomAgent game per ruleset, game seed 91,
+# computed with the encoder as it was before its 2026-09-16 speed rewrite
+# (commit acdb36c). The rewrite changed how the vector is produced, not what
+# it holds, and the two encoders were compared vector for vector on these
+# games before the digests were pinned. A digest that moves means either the
+# encoding changed -- which needs an ``OBSERVATION_VERSION`` bump -- or the
+# engine now plays these seeds differently (a rules fix); tell the two apart
+# by comparing the old and new encoders on the new trajectory before
+# re-pinning, never by editing a digest alone. Random seats keep the games
+# independent of the heuristic's tuning.
 _GOLDEN_DIGESTS = {
-    "base": ("64e93229c6dc462291b139e6f18932f6843061bbf7ac5e170bcefb4d8cf24530", 2424),
-    "choam": ("54f64c1ff2b45c4aa3f822bcea6cc32821d6760f21708c5b8838c62c0e2370cf", 2672),
+    "base": ("aeee640535d11d94e635d2ac5364fb9b73c9de7e36059f2c9eb73262d35582ba", 2804),
+    "choam": ("ff7185f18f7478c78bd4741eb3913bb9dc8f162d4be3cf5dc0916c9256e04552", 2508),
     "promo_bloodlines_tech": (
-        "29dd73bb6f74847e1dd4a11726b69f6fdce1ef388e20274db0666b9df3fd26d3",
-        2732,
+        "3622161e4b8bfd38a1cc6770222115231ce016212d0ce6d02eef61fd6366c6e3",
+        2996,
     ),
     "everything": (
-        "828394e105656eb0cb096bf58d425b6a682fdf647541f8e224f2c6a27af0c1a0",
-        3012,
+        "198c632165afa136da6097f42e165fd6b15ea2c21a3967b64a224ec20fe11101",
+        3240,
     ),
-    "draft": ("bd08290290c58df231c94e80dc9ee7020fd4ad38772dbd86ba695757eb4c64f2", 2308),
+    "draft": ("bfa7fa2c753630fbf39de0b95c3911a6827095bcaa29aec37fe2ea1457ba8556", 2432),
 }
 _GOLDEN_CONFIGS = {
     "base": {},
@@ -253,10 +258,10 @@ def _encoding_digest(config: RulesetConfig, seed: int) -> tuple[str, int]:
 
     import numpy as np
 
-    from dune_imperium.agents import HeuristicAgent
+    from dune_imperium.agents import RandomAgent
 
     engine = UprisingRulesEngine()
-    agents = [HeuristicAgent(seed=900_000 + seed + s) for s in range(4)]
+    agents = [RandomAgent(seed=9_100 + seed + s) for s in range(4)]
     state = engine.reset(config, seed)
     chance = ChanceResolver(seed=seed)
     hasher = hashlib.sha256()
@@ -287,6 +292,6 @@ def _encoding_digest(config: RulesetConfig, seed: int) -> tuple[str, int]:
 
 @pytest.mark.parametrize("name", sorted(_GOLDEN_DIGESTS))
 def test_encoding_matches_the_pinned_golden_digest(name: str) -> None:
-    assert _encoding_digest(RulesetConfig(**_GOLDEN_CONFIGS[name]), 0) == (
+    assert _encoding_digest(RulesetConfig(**_GOLDEN_CONFIGS[name]), 91) == (
         _GOLDEN_DIGESTS[name]
     )

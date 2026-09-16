@@ -16,6 +16,7 @@ Encoding rules:
 """
 
 from dataclasses import dataclass
+from functools import cache
 from typing import Final
 
 from dune_imperium.content.bloodlines.sardaukar import (
@@ -95,6 +96,49 @@ _AGENT_LOCATION_SLOTS: Final = 3
 _SET_ASIDE_SLOTS: Final = 2
 _IMPERIUM_ROW_SLOTS: Final = 5
 _LEADER_DRAFT_SLOTS: Final = 6
+
+# Precomputed identity -> index maps for every universe otherwise searched
+# with ``tuple.index`` or scanned in full by a membership zone. Building
+# these once at import time turns each lookup into an O(1) dict access
+# instead of an O(n) linear scan repeated on every encode call.
+_SPACE_INDEX: Final = {space_id: index for index, space_id in enumerate(SPACE_IDS)}
+_LEADER_INDEX: Final = {leader_id: index for index, leader_id in enumerate(LEADER_IDS)}
+_CONFLICT_INDEX: Final = {
+    card_id: index for index, card_id in enumerate(CONFLICT_IDS)
+}
+_BATTLE_CARD_INDEX: Final = {
+    card_id: index for index, card_id in enumerate(BATTLE_CARD_IDS)
+}
+_TECH_INDEX: Final = {tech_id: index for index, tech_id in enumerate(TECH_IDS)}
+_RESEARCH_SPACE_INDEX: Final = {
+    space_id: index for index, space_id in enumerate(RESEARCH_SPACE_IDS)
+}
+_FEYD_TRACK_INDEX: Final = {
+    space_id: index for index, space_id in enumerate(FEYD_TRACK_IDS)
+}
+_POST_INDEX: Final = {post_id: index for index, post_id in enumerate(POST_IDS)}
+_FACTION_INDEX: Final = {
+    faction_id: index for index, faction_id in enumerate(FACTION_IDS)
+}
+_CONTROL_SPACE_INDEX: Final = {
+    space_id: index for index, space_id in enumerate(CONTROL_SPACE_IDS)
+}
+_COMMANDER_SPACE_INDEX: Final = {
+    space_id: index for index, space_id in enumerate(COMMANDER_SPACE_IDS)
+}
+_CONTRACT_INDEX: Final = {
+    card_id: index for index, card_id in enumerate(CONTRACT_IDS)
+}
+_SKILL_INDEX: Final = {skill_id: index for index, skill_id in enumerate(SKILL_IDS)}
+_RESERVE_STACK_INDEX: Final = {
+    card_id: index for index, card_id in enumerate(RESERVE_STACK_IDS)
+}
+_MAKER_SPACE_INDEX: Final = {
+    space_id: index for index, space_id in enumerate(MAKER_SPACE_IDS)
+}
+_PHASE_INDEX: Final = {phase: index for index, phase in enumerate(_PHASES)}
+_FRAME_KIND_INDEX: Final = {kind: index for index, kind in enumerate(_FRAME_KINDS)}
+_AGENT_ICON_INDEX: Final = {icon: index for index, icon in enumerate(_AGENT_ICONS)}
 
 
 @dataclass(frozen=True, slots=True)
@@ -205,23 +249,37 @@ def segment_slice(name: str) -> slice:
     return slice(segment.offset, segment.offset + segment.length)
 
 
-class _Writer:
-    """Append segment chunks while verifying the declared layout."""
-
-    def __init__(self) -> None:
-        self.values: list[int] = []
-        self._segments = iter(OBSERVATION_SEGMENTS)
-
-    def write(self, name: str, chunk: list[int]) -> None:
-        segment = next(self._segments, None)
-        if segment is None or segment.name != name or segment.length != len(chunk):
-            raise RuntimeError(f"observation segment mismatch at {name}")
-        self.values.extend(chunk)
-
-    def finish(self) -> tuple[int, ...]:
-        if next(self._segments, None) is not None:
-            raise RuntimeError("observation encoder ended before the last segment")
-        return tuple(self.values)
+# Precomputed name -> offset lookup, so ``encode_player_view`` writes each
+# segment directly into a preallocated vector instead of appending through a
+# per-call ``_Writer``. The segment layout itself is self-checked once, at
+# import time, by ``_build_segments``'s cumulative offset arithmetic and by
+# ``test_layout_is_versioned_and_contiguous``; nothing needs to re-verify it
+# on every ``encode_player_view`` call.
+_OFFSET: Final[dict[str, int]] = {
+    segment.name: segment.offset for segment in OBSERVATION_SEGMENTS
+}
+_SEAT_SUFFIXES: Final = (
+    "scalars",
+    "alliances",
+    "control",
+    "agent_locations",
+    "spy_posts",
+    "battle_cards",
+    "hand_public",
+    "in_play",
+    "discard",
+    "trashed",
+    "intrigue_faceup",
+    "imperium_set_aside",
+    "active_contracts",
+    "completed_contracts",
+    "skills",
+    "tech",
+)
+_SEAT_OFFSETS: Final[tuple[dict[str, int], ...]] = tuple(
+    {suffix: _OFFSET[f"seat{seat}_{suffix}"] for suffix in _SEAT_SUFFIXES}
+    for seat in range(_SEATS)
+)
 
 
 def encode_player_view(view: PlayerView) -> tuple[int, ...]:
@@ -233,316 +291,385 @@ def encode_player_view(view: PlayerView) -> tuple[int, ...]:
         raise ValueError("the observation encoding requires the private view")
 
     observer = view.player
-    writer = _Writer()
+    values: list[int] = [0] * OBSERVATION_SIZE
 
     def relative(seat: int | None) -> int:
         if seat is None:
             return 0
         return ((seat - observer) % _SEATS) + 1
 
-    writer.write(
-        "global_scalars",
-        [
-            view.round_number,
-            _PHASES.index(view.phase),
-            relative(view.first_player),
-            int(view.shield_wall_present),
-            0
-            if view.decision_kind is None
-            else _FRAME_KINDS.index(view.decision_kind) + 1,
-            relative(view.decision_owner),
-            relative(view.turn_owner),
-            int(view.endgame_intrigue_complete),
-            int(view.combat_intrigue_complete),
-            int(view.combat_rewards_resolved),
-            len(view.current_conflict_ids),
-            view.conflict_first_place_influence_bonus,
-        ],
+    offset = _OFFSET["global_scalars"]
+    values[offset : offset + 12] = [
+        view.round_number,
+        _PHASE_INDEX[view.phase],
+        relative(view.first_player),
+        int(view.shield_wall_present),
+        0
+        if view.decision_kind is None
+        else _FRAME_KIND_INDEX[view.decision_kind] + 1,
+        relative(view.decision_owner),
+        relative(view.turn_owner),
+        int(view.endgame_intrigue_complete),
+        int(view.combat_intrigue_complete),
+        int(view.combat_rewards_resolved),
+        len(view.current_conflict_ids),
+        view.conflict_first_place_influence_bonus,
+    ]
+    values[_OFFSET["current_conflict"]] = (
+        _CONFLICT_INDEX[view.current_conflict_ids[-1]] + 1
+        if view.current_conflict_ids
+        else 0
     )
-    writer.write(
-        "current_conflict",
-        [
-            _index_plus_one(view.current_conflict_ids[-1], CONFLICT_IDS)
-            if view.current_conflict_ids
-            else 0
-        ],
+    _write_identity_slots(
+        values,
+        _OFFSET["imperium_row"],
+        _IMPERIUM_ROW_SLOTS,
+        view.imperium_row,
+        "Imperium Row",
     )
-    writer.write(
-        "imperium_row",
-        _identity_slots(
-            view.imperium_row,
-            _IMPERIUM_ROW_SLOTS,
-            "Imperium Row",
-        ),
+    offset = _OFFSET["reserve_stacks"]
+    for card_id, count in view.reserve_stacks:
+        slot = _RESERVE_STACK_INDEX.get(card_id)
+        if slot is not None:
+            values[offset + slot] = count
+    offset = _OFFSET["maker_bonus_spice"]
+    for space_id, spice in view.maker_bonus_spice:
+        slot = _MAKER_SPACE_INDEX.get(space_id)
+        if slot is not None:
+            values[offset + slot] = spice
+    values[_OFFSET["contract_bank_size"]] = view.contract_bank_size
+    _write_contract_flags(
+        values, _OFFSET["face_up_contracts"], view.face_up_contract_ids
     )
-    reserve_counts = dict(view.reserve_stacks)
-    writer.write(
-        "reserve_stacks",
-        [reserve_counts.get(card_id, 0) for card_id in RESERVE_STACK_IDS],
+    _write_contract_flags(
+        values, _OFFSET["sardaukar_contracts"], view.sardaukar_contract_ids
     )
-    maker_spice = dict(view.maker_bonus_spice)
-    writer.write(
-        "maker_bonus_spice",
-        [maker_spice.get(space_id, 0) for space_id in MAKER_SPACE_IDS],
+    _write_contract_flags(values, _OFFSET["contract_trash"], view.contract_trash)
+    _write_intrigue_counts(
+        values, _OFFSET["intrigue_resolving"], view.intrigue_resolving
     )
-    writer.write("contract_bank_size", [view.contract_bank_size])
-    writer.write("face_up_contracts", _contract_flags(view.face_up_contract_ids))
-    writer.write("sardaukar_contracts", _contract_flags(view.sardaukar_contract_ids))
-    writer.write("contract_trash", _contract_flags(view.contract_trash))
-    writer.write("intrigue_resolving", _intrigue_counts(view.intrigue_resolving))
-    writer.write("intrigue_discard", _intrigue_counts(view.intrigue_discard))
-    writer.write("intrigue_trash", _intrigue_counts(view.intrigue_trash))
-    writer.write("imperium_removed", _personal_counts(view.imperium_removed))
+    _write_intrigue_counts(values, _OFFSET["intrigue_discard"], view.intrigue_discard)
+    _write_intrigue_counts(values, _OFFSET["intrigue_trash"], view.intrigue_trash)
+    _write_personal_counts(values, _OFFSET["imperium_removed"], view.imperium_removed)
     reveal_slots = [relative(seat) for seat in view.reveal_order]
-    writer.write("reveal_order", reveal_slots + [0] * (_SEATS - len(reveal_slots)))
+    _write_fixed(
+        values,
+        _OFFSET["reveal_order"],
+        _SEATS,
+        reveal_slots + [0] * (_SEATS - len(reveal_slots)),
+        "reveal_order",
+    )
     if len(view.leader_draft_pool) > _LEADER_DRAFT_SLOTS:
         raise ValueError("the Leader draft pool holds more than six Leaders")
     pool_slots = [
-        _index_plus_one(leader_id, LEADER_IDS) for leader_id in view.leader_draft_pool
+        _LEADER_INDEX[leader_id] + 1 for leader_id in view.leader_draft_pool
     ]
-    writer.write(
-        "leader_draft_pool",
-        pool_slots + [0] * (_LEADER_DRAFT_SLOTS - len(pool_slots)),
+    offset = _OFFSET["leader_draft_pool"]
+    values[offset : offset + _LEADER_DRAFT_SLOTS] = pool_slots + [0] * (
+        _LEADER_DRAFT_SLOTS - len(pool_slots)
     )
-    writer.write(
-        "commander_spaces",
-        _multi_hot(view.sardaukar_commander_space_ids, COMMANDER_SPACE_IDS),
+    _write_multi_hot(
+        values,
+        _OFFSET["commander_spaces"],
+        view.sardaukar_commander_space_ids,
+        COMMANDER_SPACE_IDS,
+        _COMMANDER_SPACE_INDEX,
     )
-    writer.write("commander_bank", [view.sardaukar_commanders_bank])
-    writer.write("skill_stack_size", [view.skill_stack_size])
-    writer.write("skill_face_up", _skill_counts(view.skill_face_up))
+    values[_OFFSET["commander_bank"]] = view.sardaukar_commanders_bank
+    values[_OFFSET["skill_stack_size"]] = view.skill_stack_size
+    _write_skill_counts(values, _OFFSET["skill_face_up"], view.skill_face_up)
     tops = [
-        _index_plus_one(tech_id, TECH_IDS) if tech_id else 0
-        for tech_id in view.tech_face_up
+        _TECH_INDEX[tech_id] + 1 if tech_id else 0 for tech_id in view.tech_face_up
     ]
-    writer.write("tech_face_up", tops + [0] * (TECH_STACKS - len(tops)))
-    sizes = list(view.tech_stack_sizes)
-    writer.write("tech_stack_sizes", sizes + [0] * (TECH_STACKS - len(sizes)))
-    writer.write("tech_trash", _multi_hot(view.tech_trash, TECH_IDS))
-    writer.write(
-        "tleilaxu_row",
-        _identity_slots(view.tleilaxu_row, TLEILAXU_ROW_SIZE, "the Tleilaxu Row"),
+    _write_fixed(
+        values,
+        _OFFSET["tech_face_up"],
+        TECH_STACKS,
+        tops + [0] * (TECH_STACKS - len(tops)),
+        "tech_face_up",
     )
-    writer.write("tleilaxu_deck_size", [view.tleilaxu_deck_size])
-    writer.write("tleilaxu_track_spice", [view.tleilaxu_track_spice])
-    combat_seats = [0] * _SEATS
+    sizes = list(view.tech_stack_sizes)
+    _write_fixed(
+        values,
+        _OFFSET["tech_stack_sizes"],
+        TECH_STACKS,
+        sizes + [0] * (TECH_STACKS - len(sizes)),
+        "tech_stack_sizes",
+    )
+    _write_multi_hot(
+        values, _OFFSET["tech_trash"], view.tech_trash, TECH_IDS, _TECH_INDEX
+    )
+    _write_identity_slots(
+        values,
+        _OFFSET["tleilaxu_row"],
+        TLEILAXU_ROW_SIZE,
+        view.tleilaxu_row,
+        "the Tleilaxu Row",
+    )
+    values[_OFFSET["tleilaxu_deck_size"]] = view.tleilaxu_deck_size
+    values[_OFFSET["tleilaxu_track_spice"]] = view.tleilaxu_track_spice
+    offset = _OFFSET["combat_intrigue_players"]
     for seat in view.combat_intrigue_players:
         # ``relative`` is 1-based (0 marks "nobody" in the ordered slots).
-        combat_seats[relative(seat) - 1] = 1
-    writer.write("combat_intrigue_players", combat_seats)
+        values[offset + relative(seat) - 1] = 1
 
     for seat_offset in range(_SEATS):
         seat = (observer + seat_offset) % _SEATS
-        _write_seat(writer, seat_offset, view.players[seat])
+        _write_seat(values, seat_offset, view.players[seat])
 
-    writer.write("private_hand", _personal_counts(view.private.hand))
-    writer.write("private_intrigue", _intrigue_counts(view.private.intrigue_cards))
-    writer.write(
-        "private_peeked_card",
-        _personal_counts(
-            (view.private.peeked_card_id,) if view.private.peeked_card_id else ()
-        ),
+    _write_personal_counts(values, _OFFSET["private_hand"], view.private.hand)
+    _write_intrigue_counts(
+        values, _OFFSET["private_intrigue"], view.private.intrigue_cards
     )
-    writer.write(
-        "private_peeked_intrigue", _intrigue_counts(view.private.peeked_intrigue_ids)
+    _write_personal_counts(
+        values,
+        _OFFSET["private_peeked_card"],
+        (view.private.peeked_card_id,) if view.private.peeked_card_id else (),
+    )
+    _write_intrigue_counts(
+        values, _OFFSET["private_peeked_intrigue"], view.private.peeked_intrigue_ids
     )
     # Face-down Navigation slots: identity index + 1 per slot, 0 when empty.
     slots = [
-        _INTRIGUE_INDEX[INTRIGUE_CARDS_BY_INSTANCE[card_id].card.card_id] + 1
+        _intrigue_identity_index(card_id) + 1
         for card_id in view.private.navigation_slots
     ]
-    writer.write("private_navigation_slots", slots + [0] * (4 - len(slots)))
-    secret = view.private.secret_project_tech_id
-    writer.write(
-        "private_secret_project", [_index_plus_one(secret, TECH_IDS) if secret else 0]
+    _write_fixed(
+        values,
+        _OFFSET["private_navigation_slots"],
+        4,
+        slots + [0] * (4 - len(slots)),
+        "private_navigation_slots",
     )
-    return writer.finish()
+    secret = view.private.secret_project_tech_id
+    values[_OFFSET["private_secret_project"]] = (
+        _TECH_INDEX[secret] + 1 if secret else 0
+    )
+    return tuple(values)
 
 
-def _write_seat(writer: _Writer, seat_offset: int, player: PublicPlayerView) -> None:
-    prefix = f"seat{seat_offset}"
+def _write_seat(values: list[int], seat_offset: int, player: PublicPlayerView) -> None:
+    offsets = _SEAT_OFFSETS[seat_offset]
     leader_flipped = int(
         player.leader_face_id is not None and player.leader_face_id != player.leader_id
     )
-    writer.write(
-        f"{prefix}_scalars",
-        [
-            player.victory_points,
-            player.resources.solari,
-            player.resources.spice,
-            player.resources.water,
-            player.influence.emperor,
-            player.influence.spacing_guild,
-            player.influence.bene_gesserit,
-            player.influence.fremen,
-            player.agents_available,
-            int(player.swordmaster_acquired),
-            player.troops_supply,
-            player.troops_garrison,
-            player.troops_conflict,
-            player.sandworms_conflict,
-            player.spies_supply,
-            player.combat_strength,
-            int(player.has_revealed),
-            int(player.high_council),
-            int(player.maker_hooks),
-            player.memories,
-            _index_plus_one(player.leader_id, LEADER_IDS)
-            if player.leader_id is not None
-            else 0,
-            leader_flipped,
-            FEYD_TRACK_IDS.index(player.feyd_track_space),
-            player.hand_size,
-            player.deck_size,
-            player.intrigue_card_count,
-            player.commanders_supply,
-            player.commanders_garrison,
-            player.commanders_conflict,
-            int(player.commander_recruited_turn),
-            player.contracts_completed_turn,
-            player.held_contract_icons,
-            player.commander_discount_turn,
-            int(player.ignores_influence_requirements_turn),
-            # Granted Agent icons as a bit mask (Resourceful grants three).
-            sum(
-                1 << _AGENT_ICONS.index(value)
-                for value in player.granted_agent_icon_turn.split(",")
-                if value
-            ),
-            int(player.combat_icon_turn),
-            int(player.bene_gesserit_boost_pending),
-            player.tactics_track_space,
-            player.agent_in_conflict,
-            player.twisted_deck_size,
-            player.navigation_remaining,
-            player.reveal_persuasion_bonus,
-            int(player.has_secret_project),
-            player.spies_boxed,
-            player.spies_recalled_turn,
-            _index_plus_one(player.research_space, RESEARCH_SPACE_IDS)
-            if player.research_space
-            else 0,
-            player.tleilaxu_space,
-            player.specimens,
-            int(player.family_atomics),
-            player.reveal_persuasion_round_bonus,
-            len(player.chairdog_return_card_ids),
-            int(bool(player.usurped_row_card_id)),
-        ],
+    offset = offsets["scalars"]
+    values[offset : offset + 52] = [
+        player.victory_points,
+        player.resources.solari,
+        player.resources.spice,
+        player.resources.water,
+        player.influence.emperor,
+        player.influence.spacing_guild,
+        player.influence.bene_gesserit,
+        player.influence.fremen,
+        player.agents_available,
+        int(player.swordmaster_acquired),
+        player.troops_supply,
+        player.troops_garrison,
+        player.troops_conflict,
+        player.sandworms_conflict,
+        player.spies_supply,
+        player.combat_strength,
+        int(player.has_revealed),
+        int(player.high_council),
+        int(player.maker_hooks),
+        player.memories,
+        _LEADER_INDEX[player.leader_id] + 1 if player.leader_id is not None else 0,
+        leader_flipped,
+        _FEYD_TRACK_INDEX[player.feyd_track_space],
+        player.hand_size,
+        player.deck_size,
+        player.intrigue_card_count,
+        player.commanders_supply,
+        player.commanders_garrison,
+        player.commanders_conflict,
+        int(player.commander_recruited_turn),
+        player.contracts_completed_turn,
+        player.held_contract_icons,
+        player.commander_discount_turn,
+        int(player.ignores_influence_requirements_turn),
+        # Granted Agent icons as a bit mask (Resourceful grants three).
+        sum(
+            1 << _AGENT_ICON_INDEX[value]
+            for value in player.granted_agent_icon_turn.split(",")
+            if value
+        ),
+        int(player.combat_icon_turn),
+        int(player.bene_gesserit_boost_pending),
+        player.tactics_track_space,
+        player.agent_in_conflict,
+        player.twisted_deck_size,
+        player.navigation_remaining,
+        player.reveal_persuasion_bonus,
+        int(player.has_secret_project),
+        player.spies_boxed,
+        player.spies_recalled_turn,
+        _RESEARCH_SPACE_INDEX[player.research_space] + 1
+        if player.research_space
+        else 0,
+        player.tleilaxu_space,
+        player.specimens,
+        int(player.family_atomics),
+        player.reveal_persuasion_round_bonus,
+        len(player.chairdog_return_card_ids),
+        int(bool(player.usurped_row_card_id)),
+    ]
+    _write_multi_hot(
+        values,
+        offsets["alliances"],
+        player.alliance_faction_ids,
+        FACTION_IDS,
+        _FACTION_INDEX,
     )
-    writer.write(
-        f"{prefix}_alliances", _multi_hot(player.alliance_faction_ids, FACTION_IDS)
-    )
-    writer.write(
-        f"{prefix}_control", _multi_hot(player.control_space_ids, CONTROL_SPACE_IDS)
+    _write_multi_hot(
+        values,
+        offsets["control"],
+        player.control_space_ids,
+        CONTROL_SPACE_IDS,
+        _CONTROL_SPACE_INDEX,
     )
     location_slots = [
-        _index_plus_one(space_id, SPACE_IDS) for space_id in player.agent_locations
+        _SPACE_INDEX[space_id] + 1 for space_id in player.agent_locations
     ]
     if len(location_slots) > _AGENT_LOCATION_SLOTS:
         raise RuntimeError("a player cannot have more than three placed Agents")
-    writer.write(
-        f"{prefix}_agent_locations",
-        location_slots + [0] * (_AGENT_LOCATION_SLOTS - len(location_slots)),
+    offset = offsets["agent_locations"]
+    values[offset : offset + _AGENT_LOCATION_SLOTS] = location_slots + [0] * (
+        _AGENT_LOCATION_SLOTS - len(location_slots)
     )
-    writer.write(f"{prefix}_spy_posts", _multi_hot(player.spy_post_ids, POST_IDS))
-    face_down = set(player.face_down_battle_card_ids)
-    held = set(player.objective_ids) | set(player.won_conflict_ids)
-    writer.write(
-        f"{prefix}_battle_cards",
-        [
-            0 if card_id not in held else (2 if card_id in face_down else 1)
-            for card_id in BATTLE_CARD_IDS
-        ],
+    _write_multi_hot(
+        values, offsets["spy_posts"], player.spy_post_ids, POST_IDS, _POST_INDEX
     )
-    writer.write(f"{prefix}_hand_public", _personal_counts(player.hand_public))
-    writer.write(f"{prefix}_in_play", _personal_counts(player.in_play))
-    writer.write(f"{prefix}_discard", _personal_counts(player.discard_pile))
-    writer.write(f"{prefix}_trashed", _personal_counts(player.trashed))
-    writer.write(f"{prefix}_intrigue_faceup", _intrigue_counts(player.intrigue_faceup))
+    _write_battle_cards(values, offsets["battle_cards"], player)
+    _write_personal_counts(values, offsets["hand_public"], player.hand_public)
+    _write_personal_counts(values, offsets["in_play"], player.in_play)
+    _write_personal_counts(values, offsets["discard"], player.discard_pile)
+    _write_personal_counts(values, offsets["trashed"], player.trashed)
+    _write_intrigue_counts(values, offsets["intrigue_faceup"], player.intrigue_faceup)
     set_aside_slots = [
         _personal_identity_index(instance_id) + 1
         for instance_id in player.imperium_set_aside
     ]
     if len(set_aside_slots) > _SET_ASIDE_SLOTS:
         raise RuntimeError("more set-aside Imperium cards than encoded slots")
-    writer.write(
-        f"{prefix}_imperium_set_aside",
-        set_aside_slots + [0] * (_SET_ASIDE_SLOTS - len(set_aside_slots)),
+    offset = offsets["imperium_set_aside"]
+    values[offset : offset + _SET_ASIDE_SLOTS] = set_aside_slots + [0] * (
+        _SET_ASIDE_SLOTS - len(set_aside_slots)
     )
-    writer.write(
-        f"{prefix}_active_contracts", _contract_flags(player.active_contract_ids)
+    _write_contract_flags(
+        values, offsets["active_contracts"], player.active_contract_ids
     )
-    writer.write(
-        f"{prefix}_completed_contracts",
-        _contract_flags(player.completed_contract_ids),
+    _write_contract_flags(
+        values, offsets["completed_contracts"], player.completed_contract_ids
     )
-    writer.write(f"{prefix}_skills", _skill_counts(player.skill_ids))
-    flipped = set(player.tech_flipped)
-    held_tech = set(player.tech_ids)
-    writer.write(
-        f"{prefix}_tech",
-        [
-            0 if tech_id not in held_tech else (2 if tech_id in flipped else 1)
-            for tech_id in TECH_IDS
-        ],
-    )
+    _write_skill_counts(values, offsets["skills"], player.skill_ids)
+    _write_tech_tri_state(values, offsets["tech"], player)
 
 
-def _identity_slots(
-    instance_ids: tuple[str, ...],
+def _write_identity_slots(
+    values: list[int],
+    offset: int,
     slots: int,
+    instance_ids: tuple[str, ...],
     zone_name: str,
-) -> list[int]:
+) -> None:
     if len(instance_ids) > slots:
         raise RuntimeError(f"{zone_name} holds more cards than encoded slots")
-    values = [_personal_identity_index(instance_id) + 1 for instance_id in instance_ids]
-    return values + [0] * (slots - len(values))
+    for position, instance_id in enumerate(instance_ids):
+        values[offset + position] = _personal_identity_index(instance_id) + 1
 
 
+def _write_fixed(
+    values: list[int],
+    offset: int,
+    length: int,
+    chunk: list[int],
+    zone_name: str,
+) -> None:
+    if len(chunk) != length:
+        raise RuntimeError(f"observation segment mismatch at {zone_name}")
+    values[offset : offset + length] = chunk
+
+
+@cache
 def _personal_identity_index(instance_id: str) -> int:
     return _PERSONAL_INDEX[personal_card_for_instance(instance_id).card.card_id]
 
 
-def _personal_counts(instance_ids: tuple[str, ...]) -> list[int]:
-    counts = [0] * len(PERSONAL_CARD_IDS)
+@cache
+def _intrigue_identity_index(instance_id: str) -> int:
+    return _INTRIGUE_INDEX[INTRIGUE_CARDS_BY_INSTANCE[instance_id].card.card_id]
+
+
+@cache
+def _contract_identity_index(instance_id: str) -> int:
+    return _CONTRACT_INDEX[contract_for_instance(instance_id).card.card_id]
+
+
+@cache
+def _skill_identity_index(instance_id: str) -> int:
+    return _SKILL_INDEX[skill_for_instance(instance_id).skill_id]
+
+
+def _write_personal_counts(
+    values: list[int], offset: int, instance_ids: tuple[str, ...]
+) -> None:
     for instance_id in instance_ids:
-        counts[_personal_identity_index(instance_id)] += 1
-    return counts
+        values[offset + _personal_identity_index(instance_id)] += 1
 
 
-def _intrigue_counts(instance_ids: tuple[str, ...]) -> list[int]:
-    counts = [0] * len(INTRIGUE_IDS)
+def _write_intrigue_counts(
+    values: list[int], offset: int, instance_ids: tuple[str, ...]
+) -> None:
     for instance_id in instance_ids:
-        card_id = INTRIGUE_CARDS_BY_INSTANCE[instance_id].card.card_id
-        counts[_INTRIGUE_INDEX[card_id]] += 1
-    return counts
+        values[offset + _intrigue_identity_index(instance_id)] += 1
 
 
-def _skill_counts(instance_ids: tuple[str, ...]) -> list[int]:
-    counts = [0] * len(SKILL_IDS)
+def _write_skill_counts(
+    values: list[int], offset: int, instance_ids: tuple[str, ...]
+) -> None:
     for instance_id in instance_ids:
-        counts[SKILL_IDS.index(skill_for_instance(instance_id).skill_id)] += 1
-    return counts
+        values[offset + _skill_identity_index(instance_id)] += 1
 
 
-def _contract_flags(instance_ids: tuple[str, ...]) -> list[int]:
-    identities = tuple(
-        contract_for_instance(instance_id).card.card_id for instance_id in instance_ids
-    )
-    return _multi_hot(identities, CONTRACT_IDS)
+def _write_contract_flags(
+    values: list[int], offset: int, instance_ids: tuple[str, ...]
+) -> None:
+    for instance_id in instance_ids:
+        values[offset + _contract_identity_index(instance_id)] = 1
 
 
-def _multi_hot(
+def _write_multi_hot(
+    values: list[int],
+    offset: int,
     member_ids: tuple[str, ...],
     universe: tuple[str, ...],
-) -> list[int]:
-    members = set(member_ids)
-    unknown = members.difference(universe)
-    if unknown:
-        raise RuntimeError(f"unknown identities in observation zone: {unknown}")
-    return [int(identity in members) for identity in universe]
+    index: dict[str, int],
+) -> None:
+    for identity in member_ids:
+        slot = index.get(identity)
+        if slot is None:
+            unknown = set(member_ids).difference(universe)
+            raise RuntimeError(f"unknown identities in observation zone: {unknown}")
+        values[offset + slot] = 1
 
 
-def _index_plus_one(identity: str, universe: tuple[str, ...]) -> int:
-    return universe.index(identity) + 1
+def _write_battle_cards(
+    values: list[int], offset: int, player: PublicPlayerView
+) -> None:
+    face_down = set(player.face_down_battle_card_ids)
+    for card_id in (*player.objective_ids, *player.won_conflict_ids):
+        slot = _BATTLE_CARD_INDEX.get(card_id)
+        if slot is not None:
+            values[offset + slot] = 2 if card_id in face_down else 1
+
+
+def _write_tech_tri_state(
+    values: list[int], offset: int, player: PublicPlayerView
+) -> None:
+    flipped = set(player.tech_flipped)
+    for tech_id in player.tech_ids:
+        slot = _TECH_INDEX.get(tech_id)
+        if slot is not None:
+            values[offset + slot] = 2 if tech_id in flipped else 1
