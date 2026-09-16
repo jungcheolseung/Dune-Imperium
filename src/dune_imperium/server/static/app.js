@@ -26,6 +26,7 @@ const SEAT_KINDS = [
   ["human", "사람"],
   ["heuristic", "휴리스틱 AI"],
   ["rollout", "롤아웃 탐색 AI"],
+  ["rollout_strong", "강한 롤아웃 탐색 AI (느림)"],
   ["random", "랜덤 AI"],
   ["checkpoint", "학습 체크포인트 (아래 경로)"],
 ];

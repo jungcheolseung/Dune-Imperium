@@ -111,6 +111,7 @@ class CreateGameRequest(BaseModel):
         description=(
             "Per-seat assignment: 'human', or an agent kind of the evaluation "
             "registry: 'heuristic', 'random', 'rollout' (determinized search), "
+            "'rollout_strong' (the same search at twice the budget), "
             "or 'checkpoint:<path>' (a trained policy; needs the train extra)."
         ),
     )
