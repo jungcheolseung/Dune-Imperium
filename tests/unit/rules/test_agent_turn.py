@@ -27,6 +27,7 @@ from dune_imperium.rules.agent_turn import (
     apply_agent_action,
     card_can_access_space,
     legal_agent_actions,
+    legal_agent_actions_for_card,
 )
 
 
@@ -656,3 +657,64 @@ def test_agent_action_rejects_unlisted_action_without_mutating_state() -> None:
         apply_agent_action(state, invalid)
 
     assert canonical_state_hash(state) == before
+
+
+def test_one_cards_placements_are_exactly_its_slice_of_the_legal_set() -> None:
+    # ``apply_agent_action`` validates against the placed card's own
+    # placements instead of every hand card's (throughput-2026-09-10.md
+    # section 7): that is only sound while the per-card tuple is exactly the
+    # slice of the full set naming that card, graft variants included, so
+    # the two are compared over the Agent turns of a random all-option game.
+    from dune_imperium.agents import RandomAgent
+    from dune_imperium.core import ChanceDecision, ChanceResolver
+    from dune_imperium.rules import UprisingRulesEngine
+    from dune_imperium.rules.frames import FrameKind
+
+    engine = UprisingRulesEngine()
+    config = RulesetConfig(
+        choam_module=True, bloodlines=True, tech_module=True, immortality=True
+    )
+    agents = tuple(RandomAgent(seed=7100 + seat) for seat in range(4))
+    state = engine.reset(config, 71)
+    chance = ChanceResolver(seed=71)
+    compared = 0
+    for _ in range(3_000):
+        if state.phase is GamePhase.FINISHED:
+            break
+        decision = engine.current_decision(state)
+        if isinstance(decision, ChanceDecision):
+            state = engine.apply(state, chance.resolve(decision)).state
+            continue
+        assert isinstance(decision, PlayerDecision)
+        owner = decision.owner
+        if state.decision_stack[-1].kind == FrameKind.TURN:
+            full = legal_agent_actions(state, owner)
+            for card_id in state.players[owner].hand:
+                expected = tuple(
+                    action
+                    for action in full
+                    if dict(action.arguments)["card_id"] == card_id
+                )
+                assert legal_agent_actions_for_card(state, owner, card_id) == expected
+                compared += 1
+            assert legal_agent_actions_for_card(state, owner, "not-in-hand") == ()
+        actions = engine.legal_actions(state, owner)
+        action = agents[owner].choose_action(engine.observe(state, owner), actions)
+        state = engine.apply(state, action, legal_actions=actions).state
+    assert compared > 100
+
+
+def test_placement_guard_rejects_a_card_that_is_not_in_hand() -> None:
+    dagger = _instance(0, "dagger")
+    state = _state(dagger)
+    action = _action_to(state, "assembly_hall")
+    foreign = replace(
+        action,
+        arguments=(("card_id", _instance(1, "dagger")), ("space_id", "assembly_hall")),
+    )
+    with pytest.raises(ValueError, match="not a legal Agent turn"):
+        apply_agent_action(state, foreign)
+    with pytest.raises(ValueError, match="not a legal Agent turn"):
+        apply_agent_action(
+            state, replace(action, arguments=(("space_id", "arrakeen"),))
+        )

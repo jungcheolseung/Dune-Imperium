@@ -64,38 +64,75 @@ def legal_agent_actions(state: GameState, player: int) -> tuple[DomainAction, ..
     an Agent action because it must also identify the Spy being recalled.
     """
 
+    owner = _placing_owner(state, player)
+    if owner is None:
+        return ()
+    actions: list[DomainAction] = []
+    for card_instance_id in owner.hand:
+        actions.extend(
+            _placements_for_hand_card(state, player, owner, card_instance_id)
+        )
+    return tuple(actions)
+
+
+def legal_agent_actions_for_card(
+    state: GameState, player: int, card_instance_id: str
+) -> tuple[DomainAction, ...]:
+    """Enumerate the placements of one hand card.
+
+    Exactly the actions of ``legal_agent_actions`` that name
+    ``card_instance_id``: the full set is the concatenation of every hand
+    card's placements, so membership in this tuple is membership in the full
+    set. ``apply_agent_action`` validates with it instead of re-enumerating
+    every card (the second enumeration was 5-6% of a heuristic game,
+    docs/evaluation/throughput-2026-09-10.md section 7).
+    """
+
+    owner = _placing_owner(state, player)
+    if owner is None or card_instance_id not in owner.hand:
+        return ()
+    return _placements_for_hand_card(state, player, owner, card_instance_id)
+
+
+def _placing_owner(state: GameState, player: int) -> PlayerState | None:
+    """Return the seat when it may place an Agent now, else ``None``."""
+
     if not 0 <= player < state.config.players:
         raise ValueError("player must identify a configured seat")
     if state.phase is not GamePhase.PLAYER_TURNS or not state.decision_stack:
-        return ()
+        return None
     if owned_top_frame(state, FrameKind.TURN, player) is None:
-        return ()
-
+        return None
     owner = state.players[player]
     if owner.agents_available == 0:
-        return ()
+        return None
+    return owner
+
+
+def _placements_for_hand_card(
+    state: GameState,
+    player: int,
+    owner: PlayerState,
+    card_instance_id: str,
+) -> tuple[DomainAction, ...]:
+    card = personal_card_for_instance(card_instance_id)
+    # Immortality Graft [Immortality p. 10]: a Graft card "can't be
+    # played alone. You must play two cards"; a plain card may join a
+    # Graft partner. The partner is chosen after the placement.
+    # Usurp may graft with an Imperium Row card instead [card face].
+    may_graft = state.config.immortality and (
+        graft_partner_exists(owner, card_instance_id)
+        or (card_is_usurp(card) and bool(state.imperium_row))
+    )
+    graft_variants: tuple[bool, ...] = (
+        *(() if card_is_graft(card) else (False,)),
+        *((True,) if may_graft else ()),
+    )
     actions: list[DomainAction] = []
-    immortality = state.config.immortality
-    for card_instance_id in owner.hand:
-        card = personal_card_for_instance(card_instance_id)
-        # Immortality Graft [Immortality p. 10]: a Graft card "can't be
-        # played alone. You must play two cards"; a plain card may join a
-        # Graft partner. The partner is chosen after the placement.
-        # Usurp may graft with an Imperium Row card instead [card face].
-        may_graft = immortality and (
-            graft_partner_exists(owner, card_instance_id)
-            or (card_is_usurp(card) and bool(state.imperium_row))
+    for graft in graft_variants:
+        actions.extend(
+            _placements_for_card(state, player, owner, card_instance_id, card, graft)
         )
-        graft_variants: tuple[bool, ...] = (
-            *(() if card_is_graft(card) else (False,)),
-            *((True,) if may_graft else ()),
-        )
-        for graft in graft_variants:
-            actions.extend(
-                _placements_for_card(
-                    state, player, owner, card_instance_id, card, graft
-                )
-            )
     return tuple(actions)
 
 
@@ -333,13 +370,17 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
     free ordering can be resolved by subsequent decisions.
     """
 
-    if action not in legal_agent_actions(state, action.actor):
+    arguments = dict(action.arguments)
+    card_instance_id = arguments.get("card_id")
+    # The dispatcher has already checked the full legal set; this guard keeps
+    # the handler's own contract at the cost of one card's placements.
+    if not isinstance(card_instance_id, str) or action not in (
+        legal_agent_actions_for_card(state, action.actor, card_instance_id)
+    ):
         raise ValueError("action is not a legal Agent turn in the current state")
 
-    arguments = dict(action.arguments)
-    card_instance_id = arguments["card_id"]
     space_id = arguments["space_id"]
-    if not isinstance(card_instance_id, str) or not isinstance(space_id, str):
+    if not isinstance(space_id, str):
         raise ValueError("Agent action card_id and space_id must be strings")
 
     card = personal_card_for_instance(card_instance_id)

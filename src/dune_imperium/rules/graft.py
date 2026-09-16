@@ -244,6 +244,11 @@ def _agent_turn_is_open_for(state: GameState, player: int) -> bool:
 def usurp_trash_is_queued(state: GameState) -> bool:
     """Return whether a borrowed Row card's Agent turn has closed."""
 
+    if not state.config.immortality:
+        # Usurp is an Immortality Tleilaxu card, so no seat can hold a
+        # borrowed Row card without the module; the automatic-advance loop
+        # asks after every transition, and the module flag answers for free.
+        return False
     return any(
         seat.usurped_row_card_id and not _agent_turn_is_open_for(state, seat.player_id)
         for seat in state.players
