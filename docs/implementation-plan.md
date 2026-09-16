@@ -376,6 +376,9 @@ tests/
 재정비해 random 3명 상대 89 → 98%가 됐고(표는 양방향 국소 최적, `evaluation/baseline-2026-09-10.md` 13~18절),
 rollout 탐색을 같은 예산에서 재정비해 heuristic 3명 상대 28 → 44%가 됐으며(`evaluation/baseline-2026-09-16.md`
 13절), 처리량 결함 3건과 병목 2건을 고쳤고(`evaluation/throughput-2026-09-10.md`), A/B 실행이 찾은 엔진 결함
-5건을 수정했다. 다음은 **M10 학습 재개**(사용자 결정으로 최후순위; 관측 v20·codec v104라 체크포인트는 전부
-새로 시작)이며, 학습 밖의 남은 후보(heuristic의 표 밖 항, rollout 가치 함수, 처리량의 남은 병목, 리팩토링
-후속)는 [개발 인수인계](development-handoff.md)의 "다음 구현 순서"가 관리한다.
+5건을 수정했다. 2026-09-16 밤의 마무리 세션은 M10 파이프라인의 v20·codec v104 smoke(self-play와 rollout 상대 경로), heuristic의
+동점 census와 가족 안 tie-break 채택(고정 변형 상대 전 룰셋 +5 ~ +9%p, `evaluation/baseline-2026-09-16.md` 14절), M10
+수집 경로의 관측 인코더 재작성(수집 벽시계 −16 ~ −18%, `evaluation/throughput-2026-09-10.md` 8절), A/B가 찾은 엔진
+결함 1건 수정으로 끝났다. 다음은 **M10 학습 재개**(관측 v20·codec v104라 체크포인트는 전부 새로 시작)이며, 학습 밖의
+남은 후보(heuristic 표 밖 항의 나머지, rollout 가치 함수, 처리량의 남은 병목, 리팩토링 후속)는
+[개발 인수인계](development-handoff.md)의 "다음 구현 순서"가 관리한다.

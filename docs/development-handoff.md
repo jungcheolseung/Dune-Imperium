@@ -1,6 +1,6 @@
 # 개발 인수인계
 
-기준일: 2026-09-11
+기준일: 2026-09-16
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
@@ -17,7 +17,7 @@ uv run ruff check src tests
 uv run mypy src tests
 ```
 
-2026-09-11(공간 표 강등 뒤, HEAD)의 기준 결과는 pytest 1,506개 통과(카드 이미지 에셋이 없는 머신은 1,489 통과 + 1 skip; `train` extra가 없으면 `tests/unit/training/test_torch_policy.py`가 추가로 skip된다), Ruff 통과, mypy 통과다. 현재 action codec은 `ACTION_CODEC_VERSION = 104`(기본 4,371개, CHOAM 4,657개, `promo_cards` 옵션 시 4,471/4,757개, `immortality` 옵션 시 9,326개 — graft 배치 변형과 카드 사본이 늘 때마다 커진다; `bloodlines`·`tech_module` 옵션은 별도 카탈로그로 훨씬 크고, `promo_cards`+`bloodlines`는 10,485개, promo+Bloodlines+Tech는 13,731개, CHOAM+Bloodlines는 11,128개, 다섯 옵션을 다 켜면 32,963개 — v98은 CHOAM+Bloodlines 카탈로그에만 contract token 8개의 행동과 `trash_intrigue_for_contract`를, v99는 `recall_conflict_agent_for_imperial_privilege`를, v100은 모든 카탈로그에 `skip_intrigue_acquisition`과 Change Allegiances의 세 번째 option을, v101은 Immortality 카탈로그에 `play_conflict_end_intrigue`(Harvest Cells 2장)·`decline_conflict_end_intrigue`를, v102는 Bloodlines+Immortality 카탈로그의 `give_intrigue_card`/`trash_intrigue_hand_card`/`trash_intrigue_for_contract`에 빠져 있던 Immortality Intrigue 사본을 더한다 — 소크가 적발; v103은 모든 카탈로그에 `use_intrigue_effect(section=0/1)`·`finish_intrigue_effects`를 더하고 Change Allegiances의 option을 하나로 되돌린다; v104는 Bloodlines 카탈로그의 `retreat_intrigue_troops` unit count를 12에서 12+7로 넓힌다 — Commander는 12개 병력과 별개 구성물이라 Conflict 유닛이 19까지 가고 Tactical Option이 그 전부를 제시하는데 카탈로그가 12에서 끊겨 있었다, 병렬 수집이 적발, 카탈로그마다 +28)이고, 관측은 `OBSERVATION_VERSION = 20`의 4,327-int 전체 게임 인코딩이다(v6~v9는 Bloodlines·Tech Module 세그먼트를 더한 것, v10은 Bloodlines 프로모 Ruthless Leadership의 identity 1개, v11은 Immortality 카탈로그의 Imperium 25·Intrigue 11 identity, v12는 Experimentation·Tleilaxu 19 identity와 Bene Tleilax board 세그먼트, v13은 round 한정 Reveal Persuasion과 Combat Intrigue 좌석, v14는 Imperium Ceremony가 peek한 Intrigue 두 장(소유자 전용), v15는 Chairdog의 반환 대기와 Usurp의 빌린 Row 카드(좌석 scalar 49→51), v16은 Bloodlines contract token 8개의 identity(contract 세그먼트 11개 × 8 = +88), v17은 frame 종류 `conflict_end_trigger`, v18은 `intrigue_effects` 추가로 decision kind index가 이동, v19는 Long Live the Fighters의 두 단계 pick이 전용 frame 종류 `LONG_LIVE_FIGHTERS`로 옮겨져 decision kind index가 다시 이동(v17~v19는 모두 길이 불변), v20은 OQ-059의 보류된 contract 아이콘 좌석 scalar 1개(좌석 scalar 51→52, +4 int); 옵션을 끈 룰셋에서는 새 칸이 전부 0이지만 길이가 달라져 v8 이전 체크포인트는 거부된다) ([`rl-environment.md`](rl-environment.md)). 보드 22칸 완결 + 즉시 공개 + `fab266f`/`e6fc298` 수정 + sweep 확장(`853ecd4`) 반영 후의 교차 소크는 random 룰셋당 2,000판 + heuristic 룰셋당 1,000판(둘 다 `--rotate-leaders`) + draft 두 policy 각 룰셋당 500판, 전부 `--soundness-interval 25`를 켠 총 7,000판이 실패 0으로 통과한 상태다(2026-09-01, 아래 세션 요약. 그 전 단계에서는 random 룰셋당 3,000판 비회전 소크도 실패 0이었다).
+2026-09-16 밤(tie-break 채택 뒤, HEAD)의 기준 결과는 pytest 1,534개 통과(카드 이미지 에셋이 없는 머신은 1,489 통과 + 1 skip; `train` extra가 없으면 `tests/unit/training/test_torch_policy.py`가 추가로 skip된다), Ruff 통과, mypy 통과다. 현재 action codec은 `ACTION_CODEC_VERSION = 104`(기본 4,371개, CHOAM 4,657개, `promo_cards` 옵션 시 4,471/4,757개, `immortality` 옵션 시 9,326개 — graft 배치 변형과 카드 사본이 늘 때마다 커진다; `bloodlines`·`tech_module` 옵션은 별도 카탈로그로 훨씬 크고, `promo_cards`+`bloodlines`는 10,485개, promo+Bloodlines+Tech는 13,731개, CHOAM+Bloodlines는 11,128개, 다섯 옵션을 다 켜면 32,963개 — v98은 CHOAM+Bloodlines 카탈로그에만 contract token 8개의 행동과 `trash_intrigue_for_contract`를, v99는 `recall_conflict_agent_for_imperial_privilege`를, v100은 모든 카탈로그에 `skip_intrigue_acquisition`과 Change Allegiances의 세 번째 option을, v101은 Immortality 카탈로그에 `play_conflict_end_intrigue`(Harvest Cells 2장)·`decline_conflict_end_intrigue`를, v102는 Bloodlines+Immortality 카탈로그의 `give_intrigue_card`/`trash_intrigue_hand_card`/`trash_intrigue_for_contract`에 빠져 있던 Immortality Intrigue 사본을 더한다 — 소크가 적발; v103은 모든 카탈로그에 `use_intrigue_effect(section=0/1)`·`finish_intrigue_effects`를 더하고 Change Allegiances의 option을 하나로 되돌린다; v104는 Bloodlines 카탈로그의 `retreat_intrigue_troops` unit count를 12에서 12+7로 넓힌다 — Commander는 12개 병력과 별개 구성물이라 Conflict 유닛이 19까지 가고 Tactical Option이 그 전부를 제시하는데 카탈로그가 12에서 끊겨 있었다, 병렬 수집이 적발, 카탈로그마다 +28)이고, 관측은 `OBSERVATION_VERSION = 20`의 4,327-int 전체 게임 인코딩이다(v6~v9는 Bloodlines·Tech Module 세그먼트를 더한 것, v10은 Bloodlines 프로모 Ruthless Leadership의 identity 1개, v11은 Immortality 카탈로그의 Imperium 25·Intrigue 11 identity, v12는 Experimentation·Tleilaxu 19 identity와 Bene Tleilax board 세그먼트, v13은 round 한정 Reveal Persuasion과 Combat Intrigue 좌석, v14는 Imperium Ceremony가 peek한 Intrigue 두 장(소유자 전용), v15는 Chairdog의 반환 대기와 Usurp의 빌린 Row 카드(좌석 scalar 49→51), v16은 Bloodlines contract token 8개의 identity(contract 세그먼트 11개 × 8 = +88), v17은 frame 종류 `conflict_end_trigger`, v18은 `intrigue_effects` 추가로 decision kind index가 이동, v19는 Long Live the Fighters의 두 단계 pick이 전용 frame 종류 `LONG_LIVE_FIGHTERS`로 옮겨져 decision kind index가 다시 이동(v17~v19는 모두 길이 불변), v20은 OQ-059의 보류된 contract 아이콘 좌석 scalar 1개(좌석 scalar 51→52, +4 int); 옵션을 끈 룰셋에서는 새 칸이 전부 0이지만 길이가 달라져 v8 이전 체크포인트는 거부된다) ([`rl-environment.md`](rl-environment.md)). 보드 22칸 완결 + 즉시 공개 + `fab266f`/`e6fc298` 수정 + sweep 확장(`853ecd4`) 반영 후의 교차 소크는 random 룰셋당 2,000판 + heuristic 룰셋당 1,000판(둘 다 `--rotate-leaders`) + draft 두 policy 각 룰셋당 500판, 전부 `--soundness-interval 25`를 켠 총 7,000판이 실패 0으로 통과한 상태다(2026-09-01, 아래 세션 요약. 그 전 단계에서는 random 룰셋당 3,000판 비회전 소크도 실패 0이었다).
 
 ## 현재 구현 기준선
 
@@ -32,7 +32,7 @@ uv run mypy src tests
 - 인쇄된 Leader 9종(기본 8 + CHOAM 전용 Shaddam)의 능력과 Signet Ring이 모두 play된다(`rules/leader_abilities.py`, `implementation-audits/leaders.md`). Lady Jessica의 flip 면은 `PlayerState.leader_face_id`, memory는 `memories`(troop 12개 불변식 포함), Feyd token은 `feyd_track_space`, Shaddam의 set-aside contract는 `GameState.sardaukar_contract_ids`로 공개 관측된다. 2026-08-30에 standard Contract manifest를 수정했다: Sardaukar II (Agent recall 보상)가 20장에 속하고, 이전에 있던 세 번째 High Council 타일은 Rise of Ix Tech 보상 타일의 오전사였다(`contracts.md` audit).
 - 규칙 dispatcher는 `LEGAL_ACTION_PROVIDERS[FrameKind]`와 `ACTION_HANDLERS` 두 표로 동작한다(`refactoring-plan.md`).
 - 코어 상태 머신과 replay는 전체 게임을 지원한다. `dune-imperium-sweep`으로 룰셋당 10,000판(총 20,000판) random 완주 sweep(매 전이 카드 보존·교착 검사, 표본 주기 관측 누출 검사, 게임별 replay 검증)이 실패 0으로 통과했다(2026-08-30, 400초/50 games/s).
-- `run_random_game`이 FINISHED까지 실행해 `GameSimulation(state, standings, replay)`를 돌려주고, `dune_imperium_uprising_v1` PettingZoo adapter는 전체 게임을 한 episode로 실행한다(chance 내부 해결, 승자독식 zero-sum 종료 보상, 4,323-int 관측(v19), `choam_module`/`max_steps` 옵션). `run_random_round`와 debug CLI는 의도적으로 한 라운드 단위를 유지한다. 설계 근거는 [`rl-environment.md`](rl-environment.md).
+- `run_random_game`이 FINISHED까지 실행해 `GameSimulation(state, standings, replay)`를 돌려주고, `dune_imperium_uprising_v1` PettingZoo adapter는 전체 게임을 한 episode로 실행한다(chance 내부 해결, 승자독식 zero-sum 종료 보상, 4,327-int 관측(v20), `choam_module`/`max_steps` 옵션). `run_random_round`와 debug CLI는 의도적으로 한 라운드 단위를 유지한다. 설계 근거는 [`rl-environment.md`](rl-environment.md).
 - 공식 Main, Board Guide, FAQ는 2026-08-27에 공식 리소스 페이지에서 다시 내려받아 `scripts/official-rule-sources.json`의 SHA-256과 모두 일치함을 확인했다. Bloodlines 룰북은 2026-09-07에 같은 방식으로 등록했다(`bloodlines`, 12쪽; 카드면은 비공개 에셋 저장소 `cards/en/bloodlines/`).
 - Bloodlines(`RulesetConfig(bloodlines=True)`, 2026-09-07): 규범 근거 [`rules/bloodlines.md`](rules/bloodlines.md), 구현 노트 [`implementation-audits/bloodlines.md`](implementation-audits/bloodlines.md)와 [`implementation-audits/leaders.md`](implementation-audits/leaders.md)의 Bloodlines 절. Sardaukar Commander(`rules/sardaukar.py`, `rules/strength.py`), 새 아이콘(Command (6+), Combat 아이콘, Spy with Deep Cover, Trash an Intrigue card), 상대 결정 frame(`rules/spy_moves.py`, `rules/unit_loss.py`), Leader 전용 모듈(`rules/tactics.py`, `rules/planetologist.py`, `rules/optional_trash.py`, `rules/navigation.py`), Leader 전용 board space(`tuek_sietch`, `BoardSpace.required_leader_id`), Twisted Intrigue·Navigation 카드는 Intrigue 스키마의 `twisted`/`navigation` 항목(공용 덱에는 절대 들어가지 않음). Tech Module(`tech_module=True`, 2026-09-07 저녁): `content/bloodlines/tech.py`의 tile 18장, `rules/tech.py`(Acquire Tech·Flip·Forbidden Weapons 선택·Suspensor/빚진 draw hook·Endgame 효과·Kota의 Secret Project)와 `rules/ornithopter.py`, Tech 전용 카드 3종(`tech_only`), Kota Odax of Ix(`LeaderDefinition.tech_only`). 공식 문서가 침묵하는 판정은 OQ-031~046(사용자 판정 OQ-031·032·035·036·037·038·043·045 포함)과 OQ-012 재검토에 있다. 슬라이스 7(같은 날 밤): UI 표시(`server/catalog.py`의 `skills`·`tech` 절, `display/bloodlines.py`, `app.js`의 좌석 패널·공용 열·보드 칩), heuristic `_TECH_BONUSES`, rollout `player_value`의 Bloodlines 자산, 교차 소크 7,000판 실패 0, 학습 smoke.
 
@@ -48,35 +48,32 @@ uv run mypy src tests
 
 ## 다음 구현 순서
 
-**현재 위치(2026-09-16 밤).** 9월 10~16일의 기준선 정비가 끝났다. heuristic의 보드 공간 표는 축별
-A/B와 소거로 네 번 바뀌어 random 3명 상대 89.2 → 97.8%(base 800판)가 됐고 상향·하향 소거가 모두 손해라
-**양방향 국소 최적**에서 닫았다([evaluation/baseline-2026-09-10.md](evaluation/baseline-2026-09-10.md)
-13~18절, 최종 기준선은 [evaluation/baseline-2026-09-16.md](evaluation/baseline-2026-09-16.md)). rollout은
-같은 예산에서 세계 4 · 후보 3 · 공통 난수로 재정비해 heuristic 3명 상대 28 → 44%(13절). 처리량은 결함 3건
-회수(−6.7%)에 더해 legal 집합 재열거 제거(−13.6%)와 공개 뷰 캐시(−7.0%)를 적용했고 남은 병목은
-[evaluation/throughput-2026-09-10.md](evaluation/throughput-2026-09-10.md) 5·7절에 있다. 이 실행들이 찾은
-엔진 결함(OQ-059·OQ-060, 두 약속의 graft 배치, determinize의 Long Live 상단 세 장)은 전부 고쳤다. 남은
-것은 **M10 학습 재개**(사용자 결정, 관측 v20·codec v104라 체크포인트 전부 새로)와 아래 0번의 학습 밖
-후보다.
+**현재 위치(2026-09-16 심야).** M10 학습 전 마무리 세션이 끝났다. (1) `dune-imperium-train`은 관측 v20·codec v104에서
+pure self-play(3 iteration × 32판, 8 worker, `--eval-every`)와 `--opponent rollout`/`--eval-opponent rollout`(StateAgent 경로)
+모두 정상이다. (2) heuristic의 표 밖 항: 동점 census(게임당 228개 legal 집합이 RNG로 정해짐)로 지렛대를 찾아 세 가족 안
+tie-break(Influence 진영·trash/discard 카드·같은 비용 구매)를 채택했고, 고정 변형 `heuristic_uniform_ties` 상대 전 축·두
+seed 블록에서 **+5.1 ~ +9.1%p**다([evaluation/baseline-2026-09-16.md](evaluation/baseline-2026-09-16.md) 14절; 배치를 참는
+규칙과 Plot 선출은 손해로 기각). (3) M10 수집 경로를 처음 프로파일해 관측 인코더(31%)를 바이트 동일하게 다시 써 수집
+벽시계 **−16 ~ −18%**, 배치 handler의 guard 축소로 대회 경로 −3 ~ −4%([evaluation/throughput-2026-09-10.md](evaluation/throughput-2026-09-10.md)
+8절). (4) A/B가 찾은 엔진 결함 1건(Reveal 중 Intrigue 비용으로 Conflict가 비면 Reveal frame의 전투력 집계가 stale, `a1c3f94`)을
+고쳤다. rollout `player_value` 가중치 A/B·tie-break heuristic의 소크·기준선 12셀 재측정은 이 세션 요약(아래)에 적힌 대로다.
+남은 것은 **M10 학습 재개**(사용자 결정)와 아래 0번의 학습 밖 후보다.
 
-0. (2026-09-16 밤, **다음 작업**) 필수 항목은 전부 끝났다. 남은 것은 **M10 학습 재개**(사용자 결정; 관측 v20·codec
-   v104라 체크포인트 전부 새로; pure self-play로 시작해 25 iteration마다 재정비된 heuristic·rollout과 대회 평가)와
-   학습 밖의 후보다: (a) heuristic의 표 밖 항 — 행동 종류별 기본 점수, 배치 병력 수, Intrigue 선택, research Influence의
-   네 진영 동점(같은 절차: 변형 등록 → 축별 2:2 → 소거), (b) rollout의 `player_value` 가중치 재측정, (c) 처리량의 남은
-   병목(throughput 5·7절: 배치 열거 루프 약 11%, Agent effect provider 약 7%, 상태 복사 약 40%는 구조 변경),
-   (d) 리팩토링 후속 4건([refactoring-plan.md](refactoring-plan.md); 이득 대비 위험으로 보류 중), (e) 사람 플레이
-   피드백(새 좌석 종류 `rollout_strong` 포함).
-   **다른 세션에서 이어갈 때(2026-09-16 밤 기록).** (a)·(b)는 오늘의 A/B 절차를 그대로 쓴다. 필요한 도구는 이 Mac의
-   세션 scratchpad `/private/tmp/claude-501/-Users-cs-Workspace-tabletop-ai-Dune-Imperium/550f265b-fb78-4cf5-95db-d45223028c18/scratchpad/space-table-closeout/`에 있다(재부팅·정리 시 사라짐; 저장소에는 없다):
-   `pypath/sitecustomize.py`(`PYTHONPATH`에 두면 `variants.json`의 `{registry 이름: {space_id: 값}}`을 `HeuristicAgent`
-   변형으로, `rollout_variants.json`의 `{이름: RolloutAgent kwargs}`를 rollout 변형으로 registry에 등록 — Python 3.14의
-   forkserver/spawn worker에도 전달된다), `pair_matrix.py`(`<변형>_<축>[_b2].json`을 변형 × 축 행렬로), `probe_mix.py`
-   (배치 분포·종료 자산·Conflict 승 probe), `rollout_table.py`, `adopt_*.py`(표 채택 패치의 본: 표·주석·고정 표·테스트를
-   한 번에 바꾼다), `run_level*.sh`·`run_round*.sh`(축별 셀 → 확인 → probe → 소거 → 기준선 12셀의 순서). 다른 머신이면
-   `sitecustomize.py` 열 줄만 먼저 옮기고 나머지는 [evaluation/baseline-2026-09-10.md](evaluation/baseline-2026-09-10.md)
-   17~18절의 정의로 재작성한다. 셀 하나(2:2 미러 500 seed)는 이 Mac에서 30초, WSL2 8코어에서 3.5분이다. 채택할 때는
-   반드시 **고정 표 전부에 바뀐 칸을 명시**하고([lessons.md](lessons.md) 2026-09-16), 채택 뒤 하향·상향 소거와 기준선
-   12셀 재측정, 그리고 `dune-imperium-sweep --policy heuristic --soundness-interval 25`의 전 룰셋 소크를 붙인다.
+0. (2026-09-16 심야, **다음 작업**) **M10 학습 재개**(관측 v20·codec v104라 체크포인트 전부 새로; pure self-play로 시작해
+   25 iteration마다 재정비된 heuristic·rollout과 대회 평가; 첫 슬라이스 후보는 PPO 전환·league·평가 상대 교체 — 위 2번 항목).
+   학습 밖 후보: (a) heuristic 표 밖 항의 나머지(14절(c) 끝: Spy post 규칙 재설계, `take_contract`, Intrigue option,
+   확장의 graft partner·Commander skill; 같은 절차 — 스크래치 변형 → `heuristic_uniform_ties`류 **고정 대조군** 상대 축별
+   2:2 → 채택), (b) rollout `player_value` 가중치(아래 세션 요약의 결과에 따라), (c) 처리량(throughput 8절(c): 상태 복사 구조
+   변경, `_placements_for_card` 루프, provider fan-out), (d) 리팩토링 후속 4건([refactoring-plan.md](refactoring-plan.md); 이득
+   대비 위험으로 보류), (e) 사람 플레이 피드백.
+   **다른 세션에서 이어갈 때.** A/B 도구는 이 Mac의 세션 scratchpad
+   `/private/tmp/claude-501/-Users-cs-Workspace-tabletop-ai-Dune-Imperium/d75b926e-a80b-4537-8555-80904310124e/scratchpad/`에 있다(재부팅·정리 시 사라짐):
+   `heuristic-terms/census.py`(동점 census), `heuristic-terms/pypath/hvariants.py`+`sitecustomize.py`(`HeuristicAgent`/`RolloutAgent`
+   서브클래스 변형을 registry에 얹는 `PYTHONPATH` 모듈; `prefer`/`adjust` 훅), `run_round*.sh`·`run_rollout1.sh`(셀 스크립트; zsh는
+   따옴표 없는 `$2`도 단어 분리를 하지 않으니 인자는 낱개로 넘긴다), `pair_matrix.py`, `throughput/profile_selfplay.py`·`profile_guards.py`·
+   `bench_encoder.py`·`bench_guard.py`·`old_encoding.py`, `verify/run_soak.sh`·`run_baseline.sh`. 이전 세션의 공간 표 도구는
+   `550f265b-.../scratchpad/space-table-closeout/`에 그대로 있다. 셀 하나(2:2 미러 500 seed)는 이 Mac에서 약 30초, rollout 셀(200판)은
+   약 6.5분이다. **대조군은 반드시 registry에 고정된 이름**으로 지정한다([lessons.md](lessons.md) 2026-09-16 둘째 항목).
 0. (2026-09-16 저녁, **완료**) 보드 공간 표의 좌표 하강은 18절(m)에서 멈췄다(상위 네 칸 소거 전부 ≤ 0).
    (a) **rollout 정비는 완료**(위 세션 요약; 원인은 playout 노이즈, 기본값 세계 4·후보 3·CRN).
    (b) **상향 소거 완료**(18절(n)): 내린 세 칸을 되돌리면 전부 손해, 낮은 칸(Research Station·Accept Contract·
@@ -251,6 +248,45 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 2026-09-07: `bloodlines` 브랜치(35 커밋)를 master 쪽에서 `--no-ff`로 머지했고(`dbd9b73`), 같은 날 저녁 슬라이스 6 커밋 5건과 이 문서 갱신을 master에 직접 올렸다. 아직 push하지 않았다면 `git log origin/master..master`로 확인한다. 비공개 에셋 저장소(`assets` symlink → `Dune-Imperium-assets`)에도 같은 날 manifest 커밋 6건(Bloodlines 카드 44장 content id, Leader 8종, Tuek's Sietch 타일 이미지, Twisted·Navigation 카드 키, Kota Odax의 content id `43c25fc`)이 있으니 다른 머신에서는 그쪽도 pull한다.
 
 2026-09-04 세션 종료 시점에 이 세션의 커밋 전부(보드·카드 아이콘 분리 v86/v87, 서버·UI 확인 흐름과 마커, Reveal 순서 v88, OQ-028 조건 판정 시점, OQ-029 등록)를 `origin/master`에 push했다. 새 세션은 `git fetch origin` 뒤 `git log origin/master..master`와 반대 방향을 확인하고, 일치하면 이 문서의 기준선을 그대로 쓴다. 에셋 저장소(`Dune-Imperium-assets`)의 `5b55e45` 1개 미push 여부는 그 저장소에서 확인한다. 원격에는 병합하지 않은 `kyungtae` 브랜치가 있다. 새 세션은 `git log origin/master..master`와 반대 방향을 모두 확인하고, checkout이 `853ecd4`보다 이전이면 이 문서의 989개 테스트·codec v84 기준선이 실제 코드와 일치하지 않는다. **다른 머신에서 이어서 작업한다면 먼저 이 머신에서 push가 필요하다.** 새 머신의 UI 카드 이미지·아이콘·보드 스캔은 비공개 `Dune-Imperium-assets` 저장소를 clone해 symlink로 연결한다(그 README 참고; 루트의 `assets` symlink 하나로 cards·icons·board·rulebooks를 모두 연결). 카드 매핑은 그 저장소의 `cards/manifest.json`에만 있으므로 접근이 없으면 텍스트 UI로 동작한다.
+
+## 2026-09-16 심야 M10 학습 전 마무리 세션 요약 (master, 관측 v20, codec v104)
+
+- 사용자 지시: "M10 학습 전에 진행해야 할 것들 마무리". 원격과 일치(양방향 0), 기준 검증 pytest 1,519·Ruff·mypy
+  통과를 먼저 확인했다. 인수인계 0번의 학습 밖 후보 (a)~(c)를 순서대로 닫고 M10 파이프라인 자체를 smoke했다.
+- **M10 파이프라인 smoke**: `dune-imperium-train --iterations 3 --games-per-iteration 32 --workers 8 --eval-every 3`이
+  v20·v104에서 정상(iteration당 약 20,500 learner step, 3 iteration 뒤 heuristic 3명 상대 3.1% — 학습 전 정책의 기대값),
+  `--opponent rollout --eval-opponent rollout`(StateAgent 수집·평가 경로)도 정상(rollout 상대라 86 dec/s). 스크래치
+  `m10smoke/`. 코드 변경 없음.
+- **heuristic 표 밖 항 — 동점 census**([evaluation/baseline-2026-09-16.md](evaluation/baseline-2026-09-16.md) 14절(a)):
+  17절(c)의 교훈대로 순위가 갈리는 결정의 빈도부터 쟀다. base+CHOAM 80판에서 legal 집합 50,475개 중 36.1%(게임당
+  228개)가 최고점 동점으로 RNG에 맡겨진다. 빈도 있는 균일-무작위 가족: 같은 비용 카드 구매 13.9/게임, Spy post 약 13,
+  Influence 진영 선택 약 9, trash·discard 카드 약 5, `take_contract` 5.2.
+- **1라운드**(14절(b), 스크래치 `HeuristicAgent` 서브클래스 7종, 현행 `heuristic` 상대 축별 2:2 500 seed): 진영 target·
+  cheapest trash·Reveal 가치 구매는 7축 중 6축 양수(+1 ~ +6%p), 공간 동점·Spy post는 잡음, Plot 선출은 손해(CTI −5.8),
+  **배치를 참는 규칙은 전 축 −8 ~ −13%p**. 1라운드 셀 하나가 **엔진 결함**을 적발했다(아래).
+- **2라운드**(14절(c), 49셀, 대조군 **고정 변형 `heuristic_uniform_ties`**): 셋을 합친 `combo3`가 전 축·두 seed 블록
+  **+5.1 ~ +9.1%p**, buy를 뺀 `combo2ft` +2.4 ~ +6.8, 단독은 +0.4 ~ +4.9. **채택**(커밋 `e6fa084`): `TieBreaks`(faction·
+  trash·buy) + `narrow_family_tie`가 점수가 고정한 동점 집합 **안에서만** 좁힌다(2026-09-10 교훈); 저장소 port는
+  스크래치 combo3와, `heuristic_uniform_ties`는 옛 heuristic과 결정까지 같다. 테스트 +7.
+- **엔진 결함 수정**(커밋 `a1c3f94`): CHOAM+Bloodlines+Tech seed 262, Reveal 중 낸 Twisted Ambitious의 troop 3 상실이
+  Conflict를 비우자 `retreat_units`는 running `combat_strength`를 0으로 맞췄지만 Reveal frame의 `strength` 집계는 4로
+  남았고, 이어진 Combat 아이콘 배치의 "첫 unit" delta가 전투력을 음수로 만들었다(`ValueError`). Intrigue의 LoseTroops·
+  RetreatTroops가 두 Reveal 핸들러처럼 frame 집계를 running 값에 맞춘다(`_follow_reveal_strength`, `[Main p. 12]`
+  player-turns.md 231). 회귀 테스트 1건.
+- **A/B 대조군 오염 사고**([lessons.md](lessons.md) 2026-09-16 둘째 항목): 셀이 도는 중에 tie-break를 저장소로 옮겨
+  적자 spawn worker가 새 트리를 import해 2라운드가 변형 vs 변형이 됐다. 대조군을 고정 변형으로 바꿔 다시 쟀고(약 20분
+  손실), 셀 스크립트가 HEAD와 `git status`를 로그 첫 줄에 적게 했다. 같은 스크립트에서 zsh가 따옴표 없는 `$2`를
+  단어 분리하지 않아 `--start-seed 500`이 한 인자로 넘어간 실수도 있었다(둘째 블록 재실행).
+- **처리량 — M10 수집 경로**([evaluation/throughput-2026-09-10.md](evaluation/throughput-2026-09-10.md) 8절): 학습이
+  지나가는 `SelfPlayRunner` 경로를 처음 프로파일했다. 관측 인코더가 31%(+ `np.asarray` 8.7%)로 최대 항. (a) 인코더를
+  바이트 동일하게 다시 썼다(커밋 `cf67b96`, card-implementer 위임: 미리 잡은 offset에 직접 쓰기, identity 조회
+  `functools.cache`, 우주 dict 색인, 구성원 순회) — 같은 실행 안 번갈아 5회: 수집 벽시계 base **−16.1%**(3,380 → 4,028
+  dec/s), 전 확장 **−17.9%**; golden digest 테스트(random 좌석 5룰셋, `acdb36c`→`cf67b96`)가 출력 불변을 고정한다.
+  (b) `apply_agent_action`의 guard가 모든 hand 카드 대신 낸 카드의 배치만 재열거(`legal_agent_actions_for_card`, 커밋
+  `78da90c`; 114개 handler guard 합계 7.2% 중 78%가 이것) + `usurp_trash_is_queued`의 Immortality 게이트: 대회 경로
+  벽시계 base −3.8%, 전 확장 −3.1%, step 동일.
+- 문서: rl-environment.md에 v20 항목(4,323→4,327)과 인코더 재작성 메모, README·핸드오프의 4,323/v19 표기 정정,
+  implementation-plan 8절.
 
 ## 2026-09-16 공간 표 강등 마감·수준 0.6 채택·OQ-060 확정 세션 요약 (master, 관측 v20, codec v104)
 
