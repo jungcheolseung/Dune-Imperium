@@ -206,3 +206,15 @@ step 수·결정 수는 두 모드가 동일(base 24,945 / 24,147, CHOAM 24,943 
 튜플은 집합으로만 신뢰한다)과 runner 통합 테스트 1건(한 판의 `legal_actions` 호출 수 = 플레이어 결정
 수). 5절의 나머지 — 상태 레코드 폭, provider의 frame context 재구성(`current_agent_effect_context`
 호출부 90곳), 자동 진행 사슬, `observe_state`, 이벤트 로그 — 는 그대로 후보다.
+
+**같은 날 재본 5절 항목 1(상태 복사).** 10판 heuristic 미러의 cProfile(6,276 step, 단일 프로세스)에서
+`dataclasses.replace`가 35,718회(step당 5.7회; GameState 2.9회·PlayerState 1.8회) 호출되고 누적
+1.24s로 전체 3.30s의 **38%**다(`_replace`의 필드 루프 0.38s + `getattr` 1.78M회 0.17s + 생성된
+`__init__` + `__post_init__` 0.35s/0.10s). 필드 루프를 캐시한 이름 튜플의 dict comprehension으로 바꾼
+복사 함수를 실제 중반 상태로 micro-bench하니 GameState 13.9 → 11.9us, PlayerState 16.3 → 13.4us로
+**14%**뿐이다(`__post_init__`은 4.5us/3.1us). 나머지는 frozen slots dataclass의 생성된 `__init__`이
+필드마다 `object.__setattr__`를 치는 비용이라 복사 함수를 바꿔서는 안 줄어든다 — 지렛대는 5절 항목 1이
+말한 대로 **필드 수**(확장 상태를 별도 레코드로 분리)이며, `replace` 호출부 653곳의 import를 바꾸는
+값어치는 없다. `legal_actions`는 이제 결정당 한 번으로 누적 0.82s(25%), `observe_state` 0.44s(13%;
+결정당 `_public_player_view` 4회), `current_agent_effect_context` 72,535회 0.11s(3%)라 provider의
+context 재구성(항목 2 전반부)은 90곳을 손볼 만큼 크지 않다.
