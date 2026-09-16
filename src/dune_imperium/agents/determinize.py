@@ -39,6 +39,21 @@ def secret_project_candidates(state: GameState, observer: int) -> tuple[str, ...
     return tuple(tech_id for tech_id in candidates.split(",") if tech_id)
 
 
+def known_top_card_count(state: GameState, observer: int) -> int:
+    """Return how many of the observer's own top deck cards the observer has seen.
+
+    Long Live the Fighters shows the owner the top three cards while its pick
+    is open [Long Live the Fighters card]; Controlled's peek and Glowglobes
+    show the top one. A sampled world must keep those cards where the open
+    frame says they are, or the frame's own choices become unappliable
+    (2026-09-16 baseline, rollout seat, base game seed 1).
+    """
+
+    if owned_top_frame(state, FrameKind.LONG_LIVE_FIGHTERS, observer) is not None:
+        return 3
+    return 1 if peeked_card_id(state, observer) else 0
+
+
 def determinize(state: GameState, observer: int, rng: random.Random) -> GameState:
     """Return ``state`` with every zone hidden from ``observer`` re-dealt."""
 
@@ -52,10 +67,9 @@ def determinize(state: GameState, observer: int, rng: random.Random) -> GameStat
 
     for seat, player in enumerate(players):
         if seat == observer:
-            # Glowglobes (and Controlled's peek) show the observer the top
-            # card, which therefore stays in place.
-            known_top = peeked_card_id(state, observer)
-            top = list(player.deck[:1]) if known_top else []
+            # Glowglobes, Controlled's peek and an open Long Live the Fighters
+            # pick show the observer the top card(s), which stay in place.
+            top = list(player.deck[: known_top_card_count(state, observer)])
             own_deck = list(player.deck[len(top) :])
             rng.shuffle(own_deck)
             players[seat] = replace(player, deck=(*top, *own_deck))

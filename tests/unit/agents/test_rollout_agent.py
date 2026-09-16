@@ -96,6 +96,43 @@ def test_determinize_keeps_the_secret_project_bottoms_the_owner_has_seen() -> No
             assert tile not in {t for stack in chosen.tech_stacks for t in stack}
 
 
+def test_determinize_keeps_the_long_live_fighters_top_three_in_place() -> None:
+    """Long Live the Fighters' pick names the deck's top three cards.
+
+    The owner has seen them, so a sampled world must keep them on top: with
+    the observer's deck reshuffled underneath the frame, the real-legal picks
+    were illegal in the world and the rollout raised on its own branch
+    (2026-09-16 baseline, rollout seat, base game seed 1).
+    """
+
+    from dataclasses import replace
+
+    from dune_imperium.rules.agent_effects import (
+        legal_agent_card_long_live_actions,
+        long_live_fighters_frame,
+    )
+
+    state = _play_rounds(seed=1, rounds=2)
+    assert len(state.players[0].deck) >= 4
+    frame = long_live_fighters_frame(
+        0, "round:2:player:0:agent_card:test:long_live_fighters", "test"
+    )
+    state = replace(state, decision_stack=(*state.decision_stack, frame))
+    real = legal_agent_card_long_live_actions(state, 0)
+    assert len(real) == 3
+
+    for seed in range(6):
+        world = determinize(state, 0, random.Random(seed))
+        assert world.players[0].deck[:3] == state.players[0].deck[:3]
+        assert legal_agent_card_long_live_actions(world, 0) == real
+    # The rest of the deck is still re-dealt.
+    assert any(
+        determinize(state, 0, random.Random(seed)).players[0].deck[3:]
+        != state.players[0].deck[3:]
+        for seed in range(6)
+    )
+
+
 def test_determinize_keeps_the_observers_view_and_every_card() -> None:
     state = _play_rounds(seed=21, rounds=4)
     # Give an opponent a publicly known hand card and some held Intrigue so
