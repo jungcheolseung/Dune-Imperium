@@ -510,3 +510,61 @@ def test_harkonnen_advisor_troop_does_not_make_a_deploy_plot_playable() -> None:
     assert [
         dict(a.arguments)["count"] for a in legal_intrigue_choice_actions(opened, 0)
     ] == [1]
+
+
+def test_ambitious_during_the_reveal_keeps_the_frame_strength_in_step() -> None:
+    # "Conflict에 unit이 하나 이상 있어야 strength를 가질 수 있다. 마지막 unit이
+    # 제거되면 sword가 남아 있어도 strength는 0이 된다." [Main p. 12]
+    # (docs/rules/player-turns.md 231). Paying Ambitious's three troops
+    # during the Reveal turn empties the Conflict: the running total drops to
+    # 0 and the Reveal frame's own tally must follow, or the next Combat-icon
+    # deployment counts its "first unit" against the stale tally and drives
+    # the total negative (2026-09-16 A/B, CHOAM+Bloodlines+Tech seed 262).
+    from dune_imperium.rules.reveal_turn import _reveal_frame_context
+
+    card = _twisted("ambitious")
+    owner = PlayerState(
+        player_id=0,
+        leader_id="piter_de_vries",
+        hand=(DAGGER,),
+        intrigue_cards=(card,),
+        troops_supply=8,
+        troops_garrison=2,
+        troops_conflict=2,
+        combat_strength=4,
+        combat_icon_turn=True,
+    )
+    rival = replace(PlayerState(player_id=1), influence=Influence(fremen=2))
+    state = _turn_state(owner)
+    state = replace(state, players=(state.players[0], rival, *state.players[2:]))
+    revealed = ENGINE.apply(
+        state, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    # Two troops (4) plus Dagger's sword (1).
+    assert revealed.players[0].combat_strength == 5
+    assert _reveal_frame_context(revealed.decision_stack)["strength"] == 5
+
+    played = ENGINE.apply(revealed, _play(card)).state
+    working = played
+    for zone in ("conflict", "conflict", "garrison"):
+        working = ENGINE.apply(
+            working,
+            DomainAction(
+                action_id="lose_intrigue_troop", actor=0, arguments=(("zone", zone),)
+            ),
+        ).state
+    factions = legal_intrigue_choice_actions(working, 0)
+    emptied = ENGINE.apply(working, factions[0]).state
+    seat = emptied.players[0]
+    assert (seat.troops_conflict, seat.troops_garrison) == (0, 1)
+    assert seat.combat_strength == 0
+    assert _reveal_frame_context(emptied.decision_stack)["strength"] == 0
+
+    # The Combat icon's deployment brings the sword back with the first unit.
+    deploy = DomainAction(
+        action_id="deploy_troops", actor=0, arguments=(("count", 1),)
+    )
+    assert deploy in ENGINE.legal_actions(emptied, 0)
+    deployed = ENGINE.apply(emptied, deploy).state
+    assert deployed.players[0].combat_strength == 3
+    assert _reveal_frame_context(deployed.decision_stack)["strength"] == 3

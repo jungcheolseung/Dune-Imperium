@@ -113,7 +113,7 @@ from dune_imperium.rules.influence import (
     lose_faction_influence,
 )
 from dune_imperium.rules.planetologist import replace_sandworms
-from dune_imperium.rules.reveal_turn import add_units_to_reveal
+from dune_imperium.rules.reveal_turn import add_reveal_strength, add_units_to_reveal
 from dune_imperium.rules.shield_wall import destroy_shield_wall
 from dune_imperium.rules.spy_moves import (
     connected_post_ids,
@@ -126,6 +126,7 @@ from dune_imperium.rules.spy_placement import (
     recall_spy,
     solo_occupied_post_ids,
 )
+from dune_imperium.rules.strength import reveal_in_progress
 from dune_imperium.rules.tech import push_tech_acquisition
 from dune_imperium.rules.tleilaxu_row import acquire_tleilaxu_card
 from dune_imperium.rules.unit_loss import lose_unit
@@ -1196,6 +1197,7 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
             result = _retreat_units(
                 state, player, step_source, troops=count, commanders=commanders
             )
+            result = _follow_reveal_strength(state, result, player)
         case LoseTroops():
             zone = str(arguments["zone"])
             result = lose_unit(
@@ -1215,6 +1217,7 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
                     ),
                     events=result.events,
                 )
+                result = _follow_reveal_strength(state, result, player)
         case GiveIntrigueToOpponent(bonus_spice_if_not_twisted=bonus):
             result = _give_intrigue_card(
                 state,
@@ -1767,6 +1770,40 @@ def _unit_counts(arguments: Mapping[str, ActionValue]) -> tuple[int, int]:
     commanders = arguments.get("commanders", 0)
     assert isinstance(count, int) and isinstance(commanders, int)
     return count - commanders, commanders
+
+
+def _follow_reveal_strength(
+    state: GameState, result: RuleResult, player: int
+) -> RuleResult:
+    """Keep the Reveal frame's counted strength in step with the seat's total.
+
+    A Plot Intrigue played during the owner's Reveal turn may pay a cost
+    that removes units from the Conflict (Ambitious, Fedaykin Maneuver).
+    ``retreat_units`` already sets the running ``combat_strength`` -- "마지막
+    unit이 제거되면 sword가 남아 있어도 strength는 0이 된다" [Main p. 12]
+    (docs/rules/player-turns.md 231) -- but the Reveal frame keeps its own
+    tally for the Desert Power mirror in ``add_units_to_reveal``, and a
+    stale tally made the next Combat-icon deployment count a negative
+    delta (2026-09-16 A/B, CHOAM+Bloodlines+Tech seed 262). The two Reveal
+    handlers that remove units (``apply_reveal_troop_sacrifice`` and the
+    card troop retreat) already do this; the Intrigue costs join them.
+    """
+
+    if not reveal_in_progress(state, player):
+        return result
+    delta = (
+        result.state.players[player].combat_strength
+        - state.players[player].combat_strength
+    )
+    if not delta:
+        return result
+    return RuleResult(
+        state=replace(
+            result.state,
+            decision_stack=add_reveal_strength(result.state.decision_stack, delta),
+        ),
+        events=result.events,
+    )
 
 
 def _retreat_units(
