@@ -208,3 +208,85 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
     fixed = engine.reset(RulesetConfig(), 15)
     fixed_encoded = encode_player_view(engine.observe(fixed, 0))
     assert list(fixed_encoded[segment_slice("leader_draft_pool")]) == [0] * 6
+
+
+# SHA-256 over every observer's int32 encoding at every player decision (and
+# the finished state) of one heuristic game per ruleset, seed 0, computed on
+# the tree before the encoder's 2026-09-16 speed rewrite (HEAD b97ef6c). The
+# rewrite changed how the vector is produced, not what it holds: a digest
+# that moves means the observation changed, which needs an
+# ``OBSERVATION_VERSION`` bump and a new digest, never a silent edit here.
+_GOLDEN_DIGESTS = {
+    "base": ("64e93229c6dc462291b139e6f18932f6843061bbf7ac5e170bcefb4d8cf24530", 2424),
+    "choam": ("54f64c1ff2b45c4aa3f822bcea6cc32821d6760f21708c5b8838c62c0e2370cf", 2672),
+    "promo_bloodlines_tech": (
+        "29dd73bb6f74847e1dd4a11726b69f6fdce1ef388e20274db0666b9df3fd26d3",
+        2732,
+    ),
+    "everything": (
+        "828394e105656eb0cb096bf58d425b6a682fdf647541f8e224f2c6a27af0c1a0",
+        3012,
+    ),
+    "draft": ("bd08290290c58df231c94e80dc9ee7020fd4ad38772dbd86ba695757eb4c64f2", 2308),
+}
+_GOLDEN_CONFIGS = {
+    "base": {},
+    "choam": {"choam_module": True},
+    "promo_bloodlines_tech": {
+        "promo_cards": True,
+        "bloodlines": True,
+        "tech_module": True,
+    },
+    "everything": {
+        "choam_module": True,
+        "promo_cards": True,
+        "bloodlines": True,
+        "tech_module": True,
+        "immortality": True,
+    },
+    "draft": {"leader_draft": True},
+}
+
+
+def _encoding_digest(config: RulesetConfig, seed: int) -> tuple[str, int]:
+    import hashlib
+
+    import numpy as np
+
+    from dune_imperium.agents import HeuristicAgent
+
+    engine = UprisingRulesEngine()
+    agents = [HeuristicAgent(seed=900_000 + seed + s) for s in range(4)]
+    state = engine.reset(config, seed)
+    chance = ChanceResolver(seed=seed)
+    hasher = hashlib.sha256()
+    encoded = 0
+    for _ in range(30_000):
+        if state.phase is GamePhase.FINISHED:
+            break
+        decision = engine.current_decision(state)
+        if isinstance(decision, ChanceDecision):
+            state = engine.apply(state, chance.resolve(decision)).state
+            continue
+        assert isinstance(decision, PlayerDecision)
+        for seat in range(4):
+            vector = encode_player_view(engine.observe(state, seat))
+            hasher.update(np.asarray(vector, dtype=np.int32).tobytes())
+            encoded += 1
+        actions = engine.legal_actions(state, decision.owner)
+        action = agents[decision.owner].choose_action(
+            engine.observe(state, decision.owner), actions
+        )
+        state = engine.apply(state, action, legal_actions=actions).state
+    for seat in range(4):
+        vector = encode_player_view(engine.observe(state, seat))
+        hasher.update(np.asarray(vector, dtype=np.int32).tobytes())
+        encoded += 1
+    return hasher.hexdigest(), encoded
+
+
+@pytest.mark.parametrize("name", sorted(_GOLDEN_DIGESTS))
+def test_encoding_matches_the_pinned_golden_digest(name: str) -> None:
+    assert _encoding_digest(RulesetConfig(**_GOLDEN_CONFIGS[name]), 0) == (
+        _GOLDEN_DIGESTS[name]
+    )
