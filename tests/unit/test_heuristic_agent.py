@@ -810,3 +810,145 @@ def test_the_swap_keeps_a_graft_and_an_infiltrate_as_drawn() -> None:
     assert cheapest_card_for_the_same_space(
         infiltrating_dear, tied, SPENT_CARD_VALUE
     ) is infiltrating_free
+
+
+def _seated_view(**influence: int) -> PlayerView:
+    """A real reset view for seat 0 with seat 0's Influence set."""
+
+    from dataclasses import replace
+
+    from dune_imperium.core.player import Influence
+
+    view = _view_for()
+    me = replace(view.players[0], influence=Influence(**influence))
+    return replace(view, players=(me, *view.players[1:]))
+
+
+def _faction_choices(*factions: str) -> tuple[DomainAction, ...]:
+    return tuple(_action("choose_intrigue_faction", ("faction", f)) for f in factions)
+
+
+def test_faction_tie_break_reaches_two_before_anything_else() -> None:
+    # "Influence 2에 도달하면 1 VP를 얻는다" [Main pp. 7, 17]: from 1 the next
+    # step scores, from 0 or 3 (with nobody at 4 yet) it does not yet.
+    view = _seated_view(emperor=1, spacing_guild=0, bene_gesserit=0, fremen=0)
+    agent = HeuristicAgent(seed=3)
+    choices = _faction_choices("emperor", "spacing_guild", "bene_gesserit", "fremen")
+    for _ in range(5):
+        assert agent.choose_action(view, choices) == choices[0]
+
+
+def test_faction_tie_break_takes_the_first_alliance_and_climbs_over_a_holder() -> None:
+    # "처음 Influence 4에 도달한 플레이어는 Alliance token과 ... 1 VP" and the
+    # token moves only to a player who rises strictly higher [Main p. 7].
+    from dataclasses import replace
+
+    from dune_imperium.core.player import Influence
+
+    view = _seated_view(emperor=1, spacing_guild=3, bene_gesserit=0, fremen=0)
+    agent = HeuristicAgent(seed=3)
+    choices = _faction_choices("emperor", "spacing_guild")
+    # Reaching 4 first outranks reaching 2 by the higher track.
+    assert agent.choose_action(view, choices) == choices[1]
+    # An opponent holding the token at 4 makes 4 a tie: the step to 2 wins.
+    holder = replace(
+        view.players[1],
+        influence=Influence(spacing_guild=4),
+        alliance_faction_ids=("spacing_guild",),
+    )
+    contested = replace(view, players=(view.players[0], holder, *view.players[2:]))
+    assert agent.choose_action(contested, choices) == choices[0]
+    # From 4 against a holder at 4, the step to 5 takes the token.
+    climbing = replace(
+        contested,
+        players=(
+            replace(
+                contested.players[0],
+                influence=Influence(emperor=1, spacing_guild=4),
+            ),
+            *contested.players[1:],
+        ),
+    )
+    assert agent.choose_action(climbing, choices) == choices[1]
+
+
+def test_faction_tie_break_loses_from_the_track_that_costs_least() -> None:
+    # Change Allegiances pays "lose 1 Influence" first ("임의의 Faction Influence를
+    # ... 1 잃는 효과는 네 Faction 가운데 하나를 고른다" [Main p. 20]): stepping
+    # down from 2 loses the Victory Point, so the other track pays.
+    from dataclasses import replace
+
+    view = replace(
+        _seated_view(emperor=2, spacing_guild=1, bene_gesserit=0, fremen=0),
+        intrigue_resolving=("intrigue:change_allegiances:0",),
+    )
+    agent = HeuristicAgent(seed=3)
+    loss = _faction_choices("emperor", "spacing_guild")
+    assert agent.choose_action(view, loss) == loss[1]
+    # The card's second step is the gain: the empty tracks are offered now,
+    # and the step that reaches 2 (Guild, still at 1) wins.
+    gain = _faction_choices("emperor", "spacing_guild", "bene_gesserit", "fremen")
+    assert agent.choose_action(view, gain) == gain[1]
+
+
+def test_trash_tie_break_removes_the_cheapest_card() -> None:
+    from dune_imperium.agents.heuristic_agent import card_printed_value
+
+    cheap, dear = _imperium_instance_ids_by_cost()
+    dagger = "player:0:starter:dagger:0"
+    assert card_printed_value(dagger) < card_printed_value(cheap)
+    assert card_printed_value(cheap) < card_printed_value(dear)
+    agent = HeuristicAgent(seed=3)
+    for family in ("trash_agent_card", "discard_agent_card", "trash_optional_card"):
+        choices = tuple(_action(family, ("card_id", c)) for c in (dear, cheap, dagger))
+        assert agent.choose_action(_view(), choices) == choices[2]
+
+
+def test_buy_tie_break_prefers_the_richer_reveal_box_at_the_same_cost() -> None:
+    from dune_imperium.agents.heuristic_agent import acquisition_reveal_value
+
+    soldier = "imperium:sardaukar_soldier:0"  # cost 1, Persuasion 1, sword 1
+    harvester = "imperium:smuggler_s_harvester:0"  # cost 1, Persuasion 1
+    richer = acquisition_reveal_value(
+        _action("acquire_imperium", ("instance_id", soldier))
+    )
+    poorer = acquisition_reveal_value(
+        _action("acquire_imperium", ("instance_id", harvester))
+    )
+    assert richer > poorer
+    choices = (
+        _action("acquire_imperium", ("instance_id", harvester)),
+        _action("acquire_imperium", ("instance_id", soldier)),
+    )
+    assert score_action(choices[0]) == score_action(choices[1])
+    assert HeuristicAgent(seed=3).choose_action(_view(), choices) == choices[1]
+
+
+def test_tie_breaks_stay_inside_the_tied_family() -> None:
+    from dune_imperium.agents.heuristic_agent import TIE_BREAKS, narrow_family_tie
+
+    view = _seated_view(emperor=1, spacing_guild=0, bene_gesserit=0, fremen=0)
+    mixed = (
+        _action("choose_intrigue_faction", ("faction", "spacing_guild")),
+        _action("resolve_board_effect", ("effect", "spice")),
+    )
+    assert narrow_family_tie(mixed, view, TIE_BREAKS) == mixed
+    same = _faction_choices("spacing_guild", "emperor")
+    narrowed = narrow_family_tie(same, view, TIE_BREAKS)
+    assert narrowed == (same[1],)
+    assert all(action in same for action in narrowed)
+
+
+def test_the_uniform_ties_variant_pins_the_earlier_draw() -> None:
+    from dune_imperium.agents.heuristic_agent import UNIFORM_TIES
+    from dune_imperium.agents.registry import BASELINE_AGENT_FACTORIES, make_agent
+
+    assert "heuristic_uniform_ties" in BASELINE_AGENT_FACTORIES
+    uniform = make_agent("heuristic_uniform_ties", seed=3)
+    assert isinstance(uniform, HeuristicAgent)
+    assert uniform.tie_breaks == UNIFORM_TIES
+    assert not (UNIFORM_TIES.faction or UNIFORM_TIES.trash or UNIFORM_TIES.buy)
+    view = _seated_view(emperor=1, spacing_guild=0, bene_gesserit=0, fremen=0)
+    choices = _faction_choices("emperor", "spacing_guild", "bene_gesserit", "fremen")
+    drawn = {uniform.choose_action(view, choices) for _ in range(40)}
+    assert len(drawn) > 1

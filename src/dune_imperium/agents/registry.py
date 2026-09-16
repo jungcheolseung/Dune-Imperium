@@ -11,6 +11,7 @@ from dune_imperium.agents.heuristic_agent import (
     SPACE_BONUSES_DEMOTED_TO_FLOOR,
     SPACE_BONUSES_MEDIAN_DEMOTION,
     SPACE_BONUSES_SPLIT_DEMOTION,
+    UNIFORM_TIES,
     HeuristicAgent,
 )
 from dune_imperium.agents.random_agent import RandomAgent
@@ -115,6 +116,18 @@ def _heuristic_supplies_table(seed: int) -> Agent:
     return HeuristicAgent(seed=seed, space_bonuses=SPACE_BONUSES_BEFORE_ESPIONAGE)
 
 
+def _heuristic_uniform_ties(seed: int) -> Agent:
+    """The heuristic before the 2026-09-16 within-family tie-breaks.
+
+    A Faction to gain Influence with, a card to trash or discard, and one of
+    two same-cost cards to buy all fell to the tie-break RNG. Pinning that
+    here keeps the paired A/B of docs/evaluation/baseline-2026-09-16.md
+    section 14 reproducible from the committed tree.
+    """
+
+    return HeuristicAgent(seed=seed, tie_breaks=UNIFORM_TIES)
+
+
 def _rollout(seed: int) -> Agent:
     return RolloutAgent(seed=seed)
 
@@ -161,6 +174,7 @@ BASELINE_AGENT_FACTORIES: Final[dict[str, AgentFactory]] = {
     "heuristic_median_table": _heuristic_median_table,
     "heuristic_split_table": _heuristic_split_table,
     "heuristic_supplies_table": _heuristic_supplies_table,
+    "heuristic_uniform_ties": _heuristic_uniform_ties,
     "rollout": _rollout,
     "rollout_untuned": _rollout_untuned,
     "rollout_strong": _rollout_strong,

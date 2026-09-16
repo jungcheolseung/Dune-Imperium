@@ -16,7 +16,7 @@ failing.
 """
 
 import random
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Final
@@ -26,11 +26,17 @@ from dune_imperium.content.immortality.board import (
     ResearchBonus,
 )
 from dune_imperium.content.immortality.tleilaxu import tleilaxu_card_for_instance
+from dune_imperium.content.uprising.board import Faction
+from dune_imperium.content.uprising.effect_dsl import LoseInfluence
 from dune_imperium.content.uprising.imperium import imperium_card_for_instance
+from dune_imperium.content.uprising.intrigue import intrigue_card_for_instance
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
-from dune_imperium.content.uprising.reserve import RESERVE_STACKS_BY_ID
+from dune_imperium.content.uprising.reserve import (
+    RESERVE_STACKS_BY_ID,
+    reserve_card_for_instance,
+)
 from dune_imperium.core.actions import ActionValue, DomainAction
-from dune_imperium.core.observation import PlayerView
+from dune_imperium.core.observation import PlayerView, PublicPlayerView
 
 # Strategy weights, largest first: direct victory points, then permanent
 # upgrades, then cards, units, and resources. Declines and passes sit below
@@ -553,6 +559,284 @@ def _placement_terms(action: DomainAction) -> tuple[tuple[str, ActionValue], ...
     return tuple((key, value) for key, value in action.arguments if key != "card_id")
 
 
+# Tie-breaks inside one action family.
+#
+# After the space table and the spent-card price, the seeded RNG still decided
+# 228 legal sets a game (base+CHOAM, 80-game census of 2026-09-16, recorded in
+# docs/evaluation/baseline-2026-09-16.md section 14). Three families were both
+# frequent and uniformly random: which Faction an Influence step goes to
+# (about 9 a game), which card a trash or discard removes (about 5), and which
+# of two same-cost cards a buy takes (about 14). Each is settled here *inside
+# the tie set the score already fixed*, never as a term in ``score_action``
+# (docs/lessons.md 2026-09-10): the narrowed set is always a subset of the
+# tied actions of one family, so no tie-break can change which score wins or
+# reach another family. ``TieBreaks`` names the three so the registry can pin
+# the uniform draw for the paired A/B.
+#
+# The Faction rule follows the Influence track: "Influence 2에 도달하면 1 VP를
+# 얻는다" `[Main pp. 7, 17]`; "한 Faction에서 처음 Influence 4에 도달한 플레이어는
+# Alliance token과 그 token의 1 VP를 얻는다. 다른 플레이어가 현재 보유자보다 높은
+# 칸으로 올라가면 token과 그 VP가 새 플레이어에게 이전된다. 동률만으로는 ...
+# 충족하지 않는다" `[Main p. 7]` (docs/rules/uprising-systems.md). A step that
+# reaches 2, reaches 4 first, or climbs above the token's holder is worth a
+# Victory Point (3.0 on this scale); a step that only ties the holder is a
+# small progress (0.6); otherwise the higher track is preferred so the seat
+# concentrates toward its next threshold. A *loss* step (an Intrigue card's
+# LoseInfluence cost, "임의의 Faction Influence를 ... 1 잃는 효과는 네 Faction
+# 가운데 하나를 고른다" `[Main p. 20]`) is the mirror image: never step down
+# from 2 or off a held Alliance when another track can pay.
+@dataclass(frozen=True, slots=True)
+class TieBreaks:
+    """Which within-family tie-breaks ``HeuristicAgent`` applies."""
+
+    faction: bool = True
+    trash: bool = True
+    buy: bool = True
+
+
+TIE_BREAKS: Final = TieBreaks()
+UNIFORM_TIES: Final = TieBreaks(faction=False, trash=False, buy=False)
+
+_FACTION_CHOICE_FAMILIES: Final = frozenset(
+    {
+        "choose_agent_card_influence",
+        "choose_combat_reward_influence",
+        "choose_distinct_combat_reward_influence",
+        "choose_leader_signet_influence",
+        "choose_shipping_influence",
+        "pay_reveal_spice_influence",
+        "choose_research_influence",
+        "gain_reveal_faction_influence",
+        "choose_intrigue_faction",
+    }
+)
+_TRASH_FAMILIES: Final = frozenset(
+    {
+        "trash_agent_card",
+        "trash_leader_card",
+        "trash_reveal_card",
+        "trash_combat_reward_card",
+        "trash_card_for_desert_tactics",
+        "trash_optional_card",
+        "trash_for_research_bonus",
+        "discard_agent_card",
+        "discard_opponent_card",
+        "choose_intrigue_discard",
+    }
+)
+_THRESHOLD_VALUE: Final = 3.0
+_TIE_PROGRESS_VALUE: Final = 0.6
+_CLIMB_VALUE: Final = 0.5
+_BEHIND_VALUE: Final = 0.2
+_TRACK_LEVEL_VALUE: Final = 0.05
+_TOP_OF_TRACK: Final = 6
+
+
+def _own_seat(view: PlayerView) -> PublicPlayerView:
+    return view.players[view.player]
+
+
+def _influence_of(seat: PublicPlayerView, faction: str) -> int:
+    return int(getattr(seat.influence, faction))
+
+
+def _alliance_holder_level(view: PlayerView, faction: str) -> int | None:
+    """The Influence of the opponent holding this Faction's token, or None."""
+
+    for seat in view.players:
+        if seat.player != view.player and faction in seat.alliance_faction_ids:
+            return _influence_of(seat, faction)
+    return None
+
+
+def influence_step_value(view: PlayerView, faction: str) -> float:
+    """Value of one more Influence step with ``faction`` for the observer."""
+
+    me = _own_seat(view)
+    current = _influence_of(me, faction)
+    if current >= _TOP_OF_TRACK:
+        return -10.0
+    after = current + 1
+    value = _TRACK_LEVEL_VALUE * current
+    if after == 2:
+        value += _THRESHOLD_VALUE
+    if after >= 4 and faction not in me.alliance_faction_ids:
+        holder = _alliance_holder_level(view, faction)
+        if holder is None:
+            value += _THRESHOLD_VALUE if after == 4 else _CLIMB_VALUE
+        elif after > holder:
+            value += _THRESHOLD_VALUE
+        elif after == holder:
+            value += _TIE_PROGRESS_VALUE
+        else:
+            value += _BEHIND_VALUE
+    return value
+
+
+def influence_step_cost(view: PlayerView, faction: str) -> float:
+    """Cost of losing one Influence step with ``faction`` for the observer."""
+
+    me = _own_seat(view)
+    current = _influence_of(me, faction)
+    if current == 0:
+        return 100.0
+    cost = _TRACK_LEVEL_VALUE * current
+    if current == 2:
+        cost += _THRESHOLD_VALUE
+    if faction in me.alliance_faction_ids:
+        cost += _THRESHOLD_VALUE if current == 4 else 1.0
+    return cost
+
+
+def _intrigue_faction_choice_is_loss(
+    view: PlayerView, offered: frozenset[str]
+) -> bool | None:
+    """Whether a ``choose_intrigue_faction`` set pays a LoseInfluence cost.
+
+    The frame does not say; the resolving card and the offered tracks do. A
+    gain offers empty tracks and never a full one, a loss offers only
+    occupied tracks. ``None`` when the card has such a cost but the tracks
+    cannot tell the two steps apart (every track occupied and offered).
+    """
+
+    lose_cost = False
+    for instance_id in view.intrigue_resolving:
+        try:
+            card = intrigue_card_for_instance(instance_id)
+        except ValueError:
+            continue
+        lose_cost = lose_cost or any(
+            isinstance(cost, LoseInfluence)
+            for option in card.options
+            for section in option.sections
+            for cost in section.costs
+        )
+    if not lose_cost:
+        return False
+    me = _own_seat(view)
+    empty = {faction for faction in _FACTIONS if _influence_of(me, faction) == 0}
+    if empty and not (empty & offered):
+        return True
+    if any(_influence_of(me, faction) >= _TOP_OF_TRACK for faction in offered):
+        return True
+    if empty & offered:
+        return False
+    return None
+
+
+_FACTIONS: Final = tuple(faction.value for faction in Faction)
+
+
+def card_printed_value(instance_id: str) -> float:
+    """Printed acquisition cost plus the Reveal box on the spent-card rubric."""
+
+    try:
+        card = personal_card_for_instance(instance_id)
+    except (ValueError, NotImplementedError):
+        return 0.0
+    cost = 0.0
+    if instance_id.startswith("imperium:"):
+        cost = float(imperium_card_for_instance(instance_id).acquisition_cost or 0)
+    elif instance_id.startswith("reserve:"):
+        cost = float(reserve_card_for_instance(instance_id).acquisition_cost)
+    elif instance_id.startswith("tleilaxu:"):
+        cost = float(tleilaxu_card_for_instance(instance_id).specimen_cost)
+    return (
+        cost
+        + SPENT_CARD_VALUE.persuasion * card.reveal_persuasion
+        + SPENT_CARD_VALUE.sword * card.reveal_strength
+    )
+
+
+def acquisition_reveal_value(action: DomainAction) -> float:
+    """Reveal box (and printed VP) of the card an acquisition would take."""
+
+    if action.action_id in _IMPERIUM_ACQUISITIONS:
+        instance_id = _argument(action, "instance_id")
+        if not isinstance(instance_id, str):
+            return 0.0
+        try:
+            card = imperium_card_for_instance(instance_id)
+        except ValueError:
+            return 0.0
+        return (
+            SPENT_CARD_VALUE.persuasion * card.reveal_persuasion
+            + SPENT_CARD_VALUE.sword * card.reveal_strength
+        )
+    card_id = _argument(action, "card_id")
+    entry = RESERVE_STACKS_BY_ID.get(card_id) if isinstance(card_id, str) else None
+    if entry is None:
+        return 0.0
+    return (
+        SPENT_CARD_VALUE.persuasion * entry.reveal_persuasion
+        + SPENT_CARD_VALUE.sword * entry.reveal_strength
+        + float(entry.acquisition_vp)
+    )
+
+
+def _argmax_subset(
+    top: tuple[DomainAction, ...], key: Callable[[DomainAction], float]
+) -> tuple[DomainAction, ...]:
+    values = tuple(key(action) for action in top)
+    best = max(values)
+    return tuple(a for a, v in zip(top, values, strict=True) if v == best)
+
+
+def _faction_tie(
+    family: str, top: tuple[DomainAction, ...], view: PlayerView
+) -> tuple[DomainAction, ...]:
+    if family == "exchange_reveal_influence":
+        return _argmax_subset(
+            top,
+            lambda a: influence_step_value(view, str(_argument(a, "gained_faction")))
+            - influence_step_cost(view, str(_argument(a, "lost_faction"))),
+        )
+    if family not in _FACTION_CHOICE_FAMILIES:
+        return top
+    offered = frozenset(
+        f for f in (_argument(a, "faction") for a in top) if isinstance(f, str)
+    )
+    if len(offered) < 2:
+        return top
+    if family == "choose_intrigue_faction":
+        loss = _intrigue_faction_choice_is_loss(view, offered)
+        if loss is None:
+            return top
+        if loss:
+            return _argmax_subset(
+                top, lambda a: -influence_step_cost(view, str(_argument(a, "faction")))
+            )
+    return _argmax_subset(
+        top, lambda a: influence_step_value(view, str(_argument(a, "faction")))
+    )
+
+
+def narrow_family_tie(
+    top: tuple[DomainAction, ...], view: PlayerView, tie_breaks: TieBreaks
+) -> tuple[DomainAction, ...]:
+    """Narrow a top-scoring tie set of one family; always a non-empty subset."""
+
+    families = {action.action_id for action in top}
+    if tie_breaks.buy and families <= (_IMPERIUM_ACQUISITIONS | _RESERVE_ACQUISITIONS):
+        # A Reserve card and an Imperium card at the same cost are one
+        # family for this purpose: the same Persuasion buys either.
+        return _argmax_subset(top, acquisition_reveal_value)
+    if len(families) != 1:
+        return top
+    family = next(iter(families))
+    if tie_breaks.faction:
+        narrowed = _faction_tie(family, top, view)
+        if len(narrowed) < len(top):
+            return narrowed
+    if tie_breaks.trash and family in _TRASH_FAMILIES:
+        ids = tuple(_argument(a, "card_id") for a in top)
+        if all(isinstance(i, str) for i in ids):
+            return _argmax_subset(
+                top, lambda a: -card_printed_value(str(_argument(a, "card_id")))
+            )
+    return top
+
+
 # Which Tech tile to buy when more than one face-up tile is affordable: the
 # ones that score or pay back at once first. Re-pricing this table was
 # measured and rejected (docs/evaluation/baseline-2026-09-10.md section 17;
@@ -745,6 +1029,9 @@ class HeuristicAgent:
     spent_card_value: RevealValue | None = SPENT_CARD_VALUE
     # A fixed Tech tile ranking, or None for the committed ``_TECH_BONUSES``.
     tech_bonuses: Mapping[str, float] | None = None
+    # Which within-family tie-breaks narrow a tie set before the draw, or
+    # None for the uniform draw the registry pins on one variant.
+    tie_breaks: TieBreaks | None = TIE_BREAKS
     _rng: random.Random = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -793,6 +1080,8 @@ class HeuristicAgent:
             for action, score in zip(legal_actions, scored, strict=True)
             if score == best
         )
+        if len(top) > 1 and self.tie_breaks is not None:
+            top = narrow_family_tie(top, observation, self.tie_breaks)
         chosen = self._rng.choice(top)
         # The draw settles the board space; the card carrying the Agent there
         # is then the cheapest Reveal box among the placements that reach it.
