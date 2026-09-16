@@ -64,7 +64,13 @@ CPU가 약 1.6배**가 된 것이고, 원인은 한 곳이 아니라 확장 4종
 **재정비 표 자체의 상위 세 칸이 틀렸다**는 발견으로 끝나 표 하나를 전 룰셋에 쓰게 바꿨다(18절). 그 마감
 측정 두 가지는 2026-09-16에 끝났고 수준은 0.6으로 올렸다(아래 0번, 18절(g)·(h)).
 
-0. (2026-09-16 **다음 작업**) **Deliver Supplies 소거 후속.** 18절(k)의 소거가 Deliver Supplies(0.7)를 0.3으로
+0. (2026-09-16 **다음 작업**) **Espionage 소거 후속.** 18절(l)의 소거가 Espionage(0.8)를 0.3으로 내리면 base +4.6·
+   CHOAM +2.9·Tech +5.5·Immortality +5.2%p라고 했다. 같은 절차: (1) 0.3과 중간 수준 하나를 축별·둘째 블록으로
+   `heuristic` 상대 재고, (2) 이기면 채택(이전 표를 registry에 고정하고 **모든 고정 표에 그 항목을 명시**), (3)
+   채택한 표의 상위 항목을 다시 소거하고 probe로 mix를 적고, (4) 기준선 12셀을 다시 잰다. 스크래치
+   `space-table-closeout/`의 `run_level9.sh`·`adopt_ds.py`·`run_round3.sh`·`write_l.py`가 이 순서의 본이다
+   (다른 머신이면 18절의 정의로 재작성; 셀당 3.5분을 잡는다).
+0. (2026-09-16 **완료**) **Deliver Supplies 소거 후속.** 18절(k)의 소거가 Deliver Supplies(0.7)를 0.3으로
    내리면 base +9.0·CHOAM +4.3·Tech +4.9·Immortality +4.2%p라고 했다. 이 절의 규칙대로 (1) 그 표를 축별(base·
    CHOAM·Bloodlines·Immortality·Tech 양쪽·CHOAM+Tech+Imm)·둘째 seed 블록으로 `heuristic` 상대 재고, (2) 이기면
    채택(0.3 아래 어디에 둘지 — 0.35 묶음 위/아래 — 두 수준), (3) 채택한 표의 상위 항목을 다시 소거하고 probe로
@@ -270,7 +276,16 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
   partner"(Bond 아이콘)와 "Infiltrator가 partner"(점유) 두 약속을 한 partner에 요구해 partner 선택에 합법
   행동이 없었다. 배치 provider가 Ghola 약속 없이 닿는 카드에만 제시하도록 고쳤다([rules/immortality.md](rules/immortality.md)
   구현 목록, 18절(k) 결함 항목). 규칙 판정 아님(`[Immortality p. 10]` 두 장만). 기준선 12셀은 수정 뒤 다시 쟀다.
-- 검증: pytest **1,513**, Ruff, mypy 통과. README 테스트 수 1,513.
+- **Deliver Supplies 채택**(18절(l), 커밋 `1912fbb`): 0.3·0.4 모두 base·CHOAM·Immortality·Tech CHOAM 없음·
+  CHOAM+Tech+Imm 두 블록 +2.6 ~ +9.6%p, Bloodlines·CHOAM Tech 동률. **0.4 채택**(Gather Support 묶음). split 표는
+  `heuristic_split_table`로 고정, **고정 표 넷은 Deliver Supplies를 명시**(고정 표가 현행 표의 나머지를 물려받는
+  함정). 커밋 트리 확인 4축 결정 수까지 동일. probe: 배치가 Sietch Tabr·Fremkit으로 옮겨 가고 Influence 합은
+  10.4 → 9.7, Conflict 승·control·VP 상승. 소거는 또 다음 손잡이를 냈다: **Espionage(0.8 → 0.3) 전 축 +2.9 ~
+  +5.5%p**, Fremkit 내리면 −14 ~ −20%p(핵심 칸), Sietch Tabr·Arrakeen도 손해.
+- **엔진 결함 2건째 수정**(커밋 `7635aac`): rollout 좌석 base seed 1 — Long Live the Fighters 선택 frame이 열린 채
+  `determinize`가 관측자 덱을 다 섞어 실제 합법 선택이 sampled world에서 불법(`IllegalActionError`). 관측자가 본
+  상단 카드 수(Long Live 3, peek 1)만큼 제자리에 둔다. rollout 셀 `b04`·`b12`만 다시 쟀다.
+- 검증: pytest **1,515**, Ruff, mypy 통과. README 테스트 수 1,515.
 
 ## 2026-09-11 보드 공간 표 강등·OQ-060 세션 요약 (master, 관측 v20, codec v104, 표 변경·마감 미완)
 
