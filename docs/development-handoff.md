@@ -59,7 +59,14 @@ A/B와 소거로 네 번 바뀌어 random 3명 상대 89.2 → 97.8%(base 800판
 것은 **M10 학습 재개**(사용자 결정, 관측 v20·codec v104라 체크포인트 전부 새로)와 아래 0번의 학습 밖
 후보다.
 
-0. (2026-09-16 저녁, **진행 중**) 보드 공간 표의 좌표 하강은 18절(m)에서 멈췄다(상위 네 칸 소거 전부 ≤ 0).
+0. (2026-09-16 밤, **다음 작업**) 필수 항목은 전부 끝났다. 남은 것은 **M10 학습 재개**(사용자 결정; 관측 v20·codec
+   v104라 체크포인트 전부 새로; pure self-play로 시작해 25 iteration마다 재정비된 heuristic·rollout과 대회 평가)와
+   학습 밖의 후보다: (a) heuristic의 표 밖 항 — 행동 종류별 기본 점수, 배치 병력 수, Intrigue 선택, research Influence의
+   네 진영 동점(같은 절차: 변형 등록 → 축별 2:2 → 소거), (b) rollout의 `player_value` 가중치 재측정, (c) 처리량의 남은
+   병목(throughput 5·7절: 배치 열거 루프 약 11%, Agent effect provider 약 7%, 상태 복사 약 40%는 구조 변경),
+   (d) 리팩토링 후속 4건([refactoring-plan.md](refactoring-plan.md); 이득 대비 위험으로 보류 중), (e) 사람 플레이
+   피드백(새 좌석 종류 `rollout_strong` 포함).
+0. (2026-09-16 저녁, **완료**) 보드 공간 표의 좌표 하강은 18절(m)에서 멈췄다(상위 네 칸 소거 전부 ≤ 0).
    (a) **rollout 정비는 완료**(위 세션 요약; 원인은 playout 노이즈, 기본값 세계 4·후보 3·CRN).
    (b) **상향 소거 완료**(18절(n)): 내린 세 칸을 되돌리면 전부 손해, 낮은 칸(Research Station·Accept Contract·
    Gather Support·Shipping·Secrets)을 올려도 전부 손해이거나 잡음 — 표는 양방향 국소 최적이라 표 작업은 닫는다.
@@ -301,7 +308,15 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
   기준선 4절·12절 재측정: base **44.0%**(28.0), 전 확장 **55.0%**(31.7).
 - **상향 소거**(18절(n), 32셀): 오늘 내린 세 칸을 되돌리면 −2.5 ~ −10.8%p, 낮은 칸을 올리면 −2 ~ −18%p 또는 잡음.
   표는 양방향 국소 최적이며 표 작업은 닫았다.
-- 검증: pytest **1,518**, Ruff, mypy 통과. README 테스트 수 1,518.
+- **검증 소크 재실행**(밤, 재정비한 heuristic으로): `dune-imperium-sweep --policy heuristic --rotate-leaders
+  --soundness-interval 25 --workers 8`로 base+CHOAM·Bloodlines·Bloodlines+Tech·Immortality·전 확장+프로모 각
+  2,000판, 전 확장+프로모 draft 1,000판, random 전 확장+프로모 1,000판 = **12,000판 실패 0**(카드 보존·교착·관측
+  누출·replay·합법 행동 적용·codec 왕복 전부). census의 0회 항목은 룰셋에 없는 내용물(base의 Tuek's Sietch·
+  Bloodlines Conflict 2장, CHOAM 없는 contract)과 heuristic이 고르지 않는 `decline_*` 류뿐이다. 오늘 A/B 실행이
+  잡은 결함 2건 뒤로 새 결함은 없었다. 로그·census JSON은 이 Mac의 세션 scratchpad `space-table-closeout/soak/`.
+- **문서 정리**: `implementation-plan.md` 8절, README의 기준일과 heuristic 표 문구, 이 문서의 "현재 위치", 그리고
+  `lessons.md`에 고정 표가 현행 표를 물려받는 함정을 적었다.
+- 검증: pytest **1,519**, Ruff, mypy 통과. README 테스트 수 1,519.
 
 ## 2026-09-11 보드 공간 표 강등·OQ-060 세션 요약 (master, 관측 v20, codec v104, 표 변경·마감 미완)
 
