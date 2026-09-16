@@ -370,12 +370,14 @@ def test_board_space_ranking_separates_the_placements_it_offers() -> None:
     # Research Station buys two cards and two troops for two water, while
     # Fremkit gives a card and Influence for nothing [Board Guide pp. 1-2].
     assert scores["fremkit"] > scores["research_station"]
-    # The three spaces the rubric-priced table lived on sit below every other
-    # yield (docs/evaluation/baseline-2026-09-10.md section 18).
+    # The three spaces the rubric-priced table lived on are demoted to the
+    # median, tied with the 0.6 group: below the Faction spaces the demotion
+    # sends the Agents to, above the costed and Solari spaces
+    # (docs/evaluation/baseline-2026-09-10.md sections 18 and 18(h)).
     demoted = {"imperial_basin", "secrets", "arrakeen"}
-    assert max(scores[k] for k in demoted) < min(
-        v for k, v in one_shot.items() if k not in demoted
-    )
+    assert {scores[k] for k in demoted} == {scores["hagga_basin"]}
+    assert scores["hagga_basin"] < scores["fremkit"] < scores["espionage"]
+    assert scores["hagga_basin"] > scores["assembly_hall"] > scores["accept_contract"]
     # Nearly every placement must still separate from some other one.
     assert len(set(scores.values())) >= 12
 
@@ -453,6 +455,32 @@ def test_the_uprising_table_variant_pins_the_rubric_priced_ranking() -> None:
         k for k, v in SPACE_BONUSES_BEFORE_DEMOTION.items()
         if UPRISING_SPACE_BONUSES[k] != v
     } == {"imperial_basin", "secrets", "arrakeen"}
+
+
+def test_the_floor_table_variant_pins_the_first_demotion() -> None:
+    # The registry keeps the 2026-09-11 floor so the level comparison of
+    # section 18(h) reruns from the committed tree.
+    from dune_imperium.agents.heuristic_agent import (
+        SPACE_BONUSES_DEMOTED_TO_FLOOR,
+        UPRISING_SPACE_BONUSES,
+    )
+    from dune_imperium.agents.registry import BASELINE_AGENT_FACTORIES, make_agent
+
+    assert "heuristic_floor_table" in BASELINE_AGENT_FACTORIES
+    floor = make_agent("heuristic_floor_table", seed=3)
+    assert isinstance(floor, HeuristicAgent)
+    assert floor.space_bonuses == SPACE_BONUSES_DEMOTED_TO_FLOOR
+    demoted = ("imperial_basin", "secrets", "arrakeen")
+    assert {k: SPACE_BONUSES_DEMOTED_TO_FLOOR[k] for k in demoted} == dict.fromkeys(
+        demoted, 0.3
+    )
+    assert {k: UPRISING_SPACE_BONUSES[k] for k in demoted} == dict.fromkeys(
+        demoted, 0.6
+    )
+    assert {
+        k for k, v in SPACE_BONUSES_DEMOTED_TO_FLOOR.items()
+        if UPRISING_SPACE_BONUSES[k] != v
+    } == set(demoted)
 
 
 def _placement(card_id: str, space_id: str) -> DomainAction:

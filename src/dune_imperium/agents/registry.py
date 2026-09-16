@@ -7,6 +7,7 @@ from dune_imperium.agents.base import Agent
 from dune_imperium.agents.heuristic_agent import (
     SPACE_BONUSES_BEFORE_DEMOTION,
     SPACE_BONUSES_BEFORE_RETUNE,
+    SPACE_BONUSES_DEMOTED_TO_FLOOR,
     HeuristicAgent,
 )
 from dune_imperium.agents.random_agent import RandomAgent
@@ -62,6 +63,19 @@ def _heuristic_uprising_table(seed: int) -> Agent:
     return HeuristicAgent(seed=seed, space_bonuses=SPACE_BONUSES_BEFORE_DEMOTION)
 
 
+def _heuristic_floor_table(seed: int) -> Agent:
+    """The heuristic with the three demoted spaces at the floor (2026-09-11).
+
+    The demotion was first committed at 0.3, below every other yield. Measured
+    one ruleset axis at a time, the median (0.6) beats that floor on base,
+    CHOAM and Immortality and loses only on the Tech Module without CHOAM
+    (docs/evaluation/baseline-2026-09-10.md section 18(h)), so the median is
+    ``heuristic`` now and this variant pins the floor for the paired A/B.
+    """
+
+    return HeuristicAgent(seed=seed, space_bonuses=SPACE_BONUSES_DEMOTED_TO_FLOOR)
+
+
 def _rollout(seed: int) -> Agent:
     return RolloutAgent(seed=seed)
 
@@ -76,6 +90,7 @@ BASELINE_AGENT_FACTORIES: Final[dict[str, AgentFactory]] = {
     "heuristic_untuned": _heuristic_untuned,
     "heuristic_flat_cards": _heuristic_flat_cards,
     "heuristic_uprising_table": _heuristic_uprising_table,
+    "heuristic_floor_table": _heuristic_floor_table,
     "rollout": _rollout,
 }
 

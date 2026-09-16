@@ -243,23 +243,38 @@ _RETREAT_SCORE: Final = -1.0
 # for the rest of the game and a Council seat's standing +2 Persuasion are
 # worth more than any one-shot yield, so every priced space lands below them.
 #
-# Three spaces are ranked below what the rubric says, at the bottom of the
-# table: Imperial Basin, Secrets and Arrakeen. Priced by the rubric (0.85,
-# 1.0, 0.75) they took 56% of the agent's placements, and demoting them was
-# measured to be the largest single lever this table has
-# (docs/evaluation/baseline-2026-09-10.md section 18; 2,000 agent-games a
-# cell, paired 2:2 mirrors, ``--rotate-leaders``): the demoted table beats
-# the rubric-priced one by +9.8pp on base+CHOAM, +15.2pp on Bloodlines and
+# Three spaces are ranked below what the rubric says: Imperial Basin, Secrets
+# and Arrakeen sit at the median (0.6), tied with Deep Desert, Dutiful
+# Service and Hagga Basin. Priced by the rubric (0.85, 1.0, 0.75) they took
+# 56% of the agent's placements, and demoting them was measured to be the
+# largest single lever this table has (docs/evaluation/baseline-2026-09-10.md
+# section 18; 2,000 agent-games a cell, paired 2:2 mirrors,
+# ``--rotate-leaders``): demoted to the floor (0.3) the table beats the
+# rubric-priced one by +9.8pp on base+CHOAM, +15.2pp on Bloodlines and
 # +7.4pp on Immortality, and beats the two-entry table on the Tech Module,
 # where the rubric-priced table lost by -13.6pp, by +6.2pp and +3.6pp on two
 # seed blocks. The mechanism is the placement mix: the Agents go to the
 # Faction spaces instead (Espionage, Deliver Supplies, Sietch Tabr, Sardaukar,
 # Fremkit, Hagga Basin), the seat ends with 11.0 Influence against 9.1 and
 # scores from the tracks while winning fewer Conflicts (1.86 against 2.51).
-# Demoting only to the median (0.6) is worth less (-4.8pp head to head), and
-# re-deriving the rubric with the control-location term at 0 (Imperial Basin
-# 0.5, Arrakeen 0.4, Secrets 0.75) is worth less still (-6.8pp), so the
-# three sit below every other yielding space rather than at a repriced spot.
+# Re-deriving the rubric with the control-location term at 0 instead
+# (Imperial Basin 0.5, Arrakeen 0.4, Secrets 0.75) measured -6.8pp against
+# the floor on the Tech Module.
+#
+# The level was then measured one ruleset axis at a time against the floor
+# (section 18(h), 2026-09-16). The median beats the floor by +4.5pp on base,
+# +8.2pp on CHOAM and +5.6/+7.4pp on Immortality, ties Bloodlines and the
+# Tech Module with CHOAM, and loses the Tech Module without CHOAM by
+# -4.9/-5.9pp, where it still beats the two-entry table by +3.4/+2.2pp;
+# 0.45 is indistinguishable from the floor, 0.5 is halfway, and 0.75 (the
+# rubric's Arrakeen) loses on every axis. At the median the seat keeps the
+# demotion's Influence (10.4) and trades Landsraad visits for Imperial Basin
+# and Arrakeen, both Combat spaces: Conflict wins 1.74 -> 2.54 on base+CHOAM
+# for +0.33 VP. On the Tech Module those Landsraad visits were the tile
+# purchases, which is the one place the trade loses. The tie with the 0.6
+# group is part of the effect (a strict order just above it, 0.62/0.61/0.59,
+# measured -6.0pp on Tech), so the three share the median rather than sitting
+# at a repriced spot of their own.
 #
 # Two limits are deliberate. ``score_action`` sees only the action, so a space
 # whose yield depends on the ruleset is priced on its base reward -- Dutiful
@@ -285,6 +300,12 @@ UPRISING_SPACE_BONUSES: Final[Mapping[str, float]] = MappingProxyType(
         "deep_desert": 0.6,
         "dutiful_service": 0.6,
         "hagga_basin": 0.6,
+        # Demoted from the rubric's 1.0, 0.85 and 0.75 to the median, tied
+        # with the three spaces above (section 18(h)): the agent lived on
+        # them at the rubric's prices, and the floor gave up Conflicts.
+        "secrets": 0.6,
+        "imperial_basin": 0.6,
+        "arrakeen": 0.6,
         "tuek_sietch": 0.55,
         "assembly_hall": 0.5,
         "desert_tactics": 0.5,
@@ -294,8 +315,15 @@ UPRISING_SPACE_BONUSES: Final[Mapping[str, float]] = MappingProxyType(
         # Both pay the least once their cost is priced in.
         "accept_contract": 0.35,
         "research_station": 0.35,
-        # Demoted below every other yield (section 18): the rubric priced
-        # them 1.0, 0.85 and 0.75 and the agent lived on them.
+    }
+)
+
+# The floor demotion of 2026-09-11 (the three spaces at 0.3, below every
+# other yield), kept so the registry's ``heuristic_floor_table`` reproduces
+# the level comparison of section 18(h) from the committed tree.
+SPACE_BONUSES_DEMOTED_TO_FLOOR: Final[Mapping[str, float]] = MappingProxyType(
+    {
+        **UPRISING_SPACE_BONUSES,
         "secrets": 0.3,
         "imperial_basin": 0.3,
         "arrakeen": 0.3,
