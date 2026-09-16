@@ -64,10 +64,11 @@ CPU가 약 1.6배**가 된 것이고, 원인은 한 곳이 아니라 확장 4종
 **재정비 표 자체의 상위 세 칸이 틀렸다**는 발견으로 끝나 표 하나를 전 룰셋에 쓰게 바꿨다(18절). 그 마감
 측정 두 가지는 2026-09-16에 끝났고 수준은 0.6으로 올렸다(아래 0번, 18절(g)·(h)).
 
-0. (2026-09-16 저녁, **다음 작업 후보**) 보드 공간 표의 좌표 하강은 18절(m)에서 멈췄다(상위 네 칸 소거 전부 ≤ 0).
-   남은 후보: (a) **rollout 정비** — heuristic 3명 상대 28%로 내려왔다. `_candidates`가 `score_action`으로 후보를
-   자르므로 표가 강해질수록 heuristic과 겹친다; 후보 수·rollout 수·horizon·`position_value` 가중을 축별 A/B로 잰다.
-   (b) 표의 **하위 칸을 올려 보는** 소거(Imperial Basin·Deliver Supplies·Espionage 되돌리기, 두 칸 동시 변경).
+0. (2026-09-16 저녁, **진행 중**) 보드 공간 표의 좌표 하강은 18절(m)에서 멈췄다(상위 네 칸 소거 전부 ≤ 0).
+   (a) **rollout 정비는 완료**(위 세션 요약; 원인은 playout 노이즈, 기본값 세계 4·후보 3·CRN).
+   (b) 표의 **하위 칸을 올려 보는** 소거(Imperial Basin·Deliver Supplies·Espionage 되돌리기, Research Station·
+   Accept Contract·Gather Support·Shipping 0.7, Secrets 1.0; 각 base·CHOAM·Tech·Immortality)는 측정 중 — 결과는
+   18절(n)에 적는다.
    (c) 아침 목록의 나머지: 처리량 후보([evaluation/throughput-2026-09-10.md](evaluation/throughput-2026-09-10.md)
    5·7절), 리팩토링 후속([refactoring-plan.md](refactoring-plan.md)), M10(최후순위).
 0. (2026-09-16 **완료**) **Espionage 소거 후속.** 18절(l)의 소거가 Espionage(0.8)를 0.3으로 내리면 base +4.6·
@@ -298,7 +299,13 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 - 최종 기준선([evaluation/baseline-2026-09-16.md](evaluation/baseline-2026-09-16.md), 하루의 표 다섯 열): heuristic vs
   random 3 base 800판 89.2 → **97.8%**, CHOAM 84.4 → **98.4%**; rollout vs heuristic 3은 43.0 → **28.0%**(전 확장
   41.7 → 31.7%) — rollout의 후보 pruning이 같은 `score_action`을 쓰므로 표가 강해질수록 우위가 준다(열린 항목).
-- 검증: pytest **1,516**, Ruff, mypy 통과. README 테스트 수 1,516.
+- **rollout 정비**(저녁, [evaluation/baseline-2026-09-16.md](evaluation/baseline-2026-09-16.md) 13절, 커밋 `c88f111`·`c71bbcd`·`43a0022`):
+  heuristic 3명 상대 28%까지 내려온 원인은 **playout 노이즈**였다 — 같은 예산(12 playout/결정)에서 후보 3·세계 4는
+  54%, 공통 난수(CRN)만 얹어도 50%, 세계 8은 66%(4배 비용)인데 후보 12는 34%, horizon 2는 17%. 200판 결승에서
+  **세계 4 · 후보 3 · CRN**(55.0%, 약 80 ms/decision)을 기본값으로 채택했고 이전 기본값은 `rollout_untuned`, 두 배
+  예산의 세계 8 · 후보 3 · CRN(60%, 약 150 ms)은 `rollout_strong`으로 등록해 플레이 서버 좌석 종류에도 넣었다.
+  기준선 4절·12절 재측정: base **44.0%**(28.0), 전 확장 **55.0%**(31.7).
+- 검증: pytest **1,518**, Ruff, mypy 통과. README 테스트 수 1,518.
 
 ## 2026-09-11 보드 공간 표 강등·OQ-060 세션 요약 (master, 관측 v20, codec v104, 표 변경·마감 미완)
 
