@@ -66,9 +66,9 @@ CPU가 약 1.6배**가 된 것이고, 원인은 한 곳이 아니라 확장 4종
 
 0. (2026-09-11 **진행 중, 다음 세션 첫 작업**) **공간 표 강등의 마감 측정.** 커밋된 표(Imperial
    Basin·Secrets·Arrakeen 0.3, 전 룰셋 공통)는 스크래치 변형 셀로만 검증됐다(18절). 할 일 순서:
-   (1) **커밋 트리 확인 셀** 6개 — 아래 명령을 그대로 돌려 18절(b)·(d)와 맞춘다(Tech CHOAM 없음
+   (1) (2026-09-16 완료 → 18절(g): Tech·Bloodlines·Immortality 소수점까지 재현, base+CHOAM 4,000판 중 4승 차) **커밋 트리 확인 셀** 6개 — 아래 명령을 그대로 돌려 18절(b)·(d)와 맞춘다(Tech CHOAM 없음
    셀은 `demote3_low` 행 28.1%/21.9%와 결정 수까지 같아야 한다); 결과를 18절에 "커밋 트리 확인"
-   표로 붙인다. (2) **강등 수준 맞대결** — 0.6(`demote3`)이 base+CHOAM에서 재정비 표 상대
+   표로 붙인다. (2) (2026-09-16 측정 완료 → 18절(h); **채택은 사용자 판정 대기**: 0.6이 base +4.5·CHOAM +8.2·Immortality +5.6/+7.4%p, Bloodlines·CHOAM Tech는 동률, Tech CHOAM 없음은 −4.9/−5.9%p; 0.45는 0.3과 구분되지 않고 0.75는 전 축 손해; 0.6도 Tech에서 두 칸 표는 +3.4/+2.2%p로 넘는다) **강등 수준 맞대결** — 0.6(`demote3`)이 base+CHOAM에서 재정비 표 상대
    +15.8%p, 0.3은 +9.8%p였다(서로 다른 셀). `HeuristicAgent(space_bonuses={**UPRISING_SPACE_BONUSES,
    "imperial_basin": 0.6, "secrets": 0.6, "arrakeen": 0.6})`를 스크래치 registry에 등록해(17절
    방식; 스크립트는 이 머신의 `/tmp/dune-heuristic-space-table-2026-09-11/tech_ab.py`, 다른
