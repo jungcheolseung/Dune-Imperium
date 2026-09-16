@@ -9,6 +9,7 @@ from dune_imperium.agents.heuristic_agent import (
     SPACE_BONUSES_BEFORE_RETUNE,
     SPACE_BONUSES_DEMOTED_TO_FLOOR,
     SPACE_BONUSES_MEDIAN_DEMOTION,
+    SPACE_BONUSES_SPLIT_DEMOTION,
     HeuristicAgent,
 )
 from dune_imperium.agents.random_agent import RandomAgent
@@ -90,6 +91,18 @@ def _heuristic_median_table(seed: int) -> Agent:
     return HeuristicAgent(seed=seed, space_bonuses=SPACE_BONUSES_MEDIAN_DEMOTION)
 
 
+def _heuristic_split_table(seed: int) -> Agent:
+    """The heuristic with the split table of 2026-09-16 noon.
+
+    Imperial Basin at the floor and Arrakeen above every one-shot yield, with
+    Deliver Supplies still at its rubric price; its own ablation then sent
+    Deliver Supplies down (docs/evaluation/baseline-2026-09-10.md section
+    18(l)), so this variant pins the split table for the paired A/B.
+    """
+
+    return HeuristicAgent(seed=seed, space_bonuses=SPACE_BONUSES_SPLIT_DEMOTION)
+
+
 def _rollout(seed: int) -> Agent:
     return RolloutAgent(seed=seed)
 
@@ -106,6 +119,7 @@ BASELINE_AGENT_FACTORIES: Final[dict[str, AgentFactory]] = {
     "heuristic_uprising_table": _heuristic_uprising_table,
     "heuristic_floor_table": _heuristic_floor_table,
     "heuristic_median_table": _heuristic_median_table,
+    "heuristic_split_table": _heuristic_split_table,
     "rollout": _rollout,
 }
 

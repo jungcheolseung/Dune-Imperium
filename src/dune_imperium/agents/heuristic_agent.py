@@ -279,6 +279,14 @@ _RETREAT_SCORE: Final = -1.0
 # behind the split is recorded in section 18(k). The median table stays pinned
 # on ``heuristic_median_table``, the floor table on ``heuristic_floor_table``.
 #
+# The split table's own ablation (section 18(k)) then found Deliver Supplies:
+# at the floor it measures +9.6/+3.6pp on base, +5.6/+5.5pp on CHOAM, +0.7pp
+# on Bloodlines, +4.9/+2.6pp on Immortality, +4.6/+5.2pp on the Tech Module
+# without CHOAM, +0.5pp on the Tech Module with CHOAM, +3.9pp on CHOAM + Tech
+# + Immortality against the split table (section 18(l)), while Espionage does
+# not move the result and Hagga Basin sits on the edge of noise. The split
+# table stays pinned on ``heuristic_split_table``.
+#
 # Two limits are deliberate. ``score_action`` sees only the action, so a space
 # whose yield depends on the ruleset is priced on its base reward -- Dutiful
 # Service and Accept Contract pay 2 Solari here rather than a CHOAM contract,
@@ -302,7 +310,6 @@ UPRISING_SPACE_BONUSES: Final[Mapping[str, float]] = MappingProxyType(
         "espionage": 0.8,
         "heighliner": 0.8,
         "sietch_tabr": 0.75,
-        "deliver_supplies": 0.7,
         "fremkit": 0.65,
         "deep_desert": 0.6,
         "dutiful_service": 0.6,
@@ -316,6 +323,9 @@ UPRISING_SPACE_BONUSES: Final[Mapping[str, float]] = MappingProxyType(
         "spice_refinery": 0.5,
         "shipping": 0.45,
         "gather_support": 0.4,
+        # Deliver Supplies, priced 0.7, sits with Gather Support since the
+        # split table's own ablation found it (section 18(l)).
+        "deliver_supplies": 0.4,
         # Both pay the least once their cost is priced in.
         "accept_contract": 0.35,
         "research_station": 0.35,
@@ -332,10 +342,21 @@ UPRISING_SPACE_BONUSES: Final[Mapping[str, float]] = MappingProxyType(
 SPACE_BONUSES_DEMOTED_TO_FLOOR: Final[Mapping[str, float]] = MappingProxyType(
     {
         **UPRISING_SPACE_BONUSES,
+        "deliver_supplies": 0.7,
         "secrets": 0.3,
         "imperial_basin": 0.3,
         "arrakeen": 0.3,
     }
+)
+
+# The split table of 2026-09-16 noon (Imperial Basin 0.3, Secrets 0.6,
+# Arrakeen 1.2, Deliver Supplies still 0.7), kept so the registry's
+# ``heuristic_split_table`` reproduces section 18(l) from the committed tree.
+# Every pinned table names Deliver Supplies explicitly: the pins inherit the
+# live table's other entries, so a later change there must be overridden
+# here to keep each pin the table it was measured with.
+SPACE_BONUSES_SPLIT_DEMOTION: Final[Mapping[str, float]] = MappingProxyType(
+    {**UPRISING_SPACE_BONUSES, "deliver_supplies": 0.7}
 )
 
 # The median demotion of 2026-09-16 morning (the three spaces at 0.6), kept
@@ -344,6 +365,7 @@ SPACE_BONUSES_DEMOTED_TO_FLOOR: Final[Mapping[str, float]] = MappingProxyType(
 SPACE_BONUSES_MEDIAN_DEMOTION: Final[Mapping[str, float]] = MappingProxyType(
     {
         **UPRISING_SPACE_BONUSES,
+        "deliver_supplies": 0.7,
         "secrets": 0.6,
         "imperial_basin": 0.6,
         "arrakeen": 0.6,
@@ -356,6 +378,7 @@ SPACE_BONUSES_MEDIAN_DEMOTION: Final[Mapping[str, float]] = MappingProxyType(
 SPACE_BONUSES_BEFORE_DEMOTION: Final[Mapping[str, float]] = MappingProxyType(
     {
         **UPRISING_SPACE_BONUSES,
+        "deliver_supplies": 0.7,
         "secrets": 1.0,
         "imperial_basin": 0.85,
         "arrakeen": 0.75,

@@ -379,6 +379,7 @@ def test_board_space_ranking_separates_the_placements_it_offers() -> None:
         v for k, v in one_shot.items() if k != "imperial_basin"
     )
     assert scores["secrets"] == scores["hagga_basin"]
+    assert scores["deliver_supplies"] == scores["gather_support"]
     assert scores["hagga_basin"] < scores["fremkit"] < scores["espionage"]
     assert scores["hagga_basin"] > scores["assembly_hall"] > scores["accept_contract"]
     assert scores["arrakeen"] > scores["sardaukar"]
@@ -460,7 +461,7 @@ def test_the_uprising_table_variant_pins_the_rubric_priced_ranking() -> None:
     assert {
         k for k, v in SPACE_BONUSES_BEFORE_DEMOTION.items()
         if UPRISING_SPACE_BONUSES[k] != v
-    } == {"imperial_basin", "secrets", "arrakeen"}
+    } == {"imperial_basin", "secrets", "arrakeen", "deliver_supplies"}
 
 
 def test_the_floor_table_variant_pins_the_first_demotion() -> None:
@@ -488,7 +489,7 @@ def test_the_floor_table_variant_pins_the_first_demotion() -> None:
     assert {
         k for k, v in SPACE_BONUSES_DEMOTED_TO_FLOOR.items()
         if UPRISING_SPACE_BONUSES[k] != v
-    } == {"secrets", "arrakeen"}
+    } == {"secrets", "arrakeen", "deliver_supplies"}
 
 
 def test_the_median_table_variant_pins_the_morning_demotion() -> None:
@@ -512,7 +513,38 @@ def test_the_median_table_variant_pins_the_morning_demotion() -> None:
     assert {
         k for k, v in SPACE_BONUSES_MEDIAN_DEMOTION.items()
         if UPRISING_SPACE_BONUSES[k] != v
-    } == {"imperial_basin", "arrakeen"}
+    } == {"imperial_basin", "arrakeen", "deliver_supplies"}
+
+
+def test_the_split_table_variant_pins_the_noon_table() -> None:
+    # The registry keeps the split table (Deliver Supplies still 0.7) so the
+    # ablation that sent Deliver Supplies down (section 18(l)) reruns from
+    # the committed tree; every pin names Deliver Supplies explicitly.
+    from dune_imperium.agents.heuristic_agent import (
+        SPACE_BONUSES_BEFORE_DEMOTION,
+        SPACE_BONUSES_DEMOTED_TO_FLOOR,
+        SPACE_BONUSES_MEDIAN_DEMOTION,
+        SPACE_BONUSES_SPLIT_DEMOTION,
+        UPRISING_SPACE_BONUSES,
+    )
+    from dune_imperium.agents.registry import BASELINE_AGENT_FACTORIES, make_agent
+
+    assert "heuristic_split_table" in BASELINE_AGENT_FACTORIES
+    split = make_agent("heuristic_split_table", seed=3)
+    assert isinstance(split, HeuristicAgent)
+    assert split.space_bonuses == SPACE_BONUSES_SPLIT_DEMOTION
+    assert UPRISING_SPACE_BONUSES["deliver_supplies"] == 0.4
+    for pinned in (
+        SPACE_BONUSES_BEFORE_DEMOTION,
+        SPACE_BONUSES_DEMOTED_TO_FLOOR,
+        SPACE_BONUSES_MEDIAN_DEMOTION,
+        SPACE_BONUSES_SPLIT_DEMOTION,
+    ):
+        assert pinned["deliver_supplies"] == 0.7
+    assert {
+        k for k, v in SPACE_BONUSES_SPLIT_DEMOTION.items()
+        if UPRISING_SPACE_BONUSES[k] != v
+    } == {"deliver_supplies"}
 
 
 def _placement(card_id: str, space_id: str) -> DomainAction:
