@@ -298,6 +298,42 @@ def test_rollout_agent_finishes_a_game_through_the_runner() -> None:
     assert state.round_number >= 1
 
 
+def test_paired_playouts_share_the_seeds_across_candidates() -> None:
+    # Common random numbers: on one sampled world every candidate plays out
+    # with the same chance and policy seeds, so the candidates differ only by
+    # the action taken; each new world draws new seeds.
+    state = _play_rounds(seed=2, rounds=2)
+    engine = UprisingRulesEngine()
+    decision = engine.current_decision(state)
+    assert isinstance(decision, PlayerDecision)
+    seat = decision.owner
+    legal = engine.legal_actions(state, seat)
+    assert len(legal) > 1
+    seen: list[tuple[int, int] | None] = []
+
+    class Recording(RolloutAgent):
+        def _rollout(
+            self,
+            state: GameState,
+            seat: int,
+            horizon: int,
+            seeds: tuple[int, int] | None = None,
+        ) -> float:
+            seen.append(seeds)
+            return 0.0
+
+    paired = Recording(seed=5, rollouts=2, candidates=3, paired_playouts=True)
+    paired.choose_action_with_state(state, engine.observe(state, seat), legal)
+    assert len(seen) == 6 and None not in seen
+    assert len(set(seen[:3])) == 1 and len(set(seen[3:])) == 1
+    assert seen[0] != seen[3]
+
+    seen.clear()
+    unpaired = Recording(seed=5, rollouts=2, candidates=3)
+    unpaired.choose_action_with_state(state, engine.observe(state, seat), legal)
+    assert seen == [None] * 6
+
+
 def test_player_value_counts_bloodlines_assets() -> None:
     from dune_imperium.core.player import PlayerState
 

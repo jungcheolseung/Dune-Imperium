@@ -121,6 +121,12 @@ class RolloutAgent:
     candidates: int = 6
     horizon_rounds: int = 1
     max_rollout_steps: int = 3_000
+    # Common random numbers: play every candidate's rollout on one sampled
+    # world with the same chance and policy seeds, so the candidates differ
+    # only by the action taken and the comparison is not swamped by playout
+    # noise. Off keeps the 2026-09-06 behaviour (fresh seeds per playout) for
+    # the paired A/B (docs/evaluation/baseline-2026-09-16.md, rollout section).
+    paired_playouts: bool = False
     _rng: random.Random = field(init=False, repr=False)
     _engine: UprisingRulesEngine = field(init=False, repr=False)
 
@@ -161,9 +167,14 @@ class RolloutAgent:
         totals = [0.0 for _ in candidates]
         for _ in range(self.rollouts):
             world = determinize(state, seat, self._rng)
+            shared = (
+                (self._rng.randrange(2**31), self._rng.randrange(2**31))
+                if self.paired_playouts
+                else None
+            )
             for index, action in enumerate(candidates):
                 branched = self._engine.apply(world, action).state
-                totals[index] += self._rollout(branched, seat, horizon)
+                totals[index] += self._rollout(branched, seat, horizon, shared)
         best = max(totals)
         top = tuple(
             action
@@ -191,10 +202,18 @@ class RolloutAgent:
             observation, legal_actions
         )
 
-    def _rollout(self, state: GameState, seat: int, horizon: int) -> float:
+    def _rollout(
+        self,
+        state: GameState,
+        seat: int,
+        horizon: int,
+        seeds: tuple[int, int] | None = None,
+    ) -> float:
         engine = self._engine
-        chance = ChanceResolver(seed=self._rng.randrange(2**31))
-        policy = HeuristicAgent(seed=self._rng.randrange(2**31))
+        if seeds is None:
+            seeds = (self._rng.randrange(2**31), self._rng.randrange(2**31))
+        chance = ChanceResolver(seed=seeds[0])
+        policy = HeuristicAgent(seed=seeds[1])
         for _ in range(self.max_rollout_steps):
             if state.phase is GamePhase.FINISHED or state.round_number >= horizon:
                 break
