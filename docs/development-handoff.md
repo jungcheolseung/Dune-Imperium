@@ -66,14 +66,15 @@ seed 블록에서 **+5.1 ~ +9.1%p**다([evaluation/baseline-2026-09-16.md](evalu
    2:2 → 채택), (b) rollout `player_value` 가중치(아래 세션 요약의 결과에 따라), (c) 처리량(throughput 8절(c): 상태 복사 구조
    변경, `_placements_for_card` 루프, provider fan-out), (d) 리팩토링 후속 4건([refactoring-plan.md](refactoring-plan.md); 이득
    대비 위험으로 보류), (e) 사람 플레이 피드백.
-   **다른 세션에서 이어갈 때.** A/B 도구는 이 Mac의 세션 scratchpad
-   `/private/tmp/claude-501/-Users-cs-Workspace-tabletop-ai-Dune-Imperium/d75b926e-a80b-4537-8555-80904310124e/scratchpad/`에 있다(재부팅·정리 시 사라짐):
-   `heuristic-terms/census.py`(동점 census), `heuristic-terms/pypath/hvariants.py`+`sitecustomize.py`(`HeuristicAgent`/`RolloutAgent`
-   서브클래스 변형을 registry에 얹는 `PYTHONPATH` 모듈; `prefer`/`adjust` 훅), `run_round*.sh`·`run_rollout1.sh`(셀 스크립트; zsh는
-   따옴표 없는 `$2`도 단어 분리를 하지 않으니 인자는 낱개로 넘긴다), `pair_matrix.py`, `throughput/profile_selfplay.py`·`profile_guards.py`·
-   `bench_encoder.py`·`bench_guard.py`·`old_encoding.py`, `verify/run_soak.sh`·`run_baseline.sh`. 이전 세션의 공간 표 도구는
-   `550f265b-.../scratchpad/space-table-closeout/`에 그대로 있다. 셀 하나(2:2 미러 500 seed)는 이 Mac에서 약 30초, rollout 셀(200판)은
-   약 6.5분이다. **대조군은 반드시 registry에 고정된 이름**으로 지정한다([lessons.md](lessons.md) 2026-09-16 둘째 항목).
+   **다른 세션에서 이어갈 때.** A/B·소크·프로파일 도구는 저장소의 [`scripts/ab/`](../scripts/ab/README.md)에 있다
+   (2026-09-17 정리: census → `pypath/hvariants.py` 변형 → `sanity.py` → `cells.py` 축별 셀 → `pair_matrix.py`/
+   `rollout_table.py` → `probe_mix.py` → 채택·고정 → `soak.sh`·`baseline_cells.sh`; 출력은 git 무시 폴더 `ab-runs/`).
+   셀 하나(2:2 미러 500 seed)는 이 Mac에서 약 30초, rollout 셀(200판)은 약 6.5분, WSL2 8코어에서는 각 3.5분·30분쯤 잡는다.
+   **대조군은 반드시 registry에 고정된 이름**으로 지정하고 셀이 도는 동안 `src/`를 편집하지 않는다([lessons.md](lessons.md)
+   2026-09-16 둘째 항목). 2026-09-16의 원본 스크래치(측정 JSON·로그 포함)는 이 Mac의 세션 scratchpad
+   `/private/tmp/claude-501/-Users-cs-Workspace-tabletop-ai-Dune-Imperium/d75b926e-.../scratchpad/`에 남아 있지만 재부팅·정리 시
+   사라지며, 수치는 전부 [evaluation/baseline-2026-09-16.md](evaluation/baseline-2026-09-16.md)와
+   [evaluation/throughput-2026-09-10.md](evaluation/throughput-2026-09-10.md)에 옮겨 적었다.
 0. (2026-09-16 저녁, **완료**) 보드 공간 표의 좌표 하강은 18절(m)에서 멈췄다(상위 네 칸 소거 전부 ≤ 0).
    (a) **rollout 정비는 완료**(위 세션 요약; 원인은 playout 노이즈, 기본값 세계 4·후보 3·CRN).
    (b) **상향 소거 완료**(18절(n)): 내린 세 칸을 되돌리면 전부 손해, 낮은 칸(Research Station·Accept Contract·
@@ -209,6 +210,11 @@ seed 블록에서 **+5.1 ~ +9.1%p**다([evaluation/baseline-2026-09-16.md](evalu
 ## 유용한 명령
 
 ```bash
+# A/B 도구(census → 변형 → 축별 셀 → 요약; 자세한 절차는 scripts/ab/README.md)
+uv run python scripts/ab/census.py --games 40 --ruleset both --out ab-runs/census.json
+uv run python scripts/ab/cells.py --name round1 --variants heuristic_v_space --control heuristic_uniform_ties --axes base,choam --seeds 0,500
+uv run python scripts/ab/pair_matrix.py ab-runs/round1 v_space
+
 # 검증 sweep: 카드 보존·교착·관측 누출·replay 검사 (룰셋당 100판 기본)
 uv run dune-imperium-sweep --games 100 --ruleset both --workers 8
 
