@@ -66,9 +66,8 @@ CPU가 약 1.6배**가 된 것이고, 원인은 한 곳이 아니라 확장 4종
 
 0. (2026-09-16 저녁, **진행 중**) 보드 공간 표의 좌표 하강은 18절(m)에서 멈췄다(상위 네 칸 소거 전부 ≤ 0).
    (a) **rollout 정비는 완료**(위 세션 요약; 원인은 playout 노이즈, 기본값 세계 4·후보 3·CRN).
-   (b) 표의 **하위 칸을 올려 보는** 소거(Imperial Basin·Deliver Supplies·Espionage 되돌리기, Research Station·
-   Accept Contract·Gather Support·Shipping 0.7, Secrets 1.0; 각 base·CHOAM·Tech·Immortality)는 측정 중 — 결과는
-   18절(n)에 적는다.
+   (b) **상향 소거 완료**(18절(n)): 내린 세 칸을 되돌리면 전부 손해, 낮은 칸(Research Station·Accept Contract·
+   Gather Support·Shipping·Secrets)을 올려도 전부 손해이거나 잡음 — 표는 양방향 국소 최적이라 표 작업은 닫는다.
    (c) 아침 목록의 나머지: 처리량 후보([evaluation/throughput-2026-09-10.md](evaluation/throughput-2026-09-10.md)
    5·7절), 리팩토링 후속([refactoring-plan.md](refactoring-plan.md)), M10(최후순위).
 0. (2026-09-16 **완료**) **Espionage 소거 후속.** 18절(l)의 소거가 Espionage(0.8)를 0.3으로 내리면 base +4.6·
@@ -305,6 +304,8 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
   **세계 4 · 후보 3 · CRN**(55.0%, 약 80 ms/decision)을 기본값으로 채택했고 이전 기본값은 `rollout_untuned`, 두 배
   예산의 세계 8 · 후보 3 · CRN(60%, 약 150 ms)은 `rollout_strong`으로 등록해 플레이 서버 좌석 종류에도 넣었다.
   기준선 4절·12절 재측정: base **44.0%**(28.0), 전 확장 **55.0%**(31.7).
+- **상향 소거**(18절(n), 32셀): 오늘 내린 세 칸을 되돌리면 −2.5 ~ −10.8%p, 낮은 칸을 올리면 −2 ~ −18%p 또는 잡음.
+  표는 양방향 국소 최적이며 표 작업은 닫았다.
 - 검증: pytest **1,518**, Ruff, mypy 통과. README 테스트 수 1,518.
 
 ## 2026-09-11 보드 공간 표 강등·OQ-060 세션 요약 (master, 관측 v20, codec v104, 표 변경·마감 미완)
