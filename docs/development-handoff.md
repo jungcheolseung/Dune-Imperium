@@ -66,6 +66,17 @@ A/B와 소거로 네 번 바뀌어 random 3명 상대 89.2 → 97.8%(base 800판
    병목(throughput 5·7절: 배치 열거 루프 약 11%, Agent effect provider 약 7%, 상태 복사 약 40%는 구조 변경),
    (d) 리팩토링 후속 4건([refactoring-plan.md](refactoring-plan.md); 이득 대비 위험으로 보류 중), (e) 사람 플레이
    피드백(새 좌석 종류 `rollout_strong` 포함).
+   **다른 세션에서 이어갈 때(2026-09-16 밤 기록).** (a)·(b)는 오늘의 A/B 절차를 그대로 쓴다. 필요한 도구는 이 Mac의
+   세션 scratchpad `/private/tmp/claude-501/-Users-cs-Workspace-tabletop-ai-Dune-Imperium/550f265b-fb78-4cf5-95db-d45223028c18/scratchpad/space-table-closeout/`에 있다(재부팅·정리 시 사라짐; 저장소에는 없다):
+   `pypath/sitecustomize.py`(`PYTHONPATH`에 두면 `variants.json`의 `{registry 이름: {space_id: 값}}`을 `HeuristicAgent`
+   변형으로, `rollout_variants.json`의 `{이름: RolloutAgent kwargs}`를 rollout 변형으로 registry에 등록 — Python 3.14의
+   forkserver/spawn worker에도 전달된다), `pair_matrix.py`(`<변형>_<축>[_b2].json`을 변형 × 축 행렬로), `probe_mix.py`
+   (배치 분포·종료 자산·Conflict 승 probe), `rollout_table.py`, `adopt_*.py`(표 채택 패치의 본: 표·주석·고정 표·테스트를
+   한 번에 바꾼다), `run_level*.sh`·`run_round*.sh`(축별 셀 → 확인 → probe → 소거 → 기준선 12셀의 순서). 다른 머신이면
+   `sitecustomize.py` 열 줄만 먼저 옮기고 나머지는 [evaluation/baseline-2026-09-10.md](evaluation/baseline-2026-09-10.md)
+   17~18절의 정의로 재작성한다. 셀 하나(2:2 미러 500 seed)는 이 Mac에서 30초, WSL2 8코어에서 3.5분이다. 채택할 때는
+   반드시 **고정 표 전부에 바뀐 칸을 명시**하고([lessons.md](lessons.md) 2026-09-16), 채택 뒤 하향·상향 소거와 기준선
+   12셀 재측정, 그리고 `dune-imperium-sweep --policy heuristic --soundness-interval 25`의 전 룰셋 소크를 붙인다.
 0. (2026-09-16 저녁, **완료**) 보드 공간 표의 좌표 하강은 18절(m)에서 멈췄다(상위 네 칸 소거 전부 ≤ 0).
    (a) **rollout 정비는 완료**(위 세션 요약; 원인은 playout 노이즈, 기본값 세계 4·후보 3·CRN).
    (b) **상향 소거 완료**(18절(n)): 내린 세 칸을 되돌리면 전부 손해, 낮은 칸(Research Station·Accept Contract·
