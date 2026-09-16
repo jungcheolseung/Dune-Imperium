@@ -74,8 +74,8 @@ CPU가 약 1.6배**가 된 것이고, 원인은 한 곳이 아니라 확장 4종
    방식; 스크립트는 이 머신의 `/tmp/dune-heuristic-space-table-2026-09-11/tech_ab.py`, 다른
    머신이면 18절의 정의로 재작성) `heuristic` 상대로 base+CHOAM·Bloodlines·Immortality seed
    0~499를 잰다. 0.6이 세 곳에서 이기면 표를 0.6으로 올리고 Tech 두 블록(seed 0~499·500~999)을
-   다시 재서 두 칸 표를 여전히 넘는지 확인한 뒤 채택한다. (3) OQ-060의 사용자 판정을 받아
-   `DECIDED`로 바꾼다(소멸 convention 유지 시 문서만). 명령:
+   다시 재서 두 칸 표를 여전히 넘는지 확인한 뒤 채택한다. (3) (2026-09-16 완료) OQ-060은 사용자 판정으로
+   (a) 소멸을 `DECIDED`했다 — 문서만, 구현 불변. 명령:
 
    ```bash
    uv run dune-imperium-tournament --agents heuristic,heuristic_untuned,heuristic,heuristic_untuned --games 500 --ruleset base --bloodlines --tech-module --rotate-leaders --workers 7
