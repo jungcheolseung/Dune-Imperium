@@ -13,7 +13,7 @@ the ``StateAgent`` extension of the agent contract. It never reads a hidden
 zone directly: every rollout starts from a determinized copy, and the only
 thing the real state contributes is what the seat's own view also
 contains. Rollouts and rounds are the cost knobs: with the defaults one
-decision costs about a dozen one-round heuristic rollouts.
+decision costs 12 one-round heuristic rollouts.
 """
 
 import random
@@ -117,16 +117,22 @@ class RolloutAgent:
     """Choose by determinized heuristic rollouts; falls back to the heuristic."""
 
     seed: int
-    rollouts: int = 2
-    candidates: int = 6
+    # The knobs were re-tuned on 2026-09-16 against the strengthened
+    # heuristic (docs/evaluation/baseline-2026-09-16.md section 13): at a
+    # fixed budget of playouts per decision the win rate against three
+    # heuristics is decided by the number of sampled worlds, not by the
+    # width of the candidate set, and a second round of horizon only adds
+    # playout noise. The 2026-09-06 defaults (2 worlds, 6 candidates, fresh
+    # seeds) stay pinned on the registry's ``rollout_untuned``.
+    rollouts: int = 4
+    candidates: int = 3
     horizon_rounds: int = 1
     max_rollout_steps: int = 3_000
     # Common random numbers: play every candidate's rollout on one sampled
     # world with the same chance and policy seeds, so the candidates differ
     # only by the action taken and the comparison is not swamped by playout
-    # noise. Off keeps the 2026-09-06 behaviour (fresh seeds per playout) for
-    # the paired A/B (docs/evaluation/baseline-2026-09-16.md, rollout section).
-    paired_playouts: bool = False
+    # noise.
+    paired_playouts: bool = True
     _rng: random.Random = field(init=False, repr=False)
     _engine: UprisingRulesEngine = field(init=False, repr=False)
 

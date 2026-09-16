@@ -119,6 +119,34 @@ def _rollout(seed: int) -> Agent:
     return RolloutAgent(seed=seed)
 
 
+def _rollout_untuned(seed: int) -> Agent:
+    """The rollout search with its 2026-09-06 knobs.
+
+    Two sampled worlds, six candidates and fresh playout seeds; re-tuned on
+    2026-09-16 when the strengthened heuristic left it near parity
+    (docs/evaluation/baseline-2026-09-16.md section 13). Pinned here so the
+    paired A/B against the current defaults reruns from the committed tree.
+    """
+
+    return RolloutAgent(
+        seed=seed, rollouts=2, candidates=6, horizon_rounds=1, paired_playouts=False
+    )
+
+
+def _rollout_strong(seed: int) -> Agent:
+    """The rollout search at twice the default budget.
+
+    Eight sampled worlds over three candidates with common random numbers:
+    60% against three heuristics on base at about 150 ms a decision on an M4
+    (docs/evaluation/baseline-2026-09-16.md section 13), a stronger table
+    opponent for the play server and for evaluations that can afford it.
+    """
+
+    return RolloutAgent(
+        seed=seed, rollouts=8, candidates=3, horizon_rounds=1, paired_playouts=True
+    )
+
+
 # Every baseline an evaluation can name on the command line. A factory takes
 # the per-seat policy seed and returns a fresh agent; new baselines (rollout,
 # search, checkpointed policies) register here so tournaments and reports
@@ -134,6 +162,8 @@ BASELINE_AGENT_FACTORIES: Final[dict[str, AgentFactory]] = {
     "heuristic_split_table": _heuristic_split_table,
     "heuristic_supplies_table": _heuristic_supplies_table,
     "rollout": _rollout,
+    "rollout_untuned": _rollout_untuned,
+    "rollout_strong": _rollout_strong,
 }
 
 

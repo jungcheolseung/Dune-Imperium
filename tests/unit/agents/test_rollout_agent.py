@@ -329,9 +329,27 @@ def test_paired_playouts_share_the_seeds_across_candidates() -> None:
     assert seen[0] != seen[3]
 
     seen.clear()
-    unpaired = Recording(seed=5, rollouts=2, candidates=3)
+    unpaired = Recording(seed=5, rollouts=2, candidates=3, paired_playouts=False)
     unpaired.choose_action_with_state(state, engine.observe(state, seat), legal)
     assert seen == [None] * 6
+
+
+def test_the_untuned_rollout_variant_pins_the_first_knobs() -> None:
+    # The registry keeps the 2026-09-06 knobs so the re-tune of 2026-09-16
+    # (baseline-2026-09-16.md section 13) reruns from the committed tree.
+    from dune_imperium.agents.registry import BASELINE_AGENT_FACTORIES, make_agent
+
+    assert "rollout_untuned" in BASELINE_AGENT_FACTORIES
+    untuned = make_agent("rollout_untuned", seed=3)
+    assert isinstance(untuned, RolloutAgent)
+    assert (untuned.rollouts, untuned.candidates, untuned.horizon_rounds) == (2, 6, 1)
+    assert untuned.paired_playouts is False
+    current = RolloutAgent(seed=3)
+    assert (current.rollouts, current.candidates, current.horizon_rounds) == (4, 3, 1)
+    assert current.paired_playouts is True
+    strong = make_agent("rollout_strong", seed=3)
+    assert isinstance(strong, RolloutAgent)
+    assert (strong.rollouts, strong.candidates, strong.paired_playouts) == (8, 3, True)
 
 
 def test_player_value_counts_bloodlines_assets() -> None:
