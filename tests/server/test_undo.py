@@ -557,3 +557,53 @@ def test_review_reports_where_steps_were_taken_back() -> None:
     assert len(undone) == 1
     assert undone[0]["type"] == "action" and undone[0]["actor"] == 0
     assert _rows(review["steps"])[11] != undone[0]
+
+
+# ------------------------------------------------- a confirmed hand-over
+
+
+def test_a_confirmed_turn_end_stays_handed_over_to_the_next_human() -> None:
+    # ``confirm_turn`` promises to close the seat's undo window. The log
+    # closes it at the next chance outcome or other seat's step, but when
+    # the next seat is a human who has not moved yet there is no such step:
+    # the seat that confirmed could take the turn back from under them
+    # (found by the slice 5 review; two browsers make it visible).
+    manager = GameSessionManager()
+    seats = ("human", "human", HUMAN_FIRST[1], HUMAN_FIRST[1])
+    summary = manager.create_game(seats, game_seed=7)
+    game_id = str(summary["game_id"])
+
+    checked = 0
+    for _ in range(400):
+        if summary["finished"] or checked >= 3:
+            break
+        revision = _int(summary["revision"])
+        held = summary["confirmation"]
+        if not isinstance(held, int):
+            owner = _int(_obj(summary["decision"])["owner"])
+            summary = manager.apply_action(game_id, owner, revision, 0)
+            continue
+        before = [row for row in _rows(summary["undo"]) if row["seat"] == held]
+        assert before and _int(before[0]["steps"]) > 0
+        summary = manager.confirm_turn(game_id, held, revision)
+        successor = _int(_obj(summary["decision"])["owner"])
+        if seats[successor] != "human" or _int(summary["revision"]) != revision:
+            # AI seats (or a chance outcome) followed: the log closed the
+            # window by itself, which the tests above cover.
+            continue
+        # The decision went straight to the other human: nothing was logged
+        # after the confirmation, and still the confirmed steps are sealed.
+        assert successor != held
+        assert [row for row in _rows(summary["undo"]) if row["seat"] == held] == []
+        with pytest.raises(SessionError, match="at most 0 step"):
+            manager.undo(game_id, held, _int(summary["revision"]))
+        assert manager.summary(game_id)["undo_count"] == summary["undo_count"]
+        checked += 1
+        # The successor's own steps open a window of their own as before.
+        summary = manager.apply_action(
+            game_id, successor, _int(summary["revision"]), 0
+        )
+        own = [row for row in _rows(summary["undo"]) if row["seat"] == successor]
+        if not summary["finished"] and own:
+            assert _int(own[0]["steps"]) == 1
+    assert checked >= 1, "no human-to-human confirmation was reached"

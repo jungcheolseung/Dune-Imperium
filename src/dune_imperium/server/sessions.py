@@ -155,6 +155,12 @@ class GameSession:
     # seat (AI or human) acts, so a turn is never handed over while it can
     # still be taken back.
     awaiting_confirmation: int | None = None
+    # How many live steps a turn-end confirmation has sealed. The log alone
+    # closes a seat's undo window at the next chance outcome or other
+    # seat's step; when the next seat is a human who has not moved yet
+    # there is no such step, and without this floor the seat that confirmed
+    # could still pull the turn back from under them.
+    undo_floor: int = 0
     # Remote access (M14): the token minted when a human seat was claimed
     # and the name its player gave; both stay empty on an open server.
     # Like everything above they change only under ``lock``.
@@ -619,6 +625,7 @@ class GameSessionManager:
             if session.awaiting_confirmation != seat:
                 raise SessionError(f"seat {seat} has no turn end to confirm")
             session.awaiting_confirmation = None
+            session.undo_floor = len(session.steps)
             self._advance_locked(session)
             summary = self._summary_locked(session)
             bell = self._ring_locked(session, summary)
@@ -651,7 +658,7 @@ class GameSessionManager:
         with session.lock:
             self._authorize_seat_locked(session, seat, credentials)
             _require_current(session, revision, undo_count)
-            window = undo_window(session.log, seat)
+            window = _open_undo_window(session, seat)
             if steps < 1 or steps > window:
                 raise SessionError(
                     f"seat {seat} may take back at most {window} step(s) now"
@@ -1008,7 +1015,7 @@ class GameSessionManager:
         if (
             isinstance(decision, PlayerDecision)
             and decision.owner != seat
-            and undo_window(session.log, seat) > 0
+            and _open_undo_window(session, seat) > 0
         ):
             session.awaiting_confirmation = seat
             return
@@ -1057,7 +1064,7 @@ class GameSessionManager:
         for seat, assignment in enumerate(session.seats):
             if assignment != HUMAN_SEAT:
                 continue
-            window = undo_window(session.log, seat)
+            window = _open_undo_window(session, seat)
             if window > 0:
                 undo.append({"seat": seat, "steps": window})
         remote = self._access is AccessMode.REMOTE
@@ -1226,6 +1233,17 @@ def _replay_recorded_steps(
                 f"save step {index} ({_step_summary(recorded)}) failed to "
                 f"apply: {error}"
             ) from error
+
+
+def _open_undo_window(session: GameSession, seat: int) -> int:
+    """How many steps ``seat`` may take back now; the caller holds the lock.
+
+    The log's window (``undo_window``), cut off at the last confirmed turn
+    end: what a seat has handed over stays handed over.
+    """
+
+    unsealed = len(session.steps) - session.undo_floor
+    return max(0, min(undo_window(session.log, seat), unsealed))
 
 
 def _require_current(
