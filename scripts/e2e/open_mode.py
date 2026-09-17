@@ -300,10 +300,13 @@ def scenario_doorbell(base, browser) -> None:
     )
 
     actor.evaluate(f"fetch('/games/{game_id}', {{method: 'DELETE'}})")
-    for name, page in (("watcher", watcher), ("blocked", blocked)):
+    # The stream says "closed" (deleted); a poll only sees a 404, which a
+    # restarted server gives as well, so its message covers both.
+    told = (("watcher", watcher, "삭제"), ("blocked", blocked, "더 이상 없습니다"))
+    for name, page, words in told:
         page.wait_for_selector("#setup-screen:not([hidden])", timeout=8000)
         text = page.inner_text("#setup-error")
-        check.ok("삭제" in text, f"{name} is told the game was deleted", text)
+        check.ok(words in text, f"{name} is told the game is gone", text)
         check.ok(
             page.evaluate("state.gameId") is None and page.evaluate("doorbell") is None,
             f"{name} left the game and closed its doorbell",

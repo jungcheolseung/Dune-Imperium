@@ -15,7 +15,7 @@ uv pip install --python /tmp/dune-e2e-venv/bin/python playwright
 브라우저는 시스템 Chrome(`channel="chrome"`)을 쓴다. Chrome이 없는 기기(WSL 등)는 실행 파일을 지정한다:
 `E2E_CHROMIUM=~/.cache/ms-playwright/chromium_headless_shell-*/chrome-linux/headless_shell`
 (WSL에서는 버전 심볼을 갖춘 `libasound.so.2` stub을 `LD_LIBRARY_PATH`에 둬야 했다 — handoff 2026-09-17).
-서버는 이 체크아웃의 `.venv/bin/dune-imperium-server`를 빈 포트에 직접 띄우고 끝나면 내린다
+서버는 이 체크아웃의 `.venv/bin/dune-imperium-server`를 빈 포트에 직접 띄우고 끝나면 내린다(`common.ServerProcess`; `kill()`은 SIGKILL이다)
 (`uv sync --extra ui`가 돼 있어야 한다). 다른 체크아웃을 검사하려면 `E2E_REPO=<경로>`.
 
 ## 실행
@@ -25,6 +25,7 @@ cd scripts/e2e
 /tmp/dune-e2e-venv/bin/python remote.py        # 약 25초; `remote.py 120`이면 첫 구간을 120 스텝으로
 /tmp/dune-e2e-venv/bin/python open_mode.py     # 약 40초; `open_mode.py game` / `open_mode.py bell`로 절반만
 /tmp/dune-e2e-venv/bin/python races.py --ab    # 약 40초
+/tmp/dune-e2e-venv/bin/python recovery.py      # 약 30초
 ```
 
 종료 코드 0이 통과다. 실패하면 뒤처진 페이지의 상태와 요청·콘솔 타임라인을 출력하고, 서버 로그 사본을
@@ -35,6 +36,7 @@ cd scripts/e2e
 | `remote.py` | `--remote` 서버, 쿠키가 분리된 컨텍스트 둘(호스트·친구). 설계 10절 시나리오: `#admin=` 진입 → 방 생성 → 방 링크 → 좌석 고르기·claim → 교차 좌석 403 → 이름(마크업 주입 시도 포함)·접속 점 → **서버가 지목하는 좌석이 한 스텝씩 두고 매 스텝 뒤 두 페이지가 서버 상태로 수렴하는지**(revision·confirmation·players 일치, 둘 차례인 페이지는 그 revision의 actions 보유, 아닌 페이지는 actions 없음) → 대기 배너·탭 제목 → 새로고침 복귀 → 호스트의 release → 재claim → 되돌리기 → 자리 비우기 → claim 도중 나가기·"이어 하기" → 실패한 요청·JS 예외·서버 오류 0. |
 | `open_mode.py` | 기본(open) 서버의 회귀. (A) 한 화면이 사람 2 + heuristic 2를 끝까지: 스텝마다 POST 1 + snapshot 1, 매 스텝 클라이언트 로그 길이 = 서버 `log_count`, 되돌리기의 epoch 변경, 이어 붙인 로그 == 서버 전체 로그, 순위표. (B) 검토 모드에서 늦게 온 옛 응답이 화면을 덮지 않는다. (C) 컨텍스트 셋: 초인종 반영 1초 안·snapshot 1개·자기 행동에는 추가 요청 0, 스트림을 막은 컨텍스트의 폴링 전환, 게임 삭제 통지. |
 | `races.py` | 응답 순서를 강제로 뒤집는 개입 실험. (1) 기다리는 페이지의 좌석 snapshot을 0.7초 붙잡은 사이 상대가 두 번 더 바꾼다 → 낡은 응답을 채택한 뒤 single-flight의 다음 바퀴가 따라잡아야 한다. (2) 새로고침한 페이지의 스트림을 0.3초, 입장 snapshot을 0.9초 늦춘다(그 snapshot은 `online: false`로 읽혔다) → 비행 중에 온 players 초인종이 한 바퀴를 더 예약해야 한다. `--ab`는 그 예약을 끈 `app.js`로 먼저 돌려 **실제로 stale이 되는지**(검사가 실패할 수 있는지) 확인한다. |
+| `recovery.py` | 자동 저장과 복구(슬라이스 5). 원격 한 판을 24 스텝 둔 뒤 서버를 **SIGKILL**하고 같은 포트·같은 저장 폴더로 다시 띄운다: 게임당 파일 하나·`.tmp` 잔재 없음·자동 저장이 live 상태보다 한 턴 이상 뒤처지지 않음, 호스트 패널의 저장 목록, 기다리던 친구의 "서버 연결 끊김" 표시 → 서버가 돌아오면 "새 방 링크로 들어오세요" landing(죽은 방의 "이어 하기"는 제안하지 않음), 호스트가 관리자 링크 → 저장 목록 → 불러오기(새 game id, revision = 자동 저장의 step 수, 좌석 전부 빔), 둘 다 새 링크로 복귀해 16 스텝 수렴, 불러온 게임은 자기 슬롯에 자동 저장. |
 
 ## 새 검사를 더할 때
 

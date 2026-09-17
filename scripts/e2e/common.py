@@ -36,39 +36,78 @@ def free_port() -> int:
         return int(sock.getsockname()[1])
 
 
+class ServerProcess:
+    """One play-server process on a known port and saves directory.
+
+    `kill()` is SIGKILL: no graceful shutdown, which is what a crashed host
+    machine looks like to the save files and to the browsers.
+    """
+
+    def __init__(
+        self, *extra: str, port: int | None = None, saves: str | None = None
+    ) -> None:
+        self.port = port if port is not None else free_port()
+        self.saves = saves or tempfile.mkdtemp(prefix="dune-e2e-saves-")
+        self.base = f"http://127.0.0.1:{self.port}"
+        self.log_path = Path(self.saves) / f"server-{self.port}-{int(now() * 1000)}.log"
+        self._extra = extra
+        self._log = None
+        self._process: subprocess.Popen[bytes] | None = None
+
+    def start(self) -> ServerProcess:
+        self._log = open(self.log_path, "w")
+        command = [
+            str(REPO / ".venv/bin/dune-imperium-server"),
+            "--port",
+            str(self.port),
+            "--saves-dir",
+            self.saves,
+            *self._extra,
+        ]
+        self._process = subprocess.Popen(
+            command, cwd=REPO, stdout=self._log, stderr=subprocess.STDOUT
+        )
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            try:
+                with socket.create_connection(("127.0.0.1", self.port), timeout=0.2):
+                    return self
+            except OSError:
+                if self._process.poll() is not None:
+                    raise RuntimeError(self.log_path.read_text()) from None
+                time.sleep(0.1)
+        raise RuntimeError("the server did not start listening")
+
+    def kill(self) -> None:
+        assert self._process is not None
+        self._process.kill()
+        self._process.wait(timeout=10)
+        self._close_log()
+
+    def stop(self) -> None:
+        if self._process is None or self._process.poll() is not None:
+            self._close_log()
+            return
+        self._process.terminate()
+        try:
+            self._process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            self._process.kill()
+        self._close_log()
+
+    def _close_log(self) -> None:
+        if self._log is not None:
+            self._log.close()
+            self._log = None
+
+
 @contextmanager
 def server(*extra: str):
-    port = free_port()
-    saves = tempfile.mkdtemp(prefix="dune-e2e-saves-")
-    log = open(Path(saves) / "server.log", "w")
-    command = [
-        str(REPO / ".venv/bin/dune-imperium-server"),
-        "--port",
-        str(port),
-        "--saves-dir",
-        saves,
-        *extra,
-    ]
-    process = subprocess.Popen(command, cwd=REPO, stdout=log, stderr=subprocess.STDOUT)
-    base = f"http://127.0.0.1:{port}"
-    deadline = time.monotonic() + 30
-    while time.monotonic() < deadline:
-        try:
-            with socket.create_connection(("127.0.0.1", port), timeout=0.2):
-                break
-        except OSError:
-            if process.poll() is not None:
-                raise RuntimeError(Path(saves, "server.log").read_text()) from None
-            time.sleep(0.1)
+    process = ServerProcess(*extra).start()
     try:
-        yield base, Path(saves) / "server.log"
+        yield process.base, process.log_path
     finally:
-        process.terminate()
-        try:
-            process.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            process.kill()
-        log.close()
+        process.stop()
 
 
 class Recorder:
