@@ -966,3 +966,20 @@ button:disabled { opacity: 0.5; cursor: wait; }
 .room-base { display: block; margin-top: 0.4rem; font-size: 0.85em; }
 .room-base input { width: 100%; box-sizing: border-box; }
 #host-panel > summary { cursor: pointer; font-weight: 600; }
+.host-saves { margin-top: 0.6rem; border-top: 1px solid var(--line); padding-top: 0.4rem; }
+.host-saves p { margin: 0.2rem 0; font-size: 0.85em; }
+.host-save-list { list-style: none; padding: 0; margin: 0.3rem 0; font-size: 0.9em; }
+.host-save-list li { padding: 0.15rem 0; }
+.host-save-actions { display: flex; gap: 0.4rem; }
+.badge.autosave {
+  margin-right: 0.35rem;
+  padding: 0 0.35rem;
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+  font-size: 0.8em;
+}
+#connection-note {
+  color: var(--bad);
+  font-weight: 600;
+  font-size: 0.9em;
+}

@@ -692,13 +692,8 @@ async function loadSaveList() {
       list.appendChild(item);
       continue;
     }
-    const title =
-      entry.name ||
-      (entry.game_seed === null ? "이름 없는 저장" : `seed ${entry.game_seed}`);
-    const status = entry.finished ? "종료됨" : `라운드 ${entry.round_number}`;
-    item.append(
-      `${title} · ${entry.seats.join(", ")} · ${status} · ${entry.saved_at} `
-    );
+    if (entry.autosave) item.appendChild(autosaveBadge());
+    item.append(`${saveTitle(entry)} · ${entry.seats.join(", ")} · ${savedWhen(entry)} `);
     const load = document.createElement("button");
     load.textContent = "불러오기";
     load.addEventListener("click", async () => {
@@ -724,6 +719,30 @@ async function loadSaveList() {
     item.append(load, " ", remove);
     list.appendChild(item);
   }
+}
+
+function saveTitle(entry) {
+  const status = entry.finished ? "종료됨" : `라운드 ${entry.round_number}`;
+  /* An autosave's name only repeats what its badge and the round say. */
+  if (entry.autosave) return status;
+  const title =
+    entry.name ||
+    (entry.game_seed === null ? "이름 없는 저장" : `seed ${entry.game_seed}`);
+  return `${title} · ${status}`;
+}
+
+/* Saves are stamped in UTC; a host looking for "the one from ten minutes
+   ago" after a crash reads local time. */
+function savedWhen(entry) {
+  const when = new Date(entry.saved_at);
+  return Number.isNaN(when.getTime()) ? String(entry.saved_at) : when.toLocaleString();
+}
+
+function autosaveBadge() {
+  const badge = document.createElement("span");
+  badge.className = "badge autosave";
+  badge.textContent = "자동 저장";
+  return badge;
 }
 
 async function createGame(event) {
@@ -1158,8 +1177,18 @@ function renderHostBlock(container, options) {
     container.textContent = "";
     return;
   }
-  /* Never rebuild under the host's cursor while an address is being typed. */
-  if (container.contains(document.activeElement)) return;
+  /* Never rebuild under the host's cursor while an address is being typed.
+     Only that: a button keeps the focus after its click, and the click is
+     exactly what the block has to show the result of. */
+  const active = document.activeElement;
+  if (
+    active &&
+    active.tagName === "INPUT" &&
+    !active.readOnly &&
+    container.contains(active)
+  ) {
+    return;
+  }
   container.textContent = "";
 
   const heading = document.createElement("h3");
@@ -1220,6 +1249,85 @@ function renderHostBlock(container, options) {
     list.appendChild(item);
   }
   container.appendChild(list);
+  container.appendChild(hostSavesBlock());
+}
+
+/* What is on the host's disk for this game. The listing reads every save
+   file, so it is asked for when the host looks (the panel opens, a save
+   was made, the refresh button), never on a timer or a doorbell. */
+let hostSaves = { gameId: null, entries: null, error: null };
+
+async function loadHostSaves() {
+  const gameId = state.gameId;
+  if (!gameId || !(isRemote() && isAdmin())) return;
+  try {
+    const saves = await api("/saves");
+    hostSaves = {
+      gameId,
+      entries: saves.filter((entry) => entry.source_game_id === gameId),
+      error: null,
+    };
+  } catch (error) {
+    hostSaves = { gameId, entries: null, error: error.message };
+  }
+  if (state.gameId === gameId && !el("game-screen").hidden) {
+    renderHostBlock(el("host-panel-body"));
+  }
+}
+
+function hostSavesBlock() {
+  const block = document.createElement("div");
+  block.className = "host-saves";
+  const heading = document.createElement("h3");
+  heading.textContent = state.server.autosave
+    ? "저장 — 턴이 넘어갈 때마다 자동 저장됩니다"
+    : "저장 — 자동 저장이 꺼져 있습니다 (--no-autosave)";
+  block.appendChild(heading);
+  const hint = document.createElement("p");
+  hint.className = "muted";
+  hint.textContent =
+    "서버가 죽으면: 서버를 다시 띄우고 관리자 링크로 들어가 자동 저장을 불러온 뒤, 새 방 링크를 보내세요.";
+  block.appendChild(hint);
+  const known = hostSaves.gameId === state.gameId ? hostSaves : null;
+  const list = document.createElement("ul");
+  list.className = "host-save-list";
+  if (known && known.error) {
+    const item = document.createElement("li");
+    item.className = "error";
+    item.textContent = `저장 목록을 읽지 못했습니다 (${known.error})`;
+    list.appendChild(item);
+  } else if (known && known.entries) {
+    if (!known.entries.length) {
+      const item = document.createElement("li");
+      item.className = "muted";
+      item.textContent = "아직 이 게임의 저장이 없습니다.";
+      list.appendChild(item);
+    }
+    for (const entry of known.entries) {
+      const item = document.createElement("li");
+      if (entry.autosave) item.appendChild(autosaveBadge());
+      item.append(`${saveTitle(entry)} · ${savedWhen(entry)}`);
+      list.appendChild(item);
+    }
+  }
+  block.appendChild(list);
+  const row = document.createElement("div");
+  row.className = "host-save-actions";
+  const refreshButton = document.createElement("button");
+  refreshButton.type = "button";
+  refreshButton.textContent = known ? "목록 새로 고침" : "저장 목록 보기";
+  refreshButton.addEventListener("click", () => {
+    loadHostSaves().catch(() => {});
+  });
+  const saveNow = document.createElement("button");
+  saveNow.type = "button";
+  saveNow.textContent = "지금 저장";
+  saveNow.addEventListener("click", () => {
+    saveGame().catch(() => {});
+  });
+  row.append(refreshButton, saveNow);
+  block.appendChild(row);
+  return block;
 }
 
 /* ---------- my turn ---------- */
@@ -1286,6 +1394,7 @@ async function saveGame() {
       body: JSON.stringify({ name: name || null }),
     });
     note(`저장됨: ${metadata.name || metadata.save_id.slice(0, 8)}`);
+    if (hostSaves.gameId === state.gameId) loadHostSaves().catch(() => {});
   } catch (error) {
     note(`저장 실패 (${error.message})`);
   }
@@ -1474,6 +1583,7 @@ function openDoorbell() {
   const heard = (event) => {
     if (doorbell !== bell) return;
     bell.errors = 0;
+    showConnectionLost(false);
     window.clearTimeout(bell.greetTimer);
     onDoorbell(JSON.parse(event.data));
   };
@@ -1482,7 +1592,7 @@ function openDoorbell() {
   source.addEventListener("closed", () => {
     if (doorbell !== bell) return;
     closeDoorbell();
-    onGameGone();
+    onGameGone("deleted");
   });
   /* EventSource reconnects by itself; only a stream that keeps failing,
      or never greets, is given up for polling. */
@@ -1507,19 +1617,34 @@ function startDoorbellPolling(bell) {
     if (doorbell !== bell || state.busy) return;
     try {
       /* A summary has every field a doorbell payload is compared by. */
-      onDoorbell(await api(`/games/${bell.gameId}`));
+      const summary = await api(`/games/${bell.gameId}`);
+      if (doorbell !== bell) return;
+      showConnectionLost(false);
+      onDoorbell(summary);
     } catch (error) {
-      if (error.status === 404 && doorbell === bell) {
+      if (doorbell !== bell) return;
+      if (error.status === 404) {
+        /* The server answers and does not know the game: deleted, or
+           the server came back from a restart without it. */
         closeDoorbell();
-        onGameGone();
+        onGameGone("missing");
+      } else if (error.status === undefined) {
+        /* No answer at all: the server is down or unreachable. The
+           poll goes on; a restarted server ends it with the 404. */
+        showConnectionLost(true);
       }
     }
   }, DOORBELL_POLL_MS);
 }
 
+function showConnectionLost(lost) {
+  el("connection-note").hidden = !lost;
+}
+
 function closeDoorbell() {
   const bell = doorbell;
   doorbell = null;
+  showConnectionLost(false);
   if (!bell) return;
   window.clearTimeout(bell.greetTimer);
   window.clearInterval(bell.pollTimer);
@@ -1581,8 +1706,15 @@ function mySeatChanged(before, after) {
   });
 }
 
-function onGameGone() {
-  leaveGame("이 게임은 서버에서 삭제되었습니다.");
+function onGameGone(reason) {
+  /* Nothing to come back to: do not offer it on the landing page. */
+  if (storageGet("dune.lastGame") === state.gameId) storageRemove("dune.lastGame");
+  leaveGame(
+    reason === "deleted"
+      ? "이 게임은 서버에서 삭제되었습니다."
+      : "이 게임은 서버에 더 이상 없습니다. 서버가 다시 시작됐다면 호스트가 자동 저장을 " +
+          "불러온 뒤 보내는 새 방 링크로 들어오세요."
+  );
 }
 
 async function applyAction(index) {
@@ -4092,6 +4224,10 @@ async function init() {
   el("leave-game").addEventListener("click", () => leaveGame());
   el("open-lobby").addEventListener("click", () => showLobby());
   el("lobby-enter").addEventListener("click", () => enterTable(state.summary));
+  el("host-panel").addEventListener("toggle", () => {
+    /* The host opened the panel: show what is on disk for this game. */
+    if (el("host-panel").open) loadHostSaves().catch(() => {});
+  });
   el("landing-resume-button").addEventListener("click", () => {
     const last = roomId(storageGet("dune.lastGame"));
     if (last) openGame(last).catch(() => {});
