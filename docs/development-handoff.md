@@ -71,6 +71,12 @@ seed 블록에서 **+5.1 ~ +9.1%p**다([evaluation/baseline-2026-09-16.md](evalu
    정체 신호(평가 승률이 두세 번 연속 오차 안, 또는 이전 champion 상대 25~30%)가 보이면 PPO 슬라이스(수집 log-prob 기록 +
    clip + `--epochs` 3~4)를 넣고 같은 체크포인트에서 `--resume`한다. 학습 밖 후보 (a)에 전 확장 census가 남긴 RNG 가족
    (graft 변형·partner, Commander skill, `take_contract`, Spy post, Engineered Miracle의 `command_acquire_row_card`)을 더한다.
+0. (2026-09-17, **설계 제안 — 사용자 검토 대기**, 학습과 병행 가능) **M14 원격 멀티플레이.** 사용자 요구: "원격 친구들이랑
+   각자 PC에서". 설계는 [multiplayer-design.md](multiplayer-design.md), 마일스톤은 [implementation-plan.md](implementation-plan.md)
+   M14. 다음 할 일은 (1) 설계 문서 12절의 결정 항목 D1~D7을 사용자와 확정하고 문서 상태를 "확정"으로 바꾼 뒤, (2) **슬라이스 1**
+   (`server/access.py`, 좌석 claim/release·관리자 쿠키·진행 중 seed 숨김·CLI `--remote`, `tests/server/test_access.py`·
+   `test_remote_app.py`)부터 구현하는 것이다. 범위는 `server/`·`cli/server.py`·`tests/server/`뿐이라 codec·관측·저장 형식
+   버전은 그대로다. 설계의 수치는 `uv run python scripts/measure_server_payloads.py --seed 20260917`로 재현한다.
 0. (2026-09-16 심야, 완료 → 2026-09-17 0번) **M10 학습 재개**(관측 v20·codec v104라 체크포인트 전부 새로; pure self-play로 시작해
    25 iteration마다 재정비된 heuristic·rollout과 대회 평가; 첫 슬라이스 후보는 PPO 전환·league·평가 상대 교체 — 위 2번 항목).
    학습 밖 후보: (a) heuristic 표 밖 항의 나머지(14절(c) 끝: Spy post 규칙 재설계, `take_contract`, Intrigue option,
@@ -268,6 +274,27 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 2026-09-07: `bloodlines` 브랜치(35 커밋)를 master 쪽에서 `--no-ff`로 머지했고(`dbd9b73`), 같은 날 저녁 슬라이스 6 커밋 5건과 이 문서 갱신을 master에 직접 올렸다. 아직 push하지 않았다면 `git log origin/master..master`로 확인한다. 비공개 에셋 저장소(`assets` symlink → `Dune-Imperium-assets`)에도 같은 날 manifest 커밋 6건(Bloodlines 카드 44장 content id, Leader 8종, Tuek's Sietch 타일 이미지, Twisted·Navigation 카드 키, Kota Odax의 content id `43c25fc`)이 있으니 다른 머신에서는 그쪽도 pull한다.
 
 2026-09-04 세션 종료 시점에 이 세션의 커밋 전부(보드·카드 아이콘 분리 v86/v87, 서버·UI 확인 흐름과 마커, Reveal 순서 v88, OQ-028 조건 판정 시점, OQ-029 등록)를 `origin/master`에 push했다. 새 세션은 `git fetch origin` 뒤 `git log origin/master..master`와 반대 방향을 확인하고, 일치하면 이 문서의 기준선을 그대로 쓴다. 에셋 저장소(`Dune-Imperium-assets`)의 `5b55e45` 1개 미push 여부는 그 저장소에서 확인한다. 원격에는 병합하지 않은 `kyungtae` 브랜치가 있다. 새 세션은 `git log origin/master..master`와 반대 방향을 모두 확인하고, checkout이 `853ecd4`보다 이전이면 이 문서의 989개 테스트·codec v84 기준선이 실제 코드와 일치하지 않는다. **다른 머신에서 이어서 작업한다면 먼저 이 머신에서 push가 필요하다.** 새 머신의 UI 카드 이미지·아이콘·보드 스캔은 비공개 `Dune-Imperium-assets` 저장소를 clone해 symlink로 연결한다(그 README 참고; 루트의 `assets` symlink 하나로 cards·icons·board·rulebooks를 모두 연결). 카드 매핑은 그 저장소의 `cards/manifest.json`에만 있으므로 접근이 없으면 텍스트 UI로 동작한다.
+
+## 2026-09-17 원격 멀티플레이 설계 세션 요약 (master, 관측 v20, codec v104, `src/` 변경 없음)
+
+- 사용자 요구: 구현된 게임을 멀티플레이로 — **원격의 친구들과 각자 PC에서**. 지시: "설계 문서부터". 원격과 일치(양방향 0)를
+  확인했고, `src/`·`tests/`를 건드리지 않았으므로 기준 검증(pytest·Ruff·mypy)은 이 세션에서 다시 돌리지 않았다.
+- 산출물: [multiplayer-design.md](multiplayer-design.md)(상태 **제안**), [implementation-plan.md](implementation-plan.md)의 M14 절,
+  측정 도구 `scripts/measure_server_payloads.py`(Ruff 통과).
+- 진단(코드 근거는 설계 문서 2절): 엔진은 이미 다인용이다 — 결정은 항상 한 좌석 소유, 좌석별 `PlayerView`·로그 필터,
+  `revision`+`undo_count`, 턴 종료 확인. 빠진 것은 네트워크 세션 계층이다: 좌석 인증 없음(`_require_human`은 "사람 좌석인가"만
+  본다), summary와 저장 메타데이터의 `game_seed` 노출(결정론적 엔진이라 seed = 모든 덱 순서), 저장→불러오기의 복제 세션,
+  푸시 없음, 결정 소유자로 시점을 자동 전환하는 클라이언트, 갱신마다 로그 전체 재전송, `render()`의 `closePopover()`.
+- 실측(전 확장 한 판, 사람 3 + heuristic 1, seed 20260917, 이 WSL 노트북): 726 step, 상태를 바꾸는 요청 663회, view 12 KB
+  (gzip 2.7 KB), 로그 전체 중앙값 108 KB·최대 206 KB, 한 판 동안 로그만 **57.3 MB** 재전송(증분이면 0.66 MB), heuristic AI
+  진행 포함 요청 서버 시간 중앙값 0.6 ms·최대 8.9 ms, 끝난 판의 저장 문서 267 KB·생성 33 ms. 그래서 AI 진행을 worker로
+  옮기는 일은 급하지 않고(후속), snapshot + 증분 로그 + gzip이 슬라이스 2다.
+- 외부 사실 확인(2026-09-17): Cloudflare Quick Tunnel은 SSE를 지원하지 않는다(공식 TryCloudflare 문서) → 폴링 fallback이
+  필요하다. Tailscale machine sharing은 모든 플랜에서 되고 공유된 머신은 들어오는 연결에 응답만 한다(공식 KB 1084).
+  lock 파일에 `websockets`·`wsproto`가 없어 WebSocket은 의존성 추가가 필요하고, Starlette 1.6.0의 `GZipMiddleware`는
+  `text/event-stream`을 기본 제외한다(`.venv` 소스 확인).
+- 미결: 설계 문서 12절의 D1~D7(좌석 claim 방식, Tailscale, 되돌리기 유지, 저장 파일에 이름·토큰 미보존, loopback 아닌
+  `--host`의 `--remote` 강제, 턴 단위 자동 저장, 슬라이스 1~4 우선). 이 세션의 커밋은 push하지 않았다.
 
 ## 2026-09-17 학습 전 최종 점검 세션 요약 (master, 관측 v20, codec v104, 코드 변경 없음)
 

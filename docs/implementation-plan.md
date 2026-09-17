@@ -333,6 +333,21 @@ tests/
 
 완료 조건: `immortality` 룰셋(단독·Bloodlines 교차)의 random·heuristic 소크가 실패 0으로 완주하고, 모든 Immortality 구성물이 카드면 검증을 거쳐 audit 문서에 기록되며, 공식 문서가 침묵하는 판정은 open-questions에 convention으로 남는다.
 
+### M14. 원격 멀티플레이
+
+상태: **설계 제안** (2026-09-17, 사용자 검토 전). 사용자 요구는 원격의 친구들과 각자 PC에서 하는 판이다. 설계와 근거는 [`multiplayer-design.md`](multiplayer-design.md)에 있다: 서버 권위 유지, open(기본)/remote(`--remote`) 접근 모드, 방 링크 하나 + 좌석 claim(좌석 쿠키·관리자 쿠키), 공개 필드만 싣는 SSE 초인종 + 폴링 fallback, snapshot endpoint와 증분 로그, 턴 단위 자동 저장, Tailscale machine sharing 접속. 범위는 `server/`·`cli/server.py`·`tests/server/`뿐이고 엔진·codec·관측·저장 형식 버전이 바뀌지 않으므로 M10 학습과 독립으로 병행할 수 있다.
+
+슬라이스 순서(설계 문서 11절):
+
+1. 접근 계층과 좌석 claim(서버): 좌석·관리자 자격, 관리자 전용 경로, 진행 중 seed 숨김, CLI `--remote`.
+2. snapshot + 증분 로그 + gzip, 클라이언트 갱신 경로 교체.
+3. SSE 초인종 + presence + 폴링 fallback.
+4. 클라이언트 원격 UX(좌석 고르기·이름, 내 좌석 고정, 대기·접속 표시, 차례 알림, 호스트 패널)와 두 브라우저 컨텍스트 E2E — 첫 원격 한 판의 최소 구성.
+5. 자동 저장과 복구.
+6. 실전 점검(Tailscale)과 운영 문서.
+
+완료 조건: remote 모드에서 자격 없는 좌석 접근이 전부 거부되고, 원격의 사람 2~4명이 각자 브라우저로 설정부터 최종 점수까지 한 판을 끝내며(끊김·새로고침·서버 재시작 복구 포함), 옵션 없이 띄운 로컬 서버와 기존 `tests/server/` 테스트는 그대로 동작한다.
+
 ## 5. 테스트 전략
 
 - **콘텐츠 검증:** ID·수량·참조·덱 구성·출처의 정적 검사
@@ -381,4 +396,5 @@ rollout 탐색을 같은 예산에서 재정비해 heuristic 3명 상대 28 → 
 수집 경로의 관측 인코더 재작성(수집 벽시계 −16 ~ −18%, `evaluation/throughput-2026-09-10.md` 8절), A/B가 찾은 엔진
 결함 1건 수정으로 끝났다. 다음은 **M10 학습 재개**(관측 v20·codec v104라 체크포인트는 전부 새로 시작)이며, 학습 밖의
 남은 후보(heuristic 표 밖 항의 나머지, rollout 가치 함수, 처리량의 남은 병목, 리팩토링 후속)는
-[개발 인수인계](development-handoff.md)의 "다음 구현 순서"가 관리한다.
+[개발 인수인계](development-handoff.md)의 "다음 구현 순서"가 관리한다. 2026-09-17에 서버·UI 쪽 병행 트랙으로
+**M14 원격 멀티플레이**의 설계 제안([multiplayer-design.md](multiplayer-design.md))이 추가됐다(사용자 검토 대기).
