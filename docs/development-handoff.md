@@ -1,6 +1,6 @@
 # 개발 인수인계
 
-기준일: 2026-09-16
+기준일: 2026-09-17
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
@@ -17,7 +17,7 @@ uv run ruff check src tests
 uv run mypy src tests
 ```
 
-2026-09-17(M14 슬라이스 3 뒤)의 기준 결과는 pytest 1,696개 통과(카드 이미지 에셋이 없는 머신은 1,646 통과 + 1 skip — M14 슬라이스 1·2·3의 새 테스트 87 + 23 + 47개는 에셋과 무관하므로 앞 기준선 1,489에 더한 값이다; `train` extra가 없으면 `tests/unit/training/test_torch_policy.py`가 추가로 skip된다), Ruff 통과, mypy 통과다. 현재 action codec은 `ACTION_CODEC_VERSION = 104`(기본 4,371개, CHOAM 4,657개, `promo_cards` 옵션 시 4,471/4,757개, `immortality` 옵션 시 9,326개 — graft 배치 변형과 카드 사본이 늘 때마다 커진다; `bloodlines`·`tech_module` 옵션은 별도 카탈로그로 훨씬 크고, `promo_cards`+`bloodlines`는 10,485개, promo+Bloodlines+Tech는 13,731개, CHOAM+Bloodlines는 11,128개, 다섯 옵션을 다 켜면 32,963개 — v98은 CHOAM+Bloodlines 카탈로그에만 contract token 8개의 행동과 `trash_intrigue_for_contract`를, v99는 `recall_conflict_agent_for_imperial_privilege`를, v100은 모든 카탈로그에 `skip_intrigue_acquisition`과 Change Allegiances의 세 번째 option을, v101은 Immortality 카탈로그에 `play_conflict_end_intrigue`(Harvest Cells 2장)·`decline_conflict_end_intrigue`를, v102는 Bloodlines+Immortality 카탈로그의 `give_intrigue_card`/`trash_intrigue_hand_card`/`trash_intrigue_for_contract`에 빠져 있던 Immortality Intrigue 사본을 더한다 — 소크가 적발; v103은 모든 카탈로그에 `use_intrigue_effect(section=0/1)`·`finish_intrigue_effects`를 더하고 Change Allegiances의 option을 하나로 되돌린다; v104는 Bloodlines 카탈로그의 `retreat_intrigue_troops` unit count를 12에서 12+7로 넓힌다 — Commander는 12개 병력과 별개 구성물이라 Conflict 유닛이 19까지 가고 Tactical Option이 그 전부를 제시하는데 카탈로그가 12에서 끊겨 있었다, 병렬 수집이 적발, 카탈로그마다 +28)이고, 관측은 `OBSERVATION_VERSION = 20`의 4,327-int 전체 게임 인코딩이다(v6~v9는 Bloodlines·Tech Module 세그먼트를 더한 것, v10은 Bloodlines 프로모 Ruthless Leadership의 identity 1개, v11은 Immortality 카탈로그의 Imperium 25·Intrigue 11 identity, v12는 Experimentation·Tleilaxu 19 identity와 Bene Tleilax board 세그먼트, v13은 round 한정 Reveal Persuasion과 Combat Intrigue 좌석, v14는 Imperium Ceremony가 peek한 Intrigue 두 장(소유자 전용), v15는 Chairdog의 반환 대기와 Usurp의 빌린 Row 카드(좌석 scalar 49→51), v16은 Bloodlines contract token 8개의 identity(contract 세그먼트 11개 × 8 = +88), v17은 frame 종류 `conflict_end_trigger`, v18은 `intrigue_effects` 추가로 decision kind index가 이동, v19는 Long Live the Fighters의 두 단계 pick이 전용 frame 종류 `LONG_LIVE_FIGHTERS`로 옮겨져 decision kind index가 다시 이동(v17~v19는 모두 길이 불변), v20은 OQ-059의 보류된 contract 아이콘 좌석 scalar 1개(좌석 scalar 51→52, +4 int); 옵션을 끈 룰셋에서는 새 칸이 전부 0이지만 길이가 달라져 v8 이전 체크포인트는 거부된다) ([`rl-environment.md`](rl-environment.md)). 보드 22칸 완결 + 즉시 공개 + `fab266f`/`e6fc298` 수정 + sweep 확장(`853ecd4`) 반영 후의 교차 소크는 random 룰셋당 2,000판 + heuristic 룰셋당 1,000판(둘 다 `--rotate-leaders`) + draft 두 policy 각 룰셋당 500판, 전부 `--soundness-interval 25`를 켠 총 7,000판이 실패 0으로 통과한 상태다(2026-09-01, 아래 세션 요약. 그 전 단계에서는 random 룰셋당 3,000판 비회전 소크도 실패 0이었다).
+2026-09-17(M14 슬라이스 4 뒤)의 기준 결과는 pytest 1,703개 통과(카드 이미지 에셋이 없는 머신은 1,653 통과 + 1 skip — M14 슬라이스 1·2·3·4의 새 테스트 87 + 23 + 47 + 7개는 에셋과 무관하므로 앞 기준선 1,489에 더한 값이다; `app.js`를 고쳤다면 pytest로는 부족하고 브라우저 E2E [`scripts/e2e/`](../scripts/e2e/README.md)를 돌린다; `train` extra가 없으면 `tests/unit/training/test_torch_policy.py`가 추가로 skip된다), Ruff 통과, mypy 통과다. 현재 action codec은 `ACTION_CODEC_VERSION = 104`(기본 4,371개, CHOAM 4,657개, `promo_cards` 옵션 시 4,471/4,757개, `immortality` 옵션 시 9,326개 — graft 배치 변형과 카드 사본이 늘 때마다 커진다; `bloodlines`·`tech_module` 옵션은 별도 카탈로그로 훨씬 크고, `promo_cards`+`bloodlines`는 10,485개, promo+Bloodlines+Tech는 13,731개, CHOAM+Bloodlines는 11,128개, 다섯 옵션을 다 켜면 32,963개 — v98은 CHOAM+Bloodlines 카탈로그에만 contract token 8개의 행동과 `trash_intrigue_for_contract`를, v99는 `recall_conflict_agent_for_imperial_privilege`를, v100은 모든 카탈로그에 `skip_intrigue_acquisition`과 Change Allegiances의 세 번째 option을, v101은 Immortality 카탈로그에 `play_conflict_end_intrigue`(Harvest Cells 2장)·`decline_conflict_end_intrigue`를, v102는 Bloodlines+Immortality 카탈로그의 `give_intrigue_card`/`trash_intrigue_hand_card`/`trash_intrigue_for_contract`에 빠져 있던 Immortality Intrigue 사본을 더한다 — 소크가 적발; v103은 모든 카탈로그에 `use_intrigue_effect(section=0/1)`·`finish_intrigue_effects`를 더하고 Change Allegiances의 option을 하나로 되돌린다; v104는 Bloodlines 카탈로그의 `retreat_intrigue_troops` unit count를 12에서 12+7로 넓힌다 — Commander는 12개 병력과 별개 구성물이라 Conflict 유닛이 19까지 가고 Tactical Option이 그 전부를 제시하는데 카탈로그가 12에서 끊겨 있었다, 병렬 수집이 적발, 카탈로그마다 +28)이고, 관측은 `OBSERVATION_VERSION = 20`의 4,327-int 전체 게임 인코딩이다(v6~v9는 Bloodlines·Tech Module 세그먼트를 더한 것, v10은 Bloodlines 프로모 Ruthless Leadership의 identity 1개, v11은 Immortality 카탈로그의 Imperium 25·Intrigue 11 identity, v12는 Experimentation·Tleilaxu 19 identity와 Bene Tleilax board 세그먼트, v13은 round 한정 Reveal Persuasion과 Combat Intrigue 좌석, v14는 Imperium Ceremony가 peek한 Intrigue 두 장(소유자 전용), v15는 Chairdog의 반환 대기와 Usurp의 빌린 Row 카드(좌석 scalar 49→51), v16은 Bloodlines contract token 8개의 identity(contract 세그먼트 11개 × 8 = +88), v17은 frame 종류 `conflict_end_trigger`, v18은 `intrigue_effects` 추가로 decision kind index가 이동, v19는 Long Live the Fighters의 두 단계 pick이 전용 frame 종류 `LONG_LIVE_FIGHTERS`로 옮겨져 decision kind index가 다시 이동(v17~v19는 모두 길이 불변), v20은 OQ-059의 보류된 contract 아이콘 좌석 scalar 1개(좌석 scalar 51→52, +4 int); 옵션을 끈 룰셋에서는 새 칸이 전부 0이지만 길이가 달라져 v8 이전 체크포인트는 거부된다) ([`rl-environment.md`](rl-environment.md)). 보드 22칸 완결 + 즉시 공개 + `fab266f`/`e6fc298` 수정 + sweep 확장(`853ecd4`) 반영 후의 교차 소크는 random 룰셋당 2,000판 + heuristic 룰셋당 1,000판(둘 다 `--rotate-leaders`) + draft 두 policy 각 룰셋당 500판, 전부 `--soundness-interval 25`를 켠 총 7,000판이 실패 0으로 통과한 상태다(2026-09-01, 아래 세션 요약. 그 전 단계에서는 random 룰셋당 3,000판 비회전 소크도 실패 0이었다).
 
 ## 현재 구현 기준선
 
@@ -71,27 +71,14 @@ seed 블록에서 **+5.1 ~ +9.1%p**다([evaluation/baseline-2026-09-16.md](evalu
    정체 신호(평가 승률이 두세 번 연속 오차 안, 또는 이전 champion 상대 25~30%)가 보이면 PPO 슬라이스(수집 log-prob 기록 +
    clip + `--epochs` 3~4)를 넣고 같은 체크포인트에서 `--resume`한다. 학습 밖 후보 (a)에 전 확장 census가 남긴 RNG 가족
    (graft 변형·partner, Commander skill, `take_contract`, Spy post, Engineered Miracle의 `command_acquire_row_card`)을 더한다.
-0. (2026-09-17 저녁, **슬라이스 4 진행 중 — 세션이 급히 끝나 중간 상태**) M14 슬라이스 4의 **서버 쪽은 master에 있다**(`tests/server`
-   229개 통과·Ruff 통과까지 확인; 전체 pytest와 mypy는 이 마지막 커밋에서 다시 돌리지 못했다 — 직전 Python 변경 뒤 mypy는 통과였다):
-   `GET /whoami`(`access`·`admin`·관리자에게만 `public_url`), `create_app(public_url=)`·CLI `--public-url`, 그리고 **remote 서버에서만**
-   턴 종료 확정 대기 중에는 다음 좌석이 행동할 수 없고 snapshot의 `actions`도 `null`이다(`_turn_is_held_locked`; open 서버의 기존 API
-   계약 — 다음 좌석이 확정 없이 행동 가능 — 은 `test_app.py`의 draft 테스트가 고정하고 있어 그대로 뒀다). **클라이언트(브라우저 UI)는
-   master에 없고 `m14-slice4-client-wip` 브랜치에 WIP 커밋으로 있다**: 화면 전환(설정/landing/좌석 고르기/테이블), `#admin=`·`#game=`
-   진입, `mySeats()`, claim/release, 호스트 패널(방 링크), 대기 배너·이름·접속 점·내 차례 제목/신호음, 최종 순위표의 `innerHTML` 제거,
-   남의 행동 재렌더 때 고정 팝오버·스크롤 보존. 그 브랜치의 검증 상태: open 모드 초인종 E2E는 통과했지만 **마지막 수정
-   (`seatsChanged()`: players만 바뀐 알림에서 remote 클라이언트가 `reloadIdentity()`를 다시 부름) 뒤로는 open 모드 E2E를 다시 돌리지
-   못했고**, 원격 E2E(스크래치 `e2e_slice4.py`)는 입장·claim·교차 좌석 403·이름/접속 표시까지 통과한 뒤 **"호스트가 `applyAction(0)`을
-   반복해 턴 종료 확정 대기까지 가는" 단계에서 30초 타임아웃**으로 멈췄다 — 원인 미확인(용의자일 뿐: `seatsChanged()`의 추가 요청·재렌더와
-   `state.busy`/single-flight `refresh`의 상호작용; 그 수정 전 실행에서는 이 단계가 통과했다). 다음 세션은 그 브랜치를 체크아웃해
-   원인을 계측으로 확인하고(추측으로 고치지 말 것), open 모드 E2E 3종과 원격 E2E를 다시 통과시킨 뒤 master에 합친다. 스크래치 E2E
-   스크립트는 세션 scratchpad에 있어 사라질 수 있다 — 시나리오는 아래 슬라이스 4 항목과 설계 문서 10절에 있다.
-0. (2026-09-17, **진행 중 — 슬라이스 1~3 완료, 다음은 슬라이스 4**, 학습과 병행 가능) **M14 원격 멀티플레이.** 사용자 요구:
+0. (2026-09-17 밤, **슬라이스 4 완료 — 다음은 슬라이스 5 자동 저장과 복구**) M14 슬라이스 4의 WIP 클라이언트(`m14-slice4-client-wip`)를 이어받아 멈춤의 원인을 계측으로 확정하고 고친 뒤 master에 합쳤다(아래 "M14 슬라이스 4 마감 세션 요약"). 원격 한 판의 최소 구성이 갖춰졌다: `uv run dune-imperium-server --remote --host <tailscale 주소> --public-url http://<그 주소>:8000`으로 띄우고 콘솔의 관리자 링크로 들어가 방을 만든 뒤 호스트 패널의 방 링크를 보낸다. **`app.js`를 고치면 [`scripts/e2e/`](../scripts/e2e/README.md)의 세 스크립트를 돌린다**(스크래치 venv + 시스템 Chrome, 합쳐 2분 이내; pytest는 JavaScript를 실행하지 않는다). 다음 슬라이스 5(설계 4.7절·11절): `write_autosave`, 턴이 넘어갈 때의 저장(게임당 파일 하나), 서버 강제 종료 → 재시작 → 자동 저장에서 이어 가기, CLI `--no-autosave`, 그리고 슬라이스 4가 남긴 호스트 패널의 저장·자동 저장 목록. 그 뒤 슬라이스 6(Tailscale로 실제 원격 한 판, README의 호스트 절차).
+0. (2026-09-17, **진행 중 — 슬라이스 1~4 완료, 다음은 슬라이스 5**, 학습과 병행 가능) **M14 원격 멀티플레이.** 사용자 요구:
    "원격 친구들이랑 각자 PC에서". 설계는 [multiplayer-design.md](multiplayer-design.md)(같은 날 사용자가 D1~D7을 제안대로
    확정), 마일스톤은 [implementation-plan.md](implementation-plan.md) M14. 끝난 것: **슬라이스 1**(접근 계층: `server/access.py`,
    좌석 claim/release·관리자 쿠키·진행 중 seed 숨김·CLI `--remote`), **슬라이스 2**(`GET /games/{id}/snapshot` + 서버가 정하는
    로그 `epoch` + gzip, `app.js`의 single-flight `refresh`), **슬라이스 3**(초인종: `add_change_listener`·`DoorbellHub`·
    `GET /games/{id}/events`, 토큰 대조 presence `players[].online`, `EventSource` + 2초 폴링 fallback, 종료 신호에서 스트림을
-   끝내는 CLI). **다음은 슬라이스 4 — 클라이언트 원격 UX**(설계 7절): (1) 진입 — `location.hash`의 `admin=`은
+   끝내는 CLI). **슬라이스 4 — 클라이언트 원격 UX**(설계 7절; **완료**, 위 항목과 아래 세션 요약 — 이하는 착수 전에 적은 작업 목록이다): (1) 진입 — `location.hash`의 `admin=`은
    `POST /auth/admin` 뒤 `history.replaceState`로 지우고, `game=`이면 `/me`(= snapshot의 `you`, 이미 `state.me`에 있다)로 내
    좌석을 보고 게임 화면 또는 좌석 고르기 화면으로; (2) `humanSeats()` 자리에 `mySeats()`(= `state.me.seats`; open 모드는 모든
    사람 좌석이라 지금과 같다); (3) claim 뒤 **스트림을 다시 연다**(스트림은 요청 시점의 쿠키로 presence에 등록된다);
@@ -101,9 +88,8 @@ seed 블록에서 **+5.1 ~ +9.1%p**다([evaluation/baseline-2026-09-16.md](evalu
    `closePopover()`); (7) 호스트 패널(방 링크·좌석 현황·release, CLI `--public-url`), remote에서 설정 화면은 관리자만·Seed 입력
    숨김; (8) 403(좌석을 잃음)·`closed` 처리. 검증은 스크래치 Playwright의 브라우저 컨텍스트 여러 개(쿠키 분리)로 `--remote`
    서버에 대해: 방 생성 → 입장 → claim → 몇 턴 → 새로고침 복귀 → release → 재claim. 범위는 `server/static/`·`cli/server.py`·
-   `tests/server/`뿐이라 codec·관측·저장 형식 버전은 그대로다. 주의: 브라우저 UI는 슬라이스 4 전까지 `--remote` 서버에서
-   동작하지 않는다(좌석 요청 403) — 그때까지 원격 흐름은 `tests/server/test_remote_app.py`·`test_snapshot_app.py`·
-   `test_events_app.py`가 검증한다. 브라우저 E2E 환경은 저장소 밖 스크래치다(이 WSL 박스: `uv venv` + `playwright` 모듈,
+   `tests/server/`뿐이라 codec·관측·저장 형식 버전은 그대로다. 브라우저 UI는 슬라이스 4부터 `--remote` 서버에서 동작한다.
+   브라우저 E2E 스크립트는 [`scripts/e2e/`](../scripts/e2e/README.md)에 있고 실행 환경만 저장소 밖 스크래치다(WSL 박스: `uv venv` + `playwright` 모듈,
    캐시된 `~/.cache/ms-playwright/chromium_headless_shell-1234`를 `executable_path`로, 버전 심볼을 갖춘 `libasound.so.2`
    stub을 `LD_LIBRARY_PATH`에). 설계의 수치는 `uv run python scripts/measure_server_payloads.py --seed 20260917`로 재현한다.
 0. (2026-09-16 심야, 완료 → 2026-09-17 0번) **M10 학습 재개**(관측 v20·codec v104라 체크포인트 전부 새로; pure self-play로 시작해
@@ -275,6 +261,13 @@ uv run dune-imperium-sweep --games 100 --ruleset both --workers 8 --leader-draft
 # 로컬 플레이 서버 (ui extra 필요; 기본 http://127.0.0.1:8000)
 uv run dune-imperium-server
 
+# 원격 멀티플레이 서버 (M14): 콘솔에 찍히는 관리자 링크로 들어가 방을 만들고 방 링크를 보낸다
+uv run dune-imperium-server --remote --host <tailscale 주소> --public-url http://<tailscale 주소>:8000
+
+# 브라우저 E2E (app.js를 고친 뒤; Playwright는 스크래치 venv에만 — scripts/e2e/README.md)
+uv venv /tmp/dune-e2e-venv --python 3.12 && uv pip install --python /tmp/dune-e2e-venv/bin/python playwright
+(cd scripts/e2e && for s in remote.py open_mode.py 'races.py --ab'; do /tmp/dune-e2e-venv/bin/python $s || break; done)
+
 # UI 카드 이미지 캐시 (선택). 우선: 비공개 Dune-Imperium-assets 저장소를 형제
 # 디렉터리에 clone하고 그 README대로 저장소 루트에 assets symlink 하나를 만든다.
 # 폴백/신규 카드 채움: 아래 fetch 스크립트 (빈 파일만 받는다)
@@ -297,6 +290,8 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 
 ## 원격 저장소 인계 주의
 
+2026-09-17 밤 M14 슬라이스 4 마감 세션(Mac mini): `m14-slice4-client` 브랜치(WIP 커밋 `b319081` + 이 세션의 커밋)를 master 쪽에서 `--no-ff`로 머지했다. **push는 하지 않았다** — `git log origin/master..master`로 확인하고 push한다. 원격의 `origin/m14-slice4-client-wip`는 머지된 뒤에도 남아 있으니 push 뒤에 지워도 된다(`git push origin --delete m14-slice4-client-wip`; 사용자 판단). 로컬 워크트리 `.claude/worktrees/m14-slice4-client`도 같은 때 정리한다.
+
 2026-09-17 학습 전 최종 점검 세션(WSL 노트북) 종료 시점에 문서 커밋 3건(테스트 수 1,539 정정, 전 확장 학습 전 점검 요약과 0번 다음 작업, 이 문단)을 `git push git@github.com:jungcheolseung/Dune-Imperium.git master`로 push했다. 학습은 Mac mini 또는 14700K PC에서 진행하기로 했으므로, 그 기기에서는 `git pull` 뒤 이 문서의 0번 명령을 그대로 쓴다(체크포인트 폴더 `checkpoints/`는 git 무시이며 기기 간에는 파일을 복사한다).
 
 2026-09-08 M13 세션 종료 시점에 이 세션의 master 커밋 전부(Immortality 슬라이스 1~6의 `Play`/`Document` 쌍, UI, 소크 수정)를 `git push git@github.com:jungcheolseung/Dune-Imperium.git master`로 push했고, 에셋 저장소의 3개 커밋(Ruthless Leadership·Immortality·Experimentation의 `content_id`)도 같은 ssh URL 방식으로 push했다. 새 세션은 `git fetch origin` 뒤 양방향 차이를 확인하고 일치하면 이 문서의 기준선을 그대로 쓴다.
@@ -304,6 +299,53 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 2026-09-07: `bloodlines` 브랜치(35 커밋)를 master 쪽에서 `--no-ff`로 머지했고(`dbd9b73`), 같은 날 저녁 슬라이스 6 커밋 5건과 이 문서 갱신을 master에 직접 올렸다. 아직 push하지 않았다면 `git log origin/master..master`로 확인한다. 비공개 에셋 저장소(`assets` symlink → `Dune-Imperium-assets`)에도 같은 날 manifest 커밋 6건(Bloodlines 카드 44장 content id, Leader 8종, Tuek's Sietch 타일 이미지, Twisted·Navigation 카드 키, Kota Odax의 content id `43c25fc`)이 있으니 다른 머신에서는 그쪽도 pull한다.
 
 2026-09-04 세션 종료 시점에 이 세션의 커밋 전부(보드·카드 아이콘 분리 v86/v87, 서버·UI 확인 흐름과 마커, Reveal 순서 v88, OQ-028 조건 판정 시점, OQ-029 등록)를 `origin/master`에 push했다. 새 세션은 `git fetch origin` 뒤 `git log origin/master..master`와 반대 방향을 확인하고, 일치하면 이 문서의 기준선을 그대로 쓴다. 에셋 저장소(`Dune-Imperium-assets`)의 `5b55e45` 1개 미push 여부는 그 저장소에서 확인한다. 원격에는 병합하지 않은 `kyungtae` 브랜치가 있다. 새 세션은 `git log origin/master..master`와 반대 방향을 모두 확인하고, checkout이 `853ecd4`보다 이전이면 이 문서의 989개 테스트·codec v84 기준선이 실제 코드와 일치하지 않는다. **다른 머신에서 이어서 작업한다면 먼저 이 머신에서 push가 필요하다.** 새 머신의 UI 카드 이미지·아이콘·보드 스캔은 비공개 `Dune-Imperium-assets` 저장소를 clone해 symlink로 연결한다(그 README 참고; 루트의 `assets` symlink 하나로 cards·icons·board·rulebooks를 모두 연결). 카드 매핑은 그 저장소의 `cards/manifest.json`에만 있으므로 접근이 없으면 텍스트 UI로 동작한다.
+
+## 2026-09-17 밤 M14 슬라이스 4 마감 세션 요약 (Mac mini, `m14-slice4-client` 워크트리 → master, 관측 v20, codec v104)
+
+- 사용자 지시: "다음으로 해야 할 작업 이어서 해, `origin/m14-slice4-client-wip`에 미완료 작업이 있었던 것 같다". 원격과 일치(양방향 0)와
+  master 기준선(1,702 통과·Ruff·mypy — 앞 세션이 마지막 커밋에서 못 돌린 전체 pytest·mypy 포함)을 확인한 뒤 그 브랜치를
+  `.claude/worktrees/m14-slice4-client`(로컬 브랜치 `m14-slice4-client`)로 받아 WIP 커밋 위에 쌓았다. 앞 세션의 스크래치 E2E는 WSL
+  기기에 있어 없었으므로 이 Mac에 스크래치 venv + Playwright(시스템 Chrome, 브라우저 다운로드 없음)로 다시 만들었다.
+- **재현**: 인수인계의 "호스트가 `applyAction(0)`을 반복하는 단계의 30초 타임아웃"은 이 Mac에서 같은 모양으로는 재현되지 않았다
+  (그 스크립트가 없어 같은 실행은 아니다). 그래서 "서버가 지목하는 좌석이 한 스텝 두고 → 모든 페이지가 서버 상태로 수렴하는가"를
+  매 스텝 검사하는 드라이버로 바꾸고, 용의자(`seatsChanged()`의 single-flight 밖 요청)를 **응답 지연 주입으로 직접 계측**했다.
+- **원인 확정(개입)**: players만 바뀐 초인종 → `seatsChanged()` → `reloadIdentity()`가 seatless snapshot을 받아 `state.summary`·
+  `state.me`를 덮어쓴다. 그 응답 하나를 읽자마자 0.7초 붙잡고 그 사이 상대가 턴 종료를 확정하게 하면, 기다리던 페이지의 summary
+  이력이 `13/0/1 → 13/null/1 → 13/0/1`(revision/confirmation/owner)로 **과거로 되돌아가고**, 배너는 "좌석 0의 턴 종료 확정을 기다리는
+  중"인데 서버는 그 페이지의 차례다. 초인종이 더 올 일이 없으므로 영구 정지다(양쪽이 서로를 기다린다). WAN·HTTP/1.1의 6연결 제한
+  아래에서는 지연 주입 없이도 나는 순서다. 앞 세션의 증상(행동 버튼이 안 나타나 30초 대기)과 부합하지만 **그 실행 자체를 재현한
+  것은 아니므로 "그때의 원인"이 아니라 "같은 증상을 만드는 확정된 결함"으로 적는다.**
+- **고침**(`90bb420`): `state.summary`·`state.me`는 `openGame`과 `adoptSnapshot`만 쓴다. `reloadIdentity()`·`seatsChanged()` 제거,
+  claim·release·좌석 변경은 전부 `refresh(summary, {seat})`(먼저 물을 좌석을 호출자가 알려 줄 수 있다: 방금 claim한 좌석, 또는 자리를
+  비운 뒤의 `null`), `pickViewSeat(summary, seats)`는 **그 응답의 `you.seats`**에서 고르고, 좌석 상실은 `adoptSnapshot`이 "있었는데
+  없다"로 감지해 좌석 고르기로 보낸다. snapshot 403은 seatless로 다시 물어 해결한다(줄 안에서).
+- **둘째 경합**(수렴 검사가 8회에 1회꼴로 적발 → 개입으로 재현): 입장하는 페이지는 스트림을 열면서 snapshot을 요청하는데, 그
+  snapshot이 자기 스트림의 연결보다 먼저 읽히고(`online: false`) 연결 초인종(`players` 채택)보다 늦게 도착하면 옛 `players`가
+  되살아난다. 스트림 0.3초·snapshot 0.9초 지연으로 재현: 추가 바퀴를 끈 `app.js`는 stale, 현재 코드는 수렴(`races.py --ab`).
+  고침: players 초인종이 비행 중에 오면 한 바퀴 더. 이 경합은 슬라이스 3부터 있었지만 그때는 `online`을 그리지 않아 보이지 않았다.
+- players만 바뀐 초인종은 **내 좌석의 `claimed`·`name`이 바뀐 때만** 요청을 만든다(접속 점만 바뀐 알림은 요청 0개 — 슬라이스 3의
+  설계 그대로). 내 좌석이 비었다고 나오면 seatless로 물어 403을 만들지 않는다. claim·release는 `state.busy`(자기 초인종 무시, 이중
+  클릭 방지). POST의 403은 refresh를 거쳐 좌석 고르기로.
+- **E2E가 드러낸 다른 결함 둘**: (1) remote 호스트에게 Seed 입력 칸이 보였다 — `fieldset label { display: block }`이 UA의
+  `[hidden]`을 이긴다 → `[hidden] { display: none !important }`. (2) 서버(`9361562`): 스트림을 다시 여는 페이지가 방금 요청한
+  `EventSource`를 닫으면 `@app.middleware("http")`(BaseHTTPMiddleware)가 `RuntimeError("No response returned.")`를 내고 uvicorn이
+  ERROR 트레이스백을 찍는다 — 1 ms 안에 닫은 소켓 4/4 재현. `no-cache` 헤더를 순수 ASGI wrapper `_RevalidateUIFiles`로 옮겨 0/7,
+  회귀 테스트 `test_a_stream_closed_before_its_first_byte_is_not_a_server_error`(옛 middleware에서 실패함을 확인).
+- **리뷰 워크플로**(ultracode; finder 5관점은 Sonnet·low, 반박 검증만 세션 모델; 9 agent): 4건 중 확정 2 — 설계 7절 1항의 "마지막
+  game id 기억 + 이어 하기" 누락(→ landing 화면의 버튼, 404면 기억 삭제), claim 응답이 나가기 뒤에 도착하면 테이블이 다시 뜸(→
+  `openTicket`). 기각 2(검토 진입 중 나가기의 null 참조는 잡히고 무해 — 방어 코드만 추가; POST의 일반 실패 뒤 refresh 없음은 그 경로로
+  놓치는 초인종이 없음).
+- 검증: `scripts/e2e/remote.py` 56항목 5회 연속, `open_mode.py` 44항목(300 스텝 = POST 300 = snapshot 300, 클라이언트 로그 == 서버
+  로그, 되돌리기 epoch, 검토 경합, 초인종 30 ms·스트림 차단 시 5.0초 뒤 폴링 전환·1.5초에 반영, 삭제 통지), `races.py --ab`, 실패한
+  요청·JS 예외·서버 오류 0. pytest 1,703·Ruff·mypy.
+- **E2E를 저장소에 둔다**(`74667eb`, [`scripts/e2e/`](../scripts/e2e/README.md)): 설계 10절은 "저장소 밖 스크래치"였지만 그 이유는
+  의존성이었다. 스크립트가 세션 스크래치에만 있으면 기기를 옮길 때마다 사라진다(이번에 전부 다시 썼다). Playwright는 여전히
+  프로젝트 의존성이 아니다. 테스트 작성 함정 둘을 README에 적었다: 동기 API의 route handler에서 `time.sleep`하면 다른 handler도 멈춘다
+  (두 요청을 다르게 늦추려면 async API), handler에 기본값 매개변수를 두면 Playwright가 둘째 인자로 `Request`를 넣는다.
+- 위임: `scripts/e2e`의 Ruff 정리(E501 15건 등)만 `card-implementer`에 맡기고 검토했다. 원인 분석·수정·E2E 설계는 메인 세션.
+- 내 테스트의 오판 하나(기록용): "AI 좌석을 지나 턴이 첫 좌석으로 돌아온다"를 기다리다 타임아웃 — 첫 좌석의 첫 행동이 Reveal이면
+  그 라운드에는 돌아오지 않는다. 제품 결함이 아니라 기대가 틀린 것이었고, 그래서 시나리오 고정 대신 "서버가 지목하는 좌석"
+  드라이버로 바꿨다.
 
 ## 2026-09-17 원격 멀티플레이 설계·슬라이스 1 세션 요약 (master, 관측 v20, codec v104, 변경은 `server/`·`cli/server.py`뿐)
 
