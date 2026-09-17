@@ -18,23 +18,31 @@ them between the request and ``Credentials``; the session layer judges.
 Cookies rather than header tokens because ``EventSource`` and ``<img>``
 cannot send headers, and because a token must never show in the address
 bar of a player who is sharing their screen.
+
+``GET /games/{id}/events`` is the doorbell (M14 slice 3, ``events``): a
+Server-Sent Events stream of public fields that tells a browser *that* the
+game changed. What changed it then fetches itself, through the judged
+snapshot call, so the stream never has to be filtered per seat.
 """
 
 import os
-from collections.abc import Awaitable, Callable, Iterator
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Final
 
+import anyio
 from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from dune_imperium.display.images import resolve_card_images
 from dune_imperium.server.access import AccessMode, Credentials
 from dune_imperium.server.catalog import build_catalog
+from dune_imperium.server.events import DEFAULT_HEARTBEAT_SECONDS, DoorbellHub
 from dune_imperium.server.persistence import (
     SaveError,
     SaveStore,
@@ -233,10 +241,13 @@ def create_app(
     icons_dir: Path | None = None,
     board_image: Path | None = None,
     bene_tleilax_image: Path | None = None,
+    heartbeat_seconds: float = DEFAULT_HEARTBEAT_SECONDS,
 ) -> FastAPI:
     """Build the local play server around one session manager."""
 
     sessions = manager if manager is not None else GameSessionManager()
+    hub = DoorbellHub()
+    sessions.add_change_listener(hub.publish)
     saves = SaveStore(
         saves_dir if saves_dir is not None else default_saves_directory()
     )
@@ -264,6 +275,9 @@ def create_app(
         else default_bene_tleilax_image_path()
     )
     app = FastAPI(title="Dune: Imperium - Uprising local play server")
+    # Whoever runs the server ends the open event streams through this when
+    # it is asked to stop (``cli.server``); they never end by themselves.
+    app.state.doorbell_hub = hub
     # JSON and the UI files shrink four- to tenfold, which is what a remote
     # player's refresh is made of. Starlette's default exclusions already
     # skip the card and board scans and ``text/event-stream``.
@@ -374,6 +388,50 @@ def create_app(
                 log_epoch=log_epoch,
                 credentials=_credentials(request, game_id),
             )
+
+    @app.get("/games/{game_id}/events")
+    async def game_events(game_id: str, request: Request) -> StreamingResponse:
+        credentials = _credentials(request, game_id)
+        with _http_errors():
+            # An unknown game is a plain 404, not a stream that ends at once.
+            # Session calls take the session lock, which an advancing AI seat
+            # may hold for a while, so they stay off the event loop.
+            await run_in_threadpool(sessions.doorbell, game_id)
+
+        async def current() -> JsonObject | None:
+            try:
+                return await run_in_threadpool(sessions.doorbell, game_id)
+            except UnknownGameError:
+                return None
+
+        async def body() -> AsyncIterator[str]:
+            # Connecting inside the generator pairs it with the disconnect
+            # below even when the client is gone before the first byte.
+            try:
+                connection = await run_in_threadpool(
+                    sessions.connect, game_id, credentials=credentials
+                )
+            except UnknownGameError:
+                connection = None
+            try:
+                async for chunk in hub.stream(
+                    game_id, current, heartbeat_seconds=heartbeat_seconds
+                ):
+                    yield chunk
+            finally:
+                if connection is not None:
+                    # The stream ends by cancellation when the client
+                    # leaves; presence must still be taken down.
+                    with anyio.CancelScope(shield=True):
+                        await run_in_threadpool(
+                            sessions.disconnect, game_id, connection
+                        )
+
+        return StreamingResponse(
+            body(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
     @app.post("/games/{game_id}/seats/{seat}/claim")
     def claim_seat(

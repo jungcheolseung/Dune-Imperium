@@ -5,10 +5,12 @@ import ipaddress
 import os
 from collections.abc import Mapping, Sequence
 from pathlib import Path
+from types import FrameType
 
 from dune_imperium.server.access import AccessMode, new_token
 
 ADMIN_KEY_ENVIRONMENT = "DUNE_IMPERIUM_ADMIN_KEY"
+_GRACEFUL_SHUTDOWN_SECONDS = 3
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -137,15 +139,40 @@ def main(argv: Sequence[str] | None = None) -> int:
     if admin_key is not None:
         print("Remote multiplayer access is on. Host admin link (keep it private):")
         print(f"  {admin_link(arguments.host, arguments.port, admin_key)}")
-    uvicorn.run(
-        create_app(
-            manager=GameSessionManager(access=access, admin_key=admin_key),
-            saves_dir=arguments.saves_dir,
-            card_images_dir=arguments.card_images_dir,
-        ),
-        host=arguments.host,
-        port=arguments.port,
+    app = create_app(
+        manager=GameSessionManager(access=access, admin_key=admin_key),
+        saves_dir=arguments.saves_dir,
+        card_images_dir=arguments.card_images_dir,
     )
+    hub = app.state.doorbell_hub
+
+    class PlayServer(uvicorn.Server):
+        """End the doorbell streams as soon as the server is asked to stop.
+
+        An event stream never ends by itself and uvicorn waits for open
+        responses before it exits, so Ctrl+C would otherwise hang for as
+        long as a browser tab stays open.
+        """
+
+        def handle_exit(self, sig: int, frame: FrameType | None) -> None:
+            hub.close()
+            super().handle_exit(sig, frame)
+
+    server = PlayServer(
+        uvicorn.Config(
+            app,
+            host=arguments.host,
+            port=arguments.port,
+            # The backstop, should a stream fail to end on the signal.
+            timeout_graceful_shutdown=_GRACEFUL_SHUTDOWN_SECONDS,
+        )
+    )
+    try:
+        server.run()
+    except KeyboardInterrupt:
+        # uvicorn re-raises the signal it shut down on; ``uvicorn.run``
+        # swallows it the same way.
+        pass
     return 0
 
 

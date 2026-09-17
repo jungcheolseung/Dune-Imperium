@@ -785,13 +785,17 @@ function enterGame(summary) {
   document.body.classList.add("in-game");
   el("leave-game").hidden = false;
   el("save-game").hidden = false;
-  refresh(summary).catch((error) => {
-    el("game-error").textContent = `게임 상태 조회 실패 (${error.message})`;
-    el("game-error").hidden = false;
-  });
+  refresh(summary).catch(showRefreshError);
+  openDoorbell();
+}
+
+function showRefreshError(error) {
+  el("game-error").textContent = `게임 상태 조회 실패 (${error.message})`;
+  el("game-error").hidden = false;
 }
 
 function leaveGame() {
+  closeDoorbell();
   setSpotlight(null);
   state.gameId = null;
   state.summary = null;
@@ -948,6 +952,109 @@ function refresh(summary) {
     }
   })();
   return refreshFlight;
+}
+
+/* ---------- doorbell (M14 slice 3) ---------- */
+
+/* The server rings when the game changes: a Server-Sent Events stream of
+   public fields that says *that* something changed; what changed is then
+   fetched through refresh(). Where the stream does not get through (a
+   proxy that buffers or refuses SSE), the same check runs on a poll of
+   the summary instead. */
+const DOORBELL_GREETING_MS = 5000;
+const DOORBELL_MAX_ERRORS = 3;
+const DOORBELL_POLL_MS = 2000;
+
+let doorbell = null;
+
+function openDoorbell() {
+  closeDoorbell();
+  const gameId = state.gameId;
+  if (!gameId) return;
+  const bell = { gameId, source: null, greetTimer: 0, pollTimer: 0, errors: 0 };
+  doorbell = bell;
+  if (typeof EventSource === "undefined") {
+    startDoorbellPolling(bell);
+    return;
+  }
+  const source = new EventSource(`/games/${gameId}/events`);
+  bell.source = source;
+  const heard = (event) => {
+    if (doorbell !== bell) return;
+    bell.errors = 0;
+    window.clearTimeout(bell.greetTimer);
+    onDoorbell(JSON.parse(event.data));
+  };
+  source.addEventListener("hello", heard);
+  source.addEventListener("change", heard);
+  source.addEventListener("closed", () => {
+    if (doorbell !== bell) return;
+    closeDoorbell();
+    onGameGone();
+  });
+  /* EventSource reconnects by itself; only a stream that keeps failing,
+     or never greets, is given up for polling. */
+  source.onerror = () => {
+    if (doorbell !== bell) return;
+    bell.errors += 1;
+    if (bell.errors >= DOORBELL_MAX_ERRORS) startDoorbellPolling(bell);
+  };
+  bell.greetTimer = window.setTimeout(() => {
+    if (doorbell === bell) startDoorbellPolling(bell);
+  }, DOORBELL_GREETING_MS);
+}
+
+function startDoorbellPolling(bell) {
+  if (bell.pollTimer) return;
+  window.clearTimeout(bell.greetTimer);
+  if (bell.source) {
+    bell.source.close();
+    bell.source = null;
+  }
+  bell.pollTimer = window.setInterval(async () => {
+    if (doorbell !== bell || state.busy) return;
+    try {
+      /* A summary has every field a doorbell payload is compared by. */
+      onDoorbell(await api(`/games/${bell.gameId}`));
+    } catch (error) {
+      if (error.status === 404 && doorbell === bell) {
+        closeDoorbell();
+        onGameGone();
+      }
+    }
+  }, DOORBELL_POLL_MS);
+}
+
+function closeDoorbell() {
+  const bell = doorbell;
+  doorbell = null;
+  if (!bell) return;
+  window.clearTimeout(bell.greetTimer);
+  window.clearInterval(bell.pollTimer);
+  if (bell.source) bell.source.close();
+}
+
+/* A stale picture is refreshed; a change to `players` alone (a name, a
+   claim, who is online) is public as it stands and needs no request. */
+function onDoorbell(bell) {
+  const summary = state.summary;
+  if (!summary || state.busy) return;
+  if (
+    bell.revision !== summary.revision ||
+    bell.undo_count !== summary.undo_count ||
+    bell.log_count !== summary.log_count ||
+    bell.confirmation !== summary.confirmation ||
+    bell.finished !== summary.finished
+  ) {
+    refresh().catch(showRefreshError);
+  } else if (bell.players) {
+    summary.players = bell.players;
+  }
+}
+
+function onGameGone() {
+  el("game-error").textContent = "이 게임은 서버에서 삭제되었습니다.";
+  el("game-error").hidden = false;
 }
 
 async function applyAction(index) {

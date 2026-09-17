@@ -22,12 +22,22 @@ saving, loading and deleting games, releasing seats) behind the admin key,
 and keeps the game seed out of every summary until the game has finished:
 the engine is deterministic, so the seed plus the public actions would
 spell out every hidden deck order.
+
+Every change rings a doorbell (M14 slice 3): listeners get a small payload
+of public fields, built under the session lock but delivered after it is
+released, so a listener may read the session again. The payload says *that*
+something changed and carries nothing a seat could not see; a client that
+hears it fetches its own snapshot through the judged calls above. Open
+event streams register as connections, which is all presence is: a human
+seat is online while some connection holds its current token.
 """
 
+import itertools
 import random
 import re
 import threading
 import uuid
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field, replace
 from enum import StrEnum
 from typing import Final
@@ -88,6 +98,11 @@ _MAX_AUTO_STEPS: Final = 30_000
 # line of a seat panel.
 PLAYER_NAME_MAX_LENGTH: Final = 20
 
+# A doorbell listener gets the game ID and the public payload, or ``None``
+# once the game is gone. It runs on the thread that made the change, after
+# the session lock was released.
+type ChangeListener = Callable[[str, JsonObject | None], None]
+
 
 class SessionError(ValueError):
     """Base error for invalid game-session requests."""
@@ -145,6 +160,12 @@ class GameSession:
     # Like everything above they change only under ``lock``.
     seat_tokens: dict[int, str] = field(default_factory=dict)
     seat_names: dict[int, str] = field(default_factory=dict)
+    # Doorbell sequence (M14 slice 3): bumped by every rung change so a
+    # listener can drop a payload that arrives after a newer one.
+    event_seq: int = 0
+    # Open event streams: connection ID -> the seat tokens it presented.
+    # A seat is online while one of them still matches the seat's token.
+    connections: dict[int, frozenset[str]] = field(default_factory=dict)
     lock: threading.Lock = field(default_factory=threading.Lock)
 
 
@@ -178,6 +199,8 @@ class GameSessionManager:
         self._admin_key = admin_key
         self._sessions: dict[str, GameSession] = {}
         self._registry_lock = threading.Lock()
+        self._listeners: list[ChangeListener] = []
+        self._connection_ids = itertools.count(1)
 
     @property
     def access(self) -> AccessMode:
@@ -208,6 +231,75 @@ class GameSessionManager:
         if self._access is AccessMode.OPEN:
             raise SessionError("an open server has no admin key to log in with")
         self.require_admin(Credentials(admin_key=key))
+
+    def add_change_listener(self, listener: ChangeListener) -> None:
+        """Ring ``listener`` after every change to any game of this manager.
+
+        It is called on the thread that made the change, once the session
+        lock is released, with the game ID and the doorbell payload
+        (``doorbell``), or ``None`` when the game was deleted. It must not
+        raise and should return quickly; the play server's listener only
+        hands the payload to its event loop.
+        """
+
+        self._listeners.append(listener)
+
+    def doorbell(self, game_id: str) -> JsonObject:
+        """Return the current doorbell payload of one game without ringing.
+
+        The payload is public by construction: a revision, counters, whose
+        decision it is, and the ``players`` list every summary carries. It
+        needs no credentials beyond knowing the game ID.
+        """
+
+        session = self._get(game_id)
+        with session.lock:
+            return _doorbell(session, self._summary_locked(session))
+
+    def connect(self, game_id: str, *, credentials: Credentials = ANONYMOUS) -> int:
+        """Register one open event stream and return its connection ID.
+
+        A connection is what presence is made of: a human seat is online
+        while some connection presented its current token (on an open
+        server, while any connection exists). The doorbell only rings if
+        that changed somebody's ``online`` flag.
+        """
+
+        session = self._get(game_id)
+        connection_id = next(self._connection_ids)
+        with session.lock:
+            before = self._online_seats_locked(session)
+            session.connections[connection_id] = credentials.seat_tokens
+            bell = (
+                self._ring_locked(session)
+                if self._online_seats_locked(session) != before
+                else None
+            )
+        if bell is not None:
+            self._publish(game_id, bell)
+        return connection_id
+
+    def disconnect(self, game_id: str, connection_id: int) -> None:
+        """Forget one event stream; unknown games and IDs are tolerated.
+
+        A stream outlives neither its game nor a server that is shutting
+        down, and both may go first.
+        """
+
+        try:
+            session = self._get(game_id)
+        except UnknownGameError:
+            return
+        with session.lock:
+            before = self._online_seats_locked(session)
+            session.connections.pop(connection_id, None)
+            bell = (
+                self._ring_locked(session)
+                if self._online_seats_locked(session) != before
+                else None
+            )
+        if bell is not None:
+            self._publish(game_id, bell)
 
     def create_game(
         self,
@@ -395,7 +487,10 @@ class GameSessionManager:
             elif not token_matches(token, credentials.seat_tokens):
                 raise SeatTakenError(f"seat {seat} is already taken")
             session.seat_names[seat] = cleaned
-            return SeatClaim(token=token, summary=self._summary_locked(session))
+            claim = SeatClaim(token=token, summary=self._summary_locked(session))
+            bell = self._ring_locked(session, claim.summary)
+        self._publish(game_id, bell)
+        return claim
 
     def release_seat(
         self, game_id: str, seat: int, *, credentials: Credentials = ANONYMOUS
@@ -421,7 +516,10 @@ class GameSessionManager:
                 )
             session.seat_tokens.pop(seat, None)
             session.seat_names.pop(seat, None)
-            return self._summary_locked(session)
+            summary = self._summary_locked(session)
+            bell = self._ring_locked(session, summary)
+        self._publish(game_id, bell)
+        return summary
 
     def view(
         self, game_id: str, seat: int, *, credentials: Credentials = ANONYMOUS
@@ -485,7 +583,10 @@ class GameSessionManager:
             action = actions[index]
             _apply_step(session, action)
             self._settle_locked(session, seat)
-            return self._summary_locked(session)
+            summary = self._summary_locked(session)
+            bell = self._ring_locked(session, summary)
+        self._publish(game_id, bell)
+        return summary
 
     def confirm_turn(
         self,
@@ -512,7 +613,10 @@ class GameSessionManager:
                 raise SessionError(f"seat {seat} has no turn end to confirm")
             session.awaiting_confirmation = None
             self._advance_locked(session)
-            return self._summary_locked(session)
+            summary = self._summary_locked(session)
+            bell = self._ring_locked(session, summary)
+        self._publish(game_id, bell)
+        return summary
 
     def undo(
         self,
@@ -552,7 +656,10 @@ class GameSessionManager:
             session.undo_count += 1
             # The rewound state is again this seat's own decision.
             session.awaiting_confirmation = None
-            return self._summary_locked(session)
+            summary = self._summary_locked(session)
+            bell = self._ring_locked(session, summary)
+        self._publish(game_id, bell)
+        return summary
 
     def log(
         self,
@@ -594,6 +701,7 @@ class GameSessionManager:
             if game_id not in self._sessions:
                 raise UnknownGameError(f"unknown game: {game_id}")
             del self._sessions[game_id]
+        self._publish(game_id, None)
 
     def save_game(
         self,
@@ -801,6 +909,48 @@ class GameSessionManager:
             ],
         }
 
+    def _online_seats_locked(self, session: GameSession) -> frozenset[int]:
+        """Return the human seats some open event stream currently holds."""
+
+        humans = [
+            seat
+            for seat, assignment in enumerate(session.seats)
+            if assignment == HUMAN_SEAT
+        ]
+        if self._access is AccessMode.OPEN:
+            # One browser plays every human seat there, so presence only
+            # says whether a browser has the table open at all.
+            return frozenset(humans) if session.connections else frozenset()
+        return frozenset(
+            seat
+            for seat in humans
+            if (token := session.seat_tokens.get(seat)) is not None
+            and any(
+                token_matches(token, presented)
+                for presented in session.connections.values()
+            )
+        )
+
+    def _ring_locked(
+        self, session: GameSession, summary: JsonObject | None = None
+    ) -> JsonObject:
+        """Bump the doorbell sequence and build the payload to publish.
+
+        The caller holds the session lock and publishes after releasing it;
+        ``summary`` spares a second summary when the caller just made one.
+        """
+
+        session.event_seq += 1
+        if summary is None:
+            summary = self._summary_locked(session)
+        return _doorbell(session, summary)
+
+    def _publish(self, game_id: str, payload: JsonObject | None) -> None:
+        """Hand one payload to every listener; never call this under a lock."""
+
+        for listener in tuple(self._listeners):
+            listener(game_id, payload)
+
     def _require_remote(self, operation: str) -> None:
         if self._access is not AccessMode.REMOTE:
             raise SessionError(f"{operation} only applies to a remote server")
@@ -891,12 +1041,14 @@ class GameSessionManager:
             _public_seat_kind(assignment, hide_path=remote)
             for assignment in session.seats
         ]
+        online = self._online_seats_locked(session)
         players: list[JsonValue] = [
             {
                 "seat": seat,
                 "kind": kind,
                 "name": session.seat_names.get(seat),
                 "claimed": seat in session.seat_tokens,
+                "online": seat in online,
             }
             for seat, kind in enumerate(kinds)
         ]
@@ -1151,6 +1303,28 @@ def _rebuild_log(
     if live_position != len(live):
         raise SaveError("the save log does not cover every recorded step")
     return rebuilt
+
+
+def _doorbell(session: GameSession, summary: JsonObject) -> JsonObject:
+    """Build the doorbell payload from a summary of the same state.
+
+    Only what every client at the table may see goes in, and only what a
+    client needs to decide whether its picture is stale: the counters a
+    snapshot is identified by, whose move it is, and the public ``players``
+    list (names, claims, presence), which a client may adopt as it stands.
+    """
+
+    decision = summary["decision"]
+    return {
+        "seq": session.event_seq,
+        "revision": summary["revision"],
+        "undo_count": summary["undo_count"],
+        "log_count": summary["log_count"],
+        "decision_owner": decision["owner"] if isinstance(decision, dict) else None,
+        "confirmation": summary["confirmation"],
+        "finished": summary["finished"],
+        "players": summary["players"],
+    }
 
 
 def _log_epoch(session: GameSession, seat: int) -> str:

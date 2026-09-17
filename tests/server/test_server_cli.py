@@ -1,8 +1,20 @@
-"""Tests for the play-server CLI's access-mode resolution (M14 slice 1).
+"""Tests for the play-server CLI (M14 slices 1 and 3).
 
-No server is started here: these exercise only the pure argument-resolution
-helpers (``docs/multiplayer-design.md`` sections 4.2-4.4, 5, 6).
+Most exercise the pure argument-resolution helpers without starting a server
+(``docs/multiplayer-design.md`` sections 4.2-4.4, 5, 6). The last one starts
+the real command, because what it pins only shows in a real process: how
+long the server takes to stop while an event stream is open (section 4.5).
 """
+
+import json
+import signal
+import socket
+import subprocess
+import sys
+import threading
+import time
+import urllib.request
+from pathlib import Path
 
 import pytest
 
@@ -128,3 +140,87 @@ def test_main_refuses_a_non_loopback_host_without_remote() -> None:
         main(["--host", "0.0.0.0"])
 
     assert excinfo.value.code == 2
+
+
+# --- shutdown with an open event stream -----------------------------------
+
+
+def _free_port() -> int:
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port: int = probe.getsockname()[1]
+        return port
+
+
+def test_the_server_exits_at_once_while_an_event_stream_is_open(
+    tmp_path: Path,
+) -> None:
+    # An event stream never ends by itself and uvicorn waits for open
+    # responses, so without ``hub.close()`` on the exit signal the server sat
+    # out its whole graceful-shutdown timeout (3 s) and logged an error.
+    pytest.importorskip("fastapi")
+    pytest.importorskip("uvicorn")
+    base = f"http://127.0.0.1:{(port := _free_port())}"
+    server = subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "dune_imperium.cli.server",
+            "--port",
+            str(port),
+            "--saves-dir",
+            str(tmp_path / "saves"),
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    try:
+        deadline = time.monotonic() + 30
+        while True:
+            try:
+                urllib.request.urlopen(f"{base}/catalog", timeout=1).read()
+                break
+            except OSError:
+                assert server.poll() is None, "the server exited during startup"
+                assert time.monotonic() < deadline, "the server did not start"
+                time.sleep(0.05)
+        request = urllib.request.Request(
+            f"{base}/games",
+            data=json.dumps(
+                {"seats": ["human", "heuristic", "heuristic", "heuristic"]}
+            ).encode(),
+            headers={"content-type": "application/json"},
+        )
+        game_id = json.load(urllib.request.urlopen(request, timeout=5))["game_id"]
+
+        greeted = threading.Event()
+        ended = threading.Event()
+
+        def hold_a_stream_open() -> None:
+            with urllib.request.urlopen(
+                f"{base}/games/{game_id}/events", timeout=30
+            ) as stream:
+                for line in stream:
+                    if line.startswith(b"event: hello"):
+                        greeted.set()
+            ended.set()
+
+        threading.Thread(target=hold_a_stream_open, daemon=True).start()
+        assert greeted.wait(5), "the stream never greeted"
+
+        asked = time.monotonic()
+        server.send_signal(signal.SIGINT)
+        code = server.wait(timeout=10)
+        took = time.monotonic() - asked
+        output = server.stdout.read() if server.stdout is not None else ""
+    finally:
+        if server.poll() is None:
+            server.kill()
+            server.wait(timeout=10)
+
+    assert code == 0, output
+    assert took < 2.0, f"shutdown took {took:.1f}s with a stream open"
+    assert ended.wait(5), "the client's stream was not ended"
+    assert "Traceback" not in output
+    assert "timeout graceful shutdown exceeded" not in output
