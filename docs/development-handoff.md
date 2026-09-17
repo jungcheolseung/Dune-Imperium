@@ -17,7 +17,7 @@ uv run ruff check src tests
 uv run mypy src tests
 ```
 
-2026-09-17(scripts/ab 도구 추가 뒤, HEAD `2730aa4`)의 기준 결과는 pytest 1,539개 통과(카드 이미지 에셋이 없는 머신은 1,489 통과 + 1 skip; `train` extra가 없으면 `tests/unit/training/test_torch_policy.py`가 추가로 skip된다), Ruff 통과, mypy 통과다. 현재 action codec은 `ACTION_CODEC_VERSION = 104`(기본 4,371개, CHOAM 4,657개, `promo_cards` 옵션 시 4,471/4,757개, `immortality` 옵션 시 9,326개 — graft 배치 변형과 카드 사본이 늘 때마다 커진다; `bloodlines`·`tech_module` 옵션은 별도 카탈로그로 훨씬 크고, `promo_cards`+`bloodlines`는 10,485개, promo+Bloodlines+Tech는 13,731개, CHOAM+Bloodlines는 11,128개, 다섯 옵션을 다 켜면 32,963개 — v98은 CHOAM+Bloodlines 카탈로그에만 contract token 8개의 행동과 `trash_intrigue_for_contract`를, v99는 `recall_conflict_agent_for_imperial_privilege`를, v100은 모든 카탈로그에 `skip_intrigue_acquisition`과 Change Allegiances의 세 번째 option을, v101은 Immortality 카탈로그에 `play_conflict_end_intrigue`(Harvest Cells 2장)·`decline_conflict_end_intrigue`를, v102는 Bloodlines+Immortality 카탈로그의 `give_intrigue_card`/`trash_intrigue_hand_card`/`trash_intrigue_for_contract`에 빠져 있던 Immortality Intrigue 사본을 더한다 — 소크가 적발; v103은 모든 카탈로그에 `use_intrigue_effect(section=0/1)`·`finish_intrigue_effects`를 더하고 Change Allegiances의 option을 하나로 되돌린다; v104는 Bloodlines 카탈로그의 `retreat_intrigue_troops` unit count를 12에서 12+7로 넓힌다 — Commander는 12개 병력과 별개 구성물이라 Conflict 유닛이 19까지 가고 Tactical Option이 그 전부를 제시하는데 카탈로그가 12에서 끊겨 있었다, 병렬 수집이 적발, 카탈로그마다 +28)이고, 관측은 `OBSERVATION_VERSION = 20`의 4,327-int 전체 게임 인코딩이다(v6~v9는 Bloodlines·Tech Module 세그먼트를 더한 것, v10은 Bloodlines 프로모 Ruthless Leadership의 identity 1개, v11은 Immortality 카탈로그의 Imperium 25·Intrigue 11 identity, v12는 Experimentation·Tleilaxu 19 identity와 Bene Tleilax board 세그먼트, v13은 round 한정 Reveal Persuasion과 Combat Intrigue 좌석, v14는 Imperium Ceremony가 peek한 Intrigue 두 장(소유자 전용), v15는 Chairdog의 반환 대기와 Usurp의 빌린 Row 카드(좌석 scalar 49→51), v16은 Bloodlines contract token 8개의 identity(contract 세그먼트 11개 × 8 = +88), v17은 frame 종류 `conflict_end_trigger`, v18은 `intrigue_effects` 추가로 decision kind index가 이동, v19는 Long Live the Fighters의 두 단계 pick이 전용 frame 종류 `LONG_LIVE_FIGHTERS`로 옮겨져 decision kind index가 다시 이동(v17~v19는 모두 길이 불변), v20은 OQ-059의 보류된 contract 아이콘 좌석 scalar 1개(좌석 scalar 51→52, +4 int); 옵션을 끈 룰셋에서는 새 칸이 전부 0이지만 길이가 달라져 v8 이전 체크포인트는 거부된다) ([`rl-environment.md`](rl-environment.md)). 보드 22칸 완결 + 즉시 공개 + `fab266f`/`e6fc298` 수정 + sweep 확장(`853ecd4`) 반영 후의 교차 소크는 random 룰셋당 2,000판 + heuristic 룰셋당 1,000판(둘 다 `--rotate-leaders`) + draft 두 policy 각 룰셋당 500판, 전부 `--soundness-interval 25`를 켠 총 7,000판이 실패 0으로 통과한 상태다(2026-09-01, 아래 세션 요약. 그 전 단계에서는 random 룰셋당 3,000판 비회전 소크도 실패 0이었다).
+2026-09-17(M14 슬라이스 1 뒤)의 기준 결과는 pytest 1,626개 통과(카드 이미지 에셋이 없는 머신은 1,576 통과 + 1 skip — 슬라이스 1의 새 테스트 87개는 에셋과 무관하므로 앞 기준선 1,489에 더한 값이다; `train` extra가 없으면 `tests/unit/training/test_torch_policy.py`가 추가로 skip된다), Ruff 통과, mypy 통과다. 현재 action codec은 `ACTION_CODEC_VERSION = 104`(기본 4,371개, CHOAM 4,657개, `promo_cards` 옵션 시 4,471/4,757개, `immortality` 옵션 시 9,326개 — graft 배치 변형과 카드 사본이 늘 때마다 커진다; `bloodlines`·`tech_module` 옵션은 별도 카탈로그로 훨씬 크고, `promo_cards`+`bloodlines`는 10,485개, promo+Bloodlines+Tech는 13,731개, CHOAM+Bloodlines는 11,128개, 다섯 옵션을 다 켜면 32,963개 — v98은 CHOAM+Bloodlines 카탈로그에만 contract token 8개의 행동과 `trash_intrigue_for_contract`를, v99는 `recall_conflict_agent_for_imperial_privilege`를, v100은 모든 카탈로그에 `skip_intrigue_acquisition`과 Change Allegiances의 세 번째 option을, v101은 Immortality 카탈로그에 `play_conflict_end_intrigue`(Harvest Cells 2장)·`decline_conflict_end_intrigue`를, v102는 Bloodlines+Immortality 카탈로그의 `give_intrigue_card`/`trash_intrigue_hand_card`/`trash_intrigue_for_contract`에 빠져 있던 Immortality Intrigue 사본을 더한다 — 소크가 적발; v103은 모든 카탈로그에 `use_intrigue_effect(section=0/1)`·`finish_intrigue_effects`를 더하고 Change Allegiances의 option을 하나로 되돌린다; v104는 Bloodlines 카탈로그의 `retreat_intrigue_troops` unit count를 12에서 12+7로 넓힌다 — Commander는 12개 병력과 별개 구성물이라 Conflict 유닛이 19까지 가고 Tactical Option이 그 전부를 제시하는데 카탈로그가 12에서 끊겨 있었다, 병렬 수집이 적발, 카탈로그마다 +28)이고, 관측은 `OBSERVATION_VERSION = 20`의 4,327-int 전체 게임 인코딩이다(v6~v9는 Bloodlines·Tech Module 세그먼트를 더한 것, v10은 Bloodlines 프로모 Ruthless Leadership의 identity 1개, v11은 Immortality 카탈로그의 Imperium 25·Intrigue 11 identity, v12는 Experimentation·Tleilaxu 19 identity와 Bene Tleilax board 세그먼트, v13은 round 한정 Reveal Persuasion과 Combat Intrigue 좌석, v14는 Imperium Ceremony가 peek한 Intrigue 두 장(소유자 전용), v15는 Chairdog의 반환 대기와 Usurp의 빌린 Row 카드(좌석 scalar 49→51), v16은 Bloodlines contract token 8개의 identity(contract 세그먼트 11개 × 8 = +88), v17은 frame 종류 `conflict_end_trigger`, v18은 `intrigue_effects` 추가로 decision kind index가 이동, v19는 Long Live the Fighters의 두 단계 pick이 전용 frame 종류 `LONG_LIVE_FIGHTERS`로 옮겨져 decision kind index가 다시 이동(v17~v19는 모두 길이 불변), v20은 OQ-059의 보류된 contract 아이콘 좌석 scalar 1개(좌석 scalar 51→52, +4 int); 옵션을 끈 룰셋에서는 새 칸이 전부 0이지만 길이가 달라져 v8 이전 체크포인트는 거부된다) ([`rl-environment.md`](rl-environment.md)). 보드 22칸 완결 + 즉시 공개 + `fab266f`/`e6fc298` 수정 + sweep 확장(`853ecd4`) 반영 후의 교차 소크는 random 룰셋당 2,000판 + heuristic 룰셋당 1,000판(둘 다 `--rotate-leaders`) + draft 두 policy 각 룰셋당 500판, 전부 `--soundness-interval 25`를 켠 총 7,000판이 실패 0으로 통과한 상태다(2026-09-01, 아래 세션 요약. 그 전 단계에서는 random 룰셋당 3,000판 비회전 소크도 실패 0이었다).
 
 ## 현재 구현 기준선
 
@@ -71,12 +71,15 @@ seed 블록에서 **+5.1 ~ +9.1%p**다([evaluation/baseline-2026-09-16.md](evalu
    정체 신호(평가 승률이 두세 번 연속 오차 안, 또는 이전 champion 상대 25~30%)가 보이면 PPO 슬라이스(수집 log-prob 기록 +
    clip + `--epochs` 3~4)를 넣고 같은 체크포인트에서 `--resume`한다. 학습 밖 후보 (a)에 전 확장 census가 남긴 RNG 가족
    (graft 변형·partner, Commander skill, `take_contract`, Spy post, Engineered Miracle의 `command_acquire_row_card`)을 더한다.
-0. (2026-09-17, **설계 제안 — 사용자 검토 대기**, 학습과 병행 가능) **M14 원격 멀티플레이.** 사용자 요구: "원격 친구들이랑
-   각자 PC에서". 설계는 [multiplayer-design.md](multiplayer-design.md), 마일스톤은 [implementation-plan.md](implementation-plan.md)
-   M14. 다음 할 일은 (1) 설계 문서 12절의 결정 항목 D1~D7을 사용자와 확정하고 문서 상태를 "확정"으로 바꾼 뒤, (2) **슬라이스 1**
-   (`server/access.py`, 좌석 claim/release·관리자 쿠키·진행 중 seed 숨김·CLI `--remote`, `tests/server/test_access.py`·
-   `test_remote_app.py`)부터 구현하는 것이다. 범위는 `server/`·`cli/server.py`·`tests/server/`뿐이라 codec·관측·저장 형식
-   버전은 그대로다. 설계의 수치는 `uv run python scripts/measure_server_payloads.py --seed 20260917`로 재현한다.
+0. (2026-09-17, **진행 중 — 슬라이스 1 완료, 다음은 슬라이스 2**, 학습과 병행 가능) **M14 원격 멀티플레이.** 사용자 요구:
+   "원격 친구들이랑 각자 PC에서". 설계는 [multiplayer-design.md](multiplayer-design.md)(같은 날 사용자가 D1~D7을 제안대로
+   확정), 마일스톤은 [implementation-plan.md](implementation-plan.md) M14. **슬라이스 1**(서버의 접근 계층: `server/access.py`,
+   좌석 claim/release·관리자 쿠키·진행 중 seed 숨김·CLI `--remote`)이 끝났다. **다음은 슬라이스 2**: `GET /games/{id}/snapshot`
+   (한 번의 lock 안에서 summary·`you`·view·actions·증분 로그), `GZipMiddleware`, 클라이언트 `applySummary`의 순차 GET을 snapshot
+   한 번 + single-flight 갱신으로 교체, 증분 로그 누적 예산 테스트(설계 4.6·10절). 범위는 `server/`·`cli/server.py`·
+   `tests/server/`뿐이라 codec·관측·저장 형식 버전은 그대로다. 설계의 수치는
+   `uv run python scripts/measure_server_payloads.py --seed 20260917`로 재현한다. 주의: 브라우저 UI는 슬라이스 4 전까지
+   `--remote` 서버에서 동작하지 않는다(좌석 요청이 403) — 원격 흐름은 그때까지 `tests/server/test_remote_app.py`가 검증한다.
 0. (2026-09-16 심야, 완료 → 2026-09-17 0번) **M10 학습 재개**(관측 v20·codec v104라 체크포인트 전부 새로; pure self-play로 시작해
    25 iteration마다 재정비된 heuristic·rollout과 대회 평가; 첫 슬라이스 후보는 PPO 전환·league·평가 상대 교체 — 위 2번 항목).
    학습 밖 후보: (a) heuristic 표 밖 항의 나머지(14절(c) 끝: Spy post 규칙 재설계, `take_contract`, Intrigue option,
@@ -208,6 +211,7 @@ seed 블록에서 **+5.1 ~ +9.1%p**다([evaluation/baseline-2026-09-16.md](evalu
 | 관측과 PettingZoo | `src/dune_imperium/core/observation.py`, `adapters/observation_encoding.py`, `adapters/pettingzoo_env.py` |
 | replay와 random 러너 | `src/dune_imperium/core/replay.py`, `simulation/runner.py` (한 라운드·전체 게임) |
 | 로컬 플레이 서버·저장·검토 | `src/dune_imperium/server/` (`sessions.py`, `persistence.py`, `app.py`, `catalog.py`, `static/`) |
+| 원격 멀티플레이 접근 계층(M14) | `src/dune_imperium/server/access.py`(모드·`Credentials`·토큰), `sessions.py`의 `claim_seat`·`release_seat`·`identify`·`_authorize_seat_locked`·`require_admin`, `app.py`의 쿠키 ↔ `Credentials`, `cli/server.py`의 `--remote`; 설계는 [multiplayer-design.md](multiplayer-design.md) |
 | 영문 효과 표시 텍스트·이미지 매핑 | `src/dune_imperium/display/` (DSL·구조체 렌더러, enum 토큰 맵, 공간·Leader 텍스트, 이미지 파일명) |
 | 검증 sweep과 불변식 | `src/dune_imperium/simulation/sweep.py`, `simulation/invariants.py`, `cli/sweep.py` |
 | M9 대회 도구와 보고서 | `src/dune_imperium/evaluation/tournament.py`(spec·러너·계측), `evaluation/report.py`(집계·Markdown/JSON), `agents/registry.py`(이름 붙인 baseline), `cli/tournament.py`; 기준선 `docs/evaluation/` |
@@ -275,10 +279,10 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 
 2026-09-04 세션 종료 시점에 이 세션의 커밋 전부(보드·카드 아이콘 분리 v86/v87, 서버·UI 확인 흐름과 마커, Reveal 순서 v88, OQ-028 조건 판정 시점, OQ-029 등록)를 `origin/master`에 push했다. 새 세션은 `git fetch origin` 뒤 `git log origin/master..master`와 반대 방향을 확인하고, 일치하면 이 문서의 기준선을 그대로 쓴다. 에셋 저장소(`Dune-Imperium-assets`)의 `5b55e45` 1개 미push 여부는 그 저장소에서 확인한다. 원격에는 병합하지 않은 `kyungtae` 브랜치가 있다. 새 세션은 `git log origin/master..master`와 반대 방향을 모두 확인하고, checkout이 `853ecd4`보다 이전이면 이 문서의 989개 테스트·codec v84 기준선이 실제 코드와 일치하지 않는다. **다른 머신에서 이어서 작업한다면 먼저 이 머신에서 push가 필요하다.** 새 머신의 UI 카드 이미지·아이콘·보드 스캔은 비공개 `Dune-Imperium-assets` 저장소를 clone해 symlink로 연결한다(그 README 참고; 루트의 `assets` symlink 하나로 cards·icons·board·rulebooks를 모두 연결). 카드 매핑은 그 저장소의 `cards/manifest.json`에만 있으므로 접근이 없으면 텍스트 UI로 동작한다.
 
-## 2026-09-17 원격 멀티플레이 설계 세션 요약 (master, 관측 v20, codec v104, `src/` 변경 없음)
+## 2026-09-17 원격 멀티플레이 설계·슬라이스 1 세션 요약 (master, 관측 v20, codec v104, 변경은 `server/`·`cli/server.py`뿐)
 
-- 사용자 요구: 구현된 게임을 멀티플레이로 — **원격의 친구들과 각자 PC에서**. 지시: "설계 문서부터". 원격과 일치(양방향 0)를
-  확인했고, `src/`·`tests/`를 건드리지 않았으므로 기준 검증(pytest·Ruff·mypy)은 이 세션에서 다시 돌리지 않았다.
+- 사용자 요구: 구현된 게임을 멀티플레이로 — **원격의 친구들과 각자 PC에서**. 지시: "설계 문서부터", 이어서 "제안대로
+  확정하고 슬라이스 1 시작". 원격과 일치(양방향 0)를 확인했고, 설계 단계에서는 `src/`·`tests/`를 건드리지 않았다.
 - 산출물: [multiplayer-design.md](multiplayer-design.md)(상태 **제안**), [implementation-plan.md](implementation-plan.md)의 M14 절,
   측정 도구 `scripts/measure_server_payloads.py`(Ruff 통과).
 - 진단(코드 근거는 설계 문서 2절): 엔진은 이미 다인용이다 — 결정은 항상 한 좌석 소유, 좌석별 `PlayerView`·로그 필터,
@@ -293,8 +297,25 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
   필요하다. Tailscale machine sharing은 모든 플랜에서 되고 공유된 머신은 들어오는 연결에 응답만 한다(공식 KB 1084).
   lock 파일에 `websockets`·`wsproto`가 없어 WebSocket은 의존성 추가가 필요하고, Starlette 1.6.0의 `GZipMiddleware`는
   `text/event-stream`을 기본 제외한다(`.venv` 소스 확인).
-- 미결: 설계 문서 12절의 D1~D7(좌석 claim 방식, Tailscale, 되돌리기 유지, 저장 파일에 이름·토큰 미보존, loopback 아닌
-  `--host`의 `--remote` 강제, 턴 단위 자동 저장, 슬라이스 1~4 우선). 이 세션의 커밋은 push하지 않았다.
+- 확정: 같은 날 사용자가 설계 문서 12절의 D1~D7(좌석 claim 방식, Tailscale, 되돌리기 유지, 저장 파일에 이름·토큰 미보존,
+  loopback 아닌 `--host`의 `--remote` 강제, 턴 단위 자동 저장, 슬라이스 1~4 우선)을 **제안대로 확정**했다.
+- **슬라이스 1 구현**(같은 날, 기준 검증 1,539 통과 확인 뒤 착수 → 1,626 통과·Ruff·mypy): `server/access.py`(`AccessMode`·
+  `Credentials`·상수 시간 토큰 비교), `GameSessionManager(access=, admin_key=)`의 `claim_seat`(먼저 온 claim이 이기고 토큰을
+  발급, 보유자의 재claim은 이름 변경)·`release_seat`(보유자 또는 관리자)·`identify`·`require_admin`·`_authorize_seat_locked`,
+  summary의 `access`·`players`와 remote에서의 진행 중 `game_seed: null`·checkpoint 경로 가림, 저장 메타데이터의
+  `hide_unfinished_seed`, `app.py`의 쿠키(`dune_admin`, `dune_seat_<game>_<seat>`: HttpOnly·SameSite=Strict·게임 경로 한정)
+  ↔ `Credentials`와 `POST /auth/admin`·`GET /games/{id}/me`·`POST .../seats/{seat}/claim|release`, CLI `--remote`·`--admin-key`
+  (환경 변수 `DUNE_IMPERIUM_ADMIN_KEY`)와 loopback 아닌 bind의 거부, 실제 listen 주소로 찍는 관리자 링크. 판정 원칙 셋:
+  (1) 자격 판정은 세션 계층 두 곳뿐이고 HTTP 계층은 쿠키를 옮기기만 한다, (2) 토큰은 쿠키 **이름이 아니라 값**으로 좌석과
+  맞춘다, (3) 관리자 키는 어떤 좌석의 view도 열지 않는다(호스트도 플레이어). 자격 검사는 revision 검사보다 먼저라 자격 없는
+  요청은 revision이 맞는지도 알 수 없다.
+- 위임: 테스트 작성(`tests/server/test_access.py`·`test_remote_app.py`·`test_server_cli.py`)은 `card-implementer`에 명세를 주어
+  맡기고 메인 세션이 검토했다. 검토에서 고친 것: 관리자 링크가 `::1`·`localhost` bind에서도 `127.0.0.1`을 찍던 결함(IPv6
+  loopback에만 bind하면 열리지 않는다), 교차 좌석 거부를 "한 번이라도"가 아니라 매 반복 단언, 다른 좌석의 토큰을 이 좌석의
+  쿠키 이름에 넣어 보내는 위조·다른 좌석 토큰으로의 release/claim·"어떤 summary에도 토큰이 없다" 테스트 추가.
+- 함께 확인한 누출 경로: 누구나 받는 summary의 `decision.prompt`는 `rules/`·`core/`의 55곳 전부 고정 문자열이거나 좌석 번호·
+  비용·VP·tier만 보간한다(설계 문서 2절에 불변식으로 기록).
+- 주의: 브라우저 UI는 슬라이스 4 전까지 `--remote` 서버에서 동작하지 않는다(좌석 요청 403). 이 세션의 커밋은 push하지 않았다.
 
 ## 2026-09-17 학습 전 최종 점검 세션 요약 (master, 관측 v20, codec v104, 코드 변경 없음)
 

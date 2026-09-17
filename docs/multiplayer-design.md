@@ -1,6 +1,6 @@
 # 원격 멀티플레이 설계 (M14)
 
-상태: **제안** (2026-09-17 작성, 사용자 검토 전). 12절의 결정 항목이 확정되면 상태를 "확정"으로 바꾸고 슬라이스 1부터 구현한다. 사용자 요구는 "원격 친구들이랑 각자 PC에서"(2026-09-17)다. 이 문서는 M11 로컬 플레이 서버(`src/dune_imperium/server/`) 위에 원격 다인 플레이를 얹는 구조 결정과 구현 순서를 기록한다. 규칙 엔진·콘텐츠·codec·관측은 대상이 아니다.
+상태: **확정** (2026-09-17 작성, 같은 날 사용자가 12절의 D1~D7을 제안대로 확정). 구현은 11절의 슬라이스 순서를 따른다. 사용자 요구는 "원격 친구들이랑 각자 PC에서"(2026-09-17)다. 이 문서는 M11 로컬 플레이 서버(`src/dune_imperium/server/`) 위에 원격 다인 플레이를 얹는 구조 결정과 구현 순서를 기록한다. 규칙 엔진·콘텐츠·codec·관측은 대상이 아니다.
 
 ## 1. 목표와 범위
 
@@ -25,6 +25,7 @@
 - 가시성의 단일 권위는 `core/observation.py`이고 서버는 좌석별 `PlayerView`, `visible_to`로 거른 이벤트, `hidden_arguments` 가림(`server/sessions.py`의 `_log_entry_json`)만 내보낸다.
 - 낙관적 동시성(`revision` + `undo_count` → 409), 되돌리기 창(`server/session_log.py`의 `undo_window`), 턴 종료 확인(`awaiting_confirmation`)이 이미 다인 전제로 설계돼 있다 — 다른 좌석이 행동하면 창이 닫히고, 되돌릴 수 있는 동안은 턴이 넘어가지 않는다.
 - 저장은 서버 디스크에만 있고 HTTP로는 메타데이터만 나간다(`server/persistence.py`).
+- 누구나 받는 summary의 `decision.prompt`에는 비공개 정보가 없다. 2026-09-17에 `rules/`·`core/`의 prompt 55곳을 전수 확인했다: 전부 고정 문자열이거나 좌석 번호·비용·VP·Conflict tier만 보간한다. 새 `PlayerDecision` prompt에도 손패·덱의 카드 이름을 넣지 않는다(원격에서는 그대로 전원에게 보인다).
 
 **빠진 것.** (코드 위치는 2026-09-17 HEAD `a12e894` 기준)
 
@@ -69,7 +70,7 @@ AI 자동 진행이 요청 안에서 세션 lock을 잡고 도는 구조(`_advan
 |---|---|---|---|
 | 방 입장권 | game id 자체(uuid4 hex, 122 bit 무작위) | 호스트가 공유한 방 링크 `<공유 주소>/#game=<id>` | 공개 summary(seed 없음), 좌석 현황, 초인종 스트림, 빈 좌석 claim, 종료 후 검토 |
 | 좌석 쿠키 | `dune_seat_<game_id>_<seat>` = `secrets.token_urlsafe(24)`; `HttpOnly; SameSite=Strict; Path=/games/<game_id>; Max-Age=30일` | 빈 사람 좌석을 claim | 그 좌석의 snapshot·view·actions·log, 행동·되돌리기·턴 확정, 자기 좌석 release |
-| 관리자 쿠키 | `dune_admin` = 서버 시작 시 만든 키(`--admin-key`/`DUNE_IMPERIUM_ADMIN_KEY`로 고정 가능); `HttpOnly; SameSite=Strict; Path=/` | 서버가 콘솔에 찍는 `http://127.0.0.1:8000/#admin=<키>`를 호스트가 연다 → `POST /auth/admin` | 게임 생성·목록·삭제, 저장·불러오기·저장 삭제, 좌석 release. **남의 view는 허용하지 않는다.** |
+| 관리자 쿠키 | `dune_admin` = 서버 시작 시 만든 키(`--admin-key`/`DUNE_IMPERIUM_ADMIN_KEY`로 고정 가능); `HttpOnly; SameSite=Strict; Path=/` | 서버가 콘솔에 찍는 관리자 링크 `http://<bind 주소>:8000/#admin=<키>`를 호스트가 연다 → `POST /auth/admin`. 링크의 주소는 실제로 listen하는 주소다: loopback·`0.0.0.0` bind면 `127.0.0.1`, Tailscale IP에만 bind했으면 그 IP(그때는 `127.0.0.1`로 열리지 않는다) | 게임 생성·목록·삭제, 저장·불러오기·저장 삭제, 좌석 release. **남의 view는 허용하지 않는다.** |
 
 쿠키를 고른 이유(헤더 토큰 대비): `EventSource`는 헤더를 못 붙이지만 쿠키는 자동으로 간다. 토큰이 주소창·JS·접근 로그 어디에도 나타나지 않는다(친구들이 Discord로 화면을 공유하는 상황에서 주소창의 토큰은 그대로 유출이다). 좌석별 쿠키라 한 브라우저가 여러 좌석을 들 수 있어 한 PC에 두 명이 앉는 경우도 지금의 시점 전환 그대로 된다. 나중에 에셋 경로를 가려야 하면(8.4절) `<img>` 요청에도 쓸 수 있다. 쿠키가 `SameSite=Strict`라 다른 사이트에서 출발한 요청에는 실리지 않고 서버는 CORS를 열지 않으므로 CSRF 경로가 없다. 방 링크는 fragment(`#`)라 서버·프록시·Referer에 실리지 않는다. 비교는 `secrets.compare_digest`로 한다.
 
@@ -201,7 +202,7 @@ Tailscale 인터페이스에만 bind하므로 집 LAN에도 열리지 않는다.
 
 - Mac mini 또는 14700K PC. 서버 부하는 heuristic·checkpoint 좌석이면 무시할 수준이다(9절). rollout 좌석은 결정당 CPU 60~90 ms를 쓰므로 같은 머신에서 M10 학습(worker 8개)이 돌면 서로 느려진다.
 - **WSL2 주의.** WSL2 안에서 띄운 서버는 NAT 뒤라 다른 기기에서 들어오는 연결을 기본으로는 받지 못한다. 가장 단순한 호스트는 이미 네이티브로 쓰고 있는 Mac mini다. Windows PC라면 WSL 안에 Tailscale을 설치해 WSL 인스턴스를 tailnet 노드로 만들거나 WSL의 mirrored networking을 쓴다(둘 다 이 프로젝트에서 아직 해 보지 않았다 — 슬라이스 6에서 확인).
-- 호스트 자신은 `127.0.0.1`의 관리자 링크로 들어가 자기 좌석도 방 링크에서 claim한다.
+- 호스트 자신은 콘솔에 찍힌 관리자 링크로 들어가 자기 좌석도 방 링크에서 claim한다. Tailscale IP에만 bind했으면 호스트의 주소도 `http://100.x.y.z:8000`이라 보안 컨텍스트가 아니므로, 호스트 패널의 링크 복사는 `navigator.clipboard` 대신 선택 가능한 입력 칸으로 만든다.
 
 ### 8.4 에셋(카드·보드 스캔)
 
@@ -245,7 +246,7 @@ HEAD `a12e894`, WSL 노트북(i5-8250U). 전 확장 + 프로모 + leader draft, 
 
 각 슬라이스는 코드와 테스트를 한 커밋에, 문서 갱신은 별도 커밋에 둔다. 전부 `server/`·`cli/server.py`·`tests/server/` 안이다.
 
-1. **접근 계층과 좌석 claim(서버).** `server/access.py`, 세션의 토큰·이름, claim/release/`me`, 관리자 쿠키와 관리자 전용 경로, summary의 `access`·`players`·seed 숨김, CLI `--remote`·`--admin-key`와 loopback 검사. 완료 조건: remote 모드에서 자격 없는 모든 좌석 접근이 403, 네 쿠키 jar로 1라운드 진행, 기존 테스트 무수정 통과.
+1. **접근 계층과 좌석 claim(서버).** `server/access.py`, 세션의 토큰·이름, claim/release/`me`, 관리자 쿠키와 관리자 전용 경로, summary의 `access`·`players`·seed 숨김, CLI `--remote`·`--admin-key`와 loopback 검사. 완료 조건: remote 모드에서 자격 없는 모든 좌석 접근이 403, 네 쿠키 jar로 1라운드 진행, 기존 테스트 무수정 통과. **완료(2026-09-17).** 구현 메모: (a) 자격 판정은 `GameSessionManager._authorize_seat_locked`·`require_admin` 두 곳뿐이고 `app.py`는 쿠키를 `Credentials`로 옮기기만 한다 — 어느 토큰이 어느 좌석 것인지는 쿠키 이름이 아니라 값 비교로 정한다. (b) 관리자 키는 좌석 view를 열지 않는다(호스트도 플레이어). (c) `players`의 `online`은 presence가 생기는 슬라이스 3에서, CLI `--public-url`·`--no-autosave`는 각각 슬라이스 4·5에서 더한다. (d) 저장 메타데이터의 seed 가림은 `save_metadata(hide_unfinished_seed=...)`이고 remote 서버의 저장·목록 응답이 켠다. (e) 이 슬라이스는 서버만 바꾸므로 브라우저 UI는 슬라이스 4 전까지 `--remote` 서버에서 동작하지 않는다(403) — open 모드는 그대로다.
 2. **snapshot + 증분 로그 + gzip.** 서버 endpoint와 미들웨어, 클라이언트 갱신 경로 교체(single-flight). 완료 조건: 갱신이 요청 하나, 예산 테스트 통과, 9절 스크립트로 개선 확인.
 3. **초인종(SSE) + presence + 폴링 fallback.** `server/events.py`, `on_change`, `/events`, 클라이언트 `EventSource`. 완료 조건: 두 브라우저에서 한쪽 행동이 1초 안에 다른 쪽에 반영, SSE를 막아도 3초 안에 반영.
 4. **클라이언트 원격 UX.** 좌석 고르기·이름, 내 좌석 고정, 대기 배너·접속 표시·차례 알림, 팝오버·스크롤 보존, 호스트 패널, 설정 화면의 관리자 제한, `textContent` 점검, E2E. 완료 조건: 10절의 E2E 시나리오 통과. **여기까지가 첫 원격 한 판의 최소 구성이다.**
@@ -254,9 +255,11 @@ HEAD `a12e894`, WSL 노트북(i5-8250U). 전 확장 + 프로모 + leader draft, 
 
 후속(필요해질 때): AI worker와 단계별 푸시(4.8절의 불변식), AI 대타(좌석이 사람→AI로 바뀐 시점을 기록하는 저장 형식 v3가 필요 — 지금의 불러오기는 AI 좌석의 모든 step을 agent로 재생성해 대조하므로 도중에 주인이 바뀐 좌석을 재생할 수 없다), 관전자(공개 전용 view가 `core/observation.py`에 필요하므로 R5 밖), 공개 터널용 에셋 게이트, 이름의 저장 파일 보존, 행동 POST가 snapshot을 바로 반환.
 
-## 12. 사용자 결정이 필요한 항목
+## 12. 사용자 결정 (2026-09-17 확정)
 
-| # | 결정 | 제안 | 대안과 비용 |
+사용자가 아래 일곱 항목을 전부 "제안" 열대로 확정했다("제안대로 확정하고 슬라이스 1 시작"). 대안 열은 기각한 선택과 그 비용의 기록이다.
+
+| # | 결정 | 확정(제안대로) | 기각한 대안과 비용 |
 |---|---|---|---|
 | D1 | 좌석 배정 방식 | **방 링크 하나 + claim**(4.4절) | 좌석별 링크 4개: 구현이 조금 작지만 호스트 화면에 모든 좌석의 열쇠가 뜬다 |
 | D2 | 접속 수단 | **Tailscale machine sharing**(8.1절) | Cloudflare Tunnel: 친구 설치 없음, 대신 에셋이 공개 URL에 열리고 Quick Tunnel은 SSE 불가 |
