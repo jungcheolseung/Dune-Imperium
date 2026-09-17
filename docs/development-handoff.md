@@ -48,7 +48,7 @@ uv run mypy src tests
 
 ## 다음 구현 순서
 
-**현재 위치(2026-09-16 심야).** M10 학습 전 마무리 세션이 끝났다. (1) `dune-imperium-train`은 관측 v20·codec v104에서
+**현재 위치(2026-09-17).** 전 확장 구성의 학습 전 최종 점검(파이프라인·heuristic·소크·open questions)이 끝났고 다음은 아래 0번의 **M10 학습 시작**이다. 그 앞 2026-09-16 심야에 M10 학습 전 마무리 세션이 끝났다. (1) `dune-imperium-train`은 관측 v20·codec v104에서
 pure self-play(3 iteration × 32판, 8 worker, `--eval-every`)와 `--opponent rollout`/`--eval-opponent rollout`(StateAgent 경로)
 모두 정상이다. (2) heuristic의 표 밖 항: 동점 census(게임당 228개 legal 집합이 RNG로 정해짐)로 지렛대를 찾아 세 가족 안
 tie-break(Influence 진영·trash/discard 카드·같은 비용 구매)를 채택했고, 고정 변형 `heuristic_uniform_ties` 상대 전 축·두
@@ -59,7 +59,19 @@ seed 블록에서 **+5.1 ~ +9.1%p**다([evaluation/baseline-2026-09-16.md](evalu
 고쳤다. rollout `player_value` 가중치 A/B·tie-break heuristic의 소크·기준선 12셀 재측정은 이 세션 요약(아래)에 적힌 대로다.
 남은 것은 **M10 학습 재개**(사용자 결정)와 아래 0번의 학습 밖 후보다.
 
-0. (2026-09-16 심야, **다음 작업**) **M10 학습 재개**(관측 v20·codec v104라 체크포인트 전부 새로; pure self-play로 시작해
+0. (2026-09-17, **다음 작업**) **M10 학습 시작 — 전 확장 구성(CHOAM+Bloodlines+Tech+Immortality+프로모, codec 32,963).**
+   학습 전 최종 점검(아래 세션 요약)을 통과했다. 명령(Mac mini 16 GB 기준; `--minibatch 1024`는 33k codec의 갱신 메모리를
+   4.1 GB → 2.2 GB로 낮추는 필수 옵션이고 시간은 같다):
+
+   ```bash
+   uv run dune-imperium-train --out checkpoints/2026-09-17/full --iterations 100 --games-per-iteration 32 --workers 8 --minibatch 1024 --eval-every 25 --eval-games 20 --choam --bloodlines --tech-module --immortality --promo-cards
+   ```
+
+   WSL 노트북(7.9 GB)에서는 `--games-per-iteration 16 --workers 2`가 상한(iteration당 약 75초), 14700K PC(32 GB)는 16 worker.
+   정체 신호(평가 승률이 두세 번 연속 오차 안, 또는 이전 champion 상대 25~30%)가 보이면 PPO 슬라이스(수집 log-prob 기록 +
+   clip + `--epochs` 3~4)를 넣고 같은 체크포인트에서 `--resume`한다. 학습 밖 후보 (a)에 전 확장 census가 남긴 RNG 가족
+   (graft 변형·partner, Commander skill, `take_contract`, Spy post, Engineered Miracle의 `command_acquire_row_card`)을 더한다.
+0. (2026-09-16 심야, 완료 → 2026-09-17 0번) **M10 학습 재개**(관측 v20·codec v104라 체크포인트 전부 새로; pure self-play로 시작해
    25 iteration마다 재정비된 heuristic·rollout과 대회 평가; 첫 슬라이스 후보는 PPO 전환·league·평가 상대 교체 — 위 2번 항목).
    학습 밖 후보: (a) heuristic 표 밖 항의 나머지(14절(c) 끝: Spy post 규칙 재설계, `take_contract`, Intrigue option,
    확장의 graft partner·Commander skill; 같은 절차 — 스크래치 변형 → `heuristic_uniform_ties`류 **고정 대조군** 상대 축별
@@ -254,6 +266,44 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 2026-09-07: `bloodlines` 브랜치(35 커밋)를 master 쪽에서 `--no-ff`로 머지했고(`dbd9b73`), 같은 날 저녁 슬라이스 6 커밋 5건과 이 문서 갱신을 master에 직접 올렸다. 아직 push하지 않았다면 `git log origin/master..master`로 확인한다. 비공개 에셋 저장소(`assets` symlink → `Dune-Imperium-assets`)에도 같은 날 manifest 커밋 6건(Bloodlines 카드 44장 content id, Leader 8종, Tuek's Sietch 타일 이미지, Twisted·Navigation 카드 키, Kota Odax의 content id `43c25fc`)이 있으니 다른 머신에서는 그쪽도 pull한다.
 
 2026-09-04 세션 종료 시점에 이 세션의 커밋 전부(보드·카드 아이콘 분리 v86/v87, 서버·UI 확인 흐름과 마커, Reveal 순서 v88, OQ-028 조건 판정 시점, OQ-029 등록)를 `origin/master`에 push했다. 새 세션은 `git fetch origin` 뒤 `git log origin/master..master`와 반대 방향을 확인하고, 일치하면 이 문서의 기준선을 그대로 쓴다. 에셋 저장소(`Dune-Imperium-assets`)의 `5b55e45` 1개 미push 여부는 그 저장소에서 확인한다. 원격에는 병합하지 않은 `kyungtae` 브랜치가 있다. 새 세션은 `git log origin/master..master`와 반대 방향을 모두 확인하고, checkout이 `853ecd4`보다 이전이면 이 문서의 989개 테스트·codec v84 기준선이 실제 코드와 일치하지 않는다. **다른 머신에서 이어서 작업한다면 먼저 이 머신에서 push가 필요하다.** 새 머신의 UI 카드 이미지·아이콘·보드 스캔은 비공개 `Dune-Imperium-assets` 저장소를 clone해 symlink로 연결한다(그 README 참고; 루트의 `assets` symlink 하나로 cards·icons·board·rulebooks를 모두 연결). 카드 매핑은 그 저장소의 `cards/manifest.json`에만 있으므로 접근이 없으면 텍스트 UI로 동작한다.
+
+## 2026-09-17 학습 전 최종 점검 세션 요약 (master, 관측 v20, codec v104, 코드 변경 없음)
+
+- 사용자 결정: 평소 구성은 **CHOAM+Bloodlines+Tech+Immortality+프로모 전부 켬**이고 학습 목표 룰셋도 그것이다. 이 구성의
+  행동 codec은 32,963(base 4,371, CHOAM+BL+Tech 14,496)이며 증가분 17,586 중 15,656이 `agent_turn`이다 — Graft가 모든
+  카드×공간 배치에 grafted 쌍둥이를 만들고 Immortality Imperium 25종·Tleilaxu 19종의 배치가 더해진다. 네트워크는 약 19M
+  파라미터(출력층 512×33k = 17M).
+- **하드웨어 실측**(이 WSL 노트북 i5-8250U 4C/8T, WSL 상한 7.9 GB, GPU 없음): base 32판·8 worker는 iteration당 약 30초
+  (수집 17·갱신 11), CHOAM+BL+Tech 약 65초(33·30), 전 확장은 32판·6 worker가 메모리 초과(시스템 7,847/7,896 MiB, 세션
+  재시작)라 **16판·2 worker·`--minibatch 1024`**만 가능하다(수집 33초·약 400 dec/s·13.5k step + 갱신 38초, python 4.5 GB,
+  메인 2.4·worker 1.38 GB). 합성 배치 측정: minibatch는 갱신 **메모리**만 정하고 시간은 바꾸지 않는다(33k codec 11,500
+  step에 1024: 31.8초·2.2 GB, 2048: 31.9초·2.9 GB, 기본 4096은 실측 4.1 GB). 처방: Mac mini 16 GB는 32판·8 worker·minibatch
+  1024(약 11.5 GB, 64판 불가), 14700K PC는 RAM 32 GB면 16 worker. GPU는 갱신만 1~2초로 줄여 iteration 단축 상한이 약 2배이고
+  PPO(여러 epoch)·큰 네트워크로 갈 때 의미가 생긴다. 체크포인트는 iteration당 78 MB, latest.pt 233 MB.
+- **점검 1 학습 원활성(전 확장)**: `dune-imperium-train` 6 iteration + `--resume` 1 iteration + 대회 도구의 `checkpoint:`
+  로드(4 match) 전부 정상 — 예외 0, truncated 0, rounds 10, entropy 1.20~1.24, ev 0.59~0.76, 평가(heuristic 3명, 4판)
+  0% → 6.2%(학습 전 정책의 기대값). 스크래치 `precheck/train_chain.log`.
+- **점검 2 heuristic(전 확장)**: codec의 action_id 231종 중 88종은 `_ACTION_SCORES`, 68종은 접두 가족(decline −2·pass −3·
+  retreat −1·spy 3·trash/pay/recall 1), 10종 구매·3종 count·5종 전용 처리, **38종은 기본값 0.0**(그중 `discard_agent_card`·
+  `discard_opponent_card`·`choose_intrigue_discard`는 trash tie-break가 좁힌다). 0.0 중 실제 결정에 닿는 것은 Engineered
+  Miracle의 `command_acquire_row_card`(Row 아무 카드나 무료 획득인데 무작위로 고름), Intrigue의 `manipulate_imperium_row`
+  (0.47/게임), Commander `choose_skill`이다. 동점 census(40판, `scripts/ab/census.py`): legal 집합 30,281 중 36.3%(275/
+  게임)가 점수 동점이고, tie-break 뒤에도 RNG에 남는 가족은 공간 동점 18.6, `take_contract` 9.3, graft 변형 6.95+3.9,
+  `choose_graft_partner` 4.35, Commander skill 3.3, research space 3.1, Spy post 합 약 8, Intrigue option 2.4/게임.
+  학습을 막지 않는 기준선 강도 항목으로 남긴다(0번 (a)).
+- **점검 3 버그(전 확장+프로모, HEAD `6e2bc66`)**: `dune-imperium-sweep` heuristic 300판·random 300판·draft 100판
+  (`--soundness-interval 25`, replay 검증 포함) 실패 0; self-play 112판 예외 0; rollout 1 + heuristic 3 8 match 실패·불법 0
+  (rollout 62.5%). 커버리지 0회 항목은 base 룰셋의 contract, heuristic이 고르지 않는 decline/withdraw, 300판 표본에서 드문
+  leader·카드 경로뿐이다.
+- **점검 4 미확정 동작**: open-questions 60건 전부 `DECIDED`(56)/`RESOLVED`(4), `OPEN` 0; 디자이너 판정 13건 전부 반영;
+  전 확장의 Imperium 109·Tleilaxu 19·Intrigue 68 entry 모두 play data 완결, Leader 18종 Signet 전부 구현, 미구현 보드
+  공간 0. audit 문서의 미완 경계는 "학습 재개"뿐이다.
+- 09-16 마무리 작업의 룰셋 범위를 되짚었다: tie-break A/B 7축에 Immortality는 있었고 프로모는 없었으며, rollout 값 함수
+  A/B는 base·CHOAM+BL+Tech만(전 확장+프로모는 채택 뒤 60판 재측정 60.0%), 소크·기준선은 전 확장+프로모 포함, 파이프라인
+  smoke는 base만이었다. 이 세션에서 전 확장 파이프라인을 처음으로 끝까지 확인했다.
+- **판정: 전 확장 구성으로 학습 시작 가능.** 첫 실행은 Mac mini에서 `--minibatch 1024`, 25 iteration마다 heuristic 평가
+  (루프 안 평가는 단일 프로세스라 rollout 상대는 학습 뒤 대회 도구로), 정체하면 PPO(수집 log-prob + clip + epochs 3~4)로
+  `--resume`해 잇는다. 문서 커밋 1건(테스트 수 1,539 정정) 외 코드 변경 없음.
 
 ## 2026-09-16 심야 M10 학습 전 마무리 세션 요약 (master, 관측 v20, codec v104)
 
