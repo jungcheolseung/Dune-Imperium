@@ -17,7 +17,7 @@ uv run ruff check src tests
 uv run mypy src tests
 ```
 
-2026-09-17(M14 슬라이스 2 뒤)의 기준 결과는 pytest 1,649개 통과(카드 이미지 에셋이 없는 머신은 1,599 통과 + 1 skip — M14 슬라이스 1·2의 새 테스트 87 + 23개는 에셋과 무관하므로 앞 기준선 1,489에 더한 값이다; `train` extra가 없으면 `tests/unit/training/test_torch_policy.py`가 추가로 skip된다), Ruff 통과, mypy 통과다. 현재 action codec은 `ACTION_CODEC_VERSION = 104`(기본 4,371개, CHOAM 4,657개, `promo_cards` 옵션 시 4,471/4,757개, `immortality` 옵션 시 9,326개 — graft 배치 변형과 카드 사본이 늘 때마다 커진다; `bloodlines`·`tech_module` 옵션은 별도 카탈로그로 훨씬 크고, `promo_cards`+`bloodlines`는 10,485개, promo+Bloodlines+Tech는 13,731개, CHOAM+Bloodlines는 11,128개, 다섯 옵션을 다 켜면 32,963개 — v98은 CHOAM+Bloodlines 카탈로그에만 contract token 8개의 행동과 `trash_intrigue_for_contract`를, v99는 `recall_conflict_agent_for_imperial_privilege`를, v100은 모든 카탈로그에 `skip_intrigue_acquisition`과 Change Allegiances의 세 번째 option을, v101은 Immortality 카탈로그에 `play_conflict_end_intrigue`(Harvest Cells 2장)·`decline_conflict_end_intrigue`를, v102는 Bloodlines+Immortality 카탈로그의 `give_intrigue_card`/`trash_intrigue_hand_card`/`trash_intrigue_for_contract`에 빠져 있던 Immortality Intrigue 사본을 더한다 — 소크가 적발; v103은 모든 카탈로그에 `use_intrigue_effect(section=0/1)`·`finish_intrigue_effects`를 더하고 Change Allegiances의 option을 하나로 되돌린다; v104는 Bloodlines 카탈로그의 `retreat_intrigue_troops` unit count를 12에서 12+7로 넓힌다 — Commander는 12개 병력과 별개 구성물이라 Conflict 유닛이 19까지 가고 Tactical Option이 그 전부를 제시하는데 카탈로그가 12에서 끊겨 있었다, 병렬 수집이 적발, 카탈로그마다 +28)이고, 관측은 `OBSERVATION_VERSION = 20`의 4,327-int 전체 게임 인코딩이다(v6~v9는 Bloodlines·Tech Module 세그먼트를 더한 것, v10은 Bloodlines 프로모 Ruthless Leadership의 identity 1개, v11은 Immortality 카탈로그의 Imperium 25·Intrigue 11 identity, v12는 Experimentation·Tleilaxu 19 identity와 Bene Tleilax board 세그먼트, v13은 round 한정 Reveal Persuasion과 Combat Intrigue 좌석, v14는 Imperium Ceremony가 peek한 Intrigue 두 장(소유자 전용), v15는 Chairdog의 반환 대기와 Usurp의 빌린 Row 카드(좌석 scalar 49→51), v16은 Bloodlines contract token 8개의 identity(contract 세그먼트 11개 × 8 = +88), v17은 frame 종류 `conflict_end_trigger`, v18은 `intrigue_effects` 추가로 decision kind index가 이동, v19는 Long Live the Fighters의 두 단계 pick이 전용 frame 종류 `LONG_LIVE_FIGHTERS`로 옮겨져 decision kind index가 다시 이동(v17~v19는 모두 길이 불변), v20은 OQ-059의 보류된 contract 아이콘 좌석 scalar 1개(좌석 scalar 51→52, +4 int); 옵션을 끈 룰셋에서는 새 칸이 전부 0이지만 길이가 달라져 v8 이전 체크포인트는 거부된다) ([`rl-environment.md`](rl-environment.md)). 보드 22칸 완결 + 즉시 공개 + `fab266f`/`e6fc298` 수정 + sweep 확장(`853ecd4`) 반영 후의 교차 소크는 random 룰셋당 2,000판 + heuristic 룰셋당 1,000판(둘 다 `--rotate-leaders`) + draft 두 policy 각 룰셋당 500판, 전부 `--soundness-interval 25`를 켠 총 7,000판이 실패 0으로 통과한 상태다(2026-09-01, 아래 세션 요약. 그 전 단계에서는 random 룰셋당 3,000판 비회전 소크도 실패 0이었다).
+2026-09-17(M14 슬라이스 3 뒤)의 기준 결과는 pytest 1,696개 통과(카드 이미지 에셋이 없는 머신은 1,646 통과 + 1 skip — M14 슬라이스 1·2·3의 새 테스트 87 + 23 + 47개는 에셋과 무관하므로 앞 기준선 1,489에 더한 값이다; `train` extra가 없으면 `tests/unit/training/test_torch_policy.py`가 추가로 skip된다), Ruff 통과, mypy 통과다. 현재 action codec은 `ACTION_CODEC_VERSION = 104`(기본 4,371개, CHOAM 4,657개, `promo_cards` 옵션 시 4,471/4,757개, `immortality` 옵션 시 9,326개 — graft 배치 변형과 카드 사본이 늘 때마다 커진다; `bloodlines`·`tech_module` 옵션은 별도 카탈로그로 훨씬 크고, `promo_cards`+`bloodlines`는 10,485개, promo+Bloodlines+Tech는 13,731개, CHOAM+Bloodlines는 11,128개, 다섯 옵션을 다 켜면 32,963개 — v98은 CHOAM+Bloodlines 카탈로그에만 contract token 8개의 행동과 `trash_intrigue_for_contract`를, v99는 `recall_conflict_agent_for_imperial_privilege`를, v100은 모든 카탈로그에 `skip_intrigue_acquisition`과 Change Allegiances의 세 번째 option을, v101은 Immortality 카탈로그에 `play_conflict_end_intrigue`(Harvest Cells 2장)·`decline_conflict_end_intrigue`를, v102는 Bloodlines+Immortality 카탈로그의 `give_intrigue_card`/`trash_intrigue_hand_card`/`trash_intrigue_for_contract`에 빠져 있던 Immortality Intrigue 사본을 더한다 — 소크가 적발; v103은 모든 카탈로그에 `use_intrigue_effect(section=0/1)`·`finish_intrigue_effects`를 더하고 Change Allegiances의 option을 하나로 되돌린다; v104는 Bloodlines 카탈로그의 `retreat_intrigue_troops` unit count를 12에서 12+7로 넓힌다 — Commander는 12개 병력과 별개 구성물이라 Conflict 유닛이 19까지 가고 Tactical Option이 그 전부를 제시하는데 카탈로그가 12에서 끊겨 있었다, 병렬 수집이 적발, 카탈로그마다 +28)이고, 관측은 `OBSERVATION_VERSION = 20`의 4,327-int 전체 게임 인코딩이다(v6~v9는 Bloodlines·Tech Module 세그먼트를 더한 것, v10은 Bloodlines 프로모 Ruthless Leadership의 identity 1개, v11은 Immortality 카탈로그의 Imperium 25·Intrigue 11 identity, v12는 Experimentation·Tleilaxu 19 identity와 Bene Tleilax board 세그먼트, v13은 round 한정 Reveal Persuasion과 Combat Intrigue 좌석, v14는 Imperium Ceremony가 peek한 Intrigue 두 장(소유자 전용), v15는 Chairdog의 반환 대기와 Usurp의 빌린 Row 카드(좌석 scalar 49→51), v16은 Bloodlines contract token 8개의 identity(contract 세그먼트 11개 × 8 = +88), v17은 frame 종류 `conflict_end_trigger`, v18은 `intrigue_effects` 추가로 decision kind index가 이동, v19는 Long Live the Fighters의 두 단계 pick이 전용 frame 종류 `LONG_LIVE_FIGHTERS`로 옮겨져 decision kind index가 다시 이동(v17~v19는 모두 길이 불변), v20은 OQ-059의 보류된 contract 아이콘 좌석 scalar 1개(좌석 scalar 51→52, +4 int); 옵션을 끈 룰셋에서는 새 칸이 전부 0이지만 길이가 달라져 v8 이전 체크포인트는 거부된다) ([`rl-environment.md`](rl-environment.md)). 보드 22칸 완결 + 즉시 공개 + `fab266f`/`e6fc298` 수정 + sweep 확장(`853ecd4`) 반영 후의 교차 소크는 random 룰셋당 2,000판 + heuristic 룰셋당 1,000판(둘 다 `--rotate-leaders`) + draft 두 policy 각 룰셋당 500판, 전부 `--soundness-interval 25`를 켠 총 7,000판이 실패 0으로 통과한 상태다(2026-09-01, 아래 세션 요약. 그 전 단계에서는 random 룰셋당 3,000판 비회전 소크도 실패 0이었다).
 
 ## 현재 구현 기준선
 
@@ -71,22 +71,27 @@ seed 블록에서 **+5.1 ~ +9.1%p**다([evaluation/baseline-2026-09-16.md](evalu
    정체 신호(평가 승률이 두세 번 연속 오차 안, 또는 이전 champion 상대 25~30%)가 보이면 PPO 슬라이스(수집 log-prob 기록 +
    clip + `--epochs` 3~4)를 넣고 같은 체크포인트에서 `--resume`한다. 학습 밖 후보 (a)에 전 확장 census가 남긴 RNG 가족
    (graft 변형·partner, Commander skill, `take_contract`, Spy post, Engineered Miracle의 `command_acquire_row_card`)을 더한다.
-0. (2026-09-17, **진행 중 — 슬라이스 1~2 완료, 다음은 슬라이스 3**, 학습과 병행 가능) **M14 원격 멀티플레이.** 사용자 요구:
+0. (2026-09-17, **진행 중 — 슬라이스 1~3 완료, 다음은 슬라이스 4**, 학습과 병행 가능) **M14 원격 멀티플레이.** 사용자 요구:
    "원격 친구들이랑 각자 PC에서". 설계는 [multiplayer-design.md](multiplayer-design.md)(같은 날 사용자가 D1~D7을 제안대로
-   확정), 마일스톤은 [implementation-plan.md](implementation-plan.md) M14. **슬라이스 1**(서버의 접근 계층: `server/access.py`,
-   좌석 claim/release·관리자 쿠키·진행 중 seed 숨김·CLI `--remote`)과 **슬라이스 2**(`GET /games/{id}/snapshot` + 서버가 정하는
-   로그 `epoch` + gzip, `app.js`의 single-flight `refresh` → `loadSnapshot`)가 끝났다. **다음은 슬라이스 3**: `server/events.py`의
-   asyncio hub(구독자마다 "최신 payload + `asyncio.Event`", `seq`가 큰 것만 덮어씀), `GameSessionManager(on_change=...)`가 lock
-   **밖에서** 부르는 callback(payload는 lock 안에서 만든다 — `threading.Lock`은 재진입 불가), `GET /games/{id}/events`(SSE,
-   공개 필드만, 15초 heartbeat, `hello`/`change`/`closed`), 좌석 쿠키가 있는 스트림의 presence → summary `players[].online`,
-   클라이언트 `EventSource` + 2초 폴링 fallback(Cloudflare Quick Tunnel은 SSE 불가), 알림 payload의 필드 화이트리스트 테스트
-   (설계 4.5·10절). 클라이언트 쪽 준비는 돼 있다: 갱신은 `refresh()` 하나이고 겹치지 않으며, 검토 모드 중의 갱신은 검토 화면을
-   덮지 않는다. 범위는 `server/`·`cli/server.py`·`tests/server/`뿐이라 codec·관측·저장 형식 버전은 그대로다. 설계의 수치는
-   `uv run python scripts/measure_server_payloads.py --seed 20260917`로 재현한다(네 번의 호출과 snapshot을 나란히 잰다). 주의:
-   브라우저 UI는 슬라이스 4 전까지 `--remote` 서버에서 동작하지 않는다(좌석 요청이 403) — 원격 흐름은 그때까지
-   `tests/server/test_remote_app.py`·`test_snapshot_app.py`가 검증한다. 브라우저 E2E는 저장소 밖 스크래치 Playwright로 돌린다
-   (이 WSL 박스: `uv venv` + `playwright` 모듈, 캐시된 `~/.cache/ms-playwright/chromium_headless_shell-1234`를
-   `executable_path`로 지정, 버전 심볼을 갖춘 `libasound.so.2` stub을 `LD_LIBRARY_PATH`에).
+   확정), 마일스톤은 [implementation-plan.md](implementation-plan.md) M14. 끝난 것: **슬라이스 1**(접근 계층: `server/access.py`,
+   좌석 claim/release·관리자 쿠키·진행 중 seed 숨김·CLI `--remote`), **슬라이스 2**(`GET /games/{id}/snapshot` + 서버가 정하는
+   로그 `epoch` + gzip, `app.js`의 single-flight `refresh`), **슬라이스 3**(초인종: `add_change_listener`·`DoorbellHub`·
+   `GET /games/{id}/events`, 토큰 대조 presence `players[].online`, `EventSource` + 2초 폴링 fallback, 종료 신호에서 스트림을
+   끝내는 CLI). **다음은 슬라이스 4 — 클라이언트 원격 UX**(설계 7절): (1) 진입 — `location.hash`의 `admin=`은
+   `POST /auth/admin` 뒤 `history.replaceState`로 지우고, `game=`이면 `/me`(= snapshot의 `you`, 이미 `state.me`에 있다)로 내
+   좌석을 보고 게임 화면 또는 좌석 고르기 화면으로; (2) `humanSeats()` 자리에 `mySeats()`(= `state.me.seats`; open 모드는 모든
+   사람 좌석이라 지금과 같다); (3) claim 뒤 **스트림을 다시 연다**(스트림은 요청 시점의 쿠키로 presence에 등록된다);
+   (4) 대기 배너("좌석 2 (이름) 결정 대기 중"·접속 끊김), 좌석 패널의 이름·접속 점, 내 차례 알림(탭 제목 + WebAudio —
+   Notification·clipboard는 보안 컨텍스트 전용이라 Tailscale 평문 HTTP에서는 안 된다); (5) 이름은 `textContent`로만 그리고
+   최종 순위표의 `innerHTML` 보간을 없앤다; (6) 남의 행동으로 인한 재렌더가 팝오버·스크롤을 끊지 않게(`render()`의
+   `closePopover()`); (7) 호스트 패널(방 링크·좌석 현황·release, CLI `--public-url`), remote에서 설정 화면은 관리자만·Seed 입력
+   숨김; (8) 403(좌석을 잃음)·`closed` 처리. 검증은 스크래치 Playwright의 브라우저 컨텍스트 여러 개(쿠키 분리)로 `--remote`
+   서버에 대해: 방 생성 → 입장 → claim → 몇 턴 → 새로고침 복귀 → release → 재claim. 범위는 `server/static/`·`cli/server.py`·
+   `tests/server/`뿐이라 codec·관측·저장 형식 버전은 그대로다. 주의: 브라우저 UI는 슬라이스 4 전까지 `--remote` 서버에서
+   동작하지 않는다(좌석 요청 403) — 그때까지 원격 흐름은 `tests/server/test_remote_app.py`·`test_snapshot_app.py`·
+   `test_events_app.py`가 검증한다. 브라우저 E2E 환경은 저장소 밖 스크래치다(이 WSL 박스: `uv venv` + `playwright` 모듈,
+   캐시된 `~/.cache/ms-playwright/chromium_headless_shell-1234`를 `executable_path`로, 버전 심볼을 갖춘 `libasound.so.2`
+   stub을 `LD_LIBRARY_PATH`에). 설계의 수치는 `uv run python scripts/measure_server_payloads.py --seed 20260917`로 재현한다.
 0. (2026-09-16 심야, 완료 → 2026-09-17 0번) **M10 학습 재개**(관측 v20·codec v104라 체크포인트 전부 새로; pure self-play로 시작해
    25 iteration마다 재정비된 heuristic·rollout과 대회 평가; 첫 슬라이스 후보는 PPO 전환·league·평가 상대 교체 — 위 2번 항목).
    학습 밖 후보: (a) heuristic 표 밖 항의 나머지(14절(c) 끝: Spy post 규칙 재설계, `take_contract`, Intrigue option,
@@ -345,6 +350,39 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
   재생하므로 마지막 step이 가장 느리다). 그래서 검토를 열자마자 ⏮를 누르면 늦게 도착한 첫 요청(마지막 step)이 화면을
   되돌려 놓았고, 검토를 닫은 뒤 도착한 응답은 live 화면을 검토 상태로 덮었다. `reviewGoto`가 요청 번호를 세어 가장 최근
   요청만 그린다(WAN에서 더 잘 터질 결함이라 지금 고쳤다; 재현·확인은 같은 스크래치 E2E).
+- **슬라이스 3 구현**(같은 날, 사용자 지시 "슬라이스 3 진행"; 1,649 → 1,696 통과·Ruff·mypy, 초인종이 켜진 채 슬라이스 2의
+  전체 게임 E2E도 그대로 snapshot 295·POST 295): 세션 계층은 asyncio를 모른다 —
+  `GameSessionManager.add_change_listener(cb)`의 `cb(game_id, payload | None)`는 변경을 만든 스레드에서, **lock을 푼 뒤에**
+  불린다(payload는 lock 안의 `_ring_locked`가 `event_seq`를 올리며 만든다; `threading.Lock`은 재진입이 안 되므로 listener가
+  세션을 다시 읽으면 교착했을 것이다 — 테스트로 고정). 울리는 것: `apply_action`·`confirm_turn`·`undo`·`claim_seat`·
+  `release_seat`, `online`이 실제로 바뀐 `connect`/`disconnect`, 그리고 `delete`(`None`). payload는 공개 필드 8개
+  (`seq`·`revision`·`undo_count`·`log_count`·`decision_owner`·`confirmation`·`finished`·`players`)뿐이고 키 집합을 테스트가
+  고정한다. presence는 좌석별 카운터가 아니라 **연결 ID → 그 요청이 내민 토큰들**의 대조다: release 즉시 offline, 재claim한
+  사람이 접속한 뒤 옛 연결이 끊겨도 꺼지지 않는다.
+- `server/events.py`의 `DoorbellHub`: 구독자마다 "최신 payload + `asyncio.Event`"(밀린 알림은 최신 하나로 합쳐진다), `seq`가
+  큰 것만 덮어씀(lock 밖 publish의 순서 역전에 안전), 구독 등록을 `hello`를 읽기 **전에** 해서 그 사이의 변경을 잃지 않는다.
+  `publish`·`close`는 어느 스레드(신호 처리기 포함)에서든 부를 수 있고 예외를 내지 않는다. SSE endpoint는 `async def`이고 lock을
+  잡는 세션 호출은 `run_in_threadpool`로, 연결 등록·해제는 generator 안의 `try/finally` + 취소 shield로 짝을 맞춘다.
+- **종료 처리**: 스트림은 스스로 끝나지 않고 uvicorn은 열린 응답을 기다리므로, 처음 구현(`timeout_graceful_shutdown=3`만)은
+  탭이 열려 있으면 종료에 3.2초가 걸리고 "Cancel 1 running task(s)" ERROR를 남겼다(실측). lifespan shutdown은 uvicorn이 연결을
+  기다린 뒤에 돌아서 쓸 수 없다. CLI가 `uvicorn.Server`를 상속해 `handle_exit`에서 `hub.close()`를 부른다 → 스트림 3개가 열린 채
+  SIGINT에 0.32초·exit 0·깨끗한 로그. 이때는 `closed`를 보내지 않는다(재시작 뒤 게임이 돌아올 수 있다). `uvicorn.run`과
+  달리 `Server.run()`을 직접 부르면 재발생한 `KeyboardInterrupt`를 직접 삼켜야 한다.
+- 클라이언트: `openDoorbell`/`closeDoorbell`/`onDoorbell`. 알림의 다섯 필드 중 하나라도 summary와 다를 때만 `refresh()`
+  (자기 행동의 알림은 요청 0개), `players`만 다르면 payload의 공개 `players`를 채택. 3번 연속 실패 또는 5초 안에 `hello`가
+  없으면 스트림을 닫고 2초 폴링(summary에 같은 필드가 있어 같은 판정 함수), 404면 "게임이 삭제됨".
+- 브라우저 E2E(컨텍스트 3개): 초인종으로 241 ms에 반영(서버에서 잰 POST → `change` 도착은 4 ms)·snapshot 요청 1개, 스트림을
+  막은 컨텍스트는 2.2초 만에 폴링으로 전환해 1.6초에 반영, 게임 삭제는 `closed`와 폴링 404로 통지, JS 오류 0.
+- 테스트 기반 메모: Starlette `TestClient`는 끝나지 않는 응답을 스트리밍하지 못한다(본문을 전부 버퍼링) → SSE의 HTTP 테스트는
+  스레드에서 띄운 실제 uvicorn(`port=0`, `server.servers[0].sockets[0].getsockname()`) + `httpx2`(이 저장소의 dev 의존성은
+  `httpx`가 아니라 `httpx2`다)로 한다. 종료 시간을 잴 때는 신호가 서버 프로세스에 바로 가도록
+  `.venv/bin/dune-imperium-server`를 직접 띄웠다(회귀 테스트는 `sys.executable -m dune_imperium.cli.server`).
+- **테스트 함정 하나**(서브에이전트가 이 실패에서 멈춰 메인 세션이 진단했다): `_read_block(response.iter_lines())`처럼 줄
+  반복자를 임시값으로 넘기면, 함수가 돌아오며 그 generator가 닫힐 때 `httpx2`(httpcore)가 **연결을 닫는다**. 서버는 옳게
+  presence를 내리므로 "hello 직후 `online`이 False"라는, 서버 결함처럼 보이는 실패가 난다(계측하니 connect −1.3 ms →
+  disconnect +2 ms). 스트림을 열어 둔 채 검사하려면 `lines = response.iter_lines()`를 이름에 묶어 둔다.
+- 위임: 테스트 세 파일은 `card-implementer`가 썼고(위 함정에서 멈춘 것을 중지시키고 이어받음), 메인 세션이 검토하며 인사말
+  경합 2건·`hub.close()` 3건·실제 프로세스 종료 시간 테스트를 더했다.
 - 주의: 브라우저 UI는 슬라이스 4 전까지 `--remote` 서버에서 동작하지 않는다(좌석 요청 403). 이 세션의 커밋은 push하지 않았다.
 
 ## 2026-09-17 학습 전 최종 점검 세션 요약 (master, 관측 v20, codec v104, 코드 변경 없음)

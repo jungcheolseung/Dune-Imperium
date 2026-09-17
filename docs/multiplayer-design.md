@@ -84,7 +84,7 @@ game id를 입장권으로 쓰므로 remote 모드의 `GET /games`(전체 목록
 - 링크가 하나라 다시 모일 때(저장 불러오기 뒤 새 game id) 다시 올릴 것도 하나다. 그래서 토큰을 저장 파일에 보존할 필요가 없다.
 - **사전 로비 단계는 두지 않는다.** 게임은 지금처럼 생성 즉시 시작하고, claim되지 않은 좌석의 결정이 오면 그냥 기다린다. 늦게 들어온 사람은 로그로 그동안의 진행을 본다. 생성 전 상태 기계가 하나 줄고, 엔진·seed·AI 좌석 구성은 지금과 똑같이 생성 시점에 정해진다.
 - 경합: 같은 좌석을 두 명이 누르면 먼저 온 요청이 이기고 나머지는 409를 받아 다른 좌석을 고른다. 자기 쿠키가 이미 유효한 좌석에 다시 claim하면 이름만 바꾸는 멱등 요청이다.
-- **release**: 관리자 또는 그 좌석 본인이 좌석을 비운다(토큰 폐기, 이름 삭제, 그 좌석의 스트림 종료). 쿠키를 잃었거나(다른 브라우저·기기로 옮김) 자리를 영영 뜬 경우의 복구 수단이다. 빈 좌석은 방에 있는 누구나 다시 claim할 수 있으므로, 떠난 친구의 좌석을 남은 사람이 두 번째 좌석으로 이어 두는 것도 된다(그 좌석의 손패를 보게 되는 것은 일행이 합의할 일).
+- **release**: 관리자 또는 그 좌석 본인이 좌석을 비운다(토큰 폐기, 이름 삭제, 그 좌석의 presence 소멸 — 스트림 자체는 공개 필드뿐이라 닫지 않는다). 쿠키를 잃었거나(다른 브라우저·기기로 옮김) 자리를 영영 뜬 경우의 복구 수단이다. 빈 좌석은 방에 있는 누구나 다시 claim할 수 있으므로, 떠난 친구의 좌석을 남은 사람이 두 번째 좌석으로 이어 두는 것도 된다(그 좌석의 손패를 보게 되는 것은 일행이 합의할 일).
 - 한 브라우저의 다중 claim을 막지 않는다(한 PC에 두 명). 좌석 현황에 이름이 보이므로 몰래 두 좌석을 잡을 수는 없다.
 
 ### 4.5 푸시는 SSE "초인종", 데이터는 기존 인증 경로
@@ -99,14 +99,14 @@ data: {"seq": 41, "revision": 312, "undo_count": 2, "log_count": 318,
        "players": [{"seat": 0, "kind": "human", "name": "호스트", "claimed": true, "online": true}, ...]}
 ```
 
-- 알림에 비공개 정보가 없으므로 모든 구독자에게 같은 payload를 보낸다. 좌석별 필터가 필요한 데이터는 전부 기존 경로로만 나간다 — 가시성 판정 지점이 늘지 않는다.
+- 알림에 비공개 정보가 없으므로 모든 구독자에게 같은 payload를 보낸다. 좌석별 필터가 필요한 데이터는 전부 기존 경로로만 나간다 — 가시성 판정 지점이 늘지 않는다. 클라이언트는 `revision`·`undo_count`·`log_count`·`confirmation`·`finished` 중 하나라도 자기 summary와 다를 때만 snapshot을 다시 받는다. 그래서 자기 행동이 울린 초인종은 요청을 만들지 않고(POST 뒤의 snapshot으로 이미 최신), `players`만 바뀐 알림(이름·claim·접속)은 payload의 공개 `players`를 그대로 채택해 요청 없이 끝난다.
 - 상태 기반이라 놓친 이벤트를 재전송할 필요가 없다. 재연결하면 `hello`(현재 알림)를 받고 필요하면 새로 고친다. `EventSource`의 자동 재연결을 그대로 쓴다. 게임이 삭제되면 `closed`를 보내고 스트림을 닫는다.
 - 구독자마다 큐 대신 **"최신 payload + `asyncio.Event`"**를 둔다. 밀린 알림은 최신 하나로 합쳐지고 느린 클라이언트가 메모리를 키우지 못한다. `seq`가 더 큰 payload만 덮어쓰므로 lock 밖에서 publish 순서가 뒤집혀도 안전하다.
 - 세션 계층은 asyncio를 모른다. `GameSessionManager(on_change=callback)`가 변경마다 **lock 안에서 payload를 만들고 lock을 푼 뒤** callback을 부른다(`threading.Lock`은 재진입이 안 되므로 callback이 세션을 다시 읽으면 교착한다). `server/events.py`의 hub가 `loop.call_soon_threadsafe`로 asyncio 쪽에 넘긴다. SSE endpoint는 `async def`라 threadpool(anyio 기본 40)을 점유하지 않는다.
 - 15초마다 주석 heartbeat(`: ping`)를 보낸다. 유휴 연결을 끊는 프록시를 넘기고 죽은 연결을 그 주기 안에 감지한다. 헤더는 `Cache-Control: no-cache`, `X-Accel-Buffering: no`.
-- **presence**: 좌석 쿠키를 가진 스트림이 붙고 떨어질 때 좌석별 연결 수를 올리고 내려 `online`을 알림에 싣는다.
-- **폴링 fallback**: `EventSource`가 연속 실패하거나 5초 안에 `hello`가 없으면 2초 간격으로 summary(약 0.6 KB)를 폴링한다. Cloudflare Quick Tunnel은 SSE를 지원하지 않으므로(8.2절) 이 경로가 실제로 쓰인다.
-- 서버 종료 시 열린 스트림이 graceful shutdown을 붙잡지 않게 lifespan shutdown에서 hub를 닫고 CLI가 `timeout_graceful_shutdown`을 준다.
+- **presence**: 열린 스트림은 세션에 "연결"로 등록되고(연결 ID → 그 요청이 내민 좌석 토큰들), 사람 좌석은 **어떤 연결이 그 좌석의 지금 토큰을 들고 있는 동안** `online`이다(open 서버에서는 연결이 하나라도 있는 동안 모든 사람 좌석). 좌석별 카운터가 아니라 토큰 대조라서 release 즉시 offline이 되고, 다른 사람이 다시 claim해 접속한 뒤 옛 연결이 끊겨도 꺼지지 않는다. 연결·해제는 `online`이 실제로 바뀔 때만 초인종을 울린다. 스트림은 요청 시점의 쿠키로 등록되므로 claim 직후에는 클라이언트가 스트림을 다시 열어야 그 좌석이 켜진다(슬라이스 4).
+- **폴링 fallback**: `EventSource`가 3번 연속 실패하거나 5초 안에 `hello`가 없으면 스트림을 닫고 2초 간격으로 summary(약 0.9 KB)를 폴링한다 — summary에는 알림과 비교할 필드가 전부 있어서 같은 판정 함수를 쓴다. 폴링이 404를 받으면 게임이 사라진 것이다. Cloudflare Quick Tunnel은 SSE를 지원하지 않으므로(8.2절) 이 경로가 실제로 쓰인다.
+- 서버 종료: 스트림은 스스로 끝나지 않고 uvicorn은 열린 응답을 기다리므로, CLI의 `uvicorn.Server` 하위 클래스가 종료 신호(`handle_exit`)에서 `hub.close()`를 불러 모든 스트림을 즉시 끝낸다(실측: 스트림 3개가 열린 채 SIGINT → 0.32초에 exit 0; 이 처리 전에는 `timeout_graceful_shutdown` 3초를 다 기다리고 "Cancel 1 running task(s)" ERROR를 남겼다). lifespan shutdown은 uvicorn이 연결을 기다린 **뒤에** 돌기 때문에 쓸 수 없다. 이때는 `closed`를 보내지 않는다 — 서버가 다시 뜨면 게임이 돌아올 수 있으므로 "게임이 삭제됐다"고 알리면 안 된다. `timeout_graceful_shutdown`은 백스톱으로 남긴다.
 
 SSE를 고른 이유: 서버→클라이언트 한 방향이면 충분하고(행동은 기존 POST), Starlette의 `StreamingResponse`만으로 되어 **새 의존성이 0**이다. WebSocket은 지금 lock 파일에 구현 패키지(`websockets`·`wsproto`)가 없어 의존성 추가가 필요하고 재연결을 직접 짜야 하는데 얻는 것이 없다. 브라우저의 HTTP/1.1 origin당 6연결 제한 때문에 같은 게임을 한 브라우저에서 여섯 탭 이상 열면 요청이 막힌다(알려진 SSE 제약, 대응하지 않음).
 
@@ -261,7 +261,7 @@ HEAD `a12e894`, WSL 노트북(i5-8250U). 전 확장 + 프로모 + leader draft, 
 
 1. **접근 계층과 좌석 claim(서버).** `server/access.py`, 세션의 토큰·이름, claim/release/`me`, 관리자 쿠키와 관리자 전용 경로, summary의 `access`·`players`·seed 숨김, CLI `--remote`·`--admin-key`와 loopback 검사. 완료 조건: remote 모드에서 자격 없는 모든 좌석 접근이 403, 네 쿠키 jar로 1라운드 진행, 기존 테스트 무수정 통과. **완료(2026-09-17).** 구현 메모: (a) 자격 판정은 `GameSessionManager._authorize_seat_locked`·`require_admin` 두 곳뿐이고 `app.py`는 쿠키를 `Credentials`로 옮기기만 한다 — 어느 토큰이 어느 좌석 것인지는 쿠키 이름이 아니라 값 비교로 정한다. (b) 관리자 키는 좌석 view를 열지 않는다(호스트도 플레이어). (c) `players`의 `online`은 presence가 생기는 슬라이스 3에서, CLI `--public-url`·`--no-autosave`는 각각 슬라이스 4·5에서 더한다. (d) 저장 메타데이터의 seed 가림은 `save_metadata(hide_unfinished_seed=...)`이고 remote 서버의 저장·목록 응답이 켠다. (e) 이 슬라이스는 서버만 바꾸므로 브라우저 UI는 슬라이스 4 전까지 `--remote` 서버에서 동작하지 않는다(403) — open 모드는 그대로다.
 2. **snapshot + 증분 로그 + gzip.** 서버 endpoint와 미들웨어, 클라이언트 갱신 경로 교체(single-flight). 완료 조건: 갱신이 요청 하나, 예산 테스트 통과, 9절 스크립트로 개선 확인. **완료(2026-09-17).** 구현 메모: (a) `GameSessionManager.snapshot`이 summary·`you`·view·actions·로그 꼬리를 한 lock 안의 한 상태에서 읽고, `legal_actions`·`log`·`identify`와 직렬화 helper를 공유한다. (b) 로그 증분의 기준은 클라이언트가 아니라 서버의 `epoch`가 정한다(4.6절; 설계 초안의 "클라이언트가 `undo_count`를 보고 판단"은 요청 시점에 알 수 없어서 버렸다). (c) `app.js`의 `applySummary`(순차 GET)를 `refresh(summary?)` → `loadSnapshot` → `adoptSnapshot`으로 바꿨고, 갱신은 겹치지 않는다(single-flight: 도는 중에 온 요청은 한 바퀴 더). 검토 모드 중에 온 갱신은 summary만 받고 검토 화면을 건드리지 않는다. (d) `GZipMiddleware(minimum_size=1024)`; 이미지·`text/event-stream`은 Starlette 기본 제외 목록이 거른다. (e) 같은 날 E2E가 드러낸 기존 결함을 따로 고쳤다 — 검토 화면의 응답이 순서가 뒤바뀌어 도착하면(서버가 cursor까지 모든 step을 재생하므로 마지막 step이 가장 느리다) 늦게 온 옛 요청이 화면을 덮었다; 이제 가장 최근 요청만 그린다.
-3. **초인종(SSE) + presence + 폴링 fallback.** `server/events.py`, `on_change`, `/events`, 클라이언트 `EventSource`. 완료 조건: 두 브라우저에서 한쪽 행동이 1초 안에 다른 쪽에 반영, SSE를 막아도 3초 안에 반영.
+3. **초인종(SSE) + presence + 폴링 fallback.** `server/events.py`, `on_change`, `/events`, 클라이언트 `EventSource`. 완료 조건: 두 브라우저에서 한쪽 행동이 1초 안에 다른 쪽에 반영, SSE를 막아도 3초 안에 반영. **완료(2026-09-17).** 구현 메모: (a) `GameSessionManager.add_change_listener`; 바뀌는 메서드는 전부 "lock 안에서 payload를 만들고(`_ring_locked`, `event_seq` 증가) lock을 푼 뒤 `_publish`"한다 — listener가 세션을 다시 읽어도 교착하지 않는다(테스트로 고정). (b) `server/events.py`의 `DoorbellHub`: 구독자마다 "최신 payload + `asyncio.Event`", `seq`가 큰 것만 덮어씀, 구독 등록을 인사말(`hello`)을 읽기 **전에** 해서 그 사이의 변경을 잃지 않는다. `publish`는 어느 스레드에서든 부를 수 있고 절대 예외를 내지 않는다. (c) 세션 호출은 lock을 잡으므로 SSE endpoint(`async def`)에서 `run_in_threadpool`로 부르고, 연결 등록·해제는 generator 안의 `try/finally`(취소 shield)로 짝을 맞춘다. (d) Starlette `TestClient`는 끝나지 않는 응답을 스트리밍하지 못해서(본문을 전부 버퍼링) HTTP 테스트는 스레드에서 띄운 실제 uvicorn + `httpx2`로 한다. (e) 실측(브라우저 E2E, 컨텍스트 3개): 초인종으로 241 ms(Playwright 폴링 오차 포함)에 반영·snapshot 요청 1개·자기 행동에는 추가 요청 0개, 스트림을 막은 브라우저는 2.2초 만에 폴링으로 전환해 1.6초에 반영, 게임 삭제는 `closed`와 폴링 404로 양쪽에 통지. 서버에서 잰 POST → `change` 도착은 4 ms.
 4. **클라이언트 원격 UX.** 좌석 고르기·이름, 내 좌석 고정, 대기 배너·접속 표시·차례 알림, 팝오버·스크롤 보존, 호스트 패널, 설정 화면의 관리자 제한, `textContent` 점검, E2E. 완료 조건: 10절의 E2E 시나리오 통과. **여기까지가 첫 원격 한 판의 최소 구성이다.**
 5. **자동 저장과 복구.** `write_autosave`, 턴이 넘어갈 때의 저장, 복구 절차. 완료 조건: 서버 강제 종료 → 재시작 → 자동 저장에서 이어 가기.
 6. **실전 점검과 운영 문서.** README의 호스트 절차(Tailscale, `--remote` 명령, WSL 주의), 실제 친구와 한 판, 피드백 반영, 필요하면 보드 스캔 축소본.
