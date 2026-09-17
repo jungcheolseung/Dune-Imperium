@@ -3,18 +3,28 @@
 Endpoints translate HTTP to ``GameSessionManager`` calls one to one; every
 game decision, visibility judgment, and advance lives in the session layer
 and, below it, the rules engine. Errors map to conventional status codes:
-unknown games and saves are 404, non-human seats 403, stale revisions 409,
-and every other invalid request 400.
+unknown games and saves are 404, non-human seats, seats the client does not
+hold and host operations without the admin key 403, stale revisions and
+seats already taken 409, and every other invalid request 400.
 
 Save files live on the server's local disk (``SaveStore``); HTTP responses
 only ever carry save metadata because the full document records shuffle
 outcomes and with them hidden deck orders.
+
+On a remote server (M14, ``docs/multiplayer-design.md``) a client proves
+itself with cookies: one ``HttpOnly`` cookie per claimed seat, scoped to
+that game's path, and one for the host's admin key. This module only moves
+them between the request and ``Credentials``; the session layer judges.
+Cookies rather than header tokens because ``EventSource`` and ``<img>``
+cannot send headers, and because a token must never show in the address
+bar of a player who is sharing their screen.
 """
 
 import os
 from collections.abc import Awaitable, Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Final
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse
@@ -22,6 +32,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from dune_imperium.display.images import resolve_card_images
+from dune_imperium.server.access import AccessMode, Credentials
 from dune_imperium.server.catalog import build_catalog
 from dune_imperium.server.persistence import (
     SaveError,
@@ -30,13 +41,21 @@ from dune_imperium.server.persistence import (
     default_saves_directory,
 )
 from dune_imperium.server.sessions import (
+    AdminAccessError,
     GameSessionManager,
     JsonObject,
     SeatAccessError,
+    SeatTakenError,
     SessionError,
     StaleRevisionError,
     UnknownGameError,
 )
+
+ADMIN_COOKIE: Final = "dune_admin"
+_SEAT_COOKIE_PREFIX: Final = "dune_seat_"
+# A game runs for an evening but may be resumed weeks later; the cookie
+# dies earlier anyway when its seat is released or the server restarts.
+_COOKIE_MAX_AGE: Final = 30 * 24 * 60 * 60
 
 _STATIC_DIR = Path(__file__).parent / "static"
 # Gitignored symlink to the private Dune-Imperium-assets checkout (cards/,
@@ -164,6 +183,46 @@ class SaveGameRequest(BaseModel):
     name: str | None = Field(default=None, max_length=120)
 
 
+class AdminLoginRequest(BaseModel):
+    """The host's admin key, as printed by the server at startup."""
+
+    key: str = Field(min_length=1, max_length=200)
+
+
+class ClaimSeatRequest(BaseModel):
+    """The name a player sits down under.
+
+    The session layer cleans it and enforces the real length limit; the
+    bound here only keeps a request body small.
+    """
+
+    name: str = Field(max_length=200)
+
+
+def seat_cookie_name(game_id: str, seat: int) -> str:
+    """Name of the cookie that carries one claimed seat's token."""
+
+    return f"{_SEAT_COOKIE_PREFIX}{game_id}_{seat}"
+
+
+def _credentials(request: Request, game_id: str | None = None) -> Credentials:
+    """Collect what a request presents: its seat tokens for one game, and admin.
+
+    Which seat a token belongs to is decided by comparing values in the
+    session layer, never by trusting a cookie's name.
+    """
+
+    seat_tokens: frozenset[str] = frozenset()
+    if game_id is not None:
+        prefix = f"{_SEAT_COOKIE_PREFIX}{game_id}_"
+        seat_tokens = frozenset(
+            value for name, value in request.cookies.items() if name.startswith(prefix)
+        )
+    return Credentials(
+        seat_tokens=seat_tokens, admin_key=request.cookies.get(ADMIN_COOKIE)
+    )
+
+
 def create_app(
     manager: GameSessionManager | None = None,
     saves_dir: Path | None = None,
@@ -241,101 +300,198 @@ def create_app(
             raise HTTPException(status_code=404, detail="no Bene Tleilax board image")
         return FileResponse(bene_tleilax_path)
 
+    # A remote server's host plays too, so the seed of a game in progress
+    # stays out of the save listings it serves (see ``save_metadata``).
+    hide_unfinished_seed = sessions.access is AccessMode.REMOTE
+
+    @app.post("/auth/admin")
+    def admin_login(body: AdminLoginRequest, response: Response) -> JsonObject:
+        with _http_errors():
+            sessions.admin_login(body.key)
+        response.set_cookie(
+            ADMIN_COOKIE,
+            body.key,
+            max_age=_COOKIE_MAX_AGE,
+            path="/",
+            httponly=True,
+            samesite="strict",
+        )
+        return {"admin": True}
+
     @app.post("/games")
-    def create_game(request: CreateGameRequest) -> JsonObject:
+    def create_game(body: CreateGameRequest, request: Request) -> JsonObject:
         with _http_errors():
             return sessions.create_game(
-                tuple(request.seats),
-                choam_module=request.choam_module,
-                leader_draft=request.leader_draft,
-                promo_cards=request.promo_cards,
-                bloodlines=request.bloodlines,
-                tech_module=request.tech_module,
-                immortality=request.immortality,
-                game_seed=request.game_seed,
-                policy_seed=request.policy_seed,
+                tuple(body.seats),
+                choam_module=body.choam_module,
+                leader_draft=body.leader_draft,
+                promo_cards=body.promo_cards,
+                bloodlines=body.bloodlines,
+                tech_module=body.tech_module,
+                immortality=body.immortality,
+                game_seed=body.game_seed,
+                policy_seed=body.policy_seed,
+                credentials=_credentials(request),
             )
 
     @app.get("/games")
-    def list_games() -> list[JsonObject]:
-        return sessions.list_games()
+    def list_games(request: Request) -> list[JsonObject]:
+        with _http_errors():
+            return sessions.list_games(credentials=_credentials(request))
 
     @app.get("/games/{game_id}")
     def game_summary(game_id: str) -> JsonObject:
         with _http_errors():
             return sessions.summary(game_id)
 
-    @app.get("/games/{game_id}/seats/{seat}/view")
-    def seat_view(game_id: str, seat: int) -> JsonObject:
+    @app.get("/games/{game_id}/me")
+    def who_am_i(game_id: str, request: Request) -> JsonObject:
         with _http_errors():
-            return sessions.view(game_id, seat)
+            return sessions.identify(
+                game_id, credentials=_credentials(request, game_id)
+            )
+
+    @app.post("/games/{game_id}/seats/{seat}/claim")
+    def claim_seat(
+        game_id: str,
+        seat: int,
+        body: ClaimSeatRequest,
+        request: Request,
+        response: Response,
+    ) -> JsonObject:
+        with _http_errors():
+            claim = sessions.claim_seat(
+                game_id,
+                seat,
+                body.name,
+                credentials=_credentials(request, game_id),
+            )
+        response.set_cookie(
+            seat_cookie_name(game_id, seat),
+            claim.token,
+            max_age=_COOKIE_MAX_AGE,
+            path=f"/games/{game_id}",
+            httponly=True,
+            samesite="strict",
+        )
+        return claim.summary
+
+    @app.post("/games/{game_id}/seats/{seat}/release")
+    def release_seat(
+        game_id: str, seat: int, request: Request, response: Response
+    ) -> JsonObject:
+        with _http_errors():
+            summary = sessions.release_seat(
+                game_id, seat, credentials=_credentials(request, game_id)
+            )
+        # Harmless when the host released someone else's seat: that
+        # browser's cookie simply stopped matching anything.
+        response.delete_cookie(
+            seat_cookie_name(game_id, seat),
+            path=f"/games/{game_id}",
+            httponly=True,
+            samesite="strict",
+        )
+        return summary
+
+    @app.get("/games/{game_id}/seats/{seat}/view")
+    def seat_view(game_id: str, seat: int, request: Request) -> JsonObject:
+        with _http_errors():
+            return sessions.view(
+                game_id, seat, credentials=_credentials(request, game_id)
+            )
 
     @app.get("/games/{game_id}/seats/{seat}/actions")
-    def seat_actions(game_id: str, seat: int) -> JsonObject:
+    def seat_actions(game_id: str, seat: int, request: Request) -> JsonObject:
         with _http_errors():
-            return sessions.legal_actions(game_id, seat)
+            return sessions.legal_actions(
+                game_id, seat, credentials=_credentials(request, game_id)
+            )
 
     @app.post("/games/{game_id}/actions")
-    def apply_action(game_id: str, request: ApplyActionRequest) -> JsonObject:
+    def apply_action(
+        game_id: str, body: ApplyActionRequest, request: Request
+    ) -> JsonObject:
         with _http_errors():
             return sessions.apply_action(
                 game_id,
-                seat=request.seat,
-                revision=request.revision,
-                index=request.index,
-                undo_count=request.undo_count,
+                seat=body.seat,
+                revision=body.revision,
+                index=body.index,
+                undo_count=body.undo_count,
+                credentials=_credentials(request, game_id),
             )
 
     @app.post("/games/{game_id}/undo")
-    def undo_steps(game_id: str, request: UndoRequest) -> JsonObject:
+    def undo_steps(game_id: str, body: UndoRequest, request: Request) -> JsonObject:
         with _http_errors():
             return sessions.undo(
                 game_id,
-                seat=request.seat,
-                revision=request.revision,
-                steps=request.steps,
-                undo_count=request.undo_count,
+                seat=body.seat,
+                revision=body.revision,
+                steps=body.steps,
+                undo_count=body.undo_count,
+                credentials=_credentials(request, game_id),
             )
 
     @app.post("/games/{game_id}/confirm")
-    def confirm_turn(game_id: str, request: ConfirmTurnRequest) -> JsonObject:
+    def confirm_turn(
+        game_id: str, body: ConfirmTurnRequest, request: Request
+    ) -> JsonObject:
         with _http_errors():
             return sessions.confirm_turn(
                 game_id,
-                seat=request.seat,
-                revision=request.revision,
-                undo_count=request.undo_count,
+                seat=body.seat,
+                revision=body.revision,
+                undo_count=body.undo_count,
+                credentials=_credentials(request, game_id),
             )
 
     @app.get("/games/{game_id}/log")
-    def game_log(game_id: str, seat: int, after: int = 0) -> JsonObject:
+    def game_log(
+        game_id: str, seat: int, request: Request, after: int = 0
+    ) -> JsonObject:
         with _http_errors():
-            return sessions.log(game_id, seat, after=after)
+            return sessions.log(
+                game_id,
+                seat,
+                after=after,
+                credentials=_credentials(request, game_id),
+            )
 
     @app.delete("/games/{game_id}")
-    def delete_game(game_id: str) -> JsonObject:
+    def delete_game(game_id: str, request: Request) -> JsonObject:
         with _http_errors():
-            sessions.delete(game_id)
+            sessions.delete(game_id, credentials=_credentials(request))
         return {"deleted": game_id}
 
     @app.post("/games/{game_id}/save")
-    def save_game(game_id: str, request: SaveGameRequest) -> JsonObject:
+    def save_game(game_id: str, body: SaveGameRequest, request: Request) -> JsonObject:
         with _http_errors():
-            document = sessions.save_game(game_id, name=request.name)
-            return saves.write(document)
+            document = sessions.save_game(
+                game_id, name=body.name, credentials=_credentials(request)
+            )
+            return saves.write(document, hide_unfinished_seed=hide_unfinished_seed)
 
     @app.get("/saves")
-    def list_saves() -> list[JsonObject]:
-        return saves.list()
+    def list_saves(request: Request) -> list[JsonObject]:
+        with _http_errors():
+            sessions.require_admin(_credentials(request))
+            return saves.list(hide_unfinished_seed=hide_unfinished_seed)
 
     @app.post("/saves/{save_id}/load")
-    def load_save(save_id: str) -> JsonObject:
+    def load_save(save_id: str, request: Request) -> JsonObject:
         with _http_errors():
-            return sessions.restore_game(saves.read(save_id))
+            credentials = _credentials(request)
+            # Checked before the file is read so a stranger learns nothing
+            # about which save IDs exist.
+            sessions.require_admin(credentials)
+            return sessions.restore_game(saves.read(save_id), credentials=credentials)
 
     @app.delete("/saves/{save_id}")
-    def delete_save(save_id: str) -> JsonObject:
+    def delete_save(save_id: str, request: Request) -> JsonObject:
         with _http_errors():
+            sessions.require_admin(_credentials(request))
             saves.delete(save_id)
         return {"deleted": save_id}
 
@@ -369,9 +525,9 @@ def _http_errors() -> Iterator[None]:
         yield
     except (UnknownGameError, UnknownSaveError) as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
-    except SeatAccessError as error:
+    except (SeatAccessError, AdminAccessError) as error:
         raise HTTPException(status_code=403, detail=str(error)) from error
-    except StaleRevisionError as error:
+    except (StaleRevisionError, SeatTakenError) as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
     except (SessionError, SaveError) as error:
         raise HTTPException(status_code=400, detail=str(error)) from error

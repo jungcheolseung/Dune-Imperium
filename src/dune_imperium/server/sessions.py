@@ -13,9 +13,19 @@ on the finished game. Every applied step is recorded replay-style; saving
 serializes that record (``persistence``), and loading replays it against
 fresh seeded chance and agent streams so a loaded game continues exactly
 like the unsaved session would have.
+
+Who may do what is judged here too (``access``, M14). An open manager — the
+default, the local server — trusts every caller as before. A remote manager
+reads or acts for a human seat only for the client holding the token minted
+when that seat was claimed, keeps host operations (creating, listing,
+saving, loading and deleting games, releasing seats) behind the admin key,
+and keeps the game seed out of every summary until the game has finished:
+the engine is deterministic, so the seed plus the public actions would
+spell out every hidden deck order.
 """
 
 import random
+import re
 import threading
 import uuid
 from dataclasses import asdict, dataclass, field, replace
@@ -23,7 +33,7 @@ from enum import StrEnum
 from typing import Final
 
 from dune_imperium.agents import Agent, StateAgent, make_agent
-from dune_imperium.agents.registry import is_agent_kind
+from dune_imperium.agents.registry import CHECKPOINT_PREFIX, is_agent_kind
 from dune_imperium.config import RulesetConfig
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceOutcome, ChanceResolver
@@ -35,6 +45,13 @@ from dune_imperium.core.state import GamePhase, GameState, canonical_state_hash
 from dune_imperium.display import effect_action_text
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.endgame import final_standings
+from dune_imperium.server.access import (
+    ANONYMOUS,
+    AccessMode,
+    Credentials,
+    new_token,
+    token_matches,
+)
 from dune_imperium.server.persistence import (
     JsonObject as JsonObject,
 )
@@ -67,6 +84,9 @@ HUMAN_SEAT: Final = "human"
 # Matches the sweep's policy seed convention so one game seed names one game.
 _DEFAULT_POLICY_OFFSET: Final = 700_000
 _MAX_AUTO_STEPS: Final = 30_000
+# Names are shown to every player at the table; the limit keeps them on one
+# line of a seat panel.
+PLAYER_NAME_MAX_LENGTH: Final = 20
 
 
 class SessionError(ValueError):
@@ -79,6 +99,14 @@ class UnknownGameError(SessionError):
 
 class SeatAccessError(SessionError):
     """Raised when a request touches a seat it may not read or act for."""
+
+
+class AdminAccessError(SessionError):
+    """Raised when a host-only operation comes without the admin key."""
+
+
+class SeatTakenError(SessionError):
+    """Raised when a claim loses to the client that already holds the seat."""
 
 
 class StaleRevisionError(SessionError):
@@ -112,15 +140,74 @@ class GameSession:
     # seat (AI or human) acts, so a turn is never handed over while it can
     # still be taken back.
     awaiting_confirmation: int | None = None
+    # Remote access (M14): the token minted when a human seat was claimed
+    # and the name its player gave; both stay empty on an open server.
+    # Like everything above they change only under ``lock``.
+    seat_tokens: dict[int, str] = field(default_factory=dict)
+    seat_names: dict[int, str] = field(default_factory=dict)
     lock: threading.Lock = field(default_factory=threading.Lock)
+
+
+@dataclass(frozen=True, slots=True)
+class SeatClaim:
+    """A successful claim: the seat's token and the summary after it.
+
+    The token is the seat's whole proof of ownership, so it goes to the
+    claiming client alone (the HTTP layer sets it as an HttpOnly cookie)
+    and never appears in a summary.
+    """
+
+    token: str
+    summary: JsonObject
 
 
 class GameSessionManager:
     """Create, look up, and advance in-memory game sessions."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        access: AccessMode = AccessMode.OPEN,
+        admin_key: str | None = None,
+    ) -> None:
+        if access is AccessMode.REMOTE and not admin_key:
+            raise ValueError("remote access needs an admin key")
+        if access is AccessMode.OPEN and admin_key is not None:
+            raise ValueError("an admin key only applies to remote access")
+        self._access = access
+        self._admin_key = admin_key
         self._sessions: dict[str, GameSession] = {}
         self._registry_lock = threading.Lock()
+
+    @property
+    def access(self) -> AccessMode:
+        """The access mode every request to this manager is judged under."""
+
+        return self._access
+
+    def is_admin(self, credentials: Credentials = ANONYMOUS) -> bool:
+        """Return whether the credentials carry the host's admin key.
+
+        An open server has no admin: every caller may do everything.
+        """
+
+        if self._admin_key is None:
+            return True
+        presented = credentials.admin_key
+        return presented is not None and token_matches(self._admin_key, (presented,))
+
+    def require_admin(self, credentials: Credentials = ANONYMOUS) -> None:
+        """Refuse a host-only operation that comes without the admin key."""
+
+        if not self.is_admin(credentials):
+            raise AdminAccessError("this operation needs the host's admin key")
+
+    def admin_login(self, key: str) -> None:
+        """Check an admin key a client wants to keep presenting."""
+
+        if self._access is AccessMode.OPEN:
+            raise SessionError("an open server has no admin key to log in with")
+        self.require_admin(Credentials(admin_key=key))
 
     def create_game(
         self,
@@ -134,9 +221,15 @@ class GameSessionManager:
         immortality: bool = False,
         game_seed: int | None = None,
         policy_seed: int | None = None,
+        credentials: Credentials = ANONYMOUS,
     ) -> JsonObject:
-        """Start one game and advance it to the first human decision."""
+        """Start one game and advance it to the first human decision.
 
+        Host-only on a remote server: a ``checkpoint:<path>`` seat makes the
+        server open a file, and search seats spend its CPU.
+        """
+
+        self.require_admin(credentials)
         config = RulesetConfig(
             choam_module=choam_module,
             leader_draft=leader_draft,
@@ -174,9 +267,14 @@ class GameSessionManager:
             self._sessions[session.game_id] = session
         return summary
 
-    def list_games(self) -> list[JsonObject]:
-        """Return the summary of every open session."""
+    def list_games(self, *, credentials: Credentials = ANONYMOUS) -> list[JsonObject]:
+        """Return the summary of every open session.
 
+        Host-only on a remote server, where knowing a game ID is what lets
+        a client into that game's room.
+        """
+
+        self.require_admin(credentials)
         with self._registry_lock:
             sessions = tuple(self._sessions.values())
         summaries = []
@@ -192,7 +290,95 @@ class GameSessionManager:
         with session.lock:
             return self._summary_locked(session)
 
-    def view(self, game_id: str, seat: int) -> JsonObject:
+    def identify(
+        self, game_id: str, *, credentials: Credentials = ANONYMOUS
+    ) -> JsonObject:
+        """Return which seats of one game the credentials prove, and admin.
+
+        An open server answers with every human seat: there, one browser
+        plays all of them, switching to whoever owns the decision.
+        """
+
+        session = self._get(game_id)
+        with session.lock:
+            if self._access is AccessMode.OPEN:
+                seats = [
+                    seat
+                    for seat, assignment in enumerate(session.seats)
+                    if assignment == HUMAN_SEAT
+                ]
+            else:
+                seats = sorted(
+                    seat
+                    for seat, token in session.seat_tokens.items()
+                    if token_matches(token, credentials.seat_tokens)
+                )
+        return {
+            "game_id": session.game_id,
+            "access": str(self._access),
+            "seats": list(seats),
+            "admin": self.is_admin(credentials),
+        }
+
+    def claim_seat(
+        self,
+        game_id: str,
+        seat: int,
+        name: str,
+        *,
+        credentials: Credentials = ANONYMOUS,
+    ) -> SeatClaim:
+        """Sit down at one unclaimed human seat of a remote game.
+
+        Knowing the game ID is the ticket into the room; the first claim of
+        a seat wins and mints its token. Claiming again with that token is
+        a rename and keeps the token; anyone else gets ``SeatTakenError``
+        until the seat is released.
+        """
+
+        session = self._get(game_id)
+        self._require_remote("claiming a seat")
+        self._require_human(session, seat)
+        cleaned = _clean_player_name(name)
+        with session.lock:
+            token = session.seat_tokens.get(seat)
+            if token is None:
+                token = new_token()
+                session.seat_tokens[seat] = token
+            elif not token_matches(token, credentials.seat_tokens):
+                raise SeatTakenError(f"seat {seat} is already taken")
+            session.seat_names[seat] = cleaned
+            return SeatClaim(token=token, summary=self._summary_locked(session))
+
+    def release_seat(
+        self, game_id: str, seat: int, *, credentials: Credentials = ANONYMOUS
+    ) -> JsonObject:
+        """Vacate one human seat: its token dies and anyone may claim it.
+
+        Only the seat's holder or the host may do this. It is how a player
+        moves to another browser, and how the host frees the seat of a
+        player who lost the cookie or left for good.
+        """
+
+        session = self._get(game_id)
+        self._require_remote("releasing a seat")
+        self._require_human(session, seat)
+        with session.lock:
+            token = session.seat_tokens.get(seat)
+            holds = token is not None and token_matches(
+                token, credentials.seat_tokens
+            )
+            if not holds and not self.is_admin(credentials):
+                raise SeatAccessError(
+                    f"only seat {seat}'s holder or the host may release it"
+                )
+            session.seat_tokens.pop(seat, None)
+            session.seat_names.pop(seat, None)
+            return self._summary_locked(session)
+
+    def view(
+        self, game_id: str, seat: int, *, credentials: Credentials = ANONYMOUS
+    ) -> JsonObject:
         """Return the serialized ``PlayerView`` of one human seat.
 
         Once the game has finished the payload also carries ``disclosure``
@@ -202,16 +388,20 @@ class GameSessionManager:
         session = self._get(game_id)
         self._require_human(session, seat)
         with session.lock:
+            self._authorize_seat_locked(session, seat, credentials)
             state = session.state
             view = session.engine.observe(state, seat)
         return _serialize_view(view, state if _is_finished(state) else None)
 
-    def legal_actions(self, game_id: str, seat: int) -> JsonObject:
+    def legal_actions(
+        self, game_id: str, seat: int, *, credentials: Credentials = ANONYMOUS
+    ) -> JsonObject:
         """Return the indexed legal actions of one human seat."""
 
         session = self._get(game_id)
         self._require_human(session, seat)
         with session.lock:
+            self._authorize_seat_locked(session, seat, credentials)
             actions = session.engine.legal_actions(session.state, seat)
             return {
                 "game_id": session.game_id,
@@ -231,6 +421,7 @@ class GameSessionManager:
         index: int,
         *,
         undo_count: int | None = None,
+        credentials: Credentials = ANONYMOUS,
     ) -> JsonObject:
         """Apply one indexed human action, then auto-advance the game.
 
@@ -242,6 +433,7 @@ class GameSessionManager:
         session = self._get(game_id)
         self._require_human(session, seat)
         with session.lock:
+            self._authorize_seat_locked(session, seat, credentials)
             _require_current(session, revision, undo_count)
             decision = session.engine.current_decision(session.state)
             if (
@@ -264,6 +456,7 @@ class GameSessionManager:
         revision: int,
         *,
         undo_count: int | None = None,
+        credentials: Credentials = ANONYMOUS,
     ) -> JsonObject:
         """Hand the turn over after the seat's last undoable steps.
 
@@ -275,6 +468,7 @@ class GameSessionManager:
         session = self._get(game_id)
         self._require_human(session, seat)
         with session.lock:
+            self._authorize_seat_locked(session, seat, credentials)
             _require_current(session, revision, undo_count)
             if session.awaiting_confirmation != seat:
                 raise SessionError(f"seat {seat} has no turn end to confirm")
@@ -290,6 +484,7 @@ class GameSessionManager:
         steps: int = 1,
         *,
         undo_count: int | None = None,
+        credentials: Credentials = ANONYMOUS,
     ) -> JsonObject:
         """Take back the seat's own latest ``steps`` steps (M11 slice 6).
 
@@ -305,6 +500,7 @@ class GameSessionManager:
         session = self._get(game_id)
         self._require_human(session, seat)
         with session.lock:
+            self._authorize_seat_locked(session, seat, credentials)
             _require_current(session, revision, undo_count)
             window = undo_window(session.log, seat)
             if steps < 1 or steps > window:
@@ -320,7 +516,14 @@ class GameSessionManager:
             session.awaiting_confirmation = None
             return self._summary_locked(session)
 
-    def log(self, game_id: str, seat: int, *, after: int = 0) -> JsonObject:
+    def log(
+        self,
+        game_id: str,
+        seat: int,
+        *,
+        after: int = 0,
+        credentials: Credentials = ANONYMOUS,
+    ) -> JsonObject:
         """Return the session log from entry ``after`` on, as ``seat`` may see it.
 
         Each entry carries the events its step produced, filtered by
@@ -333,6 +536,7 @@ class GameSessionManager:
         session = self._get(game_id)
         self._require_human(session, seat)
         with session.lock:
+            self._authorize_seat_locked(session, seat, credentials)
             entries = tuple(session.log)
             finished = _is_finished(session.state)
         if not 0 <= after <= len(entries):
@@ -348,21 +552,34 @@ class GameSessionManager:
             ],
         }
 
-    def delete(self, game_id: str) -> None:
-        """Forget one session."""
+    def delete(self, game_id: str, *, credentials: Credentials = ANONYMOUS) -> None:
+        """Forget one session (host-only on a remote server)."""
 
+        self.require_admin(credentials)
         with self._registry_lock:
             if game_id not in self._sessions:
                 raise UnknownGameError(f"unknown game: {game_id}")
             del self._sessions[game_id]
 
-    def save_game(self, game_id: str, *, name: str | None = None) -> JsonObject:
+    def save_game(
+        self,
+        game_id: str,
+        *,
+        name: str | None = None,
+        credentials: Credentials = ANONYMOUS,
+    ) -> JsonObject:
         """Serialize one session into a versioned save document.
 
         Sessions only rest on a human decision or on the finished game, so
         the recorded steps always end on a state a load can resume from.
+
+        Host-only on a remote server, like ``restore_game``: a loaded save
+        is a second session holding the same hidden state with every seat
+        unclaimed, so whoever may save and load could read every hand of
+        the game in progress off that clone.
         """
 
+        self.require_admin(credentials)
         session = self._get(game_id)
         with session.lock:
             return build_save_document(
@@ -380,8 +597,14 @@ class GameSessionManager:
                 name=name,
             )
 
-    def restore_game(self, document: object) -> JsonObject:
+    def restore_game(
+        self, document: object, *, credentials: Credentials = ANONYMOUS
+    ) -> JsonObject:
         """Rebuild a saved game as a new session and return its summary.
+
+        Host-only on a remote server (see ``save_game``). The new session
+        starts with every human seat unclaimed: a save records neither
+        tokens nor names, so the players claim their seats again.
 
         The recorded steps replay against a fresh seeded ``ChanceResolver``
         and fresh seeded agents: chance and AI decisions are regenerated
@@ -393,6 +616,7 @@ class GameSessionManager:
         is verified like ``replay_game`` does.
         """
 
+        self.require_admin(credentials)
         parsed = parse_save_document(document)
         config = parsed.replay.ruleset
         _validate_seats(parsed.seats, config)
@@ -507,6 +731,26 @@ class GameSessionManager:
             # Views and legal actions can carry private card identities.
             raise SeatAccessError("only a human seat may be read or acted for")
 
+    def _require_remote(self, operation: str) -> None:
+        if self._access is not AccessMode.REMOTE:
+            raise SessionError(f"{operation} only applies to a remote server")
+
+    def _authorize_seat_locked(
+        self, session: GameSession, seat: int, credentials: Credentials
+    ) -> None:
+        """Refuse a remote client that does not hold the seat's token.
+
+        The caller holds the session lock and has checked that the seat is
+        human. The admin key deliberately opens nothing here: the host is a
+        player too and must not reach another seat's view through the API.
+        """
+
+        if self._access is AccessMode.OPEN:
+            return
+        token = session.seat_tokens.get(seat)
+        if token is None or not token_matches(token, credentials.seat_tokens):
+            raise SeatAccessError(f"this client does not hold seat {seat}")
+
     def _settle_locked(self, session: GameSession, seat: int) -> None:
         """After a human step, pause at a turn hand-over or auto-advance.
 
@@ -572,8 +816,23 @@ class GameSessionManager:
             window = undo_window(session.log, seat)
             if window > 0:
                 undo.append({"seat": seat, "steps": window})
+        remote = self._access is AccessMode.REMOTE
+        kinds = [
+            _public_seat_kind(assignment, hide_path=remote)
+            for assignment in session.seats
+        ]
+        players: list[JsonValue] = [
+            {
+                "seat": seat,
+                "kind": kind,
+                "name": session.seat_names.get(seat),
+                "claimed": seat in session.seat_tokens,
+            }
+            for seat, kind in enumerate(kinds)
+        ]
         return {
             "game_id": session.game_id,
+            "access": str(self._access),
             "revision": state.revision,
             "undo_count": session.undo_count,
             "log_count": len(session.log),
@@ -582,14 +841,18 @@ class GameSessionManager:
             "phase": str(state.phase),
             "round_number": state.round_number,
             "first_player": state.first_player,
-            "game_seed": session.game_seed,
+            # The engine is deterministic: the seed plus the public actions
+            # reproduce every shuffle, so a remote game keeps it to itself
+            # until the finished game discloses everything (OQ-010 ruling 4).
+            "game_seed": session.game_seed if finished or not remote else None,
             "choam_module": session.config.choam_module,
             "leader_draft": session.config.leader_draft,
             "promo_cards": session.config.promo_cards,
             "bloodlines": session.config.bloodlines,
             "tech_module": session.config.tech_module,
             "immortality": session.config.immortality,
-            "seats": list(session.seats),
+            "seats": list(kinds),
+            "players": players,
             "decision": decision,
             "finished": finished,
             "standings": (
@@ -598,6 +861,37 @@ class GameSessionManager:
                 else None
             ),
         }
+
+
+def _public_seat_kind(assignment: str, *, hide_path: bool) -> str:
+    """Return a seat assignment as the players of the game may see it.
+
+    A ``checkpoint:<path>`` seat names a file on the host's disk; remote
+    players get the file name only.
+    """
+
+    if hide_path and assignment.startswith(CHECKPOINT_PREFIX):
+        path = assignment[len(CHECKPOINT_PREFIX) :]
+        return CHECKPOINT_PREFIX + re.split(r"[\\/]", path)[-1]
+    return assignment
+
+
+def _clean_player_name(name: str) -> str:
+    """Normalize a player name: printable, single-spaced, 1 to 20 characters.
+
+    Names are shown to every player, so control and format characters are
+    dropped here; the browser still renders them as text, never as markup.
+    """
+
+    printable = "".join(character for character in name if character.isprintable())
+    cleaned = " ".join(printable.split())
+    if not cleaned:
+        raise SessionError("a player name must not be empty")
+    if len(cleaned) > PLAYER_NAME_MAX_LENGTH:
+        raise SessionError(
+            f"a player name may have at most {PLAYER_NAME_MAX_LENGTH} characters"
+        )
+    return cleaned
 
 
 def _validate_seats(seats: tuple[str, ...], config: RulesetConfig) -> None:

@@ -346,16 +346,26 @@ def parse_save_document(document: object) -> ParsedSave:
     )
 
 
-def save_metadata(document: JsonObject) -> JsonObject:
-    """Public listing entry for one save; never includes the recorded steps."""
+def save_metadata(
+    document: JsonObject, *, hide_unfinished_seed: bool = False
+) -> JsonObject:
+    """Public listing entry for one save; never includes the recorded steps.
+
+    ``hide_unfinished_seed`` is for a remote server (M14), whose host is a
+    player too: the seed of a game still in progress would let them rebuild
+    every hidden deck order, so it is served only once the game finished.
+    """
 
     steps = document.get("steps")
+    seed = document.get("game_seed")
+    if hide_unfinished_seed and document.get("finished") is not True:
+        seed = None
     return {
         "save_id": document.get("save_id"),
         "name": document.get("name"),
         "saved_at": document.get("saved_at"),
         "source_game_id": document.get("source_game_id"),
-        "game_seed": document.get("game_seed"),
+        "game_seed": seed,
         "seats": document.get("seats"),
         "ruleset": document.get("ruleset"),
         "round_number": document.get("round_number"),
@@ -371,7 +381,9 @@ class SaveStore:
     def __init__(self, directory: Path) -> None:
         self._directory = directory
 
-    def write(self, document: JsonObject) -> JsonObject:
+    def write(
+        self, document: JsonObject, *, hide_unfinished_seed: bool = False
+    ) -> JsonObject:
         """Persist one document under a fresh save ID; return its metadata."""
 
         save_id = uuid.uuid4().hex
@@ -383,9 +395,9 @@ class SaveStore:
             json.dumps(stored, ensure_ascii=False, indent=1), encoding="utf-8"
         )
         os.replace(scratch, path)
-        return save_metadata(stored)
+        return save_metadata(stored, hide_unfinished_seed=hide_unfinished_seed)
 
-    def list(self) -> list[JsonObject]:
+    def list(self, *, hide_unfinished_seed: bool = False) -> list[JsonObject]:
         """Metadata for every stored save, newest first."""
 
         entries: list[JsonObject] = []
@@ -397,7 +409,9 @@ class SaveStore:
             except (OSError, json.JSONDecodeError):
                 document = None
             if isinstance(document, dict):
-                entries.append(save_metadata(document))
+                entries.append(
+                    save_metadata(document, hide_unfinished_seed=hide_unfinished_seed)
+                )
             else:
                 entries.append(
                     {"save_id": path.stem, "error": "unreadable save file"}
