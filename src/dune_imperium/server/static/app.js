@@ -1064,15 +1064,22 @@ async function enterReview(seat) {
   await reviewGoto(meta.step_count);
 }
 
+/* Review states load at very different speeds (the server replays every
+   step up to the cursor), so answers can arrive out of order; only the
+   latest request may draw. */
+let reviewRequest = 0;
+
 async function reviewGoto(cursor) {
   const review = state.review;
   if (!review) return;
   cursor = Math.max(0, Math.min(review.meta.step_count, cursor));
+  const request = ++reviewRequest;
   try {
     el("game-error").hidden = true;
     const payload = await api(
       `/games/${state.gameId}/review/${cursor}?seat=${review.seat}`
     );
+    if (request !== reviewRequest || state.review !== review) return;
     review.cursor = cursor;
     state.view = payload.view;
     state.actions = null;
