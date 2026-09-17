@@ -26,6 +26,7 @@ cd scripts/e2e
 /tmp/dune-e2e-venv/bin/python open_mode.py     # 약 40초; `open_mode.py game` / `open_mode.py bell`로 절반만
 /tmp/dune-e2e-venv/bin/python races.py --ab    # 약 40초
 /tmp/dune-e2e-venv/bin/python recovery.py      # 약 30초
+E2E_HOST=100.x.y.z /tmp/dune-e2e-venv/bin/python rehearsal.py   # 약 1분; 실제 원격 판 전의 리허설
 ```
 
 종료 코드 0이 통과다. 실패하면 뒤처진 페이지의 상태와 요청·콘솔 타임라인을 출력하고, 서버 로그 사본을
@@ -37,6 +38,7 @@ cd scripts/e2e
 | `open_mode.py` | 기본(open) 서버의 회귀. (A) 한 화면이 사람 2 + heuristic 2를 끝까지: 스텝마다 POST 1 + snapshot 1, 매 스텝 클라이언트 로그 길이 = 서버 `log_count`, 되돌리기의 epoch 변경, 이어 붙인 로그 == 서버 전체 로그, 순위표. (B) 검토 모드에서 늦게 온 옛 응답이 화면을 덮지 않는다. (C) 컨텍스트 셋: 초인종 반영 1초 안·snapshot 1개·자기 행동에는 추가 요청 0, 스트림을 막은 컨텍스트의 폴링 전환, 게임 삭제 통지. |
 | `races.py` | 응답 순서를 강제로 뒤집는 개입 실험. (1) 기다리는 페이지의 좌석 snapshot을 0.7초 붙잡은 사이 상대가 두 번 더 바꾼다 → 낡은 응답을 채택한 뒤 single-flight의 다음 바퀴가 따라잡아야 한다. (2) 새로고침한 페이지의 스트림을 0.3초, 입장 snapshot을 0.9초 늦춘다(그 snapshot은 `online: false`로 읽혔다) → 비행 중에 온 players 초인종이 한 바퀴를 더 예약해야 한다. `--ab`는 그 예약을 끈 `app.js`로 먼저 돌려 **실제로 stale이 되는지**(검사가 실패할 수 있는지) 확인한다. |
 | `recovery.py` | 자동 저장과 복구(슬라이스 5). 원격 한 판을 24 스텝 둔 뒤 서버를 **SIGKILL**하고 같은 포트·같은 저장 폴더로 다시 띄운다: 게임당 파일 하나·`.tmp` 잔재 없음·자동 저장이 live 상태보다 한 턴 이상 뒤처지지 않음, 호스트 패널의 저장 목록, 기다리던 친구의 "서버 연결 끊김" 표시 → 서버가 돌아오면 "새 방 링크로 들어오세요" landing(죽은 방의 "이어 하기"는 제안하지 않음), 호스트가 관리자 링크 → 저장 목록 → 불러오기(새 game id, revision = 자동 저장의 step 수, 좌석 전부 빔), 둘 다 새 링크로 복귀해 16 스텝 수렴, 불러온 게임은 자기 슬롯에 자동 저장. |
+| `rehearsal.py` | 실제 원격 판의 리허설(슬라이스 6). `E2E_HOST`에 **이 머신의 Tailscale 주소**를 주면 서버가 그 주소에만 bind하고 브라우저도 그 주소로 들어간다 — 친구들이 실제로 쓰는 origin, 곧 **보안 컨텍스트가 아닌 평문 HTTP**다(`remote.py`·`races.py`·`recovery.py`도 같은 변수로 그 주소에서 돈다; open 서버는 loopback만 되므로 `open_mode.py`는 아니다). (1) `isSecureContext === false`에서 복사 버튼이 링크를 선택해 두는지, 신호음이 예외를 내지 않는지, 좌석·관리자 쿠키가 HttpOnly·SameSite=Strict·게임 경로 한정이고 `Secure`가 **아닌지**(평문 HTTP에서는 Secure 쿠키가 버려진다). (2) 친구 쪽 브라우저를 DevTools 회선 에뮬레이션으로 조여(100 Mbit/s·RTT 20 ms, 10 Mbit/s·RTT 120 ms) 전 확장 게임의 첫 접속 시간·받은 양, 한 수가 상대 화면에 뜨기까지, 새로고침(캐시)을 잰다. 수치는 출력만 하고 실패 조건은 수렴·캐시·오류뿐이다. |
 
 ## 새 검사를 더할 때
 

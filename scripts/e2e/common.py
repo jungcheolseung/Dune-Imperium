@@ -22,6 +22,11 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 
 REPO = Path(os.environ.get("E2E_REPO", Path(__file__).resolve().parents[2]))
+# The address the server binds and the browsers use. Set it to this machine's
+# Tailscale address (100.x.y.z) to rehearse what friends will really get: a
+# plain-HTTP origin that is not a secure context. Anything but loopback needs
+# a --remote server, so only remote.py, races.py and recovery.py run that way.
+HOST = os.environ.get("E2E_HOST", "127.0.0.1")
 SERVER_LOG_COPY = Path(tempfile.gettempdir()) / "dune-e2e-server-last.log"
 T0 = time.monotonic()
 
@@ -32,7 +37,7 @@ def now() -> float:
 
 def free_port() -> int:
     with socket.socket() as sock:
-        sock.bind(("127.0.0.1", 0))
+        sock.bind((HOST, 0))
         return int(sock.getsockname()[1])
 
 
@@ -48,7 +53,7 @@ class ServerProcess:
     ) -> None:
         self.port = port if port is not None else free_port()
         self.saves = saves or tempfile.mkdtemp(prefix="dune-e2e-saves-")
-        self.base = f"http://127.0.0.1:{self.port}"
+        self.base = f"http://{HOST}:{self.port}"
         self.log_path = Path(self.saves) / f"server-{self.port}-{int(now() * 1000)}.log"
         self._extra = extra
         self._log = None
@@ -58,6 +63,8 @@ class ServerProcess:
         self._log = open(self.log_path, "w")
         command = [
             str(REPO / ".venv/bin/dune-imperium-server"),
+            "--host",
+            HOST,
             "--port",
             str(self.port),
             "--saves-dir",
@@ -70,7 +77,7 @@ class ServerProcess:
         deadline = time.monotonic() + 30
         while time.monotonic() < deadline:
             try:
-                with socket.create_connection(("127.0.0.1", self.port), timeout=0.2):
+                with socket.create_connection((HOST, self.port), timeout=0.2):
                     return self
             except OSError:
                 if self._process.poll() is not None:
