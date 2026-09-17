@@ -71,6 +71,20 @@ seed 블록에서 **+5.1 ~ +9.1%p**다([evaluation/baseline-2026-09-16.md](evalu
    정체 신호(평가 승률이 두세 번 연속 오차 안, 또는 이전 champion 상대 25~30%)가 보이면 PPO 슬라이스(수집 log-prob 기록 +
    clip + `--epochs` 3~4)를 넣고 같은 체크포인트에서 `--resume`한다. 학습 밖 후보 (a)에 전 확장 census가 남긴 RNG 가족
    (graft 변형·partner, Commander skill, `take_contract`, Spy post, Engineered Miracle의 `command_acquire_row_card`)을 더한다.
+0. (2026-09-17 저녁, **슬라이스 4 진행 중 — 세션이 급히 끝나 중간 상태**) M14 슬라이스 4의 **서버 쪽은 master에 있다**(`tests/server`
+   229개 통과·Ruff 통과까지 확인; 전체 pytest와 mypy는 이 마지막 커밋에서 다시 돌리지 못했다 — 직전 Python 변경 뒤 mypy는 통과였다):
+   `GET /whoami`(`access`·`admin`·관리자에게만 `public_url`), `create_app(public_url=)`·CLI `--public-url`, 그리고 **remote 서버에서만**
+   턴 종료 확정 대기 중에는 다음 좌석이 행동할 수 없고 snapshot의 `actions`도 `null`이다(`_turn_is_held_locked`; open 서버의 기존 API
+   계약 — 다음 좌석이 확정 없이 행동 가능 — 은 `test_app.py`의 draft 테스트가 고정하고 있어 그대로 뒀다). **클라이언트(브라우저 UI)는
+   master에 없고 `m14-slice4-client-wip` 브랜치에 WIP 커밋으로 있다**: 화면 전환(설정/landing/좌석 고르기/테이블), `#admin=`·`#game=`
+   진입, `mySeats()`, claim/release, 호스트 패널(방 링크), 대기 배너·이름·접속 점·내 차례 제목/신호음, 최종 순위표의 `innerHTML` 제거,
+   남의 행동 재렌더 때 고정 팝오버·스크롤 보존. 그 브랜치의 검증 상태: open 모드 초인종 E2E는 통과했지만 **마지막 수정
+   (`seatsChanged()`: players만 바뀐 알림에서 remote 클라이언트가 `reloadIdentity()`를 다시 부름) 뒤로는 open 모드 E2E를 다시 돌리지
+   못했고**, 원격 E2E(스크래치 `e2e_slice4.py`)는 입장·claim·교차 좌석 403·이름/접속 표시까지 통과한 뒤 **"호스트가 `applyAction(0)`을
+   반복해 턴 종료 확정 대기까지 가는" 단계에서 30초 타임아웃**으로 멈췄다 — 원인 미확인(용의자일 뿐: `seatsChanged()`의 추가 요청·재렌더와
+   `state.busy`/single-flight `refresh`의 상호작용; 그 수정 전 실행에서는 이 단계가 통과했다). 다음 세션은 그 브랜치를 체크아웃해
+   원인을 계측으로 확인하고(추측으로 고치지 말 것), open 모드 E2E 3종과 원격 E2E를 다시 통과시킨 뒤 master에 합친다. 스크래치 E2E
+   스크립트는 세션 scratchpad에 있어 사라질 수 있다 — 시나리오는 아래 슬라이스 4 항목과 설계 문서 10절에 있다.
 0. (2026-09-17, **진행 중 — 슬라이스 1~3 완료, 다음은 슬라이스 4**, 학습과 병행 가능) **M14 원격 멀티플레이.** 사용자 요구:
    "원격 친구들이랑 각자 PC에서". 설계는 [multiplayer-design.md](multiplayer-design.md)(같은 날 사용자가 D1~D7을 제안대로
    확정), 마일스톤은 [implementation-plan.md](implementation-plan.md) M14. 끝난 것: **슬라이스 1**(접근 계층: `server/access.py`,
