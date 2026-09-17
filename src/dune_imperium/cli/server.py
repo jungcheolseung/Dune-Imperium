@@ -51,6 +51,15 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--public-url",
+        default=None,
+        help=(
+            "with --remote: the address the other players reach this server "
+            "at, e.g. http://100.101.102.103:8000; the host's page builds the "
+            "room link from it (default: the address the host's browser uses)"
+        ),
+    )
+    parser.add_argument(
         "--saves-dir",
         type=Path,
         default=None,
@@ -104,6 +113,19 @@ def resolve_access(
     return AccessMode.REMOTE, key
 
 
+def resolve_public_url(arguments: argparse.Namespace) -> str | None:
+    """Return the room-link base the host asked for, without a trailing slash."""
+
+    url: str | None = arguments.public_url
+    if url is None:
+        return None
+    if not arguments.remote:
+        raise ValueError("--public-url only applies together with --remote")
+    if not url.startswith(("http://", "https://")):
+        raise ValueError("--public-url must start with http:// or https://")
+    return url.rstrip("/")
+
+
 def admin_link(host: str, port: int, admin_key: str) -> str:
     """Return the URL the host opens to become the admin.
 
@@ -128,6 +150,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     arguments = parser.parse_args(argv)
     try:
         access, admin_key = resolve_access(arguments, os.environ)
+        public_url = resolve_public_url(arguments)
     except ValueError as error:
         parser.error(str(error))
     # Imported lazily so the CLI module stays importable without the extra.
@@ -143,6 +166,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         manager=GameSessionManager(access=access, admin_key=admin_key),
         saves_dir=arguments.saves_dir,
         card_images_dir=arguments.card_images_dir,
+        public_url=public_url,
     )
     hub = app.state.doorbell_hub
 

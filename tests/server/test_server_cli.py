@@ -25,6 +25,7 @@ from dune_imperium.cli.server import (
     is_loopback_host,
     main,
     resolve_access,
+    resolve_public_url,
 )
 from dune_imperium.server.access import AccessMode
 
@@ -106,6 +107,30 @@ def test_an_explicit_admin_key_wins_over_the_environment() -> None:
     access, key = resolve_access(arguments, {ADMIN_KEY_ENVIRONMENT: "env-key"})
 
     assert (access, key) == (AccessMode.REMOTE, "y")
+
+
+# --- resolve_public_url ------------------------------------------------------
+
+
+def test_the_public_url_is_optional_and_loses_its_trailing_slash() -> None:
+    parser = _build_parser()
+
+    assert resolve_public_url(parser.parse_args(["--remote"])) is None
+    arguments = parser.parse_args(
+        ["--remote", "--public-url", "http://100.101.102.103:8000/"]
+    )
+    assert resolve_public_url(arguments) == "http://100.101.102.103:8000"
+
+
+def test_a_public_url_needs_remote_access_and_a_scheme() -> None:
+    parser = _build_parser()
+
+    with pytest.raises(ValueError, match="--remote"):
+        resolve_public_url(parser.parse_args(["--public-url", "http://x:8000"]))
+    with pytest.raises(ValueError, match="http"):
+        resolve_public_url(
+            parser.parse_args(["--remote", "--public-url", "100.101.102.103:8000"])
+        )
 
 
 # --- admin_link ----------------------------------------------------------

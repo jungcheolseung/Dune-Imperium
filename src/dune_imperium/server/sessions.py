@@ -436,7 +436,9 @@ class GameSessionManager:
             decision = session.engine.current_decision(state)
             actions = (
                 self._legal_actions_locked(session, seat)
-                if isinstance(decision, PlayerDecision) and decision.owner == seat
+                if isinstance(decision, PlayerDecision)
+                and decision.owner == seat
+                and not self._turn_is_held_locked(session)
                 else None
             )
             entries = tuple(session.log)
@@ -577,6 +579,11 @@ class GameSessionManager:
                 or decision.owner != seat
             ):
                 raise SessionError("the current decision belongs to another seat")
+            if self._turn_is_held_locked(session):
+                raise SessionError(
+                    f"seat {session.awaiting_confirmation} has not confirmed "
+                    "its turn end yet"
+                )
             actions = session.engine.legal_actions(session.state, seat)
             if not 0 <= index < len(actions):
                 raise SessionError("action index is out of range")
@@ -929,6 +936,23 @@ class GameSessionManager:
                 token_matches(token, presented)
                 for presented in session.connections.values()
             )
+        )
+
+    def _turn_is_held_locked(self, session: GameSession) -> bool:
+        """Whether a pending turn-end confirmation still blocks the next seat.
+
+        The engine names the next decision owner as soon as a turn ends, but
+        while that turn's steps can be taken back the hand-over waits for
+        the seat's confirmation. On an open server the one shared browser
+        holds the table for the confirming seat, and the API has always let
+        the next seat act regardless. Separate browsers cannot mediate, so a
+        remote server does: acting early would close the previous seat's
+        undo window behind its back.
+        """
+
+        return (
+            self._access is AccessMode.REMOTE
+            and session.awaiting_confirmation is not None
         )
 
     def _ring_locked(

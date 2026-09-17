@@ -611,3 +611,102 @@ def test_save_metadata_hides_the_seed_of_an_unfinished_document_when_asked() -> 
     assert save_metadata(unfinished, hide_unfinished_seed=True)["game_seed"] is None
     assert save_metadata(finished, hide_unfinished_seed=True)["game_seed"] == 42
     assert save_metadata(unfinished)["game_seed"] == 42
+
+
+# --- a pending turn-end confirmation holds the turn (remote only) -------------
+
+
+def _play_until_a_human_waits_behind_a_confirmation(
+    manager: GameSessionManager,
+    summary: JsonObject,
+    credentials: dict[int, Credentials],
+) -> JsonObject:
+    """Play index 0 until one human must confirm while the other is next."""
+
+    game_id = _text(summary["game_id"])
+    for _ in range(400):
+        holder = summary["confirmation"]
+        decision = summary["decision"]
+        assert isinstance(decision, dict)
+        owner = _int(decision["owner"])
+        if isinstance(holder, int) and owner != holder and owner in credentials:
+            return summary
+        if isinstance(holder, int):
+            summary = manager.confirm_turn(
+                game_id,
+                holder,
+                _int(summary["revision"]),
+                credentials=credentials[holder],
+            )
+        else:
+            summary = manager.apply_action(
+                game_id,
+                owner,
+                _int(summary["revision"]),
+                0,
+                credentials=credentials[owner],
+            )
+    raise AssertionError("no human ever waited behind another's confirmation")
+
+
+def test_a_remote_server_holds_the_turn_until_the_previous_seat_confirms() -> None:
+    manager, admin = _remote_manager()
+    summary = manager.create_game(TWO_HUMANS, game_seed=13, credentials=admin)
+    game_id = _text(summary["game_id"])
+    credentials = {
+        seat: Credentials(
+            seat_tokens=frozenset(
+                {manager.claim_seat(game_id, seat, f"P{seat}").token}
+            )
+        )
+        for seat in (0, 1)
+    }
+    summary = _play_until_a_human_waits_behind_a_confirmation(
+        manager, summary, credentials
+    )
+    holder = _int(summary["confirmation"])
+    waiting = _int(_obj(summary["decision"])["owner"])
+
+    # The engine already names the next seat, but its browser gets no actions
+    # and cannot act: that would close the holder's undo window behind its back.
+    held = manager.snapshot(game_id, waiting, credentials=credentials[waiting])
+    assert held["actions"] is None
+    with pytest.raises(SessionError, match="has not confirmed"):
+        manager.apply_action(
+            game_id,
+            waiting,
+            _int(summary["revision"]),
+            0,
+            credentials=credentials[waiting],
+        )
+    assert manager.summary(game_id)["revision"] == summary["revision"]
+
+    confirmed = manager.confirm_turn(
+        game_id, holder, _int(summary["revision"]), credentials=credentials[holder]
+    )
+    assert confirmed["confirmation"] is None
+    released = manager.snapshot(game_id, waiting, credentials=credentials[waiting])
+    assert released["actions"] is not None
+    manager.apply_action(
+        game_id,
+        waiting,
+        _int(confirmed["revision"]),
+        0,
+        credentials=credentials[waiting],
+    )
+
+
+def test_an_open_server_still_lets_the_next_seat_act_without_the_confirmation() -> None:
+    # The local API has always allowed this (one shared browser holds the
+    # table for the confirming seat); remote access must not change it.
+    manager = GameSessionManager()
+    summary = manager.create_game(TWO_HUMANS, game_seed=13)
+    game_id = _text(summary["game_id"])
+    summary = _play_until_a_human_waits_behind_a_confirmation(
+        manager, summary, {0: ANONYMOUS, 1: ANONYMOUS}
+    )
+    waiting = _int(_obj(summary["decision"])["owner"])
+
+    assert manager.snapshot(game_id, waiting)["actions"] is not None
+    acted = manager.apply_action(game_id, waiting, _int(summary["revision"]), 0)
+    assert acted["revision"] != summary["revision"]

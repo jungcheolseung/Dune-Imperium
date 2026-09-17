@@ -242,8 +242,14 @@ def create_app(
     board_image: Path | None = None,
     bene_tleilax_image: Path | None = None,
     heartbeat_seconds: float = DEFAULT_HEARTBEAT_SECONDS,
+    public_url: str | None = None,
 ) -> FastAPI:
-    """Build the local play server around one session manager."""
+    """Build the local play server around one session manager.
+
+    ``public_url`` is the address the other players reach this server at
+    (a Tailscale IP, a tunnel); the host's browser builds the room link from
+    it, because the host itself may well be looking at 127.0.0.1.
+    """
 
     sessions = manager if manager is not None else GameSessionManager()
     hub = DoorbellHub()
@@ -324,6 +330,17 @@ def create_app(
     # A remote server's host plays too, so the seed of a game in progress
     # stays out of the save listings it serves (see ``save_metadata``).
     hide_unfinished_seed = sessions.access is AccessMode.REMOTE
+
+    @app.get("/whoami")
+    def who_is_asking(request: Request) -> JsonObject:
+        # What a browser needs before any game exists: whether seats have to
+        # be claimed here at all, and whether it is the host's browser.
+        admin = sessions.is_admin(_credentials(request))
+        return {
+            "access": str(sessions.access),
+            "admin": admin,
+            "public_url": public_url if admin else None,
+        }
 
     @app.post("/auth/admin")
     def admin_login(body: AdminLoginRequest, response: Response) -> JsonObject:

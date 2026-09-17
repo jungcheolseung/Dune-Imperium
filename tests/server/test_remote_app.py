@@ -336,6 +336,27 @@ def test_a_remote_leader_draft_game_over_http_reaches_round_one(
     picks = 0
     decision = summary["decision"]
     while isinstance(decision, dict) and decision["kind"] == "leader_draft":
+        holder = summary["confirmation"]
+        if isinstance(holder, int):
+            # A remote server holds the turn until the seat that just picked
+            # confirms; the next seat's browser cannot do it for them.
+            early = clients[decision["owner"]].post(
+                f"/games/{game_id}/actions",
+                json={
+                    "seat": decision["owner"],
+                    "revision": summary["revision"],
+                    "index": 0,
+                },
+            )
+            assert early.status_code == 400, early.text
+            confirmed = clients[holder].post(
+                f"/games/{game_id}/confirm",
+                json={"seat": holder, "revision": summary["revision"]},
+            )
+            assert confirmed.status_code == 200, confirmed.text
+            summary = confirmed.json()
+            decision = summary["decision"]
+            continue
         owner = decision["owner"]
         other = clients[(owner + 1) % 4]
         forbidden = other.post(
@@ -479,3 +500,39 @@ def test_open_server_me_and_summary_stay_permissive(tmp_path: Path) -> None:
     }
     assert summary["access"] == "open"
     assert summary["game_seed"] == 13
+
+
+# --- /whoami -----------------------------------------------------------------
+
+
+def test_whoami_tells_a_browser_the_access_mode_and_whether_it_is_the_host(
+    tmp_path: Path,
+) -> None:
+    manager = GameSessionManager(access=AccessMode.REMOTE, admin_key=ADMIN_KEY)
+    app = create_app(
+        manager,
+        saves_dir=tmp_path / "saves",
+        card_images_dir=tmp_path / "no-images",
+        icons_dir=tmp_path / "no-icons",
+        board_image=tmp_path / "no-map.jpg",
+        bene_tleilax_image=tmp_path / "no-bene-tleilax.jpg",
+        public_url="http://100.101.102.103:8000",
+    )
+
+    stranger = TestClient(app).get("/whoami")
+    assert stranger.status_code == 200
+    # The room-link base is the host's business only.
+    assert stranger.json() == {"access": "remote", "admin": False, "public_url": None}
+
+    host = _admin_client(app).get("/whoami")
+    assert host.json() == {
+        "access": "remote",
+        "admin": True,
+        "public_url": "http://100.101.102.103:8000",
+    }
+
+
+def test_whoami_on_an_open_server_makes_everyone_the_host(tmp_path: Path) -> None:
+    response = TestClient(_open_app(tmp_path)).get("/whoami")
+
+    assert response.json() == {"access": "open", "admin": True, "public_url": None}
