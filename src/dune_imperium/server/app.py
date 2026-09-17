@@ -43,6 +43,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from dune_imperium.display.images import resolve_card_images
 from dune_imperium.server.access import AccessMode, Credentials
+from dune_imperium.server.autosave import Autosaver
 from dune_imperium.server.catalog import build_catalog
 from dune_imperium.server.events import DEFAULT_HEARTBEAT_SECONDS, DoorbellHub
 from dune_imperium.server.persistence import (
@@ -276,12 +277,18 @@ def create_app(
     bene_tleilax_image: Path | None = None,
     heartbeat_seconds: float = DEFAULT_HEARTBEAT_SECONDS,
     public_url: str | None = None,
+    autosave: bool | None = None,
 ) -> FastAPI:
     """Build the local play server around one session manager.
 
     ``public_url`` is the address the other players reach this server at
     (a Tailscale IP, a tunnel); the host's browser builds the room link from
     it, because the host itself may well be looking at 127.0.0.1.
+
+    ``autosave`` keeps one current save per game, replaced whenever a turn
+    passes on (``server.autosave``). Left at ``None`` it follows the access
+    mode: on for a remote server, off for an open one, whose save
+    directory holds what its one user chose to save and nothing else.
     """
 
     sessions = manager if manager is not None else GameSessionManager()
@@ -351,6 +358,13 @@ def create_app(
     # A remote server's host plays too, so the seed of a game in progress
     # stays out of the save listings it serves (see ``save_metadata``).
     hide_unfinished_seed = sessions.access is AccessMode.REMOTE
+    autosaving = (
+        autosave if autosave is not None else sessions.access is AccessMode.REMOTE
+    )
+    if autosaving:
+        sessions.add_hand_over_listener(
+            Autosaver(sessions, saves, hide_unfinished_seed=hide_unfinished_seed)
+        )
 
     @app.get("/whoami")
     def who_is_asking(request: Request) -> JsonObject:
@@ -361,6 +375,7 @@ def create_app(
             "access": str(sessions.access),
             "admin": admin,
             "public_url": public_url if admin else None,
+            "autosave": autosaving,
         }
 
     @app.post("/auth/admin")

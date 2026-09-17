@@ -60,6 +60,15 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--no-autosave",
+        action="store_true",
+        help=(
+            "with --remote: do not keep the per-game autosave that is "
+            "otherwise replaced in the saves directory whenever a turn "
+            "passes on (a crashed server then loses the whole game)"
+        ),
+    )
+    parser.add_argument(
         "--saves-dir",
         type=Path,
         default=None,
@@ -126,6 +135,14 @@ def resolve_public_url(arguments: argparse.Namespace) -> str | None:
     return url.rstrip("/")
 
 
+def resolve_autosave(arguments: argparse.Namespace) -> bool:
+    """Return whether games are autosaved: a remote server's default."""
+
+    if arguments.no_autosave and not arguments.remote:
+        raise ValueError("--no-autosave only applies together with --remote")
+    return bool(arguments.remote and not arguments.no_autosave)
+
+
 def admin_link(host: str, port: int, admin_key: str) -> str:
     """Return the URL the host opens to become the admin.
 
@@ -151,22 +168,34 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         access, admin_key = resolve_access(arguments, os.environ)
         public_url = resolve_public_url(arguments)
+        autosave = resolve_autosave(arguments)
     except ValueError as error:
         parser.error(str(error))
     # Imported lazily so the CLI module stays importable without the extra.
     import uvicorn
 
     from dune_imperium.server.app import create_app
+    from dune_imperium.server.persistence import default_saves_directory
     from dune_imperium.server.sessions import GameSessionManager
 
     if admin_key is not None:
         print("Remote multiplayer access is on. Host admin link (keep it private):")
         print(f"  {admin_link(arguments.host, arguments.port, admin_key)}")
+        saves_dir = arguments.saves_dir or default_saves_directory()
+        if autosave:
+            print(f"Autosave is on: every game keeps one current save in {saves_dir}")
+            print(
+                "  (after a crash: restart, open the admin link, load that save "
+                "and share the new room link)"
+            )
+        else:
+            print("Autosave is off: a game lives only as long as this process.")
     app = create_app(
         manager=GameSessionManager(access=access, admin_key=admin_key),
         saves_dir=arguments.saves_dir,
         card_images_dir=arguments.card_images_dir,
         public_url=public_url,
+        autosave=autosave,
     )
     hub = app.state.doorbell_hub
 

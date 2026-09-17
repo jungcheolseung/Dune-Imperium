@@ -33,6 +33,7 @@ seat is online while some connection holds its current token.
 """
 
 import itertools
+import logging
 import random
 import re
 import threading
@@ -85,6 +86,8 @@ from dune_imperium.server.session_log import (
     undo_window,
 )
 
+_LOGGER: Final = logging.getLogger(__name__)
+
 HUMAN_SEAT: Final = "human"
 # Every other seat names an agent of the evaluation registry
 # (``dune_imperium.agents.make_agent``): ``random``, ``heuristic``, the
@@ -102,6 +105,9 @@ PLAYER_NAME_MAX_LENGTH: Final = 20
 # once the game is gone. It runs on the thread that made the change, after
 # the session lock was released.
 type ChangeListener = Callable[[str, JsonObject | None], None]
+# A hand-over listener gets the ID of a game whose turn has just passed on
+# (or which has just finished). Same thread, same moment: after the lock.
+type HandOverListener = Callable[[str], None]
 
 
 class SessionError(ValueError):
@@ -206,6 +212,7 @@ class GameSessionManager:
         self._sessions: dict[str, GameSession] = {}
         self._registry_lock = threading.Lock()
         self._listeners: list[ChangeListener] = []
+        self._hand_over_listeners: list[HandOverListener] = []
         self._connection_ids = itertools.count(1)
 
     @property
@@ -249,6 +256,24 @@ class GameSessionManager:
         """
 
         self._listeners.append(listener)
+
+    def add_hand_over_listener(self, listener: HandOverListener) -> None:
+        """Tell ``listener`` whenever a turn has passed on or a game has ended.
+
+        That is the moment an autosave is worth its write (M14 slice 5): the
+        game rests on a human decision (or is over), the seat that acted can
+        no longer take anything back, and what a crash would lose from here
+        is one turn. A step inside a turn, a turn end still awaiting its
+        confirmation, an undo, a claim: none of these calls it.
+
+        Like a change listener it runs on the thread that made the change,
+        after the session lock was released and after the doorbell rang, so
+        it may read the session (``save_document``) without deadlocking.
+        An exception it raises is logged and goes no further: the step it
+        follows has already been applied and its player must get an answer.
+        """
+
+        self._hand_over_listeners.append(listener)
 
     def doorbell(self, game_id: str) -> JsonObject:
         """Return the current doorbell payload of one game without ringing.
@@ -595,10 +620,14 @@ class GameSessionManager:
                 raise SessionError("action index is out of range")
             action = actions[index]
             _apply_step(session, action)
+            own_steps = len(session.steps)
             self._settle_locked(session, seat)
+            passed = _turn_passed(session, seat, own_steps)
             summary = self._summary_locked(session)
             bell = self._ring_locked(session, summary)
         self._publish(game_id, bell)
+        if passed:
+            self._announce_hand_over(game_id)
         return summary
 
     def confirm_turn(
@@ -630,6 +659,8 @@ class GameSessionManager:
             summary = self._summary_locked(session)
             bell = self._ring_locked(session, summary)
         self._publish(game_id, bell)
+        # A confirmation is the hand-over itself.
+        self._announce_hand_over(game_id)
         return summary
 
     def undo(
@@ -736,6 +767,16 @@ class GameSessionManager:
         """
 
         self.require_admin(credentials)
+        return self.save_document(game_id, name=name)
+
+    def save_document(self, game_id: str, *, name: str | None = None) -> JsonObject:
+        """Serialize one session for the server's own use (the autosave).
+
+        No credentials are asked for, so this is never routed: a save
+        document spells out every hidden deck order. ``save_game`` is the
+        host's door to the same document.
+        """
+
         session = self._get(game_id)
         with session.lock:
             return build_save_document(
@@ -981,6 +1022,15 @@ class GameSessionManager:
 
         for listener in tuple(self._listeners):
             listener(game_id, payload)
+
+    def _announce_hand_over(self, game_id: str) -> None:
+        """Tell the hand-over listeners; never call this under a lock."""
+
+        for listener in tuple(self._hand_over_listeners):
+            try:
+                listener(game_id)
+            except Exception:
+                _LOGGER.exception("a hand-over listener failed for game %s", game_id)
 
     def _require_remote(self, operation: str) -> None:
         if self._access is not AccessMode.REMOTE:
@@ -1244,6 +1294,30 @@ def _open_undo_window(session: GameSession, seat: int) -> int:
 
     unsealed = len(session.steps) - session.undo_floor
     return max(0, min(undo_window(session.log, seat), unsealed))
+
+
+def _turn_passed(session: GameSession, seat: int, own_steps: int) -> bool:
+    """Whether ``seat``'s step ended in a hand-over; the caller holds the lock.
+
+    ``own_steps`` is the live step count right after the seat's own step.
+    The turn has passed when the game is over, when another player's step
+    followed (AI seats played on, even if the decision is back with the
+    same seat now), or when the decision rests with another seat. It has
+    not while the turn end still awaits the seat's confirmation, nor when a
+    chance outcome alone followed and the seat simply goes on with its turn.
+    """
+
+    if session.awaiting_confirmation is not None:
+        return False
+    if _is_finished(session.state):
+        return True
+    if any(
+        isinstance(step, DomainAction) and step.actor != seat
+        for step in session.steps[own_steps:]
+    ):
+        return True
+    decision = session.engine.current_decision(session.state)
+    return isinstance(decision, PlayerDecision) and decision.owner != seat
 
 
 def _require_current(

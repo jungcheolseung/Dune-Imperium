@@ -15,6 +15,9 @@ save fails up front with a nameable reason instead of a late hash mismatch.
 Save documents embed hidden information (recorded shuffle outcomes spell
 out deck orders), so anything served over HTTP goes through
 ``save_metadata`` while the full document stays on the server's disk.
+
+An autosave (M14 slice 5) is an ordinary save document in the one slot its
+game owns: the save ID is the game ID, and every write replaces the file.
 """
 
 import json
@@ -372,6 +375,7 @@ def save_metadata(
         "phase": document.get("phase"),
         "finished": document.get("finished"),
         "step_count": len(steps) if isinstance(steps, list) else None,
+        "autosave": document.get("autosave") is True,
     }
 
 
@@ -386,8 +390,28 @@ class SaveStore:
     ) -> JsonObject:
         """Persist one document under a fresh save ID; return its metadata."""
 
-        save_id = uuid.uuid4().hex
-        stored: JsonObject = {**document, "save_id": save_id}
+        stored: JsonObject = {**document, "save_id": uuid.uuid4().hex}
+        self._store(stored)
+        return save_metadata(stored, hide_unfinished_seed=hide_unfinished_seed)
+
+    def write_autosave(
+        self, game_id: str, document: JsonObject, *, hide_unfinished_seed: bool = False
+    ) -> JsonObject:
+        """Replace the one autosave of ``game_id``; return its metadata.
+
+        The slot is named after the game (a game ID has the shape of a
+        save ID), so a game never leaves more than one autosave behind
+        and the file is swapped in atomically: a crash during the write
+        leaves the previous autosave whole.
+        """
+
+        self._path(game_id)  # refuses anything that is not a plain ID
+        stored: JsonObject = {**document, "save_id": game_id, "autosave": True}
+        self._store(stored)
+        return save_metadata(stored, hide_unfinished_seed=hide_unfinished_seed)
+
+    def _store(self, stored: JsonObject) -> None:
+        save_id = str(stored["save_id"])
         self._directory.mkdir(parents=True, exist_ok=True)
         path = self._directory / f"{save_id}.json"
         scratch = path.with_name(f"{save_id}.json.tmp")
@@ -395,7 +419,6 @@ class SaveStore:
             json.dumps(stored, ensure_ascii=False, indent=1), encoding="utf-8"
         )
         os.replace(scratch, path)
-        return save_metadata(stored, hide_unfinished_seed=hide_unfinished_seed)
 
     def list(self, *, hide_unfinished_seed: bool = False) -> list[JsonObject]:
         """Metadata for every stored save, newest first."""

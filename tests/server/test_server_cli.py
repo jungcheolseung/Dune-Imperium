@@ -1,9 +1,10 @@
-"""Tests for the play-server CLI (M14 slices 1 and 3).
+"""Tests for the play-server CLI (M14 slices 1, 3 and 5).
 
 Most exercise the pure argument-resolution helpers without starting a server
-(``docs/multiplayer-design.md`` sections 4.2-4.4, 5, 6). The last one starts
-the real command, because what it pins only shows in a real process: how
-long the server takes to stop while an event stream is open (section 4.5).
+(``docs/multiplayer-design.md`` sections 4.2-4.4, 5, 6). The last two start
+the real command, because what they pin only shows in a real process: how
+long the server takes to stop while an event stream is open (section 4.5),
+and whether a killed server's autosave survives it (section 4.7).
 """
 
 import json
@@ -16,6 +17,7 @@ import time
 import urllib.request
 from pathlib import Path
 
+import httpx2
 import pytest
 
 from dune_imperium.cli.server import (
@@ -25,6 +27,7 @@ from dune_imperium.cli.server import (
     is_loopback_host,
     main,
     resolve_access,
+    resolve_autosave,
     resolve_public_url,
 )
 from dune_imperium.server.access import AccessMode
@@ -133,6 +136,34 @@ def test_a_public_url_needs_remote_access_and_a_scheme() -> None:
         )
 
 
+# --- resolve_autosave ----------------------------------------------------
+
+
+def test_default_arguments_resolve_autosave_to_false() -> None:
+    arguments = _build_parser().parse_args([])
+
+    assert resolve_autosave(arguments) is False
+
+
+def test_remote_resolves_autosave_to_true() -> None:
+    arguments = _build_parser().parse_args(["--remote"])
+
+    assert resolve_autosave(arguments) is True
+
+
+def test_remote_with_no_autosave_resolves_to_false() -> None:
+    arguments = _build_parser().parse_args(["--remote", "--no-autosave"])
+
+    assert resolve_autosave(arguments) is False
+
+
+def test_no_autosave_without_remote_is_refused() -> None:
+    arguments = _build_parser().parse_args(["--no-autosave"])
+
+    with pytest.raises(ValueError, match="--remote"):
+        resolve_autosave(arguments)
+
+
 # --- admin_link ----------------------------------------------------------
 
 
@@ -163,6 +194,13 @@ def test_admin_link_brackets_an_ipv6_host() -> None:
 def test_main_refuses_a_non_loopback_host_without_remote() -> None:
     with pytest.raises(SystemExit) as excinfo:
         main(["--host", "0.0.0.0"])
+
+    assert excinfo.value.code == 2
+
+
+def test_main_refuses_no_autosave_without_remote() -> None:
+    with pytest.raises(SystemExit) as excinfo:
+        main(["--no-autosave"])
 
     assert excinfo.value.code == 2
 
@@ -249,3 +287,176 @@ def test_the_server_exits_at_once_while_an_event_stream_is_open(
     assert ended.wait(5), "the client's stream was not ended"
     assert "Traceback" not in output
     assert "timeout graceful shutdown exceeded" not in output
+
+
+# --- crash recovery via the autosave (M14 slice 5) -------------------------
+
+
+def _wait_for_server(
+    client: httpx2.Client, process: subprocess.Popen[str], deadline: float = 20.0
+) -> None:
+    end = time.monotonic() + deadline
+    while time.monotonic() < end:
+        assert process.poll() is None, "the server exited during startup"
+        try:
+            response = client.get("/catalog", timeout=1.0)
+        except httpx2.TransportError:
+            time.sleep(0.05)
+            continue
+        if response.status_code == 200:
+            return
+        time.sleep(0.05)
+    raise AssertionError("the server did not start in time")
+
+
+def _play_seat0_until_two_confirms(
+    client: httpx2.Client, game_id: object
+) -> dict[str, object]:
+    response = client.get(f"/games/{game_id}")
+    assert response.status_code == 200, response.text
+    summary: dict[str, object] = response.json()
+    confirms = 0
+    for _ in range(400):
+        if confirms >= 2:
+            return summary
+        if summary.get("confirmation") == 0:
+            response = client.post(
+                f"/games/{game_id}/confirm",
+                json={"seat": 0, "revision": summary["revision"]},
+            )
+            assert response.status_code == 200, response.text
+            summary = response.json()
+            confirms += 1
+            continue
+        response = client.post(
+            f"/games/{game_id}/actions",
+            json={"seat": 0, "revision": summary["revision"], "index": 0},
+        )
+        assert response.status_code == 200, response.text
+        summary = response.json()
+    raise AssertionError("seat 0 never reached two confirmed turn hand-overs")
+
+
+def _server_process(
+    *, admin_key: str, port: int, saves_dir: Path
+) -> subprocess.Popen[str]:
+    return subprocess.Popen(
+        [
+            sys.executable,
+            "-u",  # unbuffered: the startup banner must survive a SIGKILL
+            "-m",
+            "dune_imperium.cli.server",
+            "--remote",
+            "--admin-key",
+            admin_key,
+            "--port",
+            str(port),
+            "--saves-dir",
+            str(saves_dir),
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+
+
+def test_a_killed_server_recovers_from_its_autosave(tmp_path: Path) -> None:
+    # The autosave (default on for --remote) is the whole point of an
+    # otherwise ungraceful death: restart, load it, and only the turn in
+    # flight is lost.
+    pytest.importorskip("fastapi")
+    pytest.importorskip("uvicorn")
+    admin_key = "crash-recovery-key"
+    saves_dir = tmp_path / "saves"
+    first_port = _free_port()
+    first = _server_process(admin_key=admin_key, port=first_port, saves_dir=saves_dir)
+    first_stdout = first.stdout
+    assert first_stdout is not None
+    first_output: list[str] = []
+
+    def _drain_first() -> None:
+        for line in first_stdout:
+            first_output.append(line)
+
+    first_reader = threading.Thread(target=_drain_first, daemon=True)
+    first_reader.start()
+
+    second: subprocess.Popen[str] | None = None
+    try:
+        client = httpx2.Client(
+            base_url=f"http://127.0.0.1:{first_port}",
+            timeout=httpx2.Timeout(10.0),
+        )
+        _wait_for_server(client, first)
+
+        login = client.post("/auth/admin", json={"key": admin_key})
+        assert login.status_code == 200, login.text
+
+        created = client.post(
+            "/games",
+            json={
+                "seats": ["human", "heuristic", "heuristic", "heuristic"],
+                "game_seed": 41,
+            },
+        )
+        assert created.status_code == 200, created.text
+        game_id = created.json()["game_id"]
+
+        claimed = client.post(f"/games/{game_id}/seats/0/claim", json={"name": "Host"})
+        assert claimed.status_code == 200, claimed.text
+
+        summary = _play_seat0_until_two_confirms(client, game_id)
+        round_before_crash = summary["round_number"]
+
+        first.kill()
+        first.wait(timeout=10)
+        first_reader.join(timeout=5)
+        first_text = "".join(first_output)
+
+        save_path = saves_dir / f"{game_id}.json"
+        assert save_path.exists(), first_text
+        assert list(saves_dir.glob("*.tmp")) == []
+        assert "Autosave is on" in first_text, first_text
+
+        second_port = _free_port()
+        second = _server_process(
+            admin_key=admin_key, port=second_port, saves_dir=saves_dir
+        )
+        second_client = httpx2.Client(
+            base_url=f"http://127.0.0.1:{second_port}",
+            timeout=httpx2.Timeout(10.0),
+        )
+        _wait_for_server(second_client, second)
+
+        second_login = second_client.post("/auth/admin", json={"key": admin_key})
+        assert second_login.status_code == 200, second_login.text
+
+        listing = second_client.get("/saves")
+        assert listing.status_code == 200, listing.text
+        entries: list[dict[str, object]] = listing.json()
+        entry = next(e for e in entries if e["save_id"] == game_id)
+        assert entry["autosave"] is True
+        assert entry["round_number"] == round_before_crash
+
+        loaded = second_client.post(f"/saves/{game_id}/load")
+        assert loaded.status_code == 200, loaded.text
+        restored: dict[str, object] = loaded.json()
+        assert restored["game_id"] != game_id
+        assert restored["revision"] == entry["step_count"]
+        assert restored["round_number"] == entry["round_number"]
+
+        new_game_id = restored["game_id"]
+        claim_new = second_client.post(
+            f"/games/{new_game_id}/seats/0/claim", json={"name": "Host2"}
+        )
+        assert claim_new.status_code == 200, claim_new.text
+        one_more = second_client.post(
+            f"/games/{new_game_id}/actions",
+            json={"seat": 0, "revision": restored["revision"], "index": 0},
+        )
+        assert one_more.status_code == 200, one_more.text
+    finally:
+        for process in (first, second):
+            if process is not None and process.poll() is None:
+                process.kill()
+                process.wait(timeout=10)

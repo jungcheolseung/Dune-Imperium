@@ -522,17 +522,28 @@ def test_whoami_tells_a_browser_the_access_mode_and_whether_it_is_the_host(
     stranger = TestClient(app).get("/whoami")
     assert stranger.status_code == 200
     # The room-link base is the host's business only.
-    assert stranger.json() == {"access": "remote", "admin": False, "public_url": None}
+    assert stranger.json() == {
+        "access": "remote",
+        "admin": False,
+        "public_url": None,
+        "autosave": True,
+    }
 
     host = _admin_client(app).get("/whoami")
     assert host.json() == {
         "access": "remote",
         "admin": True,
         "public_url": "http://100.101.102.103:8000",
+        "autosave": True,
     }
 
 
 def test_whoami_on_an_open_server_makes_everyone_the_host(tmp_path: Path) -> None:
     response = TestClient(_open_app(tmp_path)).get("/whoami")
 
-    assert response.json() == {"access": "open", "admin": True, "public_url": None}
+    assert response.json() == {
+        "access": "open",
+        "admin": True,
+        "public_url": None,
+        "autosave": False,
+    }
