@@ -927,3 +927,37 @@ button:disabled { opacity: 0.5; cursor: wait; }
 }
 .bt-spice .icon { height: 1.2em; }
 
+
+/* ---------- remote play: lobby, presence, host block (M14 slice 4) ---------- */
+
+#lobby-screen label, #landing-screen p { display: block; margin: 0.5rem 0; }
+#lobby-name { margin-left: 0.4rem; width: 14rem; }
+#lobby-seats, .host-seats { list-style: none; padding: 0; margin: 0.6rem 0; }
+.lobby-seat, .host-seats li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--line);
+}
+.lobby-seat-label { min-width: 9rem; font-weight: 600; }
+.lobby-seat button, .host-seats button { margin-left: auto; }
+#lobby-host { margin-top: 1rem; border-top: 1px solid var(--line); padding-top: 0.6rem; }
+#lobby-host h3, #host-panel-body h3 { font-size: 0.95rem; margin: 0.3rem 0; }
+
+.presence {
+  display: inline-block;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  flex: none;
+}
+.presence.on { background: var(--good); }
+.presence.off { background: transparent; border: 1px solid var(--bad); }
+.who .presence { margin-left: 0.3rem; }
+
+.room-link { display: flex; gap: 0.4rem; }
+.room-link-value { flex: 1; min-width: 0; font-family: monospace; }
+.room-base { display: block; margin-top: 0.4rem; font-size: 0.85em; }
+.room-base input { width: 100%; box-sizing: border-box; }
+#host-panel > summary { cursor: pointer; font-weight: 600; }

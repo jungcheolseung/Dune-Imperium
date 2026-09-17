@@ -10,8 +10,9 @@
   <header>
     <h1>Dune: Imperium — Uprising</h1>
     <div id="header-status"></div>
+    <button id="open-lobby" hidden>좌석</button>
     <button id="save-game" hidden>저장</button>
-    <button id="leave-game" hidden>새 게임 설정으로</button>
+    <button id="leave-game" hidden>나가기</button>
   </header>
 
   <main>
@@ -38,7 +39,7 @@
             Tech Module (Bloodlines 필요: Ixian Embassy·Tech tile 18장·Kota Odax)</label>
           <label><input type="checkbox" id="opt-immortality">
             Immortality 확장 (Bene Tleilax board·Tleilaxu Row·Graft·새 카드)</label>
-          <label>Seed (빈칸 = 무작위)
+          <label id="opt-seed-row">Seed (빈칸 = 무작위)
             <input type="number" id="opt-seed" min="0" placeholder="무작위"></label>
         </fieldset>
         <button type="submit" id="create-game">게임 시작</button>
@@ -54,6 +55,25 @@
       <p id="setup-error" class="error" hidden></p>
     </section>
 
+    <section id="landing-screen" class="panel" hidden>
+      <h2>초대받은 사람만 들어올 수 있는 서버입니다</h2>
+      <p>호스트가 보낸 방 링크로 접속하세요.</p>
+      <p class="muted">호스트라면 서버를 띄운 콘솔에 찍힌 관리자 링크를 여세요.</p>
+      <p id="landing-error" class="error" hidden></p>
+    </section>
+
+    <section id="lobby-screen" class="panel" hidden>
+      <h2>좌석 고르기</h2>
+      <p id="lobby-status" class="muted"></p>
+      <label>이름 (다른 플레이어에게 보입니다)
+        <input type="text" id="lobby-name" maxlength="20" autocomplete="off"></label>
+      <ul id="lobby-seats"></ul>
+      <p id="lobby-error" class="error" hidden></p>
+      <p id="lobby-note" class="muted" hidden></p>
+      <button id="lobby-enter" hidden>게임 화면으로 ▶</button>
+      <div id="lobby-host" hidden></div>
+    </section>
+
     <section id="game-screen" hidden>
       <div id="table">
         <aside id="seats" aria-label="좌석"></aside>
@@ -63,6 +83,10 @@
         </div>
         <aside id="side">
           <div id="side-main">
+            <details id="host-panel" class="panel" hidden>
+              <summary>호스트 · 방 링크와 좌석</summary>
+              <div id="host-panel-body"></div>
+            </details>
             <section id="decision-banner" class="panel">
               <div id="decision-info"></div>
               <div id="actions"></div>
