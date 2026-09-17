@@ -71,7 +71,7 @@ seed 블록에서 **+5.1 ~ +9.1%p**다([evaluation/baseline-2026-09-16.md](evalu
    정체 신호(평가 승률이 두세 번 연속 오차 안, 또는 이전 champion 상대 25~30%)가 보이면 PPO 슬라이스(수집 log-prob 기록 +
    clip + `--epochs` 3~4)를 넣고 같은 체크포인트에서 `--resume`한다. 학습 밖 후보 (a)에 전 확장 census가 남긴 RNG 가족
    (graft 변형·partner, Commander skill, `take_contract`, Spy post, Engineered Miracle의 `command_acquire_row_card`)을 더한다.
-0. (2026-09-18 새벽, **M14는 실제 친구와의 한 판만 남았다 — 사용자 몫**) 슬라이스 1~5와 슬라이스 6의 리허설·운영 문서가 master에 있다(아래 세션 요약 셋). **판을 여는 법과 친구에게 보낼 안내는 [remote-play-guide.md](remote-play-guide.md)** 한 장에 있다: `caffeinate -i uv run dune-imperium-server --remote --host <이 Mac의 100.x 주소>` → 콘솔의 관리자 링크 → 방 생성 → 방 링크를 보낸다(이 Mac mini의 Tailscale 주소는 2026-09-17 현재 `100.87.236.12`; Tailscale 머신 공유 초대는 아직 보내지 않았다). 그 문서 끝의 **첫 실전 판 점검표**(친구 쪽에서 호스트 주소가 같은지, 보드 그림·한 수의 체감 지연, 신호음, 몇 시간짜리 연결, rollout AI 좌석의 멈춤 체감, 되돌리기·확정 흐름, 검토·순위표, WSL2)를 한 판 하면서 채우고, 나온 피드백이 다음 작업이다. **`app.js`를 고치면 [`scripts/e2e/`](../scripts/e2e/README.md)의 스크립트를 돌린다**(`remote.py`·`open_mode.py`·`races.py --ab`·`recovery.py`, 실전 전에는 `E2E_HOST=<100.x> rehearsal.py`; 스크래치 venv + 시스템 Chrome, 합쳐 3분쯤; pytest는 JavaScript를 실행하지 않는다). 설계 11절의 후속 후보(AI worker와 단계별 푸시, AI 대타, 관전자, 공개 터널용 에셋 게이트, 이름의 저장 파일 보존)는 실전 피드백이 요구할 때만 연다.
+0. (2026-09-17 자정 무렵, **M14는 실제 친구와의 한 판만 남았다 — 사용자 몫**) 슬라이스 1~5와 슬라이스 6의 리허설·운영 문서가 master에 있다(아래 세션 요약 셋). **판을 여는 법과 친구에게 보낼 안내는 [remote-play-guide.md](remote-play-guide.md)** 한 장에 있다: `caffeinate -i uv run dune-imperium-server --remote --host <이 Mac의 100.x 주소>` → 콘솔의 관리자 링크 → 방 생성 → 방 링크를 보낸다(이 Mac mini의 Tailscale 주소는 2026-09-17 현재 `100.87.236.12`; Tailscale 머신 공유 초대는 아직 보내지 않았다). 그 문서 끝의 **첫 실전 판 점검표**(친구 쪽에서 호스트 주소가 같은지, 보드 그림·한 수의 체감 지연, 신호음, 몇 시간짜리 연결, rollout AI 좌석의 멈춤 체감, 되돌리기·확정 흐름, 검토·순위표, WSL2)를 한 판 하면서 채우고, 나온 피드백이 다음 작업이다. **`app.js`를 고치면 [`scripts/e2e/`](../scripts/e2e/README.md)의 스크립트를 돌린다**(`remote.py`·`open_mode.py`·`races.py --ab`·`recovery.py`, 실전 전에는 `E2E_HOST=<100.x> rehearsal.py`; 스크래치 venv + 시스템 Chrome, 합쳐 3분쯤; pytest는 JavaScript를 실행하지 않는다). 설계 11절의 후속 후보(AI worker와 단계별 푸시, AI 대타, 관전자, 공개 터널용 에셋 게이트, 이름의 저장 파일 보존)는 실전 피드백이 요구할 때만 연다.
 0. (2026-09-17, **슬라이스 1~5 완료 + 슬라이스 6의 리허설·운영 문서 완료, 실제 한 판만 남음**, 학습과 병행 가능) **M14 원격 멀티플레이.** 사용자 요구:
    "원격 친구들이랑 각자 PC에서". 설계는 [multiplayer-design.md](multiplayer-design.md)(같은 날 사용자가 D1~D7을 제안대로
    확정), 마일스톤은 [implementation-plan.md](implementation-plan.md) M14. 끝난 것: **슬라이스 1**(접근 계층: `server/access.py`,
@@ -292,7 +292,7 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 
 ## 원격 저장소 인계 주의
 
-2026-09-17 밤~심야(Mac mini): `m14-slice4-client` 브랜치(WIP 커밋 `b319081` + 그 세션의 커밋)를 master 쪽에서 `--no-ff`로 머지했고(`de70942`), 사용자 지시로 슬라이스 5(`657f60c`)까지 `origin/master`에 push했다. 원격의 WIP 브랜치는 사용자가, 로컬 워크트리와 브랜치 `m14-slice4-client`는 2026-09-18 새벽 세션이 지웠다. 그 뒤 슬라이스 6의 커밋들은 master 직접 커밋이다 — push 여부는 `git log origin/master..master`로 확인한다.
+2026-09-17 밤~심야(Mac mini): `m14-slice4-client` 브랜치(WIP 커밋 `b319081` + 그 세션의 커밋)를 master 쪽에서 `--no-ff`로 머지했고(`de70942`), 사용자 지시로 슬라이스 5(`657f60c`)까지 `origin/master`에 push했다. 원격의 WIP 브랜치는 사용자가, 로컬 워크트리와 브랜치 `m14-slice4-client`는 2026-09-17 자정 무렵 세션이 지웠다. 그 뒤 슬라이스 6의 커밋들은 master 직접 커밋이다 — push 여부는 `git log origin/master..master`로 확인한다.
 
 2026-09-17 학습 전 최종 점검 세션(WSL 노트북) 종료 시점에 문서 커밋 3건(테스트 수 1,539 정정, 전 확장 학습 전 점검 요약과 0번 다음 작업, 이 문단)을 `git push git@github.com:jungcheolseung/Dune-Imperium.git master`로 push했다. 학습은 Mac mini 또는 14700K PC에서 진행하기로 했으므로, 그 기기에서는 `git pull` 뒤 이 문서의 0번 명령을 그대로 쓴다(체크포인트 폴더 `checkpoints/`는 git 무시이며 기기 간에는 파일을 복사한다).
 
@@ -302,7 +302,7 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 
 2026-09-04 세션 종료 시점에 이 세션의 커밋 전부(보드·카드 아이콘 분리 v86/v87, 서버·UI 확인 흐름과 마커, Reveal 순서 v88, OQ-028 조건 판정 시점, OQ-029 등록)를 `origin/master`에 push했다. 새 세션은 `git fetch origin` 뒤 `git log origin/master..master`와 반대 방향을 확인하고, 일치하면 이 문서의 기준선을 그대로 쓴다. 에셋 저장소(`Dune-Imperium-assets`)의 `5b55e45` 1개 미push 여부는 그 저장소에서 확인한다. 원격에는 병합하지 않은 `kyungtae` 브랜치가 있다. 새 세션은 `git log origin/master..master`와 반대 방향을 모두 확인하고, checkout이 `853ecd4`보다 이전이면 이 문서의 989개 테스트·codec v84 기준선이 실제 코드와 일치하지 않는다. **다른 머신에서 이어서 작업한다면 먼저 이 머신에서 push가 필요하다.** 새 머신의 UI 카드 이미지·아이콘·보드 스캔은 비공개 `Dune-Imperium-assets` 저장소를 clone해 symlink로 연결한다(그 README 참고; 루트의 `assets` symlink 하나로 cards·icons·board·rulebooks를 모두 연결). 카드 매핑은 그 저장소의 `cards/manifest.json`에만 있으므로 접근이 없으면 텍스트 UI로 동작한다.
 
-## 2026-09-18 새벽 M14 슬라이스 6 리허설·운영 문서 세션 요약 (Mac mini, master 직접 커밋, 관측 v20, codec v104)
+## 2026-09-17 자정 무렵 M14 슬라이스 6 리허설·운영 문서 세션 요약 (Mac mini, master 직접 커밋, 관측 v20, codec v104)
 
 - 사용자 지시: "push하고 슬라이스 6 진행해. 로컬 워크트리는 지워줘. 원격은 지웠어". 슬라이스 5까지 push(`657f60c`), 워크트리
   `.claude/worktrees/m14-slice4-client`와 머지된 브랜치 `m14-slice4-client` 삭제(`git fetch --prune`로 원격 WIP 브랜치가 없어진 것 확인).
