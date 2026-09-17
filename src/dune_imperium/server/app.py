@@ -26,7 +26,7 @@ snapshot call, so the stream never has to be filtered per seat.
 """
 
 import os
-from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
+from collections.abc import AsyncIterator, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Final
@@ -38,6 +38,8 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from starlette.datastructures import MutableHeaders
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from dune_imperium.display.images import resolve_card_images
 from dune_imperium.server.access import AccessMode, Credentials
@@ -210,6 +212,37 @@ class ClaimSeatRequest(BaseModel):
     name: str = Field(max_length=200)
 
 
+class _RevalidateUIFiles:
+    """Make browsers revalidate ``index.html`` and ``/static`` on every load.
+
+    The UI is edited in place while the server runs; ``no-cache`` (the ETag
+    keeps it cheap) stops a browser from heuristically caching a stale
+    ``app.js``.
+
+    This wraps the ASGI ``send`` instead of using ``@app.middleware("http")``:
+    Starlette's ``BaseHTTPMiddleware`` raises ``RuntimeError("No response
+    returned.")`` for every request whose client leaves before the response
+    starts, and a page that reopens its doorbell closes an event stream it
+    has only just asked for. uvicorn logged a traceback for each of those.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self._app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        path = scope["path"] if scope["type"] == "http" else None
+        if path is None or not (path == "/" or path.startswith("/static/")):
+            await self._app(scope, receive, send)
+            return
+
+        async def send_revalidating(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                MutableHeaders(scope=message)["Cache-Control"] = "no-cache"
+            await send(message)
+
+        await self._app(scope, receive, send_revalidating)
+
+
 def seat_cookie_name(game_id: str, seat: int) -> str:
     """Name of the cookie that carries one claimed seat's token."""
 
@@ -288,19 +321,7 @@ def create_app(
     # player's refresh is made of. Starlette's default exclusions already
     # skip the card and board scans and ``text/event-stream``.
     app.add_middleware(GZipMiddleware, minimum_size=_GZIP_MINIMUM_SIZE)
-
-    @app.middleware("http")
-    async def revalidate_ui_files(
-        request: Request, call_next: Callable[[Request], Awaitable[Response]]
-    ) -> Response:
-        # The UI is edited in place while the server runs; make browsers
-        # revalidate index.html and /static on every load (ETag keeps it
-        # cheap) instead of heuristically caching a stale app.js.
-        response = await call_next(request)
-        path = request.url.path
-        if path == "/" or path.startswith("/static/"):
-            response.headers["Cache-Control"] = "no-cache"
-        return response
+    app.add_middleware(_RevalidateUIFiles)
 
     @app.get("/", include_in_schema=False)
     def index() -> FileResponse:

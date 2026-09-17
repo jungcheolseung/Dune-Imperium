@@ -23,6 +23,8 @@ const state = {
   log: null,
   /* Who this browser is at the table: {seats, admin, access} (M14). */
   me: null,
+  /* The server this page came from: {access, admin, public_url} (M14). */
+  server: null,
 };
 
 let noteTimer = 0;
@@ -667,11 +669,11 @@ async function loadGameList() {
       ? "종료됨"
       : `라운드 ${summary.round_number}`;
     item.append(
-      `seed ${summary.game_seed} · ${summary.seats.map(seatKindLabel).join(", ")} · ${label} `
+      `${seedLabel(summary)}${summary.seats.map(seatKindLabel).join(", ")} · ${label} `
     );
     const button = document.createElement("button");
     button.textContent = "이어서";
-    button.addEventListener("click", () => enterGame(summary));
+    button.addEventListener("click", () => openGame(summary.game_id));
     item.appendChild(button);
     list.appendChild(item);
   }
@@ -690,7 +692,9 @@ async function loadSaveList() {
       list.appendChild(item);
       continue;
     }
-    const title = entry.name || `seed ${entry.game_seed}`;
+    const title =
+      entry.name ||
+      (entry.game_seed === null ? "이름 없는 저장" : `seed ${entry.game_seed}`);
     const status = entry.finished ? "종료됨" : `라운드 ${entry.round_number}`;
     item.append(
       `${title} · ${entry.seats.join(", ")} · ${status} · ${entry.saved_at} `
@@ -703,7 +707,7 @@ async function loadSaveList() {
         const summary = await api(`/saves/${entry.save_id}/load`, {
           method: "POST",
         });
-        enterGame(summary);
+        await openGame(summary.game_id);
       } catch (error) {
         el("setup-error").textContent = `불러오기 실패 (${error.message})`;
         el("setup-error").hidden = false;
@@ -747,14 +751,87 @@ async function createGame(event) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    enterGame(summary);
+    await openGame(summary.game_id);
   } catch (error) {
     el("setup-error").textContent = `게임 생성 실패 (${error.message})`;
     el("setup-error").hidden = false;
   }
 }
 
-/* ---------- game screen ---------- */
+/* ---------- screens and entry (M14 slice 4) ---------- */
+
+const BASE_TITLE = document.title;
+const SCREENS = ["setup-screen", "landing-screen", "lobby-screen", "game-screen"];
+
+function isRemote() {
+  return Boolean(state.server && state.server.access === "remote");
+}
+
+/* On an open server every browser is the host. */
+function isAdmin() {
+  return Boolean(state.server && state.server.admin);
+}
+
+function showScreen(name) {
+  for (const id of SCREENS) el(id).hidden = id !== name;
+  const atTable = name === "game-screen";
+  document.body.classList.toggle("in-game", atTable);
+  el("leave-game").hidden = !(atTable || name === "lobby-screen");
+  el("save-game").hidden = !(atTable && isAdmin());
+  el("open-lobby").hidden = !(atTable && isRemote());
+}
+
+function storageGet(key) {
+  try {
+    return window.localStorage.getItem(key);
+  } catch (error) {
+    return null;
+  }
+}
+
+function storageSet(key, value) {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch (error) {
+    /* a private window: the convenience is simply not remembered */
+  }
+}
+
+function storageRemove(key) {
+  try {
+    window.localStorage.removeItem(key);
+  } catch (error) {
+    /* nothing was remembered in the first place */
+  }
+}
+
+function hashParams() {
+  return new URLSearchParams(window.location.hash.replace(/^#/, ""));
+}
+
+/* A game ID goes into request paths, and both the hash and localStorage are
+   whatever somebody put there. */
+function roomId(value) {
+  return value && /^[\w-]{1,64}$/.test(value) ? value : null;
+}
+
+function roomFromHash() {
+  return roomId(hashParams().get("game"));
+}
+
+/* The room link is `#game=<id>`: a reload, or the link pasted to a friend,
+   comes back to this game. The ID is the ticket into the room, not a seat;
+   seats live in HttpOnly cookies and never reach the address bar. */
+function setRoomHash(gameId) {
+  const target = gameId
+    ? `#game=${gameId}`
+    : window.location.pathname + window.location.search;
+  window.history.replaceState(null, "", target);
+}
+
+function seedLabel(summary) {
+  return summary.game_seed === null ? "" : `seed ${summary.game_seed} · `;
+}
 
 function humanSeatsOf(summary) {
   return summary.seats
@@ -766,27 +843,123 @@ function humanSeats() {
   return humanSeatsOf(state.summary);
 }
 
+/* The seats this browser plays: every human seat on an open server, the
+   seats it claimed on a remote one. */
+function mySeats() {
+  return state.me ? state.me.seats : [];
+}
+
 function activeSeat() {
   return state.review ? state.review.seat : state.viewSeat;
 }
 
-function enterGame(summary) {
-  state.gameId = summary.game_id;
-  state.summary = summary;
+function playerInfo(seat) {
+  const players = state.summary && state.summary.players;
+  return (players && players[seat]) || { seat, kind: "human", name: null };
+}
+
+/* What to call a seat's player. Names come from other people: they are only
+   ever written through textContent, never as markup. */
+function playerName(seat) {
+  const info = playerInfo(seat);
+  if (info.kind !== "human") return seatKindLabel(info.kind);
+  if (info.name) return info.name;
+  return isRemote() && !info.claimed ? "빈 좌석" : "사람";
+}
+
+function playerLabel(seat) {
+  return `좌석 ${seat} (${playerName(seat)})`;
+}
+
+function presenceDot(info) {
+  const dot = document.createElement("span");
+  dot.className = "presence " + (info.online ? "on" : "off");
+  dot.title = info.online ? "접속 중" : "접속 끊김";
+  return dot;
+}
+
+function resetGameState() {
+  state.gameId = null;
+  state.summary = null;
   state.view = null;
   state.actions = null;
   state.log = null;
   state.me = null;
   state.viewSeat = null;
   state.review = null;
+  myTurnBefore = null;
+  document.title = BASE_TITLE;
   el("review-bar").hidden = true;
-  el("setup-screen").hidden = true;
-  el("game-screen").hidden = false;
-  document.body.classList.add("in-game");
-  el("leave-game").hidden = false;
-  el("save-game").hidden = false;
-  refresh(summary).catch(showRefreshError);
+}
+
+/* The setup screen for the host (everyone, on an open server); a plain
+   landing page for a visitor who came without a room link. */
+async function showHome(message) {
+  setRoomHash(null);
+  const target = isAdmin() ? "setup" : "landing";
+  showScreen(`${target}-screen`);
+  const error = el(`${target}-error`);
+  error.textContent = message || "";
+  error.hidden = !message;
+  /* A guest has no game list; the last room this browser was in is the way
+     back after closing the tab or leaving (a convenience only: what lets
+     it sit down again is the seat cookie). */
+  el("landing-resume").hidden = isAdmin() || !roomId(storageGet("dune.lastGame"));
+  if (isAdmin()) {
+    await Promise.all([
+      loadGameList().catch(() => {}),
+      loadSaveList().catch(() => {}),
+    ]);
+  }
+}
+
+/* Entering a game starts with who this browser is at that table: the seats
+   it holds decide between the table and the seat picker. */
+let openTicket = 0;
+
+async function openGame(gameId) {
+  openTicket += 1;
+  const ticket = openTicket;
+  closeDoorbell();
+  setSpotlight(null);
+  resetGameState();
+  let entry;
+  try {
+    entry = await api(`/games/${gameId}/snapshot`);
+  } catch (error) {
+    if (ticket !== openTicket) return;
+    if (error.status === 404 && storageGet("dune.lastGame") === gameId) {
+      storageRemove("dune.lastGame");
+    }
+    await showHome(
+      error.status === 404
+        ? "그 게임은 이 서버에 없습니다 (서버가 다시 시작됐을 수 있습니다)."
+        : `게임 조회 실패 (${error.message})`
+    );
+    return;
+  }
+  /* A later openGame (a second link pasted meanwhile) owns the page now. */
+  if (ticket !== openTicket) return;
+  state.gameId = gameId;
+  state.summary = entry.summary;
+  state.me = entry.you;
+  setRoomHash(gameId);
+  storageSet("dune.lastGame", gameId);
   openDoorbell();
+  if (mySeats().length || !humanSeatsOf(entry.summary).length) {
+    enterTable(entry.summary);
+  } else {
+    showLobby();
+  }
+}
+
+function enterTable(summary, seat) {
+  state.review = null;
+  el("review-bar").hidden = true;
+  el("game-error").hidden = true;
+  showScreen("game-screen");
+  const options = seat === undefined ? undefined : { seat };
+  refresh(summary, options).catch(showRefreshError);
 }
 
 function showRefreshError(error) {
@@ -794,24 +967,302 @@ function showRefreshError(error) {
   el("game-error").hidden = false;
 }
 
-function leaveGame() {
+function leaveGame(message) {
+  openTicket += 1;
   closeDoorbell();
   setSpotlight(null);
-  state.gameId = null;
-  state.summary = null;
+  resetGameState();
+  showHome(message).catch(() => {});
+}
+
+/* ---------- seat picker (remote servers) ---------- */
+
+function showLobby(message) {
+  showScreen("lobby-screen");
+  const note = el("lobby-note");
+  note.textContent = message || "";
+  note.hidden = !message;
+  el("lobby-error").hidden = true;
+  const name = el("lobby-name");
+  if (!name.value) name.value = storageGet("dune.playerName") || "";
+  renderLobby();
+}
+
+function lobbyError(text) {
+  el("lobby-error").textContent = text;
+  el("lobby-error").hidden = false;
+}
+
+function renderLobby() {
+  const summary = state.summary;
+  if (!summary) return;
+  const mine = mySeats();
+  el("lobby-status").textContent =
+    `라운드 ${summary.round_number} · ${PHASE_LABELS[summary.phase] || summary.phase}` +
+    (summary.finished ? " · 종료됨" : "");
+  const list = el("lobby-seats");
+  list.textContent = "";
+  let free = 0;
+  for (const info of summary.players) {
+    const item = document.createElement("li");
+    item.className = "lobby-seat";
+    item.dataset.seat = String(info.seat);
+    item.appendChild(seatToken(info.seat, "seat-mark"));
+    const label = document.createElement("span");
+    label.className = "lobby-seat-label";
+    label.textContent = playerName(info.seat);
+    item.appendChild(label);
+    if (info.kind === "human") {
+      if (info.claimed) item.appendChild(presenceDot(info));
+      if (mine.includes(info.seat)) {
+        const badge = document.createElement("span");
+        badge.className = "badge";
+        badge.textContent = "내 좌석";
+        item.appendChild(badge);
+        item.appendChild(lobbyButton("자리 비우기", () => releaseSeat(info.seat)));
+      } else if (!info.claimed) {
+        free += 1;
+        item.appendChild(lobbyButton("앉기", () => claimSeat(info.seat)));
+      } else if (isAdmin()) {
+        item.appendChild(lobbyButton("좌석 비우기", () => releaseSeat(info.seat)));
+      }
+    } else {
+      const badge = document.createElement("span");
+      badge.className = "badge ai";
+      badge.textContent = "AI";
+      item.appendChild(badge);
+    }
+    list.appendChild(item);
+  }
+  if (!mine.length && !free) {
+    lobbyError("빈 좌석이 없습니다. 호스트에게 좌석을 비워 달라고 하세요.");
+  }
+  el("lobby-enter").hidden = !mine.length;
+  /* The seat picker above already lists the seats, with the host's release
+     buttons. */
+  renderHostBlock(el("lobby-host"), { seats: false });
+}
+
+function lobbyButton(text, onClick) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = text;
+  button.addEventListener("click", () => {
+    el("lobby-error").hidden = true;
+    onClick().catch((error) => lobbyError(`요청 실패 (${error.message})`));
+  });
+  return button;
+}
+
+async function claimSeat(seat) {
+  if (state.busy) return;
+  const name = el("lobby-name").value.trim();
+  if (!name) {
+    lobbyError("이름을 먼저 적어 주세요.");
+    el("lobby-name").focus();
+    return;
+  }
+  let summary;
+  /* Leaving (or a deleted game) while the claim is on its way must not be
+     answered by putting the table back on screen. */
+  const ticket = openTicket;
+  /* Busy as for any other POST of this page: its own doorbell is not
+     answered with a request, the refresh that follows covers it. */
+  state.busy = true;
+  try {
+    summary = await api(`/games/${state.gameId}/seats/${seat}/claim`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+  } catch (error) {
+    state.busy = false;
+    if (ticket !== openTicket) return;
+    await refresh();
+    lobbyError(
+      error.status === 409
+        ? "방금 다른 사람이 그 좌석에 앉았습니다."
+        : `앉기 실패 (${error.message})`
+    );
+    return;
+  }
+  state.busy = false;
+  storageSet("dune.playerName", name);
+  if (ticket !== openTicket) return;
+  /* A stream registers presence with the cookies it was opened with, so the
+     seat only shows as online once the stream is opened again. */
+  openDoorbell();
+  /* state.me does not know the new seat yet; only a snapshot may say so
+     (see refresh), and this one asks for the seat by name. */
+  enterTable(summary, seat);
+}
+
+async function releaseSeat(seat) {
+  if (state.busy) return;
+  let summary;
+  state.busy = true;
+  try {
+    summary = await api(`/games/${state.gameId}/seats/${seat}/release`, {
+      method: "POST",
+    });
+  } finally {
+    state.busy = false;
+  }
+  /* Giving up the seat on screen: ask without a seat, not for one the
+     server has just stopped answering for. Losing the last seat lands in
+     the seat picker (adoptSnapshot). */
+  const options = seat === state.viewSeat ? { seat: null } : undefined;
+  await refresh(summary, options);
+}
+
+/* This browser held seats and now holds none: it gave its seat up, or the
+   host released it. The stream stays as it is; a released token stopped
+   counting as present the moment it was released. */
+function seatLost() {
   state.view = null;
   state.actions = null;
   state.log = null;
-  state.me = null;
-  state.review = null;
-  el("review-bar").hidden = true;
-  el("game-screen").hidden = true;
-  document.body.classList.remove("in-game");
-  el("leave-game").hidden = true;
-  el("save-game").hidden = true;
-  el("setup-screen").hidden = false;
-  loadGameList().catch(() => {});
-  loadSaveList().catch(() => {});
+  state.viewSeat = null;
+  showLobby("좌석에서 내려왔습니다. 다시 앉으려면 좌석을 고르세요.");
+}
+
+/* ---------- host block: the room link and the seats ---------- */
+
+function roomLink() {
+  const base =
+    state.server.public_url ||
+    storageGet("dune.publicUrl") ||
+    window.location.origin;
+  return `${base.replace(/\/+$/, "")}/#game=${state.gameId}`;
+}
+
+function copyText(input) {
+  input.select();
+  /* The clipboard API needs a secure context; a Tailscale address served
+     over plain HTTP is not one, so the selection stays as the fallback. */
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(input.value).catch(() => {});
+  } else {
+    try {
+      document.execCommand("copy");
+    } catch (error) {
+      /* the link stays selected for a manual copy */
+    }
+  }
+}
+
+function renderHostBlock(container, options) {
+  const show = isRemote() && isAdmin() && Boolean(state.gameId);
+  container.hidden = !show;
+  if (!show) {
+    container.textContent = "";
+    return;
+  }
+  /* Never rebuild under the host's cursor while an address is being typed. */
+  if (container.contains(document.activeElement)) return;
+  container.textContent = "";
+
+  const heading = document.createElement("h3");
+  heading.textContent = "방 링크 — 친구들에게 이 주소 하나를 보내세요";
+  container.appendChild(heading);
+  const row = document.createElement("div");
+  row.className = "room-link";
+  const link = document.createElement("input");
+  link.type = "text";
+  link.readOnly = true;
+  link.className = "room-link-value";
+  link.value = roomLink();
+  link.addEventListener("focus", () => link.select());
+  const copy = document.createElement("button");
+  copy.type = "button";
+  copy.textContent = "복사";
+  copy.addEventListener("click", () => copyText(link));
+  row.append(link, copy);
+  container.appendChild(row);
+
+  if (!state.server.public_url) {
+    const label = document.createElement("label");
+    label.className = "room-base";
+    label.append("친구들이 접속하는 서버 주소 (예: http://100.x.y.z:8000) ");
+    const base = document.createElement("input");
+    base.type = "text";
+    base.value = storageGet("dune.publicUrl") || window.location.origin;
+    base.addEventListener("change", () => {
+      storageSet("dune.publicUrl", base.value.trim());
+      link.value = roomLink();
+    });
+    label.appendChild(base);
+    container.appendChild(label);
+  }
+
+  if (options && options.seats === false) return;
+  const list = document.createElement("ul");
+  list.className = "host-seats";
+  for (const info of state.summary.players) {
+    if (info.kind !== "human") continue;
+    const item = document.createElement("li");
+    item.appendChild(seatToken(info.seat, "seat-mark"));
+    const label = document.createElement("span");
+    label.textContent = playerName(info.seat);
+    item.appendChild(label);
+    if (info.claimed) {
+      item.appendChild(presenceDot(info));
+      const release = document.createElement("button");
+      release.type = "button";
+      release.textContent = "좌석 비우기";
+      release.addEventListener("click", () => {
+        releaseSeat(info.seat).catch((error) =>
+          note(`좌석 비우기 실패 (${error.message})`)
+        );
+      });
+      item.appendChild(release);
+    }
+    list.appendChild(item);
+  }
+  container.appendChild(list);
+}
+
+/* ---------- my turn ---------- */
+
+let myTurnBefore = null;
+
+function isMyTurn(summary) {
+  if (!summary || summary.finished) return false;
+  const mine = mySeats();
+  if (typeof summary.confirmation === "number") {
+    return mine.includes(summary.confirmation);
+  }
+  return Boolean(summary.decision) && mine.includes(summary.decision.owner);
+}
+
+/* On a remote server a player waits for the others with the tab in the
+   background: the title says when the wait is over, and a short tone marks
+   the moment. (Notifications need a secure context, which a Tailscale
+   address over plain HTTP is not.) */
+function noticeTurn() {
+  if (!isRemote()) return;
+  const mine = isMyTurn(state.summary);
+  document.title = mine ? `▶ 내 차례 — ${BASE_TITLE}` : BASE_TITLE;
+  if (mine && myTurnBefore === false) turnTone();
+  myTurnBefore = mine;
+}
+
+function turnTone() {
+  try {
+    const Context = window.AudioContext || window.webkitAudioContext;
+    const context = new Context();
+    const tone = context.createOscillator();
+    const gain = context.createGain();
+    tone.frequency.value = 880;
+    gain.gain.value = 0.08;
+    tone.connect(gain);
+    gain.connect(context.destination);
+    tone.start();
+    tone.stop(context.currentTime + 0.18);
+    tone.onended = () => context.close();
+  } catch (error) {
+    /* no audio: the title still tells */
+  }
 }
 
 function note(text) {
@@ -840,19 +1291,20 @@ async function saveGame() {
   }
 }
 
-/* The seat the table is shown from: whoever must confirm a turn end, else
-   the human decision owner, else the seat already on screen. */
-function pickViewSeat(summary) {
-  const decision = summary.decision;
+/* The seat the table is shown from, among the seats this browser plays:
+   the one that must confirm its turn end, else the one that owns the
+   decision, else the seat already on screen. On an open server that is
+   every human seat, so one screen follows the game around the table. */
+function pickViewSeat(summary, mine) {
+  if (!mine.length) return null;
   if (typeof summary.confirmation === "number") {
     /* The seat whose turn just ended still holds the table until it
        confirms the hand-over (or takes its steps back). */
-    return summary.confirmation;
+    if (mine.includes(summary.confirmation)) return summary.confirmation;
+  } else if (summary.decision && mine.includes(summary.decision.owner)) {
+    return summary.decision.owner;
   }
-  if (decision && decision.owner_is_human) return decision.owner;
-  const humans = humanSeatsOf(summary);
-  if (!humans.length) return null;
-  return humans.includes(state.viewSeat) ? state.viewSeat : humans[0];
+  return mine.includes(state.viewSeat) ? state.viewSeat : mine[0];
 }
 
 function snapshotPath(seat) {
@@ -895,6 +1347,13 @@ function mergeLog(known, tail) {
 let refreshFlight = null;
 let refreshAgain = false;
 let refreshHint = null;
+/* A seat to ask for first, when the caller knows what state.me does not
+   yet: the seat it has just claimed, or `null` after giving one up. */
+let refreshSeat;
+/* A pass is foreign when only the doorbell asked for it: the player did
+   nothing, so it must not take their popover or scroll position away. */
+let refreshForeign = false;
+let refreshQueuedForeign = true;
 
 /* One refresh is one request (M14 slice 2): the snapshot carries the
    summary, the seat's view, its legal actions and the log tail, all read
@@ -902,14 +1361,26 @@ let refreshHint = null;
    summary already in hand (a POST's response) picks it; otherwise the seat
    on screen is asked for, and asked again in the rare case that the answer
    hands the table to another seat. */
-async function loadSnapshot(hint) {
+async function loadSnapshot(hint, first) {
   const gameId = state.gameId;
   if (!gameId) return;
-  let seat = hint ? pickViewSeat(hint) : state.viewSeat;
+  let seat = state.viewSeat;
+  if (first !== undefined) seat = first;
+  else if (hint) seat = pickViewSeat(hint, mySeats());
   for (let attempt = 0; ; attempt += 1) {
-    const snapshot = await api(snapshotPath(seat));
+    let snapshot;
+    try {
+      snapshot = await api(snapshotPath(seat));
+    } catch (error) {
+      if (error.status !== 403 || seat === null || attempt >= 3) throw error;
+      /* The seat is no longer this browser's (the host released it): a
+         snapshot without a seat says which seats still are. */
+      seat = null;
+      continue;
+    }
     if (state.gameId !== gameId) return;
-    const wanted = pickViewSeat(snapshot.summary);
+    /* The seats to pick from are the ones this very answer names. */
+    const wanted = pickViewSeat(snapshot.summary, snapshot.you.seats);
     if (wanted === seat || attempt >= 3) {
       adoptSnapshot(snapshot, seat);
       return;
@@ -918,10 +1389,21 @@ async function loadSnapshot(hint) {
   }
 }
 
+/* The one place where the page learns the game's state and who it is at the
+   table. Snapshots are asked for one after another (refresh), so each one
+   adopted was read after the one before it; a request made outside that
+   line could answer late and put the page back in time, after the last
+   doorbell, where nothing would correct it. */
 function adoptSnapshot(snapshot, seat) {
+  const held = mySeats().length > 0;
   state.summary = snapshot.summary;
   state.me = snapshot.you;
   state.viewSeat = seat;
+  if (held && !mySeats().length && isRemote()) {
+    noticeTurn();
+    seatLost();
+    return;
+  }
   /* Review mode draws its own timeline and states (reviewGoto); a refresh
      arriving meanwhile must not put the live table back under it. */
   if (!state.review) {
@@ -930,22 +1412,32 @@ function adoptSnapshot(snapshot, seat) {
     state.log = snapshot.log ? mergeLog(state.log, snapshot.log) : null;
     if (snapshot.log && !state.log) refreshAgain = true;
   }
-  render();
+  noticeTurn();
+  if (!el("lobby-screen").hidden) renderLobby();
+  render({ foreign: refreshForeign });
 }
 
-function refresh(summary) {
+function refresh(summary, options) {
+  const foreign = Boolean(options && options.foreign);
   if (summary) refreshHint = summary;
+  if (options && options.seat !== undefined) refreshSeat = options.seat;
   if (refreshFlight) {
     refreshAgain = true;
+    refreshQueuedForeign = refreshQueuedForeign && foreign;
     return refreshFlight;
   }
+  refreshForeign = foreign;
   refreshFlight = (async () => {
     try {
       do {
         refreshAgain = false;
         const hint = refreshHint;
+        const first = refreshSeat;
         refreshHint = null;
-        await loadSnapshot(hint);
+        refreshSeat = undefined;
+        await loadSnapshot(hint, first);
+        refreshForeign = refreshQueuedForeign;
+        refreshQueuedForeign = true;
       } while (refreshAgain);
     } finally {
       refreshFlight = null;
@@ -1046,15 +1538,51 @@ function onDoorbell(bell) {
     bell.confirmation !== summary.confirmation ||
     bell.finished !== summary.finished
   ) {
-    refresh().catch(showRefreshError);
-  } else if (bell.players) {
+    refresh(null, { foreign: true }).catch(showRefreshError);
+  } else if (
+    bell.players &&
+    JSON.stringify(bell.players) !== JSON.stringify(summary.players)
+  ) {
+    const mine = mySeatChanged(summary.players, bell.players);
     summary.players = bell.players;
+    if (mine) {
+      /* A release by the host takes a seat from under this browser without
+         any game step, and the payload cannot say whose claim it shows:
+         ask who this browser still is, in line with every other refresh.
+         A seat nobody holds is certainly not held here, so the seat on
+         screen is not asked for once it shows as free. */
+      const shown = bell.players[state.viewSeat];
+      const options = { foreign: true };
+      if (!shown || !shown.claimed) options.seat = null;
+      refresh(null, options).catch(showRefreshError);
+    } else if (refreshFlight) {
+      /* A snapshot already on its way may have been read before this bell
+         rang (a page entering a game opens its stream and asks for its
+         snapshot at once) and would put the older list back when it lands,
+         with no later bell to correct it: one more pass after it. */
+      refresh(null, { foreign: true }).catch(showRefreshError);
+    } else if (!el("lobby-screen").hidden) {
+      renderLobby();
+    } else {
+      render({ foreign: true });
+    }
   }
 }
 
+/* Whether a seat this browser holds on a remote server changed its claim or
+   its name. Presence alone (somebody's tab opened or closed) is public as
+   the payload has it and needs no request. */
+function mySeatChanged(before, after) {
+  if (!isRemote()) return false;
+  return mySeats().some((seat) => {
+    const was = before[seat];
+    const now = after[seat];
+    return !was || !now || was.claimed !== now.claimed || was.name !== now.name;
+  });
+}
+
 function onGameGone() {
-  el("game-error").textContent = "이 게임은 서버에서 삭제되었습니다.";
-  el("game-error").hidden = false;
+  leaveGame("이 게임은 서버에서 삭제되었습니다.");
 }
 
 async function applyAction(index) {
@@ -1077,7 +1605,9 @@ async function applyAction(index) {
     await refresh(summary);
   } catch (error) {
     state.busy = false;
-    if (error.status === 409) {
+    /* 409: the table moved on. 403: the seat is no longer this browser's;
+       the refresh finds that out and lands in the seat picker. */
+    if (error.status === 409 || error.status === 403) {
       await refresh();
       return;
     }
@@ -1108,7 +1638,9 @@ async function confirmTurn() {
     await refresh(summary);
   } catch (error) {
     state.busy = false;
-    if (error.status === 409) {
+    /* 409: the table moved on. 403: the seat is no longer this browser's;
+       the refresh finds that out and lands in the seat picker. */
+    if (error.status === 409 || error.status === 403) {
       await refresh();
       return;
     }
@@ -1139,7 +1671,9 @@ async function submitUndo(seat, steps) {
     await refresh(summary);
   } catch (error) {
     state.busy = false;
-    if (error.status === 409) {
+    /* 409: the table moved on. 403: the seat is no longer this browser's;
+       the refresh finds that out and lands in the seat picker. */
+    if (error.status === 409 || error.status === 403) {
       await refresh();
       return;
     }
@@ -1152,7 +1686,9 @@ async function submitUndo(seat, steps) {
 /* ---------- replay review ---------- */
 
 async function enterReview(seat) {
-  const meta = await api(`/games/${state.gameId}/review?seat=${seat}`);
+  const gameId = state.gameId;
+  const meta = await api(`/games/${gameId}/review?seat=${seat}`);
+  if (state.gameId !== gameId || !state.summary) return;
   state.review = { meta, seat, cursor: meta.step_count };
   const select = el("review-seat");
   select.textContent = "";
@@ -1449,13 +1985,24 @@ function applySpotlight() {
 
 /* ---------- rendering ---------- */
 
-function render() {
+/* The panes that scroll on their own; their content is rebuilt on every
+   render, which would throw the reader back to the top. */
+const SCROLL_PANES = ["seats", "side-main", "board", "market", "private-zone"];
+
+/* `foreign`: somebody else changed the game (the doorbell asked for this
+   pass). The player did nothing, so a pinned popover stays open and every
+   pane keeps its scroll position. */
+function render(options) {
   const summary = state.summary;
   if (!summary) return;
-  closePopover();
+  const foreign = Boolean(options && options.foreign);
+  const kept = foreign
+    ? SCROLL_PANES.map((id) => [el(id), el(id).scrollTop, el(id).scrollLeft])
+    : [];
+  if (!(foreign && popoverPinned)) closePopover();
   el("header-status").textContent =
     `라운드 ${summary.round_number} · ${PHASE_LABELS[summary.phase] || summary.phase}` +
-    ` · seed ${summary.game_seed}` +
+    (summary.game_seed === null ? "" : ` · seed ${summary.game_seed}`) +
     (summary.choam_module ? " · CHOAM" : "") +
     (summary.promo_cards ? " · promo" : "") +
     (summary.bloodlines ? " · Bloodlines" : "") +
@@ -1472,7 +2019,13 @@ function render() {
   renderLog();
   renderPrivate();
   renderDisclosure();
+  el("host-panel").hidden = !(isRemote() && isAdmin());
+  renderHostBlock(el("host-panel-body"));
   applySpotlight();
+  for (const [pane, top, left] of kept) {
+    pane.scrollTop = top;
+    pane.scrollLeft = left;
+  }
 }
 
 /* Post-game full disclosure (OQ-010 ruling 4): once a game has finished,
@@ -1546,10 +2099,9 @@ function renderBanner() {
     } else if (summary.confirmation === state.viewSeat) {
       /* The viewing seat's turn has ended but its steps can still be taken
          back: nothing advances until it confirms the hand-over. */
-      const nextKind = summary.seats[decision.owner];
       prompt.textContent = "행동을 마쳤습니다. 턴을 넘길까요?";
       meta.textContent =
-        `되돌릴 수 있는 동안은 턴이 넘어가지 않습니다 · 다음: 좌석 ${decision.owner} (${nextKind})`;
+        `되돌릴 수 있는 동안은 턴이 넘어가지 않습니다 · 다음: ${playerLabel(decision.owner)}`;
       info.append(prompt, meta);
       const row = document.createElement("div");
       row.className = "confirm-row";
@@ -1560,17 +2112,25 @@ function renderBanner() {
       confirm.addEventListener("click", () => confirmTurn());
       row.appendChild(confirm);
       info.appendChild(row);
+    } else if (typeof summary.confirmation === "number") {
+      /* Another seat's turn has ended but can still be taken back; nobody
+         moves until that seat hands it over. */
+      prompt.textContent =
+        `${playerLabel(summary.confirmation)}의 턴 종료 확정을 기다리는 중…` +
+        waitingHint(summary.confirmation);
+      meta.textContent = `다음: ${playerLabel(decision.owner)}`;
+      info.append(prompt, meta);
+    } else if (decision.owner !== state.viewSeat) {
+      prompt.textContent =
+        `${playerLabel(decision.owner)} 결정 대기 중…` + waitingHint(decision.owner);
+      meta.textContent = `${decision.prompt} · frame: ${decision.kind}`;
+      info.append(prompt, meta);
     } else {
-      const seatKind = summary.seats[decision.owner];
-      const who =
-        decision.owner === state.viewSeat
-          ? `좌석 ${decision.owner} (당신)`
-          : `좌석 ${decision.owner} (${seatKind})`;
       prompt.textContent = decision.prompt;
-      meta.textContent = `${who} · frame: ${decision.kind}`;
+      meta.textContent = `좌석 ${decision.owner} (당신) · frame: ${decision.kind}`;
       info.append(prompt, meta);
 
-      if (state.actions && decision.owner === state.viewSeat) {
+      if (state.actions) {
         for (const action of state.actions.actions) {
           actionsBox.appendChild(actionItem(action));
         }
@@ -1581,6 +2141,14 @@ function renderBanner() {
   /* A human seat may still have takeable-back steps after the game ends
      (its last live step), so the undo row renders in both branches above. */
   appendUndoRow(info);
+}
+
+/* Why a wait may be a long one: nobody sits there yet, or they dropped off. */
+function waitingHint(seat) {
+  const info = playerInfo(seat);
+  if (!isRemote() || info.kind !== "human") return "";
+  if (!info.claimed) return " (아직 아무도 앉지 않은 좌석입니다 — 방 링크를 보내 주세요)";
+  return info.online ? "" : " (접속이 끊겨 있습니다)";
 }
 
 /* Undo controls for the viewing seat (M11 slice 6): a single-step button
@@ -2739,8 +3307,16 @@ function renderSeats() {
     if (summary.seats[seat] === "human") {
       const badge = document.createElement("span");
       badge.className = "badge";
-      badge.textContent = seat === activeSeat() ? "YOU" : "사람";
+      const mine = isRemote() ? mySeats().includes(seat) : seat === activeSeat();
+      badge.textContent = mine
+        ? isRemote() && playerInfo(seat).name
+          ? `YOU · ${playerInfo(seat).name}`
+          : "YOU"
+        : playerName(seat);
       who.appendChild(badge);
+      if (isRemote() && playerInfo(seat).claimed) {
+        who.appendChild(presenceDot(playerInfo(seat)));
+      }
     } else {
       const badge = document.createElement("span");
       badge.className = "badge ai";
@@ -3247,7 +3823,7 @@ function turnCard(group, freshFrom) {
     kind === "human"
       ? group.actor === activeSeat()
         ? "YOU"
-        : "사람"
+        : playerName(group.actor)
       : seatKindLabel(kind);
   head.appendChild(badge);
   const targets = logTargets(group);
@@ -3433,20 +4009,31 @@ function renderStandings() {
   const heading = document.createElement("h2");
   heading.textContent = "최종 순위";
   panel.appendChild(heading);
+  /* Cells are text nodes: a row carries a player's name, and a name is
+     somebody else's input. */
   const table = document.createElement("table");
-  table.innerHTML =
-    "<tr><th>순위</th><th>좌석</th><th>VP</th>" +
-    "<th>Spice</th><th>Solari</th><th>Water</th><th>Garrison</th></tr>";
-  for (const entry of summary.standings) {
+  const tableRow = (tag, cells) => {
     const row = document.createElement("tr");
-    if (entry.rank === 1) row.className = "winner";
-    row.innerHTML =
-      `<td>${entry.rank}</td>` +
-      `<td>좌석 ${entry.player} (${summary.seats[entry.player]})</td>` +
-      `<td>${entry.victory_points}</td>` +
-      `<td>${entry.spice}</td><td>${entry.solari}</td>` +
-      `<td>${entry.water}</td><td>${entry.troops_garrison}</td>`;
+    for (const text of cells) {
+      const cell = document.createElement(tag);
+      cell.textContent = String(text);
+      row.appendChild(cell);
+    }
     table.appendChild(row);
+    return row;
+  };
+  tableRow("th", ["순위", "좌석", "VP", "Spice", "Solari", "Water", "Garrison"]);
+  for (const entry of summary.standings) {
+    const row = tableRow("td", [
+      entry.rank,
+      playerLabel(entry.player),
+      entry.victory_points,
+      entry.spice,
+      entry.solari,
+      entry.water,
+      entry.troops_garrison,
+    ]);
+    if (entry.rank === 1) row.className = "winner";
   }
   panel.appendChild(table);
 
@@ -3457,7 +4044,9 @@ function renderStandings() {
     review.addEventListener("click", () => {
       const seat = humans.includes(state.viewSeat)
         ? state.viewSeat
-        : humans[0];
+        : mySeats().length
+          ? mySeats()[0]
+          : humans[0];
       enterReview(seat).catch((error) => {
         el("game-error").textContent = `검토 시작 실패 (${error.message})`;
         el("game-error").hidden = false;
@@ -3467,8 +4056,30 @@ function renderStandings() {
   }
 }
 
+/* The host's link is `#admin=<key>`: trade the key for an HttpOnly cookie
+   and take it out of the address bar at once. */
+async function adoptAdminLink() {
+  const key = hashParams().get("admin");
+  if (!key) return null;
+  setRoomHash(null);
+  try {
+    await api("/auth/admin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key }),
+    });
+    return null;
+  } catch (error) {
+    return `관리자 링크가 맞지 않습니다 (${error.message})`;
+  }
+}
+
 async function init() {
   state.catalog = await api("/catalog");
+  const adminError = await adoptAdminLink();
+  state.server = await api("/whoami");
+  /* The host of a remote game plays too and must not know the seed. */
+  el("opt-seed-row").hidden = isRemote();
   buildSeatSelects();
   document.addEventListener("click", (event) => {
     const pop = el("card-popover");
@@ -3478,7 +4089,17 @@ async function init() {
     if (event.key === "Escape") closePopover();
   });
   el("setup-form").addEventListener("submit", createGame);
-  el("leave-game").addEventListener("click", leaveGame);
+  el("leave-game").addEventListener("click", () => leaveGame());
+  el("open-lobby").addEventListener("click", () => showLobby());
+  el("lobby-enter").addEventListener("click", () => enterTable(state.summary));
+  el("landing-resume-button").addEventListener("click", () => {
+    const last = roomId(storageGet("dune.lastGame"));
+    if (last) openGame(last).catch(() => {});
+  });
+  window.addEventListener("hashchange", () => {
+    const wanted = roomFromHash();
+    if (wanted && wanted !== state.gameId) openGame(wanted).catch(() => {});
+  });
   el("save-game").addEventListener("click", () => {
     saveGame().catch(() => {});
   });
@@ -3505,8 +4126,9 @@ async function init() {
       enterReview(Number(event.target.value)).catch(() => {});
     }
   });
-  await loadGameList();
-  await loadSaveList();
+  const room = roomFromHash();
+  if (room) await openGame(room);
+  else await showHome(adminError);
 }
 
 init().catch((error) => {
