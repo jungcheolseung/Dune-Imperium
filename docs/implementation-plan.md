@@ -335,12 +335,12 @@ tests/
 
 ### M14. 원격 멀티플레이
 
-상태: **진행 중 — 슬라이스 1 완료** (2026-09-17; 같은 날 사용자가 설계의 결정 항목 D1~D7을 제안대로 확정). 사용자 요구는 원격의 친구들과 각자 PC에서 하는 판이다. 설계와 근거는 [`multiplayer-design.md`](multiplayer-design.md)에 있다: 서버 권위 유지, open(기본)/remote(`--remote`) 접근 모드, 방 링크 하나 + 좌석 claim(좌석 쿠키·관리자 쿠키), 공개 필드만 싣는 SSE 초인종 + 폴링 fallback, snapshot endpoint와 증분 로그, 턴 단위 자동 저장, Tailscale machine sharing 접속. 범위는 `server/`·`cli/server.py`·`tests/server/`뿐이고 엔진·codec·관측·저장 형식 버전이 바뀌지 않으므로 M10 학습과 독립으로 병행할 수 있다.
+상태: **진행 중 — 슬라이스 1~2 완료** (2026-09-17; 같은 날 사용자가 설계의 결정 항목 D1~D7을 제안대로 확정). 사용자 요구는 원격의 친구들과 각자 PC에서 하는 판이다. 설계와 근거는 [`multiplayer-design.md`](multiplayer-design.md)에 있다: 서버 권위 유지, open(기본)/remote(`--remote`) 접근 모드, 방 링크 하나 + 좌석 claim(좌석 쿠키·관리자 쿠키), 공개 필드만 싣는 SSE 초인종 + 폴링 fallback, snapshot endpoint와 증분 로그, 턴 단위 자동 저장, Tailscale machine sharing 접속. 범위는 `server/`·`cli/server.py`·`tests/server/`뿐이고 엔진·codec·관측·저장 형식 버전이 바뀌지 않으므로 M10 학습과 독립으로 병행할 수 있다.
 
 슬라이스 순서(설계 문서 11절):
 
 1. 접근 계층과 좌석 claim(서버): 좌석·관리자 자격, 관리자 전용 경로, 진행 중 seed 숨김, CLI `--remote`. **완료(2026-09-17)**: `server/access.py`, `GameSessionManager(access=, admin_key=)`의 `claim_seat`·`release_seat`·`identify`와 좌석·관리자 판정, `POST /auth/admin`·`GET /games/{id}/me`·`POST /games/{id}/seats/{seat}/claim|release`, `tests/server/test_access.py`·`test_remote_app.py`·`test_server_cli.py`.
-2. snapshot + 증분 로그 + gzip, 클라이언트 갱신 경로 교체.
+2. snapshot + 증분 로그 + gzip, 클라이언트 갱신 경로 교체. **완료(2026-09-17)**: `GET /games/{id}/snapshot`(`GameSessionManager.snapshot`, 서버가 정하는 로그 `epoch`), `GZipMiddleware`, `app.js`의 single-flight `refresh` → `loadSnapshot`, `tests/server/test_snapshot.py`·`test_snapshot_app.py`; 갱신 한 번이 요청 4 → 1, 중앙값 120.7 → 14.6 KB(gzip 3.3 KB), 한 판 누적 64.8 → 8.3 MB(gzip 1.81 MB).
 3. SSE 초인종 + presence + 폴링 fallback.
 4. 클라이언트 원격 UX(좌석 고르기·이름, 내 좌석 고정, 대기·접속 표시, 차례 알림, 호스트 패널)와 두 브라우저 컨텍스트 E2E — 첫 원격 한 판의 최소 구성.
 5. 자동 저장과 복구.
@@ -398,4 +398,4 @@ rollout 탐색을 같은 예산에서 재정비해 heuristic 3명 상대 28 → 
 남은 후보(heuristic 표 밖 항의 나머지, rollout 가치 함수, 처리량의 남은 병목, 리팩토링 후속)는
 [개발 인수인계](development-handoff.md)의 "다음 구현 순서"가 관리한다. 2026-09-17에 서버·UI 쪽 병행 트랙으로
 **M14 원격 멀티플레이**([multiplayer-design.md](multiplayer-design.md), 같은 날 확정)가 시작돼 슬라이스 1(접근 계층과 좌석
-claim)이 끝났고 다음은 슬라이스 2(snapshot + 증분 로그 + gzip)다.
+claim)과 슬라이스 2(snapshot + 증분 로그 + gzip)가 끝났고 다음은 슬라이스 3(SSE 초인종 + presence + 폴링 fallback)이다.

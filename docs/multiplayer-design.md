@@ -112,10 +112,11 @@ SSE를 고른 이유: 서버→클라이언트 한 방향이면 충분하고(행
 
 ### 4.6 snapshot endpoint: 갱신 한 번 = 요청 한 번
 
-`GET /games/{id}/snapshot?seat=<n>&log_after=<k>`가 한 번의 lock 안에서 `{summary, you, view, actions|null, log: {count, entries[k:]}}`를 돌려준다. 좌석이 없는 입장자는 `seat` 없이 `{summary, you}`만 받는다.
+`GET /games/{id}/snapshot?seat=<n>&log_after=<k>&log_epoch=<e>`가 한 번의 lock 안에서 `{summary, you, view, actions|null, log: {seat, epoch, from, count, entries}}`를 돌려준다. 좌석이 없는 입장자는 `seat` 없이 `{summary, you}`만 받는다. `actions`는 그 좌석이 지금의 결정을 소유할 때만 있다.
 
 - WAN에서 순차 GET 3~4개(G6)를 1 RTT로 줄이고, 네 조각이 같은 revision임을 보장한다.
-- 로그는 증분으로 받는다. 되돌리기는 앞선 항목의 `undone` 표시를 소급해 바꾸고(`mark_undone`), 게임 종료는 가림을 전부 푼다. 그래서 클라이언트는 `undo_count`나 `finished`가 바뀐 갱신에서만 `log_after=0`으로 전체를 다시 받고 그 밖에는 `log_after=<지금 가진 count>`를 쓴다.
+- 로그는 증분으로 받는다. 이미 받은 항목이 뒤늦게 바뀌는 경우가 둘 있다: 되돌리기는 앞선 항목의 `undone` 표시를 소급해 바꾸고(`mark_undone`), 게임 종료는 가림을 전부 푼다(마지막 step을 되돌리면 다시 가린다). 클라이언트는 요청을 보내는 시점에 그 일이 있었는지 알 수 없으므로 **판단은 서버가 한다**: 서버가 로그마다 `epoch`(좌석·`undo_count`·종료 여부로 만든 불투명한 문자열)를 주고, 클라이언트는 가진 개수(`log_after`)와 그 `epoch`를 그대로 되돌려 보낸다. epoch가 지금 것과 같으면 `from = log_after`부터의 꼬리를, 다르면 `from = 0`으로 전체를 보낸다. 클라이언트 규칙은 "`from`이 0이면 교체, 아니면 덧붙임" 하나뿐이고, 좌석을 바꿔 보는 한 화면 플레이도 epoch에 좌석이 들어 있어 같은 규칙으로 처리된다.
+- 어느 좌석을 요청할지는 summary에 달려 있다(결정 소유자를 따라 시점을 바꾸는 한 화면 플레이). 자기 POST의 응답 summary가 있으면 그것으로 좌석을 골라 한 번에 받고, 없으면 지금 보던 좌석으로 요청한 뒤 답이 다른 좌석을 가리킬 때만 한 번 더 요청한다. 좌석이 하나인 원격 브라우저는 항상 한 번이다.
 - `GZipMiddleware(minimum_size=1024)`를 켠다(Starlette 내장, 새 의존성 없음). 고정된 Starlette 1.6.0은 `text/event-stream`을 기본 제외 목록에 두므로 초인종 스트림은 압축·버퍼링되지 않는다(`.venv`의 `middleware/gzip.py`에서 확인).
 - 기존 개별 endpoint(`/seats/{seat}/view`·`/actions`·`/log`)는 JSON API 호환을 위해 남기고 같은 인증을 적용한다.
 - open 모드에서도 쓰므로 혼자 하는 판의 갱신도 빨라진다.
@@ -231,6 +232,18 @@ HEAD `a12e894`, WSL 노트북(i5-8250U). 전 확장 + 프로모 + leader draft, 
 
 읽는 법: (1) 갱신 한 번의 크기는 작다 — summary + view + actions + 증분 로그가 약 14 KB, gzip 뒤 3~4 KB. WAN에서 체감을 정하는 것은 크기가 아니라 **순차 요청 수**이고 snapshot이 그것을 1로 만든다. (2) 유일한 낭비는 로그 전체 재전송이다. 원격에서는 남의 행동에도 갱신하므로 클라이언트마다 위 표보다 더 자주 받는다. 증분 + gzip으로 두 자릿수 MB가 1 MB 아래로 내려간다. (3) heuristic 좌석 구성에서는 서버 계산이 병목이 아니다.
 
+**슬라이스 2 뒤(같은 명령, 같은 seed, 같은 머신).** 스크립트가 같은 시점에 두 방식을 나란히 잰다.
+
+| 갱신 한 번(사람 결정 547회 기준) | 이전: 네 번의 호출(summary + view + actions + 로그 전체) | 이후: snapshot 한 번(증분 로그) |
+|---|---|---|
+| 요청 수 | 4 (결정 소유자가 아니면 3) | **1** |
+| 크기 중앙값(최대) | 120.7 KB (221.6 KB) | **14.6 KB** (28.6 KB) |
+| gzip 뒤 중앙값(최대) | 12.3 KB (20.6 KB) | **3.3 KB** (4.9 KB) |
+| 한 판 누적 | 64.8 MB (gzip 6.7 MB) | **8.3 MB (gzip 1.81 MB)** |
+| 서버 시간 | view 0.8 + actions 1.7 + 로그 3.9 ms(중앙값) | 2.7 ms(중앙값), 최대 47.5 ms(합법 행동 44개의 dry run) |
+
+남은 크기는 거의 전부 view(12 KB)다. 브라우저 E2E(headless Chromium, 사람 2 + heuristic 2, 한 화면에서 좌석을 바꿔 가며 293 단계를 끝까지)로 확인한 것: 행동 하나에 POST 1 + snapshot 1(좌석이 바뀌는 턴 넘김에서도 1), 매 단계 클라이언트 로그 개수 = 서버 `count`, 되돌리기 뒤 epoch 변경과 전체 재수신, 종료 뒤 가림 없는 로그로 교체, 끝난 뒤 클라이언트가 이어 붙인 로그 == 서버의 전체 로그, 검토 모드 중의 갱신이 검토 화면을 덮지 않음.
+
 ## 10. 테스트 전략
 
 - **세션 계층**(`tests/server/test_access.py`): claim·release·멱등 재claim·경합 409, 좌석 교차 접근 거부(view·actions·log·행동·되돌리기·확정), 관리자 전용 메서드, 진행 중 seed 숨김과 종료 후 공개, open 모드에서 `credentials` 없이 기존 동작.
@@ -247,7 +260,7 @@ HEAD `a12e894`, WSL 노트북(i5-8250U). 전 확장 + 프로모 + leader draft, 
 각 슬라이스는 코드와 테스트를 한 커밋에, 문서 갱신은 별도 커밋에 둔다. 전부 `server/`·`cli/server.py`·`tests/server/` 안이다.
 
 1. **접근 계층과 좌석 claim(서버).** `server/access.py`, 세션의 토큰·이름, claim/release/`me`, 관리자 쿠키와 관리자 전용 경로, summary의 `access`·`players`·seed 숨김, CLI `--remote`·`--admin-key`와 loopback 검사. 완료 조건: remote 모드에서 자격 없는 모든 좌석 접근이 403, 네 쿠키 jar로 1라운드 진행, 기존 테스트 무수정 통과. **완료(2026-09-17).** 구현 메모: (a) 자격 판정은 `GameSessionManager._authorize_seat_locked`·`require_admin` 두 곳뿐이고 `app.py`는 쿠키를 `Credentials`로 옮기기만 한다 — 어느 토큰이 어느 좌석 것인지는 쿠키 이름이 아니라 값 비교로 정한다. (b) 관리자 키는 좌석 view를 열지 않는다(호스트도 플레이어). (c) `players`의 `online`은 presence가 생기는 슬라이스 3에서, CLI `--public-url`·`--no-autosave`는 각각 슬라이스 4·5에서 더한다. (d) 저장 메타데이터의 seed 가림은 `save_metadata(hide_unfinished_seed=...)`이고 remote 서버의 저장·목록 응답이 켠다. (e) 이 슬라이스는 서버만 바꾸므로 브라우저 UI는 슬라이스 4 전까지 `--remote` 서버에서 동작하지 않는다(403) — open 모드는 그대로다.
-2. **snapshot + 증분 로그 + gzip.** 서버 endpoint와 미들웨어, 클라이언트 갱신 경로 교체(single-flight). 완료 조건: 갱신이 요청 하나, 예산 테스트 통과, 9절 스크립트로 개선 확인.
+2. **snapshot + 증분 로그 + gzip.** 서버 endpoint와 미들웨어, 클라이언트 갱신 경로 교체(single-flight). 완료 조건: 갱신이 요청 하나, 예산 테스트 통과, 9절 스크립트로 개선 확인. **완료(2026-09-17).** 구현 메모: (a) `GameSessionManager.snapshot`이 summary·`you`·view·actions·로그 꼬리를 한 lock 안의 한 상태에서 읽고, `legal_actions`·`log`·`identify`와 직렬화 helper를 공유한다. (b) 로그 증분의 기준은 클라이언트가 아니라 서버의 `epoch`가 정한다(4.6절; 설계 초안의 "클라이언트가 `undo_count`를 보고 판단"은 요청 시점에 알 수 없어서 버렸다). (c) `app.js`의 `applySummary`(순차 GET)를 `refresh(summary?)` → `loadSnapshot` → `adoptSnapshot`으로 바꿨고, 갱신은 겹치지 않는다(single-flight: 도는 중에 온 요청은 한 바퀴 더). 검토 모드 중에 온 갱신은 summary만 받고 검토 화면을 건드리지 않는다. (d) `GZipMiddleware(minimum_size=1024)`; 이미지·`text/event-stream`은 Starlette 기본 제외 목록이 거른다. (e) 같은 날 E2E가 드러낸 기존 결함을 따로 고쳤다 — 검토 화면의 응답이 순서가 뒤바뀌어 도착하면(서버가 cursor까지 모든 step을 재생하므로 마지막 step이 가장 느리다) 늦게 온 옛 요청이 화면을 덮었다; 이제 가장 최근 요청만 그린다.
 3. **초인종(SSE) + presence + 폴링 fallback.** `server/events.py`, `on_change`, `/events`, 클라이언트 `EventSource`. 완료 조건: 두 브라우저에서 한쪽 행동이 1초 안에 다른 쪽에 반영, SSE를 막아도 3초 안에 반영.
 4. **클라이언트 원격 UX.** 좌석 고르기·이름, 내 좌석 고정, 대기 배너·접속 표시·차례 알림, 팝오버·스크롤 보존, 호스트 패널, 설정 화면의 관리자 제한, `textContent` 점검, E2E. 완료 조건: 10절의 E2E 시나리오 통과. **여기까지가 첫 원격 한 판의 최소 구성이다.**
 5. **자동 저장과 복구.** `write_autosave`, 턴이 넘어갈 때의 저장, 복구 절차. 완료 조건: 서버 강제 종료 → 재시작 → 자동 저장에서 이어 가기.
