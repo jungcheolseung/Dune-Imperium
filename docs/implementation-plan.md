@@ -335,7 +335,7 @@ tests/
 
 ### M14. 원격 멀티플레이
 
-상태: **진행 중 — 슬라이스 1~4 완료** (2026-09-17; 같은 날 사용자가 설계의 결정 항목 D1~D7을 제안대로 확정). 사용자 요구는 원격의 친구들과 각자 PC에서 하는 판이다. 설계와 근거는 [`multiplayer-design.md`](multiplayer-design.md)에 있다: 서버 권위 유지, open(기본)/remote(`--remote`) 접근 모드, 방 링크 하나 + 좌석 claim(좌석 쿠키·관리자 쿠키), 공개 필드만 싣는 SSE 초인종 + 폴링 fallback, snapshot endpoint와 증분 로그, 턴 단위 자동 저장, Tailscale machine sharing 접속. 범위는 `server/`·`cli/server.py`·`tests/server/`뿐이고 엔진·codec·관측·저장 형식 버전이 바뀌지 않으므로 M10 학습과 독립으로 병행할 수 있다.
+상태: **진행 중 — 슬라이스 1~5 완료** (2026-09-17; 같은 날 사용자가 설계의 결정 항목 D1~D7을 제안대로 확정). 사용자 요구는 원격의 친구들과 각자 PC에서 하는 판이다. 설계와 근거는 [`multiplayer-design.md`](multiplayer-design.md)에 있다: 서버 권위 유지, open(기본)/remote(`--remote`) 접근 모드, 방 링크 하나 + 좌석 claim(좌석 쿠키·관리자 쿠키), 공개 필드만 싣는 SSE 초인종 + 폴링 fallback, snapshot endpoint와 증분 로그, 턴 단위 자동 저장, Tailscale machine sharing 접속. 범위는 `server/`·`cli/server.py`·`tests/server/`뿐이고 엔진·codec·관측·저장 형식 버전이 바뀌지 않으므로 M10 학습과 독립으로 병행할 수 있다.
 
 슬라이스 순서(설계 문서 11절):
 
@@ -343,7 +343,7 @@ tests/
 2. snapshot + 증분 로그 + gzip, 클라이언트 갱신 경로 교체. **완료(2026-09-17)**: `GET /games/{id}/snapshot`(`GameSessionManager.snapshot`, 서버가 정하는 로그 `epoch`), `GZipMiddleware`, `app.js`의 single-flight `refresh` → `loadSnapshot`, `tests/server/test_snapshot.py`·`test_snapshot_app.py`; 갱신 한 번이 요청 4 → 1, 중앙값 120.7 → 14.6 KB(gzip 3.3 KB), 한 판 누적 64.8 → 8.3 MB(gzip 1.81 MB).
 3. SSE 초인종 + presence + 폴링 fallback. **완료(2026-09-17)**: `GameSessionManager.add_change_listener`·`doorbell`·`connect`/`disconnect`(모든 변경이 lock 밖에서 공개 필드만의 payload를 울린다), `server/events.py`의 `DoorbellHub`, `GET /games/{id}/events`(SSE: `hello`/`change`/`closed`, heartbeat), summary `players[].online`(토큰 대조 presence), `app.js`의 `EventSource` + 2초 폴링 fallback, 종료 신호에서 스트림을 끝내는 CLI, `tests/server/test_doorbell.py`·`test_events.py`·`test_events_app.py`(실제 uvicorn 스레드 + `httpx2`).
 4. 클라이언트 원격 UX(좌석 고르기·이름, 내 좌석 고정, 대기·접속 표시, 차례 알림, 호스트 패널)와 두 브라우저 컨텍스트 E2E — 첫 원격 한 판의 최소 구성. **완료(2026-09-17)**: 서버의 `GET /whoami`·`--public-url`·remote 전용 턴 보류(`_turn_is_held_locked`), `app.js`의 네 화면(설정·landing·좌석 고르기·테이블)과 `#admin=`/`#game=` 진입·`mySeats()`·claim/release·호스트 패널·대기 배너·이름·접속 점·차례 제목/신호음·"이어 하기", 그리고 "`state.summary`·`state.me`는 `openGame`과 `adoptSnapshot`만 쓴다"는 불변식(WIP의 영구 정지를 응답 지연 주입으로 재현해 확정한 원인), `_RevalidateUIFiles`(응답 전에 닫힌 스트림의 ASGI 오류), 브라우저 E2E [`scripts/e2e/`](../scripts/e2e/README.md).
-5. 자동 저장과 복구.
+5. 자동 저장과 복구. **완료(2026-09-17)**: `add_hand_over_listener`(턴이 넘어가거나 게임이 끝난 요청 뒤, lock 밖), `server/autosave.py`의 `Autosaver`(한 lock 안에서 문서 생성 + 쓰기), `SaveStore.write_autosave`(게임당 슬롯 하나·원자적 교체), remote 기본 켬·`--no-autosave`, 호스트 패널의 저장 블록과 "서버 연결 끊김"·"새 방 링크" 안내, `tests/server/test_autosave*.py`와 SIGKILL 복구 테스트, 브라우저 `scripts/e2e/recovery.py`; 함께 고친 기존 결함 — 확정한 턴 종료를 다음 사람 좌석에게서 되돌리기로 다시 가져올 수 있던 것(`undo_floor`).
 6. 실전 점검(Tailscale)과 운영 문서.
 
 완료 조건: remote 모드에서 자격 없는 좌석 접근이 전부 거부되고, 원격의 사람 2~4명이 각자 브라우저로 설정부터 최종 점수까지 한 판을 끝내며(끊김·새로고침·서버 재시작 복구 포함), 옵션 없이 띄운 로컬 서버와 기존 `tests/server/` 테스트는 그대로 동작한다.
@@ -399,4 +399,4 @@ rollout 탐색을 같은 예산에서 재정비해 heuristic 3명 상대 28 → 
 [개발 인수인계](development-handoff.md)의 "다음 구현 순서"가 관리한다. 2026-09-17에 서버·UI 쪽 병행 트랙으로
 **M14 원격 멀티플레이**([multiplayer-design.md](multiplayer-design.md), 같은 날 확정)가 시작돼 슬라이스 1(접근 계층과 좌석
 claim), 슬라이스 2(snapshot + 증분 로그 + gzip), 슬라이스 3(SSE 초인종 + presence + 폴링 fallback), 슬라이스 4(클라이언트 원격 UX와 브라우저
-E2E)가 끝났고 다음은 슬라이스 5(자동 저장과 복구)다.
+E2E), 슬라이스 5(자동 저장과 복구)가 끝났고 다음은 슬라이스 6(Tailscale 실전 점검과 운영 문서)이다.
