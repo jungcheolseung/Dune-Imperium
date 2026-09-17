@@ -24,6 +24,7 @@ from dune_imperium.cli.server import (
     ADMIN_KEY_ENVIRONMENT,
     _build_parser,
     admin_link,
+    bind_problem,
     is_loopback_host,
     main,
     resolve_access,
@@ -203,6 +204,47 @@ def test_main_refuses_no_autosave_without_remote() -> None:
         main(["--no-autosave"])
 
     assert excinfo.value.code == 2
+
+
+# --- an address the server cannot listen on ----------------------------------
+
+
+def test_a_free_loopback_port_is_no_bind_problem() -> None:
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port: int = probe.getsockname()[1]
+
+    assert bind_problem("127.0.0.1", port) is None
+
+
+def test_a_port_somebody_listens_on_is_a_bind_problem() -> None:
+    with socket.socket() as taken:
+        taken.bind(("127.0.0.1", 0))
+        taken.listen()
+        port: int = taken.getsockname()[1]
+
+        problem = bind_problem("127.0.0.1", port)
+
+    assert problem is not None
+    assert f"127.0.0.1:{port}" in problem
+    # The hint about Tailscale is for addresses, not for a busy port.
+    assert "Tailscale" not in problem
+
+
+def test_an_address_this_machine_does_not_have_is_refused_before_any_link(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # 192.0.2.0/24 is reserved for documentation (RFC 5737): no interface has
+    # it, which is what a Tailscale address looks like while Tailscale is off.
+    # uvicorn reports the failed bind among its own log lines, after the CLI
+    # had already printed an admin link for a server that never came up.
+    code = main(["--remote", "--host", "192.0.2.1", "--port", "8000"])
+
+    captured = capsys.readouterr()
+    assert code == 1
+    assert "#admin=" not in captured.out
+    assert "192.0.2.1:8000" in captured.err
+    assert "Tailscale" in captured.err
 
 
 # --- shutdown with an open event stream -----------------------------------

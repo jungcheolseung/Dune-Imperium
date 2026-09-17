@@ -3,6 +3,8 @@
 import argparse
 import ipaddress
 import os
+import socket
+import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from types import FrameType
@@ -143,6 +145,38 @@ def resolve_autosave(arguments: argparse.Namespace) -> bool:
     return bool(arguments.remote and not arguments.no_autosave)
 
 
+def bind_problem(host: str, port: int) -> str | None:
+    """Say why the server could not listen on ``host:port``, or ``None``.
+
+    Asked before anything is printed: uvicorn reports a failed bind among
+    its own log lines and the process would already have shown an admin
+    link for a server that never came up. The usual cause on a host's
+    machine is a Tailscale address while Tailscale is not connected.
+    """
+
+    try:
+        candidates = socket.getaddrinfo(
+            host, port, type=socket.SOCK_STREAM, flags=socket.AI_PASSIVE
+        )
+    except OSError as error:
+        return f"cannot resolve --host {host}: {error}"
+    problem = f"no usable address for --host {host}"
+    for family, kind, protocol, _name, address in candidates:
+        try:
+            with socket.socket(family, kind, protocol) as probe:
+                probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                probe.bind(address)
+            return None
+        except OSError as error:
+            problem = f"cannot listen on {host}:{port}: {error.strerror or error}"
+    if not is_loopback_host(host) and host not in ("0.0.0.0", "::"):
+        problem += (
+            " (is that address up on this machine? a Tailscale address only "
+            "exists while Tailscale is connected)"
+        )
+    return problem
+
+
 def admin_link(host: str, port: int, admin_key: str) -> str:
     """Return the URL the host opens to become the admin.
 
@@ -171,6 +205,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         autosave = resolve_autosave(arguments)
     except ValueError as error:
         parser.error(str(error))
+    problem = bind_problem(arguments.host, arguments.port)
+    if problem is not None:
+        print(f"dune-imperium-server: {problem}", file=sys.stderr)
+        return 1
     # Imported lazily so the CLI module stays importable without the extra.
     import uvicorn
 
@@ -180,7 +218,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if admin_key is not None:
         print("Remote multiplayer access is on. Host admin link (keep it private):")
-        print(f"  {admin_link(arguments.host, arguments.port, admin_key)}")
+        print(f"  {admin_link(arguments.host, arguments.port, admin_key)}", flush=True)
         saves_dir = arguments.saves_dir or default_saves_directory()
         if autosave:
             print(f"Autosave is on: every game keeps one current save in {saves_dir}")
@@ -190,6 +228,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         else:
             print("Autosave is off: a game lives only as long as this process.")
+        sys.stdout.flush()
     app = create_app(
         manager=GameSessionManager(access=access, admin_key=admin_key),
         saves_dir=arguments.saves_dir,
