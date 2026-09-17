@@ -5,12 +5,15 @@ cannot exercise an endless stream; these tests run a real ``uvicorn``
 server on a background thread and read it with ``httpx2``."""
 
 import json
+import logging
+import socket
 import threading
 import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from types import TracebackType
 from typing import Self
+from urllib.parse import urlsplit
 
 import httpx2
 import pytest
@@ -232,6 +235,54 @@ def test_the_streams_headers(app: FastAPI) -> None:
             assert response.headers["cache-control"] == "no-cache"
             assert response.headers["x-accel-buffering"] == "no"
             assert "content-encoding" not in response.headers
+
+
+# --- a client that leaves before the first byte -----------------------------
+
+
+def test_a_stream_closed_before_its_first_byte_is_not_a_server_error(
+    app: FastAPI,
+) -> None:
+    # A page that reopens its doorbell (after a seat claim, M14 slice 4)
+    # closes an EventSource it has only just asked for. Behind Starlette's
+    # ``BaseHTTPMiddleware`` every such request made uvicorn log "Exception
+    # in ASGI application" (RuntimeError: No response returned.) -- measured
+    # 4 out of 4 with a socket closed within a millisecond of the request.
+    records: list[logging.LogRecord] = []
+
+    class Collect(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            records.append(record)
+
+    collector = Collect(level=logging.ERROR)
+    with LiveServer(app) as server, _client(server) as client:
+        # uvicorn configures its loggers when the server starts, and they
+        # do not propagate to the root logger that ``caplog`` listens on.
+        uvicorn_errors = logging.getLogger("uvicorn.error")
+        uvicorn_errors.addHandler(collector)
+        try:
+            game_id = _create(client)["game_id"]
+            address = urlsplit(server.base_url)
+            assert address.hostname is not None and address.port is not None
+            request = (
+                f"GET /games/{game_id}/events HTTP/1.1\r\n"
+                f"Host: {address.netloc}\r\n"
+                "Accept: text/event-stream\r\n\r\n"
+            ).encode()
+            for _ in range(4):
+                with socket.create_connection((address.hostname, address.port)) as raw:
+                    raw.sendall(request)
+            # The server is still healthy, and a stream opened now greets.
+            with client.stream("GET", f"/games/{game_id}/events") as response:
+                lines = response.iter_lines()
+                event, _payload = _read_event(lines)
+                assert event == "hello"
+            # Nobody who left that early was ever counted as present.
+            assert _seat_online(client, game_id, 0) is False
+        finally:
+            uvicorn_errors.removeHandler(collector)
+
+    assert [record.getMessage() for record in records] == []
 
 
 # --- hello ---------------------------------------------------------------
