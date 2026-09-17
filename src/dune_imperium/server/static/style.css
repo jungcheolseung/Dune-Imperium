@@ -930,6 +930,11 @@ button:disabled { opacity: 0.5; cursor: wait; }
 
 /* ---------- remote play: lobby, presence, host block (M14 slice 4) ---------- */
 
+/* `hidden` is only the browser's own `display: none`, which any author rule
+   that sets `display` (`fieldset label` does) silently overrides: the Seed
+   row stayed on screen for a remote host. */
+[hidden] { display: none !important; }
+
 #lobby-screen label, #landing-screen p { display: block; margin: 0.5rem 0; }
 #lobby-name { margin-left: 0.4rem; width: 14rem; }
 #lobby-seats, .host-seats { list-style: none; padding: 0; margin: 0.6rem 0; }
