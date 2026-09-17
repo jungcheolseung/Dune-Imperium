@@ -4,10 +4,11 @@ Backs the numbers in ``docs/multiplayer-design.md`` (section 9). One game
 runs through ``GameSessionManager`` exactly like the HTTP layer drives it:
 the "human" seats are answered by heuristic agents (so the game has a
 realistic length and shape), the other seats are heuristic AI seats. Before
-every human decision the script sizes what a browser fetches to render it —
-seat view, legal-action listing (with its dry runs), the full log as
-``app.js`` requests it today, and the incremental log tail — raw and
-gzip-compressed, and times the server side of each call.
+every human decision the script sizes what a browser fetches to render it,
+both ways: the four separate calls a refresh made before M14 slice 2
+(summary, seat view, legal-action listing with its dry runs, and the whole
+log) and the one snapshot with the incremental log tail that replaced them
+— raw and gzip-compressed — and times the server side of each call.
 
 Raw byte counts are deterministic for a seed (gzip sizes wobble by a byte
 with the random game id inside the payloads); times depend on the machine.
@@ -103,11 +104,25 @@ def main(argv: Sequence[str] | None = None) -> int:
             "log FULL raw",
             "log FULL gzip",
             "log incremental raw",
+            "four calls raw",
+            "four calls gzip",
+            "snapshot raw",
+            "snapshot gzip",
         )
     }
     times: dict[str, list[float]] = {
-        name: [] for name in ("view", "actions (dry runs)", "log FULL", "apply/confirm")
+        name: []
+        for name in (
+            "view",
+            "actions (dry runs)",
+            "log FULL",
+            "snapshot",
+            "apply/confirm",
+        )
     }
+    # The log cursor and epoch a browser would hold per seat (one browser
+    # per human seat, as in remote play).
+    held: dict[int, tuple[int, str | None]] = {seat: (0, None) for seat in humans}
     action_counts: list[float] = []
     steps_per_request: list[float] = []
     cursors = {seat: 0 for seat in humans}
@@ -158,7 +173,25 @@ def main(argv: Sequence[str] | None = None) -> int:
         tail = manager.log(game_id, seat, after=cursors[seat])
         sizes["log incremental raw"].append(_size(tail)[0])
         cursors[seat] = int(str(full["count"]))
-        sizes["summary raw"].append(_size(summary)[0])
+        summary_size = _size(summary)
+        sizes["summary raw"].append(summary_size[0])
+        four_raw = summary_size[0] + sizes["view raw"][-1]
+        four_gzip = summary_size[1] + sizes["view gzip"][-1]
+        four_raw += sizes["actions raw"][-1] + sizes["log FULL raw"][-1]
+        four_gzip += sizes["actions gzip"][-1] + sizes["log FULL gzip"][-1]
+        sizes["four calls raw"].append(four_raw)
+        sizes["four calls gzip"].append(four_gzip)
+
+        after, epoch = held[seat]
+        tick = time.perf_counter()
+        snapshot = manager.snapshot(game_id, seat, log_after=after, log_epoch=epoch)
+        times["snapshot"].append((time.perf_counter() - tick) * 1000)
+        raw, packed = _size(snapshot)
+        sizes["snapshot raw"].append(raw)
+        sizes["snapshot gzip"].append(packed)
+        log_tail = snapshot["log"]
+        assert isinstance(log_tail, dict)
+        held[seat] = (int(str(log_tail["count"])), str(log_tail["epoch"]))
 
         actions = session.engine.legal_actions(session.state, seat)
         observation = session.engine.observe(session.state, seat)
@@ -196,6 +229,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         f"full={sum(sizes['log FULL raw']) / 1e6:,.1f} MB "
         f"(gzip {sum(sizes['log FULL gzip']) / 1e6:,.1f} MB), "
         f"incremental={sum(sizes['log incremental raw']) / 1e6:,.2f} MB"
+    )
+    print(
+        "refresh bytes downloaded over the game (one refresh per human "
+        f"decision): four calls={sum(sizes['four calls raw']) / 1e6:,.1f} MB "
+        f"(gzip {sum(sizes['four calls gzip']) / 1e6:,.1f} MB), "
+        f"snapshot={sum(sizes['snapshot raw']) / 1e6:,.1f} MB "
+        f"(gzip {sum(sizes['snapshot gzip']) / 1e6:,.2f} MB)"
     )
     return 0
 

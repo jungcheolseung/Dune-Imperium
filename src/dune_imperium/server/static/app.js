@@ -16,8 +16,13 @@ const state = {
   busy: false,
   /* Post-game replay review: {meta, seat, cursor} while active. */
   review: null,
-  /* Live session log for the active seat: {count, entries} (M11 slice 6). */
+  /* Live session log of the seat on screen: {seat, epoch, count, entries}
+     (M11 slice 6). It grows by the tail each snapshot brings; `epoch` is
+     the server's name for this log, sent back so the server can tell when
+     entries held here went stale (M14 slice 2). */
   log: null,
+  /* Who this browser is at the table: {seats, admin, access} (M14). */
+  me: null,
 };
 
 let noteTimer = 0;
@@ -751,10 +756,14 @@ async function createGame(event) {
 
 /* ---------- game screen ---------- */
 
-function humanSeats() {
-  return state.summary.seats
+function humanSeatsOf(summary) {
+  return summary.seats
     .map((kind, seat) => (kind === "human" ? seat : null))
     .filter((seat) => seat !== null);
+}
+
+function humanSeats() {
+  return humanSeatsOf(state.summary);
 }
 
 function activeSeat() {
@@ -763,6 +772,12 @@ function activeSeat() {
 
 function enterGame(summary) {
   state.gameId = summary.game_id;
+  state.summary = summary;
+  state.view = null;
+  state.actions = null;
+  state.log = null;
+  state.me = null;
+  state.viewSeat = null;
   state.review = null;
   el("review-bar").hidden = true;
   el("setup-screen").hidden = true;
@@ -770,7 +785,10 @@ function enterGame(summary) {
   document.body.classList.add("in-game");
   el("leave-game").hidden = false;
   el("save-game").hidden = false;
-  applySummary(summary);
+  refresh(summary).catch((error) => {
+    el("game-error").textContent = `게임 상태 조회 실패 (${error.message})`;
+    el("game-error").hidden = false;
+  });
 }
 
 function leaveGame() {
@@ -779,6 +797,8 @@ function leaveGame() {
   state.summary = null;
   state.view = null;
   state.actions = null;
+  state.log = null;
+  state.me = null;
   state.review = null;
   el("review-bar").hidden = true;
   el("game-screen").hidden = true;
@@ -816,47 +836,118 @@ async function saveGame() {
   }
 }
 
-async function applySummary(summary) {
-  state.summary = summary;
-  const humans = humanSeats();
+/* The seat the table is shown from: whoever must confirm a turn end, else
+   the human decision owner, else the seat already on screen. */
+function pickViewSeat(summary) {
   const decision = summary.decision;
   if (typeof summary.confirmation === "number") {
     /* The seat whose turn just ended still holds the table until it
        confirms the hand-over (or takes its steps back). */
-    state.viewSeat = summary.confirmation;
-  } else if (decision && decision.owner_is_human) {
-    state.viewSeat = decision.owner;
-  } else if (humans.length) {
-    state.viewSeat = humans.includes(state.viewSeat)
-      ? state.viewSeat
-      : humans[0];
-  } else {
-    state.viewSeat = null;
+    return summary.confirmation;
   }
-  state.view = null;
-  state.actions = null;
-  state.log = null;
-  if (state.viewSeat !== null) {
-    state.view = await api(
-      `/games/${state.gameId}/seats/${state.viewSeat}/view`
-    );
-    if (decision && decision.owner === state.viewSeat) {
-      state.actions = await api(
-        `/games/${state.gameId}/seats/${state.viewSeat}/actions`
-      );
+  if (decision && decision.owner_is_human) return decision.owner;
+  const humans = humanSeatsOf(summary);
+  if (!humans.length) return null;
+  return humans.includes(state.viewSeat) ? state.viewSeat : humans[0];
+}
+
+function snapshotPath(seat) {
+  const params = new URLSearchParams();
+  if (seat !== null) {
+    params.set("seat", String(seat));
+    /* Ask only for the entries this seat's log is missing. The server
+       sends the whole log again when the epoch no longer names it: an undo
+       re-flags earlier entries and the end of the game lifts redaction. */
+    const known = state.log;
+    if (known && known.seat === seat) {
+      params.set("log_after", String(known.count));
+      params.set("log_epoch", known.epoch);
     }
-    /* The live action log is a game-screen feature only; review mode reads
-       its own timeline (meta.steps) instead. */
-    if (!state.review) {
-      state.log = await api(`/games/${state.gameId}/log?seat=${activeSeat()}`);
+  }
+  const query = params.toString();
+  return `/games/${state.gameId}/snapshot${query ? `?${query}` : ""}`;
+}
+
+/* Returns null when the tail does not continue the entries held here (it
+   always does while the server honours the cursor it was sent). */
+function mergeLog(known, tail) {
+  let entries = tail.entries;
+  if (tail.from > 0) {
+    if (
+      !known ||
+      known.seat !== tail.seat ||
+      known.entries.length !== tail.from
+    ) {
+      return null;
     }
+    entries = known.entries.concat(tail.entries);
+  }
+  return { seat: tail.seat, epoch: tail.epoch, count: tail.count, entries };
+}
+
+/* Refreshes never overlap: one that arrives while another runs makes the
+   running one go round once more, and every caller gets the promise of
+   the state being current. */
+let refreshFlight = null;
+let refreshAgain = false;
+let refreshHint = null;
+
+/* One refresh is one request (M14 slice 2): the snapshot carries the
+   summary, the seat's view, its legal actions and the log tail, all read
+   from one state. Which seat to ask for depends on the summary, so a
+   summary already in hand (a POST's response) picks it; otherwise the seat
+   on screen is asked for, and asked again in the rare case that the answer
+   hands the table to another seat. */
+async function loadSnapshot(hint) {
+  const gameId = state.gameId;
+  if (!gameId) return;
+  let seat = hint ? pickViewSeat(hint) : state.viewSeat;
+  for (let attempt = 0; ; attempt += 1) {
+    const snapshot = await api(snapshotPath(seat));
+    if (state.gameId !== gameId) return;
+    const wanted = pickViewSeat(snapshot.summary);
+    if (wanted === seat || attempt >= 3) {
+      adoptSnapshot(snapshot, seat);
+      return;
+    }
+    seat = wanted;
+  }
+}
+
+function adoptSnapshot(snapshot, seat) {
+  state.summary = snapshot.summary;
+  state.me = snapshot.you;
+  state.viewSeat = seat;
+  /* Review mode draws its own timeline and states (reviewGoto); a refresh
+     arriving meanwhile must not put the live table back under it. */
+  if (!state.review) {
+    state.view = snapshot.view || null;
+    state.actions = snapshot.actions || null;
+    state.log = snapshot.log ? mergeLog(state.log, snapshot.log) : null;
+    if (snapshot.log && !state.log) refreshAgain = true;
   }
   render();
 }
 
-async function refresh() {
-  const summary = await api(`/games/${state.gameId}`);
-  await applySummary(summary);
+function refresh(summary) {
+  if (summary) refreshHint = summary;
+  if (refreshFlight) {
+    refreshAgain = true;
+    return refreshFlight;
+  }
+  refreshFlight = (async () => {
+    try {
+      do {
+        refreshAgain = false;
+        const hint = refreshHint;
+        refreshHint = null;
+        await loadSnapshot(hint);
+      } while (refreshAgain);
+    } finally {
+      refreshFlight = null;
+    }
+  })();
+  return refreshFlight;
 }
 
 async function applyAction(index) {
@@ -876,7 +967,7 @@ async function applyAction(index) {
       }),
     });
     state.busy = false;
-    await applySummary(summary);
+    await refresh(summary);
   } catch (error) {
     state.busy = false;
     if (error.status === 409) {
@@ -907,7 +998,7 @@ async function confirmTurn() {
       }),
     });
     state.busy = false;
-    await applySummary(summary);
+    await refresh(summary);
   } catch (error) {
     state.busy = false;
     if (error.status === 409) {
@@ -938,7 +1029,7 @@ async function submitUndo(seat, steps) {
       }),
     });
     state.busy = false;
-    await applySummary(summary);
+    await refresh(summary);
   } catch (error) {
     state.busy = false;
     if (error.status === 409) {

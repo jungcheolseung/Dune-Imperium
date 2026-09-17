@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Final
 
 from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -56,6 +57,8 @@ _SEAT_COOKIE_PREFIX: Final = "dune_seat_"
 # A game runs for an evening but may be resumed weeks later; the cookie
 # dies earlier anyway when its seat is released or the server restarts.
 _COOKIE_MAX_AGE: Final = 30 * 24 * 60 * 60
+# Below this a response fits one packet anyway and compressing it is waste.
+_GZIP_MINIMUM_SIZE: Final = 1024
 
 _STATIC_DIR = Path(__file__).parent / "static"
 # Gitignored symlink to the private Dune-Imperium-assets checkout (cards/,
@@ -261,6 +264,10 @@ def create_app(
         else default_bene_tleilax_image_path()
     )
     app = FastAPI(title="Dune: Imperium - Uprising local play server")
+    # JSON and the UI files shrink four- to tenfold, which is what a remote
+    # player's refresh is made of. Starlette's default exclusions already
+    # skip the card and board scans and ``text/event-stream``.
+    app.add_middleware(GZipMiddleware, minimum_size=_GZIP_MINIMUM_SIZE)
 
     @app.middleware("http")
     async def revalidate_ui_files(
@@ -349,6 +356,23 @@ def create_app(
         with _http_errors():
             return sessions.identify(
                 game_id, credentials=_credentials(request, game_id)
+            )
+
+    @app.get("/games/{game_id}/snapshot")
+    def game_snapshot(
+        game_id: str,
+        request: Request,
+        seat: int | None = None,
+        log_after: int = 0,
+        log_epoch: str | None = None,
+    ) -> JsonObject:
+        with _http_errors():
+            return sessions.snapshot(
+                game_id,
+                seat,
+                log_after=log_after,
+                log_epoch=log_epoch,
+                credentials=_credentials(request, game_id),
             )
 
     @app.post("/games/{game_id}/seats/{seat}/claim")

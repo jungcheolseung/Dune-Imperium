@@ -301,23 +301,70 @@ class GameSessionManager:
 
         session = self._get(game_id)
         with session.lock:
-            if self._access is AccessMode.OPEN:
-                seats = [
-                    seat
-                    for seat, assignment in enumerate(session.seats)
-                    if assignment == HUMAN_SEAT
-                ]
-            else:
-                seats = sorted(
-                    seat
-                    for seat, token in session.seat_tokens.items()
-                    if token_matches(token, credentials.seat_tokens)
-                )
+            return self._identify_locked(session, credentials)
+
+    def snapshot(
+        self,
+        game_id: str,
+        seat: int | None = None,
+        *,
+        log_after: int = 0,
+        log_epoch: str | None = None,
+        credentials: Credentials = ANONYMOUS,
+    ) -> JsonObject:
+        """Return everything one client needs to redraw, read from one state.
+
+        One request replaces the summary, view, legal-action and log calls a
+        refresh used to make in sequence (M14 slice 2): over a WAN the round
+        trips cost more than the bytes, and four separate reads could
+        straddle another seat's step. Without ``seat`` — a client that knows
+        the game but holds no seat — only ``summary`` and ``you`` come back.
+
+        ``actions`` is ``None`` unless the seat owns the pending decision.
+        ``log`` is the tail from ``log_after`` on, provided the client's
+        ``log_epoch`` still names this log; otherwise the whole log is sent
+        again (``from`` 0), because entries the client already holds have
+        changed: an undo flags earlier entries, and the end of the game
+        lifts every redaction. The client never has to know which happened.
+        """
+
+        session = self._get(game_id)
+        if seat is not None:
+            self._require_human(session, seat)
+        if log_after < 0:
+            raise SessionError("log cursor is out of range")
+        with session.lock:
+            summary = self._summary_locked(session)
+            you = self._identify_locked(session, credentials)
+            if seat is None:
+                return {"summary": summary, "you": you}
+            self._authorize_seat_locked(session, seat, credentials)
+            state = session.state
+            view = session.engine.observe(state, seat)
+            decision = session.engine.current_decision(state)
+            actions = (
+                self._legal_actions_locked(session, seat)
+                if isinstance(decision, PlayerDecision) and decision.owner == seat
+                else None
+            )
+            entries = tuple(session.log)
+            epoch = _log_epoch(session, seat)
+        finished = _is_finished(state)
+        start = log_after if log_epoch == epoch else 0
+        if start > len(entries):
+            raise SessionError("log cursor is out of range")
         return {
-            "game_id": session.game_id,
-            "access": str(self._access),
-            "seats": list(seats),
-            "admin": self.is_admin(credentials),
+            "summary": summary,
+            "you": you,
+            "view": _serialize_view(view, state if finished else None),
+            "actions": actions,
+            "log": {
+                "seat": seat,
+                "epoch": epoch,
+                "from": start,
+                "count": len(entries),
+                "entries": _log_entries_json(entries, seat, finished, start),
+            },
         }
 
     def claim_seat(
@@ -402,16 +449,7 @@ class GameSessionManager:
         self._require_human(session, seat)
         with session.lock:
             self._authorize_seat_locked(session, seat, credentials)
-            actions = session.engine.legal_actions(session.state, seat)
-            return {
-                "game_id": session.game_id,
-                "revision": session.state.revision,
-                "seat": seat,
-                "actions": [
-                    _serialize_action(index, action, session)
-                    for index, action in enumerate(actions)
-                ],
-            }
+            return self._legal_actions_locked(session, seat)
 
     def apply_action(
         self,
@@ -545,11 +583,7 @@ class GameSessionManager:
             "game_id": session.game_id,
             "seat": seat,
             "count": len(entries),
-            "entries": [
-                _log_entry_json(index, entry, seat, finished)
-                for index, entry in enumerate(entries)
-                if index >= after
-            ],
+            "entries": _log_entries_json(entries, seat, finished, after),
         }
 
     def delete(self, game_id: str, *, credentials: Credentials = ANONYMOUS) -> None:
@@ -730,6 +764,42 @@ class GameSessionManager:
         if session.seats[seat] != HUMAN_SEAT:
             # Views and legal actions can carry private card identities.
             raise SeatAccessError("only a human seat may be read or acted for")
+
+    def _identify_locked(
+        self, session: GameSession, credentials: Credentials
+    ) -> JsonObject:
+        if self._access is AccessMode.OPEN:
+            seats = [
+                seat
+                for seat, assignment in enumerate(session.seats)
+                if assignment == HUMAN_SEAT
+            ]
+        else:
+            seats = sorted(
+                seat
+                for seat, token in session.seat_tokens.items()
+                if token_matches(token, credentials.seat_tokens)
+            )
+        return {
+            "game_id": session.game_id,
+            "access": str(self._access),
+            "seats": list(seats),
+            "admin": self.is_admin(credentials),
+        }
+
+    def _legal_actions_locked(self, session: GameSession, seat: int) -> JsonObject:
+        """Serialize the seat's legal actions; each one costs a dry run."""
+
+        actions = session.engine.legal_actions(session.state, seat)
+        return {
+            "game_id": session.game_id,
+            "revision": session.state.revision,
+            "seat": seat,
+            "actions": [
+                _serialize_action(index, action, session)
+                for index, action in enumerate(actions)
+            ],
+        }
 
     def _require_remote(self, operation: str) -> None:
         if self._access is not AccessMode.REMOTE:
@@ -1081,6 +1151,30 @@ def _rebuild_log(
     if live_position != len(live):
         raise SaveError("the save log does not cover every recorded step")
     return rebuilt
+
+
+def _log_epoch(session: GameSession, seat: int) -> str:
+    """Name the log one seat has been served, as far as old entries go.
+
+    Entries a client already holds stay valid while this value stays the
+    same. It changes when an undo flags earlier entries, when the game
+    finishes (or an undo un-finishes it) and redaction changes for every
+    entry, and with the seat, whose redaction differs. The caller holds the
+    session lock.
+    """
+
+    finished = 1 if _is_finished(session.state) else 0
+    return f"{seat}:{session.undo_count}:{finished}"
+
+
+def _log_entries_json(
+    entries: tuple[LogEntry, ...], seat: int, finished: bool, after: int
+) -> list[JsonValue]:
+    return [
+        _log_entry_json(index, entry, seat, finished)
+        for index, entry in enumerate(entries)
+        if index >= after
+    ]
 
 
 def _log_entry_json(
