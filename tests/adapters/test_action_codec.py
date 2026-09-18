@@ -16,7 +16,7 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     first = ActionCodec(RulesetConfig())
     second = ActionCodec(RulesetConfig())
 
-    assert ACTION_CODEC_VERSION == 104
+    assert ACTION_CODEC_VERSION == 105
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
     # v92/v93/v97: the Reveal gain actions join every catalog (troops, Intrigue,
@@ -72,7 +72,8 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
         assert both.decode(both.encode(action), actor=1) == action
     # v104: the Commander share of a retreat reaches 12 troops + 7
     # Commanders, which adds 28 unit-count templates [Bloodlines p. 4].
-    assert both.size == 11100 + 28
+    # v105: Fedaykin Maneuver's Commander-share retreats reach 19 units (+28).
+    assert both.size == 11100 + 28 + 28
 
     choam_only = ActionCodec(RulesetConfig(choam_module=True))
     for action in actions:
@@ -468,3 +469,37 @@ def test_leader_draft_reset_masks_exactly_the_pool_picks() -> None:
     assert {codec.decode(index, decision.owner) for index in enabled} == set(
         legal_actions
     )
+
+
+def test_fedaykin_maneuver_retreats_encode_up_to_troops_plus_commanders() -> None:
+    # v105: Chani's Fedaykin Maneuver retreats troops and Commanders together
+    # (Commanders are troops [Bloodlines p. 4]; rules/leader_abilities.py
+    # offers every count up to troops_conflict + commanders_conflict). The
+    # Commander-share templates stopped at MAX_DEPLOYMENT_COUNT, so a
+    # 12-troop Conflict with one Commander offered a count of 13 that the
+    # codec could not encode; a trained policy hit it in greedy play
+    # (2026-09-18). The range now matches retreat_intrigue_troops.
+    codec = ActionCodec(RulesetConfig(bloodlines=True))
+    fedaykin = [t for t in codec.catalog if t.action_id == "retreat_leader_troops"]
+    assert len(fedaykin) == 12 + 91
+    for troops in range(0, 13):
+        for commanders in range(0, 8):
+            for count in range(1, troops + commanders + 1):
+                for share in range(0, min(count, commanders) + 1):
+                    if count - share > troops:
+                        continue
+                    action = DomainAction(
+                        "retreat_leader_troops",
+                        actor=2,
+                        arguments=(
+                            *((("commanders", share),) if share else ()),
+                            ("count", count),
+                        ),
+                    )
+                    assert codec.decode(codec.encode(action), actor=2) == action
+    beyond = DomainAction(
+        "retreat_leader_troops", actor=0, arguments=(("commanders", 1), ("count", 20))
+    )
+    with pytest.raises(ValueError, match="not present"):
+        codec.encode(beyond)
+

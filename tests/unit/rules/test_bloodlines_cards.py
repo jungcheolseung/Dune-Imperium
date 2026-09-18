@@ -1778,7 +1778,8 @@ def test_ruthless_leadership_round_trips_and_is_dealt_in_random_games() -> None:
     codec = ActionCodec(PROMO_BLOODLINES)
     # v97 Occupation bundle, v99 Duncan recall, v100 skip + Change Allegiances.
     # v103 separate lines, v104 the 19-unit retreat range.
-    assert codec.size == 10159 + 292 + 1 + 1 + 1 + 2 + 1 + 28
+    # v105: Fedaykin Maneuver's Commander-share retreats reach 19 units (+28).
+    assert codec.size == 10159 + 292 + 1 + 1 + 1 + 2 + 1 + 28 + 28
     action = DomainAction(
         action_id="trash_agent_card",
         actor=2,
