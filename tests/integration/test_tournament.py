@@ -1,6 +1,7 @@
 """Tests for the M9 baseline tournament and its report."""
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -22,6 +23,7 @@ from dune_imperium.evaluation import (
 )
 from dune_imperium.evaluation import tournament as tournament_module
 from dune_imperium.evaluation.tournament import (
+    TournamentReport,
     _MeteredAgent,
     fill_lineup,
     seat_rotations,
@@ -249,3 +251,68 @@ def test_the_state_agent_protocol_is_asked_per_seat_not_per_decision(
     # Two call sites -- the runner's seating and the metered wrapper -- ask
     # once per seat each, and nothing scales with the decision count.
     assert _Counted.checks == 2 * len(result.seats)
+
+
+def _thread_variables() -> dict[str, str | None]:
+    return {name: os.environ.get(name) for name in tournament_module._THREAD_VARIABLES}
+
+
+def _restore(saved: dict[str, str | None]) -> None:
+    for name, value in saved.items():
+        if value is None:
+            os.environ.pop(name, None)
+        else:
+            os.environ[name] = value
+
+
+def test_tournament_workers_are_held_to_one_compute_thread() -> None:
+    # Eight workers with torch's default 24-thread pool each ran a checkpoint
+    # table at 205 ms per decision against 9 ms with one thread each
+    # (2026-09-18), so the pool initializer caps every worker.
+    saved = _thread_variables()
+    try:
+        for name in saved:
+            os.environ.pop(name, None)
+        tournament_module._single_threaded_worker()
+        assert _thread_variables() == dict.fromkeys(saved, "1")
+
+        # A thread count the caller exported is respected.
+        os.environ["OMP_NUM_THREADS"] = "4"
+        os.environ.pop("MKL_NUM_THREADS", None)
+        tournament_module._single_threaded_worker()
+        assert os.environ["OMP_NUM_THREADS"] == "4"
+        assert "MKL_NUM_THREADS" not in os.environ
+    finally:
+        _restore(saved)
+
+
+def test_an_already_imported_torch_is_capped_in_a_worker() -> None:
+    torch = pytest.importorskip("torch")
+    saved = _thread_variables()
+    before = torch.get_num_threads()
+    try:
+        for name in saved:
+            os.environ.pop(name, None)
+        torch.set_num_threads(max(2, before))
+        tournament_module._single_threaded_worker()
+        assert torch.get_num_threads() == 1
+    finally:
+        torch.set_num_threads(before)
+        _restore(saved)
+
+
+def test_run_tournament_plays_across_worker_processes() -> None:
+    specs = tournament_specs(agents=("random",), games=2, start_seed=3)
+    serial = run_tournament(specs)
+    parallel = run_tournament(specs, workers=2)
+
+    assert not parallel.failures
+
+    def outcome(report: TournamentReport) -> list[tuple[int, int, tuple[int, ...]]]:
+        return [
+            (match.game_seed, match.steps, tuple(seat.rank for seat in match.seats))
+            for match in report.matches
+        ]
+
+    assert outcome(parallel) == outcome(serial)
+
