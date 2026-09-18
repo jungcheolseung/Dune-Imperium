@@ -95,7 +95,12 @@ def _build_parser() -> argparse.ArgumentParser:
         default=0,
         help="evaluate the latest checkpoint every N iterations (0: never)",
     )
-    parser.add_argument("--eval-games", type=int, default=10)
+    parser.add_argument(
+        "--eval-games",
+        type=int,
+        default=10,
+        help="evaluation seeds; each plays the four seat rotations (default: 10)",
+    )
     parser.add_argument("--eval-opponent", default="heuristic")
     parser.add_argument(
         "--checkpoint-every",
@@ -116,6 +121,8 @@ def _print(record: IterationRecord) -> None:
         if record.eval_win_rate is not None and record.eval_mean_rank is not None
         else ""
     )
+    if record.eval_failures:
+        evaluation += f" ({record.eval_failures} eval matches FAILED)"
     print(
         f"iter {record.iteration}: {record.games} games, {record.learner_steps} "
         f"learner steps, win {record.learner_win_rate:.1%}, reward "

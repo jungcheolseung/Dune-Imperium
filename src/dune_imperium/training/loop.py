@@ -113,6 +113,10 @@ class IterationRecord:
     update: UpdateStats
     eval_win_rate: float | None = None
     eval_mean_rank: float | None = None
+    # Evaluation matches that raised instead of finishing. The rates above
+    # cover the finished matches only, so a non-zero count is a defect to
+    # look at (the messages go to ``eval_failures.log``), not noise.
+    eval_failures: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -166,8 +170,14 @@ def _learner_outcomes(episodes: tuple[Episode, ...]) -> tuple[float, float]:
     return (wins / len(rewards) if rewards else 0.0, float(np.mean(rewards)))
 
 
-def _evaluate(config: TrainConfig, checkpoint: Path) -> tuple[float, float]:
-    """Tournament win rate and mean rank of the checkpoint vs the opponent."""
+def _evaluate(
+    config: TrainConfig, checkpoint: Path
+) -> tuple[float, float, tuple[str, ...]]:
+    """Win rate and mean rank of the checkpoint vs the opponent, plus failures.
+
+    ``eval_games`` counts seeds; every seed plays the four seat rotations,
+    so the sample is four times that many matches.
+    """
 
     # One checkpoint seat against three opponents (a two-kind lineup would
     # cycle to two checkpoint seats and cap the win rate at 50%).
@@ -185,7 +195,7 @@ def _evaluate(config: TrainConfig, checkpoint: Path) -> tuple[float, float]:
     entry = next(
         agent for agent in summary.agents if agent.agent.startswith(CHECKPOINT_PREFIX)
     )
-    return entry.win_rate, entry.mean_rank
+    return entry.win_rate, entry.mean_rank, summary.failure_messages
 
 
 def train(
@@ -266,8 +276,14 @@ def train(
                     codec=codec,
                 )
             eval_win_rate = eval_mean_rank = None
+            eval_failures: int | None = None
             if config.eval_every and (iteration + 1) % config.eval_every == 0:
-                eval_win_rate, eval_mean_rank = _evaluate(config, latest)
+                eval_win_rate, eval_mean_rank, failures = _evaluate(config, latest)
+                eval_failures = len(failures)
+                if failures:
+                    with (config.out_dir / "eval_failures.log").open("a") as handle:
+                        for message in failures:
+                            handle.write(f"iteration {iteration + 1}: {message}\n")
             record = IterationRecord(
                 iteration=iteration + 1,
                 games=len(result.episodes),
@@ -284,6 +300,7 @@ def train(
                 update=stats,
                 eval_win_rate=eval_win_rate,
                 eval_mean_rank=eval_mean_rank,
+                eval_failures=eval_failures,
             )
             records.append(record)
             log.write(json.dumps(asdict(record)) + "\n")
