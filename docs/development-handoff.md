@@ -307,6 +307,8 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 
 ## 원격 저장소 인계 주의
 
+2026-09-19(Mac mini, 사용자 지시 "두 저장소 다 push"): 메인 저장소 `f3b91fb..3b5f4c5`(아래의 merge 커밋을 포함한 21건)와 비공개 에셋 저장소 `02bac8a..f9924b4`(Combat marker 토큰, Shield Wall 토큰·위치 타일 2건)를 push했고, 두 곳 모두 `origin/master`와 로컬이 일치한다. 바로 아래 두 문단의 "push하지 않았다"는 그 시점의 기록이다. 다른 기기는 **두 저장소를 모두 pull**해야 그림 토큰·타일이 보인다(에셋이 없어도 동작은 같다).
+
 2026-09-19(Mac mini): `git fetch`에서 원격이 12건 앞서 있었다(Windows PC의 M10 첫 학습·codec v105·체크포인트 이관·PPO 슬라이스). 이 기기의 미푸시 15건(보드 토큰·원판·보드 조각·에셋 버전)과 겹치는 파일은 `README.md`·이 문서·`lessons.md`뿐이라 **master에서 `origin/master`를 `--no-ff`로 merge**했다(기존 커밋은 고치지 않는다). 충돌은 양쪽 내용을 모두 살려 풀었고, merge한 트리에서 pytest 1,764 · ruff · mypy를 실측했다. merge 커밋과 그 뒤의 작업은 아직 push하지 않았다.
 
 2026-09-18(Mac mini): Combat marker 그림 세션의 커밋(`e54e035` 코드·테스트, `f24eb52` 문서, 그리고 같은 날 Score marker·Councilor token 원판과 공용 player disc 커밋들)은 master에만 있고 **push하지 않았다**. 비공개 에셋 저장소에도 같은 날 커밋 1건(`tokens/` 8장 + README)이 있고 역시 push하지 않았다 — 다른 기기에서 그림 토큰을 보려면 두 저장소를 모두 push·pull해야 한다(에셋이 없으면 그린 토큰으로 돌아갈 뿐 동작은 같다).
