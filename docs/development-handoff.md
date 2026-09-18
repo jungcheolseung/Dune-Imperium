@@ -321,6 +321,32 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 
 2026-09-04 세션 종료 시점에 이 세션의 커밋 전부(보드·카드 아이콘 분리 v86/v87, 서버·UI 확인 흐름과 마커, Reveal 순서 v88, OQ-028 조건 판정 시점, OQ-029 등록)를 `origin/master`에 push했다. 새 세션은 `git fetch origin` 뒤 `git log origin/master..master`와 반대 방향을 확인하고, 일치하면 이 문서의 기준선을 그대로 쓴다. 에셋 저장소(`Dune-Imperium-assets`)의 `5b55e45` 1개 미push 여부는 그 저장소에서 확인한다. 원격에는 병합하지 않은 `kyungtae` 브랜치가 있다. 새 세션은 `git log origin/master..master`와 반대 방향을 모두 확인하고, checkout이 `853ecd4`보다 이전이면 이 문서의 989개 테스트·codec v84 기준선이 실제 코드와 일치하지 않는다. **다른 머신에서 이어서 작업한다면 먼저 이 머신에서 push가 필요하다.** 새 머신의 UI 카드 이미지·아이콘·보드 스캔은 비공개 `Dune-Imperium-assets` 저장소를 clone해 symlink로 연결한다(그 README 참고; 루트의 `assets` symlink 하나로 cards·icons·board·rulebooks를 모두 연결). 카드 매핑은 그 저장소의 `cards/manifest.json`에만 있으므로 접근이 없으면 텍스트 UI로 동작한다.
 
+## 2026-09-19 Agent turn 단계별 선택 세션 요약 (Mac mini, master 직접 커밋, 관측 v20, codec v105, 변경은 `server/static/`·`scripts/e2e/`뿐)
+
+- 사용자 제안: Agent turn에 합법 행동이 전부 한 줄로 뜨는 것은 AI 학습용 표현이지 사람용 UX가 아니다. 보낼 수 있는 칸의
+  하이라이트는 좋다. **카드 고르기(graft 고려) → 보낼 칸 → 효과 처리** 순서였으면 하고, 다른 PC의 학습에 영향이 없게 UI만.
+- 판단: UI만으로 된다. 서버는 Agent turn을 `agent_turn{card_id, space_id, cost_option?, graft?}`의 평평한 목록으로 주고(코덱·학습이
+  쓰는 그 목록), 페이지는 그것을 고른 것으로 걸러 보여 주다가 **남은 행동 번호 하나**를 지금처럼 POST한다. 엔진·코덱·관측·학습
+  코드는 그대로다. **Graft는 제안과 순서가 다르다**: 엔진은 `agent_turn`의 `graft` 인자로 첫 카드와 칸을 먼저 정하고 뒤따르는
+  `graft_partner` frame에서 `choose_graft_partner`로 둘째 카드를 고르며, 가능한 파트너는 고른 칸에 따라 달라질 수 있다(OQ-057).
+  그래서 "카드 → 칸 → (Graft 여부) → 파트너" 순서가 UI만으로 되는 자연스러운 흐름이고, 두 장을 먼저 고르게 하려면 서버의
+  표시용 선계산이 필요하다(미착수).
+- 구현(`app.js`의 "staged Agent turn" 절): `state.pick {cardId?, spaceId?}`는 페이지 안에만 있고 고르는 동안 요청이 없다.
+  `legalActionsFor`가 staged turn에서는 pick에 맞는 placement만 세므로 **카드·칸의 빛이 단계마다 좁혀진다**(칸을 먼저 골라도
+  된다 — 그 칸에 갈 수 있는 카드가 빛난다). 같은 것을 다시 누르거나 Escape·단계 칩으로 취소, 다른 카드·칸을 누르면 교체(교체
+  후보는 옅게 빛난다), 함께 갈 수 없는 조합은 pick을 바꾸지 않고 알린다. 카드+칸으로 placement가 하나 남으면 바로 실행하고,
+  여럿이면(비용 옵션·graft) **칸 옆 선택창**(`openPlacementChooser`, 카드 팝오버 재사용)과 패널이 같은 선택지를 낸다 — 비용은
+  카탈로그의 그 옵션 효과로, graft는 "이 카드만 / Graft — 함께 낼 카드는 다음에"로 적는다. pick은 남의 초인종 재렌더에도
+  남고(설계 G7) 합법 행동이 더는 받쳐 주지 않으면 버려진다(`sanitizePick`). 패널은 단계 칩·안내·"또는" 아래 그 turn의 다른
+  행동(Reveal 시작 등)·**"전체 행동 목록 보기" 토글**(`localStorage dune.fullActionList`, 새로고침에도 유지)이다. 뒤따르는
+  frame(파트너·trash 대상·Spy 자리)은 짧은 목록 그대로 두고 "테이블에서 빛나는 카드나 칸을 눌러 골라도 됩니다"만 더했다(기존
+  `tableClick`이 이미 그렇게 동작한다).
+- 검증: 새 E2E `scripts/e2e/staged_turn.py` 31항목(매 단계의 빛을 서버 목록과 대조, 요청 수, 선택창, 토글) — 첫 실행이 **실제
+  결함**을 잡았다: 전체 목록 모드에서는 목록이 길어 맨 아래의 "단계별로 고르기" 토글이 로그 패널에 가려 눌리지 않았다 → 토글을
+  목록 위로. `open_mode.py` 44·`remote.py` 56, pytest 1,764 · ruff · mypy. Immortality 판에서 graft placement(같은 카드·칸에
+  "이 카드만"/"Graft")와 파트너를 손패 클릭으로 고르는 것까지 Chrome으로 확인(스크래치; 합법 행동 38개짜리 turn이었다).
+- 남은 후보: 두 장을 먼저 고르는 graft(서버의 표시용 선계산), 병력 배치·Reveal 구매의 단계화, 단계 안내의 한글 prompt.
+
 ## 2026-09-18 Combat marker 그림 세션 요약 (Mac mini, master 직접 커밋, 관측 v20, codec v104, 변경은 `display/`·`server/`뿐)
 
 - 사용자 지시: 친구들과 쓰던 Tabletop Simulator 모드(워크샵 3522149839 "Dune Uprising Bloodlines scripted")의 에셋을 UI에
