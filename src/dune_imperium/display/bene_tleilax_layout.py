@@ -15,7 +15,9 @@ pin that the table covers them exactly.
 
 ``RESEARCH_POINTS`` are hex centres (the token is drawn in the dark upper
 half, above the printed bonus). ``TRACK_CELLS`` are ``(left, width)`` of the
-eight Tleilaxu track spaces inside the top band.
+eight Tleilaxu track spaces inside the top band. The tokens are the common
+player disc at the size of the spots the board prints for it
+(``DISC_SIZE``, ``TRACK_START_DISCS``, ``RESEARCH_START_DISCS``).
 """
 
 from collections.abc import Mapping
@@ -62,6 +64,23 @@ TRACK_CELLS: Final[tuple[tuple[float, float], ...]] = (
 # The setup spice sits on the fourth space's printed "1st / 2" hex.
 SPICE_POINT: Final = (65.0, 17.0)
 
+# The player disc (the same common token as the Score marker and the
+# Councilor token of the main board, ``board_layout.SEAT_DISC_SIZE``): the
+# board prints its spots, and all seven measure 324 px across on the
+# 5551 px scan (radial edge fit, 2026-09-18), so that is the disc's
+# diameter here, as a percent of the scan's width.
+DISC_SIZE: Final = 5.84
+# Width over height of the scan: the overlay's y values are percents of the
+# height, so a round disc is ``DISC_SIZE * SCAN_ASPECT`` of it tall.
+SCAN_ASPECT: Final = 5551 / 3952
+# The four printed spots in the Tleilaxu track's first space (seats 0..3:
+# top row left to right, then the bottom row); their two rows are also the
+# rows discs take in the other spaces.
+TRACK_START_DISCS: Final = ((6.08, 8.65), (12.28, 8.65), (6.08, 17.36), (12.28, 17.36))
+# The start piece of the research track prints three spots in a column;
+# the fourth seat's disc continues the column onto the flask under them.
+RESEARCH_START_DISCS: Final = ((4.39, 38.79), (4.39, 47.47), (4.39, 56.3), (4.39, 65.0))
+
 
 def bene_tleilax_layout() -> dict[str, Any]:
     """Return the overlay layout as plain JSON-ready values."""
@@ -74,4 +93,8 @@ def bene_tleilax_layout() -> dict[str, Any]:
         "track_band": list(TRACK_BAND),
         "track_cells": [[left, width] for left, width in TRACK_CELLS],
         "spice_point": list(SPICE_POINT),
+        "disc_size": DISC_SIZE,
+        "aspect": SCAN_ASPECT,
+        "track_start_discs": [list(point) for point in TRACK_START_DISCS],
+        "research_start_discs": [list(point) for point in RESEARCH_START_DISCS],
     }

@@ -40,22 +40,26 @@ def test_marker_tables_cover_the_printed_tracks() -> None:
     )
     assert strength["rows"][0] < strength["token_rows"][1]
     assert 0 < strength["token_size"] < strength["cells"][2] - strength["cells"][1]
-    # The Score marker and the Councilor token are one disc size: it fits
-    # inside a High Council circle (so it is narrower than their spacing),
-    # and four of them fit 2x2 in one cell of the Score track.
+    # The common player disc (Score marker, Councilor token) is exactly the
+    # printed High Council circle: 176 px of the 6012 px scan. Neighbouring
+    # circles do not touch, and one cell of the Score track holds one disc
+    # (seats that share a score overlap inside ``cell``).
     disc = layout["disc_size"]
-    assert isinstance(disc, float) and disc > 0
+    assert disc == 2.93
+    assert round(disc / 100 * 6012) == 176
     council_x = [point[0] for point in layout["council_seats"]]
     assert council_x == sorted(council_x)
     assert all(
         disc < right - left
         for left, right in zip(council_x, council_x[1:], strict=False)
     )
+    cell_width, cell_height = victory["cell"]
+    assert disc < cell_width and disc < cell_height
     score_pitches = [
         lower - upper
         for lower, upper in zip(victory["levels"], victory["levels"][1:], strict=False)
     ]
-    assert all(2 * disc < pitch for pitch in score_pitches)
+    assert all(abs(pitch - cell_height) < 0.02 for pitch in score_pitches)
     assert victory["overflow_y"] < victory["levels"][-1] - disc
     assert len(layout["garrisons"]) == 4
     assert len(layout["conflict_quadrants"]) == 4

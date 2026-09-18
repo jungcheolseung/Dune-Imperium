@@ -2786,15 +2786,17 @@ function strengthPicture(seat, src, size) {
   return token;
 }
 
-/* A seat's round marker on the printed tracks. The Score marker and the
-   Councilor token are the same disc, told apart by colour alone (no seat
-   number), sized as a percent of the stage like the pictured Combat
-   marker so that it fills its printed spot at any zoom. */
+/* The player disc: the one common round token in a seat's colour — the
+   Score marker and the Councilor token on the board, the research and
+   Tleilaxu track tokens on the Bene Tleilax board. Flat colour, no seat
+   number. `size` is its diameter as a percent of the stage it lies on
+   (the diameter of the spot that board prints for it); without a size it
+   is an inline disc for the text layouts. */
 function seatDisc(seat, className, size) {
   const disc = document.createElement("span");
   disc.className = `seat-disc ${className}`;
   disc.dataset.seat = String(seat);
-  disc.style.width = `${size}%`;
+  if (size !== undefined) disc.style.width = `${size}%`;
   disc.style.backgroundColor = SEAT_COLORS[seat];
   return disc;
 }
@@ -2805,19 +2807,31 @@ function scoreLevel(vp, tracks) {
   return Math.max(0, Math.min(vp, tracks.victory_points.levels.length));
 }
 
-/* Offsets (percent of the stage) that lay `count` discs of one size around
-   a point without covering each other: alone on the point, a pair side by
-   side, a triangle, a 2×2. A fifth disc and on would reuse the places. */
-function discCluster(count, size) {
-  const half = size / 2 + 0.05;
-  const places = count <= 1
-    ? [[0, 0]]
-    : count === 2
-      ? [[-half, 0], [half, 0]]
-      : count === 3
-        ? [[-half, -half], [half, -half], [0, half]]
-        : [[-half, -half], [half, -half], [-half, half], [half, half]];
-  return Array.from({ length: Math.max(count, 1) }, (_, index) => places[index % places.length]);
+/* Half the distance between two discs of `size` that share `room`: side by
+   side with a hair between them when the room allows it, overlapping just
+   enough to stay inside it when it does not. */
+function discHalfGap(size, room) {
+  return Math.max(0, Math.min(size / 2 + 0.05, (room - size) / 2));
+}
+
+/* Offsets that lay `count` discs around a point: alone on the point, a pair
+   side by side, a triangle, a 2×2 (a fifth disc and on would reuse the
+   places). `fromTop` keeps the first row on the point and puts the second
+   row under it, for spots where a lone disc must leave the print below it
+   readable; `upright` stands a pair one above the other, for room too
+   narrow to show two discs side by side. */
+function discCluster(count, halfX, halfY, { fromTop = false, upright = false } = {}) {
+  let places;
+  if (count <= 1) places = [[0, 0]];
+  else if (count === 2) places = upright ? [[0, -halfY], [0, halfY]] : [[-halfX, 0], [halfX, 0]];
+  else if (count === 3) places = [[-halfX, -halfY], [halfX, -halfY], [0, halfY]];
+  else places = [[-halfX, -halfY], [halfX, -halfY], [-halfX, halfY], [halfX, halfY]];
+  const twoRows = count >= 3 || (count === 2 && upright);
+  const lift = fromTop && twoRows ? halfY : 0;
+  return Array.from({ length: Math.max(count, 1) }, (_, index) => {
+    const [dx, dy] = places[index % places.length];
+    return [dx, dy + lift];
+  });
 }
 
 /* Live markers on the printed tracks (catalog.tracks, percent of the
@@ -2868,8 +2882,9 @@ function renderTrackMarkers(stage, view) {
     }
 
     /* A Score marker alone on its score lies on the centre of the cell, so
-       its height reads as the score; seats that share a score cluster
-       around that centre without covering each other (discCluster). */
+       its height reads as the score. The disc is as large as on the table
+       (a cell holds one), so seats that share a score cluster around that
+       centre and overlap just enough to stay inside the cell. */
     const vp = player.victory_points || 0;
     const vpToken = seatDisc(seat, "vp-token", tracks.disc_size);
     vpToken.title = `좌석 ${seat} · ${vp} VP`;
@@ -2878,7 +2893,12 @@ function renderTrackMarkers(stage, view) {
       ? tracks.victory_points.levels[level]
       : tracks.victory_points.overflow_y;
     const together = scoreStacks.get(level);
-    const [vpDx, vpDy] = discCluster(together.length, tracks.disc_size)[together.indexOf(seat)];
+    const [cellWidth, cellHeight] = tracks.victory_points.cell;
+    const [vpDx, vpDy] = discCluster(
+      together.length,
+      discHalfGap(tracks.disc_size, cellWidth),
+      discHalfGap(tracks.disc_size, cellHeight),
+    )[together.indexOf(seat)];
     placeAt(vpToken, tracks.victory_points.x + vpDx, vpY + vpDy);
     stage.appendChild(vpToken);
 
@@ -3351,7 +3371,7 @@ function renderBeneTleilax(market, view) {
     cell.appendChild(label);
     const tokens = document.createElement("span");
     tokens.className = "hex-tokens";
-    for (const seat of tokensBySpace[space.id] || []) tokens.appendChild(seatToken(seat, "rtoken"));
+    for (const seat of tokensBySpace[space.id] || []) tokens.appendChild(seatDisc(seat, "rtoken"));
     cell.appendChild(tokens);
     cell.title = `${space.id} · ${RESEARCH_BONUS_LABELS[space.bonus] || "보너스 없음"}`;
     grid.appendChild(cell);
@@ -3378,7 +3398,7 @@ function renderBeneTleilax(market, view) {
     const tokens = document.createElement("span");
     tokens.className = "hex-tokens";
     for (const player of view.players) {
-      if ((player.tleilaxu_space || 0) === index) tokens.appendChild(seatToken(player.player, "rtoken"));
+      if ((player.tleilaxu_space || 0) === index) tokens.appendChild(seatDisc(player.player, "rtoken"));
     }
     cell.appendChild(tokens);
     track.appendChild(cell);
@@ -3402,6 +3422,10 @@ function renderBeneTleilaxScan(layout, view) {
   stage.appendChild(map);
   const overlay = layout.layout;
   const [hexWidth, hexHeight] = overlay.hex_size;
+  /* The common player disc at the size of this board's printed spots; y
+     values are percents of the height, hence the taller figure. */
+  const discWidth = overlay.disc_size;
+  const discHeight = overlay.disc_size * overlay.aspect;
 
   /* Research hexes: a titled hotspot per space and the seats' tokens in
      its dark upper half, above the printed bonus. */
@@ -3424,10 +3448,24 @@ function renderBeneTleilaxScan(layout, view) {
         ? "Research 시작"
         : `${spaceId} · ${RESEARCH_BONUS_LABELS[bonusOf[spaceId]] || "보너스 없음"}`;
     stage.appendChild(hex);
+    /* The start piece prints a spot per disc (the fourth seat continues
+       the column); elsewhere the discs lie in the hex's dark upper half
+       and a second row, if three or more meet, goes over the bonus. */
     const seats = tokensBySpace[spaceId] || [];
+    const places = discCluster(
+      seats.length,
+      discHalfGap(discWidth, hexWidth - 1),
+      (discHeight + 0.1) / 2,
+      { fromTop: true },
+    );
     seats.forEach((seat, index) => {
-      const token = seatToken(seat, "bt-token");
-      placeAt(token, x - 2.2 + (index % 2) * 2.6, y - 6.5 + Math.floor(index / 2) * 3.4);
+      const token = seatDisc(seat, "bt-token", discWidth);
+      if (spaceId === layout.research_start) {
+        const [sx, sy] = overlay.research_start_discs[seat % overlay.research_start_discs.length];
+        placeAt(token, sx, sy);
+      } else {
+        placeAt(token, x + places[index][0], y - hexHeight / 4 + places[index][1]);
+      }
       stage.appendChild(token);
     });
   }
@@ -3445,10 +3483,24 @@ function renderBeneTleilaxScan(layout, view) {
     const bonus = layout.tleilaxu_track[index];
     cell.title = `Tleilaxu track ${index}${TLEILAXU_TRACK_LABELS[bonus] ? " · " + TLEILAXU_TRACK_LABELS[bonus] : ""}`;
     stage.appendChild(cell);
+    /* The first space prints a spot per disc. The other spaces take the
+       same two rows: the upper one first, which leaves the printed bonus
+       in sight, and a pair stands upright where a space is too narrow. */
     const seats = view.players.filter((p) => (p.tleilaxu_space || 0) === index);
+    const [rowTop, rowBottom] = [overlay.track_start_discs[0][1], overlay.track_start_discs[2][1]];
+    const halfX = discHalfGap(discWidth, width - 0.4);
+    const places = discCluster(seats.length, halfX, (rowBottom - rowTop) / 2, {
+      fromTop: true,
+      upright: halfX < discWidth * 0.3,
+    });
     seats.forEach((player, slot) => {
-      const token = seatToken(player.player, "bt-token");
-      placeAt(token, left + 1.0 + slot * 2.7, bandTop + bandHeight - 5.5);
+      const token = seatDisc(player.player, "bt-token", discWidth);
+      if (index === 0) {
+        const [sx, sy] = overlay.track_start_discs[player.player % overlay.track_start_discs.length];
+        placeAt(token, sx, sy);
+      } else {
+        placeAt(token, left + width / 2 + places[slot][0], rowTop + places[slot][1]);
+      }
       stage.appendChild(token);
     });
   });

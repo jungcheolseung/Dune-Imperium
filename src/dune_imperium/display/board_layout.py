@@ -114,6 +114,9 @@ ALLIANCE_POINT: Final = (7.5, 4.0)
 VICTORY_POINT_X: Final = 96.5
 VICTORY_POINT_Y: Final = tuple(round(94.56 - 5.275 * level, 2) for level in range(13))
 VICTORY_POINT_OVERFLOW_Y: Final = 27.0
+# One cell of the track, (width, height): the diamonds stand 4.5 apart and
+# the cells are 5.275 tall. Discs that share a score overlap to stay inside.
+VICTORY_POINT_CELL: Final = (4.5, 5.275)
 
 # Combat strength track: two numbered rows along the bottom edge, cells
 # 1..10 on the upper row and 11..20 on the lower row (same columns;
@@ -147,11 +150,13 @@ CONFLICT_QUADRANTS: Final = ((56.5, 83.0), (56.5, 71.8), (74.0, 71.8), (74.0, 83
 # circles (diameter 2.91; re-measured 2026-09-18 from the white rings).
 COUNCIL_SEATS: Final = ((42.18, 5.22), (46.0, 5.22), (49.83, 5.22), (53.64, 5.22))
 
-# The Score marker and the Councilor token are the same round disc in the
-# seat's colour. Its diameter as a percent of the scan's width: it fits in
-# a High Council circle, and four of them fit 2x2 in one cell of the Score
-# track (4.5 wide between the diamonds, 5.275 tall).
-SEAT_DISC_SIZE: Final = 2.2
+# The player disc: one common round token in the seat's colour, used for the
+# Score marker and the Councilor token here and for the research and
+# Tleilaxu track tokens on the Bene Tleilax board. Its diameter is exactly
+# the printed High Council circle's (the white ring's outer diameter,
+# 176 px of the 6012 px scan on all four circles; measured 2026-09-18), as
+# a percent of the scan's width.
+SEAT_DISC_SIZE: Final = 2.93
 
 # Printed card slots, ``(left, top, width, height)`` like ``SPACE_BOXES``
 # (measured 2026-09-06). Two faint portrait frames stand under Deep Desert,
@@ -179,6 +184,7 @@ def marker_layout() -> dict[str, Any]:
             "x": VICTORY_POINT_X,
             "levels": list(VICTORY_POINT_Y),
             "overflow_y": VICTORY_POINT_OVERFLOW_Y,
+            "cell": list(VICTORY_POINT_CELL),
         },
         "strength": {
             "cells": list(STRENGTH_CELL_X),

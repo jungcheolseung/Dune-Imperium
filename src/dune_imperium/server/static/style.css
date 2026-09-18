@@ -337,17 +337,20 @@ button:disabled { opacity: 0.5; cursor: wait; }
   height: 1.5em;
   font-size: 0.8em;
 }
-/* The Score marker and the Councilor token: one round disc, flat in the
-   seat's colour and with no number — the same colour, edge and shadow as
-   the Influence cubes (.track-cube). The colour and the width, a percent
-   of the stage, are set inline. */
+/* The player disc (seatDisc): the one common round token — Score marker,
+   Councilor token, the Bene Tleilax board's research and track tokens.
+   Flat in the seat's colour, no number: the same colour, edge and shadow
+   as the Influence cubes (.track-cube). On a board scan its centre is
+   placed and its width, a percent of the stage, is set inline. */
 .seat-disc {
-  position: absolute;
-  transform: translate(-50%, -50%);
   aspect-ratio: 1;
   border: 1px solid #111;
   border-radius: 50%;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+.board-stage .seat-disc, .bt-stage .seat-disc {
+  position: absolute;
+  transform: translate(-50%, -50%);
 }
 /* The strength token's "+20" face: inverted colours and the printed +20. */
 .strength-token { position: absolute; }
@@ -895,17 +898,7 @@ button:disabled { opacity: 0.5; cursor: wait; }
 .bene-tleilax .hex.start { background: rgba(47, 179, 255, 0.15); }
 .bene-tleilax .hex-label { opacity: 0.85; line-height: 1.15; }
 .bene-tleilax .hex-tokens { display: flex; gap: 2px; flex-wrap: wrap; min-height: 1.1rem; }
-.bene-tleilax .rtoken {
-  display: inline-block;
-  width: 1rem;
-  height: 1rem;
-  border-radius: 50%;
-  font-size: 0.65rem;
-  line-height: 1rem;
-  text-align: center;
-  color: #111;
-  font-weight: 700;
-}
+.bene-tleilax .rtoken { display: inline-block; width: 1rem; }
 .bene-tleilax .tleilaxu-track { display: flex; gap: 3px; overflow-x: auto; padding: 3px; }
 .bene-tleilax .track-cell {
   flex: 1 0 4.5rem;
@@ -924,21 +917,7 @@ button:disabled { opacity: 0.5; cursor: wait; }
 .bt-map { display: block; width: 100%; height: auto; border-radius: 6px; user-select: none; }
 .bt-hex, .bt-track-cell { position: absolute; }
 .bt-hex:hover, .bt-track-cell:hover { outline: 2px solid var(--glow); border-radius: 8px; }
-.bt-token {
-  position: absolute;
-  width: 2.4%;
-  aspect-ratio: 1;
-  border-radius: 50%;
-  font-size: 0.6rem;
-  line-height: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #111;
-  font-weight: 700;
-  box-shadow: 0 0 0 1px #111;
-  pointer-events: none;
-}
+.bt-token { pointer-events: none; }
 .bt-spice {
   position: absolute;
   transform: translate(-50%, -50%);

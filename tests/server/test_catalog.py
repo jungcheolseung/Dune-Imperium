@@ -363,6 +363,12 @@ def test_catalog_bene_tleilax_layout_covers_the_board() -> None:
             assert isinstance(value, float) and 0 <= value <= 100
     cells = layout["track_cells"]
     assert isinstance(cells, list) and len(cells) == 8
+    # The tokens are the common player disc at this board's printed size
+    # (tests/unit/display/test_bene_tleilax_layout.py pins the geometry).
+    assert layout["disc_size"] == 5.84
+    for key in ("track_start_discs", "research_start_discs"):
+        spots = layout[key]
+        assert isinstance(spots, list) and len(spots) == 4
     with_scan = build_catalog(bene_tleilax_image=True)["bene_tleilax"]
     assert isinstance(with_scan, dict)
     assert with_scan["image"] == "/bene-tleilax-image"
