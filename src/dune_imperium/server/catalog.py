@@ -88,11 +88,27 @@ def build_catalog(
     *,
     bene_tleilax_image: bool = False,
     token_files: frozenset[str] = frozenset(),
+    asset_versions: frozenset[tuple[str, str]] = frozenset(),
 ) -> JsonObject:
-    """Return every display mapping the browser UI needs, keyed by ID."""
+    """Return every display mapping the browser UI needs, keyed by ID.
 
+    ``asset_versions`` pairs an asset URL with a token of the file behind it
+    (``asset_url_versions`` in ``server.app``). The catalog hands such a URL
+    out as ``<url>?v=<token>``: the owner replaces pictures in place, and a
+    browser that cached the old file under the same URL would go on showing
+    it without asking (a replaced Tuek's Sietch did, 2026-09-18).
+    """
+
+    versions = dict(asset_versions)
+
+    def versioned(url: str) -> str:
+        version = versions.get(url)
+        return f"{url}?v={version}" if version else url
+
+    # Card pictures as final URLs, so every ``_image_url`` below is versioned.
     image_files: dict[tuple[str, str], str] = {
-        (kind, content_id): path for kind, content_id, path in image_index
+        (kind, content_id): versioned(card_image_url(path))
+        for kind, content_id, path in image_index
     }
     cards: dict[str, JsonValue] = {}
     for card_id, starter in STARTING_CARDS_BY_ID.items():
@@ -234,7 +250,9 @@ def build_catalog(
             "tleilaxu_spice_space": TLEILAXU_SETUP_SPICE_SPACE,
             # The owner's scan and the percent layout drawn over it; without
             # the scan the client draws a synthetic grid.
-            "image": "/bene-tleilax-image" if bene_tleilax_image else None,
+            "image": (
+                versioned("/bene-tleilax-image") if bene_tleilax_image else None
+            ),
             "layout": bene_tleilax_layout(),
         },
         # Bloodlines Skill tiles and Tech Module tiles, keyed by their ids.
@@ -284,24 +302,27 @@ def build_catalog(
             post_id: [x, y] for post_id, (x, y) in POST_POINTS.items()
         },
         "icons": {
-            name: f"/icons/{filename}"
+            name: versioned(f"/icons/{filename}")
             for name, filename in available_icons(icon_files).items()
         },
-        "board_image": "/board-image" if board_image else None,
+        "board_image": versioned("/board-image") if board_image else None,
         # Each seat's pictured Combat marker (sword face and "+20" face), or
         # null where the local token directory lacks either face: the client
         # then draws its own seat token.
         "strength_tokens": [
             None
             if faces is None
-            else {"front": f"/tokens/{faces[0]}", "plus20": f"/tokens/{faces[1]}"}
+            else {
+                "front": versioned(f"/tokens/{faces[0]}"),
+                "plus20": versioned(f"/tokens/{faces[1]}"),
+            }
             for faces in available_strength_tokens(token_files)
         ],
         # The Shield Wall token on its marked position [Main p. 4]: the
         # picture (null without the local file) and where it lies.
         "shield_wall": {
             "image": (
-                f"/tokens/{SHIELD_WALL_TOKEN_FILENAME}"
+                versioned(f"/tokens/{SHIELD_WALL_TOKEN_FILENAME}")
                 if SHIELD_WALL_TOKEN_FILENAME in token_files
                 else None
             ),
@@ -457,12 +478,17 @@ def _conflict_rewards(conflict: ConflictDefinition) -> list[JsonValue] | None:
     return rewards
 
 
+def card_image_url(path: str) -> str:
+    """Return the mounted URL of a card picture; printed names carry spaces etc."""
+
+    return f"/card-images/{quote(path)}"
+
+
 def _image_url(
     kind: str,
     content_id: str,
     image_files: dict[tuple[str, str], str],
 ) -> str | None:
-    """Resolve to the mounted file URL; printed names carry spaces etc."""
+    """Look the picture's URL up (``build_catalog`` made them final)."""
 
-    path = image_files.get((kind, content_id))
-    return f"/card-images/{quote(path)}" if path is not None else None
+    return image_files.get((kind, content_id))

@@ -26,7 +26,7 @@ snapshot call, so the stream never has to be filtered per seat.
 """
 
 import os
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Iterator, Mapping
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Final
@@ -44,7 +44,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from dune_imperium.display.images import resolve_card_images
 from dune_imperium.server.access import AccessMode, Credentials
 from dune_imperium.server.autosave import Autosaver
-from dune_imperium.server.catalog import build_catalog
+from dune_imperium.server.catalog import build_catalog, card_image_url
 from dune_imperium.server.events import DEFAULT_HEARTBEAT_SECONDS, DoorbellHub
 from dune_imperium.server.persistence import (
     SaveError,
@@ -104,6 +104,27 @@ def default_icons_directory() -> Path:
     if override:
         return Path(override)
     return _ASSETS_DIR / "icons"
+
+
+def asset_url_versions(files: Mapping[str, Path]) -> frozenset[tuple[str, str]]:
+    """Return ``(url, version)`` for every asset URL whose file exists.
+
+    The version is the file's modification time and size, so replacing a
+    picture in place (same name, same URL) gives the catalog a new
+    ``?v=`` and the browsers fetch it instead of reusing what they cached:
+    the asset mounts send only ``Last-Modified``/``ETag``, which lets a
+    browser serve an old file for days without asking. Read once at server
+    start, like the file listings themselves.
+    """
+
+    versions: set[tuple[str, str]] = set()
+    for url, path in files.items():
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        versions.add((url, f"{stat.st_mtime_ns // 1_000_000:x}-{stat.st_size:x}"))
+    return frozenset(versions)
 
 
 def default_tokens_directory() -> Path:
@@ -341,6 +362,12 @@ def create_app(
         if bene_tleilax_image is not None
         else default_bene_tleilax_image_path()
     )
+    asset_versions = asset_url_versions(
+        {card_image_url(path): images_dir / path for _, _, path in image_index}
+        | {f"/icons/{name}": icon_dir / name for name in icon_files}
+        | {f"/tokens/{name}": token_dir / name for name in token_files}
+        | {"/board-image": board_path, "/bene-tleilax-image": bene_tleilax_path}
+    )
     app = FastAPI(title="Dune: Imperium - Uprising local play server")
     # Whoever runs the server ends the open event streams through this when
     # it is asked to stop (``cli.server``); they never end by themselves.
@@ -363,6 +390,7 @@ def create_app(
             board_path.is_file(),
             bene_tleilax_image=bene_tleilax_path.is_file(),
             token_files=token_files,
+            asset_versions=asset_versions,
         )
 
     @app.get("/board-image", include_in_schema=False)

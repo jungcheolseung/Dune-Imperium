@@ -13,6 +13,18 @@ from dune_imperium.server.app import create_app  # noqa: E402
 from dune_imperium.server.sessions import GameSessionManager  # noqa: E402
 
 
+def _unversioned(url: str) -> str:
+    """Return an asset URL without its ``?v=`` and insist that it had one.
+
+    ``create_app`` hands every asset URL out with a version of the file
+    behind it, so that a picture replaced in place is fetched again.
+    """
+
+    path, marker, version = url.partition("?v=")
+    assert marker and version, url
+    return path
+
+
 @pytest.fixture
 def client(tmp_path: Path) -> TestClient:
     # The image locations are pinned to nonexistent paths so the tests
@@ -302,7 +314,7 @@ def test_card_images_are_served_from_a_manifest_checkout(tmp_path: Path) -> None
     ) as image_client:
         catalog = image_client.get("/catalog").json()
         soldier = catalog["cards"]["sardaukar_soldier"]
-        assert soldier["image"] == (
+        assert _unversioned(soldier["image"]) == (
             "/card-images/en/uprising/imperium/Sardaukar%20Soldier.webp"
         )
         assert catalog["cards"]["dagger"]["image"] is None
@@ -347,10 +359,11 @@ def test_board_scan_and_icons_are_served_when_present(tmp_path: Path) -> None:
         )
     ) as image_client:
         catalog = image_client.get("/catalog").json()
-        assert catalog["icons"] == {"troop": "/icons/troop.png"}
-        assert catalog["board_image"] == "/board-image"
-        assert image_client.get("/icons/troop.png").content == b"png-troop"
-        served = image_client.get("/board-image")
+        assert set(catalog["icons"]) == {"troop"}
+        assert _unversioned(catalog["icons"]["troop"]) == "/icons/troop.png"
+        assert _unversioned(catalog["board_image"]) == "/board-image"
+        assert image_client.get(catalog["icons"]["troop"]).content == b"png-troop"
+        served = image_client.get(catalog["board_image"])
         assert served.status_code == 200
         assert served.content == b"jpeg-board"
 
@@ -367,8 +380,9 @@ def test_board_scan_and_icons_are_served_when_present(tmp_path: Path) -> None:
         )
     ) as scan_client:
         catalog = scan_client.get("/catalog").json()
-        assert catalog["bene_tleilax"]["image"] == "/bene-tleilax-image"
-        served = scan_client.get("/bene-tleilax-image")
+        scan_url = catalog["bene_tleilax"]["image"]
+        assert _unversioned(scan_url) == "/bene-tleilax-image"
+        served = scan_client.get(scan_url)
         assert served.status_code == 200
         assert served.content == b"jpeg-bene-tleilax"
 
@@ -390,16 +404,10 @@ def test_pictured_combat_markers_are_served_when_present(tmp_path: Path) -> None
         )
     ) as token_client:
         catalog = token_client.get("/catalog").json()
-        assert catalog["strength_tokens"] == [
-            None,
-            None,
-            {
-                "front": "/tokens/strength_green.png",
-                "plus20": "/tokens/strength_green_plus20.png",
-            },
-            None,
-        ]
         green = catalog["strength_tokens"][2]
+        assert catalog["strength_tokens"] == [None, None, green, None]
+        assert _unversioned(green["front"]) == "/tokens/strength_green.png"
+        assert _unversioned(green["plus20"]) == "/tokens/strength_green_plus20.png"
         assert token_client.get(green["front"]).content == b"png-green-sword"
         assert token_client.get(green["plus20"]).content == b"png-green-plus20"
         # No Shield Wall picture in that directory: a place, no image.
@@ -416,8 +424,46 @@ def test_pictured_combat_markers_are_served_when_present(tmp_path: Path) -> None
         )
     ) as wall_client:
         wall = wall_client.get("/catalog").json()["shield_wall"]
-        assert wall["image"] == "/tokens/shield_wall.png"
+        assert _unversioned(wall["image"]) == "/tokens/shield_wall.png"
         assert wall_client.get(wall["image"]).content == b"png-shield-wall"
+
+
+def test_a_picture_replaced_in_place_gets_a_new_url(tmp_path: Path) -> None:
+    """The owner swaps pictures under the same name (Tuek's Sietch,
+    2026-09-18). The mounts send no Cache-Control, so a browser keeps showing
+    what it cached under an unchanged URL; the version makes the URL change.
+    """
+
+    tokens = tmp_path / "tokens"
+    tokens.mkdir()
+    wall_file = tokens / "shield_wall.png"
+    board = tmp_path / "board.jpg"
+
+    def asset_urls() -> tuple[str, str]:
+        with TestClient(
+            create_app(
+                saves_dir=tmp_path / "saves",
+                card_images_dir=tmp_path / "no-images",
+                icons_dir=tmp_path / "no-icons",
+                tokens_dir=tokens,
+                board_image=board,
+            )
+        ) as asset_client:
+            catalog = asset_client.get("/catalog").json()
+            return catalog["shield_wall"]["image"], catalog["board_image"]
+
+    wall_file.write_bytes(b"old-wall")
+    board.write_bytes(b"old-board")
+    old_wall, old_board = asset_urls()
+    assert asset_urls() == (old_wall, old_board)  # unchanged files, same URLs
+
+    wall_file.write_bytes(b"a-new-wall-picture")
+    board.write_bytes(b"a-new-board-scan")
+    new_wall, new_board = asset_urls()
+    assert _unversioned(new_wall) == _unversioned(old_wall) == "/tokens/shield_wall.png"
+    assert new_wall != old_wall
+    assert _unversioned(new_board) == "/board-image"
+    assert new_board != old_board
 
 
 def test_undo_and_log_over_http(client: TestClient) -> None:

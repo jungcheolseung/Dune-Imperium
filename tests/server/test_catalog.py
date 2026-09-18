@@ -231,6 +231,52 @@ def test_catalog_image_urls_follow_the_resolved_index() -> None:
     assert soldier["image"] is None
 
 
+def test_catalog_appends_the_version_of_every_asset_it_knows() -> None:
+    versions = frozenset(
+        {
+            ("/card-images/en/uprising/location/Arrakeen.webp", "c1"),
+            ("/icons/troop.png", "i1"),
+            ("/tokens/shield_wall.png", "t1"),
+            ("/board-image", "b1"),
+            ("/bene-tleilax-image", "s1"),
+        }
+    )
+    catalog = build_catalog(
+        frozenset(
+            {
+                ("location", "arrakeen", "en/uprising/location/Arrakeen.webp"),
+                ("other", "dagger", "en/base/starting/Dagger.webp"),
+            }
+        ),
+        frozenset({"troop.png", "spice.png"}),
+        True,
+        bene_tleilax_image=True,
+        token_files=frozenset({"shield_wall.png"}),
+        asset_versions=versions,
+    )
+    spaces = catalog["spaces"]
+    cards = catalog["cards"]
+    wall = catalog["shield_wall"]
+    scan = catalog["bene_tleilax"]
+    assert isinstance(spaces, dict) and isinstance(cards, dict)
+    assert isinstance(wall, dict) and isinstance(scan, dict)
+    arrakeen = spaces["arrakeen"]
+    dagger = cards["dagger"]
+    assert isinstance(arrakeen, dict) and isinstance(dagger, dict)
+    assert arrakeen["image"] == (
+        "/card-images/en/uprising/location/Arrakeen.webp?v=c1"
+    )
+    # An asset without a known version keeps its plain URL.
+    assert dagger["image"] == "/card-images/en/base/starting/Dagger.webp"
+    assert catalog["icons"] == {
+        "troop": "/icons/troop.png?v=i1",
+        "spice": "/icons/spice.png",
+    }
+    assert wall["image"] == "/tokens/shield_wall.png?v=t1"
+    assert catalog["board_image"] == "/board-image?v=b1"
+    assert scan["image"] == "/bene-tleilax-image?v=s1"
+
+
 def test_catalog_lays_the_pieces_the_scan_does_not_print() -> None:
     bare = build_catalog()
     # The Shield Wall token on its marked position [Main p. 4]: always a
