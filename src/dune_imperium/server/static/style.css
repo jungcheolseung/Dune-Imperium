@@ -337,7 +337,22 @@ button:disabled { opacity: 0.5; cursor: wait; }
   height: 1.5em;
   font-size: 0.8em;
 }
-.council-token { width: 1.9em; height: 1.9em; }
+/* The Score marker and the Councilor token: one round disc in the seat's
+   colour and no number (the colour and the width, a percent of the stage,
+   are set inline). */
+.seat-disc {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  aspect-ratio: 1;
+  border: 1px solid rgba(0, 0, 0, 0.8);
+  border-radius: 50%;
+  background-image: radial-gradient(
+    circle at 35% 30%,
+    rgba(255, 255, 255, 0.55),
+    rgba(255, 255, 255, 0) 55%
+  );
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.85), inset 0 -2px 3px rgba(0, 0, 0, 0.35);
+}
 /* The strength token's "+20" face: inverted colours and the printed +20. */
 .strength-token { position: absolute; }
 .strength-token.flipped {

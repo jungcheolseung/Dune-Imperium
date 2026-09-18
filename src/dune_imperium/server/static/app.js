@@ -2786,6 +2786,40 @@ function strengthPicture(seat, src, size) {
   return token;
 }
 
+/* A seat's round marker on the printed tracks. The Score marker and the
+   Councilor token are the same disc, told apart by colour alone (no seat
+   number), sized as a percent of the stage like the pictured Combat
+   marker so that it fills its printed spot at any zoom. */
+function seatDisc(seat, className, size) {
+  const disc = document.createElement("span");
+  disc.className = `seat-disc ${className}`;
+  disc.dataset.seat = String(seat);
+  disc.style.width = `${size}%`;
+  disc.style.backgroundColor = SEAT_COLORS[seat];
+  return disc;
+}
+
+/* The cell of the Score track a score is shown on: its printed number, or
+   one shared place on the emblem above the last number for anything higher. */
+function scoreLevel(vp, tracks) {
+  return Math.max(0, Math.min(vp, tracks.victory_points.levels.length));
+}
+
+/* Offsets (percent of the stage) that lay `count` discs of one size around
+   a point without covering each other: alone on the point, a pair side by
+   side, a triangle, a 2×2. A fifth disc and on would reuse the places. */
+function discCluster(count, size) {
+  const half = size / 2 + 0.05;
+  const places = count <= 1
+    ? [[0, 0]]
+    : count === 2
+      ? [[-half, 0], [half, 0]]
+      : count === 3
+        ? [[-half, -half], [half, -half], [0, half]]
+        : [[-half, -half], [half, -half], [-half, half], [half, half]];
+  return Array.from({ length: Math.max(count, 1) }, (_, index) => places[index % places.length]);
+}
+
 /* Live markers on the printed tracks (catalog.tracks, percent of the
    scan): Influence cubes and Alliance rings on the Faction strips, VP
    tokens on the score column, strength tokens on the combat track, deployed
@@ -2796,13 +2830,18 @@ function renderTrackMarkers(stage, view) {
   if (!tracks || !Array.isArray(view.players)) return;
   const factions = Object.keys(FACTION_LABELS);
   let councilSlot = 0;
-  /* The seats on each cell of the combat track, in seat order. */
+  /* The seats on each cell of the combat track and of the Score track, in
+     seat order. */
   const strengthStacks = new Map();
+  const scoreStacks = new Map();
   view.players.forEach((player, index) => {
     const seat = typeof player.player_id === "number" ? player.player_id : index;
     const shown = strengthCell(player.combat_strength || 0);
     if (!strengthStacks.has(shown)) strengthStacks.set(shown, []);
     strengthStacks.get(shown).push(seat);
+    const level = scoreLevel(player.victory_points || 0, tracks);
+    if (!scoreStacks.has(level)) scoreStacks.set(level, []);
+    scoreStacks.get(level).push(seat);
   });
   view.players.forEach((player, index) => {
     const seat = typeof player.player_id === "number" ? player.player_id : index;
@@ -2828,13 +2867,19 @@ function renderTrackMarkers(stage, view) {
       }
     }
 
+    /* A Score marker alone on its score lies on the centre of the cell, so
+       its height reads as the score; seats that share a score cluster
+       around that centre without covering each other (discCluster). */
     const vp = player.victory_points || 0;
-    const vpToken = seatToken(seat, "track-token vp-token");
+    const vpToken = seatDisc(seat, "vp-token", tracks.disc_size);
     vpToken.title = `좌석 ${seat} · ${vp} VP`;
-    const vpY = vp < tracks.victory_points.levels.length
-      ? tracks.victory_points.levels[vp]
+    const level = scoreLevel(vp, tracks);
+    const vpY = level < tracks.victory_points.levels.length
+      ? tracks.victory_points.levels[level]
       : tracks.victory_points.overflow_y;
-    placeAt(vpToken, tracks.victory_points.x + (seat - 1.5) * 1.3, vpY);
+    const together = scoreStacks.get(level);
+    const [vpDx, vpDy] = discCluster(together.length, tracks.disc_size)[together.indexOf(seat)];
+    placeAt(vpToken, tracks.victory_points.x + vpDx, vpY + vpDy);
     stage.appendChild(vpToken);
 
     const units =
@@ -2948,7 +2993,7 @@ function renderTrackMarkers(stage, view) {
     if (player.high_council && councilSlot < tracks.council_seats.length) {
       const [cx, cy] = tracks.council_seats[councilSlot];
       councilSlot += 1;
-      const token = seatToken(seat, "track-token council-token");
+      const token = seatDisc(seat, "council-token", tracks.disc_size);
       token.title = `좌석 ${seat} · High Council`;
       placeAt(token, cx, cy);
       stage.appendChild(token);

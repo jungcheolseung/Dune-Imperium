@@ -105,12 +105,15 @@ INFLUENCE_SEAT_X: Final = (4.9, 6.7, 8.5, 10.3)
 ALLIANCE_POINT: Final = (7.5, 4.0)
 
 # Victory Point track: the numbered column on the right edge, 0 at the
-# bottom and 12 at the top; higher scores share the emblem above 12.
+# bottom and 12 at the top; higher scores share the emblem above 12. The
+# values are the centres of the printed cells (re-measured 2026-09-18 from
+# the divider diamonds at x 94.25 and 98.75: cell 0 spans y 91.92..97.19 and
+# the pitch is 5.275), because a Score marker now fills a quarter of its
+# cell instead of being a dot somewhere on it. The emblem's centre is about
+# 27.3; the overflow row sits a little higher to stay clear of cell 12.
 VICTORY_POINT_X: Final = 96.5
-VICTORY_POINT_Y: Final = (
-    95.0, 89.7, 84.5, 79.0, 73.5, 68.5, 63.0, 57.7, 52.5, 47.0, 41.5, 36.0, 30.5
-)
-VICTORY_POINT_OVERFLOW_Y: Final = 25.5
+VICTORY_POINT_Y: Final = tuple(round(94.56 - 5.275 * level, 2) for level in range(13))
+VICTORY_POINT_OVERFLOW_Y: Final = 27.0
 
 # Combat strength track: two numbered rows along the bottom edge, cells
 # 1..10 on the upper row and 11..20 on the lower row (same columns;
@@ -140,8 +143,15 @@ STRENGTH_TOKEN_SIZE: Final = 3.0
 GARRISON_POINTS: Final = ((44.9, 83.1), (44.9, 71.8), (85.7, 71.8), (85.7, 83.1))
 CONFLICT_QUADRANTS: Final = ((56.5, 83.0), (56.5, 71.8), (74.0, 71.8), (74.0, 83.0))
 
-# The four High Council seats, left to right.
-COUNCIL_SEATS: Final = ((42.0, 5.5), (46.0, 5.5), (50.0, 5.5), (54.0, 5.5))
+# The four High Council seats, left to right: the centres of the printed
+# circles (diameter 2.91; re-measured 2026-09-18 from the white rings).
+COUNCIL_SEATS: Final = ((42.18, 5.22), (46.0, 5.22), (49.83, 5.22), (53.64, 5.22))
+
+# The Score marker and the Councilor token are the same round disc in the
+# seat's colour. Its diameter as a percent of the scan's width: it fits in
+# a High Council circle, and four of them fit 2x2 in one cell of the Score
+# track (4.5 wide between the diamonds, 5.275 tall).
+SEAT_DISC_SIZE: Final = 2.2
 
 # Printed card slots, ``(left, top, width, height)`` like ``SPACE_BOXES``
 # (measured 2026-09-06). Two faint portrait frames stand under Deep Desert,
@@ -180,6 +190,7 @@ def marker_layout() -> dict[str, Any]:
         "garrisons": [list(point) for point in GARRISON_POINTS],
         "conflict_quadrants": [list(point) for point in CONFLICT_QUADRANTS],
         "council_seats": [list(point) for point in COUNCIL_SEATS],
+        "disc_size": SEAT_DISC_SIZE,
         "conflict_deck_slot": list(CONFLICT_DECK_SLOT),
         "conflict_slot": list(CONFLICT_SLOT),
         "contract_slots": [list(box) for box in CONTRACT_SLOTS],
