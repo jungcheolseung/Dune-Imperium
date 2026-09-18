@@ -102,6 +102,32 @@ def test_simple_space_goldens() -> None:
     )
 
 
+def test_the_research_station_overlay_text_follows_the_immortality_table() -> None:
+    # "Draw two cards and research" [Immortality pp. 5, 16]: the overlay
+    # replaces the printed troops with Research, and only there.
+    assert space_option_effects("research_station", choam_module=False) == (
+        "Recruit 2 troops, Draw 2 cards",
+    )
+    assert space_option_effects(
+        "research_station", choam_module=False, immortality=True
+    ) == ("Draw 2 cards, Research (advance your research token)",)
+    from dune_imperium.content.uprising.board import BOARD_SPACES
+
+    differing = [
+        space.space_id
+        for space in BOARD_SPACES
+        if space_option_effects(space.space_id, choam_module=False, immortality=True)
+        != space_option_effects(space.space_id, choam_module=False)
+    ]
+    assert differing == ["research_station"]
+    # No space differs under both modules, so the client needs no combined
+    # CHOAM + Immortality variant.
+    for space_id in differing:
+        assert space_option_effects(
+            space_id, choam_module=True
+        ) == space_option_effects(space_id, choam_module=False)
+
+
 def test_faction_influence_appears_only_on_faction_icon_spaces() -> None:
     for choam_module in (False, True):
         for space in BOARD_SPACES:

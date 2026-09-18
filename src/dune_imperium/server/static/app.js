@@ -452,10 +452,37 @@ function choamActive() {
   return Boolean(state.summary && state.summary.choam_module);
 }
 
+/* What Immortality lays over a space (catalog.spaces[id].immortality): only
+   the Research Station has an overlay tile, with its own effect, picture
+   and the box where the tile covers the print. */
+function spaceOverlayFor(entry) {
+  return state.summary && state.summary.immortality && entry.immortality
+    ? entry.immortality
+    : null;
+}
+
 function spaceOptionsFor(entry) {
+  const overlay = spaceOverlayFor(entry);
+  if (overlay) return overlay.options;
   return choamActive() && entry.choam_options
     ? entry.choam_options
     : entry.options;
+}
+
+/* The picture that goes with an entry: a space under an overlay shows the
+   overlay tile's picture when the owner's assets have it. */
+function entryImage(entry) {
+  const overlay = spaceOverlayFor(entry);
+  return (overlay && overlay.image) || entry.image;
+}
+
+/* A Leader's own tile (Tuek's Sietch) is on the table only while that Leader
+   plays [Bloodlines p. 12]. */
+function spaceInPlay(entry, view) {
+  return (
+    !entry.required_leader_id ||
+    (view.players || []).some((player) => player.leader_id === entry.required_leader_id)
+  );
 }
 
 function spaceImplementedFor(entry) {
@@ -524,10 +551,10 @@ function openPopover(entry, anchor) {
   if (meta.childNodes.length) pop.appendChild(meta);
 
   for (const node of popoverNodes(entry)) pop.appendChild(node);
-  if (entry.image) {
+  if (entryImage(entry)) {
     const image = document.createElement("img");
     image.loading = "lazy";
-    image.src = entry.image;
+    image.src = entryImage(entry);
     image.alt = entry.name;
     pop.appendChild(image);
   }
@@ -2612,6 +2639,21 @@ function renderBoard() {
   }
 }
 
+/* A picture laid on the board scan at a box (percent of the stage). */
+function boardPiece(src, box, className) {
+  const [left, top, width, height] = box;
+  const piece = document.createElement("img");
+  piece.className = className;
+  piece.src = src;
+  piece.alt = "";
+  piece.draggable = false;
+  piece.style.left = `${left}%`;
+  piece.style.top = `${top}%`;
+  piece.style.width = `${width}%`;
+  piece.style.height = `${height}%`;
+  return piece;
+}
+
 /* The scanned board with the live state on top: a hotspot per space
    (catalog.spaces[id].box, percent of the image), Agent tokens, Control
    flags, Maker bonus spice, and Spies on the observation posts. */
@@ -2628,7 +2670,29 @@ function renderBoardStage(board, view) {
   const { occupants, controllers, spies } = boardOccupancy(view);
   const makerSpice = new Map(view.maker_bonus_spice);
 
+  /* Pieces that lie on the board, under the hotspots and the tokens. The
+     Shield Wall token stays on its marked position until a player removes
+     it [Main pp. 4, 10]; a Leader's tile in play and Immortality's overlay
+     tile are pictures the scan does not have. */
+  const wall = state.catalog.shield_wall;
+  if (view.shield_wall_present && wall && wall.image) {
+    const token = boardPiece(wall.image, wall.box, "shield-wall-token");
+    token.alt = "Shield Wall";
+    token.style.transform = `rotate(${wall.rotation}deg)`;
+    stage.appendChild(token);
+  }
+  for (const entry of Object.values(state.catalog.spaces)) {
+    if (!spaceInPlay(entry, view)) continue;
+    const overlay = spaceOverlayFor(entry);
+    if (overlay && overlay.image) {
+      stage.appendChild(boardPiece(overlay.image, overlay.tile_box, "board-tile"));
+    } else if (entry.tile_box && entry.image) {
+      stage.appendChild(boardPiece(entry.image, entry.tile_box, "board-tile"));
+    }
+  }
+
   for (const [spaceId, entry] of Object.entries(state.catalog.spaces)) {
+    if (!spaceInPlay(entry, view)) continue;
     const [left, top, width, height] = entry.box;
     const hotspot = document.createElement("button");
     hotspot.type = "button";
@@ -3040,7 +3104,9 @@ function renderSpaceList(board, view) {
 
   for (const [iconId, label] of AGENT_ICON_GROUPS) {
     const spaceIds = Object.keys(catalog.spaces).filter(
-      (spaceId) => catalog.spaces[spaceId].agent_icon === iconId
+      (spaceId) =>
+        catalog.spaces[spaceId].agent_icon === iconId &&
+        spaceInPlay(catalog.spaces[spaceId], view)
     );
     if (!spaceIds.length) continue;
     const body = section(board, label);

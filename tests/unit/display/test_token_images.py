@@ -1,6 +1,7 @@
 """Tests for the pictured Combat marker filenames and their availability."""
 
 from dune_imperium.display.token_images import (
+    SHIELD_WALL_TOKEN_FILENAME,
     STRENGTH_TOKEN_COLORS,
     available_strength_tokens,
     strength_token_filenames,
@@ -59,3 +60,14 @@ def test_a_seat_gets_pictures_only_with_both_faces() -> None:
     assert available_strength_tokens(complete) == tuple(
         strength_token_filenames(color) for color in STRENGTH_TOKEN_COLORS
     )
+
+
+def test_the_shield_wall_token_has_its_own_picture() -> None:
+    names = {
+        name
+        for color in STRENGTH_TOKEN_COLORS
+        for name in strength_token_filenames(color)
+    }
+    assert SHIELD_WALL_TOKEN_FILENAME == "shield_wall.png"
+    assert SHIELD_WALL_TOKEN_FILENAME not in names
+

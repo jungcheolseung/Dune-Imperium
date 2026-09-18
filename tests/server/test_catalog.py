@@ -231,6 +231,91 @@ def test_catalog_image_urls_follow_the_resolved_index() -> None:
     assert soldier["image"] is None
 
 
+def test_catalog_lays_the_pieces_the_scan_does_not_print() -> None:
+    bare = build_catalog()
+    # The Shield Wall token on its marked position [Main p. 4]: always a
+    # place, a picture only with the local file.
+    wall = bare["shield_wall"]
+    assert isinstance(wall, dict)
+    assert wall["image"] is None
+    assert wall["rotation"] == 180
+    box = wall["box"]
+    assert isinstance(box, list) and len(box) == 4
+    with_wall = build_catalog(token_files=frozenset({"shield_wall.png"}))
+    pictured = with_wall["shield_wall"]
+    assert isinstance(pictured, dict)
+    assert pictured["image"] == "/tokens/shield_wall.png"
+
+    spaces = bare["spaces"]
+    assert isinstance(spaces, dict)
+    # Immortality's Research Station overlay: "Draw two cards and research"
+    # [Immortality pp. 5, 16] over the printed "Recruit 2 troops, Draw 2
+    # cards", with its own picture and the box it covers.
+    station = spaces["research_station"]
+    assert isinstance(station, dict)
+    assert station["options"] == [
+        {
+            "cost": {"solari": 0, "spice": 0, "water": 2},
+            "effect": "Recruit 2 troops, Draw 2 cards",
+        }
+    ]
+    overlay = station["immortality"]
+    assert isinstance(overlay, dict)
+    assert overlay["options"] == [
+        {
+            "cost": {"solari": 0, "spice": 0, "water": 2},
+            "effect": "Draw 2 cards, Research (advance your research token)",
+        }
+    ]
+    assert overlay["image"] is None
+    tile_box = overlay["tile_box"]
+    assert isinstance(tile_box, list) and len(tile_box) == 4
+    overlays = [
+        space_id
+        for space_id, entry in spaces.items()
+        if isinstance(entry, dict) and entry["immortality"] is not None
+    ]
+    assert overlays == ["research_station"]
+
+    with_overlay = build_catalog(
+        frozenset(
+            {
+                (
+                    "location",
+                    "research_station_overlay",
+                    "en/immortality/location/Research Station.jpg",
+                ),
+                ("location", "research_station", "en/uprising/location/RS.webp"),
+            }
+        )
+    )["spaces"]
+    assert isinstance(with_overlay, dict)
+    station = with_overlay["research_station"]
+    assert isinstance(station, dict)
+    assert station["image"] == "/card-images/en/uprising/location/RS.webp"
+    overlay = station["immortality"]
+    assert isinstance(overlay, dict)
+    assert overlay["image"] == (
+        "/card-images/en/immortality/location/Research%20Station.jpg"
+    )
+
+    # A Leader's own tile is on the table only while that Leader plays
+    # [Bloodlines p. 12]; the scan has no print, so its picture is drawn.
+    tuek = spaces["tuek_sietch"]
+    assert isinstance(tuek, dict)
+    assert tuek["required_leader_id"] == "esmar_tuek"
+    assert tuek["tile_box"] == tuek["box"]
+    printed = [
+        space_id
+        for space_id, entry in spaces.items()
+        if isinstance(entry, dict) and entry["required_leader_id"] is None
+    ]
+    assert len(printed) == len(spaces) - 1
+    arrakeen = spaces["arrakeen"]
+    assert isinstance(arrakeen, dict)
+    assert arrakeen["tile_box"] is None
+
+
 def test_catalog_carries_board_overlay_layout_and_optional_icons() -> None:
     catalog = build_catalog()
     spaces = catalog["spaces"]

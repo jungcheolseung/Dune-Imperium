@@ -402,6 +402,22 @@ def test_pictured_combat_markers_are_served_when_present(tmp_path: Path) -> None
         green = catalog["strength_tokens"][2]
         assert token_client.get(green["front"]).content == b"png-green-sword"
         assert token_client.get(green["plus20"]).content == b"png-green-plus20"
+        # No Shield Wall picture in that directory: a place, no image.
+        assert catalog["shield_wall"]["image"] is None
+
+    (tokens / "shield_wall.png").write_bytes(b"png-shield-wall")
+    with TestClient(
+        create_app(
+            saves_dir=tmp_path / "saves",
+            card_images_dir=tmp_path / "no-images",
+            icons_dir=tmp_path / "no-icons",
+            tokens_dir=tokens,
+            board_image=tmp_path / "no-map.jpg",
+        )
+    ) as wall_client:
+        wall = wall_client.get("/catalog").json()["shield_wall"]
+        assert wall["image"] == "/tokens/shield_wall.png"
+        assert wall_client.get(wall["image"]).content == b"png-shield-wall"
 
 
 def test_undo_and_log_over_http(client: TestClient) -> None:

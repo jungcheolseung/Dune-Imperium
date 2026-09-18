@@ -66,10 +66,17 @@ from dune_imperium.display.bloodlines import (
 )
 from dune_imperium.display.board_layout import (
     POST_POINTS,
+    RESEARCH_STATION_OVERLAY_BOX,
+    SHIELD_WALL_BOX,
+    SHIELD_WALL_ROTATION,
     SPACE_BOXES,
     marker_layout,
 )
-from dune_imperium.display.images import IXIAN_EMBASSY_IMAGE_ID
+from dune_imperium.display.images import (
+    IXIAN_EMBASSY_IMAGE_ID,
+    RESEARCH_STATION_OVERLAY_IMAGE_ID,
+)
+from dune_imperium.display.token_images import SHIELD_WALL_TOKEN_FILENAME
 from dune_imperium.server.sessions import JsonObject, JsonValue
 
 
@@ -290,6 +297,17 @@ def build_catalog(
             else {"front": f"/tokens/{faces[0]}", "plus20": f"/tokens/{faces[1]}"}
             for faces in available_strength_tokens(token_files)
         ],
+        # The Shield Wall token on its marked position [Main p. 4]: the
+        # picture (null without the local file) and where it lies.
+        "shield_wall": {
+            "image": (
+                f"/tokens/{SHIELD_WALL_TOKEN_FILENAME}"
+                if SHIELD_WALL_TOKEN_FILENAME in token_files
+                else None
+            ),
+            "box": list(SHIELD_WALL_BOX),
+            "rotation": SHIELD_WALL_ROTATION,
+        },
         # Live-state marker coordinates on the scan (Influence, VP, strength,
         # Conflict quadrants, High Council seats), percent of the image.
         "tracks": marker_layout(),
@@ -385,11 +403,49 @@ def _space(space_id: str, image_files: dict[tuple[str, str], str]) -> JsonObject
         ),
         "options": options,
         "choam_options": choam_options,
+        "immortality": _immortality_overlay(space_id, costs, base_effects, image_files),
         "notes": list(space_notes(space_id)),
         "box": list(SPACE_BOXES[space_id]),
         "implemented": space_is_implemented(space_id, choam_module=False),
         "choam_implemented": space_is_implemented(space_id, choam_module=True),
         "image": _image_url("location", space_id, image_files),
+        # A Leader's own tile (Tuek's Sietch) is on the table only while that
+        # Leader plays [Bloodlines p. 12]; the scan has no print for it, so
+        # its picture is drawn in its box.
+        "required_leader_id": space.required_leader_id,
+        "tile_box": (
+            list(SPACE_BOXES[space_id])
+            if space.required_leader_id is not None
+            else None
+        ),
+    }
+
+
+def _immortality_overlay(
+    space_id: str,
+    costs: list[JsonObject],
+    base_effects: tuple[str, ...],
+    image_files: dict[tuple[str, str], str],
+) -> JsonObject | None:
+    """Return what Immortality lays over the space, or ``None``.
+
+    Only the Research Station has an overlay tile: its own effect text (from
+    the engine's table for that ruleset), its picture and the box where the
+    tile covers the print. No space differs under both CHOAM and
+    Immortality, so the client needs no combined variant (a test pins it).
+    """
+
+    effects = space_option_effects(space_id, choam_module=False, immortality=True)
+    if effects == base_effects:
+        return None
+    assert space_id == "research_station", space_id
+    return {
+        "options": [
+            {"cost": cost, "effect": effect}
+            for cost, effect in zip(costs, effects, strict=True)
+        ],
+        "image": _image_url("location", RESEARCH_STATION_OVERLAY_IMAGE_ID, image_files),
+        "tile_box": list(RESEARCH_STATION_OVERLAY_BOX),
     }
 
 

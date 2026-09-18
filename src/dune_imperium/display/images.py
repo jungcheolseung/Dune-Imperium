@@ -48,6 +48,10 @@ _CATALOG_KIND: Final[Mapping[str, str]] = MappingProxyType(
 # images under the ``other`` kind.
 IXIAN_EMBASSY_IMAGE_ID: Final = "ixian_embassy_board"
 
+# Immortality's Research Station overlay tile, keyed under ``location``
+# beside the printed space it covers (``research_station``).
+RESEARCH_STATION_OVERLAY_IMAGE_ID: Final = "research_station_overlay"
+
 type ImageKey = tuple[str, str]
 """``(catalog kind, content_id)``: the key the display catalog resolves."""
 
@@ -142,4 +146,5 @@ def required_image_keys() -> tuple[ImageKey, ...]:
     # Forces; its Imperium and Intrigue cards are in the lists above.
     keys += [("tleilaxu", entry.card.card_id) for entry in TLEILAXU_CARDS]
     keys.append(("tleilaxu", RECLAIMED_FORCES.card.card_id))
+    keys.append(("location", RESEARCH_STATION_OVERLAY_IMAGE_ID))
     return tuple(dict.fromkeys(keys))

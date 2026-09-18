@@ -212,8 +212,14 @@ def space_option_effects(
     space_id: str,
     *,
     choam_module: bool,
+    immortality: bool = False,
 ) -> tuple[str, ...]:
-    """Return one English effect line per cost option of the space."""
+    """Return one English effect line per cost option of the space.
+
+    ``immortality`` reads the engine's table for that ruleset, so the
+    Research Station overlay's "Draw two cards and research" [Immortality
+    pp. 5, 16] comes out of the same effects the engine executes.
+    """
 
     authored = _AUTHORED_OPTION_EFFECTS.get(
         (space_id, choam_module)
@@ -221,7 +227,9 @@ def space_option_effects(
     if authored is not None:
         return authored
     return tuple(
-        _automatic_option_text(space_id, option, choam_module=choam_module)
+        _automatic_option_text(
+            space_id, option, choam_module=choam_module, immortality=immortality
+        )
         for option in range(space_option_count(space_id))
     )
 
@@ -250,6 +258,7 @@ def _automatic_option_text(
     cost_option: int,
     *,
     choam_module: bool,
+    immortality: bool = False,
 ) -> str:
     fragments: list[str] = []
     faction = BOARD_SPACES_BY_ID[space_id].faction
@@ -259,6 +268,7 @@ def _automatic_option_text(
         space_id,
         cost_option,
         choam_module=choam_module,
+        immortality=immortality,
     ):
         fragments.extend(automatic_effect_texts(effect))
     return ", ".join(fragments)

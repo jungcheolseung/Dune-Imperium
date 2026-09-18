@@ -457,6 +457,17 @@ button:disabled { opacity: 0.5; cursor: wait; }
   font-weight: 700;
   white-space: nowrap;
 }
+/* Pieces laid on the scan (boardPiece): the Shield Wall token, and the
+   tiles the scan has no print for (a Leader's space, Immortality's
+   Research Station overlay). They lie under the hotspots. */
+.shield-wall-token, .board-tile {
+  position: absolute;
+  display: block;
+  pointer-events: none;
+  user-select: none;
+}
+.shield-wall-token { filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.7)); }
+.board-tile { border-radius: 3px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.75); }
 .board-note {
   position: absolute;
   right: 1%;

@@ -57,12 +57,34 @@ SPACE_BOXES: Final[Mapping[str, tuple[float, float, float, float]]] = (
             "imperial_basin": (74.0, 43.5, 16.0, 7.0),
             "hagga_basin": (49.5, 49.5, 17.5, 7.5),
             "deep_desert": (31.0, 56.0, 18.0, 7.0),
-            # Bloodlines: Esmar Tuek's tile sits next to the board; drawn in
-            # the empty desert under Imperial Basin.
-            "tuek_sietch": (74.0, 53.0, 16.0, 7.0),
+            # Bloodlines: Esmar Tuek's tile sits next to the board; its
+            # picture is drawn in the empty desert under Imperial Basin,
+            # clear of that space's Control banner and of the border line
+            # (re-placed 2026-09-18). The box has the tile picture's shape
+            # (550x310) at the printed spaces' scale: their picture frames
+            # are 7.6 wide (Imperial Basin 7.62, Research Station 7.57).
+            "tuek_sietch": (74.5, 56.8, 16.0, 9.03),
         }
     )
 )
+
+# The Research Station overlay of Immortality ("Draw two cards and
+# research" [Immortality pp. 5, 16]) covers the printed space: the box of
+# its tile picture (782x425), found by matching the picture's landscape,
+# Agent icon and water drops against the print (normalised cross-correlation
+# 0.94, 2026-09-18).
+RESEARCH_STATION_OVERLAY_BOX: Final = (38.81, 32.14, 15.58, 8.48)
+
+# The Shield Wall token: "Shield Wall을 Spice Refinery 아래의 표시된 위치에
+# 놓는다." [Main p. 4] (docs/rules/setup-and-game-flow.md). The marked
+# position is the faint footprint with the rubble between Spice Refinery and
+# Imperial Basin, where the white border of the protected region breaks off.
+# The box is the token picture's (980x985), turned half round as it lies on
+# the board: its left edge is the footprint's (63.27), its white line runs
+# on from the border's two ends (the horizontal end at y 49.59, the turn at
+# x 63.9) and it hides all of the printed rubble (measured 2026-09-18).
+SHIELD_WALL_BOX: Final = (63.27, 42.4, 7.75, 7.8)
+SHIELD_WALL_ROTATION: Final = 180
 
 POST_POINTS: Final[Mapping[str, tuple[float, float]]] = MappingProxyType(
     {

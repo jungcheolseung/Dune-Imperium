@@ -14,6 +14,11 @@ keeps its drawn seat token.
 
 from typing import Final
 
+# The Shield Wall token's picture in the same directory: on the board until
+# a player removes it, "제거된 Shield Wall은 게임이 끝날 때까지 돌아오지 않는다"
+# [Main p. 10] (docs/rules/player-turns.md).
+SHIELD_WALL_TOKEN_FILENAME: Final = "shield_wall.png"
+
 # The token colour of each seat, in seat order. The browser UI tints
 # everything else a seat owns with ``SEAT_COLORS`` in ``server/static/app.js``
 # (blue, red, green, yellow); keep the two tables in step.

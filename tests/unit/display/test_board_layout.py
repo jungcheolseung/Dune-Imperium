@@ -7,6 +7,9 @@ from dune_imperium.content.uprising.board import (
 )
 from dune_imperium.display.board_layout import (
     POST_POINTS,
+    RESEARCH_STATION_OVERLAY_BOX,
+    SHIELD_WALL_BOX,
+    SHIELD_WALL_ROTATION,
     SPACE_BOXES,
     marker_layout,
 )
@@ -135,3 +138,39 @@ def test_hotspot_boxes_do_not_overlap() -> None:
                 or second[1] + second[3] <= first[1]
             )
             assert separated, (first_id, second_id)
+
+
+def test_pieces_laid_on_the_scan_keep_their_pictures_shape() -> None:
+    # Boxes are percents of a 6012 x 6005 scan, so a picture's shape is its
+    # box's width over height times the scan's.
+    scan_aspect = 6012 / 6005
+
+    def box_aspect(box: tuple[float, float, float, float]) -> float:
+        _, _, width, height = box
+        return width / height * scan_aspect
+
+    # The Shield Wall token (980 x 985) lies half turned on its marked
+    # position between Spice Refinery and Imperial Basin [Main p. 4].
+    assert abs(box_aspect(SHIELD_WALL_BOX) - 980 / 985) < 0.01
+    assert SHIELD_WALL_ROTATION == 180
+    wall_left, wall_top, wall_width, wall_height = SHIELD_WALL_BOX
+    refinery = SPACE_BOXES["spice_refinery"]
+    basin = SPACE_BOXES["imperial_basin"]
+    assert wall_top > refinery[1] + refinery[3]  # below Spice Refinery
+    assert wall_left + wall_width < basin[0]  # left of Imperial Basin
+    assert refinery[0] < wall_left + wall_width / 2 < basin[0]
+
+    # Immortality's Research Station overlay (782 x 425) covers the printed
+    # space, whose hotspot stays inside it.
+    assert abs(box_aspect(RESEARCH_STATION_OVERLAY_BOX) - 782 / 425) < 0.01
+    left, top, width, height = RESEARCH_STATION_OVERLAY_BOX
+    hot_left, hot_top, hot_width, hot_height = SPACE_BOXES["research_station"]
+    assert left <= hot_left and hot_left + hot_width <= left + width
+    assert top <= hot_top and hot_top + hot_height <= top + height
+
+    # Tuek's Sietch has no print: its box is its tile picture (550 x 310),
+    # clear of Imperial Basin above it.
+    tuek = SPACE_BOXES["tuek_sietch"]
+    assert abs(box_aspect(tuek) - 550 / 310) < 0.01
+    assert tuek[1] > basin[1] + basin[3]
+
