@@ -143,6 +143,9 @@ def build_catalog(
             agent_icons=tuple(icon.value for icon in entry.agent_icons),
             text=personal_card_text(entry),
             image=_image_url("imperium", card_id, image_files),
+            # Immortality's Imperium deck has Graft cards too (Dissecting
+            # Kit, Corrino Genes, ...), not only the Tleilaxu deck.
+            graft=entry.graft,
         )
     # Immortality: the Tleilaxu deck (bought with specimens, not Persuasion)
     # and the fixed Reclaimed Forces card of the Tleilaxu Row.

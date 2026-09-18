@@ -231,6 +231,35 @@ def test_catalog_image_urls_follow_the_resolved_index() -> None:
     assert soldier["image"] is None
 
 
+def test_catalog_flags_every_graft_card_the_engine_knows() -> None:
+    """Graft cards are in Immortality's Imperium deck as well as in the
+    Tleilaxu deck [Immortality p. 10]. The browser reads the flag for the
+    card's "Graft" mark and to tell which two hand cards may be played
+    together; the Imperium ones were missing until 2026-09-19."""
+
+    from dune_imperium.content.immortality.tleilaxu import TLEILAXU_CARDS_BY_ID
+    from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS_BY_ID
+    from dune_imperium.content.uprising.personal_cards import card_is_graft
+
+    cards = build_catalog()["cards"]
+    assert isinstance(cards, dict)
+    flagged = {
+        card_id
+        for card_id, entry in cards.items()
+        if isinstance(entry, dict) and entry.get("graft")
+    }
+    engine = {
+        card_id
+        for card_id, entry in (
+            *IMPERIUM_CARDS_BY_ID.items(),
+            *TLEILAXU_CARDS_BY_ID.items(),
+        )
+        if card_is_graft(entry)
+    }
+    assert flagged == engine
+    assert "dissecting_kit" in flagged and "ghola" in flagged
+
+
 def test_catalog_appends_the_version_of_every_asset_it_knows() -> None:
     versions = frozenset(
         {
