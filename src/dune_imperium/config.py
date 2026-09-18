@@ -59,3 +59,31 @@ class RulesetConfig:
         tech = "+tech" if self.tech_module else ""
         immortality = "+immortality" if self.immortality else ""
         return f"uprising-4p-{module}{promo}{bloodlines}{tech}{immortality}"
+
+    @classmethod
+    def from_identifier(cls, identifier: str) -> RulesetConfig:
+        """Rebuild the configuration behind an ``identifier`` string.
+
+        Checkpoints and reports carry only the identifier; the inverse lets
+        them rebuild their ruleset (and so their action catalog) later.
+        ``leader_draft`` is not part of the identifier and stays off.
+        """
+
+        prefix = "uprising-4p-"
+        if not identifier.startswith(prefix):
+            raise ValueError(f"unknown ruleset identifier: {identifier!r}")
+        module, *options = identifier.removeprefix(prefix).split("+")
+        if module not in ("base", "choam"):
+            raise ValueError(f"unknown ruleset identifier: {identifier!r}")
+        order = ("promo", "bloodlines", "tech", "immortality")
+        if len(set(options)) != len(options) or any(o not in order for o in options):
+            raise ValueError(f"unknown ruleset identifier: {identifier!r}")
+        if options != [o for o in order if o in options]:
+            raise ValueError(f"unknown ruleset identifier: {identifier!r}")
+        return cls(
+            choam_module=module == "choam",
+            promo_cards="promo" in options,
+            bloodlines="bloodlines" in options,
+            tech_module="tech" in options,
+            immortality="immortality" in options,
+        )
