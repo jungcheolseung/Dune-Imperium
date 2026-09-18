@@ -244,3 +244,14 @@
   않는다; 편집이 필요하면 셀을 멈추고 로그에 HEAD와 함께 "트리 변경"을 적은 뒤 다시 시작한다.
   (3) 셀 스크립트는 첫 줄에 `git rev-parse HEAD`와 `git status --short`를 함께 적어, 결과 파일이
   어느 트리에서 나왔는지 나중에 확인할 수 있게 한다.
+
+## 2026-09-18 — 새 파일을 쓴다면서 같은 이름의 기존 모듈을 덮어씀
+
+- 무슨 일: Combat marker 그림용 모듈을 `src/dune_imperium/display/tokens.py`로 heredoc(`cat >`)해 만들었는데, 그 경로에는
+  이미 personal-card 효과 문구 모듈이 있었다. 기존 내용이 통째로 사라졌고, 미리보기 서버가
+  `ImportError: cannot import name 'ACQUISITION_EFFECT_TEXT'`로 안 뜨면서 바로 드러났다. 작업 트리가 깨끗한 추적 파일이라
+  `git checkout HEAD -- <경로>`로 손실 없이 복원했고 새 모듈은 `token_images.py`로 했다.
+- 원인: "새 모듈"이라고 단정하고 경로를 확인하지 않았다. `display/`에는 `icons.py`·`images.py`처럼 그림 쪽 이름과
+  `tokens.py`(문구 쪽 "token")가 섞여 있어 이름이 겹치기 쉽다. 셸 리다이렉트는 Write 도구와 달리 덮어쓰기를 막지 않는다.
+- 재발 방지: 새 파일을 만들기 전에 `test ! -e <경로>`(또는 `ls`)로 없음을 확인하고, heredoc으로 만들 때는 그 확인을 같은
+  명령의 앞에 `&&`로 묶는다. 추적되지 않는 파일이었다면 복원할 길이 없었다 — 미추적·미커밋 파일이 있는 트리에서는 더 그렇다.
