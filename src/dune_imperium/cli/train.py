@@ -67,7 +67,19 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--entropy", type=float, default=0.01)
     parser.add_argument("--value-coefficient", type=float, default=0.5)
     parser.add_argument("--minibatch", type=int, default=4096)
-    parser.add_argument("--epochs", type=int, default=1)
+    parser.add_argument(
+        "--epochs",
+        type=int,
+        default=1,
+        help="passes over each collected batch (default: 1); use several only "
+        "with --clip",
+    )
+    parser.add_argument(
+        "--clip",
+        type=float,
+        default=None,
+        help="PPO clip range, e.g. 0.2 (default: off, plain REINFORCE)",
+    )
     parser.add_argument(
         "--opponent",
         default=None,
@@ -159,6 +171,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 entropy_coefficient=arguments.entropy,
                 minibatch_size=arguments.minibatch,
                 epochs=arguments.epochs,
+                clip_ratio=arguments.clip,
             ),
             opponent=arguments.opponent,
             temperature=arguments.temperature,
