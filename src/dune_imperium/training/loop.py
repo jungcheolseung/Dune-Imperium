@@ -4,7 +4,9 @@ Every iteration plays ``games_per_iteration`` seeded games through the
 lockstep runner with the learner in every seat (or, with an opponent kind,
 the learner rotating through one seat of a table of that baseline), keeps
 the learner's own decisions, applies one learner update, appends a JSON
-line of statistics, and saves ``latest.pt`` plus a numbered checkpoint.
+line of statistics, and saves ``latest.pt`` plus, every ``checkpoint_every``
+iterations, a numbered checkpoint (78 MB each for the full-expansion
+catalog, so an overnight run keeps one in every few dozen).
 Every ``eval_every`` iterations the latest checkpoint enters an in-process
 tournament against the evaluation opponent so progress is measured with
 the same tool as every other baseline. Training seeds start far above the
@@ -74,6 +76,9 @@ class TrainConfig:
     eval_every: int = 0
     eval_games: int = 10
     eval_opponent: str = "heuristic"
+    # Keep a numbered checkpoint every N iterations; ``latest.pt`` is
+    # rewritten every iteration regardless.
+    checkpoint_every: int = 1
     resume: Path | None = None
 
     def __post_init__(self) -> None:
@@ -85,6 +90,8 @@ class TrainConfig:
             raise ValueError(f"unknown evaluation opponent: {self.eval_opponent!r}")
         if self.eval_every < 0 or self.eval_games < 1:
             raise ValueError("eval_every must not be negative; eval_games positive")
+        if self.checkpoint_every < 1:
+            raise ValueError("checkpoint_every must be positive")
         if self.workers < 1:
             raise ValueError("workers must be positive")
         if self.step_penalty < 0.0:
@@ -246,12 +253,13 @@ def train(
                 metadata={"config": _config_document(config)},
                 optimizer_state=learner.optimizer_state(),
             )
-            save_checkpoint(
-                config.out_dir / f"iteration_{iteration + 1:05d}.pt",
-                learner.network,
-                ruleset=ruleset.identifier,
-                iteration=iteration + 1,
-            )
+            if (iteration + 1) % config.checkpoint_every == 0:
+                save_checkpoint(
+                    config.out_dir / f"iteration_{iteration + 1:05d}.pt",
+                    learner.network,
+                    ruleset=ruleset.identifier,
+                    iteration=iteration + 1,
+                )
             eval_win_rate = eval_mean_rank = None
             if config.eval_every and (iteration + 1) % config.eval_every == 0:
                 eval_win_rate, eval_mean_rank = _evaluate(config, latest)

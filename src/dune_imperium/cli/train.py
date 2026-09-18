@@ -98,6 +98,13 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--eval-games", type=int, default=10)
     parser.add_argument("--eval-opponent", default="heuristic")
     parser.add_argument(
+        "--checkpoint-every",
+        type=int,
+        default=1,
+        help="keep a numbered checkpoint every N iterations (default: 1); "
+        "latest.pt is always rewritten",
+    )
+    parser.add_argument(
         "--resume", type=Path, default=None, help="checkpoint to continue from"
     )
     return parser
@@ -153,6 +160,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             eval_every=arguments.eval_every,
             eval_games=arguments.eval_games,
             eval_opponent=arguments.eval_opponent,
+            checkpoint_every=arguments.checkpoint_every,
             resume=arguments.resume,
         )
     except ValueError as error:

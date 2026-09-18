@@ -489,3 +489,48 @@ def test_network_agent_never_plays_a_pure_undo_action() -> None:
     chosen = NetworkAgent(network, RulesetConfig()).choose_action(view, legal)
     assert chosen in legal
     assert chosen.action_id not in UNDO_ACTION_IDS
+
+
+def test_train_loop_keeps_a_numbered_checkpoint_every_n_iterations(
+    tmp_path: Path,
+) -> None:
+    result = train(
+        TrainConfig(
+            out_dir=tmp_path / "run",
+            iterations=3,
+            games_per_iteration=1,
+            seed=2,
+            hidden=(16,),
+            learner=LearnerConfig(minibatch_size=512),
+            checkpoint_every=2,
+        )
+    )
+
+    kept = sorted(path.name for path in (tmp_path / "run").glob("iteration_*.pt"))
+    assert kept == ["iteration_00002.pt"]
+    _, latest_info = load_checkpoint(result.latest_checkpoint)
+    assert latest_info.iteration == 3
+    with pytest.raises(ValueError, match="checkpoint_every"):
+        TrainConfig(out_dir=tmp_path, checkpoint_every=0)
+
+    exit_code = train_main(
+        [
+            "--out",
+            str(tmp_path / "cli"),
+            "--iterations",
+            "2",
+            "--games-per-iteration",
+            "1",
+            "--hidden",
+            "16",
+            "--minibatch",
+            "256",
+            "--checkpoint-every",
+            "2",
+        ]
+    )
+    assert exit_code == 0
+    assert sorted(path.name for path in (tmp_path / "cli").glob("iteration_*.pt")) == [
+        "iteration_00002.pt"
+    ]
+
