@@ -17,7 +17,7 @@ uv run ruff check src tests
 uv run mypy src tests
 ```
 
-2026-09-17(M14 슬라이스 6의 리허설 뒤)의 기준 결과는 pytest 1,748개 통과(2026-09-18 아침, M10 이관·codec v105 세션 뒤; `assets` symlink가 없는 머신은 `tests/unit/display/test_images.py`의 에셋 대조 테스트 1개만 skip되어 1,747 통과 + 1 skip이다 — 2026-09-17 밤 symlink를 떼고 실측한 관계이며, 그 전 판들이 옛 기준선 1,489에 덧셈으로 유도해 적던 "1,6xx + 1 skip"은 실측과 맞지 않았다; `app.js`를 고쳤다면 pytest로는 부족하고 브라우저 E2E [`scripts/e2e/`](../scripts/e2e/README.md)를 돌린다; `train` extra가 없으면 `tests/unit/training/test_torch_policy.py`가 추가로 skip된다), Ruff 통과, mypy 통과다. 현재 action codec은 `ACTION_CODEC_VERSION = 105`(기본 4,371개, CHOAM 4,657개, `promo_cards` 옵션 시 4,471/4,757개, `immortality` 옵션 시 9,326개 — graft 배치 변형과 카드 사본이 늘 때마다 커진다; `bloodlines`·`tech_module` 옵션은 별도 카탈로그로 훨씬 크고, `promo_cards`+`bloodlines`는 10,513개, promo+Bloodlines+Tech는 13,759개, CHOAM+Bloodlines는 11,156개, 다섯 옵션을 다 켜면 32,991개 — v105는 Chani의 Fedaykin Maneuver `retreat_leader_troops`의 Commander share count를 `retreat_intrigue_troops`처럼 19까지 늘려 Bloodlines 카탈로그마다 +28(2026-09-18, 아래 세션 요약; 옛 v104 체크포인트는 형식 2로 새겨 두면 이관된다), v98은 CHOAM+Bloodlines 카탈로그에만 contract token 8개의 행동과 `trash_intrigue_for_contract`를, v99는 `recall_conflict_agent_for_imperial_privilege`를, v100은 모든 카탈로그에 `skip_intrigue_acquisition`과 Change Allegiances의 세 번째 option을, v101은 Immortality 카탈로그에 `play_conflict_end_intrigue`(Harvest Cells 2장)·`decline_conflict_end_intrigue`를, v102는 Bloodlines+Immortality 카탈로그의 `give_intrigue_card`/`trash_intrigue_hand_card`/`trash_intrigue_for_contract`에 빠져 있던 Immortality Intrigue 사본을 더한다 — 소크가 적발; v103은 모든 카탈로그에 `use_intrigue_effect(section=0/1)`·`finish_intrigue_effects`를 더하고 Change Allegiances의 option을 하나로 되돌린다; v104는 Bloodlines 카탈로그의 `retreat_intrigue_troops` unit count를 12에서 12+7로 넓힌다 — Commander는 12개 병력과 별개 구성물이라 Conflict 유닛이 19까지 가고 Tactical Option이 그 전부를 제시하는데 카탈로그가 12에서 끊겨 있었다, 병렬 수집이 적발, 카탈로그마다 +28)이고, 관측은 `OBSERVATION_VERSION = 20`의 4,327-int 전체 게임 인코딩이다(v6~v9는 Bloodlines·Tech Module 세그먼트를 더한 것, v10은 Bloodlines 프로모 Ruthless Leadership의 identity 1개, v11은 Immortality 카탈로그의 Imperium 25·Intrigue 11 identity, v12는 Experimentation·Tleilaxu 19 identity와 Bene Tleilax board 세그먼트, v13은 round 한정 Reveal Persuasion과 Combat Intrigue 좌석, v14는 Imperium Ceremony가 peek한 Intrigue 두 장(소유자 전용), v15는 Chairdog의 반환 대기와 Usurp의 빌린 Row 카드(좌석 scalar 49→51), v16은 Bloodlines contract token 8개의 identity(contract 세그먼트 11개 × 8 = +88), v17은 frame 종류 `conflict_end_trigger`, v18은 `intrigue_effects` 추가로 decision kind index가 이동, v19는 Long Live the Fighters의 두 단계 pick이 전용 frame 종류 `LONG_LIVE_FIGHTERS`로 옮겨져 decision kind index가 다시 이동(v17~v19는 모두 길이 불변), v20은 OQ-059의 보류된 contract 아이콘 좌석 scalar 1개(좌석 scalar 51→52, +4 int); 옵션을 끈 룰셋에서는 새 칸이 전부 0이지만 길이가 달라져 v8 이전 체크포인트는 거부된다) ([`rl-environment.md`](rl-environment.md)). 보드 22칸 완결 + 즉시 공개 + `fab266f`/`e6fc298` 수정 + sweep 확장(`853ecd4`) 반영 후의 교차 소크는 random 룰셋당 2,000판 + heuristic 룰셋당 1,000판(둘 다 `--rotate-leaders`) + draft 두 policy 각 룰셋당 500판, 전부 `--soundness-interval 25`를 켠 총 7,000판이 실패 0으로 통과한 상태다(2026-09-01, 아래 세션 요약. 그 전 단계에서는 random 룰셋당 3,000판 비회전 소크도 실패 0이었다).
+2026-09-17(M14 슬라이스 6의 리허설 뒤)의 기준 결과는 pytest 1,752개 통과(2026-09-18 저녁, M10 PPO 슬라이스·A/B 세션 뒤; `assets` symlink가 없는 머신은 `tests/unit/display/test_images.py`의 에셋 대조 테스트 1개만 skip되어 1,751 통과 + 1 skip이다 — 2026-09-17 밤 symlink를 떼고 실측한 관계이며, 그 전 판들이 옛 기준선 1,489에 덧셈으로 유도해 적던 "1,6xx + 1 skip"은 실측과 맞지 않았다; `app.js`를 고쳤다면 pytest로는 부족하고 브라우저 E2E [`scripts/e2e/`](../scripts/e2e/README.md)를 돌린다; `train` extra가 없으면 `tests/unit/training/test_torch_policy.py`가 추가로 skip된다), Ruff 통과, mypy 통과다. 현재 action codec은 `ACTION_CODEC_VERSION = 105`(기본 4,371개, CHOAM 4,657개, `promo_cards` 옵션 시 4,471/4,757개, `immortality` 옵션 시 9,326개 — graft 배치 변형과 카드 사본이 늘 때마다 커진다; `bloodlines`·`tech_module` 옵션은 별도 카탈로그로 훨씬 크고, `promo_cards`+`bloodlines`는 10,513개, promo+Bloodlines+Tech는 13,759개, CHOAM+Bloodlines는 11,156개, 다섯 옵션을 다 켜면 32,991개 — v105는 Chani의 Fedaykin Maneuver `retreat_leader_troops`의 Commander share count를 `retreat_intrigue_troops`처럼 19까지 늘려 Bloodlines 카탈로그마다 +28(2026-09-18, 아래 세션 요약; 옛 v104 체크포인트는 형식 2로 새겨 두면 이관된다), v98은 CHOAM+Bloodlines 카탈로그에만 contract token 8개의 행동과 `trash_intrigue_for_contract`를, v99는 `recall_conflict_agent_for_imperial_privilege`를, v100은 모든 카탈로그에 `skip_intrigue_acquisition`과 Change Allegiances의 세 번째 option을, v101은 Immortality 카탈로그에 `play_conflict_end_intrigue`(Harvest Cells 2장)·`decline_conflict_end_intrigue`를, v102는 Bloodlines+Immortality 카탈로그의 `give_intrigue_card`/`trash_intrigue_hand_card`/`trash_intrigue_for_contract`에 빠져 있던 Immortality Intrigue 사본을 더한다 — 소크가 적발; v103은 모든 카탈로그에 `use_intrigue_effect(section=0/1)`·`finish_intrigue_effects`를 더하고 Change Allegiances의 option을 하나로 되돌린다; v104는 Bloodlines 카탈로그의 `retreat_intrigue_troops` unit count를 12에서 12+7로 넓힌다 — Commander는 12개 병력과 별개 구성물이라 Conflict 유닛이 19까지 가고 Tactical Option이 그 전부를 제시하는데 카탈로그가 12에서 끊겨 있었다, 병렬 수집이 적발, 카탈로그마다 +28)이고, 관측은 `OBSERVATION_VERSION = 20`의 4,327-int 전체 게임 인코딩이다(v6~v9는 Bloodlines·Tech Module 세그먼트를 더한 것, v10은 Bloodlines 프로모 Ruthless Leadership의 identity 1개, v11은 Immortality 카탈로그의 Imperium 25·Intrigue 11 identity, v12는 Experimentation·Tleilaxu 19 identity와 Bene Tleilax board 세그먼트, v13은 round 한정 Reveal Persuasion과 Combat Intrigue 좌석, v14는 Imperium Ceremony가 peek한 Intrigue 두 장(소유자 전용), v15는 Chairdog의 반환 대기와 Usurp의 빌린 Row 카드(좌석 scalar 49→51), v16은 Bloodlines contract token 8개의 identity(contract 세그먼트 11개 × 8 = +88), v17은 frame 종류 `conflict_end_trigger`, v18은 `intrigue_effects` 추가로 decision kind index가 이동, v19는 Long Live the Fighters의 두 단계 pick이 전용 frame 종류 `LONG_LIVE_FIGHTERS`로 옮겨져 decision kind index가 다시 이동(v17~v19는 모두 길이 불변), v20은 OQ-059의 보류된 contract 아이콘 좌석 scalar 1개(좌석 scalar 51→52, +4 int); 옵션을 끈 룰셋에서는 새 칸이 전부 0이지만 길이가 달라져 v8 이전 체크포인트는 거부된다) ([`rl-environment.md`](rl-environment.md)). 보드 22칸 완결 + 즉시 공개 + `fab266f`/`e6fc298` 수정 + sweep 확장(`853ecd4`) 반영 후의 교차 소크는 random 룰셋당 2,000판 + heuristic 룰셋당 1,000판(둘 다 `--rotate-leaders`) + draft 두 policy 각 룰셋당 500판, 전부 `--soundness-interval 25`를 켠 총 7,000판이 실패 0으로 통과한 상태다(2026-09-01, 아래 세션 요약. 그 전 단계에서는 random 룰셋당 3,000판 비회전 소크도 실패 0이었다).
 
 ## 현재 구현 기준선
 
@@ -59,15 +59,20 @@ seed 블록에서 **+5.1 ~ +9.1%p**다([evaluation/baseline-2026-09-16.md](evalu
 고쳤다. rollout `player_value` 가중치 A/B·tie-break heuristic의 소크·기준선 12셀 재측정은 이 세션 요약(아래)에 적힌 대로다.
 남은 것은 **M10 학습 재개**(사용자 결정)와 아래 0번의 학습 밖 후보다.
 
-0. (2026-09-18 아침, **M10 첫 밤샘 실행 완료 → 다음은 PPO 결정**) **M10 학습 — 전 확장 구성(codec v105, 32,991).** 첫 실행은
+0. (2026-09-18 저녁, **M10 정체 — PPO A/B는 부정 결과, 다음은 잡음 가설 실험**) **M10 학습 — 전 확장 구성(codec v105, 32,991).** 첫 실행은
    2026-09-17 밤 Windows PC(WSL)에서 했다(아래 "M10 첫 학습·되돌리기 루프·이관·codec v105" 세션 요약): 정책이 OQ-029의
    `deploy_troops`/`withdraw_troops`를 한 turn 안에서 수천 번 왕복하도록 학습돼 19 iteration 만에 죽었고(결정의 80%가 왕복,
    메모리 초과), 학습 수집과 체크포인트 greedy 플레이에서 되돌리기 두 행동을 정책에 제시하지 않게 고친 뒤([rl-environment.md](rl-environment.md)
    "정책에 주지 않는 되돌리기 행동") 837 iteration(26,784판, 7시간 46분)을 돌렸다. **실력은 400~550 iteration까지 오르고 그 뒤
    정체·요동한다**: 400판 4자 대전에서 500·550이 31.0%(대등 25%), 700은 11.5%로 후퇴, 825는 30.8%; heuristic 3명 상대 200판은
    400·600이 70.0%, 825가 61.5%(rollout 60.0%를 넘는다). **가장 좋은 체크포인트는 `checkpoints/2026-09-18/full-noundo/iteration_00550.pt`**
-   (그 PC의 gitignore 폴더; 다른 기기에는 파일을 복사한다). 다음은 이 문서가 예고한 정체 대응 — **PPO 슬라이스**(수집 log-prob 기록 +
-   clip + `--epochs` 3~4)를 넣고 550에서 `--resume`한다. 체크포인트는 이제 정체성 기반 이관(형식 2)이 있어 codec·관측 버전이
+   (그 PC의 gitignore 폴더; 다른 기기에는 파일을 복사한다). 이 문서가 예고했던 정체 대응인 **PPO 슬라이스는 넣었고(`--clip`, 기본 꺼짐)
+   A/B에서 부정 결과였다**(2026-09-18 저녁, 아래 세션 요약): 550에서 같은 seed로 100 iteration씩 — REINFORCE는 heuristic 3명 상대
+   75.5%(출발점 76.5%)로 평평하고 4자 대전에서는 출발점에 밀리며(35.0% 대 45.0%), PPO(clip 0.2·3 epoch·32판 배치)는 **43.0%로
+   무너졌다**(4자 대전 12.5%). value 과적합은 원인이 아니었고(새 게임의 설명력은 PPO가 가장 높다), 남은 가설은 **배치의 독립 표본이
+   32판의 승패뿐이라 갱신이 잡음에 끌려다닌다**는 것이다(REINFORCE도 25 iteration마다 greedy 행동의 1/3 이상이 바뀌는데 실력은 그대로).
+   다음 실험 후보: 학습률 3e-4 → 1e-4(진행 중), iteration당 64판(128판은 24 GB에 안 들어간다), 큰 배치에서 PPO 2 epoch, 여러 수집에
+   걸친 gradient accumulation. 기록은 그 PC의 `checkpoints/2026-09-18/ab-550/SUMMARY.md`. 체크포인트는 이제 정체성 기반 이관(형식 2)이 있어 codec·관측 버전이
    바뀌어도 이어 쓸 수 있다(`dune-imperium-checkpoint inspect|stamp|migrate`). 실행 명령(Windows PC, i7-13700K 24 스레드,
    WSL 24 GB; `--minibatch 1024`는 33k codec의 갱신 메모리를 낮추는 필수 옵션, `--checkpoint-every 25`는 하룻밤 90 GB의
    체크포인트를 막는다; 이 PC는 8 worker가 최적이고 16·24 worker는 더 느렸다):
@@ -311,6 +316,25 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 2026-09-07: `bloodlines` 브랜치(35 커밋)를 master 쪽에서 `--no-ff`로 머지했고(`dbd9b73`), 같은 날 저녁 슬라이스 6 커밋 5건과 이 문서 갱신을 master에 직접 올렸다. 아직 push하지 않았다면 `git log origin/master..master`로 확인한다. 비공개 에셋 저장소(`assets` symlink → `Dune-Imperium-assets`)에도 같은 날 manifest 커밋 6건(Bloodlines 카드 44장 content id, Leader 8종, Tuek's Sietch 타일 이미지, Twisted·Navigation 카드 키, Kota Odax의 content id `43c25fc`)이 있으니 다른 머신에서는 그쪽도 pull한다.
 
 2026-09-04 세션 종료 시점에 이 세션의 커밋 전부(보드·카드 아이콘 분리 v86/v87, 서버·UI 확인 흐름과 마커, Reveal 순서 v88, OQ-028 조건 판정 시점, OQ-029 등록)를 `origin/master`에 push했다. 새 세션은 `git fetch origin` 뒤 `git log origin/master..master`와 반대 방향을 확인하고, 일치하면 이 문서의 기준선을 그대로 쓴다. 에셋 저장소(`Dune-Imperium-assets`)의 `5b55e45` 1개 미push 여부는 그 저장소에서 확인한다. 원격에는 병합하지 않은 `kyungtae` 브랜치가 있다. 새 세션은 `git log origin/master..master`와 반대 방향을 모두 확인하고, checkout이 `853ecd4`보다 이전이면 이 문서의 989개 테스트·codec v84 기준선이 실제 코드와 일치하지 않는다. **다른 머신에서 이어서 작업한다면 먼저 이 머신에서 push가 필요하다.** 새 머신의 UI 카드 이미지·아이콘·보드 스캔은 비공개 `Dune-Imperium-assets` 저장소를 clone해 symlink로 연결한다(그 README 참고; 루트의 `assets` symlink 하나로 cards·icons·board·rulebooks를 모두 연결). 카드 매핑은 그 저장소의 `cards/manifest.json`에만 있으므로 접근이 없으면 텍스트 UI로 동작한다.
+
+## 2026-09-18 저녁 M10 PPO 슬라이스·A/B 세션 요약 (Windows PC WSL, master 직접 커밋, 관측 v20, codec v105)
+
+- **PPO 슬라이스(opt-in)**: `LearnerConfig.clip_ratio`/`--clip`이 정책 항을 clip된 surrogate로 바꾼다. 수집 정책의 log-prob은
+  `update` 시작 시점의 가중치로 다시 계산한다(수집이 바로 그 가중치·mask로 돌았으므로 궤적·worker 전송은 그대로).
+  `UpdateStats.clip_fraction`·`approx_kl`. 테스트가 "첫 PPO 스텝 = REINFORCE 스텝"과 "clip이 12 epoch의 정책 이동을 묶는다"를
+  고정한다. `--clip` 없이는 동작 불변.
+- **학습 중 평가의 실패 기록**: `IterationRecord.eval_failures`와 실행 폴더의 `eval_failures.log`. 전날 codec 결함이 평가 한 판을
+  조용히 빼먹은 구멍을 막았다. `--eval-games`는 seed 수(좌석 회전 4배)임을 도움말에 적었다.
+- **A/B(550에서 같은 seed·32판·8 worker·100 iteration, 순차)**: 대조군 58분, PPO(clip 0.2·3 epoch) 98분. 학습 중 평가(80판)는
+  대조군 70.0/72.5/71.2/70.0%, PPO 55.0/33.8/37.5/42.5%. 대전(seed 1000+): 4자 400판 — 출발점 550 45.0%, 대조군 650 35.0%,
+  PPO 650 12.5%, PPO 600 7.5%; heuristic 3명 상대 200판 — 출발점 76.5%, 대조군 75.5%, PPO 43.0%. PPO 진단은 내내 온건했다
+  (clip_fraction 0.04~0.06, approx_kl 0.004~0.006).
+- **진단(읽기 전용)**: 새 게임 24판의 value 설명력은 출발점 0.15·대조군 0.07·PPO 0.22 — PPO는 배치를 외우지만(배치 안 0.9+)
+  일반화는 더 낫다, 즉 value 과적합은 원인이 아니다. 출발점 정책의 선택 상태 8,551개에서 KL(출발점‖x)/greedy 일치/entropy는
+  대조군 575 0.40/56%/1.15·600 0.32/66%/0.76·650 0.49/54%/0.82, PPO 575 0.33/60%/1.09·600 0.68/41%/1.12. 가설(개입 미확인):
+  배치의 독립 표본은 32판의 승패이고, 다중 epoch는 그 잡음을 증폭한다.
+- `scripts/train/train_overnight.py --start-from`(다른 실행의 체크포인트에서 새 폴더로 시작), `fmt_iter.py`의 PPO 지표·평가 실패
+  표시. 검증: pytest 1,752, Ruff, mypy. 다음: 학습률 1e-4 실험(같은 출발점, 100 iteration).
 
 ## 2026-09-17 밤 ~ 09-18 아침 M10 첫 학습·되돌리기 루프·이관·codec v105 세션 요약 (Windows PC WSL, master 직접 커밋, 관측 v20, codec v104→**v105**)
 
