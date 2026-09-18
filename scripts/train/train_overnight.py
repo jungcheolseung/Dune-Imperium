@@ -35,6 +35,14 @@ def main() -> int:
     parser.add_argument("--repo", type=Path, required=True)
     parser.add_argument("--floor-mib", type=int, default=2000)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument(
+        "--start-from",
+        type=Path,
+        default=None,
+        help="checkpoint the first attempt resumes from (a run that continues "
+        "another run's checkpoint in a fresh directory); --total still counts "
+        "the iterations recorded in this directory",
+    )
     parser.add_argument("train_args", nargs=argparse.REMAINDER)
     arguments = parser.parse_args()
     train_args = [part for part in arguments.train_args if part != "--"]
@@ -94,6 +102,8 @@ def main() -> int:
         latest = run / "latest.pt"
         if completed > 0 and latest.exists():
             command += ["--resume", str(latest)]
+        elif arguments.start_from is not None:
+            command += ["--resume", str(arguments.start_from)]
         note(
             f"attempt {restarts + 1}: {completed}/{arguments.total} done, "
             f"seed {seed}, resume={'--resume' in command}"
