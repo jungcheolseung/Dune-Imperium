@@ -117,6 +117,117 @@ def test_legal_actions_describe_the_board_icon_they_resolve() -> None:
     ] == [("resolve_board_effect", "intrigue", "Draw 1 Intrigue card")]
 
 
+def _play_until(
+    manager: GameSessionManager, game_id: str, wanted: str, prefer: tuple[str, ...]
+) -> list[dict[str, object]]:
+    """Play seat 0 until it is offered ``wanted``; return that action list.
+
+    A placement on one of the ``prefer`` spaces is taken when there is one,
+    otherwise the first legal action.
+    """
+
+    for _ in range(400):
+        summary = manager.summary(game_id)
+        assert not summary["finished"], f"the game ended before {wanted}"
+        if summary.get("confirmation") == 0:
+            manager.confirm_turn(game_id, 0, _int(summary["revision"]))
+            continue
+        actions = _rows(manager.legal_actions(game_id, 0)["actions"])
+        if any(entry["action_id"] == wanted for entry in actions):
+            return actions
+        chosen = next(
+            (
+                entry
+                for entry in actions
+                if entry["action_id"] == "agent_turn"
+                and _obj(entry["arguments"]).get("space_id") in prefer
+            ),
+            actions[0],
+        )
+        manager.apply_action(
+            game_id,
+            seat=0,
+            revision=_int(summary["revision"]),
+            index=_int(chosen["index"]),
+        )
+    raise AssertionError(f"{wanted} was never offered")
+
+
+def test_legal_actions_preview_the_strength_a_step_leads_to() -> None:
+    # The preview is the engine's own figure from the dry run, not "2 per
+    # troop" [Main p. 10] worked out in the browser: it is the running
+    # strength the seat would have after the step, and it is only given
+    # when the step changes it.
+    manager = GameSessionManager()
+    game_id = _text(manager.create_game(HUMAN_FIRST, game_seed=11)["game_id"])
+    combat = ("hagga_basin", "imperial_basin", "arrakeen", "spice_refinery")
+    actions = _play_until(manager, game_id, "deploy_troops", combat)
+    before = _int(_rows(manager.view(game_id, 0)["players"])[0]["combat_strength"])
+    deploys = [entry for entry in actions if entry["action_id"] == "deploy_troops"]
+    assert deploys
+    for entry in deploys:
+        count = _int(_obj(entry["arguments"])["count"])
+        assert entry["strength_after"] == before + 2 * count
+    others = [entry for entry in actions if entry["action_id"] != "deploy_troops"]
+    assert others and all(entry["strength_after"] is None for entry in others)
+
+    # Taking the step leads exactly there, and taking it back is previewed too.
+    chosen = deploys[-1]
+    summary = manager.summary(game_id)
+    manager.apply_action(
+        game_id, seat=0, revision=_int(summary["revision"]), index=_int(chosen["index"])
+    )
+    after = _int(_rows(manager.view(game_id, 0)["players"])[0]["combat_strength"])
+    assert after == chosen["strength_after"]
+    withdraws = [
+        entry
+        for entry in _rows(manager.legal_actions(game_id, 0)["actions"])
+        if entry["action_id"] == "withdraw_troops"
+    ]
+    assert withdraws
+    for entry in withdraws:
+        count = _int(_obj(entry["arguments"])["count"])
+        assert entry["strength_after"] == after - 2 * count
+
+
+def test_a_reveal_tells_the_table_the_persuasion_still_unspent() -> None:
+    manager = GameSessionManager()
+    game_id = _text(manager.create_game(HUMAN_FIRST, game_seed=11)["game_id"])
+    assert "persuasion" not in _obj(manager.summary(game_id)["decision"])
+
+    # Reveal at once: the starting hand's Persuasion, then less by each
+    # card's cost as it is bought.
+    summary = manager.summary(game_id)
+    reveal = next(
+        entry
+        for entry in _rows(manager.legal_actions(game_id, 0)["actions"])
+        if entry["action_id"] == "reveal_turn"
+    )
+    summary = manager.apply_action(
+        game_id, seat=0, revision=_int(summary["revision"]), index=_int(reveal["index"])
+    )
+    decision = _obj(summary["decision"])
+    assert decision["kind"] == "reveal"
+    unspent = _int(decision["persuasion"])
+    assert unspent > 0
+
+    buys = [
+        entry
+        for entry in _rows(manager.legal_actions(game_id, 0)["actions"])
+        if entry["action_id"] == "acquire_reserve"
+    ]
+    assert buys
+    summary = manager.apply_action(
+        game_id,
+        seat=0,
+        revision=_int(summary["revision"]),
+        index=_int(buys[0]["index"]),
+    )
+    # Prepare the Way costs 2 Persuasion.
+    assert _obj(buys[0]["arguments"])["card_id"] == "prepare_the_way"
+    assert _obj(summary["decision"])["persuasion"] == unspent - 2
+
+
 def test_apply_guards_revision_owner_and_index() -> None:
     manager = GameSessionManager()
     summary = manager.create_game(HUMAN_FIRST, game_seed=13)

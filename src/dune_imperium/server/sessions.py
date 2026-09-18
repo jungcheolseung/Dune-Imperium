@@ -1109,6 +1109,12 @@ class GameSessionManager:
                 "owner_is_human": session.seats[pending.owner] == HUMAN_SEAT,
                 "prompt": pending.prompt,
             }
+            # The Persuasion still unspent in a Reveal, for the buyer's
+            # panel. It is table knowledge: the reveal and every purchase
+            # are public, and this is their difference.
+            remaining = dict(frame.context).get("persuasion")
+            if str(frame.kind) == "reveal" and type(remaining) is int:
+                decision["persuasion"] = remaining
         finished = state.phase is GamePhase.FINISHED
         undo: list[JsonValue] = []
         for seat, assignment in enumerate(session.seats):
@@ -1563,18 +1569,43 @@ def _serialize_action(
 
     ``detail`` names a keyed icon's printed effect; ``undoable`` says whether
     the step could still be taken back afterwards (it could not once it
-    reveals hidden information or hands the game to a chance outcome).
+    reveals hidden information or hands the game to a chance outcome);
+    ``strength_after`` is the acting seat's running combat strength once the
+    step is taken, when the step changes it (``strength_preview``).
     """
 
     outcome = _dry_run(session, action)
+    undoable = _action_is_undoable(session, action, outcome)
     return {
         "index": index,
         "action_id": action.action_id,
         "arguments": _jsonify(dict(action.arguments)),
         "detail": effect_action_text(session.state, action),
-        "undoable": _action_is_undoable(session, action, outcome),
+        "undoable": undoable,
         "warning": shortfall_warning(outcome),
+        "strength_after": strength_preview(session.state, action, outcome, undoable),
     }
+
+
+def strength_preview(
+    before: GameState,
+    action: DomainAction,
+    outcome: RuleResult | None,
+    undoable: bool,
+) -> int | None:
+    """Return the actor's combat strength after the step, if the step moves it.
+
+    Read off the same dry run as the rest, so it is the engine's own figure
+    (a first unit in the Conflict switches the seat's swords on, a last one
+    off) rather than "2 per troop" worked out in the browser. Steps that
+    cannot be taken back are left out: they reveal hidden information or
+    hand over to chance, and their outcome is not the player's to preview.
+    """
+
+    if outcome is None or not undoable:
+        return None
+    after = outcome.state.players[action.actor].combat_strength
+    return after if after != before.players[action.actor].combat_strength else None
 
 
 def _dry_run(session: GameSession, action: DomainAction) -> RuleResult | None:
