@@ -25,6 +25,10 @@ const state = {
   me: null,
   /* The server this page came from: {access, admin, public_url} (M14). */
   server: null,
+  /* The staged Agent turn: what the player has picked so far, {cardId?,
+     spaceId?}. It lives only in this page; nothing reaches the server until
+     the pick names one legal action (see pickStep). */
+  pick: null,
 };
 
 let noteTimer = 0;
@@ -933,6 +937,7 @@ function resetGameState() {
   state.me = null;
   state.viewSeat = null;
   state.review = null;
+  state.pick = null;
   myTurnBefore = null;
   document.title = BASE_TITLE;
   el("review-bar").hidden = true;
@@ -1747,6 +1752,7 @@ function onGameGone(reason) {
 async function applyAction(index) {
   if (state.busy) return;
   state.busy = true;
+  state.pick = null;
   render();
   try {
     el("game-error").hidden = true;
@@ -2154,6 +2160,7 @@ const SCROLL_PANES = ["seats", "side-main", "board", "market", "private-zone"];
 function render(options) {
   const summary = state.summary;
   if (!summary) return;
+  sanitizePick();
   const foreign = Boolean(options && options.foreign);
   const kept = foreign
     ? SCROLL_PANES.map((id) => [el(id), el(id).scrollTop, el(id).scrollLeft])
@@ -2289,11 +2296,7 @@ function renderBanner() {
       meta.textContent = `좌석 ${decision.owner} (당신) · frame: ${decision.kind}`;
       info.append(prompt, meta);
 
-      if (state.actions) {
-        for (const action of state.actions.actions) {
-          actionsBox.appendChild(actionItem(action));
-        }
-      }
+      if (state.actions) renderActionPanel(actionsBox);
     }
   }
 
@@ -2395,6 +2398,14 @@ function actionPreviewNodes(action, entry) {
    click matching (data-refs) — the same strings describeAction resolves. */
 function actionRefs(action) {
   return Object.values(action.arguments).filter((value) => typeof value === "string");
+}
+
+/* The arguments of an action that name something on the table: a board
+   space or an observation post, or a card instance (ids with a colon). */
+function tableRefs(action) {
+  return actionRefs(action).filter(
+    (ref) => ref.includes(":") || state.catalog.spaces[ref] || state.catalog.posts[ref]
+  );
 }
 
 function actionItem(action) {
@@ -2510,14 +2521,265 @@ function clearActionFocus() {
     .forEach((item) => box.appendChild(item));
 }
 
-function legalActionsFor(ref) {
+/* ---------- staged Agent turn ----------
+
+   The server offers an Agent turn as one flat list: every legal
+   (card, space, cost option, graft) is its own `agent_turn` action, because
+   that is what the action codec and the learning agents need. A person
+   plays it in steps: the card, then the space, then what is still open.
+   The steps are only a view of that same list: the page filters it by
+   what has been picked and posts the one action index that remains, so
+   neither the engine nor the codec knows the difference. Either order
+   works (a space first lights the cards that can go there). The flat list
+   stays behind a toggle. */
+const PLACEMENT_ACTION = "agent_turn";
+const FULL_LIST_KEY = "dune.fullActionList";
+
+function placementActions() {
   if (!state.actions) return [];
-  return state.actions.actions.filter((action) => actionRefs(action).includes(ref));
+  return state.actions.actions.filter((action) => action.action_id === PLACEMENT_ACTION);
 }
 
-/* Click on a table object: one legal action applies directly, several
-   focus the action list, none shows the detail popover. */
+function fullActionList() {
+  return storageGet(FULL_LIST_KEY) === "1";
+}
+
+function stagedTurn() {
+  return !state.review && !fullActionList() && placementActions().length > 0;
+}
+
+/* Whether a placement fits what has been picked; any other action always
+   does. */
+function matchesPick(action, pick = state.pick) {
+  if (!pick || action.action_id !== PLACEMENT_ACTION) return true;
+  return (
+    (!pick.cardId || action.arguments.card_id === pick.cardId) &&
+    (!pick.spaceId || action.arguments.space_id === pick.spaceId)
+  );
+}
+
+/* A pick outlives re-renders (another seat's doorbell must not undo it) but
+   not the actions it was made from. */
+function sanitizePick() {
+  if (!state.pick) return;
+  if (!stagedTurn() || !placementActions().some((action) => matchesPick(action))) {
+    state.pick = null;
+  }
+}
+
+function clearPick(part) {
+  if (!state.pick) return;
+  if (part) delete state.pick[part];
+  if (!part || (!state.pick.cardId && !state.pick.spaceId)) state.pick = null;
+  closePopover();
+  render();
+}
+
+/* With a pick made, the other cards (or spaces) that could take its place:
+   they stay faintly lit, because a click on one swaps the pick. */
+function pickAlternative(ref, part) {
+  const pick = state.pick;
+  if (!pick || !pick[part] || pick[part] === ref || !stagedTurn()) return false;
+  const rest = { ...pick, [part]: ref };
+  return placementActions().some((action) => matchesPick(action, rest));
+}
+
+/* One step of the staged turn: `ref` is a card or a space of some legal
+   placement. Returns false when the click is not part of a placement. */
+function pickStep(ref, entry, anchor) {
+  const placements = placementActions();
+  const part = placements.some((action) => action.arguments.card_id === ref)
+    ? "cardId"
+    : placements.some((action) => action.arguments.space_id === ref)
+      ? "spaceId"
+      : null;
+  if (!part) return false;
+  const current = state.pick || {};
+  if (current[part] === ref) {
+    clearPick(part);
+    return true;
+  }
+  const next = { ...current, [part]: ref };
+  if (!placements.some((action) => matchesPick(action, next))) {
+    /* The other half of the pick cannot go with this one. */
+    const other = part === "cardId" ? current.spaceId : current.cardId;
+    note(
+      part === "spaceId"
+        ? `${nameOf(other)}(으)로는 ${entry ? entry.name : nameOf(ref)}에 갈 수 없습니다.`
+        : `${entry ? entry.name : nameOf(ref)}(으)로는 ${nameOf(other)}에 갈 수 없습니다.`
+    );
+    if (entry) pinPopover(entry, anchor);
+    return true;
+  }
+  state.pick = next;
+  const candidates = placements.filter((action) => matchesPick(action, next));
+  if (next.cardId && next.spaceId && candidates.length === 1) {
+    applyAction(candidates[0].index);
+    return true;
+  }
+  render();
+  if (next.cardId && next.spaceId) openPlacementChooser(candidates);
+  return true;
+}
+
+/* What still tells two placements of one card on one space apart: the
+   space's cost option and whether the card is grafted. */
+function placementOptionNode(action, candidates) {
+  const line = document.createElement("span");
+  line.className = "pick-option";
+  const space = state.catalog.spaces[action.arguments.space_id];
+  const option = space && spaceOptionsFor(space)[action.arguments.cost_option || 0];
+  if (option && candidates.some((other) => other.arguments.cost_option !== action.arguments.cost_option)) {
+    line.append(costNode(option.cost), icon("arrow_right", "→"), iconize(option.effect));
+  }
+  if (candidates.some((other) => Boolean(other.arguments.graft) !== Boolean(action.arguments.graft))) {
+    const graft = document.createElement("span");
+    graft.className = "pick-graft";
+    graft.textContent = action.arguments.graft
+      ? "Graft — 함께 낼 카드는 다음에 고릅니다"
+      : "이 카드만";
+    line.appendChild(graft);
+  }
+  if (!line.childNodes.length) line.appendChild(iconize(describeAction(action)));
+  return line;
+}
+
+function placementOptionItem(action, candidates) {
+  const item = actionItem(action);
+  const button = item.querySelector("button");
+  const badges = [...button.querySelectorAll(".irreversible-badge, .shortfall-badge")];
+  button.textContent = "";
+  button.append(placementOptionNode(action, candidates), ...badges);
+  return item;
+}
+
+/* The options of a complete pick, next to the space they are about. The
+   side panel lists the same ones, so closing this loses nothing. */
+function openPlacementChooser(candidates) {
+  const pick = state.pick;
+  const anchor =
+    document.querySelector(`.hotspot[data-space="${pick.spaceId}"]`) ||
+    document.querySelector(`.space-row[data-space="${pick.spaceId}"]`) ||
+    el("actions");
+  const pop = el("card-popover");
+  pop.textContent = "";
+  pop.classList.remove("hover");
+  const title = document.createElement("div");
+  title.className = "popover-title";
+  title.textContent = `${nameOf(pick.cardId)} → ${nameOf(pick.spaceId)}`;
+  pop.appendChild(title);
+  for (const action of candidates) pop.appendChild(placementOptionItem(action, candidates));
+  placePopover(pop, anchor, 340);
+  popoverPinned = true;
+}
+
+function pickStepNode(number, label, ref, part) {
+  const step = document.createElement("button");
+  step.type = "button";
+  step.className = "pick-step" + (ref ? " done" : "");
+  step.disabled = !ref || state.busy;
+  step.append(`${number} ${label} · `);
+  const value = document.createElement("strong");
+  value.textContent = ref ? nameOf(ref) : "고르세요";
+  step.appendChild(value);
+  if (ref) {
+    step.append(" ✕");
+    step.title = "다시 고르기";
+    step.addEventListener("click", () => clearPick(part));
+  }
+  return step;
+}
+
+/* The decision panel of the seat to move. An Agent turn is staged (card,
+   space, what is left), with the turn's other actions under it; everything
+   else, and the staged turn behind its toggle, is the flat list. */
+function renderActionPanel(box) {
+  const actions = state.actions.actions;
+  const placements = placementActions();
+  if (!stagedTurn()) {
+    /* What follows a placement (the graft partner, a card to trash, a space
+       for a Spy) is a short list whose cards and spaces are lit on the
+       table: a click there is the same as the button here (tableClick). */
+    if (!placements.length && actions.some((action) => tableRefs(action).length)) {
+      const hint = document.createElement("div");
+      hint.className = "pick-hint muted";
+      hint.textContent = "테이블에서 빛나는 카드나 칸을 눌러 골라도 됩니다.";
+      box.appendChild(hint);
+    }
+    /* The flat list of an Agent turn is long: its way back to the steps
+       goes on top, where the panel cannot push it under the log. */
+    if (placements.length) box.appendChild(actionListToggle(false, actions.length));
+    for (const action of actions) box.appendChild(actionItem(action));
+    return;
+  }
+  const pick = state.pick || {};
+  const steps = document.createElement("div");
+  steps.className = "pick-steps";
+  steps.append(
+    pickStepNode("①", "카드", pick.cardId, "cardId"),
+    icon("arrow_right", "→"),
+    pickStepNode("②", "보낼 칸", pick.spaceId, "spaceId")
+  );
+  box.appendChild(steps);
+
+  const hint = document.createElement("div");
+  hint.className = "pick-hint muted";
+  const candidates = placements.filter((action) => matchesPick(action));
+  if (pick.cardId && pick.spaceId) {
+    hint.textContent = "③ 남은 선택을 고르세요.";
+    box.appendChild(hint);
+    for (const action of candidates) box.appendChild(placementOptionItem(action, candidates));
+  } else {
+    hint.textContent = pick.cardId
+      ? "빛나는 칸 중에서 Agent를 보낼 곳을 누르세요. (Esc: 취소)"
+      : pick.spaceId
+        ? "빛나는 카드 중에서 그 칸에 낼 카드를 누르세요. (Esc: 취소)"
+        : "손패에서 빛나는 카드를 누르세요. 칸을 먼저 눌러도 됩니다.";
+    box.appendChild(hint);
+  }
+
+  const others = actions.filter((action) => action.action_id !== PLACEMENT_ACTION);
+  if (others.length) {
+    const heading = document.createElement("div");
+    heading.className = "pick-others muted";
+    heading.textContent = "또는";
+    box.appendChild(heading);
+    for (const action of others) box.appendChild(actionItem(action));
+  }
+  box.appendChild(actionListToggle(true, actions.length));
+}
+
+function actionListToggle(staged, count) {
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "action-list-toggle";
+  toggle.textContent = staged ? `전체 행동 목록 보기 (${count}개)` : "단계별로 고르기";
+  toggle.addEventListener("click", () => {
+    if (staged) storageSet(FULL_LIST_KEY, "1");
+    else storageRemove(FULL_LIST_KEY);
+    state.pick = null;
+    render();
+  });
+  return toggle;
+}
+
+/* The legal actions a table object takes part in. During a staged turn the
+   placements are the ones that still fit the pick, so the cards and the
+   spaces light up step by step. */
+function legalActionsFor(ref) {
+  if (!state.actions) return [];
+  const staged = stagedTurn();
+  return state.actions.actions.filter(
+    (action) => actionRefs(action).includes(ref) && (!staged || matchesPick(action))
+  );
+}
+
+/* Click on a table object: a step of the staged Agent turn, or else one
+   legal action applies directly, several focus the action list, none shows
+   the detail popover. */
 function tableClick(ref, entry, anchor) {
+  if (state.busy) return;
+  if (stagedTurn() && pickStep(ref, entry, anchor)) return;
   const legal = legalActionsFor(ref);
   if (legal.length === 1) {
     applyAction(legal[0].index);
@@ -2706,6 +2968,8 @@ function renderBoardStage(board, view) {
     hotspot.setAttribute("aria-label", entry.name);
     const legal = legalActionsFor(spaceId);
     if (legal.length) hotspot.classList.add("legal");
+    if (state.pick && state.pick.spaceId === spaceId) hotspot.classList.add("picked");
+    else if (pickAlternative(spaceId, "spaceId")) hotspot.classList.add("alternative");
     if (!spaceImplementedFor(entry)) hotspot.classList.add("unimplemented");
     const seats = occupants.get(spaceId) || [];
     if (seats.length) {
@@ -3121,6 +3385,8 @@ function spaceRow(spaceId, occupants, controllers, makerSpice) {
   const row = document.createElement("div");
   row.className = "space-row";
   if (legalActionsFor(spaceId).length) row.classList.add("legal");
+  if (state.pick && state.pick.spaceId === spaceId) row.classList.add("picked");
+  row.dataset.space = spaceId;
 
   const title = document.createElement("div");
   title.appendChild(chip(spaceId, entry));
@@ -3184,6 +3450,8 @@ function visualCard(instanceId, options = {}) {
   card.dataset.instance = instanceId;
   const legal = legalActionsFor(instanceId);
   if (legal.length) card.classList.add("legal");
+  if (state.pick && state.pick.cardId === instanceId) card.classList.add("picked");
+  else if (pickAlternative(instanceId, "cardId")) card.classList.add("alternative");
   if (entry && entry.image) {
     const image = document.createElement("img");
     image.src = entry.image;
@@ -4437,7 +4705,9 @@ async function init() {
     if (!pop.hidden && !pop.contains(event.target)) closePopover();
   });
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") closePopover();
+    if (event.key !== "Escape") return;
+    if (state.pick) clearPick();
+    else closePopover();
   });
   el("setup-form").addEventListener("submit", createGame);
   el("leave-game").addEventListener("click", () => leaveGame());

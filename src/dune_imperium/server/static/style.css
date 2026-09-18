@@ -243,6 +243,17 @@ button:disabled { opacity: 0.5; cursor: wait; }
   animation: pulse 1.6s ease-in-out infinite;
 }
 .hotspot.legal:hover { background: rgba(255, 207, 90, 0.18); }
+/* A card or a space the pick could be swapped for: a quiet version of the
+   legal glow. */
+.vcard.alternative { border-color: rgba(255, 207, 90, 0.55); box-shadow: 0 0 6px 1px rgba(255, 207, 90, 0.3); }
+.hotspot.alternative { border-color: rgba(255, 207, 90, 0.45); border-style: dashed; }
+/* The space of a staged Agent turn's pick. */
+.hotspot.picked {
+  border-color: #fff;
+  background: rgba(255, 207, 90, 0.22);
+  box-shadow: 0 0 0 2px var(--glow), 0 0 18px 5px rgba(255, 207, 90, 0.8);
+  animation: none;
+}
 .hotspot.unimplemented { opacity: 0.35; cursor: not-allowed; }
 @keyframes pulse {
   0%, 100% { box-shadow: 0 0 10px 2px rgba(255, 207, 90, 0.45), inset 0 0 14px rgba(255, 207, 90, 0.2); }
@@ -541,6 +552,12 @@ button:disabled { opacity: 0.5; cursor: wait; }
   box-shadow: 0 0 12px 2px rgba(255, 207, 90, 0.6);
 }
 .vcard.legal:hover { transform: translateY(-3px); }
+/* The card of a staged Agent turn's pick: lifted out of the hand. */
+.vcard.picked, .vcard.picked:hover {
+  transform: translateY(-10px);
+  border-color: #fff;
+  box-shadow: 0 0 0 2px var(--glow), 0 0 18px 4px rgba(255, 207, 90, 0.85);
+}
 .vcard.taken { opacity: 0.4; }
 .vcard-badge {
   position: absolute;
@@ -618,6 +635,60 @@ button:disabled { opacity: 0.5; cursor: wait; }
   margin-top: 0.5rem;
 }
 #actions button { text-align: left; max-width: 100%; }
+
+/* The staged Agent turn (renderActionPanel): what has been picked, a hint
+   for the next step, then the turn's other actions and the list toggle. */
+.pick-steps {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+}
+.pick-steps .icon { height: 0.9em; opacity: 0.7; }
+#actions .pick-step {
+  padding: 0.25rem 0.55rem;
+  border-style: dashed;
+  background: transparent;
+  text-align: left;
+}
+#actions .pick-step:disabled { opacity: 1; cursor: default; }
+#actions .pick-step:disabled strong { color: var(--glow); }
+#actions .pick-step.done {
+  border-style: solid;
+  border-color: var(--glow);
+  background: var(--accent-soft);
+}
+.pick-hint { font-size: 0.9em; }
+.pick-others {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.3rem;
+  font-size: 0.85em;
+}
+.pick-others::before, .pick-others::after {
+  content: "";
+  flex: 1;
+  border-top: 1px solid var(--line);
+}
+.pick-option { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.3em; }
+.pick-option .icon { height: 1.1em; }
+.pick-graft { font-weight: 600; }
+#actions .action-list-toggle {
+  align-self: flex-end;
+  margin-top: 0.4rem;
+  padding: 0.1rem 0.5rem;
+  border-color: transparent;
+  background: transparent;
+  color: inherit;
+  opacity: 0.6;
+  font-size: 0.8em;
+  text-decoration: underline;
+}
+#actions .action-list-toggle:hover { opacity: 1; }
+/* The option chooser borrows the card popover next to the picked space. */
+#card-popover .action-item { margin-top: 0.3rem; }
+#card-popover .action-item > button:first-child { flex: 1; text-align: left; }
 
 .action-item {
   display: flex;
@@ -759,6 +830,7 @@ button:disabled { opacity: 0.5; cursor: wait; }
 }
 .space-row:last-child { border-bottom: none; }
 .space-row.legal { background: var(--accent-soft); }
+.space-row.picked { box-shadow: inset 3px 0 0 var(--glow); font-weight: 600; }
 .space-status { color: var(--accent); font-weight: 600; }
 .badge-unimpl {
   display: inline-block;
