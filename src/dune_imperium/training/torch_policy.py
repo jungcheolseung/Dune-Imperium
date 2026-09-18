@@ -32,7 +32,7 @@ from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.observation import PlayerView
 from dune_imperium.training.checkpoint import load_checkpoint
 from dune_imperium.training.network import MASKED_LOGIT, PolicyValueNetwork
-from dune_imperium.training.policy import PolicyRequest
+from dune_imperium.training.policy import PolicyRequest, without_undo_actions
 
 
 class _CycleGuard:
@@ -134,8 +134,10 @@ class TorchBatchPolicy:
             # actions changes the behaviour distribution without any
             # correction in the learner, and a from-scratch comparison
             # (2026-09-06, baseline report section 7) collapsed entropy to
-            # 0.2 and doubled decisions per game. Loops are priced by the
-            # step penalty and bounded by the game cap instead.
+            # 0.2 and doubled decisions per game. The collector withholds
+            # the pure-undo pair at the mask level instead (on-policy, since
+            # the learner sees the same mask); what loops remain are priced
+            # by the step penalty and bounded by the game cap.
             probabilities = torch.softmax(logits / self.temperature, dim=-1)
             chosen = torch.multinomial(probabilities, 1, generator=self._generator)
             return tuple(int(index) for index in chosen.squeeze(-1).tolist())
@@ -173,6 +175,9 @@ class NetworkAgent:
     ) -> DomainAction:
         if not legal_actions:
             raise ValueError("a network agent requires at least one legal action")
+        # The network was never offered the pure-undo actions in training, so
+        # their logits are untrained noise; keep them out of greedy play too.
+        legal_actions = without_undo_actions(legal_actions)
         legal_indices = tuple(self.codec.encode(action) for action in legal_actions)
         mask = np.zeros(self.codec.size, dtype=np.int8)
         mask[list(legal_indices)] = 1

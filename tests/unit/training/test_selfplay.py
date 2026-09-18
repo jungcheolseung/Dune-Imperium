@@ -9,6 +9,7 @@ from dune_imperium import RulesetConfig
 from dune_imperium.adapters.observation_encoding import OBSERVATION_SIZE
 from dune_imperium.cli.selfplay import main as selfplay_main
 from dune_imperium.training import (
+    UNDO_ACTION_IDS,
     AgentBatchPolicy,
     PolicyRequest,
     RandomBatchPolicy,
@@ -17,6 +18,7 @@ from dune_imperium.training import (
     TrainingBatch,
     apply_step_penalty,
     stack_episodes,
+    without_undo_actions,
 )
 
 
@@ -211,3 +213,85 @@ def test_step_penalty_charges_each_seats_later_decisions() -> None:
     assert apply_step_penalty(batch, 0.0) is batch
     with pytest.raises(ValueError, match="negative"):
         apply_step_penalty(batch, -0.1)
+
+
+def test_without_undo_actions_never_empties_the_legal_set() -> None:
+    from dune_imperium.core.actions import DomainAction
+
+    deploy = DomainAction("deploy_troops", actor=0, arguments=(("count", 1),))
+    finish = DomainAction("finish_agent_turn", actor=0)
+    withdraw = DomainAction("withdraw_troops", actor=0, arguments=(("count", 1),))
+    commanders = DomainAction(
+        "withdraw_commanders", actor=0, arguments=(("count", 1),)
+    )
+
+    assert {"withdraw_troops", "withdraw_commanders"} == UNDO_ACTION_IDS
+    assert without_undo_actions((deploy, withdraw, finish, commanders)) == (
+        deploy,
+        finish,
+    )
+    assert without_undo_actions((deploy, finish)) == (deploy, finish)
+    # Nothing else legal: the undo actions stay rather than leaving no move.
+    assert without_undo_actions((withdraw, commanders)) == (withdraw, commanders)
+
+
+class _EagerDeployer:
+    """Deploy whenever offered (so a withdrawal becomes legal), else random.
+
+    Records what the runner offered against the engine's own legal set.
+    """
+
+    def __init__(self, seed: int) -> None:
+        self.inner = RandomBatchPolicy(seed=seed)
+        self.offered_undo = 0
+        self.engine_had_undo = 0
+        self.engine = SelfPlayRunner(RulesetConfig(), record=False)._engine(None)
+
+    def act(self, requests: Sequence[PolicyRequest]) -> Sequence[int]:
+        answers = list(self.inner.act(requests))
+        for row, request in enumerate(requests):
+            full = self.engine.legal_actions(request.state, request.seat)
+            assert set(request.legal_actions) <= set(full)
+            assert request.mask.sum() == len(request.legal_indices)
+            self.engine_had_undo += any(a.action_id in UNDO_ACTION_IDS for a in full)
+            self.offered_undo += any(
+                a.action_id in UNDO_ACTION_IDS for a in request.legal_actions
+            )
+            for action, index in zip(
+                request.legal_actions, request.legal_indices, strict=True
+            ):
+                if action.action_id == "deploy_troops":
+                    answers[row] = index
+                    break
+        return tuple(answers)
+
+
+def test_runner_withholds_undo_actions_from_policies_not_from_the_engine() -> None:
+    # OQ-029 (docs/rules/open-questions.md): this turn's basic deployment may
+    # be taken back until finish_agent_turn, so deploying makes
+    # withdraw_troops legal in the engine. Training withholds that pure-undo
+    # action from the policy (docs/rl-environment.md) without changing what
+    # the engine accepts.
+    withheld = _EagerDeployer(seed=5)
+    runner = SelfPlayRunner(RulesetConfig(), max_steps=400, undo_actions=False)
+    result = runner.run({"p": withheld}, _specs("p", (11,)))
+
+    assert withheld.engine_had_undo > 0, "the scenario never made a withdrawal legal"
+    assert withheld.offered_undo == 0
+    undo_indices = [
+        index
+        for index, template in enumerate(runner.codec.catalog)
+        if template.action_id in UNDO_ACTION_IDS
+    ]
+    assert undo_indices
+    for step in result.episodes[0].steps:
+        # The recorded mask is the offered set, so a learner stays on-policy.
+        assert step.mask[undo_indices].sum() == 0
+        assert step.mask[step.action] == 1
+
+    # The default runner still offers them (baselines, throughput tools).
+    offered = _EagerDeployer(seed=5)
+    SelfPlayRunner(RulesetConfig(), max_steps=400).run(
+        {"p": offered}, _specs("p", (11,))
+    )
+    assert offered.offered_undo > 0

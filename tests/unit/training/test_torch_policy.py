@@ -1,6 +1,7 @@
 """Tests for the network, checkpoints, learner, and training loop (M10)."""
 
 import json
+from collections.abc import Sequence
 from pathlib import Path
 
 import numpy as np
@@ -9,12 +10,20 @@ import pytest
 torch = pytest.importorskip("torch")
 
 from dune_imperium import RulesetConfig  # noqa: E402
-from dune_imperium.adapters.observation_encoding import OBSERVATION_SIZE  # noqa: E402
+from dune_imperium.adapters.observation_encoding import (  # noqa: E402
+    OBSERVATION_SIZE,
+    encode_player_view,
+)
 from dune_imperium.agents import make_agent  # noqa: E402
 from dune_imperium.agents.registry import is_agent_kind  # noqa: E402
 from dune_imperium.cli.train import main as train_main  # noqa: E402
+from dune_imperium.core.actions import DomainAction  # noqa: E402
+from dune_imperium.core.observation import PlayerView  # noqa: E402
 from dune_imperium.evaluation import MatchSpec, play_match  # noqa: E402
 from dune_imperium.training import (  # noqa: E402
+    UNDO_ACTION_IDS,
+    PolicyRequest,
+    RandomBatchPolicy,
     SelfPlayRunner,
     SelfPlaySpec,
     stack_episodes,
@@ -421,3 +430,62 @@ def test_cycle_guard_masks_taken_actions_for_greedy_play_only() -> None:
     result = runner.run({"p": policy}, (SelfPlaySpec(game_seed=8, lineup=("p",) * 4),))
     assert not result.episodes[0].truncated
     assert not policy._guards
+
+
+class _CaptureWithdrawal:
+    """Deploy whenever offered; keep the first decision that allows undoing it."""
+
+    def __init__(self) -> None:
+        self.inner = RandomBatchPolicy(seed=5)
+        self.engine = SelfPlayRunner(RulesetConfig(), record=False)._engine(None)
+        self.captured: tuple[PlayerView, tuple[DomainAction, ...]] | None = None
+
+    def act(self, requests: Sequence[PolicyRequest]) -> Sequence[int]:
+        answers = list(self.inner.act(requests))
+        for row, request in enumerate(requests):
+            full = self.engine.legal_actions(request.state, request.seat)
+            if self.captured is None and any(
+                action.action_id in UNDO_ACTION_IDS for action in full
+            ):
+                self.captured = (request.view, full)
+            for action, index in zip(
+                request.legal_actions, request.legal_indices, strict=True
+            ):
+                if action.action_id == "deploy_troops":
+                    answers[row] = index
+                    break
+        return tuple(answers)
+
+
+def test_network_agent_never_plays_a_pure_undo_action() -> None:
+    # Training never offers withdraw_troops / withdraw_commanders (OQ-029's
+    # take-back; docs/rl-environment.md), so their logits are untrained. Greedy
+    # checkpoint play must not pick them either, even when they would win.
+    capture = _CaptureWithdrawal()
+    runner = SelfPlayRunner(RulesetConfig(), max_steps=400, record=False)
+    runner.run({"p": capture}, (SelfPlaySpec(game_seed=11, lineup=("p",) * 4),))
+    assert capture.captured is not None, "no decision allowed a withdrawal"
+    view, legal = capture.captured
+
+    network = _network(runner.codec.size)
+    undo_indices = [
+        index
+        for index, template in enumerate(runner.codec.catalog)
+        if template.action_id in UNDO_ACTION_IDS
+    ]
+    with torch.no_grad():
+        network.policy_head.bias[undo_indices] = 50.0
+
+    # The setup bites: over the engine's full legal set the undo logit wins.
+    mask = np.zeros(runner.codec.size, dtype=np.int8)
+    mask[[runner.codec.encode(action) for action in legal]] = 1
+    encoded = np.asarray(encode_player_view(view), dtype=np.int32)
+    with torch.no_grad():
+        logits, _ = network(
+            torch.from_numpy(encoded).unsqueeze(0), torch.from_numpy(mask).unsqueeze(0)
+        )
+    assert int(logits[0].argmax().item()) in undo_indices
+
+    chosen = NetworkAgent(network, RulesetConfig()).choose_action(view, legal)
+    assert chosen in legal
+    assert chosen.action_id not in UNDO_ACTION_IDS

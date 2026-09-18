@@ -1,10 +1,12 @@
 """Self-play data collection for M10 training (requires the ``rl`` extra)."""
 
 from dune_imperium.training.policy import (
+    UNDO_ACTION_IDS,
     AgentBatchPolicy,
     BatchPolicy,
     PolicyRequest,
     RandomBatchPolicy,
+    without_undo_actions,
 )
 from dune_imperium.training.selfplay import (
     Episode,
@@ -19,6 +21,7 @@ from dune_imperium.training.selfplay import (
 )
 
 __all__ = [
+    "UNDO_ACTION_IDS",
     "AgentBatchPolicy",
     "BatchPolicy",
     "Episode",
@@ -32,4 +35,5 @@ __all__ = [
     "apply_step_penalty",
     "select_policy_steps",
     "stack_episodes",
+    "without_undo_actions",
 ]

@@ -10,12 +10,17 @@ encoding and the fixed-width legal-action mask) and the engine-side objects
 for ``StateAgent`` search baselines) so rule-based and learned policies
 share one interface. The answer is one catalog index per request and must
 be a legal one; the runner rejects anything else.
+
+``without_undo_actions`` is the one restriction of that legal set a policy
+may be given: it drops the pure-undo actions (``UNDO_ACTION_IDS``), which
+no policy needs and a sampled policy learns to loop on
+(docs/rl-environment.md, "정책에 주지 않는 되돌리기 행동").
 """
 
 import random
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Final, Protocol
 
 import numpy as np
 
@@ -23,6 +28,27 @@ from dune_imperium.agents import Agent, StateAgent, make_agent
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.observation import PlayerView
 from dune_imperium.core.state import GameState
+
+# Pure-undo actions that training and checkpoint play never offer a policy.
+# OQ-029 lets a player take this turn's basic deployment back because
+# deploying may come after every other effect of the Agent turn [Main p. 9];
+# a policy can simply deploy last, so it loses no reachable outcome. Offered
+# to a sampled policy, the pair is a free loop inside one turn: on
+# 2026-09-17 a full-expansion run spent 80% of its decisions on it and hit
+# the decision cap in 13 of 32 games (docs/rl-environment.md). The engine,
+# the rules and human play keep both actions.
+UNDO_ACTION_IDS: Final = frozenset({"withdraw_troops", "withdraw_commanders"})
+
+
+def without_undo_actions(
+    legal_actions: tuple[DomainAction, ...],
+) -> tuple[DomainAction, ...]:
+    """Drop the pure-undo actions, unless nothing else is legal."""
+
+    kept = tuple(
+        action for action in legal_actions if action.action_id not in UNDO_ACTION_IDS
+    )
+    return kept or legal_actions
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,6 +59,8 @@ class PolicyRequest:
     seat: int
     state: GameState
     view: PlayerView
+    # The actions offered to the policy: the engine's legal set, minus the
+    # pure-undo actions when the runner withholds them.
     legal_actions: tuple[DomainAction, ...]
     # Catalog index of every legal action, parallel to ``legal_actions``.
     legal_indices: tuple[int, ...]
