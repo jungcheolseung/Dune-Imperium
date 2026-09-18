@@ -72,6 +72,21 @@ def wait_until(page, predicate_js: str, timeout: float, label: str, recorders=()
     return False
 
 
+def holds_seats(page, seats: list[int], label: str) -> bool:
+    """The page knows it holds exactly `seats`.
+
+    A claim puts the table on screen at once and learns the seat from the
+    snapshot that follows ("state.me does not know the new seat yet; only a
+    snapshot may say so", `claimSeat`), so right after a claim this is a
+    condition to poll, not a value to read: reading it failed one run in
+    about fifteen on 2026-09-18.
+    """
+    wanted = json.dumps(seats, separators=(",", ":"))
+    return wait_until(
+        page, f"JSON.stringify(state.me && state.me.seats) === '{wanted}'", 5, label
+    )
+
+
 def converge(pages, game_id: str, label: str, timeout: float = 5.0) -> bool:
     """Every page reaches the server's state; print the laggard's timeline."""
     deadline = time.monotonic() + timeout
@@ -200,7 +215,7 @@ def scenario(base, host, host_rec, guest, guest_rec, pages) -> None:
     host.fill("#lobby-name", "호스트")
     host.click("#lobby-seats li[data-seat='0'] button")
     host.wait_for_selector("#game-screen:not([hidden])")
-    check.ok(host.evaluate("state.me.seats") == [0], "host holds seat 0")
+    check.ok(holds_seats(host, [0], "host holds seat 0"), "host holds seat 0")
     ok = wait_until(
         guest,
         "state.summary.players[0].claimed === true",
@@ -223,7 +238,7 @@ def scenario(base, host, host_rec, guest, guest_rec, pages) -> None:
     guest.fill("#lobby-name", "<u id=xss>친구</u>")
     guest.click("#lobby-seats li[data-seat='1'] button")
     guest.wait_for_selector("#game-screen:not([hidden])")
-    check.ok(guest.evaluate("state.me.seats") == [1], "guest holds seat 1")
+    check.ok(holds_seats(guest, [1], "guest holds seat 1"), "guest holds seat 1")
 
     print("[4] cross-seat access is refused")
     status = guest.evaluate(
@@ -345,7 +360,9 @@ def scenario(base, host, host_rec, guest, guest_rec, pages) -> None:
     guest.fill("#lobby-name", "돌아온 친구")
     guest.click("#lobby-seats li[data-seat='1'] button")
     guest.wait_for_selector("#game-screen:not([hidden])")
-    check.ok(guest.evaluate("state.me.seats") == [1], "guest holds seat 1 again")
+    check.ok(
+        holds_seats(guest, [1], "guest holds seat 1 again"), "guest holds seat 1 again"
+    )
     check.ok(
         converge(pages, game_id, "after re-claim"),
         "both pages converge after the re-claim",
