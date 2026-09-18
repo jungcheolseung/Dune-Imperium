@@ -292,7 +292,7 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 
 ## 원격 저장소 인계 주의
 
-2026-09-18(Mac mini): Combat marker 그림 세션의 커밋 2건(`e54e035` 코드·테스트, 그리고 이 문서 커밋)은 master에만 있고 **push하지 않았다**. 비공개 에셋 저장소에도 같은 날 커밋 1건(`tokens/` 8장 + README)이 있고 역시 push하지 않았다 — 다른 기기에서 그림 토큰을 보려면 두 저장소를 모두 push·pull해야 한다(에셋이 없으면 그린 토큰으로 돌아갈 뿐 동작은 같다).
+2026-09-18(Mac mini): Combat marker 그림 세션의 커밋(`e54e035` 코드·테스트, `f24eb52` 문서, 그리고 같은 날 Score marker·Councilor token 원판 커밋 둘)은 master에만 있고 **push하지 않았다**. 비공개 에셋 저장소에도 같은 날 커밋 1건(`tokens/` 8장 + README)이 있고 역시 push하지 않았다 — 다른 기기에서 그림 토큰을 보려면 두 저장소를 모두 push·pull해야 한다(에셋이 없으면 그린 토큰으로 돌아갈 뿐 동작은 같다).
 
 2026-09-17 밤~심야(Mac mini): `m14-slice4-client` 브랜치(WIP 커밋 `b319081` + 그 세션의 커밋)를 master 쪽에서 `--no-ff`로 머지했고(`de70942`), 사용자 지시로 슬라이스 5(`657f60c`)까지 `origin/master`에 push했다. 원격의 WIP 브랜치는 사용자가, 로컬 워크트리와 브랜치 `m14-slice4-client`는 2026-09-17 자정 무렵 세션이 지웠다. 그 뒤 슬라이스 6의 커밋들은 master 직접 커밋이다 — push 여부는 `git log origin/master..master`로 확인한다.
 
@@ -322,9 +322,16 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 - 검증: pytest 1,739 · ruff · mypy, 브라우저 E2E `open_mode.py` 44·`remote.py` 56(Chrome, 토큰 200 응답), 그리고 클라이언트
   상태를 임시로 바꿔 0/0/0/0, 5·12·23·12, 20·21·40·7, 9 동률 넷을 3배율로 캡처해 눈으로 확인. `/tmp/dune-e2e-venv`를 이 Mac에 새로 만들었다.
 - 서버 테스트의 모든 `create_app(...)`에 `tokens_dir=tmp_path / "no-tokens"`를 달았다(다른 에셋 경로처럼 기기 독립).
+- 같은 날 이어서(사용자 지시 "점수 토큰과 원로회 점유 상태 토큰은 크기가 같은 원형 토큰이야. 숫자 없이 색으로만 구분해"):
+  Score marker와 Councilor token을 **같은 크기의 원판**(`seatDisc`, CSS `.seat-disc`, 좌석 색만·숫자 없음, 지름
+  `tracks.disc_size` = 스캔 폭의 2.2%)으로 바꿨다. 그림 에셋이 필요 없는 CSS 토큰이라 모든 기기에 적용된다. 원판이 칸을
+  채우게 되면서 눈대중이던 좌표를 스캔에서 다시 쟀다: High Council 원 중심 `(42.18|46.0|49.83|53.64, 5.22)`(지름 2.91),
+  Score track은 구분 다이아몬드(x 94.25·98.75, 0번 칸 y 91.92~97.19, 간격 5.275)로부터 칸 중심 `94.56 − 5.275·n`,
+  13점 이상이 모이는 문양은 y 27.0. 점수가 같은 좌석은 겹치지 않게 모인다(`discCluster`: 혼자면 칸 정중앙, 둘은 나란히,
+  셋은 삼각형, 넷은 2×2) — 좌석별 고정 사분면은 혼자 있는 토큰이 칸 중심에서 벗어나 점수가 달라 보여서 버렸다.
 - 실수(→ [lessons.md](lessons.md)): 새 모듈을 `display/tokens.py`로 쓰다가 **이미 있던 같은 이름의 모듈을 덮어썼다**.
   서버가 import 오류로 안 떠서 바로 알았고 `git checkout HEAD --`로 복원, 새 모듈은 `token_images.py`로 했다.
-- 남은 후보: VP·Councilor·Agent 토큰과 자원 토큰도 같은 방식으로 그림화, 한글 카드 시트로 `ko/` 채우기.
+- 남은 후보: Agent·Spy·Control 토큰과 자원 토큰의 그림화(모드에는 3D 모델뿐이라 2D 그림은 자원 토큰 정도), 한글 카드 시트로 `ko/` 채우기.
 
 ## 2026-09-17 자정 무렵 M14 슬라이스 6 리허설·운영 문서 세션 요약 (Mac mini, master 직접 커밋, 관측 v20, codec v104)
 
