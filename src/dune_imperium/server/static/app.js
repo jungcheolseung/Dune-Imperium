@@ -2762,6 +2762,30 @@ function placeAt(node, x, y) {
   return node;
 }
 
+/* The printed cell a strength is shown on: 0 is the framed square, and a
+   strength beyond 20 counts on from 1 on the token's "+20" face [Main
+   p. 12]. The token has that one flip, so 41 and up stay on 20. */
+function strengthCell(strength) {
+  if (strength <= 0) return 0;
+  return Math.min(strength > 20 ? strength - 20 : strength, 20);
+}
+
+/* A seat's pictured Combat marker: one face of the owner's token picture,
+   sized as a percent of the stage so it keeps to its cell at any zoom. */
+function strengthPicture(seat, src, size) {
+  const token = document.createElement("span");
+  token.className = "strength-token pictured";
+  token.dataset.seat = String(seat);
+  token.style.width = `${size}%`;
+  token.style.borderColor = SEAT_COLORS[seat];
+  const face = document.createElement("img");
+  face.src = src;
+  face.alt = "";
+  face.draggable = false;
+  token.appendChild(face);
+  return token;
+}
+
 /* Live markers on the printed tracks (catalog.tracks, percent of the
    scan): Influence cubes and Alliance rings on the Faction strips, VP
    tokens on the score column, strength tokens on the combat track, deployed
@@ -2772,6 +2796,14 @@ function renderTrackMarkers(stage, view) {
   if (!tracks || !Array.isArray(view.players)) return;
   const factions = Object.keys(FACTION_LABELS);
   let councilSlot = 0;
+  /* The seats on each cell of the combat track, in seat order. */
+  const strengthStacks = new Map();
+  view.players.forEach((player, index) => {
+    const seat = typeof player.player_id === "number" ? player.player_id : index;
+    const shown = strengthCell(player.combat_strength || 0);
+    if (!strengthStacks.has(shown)) strengthStacks.set(shown, []);
+    strengthStacks.get(shown).push(seat);
+  });
   view.players.forEach((player, index) => {
     const seat = typeof player.player_id === "number" ? player.player_id : index;
     const color = SEAT_COLORS[seat];
@@ -2813,26 +2845,47 @@ function renderTrackMarkers(stage, view) {
     /* Every seat's strength token is always on the track: in the framed
        square left of 1/11 at strength 0 (four tokens in a 2×2), on the
        printed number otherwise, and on its "+20" face beyond 20 (23 is
-       the token on 3 showing +20). */
+       the token on 3 showing +20). With the owner's token pictures
+       (catalog.strength_tokens) it is the picture of that face, lying in
+       the open part of its cell like the marker on the table, and seats
+       that share a cell fan out so that every colour stays in sight. */
     const strength = player.combat_strength || 0;
-    const token = seatToken(seat, "track-token strength-token");
+    const flipped = strength > 20;
+    const shown = strengthCell(strength);
+    const faces = (state.catalog.strength_tokens || [])[seat];
+    const token = faces
+      ? strengthPicture(seat, flipped ? faces.plus20 : faces.front, tracks.strength.token_size)
+      : seatToken(seat, "track-token strength-token");
     token.title = `좌석 ${seat} · 전투력 ${strength}`;
-    if (strength <= 0) {
+    if (shown === 0) {
       const [zx, zy, zw, zh] = tracks.strength.zero_box;
-      placeAt(token, zx + zw * (0.3 + (seat % 2) * 0.4), zy + zh * (0.3 + Math.floor(seat / 2) * 0.4));
+      const inset = faces ? 0.25 : 0.3;
+      placeAt(
+        token,
+        zx + zw * (inset + (seat % 2) * (1 - 2 * inset)),
+        zy + zh * (inset + Math.floor(seat / 2) * (1 - 2 * inset)),
+      );
     } else {
-      const flipped = strength > 20;
-      const shown = Math.min(flipped ? strength - 20 : strength, 20);
       const row = shown > 10 ? 1 : 0;
       const cell = shown > 10 ? shown - 10 : shown;
-      if (flipped) {
-        token.classList.add("flipped");
-        const plus = document.createElement("span");
-        plus.className = "strength-plus";
-        plus.textContent = "+20";
-        token.appendChild(plus);
+      if (faces) {
+        /* The fan may lap about half a percent over each neighbour (a
+           cell is 3.75 wide, the widest fan 4.95), which keeps a strip of
+           every tied colour visible at the size of a 3% token. */
+        const sharing = strengthStacks.get(shown);
+        const step = sharing.length > 1 ? Math.min(1.1, 1.95 / (sharing.length - 1)) : 0;
+        const shift = (sharing.indexOf(seat) - (sharing.length - 1) / 2) * step;
+        placeAt(token, tracks.strength.cells[cell] + shift, tracks.strength.token_rows[row] - shift * 0.35);
+      } else {
+        if (flipped) {
+          token.classList.add("flipped");
+          const plus = document.createElement("span");
+          plus.className = "strength-plus";
+          plus.textContent = "+20";
+          token.appendChild(plus);
+        }
+        placeAt(token, tracks.strength.cells[cell] + (seat - 1.5) * 0.9, tracks.strength.rows[row]);
       }
-      placeAt(token, tracks.strength.cells[cell] + (seat - 1.5) * 0.9, tracks.strength.rows[row]);
     }
     stage.appendChild(token);
 

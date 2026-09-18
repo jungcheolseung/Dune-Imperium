@@ -358,6 +358,19 @@ button:disabled { opacity: 0.5; cursor: wait; }
   color: #1a140c;
   white-space: nowrap;
 }
+/* The pictured Combat marker (catalog.strength_tokens): a square token
+   face sized by the stage (width set inline), so it fills its cell of the
+   scan at any zoom. The thin rim is the seat's UI colour. */
+.strength-token.pictured {
+  transform: translate(-50%, -50%);
+  aspect-ratio: 1;
+  border: 1px solid;
+  border-radius: 14%;
+  overflow: hidden;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.9);
+}
+.strength-token.pictured img { display: block; width: 100%; height: 100%; }
+.strength-token.pictured:hover { z-index: 4; }
 /* Per-seat force chips: the garrison count in the seat's circle and the
    deployed units in its quadrant of the Conflict field. */
 .force-chip {

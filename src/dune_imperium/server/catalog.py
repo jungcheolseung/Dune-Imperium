@@ -11,10 +11,11 @@ images and safe to cache on the client.
 kind, content_id, "<language>/<path>")`` triples from the private asset
 manifest (``display.images``) for files that actually exist — so a
 machine without the assets checkout serves the same catalog with every
-``image`` field null. ``icon_files`` and ``board_image`` work the same way
-for the rulebook icon set (``/icons/...``) and the local board scan
-(``/board-image``): the catalog also carries the percent coordinates that
-place the live state on that scan (``display.board_layout``).
+``image`` field null. ``icon_files``, ``token_files`` and ``board_image``
+work the same way for the rulebook icon set (``/icons/...``), the pictured
+Combat markers (``/tokens/...``, ``display.token_images``) and the local board
+scan (``/board-image``): the catalog also carries the percent coordinates
+that place the live state on that scan (``display.board_layout``).
 """
 
 from functools import cache
@@ -46,6 +47,7 @@ from dune_imperium.content.uprising.starting_cards import STARTING_CARDS_BY_ID
 from dune_imperium.display import (
     LEADER_FACE_TEXTS,
     available_icons,
+    available_strength_tokens,
     conflict_rewards_texts,
     contract_condition_text,
     contract_reward_text,
@@ -78,6 +80,7 @@ def build_catalog(
     board_image: bool = False,
     *,
     bene_tleilax_image: bool = False,
+    token_files: frozenset[str] = frozenset(),
 ) -> JsonObject:
     """Return every display mapping the browser UI needs, keyed by ID."""
 
@@ -278,6 +281,15 @@ def build_catalog(
             for name, filename in available_icons(icon_files).items()
         },
         "board_image": "/board-image" if board_image else None,
+        # Each seat's pictured Combat marker (sword face and "+20" face), or
+        # null where the local token directory lacks either face: the client
+        # then draws its own seat token.
+        "strength_tokens": [
+            None
+            if faces is None
+            else {"front": f"/tokens/{faces[0]}", "plus20": f"/tokens/{faces[1]}"}
+            for faces in available_strength_tokens(token_files)
+        ],
         # Live-state marker coordinates on the scan (Influence, VP, strength,
         # Conflict quadrants, High Council seats), percent of the image.
         "tracks": marker_layout(),

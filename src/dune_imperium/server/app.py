@@ -106,6 +106,20 @@ def default_icons_directory() -> Path:
     return _ASSETS_DIR / "icons"
 
 
+def default_tokens_directory() -> Path:
+    """Return the local pictured-token location (the Combat markers).
+
+    ``DUNE_IMPERIUM_TOKEN_DIR`` overrides the default ``assets/tokens``
+    (``dune_imperium.display.token_images`` names the files). Optional like the
+    icons: without it the UI draws its own seat tokens.
+    """
+
+    override = os.environ.get("DUNE_IMPERIUM_TOKEN_DIR")
+    if override:
+        return Path(override)
+    return _ASSETS_DIR / "tokens"
+
+
 def default_board_image_path() -> Path:
     """Return the owner's local board scan location.
 
@@ -273,6 +287,7 @@ def create_app(
     saves_dir: Path | None = None,
     card_images_dir: Path | None = None,
     icons_dir: Path | None = None,
+    tokens_dir: Path | None = None,
     board_image: Path | None = None,
     bene_tleilax_image: Path | None = None,
     heartbeat_seconds: float = DEFAULT_HEARTBEAT_SECONDS,
@@ -312,6 +327,12 @@ def create_app(
         if icon_dir.is_dir()
         else frozenset()
     )
+    token_dir = tokens_dir if tokens_dir is not None else default_tokens_directory()
+    token_files = (
+        frozenset(path.name for path in token_dir.iterdir() if path.is_file())
+        if token_dir.is_dir()
+        else frozenset()
+    )
     board_path = (
         board_image if board_image is not None else default_board_image_path()
     )
@@ -341,6 +362,7 @@ def create_app(
             icon_files,
             board_path.is_file(),
             bene_tleilax_image=bene_tleilax_path.is_file(),
+            token_files=token_files,
         )
 
     @app.get("/board-image", include_in_schema=False)
@@ -649,6 +671,8 @@ def create_app(
         )
     if icon_dir.is_dir():
         app.mount("/icons", StaticFiles(directory=icon_dir), name="icons")
+    if token_dir.is_dir():
+        app.mount("/tokens", StaticFiles(directory=token_dir), name="tokens")
     return app
 
 

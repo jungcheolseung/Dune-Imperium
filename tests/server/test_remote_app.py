@@ -31,6 +31,7 @@ def app(tmp_path: Path) -> FastAPI:
         saves_dir=tmp_path / "saves",
         card_images_dir=tmp_path / "no-images",
         icons_dir=tmp_path / "no-icons",
+        tokens_dir=tmp_path / "no-tokens",
         board_image=tmp_path / "no-map.jpg",
         bene_tleilax_image=tmp_path / "no-bene-tleilax.jpg",
     )
@@ -41,6 +42,7 @@ def _open_app(tmp_path: Path) -> FastAPI:
         saves_dir=tmp_path / "saves",
         card_images_dir=tmp_path / "no-images",
         icons_dir=tmp_path / "no-icons",
+        tokens_dir=tmp_path / "no-tokens",
         board_image=tmp_path / "no-map.jpg",
         bene_tleilax_image=tmp_path / "no-bene-tleilax.jpg",
     )
@@ -514,6 +516,7 @@ def test_whoami_tells_a_browser_the_access_mode_and_whether_it_is_the_host(
         saves_dir=tmp_path / "saves",
         card_images_dir=tmp_path / "no-images",
         icons_dir=tmp_path / "no-icons",
+        tokens_dir=tmp_path / "no-tokens",
         board_image=tmp_path / "no-map.jpg",
         bene_tleilax_image=tmp_path / "no-bene-tleilax.jpg",
         public_url="http://100.101.102.103:8000",

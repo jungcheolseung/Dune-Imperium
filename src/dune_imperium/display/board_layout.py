@@ -121,6 +121,14 @@ VICTORY_POINT_OVERFLOW_Y: Final = 25.5
 STRENGTH_CELL_X: Final = tuple(46.3 + index * 4.37 for index in range(11))
 STRENGTH_ROW_Y: Final = (93.2, 97.6)
 STRENGTH_ZERO_BOX: Final = (38.6, 89.3, 10.0, 9.2)
+# A pictured Combat marker (``dune_imperium.display.token_images``) lies in the
+# open part of its cell, above the printed number, like the token on the
+# table: the centre of that open part per row, and the token's side as a
+# percent of the scan's width (a cell's open part is about 3.75 wide and
+# 3.35 tall; measured on a 0.5% grid overlay, 2026-09-18). The drawn
+# fallback token stays on the number itself (``STRENGTH_ROW_Y``).
+STRENGTH_TOKEN_ROW_Y: Final = (91.1, 95.6)
+STRENGTH_TOKEN_SIZE: Final = 3.0
 
 # The Conflict area (re-measured 2026-09-06): the four bracketed circles in
 # its corners are the garrisons, and the central field between them is
@@ -166,6 +174,8 @@ def marker_layout() -> dict[str, Any]:
             "cells": list(STRENGTH_CELL_X),
             "rows": list(STRENGTH_ROW_Y),
             "zero_box": list(STRENGTH_ZERO_BOX),
+            "token_rows": list(STRENGTH_TOKEN_ROW_Y),
+            "token_size": STRENGTH_TOKEN_SIZE,
         },
         "garrisons": [list(point) for point in GARRISON_POINTS],
         "conflict_quadrants": [list(point) for point in CONFLICT_QUADRANTS],

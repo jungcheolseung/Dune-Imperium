@@ -42,6 +42,7 @@ def client(tmp_path: Path) -> TestClient:
             saves_dir=tmp_path / "saves",
             card_images_dir=tmp_path / "no-images",
             icons_dir=tmp_path / "no-icons",
+            tokens_dir=tmp_path / "no-tokens",
             board_image=tmp_path / "no-map.jpg",
             bene_tleilax_image=tmp_path / "no-bene-tleilax.jpg",
         )
@@ -157,6 +158,7 @@ def remote_app(tmp_path: Path) -> FastAPI:
         saves_dir=tmp_path / "saves",
         card_images_dir=tmp_path / "no-images",
         icons_dir=tmp_path / "no-icons",
+        tokens_dir=tmp_path / "no-tokens",
         board_image=tmp_path / "no-map.jpg",
         bene_tleilax_image=tmp_path / "no-bene-tleilax.jpg",
     )
@@ -254,6 +256,7 @@ def test_a_jpeg_board_image_is_not_gzipped_even_though_it_is_large(
             saves_dir=tmp_path / "saves",
             card_images_dir=tmp_path / "no-images",
             icons_dir=tmp_path / "no-icons",
+            tokens_dir=tmp_path / "no-tokens",
             board_image=board,
             bene_tleilax_image=tmp_path / "no-bene-tleilax.jpg",
         )

@@ -244,17 +244,36 @@ def test_catalog_carries_board_overlay_layout_and_optional_icons() -> None:
     assert len(posts) == 13
     assert catalog["icons"] == {}
     assert catalog["board_image"] is None
+    assert catalog["strength_tokens"] == [None, None, None, None]
 
     with_assets = build_catalog(
         frozenset(),
         frozenset({"troop.png", "spice.png", "not-an-icon.png"}),
         True,
+        token_files=frozenset(
+            {
+                "strength_red.png",
+                "strength_red_plus20.png",
+                # A lone face does not make a token (display.token_images).
+                "strength_yellow.png",
+            }
+        ),
     )
     assert with_assets["icons"] == {
         "troop": "/icons/troop.png",
         "spice": "/icons/spice.png",
     }
     assert with_assets["board_image"] == "/board-image"
+    # One entry per seat, in seat order (seat 1 is red).
+    assert with_assets["strength_tokens"] == [
+        None,
+        {
+            "front": "/tokens/strength_red.png",
+            "plus20": "/tokens/strength_red_plus20.png",
+        },
+        None,
+        None,
+    ]
 
 
 def test_catalog_cross_section_id_overlaps_are_pinned() -> None:

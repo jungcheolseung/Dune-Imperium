@@ -28,6 +28,18 @@ def test_marker_tables_cover_the_printed_tracks() -> None:
     assert isinstance(strength, dict)
     assert len(strength["cells"]) == 11 and len(strength["rows"]) == 2
     assert len(strength["zero_box"]) == 4
+    # A pictured Combat marker lies in the open part of its cell, above the
+    # printed number the drawn token sits on, and is narrower than the
+    # cells' pitch so neighbouring strengths do not cover each other.
+    assert len(strength["token_rows"]) == 2
+    assert all(
+        token_y < number_y
+        for token_y, number_y in zip(
+            strength["token_rows"], strength["rows"], strict=True
+        )
+    )
+    assert strength["rows"][0] < strength["token_rows"][1]
+    assert 0 < strength["token_size"] < strength["cells"][2] - strength["cells"][1]
     assert len(layout["garrisons"]) == 4
     assert len(layout["conflict_quadrants"]) == 4
     assert len(layout["council_seats"]) == 4
@@ -45,6 +57,7 @@ def test_marker_tables_cover_the_printed_tracks() -> None:
     assert all(inside(value) for value in influence["seat_x"])
     assert all(inside(value) for value in victory["levels"])
     assert all(inside(value) for value in strength["cells"])
+    assert all(inside(value) for value in strength["token_rows"])
     for table in ("garrisons", "conflict_quadrants", "council_seats"):
         assert all(inside(point[0]) and inside(point[1]) for point in layout[table])
     slots = (

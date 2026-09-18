@@ -22,6 +22,7 @@ def client(tmp_path: Path) -> TestClient:
             saves_dir=tmp_path / "saves",
             card_images_dir=tmp_path / "no-images",
             icons_dir=tmp_path / "no-icons",
+            tokens_dir=tmp_path / "no-tokens",
             board_image=tmp_path / "no-map.jpg",
             bene_tleilax_image=tmp_path / "no-bene-tleilax.jpg",
         )
@@ -325,6 +326,8 @@ def test_card_images_degrade_to_text_without_the_cache(
     assert catalog["board_image"] is None
     assert client.get("/board-image").status_code == 404
     assert client.get("/icons/troop.png").status_code == 404
+    assert catalog["strength_tokens"] == [None, None, None, None]
+    assert client.get("/tokens/strength_blue.png").status_code == 404
 
 
 def test_board_scan_and_icons_are_served_when_present(tmp_path: Path) -> None:
@@ -339,6 +342,7 @@ def test_board_scan_and_icons_are_served_when_present(tmp_path: Path) -> None:
             saves_dir=tmp_path / "saves",
             card_images_dir=tmp_path / "no-images",
             icons_dir=icons,
+            tokens_dir=tmp_path / "no-tokens",
             board_image=board,
         )
     ) as image_client:
@@ -357,6 +361,7 @@ def test_board_scan_and_icons_are_served_when_present(tmp_path: Path) -> None:
             saves_dir=tmp_path / "saves",
             card_images_dir=tmp_path / "no-images",
             icons_dir=icons,
+            tokens_dir=tmp_path / "no-tokens",
             board_image=board,
             bene_tleilax_image=bene_tleilax,
         )
@@ -366,6 +371,37 @@ def test_board_scan_and_icons_are_served_when_present(tmp_path: Path) -> None:
         served = scan_client.get("/bene-tleilax-image")
         assert served.status_code == 200
         assert served.content == b"jpeg-bene-tleilax"
+
+
+def test_pictured_combat_markers_are_served_when_present(tmp_path: Path) -> None:
+    tokens = tmp_path / "tokens"
+    tokens.mkdir()
+    (tokens / "strength_green.png").write_bytes(b"png-green-sword")
+    (tokens / "strength_green_plus20.png").write_bytes(b"png-green-plus20")
+    # Yellow has only its sword face, so its seat keeps the drawn token.
+    (tokens / "strength_yellow.png").write_bytes(b"png-yellow-sword")
+    with TestClient(
+        create_app(
+            saves_dir=tmp_path / "saves",
+            card_images_dir=tmp_path / "no-images",
+            icons_dir=tmp_path / "no-icons",
+            tokens_dir=tokens,
+            board_image=tmp_path / "no-map.jpg",
+        )
+    ) as token_client:
+        catalog = token_client.get("/catalog").json()
+        assert catalog["strength_tokens"] == [
+            None,
+            None,
+            {
+                "front": "/tokens/strength_green.png",
+                "plus20": "/tokens/strength_green_plus20.png",
+            },
+            None,
+        ]
+        green = catalog["strength_tokens"][2]
+        assert token_client.get(green["front"]).content == b"png-green-sword"
+        assert token_client.get(green["plus20"]).content == b"png-green-plus20"
 
 
 def test_undo_and_log_over_http(client: TestClient) -> None:
