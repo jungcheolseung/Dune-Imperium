@@ -91,16 +91,25 @@ POST_POINTS: Final[Mapping[str, tuple[float, float]]] = MappingProxyType(
 # centres and each other Faction's strip is the same drawing shifted down by
 # ``INFLUENCE_STRIP_OFFSET_Y``. Seat cubes sit side by side at
 # ``INFLUENCE_SEAT_X`` so four cubes on one level stay readable.
-INFLUENCE_LEVEL_Y: Final = (23.0, 19.8, 16.3, 12.5, 9.0, 5.9, 3.2)
+INFLUENCE_LEVEL_Y: Final = (23.24, 19.89, 16.15, 12.38, 8.78, 5.76, 2.9)
 INFLUENCE_STRIP_OFFSET_Y: Final[Mapping[str, float]] = MappingProxyType(
     {
         "emperor": 0.0,
-        "spacing_guild": 24.3,
-        "bene_gesserit": 48.7,
-        "fremen": 73.2,
+        "spacing_guild": 24.56,
+        "bene_gesserit": 49.08,
+        "fremen": 73.72,
     }
 )
-INFLUENCE_SEAT_X: Final = (4.9, 6.7, 8.5, 10.3)
+INFLUENCE_SEAT_X: Final = (4.63, 6.58, 8.52, 10.47)
+# An Influence cube is exactly one of the four squares each strip prints
+# for Influence 0: 95 px of the 6012 px scan on all sixteen (brightness
+# profiles, 2026-09-18), square-cornered. Those squares also fix the row of
+# level 0 (their centres), the four columns (the same on every strip within
+# 0.04) and the strips' offsets: the old eyeballed offsets were 0.26, 0.38
+# and 0.52 short, which the gold bands' dark gaps and the orange line
+# confirm. Levels 1..6 are the centres of the chevron bands, averaged over
+# the columns (the bands rise about 0.4 towards the middle).
+INFLUENCE_CUBE_SIZE: Final = 1.58
 # The Faction emblem at the top of each strip, where the Alliance token sits.
 ALLIANCE_POINT: Final = (7.5, 4.0)
 
@@ -178,6 +187,7 @@ def marker_layout() -> dict[str, Any]:
             "levels": list(INFLUENCE_LEVEL_Y),
             "offsets": dict(INFLUENCE_STRIP_OFFSET_Y),
             "seat_x": list(INFLUENCE_SEAT_X),
+            "cube_size": INFLUENCE_CUBE_SIZE,
             "alliance": list(ALLIANCE_POINT),
         },
         "victory_points": {

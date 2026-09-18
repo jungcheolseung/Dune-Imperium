@@ -311,14 +311,15 @@ button:disabled { opacity: 0.5; cursor: wait; }
   pointer-events: auto;
 }
 .spy-token { width: 1.3em; height: 1.3em; font-size: 0.7em; }
+/* An Influence cube: flat in the seat's colour, square-cornered, exactly
+   the square the board prints for it (the width, a percent of the stage,
+   is set inline). The dark edge is a shadow ring outside the box, not a
+   border, so the coloured face itself has the printed size. */
 .track-cube {
   position: absolute;
-  width: 1.05em;
-  height: 1.05em;
+  aspect-ratio: 1;
   transform: translate(-50%, -50%);
-  border: 1px solid #111;
-  border-radius: 2px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+  box-shadow: 0 0 0 1px #111, 0 1px 3px rgba(0, 0, 0, 0.9);
 }
 .alliance-ring {
   position: absolute;
@@ -340,13 +341,14 @@ button:disabled { opacity: 0.5; cursor: wait; }
 /* The player disc (seatDisc): the one common round token — Score marker,
    Councilor token, the Bene Tleilax board's research and track tokens.
    Flat in the seat's colour, no number: the same colour, edge and shadow
-   as the Influence cubes (.track-cube). On a board scan its centre is
-   placed and its width, a percent of the stage, is set inline. */
+   as the Influence cubes (.track-cube), the edge likewise outside the box
+   so that the coloured face is the printed spot's size. On a board scan
+   its centre is placed and its width, a percent of the stage, is set
+   inline. */
 .seat-disc {
   aspect-ratio: 1;
-  border: 1px solid #111;
   border-radius: 50%;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+  box-shadow: 0 0 0 1px #111, 0 1px 3px rgba(0, 0, 0, 0.9);
 }
 .board-stage .seat-disc, .bt-stage .seat-disc {
   position: absolute;

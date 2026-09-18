@@ -20,6 +20,21 @@ def test_marker_tables_cover_the_printed_tracks() -> None:
     assert set(influence["offsets"]) == {faction.value for faction in Faction}
     assert len(influence["seat_x"]) == 4
     assert influence["levels"] == sorted(influence["levels"], reverse=True)
+    # An Influence cube is exactly a printed Influence 0 square (95 px of
+    # the 6012 px scan); neighbouring columns and levels leave room for it.
+    cube = influence["cube_size"]
+    assert cube == 1.58
+    assert round(cube / 100 * 6012) == 95
+    seat_x = influence["seat_x"]
+    assert all(
+        right - left > cube for left, right in zip(seat_x, seat_x[1:], strict=False)
+    )
+    assert all(
+        lower - upper > cube
+        for lower, upper in zip(
+            influence["levels"], influence["levels"][1:], strict=False
+        )
+    )
     victory = layout["victory_points"]
     assert isinstance(victory, dict)
     assert len(victory["levels"]) == 13

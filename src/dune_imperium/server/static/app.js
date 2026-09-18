@@ -2865,8 +2865,11 @@ function renderTrackMarkers(stage, view) {
       const offset = tracks.influence.offsets[key];
       if (offset === undefined) continue;
       const level = Math.max(0, Math.min(6, player.influence[key] || 0));
+      /* The cube is exactly the square the strip prints for it (its
+         width is a percent of the stage, like the player disc). */
       const cube = document.createElement("span");
       cube.className = "track-cube";
+      cube.style.width = `${tracks.influence.cube_size}%`;
       cube.style.background = color;
       cube.title = `좌석 ${seat} · ${FACTION_LABELS[key]} Influence ${player.influence[key]}`;
       placeAt(cube, tracks.influence.seat_x[seat], tracks.influence.levels[level] + offset);
