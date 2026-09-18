@@ -203,13 +203,16 @@ def train(
         tech_module=config.tech_module,
         immortality=config.immortality,
     )
-    codec_size = SelfPlayRunner(ruleset, record=False).codec.size
+    codec = SelfPlayRunner(ruleset, record=False).codec
+    codec_size = codec.size
     start_iteration = 0
     resumed_optimizer: Mapping[str, Any] | None = None
     if config.resume is not None:
         network, info = load_checkpoint(config.resume)
         if info.ruleset != ruleset.identifier:
             raise ValueError("resumed checkpoint belongs to a different ruleset")
+        if info.migration is not None:
+            print(f"migrated {config.resume}: {info.migration.describe()}")
         start_iteration = info.iteration
         resumed_optimizer = info.optimizer_state
     else:
@@ -252,6 +255,7 @@ def train(
                 iteration=iteration + 1,
                 metadata={"config": _config_document(config)},
                 optimizer_state=learner.optimizer_state(),
+                codec=codec,
             )
             if (iteration + 1) % config.checkpoint_every == 0:
                 save_checkpoint(
@@ -259,6 +263,7 @@ def train(
                     learner.network,
                     ruleset=ruleset.identifier,
                     iteration=iteration + 1,
+                    codec=codec,
                 )
             eval_win_rate = eval_mean_rank = None
             if config.eval_every and (iteration + 1) % config.eval_every == 0:
