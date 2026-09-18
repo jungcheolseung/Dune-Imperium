@@ -707,6 +707,86 @@ button:disabled { opacity: 0.5; cursor: wait; }
   text-decoration: underline;
 }
 #actions .action-list-toggle:hover { opacity: 1; }
+/* What a step makes of the seat's combat strength (strengthPreview). */
+.strength-preview {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.5em;
+  padding: 0 0.4em;
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.35);
+  font-size: 0.85em;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.strength-preview .icon { height: 1em; }
+/* A count family as one row (countRow): what, how many, and the button
+   that does it. */
+.action-item.count-row {
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.count-label { font-weight: 600; }
+.stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+#actions .stepper button, .force-stepper .stepper button {
+  min-width: 1.9em;
+  padding: 0.15rem 0.3rem;
+  text-align: center;
+  font-weight: 800;
+}
+.stepper-value {
+  min-width: 1.6em;
+  text-align: center;
+  font-size: 1.1em;
+}
+#actions .count-confirm { flex: 1; }
+/* The same rows by the seat's units in the Conflict area. */
+.force-stepper {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2em;
+  padding: 0.25em 0.4em;
+  background: rgba(10, 8, 6, 0.9);
+  border: 2px solid;
+  border-radius: 8px;
+  font-size: 0.85em;
+  white-space: nowrap;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.8);
+}
+.force-stepper .action-item.count-row { flex-wrap: nowrap; gap: 0.35em; }
+.force-stepper button { padding: 0.1rem 0.45rem; }
+/* The Reveal shop (renderRevealPanel). */
+.reveal-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem 0.9rem;
+}
+.reveal-persuasion { font-size: 1.15em; font-weight: 700; }
+.reveal-persuasion .icon { height: 1.2em; }
+.reveal-bought { font-size: 0.9em; }
+.acquire-cost { float: right; margin-left: 0.6em; font-weight: 700; }
+.acquire-cost .icon { height: 1.05em; }
+.action-item.finish-row { margin-top: 0.4rem; }
+#actions .action-item.finish-row > button:first-child {
+  border-color: var(--good);
+  color: var(--good);
+  background: transparent;
+  font-weight: 700;
+  text-align: center;
+}
+#actions .action-item.finish-row > button:first-child:hover:not(:disabled) {
+  background: var(--good);
+  color: #111;
+}
 /* The option chooser borrows the card popover next to the picked space. */
 #card-popover .action-item { margin-top: 0.3rem; }
 #card-popover .action-item > button:first-child { flex: 1; text-align: left; }

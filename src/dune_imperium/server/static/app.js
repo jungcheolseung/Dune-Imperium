@@ -30,6 +30,8 @@ const state = {
      only in this page; nothing reaches the server until the pick names one
      legal action (see pickStep). */
   pick: null,
+  /* The count chosen on each count stepper, by action id (countRow). */
+  counts: {},
 };
 
 let noteTimer = 0;
@@ -939,6 +941,7 @@ function resetGameState() {
   state.viewSeat = null;
   state.review = null;
   state.pick = null;
+  state.counts = {};
   myTurnBefore = null;
   document.title = BASE_TITLE;
   el("review-bar").hidden = true;
@@ -2401,6 +2404,210 @@ function actionRefs(action) {
   return Object.values(action.arguments).filter((value) => typeof value === "string");
 }
 
+/* What the seat's running combat strength becomes with a step: the
+   server's dry run of that step (`strength_after`), so the engine's own
+   figure. */
+function strengthPreview(after) {
+  const own = state.view && state.view.players[state.viewSeat];
+  const now = own ? own.combat_strength || 0 : 0;
+  const badge = document.createElement("span");
+  badge.className = "strength-preview";
+  badge.title = "이 행동 뒤의 내 전투력";
+  badge.append(icon("sword", "전투력"), ` ${now} → ${after}`);
+  return badge;
+}
+
+/* ---------- count steppers ----------
+
+   "Deploy 1", "Deploy 2", "Deploy 3" are one decision with a number in it.
+   Actions of one id that differ only in a `count` argument are shown as a
+   single row with a stepper over the legal counts; the panel and the
+   Conflict area share the chosen number. */
+function countFamilies(actions) {
+  const byId = new Map();
+  for (const action of actions) {
+    if (!byId.has(action.action_id)) byId.set(action.action_id, []);
+    byId.get(action.action_id).push(action);
+  }
+  const families = new Map();
+  for (const [id, group] of byId) {
+    const onlyCount = group.every((action) => {
+      const keys = Object.keys(action.arguments);
+      return keys.length === 1 && keys[0] === "count" && Number.isInteger(action.arguments.count);
+    });
+    /* Units go in and out of the Conflict through the same control even
+       when a single count is left to choose. */
+    if (!onlyCount || (group.length < 2 && !FORCE_STEPPER_ACTIONS.has(id))) continue;
+    families.set(id, [...group].sort((a, b) => a.arguments.count - b.arguments.count));
+  }
+  return families;
+}
+
+/* The family's action for the chosen count. Sending units defaults to all
+   of them, taking them back to one. */
+function chosenOf(id, family) {
+  const found = family.find((action) => action.arguments.count === state.counts[id]);
+  if (found) return found;
+  return id.startsWith("deploy") ? family[family.length - 1] : family[0];
+}
+
+function countRow(id, family, compact) {
+  const chosen = chosenOf(id, family);
+  const position = family.indexOf(chosen);
+  const row = document.createElement("div");
+  row.className = "action-item count-row" + (compact ? " compact" : "");
+  row.dataset.action = id;
+  row.dataset.index = String(chosen.index);
+  const label = document.createElement("span");
+  label.className = "count-label";
+  label.textContent = ACTION_LABELS[id] || prettify(id);
+  const stepper = document.createElement("span");
+  stepper.className = "stepper";
+  const step = (text, target, title) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = text;
+    button.title = title;
+    button.disabled = state.busy || !family[target];
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      state.counts[id] = family[target].arguments.count;
+      render();
+    });
+    return button;
+  };
+  const value = document.createElement("strong");
+  value.className = "stepper-value";
+  value.textContent = String(chosen.arguments.count);
+  stepper.append(step("−", position - 1, "하나 적게"), value, step("+", position + 1, "하나 더"));
+  const confirm = document.createElement("button");
+  confirm.type = "button";
+  confirm.className = "count-confirm";
+  confirm.disabled = state.busy;
+  confirm.append(compact ? "확정" : `${chosen.arguments.count}개 ${label.textContent}`);
+  if (typeof chosen.strength_after === "number") {
+    confirm.appendChild(strengthPreview(chosen.strength_after));
+  }
+  confirm.addEventListener("click", (event) => {
+    event.stopPropagation();
+    applyAction(chosen.index);
+  });
+  row.append(label, stepper, confirm);
+  return row;
+}
+
+/* A list of legal actions with its count families folded into rows. */
+function appendActionItems(box, actions) {
+  const families = countFamilies(actions);
+  const done = new Set();
+  for (const action of actions) {
+    const family = families.get(action.action_id);
+    if (!family) box.appendChild(actionItem(action));
+    else if (!done.has(action.action_id)) {
+      done.add(action.action_id);
+      box.appendChild(countRow(action.action_id, family, false));
+    }
+  }
+}
+
+/* ---------- Reveal purchases ----------
+
+   A Reveal is a small shop: the Persuasion still unspent (the server's
+   summary carries it), what has been bought so far (the session log), the
+   cards that can still be bought, the Reveal effects left to resolve, and
+   one clear way out. */
+function isAcquire(action) {
+  return action.action_id.startsWith("acquire");
+}
+
+function boughtThisReveal() {
+  const entries = (state.log && state.log.entries) || [];
+  const seat = state.viewSeat;
+  let start = -1;
+  entries.forEach((entry, position) => {
+    if (entry.action_id === "reveal_turn" && entry.actor === seat && !entry.undone) start = position;
+  });
+  if (start < 0) return [];
+  const bought = [];
+  for (const entry of entries.slice(start + 1)) {
+    if (entry.actor !== seat || entry.undone) continue;
+    for (const event of entry.events || []) {
+      if (event.kind === "card_acquired" && event.payload.player === seat) {
+        bought.push(event.payload.card_id);
+      }
+    }
+  }
+  return bought;
+}
+
+function acquireCostNode(action) {
+  const ref = actionRefs(action)[0];
+  const entry = ref ? lookup(baseId(ref)) : null;
+  if (!entry) return null;
+  const cost = document.createElement("span");
+  cost.className = "acquire-cost";
+  if (action.action_id.includes("tleilaxu") && typeof entry.specimens === "number") {
+    cost.append(`specimen ${entry.specimens}`);
+  } else if (typeof entry.cost === "number") {
+    cost.append(amount(action.action_id.includes("solari") ? "solari" : "persuasion", "비용", entry.cost));
+  } else {
+    return null;
+  }
+  return cost;
+}
+
+function renderRevealPanel(box, actions) {
+  const decision = state.summary.decision;
+  const status = document.createElement("div");
+  status.className = "reveal-status";
+  if (typeof decision.persuasion === "number") {
+    const left = document.createElement("span");
+    left.className = "reveal-persuasion";
+    left.dataset.persuasion = String(decision.persuasion);
+    left.append("남은 Persuasion ", amount("persuasion", "Persuasion", decision.persuasion));
+    status.appendChild(left);
+  }
+  const bought = boughtThisReveal();
+  if (bought.length) {
+    const list = document.createElement("span");
+    list.className = "reveal-bought";
+    list.append("산 카드: ");
+    bought.forEach((cardId) => list.appendChild(chip(cardId)));
+    status.appendChild(list);
+  }
+  if (status.childNodes.length) box.appendChild(status);
+
+  const heading = (text) => {
+    const node = document.createElement("div");
+    node.className = "pick-others muted";
+    node.textContent = text;
+    box.appendChild(node);
+  };
+  const buys = actions.filter(isAcquire);
+  const finish = actions.filter((action) => action.action_id === "finish_reveal");
+  const effects = actions.filter((action) => !isAcquire(action) && action.action_id !== "finish_reveal");
+  if (effects.length) {
+    heading("Reveal 효과");
+    appendActionItems(box, effects);
+  }
+  if (buys.length) {
+    heading("살 수 있는 카드 — 테이블에서 빛나는 카드를 눌러도 됩니다");
+    for (const action of buys) {
+      const item = actionItem(action);
+      const cost = acquireCostNode(action);
+      if (cost) item.querySelector("button").appendChild(cost);
+      box.appendChild(item);
+    }
+  }
+  for (const action of finish) {
+    const item = actionItem(action);
+    item.classList.add("finish-row");
+    const button = item.querySelector("button");
+    button.textContent = buys.length ? "구매 끝 · Reveal 종료" : "Reveal 종료";
+    box.appendChild(item);
+  }
+}
+
 /* The arguments of an action that name something on the table: a board
    space or an observation post, or a card instance (ids with a colon). */
 function tableRefs(action) {
@@ -2430,6 +2637,9 @@ function actionItem(action, onApply) {
     badge.title =
       "이 행동 뒤에는 되돌릴 수 없습니다 (숨겨진 정보가 공개되거나 무작위 결과가 정해집니다)";
     button.appendChild(badge);
+  }
+  if (typeof action.strength_after === "number") {
+    button.appendChild(strengthPreview(action.strength_after));
   }
   if (action.warning) {
     /* The server dry-ran the step: the troop supply cannot cover what the
@@ -2535,6 +2745,14 @@ function clearActionFocus() {
    neither the engine nor the codec knows the difference. Either order
    works (a space first lights the cards that can go there). The flat list
    stays behind a toggle. */
+/* The count families that move units into and out of the Conflict; they
+   get a stepper on the board as well (renderTrackMarkers). */
+const FORCE_STEPPER_ACTIONS = new Set([
+  "deploy_troops",
+  "withdraw_troops",
+  "deploy_commanders",
+  "withdraw_commanders",
+]);
 const PLACEMENT_ACTION = "agent_turn";
 const FULL_LIST_KEY = "dune.fullActionList";
 
@@ -2830,6 +3048,10 @@ function pickStepNode(number, label, ref, part) {
 function renderActionPanel(box) {
   const actions = state.actions.actions;
   const placements = placementActions();
+  if (state.summary.decision && state.summary.decision.kind === "reveal") {
+    renderRevealPanel(box, actions);
+    return;
+  }
   if (!stagedTurn()) {
     /* What follows a placement (the graft partner, a card to trash, a space
        for a Spy) is a short list whose cards and spaces are lit on the
@@ -2843,7 +3065,7 @@ function renderActionPanel(box) {
     /* The flat list of an Agent turn is long: its way back to the steps
        goes on top, where the panel cannot push it under the log. */
     if (placements.length) box.appendChild(actionListToggle(false, actions.length));
-    for (const action of actions) box.appendChild(actionItem(action));
+    appendActionItems(box, actions);
     return;
   }
   const pick = state.pick || {};
@@ -2888,7 +3110,7 @@ function renderActionPanel(box) {
     heading.className = "pick-others muted";
     heading.textContent = "또는";
     box.appendChild(heading);
-    for (const action of others) box.appendChild(actionItem(action));
+    appendActionItems(box, others);
   }
   box.appendChild(actionListToggle(true, actions.length));
 }
@@ -3483,6 +3705,23 @@ function renderTrackMarkers(stage, view) {
       }
       placeAt(deployed, qx, qy);
       stage.appendChild(deployed);
+    }
+
+    /* The seat to move sends and takes back its units right here: the same
+       count rows as in the panel, by the seat's quadrant (above the upper
+       seats, under the lower ones, clear of the units chip). */
+    if (seat === state.viewSeat && !state.review && state.actions) {
+      const families = countFamilies(state.actions.actions);
+      const rows = [...families.entries()].filter(([id]) => FORCE_STEPPER_ACTIONS.has(id));
+      if (rows.length) {
+        const [sx, sy] = tracks.conflict_quadrants[seat] || tracks.conflict_quadrants[0];
+        const control = document.createElement("div");
+        control.className = "force-stepper";
+        control.style.borderColor = color;
+        for (const [id, family] of rows) control.appendChild(countRow(id, family, true));
+        placeAt(control, sx, sy + (sy > 77 ? 4.6 : -4.6));
+        stage.appendChild(control);
+      }
     }
 
     if (player.high_council && councilSlot < tracks.council_seats.length) {
