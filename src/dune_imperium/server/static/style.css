@@ -243,6 +243,27 @@ button:disabled { opacity: 0.5; cursor: wait; }
   animation: pulse 1.6s ease-in-out infinite;
 }
 .hotspot.legal:hover { background: rgba(255, 207, 90, 0.18); }
+/* A hand card that can be grafted to the picked one: a dashed glow and a
+   plus sign, because a click adds it to the pick instead of swapping. */
+.vcard.partner {
+  border-style: dashed;
+  border-color: var(--glow);
+  box-shadow: 0 0 10px 2px rgba(255, 207, 90, 0.5);
+}
+.vcard.partner::after {
+  content: "＋";
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 1.3em;
+  height: 1.3em;
+  border-radius: 50%;
+  background: var(--glow);
+  color: #1a140c;
+  font-weight: 800;
+  line-height: 1.3em;
+  text-align: center;
+}
 /* A card or a space the pick could be swapped for: a quiet version of the
    legal glow. */
 .vcard.alternative { border-color: rgba(255, 207, 90, 0.55); box-shadow: 0 0 6px 1px rgba(255, 207, 90, 0.3); }

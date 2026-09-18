@@ -228,10 +228,130 @@ def scenario(base, browser) -> None:
     context.close()
 
 
+GRAFTS = """() => placementActions().filter((a) => a.arguments.graft === true)
+  .map((a) => ({ card: a.arguments.card_id, space: a.arguments.space_id }))"""
+
+
+def graft_scenario(base, browser) -> None:
+    """Two cards first: a graft pair reaches the union of the two cards' spaces."""
+    print("[7] a graft pair: both cards first, then the space")
+    context, page, rec = open_context(browser, "grafter")
+    grafts: list[dict] = []
+    for seed in range(1, 7):
+        page.goto(base + "/")
+        page.wait_for_selector("#setup-screen:not([hidden])")
+        for seat in range(4):
+            page.select_option(
+                f"#seat-selects select[data-seat='{seat}']",
+                "human" if seat == 0 else "heuristic",
+            )
+        page.check("#opt-immortality")
+        page.fill("#opt-seed", str(seed))
+        page.click("#create-game")
+        page.wait_for_selector("#game-screen:not([hidden])")
+        page.wait_for_function("state.view !== null && refreshFlight === null")
+        # Acquire cards now and then, so that Graft cards reach the hand.
+        for step in range(500):
+            assert settled(page, 20)
+            if page.evaluate("state.summary.finished"):
+                break
+            if page.evaluate("state.summary.confirmation === state.viewSeat"):
+                page.evaluate("confirmTurn()")
+                continue
+            count = page.evaluate("state.actions ? state.actions.actions.length : 0")
+            if not count:
+                time.sleep(0.05)
+                continue
+            grafts = page.evaluate(GRAFTS)
+            if grafts:
+                break
+            last = step % 3 == 0 and count > 1
+            page.evaluate(f"applyAction({count - 1 if last else 0})")
+        if grafts:
+            break
+        page.click("#leave-game")
+    if not grafts:
+        print("  .. no graft placement within six games; skipped")
+        context.close()
+        return
+
+    first = grafts[0]["card"]
+    page.click(f".hand-cards .vcard[data-instance='{first}']")
+    partners = page.evaluate(
+        "[...document.querySelectorAll('.hand-cards .vcard.partner')]"
+        ".map((n) => n.dataset.instance)"
+    )
+    check.ok(
+        len(partners) > 0, "the cards that can be grafted to it are marked", partners
+    )
+    graft_cards = page.evaluate(
+        "state.view.private.hand.filter((id) => isGraftCard(id))"
+    )
+    check.ok(
+        all(first in graft_cards or p in graft_cards for p in partners),
+        "every marked pair has a Graft card in it",
+        (first, partners, graft_cards),
+    )
+    second = partners[0]
+    page.click(f".hand-cards .vcard[data-instance='{second}']")
+    check.ok(
+        page.evaluate("state.pick && state.pick.partnerId") == second
+        and page.evaluate("state.pick.cardId") == first,
+        "the second card joins the pick instead of replacing it",
+    )
+    union = sorted({g["space"] for g in grafts if g["card"] in (first, second)})
+    check.ok(
+        page.evaluate(LIT_SPACES) == union,
+        "the lit spaces are the union of the two cards' graft placements",
+        (page.evaluate(LIT_SPACES), union),
+    )
+    check.ok(
+        page.locator(".hand-cards .vcard.picked").count() == 2,
+        "both cards are marked as picked",
+    )
+
+    posts = rec.count("POST", "/actions")
+    revision = page.evaluate("state.summary.revision")
+    space = union[0]
+    page.click(f".hotspot[data-space='{space}']")
+    if page.locator("#card-popover .action-item").count():
+        page.locator("#card-popover .action-item > button").first.click()
+    played = wait_for(
+        page,
+        "!state.busy && refreshFlight === null && state.summary.decision"
+        " && state.summary.decision.kind !== 'turn'"
+        " && state.summary.decision.kind !== 'graft_partner'",
+        10,
+    )
+    check.ok(played, "the placement and the partner were both played")
+    check.ok(
+        rec.count("POST", "/actions") == posts + 2
+        and page.evaluate("state.summary.revision") == revision + 2,
+        "as the engine's own two steps",
+        (
+            rec.count("POST", "/actions") - posts,
+            page.evaluate("state.summary.revision") - revision,
+        ),
+    )
+    in_play = page.evaluate("state.view.players[state.viewSeat].in_play")
+    check.ok(first in in_play and second in in_play, "both cards are in play", in_play)
+    check.ok(
+        page.evaluate(
+            f"state.view.players[state.viewSeat].agent_locations.includes('{space}')"
+        ),
+        "and the Agent stands on the picked space",
+    )
+    failed = [r for r in rec.requests if r[3] >= 400]
+    check.ok(not failed, "no failed requests in the graft game", failed[:5])
+    check.ok(not rec.js_errors, "no JS exceptions in the graft game", rec.js_errors[:5])
+    context.close()
+
+
 def main() -> None:
     with server() as (base, server_log), chrome() as browser:
         try:
             scenario(base, browser)
+            graft_scenario(base, browser)
         finally:
             shutil.copy(server_log, SERVER_LOG_COPY)
         text = server_log.read_text()

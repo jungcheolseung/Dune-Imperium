@@ -26,8 +26,9 @@ const state = {
   /* The server this page came from: {access, admin, public_url} (M14). */
   server: null,
   /* The staged Agent turn: what the player has picked so far, {cardId?,
-     spaceId?}. It lives only in this page; nothing reaches the server until
-     the pick names one legal action (see pickStep). */
+     partnerId?, spaceId?} (partnerId: the second card of a graft). It lives
+     only in this page; nothing reaches the server until the pick names one
+     legal action (see pickStep). */
   pick: null,
 };
 
@@ -2408,7 +2409,7 @@ function tableRefs(action) {
   );
 }
 
-function actionItem(action) {
+function actionItem(action, onApply) {
   const wrap = document.createElement("div");
   wrap.className = "action-item";
   wrap.dataset.index = String(action.index);
@@ -2416,7 +2417,9 @@ function actionItem(action) {
   const button = document.createElement("button");
   button.appendChild(iconize(describeAction(action)));
   button.disabled = state.busy;
-  button.addEventListener("click", () => applyAction(action.index));
+  button.addEventListener("click", () =>
+    onApply ? onApply(action) : applyAction(action.index)
+  );
   if (action.undoable === false) {
     /* The server dry-ran the step: it reveals hidden information or hands
        the game to a chance outcome, so it cannot be taken back afterwards. */
@@ -2549,12 +2552,49 @@ function stagedTurn() {
 }
 
 /* Whether a placement fits what has been picked; any other action always
-   does. */
+   does. Two picked cards are a graft: "you may use an Agent icon from
+   either card" [Immortality p. 10], and the server lists that as the graft
+   placements of each card, so the pair reaches the union of the two. */
 function matchesPick(action, pick = state.pick) {
   if (!pick || action.action_id !== PLACEMENT_ACTION) return true;
-  return (
-    (!pick.cardId || action.arguments.card_id === pick.cardId) &&
-    (!pick.spaceId || action.arguments.space_id === pick.spaceId)
+  const args = action.arguments;
+  if (pick.spaceId && args.space_id !== pick.spaceId) return false;
+  if (pick.partnerId) {
+    return (
+      args.graft === true &&
+      (args.card_id === pick.cardId || args.card_id === pick.partnerId)
+    );
+  }
+  return !pick.cardId || args.card_id === pick.cardId;
+}
+
+function isGraftCard(instanceId) {
+  const entry = lookup(baseId(instanceId));
+  return Boolean(entry && entry.graft);
+}
+
+function graftPlacements(cardId) {
+  return placementActions().filter(
+    (action) => action.arguments.graft === true && action.arguments.card_id === cardId
+  );
+}
+
+/* Whether two hand cards can be played together: one of them is a Graft
+   card [Immortality p. 10] and the server offers a graft placement for at
+   least one of them (a card with no Agent icon leans on the other's). */
+function canPair(cardId, otherId) {
+  const hand = (state.view && state.view.private && state.view.private.hand) || [];
+  if (cardId === otherId || !hand.includes(cardId) || !hand.includes(otherId)) return false;
+  if (!isGraftCard(cardId) && !isGraftCard(otherId)) return false;
+  return graftPlacements(cardId).length > 0 || graftPlacements(otherId).length > 0;
+}
+
+/* A hand card that could join (or replace the partner of) the picked card. */
+function partnerCandidate(instanceId) {
+  const pick = state.pick;
+  return Boolean(
+    pick && pick.cardId && stagedTurn() &&
+    instanceId !== pick.partnerId && canPair(pick.cardId, instanceId)
   );
 }
 
@@ -2562,14 +2602,18 @@ function matchesPick(action, pick = state.pick) {
    not the actions it was made from. */
 function sanitizePick() {
   if (!state.pick) return;
-  if (!stagedTurn() || !placementActions().some((action) => matchesPick(action))) {
-    state.pick = null;
-  }
+  const supported = () => placementActions().some((action) => matchesPick(action));
+  if (stagedTurn() && !supported() && state.pick.partnerId) delete state.pick.partnerId;
+  if (!stagedTurn() || !supported()) state.pick = null;
 }
 
 function clearPick(part) {
   if (!state.pick) return;
   if (part) delete state.pick[part];
+  if (part === "cardId" && state.pick.partnerId) {
+    state.pick.cardId = state.pick.partnerId;
+    delete state.pick.partnerId;
+  }
   if (!part || (!state.pick.cardId && !state.pick.spaceId)) state.pick = null;
   closePopover();
   render();
@@ -2585,41 +2629,108 @@ function pickAlternative(ref, part) {
 }
 
 /* One step of the staged turn: `ref` is a card or a space of some legal
-   placement. Returns false when the click is not part of a placement. */
+   placement, or a hand card that can be grafted to the picked one. Returns
+   false when the click is not part of a placement. */
 function pickStep(ref, entry, anchor) {
   const placements = placementActions();
-  const part = placements.some((action) => action.arguments.card_id === ref)
-    ? "cardId"
-    : placements.some((action) => action.arguments.space_id === ref)
-      ? "spaceId"
-      : null;
-  if (!part) return false;
   const current = state.pick || {};
-  if (current[part] === ref) {
-    clearPick(part);
+  const joins = Boolean(current.cardId) && canPair(current.cardId, ref);
+  const part =
+    joins || placements.some((action) => action.arguments.card_id === ref)
+      ? "cardId"
+      : placements.some((action) => action.arguments.space_id === ref)
+        ? "spaceId"
+        : null;
+  if (!part) return false;
+  if (current[part] === ref || (part === "cardId" && current.partnerId === ref)) {
+    clearPick(current.partnerId === ref ? "partnerId" : part);
     return true;
   }
-  const next = { ...current, [part]: ref };
+  const next = { ...current };
+  if (part === "spaceId") next.spaceId = ref;
+  else if (joins) next.partnerId = ref;
+  else {
+    next.cardId = ref;
+    delete next.partnerId;
+  }
   if (!placements.some((action) => matchesPick(action, next))) {
-    /* The other half of the pick cannot go with this one. */
-    const other = part === "cardId" ? current.spaceId : current.cardId;
+    /* The halves of the pick cannot go together. */
+    const cards = [current.cardId, current.partnerId].filter(Boolean).map(nameOf).join(" + ");
     note(
       part === "spaceId"
-        ? `${nameOf(other)}(으)로는 ${entry ? entry.name : nameOf(ref)}에 갈 수 없습니다.`
-        : `${entry ? entry.name : nameOf(ref)}(으)로는 ${nameOf(other)}에 갈 수 없습니다.`
+        ? `${cards}(으)로는 ${entry ? entry.name : nameOf(ref)}에 갈 수 없습니다.`
+        : `${entry ? entry.name : nameOf(ref)}(으)로는 ${nameOf(current.spaceId)}에 갈 수 없습니다.`
     );
     if (entry) pinPopover(entry, anchor);
     return true;
   }
   state.pick = next;
-  const candidates = placements.filter((action) => matchesPick(action, next));
+  const candidates = pickCandidates(next);
   if (next.cardId && next.spaceId && candidates.length === 1) {
-    applyAction(candidates[0].index);
+    applyPlacement(candidates[0]);
     return true;
   }
   render();
   if (next.cardId && next.spaceId) openPlacementChooser(candidates);
   return true;
+}
+
+/* The placements a pick still allows. For a graft pair the server lists the
+   same move once per card that can stand as the placed one; whichever icon
+   is used "both cards are treated as having sent the Agent" [Immortality
+   p. 10], so those are one choice here, sent with the first-picked card
+   when it can be. */
+function pickCandidates(pick = state.pick) {
+  const fitting = placementActions().filter((action) => matchesPick(action, pick));
+  if (!pick || !pick.partnerId) return fitting;
+  const byOption = new Map();
+  for (const action of fitting) {
+    const option = JSON.stringify(
+      Object.entries(action.arguments)
+        .filter(([key]) => key !== "card_id")
+        .sort(([a], [b]) => a.localeCompare(b))
+    );
+    const kept = byOption.get(option);
+    if (!kept || action.arguments.card_id === pick.cardId) byOption.set(option, action);
+  }
+  return [...byOption.values()];
+}
+
+/* Post a placement. With two cards picked the other one follows as the
+   graft partner, which the engine asks for in the very next frame. */
+function applyPlacement(action) {
+  const pick = state.pick;
+  const partner =
+    pick && pick.partnerId
+      ? (action.arguments.card_id === pick.cardId ? pick.partnerId : pick.cardId)
+      : null;
+  const played = applyAction(action.index);
+  if (partner) played.then(() => followWithPartner(partner));
+}
+
+function followWithPartner(partnerId) {
+  const decision = state.summary && state.summary.decision;
+  if (
+    !decision || decision.kind !== "graft_partner" ||
+    decision.owner !== state.viewSeat || !state.actions
+  ) {
+    return;
+  }
+  const action = state.actions.actions.find(
+    (item) =>
+      item.action_id === "choose_graft_partner" && item.arguments.card_id === partnerId
+  );
+  if (action) {
+    applyAction(action.index);
+    return;
+  }
+  /* The space was open to this card only with a certain partner (an
+     occupied space on Tleilaxu Infiltrator's promise, a Bond icon on
+     Ghola's): the engine's own partner choice is on screen now. */
+  note(
+    `${nameOf(partnerId)}은(는) 이 칸에서 함께 낼 수 없습니다. ` +
+      "함께 낼 카드를 다시 고르거나 되돌리기를 누르세요."
+  );
 }
 
 /* What still tells two placements of one card on one space apart: the
@@ -2631,6 +2742,25 @@ function placementOptionNode(action, candidates) {
   const option = space && spaceOptionsFor(space)[action.arguments.cost_option || 0];
   if (option && candidates.some((other) => other.arguments.cost_option !== action.arguments.cost_option)) {
     line.append(costNode(option.cost), icon("arrow_right", "→"), iconize(option.effect));
+  }
+  const differs = (key) =>
+    candidates.some((other) => other.arguments[key] !== action.arguments[key]);
+  if (differs("discount")) {
+    const discount = document.createElement("span");
+    discount.append(
+      action.arguments.discount
+        ? amount(action.arguments.discount, action.arguments.discount, 1)
+        : "할인 없이",
+      action.arguments.discount ? " 할인" : ""
+    );
+    line.appendChild(discount);
+  }
+  if (differs("infiltrate_post_id")) {
+    const spy = document.createElement("span");
+    spy.textContent = action.arguments.infiltrate_post_id
+      ? `Spy 회수 — ${prettify(action.arguments.infiltrate_post_id)}`
+      : "Spy 회수 없이";
+    line.appendChild(spy);
   }
   if (candidates.some((other) => Boolean(other.arguments.graft) !== Boolean(action.arguments.graft))) {
     const graft = document.createElement("span");
@@ -2645,7 +2775,7 @@ function placementOptionNode(action, candidates) {
 }
 
 function placementOptionItem(action, candidates) {
-  const item = actionItem(action);
+  const item = actionItem(action, applyPlacement);
   const button = item.querySelector("button");
   const badges = [...button.querySelectorAll(".irreversible-badge, .shortfall-badge")];
   button.textContent = "";
@@ -2666,11 +2796,15 @@ function openPlacementChooser(candidates) {
   pop.classList.remove("hover");
   const title = document.createElement("div");
   title.className = "popover-title";
-  title.textContent = `${nameOf(pick.cardId)} → ${nameOf(pick.spaceId)}`;
+  title.textContent = `${pickedCardNames(pick)} → ${nameOf(pick.spaceId)}`;
   pop.appendChild(title);
   for (const action of candidates) pop.appendChild(placementOptionItem(action, candidates));
   placePopover(pop, anchor, 340);
   popoverPinned = true;
+}
+
+function pickedCardNames(pick) {
+  return [pick.cardId, pick.partnerId].filter(Boolean).map(nameOf).join(" + ");
 }
 
 function pickStepNode(number, label, ref, part) {
@@ -2715,8 +2849,9 @@ function renderActionPanel(box) {
   const pick = state.pick || {};
   const steps = document.createElement("div");
   steps.className = "pick-steps";
+  steps.appendChild(pickStepNode("①", "카드", pick.cardId, "cardId"));
+  if (pick.partnerId) steps.appendChild(pickStepNode("＋", "함께", pick.partnerId, "partnerId"));
   steps.append(
-    pickStepNode("①", "카드", pick.cardId, "cardId"),
     icon("arrow_right", "→"),
     pickStepNode("②", "보낼 칸", pick.spaceId, "spaceId")
   );
@@ -2724,17 +2859,26 @@ function renderActionPanel(box) {
 
   const hint = document.createElement("div");
   hint.className = "pick-hint muted";
-  const candidates = placements.filter((action) => matchesPick(action));
+  const candidates = pickCandidates();
   if (pick.cardId && pick.spaceId) {
     hint.textContent = "③ 남은 선택을 고르세요.";
     box.appendChild(hint);
     for (const action of candidates) box.appendChild(placementOptionItem(action, candidates));
   } else {
-    hint.textContent = pick.cardId
-      ? "빛나는 칸 중에서 Agent를 보낼 곳을 누르세요. (Esc: 취소)"
-      : pick.spaceId
-        ? "빛나는 카드 중에서 그 칸에 낼 카드를 누르세요. (Esc: 취소)"
-        : "손패에서 빛나는 카드를 누르세요. 칸을 먼저 눌러도 됩니다.";
+    const hand = (state.view && state.view.private && state.view.private.hand) || [];
+    const canJoin =
+      pick.cardId && !pick.partnerId && hand.some((other) => canPair(pick.cardId, other));
+    hint.textContent = pick.partnerId
+      ? "두 카드로 갈 수 있는 칸이 빛납니다. 보낼 곳을 누르세요. (Esc: 취소)"
+      : canJoin
+        ? (isGraftCard(pick.cardId)
+            ? "Graft 카드는 혼자 낼 수 없습니다. ＋ 표시된 카드를 눌러 함께 낼 카드를 고르거나, 칸을 먼저 눌러도 됩니다."
+            : "빛나는 칸을 누르세요. Graft로 함께 낼 카드가 있으면 ＋ 표시된 카드를 먼저 누르세요. (Esc: 취소)")
+        : pick.cardId
+          ? "빛나는 칸 중에서 Agent를 보낼 곳을 누르세요. (Esc: 취소)"
+          : pick.spaceId
+            ? "빛나는 카드 중에서 그 칸에 낼 카드를 누르세요. (Esc: 취소)"
+            : "손패에서 빛나는 카드를 누르세요. 칸을 먼저 눌러도 됩니다.";
     box.appendChild(hint);
   }
 
@@ -3450,8 +3594,13 @@ function visualCard(instanceId, options = {}) {
   card.dataset.instance = instanceId;
   const legal = legalActionsFor(instanceId);
   if (legal.length) card.classList.add("legal");
-  if (state.pick && state.pick.cardId === instanceId) card.classList.add("picked");
-  else if (pickAlternative(instanceId, "cardId")) card.classList.add("alternative");
+  if (state.pick && (state.pick.cardId === instanceId || state.pick.partnerId === instanceId)) {
+    card.classList.add("picked");
+  } else if (partnerCandidate(instanceId)) {
+    card.classList.add("partner");
+  } else if (pickAlternative(instanceId, "cardId")) {
+    card.classList.add("alternative");
+  }
   if (entry && entry.image) {
     const image = document.createElement("img");
     image.src = entry.image;
