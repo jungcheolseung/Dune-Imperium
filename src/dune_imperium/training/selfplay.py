@@ -12,7 +12,10 @@ zero-sum rewards of the RL environment design (winner ``+1``, the others
 ``-1/3``; a truncated game pays ``0``) and, when recording is on, the
 per-decision trajectory (observation, mask, action, seat) the learner
 trains on. ``stack_episodes`` turns episodes into flat NumPy arrays whose
-per-step return is the acting seat's terminal reward.
+per-step return is the acting seat's terminal reward. With
+``undo_actions=False`` the runner withholds the pure-undo actions from every
+policy (request, mask and recorded trajectory alike, so a learner stays
+on-policy) while the engine still validates against its full legal set.
 """
 
 import time
@@ -25,12 +28,17 @@ from dune_imperium.adapters.action_codec import ActionCodec
 from dune_imperium.adapters.observation_encoding import encode_player_view
 from dune_imperium.adapters.pettingzoo_env import LOSER_REWARD, WINNER_REWARD
 from dune_imperium.config import RulesetConfig
+from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceResolver
 from dune_imperium.core.decisions import ChanceDecision, PlayerDecision
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.endgame import final_standings
-from dune_imperium.training.policy import BatchPolicy, PolicyRequest
+from dune_imperium.training.policy import (
+    BatchPolicy,
+    PolicyRequest,
+    without_undo_actions,
+)
 
 _MAX_CONSECUTIVE_CHANCE_STEPS = 64
 
@@ -90,6 +98,9 @@ class _Game:
     chance: ChanceResolver
     decisions: int = 0
     steps: list[TrajectoryStep] = field(default_factory=list)
+    # The engine's full legal set of the pending decision; ``apply`` must be
+    # handed exactly this tuple even when the policy was offered less.
+    legal: tuple[DomainAction, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,12 +124,15 @@ class SelfPlayRunner:
         *,
         max_steps: int = 30_000,
         record: bool = True,
+        undo_actions: bool = True,
     ) -> None:
         if max_steps < 1:
             raise ValueError("max_steps must be positive")
         self.config = config
         self.max_steps = max_steps
         self.record = record
+        # False withholds ``UNDO_ACTION_IDS`` from every policy (training).
+        self.undo_actions = undo_actions
         self.codec = ActionCodec(config)
         self._engines: dict[tuple[str, ...] | None, UprisingRulesEngine] = {}
 
@@ -205,6 +219,9 @@ class SelfPlayRunner:
         legal_actions = engine.legal_actions(game.state, seat)
         if not legal_actions:
             raise RuntimeError("current player decision has no legal actions")
+        game.legal = legal_actions
+        if not self.undo_actions:
+            legal_actions = without_undo_actions(legal_actions)
         legal_indices = tuple(self.codec.encode(action) for action in legal_actions)
         mask = np.zeros(self.codec.size, dtype=np.int8)
         mask[list(legal_indices)] = 1
@@ -243,7 +260,7 @@ class SelfPlayRunner:
         game.state = engine.apply(
             game.state,
             request.legal_actions[position],
-            legal_actions=request.legal_actions,
+            legal_actions=game.legal,
         ).state
         game.decisions += 1
 

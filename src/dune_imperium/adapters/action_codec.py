@@ -62,7 +62,7 @@ from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.rules.agent_effects import AUTOMATIC_AGENT_ICONS
 from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 
-ACTION_CODEC_VERSION = 104
+ACTION_CODEC_VERSION = 105
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -814,7 +814,13 @@ def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         for space_id in MAKER_SPACE_IDS
     )
     templates.extend(_trash_templates(config, "trash_optional_card"))
-    # Fedaykin Maneuver retreats any number, Commanders included.
+    # Fedaykin Maneuver retreats any number, Commanders included: ``count``
+    # is troops plus Commanders (Commanders are troops [Bloodlines p. 4]), so
+    # it reaches MAX_DEPLOYMENT_COUNT + MAX_COMMANDER_DEPLOYMENT with the
+    # Commander share bounded like ``retreat_intrigue_troops`` above. v105:
+    # the share branch stopped at MAX_DEPLOYMENT_COUNT, so a 12-troop Conflict
+    # with one Commander offered ``count 13`` that had no template (found by a
+    # trained policy in greedy play, 2026-09-18).
     templates.extend(
         ActionTemplate(action_id="retreat_leader_troops", arguments=(("count", count),))
         for count in range(1, MAX_DEPLOYMENT_COUNT + 1)
@@ -824,8 +830,11 @@ def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             action_id="retreat_leader_troops",
             arguments=(("commanders", share), ("count", count)),
         )
-        for count in range(1, MAX_DEPLOYMENT_COUNT + 1)
-        for share in range(1, min(count, MAX_COMMANDER_DEPLOYMENT) + 1)
+        for count in range(1, MAX_DEPLOYMENT_COUNT + MAX_COMMANDER_DEPLOYMENT + 1)
+        for share in range(
+            max(1, count - MAX_DEPLOYMENT_COUNT),
+            min(count, MAX_COMMANDER_DEPLOYMENT) + 1,
+        )
     )
     # The loser picks the zone and the unit kind (OQ-036); ``commanders``
     # marks a Sardaukar Commander like the retreat argument does.

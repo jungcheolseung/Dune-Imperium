@@ -4,7 +4,9 @@ Every iteration plays ``games_per_iteration`` seeded games through the
 lockstep runner with the learner in every seat (or, with an opponent kind,
 the learner rotating through one seat of a table of that baseline), keeps
 the learner's own decisions, applies one learner update, appends a JSON
-line of statistics, and saves ``latest.pt`` plus a numbered checkpoint.
+line of statistics, and saves ``latest.pt`` plus, every ``checkpoint_every``
+iterations, a numbered checkpoint (78 MB each for the full-expansion
+catalog, so an overnight run keeps one in every few dozen).
 Every ``eval_every`` iterations the latest checkpoint enters an in-process
 tournament against the evaluation opponent so progress is measured with
 the same tool as every other baseline. Training seeds start far above the
@@ -74,6 +76,9 @@ class TrainConfig:
     eval_every: int = 0
     eval_games: int = 10
     eval_opponent: str = "heuristic"
+    # Keep a numbered checkpoint every N iterations; ``latest.pt`` is
+    # rewritten every iteration regardless.
+    checkpoint_every: int = 1
     resume: Path | None = None
 
     def __post_init__(self) -> None:
@@ -85,6 +90,8 @@ class TrainConfig:
             raise ValueError(f"unknown evaluation opponent: {self.eval_opponent!r}")
         if self.eval_every < 0 or self.eval_games < 1:
             raise ValueError("eval_every must not be negative; eval_games positive")
+        if self.checkpoint_every < 1:
+            raise ValueError("checkpoint_every must be positive")
         if self.workers < 1:
             raise ValueError("workers must be positive")
         if self.step_penalty < 0.0:
@@ -106,6 +113,10 @@ class IterationRecord:
     update: UpdateStats
     eval_win_rate: float | None = None
     eval_mean_rank: float | None = None
+    # Evaluation matches that raised instead of finishing. The rates above
+    # cover the finished matches only, so a non-zero count is a defect to
+    # look at (the messages go to ``eval_failures.log``), not noise.
+    eval_failures: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -159,8 +170,14 @@ def _learner_outcomes(episodes: tuple[Episode, ...]) -> tuple[float, float]:
     return (wins / len(rewards) if rewards else 0.0, float(np.mean(rewards)))
 
 
-def _evaluate(config: TrainConfig, checkpoint: Path) -> tuple[float, float]:
-    """Tournament win rate and mean rank of the checkpoint vs the opponent."""
+def _evaluate(
+    config: TrainConfig, checkpoint: Path
+) -> tuple[float, float, tuple[str, ...]]:
+    """Win rate and mean rank of the checkpoint vs the opponent, plus failures.
+
+    ``eval_games`` counts seeds; every seed plays the four seat rotations,
+    so the sample is four times that many matches.
+    """
 
     # One checkpoint seat against three opponents (a two-kind lineup would
     # cycle to two checkpoint seats and cap the win rate at 50%).
@@ -178,7 +195,7 @@ def _evaluate(config: TrainConfig, checkpoint: Path) -> tuple[float, float]:
     entry = next(
         agent for agent in summary.agents if agent.agent.startswith(CHECKPOINT_PREFIX)
     )
-    return entry.win_rate, entry.mean_rank
+    return entry.win_rate, entry.mean_rank, summary.failure_messages
 
 
 def train(
@@ -196,13 +213,16 @@ def train(
         tech_module=config.tech_module,
         immortality=config.immortality,
     )
-    codec_size = SelfPlayRunner(ruleset, record=False).codec.size
+    codec = SelfPlayRunner(ruleset, record=False).codec
+    codec_size = codec.size
     start_iteration = 0
     resumed_optimizer: Mapping[str, Any] | None = None
     if config.resume is not None:
         network, info = load_checkpoint(config.resume)
         if info.ruleset != ruleset.identifier:
             raise ValueError("resumed checkpoint belongs to a different ruleset")
+        if info.migration is not None:
+            print(f"migrated {config.resume}: {info.migration.describe()}")
         start_iteration = info.iteration
         resumed_optimizer = info.optimizer_state
     else:
@@ -245,16 +265,25 @@ def train(
                 iteration=iteration + 1,
                 metadata={"config": _config_document(config)},
                 optimizer_state=learner.optimizer_state(),
+                codec=codec,
             )
-            save_checkpoint(
-                config.out_dir / f"iteration_{iteration + 1:05d}.pt",
-                learner.network,
-                ruleset=ruleset.identifier,
-                iteration=iteration + 1,
-            )
+            if (iteration + 1) % config.checkpoint_every == 0:
+                save_checkpoint(
+                    config.out_dir / f"iteration_{iteration + 1:05d}.pt",
+                    learner.network,
+                    ruleset=ruleset.identifier,
+                    iteration=iteration + 1,
+                    codec=codec,
+                )
             eval_win_rate = eval_mean_rank = None
+            eval_failures: int | None = None
             if config.eval_every and (iteration + 1) % config.eval_every == 0:
-                eval_win_rate, eval_mean_rank = _evaluate(config, latest)
+                eval_win_rate, eval_mean_rank, failures = _evaluate(config, latest)
+                eval_failures = len(failures)
+                if failures:
+                    with (config.out_dir / "eval_failures.log").open("a") as handle:
+                        for message in failures:
+                            handle.write(f"iteration {iteration + 1}: {message}\n")
             record = IterationRecord(
                 iteration=iteration + 1,
                 games=len(result.episodes),
@@ -271,6 +300,7 @@ def train(
                 update=stats,
                 eval_win_rate=eval_win_rate,
                 eval_mean_rank=eval_mean_rank,
+                eval_failures=eval_failures,
             )
             records.append(record)
             log.write(json.dumps(asdict(record)) + "\n")

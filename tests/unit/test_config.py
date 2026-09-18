@@ -56,3 +56,33 @@ def test_tech_module_requires_bloodlines() -> None:
         match="the Tech Module requires the Bloodlines expansion",
     ):
         RulesetConfig(tech_module=True)
+
+
+def test_from_identifier_rebuilds_every_option_combination() -> None:
+    from itertools import product
+
+    seen = 0
+    for choam, promo, bloodlines, tech, immortality in product((False, True), repeat=5):
+        if tech and not bloodlines:
+            continue
+        config = RulesetConfig(
+            choam_module=choam,
+            promo_cards=promo,
+            bloodlines=bloodlines,
+            tech_module=tech,
+            immortality=immortality,
+        )
+        assert RulesetConfig.from_identifier(config.identifier) == config
+        seen += 1
+    assert seen == 24
+    for bad in (
+        "uprising-3p-base",
+        "uprising-4p-tech",
+        "uprising-4p-base+bloodlines+promo",
+        "uprising-4p-choam+promo+promo",
+    ):
+        with pytest.raises(ValueError, match="unknown ruleset identifier"):
+            RulesetConfig.from_identifier(bad)
+    # The identifier parses; the configuration itself rejects Tech alone.
+    with pytest.raises(ValueError, match="requires the Bloodlines"):
+        RulesetConfig.from_identifier("uprising-4p-base+tech")

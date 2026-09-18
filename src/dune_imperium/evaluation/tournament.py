@@ -12,10 +12,13 @@ which agent sits where.
 agent metered for decision count, wall-clock decision time, and illegal
 choices (an illegal choice is counted and replaced by the first legal
 action so the game still finishes). ``run_tournament`` fans the specs out
-over worker processes and collects one ``TournamentReport``.
+over worker processes, each held to one compute thread, and collects one
+``TournamentReport``.
 """
 
+import os
 import random
+import sys
 import time
 from collections.abc import Iterable
 from concurrent.futures import ProcessPoolExecutor
@@ -242,6 +245,32 @@ def _run_spec(spec: MatchSpec) -> MatchResult | MatchFailure:
         )
 
 
+_THREAD_VARIABLES = ("OMP_NUM_THREADS", "MKL_NUM_THREADS")
+
+
+def _single_threaded_worker() -> None:
+    """Pool initializer: hold this worker process to one compute thread.
+
+    A checkpoint agent runs a torch forward pass per decision, and torch's
+    default intra-op pool has one thread per logical CPU, so several
+    workers oversubscribe the machine: on 24 logical CPUs, 8 workers
+    measured 205 ms per decision against 9 ms with one thread each
+    (2026-09-18, full-expansion catalog). Worker processes already give
+    the parallelism. The variables are read when torch is first imported,
+    which a worker does only once it builds a checkpoint agent; a process
+    that already imported torch (a forked worker) is capped directly. A
+    thread count the caller exported is left alone.
+    """
+
+    if any(name in os.environ for name in _THREAD_VARIABLES):
+        return
+    for name in _THREAD_VARIABLES:
+        os.environ[name] = "1"
+    torch = sys.modules.get("torch")
+    if torch is not None:
+        torch.set_num_threads(1)
+
+
 def run_tournament(
     specs: Iterable[MatchSpec],
     *,
@@ -252,7 +281,9 @@ def run_tournament(
     started = time.perf_counter()
     spec_list = list(specs)
     if workers > 1:
-        with ProcessPoolExecutor(max_workers=workers) as pool:
+        with ProcessPoolExecutor(
+            max_workers=workers, initializer=_single_threaded_worker
+        ) as pool:
             results = list(pool.map(_run_spec, spec_list, chunksize=2))
     else:
         results = [_run_spec(spec) for spec in spec_list]

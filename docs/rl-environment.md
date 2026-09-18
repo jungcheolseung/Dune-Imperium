@@ -28,9 +28,25 @@
 - 처리량 기준(2026-08-30, 로컬 측정, 관측 v1 시점): env 경유 masked random full episode 약 4,100 agent step/s(매 step 전체 관측 인코딩 포함), `run_random_game` 직접 실행 약 48ms/판(약 9,000 step/s).
 - self-play 데이터 수집(2026-09-06, M9): `training.SelfPlayRunner`는 여러 판을 lockstep으로 돌리며 좌석별 정책 이름으로 요청을 묶어 정책당 한 번 `BatchPolicy.act`를 부른다. 요청은 위 관측 인코딩과 codec mask에 더해 `PlayerView`·합법 행동·상태(search baseline용)를 담고, 답은 합법 catalog 인덱스여야 한다. Episode의 보상은 위 종료 보상 규약과 같고(`pettingzoo_env`의 상수 재사용), truncation은 0이다. `stack_episodes`의 per-step return은 행동한 좌석의 종료 보상이다. 단일 프로세스 약 4,900 decisions/s.
 
+## 정책에 주지 않는 되돌리기 행동 (학습 수집·체크포인트 플레이)
+
+- **범위.** `withdraw_troops`와 `withdraw_commanders`(`training.policy.UNDO_ACTION_IDS`) 둘뿐이다. 엔진·규칙·사람용 UI·`dune_imperium_uprising_v1` env의 합법 행동은 그대로이고, **학습 수집**(`Collector` → `SelfPlayRunner(undo_actions=False)`)과 **체크포인트 greedy 플레이**(`NetworkAgent`)만 이 두 행동을 정책에 제시하지 않는다. `SelfPlayRunner`의 기본값은 제시(`undo_actions=True`)라 baseline 대전·처리량 도구는 달라지지 않는다. 두 행동만 합법인 결정이 있다면 합법 집합을 비우지 않도록 그대로 둔다.
+- **잃는 것이 없는 이유.** OQ-029는 이번 turn의 기본 배치를 `finish_agent_turn` 전까지 되돌릴 수 있게 하는데, 그 근거가 "배치는 turn의 다른 효과(draw, Intrigue 등)보다 뒤에 해도 되는 선택"이라는 Agent turn 자유 순서다 `[Main p. 9]`([rules/open-questions.md](rules/open-questions.md) OQ-029). 따라서 배치를 마지막에 하는 정책은 회수 없이도 도달 가능한 최종 상태를 하나도 잃지 않는다. 분할·추가 배치(`deploy_troops`, `deploy_commanders`)는 그대로 제시된다. heuristic도 두 행동을 −10점으로 두어 고르지 않는다.
+- **실측(2026-09-17, 전 확장 구성 codec 32,963, 32판 × 8 worker, `checkpoints/2026-09-17/full`).** 회수를 제시한 첫 실행은 entropy가 1.22 → 0.4 안팎으로 내려가는 동안 게임당 learner step이 약 800 → 1,000~1,300으로 늘고 iteration 13부터 4,000 결정 상한에 걸리는 판이 나왔다. iteration 19 체크포인트에서 이은 iteration 20은 32판 중 13판이 상한에 걸려 94,604 step이 됐고 메인 프로세스가 12.9 GiB를 써 24 GB에서도 중단됐다. 그 체크포인트의 표본 self-play 8판에서 전체 결정의 80%가 `deploy_troops`/`withdraw_troops` 왕복이었고, 상한에 걸린 판은 결정의 82~90%가 같은 좌석의 바이트 동일 관측 재방문이었다. 같은 체크포인트·같은 seed에서 두 행동만 mask에서 빼면 게임당 결정 3,018 → 699, 상한에 걸린 판 3/8 → 0/8이다(개입으로 확인). 결정당 0.0005의 step penalty와 결정 상한은 이 반복을 막지 못했다.
+- **on-policy.** 제시 집합은 러너의 요청 단계에서 줄인다. `PolicyRequest`의 합법 행동·인덱스·mask와 trajectory에 기록되는 mask가 모두 같은 집합이므로 learner의 log-prob도 그 집합 위에서 계산된다. 표본 추출 때만 `_CycleGuard`로 가려 learner와 어긋났던 2026-09-06의 부정 결과([evaluation/baseline-2026-09-06.md](evaluation/baseline-2026-09-06.md) 7절)와 다른 점이다. 엔진의 `apply`에는 그 계약대로 가리지 않은 전체 합법 집합을 넘긴다.
+- **남은 되돌리기 쌍.** `defer_reveal_choice`/`resume_reveal_choice`(OQ-027)는 효과 순서를 고르는 수단이라 그대로 제시한다(위 census의 상위 행동에는 없었다). greedy 플레이의 `_CycleGuard`, 학습의 step penalty와 결정 상한은 그대로 남아 있다.
+
+## 체크포인트의 버전 이관 (형식 2, 2026-09-18)
+
+- **저장.** `training.checkpoint.save_checkpoint`는 관측·codec 버전과 함께, 학습에 쓴 `ActionCodec`을 받으면 카탈로그의 템플릿 정체성 목록(action id + 인자, 카탈로그 순서)과 관측 세그먼트 레이아웃(이름·offset·길이)을 기록한다(형식 2, 파일당 약 2 MB 추가). 학습 루프는 항상 codec을 넘긴다. 형식 1 파일은 그대로 읽히고, 버전이 맞는 동안 `dune-imperium-checkpoint stamp`로 형식 2로 바꿀 수 있다.
+- **읽기.** 버전이 현재와 같으면 그대로 읽는다. 다르면 정책 head의 행은 템플릿 정체성으로, 입력층의 열은 (세그먼트 이름, 세그먼트 안 offset)으로 옮긴다. 현재 코드에 없는 템플릿·열은 버리고, 새 템플릿·열은 0으로 시작한다 — 입력 열이 0이면 출력이 그대로이고, logit 행이 0이면 새 행동은 선호도 억제도 되지 않는다. Adam 모멘트도 같은 대응으로 옮긴다. 결과는 `CheckpointInfo.migration`(`MigrationReport`)에 남고 `--resume`은 한 줄로 보고한다. hidden 폭이 다르거나 정체성 목록이 없는 옛 파일은 여전히 거부한다. 세그먼트는 뒤에 덧붙여 자라는 것으로 가정하므로, 세그먼트 안의 순서를 바꾸는 관측 변경은 새 네트워크가 필요하다.
+- **첫 적용 — codec v105.** Chani의 Fedaykin Maneuver `retreat_leader_troops`는 troop과 Commander를 합친 수를 후퇴시키는데(Commander는 troop `[Bloodlines p. 4]`), Commander share 템플릿의 count가 12에서 끝나 12 troop + Commander 1개의 Conflict에서 count 13이 codec에 없었다(학습 정책의 greedy 평가가 seed 13에서 적발, 2026-09-18). 범위를 `retreat_intrigue_troops`와 같게 19까지 늘려 Bloodlines 카탈로그가 28개씩 커졌다(전 확장 32,963 → 32,991). v104로 새겨 둔 2026-09-18 밤샘 실행의 체크포인트 34개는 이관으로 32,963개 행동을 유지한 채 읽히고, 그 `latest.pt`에서 `--resume`한 학습과 실패했던 평가 게임 모두 정상이었다.
+
 ## 검증 기준
 
 - 레이아웃 pin 테스트(`tests/adapters/test_observation_encoding.py`): 크기, 세그먼트 연속성, 버전.
 - 전체 게임 인코딩 sweep: 두 룰셋의 random 완주 전 상태를 4개 관측자 전원으로 인코딩한다.
 - env 테스트(`tests/adapters/test_pettingzoo_env.py`): PettingZoo api/seed 테스트, 전체 게임 episode의 zero-sum 승자독식 보상, truncation.
 - 관측 경계 테스트(`tests/unit/test_observation.py`): 상대 identity 부재와 장수 공개 convention.
+- 되돌리기 행동 테스트(`tests/unit/training/test_selfplay.py`, `tests/unit/training/test_torch_policy.py`): 엔진에서 회수가 합법인 결정에서 `undo_actions=False` 러너가 그것을 정책에 제시하지 않고 기록 mask에도 남기지 않으며 기본 러너는 제시한다. `NetworkAgent`는 회수 logit이 가장 커도 고르지 않는다.
+- 체크포인트 이관 테스트(`tests/unit/training/test_checkpoint.py`): 형식 2의 정체성 목록·레이아웃 저장, 위조한 옛 버전 파일의 행·열 이관과 Adam 모멘트 이동, 형식 1 불일치 거부와 stamp, CLI. codec 범위 회귀(`tests/adapters/test_action_codec.py`): Fedaykin Maneuver의 모든 troop·Commander 조합이 인코딩된다.

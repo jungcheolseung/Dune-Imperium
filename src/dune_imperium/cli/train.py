@@ -67,7 +67,19 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--entropy", type=float, default=0.01)
     parser.add_argument("--value-coefficient", type=float, default=0.5)
     parser.add_argument("--minibatch", type=int, default=4096)
-    parser.add_argument("--epochs", type=int, default=1)
+    parser.add_argument(
+        "--epochs",
+        type=int,
+        default=1,
+        help="passes over each collected batch (default: 1); use several only "
+        "with --clip",
+    )
+    parser.add_argument(
+        "--clip",
+        type=float,
+        default=None,
+        help="PPO clip range, e.g. 0.2 (default: off, plain REINFORCE)",
+    )
     parser.add_argument(
         "--opponent",
         default=None,
@@ -95,8 +107,20 @@ def _build_parser() -> argparse.ArgumentParser:
         default=0,
         help="evaluate the latest checkpoint every N iterations (0: never)",
     )
-    parser.add_argument("--eval-games", type=int, default=10)
+    parser.add_argument(
+        "--eval-games",
+        type=int,
+        default=10,
+        help="evaluation seeds; each plays the four seat rotations (default: 10)",
+    )
     parser.add_argument("--eval-opponent", default="heuristic")
+    parser.add_argument(
+        "--checkpoint-every",
+        type=int,
+        default=1,
+        help="keep a numbered checkpoint every N iterations (default: 1); "
+        "latest.pt is always rewritten",
+    )
     parser.add_argument(
         "--resume", type=Path, default=None, help="checkpoint to continue from"
     )
@@ -109,6 +133,8 @@ def _print(record: IterationRecord) -> None:
         if record.eval_win_rate is not None and record.eval_mean_rank is not None
         else ""
     )
+    if record.eval_failures:
+        evaluation += f" ({record.eval_failures} eval matches FAILED)"
     print(
         f"iter {record.iteration}: {record.games} games, {record.learner_steps} "
         f"learner steps, win {record.learner_win_rate:.1%}, reward "
@@ -145,6 +171,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 entropy_coefficient=arguments.entropy,
                 minibatch_size=arguments.minibatch,
                 epochs=arguments.epochs,
+                clip_ratio=arguments.clip,
             ),
             opponent=arguments.opponent,
             temperature=arguments.temperature,
@@ -153,6 +180,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             eval_every=arguments.eval_every,
             eval_games=arguments.eval_games,
             eval_opponent=arguments.eval_opponent,
+            checkpoint_every=arguments.checkpoint_every,
             resume=arguments.resume,
         )
     except ValueError as error:

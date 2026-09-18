@@ -8,7 +8,9 @@ learner's own decisions, and hands the arrays back through a temporary
 ``.npz`` file (hundreds of megabytes per iteration would otherwise cross
 the pipe); the episode summaries come back without their steps. Chunk
 seeds derive from the iteration so a run is reproducible for a fixed
-worker count, and serial collection re-seeds the same way.
+worker count, and serial collection re-seeds the same way. Collection
+always withholds the pure-undo actions (``undo_actions=False``): a sampled
+policy that is offered deploy/withdraw learns to loop on it.
 """
 
 import os
@@ -101,6 +103,7 @@ def _collect_chunk(job: _ChunkJob) -> _ChunkResult:
         job.ruleset,
         max_steps=job.max_steps,
         record=True,
+        undo_actions=False,
     )
     policies = _policies(
         network,
@@ -184,7 +187,12 @@ class Collector:
 
         started = time.perf_counter()
         if self._pool is None or self._scratch is None:
-            runner = SelfPlayRunner(self.config, max_steps=self.max_steps, record=True)
+            runner = SelfPlayRunner(
+                self.config,
+                max_steps=self.max_steps,
+                record=True,
+                undo_actions=False,
+            )
             policies = _policies(
                 network,
                 device,
