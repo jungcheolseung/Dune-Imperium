@@ -191,7 +191,11 @@ def _evaluate(
         tech_module=config.tech_module,
         immortality=config.immortality,
     )
-    summary = summarize(run_tournament(specs))
+    # Collection is finished by the time an evaluation runs, so the same
+    # worker budget is free; leaving this at the default of one process
+    # played the whole evaluation in the training process (about 95s for 200
+    # matches on a 4-core run against about 48s across four).
+    summary = summarize(run_tournament(specs, workers=config.workers))
     entry = next(
         agent for agent in summary.agents if agent.agent.startswith(CHECKPOINT_PREFIX)
     )

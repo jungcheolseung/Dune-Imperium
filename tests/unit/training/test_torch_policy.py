@@ -19,7 +19,11 @@ from dune_imperium.agents.registry import is_agent_kind  # noqa: E402
 from dune_imperium.cli.train import main as train_main  # noqa: E402
 from dune_imperium.core.actions import DomainAction  # noqa: E402
 from dune_imperium.core.observation import PlayerView  # noqa: E402
-from dune_imperium.evaluation import MatchSpec, play_match  # noqa: E402
+from dune_imperium.evaluation import (  # noqa: E402
+    MatchSpec,
+    play_match,
+    run_tournament,
+)
 from dune_imperium.training import (  # noqa: E402
     UNDO_ACTION_IDS,
     PolicyRequest,
@@ -197,6 +201,40 @@ def test_checkpoint_agents_enter_tournaments_by_path(tmp_path: Path) -> None:
     assert result.seats[0].illegal_actions == 0
     with pytest.raises(ValueError, match="catalog"):
         NetworkAgent(network, RulesetConfig(choam_module=True))
+
+
+def test_the_in_loop_evaluation_uses_the_run_s_worker_budget(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Collection is done when an evaluation runs, so it gets the same workers.
+
+    ``run_tournament`` defaults to one process; leaving it at the default
+    played every evaluation match inside the training process.
+    """
+
+    seen: list[int] = []
+
+    def spy(specs, *, workers=1):  # type: ignore[no-untyped-def]
+        seen.append(workers)
+        return run_tournament(specs, workers=1)
+
+    monkeypatch.setattr("dune_imperium.training.loop.run_tournament", spy)
+    train(
+        TrainConfig(
+            out_dir=tmp_path / "run",
+            iterations=1,
+            games_per_iteration=1,
+            seed=1,
+            hidden=(32,),
+            learner=LearnerConfig(minibatch_size=512),
+            workers=3,
+            opponent="heuristic",
+            eval_every=1,
+            eval_games=1,
+        )
+    )
+
+    assert seen == [3]
 
 
 def test_train_loop_writes_log_checkpoints_and_evaluates(tmp_path: Path) -> None:
