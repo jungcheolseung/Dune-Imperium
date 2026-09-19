@@ -148,6 +148,31 @@ def test_learner_update_changes_parameters_and_reports_finite_stats() -> None:
     )
 
 
+def test_a_restored_optimizer_keeps_its_moments_and_takes_the_configured_rate() -> None:
+    # Adam's state dict carries the rate it was saved with. A resumed run that
+    # asks for another rate must get it (it silently kept the checkpoint's,
+    # which would have turned a learning-rate A/B into the control twice).
+    runner = SelfPlayRunner(RulesetConfig(), max_steps=160)
+    network = _network(runner.codec.size)
+    policy = TorchBatchPolicy(network, _CPU, seed=2)
+    result = runner.run({"p": policy}, (SelfPlaySpec(game_seed=5, lineup=("p",) * 4),))
+    saved = Learner(network, _CPU, LearnerConfig(learning_rate=1.0e-4))
+    saved.update(stack_episodes(result.episodes))
+    state = saved.optimizer_state()
+
+    resumed = Learner(
+        _network(runner.codec.size), _CPU, LearnerConfig(learning_rate=3.0e-5)
+    )
+    resumed.restore_optimizer(state)
+
+    assert [group["lr"] for group in resumed.optimizer.param_groups] == [3.0e-5]
+    before = saved.optimizer.state_dict()["state"]
+    after = resumed.optimizer.state_dict()["state"]
+    assert int(after[0]["step"]) == int(before[0]["step"]) > 0
+    assert torch.equal(after[0]["exp_avg"], before[0]["exp_avg"])
+    assert torch.equal(after[0]["exp_avg_sq"], before[0]["exp_avg_sq"])
+
+
 def test_checkpoint_agents_enter_tournaments_by_path(tmp_path: Path) -> None:
     config = RulesetConfig()
     runner = SelfPlayRunner(config)
@@ -212,7 +237,8 @@ def test_train_loop_writes_log_checkpoints_and_evaluates(tmp_path: Path) -> None
     assert numbered_info.optimizer_state is None
 
     # Resuming continues the iteration count (and the optimizer) from the
-    # checkpoint.
+    # checkpoint, at the learning rate the resumed run asks for.
+    steps_before = int(latest_info.optimizer_state["state"][0]["step"])
     resumed = train(
         TrainConfig(
             out_dir=tmp_path / "run",
@@ -220,10 +246,15 @@ def test_train_loop_writes_log_checkpoints_and_evaluates(tmp_path: Path) -> None
             games_per_iteration=1,
             seed=1,
             hidden=(32,),
+            learner=LearnerConfig(learning_rate=1.0e-5),
             resume=result.latest_checkpoint,
         )
     )
     assert resumed.records[0].iteration == 3
+    _, resumed_info = load_checkpoint(resumed.latest_checkpoint)
+    assert resumed_info.optimizer_state is not None
+    assert [g["lr"] for g in resumed_info.optimizer_state["param_groups"]] == [1.0e-5]
+    assert int(resumed_info.optimizer_state["state"][0]["step"]) > steps_before
     with pytest.raises(ValueError, match="unknown opponent"):
         TrainConfig(out_dir=tmp_path, opponent="oracle")
 

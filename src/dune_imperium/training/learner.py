@@ -90,9 +90,17 @@ class Learner:
         return dict(self.optimizer.state_dict())
 
     def restore_optimizer(self, state: Mapping[str, Any]) -> None:
-        """Continue from a checkpoint's optimizer state (moments, step count)."""
+        """Continue from a checkpoint's optimizer state (moments, step count).
+
+        The state also carries the learning rate it was saved with, and
+        ``load_state_dict`` puts it back. The configured rate has to win:
+        resuming with another ``--learning-rate`` is how a run lowers it, and
+        it used to keep the checkpoint's rate without a word.
+        """
 
         self.optimizer.load_state_dict(dict(state))
+        for group in self.optimizer.param_groups:
+            group["lr"] = self.config.learning_rate
 
     def update(self, batch: TrainingBatch) -> UpdateStats:
         """Run ``epochs`` passes of minibatch policy-gradient steps."""
