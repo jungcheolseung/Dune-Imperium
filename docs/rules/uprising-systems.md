@@ -38,11 +38,12 @@
 - Faction board space에 Agent를 보내면 해당 Faction Influence를 1 올린다. 카드나 다른 효과도 Influence를 올리거나 내릴 수 있다. `[Main p. 7]`
 - track은 6칸이다. 이미 6인 cube에 대한 추가 Influence 획득과, 고를 진영이 전부 6인 "진영을 골라 Influence" 보상의 처리는 공식 문서가 침묵한다 — [OQ-060](open-questions.md#oq-060--influence-track-맨-위6에서의-진영을-골라-influence-보상) project convention(획득 소멸).
 - Influence 2에 도달하면 1 VP를 얻는다. 이후 2 아래로 내려가면 그 VP를 잃는다. 여러 Influence를 한 번에 얻으며 2를 지나가는 것도 `reach 2`이고, 내려갈 때가 아니라 올라갈 때만 `reach`로 본다. Influence를 잃었다가 다시 올라오면 다시 도달할 수 있다. `[Main pp. 7, 17]`
-- Influence 4에 도달하면 track에 표시된 보너스를 얻는다. Emperor는 troop 2개, Spacing Guild는 water 3, Bene Gesserit은 Intrigue card 1장, Fremen은 water 1을 얻는다. 이 값은 공식 setup board artwork와 p. 7의 Bene Gesserit track 예시를 함께 전사했다. 4 아래로 내려가도 보너스를 반환하지 않으며, 다시 4에 도달하면 같은 보너스를 다시 받을 수 있다. `[Main pp. 4, 7 board artwork]`
+- Influence 4에 도달하면 track에 표시된 보너스를 얻는다("you earn the bonus shown on that space of the track" `[Main p. 7]`). 각 strip의 Influence 4 칸에 인쇄된 아이콘은 **Emperor: Spy 1개 배치, Spacing Guild: 3 Solari, Bene Gesserit: Intrigue card 1장, Fremen: water 1**이다 — 2026-09-19에 보드 스캔을 확대해 룰북 아이콘(회색 원기둥 = Spy, 숫자가 든 회색 동전 = Solari, 금색 카드 = Intrigue, 물방울 = water)과 대조해 다시 전사했다. 그 전의 "Emperor troop 2개, Spacing Guild water 3"은 룰북의 작은 보드 삽화를 잘못 읽은 값이었다([lessons.md](../lessons.md) 2026-09-19). 4 아래로 내려가도 보너스를 반환하지 않으며, 다시 4에 도달하면 같은 보너스를 다시 받을 수 있다. `[Main pp. 4, 7 board artwork]`
+- Emperor track의 Spy는 Influence를 얻은 효과가 끝나는 즉시 놓는다: 다른 player-initiated action으로 넘어가기 전에 그 배치를 끝내야 하며, 뒤의 효과(예: 같은 turn의 Imperial Privilege recall)에 맞춰 미룰 수 없다(디자이너 판정, Message from designer; [OQ-057](open-questions.md#oq-057--디자이너-커뮤니티-판정의-일괄-채택-2026-09-09)). 배치 규칙은 일반 Spy 아이콘과 같다(빈 observation post 아무 곳, supply에 Spy가 있으면 의무, supply가 비었으면 먼저 하나를 recall할 수 있다 `[Main pp. 11, 20]`). 구현은 `GameState.pending_track_spies` 대기열과 공용 `spy_placement` frame이다.
 
 ## Alliance
 
-- Card의 Alliance 조건은 해당 Faction Influence가 4 이상인지가 아니라 현재 그 Faction의 Alliance token을 보유하는지 확인한다. Branching Path는 Bene Gesserit Alliance를 보유할 때만 Agent box의 선택형 trash 비용과 보상을 사용할 수 있다. `[Main p. 7]` `[Branching Path card]`
+- Card의 Alliance 조건은 해당 Faction Influence가 4 이상인지가 아니라 현재 그 Faction의 Alliance token을 보유하는지 확인한다. Branching Path는 Bene Gesserit Alliance를 보유할 때만 Agent box의 선택형 비용(hand의 **Intrigue 카드 1장 trash** — Trash an Intrigue card 아이콘 `[Main p. 20]`)과 보상(Intrigue 1장 draw, spice 2)을 사용할 수 있다. `[Main p. 7]` `[Branching Path card]`
 - 한 Faction에서 처음 Influence 4에 도달한 플레이어는 Alliance token과 그 token의 1 VP를 얻는다. 다른 플레이어가 현재 보유자보다 **높은** 칸으로 올라가면 token과 그 VP가 새 플레이어에게 이전된다. 동률만으로는 Main의 일반 이전 조건을 충족하지 않는다. `[Main p. 7]`
 - Alliance 보유자가 Influence를 잃기 전에 다른 플레이어와 이미 동률이었다면, 그 동률 플레이어가 token을 즉시 가져간다. 동률 플레이어가 여러 명이면 기존 보유자가 받을 한 명을 정한다. `[FAQ p. 1]`
 - 보유자가 Influence 3 이하로 내려가면 Alliance token을 잃는다. 다른 어느 플레이어도 Influence 4 이상이 아니면 token을 board로 돌려놓는다. 이때 4 이상인 후보가 여러 명이면 감소 직전 보유자와 Influence 4에서 동률이므로, 기존 보유자가 그중 한 명을 정한다. 한 칸씩 처리하는 유효한 track 전이에서는 직전 동률이 아닌 복수 후보가 발생하지 않는다. `[FAQ p. 1]`
@@ -69,7 +70,8 @@
 
 ## Spy와 observation post
 
-- board의 observation post는 하나 이상의 board space에 연결된다. Spy icon이 나오면 자신의 supply에서 Spy를 가져와 비어 있는 observation post 한 곳에 놓을 수 있다. 효과가 특정 Agent icon 연결을 요구하면 그 조건을 만족하는 post만 선택할 수 있다. `[Main pp. 11, 20]`
+- board의 observation post는 하나 이상의 board space에 연결된다. Spy icon이 나오면 자신의 supply에서 Spy를 가져와 비어 있는 observation post 한 곳에 놓는다. 효과가 특정 Agent icon 연결을 요구하면 그 조건을 만족하는 post만 선택할 수 있다. `[Main pp. 11, 20]`
+- **Spy 배치는 supply에 Spy가 하나라도 있으면 의무다.** Main p. 11의 인쇄문은 "you may place a Spy"지만 디자이너가 그 "may"를 오기로 정정했다 — "The word 'may' is incorrectly used here. It is mandatory to place a Spy if you have at least one Spy in your supply."(Hidden Assets Discord, 커뮤니티 FAQ의 Errata 절; [OQ-057](open-questions.md#oq-057--디자이너-커뮤니티-판정의-일괄-채택-2026-09-09) 채택분). 놓을 수 있는 post가 하나도 없으면 아이콘은 Spy 없이 해결된다. supply가 비었을 때의 선행 recall("you may first recall one of your Spies" `[Main pp. 11, 20]`)은 그대로 선택이므로, 그때는 배치하지 않고 넘어갈 수 있다. 인쇄가 선택지를 주는 효과(화살표 비용 뒤의 Spy, "Spy — OR — 검 2", 거절하면 face up으로 남는 Distraction의 발동 시점 OQ-016)는 그 선택이 그대로다.
 - Double Agent는 이번 Agent turn에 방문한 space를 이미 spying 중일 때 상대 Spy가 있는 observation post에 자기 Spy를 함께 놓을 수 있다. 같은 플레이어가 자기 Spy 둘을 한 post에 놓는 것은 허용되지 않는다. `[Double Agent card]`
 - Guild Spy의 Reveal 효과에서 어떤 Faction을 spying 중인지는 자기 Spy가 놓인 observation post가 그 Faction space 하나 이상에 연결되는지로 판정한다. 같은 Faction에 연결된 Spy가 여러 개여도 그 Faction Influence는 한 번만 얻는다. `[Guild Spy card]`
 - Spy 배치를 선택했지만 supply에 Spy가 없다면, 먼저 board의 자기 Spy 하나를 효과 없이 recall할 수 있다. `[Main pp. 11, 20]`

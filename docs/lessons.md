@@ -296,3 +296,47 @@
   않아 `kill $pids`가 통째로 실패한다). 패턴으로 프로세스를 셀 때는 하네스의 zsh 래퍼가 자기 명령줄로 걸린다는 것(2026-09-09)도 그대로다 —
   이번에도 "leftover 2"가 두 번 나왔고 둘 다 래퍼였다. `CLAUDE.md`의 "Long-running commands"에 이 점검을 한 줄로 넣었다.
 
+## 2026-09-19 — 인쇄된 아이콘을 "비슷한 것"으로 읽은 오전사가 네 군데, 전부 사용자가 플레이하다 적발
+
+- 무슨 일: 사용자가 플레이 중 Branching Path를 보고 "초록색 아이콘이 없는데 왜 갈 수 있게 나오지, 능력도
+  잘못 됐어"라고 지적했다. 카드면과 룰북 아이콘을 나란히 놓으니 **세 군데**가 틀려 있었다 — Agent 아이콘은
+  Landsraad가 아니라 City(파란 원), 비용은 일반 trash가 아니라 **Trash an Intrigue card**(금색 Intrigue 카드
+  위의 X), 보상은 troop 2가 아니라 **spice 2**(주황 육각형). 이어서 "책략 폐기 아이콘 지금 다 오류인가"라는
+  질문에 그 아이콘을 범위 안의 모든 카드·타일·보드 그림에 템플릿 매칭해 보니 같은 아이콘이 찍힌 곳은 여섯
+  군데였고, 그중 **Bene Tleilax board의 c7r3**도 일반 trash로 전사돼 있었으며 Imperial Privilege는 UI가
+  일반 discard 아이콘을 그리고 있었다(OQ-061). 매칭을 돌리다 본 보드 스캔에서 **Influence 4 보너스**도 두
+  개가 틀린 것을 발견했다 — Emperor는 troop 2가 아니라 **Spy**(회색 원기둥), Spacing Guild는 water 3이
+  아니라 **3 Solari**(숫자 3이 든 회색 동전). 2026-08부터 모든 판·모든 학습이 이 값으로 돌았다.
+- 원인: (1) 2026-09-08(색만 보고 Agent 아이콘 판독)·2026-09-09(일반 trash를 "Trash this card"로)와 같은
+  뿌리다 — 아이콘을 룰북 아이콘과 **대조하지 않고** 모양·색·기대로 읽었다. 앞의 두 교훈은 "Agent 아이콘
+  열"과 "trash·discard 아이콘"에만 절차를 걸었고, 비용·보상 칸의 나머지 아이콘(Intrigue trash, 자원 종류,
+  Spy 대 troop)은 그대로 눈대중이었다. (2) Influence 4 보너스는 "setup board artwork와 p. 7의 예시를 함께
+  전사했다"고 적혀 있었는데, 룰북의 작은 보드 그림으로는 원기둥과 정육면체, 동전과 물방울이 구별되지
+  않는다 — 그때는 보드 스캔이 없었고, 스캔이 생긴 뒤에도 다시 대조하지 않았다. (3) 전수 점검 수단이
+  없었다: 아이콘 하나가 어디에 찍혀 있는지 묻는 질문에 답할 도구가 없어 카드별 기억에 의존했다.
+- 재발 방지:
+  1. 전사 대조는 **아이콘 단위 전수 검색**으로 한다. 룰북 아이콘(`assets/icons/*.png`)을 카드·타일·보드
+     그림에 다중 스케일 템플릿 매칭(`cv2.matchTemplate`, 색 3채널, 테두리를 뺀 안쪽 영역)하면 진짜 일치는
+     0.92 이상, 닮은 아이콘(일반 trash)은 0.80 이하로 갈린다 — 이번에 6곳을 1분 안에 찾았다. 새 확장을
+     전사하거나 "이 아이콘 다 맞나"라는 의심이 들면 눈으로 훑지 말고 이 검색부터 돌리고, 검색 결과의
+     목록과 엔진의 해당 효과 목록이 **같은 집합인지**를 본다.
+  2. 보드에 인쇄된 값(Influence 보너스, 칸의 아이콘)은 룰북 삽화가 아니라 **보드 스캔을 확대해** 전사하고,
+     아이콘 시트(spy·troop·solari·water를 나란히)와 대조한 그림을 남긴다.
+  3. 자원·유닛 아이콘도 Agent 아이콘과 같은 절차에 넣는다: 원기둥=Spy, 정육면체=troop, 회색 동전=Solari,
+     주황 육각형=spice, 물방울=water, 금색 카드=Intrigue, 금색 카드+X=Intrigue trash, 회색 카드+X=trash,
+     주황 카드+화살표=discard.
+
+## 2026-09-19 — 감사 문서의 "일치"를 코드 경로 하나만 보고 적음
+
+- 무슨 일: 2026-09-08 디자이너 판정 대조([rules/designer-rulings-audit.md](rules/designer-rulings-audit.md))는
+  "Spy 배치는 supply에 Spy가 있으면 의무"를 **일치 확인** 표에 넣었다. 근거는 공용 `spy_placement` frame
+  (`rules/spy_moves.py`) 하나였고, 같은 Spy 아이콘을 해결하는 다른 경로 — Espionage의
+  `resolve_espionage_without_spy`, Intrigue `PlaceSpy` slot의 `decline_intrigue_spy` — 는 supply에 Spy가
+  있어도 거절을 내고 있었다. 사용자가 플레이 중 "스파이 배치는 의무가 아니야? spy 없이 해결 선택지가
+  있네"로 적발했다.
+- 원인: 판정 하나가 **여러 provider에 흩어진 효과**에 걸리는데 대표 구현 하나만 확인했다. Spy 배치 행동은
+  codec에 11종(`place_*_spy`)이 있고 각각 provider가 다르다.
+- 재발 방지: 규칙 한 줄을 "구현과 일치"로 적기 전에 그 효과를 내는 **행동 id를 codec에서 전부** 찾고
+  (`grep '"place_.*spy"' adapters/action_codec.py`), provider마다 같은 질문(거절이 제시되는가, 어느 조건에서)을
+  표로 답한다. 이번에 그 표를 만드는 데 read-only 검색 에이전트로 3분이 걸렸다.
+

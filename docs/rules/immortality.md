@@ -50,13 +50,13 @@ Uprising setup에 다음 단계를 더하거나 바꾼다. `[Immortality pp. 4-5
 | c6r4 | Tleilaxu 1 | c7r3, c7r5 |
 | c6r6 | Influence 1 선택 | c7r5 |
 | c7r1 | Tleilaxu 1 | c8r2 |
-| c7r3 | trash 아이콘 → draw 1 + Intrigue 1 (선택형 arrow) | c8r2, c8r4 |
+| c7r3 | **Trash an Intrigue card** 아이콘 → draw 1 + Intrigue 1 (선택형 arrow; 2026-09-19 재전사 — 금색 Intrigue 카드 위의 X이고 일반 trash 아이콘이 아니다) | c8r2, c8r4 |
 | c7r5 | trash 아이콘(선택) + specimen 1 | c8r4, c8r6 |
 | c8r2 (marker 2, 끝) | spice 2 | — |
 | c8r4 (marker 2, 끝) | Tleilaxu 1 | — |
 | c8r6 (marker 2, 끝) | Solari 7 → Tleilaxu 2 (선택형 arrow) | — |
 
-- 검은 trash 아이콘은 hand·discard pile·in play의 카드 1장을 trash하는 선택 효과이고 `[Main p. 20]`, arrow 앞의 비용은 지불 여부를 고르는 선택이다 `[Main p. 9]`. c7r3·c8r6의 arrow 효과는 그렇게 읽는다. c6r6의 금색 "?"는 Uprising 아이콘 가이드의 "Influence 1 선택"이며, Bene Tleilax는 Faction이 아니므로 Tleilaxu track 전진으로 쓸 수 없다 `[FAQ p. 4]`.
+- 검은 trash 아이콘은 hand·discard pile·in play의 카드 1장을 trash하는 선택 효과이고 `[Main p. 20]`, arrow 앞의 비용은 지불 여부를 고르는 선택이다 `[Main p. 9]`. c7r3·c8r6의 arrow 효과는 그렇게 읽는다. 단 c7r3의 비용 아이콘은 검은 trash가 아니라 **Trash an Intrigue card**(`[Immortality p. 16]`의 아이콘 정의: hand의 Intrigue 카드 1장을 trash)다 — 2026-09-19에 보드 스캔에 룰북 아이콘을 템플릿 매칭해 확인했고(일치도 0.94, 보드에서 이 아이콘은 이 한 곳뿐), 처음 전사는 일반 trash로 잘못 읽었다([lessons.md](../lessons.md)). Intrigue 카드가 없으면 이 보너스는 `research_bonus_unavailable`로 소멸하고, trash한 카드는 `intrigue_trash`로 간다. c6r6의 금색 "?"는 Uprising 아이콘 가이드의 "Influence 1 선택"이며, Bene Tleilax는 Faction이 아니므로 Tleilaxu track 전진으로 쓸 수 없다 `[FAQ p. 4]`.
 
 ### Tleilaxu track
 

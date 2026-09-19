@@ -114,7 +114,7 @@ Spice Trade 아이콘. Agent: Research. Reveal: ◆1 specimen 1. 카드 이름 �
 | Research Station | `static_board_effects(..., immortality=True)`가 `(Draw 2, ResearchEffect)`; 아이콘 키 `research`는 `AUTOMATIC_BOARD_ICONS`에 들어가 `resolve_board_effect(effect=research)`로 해결한다. | `[Immortality pp. 5, 16]` `[Main p. 18]`. |
 | Experimentation | `PersonalCardAgentEffect.RESEARCH`, `PersonalCardRevealEffect(specimens=1)`; `STARTING_CARDS_BY_ID`에 포함되지만 `STARTING_DECK`(7종)은 그대로. | `[Immortality p. 5]` `[card face]`. |
 | Family Atomics | `use_family_atomics`: 소유자의 turn frame들에서 1회, Row 전부를 `imperium_removed`로 보내고 deck 맨 위 5장으로 새 Row(OQ-051). | `[Immortality p. 12]`. |
-| 관측·codec | 관측 v12(위 상태 전부 공개), codec v96: `immortality` 카탈로그에 `choose_research_space` ×21·`choose_research_influence` ×4·`trash_for_research_bonus`(카드마다)·`pay/decline_research_bonus`·`return_specimen`·`use_family_atomics`·`generate_reveal_specimens`; 기본 카탈로그는 `resolve_board_effect(research)` 1개만 늘었다. heuristic 우선순위와 UI 라벨을 추가. | 소크: random·heuristic 각 6판에서 모든 경로가 발화(연쇄·marker·atomics 포함). |
+| 관측·codec | 관측 v12(위 상태 전부 공개), codec v96: `immortality` 카탈로그에 `choose_research_space` ×21·`choose_research_influence` ×4·`trash_for_research_bonus`(카드마다; codec v106부터 `trash_intrigue_for_research_bonus`(Intrigue 카드마다) — c7r3의 비용은 Trash an Intrigue card 아이콘이다, 2026-09-19 재전사)·`pay/decline_research_bonus`·`return_specimen`·`use_family_atomics`·`generate_reveal_specimens`; 기본 카탈로그는 `resolve_board_effect(research)` 1개만 늘었다. heuristic 우선순위와 UI 라벨을 추가. | 소크: random·heuristic 각 6판에서 모든 경로가 발화(연쇄·marker·atomics 포함). |
 
 ## 슬라이스 3: Tleilaxu Row
 

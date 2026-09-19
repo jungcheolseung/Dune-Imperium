@@ -52,7 +52,7 @@ troop 최대 2개를 Conflict에 deploy할 수 있다. 아래 각 행은 이 공
 | Assembly Hall | Landsraad | Intrigue 1장 draw. 자신의 Agent가 이곳에 있으면 그 round의 Reveal turn에 Persuasion 1. | `[Board Guide p. 1]` |
 | Gather Support | Landsraad; cost로 0 또는 2 Solari 선택 | troop 2개 recruit. 2 Solari를 냈다면 water 1도 획득. | `[Board Guide p. 1]` |
 | High Council | Landsraad; cost 5 Solari | 첫 방문이면 비어 있는 Council seat에 Councilor token을 놓고, 이후 모든 Reveal turn에 Persuasion 2. 이후 이 space를 다시 방문할 때마다 spice 2, Intrigue 1장, troop 3개. | `[Board Guide p. 2]` |
-| Imperial Privilege | Landsraad; Emperor Influence 2 이상; cost 3 Solari | 원하면 Intrigue 1장을 discard하고 Intrigue 1장을 draw. 이번 turn에 보낸 Agent가 아닌 자신의 다른 Agent 1개를 recall하고 card 1장을 draw. | `[Board Guide p. 2]` |
+| Imperial Privilege | Landsraad; Emperor Influence 2 이상; cost 3 Solari | 원하면 hand의 Intrigue 1장을 trash하고 Intrigue 1장을 draw(board의 인쇄는 Trash an Intrigue card 아이콘 → Intrigue 아이콘 `[Main p. 20]`; Board Guide의 문장은 "discard"라고 적는다 — [OQ-061](open-questions.md#oq-061--imperial-privilege-인쇄된-trash-an-intrigue-card-아이콘과-board-guide의-discard), 인쇄된 아이콘을 따른다). 이번 turn에 보낸 Agent가 아닌 자신의 다른 Agent 1개를 recall하고 card 1장을 draw. | `[Board Guide p. 2]` `[Main p. 20]` |
 | Swordmaster | Landsraad; 아무도 Swordmaster를 얻지 않았다면 cost 8 Solari, 한 명이라도 얻은 뒤에는 6 Solari | 플레이어마다 게임 중 1회만 방문. setup 때 board 옆에 둔 세 번째 Agent를 Leader에 놓으며, 현재 round를 포함해 이후 사용한다. | `[Board Guide p. 2]` |
 
 ## City
