@@ -286,7 +286,11 @@ def test_espionage_uses_explicit_spy_choices_instead_of_generic_resolution() -> 
         for action in choices
         if action.action_id == "resolve_board_effect"
     ] == ["cards"]
-    assert "resolve_espionage_without_spy" in {action.action_id for action in choices}
+    # With a Spy in the supply the placement is mandatory (the designer's
+    # erratum to [Main p. 11], OQ-057), so skipping it is not offered.
+    assert "resolve_espionage_without_spy" not in {
+        action.action_id for action in choices
+    }
     placement = next(
         action
         for action in choices

@@ -578,9 +578,10 @@ def test_sleeper_unit_pays_for_a_spy_or_recalls_one_for_troops() -> None:
     paying = _state(_owner(intrigue_cards=(card,), resources=Resources(solari=1)))
     opened = engine.apply(paying, _play_intrigue(card, 0)).state
     assert opened.players[0].resources.solari == 0
+    # Paid for with a Spy in the supply: the placement is mandatory (the
+    # designer's erratum to [Main p. 11], adopted with OQ-057).
     assert {a.action_id for a in engine.legal_actions(opened, 0)} == {
         "place_intrigue_spy",
-        "decline_intrigue_spy",
     }
 
     posted = _state(

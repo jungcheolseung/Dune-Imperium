@@ -66,7 +66,7 @@ _AUTHORED_OPTION_EFFECTS: Mapping[
         ),
         ("espionage", None): (
             "Gain 1 Bene Gesserit Influence, Draw 1 card."
-            " You may place a Spy",
+            " Place a Spy",
         ),
         ("secrets", None): (
             "Gain 1 Bene Gesserit Influence, Draw 1 Intrigue card."
@@ -149,7 +149,7 @@ _ICON_TEXTS: Mapping[str, str] = MappingProxyType(
             "Seat your Councilor for +2 Persuasion at every Reveal turn"
         ),
         BOARD_ICON_SWORDMASTER: "Take your third Agent, usable from this round",
-        BOARD_ICON_SPY: "You may place a Spy",
+        BOARD_ICON_SPY: "Place a Spy",
         BOARD_ICON_TRASH: "You may trash a card",
         BOARD_ICON_INFLUENCE: "Gain 1 Influence with a Faction of your choice",
     }

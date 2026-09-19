@@ -1128,8 +1128,11 @@ def test_special_mission_places_a_spy_on_a_bene_gesserit_post() -> None:
 
     opened = engine.apply(state, _play(state, card, 0)).state
     offered = engine.legal_actions(opened, 0)
-    # The placement itself is optional ("you may") [Main pp. 11, 20].
-    assert "decline_intrigue_spy" in {a.action_id for a in offered}
+    # With a Spy in the supply the placement is mandatory: the designer's
+    # erratum to [Main p. 11] ("The word 'may' is incorrectly used here. It
+    # is mandatory to place a Spy if you have at least one Spy in your
+    # supply", Hidden Assets Discord; adopted with OQ-057).
+    assert {a.action_id for a in offered} == {"place_intrigue_spy"}
     targets = {
         str(dict(a.arguments)["post_id"])
         for a in offered
@@ -1143,19 +1146,36 @@ def test_special_mission_places_a_spy_on_a_bene_gesserit_post() -> None:
     assert placed.intrigue_discard == (card,)
 
 
-def test_special_mission_spy_placement_can_be_declined() -> None:
+def test_special_mission_spy_placement_can_only_be_declined_without_a_spy() -> None:
+    # Placing is mandatory with a Spy in the supply (the erratum to [Main
+    # p. 11], OQ-057); with an empty supply the recall that would free one is
+    # the owner's choice ("you may first recall one of your Spies" [Main
+    # pp. 11, 20]), so the slot can be declined there.
     card = _intrigue("special_mission")
-    owner = PlayerState(player_id=0, intrigue_cards=(card,))
-    state = _turn_state(owner)
     engine = UprisingRulesEngine()
+    supplied = _turn_state(PlayerState(player_id=0, intrigue_cards=(card,)))
+    opened = engine.apply(supplied, _play(supplied, card, 0)).state
+    with pytest.raises(ValueError):
+        engine.apply(opened, DomainAction(action_id="decline_intrigue_spy", actor=0))
 
+    owner = PlayerState(
+        player_id=0,
+        intrigue_cards=(card,),
+        spies_supply=0,
+        spy_post_ids=(
+            "landsraad-assembly-hall-gather-support",
+            "arrakis-research-station-spice-refinery",
+            "fremen-desert-tactics-fremkit",
+        ),
+    )
+    state = _turn_state(owner)
     opened = engine.apply(state, _play(state, card, 0)).state
     declined = engine.apply(
         opened, DomainAction(action_id="decline_intrigue_spy", actor=0)
     ).state
 
-    assert declined.players[0].spy_post_ids == ()
-    assert declined.players[0].spies_supply == 3
+    assert declined.players[0].spy_post_ids == owner.spy_post_ids
+    assert declined.players[0].spies_supply == 0
     assert declined.intrigue_discard == (card,)
     assert declined.decision_stack[-1].kind == "turn"
 
@@ -1185,11 +1205,11 @@ def test_special_mission_recalls_first_when_no_spy_is_in_supply() -> None:
         opened, _recall_spy("landsraad-assembly-hall-gather-support")
     ).state
     assert recalled.players[0].spies_supply == 1
-    # The slot is still open: only the placement (or declining) remains, so
-    # exactly one Spy can be recalled per placement [Main p. 11].
+    # The slot is still open: only the placement remains (the recalled Spy is
+    # in the supply, so it has to be placed), and exactly one Spy can be
+    # recalled per placement [Main p. 11].
     assert {a.action_id for a in engine.legal_actions(recalled, 0)} == {
         "place_intrigue_spy",
-        "decline_intrigue_spy",
     }
 
 
@@ -1500,11 +1520,10 @@ def test_go_to_ground_retreats_then_places_a_spy_and_drops_an_empty_player() -> 
     retreated = engine.apply(opened, _retreat(1)).state
     assert retreated.players[0].troops_conflict == 0
     assert retreated.players[0].combat_strength == 0
-    # The Spy placement still resolves before the card finishes; placing is
-    # optional ("you may") [Main pp. 11, 20].
+    # The Spy placement still resolves before the card finishes, and with a
+    # Spy in the supply it is mandatory (the erratum to [Main p. 11], OQ-057).
     assert {a.action_id for a in engine.legal_actions(retreated, 0)} == {
         "place_intrigue_spy",
-        "decline_intrigue_spy",
     }
     post = str(dict(engine.legal_actions(retreated, 0)[0].arguments)["post_id"])
     done = engine.apply(retreated, _place_spy(post)).state

@@ -460,26 +460,24 @@ def test_espionage_card_draw_may_precede_the_spy_choice() -> None:
     )
     assert legal_board_effect_actions(drawn_state, 0) == ()
     assert {action.action_id for action in legal_espionage_actions(drawn_state, 0)} == {
-        "resolve_espionage_without_spy",
         "resolve_espionage_place_spy",
     }
 
 
-def test_espionage_can_decline_spy_and_still_draw_card() -> None:
-    state, drawn = _espionage_state()
-    decline = next(
-        action
-        for action in legal_espionage_actions(state, 0)
-        if action.action_id == "resolve_espionage_without_spy"
-    )
+def test_espionage_must_place_its_spy_while_one_is_in_supply() -> None:
+    # The designer's erratum to [Main p. 11] (Hidden Assets Discord; adopted
+    # with OQ-057): "The word 'may' is incorrectly used here. It is mandatory
+    # to place a Spy if you have at least one Spy in your supply."
+    state, _ = _espionage_state()
 
-    declined = apply_espionage_action(state, decline).state
-
-    assert declined.players[0].spies_supply == 3
-    assert declined.players[0].spy_post_ids == ()
-    assert dict(declined.decision_stack[-1].context)["pending_board_icons"] == "cards"
-    resolved = _resolve_board(declined, "cards")
-    assert drawn in resolved.players[0].hand
+    assert state.players[0].spies_supply == 3
+    offered = legal_espionage_actions(state, 0)
+    assert offered
+    assert {action.action_id for action in offered} == {"resolve_espionage_place_spy"}
+    with pytest.raises(ValueError, match="not a legal Espionage choice"):
+        apply_espionage_action(
+            state, DomainAction(action_id="resolve_espionage_without_spy", actor=0)
+        )
 
 
 def test_espionage_reshuffles_discard_before_drawing() -> None:
@@ -487,13 +485,13 @@ def test_espionage_reshuffles_discard_before_drawing() -> None:
     owner = replace(state.players[0], deck=(), discard_pile=(drawn,))
     state = replace(state, players=(owner, *state.players[1:]))
     engine = UprisingRulesEngine()
-    decline = next(
+    place = next(
         action
         for action in engine.legal_actions(state, 0)
-        if action.action_id == "resolve_espionage_without_spy"
+        if action.action_id == "resolve_espionage_place_spy"
     )
 
-    declined = engine.apply(state, decline).state
+    declined = engine.apply(state, place).state
     pending = engine.apply(declined, _board_action(declined, "cards")).state
     decision = engine.current_decision(pending)
     assert isinstance(decision, ChanceDecision)
@@ -519,8 +517,9 @@ def test_espionage_recall_commits_to_a_replacement_when_supply_is_empty() -> Non
     recalled = apply_espionage_action(state, first_recall)
     replacement_actions = legal_espionage_actions(recalled.state, 0)
 
-    # The printed placement stays optional before any recall [Board Guide
-    # p. 1]; once the recall is chosen, placement is committed.
+    # With an empty supply nothing has to be placed and the recall is the
+    # player's choice [Main pp. 11, 20]; once it is made, the recalled Spy
+    # is in the supply and has to be placed (the erratum to [Main p. 11]).
     assert {action.action_id for action in recall_actions} == {
         "resolve_espionage_without_spy",
         "recall_spy_for_espionage",
@@ -541,8 +540,9 @@ def test_espionage_recall_commits_to_a_replacement_when_supply_is_empty() -> Non
 
 
 def test_espionage_with_empty_supply_may_resolve_without_moving_a_spy() -> None:
-    # The printed placement is optional [Board Guide p. 1]; an empty supply
-    # must not force the player to relocate a placed Spy.
+    # Placement is only mandatory with a Spy in the supply (the erratum to
+    # [Main p. 11]); an empty supply must not force the player to relocate a
+    # placed Spy ("you may first recall one of your Spies" [Main pp. 11, 20]).
     state, drawn = _espionage_state(spies_supply=0)
     decline = next(
         action

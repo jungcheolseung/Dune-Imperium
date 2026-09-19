@@ -205,18 +205,25 @@ def legal_spy_placement_actions(
             )
             for post_id in targets
         )
+    decline = DomainAction(action_id="decline_spy_placement", actor=player)
     if targets and owner.spy_post_ids:
-        # No Spy in supply: recall one first [Main pp. 11, 20].
-        return tuple(
-            DomainAction(
-                action_id="recall_spy_for_placement",
-                actor=player,
-                arguments=(("post_id", post_id),),
-            )
-            for post_id in owner.spy_post_ids
+        # No Spy in supply: "you may first recall one of your Spies for no
+        # effect" [Main pp. 11, 20]. Placing is only mandatory with a Spy in
+        # the supply (the erratum to [Main p. 11], OQ-057), so the recall
+        # can be passed up; once it is made the Spy has to be placed.
+        return (
+            decline,
+            *(
+                DomainAction(
+                    action_id="recall_spy_for_placement",
+                    actor=player,
+                    arguments=(("post_id", post_id),),
+                )
+                for post_id in owner.spy_post_ids
+            ),
         )
     # Nothing can be placed (every allowed post is occupied, or no Spy).
-    return (DomainAction(action_id="decline_spy_placement", actor=player),)
+    return (decline,)
 
 
 def apply_spy_placement(state: GameState, action: DomainAction) -> RuleResult:

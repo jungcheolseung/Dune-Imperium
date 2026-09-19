@@ -222,19 +222,20 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # re-pinning, never by editing a digest alone. Random seats keep the games
 # independent of the heuristic's tuning.
 # Re-pinned on 2026-09-20 for that day's rules fixes (the printed icons of
-# Branching Path, Imperial Privilege and c7r3): the seeds play differently,
-# while ``adapters/observation_encoding.py`` and ``core/observation.py`` are
-# byte for byte the files the previous digests were pinned with.
+# Branching Path, Imperial Privilege and c7r3, mandatory Spy placement): the
+# seeds play differently, while ``adapters/observation_encoding.py`` and
+# ``core/observation.py`` are byte for byte the files the previous digests
+# were pinned with.
 _GOLDEN_DIGESTS = {
-    "base": ("aeee640535d11d94e635d2ac5364fb9b73c9de7e36059f2c9eb73262d35582ba", 2804),
-    "choam": ("ff7185f18f7478c78bd4741eb3913bb9dc8f162d4be3cf5dc0916c9256e04552", 2508),
+    "base": ("ffab2cb7af85b8b0113ed7df0f3ad264d9ab9510abdf98bef83be6d4b0ab3ed4", 2316),
+    "choam": ("85152cde322a35f7ca4295fc505d997c5d5eb068878272e39cd6463385408cee", 3096),
     "promo_bloodlines_tech": (
-        "e2b06c927a4d9bc49de7179db2977c4bd5f11130a6e20085485cd7a5c4039c45",
-        2996,
+        "75f0e7be04d4e811a434c93450d27d4b7753006ae8565cfdf9f64999789a2063",
+        2828,
     ),
     "everything": (
-        "4709b55831dec53281cf9d7f63dc817dee416dd23cc734b0c76c81b409ebf11d",
-        3220,
+        "557d9f5d2a3c8dd84476f787b652f30a66fcaf9ee6751cd8521917db8e2cae87",
+        3020,
     ),
     "draft": ("bfa7fa2c753630fbf39de0b95c3911a6827095bcaa29aec37fe2ea1457ba8556", 2432),
 }

@@ -623,7 +623,15 @@ def legal_espionage_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Return Espionage's optional Spy placement or required recall choices."""
+    """Return Espionage's Spy placement, or its recall-first and skip choices.
+
+    Placing the Spy is mandatory while a Spy is in the supply and a post is
+    free: the designer's erratum to [Main p. 11] ("The word 'may' is
+    incorrectly used here. It is mandatory to place a Spy if you have at
+    least one Spy in your supply", Hidden Assets Discord; adopted with
+    OQ-057). Only the recall that an empty supply needs first stays optional
+    ("you may first recall one of your Spies" [Main pp. 11, 20]).
+    """
 
     if not 0 <= player < state.config.players:
         raise ValueError("player must identify a configured seat")
@@ -652,12 +660,10 @@ def legal_espionage_actions(
             )
             for post_id in empty_observation_post_ids(state)
         )
-        if recalled:
+        if placements:
             return placements
-        return (
-            DomainAction(action_id="resolve_espionage_without_spy", actor=player),
-            *placements,
-        )
+        # Every post is taken: the icon resolves without a Spy.
+        return (DomainAction(action_id="resolve_espionage_without_spy", actor=player),)
 
     recalls = tuple(
         DomainAction(
@@ -669,8 +675,8 @@ def legal_espionage_actions(
     )
     if recalled:
         return recalls
-    # The printed Spy placement is optional [Board Guide p. 1], so with an
-    # empty supply the player may still resolve Espionage without recalling.
+    # With an empty supply nothing has to be placed, and the recall that
+    # would free a Spy is the player's choice [Main pp. 11, 20].
     return (
         DomainAction(action_id="resolve_espionage_without_spy", actor=player),
         *recalls,

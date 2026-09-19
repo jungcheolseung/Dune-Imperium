@@ -931,8 +931,14 @@ def legal_intrigue_choice_actions(
                     )
                     for post_id in recallable
                 )
-            # Placing the Spy is optional ("you may") [Main pp. 11, 20].
-            actions.append(DomainAction(action_id="decline_intrigue_spy", actor=player))
+            # Placing is mandatory while a Spy is in the supply and a post
+            # can take it (the designer's erratum to [Main p. 11], adopted
+            # with OQ-057); only the recall an empty supply needs first is
+            # the owner's choice [Main pp. 11, 20].
+            if owner.spies_supply == 0 or not targets:
+                actions.append(
+                    DomainAction(action_id="decline_intrigue_spy", actor=player)
+                )
     sections = _sections(context)
     if (
         context.get("rewards_applied") is not True
