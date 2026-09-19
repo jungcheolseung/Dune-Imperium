@@ -137,9 +137,9 @@ seed 블록에서 **+5.1 ~ +9.1%p**다([evaluation/baseline-2026-09-16.md](evalu
      `uv run dune-imperium-tournament --agents checkpoint:<A>,checkpoint:<B>,checkpoint:<C>,checkpoint:<D> --games 100 --start-seed 1000 --ruleset choam --rotate-leaders --promo-cards --bloodlines --tech-module --immortality --workers 4 --markdown <출력>`,
      heuristic 상대는 `--agents checkpoint:<X>,heuristic,heuristic,heuristic --games 50`. 계보를 잇는 비교가 되도록 1650(출발점)을 테이블에 넣는다.
 
-   **다음 후보**: (a) 같은 설정으로 계속 — **지금 도는 실행 3이 이것이다**(1400 이후의 완만한 상승이 이어지는지); (b) 학습률을 3e-5로 한 번 더 낮춰 (a)와 A/B
-   (3e-4 → 1e-4가 통한 논리의 다음 단계); (c) iteration당 64판(128판은 24 GB에도 안 들어간다); (d) 두 번째 seed로 재현. PPO는
-   큰 배치에서만 다시 볼 가치가 있다. 학습 밖 후보 (a)에 전 확장 census가 남긴 RNG 가족(graft 변형·partner, Commander skill,
+   **다음 후보**(2026-09-19 아침에 적은 넷 가운데 (a) 같은 설정으로 계속과 (b) 학습률 3e-5는 위 A/B로 **끝났다 — 둘 다 1650에서 더 오르지
+   않는다**): (c) iteration당 64판(128판은 24 GB에도 안 들어간다; 이 Mac에는 64판도 지금 구조로는 안 들어간다 — 위 "남은 가설" ①); (d) 두 번째
+   seed로 재현; 그리고 위 ②~③(평가 상대 교체, 표현력·탐험). PPO는 큰 배치에서만 다시 볼 가치가 있다. 학습 밖 후보 (a)에 전 확장 census가 남긴 RNG 가족(graft 변형·partner, Commander skill,
    `take_contract`, Spy post, Engineered Miracle의 `command_acquire_row_card`)을 더한다. 열린 관찰: 첫 밤샘 실행 808 iteration의 잘린
    게임 1판은 재현되지 않았고, 16·24 worker가 8 worker보다 느린 원인은 재지 않았다.
 0. (2026-09-17 자정 무렵, **M14는 실제 친구와의 한 판만 남았다 — 사용자 몫**) 슬라이스 1~5와 슬라이스 6의 리허설·운영 문서가 master에 있다(아래 세션 요약 셋). **판을 여는 법과 친구에게 보낼 안내는 [remote-play-guide.md](remote-play-guide.md)** 한 장에 있다: `caffeinate -i uv run dune-imperium-server --remote --host <이 Mac의 100.x 주소>` → 콘솔의 관리자 링크 → 방 생성 → 방 링크를 보낸다(이 Mac mini의 Tailscale 주소는 2026-09-17 현재 `100.87.236.12`; Tailscale 머신 공유 초대는 아직 보내지 않았다). 그 문서 끝의 **첫 실전 판 점검표**(친구 쪽에서 호스트 주소가 같은지, 보드 그림·한 수의 체감 지연, 신호음, 몇 시간짜리 연결, rollout AI 좌석의 멈춤 체감, 되돌리기·확정 흐름, 검토·순위표, WSL2)를 한 판 하면서 채우고, 나온 피드백이 다음 작업이다. **`app.js`를 고치면 [`scripts/e2e/`](../scripts/e2e/README.md)의 스크립트를 돌린다**(`remote.py`·`open_mode.py`·`races.py --ab`·`recovery.py`, 실전 전에는 `E2E_HOST=<100.x> rehearsal.py`; 스크래치 venv + 시스템 Chrome, 합쳐 3분쯤; pytest는 JavaScript를 실행하지 않는다). 설계 11절의 후속 후보(AI worker와 단계별 푸시, AI 대타, 관전자, 공개 터널용 에셋 게이트, 이름의 저장 파일 보존)는 실전 피드백이 요구할 때만 연다.
