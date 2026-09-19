@@ -62,7 +62,7 @@ from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.rules.agent_effects import AUTOMATIC_AGENT_ICONS
 from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 
-ACTION_CODEC_VERSION = 105
+ACTION_CODEC_VERSION = 106
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -379,9 +379,21 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         )
         for instance_id in intrigue_instances
     )
+    # v106: Branching Path trashes an Intrigue card from hand for a Bene
+    # Gesserit Alliance reward (Intrigue card, 2 spice) instead of trashing a
+    # personal card for 2 troops (card-face re-transcription, 2026-09-19).
     templates.extend(
         ActionTemplate(
-            action_id="discard_intrigue_for_imperial_privilege",
+            action_id="trash_intrigue_for_agent_card",
+            arguments=(("intrigue_card_id", instance_id),),
+        )
+        for instance_id in intrigue_instances
+    )
+    # v106: Imperial Privilege trashes the Intrigue card, as its printed icon
+    # says (OQ-061); the action was ``discard_intrigue_for_imperial_privilege``.
+    templates.extend(
+        ActionTemplate(
+            action_id="trash_intrigue_for_imperial_privilege",
             arguments=(("card_id", instance_id),),
         )
         for instance_id in intrigue_instances
@@ -979,7 +991,16 @@ def _immortality_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         )
         for faction in Faction
     )
-    templates.extend(_trash_templates(config, "trash_for_research_bonus"))
+    # v106: c7r3's arrow cost trashes an Intrigue card from hand ("Trash an
+    # Intrigue card" [Immortality p. 16]); the peekable set above is every
+    # Intrigue card a seat of this ruleset can hold.
+    templates.extend(
+        ActionTemplate(
+            action_id="trash_intrigue_for_research_bonus",
+            arguments=(("card_id", instance_id),),
+        )
+        for instance_id in peekable
+    )
     if not config.bloodlines:
         # The trash-and-specimen research spaces open the generic optional
         # trash frame, and Gruesome Sacrifice's troop loss the unit-loss

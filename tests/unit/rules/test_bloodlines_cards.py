@@ -1242,9 +1242,10 @@ def test_urgent_shigawire_boosts_the_next_bene_gesserit_card() -> None:
     armed = resolve_agent_card_effect(state).state
     assert armed.players[0].bene_gesserit_boost_pending is True
 
-    # Branching Path prints Bene Gesserit + Landsraad; boosted it reaches a
-    # City space too, and its Agent box draws a card.
-    bene_gesserit = _card("branching_path")
+    # Truthtrance prints Emperor, Spacing Guild, Bene Gesserit and Fremen
+    # icons (no City, no Agent-box text); boosted it reaches a City space
+    # too, and the boost's own effect draws a card.
+    bene_gesserit = _card("truthtrance")
     guild = _card("guild_envoy")
     boosted = _state(
         _owner(hand=(bene_gesserit, guild), bene_gesserit_boost_pending=True)
@@ -1549,7 +1550,10 @@ def test_false_orders_moves_watching_spies_then_places_one() -> None:
     watcher = replace(
         PlayerState(player_id=1), spies_supply=2, spy_post_ids=(ASSEMBLY_POST,)
     )
-    landsraad = _card("branching_path")
+    # Branching Path no longer prints the Landsraad icon (re-transcribed
+    # 2026-09-19: Bene Gesserit + City); Sardaukar Coordination has no
+    # Agent-box text either, so it stands in as an inert Landsraad card.
+    landsraad = _card("sardaukar_coordination")
     base = _state(_owner(hand=(landsraad,), intrigue_cards=(card,)))
     base = replace(base, players=(base.players[0], watcher, *base.players[2:]))
     # Before any placement there is no "space where you sent an Agent".
@@ -1779,7 +1783,12 @@ def test_ruthless_leadership_round_trips_and_is_dealt_in_random_games() -> None:
     # v97 Occupation bundle, v99 Duncan recall, v100 skip + Change Allegiances.
     # v103 separate lines, v104 the 19-unit retreat range.
     # v105: Fedaykin Maneuver's Commander-share retreats reach 19 units (+28).
-    assert codec.size == 10159 + 292 + 1 + 1 + 1 + 2 + 1 + 28 + 28
+    # v106: trash_intrigue_for_agent_card joins one template per Intrigue
+    # instance in this catalog (+67); Branching Path's corrected City icon
+    # does not change its agent_turn coverage under Bloodlines (every Bene
+    # Gesserit card already gets every Agent icon's placements there, for
+    # Urgent Shigawire's boost).
+    assert codec.size == 10159 + 292 + 1 + 1 + 1 + 2 + 1 + 28 + 28 + 67
     action = DomainAction(
         action_id="trash_agent_card",
         actor=2,

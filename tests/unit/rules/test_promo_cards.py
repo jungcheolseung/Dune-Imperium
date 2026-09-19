@@ -573,9 +573,13 @@ def test_beasts_spoils_with_no_face_up_icons_does_nothing() -> None:
 def test_promo_actions_round_trip_through_the_codec() -> None:
     codec = ActionCodec(PROMO)
     # v97 Occupation's Reveal bundle; v100 skip + Change Allegiances' third option.
-    assert codec.size == 4454 + 12 + 1 + 1 + 2 + 1  # v103 separate lines
+    # v103 separate lines. v106: trash_intrigue_for_agent_card joins one
+    # template per Intrigue instance (+40), and Branching Path's corrected
+    # City icon shifts its agent_turn space coverage by +1 (see
+    # test_action_codec.test_catalog_is_fixed_and_versioned_for_a_ruleset).
+    assert codec.size == 4454 + 12 + 1 + 1 + 2 + 1 + 40 + 1
     choam_promo = ActionCodec(RulesetConfig(choam_module=True, promo_cards=True))
-    assert choam_promo.size == 4740 + 12 + 1 + 1 + 2 + 1
+    assert choam_promo.size == 4740 + 12 + 1 + 1 + 2 + 1 + 44 + 1
     for action_id in (
         "pay_agent_card_spice_for_sandworm",
         "pay_agent_card_spice_for_sandworm_and_shield_wall",

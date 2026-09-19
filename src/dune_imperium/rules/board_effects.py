@@ -1020,7 +1020,15 @@ def legal_imperial_privilege_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Return Imperial Privilege's optional Intrigue slot, then its recall."""
+    """Return Imperial Privilege's optional Intrigue slot, then its recall.
+
+    The space prints the Trash-an-Intrigue-card icon and an arrow to an
+    Intrigue card: "Trash an Intrigue card of your choice from your hand"
+    [Main p. 20], optional like every arrow cost. The Board Space Guide words
+    the same line "You may discard an Intrigue card to draw an Intrigue
+    card" [Board Guide p. 2]; the printed icon decides (OQ-061), so the card
+    leaves the game through ``intrigue_trash``.
+    """
 
     if not 0 <= player < state.config.players:
         raise ValueError("player must identify a configured seat")
@@ -1041,7 +1049,7 @@ def legal_imperial_privilege_actions(
             DomainAction(action_id="decline_imperial_privilege_intrigue", actor=player),
             *(
                 DomainAction(
-                    action_id="discard_intrigue_for_imperial_privilege",
+                    action_id="trash_intrigue_for_imperial_privilege",
                     actor=player,
                     arguments=(("card_id", card_id),),
                 )
@@ -1078,7 +1086,7 @@ def apply_imperial_privilege_action(
     state: GameState,
     action: DomainAction,
 ) -> RuleResult:
-    """Resolve Imperial Privilege's optional Intrigue swap, then its recall."""
+    """Resolve Imperial Privilege's optional Intrigue trade, then its recall."""
 
     if action not in legal_imperial_privilege_actions(state, action.actor):
         raise ValueError("action is not a legal Imperial Privilege choice")
@@ -1154,28 +1162,31 @@ def apply_imperial_privilege_action(
 
     effect_state = state
     events: list[GameEvent] = []
-    if action.action_id == "discard_intrigue_for_imperial_privilege":
+    if action.action_id == "trash_intrigue_for_imperial_privilege":
         card_id = dict(action.arguments).get("card_id")
         if not isinstance(card_id, str):
-            raise RuntimeError("Imperial Privilege discard has invalid card ID")
-        discarding_owner = replace(
+            raise RuntimeError("Imperial Privilege trash has invalid card ID")
+        trashing_owner = replace(
             owner,
             intrigue_cards=tuple(
                 held for held in owner.intrigue_cards if held != card_id
             ),
         )
+        # A trashed Intrigue card is out of the game: the public
+        # ``intrigue_trash`` zone, never reshuffled [Main p. 20] -- so the
+        # draw that follows cannot bring the same card back.
         effect_state = replace(
             state,
             players=tuple(
-                discarding_owner if candidate.player_id == action.actor else candidate
+                trashing_owner if candidate.player_id == action.actor else candidate
                 for candidate in state.players
             ),
-            intrigue_discard=(*state.intrigue_discard, card_id),
+            intrigue_trash=(*state.intrigue_trash, card_id),
         )
         events.append(
             GameEvent(
-                event_id=f"{source}:discarded:{card_id}",
-                kind="intrigue_card_discarded",
+                event_id=f"{source}:intrigue_trashed:{card_id}",
+                kind="intrigue_card_trashed",
                 payload=(("card_id", card_id), ("player", action.actor)),
             )
         )

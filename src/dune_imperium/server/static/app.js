@@ -106,7 +106,7 @@ const ACTION_LABELS = {
   decline_control_defense: "방어 배치 안 함",
   decline_corrinth_city_payment: "지불 안 함",
   decline_gather_intelligence: "Gather Intelligence 안 함",
-  decline_imperial_privilege_intrigue: "Discard 안 함",
+  decline_imperial_privilege_intrigue: "Intrigue trash 안 함",
   decline_intrigue_spy: "Spy 배치 안 함",
   decline_intrigue_trash: "Trash 안 함",
   decline_intrigue_trigger: "발동 안 함",
@@ -127,7 +127,6 @@ const ACTION_LABELS = {
   finish_agent_turn: "Agent turn 종료",
   detonate_shield_wall: "Shield Wall 파괴",
   discard_agent_card: "카드 discard",
-  discard_intrigue_for_imperial_privilege: "Intrigue discard (Imperial Privilege)",
   discard_opponent_card: "상대 카드 discard",
   exchange_reveal_influence: "Influence 교환",
   finish_reveal: "Reveal 종료",
@@ -208,7 +207,9 @@ const ACTION_LABELS = {
   give_intrigue_card: "상대에게 Intrigue 카드 주기",
   trash_intrigue_hand_card: "Intrigue 카드 trash",
   skip_intrigue_acquisition: "획득할 카드 없음 (건너뛰기)",
+  trash_intrigue_for_agent_card: "Intrigue trash (카드 비용)",
   trash_intrigue_for_contract: "Intrigue 카드 trash (Immediate Contract)",
+  trash_intrigue_for_imperial_privilege: "Intrigue trash → Intrigue 1장 (Imperial Privilege)",
   put_back_top_card: "덱 맨 위 카드 되돌리기",
   discard_top_card: "덱 맨 위 카드 discard",
   draw_top_card_for_solari: "Solari 1 지불 → 덱 맨 위 카드 draw",
@@ -277,7 +278,7 @@ const ACTION_LABELS = {
   decline_agent_card_recall: "Agent recall 거절",
   choose_research_space: "Research: advance to",
   choose_research_influence: "Research bonus: Influence",
-  trash_for_research_bonus: "Research bonus: trash → card + Intrigue",
+  trash_intrigue_for_research_bonus: "Research bonus: Intrigue trash → card + Intrigue",
   pay_research_bonus: "Research bonus: 7 Solari → Tleilaxu ×2",
   decline_research_bonus: "Research bonus: decline",
   return_specimen: "Return a specimen to supply",
@@ -2025,7 +2026,7 @@ const ICON_RULES = [
   [/\bswords?\b/y, () => icon("sword", "sword")],
   [/(?:Gain )?(\d+) (?:Victory Points?|VP)\b/y, (m) => amount("victory_point", "Victory Point", m[1])],
   [/\b(?:Victory Points?|VP)\b/y, () => icon("victory_point", "Victory Point")],
-  [/\bTrash an Intrigue card\b/y, () => icon("trash_intrigue", "Trash an Intrigue card")],
+  [/\b[Tt]rash an Intrigue card\b/y, () => icon("trash_intrigue", "Trash an Intrigue card")],
   [/\b[Tt]rash\b/y, () => icon("trash", "Trash")],
   [/\b[Dd]iscard\b/y, () => icon("discard", "Discard")],
   [/\b(?:a |an )?Sp(?:y|ies)\b/y, (m) => icon("spy", m[0].trim())],
@@ -2170,8 +2171,8 @@ function render(options) {
     ? SCROLL_PANES.map((id) => [el(id), el(id).scrollTop, el(id).scrollLeft])
     : [];
   if (!(foreign && popoverPinned)) closePopover();
-  el("header-status").textContent =
   const allianceBefore = allianceTokenPlaces();
+  el("header-status").textContent =
     `라운드 ${summary.round_number} · ${PHASE_LABELS[summary.phase] || summary.phase}` +
     (summary.game_seed === null ? "" : ` · seed ${summary.game_seed}`) +
     (summary.choam_module ? " · CHOAM" : "") +
@@ -2197,8 +2198,8 @@ function render(options) {
     pane.scrollTop = top;
     pane.scrollLeft = left;
   }
-}
   animateMovedAllianceTokens(allianceBefore);
+}
 
 /* Post-game full disclosure (OQ-010 ruling 4): once a game has finished,
    the server adds every hidden zone to the view, both live and in review. */
@@ -2419,7 +2420,6 @@ function strengthPreview(after) {
   return badge;
 }
 
-/* ---------- count steppers ----------
 /* What revealing the hand right now would give: the server's dry run of
    `reveal_turn` (`reveal_preview`: the Persuasion the Reveal opens with and
    the strength once the revealed swords count), so the engine's own sum. */
@@ -2444,6 +2444,7 @@ function revealTurnPreview() {
   return reveal && reveal.reveal_preview ? reveal.reveal_preview : null;
 }
 
+/* ---------- count steppers ----------
 
    "Deploy 1", "Deploy 2", "Deploy 3" are one decision with a number in it.
    Actions of one id that differ only in a `count` argument are shown as a
@@ -2667,8 +2668,8 @@ function actionItem(action, onApply) {
   if (typeof action.strength_after === "number") {
     button.appendChild(strengthPreview(action.strength_after));
   }
-  if (action.warning) {
   if (action.reveal_preview) button.appendChild(revealPreview(action.reveal_preview));
+  if (action.warning) {
     /* The server dry-ran the step: the troop supply cannot cover what the
        effect asks for (OQ-030, OQ-049), so the action does less than printed. */
     wrap.classList.add("shortfall");
@@ -3309,7 +3310,6 @@ function boardPiece(src, box, className) {
   return piece;
 }
 
-/* The scanned board with the live state on top: a hotspot per space
 /* Where the board prints the flag under a controllable space
    (catalog.tracks.control_flags, a percent box), if it does. */
 function controlFlagBox(spaceId) {
@@ -3368,6 +3368,7 @@ function bonusSpiceToken(spaceId, count, point) {
   return placeAt(token, point[0], point[1]);
 }
 
+/* The scanned board with the live state on top: a hotspot per space
    (catalog.spaces[id].box, percent of the image), Agent tokens, Control
    flags, Maker bonus spice, and Spies on the observation posts. */
 function renderBoardStage(board, view) {
@@ -3459,7 +3460,6 @@ function renderBoardStage(board, view) {
     stage.appendChild(hotspot);
   }
 
-  for (const [postId, [x, y]] of Object.entries(state.catalog.posts)) {
   for (const [spaceId, seat] of controllers) {
     const box = controlFlagBox(spaceId);
     if (box) stage.appendChild(controlMarker(seat, spaceId, box));
@@ -3469,6 +3469,7 @@ function renderBoardStage(board, view) {
     if (count && point) stage.appendChild(bonusSpiceToken(spaceId, count, point));
   }
 
+  for (const [postId, [x, y]] of Object.entries(state.catalog.posts)) {
     const seats = spies.get(postId) || [];
     if (!seats.length) continue;
     const post = document.createElement("span");
@@ -3625,7 +3626,6 @@ function discCluster(count, halfX, halfY, { fromTop = false, upright = false } =
   });
 }
 
-/* Live markers on the printed tracks (catalog.tracks, percent of the
 /* A Faction's Alliance token: its picture (catalog.alliance_tokens) cut to
    the round token, or a drawn disc with the Faction's emblem without the
    owner's token pictures. With a `size` (percent of the stage) it lies on
@@ -3728,6 +3728,7 @@ function makerHooksToken(seat, layout) {
   return placeAt(token, x, y);
 }
 
+/* Live markers on the printed tracks (catalog.tracks, percent of the
    scan): Influence cubes and Alliance rings on the Faction strips, VP
    tokens on the score column, strength tokens on the combat track, deployed
    units in each seat's Conflict quadrant, and Councilor tokens on the High
@@ -3750,7 +3751,6 @@ function renderTrackMarkers(stage, view) {
     if (!scoreStacks.has(level)) scoreStacks.set(level, []);
     scoreStacks.get(level).push(seat);
   });
-  view.players.forEach((player, index) => {
   /* An Alliance token lies on the marked ring of its Faction's strip until a
      player earns it and takes it into their supply [Main pp. 4, 7] (it then
      shows on that seat's panel); the vacated ring takes the holder's colour. */
@@ -3773,6 +3773,7 @@ function renderTrackMarkers(stage, view) {
     }
   }
 
+  view.players.forEach((player, index) => {
     const seat = typeof player.player_id === "number" ? player.player_id : index;
     const color = SEAT_COLORS[seat];
 
@@ -3885,10 +3886,10 @@ function renderTrackMarkers(stage, view) {
     }
     placeAt(garrison, gx, gy);
     stage.appendChild(garrison);
-
     if (player.maker_hooks && tracks.maker_hooks) {
       stage.appendChild(makerHooksToken(seat, tracks.maker_hooks));
     }
+
     if (units > 0) {
       const [qx, qy] = tracks.conflict_quadrants[seat] || tracks.conflict_quadrants[0];
       const deployed = document.createElement("div");
@@ -4268,7 +4269,7 @@ const RESEARCH_BONUS_LABELS = {
   spice_one: "spice 1",
   spice_two: "spice 2",
   influence_any: "Influence 1",
-  trash_for_card_and_intrigue: "trash → card + Intrigue",
+  trash_intrigue_for_card_and_intrigue: "Intrigue trash → card + Intrigue",
   seven_solari_for_two_tleilaxu: "7 Solari → Tleilaxu ×2",
 };
 const TLEILAXU_TRACK_LABELS = {
@@ -4600,11 +4601,11 @@ function renderSeats() {
     for (const [key, label] of Object.entries(FACTION_LABELS)) {
       const stat = statNode(`influence_${key}`, `${label} Influence`, player.influence[key]);
       if (player.alliance_faction_ids.includes(key)) {
-        stat.classList.add("alliance");
         /* The Alliance token is in this seat's supply [Main p. 7]. */
+        stat.classList.add("alliance");
         stat.title += " · Alliance";
-      }
         stat.appendChild(allianceToken(key, undefined, seat));
+      }
       influence.appendChild(stat);
     }
     card.appendChild(influence);
@@ -4816,8 +4817,8 @@ function skillIdOf(instanceId) {
    `(title, ids, anchor)`, or several as `([[title, ids], ...], null, anchor)`
    (empty piles are left out). */
 function openPileList(title, ids, anchor) {
-  const pop = el("card-popover");
   const piles = Array.isArray(title) ? title : [[title, ids]];
+  const pop = el("card-popover");
   pop.textContent = "";
   for (const [pileTitle, pileIds] of piles) {
     if (!pileIds.length && piles.length > 1) continue;
@@ -5185,7 +5186,6 @@ function renderPrivate() {
   const title = document.createElement("strong");
   title.textContent = `내 손패 · 좌석 ${activeSeat()}`;
   label.appendChild(title);
-  const counts = document.createElement("span");
   const revealNow = revealTurnPreview();
   if (revealNow) {
     /* Beside the hand while the seat may still choose between an Agent turn
@@ -5195,6 +5195,7 @@ function renderPrivate() {
     note.append("지금 공개하면 ", revealPreview(revealNow));
     label.appendChild(note);
   }
+  const counts = document.createElement("span");
   counts.className = "hand-counts";
   counts.append(
     statNode("draw", "deck", view.private.deck_size),

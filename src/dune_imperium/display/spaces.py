@@ -83,7 +83,7 @@ _AUTHORED_OPTION_EFFECTS: Mapping[
             " Recruit 3 troops",
         ),
         ("imperial_privilege", None): (
-            "You may discard an Intrigue card to draw an Intrigue card."
+            "You may trash an Intrigue card → Draw 1 Intrigue card."
             " Recall one of your other Agents and Draw 1 card",
         ),
         ("swordmaster", None): (

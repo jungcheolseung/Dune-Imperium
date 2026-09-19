@@ -41,8 +41,8 @@ class PersonalCardAgentEffect(StrEnum):
     TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND = (
         "trash_personal_card_to_draw_one_if_bene_gesserit_bond"
     )
-    MAY_TRASH_FOR_INTRIGUE_AND_TWO_TROOPS_IF_BENE_GESSERIT_ALLIANCE = (
-        "may_trash_for_intrigue_and_two_troops_if_bene_gesserit_alliance"
+    MAY_TRASH_INTRIGUE_FOR_INTRIGUE_AND_TWO_SPICE_IF_BENE_GESSERIT_ALLIANCE = (
+        "may_trash_intrigue_for_intrigue_and_two_spice_if_bene_gesserit_alliance"
     )
     TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE = (
         "trash_self_and_emperor_from_hand_for_extra_influence"

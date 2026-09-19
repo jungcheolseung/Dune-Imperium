@@ -666,11 +666,14 @@ def test_branching_path_play_data_has_alliance_trash_reward() -> None:
 
     assert card.play_data_complete is True
     assert card.factions == (Faction.BENE_GESSERIT,)
-    assert card.agent_icons == (AgentIcon.BENE_GESSERIT, AgentIcon.LANDSRAAD)
+    # Re-read from the card face 2026-09-19: the second icon is City (the
+    # blue circle), not Landsraad.
+    assert card.agent_icons == (AgentIcon.BENE_GESSERIT, AgentIcon.CITY)
     assert (
         card.agent_effect
         is (
-            PersonalCardAgentEffect.MAY_TRASH_FOR_INTRIGUE_AND_TWO_TROOPS_IF_BENE_GESSERIT_ALLIANCE
+            PersonalCardAgentEffect
+            .MAY_TRASH_INTRIGUE_FOR_INTRIGUE_AND_TWO_SPICE_IF_BENE_GESSERIT_ALLIANCE
         )
     )
     assert card.reveal_persuasion == 2

@@ -58,16 +58,19 @@ def agent_card_icon_text(effect: PersonalCardAgentEffect | None, key: str) -> st
         case "intrigue":
             base = "Draw 1 Intrigue card"
         case "troops":
-            base = (
-                "Recruit 2 troops"
-                if effect
-                is _BOX.MAY_TRASH_FOR_INTRIGUE_AND_TWO_TROOPS_IF_BENE_GESSERIT_ALLIANCE
-                else "Recruit 1 troop"
-            )
+            base = "Recruit 1 troop"
         case "solari":
             base = "Gain 2 solari"
         case "spice":
-            base = "Gain 1 spice"
+            base = (
+                "Gain 2 spice"
+                if effect
+                is (
+                    _BOX
+                    .MAY_TRASH_INTRIGUE_FOR_INTRIGUE_AND_TWO_SPICE_IF_BENE_GESSERIT_ALLIANCE
+                )
+                else "Gain 1 spice"
+            )
         case "water":
             base = "Gain 1 water"
         case "trash_self":

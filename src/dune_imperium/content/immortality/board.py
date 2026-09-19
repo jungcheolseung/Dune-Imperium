@@ -37,8 +37,12 @@ class ResearchBonus(StrEnum):
     SPICE_TWO = "spice_two"
     # One Influence of the owner's choice.
     INFLUENCE_ANY = "influence_any"
-    # "[trash] -> draw a card, Intrigue card": an optional arrow cost.
-    TRASH_FOR_CARD_AND_INTRIGUE = "trash_for_card_and_intrigue"
+    # "[Trash an Intrigue card] -> draw a card, Intrigue card": an optional
+    # arrow cost. The icon is the gold Intrigue card under an X ("Trash an
+    # Intrigue card" [Immortality p. 16]), not the grey trash icon it was
+    # first read as (re-read from the board scan on 2026-09-19 by matching
+    # the rulebook icon; docs/lessons.md).
+    TRASH_INTRIGUE_FOR_CARD_AND_INTRIGUE = "trash_intrigue_for_card_and_intrigue"
     # "7 Solari -> two Tleilaxu advances": an optional arrow cost.
     SEVEN_SOLARI_FOR_TWO_TLEILAXU = "seven_solari_for_two_tleilaxu"
 
@@ -85,7 +89,7 @@ RESEARCH_SPACES: Final[tuple[ResearchSpace, ...]] = (
     _space(6, 4, ResearchBonus.TLEILAXU),
     _space(6, 6, ResearchBonus.INFLUENCE_ANY),
     _space(7, 1, ResearchBonus.TLEILAXU),
-    _space(7, 3, ResearchBonus.TRASH_FOR_CARD_AND_INTRIGUE),
+    _space(7, 3, ResearchBonus.TRASH_INTRIGUE_FOR_CARD_AND_INTRIGUE),
     _space(7, 5, ResearchBonus.TRASH_AND_SPECIMEN),
     _space(8, 2, ResearchBonus.SPICE_TWO),
     _space(8, 4, ResearchBonus.TLEILAXU),

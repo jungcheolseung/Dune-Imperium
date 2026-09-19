@@ -16,7 +16,7 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     first = ActionCodec(RulesetConfig())
     second = ActionCodec(RulesetConfig())
 
-    assert ACTION_CODEC_VERSION == 105
+    assert ACTION_CODEC_VERSION == 106
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
     # v92/v93/v97: the Reveal gain actions join every catalog (troops, Intrigue,
@@ -24,7 +24,12 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     # v100: skip_intrigue_acquisition and Change Allegiances' third option.
     # v103: separate Intrigue lines (use_intrigue_effect x2, finish; Change
     # Allegiances back to one option).
-    assert first.size == 4354 + 2 + 7 + 4 + 1 + 2 + 1
+    # v106: trash_intrigue_for_agent_card joins one template per base-catalog
+    # Intrigue instance (Branching Path's re-transcribed Agent box), +40; its
+    # corrected City icon (not Landsraad) also shifts which board spaces (and
+    # their cost/infiltration-post combinations) its agent_turn templates
+    # cover, a net +1.
+    assert first.size == 4354 + 2 + 7 + 4 + 1 + 2 + 1 + 40 + 1
 
 
 def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
@@ -37,7 +42,10 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
 
     assert codec.decode(codec.encode(action), actor=2) == action
     # v96: the research icon's board-effect resolution (Immortality).
-    assert codec.size == 4640 + 2 + 7 + 4 + 1 + 2 + 1
+    # v106: trash_intrigue_for_agent_card joins one template per CHOAM-catalog
+    # Intrigue instance (+44) and Branching Path's corrected City icon shifts
+    # its agent_turn space coverage by +1 (see test_catalog_is_fixed...).
+    assert codec.size == 4640 + 2 + 7 + 4 + 1 + 2 + 1 + 44 + 1
 
     try:
         ActionCodec(RulesetConfig()).encode(action)
@@ -73,7 +81,14 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
     # v104: the Commander share of a retreat reaches 12 troops + 7
     # Commanders, which adds 28 unit-count templates [Bloodlines p. 4].
     # v105: Fedaykin Maneuver's Commander-share retreats reach 19 units (+28).
-    assert both.size == 11100 + 28 + 28
+    # v106: trash_intrigue_for_agent_card joins one template per
+    # CHOAM+Bloodlines-catalog Intrigue instance, including Piter de Vries'
+    # Twisted Intrigue cards (+72). Branching Path's corrected City icon does
+    # not change its agent_turn coverage here (unlike the base/CHOAM
+    # catalogs, see test_catalog_is_fixed_and_versioned_for_a_ruleset):
+    # every Bene Gesserit card already gets every Agent icon's placements
+    # under Bloodlines, for Urgent Shigawire's boost.
+    assert both.size == 11100 + 28 + 28 + 72
 
     choam_only = ActionCodec(RulesetConfig(choam_module=True))
     for action in actions:

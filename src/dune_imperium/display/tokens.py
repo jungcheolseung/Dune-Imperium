@@ -71,10 +71,10 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         ),
         (
             PersonalCardAgentEffect
-            .MAY_TRASH_FOR_INTRIGUE_AND_TWO_TROOPS_IF_BENE_GESSERIT_ALLIANCE
+            .MAY_TRASH_INTRIGUE_FOR_INTRIGUE_AND_TWO_SPICE_IF_BENE_GESSERIT_ALLIANCE
         ): (
-            "If Bene Gesserit Alliance: You may trash a card → "
-            "Draw 1 Intrigue card, Recruit 2 troops"
+            "If Bene Gesserit Alliance: You may trash an Intrigue card → "
+            "Draw 1 Intrigue card, Gain 2 spice"
         ),
         PersonalCardAgentEffect.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE: (
             "You may trash this card and an Emperor card from your hand → "

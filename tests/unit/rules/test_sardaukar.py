@@ -592,7 +592,11 @@ def test_bloodlines_actions_round_trip_only_in_the_bloodlines_catalog() -> None:
     base = ActionCodec(RulesetConfig())
     codec = ActionCodec(BLOODLINES)
     # v97 Occupation's Reveal bundle; v100 skip + Change Allegiances' third option.
-    assert base.size == 4354 + 12 + 1 + 1 + 2 + 1  # v103 separate lines
+    # v103 separate lines. v106: trash_intrigue_for_agent_card joins one
+    # template per Intrigue instance (+40), and Branching Path's corrected
+    # City icon shifts its agent_turn space coverage by +1 (see
+    # test_action_codec.test_catalog_is_fixed_and_versioned_for_a_ruleset).
+    assert base.size == 4354 + 12 + 1 + 1 + 2 + 1 + 40 + 1
     # Commander choices, the Commander share of retreats and deployments,
     # and the wild pairs of the two Bloodlines Conflicts are bloodlines-only.
     assert codec.size > base.size

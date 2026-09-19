@@ -1034,19 +1034,19 @@ def test_imperial_privilege_requires_emperor_influence_and_pays_exact_solari_cos
     assert context["space_id"] == "imperial_privilege"
 
 
-def test_imperial_privilege_offers_decline_and_every_held_intrigue_discard() -> None:
+def test_imperial_privilege_offers_decline_and_every_held_intrigue_trash() -> None:
     state = _imperial_privilege_state(
         intrigue_cards=("intrigue:one", "intrigue:two"),
     )
     actions = legal_imperial_privilege_actions(state, 0)
 
     assert actions[0].action_id == "decline_imperial_privilege_intrigue"
-    discard_actions = actions[1:]
+    trash_actions = actions[1:]
     assert all(
-        action.action_id == "discard_intrigue_for_imperial_privilege"
-        for action in discard_actions
+        action.action_id == "trash_intrigue_for_imperial_privilege"
+        for action in trash_actions
     )
-    assert {dict(action.arguments)["card_id"] for action in discard_actions} == {
+    assert {dict(action.arguments)["card_id"] for action in trash_actions} == {
         "intrigue:one",
         "intrigue:two",
     }
@@ -1060,9 +1060,14 @@ def test_imperial_privilege_offers_only_decline_with_no_held_intrigue() -> None:
     ) == ("decline_imperial_privilege_intrigue",)
 
 
-def test_imperial_privilege_discard_swaps_intrigue_then_offers_the_other_agent() -> (
+def test_imperial_privilege_trashes_an_intrigue_then_offers_the_other_agent() -> (
     None
 ):
+    # The space prints the Trash-an-Intrigue-card icon -> Intrigue card:
+    # "Trash an Intrigue card of your choice from your hand" [Main p. 20].
+    # The Board Space Guide words it "discard" [Board Guide p. 2]; the
+    # printed icon decides (OQ-061), so the card goes to ``intrigue_trash``
+    # and is never reshuffled [Main p. 20].
     state = _imperial_privilege_state(
         intrigue_cards=("intrigue:held",),
         intrigue_deck=("intrigue:replacement",),
@@ -1071,7 +1076,7 @@ def test_imperial_privilege_discard_swaps_intrigue_then_offers_the_other_agent()
     action = next(
         candidate
         for candidate in legal_imperial_privilege_actions(state, 0)
-        if candidate.action_id == "discard_intrigue_for_imperial_privilege"
+        if candidate.action_id == "trash_intrigue_for_imperial_privilege"
     )
 
     result = apply_imperial_privilege_action(state, action)
@@ -1080,11 +1085,13 @@ def test_imperial_privilege_discard_swaps_intrigue_then_offers_the_other_agent()
     context = dict(resolved.decision_stack[-1].context)
 
     assert owner.intrigue_cards == ("intrigue:replacement",)
-    assert resolved.intrigue_discard == ("intrigue:held",)
+    assert resolved.intrigue_trash == ("intrigue:held",)
+    assert resolved.intrigue_discard == ()
     assert resolved.intrigue_deck == ()
     assert context["pending_board_effect"] is True
     assert context["imperial_privilege_intrigue_resolved"] is True
-    assert any(event.kind == "intrigue_card_discarded" for event in result.events)
+    assert any(event.kind == "intrigue_card_trashed" for event in result.events)
+    assert not any(event.kind == "intrigue_card_discarded" for event in result.events)
 
     recall_actions = legal_imperial_privilege_actions(resolved, 0)
     assert tuple(action.action_id for action in recall_actions) == (
@@ -1137,7 +1144,7 @@ def test_imperial_privilege_skips_only_the_recall_without_another_agent() -> Non
     action = next(
         candidate
         for candidate in legal_imperial_privilege_actions(state, 0)
-        if candidate.action_id == "discard_intrigue_for_imperial_privilege"
+        if candidate.action_id == "trash_intrigue_for_imperial_privilege"
     )
 
     result = apply_imperial_privilege_action(state, action)
@@ -1271,7 +1278,7 @@ def test_steersman_recall_after_imperial_privilege_slot_does_not_deadlock() -> N
     assert engine.legal_actions(recalled, 0)
 
 
-def test_imperial_privilege_discard_draw_reshuffles_an_empty_deck() -> None:
+def test_imperial_privilege_reshuffle_leaves_the_trashed_intrigue_out() -> None:
     # The slot-1 draw goes through the reshuffle-safe path [FAQ p. 2], just
     # like Assembly Hall's Intrigue draw (mirrors
     # test_owed_intrigue_draws_reshuffle_the_discard_before_the_next_decision
@@ -1283,16 +1290,18 @@ def test_imperial_privilege_discard_draw_reshuffles_an_empty_deck() -> None:
     action = next(
         candidate
         for candidate in engine.legal_actions(state, 0)
-        if candidate.action_id == "discard_intrigue_for_imperial_privilege"
+        if candidate.action_id == "trash_intrigue_for_imperial_privilege"
     )
 
     pending = engine.apply(state, action)
     decision = pending.next_decision
 
     assert isinstance(decision, ChanceDecision)
-    # The just-discarded card joins the pre-existing discard pile before the
-    # reshuffle is offered.
-    assert decision.options == (*discard, "intrigue:held")
+    # The trashed card is out of the game [Main p. 20] (OQ-061): only the
+    # pre-existing discard pile is reshuffled, so the draw cannot bring the
+    # card just given up back.
+    assert decision.options == discard
+    assert pending.state.intrigue_trash == ("intrigue:held",)
     assert pending.state.pending_intrigue_draws == ()
 
     outcome = ChanceResolver(seed=5).resolve(decision)
@@ -1302,7 +1311,10 @@ def test_imperial_privilege_discard_draw_reshuffles_an_empty_deck() -> None:
     # owed card was delivered from the freshly shuffled deck.
     assert len(resolved.state.players[0].intrigue_cards) == 1
     assert resolved.state.intrigue_discard == ()
-    assert len(resolved.state.intrigue_deck) == 2
+    # Two cards were reshuffled and one of them drawn; the trashed card
+    # stayed out.
+    assert len(resolved.state.intrigue_deck) == 1
+    assert resolved.state.intrigue_trash == ("intrigue:held",)
 
 
 def _hagga_basin_state(*, wall_present: bool) -> GameState:

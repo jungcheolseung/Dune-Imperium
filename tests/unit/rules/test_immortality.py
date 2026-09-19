@@ -259,32 +259,53 @@ def test_influence_bonus_asks_for_a_faction() -> None:
     assert gained.state.decision_stack[-1].kind == "turn"
 
 
-def test_trash_for_card_and_intrigue_is_an_optional_arrow() -> None:
-    state = _at("c6r2")
+def test_trash_intrigue_for_card_and_intrigue_is_an_optional_arrow() -> None:
+    # c7r3 prints "[Trash an Intrigue card] -> [card] [Intrigue card]": the
+    # gold Intrigue card under an X, "Trash an Intrigue card" [Immortality
+    # p. 16] -- one from the owner's hand, never a personal card (the grey
+    # trash icon it was first transcribed as). The trashed card leaves the
+    # game through ``intrigue_trash`` [Main p. 20].
+    held = "intrigue:ambush:1"
+    state = _at("c6r2", intrigue_cards=(held,))
     result = advance_research(state, 0, source="test")
     chosen = apply_research_advance(
         result.state, _research_choices(result.state)["c7r3"]
     )
 
     actions = legal_research_bonus_actions(chosen.state, 0)
-    ids = {action.action_id for action in actions}
-    assert ids == {"decline_research_bonus", "trash_for_research_bonus"}
-    trash = next(
-        action for action in actions if action.action_id == "trash_for_research_bonus"
-    )
+    assert [(a.action_id, dict(a.arguments)) for a in actions] == [
+        ("decline_research_bonus", {}),
+        ("trash_intrigue_for_research_bonus", {"card_id": held}),
+    ]
     owner_before = chosen.state.players[0]
-    paid = apply_research_bonus(chosen.state, trash)
+    paid = apply_research_bonus(chosen.state, actions[1])
     owner = paid.state.players[0]
-    assert len(owner.trashed) == 1
-    assert len(owner.intrigue_cards) == 1
-    # One card trashed from the hand, one drawn to replace it.
-    assert len(owner.hand) + len(owner.deck) == (
-        len(owner_before.hand) + len(owner_before.deck) - 1
-    )
+    assert owner.trashed == ()
+    assert paid.state.intrigue_trash == (held,)
+    assert held not in paid.state.intrigue_discard
+    assert len(owner.intrigue_cards) == 1 and held not in owner.intrigue_cards
+    # No personal card left the hand; one was drawn.
+    assert len(owner.hand) == len(owner_before.hand) + 1
+    assert [event.kind for event in paid.events][0] == "intrigue_card_trashed"
     declined = apply_research_bonus(
         chosen.state, DomainAction(action_id="decline_research_bonus", actor=0)
     )
-    assert declined.state.players[0].trashed == ()
+    assert declined.state.players[0].intrigue_cards == (held,)
+    assert declined.state.intrigue_trash == ()
+
+
+def test_trash_intrigue_bonus_without_an_intrigue_card_is_unavailable() -> None:
+    # The arrow's cost cannot be paid with an empty Intrigue hand, however
+    # many personal cards the owner holds.
+    state = _at("c6r2")
+    assert state.players[0].intrigue_cards == ()
+    result = advance_research(state, 0, source="test")
+    chosen = apply_research_advance(
+        result.state, _research_choices(result.state)["c7r3"]
+    )
+
+    assert chosen.state.decision_stack[-1].kind == "turn"
+    assert "research_bonus_unavailable" in {event.kind for event in chosen.events}
 
 
 def test_seven_solari_bonus_needs_the_solari_and_advances_twice() -> None:
@@ -486,7 +507,7 @@ def test_the_codec_holds_the_immortality_choices_only_with_the_option() -> None:
     added = {
         "choose_research_space",
         "choose_research_influence",
-        "trash_for_research_bonus",
+        "trash_intrigue_for_research_bonus",
         "pay_research_bonus",
         "decline_research_bonus",
         "return_specimen",

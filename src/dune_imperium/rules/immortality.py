@@ -37,7 +37,6 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
-from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.frames import (
     FrameKind,
     context_int,
@@ -395,8 +394,10 @@ def _resolve_research_bonus(
                 state=state.push_decision(_bonus_frame(player, bonus, source)),
                 events=(),
             )
-        case ResearchBonus.TRASH_FOR_CARD_AND_INTRIGUE:
-            if not (owner.hand or owner.discard_pile or owner.in_play):
+        case ResearchBonus.TRASH_INTRIGUE_FOR_CARD_AND_INTRIGUE:
+            # "Trash an Intrigue card": one from the owner's hand
+            # [Immortality p. 16]; without one the arrow cannot be paid.
+            if not owner.intrigue_cards:
                 return _bonus_unavailable(state, player, bonus, source)
             return RuleResult(
                 state=state.push_decision(_bonus_frame(player, bonus, source)),
@@ -458,16 +459,16 @@ def legal_research_bonus_actions(
             for faction in Faction
         )
     decline = DomainAction(action_id="decline_research_bonus", actor=player)
-    if bonus is ResearchBonus.TRASH_FOR_CARD_AND_INTRIGUE:
+    if bonus is ResearchBonus.TRASH_INTRIGUE_FOR_CARD_AND_INTRIGUE:
         return (
             decline,
             *(
                 DomainAction(
-                    action_id="trash_for_research_bonus",
+                    action_id="trash_intrigue_for_research_bonus",
                     actor=player,
                     arguments=(("card_id", card_id),),
                 )
-                for card_id in (*owner.hand, *owner.discard_pile, *owner.in_play)
+                for card_id in owner.intrigue_cards
             ),
         )
     if bonus is ResearchBonus.SEVEN_SOLARI_FOR_TWO_TLEILAXU:
@@ -509,19 +510,39 @@ def apply_research_bonus(state: GameState, action: DomainAction) -> RuleResult:
             1,
             event_prefix=f"{source}:influence:{faction.value}",
         )
-    if action.action_id == "trash_for_research_bonus":
-        trashed = trash_personal_card(
-            popped, player, str(arguments["card_id"]), source=source
+    if action.action_id == "trash_intrigue_for_research_bonus":
+        # The trashed Intrigue card leaves the game: the public
+        # ``intrigue_trash`` zone, never reshuffled [Main p. 20]
+        # (docs/rules/player-turns.md "Intrigue 카드의 시점").
+        card_id = str(arguments["card_id"])
+        owner = popped.players[player]
+        trashed_state = replace(
+            popped,
+            players=replace_player(
+                popped.players,
+                replace(
+                    owner,
+                    intrigue_cards=tuple(
+                        held for held in owner.intrigue_cards if held != card_id
+                    ),
+                ),
+            ),
+            intrigue_trash=(*popped.intrigue_trash, card_id),
+        )
+        trashed_event = GameEvent(
+            event_id=f"{source}:intrigue_trashed:{card_id}",
+            kind="intrigue_card_trashed",
+            payload=(("card_id", card_id), ("player", player)),
         )
         intrigue = draw_or_queue_intrigue_cards(
-            trashed.state, player, 1, source=f"{source}:intrigue"
+            trashed_state, player, 1, source=f"{source}:intrigue"
         )
         drawn = draw_or_request_personal_cards(
             intrigue.state, player, 1, source=f"{source}:card"
         )
         return RuleResult(
             state=drawn.state,
-            events=(*trashed.events, *intrigue.events, *drawn.events),
+            events=(trashed_event, *intrigue.events, *drawn.events),
         )
     # pay_research_bonus: "7 Solari -> two Tleilaxu advances".
     owner = popped.players[player]

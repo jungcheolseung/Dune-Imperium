@@ -230,15 +230,19 @@ IMPERIUM_CARDS: Final = (
         ),
         play_data_complete=True,
     ),
+    # Re-read from the card face 2026-09-19: the second Agent icon is City
+    # (the blue circle), not Landsraad, and the Agent box's Intrigue-trash
+    # icon rewards an Intrigue card and 2 spice, not 2 troops.
     _entry(
         45,
         "branching-path",
         "Branching Path",
         3,
         factions=(Faction.BENE_GESSERIT,),
-        agent_icons=(AgentIcon.BENE_GESSERIT, AgentIcon.LANDSRAAD),
+        agent_icons=(AgentIcon.BENE_GESSERIT, AgentIcon.CITY),
         agent_effect=(
-            PersonalCardAgentEffect.MAY_TRASH_FOR_INTRIGUE_AND_TWO_TROOPS_IF_BENE_GESSERIT_ALLIANCE
+            PersonalCardAgentEffect
+            .MAY_TRASH_INTRIGUE_FOR_INTRIGUE_AND_TWO_SPICE_IF_BENE_GESSERIT_ALLIANCE
         ),
         reveal_persuasion=2,
         play_data_complete=True,

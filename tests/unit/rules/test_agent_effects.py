@@ -4349,67 +4349,20 @@ def test_calculus_of_power_agent_box_is_an_optional_trash() -> None:
     assert declined.events[0].kind == "agent_card_trash_declined"
 
 
-def test_branching_path_alliance_trash_draws_intrigue_and_recruits_two() -> None:
+def test_branching_path_alliance_trash_draws_intrigue_and_gains_two_spice() -> None:
+    # "[Bene Gesserit] Alliance: [Trash an Intrigue card] → [Intrigue card]
+    # [2 spice]" [Main p. 20]. The Intrigue-trash icon targets a card in
+    # hand, never a personal card [Main p. 20]
+    # (docs/rules/uprising-systems.md line 17).
     branching_path = _imperium_instance("branching_path")
     sardaukar = _imperium_instance("sardaukar_soldier")
+    first_intrigue = "intrigue:trash:0"
     owner = PlayerState(
         player_id=0,
         alliance_faction_ids=(Faction.BENE_GESSERIT.value,),
         hand=(branching_path, sardaukar),
+        intrigue_cards=(first_intrigue,),
     )
-    state = GameState(
-        config=RulesetConfig(),
-        seed=1,
-        phase=GamePhase.PLAYER_TURNS,
-        round_number=1,
-        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
-        intrigue_deck=("intrigue:trash", "intrigue:reward"),
-        decision_stack=(
-            DecisionFrame(
-                kind="turn",
-                frame_id="round:1:turn:0",
-                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
-            ),
-        ),
-    )
-    placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
-    action = next(
-        action
-        for action in legal_agent_card_trash_actions(placed, 0)
-        if dict(action.arguments).get("card_id") == sardaukar
-    )
-
-    result = apply_agent_card_trash(placed, action)
-    context = dict(result.state.decision_stack[-1].context)
-
-    # The trash is the arrow cost (Sardaukar Soldier's own trash trigger
-    # draws at once); the Intrigue draw and the two troops are independent
-    # reward icons queued for their own actions (OQ-027).
-    assert result.state.players[0].trashed == (sardaukar,)
-    assert result.state.players[0].intrigue_cards == ("intrigue:trash",)
-    assert result.state.players[0].troops_garrison == 3
-    assert context["pending_agent_icons"] == "intrigue,troops"
-    assert [event.kind for event in result.events] == [
-        "card_trashed",
-        "intrigue_card_drawn",
-    ]
-    assert legal_agent_card_trash_actions(result.state, 0) == ()
-
-    resolved = _resolve_agent_icons(result.state)
-    context = dict(resolved.decision_stack[-1].context)
-    assert resolved.players[0].intrigue_cards == (
-        "intrigue:trash",
-        "intrigue:reward",
-    )
-    assert resolved.players[0].troops_supply == 7
-    assert resolved.players[0].troops_garrison == 5
-    assert context["troops_recruited"] == 2
-    assert context["pending_agent_effect"] is False
-
-
-def test_branching_path_agent_effect_requires_bene_gesserit_alliance() -> None:
-    branching_path = _imperium_instance("branching_path")
-    owner = PlayerState(player_id=0, hand=(branching_path, _instance("dagger")))
     state = GameState(
         config=RulesetConfig(),
         seed=1,
@@ -4417,6 +4370,82 @@ def test_branching_path_agent_effect_requires_bene_gesserit_alliance() -> None:
         round_number=1,
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         intrigue_deck=("intrigue:reward",),
+        intrigue_discard=("intrigue:old",),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "secrets")).state
+
+    # The box's own icon is the Intrigue trash, not the personal-card trash
+    # icon: no personal card (not even Sardaukar Soldier in hand) is offered,
+    # and trash_agent_card is not a legal action.
+    assert legal_agent_card_trash_actions(placed, 0) == ()
+
+    actions = legal_agent_card_intrigue_payment_actions(placed, 0)
+    assert {action.action_id for action in actions} == {
+        "decline_agent_card_intrigue_payment",
+        "trash_intrigue_for_agent_card",
+    }
+    trash = next(
+        action
+        for action in actions
+        if action.action_id == "trash_intrigue_for_agent_card"
+    )
+    assert dict(trash.arguments)["intrigue_card_id"] == first_intrigue
+    assert trash in UprisingRulesEngine().legal_actions(placed, 0)
+
+    result = apply_agent_card_intrigue_payment(placed, trash)
+    context = dict(result.state.decision_stack[-1].context)
+
+    # The trash is the arrow cost; the Intrigue draw and 2 spice are
+    # independent reward icons queued for their own actions (OQ-027). The
+    # trashed card goes to the public intrigue_trash zone, never
+    # intrigue_discard, and is never reshuffled back into the Intrigue deck
+    # (docs/rules/player-turns.md lines 257-259) [Main p. 20].
+    assert result.state.players[0].intrigue_cards == ()
+    assert result.state.intrigue_trash == (first_intrigue,)
+    assert result.state.intrigue_discard == ("intrigue:old",)
+    assert context["pending_agent_icons"] == "intrigue,spice"
+    assert [event.kind for event in result.events] == ["intrigue_card_trashed"]
+    assert legal_agent_card_intrigue_payment_actions(result.state, 0) == ()
+
+    # The two reward icons resolve in either order (OQ-027): resolve spice
+    # first here, the reverse of the queued "intrigue,spice" order.
+    spice_first = resolve_agent_card_icon(
+        result.state, _icon_action(result.state, "spice")
+    ).state
+    resolved = resolve_agent_card_icon(
+        spice_first, _icon_action(spice_first, "intrigue")
+    ).state
+    context = dict(resolved.decision_stack[-1].context)
+    assert resolved.players[0].resources.spice == 2
+    assert resolved.players[0].intrigue_cards == ("intrigue:reward",)
+    # No troops are recruited: the printed reward is Intrigue and spice only.
+    assert resolved.players[0].troops_supply == 9
+    assert resolved.players[0].troops_garrison == 3
+    assert context["pending_agent_effect"] is False
+
+
+def test_branching_path_requires_bene_gesserit_alliance() -> None:
+    # The Alliance is judged when the payment resolves (OQ-028): without it,
+    # only declining is offered even with an Intrigue card in hand.
+    branching_path = _imperium_instance("branching_path")
+    owner = PlayerState(
+        player_id=0,
+        hand=(branching_path, _instance("dagger")),
+        intrigue_cards=("intrigue:cunning:0",),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
         decision_stack=(
             DecisionFrame(
                 kind="turn",
@@ -4426,13 +4455,12 @@ def test_branching_path_agent_effect_requires_bene_gesserit_alliance() -> None:
         ),
     )
 
-    placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
+    placed = apply_agent_action(state, _action_to(state, "secrets")).state
 
-    # The Alliance is judged when the payment resolves (OQ-028): only
-    # declining is offered without it.
-    assert legal_agent_card_trash_actions(placed, 0) == (
-        DomainAction(action_id="decline_agent_card_trash", actor=0),
+    assert legal_agent_card_intrigue_payment_actions(placed, 0) == (
+        DomainAction(action_id="decline_agent_card_intrigue_payment", actor=0),
     )
+    assert legal_agent_card_trash_actions(placed, 0) == ()
     assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is True
 
 
@@ -4441,7 +4469,7 @@ def test_branching_path_opens_after_the_visited_faction_step_grants_the_alliance
 ):
     # At three Bene Gesserit Influence, Branching Path's own visit to
     # Espionage lifts the owner to four and the Alliance; resolving that
-    # Faction step first opens the trash payment in the same turn
+    # Faction step first opens the Intrigue-trash payment in the same turn
     # [Main pp. 7, 9] (OQ-028).
     branching_path = _imperium_instance("branching_path")
     dagger = _instance("dagger")
@@ -4466,12 +4494,13 @@ def test_branching_path_opens_after_the_visited_faction_step_grants_the_alliance
         ),
     )
 
-    # The Bene Gesserit track's step to four also draws an Intrigue card, so
-    # the deck holds one for that bonus and one for Branching Path's reward.
+    # The Bene Gesserit track's step to four also draws an Intrigue card:
+    # the same card the newly granted Alliance then lets the owner trash for
+    # Branching Path's own reward.
     state = replace(state, intrigue_deck=("intrigue:track_bonus", "intrigue:reward"))
     placed = apply_agent_action(state, _action_to(state, "espionage")).state
-    assert legal_agent_card_trash_actions(placed, 0) == (
-        DomainAction(action_id="decline_agent_card_trash", actor=0),
+    assert legal_agent_card_intrigue_payment_actions(placed, 0) == (
+        DomainAction(action_id="decline_agent_card_intrigue_payment", actor=0),
     )
 
     allied = resolve_faction_influence(placed).state
@@ -4479,18 +4508,22 @@ def test_branching_path_opens_after_the_visited_faction_step_grants_the_alliance
     assert allied.players[0].intrigue_cards == ("intrigue:track_bonus",)
     trash = next(
         action
-        for action in legal_agent_card_trash_actions(allied, 0)
-        if dict(action.arguments).get("card_id") == dagger
+        for action in legal_agent_card_intrigue_payment_actions(allied, 0)
+        if action.action_id == "trash_intrigue_for_agent_card"
     )
-    paid = apply_agent_card_trash(allied, trash).state
+    assert dict(trash.arguments)["intrigue_card_id"] == "intrigue:track_bonus"
+    paid = apply_agent_card_intrigue_payment(allied, trash).state
 
-    assert paid.players[0].trashed == (dagger,)
+    assert paid.players[0].intrigue_cards == ()
+    assert paid.intrigue_trash == ("intrigue:track_bonus",)
     assert dict(paid.decision_stack[-1].context)["pending_agent_icons"] == (
-        "intrigue,troops"
+        "intrigue,spice"
     )
 
 
-def test_branching_path_cannot_trash_without_intrigue_reward() -> None:
+def test_branching_path_without_an_intrigue_card_only_offers_decline() -> None:
+    # "Trash an Intrigue card of your choice from your hand" [Main p. 20]:
+    # without one in hand, even with the Alliance, only declining remains.
     branching_path = _imperium_instance("branching_path")
     owner = PlayerState(
         player_id=0,
@@ -4511,11 +4544,12 @@ def test_branching_path_cannot_trash_without_intrigue_reward() -> None:
             ),
         ),
     )
-    placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
+    placed = apply_agent_action(state, _action_to(state, "secrets")).state
 
-    assert legal_agent_card_trash_actions(placed, 0) == (
-        DomainAction(action_id="decline_agent_card_trash", actor=0),
+    assert legal_agent_card_intrigue_payment_actions(placed, 0) == (
+        DomainAction(action_id="decline_agent_card_intrigue_payment", actor=0),
     )
+    assert legal_agent_card_trash_actions(placed, 0) == ()
 
 
 def test_cargo_runner_draws_up_to_two_cards_for_completed_contracts() -> None:

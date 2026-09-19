@@ -26,7 +26,6 @@ from dune_imperium.content.uprising.personal_cards import (
 from dune_imperium.content.uprising.types import (
     BattleIcon,
     PersonalCardAgentEffect,
-    PersonalCardTrashEffect,
 )
 from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
@@ -119,6 +118,12 @@ _TRASH_GRAFTED_FOR_INFLUENCE = (
     PersonalCardAgentEffect.MAY_TRASH_GRAFTED_CARD_FOR_VISITED_FACTION_INFLUENCE
 )
 _LOSE_TROOP_FOR_CARDS = PersonalCardAgentEffect.MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH
+# Branching Path (Uprising card face, re-read 2026-09-19): the Agent box's
+# arrow cost trashes an Intrigue card from hand, not a personal card.
+_BRANCHING_PATH = (
+    PersonalCardAgentEffect
+    .MAY_TRASH_INTRIGUE_FOR_INTRIGUE_AND_TWO_SPICE_IF_BENE_GESSERIT_ALLIANCE
+)
 # Stitched Horror's four printed rewards, in card order.
 STITCHED_HORROR_REWARDS: Final = ("water", "troop", "trash", "tleilaxu")
 SLIG_FARMER_PRICE: Final = 5
@@ -1477,7 +1482,6 @@ def legal_agent_card_trash_actions(
         PersonalCardAgentEffect.TRASH_PERSONAL_CARD,
         PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE,
         PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND,
-        PersonalCardAgentEffect.MAY_TRASH_FOR_INTRIGUE_AND_TWO_TROOPS_IF_BENE_GESSERIT_ALLIANCE,
         PersonalCardAgentEffect.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE,
         PersonalCardAgentEffect.MAY_TRASH_SELF_FOR_TROOP_AND_FIRST_PLACE_INFLUENCE,
         PersonalCardAgentEffect.GAIN_REWARDS_PER_FACE_UP_BATTLE_ICON,
@@ -1541,27 +1545,6 @@ def legal_agent_card_trash_actions(
             if visited_faction is not None
             else ()
         )
-    if (
-        source_card.agent_effect
-        is (
-            PersonalCardAgentEffect.MAY_TRASH_FOR_INTRIGUE_AND_TWO_TROOPS_IF_BENE_GESSERIT_ALLIANCE
-        )
-    ):
-        eligible = tuple(
-            card_id
-            for card_id in eligible
-            if len(state.intrigue_deck)
-            >= 1
-            + int(
-                getattr(personal_card_for_instance(card_id), "trash_effect", None)
-                is PersonalCardTrashEffect.DRAW_INTRIGUE_CARD
-            )
-        )
-        if Faction.BENE_GESSERIT.value not in owner.alliance_faction_ids:
-            # The Alliance is judged when the payment resolves [Main pp. 9,
-            # 20]; a Faction step of this turn may still grant it, so only
-            # declining is offered until then (OQ-028).
-            eligible = ()
     return (
         DomainAction(action_id="decline_agent_card_trash", actor=player),
         *(
@@ -1711,25 +1694,6 @@ def apply_agent_card_trash(state: GameState, action: DomainAction) -> RuleResult
             state=next_state,
             events=(*trashed.events, *source_trashed.events, *gained.events),
         )
-    if (
-        source_card.agent_effect
-        is (
-            PersonalCardAgentEffect.MAY_TRASH_FOR_INTRIGUE_AND_TWO_TROOPS_IF_BENE_GESSERIT_ALLIANCE
-        )
-    ):
-        if not trashed.state.intrigue_deck:
-            raise RuntimeError("Branching Path trash has no Intrigue reward")
-        # The trash is the arrow cost; the Intrigue draw and the two troops
-        # are independent reward icons queued for their own actions
-        # (OQ-027). Trashing Branching Path itself as that cost keeps its
-        # rewards (OQ-022: a card's own effect still pays out).
-        if card_id == source_card_id:
-            context["agent_card_self_trashed"] = True
-        arm_agent_icons(context, (AGENT_ICON_INTRIGUE, AGENT_ICON_TROOPS))
-        next_state = advance_after_effect(
-            trashed.state, context, trashed.state.players
-        )
-        return RuleResult(state=next_state, events=trashed.events)
     next_state = advance_after_effect(
         trashed.state,
         context,
@@ -1771,8 +1735,38 @@ def legal_agent_card_intrigue_payment_actions(
         return ()
     if context.get("pending_agent_effect") is not True:
         return ()
+    if pending_agent_icons(context):
+        # Branching Path's arrow cost is paid; only its queued reward icons
+        # remain (Junction Headquarters never reaches this: it always fully
+        # resolves in one action).
+        return ()
     _, source_card_id, _ = _effect_subject(context)
     effect = active_agent_card(context).agent_effect
+    decline = DomainAction(
+        action_id="decline_agent_card_intrigue_payment", actor=player
+    )
+    if effect is _BRANCHING_PATH:
+        # "[Bene Gesserit] Alliance: Trash an Intrigue card of your choice
+        # from your hand" [Main p. 20]. The Intrigue-trash icon targets a
+        # card in hand, never a personal card [Main p. 20]
+        # (docs/rules/uprising-systems.md line 17), and no Spice is needed.
+        # The Alliance is judged when the payment resolves [Main pp. 9, 20];
+        # a Faction step of this turn may still grant it, so only declining
+        # is offered until then (OQ-028).
+        owner = state.players[player]
+        if Faction.BENE_GESSERIT.value not in owner.alliance_faction_ids:
+            return (decline,)
+        return (
+            decline,
+            *(
+                DomainAction(
+                    action_id="trash_intrigue_for_agent_card",
+                    actor=player,
+                    arguments=(("intrigue_card_id", card_id),),
+                )
+                for card_id in owner.intrigue_cards
+            ),
+        )
     if (
         effect
         is not (
@@ -1789,13 +1783,9 @@ def legal_agent_card_intrigue_payment_actions(
         # The Alliance condition and the full arrow cost are judged again when
         # the player resolves the pending payment in their chosen effect order
         # [Main pp. 9, 20]; once they no longer hold, only skipping remains.
-        return (
-            DomainAction(
-                action_id="decline_agent_card_intrigue_payment", actor=player
-            ),
-        )
+        return (decline,)
     return (
-        DomainAction(action_id="decline_agent_card_intrigue_payment", actor=player),
+        decline,
         *(
             DomainAction(
                 action_id="pay_agent_card_intrigue_and_spice",
@@ -1811,7 +1801,12 @@ def apply_agent_card_intrigue_payment(
     state: GameState,
     action: DomainAction,
 ) -> RuleResult:
-    """Decline or trash one Intrigue and pay two Spice for one VP."""
+    """Decline, trash an Intrigue card, or pay two Spice and trash one for a VP.
+
+    Branching Path trashes the Intrigue card alone as its arrow cost, then
+    queues its own reward icons; Junction Headquarters pairs the trash with
+    two Spice for one Victory Point instead.
+    """
 
     if action not in legal_agent_card_intrigue_payment_actions(state, action.actor):
         raise ValueError("action is not a legal Agent-card Intrigue payment")
@@ -1840,6 +1835,45 @@ def apply_agent_card_intrigue_payment(
     if not isinstance(intrigue_card_id, str):
         raise RuntimeError("Agent-card Intrigue payment has invalid card ID")
     owner = state.players[action.actor]
+
+    if action.action_id == "trash_intrigue_for_agent_card":
+        # Branching Path: "Trash an Intrigue card of your choice from your
+        # hand" [Main p. 20] is the arrow cost; the Intrigue draw and the 2
+        # spice are independent reward icons queued for their own actions
+        # (OQ-027). The trashed card goes to the public ``intrigue_trash``
+        # zone, never ``intrigue_discard``, and is never reshuffled
+        # (docs/rules/player-turns.md lines 257-259) [Main p. 20].
+        next_owner = replace(
+            owner,
+            intrigue_cards=tuple(
+                card_id
+                for card_id in owner.intrigue_cards
+                if card_id != intrigue_card_id
+            ),
+        )
+        arm_agent_icons(context, (AGENT_ICON_INTRIGUE, AGENT_ICON_SPICE))
+        next_state = advance_after_effect(
+            replace(
+                state,
+                intrigue_trash=(*state.intrigue_trash, intrigue_card_id),
+            ),
+            context,
+            replace_player(state.players, next_owner),
+        )
+        return RuleResult(
+            state=next_state,
+            events=(
+                GameEvent(
+                    event_id=f"{source}:intrigue_trashed:{intrigue_card_id}",
+                    kind="intrigue_card_trashed",
+                    payload=(
+                        ("card_id", intrigue_card_id),
+                        ("player", action.actor),
+                    ),
+                ),
+            ),
+        )
+
     previous_spent = context.get("spice_spent_after_placement", 0)
     if isinstance(previous_spent, bool) or not isinstance(previous_spent, int):
         raise RuntimeError("Agent-turn effect frame has invalid Spice spending")
@@ -2864,21 +2898,19 @@ def resolve_agent_card_icon(state: GameState, action: DomainAction) -> RuleResul
             if missive_blocked or war_name_blocked:
                 available = False
             else:
-                next_owner = recruit(
-                    2
-                    if effect
-                    is (
-                        PersonalCardAgentEffect.MAY_TRASH_FOR_INTRIGUE_AND_TWO_TROOPS_IF_BENE_GESSERIT_ALLIANCE
-                    )
-                    else 1
-                )
+                next_owner = recruit(1)
         case "solari":
             if wheels and owner.influence.emperor >= 2:
                 next_owner = gain(solari=2)
             else:
                 available = False
         case "spice":
-            if (maker_keeper and owner.influence.fremen >= 2) or (
+            if effect is _BRANCHING_PATH:
+                # "[Intrigue card] [2 spice]" [Main p. 20]: unconditional,
+                # unlike Maker Keeper's and Wheels Within Wheels' Influence
+                # thresholds below.
+                next_owner = gain(spice=2)
+            elif (maker_keeper and owner.influence.fremen >= 2) or (
                 wheels and owner.influence.spacing_guild >= 2
             ):
                 next_owner = gain(spice=1)

@@ -45,7 +45,7 @@ def test_research_track_matches_the_board_artwork() -> None:
         ResearchBonus.SPICE_ONE: 1,
         ResearchBonus.SPICE_TWO: 1,
         ResearchBonus.INFLUENCE_ANY: 1,
-        ResearchBonus.TRASH_FOR_CARD_AND_INTRIGUE: 1,
+        ResearchBonus.TRASH_INTRIGUE_FOR_CARD_AND_INTRIGUE: 1,
         ResearchBonus.SEVEN_SOLARI_FOR_TWO_TLEILAXU: 1,
     }
     # Rows alternate parity by column so that every rightward step changes
