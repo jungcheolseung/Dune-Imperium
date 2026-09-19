@@ -365,7 +365,7 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 
 ## 원격 저장소 인계 주의
 
-2026-09-19 오후(Mac mini, M10 실행 3 세션): 이 세션의 커밋(`bd8732f` 학습 가드·감독기의 macOS 이식과 그 뒤의 문서 커밋)은 master에만 있고 **push하지 않았다** — `git log origin/master..master`로 확인한다. `src/`는 건드리지 않았으므로 다른 기기의 체크포인트·학습과는 무관하고, Windows PC가 새 `scripts/train/`(Linux 경로의 동작은 그대로)을 쓰려면 push·pull이 필요하다. **학습이 도는 기기에서는 `src/`가 바뀌는 pull을 하지 않는다.** 체크포인트 폴더는 git 무시라 기기 간에는 여전히 파일을 복사한다(실행 3의 산출물은 이 Mac의 `checkpoints/2026-09-19/lr1e-4-mac/`).
+2026-09-19 오후~저녁(Mac mini, M10 실행 3·학습률 A/B 세션): 이 세션의 앞 커밋 넷(`bd8732f` 학습 가드·감독기의 macOS 이식, `7935740` 문서, `61b09df` 재개 시 학습률 수정, `41e9a7a` 문서)은 16:43에 **push돼 있다**(사용자 쪽에서 한 push다 — reflog의 `update by push`). 그 뒤의 A/B 결과 문서 커밋들은 master에만 있다 — `git log origin/master..master`로 확인한다. `src/` 변경은 `61b09df` 하나이고(옵티마이저 상태에서 재개할 때 `--learning-rate`가 이긴다) 체크포인트 형식과는 무관하다. Windows PC는 pull하면 새 `scripts/train/`(Linux 경로의 동작은 그대로)과 그 수정을 얻는다. **학습이 도는 기기에서는 `src/`가 바뀌는 pull을 하지 않는다.** 체크포인트 폴더는 git 무시라 기기 간에는 여전히 파일을 복사한다(실행 3의 산출물은 이 Mac의 `checkpoints/2026-09-19/lr1e-4-mac/`).
 
 2026-09-19(Mac mini, 사용자 지시 "두 저장소 다 push"): 메인 저장소 `f3b91fb..3b5f4c5`(아래의 merge 커밋을 포함한 21건)와 비공개 에셋 저장소 `02bac8a..f9924b4`(Combat marker 토큰, Shield Wall 토큰·위치 타일 2건)를 push했고, 두 곳 모두 `origin/master`와 로컬이 일치한다. 바로 아래 두 문단의 "push하지 않았다"는 그 시점의 기록이다. 다른 기기는 **두 저장소를 모두 pull**해야 그림 토큰·타일이 보인다(에셋이 없어도 동작은 같다).
 
