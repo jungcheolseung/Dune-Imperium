@@ -353,14 +353,21 @@ class GameSessionManager:
         """
 
         self.require_admin(credentials)
-        config = RulesetConfig(
-            choam_module=choam_module,
-            leader_draft=leader_draft,
-            promo_cards=promo_cards,
-            bloodlines=bloodlines,
-            tech_module=tech_module,
-            immortality=immortality,
-        )
+        try:
+            config = RulesetConfig(
+                choam_module=choam_module,
+                leader_draft=leader_draft,
+                promo_cards=promo_cards,
+                bloodlines=bloodlines,
+                tech_module=tech_module,
+                immortality=immortality,
+            )
+        except ValueError as error:
+            # RulesetConfig rejects unsupported combinations (the Tech Module
+            # without Bloodlines [Bloodlines pp. 6-7], a non-four-player game).
+            # That is a bad request, not a server fault, so it must not reach
+            # the client as a bare 500.
+            raise SessionError(str(error)) from error
         _validate_seats(seats, config)
         if game_seed is None:
             game_seed = random.SystemRandom().randrange(2**31)
