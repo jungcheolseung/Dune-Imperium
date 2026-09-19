@@ -45,6 +45,7 @@ heuristic·rollout 변경을 측정으로 채택하는 데 쓰는 스크립트�
 | `sanity.py` | null 변형 = 커밋 agent, 완주, 훅 발동 확인 |
 | `cells.py` | 축별·seed 블록별 셀 실행기(HEAD·dirty 기록, `ALL_DONE` 센티널) |
 | `pair_matrix.py` / `rollout_table.py` | 미러 라운드 / 단일 좌석 라운드 요약 표 |
+| `paired.py` | 대회의 `--matches` 행으로 두 에이전트를 **짝지어** 비교(승률·평균 순위·VP 마진, seed 군집 부트스트랩 CI) |
 | `probe_mix.py` | 배치 분포·종료 자산·Conflict 승 probe |
 | `profile_run.py`, `profile_legal.py`, `profile_guards.py` | 대회 경로 cProfile(전체 / legal·관측 / handler guard 비용) |
 | `profile_selfplay.py` | M10 수집 경로(`SelfPlayRunner`) cProfile |
@@ -53,3 +54,9 @@ heuristic·rollout 변경을 측정으로 채택하는 데 쓰는 스크립트�
 
 처리량 측정은 CPU 경합에 면역인 지표(cProfile 호출 횟수, step 수)를 먼저 잡고, 시간은 조용한 기계에서
 옛/새를 한 실행 안에서 번갈아 잰다(`docs/evaluation/throughput-2026-09-10.md` 2절).
+
+두 에이전트의 차이를 판정할 때는 요약표의 두 승률을 빼지 말고 `--matches`가 쓴 경기별 행에
+`paired.py`를 돌린다. 한 seed의 회전들은 같은 Leader·덱·선공을 쓰는 같은 게임이므로 한 군집이고,
+독립 표본으로 세면 구간이 실제보다 좁아진다. **VP 마진과 평균 순위는 승률보다 같은 판 수에서 더
+작은 차이를 가른다** — 2026-09-20 실측: 2:2 미러 60경기에서 VP 마진은 +0.644 [+0.122, +1.189]로
+갈렸고 같은 경기의 승률은 +13.3%p [-10.0, +36.7]로 잡음 안이었다.
