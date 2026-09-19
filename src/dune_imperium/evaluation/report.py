@@ -215,6 +215,35 @@ def summary_to_json(summary: TournamentSummary) -> dict[str, Any]:
     return document
 
 
+def match_rows(report: TournamentReport) -> list[dict[str, Any]]:
+    """Return one JSON-serializable row per finished match, newest last.
+
+    ``summarize`` folds every match into per-agent totals, which answers "what
+    is this agent's win rate" but throws away the pairing. Rotations of one
+    seed share their Leaders, decks and first player (see the tournament
+    module docstring), so two agents measured over the same seeds differ far
+    less than two independently measured rates do, and a paired test over
+    these rows resolves a smaller difference than comparing two summary rows.
+    The rows also carry the per-match Victory Points the continuous
+    statistics (mean rank, VP margin) are built from, so a caller can compute
+    its own interval instead of reading a point estimate.
+    """
+
+    return [
+        {
+            "ruleset": match.ruleset,
+            "game_seed": match.game_seed,
+            "policy_seed": match.policy_seed,
+            "first_player": match.first_player,
+            "rounds": match.rounds,
+            "steps": match.steps,
+            "duration_seconds": match.duration_seconds,
+            "seats": [asdict(seat) for seat in match.seats],
+        }
+        for match in report.matches
+    ]
+
+
 def _pct(wins: int, games: int) -> str:
     return f"{100.0 * wins / games:.1f}%" if games else "-"
 

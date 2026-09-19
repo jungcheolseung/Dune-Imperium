@@ -7,6 +7,7 @@ from pathlib import Path
 
 from dune_imperium.agents.registry import BASELINE_AGENT_FACTORIES
 from dune_imperium.evaluation import (
+    match_rows,
     render_markdown,
     run_tournament,
     summarize,
@@ -125,6 +126,18 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="write the Markdown report to this path",
     )
+    parser.add_argument(
+        "--matches",
+        type=Path,
+        default=None,
+        help=(
+            "write one JSON line per finished match to this path: the seed, "
+            "the setup, and every seat's rank and Victory Points. The summary "
+            "collapses these into per-agent rates; the rows keep the pairing "
+            "that rotations of a seed share, so two agents can be compared "
+            "with a paired test instead of two independent rates"
+        ),
+    )
     return parser
 
 
@@ -163,6 +176,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         arguments.markdown.parent.mkdir(parents=True, exist_ok=True)
         arguments.markdown.write_text(markdown)
         print(f"Markdown report written to {arguments.markdown}")
+    if arguments.matches is not None:
+        arguments.matches.parent.mkdir(parents=True, exist_ok=True)
+        rows = match_rows(report)
+        arguments.matches.write_text(
+            "".join(json.dumps(row, sort_keys=True) + "\n" for row in rows)
+        )
+        print(f"{len(rows)} match rows written to {arguments.matches}")
     return 1 if report.failures else 0
 
 

@@ -14,6 +14,7 @@ from dune_imperium.core.decisions import PlayerDecision
 from dune_imperium.core.observation import PlayerView
 from dune_imperium.evaluation import (
     MatchSpec,
+    match_rows,
     play_match,
     render_markdown,
     run_tournament,
@@ -204,6 +205,64 @@ def test_run_tournament_summary_and_report(tmp_path: Path) -> None:
     assert loaded["matches"] == 1
     assert loaded["agents"][0]["agent"] == "random"
     assert report_path.read_text().startswith("# Tournament report")
+
+
+def test_match_rows_keep_the_pairing_the_summary_collapses(tmp_path: Path) -> None:
+    """One row per match, carrying the seed and every seat's rank and VP.
+
+    The summary reports a win rate per agent; a paired comparison needs the
+    per-match outcomes, because rotations of one seed share their Leaders,
+    decks and first player (tournament module docstring).
+    """
+
+    specs = tournament_specs(
+        agents=("heuristic", "random"),
+        games=2,
+        start_seed=11,
+        rotate_leaders=True,
+    )
+    report = run_tournament(specs)
+    rows = match_rows(report)
+
+    assert len(rows) == len(report.matches) == 4
+    json.dumps(rows)
+    seeds = sorted({row["game_seed"] for row in rows})
+    assert seeds == [11, 12]
+    for row in rows:
+        assert row["ruleset"] == "uprising-4p-base"
+        assert row["rounds"] > 0
+        assert len(row["seats"]) == 4
+        # Exactly one winner, and the four ranks are a permutation of 1-4.
+        assert sorted(seat["rank"] for seat in row["seats"]) == [1, 2, 3, 4]
+        assert {seat["agent"] for seat in row["seats"]} == {"heuristic", "random"}
+        assert all(seat["victory_points"] >= 0 for seat in row["seats"])
+    # The rows reproduce the summary's win counts exactly.
+    summary = summarize(report)
+    wins = {agent.agent: agent.wins for agent in summary.agents}
+    from_rows: dict[str, int] = {}
+    for row in rows:
+        for seat in row["seats"]:
+            if seat["rank"] == 1:
+                from_rows[seat["agent"]] = from_rows.get(seat["agent"], 0) + 1
+    assert from_rows == {name: count for name, count in wins.items() if count}
+
+    written = tmp_path / "out" / "matches.jsonl"
+    exit_code = tournament_main(
+        [
+            "--agents",
+            "random",
+            "--games",
+            "1",
+            "--start-seed",
+            "7",
+            "--matches",
+            str(written),
+        ]
+    )
+    assert exit_code == 0
+    lines = written.read_text().splitlines()
+    assert len(lines) == 1
+    assert json.loads(lines[0])["game_seed"] == 7
 
 
 def test_cli_rejects_unknown_agents() -> None:
