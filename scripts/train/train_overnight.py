@@ -9,9 +9,15 @@ otherwise replay the very game seeds that crashed. It does not restart after
 a memory kill (needs a human), a manual stop, two attempts in a row without
 progress, or MAX_RESTARTS.
 
+``--detach`` continues in a child with its own session, so the launching
+command returns and neither a closing terminal nor a signal to the launcher's
+process group reaches the run (macOS has no setsid(1) for the usual
+``nohup setsid ... &``). On macOS the supervisor also holds a ``caffeinate``
+assertion for its own lifetime: an idle Mac goes to sleep, and the run with it.
+
 Stop it with:  kill -TERM $(cat RUN_DIR/supervisor.pid)
-usage: train_overnight.py --dir RUN_DIR --total N --repo REPO -- <train args
-       without --out/--iterations/--resume/--seed>
+usage: train_overnight.py --dir RUN_DIR --total N --repo REPO [--detach] --
+       <train args without --out/--iterations/--resume/--seed>
 """
 
 from __future__ import annotations
@@ -26,6 +32,24 @@ import time
 from pathlib import Path
 
 MAX_RESTARTS = 8
+IS_DARWIN = sys.platform == "darwin"
+# run_guard.py's MemAvailable floor. macOS stops on the kernel's memory
+# pressure level instead and takes a floor only when one is given.
+DEFAULT_FLOOR_MIB = 0 if IS_DARWIN else 2000
+
+
+def detach() -> None:
+    """Carry on in a child that leads its own session; the parent returns."""
+
+    child = os.fork()
+    if child > 0:
+        print(f"supervisor detached: pid {child}", flush=True)
+        os._exit(0)
+    os.setsid()
+    devnull = os.open(os.devnull, os.O_RDWR)
+    for descriptor in (0, 1, 2):
+        os.dup2(devnull, descriptor)
+    os.close(devnull)
 
 
 def main() -> int:
@@ -33,7 +57,12 @@ def main() -> int:
     parser.add_argument("--dir", type=Path, required=True)
     parser.add_argument("--total", type=int, required=True)
     parser.add_argument("--repo", type=Path, required=True)
-    parser.add_argument("--floor-mib", type=int, default=2000)
+    parser.add_argument("--floor-mib", type=int, default=DEFAULT_FLOOR_MIB)
+    parser.add_argument(
+        "--detach",
+        action="store_true",
+        help="run in a new session and return at once (no nohup/setsid needed)",
+    )
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument(
         "--start-from",
@@ -48,11 +77,26 @@ def main() -> int:
     train_args = [part for part in arguments.train_args if part != "--"]
     run: Path = arguments.dir
     run.mkdir(parents=True, exist_ok=True)
+    if arguments.detach:
+        detach()
     (run / "supervisor.pid").write_text(f"{os.getpid()}\n")
     log = (run / "supervisor.log").open("a", buffering=1)
 
     def note(message: str) -> None:
         log.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {message}\n")
+
+    if IS_DARWIN:
+        # -w: the assertion ends with this process, however it ends.
+        try:
+            awake = subprocess.Popen(
+                ["caffeinate", "-i", "-s", "-w", str(os.getpid())],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            note(f"caffeinate pid {awake.pid} keeps the machine awake")
+        except OSError as error:
+            note(f"caffeinate did not start ({error}); an idle Mac will sleep")
 
     def done() -> int:
         path = run / "training.jsonl"
