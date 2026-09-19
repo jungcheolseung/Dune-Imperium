@@ -154,6 +154,20 @@ def test_unknown_games_and_bad_requests_map_to_http_errors(
     )
     assert unknown_kind.status_code == 400
 
+    # An unsupported ruleset combination is a bad request, not a server
+    # fault: the Tech Module requires Bloodlines [Bloodlines pp. 6-7], and
+    # RulesetConfig raises a plain ValueError for it. Before this was mapped
+    # the host saw a bare 500 "Internal Server Error" with no detail.
+    tech_without_bloodlines = client.post(
+        "/games",
+        json={
+            "seats": ["human", "random", "random", "random"],
+            "tech_module": True,
+        },
+    )
+    assert tech_without_bloodlines.status_code == 400, tech_without_bloodlines.text
+    assert "Bloodlines" in tech_without_bloodlines.json()["detail"]
+
 
 def test_deleting_a_game_removes_it(client: TestClient) -> None:
     summary = _create(client)
