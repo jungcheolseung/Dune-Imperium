@@ -253,6 +253,10 @@ def resolve_combat_rewards(state: GameState) -> RuleResult:
     players = list(state.players)
     intrigue_deck = state.intrigue_deck
     pending_draws = state.pending_intrigue_draws
+    # The queues an Influence gain may add to (Navigation plays at 2, the
+    # Emperor track's Spy at 4) travel with the rewards like the owed draws.
+    pending_navigation = state.pending_navigation_plays
+    pending_spies = state.pending_track_spies
     frames_in_order: list[DecisionFrame] = []
     events: list[GameEvent] = []
     for assignment in ranking.rewards:
@@ -313,6 +317,8 @@ def resolve_combat_rewards(state: GameState) -> RuleResult:
                     players=tuple(players),
                     intrigue_deck=intrigue_deck,
                     pending_intrigue_draws=pending_draws,
+                    pending_navigation_plays=pending_navigation,
+                    pending_track_spies=pending_spies,
                 ),
                 assignment.player,
                 reward.influence_faction,
@@ -325,6 +331,8 @@ def resolve_combat_rewards(state: GameState) -> RuleResult:
             players = list(influence_result.state.players)
             intrigue_deck = influence_result.state.intrigue_deck
             pending_draws = influence_result.state.pending_intrigue_draws
+            pending_navigation = influence_result.state.pending_navigation_plays
+            pending_spies = influence_result.state.pending_track_spies
             events.extend(influence_result.events)
             next_owner = players[assignment.player]
         if reward.control_space_id is not None:
@@ -445,6 +453,8 @@ def resolve_combat_rewards(state: GameState) -> RuleResult:
         players=tuple(players),
         intrigue_deck=intrigue_deck,
         pending_intrigue_draws=pending_draws,
+        pending_navigation_plays=pending_navigation,
+        pending_track_spies=pending_spies,
         combat_rewards_resolved=not frames,
         # The pledge was folded into the first-place frames above.
         conflict_first_place_influence_bonus=0,
@@ -723,6 +733,53 @@ def legal_combat_reward_spy_actions(
         )
         for post in OBSERVATION_POSTS
         if post.post_id not in occupied
+    )
+
+
+def combat_reward_spy_is_unavailable(state: GameState) -> bool:
+    """Return whether the top Conflict reward Spy can no longer be placed.
+
+    The reward frames are counted against the supply when the rewards are
+    paid; should the supply or the free posts run out before one resolves,
+    the frame would be left without a legal action.
+    """
+
+    if not state.decision_stack:
+        return False
+    frame = state.decision_stack[-1]
+    if frame.kind is not FrameKind.COMBAT_REWARD_SPY:
+        return False
+    decision = frame.decision
+    if not isinstance(decision, PlayerDecision):
+        return False
+    return not legal_combat_reward_spy_actions(state, decision.owner)
+
+
+def fizzle_combat_reward_spy(state: GameState) -> RuleResult:
+    """Drop the top Conflict reward Spy that cannot be placed, publicly."""
+
+    if not combat_reward_spy_is_unavailable(state):
+        raise ValueError("the top frame is a Conflict reward Spy that can be placed")
+    frame = state.decision_stack[-1]
+    decision = frame.decision
+    if not isinstance(decision, PlayerDecision):
+        raise RuntimeError("Conflict reward Spy frame has no owner")
+    choice_index = context_int(dict(frame.context), "choice_index")
+    remaining = state.decision_stack[:-1]
+    return RuleResult(
+        state=replace(
+            state, decision_stack=remaining, combat_rewards_resolved=not remaining
+        ),
+        events=(
+            GameEvent(
+                event_id=(
+                    f"round:{state.round_number}:combat_reward:spy_unavailable:"
+                    f"{choice_index}:{decision.owner}"
+                ),
+                kind="combat_reward_spy_unavailable",
+                payload=(("choice_index", choice_index), ("player", decision.owner)),
+            ),
+        ),
     )
 
 

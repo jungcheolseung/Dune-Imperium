@@ -119,6 +119,10 @@ class GameState:
     # Navigation plays owed by Influence gains that reached two
     # (player, faction, source), opened in order by the engine.
     pending_navigation_plays: tuple[tuple[int, str, str], ...] = ()
+    # Spies owed by the Emperor track's Influence 4 bonus (player, source):
+    # the engine opens each one's placement as soon as the gaining effect
+    # has finished, before any other player decision.
+    pending_track_spies: tuple[tuple[int, str], ...] = ()
     decision_stack: tuple[DecisionFrame, ...] = ()
     event_log: tuple[GameEvent, ...] = ()
 

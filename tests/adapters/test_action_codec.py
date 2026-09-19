@@ -16,7 +16,7 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     first = ActionCodec(RulesetConfig())
     second = ActionCodec(RulesetConfig())
 
-    assert ACTION_CODEC_VERSION == 106
+    assert ACTION_CODEC_VERSION == 107
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
     # v92/v93/v97: the Reveal gain actions join every catalog (troops, Intrigue,
@@ -29,7 +29,11 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     # corrected City icon (not Landsraad) also shifts which board spaces (and
     # their cost/infiltration-post combinations) its agent_turn templates
     # cover, a net +1.
-    assert first.size == 4354 + 2 + 7 + 4 + 1 + 2 + 1 + 40 + 1
+    # v107: the generic Spy placement frame serves every ruleset (the Emperor
+    # track's Influence 4 Spy [Main p. 7]): place_spy_on_space and
+    # recall_spy_for_placement per post (13 + 13) and decline_spy_placement
+    # join the catalogs without Bloodlines, +27.
+    assert first.size == 4354 + 2 + 7 + 4 + 1 + 2 + 1 + 40 + 1 + 27
 
 
 def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
@@ -45,7 +49,8 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
     # v106: trash_intrigue_for_agent_card joins one template per CHOAM-catalog
     # Intrigue instance (+44) and Branching Path's corrected City icon shifts
     # its agent_turn space coverage by +1 (see test_catalog_is_fixed...).
-    assert codec.size == 4640 + 2 + 7 + 4 + 1 + 2 + 1 + 44 + 1
+    # v107: +27, the generic Spy placement frame (see above).
+    assert codec.size == 4640 + 2 + 7 + 4 + 1 + 2 + 1 + 44 + 1 + 27
 
     try:
         ActionCodec(RulesetConfig()).encode(action)

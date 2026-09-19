@@ -309,6 +309,79 @@ def test_espionage_uses_explicit_spy_choices_instead_of_generic_resolution() -> 
     assert drawn in state.players[player].hand
 
 
+def test_reaching_emperor_influence_four_places_the_tracks_spy_at_once() -> None:
+    # "When you reach 4 Influence, you earn the bonus shown on that space of
+    # the track." [Main p. 7] The Emperor strip prints the Spy icon. The
+    # placement opens right after the gain and is finished before any other
+    # player-initiated action (designer ruling on the Emperor track's Spy,
+    # OQ-057); with a Spy in the supply it is mandatory (erratum to p. 11).
+    engine = UprisingRulesEngine()
+    state = engine.reset(RulesetConfig(), seed=2)
+    decision = engine.current_decision(state)
+    assert isinstance(decision, PlayerDecision)
+    player = decision.owner
+    owner = state.players[player]
+    cards = (*owner.deck, *owner.hand, *owner.discard_pile)
+    diplomacy = next(card for card in cards if ":diplomacy:" in card)
+    owner = replace(
+        owner,
+        influence=replace(owner.influence, emperor=3),
+        deck=tuple(card for card in cards if card != diplomacy),
+        hand=(diplomacy,),
+        discard_pile=(),
+    )
+    state = replace(
+        state,
+        players=tuple(
+            owner if candidate.player_id == player else candidate
+            for candidate in state.players
+        ),
+    )
+    visit = next(
+        action
+        for action in engine.legal_actions(state, player)
+        if dict(action.arguments).get("space_id") == "dutiful_service"
+    )
+    state = engine.apply(state, visit).state
+    step = next(
+        action
+        for action in engine.legal_actions(state, player)
+        if action.action_id == "resolve_faction_influence"
+    )
+
+    result = engine.apply(state, step)
+    state = result.state
+
+    assert state.players[player].influence.emperor == 4
+    assert state.players[player].troops_garrison == owner.troops_garrison
+    bonus = next(
+        dict(event.payload)
+        for event in result.events
+        if event.kind == "influence_track_bonus_gained"
+    )
+    assert bonus == {"faction": "emperor", "player": player, "spy": 1}
+    assert state.pending_track_spies == ()
+    frame = state.decision_stack[-1]
+    assert frame.kind == "spy_placement"
+    assert isinstance(frame.decision, PlayerDecision)
+    assert frame.decision.owner == player
+    offered = engine.legal_actions(state, player)
+    assert {action.action_id for action in offered} == {"place_spy_on_space"}
+    assert len(offered) == 13
+
+    state = engine.apply(state, offered[0]).state
+
+    assert state.players[player].spies_supply == 2
+    assert state.players[player].spy_post_ids == (
+        dict(offered[0].arguments)["post_id"],
+    )
+    # The turn goes on where it was: the space's own effect is still owed.
+    assert state.decision_stack[-1].kind != "spy_placement"
+    assert "resolve_board_effect" in {
+        action.action_id for action in engine.legal_actions(state, player)
+    }
+
+
 def test_four_seeded_random_players_finish_one_round() -> None:
     result = run_random_round(
         UprisingRulesEngine(),

@@ -278,7 +278,10 @@ def test_combat_reward_troops_with_empty_supply_reports_a_shortfall() -> None:
 # ---------- Emperor Influence track bonus (recruit 2) ----------
 
 
-def test_emperor_influence_track_bonus_with_empty_supply_reports_a_shortfall() -> None:
+def test_the_emperor_track_bonus_recruits_nothing_so_has_no_shortfall() -> None:
+    # The Emperor strip prints the Spy icon on its Influence 4 band [Main
+    # p. 7], not troops (the two-troop reading was a transcription slip,
+    # docs/lessons.md 2026-09-19): an empty troop supply is no shortfall.
     state = GameState(
         config=RulesetConfig(),
         seed=1,
@@ -299,14 +302,8 @@ def test_emperor_influence_track_bonus_with_empty_supply_reports_a_shortfall() -
 
     assert result.state.players[0].troops_supply == 0
     assert result.state.players[0].troops_garrison == 3
-    shortfalls = _shortfall_events(result.events)
-    assert len(shortfalls) == 1
-    assert dict(shortfalls[0].payload) == {
-        "player": 0,
-        "recruited": 0,
-        "requested": 2,
-        "short": 2,
-    }
+    assert _shortfall_events(result.events) == ()
+    assert result.state.pending_track_spies == ((0, "test:influence:track_bonus:0"),)
 
 
 # ---------- Agent-card effect (Stilgar the Devoted: RECRUIT_TWO_TROOPS) ----------

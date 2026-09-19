@@ -288,10 +288,16 @@ def test_influence_four_grants_emperor_bonus_and_alliance() -> None:
 
     resolved = resolve_faction_influence(placed).state
 
+    # The Emperor strip prints the Spy icon on its Influence 4 band [Main
+    # p. 7]: the placement is queued for the engine and no troop is
+    # recruited (the two-troop reading was a transcription slip,
+    # docs/lessons.md 2026-09-19).
     owner = resolved.players[0]
     assert owner.influence.emperor == 4
-    assert owner.troops_supply == 7
-    assert owner.troops_garrison == 5
+    assert owner.troops_supply == state.players[0].troops_supply
+    assert owner.troops_garrison == state.players[0].troops_garrison
+    assert len(resolved.pending_track_spies) == 1
+    assert resolved.pending_track_spies[0][0] == 0
     assert owner.alliance_faction_ids == ("emperor",)
     assert owner.victory_points == 2
 

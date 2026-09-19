@@ -13,6 +13,7 @@ from dune_imperium.core import (
     PlayerDecision,
     PlayerState,
 )
+from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.combat import (
     CombatRanking,
     CombatReward,
@@ -26,8 +27,10 @@ from dune_imperium.rules.combat import (
     apply_distinct_combat_reward_influence,
     begin_combat_intrigue,
     combat_influence_choice_is_unavailable,
+    combat_reward_spy_is_unavailable,
     finish_combat,
     fizzle_combat_influence_choice,
+    fizzle_combat_reward_spy,
     legal_combat_intrigue_actions,
     legal_combat_reward_influence_actions,
     legal_combat_reward_optional_payment_actions,
@@ -41,6 +44,10 @@ from dune_imperium.rules.combat import (
 from dune_imperium.rules.contracts import (
     apply_contract_action,
     legal_contract_actions,
+)
+from dune_imperium.rules.spy_moves import (
+    begin_track_spy_placement,
+    track_spy_is_queued,
 )
 
 
@@ -681,6 +688,79 @@ def test_sandworm_repeats_spy_placement_but_not_control() -> None:
     assert state.players[0].resources.spice == 4
     assert state.players[0].control_space_ids == ("spice_refinery",)
     assert state.combat_rewards_resolved is True
+
+
+def test_the_emperor_tracks_spy_follows_the_conflicts_own_spy_rewards() -> None:
+    # Test of Loyalty pays a Spy and one Emperor Influence. From Influence 3
+    # that reaches the Emperor track's Spy icon [Main p. 7] while the
+    # Conflict's own Spy was already counted against the supply: the reward
+    # Spy is placed first and the track's Spy opens after it, in the generic
+    # placement frame (a sweep deadlock, seed 92, before the ordering: the
+    # track's Spy took the last supply Spy and left the reward frame
+    # without a legal action).
+    engine = UprisingRulesEngine()
+    state = _with_influence(_reward_state("test_of_loyalty"), 0, Influence(emperor=3))
+    winner = replace(
+        state.players[0],
+        spies_supply=1,
+        spy_post_ids=("arrakis-hagga-basin", "arrakis-deep-desert"),
+    )
+    state = replace(state, players=(winner, *state.players[1:]))
+
+    paid = resolve_combat_rewards(state)
+    assert paid.state.players[0].influence.emperor == 4
+    assert paid.state.pending_track_spies != ()
+    assert paid.state.decision_stack[-1].kind == "combat_reward_spy"
+    assert not track_spy_is_queued(paid.state)
+
+    placed = apply_combat_reward_spy(
+        paid.state, legal_combat_reward_spy_actions(paid.state, 0)[0]
+    ).state
+    assert placed.players[0].spies_supply == 0
+    assert placed.decision_stack == ()
+    assert track_spy_is_queued(placed)
+
+    opened = begin_track_spy_placement(placed).state
+    assert opened.pending_track_spies == ()
+    assert opened.decision_stack[-1].kind == "spy_placement"
+    # With the supply empty the owner may recall a Spy first, or pass
+    # ("you may first recall one of your Spies" [Main pp. 11, 20]).
+    assert {action.action_id for action in engine.legal_actions(opened, 0)} == {
+        "decline_spy_placement",
+        "recall_spy_for_placement",
+    }
+
+
+def test_a_conflict_reward_spy_that_cannot_be_placed_is_dropped() -> None:
+    # Should the supply run dry before a reward Spy frame resolves, the frame
+    # is lost publicly instead of standing without a legal action.
+    paid = resolve_combat_rewards(_reward_state("seize_spice_refinery")).state
+    assert paid.decision_stack[-1].kind == "combat_reward_spy"
+    assert not combat_reward_spy_is_unavailable(paid)
+    drained = replace(
+        paid,
+        players=(
+            replace(
+                paid.players[0],
+                spies_supply=0,
+                spy_post_ids=(
+                    "arrakis-hagga-basin",
+                    "arrakis-deep-desert",
+                    "arrakis-imperial-basin",
+                ),
+            ),
+            *paid.players[1:],
+        ),
+    )
+
+    assert legal_combat_reward_spy_actions(drained, 0) == ()
+    assert combat_reward_spy_is_unavailable(drained)
+    dropped = fizzle_combat_reward_spy(drained)
+    assert dropped.state.decision_stack == ()
+    assert dropped.state.combat_rewards_resolved is True
+    assert [event.kind for event in dropped.events] == [
+        "combat_reward_spy_unavailable"
+    ]
 
 
 def test_choam_conflict_reward_opens_and_resolves_contract_selection() -> None:

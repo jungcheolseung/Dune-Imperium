@@ -91,8 +91,10 @@ from dune_imperium.rules.combat import (
     apply_distinct_combat_reward_influence,
     begin_combat_intrigue,
     combat_influence_choice_is_unavailable,
+    combat_reward_spy_is_unavailable,
     finish_combat,
     fizzle_combat_influence_choice,
+    fizzle_combat_reward_spy,
     legal_combat_intrigue_actions,
     legal_combat_reward_influence_actions,
     legal_combat_reward_optional_payment_actions,
@@ -281,8 +283,10 @@ from dune_imperium.rules.spies import apply_gather_intelligence_action
 from dune_imperium.rules.spy_moves import (
     apply_spy_move,
     apply_spy_placement,
+    begin_track_spy_placement,
     legal_spy_move_actions,
     legal_spy_placement_actions,
+    track_spy_is_queued,
 )
 from dune_imperium.rules.strength import refresh_pre_reveal_strength
 from dune_imperium.rules.tech import (
@@ -856,8 +860,17 @@ def _advance_automatic(result: RuleResult) -> RuleResult:
             automatic = open_held_contract_icons(state, held_owner)
         elif skill_choice_is_queued(state):
             automatic = begin_skill_choice(state)
+        elif track_spy_is_queued(state):
+            # The Emperor track's Influence 4 Spy [Main p. 7] is placed
+            # before any other player-initiated action (OQ-057).
+            automatic = begin_track_spy_placement(state)
         elif navigation_play_is_queued(state):
             automatic = begin_navigation_play(state)
+        elif combat_reward_spy_is_unavailable(state):
+            # A Conflict reward Spy that can no longer be placed (no Spy left
+            # in the supply, no free post) is lost rather than left as a
+            # frame without a legal action.
+            automatic = fizzle_combat_reward_spy(state)
         elif combat_influence_choice_is_unavailable(state):
             # Every eligible Faction is at the top of its track, so the
             # choice is lost like any other Influence gain there (OQ-060).

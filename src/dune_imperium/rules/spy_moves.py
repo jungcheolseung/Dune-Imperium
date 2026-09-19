@@ -12,7 +12,7 @@ from dataclasses import replace
 
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS
 from dune_imperium.core.actions import DomainAction
-from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
+from dune_imperium.core.decisions import ChanceDecision, DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GameState
@@ -136,6 +136,52 @@ def apply_spy_move(state: GameState, action: DomainAction) -> RuleResult:
         state.pop_decision(), players=replace_player(state.players, next_owner)
     )
     return RuleResult(state=next_state, events=tuple(events))
+
+
+def track_spy_is_queued(state: GameState) -> bool:
+    """Return whether an Emperor track Spy can open its placement now.
+
+    A pending chance frame always resolves first, like the other queues. So
+    do the choices of a Conflict's rewards: a fixed Emperor Influence reward
+    may reach 4 while that Conflict's own Spy rewards are still waiting, and
+    those were counted against the supply when the rewards were paid -- the
+    track's Spy follows them (with an empty supply it may still recall one
+    first) instead of taking a Spy they were promised.
+    """
+
+    if not state.pending_track_spies:
+        return False
+    frame = state.decision_stack[-1] if state.decision_stack else None
+    if frame is None:
+        return True
+    if isinstance(frame.decision, ChanceDecision):
+        return False
+    return not str(frame.kind).startswith("combat_reward")
+
+
+def begin_track_spy_placement(state: GameState) -> RuleResult:
+    """Open the oldest owed Emperor track Spy: any empty Observation Post.
+
+    "When you reach 4 Influence, you earn the bonus shown on that space of
+    the track" [Main p. 7]; the Emperor strip prints the Spy icon. The
+    placement follows the normal rule (an unoccupied post; with an empty
+    supply a Spy may be recalled first [Main pp. 11, 20]) and opens on top
+    of whatever was being resolved, so it is finished before any other
+    player-initiated action (designer ruling, OQ-057).
+    """
+
+    if not state.pending_track_spies:
+        raise ValueError("there is no pending Influence track Spy")
+    player, source = state.pending_track_spies[0]
+    remaining = replace(state, pending_track_spies=state.pending_track_spies[1:])
+    return RuleResult(
+        state=spy_placement_frame(
+            remaining,
+            player,
+            tuple(post.post_id for post in OBSERVATION_POSTS),
+            source=source,
+        )
+    )
 
 
 def spy_placement_frame(

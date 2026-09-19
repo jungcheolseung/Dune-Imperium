@@ -19,37 +19,80 @@ def test_influence_cannot_exceed_the_printed_track() -> None:
         Influence(fremen=7)
 
 
-@pytest.mark.parametrize(
-    ("faction", "influence", "expected_water"),
-    (
-        (Faction.SPACING_GUILD, Influence(spacing_guild=3), 4),
-        (Faction.FREMEN, Influence(fremen=3), 2),
-    ),
-)
-def test_resource_track_bonuses_match_the_printed_board(
-    faction: Faction,
-    influence: Influence,
-    expected_water: int,
-) -> None:
-    state = GameState(
+def _at_three(faction: Faction) -> GameState:
+    return GameState(
         config=RulesetConfig(),
         seed=1,
         players=(
-            PlayerState(player_id=0, influence=influence),
+            PlayerState(player_id=0, influence=Influence(**{faction.value: 3})),
             *(PlayerState(player_id=seat) for seat in range(1, 4)),
         ),
+        intrigue_deck=("intrigue:ambush:1", "intrigue:bribery:1"),
     )
 
-    result = gain_faction_influence(
-        state,
-        0,
-        faction,
-        1,
-        event_prefix="test:influence",
-    ).state
 
-    assert result.players[0].resources.water == expected_water
-    assert result.players[0].alliance_faction_ids == (faction.value,)
+def test_track_bonuses_match_the_printed_board() -> None:
+    # "When you reach 4 Influence, you earn the bonus shown on that space of
+    # the track." [Main p. 7] The Influence 4 band of each strip prints (the
+    # board scan read against the rulebook icons, 2026-09-19): the Spy icon
+    # (Emperor), a 3 on the Solari coin (Spacing Guild), an Intrigue card
+    # (Bene Gesserit), a water drop (Fremen). The earlier transcription gave
+    # the Emperor two troops and the Guild three water (docs/lessons.md).
+    gained = {
+        faction: gain_faction_influence(
+            _at_three(faction), 0, faction, 1, event_prefix="test:influence"
+        )
+        for faction in Faction
+    }
+    before = _at_three(Faction.EMPEROR).players[0]
+
+    guild = gained[Faction.SPACING_GUILD].state.players[0]
+    assert guild.resources.solari == before.resources.solari + 3
+    assert guild.resources.water == before.resources.water
+
+    fremen = gained[Faction.FREMEN].state.players[0]
+    assert fremen.resources.water == before.resources.water + 1
+
+    sisterhood = gained[Faction.BENE_GESSERIT].state
+    assert sisterhood.players[0].intrigue_cards == ("intrigue:ambush:1",)
+    assert sisterhood.intrigue_deck == ("intrigue:bribery:1",)
+
+    # The Emperor's Spy is a placement decision: it is queued for the engine
+    # and recruits nothing.
+    emperor = gained[Faction.EMPEROR].state
+    assert emperor.pending_track_spies == ((0, "test:influence:track_bonus:0"),)
+    assert emperor.players[0].troops_garrison == before.troops_garrison
+    assert emperor.players[0].spies_supply == before.spies_supply
+    assert all(
+        result.state.pending_track_spies == ()
+        for faction, result in gained.items()
+        if faction is not Faction.EMPEROR
+    )
+
+    for faction, result in gained.items():
+        assert result.state.players[0].alliance_faction_ids == (faction.value,)
+        bonus = next(
+            dict(event.payload)
+            for event in result.events
+            if event.kind == "influence_track_bonus_gained"
+        )
+        assert bonus["faction"] == faction.value
+    payloads = {
+        faction: {
+            key: value
+            for event in result.events
+            if event.kind == "influence_track_bonus_gained"
+            for key, value in event.payload
+            if key not in ("faction", "player")
+        }
+        for faction, result in gained.items()
+    }
+    assert payloads == {
+        Faction.EMPEROR: {"spy": 1},
+        Faction.SPACING_GUILD: {"solari": 3},
+        Faction.BENE_GESSERIT: {"intrigue": 1},
+        Faction.FREMEN: {"water": 1},
+    }
 
 
 def test_matching_the_holder_does_not_transfer_an_alliance() -> None:

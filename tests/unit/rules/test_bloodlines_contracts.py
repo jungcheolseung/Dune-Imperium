@@ -291,8 +291,10 @@ def test_earn_any_alliance_taken_this_turn_completes_on_this_turns_bump() -> Non
     assert owner.active_contract_ids == ()
     assert owner.completed_contract_ids == (EARN_ALLIANCE,)
     assert owner.resources.solari == 12
-    # 3 starting troops + the Emperor track's two at 4 Influence + the tile's two.
-    assert owner.troops_garrison == 7
+    # 3 starting troops + the tile's two; the Emperor track's Influence 4
+    # bonus is a Spy [Main p. 7], placed at once in its own frame.
+    assert owner.troops_garrison == 5
+    assert result.state.decision_stack[-1].kind == "spy_placement"
     assert [
         event.kind for event in result.events if event.kind.startswith("contract")
     ] == ["contract_completed"]

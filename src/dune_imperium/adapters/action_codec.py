@@ -62,7 +62,7 @@ from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.rules.agent_effects import AUTOMATIC_AGENT_ICONS
 from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 
-ACTION_CODEC_VERSION = 106
+ACTION_CODEC_VERSION = 107
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -210,6 +210,9 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "resolve_agent_card_effect",
             "resolve_desert_tactics_without_trash",
             "resolve_espionage_without_spy",
+            # The generic Spy placement frame's way out when nothing can be
+            # placed (every ruleset since the Emperor track's Spy uses it).
+            "decline_spy_placement",
             "resolve_faction_influence",
             "retreat_leader_troop",
             "reveal_turn",
@@ -541,11 +544,11 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         "recall_spy_for_reveal",
         "recall_spy_for_reveal_placement",
         "resolve_espionage_place_spy",
-        *(
-            ("move_spy", "place_spy_on_space", "recall_spy_for_placement")
-            if config.bloodlines
-            else ()
-        ),
+        # v107: the generic placement frame serves the Emperor track's
+        # Influence 4 Spy [Main p. 7] in every ruleset, not only Bloodlines.
+        "place_spy_on_space",
+        "recall_spy_for_placement",
+        *(("move_spy",) if config.bloodlines else ()),
         *(
             ("place_contract_spy", "recall_spy_for_contract")
             if config.choam_module
@@ -752,7 +755,6 @@ def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     templates.extend(
         ActionTemplate(action_id=action_id)
         for action_id in (
-            "decline_spy_placement",
             "decline_intrigue_contract_trigger",
             # Bloodlines Leaders: Duncan Idaho, Chani, Liet Kynes, Esmar Tuek.
             "deploy_leader_agent",
