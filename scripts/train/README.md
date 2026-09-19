@@ -2,7 +2,8 @@
 
 M10 학습을 밤새 무인으로 돌리기 위한 스크립트다(2026-09-18, Windows PC WSL에서 첫 사용).
 모두 표준 라이브러리만 쓰지만 문법은 프로젝트의 Python 3.14 기준이므로 `.venv/bin/python`으로
-실행한다(시스템 `python3`가 3.12면 구문 오류가 난다). `ruff`/`mypy` 범위 밖이다. `uv sync --extra rl
+실행한다(시스템 `python3`가 3.12면 구문 오류가 난다). **`run_guard.py`는 `/proc/meminfo`와 `/proc/<pid>`를 읽으므로 Linux 전용이다** — macOS에서는
+가용 메모리(`vm_stat`)와 프로세스 그룹 RSS(`ps`) 부분을 옮겨 그 기기에서 검증한 뒤 쓴다. `ruff`/`mypy` 범위 밖이다. `uv sync --extra rl
 --extra train`이 돼 있어야 한다.
 
 | 스크립트 | 무엇을 하나 |

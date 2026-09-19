@@ -59,33 +59,43 @@ seed 블록에서 **+5.1 ~ +9.1%p**다([evaluation/baseline-2026-09-16.md](evalu
 고쳤다. rollout `player_value` 가중치 A/B·tie-break heuristic의 소크·기준선 12셀 재측정은 이 세션 요약(아래)에 적힌 대로다.
 남은 것은 **M10 학습 재개**(사용자 결정)와 아래 0번의 학습 밖 후보다.
 
-0. (2026-09-18 저녁, **M10 정체 — PPO A/B는 부정 결과, 다음은 잡음 가설 실험**) **M10 학습 — 전 확장 구성(codec v105, 32,991).** 첫 실행은
-   2026-09-17 밤 Windows PC(WSL)에서 했다(아래 "M10 첫 학습·되돌리기 루프·이관·codec v105" 세션 요약): 정책이 OQ-029의
-   `deploy_troops`/`withdraw_troops`를 한 turn 안에서 수천 번 왕복하도록 학습돼 19 iteration 만에 죽었고(결정의 80%가 왕복,
-   메모리 초과), 학습 수집과 체크포인트 greedy 플레이에서 되돌리기 두 행동을 정책에 제시하지 않게 고친 뒤([rl-environment.md](rl-environment.md)
-   "정책에 주지 않는 되돌리기 행동") 837 iteration(26,784판, 7시간 46분)을 돌렸다. **실력은 400~550 iteration까지 오르고 그 뒤
-   정체·요동한다**: 400판 4자 대전에서 500·550이 31.0%(대등 25%), 700은 11.5%로 후퇴, 825는 30.8%; heuristic 3명 상대 200판은
-   400·600이 70.0%, 825가 61.5%(rollout 60.0%를 넘는다). **가장 좋은 체크포인트는 `checkpoints/2026-09-18/full-noundo/iteration_00550.pt`**
-   (그 PC의 gitignore 폴더; 다른 기기에는 파일을 복사한다). 이 문서가 예고했던 정체 대응인 **PPO 슬라이스는 넣었고(`--clip`, 기본 꺼짐)
-   A/B에서 부정 결과였다**(2026-09-18 저녁, 아래 세션 요약): 550에서 같은 seed로 100 iteration씩 — REINFORCE는 heuristic 3명 상대
-   75.5%(출발점 76.5%)로 평평하고 4자 대전에서는 출발점에 밀리며(35.0% 대 45.0%), PPO(clip 0.2·3 epoch·32판 배치)는 **43.0%로
-   무너졌다**(4자 대전 12.5%). value 과적합은 원인이 아니었고(새 게임의 설명력은 PPO가 가장 높다), 남은 가설은 **배치의 독립 표본이
-   32판의 승패뿐이라 갱신이 잡음에 끌려다닌다**는 것이다(REINFORCE도 25 iteration마다 greedy 행동의 1/3 이상이 바뀌는데 실력은 그대로).
-   다음 실험 후보: 학습률 3e-4 → 1e-4(진행 중), iteration당 64판(128판은 24 GB에 안 들어간다), 큰 배치에서 PPO 2 epoch, 여러 수집에
-   걸친 gradient accumulation. 기록은 그 PC의 `checkpoints/2026-09-18/ab-550/SUMMARY.md`. 체크포인트는 이제 정체성 기반 이관(형식 2)이 있어 codec·관측 버전이
-   바뀌어도 이어 쓸 수 있다(`dune-imperium-checkpoint inspect|stamp|migrate`). 실행 명령(Windows PC, i7-13700K 24 스레드,
-   WSL 24 GB; `--minibatch 1024`는 33k codec의 갱신 메모리를 낮추는 필수 옵션, `--checkpoint-every 25`는 하룻밤 90 GB의
-   체크포인트를 막는다; 이 PC는 8 worker가 최적이고 16·24 worker는 더 느렸다):
+0. (2026-09-19 아침, **M10 정체 해소 — 학습률 1e-4로 1650 iteration까지 상승, 다음 학습은 Mac mini에서 이어간다**)
+   **M10 학습 — 전 확장 구성(codec v105, 32,991).** 경과(세션 요약 셋: "M10 첫 학습·되돌리기 루프·이관·codec v105",
+   "M10 PPO 슬라이스·A/B", "학습률 실험·밤샘 실행 2"): (1) 첫 실행은 정책이 OQ-029의 `deploy_troops`/`withdraw_troops` 왕복을
+   학습해 죽었고, 학습 수집·체크포인트 플레이에서 되돌리기 두 행동을 정책에 제시하지 않게 고쳤다([rl-environment.md](rl-environment.md)).
+   (2) 학습률 3e-4의 첫 밤샘 실행은 400~550 iteration에서 정체했다(550: heuristic 3명 상대 200판 76.5%). (3) PPO(clip 0.2·3 epoch·
+   32판 배치)는 A/B에서 43.0%로 무너져 기각, REINFORCE도 같은 학습률로는 평평했다. 가설: 배치의 독립 표본이 32판의 승패뿐이라
+   갱신이 잡음에 끌려다닌다. (4) **학습률만 1e-4로 낮추자 정체가 풀렸다**: 550 → 650(100 iteration A/B)에서 81.0%, 이어진 밤샘
+   1,000 iteration(9시간 50분, 재시작·예외·평가 실패·잘린 판 0)에서 학습 중 200판 평가가 74.7%(처음 다섯 평균) → 82.7%(마지막
+   다섯 평균, 최고 1400의 87.5%). 대전(seed 1000+): 4자 400판 — 550 9.2%, 1000 21.8%, 1300 32.0%, 1650 37.0%; heuristic 3명 상대
+   200판 — 550 76.5, 1000 79.5, 1300 84.5, 1650 83.0%. **1400 이후는 상승이 작다**(1400·1500·1600·1650의 4자 대전 24.2·24.8·23.0·
+   28.0%, 표준오차 약 2.2%p). 한 계보·한 seed라 방향은 분명하지만 수치는 재현 전이다.
+
+   **가장 좋은 체크포인트**: Windows PC의 `checkpoints/2026-09-18/lr1e-4-long/latest.pt`(iteration 1650, 옵티마이저 포함, 형식 2·codec
+   v105, 235,035,727 bytes, sha256 `1a479e8e671095130d6602983a46aa8a44b290fdc6830b1db8e95642f691d2dc`)와 같은 시점의 번호
+   체크포인트 `iteration_01650.pt`(79,799,975 bytes, sha256 `c32af167f1fd32288b7e46c49abcdc5c15ef9b21f572352a18e7c2e1bc128947`).
+   `checkpoints/`는 git 무시라 **파일을 직접 복사한다**(Windows에서는 `\\wsl$\Ubuntu-24.04\home\cs\workspace\tabletop-ai\Dune-Imperium\checkpoints\2026-09-18\lr1e-4-long\`).
+   복사 뒤 `uv run dune-imperium-checkpoint inspect <파일>`로 iteration 1650·codec v105·optimizer yes를 확인한다. 기록은 그 폴더의
+   `SUMMARY.md`와 `checkpoints/2026-09-18/ab-550/SUMMARY.md`.
+
+   **Mac mini에서 이어가기**(사용자 결정 2026-09-19; 아래는 Windows PC에서 확인한 명령이고 Mac에서의 실행은 아직 검증 전이다):
 
    ```bash
-   .venv/bin/python scripts/train/train_overnight.py --dir checkpoints/<날짜>/<이름> --total 2000 --repo . -- --games-per-iteration 32 --workers 8 --minibatch 1024 --eval-every 25 --eval-games 20 --checkpoint-every 25 --choam --bloodlines --tech-module --immortality --promo-cards
+   uv run dune-imperium-train --out checkpoints/<날짜>/lr1e-4-mac --resume <복사한 latest.pt> --iterations 1000 --learning-rate 1e-4 --games-per-iteration 32 --workers 8 --minibatch 1024 --eval-every 50 --eval-games 50 --checkpoint-every 25 --choam --bloodlines --tech-module --immortality --promo-cards
    ```
 
-   `scripts/train/`의 감독 스크립트는 메모리 바닥(기본 2,000 MiB)에서 그룹을 중단하고, 예외로 죽으면 traceback을 남기고 seed를
-   바꿔 `latest.pt`에서 재개한다(`README.md` 참고). Mac mini 16 GB는 32판·8 worker, WSL 노트북(7.9 GB)은 16판·2 worker가 상한.
-   학습 밖 후보 (a)에 전 확장 census가 남긴 RNG 가족(graft 변형·partner, Commander skill, `take_contract`, Spy post, Engineered
-   Miracle의 `command_acquire_row_card`)을 더한다. 열린 관찰: entropy 블록 평균이 0.88 → 0.4~0.7, explained variance 0.66 → 0.3~0.4로
-   내려온 원인은 재지 않았고, 808 iteration의 잘린 게임 1판(4,000 결정)은 800 체크포인트 64판 census로 재현되지 않았다.
+   - `--resume`은 iteration 번호와 Adam 상태를 잇는다. `--eval-games 50`은 seed 수(좌석 회전 4배 = 200판, 오차 약 ±3%p)다.
+   - **`scripts/train/run_guard.py`는 `/proc`을 읽어 Linux 전용이다.** macOS에서는 메모리 감시와 그룹 RSS 부분을 `vm_stat`·`ps`
+     기반으로 옮겨 그 기기에서 검증한 뒤에 감독기(`train_overnight.py`)를 쓴다. 그 전에는 위 명령을 직접 띄우고 `training.jsonl`을
+     본다(Mac mini 16 GB의 처방은 32판·8 worker·`--minibatch 1024`; 되돌리기 루프가 없어진 지금 Linux에서의 그룹 메모리는 9~11 GiB였다).
+   - 갱신이 iteration의 절반(수집 15초 + 갱신 16초)이라 `--device mps`를 시험할 가치가 있다(미검증; 수집 worker는 CPU 그대로).
+   - Windows PC의 실측: 8 worker가 최적(16·24 worker는 더 느림), iteration당 약 33초.
+
+   **다음 후보**: (a) 같은 설정으로 계속 — 1400 이후의 완만한 상승이 이어지는지; (b) 학습률을 3e-5로 한 번 더 낮춰 (a)와 A/B
+   (3e-4 → 1e-4가 통한 논리의 다음 단계); (c) iteration당 64판(128판은 24 GB에도 안 들어간다); (d) 두 번째 seed로 재현. PPO는
+   큰 배치에서만 다시 볼 가치가 있다. 학습 밖 후보 (a)에 전 확장 census가 남긴 RNG 가족(graft 변형·partner, Commander skill,
+   `take_contract`, Spy post, Engineered Miracle의 `command_acquire_row_card`)을 더한다. 열린 관찰: 첫 밤샘 실행 808 iteration의 잘린
+   게임 1판은 재현되지 않았고, 16·24 worker가 8 worker보다 느린 원인은 재지 않았다.
 0. (2026-09-17 자정 무렵, **M14는 실제 친구와의 한 판만 남았다 — 사용자 몫**) 슬라이스 1~5와 슬라이스 6의 리허설·운영 문서가 master에 있다(아래 세션 요약 셋). **판을 여는 법과 친구에게 보낼 안내는 [remote-play-guide.md](remote-play-guide.md)** 한 장에 있다: `caffeinate -i uv run dune-imperium-server --remote --host <이 Mac의 100.x 주소>` → 콘솔의 관리자 링크 → 방 생성 → 방 링크를 보낸다(이 Mac mini의 Tailscale 주소는 2026-09-17 현재 `100.87.236.12`; Tailscale 머신 공유 초대는 아직 보내지 않았다). 그 문서 끝의 **첫 실전 판 점검표**(친구 쪽에서 호스트 주소가 같은지, 보드 그림·한 수의 체감 지연, 신호음, 몇 시간짜리 연결, rollout AI 좌석의 멈춤 체감, 되돌리기·확정 흐름, 검토·순위표, WSL2)를 한 판 하면서 채우고, 나온 피드백이 다음 작업이다. **`app.js`를 고치면 [`scripts/e2e/`](../scripts/e2e/README.md)의 스크립트를 돌린다**(`remote.py`·`open_mode.py`·`races.py --ab`·`recovery.py`, 실전 전에는 `E2E_HOST=<100.x> rehearsal.py`; 스크래치 venv + 시스템 Chrome, 합쳐 3분쯤; pytest는 JavaScript를 실행하지 않는다). 설계 11절의 후속 후보(AI worker와 단계별 푸시, AI 대타, 관전자, 공개 터널용 에셋 게이트, 이름의 저장 파일 보존)는 실전 피드백이 요구할 때만 연다.
 0. (2026-09-17, **슬라이스 1~5 완료 + 슬라이스 6의 리허설·운영 문서 완료, 실제 한 판만 남음**, 학습과 병행 가능) **M14 원격 멀티플레이.** 사용자 요구:
    "원격 친구들이랑 각자 PC에서". 설계는 [multiplayer-design.md](multiplayer-design.md)(같은 날 사용자가 D1~D7을 제안대로
@@ -322,6 +332,20 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 2026-09-07: `bloodlines` 브랜치(35 커밋)를 master 쪽에서 `--no-ff`로 머지했고(`dbd9b73`), 같은 날 저녁 슬라이스 6 커밋 5건과 이 문서 갱신을 master에 직접 올렸다. 아직 push하지 않았다면 `git log origin/master..master`로 확인한다. 비공개 에셋 저장소(`assets` symlink → `Dune-Imperium-assets`)에도 같은 날 manifest 커밋 6건(Bloodlines 카드 44장 content id, Leader 8종, Tuek's Sietch 타일 이미지, Twisted·Navigation 카드 키, Kota Odax의 content id `43c25fc`)이 있으니 다른 머신에서는 그쪽도 pull한다.
 
 2026-09-04 세션 종료 시점에 이 세션의 커밋 전부(보드·카드 아이콘 분리 v86/v87, 서버·UI 확인 흐름과 마커, Reveal 순서 v88, OQ-028 조건 판정 시점, OQ-029 등록)를 `origin/master`에 push했다. 새 세션은 `git fetch origin` 뒤 `git log origin/master..master`와 반대 방향을 확인하고, 일치하면 이 문서의 기준선을 그대로 쓴다. 에셋 저장소(`Dune-Imperium-assets`)의 `5b55e45` 1개 미push 여부는 그 저장소에서 확인한다. 원격에는 병합하지 않은 `kyungtae` 브랜치가 있다. 새 세션은 `git log origin/master..master`와 반대 방향을 모두 확인하고, checkout이 `853ecd4`보다 이전이면 이 문서의 989개 테스트·codec v84 기준선이 실제 코드와 일치하지 않는다. **다른 머신에서 이어서 작업한다면 먼저 이 머신에서 push가 필요하다.** 새 머신의 UI 카드 이미지·아이콘·보드 스캔은 비공개 `Dune-Imperium-assets` 저장소를 clone해 symlink로 연결한다(그 README 참고; 루트의 `assets` symlink 하나로 cards·icons·board·rulebooks를 모두 연결). 카드 매핑은 그 저장소의 `cards/manifest.json`에만 있으므로 접근이 없으면 텍스트 UI로 동작한다.
+
+## 2026-09-18 밤 ~ 09-19 아침 M10 학습률 실험·밤샘 실행 2 세션 요약 (Windows PC WSL, 코드 변경 없음, 관측 v20, codec v105)
+
+- **실험 1(잡음 가설의 가장 싼 확인)**: A/B 대조군과 모든 조건이 같고 `--learning-rate 1e-4`만 다른 REINFORCE를 550에서 100
+  iteration(58분). 학습 중 평가(80판) 76.2/72.5/77.5/83.8%(대조군 70.0/72.5/71.2/70.0%); 대전 — 4자 400판 lr@650 33.0%,
+  출발점 550 24.8%, 대조군 650 24.5%, lr@600 17.8%; heuristic 3명 상대 200판 lr@650 81.0%(출발점 76.5%, 대조군 75.5%).
+  같은 실행의 600은 테이블에서 가장 약해 체크포인트 간 요동은 남아 있었다.
+- **밤샘 실행 2**(`checkpoints/2026-09-18/lr1e-4-long`, 22:20~08:10, 650 → 1650): 같은 설정·옵티마이저 상태를 이어 1,000 iteration,
+  `--eval-every 50 --eval-games 50`(200판). 재시작·예외·평가 실패·잘린 판 0, 게임당 721~806 step, 그룹 메모리 최대 11.3 GiB.
+  200판 평가: 700~800 73.0/71.5/72.5, 850~1100 79.5/77.0/79.5/75.5/75.5/77.0, 1150~1350 80.0/81.0/83.0/83.5/81.0, 1400~1650
+  87.5/84.0/82.5/77.0/85.5/84.5. 대전 결과와 체크포인트 정보는 위 "다음 구현 순서" 0번.
+- **읽기**: 같은 데이터·같은 알고리즘에서 한 번에 덜 움직이게 한 것만으로 정체가 풀렸고(3e-4는 550에서 멈추고 700에서 후퇴),
+  같은 배치를 세 번 학습한 PPO는 무너졌다 — 둘 다 "갱신이 32판의 승패 잡음에 끌려다닌다"는 가설과 맞는다. 다만 한 계보·한 seed.
+- 새 교훈 없음. 학습 중 평가의 실패 기록(`eval_failures`)은 세 실행 모두 0이었다. 사용자 결정: 다음 학습은 Mac mini에서 이어간다.
 
 ## 2026-09-19 Agent turn 단계별 선택 세션 요약 (Mac mini, master 직접 커밋, 관측 v20, codec v105, 변경은 `server/static/`·`scripts/e2e/`뿐)
 
