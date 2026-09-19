@@ -281,3 +281,18 @@
   바뀐다. (2) 기존 URL의 내용을 바꾸는 변경은 **캐시가 있는 브라우저 기준**으로 생각한다: URL이 그대로인데 내용이 바뀌는가?
   그렇다면 새 브라우저 캡처는 증거가 아니다. (3) 그림을 교체한 뒤에는 서버 재시작까지가 한 세트라고 사용자에게 말한다.
 
+## 2026-09-19 — 부모가 죽은 worker 풀이 이틀 넘게 남아 있었음(발견)
+
+- 무슨 일: M10 학습을 Mac mini로 옮기려고 가드의 고아 정리 경로를 시험하다가, 내가 띄우지 않은 spawn worker 36개(resource tracker 1 +
+  worker 8이 네 묶음)를 봤다. 전부 이 프로젝트 venv의 `multiprocessing.spawn` 프로세스로 ppid 1, 경과 2일 17시간 — 2026-09-16 저녁의 A/B
+  세션이 남긴 것이다(그날의 교훈에 `BrokenProcessPool`로 끝난 셀이 적혀 있다). CPU는 0%라 눈에 띄지 않았지만 footprint 합계 947 MiB가
+  스왑에 있었고, 16 GB 기기에서 9 GiB짜리 학습을 띄우기 직전이었다. SIGTERM으로 정리하자 스왑 사용이 1,082 → 604 MiB로 내려갔다.
+- 원인: `ProcessPoolExecutor`의 부모가 죽으면(`BrokenProcessPool`, 강제 종료) worker는 스스로 끝나지 않는다. 그리고 그 세션의 마무리 점검은
+  하네스 작업 목록(`tasks.md`의 ID → `TaskOutput`)이었는데, 작업은 "끝남"이 맞았다 — 남은 것은 작업이 아니라 **작업이 낳은 프로세스**였다.
+  2026-09-06의 "고아 worker 8개"와 같은 현상인데, 그때의 재발 방지는 학습 실행(가드)에만 들어갔고 대회·A/B 경로에는 없다.
+- 재발 방지: 세션을 마치기 전에, 그리고 메모리가 빠듯한 실행을 띄우기 전에 고아를 직접 센다 —
+  `ps -A -o pid,ppid,pgid,etime,command | grep '[m]ultiprocessing'`에서 **ppid가 1인 줄**이 고아다(살아 있는 풀의 worker는 ppid가 그 부모다).
+  지울 때는 ppid 1·이 프로젝트의 venv 경로·확인한 pgid로 대상을 좁히고 `xargs kill`로 넘긴다(zsh는 따옴표 없는 `$pids`를 단어로 쪼개지
+  않아 `kill $pids`가 통째로 실패한다). 패턴으로 프로세스를 셀 때는 하네스의 zsh 래퍼가 자기 명령줄로 걸린다는 것(2026-09-09)도 그대로다 —
+  이번에도 "leftover 2"가 두 번 나왔고 둘 다 래퍼였다. `CLAUDE.md`의 "Long-running commands"에 이 점검을 한 줄로 넣었다.
+

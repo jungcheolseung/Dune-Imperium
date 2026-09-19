@@ -1,6 +1,6 @@
 # 개발 인수인계
 
-기준일: 2026-09-17
+기준일: 2026-09-19
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
@@ -59,9 +59,10 @@ seed 블록에서 **+5.1 ~ +9.1%p**다([evaluation/baseline-2026-09-16.md](evalu
 고쳤다. rollout `player_value` 가중치 A/B·tie-break heuristic의 소크·기준선 12셀 재측정은 이 세션 요약(아래)에 적힌 대로다.
 남은 것은 **M10 학습 재개**(사용자 결정)와 아래 0번의 학습 밖 후보다.
 
-0. (2026-09-19 아침, **M10 정체 해소 — 학습률 1e-4로 1650 iteration까지 상승, 다음 학습은 Mac mini에서 이어간다**)
-   **M10 학습 — 전 확장 구성(codec v105, 32,991).** 경과(세션 요약 셋: "M10 첫 학습·되돌리기 루프·이관·codec v105",
-   "M10 PPO 슬라이스·A/B", "학습률 실험·밤샘 실행 2"): (1) 첫 실행은 정책이 OQ-029의 `deploy_troops`/`withdraw_troops` 왕복을
+0. (2026-09-19 오후, **M10 실행 3이 Mac mini에서 돌고 있다 — `checkpoints/2026-09-19/lr1e-4-mac`, 1650 → 2650, 13:36 시작**;
+   그 앞 2026-09-19 아침: 정체 해소 — 학습률 1e-4로 1650 iteration까지 상승)
+   **M10 학습 — 전 확장 구성(codec v105, 32,991).** 경과(세션 요약 넷: "M10 첫 학습·되돌리기 루프·이관·codec v105",
+   "M10 PPO 슬라이스·A/B", "학습률 실험·밤샘 실행 2", "M10 Mac mini 이관·실행 3"): (1) 첫 실행은 정책이 OQ-029의 `deploy_troops`/`withdraw_troops` 왕복을
    학습해 죽었고, 학습 수집·체크포인트 플레이에서 되돌리기 두 행동을 정책에 제시하지 않게 고쳤다([rl-environment.md](rl-environment.md)).
    (2) 학습률 3e-4의 첫 밤샘 실행은 400~550 iteration에서 정체했다(550: heuristic 3명 상대 200판 76.5%). (3) PPO(clip 0.2·3 epoch·
    32판 배치)는 A/B에서 43.0%로 무너져 기각, REINFORCE도 같은 학습률로는 평평했다. 가설: 배치의 독립 표본이 32판의 승패뿐이라
@@ -76,22 +77,41 @@ seed 블록에서 **+5.1 ~ +9.1%p**다([evaluation/baseline-2026-09-16.md](evalu
    체크포인트 `iteration_01650.pt`(79,799,975 bytes, sha256 `c32af167f1fd32288b7e46c49abcdc5c15ef9b21f572352a18e7c2e1bc128947`).
    `checkpoints/`는 git 무시라 **파일을 직접 복사한다**(Windows에서는 `\\wsl$\Ubuntu-24.04\home\cs\workspace\tabletop-ai\Dune-Imperium\checkpoints\2026-09-18\lr1e-4-long\`).
    복사 뒤 `uv run dune-imperium-checkpoint inspect <파일>`로 iteration 1650·codec v105·optimizer yes를 확인한다. 기록은 그 폴더의
-   `SUMMARY.md`와 `checkpoints/2026-09-18/ab-550/SUMMARY.md`.
+   `SUMMARY.md`와 `checkpoints/2026-09-18/ab-550/SUMMARY.md`. **2026-09-19 오후 Mac mini에 복사돼 있고**(같은 경로), 두 파일의 sha256 일치와
+   `inspect` 결과를 확인했다.
 
-   **Mac mini에서 이어가기**(사용자 결정 2026-09-19; 아래는 Windows PC에서 확인한 명령이고 Mac에서의 실행은 아직 검증 전이다):
+   **Mac mini 실행 3**(2026-09-19 13:36 시작; 세션 요약 "M10 Mac mini 이관·실행 3"): `scripts/train/`의 가드·감독기를 macOS로 옮겨
+   검증한 뒤(커밋 `bd8732f`) lr1e-4-long과 같은 설정으로 1650에서 이어 띄웠다. 다른 것은 worker 수(8 → 4)뿐이다.
 
    ```bash
-   uv run dune-imperium-train --out checkpoints/<날짜>/lr1e-4-mac --resume <복사한 latest.pt> --iterations 1000 --learning-rate 1e-4 --games-per-iteration 32 --workers 8 --minibatch 1024 --eval-every 50 --eval-games 50 --checkpoint-every 25 --choam --bloodlines --tech-module --immortality --promo-cards
+   .venv/bin/python scripts/train/train_overnight.py --detach --dir checkpoints/2026-09-19/lr1e-4-mac --total 1000 --repo . --start-from checkpoints/2026-09-18/lr1e-4-long/latest.pt -- --learning-rate 1e-4 --games-per-iteration 32 --workers 4 --minibatch 1024 --eval-every 50 --eval-games 50 --checkpoint-every 25 --choam --bloodlines --tech-module --immortality --promo-cards
    ```
 
-   - `--resume`은 iteration 번호와 Adam 상태를 잇는다. `--eval-games 50`은 seed 수(좌석 회전 4배 = 200판, 오차 약 ±3%p)다.
-   - **`scripts/train/run_guard.py`는 `/proc`을 읽어 Linux 전용이다.** macOS에서는 메모리 감시와 그룹 RSS 부분을 `vm_stat`·`ps`
-     기반으로 옮겨 그 기기에서 검증한 뒤에 감독기(`train_overnight.py`)를 쓴다. 그 전에는 위 명령을 직접 띄우고 `training.jsonl`을
-     본다(Mac mini 16 GB의 처방은 32판·8 worker·`--minibatch 1024`; 되돌리기 루프가 없어진 지금 Linux에서의 그룹 메모리는 9~11 GiB였다).
-   - 갱신이 iteration의 절반(수집 15초 + 갱신 16초)이라 `--device mps`를 시험할 가치가 있다(미검증; 수집 worker는 CPU 그대로).
-   - Windows PC의 실측: 8 worker가 최적(16·24 worker는 더 느림), iteration당 약 33초.
+   - **진행 확인**: `tail -n 2 checkpoints/2026-09-19/lr1e-4-mac/training.jsonl`(한 줄 요약은 `python3 scripts/train/fmt_iter.py <jsonl> <N번째 줄>`),
+     끝나면 `supervisor.log`에 `supervisor-exit: finished: 1000 iterations`. **중지**: `kill -TERM $(cat checkpoints/2026-09-19/lr1e-4-mac/supervisor.pid)`.
+     **더 돌리기**: 같은 명령의 `--total`만 키워 다시 띄우면 그 폴더의 `latest.pt`에서 잇는다(`--start-from`은 폴더에 기록이 없을 때만 쓰인다).
+     실행은 세션과 분리돼(`--detach`) Claude 앱을 닫아도 돌고, 감독기가 `caffeinate`를 쥐고 있어 잠들지 않는다(이 Mac의 `pmset sleep`은 1분이다).
+   - **학습 중에는 이 체크아웃의 `src/`를 고치거나 pull하지 않는다**(spawn worker와 지연 import가 작업 트리를 읽는다 — lessons 2026-09-16).
+     문서와 `scripts/`는 괜찮다. 엔진·학습 코드 작업이 필요하면 워크트리에서 한다.
+   - **이 Mac(M4 4P+6E, 16 GB)의 실측**: iteration당 약 16.5초(수집 8.9초 + 갱신 6.6초 + 235 MB `latest.pt` 저장; Windows PC는 약 33초) →
+     1,000 iteration에 4시간 반쯤 + 평가 20회. worker는 **4가 최적**(같은 체크포인트에서 4·5·6·8·10 worker의 수집이 8.8·8.9·9.2·10.8·12.5초 —
+     적을수록 빠른 원인은 재지 않았다). 8 worker 스모크의 그룹 RSS 최대 8.2 GiB·가용 최소 2.9 GiB, 4 worker는 8.6 GiB·2.6 GiB(worker당 최대
+     1.4 GiB), 커널 메모리 압박 수준은 내내 정상이고 스왑은 늘지 않았다. `--resume`은 iteration 번호와 Adam 상태를 잇고, `--eval-games 50`은
+     seed 수(좌석 회전 4배 = 200판, 오차 약 ±3%p)다.
+   - **`--device mps`는 쓰지 않는다**(시험 완료): 같은 배치·가중치·옵티마이저 상태의 갱신 한 번이 CPU와 수치로 일치하고(통계 6자리 동일,
+     파라미터 변화량의 상대 차이 1.4e-5, 다음 iteration이 같은 게임을 표본한다) 체크포인트는 어느 쪽이든 CPU 텐서로 저장되지만, 갱신이
+     6.6 → 5.6초로 iteration의 5%쯤이라 무인 장시간 실행에서 검증 안 된 경로를 쓸 값어치가 없다.
+   - **첫 50 iteration(1651~1700)의 실측**: 13분 19초, 수집 평균 9.0초·갱신 6.6초, 잘린 판 0, 게임당 765 step, 그룹 RSS 최대 8.7 GiB·가용 최소
+     2.6 GiB·압박 수준 정상·스왑 증가 없음. 학습 중 평가(1700, 200판)는 **84.5%**(평균 순위 1.20, 실패 0; Windows 실행의 1600·1650은 85.5·84.5%)이고
+     한 번에 약 95초다 → 전체는 5시간쯤, 18:40 무렵에 끝난다.
+   - macOS의 메모리 중단은 가용 메모리 바닥이 아니라 커널 압박 수준(임계 두 번 연속)으로 한다 — 근거와 검증 범위는
+     [`scripts/train/README.md`](../scripts/train/README.md) "메모리 중단 규칙". **임계 분기 자체는 실제로 일으켜 보지 않았다.**
+   - **끝난 뒤 할 일**: lr1e-4-long의 `SUMMARY.md`와 같은 형식으로 대전 평가를 돌려 그 폴더에 `SUMMARY.md`를 남긴다. 그 조건(seed 1000+,
+     `--rotate-leaders`, 4자 400판·heuristic 3명 상대 200판)으로 재구성한 명령은 아래와 같다(Windows PC 세션의 원 명령은 기록에 없다):
+     `uv run dune-imperium-tournament --agents checkpoint:<A>,checkpoint:<B>,checkpoint:<C>,checkpoint:<D> --games 100 --start-seed 1000 --ruleset choam --rotate-leaders --promo-cards --bloodlines --tech-module --immortality --workers 4 --markdown <출력>`,
+     heuristic 상대는 `--agents checkpoint:<X>,heuristic,heuristic,heuristic --games 50`. 계보를 잇는 비교가 되도록 1650(출발점)을 테이블에 넣는다.
 
-   **다음 후보**: (a) 같은 설정으로 계속 — 1400 이후의 완만한 상승이 이어지는지; (b) 학습률을 3e-5로 한 번 더 낮춰 (a)와 A/B
+   **다음 후보**: (a) 같은 설정으로 계속 — **지금 도는 실행 3이 이것이다**(1400 이후의 완만한 상승이 이어지는지); (b) 학습률을 3e-5로 한 번 더 낮춰 (a)와 A/B
    (3e-4 → 1e-4가 통한 논리의 다음 단계); (c) iteration당 64판(128판은 24 GB에도 안 들어간다); (d) 두 번째 seed로 재현. PPO는
    큰 배치에서만 다시 볼 가치가 있다. 학습 밖 후보 (a)에 전 확장 census가 남긴 RNG 가족(graft 변형·partner, Commander skill,
    `take_contract`, Spy post, Engineered Miracle의 `command_acquire_row_card`)을 더한다. 열린 관찰: 첫 밤샘 실행 808 iteration의 잘린
@@ -266,6 +286,8 @@ seed 블록에서 **+5.1 ~ +9.1%p**다([evaluation/baseline-2026-09-16.md](evalu
 
 2026-09-10에 **처리량 회귀를 측정으로 귀인했다**([evaluation/throughput-2026-09-10.md](evaluation/throughput-2026-09-10.md)). 요지: 09-06 → 09-10의 59.25 → 38.71 games/s는 **step당 엔진 CPU 약 1.6배**이고, 콘텐츠(확장 4종)가 엔진 전반을 무겁게 만든 결과다. 성능을 재는 절차도 그 문서에 있다 — **CPU 경합에 면역인 지표(cProfile의 호출 횟수, step 수)를 먼저 잡고**, 소요 시간은 기계가 조용할 때 트리를 번갈아 잰다. cProfile의 *누적 시간*은 호출 수에 비례해 부풀므로 트리 간 비교에 쓰지 않는다. 리포트의 `duration`은 worker 기동·import를 포함하고 `ms/decision`은 `_MeteredAgent` 안쪽만 재므로 두 열의 의미가 다르다. 두 기준선 리포트의 `ms/decision` 열은 harness 상수(좌석당 +0.005 ms)를 포함하고 있었고 `ab48e0c`로 없앴으므로, **09-06·09-10 리포트의 그 열은 이후 실행과 직접 비교할 수 없다**.
 
+2026-09-19(Mac mini, M10 실행 3): **학습 수집은 이 Mac의 E코어 6개를 쓰지 못한다.** `Collector`는 게임을 worker 수만큼의 chunk로 정적 분할하므로(`training/collect.py`의 `specs[index::self.workers]`) iteration의 수집 시간은 가장 느린 chunk가 정하고, 4 worker(수집 8.8초)에서 P코어 4개는 99.5%·E코어는 0~25%였다(코어별 부하 실측). worker를 8·10으로 늘리면 오히려 10.8·12.5초다. **후보**: chunk 수를 worker 수와 떼어(예: 2판짜리 chunk 16개를 worker 8~10개가 `pool.map`의 대기열에서 가져가게) 빠른 코어가 더 많은 chunk를 맡게 한다. 8 worker의 수치로 어림하면 E코어 하나는 P코어의 0.4배쯤이라 이론 상한은 수집 −3초(iteration의 약 20%)지만, **어림일 뿐 잰 값이 아니고** chunk가 작아지면 lockstep 추론 배치가 줄고 job마다 가중치를 다시 읽는다 — 워크트리에서 A/B로 잰 뒤에 채택한다(`src/` 변경이므로 학습이 도는 체크아웃에서는 하지 않는다; chunk seed가 바뀌므로 재현성 문서도 함께 고친다). 덧붙여 `latest.pt`(235 MB)를 매 iteration 다시 쓰므로 1,000 iteration에 SSD 쓰기가 약 235 GB다.
+
 ## 유용한 명령
 
 ```bash
@@ -317,6 +339,8 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 
 ## 원격 저장소 인계 주의
 
+2026-09-19 오후(Mac mini, M10 실행 3 세션): 이 세션의 커밋(`bd8732f` 학습 가드·감독기의 macOS 이식과 그 뒤의 문서 커밋)은 master에만 있고 **push하지 않았다** — `git log origin/master..master`로 확인한다. `src/`는 건드리지 않았으므로 다른 기기의 체크포인트·학습과는 무관하고, Windows PC가 새 `scripts/train/`(Linux 경로의 동작은 그대로)을 쓰려면 push·pull이 필요하다. **학습이 도는 기기에서는 `src/`가 바뀌는 pull을 하지 않는다.** 체크포인트 폴더는 git 무시라 기기 간에는 여전히 파일을 복사한다(실행 3의 산출물은 이 Mac의 `checkpoints/2026-09-19/lr1e-4-mac/`).
+
 2026-09-19(Mac mini, 사용자 지시 "두 저장소 다 push"): 메인 저장소 `f3b91fb..3b5f4c5`(아래의 merge 커밋을 포함한 21건)와 비공개 에셋 저장소 `02bac8a..f9924b4`(Combat marker 토큰, Shield Wall 토큰·위치 타일 2건)를 push했고, 두 곳 모두 `origin/master`와 로컬이 일치한다. 바로 아래 두 문단의 "push하지 않았다"는 그 시점의 기록이다. 다른 기기는 **두 저장소를 모두 pull**해야 그림 토큰·타일이 보인다(에셋이 없어도 동작은 같다).
 
 2026-09-19(Mac mini): `git fetch`에서 원격이 12건 앞서 있었다(Windows PC의 M10 첫 학습·codec v105·체크포인트 이관·PPO 슬라이스). 이 기기의 미푸시 15건(보드 토큰·원판·보드 조각·에셋 버전)과 겹치는 파일은 `README.md`·이 문서·`lessons.md`뿐이라 **master에서 `origin/master`를 `--no-ff`로 merge**했다(기존 커밋은 고치지 않는다). 충돌은 양쪽 내용을 모두 살려 풀었고, merge한 트리에서 pytest 1,764 · ruff · mypy를 실측했다. merge 커밋과 그 뒤의 작업은 아직 push하지 않았다.
@@ -332,6 +356,34 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 2026-09-07: `bloodlines` 브랜치(35 커밋)를 master 쪽에서 `--no-ff`로 머지했고(`dbd9b73`), 같은 날 저녁 슬라이스 6 커밋 5건과 이 문서 갱신을 master에 직접 올렸다. 아직 push하지 않았다면 `git log origin/master..master`로 확인한다. 비공개 에셋 저장소(`assets` symlink → `Dune-Imperium-assets`)에도 같은 날 manifest 커밋 6건(Bloodlines 카드 44장 content id, Leader 8종, Tuek's Sietch 타일 이미지, Twisted·Navigation 카드 키, Kota Odax의 content id `43c25fc`)이 있으니 다른 머신에서는 그쪽도 pull한다.
 
 2026-09-04 세션 종료 시점에 이 세션의 커밋 전부(보드·카드 아이콘 분리 v86/v87, 서버·UI 확인 흐름과 마커, Reveal 순서 v88, OQ-028 조건 판정 시점, OQ-029 등록)를 `origin/master`에 push했다. 새 세션은 `git fetch origin` 뒤 `git log origin/master..master`와 반대 방향을 확인하고, 일치하면 이 문서의 기준선을 그대로 쓴다. 에셋 저장소(`Dune-Imperium-assets`)의 `5b55e45` 1개 미push 여부는 그 저장소에서 확인한다. 원격에는 병합하지 않은 `kyungtae` 브랜치가 있다. 새 세션은 `git log origin/master..master`와 반대 방향을 모두 확인하고, checkout이 `853ecd4`보다 이전이면 이 문서의 989개 테스트·codec v84 기준선이 실제 코드와 일치하지 않는다. **다른 머신에서 이어서 작업한다면 먼저 이 머신에서 push가 필요하다.** 새 머신의 UI 카드 이미지·아이콘·보드 스캔은 비공개 `Dune-Imperium-assets` 저장소를 clone해 symlink로 연결한다(그 README 참고; 루트의 `assets` symlink 하나로 cards·icons·board·rulebooks를 모두 연결). 카드 매핑은 그 저장소의 `cards/manifest.json`에만 있으므로 접근이 없으면 텍스트 UI로 동작한다.
+
+## 2026-09-19 오후 M10 Mac mini 이관·실행 3 세션 요약 (Mac mini, master 직접 커밋, 관측 v20, codec v105, 변경은 `scripts/train/`뿐)
+
+사용자 요청: "다른 PC에서 진행하던 학습을 이어서 진행". 기준선은 pytest 1,767 · ruff · mypy 통과, `origin/master`와 일치에서 시작했다.
+
+- **이관 확인**: 사용자가 복사해 둔 `checkpoints/2026-09-18/lr1e-4-long/`의 `latest.pt`·`iteration_01650.pt`가 0번 항목의 sha256과 일치하고,
+  `dune-imperium-checkpoint inspect`가 형식 2·codec v105·관측 v20·iteration 1650·optimizer yes를 보고했다.
+- **가드·감독기의 macOS 이식**(`bd8732f`): `run_guard.py`는 macOS에서 `vm_stat`·`sysctl`·`ps`로 같은 `mem.csv`를 쓰고(+`compressed_mib`·
+  `pressure_level`), 커널 압박 수준 임계 두 번 연속에 그룹을 중단한다(가용 메모리 바닥은 기본 꺼짐 — 어느 수준이 위험인지 모른다). 표본
+  수집의 fork가 실패하면 직전 표본을 되풀이한다(메모리가 가장 모자랄 때 가드가 죽으면 감독기가 살아 있는 그룹 위에 재시작한다).
+  `train_overnight.py`는 `--detach`(fork + setsid), macOS에서의 `caffeinate -i -s -w <pid>`, 플랫폼별 바닥 기본값을 얻었다. Linux 경로와
+  기본값은 그대로다. 검증: 크기를 아는 작업의 그룹 집계(메인 324 + worker 3×224 MiB = 1,016 MiB), 바닥 규칙으로 밟은 중단 경로
+  (`exit=-15`), 고아 worker 정리, 분리 실행 2 iteration 완주와 `caffeinate` 해제, 수동 중지(감독기·학습 그룹·`caffeinate` 모두 0).
+  **임계 압박 분기는 실제로 일으켜 보지 않았다.**
+- **자원 스모크**(README의 절차: 최신 체크포인트에서 `--resume`, 가드 아래): 수치는 0번 항목. 8 worker·CPU 2 iteration이 37.9초.
+- **`--device mps` 시험**(0번의 미검증 항목): 수치 일치·이득 5%로 채택하지 않았다(0번 항목).
+- **worker 수**: 4·5·6·8·10을 같은 체크포인트에서 재 4를 택했다. 실행 3의 수집 중 코어별 부하(Mach `host_processor_info`, 2초 창 12개)는
+  **P코어 4개(cpu 6~9) 99.5%, E코어 6개 0~25%**였다 — "하네스가 띄운 프로세스가 E코어에 묶여 있다"는 가설은 기각이고, 4 worker는 P코어를
+  다 쓰며 E코어는 논다. "worker를 늘리면 E코어에 걸린 chunk가 정적 분할(`specs[index::workers]`)의 꼬리가 된다"는 설명과 맞지만, 8 worker에서
+  chunk별 소요를 직접 재지는 **않았다**(실행 중에는 두 번째 학습을 띄우지 않는다). 후속 후보는 아래 "처리량 메모".
+- **실행 3 시작**: 13:36:32, `checkpoints/2026-09-19/lr1e-4-mac`, HEAD `bd8732f`(깨끗한 트리), `provenance.txt`를 남겼다. 스모크가 다루지 않은
+  경로인 학습 중 평가까지 지켜봤다: 1700에서 200판 84.5%·실패 0·약 95초(수치는 0번 항목). 세션은 실행이 도는 채로 끝났다 — 결과 정리
+  (`SUMMARY.md`, 대전 평가)는 다음 세션 몫이다.
+- **덤 — 고아 worker 36개**: 이 Mac에 2026-09-16 저녁(2일 17시간 전)에 시작된 이 프로젝트 venv의 spawn worker 36개(resource tracker 1 +
+  worker 8이 네 묶음)가 부모 없이(ppid 1) 남아 있었다 — 그날 A/B의 `BrokenProcessPool`(lessons 2026-09-16)이 남긴 것으로 보인다. CPU는
+  0%였지만 footprint 합계 947 MiB(대부분 스왑)였고, SIGTERM으로 정리하자 스왑 사용이 1,082 → 604 MiB로 내려갔다. 절차는
+  [lessons.md](lessons.md) 2026-09-19 항목과 `CLAUDE.md`의 "Long-running commands"에 적었다.
+- zsh는 따옴표 없는 변수를 단어로 쪼개지 않아 `kill $pids`가 통째로 실패한다 — 여러 PID는 `xargs kill`로 넘긴다.
 
 ## 2026-09-18 밤 ~ 09-19 아침 M10 학습률 실험·밤샘 실행 2 세션 요약 (Windows PC WSL, 코드 변경 없음, 관측 v20, codec v105)
 

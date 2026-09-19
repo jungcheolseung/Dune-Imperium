@@ -90,6 +90,12 @@ notification arrives on its own. Do not write a shell loop to wait for them.
 - Stop a task as soon as it stops being useful, and sweep for leftovers before
   wrapping up. When reporting what is running, check the task list, not `ps` --
   they are tracked separately (`docs/lessons.md`, 2026-09-10).
+- A finished task can still leave processes: a worker pool whose parent died
+  (`BrokenProcessPool`, a killed run) never exits by itself. Before wrapping
+  up, and before launching anything memory-hungry, run
+  `ps -A -o pid,ppid,pgid,etime,command | grep '[m]ultiprocessing'`; lines with
+  **ppid 1** are orphans (36 of them held 947 MiB here for 2.7 days,
+  `docs/lessons.md` 2026-09-19).
 
 ### Background-task ledger (mandatory; broken three times, see `docs/lessons.md` 2026-09-11)
 
