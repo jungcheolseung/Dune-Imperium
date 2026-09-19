@@ -291,6 +291,46 @@ def test_review_replays_a_finished_game_for_a_human_seat(
         manager.review_state(game_id, 4, 0)
 
 
+def test_a_game_of_ai_seats_only_is_reviewed_with_its_whole_log() -> None:
+    # Nobody can sit at such a game, so the review is the only way to watch
+    # it: the timeline plus the unredacted log of what every step did.
+    manager = GameSessionManager()
+    summary = manager.create_game(("heuristic",) * 4, game_seed=3)
+    game_id = _text(summary["game_id"])
+    assert summary["finished"] is True
+    assert "view" not in manager.snapshot(game_id)
+
+    review = manager.review(game_id, 0)
+    steps = _rows(review["steps"])
+    log = _rows(review["log"])
+    # No seat could take anything back: one live log entry per step, in order.
+    assert [entry["index"] for entry in log] == list(range(len(steps)))
+    assert not any(entry["type"] == "undo" or entry["undone"] for entry in log)
+    for step, entry in zip(steps, log, strict=True):
+        assert entry["type"] == step["type"]
+        if step["type"] == "chance":
+            assert entry["decision_id"] == step["decision_id"]
+            assert entry["values"] == step["values"]
+        else:
+            assert (entry["actor"], entry["action_id"]) == (
+                step["actor"],
+                step["action_id"],
+            )
+            assert entry["arguments"] == step["arguments"]
+    # Nothing is redacted once the game is over (OQ-010 ruling 4): a draw
+    # names its cards to every reader, whichever seat is reviewed.
+    kinds = {_text(event["kind"]) for entry in log for event in _rows(entry["events"])}
+    assert "game_finished" in kinds
+    assert manager.review(game_id, 2)["log"] == review["log"]
+    assert not any(
+        "(비공개)" in _obj(entry["arguments"]).values()
+        for entry in log
+        if entry["type"] == "action"
+    )
+    json.dumps(review)
+    assert _obj(manager.review_state(game_id, 0, 0)["view"])["player"] == 0
+
+
 def test_review_requires_a_finished_game() -> None:
     manager = GameSessionManager()
     summary = manager.create_game(HUMAN_FIRST, game_seed=13)

@@ -107,6 +107,24 @@
                 <button id="review-next-own">다음 내 행동</button>
                 <button id="review-exit">검토 종료</button>
               </div>
+              <div class="review-controls review-playback">
+                <button id="review-play">재생</button>
+                <label>단위
+                  <select id="review-unit">
+                    <option value="turn" selected>한 턴씩</option>
+                    <option value="step">한 수씩</option>
+                  </select>
+                </label>
+                <label>간격
+                  <select id="review-interval">
+                    <option value="250">0.25초</option>
+                    <option value="500">0.5초</option>
+                    <option value="1000" selected>1초</option>
+                    <option value="2000">2초</option>
+                    <option value="4000">4초</option>
+                  </select>
+                </label>
+              </div>
               <div id="review-status" class="meta"></div>
             </section>
             <p id="game-error" class="error" hidden></p>

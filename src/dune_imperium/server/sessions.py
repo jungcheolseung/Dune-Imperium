@@ -860,7 +860,9 @@ class GameSessionManager:
         A finished game is fully disclosed (OQ-010 ruling 4): every recorded
         action is labelled in full whoever acted, chance outcomes carry their
         values (a shuffle's order is no longer a secret), and any configured
-        seat — human or AI — can be reviewed.
+        seat — human or AI — can be reviewed. ``log`` is the whole session
+        log with nothing redacted, so a client without a seat (a game of AI
+        seats only has none to take) can still show what each step did.
         """
 
         session = self._get(game_id)
@@ -868,11 +870,13 @@ class GameSessionManager:
         with session.lock:
             _require_finished(session)
             steps = tuple(session.steps)
+            entries = tuple(session.log)
         return {
             "game_id": session.game_id,
             "seat": seat,
             "step_count": len(steps),
             "steps": [_review_step_label(step) for step in steps],
+            "log": _log_entries_json(entries, seat, True, 0),
             # Where steps were taken back (M11 slice 6): the live step index
             # the undo rewound to, who undid, and what was undone.
             "undo_history": [

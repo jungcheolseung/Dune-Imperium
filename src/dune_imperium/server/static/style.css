@@ -1004,6 +1004,10 @@ button:disabled { opacity: 0.5; cursor: wait; }
   align-items: center;
 }
 #review-slider { flex: 1; min-width: 140px; }
+/* Playback (the cursor walking by itself): its own row under the step
+   controls, the play button wide enough that its label can change. */
+.review-playback { margin-top: 0.4rem; }
+#review-play { min-width: 7.5em; font-weight: 600; }
 #review-status { margin-top: 0.4rem; font-size: 0.85rem; opacity: 0.8; }
 
 #game-list button, #save-list button { margin-left: 0.3rem; }
