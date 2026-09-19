@@ -2515,11 +2515,11 @@ function renderBanner() {
     } else if (decision.owner !== state.viewSeat) {
       prompt.textContent =
         `${playerLabel(decision.owner)} 결정 대기 중…` + waitingHint(decision.owner);
-      meta.textContent = `${decision.prompt} · frame: ${decision.kind}`;
+      meta.textContent = decision.prompt;
       info.append(prompt, meta);
     } else {
       prompt.textContent = decision.prompt;
-      meta.textContent = `좌석 ${decision.owner} (당신) · frame: ${decision.kind}`;
+      meta.textContent = `좌석 ${decision.owner} (당신)`;
       info.append(prompt, meta);
 
       if (state.actions) renderActionPanel(actionsBox);
@@ -5067,16 +5067,24 @@ function logEventPayload(payload) {
       parts.push(`좌석 ${value}`);
       continue;
     }
-    const isIdField =
-      key.endsWith("card_id") ||
-      key.endsWith("instance_id") ||
-      key.endsWith("conflict_id") ||
-      key === "card_id" ||
-      key === "post_id" ||
-      key === "space_id";
+    /* Every id-shaped field resolves through the catalog. The engine emits
+       about 35 distinct ones (card_id, leader_id, tech_id, contract_id,
+       skill_id, post_id, space_id, their first_/second_ variants…) and the
+       old allowlist named only five, so the rest printed raw engine ids —
+       leader_ids is the first log line of every Leader-draft game. */
+    const isIdField = key.endsWith("_id");
+    const isIdList = key.endsWith("_ids") && Array.isArray(value);
     /* Combat rewards and the like list every field; zeros say nothing. */
     if (value === 0 || value === "" || value === null || value === false) continue;
-    const shown = isIdField ? nameOf(value) : String(value);
+    if (Array.isArray(value) && value.length === 0) continue;
+    /* action_id has its own Korean table; everything else is a catalog name. */
+    const resolve = (item) =>
+      key === "action_id" ? ACTION_LABELS[item] || prettify(item) : nameOf(item);
+    const shown = isIdList
+      ? value.map(resolve).join(", ")
+      : isIdField
+        ? resolve(value)
+        : String(value);
     /* card_id and instance_id of one event resolve to the same name. */
     if (isIdField && shownNames.has(shown)) continue;
     if (isIdField) shownNames.add(shown);
