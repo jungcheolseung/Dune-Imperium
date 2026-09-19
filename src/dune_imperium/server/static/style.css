@@ -335,6 +335,49 @@ button:disabled { opacity: 0.5; cursor: wait; }
   padding: 0 0.3em;
   color: #fff;
 }
+/* A Control marker on the flag printed under its space: the pennant's own
+   box (set inline, percent of the stage), flat in the seat's colour with
+   the same dark edge as the cubes and discs. */
+.control-marker {
+  position: absolute;
+  overflow: visible;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.9));
+}
+.control-marker polygon {
+  stroke: #111;
+  stroke-width: 1px;
+  stroke-linejoin: miter;
+  vector-effect: non-scaling-stroke;
+}
+/* Bonus spice on a Maker space: a flat-topped spice hexagon exactly over the
+   printed one (its box is set inline), with the amount in the board's own
+   numeral style. The light rim is a second hexagon under the orange one. */
+.bonus-spice {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%);
+  background: #f3e9dc;
+  container-type: size;
+}
+.bonus-spice::before {
+  content: "";
+  position: absolute;
+  inset: 7%;
+  clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%);
+  background: #e0571f;
+}
+.bonus-spice-count {
+  position: relative;
+  color: #fff;
+  font-weight: 800;
+  font-size: 78cqh;
+  line-height: 1;
+  text-shadow: 0 0 2px #000, 0 1px 2px #000;
+}
+.bonus-spice-count.wide { font-size: 58cqh; letter-spacing: -0.04em; }
 .spy-post {
   position: absolute;
   transform: translate(-50%, -50%);
@@ -353,16 +396,72 @@ button:disabled { opacity: 0.5; cursor: wait; }
   transform: translate(-50%, -50%);
   box-shadow: 0 0 0 1px #111, 0 1px 3px rgba(0, 0, 0, 0.9);
 }
+/* The ring an Alliance token left behind, in its holder's colour: the size
+   of the printed dashed ring (the width is set inline; 2.6em without it). */
 .alliance-ring {
   position: absolute;
+  box-sizing: border-box;
   width: 2.6em;
-  height: 2.6em;
+  aspect-ratio: 1;
   transform: translate(-50%, -50%);
   border: 3px solid;
   border-radius: 50%;
   box-shadow: 0 0 10px rgba(255, 255, 255, 0.6);
   pointer-events: none;
 }
+/* An Alliance token: the round picture on its Faction's ring (width set
+   inline, percent of the stage), or inline on its holder's seat panel. */
+.alliance-token {
+  position: absolute;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  overflow: hidden;
+  box-shadow: 0 0 0 1px #111, 0 1px 4px rgba(0, 0, 0, 0.9);
+}
+.alliance-token img { display: block; width: 100%; height: 100%; }
+.alliance-token.drawn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #8a6d2a;
+}
+.alliance-token.drawn .icon { width: 70%; height: auto; }
+.alliance-token.inline {
+  position: static;
+  display: inline-block;
+  width: 1.7em;
+  transform: none;
+  vertical-align: middle;
+  margin-left: 0.25em;
+}
+.alliance-token.inline.drawn { display: inline-flex; }
+/* A token changing hands: a copy flying above the page (its box is set
+   inline in pixels by animateMovedAllianceTokens). */
+.alliance-token.flying {
+  position: fixed;
+  z-index: 50;
+  margin: 0;
+  transform: none;
+  pointer-events: none;
+}
+.alliance-token.flying.moving {
+  transition: left 0.7s cubic-bezier(0.2, 0.8, 0.2, 1), top 0.7s cubic-bezier(0.2, 0.8, 0.2, 1),
+    width 0.7s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+/* A Maker Hooks token in its garrison's slot (placed and turned inline). */
+.maker-hooks-token {
+  position: absolute;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.9));
+}
+.maker-hooks-token.drawn {
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  filter: none;
+}
+.maker-hooks-token.drawn .icon { width: 90%; height: auto; }
 .track-token {
   position: absolute;
   transform: translate(-50%, -50%);
@@ -720,6 +819,27 @@ button:disabled { opacity: 0.5; cursor: wait; }
   white-space: nowrap;
 }
 .strength-preview .icon { height: 1em; }
+/* What revealing the hand right now would give (revealPreview): on the
+   Reveal button and beside the hand. */
+.reveal-preview {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.5em;
+  padding: 0 0.4em;
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.35);
+  font-size: 0.85em;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.reveal-preview .icon { height: 1em; }
+.hand-reveal-note {
+  margin-left: 0.8em;
+  font-size: 0.85em;
+  opacity: 0.9;
+  white-space: nowrap;
+}
+.hand-reveal-note .reveal-preview { margin-left: 0.2em; }
 /* A count family as one row (countRow): what, how many, and the button
    that does it. */
 .action-item.count-row {
@@ -1172,3 +1292,22 @@ button:disabled { opacity: 0.5; cursor: wait; }
   font-weight: 600;
   font-size: 0.9em;
 }
+
+/* A pile shown as one line (the Intrigue discard): a click lists its cards. */
+.pile-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  width: 100%;
+  padding: 0.35em 0.6em;
+  border: 1px solid var(--line, #4a3d2a);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.35);
+  color: inherit;
+  font: inherit;
+  font-size: 0.85em;
+  text-align: left;
+  cursor: pointer;
+}
+.pile-button:hover { border-color: var(--glow, #ffcf5a); }
+.pile-button .icon { height: 1.3em; width: auto; }

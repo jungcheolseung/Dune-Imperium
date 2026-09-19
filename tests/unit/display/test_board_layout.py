@@ -6,6 +6,13 @@ from dune_imperium.content.uprising.board import (
     Faction,
 )
 from dune_imperium.display.board_layout import (
+    CONTROL_FLAG_BOXES,
+    GARRISON_POINTS,
+    MAKER_HOOKS_POINTS,
+    MAKER_HOOKS_SIZE,
+    MAKER_HOOKS_TURNS,
+    MAKER_SPICE_POINTS,
+    MAKER_SPICE_SIZE,
     POST_POINTS,
     RESEARCH_STATION_OVERLAY_BOX,
     SHIELD_WALL_BOX,
@@ -108,6 +115,84 @@ def test_marker_tables_cover_the_printed_tracks() -> None:
     for left, top, width, height in slots:
         assert 0 <= left < left + width <= 100
         assert 0 <= top < top + height <= 100
+
+
+def test_control_flags_lie_under_the_controllable_spaces() -> None:
+    # "place your Control marker on the flag below that space" [Main p. 20]:
+    # one printed pennant per space a Conflict can give control of, right
+    # under that space's box and no wider than it.
+    assert set(CONTROL_FLAG_BOXES) == {
+        space.space_id for space in BOARD_SPACES if space.critical
+    }
+    for space_id, (left, top, width, height) in CONTROL_FLAG_BOXES.items():
+        space_left, space_top, space_width, space_height = SPACE_BOXES[space_id]
+        assert space_left <= left < left + width <= space_left + space_width
+        # The pennant hangs from the space's lower edge (the hotspot boxes
+        # are hand-drawn around the print, so the flag may start a little
+        # above or below a box's bottom line).
+        assert -1.0 <= top - (space_top + space_height) <= 1.0
+        # All three flags are the same print: 3.17-3.18 wide, 3.8 tall.
+        assert 3.1 < width < 3.25 and 3.7 < height < 3.9
+    layout = marker_layout()["control_flags"]
+    assert layout["boxes"] == {
+        space_id: list(box) for space_id, box in CONTROL_FLAG_BOXES.items()
+    }
+    assert 0 < layout["notch"] < 0.5
+
+
+def test_bonus_spice_lies_on_each_printed_maker_hexagon() -> None:
+    # Bonus spice goes "in the spot designated for bonus spice" [Main p. 15]:
+    # the hexagon with the Maker icon, inside the Maker space's box. Esmar
+    # Tuek's tile is a picture laid on the scan and prints the same hexagon.
+    assert set(MAKER_SPICE_POINTS) == {
+        space.space_id for space in BOARD_SPACES if space.maker
+    }
+    width, height = MAKER_SPICE_SIZE
+    # A regular flat-topped hexagon: its height is sqrt(3)/2 of its width.
+    assert abs(height / width - 3**0.5 / 2) < 0.01
+    for space_id, (x, y) in MAKER_SPICE_POINTS.items():
+        left, top, box_width, box_height = SPACE_BOXES[space_id]
+        assert left < x - width / 2 and x + width / 2 < left + box_width
+        assert top < y - height / 2 and y + height / 2 < top + box_height + 0.5
+
+
+def test_maker_hooks_slots_flank_the_garrisons() -> None:
+    # "Place it on your garrison" [Main p. 20]: every garrison prints a slot
+    # for the token on its outer side. The four slots mirror each other like
+    # the garrisons do, and the token picture (644x449, the handle along its
+    # bottom edge) is turned a quarter so its handle lies on the slot's outer
+    # edge: clockwise for the left garrisons, the other way for the right
+    # ones, mirrored for the two whose hook points away from the Conflict's
+    # horizontal axis.
+    assert len(MAKER_HOOKS_POINTS) == len(GARRISON_POINTS) == 4
+    width, height = MAKER_HOOKS_SIZE
+    assert abs(width / height - 449 / 644) < 0.005
+    for (x, y), (garrison_x, garrison_y) in zip(
+        MAKER_HOOKS_POINTS, GARRISON_POINTS, strict=True
+    ):
+        assert (x < garrison_x) == (garrison_x < 60)
+        assert 2.5 < abs(x - garrison_x) < 5.5 and abs(y - garrison_y) < 3.5
+    lower_left, upper_left, upper_right, lower_right = MAKER_HOOKS_POINTS
+    assert lower_left[0] == upper_left[0] and upper_right[0] == lower_right[0]
+    assert lower_left[1] == lower_right[1] and upper_left[1] == upper_right[1]
+    assert MAKER_HOOKS_TURNS == ((90, False), (90, True), (-90, False), (-90, True))
+    layout = marker_layout()["maker_hooks"]
+    assert layout["size"] == [width, height]
+    assert layout["turns"][1] == {"rotation": 90, "mirrored": True}
+
+
+def test_the_alliance_token_covers_the_ring_printed_for_it() -> None:
+    # "Place the four Alliance tokens on the marked areas of the Faction's
+    # Influence tracks" [Main p. 4]: the dashed ring at the top of a strip,
+    # 6.85 across, over Influence levels 4 to 6 and inside the strip.
+    influence = marker_layout()["influence"]
+    x, y = influence["alliance"]
+    size = influence["alliance_size"]
+    assert size == 6.85
+    assert influence["seat_x"][0] - 1 < x - size / 2
+    assert x + size / 2 < influence["seat_x"][-1] + 1
+    assert influence["levels"][6] - 1 < y - size / 2 + 0.2
+    assert y + size / 2 < influence["levels"][3]
 
 
 def test_every_board_space_has_exactly_one_hotspot_box() -> None:

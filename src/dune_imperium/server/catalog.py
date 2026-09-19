@@ -76,7 +76,11 @@ from dune_imperium.display.images import (
     IXIAN_EMBASSY_IMAGE_ID,
     RESEARCH_STATION_OVERLAY_IMAGE_ID,
 )
-from dune_imperium.display.token_images import SHIELD_WALL_TOKEN_FILENAME
+from dune_imperium.display.token_images import (
+    MAKER_HOOKS_TOKEN_FILENAME,
+    SHIELD_WALL_TOKEN_FILENAME,
+    available_alliance_tokens,
+)
 from dune_imperium.server.sessions import JsonObject, JsonValue
 
 
@@ -331,6 +335,18 @@ def build_catalog(
             ),
             "box": list(SHIELD_WALL_BOX),
             "rotation": SHIELD_WALL_ROTATION,
+        },
+        # The Maker Hooks token's picture (null without the local file; the
+        # client then draws the rulebook icon in the garrison's slot) and the
+        # Alliance tokens' pictures by Faction (absent ones are drawn).
+        "maker_hooks_token": (
+            versioned(f"/tokens/{MAKER_HOOKS_TOKEN_FILENAME}")
+            if MAKER_HOOKS_TOKEN_FILENAME in token_files
+            else None
+        ),
+        "alliance_tokens": {
+            faction: versioned(f"/tokens/{filename}")
+            for faction, filename in available_alliance_tokens(token_files).items()
         },
         # Live-state marker coordinates on the scan (Influence, VP, strength,
         # Conflict quadrants, High Council seats), percent of the image.

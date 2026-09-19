@@ -132,8 +132,51 @@ INFLUENCE_SEAT_X: Final = (4.63, 6.58, 8.52, 10.47)
 # confirm. Levels 1..6 are the centres of the chevron bands, averaged over
 # the columns (the bands rise about 0.4 towards the middle).
 INFLUENCE_CUBE_SIZE: Final = 1.58
-# The Faction emblem at the top of each strip, where the Alliance token sits.
-ALLIANCE_POINT: Final = (7.5, 4.0)
+# The Alliance token: "Place the four Alliance tokens on the marked areas of
+# the Faction's Influence tracks" [Main p. 4]; its first holder "take[s] the
+# Alliance token from the track, put[s] it in their supply" [Main p. 7]. The
+# marked area is the dashed ring around the Faction emblem at the top of each
+# strip: the Emperor strip's centre (the other strips add their offset) and
+# the ring's diameter as a percent of the scan's width, from circle fits to
+# the dashes and the ring's top and bottom on a 0.5% grid (2026-09-19; the
+# old eyeballed point was 1.5 too high).
+ALLIANCE_POINT: Final = (7.56, 5.48)
+ALLIANCE_TOKEN_SIZE: Final = 6.85
+
+# The Control marker: "place your Control marker on the flag below that space
+# (replacing any opponent's marker there)" [Main p. 20]. The flag is the
+# swallow-tailed pennant printed under Arrakeen, Spice Refinery and Imperial
+# Basin: ``(left, top, width, height)`` of its white outline (left, right
+# and tips from pixel runs, the top from a 0.25% grid; 2026-09-19), and the
+# depth of the notch between the two tips as a fraction of the height.
+CONTROL_FLAG_BOXES: Final[Mapping[str, tuple[float, float, float, float]]] = (
+    MappingProxyType(
+        {
+            "arrakeen": (77.23, 34.8, 3.18, 3.82),
+            "spice_refinery": (61.29, 37.5, 3.18, 3.82),
+            "imperial_basin": (74.67, 51.05, 3.17, 3.8),
+        }
+    )
+)
+CONTROL_FLAG_NOTCH: Final = 0.207
+
+# Bonus spice accumulates "in the spot designated for bonus spice"
+# [Main p. 15]: the hexagon with the Maker icon printed on each Maker space.
+# The centres of the three hexagons and their common size, ``(width,
+# height)`` of the white outline (a regular flat-topped hexagon; pixel runs,
+# 2026-09-19). Esmar Tuek's tile prints the same hexagon: its centre lies at
+# (413.5, 218.5) of the 550x310 tile picture, laid on the scan at the
+# ``tuek_sietch`` box above (there it comes out 2.76 x 2.36, the same print
+# within a hair).
+MAKER_SPICE_POINTS: Final[Mapping[str, tuple[float, float]]] = MappingProxyType(
+    {
+        "imperial_basin": (88.03, 48.18),
+        "hagga_basin": (62.1, 54.47),
+        "deep_desert": (43.62, 61.85),
+        "tuek_sietch": (86.53, 63.16),
+    }
+)
+MAKER_SPICE_SIZE: Final = (2.79, 2.4)
 
 # Victory Point track: the numbered column on the right edge, 0 at the
 # bottom and 12 at the top; higher scores share the emblem above 12. The
@@ -177,6 +220,27 @@ STRENGTH_TOKEN_SIZE: Final = 3.0
 GARRISON_POINTS: Final = ((44.9, 83.1), (44.9, 71.8), (85.7, 71.8), (85.7, 83.1))
 CONFLICT_QUADRANTS: Final = ((56.5, 83.0), (56.5, 71.8), (74.0, 71.8), (74.0, 83.0))
 
+# The Maker Hooks token: "Take a Maker Hooks token from the bank, if you
+# don't already have one. Place it on your garrison" [Main p. 20]. Every
+# garrison prints a slot in the token's shape on its outer side, a faint
+# outline with the hook drawn in it (it takes a contrast stretch to see):
+# the centre of each seat's slot, the slot's ``(width, height)`` and how the
+# token picture (``token_images.MAKER_HOOKS_TOKEN``: the handle along its
+# bottom edge, the hook at the right) is turned and mirrored to lie in it.
+# The outer edge, the top of the upper slots and the bottom of the lower ones
+# are the peaks of brightness profiles; the slots are as long as the picture
+# is when it is as wide as they are (4.88 x 449/644 = 3.4), so the picture
+# covers the print exactly (2026-09-19).
+MAKER_HOOKS_POINTS: Final = (
+    (41.02, 85.77),
+    (41.02, 68.92),
+    (89.31, 68.92),
+    (89.31, 85.77),
+)
+MAKER_HOOKS_SIZE: Final = (3.4, 4.88)
+# (rotation in degrees, mirrored before turning) per seat.
+MAKER_HOOKS_TURNS: Final = ((90, False), (90, True), (-90, False), (-90, True))
+
 # The four High Council seats, left to right: the centres of the printed
 # circles (diameter 2.91; re-measured 2026-09-18 from the white rings).
 COUNCIL_SEATS: Final = ((42.18, 5.22), (46.0, 5.22), (49.83, 5.22), (53.64, 5.22))
@@ -211,6 +275,28 @@ def marker_layout() -> dict[str, Any]:
             "seat_x": list(INFLUENCE_SEAT_X),
             "cube_size": INFLUENCE_CUBE_SIZE,
             "alliance": list(ALLIANCE_POINT),
+            "alliance_size": ALLIANCE_TOKEN_SIZE,
+        },
+        "control_flags": {
+            "boxes": {
+                space_id: list(box) for space_id, box in CONTROL_FLAG_BOXES.items()
+            },
+            "notch": CONTROL_FLAG_NOTCH,
+        },
+        "maker_spice": {
+            "points": {
+                space_id: list(point)
+                for space_id, point in MAKER_SPICE_POINTS.items()
+            },
+            "size": list(MAKER_SPICE_SIZE),
+        },
+        "maker_hooks": {
+            "points": [list(point) for point in MAKER_HOOKS_POINTS],
+            "size": list(MAKER_HOOKS_SIZE),
+            "turns": [
+                {"rotation": rotation, "mirrored": mirrored}
+                for rotation, mirrored in MAKER_HOOKS_TURNS
+            ],
         },
         "victory_points": {
             "x": VICTORY_POINT_X,

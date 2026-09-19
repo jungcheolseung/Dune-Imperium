@@ -1,8 +1,13 @@
 """Tests for the pictured Combat marker filenames and their availability."""
 
+from dune_imperium.content.uprising.board import Faction
 from dune_imperium.display.token_images import (
+    ALLIANCE_TOKEN_FACTIONS,
+    MAKER_HOOKS_TOKEN_FILENAME,
     SHIELD_WALL_TOKEN_FILENAME,
     STRENGTH_TOKEN_COLORS,
+    alliance_token_filename,
+    available_alliance_tokens,
     available_strength_tokens,
     strength_token_filenames,
 )
@@ -71,3 +76,21 @@ def test_the_shield_wall_token_has_its_own_picture() -> None:
     assert SHIELD_WALL_TOKEN_FILENAME == "shield_wall.png"
     assert SHIELD_WALL_TOKEN_FILENAME not in names
 
+
+
+def test_every_faction_has_an_alliance_token_picture_name() -> None:
+    # One Alliance token per Faction [Main p. 4], named by the engine's
+    # Faction value so the browser can look a picture up by faction key.
+    assert ALLIANCE_TOKEN_FACTIONS == tuple(faction.value for faction in Faction)
+    assert alliance_token_filename("bene_gesserit") == "alliance_bene_gesserit.jpg"
+    names = {alliance_token_filename(faction) for faction in ALLIANCE_TOKEN_FACTIONS}
+    assert len(names) == 4
+    assert MAKER_HOOKS_TOKEN_FILENAME not in names
+
+
+def test_alliance_pictures_are_offered_one_by_one() -> None:
+    # A missing picture only sends that Faction's token back to the drawn
+    # one; the others keep theirs.
+    assert available_alliance_tokens(frozenset()) == {}
+    files = frozenset({"alliance_fremen.jpg", "alliance_emperor.png", "other.jpg"})
+    assert available_alliance_tokens(files) == {"fremen": "alliance_fremen.jpg"}

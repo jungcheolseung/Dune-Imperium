@@ -412,6 +412,9 @@ def test_pictured_combat_markers_are_served_when_present(tmp_path: Path) -> None
         assert token_client.get(green["plus20"]).content == b"png-green-plus20"
         # No Shield Wall picture in that directory: a place, no image.
         assert catalog["shield_wall"]["image"] is None
+        # Nor the Maker Hooks and Alliance token pictures: the client draws them.
+        assert catalog["maker_hooks_token"] is None
+        assert catalog["alliance_tokens"] == {}
 
     (tokens / "shield_wall.png").write_bytes(b"png-shield-wall")
     with TestClient(
@@ -426,6 +429,43 @@ def test_pictured_combat_markers_are_served_when_present(tmp_path: Path) -> None
         wall = wall_client.get("/catalog").json()["shield_wall"]
         assert _unversioned(wall["image"]) == "/tokens/shield_wall.png"
         assert wall_client.get(wall["image"]).content == b"png-shield-wall"
+
+    # The Maker Hooks token and the Alliance tokens present: one picture for
+    # the hooks, one per Faction that has its file.
+    (tokens / "maker_hooks.png").write_bytes(b"png-maker-hooks")
+    (tokens / "alliance_fremen.jpg").write_bytes(b"jpg-alliance-fremen")
+    with TestClient(
+        create_app(
+            saves_dir=tmp_path / "saves",
+            card_images_dir=tmp_path / "no-images",
+            icons_dir=tmp_path / "no-icons",
+            tokens_dir=tokens,
+            board_image=tmp_path / "no-map.jpg",
+        )
+    ) as piece_client:
+        catalog = piece_client.get("/catalog").json()
+        assert _unversioned(catalog["maker_hooks_token"]) == "/tokens/maker_hooks.png"
+        assert (
+            piece_client.get(catalog["maker_hooks_token"]).content == b"png-maker-hooks"
+        )
+        assert list(catalog["alliance_tokens"]) == ["fremen"]
+        fremen = catalog["alliance_tokens"]["fremen"]
+        assert _unversioned(fremen) == "/tokens/alliance_fremen.jpg"
+        assert piece_client.get(fremen).content == b"jpg-alliance-fremen"
+        # Where they lie comes with the marker tables either way.
+        tracks = catalog["tracks"]
+        assert set(tracks["control_flags"]["boxes"]) == {
+            "arrakeen",
+            "spice_refinery",
+            "imperial_basin",
+        }
+        assert set(tracks["maker_spice"]["points"]) == {
+            "deep_desert",
+            "hagga_basin",
+            "imperial_basin",
+            "tuek_sietch",
+        }
+        assert len(tracks["maker_hooks"]["points"]) == 4
 
 
 def test_a_picture_replaced_in_place_gets_a_new_url(tmp_path: Path) -> None:

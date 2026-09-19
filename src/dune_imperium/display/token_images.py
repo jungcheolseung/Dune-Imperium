@@ -19,6 +19,40 @@ from typing import Final
 # [Main p. 10] (docs/rules/player-turns.md).
 SHIELD_WALL_TOKEN_FILENAME: Final = "shield_wall.png"
 
+# The Maker Hooks token, the same for every player: "Take a Maker Hooks token
+# from the bank, if you don't already have one. Place it on your garrison"
+# [Main p. 20]. The picture has the handle along its bottom edge and the hook
+# at the right; ``board_layout.MAKER_HOOKS_TURNS`` turns it into each
+# garrison's printed slot.
+MAKER_HOOKS_TOKEN_FILENAME: Final = "maker_hooks.png"
+
+# The four Alliance tokens, one per Faction (``Faction`` values): on the marked
+# area of the Faction's Influence track until a player earns the Alliance,
+# then in that player's supply [Main pp. 4, 7]. The pictures are round tokens
+# on a black square; the UI cuts the circle out.
+ALLIANCE_TOKEN_FACTIONS: Final[tuple[str, ...]] = (
+    "emperor",
+    "spacing_guild",
+    "bene_gesserit",
+    "fremen",
+)
+
+
+def alliance_token_filename(faction: str) -> str:
+    """Return the filename of one Faction's Alliance token picture."""
+
+    return f"alliance_{faction}.jpg"
+
+
+def available_alliance_tokens(files: frozenset[str]) -> dict[str, str]:
+    """Return ``{faction: filename}`` for the Alliance pictures in ``files``."""
+
+    return {
+        faction: alliance_token_filename(faction)
+        for faction in ALLIANCE_TOKEN_FACTIONS
+        if alliance_token_filename(faction) in files
+    }
+
 # The token colour of each seat, in seat order. The browser UI tints
 # everything else a seat owns with ``SEAT_COLORS`` in ``server/static/app.js``
 # (blue, red, green, yellow); keep the two tables in step.

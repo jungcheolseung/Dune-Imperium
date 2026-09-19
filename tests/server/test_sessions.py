@@ -228,6 +228,64 @@ def test_a_reveal_tells_the_table_the_persuasion_still_unspent() -> None:
     assert _obj(summary["decision"])["persuasion"] == unspent - 2
 
 
+def test_the_reveal_step_previews_what_the_hand_is_worth_right_now() -> None:
+    # "지금 공개하면 Persuasion N": a Reveal sums the revealed Persuasion and
+    # swords as it starts [Main p. 12], so the dry run of ``reveal_turn``
+    # already holds both figures. Only that step carries the preview.
+    manager = GameSessionManager()
+    game_id = _text(manager.create_game(HUMAN_FIRST, game_seed=11)["game_id"])
+    actions = _rows(manager.legal_actions(game_id, 0)["actions"])
+    reveal = next(entry for entry in actions if entry["action_id"] == "reveal_turn")
+    preview = _obj(reveal["reveal_preview"])
+    assert all(
+        "reveal_preview" not in entry
+        for entry in actions
+        if entry["action_id"] != "reveal_turn"
+    )
+
+    # Taking the step opens the Reveal with exactly that Persuasion and
+    # leaves the seat at exactly that strength (no units in the Conflict
+    # yet, so the swords do not count: 0).
+    summary = manager.summary(game_id)
+    summary = manager.apply_action(
+        game_id, seat=0, revision=_int(summary["revision"]), index=_int(reveal["index"])
+    )
+    assert _obj(summary["decision"])["persuasion"] == preview["persuasion"]
+    assert _int(preview["persuasion"]) > 0
+    own = _rows(manager.view(game_id, 0)["players"])[0]
+    assert own["combat_strength"] == preview["strength"] == 0
+
+    # With units in the Conflict the revealed swords count at once.
+    other = GameSessionManager()
+    other_id = _text(other.create_game(HUMAN_FIRST, game_seed=11)["game_id"])
+    combat = ("hagga_basin", "imperial_basin", "arrakeen", "spice_refinery")
+    deploys = [
+        entry
+        for entry in _play_until(other, other_id, "deploy_troops", combat)
+        if entry["action_id"] == "deploy_troops"
+    ]
+    summary = other.summary(other_id)
+    other.apply_action(
+        other_id,
+        seat=0,
+        revision=_int(summary["revision"]),
+        index=_int(deploys[-1]["index"]),
+    )
+    later = _play_until(other, other_id, "reveal_turn", ())
+    later_reveal = next(e for e in later if e["action_id"] == "reveal_turn")
+    later_preview = _obj(later_reveal["reveal_preview"])
+    summary = other.summary(other_id)
+    summary = other.apply_action(
+        other_id,
+        seat=0,
+        revision=_int(summary["revision"]),
+        index=_int(later_reveal["index"]),
+    )
+    assert _obj(summary["decision"])["persuasion"] == later_preview["persuasion"]
+    own = _rows(other.view(other_id, 0)["players"])[0]
+    assert own["combat_strength"] == later_preview["strength"]
+
+
 def test_apply_guards_revision_owner_and_index() -> None:
     manager = GameSessionManager()
     summary = manager.create_game(HUMAN_FIRST, game_seed=13)

@@ -2171,6 +2171,7 @@ function render(options) {
     : [];
   if (!(foreign && popoverPinned)) closePopover();
   el("header-status").textContent =
+  const allianceBefore = allianceTokenPlaces();
     `라운드 ${summary.round_number} · ${PHASE_LABELS[summary.phase] || summary.phase}` +
     (summary.game_seed === null ? "" : ` · seed ${summary.game_seed}`) +
     (summary.choam_module ? " · CHOAM" : "") +
@@ -2197,6 +2198,7 @@ function render(options) {
     pane.scrollLeft = left;
   }
 }
+  animateMovedAllianceTokens(allianceBefore);
 
 /* Post-game full disclosure (OQ-010 ruling 4): once a game has finished,
    the server adds every hidden zone to the view, both live and in review. */
@@ -2418,6 +2420,30 @@ function strengthPreview(after) {
 }
 
 /* ---------- count steppers ----------
+/* What revealing the hand right now would give: the server's dry run of
+   `reveal_turn` (`reveal_preview`: the Persuasion the Reveal opens with and
+   the strength once the revealed swords count), so the engine's own sum. */
+function revealPreview(preview) {
+  const badge = document.createElement("span");
+  badge.className = "reveal-preview";
+  badge.title = "지금 손패를 공개하면 바로 얻는 Persuasion과 전투력 (Reveal 중의 선택 효과는 제외)";
+  badge.append(icon("persuasion", "Persuasion"), ` ${preview.persuasion}`);
+  const own = state.view && state.view.players[state.viewSeat];
+  const now = own ? own.combat_strength || 0 : 0;
+  if (typeof preview.strength === "number" && preview.strength !== now) {
+    badge.append(" · ", icon("sword", "전투력"), ` ${now} → ${preview.strength}`);
+  }
+  return badge;
+}
+
+/* The `reveal_turn` step among the seat's legal actions, if it is there and
+   the server previewed it. */
+function revealTurnPreview() {
+  if (state.review || !state.actions) return null;
+  const reveal = state.actions.actions.find((action) => action.action_id === "reveal_turn");
+  return reveal && reveal.reveal_preview ? reveal.reveal_preview : null;
+}
+
 
    "Deploy 1", "Deploy 2", "Deploy 3" are one decision with a number in it.
    Actions of one id that differ only in a `count` argument are shown as a
@@ -2642,6 +2668,7 @@ function actionItem(action, onApply) {
     button.appendChild(strengthPreview(action.strength_after));
   }
   if (action.warning) {
+  if (action.reveal_preview) button.appendChild(revealPreview(action.reveal_preview));
     /* The server dry-ran the step: the troop supply cannot cover what the
        effect asks for (OQ-030, OQ-049), so the action does less than printed. */
     wrap.classList.add("shortfall");
@@ -3283,6 +3310,64 @@ function boardPiece(src, box, className) {
 }
 
 /* The scanned board with the live state on top: a hotspot per space
+/* Where the board prints the flag under a controllable space
+   (catalog.tracks.control_flags, a percent box), if it does. */
+function controlFlagBox(spaceId) {
+  const flags = state.catalog.tracks && state.catalog.tracks.control_flags;
+  return (flags && flags.boxes[spaceId]) || null;
+}
+
+/* A seat's Control marker: "place your Control marker on the flag below
+   that space" [Main p. 20]. It is the printed pennant's own shape and size,
+   flat in the seat's colour like every other player token. */
+function controlMarker(seat, spaceId, box) {
+  const svgNs = "http://www.w3.org/2000/svg";
+  const [left, top, width, height] = box;
+  const dip = 100 * (1 - state.catalog.tracks.control_flags.notch);
+  const marker = document.createElementNS(svgNs, "svg");
+  marker.setAttribute("class", "control-marker");
+  marker.setAttribute("viewBox", "0 0 100 100");
+  marker.setAttribute("preserveAspectRatio", "none");
+  marker.dataset.seat = String(seat);
+  marker.dataset.space = spaceId;
+  marker.style.left = `${left}%`;
+  marker.style.top = `${top}%`;
+  marker.style.width = `${width}%`;
+  marker.style.height = `${height}%`;
+  const title = document.createElementNS(svgNs, "title");
+  title.textContent = `Control: 좌석 ${seat} · ${nameOf(spaceId)}`;
+  const pennant = document.createElementNS(svgNs, "polygon");
+  pennant.setAttribute("points", `0,0 100,0 100,100 50,${dip} 0,100`);
+  pennant.setAttribute("fill", SEAT_COLORS[seat]);
+  marker.append(title, pennant);
+  return marker;
+}
+
+/* The centre of the hexagon a Maker space prints for its bonus spice
+   (catalog.tracks.maker_spice), if the layout has one for the space. */
+function makerSpicePoint(spaceId) {
+  const spots = state.catalog.tracks && state.catalog.tracks.maker_spice;
+  return (spots && spots.points[spaceId]) || null;
+}
+
+/* The bonus spice waiting on a Maker space, "in the spot designated for
+   bonus spice" [Main p. 15]: a spice hexagon exactly over the printed one,
+   with the amount in it like the board's own spice numbers. */
+function bonusSpiceToken(spaceId, count, point) {
+  const [width, height] = state.catalog.tracks.maker_spice.size;
+  const token = document.createElement("span");
+  token.className = "bonus-spice";
+  token.dataset.space = spaceId;
+  token.title = `${nameOf(spaceId)} · bonus spice ${count}`;
+  token.style.width = `${width}%`;
+  token.style.height = `${height}%`;
+  const amountText = document.createElement("span");
+  amountText.className = "bonus-spice-count" + (count > 9 ? " wide" : "");
+  amountText.textContent = String(count);
+  token.appendChild(amountText);
+  return placeAt(token, point[0], point[1]);
+}
+
    (catalog.spaces[id].box, percent of the image), Agent tokens, Control
    flags, Maker bonus spice, and Spies on the observation posts. */
 function renderBoardStage(board, view) {
@@ -3344,12 +3429,15 @@ function renderBoardStage(board, view) {
       for (const seat of seats) tokens.appendChild(seatToken(seat, "agent-token"));
       hotspot.appendChild(tokens);
     }
-    if (controllers.has(spaceId)) {
+    /* The Control marker and the bonus spice lie on their printed places
+       (drawn below, outside the hotspot); a space the layout has no place
+       for keeps the mark inside its hotspot. */
+    if (controllers.has(spaceId) && !controlFlagBox(spaceId)) {
       const flag = seatToken(controllers.get(spaceId), "control-flag");
       flag.title = `Control: 좌석 ${controllers.get(spaceId)}`;
       hotspot.appendChild(flag);
     }
-    if (makerSpice.get(spaceId)) {
+    if (makerSpice.get(spaceId) && !makerSpicePoint(spaceId)) {
       const bonus = amount("spice", "bonus spice", makerSpice.get(spaceId));
       bonus.classList.add("maker-bonus");
       hotspot.appendChild(bonus);
@@ -3372,6 +3460,15 @@ function renderBoardStage(board, view) {
   }
 
   for (const [postId, [x, y]] of Object.entries(state.catalog.posts)) {
+  for (const [spaceId, seat] of controllers) {
+    const box = controlFlagBox(spaceId);
+    if (box) stage.appendChild(controlMarker(seat, spaceId, box));
+  }
+  for (const [spaceId, count] of makerSpice) {
+    const point = makerSpicePoint(spaceId);
+    if (count && point) stage.appendChild(bonusSpiceToken(spaceId, count, point));
+  }
+
     const seats = spies.get(postId) || [];
     if (!seats.length) continue;
     const post = document.createElement("span");
@@ -3529,6 +3626,108 @@ function discCluster(count, halfX, halfY, { fromTop = false, upright = false } =
 }
 
 /* Live markers on the printed tracks (catalog.tracks, percent of the
+/* A Faction's Alliance token: its picture (catalog.alliance_tokens) cut to
+   the round token, or a drawn disc with the Faction's emblem without the
+   owner's token pictures. With a `size` (percent of the stage) it lies on
+   the board; without one it is an inline token for the seat panels. */
+function allianceToken(key, size, holder) {
+  const token = document.createElement("span");
+  token.className = "alliance-token";
+  token.dataset.faction = key;
+  token.dataset.holder = holder === undefined ? "" : String(holder);
+  token.title = `${FACTION_LABELS[key]} Alliance`;
+  if (size !== undefined) token.style.width = `${size}%`;
+  else token.classList.add("inline");
+  const url = (state.catalog.alliance_tokens || {})[key];
+  if (url) {
+    const face = document.createElement("img");
+    face.src = url;
+    face.alt = "";
+    face.draggable = false;
+    token.appendChild(face);
+  } else {
+    token.classList.add("drawn");
+    token.appendChild(icon(`influence_${key}`, `${FACTION_LABELS[key]} Alliance`));
+  }
+  return token;
+}
+
+/* Where each Faction's Alliance token is on the screen and who holds it
+   ("" on the board), so a render can tell a token that changed hands. */
+function allianceTokenPlaces() {
+  const places = new Map();
+  for (const token of document.querySelectorAll(".alliance-token:not(.flying)")) {
+    const rect = token.getBoundingClientRect();
+    if (rect.width) places.set(token.dataset.faction, { holder: token.dataset.holder, rect });
+  }
+  return places;
+}
+
+/* An Alliance token that changed hands — earned from the board, taken over
+   by a seat that passed its holder, or returned [Main p. 7] [FAQ p. 1] —
+   flies from where it lay to where it lies now. The flight is a copy above
+   the page (the seat panels scroll and would clip the token itself). */
+function animateMovedAllianceTokens(before) {
+  if (!before.size) return;
+  if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  for (const token of document.querySelectorAll(".alliance-token:not(.flying)")) {
+    const was = before.get(token.dataset.faction);
+    const to = token.getBoundingClientRect();
+    if (!was || was.holder === token.dataset.holder || !to.width) continue;
+    const ghost = token.cloneNode(true);
+    ghost.classList.remove("inline");
+    ghost.classList.add("flying");
+    const lay = (rect) => {
+      ghost.style.left = `${rect.left}px`;
+      ghost.style.top = `${rect.top}px`;
+      ghost.style.width = `${rect.width}px`;
+    };
+    lay(was.rect);
+    document.body.appendChild(ghost);
+    token.style.visibility = "hidden";
+    ghost.getBoundingClientRect();
+    ghost.classList.add("moving");
+    lay(to);
+    const land = () => {
+      ghost.remove();
+      token.style.visibility = "";
+    };
+    ghost.addEventListener("transitionend", land, { once: true });
+    setTimeout(land, 1200);
+  }
+}
+
+/* A seat's Maker Hooks token in the slot its garrison prints for it: "Place
+   it on your garrison" [Main p. 20]. The picture is turned (and mirrored)
+   into the slot, so its long side lies along the slot's height; without the
+   picture the rulebook icon marks the slot. */
+function makerHooksToken(seat, layout) {
+  const [x, y] = layout.points[seat] || layout.points[0];
+  const [width, height] = layout.size;
+  const url = state.catalog.maker_hooks_token;
+  let token;
+  if (url) {
+    const turn = layout.turns[seat] || layout.turns[0];
+    token = document.createElement("img");
+    token.className = "maker-hooks-token";
+    token.src = url;
+    token.alt = "Maker Hooks";
+    token.draggable = false;
+    token.style.width = `${height}%`;
+    token.style.transform =
+      `translate(-50%, -50%) rotate(${turn.rotation}deg)` + (turn.mirrored ? " scaleX(-1)" : "");
+  } else {
+    token = document.createElement("span");
+    token.className = "maker-hooks-token drawn";
+    token.style.width = `${width}%`;
+    token.style.height = `${height}%`;
+    token.appendChild(icon("maker_hooks", "Maker Hooks"));
+  }
+  token.dataset.seat = String(seat);
+  token.title = `좌석 ${seat} · Maker Hooks`;
+  return placeAt(token, x, y);
+}
+
    scan): Influence cubes and Alliance rings on the Faction strips, VP
    tokens on the score column, strength tokens on the combat track, deployed
    units in each seat's Conflict quadrant, and Councilor tokens on the High
@@ -3552,6 +3751,28 @@ function renderTrackMarkers(stage, view) {
     scoreStacks.get(level).push(seat);
   });
   view.players.forEach((player, index) => {
+  /* An Alliance token lies on the marked ring of its Faction's strip until a
+     player earns it and takes it into their supply [Main pp. 4, 7] (it then
+     shows on that seat's panel); the vacated ring takes the holder's colour. */
+  for (const key of factions) {
+    const offset = tracks.influence.offsets[key];
+    if (offset === undefined) continue;
+    const [ax, ay] = tracks.influence.alliance;
+    const size = tracks.influence.alliance_size;
+    const holder = view.players.find((p) => (p.alliance_faction_ids || []).includes(key));
+    if (holder) {
+      const ring = document.createElement("span");
+      ring.className = "alliance-ring";
+      ring.dataset.faction = key;
+      if (size !== undefined) ring.style.width = `${size}%`;
+      ring.style.borderColor = SEAT_COLORS[holder.player];
+      ring.title = `좌석 ${holder.player} · ${FACTION_LABELS[key]} Alliance`;
+      stage.appendChild(placeAt(ring, ax, ay + offset));
+    } else {
+      stage.appendChild(placeAt(allianceToken(key, size), ax, ay + offset));
+    }
+  }
+
     const seat = typeof player.player_id === "number" ? player.player_id : index;
     const color = SEAT_COLORS[seat];
 
@@ -3568,14 +3789,6 @@ function renderTrackMarkers(stage, view) {
       cube.title = `좌석 ${seat} · ${FACTION_LABELS[key]} Influence ${player.influence[key]}`;
       placeAt(cube, tracks.influence.seat_x[seat], tracks.influence.levels[level] + offset);
       stage.appendChild(cube);
-      if ((player.alliance_faction_ids || []).includes(key)) {
-        const ring = document.createElement("span");
-        ring.className = "alliance-ring";
-        ring.style.borderColor = color;
-        ring.title = `좌석 ${seat} · ${FACTION_LABELS[key]} Alliance`;
-        placeAt(ring, tracks.influence.alliance[0], tracks.influence.alliance[1] + offset);
-        stage.appendChild(ring);
-      }
     }
 
     /* A Score marker alone on its score lies on the centre of the cell, so
@@ -3673,6 +3886,9 @@ function renderTrackMarkers(stage, view) {
     placeAt(garrison, gx, gy);
     stage.appendChild(garrison);
 
+    if (player.maker_hooks && tracks.maker_hooks) {
+      stage.appendChild(makerHooksToken(seat, tracks.maker_hooks));
+    }
     if (units > 0) {
       const [qx, qy] = tracks.conflict_quadrants[seat] || tracks.conflict_quadrants[0];
       const deployed = document.createElement("div");
@@ -4004,11 +4220,39 @@ function renderMarket() {
       badge: "set-aside",
     });
   }
-  if (view.intrigue_discard.length) {
-    cardStrip(market, "Intrigue discard", view.intrigue_discard.slice(-6), "", {
-      className: "intrigue",
-    });
-  }
+  renderIntriguePiles(market, view);
+}
+
+/* The public Intrigue piles as one line: the cards themselves only matter
+   when somebody wants to look back, so a click lists them (newest first) —
+   the face-up discard pile beside the deck [Main p. 7] and the Intrigue
+   cards trashed out of the game [Main p. 20]. */
+function renderIntriguePiles(market, view) {
+  const discard = view.intrigue_discard || [];
+  const trash = view.intrigue_trash || [];
+  if (!discard.length && !trash.length) return;
+  const box = document.createElement("div");
+  box.className = "strip";
+  const pile = document.createElement("button");
+  pile.type = "button";
+  pile.className = "pile-button";
+  pile.dataset.pile = "intrigue";
+  pile.append(icon("intrigue", "Intrigue"), ` Intrigue discard ${discard.length}장`);
+  if (trash.length) pile.append(` · trash ${trash.length}장`);
+  pile.title = "지금까지 쓰인 Intrigue 카드 보기";
+  pile.addEventListener("click", (event) => {
+    event.stopPropagation();
+    openPileList(
+      [
+        ["Intrigue discard", [...discard].reverse()],
+        ["Intrigue trash", [...trash].reverse()],
+      ],
+      null,
+      pile
+    );
+  });
+  box.appendChild(pile);
+  market.appendChild(box);
 }
 
 /* ---------- Immortality: the Tleilaxu Row and the Bene Tleilax board ---------- */
@@ -4357,8 +4601,10 @@ function renderSeats() {
       const stat = statNode(`influence_${key}`, `${label} Influence`, player.influence[key]);
       if (player.alliance_faction_ids.includes(key)) {
         stat.classList.add("alliance");
+        /* The Alliance token is in this seat's supply [Main p. 7]. */
         stat.title += " · Alliance";
       }
+        stat.appendChild(allianceToken(key, undefined, seat));
       influence.appendChild(stat);
     }
     card.appendChild(influence);
@@ -4566,18 +4812,24 @@ function skillIdOf(instanceId) {
   return match ? match[1] : String(instanceId);
 }
 
-/* A pile listing (discard, Intrigue hand) in the popover. */
+/* A pile listing (discard, Intrigue piles) in the popover: one pile as
+   `(title, ids, anchor)`, or several as `([[title, ids], ...], null, anchor)`
+   (empty piles are left out). */
 function openPileList(title, ids, anchor) {
   const pop = el("card-popover");
+  const piles = Array.isArray(title) ? title : [[title, ids]];
   pop.textContent = "";
-  const head = document.createElement("div");
-  head.className = "popover-title";
-  head.textContent = `${title} (${ids.length})`;
-  pop.appendChild(head);
-  const row = document.createElement("div");
-  row.className = "strip-cards wrap";
-  for (const id of ids) row.appendChild(visualCard(id, { className: "small" }));
-  pop.appendChild(row);
+  for (const [pileTitle, pileIds] of piles) {
+    if (!pileIds.length && piles.length > 1) continue;
+    const head = document.createElement("div");
+    head.className = "popover-title";
+    head.textContent = `${pileTitle} (${pileIds.length})`;
+    pop.appendChild(head);
+    const row = document.createElement("div");
+    row.className = "strip-cards wrap";
+    for (const id of pileIds) row.appendChild(visualCard(id, { className: "small" }));
+    pop.appendChild(row);
+  }
   placePopover(pop, anchor, 420);
 }
 
@@ -4934,6 +5186,15 @@ function renderPrivate() {
   title.textContent = `내 손패 · 좌석 ${activeSeat()}`;
   label.appendChild(title);
   const counts = document.createElement("span");
+  const revealNow = revealTurnPreview();
+  if (revealNow) {
+    /* Beside the hand while the seat may still choose between an Agent turn
+       and a Reveal turn: what this hand is worth revealed right now. */
+    const note = document.createElement("span");
+    note.className = "hand-reveal-note";
+    note.append("지금 공개하면 ", revealPreview(revealNow));
+    label.appendChild(note);
+  }
   counts.className = "hand-counts";
   counts.append(
     statNode("draw", "deck", view.private.deck_size),

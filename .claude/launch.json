@@ -13,6 +13,19 @@
         "saves"
       ],
       "port": 8000
+    },
+    {
+      "name": "ui-verify",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": [
+        "run",
+        "dune-imperium-server",
+        "--port",
+        "8765",
+        "--saves-dir",
+        "/tmp/dune-ui-verify-saves"
+      ],
+      "port": 8765
     }
   ]
 }

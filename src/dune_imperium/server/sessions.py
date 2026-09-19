@@ -1576,7 +1576,7 @@ def _serialize_action(
 
     outcome = _dry_run(session, action)
     undoable = _action_is_undoable(session, action, outcome)
-    return {
+    serialized: JsonObject = {
         "index": index,
         "action_id": action.action_id,
         "arguments": _jsonify(dict(action.arguments)),
@@ -1585,6 +1585,35 @@ def _serialize_action(
         "warning": shortfall_warning(outcome),
         "strength_after": strength_preview(session.state, action, outcome, undoable),
     }
+    revealed = reveal_preview(action, outcome)
+    if revealed is not None:
+        serialized["reveal_preview"] = revealed
+    return serialized
+
+
+def reveal_preview(
+    action: DomainAction, outcome: RuleResult | None
+) -> JsonObject | None:
+    """Return what revealing the hand right now would give the acting seat.
+
+    For ``reveal_turn`` only: the Persuasion the Reveal would open with and
+    the seat's combat strength once its revealed swords count, read off the
+    same dry run as the rest (a Reveal sums Persuasion and swords as it
+    starts [Main p. 12]; effects the owner resolves later in the Reveal are
+    not in these figures). The listing goes to the seat that owns the hand,
+    so the preview shows that seat nothing it cannot work out itself.
+    """
+
+    if action.action_id != "reveal_turn" or outcome is None:
+        return None
+    for frame in reversed(outcome.state.decision_stack):
+        persuasion = dict(frame.context).get("persuasion")
+        if str(frame.kind) == "reveal" and type(persuasion) is int:
+            return {
+                "persuasion": persuasion,
+                "strength": outcome.state.players[action.actor].combat_strength,
+            }
+    return None
 
 
 def strength_preview(
