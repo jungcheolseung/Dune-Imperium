@@ -23,6 +23,8 @@ Two visibility facts are computed when a step is applied, from
 
 from dataclasses import dataclass, replace
 
+from dune_imperium.content.uprising.leaders import LEADERS_BY_ID
+from dune_imperium.content.uprising.starting_cards import starting_card_for_instance
 from dune_imperium.core.chance import ChanceOutcome
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.observation import known_card_seats
@@ -66,7 +68,8 @@ def reveals_hidden_information(
     disclosing a card that only the actor knew (playing an Intrigue,
     discarding or trashing from hand, revealing the hand): that is the
     actor's own loss to accept when undoing. Chance steps have no actor,
-    so any of their reveals count.
+    so any of their reveals count. A starting card that a Leader pick takes
+    out of the game is not a reveal either (``_removed_by_leader_pick``).
     """
 
     everyone = frozenset(range(before.config.players))
@@ -79,7 +82,32 @@ def reveals_hidden_information(
             continue
         if own_secret is not None and seats_before == own_secret:
             continue
+        if card_id not in known_after and _removed_by_leader_pick(
+            before, after, card_id
+        ):
+            continue
         return True
+    return False
+
+
+def _removed_by_leader_pick(before: GameState, after: GameState, card_id: str) -> bool:
+    """Return whether the step's Leader pick took ``card_id`` out of the game.
+
+    A printed setup rule removes a starting card by name as its Leader is
+    drafted (Staban Tuek's Limited Allies: "You start the game without
+    Diplomacy in your deck"). The card is in no zone afterwards, which
+    ``known_card_seats`` reads as public, but no seat learned anything: the
+    ten starting cards are common knowledge, and the pick shows nobody where
+    in the shuffled deck the card sat.
+    """
+
+    for owner_before, owner_after in zip(before.players, after.players, strict=True):
+        if card_id not in owner_before.deck:
+            continue
+        if owner_before.leader_id is not None or owner_after.leader_id is None:
+            return False
+        removed = LEADERS_BY_ID[owner_after.leader_id].removed_starting_card_ids
+        return starting_card_for_instance(card_id).card.card_id in removed
     return False
 
 

@@ -169,6 +169,68 @@ def test_reveal_detection_follows_the_information_flow_rules() -> None:
     assert reveals_hidden_information(before, after, actor=0) is False
 
 
+def test_a_starting_card_removed_by_a_leader_pick_is_not_a_reveal() -> None:
+    # Limited Allies: "You start the game without Diplomacy in your deck"
+    # [Staban Tuek card]. The pick takes the card out of a face-down deck
+    # whose ten cards everybody knows, and shows nobody where it sat.
+    diplomacy = "player:0:starter:diplomacy:0"
+    dagger = "player:0:starter:dagger:0"
+    before = _state(p0=PlayerState(player_id=0, deck=(dagger, diplomacy)))
+    after = _state(
+        p0=PlayerState(player_id=0, leader_id="staban_tuek", deck=(dagger,))
+    )
+    assert reveals_hidden_information(before, after, actor=0) is False
+
+    # Only the card the printed rule names, and only as that Leader is picked.
+    lost_dagger = _state(
+        p0=PlayerState(player_id=0, leader_id="staban_tuek", deck=(diplomacy,))
+    )
+    assert reveals_hidden_information(before, lost_dagger, actor=0) is True
+    other_leader = _state(
+        p0=PlayerState(player_id=0, leader_id="lady_jessica", deck=(dagger,))
+    )
+    assert reveals_hidden_information(before, other_leader, actor=0) is True
+    picked = _state(
+        p0=PlayerState(
+            player_id=0, leader_id="staban_tuek", deck=(dagger, diplomacy)
+        )
+    )
+    assert reveals_hidden_information(picked, after, actor=0) is True
+    # Drawing it instead is still the drawer learning their deck top.
+    drawn = _state(
+        p0=PlayerState(
+            player_id=0, leader_id="staban_tuek", deck=(dagger,), hand=(diplomacy,)
+        )
+    )
+    assert reveals_hidden_information(before, drawn, actor=0) is True
+
+
+def test_every_draft_pick_but_the_last_can_be_taken_back() -> None:
+    manager = GameSessionManager()
+    summary = manager.create_game(("human",) * 4, leader_draft=True, game_seed=0)
+    game_id = str(summary["game_id"])
+    picker = _int(_obj(summary["decision"])["owner"])
+    deck_before = manager._get(game_id).state.players[picker].deck
+
+    actions = _rows(manager.legal_actions(game_id, picker)["actions"])
+    leaders = [_obj(entry["arguments"])["leader_id"] for entry in actions]
+    assert "staban_tuek" in leaders
+    assert all(entry["undoable"] is True for entry in actions)
+
+    summary = manager.apply_action(
+        game_id,
+        seat=picker,
+        revision=_int(summary["revision"]),
+        index=leaders.index("staban_tuek"),
+    )
+    assert summary["undo"] == [{"seat": picker, "steps": 1}]
+    assert len(manager._get(game_id).state.players[picker].deck) == 9
+
+    rewound = manager.undo(game_id, seat=picker, revision=_int(summary["revision"]))
+    assert _obj(rewound["decision"])["owner"] == picker
+    assert manager._get(game_id).state.players[picker].deck == deck_before
+
+
 def test_undo_window_holds_own_consecutive_steps_and_closes_on_reveals() -> None:
     manager = GameSessionManager()
     summary = manager.create_game(HUMAN_FIRST, game_seed=21)
