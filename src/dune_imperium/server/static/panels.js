@@ -576,7 +576,7 @@ function turnLine(entry) {
   const index = document.createElement("span");
   index.className = "turn-index";
   index.textContent = `#${entry.index}`;
-  head.append(index, iconize(describeAction(entry)));
+  head.append(index, describeAction(entry));
   if (entry.undone) head.append(" (되돌림)");
   line.appendChild(head);
   for (const event of entry.events) line.appendChild(logEventLine(event));

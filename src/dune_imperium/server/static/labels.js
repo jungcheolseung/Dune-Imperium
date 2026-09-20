@@ -303,19 +303,22 @@ const EVENT_LABELS = {
    resolve_agent_card_effect action resolves (OQ-027). A legal action carries
    the server's English effect fragment as `detail` (e.g. "Recruit 1 troop"),
    which iconizes; log lines fall back to these labels. */
+/* Written as phrase() templates: `{term}` names a row of TERMS, so the icon
+   and the word both come from the glossary instead of from an English regex
+   that happened to match. */
 const EFFECT_ICON_LABELS = {
-  cards: "카드 draw",
-  contract: "Contract 획득",
-  high_council: "High Council 착석",
-  intrigue: "Intrigue draw",
-  pledge: "1위 보상에 Influence 선택 추가",
+  cards: "카드 {draw}",
+  contract: "{contract} 획득",
+  high_council: "{high_council} 착석",
+  intrigue: "{intrigue} {draw}",
+  pledge: "1위 보상에 {influence_any} 선택 추가",
   resources: "자원 획득",
-  solari: "Solari 획득",
-  spice: "Spice 획득",
-  swordmaster: "Swordmaster 획득",
-  trash_self: "이 카드 trash",
-  troops: "병력 recruit (garrison)",
-  water: "Water 획득",
+  solari: "{solari} 획득",
+  spice: "{spice} 획득",
+  swordmaster: "{swordmaster} 획득",
+  trash_self: "이 카드 {trash}",
+  troops: "{troop} {recruit} ({garrison})",
+  water: "{water} 획득",
 };
 const RESEARCH_BONUS_LABELS = {
   none: "",
@@ -337,3 +340,78 @@ const TLEILAXU_TRACK_LABELS = {
   victory_point_and_first_spice: "VP · 첫 도달 spice",
   victory_point: "VP",
 };
+
+/* ---------- rule terms ---------- */
+
+/* One entry per rule term the UI names, with the icon it prints and the word
+   in each language. The Korean comes from docs/rules/glossary-ko.md, which
+   pairs the official Korean rulebooks against the English ones page by page;
+   nothing here may be invented (docs/lessons.md records a real bug from
+   guessing at trash vs discard).
+
+   This is the replacement for matching English prose with regexes. Our own
+   generated labels name a term with `{term}` and phrase() expands it, so a
+   card called "Signet Ring" is never mistaken for the Signet Ring icon, and
+   switching language is a matter of reading a different field here.
+
+   ICON_RULES still runs over the catalog's printed card text, which is a
+   CARD_FACE transcription and stays English by policy
+   (docs/ui-improvement-plan.md, "언어 정책"). */
+const TERMS = {
+  solari: { icon: "solari", ko: "솔라리", en: "Solari" },
+  spice: { icon: "spice", ko: "스파이스", en: "spice" },
+  water: { icon: "water", ko: "물", en: "water" },
+  draw: { icon: "draw", ko: "뽑기", en: "Draw" },
+  discard: { icon: "discard", ko: "버리기", en: "Discard" },
+  trash: { icon: "trash", ko: "폐기", en: "Trash" },
+  intrigue: { icon: "intrigue", ko: "책략 카드", en: "Intrigue card" },
+  trash_intrigue: { icon: "trash_intrigue", ko: "책략 카드 폐기", en: "Trash an Intrigue card" },
+  steal_intrigue: { icon: "steal_intrigue", ko: "책략 훔치기", en: "Steal Intrigue" },
+  troop: { icon: "troop", ko: "병력", en: "troop" },
+  recruit: { icon: null, ko: "소집", en: "Recruit" },
+  sandworm: { icon: "sandworm", ko: "모래벌레", en: "sandworm" },
+  agent: { icon: "agent", ko: "에이전트", en: "Agent" },
+  recall_agent: { icon: "recall_agent", ko: "에이전트 소환", en: "Recall Agent" },
+  spy: { icon: "spy", ko: "스파이", en: "Spy" },
+  recall_spy: { icon: "recall_spy", ko: "스파이 소환", en: "Recall Spy" },
+  persuasion: { icon: "persuasion", ko: "설득 비용", en: "Persuasion" },
+  sword: { icon: "sword", ko: "검", en: "sword" },
+  victory_point: { icon: "victory_point", ko: "승점", en: "Victory Point" },
+  influence_any: { icon: "influence_any", ko: "영향력", en: "Influence" },
+  influence_lose: { icon: "influence_lose", ko: "영향력 잃기", en: "Lose Influence" },
+  influence_emperor: { icon: "influence_emperor", ko: "황제 영향력", en: "Emperor Influence" },
+  influence_spacing_guild: {
+    icon: "influence_spacing_guild", ko: "우주 항행 길드 영향력", en: "Spacing Guild Influence",
+  },
+  influence_bene_gesserit: {
+    icon: "influence_bene_gesserit", ko: "베네 게세리트 영향력", en: "Bene Gesserit Influence",
+  },
+  influence_fremen: { icon: "influence_fremen", ko: "프레멘 영향력", en: "Fremen Influence" },
+  contract: { icon: "contract", ko: "계약", en: "Contract" },
+  control: { icon: "control", ko: "지배", en: "Control" },
+  maker: { icon: "maker", ko: "메이커", en: "Maker" },
+  maker_hooks: { icon: "maker_hooks", ko: "메이커 작살", en: "Maker Hooks" },
+  shield_wall: { icon: "shield_wall", ko: "방어벽", en: "Shield Wall" },
+  signet_ring: { icon: "signet_ring", ko: "인장 반지", en: "Signet Ring" },
+  /* Named in the glossary but with no icon of their own. */
+  high_council: { icon: null, ko: "원로회", en: "High Council" },
+  swordmaster: { icon: null, ko: "소드마스터", en: "Swordmaster" },
+  garrison: { icon: null, ko: "주둔지", en: "garrison" },
+  supply: { icon: null, ko: "개인 공급처", en: "supply" },
+  hand: { icon: null, ko: "핸드", en: "hand" },
+  deck: { icon: null, ko: "카드덱", en: "deck" },
+  discard_pile: { icon: null, ko: "버림 더미", en: "discard pile" },
+  conflict: { icon: null, ko: "교전", en: "Conflict" },
+  strength: { icon: null, ko: "전투력", en: "strength" },
+  research: { icon: null, ko: "연구", en: "Research" },
+  specimen: { icon: null, ko: "표본", en: "specimen" },
+  tleilaxu: { icon: null, ko: "틀레이락스", en: "Tleilaxu" },
+  graft: { icon: null, ko: "접합", en: "Graft" },
+  tech_tile: { icon: null, ko: "기술 타일", en: "Tech tile" },
+  commander_skill: { icon: null, ko: "사다우카 지휘관 기술 토큰", en: "Sardaukar Commander Skill" },
+  commander: { icon: null, ko: "사다우카 지휘관", en: "Sardaukar Commander" },
+};
+
+/* The language the client renders rule terms in. Stage 2c turns this into a
+   setting; for now it is the Korean the UI already speaks. */
+let TERM_LANGUAGE = "ko";

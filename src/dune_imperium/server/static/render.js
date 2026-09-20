@@ -86,6 +86,40 @@ const ICON_RULES = [
   [/→/y, () => icon("arrow_right", "→")],
 ];
 
+/* Expand a label of ours into nodes: `{term}` becomes that term's icon (or
+   its word where there is no icon) and `{term:3}` the icon with a count.
+   Everything else is copied through as text.
+
+   This is what our own generated labels use instead of iconize(). The
+   difference that matters: a card, Leader or space name is never handed to
+   it, so "Signet Ring" the card can never be swallowed by the Signet Ring
+   icon the way ICON_RULES swallowed it. */
+function termNode(name, count) {
+  const term = TERMS[name];
+  if (!term) return document.createTextNode(`{${name}}`);
+  const label = term[TERM_LANGUAGE] || term.en;
+  if (!term.icon) {
+    const span = document.createElement("span");
+    span.textContent = count === undefined ? label : `${count} ${label}`;
+    return span;
+  }
+  return count === undefined ? icon(term.icon, label) : amount(term.icon, label, count);
+}
+
+function phrase(template) {
+  const fragment = document.createDocumentFragment();
+  let index = 0;
+  for (const match of String(template).matchAll(/\{([a-z_]+)(?::(\d+))?\}/g)) {
+    if (match.index > index) fragment.append(template.slice(index, match.index));
+    fragment.appendChild(
+      termNode(match[1], match[2] === undefined ? undefined : Number(match[2])),
+    );
+    index = match.index + match[0].length;
+  }
+  if (index < template.length) fragment.append(template.slice(index));
+  return fragment;
+}
+
 function iconize(text) {
   const fragment = document.createDocumentFragment();
   let plain = "";
@@ -722,7 +756,7 @@ function actionItem(action, onApply) {
   wrap.dataset.index = String(action.index);
   wrap.dataset.refs = JSON.stringify(actionRefs(action));
   const button = document.createElement("button");
-  button.appendChild(iconize(describeAction(action)));
+  button.appendChild(describeAction(action));
   button.disabled = state.busy;
   button.addEventListener("click", () =>
     onApply ? onApply(action) : applyAction(action.index)

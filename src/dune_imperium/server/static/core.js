@@ -351,17 +351,31 @@ function chipList(container, ids, emptyText) {
   for (const id of ids) container.appendChild(chip(id));
 }
 
+/* One action as nodes, not a string. The verb and any effect label are ours,
+   so they go through phrase() and may name terms; a card, Leader or space
+   name is a proper noun and is appended as plain text. That split is the
+   point: the old version joined both into one string and ran ICON_RULES over
+   it, so the card named "Signet Ring" was replaced by the Signet Ring icon
+   and its line read "배치 — , Arrakeen". */
 function describeAction(action) {
-  const verb = ACTION_LABELS[action.action_id] || prettify(action.action_id);
+  const fragment = document.createDocumentFragment();
+  fragment.appendChild(phrase(ACTION_LABELS[action.action_id] || prettify(action.action_id)));
   const parts = [];
   for (const [key, value] of Object.entries(action.arguments)) {
     if (key === "effect" && typeof value === "string") {
-      parts.push(action.detail || EFFECT_ICON_LABELS[value] || prettify(value));
+      /* action.detail is the server's English effect fragment; it is printed
+         card wording, so it keeps the catalog's icon pass. */
+      if (action.detail) parts.push(iconize(action.detail));
+      else parts.push(phrase(EFFECT_ICON_LABELS[value] || prettify(value)));
     } else if (typeof value === "number" || typeof value === "boolean") {
-      parts.push(`${prettify(key)}: ${value}`);
+      parts.push(document.createTextNode(`${prettify(key)}: ${value}`));
     } else {
-      parts.push(nameOf(value));
+      parts.push(document.createTextNode(nameOf(value)));
     }
   }
-  return parts.length ? `${verb} — ${parts.join(", ")}` : verb;
+  parts.forEach((part, index) => {
+    fragment.append(index === 0 ? " — " : ", ");
+    fragment.appendChild(part);
+  });
+  return fragment;
 }

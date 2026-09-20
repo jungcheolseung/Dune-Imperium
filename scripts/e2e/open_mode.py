@@ -188,6 +188,49 @@ def scenario_full_game(base, browser) -> str:
             log_follow,
         )
 
+    # Our own labels are built from term tokens, not by running English
+    # regexes over a composed string, so a card name can never be eaten by an
+    # icon. Before this, the Signet Ring placement rendered "배치 — , Arrakeen"
+    # because ICON_RULES matched the card's own name.
+    # Every step that names a card must show that card's name as text. This
+    # is the invariant the old renderer broke: it joined our label and the
+    # card name into one string and ran ICON_RULES over it, so the card
+    # called "Signet Ring" became the Signet Ring icon and the line read
+    # "배치 — , Arrakeen". A payload drawn purely as icons is fine and is why
+    # this asks for the name rather than for any text at all.
+    named = page.evaluate(
+        """() => {
+            const want = [];
+            state.log.entries.forEach((entry) => {
+                if (entry.type !== 'action' || entry.undone) return;
+                const id = entry.arguments && entry.arguments.card_id;
+                if (typeof id !== 'string') return;
+                want.push({ index: entry.index, name: nameOf(id) });
+            });
+            return want.map((w) => {
+                const head = [...document.querySelectorAll('#action-log .turn-line-head')]
+                    .find((e) => {
+                        const tag = e.querySelector('.turn-index');
+                        return tag && tag.textContent.trim() === '#' + w.index;
+                    });
+                return { ...w, shown: head ? head.textContent : null };
+            }).filter((w) => w.shown !== null);
+        }"""
+    )
+    check.ok(len(named) >= 3, "the log has card-naming steps to check", len(named))
+    lost = [w for w in named if w["name"] not in w["shown"]]
+    check.ok(
+        not lost,
+        "every step that names a card shows that name as text",
+        [(w["name"], w["shown"]) for w in lost[:3]],
+    )
+    leaked = [
+        token
+        for token in ("{draw}", "{trash}", "{troop}", "{solari}", "{contract}")
+        if token in page.inner_text("#game-screen")
+    ]
+    check.ok(not leaked, "no unexpanded term markup reaches the screen", leaked)
+
     full = page.evaluate(f"fetch('/games/{game_id}/log?seat=0').then((r) => r.json())")
     local = page.evaluate("state.log.entries")
     check.ok(

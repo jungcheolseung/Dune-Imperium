@@ -254,7 +254,7 @@ function placementOptionNode(action, candidates) {
       : "이 카드만";
     line.appendChild(graft);
   }
-  if (!line.childNodes.length) line.appendChild(iconize(describeAction(action)));
+  if (!line.childNodes.length) line.appendChild(describeAction(action));
   return line;
 }
 

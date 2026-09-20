@@ -94,6 +94,7 @@ Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 �
 | EN | 한국어 | 인용 | 적용 |
 | --- | --- | --- | --- |
 | Troop | 병력 | `[Main p. 20]` | 적용 |
+| Recruit | 소집 | `[Main p. 20]` ("병력 1을 소집합니다") | 적용 |
 | Sandworm | 모래벌레 | `[Main p. 20]` | 적용 |
 | units (병력 + 모래벌레) | 부대 | `[Main p. 10]` | 적용 |
 | Agent | 에이전트 | `[Main p. 20]` | 적용 |
@@ -174,6 +175,24 @@ Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 �
 보드 스캔과 카드 그림이 영어판이라 화면의 글자와 그림이 어긋나기 때문이다.
 한국어 스캔을 확보하면 그림은 코드 변경 없이 바뀌고(`display/images.py`의
 `DEFAULT_LANGUAGES = ("ko", "en")`), 그때 이 항목들의 "적용"을 다시 판단한다.
+
+## 합성 표기
+
+아이콘의 대체 텍스트처럼 **두 용어를 붙여 써야 하는 자리**가 있다. 아래는 위 표의
+항목만으로 만든 합성이며 새 번역이 아니다. 영어판도 같은 방식으로 합성한다
+(`Emperor Influence`, `Trash an Intrigue card`).
+
+| EN | 한국어 | 합성 근거 |
+| --- | --- | --- |
+| Emperor Influence | 황제 영향력 | 황제 + 영향력, `[Main p. 20]`("해당하는 팩션의 영향력") |
+| Spacing Guild Influence | 우주 항행 길드 영향력 | 위와 같음 |
+| Bene Gesserit Influence | 베네 게세리트 영향력 | 위와 같음 |
+| Fremen Influence | 프레멘 영향력 | 위와 같음 |
+| Lose Influence | 영향력 잃기 | `[Main p. 20]`("영향력 1 잃기") |
+| Trash an Intrigue card | 책략 카드 폐기 | `[Main p. 20]`("책략 카드 1장 폐기")에서 수량만 뺀 형태 |
+
+수량은 아이콘 옆에 숫자로 붙으므로("영향력 1 잃기" → `2` + 아이콘) 합성 표기에는
+수량을 넣지 않는다.
 
 ## Agent 아이콘 분류
 
