@@ -106,10 +106,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     )
     if not arguments.no_record:
-        batch = stack_episodes(episodes)
+        batch = stack_episodes(episodes, action_size=runner.codec.size)
+        legal = batch.legal_indices.shape[0] / max(batch.actions.shape[0], 1)
         print(
-            f"batch: observations {batch.observations.shape} masks {batch.masks.shape} "
-            f"mean return {float(batch.returns.mean()):+.3f}"
+            f"batch: observations {batch.observations.shape} "
+            f"legal {batch.legal_indices.shape[0]} of {batch.action_size} "
+            f"({legal:.1f} a step) mean return {float(batch.returns.mean()):+.3f}"
         )
     return 0
 

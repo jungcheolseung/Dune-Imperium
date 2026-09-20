@@ -109,12 +109,11 @@ class Learner:
         if steps == 0:
             raise ValueError("cannot update on an empty batch")
         observations = torch.from_numpy(batch.observations).to(self.device)
-        masks = torch.from_numpy(batch.masks).to(self.device)
         actions = torch.from_numpy(batch.actions).to(self.device)
         returns = torch.from_numpy(batch.returns).to(self.device)
 
         self.network.train()
-        values, behaviour = self._behaviour(observations, masks, actions)
+        values, behaviour = self._behaviour(observations, batch, actions)
         advantages = returns - values
         old_chosen = behaviour if self.config.clip_ratio is not None else None
         if self.config.normalize_advantages and steps > 1:
@@ -129,7 +128,7 @@ class Learner:
                 index = order[start : start + self.config.minibatch_size]
                 policy_loss, value_loss, entropy, clipped, kl = self._losses(
                     observations[index],
-                    masks[index],
+                    self._masks(batch, index),
                     actions[index],
                     returns[index],
                     advantages[index],
@@ -153,7 +152,7 @@ class Learner:
                 kl_total += kl
                 minibatches += 1
 
-        fitted, _ = self._behaviour(observations, masks, actions)
+        fitted, _ = self._behaviour(observations, batch, actions)
         return UpdateStats(
             steps=steps,
             minibatches=minibatches,
@@ -168,8 +167,20 @@ class Learner:
             approx_kl=kl_total / minibatches,
         )
 
+    def _masks(self, batch: TrainingBatch, rows: Tensor) -> Tensor:
+        """Materialize the dense mask of ``rows`` only for this minibatch.
+
+        The batch keeps the legal sets compressed (see ``TrainingBatch``);
+        one minibatch of dense masks is about 34 MB at the full-expansion
+        catalog, against gigabytes for the whole iteration.
+        """
+
+        return torch.from_numpy(batch.dense_masks(rows.to("cpu").numpy())).to(
+            self.device
+        )
+
     def _behaviour(
-        self, observations: Tensor, masks: Tensor, actions: Tensor
+        self, observations: Tensor, batch: TrainingBatch, actions: Tensor
     ) -> tuple[Tensor, Tensor]:
         """Values and chosen-action log-probabilities of the current weights.
 
@@ -181,11 +192,12 @@ class Learner:
 
         values: list[Tensor] = []
         chosen: list[Tensor] = []
+        rows = torch.arange(observations.shape[0])
         with torch.no_grad():
             for start in range(0, observations.shape[0], self.config.minibatch_size):
                 stop = start + self.config.minibatch_size
                 logits, value = self.network(
-                    observations[start:stop], masks[start:stop]
+                    observations[start:stop], self._masks(batch, rows[start:stop])
                 )
                 log_probabilities = torch.log_softmax(logits, dim=-1)
                 chosen.append(

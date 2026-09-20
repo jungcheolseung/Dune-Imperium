@@ -54,11 +54,18 @@ class SelfPlaySpec:
 
 @dataclass(frozen=True, slots=True)
 class TrajectoryStep:
-    """One recorded decision: what the acting seat saw and chose."""
+    """One recorded decision: what the acting seat saw and chose.
+
+    ``legal`` holds the catalog indices the policy was offered, not a dense
+    mask over the whole catalog. A decision offers about five of them (mean
+    4.7 of 32,987 measured over full-expansion games), so the dense form
+    costs 32,987 bytes a step to say roughly five things, and a recorded
+    game holds one per decision until the episode is stacked.
+    """
 
     seat: int
     observation: np.ndarray
-    mask: np.ndarray
+    legal: np.ndarray  # int32 [legal actions]: catalog indices, ascending
     action: int
 
 
@@ -80,14 +87,59 @@ class Episode:
 
 @dataclass(frozen=True, slots=True)
 class TrainingBatch:
-    """Flat arrays over every recorded step of a set of episodes."""
+    """Flat arrays over every recorded step of a set of episodes.
+
+    The legal set is kept in compressed-row form -- ``legal_indices``
+    concatenated across steps, ``legal_offsets`` marking where each step's
+    slice starts -- instead of a dense ``[steps, action_size]`` mask. The
+    dense form is the largest array in training by a wide margin (32,987
+    bytes a step against 17,308 for the observation) and it is almost all
+    zeros; ``dense_masks`` materializes just the rows an update is about to
+    use. Nothing is approximated: the row count is ragged and exact, so a
+    decision offering an unusual number of actions needs no padding and can
+    never be truncated.
+    """
 
     observations: np.ndarray  # int32 [steps, OBSERVATION_SIZE]
-    masks: np.ndarray  # int8 [steps, codec size]
+    legal_indices: np.ndarray  # int32 [total legal]: catalog indices
+    legal_offsets: np.ndarray  # int64 [steps + 1]: row starts, ascending
+    action_size: int  # catalog width a dense mask would have
     actions: np.ndarray  # int64 [steps]
     seats: np.ndarray  # int8 [steps]
     returns: np.ndarray  # float32 [steps]: terminal reward of the acting seat
     episode_ids: np.ndarray  # int32 [steps]: index into the episode sequence
+
+    def dense_masks(self, rows: np.ndarray) -> np.ndarray:
+        """Return the dense 0/1 mask of ``rows``, in the order given."""
+
+        selected = np.asarray(rows, dtype=np.int64)
+        values, offsets = _gather_rows(
+            self.legal_indices, self.legal_offsets, selected
+        )
+        counts = np.diff(offsets)
+        masks = np.zeros((selected.shape[0], self.action_size), dtype=np.int8)
+        masks[np.repeat(np.arange(selected.shape[0]), counts), values] = 1
+        return masks
+
+
+def _gather_rows(
+    values: np.ndarray, offsets: np.ndarray, rows: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """Take ``rows`` of a compressed-row array, keeping the order given."""
+
+    starts = offsets[rows]
+    counts = offsets[rows + 1] - starts
+    gathered = np.zeros(int(counts.sum()), dtype=values.dtype)
+    if gathered.shape[0]:
+        # Position i of the output reads values[start(row(i)) + rank(i)],
+        # where rank counts from the start of that row's slice.
+        row_of = np.repeat(np.arange(rows.shape[0]), counts)
+        ends = np.cumsum(counts)
+        rank = np.arange(gathered.shape[0]) - np.repeat(ends - counts, counts)
+        gathered = values[starts[row_of] + rank]
+    new_offsets = np.zeros(rows.shape[0] + 1, dtype=np.int64)
+    np.cumsum(counts, out=new_offsets[1:])
+    return gathered, new_offsets
 
 
 @dataclass(slots=True)
@@ -252,7 +304,10 @@ class SelfPlayRunner:
                 TrajectoryStep(
                     seat=request.seat,
                     observation=request.observation,
-                    mask=request.mask,
+                    # The request's dense mask is the policy's contract and
+                    # dies with the lockstep round; the recorded step keeps
+                    # only the indices it was built from.
+                    legal=np.asarray(request.legal_indices, dtype=np.int32),
                     action=index,
                 )
             )
@@ -293,8 +348,13 @@ class SelfPlayRunner:
         )
 
 
-def stack_episodes(episodes: Sequence[Episode]) -> TrainingBatch:
-    """Flatten recorded steps into arrays; the return is the seat's reward."""
+def stack_episodes(episodes: Sequence[Episode], *, action_size: int) -> TrainingBatch:
+    """Flatten recorded steps into arrays; the return is the seat's reward.
+
+    ``action_size`` is the catalog width the recorded indices belong to. It
+    is asked for rather than inferred because the steps carry only the
+    indices they were offered, and the widest of those is not the catalog.
+    """
 
     steps = [
         (episode_id, step)
@@ -304,10 +364,15 @@ def stack_episodes(episodes: Sequence[Episode]) -> TrainingBatch:
     if not steps:
         raise ValueError("no recorded steps to stack")
     observations = np.stack([step.observation for _, step in steps])
-    masks = np.stack([step.mask for _, step in steps])
+    offsets = np.zeros(len(steps) + 1, dtype=np.int64)
+    np.cumsum(
+        [step.legal.shape[0] for _, step in steps], out=offsets[1:], dtype=np.int64
+    )
     return TrainingBatch(
         observations=observations,
-        masks=masks,
+        legal_indices=np.concatenate([step.legal for _, step in steps]),
+        legal_offsets=offsets,
+        action_size=action_size,
         actions=np.asarray([step.action for _, step in steps], dtype=np.int64),
         seats=np.asarray([step.seat for _, step in steps], dtype=np.int8),
         returns=np.asarray(
@@ -318,10 +383,12 @@ def stack_episodes(episodes: Sequence[Episode]) -> TrainingBatch:
     )
 
 
-def select_policy_steps(episodes: Sequence[Episode], name: str) -> TrainingBatch:
+def select_policy_steps(
+    episodes: Sequence[Episode], name: str, *, action_size: int
+) -> TrainingBatch:
     """Stack only the steps taken by seats the named policy controlled."""
 
-    batch = stack_episodes(episodes)
+    batch = stack_episodes(episodes, action_size=action_size)
     keep = np.asarray(
         [
             episodes[episode_id].lineup[seat] == name
@@ -333,9 +400,15 @@ def select_policy_steps(episodes: Sequence[Episode], name: str) -> TrainingBatch
     )
     if not keep.any():
         raise ValueError(f"no steps were taken by policy {name!r}")
+    rows = np.flatnonzero(keep)
+    legal_indices, legal_offsets = _gather_rows(
+        batch.legal_indices, batch.legal_offsets, rows
+    )
     return TrainingBatch(
         observations=batch.observations[keep],
-        masks=batch.masks[keep],
+        legal_indices=legal_indices,
+        legal_offsets=legal_offsets,
+        action_size=batch.action_size,
         actions=batch.actions[keep],
         seats=batch.seats[keep],
         returns=batch.returns[keep],
@@ -369,7 +442,9 @@ def apply_step_penalty(batch: TrainingBatch, penalty: float) -> TrainingBatch:
         later[key] = count + 1
     return TrainingBatch(
         observations=batch.observations,
-        masks=batch.masks,
+        legal_indices=batch.legal_indices,
+        legal_offsets=batch.legal_offsets,
+        action_size=batch.action_size,
         actions=batch.actions,
         seats=batch.seats,
         returns=(batch.returns - penalty * remaining).astype(np.float32),

@@ -114,13 +114,16 @@ def _collect_chunk(job: _ChunkJob) -> _ChunkResult:
         job.opponent_seed,
     )
     result = runner.run(policies, job.specs)
-    batch = select_policy_steps(result.episodes, LEARNER)
+    batch = select_policy_steps(
+        result.episodes, LEARNER, action_size=runner.codec.size
+    )
     if batch.observations.max(initial=0) > np.iinfo(np.int16).max:
         raise RuntimeError("observation values exceed the int16 transport range")
     np.savez(
         job.out_path,
         observations=batch.observations.astype(np.int16),
-        masks=np.packbits(batch.masks, axis=1),
+        legal_indices=batch.legal_indices,
+        legal_offsets=batch.legal_offsets,
         actions=batch.actions,
         seats=batch.seats,
         returns=batch.returns,
@@ -204,7 +207,9 @@ class Collector:
             result = runner.run(policies, specs)
             return CollectionResult(
                 episodes=result.episodes,
-                batch=select_policy_steps(result.episodes, LEARNER),
+                batch=select_policy_steps(
+                    result.episodes, LEARNER, action_size=runner.codec.size
+                ),
                 decisions=result.decisions,
                 duration_seconds=time.perf_counter() - started,
             )
@@ -245,9 +250,9 @@ class Collector:
                 parts.append(
                     TrainingBatch(
                         observations=arrays["observations"].astype(np.int32),
-                        masks=np.unpackbits(
-                            arrays["masks"], axis=1, count=network.action_size
-                        ).astype(np.int8),
+                        legal_indices=arrays["legal_indices"],
+                        legal_offsets=arrays["legal_offsets"],
+                        action_size=network.action_size,
                         actions=arrays["actions"],
                         seats=arrays["seats"],
                         returns=arrays["returns"],
@@ -257,9 +262,22 @@ class Collector:
             os.remove(chunk_result.out_path)
             episodes.extend(chunk_result.episodes)
             offset += len(chunk_result.episodes)
+        # A chunk's row starts are relative to its own index array, so each
+        # part's offsets shift by every earlier part's length. The first
+        # entry of every part is a duplicate 0 and is dropped.
+        lengths = [int(part.legal_indices.shape[0]) for part in parts]
+        shifts = np.cumsum([0] + lengths[:-1])  # index rows already written
         batch = TrainingBatch(
             observations=np.concatenate([part.observations for part in parts]),
-            masks=np.concatenate([part.masks for part in parts]),
+            legal_indices=np.concatenate([part.legal_indices for part in parts]),
+            legal_offsets=np.concatenate(
+                [parts[0].legal_offsets]
+                + [
+                    part.legal_offsets[1:] + shift
+                    for part, shift in zip(parts[1:], shifts[1:], strict=True)
+                ]
+            ),
+            action_size=network.action_size,
             actions=np.concatenate([part.actions for part in parts]),
             seats=np.concatenate([part.seats for part in parts]),
             returns=np.concatenate([part.returns for part in parts]),

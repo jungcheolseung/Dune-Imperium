@@ -6,6 +6,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pytest
 
 torch = pytest.importorskip("torch")
@@ -31,7 +32,7 @@ def _network_and_batch() -> tuple[PolicyValueNetwork, TrainingBatch]:
     network = PolicyValueNetwork(runner.codec.size, hidden=(32,))
     policy = TorchBatchPolicy(network, _CPU, seed=2)
     result = runner.run({"p": policy}, (SelfPlaySpec(game_seed=5, lineup=("p",) * 4),))
-    batch = stack_episodes(result.episodes)
+    batch = stack_episodes(result.episodes, action_size=runner.codec.size)
     # A truncated game pays nothing; give the steps a signal to learn from.
     returns = batch.returns.copy()
     returns[::2] = 1.0
@@ -42,7 +43,8 @@ def _network_and_batch() -> tuple[PolicyValueNetwork, TrainingBatch]:
 def _chosen_log_probabilities(network: PolicyValueNetwork, batch: TrainingBatch) -> Any:
     with torch.no_grad():
         logits, _ = network(
-            torch.from_numpy(batch.observations), torch.from_numpy(batch.masks)
+            torch.from_numpy(batch.observations),
+            torch.from_numpy(batch.dense_masks(np.arange(batch.actions.shape[0]))),
         )
     actions = torch.from_numpy(batch.actions).unsqueeze(-1)
     return torch.log_softmax(logits, dim=-1).gather(1, actions).squeeze(-1)

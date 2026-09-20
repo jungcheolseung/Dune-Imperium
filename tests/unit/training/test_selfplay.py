@@ -44,8 +44,9 @@ def test_random_self_play_finishes_games_with_zero_sum_rewards() -> None:
         for step in episode.steps:
             assert step.observation.shape == (OBSERVATION_SIZE,)
             assert step.observation.dtype == np.int32
-            assert step.mask.shape == (runner.codec.size,)
-            assert step.mask[step.action] == 1
+            assert step.legal.dtype == np.int32
+            assert step.action in step.legal.tolist()
+            assert step.legal.shape[0] <= runner.codec.size
             assert 0 <= step.seat < 4
 
     # The same seeds and policy seed reproduce the same episodes.
@@ -61,11 +62,18 @@ def test_stack_episodes_returns_the_acting_seats_reward() -> None:
     runner = SelfPlayRunner(RulesetConfig())
     result = runner.run({"r": RandomBatchPolicy(seed=1)}, _specs("r", (7, 8)))
 
-    batch = stack_episodes(result.episodes)
+    batch = stack_episodes(result.episodes, action_size=runner.codec.size)
 
     total = result.decisions
     assert batch.observations.shape == (total, OBSERVATION_SIZE)
-    assert batch.masks.shape == (total, runner.codec.size)
+    assert batch.action_size == runner.codec.size
+    assert batch.legal_offsets.shape == (total + 1,)
+    assert int(batch.legal_offsets[-1]) == batch.legal_indices.shape[0]
+    # The compressed form materializes exactly the dense mask it replaced.
+    dense = batch.dense_masks(np.arange(total))
+    assert dense.shape == (total, runner.codec.size)
+    assert dense[np.arange(total), batch.actions] .all()
+    assert int(dense.sum()) == batch.legal_indices.shape[0]
     assert batch.actions.shape == (total,)
     assert batch.seats.shape == (total,)
     assert batch.returns.shape == (total,)
@@ -81,7 +89,7 @@ def test_stack_episodes_returns_the_acting_seats_reward() -> None:
         assert seat == step.seat
         assert value == pytest.approx(first.rewards[step.seat])
     with pytest.raises(ValueError, match="no recorded steps"):
-        stack_episodes(())
+        stack_episodes((), action_size=runner.codec.size)
 
 
 class _CountingPolicy:
@@ -193,10 +201,43 @@ def test_selfplay_cli_reports_throughput(capsys: pytest.CaptureFixture[str]) -> 
         selfplay_main(["--policy", "oracle"])
 
 
+def test_dense_masks_reproduce_the_mask_the_policy_was_offered() -> None:
+    """The compressed legal set must be the dense mask, exactly.
+
+    A dropped or invented legal action is a training-correctness bug, not a
+    memory bug: the learner's log-probabilities are computed over this mask,
+    so it has to be the set the collecting policy actually chose from.
+    """
+
+    runner = SelfPlayRunner(RulesetConfig())
+    result = runner.run({"r": RandomBatchPolicy(seed=11)}, _specs("r", (21, 22)))
+    batch = stack_episodes(result.episodes, action_size=runner.codec.size)
+
+    steps = [step for episode in result.episodes for step in episode.steps]
+    rows = np.arange(len(steps))
+    dense = batch.dense_masks(rows)
+    for row, step in enumerate(steps):
+        expected = np.zeros(runner.codec.size, dtype=np.int8)
+        expected[step.legal] = 1
+        assert np.array_equal(dense[row], expected)
+        # The chosen action is always inside its own mask.
+        assert dense[row, batch.actions[row]] == 1
+
+    # Any row order, and any subset, materializes the same rows.
+    shuffled = np.asarray([3, 0, len(steps) - 1, 1], dtype=np.int64)
+    assert np.array_equal(batch.dense_masks(shuffled), dense[shuffled])
+    assert np.array_equal(
+        batch.dense_masks(np.zeros(0, dtype=np.int64)),
+        np.zeros((0, runner.codec.size), dtype=np.int8),
+    )
+
+
 def test_step_penalty_charges_each_seats_later_decisions() -> None:
     batch = TrainingBatch(
         observations=np.zeros((5, 3), dtype=np.int32),
-        masks=np.ones((5, 2), dtype=np.int8),
+        legal_indices=np.tile(np.asarray([0, 1], dtype=np.int32), 5),
+        legal_offsets=np.arange(6, dtype=np.int64) * 2,
+        action_size=2,
         actions=np.zeros(5, dtype=np.int64),
         seats=np.asarray([0, 1, 0, 0, 1], dtype=np.int8),
         returns=np.asarray([1.0, -1 / 3, 1.0, 1.0, 2.0], dtype=np.float32),
@@ -286,8 +327,8 @@ def test_runner_withholds_undo_actions_from_policies_not_from_the_engine() -> No
     assert undo_indices
     for step in result.episodes[0].steps:
         # The recorded mask is the offered set, so a learner stays on-policy.
-        assert step.mask[undo_indices].sum() == 0
-        assert step.mask[step.action] == 1
+        assert not set(undo_indices) & set(step.legal.tolist())
+        assert step.action in step.legal.tolist()
 
     # The default runner still offers them (baselines, throughput tools).
     offered = _EagerDeployer(seed=5)

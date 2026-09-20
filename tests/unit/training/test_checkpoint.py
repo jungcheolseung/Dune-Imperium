@@ -47,7 +47,7 @@ def _trained(codec: ActionCodec) -> tuple[PolicyValueNetwork, Learner]:
         {"r": RandomBatchPolicy(seed=1)},
         (SelfPlaySpec(game_seed=2, lineup=("r",) * 4),),
     )
-    learner.update(stack_episodes(result.episodes))
+    learner.update(stack_episodes(result.episodes, action_size=runner.codec.size))
     return network, learner
 
 

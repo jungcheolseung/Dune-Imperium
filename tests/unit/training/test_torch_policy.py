@@ -94,7 +94,7 @@ def test_torch_batch_policy_plays_legal_self_play_games() -> None:
 
     assert all(not episode.truncated for episode in result.episodes)
     for episode in result.episodes:
-        assert all(step.mask[step.action] == 1 for step in episode.steps)
+        assert all(step.action in step.legal.tolist() for step in episode.steps)
     assert sampling.act(()) == ()
     with pytest.raises(ValueError, match="temperature"):
         TorchBatchPolicy(network, _CPU, seed=1, temperature=0.0)
@@ -134,7 +134,7 @@ def test_learner_update_changes_parameters_and_reports_finite_stats() -> None:
     network = _network(runner.codec.size)
     policy = TorchBatchPolicy(network, _CPU, seed=2)
     result = runner.run({"p": policy}, (SelfPlaySpec(game_seed=5, lineup=("p",) * 4),))
-    batch = stack_episodes(result.episodes)
+    batch = stack_episodes(result.episodes, action_size=runner.codec.size)
     learner = Learner(network, _CPU, LearnerConfig(minibatch_size=256, epochs=2))
     before = [parameter.detach().clone() for parameter in network.parameters()]
 
@@ -161,7 +161,7 @@ def test_a_restored_optimizer_keeps_its_moments_and_takes_the_configured_rate() 
     policy = TorchBatchPolicy(network, _CPU, seed=2)
     result = runner.run({"p": policy}, (SelfPlaySpec(game_seed=5, lineup=("p",) * 4),))
     saved = Learner(network, _CPU, LearnerConfig(learning_rate=1.0e-4))
-    saved.update(stack_episodes(result.episodes))
+    saved.update(stack_episodes(result.episodes, action_size=runner.codec.size))
     state = saved.optimizer_state()
 
     resumed = Learner(
@@ -354,11 +354,15 @@ def test_select_policy_steps_keeps_only_the_named_seats() -> None:
         {"learner": policy, "other": TorchBatchPolicy(network, _CPU, seed=4)},
         (SelfPlaySpec(game_seed=7, lineup=("learner", "other", "other", "other")),),
     )
-    batch = select_policy_steps(result.episodes, "learner")
+    batch = select_policy_steps(
+        result.episodes, "learner", action_size=runner.codec.size
+    )
     assert batch.actions.shape[0] > 0
     assert set(batch.seats.tolist()) == {0}
     with pytest.raises(ValueError, match="no steps"):
-        select_policy_steps(result.episodes, "nobody")
+        select_policy_steps(
+            result.episodes, "nobody", action_size=runner.codec.size
+        )
 
 
 def test_train_cli_smoke(tmp_path: Path) -> None:
@@ -438,7 +442,7 @@ def test_parallel_collection_matches_the_serial_contract(tmp_path: Path) -> None
         batch.episode_ids.tolist(), batch.returns.tolist(), strict=True
     ):
         assert value == pytest.approx(result.episodes[episode_id].rewards[0])
-    assert batch.masks.shape[1] == network.action_size
+    assert batch.action_size == network.action_size
     with pytest.raises(ValueError, match="workers"):
         Collector(config, workers=0)
 
@@ -474,7 +478,7 @@ def test_parallel_collection_pickles_an_expansion_ruleset(tmp_path: Path) -> Non
     assert len(result.episodes) == 2
     assert all(episode.steps == () for episode in result.episodes)
     assert result.batch.actions.shape[0] > 0
-    assert result.batch.masks.shape[1] == network.action_size
+    assert result.batch.action_size == network.action_size
 
 
 def test_cycle_guard_masks_taken_actions_for_greedy_play_only() -> None:
