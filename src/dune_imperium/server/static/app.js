@@ -19,6 +19,7 @@ async function adoptAdminLink() {
 }
 
 async function init() {
+  loadCollapsedStrips();
   state.catalog = await api("/catalog");
   const adminError = await adoptAdminLink();
   state.server = await api("/whoami");
@@ -30,9 +31,23 @@ async function init() {
     if (!pop.hidden && !pop.contains(event.target)) closePopover();
   });
   document.addEventListener("keydown", (event) => {
-    if (event.key !== "Escape") return;
-    if (state.pick) clearPick();
-    else closePopover();
+    if (event.key === "Escape") {
+      if (state.pick) clearPick();
+      else closePopover();
+      return;
+    }
+    /* `c` folds the shared card columns away and back, so the board can have
+       the room when you are not shopping. Not while typing a name or a seed,
+       and not when the key is part of a browser shortcut. */
+    const target = event.target;
+    const typing =
+      target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
+    if (typing || event.ctrlKey || event.metaKey || event.altKey) return;
+    if (event.key === "c" || event.key === "C") {
+      if (el("game-screen").hidden) return;
+      event.preventDefault();
+      toggleAllStrips();
+    }
   });
   el("setup-form").addEventListener("submit", createGame);
   el("leave-game").addEventListener("click", () => leaveGame());

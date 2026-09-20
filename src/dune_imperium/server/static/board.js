@@ -900,12 +900,74 @@ function visualCard(instanceId, options = {}) {
   return card;
 }
 
-function cardStrip(parent, title, ids, emptyText, options = {}) {
+/* ---------- collapsing the shared card columns ---------- */
+
+/* Which columns the viewer has folded away. #market is rebuilt by every
+   render, so this cannot live in the DOM; it is remembered per browser, the
+   way a collapsed panel should be. Keyed by the heading's stable part, since
+   the counts in it change every turn ("Tleilaxu Row · deck 16" is still the
+   Tleilaxu Row). */
+const COLLAPSED_KEY = "dune.collapsedStrips";
+let collapsedStrips = new Set();
+
+function loadCollapsedStrips() {
+  try {
+    const stored = JSON.parse(storageGet(COLLAPSED_KEY) || "[]");
+    collapsedStrips = new Set(Array.isArray(stored) ? stored : []);
+  } catch (error) {
+    collapsedStrips = new Set();
+  }
+}
+
+function stripName(title) {
+  return String(title).split(" · ")[0].trim();
+}
+
+function setStripCollapsed(name, collapsed) {
+  if (collapsed) collapsedStrips.add(name);
+  else collapsedStrips.delete(name);
+  storageSet(COLLAPSED_KEY, JSON.stringify([...collapsedStrips]));
+  renderMarket();
+}
+
+function toggleAllStrips() {
+  const names = [...el("market").querySelectorAll(".strip[data-strip]")].map(
+    (box) => box.dataset.strip,
+  );
+  const anyOpen = names.some((name) => !collapsedStrips.has(name));
+  collapsedStrips = new Set(anyOpen ? names : []);
+  storageSet(COLLAPSED_KEY, JSON.stringify([...collapsedStrips]));
+  renderMarket();
+}
+
+/* One shared-card column, with a heading that folds it away. Collapsed, the
+   heading keeps its count so the column still says what is in it. */
+function stripBox(title, count, className) {
   const box = document.createElement("div");
-  box.className = "strip";
+  box.className = "strip" + (className ? ` ${className}` : "");
+  const name = stripName(title);
+  box.dataset.strip = name;
+  const collapsed = collapsedStrips.has(name);
+  if (collapsed) box.classList.add("collapsed");
   const heading = document.createElement("h3");
-  heading.textContent = title;
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "strip-toggle";
+  button.setAttribute("aria-expanded", collapsed ? "false" : "true");
+  button.title = collapsed ? "펼치기" : "접기";
+  button.append(collapsed ? "▸" : "▾", " ", title);
+  if (collapsed && count !== undefined && count !== null) button.append(` (${count})`);
+  button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    setStripCollapsed(name, !collapsed);
+  });
+  heading.appendChild(button);
   box.appendChild(heading);
+  return box;
+}
+
+function cardStrip(parent, title, ids, emptyText, options = {}) {
+  const box = stripBox(title, ids.length);
   const row = document.createElement("div");
   row.className = "strip-cards";
   if (!ids.length && emptyText) {
@@ -959,12 +1021,10 @@ function renderMarket() {
        Commander (Sardaukar Standard) and the four face-up Skills
        [Bloodlines pp. 3-4]. */
     const spaces = view.sardaukar_commander_space_ids || [];
-    const box = document.createElement("div");
-    box.className = "strip";
-    const heading = document.createElement("h3");
-    heading.textContent =
-      `Sardaukar Commander · 보드 ${spaces.length} · bank ${view.sardaukar_commanders_bank || 0}`;
-    box.appendChild(heading);
+    const box = stripBox(
+      `Sardaukar Commander · 보드 ${spaces.length} · bank ${view.sardaukar_commanders_bank || 0}`,
+      spaces.length,
+    );
     const row = document.createElement("div");
     row.className = "strip-cards wrap";
     if (!spaces.length) {
@@ -987,11 +1047,10 @@ function renderMarket() {
   if (state.summary.tech_module) {
     /* The Ixian Embassy's three stacks: the face-up top of each with the
        stack size; an emptied stack simply offers nothing [Bloodlines p. 7]. */
-    const box = document.createElement("div");
-    box.className = "strip";
-    const heading = document.createElement("h3");
-    heading.textContent = "Ixian Embassy · Tech tiles";
-    box.appendChild(heading);
+    const box = stripBox(
+      "Ixian Embassy · Tech tiles",
+      (view.tech_face_up || []).filter(Boolean).length,
+    );
     const row = document.createElement("div");
     row.className = "strip-cards";
     (view.tech_face_up || []).forEach((tileId, index) => {
@@ -1028,6 +1087,13 @@ function renderMarket() {
     });
   }
   renderIntriguePiles(market, view);
+  /* Folding is only worth anything if the column then gives its width back,
+     and #market has a min-width that would otherwise hold it open. */
+  const boxes = [...market.querySelectorAll(".strip[data-strip]")];
+  market.classList.toggle(
+    "all-folded",
+    boxes.length > 0 && boxes.every((box) => box.classList.contains("collapsed")),
+  );
 }
 
 /* The public Intrigue piles as one line: the cards themselves only matter
@@ -1085,11 +1151,8 @@ function renderBeneTleilax(market, view) {
 
   const layout = state.catalog && state.catalog.bene_tleilax;
   if (!layout) return;
-  const box = document.createElement("div");
-  box.className = "strip bene-tleilax";
-  const heading = document.createElement("h3");
-  heading.textContent = "Bene Tleilax board";
-  box.appendChild(heading);
+  const box = stripBox("Bene Tleilax board", null, "bene-tleilax");
+
   if (layout.image) {
     /* The owner's scan with the live tokens drawn over it
        (catalog.bene_tleilax.layout, percent of the image). */
