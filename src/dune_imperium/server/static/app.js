@@ -2371,9 +2371,34 @@ function applySpotlight() {
 
 /* ---------- rendering ---------- */
 
-/* The panes that scroll on their own; their content is rebuilt on every
-   render, which would throw the reader back to the top. */
-const SCROLL_PANES = ["seats", "side-main", "board", "market", "private-zone"];
+/* The panes that can scroll on their own; their content is rebuilt on every
+   render, which would throw the reader back to the top. Which of them really
+   scrolls depends on the viewport — `@media (max-width: 1700px)` moves the
+   side column's scrolling from #side-main up to #side — so keepScroll() asks
+   each pane at render time instead of trusting the list. Naming only the
+   panes that scroll at one width is what silently dropped #side on every
+   screen narrower than 1700px. */
+const SCROLL_PANES = [
+  "seats",
+  "side",
+  "side-main",
+  "side-log",
+  "board",
+  "market",
+  "private-zone",
+];
+
+/* Panes with something to restore, as [element, top, left]. A pane sitting at
+   the origin needs no entry: putting it back would be a no-op. */
+function keepScroll() {
+  const kept = [];
+  for (const id of SCROLL_PANES) {
+    const pane = el(id);
+    if (!pane || (!pane.scrollTop && !pane.scrollLeft)) continue;
+    kept.push([pane, pane.scrollTop, pane.scrollLeft]);
+  }
+  return kept;
+}
 
 /* `foreign`: somebody else changed the game (the doorbell asked for this
    pass). The player did nothing, so a pinned popover stays open and every
@@ -2383,9 +2408,7 @@ function render(options) {
   if (!summary) return;
   sanitizePick();
   const foreign = Boolean(options && options.foreign);
-  const kept = foreign
-    ? SCROLL_PANES.map((id) => [el(id), el(id).scrollTop, el(id).scrollLeft])
-    : [];
+  const kept = foreign ? keepScroll() : [];
   if (!(foreign && popoverPinned)) closePopover();
   const allianceBefore = allianceTokenPlaces();
   const shown = state.review && state.review.phase ? state.review : null;
@@ -5366,6 +5389,16 @@ let logSeen = { gameId: null, count: 0, freshFrom: 0 };
 
 function renderLog() {
   const panel = el("action-log");
+  /* The list is rebuilt from scratch, so its scroll offset has to be read
+     before the panel is emptied. A reader who has scrolled up to re-read an
+     earlier turn keeps their place; one already at the end keeps following
+     the game. Without this the log yanked itself to the newest entry on
+     every render, including renders caused by somebody else's move. */
+  const previous = panel.querySelector(".log-list");
+  const previousTop = previous ? previous.scrollTop : 0;
+  const following =
+    !previous ||
+    previous.scrollHeight - previous.scrollTop - previous.clientHeight < 24;
   panel.textContent = "";
   /* In review the log follows the cursor (reviewLog) and leaves the live
      table's own bookkeeping of what is fresh alone. */
@@ -5397,6 +5430,11 @@ function renderLog() {
     else list.appendChild(turnCard(group, freshFrom));
   }
   panel.appendChild(list);
+  /* Review drives the cursor itself, so it always shows the step it moved to. */
+  if (!following && !state.review) {
+    list.scrollTop = previousTop;
+    return;
+  }
   const first = list.querySelector(".turn-card.fresh");
   if (first) list.scrollTop = Math.max(0, first.offsetTop - list.offsetTop - 6);
   else list.scrollTop = list.scrollHeight;

@@ -154,6 +154,40 @@ def scenario_full_game(base, browser) -> str:
         "client log length == server log_count after every step",
         mismatches[:5],
     )
+    # The log is rebuilt on every render. A reader who scrolled up to re-read
+    # an earlier turn must keep their place; one sitting at the end keeps
+    # following the game. Before this the list jumped to the newest entry on
+    # every render, including renders caused by somebody else's move.
+    log_follow = page.evaluate(
+        """() => {
+            const list = () => document.querySelector('#action-log .log-list');
+            const start = list();
+            if (!start || start.scrollHeight <= start.clientHeight + 1) return null;
+            start.scrollTop = 0;
+            render({ foreign: true });
+            const kept = list().scrollTop;
+            const end = list();
+            end.scrollTop = end.scrollHeight;
+            render({ foreign: true });
+            return { kept, followed: list().scrollTop };
+        }"""
+    )
+    if check.ok(
+        log_follow is not None,
+        "the finished game's log is long enough to scroll",
+        log_follow,
+    ):
+        check.ok(
+            log_follow["kept"] == 0,
+            "a reader scrolled up keeps their place in the log",
+            log_follow,
+        )
+        check.ok(
+            log_follow["followed"] > 0,
+            "a reader at the end keeps following the log",
+            log_follow,
+        )
+
     full = page.evaluate(f"fetch('/games/{game_id}/log?seat=0').then((r) => r.json())")
     local = page.evaluate("state.log.entries")
     check.ok(
@@ -252,8 +286,50 @@ def scenario_doorbell(base, browser) -> None:
     )
 
     # Pin a popover and scroll a pane on the watcher: a foreign refresh keeps both.
-    watcher.evaluate("document.getElementById('side-main').scrollTop = 120")
-    scroll_before = watcher.evaluate("document.getElementById('side-main').scrollTop")
+    # Which pane scrolls depends on the viewport -- `@media (max-width: 1700px)`
+    # moves the side column's scrolling from #side-main up to #side -- and this
+    # browser runs at 1600px, so the old check named #side-main, set a scrollTop
+    # that a non-scrolling element discards, and then excused itself with
+    # `or scroll_before == 0`. Ask the page which pane really takes an offset.
+    # Two checks. The structural one catches the whole class: a pane the
+    # stylesheet lets scroll but the client forgot to list is a silent
+    # regression at that viewport, which is how #side was dropped.
+    unlisted = watcher.evaluate(
+        """() => {
+            const ids = ['table', 'seats', 'center', 'board', 'market', 'side',
+                         'side-main', 'side-log', 'private-zone', 'action-log'];
+            return ids.filter((id) => {
+                const pane = document.getElementById(id);
+                if (!pane) return false;
+                const flow = getComputedStyle(pane).overflowY;
+                if (flow !== 'auto' && flow !== 'scroll') return false;
+                return !SCROLL_PANES.includes(id);
+            });
+        }"""
+    )
+    check.ok(
+        unlisted == [],
+        "SCROLL_PANES names every pane the stylesheet lets scroll",
+        unlisted,
+    )
+    scroll_before = watcher.evaluate(
+        """() => {
+            const out = {};
+            for (const id of SCROLL_PANES) {
+                const pane = document.getElementById(id);
+                if (!pane) continue;
+                pane.scrollTop = 120;
+                if (pane.scrollTop > 0) out[id] = pane.scrollTop;
+            }
+            return out;
+        }"""
+    )
+    if not check.ok(
+        bool(scroll_before),
+        "some pane holds a scroll offset to preserve",
+        scroll_before,
+    ):
+        check.finish()
 
     time.sleep(0.5)
     actor_before = len(actor_rec.requests)
@@ -279,15 +355,15 @@ def scenario_doorbell(base, browser) -> None:
         "the actor's own step costs POST + snapshot and nothing for its own doorbell",
         own,
     )
+    scroll_after = watcher.evaluate(
+        """(ids) => Object.fromEntries(
+            ids.map((id) => [id, document.getElementById(id).scrollTop]))""",
+        list(scroll_before),
+    )
     check.ok(
-        watcher.evaluate("document.getElementById('side-main').scrollTop")
-        == scroll_before
-        or scroll_before == 0,
-        "a foreign refresh keeps the pane's scroll position",
-        (
-            scroll_before,
-            watcher.evaluate("document.getElementById('side-main').scrollTop"),
-        ),
+        scroll_after == scroll_before,
+        "a foreign refresh keeps every scrolled pane's position",
+        (scroll_before, scroll_after),
     )
     blocked.wait_for_function(
         f"state.summary.log_count > {log_count} && refreshFlight === null", timeout=6000
