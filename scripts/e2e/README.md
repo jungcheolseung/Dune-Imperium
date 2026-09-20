@@ -1,7 +1,7 @@
 # 브라우저 E2E (`scripts/e2e/`)
 
 플레이 서버의 브라우저 UI(`src/dune_imperium/server/static/`)를 실제 Chrome으로 검증하는 스크립트다.
-`pytest`는 JavaScript를 실행하지 않으므로, `app.js`를 고친 뒤에는 이 스크립트들이 유일한 회귀 검사다.
+`pytest`는 JavaScript를 실행하지 않으므로, `static/*.js`를 고친 뒤에는 이 스크립트들이 유일한 회귀 검사다.
 2026-09-17 세션에서 스크래치로만 두었다가 다음 세션(다른 기기)에서 전부 다시 만들어야 했기 때문에
 저장소에 둔다. **Playwright는 프로젝트 의존성이 아니다**(설계 문서 10절) — 저장소 밖 스크래치 환경으로 돌린다.
 
@@ -40,7 +40,7 @@ E2E_HOST=100.x.y.z /tmp/dune-e2e-venv/bin/python rehearsal.py   # 약 1분; 실�
 |---|---|
 | `remote.py` | `--remote` 서버, 쿠키가 분리된 컨텍스트 둘(호스트·친구). 설계 10절 시나리오: `#admin=` 진입 → 방 생성 → 방 링크 → 좌석 고르기·claim → 교차 좌석 403 → 이름(마크업 주입 시도 포함)·접속 점 → **서버가 지목하는 좌석이 한 스텝씩 두고 매 스텝 뒤 두 페이지가 서버 상태로 수렴하는지**(revision·confirmation·players 일치, 둘 차례인 페이지는 그 revision의 actions 보유, 아닌 페이지는 actions 없음) → 대기 배너·탭 제목 → 새로고침 복귀 → 호스트의 release → 재claim → 되돌리기 → 자리 비우기 → claim 도중 나가기·"이어 하기" → 실패한 요청·JS 예외·서버 오류 0. |
 | `open_mode.py` | 기본(open) 서버의 회귀. (A) 한 화면이 사람 2 + heuristic 2를 끝까지: 스텝마다 POST 1 + snapshot 1, 매 스텝 클라이언트 로그 길이 = 서버 `log_count`, 되돌리기의 epoch 변경, 이어 붙인 로그 == 서버 전체 로그, 순위표. (B) 검토 모드에서 늦게 온 옛 응답이 화면을 덮지 않는다. (C) 컨텍스트 셋: 초인종 반영 1초 안·snapshot 1개·자기 행동에는 추가 요청 0, 스트림을 막은 컨텍스트의 폴링 전환, 게임 삭제 통지. |
-| `races.py` | 응답 순서를 강제로 뒤집는 개입 실험. (1) 기다리는 페이지의 좌석 snapshot을 0.7초 붙잡은 사이 상대가 두 번 더 바꾼다 → 낡은 응답을 채택한 뒤 single-flight의 다음 바퀴가 따라잡아야 한다. (2) 새로고침한 페이지의 스트림을 0.3초, 입장 snapshot을 0.9초 늦춘다(그 snapshot은 `online: false`로 읽혔다) → 비행 중에 온 players 초인종이 한 바퀴를 더 예약해야 한다. `--ab`는 그 예약을 끈 `app.js`로 먼저 돌려 **실제로 stale이 되는지**(검사가 실패할 수 있는지) 확인한다. |
+| `races.py` | 응답 순서를 강제로 뒤집는 개입 실험. (1) 기다리는 페이지의 좌석 snapshot을 0.7초 붙잡은 사이 상대가 두 번 더 바꾼다 → 낡은 응답을 채택한 뒤 single-flight의 다음 바퀴가 따라잡아야 한다. (2) 새로고침한 페이지의 스트림을 0.3초, 입장 snapshot을 0.9초 늦춘다(그 snapshot은 `online: false`로 읽혔다) → 비행 중에 온 players 초인종이 한 바퀴를 더 예약해야 한다. `--ab`는 그 예약을 끈 `session.js`로 먼저 돌려 **실제로 stale이 되는지**(검사가 실패할 수 있는지) 확인한다. |
 | `recovery.py` | 자동 저장과 복구(슬라이스 5). 원격 한 판을 24 스텝 둔 뒤 서버를 **SIGKILL**하고 같은 포트·같은 저장 폴더로 다시 띄운다: 게임당 파일 하나·`.tmp` 잔재 없음·자동 저장이 live 상태보다 한 턴 이상 뒤처지지 않음, 호스트 패널의 저장 목록, 기다리던 친구의 "서버 연결 끊김" 표시 → 서버가 돌아오면 "새 방 링크로 들어오세요" landing(죽은 방의 "이어 하기"는 제안하지 않음), 호스트가 관리자 링크 → 저장 목록 → 불러오기(새 game id, revision = 자동 저장의 step 수, 좌석 전부 빔), 둘 다 새 링크로 복귀해 16 스텝 수렴, 불러온 게임은 자기 슬롯에 자동 저장. |
 | `staged_turn.py` | 사람용 Agent turn UI(2026-09-19). 서버는 Agent turn을 `agent_turn` 행동의 평평한 목록으로 주고(코덱·학습용), 페이지는 그것을 **카드 → 보낼 칸 → 남은 선택** 단계로 보여 주다가 남은 행동 번호 하나를 POST한다. 매 단계에서 화면을 그 목록과 대조한다: 빛나는 카드·칸이 목록이 허용하는 것과 정확히 같은지, 고르는 동안은 요청이 없는지, Escape·단계 칩·다른 카드로 취소·교체가 되는지, 칸을 먼저 골라도 되는지, 다 고르면 **그 행동 하나가** 요청 한 번으로 실행되는지, 남은 placement가 여럿이면(비용 옵션·graft) 선택창과 패널이 정확히 그것들을 내놓는지, "전체 행동 목록 보기" 토글이 모든 합법 행동을 나열하고 새로고침 뒤에도 유지되는지. 선택지가 여럿인 (카드, 칸)은 고정 seed 판에서 찾고 없으면 건너뛴다. 마지막으로 Immortality 판에서 **graft는 두 장을 먼저** 고른다: 함께 낼 수 있는 카드의 ＋ 표시, 두 번째 카드의 합류(교체가 아니라), 빛나는 칸이 두 카드의 graft placement의 합집합인지, 칸을 누르면 placement와 파트너 선택이 요청 둘로 이어 실행돼 두 카드가 in play가 되는지(graft placement가 여섯 판 안에 안 나오면 건너뛴다; 약 1~2분). |
 | `turn_controls.py` | 병력 수 조절기와 Reveal 구매 패널(2026-09-19). `deploy_troops` 1·2·…가 패널에서 **한 줄**로 접히고 같은 줄이 보드의 Conflict 구역(자기 사분면 옆)에도 서는지, 보드에서 숫자를 바꾸면 패널 숫자도 바뀌고 요청은 없는지, 확정 버튼의 "지금 → 뒤" 미리보기가 서버의 `strength_after`와 같고 **실행 뒤 실제 전투력과도 같은지**, 회수(`withdraw_troops`)가 count 하나여도 같은 조절기로 되는지. Reveal에서는 `summary.decision.persuasion`과 패널의 표시, 살 수 있는 카드마다의 비용, 출구("구매 끝 · Reveal 종료")가 패널의 마지막인지, 테이블의 빛나는 카드를 누르면 그 비용만큼 Persuasion이 줄고 "산 카드"에 오르는지. |
@@ -50,8 +50,14 @@ E2E_HOST=100.x.y.z /tmp/dune-e2e-venv/bin/python rehearsal.py   # 약 1분; 실�
 
 ## 새 검사를 더할 때
 
-- 클라이언트 상태는 `page.evaluate`로 읽는다(`app.js`는 classic script라 `state`·`refreshFlight`·`doorbell`·
-  `applyAction` 등이 전역 어휘 범위에 있다). 화면 문구보다 상태를 단언하고, 문구는 사용자에게 보이는 약속일 때만 본다.
+- 클라이언트 상태는 `page.evaluate`로 읽는다(2026-09-20에 `app.js`를 `labels`·`core`·`screens`·`session`·
+  `review`·`render`·`turn`·`board`·`panels`·`app`로 쪼갰지만 전부 classic script라 `state`·`refreshFlight`·
+  `doorbell`·`applyAction` 등은 여전히 한 전역 어휘 범위에 있다. `index.html`의 로드 순서가 곧 옛 파일의
+  위에서 아래 순서이고, 그 순서가 바뀌면 top-level const가 TDZ에 걸린다).
+  화면 문구보다 상태를 단언하고, 문구는 사용자에게 보이는 약속일 때만 본다.
+- `page.route`로 클라이언트를 패치하는 검사는 **그 코드가 지금 어느 파일에 있는지** 확인하고 그 파일을
+  건다. route handler 안에서 assert가 터지면 요청이 fulfill되지 않아 `goto` 타임아웃으로만 보인다
+  (2026-09-20 `races.py --ab`가 이 방식으로 조용히 깨졌다).
 - "N초 기다린 뒤 확인"보다 **수렴 조건을 폴링**한다(`remote.converge`). 멈춤은 타임라인과 함께 실패로 드러난다.
 - 경합을 의심하면 추측으로 고치지 말고 `page.route`로 그 순서를 강제해 재현한 뒤 고친다(`races.py`,
   `docs/lessons.md` 2026-09-10·2026-09-11). 동기 API의 route handler 안에서 `time.sleep`하면 그 동안 Playwright의

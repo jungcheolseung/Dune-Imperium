@@ -38,7 +38,7 @@
 
 ### 1. 언어 문제는 문구가 아니라 아키텍처다
 
-`ICON_RULES`(`static/app.js:2220`)는 **영어 정규식 29개**를 렌더된 산문에 돌린다
+`ICON_RULES`(`static/render.js:51`)는 **영어 정규식 29개**를 렌더된 산문에 돌린다
 (`solari`, `Draw N cards`, `troops`, `Persuasion`, `Trash`, `Discard`,
 `Signet Ring` …). 결과가 둘이다.
 
@@ -63,7 +63,7 @@ notes 5). 감사에서 세 관점이 "가장 많이 읽는 문자열"로 지목�
 
 ### 3. "구조" 문제의 체감 증상은 스크롤이다
 
-`SCROLL_PANES`(`static/app.js:2376`)는
+`SCROLL_PANES`(`static/render.js:212`)는
 `["seats", "side-main", "board", "market", "private-zone"]`으로 **`side`가 없다.**
 그런데 `style.css:1127`의 `@media (max-width: 1700px)`가 `#side`를 스크롤러로
 만들고(`overflow-y: auto`) `#side-main`을 `overflow: visible`로 바꾼다.
@@ -94,32 +94,54 @@ notes 5). 감사에서 세 관점이 "가장 많이 읽는 문자열"로 지목�
 용어는 **발명하지 않는다.** [`lessons.md`](lessons.md)에 trash/discard를 넘겨짚어
 생긴 실제 버그가 기록돼 있다. KR 룰북이 실제로 쓰는 단어만 쓴다.
 
-## 0단계 — 발견된 결함 3건 (반나절)
+## 0단계 — 발견된 결함 3건 (2026-09-20 완료)
 
 | | 내용 | 위치 |
 | --- | --- | --- |
 | a | Tech Module만 켜고 게임 생성 시 **HTTP 500 `Internal Server Error`**. `RulesetConfig.__post_init__`의 `ValueError`가 `_http_errors`를 통과한다 → `ValueError → 400`으로 잡고 메시지를 실어 보낸다 | `server/app.py`의 `_http_errors` |
-| b | 내부 frame 식별자 노출(`· frame: turn`) 제거 | `static/app.js:2518`, `:2521` |
-| c | 로그의 복수형 id 목록이 raw로 샌다(`Leader Ids: staban_tuek,…`). `logEventPayload`가 단수 id 키만 처리한다 | `static/app.js:5062` |
+| b | 내부 frame 식별자 노출(`· frame: turn`) 제거 | `static/render.js`의 `renderBanner` |
+| c | 로그의 복수형 id 목록이 raw로 샌다(`Leader Ids: staban_tuek,…`). `logEventPayload`가 단수 id 키만 처리한다 | `static/panels.js:370`의 `logEventPayload` |
 
 (c)는 Leader draft가 기본값이라 **모든 게임의 첫 로그 줄**에 나온다.
 
 검증: `scripts/e2e/`의 `open_mode.py`·`staged_turn.py`·`spectate.py` 재실행.
 (a)는 `tests/server/`에 회귀 테스트를 더한다(pytest로 잡히는 유일한 항목).
 
+**완료** (`e119e46`, `9ad978f`). (a)는 `SessionError`가 이미 `ValueError`
+하위 클래스라 핸들러를 넓히면 진짜 버그까지 400으로 가려지므로 config를 만드는
+자리에서 변환했다. (c)는 계획보다 넓었다 — 감사는 복수형 `_ids`만 지목했으나
+엔진의 payload id 키는 약 35종인데 허용 목록에 5종뿐이어서 `leader_id`·`tech_id`·
+`contract_id`·`skill_id`가 전부 raw로 새고 있었다. `_id`/`_ids` 전체로 일반화하고
+`action_id`는 `ACTION_LABELS`를 태운다.
+
 ## 1단계 — 구조 정리 (사용자 1순위)
 
-- **1a. 스크롤·포커스 보존을 선언적으로.** `SCROLL_PANES` 하드코딩이 위 3번의
-  근본 원인이다. `data-preserve-scroll` 속성이나 "스크롤 가능한 조상 탐색"으로
-  바꾼다. **동반 필수**: `open_mode.py:282`의 단언이 1700px 미만 뷰포트에서도
-  돌게 한다(지금은 검사 자체가 성립하지 않는다).
-- **1b. `app.js` 분할.** 이미 섹션 배너 23개가 있고 거의 1:1로 파일이 된다.
+- **1a. 스크롤·포커스 보존을 선언적으로 — 완료** (`5d2adbe`).
+  실측으로 메커니즘을 확정했다: 1800px에서는 `#side-main`·`#side-log`가,
+  1600·1366px에서는 `#side`가 스크롤러다 — 옛 목록은 1700px 초과에서만 맞았다.
+  셋을 다 넣고 `keepScroll()`이 렌더 시점에 각 칸에 묻는다. 로그도 같은 증상이라
+  (맨 위로 올려 둔 독자가 다음 렌더에 34,013px 끌려갔다) 끝에 있던 독자만 따라가게
+  했다. e2e는 "스타일시트가 스크롤을 허용하는 모든 칸이 `SCROLL_PANES`에 있는가"로
+  바꿔 **부류**를 잡고, 옛 클라이언트에 돌려 실제로 실패하는지 확인했다
+  (`open_mode.py`의 옛 단언은 `#side-main`을 지목해 1600px에서 공허하게 통과했다).
+- **1b. `app.js` 분할 — 완료** (`3485d25`). 섹션 배너를 따라 `core`·`screens`·
+  `session`·`review`·`render`·`turn`·`board`·`panels`와 bootstrap만 남은 `app.js`
+  아홉 개로 잘랐다(최대 `board.js` 1,271줄). 자르기 전후로 연속·무손실을 검증했고
+  비어 있지 않은 5,064줄이 동일하다. 각 파일에 `"use strict"`를 둔다(스크립트 단위다).
+  `races.py --ab`가 `**/static/app.js`를 route해 패치하고 있었는데 그 코드가
+  `session.js`로 옮겨가 조용히 깨졌다(route handler의 assert는 `goto` 타임아웃으로만
+  보인다) — route 대상을 옮기고 A/B가 다시 정직하게 동작함을 확인했다.
+  아래는 착수 전 근거다.
   **classic script로 쪼개면 전역 계약이 그대로라 e2e 무변경·위험 0**이다
   (e2e가 `page.evaluate`로 잡는 것: `state` 76회, `applyAction`, `stagedTurn`,
   `playback`, `LIT_SPACES`, `refreshFlight`, `doorbell`). 빌드 도구가 없고
   `/static`은 단순 `StaticFiles` mount라 인프라 비용은 0이다. ES module은
   `window` 시험 표면을 따로 만들어야 하므로 지금은 하지 않는다.
-- **1c. 라벨 테이블 통합.** `PHASE_LABELS`(:56)·`FACTION_LABELS`(:67)·
+- **1c. 라벨 테이블 통합 — 완료** (`7f333fa`). 일곱 개를 `static/labels.js`로
+  바이트 동일하게 옮기고, 완전성 가드가 `app.js`를 지목하는 대신 `static/*.js`를
+  훑도록 바꿔 이후 분할에도 꺼지지 않게 했다. 그 과정에서 확인: **엔진 event kind
+  207개 중 177개에 한국어 라벨이 없다**(`prettify(kind)` 폴백) — 2단계 몫이다.
+  아래는 착수 전 근거다. `PHASE_LABELS`(:56)·`FACTION_LABELS`(:67)·
   `ACTION_LABELS`(:76)·`EVENT_LABELS`(:308)·`EFFECT_ICON_LABELS`(:644)·
   `RESEARCH_BONUS_LABELS`(:4481)·`TLEILAXU_TRACK_LABELS`(:4495) 일곱 개를 한
   곳으로 모은다. 2단계의 토대다.
@@ -177,7 +199,7 @@ notes 5). 감사에서 세 관점이 "가장 많이 읽는 문자열"로 지목�
 - **3b. Bene Tleilax board를 strip에서 꺼낸다.** 190px 칼럼의 네 번째 항목이라
   어느 뷰포트에서도 화면 밖이고 33.3배로 줄어 있다. 토글 오버레이로 본 보드급
   크기에 놓는다. 덧붙여 **한글 라벨이 달린 fallback 그리드가 도달 불가능한 죽은
-  코드**다 — `renderBeneTleilax`가 `layout.image`가 있으면 `app.js:4527`에서 먼저
+  코드**다 — `renderBeneTleilax`가 `layout.image`가 있으면 `board.js:1093`에서 먼저
   반환하므로 `RESEARCH_BONUS_LABELS`·`TLEILAXU_TRACK_LABELS`가 화면에 오지 않는다.
 - **3c. 좌석 패널 curation.** 67개 필드에서 "항상 보이는 줄"과 "펼치면 보이는 줄"을
   가른다. 보드 조각 규약(단색 `SEAT_COLORS`, 인쇄된 자리)은 그대로 둔다.
@@ -191,7 +213,7 @@ notes 5). 감사에서 세 관점이 "가장 많이 읽는 문자열"로 지목�
 
 곁가지로 확인된 종료 화면 결함 둘(별도 슬라이스 후보):
 
-- 종료 배너가 **승자를 말하지 않는다**(`app.js:2484`의 "게임이 끝났습니다."뿐).
+- 종료 배너가 **승자를 말하지 않는다**(`render.js:338`의 "게임이 끝났습니다."뿐).
 - `#disclosure` 패널이 전 확장 종료 판에서 1844px·카드 칩 276개로 사이드 칼럼의
   92%를 차지하고, 같은 화면의 리플레이 검토를 스포일한다. e2e 검사는 0건이다.
 
