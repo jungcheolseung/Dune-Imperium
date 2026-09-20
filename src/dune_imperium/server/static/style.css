@@ -643,6 +643,60 @@ button:disabled { opacity: 0.5; cursor: wait; }
 .strip.collapsed { flex: none; }
 /* Every column folded: let the whole shared-card column give its width back
    to the board, and keep the headings on one line so it can be narrow. */
+.bt-open {
+  all: unset;
+  cursor: pointer;
+  display: block;
+  margin: 0.2rem 0 0;
+  padding: 0.15rem 0.35rem;
+  font-size: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  text-align: center;
+}
+.bt-open:hover { border-color: #c9a227; }
+.bt-open:focus-visible { outline: 2px solid #c9a227; outline-offset: 2px; }
+
+/* The board opened at a size you can read: the stage is percentage-based, so
+   a wider container is the whole change. */
+#bt-zoom {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+}
+#bt-zoom[hidden] { display: none; }
+#bt-zoom-body {
+  background: var(--panel, #14110c);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.6rem;
+  max-width: 94vw;
+  max-height: 94vh;
+  overflow: auto;
+}
+#bt-zoom-body h2 {
+  margin: 0 0 0.4rem;
+  font-size: 0.95rem;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+}
+#bt-zoom-body .bt-stage { width: min(88vw, 1000px); }
+.bt-zoom-close {
+  all: unset;
+  cursor: pointer;
+  padding: 0.15rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  font-size: 0.8rem;
+}
+.bt-zoom-close:focus-visible { outline: 2px solid #c9a227; outline-offset: 2px; }
+
 #market.all-folded { min-width: 0; }
 #market.all-folded .strip-toggle {
   white-space: nowrap;

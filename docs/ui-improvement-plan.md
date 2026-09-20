@@ -252,9 +252,11 @@ notes 5). 감사에서 세 관점이 "가장 많이 읽는 문자열"로 지목�
   Imperium Row 접기 단축키를 쓴다.
 - **3b. Bene Tleilax board를 strip에서 꺼낸다.** 190px 칼럼의 네 번째 항목이라
   어느 뷰포트에서도 화면 밖이고 33.3배로 줄어 있다. 토글 오버레이로 본 보드급
-  크기에 놓는다. 덧붙여 **한글 라벨이 달린 fallback 그리드가 도달 불가능한 죽은
-  코드**다 — `renderBeneTleilax`가 `layout.image`가 있으면 `board.js:1093`에서 먼저
-  반환하므로 `RESEARCH_BONUS_LABELS`·`TLEILAXU_TRACK_LABELS`가 화면에 오지 않는다.
+  크기에 놓는다. (정정) 감사가 "한글 라벨이 달린 fallback 그리드는 도달 불가능한 죽은
+  코드"라고 했고 이 문서도 그렇게 적었지만 **틀렸다**. `catalog.py`의
+  `"image": versioned(...) if bene_tleilax_image else None`이라서 assets 체크아웃이
+  없는 기기에서는 `layout.image`가 없고 그 그리드가 실제로 그려진다. 지우면 안 되는
+  폴백이다.
 - **3c. 좌석 패널 curation.** 67개 필드에서 "항상 보이는 줄"과 "펼치면 보이는 줄"을
   가른다. 보드 조각 규약(단색 `SEAT_COLORS`, 인쇄된 자리)은 그대로 둔다.
 

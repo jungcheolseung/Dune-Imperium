@@ -1130,6 +1130,40 @@ function renderIntriguePiles(market, view) {
 
 /* ---------- Immortality: the Tleilaxu Row and the Bene Tleilax board ---------- */
 
+/* The Bene Tleilax board at a readable size. renderBeneTleilaxScan places
+   everything in percentages of its stage, so the same call fills a large
+   container with no second layout to keep in step. */
+let btZoomOpen = false;
+
+function fillBeneTleilaxZoom(layout, view) {
+  const body = el("bt-zoom-body");
+  body.textContent = "";
+  const heading = document.createElement("h2");
+  heading.textContent = "Bene Tleilax board";
+  const close = document.createElement("button");
+  close.type = "button";
+  close.className = "bt-zoom-close";
+  close.textContent = "닫기";
+  close.addEventListener("click", closeBeneTleilaxZoom);
+  heading.appendChild(close);
+  body.append(heading, renderBeneTleilaxScan(layout, view));
+  el("bt-zoom").hidden = false;
+  close.focus();
+}
+
+function openBeneTleilaxZoom() {
+  const layout = state.catalog && state.catalog.bene_tleilax;
+  if (!layout || !state.view) return;
+  btZoomOpen = true;
+  fillBeneTleilaxZoom(layout, state.view);
+}
+
+function closeBeneTleilaxZoom() {
+  btZoomOpen = false;
+  el("bt-zoom").hidden = true;
+  el("bt-zoom-body").textContent = "";
+}
+
 function renderBeneTleilax(market, view) {
   /* The Tleilaxu Row: two deck cards bought with specimens plus the fixed
      Reclaimed Forces card [Immortality pp. 6, 9]. */
@@ -1157,7 +1191,22 @@ function renderBeneTleilax(market, view) {
     /* The owner's scan with the live tokens drawn over it
        (catalog.bene_tleilax.layout, percent of the image). */
     box.appendChild(renderBeneTleilaxScan(layout, view));
+    /* In the shared-card column this board is about 167px wide — its scan is
+       5551px, so a 33x reduction, against 10x for the main board. Its research
+       spaces come out around 19x21px and the seat tokens under 10px, which is
+       a picture of a board rather than a board. The column keeps the small one
+       as an at-a-glance marker; this opens it at a size you can read. */
+    const open = document.createElement("button");
+    open.type = "button";
+    open.className = "bt-open";
+    open.textContent = "크게 보기";
+    open.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openBeneTleilaxZoom();
+    });
+    box.appendChild(open);
     market.appendChild(box);
+    if (btZoomOpen) fillBeneTleilaxZoom(layout, view);
     return;
   }
 

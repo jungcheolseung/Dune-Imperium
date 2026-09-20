@@ -186,12 +186,92 @@ def run(base: str, browser) -> None:
         [s["name"] for s in typed["strips"] if s["collapsed"]],
     )
 
+    check_bene_tleilax_zoom(page)
+
     bad = [r for r in rec.requests if r[3] is not None and r[3] >= 400]
     check.ok(not bad, "no failed requests", bad[:3])
     check.ok(not rec.js_errors, "no JS errors", rec.js_errors[:3])
     if check.failed:
         rec.dump()
     context.close()
+
+
+STAGE = """(sel) => {
+    const stage = document.querySelector(sel);
+    if (!stage) return null;
+    const map = stage.querySelector('.bt-map');
+    const hexes = [...stage.querySelectorAll('.bt-hex')];
+    const tokens = [...stage.querySelectorAll('.bt-token')];
+    const r = (e) => e.getBoundingClientRect();
+    return {
+        width: r(stage).width,
+        downscale: map ? map.naturalWidth / r(map).width : null,
+        hexes: hexes.length,
+        hexWidth: hexes.length ? r(hexes[0]).width : 0,
+        tokenWidth: tokens.length ? r(tokens[0]).width : 0,
+    };
+}"""
+
+
+def check_bene_tleilax_zoom(page) -> None:
+    """The Bene Tleilax board is a real board, not a thumbnail.
+
+    In the shared column its scan is reduced about 31x — the main board scan
+    is reduced 10x — which leaves its 22 research spaces around 20px and the
+    seat tokens at 10px. The column keeps that as a marker; "크게 보기" opens
+    the same stage at a size you can actually read, which costs nothing
+    because renderBeneTleilaxScan positions everything in percentages.
+    """
+    small = page.evaluate(STAGE, "#market .bene-tleilax .bt-stage")
+    if not check.ok(small is not None, "the Bene Tleilax board is in the column"):
+        return
+    check.ok(small["hexes"] == 22, "all 22 research spaces are drawn", small["hexes"])
+    check.ok(
+        small["downscale"] > 20,
+        "the column copy really is a thumbnail",
+        round(small["downscale"], 1),
+    )
+
+    page.click(".bt-open")
+    page.wait_for_selector("#bt-zoom:not([hidden])")
+    big = page.evaluate(STAGE, "#bt-zoom-body .bt-stage")
+    if not check.ok(big is not None, "the enlarged board opened"):
+        return
+    check.ok(big["hexes"] == 22, "the enlarged board draws all 22 spaces", big["hexes"])
+    check.ok(
+        big["hexWidth"] >= small["hexWidth"] * 4,
+        "a research space is at least four times the size it was",
+        (round(small["hexWidth"]), round(big["hexWidth"])),
+    )
+    check.ok(
+        big["downscale"] < 10.4,
+        "the enlarged scan is reduced less than the main board's 10.4x",
+        round(big["downscale"], 1),
+    )
+    check.ok(
+        big["tokenWidth"] >= 24,
+        "a seat token is big enough to see",
+        round(big["tokenWidth"]),
+    )
+    print(
+        f"  .. board x{small['downscale']:.1f} in the column"
+        f" -> x{big['downscale']:.1f} enlarged"
+        f" (space {small['hexWidth']:.0f}px -> {big['hexWidth']:.0f}px)"
+    )
+
+    # It must survive somebody else's move, since render() rebuilds #market.
+    page.evaluate("render({ foreign: true })")
+    check.ok(
+        page.is_visible("#bt-zoom") and page.evaluate(STAGE, "#bt-zoom-body .bt-stage"),
+        "the enlarged board stays open when another seat moves",
+    )
+
+    page.keyboard.press("Escape")
+    check.ok(page.is_hidden("#bt-zoom"), "Escape closes the enlarged board")
+    page.click(".bt-open")
+    page.wait_for_selector("#bt-zoom:not([hidden])")
+    page.evaluate("document.getElementById('bt-zoom').click()")
+    check.ok(page.is_hidden("#bt-zoom"), "clicking the backdrop closes it")
 
 
 def main() -> None:

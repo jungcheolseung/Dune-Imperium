@@ -26,13 +26,18 @@ async function init() {
   /* The host of a remote game plays too and must not know the seed. */
   el("opt-seed-row").hidden = isRemote();
   buildSeatSelects();
+  el("bt-zoom").addEventListener("click", (event) => {
+    /* the backdrop, not the board itself */
+    if (event.target === el("bt-zoom")) closeBeneTleilaxZoom();
+  });
   document.addEventListener("click", (event) => {
     const pop = el("card-popover");
     if (!pop.hidden && !pop.contains(event.target)) closePopover();
   });
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
-      if (state.pick) clearPick();
+      if (!el("bt-zoom").hidden) closeBeneTleilaxZoom();
+      else if (state.pick) clearPick();
       else closePopover();
       return;
     }
