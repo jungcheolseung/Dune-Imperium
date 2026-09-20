@@ -111,10 +111,15 @@ async def _presence_bell_during_entry(patched: bool) -> bool:
                     body = (await response.text()).replace(
                         "} else if (refreshFlight) {", "} else if (false) {"
                     )
-                    assert "} else if (false) {" in body, "app.js changed shape"
+                    # An assertion here would surface as a goto timeout, since
+                    # a throwing route handler never fulfills the request.
+                    if "} else if (false) {" not in body:
+                        print("  !! session.js changed shape: refresh() not patched")
                     await route.fulfill(response=response, body=body)
 
-                await guest_context.route("**/static/app.js", patch)
+                # The single-flight refresh lives in session.js since the
+                # client was split; routing app.js patched nothing.
+                await guest_context.route("**/static/session.js", patch)
             await host.goto(f"{base}/#admin={KEY}")
             await host.wait_for_selector("#setup-screen:not([hidden])")
             await host.select_option("#seat-selects select[data-seat='1']", "human")
