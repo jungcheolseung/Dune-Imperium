@@ -28,10 +28,13 @@ TERMS")에서 왔다. 그 페이지에 없는 항목은 나온 쪽을 따로 적
 재현:
 
 ```bash
-uv run scripts/prepare_official_rules.py --source main --source main-ko \
-  --source board-guide-ko --source bloodlines-ko --source immortality-ko \
-  --output-dir <저장소 밖 경로>
+# 인자 없이 돌리면 manifest의 모든 출처(영어 5 + 한국어 4)를 받는다.
+uv run scripts/prepare_official_rules.py --output-dir <저장소 밖 경로>
 ```
+
+대조한 쪽은 대부분 각 룰북의 용어·아이콘 정리 페이지다: 본문 `[Main p. 20]`,
+Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 보드
+공간 설명서 `[Board Guide pp. 1-2]`.
 
 ## 적용 범위
 
@@ -172,12 +175,78 @@ uv run scripts/prepare_official_rules.py --source main --source main-ko \
 한국어 스캔을 확보하면 그림은 코드 변경 없이 바뀌고(`display/images.py`의
 `DEFAULT_LANGUAGES = ("ko", "en")`), 그때 이 항목들의 "적용"을 다시 판단한다.
 
+## Agent 아이콘 분류
+
+보드 공간의 Agent 아이콘 일곱 가지다. 양쪽 룰북의 공간 설명에서 그대로 추출했고
+개수와 항목이 정확히 일치한다(`[Board Guide pp. 1-2]`).
+
+| EN | 한국어 | 적용 |
+| --- | --- | --- |
+| City | 도시 | 적용 |
+| Emperor | 황제 | 적용 |
+| Spacing Guild | 우주 항행 길드 | 적용 |
+| Bene Gesserit | 베네 게세리트 | 적용 |
+| Fremen | 프레멘 | 적용 |
+| Landsraad | 랜드스래드 | 적용 |
+| Spice Trade | 스파이스 거래 | 적용 |
+
+## Bloodlines 확장과 Tech Module
+
+대부분 `[Bloodlines p. 12]`의 "ICON GUIDE AND TERMS"에서 왔다.
+
+| EN | 한국어 | 인용 | 적용 |
+| --- | --- | --- | --- |
+| Bloodlines | 혈통 | `[Bloodlines p. 12]` | 적용 |
+| Sardaukar Commander | 사다우카 지휘관 | `[Bloodlines p. 4]` | 적용 |
+| Sardaukar Commander Skill | 사다우카 지휘관 기술 토큰 | `[Bloodlines p. 4]` | 적용 |
+| Tech Module | 기술 모듈 | `[Bloodlines p. 12]` | 적용 |
+| Tech tile | 기술 타일 | `[Bloodlines p. 12]` | 적용 |
+| Acquire Tech | 기술 획득 | `[Bloodlines p. 12]` | 적용 |
+| Flip (a Tech tile) | 뒤집기 | `[Bloodlines p. 12]` | 적용 |
+| Ixian Embassy board | 익스 대사관 판 | `[Bloodlines p. 12]` | 적용 |
+| Command (6+) | 통솔 | `[Bloodlines p. 12]` | 적용 |
+| Combat (아이콘) | 전투 | `[Bloodlines p. 12]` | 적용 |
+| Spy with Deep Cover | 잠복 스파이 | `[Bloodlines p. 12]` | 적용 |
+| Twisted Intrigue | 뒤틀린 책략 | `[Bloodlines p. 12]` | 적용 |
+| Navigation card | 운항 카드 | `[Bloodlines p. 12]` | 적용 |
+| Tactics token / track | 전술 토큰 / 전술 트랙 | `[Bloodlines p. 12]` | 적용 |
+| Rival Tech Tile | 라이벌 기술 타일 | `[Bloodlines p. 12]` | 범위 밖(1인 게임) |
+| Tuek's Sietch | 튜엑의 시치 | `[Bloodlines p. 12]` | 참고(공간 이름) |
+| Forbidden Weapon | 금지된 무기 | `[Bloodlines p. 12]` | 참고(타일 이름) |
+
+> **기술은 두 가지를 가리킨다.** 한국어판은 Tech tile을 `기술 타일`, Sardaukar
+> Commander Skill을 `기술 토큰`으로 옮겨 둘 다 "기술"로 시작한다. 화면에서
+> **맨 "기술"만 쓰지 않는다** — 항상 `기술 타일` 또는 `사다우카 지휘관 기술 토큰`처럼
+> 뒤 명사까지 붙여 쓴다. 둘은 서로 다른 구성물이고 규칙도 다르다.
+
+## Immortality 확장
+
+대부분 `[Immortality p. 16]`의 "NEW ICONS"에서 왔다.
+
+| EN | 한국어 | 인용 | 적용 |
+| --- | --- | --- | --- |
+| Immortality | 불멸 | `[Immortality p. 16]` | 적용 |
+| Research | 연구 | `[Immortality p. 16]` | 적용 |
+| research token / track | 연구 토큰 / 연구 트랙 | `[Immortality p. 16]` | 적용 |
+| Genetic marker | 유전자 마커 | `[Immortality p. 16]` | 적용 |
+| Specimen | 표본 | `[Immortality p. 16]` | 적용 |
+| Axolotl tanks | 악솔로틀 탱크 | `[Immortality p. 16]` | 적용 |
+| Bene Tleilax board | 베네 틀레이락스 게임판 | `[Immortality p. 16]` | 적용 |
+| Tleilaxu | 틀레이락스 | `[Immortality p. 16]` | 적용 |
+| Tleilaxu token / track | 틀레이락스 토큰 / 틀레이락스 트랙 | `[Immortality p. 16]` | 적용 |
+| Tleilaxu Row | 틀레이락스 열 | `[Immortality p. 4]` | 적용 |
+| Imperium Row | 임페리움 열 | `[Immortality p. 4]` | 적용 |
+| Reserve (더미) | 예비 카드 더미 | `[Immortality p. 4]` | 적용 |
+| Graft | 접합 | `[Immortality p. 10]` | 적용 |
+| Research Station | 연구 기지 | `[Immortality p. 16]` | 참고(공간 이름) |
+
 ## 아직 채우지 않은 것
 
-- **확장 용어**: Bloodlines(Sardaukar Commander, Skill, Tech tile)와
-  Immortality(specimen, Tleilaxu, Research, Graft)는 이 표에 없다. 해당 룰북의
-  한국어판을 같은 방법으로 대조해 더한다. 2단계에서 확장 UI 문구를 건드릴 때
+- **CHOAM Module**: 초암 모듈·계약·계약 토큰은 위 표에 있지만, 계약 조건과 보상의
+  세부 문구는 아직 대조하지 않았다. CHOAM UI 문구를 건드릴 때 `[Main p. 16]`에서
   채운다.
+- Bloodlines·Immortality의 **Leader 전용 용어**(Chani의 전술, Piter의 뒤틀린 책략,
+  Kota의 비밀 프로젝트 등)는 해당 Leader UI를 건드릴 때 각 룰북에서 채운다.
 - **한국어 FAQ는 없다.** 공식 FAQ는 영어판만 배포된다. FAQ가 근거인 판정의
   용어는 본문 룰북의 단어를 쓴다.
 - 엔진 event kind 207개 중 177개가 아직 한국어 라벨이 없다
