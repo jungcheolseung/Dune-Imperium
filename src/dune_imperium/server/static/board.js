@@ -1122,13 +1122,15 @@ function renderBeneTleilax(market, view) {
     const label = document.createElement("span");
     label.className = "hex-label";
     label.textContent =
-      space.id === layout.research_start ? "시작" : RESEARCH_BONUS_LABELS[space.bonus] || space.bonus;
+      space.id === layout.research_start
+        ? "시작"
+        : phraseText(RESEARCH_BONUS_LABELS[space.bonus] || space.bonus);
     cell.appendChild(label);
     const tokens = document.createElement("span");
     tokens.className = "hex-tokens";
     for (const seat of tokensBySpace[space.id] || []) tokens.appendChild(seatDisc(seat, "rtoken"));
     cell.appendChild(tokens);
-    cell.title = `${space.id} · ${RESEARCH_BONUS_LABELS[space.bonus] || "보너스 없음"}`;
+    cell.title = `${space.id} · ${phraseText(RESEARCH_BONUS_LABELS[space.bonus] || "보너스 없음")}`;
     grid.appendChild(cell);
   }
   box.appendChild(grid);
@@ -1142,7 +1144,8 @@ function renderBeneTleilax(market, view) {
     cell.className = "track-cell";
     const label = document.createElement("span");
     label.className = "hex-label";
-    label.textContent = `${index}${TLEILAXU_TRACK_LABELS[bonus] ? " · " + TLEILAXU_TRACK_LABELS[bonus] : ""}`;
+    label.textContent =
+      `${index}${TLEILAXU_TRACK_LABELS[bonus] ? " · " + phraseText(TLEILAXU_TRACK_LABELS[bonus]) : ""}`;
     cell.appendChild(label);
     if (index === layout.tleilaxu_spice_space && view.tleilaxu_track_spice) {
       const spice = document.createElement("span");
@@ -1201,7 +1204,7 @@ function renderBeneTleilaxScan(layout, view) {
     hex.title =
       spaceId === layout.research_start
         ? "Research 시작"
-        : `${spaceId} · ${RESEARCH_BONUS_LABELS[bonusOf[spaceId]] || "보너스 없음"}`;
+        : `${spaceId} · ${phraseText(RESEARCH_BONUS_LABELS[bonusOf[spaceId]] || "보너스 없음")}`;
     stage.appendChild(hex);
     /* The start piece prints a spot per disc (the fourth seat continues
        the column); elsewhere the discs lie in the hex's dark upper half
@@ -1236,7 +1239,8 @@ function renderBeneTleilaxScan(layout, view) {
     cell.style.width = `${width}%`;
     cell.style.height = `${bandHeight}%`;
     const bonus = layout.tleilaxu_track[index];
-    cell.title = `Tleilaxu track ${index}${TLEILAXU_TRACK_LABELS[bonus] ? " · " + TLEILAXU_TRACK_LABELS[bonus] : ""}`;
+    cell.title =
+      `Tleilaxu track ${index}${TLEILAXU_TRACK_LABELS[bonus] ? " · " + phraseText(TLEILAXU_TRACK_LABELS[bonus]) : ""}`;
     stage.appendChild(cell);
     /* The first space prints a spot per disc. The other spaces take the
        same two rows: the upper one first, which leaves the printed bonus

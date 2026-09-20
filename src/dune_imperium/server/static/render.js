@@ -106,6 +106,18 @@ function termNode(name, count) {
   return count === undefined ? icon(term.icon, label) : amount(term.icon, label, count);
 }
 
+/* The same expansion as plain text, for places that take a string rather
+   than nodes: a title or alt attribute, or a line built by joining. An
+   icon becomes its word, which is what a title should read anyway. */
+function phraseText(template) {
+  return String(template).replace(/\{([a-z_]+)(?::(\d+))?\}/g, (whole, name, count) => {
+    const term = TERMS[name];
+    if (!term) return whole;
+    const label = term[TERM_LANGUAGE] || term.en;
+    return count === undefined ? label : `${count} ${label}`;
+  });
+}
+
 function phrase(template) {
   const fragment = document.createDocumentFragment();
   let index = 0;
@@ -594,7 +606,7 @@ function countRow(id, family, compact) {
   row.dataset.index = String(chosen.index);
   const label = document.createElement("span");
   label.className = "count-label";
-  label.textContent = ACTION_LABELS[id] || prettify(id);
+  label.appendChild(phrase(ACTION_LABELS[id] || prettify(id)));
   const stepper = document.createElement("span");
   stepper.className = "stepper";
   const step = (text, target, title) => {

@@ -266,6 +266,13 @@ Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 �
   채운다.
 - Bloodlines·Immortality의 **Leader 전용 용어**(Chani의 전술, Piter의 뒤틀린 책략,
   Kota의 비밀 프로젝트 등)는 해당 Leader UI를 건드릴 때 각 룰북에서 채운다.
+- **set aside**: Manipulate(Imperium Row 조작)와 Shaddam의 보류 계약이 쓰는
+  동작인데 한국어 룰북의 용어집에 대응 항목을 찾지 못했다. 발명하지 않고
+  화면에서 영어를 유지하고 있다(`acquire_manipulated_imperium`,
+  `manipulate_imperium_row`). 해당 카드의 한국어 카드면이나 룰북 본문에서
+  단어를 찾으면 여기에 인용과 함께 더하고 라벨을 바꾼다.
+- **Agent box**: `[Bloodlines p. 12]`의 한국어판이 "에이전트 칸"으로 쓴다.
+  라벨은 그 표기를 따르지만 용어집 행으로는 아직 올리지 않았다.
 - **한국어 FAQ는 없다.** 공식 FAQ는 영어판만 배포된다. FAQ가 근거인 판정의
   용어는 본문 룰북의 단어를 쓴다.
 - 엔진 event kind 207개 중 177개가 아직 한국어 라벨이 없다

@@ -374,7 +374,9 @@ function logEventPayload(payload) {
     if (Array.isArray(value) && value.length === 0) continue;
     /* action_id has its own Korean table; everything else is a catalog name. */
     const resolve = (item) =>
-      key === "action_id" ? ACTION_LABELS[item] || prettify(item) : nameOf(item);
+      key === "action_id"
+        ? phraseText(ACTION_LABELS[item] || prettify(item))
+        : nameOf(item);
     const shown = isIdList
       ? value.map(resolve).join(", ")
       : isIdField
@@ -391,9 +393,11 @@ function logEventPayload(payload) {
 function logEventLine(event) {
   const line = document.createElement("div");
   line.className = "logevent";
-  const label = EVENT_LABELS[event.kind] || prettify(event.kind);
+  /* phrase(), not textContent: an event label may name a term, and the
+     braces must never reach the screen. */
+  line.appendChild(phrase(EVENT_LABELS[event.kind] || prettify(event.kind)));
   const payload = logEventPayload(event.payload);
-  line.textContent = payload ? `${label} — ${payload}` : label;
+  if (payload) line.append(` — ${payload}`);
   return line;
 }
 

@@ -224,11 +224,25 @@ def scenario_full_game(base, browser) -> str:
         "every step that names a card shows that name as text",
         [(w["name"], w["shown"]) for w in lost[:3]],
     )
-    leaked = [
-        token
-        for token in ("{draw}", "{trash}", "{troop}", "{solari}", "{contract}")
-        if token in page.inner_text("#game-screen")
-    ]
+    # Any {term} on screen means a label was rendered as plain text instead of
+    # through phrase()/phraseText(). Match the shape, not a list of tokens, so
+    # a new term cannot slip past by not being in the list.
+    leaked = page.evaluate(
+        """() => {
+            const hits = new Set();
+            const add = (text) => {
+                for (const m of String(text || '').matchAll(/\\{[a-z_]+(?::\\d+)?\\}/g)) {
+                    hits.add(m[0]);
+                }
+            };
+            add(document.getElementById('game-screen').innerText);
+            for (const el of document.querySelectorAll('#game-screen [title], #game-screen img[alt]')) {
+                add(el.getAttribute('title'));
+                add(el.getAttribute('alt'));
+            }
+            return [...hits];
+        }"""
+    )
     check.ok(not leaked, "no unexpanded term markup reaches the screen", leaked)
 
     full = page.evaluate(f"fetch('/games/{game_id}/log?seat=0').then((r) => r.json())")
