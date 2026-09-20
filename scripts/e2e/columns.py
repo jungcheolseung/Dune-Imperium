@@ -148,6 +148,38 @@ def run(base: str, browser) -> None:
         [s["name"] for s in unfolded["strips"] if s["collapsed"]],
     )
 
+    # The Hangul IME is the normal state for this UI's players: the same
+    # physical key then arrives as key "ㅊ", and matching on event.key meant
+    # the shortcut did nothing at all until you switched back to English.
+    page.evaluate(
+        """() => document.dispatchEvent(new KeyboardEvent('keydown', {
+            key: 'ㅊ', code: 'KeyC', bubbles: true,
+        }))"""
+    )
+    hangul = page.evaluate(GEOMETRY)
+    check.ok(
+        all(s["collapsed"] for s in hangul["strips"]),
+        "the shortcut works with the Hangul IME on (key ㅊ, code KeyC)",
+        [s["name"] for s in hangul["strips"] if not s["collapsed"]],
+    )
+    page.evaluate(
+        """() => document.dispatchEvent(new KeyboardEvent('keydown', {
+            key: 'ㅊ', code: 'KeyC', bubbles: true,
+        }))"""
+    )
+    # ...and a key that is only mid-composition must not fold anything.
+    page.evaluate(
+        """() => document.dispatchEvent(new KeyboardEvent('keydown', {
+            key: 'ㅊ', code: 'KeyC', isComposing: true, bubbles: true,
+        }))"""
+    )
+    composing = page.evaluate(GEOMETRY)
+    check.ok(
+        all(not s["collapsed"] for s in composing["strips"]),
+        "a keystroke the IME is still composing is left alone",
+        [s["name"] for s in composing["strips"] if s["collapsed"]],
+    )
+
     # A remembered choice: fold two, reload, they are still folded.
     page.click("#market .strip[data-strip='Reserve'] .strip-toggle")
     page.click(f"#market .strip[data-strip='{target}'] .strip-toggle")

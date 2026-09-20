@@ -42,20 +42,30 @@ async function init() {
       else closePopover();
       return;
     }
-    /* `c` folds the shared card columns away and back, so the board can have
-       the room when you are not shopping. Not while typing a name or a seed,
-       and not when the key is part of a browser shortcut. */
+    /* Shortcuts are matched on event.code, the physical key, not event.key.
+       This UI is Korean and the keyboard usually is too: with the Hangul IME
+       on, the `c` key arrives as event.key "ㅊ" and the shortcut silently did
+       nothing. event.code stays "KeyC" whatever the input mode, and event.key
+       is still accepted so a layout that puts c elsewhere keeps working.
+
+       Not while typing a name or a seed, not mid-composition, and not when
+       the key belongs to a browser shortcut. */
     const target = event.target;
     const typing =
       target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
-    if (typing || event.ctrlKey || event.metaKey || event.altKey) return;
-    if (event.key === "c" || event.key === "C") {
+    if (typing || event.isComposing || event.ctrlKey || event.metaKey) return;
+    if (event.altKey) return;
+    const pressed = (code, letter) =>
+      event.code === code || event.key === letter || event.key === letter.toUpperCase();
+    /* `c` folds the shared card columns away, so the board can have the room
+       when you are not shopping. */
+    if (pressed("KeyC", "c")) {
       if (el("game-screen").hidden) return;
       event.preventDefault();
       toggleAllStrips();
     }
     /* `s` shows or hides every seat's detail at once. */
-    if (event.key === "s" || event.key === "S") {
+    if (pressed("KeyS", "s")) {
       if (el("game-screen").hidden) return;
       event.preventDefault();
       toggleAllSeats();
