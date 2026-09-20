@@ -627,6 +627,29 @@ button:disabled { opacity: 0.5; cursor: wait; }
 #market .strip { flex: none; }
 #market .strip-cards { flex-wrap: wrap; overflow: visible; }
 .strip h3 { margin: 0 0 0.2rem; }
+/* A shared-card column folds away from its own heading. Collapsed it keeps
+   the heading and its count, so the column still says what is in it. */
+.strip-toggle {
+  all: unset;
+  cursor: pointer;
+  display: block;
+  width: 100%;
+  font: inherit;
+  color: inherit;
+}
+.strip-toggle:hover { color: var(--accent, #f4c542); }
+.strip-toggle:focus-visible { outline: 2px solid var(--accent, #f4c542); outline-offset: 2px; }
+.strip.collapsed > *:not(h3) { display: none; }
+.strip.collapsed { flex: none; }
+/* Every column folded: let the whole shared-card column give its width back
+   to the board, and keep the headings on one line so it can be narrow. */
+#market.all-folded { min-width: 0; }
+#market.all-folded .strip-toggle {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 9rem;
+}
 .strip-cards {
   display: flex;
   gap: 0.35rem;

@@ -152,13 +152,14 @@ def check_tleilaxu_row(page) -> None:
     """
     row = page.evaluate(
         """() => {
-            const strip = [...document.querySelectorAll('#market .strip')].find(
-                (s) => s.querySelector('h3')
-                    && s.querySelector('h3').textContent.startsWith('Tleilaxu Row'));
+            const strip = document.querySelector(
+                '#market .strip[data-strip="Tleilaxu Row"]');
             if (!strip) return null;
             const cards = [...strip.querySelectorAll('.vcard[data-instance]')];
             return {
-                heading: strip.querySelector('h3').textContent.trim(),
+                // the heading is a collapse button; drop its ▾/▸ marker
+                heading: strip.querySelector('.strip-toggle')
+                    .textContent.replace(/^[▾▸]\s*/, '').trim(),
                 deckSize: state.view.tleilaxu_deck_size,
                 expected: [...state.view.tleilaxu_row, 'reclaimed_forces'],
                 ids: cards.map((c) => c.dataset.instance),
