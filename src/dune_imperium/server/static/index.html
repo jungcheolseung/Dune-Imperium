@@ -143,7 +143,19 @@
 
   <div id="card-popover" class="popover" hidden></div>
 
+  <!-- Classic scripts sharing one global scope, so the order is the file's
+       old top-to-bottom order and must stay that way: a top-level const is
+       in the temporal dead zone until its own script has run. Only app.js
+       runs anything at load (init()), so it is last. -->
   <script src="/static/labels.js"></script>
+  <script src="/static/core.js"></script>
+  <script src="/static/screens.js"></script>
+  <script src="/static/session.js"></script>
+  <script src="/static/review.js"></script>
+  <script src="/static/render.js"></script>
+  <script src="/static/turn.js"></script>
+  <script src="/static/board.js"></script>
+  <script src="/static/panels.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>

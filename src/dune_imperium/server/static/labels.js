@@ -1,3 +1,5 @@
+"use strict";
+
 /* The client's label tables: one Korean word for each engine identifier the
    player is shown. Loaded before app.js, which reads these as globals (both
    are classic scripts, so a top-level const here is in scope there).
