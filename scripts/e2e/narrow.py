@@ -17,7 +17,13 @@ render() to carry. Re-measure before adding one.
 
 from __future__ import annotations
 
-from common import SERVER_LOG_COPY, Check, chrome, open_context, server
+from common import (
+    SERVER_LOG_COPY,
+    Check,
+    chrome,
+    open_context,
+    server,
+)
 
 check = Check()
 
@@ -52,10 +58,19 @@ def run(base: str, browser) -> None:
         """() => {
             const css = (id, prop) =>
                 getComputedStyle(document.getElementById(id))[prop];
+            const box = (id) => document.getElementById(id).getBoundingClientRect();
             const rows = [...document.querySelectorAll('#market .strip-cards')];
             return {
                 viewport: [innerWidth, innerHeight],
-                centerColumns: css('center', 'gridTemplateColumns').split(' ').length,
+                boardBottom: box('board').bottom,
+                boardH: box('board').height,
+                boardW: box('board').width,
+                boardRight: box('board').right,
+                marketTop: box('market').top,
+                marketLeft: box('market').left,
+                marketH: box('market').height,
+                marketW: box('market').width,
+                centerW: box('center').width,
                 marketDirection: css('market', 'flexDirection'),
                 stripWrap: rows.length ? getComputedStyle(rows[0]).flexWrap : null,
                 stripOverflowX:
@@ -70,10 +85,23 @@ def run(base: str, browser) -> None:
         f"  .. {shape['viewport']}: {shape['strips']} strips,"
         f" {shape['scrollable']} scroll sideways"
     )
+    # Geometry, not the grid-track string: a rule that still declares one
+    # column while the market renders empty or zero-size would pass a track
+    # count. Ask where the two panels actually are.
     check.ok(
-        shape["centerColumns"] == 1,
-        "below 1100px the board and the shared cards stack, not side by side",
-        shape["centerColumns"],
+        shape["marketTop"] >= shape["boardBottom"] - 1,
+        "below 1100px the shared cards sit BELOW the board, not beside it",
+        (shape["boardBottom"], shape["marketTop"]),
+    )
+    check.ok(
+        shape["marketW"] >= shape["centerW"] - 2,
+        "the stacked shared cards span the whole centre column",
+        (shape["marketW"], shape["centerW"]),
+    )
+    check.ok(
+        shape["boardH"] > 0 and shape["marketH"] > 0,
+        "both panels are actually drawn when stacked",
+        (shape["boardH"], shape["marketH"]),
     )
     check.ok(
         shape["marketDirection"] == "row",
@@ -102,6 +130,7 @@ def run(base: str, browser) -> None:
             f"the shared columns include {want}",
             strips,
         )
+    check_tleilaxu_row(page)
 
     bad = [r for r in rec.requests if r[3] is not None and r[3] >= 400]
     check.ok(not bad, "no failed requests", bad[:3])
@@ -109,6 +138,68 @@ def run(base: str, browser) -> None:
     if check.failed:
         rec.dump()
     context.close()
+
+
+def check_tleilaxu_row(page) -> None:
+    """The Tleilaxu Row is two deck cards plus the fixed Reclaimed Forces.
+
+    `Reclaimed Forces` is never removed and always sits last
+    (`rules/tleilaxu_row.py`, [Immortality p. 9]), so its position and its
+    marker class are a contract the renderer must keep. The names are read
+    from each card's title, which visualCard sets from the catalog entry, so a
+    baseId/lookup regression that put a raw instance id on the face fails here
+    whether or not the image cache is present.
+    """
+    row = page.evaluate(
+        """() => {
+            const strip = [...document.querySelectorAll('#market .strip')].find(
+                (s) => s.querySelector('h3')
+                    && s.querySelector('h3').textContent.startsWith('Tleilaxu Row'));
+            if (!strip) return null;
+            const cards = [...strip.querySelectorAll('.vcard[data-instance]')];
+            return {
+                heading: strip.querySelector('h3').textContent.trim(),
+                deckSize: state.view.tleilaxu_deck_size,
+                expected: [...state.view.tleilaxu_row, 'reclaimed_forces'],
+                ids: cards.map((c) => c.dataset.instance),
+                titles: cards.map((c) => c.title),
+                reclaimed: cards.map((c) => c.classList.contains('reclaimed')),
+                sized: cards.map((c) => {
+                    const r = c.getBoundingClientRect();
+                    return r.width > 0 && r.height > 0;
+                }),
+                strayReclaimed: document.querySelectorAll(
+                    '#market .vcard.reclaimed').length,
+            };
+        }"""
+    )
+    if not check.ok(row is not None, "the Tleilaxu Row strip is on screen"):
+        return
+    check.ok(
+        row["heading"] == f"Tleilaxu Row · deck {row['deckSize']}",
+        "the strip heading carries the live deck count",
+        (row["heading"], row["deckSize"]),
+    )
+    check.ok(
+        row["ids"] == row["expected"],
+        "the row is the view's cards with Reclaimed Forces appended last",
+        (row["ids"], row["expected"]),
+    )
+    check.ok(
+        row["reclaimed"] == [False] * (len(row["ids"]) - 1) + [True],
+        "only the last card is marked reclaimed",
+        row["reclaimed"],
+    )
+    check.ok(
+        row["strayReclaimed"] == 1,
+        "nothing else in the shared columns claims the reclaimed marker",
+        row["strayReclaimed"],
+    )
+    # A raw instance id on the face is the symptom a player would see.
+    raw = [t for t in row["titles"] if t.startswith("tleilaxu:") or t.endswith(":0")]
+    check.ok(not raw, "every card resolved to its catalog name", raw)
+    check.ok(all(row["sized"]), "every card in the row has size", row["sized"])
+
 
 
 def main() -> None:
