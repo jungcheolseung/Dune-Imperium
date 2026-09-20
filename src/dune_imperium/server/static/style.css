@@ -643,6 +643,25 @@ button:disabled { opacity: 0.5; cursor: wait; }
 .strip.collapsed { flex: none; }
 /* Every column folded: let the whole shared-card column give its width back
    to the board, and keep the headings on one line so it can be narrow. */
+.seat-more {
+  all: unset;
+  cursor: pointer;
+  display: block;
+  width: 100%;
+  margin-top: 0.15rem;
+  font-size: 0.7rem;
+  opacity: 0.8;
+  line-height: 1.25;
+}
+.seat-more {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.seat-more:hover { opacity: 1; color: #c9a227; }
+.seat-more:focus-visible { outline: 2px solid #c9a227; outline-offset: 2px; }
+.seat-detail[hidden] { display: none; }
+
 .bt-open {
   all: unset;
   cursor: pointer;

@@ -20,6 +20,7 @@ async function adoptAdminLink() {
 
 async function init() {
   loadCollapsedStrips();
+  loadExpandedSeats();
   state.catalog = await api("/catalog");
   const adminError = await adoptAdminLink();
   state.server = await api("/whoami");
@@ -52,6 +53,12 @@ async function init() {
       if (el("game-screen").hidden) return;
       event.preventDefault();
       toggleAllStrips();
+    }
+    /* `s` shows or hides every seat's detail at once. */
+    if (event.key === "s" || event.key === "S") {
+      if (el("game-screen").hidden) return;
+      event.preventDefault();
+      toggleAllSeats();
     }
   });
   el("setup-form").addEventListener("submit", createGame);

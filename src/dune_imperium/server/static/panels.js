@@ -21,6 +21,53 @@ function seatLine(container, label, content) {
   container.appendChild(line);
 }
 
+/* Which seats are showing their detail. Four panels of everything do not fit
+   the column: measured on an all-expansion game, the four cards came to
+   1,678px mid-game and 2,189px late against 751px of room, so the fourth seat
+   was always below the fold. Head, stats and the zone counts stay; the card
+   lines fold, and the fold still names what it holds. Remembered per browser,
+   like the shared columns. */
+const SEATS_KEY = "dune.expandedSeats";
+let expandedSeats = new Set();
+
+function loadExpandedSeats() {
+  try {
+    const stored = JSON.parse(storageGet(SEATS_KEY) || "[]");
+    expandedSeats = new Set(Array.isArray(stored) ? stored.map(Number) : []);
+  } catch (error) {
+    expandedSeats = new Set();
+  }
+}
+
+function setSeatExpanded(seat, expanded) {
+  if (expanded) expandedSeats.add(seat);
+  else expandedSeats.delete(seat);
+  storageSet(SEATS_KEY, JSON.stringify([...expandedSeats]));
+  renderSeats();
+}
+
+function toggleAllSeats() {
+  const seats = (state.view ? state.view.players : []).map((p) => p.player);
+  const anyClosed = seats.some((seat) => !expandedSeats.has(seat));
+  expandedSeats = new Set(anyClosed ? seats : []);
+  storageSet(SEATS_KEY, JSON.stringify([...expandedSeats]));
+  renderSeats();
+}
+
+/* What a folded seat says it is hiding: each line's label and how many cards
+   are on it, so the fold is still informative. */
+function seatDetailSummary(detail) {
+  const parts = [];
+  for (const line of detail.children) {
+    const strong = line.querySelector("strong");
+    if (!strong) continue;
+    const label = strong.textContent.trim();
+    const chips = line.querySelectorAll(".tag").length;
+    parts.push(chips ? `${label} ${chips}` : label);
+  }
+  return parts;
+}
+
 function renderSeats() {
   const wrap = el("seats");
   wrap.textContent = "";
@@ -211,7 +258,11 @@ function renderSeats() {
         flags.push(`Usurp: turn 끝에 ${nameOf(player.usurped_row_card_id)} trash`);
       }
     }
-    if (flags.length) seatLine(card, "상태", iconize(flags.join(" · ")));
+    /* Everything below the zone counts folds away: the card lines are what
+       pushed the fourth seat off the screen. */
+    const detail = document.createElement("div");
+    detail.className = "seat-detail";
+    if (flags.length) seatLine(detail, "상태", iconize(flags.join(" · ")));
     if (player.skill_ids && player.skill_ids.length) {
       const line = document.createElement("div");
       line.className = "cardline";
@@ -219,7 +270,7 @@ function renderSeats() {
       strong.textContent = "Skills ";
       line.appendChild(strong);
       for (const id of player.skill_ids) line.appendChild(chip(skillIdOf(id)));
-      card.appendChild(line);
+      detail.appendChild(line);
     }
     if (player.tech_ids && player.tech_ids.length) {
       const line = document.createElement("div");
@@ -235,17 +286,21 @@ function renderSeats() {
         }
         line.appendChild(mark);
       }
-      card.appendChild(line);
+      detail.appendChild(line);
     }
     const agents = player.agent_locations.map(nameOf).join(", ");
-    if (agents) seatLine(card, "배치", agents);
+    if (agents) seatLine(detail, "배치", agents);
 
     const zones = document.createElement("div");
     zones.className = "zones";
-    zones.textContent =
-      `hand ${player.hand_size} · deck ${player.deck_size}` +
-      ` · discard ${player.discard_pile.length} · intrigue ${player.intrigue_card_count}` +
-      ` · supply ${player.troops_supply}`;
+    /* The last English line in the seat panel: the zone names are glossary
+       terms, so phraseText gives them the same words as everywhere else. */
+    zones.textContent = phraseText(
+      `{hand} ${player.hand_size} · {deck} ${player.deck_size}` +
+        ` · {discard_pile} ${player.discard_pile.length}` +
+        ` · {intrigue} ${player.intrigue_card_count}` +
+        ` · {supply} ${player.troops_supply}`,
+    );
     if (player.discard_pile.length) {
       zones.classList.add("clickable");
       zones.title = "discard 더미 보기";
@@ -270,7 +325,7 @@ function renderSeats() {
         mark.classList.add("muted");
         line.appendChild(mark);
       }
-      card.appendChild(line);
+      detail.appendChild(line);
     }
     if (player.active_contract_ids.length || player.completed_contract_ids.length) {
       const line = document.createElement("div");
@@ -287,7 +342,7 @@ function renderSeats() {
         mark.classList.add("muted");
         line.appendChild(mark);
       }
-      card.appendChild(line);
+      detail.appendChild(line);
     }
     if (player.in_play.length) {
       const line = document.createElement("div");
@@ -296,7 +351,7 @@ function renderSeats() {
       strong.textContent = "In play ";
       line.appendChild(strong);
       for (const id of player.in_play) line.appendChild(chip(id));
-      card.appendChild(line);
+      detail.appendChild(line);
     }
     /* Hand cards that entered through a public move (Corrinth City, an
        Intrigue "put it in your hand", a Bond return) stay known (OQ-010). */
@@ -307,7 +362,7 @@ function renderSeats() {
       strong.textContent = "Hand (공개) ";
       line.appendChild(strong);
       for (const id of player.hand_public) line.appendChild(chip(id));
-      card.appendChild(line);
+      detail.appendChild(line);
     }
     if (view.intrigue_resolving.length && view.decision_owner === player.player) {
       const line = document.createElement("div");
@@ -316,7 +371,23 @@ function renderSeats() {
       strong.textContent = "Intrigue 해결 중 ";
       line.appendChild(strong);
       for (const id of view.intrigue_resolving) line.appendChild(chip(id));
-      card.appendChild(line);
+      detail.appendChild(line);
+    }
+    if (detail.children.length) {
+      const expanded = expandedSeats.has(player.player);
+      const more = document.createElement("button");
+      more.type = "button";
+      more.className = "seat-more";
+      more.setAttribute("aria-expanded", expanded ? "true" : "false");
+      const summary = seatDetailSummary(detail).join(" · ");
+      more.textContent = expanded ? "자세히 ▾" : `자세히 ▸ · ${summary}`;
+      if (!expanded) more.title = summary;
+      more.addEventListener("click", (event) => {
+        event.stopPropagation();
+        setSeatExpanded(player.player, !expanded);
+      });
+      detail.hidden = !expanded;
+      card.append(more, detail);
     }
     wrap.appendChild(card);
   }
