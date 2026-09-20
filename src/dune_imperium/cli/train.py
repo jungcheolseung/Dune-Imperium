@@ -90,6 +90,15 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--temperature", type=float, default=1.0)
     parser.add_argument(
+        "--rank-rewards",
+        action="store_true",
+        help=(
+            "pay the finishing order (1, 1/3, -1/3, -1 at four players) "
+            "instead of winner-take-all (+1 / -1/3) during collection; the "
+            "environment and the tournament's win criterion are unchanged"
+        ),
+    )
+    parser.add_argument(
         "--step-penalty",
         type=float,
         default=0.0005,
@@ -175,6 +184,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             ),
             opponent=arguments.opponent,
             temperature=arguments.temperature,
+            rank_rewards=arguments.rank_rewards,
             step_penalty=arguments.step_penalty,
             max_steps=arguments.max_steps,
             eval_every=arguments.eval_every,

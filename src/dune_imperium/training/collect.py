@@ -64,6 +64,7 @@ class _ChunkJob:
     opponent: str | None
     opponent_seed: int
     max_steps: int
+    rank_rewards: bool
     out_path: str
 
 
@@ -104,6 +105,7 @@ def _collect_chunk(job: _ChunkJob) -> _ChunkResult:
         max_steps=job.max_steps,
         record=True,
         undo_actions=False,
+        rank_rewards=job.rank_rewards,
     )
     policies = _policies(
         network,
@@ -147,6 +149,7 @@ class Collector:
         max_steps: int = 30_000,
         temperature: float = 1.0,
         opponent: str | None = None,
+        rank_rewards: bool = False,
     ) -> None:
         if workers < 1:
             raise ValueError("workers must be positive")
@@ -155,6 +158,7 @@ class Collector:
         self.max_steps = max_steps
         self.temperature = temperature
         self.opponent = opponent
+        self.rank_rewards = rank_rewards
         self._pool: ProcessPoolExecutor | None = None
         self._scratch: Path | None = None
         if workers > 1:
@@ -195,6 +199,7 @@ class Collector:
                 max_steps=self.max_steps,
                 record=True,
                 undo_actions=False,
+                rank_rewards=self.rank_rewards,
             )
             policies = _policies(
                 network,
@@ -235,6 +240,7 @@ class Collector:
                 opponent=self.opponent,
                 opponent_seed=opponent_seed + index * 104_729,
                 max_steps=self.max_steps,
+                rank_rewards=self.rank_rewards,
                 out_path=str(self._scratch / f"chunk_{policy_seed}_{index}.npz"),
             )
             for index, chunk in enumerate(chunks)

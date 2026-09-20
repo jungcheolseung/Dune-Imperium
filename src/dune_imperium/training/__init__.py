@@ -16,6 +16,7 @@ from dune_imperium.training.selfplay import (
     TrainingBatch,
     TrajectoryStep,
     apply_step_penalty,
+    rank_reward,
     select_policy_steps,
     stack_episodes,
 )
@@ -33,6 +34,7 @@ __all__ = [
     "TrainingBatch",
     "TrajectoryStep",
     "apply_step_penalty",
+    "rank_reward",
     "select_policy_steps",
     "stack_episodes",
     "without_undo_actions",

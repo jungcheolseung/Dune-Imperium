@@ -17,6 +17,7 @@ from dune_imperium.training import (
     SelfPlaySpec,
     TrainingBatch,
     apply_step_penalty,
+    rank_reward,
     stack_episodes,
     without_undo_actions,
 )
@@ -199,6 +200,44 @@ def test_selfplay_cli_reports_throughput(capsys: pytest.CaptureFixture[str]) -> 
     assert "batch: observations" in output
     with pytest.raises(SystemExit):
         selfplay_main(["--policy", "oracle"])
+
+
+def test_rank_rewards_pay_the_finishing_order_and_stay_zero_sum() -> None:
+    """The finishing order, mapped onto [+1, -1], instead of one bit.
+
+    Winner-take-all tells a seat only whether it won, so second place and
+    last place get the same number. The engine already computes the rank.
+    """
+
+    assert rank_reward(1, 4) == pytest.approx(1.0)
+    assert rank_reward(2, 4) == pytest.approx(1.0 / 3.0)
+    assert rank_reward(3, 4) == pytest.approx(-1.0 / 3.0)
+    assert rank_reward(4, 4) == pytest.approx(-1.0)
+    assert sum(rank_reward(rank, 4) for rank in (1, 2, 3, 4)) == pytest.approx(0.0)
+    with pytest.raises(ValueError, match="two players"):
+        rank_reward(1, 1)
+
+    specs = _specs("r", (31, 32))
+    default = SelfPlayRunner(RulesetConfig()).run(
+        {"r": RandomBatchPolicy(seed=3)}, specs
+    )
+    ranked = SelfPlayRunner(RulesetConfig(), rank_rewards=True).run(
+        {"r": RandomBatchPolicy(seed=3)}, specs
+    )
+
+    # Only the payout changes: the same seeds play the same games.
+    assert [e.ranks for e in ranked.episodes] == [e.ranks for e in default.episodes]
+    for episode in default.episodes:
+        assert sorted(episode.rewards, reverse=True)[0] == pytest.approx(1.0)
+        assert episode.rewards.count(-1.0 / 3.0) == 3
+    for episode in ranked.episodes:
+        assert sum(episode.rewards) == pytest.approx(0.0)
+        # Every seat gets a different number, ordered by where it finished.
+        by_rank = sorted(zip(episode.ranks, episode.rewards, strict=True))
+        assert [reward for _, reward in by_rank] == sorted(
+            episode.rewards, reverse=True
+        )
+        assert len(set(episode.rewards)) == 4
 
 
 def test_dense_masks_reproduce_the_mask_the_policy_was_offered() -> None:

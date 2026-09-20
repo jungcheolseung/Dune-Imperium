@@ -43,6 +43,28 @@ from dune_imperium.training.policy import (
 _MAX_CONSECUTIVE_CHANCE_STEPS = 64
 
 
+def rank_reward(rank: int, players: int) -> float:
+    """Spread the terminal reward evenly over the finishing order.
+
+    The default terminal reward says only whether a seat won: +1 for rank 1
+    and -1/3 for everyone else (``pettingzoo_env``), so a seat that played
+    well into second place is told the same thing as one that collapsed to
+    last. That is 0.811 bits a seat where the finishing order the engine
+    already computes carries 2.0.
+
+    This maps rank linearly onto [+1, -1] instead -- 1, 1/3, -1/3, -1 at four
+    players -- keeping the sum over a table at zero, so a game stays
+    zero-sum and the batch's raw return mean stays centred. It is a
+    learning-side reward transform: the environment keeps paying
+    winner-take-all (docs/rl-environment.md, "보상"), and the tournament's
+    win criterion is untouched.
+    """
+
+    if players < 2:
+        raise ValueError("a rank reward needs at least two players")
+    return 1.0 - 2.0 * (rank - 1) / (players - 1)
+
+
 @dataclass(frozen=True, slots=True)
 class SelfPlaySpec:
     """One game of a self-play run: its seed and the policy name per seat."""
@@ -177,6 +199,7 @@ class SelfPlayRunner:
         max_steps: int = 30_000,
         record: bool = True,
         undo_actions: bool = True,
+        rank_rewards: bool = False,
     ) -> None:
         if max_steps < 1:
             raise ValueError("max_steps must be positive")
@@ -185,6 +208,10 @@ class SelfPlayRunner:
         self.record = record
         # False withholds ``UNDO_ACTION_IDS`` from every policy (training).
         self.undo_actions = undo_actions
+        # True pays the finishing order instead of winner-take-all; see
+        # ``rank_reward``. A learning-side transform, off by default so the
+        # environment's documented reward stays the baseline.
+        self.rank_rewards = rank_rewards
         self.codec = ActionCodec(config)
         self._engines: dict[tuple[str, ...] | None, UprisingRulesEngine] = {}
 
@@ -327,11 +354,12 @@ class SelfPlayRunner:
         else:
             standings = final_standings(game.state)
             by_player = {standing.player: standing for standing in standings}
-            rewards = tuple(
-                WINNER_REWARD if by_player[seat].rank == 1 else LOSER_REWARD
-                for seat in range(players)
-            )
             ranks = tuple(by_player[seat].rank for seat in range(players))
+            rewards = tuple(
+                rank_reward(rank, players) if self.rank_rewards
+                else (WINNER_REWARD if rank == 1 else LOSER_REWARD)
+                for rank in ranks
+            )
         return Episode(
             game_seed=game.spec.game_seed,
             ruleset=self.config.identifier,

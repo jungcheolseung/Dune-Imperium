@@ -67,6 +67,9 @@ class TrainConfig:
     # means pure self-play with the learner in every seat.
     opponent: str | None = None
     temperature: float = 1.0
+    # Pay the finishing order instead of winner-take-all during collection
+    # (training.selfplay.rank_reward); a learning-side reward transform.
+    rank_rewards: bool = False
     # Learning-side shaping: cost per own decision charged against the
     # terminal reward (see apply_step_penalty); 0 disables it.
     step_penalty: float = 0.0005
@@ -240,6 +243,7 @@ def train(
         workers=config.workers,
         max_steps=config.max_steps,
         temperature=config.temperature,
+        rank_rewards=config.rank_rewards,
         opponent=config.opponent,
     )
 
