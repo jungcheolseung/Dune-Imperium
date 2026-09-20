@@ -3,7 +3,11 @@
 The client is dependency-free vanilla JS with no JS test runner, so the
 label table is checked from Python by scanning the rules sources for
 ``action_id="..."`` literals and asserting each appears as a key of the
-``ACTION_LABELS`` object in ``app.js``.
+``ACTION_LABELS`` object in the client.
+
+The table lives in ``static/labels.js``, but this scan searches every client
+script rather than naming one file, so splitting the client further does not
+silently turn the guard off.
 """
 
 import re
@@ -15,9 +19,7 @@ _SOURCE_DIRS = (
     _REPO / "src" / "dune_imperium" / "core",
     _REPO / "src" / "dune_imperium" / "simulation",
 )
-_APP_JS = (
-    _REPO / "src" / "dune_imperium" / "server" / "static" / "app.js"
-)
+_STATIC_DIR = _REPO / "src" / "dune_imperium" / "server" / "static"
 
 
 def _engine_action_ids() -> set[str]:
@@ -31,12 +33,16 @@ def _engine_action_ids() -> set[str]:
 
 
 def _labelled_action_ids() -> set[str]:
-    source = _APP_JS.read_text()
-    match = re.search(
-        r"const ACTION_LABELS = \{(.*?)\n\};", source, re.DOTALL
-    )
-    assert match, "ACTION_LABELS block not found in app.js"
-    return set(re.findall(r"^\s{2}([a-z_]+):", match.group(1), re.MULTILINE))
+    matches = [
+        found
+        for path in sorted(_STATIC_DIR.glob("*.js"))
+        for found in re.findall(
+            r"const ACTION_LABELS = \{(.*?)\n\};", path.read_text(), re.DOTALL
+        )
+    ]
+    assert matches, f"no ACTION_LABELS block in any of {_STATIC_DIR}/*.js"
+    assert len(matches) == 1, "ACTION_LABELS is defined more than once"
+    return set(re.findall(r"^\s{2}([a-z_]+):", matches[0], re.MULTILINE))
 
 
 def test_every_engine_action_id_has_a_label() -> None:
