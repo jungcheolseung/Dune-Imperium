@@ -60,6 +60,31 @@ Tleilax board의 research·Tleilaxu track은 룰북에 실린 공식 board 그�
 (`[Immortality p. 3 board artwork]`)에서 전사했고, 카드의 인쇄 텍스트는 카드면
 (`SourceDocument.CARD_FACE`)을 근거로 전사한다.
 
+### 한국어 룰북 (UI 용어집 전용, 규칙 근거 아님)
+
+공식 리소스 페이지는 같은 룰북의 한국어판도 배포한다(국내 유통 Korea
+Boardgames). 2026-09-20에 아래 네 문서를 받아 checksum을 고정하고 manifest에
+`*-ko` 항목으로 더했다. 용도는 **브라우저 UI의 한국어 용어를 정하는 것 하나**이며,
+[`glossary-ko.md`](glossary-ko.md)가 그 대조표다.
+
+| 식별자 | 공식 자료 | 쪽수 | SHA-256 |
+| --- | --- | --- | --- |
+| `main-ko` | [KR] Uprising Rules | 20 (EN과 동일) | `b9fe3a4c4f9fd4b40c9573a9dc8242e268db35ef1fff753898087b234957b6b6` |
+| `board-guide-ko` | [KR] Uprising Supplements | 14 (EN과 동일) | `cd763a87485bbf795f556ed03e84f9191b7d7a10e9aedc6ef7b256717996b774` |
+| `bloodlines-ko` | [KR] Bloodlines Rules | 12 (EN과 동일) | `d65509007618c81971e652d45e84fb2b36a2eb7ff38525214daaad03aac0fc21` |
+| `immortality-ko` | [KR] Immortality Rules | 16 (EN과 동일) | `b02ff637ee480d9e58ffc758f30c6bfc02bbfa88bb5d8491bc328be70d7a737b` |
+
+URL은 모두 `https://d19y2ttatozxjp.cloudfront.net/pdfs/KR_...pdf`이고
+manifest에 적혀 있다. **한국어 FAQ는 존재하지 않는다**(FAQ는 영어판만 배포된다).
+
+네 문서 모두 영어판과 **쪽수가 정렬돼 있어** 같은 쪽에 같은 내용이 온다. 그래서
+`glossary-ko.md`의 인용 `[Main p. N]`은 EN·KR 두 룰북의 같은 쪽을 함께 가리킨다.
+
+**규칙 판정 근거는 영어판이다.** 한국어판은 번역본이므로 두 판이 어긋나 보이면
+영어판을 따르고, 그 차이가 규칙에 영향을 준다고 판단되면
+[`open-questions.md`](open-questions.md)에 기록한다. 한국어판은 화면에 쓸 단어를
+고르는 데에만 쓴다.
+
 ### 프로모 카드의 출처
 
 Uprising 프로모 Imperium 3장(Arrakis Revolt, The Beast's Spoils, Pivotal

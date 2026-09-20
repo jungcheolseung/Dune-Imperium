@@ -20,6 +20,7 @@
 - [CHOAM Module](choam-module.md)
 - [Bloodlines 확장과 Tech Module](bloodlines.md)
 - [Immortality 확장](immortality.md)
+- [한국어 용어집(KR·EN 룰북 대조)](glossary-ko.md): 브라우저 UI가 쓰는 한국어 게임 용어. 규칙 근거가 아니라 화면 문구의 어휘 표다.
 - [공식 clarification과 FAQ 색인](official-rulings-index.md)
 - [공식 문서만으로 확정할 수 없는 항목](open-questions.md)
 - [디자이너 커뮤니티 판정 대조(2026-09-08)](designer-rulings-audit.md): 공식 문서 밖의 Paul Dennen 판정과 엔진의 불일치 목록, 반영 미결정

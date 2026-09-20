@@ -33,5 +33,33 @@
     "sha256": "2a7ba3b8129bc108a82c3b2677d7ce27ffc64be88532b691f55836bf48666a79",
     "pdf_filename": "di-immortality.pdf",
     "text_filename": "di-immortality.txt"
+  },
+  "main-ko": {
+    "label": "Uprising Main Rulebook (Korean)",
+    "url": "https://d19y2ttatozxjp.cloudfront.net/pdfs/KR_DUNE_IMPERIUM_UPRISING_Rulebook.pdf",
+    "sha256": "b9fe3a4c4f9fd4b40c9573a9dc8242e268db35ef1fff753898087b234957b6b6",
+    "pdf_filename": "diu-main-ko.pdf",
+    "text_filename": "diu-main-ko.txt"
+  },
+  "board-guide-ko": {
+    "label": "Uprising Rules Supplements and Board Space Guide (Korean)",
+    "url": "https://d19y2ttatozxjp.cloudfront.net/pdfs/KR_DUNE_IMPERIUM_UPRISING_Rulebook_Supplements.pdf",
+    "sha256": "cd763a87485bbf795f556ed03e84f9191b7d7a10e9aedc6ef7b256717996b774",
+    "pdf_filename": "diu-supplements-ko.pdf",
+    "text_filename": "diu-supplements-ko.txt"
+  },
+  "bloodlines-ko": {
+    "label": "Bloodlines Rulebook (Korean)",
+    "url": "https://d19y2ttatozxjp.cloudfront.net/pdfs/KR_DUNE_IMPERIUM_BLOODLINES_Rulebook.pdf",
+    "sha256": "d65509007618c81971e652d45e84fb2b36a2eb7ff38525214daaad03aac0fc21",
+    "pdf_filename": "di-bloodlines-ko.pdf",
+    "text_filename": "di-bloodlines-ko.txt"
+  },
+  "immortality-ko": {
+    "label": "Immortality Rulebook (Korean)",
+    "url": "https://d19y2ttatozxjp.cloudfront.net/pdfs/KR_DUNE_IMPERIUM_IMMORTALITY_Rulebook.pdf",
+    "sha256": "b02ff637ee480d9e58ffc758f30c6bfc02bbfa88bb5d8491bc328be70d7a737b",
+    "pdf_filename": "di-immortality-ko.pdf",
+    "text_filename": "di-immortality-ko.txt"
   }
 }
