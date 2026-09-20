@@ -853,6 +853,11 @@ function renderStandings() {
   };
   tableRow("th", ["순위", "좌석", "VP", "Spice", "Solari", "Water", "Garrison"]);
   for (const entry of summary.standings) {
+    /* The garrison tiebreak counts a garrisoned Sardaukar Commander as a
+       troop — rules/endgame.py ranks on troops_garrison + commanders_garrison
+       (OQ-047, 사용자 판정 2026-09-08). Printing the troops alone showed a
+       number that did not explain the order it was standing in. */
+    const commanders = entry.commanders_garrison || 0;
     const row = tableRow("td", [
       entry.rank,
       playerLabel(entry.player),
@@ -860,8 +865,13 @@ function renderStandings() {
       entry.spice,
       entry.solari,
       entry.water,
-      entry.troops_garrison,
+      entry.troops_garrison + commanders,
     ]);
+    if (commanders) {
+      row.lastChild.title = phraseText(
+        `{troop} ${entry.troops_garrison} + {commander} ${commanders}`,
+      );
+    }
     if (entry.rank === 1) row.className = "winner";
   }
   panel.appendChild(table);

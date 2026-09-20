@@ -238,6 +238,13 @@ def launch_options() -> dict[str, object]:
     return {"channel": "chrome", "headless": True}
 
 
+# The size every script has used since these checks were written. A check
+# that cares about a CSS breakpoint passes its own size to open_context;
+# style.css switches the side column's scroller at 1700px, so "the one
+# viewport" has hidden a regression before (README, 새 검사를 더할 때).
+DEFAULT_VIEWPORT = {"width": 1600, "height": 1000}
+LAPTOP_VIEWPORT = {"width": 1366, "height": 768}
+
 @contextmanager
 def chrome():
     with sync_playwright() as playwright:
@@ -248,8 +255,11 @@ def chrome():
             browser.close()
 
 
-def open_context(browser, name: str):
-    context = browser.new_context(viewport={"width": 1600, "height": 1000})
+def open_context(browser, name: str, viewport: dict | None = None):
+    """Open a page. `viewport` defaults to the size every script has always
+    used, so passing nothing keeps a script's existing assertions exactly as
+    they were; a check that cares about a breakpoint names its own size."""
+    context = browser.new_context(viewport=viewport or DEFAULT_VIEWPORT)
     page = context.new_page()
     recorder = Recorder(name)
     recorder.attach(page)
