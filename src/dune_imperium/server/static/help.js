@@ -17,6 +17,12 @@ function announce(text) {
    A review walks a finished record, so it announces nothing. */
 let announcedTurn;
 
+/* The seats this screen speaks for: the claimed ones on a remote server, the
+   one on screen on an open server (pickViewSeat moves it to whoever acts). */
+function isMine(seat) {
+  return isRemote() ? mySeats().includes(seat) : seat === state.viewSeat;
+}
+
 function announceTurn(summary) {
   if (!summary || state.review) return;
   let key;
@@ -25,13 +31,22 @@ function announceTurn(summary) {
     const first = (summary.standings || []).find((entry) => entry.rank === 1);
     key = "finished";
     text = first ? `게임 종료 — ${playerLabel(first.player)} 승리` : "게임 종료";
+  } else if (typeof summary.confirmation === "number") {
+    /* A seat's turn has ended but can still be taken back: decision.owner
+       already names the NEXT seat, yet nobody moves until this one confirms
+       (renderBanner). Announcing the next seat here told it to act early and
+       then swallowed the real hand-over, whose key was the same. */
+    const seat = summary.confirmation;
+    key = `confirm:${seat}`;
+    text = isMine(seat)
+      ? `${playerLabel(seat)} — 행동을 마쳤습니다. 턴 종료를 확정하세요.`
+      : `${playerLabel(seat)}의 턴 종료 확정을 기다리는 중`;
   } else if (summary.decision) {
     const owner = summary.decision.owner;
     key = `seat:${owner}`;
-    const mine = isRemote() ? mySeats().includes(owner) : owner === state.viewSeat;
     /* One screen can hold several human seats (an open server), so even
        "your turn" says which seat. */
-    text = mine
+    text = isMine(owner)
       ? `${playerLabel(owner)} — 당신 차례입니다: ${summary.decision.prompt}`
       : `${playerLabel(owner)} 차례`;
   } else {

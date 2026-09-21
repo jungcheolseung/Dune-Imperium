@@ -67,36 +67,65 @@ def live_region(page) -> None:
         label in announced(page), "it names the seat to act on arrival", announced(page)
     )
 
-    # Step until the seat to act changes; the region must follow it.
-    changes = 0
-    for _ in range(80):
-        before = page.evaluate("state.summary.decision && state.summary.decision.owner")
+    # Record every sentence handed to the region, in order. announce is a
+    # global function of a classic script, so callers pick up the wrapper.
+    page.evaluate(
+        """() => {
+            window.__said = [];
+            const original = window.announce;
+            window.announce = (text) => { window.__said.push(text); original(text); };
+        }"""
+    )
+    # Step on until a turn has been held for its confirmation and handed over.
+    # While it is held, decision.owner already names the NEXT seat; the region
+    # must speak of the confirmation, and then of the next seat once confirmed.
+    wrong = []
+    held = handed = False
+    for _ in range(150):
         snap = client_state(page)
         confirming = snap["confirmation"] is not None
         page.evaluate("confirmTurn()" if confirming else "applyAction(0)")
         settled(page)
-        after = page.evaluate("state.summary.decision && state.summary.decision.owner")
-        if after is None or after == before:
-            continue
-        label = page.evaluate(f"playerLabel({after})")
-        try:
-            page.wait_for_function(
-                "(label) => document.getElementById('announcer')"
-                ".textContent.includes(label)",
-                arg=label,
-                timeout=2000,
-            )
-        except Exception:
-            pass
-        check.ok(
-            label in announced(page),
-            f"a change of turn to {label} is announced",
-            announced(page),
+        page.wait_for_timeout(120)  # announce() writes after 50 ms
+        now_state = page.evaluate(
+            """() => {
+                const s = state.summary;
+                const c = typeof s.confirmation === 'number' ? s.confirmation : null;
+                return {
+                    confirmation: c,
+                    confirmLabel: c === null ? null : playerLabel(c),
+                    owner: s.decision ? s.decision.owner : null,
+                    ownerLabel: s.decision ? playerLabel(s.decision.owner) : null,
+                    said: window.__said.slice(),
+                };
+            }"""
         )
-        changes += 1
-        if changes >= 2:
+        said = now_state["said"]
+        last = said[-1] if said else ""
+        if now_state["confirmation"] is not None:
+            if not (now_state["confirmLabel"] in last and "턴 종료" in last):
+                wrong.append(("held", now_state["confirmLabel"], last))
+            held = True
+        elif confirming and now_state["ownerLabel"]:
+            # This step was the confirm itself: the hand-over must be said.
+            if not (
+                now_state["ownerLabel"] in last
+                and "턴 종료" not in last
+                and len(said) >= 2
+                and "턴 종료" in said[-2]
+            ):
+                wrong.append(("handed", now_state["ownerLabel"], said[-2:]))
+            handed = True
+        if held and handed:
             break
-    check.ok(changes >= 2, "the walk saw the turn change twice", changes)
+    check.ok(
+        held and handed, "the walk saw a turn held for confirmation and handed over"
+    )
+    check.ok(
+        not wrong,
+        "a held turn is announced as held, and its hand-over as the next seat's turn",
+        wrong[:3],
+    )
 
 
 def names(page) -> None:
