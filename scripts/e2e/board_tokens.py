@@ -421,17 +421,62 @@ def agent_pieces(page) -> None:
     )
 
 
+# A shared post's Spies arrive in this order (bottom first), deliberately not
+# seat order; the fake log entries below carry it.
+SPY_ARRIVALS = {
+    "emperor-sardaukar-dutiful-service": [2],
+    "arrakis-hagga-basin": [2, 0, 3, 1],
+    "fremen-desert-tactics-fremkit": [3, 1],
+}
+
+SPIES_JS = """() => {
+  const stage = document.querySelector(".board-stage").getBoundingClientRect();
+  const pct = (r) => ({
+    left: (r.left - stage.left) / stage.width * 100,
+    top: (r.top - stage.top) / stage.height * 100,
+    width: r.width / stage.width * 100,
+    height: r.height / stage.height * 100,
+  });
+  const posts = document.querySelectorAll(".board-stage .spy-post");
+  return [...posts].map((post) => ({
+    rect: pct(post.getBoundingClientRect()),
+    spies: [...post.querySelectorAll(".spy-token")].map((spy) => {
+      const body = spy.querySelector(".piece-body");
+      return {
+        rect: pct(spy.getBoundingClientRect()),
+        seat: Number(spy.dataset.seat),
+        tag: spy.tagName,
+        outline: body ? body.getAttribute("href") : null,
+        fill: body ? getComputedStyle(body).fill : null,
+        top: spy.querySelectorAll(".piece-top").length,
+        drawnText: spy.querySelectorAll("text").length + (body ? 0 : 1),
+        role: spy.getAttribute("role"),
+        label: spy.getAttribute("aria-label"),
+        wantedLabel: t("common.seat", { seat: Number(spy.dataset.seat) }),
+      };
+    }),
+  }));
+}"""
+
+# One log entry per placement: what spyArrivals() reads (board.js).
+LOG_PLACEMENTS_JS = """(placements) => {
+  for (const [post, seat] of placements) {
+    state.log.entries.push({
+      type: "action", index: state.log.entries.length, actor: seat,
+      action_id: "place_spy_on_space", arguments: {}, undone: false,
+      events: [{kind: "spy_placed", payload: {player: seat, post_id: post}}],
+    });
+  }
+  render();
+}"""
+
+
 def spy_pieces(page) -> None:
     print("[3c] Spies: the Spy icon's cylinder on the post disc (edited view)")
     catalog = page.evaluate(
         "({ posts: state.catalog.posts, size: state.catalog.post_size })"
     )
     colors = page.evaluate("SEAT_COLORS")
-    placed = {
-        "emperor-sardaukar-dutiful-service": [2],
-        "arrakis-hagga-basin": [0, 1, 2, 3],
-        "fremen-desert-tactics-fremkit": [1, 3],
-    }
     page.evaluate(
         """(placed) => {
           for (const player of state.view.players) player.spy_post_ids = [];
@@ -440,40 +485,19 @@ def spy_pieces(page) -> None:
               state.view.players[seat].spy_post_ids.push(post);
             }
           }
-          render();
         }""",
-        placed,
+        SPY_ARRIVALS,
     )
-    shown = page.evaluate(
-        """() => {
-          const stage = document.querySelector(".board-stage").getBoundingClientRect();
-          const pct = (r) => ({
-            left: (r.left - stage.left) / stage.width * 100,
-            top: (r.top - stage.top) / stage.height * 100,
-            width: r.width / stage.width * 100,
-            height: r.height / stage.height * 100,
-          });
-          const posts = document.querySelectorAll(".board-stage .spy-post");
-          return [...posts].map((post) => ({
-            rect: pct(post.getBoundingClientRect()),
-            spies: [...post.querySelectorAll(".spy-token")].map((spy) => {
-              const body = spy.querySelector(".piece-body");
-              return {
-                rect: pct(spy.getBoundingClientRect()),
-                seat: Number(spy.dataset.seat),
-                tag: spy.tagName,
-                outline: body ? body.getAttribute("href") : null,
-                fill: body ? getComputedStyle(body).fill : null,
-                top: spy.querySelectorAll(".piece-top").length,
-                drawnText: spy.querySelectorAll("text").length + (body ? 0 : 1),
-                role: spy.getAttribute("role"),
-                label: spy.getAttribute("aria-label"),
-                wantedLabel: t("common.seat", { seat: Number(spy.dataset.seat) }),
-              };
-            }),
-          }));
-        }"""
-    )
+    # The arrivals go in round-robin across posts, as a game would interleave.
+    longest = max(len(seats) for seats in SPY_ARRIVALS.values())
+    placements = [
+        [post, seats[turn]]
+        for turn in range(longest)
+        for post, seats in SPY_ARRIVALS.items()
+        if turn < len(seats)
+    ]
+    page.evaluate(LOG_PLACEMENTS_JS, placements)
+    shown = page.evaluate(SPIES_JS)
 
     def rgb(hex_color: str) -> str:
         value = hex_color.lstrip("#")
@@ -490,8 +514,8 @@ def spy_pieces(page) -> None:
     by_post = {post_at(group["rect"]): group for group in shown}
     check.ok(
         {post: [s["seat"] for s in group["spies"]] for post, group in by_post.items()}
-        == placed,
-        "each post's Spies centred on its printed disc, in seat order",
+        == SPY_ARRIVALS,
+        "each post's Spies on its printed disc, the first to arrive at the bottom",
         [(group["rect"], [s["seat"] for s in group["spies"]]) for group in shown],
     )
     for post_id, group in by_post.items():
@@ -518,20 +542,53 @@ def spy_pieces(page) -> None:
             check.ok(
                 abs(shape - 56 / 80) < 0.02, f"{name}: the icon's proportions", shape
             )
+        # Stacked, as on the table: every Spy the disc's width, centred over
+        # the post, each standing on the top face of the one below it (the
+        # faces' centres are 48 of the icon's 80 units apart).
+        x, y = catalog["posts"][post_id]
         spies = group["spies"]
-        apart = all(
-            left["rect"]["left"] + left["rect"]["width"] <= right["rect"]["left"] + 0.01
-            for left, right in zip(spies, spies[1:], strict=False)
-        )
-        check.ok(apart, f"{post_id}: Spies side by side, not stacked")
-    alone = by_post.get("emperor-sardaukar-dutiful-service")
-    if check.ok(alone is not None, "the lone Spy's post is found"):
-        width = alone["spies"][0]["rect"]["width"]
+        bottom = spies[0]["rect"]
         check.ok(
-            catalog["size"] is not None and near(width, catalog["size"]),
-            "a lone Spy is as wide as the post disc",
-            (width, catalog["size"]),
+            near(bottom["left"] + bottom["width"] / 2, x)
+            and near(bottom["top"] + bottom["height"] / 2, y),
+            f"{post_id}: the first Spy stands on the disc",
+            bottom,
         )
+        stacked = all(
+            near(spy["rect"]["width"], catalog["size"])
+            and near(spy["rect"]["left"] + spy["rect"]["width"] / 2, x)
+            and near(
+                spy["rect"]["top"],
+                bottom["top"] - level * 0.6 * bottom["height"],
+            )
+            for level, spy in enumerate(spies)
+        )
+        check.ok(
+            stacked,
+            f"{post_id}: each Spy the disc's width, on top of the one below",
+            [(round(s["rect"]["top"], 2), round(s["rect"]["width"], 2)) for s in spies],
+        )
+    check.ok(
+        page.evaluate(
+            """() => [...document.querySelectorAll('.board-stage .spy-post')]
+                 .every((post) => [...post.querySelectorAll('.spy-token')]
+                   .every((spy, i, all) => i === 0 ||
+                     spy.compareDocumentPosition(all[i - 1])
+                       === Node.DOCUMENT_POSITION_PRECEDING))"""
+        ),
+        "a higher Spy is drawn over the one it stands on",
+    )
+    # Recalled and placed again, a Spy goes back on top.
+    page.evaluate(LOG_PLACEMENTS_JS, [["fremen-desert-tactics-fremkit", 3]])
+    again = {
+        post_at(group["rect"]): [s["seat"] for s in group["spies"]]
+        for group in page.evaluate(SPIES_JS)
+    }
+    check.ok(
+        again.get("fremen-desert-tactics-fremkit") == [1, 3],
+        "a Spy placed again stands on top",
+        again.get("fremen-desert-tactics-fremkit"),
+    )
     check.ok(
         page.evaluate("document.querySelectorAll('#spy-outline').length") == 1,
         "one shared Spy outline",

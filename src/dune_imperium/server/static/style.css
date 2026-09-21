@@ -444,25 +444,27 @@ button:disabled { opacity: 0.5; cursor: wait; }
 .bonus-spice-count.wide { font-size: 58cqh; letter-spacing: -0.04em; }
 /* Spies stand on their post's disc, as wide as it (the row's height is
    set inline); up to four seats share a post and shrink a little. */
+/* The post's box is the Spy that stands on the disc (its height is set
+   inline); Spies sharing the post stand on top of it, as the cylinders are
+   stacked on the table. */
 .spy-post {
   position: absolute;
   transform: translate(-50%, -50%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
+  aspect-ratio: 56 / 80;
   pointer-events: auto;
 }
+/* Each Spy the size of the disc. One on a shared post stands on the one
+   below, its base on that one's top face: the faces' centres are 48 of the
+   icon's 80 units apart (PIECE_SHAPES.spy), so 60 % of a Spy up a level. */
 .spy-token {
+  position: absolute;
+  left: 0;
+  bottom: calc(var(--level, 0) * 60%);
   height: 100%;
   aspect-ratio: 56 / 80;
-  flex: none;
   overflow: visible;
   filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.9));
 }
-.spy-post[data-count="2"] .spy-token { height: 90%; }
-.spy-post[data-count="3"] .spy-token { height: 80%; }
-.spy-post[data-count="4"] .spy-token { height: 70%; }
 /* An Influence cube: flat in the seat's colour, square-cornered, exactly
    the square the board prints for it (the width, a percent of the stage,
    is set inline). The dark edge is a shadow ring outside the box, not a
