@@ -402,3 +402,21 @@
      조사를 두지 않는다.
   3. 가드가 모든 경로를 보는지 확인한다: prompt 가드는 처음에 조건식(`"…" if x else "…"`) 가지를 놓쳐
      prompt 넷이 한국어 없이 통과했다 — 이제 prompt 값의 부분 트리를 전부 훑는다.
+
+## 2026-09-21 — 충돌 "시험"으로 돌린 `git replay`가 master ref를 옮김
+
+- 무슨 일: origin/master로 rebase해도 되는지 보려고, 작업 트리를 건드리지 않는 시험 삼아
+  `git replay --onto origin/master origin/master..master`를 두 번 돌렸다(첫 번째는 출력을 버렸다).
+  git 2.54의 `git replay`는 기본값이 `--ref-action=update`라 **ref를 직접 갱신**한다. master가 replay된
+  커밋으로 옮겨졌고 인덱스·작업 트리는 rebase 전 master에 남았다. 그런데 사용자에게는 "작업 트리를 건드리지
+  않는 시험"이라고 보고했다. 실제 rebase를 시작하자 git이 "인덱스에 커밋하지 않은 변경"으로 거부했고,
+  `git status`가 원격 22커밋의 변경을 거꾸로 staged로 보여 줘서 알았다.
+- 피해: 없음. 인덱스 tree가 rebase 전 master의 tree와 같음을 `git write-tree`로 확인하고, master를 그 커밋으로
+  `git reset --soft`한 뒤 정식으로 `git rebase`했다. 같은 checkout에서 돌던 학습은 작업 트리가 바뀌지 않아
+  영향이 없었다.
+- 원인: `git replay`가 update-ref 명령을 출력만 하던 예전 동작을 기억으로 믿고 `git replay -h`를 보지 않았다.
+  EXPERIMENTAL로 표시된 명령이라 버전마다 기본값이 바뀐다.
+- 재발 방지:
+  1. ref를 바꾸지 않는 충돌 시험은 `git merge-tree --write-tree <ours> <theirs>`로 한다. 커밋 하나하나의 충돌을
+     봐야 하면 `git replay --ref-action=print`처럼 출력만 하라고 명시한다.
+  2. "아무것도 바꾸지 않았다"고 보고하기 전에 `git reflog -2 <branch>`로 ref가 그대로인지 확인한다.
