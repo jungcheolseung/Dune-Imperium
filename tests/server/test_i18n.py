@@ -261,6 +261,24 @@ def test_english_label_tables_mirror_the_korean() -> None:
     assert not problems, "; ".join(problems[:12])
 
 
+def test_every_label_table_switches_language() -> None:
+    """A table left out of ``LABEL_TABLES`` stays Korean in English.
+
+    setLanguage() swaps only the tables i18n.js names; the mirror test above
+    checks that an English twin exists, not that anything ever reads it.
+    """
+    registered = re.search(
+        r"^const LABEL_TABLES = \{(.*?)\n\};",
+        (_STATIC / "i18n.js").read_text(),
+        re.S | re.M,
+    )
+    assert registered
+    names = set(re.findall(r"^\s+([A-Z_]+),", registered.group(1), re.M))
+    lists = {"SEAT_KINDS", "AGENT_ICON_GROUPS"}  # LABEL_LISTS, swapped apart
+    missing = sorted(set(_korean_tables()) - lists - names)
+    assert not missing, f"label tables setLanguage() never swaps: {missing}"
+
+
 def test_static_page_keys_exist_and_match_the_korean() -> None:
     table = _ui_text()
     html = (_STATIC / "index.html").read_text()

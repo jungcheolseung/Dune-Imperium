@@ -17,7 +17,7 @@ because it is built by concatenation rather than from a label table.
 
 from __future__ import annotations
 
-from common import SERVER_LOG_COPY, Check, chrome, open_context, server
+from common import LAPTOP_VIEWPORT, SERVER_LOG_COPY, Check, chrome, open_context, server
 
 check = Check()
 
@@ -154,6 +154,12 @@ def run(base: str, browser) -> None:
         "all four folded seats fit the column",
         (folded["scroll"], folded["client"]),
     )
+    # A tall screen keeps the Leader pictures; only short ones give them up.
+    shown = page.evaluate(
+        "[...document.querySelectorAll('#seats .leader-thumb')]"
+        ".filter((img) => getComputedStyle(img).display !== 'none').length"
+    )
+    check.ok(shown == 4, "1600x1000 keeps the four Leader pictures", shown)
     check_moved_counts(page)
 
     # Open one seat: only that one grows.
@@ -224,10 +230,73 @@ def run(base: str, browser) -> None:
     context.close()
 
 
+def seek(page, fraction: float) -> None:
+    target = page.evaluate(f"Math.floor(state.review.meta.step_count * {fraction})")
+    page.evaluate(f"stopPlayback(); reviewSeek({target})")
+    page.wait_for_function(
+        f"state.review.cursor === {target} && refreshFlight === null"
+    )
+
+
+FOLD_GEOMETRY = """() => [...document.querySelectorAll('#seats .seat')].map((card) => {
+    const more = card.querySelector('.seat-more').getBoundingClientRect();
+    const head = card.querySelector('.seat-head').getBoundingClientRect();
+    return {
+        width: Math.round(more.width),
+        onHeadLine: more.top < head.bottom && more.bottom > head.top,
+        name: card.querySelector('.leader-name').textContent,
+    };
+})"""
+
+
+def run_laptop(base: str, browser) -> None:
+    """A 1366x768 laptop: the column is 519-652px tall (it loses a row when the
+    hand takes two lines) and the four folded seats took 703-738px of it at
+    every point of this game. The short-screen layout (style.css, max-height:
+    960px) drops the Leader picture and puts the fold on the head's line."""
+    context, page, rec = open_context(browser, "seats-laptop", LAPTOP_VIEWPORT)
+    watched_game(page, base)
+    for fraction in (0.25, 0.5, 0.75, 0.95):
+        seek(page, fraction)
+        seats = page.evaluate(SEATS)
+        check.ok(
+            seats["scroll"] <= seats["client"],
+            f"1366x768 at {fraction:.0%}: all four folded seats fit the column",
+            (seats["scroll"], seats["client"]),
+        )
+    geometry = page.evaluate(FOLD_GEOMETRY)
+    check.ok(
+        all(g["width"] >= 12 and g["onHeadLine"] for g in geometry),
+        "the fold is an arrow on each seat's head line, wide enough to press",
+        geometry,
+    )
+    check.ok(
+        all(g["name"].strip() for g in geometry),
+        "the Leader is still named where the picture was",
+        [g["name"] for g in geometry],
+    )
+    page.click("#seats > *:nth-child(1) .seat-more")
+    opened = page.evaluate(SEATS)["cards"][0]
+    check.ok(
+        opened["expanded"] == "true" and opened["detailShown"],
+        "the arrow opens its seat",
+        opened["expanded"],
+    )
+    page.click("#seats > *:nth-child(1) .seat-more")
+    check.ok(
+        page.evaluate(SEATS)["cards"][0]["expanded"] == "false",
+        "and folds it again",
+    )
+    check.ok(not rec.js_errors, "no JS errors on the laptop", rec.js_errors[:3])
+    context.close()
+
+
 def main() -> None:
     with server() as (base, log_path):
         with chrome() as browser:
             run(base, browser)
+            print("[laptop] 1366x768")
+            run_laptop(base, browser)
         errors = [
             line
             for line in log_path.read_text().splitlines()

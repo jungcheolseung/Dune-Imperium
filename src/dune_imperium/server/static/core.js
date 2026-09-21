@@ -98,7 +98,7 @@ function baseId(instanceId) {
   const value = String(instanceId);
   const starter = value.match(/^player:\d+:starter:(.+):\d+$/);
   if (starter) return starter[1];
-  const shared = value.match(/^(?:imperium|reserve|intrigue|tleilaxu):(.+):\d+$/);
+  const shared = value.match(/^(?:imperium|reserve|intrigue|tleilaxu|skill):(.+):\d+$/);
   if (shared) return shared[1];
   const contract = value.match(/^contract:(.+)$/);
   if (contract) return contract[1];
@@ -125,6 +125,123 @@ function lookup(id) {
 function nameOf(instanceId) {
   const entry = lookup(baseId(instanceId));
   return entry ? entry.name : prettify(baseId(instanceId));
+}
+
+/* An observation post has no printed name: it is called after the spaces
+   it watches (catalog.post_spaces), "관측소 (Hagga Basin)". */
+function postName(postId) {
+  const spaces = postSpaces(postId);
+  return spaces ? t("core.post_name", { spaces }) : phraseText("{observation_post}");
+}
+
+/* The watched spaces alone, for a line whose field label already says 관측소. */
+function postSpaces(postId) {
+  const c = state.catalog;
+  const watched = (c && c.post_spaces && c.post_spaces[postId]) || [];
+  const names = watched.map((spaceId) => (c.spaces[spaceId] ? c.spaces[spaceId].name : spaceId));
+  return names.length ? names.join(" · ") : null;
+}
+
+/* A research space id is the transcription's own coordinate, c<column>r<row>
+   (content/immortality/board.py): on screen it is that place on the research
+   track, and — where nothing beside it says so — the bonus printed there. */
+function researchSpaceName(spaceId, withBonus) {
+  const board = state.catalog && state.catalog.bene_tleilax;
+  if (!board) return null;
+  if (spaceId === board.research_start) return t("board.research_start_title");
+  const space = (board.research_spaces || []).find((entry) => entry.id === spaceId);
+  if (!space) return null;
+  const name = t("core.research_space", { column: space.column, row: space.row });
+  const bonus = withBonus && RESEARCH_BONUS_LABELS[space.bonus];
+  return bonus ? `${name} (${phraseText(bonus)})` : name;
+}
+
+/* A provenance string ("imperium:high_priority_travel:1",
+   "round:9:player:1:agent_card:imperium:priority_contracts:0") names the
+   card or space behind an event somewhere among its segments; the rest is
+   bookkeeping. */
+function sourceName(value) {
+  for (const part of String(value).split(":")) {
+    const entry = lookup(part);
+    if (entry) return entry.name;
+  }
+  return null;
+}
+
+/* What one engine value reads as on screen, given the field that holds it
+   (an action argument or an event payload key; `siblings` is the rest of
+   that object). null: nothing here knows the value, and the caller prints
+   it as it came. One resolver for the action list, the log and the review,
+   so a post, a research space or a Feyd track space reads the same in all
+   three instead of as the engine's id. */
+function fieldText(key, value, siblings = {}) {
+  const text = String(value);
+  /* The server writes the Korean marker for an argument this seat may not
+     see (sessions.py); it reads in the page's language. */
+  if (text === UI_TEXT["common.hidden"].ko) return t("common.hidden");
+  /* The engine joins an id list into one string ("staban_tuek,gurney_halleck",
+     Family Atomics' "removed", "garrison,garrison"). */
+  if (text.includes(",")) {
+    const parts = text
+      .split(",")
+      .filter(Boolean)
+      .map((part) => fieldWord(key, part, siblings));
+    if (parts.length && parts.every((part) => part !== null)) return parts.join(", ");
+  }
+  return fieldWord(key, text, siblings);
+}
+
+function fieldWord(key, text, siblings) {
+  if (key === "post_id" || key.endsWith("_post_id")) return postName(text);
+  if (/^c\d+r\d+$/.test(text)) {
+    const research = researchSpaceName(text, !("bonus" in siblings));
+    if (research) return research;
+  }
+  if (key === "faction" || key.endsWith("_faction")) return FACTION_LABELS[text] || null;
+  if (key === "bonus" && text in RESEARCH_BONUS_LABELS) {
+    return phraseText(RESEARCH_BONUS_LABELS[text]);
+  }
+  if (key === "action_id") return ACTION_LABELS[text] ? phraseText(ACTION_LABELS[text]) : null;
+  /* An acquired card goes to the discard pile; TERMS.discard is the verb. */
+  if (key === "destination" && text === "discard") return phraseText("{discard_pile}");
+  const isId = key.endsWith("_id") || key.endsWith("_ids");
+  const entry = lookup(baseId(text));
+  if (isId && entry) return entry.name;
+  if ((key === "from_space" || key === "to_space" || key === "space_id") && text in FEYD_TRACK_LABELS) {
+    return phraseText(FEYD_TRACK_LABELS[text]);
+  }
+  /* A rule word ("solari", "hand", "garrison") in the current language. */
+  if (TERMS[text]) return phraseText(`{${text}}`);
+  if (text in VALUE_LABELS) return phraseText(VALUE_LABELS[text]);
+  return entry ? entry.name : null;
+}
+
+/* A chance step as words: whose pile was shuffled, or who stole from whom,
+   and the card or space that made it happen. The engine's decision id
+   (rules/card_draw.py, intrigue_deck.py, board_effects.py) is a provenance
+   path, "round:4:player:1:board:arrakeen:discard_shuffle"; only its shape is
+   read, and it never reaches the screen. */
+function describeChance(decisionId) {
+  const id = String(decisionId);
+  const owner = id.match(/(?:^|:)player:(\d+)(?=:|$)/);
+  const seat = owner ? t("common.seat", { seat: Number(owner[1]) }) : null;
+  const steal = id.match(/:secrets:steal:(\d+)$/);
+  let what;
+  if (steal && seat) {
+    what = t("core.chance_secrets_steal", {
+      thief: seat,
+      victim: t("common.seat", { seat: Number(steal[1]) }),
+    });
+  } else if (id.endsWith(":discard_shuffle") && seat) {
+    what = t("core.chance_discard_shuffle", { seat });
+  } else if (id.endsWith(":intrigue_shuffle")) {
+    what = t("core.chance_intrigue_shuffle");
+  } else {
+    return t("core.chance_other");
+  }
+  /* The seat's own "player:N" and the last word are the kind, not the cause. */
+  const cause = steal ? null : sourceName(id.split(":").slice(0, -1).join(":"));
+  return cause ? `${what} (${cause})` : what;
 }
 
 function cardDetail(instanceId) {
@@ -388,21 +505,28 @@ function describeAction(action) {
   fragment.appendChild(phrase(ACTION_LABELS[action.action_id] || prettify(action.action_id)));
   const parts = [];
   for (const [key, value] of Object.entries(action.arguments)) {
+    const label = PAYLOAD_KEY_LABELS[key] || prettify(key);
     if (key === "effect" && typeof value === "string") {
       /* action.detail is the server's English effect fragment; it is printed
-         card wording, so it keeps the catalog's icon pass. */
+         card wording, so it keeps the catalog's icon pass. Without it (a
+         logged step) only a keyed icon has a label: a Reveal choice's
+         effect id is the engine's name for what the events then say. */
       if (action.detail) parts.push(iconize(action.detail));
-      else parts.push(phrase(EFFECT_ICON_LABELS[value] || prettify(value)));
-    } else if (typeof value === "number" || typeof value === "boolean") {
-      parts.push(document.createTextNode(`${prettify(key)}: ${value}`));
+      else if (EFFECT_ICON_LABELS[value]) parts.push(phrase(EFFECT_ICON_LABELS[value]));
+    } else if (SEAT_PAYLOAD_KEYS.has(key) && typeof value === "number") {
+      parts.push(document.createTextNode(t("common.seat", { seat: value })));
+    } else if (typeof value === "boolean") {
+      /* A flag says itself by its name. */
+      if (value) parts.push(document.createTextNode(label));
+    } else if (typeof value === "number") {
+      parts.push(document.createTextNode(`${label}: ${value}`));
     } else {
-      /* The server writes the Korean marker for an argument this seat may
-         not see (sessions.py); it reads in the page's language. */
-      parts.push(
-        document.createTextNode(
-          value === UI_TEXT["common.hidden"].ko ? t("common.hidden") : nameOf(value),
-        ),
-      );
+      const text = fieldText(key, value, action.arguments);
+      const shown = text === null ? String(value) : text;
+      /* A card, space or post names itself; a faction, reward or zone
+         reads with the field that says what it is. */
+      const named = key.endsWith("_id") || key.endsWith("_ids") || shown === t("common.hidden");
+      parts.push(document.createTextNode(named ? shown : `${label}: ${shown}`));
     }
   }
   parts.forEach((part, index) => {

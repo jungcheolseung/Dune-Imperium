@@ -28,6 +28,7 @@ from common import (
 
 KEY = "e2e-admin-key"
 STEPS = 40  # first stretch; `python remote.py 120` plays a longer one
+UNDO_SEARCH_STEPS = 30  # steps [11] may play on until a seat can undo
 check = Check()
 
 CONVERGED_JS = (
@@ -374,18 +375,32 @@ def scenario(base, host, host_rec, guest, guest_rec, pages) -> None:
     played = drive(pages, seat_pages, game_id, 10, "after re-claim")
     check.ok(played == 10, "10 more converging steps after the re-claim", played)
 
-    print("[11] undo by the acting seat reaches the other page")
-    summary = host.evaluate("state.summary")
-    seat = (
-        summary["confirmation"]
-        if isinstance(summary["confirmation"], int)
-        else summary["decision"]["owner"]
+    print("[11] undo by the seat that just acted reaches the other page")
+    # The remote server takes no seed, so whether a seat can take its last
+    # step back right here is luck: a draw, a chance outcome or another
+    # seat's action closes the window. Play on, one step at a time, until a
+    # seat at this table has an open one.
+    undoable_js = (
+        "(state.summary.undo || []).find((u) => "
+        f"{json.dumps(sorted(seat_pages))}.includes(u.seat) && u.steps > 0) || null"
     )
-    undo_before = summary["undo_count"]
-    can_undo = seat in seat_pages and seat_pages[seat].evaluate(
-        f"(state.summary.undo || []).some((u) => u.seat === {seat} && u.steps > 0)"
+    window = host.evaluate(undoable_js)
+    extra = 0
+    while window is None and extra < UNDO_SEARCH_STEPS:
+        if drive(pages, seat_pages, game_id, 1, f"towards an undo {extra}") != 1:
+            break
+        extra += 1
+        window = host.evaluate(undoable_js)
+    check.ok(
+        window is not None,
+        f"a seat has an undoable step within {UNDO_SEARCH_STEPS} more steps",
+        extra,
     )
-    if can_undo:
+    if window is not None:
+        if extra:
+            print(f"  .. {extra} more step(s) until a seat could undo")
+        seat = window["seat"]
+        undo_before = host.evaluate("state.summary.undo_count")
         seat_pages[seat].evaluate(f"submitUndo({seat}, 1)")
         check.ok(
             converge(pages, game_id, "after undo"), "both pages converge after an undo"
@@ -393,8 +408,6 @@ def scenario(base, host, host_rec, guest, guest_rec, pages) -> None:
         check.ok(
             host.evaluate("state.summary.undo_count") == undo_before + 1, "undo counted"
         )
-    else:
-        print("  .. no undoable step at this point; skipped")
 
     print("[12] the guest leaves its seat by itself")
     guest.click("#open-lobby")

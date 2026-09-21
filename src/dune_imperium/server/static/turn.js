@@ -240,7 +240,7 @@ function placementOptionNode(action, candidates) {
   if (differs("infiltrate_post_id")) {
     const spy = document.createElement("span");
     spy.textContent = action.arguments.infiltrate_post_id
-      ? t("turn.spy_recall", { post: prettify(action.arguments.infiltrate_post_id) })
+      ? t("turn.spy_recall", { post: postName(action.arguments.infiltrate_post_id) })
       : t("turn.spy_recall_none");
     line.appendChild(spy);
   }

@@ -142,7 +142,7 @@ function describeReviewStep(label) {
             names: values.slice(0, 3).map(nameOf).join(", "),
           });
     return (
-      t("review.chance_label", { decision: prettify(label.decision_id) }) +
+      t("core.chance_label", { decision: describeChance(label.decision_id) }) +
       (shown ? ` — ${shown}` : "")
     );
   }

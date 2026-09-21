@@ -402,7 +402,7 @@ function renderBoardStage(board, view) {
        is that tall at the icon's proportions. */
     post.style.height = `${(state.catalog.post_size * 80) / 56}%`;
     post.dataset.count = String(Math.min(seats.length, 4));
-    post.title = t("board.post_seats", { post: prettify(postId), seats: seats.join(", ") });
+    post.title = t("board.post_seats", { post: postName(postId), seats: seats.join(", ") });
     for (const seat of seats) post.appendChild(seatPiece("spy", seat));
     stage.appendChild(post);
   }
@@ -1427,7 +1427,7 @@ function renderBeneTleilax(market, view) {
     tokens.className = "hex-tokens";
     for (const seat of tokensBySpace[space.id] || []) tokens.appendChild(seatDisc(seat, "rtoken"));
     cell.appendChild(tokens);
-    cell.title = `${space.id} · ${phraseText(RESEARCH_BONUS_LABELS[space.bonus] || t("board.no_bonus"))}`;
+    cell.title = `${researchSpaceName(space.id, false)} · ${phraseText(RESEARCH_BONUS_LABELS[space.bonus] || t("board.no_bonus"))}`;
     grid.appendChild(cell);
   }
   box.appendChild(grid);
@@ -1501,7 +1501,7 @@ function renderBeneTleilaxScan(layout, view) {
     hex.title =
       spaceId === layout.research_start
         ? t("board.research_start_title")
-        : `${spaceId} · ${phraseText(RESEARCH_BONUS_LABELS[bonusOf[spaceId]] || t("board.no_bonus"))}`;
+        : `${researchSpaceName(spaceId, false)} · ${phraseText(RESEARCH_BONUS_LABELS[bonusOf[spaceId]] || t("board.no_bonus"))}`;
     stage.appendChild(hex);
     /* The start piece prints a spot per disc (the fourth seat continues
        the column); elsewhere the discs lie in the hex's dark upper half

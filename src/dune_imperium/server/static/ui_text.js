@@ -114,8 +114,8 @@ const UI_TEXT = {
     "en": "Start"
   },
   "board.research_start_title": {
-    "ko": "Research 시작",
-    "en": "Research start"
+    "ko": "연구 트랙 시작 칸",
+    "en": "Research track start"
   },
   "board.sardaukar_commander_summary": {
     "ko": "{commander} · 보드 {{count}} · 은행 {{bank}}",
@@ -308,6 +308,14 @@ const UI_TEXT = {
   "core.timing_plot": {
     "ko": "음모",
     "en": "Plot"
+  },
+  "core.post_name": {
+    "ko": "{observation_post} ({{spaces}})",
+    "en": "{observation_post} ({{spaces}})"
+  },
+  "core.research_space": {
+    "ko": "연구 트랙 {{column}}-{{row}}",
+    "en": "Research track {{column}}-{{row}}"
   },
   "help.announce_confirm_mine": {
     "ko": "{{name}} — 행동을 마쳤습니다. 턴 종료를 확정하세요.",
@@ -713,10 +721,6 @@ const UI_TEXT = {
     "ko": "게임 준비",
     "en": "Game setup"
   },
-  "panels.research_space": {
-    "ko": "{research} {{space}}",
-    "en": "{research} {{space}}"
-  },
   "panels.reveal_preview_prefix": {
     "ko": "지금 공개하면 ",
     "en": "If revealed now: "
@@ -1057,9 +1061,25 @@ const UI_TEXT = {
     "ko": "게임 시작 전",
     "en": "Before the game started"
   },
-  "review.chance_label": {
+  "core.chance_label": {
     "ko": "무작위 결과: {{decision}}",
-    "en": "chance: {{decision}}"
+    "en": "Random outcome: {{decision}}"
+  },
+  "core.chance_discard_shuffle": {
+    "ko": "{{seat}}의 {discard_pile} 섞기",
+    "en": "{{seat}}'s {discard_pile} shuffled"
+  },
+  "core.chance_intrigue_shuffle": {
+    "ko": "{intrigue} {discard_pile} 섞기",
+    "en": "{intrigue} {discard_pile} shuffled"
+  },
+  "core.chance_secrets_steal": {
+    "ko": "{{thief}}, {{victim}}에게서 {steal_intrigue}",
+    "en": "{{thief}}: {steal_intrigue} from {{victim}}"
+  },
+  "core.chance_other": {
+    "ko": "기타",
+    "en": "other"
   },
   "review.chance_values": {
     "ko": "{{count}}장 · {{names}} …",
@@ -1386,8 +1406,8 @@ const UI_TEXT = {
     "en": "Choose step by step"
   },
   "turn.spy_recall": {
-    "ko": "{spy} 회수 — {{post}}",
-    "en": "{spy} recall — {{post}}"
+    "ko": "{recall_spy} — {{post}}",
+    "en": "{recall_spy} — {{post}}"
   },
   "turn.spy_recall_none": {
     "ko": "{spy} 회수 없이",
