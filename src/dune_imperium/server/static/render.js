@@ -332,8 +332,38 @@ function renderDisclosure() {
   }
   panel.hidden = false;
   const heading = document.createElement("h2");
-  heading.textContent = "종료 후 공개 (모든 비공개 존)";
+  const title = "종료 후 공개 (모든 비공개 존)";
   panel.appendChild(heading);
+  /* A review opens it folded: it holds every hand and deck order as of the
+     reviewed step — the draws the replay is walking towards, the way the
+     standings are its result (사용자 결정 2026-09-21). One click opens it. */
+  const review = state.review;
+  if (!review) {
+    heading.textContent = title;
+  } else {
+    const open = Boolean(review.disclosureOpen);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "strip-toggle";
+    button.setAttribute("aria-expanded", open ? "true" : "false");
+    button.title = open ? "접기" : "펼치기";
+    button.append(open ? "▾" : "▸", " ", title);
+    button.addEventListener("click", () => {
+      if (!state.review) return;
+      state.review.disclosureOpen = !open;
+      renderDisclosure();
+    });
+    heading.appendChild(button);
+    if (!open) {
+      const note = document.createElement("p");
+      note.className = "muted";
+      note.textContent = phraseText(
+        "검토 중인 시점의 모든 {hand}와 {deck} 순서가 들어 있어, 펼치면 앞으로 뽑힐 카드가 보입니다.",
+      );
+      panel.appendChild(note);
+      return;
+    }
+  }
   for (const zones of view.disclosure.players) {
     const seat = section(panel, `좌석 ${zones.player}`);
     const line = (label, ids, empty) => {
@@ -381,8 +411,25 @@ function renderBanner() {
   meta.className = "meta";
 
   if (summary.finished) {
-    prompt.textContent = "게임이 끝났습니다.";
-    info.append(prompt);
+    const [first, second] = [...(summary.standings || [])].sort(
+      (a, b) => a.rank - b.rank,
+    );
+    if (!first) {
+      prompt.textContent = "게임이 끝났습니다.";
+      info.append(prompt);
+    } else {
+      prompt.textContent = `게임 종료 — ${playerLabel(first.player)} 승리`;
+      /* Names are other people's input: text nodes, never phrase() input. */
+      if (second) {
+        meta.append(
+          phrase(gameOverMargin(first, second)),
+          ` · 2위 ${playerLabel(second.player)}`,
+        );
+      } else {
+        meta.append(phrase(`{victory_point:${first.victory_points}}`));
+      }
+      info.append(prompt, meta);
+    }
   } else {
     const decision = summary.decision;
     if (!decision) {
@@ -429,6 +476,31 @@ function renderBanner() {
   /* A human seat may still have takeable-back steps after the game ends
      (its last live step), so the undo row renders in both branches above. */
   appendUndoRow(info);
+}
+
+/* The tiebreaks after equal Victory Points, in order: spice, Solari, water,
+   troops in garrison [Main p. 15], a garrisoned Sardaukar Commander counting
+   as a troop (OQ-047). The server ranks on the same keys (rules/endgame.py). */
+const VP_TIEBREAKS = [
+  ["{spice}", (entry) => entry.spice],
+  ["{solari}", (entry) => entry.solari],
+  ["{water}", (entry) => entry.water],
+  ["{garrison} {troop}", (entry) => entry.troops_garrison + (entry.commanders_garrison || 0)],
+];
+
+/* What put the winner ahead of second place, as a phrase() template. */
+function gameOverMargin(first, second) {
+  const vp = first.victory_points;
+  if (vp !== second.victory_points) {
+    return `{victory_point:${vp}} (${vp - second.victory_points} 차)`;
+  }
+  for (const [label, value] of VP_TIEBREAKS) {
+    if (value(first) !== value(second)) {
+      return `{victory_point:${vp}} 동점 · 동점 판정 ${label} ${value(first)} 대 ${value(second)}`;
+    }
+  }
+  /* Still tied: whoever took a Reveal turn most recently wins [FAQ p. 2]. */
+  return `{victory_point:${vp}} 동점 · 동점 판정 항목도 모두 같아 {reveal_turn}를 더 늦게 마친 좌석이 승리`;
 }
 
 /* Why a wait may be a long one: nobody sits there yet, or they dropped off. */

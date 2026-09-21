@@ -268,10 +268,34 @@ def scenario_full_game(base, browser) -> str:
         "tab title untouched on an open server",
         page.title(),
     )
+    winner = page.evaluate(
+        "playerLabel(state.summary.standings.find((e) => e.rank === 1).player)"
+    )
+    check.ok(
+        page.inner_text("#decision-info .prompt").strip()
+        == f"게임 종료 — {winner} 승리",
+        "the finished banner names the winner",
+        page.inner_text("#decision-info .prompt"),
+    )
+    # Post-game disclosure (OQ-010 ruling 4): whole on the live table, folded
+    # in a review (사용자 결정 2026-09-21), whole again after it.
+    live = disclosure_shape(page)
+    check.ok(
+        live["button"] is None and live["sections"] >= 4,
+        "the live finished table shows the disclosure whole, with no fold",
+        live,
+    )
 
     print("[B] review mode: the latest request wins")
     base_review = rec.count("GET", "/review/")
     page.click("#standings button:has-text('리플레이 검토')")
+    page.wait_for_function("state.review !== null && state.review.phase !== null")
+    folded = disclosure_shape(page)
+    check.ok(
+        folded["button"] == "false" and folded["sections"] == 0,
+        "entering the review folds the disclosure",
+        folded,
+    )
     page.click("#review-first")
     page.wait_for_function(
         "state.review && state.review.cursor === 0"
@@ -296,6 +320,12 @@ def scenario_full_game(base, browser) -> str:
         "live table back after review",
     )
     check.ok(not page.is_visible("#review-bar"), "review bar hidden again")
+    after = disclosure_shape(page)
+    check.ok(
+        after["button"] is None and after["sections"] >= 4,
+        "leaving the review shows the disclosure whole again",
+        after,
+    )
     print(f"  .. review requests: {rec.count('GET', '/review/') - base_review}")
 
     print("[A'] reload returns to the game; leaving clears the hash")
@@ -321,6 +351,20 @@ def scenario_full_game(base, browser) -> str:
     errors = [e for e in rec.js_errors]
     check.ok(not errors, "no JS errors", errors[:5])
     return game_id
+
+
+def disclosure_shape(page) -> dict:
+    return page.evaluate(
+        """() => {
+            const panel = document.getElementById('disclosure');
+            const button = panel.querySelector('h2 button');
+            return {
+                hidden: panel.hidden,
+                button: button ? button.getAttribute('aria-expanded') : null,
+                sections: panel.querySelectorAll('h3').length,
+            };
+        }"""
+    )
 
 
 def scenario_doorbell(base, browser) -> None:

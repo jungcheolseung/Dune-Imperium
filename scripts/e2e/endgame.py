@@ -125,6 +125,34 @@ def run(base: str, browser) -> None:
     view = page.evaluate("state.view")
     check.ok("disclosure" in view, "the finished view carries disclosure")
     check.ok(page.is_visible("#disclosure"), "the disclosure panel is shown")
+
+    # In a review it starts folded (사용자 결정 2026-09-21): every hand and deck
+    # order as of the reviewed step is the replay's own future.
+    folded = disclosure_state(page)
+    check.ok(
+        folded["expanded"] == "false" and not folded["sections"] and not folded["tags"],
+        "in a review the disclosure starts folded, with no seat or card on show",
+        folded,
+    )
+    if folded["expanded"] is not None:  # an unfoldable panel fails just above
+        page.click("#disclosure h2 button")
+    opened = disclosure_state(page)
+    check.ok(
+        opened["expanded"] == "true" and len(opened["sections"]) >= 4,
+        "one click on its heading opens it",
+        opened,
+    )
+    # A cursor move re-renders everything; opened by hand, it stays open.
+    page.evaluate("reviewSeek(state.review.meta.step_count - 1)")
+    page.wait_for_function(
+        "state.review.cursor === state.review.meta.step_count - 1"
+        " && refreshFlight === null"
+    )
+    seek_to_end(page)
+    check.ok(
+        disclosure_state(page)["expanded"] == "true",
+        "the opened disclosure survives the review moving",
+    )
     # section() in turn.js appends its h3 straight to the panel; there is no
     # wrapping <section> element to select.
     seats = page.eval_on_selector_all(
@@ -155,12 +183,154 @@ def run(base: str, browser) -> None:
             strips,
         )
 
+    # Another seat's eyes on the same position keep it open too.
+    page.select_option("#review-seat", "1")
+    # phase is reset to null by enterReview and set just before its render().
+    page.wait_for_function("state.review.seat === 1 && state.review.phase !== null")
+    check.ok(
+        disclosure_state(page)["expanded"] == "true",
+        "switching the reviewed seat keeps the disclosure open",
+    )
+
+    # Leaving the review shows the live banner. Nobody sits at a watched game,
+    # so there is no seat view (pickViewSeat) and no disclosure out of review;
+    # open_mode.py checks the unfolded panel on a game with human seats.
+    page.evaluate("exitReview()")
+    page.wait_for_function("state.review === null && refreshFlight === null")
+    page.wait_for_selector("#decision-banner:not([hidden])")
+    check_banner(page, standings)
+
+    # Watching the game again starts a new review: folded again.
+    page.click("#standings button")
+    page.wait_for_function("state.review !== null && state.review.phase !== null")
+    page.evaluate("stopPlayback()")
+    check.ok(
+        disclosure_state(page)["expanded"] == "false",
+        "a new review folds the disclosure again",
+    )
+    page.evaluate("stopPlayback(); exitReview()")
+    page.wait_for_function("state.review === null && refreshFlight === null")
+
+    check_margins(page)
+
     bad = [r for r in rec.requests if r[3] is not None and r[3] >= 400]
     check.ok(not bad, "no failed requests", bad[:3])
     check.ok(not rec.js_errors, "no JS errors", rec.js_errors[:3])
     if check.failed:
         rec.dump()
     context.close()
+
+
+def disclosure_state(page) -> dict:
+    return page.evaluate(
+        """() => {
+            const panel = document.getElementById('disclosure');
+            const button = panel.querySelector('h2 button');
+            return {
+                expanded: button ? button.getAttribute('aria-expanded') : null,
+                sections: [...panel.querySelectorAll('h3')].map((e) => e.textContent),
+                tags: panel.querySelectorAll('.tag').length,
+            };
+        }"""
+    )
+
+
+# The Uprising tiebreaks after equal VP, in order [Main p. 15] (a garrisoned
+# Commander counting as a troop, OQ-047), then the most recent Reveal turn
+# [FAQ p. 2]. Written out here rather than read from the client, so the banner
+# is checked against the rulebook's order and not against itself.
+TIEBREAK_ORDER = (
+    ("스파이스", lambda e: e["spice"]),
+    ("솔라리", lambda e: e["solari"]),
+    ("물", lambda e: e["water"]),
+    ("주둔지 병력", lambda e: e["troops_garrison"] + e.get("commanders_garrison", 0)),
+)
+
+
+def expected_margin(first: dict, second: dict) -> str:
+    """The banner's margin line as read with each icon's alt text — the same
+    text the line shows on a machine without the icon set."""
+    vp = f"{first['victory_points']}승점"
+    if first["victory_points"] != second["victory_points"]:
+        return f"{vp} ({first['victory_points'] - second['victory_points']} 차)"
+    for label, value in TIEBREAK_ORDER:
+        if value(first) != value(second):
+            return f"{vp} 동점 · 동점 판정 {label} {value(first)} 대 {value(second)}"
+    last = "공개 차례를 더 늦게 마친 좌석이 승리"
+    return f"{vp} 동점 · 동점 판정 항목도 모두 같아 {last}"
+
+
+# Text of an element with every icon read as its alt text.
+READ_WITH_ALT = """(e) => {
+    const copy = e.cloneNode(true);
+    copy.querySelectorAll('img').forEach((img) => img.replaceWith(img.alt));
+    return copy.textContent;
+}"""
+
+
+def check_banner(page, standings: list) -> None:
+    """The finished banner names the winner and what beat second place."""
+    by_rank = sorted(standings, key=lambda entry: entry["rank"])
+    first, second = by_rank[0], by_rank[1]
+    label = page.evaluate(f"playerLabel({first['player']})")
+    second_label = page.evaluate(f"playerLabel({second['player']})")
+    prompt = page.inner_text("#decision-info .prompt").strip()
+    check.ok(
+        prompt == f"게임 종료 — {label} 승리",
+        "the finished banner names the rank-1 seat as the winner",
+        prompt,
+    )
+    meta = page.evaluate(
+        f"""() => {{
+            const meta = document.querySelector('#decision-info .meta');
+            return meta ? ({READ_WITH_ALT})(meta).trim() : null;
+        }}"""
+    )
+    want = f"{expected_margin(first, second)} · 2위 {second_label}"
+    check.ok(meta == want, "the banner says what put the winner ahead", (meta, want))
+
+
+def check_margins(page) -> None:
+    """Every branch of the margin line, on made-up standings.
+
+    One seeded game reaches one branch; a VP tie is rare. The rows below are
+    built so that each tiebreak in turn is the first to differ.
+    """
+    base = {
+        "victory_points": 11,
+        "spice": 3,
+        "solari": 4,
+        "water": 1,
+        "troops_garrison": 2,
+        "commanders_garrison": 0,
+    }
+    cases = {
+        "VP": ({**base, "victory_points": 12}, base),
+        "spice": ({**base, "spice": 5}, base),
+        "solari": ({**base, "solari": 6}, base),
+        "water": ({**base, "water": 2}, base),
+        # 2 troops + 2 Commanders against 3 troops: the troops alone would
+        # rank them the other way round.
+        "garrison": (
+            {**base, "commanders_garrison": 2},
+            {**base, "troops_garrison": 3},
+        ),
+        "reveal": (base, dict(base)),
+    }
+    for name, (first, second) in cases.items():
+        try:
+            text = page.evaluate(
+                f"""([a, b]) => {{
+                    const box = document.createElement('div');
+                    box.append(phrase(gameOverMargin(a, b)));
+                    return ({READ_WITH_ALT})(box);
+                }}""",
+                [first, second],
+            )
+        except Exception as error:  # the old client has no gameOverMargin
+            text = f"<error: {str(error).splitlines()[0]}>"
+        want = expected_margin(first, second)
+        check.ok(text == want, f"the margin line for a {name} decision", (text, want))
 
 
 def run_laptop(base: str, browser) -> None:

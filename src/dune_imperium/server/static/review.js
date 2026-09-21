@@ -28,6 +28,8 @@ async function enterReview(seat, options) {
     phase: null,
     liveIndex,
     stops: turnStops(meta.steps),
+    /* Opened by hand (renderDisclosure); another seat's eyes keep it. */
+    disclosureOpen: Boolean(state.review && state.review.disclosureOpen),
   };
   const select = el("review-seat");
   select.textContent = "";
