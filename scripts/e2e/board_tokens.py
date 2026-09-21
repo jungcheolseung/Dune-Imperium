@@ -2,7 +2,8 @@
 
 Every space's hotspot is the white frame printed around its picture
 (`catalog.spaces[id].box` and `catalog.space_frame`), and the Agents on it
-are the rulebook Agent icon's figure in their seat's colour. The Control marker on
+are the rulebook Agent icon's figure in their seat's colour, like the Spies
+(the Spy icon's cylinder) on the post discs. The Control marker on
 the flag under its space, the bonus spice in the Maker
 hexagon, the Maker Hooks token in its garrison's slot and the Alliance token
 on its Faction's ring (in the holder's seat panel once somebody earns it) are
@@ -336,7 +337,7 @@ def agent_pieces(page) -> None:
           });
           const all = document.querySelectorAll(".hotspot .agent-token");
           return [...all].map((token) => ({
-            body: token.querySelector(".agent-body"),
+            body: token.querySelector(".piece-body"),
             token,
           })).map(({ body, token }) => ({
             space: token.closest(".hotspot").dataset.space,
@@ -418,6 +419,123 @@ def agent_pieces(page) -> None:
     )
 
 
+def spy_pieces(page) -> None:
+    print("[3c] Spies: the Spy icon's cylinder on the post disc (edited view)")
+    catalog = page.evaluate(
+        "({ posts: state.catalog.posts, size: state.catalog.post_size })"
+    )
+    colors = page.evaluate("SEAT_COLORS")
+    placed = {
+        "emperor-sardaukar-dutiful-service": [2],
+        "arrakis-hagga-basin": [0, 1, 2, 3],
+        "fremen-desert-tactics-fremkit": [1, 3],
+    }
+    page.evaluate(
+        """(placed) => {
+          for (const player of state.view.players) player.spy_post_ids = [];
+          for (const [post, seats] of Object.entries(placed)) {
+            for (const seat of seats) {
+              state.view.players[seat].spy_post_ids.push(post);
+            }
+          }
+          render();
+        }""",
+        placed,
+    )
+    shown = page.evaluate(
+        """() => {
+          const stage = document.querySelector(".board-stage").getBoundingClientRect();
+          const pct = (r) => ({
+            left: (r.left - stage.left) / stage.width * 100,
+            top: (r.top - stage.top) / stage.height * 100,
+            width: r.width / stage.width * 100,
+            height: r.height / stage.height * 100,
+          });
+          const posts = document.querySelectorAll(".board-stage .spy-post");
+          return [...posts].map((post) => ({
+            rect: pct(post.getBoundingClientRect()),
+            spies: [...post.querySelectorAll(".spy-token")].map((spy) => {
+              const body = spy.querySelector(".piece-body");
+              return {
+                rect: pct(spy.getBoundingClientRect()),
+                seat: Number(spy.dataset.seat),
+                tag: spy.tagName,
+                outline: body ? body.getAttribute("href") : null,
+                fill: body ? getComputedStyle(body).fill : null,
+                top: spy.querySelectorAll(".piece-top").length,
+                drawnText: spy.querySelectorAll("text").length + (body ? 0 : 1),
+                role: spy.getAttribute("role"),
+                label: spy.getAttribute("aria-label"),
+                wantedLabel: t("common.seat", { seat: Number(spy.dataset.seat) }),
+              };
+            }),
+          }));
+        }"""
+    )
+
+    def rgb(hex_color: str) -> str:
+        value = hex_color.lstrip("#")
+        red, green, blue = (int(value[i : i + 2], 16) for i in (0, 2, 4))
+        return f"rgb({red}, {green}, {blue})"
+
+    def post_at(rect: dict) -> str | None:
+        centre = (rect["left"] + rect["width"] / 2, rect["top"] + rect["height"] / 2)
+        for post_id, (x, y) in catalog["posts"].items():
+            if near(centre[0], x) and near(centre[1], y):
+                return post_id
+        return None
+
+    by_post = {post_at(group["rect"]): group for group in shown}
+    check.ok(
+        {post: [s["seat"] for s in group["spies"]] for post, group in by_post.items()}
+        == placed,
+        "each post's Spies centred on its printed disc, in seat order",
+        [(group["rect"], [s["seat"] for s in group["spies"]]) for group in shown],
+    )
+    for post_id, group in by_post.items():
+        for spy in group["spies"]:
+            name = f"{post_id} seat {spy['seat']}"
+            check.ok(
+                spy["tag"] == "svg" and spy["outline"] == "#spy-outline",
+                f"{name}: drawn from the Spy outline",
+                spy,
+            )
+            check.ok(
+                spy["fill"] == rgb(colors[spy["seat"]]),
+                f"{name}: in the seat's colour",
+                (spy["fill"], colors[spy["seat"]]),
+            )
+            check.ok(spy["top"] == 1, f"{name}: the cylinder's top face", spy)
+            check.ok(spy["drawnText"] == 0, f"{name}: no seat number drawn", spy)
+            check.ok(
+                spy["role"] == "img" and spy["label"] == spy["wantedLabel"],
+                f"{name}: named after its seat",
+                spy,
+            )
+            shape = spy["rect"]["width"] / spy["rect"]["height"] * 6012 / 6005
+            check.ok(
+                abs(shape - 56 / 80) < 0.02, f"{name}: the icon's proportions", shape
+            )
+        spies = group["spies"]
+        apart = all(
+            left["rect"]["left"] + left["rect"]["width"] <= right["rect"]["left"] + 0.01
+            for left, right in zip(spies, spies[1:], strict=False)
+        )
+        check.ok(apart, f"{post_id}: Spies side by side, not stacked")
+    alone = by_post.get("emperor-sardaukar-dutiful-service")
+    if check.ok(alone is not None, "the lone Spy's post is found"):
+        width = alone["spies"][0]["rect"]["width"]
+        check.ok(
+            catalog["size"] is not None and near(width, catalog["size"]),
+            "a lone Spy is as wide as the post disc",
+            (width, catalog["size"]),
+        )
+    check.ok(
+        page.evaluate("document.querySelectorAll('#spy-outline').length") == 1,
+        "one shared Spy outline",
+    )
+
+
 def intrigue_pile(page) -> None:
     print("[4] the Intrigue discard is one line; a click lists the cards")
     ids = page.evaluate(
@@ -466,6 +584,7 @@ def main() -> None:
             reveal_preview(page)
             printed_places(page)
             agent_pieces(page)
+            spy_pieces(page)
             intrigue_pile(page)
             failed = [r for r in rec.requests if r[3] >= 400]
             check.ok(not failed, "no failed requests", failed[:5])

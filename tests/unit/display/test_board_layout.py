@@ -15,6 +15,7 @@ from dune_imperium.display.board_layout import (
     MAKER_SPICE_POINTS,
     MAKER_SPICE_SIZE,
     POST_POINTS,
+    POST_SIZE,
     RESEARCH_STATION_OVERLAY_BOX,
     SHIELD_WALL_BOX,
     SHIELD_WALL_ROTATION,
@@ -224,6 +225,20 @@ def test_hotspots_are_the_one_frame_every_space_prints() -> None:
 
 def test_every_observation_post_has_a_point() -> None:
     assert set(POST_POINTS) == {post.post_id for post in OBSERVATION_POSTS}
+
+
+def test_posts_are_printed_discs_clear_of_the_spaces() -> None:
+    # A Spy stands on the post's printed disc, 116 px of the 6012 px scan:
+    # the disc lies off every space's frame, so a Spy never covers a place
+    # an Agent goes.
+    assert round(POST_SIZE / 100 * 6012) == 116
+    radius = POST_SIZE / 2
+    for post_id, (x, y) in POST_POINTS.items():
+        for space_id, (left, top, width, height) in SPACE_BOXES.items():
+            nearest_x = min(max(x, left), left + width)
+            nearest_y = min(max(y, top), top + height)
+            gap = ((x - nearest_x) ** 2 + (y - nearest_y) ** 2) ** 0.5
+            assert gap > radius, (post_id, space_id)
 
 
 def test_boxes_and_points_stay_inside_the_image() -> None:

@@ -18,7 +18,7 @@ tests pin that both tables cover them exactly.
 ``SPACE_BOXES`` are ``(left, top, width, height)`` of the white frame each
 space prints around its picture, the place where the Agent goes, so the
 hotspot lights up exactly that frame and not the effect icons beside it.
-``POST_POINTS`` are the centres of the observation-post "eye" icons.
+``POST_POINTS`` are the centres of the observation-post "eye" discs.
 """
 
 from collections.abc import Mapping
@@ -104,23 +104,28 @@ RESEARCH_STATION_OVERLAY_BOX: Final = (38.81, 32.14, 15.58, 8.48)
 SHIELD_WALL_BOX: Final = (63.27, 42.4, 7.75, 7.8)
 SHIELD_WALL_ROTATION: Final = 180
 
+# An observation post is a printed grey disc with an eye, 116 px across the
+# scan (1.93 %) with a second ring inside; a Spy stands on it. The points
+# are the discs' centres, fitted to both rings (Hough transform on the scan's
+# edges, 2026-09-21; the hand-set 2026-09-03 points were up to 0.58 off).
 POST_POINTS: Final[Mapping[str, tuple[float, float]]] = MappingProxyType(
     {
-        "emperor-sardaukar-dutiful-service": (25.3, 14.8),
-        "landsraad-high-council-imperial-privilege-swordmaster": (47.5, 12.0),
-        "landsraad-assembly-hall-gather-support": (77.8, 10.8),
-        "choam-shipping-accept-contract": (96.2, 11.5),
-        "spacing-guild-heighliner-deliver-supplies": (25.3, 39.3),
-        "arrakis-research-station-spice-refinery": (55.0, 31.4),
-        "arrakis-research-station-sietch-tabr": (38.5, 42.8),
-        "arrakis-spice-refinery-arrakeen": (75.2, 26.8),
-        "arrakis-imperial-basin": (86.0, 43.1),
-        "arrakis-hagga-basin": (62.0, 47.3),
-        "arrakis-deep-desert": (43.5, 54.9),
-        "bene-gesserit-espionage-secrets": (25.2, 63.9),
-        "fremen-desert-tactics-fremkit": (25.2, 88.2),
+        "emperor-sardaukar-dutiful-service": (25.05, 14.92),
+        "landsraad-high-council-imperial-privilege-swordmaster": (47.49, 12.11),
+        "landsraad-assembly-hall-gather-support": (77.88, 10.91),
+        "choam-shipping-accept-contract": (96.06, 11.54),
+        "spacing-guild-heighliner-deliver-supplies": (25.05, 39.47),
+        "arrakis-research-station-spice-refinery": (54.84, 31.32),
+        "arrakis-research-station-sietch-tabr": (38.37, 42.81),
+        "arrakis-spice-refinery-arrakeen": (75.3, 26.86),
+        "arrakis-imperial-basin": (86.28, 43.01),
+        "arrakis-hagga-basin": (62.08, 47.88),
+        "arrakis-deep-desert": (43.63, 55.12),
+        "bene-gesserit-espionage-secrets": (25.1, 63.96),
+        "fremen-desert-tactics-fremkit": (25.02, 88.56),
     }
 )
+POST_SIZE: Final = 1.93
 
 
 # Live-state marker coordinates, measured on 2026-09-03 against the same

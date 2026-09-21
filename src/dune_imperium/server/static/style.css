@@ -335,15 +335,24 @@ button:disabled { opacity: 0.5; cursor: wait; }
 }
 .agent-tokens[data-count="3"] .agent-token { height: 60%; }
 .agent-tokens[data-count="4"] .agent-token { height: 46%; }
-.agent-token .agent-rim { fill: none; stroke: rgba(255, 255, 255, 0.55); stroke-width: 5; }
-.agent-token .agent-edge {
+/* The layers of a seat's piece (seatPiece): the icon's light rim inside
+   the outline, the dark edge, and a Spy's lighter top face. */
+.piece-rim { fill: none; stroke: rgba(255, 255, 255, 0.55); stroke-width: 5; }
+.spy-token .piece-rim { stroke-width: 6; }
+.piece-edge {
   fill: none;
   stroke: #111;
   stroke-width: 1.2px;
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
 }
-.spy-token, .control-flag, .seat-mark {
+.piece-top {
+  fill: rgba(255, 255, 255, 0.35);
+  stroke: rgba(0, 0, 0, 0.55);
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+}
+.control-flag, .seat-mark {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -433,14 +442,27 @@ button:disabled { opacity: 0.5; cursor: wait; }
   text-shadow: 0 0 2px #000, 0 1px 2px #000;
 }
 .bonus-spice-count.wide { font-size: 58cqh; letter-spacing: -0.04em; }
+/* Spies stand on their post's disc, as wide as it (the row's height is
+   set inline); up to four seats share a post and shrink a little. */
 .spy-post {
   position: absolute;
   transform: translate(-50%, -50%);
   display: flex;
-  gap: 1px;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
   pointer-events: auto;
 }
-.spy-token { width: 1.3em; height: 1.3em; font-size: 0.7em; }
+.spy-token {
+  height: 100%;
+  aspect-ratio: 56 / 80;
+  flex: none;
+  overflow: visible;
+  filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.9));
+}
+.spy-post[data-count="2"] .spy-token { height: 90%; }
+.spy-post[data-count="3"] .spy-token { height: 80%; }
+.spy-post[data-count="4"] .spy-token { height: 70%; }
 /* An Influence cube: flat in the seat's colour, square-cornered, exactly
    the square the board prints for it (the width, a percent of the stage,
    is set inline). The dark edge is a shadow ring outside the box, not a

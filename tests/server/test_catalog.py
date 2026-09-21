@@ -406,6 +406,7 @@ def test_catalog_carries_board_overlay_layout_and_optional_icons() -> None:
     posts = catalog["posts"]
     assert isinstance(posts, dict)
     assert len(posts) == 13
+    assert catalog["post_size"] == 1.93
     assert catalog["icons"] == {}
     assert catalog["board_image"] is None
     assert catalog["strength_tokens"] == [None, None, None, None]

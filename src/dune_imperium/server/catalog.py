@@ -67,6 +67,7 @@ from dune_imperium.display.bloodlines import (
 from dune_imperium.display.board_layout import (
     LEADER_TILE_BOXES,
     POST_POINTS,
+    POST_SIZE,
     RESEARCH_STATION_OVERLAY_BOX,
     SHIELD_WALL_BOX,
     SHIELD_WALL_ROTATION,
@@ -313,6 +314,8 @@ def build_catalog(
         "posts": {
             post_id: [x, y] for post_id, (x, y) in POST_POINTS.items()
         },
+        # The printed post disc's diameter, percent of the scan's width.
+        "post_size": POST_SIZE,
         "icons": {
             name: versioned(f"/icons/{filename}")
             for name, filename in available_icons(icon_files).items()

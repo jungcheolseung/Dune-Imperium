@@ -34,18 +34,31 @@ function seatToken(seat, className) {
   return token;
 }
 
-/* The Agent piece's outline: the rulebook's Agent icon (a hooded figure,
-   52 x 81 px) traced into one left-right symmetric path, which covers the
-   icon's silhouette with an overlap of 0.98 (2026-09-21). */
-const AGENT_OUTLINE =
-  "M26 1 C29.6 1 35.2 5.5 35.8 12.6 L39 14.6 L50.6 42.2 C51.3 43 51.3 43.8 50.6 44.6" +
-  " L41.6 54 L41.6 65 L47 76.6 L47 80 L5 80 L5 76.6 L10.4 65 L10.4 54 L1.4 44.6" +
-  " C0.7 43.8 0.7 43 1.4 42.2 L13 14.6 L16.2 12.6 C16.8 5.5 22.4 1 26 1 Z";
+/* The pieces a seat stands on the board, traced from the rulebook's icons
+   (2026-09-21): the Agent's hooded figure (the 52 x 81 px icon as one
+   left-right symmetric path, overlap 0.98 with its silhouette) and the
+   Spy's cylinder (the 56 x 80 px icon as a capsule, overlap 0.99, and the
+   lighter top face the icon draws). */
+const PIECE_SHAPES = {
+  agent: {
+    viewBox: "0 0 52 81",
+    outline:
+      "M26 1 C29.6 1 35.2 5.5 35.8 12.6 L39 14.6 L50.6 42.2 C51.3 43 51.3 43.8 50.6 44.6" +
+      " L41.6 54 L41.6 65 L47 76.6 L47 80 L5 80 L5 76.6 L10.4 65 L10.4 54 L1.4 44.6" +
+      " C0.7 43.8 0.7 43 1.4 42.2 L13 14.6 L16.2 12.6 C16.8 5.5 22.4 1 26 1 Z",
+  },
+  spy: {
+    viewBox: "0 0 56 80",
+    outline: "M1 16 A27 15 0 0 1 55 16 L55 64 A27 15 0 0 1 1 64 Z",
+    top: { cx: 28, cy: 18, rx: 20, ry: 9 },
+  },
+};
 
-/* One hidden sprite holds the outline and its clip, so every Agent reuses
-   them: made on first use and kept outside the board, which every render
-   rebuilds. Not display:none, which would drop the clip in some browsers. */
-function agentSprite() {
+/* One hidden sprite holds every piece's outline and its clip, so each
+   piece on the board reuses them: made on first use and kept outside the
+   board, which every render rebuilds. Not display:none, which would drop
+   the clips in some browsers. */
+function pieceSprite() {
   if (document.getElementById("agent-outline")) return;
   const svgNs = "http://www.w3.org/2000/svg";
   const sprite = document.createElementNS(svgNs, "svg");
@@ -54,46 +67,59 @@ function agentSprite() {
   sprite.setAttribute("height", "0");
   sprite.style.position = "absolute";
   const defs = document.createElementNS(svgNs, "defs");
-  const outline = document.createElementNS(svgNs, "path");
-  outline.id = "agent-outline";
-  outline.setAttribute("d", AGENT_OUTLINE);
-  const clip = document.createElementNS(svgNs, "clipPath");
-  clip.id = "agent-clip";
-  const clipShape = document.createElementNS(svgNs, "use");
-  clipShape.setAttribute("href", "#agent-outline");
-  clip.appendChild(clipShape);
-  defs.append(outline, clip);
+  for (const [kind, shape] of Object.entries(PIECE_SHAPES)) {
+    const outline = document.createElementNS(svgNs, "path");
+    outline.id = `${kind}-outline`;
+    outline.setAttribute("d", shape.outline);
+    const clip = document.createElementNS(svgNs, "clipPath");
+    clip.id = `${kind}-clip`;
+    const clipShape = document.createElementNS(svgNs, "use");
+    clipShape.setAttribute("href", `#${kind}-outline`);
+    clip.appendChild(clipShape);
+    defs.append(outline, clip);
+  }
   sprite.appendChild(defs);
   document.body.appendChild(sprite);
 }
 
-/* A seat's Agent on a space: the Agent icon's figure, flat in the seat's
-   colour like every other player piece and without a seat number, with the
-   icon's light rim inside a dark edge. */
-function agentToken(seat) {
-  agentSprite();
+/* A seat's Agent on a space or Spy on a post: the rulebook icon's shape,
+   flat in the seat's colour like every other player piece and without a
+   seat number, with the icon's light rim inside a dark edge (and a Spy's
+   lighter top face). */
+function seatPiece(kind, seat) {
+  pieceSprite();
   const svgNs = "http://www.w3.org/2000/svg";
+  const shape = PIECE_SHAPES[kind];
   const label = t("common.seat", { seat });
-  const token = document.createElementNS(svgNs, "svg");
-  token.setAttribute("class", "agent-token");
-  token.setAttribute("viewBox", "0 0 52 81");
-  token.setAttribute("role", "img");
-  token.setAttribute("aria-label", label);
-  token.dataset.seat = String(seat);
+  const piece = document.createElementNS(svgNs, "svg");
+  piece.setAttribute("class", `${kind}-token`);
+  piece.setAttribute("viewBox", shape.viewBox);
+  piece.setAttribute("role", "img");
+  piece.setAttribute("aria-label", label);
+  piece.dataset.seat = String(seat);
   const title = document.createElementNS(svgNs, "title");
   title.textContent = label;
   const layer = (className) => {
     const use = document.createElementNS(svgNs, "use");
-    use.setAttribute("href", "#agent-outline");
+    use.setAttribute("href", `#${kind}-outline`);
     use.setAttribute("class", className);
     return use;
   };
-  const body = layer("agent-body");
+  const body = layer("piece-body");
   body.setAttribute("fill", SEAT_COLORS[seat]);
-  const rim = layer("agent-rim");
-  rim.setAttribute("clip-path", "url(#agent-clip)");
-  token.append(title, body, rim, layer("agent-edge"));
-  return token;
+  piece.append(title, body);
+  if (shape.top) {
+    const top = document.createElementNS(svgNs, "ellipse");
+    top.setAttribute("class", "piece-top");
+    for (const [name, value] of Object.entries(shape.top)) {
+      top.setAttribute(name, String(value));
+    }
+    piece.appendChild(top);
+  }
+  const rim = layer("piece-rim");
+  rim.setAttribute("clip-path", `url(#${kind}-clip)`);
+  piece.append(rim, layer("piece-edge"));
+  return piece;
 }
 
 /* Agent tokens keyed by seat and space, with their screen rectangles, so
@@ -322,7 +348,7 @@ function renderBoardStage(board, view) {
       const tokens = document.createElement("span");
       tokens.className = "agent-tokens";
       tokens.dataset.count = String(Math.min(seats.length, 4));
-      for (const seat of seats) tokens.appendChild(agentToken(seat));
+      for (const seat of seats) tokens.appendChild(seatPiece("agent", seat));
       hotspot.appendChild(tokens);
     }
     /* The Control marker and the bonus spice lie on their printed places
@@ -371,8 +397,13 @@ function renderBoardStage(board, view) {
     post.className = "spy-post";
     post.style.left = `${x}%`;
     post.style.top = `${y}%`;
+    /* A Spy is as wide as the printed post disc (catalog.post_size, a
+       percent of the width; the scan is square within 0.12 %), so the row
+       is that tall at the icon's proportions. */
+    post.style.height = `${(state.catalog.post_size * 80) / 56}%`;
+    post.dataset.count = String(Math.min(seats.length, 4));
     post.title = t("board.post_seats", { post: prettify(postId), seats: seats.join(", ") });
-    for (const seat of seats) post.appendChild(seatToken(seat, "spy-token"));
+    for (const seat of seats) post.appendChild(seatPiece("spy", seat));
     stage.appendChild(post);
   }
 
