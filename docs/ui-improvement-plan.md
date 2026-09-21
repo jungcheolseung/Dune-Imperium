@@ -411,6 +411,7 @@ imperium:rebel_supplier:1,…`, `To Space: paid_trash`). 결정 prompt는 엔진
 | 6c 노트북에서 좌석 넷 | 완료 | `4a9a8b5` |
 | 6d 보드 위 사다우카 지휘관(사용자 요청) | 완료 | `3fa7b82` |
 | 6e 한 관측소의 Spy를 쌓기(사용자 지적) | 완료 | `44b5591` |
+| 6f 패널 문구의 용어집 잔재 | 완료 | `54cd0c5` |
 
 - **6a.** 원격 서버는 seed를 받지 않아 [11] 시점에 되돌릴 창이 열린 좌석이 없으면 되돌리기 검사 둘을
   건너뛰었다(56 → 54). 이제 창이 열린 좌석이 나올 때까지 한 수씩(최대 30) 더 두고, 끝내 없으면 실패한다.
@@ -466,13 +467,17 @@ imperium:rebel_supplier:1,…`, `To Space: paid_trash`). 결정 prompt는 엔진
   검토는 커서까지)로 쌓고 로그가 모르는 Spy는 좌석 순으로 아래에 둔다. `board_tokens.py` 200 → 203(옛 나란히
   배치에서 5개 실패).
 
+- **6f.** 사용자 요청으로 6단계 "남은 것" 1을 고쳤다. 용어집이 "적용"으로 적은 낱말이 영어로 남은 크롬: `Hand
+  (공개)` → 핸드, `Intrigue 덱 맨 위` → 책략 카드덱 `[Main p. 4]`, `Intrigue 해결 중` → 책략 카드, `내 discard` →
+  버림 더미(다른 좌석의 더미는 표 밖에서 `<좌석> discard`로 붙여 만들고 있었다), `Navigation N장 남음` → 운항 카드,
+  `Combat Intrigue 창` → 전투 책략 카드 `[Main p. 7]`, `(Flip됨)` → 뒤집힘, `Tactics N칸` → 전술 트랙,
+  `Ixian Embassy` → 익스 대사관 판, 설정 화면의 확장 이름 → 혈통·불멸·봉기. `test_i18n.py`에 가드를 더했다 —
+  표와 `UI_TEXT`의 한국어가 `TERMS`의 영어 낱말이나 위 용어집 낱말을 카탈로그 이름·경로·`KOREAN_KEEPS_ENGLISH`
+  밖에서 쓰면 실패한다(옛 `ui_text.js`에서 잔재를 모두 짚는다). `lang.py`는 이름 없는 크롬만 보므로 이 자리들을
+  놓쳤다.
+
 **남은 것** — 이번 범위 밖에서 본 것:
-1. **패널·보드 문구의 용어집 잔재 10곳.** 용어집에 한국어가 있는데 영어로 남은 크롬: `Hand (공개)`(핸드),
-   `Intrigue 덱 맨 위`(책략 카드덱), `Intrigue 해결 중`, `내 discard`(버림 더미), `Navigation N장 남음`(운항
-   카드), `Combat Intrigue 창`(전투 책략 카드), `(Flip됨)`(뒤집기), `Tactics N칸`(전술 트랙), `Ixian
-   Embassy`(익스 대사관 판), 설정 화면의 확장 이름(혈통·불멸·봉기, 용어집 "적용"). (`보드에 남은 Commander
-   없음`은 6d에서 고쳤다.) `lang.py`의 이름 없는 크롬 검사가 이 자리들을 보지 않는다.
-2. **용어집에 행이 없는 로그 낱말.** Gather Intelligence, Infiltrate, Other Memories, Secret Project,
+1. **용어집에 행이 없는 로그 낱말.** Gather Intelligence, Infiltrate, Other Memories, Secret Project,
    set-aside, Wild card, Family Atomics, Immediate, Usurp — 한국어 룰북에서 인용을 찾아 용어집에 더한 뒤에만
    바꾼다(용어집 규칙 2). `log_words.py`의 `KOREAN_KEEPS_ENGLISH`가 지금 이 목록이다.
 
