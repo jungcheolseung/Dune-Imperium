@@ -435,7 +435,7 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
   카탈로그 `commander_token`으로 나간다; 없으면 같은 자리에 그린 표시.
 - 보드의 "Commander" 영어 두 곳(빈 보드 안내, 주둔지·교전 칩 title)을 용어집의 사다우카 지휘관으로.
 - **E2E**: `board_tokens.py`에 Bloodlines 판(187 → 200, 옛 클라이언트 8개 실패). 15종 전부 녹색.
-- **쌓인 Spy**(`44b5591`, 사용자 지적 "기존에 있던 스파이의 위에 쌓는 식"): 한 관측소를 함께 쓰는 Spy(Double Agent)를
+- **쌓인 Spy**(`44b5591`, 사용자 지적 "기존에 있던 스파이의 위에 쌓는 식"): 한 관측소를 함께 쓰는 Spy(Double Agent, Bloodlines의 잠복 스파이 `[Bloodlines pp. 5, 12]`)를
   나란히(90/80/70%로 줄여) 두던 것을, 원판 너비 그대로 먼저 온 Spy 위에 쌓는다(한 층 = 높이의 60%). 순서는 로그의
   `spy_placed`(엔진은 도착 순서를 들고 있지 않다). `board_tokens.py` 200 → 203(옛 배치 5개 실패).
 

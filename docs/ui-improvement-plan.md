@@ -457,8 +457,10 @@ imperium:rebel_supplier:1,…`, `To Space: paid_trash`). 결정 prompt는 엔진
   0.83~1.1배). 칸 클릭은 가로채지 않고, 칸 이름이 "사다우카 지휘관 (2 솔라리)"를 말한다. `board_tokens.py`
   187 → 200(옛 클라이언트에서 8개 실패).
 - **6e.** 사용자 지적: "spy도 원래 한 칸에 여러개 놓이는 경우는 기존에 있던 스파이의 위에 쌓는 식인데 지금은 옆으로
-  쭉 나열되게 구현됐어." 관측소는 원래 빈 곳에만 놓고, 함께 쓰는 것은 Double Agent뿐이다("may share a post with an
-  opponent's Spy", `uprising-systems.md`). 규칙 문서는 모양을 정하지 않으므로 표시 관례로 다뤘다. 모든 Spy를 원판
+  쭉 나열되게 구현됐어." 관측소는 원래 빈 곳에만 놓고, 상대 Spy와 함께 쓰는 길은 둘이다 — Double Agent("may share a post
+  with an opponent's Spy", `uprising-systems.md`)와 Bloodlines의 잠복 스파이("놓을 때 상대의 Spy를 무시할 수 있다.
+  자신의 Spy가 이미 있는 post에는 놓을 수 없다" `[Bloodlines pp. 5, 12]`, `bloodlines.md`; Arrakis Observer·Spy
+  Drones·Deliver Supplies 계약 토큰). 둘 다 자기 Spy끼리는 겹치지 않으므로 한 관측소에 많아야 좌석 수만큼 선다. 규칙 문서는 모양을 정하지 않으므로 표시 관례로 다뤘다. 모든 Spy를 원판
   너비로 두고, 나중 Spy가 아래 Spy의 윗면에 선다 — 원통의 두 면 중심이 아이콘 80 중 48 떨어져 있어 한 층이 Spy
   높이의 60%. 엔진은 좌석마다 관측소만 들고 누가 먼저 왔는지는 없으므로, 로그의 `spy_placed` 순서(되돌린 수 제외,
   검토는 커서까지)로 쌓고 로그가 모르는 Spy는 좌석 순으로 아래에 둔다. `board_tokens.py` 200 → 203(옛 나란히
