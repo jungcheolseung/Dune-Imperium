@@ -1,9 +1,12 @@
 """Guard: every engine action id has a Korean label in the browser UI.
 
 The client is dependency-free vanilla JS with no JS test runner, so the
-label table is checked from Python by scanning the rules sources for
-``action_id="..."`` literals and asserting each appears as a key of the
-``ACTION_LABELS`` object in the client.
+label table is checked from Python: the engine's action ids are the keys of
+its dispatcher (``ACTION_HANDLERS``) plus every ``action_id="..."`` literal in
+the rules sources, and each must be a key of the ``ACTION_LABELS`` object in
+the client. The literal scan alone missed six ids written through a constant
+or a conditional (``select_long_live_fighters_draw``, ``pay_agent_card_water``
+…), which the log printed as prettified English.
 
 The table lives in ``static/labels.js``, but this scan searches every client
 script rather than naming one file, so splitting the client further does not
@@ -12,6 +15,8 @@ silently turn the guard off.
 
 import re
 from pathlib import Path
+
+from dune_imperium.rules.engine import ACTION_HANDLERS
 
 _REPO = Path(__file__).resolve().parents[2]
 _SOURCE_DIRS = (
@@ -23,7 +28,7 @@ _STATIC_DIR = _REPO / "src" / "dune_imperium" / "server" / "static"
 
 
 def _engine_action_ids() -> set[str]:
-    ids: set[str] = set()
+    ids: set[str] = set(ACTION_HANDLERS)
     for directory in _SOURCE_DIRS:
         for path in directory.rglob("*.py"):
             ids.update(
@@ -64,7 +69,9 @@ def _engine_event_kinds() -> set[str]:
     Not just the ``kind="literal"`` keyword: the engine also writes
     ``kind = "x"`` and picks one of two with ``kind=("a" if ... else "b")``.
     A scan that only matched the first form missed four kinds that a real
-    game emits 62 times, so it took every string in the assignment.
+    game emits 62 times, so it took every string in the assignment. The
+    parentheses are optional: ``kind="alliance_gained" if holder is None else
+    "alliance_transferred"`` went unlabelled until the pattern allowed that.
     """
     kinds: set[str] = set()
     for directory in _SOURCE_DIRS:
@@ -74,7 +81,7 @@ def _engine_event_kinds() -> set[str]:
             kinds.update(re.findall(r'kind\s*=\s*"([a-z_]+)"', text))
             # kind=("a" if <cond> else "b")
             for first, second in re.findall(
-                r'kind\s*=\s*\(\s*"([a-z_]+)"\s+if\b[^()]*?\belse\s+"([a-z_]+)"\s*\)',
+                r'kind\s*=\s*\(?\s*"([a-z_]+)"\s+if\b[^()]*?\belse\s+"([a-z_]+)"',
                 text,
                 re.DOTALL,
             ):

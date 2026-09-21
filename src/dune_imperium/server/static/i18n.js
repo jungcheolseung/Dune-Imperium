@@ -21,6 +21,8 @@ const LABEL_TABLES = {
   EFFECT_ICON_LABELS,
   RESEARCH_BONUS_LABELS,
   TLEILAXU_TRACK_LABELS,
+  FEYD_TRACK_LABELS,
+  VALUE_LABELS,
   PAYLOAD_KEY_LABELS,
 };
 /* [value, label] lists (core.js): their labels swap the same way. */

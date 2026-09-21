@@ -284,7 +284,8 @@ function renderSeats() {
     if (state.summary.immortality) {
       flags.push(tNode("panels.specimen_flag", { count: player.specimens || 0 }));
       if (player.research_space) {
-        flags.push(tNode("panels.research_space", { space: player.research_space }));
+        /* The research token's place, named as the log names it (core.js). */
+        flags.push(researchSpaceName(player.research_space, false) || player.research_space);
       }
       flags.push(tNode("panels.tleilaxu_space", { space: player.tleilaxu_space || 0 }));
       if (player.family_atomics) flags.push("Family Atomics");
@@ -492,18 +493,6 @@ const SEAT_PAYLOAD_KEYS = new Set([
   "visitor",
 ]);
 
-/* A provenance string ("imperium:high_priority_travel:1",
-   "round:9:player:1:agent_card:imperium:priority_contracts:0") names the
-   card behind an event somewhere among its segments; the rest is
-   bookkeeping. */
-function sourceName(value) {
-  for (const part of String(value).split(":")) {
-    const entry = lookup(part);
-    if (entry) return entry.name;
-  }
-  return null;
-}
-
 function logEventPayload(payload) {
   const parts = [];
   const shownNames = new Set();
@@ -529,41 +518,24 @@ function logEventPayload(payload) {
       parts.push(label);
       continue;
     }
-    /* Every id-shaped field resolves through the catalog. The engine emits
-       about 35 distinct ones (card_id, leader_id, tech_id, contract_id,
-       skill_id, post_id, space_id, their first_/second_ variants…). */
+    /* Every id-shaped field resolves through the catalog (the engine emits
+       about 35: card_id, leader_id, tech_id, skill_instance_id, post_id…),
+       and every other word through fieldText (core.js), as the action list
+       does. */
     const isIdField = key.endsWith("_id");
-    /* The engine joins an id list into one string ("staban_tuek,gurney_halleck":
-       leader_ids, contract_ids); an array would do as well. */
-    const idList = !key.endsWith("_ids")
-      ? null
-      : Array.isArray(value)
-        ? value
-        : typeof value === "string"
-          ? value.split(",").filter(Boolean)
-          : null;
-    /* action_id has its own table; everything else is a catalog name. */
-    const resolve = (item) =>
-      key === "action_id"
-        ? phraseText(ACTION_LABELS[item] || prettify(item))
-        : nameOf(item);
     let shown;
-    if (idList) shown = idList.map(resolve).join(", ");
-    else if (isIdField) shown = resolve(value);
-    else if (key === "effect") {
+    if (key === "effect") {
       /* A keyed board icon has a label; a Reveal choice's effect id is the
          engine's name for what the event line already says. */
       if (!EFFECT_ICON_LABELS[value]) continue;
       shown = phraseText(EFFECT_ICON_LABELS[value]);
-    } else if (key === "faction" || key === "influence_faction") {
-      shown = FACTION_LABELS[value] || prettify(value);
-    } else if (typeof value === "string" && TERMS[value]) {
-      /* A rule word ("solari", "hand", "garrison") in the current language. */
-      shown = phraseText(`{${value}}`);
-    } else if (typeof value === "string" && lookup(baseId(value))) {
-      shown = nameOf(value);
+    } else if ((key === "post_id" || key.endsWith("_post_id")) && postSpaces(value)) {
+      shown = postSpaces(value);
     } else {
-      shown = String(value);
+      const raw = Array.isArray(value) ? value.join(",") : value;
+      const text = typeof raw === "string" ? fieldText(key, raw, payload) : null;
+      if (text === "") continue;
+      shown = text === null ? String(value) : text;
     }
     /* card_id and instance_id of one event resolve to the same name. */
     if (isIdField && shownNames.has(shown)) continue;
@@ -747,7 +719,7 @@ function neutralCard(group, freshFrom) {
 function chanceLine(entry) {
   const line = document.createElement("div");
   line.className = "turn-line chance";
-  let text = `chance: ${prettify(entry.decision_id)}`;
+  let text = t("core.chance_label", { decision: describeChance(entry.decision_id) });
   if (entry.values) {
     const shown =
       entry.values.length <= 3

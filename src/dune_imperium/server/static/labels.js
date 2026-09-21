@@ -64,7 +64,13 @@ const ACTION_LABELS = {
   decline_agent_card_payment: "지불 안 함",
   pay_agent_card_spice_for_sandworm: "2 {spice} 지불 → {sandworm} 소환",
   pay_agent_card_spice_for_sandworm_and_shield_wall:
-    "2 spice 지불 → Shield Wall 제거 + sandworm 소환",
+    "2 {spice} 지불 → {shield_wall} 제거 + {sandworm} 소환",
+  pay_agent_card_spice: "4 {spice} 지불 → {victory_point} 1",
+  pay_agent_card_water: "2 {water} 지불 → 카드 2장 {draw}",
+  pay_corrinth_city: "카드 선택 ({discard}, 2/2) · 5 {solari} 지불 → {victory_point} 1",
+  select_corrinth_city_discard: "카드 선택 ({discard}, 1/2)",
+  select_long_live_fighters_draw: "카드 선택 ({draw})",
+  select_long_live_fighters_discard: "카드 선택 ({discard})",
   decline_agent_card_trash: "{trash} 안 함",
   decline_combat_reward: "보상 비용 지불 안 함",
   decline_combat_reward_trash: "{trash} 안 함",
@@ -287,6 +293,7 @@ const EVENT_LABELS = {
   influence_lost: "{influence_any} 하락",
   alliance_gained: "{alliance} 획득",
   alliance_lost: "{alliance} 상실",
+  alliance_transferred: "{alliance} 이동",
   spy_placed: "{spy} 배치",
   spy_recalled: "{spy} 회수",
   reveal_started: "{reveal_turn} 시작",
@@ -297,7 +304,7 @@ const EVENT_LABELS = {
   contract_taken: "{contract} 획득",
   contract_completed: "{contract} 완료",
   victory_points_gained: "{victory_point} 획득",
-  personal_discard_shuffled: "{discard} reshuffle",
+  personal_discard_shuffled: "{discard_pile} 섞기",
   game_finished: "게임 종료",
   leader_drafted: "{leader} 선택 완료",
   acquisition_resource_gained: "획득 보너스: 자원 획득",
@@ -503,6 +510,7 @@ const EFFECT_ICON_LABELS = {
   solari: "{solari} 획득",
   spice: "{spice} 획득",
   swordmaster: "Swordmaster 획득",
+  research: "{research}",
   trash_self: "이 카드 {trash}",
   troops: "{troop} {recruit} ({garrison})",
   water: "{water} 획득",
@@ -526,6 +534,25 @@ const TLEILAXU_TRACK_LABELS = {
   intrigue: "{intrigue}",
   victory_point_and_first_spice: "{victory_point} · 첫 도달 {spice}",
   victory_point: "{victory_point}",
+};
+/* The Feyd token's Training track (content/uprising/leaders.py), each space
+   named by the reward printed on it: the card gives the spaces no names. The
+   token starts on the leftmost space [Main p. 17]. */
+const FEYD_TRACK_LABELS = {
+  start: "맨 왼쪽 칸",
+  paid_trash: "1 {solari} → {trash}",
+  first_spy: "{spy}",
+  mid_trash: "{trash}",
+  late_trash: "{trash}",
+  second_spy: "{spy}",
+  double_spice: "{spice} 2",
+  final: "{troop} · {spy}",
+};
+/* Argument and payload values that are neither a rule term (TERMS) nor a
+   catalog name (fieldText). */
+const VALUE_LABELS = {
+  card: "카드",
+  troops: "{troop}",
 };
 
 /* ---------- rule terms ---------- */
@@ -565,21 +592,27 @@ const PAYLOAD_KEY_LABELS = {
   contracts: "계약 수",
   control_space_id: "지배 공간",
   cost: "비용",
+  cost_option: "비용 선택지",
   count: "수",
   crysknife: "Crysknife",
   destination: "목적지",
+  destroy_shield_wall: "방어벽 파괴",
   discount: "할인",
   effect: "효과",
   effect_index: "효과 번호",
   faction: "팩션",
   faction_influence: "팩션 영향력",
   first_card_id: "첫 번째 카드",
+  first_post_id: "첫 번째 관측소",
   first_player: "시작 플레이어",
   fizzled: "무효화됨",
   from_player: "이전 플레이어",
   from_row: "원래 열",
   from_space: "이전 공간",
   gained: "획득량",
+  gained_faction: "얻은 영향력",
+  graft: "접합",
+  infiltrate_post_id: "관측소",
   generated: "생성 수",
   genetic_markers: "유전자 마커",
   held: "보유 수",
@@ -587,10 +620,12 @@ const PAYLOAD_KEY_LABELS = {
   influence_faction: "영향력 팩션",
   instance_id: "카드",
   intrigue: "책략 카드 수",
+  intrigue_card_id: "책략 카드",
   intrigue_cards: "책략 카드 수",
   leader_face_id: "지도자",
   leader_id: "지도자",
   leader_ids: "지도자",
+  lost_faction: "잃은 영향력",
   matching_card_id: "일치 카드",
   memories: "Memories",
   memories_returned: "Memories returned",
@@ -614,6 +649,7 @@ const PAYLOAD_KEY_LABELS = {
   round: "라운드",
   sandworms: "모래벌레 수",
   second_card_id: "두 번째 카드",
+  second_post_id: "두 번째 관측소",
   secret_project: "Secret Project",
   section: "구간",
   short: "부족분",
@@ -644,6 +680,7 @@ const PAYLOAD_KEY_LABELS = {
   water: "물",
   wild_card_id: "Wild card",
   zone: "영역",
+  zones: "영역",
 };
 
 const TERMS = {

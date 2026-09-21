@@ -35,7 +35,7 @@ from dune_imperium.content.immortality.tleilaxu import (
     RECLAIMED_FORCES,
     TLEILAXU_CARDS_BY_ID,
 )
-from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID
+from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID, OBSERVATION_POSTS
 from dune_imperium.content.uprising.conflicts import CONFLICTS, ConflictDefinition
 from dune_imperium.content.uprising.contracts import CONTRACTS_BY_ID
 from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS_BY_ID
@@ -313,6 +313,13 @@ def build_catalog(
         "space_frame": {"cut": list(SPACE_FRAME_CUT)},
         "posts": {
             post_id: [x, y] for post_id, (x, y) in POST_POINTS.items()
+        },
+        # The board spaces each post watches: a post has no printed name, so
+        # the client names it after them ("관측소 (Hagga Basin)") wherever
+        # the engine hands it a post id — log, action list, board title.
+        "post_spaces": {
+            post.post_id: list(post.connected_space_ids)
+            for post in OBSERVATION_POSTS
         },
         # The printed post disc's diameter, percent of the scan's width.
         "post_size": POST_SIZE,
