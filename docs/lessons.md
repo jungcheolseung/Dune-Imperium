@@ -420,3 +420,19 @@
   1. ref를 바꾸지 않는 충돌 시험은 `git merge-tree --write-tree <ours> <theirs>`로 한다. 커밋 하나하나의 충돌을
      봐야 하면 `git replay --ref-action=print`처럼 출력만 하라고 명시한다.
   2. "아무것도 바꾸지 않았다"고 보고하기 전에 `git reflog -2 <branch>`로 ref가 그대로인지 확인한다.
+
+## 2026-09-21 — 소스 문자열을 훑는 가드가 계산된 id를 놓침, 화면 검사가 접힌 것을 건너뜀
+
+- 무슨 일: `tests/server/test_action_labels.py`는 "엔진 action id마다 라벨이 있다"를 지키는 가드인데,
+  rules 소스의 `action_id="..."` 리터럴만 훑었다. 상수(`_LONG_LIVE_DRAW_ACTION_ID = "..."`)나 조건식
+  (`action_id=("pay_agent_card_water" if … else "pay_agent_card_spice")`)으로 만든 id 여섯 개가 빠졌고,
+  로그와 행동 목록이 그 id를 prettify한 영어로 찍었다. 이벤트 가드도 괄호 없는 `kind="a" if … else "b"`를
+  몰라 `alliance_transferred`를 놓쳤다. 같은 날 새로 쓴 화면 검사(`log_words.py`)는 `[hidden]`을 건너뛰어
+  기본으로 접힌 좌석 세부의 연구 좌표(`c5r1`)를 놓쳤다 — 코드를 읽다가 찾았다.
+- 원인: 가드가 "무엇이 존재하는가"를 실행되는 표가 아니라 소스의 한 가지 표기에서 추렸다. 화면 검사는
+  보이는 것만 훑었는데, 접힌 것은 사람이 한 번 누르면 보인다.
+- 재발 방지:
+  1. 목록 가드는 **실행되는 표**를 기준으로 한다(`ACTION_HANDLERS`, 레지스트리). 소스 스캔은 그 보조다.
+  2. 화면 검사는 접힌 것(좌석 "자세히", 접힌 열)을 **펴고** 훑는다.
+  3. 새 가드는 옛 코드에 돌려 실패를 확인한다(A/B) — 이번 셋 모두 옛 코드에서 실패함을 확인했다.
+
