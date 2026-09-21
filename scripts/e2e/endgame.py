@@ -71,7 +71,8 @@ def run(base: str, browser) -> None:
         "#standings tr:first-child th", "els => els.map((e) => e.textContent.trim())"
     )
     check.ok(
-        header == ["순위", "좌석", "VP", "Spice", "Solari", "Water", "Garrison"],
+        # The glossary's words: 승점, 스파이스, 솔라리, 물 [Main p. 20], 주둔지 병력.
+        header == ["순위", "좌석", "승점", "스파이스", "솔라리", "물", "주둔지 병력"],
         "the standings header is the seven printed columns",
         header,
     )
@@ -177,15 +178,22 @@ def run(base: str, browser) -> None:
     )
 
     # The expansion surfaces exist at all: no check had ever opened one.
+    # By the columns' fixed names (data-strip); their titles follow the language.
     strips = page.eval_on_selector_all(
-        "#market .strip h3", "els => els.map((e) => e.textContent.trim())"
+        "#market .strip[data-strip]", "els => els.map((e) => e.dataset.strip)"
     )
     for want in ("Imperium Row", "Reserve", "Tleilaxu Row", "Bene Tleilax board"):
-        check.ok(
-            any(want in s for s in strips),
-            f"the shared columns include {want}",
-            strips,
-        )
+        check.ok(want in strips, f"the shared columns include {want}", strips)
+    # In Korean the titles are the glossary's (임페리움 열 [Main p. 20]).
+    titles = page.eval_on_selector_all(
+        "#market .strip h3", "els => els.map((e) => e.textContent.trim())"
+    )
+    check.ok(
+        any(title.startswith("▾ 임페리움 열") or title.startswith("▸ 임페리움 열")
+            for title in titles),
+        "the Imperium Row column is titled in Korean",
+        titles,
+    )
 
     check_review_status(page)
     check_id_lists(page)

@@ -429,7 +429,7 @@ function renderLobby() {
     } else {
       const badge = document.createElement("span");
       badge.className = "badge ai";
-      badge.textContent = "AI";
+      badge.textContent = seatKindLabel(info.kind);
       item.appendChild(badge);
     }
     list.appendChild(item);

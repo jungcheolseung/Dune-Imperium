@@ -167,7 +167,7 @@ function bonusSpiceToken(spaceId, count, point) {
   const token = document.createElement("span");
   token.className = "bonus-spice";
   token.dataset.space = spaceId;
-  token.title = `${nameOf(spaceId)} · bonus spice ${count}`;
+  token.title = `${nameOf(spaceId)} · ${t("board.bonus_spice", { count })}`;
   token.style.width = `${width}%`;
   token.style.height = `${height}%`;
   const amountText = document.createElement("span");
@@ -248,7 +248,7 @@ function renderBoardStage(board, view) {
       hotspot.appendChild(flag);
     }
     if (makerSpice.get(spaceId) && !makerSpicePoint(spaceId)) {
-      const bonus = amount("spice", "bonus spice", makerSpice.get(spaceId));
+      const bonus = amount("spice", t("board.bonus_spice_label"), makerSpice.get(spaceId));
       bonus.classList.add("maker-bonus");
       hotspot.appendChild(bonus);
     }
@@ -331,7 +331,7 @@ function renderSlotCards(stage, view) {
     const count = document.createElement("span");
     count.className = "slot-deck-count";
     count.textContent = String(view.conflict_deck_size);
-    deck.append(icon("sword", "Conflict"), count);
+    deck.append(icon("sword", phraseText("{conflict}")), count);
     placeAt(deck, dLeft + dWidth / 2, dTop + dHeight / 2);
     stage.appendChild(deck);
   }
@@ -349,8 +349,11 @@ function renderSlotCards(stage, view) {
   const [left, top, width, height] = tracks.contract_slots[tracks.contract_slots.length - 1];
   const bank = document.createElement("span");
   bank.className = "slot-bank";
-  bank.title = "face-down contract bank";
-  bank.append(icon("contract", "Contract"), ` bank ${view.contract_bank_size}`);
+  bank.title = t("board.contract_bank_title");
+  bank.append(
+    icon("contract", phraseText("{contract}")),
+    ` ${t("board.contract_bank_count", { count: view.contract_bank_size })}`,
+  );
   const overhang = (width * (CONTRACT_SLOT_SCALE - 1)) / 2;
   placeAt(bank, left + width + overhang + 0.8, top + height / 2);
   stage.appendChild(bank);
@@ -519,7 +522,7 @@ function makerHooksToken(seat, layout) {
     token = document.createElement("img");
     token.className = "maker-hooks-token";
     token.src = url;
-    token.alt = "Maker Hooks";
+    token.alt = phraseText("{maker_hooks}");
     token.draggable = false;
     token.style.width = `${height}%`;
     token.style.transform =
@@ -529,7 +532,7 @@ function makerHooksToken(seat, layout) {
     token.className = "maker-hooks-token drawn";
     token.style.width = `${width}%`;
     token.style.height = `${height}%`;
-    token.appendChild(icon("maker_hooks", "Maker Hooks"));
+    token.appendChild(icon("maker_hooks", phraseText("{maker_hooks}")));
   }
   token.dataset.seat = String(seat);
   token.title = t("board.seat_maker_hooks", { seat });
@@ -803,9 +806,9 @@ function spaceRow(spaceId, occupants, controllers, makerSpice) {
   const title = document.createElement("div");
   title.appendChild(chip(spaceId, entry));
   const flags = [];
-  if (entry.combat) flags.push("⚔ Combat");
-  if (entry.maker) flags.push("Maker");
-  if (entry.critical) flags.push("Control");
+  if (entry.combat) flags.push(t("board.flag_combat_space"));
+  if (entry.maker) flags.push(phraseText("{maker}"));
+  if (entry.critical) flags.push(phraseText("{control}"));
   if (flags.length) {
     const flagLine = document.createElement("div");
     flagLine.className = "muted";
@@ -837,7 +840,7 @@ function spaceRow(spaceId, occupants, controllers, makerSpice) {
     status.push(t("board.control_seat", { seat: controllers.get(spaceId) }));
   }
   if (makerSpice.get(spaceId)) {
-    status.push(`bonus spice ${makerSpice.get(spaceId)}`);
+    status.push(t("board.bonus_spice", { count: makerSpice.get(spaceId) }));
   }
   if (status.length) {
     const line = document.createElement("div");
@@ -952,10 +955,13 @@ function toggleAllStrips() {
 
 /* One shared-card column, with a heading that folds it away. Collapsed, the
    heading keeps its count so the column still says what is in it. */
-function stripBox(title, count, className) {
+/* `key`: the column's name for folding and for data-strip. A title that
+   follows the language passes the English name it always had, so a fold
+   survives a switch and the folds saved before it still apply. */
+function stripBox(title, count, className, key) {
   const box = document.createElement("div");
   box.className = "strip" + (className ? ` ${className}` : "");
-  const name = stripName(title);
+  const name = key || stripName(title);
   box.dataset.strip = name;
   const collapsed = collapsedStrips.has(name);
   if (collapsed) box.classList.add("collapsed");
@@ -976,8 +982,8 @@ function stripBox(title, count, className) {
   return box;
 }
 
-function cardStrip(parent, title, ids, emptyText, options = {}) {
-  const box = stripBox(title, ids.length);
+function cardStrip(parent, title, ids, emptyText, options = {}, key = undefined) {
+  const box = stripBox(title, ids.length, undefined, key);
   const row = document.createElement("div");
   row.className = "strip-cards";
   if (!ids.length && emptyText) {
@@ -1005,10 +1011,17 @@ function renderMarket() {
   const drafting = view.players.some((p) => !p.leader_id);
   if (view.leader_draft_pool.length && drafting) {
     const picked = new Set(view.players.map((p) => p.leader_id).filter(Boolean));
-    cardStrip(market, "Leader draft", view.leader_draft_pool, "", (id) => ({
-      className: "leader" + (picked.has(id) ? " taken" : ""),
-      badge: picked.has(id) ? t("board.leader_taken") : null,
-    }));
+    cardStrip(
+      market,
+      t("board.strip_leader_draft"),
+      view.leader_draft_pool,
+      "",
+      (id) => ({
+        className: "leader" + (picked.has(id) ? " taken" : ""),
+        badge: picked.has(id) ? t("board.leader_taken") : null,
+      }),
+      "Leader draft",
+    );
   }
 
   /* With the board scan the Conflict card and the face-up contracts sit
@@ -1016,15 +1029,34 @@ function renderMarket() {
      below only cover the text-board fallback. */
   const onBoard = Boolean(state.catalog.board_image);
   if (!onBoard) {
-    cardStrip(market, "Conflict", view.current_conflict_ids, t("board.conflict_not_revealed"), {
-      className: "conflict",
-    });
+    cardStrip(
+      market,
+      phraseText("{conflict}"),
+      view.current_conflict_ids,
+      t("board.conflict_not_revealed"),
+      { className: "conflict" },
+      "Conflict",
+    );
   }
-  cardStrip(market, "Imperium Row", view.imperium_row, t("common.empty"));
-  cardStrip(market, "Reserve", view.reserve_stacks.map(([cardId]) => cardId), "", (id) => {
-    const stack = view.reserve_stacks.find(([cardId]) => cardId === id);
-    return { badge: `×${stack ? stack[1] : 0}` };
-  });
+  cardStrip(
+    market,
+    phraseText("{imperium_row}"),
+    view.imperium_row,
+    t("common.empty"),
+    {},
+    "Imperium Row",
+  );
+  cardStrip(
+    market,
+    t("board.strip_reserve"),
+    view.reserve_stacks.map(([cardId]) => cardId),
+    "",
+    (id) => {
+      const stack = view.reserve_stacks.find(([cardId]) => cardId === id);
+      return { badge: `×${stack ? stack[1] : 0}` };
+    },
+    "Reserve",
+  );
 
   if (state.summary.bloodlines) {
     /* Sardaukar Commanders still waiting on their setup spaces, the bank
@@ -1037,6 +1069,8 @@ function renderMarket() {
         bank: view.sardaukar_commanders_bank || 0,
       }),
       spaces.length,
+      undefined,
+      "Sardaukar Commander",
     );
     const row = document.createElement("div");
     row.className = "strip-cards wrap";
@@ -1051,18 +1085,21 @@ function renderMarket() {
     market.appendChild(box);
     cardStrip(
       market,
-      `Skill (face-up) · stack ${view.skill_stack_size || 0}`,
+      t("board.strip_skills", { count: view.skill_stack_size || 0 }),
       (view.skill_face_up || []).map(skillIdOf),
       t("common.none"),
-      { className: "skill" }
+      { className: "skill" },
+      "Skill (face-up)",
     );
   }
   if (state.summary.tech_module) {
     /* The Ixian Embassy's three stacks: the face-up top of each with the
        stack size; an emptied stack simply offers nothing [Bloodlines p. 7]. */
     const box = stripBox(
-      "Ixian Embassy · Tech tiles",
+      t("board.strip_ixian_embassy"),
       (view.tech_face_up || []).filter(Boolean).length,
+      undefined,
+      "Ixian Embassy",
     );
     const row = document.createElement("div");
     row.className = "strip-cards";
@@ -1080,24 +1117,36 @@ function renderMarket() {
     box.appendChild(row);
     market.appendChild(box);
     if ((view.tech_trash || []).length) {
-      cardStrip(market, "Tech trash", view.tech_trash, "", { className: "tile taken" });
+      cardStrip(
+        market,
+        t("board.strip_tech_trash"),
+        view.tech_trash,
+        "",
+        { className: "tile taken" },
+        "Tech trash",
+      );
     }
   }
   if (state.summary.immortality) renderBeneTleilax(market, view);
   if (state.summary.choam_module && !onBoard) {
     cardStrip(
       market,
-      `Contracts · bank ${view.contract_bank_size}`,
+      t("board.strip_contracts", { count: view.contract_bank_size }),
       view.face_up_contract_ids,
       t("common.empty"),
-      { className: "contract" }
+      { className: "contract" },
+      "Contracts",
     );
   }
   if (view.sardaukar_contract_ids.length) {
-    cardStrip(market, t("board.sardaukar_contract_title"), view.sardaukar_contract_ids, "", {
-      className: "contract",
-      badge: "set-aside",
-    });
+    cardStrip(
+      market,
+      t("board.sardaukar_contract_title"),
+      view.sardaukar_contract_ids,
+      "",
+      { className: "contract", badge: t("board.set_aside") },
+      "Sardaukar contract",
+    );
   }
   renderIntriguePiles(market, view);
   /* Folding is only worth anything if the column then gives its width back,
@@ -1130,8 +1179,8 @@ function renderIntriguePiles(market, view) {
     event.stopPropagation();
     openPileList(
       [
-        ["Intrigue discard", [...discard].reverse()],
-        ["Intrigue trash", [...trash].reverse()],
+        [t("board.pile_intrigue_discard"), [...discard].reverse()],
+        [t("board.pile_intrigue_trash"), [...trash].reverse()],
       ],
       null,
       pile
@@ -1152,7 +1201,7 @@ function fillBeneTleilaxZoom(layout, view) {
   const body = el("bt-zoom-body");
   body.textContent = "";
   const heading = document.createElement("h2");
-  heading.textContent = "Bene Tleilax board";
+  heading.textContent = phraseText("{bene_tleilax_board}");
   const close = document.createElement("button");
   close.type = "button";
   close.className = "bt-zoom-close";
@@ -1183,7 +1232,7 @@ function renderBeneTleilax(market, view) {
   const rowIds = [...(view.tleilaxu_row || []), "reclaimed_forces"];
   cardStrip(
     market,
-    `Tleilaxu Row · deck ${view.tleilaxu_deck_size || 0}`,
+    t("board.strip_tleilaxu_row", { count: view.tleilaxu_deck_size || 0 }),
     rowIds,
     "",
     (id) => {
@@ -1191,14 +1240,20 @@ function renderBeneTleilax(market, view) {
       const specimens = entry && entry.specimens !== undefined ? entry.specimens : null;
       return {
         className: id === "reclaimed_forces" ? "reclaimed" : "",
-        badge: specimens === null ? null : `specimen ×${specimens}`,
+        badge: specimens === null ? null : phraseText(`{specimen} ×${specimens}`),
       };
-    }
+    },
+    "Tleilaxu Row",
   );
 
   const layout = state.catalog && state.catalog.bene_tleilax;
   if (!layout) return;
-  const box = stripBox("Bene Tleilax board", null, "bene-tleilax");
+  const box = stripBox(
+    phraseText("{bene_tleilax_board}"),
+    null,
+    "bene-tleilax",
+    "Bene Tleilax board",
+  );
 
   if (layout.image) {
     /* The owner's scan with the live tokens drawn over it
@@ -1288,7 +1343,7 @@ function renderBeneTleilax(market, view) {
   });
   const trackHead = document.createElement("div");
   trackHead.className = "muted";
-  trackHead.textContent = "Tleilaxu track";
+  trackHead.textContent = t("board.tleilaxu_track");
   box.appendChild(trackHead);
   box.appendChild(track);
   market.appendChild(box);
@@ -1300,7 +1355,7 @@ function renderBeneTleilaxScan(layout, view) {
   const map = document.createElement("img");
   map.className = "bt-map";
   map.src = layout.image;
-  map.alt = "Bene Tleilax board";
+  map.alt = phraseText("{bene_tleilax_board}");
   map.draggable = false;
   stage.appendChild(map);
   const overlay = layout.layout;
@@ -1365,7 +1420,7 @@ function renderBeneTleilaxScan(layout, view) {
     cell.style.height = `${bandHeight}%`;
     const bonus = layout.tleilaxu_track[index];
     cell.title =
-      `Tleilaxu track ${index}${TLEILAXU_TRACK_LABELS[bonus] ? " · " + phraseText(TLEILAXU_TRACK_LABELS[bonus]) : ""}`;
+      `${t("board.tleilaxu_track")} ${index}${TLEILAXU_TRACK_LABELS[bonus] ? " · " + phraseText(TLEILAXU_TRACK_LABELS[bonus]) : ""}`;
     stage.appendChild(cell);
     /* The first space prints a spot per disc. The other spaces take the
        same two rows: the upper one first, which leaves the printed bonus

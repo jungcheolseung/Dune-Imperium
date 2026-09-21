@@ -161,11 +161,18 @@ function redrawForLanguage() {
   if (!el("setup-screen").hidden) {
     loadGameList().catch(() => {});
     loadSaveList().catch(() => {});
+  } else {
+    /* Hidden, they would show the old language until showHome reloads them. */
+    el("game-list").textContent = "";
+    el("save-list").textContent = "";
   }
   if (!el("lobby-screen").hidden && state.summary) renderLobby();
   if (state.summary && !el("game-screen").hidden) {
     if (state.review) {
       labelReviewBar(state.review.seat);
+      /* The view in hand draws at once; the seek below rebuilds the status
+         line, which only a review answer writes. */
+      render();
       /* A seek, not a bare reviewGoto: it holds playback and schedules the
          next move, where a bare request would supersede a playing tick and
          leave playback waiting forever. */

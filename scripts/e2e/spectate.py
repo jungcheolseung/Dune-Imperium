@@ -180,7 +180,7 @@ def log_follows(page) -> None:
     status = page.inner_text("#review-status")
     stride = now["cursor"] - now["cameFrom"]
     check.ok(
-        f"step {now['cursor']}/{now['total']}" in status
+        f"수 {now['cursor']}/{now['total']}" in status
         and (stride <= 1 or f"외 {stride - 1}수" in status),
         "the status names the turn and how many steps it took",
         status,

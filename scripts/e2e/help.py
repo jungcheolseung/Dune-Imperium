@@ -220,7 +220,7 @@ def help_panel(page) -> None:
         "every icon drawn on the seats and in the hand has a legend row",
         (len(legend["drawn"]), legend["missing"]),
     )
-    for want in ("C2", "1st", "시작 플레이어 마커", "사다우카 지휘관"):
+    for want in ("C2", "시작", "시작 플레이어 마커", "사다우카 지휘관"):
         check.ok(want in legend["text"], f"the seat marks explain {want}")
     for key in ("c", "s", "Esc", "?"):
         check.ok(

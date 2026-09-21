@@ -307,7 +307,7 @@ def scenario_full_game(base, browser) -> str:
         "the late answer for the last step did not overwrite step 0",
     )
     check.ok(
-        "step 0/" in page.inner_text("#review-status"),
+        "수 0/" in page.inner_text("#review-status"),
         "review status shows step 0",
         page.inner_text("#review-status"),
     )

@@ -121,8 +121,9 @@ def run(base: str, browser) -> None:
 
     # The Bene Tleilax board and the Tleilaxu Row are drawn here too; nothing
     # had ever opened them at any width.
+    # By the columns' fixed names (data-strip); their titles follow the language.
     strips = page.eval_on_selector_all(
-        "#market .strip h3", "els => els.map((e) => e.textContent.trim())"
+        "#market .strip[data-strip]", "els => els.map((e) => e.dataset.strip)"
     )
     for want in ("Tleilaxu Row", "Bene Tleilax board", "Imperium Row"):
         check.ok(
@@ -177,7 +178,7 @@ def check_tleilaxu_row(page) -> None:
     if not check.ok(row is not None, "the Tleilaxu Row strip is on screen"):
         return
     check.ok(
-        row["heading"] == f"Tleilaxu Row · deck {row['deckSize']}",
+        row["heading"] == f"틀레이락스 열 · 카드덱 {row['deckSize']}",
         "the strip heading carries the live deck count",
         (row["heading"], row["deckSize"]),
     )

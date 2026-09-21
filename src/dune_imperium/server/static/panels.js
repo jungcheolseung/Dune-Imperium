@@ -315,7 +315,7 @@ function renderSeats() {
       const line = document.createElement("div");
       line.className = "cardline";
       const strong = document.createElement("strong");
-      strong.textContent = "Skills ";
+      strong.textContent = `${t("panels.skills_label")} `;
       line.appendChild(strong);
       for (const id of player.skill_ids) line.appendChild(chip(skillIdOf(id)));
       detail.appendChild(line);
@@ -324,7 +324,7 @@ function renderSeats() {
       const line = document.createElement("div");
       line.className = "cardline";
       const strong = document.createElement("strong");
-      strong.textContent = "Tech ";
+      strong.textContent = `${t("panels.tech_label")} `;
       line.appendChild(strong);
       for (const id of player.tech_ids) {
         const mark = chip(id);
@@ -370,7 +370,7 @@ function renderSeats() {
       const line = document.createElement("div");
       line.className = "cardline";
       const strong = document.createElement("strong");
-      strong.textContent = "Battle ";
+      strong.textContent = `${t("panels.battle_label")} `;
       line.appendChild(strong);
       for (const id of battle) line.appendChild(chip(id));
       for (const id of player.face_down_battle_card_ids) {
@@ -385,7 +385,7 @@ function renderSeats() {
       const line = document.createElement("div");
       line.className = "cardline";
       const strong = document.createElement("strong");
-      strong.textContent = "Contracts ";
+      strong.textContent = `${t("panels.contracts_label")} `;
       line.appendChild(strong);
       for (const id of player.active_contract_ids) line.appendChild(chip(id));
       /* Completed Contracts stay re-checkable (OQ-010): their completion
@@ -402,7 +402,7 @@ function renderSeats() {
       const line = document.createElement("div");
       line.className = "cardline";
       const strong = document.createElement("strong");
-      strong.textContent = "In play ";
+      strong.textContent = `${t("panels.in_play_label")} `;
       line.appendChild(strong);
       for (const id of player.in_play) line.appendChild(chip(id));
       detail.appendChild(line);
@@ -1050,11 +1050,11 @@ function renderStandings() {
   tableRow("th", [
     t("panels.standings_rank_header"),
     t("panels.standings_seat_header"),
-    "VP",
-    "Spice",
-    "Solari",
-    "Water",
-    "Garrison",
+    t("panels.standings_vp_header"),
+    t("panels.standings_spice_header"),
+    t("panels.standings_solari_header"),
+    t("panels.standings_water_header"),
+    t("panels.standings_garrison_header"),
   ]);
   for (const entry of summary.standings) {
     /* The garrison tiebreak counts a garrisoned Sardaukar Commander as a

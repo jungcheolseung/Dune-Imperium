@@ -62,6 +62,40 @@ SNAPSHOT_JS = """() => Object.fromEntries(
 )"""
 
 
+# In Korean, the chrome that carries no names — the header and review status,
+# the column titles, the standings header, the seat stats' titles and the seat
+# detail line names — must not show a rule term's English word (TERMS[x].en).
+ENGLISH_TERMS_JS = r"""() => {
+    const words = [...new Set(Object.values(TERMS).map((term) => term.en))]
+        .sort((a, b) => b.length - a.length);
+    const hit = (text) => {
+        const lower = text.toLowerCase();
+        for (const word of words) {
+            const at = lower.indexOf(word.toLowerCase());
+            if (at < 0) continue;
+            const before = at === 0 ? " " : lower[at - 1];
+            const after = lower[at + word.length] || " ";
+            if (!/[a-z]/.test(before) && !/[a-z]/.test(after)) return word;
+        }
+        return null;
+    };
+    const texts = [];
+    const add = (where, text) => { if (text) texts.push([where, text]); };
+    add("header-status", document.getElementById("header-status").textContent);
+    add("review-status", document.getElementById("review-status").textContent);
+    const all = (selector) => [...document.querySelectorAll(selector)];
+    for (const h of all("#market .strip h3")) add("strip", h.textContent);
+    for (const th of all("#standings th")) add("standings", th.textContent);
+    for (const stat of all("#seats .stat[title]")) add("stat", stat.title);
+    for (const s of document.querySelectorAll("#seats .seat-detail strong")) {
+        add("seat line", s.textContent);
+    }
+    return texts
+        .map(([where, text]) => [where, text, hit(text)])
+        .filter(([, , word]) => word);
+}"""
+
+
 def hangul(page) -> list:
     return page.evaluate(HANGUL_JS)
 
@@ -182,6 +216,14 @@ def finished_game(base: str, browser) -> None:
     )
     stray = hangul(page)
     check.ok(not stray, "English: no Hangul at the end of a review", stray[:8])
+    switch(page, "ko")
+    english = page.evaluate(ENGLISH_TERMS_JS)
+    check.ok(
+        not english,
+        "Korean: no rule term left in English in the name-free chrome",
+        english[:6],
+    )
+    switch(page, "en")
     check.ok(page.is_visible("#standings"), "the standings are on screen")
     page.click("#disclosure h2 button")
     stray = hangul(page)

@@ -92,7 +92,7 @@ async function reviewGoto(cursor) {
     state.actions = null;
     el("review-slider").value = String(cursor);
     let status =
-      `step ${cursor}/${review.meta.step_count}` +
+      t("review.step_count", { cursor, total: review.meta.step_count }) +
       ` · ${t("review.round_label", { round: payload.round_number })}` +
       ` · ${PHASE_LABELS[payload.phase] || payload.phase}` +
       ` · ${describeReviewSpan(review)}`;
@@ -141,7 +141,10 @@ function describeReviewStep(label) {
             count: values.length,
             names: values.slice(0, 3).map(nameOf).join(", "),
           });
-    return `chance: ${prettify(label.decision_id)}` + (shown ? ` — ${shown}` : "");
+    return (
+      t("review.chance_label", { decision: prettify(label.decision_id) }) +
+      (shown ? ` — ${shown}` : "")
+    );
   }
   return t("review.step_label", { seat: label.actor, action: describeActionText(label) });
 }

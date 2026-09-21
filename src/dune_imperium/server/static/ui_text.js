@@ -29,6 +29,14 @@ const UI_TEXT = {
     "ko": "보드 공간",
     "en": "Board spaces"
   },
+  "board.bonus_spice": {
+    "ko": "보너스 {spice} {{count}}",
+    "en": "bonus {spice} {{count}}"
+  },
+  "board.bonus_spice_label": {
+    "ko": "보너스 {spice}",
+    "en": "bonus {spice}"
+  },
   "board.conflict_deck_remaining": {
     "ko": "교전 카드덱 · {{count}}장 남음",
     "en": "Conflict deck · {{count}} left"
@@ -37,6 +45,14 @@ const UI_TEXT = {
     "ko": "아직 공개되지 않음",
     "en": "Not revealed yet"
   },
+  "board.contract_bank_count": {
+    "ko": "남은 {{count}}",
+    "en": "bank {{count}}"
+  },
+  "board.contract_bank_title": {
+    "ko": "뒷면으로 쌓인 남은 {contract}",
+    "en": "Face-down Contract bank"
+  },
   "board.control_seat": {
     "ko": "{control}: 좌석 {{seat}}",
     "en": "{control}: Seat {{seat}}"
@@ -44,6 +60,10 @@ const UI_TEXT = {
   "board.control_seat_space": {
     "ko": "{control}: 좌석 {{seat}} · {{name}}",
     "en": "{control}: Seat {{seat}} · {{name}}"
+  },
+  "board.flag_combat_space": {
+    "ko": "⚔ 전투 장소",
+    "en": "⚔ Combat space"
   },
   "board.influence_cube": {
     "ko": "좌석 {{seat}} · {{faction}} {influence_any} {{level}}",
@@ -77,6 +97,14 @@ const UI_TEXT = {
     "ko": "사람 좌석이 없는 게임입니다. 최종 순위의 \"AI 대국 다시 보기\"로 처음부터 볼 수 있습니다.",
     "en": "This game has no human seats. Use \"Watch the AI game again\" in the final standings to watch it from the start."
   },
+  "board.pile_intrigue_discard": {
+    "ko": "{intrigue} {discard_pile}",
+    "en": "{intrigue} {discard_pile}"
+  },
+  "board.pile_intrigue_trash": {
+    "ko": "폐기된 {intrigue}",
+    "en": "Trashed Intrigue cards"
+  },
   "board.post_seats": {
     "ko": "{{post}}: 좌석 {{seats}}",
     "en": "{{post}}: Seat {{seats}}"
@@ -90,16 +118,16 @@ const UI_TEXT = {
     "en": "Research start"
   },
   "board.sardaukar_commander_summary": {
-    "ko": "Sardaukar Commander · 보드 {{count}} · bank {{bank}}",
-    "en": "Sardaukar Commander · board {{count}} · bank {{bank}}"
+    "ko": "{commander} · 보드 {{count}} · 은행 {{bank}}",
+    "en": "{commander} · board {{count}} · bank {{bank}}"
   },
   "board.sardaukar_contract_title": {
-    "ko": "Sardaukar contract · Shaddam 전용 set-aside",
-    "en": "Sardaukar contract · Shaddam-only set-aside"
+    "ko": "Sardaukar {contract} · Shaddam 전용, 따로 둔 카드",
+    "en": "Sardaukar {contract} · Shaddam only, set aside"
   },
   "board.seat_conflict_troops": {
-    "ko": "좌석 {{seat}} · Conflict 병력",
-    "en": "Seat {{seat}} · Conflict troops"
+    "ko": "좌석 {{seat}} · {conflict} 병력",
+    "en": "Seat {{seat}} · {conflict} troops"
   },
   "board.seat_garrison": {
     "ko": "좌석 {{seat}} · {garrison} {{count}}",
@@ -118,8 +146,12 @@ const UI_TEXT = {
     "en": "Seat {{seat}} · strength {{strength}}"
   },
   "board.seat_vp": {
-    "ko": "좌석 {{seat}} · {{vp}} VP",
-    "en": "Seat {{seat}} · {{vp}} VP"
+    "ko": "좌석 {{seat}} · {victory_point} {{vp}}",
+    "en": "Seat {{seat}} · {victory_point} {{vp}}"
+  },
+  "board.set_aside": {
+    "ko": "따로 둠",
+    "en": "set aside"
   },
   "board.shield_wall_destroyed": {
     "ko": "{shield_wall} 파괴됨",
@@ -130,8 +162,40 @@ const UI_TEXT = {
     "en": "{spice} for whoever gets there first"
   },
   "board.stack_empty": {
-    "ko": "stack {{index}} 비었음",
+    "ko": "더미 {{index}} 비었음",
     "en": "stack {{index}} empty"
+  },
+  "board.strip_contracts": {
+    "ko": "{contract} · 남은 {{count}}장",
+    "en": "Contracts · bank {{count}}"
+  },
+  "board.strip_ixian_embassy": {
+    "ko": "Ixian Embassy · {tech_tile}",
+    "en": "Ixian Embassy · Tech tiles"
+  },
+  "board.strip_leader_draft": {
+    "ko": "{leader} 드래프트",
+    "en": "{leader} draft"
+  },
+  "board.strip_reserve": {
+    "ko": "{reserve}",
+    "en": "Reserve"
+  },
+  "board.strip_skills": {
+    "ko": "공개된 {commander_skill} · 더미 {{count}}",
+    "en": "Face-up {commander_skill}s · stack {{count}}"
+  },
+  "board.strip_tech_trash": {
+    "ko": "폐기된 {tech_tile}",
+    "en": "Trashed Tech tiles"
+  },
+  "board.strip_tleilaxu_row": {
+    "ko": "{tleilaxu_row} · {deck} {{count}}",
+    "en": "{tleilaxu_row} · {deck} {{count}}"
+  },
+  "board.tleilaxu_track": {
+    "ko": "틀레이락스 트랙",
+    "en": "Tleilaxu track"
   },
   "board.total_strength": {
     "ko": "전투력 {{strength}}",
@@ -402,23 +466,27 @@ const UI_TEXT = {
     "en": "Seats"
   },
   "html.opt_bloodlines": {
-    "ko": "Bloodlines 확장 (Sardaukar Commander·새 카드·Leader 8종)",
+    "ko": "Bloodlines 확장 (사다우카 지휘관·새 카드·지도자 8종)",
     "en": "Bloodlines expansion (Sardaukar Commander · new cards · 8 Leaders)"
   },
+  "html.opt_choam": {
+    "ko": "초암 모듈",
+    "en": "CHOAM Module"
+  },
   "html.opt_immortality": {
-    "ko": "Immortality 확장 (Bene Tleilax board·Tleilaxu Row·Graft·새 카드)",
+    "ko": "Immortality 확장 (베네 틀레이락스 게임판·틀레이락스 열·접합·새 카드)",
     "en": "Immortality expansion (Bene Tleilax board · Tleilaxu Row · Graft · new cards)"
   },
   "html.opt_leader_draft": {
-    "ko": "Leader 6종 공개 draft (OQ-007 convention)",
-    "en": "Open draft from 6 revealed Leaders (OQ-007 convention)"
+    "ko": "지도자 6종 공개 드래프트 (OQ-007, 공식 규칙 아님)",
+    "en": "Open draft from 6 revealed Leaders (OQ-007, not an official rule)"
   },
   "html.opt_promo": {
     "ko": "프로모 카드 (Uprising 3장: Arrakis Revolt, The Beast's Spoils, Pivotal Gambit; Bloodlines를 켜면 Ruthless Leadership도)",
     "en": "Promo cards (3 in Uprising: Arrakis Revolt, The Beast's Spoils, Pivotal Gambit; plus Ruthless Leadership with Bloodlines on)"
   },
   "html.opt_seed_label": {
-    "ko": "Seed (빈칸 = 무작위)",
+    "ko": "시드 (빈칸 = 무작위)",
     "en": "Seed (blank = random)"
   },
   "html.opt_seed_placeholder": {
@@ -426,7 +494,7 @@ const UI_TEXT = {
     "en": "Random"
   },
   "html.opt_tech": {
-    "ko": "Tech Module (Bloodlines 필요: Ixian Embassy·Tech tile 18장·Kota Odax)",
+    "ko": "기술 모듈 (Bloodlines 필요: Ixian Embassy·기술 타일 18장·Kota Odax)",
     "en": "Tech Module (requires Bloodlines: Ixian Embassy · 18 Tech tiles · Kota Odax)"
   },
   "html.private_zone_aria": {
@@ -529,6 +597,10 @@ const UI_TEXT = {
     "ko": "배치",
     "en": "Placed"
   },
+  "panels.battle_label": {
+    "ko": "배틀 아이콘 카드",
+    "en": "Battle"
+  },
   "panels.chairdog_return": {
     "ko": "Chairdog: {reveal_turn} 시작 때 {hand}로 {{cards}}",
     "en": "Chairdog: returns to {hand} at the start of {reveal_turn} — {{cards}}"
@@ -544,6 +616,10 @@ const UI_TEXT = {
   "panels.conflict_deployed": {
     "ko": "{conflict}에 배치한 유닛",
     "en": "Units deployed to {conflict}"
+  },
+  "panels.contracts_label": {
+    "ko": "{contract}",
+    "en": "Contracts"
   },
   "panels.control_spaces": {
     "ko": "{control}: {{spaces}}",
@@ -562,7 +638,7 @@ const UI_TEXT = {
     "en": " (face-down)"
   },
   "panels.first_badge": {
-    "ko": "1st",
+    "ko": "시작",
     "en": "1st"
   },
   "panels.flip_suffix": {
@@ -576,6 +652,10 @@ const UI_TEXT = {
   "panels.hand_public_label": {
     "ko": "Hand (공개) ",
     "en": "Hand (public) "
+  },
+  "panels.in_play_label": {
+    "ko": "플레이 영역",
+    "en": "In play"
   },
   "panels.intrigue_deck_top_badge": {
     "ko": "Intrigue 덱 맨 위",
@@ -669,6 +749,10 @@ const UI_TEXT = {
     "ko": "Secret Project (뒷면 {tech_tile})",
     "en": "Secret Project (face-down {tech_tile})"
   },
+  "panels.skills_label": {
+    "ko": "{commander_skill}",
+    "en": "Skills"
+  },
   "panels.specimen_flag": {
     "ko": "{specimen} {{count}}",
     "en": "{specimen} {{count}}"
@@ -676,6 +760,10 @@ const UI_TEXT = {
   "panels.spy_boxed": {
     "ko": "상자로 돌아간 {spy} {{count}}",
     "en": "{spy} back in the box: {{count}}"
+  },
+  "panels.standings_garrison_header": {
+    "ko": "{garrison} {troop}",
+    "en": "Garrison"
   },
   "panels.standings_heading": {
     "ko": "최종 순위",
@@ -689,6 +777,22 @@ const UI_TEXT = {
     "ko": "좌석",
     "en": "Seat"
   },
+  "panels.standings_solari_header": {
+    "ko": "{solari}",
+    "en": "Solari"
+  },
+  "panels.standings_spice_header": {
+    "ko": "{spice}",
+    "en": "Spice"
+  },
+  "panels.standings_vp_header": {
+    "ko": "{victory_point}",
+    "en": "VP"
+  },
+  "panels.standings_water_header": {
+    "ko": "{water}",
+    "en": "Water"
+  },
   "panels.status_label": {
     "ko": "상태",
     "en": "Status"
@@ -700,6 +804,10 @@ const UI_TEXT = {
   "panels.tactics_space": {
     "ko": "Tactics {{space}}칸",
     "en": "Tactics space {{space}}"
+  },
+  "panels.tech_label": {
+    "ko": "{tech_tile}",
+    "en": "Tech"
   },
   "panels.tleilaxu_space": {
     "ko": "{tleilaxu} {{space}}",
@@ -726,11 +834,11 @@ const UI_TEXT = {
     "en": "Watch the AI game again"
   },
   "panels.you_badge": {
-    "ko": "YOU",
+    "ko": "나",
     "en": "YOU"
   },
   "panels.you_named": {
-    "ko": "YOU · {{name}}",
+    "ko": "나 · {{name}}",
     "en": "YOU · {{name}}"
   },
   "render.acquire_cost_label": {
@@ -949,6 +1057,10 @@ const UI_TEXT = {
     "ko": "게임 시작 전",
     "en": "Before the game started"
   },
+  "review.chance_label": {
+    "ko": "무작위 결과: {{decision}}",
+    "en": "chance: {{decision}}"
+  },
   "review.chance_values": {
     "ko": "{{count}}장 · {{names}} …",
     "en": "{{count}} card(s) · {{names}} …"
@@ -996,6 +1108,10 @@ const UI_TEXT = {
   "review.status_fetch_failed": {
     "ko": "검토 상태 조회 실패 ({{message}})",
     "en": "Failed to load review status ({{message}})"
+  },
+  "review.step_count": {
+    "ko": "수 {{cursor}}/{{total}}",
+    "en": "step {{cursor}}/{{total}}"
   },
   "review.step_label": {
     "ko": "좌석 {{seat}}: {{action}}",
