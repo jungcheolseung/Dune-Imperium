@@ -166,11 +166,13 @@ def run(base: str, browser) -> None:
         seats,
     )
     lines = page.inner_text("#disclosure")
-    for label in ("Hand", "Deck 순서", "Intrigue", "Imperium deck", "Conflict deck"):
+    # The glossary's words since the language switch (핸드, 카드덱 [Main p. 20];
+    # the three decks [Main p. 4]).
+    for label in ("핸드", "카드덱 순서", "책략 카드", "임페리움 카드덱", "교전 카드덱"):
         check.ok(label in lines, f"disclosure lists {label}")
     # With CHOAM on there is a contract bank to reveal.
     check.ok(
-        "Contract bank" in lines,
+        "남은 계약" in lines,
         "disclosure lists the Contract bank when CHOAM is on",
     )
 
@@ -383,7 +385,8 @@ def check_margins(page) -> None:
             text = page.evaluate(
                 f"""([a, b]) => {{
                     const box = document.createElement('div');
-                    box.append(phrase(gameOverMargin(a, b)));
+                    const margin = gameOverMargin(a, b);
+                    box.append(tNode(margin.key, margin.vars));
                     return ({READ_WITH_ALT})(box);
                 }}""",
                 [first, second],

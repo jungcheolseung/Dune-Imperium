@@ -132,23 +132,35 @@ function cardDetail(instanceId) {
   const card = state.catalog && state.catalog.cards[id];
   if (card) {
     const bits = [];
-    if (card.cost !== null) bits.push(`비용 ${card.cost}`);
-    if (card.specimens !== undefined) bits.push(`specimen ${card.specimens}`);
-    if (card.graft) bits.push("Graft");
-    if (card.persuasion) bits.push(`Persuasion ${card.persuasion}`);
-    if (card.swords) bits.push(`sword ${card.swords}`);
+    if (card.cost !== null) bits.push(t("core.card_cost", { cost: card.cost }));
+    if (card.specimens !== undefined) bits.push(t("core.card_specimens", { count: card.specimens }));
+    if (card.graft) bits.push(phraseText("{graft}"));
+    if (card.persuasion) bits.push(t("core.card_persuasion", { amount: card.persuasion }));
+    if (card.swords) bits.push(t("core.card_swords", { amount: card.swords }));
     if (card.factions.length) {
       bits.push(card.factions.map((f) => FACTION_LABELS[f] || f).join("/"));
     }
     return bits.join(" · ");
   }
   const intrigue = state.catalog && state.catalog.intrigue[id];
-  if (intrigue) return `Intrigue (${intrigue.timings.join("/")})`;
+  if (intrigue) return t("core.intrigue_timings", { timings: timingWords(intrigue.timings) });
   const tile = state.catalog && state.catalog.tech && state.catalog.tech[id];
-  if (tile) return `Tech tile · 비용 ${tile.cost} spice`;
+  if (tile) return t("core.tech_tile_cost", { cost: tile.cost });
   const skill = state.catalog && state.catalog.skills && state.catalog.skills[id];
-  if (skill) return "Sardaukar Commander Skill";
+  if (skill) return phraseText("{commander_skill}");
   return "";
+}
+
+/* An Intrigue card's timings ("plot", "combat", "endgame") as the glossary
+   names them: 음모 / 전투 / 종료 단계 [Main p. 7]. */
+const TIMING_KEYS = {
+  plot: "core.timing_plot",
+  combat: "core.timing_combat",
+  endgame: "core.timing_endgame",
+};
+
+function timingWords(timings) {
+  return timings.map((timing) => (TIMING_KEYS[timing] ? t(TIMING_KEYS[timing]) : timing)).join("/");
 }
 
 function chip(instanceId, entryOverride) {
@@ -217,8 +229,12 @@ function requirementNode(requirement) {
   const line = document.createElement("div");
   line.className = "popover-line requirement";
   line.append(
-    "요구: ",
-    amount(`influence_${requirement.faction}`, `${label} Influence`, requirement.amount),
+    t("core.requirement_prefix"),
+    amount(
+      `influence_${requirement.faction}`,
+      phraseText(`{influence_${requirement.faction}}`),
+      requirement.amount,
+    ),
     "+"
   );
   return line;
@@ -227,8 +243,8 @@ function requirementNode(requirement) {
 function popoverNodes(entry) {
   const nodes = [];
   if (entry.text) for (const text of entry.text) nodes.push(iconLine(text));
-  if (entry.condition) nodes.push(iconLine(`조건: ${entry.condition}`));
-  if (entry.reward) nodes.push(iconLine(`보상: ${entry.reward}`));
+  if (entry.condition) nodes.push(iconLine(t("core.condition_line", { text: entry.condition })));
+  if (entry.reward) nodes.push(iconLine(t("core.reward_line", { text: entry.reward })));
   if (entry.rewards) for (const text of entry.rewards) nodes.push(iconLine(text));
   if (entry.options) {
     if (entry.requirement) nodes.push(requirementNode(entry.requirement));
@@ -259,17 +275,26 @@ function openPopover(entry, anchor) {
   const meta = document.createElement("div");
   meta.className = "meta stats";
   if (entry.cost !== undefined && entry.cost !== null) {
-    meta.appendChild(amount("persuasion", "비용 (Persuasion)", entry.cost));
+    /* The cost is paid in Persuasion and wears its icon; its name says
+       it is the cost, or it reads the same as the Persuasion it gives. */
+    meta.appendChild(amount("persuasion", t("core.cost_label"), entry.cost));
   }
-  if (entry.persuasion) meta.appendChild(amount("persuasion", "Persuasion", entry.persuasion));
-  if (entry.swords) meta.appendChild(amount("sword", "sword", entry.swords));
+  if (entry.persuasion) {
+    meta.appendChild(amount("persuasion", phraseText("{persuasion}"), entry.persuasion));
+  }
+  if (entry.swords) meta.appendChild(amount("sword", phraseText("{sword}"), entry.swords));
   const words = [];
   if (entry.factions && entry.factions.length) {
     words.push(entry.factions.map((f) => FACTION_LABELS[f] || f).join("/"));
   }
-  if (entry.timings) words.push(`Intrigue (${entry.timings.join("/")})`);
-  if (entry.tier !== undefined) words.push(`Conflict tier ${entry.tier}`);
-  if (entry.options && !spaceImplementedFor(entry)) words.push("미구현 · 배치 불가");
+  if (entry.timings) {
+    words.push(t("core.intrigue_timings", { timings: timingWords(entry.timings) }));
+  }
+  if (entry.tier !== undefined) {
+    /* As the rulebook numbers the decks: 교전 I / Conflict I [Main p. 4]. */
+    words.push(t("core.conflict_tier", { tier: ["I", "II", "III"][entry.tier - 1] || entry.tier }));
+  }
+  if (entry.options && !spaceImplementedFor(entry)) words.push(t("core.not_implemented"));
   if (words.length) meta.append(words.join(" · "));
   if (meta.childNodes.length) pop.appendChild(meta);
 
@@ -371,7 +396,13 @@ function describeAction(action) {
     } else if (typeof value === "number" || typeof value === "boolean") {
       parts.push(document.createTextNode(`${prettify(key)}: ${value}`));
     } else {
-      parts.push(document.createTextNode(nameOf(value)));
+      /* The server writes the Korean marker for an argument this seat may
+         not see (sessions.py); it reads in the page's language. */
+      parts.push(
+        document.createTextNode(
+          value === UI_TEXT["common.hidden"].ko ? t("common.hidden") : nameOf(value),
+        ),
+      );
     }
   }
   parts.forEach((part, index) => {

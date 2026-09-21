@@ -16,7 +16,7 @@ function commanderChip(count, where) {
   const chip = document.createElement("span");
   chip.className = "commander-count";
   chip.textContent = `C${count}`;
-  chip.title = phraseText(`${where}의 {commander} ${count}`);
+  chip.title = t("panels.commander_where", { where: phraseText(where), count });
   return chip;
 }
 
@@ -124,7 +124,7 @@ function renderSeats() {
     nameLine.appendChild(seatMark);
     const leaderName = document.createElement("span");
     leaderName.className = "leader-name";
-    leaderName.textContent = player.leader_id ? nameOf(faceId) : "Leader 미정";
+    leaderName.textContent = player.leader_id ? nameOf(faceId) : t("panels.leader_unset");
     /* A cut-short name reads whole in the hover card, or in the title. */
     if (!leaderEntry) leaderName.title = leaderName.textContent;
     if (leaderEntry) {
@@ -143,8 +143,8 @@ function renderSeats() {
       const mine = isRemote() ? mySeats().includes(seat) : seat === activeSeat();
       badge.textContent = mine
         ? isRemote() && playerInfo(seat).name
-          ? `YOU · ${playerInfo(seat).name}`
-          : "YOU"
+          ? t("panels.you_named", { name: playerInfo(seat).name })
+          : t("panels.you_badge")
         : playerName(seat);
       who.appendChild(badge);
       if (isRemote() && playerInfo(seat).claimed) {
@@ -160,7 +160,7 @@ function renderSeats() {
     if (summary.first_player === seat) {
       const badge = document.createElement("span");
       badge.className = "badge";
-      badge.textContent = "1st";
+      badge.textContent = t("panels.first_badge");
       badge.title = phraseText("{first_player}");
       who.appendChild(badge);
     }
@@ -217,10 +217,10 @@ function renderSeats() {
       garrison.appendChild(commanderChip(player.commanders_garrison, "{garrison}"));
     }
     forces.append(
-      statNode("agent", phraseText("남은 {agent}"), player.agents_available),
+      statNode("agent", t("panels.agent_remaining"), player.agents_available),
       garrison,
       statNode("sword", phraseText("{strength}"), player.combat_strength || 0),
-      statNode("spy", phraseText("{supply}의 {spy}"), player.spies_supply),
+      statNode("spy", t("panels.supply_spy"), player.spies_supply),
     );
     if (
       player.troops_conflict ||
@@ -230,7 +230,7 @@ function renderSeats() {
     ) {
       const deployed = document.createElement("span");
       deployed.className = "stat deployed";
-      deployed.title = phraseText("{conflict}에 배치한 유닛");
+      deployed.title = t("panels.conflict_deployed");
       deployed.append(phraseText("{conflict} "));
       if (player.troops_conflict) {
         deployed.append(icon("troop", phraseText("{troop}")), String(player.troops_conflict));
@@ -252,43 +252,65 @@ function renderSeats() {
     }
     card.appendChild(forces);
 
+    /* Each flag is nodes (tNode), so its rule terms keep their icons; High
+       Council, Swordmaster and Family Atomics are names and stay as written. */
     const flags = [];
     if (player.high_council) flags.push("High Council");
-    if (player.maker_hooks) flags.push("Maker Hooks");
+    if (player.maker_hooks) flags.push(tNode("panels.maker_hooks"));
     if (player.swordmaster_acquired) flags.push("Swordmaster");
-    if (player.has_revealed) flags.push("Revealed");
+    if (player.has_revealed) flags.push(tNode("panels.revealed"));
     if (player.control_space_ids.length) {
-      flags.push("Control: " + player.control_space_ids.map(nameOf).join("/"));
+      flags.push(
+        tNode("panels.control_spaces", {
+          spaces: player.control_space_ids.map(nameOf).join("/"),
+        }),
+      );
     }
     /* Bloodlines Leader state: Chani's Tactics token, Piter's Twisted deck,
        Y'rkoon's remaining Navigation slots, Kota's Secret Project tile. */
-    if (player.leader_id === "chani") flags.push(`Tactics ${player.tactics_track_space + 1}칸`);
-    if (player.twisted_deck_size) flags.push(`Twisted deck ${player.twisted_deck_size}`);
-    if (player.navigation_remaining) flags.push(`Navigation ${player.navigation_remaining}장 남음`);
-    if (player.has_secret_project) flags.push("Secret Project (face-down Tech tile)");
-    if (player.spies_boxed) flags.push(`Spy ${player.spies_boxed}개 box로`);
+    if (player.leader_id === "chani") {
+      flags.push(tNode("panels.tactics_space", { space: player.tactics_track_space + 1 }));
+    }
+    if (player.twisted_deck_size) {
+      flags.push(tNode("panels.twisted_deck", { count: player.twisted_deck_size }));
+    }
+    if (player.navigation_remaining) {
+      flags.push(tNode("panels.navigation_remaining", { count: player.navigation_remaining }));
+    }
+    if (player.has_secret_project) flags.push(tNode("panels.secret_project"));
+    if (player.spies_boxed) flags.push(tNode("panels.spy_boxed", { count: player.spies_boxed }));
     /* Immortality: specimens in the Axolotl tanks, the two Bene Tleilax
        tokens, the Family Atomics token, and the grafted-card promises. */
     if (state.summary.immortality) {
-      flags.push(`specimen ${player.specimens || 0}`);
-      if (player.research_space) flags.push(`Research ${player.research_space}`);
-      flags.push(`Tleilaxu ${player.tleilaxu_space || 0}`);
+      flags.push(tNode("panels.specimen_flag", { count: player.specimens || 0 }));
+      if (player.research_space) {
+        flags.push(tNode("panels.research_space", { space: player.research_space }));
+      }
+      flags.push(tNode("panels.tleilaxu_space", { space: player.tleilaxu_space || 0 }));
       if (player.family_atomics) flags.push("Family Atomics");
       if ((player.chairdog_return_card_ids || []).length) {
         flags.push(
-          "Chairdog: Reveal 시작 때 hand로 " +
-            player.chairdog_return_card_ids.map(nameOf).join("/")
+          tNode("panels.chairdog_return", {
+            cards: player.chairdog_return_card_ids.map(nameOf).join("/"),
+          })
         );
       }
       if (player.usurped_row_card_id) {
-        flags.push(`Usurp: turn 끝에 ${nameOf(player.usurped_row_card_id)} trash`);
+        flags.push(tNode("panels.usurp_trash", { card: nameOf(player.usurped_row_card_id) }));
       }
     }
     /* Everything below the zone counts folds away: the card lines are what
        pushed the fourth seat off the screen. */
     const detail = document.createElement("div");
     detail.className = "seat-detail";
-    if (flags.length) seatLine(detail, "상태", iconize(flags.join(" · ")));
+    if (flags.length) {
+      const status = document.createDocumentFragment();
+      flags.forEach((flag, index) => {
+        if (index) status.append(" · ");
+        status.append(flag);
+      });
+      seatLine(detail, t("panels.status_label"), status);
+    }
     if (player.skill_ids && player.skill_ids.length) {
       const line = document.createElement("div");
       line.className = "cardline";
@@ -307,7 +329,7 @@ function renderSeats() {
       for (const id of player.tech_ids) {
         const mark = chip(id);
         if ((player.tech_flipped || []).includes(id)) {
-          mark.textContent += " (Flip됨)";
+          mark.textContent += t("panels.flip_suffix");
           mark.classList.add("muted");
         }
         line.appendChild(mark);
@@ -315,7 +337,7 @@ function renderSeats() {
       detail.appendChild(line);
     }
     const agents = player.agent_locations.map(nameOf).join(", ");
-    if (agents) seatLine(detail, "배치", agents);
+    if (agents) seatLine(detail, t("panels.agents_placed_label"), agents);
     const supply = document.createElement("span");
     supply.append(icon("troop", phraseText("{troop}")), String(player.troops_supply));
     if (player.commanders_supply) {
@@ -335,10 +357,10 @@ function renderSeats() {
     );
     if (player.discard_pile.length) {
       zones.classList.add("clickable");
-      zones.title = phraseText("{discard_pile} 보기");
+      zones.title = t("panels.discard_pile_view");
       zones.addEventListener("click", (event) => {
         event.stopPropagation();
-        openPileList(`좌석 ${seat} discard`, player.discard_pile, zones);
+        openPileList(`${t("common.seat", { seat })} discard`, player.discard_pile, zones);
       });
     }
     card.appendChild(zones);
@@ -353,7 +375,7 @@ function renderSeats() {
       for (const id of battle) line.appendChild(chip(id));
       for (const id of player.face_down_battle_card_ids) {
         const mark = chip(id);
-        mark.textContent += " (뒤집힘)";
+        mark.textContent += t("panels.facedown_suffix");
         mark.classList.add("muted");
         line.appendChild(mark);
       }
@@ -370,7 +392,7 @@ function renderSeats() {
          was announced before they flipped face down. */
       for (const id of player.completed_contract_ids) {
         const mark = chip(id);
-        mark.textContent += " (완료)";
+        mark.textContent += t("panels.completed_suffix");
         mark.classList.add("muted");
         line.appendChild(mark);
       }
@@ -391,7 +413,7 @@ function renderSeats() {
       const line = document.createElement("div");
       line.className = "cardline";
       const strong = document.createElement("strong");
-      strong.textContent = "Hand (공개) ";
+      strong.textContent = t("panels.hand_public_label");
       line.appendChild(strong);
       for (const id of player.hand_public) line.appendChild(chip(id));
       detail.appendChild(line);
@@ -400,7 +422,7 @@ function renderSeats() {
       const line = document.createElement("div");
       line.className = "cardline";
       const strong = document.createElement("strong");
-      strong.textContent = "Intrigue 해결 중 ";
+      strong.textContent = t("panels.intrigue_resolving_label");
       line.appendChild(strong);
       for (const id of view.intrigue_resolving) line.appendChild(chip(id));
       detail.appendChild(line);
@@ -412,7 +434,9 @@ function renderSeats() {
       more.className = "seat-more";
       more.setAttribute("aria-expanded", expanded ? "true" : "false");
       const summary = seatDetailSummary(detail).join(" · ");
-      more.textContent = expanded ? "자세히 ▾" : `자세히 ▸ · ${summary}`;
+      more.textContent = expanded
+        ? t("panels.seat_more_collapse")
+        : t("panels.seat_more_expand", { summary });
       if (!expanded) more.title = summary;
       more.addEventListener("click", (event) => {
         event.stopPropagation();
@@ -457,19 +481,57 @@ function openPileList(title, ids, anchor) {
 /* Render one event's payload as compact "key: value" pairs. Values keyed by
    an id-shaped field (card/instance/conflict id, post_id, space_id) resolve
    through the catalog via nameOf; the "player" key renders as a seat label. */
+/* Payload fields that hold a seat number (-1: nobody). */
+const SEAT_PAYLOAD_KEYS = new Set([
+  "player",
+  "first_player",
+  "from_player",
+  "to_player",
+  "recipient",
+  "victim",
+  "visitor",
+]);
+
+/* A provenance string ("imperium:high_priority_travel:1",
+   "round:9:player:1:agent_card:imperium:priority_contracts:0") names the
+   card behind an event somewhere among its segments; the rest is
+   bookkeeping. */
+function sourceName(value) {
+  for (const part of String(value).split(":")) {
+    const entry = lookup(part);
+    if (entry) return entry.name;
+  }
+  return null;
+}
+
 function logEventPayload(payload) {
   const parts = [];
   const shownNames = new Set();
   for (const [key, value] of Object.entries(payload)) {
-    if (key === "player") {
-      parts.push(`좌석 ${value}`);
+    const label = PAYLOAD_KEY_LABELS[key] || prettify(key);
+    /* Before the zero filter: seat 0 is a seat. */
+    if (SEAT_PAYLOAD_KEYS.has(key)) {
+      if (typeof value !== "number" || value < 0) continue;
+      const seat = t("common.seat", { seat: value });
+      parts.push(key === "player" ? seat : `${label}: ${seat}`);
+      continue;
+    }
+    /* Combat rewards and the like list every field; zeros say nothing. */
+    if (value === 0 || value === "" || value === null || value === false) continue;
+    if (Array.isArray(value) && value.length === 0) continue;
+    if (key === "source") {
+      const name = sourceName(value);
+      if (name) parts.push(`${label}: ${name}`);
+      continue;
+    }
+    /* A flag says itself by its name. */
+    if (value === true) {
+      parts.push(label);
       continue;
     }
     /* Every id-shaped field resolves through the catalog. The engine emits
        about 35 distinct ones (card_id, leader_id, tech_id, contract_id,
-       skill_id, post_id, space_id, their first_/second_ variants…) and the
-       old allowlist named only five, so the rest printed raw engine ids —
-       leader_ids is the first log line of every Leader-draft game. */
+       skill_id, post_id, space_id, their first_/second_ variants…). */
     const isIdField = key.endsWith("_id");
     /* The engine joins an id list into one string ("staban_tuek,gurney_halleck":
        leader_ids, contract_ids); an array would do as well. */
@@ -480,23 +542,33 @@ function logEventPayload(payload) {
         : typeof value === "string"
           ? value.split(",").filter(Boolean)
           : null;
-    /* Combat rewards and the like list every field; zeros say nothing. */
-    if (value === 0 || value === "" || value === null || value === false) continue;
-    if (Array.isArray(value) && value.length === 0) continue;
-    /* action_id has its own Korean table; everything else is a catalog name. */
+    /* action_id has its own table; everything else is a catalog name. */
     const resolve = (item) =>
       key === "action_id"
         ? phraseText(ACTION_LABELS[item] || prettify(item))
         : nameOf(item);
-    const shown = idList
-      ? idList.map(resolve).join(", ")
-      : isIdField
-        ? resolve(value)
-        : String(value);
+    let shown;
+    if (idList) shown = idList.map(resolve).join(", ");
+    else if (isIdField) shown = resolve(value);
+    else if (key === "effect") {
+      /* A keyed board icon has a label; a Reveal choice's effect id is the
+         engine's name for what the event line already says. */
+      if (!EFFECT_ICON_LABELS[value]) continue;
+      shown = phraseText(EFFECT_ICON_LABELS[value]);
+    } else if (key === "faction" || key === "influence_faction") {
+      shown = FACTION_LABELS[value] || prettify(value);
+    } else if (typeof value === "string" && TERMS[value]) {
+      /* A rule word ("solari", "hand", "garrison") in the current language. */
+      shown = phraseText(`{${value}}`);
+    } else if (typeof value === "string" && lookup(baseId(value))) {
+      shown = nameOf(value);
+    } else {
+      shown = String(value);
+    }
     /* card_id and instance_id of one event resolve to the same name. */
     if (isIdField && shownNames.has(shown)) continue;
     if (isIdField) shownNames.add(shown);
-    parts.push(`${prettify(key)}: ${shown}`);
+    parts.push(`${label}: ${shown}`);
   }
   return parts.join(" · ");
 }
@@ -613,20 +685,26 @@ function neutralTitle(group) {
   const kinds = new Set(group.items.filter((item) => item.event).map((item) => item.event.kind));
   const parts = [];
   if (kinds.has("leader_draft_unused") || kinds.has("leader_draft_pool_revealed")) {
-    parts.push("게임 준비");
+    parts.push(t("panels.neutral_setup"));
   }
-  if (kinds.has("combat_intrigue_started")) parts.push("Combat Intrigue 창");
-  if (kinds.has("conflict_won") || kinds.has("combat_reward_gained")) parts.push("전투 해결");
+  if (kinds.has("combat_intrigue_started")) parts.push(t("panels.neutral_combat_intrigue"));
+  if (kinds.has("conflict_won") || kinds.has("combat_reward_gained")) {
+    parts.push(t("panels.neutral_combat_resolved"));
+  }
   if (kinds.has("agents_recalled") || kinds.has("conflict_revealed")) {
     const revealed = group.items.find(
       (item) => item.event && item.event.kind === "conflict_revealed"
     );
     const round = revealed && revealed.event.payload && revealed.event.payload.round;
-    parts.push(round ? `라운드 ${round} 시작` : "라운드 시작");
+    parts.push(
+      round
+        ? t("panels.neutral_round_started", { round })
+        : t("panels.neutral_round_started_generic")
+    );
   }
   if (kinds.has("endgame_started")) parts.push("Endgame");
-  if (kinds.has("game_finished")) parts.push("게임 종료");
-  return parts.length ? parts.join(" · ") : "게임 진행";
+  if (kinds.has("game_finished")) parts.push(t("common.game_over"));
+  return parts.length ? parts.join(" · ") : t("panels.neutral_default");
 }
 
 function neutralCard(group, freshFrom) {
@@ -692,7 +770,7 @@ function turnLine(entry) {
   index.className = "turn-index";
   index.textContent = `#${entry.index}`;
   head.append(index, describeAction(entry));
-  if (entry.undone) head.append(" (되돌림)");
+  if (entry.undone) head.append(t("panels.undone_suffix"));
   line.appendChild(head);
   for (const event of entry.events) line.appendChild(logEventLine(event));
   return line;
@@ -712,7 +790,7 @@ function turnCard(group, freshFrom) {
   head.className = "turn-head";
   head.appendChild(seatToken(group.actor, "seat-mark"));
   const who = document.createElement("strong");
-  who.textContent = leaderFace ? nameOf(leaderFace) : `좌석 ${group.actor}`;
+  who.textContent = leaderFace ? nameOf(leaderFace) : t("common.seat", { seat: group.actor });
   head.appendChild(who);
   const kind = state.summary.seats[group.actor];
   const badge = document.createElement("span");
@@ -720,7 +798,7 @@ function turnCard(group, freshFrom) {
   badge.textContent =
     kind === "human"
       ? group.actor === activeSeat()
-        ? "YOU"
+        ? t("panels.you_badge")
         : playerName(group.actor)
       : seatKindLabel(kind);
   head.appendChild(badge);
@@ -766,7 +844,7 @@ function turnCard(group, freshFrom) {
 function undoRow(entry) {
   const row = document.createElement("div");
   row.className = "turn-card undo-marker";
-  row.textContent = `↩ 좌석 ${entry.seat}이(가) ${entry.count}단계 되돌림`;
+  row.textContent = t("panels.undo_row", { seat: entry.seat, count: entry.count });
   return row;
 }
 
@@ -807,7 +885,7 @@ function renderLog() {
   }
 
   const heading = document.createElement("h2");
-  heading.textContent = "행동 로그";
+  heading.textContent = t("panels.log_heading");
   panel.appendChild(heading);
   const list = document.createElement("div");
   list.className = "log-list";
@@ -847,8 +925,8 @@ function renderPrivate() {
   const mine = !state.review || mySeats().includes(activeSeat());
   const title = document.createElement("strong");
   title.textContent = mine
-    ? `내 손패 · 좌석 ${activeSeat()}`
-    : `${playerLabel(activeSeat())}의 손패`;
+    ? t("panels.my_hand", { seat: t("common.seat", { seat: activeSeat() }) })
+    : t("panels.seat_hand", { name: playerLabel(activeSeat()) });
   label.appendChild(title);
   const revealNow = revealTurnPreview();
   if (revealNow) {
@@ -856,7 +934,7 @@ function renderPrivate() {
        and a Reveal turn: what this hand is worth revealed right now. */
     const note = document.createElement("span");
     note.className = "hand-reveal-note";
-    note.append("지금 공개하면 ", revealPreview(revealNow));
+    note.append(t("panels.reveal_preview_prefix"), revealPreview(revealNow));
     label.appendChild(note);
   }
   const counts = document.createElement("span");
@@ -871,7 +949,11 @@ function renderPrivate() {
   counts.addEventListener("click", (event) => {
     event.stopPropagation();
     if (own.discard_pile.length) {
-      openPileList(mine ? "내 discard" : `좌석 ${activeSeat()} discard`, own.discard_pile, counts);
+      openPileList(
+        mine ? t("panels.my_discard") : `${t("common.seat", { seat: activeSeat() })} discard`,
+        own.discard_pile,
+        counts
+      );
     }
   });
   counts.classList.add("clickable");
@@ -885,7 +967,7 @@ function renderPrivate() {
   if (!view.private.hand.length) {
     const empty = document.createElement("span");
     empty.className = "muted";
-    empty.textContent = "손패 없음";
+    empty.textContent = t("panels.hand_empty");
     hand.appendChild(empty);
   }
   for (const cardId of view.private.hand) hand.appendChild(visualCard(cardId));
@@ -911,12 +993,15 @@ function renderPrivate() {
     peeks.className = "strip-cards";
     if (view.private.peeked_card_id) {
       peeks.appendChild(
-        visualCard(view.private.peeked_card_id, { className: "small", badge: "덱 맨 위" })
+        visualCard(view.private.peeked_card_id, {
+          className: "small",
+          badge: t("panels.deck_top_badge"),
+        })
       );
     }
     for (const cardId of peekedIntrigue) {
       peeks.appendChild(
-        visualCard(cardId, { className: "small", badge: "Intrigue 덱 맨 위" })
+        visualCard(cardId, { className: "small", badge: t("panels.intrigue_deck_top_badge") })
       );
     }
     if (view.private.secret_project_tech_id) {
@@ -947,7 +1032,7 @@ function renderStandings() {
   panel.hidden = false;
   panel.textContent = "";
   const heading = document.createElement("h2");
-  heading.textContent = "최종 순위";
+  heading.textContent = t("panels.standings_heading");
   panel.appendChild(heading);
   /* Cells are text nodes: a row carries a player's name, and a name is
      somebody else's input. */
@@ -962,7 +1047,15 @@ function renderStandings() {
     table.appendChild(row);
     return row;
   };
-  tableRow("th", ["순위", "좌석", "VP", "Spice", "Solari", "Water", "Garrison"]);
+  tableRow("th", [
+    t("panels.standings_rank_header"),
+    t("panels.standings_seat_header"),
+    "VP",
+    "Spice",
+    "Solari",
+    "Water",
+    "Garrison",
+  ]);
   for (const entry of summary.standings) {
     /* The garrison tiebreak counts a garrisoned Sardaukar Commander as a
        troop — rules/endgame.py ranks on troops_garrison + commanders_garrison
@@ -992,10 +1085,10 @@ function renderStandings() {
   if (!humans.length) {
     /* While the watched game is on screen, its play button starts it over. */
     if (review) return;
-    open.textContent = "AI 대국 다시 보기";
+    open.textContent = t("panels.watch_ai_button");
     open.addEventListener("click", watchGame);
   } else {
-    open.textContent = "리플레이 검토";
+    open.textContent = t("panels.review_replay_button");
     open.addEventListener("click", () => {
       const seat = humans.includes(state.viewSeat)
         ? state.viewSeat
@@ -1003,7 +1096,9 @@ function renderStandings() {
           ? mySeats()[0]
           : humans[0];
       enterReview(seat).catch((error) => {
-        el("game-error").textContent = `검토 시작 실패 (${error.message})`;
+        el("game-error").textContent = t("panels.review_start_failed", {
+          message: error.message,
+        });
         el("game-error").hidden = false;
       });
     });

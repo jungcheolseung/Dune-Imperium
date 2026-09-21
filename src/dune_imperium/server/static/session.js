@@ -20,7 +20,7 @@ function isMyTurn(summary) {
 function noticeTurn() {
   if (!isRemote()) return;
   const mine = isMyTurn(state.summary);
-  document.title = mine ? `▶ 내 차례 — ${BASE_TITLE}` : BASE_TITLE;
+  document.title = mine ? t("session.my_turn_title", { title: BASE_TITLE }) : BASE_TITLE;
   if (mine && myTurnBefore === false) turnTone();
   myTurnBefore = mine;
 }
@@ -55,7 +55,7 @@ function note(text) {
 
 async function saveGame() {
   if (!state.gameId) return;
-  const name = window.prompt("저장 이름 (비워도 됩니다)", "");
+  const name = window.prompt(t("session.save_name_prompt"), "");
   if (name === null) return;
   try {
     const metadata = await api(`/games/${state.gameId}/save`, {
@@ -63,10 +63,10 @@ async function saveGame() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: name || null }),
     });
-    note(`저장됨: ${metadata.name || metadata.save_id.slice(0, 8)}`);
+    note(t("session.saved", { name: metadata.name || metadata.save_id.slice(0, 8) }));
     if (hostSaves.gameId === state.gameId) loadHostSaves().catch(() => {});
   } catch (error) {
-    note(`저장 실패 (${error.message})`);
+    note(t("session.save_failed", { message: error.message }));
   }
 }
 
@@ -382,9 +382,8 @@ function onGameGone(reason) {
   if (storageGet("dune.lastGame") === state.gameId) storageRemove("dune.lastGame");
   leaveGame(
     reason === "deleted"
-      ? "이 게임은 서버에서 삭제되었습니다."
-      : "이 게임은 서버에 더 이상 없습니다. 서버가 다시 시작됐다면 호스트가 자동 저장을 " +
-          "불러온 뒤 보내는 새 방 링크로 들어오세요."
+      ? t("session.game_deleted")
+      : t("session.game_missing")
   );
 }
 
@@ -415,7 +414,7 @@ async function applyAction(index) {
       await refresh();
       return;
     }
-    el("game-error").textContent = `행동 적용 실패 (${error.message})`;
+    el("game-error").textContent = t("session.action_failed", { message: error.message });
     el("game-error").hidden = false;
     render();
   }
@@ -448,7 +447,7 @@ async function confirmTurn() {
       await refresh();
       return;
     }
-    el("game-error").textContent = `턴 종료 실패 (${error.message})`;
+    el("game-error").textContent = t("session.turn_end_failed", { message: error.message });
     el("game-error").hidden = false;
     render();
   }
@@ -481,7 +480,7 @@ async function submitUndo(seat, steps) {
       await refresh();
       return;
     }
-    el("game-error").textContent = `되돌리기 실패 (${error.message})`;
+    el("game-error").textContent = t("session.undo_failed", { message: error.message });
     el("game-error").hidden = false;
     render();
   }

@@ -5,12 +5,20 @@
 /* The live region: what a screen reader should hear without looking — whose
    turn it now is, and how the game ended. Errors have role="alert" of their
    own (index.html). Clearing first makes the same sentence read again. */
+let announceTimer = 0;
+
 function announce(text) {
-  const region = el("announcer");
-  region.textContent = "";
-  window.setTimeout(() => {
-    region.textContent = text;
+  clearAnnouncement();
+  announceTimer = window.setTimeout(() => {
+    el("announcer").textContent = text;
   }, 50);
+}
+
+/* Drop what is said and what is about to be: a pending sentence must not
+   land after a newer one, or after a switch of language. */
+function clearAnnouncement() {
+  window.clearTimeout(announceTimer);
+  el("announcer").textContent = "";
 }
 
 /* Announce each change of the seat to act, and the end of the game, once.
@@ -30,7 +38,9 @@ function announceTurn(summary) {
   if (summary.finished) {
     const first = (summary.standings || []).find((entry) => entry.rank === 1);
     key = "finished";
-    text = first ? `게임 종료 — ${playerLabel(first.player)} 승리` : "게임 종료";
+    text = first
+      ? t("help.announce_finished_winner", { name: playerLabel(first.player) })
+      : t("common.game_over");
   } else if (typeof summary.confirmation === "number") {
     /* A seat's turn has ended but can still be taken back: decision.owner
        already names the NEXT seat, yet nobody moves until this one confirms
@@ -39,16 +49,19 @@ function announceTurn(summary) {
     const seat = summary.confirmation;
     key = `confirm:${seat}`;
     text = isMine(seat)
-      ? `${playerLabel(seat)} — 행동을 마쳤습니다. 턴 종료를 확정하세요.`
-      : `${playerLabel(seat)}의 턴 종료 확정을 기다리는 중`;
+      ? t("help.announce_confirm_mine", { name: playerLabel(seat) })
+      : t("help.announce_confirm_other", { name: playerLabel(seat) });
   } else if (summary.decision) {
     const owner = summary.decision.owner;
     key = `seat:${owner}`;
     /* One screen can hold several human seats (an open server), so even
        "your turn" says which seat. */
     text = isMine(owner)
-      ? `${playerLabel(owner)} — 당신 차례입니다: ${summary.decision.prompt}`
-      : `${playerLabel(owner)} 차례`;
+      ? t("help.announce_turn_mine", {
+          name: playerLabel(owner),
+          prompt: promptText(summary.decision.prompt),
+        })
+      : t("help.announce_turn_other", { name: playerLabel(owner) });
   } else {
     return;
   }
@@ -62,30 +75,30 @@ function announceTurn(summary) {
 /* What the seat panel draws that no rulebook icon explains: how to draw
    the mark, and what it means (a phrase template). */
 const HELP_SEAT_MARKS = [
-  [() => commanderChip(2, "{garrison}"), "{commander} — {garrison}·{conflict}·{supply}에 있는 수"],
-  [() => "1st", "{first_player}"],
+  [() => commanderChip(2, "{garrison}"), "help.seat_mark_commander"],
+  [() => "1st", "help.seat_mark_first_player"],
   [
     () => {
       const mark = document.createElement("span");
       mark.append(phraseText("{conflict} "), icon("troop", phraseText("{troop}")), "3");
       return mark;
     },
-    "{conflict}에 배치한 유닛",
+    "help.seat_mark_conflict",
   ],
 ];
 
 const HELP_SHORTCUTS = [
-  ["c", "공용 카드 열을 모두 접기 / 펴기"],
-  ["s", "모든 좌석의 자세히 펴기 / 접기"],
-  ["Esc", "고르던 것 취소 · 열린 창 닫기"],
-  ["?", "이 도움말 열기"],
+  ["c", "help.shortcut_collapse_columns"],
+  ["s", "help.shortcut_expand_seats"],
+  ["Esc", "help.shortcut_cancel"],
+  ["?", "help.shortcut_open_help"],
 ];
 
 const HELP_TURN = [
-  "{agent_turn}: ① 손패에서 빛나는 카드 → ② 빛나는 칸 → ③ 남은 선택. 칸을 먼저 눌러도 되고, Esc로 취소합니다.",
-  "되돌릴 수 있는 동안은 턴이 넘어가지 않습니다. 끝나면 \"턴 종료 확정\"을 누르세요.",
-  "되돌리기는 자기 연속 행동만 됩니다. 무작위 결과나 숨겨진 정보가 공개된 뒤로는 되돌릴 수 없습니다.",
-  "{reveal_turn}: 카드를 공개하고, 남은 {persuasion}으로 빛나는 카드를 산 뒤 끝냅니다.",
+  "help.turn_agent",
+  "help.turn_confirm",
+  "help.turn_undo_limit",
+  "help.turn_reveal",
 ];
 
 let helpOpener = null;
@@ -118,18 +131,18 @@ function openHelp() {
 
   const heading = document.createElement("h2");
   heading.id = "help-title";
-  heading.textContent = "도움말";
+  heading.textContent = t("help.title");
   const close = document.createElement("button");
   close.type = "button";
   close.className = "help-close";
-  close.textContent = "닫기";
+  close.textContent = t("common.close");
   close.addEventListener("click", closeHelp);
   heading.appendChild(close);
   body.appendChild(heading);
 
   /* Every rule term that has a printed icon, from the one table the rest
      of the UI reads, so the legend cannot drift from what is drawn. */
-  const icons = helpSection(body, "아이콘");
+  const icons = helpSection(body, t("help.icons_heading"));
   for (const [name, term] of Object.entries(TERMS)) {
     if (!term.icon || !iconUrl(term.icon)) continue;
     const label = document.createElement("span");
@@ -145,23 +158,23 @@ function openHelp() {
     helpRow(icons, row, label);
   }
 
-  const marks = helpSection(body, "좌석 패널");
-  for (const [draw, text] of HELP_SEAT_MARKS) helpRow(marks, draw(), phraseText(text));
+  const marks = helpSection(body, t("help.seat_panel_heading"));
+  for (const [draw, textKey] of HELP_SEAT_MARKS) helpRow(marks, draw(), t(textKey));
 
-  const keys = helpSection(body, "단축키 (한글 입력 상태에서도 됩니다)");
-  for (const [key, text] of HELP_SHORTCUTS) {
+  const keys = helpSection(body, t("help.shortcuts_heading"));
+  for (const [key, textKey] of HELP_SHORTCUTS) {
     const kbd = document.createElement("kbd");
     kbd.textContent = key;
-    helpRow(keys, kbd, text);
+    helpRow(keys, kbd, t(textKey));
   }
 
   const turn = document.createElement("h3");
-  turn.textContent = "한 턴 진행";
+  turn.textContent = t("help.turn_heading");
   const list = document.createElement("ul");
   list.className = "help-turn";
   for (const line of HELP_TURN) {
     const item = document.createElement("li");
-    item.textContent = phraseText(line);
+    item.textContent = t(line);
     list.appendChild(item);
   }
   body.append(turn, list);

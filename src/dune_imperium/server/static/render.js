@@ -179,7 +179,7 @@ function costNode(cost) {
       any = true;
     }
   }
-  if (!any) wrap.textContent = "무료";
+  if (!any) wrap.textContent = t("render.free");
   return wrap;
 }
 
@@ -292,7 +292,7 @@ function render(options) {
   const round = shown ? shown.round : summary.round_number;
   const phase = shown ? shown.phase : summary.phase;
   el("header-status").textContent =
-    `라운드 ${round} · ${PHASE_LABELS[phase] || phase}` +
+    t("render.round_status", { round, phase: PHASE_LABELS[phase] || phase }) +
     (summary.game_seed === null ? "" : ` · seed ${summary.game_seed}`) +
     (summary.choam_module ? " · CHOAM" : "") +
     (summary.promo_cards ? " · promo" : "") +
@@ -300,7 +300,9 @@ function render(options) {
     (summary.tech_module ? " · Tech" : "") +
     (summary.immortality ? " · Immortality" : "") +
     (summary.leader_draft ? " · draft" : "") +
-    (state.review ? (spectatorOnly() ? " · AI 대국 관전" : " · 리플레이 검토") : "");
+    (state.review
+      ? " · " + (spectatorOnly() ? t("render.spectating_ai") : t("render.replay_review"))
+      : "");
   el("decision-banner").hidden = Boolean(state.review);
   renderBanner();
   renderStandings();
@@ -332,7 +334,7 @@ function renderDisclosure() {
   }
   panel.hidden = false;
   const heading = document.createElement("h2");
-  const title = "종료 후 공개 (모든 비공개 존)";
+  const title = t("render.disclosure_title");
   panel.appendChild(heading);
   /* A review opens it folded: it holds every hand and deck order as of the
      reviewed step — the draws the replay is walking towards, the way the
@@ -346,7 +348,7 @@ function renderDisclosure() {
     button.type = "button";
     button.className = "strip-toggle";
     button.setAttribute("aria-expanded", open ? "true" : "false");
-    button.title = open ? "접기" : "펼치기";
+    button.title = open ? t("common.collapse") : t("common.expand");
     button.append(open ? "▾" : "▸", " ", title);
     button.addEventListener("click", () => {
       if (!state.review) return;
@@ -357,15 +359,13 @@ function renderDisclosure() {
     if (!open) {
       const note = document.createElement("p");
       note.className = "muted";
-      note.textContent = phraseText(
-        "검토 중인 시점의 모든 {hand}와 {deck} 순서가 들어 있어, 펼치면 앞으로 뽑힐 카드가 보입니다.",
-      );
+      note.textContent = t("render.disclosure_closed_note");
       panel.appendChild(note);
       return;
     }
   }
   for (const zones of view.disclosure.players) {
-    const seat = section(panel, `좌석 ${zones.player}`);
+    const seat = section(panel, t("common.seat", { seat: zones.player }));
     const line = (label, ids, empty) => {
       const row = document.createElement("div");
       row.className = "cardline";
@@ -376,11 +376,15 @@ function renderDisclosure() {
       for (const id of ids) row.appendChild(chip(id));
       seat.appendChild(row);
     };
-    line(`Hand (${zones.hand.length})`, zones.hand, "비어 있음");
-    line(`Deck 순서 (${zones.deck.length})`, zones.deck, "비어 있음");
-    line(`Intrigue (${zones.intrigue_cards.length})`, zones.intrigue_cards, "없음");
+    line(t("render.hand_line", { count: zones.hand.length }), zones.hand, t("common.empty"));
+    line(t("render.deck_order_line", { count: zones.deck.length }), zones.deck, t("common.empty"));
+    line(
+      t("render.intrigue_line", { count: zones.intrigue_cards.length }),
+      zones.intrigue_cards,
+      t("common.none"),
+    );
   }
-  const decks = section(panel, "공용 덱 순서");
+  const decks = section(panel, t("render.shared_deck_order_title"));
   const deckLine = (label, ids) => {
     const row = document.createElement("div");
     row.className = "cardline";
@@ -390,11 +394,11 @@ function renderDisclosure() {
     for (const id of ids) row.appendChild(chip(id));
     decks.appendChild(row);
   };
-  deckLine("Imperium deck", view.disclosure.imperium_deck);
-  deckLine("Intrigue deck", view.disclosure.intrigue_deck);
-  deckLine("Conflict deck", view.disclosure.conflict_deck);
+  deckLine(t("render.deck_imperium"), view.disclosure.imperium_deck);
+  deckLine(t("render.deck_intrigue"), view.disclosure.intrigue_deck);
+  deckLine(t("render.deck_conflict"), view.disclosure.conflict_deck);
   if (view.disclosure.contract_bank.length) {
-    deckLine("Contract bank", view.disclosure.contract_bank);
+    deckLine(t("render.contract_bank"), view.disclosure.contract_bank);
   }
 }
 
@@ -415,15 +419,16 @@ function renderBanner() {
       (a, b) => a.rank - b.rank,
     );
     if (!first) {
-      prompt.textContent = "게임이 끝났습니다.";
+      prompt.textContent = t("render.game_over_no_standings");
       info.append(prompt);
     } else {
-      prompt.textContent = `게임 종료 — ${playerLabel(first.player)} 승리`;
+      prompt.textContent = t("render.game_over_winner", { winner: playerLabel(first.player) });
       /* Names are other people's input: text nodes, never phrase() input. */
       if (second) {
+        const margin = gameOverMargin(first, second);
         meta.append(
-          phrase(gameOverMargin(first, second)),
-          ` · 2위 ${playerLabel(second.player)}`,
+          tNode(margin.key, margin.vars),
+          t("render.second_place", { name: playerLabel(second.player) }),
         );
       } else {
         meta.append(phrase(`{victory_point:${first.victory_points}}`));
@@ -433,20 +438,19 @@ function renderBanner() {
   } else {
     const decision = summary.decision;
     if (!decision) {
-      prompt.textContent = "진행 중…";
+      prompt.textContent = t("render.in_progress");
       info.append(prompt);
     } else if (summary.confirmation === state.viewSeat) {
       /* The viewing seat's turn has ended but its steps can still be taken
          back: nothing advances until it confirms the hand-over. */
-      prompt.textContent = "행동을 마쳤습니다. 턴을 넘길까요?";
-      meta.textContent =
-        `되돌릴 수 있는 동안은 턴이 넘어가지 않습니다 · 다음: ${playerLabel(decision.owner)}`;
+      prompt.textContent = t("render.confirm_turn_prompt");
+      meta.textContent = t("render.confirm_turn_meta", { next: playerLabel(decision.owner) });
       info.append(prompt, meta);
       const row = document.createElement("div");
       row.className = "confirm-row";
       const confirm = document.createElement("button");
       confirm.type = "button";
-      confirm.textContent = "턴 종료 확정 ▶";
+      confirm.textContent = t("render.confirm_turn_button");
       confirm.disabled = state.busy;
       confirm.addEventListener("click", () => confirmTurn());
       row.appendChild(confirm);
@@ -455,18 +459,19 @@ function renderBanner() {
       /* Another seat's turn has ended but can still be taken back; nobody
          moves until that seat hands it over. */
       prompt.textContent =
-        `${playerLabel(summary.confirmation)}의 턴 종료 확정을 기다리는 중…` +
+        t("render.waiting_confirm", { name: playerLabel(summary.confirmation) }) +
         waitingHint(summary.confirmation);
-      meta.textContent = `다음: ${playerLabel(decision.owner)}`;
+      meta.textContent = t("render.next_label", { name: playerLabel(decision.owner) });
       info.append(prompt, meta);
     } else if (decision.owner !== state.viewSeat) {
       prompt.textContent =
-        `${playerLabel(decision.owner)} 결정 대기 중…` + waitingHint(decision.owner);
-      meta.textContent = decision.prompt;
+        t("render.waiting_decision", { name: playerLabel(decision.owner) }) +
+        waitingHint(decision.owner);
+      meta.textContent = promptText(decision.prompt);
       info.append(prompt, meta);
     } else {
-      prompt.textContent = decision.prompt;
-      meta.textContent = `좌석 ${decision.owner} (당신)`;
+      prompt.textContent = promptText(decision.prompt);
+      meta.textContent = t("render.seat_you", { seat: decision.owner });
       info.append(prompt, meta);
 
       if (state.actions) renderActionPanel(actionsBox);
@@ -488,27 +493,40 @@ const VP_TIEBREAKS = [
   ["{garrison} {troop}", (entry) => entry.troops_garrison + (entry.commanders_garrison || 0)],
 ];
 
-/* What put the winner ahead of second place, as a phrase() template. */
+/* What put the winner ahead of second place, as a t()/tNode() key and vars:
+   the victory-point count is a pre-built term node (a hole value), so it
+   never sits inside a stored template's {term:count} slot. */
 function gameOverMargin(first, second) {
   const vp = first.victory_points;
   if (vp !== second.victory_points) {
-    return `{victory_point:${vp}} (${vp - second.victory_points} 차)`;
+    return {
+      key: "render.margin_vp",
+      vars: { vp: termNode("victory_point", vp), diff: vp - second.victory_points },
+    };
   }
   for (const [label, value] of VP_TIEBREAKS) {
     if (value(first) !== value(second)) {
-      return `{victory_point:${vp}} 동점 · 동점 판정 ${label} ${value(first)} 대 ${value(second)}`;
+      return {
+        key: "render.margin_tiebreak",
+        vars: {
+          vp: termNode("victory_point", vp),
+          tiebreak: phrase(label),
+          first: value(first),
+          second: value(second),
+        },
+      };
     }
   }
   /* Still tied: whoever took a Reveal turn most recently wins [FAQ p. 2]. */
-  return `{victory_point:${vp}} 동점 · 동점 판정 항목도 모두 같아 {reveal_turn}를 더 늦게 마친 좌석이 승리`;
+  return { key: "render.margin_all_tied", vars: { vp: termNode("victory_point", vp) } };
 }
 
 /* Why a wait may be a long one: nobody sits there yet, or they dropped off. */
 function waitingHint(seat) {
   const info = playerInfo(seat);
   if (!isRemote() || info.kind !== "human") return "";
-  if (!info.claimed) return " (아직 아무도 앉지 않은 좌석입니다 — 방 링크를 보내 주세요)";
-  return info.online ? "" : " (접속이 끊겨 있습니다)";
+  if (!info.claimed) return t("render.waiting_hint_empty");
+  return info.online ? "" : t("render.waiting_hint_offline");
 }
 
 /* Undo controls for the viewing seat (M11 slice 6): a single-step button
@@ -524,7 +542,7 @@ function appendUndoRow(container) {
 
   const one = document.createElement("button");
   one.type = "button";
-  one.textContent = "되돌리기 (1단계)";
+  one.textContent = t("render.undo_one_step");
   one.disabled = state.busy;
   one.addEventListener("click", () => submitUndo(state.viewSeat, 1));
   row.appendChild(one);
@@ -532,7 +550,7 @@ function appendUndoRow(container) {
   if (entry.steps > 1) {
     const all = document.createElement("button");
     all.type = "button";
-    all.textContent = `${entry.steps}단계 모두 되돌리기`;
+    all.textContent = t("render.undo_all_steps", { steps: entry.steps });
     all.disabled = state.busy;
     all.addEventListener("click", () => submitUndo(state.viewSeat, entry.steps));
     row.appendChild(all);
@@ -606,8 +624,8 @@ function strengthPreview(after) {
   const now = own ? own.combat_strength || 0 : 0;
   const badge = document.createElement("span");
   badge.className = "strength-preview";
-  badge.title = "이 행동 뒤의 내 전투력";
-  badge.append(icon("sword", "전투력"), ` ${now} → ${after}`);
+  badge.title = t("render.strength_preview_title");
+  badge.append(icon("sword", phraseText("{strength}")), ` ${now} → ${after}`);
   return badge;
 }
 
@@ -617,12 +635,12 @@ function strengthPreview(after) {
 function revealPreview(preview) {
   const badge = document.createElement("span");
   badge.className = "reveal-preview";
-  badge.title = "지금 손패를 공개하면 바로 얻는 Persuasion과 전투력 (Reveal 중의 선택 효과는 제외)";
-  badge.append(icon("persuasion", "Persuasion"), ` ${preview.persuasion}`);
+  badge.title = t("render.reveal_preview_title");
+  badge.append(icon("persuasion", phraseText("{persuasion}")), ` ${preview.persuasion}`);
   const own = state.view && state.view.players[state.viewSeat];
   const now = own ? own.combat_strength || 0 : 0;
   if (typeof preview.strength === "number" && preview.strength !== now) {
-    badge.append(" · ", icon("sword", "전투력"), ` ${now} → ${preview.strength}`);
+    badge.append(" · ", icon("sword", phraseText("{strength}")), ` ${now} → ${preview.strength}`);
   }
   return badge;
 }
@@ -697,12 +715,20 @@ function countRow(id, family, compact) {
   const value = document.createElement("strong");
   value.className = "stepper-value";
   value.textContent = String(chosen.arguments.count);
-  stepper.append(step("−", position - 1, "하나 적게"), value, step("+", position + 1, "하나 더"));
+  stepper.append(
+    step("−", position - 1, t("render.count_step_down")),
+    value,
+    step("+", position + 1, t("render.count_step_up")),
+  );
   const confirm = document.createElement("button");
   confirm.type = "button";
   confirm.className = "count-confirm";
   confirm.disabled = state.busy;
-  confirm.append(compact ? "확정" : `${chosen.arguments.count}개 ${label.textContent}`);
+  confirm.append(
+    compact
+      ? t("render.confirm_short")
+      : t("render.confirm_count_label", { count: chosen.arguments.count, label: label.textContent }),
+  );
   if (typeof chosen.strength_after === "number") {
     confirm.appendChild(strengthPreview(chosen.strength_after));
   }
@@ -765,9 +791,15 @@ function acquireCostNode(action) {
   const cost = document.createElement("span");
   cost.className = "acquire-cost";
   if (action.action_id.includes("tleilaxu") && typeof entry.specimens === "number") {
-    cost.append(`specimen ${entry.specimens}`);
+    cost.append(`${phraseText("{specimen}")} ${entry.specimens}`);
   } else if (typeof entry.cost === "number") {
-    cost.append(amount(action.action_id.includes("solari") ? "solari" : "persuasion", "비용", entry.cost));
+    cost.append(
+      amount(
+        action.action_id.includes("solari") ? "solari" : "persuasion",
+        t("render.acquire_cost_label"),
+        entry.cost,
+      ),
+    );
   } else {
     return null;
   }
@@ -782,14 +814,17 @@ function renderRevealPanel(box, actions) {
     const left = document.createElement("span");
     left.className = "reveal-persuasion";
     left.dataset.persuasion = String(decision.persuasion);
-    left.append("남은 Persuasion ", amount("persuasion", "Persuasion", decision.persuasion));
+    left.append(
+      t("render.persuasion_remaining"),
+      amount("persuasion", phraseText("{persuasion}"), decision.persuasion),
+    );
     status.appendChild(left);
   }
   const bought = boughtThisReveal();
   if (bought.length) {
     const list = document.createElement("span");
     list.className = "reveal-bought";
-    list.append("산 카드: ");
+    list.append(t("render.bought_cards_label"));
     bought.forEach((cardId) => list.appendChild(chip(cardId)));
     status.appendChild(list);
   }
@@ -805,11 +840,11 @@ function renderRevealPanel(box, actions) {
   const finish = actions.filter((action) => action.action_id === "finish_reveal");
   const effects = actions.filter((action) => !isAcquire(action) && action.action_id !== "finish_reveal");
   if (effects.length) {
-    heading("Reveal 효과");
+    heading(t("render.reveal_effects_heading"));
     appendActionItems(box, effects);
   }
   if (buys.length) {
-    heading("살 수 있는 카드 — 테이블에서 빛나는 카드를 눌러도 됩니다");
+    heading(t("render.buyable_cards_heading"));
     for (const action of buys) {
       const item = actionItem(action);
       const cost = acquireCostNode(action);
@@ -821,7 +856,9 @@ function renderRevealPanel(box, actions) {
     const item = actionItem(action);
     item.classList.add("finish-row");
     const button = item.querySelector("button");
-    button.textContent = buys.length ? "구매 끝 · Reveal 종료" : "Reveal 종료";
+    button.textContent = buys.length
+      ? t("render.finish_reveal_with_buys")
+      : t("render.finish_reveal");
     box.appendChild(item);
   }
 }
@@ -851,9 +888,8 @@ function actionItem(action, onApply) {
     wrap.classList.add("irreversible");
     const badge = document.createElement("span");
     badge.className = "irreversible-badge";
-    badge.textContent = "되돌리기 불가";
-    badge.title =
-      "이 행동 뒤에는 되돌릴 수 없습니다 (숨겨진 정보가 공개되거나 무작위 결과가 정해집니다)";
+    badge.textContent = t("render.irreversible_badge");
+    badge.title = t("render.irreversible_title");
     button.appendChild(badge);
   }
   if (typeof action.strength_after === "number") {
@@ -866,8 +902,20 @@ function actionItem(action, onApply) {
     wrap.classList.add("shortfall");
     const badge = document.createElement("span");
     badge.className = "shortfall-badge";
-    badge.textContent = action.warning;
-    badge.title = "선택은 할 수 있지만 supply가 부족해 인쇄된 만큼 되지 않습니다";
+    /* The server's `warning` is Korean; `shortfall` is the same as data. */
+    badge.textContent = action.shortfall
+      ? action.shortfall
+          .map((short) =>
+            t(
+              short.kind === "troops"
+                ? "render.shortfall_troops"
+                : "render.shortfall_specimens",
+              { requested: short.requested, made: short.made },
+            ),
+          )
+          .join(" · ")
+      : action.warning;
+    badge.title = t("render.shortfall_title");
     button.appendChild(badge);
   }
   wrap.appendChild(button);
@@ -878,7 +926,7 @@ function actionItem(action, onApply) {
     info.type = "button";
     info.className = "action-info";
     info.textContent = "ⓘ";
-    info.title = "효과 미리보기";
+    info.title = t("render.effect_preview_title");
     const detail = document.createElement("div");
     detail.className = "action-detail";
     detail.hidden = true;
@@ -927,10 +975,10 @@ function focusActions(ref, label) {
   const header = document.createElement("div");
   header.className = "action-focus";
   const text = document.createElement("span");
-  text.append(`${label || ref} · 선택지 ${matches.length}개`);
+  text.append(t("render.action_focus_label", { label: label || ref, count: matches.length }));
   const clear = document.createElement("button");
   clear.type = "button";
-  clear.textContent = "전체 보기";
+  clear.textContent = t("render.view_all");
   clear.addEventListener("click", clearActionFocus);
   header.append(text, clear);
   box.prepend(header);

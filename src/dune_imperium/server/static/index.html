@@ -11,86 +11,86 @@
   <header>
     <h1>Dune: Imperium — Uprising</h1>
     <div id="header-status"></div>
-    <span id="connection-note" role="status" hidden>서버 연결 끊김 — 다시 연결하는 중…</span>
-    <button id="open-help" title="도움말 (?)" aria-keyshortcuts="Shift+Slash">도움말</button>
-    <button id="language-toggle" lang="en" hidden>English</button>
-    <button id="open-lobby" hidden>좌석</button>
-    <button id="save-game" hidden>저장</button>
-    <button id="leave-game" hidden>나가기</button>
+    <span id="connection-note" role="status" hidden data-i18n="html.connection_note">서버 연결 끊김 — 다시 연결하는 중…</span>
+    <button id="open-help" title="도움말 (?)" aria-keyshortcuts="Shift+Slash" data-i18n="html.open_help" data-i18n-attr="title=html.open_help_title">도움말</button>
+    <button id="language-toggle" lang="en">English</button>
+    <button id="open-lobby" hidden data-i18n="html.open_lobby">좌석</button>
+    <button id="save-game" hidden data-i18n="html.save_game">저장</button>
+    <button id="leave-game" hidden data-i18n="html.leave_game">나가기</button>
   </header>
 
   <main>
     <section id="setup-screen" class="panel">
-      <h2>새 게임</h2>
+      <h2 data-i18n="html.setup_title">새 게임</h2>
       <form id="setup-form">
         <fieldset>
-          <legend>좌석 배정</legend>
+          <legend data-i18n="html.seat_assignment_legend">좌석 배정</legend>
           <div id="seat-selects"></div>
-          <label>체크포인트 경로 (좌석에 "학습 체크포인트"를 고르면 사용; train extra 필요)
+          <label><span data-i18n="html.checkpoint_path_label">체크포인트 경로 (좌석에 "학습 체크포인트"를 고르면 사용; train extra 필요)</span>
             <input type="text" id="opt-checkpoint" placeholder="checkpoints/2026-09-06/champion_iter200.pt"></label>
         </fieldset>
         <fieldset>
-          <legend>규칙 옵션</legend>
+          <legend data-i18n="html.rule_options_legend">규칙 옵션</legend>
           <label><input type="checkbox" id="opt-leader-draft" checked>
-            Leader 6종 공개 draft (OQ-007 convention)</label>
+            <span data-i18n="html.opt_leader_draft">Leader 6종 공개 draft (OQ-007 convention)</span></label>
           <label><input type="checkbox" id="opt-choam">
             CHOAM Module</label>
           <label><input type="checkbox" id="opt-promo">
-            프로모 카드 (Uprising 3장: Arrakis Revolt, The Beast's Spoils, Pivotal Gambit; Bloodlines를 켜면 Ruthless Leadership도)</label>
+            <span data-i18n="html.opt_promo">프로모 카드 (Uprising 3장: Arrakis Revolt, The Beast's Spoils, Pivotal Gambit; Bloodlines를 켜면 Ruthless Leadership도)</span></label>
           <label><input type="checkbox" id="opt-bloodlines">
-            Bloodlines 확장 (Sardaukar Commander·새 카드·Leader 8종)</label>
+            <span data-i18n="html.opt_bloodlines">Bloodlines 확장 (Sardaukar Commander·새 카드·Leader 8종)</span></label>
           <label><input type="checkbox" id="opt-tech">
-            Tech Module (Bloodlines 필요: Ixian Embassy·Tech tile 18장·Kota Odax)</label>
+            <span data-i18n="html.opt_tech">Tech Module (Bloodlines 필요: Ixian Embassy·Tech tile 18장·Kota Odax)</span></label>
           <label><input type="checkbox" id="opt-immortality">
-            Immortality 확장 (Bene Tleilax board·Tleilaxu Row·Graft·새 카드)</label>
-          <label id="opt-seed-row">Seed (빈칸 = 무작위)
-            <input type="number" id="opt-seed" min="0" placeholder="무작위"></label>
+            <span data-i18n="html.opt_immortality">Immortality 확장 (Bene Tleilax board·Tleilaxu Row·Graft·새 카드)</span></label>
+          <label id="opt-seed-row"><span data-i18n="html.opt_seed_label">Seed (빈칸 = 무작위)</span>
+            <input type="number" id="opt-seed" min="0" placeholder="무작위" data-i18n-attr="placeholder=html.opt_seed_placeholder"></label>
         </fieldset>
-        <button type="submit" id="create-game">게임 시작</button>
+        <button type="submit" id="create-game" data-i18n="html.create_game">게임 시작</button>
       </form>
       <div id="game-list-wrap" hidden>
-        <h2>진행 중인 게임</h2>
+        <h2 data-i18n="html.game_list_title">진행 중인 게임</h2>
         <ul id="game-list"></ul>
       </div>
       <div id="save-list-wrap" hidden>
-        <h2>저장된 게임</h2>
+        <h2 data-i18n="html.save_list_title">저장된 게임</h2>
         <ul id="save-list"></ul>
       </div>
       <p id="setup-error" class="error" role="alert" hidden></p>
     </section>
 
     <section id="landing-screen" class="panel" hidden>
-      <h2>초대받은 사람만 들어올 수 있는 서버입니다</h2>
-      <p>호스트가 보낸 방 링크로 접속하세요.</p>
-      <p class="muted">호스트라면 서버를 띄운 콘솔에 찍힌 관리자 링크를 여세요.</p>
+      <h2 data-i18n="html.landing_title">초대받은 사람만 들어올 수 있는 서버입니다</h2>
+      <p data-i18n="html.landing_instructions">호스트가 보낸 방 링크로 접속하세요.</p>
+      <p class="muted" data-i18n="html.landing_host_note">호스트라면 서버를 띄운 콘솔에 찍힌 관리자 링크를 여세요.</p>
       <p id="landing-resume" hidden>
-        <button type="button" id="landing-resume-button">마지막으로 있던 방으로 이어 하기 ▶</button></p>
+        <button type="button" id="landing-resume-button" data-i18n="html.landing_resume_button">마지막으로 있던 방으로 이어 하기 ▶</button></p>
       <p id="landing-error" class="error" role="alert" hidden></p>
     </section>
 
     <section id="lobby-screen" class="panel" hidden>
-      <h2>좌석 고르기</h2>
+      <h2 data-i18n="html.lobby_title">좌석 고르기</h2>
       <p id="lobby-status" class="muted"></p>
-      <label>이름 (다른 플레이어에게 보입니다)
+      <label><span data-i18n="html.lobby_name_label">이름 (다른 플레이어에게 보입니다)</span>
         <input type="text" id="lobby-name" maxlength="20" autocomplete="off"></label>
       <ul id="lobby-seats"></ul>
       <p id="lobby-error" class="error" role="alert" hidden></p>
       <p id="lobby-note" class="muted" hidden></p>
-      <button id="lobby-enter" hidden>게임 화면으로 ▶</button>
+      <button id="lobby-enter" hidden data-i18n="html.lobby_enter">게임 화면으로 ▶</button>
       <div id="lobby-host" hidden></div>
     </section>
 
     <section id="game-screen" hidden>
       <div id="table">
-        <aside id="seats" aria-label="좌석"></aside>
+        <aside id="seats" aria-label="좌석" data-i18n-attr="aria-label=html.seats_aria"></aside>
         <div id="center">
-          <section id="board" aria-label="게임 보드"></section>
-          <section id="market" aria-label="공용 카드"></section>
+          <section id="board" aria-label="게임 보드" data-i18n-attr="aria-label=html.board_aria"></section>
+          <section id="market" aria-label="공용 카드" data-i18n-attr="aria-label=html.market_aria"></section>
         </div>
         <aside id="side">
           <div id="side-main">
             <details id="host-panel" class="panel" hidden>
-              <summary>호스트 · 방 링크와 좌석</summary>
+              <summary data-i18n="html.host_panel_summary">호스트 · 방 링크와 좌석</summary>
               <div id="host-panel-body"></div>
             </details>
             <section id="decision-banner" class="panel">
@@ -99,31 +99,31 @@
             </section>
             <section id="review-bar" class="panel" hidden>
               <div class="review-controls">
-                <label>검토 좌석 <select id="review-seat"></select></label>
-                <button id="review-first" aria-label="처음으로" title="처음으로">⏮</button>
-                <button id="review-prev" aria-label="이전 수" title="이전 수">◀</button>
-                <input type="range" id="review-slider" min="0" max="0" value="0" aria-label="검토 위치">
-                <button id="review-next" aria-label="다음 수" title="다음 수">▶</button>
-                <button id="review-last" aria-label="끝으로" title="끝으로">⏭</button>
-                <button id="review-prev-own">이전 내 행동</button>
-                <button id="review-next-own">다음 내 행동</button>
-                <button id="review-exit">검토 종료</button>
+                <label><span data-i18n="html.review_seat_label">검토 좌석</span> <select id="review-seat"></select></label>
+                <button id="review-first" aria-label="처음으로" title="처음으로" data-i18n-attr="aria-label=html.review_first;title=html.review_first">⏮</button>
+                <button id="review-prev" aria-label="이전 수" title="이전 수" data-i18n-attr="aria-label=html.review_prev;title=html.review_prev">◀</button>
+                <input type="range" id="review-slider" min="0" max="0" value="0" aria-label="검토 위치" data-i18n-attr="aria-label=html.review_slider_aria">
+                <button id="review-next" aria-label="다음 수" title="다음 수" data-i18n-attr="aria-label=html.review_next;title=html.review_next">▶</button>
+                <button id="review-last" aria-label="끝으로" title="끝으로" data-i18n-attr="aria-label=html.review_last;title=html.review_last">⏭</button>
+                <button id="review-prev-own"></button>
+                <button id="review-next-own"></button>
+                <button id="review-exit" data-i18n="html.review_exit">검토 종료</button>
               </div>
               <div class="review-controls review-playback">
-                <button id="review-play">재생</button>
-                <label>단위
+                <button id="review-play"></button>
+                <label><span data-i18n="html.review_unit_label">단위</span>
                   <select id="review-unit">
-                    <option value="turn" selected>한 턴씩</option>
-                    <option value="step">한 수씩</option>
+                    <option value="turn" selected data-i18n="html.review_unit_turn">한 턴씩</option>
+                    <option value="step" data-i18n="html.review_unit_step">한 수씩</option>
                   </select>
                 </label>
-                <label>간격
+                <label><span data-i18n="html.review_interval_label">간격</span>
                   <select id="review-interval">
-                    <option value="250">0.25초</option>
-                    <option value="500">0.5초</option>
-                    <option value="1000" selected>1초</option>
-                    <option value="2000">2초</option>
-                    <option value="4000">4초</option>
+                    <option value="250" data-i18n="html.review_interval_025">0.25초</option>
+                    <option value="500" data-i18n="html.review_interval_05">0.5초</option>
+                    <option value="1000" selected data-i18n="html.review_interval_1">1초</option>
+                    <option value="2000" data-i18n="html.review_interval_2">2초</option>
+                    <option value="4000" data-i18n="html.review_interval_4">4초</option>
                   </select>
                 </label>
               </div>
@@ -139,7 +139,7 @@
           </div>
         </aside>
       </div>
-      <section id="private-zone" aria-label="내 손패"></section>
+      <section id="private-zone" aria-label="내 손패" data-i18n-attr="aria-label=html.private_zone_aria"></section>
     </section>
   </main>
 

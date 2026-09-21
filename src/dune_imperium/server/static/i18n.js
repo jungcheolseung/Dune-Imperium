@@ -21,6 +21,7 @@ const LABEL_TABLES = {
   EFFECT_ICON_LABELS,
   RESEARCH_BONUS_LABELS,
   TLEILAXU_TRACK_LABELS,
+  PAYLOAD_KEY_LABELS,
 };
 /* [value, label] lists (core.js): their labels swap the same way. */
 const LABEL_LISTS = { SEAT_KINDS, AGENT_ICON_GROUPS };
@@ -155,17 +156,30 @@ function loadLanguage() {
 
 /* Whatever is on screen, drawn again in the new language. */
 function redrawForLanguage() {
+  /* Built once and kept while hidden: redrawn whether on screen or not. */
+  buildSeatSelects();
   if (!el("setup-screen").hidden) {
-    buildSeatSelects();
     loadGameList().catch(() => {});
     loadSaveList().catch(() => {});
   }
   if (!el("lobby-screen").hidden && state.summary) renderLobby();
   if (state.summary && !el("game-screen").hidden) {
-    if (state.review) reviewGoto(state.review.cursor).catch(() => {});
-    else render();
+    if (state.review) {
+      labelReviewBar(state.review.seat);
+      /* A seek, not a bare reviewGoto: it holds playback and schedules the
+         next move, where a bare request would supersede a playing tick and
+         leave playback waiting forever. */
+      reviewSeek(state.review.cursor);
+    } else {
+      render();
+    }
     noticeTurn();
   }
+  /* The live region still holds a sentence in the old language: say the
+     current turn again in the new one (a review says nothing). */
+  clearAnnouncement();
+  announcedTurn = undefined;
+  announceTurn(state.summary);
   if (!el("help").hidden) {
     const opener = helpOpener;
     closeHelp();

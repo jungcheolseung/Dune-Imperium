@@ -264,7 +264,8 @@ def intrigue_pile(page) -> None:
     pile = page.locator(".pile-button[data-pile='intrigue']")
     check.ok(pile.count() == 1, "one pile line")
     text = pile.inner_text()
-    check.ok("2" in text and "trash 1" in text, "with both counts", text)
+    trash = page.evaluate("phraseText('{trash}')")
+    check.ok("2" in text and f"{trash} 1" in text, "with both counts", text)
     check.ok(
         page.locator("#market .vcard.intrigue").count() == 0,
         "no Intrigue card faces in the column",

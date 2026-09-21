@@ -14,11 +14,13 @@ async function adoptAdminLink() {
     });
     return null;
   } catch (error) {
-    return `관리자 링크가 맞지 않습니다 (${error.message})`;
+    return t("app.admin_link_invalid", { message: error.message });
   }
 }
 
 async function init() {
+  /* First: everything below, errors included, speaks the chosen language. */
+  loadLanguage();
   loadCollapsedStrips();
   loadExpandedSeats();
   state.catalog = await api("/catalog");
@@ -26,7 +28,6 @@ async function init() {
   state.server = await api("/whoami");
   /* The host of a remote game plays too and must not know the seed. */
   el("opt-seed-row").hidden = isRemote();
-  loadLanguage();
   buildSeatSelects();
   el("open-help").addEventListener("click", () => openHelp());
   el("language-toggle").addEventListener("click", () =>
@@ -155,6 +156,6 @@ async function init() {
 }
 
 init().catch((error) => {
-  el("setup-error").textContent = `초기화 실패 (${error.message})`;
+  el("setup-error").textContent = t("app.init_failed", { message: error.message });
   el("setup-error").hidden = false;
 });

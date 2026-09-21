@@ -141,9 +141,10 @@ function pickStep(ref, entry, anchor) {
     /* The halves of the pick cannot go together. */
     const cards = [current.cardId, current.partnerId].filter(Boolean).map(nameOf).join(" + ");
     note(
-      part === "spaceId"
-        ? `${cards}(으)로는 ${entry ? entry.name : nameOf(ref)}에 갈 수 없습니다.`
-        : `${entry ? entry.name : nameOf(ref)}(으)로는 ${nameOf(current.spaceId)}에 갈 수 없습니다.`
+      t("turn.no_route", {
+        from: part === "spaceId" ? cards : entry ? entry.name : nameOf(ref),
+        to: part === "spaceId" ? (entry ? entry.name : nameOf(ref)) : nameOf(current.spaceId),
+      })
     );
     if (entry) pinPopover(entry, anchor);
     return true;
@@ -211,10 +212,7 @@ function followWithPartner(partnerId) {
   /* The space was open to this card only with a certain partner (an
      occupied space on Tleilaxu Infiltrator's promise, a Bond icon on
      Ghola's): the engine's own partner choice is on screen now. */
-  note(
-    `${nameOf(partnerId)}은(는) 이 칸에서 함께 낼 수 없습니다. ` +
-      "함께 낼 카드를 다시 고르거나 되돌리기를 누르세요."
-  );
+  note(t("turn.partner_not_allowed", { name: nameOf(partnerId) }));
 }
 
 /* What still tells two placements of one card on one space apart: the
@@ -234,24 +232,22 @@ function placementOptionNode(action, candidates) {
     discount.append(
       action.arguments.discount
         ? amount(action.arguments.discount, action.arguments.discount, 1)
-        : "할인 없이",
-      action.arguments.discount ? " 할인" : ""
+        : t("turn.no_discount"),
+      action.arguments.discount ? t("turn.discount_suffix") : ""
     );
     line.appendChild(discount);
   }
   if (differs("infiltrate_post_id")) {
     const spy = document.createElement("span");
     spy.textContent = action.arguments.infiltrate_post_id
-      ? `Spy 회수 — ${prettify(action.arguments.infiltrate_post_id)}`
-      : "Spy 회수 없이";
+      ? t("turn.spy_recall", { post: prettify(action.arguments.infiltrate_post_id) })
+      : t("turn.spy_recall_none");
     line.appendChild(spy);
   }
   if (candidates.some((other) => Boolean(other.arguments.graft) !== Boolean(action.arguments.graft))) {
     const graft = document.createElement("span");
     graft.className = "pick-graft";
-    graft.textContent = action.arguments.graft
-      ? "Graft — 함께 낼 카드는 다음에 고릅니다"
-      : "이 카드만";
+    graft.textContent = action.arguments.graft ? t("turn.graft_pending") : t("turn.graft_solo");
     line.appendChild(graft);
   }
   if (!line.childNodes.length) line.appendChild(describeAction(action));
@@ -298,11 +294,11 @@ function pickStepNode(number, label, ref, part) {
   step.disabled = !ref || state.busy;
   step.append(`${number} ${label} · `);
   const value = document.createElement("strong");
-  value.textContent = ref ? nameOf(ref) : "고르세요";
+  value.textContent = ref ? nameOf(ref) : t("turn.choose");
   step.appendChild(value);
   if (ref) {
     step.append(" ✕");
-    step.title = "다시 고르기";
+    step.title = t("turn.choose_again");
     step.addEventListener("click", () => clearPick(part));
   }
   return step;
@@ -325,7 +321,7 @@ function renderActionPanel(box) {
     if (!placements.length && actions.some((action) => tableRefs(action).length)) {
       const hint = document.createElement("div");
       hint.className = "pick-hint muted";
-      hint.textContent = "테이블에서 빛나는 카드나 칸을 눌러 골라도 됩니다.";
+      hint.textContent = t("turn.table_hint");
       box.appendChild(hint);
     }
     /* The flat list of an Agent turn is long: its way back to the steps
@@ -337,11 +333,13 @@ function renderActionPanel(box) {
   const pick = state.pick || {};
   const steps = document.createElement("div");
   steps.className = "pick-steps";
-  steps.appendChild(pickStepNode("①", "카드", pick.cardId, "cardId"));
-  if (pick.partnerId) steps.appendChild(pickStepNode("＋", "함께", pick.partnerId, "partnerId"));
+  steps.appendChild(pickStepNode("①", t("turn.step_card"), pick.cardId, "cardId"));
+  if (pick.partnerId) {
+    steps.appendChild(pickStepNode("＋", t("turn.step_together"), pick.partnerId, "partnerId"));
+  }
   steps.append(
     icon("arrow_right", "→"),
-    pickStepNode("②", "보낼 칸", pick.spaceId, "spaceId")
+    pickStepNode("②", t("turn.step_space"), pick.spaceId, "spaceId")
   );
   box.appendChild(steps);
 
@@ -349,7 +347,7 @@ function renderActionPanel(box) {
   hint.className = "pick-hint muted";
   const candidates = pickCandidates();
   if (pick.cardId && pick.spaceId) {
-    hint.textContent = "③ 남은 선택을 고르세요.";
+    hint.textContent = t("turn.step3_hint");
     box.appendChild(hint);
     for (const action of candidates) box.appendChild(placementOptionItem(action, candidates));
   } else {
@@ -357,16 +355,16 @@ function renderActionPanel(box) {
     const canJoin =
       pick.cardId && !pick.partnerId && hand.some((other) => canPair(pick.cardId, other));
     hint.textContent = pick.partnerId
-      ? "두 카드로 갈 수 있는 칸이 빛납니다. 보낼 곳을 누르세요. (Esc: 취소)"
+      ? t("turn.hint_both_picked")
       : canJoin
         ? (isGraftCard(pick.cardId)
-            ? "Graft 카드는 혼자 낼 수 없습니다. ＋ 표시된 카드를 눌러 함께 낼 카드를 고르거나, 칸을 먼저 눌러도 됩니다."
-            : "빛나는 칸을 누르세요. Graft로 함께 낼 카드가 있으면 ＋ 표시된 카드를 먼저 누르세요. (Esc: 취소)")
+            ? t("turn.hint_graft_required")
+            : t("turn.hint_graft_optional"))
         : pick.cardId
-          ? "빛나는 칸 중에서 Agent를 보낼 곳을 누르세요. (Esc: 취소)"
+          ? t("turn.hint_choose_space")
           : pick.spaceId
-            ? "빛나는 카드 중에서 그 칸에 낼 카드를 누르세요. (Esc: 취소)"
-            : "손패에서 빛나는 카드를 누르세요. 칸을 먼저 눌러도 됩니다.";
+            ? t("turn.hint_choose_card")
+            : t("turn.hint_start");
     box.appendChild(hint);
   }
 
@@ -374,7 +372,7 @@ function renderActionPanel(box) {
   if (others.length) {
     const heading = document.createElement("div");
     heading.className = "pick-others muted";
-    heading.textContent = "또는";
+    heading.textContent = t("turn.or");
     box.appendChild(heading);
     appendActionItems(box, others);
   }
@@ -385,7 +383,7 @@ function actionListToggle(staged, count) {
   const toggle = document.createElement("button");
   toggle.type = "button";
   toggle.className = "action-list-toggle";
-  toggle.textContent = staged ? `전체 행동 목록 보기 (${count}개)` : "단계별로 고르기";
+  toggle.textContent = staged ? t("turn.show_full_list", { count }) : t("turn.show_steps");
   toggle.addEventListener("click", () => {
     if (staged) storageSet(FULL_LIST_KEY, "1");
     else storageRemove(FULL_LIST_KEY);
@@ -419,7 +417,9 @@ function tableClick(ref, entry, anchor) {
   }
   if (legal.length > 1) {
     focusActions(ref, entry ? entry.name : ref);
-    note(`${entry ? entry.name : ref}: 선택지가 ${legal.length}개입니다. 오른쪽 행동 목록에서 고르세요.`);
+    note(
+      t("turn.multiple_choices", { name: entry ? entry.name : ref, count: legal.length })
+    );
     return;
   }
   if (entry) pinPopover(entry, anchor);

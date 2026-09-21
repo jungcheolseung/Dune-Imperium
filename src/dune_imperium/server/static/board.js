@@ -27,9 +27,9 @@ function seatToken(seat, className) {
   token.className = className;
   token.style.background = SEAT_COLORS[seat];
   token.textContent = String(seat);
-  token.title = `좌석 ${seat}`;
+  token.title = t("common.seat", { seat });
   token.setAttribute("role", "img");
-  token.setAttribute("aria-label", `좌석 ${seat}`);
+  token.setAttribute("aria-label", t("common.seat", { seat }));
   token.dataset.seat = String(seat);
   return token;
 }
@@ -90,9 +90,10 @@ function renderBoard() {
   board.textContent = "";
   const view = state.view;
   if (!view) {
-    board.innerHTML =
-      '<span class="muted">사람 좌석이 없는 게임입니다. 최종 순위의 ' +
-      '"AI 대국 다시 보기"로 처음부터 볼 수 있습니다.</span>';
+    const note = document.createElement("span");
+    note.className = "muted";
+    note.textContent = t("board.no_human_seats");
+    board.appendChild(note);
     return;
   }
   if (state.catalog.board_image) {
@@ -143,7 +144,7 @@ function controlMarker(seat, spaceId, box) {
   marker.style.width = `${width}%`;
   marker.style.height = `${height}%`;
   const title = document.createElementNS(svgNs, "title");
-  title.textContent = `Control: 좌석 ${seat} · ${nameOf(spaceId)}`;
+  title.textContent = t("board.control_seat_space", { seat, name: nameOf(spaceId) });
   const pennant = document.createElementNS(svgNs, "polygon");
   pennant.setAttribute("points", `0,0 100,0 100,100 50,${dip} 0,100`);
   pennant.setAttribute("fill", SEAT_COLORS[seat]);
@@ -243,7 +244,7 @@ function renderBoardStage(board, view) {
        for keeps the mark inside its hotspot. */
     if (controllers.has(spaceId) && !controlFlagBox(spaceId)) {
       const flag = seatToken(controllers.get(spaceId), "control-flag");
-      flag.title = `Control: 좌석 ${controllers.get(spaceId)}`;
+      flag.title = t("board.control_seat", { seat: controllers.get(spaceId) });
       hotspot.appendChild(flag);
     }
     if (makerSpice.get(spaceId) && !makerSpicePoint(spaceId)) {
@@ -284,7 +285,7 @@ function renderBoardStage(board, view) {
     post.className = "spy-post";
     post.style.left = `${x}%`;
     post.style.top = `${y}%`;
-    post.title = `${prettify(postId)}: 좌석 ${seats.join(", ")}`;
+    post.title = t("board.post_seats", { post: prettify(postId), seats: seats.join(", ") });
     for (const seat of seats) post.appendChild(seatToken(seat, "spy-token"));
     stage.appendChild(post);
   }
@@ -292,8 +293,7 @@ function renderBoardStage(board, view) {
   if (!view.shield_wall_present) {
     const note = document.createElement("span");
     note.className = "board-note";
-    note.appendChild(icon("shield_wall", "Shield Wall"));
-    note.append(" 파괴됨");
+    note.appendChild(tNode("board.shield_wall_destroyed"));
     stage.appendChild(note);
   }
   renderSlotCards(stage, view);
@@ -327,7 +327,7 @@ function renderSlotCards(stage, view) {
     deck.className = "slot-deck";
     deck.style.width = `${dWidth}%`;
     deck.style.height = `${dHeight}%`;
-    deck.title = `Conflict deck · ${view.conflict_deck_size}장 남음`;
+    deck.title = t("board.conflict_deck_remaining", { count: view.conflict_deck_size });
     const count = document.createElement("span");
     count.className = "slot-deck-count";
     count.textContent = String(view.conflict_deck_size);
@@ -532,7 +532,7 @@ function makerHooksToken(seat, layout) {
     token.appendChild(icon("maker_hooks", "Maker Hooks"));
   }
   token.dataset.seat = String(seat);
-  token.title = `좌석 ${seat} · Maker Hooks`;
+  token.title = t("board.seat_maker_hooks", { seat });
   return placeAt(token, x, y);
 }
 
@@ -574,7 +574,7 @@ function renderTrackMarkers(stage, view) {
       ring.dataset.faction = key;
       if (size !== undefined) ring.style.width = `${size}%`;
       ring.style.borderColor = SEAT_COLORS[holder.player];
-      ring.title = `좌석 ${holder.player} · ${FACTION_LABELS[key]} Alliance`;
+      ring.title = t("board.alliance_holder", { seat: holder.player, faction: FACTION_LABELS[key] });
       stage.appendChild(placeAt(ring, ax, ay + offset));
     } else {
       stage.appendChild(placeAt(allianceToken(key, size), ax, ay + offset));
@@ -595,7 +595,11 @@ function renderTrackMarkers(stage, view) {
       cube.className = "track-cube";
       cube.style.width = `${tracks.influence.cube_size}%`;
       cube.style.background = color;
-      cube.title = `좌석 ${seat} · ${FACTION_LABELS[key]} Influence ${player.influence[key]}`;
+      cube.title = t("board.influence_cube", {
+        seat,
+        faction: FACTION_LABELS[key],
+        level: player.influence[key],
+      });
       placeAt(cube, tracks.influence.seat_x[seat], tracks.influence.levels[level] + offset);
       stage.appendChild(cube);
     }
@@ -606,7 +610,7 @@ function renderTrackMarkers(stage, view) {
        centre and overlap just enough to stay inside the cell. */
     const vp = player.victory_points || 0;
     const vpToken = seatDisc(seat, "vp-token", tracks.disc_size);
-    vpToken.title = `좌석 ${seat} · ${vp} VP`;
+    vpToken.title = t("board.seat_vp", { seat, vp });
     const level = scoreLevel(vp, tracks);
     const vpY = level < tracks.victory_points.levels.length
       ? tracks.victory_points.levels[level]
@@ -640,7 +644,7 @@ function renderTrackMarkers(stage, view) {
     const token = faces
       ? strengthPicture(seat, flipped ? faces.plus20 : faces.front, tracks.strength.token_size)
       : seatToken(seat, "track-token strength-token");
-    token.title = `좌석 ${seat} · 전투력 ${strength}`;
+    token.title = t("board.seat_strength", { seat, strength });
     if (shown === 0) {
       const [zx, zy, zw, zh] = tracks.strength.zero_box;
       const inset = faces ? 0.25 : 0.3;
@@ -680,7 +684,7 @@ function renderTrackMarkers(stage, view) {
     const garrison = document.createElement("div");
     garrison.className = "force-chip garrison";
     garrison.style.borderColor = color;
-    garrison.title = `좌석 ${seat} · garrison ${player.troops_garrison || 0}`;
+    garrison.title = t("board.seat_garrison", { seat, count: player.troops_garrison || 0 });
     garrison.append(
       seatToken(seat, "seat-mark"),
       amount("troop", "garrison troop", player.troops_garrison || 0)
@@ -703,7 +707,7 @@ function renderTrackMarkers(stage, view) {
       const deployed = document.createElement("div");
       deployed.className = "force-chip deployed";
       deployed.style.borderColor = color;
-      deployed.title = `좌석 ${seat} · Conflict 병력`;
+      deployed.title = t("board.seat_conflict_troops", { seat });
       deployed.appendChild(seatToken(seat, "seat-mark"));
       if (player.troops_conflict) {
         deployed.appendChild(amount("troop", "Conflict troop", player.troops_conflict));
@@ -724,7 +728,7 @@ function renderTrackMarkers(stage, view) {
       if (strength) {
         const total = document.createElement("span");
         total.className = "force-strength";
-        total.title = `전투력 ${strength}`;
+        total.title = t("board.total_strength", { strength });
         total.textContent = String(strength);
         deployed.appendChild(total);
       }
@@ -753,7 +757,7 @@ function renderTrackMarkers(stage, view) {
       const [cx, cy] = tracks.council_seats[councilSlot];
       councilSlot += 1;
       const token = seatDisc(seat, "council-token", tracks.disc_size);
-      token.title = `좌석 ${seat} · High Council`;
+      token.title = t("board.seat_high_council", { seat });
       placeAt(token, cx, cy);
       stage.appendChild(token);
     }
@@ -765,11 +769,11 @@ function renderTrackMarkers(stage, view) {
 function renderSpaceList(board, view) {
   const catalog = state.catalog;
   const heading = document.createElement("h2");
-  heading.textContent = "보드 공간";
+  heading.textContent = t("board.board_spaces_heading");
   board.appendChild(heading);
   const hint = document.createElement("div");
   hint.className = "muted";
-  hint.textContent = "보드 스캔(assets/board/map.jpg)이 없어 목록으로 표시합니다.";
+  hint.textContent = t("board.board_scan_missing");
   board.appendChild(hint);
   const { occupants, controllers } = boardOccupancy(view);
   const makerSpice = new Map(view.maker_bonus_spice);
@@ -811,7 +815,7 @@ function spaceRow(spaceId, occupants, controllers, makerSpice) {
   if (!spaceImplementedFor(entry)) {
     const badge = document.createElement("span");
     badge.className = "badge-unimpl";
-    badge.textContent = "미구현 · 배치 불가";
+    badge.textContent = t("board.unimplemented_badge");
     title.appendChild(badge);
   }
   row.appendChild(title);
@@ -823,10 +827,14 @@ function spaceRow(spaceId, occupants, controllers, makerSpice) {
   const status = [];
   const seats = occupants.get(spaceId);
   if (seats && seats.length) {
-    status.push(`Agent: ${seats.map((seat) => `좌석 ${seat}`).join(", ")}`);
+    status.push(
+      t("board.agent_seats", {
+        seats: seats.map((seat) => t("common.seat", { seat })).join(", "),
+      }),
+    );
   }
   if (controllers.has(spaceId)) {
-    status.push(`Control: 좌석 ${controllers.get(spaceId)}`);
+    status.push(t("board.control_seat", { seat: controllers.get(spaceId) }));
   }
   if (makerSpice.get(spaceId)) {
     status.push(`bonus spice ${makerSpice.get(spaceId)}`);
@@ -956,7 +964,7 @@ function stripBox(title, count, className) {
   button.type = "button";
   button.className = "strip-toggle";
   button.setAttribute("aria-expanded", collapsed ? "false" : "true");
-  button.title = collapsed ? "펼치기" : "접기";
+  button.title = collapsed ? t("common.expand") : t("common.collapse");
   button.append(collapsed ? "▸" : "▾", " ", title);
   if (collapsed && count !== undefined && count !== null) button.append(` (${count})`);
   button.addEventListener("click", (event) => {
@@ -999,7 +1007,7 @@ function renderMarket() {
     const picked = new Set(view.players.map((p) => p.leader_id).filter(Boolean));
     cardStrip(market, "Leader draft", view.leader_draft_pool, "", (id) => ({
       className: "leader" + (picked.has(id) ? " taken" : ""),
-      badge: picked.has(id) ? "선택됨" : null,
+      badge: picked.has(id) ? t("board.leader_taken") : null,
     }));
   }
 
@@ -1008,11 +1016,11 @@ function renderMarket() {
      below only cover the text-board fallback. */
   const onBoard = Boolean(state.catalog.board_image);
   if (!onBoard) {
-    cardStrip(market, "Conflict", view.current_conflict_ids, "아직 공개되지 않음", {
+    cardStrip(market, "Conflict", view.current_conflict_ids, t("board.conflict_not_revealed"), {
       className: "conflict",
     });
   }
-  cardStrip(market, "Imperium Row", view.imperium_row, "비어 있음");
+  cardStrip(market, "Imperium Row", view.imperium_row, t("common.empty"));
   cardStrip(market, "Reserve", view.reserve_stacks.map(([cardId]) => cardId), "", (id) => {
     const stack = view.reserve_stacks.find(([cardId]) => cardId === id);
     return { badge: `×${stack ? stack[1] : 0}` };
@@ -1024,7 +1032,10 @@ function renderMarket() {
        [Bloodlines pp. 3-4]. */
     const spaces = view.sardaukar_commander_space_ids || [];
     const box = stripBox(
-      `Sardaukar Commander · 보드 ${spaces.length} · bank ${view.sardaukar_commanders_bank || 0}`,
+      t("board.sardaukar_commander_summary", {
+        count: spaces.length,
+        bank: view.sardaukar_commanders_bank || 0,
+      }),
       spaces.length,
     );
     const row = document.createElement("div");
@@ -1032,7 +1043,7 @@ function renderMarket() {
     if (!spaces.length) {
       const empty = document.createElement("span");
       empty.className = "muted";
-      empty.textContent = "보드에 남은 Commander 없음";
+      empty.textContent = t("board.no_commanders_on_board");
       row.appendChild(empty);
     }
     for (const spaceId of spaces) row.appendChild(chip(spaceId));
@@ -1042,7 +1053,7 @@ function renderMarket() {
       market,
       `Skill (face-up) · stack ${view.skill_stack_size || 0}`,
       (view.skill_face_up || []).map(skillIdOf),
-      "없음",
+      t("common.none"),
       { className: "skill" }
     );
   }
@@ -1060,7 +1071,7 @@ function renderMarket() {
       if (!tileId) {
         const empty = document.createElement("span");
         empty.className = "stack-empty";
-        empty.textContent = `stack ${index + 1} 비었음`;
+        empty.textContent = t("board.stack_empty", { index: index + 1 });
         row.appendChild(empty);
         return;
       }
@@ -1078,12 +1089,12 @@ function renderMarket() {
       market,
       `Contracts · bank ${view.contract_bank_size}`,
       view.face_up_contract_ids,
-      "비어 있음",
+      t("common.empty"),
       { className: "contract" }
     );
   }
   if (view.sardaukar_contract_ids.length) {
-    cardStrip(market, "Sardaukar contract · Shaddam 전용 set-aside", view.sardaukar_contract_ids, "", {
+    cardStrip(market, t("board.sardaukar_contract_title"), view.sardaukar_contract_ids, "", {
       className: "contract",
       badge: "set-aside",
     });
@@ -1112,9 +1123,9 @@ function renderIntriguePiles(market, view) {
   pile.type = "button";
   pile.className = "pile-button";
   pile.dataset.pile = "intrigue";
-  pile.append(icon("intrigue", "Intrigue"), ` Intrigue discard ${discard.length}장`);
-  if (trash.length) pile.append(` · trash ${trash.length}장`);
-  pile.title = "지금까지 쓰인 Intrigue 카드 보기";
+  pile.appendChild(tNode("board.intrigue_discard_count", { count: discard.length }));
+  if (trash.length) pile.append(t("board.intrigue_trash_count", { count: trash.length }));
+  pile.title = t("board.intrigue_pile_title");
   pile.addEventListener("click", (event) => {
     event.stopPropagation();
     openPileList(
@@ -1145,7 +1156,7 @@ function fillBeneTleilaxZoom(layout, view) {
   const close = document.createElement("button");
   close.type = "button";
   close.className = "bt-zoom-close";
-  close.textContent = "닫기";
+  close.textContent = t("common.close");
   close.addEventListener("click", closeBeneTleilaxZoom);
   heading.appendChild(close);
   body.append(heading, renderBeneTleilaxScan(layout, view));
@@ -1201,7 +1212,7 @@ function renderBeneTleilax(market, view) {
     const open = document.createElement("button");
     open.type = "button";
     open.className = "bt-open";
-    open.textContent = "크게 보기";
+    open.textContent = t("board.view_full_size");
     open.addEventListener("click", (event) => {
       event.stopPropagation();
       openBeneTleilaxZoom();
@@ -1237,14 +1248,14 @@ function renderBeneTleilax(market, view) {
     label.className = "hex-label";
     label.textContent =
       space.id === layout.research_start
-        ? "시작"
+        ? t("board.research_start_short")
         : phraseText(RESEARCH_BONUS_LABELS[space.bonus] || space.bonus);
     cell.appendChild(label);
     const tokens = document.createElement("span");
     tokens.className = "hex-tokens";
     for (const seat of tokensBySpace[space.id] || []) tokens.appendChild(seatDisc(seat, "rtoken"));
     cell.appendChild(tokens);
-    cell.title = `${space.id} · ${phraseText(RESEARCH_BONUS_LABELS[space.bonus] || "보너스 없음")}`;
+    cell.title = `${space.id} · ${phraseText(RESEARCH_BONUS_LABELS[space.bonus] || t("board.no_bonus"))}`;
     grid.appendChild(cell);
   }
   box.appendChild(grid);
@@ -1317,8 +1328,8 @@ function renderBeneTleilaxScan(layout, view) {
     hex.style.height = `${hexHeight}%`;
     hex.title =
       spaceId === layout.research_start
-        ? "Research 시작"
-        : `${spaceId} · ${phraseText(RESEARCH_BONUS_LABELS[bonusOf[spaceId]] || "보너스 없음")}`;
+        ? t("board.research_start_title")
+        : `${spaceId} · ${phraseText(RESEARCH_BONUS_LABELS[bonusOf[spaceId]] || t("board.no_bonus"))}`;
     stage.appendChild(hex);
     /* The start piece prints a spot per disc (the fourth seat continues
        the column); elsewhere the discs lie in the hex's dark upper half
@@ -1381,7 +1392,7 @@ function renderBeneTleilaxScan(layout, view) {
     const spice = document.createElement("span");
     spice.className = "bt-spice";
     spice.append(icon("spice", "spice"), String(view.tleilaxu_track_spice));
-    spice.title = "첫 도달자가 가져가는 spice";
+    spice.title = t("board.spice_first_reacher");
     placeAt(spice, overlay.spice_point[0], overlay.spice_point[1]);
     stage.appendChild(spice);
   }

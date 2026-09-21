@@ -9,7 +9,7 @@ function buildSeatSelects() {
   wrap.textContent = "";
   for (let seat = 0; seat < 4; seat += 1) {
     const label = document.createElement("label");
-    label.append(`좌석 ${seat} `);
+    label.append(`${t("common.seat", { seat })} `);
     const select = document.createElement("select");
     select.dataset.seat = String(seat);
     for (const [value, text] of SEAT_KINDS) {
@@ -32,13 +32,13 @@ async function loadGameList() {
   for (const summary of games) {
     const item = document.createElement("li");
     const label = summary.finished
-      ? "종료됨"
-      : `라운드 ${summary.round_number}`;
+      ? t("common.finished")
+      : t("screens.round_number", { round: summary.round_number });
     item.append(
       `${seedLabel(summary)}${summary.seats.map(seatKindLabel).join(", ")} · ${label} `
     );
     const button = document.createElement("button");
-    button.textContent = "이어서";
+    button.textContent = t("screens.continue_button");
     button.addEventListener("click", () => openGame(summary.game_id));
     item.appendChild(button);
     list.appendChild(item);
@@ -61,7 +61,7 @@ async function loadSaveList() {
     if (entry.autosave) item.appendChild(autosaveBadge());
     item.append(`${saveTitle(entry)} · ${entry.seats.join(", ")} · ${savedWhen(entry)} `);
     const load = document.createElement("button");
-    load.textContent = "불러오기";
+    load.textContent = t("screens.load_button");
     load.addEventListener("click", async () => {
       try {
         el("setup-error").hidden = true;
@@ -70,12 +70,12 @@ async function loadSaveList() {
         });
         await openGame(summary.game_id);
       } catch (error) {
-        el("setup-error").textContent = `불러오기 실패 (${error.message})`;
+        el("setup-error").textContent = t("screens.load_failed", { message: error.message });
         el("setup-error").hidden = false;
       }
     });
     const remove = document.createElement("button");
-    remove.textContent = "삭제";
+    remove.textContent = t("screens.delete_button");
     remove.addEventListener("click", async () => {
       await api(`/saves/${entry.save_id}`, { method: "DELETE" }).catch(
         () => {}
@@ -88,12 +88,14 @@ async function loadSaveList() {
 }
 
 function saveTitle(entry) {
-  const status = entry.finished ? "종료됨" : `라운드 ${entry.round_number}`;
+  const status = entry.finished
+    ? t("common.finished")
+    : t("screens.round_number", { round: entry.round_number });
   /* An autosave's name only repeats what its badge and the round say. */
   if (entry.autosave) return status;
   const title =
     entry.name ||
-    (entry.game_seed === null ? "이름 없는 저장" : `seed ${entry.game_seed}`);
+    (entry.game_seed === null ? t("screens.unnamed_save") : `seed ${entry.game_seed}`);
   return `${title} · ${status}`;
 }
 
@@ -107,7 +109,7 @@ function savedWhen(entry) {
 function autosaveBadge() {
   const badge = document.createElement("span");
   badge.className = "badge autosave";
-  badge.textContent = "자동 저장";
+  badge.textContent = t("screens.autosave_badge");
   return badge;
 }
 
@@ -138,7 +140,7 @@ async function createGame(event) {
     });
     await openGame(summary.game_id);
   } catch (error) {
-    el("setup-error").textContent = `게임 생성 실패 (${error.message})`;
+    el("setup-error").textContent = t("screens.create_game_failed", { message: error.message });
     el("setup-error").hidden = false;
   }
 }
@@ -249,17 +251,17 @@ function playerName(seat) {
   const info = playerInfo(seat);
   if (info.kind !== "human") return seatKindLabel(info.kind);
   if (info.name) return info.name;
-  return isRemote() && !info.claimed ? "빈 좌석" : "사람";
+  return isRemote() && !info.claimed ? t("screens.empty_seat") : t("screens.person");
 }
 
 function playerLabel(seat) {
-  return `좌석 ${seat} (${playerName(seat)})`;
+  return t("screens.player_label", { seat, name: playerName(seat) });
 }
 
 function presenceDot(info) {
   const dot = document.createElement("span");
   dot.className = "presence " + (info.online ? "on" : "off");
-  dot.title = info.online ? "접속 중" : "접속 끊김";
+  dot.title = info.online ? t("screens.online") : t("screens.offline");
   return dot;
 }
 
@@ -322,8 +324,8 @@ async function openGame(gameId) {
     }
     await showHome(
       error.status === 404
-        ? "그 게임은 이 서버에 없습니다 (서버가 다시 시작됐을 수 있습니다)."
-        : `게임 조회 실패 (${error.message})`
+        ? t("screens.game_not_found")
+        : t("screens.game_fetch_failed", { message: error.message })
     );
     return;
   }
@@ -359,7 +361,7 @@ function enterTable(summary, seat) {
 }
 
 function showRefreshError(error) {
-  el("game-error").textContent = `게임 상태 조회 실패 (${error.message})`;
+  el("game-error").textContent = t("screens.game_state_failed", { message: error.message });
   el("game-error").hidden = false;
 }
 
@@ -394,8 +396,10 @@ function renderLobby() {
   if (!summary) return;
   const mine = mySeats();
   el("lobby-status").textContent =
-    `라운드 ${summary.round_number} · ${PHASE_LABELS[summary.phase] || summary.phase}` +
-    (summary.finished ? " · 종료됨" : "");
+    t("screens.lobby_status", {
+      round: summary.round_number,
+      phase: PHASE_LABELS[summary.phase] || summary.phase,
+    }) + (summary.finished ? " · " + t("common.finished") : "");
   const list = el("lobby-seats");
   list.textContent = "";
   let free = 0;
@@ -413,14 +417,14 @@ function renderLobby() {
       if (mine.includes(info.seat)) {
         const badge = document.createElement("span");
         badge.className = "badge";
-        badge.textContent = "내 좌석";
+        badge.textContent = t("screens.my_seat");
         item.appendChild(badge);
-        item.appendChild(lobbyButton("자리 비우기", () => releaseSeat(info.seat)));
+        item.appendChild(lobbyButton(t("screens.leave_seat"), () => releaseSeat(info.seat)));
       } else if (!info.claimed) {
         free += 1;
-        item.appendChild(lobbyButton("앉기", () => claimSeat(info.seat)));
+        item.appendChild(lobbyButton(t("screens.sit_button"), () => claimSeat(info.seat)));
       } else if (isAdmin()) {
-        item.appendChild(lobbyButton("좌석 비우기", () => releaseSeat(info.seat)));
+        item.appendChild(lobbyButton(t("common.release_seat"), () => releaseSeat(info.seat)));
       }
     } else {
       const badge = document.createElement("span");
@@ -431,7 +435,7 @@ function renderLobby() {
     list.appendChild(item);
   }
   if (!mine.length && !free) {
-    lobbyError("빈 좌석이 없습니다. 호스트에게 좌석을 비워 달라고 하세요.");
+    lobbyError(t("screens.no_free_seats"));
   }
   el("lobby-enter").hidden = !mine.length;
   /* The seat picker above already lists the seats, with the host's release
@@ -445,7 +449,7 @@ function lobbyButton(text, onClick) {
   button.textContent = text;
   button.addEventListener("click", () => {
     el("lobby-error").hidden = true;
-    onClick().catch((error) => lobbyError(`요청 실패 (${error.message})`));
+    onClick().catch((error) => lobbyError(t("screens.request_failed", { message: error.message })));
   });
   return button;
 }
@@ -454,7 +458,7 @@ async function claimSeat(seat) {
   if (state.busy) return;
   const name = el("lobby-name").value.trim();
   if (!name) {
-    lobbyError("이름을 먼저 적어 주세요.");
+    lobbyError(t("screens.name_required"));
     el("lobby-name").focus();
     return;
   }
@@ -477,8 +481,8 @@ async function claimSeat(seat) {
     await refresh();
     lobbyError(
       error.status === 409
-        ? "방금 다른 사람이 그 좌석에 앉았습니다."
-        : `앉기 실패 (${error.message})`
+        ? t("screens.seat_taken")
+        : t("screens.sit_failed", { message: error.message })
     );
     return;
   }
@@ -519,7 +523,7 @@ function seatLost() {
   state.actions = null;
   state.log = null;
   state.viewSeat = null;
-  showLobby("좌석에서 내려왔습니다. 다시 앉으려면 좌석을 고르세요.");
+  showLobby(t("screens.seat_left"));
 }
 
 /* ---------- host block: the room link and the seats ---------- */
@@ -569,7 +573,7 @@ function renderHostBlock(container, options) {
   container.textContent = "";
 
   const heading = document.createElement("h3");
-  heading.textContent = "방 링크 — 친구들에게 이 주소 하나를 보내세요";
+  heading.textContent = t("screens.room_link_heading");
   container.appendChild(heading);
   const row = document.createElement("div");
   row.className = "room-link";
@@ -581,7 +585,7 @@ function renderHostBlock(container, options) {
   link.addEventListener("focus", () => link.select());
   const copy = document.createElement("button");
   copy.type = "button";
-  copy.textContent = "복사";
+  copy.textContent = t("screens.copy_button");
   copy.addEventListener("click", () => copyText(link));
   row.append(link, copy);
   container.appendChild(row);
@@ -589,7 +593,7 @@ function renderHostBlock(container, options) {
   if (!state.server.public_url) {
     const label = document.createElement("label");
     label.className = "room-base";
-    label.append("친구들이 접속하는 서버 주소 (예: http://100.x.y.z:8000) ");
+    label.append(`${t("screens.server_address_label")} `);
     const base = document.createElement("input");
     base.type = "text";
     base.value = storageGet("dune.publicUrl") || window.location.origin;
@@ -615,10 +619,10 @@ function renderHostBlock(container, options) {
       item.appendChild(presenceDot(info));
       const release = document.createElement("button");
       release.type = "button";
-      release.textContent = "좌석 비우기";
+      release.textContent = t("common.release_seat");
       release.addEventListener("click", () => {
         releaseSeat(info.seat).catch((error) =>
-          note(`좌석 비우기 실패 (${error.message})`)
+          note(t("screens.release_seat_failed", { message: error.message }))
         );
       });
       item.appendChild(release);
@@ -657,13 +661,12 @@ function hostSavesBlock() {
   block.className = "host-saves";
   const heading = document.createElement("h3");
   heading.textContent = state.server.autosave
-    ? "저장 — 턴이 넘어갈 때마다 자동 저장됩니다"
-    : "저장 — 자동 저장이 꺼져 있습니다 (--no-autosave)";
+    ? t("screens.saves_heading_auto")
+    : t("screens.saves_heading_manual");
   block.appendChild(heading);
   const hint = document.createElement("p");
   hint.className = "muted";
-  hint.textContent =
-    "서버가 죽으면: 서버를 다시 띄우고 관리자 링크로 들어가 자동 저장을 불러온 뒤, 새 방 링크를 보내세요.";
+  hint.textContent = t("screens.save_recovery_hint");
   block.appendChild(hint);
   const known = hostSaves.gameId === state.gameId ? hostSaves : null;
   const list = document.createElement("ul");
@@ -671,13 +674,13 @@ function hostSavesBlock() {
   if (known && known.error) {
     const item = document.createElement("li");
     item.className = "error";
-    item.textContent = `저장 목록을 읽지 못했습니다 (${known.error})`;
+    item.textContent = t("screens.save_list_error", { error: known.error });
     list.appendChild(item);
   } else if (known && known.entries) {
     if (!known.entries.length) {
       const item = document.createElement("li");
       item.className = "muted";
-      item.textContent = "아직 이 게임의 저장이 없습니다.";
+      item.textContent = t("screens.no_saves_yet");
       list.appendChild(item);
     }
     for (const entry of known.entries) {
@@ -692,13 +695,15 @@ function hostSavesBlock() {
   row.className = "host-save-actions";
   const refreshButton = document.createElement("button");
   refreshButton.type = "button";
-  refreshButton.textContent = known ? "목록 새로 고침" : "저장 목록 보기";
+  refreshButton.textContent = known
+    ? t("screens.refresh_list_button")
+    : t("screens.view_save_list_button");
   refreshButton.addEventListener("click", () => {
     loadHostSaves().catch(() => {});
   });
   const saveNow = document.createElement("button");
   saveNow.type = "button";
-  saveNow.textContent = "지금 저장";
+  saveNow.textContent = t("screens.save_now_button");
   saveNow.addEventListener("click", () => {
     saveGame().catch(() => {});
   });

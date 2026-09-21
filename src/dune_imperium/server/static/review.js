@@ -31,6 +31,20 @@ async function enterReview(seat, options) {
     /* Opened by hand (renderDisclosure); another seat's eyes keep it. */
     disclosureOpen: Boolean(state.review && state.review.disclosureOpen),
   };
+  labelReviewBar(seat);
+  const slider = el("review-slider");
+  slider.max = String(meta.step_count);
+  el("review-bar").hidden = false;
+  await reviewGoto(cursor);
+  if (options && options.play && state.review && state.review.meta === meta) {
+    /* The opening position gets its interval on screen too. */
+    startPlayback(playback.intervalMs);
+  }
+}
+
+/* The seat choices and the "own action" buttons, in the page's language:
+   set by enterReview and again by a language switch. */
+function labelReviewBar(seat) {
   const select = el("review-seat");
   select.textContent = "";
   /* A finished game is fully disclosed (OQ-010), so any seat — human or
@@ -38,23 +52,18 @@ async function enterReview(seat, options) {
   state.summary.seats.forEach((kind, reviewSeat) => {
     const option = document.createElement("option");
     option.value = String(reviewSeat);
-    option.textContent = `좌석 ${reviewSeat} (${seatKindLabel(kind)})`;
+    option.textContent = t("review.seat_option", {
+      seat: reviewSeat,
+      kind: seatKindLabel(kind),
+    });
     select.appendChild(option);
   });
   select.value = String(seat);
-  const slider = el("review-slider");
-  slider.max = String(meta.step_count);
-  el("review-bar").hidden = false;
   /* "My actions" are the reviewed seat's; with nobody at the table the
      buttons say whose they are. */
-  const own = humanSeats().length ? "내" : "이 좌석";
-  el("review-prev-own").textContent = `이전 ${own} 행동`;
-  el("review-next-own").textContent = `다음 ${own} 행동`;
-  await reviewGoto(cursor);
-  if (options && options.play && state.review && state.review.meta === meta) {
-    /* The opening position gets its interval on screen too. */
-    startPlayback(playback.intervalMs);
-  }
+  const own = humanSeats().length ? t("review.own_mine") : t("review.own_seat");
+  el("review-prev-own").textContent = t("review.prev_own_action", { own });
+  el("review-next-own").textContent = t("review.next_own_action", { own });
 }
 
 /* Review states load at very different speeds (the server replays every
@@ -84,14 +93,14 @@ async function reviewGoto(cursor) {
     el("review-slider").value = String(cursor);
     let status =
       `step ${cursor}/${review.meta.step_count}` +
-      ` · 라운드 ${payload.round_number}` +
+      ` · ${t("review.round_label", { round: payload.round_number })}` +
       ` · ${PHASE_LABELS[payload.phase] || payload.phase}` +
       ` · ${describeReviewSpan(review)}`;
     /* Undo markers that rewound the game to this exact step (M11 slice 6). */
     for (const item of review.meta.undo_history || []) {
       if (item.step !== cursor) continue;
       status +=
-        ` · ↩ 좌석 ${item.seat}가 여기서 ${item.count}단계 되돌림: ` +
+        t("review.undo_marker", { seat: item.seat, count: item.count }) +
         item.undone.map(describeActionText).join(" / ");
     }
     el("review-status").textContent = status;
@@ -99,7 +108,7 @@ async function reviewGoto(cursor) {
     render();
     return true;
   } catch (error) {
-    el("game-error").textContent = `검토 상태 조회 실패 (${error.message})`;
+    el("game-error").textContent = t("review.status_fetch_failed", { message: error.message });
     el("game-error").hidden = false;
     return false;
   }
@@ -118,20 +127,23 @@ function describeReviewSpan(review) {
     ? steps.slice(review.cameFrom, review.cursor).find((label) => label.type === "action")
     : null;
   if (!opening) return describeReviewStep(steps[review.cursor - 1]);
-  return `${describeReviewStep(opening)} 외 ${stride - 1}수`;
+  return t("review.span_extra", { opening: describeReviewStep(opening), extra: stride - 1 });
 }
 
 function describeReviewStep(label) {
-  if (!label) return "게임 시작 전";
+  if (!label) return t("review.before_game_start");
   if (label.type === "chance") {
     const values = label.values || [];
     const shown =
       values.length <= 3
         ? values.map(nameOf).join(", ")
-        : `${values.length}장 · ${values.slice(0, 3).map(nameOf).join(", ")} …`;
+        : t("review.chance_values", {
+            count: values.length,
+            names: values.slice(0, 3).map(nameOf).join(", "),
+          });
     return `chance: ${prettify(label.decision_id)}` + (shown ? ` — ${shown}` : "");
   }
-  return `좌석 ${label.actor}: ${describeActionText(label)}`;
+  return t("review.step_label", { seat: label.actor, action: describeActionText(label) });
 }
 
 function reviewJumpOwn(direction) {
@@ -310,10 +322,10 @@ function renderPlaybackControls() {
   const review = state.review;
   const atEnd = Boolean(review) && review.cursor >= review.meta.step_count;
   el("review-play").textContent = playback.playing
-    ? "일시정지"
+    ? t("review.pause")
     : atEnd
-      ? "처음부터 재생"
-      : "재생";
+      ? t("review.replay_from_start")
+      : t("review.play");
   el("review-unit").value = playback.unit;
   el("review-interval").value = String(playback.intervalMs);
 }
@@ -328,7 +340,7 @@ function spectatorOnly() {
 function watchGame() {
   enterReview(state.review ? state.review.seat : 0, { cursor: 0, play: true }).catch(
     (error) => {
-      el("game-error").textContent = `관전 시작 실패 (${error.message})`;
+      el("game-error").textContent = t("review.watch_failed", { message: error.message });
       el("game-error").hidden = false;
     }
   );
