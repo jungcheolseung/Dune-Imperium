@@ -23,6 +23,8 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
+from dune_imperium.server.catalog import build_catalog
+
 _REPO = Path(__file__).resolve().parents[2]
 _STATIC = _REPO / "src" / "dune_imperium" / "server" / "static"
 _RULES = _REPO / "src" / "dune_imperium" / "rules"
@@ -259,6 +261,89 @@ def test_english_label_tables_mirror_the_korean() -> None:
             if sorted(_TERM.findall(twin[key])) != sorted(_TERM.findall(korean[key])):
                 problems.append(f"{name}.{key}: term tokens differ from the Korean")
     assert not problems, "; ".join(problems[:12])
+
+
+# English on purpose in Korean text: the glossary has no row for these yet
+# (docs/rules/glossary-ko.md, "아직 채우지 않은 것"), or they are a Leader's own
+# name. scripts/e2e/log_words.py keeps the same list for the rendered log.
+_KOREAN_KEEPS_ENGLISH = (
+    "Gather Intelligence",
+    "Family Atomics",
+    "Other Memories",
+    "Memories returned",
+    "Memories",
+    "Secret Project",
+    "Set-aside",
+    "set-aside",
+    "Infiltrate",
+    "Wild card",
+    "Crysknife",
+    "Immediate",
+    "Usurp",
+    "Feyd",
+    "Into the Fray",
+    "Fedaykin Maneuver",
+)
+# Glossary rows the UI applies that have no TERMS entry of their own.
+_GLOSSARY_WORDS = {
+    "bloodlines",
+    "embassy",
+    "flip",
+    "flipped",
+    "immortality",
+    "ixian",
+    "navigation",
+    "tactics",
+    "uprising",
+}
+_TERM_FILLERS = {"a", "an", "and", "any", "card", "cards", "for", "in", "of", "on"}
+_TERM_FILLERS |= {"one", "or", "the", "this", "to", "turn", "two"}
+
+
+def test_korean_text_never_spells_a_glossary_term_in_english() -> None:
+    """A rule word the glossary gives in Korean is never left in English.
+
+    The guards above look at what a table holds, not at what its Korean says;
+    on 2026-09-21 eleven chrome strings still read "Hand (공개)", "내 discard",
+    "Navigation 3장 남음", "(Flip됨)", "Ixian Embassy", "Bloodlines 확장" and the
+    like. Proper nouns (catalog names) and the phrases the glossary has no
+    row for stay English; file paths are not words.
+    """
+    labels = (_STATIC / "labels.js").read_text()
+    block = re.search(r"^const TERMS = \{(.*?)\n\};", labels, re.S | re.M)
+    assert block
+    english = re.findall(r'^\s+[a-z_]+: \{[^}]*en: "([^"]*)"', block.group(1), re.M)
+    assert english, "no TERMS entry read — the pattern is broken"
+    words = {w.lower() for phrase in english for w in re.findall(r"[A-Za-z]+", phrase)}
+    words = (words - _TERM_FILLERS) | _GLOSSARY_WORDS
+
+    names: set[str] = set()
+    for table in build_catalog().values():
+        if not isinstance(table, dict):
+            continue
+        for entry in table.values():
+            name = entry.get("name") if isinstance(entry, dict) else None
+            if isinstance(name, str):
+                names.add(name)
+    keep = sorted(names | set(_KOREAN_KEEPS_ENGLISH), key=len, reverse=True)
+
+    texts = [
+        (f"{table}.{key}", text)
+        for table, rows in _korean_tables().items()
+        for key, text in rows.items()
+    ]
+    texts += [(f"UI_TEXT.{key}", entry["ko"]) for key, entry in _ui_text().items()]
+    leaks = []
+    for where, text in texts:
+        bare = re.sub(r"\{\{?[A-Za-z0-9_:]+\}?\}|\S*/\S*", " ", text)
+        for name in keep:
+            bare = bare.replace(name, " ")
+        found = sorted(
+            {w for w in re.findall(r"[A-Za-z]+", bare) if w.lower() in words}
+        )
+        if found:
+            leaks.append(f"{where}: {found} in {text!r}")
+    assert not leaks, "; ".join(leaks[:10])
 
 
 def test_every_label_table_switches_language() -> None:
