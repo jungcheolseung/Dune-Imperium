@@ -161,7 +161,7 @@ function renderSeats() {
       const badge = document.createElement("span");
       badge.className = "badge";
       badge.textContent = "1st";
-      badge.title = "First Player";
+      badge.title = phraseText("{first_player}");
       who.appendChild(badge);
     }
     head.appendChild(who);

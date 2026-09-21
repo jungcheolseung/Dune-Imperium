@@ -28,6 +28,8 @@ function seatToken(seat, className) {
   token.style.background = SEAT_COLORS[seat];
   token.textContent = String(seat);
   token.title = `좌석 ${seat}`;
+  token.setAttribute("role", "img");
+  token.setAttribute("aria-label", `좌석 ${seat}`);
   token.dataset.seat = String(seat);
   return token;
 }

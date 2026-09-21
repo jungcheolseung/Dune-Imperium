@@ -274,6 +274,7 @@ function resetGameState() {
   state.pick = null;
   state.counts = {};
   myTurnBefore = null;
+  announcedTurn = undefined;
   document.title = BASE_TITLE;
   el("review-bar").hidden = true;
 }

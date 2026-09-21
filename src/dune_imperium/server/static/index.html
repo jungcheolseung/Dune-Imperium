@@ -11,7 +11,8 @@
   <header>
     <h1>Dune: Imperium — Uprising</h1>
     <div id="header-status"></div>
-    <span id="connection-note" hidden>서버 연결 끊김 — 다시 연결하는 중…</span>
+    <span id="connection-note" role="status" hidden>서버 연결 끊김 — 다시 연결하는 중…</span>
+    <button id="open-help" title="도움말 (?)" aria-keyshortcuts="Shift+Slash">도움말</button>
     <button id="open-lobby" hidden>좌석</button>
     <button id="save-game" hidden>저장</button>
     <button id="leave-game" hidden>나가기</button>
@@ -54,7 +55,7 @@
         <h2>저장된 게임</h2>
         <ul id="save-list"></ul>
       </div>
-      <p id="setup-error" class="error" hidden></p>
+      <p id="setup-error" class="error" role="alert" hidden></p>
     </section>
 
     <section id="landing-screen" class="panel" hidden>
@@ -63,7 +64,7 @@
       <p class="muted">호스트라면 서버를 띄운 콘솔에 찍힌 관리자 링크를 여세요.</p>
       <p id="landing-resume" hidden>
         <button type="button" id="landing-resume-button">마지막으로 있던 방으로 이어 하기 ▶</button></p>
-      <p id="landing-error" class="error" hidden></p>
+      <p id="landing-error" class="error" role="alert" hidden></p>
     </section>
 
     <section id="lobby-screen" class="panel" hidden>
@@ -72,7 +73,7 @@
       <label>이름 (다른 플레이어에게 보입니다)
         <input type="text" id="lobby-name" maxlength="20" autocomplete="off"></label>
       <ul id="lobby-seats"></ul>
-      <p id="lobby-error" class="error" hidden></p>
+      <p id="lobby-error" class="error" role="alert" hidden></p>
       <p id="lobby-note" class="muted" hidden></p>
       <button id="lobby-enter" hidden>게임 화면으로 ▶</button>
       <div id="lobby-host" hidden></div>
@@ -98,11 +99,11 @@
             <section id="review-bar" class="panel" hidden>
               <div class="review-controls">
                 <label>검토 좌석 <select id="review-seat"></select></label>
-                <button id="review-first">⏮</button>
-                <button id="review-prev">◀</button>
-                <input type="range" id="review-slider" min="0" max="0" value="0">
-                <button id="review-next">▶</button>
-                <button id="review-last">⏭</button>
+                <button id="review-first" aria-label="처음으로" title="처음으로">⏮</button>
+                <button id="review-prev" aria-label="이전 수" title="이전 수">◀</button>
+                <input type="range" id="review-slider" min="0" max="0" value="0" aria-label="검토 위치">
+                <button id="review-next" aria-label="다음 수" title="다음 수">▶</button>
+                <button id="review-last" aria-label="끝으로" title="끝으로">⏭</button>
                 <button id="review-prev-own">이전 내 행동</button>
                 <button id="review-next-own">다음 내 행동</button>
                 <button id="review-exit">검토 종료</button>
@@ -127,7 +128,7 @@
               </div>
               <div id="review-status" class="meta"></div>
             </section>
-            <p id="game-error" class="error" hidden></p>
+            <p id="game-error" class="error" role="alert" hidden></p>
             <p id="game-note" class="muted" hidden></p>
             <section id="standings" class="panel" hidden></section>
             <section id="disclosure" class="panel" hidden></section>
@@ -142,6 +143,10 @@
   </main>
 
   <div id="card-popover" class="popover" hidden></div>
+  <div id="help" hidden>
+    <div id="help-body" role="dialog" aria-modal="true" aria-labelledby="help-title"></div>
+  </div>
+  <div id="announcer" class="visually-hidden" aria-live="polite" aria-atomic="true"></div>
   <div id="bt-zoom" hidden>
     <div id="bt-zoom-body" role="dialog" aria-modal="true" aria-label="Bene Tleilax board"></div>
   </div>
@@ -159,6 +164,7 @@
   <script src="/static/turn.js"></script>
   <script src="/static/board.js"></script>
   <script src="/static/panels.js"></script>
+  <script src="/static/help.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>

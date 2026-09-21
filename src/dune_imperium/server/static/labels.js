@@ -597,6 +597,7 @@ const TERMS = {
   observation_post: { icon: null, ko: "관측소", en: "observation post" },
   bene_tleilax_board: { icon: null, ko: "베네 틀레이락스 게임판", en: "Bene Tleilax board" },
   garrison: { icon: null, ko: "주둔지", en: "garrison" },
+  first_player: { icon: null, ko: "시작 플레이어 마커", en: "First Player marker" },
   supply: { icon: null, ko: "개인 공급처", en: "supply" },
   hand: { icon: null, ko: "핸드", en: "hand" },
   deck: { icon: null, ko: "카드덱", en: "deck" },

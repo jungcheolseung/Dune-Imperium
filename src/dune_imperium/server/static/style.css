@@ -676,6 +676,78 @@ button:disabled { opacity: 0.5; cursor: wait; }
 .bt-open:hover { border-color: #c9a227; }
 .bt-open:focus-visible { outline: 2px solid #c9a227; outline-offset: 2px; }
 
+/* Read by screen readers, not drawn (the live region in index.html). */
+.visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* The help panel: the icon legend, the seat marks, the shortcuts. */
+#help {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+}
+#help[hidden] { display: none; }
+#help-body {
+  background: var(--panel, #14110c);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.8rem 1rem;
+  width: min(720px, 94vw);
+  max-height: 90vh;
+  overflow: auto;
+  font-size: 0.85rem;
+}
+#help-body h2 {
+  margin: 0 0 0.4rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+#help-body h3 { margin: 0.8rem 0 0.3rem; font-size: 0.9rem; }
+/* (mark, meaning) pairs, as many to a row as fit. auto-fill needs fixed
+   tracks, hence the fixed mark column. */
+.help-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 4.4rem minmax(160px, 1fr));
+  gap: 0.3rem 0.6rem;
+  align-items: center;
+}
+.help-grid > .help-mark { display: inline-flex; justify-content: center; white-space: nowrap; }
+.help-mark .icon { height: 1.5em; }
+.help-turn { margin: 0; padding-left: 1.2rem; }
+.help-turn li { margin: 0.15rem 0; }
+kbd {
+  font: inherit;
+  font-size: 0.8em;
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 0 0.35em;
+}
+.help-close {
+  all: unset;
+  cursor: pointer;
+  padding: 0.15rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-size: 0.8rem;
+}
+.help-close:focus-visible { outline: 2px solid var(--accent, #f4c542); outline-offset: 2px; }
+
 /* The board opened at a size you can read: the stage is percentage-based, so
    a wider container is the whole change. */
 #bt-zoom {
@@ -1293,7 +1365,7 @@ button:disabled { opacity: 0.5; cursor: wait; }
   font-weight: 700;
   color: #ffb3b3;
 }
-.seat .commander-count {
+.seat .commander-count, .help-mark .commander-count {
   font-size: 0.72rem;
   font-weight: 700;
   color: #ffb3b3;

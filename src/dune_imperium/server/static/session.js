@@ -194,6 +194,7 @@ function adoptSnapshot(snapshot, seat) {
   noticeTurn();
   if (!el("lobby-screen").hidden) renderLobby();
   render({ foreign: refreshForeign });
+  announceTurn(state.summary);
 }
 
 function refresh(summary, options) {

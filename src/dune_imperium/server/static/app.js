@@ -27,6 +27,11 @@ async function init() {
   /* The host of a remote game plays too and must not know the seed. */
   el("opt-seed-row").hidden = isRemote();
   buildSeatSelects();
+  el("open-help").addEventListener("click", () => openHelp());
+  el("help").addEventListener("click", (event) => {
+    /* The backdrop closes it; a click inside the panel does not. */
+    if (event.target === el("help")) closeHelp();
+  });
   el("bt-zoom").addEventListener("click", (event) => {
     /* the backdrop, not the board itself */
     if (event.target === el("bt-zoom")) closeBeneTleilaxZoom();
@@ -37,7 +42,8 @@ async function init() {
   });
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
-      if (!el("bt-zoom").hidden) closeBeneTleilaxZoom();
+      if (!el("help").hidden) closeHelp();
+      else if (!el("bt-zoom").hidden) closeBeneTleilaxZoom();
       else if (state.pick) clearPick();
       else closePopover();
       return;
@@ -57,6 +63,14 @@ async function init() {
     if (event.altKey) return;
     const pressed = (code, letter) =>
       event.code === code || event.key === letter || event.key === letter.toUpperCase();
+    /* `?` opens the help: Shift and the slash key, which with the Hangul IME
+       on still arrives as event.code "Slash" (event.key is "?" either way). */
+    if ((event.code === "Slash" && event.shiftKey) || event.key === "?") {
+      event.preventDefault();
+      openHelp();
+      return;
+    }
+    if (!el("help").hidden) return;
     /* `c` folds the shared card columns away, so the board can have the room
        when you are not shopping. */
     if (pressed("KeyC", "c")) {
