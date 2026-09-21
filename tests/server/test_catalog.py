@@ -5,6 +5,7 @@ import json
 from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS_BY_ID
 from dune_imperium.content.uprising.intrigue import INTRIGUE_CARDS_BY_ID
 from dune_imperium.content.uprising.starting_cards import STARTING_CARDS_BY_ID
+from dune_imperium.display.board_layout import LEADER_TILE_BOXES, SPACE_BOXES
 from dune_imperium.server.catalog import build_catalog
 
 
@@ -375,11 +376,13 @@ def test_catalog_lays_the_pieces_the_scan_does_not_print() -> None:
     )
 
     # A Leader's own tile is on the table only while that Leader plays
-    # [Bloodlines p. 12]; the scan has no print, so its picture is drawn.
+    # [Bloodlines p. 12]; the scan has no print, so its picture is drawn,
+    # around the frame its hotspot follows.
     tuek = spaces["tuek_sietch"]
     assert isinstance(tuek, dict)
     assert tuek["required_leader_id"] == "esmar_tuek"
-    assert tuek["tile_box"] == tuek["box"]
+    assert tuek["tile_box"] == list(LEADER_TILE_BOXES["tuek_sietch"])
+    assert tuek["box"] == list(SPACE_BOXES["tuek_sietch"])
     printed = [
         space_id
         for space_id, entry in spaces.items()
@@ -399,6 +402,7 @@ def test_catalog_carries_board_overlay_layout_and_optional_icons() -> None:
         assert isinstance(entry, dict)
         box = entry["box"]
         assert isinstance(box, list) and len(box) == 4
+    assert catalog["space_frame"] == {"cut": [11.8, 15.3]}
     posts = catalog["posts"]
     assert isinstance(posts, dict)
     assert len(posts) == 13

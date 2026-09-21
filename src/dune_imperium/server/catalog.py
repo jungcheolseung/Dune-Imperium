@@ -65,11 +65,13 @@ from dune_imperium.display.bloodlines import (
     tech_acquire_text,
 )
 from dune_imperium.display.board_layout import (
+    LEADER_TILE_BOXES,
     POST_POINTS,
     RESEARCH_STATION_OVERLAY_BOX,
     SHIELD_WALL_BOX,
     SHIELD_WALL_ROTATION,
     SPACE_BOXES,
+    SPACE_FRAME_CUT,
     marker_layout,
 )
 from dune_imperium.display.images import (
@@ -305,6 +307,9 @@ def build_catalog(
             }
             for objective in OBJECTIVES
         },
+        # The frame every space's "box" follows: its two cut corners as
+        # percents of the box's width and height.
+        "space_frame": {"cut": list(SPACE_FRAME_CUT)},
         "posts": {
             post_id: [x, y] for post_id, (x, y) in POST_POINTS.items()
         },
@@ -451,10 +456,10 @@ def _space(space_id: str, image_files: dict[tuple[str, str], str]) -> JsonObject
         "image": _image_url("location", space_id, image_files),
         # A Leader's own tile (Tuek's Sietch) is on the table only while that
         # Leader plays [Bloodlines p. 12]; the scan has no print for it, so
-        # its picture is drawn in its box.
+        # its picture is drawn in its own box, around the frame in "box".
         "required_leader_id": space.required_leader_id,
         "tile_box": (
-            list(SPACE_BOXES[space_id])
+            list(LEADER_TILE_BOXES[space_id])
             if space.required_leader_id is not None
             else None
         ),

@@ -1,6 +1,8 @@
 """E2E of the pieces that lie on printed places of the board scan.
 
-The Control marker on the flag under its space, the bonus spice in the Maker
+Every space's hotspot is the white frame printed around its picture
+(`catalog.spaces[id].box` and `catalog.space_frame`). The Control marker on
+the flag under its space, the bonus spice in the Maker
 hexagon, the Maker Hooks token in its garrison's slot and the Alliance token
 on its Faction's ring (in the holder's seat panel once somebody earns it) are
 drawn from `catalog.tracks`, percent of the scan. The checks compare what the
@@ -88,6 +90,55 @@ def fresh_table(page) -> None:
     check.ok(not rects(page, ".control-marker"), "no Control marker yet")
     check.ok(not rects(page, ".bonus-spice"), "no bonus spice yet")
     check.ok(not rects(page, ".maker-hooks-token"), "no Maker Hooks token yet")
+
+
+def space_frames(page) -> None:
+    print("[1b] every hotspot is the white frame its space prints")
+    catalog = page.evaluate(
+        "({ spaces: state.catalog.spaces,"
+        " cut: (state.catalog.space_frame || {}).cut || null })"
+    )
+    hotspots = {r["space"]: r for r in rects(page, ".board-stage .hotspot")}
+    check.ok(len(hotspots) == 22, "22 printed spaces without Esmar Tuek", len(hotspots))
+    for space_id, rect in hotspots.items():
+        check.ok(
+            box_matches(rect, catalog["spaces"][space_id]["box"]),
+            f"{space_id}: the hotspot is the frame's box",
+            rect,
+        )
+    frames = rects(page, ".board-stage .hotspot > .space-frame")
+    check.ok(len(frames) == len(hotspots), "one frame outline per hotspot")
+    check.ok(catalog["cut"] is not None, "the catalog serves the frame's cut corners")
+    cut_x, cut_y = catalog["cut"] or (0, 0)
+    points = page.evaluate(
+        "[...new Set([...document.querySelectorAll('.space-frame polygon')]"
+        ".map((p) => p.getAttribute('points')))]"
+    )
+    wanted = f"0,0 {100 - cut_x},0 100,{cut_y} 100,100 {cut_x},100 0,{100 - cut_y}"
+    check.ok(points == [wanted], "every outline has the frame's cut corners", points)
+    # The generic button:hover fill must not paint the hotspot's whole box:
+    # the highlight is the outline and a light fill inside it.
+    page.hover(".hotspot[data-space='sardaukar']")
+    page.wait_for_timeout(300)  # past the outline's 0.15 s transition
+    hovered = page.evaluate(
+        """() => {
+          const hotspot = document.querySelector(".hotspot[data-space='sardaukar']");
+          const outline = hotspot.querySelector(".space-frame polygon");
+          return {
+            background: getComputedStyle(hotspot).backgroundColor,
+            stroke: outline ? getComputedStyle(outline).stroke : null,
+          };
+        }"""
+    )
+    check.ok(
+        hovered["background"] == "rgba(0, 0, 0, 0)", "no box fill on hover", hovered
+    )
+    check.ok(
+        hovered["stroke"] == "rgba(255, 255, 255, 0.7)",
+        "the outline lights on hover",
+        hovered,
+    )
+    page.mouse.move(0, 0)
 
 
 def reveal_preview(page) -> None:
@@ -293,6 +344,7 @@ def main() -> None:
             context, page, rec = open_context(browser, "player")
             create_game(page, base, humans=(0,), seed=11)
             fresh_table(page)
+            space_frames(page)
             reveal_preview(page)
             printed_places(page)
             intrigue_pile(page)

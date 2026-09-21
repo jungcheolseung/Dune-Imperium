@@ -8,6 +8,7 @@ from dune_imperium.content.uprising.board import (
 from dune_imperium.display.board_layout import (
     CONTROL_FLAG_BOXES,
     GARRISON_POINTS,
+    LEADER_TILE_BOXES,
     MAKER_HOOKS_POINTS,
     MAKER_HOOKS_SIZE,
     MAKER_HOOKS_TURNS,
@@ -18,6 +19,7 @@ from dune_imperium.display.board_layout import (
     SHIELD_WALL_BOX,
     SHIELD_WALL_ROTATION,
     SPACE_BOXES,
+    SPACE_FRAME_CUT,
     marker_layout,
 )
 
@@ -119,18 +121,15 @@ def test_marker_tables_cover_the_printed_tracks() -> None:
 
 def test_control_flags_lie_under_the_controllable_spaces() -> None:
     # "place your Control marker on the flag below that space" [Main p. 20]:
-    # one printed pennant per space a Conflict can give control of, right
-    # under that space's box and no wider than it.
+    # one printed pennant per space a Conflict can give control of, hanging
+    # from the bottom line of that space's frame and no wider than it.
     assert set(CONTROL_FLAG_BOXES) == {
         space.space_id for space in BOARD_SPACES if space.critical
     }
     for space_id, (left, top, width, height) in CONTROL_FLAG_BOXES.items():
         space_left, space_top, space_width, space_height = SPACE_BOXES[space_id]
         assert space_left <= left < left + width <= space_left + space_width
-        # The pennant hangs from the space's lower edge (the hotspot boxes
-        # are hand-drawn around the print, so the flag may start a little
-        # above or below a box's bottom line).
-        assert -1.0 <= top - (space_top + space_height) <= 1.0
+        assert 0.0 <= top - (space_top + space_height) <= 0.15
         # All three flags are the same print: 3.17-3.18 wide, 3.8 tall.
         assert 3.1 < width < 3.25 and 3.7 < height < 3.9
     layout = marker_layout()["control_flags"]
@@ -142,8 +141,9 @@ def test_control_flags_lie_under_the_controllable_spaces() -> None:
 
 def test_bonus_spice_lies_on_each_printed_maker_hexagon() -> None:
     # Bonus spice goes "in the spot designated for bonus spice" [Main p. 15]:
-    # the hexagon with the Maker icon, inside the Maker space's box. Esmar
-    # Tuek's tile is a picture laid on the scan and prints the same hexagon.
+    # the hexagon with the Maker icon, printed among the Maker space's effect
+    # icons right of its frame and within the frame's height. Esmar Tuek's
+    # tile is a picture laid on the scan and prints the same hexagon.
     assert set(MAKER_SPICE_POINTS) == {
         space.space_id for space in BOARD_SPACES if space.maker
     }
@@ -152,8 +152,8 @@ def test_bonus_spice_lies_on_each_printed_maker_hexagon() -> None:
     assert abs(height / width - 3**0.5 / 2) < 0.01
     for space_id, (x, y) in MAKER_SPICE_POINTS.items():
         left, top, box_width, box_height = SPACE_BOXES[space_id]
-        assert left < x - width / 2 and x + width / 2 < left + box_width
-        assert top < y - height / 2 and y + height / 2 < top + box_height + 0.5
+        assert left + box_width < x - width / 2 < left + box_width + 5
+        assert top < y - height / 2 and y + height / 2 < top + box_height
 
 
 def test_maker_hooks_slots_flank_the_garrisons() -> None:
@@ -197,6 +197,29 @@ def test_the_alliance_token_covers_the_ring_printed_for_it() -> None:
 
 def test_every_board_space_has_exactly_one_hotspot_box() -> None:
     assert set(SPACE_BOXES) == {space.space_id for space in BOARD_SPACES}
+
+
+def test_hotspots_are_the_one_frame_every_space_prints() -> None:
+    # The hotspot is the white frame around a space's picture, not the
+    # effect icons beside it, so every printed space's box is the same size
+    # (457 x 354 px of the 6012 x 6005 scan) and so is the frame on a
+    # Leader's tile within a few pixels.
+    printed = {
+        space_id: box
+        for space_id, box in SPACE_BOXES.items()
+        if space_id not in LEADER_TILE_BOXES
+    }
+    assert len(printed) == 22
+    assert {(width, height) for _, _, width, height in printed.values()} == {
+        (7.6, 5.9)
+    }
+    for space_id in LEADER_TILE_BOXES:
+        _, _, width, height = SPACE_BOXES[space_id]
+        assert abs(width - 7.6) < 0.05 and abs(height - 5.9) < 0.15
+    # Two corners are cut at 45 degrees, 54 px along each side.
+    cut_x, cut_y = SPACE_FRAME_CUT
+    assert abs(cut_x / 100 * 7.6 / 100 * 6012 - 54) < 1
+    assert abs(cut_y / 100 * 5.9 / 100 * 6005 - 54) < 1
 
 
 def test_every_observation_post_has_a_point() -> None:
@@ -245,17 +268,45 @@ def test_pieces_laid_on_the_scan_keep_their_pictures_shape() -> None:
     assert wall_left + wall_width < basin[0]  # left of Imperial Basin
     assert refinery[0] < wall_left + wall_width / 2 < basin[0]
 
-    # Immortality's Research Station overlay (782 x 425) covers the printed
-    # space, whose hotspot stays inside it.
-    assert abs(box_aspect(RESEARCH_STATION_OVERLAY_BOX) - 782 / 425) < 0.01
-    left, top, width, height = RESEARCH_STATION_OVERLAY_BOX
-    hot_left, hot_top, hot_width, hot_height = SPACE_BOXES["research_station"]
-    assert left <= hot_left and hot_left + hot_width <= left + width
-    assert top <= hot_top and hot_top + hot_height <= top + height
+    def frame_in(
+        tile: tuple[float, float, float, float],
+        picture: tuple[int, int],
+        frame: tuple[float, float, float, float],
+    ) -> tuple[float, float, float, float]:
+        # A frame measured in a tile picture's pixels (line centres, left,
+        # top, right, bottom), in percent of the scan once laid at ``tile``.
+        left, top, width, height = tile
+        x_scale, y_scale = width / picture[0], height / picture[1]
+        return (
+            left + frame[0] * x_scale,
+            top + frame[1] * y_scale,
+            (frame[2] - frame[0]) * x_scale,
+            (frame[3] - frame[1]) * y_scale,
+        )
 
-    # Tuek's Sietch has no print: its box is its tile picture (550 x 310),
-    # clear of Imperial Basin above it.
-    tuek = SPACE_BOXES["tuek_sietch"]
+    def close(
+        first: tuple[float, float, float, float],
+        second: tuple[float, float, float, float],
+    ) -> bool:
+        return all(abs(a - b) < 0.05 for a, b in zip(first, second, strict=True))
+
+    # Immortality's Research Station overlay (782 x 425) covers the printed
+    # space, and its frame lies on the printed one, so the hotspot is both.
+    assert abs(box_aspect(RESEARCH_STATION_OVERLAY_BOX) - 782 / 425) < 0.01
+    overlay_frame = frame_in(
+        RESEARCH_STATION_OVERLAY_BOX, (782, 425), (42.5, 82.5, 424.5, 377.5)
+    )
+    assert close(overlay_frame, SPACE_BOXES["research_station"])
+
+    # Tuek's Sietch has no print: its tile picture (550 x 310) is drawn in
+    # its own box, clear of Imperial Basin above it, and the hotspot is the
+    # frame on that picture.
+    assert set(LEADER_TILE_BOXES) == {
+        space.space_id for space in BOARD_SPACES if space.required_leader_id
+    }
+    tuek = LEADER_TILE_BOXES["tuek_sietch"]
     assert abs(box_aspect(tuek) - 550 / 310) < 0.01
     assert tuek[1] > basin[1] + basin[3]
+    tuek_frame = frame_in(tuek, (550, 310), (36.5, 65.5, 297.5, 264.5))
+    assert close(tuek_frame, SPACE_BOXES["tuek_sietch"])
 

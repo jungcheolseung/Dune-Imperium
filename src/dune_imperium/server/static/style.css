@@ -226,23 +226,42 @@ button:disabled { opacity: 0.5; cursor: wait; }
   border-radius: 6px;
   user-select: none;
 }
+/* A space's hotspot is the box of the white frame printed around its
+   picture; the frame's outline (.space-frame) carries every highlight, so
+   all spaces light up the same printed shape and nothing beside it. The
+   stroke runs along the white line and keeps its width at any scale. */
 .hotspot {
   position: absolute;
   padding: 0;
   margin: 0;
   background: transparent;
-  border: 2px solid transparent;
-  border-radius: 8px;
+  border: none;
   cursor: pointer;
-  transition: border-color 0.15s, box-shadow 0.15s;
 }
-.hotspot:hover { border-color: rgba(255, 255, 255, 0.5); background: rgba(255, 255, 255, 0.05); }
-.hotspot.legal {
-  border-color: var(--glow);
-  box-shadow: 0 0 14px 3px rgba(255, 207, 90, 0.55), inset 0 0 18px rgba(255, 207, 90, 0.25);
-  animation: pulse 1.6s ease-in-out infinite;
+/* Not the generic button:hover fill, which would paint the whole box. */
+.hotspot:hover:not(:disabled) { background: transparent; }
+.hotspot:focus-visible { outline: none; }
+.space-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
 }
-.hotspot.legal:hover { background: rgba(255, 207, 90, 0.18); }
+.space-frame polygon {
+  fill: transparent;
+  stroke: transparent;
+  stroke-width: 2px;
+  stroke-linejoin: miter;
+  vector-effect: non-scaling-stroke;
+  transition: stroke 0.15s, fill 0.15s;
+}
+.hotspot:hover .space-frame polygon,
+.hotspot:focus-visible .space-frame polygon { stroke: rgba(255, 255, 255, 0.7); fill: rgba(255, 255, 255, 0.05); }
+.hotspot.legal .space-frame { animation: frame-pulse 1.6s ease-in-out infinite; }
+.hotspot.legal .space-frame polygon { stroke: var(--glow); fill: rgba(255, 207, 90, 0.1); }
+.hotspot.legal:hover .space-frame polygon { fill: rgba(255, 207, 90, 0.22); }
 /* A hand card that can be grafted to the picked one: a dashed glow and a
    plus sign, because a click adds it to the pick instead of swapping. */
 .vcard.partner {
@@ -267,24 +286,42 @@ button:disabled { opacity: 0.5; cursor: wait; }
 /* A card or a space the pick could be swapped for: a quiet version of the
    legal glow. */
 .vcard.alternative { border-color: rgba(255, 207, 90, 0.55); box-shadow: 0 0 6px 1px rgba(255, 207, 90, 0.3); }
-.hotspot.alternative { border-color: rgba(255, 207, 90, 0.45); border-style: dashed; }
+.hotspot.alternative .space-frame polygon { stroke: rgba(255, 207, 90, 0.6); stroke-dasharray: 5 3; }
 /* The space of a staged Agent turn's pick. */
-.hotspot.picked {
-  border-color: #fff;
-  background: rgba(255, 207, 90, 0.22);
-  box-shadow: 0 0 0 2px var(--glow), 0 0 18px 5px rgba(255, 207, 90, 0.8);
+.hotspot.picked .space-frame {
   animation: none;
+  filter: drop-shadow(0 0 2px var(--glow)) drop-shadow(0 0 8px rgba(255, 207, 90, 0.9));
 }
+.hotspot.picked .space-frame polygon { stroke: #fff; stroke-width: 2.5px; fill: rgba(255, 207, 90, 0.25); }
 .hotspot.unimplemented { opacity: 0.35; cursor: not-allowed; }
-@keyframes pulse {
-  0%, 100% { box-shadow: 0 0 10px 2px rgba(255, 207, 90, 0.45), inset 0 0 14px rgba(255, 207, 90, 0.2); }
-  50% { box-shadow: 0 0 18px 5px rgba(255, 207, 90, 0.75), inset 0 0 22px rgba(255, 207, 90, 0.35); }
+@keyframes frame-pulse {
+  0%, 100% { filter: drop-shadow(0 0 2px rgba(255, 207, 90, 0.7)) drop-shadow(0 0 5px rgba(255, 207, 90, 0.45)); }
+  50% { filter: drop-shadow(0 0 3px rgba(255, 207, 90, 0.95)) drop-shadow(0 0 10px rgba(255, 207, 90, 0.75)); }
 }
+/* The log's spotlight (.spotlight above) follows the frame on a space too. */
+.hotspot.spotlight { outline: none; box-shadow: none; animation: none; }
+.hotspot.spotlight .space-frame { animation: frame-spotlight 1.2s ease-in-out infinite; }
+.hotspot.spotlight .space-frame polygon {
+  stroke: #7fd7ff;
+  stroke-width: 3px;
+  stroke-dasharray: none;
+  fill: rgba(127, 215, 255, 0.18);
+}
+@keyframes frame-spotlight {
+  0%, 100% { filter: drop-shadow(0 0 3px rgba(127, 215, 255, 0.8)) drop-shadow(0 0 7px rgba(127, 215, 255, 0.5)); }
+  50% { filter: drop-shadow(0 0 4px rgba(127, 215, 255, 1)) drop-shadow(0 0 12px rgba(127, 215, 255, 0.85)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hotspot.legal .space-frame { animation: none; filter: drop-shadow(0 0 3px rgba(255, 207, 90, 0.85)); }
+  .hotspot.spotlight .space-frame { animation: none; filter: drop-shadow(0 0 4px rgba(127, 215, 255, 0.9)); }
+}
+/* Agents stand on the space's picture, in the middle of its frame. */
 .agent-tokens {
   position: absolute;
-  left: 4%;
-  top: 22%;
+  inset: 0;
   display: flex;
+  align-items: center;
+  justify-content: center;
   gap: 2px;
 }
 .agent-token, .spy-token, .control-flag, .seat-mark {
@@ -1348,8 +1385,8 @@ kbd {
 }
 .commander-mark {
   position: absolute;
-  left: 2px;
-  top: 2px;
+  right: 14%;
+  top: 6%;
   min-width: 1.1em;
   padding: 0 0.25em;
   border-radius: 4px;

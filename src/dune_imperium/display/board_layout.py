@@ -15,64 +15,82 @@ a differently cropped scan needs a re-measure, not a rules change. The
 space and post IDs are the engine's (``content.uprising.board``), and the
 tests pin that both tables cover them exactly.
 
-``SPACE_BOXES`` are ``(left, top, width, height)`` covering the whole
-printed space (title, cost, image and effect icons) so the hotspot lights
-up the same region a player would look at on the table. ``POST_POINTS``
-are the centres of the observation-post "eye" icons.
+``SPACE_BOXES`` are ``(left, top, width, height)`` of the white frame each
+space prints around its picture, the place where the Agent goes, so the
+hotspot lights up exactly that frame and not the effect icons beside it.
+``POST_POINTS`` are the centres of the observation-post "eye" icons.
 """
 
 from collections.abc import Mapping
 from types import MappingProxyType
 from typing import Any, Final
 
+# Every printed space draws the same white frame around its picture: square
+# top-left and bottom-right corners (the Agent icon sits on the top-left one)
+# and the other two corners cut at 45 degrees. The boxes run along the
+# centre of the white line, found by fitting that outline to the scan and
+# taking each edge's brightness centroid (2026-09-21): all 22 printed frames
+# are 457 x 354 px of the 6012 x 6005 scan within a pixel, hence one size.
 SPACE_BOXES: Final[Mapping[str, tuple[float, float, float, float]]] = (
     MappingProxyType(
         {
             # Emperor
-            "sardaukar": (12.5, 4.0, 13.5, 9.0),
-            "dutiful_service": (12.5, 15.0, 13.5, 8.0),
+            "sardaukar": (13.49, 7.0, 7.6, 5.9),
+            "dutiful_service": (13.5, 17.08, 7.6, 5.9),
             # Spacing Guild
-            "heighliner": (12.5, 30.0, 13.5, 8.0),
-            "deliver_supplies": (12.5, 40.0, 13.5, 8.0),
+            "heighliner": (13.49, 31.54, 7.6, 5.9),
+            "deliver_supplies": (13.51, 41.61, 7.6, 5.9),
             # Bene Gesserit
-            "espionage": (12.5, 54.5, 13.5, 8.0),
-            "secrets": (12.5, 64.5, 13.5, 8.0),
+            "espionage": (13.51, 56.05, 7.6, 5.9),
+            "secrets": (13.53, 66.15, 7.6, 5.9),
             # Fremen
-            "desert_tactics": (12.5, 79.0, 13.5, 8.0),
-            "fremkit": (12.5, 89.0, 13.5, 8.0),
+            "desert_tactics": (13.5, 80.61, 7.6, 5.9),
+            "fremkit": (13.48, 90.76, 7.6, 5.9),
             # Landsraad Council
-            "high_council": (30.0, 2.0, 26.0, 8.5),
-            "imperial_privilege": (30.0, 11.0, 14.0, 9.0),
-            "swordmaster": (50.0, 11.5, 12.0, 8.0),
-            "assembly_hall": (65.0, 2.0, 13.0, 8.0),
-            "gather_support": (65.0, 11.5, 14.0, 8.0),
+            "high_council": (30.82, 3.18, 7.6, 5.9),
+            "imperial_privilege": (30.89, 13.26, 7.6, 5.9),
+            "swordmaster": (51.18, 13.12, 7.6, 5.9),
+            "assembly_hall": (65.65, 3.08, 7.6, 5.9),
+            "gather_support": (65.62, 13.1, 7.6, 5.9),
             # CHOAM
-            "shipping": (84.0, 2.0, 13.5, 8.5),
-            "accept_contract": (84.0, 11.5, 13.0, 8.0),
+            "shipping": (85.1, 4.38, 7.6, 5.9),
+            "accept_contract": (85.13, 13.11, 7.6, 5.9),
             # Arrakis
-            "research_station": (39.0, 32.5, 13.0, 6.5),
-            "spice_refinery": (60.5, 30.0, 14.5, 8.0),
-            "arrakeen": (76.0, 27.5, 15.0, 7.5),
-            "sietch_tabr": (29.0, 44.0, 17.0, 8.0),
-            "imperial_basin": (74.0, 43.5, 16.0, 7.0),
-            "hagga_basin": (49.5, 49.5, 17.5, 7.5),
-            "deep_desert": (31.0, 56.0, 18.0, 7.0),
-            # Bloodlines: Esmar Tuek's tile sits next to the board; its
-            # picture is drawn in the empty desert under Imperial Basin,
-            # clear of that space's Control banner and of the border line
-            # (re-placed 2026-09-18). The box has the tile picture's shape
-            # (550x310) at the printed spaces' scale: their picture frames
-            # are 7.6 wide (Imperial Basin 7.62, Research Station 7.57).
-            "tuek_sietch": (74.5, 56.8, 16.0, 9.03),
+            "research_station": (39.67, 33.78, 7.6, 5.9),
+            "spice_refinery": (61.06, 31.54, 7.6, 5.9),
+            "arrakeen": (77.05, 28.83, 7.6, 5.9),
+            "sietch_tabr": (29.78, 46.23, 7.6, 5.9),
+            "imperial_basin": (74.47, 45.09, 7.6, 5.9),
+            "hagga_basin": (50.25, 50.01, 7.6, 5.9),
+            "deep_desert": (31.89, 57.29, 7.6, 5.9),
+            # Bloodlines: the frame on Esmar Tuek's tile picture (centres
+            # x 36.5..297.5, y 65.5..264.5 of the 550x310 picture), laid at
+            # ``LEADER_TILE_BOXES`` below.
+            "tuek_sietch": (75.56, 58.71, 7.59, 5.8),
         }
     )
+)
+
+# The cut corners of the frame, as percents of its box's width and height:
+# the 45 degree cut takes 54 px of the line off each side of the corner.
+SPACE_FRAME_CUT: Final = (11.8, 15.3)
+
+# A Leader's own space is a tile next to the board that the scan does not
+# print, so its picture is drawn in a box of its own. Esmar Tuek's tile
+# lies in the empty desert under Imperial Basin, clear of that space's
+# Control banner and of the border line (re-placed 2026-09-18). The box has
+# the tile picture's shape (550x310) at the printed spaces' scale: their
+# picture frames are 7.6 wide.
+LEADER_TILE_BOXES: Final[Mapping[str, tuple[float, float, float, float]]] = (
+    MappingProxyType({"tuek_sietch": (74.5, 56.8, 16.0, 9.03)})
 )
 
 # The Research Station overlay of Immortality ("Draw two cards and
 # research" [Immortality pp. 5, 16]) covers the printed space: the box of
 # its tile picture (782x425), found by matching the picture's landscape,
 # Agent icon and water drops against the print (normalised cross-correlation
-# 0.94, 2026-09-18).
+# 0.94, 2026-09-18). Its frame (centres x 42.5..424.5, y 82.5..377.5 of
+# the picture) lies on the printed one, so the hotspot serves both.
 RESEARCH_STATION_OVERLAY_BOX: Final = (38.81, 32.14, 15.58, 8.48)
 
 # The Shield Wall token: "Shield Wall을 Spice Refinery 아래의 표시된 위치에
@@ -165,9 +183,9 @@ CONTROL_FLAG_NOTCH: Final = 0.207
 # The centres of the three hexagons and their common size, ``(width,
 # height)`` of the white outline (a regular flat-topped hexagon; pixel runs,
 # 2026-09-19). Esmar Tuek's tile prints the same hexagon: its centre lies at
-# (413.5, 218.5) of the 550x310 tile picture, laid on the scan at the
-# ``tuek_sietch`` box above (there it comes out 2.76 x 2.36, the same print
-# within a hair).
+# (413.5, 218.5) of the 550x310 tile picture, laid on the scan at its
+# ``LEADER_TILE_BOXES`` box (there it comes out 2.76 x 2.36, the same print
+# within a hair). Each hexagon is printed right of the space's frame.
 MAKER_SPICE_POINTS: Final[Mapping[str, tuple[float, float]]] = MappingProxyType(
     {
         "imperial_basin": (88.03, 48.18),

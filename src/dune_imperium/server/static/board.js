@@ -152,6 +152,27 @@ function controlMarker(seat, spaceId, box) {
   return marker;
 }
 
+/* The white frame a space prints around its picture, which its hotspot's
+   box follows (catalog.space_frame): square top-left and bottom-right
+   corners, the other two cut. The highlight is drawn on this outline so
+   every space lights up the same shape, without the icons beside it. */
+function spaceFrame() {
+  const svgNs = "http://www.w3.org/2000/svg";
+  const [cutX, cutY] = state.catalog.space_frame.cut;
+  const frame = document.createElementNS(svgNs, "svg");
+  frame.setAttribute("class", "space-frame");
+  frame.setAttribute("viewBox", "0 0 100 100");
+  frame.setAttribute("preserveAspectRatio", "none");
+  frame.setAttribute("aria-hidden", "true");
+  const outline = document.createElementNS(svgNs, "polygon");
+  outline.setAttribute(
+    "points",
+    `0,0 ${100 - cutX},0 100,${cutY} 100,100 ${cutX},100 0,${100 - cutY}`,
+  );
+  frame.appendChild(outline);
+  return frame;
+}
+
 /* The centre of the hexagon a Maker space prints for its bonus spice
    (catalog.tracks.maker_spice), if the layout has one for the space. */
 function makerSpicePoint(spaceId) {
@@ -178,7 +199,8 @@ function bonusSpiceToken(spaceId, count, point) {
 }
 
 /* The scanned board with the live state on top: a hotspot per space
-   (catalog.spaces[id].box, percent of the image), Agent tokens, Control
+   (catalog.spaces[id].box, percent of the image: the frame the space
+   prints around its picture), Agent tokens, Control
    flags, Maker bonus spice, and Spies on the observation posts. */
 function renderBoardStage(board, view) {
   const stage = document.createElement("div");
@@ -227,6 +249,7 @@ function renderBoardStage(board, view) {
     hotspot.title = entry.name;
     hotspot.dataset.space = spaceId;
     hotspot.setAttribute("aria-label", entry.name);
+    hotspot.appendChild(spaceFrame());
     const legal = legalActionsFor(spaceId);
     if (legal.length) hotspot.classList.add("legal");
     if (state.pick && state.pick.spaceId === spaceId) hotspot.classList.add("picked");
