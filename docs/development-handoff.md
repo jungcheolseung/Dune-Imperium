@@ -17,7 +17,7 @@ uv run ruff check src tests
 uv run mypy src tests
 ```
 
-2026-09-21(UI 개선 세션 뒤)의 기준 결과는 **pytest 1,793개 통과**(UI 세션이 더한 7개: 용어 가드 3, event kind 가드 2, 지원하지 않는 룰셋의 400 1, action label 가드 1), Ruff 통과, mypy 통과. **브라우저 E2E는 8종 → 12종**이다(`endgame.py`·`narrow.py`·`columns.py`·`seats.py` 추가, `scripts/e2e/README.md`). 그 앞 2026-09-20(M10 자 만들기 세션 뒤)은 pytest 1,786개 통과이고 action codec은 **`ACTION_CODEC_VERSION = 107`**(기본 4,439개, CHOAM 4,729개, `promo_cards` 옵션 시 4,539/4,829개, `immortality` 옵션 시 9,324개, `promo_cards`+`bloodlines`는 10,580개, promo+Bloodlines+Tech는 13,828개, CHOAM+Bloodlines는 11,228개, 다섯 옵션을 다 켜면 32,987개 — v106은 Branching Path의 `trash_intrigue_for_agent_card`(Intrigue 사본마다)와 Imperial Privilege 행동의 이름 변경(`trash_intrigue_for_imperial_privilege`)·c7r3의 `trash_intrigue_for_research_bonus`, v107은 공용 `spy_placement` frame의 세 행동을 Bloodlines 없는 카탈로그에도 넣는다(+27); 형식 2 체크포인트는 행동 이름으로 이관된다 — 아래 세션 요약). 그 앞 기준선: 2026-09-19(두 기기의 2026-09-18 작업을 merge한 뒤)의 기준 결과는 pytest 1,768개 통과(같은 날 오후 학습률 재개 테스트 1개가 더해진 값; 그 앞 1,767은 Windows PC의 M10 PPO 슬라이스·A/B 세션 1,752개에 Mac mini의 보드 토큰·원판·보드 조각·에셋 버전 테스트 12개를 더한 값을 merge 뒤 실측했고, 같은 날 카탈로그의 Graft 표시 테스트 1개와 서버의 전투력 미리보기·남은 Persuasion 테스트 2개가 더해졌다; `assets` symlink가 없는 머신은 `tests/unit/display/test_images.py`의 에셋 대조 테스트 1개만 skip되어 1,767 통과 + 1 skip이다 — 2026-09-17 밤 symlink를 떼고 실측한 관계이며, 그 전 판들이 옛 기준선 1,489에 덧셈으로 유도해 적던 "1,6xx + 1 skip"은 실측과 맞지 않았다; `app.js`를 고쳤다면 pytest로는 부족하고 브라우저 E2E [`scripts/e2e/`](../scripts/e2e/README.md)를 돌린다; `train` extra가 없으면 `tests/unit/training/test_torch_policy.py`가 추가로 skip된다), Ruff 통과, mypy 통과다. 현재 action codec은 `ACTION_CODEC_VERSION = 105`(기본 4,371개, CHOAM 4,657개, `promo_cards` 옵션 시 4,471/4,757개, `immortality` 옵션 시 9,326개 — graft 배치 변형과 카드 사본이 늘 때마다 커진다; `bloodlines`·`tech_module` 옵션은 별도 카탈로그로 훨씬 크고, `promo_cards`+`bloodlines`는 10,513개, promo+Bloodlines+Tech는 13,759개, CHOAM+Bloodlines는 11,156개, 다섯 옵션을 다 켜면 32,991개 — v105는 Chani의 Fedaykin Maneuver `retreat_leader_troops`의 Commander share count를 `retreat_intrigue_troops`처럼 19까지 늘려 Bloodlines 카탈로그마다 +28(2026-09-18, 아래 세션 요약; 옛 v104 체크포인트는 형식 2로 새겨 두면 이관된다), v98은 CHOAM+Bloodlines 카탈로그에만 contract token 8개의 행동과 `trash_intrigue_for_contract`를, v99는 `recall_conflict_agent_for_imperial_privilege`를, v100은 모든 카탈로그에 `skip_intrigue_acquisition`과 Change Allegiances의 세 번째 option을, v101은 Immortality 카탈로그에 `play_conflict_end_intrigue`(Harvest Cells 2장)·`decline_conflict_end_intrigue`를, v102는 Bloodlines+Immortality 카탈로그의 `give_intrigue_card`/`trash_intrigue_hand_card`/`trash_intrigue_for_contract`에 빠져 있던 Immortality Intrigue 사본을 더한다 — 소크가 적발; v103은 모든 카탈로그에 `use_intrigue_effect(section=0/1)`·`finish_intrigue_effects`를 더하고 Change Allegiances의 option을 하나로 되돌린다; v104는 Bloodlines 카탈로그의 `retreat_intrigue_troops` unit count를 12에서 12+7로 넓힌다 — Commander는 12개 병력과 별개 구성물이라 Conflict 유닛이 19까지 가고 Tactical Option이 그 전부를 제시하는데 카탈로그가 12에서 끊겨 있었다, 병렬 수집이 적발, 카탈로그마다 +28)이고, 관측은 `OBSERVATION_VERSION = 20`의 4,327-int 전체 게임 인코딩이다(v6~v9는 Bloodlines·Tech Module 세그먼트를 더한 것, v10은 Bloodlines 프로모 Ruthless Leadership의 identity 1개, v11은 Immortality 카탈로그의 Imperium 25·Intrigue 11 identity, v12는 Experimentation·Tleilaxu 19 identity와 Bene Tleilax board 세그먼트, v13은 round 한정 Reveal Persuasion과 Combat Intrigue 좌석, v14는 Imperium Ceremony가 peek한 Intrigue 두 장(소유자 전용), v15는 Chairdog의 반환 대기와 Usurp의 빌린 Row 카드(좌석 scalar 49→51), v16은 Bloodlines contract token 8개의 identity(contract 세그먼트 11개 × 8 = +88), v17은 frame 종류 `conflict_end_trigger`, v18은 `intrigue_effects` 추가로 decision kind index가 이동, v19는 Long Live the Fighters의 두 단계 pick이 전용 frame 종류 `LONG_LIVE_FIGHTERS`로 옮겨져 decision kind index가 다시 이동(v17~v19는 모두 길이 불변), v20은 OQ-059의 보류된 contract 아이콘 좌석 scalar 1개(좌석 scalar 51→52, +4 int); 옵션을 끈 룰셋에서는 새 칸이 전부 0이지만 길이가 달라져 v8 이전 체크포인트는 거부된다) ([`rl-environment.md`](rl-environment.md)). 보드 22칸 완결 + 즉시 공개 + `fab266f`/`e6fc298` 수정 + sweep 확장(`853ecd4`) 반영 후의 교차 소크는 random 룰셋당 2,000판 + heuristic 룰셋당 1,000판(둘 다 `--rotate-leaders`) + draft 두 policy 각 룰셋당 500판, 전부 `--soundness-interval 25`를 켠 총 7,000판이 실패 0으로 통과한 상태다(2026-09-01, 아래 세션 요약. 그 전 단계에서는 random 룰셋당 3,000판 비회전 소크도 실패 0이었다).
+2026-09-21 오후(UI 후속 세션 뒤, WSL 노트북)의 기준 결과는 **pytest 1,800개 통과**(언어 가드 `tests/server/test_i18n.py` 7개; supply 부족 `shortfall` 단언은 기존 테스트에 더함), Ruff 통과, mypy 통과, **브라우저 E2E 14종**(`help.py`·`lang.py` 추가). 그 앞 2026-09-21(UI 개선 세션 뒤)의 기준 결과는 **pytest 1,793개 통과**(UI 세션이 더한 7개: 용어 가드 3, event kind 가드 2, 지원하지 않는 룰셋의 400 1, action label 가드 1), Ruff 통과, mypy 통과. **브라우저 E2E는 8종 → 12종**이다(`endgame.py`·`narrow.py`·`columns.py`·`seats.py` 추가, `scripts/e2e/README.md`). 그 앞 2026-09-20(M10 자 만들기 세션 뒤)은 pytest 1,786개 통과이고 action codec은 **`ACTION_CODEC_VERSION = 107`**(기본 4,439개, CHOAM 4,729개, `promo_cards` 옵션 시 4,539/4,829개, `immortality` 옵션 시 9,324개, `promo_cards`+`bloodlines`는 10,580개, promo+Bloodlines+Tech는 13,828개, CHOAM+Bloodlines는 11,228개, 다섯 옵션을 다 켜면 32,987개 — v106은 Branching Path의 `trash_intrigue_for_agent_card`(Intrigue 사본마다)와 Imperial Privilege 행동의 이름 변경(`trash_intrigue_for_imperial_privilege`)·c7r3의 `trash_intrigue_for_research_bonus`, v107은 공용 `spy_placement` frame의 세 행동을 Bloodlines 없는 카탈로그에도 넣는다(+27); 형식 2 체크포인트는 행동 이름으로 이관된다 — 아래 세션 요약). 그 앞 기준선: 2026-09-19(두 기기의 2026-09-18 작업을 merge한 뒤)의 기준 결과는 pytest 1,768개 통과(같은 날 오후 학습률 재개 테스트 1개가 더해진 값; 그 앞 1,767은 Windows PC의 M10 PPO 슬라이스·A/B 세션 1,752개에 Mac mini의 보드 토큰·원판·보드 조각·에셋 버전 테스트 12개를 더한 값을 merge 뒤 실측했고, 같은 날 카탈로그의 Graft 표시 테스트 1개와 서버의 전투력 미리보기·남은 Persuasion 테스트 2개가 더해졌다; `assets` symlink가 없는 머신은 `tests/unit/display/test_images.py`의 에셋 대조 테스트 1개만 skip되어 1,767 통과 + 1 skip이다 — 2026-09-17 밤 symlink를 떼고 실측한 관계이며, 그 전 판들이 옛 기준선 1,489에 덧셈으로 유도해 적던 "1,6xx + 1 skip"은 실측과 맞지 않았다; `app.js`를 고쳤다면 pytest로는 부족하고 브라우저 E2E [`scripts/e2e/`](../scripts/e2e/README.md)를 돌린다; `train` extra가 없으면 `tests/unit/training/test_torch_policy.py`가 추가로 skip된다), Ruff 통과, mypy 통과다. 현재 action codec은 `ACTION_CODEC_VERSION = 105`(기본 4,371개, CHOAM 4,657개, `promo_cards` 옵션 시 4,471/4,757개, `immortality` 옵션 시 9,326개 — graft 배치 변형과 카드 사본이 늘 때마다 커진다; `bloodlines`·`tech_module` 옵션은 별도 카탈로그로 훨씬 크고, `promo_cards`+`bloodlines`는 10,513개, promo+Bloodlines+Tech는 13,759개, CHOAM+Bloodlines는 11,156개, 다섯 옵션을 다 켜면 32,991개 — v105는 Chani의 Fedaykin Maneuver `retreat_leader_troops`의 Commander share count를 `retreat_intrigue_troops`처럼 19까지 늘려 Bloodlines 카탈로그마다 +28(2026-09-18, 아래 세션 요약; 옛 v104 체크포인트는 형식 2로 새겨 두면 이관된다), v98은 CHOAM+Bloodlines 카탈로그에만 contract token 8개의 행동과 `trash_intrigue_for_contract`를, v99는 `recall_conflict_agent_for_imperial_privilege`를, v100은 모든 카탈로그에 `skip_intrigue_acquisition`과 Change Allegiances의 세 번째 option을, v101은 Immortality 카탈로그에 `play_conflict_end_intrigue`(Harvest Cells 2장)·`decline_conflict_end_intrigue`를, v102는 Bloodlines+Immortality 카탈로그의 `give_intrigue_card`/`trash_intrigue_hand_card`/`trash_intrigue_for_contract`에 빠져 있던 Immortality Intrigue 사본을 더한다 — 소크가 적발; v103은 모든 카탈로그에 `use_intrigue_effect(section=0/1)`·`finish_intrigue_effects`를 더하고 Change Allegiances의 option을 하나로 되돌린다; v104는 Bloodlines 카탈로그의 `retreat_intrigue_troops` unit count를 12에서 12+7로 넓힌다 — Commander는 12개 병력과 별개 구성물이라 Conflict 유닛이 19까지 가고 Tactical Option이 그 전부를 제시하는데 카탈로그가 12에서 끊겨 있었다, 병렬 수집이 적발, 카탈로그마다 +28)이고, 관측은 `OBSERVATION_VERSION = 20`의 4,327-int 전체 게임 인코딩이다(v6~v9는 Bloodlines·Tech Module 세그먼트를 더한 것, v10은 Bloodlines 프로모 Ruthless Leadership의 identity 1개, v11은 Immortality 카탈로그의 Imperium 25·Intrigue 11 identity, v12는 Experimentation·Tleilaxu 19 identity와 Bene Tleilax board 세그먼트, v13은 round 한정 Reveal Persuasion과 Combat Intrigue 좌석, v14는 Imperium Ceremony가 peek한 Intrigue 두 장(소유자 전용), v15는 Chairdog의 반환 대기와 Usurp의 빌린 Row 카드(좌석 scalar 49→51), v16은 Bloodlines contract token 8개의 identity(contract 세그먼트 11개 × 8 = +88), v17은 frame 종류 `conflict_end_trigger`, v18은 `intrigue_effects` 추가로 decision kind index가 이동, v19는 Long Live the Fighters의 두 단계 pick이 전용 frame 종류 `LONG_LIVE_FIGHTERS`로 옮겨져 decision kind index가 다시 이동(v17~v19는 모두 길이 불변), v20은 OQ-059의 보류된 contract 아이콘 좌석 scalar 1개(좌석 scalar 51→52, +4 int); 옵션을 끈 룰셋에서는 새 칸이 전부 0이지만 길이가 달라져 v8 이전 체크포인트는 거부된다) ([`rl-environment.md`](rl-environment.md)). 보드 22칸 완결 + 즉시 공개 + `fab266f`/`e6fc298` 수정 + sweep 확장(`853ecd4`) 반영 후의 교차 소크는 random 룰셋당 2,000판 + heuristic 룰셋당 1,000판(둘 다 `--rotate-leaders`) + draft 두 policy 각 룰셋당 500판, 전부 `--soundness-interval 25`를 켠 총 7,000판이 실패 0으로 통과한 상태다(2026-09-01, 아래 세션 요약. 그 전 단계에서는 random 룰셋당 3,000판 비회전 소크도 실패 0이었다).
 
 ## 현재 구현 기준선
 
@@ -48,37 +48,35 @@ uv run mypy src tests
 
 ## 다음 구현 순서
 
-**현재 위치(2026-09-21).** UI 개선 0~4단계가 끝났다([`ui-improvement-plan.md`](ui-improvement-plan.md)에
-단계별 결과와 실측값). 학습 쪽 현재 위치는 아래 0번(M10)이 그대로다. UI에서 이어갈 후보는 다음 넷이며,
-**사용자가 고르기 전에는 시작하지 않는다**.
+**현재 위치(2026-09-21 오후).** UI 개선 0~5단계가 끝났다([`ui-improvement-plan.md`](ui-improvement-plan.md)의
+5단계에 결과와 실측값). 앞 세션이 남긴 후보 넷(종료 화면·좌석 스탯·접근성·언어 토글)을 사용자가 전부 골랐고
+모두 들어갔다. 학습 쪽 현재 위치는 아래 0번(M10)이 그대로다. UI에서 남은 것은 아래이며, **사용자가 고르기
+전에는 시작하지 않는다**.
 
-### UI 다음 후보 (2026-09-21)
+### UI 다음 후보 (2026-09-21 오후)
 
-1. **언어 토글(ko/en) — 결정 필요, 가장 큼.** 토대는 다 있다(`TERMS`·`phrase()`·`phraseText()`·
-   `TERM_LANGUAGE` 한 줄). 없는 것은 **영어 쪽 문자열**이다. 실측: 라벨 테이블 292행은 이미 용어 기반이라
-   ko/en이 되지만, 테이블 **밖에 하드코딩된 한국어가 약 261개**, `index.html`의 한국어 텍스트 노드가 **39개**다.
-   즉 약 600 문자열이고 그중 300개는 코드에 박혀 있어 **추출 기구부터** 필요하다. 지금 토글만 노출하면
-   용어 몇 개만 바뀌고 나머지는 한국어로 남는 **반대 방향의 혼용**이 된다.
-2. **종료 화면 둘 — 작고, 하나는 설계 판단이다.**
-   (a) 종료 배너가 **승자를 말하지 않는다**(`render.js`의 "게임이 끝났습니다."뿐). 순위표는 아래에 있다.
-   (b) `renderDisclosure`에 **검토 게이트가 없다**. `renderStandings`는 리플레이 중 결과를 숨기는데
-   (`panels.js`, "A review hides the result it is walking towards"), disclosure는 서버의 `review_state`가
-   주는 "그 시점의 모든 비공개 존"을 그대로 보여 준다 — 리플레이를 되짚는 동안 손패와 덱 순서가 보인다.
-   규칙상으로는 문제없고(OQ-010 판정 4) **화면 설계 판단**이라 손대지 않았다. 고칠지 물어야 한다.
-3. **좌석 스탯 두 줄 재설계 — 3c의 남은 절반.** 좌석 넷이 751px 칸에 다 들어오려면 좌석당 약 188px여야
-   하는데 지금 약 230px이고, 가장 큰 덩어리가 **스탯 두 줄(좌석당 93px)**이다. 접기로는 여기까지가 끝이라
-   아이콘 줄 자체를 다시 짜야 한다. 보드 조각 규약(단색 `SEAT_COLORS`, 인쇄된 자리)은 건드리지 않는다.
-4. **접근성·온보딩 — 첫 친구 판(M14) 전에 값어치가 있다.** 감사가 확정한 것 중 남은 것: 아이콘 전용
-   요소에 `aria-label`이 없다(좌석 패널의 숫자 나열은 `title`만 있다), 클라이언트에 `aria-live` 영역이
-   하나도 없어 오류·차례 변경이 스크린 리더에 안 읽힌다, 아이콘 범례·도움말이 어디에도 없다.
+1. **첫 친구 판(M14의 남은 것) — 가장 값어치가 크다.** 원격 흐름·자동 저장·도움말·스크린 리더 알림·언어
+   전환까지 준비됐다. 남은 것은 다른 집의 친구와 실제로 하는 한 판과 그 피드백이다([`remote-play-guide.md`](remote-play-guide.md)).
+2. **1366×768에서 좌석 넷 — 작음.** 1600×1000·1920×1080은 들어오지만 노트북 칸(519~652px)에서는 내용
+   703~731px로 여전히 스크롤한다. 좌석당 약 130px가 필요해 압축 모드(스탯 한 줄)가 아니면 안 된다.
+3. **로그의 남은 영어 조각 — 작음.** Feyd 트랙 위치(`From Space: start`)처럼 값 자체가 엔진 id인 필드,
+   무작위 결과 줄의 `prettify(decision_id)`. 한국어 모드의 이름 없는 크롬은 `lang.py`가 지킨다.
+4. **`remote.py` [11]의 무작위 건너뜀 — 테스트 위생.** 원격 서버는 seed를 받지 않아 그 시점에 되돌릴 수가
+   없는 판이면 검사 둘을 건너뛴다(56 → 54). 되돌릴 수 있는 수가 올 때까지 두도록 바꿀 수 있다.
+5. **한글 카드 스캔** — 확보하면 `display/images.py`가 코드 변경 없이 쓴다(언어 정책의 3번).
 
-**UI를 이어갈 때의 규칙**(이번 세션에서 값을 치른 것들):
-- `static/*.js`를 고치면 pytest로는 부족하다. [`scripts/e2e/`](../scripts/e2e/README.md) **12종**을 돌린다.
-- 새 단언은 **옛 코드에 돌려 실패를 확인**한다. 이번에 제안 30건 중 27건이 공허하다고 기각됐다.
-- 레이아웃·스크롤 주장은 **재 본 뒤에** 코드를 쓴다. strip 가로 스크롤 보존은 코드까지 썼다가 측정으로
-  되돌렸다(어느 폭에서도 넘치지 않는다).
+**UI를 이어갈 때의 규칙**(두 세션이 값을 치른 것들):
+- `static/*.js`를 고치면 pytest로는 부족하다. [`scripts/e2e/`](../scripts/e2e/README.md) **14종**을 돌린다.
+- 새 단언은 **옛 코드에 돌려 실패를 확인**한다(A/B). 앞 세션은 제안 30건 중 27건이 공허했고, 이번 세션은
+  "필요한 조각이 들어 있다"만 보던 단언 셋이 결함을 통과시키고 있었다([`lessons.md`](lessons.md) 2026-09-21).
+- 문자열은 `UI_TEXT` + `t()`/`tNode()`로만 쓴다. 한글 리터럴을 테이블 밖에 두면 `test_i18n.py`가 막고,
+  한국어 모드의 영어 잔재와 영어 모드의 한글은 `lang.py`가 막는다. 규칙 낱말은 용어집(`TERMS`)에서만 —
+  용어 낱말이 이미 명사를 품고 있으면(`{intrigue}` = 책략 카드) 뒤에 "카드"를 또 붙이지 않는다.
+- 레이아웃·스크롤 주장은 **재 본 뒤에** 코드를 쓴다. 이번에는 CSS 주입으로 배치안 다섯을 먼저 쟀다.
 - 키 입력은 `event.key`가 아니라 **`event.code`**로 맞춘다([`lessons.md`](lessons.md) 2026-09-20).
-- 학습이 도는 동안 이 체크아웃의 `src/`를 고치지 않는다 — **워크트리에서** 한다. 문서와 `scripts/`는 괜찮다.
+- 경합은 기기 속도에 맡기지 않고 `page.route`로 응답을 늦춰 강제한다(`spectate.py`).
+- 학습이 도는 동안 이 체크아웃의 `src/`를 고치지 않는다 — **워크트리에서** 한다. 워크트리에는 git 밖의
+  `assets` symlink와 `.venv`가 없으니 둘 다 걸고 `PYTHONPATH=<wt>/src E2E_REPO=<wt>`로 그 클라이언트를 띄운다.
 
 ### 학습(M10) 쪽 순서
 
@@ -419,6 +417,33 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 2026-09-07: `bloodlines` 브랜치(35 커밋)를 master 쪽에서 `--no-ff`로 머지했고(`dbd9b73`), 같은 날 저녁 슬라이스 6 커밋 5건과 이 문서 갱신을 master에 직접 올렸다. 아직 push하지 않았다면 `git log origin/master..master`로 확인한다. 비공개 에셋 저장소(`assets` symlink → `Dune-Imperium-assets`)에도 같은 날 manifest 커밋 6건(Bloodlines 카드 44장 content id, Leader 8종, Tuek's Sietch 타일 이미지, Twisted·Navigation 카드 키, Kota Odax의 content id `43c25fc`)이 있으니 다른 머신에서는 그쪽도 pull한다.
 
 2026-09-04 세션 종료 시점에 이 세션의 커밋 전부(보드·카드 아이콘 분리 v86/v87, 서버·UI 확인 흐름과 마커, Reveal 순서 v88, OQ-028 조건 판정 시점, OQ-029 등록)를 `origin/master`에 push했다. 새 세션은 `git fetch origin` 뒤 `git log origin/master..master`와 반대 방향을 확인하고, 일치하면 이 문서의 기준선을 그대로 쓴다. 에셋 저장소(`Dune-Imperium-assets`)의 `5b55e45` 1개 미push 여부는 그 저장소에서 확인한다. 원격에는 병합하지 않은 `kyungtae` 브랜치가 있다. 새 세션은 `git log origin/master..master`와 반대 방향을 모두 확인하고, checkout이 `853ecd4`보다 이전이면 이 문서의 989개 테스트·codec v84 기준선이 실제 코드와 일치하지 않는다. **다른 머신에서 이어서 작업한다면 먼저 이 머신에서 push가 필요하다.** 새 머신의 UI 카드 이미지·아이콘·보드 스캔은 비공개 `Dune-Imperium-assets` 저장소를 clone해 symlink로 연결한다(그 README 참고; 루트의 `assets` symlink 하나로 cards·icons·board·rulebooks를 모두 연결). 카드 매핑은 그 저장소의 `cards/manifest.json`에만 있으므로 접근이 없으면 텍스트 UI로 동작한다.
+
+## 2026-09-21 오후 UI 후속 세션 요약 (WSL 노트북 i5-8250U, master 직접 커밋, 관측 v20, codec v107, 변경은 `server/static/`·`server/sessions.py`의 `shortfall`·`scripts/e2e/`·`tests/server/`·`docs/` — **엔진·학습 코드 무변경**)
+
+사용자 요청: "ui 개선 작업 이어가려고해" → 앞 세션이 남긴 후보 넷을 사용자가 **전부** 골랐다(작은 것부터). 검토
+중 disclosure는 "접어 두기"로 결정. 학습은 이 기기에서 돌지 않아 `src/` 직접 편집, ultracode로 변환·검증을
+워크플로에 맡겼다. 자세한 수치는 [`ui-improvement-plan.md`](ui-improvement-plan.md) 5단계.
+
+- **종료 화면**(`cb99f9c`): 배너가 승자와 2위와의 차이(승점 차, 또는 처음 갈린 동점 판정 항목 `[Main p. 15]`,
+  OQ-047, `[FAQ p. 2]`)를 말한다. seed 7 전 확장 판이 실제로 승점 9 동점을 스파이스 6 대 2로 가른다.
+  검토 중 disclosure는 접혀 시작.
+- **첫 한글 스크린샷에 드러난 결함 다섯**(`52cb9f8`·`d980ca0`·`b51311a`, [`lessons.md`](lessons.md) 2026-09-21):
+  검토 상태 줄의 `[object DocumentFragment]`, **1700px 이하 모든 화면**에서 사이드 칼럼 위 칸이 로그 패널
+  밑에 깔림(1366px에서 순위표가 가려짐), 로그의 쉼표 id 목록 raw 누출, 재생 중 탐색이 응답이 늦으면
+  버려지는 경합 둘(재생 타이머, 탐색 중 재생·간격 변경 — 후자는 리뷰 워크플로가 찾음).
+- **좌석 스탯**(`b04032e`): 좌석 넷이 1600×1000·1920×1080 칸에 다 들어온다(986 → 약 720px). 높이는
+  스탯이 아니라 줄바꿈이 키웠다 — 긴 리더 이름, `Commander 0/1`, 두 줄 존 줄.
+- **접근성·도움말**(`cd63d39`·`ecbefec`): `aria-live` 알림, 오류 `role="alert"`, 아이콘 전용 컨트롤의 이름,
+  도움말 창(`?`). 리뷰가 찾은 것: 확정 대기 중에 다음 좌석의 차례를 미리 알리고 실제 넘김은 알리지 않음.
+- **언어 전환**(`92a9ee8`·`09c817d`·`10e737a`, 한국어 모드 잔재는 이 세션 마지막 커밋): 머리글 English/한국어.
+  영어에서 한글 0, 왕복하면 같은 화면. 13 에이전트 변환 + 36 에이전트 검증(코드 18·prompt 21·영어 57·
+  한국어 모드 잔재 27건 반영). 한국어 모드에서도 엔진 prompt가 처음으로 한국어가 됐고, 로그 payload
+  키(`Card Id` 등 89종)가 한국어가 됐다.
+- **E2E**: 12 → 14종(`help.py`·`lang.py`), `spectate.py`의 재생 간격을 그린 시각 대신 요청 시각으로
+  (`081bbdb`, 이 노트북에서 1/3 확률로 흔들렸다). 이 기기에서 처음으로 14종이 모두 녹색이다.
+- **이 기기에서 E2E를 돌리는 법**(메모리에도 있음): 스크래치 venv의 Playwright + 캐시된 chromium 1234 +
+  버전 심볼 `libasound` stub, 한글은 `/mnt/c/Windows/Fonts`를 fontconfig로. 무거운 작업을 곁에 돌리면
+  `open_mode.py`의 폴링 4.5초 검사가 넘는다.
 
 ## 2026-09-21 UI 개선 세션 요약 (Mac mini, 워크트리 6개 → master, 관측 v20, codec v107, 변경은 `server/static/`·`server/sessions.py`·`scripts/e2e/`·`docs/`뿐 — **엔진·학습 코드 무변경**)
 
