@@ -1594,6 +1594,7 @@ def _serialize_action(
         "detail": effect_action_text(session.state, action),
         "undoable": undoable,
         "warning": shortfall_warning(outcome),
+        "shortfall": shortfall_details(outcome),
         "strength_after": strength_preview(session.state, action, outcome, undoable),
     }
     revealed = reveal_preview(action, outcome)
@@ -1693,6 +1694,38 @@ def shortfall_warning(outcome: RuleResult | None) -> str | None:
             requested, recruited = payload.get("requested"), payload.get("recruited")
             notes.append(f"supply 부족: troop {requested}개 중 {recruited}개만 recruit")
     return " · ".join(notes) if notes else None
+
+
+def shortfall_details(outcome: RuleResult | None) -> list[JsonValue] | None:
+    """The same shortfalls as data, for a client that words them itself.
+
+    ``warning`` stays the Korean sentence it always was; a browser showing
+    English builds its own from ``kind`` ("specimens" or "troops"),
+    ``requested`` and ``made``.
+    """
+
+    if outcome is None:
+        return None
+    details: list[JsonValue] = []
+    for event in outcome.events:
+        payload = dict(event.payload)
+        if event.kind == "specimens_short":
+            details.append(
+                {
+                    "kind": "specimens",
+                    "requested": _jsonify(payload.get("requested")),
+                    "made": _jsonify(payload.get("generated")),
+                }
+            )
+        elif event.kind == "troops_recruit_short":
+            details.append(
+                {
+                    "kind": "troops",
+                    "requested": _jsonify(payload.get("requested")),
+                    "made": _jsonify(payload.get("recruited")),
+                }
+            )
+    return details or None
 
 
 def _jsonify(value: object) -> JsonValue:

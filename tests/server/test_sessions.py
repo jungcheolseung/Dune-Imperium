@@ -431,7 +431,7 @@ def test_unknown_games_and_deletion() -> None:
 def test_shortfall_warning_reports_short_supply_outcomes() -> None:
     from dune_imperium.core.engine import RuleResult
     from dune_imperium.core.events import GameEvent
-    from dune_imperium.server.sessions import shortfall_warning
+    from dune_imperium.server.sessions import shortfall_details, shortfall_warning
 
     assert shortfall_warning(None) is None
     quiet = RuleResult(state=None, events=())  # type: ignore[arg-type]
@@ -465,6 +465,11 @@ def test_shortfall_warning_reports_short_supply_outcomes() -> None:
         "supply 부족: specimen 2개 중 1개만 생성"
         " · supply 부족: troop 2개 중 0개만 recruit"
     )
+    # The same, as data a client can word in its own language.
+    assert shortfall_details(short) == [
+        {"kind": "specimens", "requested": 2, "made": 1},
+        {"kind": "troops", "requested": 2, "made": 0},
+    ]
 
 
 def test_serialized_actions_warn_about_a_short_troop_supply() -> None:
@@ -539,4 +544,8 @@ def test_serialized_actions_warn_about_a_short_troop_supply() -> None:
     assert serialized["resolve_agent_card_effect"]["warning"] == (
         "supply 부족: specimen 1개 중 0개만 생성"
     )
+    assert serialized["resolve_agent_card_effect"]["shortfall"] == [
+        {"kind": "specimens", "requested": 1, "made": 0}
+    ]
     assert serialized["resolve_board_effect"]["warning"] is None
+    assert serialized["resolve_board_effect"]["shortfall"] is None
