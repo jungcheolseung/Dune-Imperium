@@ -19,7 +19,7 @@ import json
 import shutil
 import time
 
-from common import SERVER_LOG_COPY, Check, chrome, open_context, server
+from common import SERVER_LOG_COPY, Check, chrome, now, open_context, server
 from open_mode import create_game
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
@@ -98,7 +98,7 @@ def opens_playing(page) -> None:
     check.ok("이 좌석" in own, "nobody's actions are called mine", own)
 
 
-def walks_turn_by_turn(page) -> None:
+def walks_turn_by_turn(page, rec) -> None:
     print("[2] the cursor walks along the turn stops, a second apart")
     stops = page.evaluate("state.review.stops")
     total = page.evaluate("state.review.meta.step_count")
@@ -119,6 +119,7 @@ def walks_turn_by_turn(page) -> None:
             wrong.append(stop)
     check.ok(not wrong, "every stop lies between two turns", wrong[:5])
 
+    window = now()  # the recorder's clock
     moves = sample_moves(page, 4.3)
     seen = [cursor for _, cursor in moves]
     check.ok(len(seen) >= 4, "it moved several times in four seconds", seen)
@@ -131,14 +132,21 @@ def walks_turn_by_turn(page) -> None:
         "and to each stop in turn",
         seen,
     )
-    # The first value was already on screen when sampling began: its moment
-    # is not a move's.
+    # Playback keeps its interval from one move's request to the next
+    # (playbackTick), so that is what is timed. Timing the draws instead let
+    # one slow answer — the first replay after the game was made — make the
+    # next gap look like half a second on the slower laptop.
+    starts = [
+        at
+        for at, kind, text in rec.events
+        if kind == "req" and "/review/" in text and at >= window
+    ]
     gaps = [
-        round(later[0] - earlier[0], 2)
-        for earlier, later in zip(moves[1:-1], moves[2:], strict=True)
+        round(later - earlier, 2)
+        for earlier, later in zip(starts, starts[1:], strict=False)
     ]
     check.ok(
-        bool(gaps) and all(0.7 <= gap <= 1.6 for gap in gaps),
+        len(gaps) >= 3 and all(0.8 <= gap <= 1.4 for gap in gaps),
         "about a second between moves",
         gaps,
     )
@@ -381,7 +389,7 @@ def main() -> None:
             context, page, rec = open_context(browser, "spectator")
             create_game(page, base, humans=(), seed=3)
             opens_playing(page)
-            walks_turn_by_turn(page)
+            walks_turn_by_turn(page, rec)
             log_follows(page)
             controls(page)
             other_eyes(page)
