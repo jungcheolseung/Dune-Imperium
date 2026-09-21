@@ -13,6 +13,7 @@
     <div id="header-status"></div>
     <span id="connection-note" role="status" hidden>서버 연결 끊김 — 다시 연결하는 중…</span>
     <button id="open-help" title="도움말 (?)" aria-keyshortcuts="Shift+Slash">도움말</button>
+    <button id="language-toggle" lang="en" hidden>English</button>
     <button id="open-lobby" hidden>좌석</button>
     <button id="save-game" hidden>저장</button>
     <button id="leave-game" hidden>나가기</button>
@@ -156,7 +157,11 @@
        in the temporal dead zone until its own script has run. Only app.js
        runs anything at load (init()), so it is last. -->
   <script src="/static/labels.js"></script>
+  <script src="/static/labels_en.js"></script>
+  <script src="/static/prompts_ko.js"></script>
+  <script src="/static/ui_text.js"></script>
   <script src="/static/core.js"></script>
+  <script src="/static/i18n.js"></script>
   <script src="/static/screens.js"></script>
   <script src="/static/session.js"></script>
   <script src="/static/review.js"></script>

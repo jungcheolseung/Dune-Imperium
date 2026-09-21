@@ -53,15 +53,16 @@ function seatKindLabel(kind) {
   return found ? found[1] : kind;
 }
 
-/* Board-layout order for the spaces panel. */
+/* Board-layout order for the spaces panel, named as the glossary's Agent
+   icons ([Board Guide pp. 1-2]). */
 const AGENT_ICON_GROUPS = [
-  ["emperor", "Emperor"],
-  ["spacing_guild", "Spacing Guild"],
-  ["bene_gesserit", "Bene Gesserit"],
-  ["fremen", "Fremen"],
-  ["landsraad", "Landsraad"],
-  ["city", "City"],
-  ["spice_trade", "Spice Trade"],
+  ["emperor", "황제"],
+  ["spacing_guild", "우주 항행 길드"],
+  ["bene_gesserit", "베네 게세리트"],
+  ["fremen", "프레멘"],
+  ["landsraad", "랜드스래드"],
+  ["city", "도시"],
+  ["spice_trade", "스파이스 거래"],
 ];
 
 function el(id) {

@@ -26,8 +26,12 @@ async function init() {
   state.server = await api("/whoami");
   /* The host of a remote game plays too and must not know the seed. */
   el("opt-seed-row").hidden = isRemote();
+  loadLanguage();
   buildSeatSelects();
   el("open-help").addEventListener("click", () => openHelp());
+  el("language-toggle").addEventListener("click", () =>
+    setLanguage(TERM_LANGUAGE === "en" ? "ko" : "en"),
+  );
   el("help").addEventListener("click", (event) => {
     /* The backdrop closes it; a click inside the panel does not. */
     if (event.target === el("help")) closeHelp();

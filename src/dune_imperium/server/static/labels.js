@@ -17,21 +17,24 @@
    EVENT_LABELS has no such guard yet: 177 of the engine's 207 event kinds
    fall back to prettify(kind), which is stage 2 work. */
 
+/* Phase names as the Korean rulebook prints them (glossary-ko.md, "라운드와
+   단계": [Main p. 8], Setup [Main pp. 3-4], Endgame [Main p. 20]). */
 const PHASE_LABELS = {
-  setup: "Setup",
+  setup: "게임 준비",
   round_start: "라운드 시작",
-  player_turns: "플레이어 턴",
-  combat: "Combat",
-  makers: "Makers",
-  recall_or_endgame: "Recall / Endgame",
-  endgame: "Endgame",
+  player_turns: "플레이어 차례",
+  combat: "전투",
+  makers: "메이커스",
+  recall_or_endgame: "소환 / 종료 단계",
+  endgame: "종료 단계",
   finished: "게임 종료",
 };
+/* Faction names are glossary terms too ([Main p. 20]). */
 const FACTION_LABELS = {
-  emperor: "Emperor",
-  spacing_guild: "Spacing Guild",
-  bene_gesserit: "Bene Gesserit",
-  fremen: "Fremen",
+  emperor: "황제",
+  spacing_guild: "우주 항행 길드",
+  bene_gesserit: "베네 게세리트",
+  fremen: "프레멘",
 };
 /* One Korean verb per engine action_id; tests/server/test_action_labels.py
    fails when a rules action id is missing here. */

@@ -4,6 +4,8 @@
 
 function buildSeatSelects() {
   const wrap = el("seat-selects");
+  /* A language switch builds them again: keep what was chosen. */
+  const chosen = [...wrap.querySelectorAll("select")].map((select) => select.value);
   wrap.textContent = "";
   for (let seat = 0; seat < 4; seat += 1) {
     const label = document.createElement("label");
@@ -16,7 +18,7 @@ function buildSeatSelects() {
       option.textContent = text;
       select.appendChild(option);
     }
-    select.value = seat === 0 ? "human" : "heuristic";
+    select.value = chosen[seat] || (seat === 0 ? "human" : "heuristic");
     label.appendChild(select);
     wrap.appendChild(label);
   }

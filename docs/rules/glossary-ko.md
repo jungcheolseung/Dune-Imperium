@@ -143,6 +143,7 @@ Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 �
 
 | EN | 한국어 | 인용 | 적용 |
 | --- | --- | --- | --- |
+| Setup | 게임 준비 | `[Main pp. 3-4]`(펼침면 제목 `SETUP` / "게임 준비") | 적용 |
 | 1. Round Start | 1. 라운드 시작 | `[Main p. 8]` | 적용 |
 | 2. Player Turns | 2. 플레이어 차례 | `[Main p. 8]` | 적용 |
 | Agent turn | 에이전트 차례 | `[Main p. 8]` | 적용 |
