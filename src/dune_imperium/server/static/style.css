@@ -315,16 +315,35 @@ button:disabled { opacity: 0.5; cursor: wait; }
   .hotspot.legal .space-frame { animation: none; filter: drop-shadow(0 0 3px rgba(255, 207, 90, 0.85)); }
   .hotspot.spotlight .space-frame { animation: none; filter: drop-shadow(0 0 4px rgba(127, 215, 255, 0.9)); }
 }
-/* Agents stand on the space's picture, in the middle of its frame. */
+/* Agents stand on the space's picture, in the middle of its frame, sized
+   to the frame so they scale with the board; up to four share a space
+   (Infiltrate) and shrink to stay inside it. */
 .agent-tokens {
   position: absolute;
   inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 2px;
+  gap: 3%;
 }
-.agent-token, .spy-token, .control-flag, .seat-mark {
+.agent-token {
+  height: 72%;
+  aspect-ratio: 52 / 81;
+  flex: none;
+  overflow: visible;
+  filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.9));
+}
+.agent-tokens[data-count="3"] .agent-token { height: 60%; }
+.agent-tokens[data-count="4"] .agent-token { height: 46%; }
+.agent-token .agent-rim { fill: none; stroke: rgba(255, 255, 255, 0.55); stroke-width: 5; }
+.agent-token .agent-edge {
+  fill: none;
+  stroke: #111;
+  stroke-width: 1.2px;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+.spy-token, .control-flag, .seat-mark {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -337,7 +356,6 @@ button:disabled { opacity: 0.5; cursor: wait; }
   font-size: 0.85em;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
 }
-.agent-token { width: 1.9em; height: 1.9em; }
 /* A just-placed Agent flies in from its seat panel (renderBoard FLIP) or,
    without an origin, pops in. */
 .agent-token.flying {

@@ -34,6 +34,68 @@ function seatToken(seat, className) {
   return token;
 }
 
+/* The Agent piece's outline: the rulebook's Agent icon (a hooded figure,
+   52 x 81 px) traced into one left-right symmetric path, which covers the
+   icon's silhouette with an overlap of 0.98 (2026-09-21). */
+const AGENT_OUTLINE =
+  "M26 1 C29.6 1 35.2 5.5 35.8 12.6 L39 14.6 L50.6 42.2 C51.3 43 51.3 43.8 50.6 44.6" +
+  " L41.6 54 L41.6 65 L47 76.6 L47 80 L5 80 L5 76.6 L10.4 65 L10.4 54 L1.4 44.6" +
+  " C0.7 43.8 0.7 43 1.4 42.2 L13 14.6 L16.2 12.6 C16.8 5.5 22.4 1 26 1 Z";
+
+/* One hidden sprite holds the outline and its clip, so every Agent reuses
+   them: made on first use and kept outside the board, which every render
+   rebuilds. Not display:none, which would drop the clip in some browsers. */
+function agentSprite() {
+  if (document.getElementById("agent-outline")) return;
+  const svgNs = "http://www.w3.org/2000/svg";
+  const sprite = document.createElementNS(svgNs, "svg");
+  sprite.setAttribute("aria-hidden", "true");
+  sprite.setAttribute("width", "0");
+  sprite.setAttribute("height", "0");
+  sprite.style.position = "absolute";
+  const defs = document.createElementNS(svgNs, "defs");
+  const outline = document.createElementNS(svgNs, "path");
+  outline.id = "agent-outline";
+  outline.setAttribute("d", AGENT_OUTLINE);
+  const clip = document.createElementNS(svgNs, "clipPath");
+  clip.id = "agent-clip";
+  const clipShape = document.createElementNS(svgNs, "use");
+  clipShape.setAttribute("href", "#agent-outline");
+  clip.appendChild(clipShape);
+  defs.append(outline, clip);
+  sprite.appendChild(defs);
+  document.body.appendChild(sprite);
+}
+
+/* A seat's Agent on a space: the Agent icon's figure, flat in the seat's
+   colour like every other player piece and without a seat number, with the
+   icon's light rim inside a dark edge. */
+function agentToken(seat) {
+  agentSprite();
+  const svgNs = "http://www.w3.org/2000/svg";
+  const label = t("common.seat", { seat });
+  const token = document.createElementNS(svgNs, "svg");
+  token.setAttribute("class", "agent-token");
+  token.setAttribute("viewBox", "0 0 52 81");
+  token.setAttribute("role", "img");
+  token.setAttribute("aria-label", label);
+  token.dataset.seat = String(seat);
+  const title = document.createElementNS(svgNs, "title");
+  title.textContent = label;
+  const layer = (className) => {
+    const use = document.createElementNS(svgNs, "use");
+    use.setAttribute("href", "#agent-outline");
+    use.setAttribute("class", className);
+    return use;
+  };
+  const body = layer("agent-body");
+  body.setAttribute("fill", SEAT_COLORS[seat]);
+  const rim = layer("agent-rim");
+  rim.setAttribute("clip-path", "url(#agent-clip)");
+  token.append(title, body, rim, layer("agent-edge"));
+  return token;
+}
+
 /* Agent tokens keyed by seat and space, with their screen rectangles, so
    a re-render can animate the ones that were just placed. */
 function agentTokenRects(board) {
@@ -259,7 +321,8 @@ function renderBoardStage(board, view) {
     if (seats.length) {
       const tokens = document.createElement("span");
       tokens.className = "agent-tokens";
-      for (const seat of seats) tokens.appendChild(seatToken(seat, "agent-token"));
+      tokens.dataset.count = String(Math.min(seats.length, 4));
+      for (const seat of seats) tokens.appendChild(agentToken(seat));
       hotspot.appendChild(tokens);
     }
     /* The Control marker and the bonus spice lie on their printed places

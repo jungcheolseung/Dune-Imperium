@@ -1,7 +1,8 @@
 """E2E of the pieces that lie on printed places of the board scan.
 
 Every space's hotspot is the white frame printed around its picture
-(`catalog.spaces[id].box` and `catalog.space_frame`). The Control marker on
+(`catalog.spaces[id].box` and `catalog.space_frame`), and the Agents on it
+are the rulebook Agent icon's figure in their seat's colour. The Control marker on
 the flag under its space, the bonus spice in the Maker
 hexagon, the Maker Hooks token in its garrison's slot and the Alliance token
 on its Faction's ring (in the holder's seat panel once somebody earns it) are
@@ -300,6 +301,123 @@ def printed_places(page) -> None:
     )
 
 
+def agent_pieces(page) -> None:
+    print("[3b] Agents: the Agent icon's figure in the seat's colour (edited view)")
+    colors = page.evaluate("SEAT_COLORS")
+    placed = {
+        "sardaukar": [0],
+        "arrakeen": [0, 1, 2],
+        "imperial_basin": [0, 1, 2, 3],
+        "hagga_basin": [3],
+    }
+    page.evaluate(
+        """(placed) => {
+          for (const player of state.view.players) player.agent_locations = [];
+          for (const [space, seats] of Object.entries(placed)) {
+            for (const seat of seats) {
+              state.view.players[seat].agent_locations.push(space);
+            }
+          }
+          render();
+        }""",
+        placed,
+    )
+    # New Agents fly in from their seats' panels; measure them once landed.
+    page.wait_for_function("!document.querySelector('.agent-token.flying')")
+    page.wait_for_timeout(350)  # past the pop-in of any token without an origin
+    tokens = page.evaluate(
+        """() => {
+          const stage = document.querySelector(".board-stage").getBoundingClientRect();
+          const pct = (r) => ({
+            left: (r.left - stage.left) / stage.width * 100,
+            top: (r.top - stage.top) / stage.height * 100,
+            width: r.width / stage.width * 100,
+            height: r.height / stage.height * 100,
+          });
+          const all = document.querySelectorAll(".hotspot .agent-token");
+          return [...all].map((token) => ({
+            body: token.querySelector(".agent-body"),
+            token,
+          })).map(({ body, token }) => ({
+            space: token.closest(".hotspot").dataset.space,
+            frame: pct(token.closest(".hotspot").getBoundingClientRect()),
+            rect: pct(token.getBoundingClientRect()),
+            seat: Number(token.dataset.seat),
+            tag: token.tagName,
+            role: token.getAttribute("role"),
+            label: token.getAttribute("aria-label"),
+            wantedLabel: t("common.seat", { seat: Number(token.dataset.seat) }),
+            fill: body ? getComputedStyle(body).fill : null,
+            drawnText: token.querySelectorAll("text").length + (body ? 0 : 1),
+            outline: body ? body.getAttribute("href") : null,
+          }));
+        }"""
+    )
+    by_space: dict[str, list[dict]] = {}
+    for token in tokens:
+        by_space.setdefault(token["space"], []).append(token)
+    check.ok(
+        {space: [t["seat"] for t in group] for space, group in by_space.items()}
+        == placed,
+        "one Agent per placement, in seat order",
+        {space: [t["seat"] for t in group] for space, group in by_space.items()},
+    )
+    check.ok(
+        page.evaluate("document.querySelectorAll('#agent-outline').length") == 1,
+        "one shared Agent outline",
+    )
+
+    def rgb(hex_color: str) -> str:
+        value = hex_color.lstrip("#")
+        red, green, blue = (int(value[i : i + 2], 16) for i in (0, 2, 4))
+        return f"rgb({red}, {green}, {blue})"
+
+    for token in tokens:
+        name = f"{token['space']} seat {token['seat']}"
+        check.ok(
+            token["tag"] == "svg" and token["outline"] == "#agent-outline",
+            f"{name}: drawn from the Agent outline",
+            token,
+        )
+        check.ok(
+            token["fill"] == rgb(colors[token["seat"]]),
+            f"{name}: in the seat's colour",
+            (token["fill"], colors[token["seat"]]),
+        )
+        check.ok(token["drawnText"] == 0, f"{name}: no seat number drawn", token)
+        check.ok(
+            token["role"] == "img" and token["label"] == token["wantedLabel"],
+            f"{name}: named after its seat",
+            token,
+        )
+        rect, frame = token["rect"], token["frame"]
+        right, bottom = rect["left"] + rect["width"], rect["top"] + rect["height"]
+        check.ok(
+            frame["left"] - TOLERANCE <= rect["left"]
+            and right <= frame["left"] + frame["width"] + TOLERANCE
+            and frame["top"] - TOLERANCE <= rect["top"]
+            and bottom <= frame["top"] + frame["height"] + TOLERANCE,
+            f"{name}: stands inside the space's frame",
+            (rect, frame),
+        )
+        # The figure keeps the icon's shape: 52 x 81 in pixels (the stage's
+        # percent units are near square, 6012 x 6005).
+        shape = rect["width"] / rect["height"] * 6012 / 6005
+        check.ok(abs(shape - 52 / 81) < 0.02, f"{name}: the icon's proportions", shape)
+    for space, group in by_space.items():
+        apart = all(
+            left["rect"]["left"] + left["rect"]["width"] <= right["rect"]["left"] + 0.01
+            for left, right in zip(group, group[1:], strict=False)
+        )
+        check.ok(apart, f"{space}: Agents side by side, not stacked")
+    alone = by_space["sardaukar"][0]
+    check.ok(
+        near(alone["rect"]["height"], alone["frame"]["height"] * 0.72, 0.1),
+        "a lone Agent stands 72% of the frame's height",
+        (alone["rect"], alone["frame"]),
+    )
+
+
 def intrigue_pile(page) -> None:
     print("[4] the Intrigue discard is one line; a click lists the cards")
     ids = page.evaluate(
@@ -347,6 +465,7 @@ def main() -> None:
             space_frames(page)
             reveal_preview(page)
             printed_places(page)
+            agent_pieces(page)
             intrigue_pile(page)
             failed = [r for r in rec.requests if r[3] >= 400]
             check.ok(not failed, "no failed requests", failed[:5])
