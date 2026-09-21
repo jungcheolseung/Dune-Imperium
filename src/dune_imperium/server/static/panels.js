@@ -922,7 +922,9 @@ function renderPrivate() {
     event.stopPropagation();
     if (own.discard_pile.length) {
       openPileList(
-        mine ? t("panels.my_discard") : `${t("common.seat", { seat: activeSeat() })} discard`,
+        mine
+          ? t("panels.my_discard")
+          : t("panels.seat_discard", { seat: t("common.seat", { seat: activeSeat() }) }),
         own.discard_pile,
         counts
       );

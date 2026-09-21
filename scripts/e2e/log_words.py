@@ -58,6 +58,7 @@ GAMES = (
 # English on purpose in the Korean page: the glossary has no Korean for these
 # yet (docs/rules/glossary-ko.md, "아직 채우지 않은 것"), or they are a
 # Leader's name. Whole phrases, so a stray "card" or "set" is still caught.
+# tests/server/test_i18n.py keeps the same list for the tables' Korean.
 KOREAN_KEEPS_ENGLISH = (
     "Gather Intelligence",
     "Family Atomics",

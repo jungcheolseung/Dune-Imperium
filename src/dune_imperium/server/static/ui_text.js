@@ -178,7 +178,7 @@ const UI_TEXT = {
     "en": "Contracts · bank {{count}}"
   },
   "board.strip_ixian_embassy": {
-    "ko": "Ixian Embassy · {tech_tile}",
+    "ko": "익스 대사관 판 · {tech_tile}",
     "en": "Ixian Embassy · Tech tiles"
   },
   "board.strip_leader_draft": {
@@ -482,7 +482,7 @@ const UI_TEXT = {
     "en": "Seats"
   },
   "html.opt_bloodlines": {
-    "ko": "Bloodlines 확장 (사다우카 지휘관·새 카드·지도자 8종)",
+    "ko": "혈통 확장 (사다우카 지휘관·새 카드·지도자 8종)",
     "en": "Bloodlines expansion (Sardaukar Commander · new cards · 8 Leaders)"
   },
   "html.opt_choam": {
@@ -490,7 +490,7 @@ const UI_TEXT = {
     "en": "CHOAM Module"
   },
   "html.opt_immortality": {
-    "ko": "Immortality 확장 (베네 틀레이락스 게임판·틀레이락스 열·접합·새 카드)",
+    "ko": "불멸 확장 (베네 틀레이락스 게임판·틀레이락스 열·접합·새 카드)",
     "en": "Immortality expansion (Bene Tleilax board · Tleilaxu Row · Graft · new cards)"
   },
   "html.opt_leader_draft": {
@@ -498,7 +498,7 @@ const UI_TEXT = {
     "en": "Open draft from 6 revealed Leaders (OQ-007, not an official rule)"
   },
   "html.opt_promo": {
-    "ko": "프로모 카드 (Uprising 3장: Arrakis Revolt, The Beast's Spoils, Pivotal Gambit; Bloodlines를 켜면 Ruthless Leadership도)",
+    "ko": "프로모 카드 (봉기 3장: Arrakis Revolt, The Beast's Spoils, Pivotal Gambit; 혈통을 켜면 Ruthless Leadership도)",
     "en": "Promo cards (3 in Uprising: Arrakis Revolt, The Beast's Spoils, Pivotal Gambit; plus Ruthless Leadership with Bloodlines on)"
   },
   "html.opt_seed_label": {
@@ -510,7 +510,7 @@ const UI_TEXT = {
     "en": "Random"
   },
   "html.opt_tech": {
-    "ko": "기술 모듈 (Bloodlines 필요: Ixian Embassy·기술 타일 18장·Kota Odax)",
+    "ko": "기술 모듈 (혈통 필요: 익스 대사관 판·기술 타일 18장·Kota Odax)",
     "en": "Tech Module (requires Bloodlines: Ixian Embassy · 18 Tech tiles · Kota Odax)"
   },
   "html.private_zone_aria": {
@@ -658,7 +658,7 @@ const UI_TEXT = {
     "en": "1st"
   },
   "panels.flip_suffix": {
-    "ko": " (Flip됨)",
+    "ko": " (뒤집힘)",
     "en": " (Flipped)"
   },
   "panels.hand_empty": {
@@ -666,7 +666,7 @@ const UI_TEXT = {
     "en": "No cards in hand"
   },
   "panels.hand_public_label": {
-    "ko": "Hand (공개) ",
+    "ko": "{hand} (공개) ",
     "en": "Hand (public) "
   },
   "panels.in_play_label": {
@@ -674,11 +674,11 @@ const UI_TEXT = {
     "en": "In play"
   },
   "panels.intrigue_deck_top_badge": {
-    "ko": "Intrigue 덱 맨 위",
+    "ko": "책략 카드덱 맨 위",
     "en": "Top of Intrigue deck"
   },
   "panels.intrigue_resolving_label": {
-    "ko": "Intrigue 해결 중 ",
+    "ko": "{intrigue} 해결 중 ",
     "en": "Intrigue resolving "
   },
   "panels.leader_unset": {
@@ -694,19 +694,23 @@ const UI_TEXT = {
     "en": "{maker_hooks}"
   },
   "panels.my_discard": {
-    "ko": "내 discard",
-    "en": "My discard"
+    "ko": "내 {discard_pile}",
+    "en": "My discard pile"
+  },
+  "panels.seat_discard": {
+    "ko": "{{seat}}의 {discard_pile}",
+    "en": "{{seat}}'s discard pile"
   },
   "panels.my_hand": {
     "ko": "내 손패 · {{seat}}",
     "en": "My hand · {{seat}}"
   },
   "panels.navigation_remaining": {
-    "ko": "Navigation {{count}}장 남음",
+    "ko": "{navigation} {{count}}장 남음",
     "en": "{{count}} Navigation cards remaining"
   },
   "panels.neutral_combat_intrigue": {
-    "ko": "Combat Intrigue 창",
+    "ko": "전투 책략 카드 창",
     "en": "Combat Intrigue window"
   },
   "panels.neutral_combat_resolved": {
@@ -814,7 +818,7 @@ const UI_TEXT = {
     "en": "{spy} in {supply}"
   },
   "panels.tactics_space": {
-    "ko": "Tactics {{space}}칸",
+    "ko": "전술 트랙 {{space}}칸",
     "en": "Tactics space {{space}}"
   },
   "panels.tech_label": {
