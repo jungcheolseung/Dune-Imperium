@@ -90,8 +90,16 @@ const UI_TEXT = {
     "en": "No bonus"
   },
   "board.no_commanders_on_board": {
-    "ko": "보드에 남은 Commander 없음",
-    "en": "No Commander left on the board"
+    "ko": "보드에 남은 {commander} 없음",
+    "en": "No {commander} left on the board"
+  },
+  "board.space_with_commander": {
+    "ko": "{{space}} · {commander} (2 {solari})",
+    "en": "{{space}} · {commander} (2 {solari})"
+  },
+  "board.commander_count": {
+    "ko": "{commander} {{count}}",
+    "en": "{commander} {{count}}"
   },
   "board.no_human_seats": {
     "ko": "사람 좌석이 없는 게임입니다. 최종 순위의 \"AI 대국 다시 보기\"로 처음부터 볼 수 있습니다.",

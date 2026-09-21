@@ -65,6 +65,9 @@ from dune_imperium.display.bloodlines import (
     tech_acquire_text,
 )
 from dune_imperium.display.board_layout import (
+    COMMANDER_ANCHOR,
+    COMMANDER_HEIGHT,
+    COMMANDER_PICTURE_BASE,
     LEADER_TILE_BOXES,
     POST_POINTS,
     POST_SIZE,
@@ -81,6 +84,7 @@ from dune_imperium.display.images import (
 )
 from dune_imperium.display.token_images import (
     MAKER_HOOKS_TOKEN_FILENAME,
+    SARDAUKAR_COMMANDER_TOKEN_FILENAME,
     SHIELD_WALL_TOKEN_FILENAME,
     available_alliance_tokens,
 )
@@ -362,6 +366,21 @@ def build_catalog(
         "alliance_tokens": {
             faction: versioned(f"/tokens/{filename}")
             for faction, filename in available_alliance_tokens(token_files).items()
+        },
+        # A Sardaukar Commander on a board space [Bloodlines p. 3]: the
+        # rulebook figure's picture (null without the local file; the client
+        # then draws a mark) and where it stands on the space's frame —
+        # ``anchor`` and ``height`` are fractions of the frame, ``base`` is
+        # the point of the picture that goes on the anchor.
+        "commander_token": (
+            versioned(f"/tokens/{SARDAUKAR_COMMANDER_TOKEN_FILENAME}")
+            if SARDAUKAR_COMMANDER_TOKEN_FILENAME in token_files
+            else None
+        ),
+        "commander_spot": {
+            "anchor": list(COMMANDER_ANCHOR),
+            "height": COMMANDER_HEIGHT,
+            "base": list(COMMANDER_PICTURE_BASE),
         },
         # Live-state marker coordinates on the scan (Influence, VP, strength,
         # Conflict quadrants, High Council seats), percent of the image.

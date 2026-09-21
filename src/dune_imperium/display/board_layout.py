@@ -75,6 +75,22 @@ SPACE_BOXES: Final[Mapping[str, tuple[float, float, float, float]]] = (
 # the 45 degree cut takes 54 px of the line off each side of the corner.
 SPACE_FRAME_CUT: Final = (11.8, 15.3)
 
+# Where a Sardaukar Commander stands on its space, as fractions of the
+# space's frame (``SPACE_BOXES``). Setup puts one on each of five spaces
+# (six with four players) and says "Leave room on each space for an Agent"
+# [Bloodlines p. 3] (docs/rules/bloodlines.md); the setup photo there stands
+# each figure on the top-right corner of the frame, the rest of the frame
+# left to the Agents, about as tall as the frame. Read off the photo's five
+# spaces the base centre lies 0.84-0.94 of the width across and 0.04-0.26 of
+# the height down, and the figure is 0.83-1.1 frames tall: placed by hand,
+# so the means are used.
+COMMANDER_ANCHOR: Final = (0.89, 0.13)
+COMMANDER_HEIGHT: Final = 0.95
+# The base centre inside the figure's picture (``display.token_images``),
+# as fractions of its width and height: the figure leans back over its base.
+# ``scripts/cut_commander_token.py`` prints it.
+COMMANDER_PICTURE_BASE: Final = (0.434, 0.873)
+
 # A Leader's own space is a tile next to the board that the scan does not
 # print, so its picture is drawn in a box of its own. Esmar Tuek's tile
 # lies in the empty desert under Imperial Basin, clear of that space's
