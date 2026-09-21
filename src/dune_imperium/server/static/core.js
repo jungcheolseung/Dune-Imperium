@@ -379,3 +379,15 @@ function describeAction(action) {
   });
   return fragment;
 }
+
+/* describeAction() as plain text, for a line that takes a string (the
+   review status): an amount reads as its title ("3 솔라리") and any other
+   icon as its alt text, the words the icons stand for. A fragment dropped
+   into a template string printed "[object DocumentFragment]". */
+function describeActionText(action) {
+  const box = document.createElement("span");
+  box.appendChild(describeAction(action));
+  for (const node of box.querySelectorAll(".amount")) node.replaceWith(node.title);
+  for (const node of box.querySelectorAll("img")) node.replaceWith(node.alt);
+  return box.textContent;
+}

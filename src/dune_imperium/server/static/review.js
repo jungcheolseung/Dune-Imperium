@@ -92,7 +92,7 @@ async function reviewGoto(cursor) {
       if (item.step !== cursor) continue;
       status +=
         ` · ↩ 좌석 ${item.seat}가 여기서 ${item.count}단계 되돌림: ` +
-        item.undone.map(describeAction).join(" / ");
+        item.undone.map(describeActionText).join(" / ");
     }
     el("review-status").textContent = status;
     renderPlaybackControls();
@@ -131,7 +131,7 @@ function describeReviewStep(label) {
         : `${values.length}장 · ${values.slice(0, 3).map(nameOf).join(", ")} …`;
     return `chance: ${prettify(label.decision_id)}` + (shown ? ` — ${shown}` : "");
   }
-  return `좌석 ${label.actor}: ${describeAction(label)}`;
+  return `좌석 ${label.actor}: ${describeActionText(label)}`;
 }
 
 function reviewJumpOwn(direction) {
@@ -268,11 +268,23 @@ function stopPlayback() {
 }
 
 /* A seek (slider, first, last) moves the cursor and leaves playback as it
-   was; the position sought gets a full interval before the next move. */
+   was; the position sought gets a full interval before the next move.
+   Playback holds until the seek has drawn: a tick fired meanwhile would ask
+   for the step after the old cursor, and being the later request it would
+   win (reviewGoto draws only the latest) and throw the seek away. A 0.3 s
+   review load against a 0.25 s interval lost every seek that way. */
 function reviewSeek(cursor) {
-  if (!state.review) return;
-  if (playback.playing) schedulePlayback(playback.intervalMs);
-  reviewGoto(cursor).catch(() => {});
+  const review = state.review;
+  if (!review) return;
+  window.clearTimeout(playback.timer);
+  reviewGoto(cursor)
+    .then((drew) => {
+      if (state.review !== review || !playback.playing) return;
+      /* null: a later request took over, and schedules for itself. */
+      if (drew) schedulePlayback(playback.intervalMs);
+      else if (drew === false) stopPlayback();
+    })
+    .catch(() => {});
 }
 
 /* Stepping by hand (one step, one own action) takes the wheel. */

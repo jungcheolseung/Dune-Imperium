@@ -21,6 +21,7 @@ import time
 
 from common import SERVER_LOG_COPY, Check, chrome, open_context, server
 from open_mode import create_game
+from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
 check = Check()
 
@@ -41,6 +42,11 @@ def review(page) -> dict | None:
 
 def choose(page, selector: str, value: str) -> None:
     page.select_option(selector, value)
+
+
+def slow_review(route) -> None:
+    time.sleep(0.6)
+    route.continue_()
 
 
 def seek(page, cursor: int) -> None:
@@ -171,6 +177,9 @@ def log_follows(page) -> None:
         "the status names the turn and how many steps it took",
         status,
     )
+    # describeAction() returns nodes; in a template string it read
+    # "좌석 0: [object DocumentFragment]" and the check above still passed.
+    check.ok("[object" not in status, "the status spells the action out", status)
     header = page.inner_text("#header-status")
     shown_round = page.evaluate("state.review.round")
     check.ok(
@@ -225,6 +234,29 @@ def controls(page) -> None:
         page.evaluate("state.review.cursor === state.review.stops[61]"),
         "and it carries on from there, one turn on",
     )
+
+    # A seek must survive an answer slower than the playback interval. The
+    # next tick used to fire while the seek was in flight, ask for the step
+    # after the OLD cursor, and win as the later request — on this repo's
+    # slower laptop (0.3 s loads against 0.25 s) every seek was thrown away.
+    # Every review answer is held 0.6 s here, so the race is not left to the
+    # machine's speed.
+    choose(page, "#review-interval", "250")
+    page.route("**/review/*", slow_review)
+    target = page.evaluate("state.review.stops[100]")
+    seek(page, target)
+    try:
+        page.wait_for_function(f"state.review.cursor >= {target}", timeout=10000)
+        reached = True
+    except PlaywrightTimeout:
+        reached = False
+    page.unroute("**/review/*")
+    check.ok(
+        reached and page.evaluate("playback.playing"),
+        "a seek survives a review answer slower than the playback interval",
+        (target, page.evaluate("state.review.cursor")),
+    )
+    choose(page, "#review-interval", "1000")
 
 
 def other_eyes(page) -> None:
