@@ -1221,7 +1221,12 @@ button:disabled { opacity: 0.5; cursor: wait; }
    1600px) squeeze the action list and the log to ~270px each, so they
    stack again earlier than the table columns shrink. */
 @media (max-width: 1700px) {
-  #side { grid-template-columns: minmax(0, 1fr); overflow-y: auto; }
+  /* Stacked, each pane is as tall as its content and #side scrolls. The
+     implicit rows were `auto` with min-height: 0 items, so the grid split
+     the column in half: #side-main got 438px of 1734px at 1600x1000 and the
+     rest ran on underneath the opaque log panel — the standings at 1366px,
+     a long action list in play. */
+  #side { grid-template-columns: minmax(0, 1fr); grid-auto-rows: max-content; overflow-y: auto; }
   #side-main, #side-log { overflow: visible; }
   #side-log #action-log { flex: none; }
   #action-log .log-list { max-height: 28rem; }

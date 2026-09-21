@@ -15,6 +15,8 @@ Commander in garrison, which is why this check uses that seed.
 
 from __future__ import annotations
 
+import re
+
 from common import LAPTOP_VIEWPORT, SERVER_LOG_COPY, Check, chrome, open_context, server
 
 check = Check()
@@ -183,6 +185,10 @@ def run(base: str, browser) -> None:
             strips,
         )
 
+    check_review_status(page)
+    check_id_lists(page)
+    check_side_stacking(page, "1600x1000, disclosure open")
+
     # Another seat's eyes on the same position keep it open too.
     page.select_option("#review-seat", "1")
     # phase is reset to null by enterReview and set just before its render().
@@ -219,6 +225,61 @@ def run(base: str, browser) -> None:
     if check.failed:
         rec.dump()
     context.close()
+
+
+def check_review_status(page) -> None:
+    """The status line names the step as words. describeAction() returns
+    nodes, and dropped into its template string the line read
+    "좌석 0: [object DocumentFragment]"."""
+    status = page.inner_text("#review-status")
+    check.ok(
+        "[object" not in status and re.search(r"좌석 \d: \S", status) is not None,
+        "the review status names the step's action in words",
+        status,
+    )
+
+
+def check_id_lists(page) -> None:
+    """The engine joins an id list into one string (leader_ids, contract_ids);
+    the log printed it raw ("staban_tuek,gurney_halleck"). A Leader-draft game
+    logs the unused Leaders right at the start."""
+    lines = page.evaluate(
+        """() => {
+            const prefix = phraseText(EVENT_LABELS.leader_draft_unused);
+            return [...document.querySelectorAll('#action-log .logevent')]
+                .map((e) => e.textContent)
+                .filter((text) => text.startsWith(prefix));
+        }"""
+    )
+    raw = [line for line in lines if re.search(r"[a-z]+_[a-z]+", line)]
+    check.ok(
+        bool(lines) and not raw,
+        "an id list in the log reads as names, not engine ids",
+        raw[:2] or lines[:2],
+    )
+
+
+def check_side_stacking(page, where: str) -> None:
+    """Stacked (<= 1700px), no pane of #side may run on under the next one.
+    The implicit rows were `auto` over min-height: 0 items, so the grid gave
+    each pane half the column and #side-main's overflow went on underneath
+    the opaque log panel — at 1366px the standings sat behind it."""
+    panes = page.evaluate(
+        """() => [...document.getElementById('side').children].map((pane) => ({
+            id: pane.id,
+            overflow: getComputedStyle(pane).overflowY,
+            scrollH: pane.scrollHeight,
+            clientH: pane.clientHeight,
+        }))"""
+    )
+    hidden = [
+        pane
+        for pane in panes
+        if pane["overflow"] == "visible" and pane["scrollH"] > pane["clientH"] + 1
+    ]
+    check.ok(
+        not hidden, f"no side pane runs on under the next one ({where})", hidden
+    )
 
 
 def disclosure_state(page) -> dict:
@@ -391,6 +452,26 @@ def run_laptop(base: str, browser) -> None:
         }"""
     )
     check.ok(reached, "the standings can be scrolled into view on a laptop screen")
+    check_side_stacking(page, "1366x768")
+    # Reachable is not enough: nothing may be drawn over it either.
+    covered = page.evaluate(
+        """() => {
+            const box = document.getElementById('standings').getBoundingClientRect();
+            // Only the part the side column shows; below it is #private-zone.
+            const shown = document.getElementById('side').getBoundingClientRect();
+            const x = box.left + box.width / 2;
+            const hits = [];
+            const end = Math.min(box.bottom, shown.bottom) - 4;
+            for (let y = box.top + 4; y < end; y += 24) {
+                const top = document.elementFromPoint(x, y);
+                if (top && !document.getElementById('standings').contains(top)) {
+                    hits.push([Math.round(y), top.id || top.className]);
+                }
+            }
+            return hits;
+        }"""
+    )
+    check.ok(not covered, "nothing is drawn over the standings", covered[:3])
     print(f"  .. disclosure is {size['disclosureH']:.0f}px tall here")
     context.close()
 

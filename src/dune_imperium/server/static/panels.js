@@ -439,7 +439,15 @@ function logEventPayload(payload) {
        old allowlist named only five, so the rest printed raw engine ids —
        leader_ids is the first log line of every Leader-draft game. */
     const isIdField = key.endsWith("_id");
-    const isIdList = key.endsWith("_ids") && Array.isArray(value);
+    /* The engine joins an id list into one string ("staban_tuek,gurney_halleck":
+       leader_ids, contract_ids); an array would do as well. */
+    const idList = !key.endsWith("_ids")
+      ? null
+      : Array.isArray(value)
+        ? value
+        : typeof value === "string"
+          ? value.split(",").filter(Boolean)
+          : null;
     /* Combat rewards and the like list every field; zeros say nothing. */
     if (value === 0 || value === "" || value === null || value === false) continue;
     if (Array.isArray(value) && value.length === 0) continue;
@@ -448,8 +456,8 @@ function logEventPayload(payload) {
       key === "action_id"
         ? phraseText(ACTION_LABELS[item] || prettify(item))
         : nameOf(item);
-    const shown = isIdList
-      ? value.map(resolve).join(", ")
+    const shown = idList
+      ? idList.map(resolve).join(", ")
       : isIdField
         ? resolve(value)
         : String(value);
