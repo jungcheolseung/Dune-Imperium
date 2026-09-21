@@ -62,6 +62,55 @@ def watched_game(page, base: str) -> None:
     )
 
 
+def check_moved_counts(page) -> None:
+    """What left the zone line is still on the panel: the Intrigue count on the
+    resource row, the supply in the garrison's title and the detail, the
+    garrisoned and supplied Commanders as C chips."""
+    rows = page.evaluate(
+        """() => state.view.players.map((player, index) => {
+            const card = document.querySelectorAll('#seats article.seat')[index];
+            const stats = [...card.querySelectorAll(':scope > .stats .stat')];
+            const head = phraseText('{garrison}');
+            const garrison = stats.find((s) => s.title.startsWith(head));
+            const detail = card.querySelector('.seat-detail');
+            return {
+                intrigue: player.intrigue_card_count,
+                intrigueShown: stats.some((s) => s.title === phraseText('{intrigue}')
+                    && s.textContent.trim() === String(player.intrigue_card_count)),
+                supply: player.troops_supply,
+                garrisonTitle: garrison ? garrison.title : null,
+                detailText: detail ? detail.textContent : '',
+                commandersGarrison: player.commanders_garrison || 0,
+                commandersSupply: player.commanders_supply || 0,
+                garrisonChip: garrison && garrison.querySelector('.commander-count')
+                    ? garrison.querySelector('.commander-count').textContent : null,
+            };
+        })"""
+    )
+    missing = []
+    for seat, row in enumerate(rows):
+        if not row["intrigueShown"]:
+            missing.append((seat, "intrigue", row["intrigue"]))
+        supply = f"{row['supply']}"
+        if not (row["garrisonTitle"] and row["garrisonTitle"].endswith(supply)):
+            missing.append((seat, "supply in title", row["garrisonTitle"]))
+        if supply not in row["detailText"]:
+            missing.append((seat, "supply in detail", row["detailText"][-40:]))
+        want = f"C{row['commandersGarrison']}" if row["commandersGarrison"] else None
+        if row["garrisonChip"] != want:
+            missing.append((seat, "garrison C chip", row["garrisonChip"], want))
+        supplied = row["commandersSupply"]
+        if supplied and f"C{supplied}" not in row["detailText"]:
+            missing.append((seat, "supply C chip", supplied))
+    check.ok(
+        not missing, "the counts that moved off the zone line are still shown", missing
+    )
+    check.ok(
+        any(row["commandersGarrison"] or row["commandersSupply"] for row in rows),
+        f"seed {SEED} really has a Commander to show",
+    )
+
+
 def run(base: str, browser) -> None:
     context, page, rec = open_context(browser, "seats")
     watched_game(page, base)
@@ -96,6 +145,16 @@ def run(base: str, browser) -> None:
         if any(word in c["zones"] for word in ("hand", "deck", "discard", "supply"))
     ]
     check.ok(not english, "the zone counts are not left in English", english[:2])
+
+    # The point of folding: all four seats in the column at 1600x1000, late in
+    # an every-expansion game. They took 986px of 751 before the rows were
+    # tightened (a wrapping name, "Commander 0/1", a two-row zone line).
+    check.ok(
+        folded["scroll"] <= folded["client"],
+        "all four folded seats fit the column",
+        (folded["scroll"], folded["client"]),
+    )
+    check_moved_counts(page)
 
     # Open one seat: only that one grows.
     page.click("#seats > *:nth-child(2) .seat-more")

@@ -10,6 +10,16 @@ function statNode(name, label, value) {
   return stat;
 }
 
+/* Sardaukar Commanders as the board draws them (renderTrackMarkers): "C2",
+   with where they stand in the title. `where` is a term template. */
+function commanderChip(count, where) {
+  const chip = document.createElement("span");
+  chip.className = "commander-count";
+  chip.textContent = `C${count}`;
+  chip.title = phraseText(`${where}의 {commander} ${count}`);
+  return chip;
+}
+
 function seatLine(container, label, content) {
   const line = document.createElement("div");
   line.className = "cardline";
@@ -105,19 +115,28 @@ function renderSeats() {
     }
     const who = document.createElement("div");
     who.className = "who";
+    /* The name keeps one line of its own (cut short with an ellipsis; the
+       hover card has it whole) and the badges take the next: a long name
+       wrapping to two lines made three of four seats 23px taller. */
+    const nameLine = document.createElement("span");
+    nameLine.className = "who-name";
     const seatMark = seatToken(seat, "seat-mark");
-    who.appendChild(seatMark);
+    nameLine.appendChild(seatMark);
     const leaderName = document.createElement("span");
+    leaderName.className = "leader-name";
     leaderName.textContent = player.leader_id ? nameOf(faceId) : "Leader 미정";
+    /* A cut-short name reads whole in the hover card, or in the title. */
+    if (!leaderEntry) leaderName.title = leaderName.textContent;
     if (leaderEntry) {
-      leaderName.className = "clickable";
+      leaderName.classList.add("clickable");
       leaderName.addEventListener("click", (event) => {
         event.stopPropagation();
         pinPopover(leaderEntry, leaderName);
       });
       hoverPopover(leaderName, () => leaderEntry);
     }
-    who.appendChild(leaderName);
+    nameLine.appendChild(leaderName);
+    who.appendChild(nameLine);
     if (summary.seats[seat] === "human") {
       const badge = document.createElement("span");
       badge.className = "badge";
@@ -150,22 +169,29 @@ function renderSeats() {
 
     const stats = document.createElement("div");
     stats.className = "stats";
+    /* The Intrigue count sits with the resources: it has a printed icon,
+       and taking it off the zone line keeps that line to one row. */
     stats.append(
-      statNode("victory_point", "Victory Points", player.victory_points),
-      statNode("solari", "solari", player.resources.solari),
-      statNode("spice", "spice", player.resources.spice),
-      statNode("water", "water", player.resources.water)
+      statNode("victory_point", phraseText("{victory_point}"), player.victory_points),
+      statNode("solari", phraseText("{solari}"), player.resources.solari),
+      statNode("spice", phraseText("{spice}"), player.resources.spice),
+      statNode("water", phraseText("{water}"), player.resources.water),
+      statNode("intrigue", phraseText("{intrigue}"), player.intrigue_card_count),
     );
     card.appendChild(stats);
 
     const influence = document.createElement("div");
     influence.className = "stats";
     for (const [key, label] of Object.entries(FACTION_LABELS)) {
-      const stat = statNode(`influence_${key}`, `${label} Influence`, player.influence[key]);
+      const stat = statNode(
+        `influence_${key}`,
+        phraseText(`{influence_${key}}`),
+        player.influence[key],
+      );
       if (player.alliance_faction_ids.includes(key)) {
         /* The Alliance token is in this seat's supply [Main p. 7]. */
         stat.classList.add("alliance");
-        stat.title += " · Alliance";
+        stat.title += phraseText(" · {alliance}");
         stat.appendChild(allianceToken(key, undefined, seat));
       }
       influence.appendChild(stat);
@@ -177,29 +203,25 @@ function renderSeats() {
     /* The sword is the printed strength icon, so it carries the strength
        number; the units in the Conflict get the troop icon under a
        "Conflict" tag so they do not read as the garrison. */
-    forces.append(
-      statNode("agent", "Agents 대기", player.agents_available),
-      statNode("troop", "garrison", player.troops_garrison),
-      statNode("sword", "전투력", player.combat_strength || 0),
-      statNode("spy", "Spy supply", player.spies_supply)
+    const garrison = statNode(
+      "troop",
+      phraseText("{garrison} {troop}"),
+      player.troops_garrison,
     );
-    const commanders =
-      (player.commanders_supply || 0) +
-      (player.commanders_garrison || 0) +
-      (player.commanders_conflict || 0);
-    if (commanders) {
-      /* Sardaukar Commanders (Bloodlines): 2-strength "troops" that return
-         to the supply after Combat [Bloodlines p. 4]. */
-      const mark = document.createElement("span");
-      mark.className = "stat commanders";
-      mark.title =
-        `Sardaukar Commander · garrison ${player.commanders_garrison || 0}` +
-        ` · supply ${player.commanders_supply || 0}`;
-      mark.textContent =
-        `Commander ${player.commanders_garrison || 0}` +
-        `/${player.commanders_supply || 0}`;
-      forces.appendChild(mark);
+    garrison.title += phraseText(` · {supply} ${player.troops_supply}`);
+    /* Sardaukar Commanders (Bloodlines): 2-strength "troops" that return to
+       the supply after Combat [Bloodlines p. 4]. Garrisoned ones read as the
+       board's C chip beside the troops; the ones in the supply go on the
+       zone line. The old "Commander 0/1" text pushed this row onto two. */
+    if (player.commanders_garrison) {
+      garrison.appendChild(commanderChip(player.commanders_garrison, "{garrison}"));
     }
+    forces.append(
+      statNode("agent", phraseText("남은 {agent}"), player.agents_available),
+      garrison,
+      statNode("sword", phraseText("{strength}"), player.combat_strength || 0),
+      statNode("spy", phraseText("{supply}의 {spy}"), player.spies_supply),
+    );
     if (
       player.troops_conflict ||
       player.sandworms_conflict ||
@@ -208,19 +230,23 @@ function renderSeats() {
     ) {
       const deployed = document.createElement("span");
       deployed.className = "stat deployed";
-      deployed.title = "Conflict에 배치한 유닛";
-      deployed.append("Conflict ");
+      deployed.title = phraseText("{conflict}에 배치한 유닛");
+      deployed.append(phraseText("{conflict} "));
       if (player.troops_conflict) {
-        deployed.append(icon("troop", "troop"), String(player.troops_conflict));
+        deployed.append(icon("troop", phraseText("{troop}")), String(player.troops_conflict));
       }
       if (player.sandworms_conflict) {
-        deployed.append(" ", icon("sandworm", "sandworm"), String(player.sandworms_conflict));
+        deployed.append(
+          " ",
+          icon("sandworm", phraseText("{sandworm}")),
+          String(player.sandworms_conflict),
+        );
       }
       if (player.commanders_conflict) {
-        deployed.append(` Commander ${player.commanders_conflict}`);
+        deployed.append(commanderChip(player.commanders_conflict, "{conflict}"));
       }
       if (player.agent_in_conflict) {
-        deployed.append(" ", icon("agent", "Agent"), "(Into the Fray)");
+        deployed.append(" ", icon("agent", phraseText("{agent}")), "(Into the Fray)");
       }
       forces.appendChild(deployed);
     }
@@ -290,20 +316,26 @@ function renderSeats() {
     }
     const agents = player.agent_locations.map(nameOf).join(", ");
     if (agents) seatLine(detail, "배치", agents);
+    const supply = document.createElement("span");
+    supply.append(icon("troop", phraseText("{troop}")), String(player.troops_supply));
+    if (player.commanders_supply) {
+      supply.appendChild(commanderChip(player.commanders_supply, "{supply}"));
+    }
+    seatLine(detail, phraseText("{supply}"), supply);
 
     const zones = document.createElement("div");
     zones.className = "zones";
     /* The last English line in the seat panel: the zone names are glossary
        terms, so phraseText gives them the same words as everywhere else. */
+    /* One row: the supply (12 troops less the garrison and the Conflict)
+       moved into the detail, and into the garrison's title. */
     zones.textContent = phraseText(
       `{hand} ${player.hand_size} · {deck} ${player.deck_size}` +
-        ` · {discard_pile} ${player.discard_pile.length}` +
-        ` · {intrigue} ${player.intrigue_card_count}` +
-        ` · {supply} ${player.troops_supply}`,
+        ` · {discard_pile} ${player.discard_pile.length}`,
     );
     if (player.discard_pile.length) {
       zones.classList.add("clickable");
-      zones.title = "discard 더미 보기";
+      zones.title = phraseText("{discard_pile} 보기");
       zones.addEventListener("click", (event) => {
         event.stopPropagation();
         openPileList(`좌석 ${seat} discard`, player.discard_pile, zones);
