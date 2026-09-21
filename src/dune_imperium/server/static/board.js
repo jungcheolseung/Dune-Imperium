@@ -22,6 +22,35 @@ function boardOccupancy(view) {
   return { occupants, controllers, spies };
 }
 
+/* When each Spy on the board arrived: the log's spy_placed events, in
+   order, a later placement of the same seat on the same post replacing an
+   earlier one (a Spy recalled and placed again). The engine keeps each
+   seat's posts, not who came first. Taken-back steps do not count, and a
+   review reads only up to its cursor, as the log panel does. */
+function spyArrivals() {
+  const log = state.review ? reviewLog(state.review) : state.log;
+  const arrivals = new Map();
+  let order = 0;
+  for (const entry of (log && log.entries) || []) {
+    if (entry.undone) continue;
+    for (const event of entry.events || []) {
+      if (event.kind !== "spy_placed") continue;
+      arrivals.set(`${event.payload.post_id}|${event.payload.player}`, order++);
+    }
+  }
+  return arrivals;
+}
+
+/* A post's Spies from the bottom up: first come first, then any the log
+   does not place (a log that starts later), by seat, beneath them. */
+function stackOrder(postId, seats, arrivals) {
+  const when = (seat) => {
+    const order = arrivals.get(`${postId}|${seat}`);
+    return order === undefined ? -1 : order;
+  };
+  return [...seats].sort((a, b) => when(a) - when(b) || a - b);
+}
+
 function seatToken(seat, className) {
   const token = document.createElement("span");
   token.className = className;
@@ -271,6 +300,36 @@ function makerSpicePoint(spaceId) {
 /* The bonus spice waiting on a Maker space, "in the spot designated for
    bonus spice" [Main p. 15]: a spice hexagon exactly over the printed one,
    with the amount in it like the board's own spice numbers. */
+/* A Sardaukar Commander still on its setup space, standing on the top-right
+   corner of the printed frame so the frame stays free for Agents, about as
+   tall as the frame [Bloodlines p. 3] (catalog.commander_spot). It is the
+   rulebook's figure (catalog.commander_token), or a drawn mark in its place;
+   it is the same neutral piece for everyone until acquired, and it never
+   takes the click meant for the space. */
+function commanderPiece(spaceId, box) {
+  const [left, top, width, height] = box;
+  const spot = state.catalog.commander_spot;
+  const picture = state.catalog.commander_token;
+  const piece = document.createElement(picture ? "img" : "span");
+  piece.className = picture ? "commander-piece" : "commander-piece drawn";
+  piece.dataset.space = spaceId;
+  piece.setAttribute("aria-hidden", "true");
+  if (picture) {
+    piece.src = picture;
+    piece.alt = "";
+    piece.draggable = false;
+  } else {
+    piece.textContent = "C";
+  }
+  piece.style.left = `${left + width * spot.anchor[0]}%`;
+  piece.style.top = `${top + height * spot.anchor[1]}%`;
+  piece.style.height = `${height * spot.height}%`;
+  /* The anchor takes the base's centre, not the picture's corner. */
+  piece.style.transform =
+    `translate(${-100 * spot.base[0]}%, ${-100 * spot.base[1]}%)`;
+  return piece;
+}
+
 function bonusSpiceToken(spaceId, count, point) {
   const [width, height] = state.catalog.tracks.maker_spice.size;
   const token = document.createElement("span");
@@ -301,7 +360,9 @@ function renderBoardStage(board, view) {
   stage.appendChild(map);
 
   const { occupants, controllers, spies } = boardOccupancy(view);
+  const arrivals = spyArrivals();
   const makerSpice = new Map(view.maker_bonus_spice);
+  const commanders = new Set(view.sardaukar_commander_space_ids || []);
 
   /* Pieces that lie on the board, under the hotspots and the tokens. The
      Shield Wall token stays on its marked position until a player removes
@@ -334,9 +395,14 @@ function renderBoardStage(board, view) {
     hotspot.style.top = `${top}%`;
     hotspot.style.width = `${width}%`;
     hotspot.style.height = `${height}%`;
-    hotspot.title = entry.name;
+    /* The Commander standing on the space is drawn outside the hotspot and
+       takes no pointer, so the space says it has one. */
+    const label = commanders.has(spaceId)
+      ? t("board.space_with_commander", { space: entry.name })
+      : entry.name;
+    hotspot.title = label;
     hotspot.dataset.space = spaceId;
-    hotspot.setAttribute("aria-label", entry.name);
+    hotspot.setAttribute("aria-label", label);
     hotspot.appendChild(spaceFrame());
     const legal = legalActionsFor(spaceId);
     if (legal.length) hotspot.classList.add("legal");
@@ -364,15 +430,6 @@ function renderBoardStage(board, view) {
       bonus.classList.add("maker-bonus");
       hotspot.appendChild(bonus);
     }
-    if ((view.sardaukar_commander_space_ids || []).includes(spaceId)) {
-      /* A Sardaukar Commander waits on the space: 2 Solari with a visit
-         [Bloodlines p. 4]. */
-      const mark = document.createElement("span");
-      mark.className = "commander-mark";
-      mark.textContent = "C";
-      mark.title = "Sardaukar Commander (2 Solari)";
-      hotspot.appendChild(mark);
-    }
     hotspot.addEventListener("click", (event) => {
       event.stopPropagation();
       tableClick(spaceId, entry, hotspot);
@@ -389,9 +446,13 @@ function renderBoardStage(board, view) {
     const point = makerSpicePoint(spaceId);
     if (count && point) stage.appendChild(bonusSpiceToken(spaceId, count, point));
   }
+  for (const spaceId of commanders) {
+    const entry = state.catalog.spaces[spaceId];
+    if (entry && spaceInPlay(entry, view)) stage.appendChild(commanderPiece(spaceId, entry.box));
+  }
 
   for (const [postId, [x, y]] of Object.entries(state.catalog.posts)) {
-    const seats = spies.get(postId) || [];
+    const seats = stackOrder(postId, spies.get(postId) || [], arrivals);
     if (!seats.length) continue;
     const post = document.createElement("span");
     post.className = "spy-post";
@@ -403,7 +464,12 @@ function renderBoardStage(board, view) {
     post.style.height = `${(state.catalog.post_size * 80) / 56}%`;
     post.dataset.count = String(Math.min(seats.length, 4));
     post.title = t("board.post_seats", { post: postName(postId), seats: seats.join(", ") });
-    for (const seat of seats) post.appendChild(seatPiece("spy", seat));
+    /* A Spy sharing a post stands on the one that was there first. */
+    seats.forEach((seat, level) => {
+      const piece = seatPiece("spy", seat);
+      piece.style.setProperty("--level", String(level));
+      post.appendChild(piece);
+    });
     stage.appendChild(post);
   }
 
@@ -812,7 +878,7 @@ function renderTrackMarkers(stage, view) {
     if (player.commanders_garrison) {
       const commanders = document.createElement("span");
       commanders.className = "commander-count";
-      commanders.title = `Sardaukar Commander ${player.commanders_garrison}`;
+      commanders.title = t("board.commander_count", { count: player.commanders_garrison });
       commanders.textContent = `C${player.commanders_garrison}`;
       garrison.appendChild(commanders);
     }
@@ -838,7 +904,7 @@ function renderTrackMarkers(stage, view) {
       if (player.commanders_conflict) {
         const commanders = document.createElement("span");
         commanders.className = "commander-count";
-        commanders.title = `Sardaukar Commander ${player.commanders_conflict}`;
+        commanders.title = t("board.commander_count", { count: player.commanders_conflict });
         commanders.textContent = `C${player.commanders_conflict}`;
         deployed.appendChild(commanders);
       }

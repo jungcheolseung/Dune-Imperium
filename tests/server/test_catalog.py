@@ -322,6 +322,20 @@ def test_catalog_lays_the_pieces_the_scan_does_not_print() -> None:
     assert isinstance(pictured, dict)
     assert pictured["image"] == "/tokens/shield_wall.png"
 
+    # A Sardaukar Commander stands on the top-right corner of its space's
+    # frame, leaving the frame to the Agents [Bloodlines p. 3]: always a spot,
+    # the rulebook figure only with the local picture.
+    assert bare["commander_token"] is None
+    spot = bare["commander_spot"]
+    assert isinstance(spot, dict)
+    assert spot["anchor"] == [0.89, 0.13]
+    assert spot["height"] == 0.95
+    assert spot["base"] == [0.434, 0.873]
+    with_commander = build_catalog(
+        token_files=frozenset({"sardaukar_commander.png"})
+    )
+    assert with_commander["commander_token"] == "/tokens/sardaukar_commander.png"
+
     spaces = bare["spaces"]
     assert isinstance(spaces, dict)
     # Immortality's Research Station overlay: "Draw two cards and research"

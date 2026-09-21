@@ -26,6 +26,14 @@ SHIELD_WALL_TOKEN_FILENAME: Final = "shield_wall.png"
 # garrison's printed slot.
 MAKER_HOOKS_TOKEN_FILENAME: Final = "maker_hooks.png"
 
+# A Sardaukar Commander figure, the same piece for every seat: five (six with
+# four players) stand on board spaces from setup until someone acquires them
+# [Bloodlines p. 3] (docs/rules/bloodlines.md). The picture is the figure on
+# the rulebook's components page [Bloodlines p. 2], cut out of its ground by
+# ``scripts/cut_commander_token.py``; where its base lies is
+# ``board_layout.COMMANDER_PICTURE_BASE``.
+SARDAUKAR_COMMANDER_TOKEN_FILENAME: Final = "sardaukar_commander.png"
+
 # The four Alliance tokens, one per Faction (``Faction`` values): on the marked
 # area of the Faction's Influence track until a player earns the Alliance,
 # then in that player's supply [Main pp. 4, 7]. The pictures are round tokens

@@ -12,7 +12,9 @@ browser really laid out with those tables, so a CSS or transform slip shows
 as a number. Reaching Control, hooks and an Alliance takes rounds of play, so
 the view is edited in the page for the geometry checks (the view is the only
 input of the render); the Reveal preview and the Intrigue pile are checked on
-the live game.
+the live game. A Bloodlines table then checks the Sardaukar Commanders that
+stand on their setup spaces, the rulebook's figure on each frame's top-right
+corner [Bloodlines p. 3].
 """
 
 from __future__ import annotations
@@ -419,17 +421,62 @@ def agent_pieces(page) -> None:
     )
 
 
+# A shared post's Spies arrive in this order (bottom first), deliberately not
+# seat order; the fake log entries below carry it.
+SPY_ARRIVALS = {
+    "emperor-sardaukar-dutiful-service": [2],
+    "arrakis-hagga-basin": [2, 0, 3, 1],
+    "fremen-desert-tactics-fremkit": [3, 1],
+}
+
+SPIES_JS = """() => {
+  const stage = document.querySelector(".board-stage").getBoundingClientRect();
+  const pct = (r) => ({
+    left: (r.left - stage.left) / stage.width * 100,
+    top: (r.top - stage.top) / stage.height * 100,
+    width: r.width / stage.width * 100,
+    height: r.height / stage.height * 100,
+  });
+  const posts = document.querySelectorAll(".board-stage .spy-post");
+  return [...posts].map((post) => ({
+    rect: pct(post.getBoundingClientRect()),
+    spies: [...post.querySelectorAll(".spy-token")].map((spy) => {
+      const body = spy.querySelector(".piece-body");
+      return {
+        rect: pct(spy.getBoundingClientRect()),
+        seat: Number(spy.dataset.seat),
+        tag: spy.tagName,
+        outline: body ? body.getAttribute("href") : null,
+        fill: body ? getComputedStyle(body).fill : null,
+        top: spy.querySelectorAll(".piece-top").length,
+        drawnText: spy.querySelectorAll("text").length + (body ? 0 : 1),
+        role: spy.getAttribute("role"),
+        label: spy.getAttribute("aria-label"),
+        wantedLabel: t("common.seat", { seat: Number(spy.dataset.seat) }),
+      };
+    }),
+  }));
+}"""
+
+# One log entry per placement: what spyArrivals() reads (board.js).
+LOG_PLACEMENTS_JS = """(placements) => {
+  for (const [post, seat] of placements) {
+    state.log.entries.push({
+      type: "action", index: state.log.entries.length, actor: seat,
+      action_id: "place_spy_on_space", arguments: {}, undone: false,
+      events: [{kind: "spy_placed", payload: {player: seat, post_id: post}}],
+    });
+  }
+  render();
+}"""
+
+
 def spy_pieces(page) -> None:
     print("[3c] Spies: the Spy icon's cylinder on the post disc (edited view)")
     catalog = page.evaluate(
         "({ posts: state.catalog.posts, size: state.catalog.post_size })"
     )
     colors = page.evaluate("SEAT_COLORS")
-    placed = {
-        "emperor-sardaukar-dutiful-service": [2],
-        "arrakis-hagga-basin": [0, 1, 2, 3],
-        "fremen-desert-tactics-fremkit": [1, 3],
-    }
     page.evaluate(
         """(placed) => {
           for (const player of state.view.players) player.spy_post_ids = [];
@@ -438,40 +485,19 @@ def spy_pieces(page) -> None:
               state.view.players[seat].spy_post_ids.push(post);
             }
           }
-          render();
         }""",
-        placed,
+        SPY_ARRIVALS,
     )
-    shown = page.evaluate(
-        """() => {
-          const stage = document.querySelector(".board-stage").getBoundingClientRect();
-          const pct = (r) => ({
-            left: (r.left - stage.left) / stage.width * 100,
-            top: (r.top - stage.top) / stage.height * 100,
-            width: r.width / stage.width * 100,
-            height: r.height / stage.height * 100,
-          });
-          const posts = document.querySelectorAll(".board-stage .spy-post");
-          return [...posts].map((post) => ({
-            rect: pct(post.getBoundingClientRect()),
-            spies: [...post.querySelectorAll(".spy-token")].map((spy) => {
-              const body = spy.querySelector(".piece-body");
-              return {
-                rect: pct(spy.getBoundingClientRect()),
-                seat: Number(spy.dataset.seat),
-                tag: spy.tagName,
-                outline: body ? body.getAttribute("href") : null,
-                fill: body ? getComputedStyle(body).fill : null,
-                top: spy.querySelectorAll(".piece-top").length,
-                drawnText: spy.querySelectorAll("text").length + (body ? 0 : 1),
-                role: spy.getAttribute("role"),
-                label: spy.getAttribute("aria-label"),
-                wantedLabel: t("common.seat", { seat: Number(spy.dataset.seat) }),
-              };
-            }),
-          }));
-        }"""
-    )
+    # The arrivals go in round-robin across posts, as a game would interleave.
+    longest = max(len(seats) for seats in SPY_ARRIVALS.values())
+    placements = [
+        [post, seats[turn]]
+        for turn in range(longest)
+        for post, seats in SPY_ARRIVALS.items()
+        if turn < len(seats)
+    ]
+    page.evaluate(LOG_PLACEMENTS_JS, placements)
+    shown = page.evaluate(SPIES_JS)
 
     def rgb(hex_color: str) -> str:
         value = hex_color.lstrip("#")
@@ -488,8 +514,8 @@ def spy_pieces(page) -> None:
     by_post = {post_at(group["rect"]): group for group in shown}
     check.ok(
         {post: [s["seat"] for s in group["spies"]] for post, group in by_post.items()}
-        == placed,
-        "each post's Spies centred on its printed disc, in seat order",
+        == SPY_ARRIVALS,
+        "each post's Spies on its printed disc, the first to arrive at the bottom",
         [(group["rect"], [s["seat"] for s in group["spies"]]) for group in shown],
     )
     for post_id, group in by_post.items():
@@ -516,20 +542,53 @@ def spy_pieces(page) -> None:
             check.ok(
                 abs(shape - 56 / 80) < 0.02, f"{name}: the icon's proportions", shape
             )
+        # Stacked, as on the table: every Spy the disc's width, centred over
+        # the post, each standing on the top face of the one below it (the
+        # faces' centres are 48 of the icon's 80 units apart).
+        x, y = catalog["posts"][post_id]
         spies = group["spies"]
-        apart = all(
-            left["rect"]["left"] + left["rect"]["width"] <= right["rect"]["left"] + 0.01
-            for left, right in zip(spies, spies[1:], strict=False)
-        )
-        check.ok(apart, f"{post_id}: Spies side by side, not stacked")
-    alone = by_post.get("emperor-sardaukar-dutiful-service")
-    if check.ok(alone is not None, "the lone Spy's post is found"):
-        width = alone["spies"][0]["rect"]["width"]
+        bottom = spies[0]["rect"]
         check.ok(
-            catalog["size"] is not None and near(width, catalog["size"]),
-            "a lone Spy is as wide as the post disc",
-            (width, catalog["size"]),
+            near(bottom["left"] + bottom["width"] / 2, x)
+            and near(bottom["top"] + bottom["height"] / 2, y),
+            f"{post_id}: the first Spy stands on the disc",
+            bottom,
         )
+        stacked = all(
+            near(spy["rect"]["width"], catalog["size"])
+            and near(spy["rect"]["left"] + spy["rect"]["width"] / 2, x)
+            and near(
+                spy["rect"]["top"],
+                bottom["top"] - level * 0.6 * bottom["height"],
+            )
+            for level, spy in enumerate(spies)
+        )
+        check.ok(
+            stacked,
+            f"{post_id}: each Spy the disc's width, on top of the one below",
+            [(round(s["rect"]["top"], 2), round(s["rect"]["width"], 2)) for s in spies],
+        )
+    check.ok(
+        page.evaluate(
+            """() => [...document.querySelectorAll('.board-stage .spy-post')]
+                 .every((post) => [...post.querySelectorAll('.spy-token')]
+                   .every((spy, i, all) => i === 0 ||
+                     spy.compareDocumentPosition(all[i - 1])
+                       === Node.DOCUMENT_POSITION_PRECEDING))"""
+        ),
+        "a higher Spy is drawn over the one it stands on",
+    )
+    # Recalled and placed again, a Spy goes back on top.
+    page.evaluate(LOG_PLACEMENTS_JS, [["fremen-desert-tactics-fremkit", 3]])
+    again = {
+        post_at(group["rect"]): [s["seat"] for s in group["spies"]]
+        for group in page.evaluate(SPIES_JS)
+    }
+    check.ok(
+        again.get("fremen-desert-tactics-fremkit") == [1, 3],
+        "a Spy placed again stands on top",
+        again.get("fremen-desert-tactics-fremkit"),
+    )
     check.ok(
         page.evaluate("document.querySelectorAll('#spy-outline').length") == 1,
         "one shared Spy outline",
@@ -574,6 +633,179 @@ def intrigue_pile(page) -> None:
     check.ok(len(titles) == 2, "two headed piles", titles)
 
 
+# Setup: "Place five of them on the game board, one on each of the following
+# spaces: Sardaukar, Dutiful Service, Deliver Supplies, High Council, and
+# Gather Support. Leave room on each space for an Agent" and a sixth on
+# Assembly Hall with four players [Bloodlines p. 3] (docs/rules/bloodlines.md).
+COMMANDER_SETUP_SPACES = {
+    "sardaukar",
+    "dutiful_service",
+    "deliver_supplies",
+    "high_council",
+    "gather_support",
+    "assembly_hall",
+}
+
+COMMANDERS_JS = """() => {
+  const stage = document.querySelector(".board-stage").getBoundingClientRect();
+  const pct = (r) => ({
+    left: (r.left - stage.left) / stage.width * 100,
+    top: (r.top - stage.top) / stage.height * 100,
+    width: r.width / stage.width * 100,
+    height: r.height / stage.height * 100,
+  });
+  return [...document.querySelectorAll(".board-stage .commander-piece")].map((p) => ({
+    space: p.dataset.space,
+    tag: p.tagName,
+    src: p.getAttribute("src"),
+    loaded: p.tagName === "IMG" ? p.complete && p.naturalWidth > 0 : null,
+    pointer: getComputedStyle(p).pointerEvents,
+    rect: pct(p.getBoundingClientRect()),
+  }));
+}"""
+
+
+def commander_pieces(base: str, browser) -> None:
+    print("[5] Sardaukar Commanders stand on their setup spaces (Bloodlines)")
+    context, page, rec = open_context(browser, "commanders")
+    page.goto(base + "/")
+    page.wait_for_selector("#setup-screen:not([hidden])")
+    for seat in range(4):
+        page.select_option(
+            f"#seat-selects select[data-seat='{seat}']",
+            "human" if seat == 0 else "heuristic",
+        )
+    page.check("#opt-bloodlines")
+    page.fill("#opt-seed", "11")
+    page.click("#create-game")
+    page.wait_for_selector("#game-screen:not([hidden])")
+    page.wait_for_function("state.view !== null && refreshFlight === null")
+    images_loaded(page)
+    catalog = page.evaluate(
+        "({token: state.catalog.commander_token, spot: state.catalog.commander_spot,"
+        " spaces: state.catalog.spaces})"
+    )
+    spot = catalog["spot"]
+    waiting = set(page.evaluate("state.view.sardaukar_commander_space_ids"))
+    check.ok(
+        waiting == COMMANDER_SETUP_SPACES,
+        "a four-player setup puts Commanders on the six spaces [Bloodlines p. 3]",
+        sorted(waiting),
+    )
+    pieces = page.evaluate(COMMANDERS_JS)
+    check.ok(
+        sorted(p["space"] for p in pieces) == sorted(waiting),
+        "one Commander stands on each space that holds one",
+        sorted(p["space"] for p in pieces),
+    )
+    check.ok(
+        page.evaluate("document.querySelectorAll('.commander-mark').length") == 0,
+        "the old red C badge is gone",
+    )
+    pictured = catalog["token"] is not None
+    if pictured:
+        check.ok(
+            all(p["tag"] == "IMG" and p["src"] == catalog["token"] for p in pieces)
+            and all(p["loaded"] for p in pieces),
+            "each is the rulebook figure (catalog.commander_token), loaded",
+            [(p["space"], p["tag"], p["loaded"]) for p in pieces],
+        )
+    else:
+        print("  .. no local commander picture: the drawn mark is checked below only")
+
+    def geometry(pieces, label):
+        wrong = []
+        for piece in pieces:
+            left, top, width, height = catalog["spaces"][piece["space"]]["box"]
+            rect = piece["rect"]
+            base_x = rect["left"] + rect["width"] * spot["base"][0]
+            base_y = rect["top"] + rect["height"] * spot["base"][1]
+            want_x = left + width * spot["anchor"][0]
+            want_y = top + height * spot["anchor"][1]
+            bottom = rect["top"] + rect["height"]
+            ok = (
+                near(base_x, want_x, 0.12)
+                and near(base_y, want_y, 0.12)
+                and near(rect["height"], height * spot["height"], 0.12)
+                # the top-right corner: the base in the frame's right fifth
+                # and top fifth, the frame below it left to the Agents
+                and base_x > left + width * 0.8
+                and base_y < top + height * 0.2
+                and bottom < top + height * 0.35
+            )
+            if not ok:
+                wrong.append((piece["space"], round(base_x, 2), round(want_x, 2),
+                              round(base_y, 2), round(want_y, 2)))
+        # An empty board would pass every corner vacuously.
+        check.ok(bool(pieces) and not wrong, label, wrong or "no pieces")
+
+    geometry(pieces, "its base sits on the frame's top-right corner, frame-tall")
+    if pictured:
+        ratios = [p["rect"]["width"] / p["rect"]["height"] for p in pieces]
+        stage_ratio = page.evaluate(
+            "(() => { const r = document.querySelector('.board-stage')"
+            ".getBoundingClientRect(); return r.height / r.width; })()"
+        )
+        check.ok(
+            all(near(r * stage_ratio, 130 / 195, 0.02) for r in ratios),
+            "the figure keeps the picture's proportions",
+            [round(r * stage_ratio, 3) for r in ratios],
+        )
+    check.ok(
+        bool(pieces) and all(p["pointer"] == "none" for p in pieces),
+        "a Commander never takes the click meant for its space",
+    )
+    word = page.evaluate("phraseText('{commander}')")
+    labels = page.evaluate(
+        """() => Object.fromEntries([...document.querySelectorAll('.hotspot')]
+             .map((h) => [h.dataset.space, h.getAttribute('aria-label')]))"""
+    )
+    check.ok(
+        all(word in labels[space] for space in waiting)
+        and all(word not in label for space, label in labels.items()
+                if space not in waiting),
+        "a space with a Commander says so in its name",
+        {space: labels.get(space) for space in sorted(waiting)[:2]},
+    )
+
+    # Acquired: the figure leaves the board (the view is the render's input).
+    page.evaluate(
+        """() => {
+          const view = state.view;
+          view.sardaukar_commander_space_ids =
+            view.sardaukar_commander_space_ids.filter((s) => s !== "high_council");
+          render();
+        }"""
+    )
+    left_on_board = sorted(p["space"] for p in page.evaluate(COMMANDERS_JS))
+    check.ok(
+        left_on_board == sorted(waiting - {"high_council"}),
+        "an acquired Commander leaves its space",
+        left_on_board,
+    )
+    check.ok(
+        word not in page.evaluate(
+            "document.querySelector(\".hotspot[data-space='high_council']\")"
+            ".getAttribute('aria-label')"
+        ),
+        "and its space no longer says it has one",
+    )
+
+    # Without the local picture the same places get a drawn mark.
+    page.evaluate("state.catalog.commander_token = null; render();")
+    drawn = page.evaluate(COMMANDERS_JS)
+    check.ok(
+        bool(drawn)
+        and len(drawn) == len(left_on_board)
+        and all(p["tag"] == "SPAN" for p in drawn),
+        "without the picture each Commander is a drawn mark",
+        [(p["space"], p["tag"]) for p in drawn],
+    )
+    geometry(drawn, "the drawn mark stands where the figure would")
+    check.ok(not rec.js_errors, "no JS exceptions (Bloodlines)", rec.js_errors[:5])
+    context.close()
+
+
 def main() -> None:
     with server() as (base, server_log), chrome() as browser:
         try:
@@ -590,6 +822,7 @@ def main() -> None:
             check.ok(not failed, "no failed requests", failed[:5])
             check.ok(not rec.js_errors, "no JS exceptions", rec.js_errors[:5])
             context.close()
+            commander_pieces(base, browser)
         finally:
             shutil.copy(server_log, SERVER_LOG_COPY)
         text = server_log.read_text()
