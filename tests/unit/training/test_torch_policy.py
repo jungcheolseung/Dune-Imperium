@@ -20,9 +20,13 @@ from dune_imperium.cli.train import main as train_main  # noqa: E402
 from dune_imperium.core.actions import DomainAction  # noqa: E402
 from dune_imperium.core.observation import PlayerView  # noqa: E402
 from dune_imperium.evaluation import (  # noqa: E402
+    MatchResult,
     MatchSpec,
+    SeatResult,
+    TournamentReport,
     play_match,
     run_tournament,
+    summarize,
 )
 from dune_imperium.training import (  # noqa: E402
     UNDO_ACTION_IDS,
@@ -40,6 +44,7 @@ from dune_imperium.training.learner import Learner, LearnerConfig  # noqa: E402
 from dune_imperium.training.loop import (  # noqa: E402
     TRAINING_SEED_BASE,
     TrainConfig,
+    evaluated_entry,
     select_policy_steps,
     train,
 )
@@ -202,6 +207,65 @@ def test_checkpoint_agents_enter_tournaments_by_path(tmp_path: Path) -> None:
     assert result.seats[0].illegal_actions == 0
     with pytest.raises(ValueError, match="catalog"):
         NetworkAgent(network, RulesetConfig(choam_module=True))
+
+
+def test_the_evaluation_reads_the_tested_row_when_the_opponent_sorts_first() -> None:
+    """The row under test is found by its exact name, not by its prefix.
+
+    ``summarize`` sorts rows by agent name. With a checkpoint opponent both
+    names start with ``checkpoint:``, and an older opponent directory sorts
+    first, so taking "the first row that starts with checkpoint:" read the
+    OPPONENT's three-seat row: (1 - true) / 3, equal at parity and falling as
+    the tested checkpoint got stronger.
+    """
+
+    tested = "checkpoint:runs/2026-09-21/long/latest.pt"
+    opponent = "checkpoint:runs/2026-09-19/anchor/latest.pt"
+    assert opponent < tested  # the trap: the opponent sorts first
+
+    def seat(index: int, agent: str, rank: int) -> SeatResult:
+        return SeatResult(
+            seat=index,
+            agent=agent,
+            leader_id="paul_atreides",
+            rank=rank,
+            victory_points=12 - rank,
+            decisions=10,
+            illegal_actions=0,
+            decision_seconds=0.0,
+        )
+
+    report = TournamentReport(
+        matches=(
+            MatchResult(
+                ruleset="uprising-4p-base",
+                game_seed=1,
+                policy_seed=1,
+                first_player=0,
+                rounds=10,
+                steps=40,
+                duration_seconds=1.0,
+                seats=(
+                    seat(0, tested, 1),
+                    seat(1, opponent, 2),
+                    seat(2, opponent, 3),
+                    seat(3, opponent, 4),
+                ),
+            ),
+        ),
+        failures=(),
+        duration_seconds=1.0,
+    )
+    summary = summarize(report)
+    assert summary.agents[0].agent == opponent
+
+    entry = evaluated_entry(summary, tested)
+
+    assert entry.agent == tested
+    assert entry.win_rate == 1.0
+    assert entry.mean_rank == 1.0
+    with pytest.raises(ValueError, match="no single summary row"):
+        evaluated_entry(summary, "checkpoint:somewhere/else.pt")
 
 
 def test_each_in_loop_evaluation_takes_its_own_block_of_seeds(

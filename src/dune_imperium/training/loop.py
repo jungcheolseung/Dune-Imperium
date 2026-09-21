@@ -25,7 +25,13 @@ import torch
 
 from dune_imperium.agents.registry import CHECKPOINT_PREFIX, is_agent_kind
 from dune_imperium.config import RulesetConfig
-from dune_imperium.evaluation import run_tournament, summarize, tournament_specs
+from dune_imperium.evaluation import (
+    AgentSummary,
+    TournamentSummary,
+    run_tournament,
+    summarize,
+    tournament_specs,
+)
 from dune_imperium.training.checkpoint import load_checkpoint, save_checkpoint
 from dune_imperium.training.collect import Collector
 from dune_imperium.training.learner import Learner, LearnerConfig, UpdateStats
@@ -199,8 +205,9 @@ def _evaluate(
 
     # One checkpoint seat against three opponents (a two-kind lineup would
     # cycle to two checkpoint seats and cap the win rate at 50%).
+    tested = f"{CHECKPOINT_PREFIX}{checkpoint}"
     specs = tournament_specs(
-        agents=(f"{CHECKPOINT_PREFIX}{checkpoint}", *(config.eval_opponent,) * 3),
+        agents=(tested, *(config.eval_opponent,) * 3),
         games=config.eval_games,
         rulesets=(config.choam_module,),
         start_seed=EVAL_SEED_BASE + iteration * config.eval_games,
@@ -215,10 +222,30 @@ def _evaluate(
     # played the whole evaluation in the training process (about 95s for 200
     # matches on a 4-core run against about 48s across four).
     summary = summarize(run_tournament(specs, workers=config.workers))
-    entry = next(
-        agent for agent in summary.agents if agent.agent.startswith(CHECKPOINT_PREFIX)
-    )
+    entry = evaluated_entry(summary, tested)
     return entry.win_rate, entry.mean_rank, summary.failure_messages
+
+
+def evaluated_entry(summary: TournamentSummary, tested: str) -> AgentSummary:
+    """Return the summary row of the checkpoint under test, by its exact name.
+
+    This used to take the first row whose name started with ``checkpoint:``.
+    With the default opponent (``heuristic``) that was the only one, but a
+    checkpoint opponent starts with the same prefix, and ``summarize`` sorts
+    rows by name, so whichever path sorted first won: an older opponent
+    directory sorted before the run's own and the evaluation read the
+    OPPONENT's row. That row holds three seats, so it reported
+    (1 - true win rate) / 3 -- identical at parity, and falling as the tested
+    checkpoint got stronger. Measured on 2026-09-22: the evaluation logged
+    21.3% at iteration 4000 where the same checkpoint, opponent and seeds
+    replayed through the tournament CLI read 36.0%, and (100 - 36.0) / 3 is
+    21.3.
+    """
+
+    matches = [agent for agent in summary.agents if agent.agent == tested]
+    if len(matches) != 1:
+        raise ValueError(f"no single summary row for the tested agent {tested!r}")
+    return matches[0]
 
 
 def train(
