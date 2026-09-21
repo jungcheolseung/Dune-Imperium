@@ -41,6 +41,10 @@ from dune_imperium.training.torch_policy import resolve_device
 
 LEARNER = "learner"
 TRAINING_SEED_BASE = 2_000_000
+# Where the in-training evaluation's seeds start. Between the tournament
+# tool's usual small seeds and TRAINING_SEED_BASE, so a run's evaluation
+# games are legible as their own range and never replay a training game.
+EVAL_SEED_BASE = 1_000_000
 
 
 @dataclass(frozen=True, slots=True)
@@ -174,12 +178,23 @@ def _learner_outcomes(episodes: tuple[Episode, ...]) -> tuple[float, float]:
 
 
 def _evaluate(
-    config: TrainConfig, checkpoint: Path
+    config: TrainConfig, checkpoint: Path, iteration: int
 ) -> tuple[float, float, tuple[str, ...]]:
     """Win rate and mean rank of the checkpoint vs the opponent, plus failures.
 
     ``eval_games`` counts seeds; every seed plays the four seat rotations,
     so the sample is four times that many matches.
+
+    Each evaluation takes its own block of seeds. Leaving ``start_seed`` at
+    the default replayed seeds 0..eval_games-1 at every evaluation of every
+    run, so a whole run's series was one small fixed sample measured over
+    and over: on 2026-09-21 a 1,000-iteration run read 24.5% against its
+    own starting checkpoint across ten evaluations of the same 25 seeds,
+    while 350 fresh seeds put the same checkpoint at 32.4% against a 25%
+    null. Averaging those ten did not help, because they were the same
+    games. Disjoint blocks cost the comparability of two consecutive
+    readings and buy an unbiased series; the instrument that decides
+    anything is the post-hoc tournament, not this tripwire.
     """
 
     # One checkpoint seat against three opponents (a two-kind lineup would
@@ -188,6 +203,7 @@ def _evaluate(
         agents=(f"{CHECKPOINT_PREFIX}{checkpoint}", *(config.eval_opponent,) * 3),
         games=config.eval_games,
         rulesets=(config.choam_module,),
+        start_seed=EVAL_SEED_BASE + iteration * config.eval_games,
         rotate_leaders=True,
         promo_cards=config.promo_cards,
         bloodlines=config.bloodlines,
@@ -286,7 +302,9 @@ def train(
             eval_win_rate = eval_mean_rank = None
             eval_failures: int | None = None
             if config.eval_every and (iteration + 1) % config.eval_every == 0:
-                eval_win_rate, eval_mean_rank, failures = _evaluate(config, latest)
+                eval_win_rate, eval_mean_rank, failures = _evaluate(
+                    config, latest, iteration + 1
+                )
                 eval_failures = len(failures)
                 if failures:
                     with (config.out_dir / "eval_failures.log").open("a") as handle:

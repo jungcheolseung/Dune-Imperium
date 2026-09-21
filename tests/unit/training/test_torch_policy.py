@@ -38,6 +38,7 @@ from dune_imperium.training.checkpoint import (  # noqa: E402
 )
 from dune_imperium.training.learner import Learner, LearnerConfig  # noqa: E402
 from dune_imperium.training.loop import (  # noqa: E402
+    TRAINING_SEED_BASE,
     TrainConfig,
     select_policy_steps,
     train,
@@ -201,6 +202,45 @@ def test_checkpoint_agents_enter_tournaments_by_path(tmp_path: Path) -> None:
     assert result.seats[0].illegal_actions == 0
     with pytest.raises(ValueError, match="catalog"):
         NetworkAgent(network, RulesetConfig(choam_module=True))
+
+
+def test_each_in_loop_evaluation_takes_its_own_block_of_seeds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two evaluations of one run must not replay the same games.
+
+    ``tournament_specs`` defaults ``start_seed`` to 0, so leaving it out
+    measured seeds 0..eval_games-1 at every evaluation of every run: a whole
+    series was one small fixed sample read repeatedly, and averaging it
+    bought nothing.
+    """
+
+    seeds: list[set[int]] = []
+    real = run_tournament
+
+    def spy(specs, *, workers=1):  # type: ignore[no-untyped-def]
+        seeds.append({spec.game_seed for spec in specs})
+        return real(specs, workers=1)
+
+    monkeypatch.setattr("dune_imperium.training.loop.run_tournament", spy)
+    train(
+        TrainConfig(
+            out_dir=tmp_path / "run",
+            iterations=2,
+            games_per_iteration=1,
+            seed=1,
+            hidden=(32,),
+            learner=LearnerConfig(minibatch_size=512),
+            opponent="heuristic",
+            eval_every=1,
+            eval_games=2,
+        )
+    )
+
+    assert len(seeds) == 2
+    assert not seeds[0] & seeds[1]
+    # And never a training seed: those start far above.
+    assert max(seed for block in seeds for seed in block) < TRAINING_SEED_BASE
 
 
 def test_the_in_loop_evaluation_uses_the_run_s_worker_budget(
