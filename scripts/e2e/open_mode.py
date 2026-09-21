@@ -320,6 +320,9 @@ def scenario_full_game(base, browser) -> str:
         "live table back after review",
     )
     check.ok(not page.is_visible("#review-bar"), "review bar hidden again")
+    # exitReview() does not await its refresh(); the live table (and with it
+    # the unfolded disclosure) is drawn only once that snapshot lands.
+    page.wait_for_function("state.review === null && refreshFlight === null")
     after = disclosure_shape(page)
     check.ok(
         after["button"] is None and after["sections"] >= 4,

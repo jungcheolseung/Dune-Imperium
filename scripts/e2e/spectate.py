@@ -256,6 +256,36 @@ def controls(page) -> None:
         "a seek survives a review answer slower than the playback interval",
         (target, page.evaluate("state.review.cursor")),
     )
+
+    # The same race from the other side: paused, seek, and press Play before
+    # the answer lands — Play scheduled a tick off the old cursor at once.
+    # Both happen in one page task, so the tick always beats the answer.
+    page.click("#review-play")
+    page.wait_for_function("!playback.playing")
+    page.route("**/review/*", slow_review)
+    target = page.evaluate(
+        "state.review.stops[Math.min(140, state.review.stops.length - 2)]"
+    )
+    page.evaluate(
+        """(cursor) => {
+          const slider = document.getElementById("review-slider");
+          slider.value = String(cursor);
+          slider.dispatchEvent(new Event("change", { bubbles: true }));
+          document.getElementById("review-play").click();
+        }""",
+        target,
+    )
+    try:
+        page.wait_for_function(f"state.review.cursor >= {target}", timeout=10000)
+        reached = True
+    except PlaywrightTimeout:
+        reached = False
+    page.unroute("**/review/*")
+    check.ok(
+        reached and page.evaluate("playback.playing"),
+        "pressing Play while a seek is in flight keeps the seek",
+        (target, page.evaluate("state.review.cursor")),
+    )
     choose(page, "#review-interval", "1000")
 
 

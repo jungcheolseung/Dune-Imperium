@@ -226,6 +226,10 @@ function schedulePlayback(delay) {
 async function playbackTick() {
   const review = state.review;
   if (!review || !playback.playing) return;
+  /* A seek in flight owns the next move: a tick now would ask for the step
+     after the old cursor and, as the later request, throw the seek away
+     (reviewGoto draws only the latest). The seek schedules once it drew. */
+  if (review.seek) return;
   if (review.cursor >= review.meta.step_count) {
     stopPlayback();
     return;
@@ -269,22 +273,30 @@ function stopPlayback() {
 
 /* A seek (slider, first, last) moves the cursor and leaves playback as it
    was; the position sought gets a full interval before the next move.
-   Playback holds until the seek has drawn: a tick fired meanwhile would ask
-   for the step after the old cursor, and being the later request it would
-   win (reviewGoto draws only the latest) and throw the seek away. A 0.3 s
-   review load against a 0.25 s interval lost every seek that way. */
+   Playback holds until the seek has drawn: a tick fired meanwhile — the
+   running timer, Play pressed, the interval changed — would ask for the
+   step after the old cursor, and being the later request it would win
+   (reviewGoto draws only the latest) and throw the seek away. A 0.3 s
+   review load against a 0.25 s interval lost every seek that way.
+   `review.seek` marks the latest seek until it lands (playbackTick). */
 function reviewSeek(cursor) {
   const review = state.review;
   if (!review) return;
   window.clearTimeout(playback.timer);
+  const seek = {};
+  review.seek = seek;
+  const landed = () => {
+    if (review.seek === seek) review.seek = null;
+  };
   reviewGoto(cursor)
     .then((drew) => {
+      landed();
       if (state.review !== review || !playback.playing) return;
       /* null: a later request took over, and schedules for itself. */
       if (drew) schedulePlayback(playback.intervalMs);
       else if (drew === false) stopPlayback();
     })
-    .catch(() => {});
+    .catch(landed);
 }
 
 /* Stepping by hand (one step, one own action) takes the wheel. */
