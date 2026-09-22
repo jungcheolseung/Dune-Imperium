@@ -42,6 +42,16 @@ function agentPieceIcon(label) {
   return svg;
 }
 
+/* A count of Agents, drawn with the plain piece like amount() draws the
+   other counts with their icons. */
+function agentAmount(label, count) {
+  const wrap = document.createElement("span");
+  wrap.className = "amount";
+  wrap.title = `${count} ${label}`;
+  wrap.append(String(count), agentPieceIcon(label));
+  return wrap;
+}
+
 function iconUrl(name) {
   const icons = state.catalog && state.catalog.icons;
   return icons && icons[name] ? icons[name] : null;
@@ -111,7 +121,7 @@ const ICON_RULES = [
   [/\b[Tt]rash\b/y, () => icon("trash", "Trash")],
   [/\b[Dd]iscard\b/y, () => icon("discard", "Discard")],
   [/\b(?:a |an )?Sp(?:y|ies)\b/y, (m) => icon("spy", m[0].trim())],
-  [/\bAgents?\b/y, (m) => icon("agent", m[0])],
+  [/\bAgents?\b/y, (m) => agentPieceIcon(m[0])],
   [/\b[Ss]andworms?\b/y, (m) => icon("sandworm", m[0])],
   [/\bMaker Hooks\b/y, () => icon("maker_hooks", "Maker Hooks")],
   [/\bShield Wall\b/y, () => icon("shield_wall", "Shield Wall")],
@@ -138,12 +148,7 @@ function termNode(name, count) {
     return span;
   }
   if (name === "agent") {
-    if (count === undefined) return agentPieceIcon(label);
-    const wrap = document.createElement("span");
-    wrap.className = "amount";
-    wrap.title = String(count) + " " + label;
-    wrap.append(String(count), agentPieceIcon(label));
-    return wrap;
+    return count === undefined ? agentPieceIcon(label) : agentAmount(label, count);
   }
   return count === undefined ? icon(term.icon, label) : amount(term.icon, label, count);
 }

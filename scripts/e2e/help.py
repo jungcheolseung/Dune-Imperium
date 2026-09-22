@@ -221,6 +221,14 @@ def help_panel(page) -> None:
         "status and help use the plain Agent piece, not the +Agent image",
         agents,
     )
+    # The Icon Guide's +Agent figure means gaining an Agent; no ordinary
+    # mention (card text, Conflict chip, turn line) draws it any more.
+    plus = page.evaluate(
+        """() => [...document.querySelectorAll('img.icon')]
+            .filter((img) => img.getAttribute('src') === state.catalog.icons.agent)
+            .map((img) => img.title)"""
+    )
+    check.ok(not plus, "no +Agent image anywhere on the page", plus[:5])
 
     legend = page.evaluate(
         """() => {

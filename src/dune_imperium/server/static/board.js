@@ -841,7 +841,9 @@ function renderTrackMarkers(stage, view) {
         deployed.appendChild(commanders);
       }
       if (player.agent_in_conflict) {
-        deployed.appendChild(amount("agent", "Agent (Into the Fray)", player.agent_in_conflict));
+        deployed.appendChild(
+          agentAmount(`${phraseText("{agent}")} (Into the Fray)`, player.agent_in_conflict),
+        );
       }
       if (strength) {
         const total = document.createElement("span");
