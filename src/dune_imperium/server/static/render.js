@@ -57,7 +57,10 @@ function iconUrl(name) {
   return icons && icons[name] ? icons[name] : null;
 }
 
-function icon(name, label) {
+/* `text` is what stands in for the image when the icon set is absent; it
+   defaults to the label. Card text passes its own English words there, so
+   only the tooltip speaks the chosen language. */
+function icon(name, label, text = label) {
   const url = iconUrl(name);
   if (url) {
     const img = document.createElement("img");
@@ -69,15 +72,16 @@ function icon(name, label) {
   }
   const span = document.createElement("span");
   span.className = "icon-text";
-  span.textContent = label;
+  span.textContent = text;
+  if (text !== label) span.title = label;
   return span;
 }
 
-function amount(name, label, count) {
+function amount(name, label, count, text = label) {
   const wrap = document.createElement("span");
   wrap.className = "amount";
   wrap.title = `${count} ${label}`;
-  wrap.append(String(count), icon(name, label));
+  wrap.append(String(count), icon(name, label, text));
   return wrap;
 }
 
@@ -88,45 +92,73 @@ const FACTION_ICON_KEY = {
   Fremen: "fremen",
 };
 
+/* A card-text icon for a TERMS entry: the tooltip is the glossary word in
+   the chosen language, the fallback text the card's own English `words`
+   (glossary-ko.md: card text stays English, with term tooltips). */
+function termLabel(term) {
+  return TERMS[term][TERM_LANGUAGE] || TERMS[term].en;
+}
+
+function textIcon(term, words) {
+  if (term === "agent") return agentPieceIcon(termLabel(term));
+  return icon(TERMS[term].icon, termLabel(term), words);
+}
+
+function textAmount(term, count, words) {
+  return amount(TERMS[term].icon, termLabel(term), count, words);
+}
+
 /* Glossary that turns the catalog's English effect text into the printed
    iconography: each rule is tried at the current position (sticky), the
    first match wins, and unmatched text is copied through. Only display —
    the text itself stays the server's. */
 const ICON_RULES = [
-  [/(?:Gain |Pay )?(\d+) (solari|spice|water)\b/y, (m) => amount(m[2], m[2], m[1])],
-  [/\b(solari|spice|water)\b/y, (m) => icon(m[1], m[1])],
-  [/Draw (\d+) Intrigue cards?/y, (m) => amount("intrigue", "Intrigue card", m[1])],
-  [/Draw (\d+) cards?/y, (m) => amount("draw", "Draw", m[1])],
-  [/Intrigue cards?/y, () => icon("intrigue", "Intrigue card")],
-  [/(?:Recruit |Gain )?(\d+) troops?\b/y, (m) => amount("troop", "troop", m[1])],
-  [/\btroops?\b/y, () => icon("troop", "troop")],
+  [/(?:Gain |Pay )?(\d+) (solari|spice|water)\b/y, (m) => textAmount(m[2], m[1], m[2])],
+  [/\b(solari|spice|water)\b/y, (m) => textIcon(m[1], m[1])],
+  [/Draw (\d+) Intrigue cards?/y, (m) => textAmount("intrigue", m[1], "Intrigue card")],
+  [/Draw (\d+) cards?/y, (m) => textAmount("draw", m[1], "Draw")],
+  [/Intrigue cards?/y, () => textIcon("intrigue", "Intrigue card")],
+  [/(?:Recruit |Gain )?(\d+) troops?\b/y, (m) => textAmount("troop", m[1], "troop")],
+  [/\btroops?\b/y, () => textIcon("troop", "troop")],
   [
     /(?:Gain )?(\d+) (Emperor|Spacing Guild|Bene Gesserit|Fremen) Influence/y,
-    (m) => amount(`influence_${FACTION_ICON_KEY[m[2]]}`, `${m[2]} Influence`, m[1]),
+    (m) => textAmount(`influence_${FACTION_ICON_KEY[m[2]]}`, m[1], `${m[2]} Influence`),
   ],
   [
     /(Emperor|Spacing Guild|Bene Gesserit|Fremen) Influence/y,
-    (m) => icon(`influence_${FACTION_ICON_KEY[m[1]]}`, `${m[1]} Influence`),
+    (m) => textIcon(`influence_${FACTION_ICON_KEY[m[1]]}`, `${m[1]} Influence`),
   ],
-  [/Lose (\d+) Influence/y, (m) => amount("influence_lose", "Lose Influence", m[1])],
-  [/(?:Gain )?(\d+) Influence/y, (m) => amount("influence_any", "Influence", m[1])],
-  [/Influence with the visited Faction/y, () => icon("influence_any", "visited Faction Influence")],
-  [/(\d+) Persuasion/y, (m) => amount("persuasion", "Persuasion", m[1])],
-  [/\bPersuasion\b/y, () => icon("persuasion", "Persuasion")],
-  [/(\d+) (?:swords?|strength)\b/y, (m) => amount("sword", "sword", m[1])],
-  [/\bswords?\b/y, () => icon("sword", "sword")],
-  [/(?:Gain )?(\d+) (?:Victory Points?|VP)\b/y, (m) => amount("victory_point", "Victory Point", m[1])],
-  [/\b(?:Victory Points?|VP)\b/y, () => icon("victory_point", "Victory Point")],
-  [/\b[Tt]rash an Intrigue card\b/y, () => icon("trash_intrigue", "Trash an Intrigue card")],
-  [/\b[Tt]rash\b/y, () => icon("trash", "Trash")],
-  [/\b[Dd]iscard\b/y, () => icon("discard", "Discard")],
-  [/\b(?:a |an )?Sp(?:y|ies)\b/y, (m) => icon("spy", m[0].trim())],
-  [/\bAgents?\b/y, (m) => agentPieceIcon(m[0])],
-  [/\b[Ss]andworms?\b/y, (m) => icon("sandworm", m[0])],
-  [/\bMaker Hooks\b/y, () => icon("maker_hooks", "Maker Hooks")],
-  [/\bShield Wall\b/y, () => icon("shield_wall", "Shield Wall")],
-  [/\bSignet Ring\b/y, () => icon("signet_ring", "Signet Ring")],
-  [/\bContracts?\b/y, (m) => icon("contract", m[0])],
+  [/Lose (\d+) Influence/y, (m) => textAmount("influence_lose", m[1], "Lose Influence")],
+  [/(?:Gain )?(\d+) Influence/y, (m) => textAmount("influence_any", m[1], "Influence")],
+  /* No glossary row names "the visited Faction"; the icon is the any-Faction
+     Influence, so its tooltip is that word. */
+  [
+    /Influence with the visited Faction/y,
+    () => icon(
+      "influence_any",
+      TERM_LANGUAGE === "en" ? "visited Faction Influence" : termLabel("influence_any"),
+      "visited Faction Influence",
+    ),
+  ],
+  [/(\d+) Persuasion/y, (m) => textAmount("persuasion", m[1], "Persuasion")],
+  [/\bPersuasion\b/y, () => textIcon("persuasion", "Persuasion")],
+  [/(\d+) (?:swords?|strength)\b/y, (m) => textAmount("sword", m[1], "sword")],
+  [/\bswords?\b/y, () => textIcon("sword", "sword")],
+  [
+    /(?:Gain )?(\d+) (?:Victory Points?|VP)\b/y,
+    (m) => textAmount("victory_point", m[1], "Victory Point"),
+  ],
+  [/\b(?:Victory Points?|VP)\b/y, () => textIcon("victory_point", "Victory Point")],
+  [/\b[Tt]rash an Intrigue card\b/y, () => textIcon("trash_intrigue", "Trash an Intrigue card")],
+  [/\b[Tt]rash\b/y, () => textIcon("trash", "Trash")],
+  [/\b[Dd]iscard\b/y, () => textIcon("discard", "Discard")],
+  [/\b(?:a |an )?Sp(?:y|ies)\b/y, (m) => textIcon("spy", m[0].trim())],
+  [/\bAgents?\b/y, (m) => textIcon("agent", m[0])],
+  [/\b[Ss]andworms?\b/y, (m) => textIcon("sandworm", m[0])],
+  [/\bMaker Hooks\b/y, () => textIcon("maker_hooks", "Maker Hooks")],
+  [/\bShield Wall\b/y, () => textIcon("shield_wall", "Shield Wall")],
+  [/\bSignet Ring\b/y, () => textIcon("signet_ring", "Signet Ring")],
+  [/\bContracts?\b/y, (m) => textIcon("contract", m[0])],
   [/→/y, () => icon("arrow_right", "→")],
 ];
 
@@ -179,8 +211,12 @@ function phrase(template) {
   return fragment;
 }
 
+/* Printed card wording, iconized. The wrapper marks it as the card's own
+   English text (glossary-ko.md keeps it English), which lang.py's Korean
+   check skips; its icons' tooltips follow the chosen language. */
 function iconize(text) {
-  const fragment = document.createDocumentFragment();
+  const fragment = document.createElement("span");
+  fragment.className = "card-text";
   let plain = "";
   let index = 0;
   const flush = () => {
