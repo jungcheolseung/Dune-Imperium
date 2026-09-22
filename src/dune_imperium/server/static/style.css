@@ -9,7 +9,13 @@
   --bad: #a03030;
   --glow: #ffcf5a;
   --header-h: 44px;
-  font-family: "Avenir Next", "Pretendard", "Apple SD Gothic Neo", sans-serif;
+  /* Latin fonts first, then Korean ones. With no named font installed
+     (Windows has none of the old three), the generic sans-serif chose by
+     the page's lang: Malgun Gothic's Latin in Korean and Arial in English,
+     so "Dune: Imperium — Uprising" changed shape with the language. Hangul,
+     which the Latin fonts lack, still falls through to a Korean font. */
+  font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", Arial,
+    "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
 }
 
 /* The game screen is a dark table; the setup screen keeps the light page. */
