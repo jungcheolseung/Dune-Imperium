@@ -44,7 +44,11 @@ from enum import StrEnum
 from typing import Final
 
 from dune_imperium.agents import Agent, StateAgent, make_agent
-from dune_imperium.agents.registry import CHECKPOINT_PREFIX, is_agent_kind
+from dune_imperium.agents.registry import (
+    CHECKPOINT_PREFIX,
+    SEARCH_PREFIX,
+    is_agent_kind,
+)
 from dune_imperium.config import RulesetConfig
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceOutcome, ChanceResolver
@@ -91,7 +95,8 @@ _LOGGER: Final = logging.getLogger(__name__)
 HUMAN_SEAT: Final = "human"
 # Every other seat names an agent of the evaluation registry
 # (``dune_imperium.agents.make_agent``): ``random``, ``heuristic``, the
-# determinized-search ``rollout``, or a trained policy ``checkpoint:<path>``.
+# determinized-search ``rollout``, a trained policy ``checkpoint:<path>``, or
+# that same policy with search around it, ``search:<path>``.
 # Search agents receive the authoritative state like the tournament runner
 # does; their contract keeps them from reading hidden zones.
 # Matches the sweep's policy seed convention so one game seed names one game.
@@ -1186,13 +1191,15 @@ class GameSessionManager:
 def _public_seat_kind(assignment: str, *, hide_path: bool) -> str:
     """Return a seat assignment as the players of the game may see it.
 
-    A ``checkpoint:<path>`` seat names a file on the host's disk; remote
-    players get the file name only.
+    A ``checkpoint:<path>`` or ``search:<path>`` seat names a file on the
+    host's disk; remote players get the file name only.
     """
 
-    if hide_path and assignment.startswith(CHECKPOINT_PREFIX):
-        path = assignment[len(CHECKPOINT_PREFIX) :]
-        return CHECKPOINT_PREFIX + re.split(r"[\\/]", path)[-1]
+    if hide_path:
+        for prefix in (CHECKPOINT_PREFIX, SEARCH_PREFIX):
+            if assignment.startswith(prefix):
+                path = assignment[len(prefix) :]
+                return prefix + re.split(r"[\\/]", path)[-1]
     return assignment
 
 

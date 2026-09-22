@@ -180,7 +180,9 @@ class CreateGameRequest(BaseModel):
             "Per-seat assignment: 'human', or an agent kind of the evaluation "
             "registry: 'heuristic', 'random', 'rollout' (determinized search), "
             "'rollout_strong' (the same search at twice the budget), "
-            "or 'checkpoint:<path>' (a trained policy; needs the train extra)."
+            "'checkpoint:<path>' (a trained policy; needs the train extra), or "
+            "'search:<path>' (that policy with determinized search around it: "
+            "much stronger, about 2s a decision)."
         ),
     )
     choam_module: bool = False

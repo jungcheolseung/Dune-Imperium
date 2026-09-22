@@ -205,18 +205,25 @@ BASELINE_AGENT_FACTORIES: Final[dict[str, AgentFactory]] = {
 # resolve the path themselves, so no runtime registration has to cross a
 # process boundary. The training package (torch) is imported only then.
 CHECKPOINT_PREFIX: Final = "checkpoint:"
+# The same file, played with determinized search around it instead of one
+# greedy forward pass: ``search:<path>``
+# (``agents.network_search_agent``; docs/evaluation/m10-2026-09-22.md
+# section 12). It costs about 2s a decision against 4ms, and wins 58% of a
+# one-against-three table against three greedy copies of its own checkpoint.
+SEARCH_PREFIX: Final = "search:"
 
 
 def is_agent_kind(kind: str) -> bool:
     """Return whether ``make_agent`` can build ``kind``."""
 
-    return kind in BASELINE_AGENT_FACTORIES or (
-        kind.startswith(CHECKPOINT_PREFIX) and len(kind) > len(CHECKPOINT_PREFIX)
+    return kind in BASELINE_AGENT_FACTORIES or any(
+        kind.startswith(prefix) and len(kind) > len(prefix)
+        for prefix in (CHECKPOINT_PREFIX, SEARCH_PREFIX)
     )
 
 
 def make_agent(kind: str, seed: int) -> Agent:
-    """Instantiate the named baseline (or a checkpoint) with ``seed``."""
+    """Instantiate the named baseline (or a checkpoint or search) with ``seed``."""
 
     if kind.startswith(CHECKPOINT_PREFIX):
         path = kind[len(CHECKPOINT_PREFIX) :]
@@ -225,6 +232,13 @@ def make_agent(kind: str, seed: int) -> Agent:
         from dune_imperium.training.torch_policy import load_network_agent
 
         return load_network_agent(path)
+    if kind.startswith(SEARCH_PREFIX):
+        path = kind[len(SEARCH_PREFIX) :]
+        if not path:
+            raise ValueError("search agent kind needs a path")
+        from dune_imperium.agents.network_search_agent import NetworkSearchAgent
+
+        return NetworkSearchAgent(path, seed=seed)
     try:
         factory = BASELINE_AGENT_FACTORIES[kind]
     except KeyError:
