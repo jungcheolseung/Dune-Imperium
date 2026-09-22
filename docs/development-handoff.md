@@ -57,9 +57,11 @@ uv run mypy src tests
 
 1. **첫 친구 판(M14의 남은 것) — 가장 값어치가 크다.** 원격 흐름·자동 저장·도움말·스크린 리더 알림·언어
    전환·노트북 화면의 좌석까지 준비됐다. 남은 것은 다른 집의 친구와 실제로 하는 한 판과 그 피드백이다([`remote-play-guide.md`](remote-play-guide.md)).
-2. **용어집에 행이 없는 로그 낱말 — 룰북 인용이 먼저.** Gather Intelligence, Infiltrate, Other Memories,
-   Secret Project, set-aside 등(계획서 6단계 "남은 것" 1). 한국어 룰북에서 찾아 용어집에 더한 뒤에만 바꾼다.
-   바꾸면 `test_i18n.py`와 `log_words.py`의 허용 목록에서도 뺀다.
+2. **용어집에 행이 없는 로그 낱말 — 룰북 인용이 먼저.** Other Memories, Secret Project, set-aside, Wild card,
+   Immediate, Usurp(계획서 6단계 "남은 것" 1; Gather Intelligence·Infiltrate·Family Atomics는 2026-09-22에
+   옮겼다). 한국어 룰북에서 찾아 용어집에 더한 뒤에만 바꾼다. 바꾸면 `test_i18n.py`와 `log_words.py`의 허용
+   목록에서도 뺀다. set-aside는 룰북에 두 꼴(따로 치워두다 `[Supplements p. 8]`, 따로 빼두다 `[Immortality p. 14]`)이
+   있어 사용자 결정이 먼저다.
 3. **한글 카드 스캔** — 확보하면 `display/images.py`가 코드 변경 없이 쓴다(언어 정책의 3번).
 
 **UI를 이어갈 때의 규칙**(세 세션이 값을 치른 것들):
@@ -434,6 +436,34 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 2026-09-07: `bloodlines` 브랜치(35 커밋)를 master 쪽에서 `--no-ff`로 머지했고(`dbd9b73`), 같은 날 저녁 슬라이스 6 커밋 5건과 이 문서 갱신을 master에 직접 올렸다. 아직 push하지 않았다면 `git log origin/master..master`로 확인한다. 비공개 에셋 저장소(`assets` symlink → `Dune-Imperium-assets`)에도 같은 날 manifest 커밋 6건(Bloodlines 카드 44장 content id, Leader 8종, Tuek's Sietch 타일 이미지, Twisted·Navigation 카드 키, Kota Odax의 content id `43c25fc`)이 있으니 다른 머신에서는 그쪽도 pull한다.
 
 2026-09-04 세션 종료 시점에 이 세션의 커밋 전부(보드·카드 아이콘 분리 v86/v87, 서버·UI 확인 흐름과 마커, Reveal 순서 v88, OQ-028 조건 판정 시점, OQ-029 등록)를 `origin/master`에 push했다. 새 세션은 `git fetch origin` 뒤 `git log origin/master..master`와 반대 방향을 확인하고, 일치하면 이 문서의 기준선을 그대로 쓴다. 에셋 저장소(`Dune-Imperium-assets`)의 `5b55e45` 1개 미push 여부는 그 저장소에서 확인한다. 원격에는 병합하지 않은 `kyungtae` 브랜치가 있다. 새 세션은 `git log origin/master..master`와 반대 방향을 모두 확인하고, checkout이 `853ecd4`보다 이전이면 이 문서의 989개 테스트·codec v84 기준선이 실제 코드와 일치하지 않는다. **다른 머신에서 이어서 작업한다면 먼저 이 머신에서 push가 필요하다.** 새 머신의 UI 카드 이미지·아이콘·보드 스캔은 비공개 `Dune-Imperium-assets` 저장소를 clone해 symlink로 연결한다(그 README 참고; 루트의 `assets` symlink 하나로 cards·icons·board·rulebooks를 모두 연결). 카드 매핑은 그 저장소의 `cards/manifest.json`에만 있으므로 접근이 없으면 텍스트 UI로 동작한다.
+
+## 2026-09-22 한국어 화면 잔재·Agent 아이콘·글꼴 세션 요약 (WSL 노트북 i5-8250U, master 직접 커밋, 관측 v20, codec v107, 변경은 `server/static/`·`scripts/e2e/`·`tests/server/test_i18n.py`·`docs/` — **엔진·학습 코드 무변경**)
+
+같은 체크아웃에서 다른 세션(Codex: `7087d40`·`8251efb`·`95b2a74`·`d09532c`)과 겹쳐 돌았다 — 커밋 전마다
+`git log -1`과 `git status`로 남의 변경을 확인했다.
+
+- **설정 화면**: 프로모 옵션 라벨에 불멸 프로모 Piter, Genius Advisor(`26095f6`; 엔진은 원래 넣고 있었다),
+  기술 모듈은 혈통을 체크해야만 활성(`c731f5c`), 규칙 옵션 전부 기본 체크(`0ca7113`; 옛 기본값에 기대던 e2e는
+  `common.set_rule_options(page, …)`로 남길 옵션만 적는다).
+- **Agent 아이콘**: Icon Guide의 +Agent 그림은 "Agent 얻기"다. `7087d40`이 남긴 두 자리(카드 텍스트의
+  "Agent", 교전 칩의 Into the Fray)도 + 없는 말로(`e58d0b5`, `help.py`가 페이지 전체에 +Agent 그림이 없는지 본다).
+- **용어**(한국어 룰북 인용 후 용어집에 행 추가): 가문 핵 토큰 `[Immortality p. 12]`, 정보 수집·침투 `[Main p. 11]`,
+  게임판 `[Main p. 3]`, 인장 반지 능력 `[Main p. 3]`; recall은 전부 소환 `[Main p. 20]`(withdraw의 회수는 그대로).
+- **한국어 화면의 영어 잔재**: 워크플로 둘(런타임·정적 스윕 → 용어집 판정, 세 렌즈 리뷰 → 반박 검증)로 찾아
+  고쳤다 — 헤더의 확장 배지·시드, Alliance·병력·모래벌레·스파이스·방어벽·게임판 title/alt, 손패 카운트 title,
+  AI 배지 title(체크포인트 좌석은 파일 경로), Endgame 로그 머리, 카드 텍스트 아이콘 툴팁(`TERMS`에서),
+  비용 아이콘, "discard pile"(버리기 아이콘을 달지 않는다), 팝오버의 조건·보상·인장 반지 능력 머리말(카드
+  문구는 `iconize()`의 `.card-text` 안, 우리 말은 밖), 한국어가 번역하는 엔진 prompt인 `action.detail`, 저장
+  목록의 좌석 종류·시각, 게임을 떠난 뒤 설정 화면에 남던 헤더, 언어 전환 뒤 옛 언어로 남던 검토 상태 줄
+  (`writeReviewStatus`).
+- **글꼴**: 제목 "Dune: Imperium — Uprising"이 언어마다 달라 보인 것은 Windows에 이름 붙은 글꼴이 하나도
+  없어 generic sans-serif가 `lang`에 따라 Malgun Gothic/Arial로 갈렸기 때문이다. Latin 글꼴(Segoe UI 등)을
+  앞에 두었다(`b9d6844`).
+- **가드**: `lang.py`의 한국어 전면 검사(`KOREAN_LATIN_JS`) — 카탈로그 **이름** 필드·`.card-text`·허용 목록을
+  지운 뒤 라틴 낱말 0, 좌석 세부와 ⓘ 세부를 펴고 훑는다. 옛 클라이언트(`d09532c`)와 Family Atomics 깃발을
+  되돌린 트리에서 실패를 확인했다. `test_i18n.py`의 `_GLOSSARY_WORDS`에 atomics·intelligence·infiltrate.
+- **남은 것**: set-aside(두 꼴 중 사용자 결정), 제품 제목의 한국어화("듄 임페리움: 봉기" `[Main p. 2]`, 브랜드라
+  사용자 결정), High Council·Swordmaster 좌석 깃발(공간 이름 정책으로 영어 유지).
 
 ## 2026-09-21 밤 보드 위 사다우카 지휘관 세션 요약 (Mac mini, 브랜치 `ui-commanders` → master, 관측 v20, codec v107, 변경은 `display/board_layout.py`·`display/token_images.py`·`server/catalog.py`·`server/static/`·`scripts/`·테스트 — **엔진·학습 코드 무변경**; 에셋 저장소 `1574241`)
 
