@@ -113,6 +113,15 @@ function autosaveBadge() {
   return badge;
 }
 
+/* The Tech Module is packaged with Bloodlines and only plays on top of it
+   (RulesetConfig rejects it alone), so its box waits for the Bloodlines box
+   and is cleared when Bloodlines is. */
+function syncTechOption() {
+  const bloodlines = el("opt-bloodlines").checked;
+  el("opt-tech").disabled = !bloodlines;
+  if (!bloodlines) el("opt-tech").checked = false;
+}
+
 async function createGame(event) {
   event.preventDefault();
   const checkpoint = el("opt-checkpoint").value.trim();

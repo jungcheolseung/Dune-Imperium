@@ -83,6 +83,7 @@ fieldset {
   margin: 0 0 0.8rem;
 }
 fieldset label { display: block; margin: 0.25rem 0; }
+fieldset label:has(input:disabled) { opacity: 0.5; }
 #seat-selects label { display: flex; gap: 0.5rem; align-items: center; }
 
 button {
