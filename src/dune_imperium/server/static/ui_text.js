@@ -134,7 +134,7 @@ const UI_TEXT = {
     "en": "{commander} · board {{count}} · bank {{bank}}"
   },
   "board.sardaukar_contract_title": {
-    "ko": "Sardaukar {contract} · Shaddam 전용, 따로 둔 카드",
+    "ko": "Sardaukar {contract} · Shaddam 전용, 따로 치워둠",
     "en": "Sardaukar {contract} · Shaddam only, set aside"
   },
   "board.seat_conflict_troops": {
@@ -162,7 +162,7 @@ const UI_TEXT = {
     "en": "Seat {{seat}} · {victory_point} {{vp}}"
   },
   "board.set_aside": {
-    "ko": "따로 둠",
+    "ko": "따로 치워둠",
     "en": "set aside"
   },
   "board.shield_wall_destroyed": {

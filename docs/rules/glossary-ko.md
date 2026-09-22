@@ -174,6 +174,8 @@ Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 �
 | CHOAM Module | 초암 모듈 | `[Main p. 20]` | 적용 |
 | Uprising | 봉기 | `[Main p. 20]` | 적용 |
 | Dune: Imperium — Uprising (제품 이름) | 듄 임페리움: 봉기 | `[Main p. 2]`("듄 임페리움: 봉기는 덱빌딩 일꾼 놓기 게임으로"), `[Bloodlines p. 3]` | 적용(페이지 제목, 2026-09-22 사용자 결정) |
+| set aside (Shaddam의 사다우카 계약) | 따로 치워두다 | `[Board Guide p. 8]`("사다우카 계약 2개를 따로 치워둡니다") | 적용 |
+| set aside (나중에 쓰려고 빼 둔 카드, Manipulate) | 따로 빼두다 | `[Immortality p. 14]`("이 지도자를 사용해 따로 빼둔 카드") | 적용 |
 | Swordmaster | 소드마스터 | `[Main p. 17]`, `[Board Guide p. 3]` | 참고(공간 이름) |
 | High Council | 원로회 | `[Main p. 17]` | 참고(공간 이름) |
 | Arrakeen / Spice Refinery / Imperial Basin | 아라킨 / 스파이스 정제소 / 제국 분지 | `[Main p. 20]` | 참고(공간 이름) |
@@ -274,11 +276,6 @@ Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 �
   채운다.
 - Bloodlines·Immortality의 **Leader 전용 용어**(Chani의 전술, Piter의 뒤틀린 책략,
   Kota의 비밀 프로젝트 등)는 해당 Leader UI를 건드릴 때 각 룰북에서 채운다.
-- **set aside**: Manipulate(Imperium Row 조작)와 Shaddam의 보류 계약이 쓰는
-  동작인데 한국어 룰북의 용어집에 대응 항목을 찾지 못했다. 발명하지 않고
-  화면에서 영어를 유지하고 있다(`acquire_manipulated_imperium`,
-  `manipulate_imperium_row`). 해당 카드의 한국어 카드면이나 룰북 본문에서
-  단어를 찾으면 여기에 인용과 함께 더하고 라벨을 바꾼다.
 - **Agent box**: `[Bloodlines p. 12]`의 한국어판이 "에이전트 칸"으로 쓴다.
   라벨은 그 표기를 따르지만 용어집 행으로는 아직 올리지 않았다.
 - **한국어 FAQ는 없다.** 공식 FAQ는 영어판만 배포된다. FAQ가 근거인 판정의

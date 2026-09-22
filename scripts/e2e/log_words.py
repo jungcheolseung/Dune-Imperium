@@ -64,8 +64,6 @@ KOREAN_KEEPS_ENGLISH = (
     "Memories returned",
     "Memories",
     "Secret Project",
-    "Set-aside",
-    "set-aside",
     "Wild card",
     "Crysknife",
     "Immediate",

@@ -271,8 +271,6 @@ _KOREAN_KEEPS_ENGLISH = (
     "Memories returned",
     "Memories",
     "Secret Project",
-    "Set-aside",
-    "set-aside",
     "Wild card",
     "Crysknife",
     "Immediate",
@@ -283,6 +281,7 @@ _KOREAN_KEEPS_ENGLISH = (
 )
 # Glossary rows the UI applies that have no TERMS entry of their own.
 _GLOSSARY_WORDS = {
+    "aside",
     "atomics",
     "bloodlines",
     "embassy",
