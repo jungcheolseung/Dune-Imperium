@@ -173,6 +173,7 @@ Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 �
 | Leader | 지도자 | `[Main p. 20]` | 적용 |
 | CHOAM Module | 초암 모듈 | `[Main p. 20]` | 적용 |
 | Uprising | 봉기 | `[Main p. 20]` | 적용 |
+| Dune: Imperium — Uprising (제품 이름) | 듄 임페리움: 봉기 | `[Main p. 2]`("듄 임페리움: 봉기는 덱빌딩 일꾼 놓기 게임으로"), `[Bloodlines p. 3]` | 적용(페이지 제목, 2026-09-22 사용자 결정) |
 | Swordmaster | 소드마스터 | `[Main p. 17]`, `[Board Guide p. 3]` | 참고(공간 이름) |
 | High Council | 원로회 | `[Main p. 17]` | 참고(공간 이름) |
 | Arrakeen / Spice Refinery / Imperial Basin | 아라킨 / 스파이스 정제소 / 제국 분지 | `[Main p. 20]` | 참고(공간 이름) |

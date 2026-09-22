@@ -14,7 +14,7 @@ const UI_TEXT = {
     "en": "Initialization failed ({{message}})"
   },
   "board.map_alt": {
-    "ko": "게임판",
+    "ko": "듄 임페리움: 봉기 게임판",
     "en": "Dune: Imperium — Uprising board"
   },
   "board.agent_seats": {
@@ -508,6 +508,10 @@ const UI_TEXT = {
   "html.opt_leader_draft": {
     "ko": "지도자 6종 공개 드래프트 (OQ-007, 공식 규칙 아님)",
     "en": "Open draft from 6 revealed Leaders (OQ-007, not an official rule)"
+  },
+  "html.page_title": {
+    "ko": "듄 임페리움: 봉기",
+    "en": "Dune: Imperium — Uprising"
   },
   "html.opt_promo": {
     "ko": "프로모 카드 (봉기 3장: Arrakis Revolt, The Beast's Spoils, Pivotal Gambit; 혈통을 켜면 Ruthless Leadership, 불멸을 켜면 틀레이락스 덱에 Piter, Genius Advisor도)",

@@ -184,8 +184,10 @@ function redrawForLanguage() {
     } else {
       render();
     }
-    noticeTurn();
   }
+  /* applyStaticText reset the tab title; put back the "my turn" marker on
+     whichever screen the player is (the lobby of a remote game too). */
+  if (state.summary) noticeTurn();
   /* The live region still holds a sentence in the old language: say the
      current turn again in the new one (a review says nothing). */
   clearAnnouncement();

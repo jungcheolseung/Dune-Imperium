@@ -162,7 +162,11 @@ async function createGame(event) {
 
 /* ---------- screens and entry (M14 slice 4) ---------- */
 
-const BASE_TITLE = document.title;
+/* The tab's own title, in the chosen language (the page's <title> carries
+   the same key). */
+function baseTitle() {
+  return t("html.page_title");
+}
 const SCREENS = ["setup-screen", "landing-screen", "lobby-screen", "game-screen"];
 
 function isRemote() {
@@ -294,7 +298,7 @@ function resetGameState() {
   state.counts = {};
   myTurnBefore = null;
   announcedTurn = undefined;
-  document.title = BASE_TITLE;
+  document.title = baseTitle();
   /* The header named the game's round and ruleset; the setup screen kept
      showing it, in whichever language it was drawn. */
   el("header-status").textContent = "";

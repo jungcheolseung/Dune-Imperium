@@ -267,7 +267,7 @@ def scenario_full_game(base, browser) -> str:
         rows,
     )
     check.ok(
-        page.title() == "Dune: Imperium — Uprising",
+        page.title() == page.evaluate("baseTitle()"),
         "tab title untouched on an open server",
         page.title(),
     )
