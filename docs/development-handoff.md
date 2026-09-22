@@ -61,7 +61,9 @@ uv run mypy src tests
    Usurp(계획서 6단계 "남은 것" 1; Gather Intelligence·Infiltrate·Family Atomics·set-aside는 2026-09-22에
    옮겼다). 한국어 룰북에서 찾아 용어집에 더한 뒤에만 바꾼다. 바꾸면 `test_i18n.py`와 `log_words.py`의 허용
    목록에서도 뺀다.
-3. **한글 카드 스캔** — 확보하면 `display/images.py`가 코드 변경 없이 쓴다(언어 정책의 3번).
+3. **한글 카드 스캔** — 확보하면 `display/images.py`가 코드 변경 없이 쓴다(언어 정책의 3번). **2026-09-22에
+   네이버 블로그 사진에서 잘라낸 한글판 크롭 138장이 준비됐다**(아래 "2026-09-22 한글판 카드 사진 크롭" 세션
+   요약) — `cards/ko/`에 넣기 전에 사용자 결정 셋이 남아 있다.
 
 **UI를 이어갈 때의 규칙**(세 세션이 값을 치른 것들):
 - `static/*.js`를 고치면 pytest로는 부족하다. [`scripts/e2e/`](../scripts/e2e/README.md) **15종**을 돌린다.
@@ -416,6 +418,8 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 
 ## 원격 저장소 인계 주의
 
+2026-09-22(WSL 노트북, 한글판 카드 사진 크롭 세션): 비공개 에셋 저장소에 미push 커밋 3건 — `b8784f4`(앞 세션의 Immortality specimen 아이콘), `3fcf62f`(`origin/master`의 `1574241` merge), `d01e9d9`(`reference/naver-vampmiyu-223464306472/`, 약 190 MB). 메인 저장소에는 이 문서 커밋 1건. 이 세션에서는 자동 모드 권한 검사가 push를 막아 **두 저장소 모두 push하지 않았다** — 사용자가 이 기기에서 push한 뒤 다른 기기에서 두 저장소를 pull한다. 새 세션은 `git log origin/master..master`와 반대 방향을 두 저장소에서 모두 확인한다.
+
 2026-09-20 새벽(Mac mini, 보드 조각·아이콘 전사 정정 세션): 이 세션의 커밋(`82a0423`·`c9aec0a`·`7188523`·`2c967b7`와 문서 커밋)은 master에만 있고 **push하지 않았다**. 비공개 에셋 저장소에도 커밋 1건(`e7f7741`: `tokens/maker_hooks.png`·`alliance_<faction>.jpg` + README)이 있고 역시 push하지 않았다 — 다른 기기에서 후크·동맹 토큰 그림을 보려면 두 저장소를 모두 push·pull한다(에셋이 없으면 룰북 아이콘으로 그릴 뿐 동작은 같다). **`src/`의 규칙이 바뀌었으므로 학습이 도는 기기에서는 pull하지 않는다**; pull한 뒤의 학습은 새 규칙의 환경이다(세션 요약의 "M10에 미치는 영향"). 떠 있던 플레이 서버는 재시작해야 새 규칙·새 카탈로그 필드가 적용된다(정적 파일은 즉시 반영).
 
 2026-09-19 오후~저녁(Mac mini, M10 실행 3·학습률 A/B 세션): 이 세션의 앞 커밋 넷(`bd8732f` 학습 가드·감독기의 macOS 이식, `7935740` 문서, `61b09df` 재개 시 학습률 수정, `41e9a7a` 문서)은 16:43에 **push돼 있다**(사용자 쪽에서 한 push다 — reflog의 `update by push`). 그 뒤의 A/B 결과 문서 커밋들은 master에만 있다 — `git log origin/master..master`로 확인한다. `src/` 변경은 `61b09df` 하나이고(옵티마이저 상태에서 재개할 때 `--learning-rate`가 이긴다) 체크포인트 형식과는 무관하다. Windows PC는 pull하면 새 `scripts/train/`(Linux 경로의 동작은 그대로)과 그 수정을 얻는다. **학습이 도는 기기에서는 `src/`가 바뀌는 pull을 하지 않는다.** 체크포인트 폴더는 git 무시라 기기 간에는 여전히 파일을 복사한다(실행 3의 산출물은 이 Mac의 `checkpoints/2026-09-19/lr1e-4-mac/`).
@@ -435,6 +439,37 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 2026-09-07: `bloodlines` 브랜치(35 커밋)를 master 쪽에서 `--no-ff`로 머지했고(`dbd9b73`), 같은 날 저녁 슬라이스 6 커밋 5건과 이 문서 갱신을 master에 직접 올렸다. 아직 push하지 않았다면 `git log origin/master..master`로 확인한다. 비공개 에셋 저장소(`assets` symlink → `Dune-Imperium-assets`)에도 같은 날 manifest 커밋 6건(Bloodlines 카드 44장 content id, Leader 8종, Tuek's Sietch 타일 이미지, Twisted·Navigation 카드 키, Kota Odax의 content id `43c25fc`)이 있으니 다른 머신에서는 그쪽도 pull한다.
 
 2026-09-04 세션 종료 시점에 이 세션의 커밋 전부(보드·카드 아이콘 분리 v86/v87, 서버·UI 확인 흐름과 마커, Reveal 순서 v88, OQ-028 조건 판정 시점, OQ-029 등록)를 `origin/master`에 push했다. 새 세션은 `git fetch origin` 뒤 `git log origin/master..master`와 반대 방향을 확인하고, 일치하면 이 문서의 기준선을 그대로 쓴다. 에셋 저장소(`Dune-Imperium-assets`)의 `5b55e45` 1개 미push 여부는 그 저장소에서 확인한다. 원격에는 병합하지 않은 `kyungtae` 브랜치가 있다. 새 세션은 `git log origin/master..master`와 반대 방향을 모두 확인하고, checkout이 `853ecd4`보다 이전이면 이 문서의 989개 테스트·codec v84 기준선이 실제 코드와 일치하지 않는다. **다른 머신에서 이어서 작업한다면 먼저 이 머신에서 push가 필요하다.** 새 머신의 UI 카드 이미지·아이콘·보드 스캔은 비공개 `Dune-Imperium-assets` 저장소를 clone해 symlink로 연결한다(그 README 참고; 루트의 `assets` symlink 하나로 cards·icons·board·rulebooks를 모두 연결). 카드 매핑은 그 저장소의 `cards/manifest.json`에만 있으므로 접근이 없으면 텍스트 UI로 동작한다.
+
+## 2026-09-22 한글판 카드 사진 크롭 세션 요약 (WSL 노트북 i5-8250U, 변경은 **비공개 에셋 저장소뿐** — 메인 저장소는 이 문서만; 에셋 `d01e9d9`)
+
+- 사용자 지시: 네이버 블로그 [vampmiyu/223464306472](https://blog.naver.com/vampmiyu/223464306472)(한국어판
+  Uprising 개봉기)의 사진을 전부 받고, 카드를 잘라 **실제 카드 비율로** 원근 보정한 뒤 영문 manifest와의 매칭
+  표를 만든다. 결과는 에셋 저장소 `reference/naver-vampmiyu-223464306472/`에 있다 — 사진 51장(원본 해상도),
+  `crops/` 190장, `best/uprising/<kind>/<Name>.jpg`(카드별 대표 1장, `cards/en/`과 같은 배치), `matching.md`
+  (한국어 표)·`matching.csv`·`coverage.csv`·`matching.json`, `matching.html`(한글 크롭과 영문 스캔을 나란히 보는
+  자기완결 갤러리), `tools/`(스크립트·중간 데이터, 재실행법은 그 README). 방법·근거·다음 단계는 그 폴더
+  README가 정본이다. 사진 저작권은 블로거·출판사에 있고, 사용자 결정으로 비공개 저장소에 개인 용도로만 둔다.
+- **카드 규격**(사진 실측 + 슬리브 자료): 표준 **63×88**(임페리움·시작·예비·6인·프로모·솔로 라이벌; 63.5×88은
+  실측과 어긋남), 음모·분쟁·목표 **44×68**, 리더 **146×102**(147 아님), 계약 타일은 영문 렌더 비율 670×425.
+- **커버리지**: Uprising manifest 177장(장소 제외) 중 141장에 크롭, 가림 없는 것 138장 — 임페리움 54·시작 7·
+  예비 2·6인 18·계약 28 전부, 리더 9/10(대모 제시카 없음), 분쟁 16/16(2장은 이웃에 일부 가림), 프로모 1/3,
+  **음모 6/39**(31번 사진이 더미). manifest에 없는 솔로 라이벌 10장·목표 5장도 잘랐다.
+- **한글 카드명**: 사진에 찍힌 카드 181장의 인쇄 제목을 서브에이전트 판독과 메인 세션의 제목 띠 판독으로 두
+  번 읽었고 띄어쓰기까지 전부 일치했다(`matching.csv`의 `korean_title`). 예: Steersman=조타수,
+  Treacherous Maneuver=기만적인 계책. 이름 대응은 기억이나 번역으로 짐작하지 말고 `matching.csv`에서 찾는다.
+- **다음 단계(사용자가 고르기 전에는 시작하지 않는다)**: `best/`를 WebP로 바꿔 `cards/ko/<manifest path>`에
+  두면(확장자까지 같은 경로) `display/images.py`가 코드 변경 없이 쓴다. 그 전에 물을 것 셋 — (1)
+  `DEFAULT_LANGUAGES = ("ko","en")`라 **영어 화면에서도 한글 카드가 나온다**, 화면 언어를 따르게 할지;
+  (2) 한국어 화면의 카드명(고유명사)을 이제 공식 한글 이름으로 바꿀지(위 언어 정책은 "한글 카드 이미지
+  미확보"를 이유로 영어 유지였다); (3) 2026-09-18 절의 TTS 한글화 모드 3종(3092549193·3446667675·3025517639)
+  카드 시트가 평면 스캔이면 사진 크롭보다 낫고 빠진 36장(음모 33장 등)도 채울 수 있다 — 먼저 비교할지.
+- **교훈**(다음 크롭 작업용): 서브에이전트의 눈 검수는 한쪽이 2.5 mm 어긋난 크롭 30장을 "양호"로 통과시켰다
+  — 크롭은 영문 스캔에 정합해 **좌우·상하 여백의 합이 카드 종류마다 일정한지**로 검증한다(`tools/regcheck.py`).
+  Sonnet 판독자는 세로 제목을 읽지 않고 음역해 지어냈다(소규모 전투 → "스커미쉬") — 한글 제목은 제목 띠
+  시트로 다시 읽는다.
+- **push 상태**: 이 세션은 에셋 저장소에 `origin/master`를 merge(`3fcf62f`, 기존 커밋 무변경)하고 `d01e9d9`를
+  커밋했으며, 메인 저장소에는 이 문서 커밋만 있다. **두 저장소 모두 push하지 않았다**(자동 모드 권한 검사가
+  push를 막았다) — 다른 기기에서 이어가려면 이 기기에서 두 저장소를 push한 뒤 그쪽에서 pull한다.
 
 ## 2026-09-22 한국어 화면 잔재·Agent 아이콘·글꼴 세션 요약 (WSL 노트북 i5-8250U, master 직접 커밋, 관측 v20, codec v107, 변경은 `server/static/`·`scripts/e2e/`·`tests/server/test_i18n.py`·`docs/` — **엔진·학습 코드 무변경**)
 
