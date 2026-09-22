@@ -72,6 +72,10 @@ E2E_HOST=100.x.y.z /tmp/dune-e2e-venv/bin/python rehearsal.py   # 약 1분; 실�
 - `page.route`로 클라이언트를 패치하는 검사는 **그 코드가 지금 어느 파일에 있는지** 확인하고 그 파일을
   건다. route handler 안에서 assert가 터지면 요청이 fulfill되지 않아 `goto` 타임아웃으로만 보인다
   (2026-09-20 `races.py --ab`가 이 방식으로 조용히 깨졌다).
+- 설정 화면의 확장 체크박스(CHOAM·프로모·혈통·기술·불멸)는 2026-09-22부터 **전부 켜진 채로** 열리고, 기술 모듈
+  칸은 혈통이 꺼져 있으면 비활성이다. 더 좁은 판이 필요한 검사는 `common.set_rule_options(page, "bloodlines")`처럼
+  남길 칸만 적는다(인자 없이 부르면 기본 게임; async API는 `rule_option_steps()`를 돈다). 이 순서가 기술 칸을
+  비활성일 때 건드리지 않게 해 준다.
 - "N초 기다린 뒤 확인"보다 **수렴 조건을 폴링**한다(`remote.converge`). 멈춤은 타임라인과 함께 실패로 드러난다.
 - 경합을 의심하면 추측으로 고치지 말고 `page.route`로 그 순서를 강제해 재현한 뒤 고친다(`races.py`,
   `docs/lessons.md` 2026-09-10·2026-09-11). 동기 API의 route handler 안에서 `time.sleep`하면 그 동안 Playwright의

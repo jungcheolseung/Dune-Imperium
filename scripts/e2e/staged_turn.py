@@ -14,7 +14,14 @@ from __future__ import annotations
 import shutil
 import time
 
-from common import SERVER_LOG_COPY, Check, chrome, open_context, server
+from common import (
+    SERVER_LOG_COPY,
+    Check,
+    chrome,
+    open_context,
+    server,
+    set_rule_options,
+)
 from open_mode import create_game, settled
 
 check = Check()
@@ -245,7 +252,7 @@ def graft_scenario(base, browser) -> None:
                 f"#seat-selects select[data-seat='{seat}']",
                 "human" if seat == 0 else "heuristic",
             )
-        page.check("#opt-immortality")
+        set_rule_options(page, "immortality")
         page.fill("#opt-seed", str(seed))
         page.click("#create-game")
         page.wait_for_selector("#game-screen:not([hidden])")

@@ -25,6 +25,7 @@ from common import (
     now,
     open_context,
     server,
+    set_rule_options,
 )
 
 check = Check()
@@ -39,6 +40,7 @@ def create_game(page, base: str, humans=(0, 1), seed: int | None = SEED) -> str:
             f"#seat-selects select[data-seat='{seat}']",
             "human" if seat in humans else "heuristic",
         )
+    set_rule_options(page)
     if seed is not None:
         page.fill("#opt-seed", str(seed))
     page.click("#create-game")

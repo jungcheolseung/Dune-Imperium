@@ -173,6 +173,30 @@ class Recorder:
             print(f"  {at:8.3f} {kind:14s} {text}")
 
 
+# The setup form's expansion boxes. Since 2026-09-22 every one starts checked
+# and the Tech Module box is disabled while Bloodlines is off, so a script
+# that wants a narrower game says which boxes it keeps.
+RULE_OPTIONS = ("choam", "promo", "bloodlines", "tech", "immortality")
+
+
+def rule_option_steps(*keep: str) -> list[tuple[str, bool]]:
+    """Checkbox moves leaving exactly ``keep`` of RULE_OPTIONS checked.
+
+    Unchecks run Tech before Bloodlines and checks run Bloodlines before
+    Tech, so no move touches the Tech box while it is disabled.
+    """
+    unchecks = [
+        (f"#opt-{name}", False) for name in reversed(RULE_OPTIONS) if name not in keep
+    ]
+    checks = [(f"#opt-{name}", True) for name in RULE_OPTIONS if name in keep]
+    return unchecks + checks
+
+
+def set_rule_options(page, *keep: str) -> None:
+    for selector, checked in rule_option_steps(*keep):
+        page.set_checked(selector, checked)
+
+
 def short(url: str) -> str:
     return url.split("://", 1)[-1].split("/", 1)[-1] if "://" in url else url
 
