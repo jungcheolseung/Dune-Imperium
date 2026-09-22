@@ -1446,7 +1446,7 @@ const UI_TEXT = {
     "en": "{recall_spy} — {{post}}"
   },
   "turn.spy_recall_none": {
-    "ko": "{spy} 회수 없이",
+    "ko": "{spy} 소환 없이",
     "en": "No {spy} recall"
   },
   "turn.step3_hint": {
