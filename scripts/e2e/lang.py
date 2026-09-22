@@ -16,6 +16,7 @@ input, which may be Korean) is on screen.
 from __future__ import annotations
 
 from common import SERVER_LOG_COPY, Check, chrome, client_state, open_context, server
+from log_words import KOREAN_KEEPS_ENGLISH
 from open_mode import settled
 
 check = Check()
@@ -96,8 +97,79 @@ ENGLISH_TERMS_JS = r"""() => {
 }"""
 
 
+# In Korean, every English word a person or a screen reader meets (text,
+# title, alt, aria-label, placeholder) must be a name or printed card text:
+# every catalog string is stripped (card, Leader, space, Conflict, Contract
+# names and printed text stay English by policy), and so is iconized card
+# wording (.card-text, whose icons' tooltips are checked) and the help
+# legend's muted English twins. What is left must be empty. The name-free
+# check above missed "· seed … · CHOAM · Bloodlines" in the header, the
+# Alliance and troop tooltips and "Family Atomics" (2026-09-22).
+KOREAN_LATIN_JS = r"""({keep}) => {
+    const names = new Set(keep);
+    const walk = (value) => {
+        if (typeof value === 'string') {
+            if (/[A-Za-z]{2}/.test(value) && !value.includes('/')) names.add(value);
+        } else if (Array.isArray(value)) {
+            value.forEach(walk);
+        } else if (value && typeof value === 'object') {
+            Object.values(value).forEach(walk);
+        }
+    };
+    walk(state.catalog);
+    const sorted = [...names].sort((a, b) => b.length - a.length);
+    const left = (text) => {
+        let bare = String(text || '').replace(/\S*\/\S*|OQ-\d+/g, ' ');
+        if (!/[A-Za-z]{2}/.test(bare)) return [];
+        for (const name of sorted) {
+            if (bare.includes(name)) bare = bare.split(name).join(' ');
+        }
+        return bare.match(/[A-Za-z]{2,}/g) || [];
+    };
+    const skip = '#language-toggle, .card-text, kbd, code, #help-body .muted';
+    const found = [];
+    const note = (text, where) => {
+        const words = left(text);
+        if (words.length) found.push([words.join(' '), String(text).slice(0, 80), where]);
+    };
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const host = node.parentElement;
+        if (!host || host.closest('[hidden]') || host.closest(skip)) continue;
+        if (getComputedStyle(host).display === 'none') continue;
+        note(node.textContent, host.id || host.className || host.tagName);
+    }
+    const named = '[title], [alt], [aria-label], [placeholder]';
+    for (const el of document.querySelectorAll(named)) {
+        if (el.closest('#language-toggle') || el.closest('[hidden]')) continue;
+        for (const name of ['title', 'alt', 'aria-label', 'placeholder']) {
+            if (!el.hasAttribute(name)) continue;
+            const where = el.id || String(el.className.baseVal ?? el.className) || el.tagName;
+            note(el.getAttribute(name), `${where}@${name}`);
+        }
+    }
+    note(document.title, 'document.title');
+    const seen = new Set();
+    return found.filter(([words, text]) => {
+        const key = words + '|' + text;
+        return seen.has(key) ? false : (seen.add(key), true);
+    });
+}"""
+
+# Chrome English on purpose: the product title (the user has not asked for
+# the Korean edition's title), the uv extra the checkpoint field needs, the
+# AI of the seat kinds, the Esc key the turn guide names, and Shaddam, a
+# Leader's short name like log_words' Feyd.
+KOREAN_CHROME_ENGLISH = ("Dune: Imperium — Uprising", "train extra", "AI", "Esc", "Shaddam")
+
+
 def hangul(page) -> list:
     return page.evaluate(HANGUL_JS)
+
+
+def english_left(page) -> list:
+    keep = [*KOREAN_KEEPS_ENGLISH, *KOREAN_CHROME_ENGLISH]
+    return page.evaluate(KOREAN_LATIN_JS, {"keep": keep})
 
 
 def create(page, base: str, seats: tuple[str, str, str, str]) -> None:
@@ -126,6 +198,8 @@ def live_table(base: str, browser) -> None:
     create(page, base, ("human", "human", "heuristic", "heuristic"))
     check.ok(page.is_visible("#language-toggle"), "the switch is on the page")
     check.ok(page.evaluate("TERM_LANGUAGE") == "ko", "Korean is the default")
+    left = english_left(page)
+    check.ok(not left, "Korean: no English outside names on the new table", left[:8])
 
     # In Korean the engine's English prompt is translated.
     prompt = page.evaluate("state.summary.decision.prompt")
@@ -186,6 +260,12 @@ def live_table(base: str, browser) -> None:
         "the switch offers English again",
     )
     check.ok(bool(hangul(page)), "Korean comes back")
+    left = english_left(page)
+    check.ok(not left, "Korean: no English outside names after a dozen steps", left[:8])
+    page.click("#open-help")
+    left = english_left(page)
+    check.ok(not left, "Korean: no English outside names in the help panel", left[:8])
+    page.keyboard.press("Escape")
     check.ok(
         page.evaluate("ACTION_LABELS.pick_leader") == page.evaluate(
             "LABELS_KO.ACTION_LABELS.pick_leader"
@@ -223,6 +303,10 @@ def finished_game(base: str, browser) -> None:
         "Korean: no rule term left in English in the name-free chrome",
         english[:6],
     )
+    # No wait: the switch rewrites the review's status line at once (it read
+    # "step 832/832 · Round 10 · Game Over" until the re-fetch landed).
+    left = english_left(page)
+    check.ok(not left, "Korean: no English outside names at the end of a review", left[:8])
     switch(page, "en")
     check.ok(page.is_visible("#standings"), "the standings are on screen")
     page.click("#disclosure h2 button")
