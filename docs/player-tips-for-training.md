@@ -210,6 +210,8 @@ Bond 조건은 `PersonalCardBond`(`content/uprising/types.py`)와 효과 이름�
 
 ### 6.7 커뮤니티 팁 — 수집·출처 대조 완료, 사용자 대조 대기
 
+주제별 목록은 [evaluation/community-tips-2026-09-22.md](evaluation/community-tips-2026-09-22.md)에 한글로 옮겼다(원자료
+JSON은 git 무시 `ab-runs/2026-09-22-thin/community-tips.json`, 이 Mac에만 있다).
 workflow가 BGG·reddit·Dire Wolf 디자인 다이어리·Steam 가이드 등에서 49개(덱빌딩 13, 일반 36)를 모으고, 별도 검증자가
 인용 페이지를 다시 열어 대조했다: 예 17, 부분 22, 아니오 9, 접속 불가 1(BGG가 직접 fetch를 403으로 막아 일부는 JSON API로
 읽었다). 다수가 base Dune: Imperium 자료라 Uprising 전이 여부를 표시해 두었다. 사용자가 자기 팁을 먼저 적은 뒤(앵커링
