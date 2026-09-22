@@ -59,7 +59,9 @@ async function loadSaveList() {
       continue;
     }
     if (entry.autosave) item.appendChild(autosaveBadge());
-    item.append(`${saveTitle(entry)} · ${entry.seats.join(", ")} · ${savedWhen(entry)} `);
+    item.append(
+      `${saveTitle(entry)} · ${entry.seats.map(seatKindLabel).join(", ")} · ${savedWhen(entry)} `,
+    );
     const load = document.createElement("button");
     load.textContent = t("screens.load_button");
     load.addEventListener("click", async () => {
@@ -105,7 +107,9 @@ function saveTitle(entry) {
    ago" after a crash reads local time. */
 function savedWhen(entry) {
   const when = new Date(entry.saved_at);
-  return Number.isNaN(when.getTime()) ? String(entry.saved_at) : when.toLocaleString();
+  return Number.isNaN(when.getTime())
+    ? String(entry.saved_at)
+    : when.toLocaleString(TERM_LANGUAGE);
 }
 
 function autosaveBadge() {
@@ -291,6 +295,9 @@ function resetGameState() {
   myTurnBefore = null;
   announcedTurn = undefined;
   document.title = BASE_TITLE;
+  /* The header named the game's round and ruleset; the setup screen kept
+     showing it, in whichever language it was drawn. */
+  el("header-status").textContent = "";
   el("review-bar").hidden = true;
 }
 
