@@ -498,8 +498,8 @@ const UI_TEXT = {
     "en": "Open draft from 6 revealed Leaders (OQ-007, not an official rule)"
   },
   "html.opt_promo": {
-    "ko": "프로모 카드 (봉기 3장: Arrakis Revolt, The Beast's Spoils, Pivotal Gambit; 혈통을 켜면 Ruthless Leadership도)",
-    "en": "Promo cards (3 in Uprising: Arrakis Revolt, The Beast's Spoils, Pivotal Gambit; plus Ruthless Leadership with Bloodlines on)"
+    "ko": "프로모 카드 (봉기 3장: Arrakis Revolt, The Beast's Spoils, Pivotal Gambit; 혈통을 켜면 Ruthless Leadership, 불멸을 켜면 틀레이락스 덱에 Piter, Genius Advisor도)",
+    "en": "Promo cards (3 in Uprising: Arrakis Revolt, The Beast's Spoils, Pivotal Gambit; plus Ruthless Leadership with Bloodlines on, and Piter, Genius Advisor in the Tleilaxu deck with Immortality on)"
   },
   "html.opt_seed_label": {
     "ko": "시드 (빈칸 = 무작위)",

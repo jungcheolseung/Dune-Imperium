@@ -19,11 +19,12 @@ class RulesetConfig:
     # round-1 turn order. Off by default so fixed-Leader test and sweep
     # setups stay reproducible.
     leader_draft: bool = False
-    # Shuffle the promo Imperium cards into the Imperium deck: the three
-    # Uprising promos (Arrakis Revolt, The Beast's Spoils, Pivotal Gambit)
-    # and, together with ``bloodlines``, the Bloodlines promo Ruthless
-    # Leadership. They are not part of the retail decks, so they stay out
-    # unless a table opts in.
+    # Shuffle the promo cards into their decks: the three Uprising promos
+    # (Arrakis Revolt, The Beast's Spoils, Pivotal Gambit) into the Imperium
+    # deck, the Bloodlines promo Ruthless Leadership with ``bloodlines``, and
+    # the Immortality promo Piter, Genius Advisor into the Tleilaxu deck with
+    # ``immortality``. They are not part of the retail decks, so they stay
+    # out unless a table opts in.
     promo_cards: bool = False
     # The Bloodlines expansion (``docs/rules/bloodlines.md``): Sardaukar
     # Commanders and their Skills, the new Imperium/Intrigue/Conflict cards
