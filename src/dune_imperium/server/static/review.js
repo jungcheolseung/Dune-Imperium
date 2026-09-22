@@ -91,19 +91,7 @@ async function reviewGoto(cursor) {
     state.view = payload.view;
     state.actions = null;
     el("review-slider").value = String(cursor);
-    let status =
-      t("review.step_count", { cursor, total: review.meta.step_count }) +
-      ` · ${t("review.round_label", { round: payload.round_number })}` +
-      ` · ${PHASE_LABELS[payload.phase] || payload.phase}` +
-      ` · ${describeReviewSpan(review)}`;
-    /* Undo markers that rewound the game to this exact step (M11 slice 6). */
-    for (const item of review.meta.undo_history || []) {
-      if (item.step !== cursor) continue;
-      status +=
-        t("review.undo_marker", { seat: item.seat, count: item.count }) +
-        item.undone.map(describeActionText).join(" / ");
-    }
-    el("review-status").textContent = status;
+    writeReviewStatus(review);
     renderPlaybackControls();
     render();
     return true;
@@ -319,6 +307,25 @@ function reviewStep(move) {
   if (!state.review) return;
   stopPlayback();
   move();
+}
+
+/* The status line of the step on screen, from what the review holds, so a
+   language switch can rewrite it at once instead of after its re-fetch. */
+function writeReviewStatus(review) {
+  const cursor = review.cursor;
+  let status =
+    t("review.step_count", { cursor, total: review.meta.step_count }) +
+    ` · ${t("review.round_label", { round: review.round })}` +
+    ` · ${PHASE_LABELS[review.phase] || review.phase}` +
+    ` · ${describeReviewSpan(review)}`;
+  /* Undo markers that rewound the game to this exact step (M11 slice 6). */
+  for (const item of review.meta.undo_history || []) {
+    if (item.step !== cursor) continue;
+    status +=
+      t("review.undo_marker", { seat: item.seat, count: item.count }) +
+      item.undone.map(describeActionText).join(" / ");
+  }
+  el("review-status").textContent = status;
 }
 
 function renderPlaybackControls() {

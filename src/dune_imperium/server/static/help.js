@@ -144,7 +144,7 @@ function openHelp() {
      of the UI reads, so the legend cannot drift from what is drawn. */
   const icons = helpSection(body, t("help.icons_heading"));
   for (const [name, term] of Object.entries(TERMS)) {
-    if (!term.icon || !iconUrl(term.icon)) continue;
+    if (!term.icon || (name !== "agent" && !iconUrl(term.icon))) continue;
     const label = document.createElement("span");
     label.append(term[TERM_LANGUAGE] || term.en);
     if (TERM_LANGUAGE !== "en") {
@@ -153,7 +153,10 @@ function openHelp() {
       english.textContent = ` ${term.en}`;
       label.appendChild(english);
     }
-    const row = icon(term.icon, term[TERM_LANGUAGE] || term.en);
+    const row =
+      name === "agent"
+        ? agentPieceIcon(term[TERM_LANGUAGE] || term.en)
+        : icon(term.icon, term[TERM_LANGUAGE] || term.en);
     row.dataset.term = name;
     helpRow(icons, row, label);
   }

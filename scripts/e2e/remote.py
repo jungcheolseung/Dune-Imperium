@@ -24,6 +24,7 @@ from common import (
     now,
     open_context,
     server,
+    set_rule_options,
 )
 
 KEY = "e2e-admin-key"
@@ -144,6 +145,7 @@ def seat_two_players(base: str, host, guest) -> str:
     host.goto(f"{base}/#admin={KEY}")
     host.wait_for_selector("#setup-screen:not([hidden])")
     host.select_option("#seat-selects select[data-seat='1']", "human")
+    set_rule_options(host)
     host.click("#create-game")
     host.wait_for_selector("#lobby-screen:not([hidden])")
     game_id = host.evaluate("state.gameId")
@@ -190,6 +192,7 @@ def scenario(base, host, host_rec, guest, guest_rec, pages) -> None:
         not host.is_visible("#opt-seed-row"), "seed input hidden on a remote server"
     )
     host.select_option("#seat-selects select[data-seat='1']", "human")
+    set_rule_options(host)
     host.click("#create-game")
     host.wait_for_selector("#lobby-screen:not([hidden])")
     game_id = host.evaluate("state.gameId")

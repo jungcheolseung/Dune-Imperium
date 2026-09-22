@@ -477,9 +477,12 @@ imperium:rebel_supplier:1,…`, `To Space: paid_trash`). 결정 prompt는 엔진
   놓쳤다.
 
 **남은 것** — 이번 범위 밖에서 본 것:
-1. **용어집에 행이 없는 로그 낱말.** Gather Intelligence, Infiltrate, Other Memories, Secret Project,
-   set-aside, Wild card, Family Atomics, Immediate, Usurp — 한국어 룰북에서 인용을 찾아 용어집에 더한 뒤에만
-   바꾼다(용어집 규칙 2). `log_words.py`의 `KOREAN_KEEPS_ENGLISH`가 지금 이 목록이다.
+1. **용어집에 행이 없는 로그 낱말.** Other Memories, Secret Project, Wild card, Immediate, Usurp —
+   한국어 룰북에서 인용을 찾아 용어집에 더한 뒤에만 바꾼다(용어집 규칙 2). `log_words.py`의
+   `KOREAN_KEEPS_ENGLISH`가 지금 이 목록이다. 2026-09-22에 Gather Intelligence → 정보 수집·Infiltrate → 침투
+   `[Main p. 11]`, Family Atomics → 가문 핵 토큰 `[Immortality p. 12]`을 한국어 룰북에서 찾아 옮겼고, 같은 날
+   사용자 결정으로 set-aside를 맥락별 룰북 표기(Shaddam 계약: 따로 치워두다 `[Board Guide p. 8]`, Manipulate 카드:
+   따로 빼두다 `[Immortality p. 14]`)로, 제목을 듄 임페리움: 봉기로, 원로회·소드마스터를 한국어로 바꿨다.
 
 ## 감사에서 기각된 것 (다시 꺼내지 않기 위해)
 

@@ -20,7 +20,7 @@ function isMyTurn(summary) {
 function noticeTurn() {
   if (!isRemote()) return;
   const mine = isMyTurn(state.summary);
-  document.title = mine ? t("session.my_turn_title", { title: BASE_TITLE }) : BASE_TITLE;
+  document.title = mine ? t("session.my_turn_title", { title: baseTitle() }) : baseTitle();
   if (mine && myTurnBefore === false) turnTone();
   myTurnBefore = mine;
 }

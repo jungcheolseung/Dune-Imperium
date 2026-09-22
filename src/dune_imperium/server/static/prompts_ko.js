@@ -36,7 +36,7 @@ const PROMPT_KO = {
   "Deploy one troop from supply to defend your location?": "{supply}에서 병력 1을 배치해 이 위치를 방어하시겠습니까?",
   "Deploy or retreat one troop, or decline": "병력 1 배치 또는 {retreat}, 또는 거절",
   "Gain Spice or trash this card for one Victory Point": "{spice} 획득 또는 이 카드를 {trash}하고 {victory_point} 1 획득",
-  "Gain five Solari or pay five for a High Council seat": "{solari} 5 획득 또는 {solari} 5 지불하고 High Council 자리 차지",
+  "Gain five Solari or pay five for a High Council seat": "{solari} 5 획득 또는 {solari} 5 지불하고 원로회 자리 차지",
   "Keep one of the two Intrigue cards": "{intrigue} 2장 중 1장 보관",
   "Keep two Persuasion or pay one Water for a sandworm": "{persuasion} 2 유지 또는 {water} 1 지불하고 {sandworm} 획득",
   "Lose two troops for two specimens, or decline": "병력 2를 잃고 {specimen} 2 획득, 또는 거절",

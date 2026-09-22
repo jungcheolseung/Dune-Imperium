@@ -63,26 +63,6 @@ function seatToken(seat, className) {
   return token;
 }
 
-/* The pieces a seat stands on the board, traced from the rulebook's icons
-   (2026-09-21): the Agent's hooded figure (the 52 x 81 px icon as one
-   left-right symmetric path, overlap 0.98 with its silhouette) and the
-   Spy's cylinder (the 56 x 80 px icon as a capsule, overlap 0.99, and the
-   lighter top face the icon draws). */
-const PIECE_SHAPES = {
-  agent: {
-    viewBox: "0 0 52 81",
-    outline:
-      "M26 1 C29.6 1 35.2 5.5 35.8 12.6 L39 14.6 L50.6 42.2 C51.3 43 51.3 43.8 50.6 44.6" +
-      " L41.6 54 L41.6 65 L47 76.6 L47 80 L5 80 L5 76.6 L10.4 65 L10.4 54 L1.4 44.6" +
-      " C0.7 43.8 0.7 43 1.4 42.2 L13 14.6 L16.2 12.6 C16.8 5.5 22.4 1 26 1 Z",
-  },
-  spy: {
-    viewBox: "0 0 56 80",
-    outline: "M1 16 A27 15 0 0 1 55 16 L55 64 A27 15 0 0 1 1 64 Z",
-    top: { cx: 28, cy: 18, rx: 20, ry: 9 },
-  },
-};
-
 /* One hidden sprite holds every piece's outline and its clip, so each
    piece on the board reuses them: made on first use and kept outside the
    board, which every render rebuilds. Not display:none, which would drop
@@ -355,7 +335,7 @@ function renderBoardStage(board, view) {
   const map = document.createElement("img");
   map.className = "board-map";
   map.src = state.catalog.board_image;
-  map.alt = "Dune: Imperium — Uprising board";
+  map.alt = t("board.map_alt");
   map.draggable = false;
   stage.appendChild(map);
 
@@ -371,7 +351,7 @@ function renderBoardStage(board, view) {
   const wall = state.catalog.shield_wall;
   if (view.shield_wall_present && wall && wall.image) {
     const token = boardPiece(wall.image, wall.box, "shield-wall-token");
-    token.alt = "Shield Wall";
+    token.alt = phraseText("{shield_wall}");
     token.style.transform = `rotate(${wall.rotation}deg)`;
     stage.appendChild(token);
   }
@@ -622,16 +602,13 @@ function discCluster(count, halfX, halfY, { fromTop = false, upright = false } =
 
 /* A Faction's Alliance token: its picture (catalog.alliance_tokens) cut to
    the round token, or a drawn disc with the Faction's emblem without the
-   owner's token pictures. With a `size` (percent of the stage) it lies on
-   the board; without one it is an inline token for the seat panels. */
-function allianceToken(key, size, holder) {
+   owner's token pictures. The size is a percentage of the board stage. */
+function allianceToken(key, size) {
   const token = document.createElement("span");
   token.className = "alliance-token";
   token.dataset.faction = key;
-  token.dataset.holder = holder === undefined ? "" : String(holder);
-  token.title = `${FACTION_LABELS[key]} Alliance`;
-  if (size !== undefined) token.style.width = `${size}%`;
-  else token.classList.add("inline");
+  token.title = phraseText(`${FACTION_LABELS[key]} {alliance}`);
+  token.style.width = `${size}%`;
   const url = (state.catalog.alliance_tokens || {})[key];
   if (url) {
     const face = document.createElement("img");
@@ -641,54 +618,9 @@ function allianceToken(key, size, holder) {
     token.appendChild(face);
   } else {
     token.classList.add("drawn");
-    token.appendChild(icon(`influence_${key}`, `${FACTION_LABELS[key]} Alliance`));
+    token.appendChild(icon(`influence_${key}`, token.title));
   }
   return token;
-}
-
-/* Where each Faction's Alliance token is on the screen and who holds it
-   ("" on the board), so a render can tell a token that changed hands. */
-function allianceTokenPlaces() {
-  const places = new Map();
-  for (const token of document.querySelectorAll(".alliance-token:not(.flying)")) {
-    const rect = token.getBoundingClientRect();
-    if (rect.width) places.set(token.dataset.faction, { holder: token.dataset.holder, rect });
-  }
-  return places;
-}
-
-/* An Alliance token that changed hands — earned from the board, taken over
-   by a seat that passed its holder, or returned [Main p. 7] [FAQ p. 1] —
-   flies from where it lay to where it lies now. The flight is a copy above
-   the page (the seat panels scroll and would clip the token itself). */
-function animateMovedAllianceTokens(before) {
-  if (!before.size) return;
-  if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-  for (const token of document.querySelectorAll(".alliance-token:not(.flying)")) {
-    const was = before.get(token.dataset.faction);
-    const to = token.getBoundingClientRect();
-    if (!was || was.holder === token.dataset.holder || !to.width) continue;
-    const ghost = token.cloneNode(true);
-    ghost.classList.remove("inline");
-    ghost.classList.add("flying");
-    const lay = (rect) => {
-      ghost.style.left = `${rect.left}px`;
-      ghost.style.top = `${rect.top}px`;
-      ghost.style.width = `${rect.width}px`;
-    };
-    lay(was.rect);
-    document.body.appendChild(ghost);
-    token.style.visibility = "hidden";
-    ghost.getBoundingClientRect();
-    ghost.classList.add("moving");
-    lay(to);
-    const land = () => {
-      ghost.remove();
-      token.style.visibility = "";
-    };
-    ghost.addEventListener("transitionend", land, { once: true });
-    setTimeout(land, 1200);
-  }
 }
 
 /* A seat's Maker Hooks token in the slot its garrison prints for it: "Place
@@ -746,8 +678,8 @@ function renderTrackMarkers(stage, view) {
     scoreStacks.get(level).push(seat);
   });
   /* An Alliance token lies on the marked ring of its Faction's strip until a
-     player earns it and takes it into their supply [Main pp. 4, 7] (it then
-     shows on that seat's panel); the vacated ring takes the holder's colour. */
+     player earns it and takes it into their supply [Main pp. 4, 7]; the
+     vacated ring takes the holder's colour. */
   for (const key of factions) {
     const offset = tracks.influence.offsets[key];
     if (offset === undefined) continue;
@@ -873,7 +805,7 @@ function renderTrackMarkers(stage, view) {
     garrison.title = t("board.seat_garrison", { seat, count: player.troops_garrison || 0 });
     garrison.append(
       seatToken(seat, "seat-mark"),
-      amount("troop", "garrison troop", player.troops_garrison || 0)
+      amount("troop", phraseText("{garrison} {troop}"), player.troops_garrison || 0)
     );
     if (player.commanders_garrison) {
       const commanders = document.createElement("span");
@@ -896,10 +828,14 @@ function renderTrackMarkers(stage, view) {
       deployed.title = t("board.seat_conflict_troops", { seat });
       deployed.appendChild(seatToken(seat, "seat-mark"));
       if (player.troops_conflict) {
-        deployed.appendChild(amount("troop", "Conflict troop", player.troops_conflict));
+        deployed.appendChild(
+          amount("troop", phraseText("{conflict} {troop}"), player.troops_conflict),
+        );
       }
       if (player.sandworms_conflict) {
-        deployed.appendChild(amount("sandworm", "sandworm", player.sandworms_conflict));
+        deployed.appendChild(
+          amount("sandworm", phraseText("{sandworm}"), player.sandworms_conflict),
+        );
       }
       if (player.commanders_conflict) {
         const commanders = document.createElement("span");
@@ -909,7 +845,9 @@ function renderTrackMarkers(stage, view) {
         deployed.appendChild(commanders);
       }
       if (player.agent_in_conflict) {
-        deployed.appendChild(amount("agent", "Agent (Into the Fray)", player.agent_in_conflict));
+        deployed.appendChild(
+          agentAmount(`${phraseText("{agent}")} (Into the Fray)`, player.agent_in_conflict),
+        );
       }
       if (strength) {
         const total = document.createElement("span");
@@ -1513,7 +1451,7 @@ function renderBeneTleilax(market, view) {
     if (index === layout.tleilaxu_spice_space && view.tleilaxu_track_spice) {
       const spice = document.createElement("span");
       spice.className = "stat";
-      spice.append(icon("spice", "spice"), String(view.tleilaxu_track_spice));
+      spice.append(icon("spice", phraseText("{spice}")), String(view.tleilaxu_track_spice));
       cell.appendChild(spice);
     }
     const tokens = document.createElement("span");
@@ -1629,7 +1567,7 @@ function renderBeneTleilaxScan(layout, view) {
   if (view.tleilaxu_track_spice) {
     const spice = document.createElement("span");
     spice.className = "bt-spice";
-    spice.append(icon("spice", "spice"), String(view.tleilaxu_track_spice));
+    spice.append(icon("spice", phraseText("{spice}")), String(view.tleilaxu_track_spice));
     spice.title = t("board.spice_first_reacher");
     placeAt(spice, overlay.spice_point[0], overlay.spice_point[1]);
     stage.appendChild(spice);

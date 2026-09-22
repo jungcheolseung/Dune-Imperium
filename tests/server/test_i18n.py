@@ -267,15 +267,10 @@ def test_english_label_tables_mirror_the_korean() -> None:
 # (docs/rules/glossary-ko.md, "아직 채우지 않은 것"), or they are a Leader's own
 # name. scripts/e2e/log_words.py keeps the same list for the rendered log.
 _KOREAN_KEEPS_ENGLISH = (
-    "Gather Intelligence",
-    "Family Atomics",
     "Other Memories",
     "Memories returned",
     "Memories",
     "Secret Project",
-    "Set-aside",
-    "set-aside",
-    "Infiltrate",
     "Wild card",
     "Crysknife",
     "Immediate",
@@ -286,11 +281,15 @@ _KOREAN_KEEPS_ENGLISH = (
 )
 # Glossary rows the UI applies that have no TERMS entry of their own.
 _GLOSSARY_WORDS = {
+    "aside",
+    "atomics",
     "bloodlines",
     "embassy",
     "flip",
     "flipped",
     "immortality",
+    "infiltrate",
+    "intelligence",
     "ixian",
     "navigation",
     "tactics",
@@ -343,6 +342,33 @@ def test_korean_text_never_spells_a_glossary_term_in_english() -> None:
         )
         if found:
             leaks.append(f"{where}: {found} in {text!r}")
+    assert not leaks, "; ".join(leaks[:10])
+
+
+# Catalog names the glossary still gives in Korean where they are a status
+# rather than the board space: the High Council seat (원로회) and the
+# Swordmaster (소드마스터) [Main p. 17]. The guard above strips catalog
+# names, so it cannot see these in Korean text.
+_KOREAN_STATUS_NAMES = ("High Council", "Swordmaster")
+
+
+def test_korean_text_names_the_council_seat_and_swordmaster_in_korean() -> None:
+    texts = [
+        (f"{table}.{key}", text)
+        for table, rows in _korean_tables().items()
+        for key, text in rows.items()
+    ]
+    texts += [(f"UI_TEXT.{key}", entry["ko"]) for key, entry in _ui_text().items()]
+    prompts = (_STATIC / "prompts_ko.js").read_text()
+    korean_prompts = re.findall(r'^\s+"[^"]*": "([^"]*)",?$', prompts, re.M)
+    texts += [("PROMPT_KO", ko) for ko in korean_prompts]
+    assert len(texts) > 300, "the tables were not read"
+    leaks = [
+        f"{where}: {text!r}"
+        for where, text in texts
+        for name in _KOREAN_STATUS_NAMES
+        if name in text
+    ]
     assert not leaks, "; ".join(leaks[:10])
 
 

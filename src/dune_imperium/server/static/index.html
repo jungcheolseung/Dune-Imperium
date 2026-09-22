@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Dune: Imperium — Uprising</title>
+  <title data-i18n="html.page_title">듄 임페리움: 봉기</title>
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
   <header>
-    <h1>Dune: Imperium — Uprising</h1>
+    <h1 data-i18n="html.page_title">듄 임페리움: 봉기</h1>
     <div id="header-status"></div>
     <span id="connection-note" role="status" hidden data-i18n="html.connection_note">서버 연결 끊김 — 다시 연결하는 중…</span>
     <button id="open-help" title="도움말 (?)" aria-keyshortcuts="Shift+Slash" data-i18n="html.open_help" data-i18n-attr="title=html.open_help_title">도움말</button>
@@ -33,15 +33,15 @@
           <legend data-i18n="html.rule_options_legend">규칙 옵션</legend>
           <label><input type="checkbox" id="opt-leader-draft" checked>
             <span data-i18n="html.opt_leader_draft">지도자 6종 공개 드래프트 (OQ-007, 공식 규칙 아님)</span></label>
-          <label><input type="checkbox" id="opt-choam">
+          <label><input type="checkbox" id="opt-choam" checked>
             <span data-i18n="html.opt_choam">초암 모듈</span></label>
-          <label><input type="checkbox" id="opt-promo">
-            <span data-i18n="html.opt_promo">프로모 카드 (봉기 3장: Arrakis Revolt, The Beast's Spoils, Pivotal Gambit; 혈통을 켜면 Ruthless Leadership도)</span></label>
-          <label><input type="checkbox" id="opt-bloodlines">
+          <label><input type="checkbox" id="opt-promo" checked>
+            <span data-i18n="html.opt_promo">프로모 카드 (봉기 3장: Arrakis Revolt, The Beast's Spoils, Pivotal Gambit; 혈통을 켜면 Ruthless Leadership, 불멸을 켜면 틀레이락스 덱에 Piter, Genius Advisor도)</span></label>
+          <label><input type="checkbox" id="opt-bloodlines" checked>
             <span data-i18n="html.opt_bloodlines">혈통 확장 (사다우카 지휘관·새 카드·지도자 8종)</span></label>
-          <label><input type="checkbox" id="opt-tech">
+          <label><input type="checkbox" id="opt-tech" checked>
             <span data-i18n="html.opt_tech">기술 모듈 (혈통 필요: 익스 대사관 판·기술 타일 18장·Kota Odax)</span></label>
-          <label><input type="checkbox" id="opt-immortality">
+          <label><input type="checkbox" id="opt-immortality" checked>
             <span data-i18n="html.opt_immortality">불멸 확장 (베네 틀레이락스 게임판·틀레이락스 열·접합·새 카드)</span></label>
           <label id="opt-seed-row"><span data-i18n="html.opt_seed_label">시드 (빈칸 = 무작위)</span>
             <input type="number" id="opt-seed" min="0" placeholder="무작위" data-i18n-attr="placeholder=html.opt_seed_placeholder"></label>

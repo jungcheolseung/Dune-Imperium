@@ -13,6 +13,10 @@ const UI_TEXT = {
     "ko": "초기화 실패 ({{message}})",
     "en": "Initialization failed ({{message}})"
   },
+  "board.map_alt": {
+    "ko": "듄 임페리움: 봉기 게임판",
+    "en": "Dune: Imperium — Uprising board"
+  },
   "board.agent_seats": {
     "ko": "{agent}: {{seats}}",
     "en": "{agent}: {{seats}}"
@@ -130,7 +134,7 @@ const UI_TEXT = {
     "en": "{commander} · board {{count}} · bank {{bank}}"
   },
   "board.sardaukar_contract_title": {
-    "ko": "Sardaukar {contract} · Shaddam 전용, 따로 둔 카드",
+    "ko": "Sardaukar {contract} · Shaddam 전용, 따로 치워둠",
     "en": "Sardaukar {contract} · Shaddam only, set aside"
   },
   "board.seat_conflict_troops": {
@@ -142,7 +146,7 @@ const UI_TEXT = {
     "en": "Seat {{seat}} · {garrison} {{count}}"
   },
   "board.seat_high_council": {
-    "ko": "좌석 {{seat}} · High Council",
+    "ko": "좌석 {{seat}} · 원로회",
     "en": "Seat {{seat}} · High Council"
   },
   "board.seat_maker_hooks": {
@@ -158,7 +162,7 @@ const UI_TEXT = {
     "en": "Seat {{seat}} · {victory_point} {{vp}}"
   },
   "board.set_aside": {
-    "ko": "따로 둠",
+    "ko": "따로 치워둠",
     "en": "set aside"
   },
   "board.shield_wall_destroyed": {
@@ -216,6 +220,10 @@ const UI_TEXT = {
   "board.view_full_size": {
     "ko": "크게 보기",
     "en": "View full size"
+  },
+  "common.seed": {
+    "ko": "시드 {{seed}}",
+    "en": "seed {{seed}}"
   },
   "common.close": {
     "ko": "닫기",
@@ -296,6 +304,10 @@ const UI_TEXT = {
   "core.requirement_prefix": {
     "ko": "요구: ",
     "en": "Requires: "
+  },
+  "core.signet_line": {
+    "ko": "인장 반지 능력 — {{name}}: {{text}}",
+    "en": "Signet — {{name}}: {{text}}"
   },
   "core.reward_line": {
     "ko": "보상: {{text}}",
@@ -497,9 +509,13 @@ const UI_TEXT = {
     "ko": "지도자 6종 공개 드래프트 (OQ-007, 공식 규칙 아님)",
     "en": "Open draft from 6 revealed Leaders (OQ-007, not an official rule)"
   },
+  "html.page_title": {
+    "ko": "듄 임페리움: 봉기",
+    "en": "Dune: Imperium — Uprising"
+  },
   "html.opt_promo": {
-    "ko": "프로모 카드 (봉기 3장: Arrakis Revolt, The Beast's Spoils, Pivotal Gambit; 혈통을 켜면 Ruthless Leadership도)",
-    "en": "Promo cards (3 in Uprising: Arrakis Revolt, The Beast's Spoils, Pivotal Gambit; plus Ruthless Leadership with Bloodlines on)"
+    "ko": "프로모 카드 (봉기 3장: Arrakis Revolt, The Beast's Spoils, Pivotal Gambit; 혈통을 켜면 Ruthless Leadership, 불멸을 켜면 틀레이락스 덱에 Piter, Genius Advisor도)",
+    "en": "Promo cards (3 in Uprising: Arrakis Revolt, The Beast's Spoils, Pivotal Gambit; plus Ruthless Leadership with Bloodlines on, and Piter, Genius Advisor in the Tleilaxu deck with Immortality on)"
   },
   "html.opt_seed_label": {
     "ko": "시드 (빈칸 = 무작위)",
@@ -629,10 +645,6 @@ const UI_TEXT = {
     "ko": " (완료)",
     "en": " (completed)"
   },
-  "panels.conflict_deployed": {
-    "ko": "{conflict}에 배치한 유닛",
-    "en": "Units deployed to {conflict}"
-  },
   "panels.contracts_label": {
     "ko": "{contract}",
     "en": "Contracts"
@@ -688,6 +700,18 @@ const UI_TEXT = {
   "panels.log_heading": {
     "ko": "행동 로그",
     "en": "Action log"
+  },
+  "panels.high_council": {
+    "ko": "원로회",
+    "en": "High Council"
+  },
+  "panels.swordmaster": {
+    "ko": "소드마스터",
+    "en": "Swordmaster"
+  },
+  "panels.family_atomics": {
+    "ko": "가문 핵 토큰",
+    "en": "Family Atomics"
   },
   "panels.maker_hooks": {
     "ko": "{maker_hooks}",
@@ -769,10 +793,6 @@ const UI_TEXT = {
     "ko": "{commander_skill}",
     "en": "Skills"
   },
-  "panels.specimen_flag": {
-    "ko": "{specimen} {{count}}",
-    "en": "{specimen} {{count}}"
-  },
   "panels.spy_boxed": {
     "ko": "상자로 돌아간 {spy} {{count}}",
     "en": "{spy} back in the box: {{count}}"
@@ -824,10 +844,6 @@ const UI_TEXT = {
   "panels.tech_label": {
     "ko": "{tech_tile}",
     "en": "Tech"
-  },
-  "panels.tleilaxu_space": {
-    "ko": "{tleilaxu} {{space}}",
-    "en": "{tleilaxu} {{space}}"
   },
   "panels.twisted_deck": {
     "ko": "뒤틀린 책략 카드덱 {{count}}",
@@ -1004,6 +1020,30 @@ const UI_TEXT = {
   "render.reveal_preview_title": {
     "ko": "지금 손패를 공개하면 바로 얻는 {persuasion}과 {strength} ({reveal_turn} 중의 선택 효과는 제외)",
     "en": "The {persuasion} and {strength} gained immediately by revealing your hand now (excludes optional effects during the {reveal_turn})"
+  },
+  "render.badge_choam": {
+    "ko": "초암 모듈",
+    "en": "CHOAM"
+  },
+  "render.badge_promo": {
+    "ko": "프로모 카드",
+    "en": "promo"
+  },
+  "render.badge_bloodlines": {
+    "ko": "혈통",
+    "en": "Bloodlines"
+  },
+  "render.badge_tech": {
+    "ko": "기술 모듈",
+    "en": "Tech"
+  },
+  "render.badge_immortality": {
+    "ko": "불멸",
+    "en": "Immortality"
+  },
+  "render.badge_draft": {
+    "ko": "지도자 드래프트",
+    "en": "draft"
   },
   "render.round_status": {
     "ko": "라운드 {{round}} · {{phase}}",
@@ -1422,7 +1462,7 @@ const UI_TEXT = {
     "en": "{recall_spy} — {{post}}"
   },
   "turn.spy_recall_none": {
-    "ko": "{spy} 회수 없이",
+    "ko": "{spy} 소환 없이",
     "en": "No {spy} recall"
   },
   "turn.step3_hint": {

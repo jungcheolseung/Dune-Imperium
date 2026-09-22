@@ -59,7 +59,9 @@ async function loadSaveList() {
       continue;
     }
     if (entry.autosave) item.appendChild(autosaveBadge());
-    item.append(`${saveTitle(entry)} · ${entry.seats.join(", ")} · ${savedWhen(entry)} `);
+    item.append(
+      `${saveTitle(entry)} · ${entry.seats.map(seatKindLabel).join(", ")} · ${savedWhen(entry)} `,
+    );
     const load = document.createElement("button");
     load.textContent = t("screens.load_button");
     load.addEventListener("click", async () => {
@@ -95,7 +97,9 @@ function saveTitle(entry) {
   if (entry.autosave) return status;
   const title =
     entry.name ||
-    (entry.game_seed === null ? t("screens.unnamed_save") : `seed ${entry.game_seed}`);
+    (entry.game_seed === null
+      ? t("screens.unnamed_save")
+      : t("common.seed", { seed: entry.game_seed }));
   return `${title} · ${status}`;
 }
 
@@ -103,7 +107,9 @@ function saveTitle(entry) {
    ago" after a crash reads local time. */
 function savedWhen(entry) {
   const when = new Date(entry.saved_at);
-  return Number.isNaN(when.getTime()) ? String(entry.saved_at) : when.toLocaleString();
+  return Number.isNaN(when.getTime())
+    ? String(entry.saved_at)
+    : when.toLocaleString(TERM_LANGUAGE);
 }
 
 function autosaveBadge() {
@@ -111,6 +117,15 @@ function autosaveBadge() {
   badge.className = "badge autosave";
   badge.textContent = t("screens.autosave_badge");
   return badge;
+}
+
+/* The Tech Module is packaged with Bloodlines and only plays on top of it
+   (RulesetConfig rejects it alone), so its box waits for the Bloodlines box
+   and is cleared when Bloodlines is. */
+function syncTechOption() {
+  const bloodlines = el("opt-bloodlines").checked;
+  el("opt-tech").disabled = !bloodlines;
+  if (!bloodlines) el("opt-tech").checked = false;
 }
 
 async function createGame(event) {
@@ -147,7 +162,11 @@ async function createGame(event) {
 
 /* ---------- screens and entry (M14 slice 4) ---------- */
 
-const BASE_TITLE = document.title;
+/* The tab's own title, in the chosen language (the page's <title> carries
+   the same key). */
+function baseTitle() {
+  return t("html.page_title");
+}
 const SCREENS = ["setup-screen", "landing-screen", "lobby-screen", "game-screen"];
 
 function isRemote() {
@@ -217,7 +236,7 @@ function setRoomHash(gameId) {
 }
 
 function seedLabel(summary) {
-  return summary.game_seed === null ? "" : `seed ${summary.game_seed} · `;
+  return summary.game_seed === null ? "" : `${t("common.seed", { seed: summary.game_seed })} · `;
 }
 
 function humanSeatsOf(summary) {
@@ -279,7 +298,10 @@ function resetGameState() {
   state.counts = {};
   myTurnBefore = null;
   announcedTurn = undefined;
-  document.title = BASE_TITLE;
+  document.title = baseTitle();
+  /* The header named the game's round and ruleset; the setup screen kept
+     showing it, in whichever language it was drawn. */
+  el("header-status").textContent = "";
   el("review-bar").hidden = true;
 }
 

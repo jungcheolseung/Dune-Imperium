@@ -57,7 +57,7 @@ def test_root_serves_the_ui_and_static_assets(client: TestClient) -> None:
     index = client.get("/")
     assert index.status_code == 200
     assert "text/html" in index.headers["content-type"]
-    assert "Dune: Imperium" in index.text
+    assert "듄 임페리움: 봉기" in index.text
 
     script = client.get("/static/app.js")
     assert script.status_code == 200

@@ -3,7 +3,7 @@
 from dune_imperium import display
 from dune_imperium.display.icons import (
     ICON_NAMES,
-    RULEBOOK_ICON_SOURCES,
+    RULEBOOK_ICON_SOURCE_GROUPS,
     available_icons,
     icon_filename,
 )
@@ -17,16 +17,25 @@ def test_icon_names_are_lowercase_unique_identifiers() -> None:
 
 
 def test_rulebook_icon_sources_keys_match_icon_names_in_order() -> None:
-    assert tuple(RULEBOOK_ICON_SOURCES.keys()) == ICON_NAMES
-    assert set(RULEBOOK_ICON_SOURCES.keys()) == set(ICON_NAMES)
+    names = tuple(
+        name
+        for sources in RULEBOOK_ICON_SOURCE_GROUPS.values()
+        for name in sources
+    )
+    assert names == ICON_NAMES
 
 
 def test_rulebook_icon_sources_pages_and_xrefs_are_unique_and_valid() -> None:
-    pairs = list(RULEBOOK_ICON_SOURCES.values())
+    triples = [
+        (source_key, page, xref)
+        for source_key, sources in RULEBOOK_ICON_SOURCE_GROUPS.items()
+        for page, xref in sources.values()
+    ]
 
-    assert len(pairs) == len(set(pairs))
-    for page, _xref in pairs:
-        assert page in (9, 20)
+    assert len(triples) == len(set(triples))
+    assert set(RULEBOOK_ICON_SOURCE_GROUPS) == {"main", "immortality"}
+    assert all(page in (9, 20) for source, page, _xref in triples if source == "main")
+    assert ("immortality", 16, 203) in triples
 
 
 def test_icon_filename_appends_png() -> None:
@@ -34,9 +43,12 @@ def test_icon_filename_appends_png() -> None:
 
 
 def test_available_icons_keeps_only_present_files() -> None:
-    available = frozenset({"troop.png", "unknown.png"})
+    available = frozenset({"troop.png", "specimen.png", "unknown.png"})
 
-    assert available_icons(available) == {"troop": "troop.png"}
+    assert available_icons(available) == {
+        "troop": "troop.png",
+        "specimen": "specimen.png",
+    }
     assert available_icons(frozenset()) == {}
 
 

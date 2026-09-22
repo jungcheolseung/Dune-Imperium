@@ -172,8 +172,10 @@ function redrawForLanguage() {
   if (state.summary && !el("game-screen").hidden) {
     if (state.review) {
       labelReviewBar(state.review.seat);
-      /* The view in hand draws at once; the seek below rebuilds the status
-         line, which only a review answer writes. */
+      /* The view in hand draws at once, and so do the status line and the
+         play button of the step on screen; the seek below refreshes them. */
+      if (state.review.round !== null) writeReviewStatus(state.review);
+      renderPlaybackControls();
       render();
       /* A seek, not a bare reviewGoto: it holds playback and schedules the
          next move, where a bare request would supersede a playing tick and
@@ -182,8 +184,10 @@ function redrawForLanguage() {
     } else {
       render();
     }
-    noticeTurn();
   }
+  /* applyStaticText reset the tab title; put back the "my turn" marker on
+     whichever screen the player is (the lobby of a remote game too). */
+  if (state.summary) noticeTurn();
   /* The live region still holds a sentence in the old language: say the
      current turn again in the new one (a review says nothing). */
   clearAnnouncement();

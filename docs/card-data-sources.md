@@ -65,12 +65,13 @@ manifest's sources.
 
 The table UI (2026-09-03) adds two more machine-local, never-committed
 assets under the same policy: the rulebook icon set (`assets/icons/`,
-45 transparent PNGs that `scripts/extract_rulebook_icons.py` cuts out of
-the pinned official Uprising Main Rulebook by image xref — Icon Guide p. 20
-and the Agent-icon list p. 9 — after verifying the file's sha256; names in
+46 transparent PNGs that `scripts/extract_rulebook_icons.py` cuts out of
+the pinned official PDFs by image xref after verifying each file's sha256:
+45 from the Uprising Main Rulebook's Icon Guide p. 20 and Agent-icon list p. 9,
+plus Specimen from the Immortality Rulebook p. 16; names and source groups in
 `display/icons.py`) and the owner's board scan (`assets/board/map.jpg`, served at
 `/board-image`). The browser renders the generated effect text through an
-icon glossary (`ICON_RULES` in `static/app.js`): resources, troops, cards,
+icon glossary (`ICON_RULES` in `static/render.js`): resources, troops, cards,
 Influence, Persuasion, swords, Spies and the like become the printed icons
 with the text kept as the tooltip, and without the icon set the words show
 as-is. Hotspot and observation-post coordinates live in

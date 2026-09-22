@@ -142,7 +142,9 @@ def main() -> None:
                 rows,
             )
             check.ok(
-                "seed" not in rows[0], "without the seed of a game in progress", rows
+                "seed" not in rows[0] and "시드" not in rows[0],
+                "without the seed of a game in progress",
+                rows,
             )
             host.click("#save-list li button:has-text('불러오기')")
             host.wait_for_selector("#lobby-screen:not([hidden])")

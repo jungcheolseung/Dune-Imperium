@@ -1,10 +1,10 @@
-"""Extract the official rulebook's game icons into transparent PNGs.
+"""Extract official rulebook game icons into transparent PNGs.
 
-Crops every icon in ``dune_imperium.display.icons.RULEBOOK_ICON_SOURCES`` out
-of the pinned "Uprising Main Rulebook" PDF (``scripts/official-rule-sources.json``
-key ``main``) using PyMuPDF, keys out the beige page background with Pillow,
-and writes one transparent PNG per icon name into a local directory
-(default: the gitignored ``assets/icons``).
+Crops every icon in
+``dune_imperium.display.icons.RULEBOOK_ICON_SOURCE_GROUPS`` out of the pinned
+official PDFs in ``scripts/official-rule-sources.json`` using PyMuPDF, keys out
+the page background with Pillow, and writes one transparent PNG per icon name
+into a local directory (default: the gitignored ``assets/icons``).
 
 This script depends on ``pymupdf`` and ``pillow``, which are not project
 dependencies. Run it with ``uv run --with``:
@@ -29,7 +29,10 @@ from collections import deque
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from dune_imperium.display.icons import RULEBOOK_ICON_SOURCES, icon_filename
+from dune_imperium.display.icons import (
+    RULEBOOK_ICON_SOURCE_GROUPS,
+    icon_filename,
+)
 
 if TYPE_CHECKING:
     from PIL.Image import Image  # type: ignore[import-not-found]
@@ -37,15 +40,13 @@ if TYPE_CHECKING:
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DEST = REPOSITORY_ROOT / "assets" / "icons"
 SOURCES_PATH = REPOSITORY_ROOT / "scripts" / "official-rule-sources.json"
-SOURCE_KEY = "main"
 
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="extract_rulebook_icons",
         description=(
-            "Extract game icons from the official Uprising Main Rulebook PDF"
-            " into transparent PNGs."
+            "Extract game icons from the pinned official rulebook PDFs."
         ),
     )
     parser.add_argument(
@@ -58,7 +59,13 @@ def _build_parser() -> argparse.ArgumentParser:
         "--pdf",
         type=Path,
         default=None,
-        help="use an existing local copy instead of downloading",
+        help="use an existing Uprising Main Rulebook copy instead of downloading",
+    )
+    parser.add_argument(
+        "--immortality-pdf",
+        type=Path,
+        default=None,
+        help="use an existing Immortality Rulebook copy instead of downloading",
     )
     parser.add_argument(
         "--force",
@@ -86,9 +93,11 @@ def _verify_sha256(path: Path, expected: str) -> None:
         )
 
 
-def _resolve_pdf(pdf_argument: Path | None, tmp_dir: Path) -> Path:
+def _resolve_pdf(
+    source_key: str, pdf_argument: Path | None, tmp_dir: Path
+) -> Path:
     sources = json.loads(SOURCES_PATH.read_text())
-    entry = sources[SOURCE_KEY]
+    entry = sources[source_key]
     expected_sha256 = entry["sha256"]
 
     if pdf_argument is not None:
@@ -96,7 +105,7 @@ def _resolve_pdf(pdf_argument: Path | None, tmp_dir: Path) -> Path:
         return pdf_argument
 
     url = entry["url"]
-    destination = tmp_dir / "main-rulebook.pdf"
+    destination = tmp_dir / entry["pdf_filename"]
     print(f"downloading {url} ...")
     urllib.request.urlretrieve(url, destination)  # noqa: S310
     _verify_sha256(destination, expected_sha256)
@@ -237,30 +246,40 @@ def main(argv: list[str] | None = None) -> int:
     failures: list[str] = []
     written = 0
     kept = 0
+    pending: dict[str, list[tuple[str, int, int]]] = {}
+    for source_key, sources in RULEBOOK_ICON_SOURCE_GROUPS.items():
+        for name, (page, xref) in sources.items():
+            target = arguments.dest / icon_filename(name)
+            if target.is_file() and not arguments.force:
+                kept += 1
+                print(f"kept    {name}")
+            else:
+                pending.setdefault(source_key, []).append((name, page, xref))
 
+    pdf_arguments = {
+        "main": arguments.pdf,
+        "immortality": arguments.immortality_pdf,
+    }
     with tempfile.TemporaryDirectory() as tmp_dir_name:
-        pdf_path = _resolve_pdf(arguments.pdf, Path(tmp_dir_name))
-        doc = pymupdf.open(pdf_path)
-        try:
-            for name, (page, xref) in RULEBOOK_ICON_SOURCES.items():
-                target = arguments.dest / icon_filename(name)
-                if target.is_file() and not arguments.force:
-                    kept += 1
-                    print(f"kept    {name}")
-                    continue
-                error = _extract_icon(
-                    doc, name, page, xref, arguments.dest, arguments.tolerance
-                )
-                if error is not None:
-                    failures.append(f"{name}: {error}")
-                    print(f"FAIL {name}: {error}", file=sys.stderr)
-                else:
-                    written += 1
-                    print(f"written {name}")
-        finally:
-            doc.close()
+        tmp_dir = Path(tmp_dir_name)
+        for source_key, icons in pending.items():
+            pdf_path = _resolve_pdf(source_key, pdf_arguments.get(source_key), tmp_dir)
+            doc = pymupdf.open(pdf_path)
+            try:
+                for name, page, xref in icons:
+                    error = _extract_icon(
+                        doc, name, page, xref, arguments.dest, arguments.tolerance
+                    )
+                    if error is not None:
+                        failures.append(f"{name}: {error}")
+                        print(f"FAIL {name}: {error}", file=sys.stderr)
+                    else:
+                        written += 1
+                        print(f"written {name}")
+            finally:
+                doc.close()
 
-    total = len(RULEBOOK_ICON_SOURCES)
+    total = sum(len(sources) for sources in RULEBOOK_ICON_SOURCE_GROUPS.values())
     print(
         f"done: {written} written, {kept} kept, {len(failures)} failed,"
         f" {total} total -> {arguments.dest}"

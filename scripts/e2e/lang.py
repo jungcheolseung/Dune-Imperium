@@ -16,6 +16,7 @@ input, which may be Korean) is on screen.
 from __future__ import annotations
 
 from common import SERVER_LOG_COPY, Check, chrome, client_state, open_context, server
+from log_words import KOREAN_KEEPS_ENGLISH
 from open_mode import settled
 
 check = Check()
@@ -96,8 +97,130 @@ ENGLISH_TERMS_JS = r"""() => {
 }"""
 
 
+# In Korean, every English word a person or a screen reader meets (text,
+# title, alt, aria-label, placeholder) must be a name or printed card text:
+# the catalog's names are stripped (card, Leader, ability, space, Conflict,
+# Contract names stay English by policy; its engine ids are not, so a raw
+# "combat" or "emperor" fallback still fails), and so is iconized card
+# wording (.card-text, whose icons' tooltips are checked) and the help
+# legend's muted English twins. What is left must be empty. Every seat's
+# detail and every action's ⓘ detail is opened for the scan, so the seat
+# status line is read too. The name-free check above missed "· seed … ·
+# CHOAM · Bloodlines" in the header, the Alliance and troop tooltips and
+# "Family Atomics" (2026-09-22).
+KOREAN_LATIN_JS = r"""({keep}) => {
+    const names = new Set(keep);
+    const NAME_FIELDS = new Set(['name', 'ability', 'signet']);
+    const walk = (value, key) => {
+        if (typeof value === 'string') {
+            if (NAME_FIELDS.has(key) && /[A-Za-z]{2}/.test(value)) names.add(value);
+        } else if (Array.isArray(value)) {
+            value.forEach((item) => walk(item, key));
+        } else if (value && typeof value === 'object') {
+            for (const [name, item] of Object.entries(value)) walk(item, name);
+        }
+    };
+    walk(state.catalog, '');
+    const seatsBefore = expandedSeats;
+    const atTable = state.view && !document.getElementById('game-screen').hidden;
+    if (atTable) {
+        expandedSeats = new Set(state.view.players.map((p) => p.player));
+        renderSeats();
+    }
+    const opened = [...document.querySelectorAll('.action-detail[hidden]')];
+    for (const detail of opened) detail.hidden = false;
+    const sorted = [...names].sort((a, b) => b.length - a.length);
+    const left = (text) => {
+        let bare = String(text || '');
+        if (!/[A-Za-z]{2}/.test(bare)) return [];
+        /* Names first: "Arrakeen/Spice Refinery" joins two with a slash. */
+        for (const name of sorted) {
+            if (bare.includes(name)) bare = bare.split(name).join(' ');
+        }
+        bare = bare.replace(/\S*\/\S*|OQ-\d+/g, ' ');
+        return bare.match(/[A-Za-z]{2,}/g) || [];
+    };
+    const skip = '#language-toggle, .card-text, kbd, code, #help-body .muted';
+    const found = [];
+    const note = (text, where) => {
+        const words = left(text);
+        if (!words.length) return;
+        found.push([words.join(' '), String(text).slice(0, 80), where]);
+    };
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const host = node.parentElement;
+        if (!host || host.closest('[hidden]') || host.closest(skip)) continue;
+        if (getComputedStyle(host).display === 'none') continue;
+        note(node.textContent, host.id || host.className || host.tagName);
+    }
+    const named = '[title], [alt], [aria-label], [placeholder]';
+    for (const el of document.querySelectorAll(named)) {
+        if (el.closest('#language-toggle') || el.closest('[hidden]')) continue;
+        for (const name of ['title', 'alt', 'aria-label', 'placeholder']) {
+            if (!el.hasAttribute(name)) continue;
+            const kind = String(el.className.baseVal ?? el.className);
+            const where = el.id || kind || el.tagName;
+            note(el.getAttribute(name), `${where}@${name}`);
+        }
+    }
+    note(document.title, 'document.title');
+    for (const detail of opened) detail.hidden = true;
+    if (atTable) {
+        expandedSeats = seatsBefore;
+        renderSeats();
+    }
+    const seen = new Set();
+    return found.filter(([words, text]) => {
+        const key = words + '|' + text;
+        return seen.has(key) ? false : (seen.add(key), true);
+    });
+}"""
+
+# Chrome English on purpose: the uv extra the checkpoint field needs, the AI
+# of the seat kinds, the Esc key the turn guide names, and Leaders' short
+# names (Shaddam, Kota Odax) like log_words' Feyd. The product title is the
+# Korean edition's, 듄 임페리움: 봉기 (2026-09-22).
+KOREAN_CHROME_ENGLISH = (
+    "train extra",
+    "AI",
+    "Esc",
+    "Shaddam",
+    "Kota Odax",
+)
+
+
+# The seat status line, every seat opened: in Korean the High Council seat
+# and the Swordmaster are 원로회 and 소드마스터, which the name strip above
+# cannot tell from the board spaces of the same English names.
+SEAT_STATUS_JS = r"""() => {
+    const before = expandedSeats;
+    expandedSeats = new Set(state.view.players.map((p) => p.player));
+    renderSeats();
+    /* Only the status lines: the contracts and placed-Agent lines name
+       catalog contracts and spaces ("High Council"), which stay English. */
+    const label = t('panels.status_label');
+    const text = [...document.querySelectorAll('#seats .seat-detail .cardline')]
+        .filter((line) => line.querySelector('strong')?.textContent.trim() === label)
+        .map((line) => line.innerText)
+        .join('\n');
+    expandedSeats = before;
+    renderSeats();
+    return {
+        text,
+        council: state.view.players.some((p) => p.high_council),
+        swordmaster: state.view.players.some((p) => p.swordmaster_acquired),
+    };
+}"""
+
+
 def hangul(page) -> list:
     return page.evaluate(HANGUL_JS)
+
+
+def english_left(page) -> list:
+    keep = [*KOREAN_KEEPS_ENGLISH, *KOREAN_CHROME_ENGLISH]
+    return page.evaluate(KOREAN_LATIN_JS, {"keep": keep})
 
 
 def create(page, base: str, seats: tuple[str, str, str, str]) -> None:
@@ -126,6 +249,8 @@ def live_table(base: str, browser) -> None:
     create(page, base, ("human", "human", "heuristic", "heuristic"))
     check.ok(page.is_visible("#language-toggle"), "the switch is on the page")
     check.ok(page.evaluate("TERM_LANGUAGE") == "ko", "Korean is the default")
+    left = english_left(page)
+    check.ok(not left, "Korean: no English outside names on the new table", left[:8])
 
     # In Korean the engine's English prompt is translated.
     prompt = page.evaluate("state.summary.decision.prompt")
@@ -186,6 +311,12 @@ def live_table(base: str, browser) -> None:
         "the switch offers English again",
     )
     check.ok(bool(hangul(page)), "Korean comes back")
+    left = english_left(page)
+    check.ok(not left, "Korean: no English outside names after a dozen steps", left[:8])
+    page.click("#open-help")
+    left = english_left(page)
+    check.ok(not left, "Korean: no English outside names in the help panel", left[:8])
+    page.keyboard.press("Escape")
     check.ok(
         page.evaluate("ACTION_LABELS.pick_leader") == page.evaluate(
             "LABELS_KO.ACTION_LABELS.pick_leader"
@@ -223,6 +354,32 @@ def finished_game(base: str, browser) -> None:
         "Korean: no rule term left in English in the name-free chrome",
         english[:6],
     )
+    # No wait: the switch rewrites the review's status line at once (it read
+    # "step 832/832 · Round 10 · Game Over" until the re-fetch landed).
+    left = english_left(page)
+    check.ok(
+        not left, "Korean: no English outside names at the end of a review", left[:8]
+    )
+    seats = page.evaluate(SEAT_STATUS_JS)
+    check.ok(
+        seats["council"] and seats["swordmaster"],
+        "the finished game has a High Council seat and a Swordmaster to show",
+        seats,
+    )
+    check.ok(
+        "원로회" in seats["text"]
+        and "소드마스터" in seats["text"]
+        and "High Council" not in seats["text"]
+        and "Swordmaster" not in seats["text"],
+        "Korean: the seats say 원로회 and 소드마스터",
+        seats["text"][:300],
+    )
+    check.ok(
+        page.title() == "듄 임페리움: 봉기"
+        and page.inner_text("h1") == "듄 임페리움: 봉기",
+        "Korean: the tab and the header carry the Korean edition's title",
+        (page.title(), page.inner_text("h1")),
+    )
     switch(page, "en")
     check.ok(page.is_visible("#standings"), "the standings are on screen")
     page.click("#disclosure h2 button")
@@ -239,6 +396,13 @@ def finished_game(base: str, browser) -> None:
     page.wait_for_selector("#game-list button")
     stray = hangul(page)
     check.ok(not stray, "English: no Hangul on the setup screen", stray[:8])
+    switch(page, "ko")
+    # The switch reloads the game list from the server; read it once it has.
+    page.wait_for_function(
+        "/[\\uac00-\\ud7a3]/.test(document.getElementById('game-list').innerText)"
+    )
+    left = english_left(page)
+    check.ok(not left, "Korean: no English outside names on the setup screen", left[:8])
 
     bad = [r for r in rec.requests if r[3] is not None and r[3] >= 400]
     check.ok(not bad, "no failed requests", bad[:3])

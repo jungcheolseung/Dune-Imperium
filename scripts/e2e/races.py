@@ -20,7 +20,7 @@ import re
 import sys
 import time
 
-from common import chrome, launch_options, open_context, server
+from common import chrome, launch_options, open_context, rule_option_steps, server
 from playwright.async_api import async_playwright
 from remote import CONVERGED_JS, KEY, converge, drive, seat_two_players
 
@@ -123,6 +123,8 @@ async def _presence_bell_during_entry(patched: bool) -> bool:
             await host.goto(f"{base}/#admin={KEY}")
             await host.wait_for_selector("#setup-screen:not([hidden])")
             await host.select_option("#seat-selects select[data-seat='1']", "human")
+            for selector, checked in rule_option_steps():
+                await host.set_checked(selector, checked)
             await host.click("#create-game")
             await host.wait_for_selector("#lobby-screen:not([hidden])")
             game_id = await host.evaluate("state.gameId")

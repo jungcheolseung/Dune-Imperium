@@ -357,11 +357,22 @@ function requirementNode(requirement) {
   return line;
 }
 
+/* A popover line of our own words around the card's: the chrome is a text
+   key, the printed wording an iconized hole. */
+function termLine(key, vars) {
+  const line = document.createElement("div");
+  line.className = "popover-line";
+  line.appendChild(tNode(key, vars));
+  return line;
+}
+
 function popoverNodes(entry) {
   const nodes = [];
   if (entry.text) for (const text of entry.text) nodes.push(iconLine(text));
-  if (entry.condition) nodes.push(iconLine(t("core.condition_line", { text: entry.condition })));
-  if (entry.reward) nodes.push(iconLine(t("core.reward_line", { text: entry.reward })));
+  if (entry.condition) {
+    nodes.push(termLine("core.condition_line", { text: iconize(entry.condition) }));
+  }
+  if (entry.reward) nodes.push(termLine("core.reward_line", { text: iconize(entry.reward) }));
   if (entry.rewards) for (const text of entry.rewards) nodes.push(iconLine(text));
   if (entry.options) {
     if (entry.requirement) nodes.push(requirementNode(entry.requirement));
@@ -371,7 +382,9 @@ function popoverNodes(entry) {
     nodes.push(iconLine(`${entry.ability}: ${entry.ability_text}`));
   }
   if (entry.signet_text) {
-    nodes.push(iconLine(`Signet — ${entry.signet}: ${entry.signet_text}`));
+    nodes.push(
+      termLine("core.signet_line", { name: entry.signet, text: iconize(entry.signet_text) }),
+    );
   }
   if (entry.notes) {
     for (const text of entry.notes) nodes.push(iconLine(text, "popover-line muted"));
@@ -511,7 +524,16 @@ function describeAction(action) {
          card wording, so it keeps the catalog's icon pass. Without it (a
          logged step) only a keyed icon has a label: a Reveal choice's
          effect id is the engine's name for what the events then say. */
-      if (action.detail) parts.push(iconize(action.detail));
+      if (action.detail) {
+        /* Some details are an engine prompt (resume_reveal_choice), which
+           Korean translates; the rest is card wording. */
+        const translated = promptText(action.detail);
+        parts.push(
+          translated !== action.detail
+            ? document.createTextNode(translated)
+            : iconize(action.detail),
+        );
+      }
       else if (EFFECT_ICON_LABELS[value]) parts.push(phrase(EFFECT_ICON_LABELS[value]));
     } else if (SEAT_PAYLOAD_KEYS.has(key) && typeof value === "number") {
       parts.push(document.createTextNode(t("common.seat", { seat: value })));

@@ -101,6 +101,8 @@ Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 �
 | Recall Agent | 에이전트 소환 | `[Main p. 20]` | 적용 |
 | Spy | 스파이 | `[Main p. 20]` | 적용 |
 | Recall Spy | 스파이 소환 | `[Main p. 20]` | 적용 |
+| Infiltrate | 침투 | `[Main p. 11]` ("침투: 다른 플레이어의 에이전트가 이미 놓여 있는 게임판 장소에…") | 적용 |
+| Gather Intelligence | 정보 수집 | `[Main p. 11]` ("정보 수집: 당신이 게임판 장소에 에이전트를 보낼 때마다…") | 적용 |
 | Maker Hooks | 메이커 작살 | `[Main p. 20]` | 적용 |
 | Shield Wall | 방어벽 | `[Main p. 20]` | 적용 |
 | Control marker | 지배 마커 | `[Main p. 20]` | 적용 |
@@ -158,10 +160,12 @@ Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 �
 | EN | 한국어 | 인용 | 적용 |
 | --- | --- | --- | --- |
 | Maker | 메이커 | `[Main p. 20]` | 적용 |
+| game board | 게임판 | `[Main p. 3]`("양면 게임판" / "Two-sided game board") | 적용 |
 | Imperium Deck / Intrigue Deck / Conflict deck | 임페리움 카드덱 / 책략 카드덱 / 교전 카드덱 | `[Main p. 4]`(준비 C1·C2, "교전 카드덱을 만듭니다") | 적용 |
 | Contract | 계약 | `[Main p. 20]` | 적용 |
 | Control | 지배 | `[Main p. 20]` | 적용 |
 | Signet Ring | 인장 반지 | `[Main p. 20]` | 참고(카드 이름) |
+| Signet Ring ability | 인장 반지 능력 | `[Main p. 3]`(지도자 카드 "인장 반지 능력") | 적용 |
 | Intrigue | 책략 | `[Main p. 20]` | 적용 |
 | Plot / Combat / Endgame Intrigue | 음모 / 전투 / 종료 단계 책략 카드 | `[Main p. 7]` | 적용 |
 | Imperium card | 임페리움 카드 | `[Main p. 20]` | 적용 |
@@ -169,8 +173,11 @@ Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 �
 | Leader | 지도자 | `[Main p. 20]` | 적용 |
 | CHOAM Module | 초암 모듈 | `[Main p. 20]` | 적용 |
 | Uprising | 봉기 | `[Main p. 20]` | 적용 |
-| Swordmaster | 소드마스터 | `[Main p. 17]`, `[Board Guide p. 3]` | 참고(공간 이름) |
-| High Council | 원로회 | `[Main p. 17]` | 참고(공간 이름) |
+| Dune: Imperium — Uprising (제품 이름) | 듄 임페리움: 봉기 | `[Main p. 2]`("듄 임페리움: 봉기는 덱빌딩 일꾼 놓기 게임으로"), `[Bloodlines p. 3]` | 적용(페이지 제목, 2026-09-22 사용자 결정) |
+| set aside (Shaddam의 사다우카 계약) | 따로 치워두다 | `[Board Guide p. 8]`("사다우카 계약 2개를 따로 치워둡니다") | 적용 |
+| set aside (나중에 쓰려고 빼 둔 카드, Manipulate) | 따로 빼두다 | `[Immortality p. 14]`("이 지도자를 사용해 따로 빼둔 카드") | 적용 |
+| Swordmaster | 소드마스터 | `[Main p. 17]`, `[Board Guide p. 3]` | 적용(획득·좌석 상태; 보드 공간 이름은 영어) |
+| High Council | 원로회 / 원로회 자리 | `[Main p. 17]`, `[Board Guide p. 2]`("원로회의 빈자리에 의원 토큰을 놓습니다") | 적용(자리·좌석 상태; 보드 공간 이름은 영어) |
 | Arrakeen / Spice Refinery / Imperial Basin | 아라킨 / 스파이스 정제소 / 제국 분지 | `[Main p. 20]` | 참고(공간 이름) |
 
 "참고"로 적은 공간·카드 이름은 룰북이 한국어로 옮겼지만 UI는 영어를 유지한다 —
@@ -259,6 +266,7 @@ Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 �
 | Imperium Row | 임페리움 열 | `[Immortality p. 4]` | 적용 |
 | Reserve (더미) | 예비 카드 더미 | `[Immortality p. 4]` | 적용 |
 | Graft | 접합 | `[Immortality p. 10]` | 적용 |
+| Family Atomics token | 가문 핵 토큰 | `[Immortality p. 3]`(구성물), `[Immortality p. 5]`(준비), `[Immortality p. 12]`("각 플레이어는 게임 준비 단계에 가문 핵 토큰을 1개씩 받습니다… 가문 핵 토큰을 소비할 수 있습니다… 임페리움 열을 다시 채웁니다") | 적용 |
 | Research Station | 연구 기지 | `[Immortality p. 16]` | 참고(공간 이름) |
 
 ## 아직 채우지 않은 것
@@ -268,11 +276,6 @@ Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 �
   채운다.
 - Bloodlines·Immortality의 **Leader 전용 용어**(Chani의 전술, Piter의 뒤틀린 책략,
   Kota의 비밀 프로젝트 등)는 해당 Leader UI를 건드릴 때 각 룰북에서 채운다.
-- **set aside**: Manipulate(Imperium Row 조작)와 Shaddam의 보류 계약이 쓰는
-  동작인데 한국어 룰북의 용어집에 대응 항목을 찾지 못했다. 발명하지 않고
-  화면에서 영어를 유지하고 있다(`acquire_manipulated_imperium`,
-  `manipulate_imperium_row`). 해당 카드의 한국어 카드면이나 룰북 본문에서
-  단어를 찾으면 여기에 인용과 함께 더하고 라벨을 바꾼다.
 - **Agent box**: `[Bloodlines p. 12]`의 한국어판이 "에이전트 칸"으로 쓴다.
   라벨은 그 표기를 따르지만 용어집 행으로는 아직 올리지 않았다.
 - **한국어 FAQ는 없다.** 공식 FAQ는 영어판만 배포된다. FAQ가 근거인 판정의

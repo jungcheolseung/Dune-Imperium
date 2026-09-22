@@ -25,6 +25,7 @@ from common import (
     now,
     open_context,
     server,
+    set_rule_options,
 )
 
 check = Check()
@@ -39,6 +40,7 @@ def create_game(page, base: str, humans=(0, 1), seed: int | None = SEED) -> str:
             f"#seat-selects select[data-seat='{seat}']",
             "human" if seat in humans else "heuristic",
         )
+    set_rule_options(page)
     if seed is not None:
         page.fill("#opt-seed", str(seed))
     page.click("#create-game")
@@ -78,7 +80,8 @@ def scenario_full_game(base, browser) -> str:
     check.ok(not page.is_visible("#host-panel"), "no host panel on an open server")
     check.ok(page.is_visible("#save-game"), "save button shown")
     check.ok(
-        f"seed {SEED}" in page.inner_text("#header-status"),
+        page.evaluate(f"t('common.seed', {{seed: {SEED}}})")
+        in page.inner_text("#header-status"),
         "seed shown in the header on an open server",
     )
 
@@ -264,7 +267,7 @@ def scenario_full_game(base, browser) -> str:
         rows,
     )
     check.ok(
-        page.title() == "Dune: Imperium — Uprising",
+        page.title() == page.evaluate("baseTitle()"),
         "tab title untouched on an open server",
         page.title(),
     )

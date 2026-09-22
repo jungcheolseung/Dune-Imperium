@@ -57,10 +57,13 @@ uv run mypy src tests
 
 1. **첫 친구 판(M14의 남은 것) — 가장 값어치가 크다.** 원격 흐름·자동 저장·도움말·스크린 리더 알림·언어
    전환·노트북 화면의 좌석까지 준비됐다. 남은 것은 다른 집의 친구와 실제로 하는 한 판과 그 피드백이다([`remote-play-guide.md`](remote-play-guide.md)).
-2. **용어집에 행이 없는 로그 낱말 — 룰북 인용이 먼저.** Gather Intelligence, Infiltrate, Other Memories,
-   Secret Project, set-aside 등(계획서 6단계 "남은 것" 1). 한국어 룰북에서 찾아 용어집에 더한 뒤에만 바꾼다.
-   바꾸면 `test_i18n.py`와 `log_words.py`의 허용 목록에서도 뺀다.
-3. **한글 카드 스캔** — 확보하면 `display/images.py`가 코드 변경 없이 쓴다(언어 정책의 3번).
+2. **용어집에 행이 없는 로그 낱말 — 룰북 인용이 먼저.** Other Memories, Secret Project, Wild card, Immediate,
+   Usurp(계획서 6단계 "남은 것" 1; Gather Intelligence·Infiltrate·Family Atomics·set-aside는 2026-09-22에
+   옮겼다). 한국어 룰북에서 찾아 용어집에 더한 뒤에만 바꾼다. 바꾸면 `test_i18n.py`와 `log_words.py`의 허용
+   목록에서도 뺀다.
+3. **한글 카드 스캔** — 확보하면 `display/images.py`가 코드 변경 없이 쓴다(언어 정책의 3번). **2026-09-22에
+   네이버 블로그 사진에서 잘라낸 한글판 크롭 138장이 준비됐다**(아래 "2026-09-22 한글판 카드 사진 크롭" 세션
+   요약) — `cards/ko/`에 넣기 전에 사용자 결정 셋이 남아 있다.
 
 **UI를 이어갈 때의 규칙**(세 세션이 값을 치른 것들):
 - `static/*.js`를 고치면 pytest로는 부족하다. [`scripts/e2e/`](../scripts/e2e/README.md) **15종**을 돌린다.
@@ -97,10 +100,15 @@ git 무시 `checkpoints/2026-09-22/m10-evidence/`). 요지:
   25.4로 추세가 없고, 학습자 좌석 승률이 내내 평평하며 entropy는 오히려 올랐다. **5081은 제 분지 안에서 착취되지 않는다 —
   이 계보는 국소 최적이다.** 과거 체크포인트나 그 착취자로 짠 리그는 가르칠 것이 거의 없다([evaluation/m10-2026-09-22.md](evaluation/m10-2026-09-22.md) 11절).
   배치 상대와 `--learner-seats`(`3d8917c`)는 이 실험을 위해 들어갔다(1대3 수집 28.9 → 10.8초, 결정 단위 동일성 테스트).
-- **다음 — 사용자 결정 필요**. 남은 지렛대는 전부 "다른 분지"다: (a) 정책 유도 탐색(네트워크를 결정화 탐색의 사전확률·가치로;
-  학습 없이 플레이 강도를 올린다), (b) 표현력(정체성 슬롯 임베딩, action head 인수분해 — 한 번도 안 건드림), (c) 처음부터 다른
-  seed로 새 계보, (d) 구매 전문가 B1을 만들어 진짜 다른 상대로. 그리고 (e) M10 완료 조건에 비추면 5081은 이미 이전 계보를 +15%p,
-  모든 baseline을 크게 이긴다 — champion으로 확정하고 사람과의 실전(M14)으로 넘어가는 선택지도 있다.
+- **다음(사용자 결정, 2026-09-22): 정책 유도 탐색** — 학습된 네트워크를 결정화 탐색(`agents/determinize.py`·`RolloutAgent`)의
+  사전확률·가치로 쓴다. 착취자 실험이 이 계보를 국소 최적으로 보였으므로, 학습 없이 플레이 강도를 올리는 쪽을 먼저 본다.
+  같은 날 남은 후보: 표현력(정체성 슬롯 임베딩, action head 인수분해), 처음부터 다른 seed, 구매 전문가 B1. M10 완료 조건에
+  비추면 5081은 이미 이전 계보를 +15%p, 모든 baseline을 크게 이긴다(5081 대 `rollout`은 아직 안 잼).
+- **논의 중(2026-09-22, 코드 변경 없음): 사용자의 실전 팁을 학습에 쓰는 법** — [player-tips-for-training.md](player-tips-for-training.md).
+  팁은 측정할 가설로 다루고 보상이 아니라 진단·평가 문제집·league 상대·입력 표현에 넣는다는 결론까지 왔다. 사용자 답 둘
+  (덱 9~10장 무구매 전략이 실전에서 말이 되는지, 팁 목록)이 남아 있어 **이어갈 때는 그 문서 5절부터** 시작한다. 3절의
+  "스타일 봇" 경로가 좌석 상대 다양화와 맞물린다. **덱 9~10장 무구매 질문에는 이제 측정 근거가 있다** — 구매 강제
+  탐침 −17%p, 착취자도 더 적게 산다([evaluation/m10-2026-09-22.md](evaluation/m10-2026-09-22.md) 4·11절).
 
 아래는 그 앞의 기록이다(시간 역순이 아니라 적힌 순서 그대로 남긴다).
 
@@ -422,6 +430,8 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 
 ## 원격 저장소 인계 주의
 
+2026-09-22(WSL 노트북, 한글판 카드 사진 크롭 세션): 비공개 에셋 저장소에 미push 커밋 3건 — `b8784f4`(앞 세션의 Immortality specimen 아이콘), `3fcf62f`(`origin/master`의 `1574241` merge), `d01e9d9`(`reference/naver-vampmiyu-223464306472/`, 약 190 MB). 메인 저장소에는 이 문서 커밋 1건. 이 세션에서는 자동 모드 권한 검사가 push를 막아 **두 저장소 모두 push하지 않았다** — 사용자가 이 기기에서 push한 뒤 다른 기기에서 두 저장소를 pull한다. 새 세션은 `git log origin/master..master`와 반대 방향을 두 저장소에서 모두 확인한다.
+
 2026-09-20 새벽(Mac mini, 보드 조각·아이콘 전사 정정 세션): 이 세션의 커밋(`82a0423`·`c9aec0a`·`7188523`·`2c967b7`와 문서 커밋)은 master에만 있고 **push하지 않았다**. 비공개 에셋 저장소에도 커밋 1건(`e7f7741`: `tokens/maker_hooks.png`·`alliance_<faction>.jpg` + README)이 있고 역시 push하지 않았다 — 다른 기기에서 후크·동맹 토큰 그림을 보려면 두 저장소를 모두 push·pull한다(에셋이 없으면 룰북 아이콘으로 그릴 뿐 동작은 같다). **`src/`의 규칙이 바뀌었으므로 학습이 도는 기기에서는 pull하지 않는다**; pull한 뒤의 학습은 새 규칙의 환경이다(세션 요약의 "M10에 미치는 영향"). 떠 있던 플레이 서버는 재시작해야 새 규칙·새 카탈로그 필드가 적용된다(정적 파일은 즉시 반영).
 
 2026-09-19 오후~저녁(Mac mini, M10 실행 3·학습률 A/B 세션): 이 세션의 앞 커밋 넷(`bd8732f` 학습 가드·감독기의 macOS 이식, `7935740` 문서, `61b09df` 재개 시 학습률 수정, `41e9a7a` 문서)은 16:43에 **push돼 있다**(사용자 쪽에서 한 push다 — reflog의 `update by push`). 그 뒤의 A/B 결과 문서 커밋들은 master에만 있다 — `git log origin/master..master`로 확인한다. `src/` 변경은 `61b09df` 하나이고(옵티마이저 상태에서 재개할 때 `--learning-rate`가 이긴다) 체크포인트 형식과는 무관하다. Windows PC는 pull하면 새 `scripts/train/`(Linux 경로의 동작은 그대로)과 그 수정을 얻는다. **학습이 도는 기기에서는 `src/`가 바뀌는 pull을 하지 않는다.** 체크포인트 폴더는 git 무시라 기기 간에는 여전히 파일을 복사한다(실행 3의 산출물은 이 Mac의 `checkpoints/2026-09-19/lr1e-4-mac/`).
@@ -441,6 +451,75 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 2026-09-07: `bloodlines` 브랜치(35 커밋)를 master 쪽에서 `--no-ff`로 머지했고(`dbd9b73`), 같은 날 저녁 슬라이스 6 커밋 5건과 이 문서 갱신을 master에 직접 올렸다. 아직 push하지 않았다면 `git log origin/master..master`로 확인한다. 비공개 에셋 저장소(`assets` symlink → `Dune-Imperium-assets`)에도 같은 날 manifest 커밋 6건(Bloodlines 카드 44장 content id, Leader 8종, Tuek's Sietch 타일 이미지, Twisted·Navigation 카드 키, Kota Odax의 content id `43c25fc`)이 있으니 다른 머신에서는 그쪽도 pull한다.
 
 2026-09-04 세션 종료 시점에 이 세션의 커밋 전부(보드·카드 아이콘 분리 v86/v87, 서버·UI 확인 흐름과 마커, Reveal 순서 v88, OQ-028 조건 판정 시점, OQ-029 등록)를 `origin/master`에 push했다. 새 세션은 `git fetch origin` 뒤 `git log origin/master..master`와 반대 방향을 확인하고, 일치하면 이 문서의 기준선을 그대로 쓴다. 에셋 저장소(`Dune-Imperium-assets`)의 `5b55e45` 1개 미push 여부는 그 저장소에서 확인한다. 원격에는 병합하지 않은 `kyungtae` 브랜치가 있다. 새 세션은 `git log origin/master..master`와 반대 방향을 모두 확인하고, checkout이 `853ecd4`보다 이전이면 이 문서의 989개 테스트·codec v84 기준선이 실제 코드와 일치하지 않는다. **다른 머신에서 이어서 작업한다면 먼저 이 머신에서 push가 필요하다.** 새 머신의 UI 카드 이미지·아이콘·보드 스캔은 비공개 `Dune-Imperium-assets` 저장소를 clone해 symlink로 연결한다(그 README 참고; 루트의 `assets` symlink 하나로 cards·icons·board·rulebooks를 모두 연결). 카드 매핑은 그 저장소의 `cards/manifest.json`에만 있으므로 접근이 없으면 텍스트 UI로 동작한다.
+
+## 2026-09-22 저녁 실전 팁과 학습 논의 세션 요약 (WSL 노트북 i5-8250U, **코드 변경 없음**, 변경은 `docs/`뿐)
+
+- 사용자 질문: 휴리스틱·rollout의 구현, 그리고 친구들과 두며 느낀 팁·행동 중요도가 학습에 도움이 되는지. 논의만 했다.
+- 기록과 결론은 [player-tips-for-training.md](player-tips-for-training.md) 한 곳에 있다(두 baseline의 구조, 사람 직관이
+  측정으로 뒤집힌 전례 둘, 팁을 넣을 곳 여섯의 순위, 열린 갈래). 사용자가 **다른 PC의 새 세션에서 이어간다** — 그 문서
+  5절의 남은 질문 둘부터 시작한다.
+
+## 2026-09-22 한글판 카드 사진 크롭 세션 요약 (WSL 노트북 i5-8250U, 변경은 **비공개 에셋 저장소뿐** — 메인 저장소는 이 문서만; 에셋 `d01e9d9`)
+
+- 사용자 지시: 네이버 블로그 [vampmiyu/223464306472](https://blog.naver.com/vampmiyu/223464306472)(한국어판
+  Uprising 개봉기)의 사진을 전부 받고, 카드를 잘라 **실제 카드 비율로** 원근 보정한 뒤 영문 manifest와의 매칭
+  표를 만든다. 결과는 에셋 저장소 `reference/naver-vampmiyu-223464306472/`에 있다 — 사진 51장(원본 해상도),
+  `crops/` 190장, `best/uprising/<kind>/<Name>.jpg`(카드별 대표 1장, `cards/en/`과 같은 배치), `matching.md`
+  (한국어 표)·`matching.csv`·`coverage.csv`·`matching.json`, `matching.html`(한글 크롭과 영문 스캔을 나란히 보는
+  자기완결 갤러리), `tools/`(스크립트·중간 데이터, 재실행법은 그 README). 방법·근거·다음 단계는 그 폴더
+  README가 정본이다. 사진 저작권은 블로거·출판사에 있고, 사용자 결정으로 비공개 저장소에 개인 용도로만 둔다.
+- **카드 규격**(사진 실측 + 슬리브 자료): 표준 **63×88**(임페리움·시작·예비·6인·프로모·솔로 라이벌; 63.5×88은
+  실측과 어긋남), 음모·분쟁·목표 **44×68**, 리더 **146×102**(147 아님), 계약 타일은 영문 렌더 비율 670×425.
+- **커버리지**: Uprising manifest 177장(장소 제외) 중 141장에 크롭, 가림 없는 것 138장 — 임페리움 54·시작 7·
+  예비 2·6인 18·계약 28 전부, 리더 9/10(대모 제시카 없음), 분쟁 16/16(2장은 이웃에 일부 가림), 프로모 1/3,
+  **음모 6/39**(31번 사진이 더미). manifest에 없는 솔로 라이벌 10장·목표 5장도 잘랐다.
+- **한글 카드명**: 사진에 찍힌 카드 181장의 인쇄 제목을 서브에이전트 판독과 메인 세션의 제목 띠 판독으로 두
+  번 읽었고 띄어쓰기까지 전부 일치했다(`matching.csv`의 `korean_title`). 예: Steersman=조타수,
+  Treacherous Maneuver=기만적인 계책. 이름 대응은 기억이나 번역으로 짐작하지 말고 `matching.csv`에서 찾는다.
+- **다음 단계(사용자가 고르기 전에는 시작하지 않는다)**: `best/`를 WebP로 바꿔 `cards/ko/<manifest path>`에
+  두면(확장자까지 같은 경로) `display/images.py`가 코드 변경 없이 쓴다. 그 전에 물을 것 셋 — (1)
+  `DEFAULT_LANGUAGES = ("ko","en")`라 **영어 화면에서도 한글 카드가 나온다**, 화면 언어를 따르게 할지;
+  (2) 한국어 화면의 카드명(고유명사)을 이제 공식 한글 이름으로 바꿀지(위 언어 정책은 "한글 카드 이미지
+  미확보"를 이유로 영어 유지였다); (3) 2026-09-18 절의 TTS 한글화 모드 3종(3092549193·3446667675·3025517639)
+  카드 시트가 평면 스캔이면 사진 크롭보다 낫고 빠진 36장(음모 33장 등)도 채울 수 있다 — 먼저 비교할지.
+- **교훈**(다음 크롭 작업용): 서브에이전트의 눈 검수는 한쪽이 2.5 mm 어긋난 크롭 30장을 "양호"로 통과시켰다
+  — 크롭은 영문 스캔에 정합해 **좌우·상하 여백의 합이 카드 종류마다 일정한지**로 검증한다(`tools/regcheck.py`).
+  Sonnet 판독자는 세로 제목을 읽지 않고 음역해 지어냈다(소규모 전투 → "스커미쉬") — 한글 제목은 제목 띠
+  시트로 다시 읽는다.
+- **push 상태**: 이 세션은 에셋 저장소에 `origin/master`를 merge(`3fcf62f`, 기존 커밋 무변경)하고 `d01e9d9`를
+  커밋했으며, 메인 저장소에는 이 문서 커밋만 있다. **두 저장소 모두 push하지 않았다**(자동 모드 권한 검사가
+  push를 막았다) — 다른 기기에서 이어가려면 이 기기에서 두 저장소를 push한 뒤 그쪽에서 pull한다.
+
+## 2026-09-22 한국어 화면 잔재·Agent 아이콘·글꼴 세션 요약 (WSL 노트북 i5-8250U, master 직접 커밋, 관측 v20, codec v107, 변경은 `server/static/`·`scripts/e2e/`·`tests/server/test_i18n.py`·`docs/` — **엔진·학습 코드 무변경**)
+
+같은 체크아웃에서 다른 세션(Codex: `7087d40`·`8251efb`·`95b2a74`·`d09532c`)과 겹쳐 돌았다 — 커밋 전마다
+`git log -1`과 `git status`로 남의 변경을 확인했다.
+
+- **설정 화면**: 프로모 옵션 라벨에 불멸 프로모 Piter, Genius Advisor(`26095f6`; 엔진은 원래 넣고 있었다),
+  기술 모듈은 혈통을 체크해야만 활성(`c731f5c`), 규칙 옵션 전부 기본 체크(`0ca7113`; 옛 기본값에 기대던 e2e는
+  `common.set_rule_options(page, …)`로 남길 옵션만 적는다).
+- **Agent 아이콘**: Icon Guide의 +Agent 그림은 "Agent 얻기"다. `7087d40`이 남긴 두 자리(카드 텍스트의
+  "Agent", 교전 칩의 Into the Fray)도 + 없는 말로(`e58d0b5`, `help.py`가 페이지 전체에 +Agent 그림이 없는지 본다).
+- **용어**(한국어 룰북 인용 후 용어집에 행 추가): 가문 핵 토큰 `[Immortality p. 12]`, 정보 수집·침투 `[Main p. 11]`,
+  게임판 `[Main p. 3]`, 인장 반지 능력 `[Main p. 3]`; recall은 전부 소환 `[Main p. 20]`(withdraw의 회수는 그대로).
+- **한국어 화면의 영어 잔재**: 워크플로 둘(런타임·정적 스윕 → 용어집 판정, 세 렌즈 리뷰 → 반박 검증)로 찾아
+  고쳤다 — 헤더의 확장 배지·시드, Alliance·병력·모래벌레·스파이스·방어벽·게임판 title/alt, 손패 카운트 title,
+  AI 배지 title(체크포인트 좌석은 파일 경로), Endgame 로그 머리, 카드 텍스트 아이콘 툴팁(`TERMS`에서),
+  비용 아이콘, "discard pile"(버리기 아이콘을 달지 않는다), 팝오버의 조건·보상·인장 반지 능력 머리말(카드
+  문구는 `iconize()`의 `.card-text` 안, 우리 말은 밖), 한국어가 번역하는 엔진 prompt인 `action.detail`, 저장
+  목록의 좌석 종류·시각, 게임을 떠난 뒤 설정 화면에 남던 헤더, 언어 전환 뒤 옛 언어로 남던 검토 상태 줄
+  (`writeReviewStatus`).
+- **글꼴**: 제목 "Dune: Imperium — Uprising"이 언어마다 달라 보인 것은 Windows에 이름 붙은 글꼴이 하나도
+  없어 generic sans-serif가 `lang`에 따라 Malgun Gothic/Arial로 갈렸기 때문이다. Latin 글꼴(Segoe UI 등)을
+  앞에 두었다(`b9d6844`).
+- **가드**: `lang.py`의 한국어 전면 검사(`KOREAN_LATIN_JS`) — 카탈로그 **이름** 필드·`.card-text`·허용 목록을
+  지운 뒤 라틴 낱말 0, 좌석 세부와 ⓘ 세부를 펴고 훑는다. 옛 클라이언트(`d09532c`)와 Family Atomics 깃발을
+  되돌린 트리에서 실패를 확인했다. `test_i18n.py`의 `_GLOSSARY_WORDS`에 atomics·intelligence·infiltrate.
+- **이어서 사용자 결정**: 제목은 공식 한국어판 "듄 임페리움: 봉기" `[Main p. 2]`(탭·헤더·게임판 alt; 영어 모드는
+  그대로), set-aside는 추천값 — 맥락마다 룰북이 쓴 말(Shaddam 계약 따로 치워두다 `[Board Guide p. 8]`,
+  Manipulate로 빼 둔 카드 따로 빼두다 `[Immortality p. 14]`), 원로회(자리)·소드마스터는 좌석 상태와 로그에서
+  한국어(`[Board Guide p. 2]` "원로회의 빈자리") — 보드 공간 이름은 여전히 영어. `test_i18n.py`에 두 이름의
+  한국어 가드, `lang.py`에 좌석 상태 줄과 제목 검사.
 
 ## 2026-09-21 밤 보드 위 사다우카 지휘관 세션 요약 (Mac mini, 브랜치 `ui-commanders` → master, 관측 v20, codec v107, 변경은 `display/board_layout.py`·`display/token_images.py`·`server/catalog.py`·`server/static/`·`scripts/`·테스트 — **엔진·학습 코드 무변경**; 에셋 저장소 `1574241`)
 
@@ -650,7 +729,7 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 
 사용자가 직접 한 판을 두며 적은 아홉 가지(보드 조각 넷, Branching Path, Intrigue discard, Imperial Privilege, 공개 시 Persuasion, Spy 배치 의무)에서 시작했다. UI 항목은 그대로 고쳤고, 규칙 항목은 **아이콘 전수 점검**으로 번져 사용자 목록 밖의 오전사 둘(Bene Tleilax c7r3, Influence 4 보너스)을 더 찾았다. 커밋은 넷 + 문서: `82a0423`(UI), `c9aec0a`(Trash-Intrigue 아이콘, v106), `7188523`(Spy 배치 의무), `2c967b7`(Influence 4 보너스, v107). 교훈 둘은 [lessons.md](lessons.md) 2026-09-19.
 
-- **보드 조각을 인쇄된 자리에**(`82a0423`; `display/board_layout.py`의 새 표 넷, 카탈로그 `tracks.control_flags`·`maker_spice`·`maker_hooks`·`influence.alliance_size`, `maker_hooks_token`·`alliance_tokens`): Control marker는 칸 아래 **인쇄된 깃발**(Arrakeen·Spice Refinery·Imperial Basin, 3.18 × 3.82, 제비꼬리 notch 20.7%)에 좌석 색 단색 SVG로 `[Main p. 20]`, bonus spice는 Maker **육각형**(2.79 × 2.40, Tuek's Sietch 타일 포함) 위의 spice 육각형 + 수량 `[Main p. 15]`, Maker Hooks는 garrison 옆 **후크 슬롯**(3.4 × 4.88; 대비를 올려야 보이는 인쇄)에 토큰 그림을 좌석마다 돌리고 뒤집어 `[Main p. 20]`, Alliance token은 진영 strip의 **점선 원**(지름 6.85, 중심 (7.56, 5.48 + strip offset) — 옛 눈대중 점은 1.5 위였다)에 있다가 `[Main p. 4]` 획득하면 보유 좌석 패널로 **날아가고**(`animateMovedAllianceTokens`, 패널이 스크롤되므로 페이지 위 복사본이 난다) 빈 원은 보유자 색 고리가 된다 `[Main p. 7]`. 그림은 TTS 모드 캐시의 원본을 에셋 저장소 `tokens/`에 뒀고(`maker_hooks.png`, `alliance_<faction>.jpg`; 에셋 `e7f7741`), 없으면 같은 자리에 룰북 아이콘을 그린다. 좌표는 전부 스캔에서 쟀다(깃발·육각형은 밝기 run, 원은 점선의 원 fit, 슬롯은 밝기 profile의 peak) — 절차와 수치는 `board_layout.py`의 주석.
+- **보드 조각을 인쇄된 자리에**(`82a0423`; `display/board_layout.py`의 새 표 넷, 카탈로그 `tracks.control_flags`·`maker_spice`·`maker_hooks`·`influence.alliance_size`, `maker_hooks_token`·`alliance_tokens`): Control marker는 칸 아래 **인쇄된 깃발**(Arrakeen·Spice Refinery·Imperial Basin, 3.18 × 3.82, 제비꼬리 notch 20.7%)에 좌석 색 단색 SVG로 `[Main p. 20]`, bonus spice는 Maker **육각형**(2.79 × 2.40, Tuek's Sietch 타일 포함) 위의 spice 육각형 + 수량 `[Main p. 15]`, Maker Hooks는 garrison 옆 **후크 슬롯**(3.4 × 4.88; 대비를 올려야 보이는 인쇄)에 토큰 그림을 좌석마다 돌리고 뒤집어 `[Main p. 20]`, Alliance token은 진영 strip의 **점선 원**(지름 6.85, 중심 (7.56, 5.48 + strip offset) — 옛 눈대중 점은 1.5 위였다)에 있다가 `[Main p. 4]` 획득하면 상태창에 중복 표시하지 않고 빈 원은 보유자 색 고리가 된다 `[Main p. 7]`. 그림은 TTS 모드 캐시의 원본을 에셋 저장소 `tokens/`에 뒀고(`maker_hooks.png`, `alliance_<faction>.jpg`; 에셋 `e7f7741`), 없으면 같은 자리에 룰북 아이콘을 그린다. 좌표는 전부 스캔에서 쟀다(깃발·육각형은 밝기 run, 원은 점선의 원 fit, 슬롯은 밝기 profile의 peak) — 절차와 수치는 `board_layout.py`의 주석.
 - **Intrigue discard 한 줄 + Reveal 미리보기**(같은 커밋): 공용 열의 Intrigue 카드 여섯 장 대신 "Intrigue discard N장 · trash M장" 한 줄이고 누르면 두 더미의 목록(최신 먼저)이 뜬다(`openPileList`가 여러 더미를 받는다). 서버 표시 계층에 `reveal_preview {persuasion, strength}`를 더했다 — `reveal_turn`의 dry run이 연 Reveal frame의 Persuasion과 그 뒤의 전투력이고, 손패 옆("지금 공개하면")과 Reveal 버튼에 뜬다. `strength_after`처럼 HTTP 응답일 뿐 엔진·관측과 무관하다.
 - **Trash an Intrigue card 아이콘 전수 점검**(`c9aec0a`, codec v106): 룰북 아이콘을 범위 안의 모든 카드·타일·보드 그림에 다중 스케일 템플릿 매칭하니 진짜 일치(0.92 이상)는 여섯 곳, 일반 trash 아이콘은 0.80 이하로 갈렸다. 셋이 틀려 있었다 — **Branching Path**(아이콘 BG + **City**, 비용 **Intrigue trash**, 보상 Intrigue 1 + **spice 2**; 옛 전사는 Landsraad·일반 trash·troop 2), **Bene Tleilax c7r3**(비용이 Intrigue trash), **Imperial Privilege**(board는 이 아이콘, Board Guide 문장은 "discard" — [OQ-061](rules/open-questions.md#oq-061--imperial-privilege-인쇄된-trash-an-intrigue-card-아이콘과-board-guide의-discard), 사용자 판정으로 인쇄된 아이콘을 따라 `intrigue_trash`로 보낸다; 다시 섞이지 않으므로 뒤따르는 draw가 그 카드를 되뽑지 못한다). Branching Path 구현은 `card-implementer`에 맡겼고(Junction Headquarters의 provider를 공유, 보상은 `intrigue`·`spice` 아이콘 대기열) 나머지는 main이 했다.
 - **Spy 배치 의무**(`7188523`, codec 불변): OQ-057로 채택한 디자이너 정오표("It is mandatory to place a Spy if you have at least one Spy in your supply")를 2026-09-08 감사가 공용 frame만 보고 "일치"로 적었는데, Espionage(`resolve_espionage_without_spy`)와 Intrigue `PlaceSpy` slot(`decline_intrigue_spy`)은 거절을 내고 있었다. 이제 supply에 Spy가 있고 놓을 post가 있으면 배치만 제시한다; supply가 비면 선행 recall이 선택이라 거절이 남고(공용 frame도 같게 고쳤다), recall한 뒤에는 의무다. Distraction의 시점 선택(OQ-016)과 인쇄된 "— OR —"는 그대로다.
