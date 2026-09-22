@@ -177,18 +177,41 @@ KOREAN_LATIN_JS = r"""({keep}) => {
     });
 }"""
 
-# Chrome English on purpose: the product title (the user has not asked for
-# the Korean edition's title), the uv extra the checkpoint field needs, the
-# AI of the seat kinds, the Esc key the turn guide names, and Leaders' short
-# names (Shaddam, Kota Odax) like log_words' Feyd.
+# Chrome English on purpose: the uv extra the checkpoint field needs, the AI
+# of the seat kinds, the Esc key the turn guide names, and Leaders' short
+# names (Shaddam, Kota Odax) like log_words' Feyd. The product title is the
+# Korean edition's, 듄 임페리움: 봉기 (2026-09-22).
 KOREAN_CHROME_ENGLISH = (
-    "Dune: Imperium — Uprising",
     "train extra",
     "AI",
     "Esc",
     "Shaddam",
     "Kota Odax",
 )
+
+
+# The seat status line, every seat opened: in Korean the High Council seat
+# and the Swordmaster are 원로회 and 소드마스터, which the name strip above
+# cannot tell from the board spaces of the same English names.
+SEAT_STATUS_JS = r"""() => {
+    const before = expandedSeats;
+    expandedSeats = new Set(state.view.players.map((p) => p.player));
+    renderSeats();
+    /* Only the status lines: the contracts and placed-Agent lines name
+       catalog contracts and spaces ("High Council"), which stay English. */
+    const label = t('panels.status_label');
+    const text = [...document.querySelectorAll('#seats .seat-detail .cardline')]
+        .filter((line) => line.querySelector('strong')?.textContent.trim() === label)
+        .map((line) => line.innerText)
+        .join('\n');
+    expandedSeats = before;
+    renderSeats();
+    return {
+        text,
+        council: state.view.players.some((p) => p.high_council),
+        swordmaster: state.view.players.some((p) => p.swordmaster_acquired),
+    };
+}"""
 
 
 def hangul(page) -> list:
@@ -337,6 +360,26 @@ def finished_game(base: str, browser) -> None:
     check.ok(
         not left, "Korean: no English outside names at the end of a review", left[:8]
     )
+    seats = page.evaluate(SEAT_STATUS_JS)
+    check.ok(
+        seats["council"] and seats["swordmaster"],
+        "the finished game has a High Council seat and a Swordmaster to show",
+        seats,
+    )
+    check.ok(
+        "원로회" in seats["text"]
+        and "소드마스터" in seats["text"]
+        and "High Council" not in seats["text"]
+        and "Swordmaster" not in seats["text"],
+        "Korean: the seats say 원로회 and 소드마스터",
+        seats["text"][:300],
+    )
+    check.ok(
+        page.title() == "듄 임페리움: 봉기"
+        and page.inner_text("h1") == "듄 임페리움: 봉기",
+        "Korean: the tab and the header carry the Korean edition's title",
+        (page.title(), page.inner_text("h1")),
+    )
     switch(page, "en")
     check.ok(page.is_visible("#standings"), "the standings are on screen")
     page.click("#disclosure h2 button")
@@ -354,7 +397,10 @@ def finished_game(base: str, browser) -> None:
     stray = hangul(page)
     check.ok(not stray, "English: no Hangul on the setup screen", stray[:8])
     switch(page, "ko")
-    page.wait_for_selector("#game-list button")
+    # The switch reloads the game list from the server; read it once it has.
+    page.wait_for_function(
+        "/[\\uac00-\\ud7a3]/.test(document.getElementById('game-list').innerText)"
+    )
     left = english_left(page)
     check.ok(not left, "Korean: no English outside names on the setup screen", left[:8])
 
