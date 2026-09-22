@@ -165,6 +165,7 @@ Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 �
 | Contract | 계약 | `[Main p. 20]` | 적용 |
 | Control | 지배 | `[Main p. 20]` | 적용 |
 | Signet Ring | 인장 반지 | `[Main p. 20]` | 참고(카드 이름) |
+| Signet Ring ability | 인장 반지 능력 | `[Main p. 3]`(지도자 카드 "인장 반지 능력") | 적용 |
 | Intrigue | 책략 | `[Main p. 20]` | 적용 |
 | Plot / Combat / Endgame Intrigue | 음모 / 전투 / 종료 단계 책략 카드 | `[Main p. 7]` | 적용 |
 | Imperium card | 임페리움 카드 | `[Main p. 20]` | 적용 |

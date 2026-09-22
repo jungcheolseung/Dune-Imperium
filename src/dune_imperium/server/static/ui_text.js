@@ -305,6 +305,10 @@ const UI_TEXT = {
     "ko": "요구: ",
     "en": "Requires: "
   },
+  "core.signet_line": {
+    "ko": "인장 반지 능력 — {{name}}: {{text}}",
+    "en": "Signet — {{name}}: {{text}}"
+  },
   "core.reward_line": {
     "ko": "보상: {{text}}",
     "en": "Reward: {{text}}"
