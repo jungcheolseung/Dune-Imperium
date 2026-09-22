@@ -201,12 +201,13 @@ function renderSeats() {
     );
     card.appendChild(pieces);
 
-    /* Each flag is nodes (tNode), so its rule terms keep their icons; High
-       Council and Swordmaster are space names and stay as written. */
+    /* Each flag is nodes (tNode), so its rule terms keep their icons. The
+       High Council seat and the Swordmaster are the glossary's 원로회 and
+       소드마스터; only the board spaces of those names stay English. */
     const flags = [];
-    if (player.high_council) flags.push("High Council");
+    if (player.high_council) flags.push(tNode("panels.high_council"));
     if (player.maker_hooks) flags.push(tNode("panels.maker_hooks"));
-    if (player.swordmaster_acquired) flags.push("Swordmaster");
+    if (player.swordmaster_acquired) flags.push(tNode("panels.swordmaster"));
     if (player.has_revealed) flags.push(tNode("panels.revealed"));
     if (player.control_space_ids.length) {
       flags.push(

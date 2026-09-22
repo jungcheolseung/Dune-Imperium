@@ -146,7 +146,7 @@ const UI_TEXT = {
     "en": "Seat {{seat}} · {garrison} {{count}}"
   },
   "board.seat_high_council": {
-    "ko": "좌석 {{seat}} · High Council",
+    "ko": "좌석 {{seat}} · 원로회",
     "en": "Seat {{seat}} · High Council"
   },
   "board.seat_maker_hooks": {
@@ -700,6 +700,14 @@ const UI_TEXT = {
   "panels.log_heading": {
     "ko": "행동 로그",
     "en": "Action log"
+  },
+  "panels.high_council": {
+    "ko": "원로회",
+    "en": "High Council"
+  },
+  "panels.swordmaster": {
+    "ko": "소드마스터",
+    "en": "Swordmaster"
   },
   "panels.family_atomics": {
     "ko": "가문 핵 토큰",

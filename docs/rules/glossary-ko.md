@@ -176,8 +176,8 @@ Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 �
 | Dune: Imperium — Uprising (제품 이름) | 듄 임페리움: 봉기 | `[Main p. 2]`("듄 임페리움: 봉기는 덱빌딩 일꾼 놓기 게임으로"), `[Bloodlines p. 3]` | 적용(페이지 제목, 2026-09-22 사용자 결정) |
 | set aside (Shaddam의 사다우카 계약) | 따로 치워두다 | `[Board Guide p. 8]`("사다우카 계약 2개를 따로 치워둡니다") | 적용 |
 | set aside (나중에 쓰려고 빼 둔 카드, Manipulate) | 따로 빼두다 | `[Immortality p. 14]`("이 지도자를 사용해 따로 빼둔 카드") | 적용 |
-| Swordmaster | 소드마스터 | `[Main p. 17]`, `[Board Guide p. 3]` | 참고(공간 이름) |
-| High Council | 원로회 | `[Main p. 17]` | 참고(공간 이름) |
+| Swordmaster | 소드마스터 | `[Main p. 17]`, `[Board Guide p. 3]` | 적용(획득·좌석 상태; 보드 공간 이름은 영어) |
+| High Council | 원로회 / 원로회 자리 | `[Main p. 17]`, `[Board Guide p. 2]`("원로회의 빈자리에 의원 토큰을 놓습니다") | 적용(자리·좌석 상태; 보드 공간 이름은 영어) |
 | Arrakeen / Spice Refinery / Imperial Basin | 아라킨 / 스파이스 정제소 / 제국 분지 | `[Main p. 20]` | 참고(공간 이름) |
 
 "참고"로 적은 공간·카드 이름은 룰북이 한국어로 옮겼지만 UI는 영어를 유지한다 —

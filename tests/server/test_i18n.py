@@ -345,6 +345,33 @@ def test_korean_text_never_spells_a_glossary_term_in_english() -> None:
     assert not leaks, "; ".join(leaks[:10])
 
 
+# Catalog names the glossary still gives in Korean where they are a status
+# rather than the board space: the High Council seat (원로회) and the
+# Swordmaster (소드마스터) [Main p. 17]. The guard above strips catalog
+# names, so it cannot see these in Korean text.
+_KOREAN_STATUS_NAMES = ("High Council", "Swordmaster")
+
+
+def test_korean_text_names_the_council_seat_and_swordmaster_in_korean() -> None:
+    texts = [
+        (f"{table}.{key}", text)
+        for table, rows in _korean_tables().items()
+        for key, text in rows.items()
+    ]
+    texts += [(f"UI_TEXT.{key}", entry["ko"]) for key, entry in _ui_text().items()]
+    prompts = (_STATIC / "prompts_ko.js").read_text()
+    korean_prompts = re.findall(r'^\s+"[^"]*": "([^"]*)",?$', prompts, re.M)
+    texts += [("PROMPT_KO", ko) for ko in korean_prompts]
+    assert len(texts) > 300, "the tables were not read"
+    leaks = [
+        f"{where}: {text!r}"
+        for where, text in texts
+        for name in _KOREAN_STATUS_NAMES
+        if name in text
+    ]
+    assert not leaks, "; ".join(leaks[:10])
+
+
 def test_every_label_table_switches_language() -> None:
     """A table left out of ``LABEL_TABLES`` stays Korean in English.
 
