@@ -172,8 +172,10 @@ function redrawForLanguage() {
   if (state.summary && !el("game-screen").hidden) {
     if (state.review) {
       labelReviewBar(state.review.seat);
-      /* The view in hand draws at once; the seek below rebuilds the status
-         line, which only a review answer writes. */
+      /* The view in hand draws at once, and so do the status line and the
+         play button of the step on screen; the seek below refreshes them. */
+      if (state.review.round !== null) writeReviewStatus(state.review);
+      renderPlaybackControls();
       render();
       /* A seek, not a bare reviewGoto: it holds playback and schedules the
          next move, where a bare request would supersede a playing tick and
