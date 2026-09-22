@@ -57,11 +57,10 @@ uv run mypy src tests
 
 1. **첫 친구 판(M14의 남은 것) — 가장 값어치가 크다.** 원격 흐름·자동 저장·도움말·스크린 리더 알림·언어
    전환·노트북 화면의 좌석까지 준비됐다. 남은 것은 다른 집의 친구와 실제로 하는 한 판과 그 피드백이다([`remote-play-guide.md`](remote-play-guide.md)).
-2. **용어집에 행이 없는 로그 낱말 — 룰북 인용이 먼저.** Other Memories, Secret Project, set-aside, Wild card,
-   Immediate, Usurp(계획서 6단계 "남은 것" 1; Gather Intelligence·Infiltrate·Family Atomics는 2026-09-22에
+2. **용어집에 행이 없는 로그 낱말 — 룰북 인용이 먼저.** Other Memories, Secret Project, Wild card, Immediate,
+   Usurp(계획서 6단계 "남은 것" 1; Gather Intelligence·Infiltrate·Family Atomics·set-aside는 2026-09-22에
    옮겼다). 한국어 룰북에서 찾아 용어집에 더한 뒤에만 바꾼다. 바꾸면 `test_i18n.py`와 `log_words.py`의 허용
-   목록에서도 뺀다. set-aside는 룰북에 두 꼴(따로 치워두다 `[Supplements p. 8]`, 따로 빼두다 `[Immortality p. 14]`)이
-   있어 사용자 결정이 먼저다.
+   목록에서도 뺀다.
 3. **한글 카드 스캔** — 확보하면 `display/images.py`가 코드 변경 없이 쓴다(언어 정책의 3번).
 
 **UI를 이어갈 때의 규칙**(세 세션이 값을 치른 것들):
@@ -462,8 +461,11 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 - **가드**: `lang.py`의 한국어 전면 검사(`KOREAN_LATIN_JS`) — 카탈로그 **이름** 필드·`.card-text`·허용 목록을
   지운 뒤 라틴 낱말 0, 좌석 세부와 ⓘ 세부를 펴고 훑는다. 옛 클라이언트(`d09532c`)와 Family Atomics 깃발을
   되돌린 트리에서 실패를 확인했다. `test_i18n.py`의 `_GLOSSARY_WORDS`에 atomics·intelligence·infiltrate.
-- **남은 것**: set-aside(두 꼴 중 사용자 결정), 제품 제목의 한국어화("듄 임페리움: 봉기" `[Main p. 2]`, 브랜드라
-  사용자 결정), High Council·Swordmaster 좌석 깃발(공간 이름 정책으로 영어 유지).
+- **이어서 사용자 결정**: 제목은 공식 한국어판 "듄 임페리움: 봉기" `[Main p. 2]`(탭·헤더·게임판 alt; 영어 모드는
+  그대로), set-aside는 추천값 — 맥락마다 룰북이 쓴 말(Shaddam 계약 따로 치워두다 `[Board Guide p. 8]`,
+  Manipulate로 빼 둔 카드 따로 빼두다 `[Immortality p. 14]`), 원로회(자리)·소드마스터는 좌석 상태와 로그에서
+  한국어(`[Board Guide p. 2]` "원로회의 빈자리") — 보드 공간 이름은 여전히 영어. `test_i18n.py`에 두 이름의
+  한국어 가드, `lang.py`에 좌석 상태 줄과 제목 검사.
 
 ## 2026-09-21 밤 보드 위 사다우카 지휘관 세션 요약 (Mac mini, 브랜치 `ui-commanders` → master, 관측 v20, codec v107, 변경은 `display/board_layout.py`·`display/token_images.py`·`server/catalog.py`·`server/static/`·`scripts/`·테스트 — **엔진·학습 코드 무변경**; 에셋 저장소 `1574241`)
 
