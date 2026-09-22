@@ -97,6 +97,10 @@ git 무시 `checkpoints/2026-09-22/m10-evidence/`). 요지:
   "많이 산다"는 같은 사전을 공유하고 둘 다 이 정책에 진다 — **배울 상대가 없다**.
 - **다음(사용자 결정, 2026-09-22): 좌석 상대 다양화**(아래 0번 이력의 "후보 B"). 64판 배치(메모리는 `0c18728`로 열림)와
   표현력(정체성 슬롯 임베딩, action head 인수분해)이 그 뒤 후보다.
+- **논의 중(2026-09-22, 코드 변경 없음): 사용자의 실전 팁을 학습에 쓰는 법** — [player-tips-for-training.md](player-tips-for-training.md).
+  팁은 측정할 가설로 다루고 보상이 아니라 진단·평가 문제집·league 상대·입력 표현에 넣는다는 결론까지 왔다. 사용자 답 둘
+  (덱 9~10장 무구매 전략이 실전에서 말이 되는지, 팁 목록)이 남아 있어 **이어갈 때는 그 문서 5절부터** 시작한다. 3절의
+  "스타일 봇" 경로가 위의 좌석 상대 다양화와 맞물린다.
 
 아래는 그 앞의 기록이다(시간 역순이 아니라 적힌 순서 그대로 남긴다).
 
@@ -439,6 +443,13 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 2026-09-07: `bloodlines` 브랜치(35 커밋)를 master 쪽에서 `--no-ff`로 머지했고(`dbd9b73`), 같은 날 저녁 슬라이스 6 커밋 5건과 이 문서 갱신을 master에 직접 올렸다. 아직 push하지 않았다면 `git log origin/master..master`로 확인한다. 비공개 에셋 저장소(`assets` symlink → `Dune-Imperium-assets`)에도 같은 날 manifest 커밋 6건(Bloodlines 카드 44장 content id, Leader 8종, Tuek's Sietch 타일 이미지, Twisted·Navigation 카드 키, Kota Odax의 content id `43c25fc`)이 있으니 다른 머신에서는 그쪽도 pull한다.
 
 2026-09-04 세션 종료 시점에 이 세션의 커밋 전부(보드·카드 아이콘 분리 v86/v87, 서버·UI 확인 흐름과 마커, Reveal 순서 v88, OQ-028 조건 판정 시점, OQ-029 등록)를 `origin/master`에 push했다. 새 세션은 `git fetch origin` 뒤 `git log origin/master..master`와 반대 방향을 확인하고, 일치하면 이 문서의 기준선을 그대로 쓴다. 에셋 저장소(`Dune-Imperium-assets`)의 `5b55e45` 1개 미push 여부는 그 저장소에서 확인한다. 원격에는 병합하지 않은 `kyungtae` 브랜치가 있다. 새 세션은 `git log origin/master..master`와 반대 방향을 모두 확인하고, checkout이 `853ecd4`보다 이전이면 이 문서의 989개 테스트·codec v84 기준선이 실제 코드와 일치하지 않는다. **다른 머신에서 이어서 작업한다면 먼저 이 머신에서 push가 필요하다.** 새 머신의 UI 카드 이미지·아이콘·보드 스캔은 비공개 `Dune-Imperium-assets` 저장소를 clone해 symlink로 연결한다(그 README 참고; 루트의 `assets` symlink 하나로 cards·icons·board·rulebooks를 모두 연결). 카드 매핑은 그 저장소의 `cards/manifest.json`에만 있으므로 접근이 없으면 텍스트 UI로 동작한다.
+
+## 2026-09-22 저녁 실전 팁과 학습 논의 세션 요약 (WSL 노트북 i5-8250U, **코드 변경 없음**, 변경은 `docs/`뿐)
+
+- 사용자 질문: 휴리스틱·rollout의 구현, 그리고 친구들과 두며 느낀 팁·행동 중요도가 학습에 도움이 되는지. 논의만 했다.
+- 기록과 결론은 [player-tips-for-training.md](player-tips-for-training.md) 한 곳에 있다(두 baseline의 구조, 사람 직관이
+  측정으로 뒤집힌 전례 둘, 팁을 넣을 곳 여섯의 순위, 열린 갈래). 사용자가 **다른 PC의 새 세션에서 이어간다** — 그 문서
+  5절의 남은 질문 둘부터 시작한다.
 
 ## 2026-09-22 한글판 카드 사진 크롭 세션 요약 (WSL 노트북 i5-8250U, 변경은 **비공개 에셋 저장소뿐** — 메인 저장소는 이 문서만; 에셋 `d01e9d9`)
 
