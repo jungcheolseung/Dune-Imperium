@@ -99,38 +99,53 @@ ENGLISH_TERMS_JS = r"""() => {
 
 # In Korean, every English word a person or a screen reader meets (text,
 # title, alt, aria-label, placeholder) must be a name or printed card text:
-# every catalog string is stripped (card, Leader, space, Conflict, Contract
-# names and printed text stay English by policy), and so is iconized card
+# the catalog's names are stripped (card, Leader, ability, space, Conflict,
+# Contract names stay English by policy; its engine ids are not, so a raw
+# "combat" or "emperor" fallback still fails), and so is iconized card
 # wording (.card-text, whose icons' tooltips are checked) and the help
-# legend's muted English twins. What is left must be empty. The name-free
-# check above missed "· seed … · CHOAM · Bloodlines" in the header, the
-# Alliance and troop tooltips and "Family Atomics" (2026-09-22).
+# legend's muted English twins. What is left must be empty. Every seat's
+# detail and every action's ⓘ detail is opened for the scan, so the seat
+# status line is read too. The name-free check above missed "· seed … ·
+# CHOAM · Bloodlines" in the header, the Alliance and troop tooltips and
+# "Family Atomics" (2026-09-22).
 KOREAN_LATIN_JS = r"""({keep}) => {
     const names = new Set(keep);
-    const walk = (value) => {
+    const NAME_FIELDS = new Set(['name', 'ability', 'signet']);
+    const walk = (value, key) => {
         if (typeof value === 'string') {
-            if (/[A-Za-z]{2}/.test(value) && !value.includes('/')) names.add(value);
+            if (NAME_FIELDS.has(key) && /[A-Za-z]{2}/.test(value)) names.add(value);
         } else if (Array.isArray(value)) {
-            value.forEach(walk);
+            value.forEach((item) => walk(item, key));
         } else if (value && typeof value === 'object') {
-            Object.values(value).forEach(walk);
+            for (const [name, item] of Object.entries(value)) walk(item, name);
         }
     };
-    walk(state.catalog);
+    walk(state.catalog, '');
+    const seatsBefore = expandedSeats;
+    const atTable = state.view && !document.getElementById('game-screen').hidden;
+    if (atTable) {
+        expandedSeats = new Set(state.view.players.map((p) => p.player));
+        renderSeats();
+    }
+    const opened = [...document.querySelectorAll('.action-detail[hidden]')];
+    for (const detail of opened) detail.hidden = false;
     const sorted = [...names].sort((a, b) => b.length - a.length);
     const left = (text) => {
-        let bare = String(text || '').replace(/\S*\/\S*|OQ-\d+/g, ' ');
+        let bare = String(text || '');
         if (!/[A-Za-z]{2}/.test(bare)) return [];
+        /* Names first: "Arrakeen/Spice Refinery" joins two with a slash. */
         for (const name of sorted) {
             if (bare.includes(name)) bare = bare.split(name).join(' ');
         }
+        bare = bare.replace(/\S*\/\S*|OQ-\d+/g, ' ');
         return bare.match(/[A-Za-z]{2,}/g) || [];
     };
     const skip = '#language-toggle, .card-text, kbd, code, #help-body .muted';
     const found = [];
     const note = (text, where) => {
         const words = left(text);
-        if (words.length) found.push([words.join(' '), String(text).slice(0, 80), where]);
+        if (!words.length) return;
+        found.push([words.join(' '), String(text).slice(0, 80), where]);
     };
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
@@ -144,11 +159,17 @@ KOREAN_LATIN_JS = r"""({keep}) => {
         if (el.closest('#language-toggle') || el.closest('[hidden]')) continue;
         for (const name of ['title', 'alt', 'aria-label', 'placeholder']) {
             if (!el.hasAttribute(name)) continue;
-            const where = el.id || String(el.className.baseVal ?? el.className) || el.tagName;
+            const kind = String(el.className.baseVal ?? el.className);
+            const where = el.id || kind || el.tagName;
             note(el.getAttribute(name), `${where}@${name}`);
         }
     }
     note(document.title, 'document.title');
+    for (const detail of opened) detail.hidden = true;
+    if (atTable) {
+        expandedSeats = seatsBefore;
+        renderSeats();
+    }
     const seen = new Set();
     return found.filter(([words, text]) => {
         const key = words + '|' + text;
@@ -158,9 +179,16 @@ KOREAN_LATIN_JS = r"""({keep}) => {
 
 # Chrome English on purpose: the product title (the user has not asked for
 # the Korean edition's title), the uv extra the checkpoint field needs, the
-# AI of the seat kinds, the Esc key the turn guide names, and Shaddam, a
-# Leader's short name like log_words' Feyd.
-KOREAN_CHROME_ENGLISH = ("Dune: Imperium — Uprising", "train extra", "AI", "Esc", "Shaddam")
+# AI of the seat kinds, the Esc key the turn guide names, and Leaders' short
+# names (Shaddam, Kota Odax) like log_words' Feyd.
+KOREAN_CHROME_ENGLISH = (
+    "Dune: Imperium — Uprising",
+    "train extra",
+    "AI",
+    "Esc",
+    "Shaddam",
+    "Kota Odax",
+)
 
 
 def hangul(page) -> list:
@@ -306,7 +334,9 @@ def finished_game(base: str, browser) -> None:
     # No wait: the switch rewrites the review's status line at once (it read
     # "step 832/832 · Round 10 · Game Over" until the re-fetch landed).
     left = english_left(page)
-    check.ok(not left, "Korean: no English outside names at the end of a review", left[:8])
+    check.ok(
+        not left, "Korean: no English outside names at the end of a review", left[:8]
+    )
     switch(page, "en")
     check.ok(page.is_visible("#standings"), "the standings are on screen")
     page.click("#disclosure h2 button")
@@ -323,6 +353,10 @@ def finished_game(base: str, browser) -> None:
     page.wait_for_selector("#game-list button")
     stray = hangul(page)
     check.ok(not stray, "English: no Hangul on the setup screen", stray[:8])
+    switch(page, "ko")
+    page.wait_for_selector("#game-list button")
+    left = english_left(page)
+    check.ok(not left, "Korean: no English outside names on the setup screen", left[:8])
 
     bad = [r for r in rec.requests if r[3] is not None and r[3] >= 400]
     check.ok(not bad, "no failed requests", bad[:3])
