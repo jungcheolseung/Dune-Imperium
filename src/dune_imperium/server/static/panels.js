@@ -198,7 +198,7 @@ function renderSeats() {
     card.appendChild(pieces);
 
     /* Each flag is nodes (tNode), so its rule terms keep their icons; High
-       Council, Swordmaster and Family Atomics are names and stay as written. */
+       Council and Swordmaster are space names and stay as written. */
     const flags = [];
     if (player.high_council) flags.push("High Council");
     if (player.maker_hooks) flags.push(tNode("panels.maker_hooks"));
@@ -227,7 +227,7 @@ function renderSeats() {
     /* Immortality state not drawn on the Bene Tleilax board: the Family
        Atomics token and grafted-card promises. */
     if (state.summary.immortality) {
-      if (player.family_atomics) flags.push("Family Atomics");
+      if (player.family_atomics) flags.push(tNode("panels.family_atomics"));
       if ((player.chairdog_return_card_ids || []).length) {
         flags.push(
           tNode("panels.chairdog_return", {

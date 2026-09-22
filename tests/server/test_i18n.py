@@ -267,15 +267,12 @@ def test_english_label_tables_mirror_the_korean() -> None:
 # (docs/rules/glossary-ko.md, "아직 채우지 않은 것"), or they are a Leader's own
 # name. scripts/e2e/log_words.py keeps the same list for the rendered log.
 _KOREAN_KEEPS_ENGLISH = (
-    "Gather Intelligence",
-    "Family Atomics",
     "Other Memories",
     "Memories returned",
     "Memories",
     "Secret Project",
     "Set-aside",
     "set-aside",
-    "Infiltrate",
     "Wild card",
     "Crysknife",
     "Immediate",
@@ -286,11 +283,14 @@ _KOREAN_KEEPS_ENGLISH = (
 )
 # Glossary rows the UI applies that have no TERMS entry of their own.
 _GLOSSARY_WORDS = {
+    "atomics",
     "bloodlines",
     "embassy",
     "flip",
     "flipped",
     "immortality",
+    "infiltrate",
+    "intelligence",
     "ixian",
     "navigation",
     "tactics",

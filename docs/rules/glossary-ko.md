@@ -101,6 +101,8 @@ Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 �
 | Recall Agent | 에이전트 소환 | `[Main p. 20]` | 적용 |
 | Spy | 스파이 | `[Main p. 20]` | 적용 |
 | Recall Spy | 스파이 소환 | `[Main p. 20]` | 적용 |
+| Infiltrate | 침투 | `[Main p. 11]` ("침투: 다른 플레이어의 에이전트가 이미 놓여 있는 게임판 장소에…") | 적용 |
+| Gather Intelligence | 정보 수집 | `[Main p. 11]` ("정보 수집: 당신이 게임판 장소에 에이전트를 보낼 때마다…") | 적용 |
 | Maker Hooks | 메이커 작살 | `[Main p. 20]` | 적용 |
 | Shield Wall | 방어벽 | `[Main p. 20]` | 적용 |
 | Control marker | 지배 마커 | `[Main p. 20]` | 적용 |
@@ -259,6 +261,7 @@ Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 �
 | Imperium Row | 임페리움 열 | `[Immortality p. 4]` | 적용 |
 | Reserve (더미) | 예비 카드 더미 | `[Immortality p. 4]` | 적용 |
 | Graft | 접합 | `[Immortality p. 10]` | 적용 |
+| Family Atomics token | 가문 핵 토큰 | `[Immortality p. 3]`(구성물), `[Immortality p. 5]`(준비), `[Immortality p. 12]`("각 플레이어는 게임 준비 단계에 가문 핵 토큰을 1개씩 받습니다… 가문 핵 토큰을 소비할 수 있습니다… 임페리움 열을 다시 채웁니다") | 적용 |
 | Research Station | 연구 기지 | `[Immortality p. 16]` | 참고(공간 이름) |
 
 ## 아직 채우지 않은 것

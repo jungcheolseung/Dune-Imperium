@@ -15,7 +15,7 @@ languages, with prettify() wrapped, and asserts:
 - prettify() is never called: every id resolves through a table;
 - in Korean, no Latin word is left outside catalog names (proper nouns stay
   English by policy) and the phrases the glossary deliberately leaves English
-  (docs/rules/glossary-ko.md has no row for them, e.g. Gather Intelligence);
+  (docs/rules/glossary-ko.md has no row for them, e.g. Secret Project);
 - in English, no Hangul, and nowhere an engine id's shape: snake_case, a
   colon path, a research coordinate, a post id.
 
@@ -60,15 +60,12 @@ GAMES = (
 # Leader's name. Whole phrases, so a stray "card" or "set" is still caught.
 # tests/server/test_i18n.py keeps the same list for the tables' Korean.
 KOREAN_KEEPS_ENGLISH = (
-    "Gather Intelligence",
-    "Family Atomics",
     "Other Memories",
     "Memories returned",
     "Memories",
     "Secret Project",
     "Set-aside",
     "set-aside",
-    "Infiltrate",
     "Wild card",
     "Crysknife",
     "Immediate",

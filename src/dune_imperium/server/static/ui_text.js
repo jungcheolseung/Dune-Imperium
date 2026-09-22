@@ -685,6 +685,10 @@ const UI_TEXT = {
     "ko": "행동 로그",
     "en": "Action log"
   },
+  "panels.family_atomics": {
+    "ko": "가문 핵 토큰",
+    "en": "Family Atomics"
+  },
   "panels.maker_hooks": {
     "ko": "{maker_hooks}",
     "en": "{maker_hooks}"
