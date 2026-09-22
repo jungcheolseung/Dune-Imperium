@@ -156,8 +156,12 @@ function renderSeats() {
     } else {
       const badge = document.createElement("span");
       badge.className = "badge ai";
-      badge.textContent = seatKindLabel(summary.seats[seat]);
-      badge.title = seatKindLabel(summary.seats[seat]);
+      const kind = summary.seats[seat];
+      badge.textContent = seatKindLabel(kind);
+      /* The label hides a checkpoint's path; its tooltip names the file. */
+      badge.title = kind.startsWith("checkpoint:")
+        ? kind.slice("checkpoint:".length)
+        : seatKindLabel(kind);
       who.appendChild(badge);
     }
     if (summary.first_player === seat) {
