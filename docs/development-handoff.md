@@ -81,7 +81,23 @@ uv run mypy src tests
 
 ### 학습(M10) 쪽 순서
 
-**현재 위치(2026-09-17).** 전 확장 구성의 학습 전 최종 점검(파이프라인·heuristic·소크·open questions)이 끝났고 다음은 아래 0번의 **M10 학습 시작**이다. 그 앞 2026-09-16 심야에 M10 학습 전 마무리 세션이 끝났다. (1) `dune-imperium-train`은 관측 v20·codec v104에서
+**현재 위치(2026-09-22).** 결론과 근거는 한 곳에 모았다 — **[evaluation/m10-2026-09-22.md](evaluation/m10-2026-09-22.md)**(원자료는
+git 무시 `checkpoints/2026-09-22/m10-evidence/`). 요지:
+- **판정은 사후 대회 + `scripts/ab/paired.py`로만 한다**(2:2 미러, `--matches`, seed 군집 CI). 600경기의 분해능은 약 ±7.7%p,
+  3%p를 보려면 약 15,800경기다. 학습 중 평가는 트립와이어다(이 주에 결함 둘을 고쳤다 — seed 반복 `f8e5a5f`, 역전 `fe2196c`).
+- **가장 좋은 체크포인트**: `checkpoints/2026-09-21/long-2k/latest.pt`(iteration 5081) — 출발점 2081 대비 2:2 미러 **+15.0%p**,
+  heuristic 3명 상대 88.5%. 3081(`control-1k`)과는 잡음 안이다(+4.6%p 누적, 두 단계 모두 잡음 안).
+- **현재 설정은 다시 정체했다.** 규칙 정정 직후 1,000 iteration의 +19%p는 옛 규칙 정책의 재적응으로 보이고(정황), 그 뒤
+  2,000 iteration은 +3.0·+1.6%p로 잡음 안이다. **같은 설정을 더 돌리는 것은 기대값이 낮다.**
+- **기각된 것**: 순위 보상(대조군과 직접 A/B 잡음 안), 학습률 조정(2026-09-19), 구매 강제(−17%p).
+- **정책은 카드를 거의 사지 않고 그것이 옳다**(구매 강제 탐침). 저장소의 두 baseline(heuristic, heuristic playout의 rollout)은
+  "많이 산다"는 같은 사전을 공유하고 둘 다 이 정책에 진다 — **배울 상대가 없다**.
+- **다음(사용자 결정, 2026-09-22): 좌석 상대 다양화**(아래 0번 이력의 "후보 B"). 64판 배치(메모리는 `0c18728`로 열림)와
+  표현력(정체성 슬롯 임베딩, action head 인수분해)이 그 뒤 후보다.
+
+아래는 그 앞의 기록이다(시간 역순이 아니라 적힌 순서 그대로 남긴다).
+
+**이전 현재 위치(2026-09-17).** 전 확장 구성의 학습 전 최종 점검(파이프라인·heuristic·소크·open questions)이 끝났고 다음은 아래 0번의 **M10 학습 시작**이다. 그 앞 2026-09-16 심야에 M10 학습 전 마무리 세션이 끝났다. (1) `dune-imperium-train`은 관측 v20·codec v104에서
 pure self-play(3 iteration × 32판, 8 worker, `--eval-every`)와 `--opponent rollout`/`--eval-opponent rollout`(StateAgent 경로)
 모두 정상이다. (2) heuristic의 표 밖 항: 동점 census(게임당 228개 legal 집합이 RNG로 정해짐)로 지렛대를 찾아 세 가족 안
 tie-break(Influence 진영·trash/discard 카드·같은 비용 구매)를 채택했고, 고정 변형 `heuristic_uniform_ties` 상대 전 축·두
