@@ -182,9 +182,31 @@ heuristic은 사람 상대 AI이자 `rollout`의 playout 정책이라 값어치�
 샀다면 Bene Gesserit 카드를, Spacing Guild·Emperor 관련 효과도 마찬가지로 그 진영 카드를 사면 좋다. 규칙: Fremen Bond는 다른
 Fremen 카드가 하나 이상 in play일 때 쓸 수 있고 두 Bond 카드는 서로를 활성화한다 `[Main p. 20]`; 엔진의 판정은
 `rules/card_bonds.py`(같은 진영의 **다른** 카드)이고 카드의 진영 소속은 `personal_card_for_instance(...).factions`다.
-Bond 조건은 `PersonalCardBond`(`content/uprising/types.py`)와 효과 이름의 `_bond` 접미사로 전사돼 있다. 측정 계획: (1) census — 산 카드가 덱의 Bond 카드와 진영이 맞는 비율, 덱의
-진영 집중도(5081·heuristic); (2) heuristic 변형 — 덱에 Bond 카드가 있는 진영의 카드 구매 점수에 +x(용량 두 개), 평소
-구성 2블록.
+Bond 조건은 `PersonalCardBond`(`content/uprising/types.py`)와 효과 이름의 `_bond` 접미사로 전사돼 있다.
+
+스크래치 표(`pypath/synergy.py`: Bond 요구·진영별 공개 수 세기·`_<진영>_bond` 효과)로 보면 같은 진영의 다른 카드가 있어야
+값을 하는 카드는 Fremen 11종, Bene Gesserit 7종, Emperor 1종(Sardaukar Coordination)이고 전사된 카드 중 Spacing Guild는
+없다. "Bond 짝" = 그런 카드와 그 진영의 다른 카드가 함께 덱에 있는 것.
+
+| census (`synergy_census.py`) | 판당 산 시너지 카드 | 구매 중 Bond 짝을 완성한 비율 | 판 끝 Bond 짝 |
+|---|---:|---:|---:|
+| 5081 4명 | 0.31 | 4% | **0.12** |
+| heuristic 4명 | 2.12 | 17% | 2.04 |
+| heuristic + 짝 보너스 +2 (heuristic과 2:2) | 2.41 | 25% | 2.33 |
+| 얇은 덱 + 짝 예외 (문턱 5 + Tleilaxu 안 삼, 짝이면 문턱 무시) | 0.33 | 27% | 0.31 |
+
+| heuristic A/B (2:2, 셀당 1,000경기, 실패 0) | 평소 구성 2블록 합침 | 기본판 |
+|---|---|---|
+| 짝이면 구매 점수 +1 vs heuristic | −0.8 [−4.3, +2.7] | −1.4 |
+| 짝이면 구매 점수 +2 vs heuristic | −2.6 [−6.2, +1.2] | −0.8 |
+| 얇은 덱 + 짝 예외 vs 얇은 덱 (직접) | +0.9 [−1.7, +3.5] | |
+
+- **정책은 진영 시너지를 거의 만들지 않는다**(판 끝 Bond 짝 0.12). 진단으로는 새 사실이다.
+- heuristic 틀에서는 **효과가 잡음 안**이다. 두꺼운 덱(24장)에서는 짝을 늘려도(1.56 → 2.33) Bond는 "다른 카드가 **in play**"여야
+  하므로 같은 라운드에 함께 나올 확률이 낮다는 해석과 맞는다. 얇은 덱에서는 구매 자체가 판당 2장 남짓이라 짝이 0.31쌍밖에
+  생기지 않아 **시험이 약하다**. heuristic은 짝 카드를 함께 쓰려고 손패를 운용하지도 않는다.
+- 남은 시험: Bond 발동을 직접 세기(발동 횟수와 그때 얻은 값), 그리고 정책 틀의 탐침. 팁 1·2는 서로 맞물린다 — 시너지는
+  얇은 덱이라야 함께 나오고, 얇은 덱은 시너지(기능)로 골라야 한다.
 
 ### 6.7 커뮤니티 팁 — 수집·출처 대조 완료, 사용자 대조 대기
 
@@ -197,7 +219,7 @@ workflow가 BGG·reddit·Dire Wolf 디자인 다이어리·Steam 가이드 등�
 ### 6.8 다음
 
 - 사용자: 팁 더 적기 → 커뮤니티 목록 대조. H-deck에서 "비싼 카드"의 기준이 비용인지 기능인지.
-- 팁 2 census와 heuristic 변형 A/B(6.6).
+- 팁 2: Bond 발동 직접 세기(6.6). heuristic 변형 A/B는 끝났다(잡음 안).
 - 정책 틀의 H-deck 탐침: 비싼 카드(비용 5 이상)를 살 수 있으면 사게 덮어쓴 5081 대 5081, 2:2(팔당 약 20분).
 - heuristic Tleilaxu 채택(6.5, 별도 작업 단위, 사용자 결정).
 - 평가 문제집에 sandworm 문항(6.3).
