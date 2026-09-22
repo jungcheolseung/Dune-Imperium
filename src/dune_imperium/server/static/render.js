@@ -151,6 +151,9 @@ const ICON_RULES = [
   [/\b(?:Victory Points?|VP)\b/y, () => textIcon("victory_point", "Victory Point")],
   [/\b[Tt]rash an Intrigue card\b/y, () => textIcon("trash_intrigue", "Trash an Intrigue card")],
   [/\b[Tt]rash\b/y, () => textIcon("trash", "Trash")],
+  /* "your discard pile" names the pile, which has no icon: kept as words so
+     the Discard rule does not title it with the discard action. */
+  [/\b[Dd]iscard piles?\b/y, (m) => document.createTextNode(m[0])],
   [/\b[Dd]iscard\b/y, () => textIcon("discard", "Discard")],
   [/\b(?:a |an )?Sp(?:y|ies)\b/y, (m) => textIcon("spy", m[0].trim())],
   [/\bAgents?\b/y, (m) => textIcon("agent", m[0])],
@@ -258,7 +261,7 @@ function costNode(cost) {
   let any = false;
   for (const resource of ["solari", "spice", "water"]) {
     if (cost[resource]) {
-      wrap.appendChild(amount(resource, resource, cost[resource]));
+      wrap.appendChild(amount(resource, termLabel(resource), cost[resource]));
       any = true;
     }
   }
