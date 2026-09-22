@@ -327,6 +327,16 @@ function keepScroll() {
 /* `foreign`: somebody else changed the game (the doorbell asked for this
    pass). The player did nothing, so a pinned popover stays open and every
    pane keeps its scroll position. */
+/* The header's ruleset badges, in the setup form's order of the options. */
+const RULESET_BADGES = [
+  ["choam_module", "render.badge_choam"],
+  ["promo_cards", "render.badge_promo"],
+  ["bloodlines", "render.badge_bloodlines"],
+  ["tech_module", "render.badge_tech"],
+  ["immortality", "render.badge_immortality"],
+  ["leader_draft", "render.badge_draft"],
+];
+
 function render(options) {
   const summary = state.summary;
   if (!summary) return;
@@ -339,13 +349,10 @@ function render(options) {
   const phase = shown ? shown.phase : summary.phase;
   el("header-status").textContent =
     t("render.round_status", { round, phase: PHASE_LABELS[phase] || phase }) +
-    (summary.game_seed === null ? "" : ` · seed ${summary.game_seed}`) +
-    (summary.choam_module ? " · CHOAM" : "") +
-    (summary.promo_cards ? " · promo" : "") +
-    (summary.bloodlines ? " · Bloodlines" : "") +
-    (summary.tech_module ? " · Tech" : "") +
-    (summary.immortality ? " · Immortality" : "") +
-    (summary.leader_draft ? " · draft" : "") +
+    (summary.game_seed === null ? "" : " · " + t("common.seed", { seed: summary.game_seed })) +
+    RULESET_BADGES.filter(([field]) => summary[field])
+      .map(([, key]) => " · " + t(key))
+      .join("") +
     (state.review
       ? " · " + (spectatorOnly() ? t("render.spectating_ai") : t("render.replay_review"))
       : "");

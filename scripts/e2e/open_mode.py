@@ -80,7 +80,8 @@ def scenario_full_game(base, browser) -> str:
     check.ok(not page.is_visible("#host-panel"), "no host panel on an open server")
     check.ok(page.is_visible("#save-game"), "save button shown")
     check.ok(
-        f"seed {SEED}" in page.inner_text("#header-status"),
+        page.evaluate(f"t('common.seed', {{seed: {SEED}}})")
+        in page.inner_text("#header-status"),
         "seed shown in the header on an open server",
     )
 

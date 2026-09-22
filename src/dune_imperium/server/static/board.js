@@ -335,7 +335,7 @@ function renderBoardStage(board, view) {
   const map = document.createElement("img");
   map.className = "board-map";
   map.src = state.catalog.board_image;
-  map.alt = "Dune: Imperium — Uprising board";
+  map.alt = t("board.map_alt");
   map.draggable = false;
   stage.appendChild(map);
 
@@ -351,7 +351,7 @@ function renderBoardStage(board, view) {
   const wall = state.catalog.shield_wall;
   if (view.shield_wall_present && wall && wall.image) {
     const token = boardPiece(wall.image, wall.box, "shield-wall-token");
-    token.alt = "Shield Wall";
+    token.alt = phraseText("{shield_wall}");
     token.style.transform = `rotate(${wall.rotation}deg)`;
     stage.appendChild(token);
   }
@@ -607,7 +607,7 @@ function allianceToken(key, size) {
   const token = document.createElement("span");
   token.className = "alliance-token";
   token.dataset.faction = key;
-  token.title = `${FACTION_LABELS[key]} Alliance`;
+  token.title = phraseText(`${FACTION_LABELS[key]} {alliance}`);
   token.style.width = `${size}%`;
   const url = (state.catalog.alliance_tokens || {})[key];
   if (url) {
@@ -618,7 +618,7 @@ function allianceToken(key, size) {
     token.appendChild(face);
   } else {
     token.classList.add("drawn");
-    token.appendChild(icon(`influence_${key}`, `${FACTION_LABELS[key]} Alliance`));
+    token.appendChild(icon(`influence_${key}`, token.title));
   }
   return token;
 }
@@ -805,7 +805,7 @@ function renderTrackMarkers(stage, view) {
     garrison.title = t("board.seat_garrison", { seat, count: player.troops_garrison || 0 });
     garrison.append(
       seatToken(seat, "seat-mark"),
-      amount("troop", "garrison troop", player.troops_garrison || 0)
+      amount("troop", phraseText("{garrison} {troop}"), player.troops_garrison || 0)
     );
     if (player.commanders_garrison) {
       const commanders = document.createElement("span");
@@ -828,10 +828,14 @@ function renderTrackMarkers(stage, view) {
       deployed.title = t("board.seat_conflict_troops", { seat });
       deployed.appendChild(seatToken(seat, "seat-mark"));
       if (player.troops_conflict) {
-        deployed.appendChild(amount("troop", "Conflict troop", player.troops_conflict));
+        deployed.appendChild(
+          amount("troop", phraseText("{conflict} {troop}"), player.troops_conflict),
+        );
       }
       if (player.sandworms_conflict) {
-        deployed.appendChild(amount("sandworm", "sandworm", player.sandworms_conflict));
+        deployed.appendChild(
+          amount("sandworm", phraseText("{sandworm}"), player.sandworms_conflict),
+        );
       }
       if (player.commanders_conflict) {
         const commanders = document.createElement("span");
@@ -1447,7 +1451,7 @@ function renderBeneTleilax(market, view) {
     if (index === layout.tleilaxu_spice_space && view.tleilaxu_track_spice) {
       const spice = document.createElement("span");
       spice.className = "stat";
-      spice.append(icon("spice", "spice"), String(view.tleilaxu_track_spice));
+      spice.append(icon("spice", phraseText("{spice}")), String(view.tleilaxu_track_spice));
       cell.appendChild(spice);
     }
     const tokens = document.createElement("span");
@@ -1563,7 +1567,7 @@ function renderBeneTleilaxScan(layout, view) {
   if (view.tleilaxu_track_spice) {
     const spice = document.createElement("span");
     spice.className = "bt-spice";
-    spice.append(icon("spice", "spice"), String(view.tleilaxu_track_spice));
+    spice.append(icon("spice", phraseText("{spice}")), String(view.tleilaxu_track_spice));
     spice.title = t("board.spice_first_reacher");
     placeAt(spice, overlay.spice_point[0], overlay.spice_point[1]);
     stage.appendChild(spice);

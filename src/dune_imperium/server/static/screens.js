@@ -95,7 +95,9 @@ function saveTitle(entry) {
   if (entry.autosave) return status;
   const title =
     entry.name ||
-    (entry.game_seed === null ? t("screens.unnamed_save") : `seed ${entry.game_seed}`);
+    (entry.game_seed === null
+      ? t("screens.unnamed_save")
+      : t("common.seed", { seed: entry.game_seed }));
   return `${title} · ${status}`;
 }
 
@@ -226,7 +228,7 @@ function setRoomHash(gameId) {
 }
 
 function seedLabel(summary) {
-  return summary.game_seed === null ? "" : `seed ${summary.game_seed} · `;
+  return summary.game_seed === null ? "" : `${t("common.seed", { seed: summary.game_seed })} · `;
 }
 
 function humanSeatsOf(summary) {

@@ -13,6 +13,10 @@ const UI_TEXT = {
     "ko": "초기화 실패 ({{message}})",
     "en": "Initialization failed ({{message}})"
   },
+  "board.map_alt": {
+    "ko": "게임판",
+    "en": "Dune: Imperium — Uprising board"
+  },
   "board.agent_seats": {
     "ko": "{agent}: {{seats}}",
     "en": "{agent}: {{seats}}"
@@ -216,6 +220,10 @@ const UI_TEXT = {
   "board.view_full_size": {
     "ko": "크게 보기",
     "en": "View full size"
+  },
+  "common.seed": {
+    "ko": "시드 {{seed}}",
+    "en": "seed {{seed}}"
   },
   "common.close": {
     "ko": "닫기",
@@ -996,6 +1004,30 @@ const UI_TEXT = {
   "render.reveal_preview_title": {
     "ko": "지금 손패를 공개하면 바로 얻는 {persuasion}과 {strength} ({reveal_turn} 중의 선택 효과는 제외)",
     "en": "The {persuasion} and {strength} gained immediately by revealing your hand now (excludes optional effects during the {reveal_turn})"
+  },
+  "render.badge_choam": {
+    "ko": "초암 모듈",
+    "en": "CHOAM"
+  },
+  "render.badge_promo": {
+    "ko": "프로모 카드",
+    "en": "promo"
+  },
+  "render.badge_bloodlines": {
+    "ko": "혈통",
+    "en": "Bloodlines"
+  },
+  "render.badge_tech": {
+    "ko": "기술 모듈",
+    "en": "Tech"
+  },
+  "render.badge_immortality": {
+    "ko": "불멸",
+    "en": "Immortality"
+  },
+  "render.badge_draft": {
+    "ko": "지도자 드래프트",
+    "en": "draft"
   },
   "render.round_status": {
     "ko": "라운드 {{round}} · {{phase}}",

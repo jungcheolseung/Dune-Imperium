@@ -160,6 +160,7 @@ Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 �
 | EN | 한국어 | 인용 | 적용 |
 | --- | --- | --- | --- |
 | Maker | 메이커 | `[Main p. 20]` | 적용 |
+| game board | 게임판 | `[Main p. 3]`("양면 게임판" / "Two-sided game board") | 적용 |
 | Imperium Deck / Intrigue Deck / Conflict deck | 임페리움 카드덱 / 책략 카드덱 / 교전 카드덱 | `[Main p. 4]`(준비 C1·C2, "교전 카드덱을 만듭니다") | 적용 |
 | Contract | 계약 | `[Main p. 20]` | 적용 |
 | Control | 지배 | `[Main p. 20]` | 적용 |

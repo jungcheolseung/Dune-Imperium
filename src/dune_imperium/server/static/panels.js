@@ -157,7 +157,7 @@ function renderSeats() {
       const badge = document.createElement("span");
       badge.className = "badge ai";
       badge.textContent = seatKindLabel(summary.seats[seat]);
-      badge.title = summary.seats[seat];
+      badge.title = seatKindLabel(summary.seats[seat]);
       who.appendChild(badge);
     }
     if (summary.first_player === seat) {
@@ -605,7 +605,7 @@ function neutralTitle(group) {
         : t("panels.neutral_round_started_generic")
     );
   }
-  if (kinds.has("endgame_started")) parts.push("Endgame");
+  if (kinds.has("endgame_started")) parts.push(phraseText("{endgame}"));
   if (kinds.has("game_finished")) parts.push(t("common.game_over"));
   return parts.length ? parts.join(" · ") : t("panels.neutral_default");
 }
@@ -709,7 +709,11 @@ function turnCard(group, freshFrom) {
   if (targets.spaces.length) {
     const where = document.createElement("span");
     where.className = "turn-where";
-    where.append(agentPieceIcon("Agent"), " ", targets.spaces.map(nameOf).join(", "));
+    where.append(
+      agentPieceIcon(phraseText("{agent}")),
+      " ",
+      targets.spaces.map(nameOf).join(", "),
+    );
     head.appendChild(where);
   }
   card.appendChild(head);
@@ -843,9 +847,9 @@ function renderPrivate() {
   const counts = document.createElement("span");
   counts.className = "hand-counts";
   counts.append(
-    statNode("draw", "deck", view.private.deck_size),
-    statNode("discard", "discard", own.discard_pile.length),
-    statNode("intrigue", "Intrigue", view.private.intrigue_cards.length)
+    statNode("draw", phraseText("{deck}"), view.private.deck_size),
+    statNode("discard", phraseText("{discard_pile}"), own.discard_pile.length),
+    statNode("intrigue", phraseText("{intrigue}"), view.private.intrigue_cards.length)
   );
   /* Discard piles are public (OQ-010); the owner's copy lives in the seat's
      public block like everyone else's. */
