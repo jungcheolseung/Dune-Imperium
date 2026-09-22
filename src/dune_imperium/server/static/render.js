@@ -8,6 +8,40 @@
    of the official Icon Guide) with a text fallback when the set is absent. */
 const SEAT_COLORS = ["#2fb3ff", "#ff5a4e", "#7ddc6a", "#f4c542"];
 
+/* Player pieces traced from the rulebook art.  The rulebook Icon Guide's
+   agent.png has a + because it means gaining the third Agent; ordinary UI
+   references to an Agent use this unadorned piece silhouette instead. */
+const PIECE_SHAPES = {
+  agent: {
+    viewBox: "0 0 52 81",
+    outline:
+      "M26 1 C29.6 1 35.2 5.5 35.8 12.6 L39 14.6 L50.6 42.2 C51.3 43 51.3 43.8 50.6 44.6" +
+      " L41.6 54 L41.6 65 L47 76.6 L47 80 L5 80 L5 76.6 L10.4 65 L10.4 54 L1.4 44.6" +
+      " C0.7 43.8 0.7 43 1.4 42.2 L13 14.6 L16.2 12.6 C16.8 5.5 22.4 1 26 1 Z",
+  },
+  spy: {
+    viewBox: "0 0 56 80",
+    outline: "M1 16 A27 15 0 0 1 55 16 L55 64 A27 15 0 0 1 1 64 Z",
+    top: { cx: 28, cy: 18, rx: 20, ry: 9 },
+  },
+};
+
+function agentPieceIcon(label) {
+  const svgNs = "http://www.w3.org/2000/svg";
+  const shape = PIECE_SHAPES.agent;
+  const svg = document.createElementNS(svgNs, "svg");
+  svg.setAttribute("class", "icon agent-piece-icon");
+  svg.setAttribute("viewBox", shape.viewBox);
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", label);
+  const title = document.createElementNS(svgNs, "title");
+  title.textContent = label;
+  const path = document.createElementNS(svgNs, "path");
+  path.setAttribute("d", shape.outline);
+  svg.append(title, path);
+  return svg;
+}
+
 function iconUrl(name) {
   const icons = state.catalog && state.catalog.icons;
   return icons && icons[name] ? icons[name] : null;
@@ -102,6 +136,14 @@ function termNode(name, count) {
     const span = document.createElement("span");
     span.textContent = count === undefined ? label : `${count} ${label}`;
     return span;
+  }
+  if (name === "agent") {
+    if (count === undefined) return agentPieceIcon(label);
+    const wrap = document.createElement("span");
+    wrap.className = "amount";
+    wrap.title = String(count) + " " + label;
+    wrap.append(String(count), agentPieceIcon(label));
+    return wrap;
   }
   return count === undefined ? icon(term.icon, label) : amount(term.icon, label, count);
 }

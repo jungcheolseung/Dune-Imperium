@@ -111,6 +111,7 @@ button:disabled { opacity: 0.5; cursor: wait; }
   vertical-align: -0.3em;
   margin: 0 0.05em;
 }
+.agent-piece-icon { fill: currentColor; }
 .icon-text {
   display: inline-block;
   font-size: 0.72em;

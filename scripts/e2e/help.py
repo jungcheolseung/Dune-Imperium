@@ -195,6 +195,33 @@ def help_panel(page) -> None:
     if not shown["open"]:
         return  # nothing below can be looked at
 
+    agents = page.evaluate(
+        """() => {
+            const read = (node) => node && ({
+                tag: node.tagName.toLowerCase(),
+                viewBox: node.getAttribute('viewBox'),
+                path: node.querySelector('path')?.getAttribute('d'),
+                image: node.querySelector('image')?.getAttribute('href') || null,
+            });
+            return {
+                status: read(document.querySelector('#seats .stat .agent-piece-icon')),
+                help: read(document.querySelector(
+                    '#help-body .agent-piece-icon[data-term="agent"]')),
+                boardPath: PIECE_SHAPES.agent.outline,
+            };
+        }"""
+    )
+    check.ok(
+        agents["status"] is not None
+        and agents["status"] == agents["help"]
+        and agents["status"]["tag"] == "svg"
+        and agents["status"]["viewBox"] == "0 0 52 81"
+        and agents["status"]["path"] == agents["boardPath"]
+        and agents["status"]["image"] is None,
+        "status and help use the plain Agent piece, not the +Agent image",
+        agents,
+    )
+
     legend = page.evaluate(
         """() => {
             const drawn = new Set();

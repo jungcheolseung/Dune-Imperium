@@ -6,7 +6,10 @@ function statNode(name, label, value) {
   const stat = document.createElement("span");
   stat.className = "stat";
   stat.title = label;
-  stat.append(icon(name, label), String(value));
+  stat.append(
+    name === "agent" ? agentPieceIcon(label) : icon(name, label),
+    String(value),
+  );
   return stat;
 }
 
@@ -246,7 +249,7 @@ function renderSeats() {
         deployed.append(commanderChip(player.commanders_conflict, "{conflict}"));
       }
       if (player.agent_in_conflict) {
-        deployed.append(" ", icon("agent", phraseText("{agent}")), "(Into the Fray)");
+        deployed.append(" ", agentPieceIcon(phraseText("{agent}")), "(Into the Fray)");
       }
       forces.appendChild(deployed);
     }
@@ -778,7 +781,7 @@ function turnCard(group, freshFrom) {
   if (targets.spaces.length) {
     const where = document.createElement("span");
     where.className = "turn-where";
-    where.append(icon("agent", "Agent"), " ", targets.spaces.map(nameOf).join(", "));
+    where.append(agentPieceIcon("Agent"), " ", targets.spaces.map(nameOf).join(", "));
     head.appendChild(where);
   }
   card.appendChild(head);
