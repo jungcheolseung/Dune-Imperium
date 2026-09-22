@@ -6,8 +6,10 @@ all-expansion game before this: the four cards came to 1,678px mid-game and
 fold and the card lines — Battle, In play, Tech, Contracts — were most of the
 weight.
 
-Head, stats and the zone counts stay. The rest folds, and the fold still says
-what it is holding, so a folded seat is informative rather than blank. `s`
+Board-visible Influence, garrison, Conflict forces, strength and Bene Tleilax
+track positions are absent from the panel; troop supply is absent too. Specimens
+remain as an icon count. Head, compact stats and the zone counts stay. The rest
+folds, and the fold still says what it is holding rather than going blank. `s`
 folds or opens all four, and the choice is remembered per browser.
 
 Also guards the last English line in the panel: the zone counts used to read
@@ -62,28 +64,46 @@ def watched_game(page, base: str) -> None:
     )
 
 
-def check_moved_counts(page) -> None:
-    """What left the zone line is still on the panel: the Intrigue count on the
-    resource row, the supply in the garrison's title and the detail, the
-    garrisoned and supplied Commanders as C chips."""
+def check_compact_stats(page) -> None:
+    """Only off-board counts remain, with Specimens promoted to an icon stat."""
     rows = page.evaluate(
         """() => state.view.players.map((player, index) => {
             const card = document.querySelectorAll('#seats article.seat')[index];
             const stats = [...card.querySelectorAll(':scope > .stats .stat')];
-            const head = phraseText('{garrison}');
-            const garrison = stats.find((s) => s.title.startsWith(head));
             const detail = card.querySelector('.seat-detail');
+            const lines = [...detail.querySelectorAll(':scope > .cardline')];
+            const status = lines.find((line) =>
+                line.querySelector('strong')?.textContent.trim() ===
+                    t('panels.status_label'));
+            const specimen = stats.find((s) => s.title === phraseText('{specimen}'));
             return {
                 intrigue: player.intrigue_card_count,
                 intrigueShown: stats.some((s) => s.title === phraseText('{intrigue}')
                     && s.textContent.trim() === String(player.intrigue_card_count)),
-                supply: player.troops_supply,
-                garrisonTitle: garrison ? garrison.title : null,
-                detailText: detail ? detail.textContent : '',
-                commandersGarrison: player.commanders_garrison || 0,
-                commandersSupply: player.commanders_supply || 0,
-                garrisonChip: garrison && garrison.querySelector('.commander-count')
-                    ? garrison.querySelector('.commander-count').textContent : null,
+                specimen: player.specimens || 0,
+                specimenShown: specimen
+                    ? specimen.textContent.trim() === String(player.specimens || 0)
+                    : false,
+                specimenImage: specimen?.querySelector('img.icon')?.getAttribute('src'),
+                statTitles: stats.map((s) => s.title),
+                expectedTitles: [
+                    phraseText('{victory_point}'),
+                    phraseText('{solari}'),
+                    phraseText('{spice}'),
+                    phraseText('{water}'),
+                    phraseText('{intrigue}'),
+                    phraseText('{specimen}'),
+                    t('panels.agent_remaining'),
+                    t('panels.supply_spy'),
+                ],
+                supplyLine: lines.some((line) =>
+                    line.querySelector('strong')?.textContent.trim() ===
+                        phraseText('{supply}')),
+                statusText: status?.textContent || '',
+                researchText: player.research_space
+                    ? researchSpaceName(player.research_space, false) : '',
+                tleilaxuText:
+                    phraseText('{tleilaxu}') + ' ' + String(player.tleilaxu_space || 0),
             };
         })"""
     )
@@ -91,23 +111,24 @@ def check_moved_counts(page) -> None:
     for seat, row in enumerate(rows):
         if not row["intrigueShown"]:
             missing.append((seat, "intrigue", row["intrigue"]))
-        supply = f"{row['supply']}"
-        if not (row["garrisonTitle"] and row["garrisonTitle"].endswith(supply)):
-            missing.append((seat, "supply in title", row["garrisonTitle"]))
-        if supply not in row["detailText"]:
-            missing.append((seat, "supply in detail", row["detailText"][-40:]))
-        want = f"C{row['commandersGarrison']}" if row["commandersGarrison"] else None
-        if row["garrisonChip"] != want:
-            missing.append((seat, "garrison C chip", row["garrisonChip"], want))
-        supplied = row["commandersSupply"]
-        if supplied and f"C{supplied}" not in row["detailText"]:
-            missing.append((seat, "supply C chip", supplied))
+        if not row["specimenShown"] or "/icons/specimen.png" not in (
+            row["specimenImage"] or ""
+        ):
+            missing.append(
+                (seat, "specimen icon/count", row["specimen"], row["specimenImage"])
+            )
+        if set(row["statTitles"]) != set(row["expectedTitles"]):
+            missing.append((seat, "stats", row["statTitles"]))
+        if row["supplyLine"]:
+            missing.append((seat, "troop supply line"))
+        if row["researchText"] and row["researchText"] in row["statusText"]:
+            missing.append((seat, "research track", row["statusText"]))
+        if row["tleilaxuText"] in row["statusText"]:
+            missing.append((seat, "Tleilaxu track", row["statusText"]))
     check.ok(
-        not missing, "the counts that moved off the zone line are still shown", missing
-    )
-    check.ok(
-        any(row["commandersGarrison"] or row["commandersSupply"] for row in rows),
-        f"seed {SEED} really has a Commander to show",
+        not missing,
+        "seat stats omit board-visible tracks and forces, but show specimen icons",
+        missing,
     )
 
 
@@ -160,7 +181,7 @@ def run(base: str, browser) -> None:
         ".filter((img) => getComputedStyle(img).display !== 'none').length"
     )
     check.ok(shown == 4, "1600x1000 keeps the four Leader pictures", shown)
-    check_moved_counts(page)
+    check_compact_stats(page)
 
     # Open one seat: only that one grows.
     page.click("#seats > *:nth-child(2) .seat-more")

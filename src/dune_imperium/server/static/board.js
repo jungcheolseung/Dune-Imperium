@@ -602,16 +602,13 @@ function discCluster(count, halfX, halfY, { fromTop = false, upright = false } =
 
 /* A Faction's Alliance token: its picture (catalog.alliance_tokens) cut to
    the round token, or a drawn disc with the Faction's emblem without the
-   owner's token pictures. With a `size` (percent of the stage) it lies on
-   the board; without one it is an inline token for the seat panels. */
-function allianceToken(key, size, holder) {
+   owner's token pictures. The size is a percentage of the board stage. */
+function allianceToken(key, size) {
   const token = document.createElement("span");
   token.className = "alliance-token";
   token.dataset.faction = key;
-  token.dataset.holder = holder === undefined ? "" : String(holder);
   token.title = `${FACTION_LABELS[key]} Alliance`;
-  if (size !== undefined) token.style.width = `${size}%`;
-  else token.classList.add("inline");
+  token.style.width = `${size}%`;
   const url = (state.catalog.alliance_tokens || {})[key];
   if (url) {
     const face = document.createElement("img");
@@ -624,51 +621,6 @@ function allianceToken(key, size, holder) {
     token.appendChild(icon(`influence_${key}`, `${FACTION_LABELS[key]} Alliance`));
   }
   return token;
-}
-
-/* Where each Faction's Alliance token is on the screen and who holds it
-   ("" on the board), so a render can tell a token that changed hands. */
-function allianceTokenPlaces() {
-  const places = new Map();
-  for (const token of document.querySelectorAll(".alliance-token:not(.flying)")) {
-    const rect = token.getBoundingClientRect();
-    if (rect.width) places.set(token.dataset.faction, { holder: token.dataset.holder, rect });
-  }
-  return places;
-}
-
-/* An Alliance token that changed hands — earned from the board, taken over
-   by a seat that passed its holder, or returned [Main p. 7] [FAQ p. 1] —
-   flies from where it lay to where it lies now. The flight is a copy above
-   the page (the seat panels scroll and would clip the token itself). */
-function animateMovedAllianceTokens(before) {
-  if (!before.size) return;
-  if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-  for (const token of document.querySelectorAll(".alliance-token:not(.flying)")) {
-    const was = before.get(token.dataset.faction);
-    const to = token.getBoundingClientRect();
-    if (!was || was.holder === token.dataset.holder || !to.width) continue;
-    const ghost = token.cloneNode(true);
-    ghost.classList.remove("inline");
-    ghost.classList.add("flying");
-    const lay = (rect) => {
-      ghost.style.left = `${rect.left}px`;
-      ghost.style.top = `${rect.top}px`;
-      ghost.style.width = `${rect.width}px`;
-    };
-    lay(was.rect);
-    document.body.appendChild(ghost);
-    token.style.visibility = "hidden";
-    ghost.getBoundingClientRect();
-    ghost.classList.add("moving");
-    lay(to);
-    const land = () => {
-      ghost.remove();
-      token.style.visibility = "";
-    };
-    ghost.addEventListener("transitionend", land, { once: true });
-    setTimeout(land, 1200);
-  }
 }
 
 /* A seat's Maker Hooks token in the slot its garrison prints for it: "Place
@@ -726,8 +678,8 @@ function renderTrackMarkers(stage, view) {
     scoreStacks.get(level).push(seat);
   });
   /* An Alliance token lies on the marked ring of its Faction's strip until a
-     player earns it and takes it into their supply [Main pp. 4, 7] (it then
-     shows on that seat's panel); the vacated ring takes the holder's colour. */
+     player earns it and takes it into their supply [Main pp. 4, 7]; the
+     vacated ring takes the holder's colour. */
   for (const key of factions) {
     const offset = tracks.influence.offsets[key];
     if (offset === undefined) continue;

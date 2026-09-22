@@ -747,7 +747,7 @@ const TERMS = {
   conflict: { icon: null, ko: "교전", en: "Conflict" },
   strength: { icon: null, ko: "전투력", en: "strength" },
   research: { icon: null, ko: "연구", en: "Research" },
-  specimen: { icon: null, ko: "표본", en: "specimen" },
+  specimen: { icon: "specimen", ko: "표본", en: "specimen" },
   tleilaxu: { icon: null, ko: "틀레이락스", en: "Tleilaxu" },
   graft: { icon: null, ko: "접합", en: "Graft" },
   tech_tile: { icon: null, ko: "기술 타일", en: "Tech tile" },

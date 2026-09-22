@@ -329,7 +329,6 @@ function render(options) {
   const foreign = Boolean(options && options.foreign);
   const kept = foreign ? keepScroll() : [];
   if (!(foreign && popoverPinned)) closePopover();
-  const allianceBefore = allianceTokenPlaces();
   const shown = state.review && state.review.phase ? state.review : null;
   const round = shown ? shown.round : summary.round_number;
   const phase = shown ? shown.phase : summary.phase;
@@ -361,7 +360,6 @@ function render(options) {
     pane.scrollTop = top;
     pane.scrollLeft = left;
   }
-  animateMovedAllianceTokens(allianceBefore);
 }
 
 /* Post-game full disclosure (OQ-010 ruling 4): once a game has finished,

@@ -200,25 +200,6 @@ def printed_places(page) -> None:
           render();
         }"""
     )
-    # The two tokens that changed hands fly to their holders' panels (a copy
-    # above the page while the token itself waits hidden), then land.
-    flying = page.evaluate(
-        "[...document.querySelectorAll('.alliance-token.flying')]"
-        ".map((n) => n.dataset.faction)"
-    )
-    check.ok(
-        sorted(flying) == ["emperor", "fremen"],
-        "earned tokens fly to their holders",
-        flying,
-    )
-    page.wait_for_function(
-        "document.querySelectorAll('.alliance-token.flying').length === 0"
-    )
-    hidden = page.evaluate(
-        "[...document.querySelectorAll('.alliance-token')]"
-        ".filter((n) => n.style.visibility === 'hidden').length"
-    )
-    check.ok(hidden == 0, "and land: every token shows again")
     images_loaded(page)
 
     holders = {"imperial_basin": 0, "arrakeen": 1, "spice_refinery": 2}
@@ -299,15 +280,10 @@ def printed_places(page) -> None:
         "the vacated rings take the holders' colours",
         rings,
     )
-    for seat, faction in ((0, "emperor"), (3, "fremen")):
-        held = page.locator(
-            f"#seats .seat[data-seat='{seat}']"
-            f" .alliance-token.inline[data-faction='{faction}']"
-        )
-        check.ok(held.count() == 1, f"seat {seat}'s panel holds the {faction} token")
     check.ok(
-        page.locator("#seats .alliance-token.inline").count() == 2,
-        "and nobody else's panel shows one",
+        page.locator("#seats .alliance-token").count() == 0,
+        "held tokens are represented by their coloured board rings,"
+        " not duplicate stats",
     )
 
 

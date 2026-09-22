@@ -172,8 +172,8 @@ function renderSeats() {
 
     const stats = document.createElement("div");
     stats.className = "stats";
-    /* The Intrigue count sits with the resources: it has a printed icon,
-       and taking it off the zone line keeps that line to one row. */
+    /* Counts that are not already visible on a board track stay at a glance.
+       Immortality p. 16 names the green cube as the Specimen icon. */
     stats.append(
       statNode("victory_point", phraseText("{victory_point}"), player.victory_points),
       statNode("solari", phraseText("{solari}"), player.resources.solari),
@@ -181,79 +181,21 @@ function renderSeats() {
       statNode("water", phraseText("{water}"), player.resources.water),
       statNode("intrigue", phraseText("{intrigue}"), player.intrigue_card_count),
     );
+    if (summary.immortality) {
+      stats.appendChild(
+        statNode("specimen", phraseText("{specimen}"), player.specimens || 0),
+      );
+    }
     card.appendChild(stats);
 
-    const influence = document.createElement("div");
-    influence.className = "stats";
-    for (const [key, label] of Object.entries(FACTION_LABELS)) {
-      const stat = statNode(
-        `influence_${key}`,
-        phraseText(`{influence_${key}}`),
-        player.influence[key],
-      );
-      if (player.alliance_faction_ids.includes(key)) {
-        /* The Alliance token is in this seat's supply [Main p. 7]. */
-        stat.classList.add("alliance");
-        stat.title += phraseText(" · {alliance}");
-        stat.appendChild(allianceToken(key, undefined, seat));
-      }
-      influence.appendChild(stat);
-    }
-    card.appendChild(influence);
 
-    const forces = document.createElement("div");
-    forces.className = "stats";
-    /* The sword is the printed strength icon, so it carries the strength
-       number; the units in the Conflict get the troop icon under a
-       "Conflict" tag so they do not read as the garrison. */
-    const garrison = statNode(
-      "troop",
-      phraseText("{garrison} {troop}"),
-      player.troops_garrison,
-    );
-    garrison.title += phraseText(` · {supply} ${player.troops_supply}`);
-    /* Sardaukar Commanders (Bloodlines): 2-strength "troops" that return to
-       the supply after Combat [Bloodlines p. 4]. Garrisoned ones read as the
-       board's C chip beside the troops; the ones in the supply go on the
-       zone line. The old "Commander 0/1" text pushed this row onto two. */
-    if (player.commanders_garrison) {
-      garrison.appendChild(commanderChip(player.commanders_garrison, "{garrison}"));
-    }
-    forces.append(
+    const pieces = document.createElement("div");
+    pieces.className = "stats";
+    pieces.append(
       statNode("agent", t("panels.agent_remaining"), player.agents_available),
-      garrison,
-      statNode("sword", phraseText("{strength}"), player.combat_strength || 0),
       statNode("spy", t("panels.supply_spy"), player.spies_supply),
     );
-    if (
-      player.troops_conflict ||
-      player.sandworms_conflict ||
-      player.commanders_conflict ||
-      player.agent_in_conflict
-    ) {
-      const deployed = document.createElement("span");
-      deployed.className = "stat deployed";
-      deployed.title = t("panels.conflict_deployed");
-      deployed.append(phraseText("{conflict} "));
-      if (player.troops_conflict) {
-        deployed.append(icon("troop", phraseText("{troop}")), String(player.troops_conflict));
-      }
-      if (player.sandworms_conflict) {
-        deployed.append(
-          " ",
-          icon("sandworm", phraseText("{sandworm}")),
-          String(player.sandworms_conflict),
-        );
-      }
-      if (player.commanders_conflict) {
-        deployed.append(commanderChip(player.commanders_conflict, "{conflict}"));
-      }
-      if (player.agent_in_conflict) {
-        deployed.append(" ", agentPieceIcon(phraseText("{agent}")), "(Into the Fray)");
-      }
-      forces.appendChild(deployed);
-    }
-    card.appendChild(forces);
+    card.appendChild(pieces);
 
     /* Each flag is nodes (tNode), so its rule terms keep their icons; High
        Council, Swordmaster and Family Atomics are names and stay as written. */
@@ -282,15 +224,9 @@ function renderSeats() {
     }
     if (player.has_secret_project) flags.push(tNode("panels.secret_project"));
     if (player.spies_boxed) flags.push(tNode("panels.spy_boxed", { count: player.spies_boxed }));
-    /* Immortality: specimens in the Axolotl tanks, the two Bene Tleilax
-       tokens, the Family Atomics token, and the grafted-card promises. */
+    /* Immortality state not drawn on the Bene Tleilax board: the Family
+       Atomics token and grafted-card promises. */
     if (state.summary.immortality) {
-      flags.push(tNode("panels.specimen_flag", { count: player.specimens || 0 }));
-      if (player.research_space) {
-        /* The research token's place, named as the log names it (core.js). */
-        flags.push(researchSpaceName(player.research_space, false) || player.research_space);
-      }
-      flags.push(tNode("panels.tleilaxu_space", { space: player.tleilaxu_space || 0 }));
       if (player.family_atomics) flags.push("Family Atomics");
       if ((player.chairdog_return_card_ids || []).length) {
         flags.push(
@@ -342,19 +278,11 @@ function renderSeats() {
     }
     const agents = player.agent_locations.map(nameOf).join(", ");
     if (agents) seatLine(detail, t("panels.agents_placed_label"), agents);
-    const supply = document.createElement("span");
-    supply.append(icon("troop", phraseText("{troop}")), String(player.troops_supply));
-    if (player.commanders_supply) {
-      supply.appendChild(commanderChip(player.commanders_supply, "{supply}"));
-    }
-    seatLine(detail, phraseText("{supply}"), supply);
 
     const zones = document.createElement("div");
     zones.className = "zones";
     /* The last English line in the seat panel: the zone names are glossary
        terms, so phraseText gives them the same words as everywhere else. */
-    /* One row: the supply (12 troops less the garrison and the Conflict)
-       moved into the detail, and into the garrison's title. */
     zones.textContent = phraseText(
       `{hand} ${player.hand_size} · {deck} ${player.deck_size}` +
         ` · {discard_pile} ${player.discard_pile.length}`,

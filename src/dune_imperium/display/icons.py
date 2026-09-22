@@ -1,20 +1,22 @@
-"""Local game-icon filename mapping extracted from the official rulebook.
+"""Local game-icon filename mappings extracted from official rulebooks.
 
-``RULEBOOK_ICON_SOURCES`` records, for every named game icon, its
+``RULEBOOK_ICON_SOURCES`` records the named game icons and their
 ``(page_number, image_xref)`` location inside the pinned "Uprising Main
 Rulebook" PDF (``scripts/official-rule-sources.json`` key ``main``, sha256
 ``0a8daa36f73c09316143d05bbd5d845183d1ae6f56ce211d93c59b360074f7db``). Page
 numbers are 1-based; xrefs were read from that exact file with PyMuPDF
 (``page.get_image_info(xrefs=True)``) and are only valid for that file
-version — if the pinned PDF is ever updated, this table must be
-re-extracted, not reused.
+version. ``RULEBOOK_ICON_SOURCE_GROUPS`` also adds the Specimen icon from the
+pinned Immortality Rulebook (page 16, xref 203, sha256
+``2a7ba3b8129bc108a82c3b2677d7ce27ffc64be88532b691f55836bf48666a79``).
+If either pinned PDF is updated, its xrefs must be re-extracted, not reused.
 
 ``scripts/extract_rulebook_icons.py`` uses this table to crop each icon out
-of the rulebook and key out its background, producing one transparent PNG
-per name in the gitignored ``assets/icons`` directory. The icons are
-copyrighted Dire Wolf Digital artwork; they are extracted for machine-local
-UI use only and are never committed to this repository, the same policy as
-the Dune Cards Hub card images in ``dune_imperium.display.images``.
+of its rulebook and key out its background, producing one transparent PNG per
+name in the gitignored ``assets/icons`` directory. The icons are copyrighted
+Dire Wolf Digital artwork; they are extracted for machine-local UI use only
+and are never committed to this repository, the same policy as the Dune Cards
+Hub card images in ``dune_imperium.display.images``.
 """
 
 from collections.abc import Mapping
@@ -71,7 +73,28 @@ RULEBOOK_ICON_SOURCES: Final[Mapping[str, tuple[int, int]]] = MappingProxyType(
     }
 )
 
-ICON_NAMES: Final[tuple[str, ...]] = tuple(RULEBOOK_ICON_SOURCES.keys())
+IMMORTALITY_ICON_SOURCES: Final[Mapping[str, tuple[int, int]]] = MappingProxyType(
+    {
+        # "Specimen: Place a troop from your supply in the Axolotl tanks"
+        # [Immortality p. 16].
+        "specimen": (16, 203),
+    }
+)
+
+RULEBOOK_ICON_SOURCE_GROUPS: Final[
+    Mapping[str, Mapping[str, tuple[int, int]]]
+] = MappingProxyType(
+    {
+        "main": RULEBOOK_ICON_SOURCES,
+        "immortality": IMMORTALITY_ICON_SOURCES,
+    }
+)
+
+ICON_NAMES: Final[tuple[str, ...]] = tuple(
+    name
+    for sources in RULEBOOK_ICON_SOURCE_GROUPS.values()
+    for name in sources
+)
 
 
 def icon_filename(name: str) -> str:

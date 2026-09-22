@@ -629,10 +629,6 @@ const UI_TEXT = {
     "ko": " (완료)",
     "en": " (completed)"
   },
-  "panels.conflict_deployed": {
-    "ko": "{conflict}에 배치한 유닛",
-    "en": "Units deployed to {conflict}"
-  },
   "panels.contracts_label": {
     "ko": "{contract}",
     "en": "Contracts"
@@ -769,10 +765,6 @@ const UI_TEXT = {
     "ko": "{commander_skill}",
     "en": "Skills"
   },
-  "panels.specimen_flag": {
-    "ko": "{specimen} {{count}}",
-    "en": "{specimen} {{count}}"
-  },
   "panels.spy_boxed": {
     "ko": "상자로 돌아간 {spy} {{count}}",
     "en": "{spy} back in the box: {{count}}"
@@ -824,10 +816,6 @@ const UI_TEXT = {
   "panels.tech_label": {
     "ko": "{tech_tile}",
     "en": "Tech"
-  },
-  "panels.tleilaxu_space": {
-    "ko": "{tleilaxu} {{space}}",
-    "en": "{tleilaxu} {{space}}"
   },
   "panels.twisted_deck": {
     "ko": "뒤틀린 책략 카드덱 {{count}}",
