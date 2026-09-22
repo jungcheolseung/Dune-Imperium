@@ -88,6 +88,15 @@ def _build_parser() -> argparse.ArgumentParser:
             "(default: pure self-play)"
         ),
     )
+    parser.add_argument(
+        "--learner-seats",
+        type=int,
+        default=1,
+        help=(
+            "seats the learner holds at each table when --opponent is set "
+            "(1-3, default 1); the rest are the opponent"
+        ),
+    )
     parser.add_argument("--temperature", type=float, default=1.0)
     parser.add_argument(
         "--rank-rewards",
@@ -183,6 +192,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 clip_ratio=arguments.clip,
             ),
             opponent=arguments.opponent,
+            learner_seats=arguments.learner_seats,
             temperature=arguments.temperature,
             rank_rewards=arguments.rank_rewards,
             step_penalty=arguments.step_penalty,

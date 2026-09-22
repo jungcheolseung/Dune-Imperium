@@ -73,9 +73,15 @@ class TrainConfig:
     immortality: bool = False
     hidden: tuple[int, ...] = DEFAULT_HIDDEN
     learner: LearnerConfig = field(default_factory=LearnerConfig)
-    # Baseline kind seated in the three other seats during collection; None
+    # Baseline kind seated in the non-learner seats during collection; None
     # means pure self-play with the learner in every seat.
     opponent: str | None = None
+    # Seats the learner holds at each table when ``opponent`` is set (1-3).
+    # One learner seat against three frozen ones yields a quarter of the
+    # learner rows of self-play per game (measured 6,103 against 24,805 a
+    # 32-game iteration, 2026-09-22), so a fixed opponent is cheaper to
+    # learn against at two seats each.
+    learner_seats: int = 1
     temperature: float = 1.0
     # Pay the finishing order instead of winner-take-all during collection
     # (training.selfplay.rank_reward); a learning-side reward transform.
@@ -109,6 +115,12 @@ class TrainConfig:
             raise ValueError("workers must be positive")
         if self.step_penalty < 0.0:
             raise ValueError("step_penalty must not be negative")
+        if not 1 <= self.learner_seats <= 3:
+            raise ValueError("learner_seats must be between 1 and 3")
+        if self.learner_seats != 1 and self.opponent is None:
+            raise ValueError(
+                "learner_seats needs an opponent (self-play seats all four)"
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,13 +172,26 @@ def _iteration_specs(config: TrainConfig, iteration: int) -> tuple[SelfPlaySpec,
         if config.opponent is None:
             lineup: tuple[str, ...] = (LEARNER,) * players
         else:
-            seat = offset % players
+            learner = _learner_seats(offset, config.learner_seats, players)
             lineup = tuple(
-                LEARNER if index == seat else config.opponent
+                LEARNER if index in learner else config.opponent
                 for index in range(players)
             )
         specs.append(SelfPlaySpec(game_seed=first + offset, lineup=lineup))
     return tuple(specs)
+
+
+def _learner_seats(offset: int, count: int, players: int) -> frozenset[int]:
+    """Which seats the learner holds in the ``offset``-th game of an iteration.
+
+    The learner seats are spread evenly and the pattern rotates with the
+    game, so over an iteration every seat position is the learner's equally
+    often: one seat walks 0, 1, 2, 3; two seats alternate {0, 2} and {1, 3},
+    the interleaved table the 2:2 evaluation mirror also uses.
+    """
+
+    step = players // count
+    return frozenset((offset + index * step) % players for index in range(count))
 
 
 def _learner_outcomes(episodes: tuple[Episode, ...]) -> tuple[float, float]:

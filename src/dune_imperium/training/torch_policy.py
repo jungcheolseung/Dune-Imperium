@@ -204,3 +204,20 @@ def load_network_agent(path: str) -> NetworkAgent:
     resolved = str(Path(path).expanduser())
     network, ruleset = _cached_network(resolved, os.path.getmtime(resolved))
     return NetworkAgent(network, RulesetConfig.from_identifier(ruleset))
+
+
+def load_frozen_network(path: str) -> PolicyValueNetwork:
+    """Load a checkpoint's network to play frozen seats, cached per process.
+
+    The same cache as ``load_network_agent``, so a worker that plays a
+    frozen opponent for a whole run loads its weights once. A frozen
+    opponent is wrapped in a greedy ``TorchBatchPolicy`` rather than one
+    ``NetworkAgent`` per seat: the policy is the same argmax behind the same
+    per-(game, seat) cycle guard, but it answers every pending decision of
+    a lockstep round in one forward pass instead of one each.
+    """
+
+    resolved = str(Path(path).expanduser())
+    network, _ = _cached_network(resolved, os.path.getmtime(resolved))
+    network.eval()
+    return network

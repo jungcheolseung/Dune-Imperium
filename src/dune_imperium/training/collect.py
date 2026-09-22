@@ -27,6 +27,7 @@ from typing import Any
 import numpy as np
 import torch
 
+from dune_imperium.agents.registry import CHECKPOINT_PREFIX
 from dune_imperium.config import RulesetConfig
 from dune_imperium.training.network import PolicyValueNetwork
 from dune_imperium.training.policy import AgentBatchPolicy, BatchPolicy
@@ -37,7 +38,7 @@ from dune_imperium.training.selfplay import (
     TrainingBatch,
     select_policy_steps,
 )
-from dune_imperium.training.torch_policy import TorchBatchPolicy
+from dune_imperium.training.torch_policy import TorchBatchPolicy, load_frozen_network
 
 LEARNER = "learner"
 
@@ -89,7 +90,20 @@ def _policies(
         )
     }
     if opponent is not None:
-        policies[opponent] = AgentBatchPolicy(opponent, opponent_seed)
+        if opponent.startswith(CHECKPOINT_PREFIX):
+            # A frozen checkpoint answers its seats' decisions in one batched
+            # greedy pass. Through ``AgentBatchPolicy`` every decision was its
+            # own forward pass behind a fresh observation encode and a
+            # per-seat ActionCodec, which on 2026-09-22 made a 1-vs-3
+            # collection take 28.9s against 8.5s for pure self-play.
+            policies[opponent] = TorchBatchPolicy(
+                load_frozen_network(opponent[len(CHECKPOINT_PREFIX) :]),
+                torch.device("cpu"),
+                seed=opponent_seed,
+                sample=False,
+            )
+        else:
+            policies[opponent] = AgentBatchPolicy(opponent, opponent_seed)
     return policies
 
 

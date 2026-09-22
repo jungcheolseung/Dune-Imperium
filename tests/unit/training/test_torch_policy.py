@@ -30,12 +30,17 @@ from dune_imperium.evaluation import (  # noqa: E402
 )
 from dune_imperium.training import (  # noqa: E402
     UNDO_ACTION_IDS,
+    AgentBatchPolicy,
+    BatchPolicy,
+    Episode,
     PolicyRequest,
     RandomBatchPolicy,
     SelfPlayRunner,
     SelfPlaySpec,
     stack_episodes,
 )
+from dune_imperium.training import collect as collect_module  # noqa: E402
+from dune_imperium.training import loop as loop_module  # noqa: E402
 from dune_imperium.training.checkpoint import (  # noqa: E402
     load_checkpoint,
     save_checkpoint,
@@ -55,6 +60,7 @@ from dune_imperium.training.network import (  # noqa: E402
 from dune_imperium.training.torch_policy import (  # noqa: E402
     NetworkAgent,
     TorchBatchPolicy,
+    load_frozen_network,
     resolve_device,
 )
 
@@ -207,6 +213,107 @@ def test_checkpoint_agents_enter_tournaments_by_path(tmp_path: Path) -> None:
     assert result.seats[0].illegal_actions == 0
     with pytest.raises(ValueError, match="catalog"):
         NetworkAgent(network, RulesetConfig(choam_module=True))
+
+
+def test_a_frozen_checkpoint_opponent_plays_the_same_games_batched(
+    tmp_path: Path,
+) -> None:
+    """The batched frozen opponent is the per-seat NetworkAgent, move for move.
+
+    Collection used to seat a checkpoint opponent through AgentBatchPolicy:
+    one NetworkAgent per (game, seat), one forward pass per decision. The
+    collector now answers those seats with one greedy TorchBatchPolicy over
+    the same network. Both take the argmax behind a per-(game, seat) cycle
+    guard over the same mask, so the games must be identical -- a batched
+    matrix product that flipped a near-tie argmax would show up here as a
+    different action sequence.
+    """
+
+    config = RulesetConfig()
+    codec_size = SelfPlayRunner(config).codec.size
+    path = tmp_path / "frozen.pt"
+    save_checkpoint(path, _network(codec_size), ruleset=config.identifier, iteration=1)
+    kind = f"checkpoint:{path}"
+    specs = tuple(
+        SelfPlaySpec(game_seed=seed, lineup=("learner", kind, kind, kind))
+        for seed in (41, 42, 43)
+    )
+
+    def play(opponent: BatchPolicy) -> tuple[Episode, ...]:
+        runner = SelfPlayRunner(config, undo_actions=False)
+        return runner.run(
+            {"learner": RandomBatchPolicy(seed=7), kind: opponent}, specs
+        ).episodes
+
+    per_seat = play(AgentBatchPolicy(kind, 0))
+    batched = play(
+        TorchBatchPolicy(load_frozen_network(str(path)), _CPU, seed=0, sample=False)
+    )
+
+    for old, new in zip(per_seat, batched, strict=True):
+        assert new.ranks == old.ranks
+        assert new.decisions == old.decisions
+        assert [(step.seat, step.action) for step in new.steps] == [
+            (step.seat, step.action) for step in old.steps
+        ]
+    # And the collector builds exactly that policy for a checkpoint opponent.
+    policies = collect_module._policies(
+        _network(codec_size), _CPU, 1, 1.0, kind, 0
+    )
+    frozen = policies[kind]
+    assert isinstance(frozen, TorchBatchPolicy)
+    assert not frozen.sample
+    assert isinstance(
+        collect_module._policies(_network(codec_size), _CPU, 1, 1.0, "heuristic", 0)[
+            "heuristic"
+        ],
+        AgentBatchPolicy,
+    )
+
+
+def test_learner_seats_rotate_evenly_over_the_table() -> None:
+    """Every seat position is the learner's equally often over an iteration."""
+
+    for count in (1, 2, 3):
+        config = TrainConfig(
+            out_dir=Path("unused"),
+            games_per_iteration=8,
+            opponent="heuristic",
+            learner_seats=count,
+        )
+        specs = loop_module._iteration_specs(config, 0)
+        per_seat = [0, 0, 0, 0]
+        for spec in specs:
+            learner = [
+                seat for seat, name in enumerate(spec.lineup) if name == "learner"
+            ]
+            assert len(learner) == count
+            assert all(
+                name == "heuristic"
+                for seat, name in enumerate(spec.lineup)
+                if seat not in learner
+            )
+            for seat in learner:
+                per_seat[seat] += 1
+        assert len(set(per_seat)) == 1
+    # Two seats sit interleaved, as in the 2:2 evaluation mirror.
+    two = loop_module._iteration_specs(
+        TrainConfig(
+            out_dir=Path("unused"),
+            games_per_iteration=2,
+            opponent="heuristic",
+            learner_seats=2,
+        ),
+        0,
+    )
+    assert [spec.lineup for spec in two] == [
+        ("learner", "heuristic", "learner", "heuristic"),
+        ("heuristic", "learner", "heuristic", "learner"),
+    ]
+    with pytest.raises(ValueError, match="between 1 and 3"):
+        TrainConfig(out_dir=Path("unused"), opponent="heuristic", learner_seats=4)
+    with pytest.raises(ValueError, match="needs an opponent"):
+        TrainConfig(out_dir=Path("unused"), learner_seats=2)
 
 
 def test_the_evaluation_reads_the_tested_row_when_the_opponent_sorts_first() -> None:
