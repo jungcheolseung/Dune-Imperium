@@ -1583,28 +1583,34 @@ def _rebuild_log(
     into ``session.log``. Live entries must match the record in order;
     undone steps re-apply on the state their branch forked from (they
     never include chance or AI decisions, see ``undo``), so their events
-    and reveal flags come back exactly.
+    and reveal flags come back exactly. The log reads as a stack
+    (``LoggedUndo``): the undone steps still in play sit on top of the
+    live ones, and each marker takes its count of them off the top.
     """
 
     live = [entry for entry in session.log if isinstance(entry, LoggedStep)]
     rebuilt: list[LogEntry] = []
     live_position = 0
-    branch: GameState | None = None
-    pending_undone = 0
+    # The undone steps still in play, each with the state it left behind.
+    in_play: list[tuple[LoggedStep, GameState]] = []
     for index, item in enumerate(saved):
         if isinstance(item, LoggedUndo):
-            if pending_undone != item.count:
+            if item.count > len(in_play):
                 raise SaveError(
-                    f"save log entry {index}: undo marker count {item.count} does "
-                    f"not match the {pending_undone} undone step(s) before it"
+                    f"save log entry {index}: undo marker count {item.count} "
+                    f"exceeds the {len(in_play)} undone step(s) still in play"
                 )
+            if any(entry.actor != item.seat for entry, _ in in_play[-item.count :]):
+                raise SaveError(
+                    f"save log entry {index}: seat {item.seat}'s undo marker "
+                    "takes back another seat's step"
+                )
+            del in_play[-item.count :]
             rebuilt.append(item)
-            branch = None
-            pending_undone = 0
             continue
         step, undone = item
         if not undone:
-            if pending_undone:
+            if in_play:
                 raise SaveError(
                     f"save log entry {index}: undone steps must be followed by "
                     "an undo marker"
@@ -1617,8 +1623,7 @@ def _rebuild_log(
             rebuilt.append(live[live_position])
             live_position += 1
             continue
-        if branch is None:
-            branch = _state_after(session, live_position)
+        branch = in_play[-1][1] if in_play else _state_after(session, live_position)
         try:
             transition = session.engine.apply(branch, step)
         except Exception as error:
@@ -1626,11 +1631,12 @@ def _rebuild_log(
                 f"save log entry {index} (undone {_step_summary(step)}) failed "
                 f"to apply: {error}"
             ) from error
-        logged = log_step(branch, transition.state, step, transition.events)
-        rebuilt.append(replace(logged, undone=True))
-        branch = transition.state
-        pending_undone += 1
-    if pending_undone:
+        logged = replace(
+            log_step(branch, transition.state, step, transition.events), undone=True
+        )
+        rebuilt.append(logged)
+        in_play.append((logged, transition.state))
+    if in_play:
         raise SaveError("the save log ends with undone steps but no undo marker")
     if live_position != len(live):
         raise SaveError("the save log does not cover every recorded step")

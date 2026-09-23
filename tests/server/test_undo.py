@@ -9,11 +9,13 @@ from dune_imperium.core import GameState, PlayerState
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceOutcome
 from dune_imperium.core.events import GameEvent
+from dune_imperium.core.replay import ReplayStep
 from dune_imperium.server.persistence import SAVE_FORMAT_VERSION
 from dune_imperium.server.session_log import (
     LoggedStep,
     LoggedUndo,
     reveals_hidden_information,
+    undo_history,
     undo_window,
 )
 from dune_imperium.server.sessions import (
@@ -563,6 +565,102 @@ def test_saves_carry_the_undo_history_and_restore_the_same_log() -> None:
     assert manager._get(restored_id).log == manager._get(game_id).log
 
 
+def _game_with_two_single_step_undos(
+    manager: GameSessionManager,
+) -> tuple[JsonObject, list[ReplayStep]]:
+    """Seed 14 at revision 13: seat 0 takes back its two steps one at a time.
+
+    The second undo flags a step logged before the first undo's marker, so
+    the log ends ``A(undone), B(undone), undo(1), undo(1)``: a marker takes
+    back the latest live steps when it is logged, not the entries right
+    before it.
+    """
+
+    summary = manager.create_game(HUMAN_FIRST, game_seed=14)
+    game_id = str(summary["game_id"])
+    summary = _play_until_revision(manager, summary, 12)
+    summary = _play(manager, summary)
+    assert summary["undo"] == [{"seat": 0, "steps": 2}]
+    taken_back = list(manager._get(game_id).steps[-2:])
+    summary = manager.undo(game_id, seat=0, revision=13, steps=1, undo_count=0)
+    summary = manager.undo(game_id, seat=0, revision=12, steps=1, undo_count=1)
+    return summary, taken_back
+
+
+def test_two_single_step_undos_in_a_row_save_and_restore() -> None:
+    manager = GameSessionManager()
+    summary, (first, second) = _game_with_two_single_step_undos(manager)
+    game_id = str(summary["game_id"])
+    tail = manager._get(game_id).log[-4:]
+    assert [entry.step for entry in tail if isinstance(entry, LoggedStep)] == [
+        first,
+        second,
+    ]
+    assert all(entry.undone for entry in tail if isinstance(entry, LoggedStep))
+    assert tail[2:] == [LoggedUndo(seat=0, count=1), LoggedUndo(seat=0, count=1)]
+
+    document = manager.save_game(game_id)
+    restored = manager.restore_game(document)
+    restored_id = str(restored["game_id"])
+    assert restored["revision"] == summary["revision"] == 11
+    assert restored["undo_count"] == summary["undo_count"] == 2
+    assert restored["undo"] == summary["undo"]
+    assert manager._get(restored_id).log == manager._get(game_id).log
+
+    # Both copies go on the same way from the rewound decision.
+    assert _play(manager, restored, index=1)["revision"] == (
+        _play(manager, summary, index=1)["revision"]
+    )
+
+
+def test_undo_history_names_each_single_step_undo_separately() -> None:
+    manager = GameSessionManager()
+    summary, (first, second) = _game_with_two_single_step_undos(manager)
+    history = undo_history(manager._get(str(summary["game_id"])).log)
+
+    # Both undos rewound the timeline that stands to its eleventh live step:
+    # the first took back the later step, the second the earlier one.
+    assert [(position, marker.count) for position, marker, _ in history] == [
+        (11, 1),
+        (11, 1),
+    ]
+    assert [[entry.step for entry in undone] for _, _, undone in history] == [
+        [second],
+        [first],
+    ]
+
+
+def test_an_undo_across_a_new_step_restores_with_its_own_steps() -> None:
+    # Undo one step, take a different one, then undo both live steps of the
+    # window at once: the marker takes back the step logged before the
+    # earlier marker and the new one after it.
+    manager = GameSessionManager()
+    summary = manager.create_game(HUMAN_FIRST, game_seed=14)
+    game_id = str(summary["game_id"])
+    summary = _play_until_revision(manager, summary, 12)
+    summary = _play(manager, summary)
+    first = manager._get(game_id).steps[-2]
+    summary = manager.undo(game_id, seat=0, revision=13, steps=1, undo_count=0)
+    summary = _play_raw(manager, summary, index=1)
+    replacement = manager._get(game_id).steps[-1]
+    assert summary["undo"] == [{"seat": 0, "steps": 2}]
+    summary = manager.undo(
+        game_id,
+        seat=0,
+        revision=_int(summary["revision"]),
+        steps=2,
+        undo_count=_int(summary["undo_count"]),
+    )
+
+    history = undo_history(manager._get(game_id).log)
+    assert [[entry.step for entry in undone] for _, _, undone in history][-1] == [
+        first,
+        replacement,
+    ]
+    restored = manager.restore_game(manager.save_game(game_id))
+    assert manager._get(str(restored["game_id"])).log == manager._get(game_id).log
+
+
 def test_version_one_saves_still_load_without_undo_history() -> None:
     manager = GameSessionManager()
     summary = _game_with_an_undo(manager)
@@ -594,6 +692,11 @@ def test_tampered_logs_are_rejected() -> None:
     wrong_count[marker_index] = {**log[marker_index], "count": 2}
     with pytest.raises(SaveError, match="undo marker count"):
         manager.restore_game({**document, "log": wrong_count})
+
+    wrong_seat = list(log)
+    wrong_seat[marker_index] = {**log[marker_index], "seat": 1}
+    with pytest.raises(SaveError, match="takes back another seat's step"):
+        manager.restore_game({**document, "log": wrong_seat})
 
     reordered = list(log)
     reordered[0], reordered[1] = reordered[1], reordered[0]

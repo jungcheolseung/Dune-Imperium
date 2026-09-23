@@ -49,7 +49,14 @@ class LoggedStep:
 
 @dataclass(frozen=True, slots=True)
 class LoggedUndo:
-    """``seat`` took back the ``count`` live steps logged just before."""
+    """``seat`` took back its ``count`` latest steps still live at this point.
+
+    Read the log in order as a stack: every step goes on, every marker takes
+    its ``count`` off the top. Those steps are flagged ``undone`` where they
+    were logged, which need not be right before the marker: a second undo
+    reaches past the first one's marker (``A(undone), B(undone), undo(1),
+    undo(1)``).
+    """
 
     seat: int
     count: int
@@ -188,19 +195,25 @@ def mark_undone(log: list[LogEntry], seat: int, count: int) -> None:
 
 
 def undo_history(log: list[LogEntry]) -> list[tuple[int, LoggedUndo, list[LoggedStep]]]:
-    """Return every undo as (live step index it rewound to, marker, undone steps)."""
+    """Return every undo as (live step index it rewound to, marker, undone steps).
+
+    The index counts the live steps of the final game logged before the
+    marker; the undone steps are the ones the marker took off the stack
+    (``LoggedUndo``), in the order they were taken.
+    """
 
     history: list[tuple[int, LoggedUndo, list[LoggedStep]]] = []
     live_position = 0
-    pending: list[LoggedStep] = []
+    # Undone steps logged but not yet taken off by their marker; nothing
+    # live can sit above them, since a marker only takes the top.
+    in_play: list[LoggedStep] = []
     for entry in log:
         if isinstance(entry, LoggedUndo):
-            history.append((live_position, entry, pending[-entry.count :]))
-            pending = []
+            history.append((live_position, entry, in_play[-entry.count :]))
+            del in_play[-entry.count :]
         elif entry.undone:
-            pending.append(entry)
+            in_play.append(entry)
         else:
             live_position += 1
-            pending = []
     return history
 
