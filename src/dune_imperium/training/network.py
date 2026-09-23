@@ -52,8 +52,26 @@ class PolicyValueNetwork(nn.Module):
     def forward(self, observations: Tensor, masks: Tensor) -> tuple[Tensor, Tensor]:
         """Return masked action logits ``[B, A]`` and values ``[B]``."""
 
-        features = torch.log1p(observations.to(torch.float32).clamp(min=0.0))
-        hidden = self.body(features)
+        hidden = self.trunk(observations)
         logits = self.policy_head(hidden).masked_fill(masks == 0, MASKED_LOGIT)
         values = self.value_head(hidden).squeeze(-1)
         return logits, values
+
+    def trunk(self, observations: Tensor) -> Tensor:
+        """Return the hidden features ``[B, H]`` both heads read."""
+
+        features = torch.log1p(observations.to(torch.float32).clamp(min=0.0))
+        hidden: Tensor = self.body(features)
+        return hidden
+
+    def action_logits(self, hidden: Tensor, actions: Tensor) -> Tensor:
+        """Return unmasked logits ``[B, K]`` of the catalog indices ``actions``.
+
+        The policy head is almost all of the network's weights (one row per
+        catalog action), so a caller that needs only a decision's few legal
+        actions reads those rows instead of computing every logit.
+        """
+
+        return nn.functional.linear(
+            hidden, self.policy_head.weight[actions], self.policy_head.bias[actions]
+        )

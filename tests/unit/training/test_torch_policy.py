@@ -92,6 +92,29 @@ def test_network_masks_illegal_actions_to_zero_probability() -> None:
         PolicyValueNetwork(0)
 
 
+def test_sliced_head_reads_match_the_full_forward_pass() -> None:
+    """``trunk`` + ``action_logits`` give the full pass's legal logits.
+
+    The search agent reads only a decision's legal rows of the policy head,
+    and its value from the trunk, so both must agree with ``forward``.
+    """
+
+    network = _network(action_size=11)
+    observations = torch.randint(0, 5, (2, OBSERVATION_SIZE), dtype=torch.int32)
+    masks = torch.ones(2, 11, dtype=torch.int8)
+    index = torch.tensor([9, 0, 4])
+
+    with torch.no_grad():
+        logits, values = network(observations, masks)
+        hidden = network.trunk(observations)
+        sliced = network.action_logits(hidden, index)
+        sliced_values = network.value_head(hidden).squeeze(-1)
+
+    assert sliced.shape == (2, 3)
+    assert torch.allclose(sliced, logits[:, index], atol=1e-5)
+    assert torch.equal(sliced_values, values)
+
+
 def test_torch_batch_policy_plays_legal_self_play_games() -> None:
     runner = SelfPlayRunner(RulesetConfig())
     network = _network(runner.codec.size)

@@ -15,7 +15,9 @@ seat plays greedy network moves to the end of the round, and the leaf is
 its value head. One search seat against three greedy copies of the same
 checkpoint wins **58.0%** of 100 matches against a 25% null, mean rank
 1.740 (section 12); the same network playing greedy is 25.0% by
-construction. A searched decision costs about 2s against 4ms greedy.
+construction. That cell paid about 2s per searched decision; reading only
+the legal rows of the policy head takes a single-threaded decision from
+0.53s to 0.14s with the same choices.
 
 Like a checkpoint seat, a search seat enters by file: ``search:<path>``.
 """
@@ -73,33 +75,31 @@ class NetworkSearchAgent:
         self.max_rollout_steps = max_rollout_steps
         self._rng = random.Random(seed)
         self._engine = UprisingRulesEngine()
-        self._unmasked = torch.ones(1, self.greedy.codec.size, dtype=torch.int8)
 
     # -- the network --------------------------------------------------------
+    # Both read the trunk and then only the head rows they need: the policy
+    # head holds one row per catalog action (about 33,000) and was 85% of a
+    # full forward pass, while a decision offers a handful of actions. The
+    # legal logits match the full pass to float rounding (3.8e-6 at most
+    # over 1,695 decisions, never a different argmax) at a sixth of the cost.
+    def _hidden(self, view: PlayerView) -> torch.Tensor:
+        observation = np.asarray(encode_player_view(view), dtype=np.int32)
+        return self.greedy.network.trunk(torch.from_numpy(observation).unsqueeze(0))
+
     def _logits(
         self, view: PlayerView, legal: Sequence[DomainAction]
     ) -> np.ndarray:
         codec = self.greedy.codec
-        index = [codec.encode(action) for action in legal]
-        mask = np.zeros(codec.size, dtype=np.int8)
-        mask[index] = 1
-        observation = np.asarray(encode_player_view(view), dtype=np.int32)
+        index = torch.tensor([codec.encode(action) for action in legal])
         with torch.no_grad():
-            logits, _ = self.greedy.network(
-                torch.from_numpy(observation).unsqueeze(0),
-                torch.from_numpy(mask).unsqueeze(0),
-            )
-        scores: np.ndarray = logits[0, index].numpy()
+            logits = self.greedy.network.action_logits(self._hidden(view), index)
+        scores: np.ndarray = logits[0].numpy()
         return scores
 
     def _leaf_value(self, view: PlayerView) -> float:
-        # The value head does not read the mask; an unmasked row is enough.
-        observation = np.asarray(encode_player_view(view), dtype=np.int32)
         with torch.no_grad():
-            _, value = self.greedy.network(
-                torch.from_numpy(observation).unsqueeze(0), self._unmasked
-            )
-        return float(value[0])
+            value = self.greedy.network.value_head(self._hidden(view))
+        return float(value[0, 0])
 
     def _best(
         self, view: PlayerView, legal: Sequence[DomainAction]
