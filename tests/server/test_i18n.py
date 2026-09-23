@@ -422,7 +422,7 @@ def test_korean_text_names_a_card_by_its_korean_print() -> None:
         for name, korean in english.items():
             if re.search(rf"(?<![A-Za-z']){re.escape(name)}(?![A-Za-z'])", bare):
                 leaks.append(f"{where}: {name!r} (Korean print {korean!r}) in {text!r}")
-    assert not leaks, "; ".join(leaks[:10])
+    assert not leaks, "; ".join(leaks[:40])
 
 
 def test_every_label_table_switches_language() -> None:

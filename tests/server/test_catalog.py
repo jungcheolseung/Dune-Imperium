@@ -331,9 +331,12 @@ def test_catalog_names_the_cards_whose_korean_print_was_read() -> None:
             assert isinstance(entry, dict)
             assert entry["name_ko"] == name
             assert hangul.search(name), name
-            # Latin letters only as a contract's numeral.
-            latin = re.sub(r" I{1,3}$", "", name)
-            assert not re.search(r"[A-Za-z]", latin), name
+            # Latin only where the English has it too: a contract's numeral,
+            # or printed on the Korean card as well ("실험체 X-137").
+            english = entry["name"]
+            assert isinstance(english, str)
+            for latin in re.findall(r"[A-Za-z]+", name):
+                assert latin in english, (name, english)
     cards = catalog["cards"]
     contracts = catalog["contracts"]
     conflicts = catalog["conflicts"]
@@ -352,9 +355,22 @@ def test_catalog_names_the_cards_whose_korean_print_was_read() -> None:
     assert korean(contracts, "harvest_3_contract") == "채취 3+"
     assert korean(conflicts, "skirmish_crysknife") == "소규모 전투 (크리스나이프)"
     assert korean(leaders, "shaddam_corrino_iv") == "샤담 코리노 4세"
-    # Not photographed: Lady Jessica's flip side and a Bloodlines card.
+    # Bloodlines: its Skirmish's wild battle icon [Bloodlines p. 5], the
+    # Commander Skills and the Tech tiles; Immortality's Tleilaxu deck.
+    skills = catalog["skills"]
+    tech = catalog["tech"]
+    assert isinstance(skills, dict) and isinstance(tech, dict)
+    assert korean(conflicts, "skirmish_wild") == "소규모 전투 (와일드)"
+    assert korean(contracts, "bloodlines_harvest_4") == "채취 4+"
+    assert korean(skills, "canny") == "영리함"
+    assert korean(tech, "choam_transports") == "초암 수송선"
+    assert korean(cards, "subject_x_137") == "실험체 X-137"
+    # Not photographed: Lady Jessica's flip side and the Bloodlines Intrigue
+    # cards that lay in a pile.
+    intrigue = catalog["intrigue"]
+    assert isinstance(intrigue, dict)
     assert korean(leaders, "reverend_mother_jessica") is None
-    assert korean(conflicts, "storms_in_the_south") is None
+    assert korean(intrigue, "adaptive_tactics") is None
 
 
 def test_catalog_appends_the_version_of_every_asset_it_knows() -> None:

@@ -41,7 +41,7 @@ Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 �
 | 대상 | 정책 |
 | --- | --- |
 | UI 크롬, 결정 prompt, 행동 로그 라벨 | 이 표의 한국어를 쓴다 |
-| 카드·리더·Conflict·Contract **이름** | **한글판 인쇄가 확인된 것은 그 한국어**, 나머지는 영어 그대로(2026-09-23 사용자 결정). 인쇄 제목은 한국어판 카드 실물 사진에서 두 번 독립적으로 읽어 일치한 것만 쓴다(`src/dune_imperium/display/names_ko.py`, 출처는 그 docstring). 엔진의 영어 이름이 인쇄되지 않은 구분자를 달면(계약의 I·II·3+, Skirmish의 배틀 아이콘) 한국어 이름도 같은 구분자를 단다 — 배틀 아이콘은 아래 표의 말로 |
+| 카드·리더·Conflict·Contract·기술 타일·사다우카 지휘관 기술 토큰 **이름** | **한글판 인쇄가 확인된 것은 그 한국어**, 나머지는 영어 그대로(2026-09-23 사용자 결정; 같은 날 혈통·불멸까지). 인쇄 제목은 한국어판 카드 실물 사진에서 두 번 독립적으로 읽어 일치한 것만 쓴다(`src/dune_imperium/display/names_ko.py`, 출처는 그 docstring). 엔진의 영어 이름이 인쇄되지 않은 구분자를 달면(계약의 I·II·3+, Skirmish의 배틀 아이콘) 한국어 이름도 같은 구분자를 단다 — 배틀 아이콘은 아래 표의 말로. 항해 카드는 제목이 인쇄되지 않아 영어 그대로 |
 | **공간 이름** | **영어 그대로** |
 | 카드 그림 | 화면 언어를 따른다 — 한국어 화면은 한글판 그림(있을 때), 영어 화면은 영어판 그림 |
 | 카드 인쇄 텍스트 | **영어 그대로 + 이 표를 쓰는 용어 툴팁** |
@@ -125,6 +125,7 @@ Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 �
 | Retreat | 후퇴 | `[Main p. 20]` | 적용 |
 | Battle Icon | 배틀 아이콘 | `[Main p. 20]` | 적용 |
 | Crysknife / Desert Mouse / Ornithopter | 크리스나이프 / 사막쥐 / 오니솝터 | `[Main p. 20]` | 적용(배틀 아이콘; 2026-09-23부터 — 같은 이름의 음모 카드는 한글판 인쇄가 확인된 것만) |
+| wild battle icon | 와일드 배틀 아이콘 | `[Bloodlines p. 5]`("와일드 배틀 아이콘을 개인 공급처에 있는 아무 배틀 아이콘… 하나와 짝지어도 됩니다") | 적용(Skirmish (Wild)의 구분자 "와일드", 2026-09-23) |
 | Victory Point | 승점 | `[Main p. 20]` | 적용 |
 | first / second / third place | 1등 / 2등 / 3등 칸 | `[Main p. 14]` | 적용 |
 
@@ -291,6 +292,6 @@ Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 �
 2. 표에 없는 용어가 필요하면 먼저 공식 한국어 룰북에서 찾아 이 표에 인용과 함께
    더한다. 룰북이 침묵하면 [`open-questions.md`](open-questions.md)에 적고,
    프로젝트 관례임을 분명히 한 뒤에 쓴다.
-3. 고유명사 중 공간 이름은 영어를 유지한다. 카드·리더·Conflict·Contract 이름은
-   한글판 인쇄가 확인된 것(`display/names_ko.py`)만 한국어이고, 나머지는 영어를
-   유지한다 — 인쇄를 확인하지 않은 이름을 번역해 채우지 않는다.
+3. 고유명사 중 공간 이름은 영어를 유지한다. 카드·리더·Conflict·Contract·기술
+   타일·사다우카 지휘관 기술 토큰 이름은 한글판 인쇄가 확인된 것(`display/names_ko.py`)만
+   한국어이고, 나머지는 영어를 유지한다 — 인쇄를 확인하지 않은 이름을 번역해 채우지 않는다.

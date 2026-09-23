@@ -179,15 +179,14 @@ KOREAN_LATIN_JS = r"""({keep}) => {
 }"""
 
 # Chrome English on purpose: the uv extra the checkpoint field needs, the AI
-# of the seat kinds, the Esc key the turn guide names, and Leaders' short
-# names (Shaddam, Kota Odax) like log_words' Feyd. The product title is the
-# Korean edition's, 듄 임페리움: 봉기 (2026-09-22).
+# of the seat kinds and the Esc key the turn guide names. Leaders are named
+# by their Korean print since 2026-09-23 (Shaddam and Kota Odax were short
+# English names here before). The product title is the Korean edition's,
+# 듄 임페리움: 봉기 (2026-09-22).
 KOREAN_CHROME_ENGLISH = (
     "train extra",
     "AI",
     "Esc",
-    "Shaddam",
-    "Kota Odax",
 )
 
 
