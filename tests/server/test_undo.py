@@ -318,10 +318,14 @@ def test_turn_end_waits_for_confirmation_while_steps_are_undoable() -> None:
         manager.confirm_turn(game_id, seat=0, revision=_int(confirmed["revision"]))
 
 
-def test_turn_end_needs_no_confirmation_after_a_reveal() -> None:
+def test_a_turn_ending_in_a_reveal_still_waits_for_its_press() -> None:
     # Seed 21's opening turn ends with Assembly Hall's Intrigue draw, which
-    # reveals the deck top to the drawer and closes the undo window: there
-    # is nothing to protect, so the AI seats act at once.
+    # reveals the deck top to the drawer and closes the undo window -- but
+    # every turn end of a human seat still waits for its own press
+    # (2026-09-23): ``resolve_board_effect`` is not one of the four
+    # explicit turn-end actions (``EXPLICIT_TURN_ENDS``), so it holds like
+    # any other step that ends the seat's unit, even with nothing left to
+    # protect.
     manager = GameSessionManager()
     summary = manager.create_game(HUMAN_FIRST, game_seed=21)
     game_id = str(summary["game_id"])
@@ -332,9 +336,14 @@ def test_turn_end_needs_no_confirmation_after_a_reveal() -> None:
     ]
     summary = _play_raw(manager, summary)
 
-    assert summary["confirmation"] is None
-    assert _int(summary["revision"]) > 2
+    assert summary["confirmation"] == 0
     assert summary["undo"] == []
+    assert _obj(summary["decision"])["owner"] != 0
+    assert manager.legal_actions(game_id, 0)["actions"] == []
+
+    confirmed = manager.confirm_turn(game_id, 0, _int(summary["revision"]))
+    assert confirmed["confirmation"] is None
+    assert _int(confirmed["revision"]) > _int(summary["revision"])
 
 
 def test_legal_actions_report_whether_each_step_can_be_taken_back() -> None:
@@ -630,6 +639,12 @@ def test_a_confirmed_turn_end_stays_handed_over_to_the_next_human() -> None:
     # the next seat is a human who has not moved yet there is no such step:
     # the seat that confirmed could take the turn back from under them
     # (found by the slice 5 review; two browsers make it visible).
+    #
+    # A hold's undo window is not always open to begin with (2026-09-23:
+    # every turn end waits for its press, whether or not it left anything
+    # undoable) -- only a hold that *does* start with an open window
+    # exercises the sealing this test is about, so the others are skipped
+    # rather than asserted on.
     manager = GameSessionManager()
     seats = ("human", "human", HUMAN_FIRST[1], HUMAN_FIRST[1])
     summary = manager.create_game(seats, game_seed=7)
@@ -646,8 +661,9 @@ def test_a_confirmed_turn_end_stays_handed_over_to_the_next_human() -> None:
             summary = manager.apply_action(game_id, owner, revision, 0)
             continue
         before = [row for row in _rows(summary["undo"]) if row["seat"] == held]
-        assert before and _int(before[0]["steps"]) > 0
         summary = manager.confirm_turn(game_id, held, revision)
+        if not before:
+            continue
         successor = _int(_obj(summary["decision"])["owner"])
         if seats[successor] != "human" or _int(summary["revision"]) != revision:
             # AI seats (or a chance outcome) followed: the log closed the

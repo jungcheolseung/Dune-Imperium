@@ -27,7 +27,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Final
+from typing import Final, TypeGuard
 
 from dune_imperium.adapters.action_codec import ACTION_CODEC_VERSION
 from dune_imperium.config import RulesetConfig
@@ -61,6 +61,21 @@ class UnknownSaveError(SaveError):
 
 
 @dataclass(frozen=True, slots=True)
+class SavedHandOver:
+    """The turn-end state of a saved session (``server/turn_end.py``).
+
+    ``confirmation`` is the seat whose "턴 종료" press the game waits for,
+    ``sealed_steps`` how many steps a turn end has sealed, and
+    ``open_units`` each human seat with an open unit and the index of the
+    step that opened it.
+    """
+
+    confirmation: int | None
+    sealed_steps: int
+    open_units: tuple[tuple[int, int], ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class ParsedSave:
     """A validated save document ready for the session layer to replay."""
 
@@ -70,6 +85,9 @@ class ParsedSave:
     name: str | None
     # ``None`` for a version 1 document: the log is then just the live steps.
     log: tuple[SavedLogEntry, ...] | None = None
+    # ``None`` for a document written before the turn-end state was
+    # recorded (2026-09-23).
+    hand_over: SavedHandOver | None = None
 
 
 def default_saves_directory() -> Path:
@@ -194,6 +212,9 @@ def build_save_document(
     finished: bool,
     log: tuple[LogEntry, ...],
     name: str | None = None,
+    confirmation: int | None = None,
+    sealed_steps: int = 0,
+    open_units: tuple[tuple[int, int], ...] = (),
 ) -> JsonObject:
     """Serialize one resting session as a save document."""
 
@@ -231,6 +252,9 @@ def build_save_document(
         "round_number": round_number,
         "phase": phase,
         "finished": finished,
+        "confirmation": confirmation,
+        "sealed_steps": sealed_steps,
+        "open_units": [[seat, opened] for seat, opened in open_units],
     }
 
 
@@ -321,6 +345,10 @@ def parse_save_document(document: object) -> ParsedSave:
     if name is not None and not isinstance(name, str):
         raise SaveError("the save name must be a string when present")
 
+    # Optional: documents written before the turn-end state was recorded
+    # leave it out and resume by the pause rule of their time.
+    hand_over = _parse_hand_over(document)
+
     try:
         replay = GameReplay(
             ruleset=config,
@@ -346,7 +374,42 @@ def parse_save_document(document: object) -> ParsedSave:
         policy_seed=policy_seed,
         name=name,
         log=log,
+        hand_over=hand_over,
     )
+
+
+def _parse_hand_over(document: dict[str, object]) -> SavedHandOver | None:
+    """Read the optional turn-end fields of a save document."""
+
+    if "sealed_steps" not in document and "confirmation" not in document:
+        return None
+    sealed_steps = document.get("sealed_steps")
+    if not _is_count(sealed_steps):
+        raise SaveError("save sealed_steps must be a non-negative integer")
+    confirmation = document.get("confirmation")
+    if confirmation is not None and not _is_count(confirmation):
+        raise SaveError("save confirmation must be a seat number or null")
+    raw_units = document.get("open_units", [])
+    if not isinstance(raw_units, list):
+        raise SaveError("save open_units must be a list of [seat, step] pairs")
+    open_units: list[tuple[int, int]] = []
+    for pair in raw_units:
+        if (
+            not isinstance(pair, list)
+            or len(pair) != 2
+            or not all(_is_count(value) for value in pair)
+        ):
+            raise SaveError("save open_units must be a list of [seat, step] pairs")
+        open_units.append((pair[0], pair[1]))
+    return SavedHandOver(
+        confirmation=confirmation,
+        sealed_steps=sealed_steps,
+        open_units=tuple(open_units),
+    )
+
+
+def _is_count(value: object) -> TypeGuard[int]:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
 def save_metadata(

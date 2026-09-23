@@ -74,6 +74,7 @@ from dune_imperium.server.persistence import (
     JsonValue as JsonValue,
 )
 from dune_imperium.server.persistence import (
+    SavedHandOver,
     SaveError,
     build_save_document,
     parse_save_document,
@@ -88,6 +89,14 @@ from dune_imperium.server.session_log import (
     reveals_hidden_information,
     undo_history,
     undo_window,
+)
+from dune_imperium.server.turn_end import (
+    EXPLICIT_TURN_ENDS,
+    TURN_TAKING_EVENTS,
+    answers_another_unit,
+    at_turn_start,
+    turn_start_seat,
+    unit_seat,
 )
 
 _LOGGER: Final = logging.getLogger(__name__)
@@ -161,17 +170,25 @@ class GameSession:
     # state; a client that also sends this generation number can never act
     # on a state that has been taken back under it.
     undo_count: int = 0
-    # Seat whose turn has ended but whose steps are still undoable: the
-    # session waits for that seat's explicit confirmation before the next
-    # seat (AI or human) acts, so a turn is never handed over while it can
-    # still be taken back.
+    # Human seat whose turn has ended: the session waits for that seat to
+    # press "턴 종료" (``confirm_turn``) before anyone acts on, whether or
+    # not its steps can still be taken back. A seat never passes a turn
+    # without pressing once, and never presses twice (``turn_end``).
     awaiting_confirmation: int | None = None
-    # How many live steps a turn-end confirmation has sealed. The log alone
-    # closes a seat's undo window at the next chance outcome or other
-    # seat's step; when the next seat is a human who has not moved yet
-    # there is no such step, and without this floor the seat that confirmed
-    # could still pull the turn back from under them.
+    # How many live steps a turn end has sealed, by that press or by an
+    # explicit turn-end action. The log alone closes a seat's undo window
+    # at the next chance outcome or other seat's step; when the next seat
+    # is a human who has not moved yet there is no such step, and without
+    # this floor the seat that ended its turn could still pull it back
+    # from under them.
     undo_floor: int = 0
+    # Human seat -> index of the step that opened its current unit: the
+    # first step it took in a unit of its own since it last pressed. Only a
+    # seat with an open unit has a turn end to press; a seat back at the
+    # start of its turn with its unit still open has finished one turn and
+    # stands at the next (``_unit_ended_locked``). What a seat does at its
+    # turn start before taking the turn (a Plot Intrigue) opens nothing.
+    open_units: dict[int, int] = field(default_factory=dict)
     # Remote access (M14): the token minted when a human seat was claimed
     # and the name its player gave; both stay empty on an open server.
     # Like everything above they change only under ``lock``.
@@ -482,6 +499,7 @@ class GameSessionManager:
                 if isinstance(decision, PlayerDecision)
                 and decision.owner == seat
                 and not self._turn_is_held_locked(session)
+                and session.awaiting_confirmation != seat
                 else None
             )
             entries = tuple(session.log)
@@ -627,14 +645,23 @@ class GameSessionManager:
                     f"seat {session.awaiting_confirmation} has not confirmed "
                     "its turn end yet"
                 )
+            held = session.awaiting_confirmation
+            if held == seat:
+                # Its turn is over and its next one waits behind the press.
+                raise SessionError(f"seat {seat} has not confirmed its turn end yet")
             actions = session.engine.legal_actions(session.state, seat)
             if not 0 <= index < len(actions):
                 raise SessionError("action index is out of range")
             action = actions[index]
+            if held is not None:
+                # An open server lets the next seat act past a pending press;
+                # that hands the held seat's turn over all the same.
+                session.open_units.pop(held, None)
+            before = session.state
             _apply_step(session, action)
             own_steps = len(session.steps)
-            self._settle_locked(session, seat)
-            passed = _turn_passed(session, seat, own_steps)
+            ended = self._settle_locked(session, before, action)
+            passed = ended or _turn_passed(session, seat, own_steps)
             summary = self._summary_locked(session)
             bell = self._ring_locked(session, summary)
         self._publish(game_id, bell)
@@ -651,11 +678,11 @@ class GameSessionManager:
         undo_count: int | None = None,
         credentials: Credentials = ANONYMOUS,
     ) -> JsonObject:
-        """Hand the turn over after the seat's last undoable steps.
+        """Hand the turn over: the seat pressed "턴 종료".
 
-        A human seat's turn end pauses while its trailing steps could still
-        be taken back (``undo_window``); only this confirmation lets the
-        chance stream and the other seats advance, closing that window.
+        Every turn end of a human seat that no explicit turn-end action
+        closed waits for this (``_settle_locked``); only it lets the chance
+        stream and the other seats advance, sealing the seat's undo window.
         """
 
         session = self._get(game_id)
@@ -666,6 +693,7 @@ class GameSessionManager:
             if session.awaiting_confirmation != seat:
                 raise SessionError(f"seat {seat} has no turn end to confirm")
             session.awaiting_confirmation = None
+            session.open_units.pop(seat, None)
             session.undo_floor = len(session.steps)
             self._advance_locked(session)
             summary = self._summary_locked(session)
@@ -713,6 +741,10 @@ class GameSessionManager:
             session.undo_count += 1
             # The rewound state is again this seat's own decision.
             session.awaiting_confirmation = None
+            # A unit whose opening step was taken back is not open any more.
+            for owner, opened in tuple(session.open_units.items()):
+                if opened >= keep:
+                    del session.open_units[owner]
             summary = self._summary_locked(session)
             bell = self._ring_locked(session, summary)
         self._publish(game_id, bell)
@@ -804,6 +836,9 @@ class GameSessionManager:
                 phase=str(session.state.phase),
                 finished=session.state.phase is GamePhase.FINISHED,
                 name=name,
+                confirmation=session.awaiting_confirmation,
+                sealed_steps=session.undo_floor,
+                open_units=tuple(sorted(session.open_units.items())),
             )
 
     def restore_game(
@@ -853,14 +888,12 @@ class GameSessionManager:
                 session.undo_count = sum(
                     1 for entry in session.log if isinstance(entry, LoggedUndo)
                 )
-            # A game saved while a human's turn end awaited confirmation
-            # resumes at that pause instead of handing the turn over.
-            live = live_steps(session.log)
-            last_actor = live[-1].actor if live else None
-            if last_actor is not None and session.seats[last_actor] == HUMAN_SEAT:
-                self._settle_locked(session, last_actor)
+            # A game saved while a human's turn end awaited its press resumes
+            # at that pause, and a turn already handed over stays handed over.
+            if parsed.hand_over is not None:
+                self._restore_hand_over_locked(session, parsed.hand_over)
             else:
-                self._advance_locked(session)
+                self._restore_legacy_hand_over_locked(session)
             summary = self._summary_locked(session)
         with self._registry_lock:
             self._sessions[session.game_id] = session
@@ -967,9 +1000,18 @@ class GameSessionManager:
         }
 
     def _legal_actions_locked(self, session: GameSession, seat: int) -> JsonObject:
-        """Serialize the seat's legal actions; each one costs a dry run."""
+        """Serialize the seat's legal actions; each one costs a dry run.
 
-        actions = session.engine.legal_actions(session.state, seat)
+        A seat whose turn end waits for its press has none, even when the
+        next decision is its own again (its next turn, or the round-1 turn
+        after its last Leader pick).
+        """
+
+        actions = (
+            ()
+            if session.awaiting_confirmation == seat
+            else session.engine.legal_actions(session.state, seat)
+        )
         return {
             "game_id": session.game_id,
             "revision": session.state.revision,
@@ -1003,15 +1045,14 @@ class GameSessionManager:
         )
 
     def _turn_is_held_locked(self, session: GameSession) -> bool:
-        """Whether a pending turn-end confirmation still blocks the next seat.
+        """Whether a pending turn-end press still blocks the next seat.
 
         The engine names the next decision owner as soon as a turn ends, but
-        while that turn's steps can be taken back the hand-over waits for
-        the seat's confirmation. On an open server the one shared browser
-        holds the table for the confirming seat, and the API has always let
-        the next seat act regardless. Separate browsers cannot mediate, so a
-        remote server does: acting early would close the previous seat's
-        undo window behind its back.
+        the hand-over waits for the seat to press "턴 종료". On an open
+        server the one shared browser holds the table for that seat, and the
+        API has always let the next seat act regardless. Separate browsers
+        cannot mediate, so a remote server does: acting early would take
+        the turn end, and any undo left in it, out of the seat's hands.
         """
 
         return (
@@ -1068,28 +1109,94 @@ class GameSessionManager:
         if token is None or not token_matches(token, credentials.seat_tokens):
             raise SeatAccessError(f"this client does not hold seat {seat}")
 
-    def _settle_locked(self, session: GameSession, seat: int) -> None:
-        """After a human step, pause at a turn hand-over or auto-advance.
+    def _settle_locked(
+        self, session: GameSession, before: GameState, action: DomainAction
+    ) -> bool:
+        """After a human step: hold its turn end for the press, or play on.
 
-        The pause happens only when the next decision belongs to another
-        seat and the seat's trailing steps are still undoable; a step that
-        revealed hidden information (or a pending chance outcome) already
-        closed the undo window, so there is nothing left to protect.
+        One press ends every unit of a human seat, whatever step closed it
+        and whether or not it can still be taken back. An explicit turn-end
+        action (``EXPLICIT_TURN_ENDS``) is that press itself, so it seals
+        the turn and hands over at once; any other step that ends an open
+        unit holds the game for ``confirm_turn``. The chance outcomes right
+        after the step are resolved first: a reshuffle in the middle of a
+        turn is not an end, and a turn can end in one.
+
+        ``before`` is the state the step was taken from and the step is the
+        last live one. Returns whether the step handed the turn over.
         """
 
-        decision = session.engine.current_decision(session.state)
-        if (
-            isinstance(decision, PlayerDecision)
-            and decision.owner != seat
-            and _open_undo_window(session, seat) > 0
-        ):
-            session.awaiting_confirmation = seat
-            return
+        step_index = len(session.steps) - 1
+        self._resolve_chance_locked(session)
+        actor = action.actor
+        if not answers_another_unit(before, actor):
+            if action.action_id in EXPLICIT_TURN_ENDS:
+                session.open_units.pop(actor, None)
+                session.awaiting_confirmation = None
+                session.undo_floor = len(session.steps)
+                self._advance_locked(session)
+                return True
+            if actor not in session.open_units and not (
+                at_turn_start(before, actor)
+                and not _took_turn(session, actor, step_index)
+            ):
+                session.open_units[actor] = step_index
+        # The actor's own unit, or for an answer the unit it answered in,
+        # which the answer may just have closed.
+        unit = unit_seat(before)
+        if self._unit_ended_locked(session, unit):
+            session.awaiting_confirmation = unit
+            return False
         session.awaiting_confirmation = None
         self._advance_locked(session)
+        return False
+
+    def _unit_ended_locked(self, session: GameSession, unit: int | None) -> bool:
+        """Whether a human seat's open unit is over now.
+
+        Called with the chance outcomes after the step already resolved.
+        The unit is over when the pending decision belongs to another
+        seat's unit, or when the seat stands at the start of a turn of its
+        own: its last Leader pick ran into its round-1 turn, its Conflict
+        rewards and Control defense into its next round's turn, or every
+        other seat has revealed and its next turn follows. Any other
+        decision of the same seat continues the unit, even across a phase
+        change (a Conflict win's Intrigue trigger asked once Makers has
+        begun); another seat's answer inside it is no end either.
+        """
+
+        if (
+            unit is None
+            or session.seats[unit] != HUMAN_SEAT
+            or unit not in session.open_units
+        ):
+            return False
+        after = session.state
+        if _is_finished(after):
+            return False
+        if not isinstance(session.engine.current_decision(after), PlayerDecision):
+            return False
+        return unit_seat(after) != unit or turn_start_seat(after) == unit
+
+    def _resolve_chance_locked(self, session: GameSession) -> None:
+        """Resolve the chance decisions pending right now, and nothing else."""
+
+        for _ in range(_MAX_AUTO_STEPS):
+            if _is_finished(session.state):
+                return
+            decision = session.engine.current_decision(session.state)
+            if not isinstance(decision, ChanceDecision):
+                return
+            _apply_step(session, session.chance.resolve(decision))
+        raise RuntimeError("chance resolution exceeded the step limit")
 
     def _advance_locked(self, session: GameSession) -> None:
-        """Resolve chance and AI decisions until a human must act or the end."""
+        """Resolve chance and AI decisions until a human must act or the end.
+
+        An AI seat answering a human seat's interrupt can close that human's
+        turn (its last effect made the AI discard, say); the game then
+        stops at that turn end for the human's press like any other.
+        """
 
         engine = session.engine
         for _ in range(_MAX_AUTO_STEPS):
@@ -1110,8 +1217,77 @@ class GameSessionManager:
                 raise RuntimeError(
                     f"seat {decision.owner} has no legal action to auto-play"
                 )
+            unit = unit_seat(session.state)
             _apply_step(session, _agent_action(session, decision.owner))
+            if unit is not None and unit != decision.owner:
+                self._resolve_chance_locked(session)
+                if self._unit_ended_locked(session, unit):
+                    session.awaiting_confirmation = unit
+                    return
         raise RuntimeError("auto-advance exceeded the step limit")
+
+    def _restore_hand_over_locked(
+        self, session: GameSession, recorded: SavedHandOver
+    ) -> None:
+        """Put back the turn-end state a save recorded; caller holds the lock."""
+
+        steps = len(session.steps)
+        if not 0 <= recorded.sealed_steps <= steps:
+            raise SaveError(f"the save seals {recorded.sealed_steps} of {steps} steps")
+        for seat, opened in recorded.open_units:
+            if not self._is_human_seat(session, seat) or not 0 <= opened < steps:
+                raise SaveError(
+                    f"the save opens a unit for seat {seat} at step {opened}"
+                )
+        session.undo_floor = recorded.sealed_steps
+        session.open_units = dict(recorded.open_units)
+        confirmation = recorded.confirmation
+        if confirmation is None:
+            self._advance_locked(session)
+            return
+        if not self._is_human_seat(session, confirmation) or _is_finished(
+            session.state
+        ):
+            raise SaveError(
+                f"the save holds a turn end for seat {confirmation}, "
+                "which cannot press it"
+            )
+        session.awaiting_confirmation = confirmation
+
+    @staticmethod
+    def _is_human_seat(session: GameSession, seat: int) -> bool:
+        return 0 <= seat < len(session.seats) and session.seats[seat] == HUMAN_SEAT
+
+    def _restore_legacy_hand_over_locked(self, session: GameSession) -> None:
+        """Rebuild the pause of a save written before it was recorded.
+
+        Such a save holds the rule of its time: a human seat's turn end
+        paused only while the next decision was another seat's and the
+        seat's trailing steps could still be taken back. Where its opening
+        step is unknown, a human unit in progress counts as open from the
+        start, so its end still waits for the press.
+        """
+
+        live = live_steps(session.log)
+        seat = live[-1].actor if live else None
+        if seat is not None and session.seats[seat] == HUMAN_SEAT:
+            decision = session.engine.current_decision(session.state)
+            if (
+                isinstance(decision, PlayerDecision)
+                and decision.owner != seat
+                and _open_undo_window(session, seat) > 0
+            ):
+                session.awaiting_confirmation = seat
+                session.open_units[seat] = 0
+                return
+        self._advance_locked(session)
+        unit = unit_seat(session.state)
+        if (
+            unit is not None
+            and session.seats[unit] == HUMAN_SEAT
+            and not at_turn_start(session.state, unit)
+        ):
+            session.open_units[unit] = 0
 
     def _summary_locked(self, session: GameSession) -> JsonObject:
         state = session.state
@@ -1318,6 +1494,22 @@ def _open_undo_window(session: GameSession, seat: int) -> int:
 
     unsealed = len(session.steps) - session.undo_floor
     return max(0, min(undo_window(session.log, seat), unsealed))
+
+
+def _took_turn(session: GameSession, seat: int, step_index: int) -> bool:
+    """Whether the live steps from ``step_index`` on took ``seat``'s turn.
+
+    An Agent sent or the turn passed (``TURN_TAKING_EVENTS``); the caller
+    holds the lock, and nothing but those steps was logged since.
+    """
+
+    appended = len(session.steps) - step_index
+    return any(
+        event.kind in TURN_TAKING_EVENTS and dict(event.payload).get("player") == seat
+        for entry in session.log[len(session.log) - appended :]
+        if isinstance(entry, LoggedStep)
+        for event in entry.events
+    )
 
 
 def _turn_passed(session: GameSession, seat: int, own_steps: int) -> bool:
@@ -1587,13 +1779,17 @@ def _serialize_action(
 
     ``detail`` names a keyed icon's printed effect; ``undoable`` says whether
     the step could still be taken back afterwards (it could not once it
-    reveals hidden information or hands the game to a chance outcome);
+    reveals hidden information or hands the game to a chance outcome, nor
+    when it is an explicit turn end, which seals the turn);
     ``strength_after`` is the acting seat's running combat strength once the
     step is taken, when the step changes it (``strength_preview``).
     """
 
     outcome = _dry_run(session, action)
-    undoable = _action_is_undoable(session, action, outcome)
+    # An explicit turn end seals the turn it ends (``_settle_locked``).
+    undoable = action.action_id not in EXPLICIT_TURN_ENDS and _action_is_undoable(
+        session, action, outcome
+    )
     serialized: JsonObject = {
         "index": index,
         "action_id": action.action_id,
