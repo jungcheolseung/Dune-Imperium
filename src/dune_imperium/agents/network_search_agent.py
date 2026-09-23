@@ -21,9 +21,9 @@ the legal rows of the policy head takes a single-threaded decision from
 
 By default the seat leaves one kind of decision to the greedy network:
 ordering an Agent turn's effects (``search_effect_order``). Over 300 new
-matches paired deal for deal with the full search, that seat wins 62.7%
-against 64.0% -- a difference of -1.3pp [-8.7, +6.0], mean rank +0.04
-[-0.09, +0.18] -- at 17s instead of 43s a match (section 13).
+matches paired deal for deal with the full search, both guarded, that seat
+wins 61.7% against 64.3% -- a difference of -2.7pp [-10.0, +5.0], mean
+rank +0.06 [-0.08, +0.20] -- at 18s instead of 45s a match (section 13).
 
 Like greedy play, the search keeps a cycle guard (``_Taken``), both for its
 own decisions and inside every playout. Without one a search seat stalled a
@@ -77,7 +77,10 @@ class _Taken:
     -- or a search that keeps preferring the same move there -- never
     finishes the turn. The key is the observation *and* the legal set, so
     two different decisions that happen to share an observation never mask
-    each other; only a true repeat is steered to an untried move.
+    each other; only a true repeat is steered to an untried move. Such
+    repeats are common inside playouts: rerunning 100 matches with the guard
+    changed 38 of them and took the slowest from 487s to 70s, at the same
+    strength (section 13).
     """
 
     def __init__(self) -> None:
