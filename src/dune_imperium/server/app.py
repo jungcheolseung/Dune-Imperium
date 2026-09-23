@@ -340,9 +340,19 @@ def create_app(
         if card_images_dir is not None
         else default_card_images_directory()
     )
+    # One index per UI language: each prefers its own language's picture
+    # and falls back to the other's per file (the catalog pairs them).
     image_index = frozenset(
         (kind, content_id, path)
-        for (kind, content_id), path in resolve_card_images(images_dir).items()
+        for (kind, content_id), path in resolve_card_images(
+            images_dir, ("en", "ko")
+        ).items()
+    )
+    image_index_ko = frozenset(
+        (kind, content_id, path)
+        for (kind, content_id), path in resolve_card_images(
+            images_dir, ("ko", "en")
+        ).items()
     )
     icon_dir = icons_dir if icons_dir is not None else default_icons_directory()
     icon_files = (
@@ -365,7 +375,10 @@ def create_app(
         else default_bene_tleilax_image_path()
     )
     asset_versions = asset_url_versions(
-        {card_image_url(path): images_dir / path for _, _, path in image_index}
+        {
+            card_image_url(path): images_dir / path
+            for _, _, path in image_index | image_index_ko
+        }
         | {f"/icons/{name}": icon_dir / name for name in icon_files}
         | {f"/tokens/{name}": token_dir / name for name in token_files}
         | {"/board-image": board_path, "/bene-tleilax-image": bene_tleilax_path}
@@ -393,6 +406,7 @@ def create_app(
             bene_tleilax_image=bene_tleilax_path.is_file(),
             token_files=token_files,
             asset_versions=asset_versions,
+            image_index_ko=image_index_ko,
         )
 
     @app.get("/board-image", include_in_schema=False)

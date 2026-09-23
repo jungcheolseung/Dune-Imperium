@@ -134,7 +134,7 @@ const UI_TEXT = {
     "en": "{commander} · board {{count}} · bank {{bank}}"
   },
   "board.sardaukar_contract_title": {
-    "ko": "Sardaukar {contract} · Shaddam 전용, 따로 치워둠",
+    "ko": "사다우카 {contract} · 샤담 코리노 4세 전용, 따로 치워둠",
     "en": "Sardaukar {contract} · Shaddam only, set aside"
   },
   "board.seat_conflict_troops": {
@@ -514,7 +514,7 @@ const UI_TEXT = {
     "en": "Dune: Imperium — Uprising"
   },
   "html.opt_promo": {
-    "ko": "프로모 카드 (봉기 3장: Arrakis Revolt, The Beast's Spoils, Pivotal Gambit; 혈통을 켜면 Ruthless Leadership, 불멸을 켜면 틀레이락스 덱에 Piter, Genius Advisor도)",
+    "ko": "프로모 카드 (봉기 3장: 아라키스 반란, The Beast's Spoils, Pivotal Gambit; 혈통을 켜면 무자비한 리더십, 불멸을 켜면 틀레이락스 덱에 천재적인 조언자, 파이터도)",
     "en": "Promo cards (3 in Uprising: Arrakis Revolt, The Beast's Spoils, Pivotal Gambit; plus Ruthless Leadership with Bloodlines on, and Piter, Genius Advisor in the Tleilaxu deck with Immortality on)"
   },
   "html.opt_seed_label": {
@@ -526,7 +526,7 @@ const UI_TEXT = {
     "en": "Random"
   },
   "html.opt_tech": {
-    "ko": "기술 모듈 (혈통 필요: 익스 대사관 판·기술 타일 18장·Kota Odax)",
+    "ko": "기술 모듈 (혈통 필요: 익스 대사관 판·기술 타일 18장·익스의 코타 오닥스)",
     "en": "Tech Module (requires Bloodlines: Ixian Embassy · 18 Tech tiles · Kota Odax)"
   },
   "html.private_zone_aria": {
@@ -634,7 +634,7 @@ const UI_TEXT = {
     "en": "Battle"
   },
   "panels.chairdog_return": {
-    "ko": "Chairdog: {reveal_turn} 시작 때 {hand}로 {{cards}}",
+    "ko": "의자개: {reveal_turn} 시작 때 {hand}로 {{cards}}",
     "en": "Chairdog: returns to {hand} at the start of {reveal_turn} — {{cards}}"
   },
   "panels.commander_where": {

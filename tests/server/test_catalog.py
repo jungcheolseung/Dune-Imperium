@@ -1,12 +1,14 @@
 """Tests for the static display catalog behind the web UI."""
 
 import json
+import re
 
 from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS_BY_ID
 from dune_imperium.content.uprising.intrigue import INTRIGUE_CARDS_BY_ID
 from dune_imperium.content.uprising.starting_cards import STARTING_CARDS_BY_ID
 from dune_imperium.display.board_layout import LEADER_TILE_BOXES, SPACE_BOXES
 from dune_imperium.server.catalog import build_catalog
+from dune_imperium.server.sessions import JsonValue
 
 
 def test_catalog_is_json_serializable_and_covers_every_card() -> None:
@@ -259,6 +261,116 @@ def test_catalog_flags_every_graft_card_the_engine_knows() -> None:
     }
     assert flagged == engine
     assert "dissecting_kit" in flagged and "ghola" in flagged
+
+
+def test_catalog_pairs_each_korean_picture_with_the_english_one() -> None:
+    """The English UI's index prefers English pictures, the Korean UI's
+    Korean ones; an entry whose two differ carries both, versioned, and the
+    page shows the one of its language. One with the same picture in both
+    (no Korean file) carries only ``image``."""
+
+    english = frozenset(
+        {
+            ("imperium", "steersman", "en/uprising/imperium/Steersman.webp"),
+            ("other", "dagger", "en/base/starting/Dagger.webp"),
+            ("leader", "muad_dib", "en/uprising/leader/Muad'Dib.webp"),
+        }
+    )
+    korean = frozenset(
+        {
+            ("imperium", "steersman", "ko/uprising/imperium/Steersman.webp"),
+            ("other", "dagger", "en/base/starting/Dagger.webp"),
+            ("leader", "muad_dib", "ko/uprising/leader/Muad'Dib.webp"),
+        }
+    )
+    catalog = build_catalog(
+        english,
+        asset_versions=frozenset(
+            {("/card-images/ko/uprising/imperium/Steersman.webp", "k1")}
+        ),
+        image_index_ko=korean,
+    )
+    cards = catalog["cards"]
+    leaders = catalog["leaders"]
+    assert isinstance(cards, dict) and isinstance(leaders, dict)
+    steersman = cards["steersman"]
+    dagger = cards["dagger"]
+    muad_dib = leaders["muad_dib"]
+    assert isinstance(steersman, dict) and isinstance(dagger, dict)
+    assert isinstance(muad_dib, dict)
+    assert steersman["image"] == "/card-images/en/uprising/imperium/Steersman.webp"
+    assert steersman["image_ko"] == (
+        "/card-images/ko/uprising/imperium/Steersman.webp?v=k1"
+    )
+    assert muad_dib["image_ko"] == "/card-images/ko/uprising/leader/Muad%27Dib.webp"
+    assert "image_ko" not in dagger
+    # Without a Korean index nothing gains a Korean picture.
+    plain = build_catalog(english)["cards"]
+    assert isinstance(plain, dict)
+    plain_steersman = plain["steersman"]
+    assert isinstance(plain_steersman, dict)
+    assert "image_ko" not in plain_steersman
+
+
+def test_catalog_names_the_cards_whose_korean_print_was_read() -> None:
+    """``name_ko`` comes from the Korean edition's card faces
+    (``display.names_ko``); a card not read keeps only its English name.
+    A distinguisher the engine's English name carries but the card does
+    not print stays in the Korean name: a contract's numeral, a Skirmish's
+    battle icon in the glossary's words [Main p. 20]."""
+
+    from dune_imperium.display.names_ko import KOREAN_CARD_NAMES
+
+    catalog = build_catalog()
+    hangul = re.compile(r"[가-힣]")
+    for section, names in KOREAN_CARD_NAMES.items():
+        entries = catalog[section]
+        assert isinstance(entries, dict), section
+        for entry_id, name in names.items():
+            entry = entries[entry_id]
+            assert isinstance(entry, dict)
+            assert entry["name_ko"] == name
+            assert hangul.search(name), name
+            # Latin only where the English has it too: a contract's numeral,
+            # or printed on the Korean card as well ("실험체 X-137").
+            english = entry["name"]
+            assert isinstance(english, str)
+            for latin in re.findall(r"[A-Za-z]+", name):
+                assert latin in english, (name, english)
+    cards = catalog["cards"]
+    contracts = catalog["contracts"]
+    conflicts = catalog["conflicts"]
+    leaders = catalog["leaders"]
+    assert isinstance(cards, dict) and isinstance(contracts, dict)
+    assert isinstance(conflicts, dict) and isinstance(leaders, dict)
+
+    def korean(entries: dict[str, JsonValue], entry_id: str) -> JsonValue:
+        entry = entries[entry_id]
+        assert isinstance(entry, dict)
+        return entry.get("name_ko")
+
+    assert korean(cards, "steersman") == "조타수"
+    assert korean(cards, "treacherous_maneuver") == "기만적인 계책"
+    assert korean(contracts, "arrakeen_i") == "아라킨 I"
+    assert korean(contracts, "harvest_3_contract") == "채취 3+"
+    assert korean(conflicts, "skirmish_crysknife") == "소규모 전투 (크리스나이프)"
+    assert korean(leaders, "shaddam_corrino_iv") == "샤담 코리노 4세"
+    # Bloodlines: its Skirmish's wild battle icon [Bloodlines p. 5], the
+    # Commander Skills and the Tech tiles; Immortality's Tleilaxu deck.
+    skills = catalog["skills"]
+    tech = catalog["tech"]
+    assert isinstance(skills, dict) and isinstance(tech, dict)
+    assert korean(conflicts, "skirmish_wild") == "소규모 전투 (와일드)"
+    assert korean(contracts, "bloodlines_harvest_4") == "채취 4+"
+    assert korean(skills, "canny") == "영리함"
+    assert korean(tech, "choam_transports") == "초암 수송선"
+    assert korean(cards, "subject_x_137") == "실험체 X-137"
+    # Not photographed: Lady Jessica's flip side and the Bloodlines Intrigue
+    # cards that lay in a pile.
+    intrigue = catalog["intrigue"]
+    assert isinstance(intrigue, dict)
+    assert korean(leaders, "reverend_mother_jessica") is None
+    assert korean(intrigue, "adaptive_tactics") is None
 
 
 def test_catalog_appends_the_version_of_every_asset_it_knows() -> None:

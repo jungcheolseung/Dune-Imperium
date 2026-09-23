@@ -152,6 +152,11 @@ def test_resolve_prefers_korean_scans_and_drops_missing_files(tmp_path: Path) ->
         ("imperium", "both"): "ko/uprising/imperium/Both.webp",
         ("imperium", "en"): "en/uprising/imperium/English.webp",
     }
+    # The English UI's order: the English picture wins, Korean fills in.
+    assert dict(resolve_card_images(tmp_path, ("en", "ko"))) == {
+        ("imperium", "both"): "en/uprising/imperium/Both.webp",
+        ("imperium", "en"): "en/uprising/imperium/English.webp",
+    }
     assert resolve_card_images(tmp_path / "nowhere") == {}
 
 
@@ -186,6 +191,8 @@ def test_the_assets_checkout_resolves_every_content_id() -> None:
         assert (CARDS_DIR / relative).is_file(), (key, relative)
     # Every set is self-contained: the Uprising starting deck lives under
     # its own directory (copies of the base-game scans), never the
-    # six-player "Commander" variants.
+    # six-player "Commander" variants -- in either language directory.
     for content_id in ("dagger", "signet_ring", "convincing_argument"):
-        assert resolved[("other", content_id)].startswith("en/uprising/starting/")
+        language, path = resolved[("other", content_id)].split("/", 1)
+        assert language in ("en", "ko")
+        assert path.startswith("uprising/starting/"), path

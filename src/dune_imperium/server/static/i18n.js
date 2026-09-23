@@ -118,6 +118,33 @@ function promptText(prompt) {
   return prompt;
 }
 
+/* ---------- the catalog's names and pictures ---------- */
+
+/* An entry carries its English name and picture (name, image) and, where
+   the Korean edition is known, name_ko and image_ko beside them. The page
+   reads entry.name and entry.image everywhere, so this points them at the
+   current language's pair, keeping the English under name_en and image_en.
+   Runs on the loaded catalog and again on every switch. */
+const LOCALIZED_FIELDS = [
+  ["name", "name_ko"],
+  ["image", "image_ko"],
+];
+
+function localizeCatalog(node) {
+  if (!node || typeof node !== "object") return;
+  if (Array.isArray(node)) {
+    node.forEach(localizeCatalog);
+    return;
+  }
+  for (const [field, korean] of LOCALIZED_FIELDS) {
+    if (!(korean in node)) continue;
+    const english = `${field}_en`;
+    if (!(english in node)) node[english] = node[field];
+    node[field] = TERM_LANGUAGE === "ko" ? node[korean] : node[english];
+  }
+  for (const value of Object.values(node)) localizeCatalog(value);
+}
+
 /* ---------- the static page ---------- */
 
 /* index.html marks its text with data-i18n="<key>" (the element's text) and
@@ -149,6 +176,7 @@ function setLanguage(lang, redraw = true) {
   /* The button names the other language, in that language. */
   toggle.textContent = chosen === "en" ? "한국어" : "English";
   toggle.lang = chosen === "en" ? "ko" : "en";
+  if (state.catalog) localizeCatalog(state.catalog);
   if (redraw) redrawForLanguage();
 }
 

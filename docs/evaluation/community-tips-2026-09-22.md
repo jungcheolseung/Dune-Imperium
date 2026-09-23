@@ -36,7 +36,7 @@
 | Uprising | Shield Wall이 지키는 Conflict에는 sandworm이 들어갈 수 없고, Sietch Tabr 아이콘 등으로 token을 제거하면 풀린다 | 부분(되돌릴 수 없다는 말·득실 비교는 출처에 없음) | DWD 다이어리 2 |
 | 기본판 | Mentat으로 순서를 늦춰 상대 투입을 보고 최소 병력으로 이겨라 | 예 | Steam 가이드 3181263601 |
 | 기본판 | 3단계 Conflict는 보상이 커서 경쟁이 몰린다. garrison에 병력을 최소 2, 되도록 4 남겨 둬라 | 예 | Zatu |
-| 기본판 | Heighliner용 spice를 모아 한 번에 병력 다섯을 투입하면 그 라운드의 주요 경쟁자가 된다 (Uprising에는 Heighliner가 없다) | 예 | Zatu |
+| 기본판 | Heighliner용 spice를 모아 한 번에 병력 다섯을 투입하면 그 라운드의 주요 경쟁자가 된다 (Uprising에도 Heighliner가 있다: spice 5, Spacing Guild Influence 1, troop 5 recruit `[Board Guide p. 2]` — 2026-09-23 정정, 처음 옮길 때 "Uprising에는 없다"로 잘못 적었다) | 예 | Zatu |
 | 기본판 | 전투 단계에 쓰는 Intrigue(Ambush, Private Army)는 상대가 대응하기 어렵다. 다만 모든 전투 Intrigue를 아끼라는 말은 아니다 | 부분 | Zatu |
 
 ## 3. 영향력과 동맹
@@ -110,3 +110,5 @@
 - **"6~7장 구매"**(§1)와 비교하면 학습된 정책 5081은 판당 3.8장(heuristic 17.9장)으로 **사람보다도 적게 산다**(6.2).
 - **sandworm 두 배 보상**(§2)은 사용자 팁 1과 같고, 정책은 이미 그렇게 둔다(6.3).
 - 진영 시너지(사용자 팁 2)에 해당하는 커뮤니티 주장은 대조를 통과한 것이 없었다(§9의 Fremen Bond 항목).
+- 2026-09-23: 위 팁마다 규칙 확인(엔진 불일치 0)과 측정 경로·census 열을 정했다 —
+  [player-tips-for-training.md](../player-tips-for-training.md) 7절, 도구는 `scripts/ab/tip_census.py`.

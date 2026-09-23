@@ -14,3 +14,10 @@ except ImportError:  # some other interpreter on this PYTHONPATH
 else:
     hvariants.register(registry)
     hvariants.register_rollout(registry)
+    import os
+
+    if os.environ.get("DUNE_PROBE_CKPT"):
+        # Network probes need torch; only load it when a probe is asked for.
+        import netprobes
+
+        netprobes.register(registry)

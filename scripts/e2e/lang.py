@@ -99,8 +99,9 @@ ENGLISH_TERMS_JS = r"""() => {
 
 # In Korean, every English word a person or a screen reader meets (text,
 # title, alt, aria-label, placeholder) must be a name or printed card text:
-# the catalog's names are stripped (card, Leader, ability, space, Conflict,
-# Contract names stay English by policy; its engine ids are not, so a raw
+# the catalog's names are stripped (a card, Leader, Conflict or Contract
+# without a known Korean print, and every ability and space name, stays
+# English by policy; the catalog's engine ids are not, so a raw
 # "combat" or "emperor" fallback still fails), and so is iconized card
 # wording (.card-text, whose icons' tooltips are checked) and the help
 # legend's muted English twins. What is left must be empty. Every seat's
@@ -178,15 +179,14 @@ KOREAN_LATIN_JS = r"""({keep}) => {
 }"""
 
 # Chrome English on purpose: the uv extra the checkpoint field needs, the AI
-# of the seat kinds, the Esc key the turn guide names, and Leaders' short
-# names (Shaddam, Kota Odax) like log_words' Feyd. The product title is the
-# Korean edition's, 듄 임페리움: 봉기 (2026-09-22).
+# of the seat kinds and the Esc key the turn guide names. Leaders are named
+# by their Korean print since 2026-09-23 (Shaddam and Kota Odax were short
+# English names here before). The product title is the Korean edition's,
+# 듄 임페리움: 봉기 (2026-09-22).
 KOREAN_CHROME_ENGLISH = (
     "train extra",
     "AI",
     "Esc",
-    "Shaddam",
-    "Kota Odax",
 )
 
 
@@ -223,6 +223,47 @@ def english_left(page) -> list:
     return page.evaluate(KOREAN_LATIN_JS, {"keep": keep})
 
 
+# Cards whose Korean print is known carry name_ko (and, with the assets
+# checkout, image_ko): each card on the table shows the name and picture of
+# the page's language. The Reserve cards are always there, so the names are
+# checked even without the assets; the pictures only where image_ko exists.
+TABLE_CARDS_JS = r"""() => {
+    const out = [];
+    for (const card of document.querySelectorAll('#market .vcard[data-instance]')) {
+        const entry = lookup(baseId(card.dataset.instance));
+        if (!entry || !('name_ko' in entry)) continue;
+        const img = card.querySelector('img');
+        out.push({
+            id: card.dataset.instance, title: card.title,
+            ko: entry.name_ko, en: entry.name_en,
+            src: img ? img.getAttribute('src') : null,
+            imageKo: entry.image_ko || null, imageEn: entry.image_en || null,
+        });
+    }
+    return out;
+}"""
+
+
+def table_cards_follow(page, lang: str) -> None:
+    cards = page.evaluate(TABLE_CARDS_JS)
+    check.ok(len(cards) >= 2, f"{lang}: cards with a Korean print on the table", cards)
+    want_name = "ko" if lang == "ko" else "en"
+    wrong_name = [c for c in cards if c["title"] != c[want_name]]
+    check.ok(
+        not wrong_name,
+        f"{lang}: each card is named in the page's language",
+        wrong_name[:4],
+    )
+    want_image = "imageKo" if lang == "ko" else "imageEn"
+    pictured = [c for c in cards if c["imageKo"]]
+    wrong_picture = [c for c in pictured if c["src"] != c[want_image]]
+    check.ok(
+        not wrong_picture,
+        f"{lang}: each card's picture is the page language's ({len(pictured)} Korean)",
+        wrong_picture[:4],
+    )
+
+
 def create(page, base: str, seats: tuple[str, str, str, str]) -> None:
     page.goto(base + "/")
     page.wait_for_selector("#setup-screen:not([hidden])")
@@ -251,6 +292,7 @@ def live_table(base: str, browser) -> None:
     check.ok(page.evaluate("TERM_LANGUAGE") == "ko", "Korean is the default")
     left = english_left(page)
     check.ok(not left, "Korean: no English outside names on the new table", left[:8])
+    table_cards_follow(page, "ko")
 
     # In Korean the engine's English prompt is translated.
     prompt = page.evaluate("state.summary.decision.prompt")
@@ -271,6 +313,7 @@ def live_table(base: str, browser) -> None:
     switch(page, "en")
     stray = hangul(page)
     check.ok(not stray, "English: no Hangul on the live table", stray[:8])
+    table_cards_follow(page, "en")
     check.ok(
         page.inner_text("#decision-info .prompt").strip() == prompt,
         "English: the engine's prompt is shown as sent",

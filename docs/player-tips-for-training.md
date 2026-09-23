@@ -3,7 +3,8 @@
 2026-09-22, WSL 노트북 세션. **논의만 했고 코드 변경은 없다.** 사용자 질문 두 개에서 시작했다: "휴리스틱과
 rollout은 어떻게 구현돼 있나", "친구들과 여러 번 두며 느낀 팁이나 행동의 중요도가 학습에 도움이 될까".
 다른 기기에서 이어가기 위해 남긴다. 같은 날 밤 Mac mini에서 이어 갔다(6절: 사용자 답·팁 두 개·census·heuristic
-A/B — 여전히 저장소 코드 변경 없음). 이어갈 때는 **6.8 "다음"**부터 시작한다.
+A/B — 여전히 저장소 코드 변경 없음). 2026-09-23 WSL 노트북에서 커뮤니티 팁 38개를 분류하고 그 측정 도구
+`scripts/ab/tip_census.py`를 넣었고, 같은 날 가져온 5081로 census를 냈다(7절). 이어갈 때는 **7.8 "다음"**부터 시작한다.
 
 ## 1. 두 baseline의 구조 (요약)
 
@@ -92,7 +93,7 @@ self-play collection이라 부른다).
    AI끼리만 통하는 착취 전략을 의심해 파 본다. "어느 정도 통한다"면 휴리스틱의 구매 사전을 고칠 근거다.
    → **답했다(6.1).**
 2. **실전 팁·행동 중요도 목록.** 받으면 팁마다 3절의 1~4 중 어디에 넣을지와 검증할 측정을 정한다.
-   → **진행 중**: 팁 1(sandworm, 6.3), 팁 2(진영 시너지 구매, 6.6). 사용자가 다 적은 뒤 커뮤니티 목록(6.7)과 대조한다.
+   → **진행 중**: 팁 1(sandworm, 6.3), 팁 2(진영 시너지 구매, 6.6). 커뮤니티 목록(6.7)은 7절에서 경로·측정 열로 분류했다.
 
 ## 6. 이어간 기록 (2026-09-22 밤, Mac mini)
 
@@ -225,3 +226,211 @@ workflow가 BGG·reddit·Dire Wolf 디자인 다이어리·Steam 가이드 등�
 - 정책 틀의 H-deck 탐침: 비싼 카드(비용 5 이상)를 살 수 있으면 사게 덮어쓴 5081 대 5081, 2:2(팔당 약 20분).
 - heuristic Tleilaxu 채택(6.5, 별도 작업 단위, 사용자 결정).
 - 평가 문제집에 sandworm 문항(6.3).
+
+## 7. 커뮤니티 팁을 가설로 — 분류와 tip census (2026-09-23, WSL 노트북)
+
+사용자가 Mac mini의 커뮤니티 팁 JSON을 [evaluation/community-tips-2026-09-22.md](evaluation/community-tips-2026-09-22.md)로
+옮겨 온 뒤 이 노트북에서 이어 갔다. 이 노트북에는 5081 체크포인트도 6절의 스크래치 도구(`ab-runs/2026-09-22-thin/`)도 없어서,
+**정책 측정은 하지 않았고** 대신 (1) 38개 팁의 규칙 확인과 분류, (2) 그 측정을 한 명령으로 돌리는 저장소 도구, (3) 그 도구의
+heuristic 기준값을 만들었다. 5081 쪽 숫자는 Mac mini에서 같은 명령으로 낸다(7.5).
+
+### 7.1 방법
+
+- **분류**: workflow로 팁 묶음(덱빌딩 / 전투 / 영향력·Spy·계약 / 템포·Tech·끝내기)마다 Sonnet 분류자 하나와, 그 결과를
+  반박하도록 한 Opus 검증자 하나. 검증자는 규칙 주장마다 `docs/rules` 줄과 엔진 코드를 직접 열고, 필요하면 작은 게임을
+  돌렸다. 분류자가 "불일치"로 올린 2건(C1.8 Swordmaster 비용, C7.1 Tech 지속 비용)은 **둘 다 검증자가 반박**했다(분류자가
+  `docs/rules`를 열지 않고 적었다).
+- **도구**: 수집기 4개를 Sonnet 구현자 넷이 병렬로 쓰고, Opus 검증자가 엔진의 emit 지점을 전수 grep·손 추적·변조 실험으로
+  반박한 뒤, 증명된 결함만 구현자가 고쳤다. 검증이 잡은 결함 중 숫자를 틀리게 하던 것: sandworm 소환 세 경로 중 둘 누락,
+  아무도 안 들어간 Conflict 누락, Commander **손실**을 퇴각으로 셈, Endgame 시작 VP 스냅숏이 Tech의 Endgame VP를 이미 포함,
+  Seek Allies가 아닌 의무 자기 폐기(Dangerous Rhetoric·Subversive Advisor)를 "선택 폐기"로 셈, Bond 짝을 카드 자신의 진영으로
+  판정(Southern Faith 등은 Bene Gesserit 짝이 필요) — 모두 고쳤고 되돌리면 실패하는 테스트가 붙었다.
+
+### 7.2 규칙 확인 — 엔진 불일치 0
+
+규칙을 담은 팁(C1.6 전제, C1.9, C2.3, C2.4, C2.6, C3.3, C3.4 전제, C4.1, C4.2, C5.1, C6.3, C7.1, C7.2, C8.2)은 모두 `docs/rules`와
+엔진이 일치했다. 남은 것:
+
+- **테스트 공백 1건 메움**: Influence 4 보너스는 4 아래로 내려갔다가 다시 도달하면 다시 받는다 `[Main pp. 4, 7 board
+  artwork]`(`rules/uprising-systems.md`). 엔진은 이미 그렇게 했지만(`rules/influence.py`에 "한 번만" 가드가 없다) 떨어졌다
+  다시 오르는 경우를 고정한 테스트가 없었다 → `test_reaching_four_again_after_a_drop_pays_the_track_bonus_again`(가드를 넣은
+  소스 사본에서 실패함을 확인).
+- **문서 오기 정정**: 커뮤니티 문서 C2.7의 "(Uprising에는 Heighliner가 없다)"는 틀렸다 — Heighliner는 spice 5, Spacing Guild
+  Influence 1, troop 5 recruit `[Board Guide p. 2]`(`rules/board-spaces.md`). 6.7의 옮겨 적기에서 생긴 잘못이다.
+- **해당 없음**: Mentat은 Uprising에 없다 `[Main pp. 5, 6]`(C2.5; "상대가 다 둔 뒤 투입"의 지렛대는 Swordmaster의 셋째
+  Agent가 비슷하다). C2.8의 Ambush·Private Army는 기본판 카드다. C1.3의 카드들은 Uprising 시작 덱에도 그대로 있다 `[Main p. 3]`.
+- 참고 사실: Uprising의 2·3위 보상 가운데 troop **만** 주는 행은 없다 — C2.2의 "troop 1"은 보상이 아니라 투입량이다.
+  Imperium 덱은 기본 65 → 평소 구성 131 → 학습 구성 135장이다(C1.10).
+
+### 7.3 팁 → 경로 → census 열
+
+| 팁 | 경로 | census 열 (접두사는 수집기) |
+|---|---|---|
+| C1.1 판당 6~7장 구매, 반응적 | census | `deck.buys`, `buys_r1_3/r4_6/r7p`, `buys_by_payment` |
+| C1.2 약한 시작 카드 없애기 | census (6.1~6.4와 같은 축) | `deck.trash_starters`, `end_starters`, `end_bought` |
+| C1.3 폐기 순서(합의 없음) | census만 (문제집 아님) | `deck.trashed`(카드별), `first_trash_round` |
+| C1.4 폐기는 체감 | census | `deck.trash_chosen` 분포 |
+| C1.5 단독으로 강한 카드 | 보류 — 팁 2와 긴장, "단독" 표지가 content에 없다 | — |
+| C1.6 초반 Faction 접근 카드 1~2장 | census → 정책 탐침 | `deck.faction_buys_r1_3`, `infl.sources` |
+| C1.7 7라운드·덱 13장·중반 구매는 한두 번 봄 | census | `end.endgame_round`, `deck.end_cards`, `deck.exposure` |
+| C1.8 Swordmaster 거의 필수 | census → 정책 탐침 | `lands.swordmaster_round`(없으면 None) |
+| C2.1 전투는 경매, 아슬아슬하게 | census | `combat.win_margin`, `excess_troops`(상한) |
+| C2.2 유닛 하나로 2·3위 | census | `combat.one_unit_entries`, `one_unit_rewarded` |
+| C2.3·사용자 팁 1 sandworm | census | `combat.worms_summoned`, `doubled_rewards`, `worm_not_first`, `infl.fremen2_round`, `hooks_round` |
+| C2.4 Shield Wall | census → 문제집 | 게임 `combat.wall_fall_round`, 좌석 `dropped_wall` |
+| C2.6 tier III용 garrison 2~4 | census | `combat.garrison_tier3_visit` |
+| C2.7 Heighliner 한 번에 다섯 | census | `combat.heighliner_visits` |
+| C2.8 Combat Intrigue | census | `combat.intrigue_flip_won/lost` |
+| C3.1 Guild·Emperor만으로 승리 | **스타일 봇**(league) + census | `infl.emperor/guild`, `combat.entered` |
+| C3.2 1~2 진영 집중 | census | `infl.tracks_0_1/ge2/ge4`, `alliances` |
+| C3.4 이른 Reveal로 Faction 카드 | census → 정책 탐침 | `infl.early_reveals`, `early_reveal_faction_buys` |
+| C4.1~C4.3 Spy | census | `spy.placed/used_infiltrate/used_gather/recalled_other/on_board_end`, `*_offered/taken`, `use_lag` |
+| C6.3·C6.4 Swordmaster ↔ High Council | census | `lands.*_round`, `sm_first/hc_first`, `reveal_cards_*`, `reveal_persuasion_*` |
+| C7.1 Tech 지속 비용 | census | `bt.fw_strength/fw_trash/fw_influence_lost`, `ada_spies_trashed`, `tech_*` |
+| C7.2 Commander 퇴각 후 재사용 | census | `bt.commander_retreats` 대 `commanders_recruited_paid` |
+| C8.2·C8.3 끝내기, 막판 Intrigue | census → **문제집** | 게임 `end.leader_changed/trigger_*`, 좌석 `endgame_vp`, `plot_icon_plays_flippable` |
+| 사용자 팁 2 진영 시너지 | census | `bond.cards_end/pairs_end/plays/activations/activation_share` |
+| C1.9·C1.10·C5.1·C5.3·C8.1 | 없음(규칙 일치·설계 논평·공식 권장·낮은 신뢰) | — |
+| C5.2 계약 노출·C6.1 water 사슬·C6.2 좋은 턴 | 낮음 — 계약을 읽는 에이전트가 없거나 "명백한 경우"가 아니다 | — |
+| C8.4 상대 Agent 아이콘 추론 | 입력 표현(관측 버전 상승) — 낮음: heuristic 2라운드 손패 48개 중 "Faction 아이콘 없음"이 공개 정보로 증명된 것 2개 | — |
+
+Bond 표는 content에서 만들면 Fremen 11 · Bene Gesserit **8** · Emperor 1 · Spacing Guild 0이다. 6.6의 7과 다른 1장은 Long
+Reach(Agent 아이콘 조건이 Bene Gesserit Bond)다.
+
+### 7.4 도구 — `scripts/ab/tip_census.py`
+
+대회의 spec(같은 seed·Leader·좌석 회전)을 그대로 두고 매 전이를 `scripts/ab/tipcensus/`의 수집기(`deck`·`combat`·`influence`·
+`endgame`)에 보여 준다. 판마다 JSONL 한 줄(좌석 행 + 게임 열), 끝에 종류별 평균과 **승자 평균**을 나란히 쓴다. 대회와 같은
+게임을 두는지는 테스트가 순위·VP·결정 수로 고정한다(`tests/unit/test_tip_census.py`). heuristic 100판이 11~17초다.
+
+```bash
+uv run python scripts/ab/tip_census.py --agents heuristic --games 100 --ruleset choam \
+    --bloodlines --tech-module --immortality --promo-cards --out ab-runs/tips/heuristic-train
+```
+
+census는 상관이다: 승자와 함께 움직이는 열은 **개입**(heuristic 변형이나 정책 덮어쓰기 A/B)으로 확인하기 전에는 원인으로
+적지 않는다([lessons.md](lessons.md) 2026-09-11).
+
+### 7.5 heuristic 기준값 (4명 미러, 구성마다 100 seed = 400 좌석-판, 실패·불법 0)
+
+원자료는 git 무시 `ab-runs/tips/heuristic-{base,usual,train}/`(이 노트북). 셀은 "전체 / 승자"다. 평소 구성 = CHOAM + Bloodlines
++ Tech + Immortality, 학습 구성 = 평소 + promo.
+
+| 열 | 기본판 | 평소 구성 | 학습 구성 |
+|---|---|---|---|
+| 판 길이(라운드) / Conflict 덱이 비어 끝난 판 | 9.55 / 64% | 9.64 / 72% | 9.54 / 66% |
+| `deck.buys` / 그중 1~3라운드 | 15.3 / 4.3 | 17.2 / 5.3 | 16.7 / 5.3 |
+| `deck.faction_buys_r1_3` | 1.37 / 1.41 | 1.65 / 1.81 | 1.69 / 1.81 |
+| `deck.end_cards` / `end_starters` | 22.5 / 7.7 | 23.9 / 7.3 | 23.5 / 7.4 |
+| `deck.exposure`(산 카드가 이후 손에 든 라운드 수) | 1.40 | 1.41 | 1.41 |
+| `combat.won` | 2.17 / 3.24 | 2.18 / 3.34 | 2.15 / 3.28 |
+| `combat.win_margin`(strength) / `excess_troops` | 4.44 / 1.37 | 4.24 / 1.27 | 4.43 / 1.31 |
+| `combat.one_unit_entries` → 2·3위 보상 | 1.66 → 1.10 | 1.62 → 1.10 | 1.67 → 1.13 |
+| `combat.worms_summoned` / `doubled_rewards` | 1.14 / 0.74 (승자 1.84 / 1.25) | 1.00 / 0.62 (1.82 / 1.15) | 1.12 / 0.73 (2.01 / 1.27) |
+| `infl.tracks_0_1` | 1.35 / 1.08 | 1.36 / 1.04 | 1.35 / 0.92 |
+| Swordmaster 얻은 좌석 / 평균 라운드 | 56% / 6.1 | 39% / 6.5 | 37% / 6.5 |
+| High Council 얻은 좌석 / 평균 라운드 | 82% / 5.1 | 63% / 5.4 | 66% / 5.4 |
+| Reveal 카드 수: 아무것도 없음 → Swordmaster만 | 3.82 → 3.26 | 3.70 → 2.89 | 3.72 → 2.97 |
+| Reveal Persuasion: 아무것도 없음 → High Council만 | 4.62 → 7.14 | 4.51 → 6.80 | 4.53 → 6.99 |
+| Infiltrate 제안 → 사용 | 1.60 → 0.96 | 1.27 → 0.78 | 1.20 → 0.69 |
+| `end.leader_changed`(Endgame에서 1위가 바뀐 판) | 12% | 9% | 14% |
+| `end.plot_icon_plays_flippable` | 0.12 | 0.07 | 0.07 |
+
+heuristic에서는 **구조상 정해진 열**이 있다 — Gather Intelligence는 제안되면 늘 쓰고(`gather_intelligence` 2.0 > 거절 −2.0),
+이른 Reveal은 0, 병력은 늘 최대로 보낸다. 이 열들은 5081과 비교할 때만 뜻이 있다. 읽을 만한 heuristic 자체의 모습: 판이
+**9.5라운드**로 사람 추정(C1.7, 약 7라운드)보다 길고 3분의 2가 Conflict 덱 소진으로 끝난다. 덱은 23장이고 산 카드는 이후 1.4라운드
+손에 든다(C1.7의 "한두 번"과 같다). Swordmaster는 늦고(6라운드 이후) 좌석의 절반 넘게 얻지 않는다 — 출처는 초반 구매를 권한다.
+
+**6절 Mac 스크래치 census와 대조**(학습 구성, 12 seed): 산 카드 평균 비용 3.67 대 3.67, 시작 카드 폐기(Seek Allies 포함)
+2.62 대 2.58은 맞고, Maker Hooks 도달 52% 대 58%(seed 0~11만 54%)는 가깝다. 판당 구매 17.85 대 16.70(seed 0~11만 17.06), Fremen 2 도달 77% 대 88%는 어긋난다.
+Mac 스크립트의 seed·정의를 이 노트북에서 볼 수 없어 원인은 확정하지 못했다(최종 Fremen ≥ 2로 세어도 87%라 정의 차이로는
+설명되지 않았다). 같은 날 5081로 다시 대조하니(7.7) **5081 1 + heuristic 3 표는 Mac과 덱 열이 모두 0.2 안으로 맞았고**, 미러의
+차이는 Mac의 12 seed가 가진 표본 오차(이 도구의 100 seed 구간보다 약 3배 넓다)와 같은 크기다 — 정의 결함보다는 표본 차이로
+보이지만 확정은 아니다.
+
+### 7.6 다음
+
+1. **Mac mini: 5081 census** — 학습 구성·평소 구성에서 5081 4명(100 seed)과 5081 1 + heuristic 3(25 seed × 4 회전). 이 노트북의
+   heuristic 행과 같은 명령이다. 이것이 7.3 열 대부분의 실제 답이다(전투 마진, 유닛 하나 kicker, Swordmaster 시점, Spy 사용,
+   이른 Reveal, 막판 Intrigue).
+   ```bash
+   uv run python scripts/ab/tip_census.py --agents checkpoint:checkpoints/2026-09-22/exploit/champion-5081.pt \
+       --games 100 --ruleset choam --bloodlines --tech-module --immortality --promo-cards --out ab-runs/tips/5081-train
+   ```
+2. census에서 정책과 팁이 어긋나는 열이 나오면 그 결정 가족만 덮어쓴 **정책 탐침 A/B**(2:2, `paired.py`) — 후보: 초반 Faction
+   접근 카드(C1.6), 이른 Swordmaster(C1.8), 이른 Reveal(C3.4).
+3. **평가 문제집**의 첫 문항 후보: 마지막 라운드에 맞는 face-up 전투 카드를 가진 채 Crysknife/Desert Mouse/Ornithopter를
+   Plot(spice 1)으로 쓰는가(Endgame 옵션은 VP 1) — C8.3; sandworm 소환(6.3); Shield Wall이 서 있고 tier III가 남았을 때 폭파(C2.4).
+4. **스타일 봇**: Guild·Emperor 영향력 몰빵(C3.1) — league 상대 후보.
+5. 6.8에서 남은 것(정책 틀 H-deck 탐침, heuristic Tleilaxu 채택, 사용자 팁 더 적기)은 그대로다. 팁 2의 "Bond 발동 직접 세기"는
+   `bond.activations`로 도구가 생겼다(heuristic: Bond 판정이 걸린 play 가운데 21~27%가 발동 — 좌석별 비율의 평균).
+
+### 7.7 5081 census — 정책은 팁과 어디서 같고 어디서 다른가 (2026-09-23)
+
+사용자가 `checkpoints/2026-09-22/exploit/champion-5081.pt`를 이 노트북으로 가져왔다. 셀 셋, 실패·불법 0(원자료 git 무시
+`ab-runs/tips/5081-*`, 비교표 `ab-runs/tips/cmp-*.md`): (A) 5081 4명 학습 구성 100 seed(15분), (B) 5081 1 + heuristic 3 학습
+구성 25 seed × 4 회전 = 100판, (C) 5081 4명 평소 구성 100 seed. 워커 4개, 워커당 약 650MB, 한 판 약 35초. 비교는 새 도구
+`scripts/ab/tip_compare.py`(seed 군집 부트스트랩 95% 구간; 같은 표의 두 종류는 seed를 짝지어 다시 뽑는다)로 했다. B에서 5081은
+**80%** 이긴다(heuristic 셋 상대).
+
+**Mac 대조**: B의 5081은 판 끝 덱 13.01 = 시작 7.62 + 산 카드 5.39(Mac 13.00 = 7.50 + 5.50), 구매 5.90(6.10), 7라운드 이후 2.60(2.52),
+평균 비용 2.96(3.10), 폐기 2.39(2.38), 동맹 1.47(1.50)으로 맞는다. A는 덱 11.47(10.85), 구매 4.22(3.77), 비용 3.21(2.77), Fremen 2
+87%·3.7라운드(83%·3.6), Hooks 78%·4.7라운드(77%·4.5), sandworm 1.99(2.27), 두 배 보상 1.20(1.29)이다.
+
+| 팁 | 팁의 주장 | 5081: 미러 / heuristic 셋 상대 | heuristic 미러 | 정책과 팁 |
+|---|---|---|---|---|
+| C1.1·C1.7 구매 수 | 판당 6~7장, 덱 약 13장 | 구매 4.2 / 5.9, 덱 11.5 / 13.0, 산 카드가 이후 손에 든 라운드 1.97 | 16.7장, 덱 23.5 | 사람보다 조금 덜 산다, 덱 크기는 같다 |
+| C1.4 폐기는 처음 몇 장 | 초반 폐기 | 첫 선택 폐기 2.4라운드 | 4.4라운드 | **같다** |
+| C1.3 폐기 순서 | Dagger 먼저(합의 없음) | Convincing Argument 0.56 · Reconnaissance 0.49 · Dagger 0.32 | Dagger 0.80 | 설문의 "Convincing Argument 먼저" 쪽 |
+| C1.6 초반 Faction 접근 카드 | 1~3라운드 1~2장 | **0.67 / 0.92** | 1.69 | **다르다** — 방문 영향력의 대부분이 시작 카드(5.76)다 |
+| C1.8 Swordmaster | 거의 필수, 초반 | 얻은 좌석 **79% / 94%**, 5.6 / 4.7라운드 | 37%, 6.5라운드 | **같다** |
+| C6.4 Swordmaster ↔ High Council | 이견 | Swordmaster 먼저 76%, High Council은 38%만 7.6라운드 | High Council 먼저 54% | 정책은 Swordmaster 쪽 |
+| C2.1 아슬아슬하게 이기기 | 작은 마진 | 승리 마진 **5.1 / 6.9** strength, 남는 troop 상한 1.8 / 2.5 | 4.4 (늘 최대 배치) | **다르다** — 더 크게 이긴다 |
+| C2.2 유닛 하나로 2·3위 | 흔히 한다 | 유닛 하나 투입 1.35 → 보상 0.70 / 0.80 → 0.63 | 1.67 → 1.13 | 덜 한다 |
+| C2.3 sandworm | 두 배, 병력으로 받쳐라 | 소환 1.99 / 2.35, 두 배 보상 1.20 / 1.29, 벌레 투입 중 1위 못 한 것 68% / 33% | 1.12, 0.73 | 적극적 — 미러에서는 벌레가 자주 밀린다 |
+| C2.4 Shield Wall | 폭파로 벌레 길을 연다 | 평균 5.9라운드, 24%는 끝까지 서 있음 | 4.2라운드 | 늦게 연다 |
+| C2.6 tier III용 garrison | 2~4 남겨 둔다 | tier III 방문 때 garrison **1.70 / 1.71** | 2.47 | **다르다** |
+| C2.7 Heighliner 한 번에 다섯 | 라운드의 주역 | 방문 **1.17 / 1.57**, Guild 영향력 3.29 / 5.20 | 0.42, 1.05 | **같다** — Guild 전문 |
+| C3.1 Guild·Emperor만으로 | 전투 없이 | Guild는 높고 Emperor는 낮으며(2.10 / 1.68) 전투는 많다(8.05 / 7.65회) | | 그 스타일은 아니다 |
+| C3.2 1~2 진영 집중 | 트랙 0~1이 흔하다 | 0~1 트랙 0.93 / 0.85, 2 이상 3.07 / 3.15 | 1.35 | 셋에 걸친다 |
+| C3.4 이른 Reveal | Uprising에서 자주 보인다 | **0** — Agent turn도 가능한 결정 348번 중 0번(4판 독립 확인) | 0(구조상) | **다르다** |
+| C4.2 Gather Intelligence 골라 쓰기 | 타이밍을 고른다 | 제안 중 86% 사용 | 100%(구조상) | 조금 고른다 |
+| C4.1·C4.3 Infiltrate·Espionage | Espionage 우선, 미리 놓기 | Spy 2.94개, Infiltrate 제안 중 21% 사용, Espionage 0.21회 | 4.20, 58%, 0.66 | Espionage를 우선하지 않는다 |
+| C7.2 Commander 퇴각 재사용 | 퇴각으로 아낀다 | 퇴각 0.13, 2 Solari 재고용 **3.15 / 5.86** | 0.14, 1.55 | 퇴각 대신 돈을 낸다 — 퇴각 기회가 얼마나 왔는지는 아직 안 셌다 |
+| C7.1 Tech | 큰 투자 | 타일 0.43, Forbidden Weapons 0 | 1.27 | 거의 안 산다 |
+| C8.3 막판 Intrigue | 1위가 바뀐다 | Endgame에서 1위가 바뀐 판 19%. battle-icon Intrigue를 맞는 카드가 있는데 Plot(spice 1)으로 쓴 것 0.10 / 좌석-판(이 카드 Plot의 약 3분의 1) | 14%, 0.07 | 문제집 후보 |
+| 사용자 팁 2 Bond | 진영 시너지로 산다 | Bond 카드 0.44, 짝 0.28, 발동 0.14 | 1.78, 1.67, 0.32 | 안 한다(6.6과 같다) |
+| 6.5 Tleilaxu | (heuristic의 약점) | Tleilaxu 구매 0.18 | 2.94 | 정책은 거의 사지 않는다 — 6.5의 옆길 발견과 맞는다 |
+
+판 길이는 5081 미러도 9.55라운드이고 65%가 Conflict 덱 소진으로 끝난다(heuristic과 같다). 평소 구성(C)은 학습 구성과 같은 모습이다
+(약 200열 중 구간이 0을 벗어난 것 7열, 모두 작다 — 두 배 보상 −0.18, VP −0.33 등; `ab-runs/tips/cmp-5081-train-usual.md`). 5081 미러 안에서 승자와 나머지를 가르는 열(`--split-winners`)은 영향력 트랙·동맹·전투 승·sandworm처럼 VP와
+직접 겹치는 것들이라 원인 후보로 쓰지 않는다. 그 밖에 승자는 비싼 카드(비용 5 이상 1.19 대 0.80)와 Faction 카드(1.67 대 1.34)를 조금 더
+샀다 — 상관일 뿐이지만 C1.6·H-deck과 같은 방향이다.
+
+### 7.8 다음
+
+1. **정책 탐침 1순위 — 기능으로 거른 H-deck (C1.6 + 6.1)**: 1~3라운드 Reveal 구매에서 Faction 접근 아이콘 카드를 살 수 있으면 사게
+   덮어쓴 5081 대 5081, 2:2 미러. 정책과 팁이 가장 분명히 갈리고(0.67 대 1~2장), 승자 쪽 상관도 같은 방향이며, 6.8의 "정책 틀 H-deck
+   탐침"을 "비용"이 아니라 사람이 말한 "기능" 기준으로 시험한다. 덮어쓰기 에이전트는 `scripts/ab/pypath/netprobes.py`
+   (`net_faction_early1`·`net_faction_early2`: 1~3라운드 Reveal 구매에서 Faction 아이콘 카드를 살 수 있으면 스스로 산 것까지 합쳐
+   cap장이 될 때까지 네트워크 logit 최고인 것을 산다; `DUNE_PROBE_CKPT`가 있을 때만 등록). **파일럿**(`net_faction_early2` 4명,
+   12 seed): 1~3라운드 Faction 카드 0.67 → **1.00장**, 1~3라운드 구매 1.08 → 1.42장 — 개입은 일어나지만 cap 2에 한참 못 미친다.
+   1~3라운드에 Faction 카드를 살 Persuasion이 모자란 경우가 많은 것으로 보인다. 용량이 +0.3장 남짓이라 효과도 작을 것이고, 이
+   노트북에서 2:2 미러 1,000판(약 2.5시간)의 분해능(승률 약 ±6%p)으로는 가르기 어렵다 — VP 마진이 더 민감하다. A/B 명령:
+   ```bash
+   export DUNE_PROBE_CKPT=checkpoints/2026-09-22/exploit/champion-5081.pt
+   PYTHONPATH=scripts/ab/pypath uv run dune-imperium-tournament --agents net_faction_early2,checkpoint:$DUNE_PROBE_CKPT \
+       --games 500 --start-seed 8100 --ruleset choam --bloodlines --tech-module --immortality --promo-cards --rotate-leaders \
+       --workers 4 --matches ab-runs/tips/probe-faction2.jsonl
+   uv run python scripts/ab/paired.py ab-runs/tips/probe-faction2.jsonl --a net_faction_early2 --b checkpoint:$DUNE_PROBE_CKPT
+   ```
+2. 탐침 후보 2: 이른 Reveal(C3.4) — 조건 설계가 어렵다(그 Reveal의 Persuasion으로 Row의 Faction 카드를 살 수 있을 때). 3: tier III 전
+   garrison 남기기(C2.6), 작게 이기기(C2.1) — 배치는 여러 단계 결정이라 덮어쓰기가 까다롭다.
+3. **평가 문제집 — 틀과 첫 세 문항이 들어갔다(2026-09-23)**: [evaluation/problem-set.md](evaluation/problem-set.md),
+   `dune-imperium-problems mine|score|check`. 문항은 Endgame battle-icon VP(clear), 마지막 라운드 battle-icon 보유(tip), Deep
+   Desert 소환(tip, 사용자 팁 1). 5081은 소환·Endgame에서 이미 팁대로 두고(정답률 1.00), 보유 문항에서 20개 중 3개를 Plot으로 쓴다.
+   Opus 검증이 "규칙상 명백"이라 믿었던 보유 문항의 반례(앞면 와일드 카드, 같은 턴의 "spice를 얻었다면" 효과)를 찾아 tip으로
+   내렸다. 다음 문항 후보: Shield Wall 폭파(C2.4), 이른 Reveal(C3.4), tier III garrison(C2.6).
+4. Commander: 퇴각할 수 있었던 기회 수를 세는 열을 더해 "퇴각 대신 재고용"이 약점인지 가린다(C7.2).
+5. 스타일 봇(Guild·Emperor, C3.1)은 5081이 이미 Guild 전문이라 값이 줄었다 — Emperor 쪽이나 전투를 버리는 쪽으로 다시 정한다.
+6. 6.8의 나머지(heuristic Tleilaxu 채택, 사용자 팁 더 적기)는 그대로다.

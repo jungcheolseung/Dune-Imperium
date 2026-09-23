@@ -1,6 +1,6 @@
 # 개발 인수인계
 
-기준일: 2026-09-21
+기준일: 2026-09-23
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
@@ -17,7 +17,7 @@ uv run ruff check src tests
 uv run mypy src tests
 ```
 
-2026-09-23(탐색 비용 세션 뒤, Mac mini, master)의 기준 결과는 **pytest 1,816개 통과**(9-22 새벽 1,806 뒤 그 사이 세션들이 7개, 이 세션이 잘린 head 읽기·효과 순서 스위치·순환 방지 테스트 3개를 더함, 실측), Ruff 통과, mypy 통과. 그 앞 2026-09-22 새벽(패널 문구의 용어집 잔재 뒤, Mac mini, 브랜치 `ui-glossary`)의 기준 결과는 **pytest 1,806개 통과**(같은 날 M10 평가 역전 수정 회귀 테스트 1개 추가, 실측)(한국어 텍스트의 용어집 영어 가드 1개), Ruff 통과, mypy 통과, 브라우저 E2E 15종 녹색. 그 앞 2026-09-21 밤(보드 위 사다우카 지휘관과 쌓인 Spy 뒤, Mac mini, 브랜치 `ui-commanders`)의 기준 결과는 **pytest 1,804개 통과**(카탈로그 테스트에 단언만 더함), Ruff 통과, mypy 통과, 브라우저 E2E 15종 녹색(`board_tokens.py` 187 → 203). 그 앞 2026-09-21 밤(UI 잔여 세 항목 세션 뒤, Mac mini, 워크트리 `ui-leftovers`)의 기준 결과는 **pytest 1,804개 통과**(라벨 표를 언어 전환에 등록했는지 보는 가드 1개 추가; 행동·이벤트 라벨 가드는 넓어졌지만 수는 그대로), Ruff 통과, mypy 통과, **브라우저 E2E 15종 녹색**(`log_words.py` 추가, `seats.py` 21 → 31, `remote.py` 57). 그 앞 2026-09-21 밤(Mac mini의 M10 순위 보상·대조군 세션 3커밋을 WSL 노트북의 UI 작업 위로 rebase한 뒤, Mac mini)의 기준 결과는 **pytest 1,803개 통과**(WSL의 1,802개 + 평가 seed 대역 테스트 1개), Ruff 통과, mypy 통과. rebase된 커밋은 UI 파일을 건드리지 않아 브라우저 E2E는 다시 돌리지 않았다. 그 앞 2026-09-21 저녁(보드 칸 테두리 세션 뒤, WSL 노트북)의 기준 결과는 **pytest 1,802개 통과**(칸 hotspot이 인쇄된 흰 테두리 하나의 크기, 관측소 원판이 칸 테두리와 겹치지 않음 — 레이아웃 테스트 2개 추가), Ruff 통과, mypy 통과, 브라우저 E2E 14종 녹색(`board_tokens.py`에 hotspot 테두리·Agent·Spy 말 검사 추가). 그 앞 2026-09-21 오후(UI 후속 세션 뒤, WSL 노트북)의 기준 결과는 **pytest 1,800개 통과**(언어 가드 `tests/server/test_i18n.py` 7개; supply 부족 `shortfall` 단언은 기존 테스트에 더함), Ruff 통과, mypy 통과, **브라우저 E2E 14종**(`help.py`·`lang.py` 추가). 그 앞 2026-09-21(UI 개선 세션 뒤)의 기준 결과는 **pytest 1,793개 통과**(UI 세션이 더한 7개: 용어 가드 3, event kind 가드 2, 지원하지 않는 룰셋의 400 1, action label 가드 1), Ruff 통과, mypy 통과. **브라우저 E2E는 8종 → 12종**이다(`endgame.py`·`narrow.py`·`columns.py`·`seats.py` 추가, `scripts/e2e/README.md`). 그 앞 2026-09-20(M10 자 만들기 세션 뒤)은 pytest 1,786개 통과이고 action codec은 **`ACTION_CODEC_VERSION = 107`**(기본 4,439개, CHOAM 4,729개, `promo_cards` 옵션 시 4,539/4,829개, `immortality` 옵션 시 9,324개, `promo_cards`+`bloodlines`는 10,580개, promo+Bloodlines+Tech는 13,828개, CHOAM+Bloodlines는 11,228개, 다섯 옵션을 다 켜면 32,987개 — v106은 Branching Path의 `trash_intrigue_for_agent_card`(Intrigue 사본마다)와 Imperial Privilege 행동의 이름 변경(`trash_intrigue_for_imperial_privilege`)·c7r3의 `trash_intrigue_for_research_bonus`, v107은 공용 `spy_placement` frame의 세 행동을 Bloodlines 없는 카탈로그에도 넣는다(+27); 형식 2 체크포인트는 행동 이름으로 이관된다 — 아래 세션 요약). 그 앞 기준선: 2026-09-19(두 기기의 2026-09-18 작업을 merge한 뒤)의 기준 결과는 pytest 1,768개 통과(같은 날 오후 학습률 재개 테스트 1개가 더해진 값; 그 앞 1,767은 Windows PC의 M10 PPO 슬라이스·A/B 세션 1,752개에 Mac mini의 보드 토큰·원판·보드 조각·에셋 버전 테스트 12개를 더한 값을 merge 뒤 실측했고, 같은 날 카탈로그의 Graft 표시 테스트 1개와 서버의 전투력 미리보기·남은 Persuasion 테스트 2개가 더해졌다; `assets` symlink가 없는 머신은 `tests/unit/display/test_images.py`의 에셋 대조 테스트 1개만 skip되어 1,767 통과 + 1 skip이다 — 2026-09-17 밤 symlink를 떼고 실측한 관계이며, 그 전 판들이 옛 기준선 1,489에 덧셈으로 유도해 적던 "1,6xx + 1 skip"은 실측과 맞지 않았다; `app.js`를 고쳤다면 pytest로는 부족하고 브라우저 E2E [`scripts/e2e/`](../scripts/e2e/README.md)를 돌린다; `train` extra가 없으면 `tests/unit/training/test_torch_policy.py`가 추가로 skip된다), Ruff 통과, mypy 통과다. 현재 action codec은 `ACTION_CODEC_VERSION = 105`(기본 4,371개, CHOAM 4,657개, `promo_cards` 옵션 시 4,471/4,757개, `immortality` 옵션 시 9,326개 — graft 배치 변형과 카드 사본이 늘 때마다 커진다; `bloodlines`·`tech_module` 옵션은 별도 카탈로그로 훨씬 크고, `promo_cards`+`bloodlines`는 10,513개, promo+Bloodlines+Tech는 13,759개, CHOAM+Bloodlines는 11,156개, 다섯 옵션을 다 켜면 32,991개 — v105는 Chani의 Fedaykin Maneuver `retreat_leader_troops`의 Commander share count를 `retreat_intrigue_troops`처럼 19까지 늘려 Bloodlines 카탈로그마다 +28(2026-09-18, 아래 세션 요약; 옛 v104 체크포인트는 형식 2로 새겨 두면 이관된다), v98은 CHOAM+Bloodlines 카탈로그에만 contract token 8개의 행동과 `trash_intrigue_for_contract`를, v99는 `recall_conflict_agent_for_imperial_privilege`를, v100은 모든 카탈로그에 `skip_intrigue_acquisition`과 Change Allegiances의 세 번째 option을, v101은 Immortality 카탈로그에 `play_conflict_end_intrigue`(Harvest Cells 2장)·`decline_conflict_end_intrigue`를, v102는 Bloodlines+Immortality 카탈로그의 `give_intrigue_card`/`trash_intrigue_hand_card`/`trash_intrigue_for_contract`에 빠져 있던 Immortality Intrigue 사본을 더한다 — 소크가 적발; v103은 모든 카탈로그에 `use_intrigue_effect(section=0/1)`·`finish_intrigue_effects`를 더하고 Change Allegiances의 option을 하나로 되돌린다; v104는 Bloodlines 카탈로그의 `retreat_intrigue_troops` unit count를 12에서 12+7로 넓힌다 — Commander는 12개 병력과 별개 구성물이라 Conflict 유닛이 19까지 가고 Tactical Option이 그 전부를 제시하는데 카탈로그가 12에서 끊겨 있었다, 병렬 수집이 적발, 카탈로그마다 +28)이고, 관측은 `OBSERVATION_VERSION = 20`의 4,327-int 전체 게임 인코딩이다(v6~v9는 Bloodlines·Tech Module 세그먼트를 더한 것, v10은 Bloodlines 프로모 Ruthless Leadership의 identity 1개, v11은 Immortality 카탈로그의 Imperium 25·Intrigue 11 identity, v12는 Experimentation·Tleilaxu 19 identity와 Bene Tleilax board 세그먼트, v13은 round 한정 Reveal Persuasion과 Combat Intrigue 좌석, v14는 Imperium Ceremony가 peek한 Intrigue 두 장(소유자 전용), v15는 Chairdog의 반환 대기와 Usurp의 빌린 Row 카드(좌석 scalar 49→51), v16은 Bloodlines contract token 8개의 identity(contract 세그먼트 11개 × 8 = +88), v17은 frame 종류 `conflict_end_trigger`, v18은 `intrigue_effects` 추가로 decision kind index가 이동, v19는 Long Live the Fighters의 두 단계 pick이 전용 frame 종류 `LONG_LIVE_FIGHTERS`로 옮겨져 decision kind index가 다시 이동(v17~v19는 모두 길이 불변), v20은 OQ-059의 보류된 contract 아이콘 좌석 scalar 1개(좌석 scalar 51→52, +4 int); 옵션을 끈 룰셋에서는 새 칸이 전부 0이지만 길이가 달라져 v8 이전 체크포인트는 거부된다) ([`rl-environment.md`](rl-environment.md)). 보드 22칸 완결 + 즉시 공개 + `fab266f`/`e6fc298` 수정 + sweep 확장(`853ecd4`) 반영 후의 교차 소크는 random 룰셋당 2,000판 + heuristic 룰셋당 1,000판(둘 다 `--rotate-leaders`) + draft 두 policy 각 룰셋당 500판, 전부 `--soundness-interval 25`를 켠 총 7,000판이 실패 0으로 통과한 상태다(2026-09-01, 아래 세션 요약. 그 전 단계에서는 random 룰셋당 3,000판 비회전 소크도 실패 0이었다).
+2026-09-23 저녁(Mac mini의 탐색 비용 세션을 WSL 노트북의 tip census·평가 문제집 작업과 merge한 뒤, Mac mini, master)의 기준 결과는 **pytest 1,909개 통과**(실측, 약 80초; merge 전 Mac mini 쪽은 1,816개, WSL 쪽의 마지막 기록은 1,903개 — 그 뒤 WSL 커밋들과 이 세션의 잘린 head 읽기·효과 순서 스위치·순환 방지 테스트 3개가 더해졌다), Ruff 통과, mypy 통과. 그 앞 2026-09-23(tip census 뒤, WSL 노트북, master)의 기준 결과는 **pytest 1,885개 통과**(tip census 테스트 71개 + Influence 4 재도달 회귀 테스트 1개; 그 앞 `5bbad3a`까지는 1,813개), 실측. 이어서 비교 도구 테스트 1개로 1,886개, 평가 문제집 테스트 17개로 **1,903개 통과**(실측, 약 4분 40초) — 그 전체 실행에서 `tests/server/test_events_app.py::test_a_stream_closed_before_its_first_byte_is_not_a_server_error`가 한 번 실패했고(1,885 통과, 실패 메시지는 남기지 못함) 단독으로는 3회 모두 통과했다: 소켓을 곧바로 닫는 경합 테스트라 부하에서 흔들리는 후보다, Ruff 통과, mypy 통과. census 테스트가 스위트에 약 40초를 더한다(전체 약 4분). 2026-09-22 새벽(패널 문구의 용어집 잔재 뒤, Mac mini, 브랜치 `ui-glossary`)의 기준 결과는 **pytest 1,806개 통과**(같은 날 M10 평가 역전 수정 회귀 테스트 1개 추가, 실측)(한국어 텍스트의 용어집 영어 가드 1개), Ruff 통과, mypy 통과, 브라우저 E2E 15종 녹색. 그 앞 2026-09-21 밤(보드 위 사다우카 지휘관과 쌓인 Spy 뒤, Mac mini, 브랜치 `ui-commanders`)의 기준 결과는 **pytest 1,804개 통과**(카탈로그 테스트에 단언만 더함), Ruff 통과, mypy 통과, 브라우저 E2E 15종 녹색(`board_tokens.py` 187 → 203). 그 앞 2026-09-21 밤(UI 잔여 세 항목 세션 뒤, Mac mini, 워크트리 `ui-leftovers`)의 기준 결과는 **pytest 1,804개 통과**(라벨 표를 언어 전환에 등록했는지 보는 가드 1개 추가; 행동·이벤트 라벨 가드는 넓어졌지만 수는 그대로), Ruff 통과, mypy 통과, **브라우저 E2E 15종 녹색**(`log_words.py` 추가, `seats.py` 21 → 31, `remote.py` 57). 그 앞 2026-09-21 밤(Mac mini의 M10 순위 보상·대조군 세션 3커밋을 WSL 노트북의 UI 작업 위로 rebase한 뒤, Mac mini)의 기준 결과는 **pytest 1,803개 통과**(WSL의 1,802개 + 평가 seed 대역 테스트 1개), Ruff 통과, mypy 통과. rebase된 커밋은 UI 파일을 건드리지 않아 브라우저 E2E는 다시 돌리지 않았다. 그 앞 2026-09-21 저녁(보드 칸 테두리 세션 뒤, WSL 노트북)의 기준 결과는 **pytest 1,802개 통과**(칸 hotspot이 인쇄된 흰 테두리 하나의 크기, 관측소 원판이 칸 테두리와 겹치지 않음 — 레이아웃 테스트 2개 추가), Ruff 통과, mypy 통과, 브라우저 E2E 14종 녹색(`board_tokens.py`에 hotspot 테두리·Agent·Spy 말 검사 추가). 그 앞 2026-09-21 오후(UI 후속 세션 뒤, WSL 노트북)의 기준 결과는 **pytest 1,800개 통과**(언어 가드 `tests/server/test_i18n.py` 7개; supply 부족 `shortfall` 단언은 기존 테스트에 더함), Ruff 통과, mypy 통과, **브라우저 E2E 14종**(`help.py`·`lang.py` 추가). 그 앞 2026-09-21(UI 개선 세션 뒤)의 기준 결과는 **pytest 1,793개 통과**(UI 세션이 더한 7개: 용어 가드 3, event kind 가드 2, 지원하지 않는 룰셋의 400 1, action label 가드 1), Ruff 통과, mypy 통과. **브라우저 E2E는 8종 → 12종**이다(`endgame.py`·`narrow.py`·`columns.py`·`seats.py` 추가, `scripts/e2e/README.md`). 그 앞 2026-09-20(M10 자 만들기 세션 뒤)은 pytest 1,786개 통과이고 action codec은 **`ACTION_CODEC_VERSION = 107`**(기본 4,439개, CHOAM 4,729개, `promo_cards` 옵션 시 4,539/4,829개, `immortality` 옵션 시 9,324개, `promo_cards`+`bloodlines`는 10,580개, promo+Bloodlines+Tech는 13,828개, CHOAM+Bloodlines는 11,228개, 다섯 옵션을 다 켜면 32,987개 — v106은 Branching Path의 `trash_intrigue_for_agent_card`(Intrigue 사본마다)와 Imperial Privilege 행동의 이름 변경(`trash_intrigue_for_imperial_privilege`)·c7r3의 `trash_intrigue_for_research_bonus`, v107은 공용 `spy_placement` frame의 세 행동을 Bloodlines 없는 카탈로그에도 넣는다(+27); 형식 2 체크포인트는 행동 이름으로 이관된다 — 아래 세션 요약). 그 앞 기준선: 2026-09-19(두 기기의 2026-09-18 작업을 merge한 뒤)의 기준 결과는 pytest 1,768개 통과(같은 날 오후 학습률 재개 테스트 1개가 더해진 값; 그 앞 1,767은 Windows PC의 M10 PPO 슬라이스·A/B 세션 1,752개에 Mac mini의 보드 토큰·원판·보드 조각·에셋 버전 테스트 12개를 더한 값을 merge 뒤 실측했고, 같은 날 카탈로그의 Graft 표시 테스트 1개와 서버의 전투력 미리보기·남은 Persuasion 테스트 2개가 더해졌다; `assets` symlink가 없는 머신은 `tests/unit/display/test_images.py`의 에셋 대조 테스트 1개만 skip되어 1,767 통과 + 1 skip이다 — 2026-09-17 밤 symlink를 떼고 실측한 관계이며, 그 전 판들이 옛 기준선 1,489에 덧셈으로 유도해 적던 "1,6xx + 1 skip"은 실측과 맞지 않았다; `app.js`를 고쳤다면 pytest로는 부족하고 브라우저 E2E [`scripts/e2e/`](../scripts/e2e/README.md)를 돌린다; `train` extra가 없으면 `tests/unit/training/test_torch_policy.py`가 추가로 skip된다), Ruff 통과, mypy 통과다. 현재 action codec은 `ACTION_CODEC_VERSION = 105`(기본 4,371개, CHOAM 4,657개, `promo_cards` 옵션 시 4,471/4,757개, `immortality` 옵션 시 9,326개 — graft 배치 변형과 카드 사본이 늘 때마다 커진다; `bloodlines`·`tech_module` 옵션은 별도 카탈로그로 훨씬 크고, `promo_cards`+`bloodlines`는 10,513개, promo+Bloodlines+Tech는 13,759개, CHOAM+Bloodlines는 11,156개, 다섯 옵션을 다 켜면 32,991개 — v105는 Chani의 Fedaykin Maneuver `retreat_leader_troops`의 Commander share count를 `retreat_intrigue_troops`처럼 19까지 늘려 Bloodlines 카탈로그마다 +28(2026-09-18, 아래 세션 요약; 옛 v104 체크포인트는 형식 2로 새겨 두면 이관된다), v98은 CHOAM+Bloodlines 카탈로그에만 contract token 8개의 행동과 `trash_intrigue_for_contract`를, v99는 `recall_conflict_agent_for_imperial_privilege`를, v100은 모든 카탈로그에 `skip_intrigue_acquisition`과 Change Allegiances의 세 번째 option을, v101은 Immortality 카탈로그에 `play_conflict_end_intrigue`(Harvest Cells 2장)·`decline_conflict_end_intrigue`를, v102는 Bloodlines+Immortality 카탈로그의 `give_intrigue_card`/`trash_intrigue_hand_card`/`trash_intrigue_for_contract`에 빠져 있던 Immortality Intrigue 사본을 더한다 — 소크가 적발; v103은 모든 카탈로그에 `use_intrigue_effect(section=0/1)`·`finish_intrigue_effects`를 더하고 Change Allegiances의 option을 하나로 되돌린다; v104는 Bloodlines 카탈로그의 `retreat_intrigue_troops` unit count를 12에서 12+7로 넓힌다 — Commander는 12개 병력과 별개 구성물이라 Conflict 유닛이 19까지 가고 Tactical Option이 그 전부를 제시하는데 카탈로그가 12에서 끊겨 있었다, 병렬 수집이 적발, 카탈로그마다 +28)이고, 관측은 `OBSERVATION_VERSION = 20`의 4,327-int 전체 게임 인코딩이다(v6~v9는 Bloodlines·Tech Module 세그먼트를 더한 것, v10은 Bloodlines 프로모 Ruthless Leadership의 identity 1개, v11은 Immortality 카탈로그의 Imperium 25·Intrigue 11 identity, v12는 Experimentation·Tleilaxu 19 identity와 Bene Tleilax board 세그먼트, v13은 round 한정 Reveal Persuasion과 Combat Intrigue 좌석, v14는 Imperium Ceremony가 peek한 Intrigue 두 장(소유자 전용), v15는 Chairdog의 반환 대기와 Usurp의 빌린 Row 카드(좌석 scalar 49→51), v16은 Bloodlines contract token 8개의 identity(contract 세그먼트 11개 × 8 = +88), v17은 frame 종류 `conflict_end_trigger`, v18은 `intrigue_effects` 추가로 decision kind index가 이동, v19는 Long Live the Fighters의 두 단계 pick이 전용 frame 종류 `LONG_LIVE_FIGHTERS`로 옮겨져 decision kind index가 다시 이동(v17~v19는 모두 길이 불변), v20은 OQ-059의 보류된 contract 아이콘 좌석 scalar 1개(좌석 scalar 51→52, +4 int); 옵션을 끈 룰셋에서는 새 칸이 전부 0이지만 길이가 달라져 v8 이전 체크포인트는 거부된다) ([`rl-environment.md`](rl-environment.md)). 보드 22칸 완결 + 즉시 공개 + `fab266f`/`e6fc298` 수정 + sweep 확장(`853ecd4`) 반영 후의 교차 소크는 random 룰셋당 2,000판 + heuristic 룰셋당 1,000판(둘 다 `--rotate-leaders`) + draft 두 policy 각 룰셋당 500판, 전부 `--soundness-interval 25`를 켠 총 7,000판이 실패 0으로 통과한 상태다(2026-09-01, 아래 세션 요약. 그 전 단계에서는 random 룰셋당 3,000판 비회전 소크도 실패 0이었다).
 
 ## 현재 구현 기준선
 
@@ -61,9 +61,10 @@ uv run mypy src tests
    Usurp(계획서 6단계 "남은 것" 1; Gather Intelligence·Infiltrate·Family Atomics·set-aside는 2026-09-22에
    옮겼다). 한국어 룰북에서 찾아 용어집에 더한 뒤에만 바꾼다. 바꾸면 `test_i18n.py`와 `log_words.py`의 허용
    목록에서도 뺀다.
-3. **한글 카드 스캔** — 확보하면 `display/images.py`가 코드 변경 없이 쓴다(언어 정책의 3번). **2026-09-22에
-   네이버 블로그 사진에서 잘라낸 한글판 크롭 138장이 준비됐다**(아래 "2026-09-22 한글판 카드 사진 크롭" 세션
-   요약) — `cards/ko/`에 넣기 전에 사용자 결정 셋이 남아 있다.
+3. ~~한글 카드 스캔~~ — **2026-09-23 적용**(아래 "2026-09-23 한글 카드 이름·그림"과 "혈통·불멸 한글 카드"
+   세션 요약): 봉기 138·혈통 90·불멸 58장이 `cards/ko/`에, 한국어 화면은 한글 그림·한글 이름(인쇄 확인분
+   251개). 남은 것은 빠진 카드 — 봉기 음모 33장·대모 제시카·프로모 2장, 혈통 음모 10장·뒤틀린 책략 11장 —
+   이며, 그 출처 후보는 TTS 한글화 모드 3종이다.
 
 **UI를 이어갈 때의 규칙**(세 세션이 값을 치른 것들):
 - `static/*.js`를 고치면 pytest로는 부족하다. [`scripts/e2e/`](../scripts/e2e/README.md) **15종**을 돌린다.
@@ -138,6 +139,17 @@ git 무시 `checkpoints/2026-09-22/m10-evidence/`). 요지:
   sandworm)은 정책이 이미 배웠다. 비용 문턱으로 거르는 얇은 덱은 heuristic 틀에서 단조롭게 진다(같은 조건 직접 −17.8%p).
   **옆길 발견: heuristic이 Tleilaxu 카드를 사지 않기만 해도 평소 구성에서 +21.8%p [+18.4, +25.1]** — 채택은 별도 작업
   단위·사용자 결정(6.5).
+  **2026-09-23(WSL 노트북, 그 문서 7절, 이어갈 때는 7.8부터)**: 커뮤니티 팁 38개를 규칙 확인·측정 경로로 분류했다(엔진 불일치
+  0, 테스트 공백 1건 메움). 그 측정을 한 명령으로 내는 **`scripts/ab/tip_census.py`**(수집기 `deck`·`combat`·`influence`·
+  `endgame`)와 비교 도구 `scripts/ab/tip_compare.py`를 넣고, heuristic 기준값(3구성 × 100 seed)과, 사용자가 노트북에 가져온 5081의
+  census를 냈다(7.7): 정책은 Swordmaster 초반(79~94%)·Heighliner·sandworm·초반 폐기에서 팁과 같고, 초반 Faction 접근 카드
+  (1~3라운드 0.67장, 팁 1~2장)·작게 이기기·tier III용 garrison·이른 Reveal(0번)·Espionage에서 다르다. 1+3 표는 Mac 스크래치 수치와
+  0.2 안으로 맞는다. 초반 Faction 카드 강제 구매 탐침(`scripts/ab/pypath/netprobes.py`)은 파일럿에서 0.67 → 1.00장만 올라 용량이
+  작다 — A/B는 아직 안 돌렸다(7.8에 명령).
+  **평가 문제집 틀(같은 날)**: `evaluation/problem_set.py` + `dune-imperium-problems mine|score|check` + 문제집
+  `evaluation/problem_sets/tips-v1.json`(110개, 3문항) — [evaluation/problem-set.md](evaluation/problem-set.md). 포지션은 seed와
+  선택 번호로 저장해 엔진만으로 복원하고, 규칙이 바뀌어 포지션이 움직이면 복원이 "re-mine" 오류를 낸다(**규칙을 고친 뒤에는
+  `dune-imperium-problems check`**). 5081은 세 문항에서 1.00·1.00·0.85.
 
 아래는 그 앞의 기록이다(시간 역순이 아니라 적힌 순서 그대로 남긴다).
 
@@ -416,6 +428,14 @@ uv run python scripts/ab/census.py --games 40 --ruleset both --out ab-runs/censu
 uv run python scripts/ab/cells.py --name round1 --variants heuristic_v_space --control heuristic_uniform_ties --axes base,choam --seeds 0,500
 uv run python scripts/ab/pair_matrix.py ab-runs/round1 v_space
 
+# 사람 팁 census와 비교 (docs/player-tips-for-training.md 7절)
+uv run python scripts/ab/tip_census.py --agents heuristic --games 100 --ruleset choam --bloodlines --tech-module --immortality --promo-cards --out ab-runs/tips/h
+uv run python scripts/ab/tip_compare.py ab-runs/tips/h ab-runs/tips/other
+
+# 평가 문제집 (docs/evaluation/problem-set.md); 규칙을 고친 뒤에는 check부터
+uv run dune-imperium-problems check
+uv run dune-imperium-problems score --agents heuristic,checkpoint:<path>
+
 # 검증 sweep: 카드 보존·교착·관측 누출·replay 검사 (룰셋당 100판 기본)
 uv run dune-imperium-sweep --games 100 --ruleset both --workers 8
 
@@ -459,6 +479,20 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 
 ## 원격 저장소 인계 주의
 
+2026-09-23 저녁(WSL 노트북, **에셋 저장소 이력 정리** — 사용자 지시 "진짜 게임에 쓰이는 asset만 git 이력에"):
+전날 다른 기기로 넘기려고 커밋·push한 블로그 사진·크롭·`best/`·매칭 표·도구(`reference/naver-vampmiyu-*`,
+854개·354 MB)를 에셋 저장소 이력에서 뺐다. `3fcf62f` 위의 세 커밋을 둘로 다시 만들어 `--force-with-lease`로
+push했다: `d01e9d9`(참조 폴더뿐) **삭제**, `ddd34ec` → **`949009a`**(`cards/ko/uprising` 138장),
+`85f037c` → **`301fdd0`**(`cards/ko` 혈통 90·불멸 58장, `.gitignore`, README). `cards/ko` 286장은 바이트 그대로,
+그 밖의 파일은 `README.md`·`.gitignore`만 다르다. 참조 폴더는 **이 WSL 노트북의 에셋 체크아웃에만** 있고
+`.gitignore`(`/reference/naver-vampmiyu-*/`)로 추적에서 빠졌다. 옛 이력은 이 기기의 로컬 브랜치
+`backup/pre-cleanup-2026-09-23`에만 있다(push하지 않았다; 필요 없으면 `git branch -D` 뒤 `git gc`). 아래 문단과
+세션 요약의 옛 해시(`d01e9d9`·`ddd34ec`·`85f037c`)는 이 정리 전의 것이다. **다른 기기**에서 에셋 저장소를 이미
+pull했다면 로컬 변경이 없는지 `git status`로 본 뒤 `git fetch origin && git reset --hard origin/master`로 맞춘다 —
+옛 커밋을 가진 채 push하면 지운 커밋이 되살아난다. 메인 저장소 이력은 건드리지 않았다(이미지·중간 산출물 없음).
+
+2026-09-23(WSL 노트북, 한글 카드 이름·그림 세션): 앞 세션의 커밋(에셋 `d01e9d9`, 메인 `18a45ed`)은 사용자가 push해 `origin/master`에 있다. 이 세션은 에셋 저장소에 `cards/ko/` 138장(`ddd34ec`)을, 메인 저장소에 코드·문서 커밋을 더했다 — push 여부는 두 저장소에서 `git log origin/master..master`로 확인한다. 에셋이 없는 기기도 한글 **이름**은 보인다(메인 저장소의 표); 한글 **그림**은 에셋 저장소를 pull해야 보인다.
+
 2026-09-22(WSL 노트북, 한글판 카드 사진 크롭 세션): 비공개 에셋 저장소에 미push 커밋 3건 — `b8784f4`(앞 세션의 Immortality specimen 아이콘), `3fcf62f`(`origin/master`의 `1574241` merge), `d01e9d9`(`reference/naver-vampmiyu-223464306472/`, 약 190 MB). 메인 저장소에는 이 문서 커밋 1건. 이 세션에서는 자동 모드 권한 검사가 push를 막아 **두 저장소 모두 push하지 않았다** — 사용자가 이 기기에서 push한 뒤 다른 기기에서 두 저장소를 pull한다. 새 세션은 `git log origin/master..master`와 반대 방향을 두 저장소에서 모두 확인한다.
 
 2026-09-20 새벽(Mac mini, 보드 조각·아이콘 전사 정정 세션): 이 세션의 커밋(`82a0423`·`c9aec0a`·`7188523`·`2c967b7`와 문서 커밋)은 master에만 있고 **push하지 않았다**. 비공개 에셋 저장소에도 커밋 1건(`e7f7741`: `tokens/maker_hooks.png`·`alliance_<faction>.jpg` + README)이 있고 역시 push하지 않았다 — 다른 기기에서 후크·동맹 토큰 그림을 보려면 두 저장소를 모두 push·pull한다(에셋이 없으면 룰북 아이콘으로 그릴 뿐 동작은 같다). **`src/`의 규칙이 바뀌었으므로 학습이 도는 기기에서는 pull하지 않는다**; pull한 뒤의 학습은 새 규칙의 환경이다(세션 요약의 "M10에 미치는 영향"). 떠 있던 플레이 서버는 재시작해야 새 규칙·새 카탈로그 필드가 적용된다(정적 파일은 즉시 반영).
@@ -481,6 +515,88 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 
 2026-09-04 세션 종료 시점에 이 세션의 커밋 전부(보드·카드 아이콘 분리 v86/v87, 서버·UI 확인 흐름과 마커, Reveal 순서 v88, OQ-028 조건 판정 시점, OQ-029 등록)를 `origin/master`에 push했다. 새 세션은 `git fetch origin` 뒤 `git log origin/master..master`와 반대 방향을 확인하고, 일치하면 이 문서의 기준선을 그대로 쓴다. 에셋 저장소(`Dune-Imperium-assets`)의 `5b55e45` 1개 미push 여부는 그 저장소에서 확인한다. 원격에는 병합하지 않은 `kyungtae` 브랜치가 있다. 새 세션은 `git log origin/master..master`와 반대 방향을 모두 확인하고, checkout이 `853ecd4`보다 이전이면 이 문서의 989개 테스트·codec v84 기준선이 실제 코드와 일치하지 않는다. **다른 머신에서 이어서 작업한다면 먼저 이 머신에서 push가 필요하다.** 새 머신의 UI 카드 이미지·아이콘·보드 스캔은 비공개 `Dune-Imperium-assets` 저장소를 clone해 symlink로 연결한다(그 README 참고; 루트의 `assets` symlink 하나로 cards·icons·board·rulebooks를 모두 연결). 카드 매핑은 그 저장소의 `cards/manifest.json`에만 있으므로 접근이 없으면 텍스트 UI로 동작한다.
 
+## 2026-09-23 혈통·불멸 한글 카드 세션 요약 (WSL 노트북 i5-8250U, master 직접 커밋, 관측 v20, codec v107, 변경은 `display/names_ko.py`·`server/static/`의 한국어 문구·테스트·`scripts/e2e/lang.py`·`docs/` — **엔진·학습 코드 무변경**; 에셋 저장소 커밋은 아래)
+
+- 사용자 지시: 혈통([vampmiyu/223970873634](https://blog.naver.com/vampmiyu/223970873634))·불멸([vampmiyu/223033440849](https://blog.naver.com/vampmiyu/223033440849))
+  개봉기 사진으로 봉기와 **똑같이** — 사진 받기, 카드 자르기·원근 보정(실제 비율), 제목 판독·매칭, `cards/ko`와
+  한글 이름 적용. 에셋 체크아웃의 `reference/naver-vampmiyu-{223970873634,223033440849}/`(**git 밖**, 이 WSL
+  노트북에만 — 위 "이력 정리"; 사진 31·23장, 크롭 124·74장,
+  표·`best/`·`tools/`, 방법은 각 README), `cards/ko/bloodlines` 90장·`cards/ko/immortality` 58장.
+- **커버리지**: 불멸은 manifest 58장 **전부**(임페리움 25·틀레이락스 20·음모 11·실험·연구 기지 오버레이). 혈통은
+  113장 중 90장 — 임페리움 26·프로모·리더 9·교전 2·계약 8·기술 타일 18·지휘관 기술 토큰 7·튜엑의 시치·익스 대사관
+  판·항해 카드 10 전부, 음모·뒤틀린 책략은 30장 중 8장(30번 사진이 더미라 온전히 보이는 것만; 급속 공학은 가림).
+- **새 모양**: 기술 타일·계약·장소 타일은 영문 렌더에 정합해 그 크기로 잘랐다. **지휘관 기술 토큰은 사다리꼴**이라
+  (아래 변 0.834, 높이 0.860 — 13장 측정) 737x634 PNG에 투명 바깥으로 두었다(영문 렌더는 정사각 재작업). 화면은
+  `.vcard.skill` 폭 64px·높이 자동이라 그대로 맞는다. 붙어 놓인 불멸 음모 15장은 3x5 격자 칸을 영문 카드에 정합.
+- **이름**: `names_ko.py`에 136개 추가(합 251 — 새 절 `skills`·`tech`). 두 번 읽어 163/164 일치, 한 건(챠니)은
+  3배 확대로 판정(판정 에이전트의 "찬니/챤니"는 오독, 봉기 인쇄 "영리한 전술가, 챠니"와 같다). Skirmish (Wild)는
+  한국어판 룰북의 **와일드 배틀 아이콘** `[Bloodlines p. 5]`으로 "소규모 전투 (와일드)" — 용어집에 행 추가.
+  "실험체 X-137"은 카드에 라틴 문자가 인쇄돼 있어, 이름 테스트를 "한국어 이름의 라틴 문자는 영어 이름에도
+  있어야 한다"로 넓혔다. 항해 카드는 제목이 인쇄되지 않아 이름이 없다.
+- **화면 문구**: 한국어 라벨이 이제 한글 이름이 있는 카드를 영어로 적던 라벨·문구 20곳을 인쇄 이름으로 — 세포 수확·
+  금지된 무기·파놉티콘·틀레이락스의 주인·공포의 누더기 괴물·되돌아온 병사들·플라스틸 칼·반중력 의복·의자개,
+  프로모 옵션의 무자비한 리더십·천재적인 조언자, 파이터, 기술 모듈 옵션의 익스의 코타 오닥스, Shaddam 계약
+  줄은 "사다우카 {계약} · 샤담 코리노 4세 전용". `lang.py`의 영어 허용 목록에서 지도자 약칭(Shaddam·Kota Odax)을
+  뺐다. Feyd 토큰은 룰북 확인 전이라 그대로.
+- **교훈 재확인**: 풀 SIFT 매처는 비슷한 기술 타일 두 장을 서로 바꿔 달았고(배송 구획↔사다우카 총사령부, 고속
+  수송선↔오니솝터 부대), 격자 칸 하나는 이웃 카드(멜란지 연구)에 정합해 제목이 잘렸다 — 판독 단계가 잡았고
+  올바른 렌더로 다시 정합해 잘랐다. 기하 검증(여백 합)은 봉기와 같은 방법으로 했다.
+- **기준**: pytest **1,906개 통과**(수는 그대로 — 기존 이름 테스트에 새 세트 단언을 더함), ruff·mypy 통과, 브라우저
+  E2E 15종 녹색(`open_mode.py`의 "1초 안에 다른 브라우저의 수가 보인다"는 큰 git 커밋과 겹친 첫 실행에서 한 번
+  실패, 단독 재실행 56/56 — 시간 검사는 무거운 작업과 같이 돌리지 않는다).
+
+## 2026-09-23 한글 카드 이름·그림 세션 요약 (WSL 노트북 i5-8250U, master 직접 커밋, 관측 v20, codec v107, 변경은 `display/`·`server/`·`server/static/`·`scripts/e2e/lang.py`·테스트·`docs/` — **엔진·학습 코드 무변경**; 에셋 `ddd34ec`)
+
+- **사용자 결정 셋**(앞 세션이 남긴 질문): (1) 사진 크롭을 **바로** 쓴다(TTS 한글화 모드는 확인하지 않았다),
+  (2) 카드 그림은 **화면 언어를 따른다**, (3) 한국어 화면의 카드 이름은 **지금 확보된 한글 인쇄 이름으로** —
+  사진에 없는 카드는 영어 그대로. 공간 이름은 여전히 영어다.
+- **에셋**(`ddd34ec`, 이력 정리 뒤 `949009a`): `reference/naver-vampmiyu-223464306472/best/`의 가림 없는 138장을 manifest 경로·형식
+  그대로 `cards/ko/`에(WebP, Spice Refinery I만 AVIF), 계약 타일은 영문 렌더의 알파로 잘린 모서리를 투명하게.
+  "Deliver Supplies"·"Secrets"는 계약과 장소가 같은 이름이라 이름만으로 manifest를 찾으면 계약 그림이
+  `location/`에 써진다 — 종류와 이름을 함께 키로 쓴다.
+- **그림**: 서버가 언어마다 한 번씩 해석한다(`resolve_card_images(dir, ("en","ko"))`와 `("ko","en")`, `app.py`).
+  카탈로그의 `image`는 영어 화면용이고, 한국어 화면용이 다르면 그 항목에 `image_ko`가 붙는다 — 카탈로그 전체의
+  `image`를 URL로 짝지으므로 카드·리더·장소·오버레이 어느 절도 빠지지 않는다(`catalog._add_korean`).
+- **이름**: `display/names_ko.py`의 `KOREAN_CARD_NAMES`(카탈로그 절·id별, 카드 64·음모 6·계약 20·분쟁 16·
+  리더 9 = 115개)가 `name_ko`로 붙는다. 출처는 에셋 `matching.csv`의 두 번 읽어 일치한 인쇄 제목; 엔진 영어
+  이름의 인쇄되지 않은 구분자는 한국어에도 단다(아라킨 I, 채취 3+, 소규모 전투 (크리스나이프) — 배틀 아이콘은
+  용어집 `[Main p. 20]`). 용어집의 고유명사 정책을 이에 맞춰 고쳤다([`rules/glossary-ko.md`](rules/glossary-ko.md)).
+- **클라이언트**: `localizeCatalog()`(`i18n.js`)가 카탈로그를 받은 직후와 언어 전환마다 각 항목의 `name`·`image`를
+  그 언어의 것으로 바꿔 넣고 영어는 `name_en`·`image_en`에 둔다 — 화면 코드 약 30곳은 그대로 `entry.name`·
+  `entry.image`를 읽는다. 전환은 원래 화면 전체를 다시 그리므로 그림도 즉시 바뀐다.
+- **화면 문구**: 한국어 문구가 한글 인쇄가 있는 카드를 영어로 적던 곳을 고쳤다 — 코린트 시티 이벤트 둘, 전사들이여
+  영원하라, 프로모 옵션의 아라키스 반란(`index.html` 인라인 포함). 로그의 배틀 아이콘 개수 `crysknife`는 용어집의
+  크리스나이프 `[Main p. 20]`로 — 그 행을 "참고(카드 이름)"에서 "적용"으로 바꿨고 "영어 유지" 목록 둘
+  (`test_i18n.py`·`log_words.py`)에서 Crysknife를 뺐다. **Immediate**는 계약 카드 이름이면서 용어집 행을 기다리는
+  규칙 낱말이라 그대로 두었다(UI 다음 후보 2).
+- **가드**: `test_catalog.py`에 그림 짝·한글 이름 테스트 2개(이름 표의 id가 전부 카탈로그에 있고 한글이며
+  라틴 문자는 계약 번호뿐), `test_i18n.py`에 한국어 문구가 한글 인쇄가 있는 카드를 영어로 적지 않는지(영어로
+  남는 이름을 긴 것부터 먼저 지운다 — "Ruthless Leadership" 안의 "Leadership"), `lang.py`에 공용 카드 열의
+  이름·그림이 언어를 따르는지. 같은 영어 그림에 다른 한글 그림 둘이 짝지어지면 `build_catalog`가 오류를 낸다.
+- **기준**: pytest **1,906개 통과**(이 세션 +3, 실측), ruff·mypy 통과, 브라우저 E2E 15종 녹색(`lang.py` 38 —
+  새 이름·그림 검사 6개 포함, `log_words.py` 13, `board_tokens.py` 199 등). 한국어 화면에서 혈통·불멸 카드와
+  사진에 없는 카드는 영어 이름·영문 그림으로 섞여 보이는 것이 정상이다(결정 3의 "나머지는 영어").
+
+## 2026-09-23 커뮤니티 팁 분류와 tip census 세션 요약 (WSL 노트북 i5-8250U, master 직접 커밋, 관측 v20, codec v107, 변경은 `scripts/ab/`·`tests/`·`docs/` — **엔진·학습 코드 무변경**)
+
+- 사용자가 Mac mini의 커뮤니티 팁 JSON을 문서로 옮긴 커밋(`5bbad3a`)을 가져와 "플레이어 팁 반영"을 이어 갔다. 이 노트북에는
+  5081 체크포인트와 6절의 스크래치 도구가 없어 정책 측정은 하지 않았다.
+- 분류(workflow, Sonnet 분류 4 + Opus 반박 4): 규칙을 담은 팁은 전부 엔진과 일치. 분류자가 올린 "불일치" 2건은 검증자가
+  반박했다. 떨어졌다 다시 4에 오르면 보너스를 다시 받는 경우 `[Main pp. 4, 7 board artwork]`에 회귀 테스트가 없어 넣었다(가드를
+  넣은 소스 사본에서 실패 확인). 커뮤니티 문서의 "Uprising에는 Heighliner가 없다"는 오기라 고쳤다 `[Board Guide p. 2]`.
+- 도구(workflow, Sonnet 구현 4 + Opus 반박 4 + 수정 4): `scripts/ab/tip_census.py` + `scripts/ab/tipcensus/`. 대회와 같은 게임을
+  두는지는 순위·VP·결정 수로 테스트가 고정한다. 검증이 숫자를 틀리게 하던 결함 여섯을 잡았다(sandworm 소환 경로 누락, 빈
+  Conflict 누락, Commander 손실을 퇴각으로 셈, Endgame 시작 VP에 Tech VP 포함, 의무 자기 폐기를 선택 폐기로 셈, Bond 짝 진영
+  오판) — [player-tips-for-training.md](player-tips-for-training.md) 7.1.
+- heuristic 기준값(기본판·평소 구성·학습 구성 각 100 seed, 100판 11~17초)과 Mac 스크래치 census와의 대조는 그 문서 7.5.
+- 이어서 사용자가 5081 체크포인트를 가져와 이 노트북에서 5081 census 세 셀(미러 학습·평소 구성, 1+3)을 냈다(한 판 약 35초, 워커 4개 ×
+  약 650MB). 비교 도구 `scripts/ab/tip_compare.py`(seed 군집 부트스트랩)를 더했다. 팁별 결과는 그 문서 7.7, 다음은 7.8(정책 탐침
+  1순위: 초반 Faction 접근 카드 강제 구매).
+- 이어서 사용자 요청으로 푸시(`7940040`)하고 **평가 문제집 틀**을 만들었다: `src/dune_imperium/evaluation/problem_set.py`, CLI
+  `dune-imperium-problems`(pyproject에 등록 — 다른 기기에서는 `uv sync` 후 쓴다), 문제집 `tips-v1.json`, 테스트
+  `tests/unit/test_problem_set.py`(17개). Opus 검증 넷이 문항 판정의 반례와 틀 결함을 찾았고 모두 반영했다(문서의 "검증에서 배운 것").
+  결과와 5081의 확신 오답 두 포지션은 [evaluation/problem-set.md](evaluation/problem-set.md).
+
 ## 2026-09-22 저녁 실전 팁과 학습 논의 세션 요약 (WSL 노트북 i5-8250U, **코드 변경 없음**, 변경은 `docs/`뿐)
 
 - 사용자 질문: 휴리스틱·rollout의 구현, 그리고 친구들과 두며 느낀 팁·행동 중요도가 학습에 도움이 되는지. 논의만 했다.
@@ -492,7 +608,8 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 
 - 사용자 지시: 네이버 블로그 [vampmiyu/223464306472](https://blog.naver.com/vampmiyu/223464306472)(한국어판
   Uprising 개봉기)의 사진을 전부 받고, 카드를 잘라 **실제 카드 비율로** 원근 보정한 뒤 영문 manifest와의 매칭
-  표를 만든다. 결과는 에셋 저장소 `reference/naver-vampmiyu-223464306472/`에 있다 — 사진 51장(원본 해상도),
+  표를 만든다. 결과는 에셋 체크아웃의 `reference/naver-vampmiyu-223464306472/`에 있다(2026-09-23 이력 정리로
+  **git 밖**, 이 WSL 노트북에만) — 사진 51장(원본 해상도),
   `crops/` 190장, `best/uprising/<kind>/<Name>.jpg`(카드별 대표 1장, `cards/en/`과 같은 배치), `matching.md`
   (한국어 표)·`matching.csv`·`coverage.csv`·`matching.json`, `matching.html`(한글 크롭과 영문 스캔을 나란히 보는
   자기완결 갤러리), `tools/`(스크립트·중간 데이터, 재실행법은 그 README). 방법·근거·다음 단계는 그 폴더

@@ -13,6 +13,7 @@ dependencies = []
 dune-imperium-audit-diu = "dune_imperium.cli.diu_audit:main"
 dune-imperium-checkpoint = "dune_imperium.cli.checkpoint:main"
 dune-imperium-debug = "dune_imperium.cli.debug:main"
+dune-imperium-problems = "dune_imperium.cli.problems:main"
 dune-imperium-server = "dune_imperium.cli.server:main"
 dune-imperium-sweep = "dune_imperium.cli.sweep:main"
 dune-imperium-tournament = "dune_imperium.cli.tournament:main"

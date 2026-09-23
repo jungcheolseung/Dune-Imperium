@@ -65,7 +65,6 @@ KOREAN_KEEPS_ENGLISH = (
     "Memories",
     "Secret Project",
     "Wild card",
-    "Crysknife",
     "Immediate",
     "Usurp",
     "Feyd",
