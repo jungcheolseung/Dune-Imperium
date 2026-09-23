@@ -11,7 +11,11 @@ images and safe to cache on the client.
 kind, content_id, "<language>/<path>")`` triples from the private asset
 manifest (``display.images``) for files that actually exist — so a
 machine without the assets checkout serves the same catalog with every
-``image`` field null. ``icon_files``, ``token_files`` and ``board_image``
+``image`` field null. It is the English UI's (English picture first);
+``image_index_ko`` is the Korean UI's, and wherever the two differ an entry
+carries ``image_ko`` beside ``image``. Cards whose Korean print is known
+(``display.names_ko``) carry ``name_ko`` beside ``name``; the page shows
+the pair of its language. ``icon_files``, ``token_files`` and ``board_image``
 work the same way for the rulebook icon set (``/icons/...``), the pictured
 Combat markers (``/tokens/...``, ``display.token_images``) and the local board
 scan (``/board-image``): the catalog also carries the percent coordinates
@@ -82,6 +86,7 @@ from dune_imperium.display.images import (
     IXIAN_EMBASSY_IMAGE_ID,
     RESEARCH_STATION_OVERLAY_IMAGE_ID,
 )
+from dune_imperium.display.names_ko import KOREAN_CARD_NAMES
 from dune_imperium.display.token_images import (
     MAKER_HOOKS_TOKEN_FILENAME,
     SARDAUKAR_COMMANDER_TOKEN_FILENAME,
@@ -100,6 +105,7 @@ def build_catalog(
     bene_tleilax_image: bool = False,
     token_files: frozenset[str] = frozenset(),
     asset_versions: frozenset[tuple[str, str]] = frozenset(),
+    image_index_ko: frozenset[tuple[str, str, str]] = frozenset(),
 ) -> JsonObject:
     """Return every display mapping the browser UI needs, keyed by ID.
 
@@ -121,6 +127,17 @@ def build_catalog(
         (kind, content_id): versioned(card_image_url(path))
         for kind, content_id, path in image_index
     }
+    # The Korean UI's picture by the English one's URL, where they differ.
+    # Two entries sharing an English picture must share the Korean one too,
+    # or pairing by URL would give one of them the other's picture.
+    korean_images: dict[str, str] = {}
+    for kind, content_id, path in image_index_ko:
+        english = image_files.get((kind, content_id))
+        korean = versioned(card_image_url(path))
+        if english is None or english == korean:
+            continue
+        if korean_images.setdefault(english, korean) != korean:
+            raise ValueError(f"{english} pairs with two Korean pictures")
     cards: dict[str, JsonValue] = {}
     for card_id, starter in STARTING_CARDS_BY_ID.items():
         cards[card_id] = _personal_card(
@@ -240,7 +257,7 @@ def build_catalog(
         for tile in TECH_TILES
     }
 
-    return {
+    catalog: JsonObject = {
         "cards": cards,
         "intrigue": intrigue,
         # Immortality: the Bene Tleilax board's research hexes (column,
@@ -386,6 +403,39 @@ def build_catalog(
         # Conflict quadrants, High Council seats), percent of the image.
         "tracks": marker_layout(),
     }
+    _add_korean(catalog, korean_images)
+    return catalog
+
+
+def _add_korean(catalog: JsonObject, korean_images: dict[str, str]) -> None:
+    """Give entries their Korean name and picture beside the English ones.
+
+    Names come by section and id (``display.names_ko``). Pictures come by
+    URL: every ``image`` anywhere in the catalog (a card, a Leader, a
+    space, an overlay tile) whose Korean UI picture differs gets
+    ``image_ko``, so no section can be left out.
+    """
+
+    for section, names in KOREAN_CARD_NAMES.items():
+        entries = catalog[section]
+        assert isinstance(entries, dict), section
+        for entry_id, name in names.items():
+            entry = entries[entry_id]
+            assert isinstance(entry, dict), entry_id
+            entry["name_ko"] = name
+
+    def visit(node: JsonValue) -> None:
+        if isinstance(node, dict):
+            image = node.get("image")
+            if isinstance(image, str) and image in korean_images:
+                node["image_ko"] = korean_images[image]
+            for value in list(node.values()):
+                visit(value)
+        elif isinstance(node, list):
+            for value in node:
+                visit(value)
+
+    visit(catalog)
 
 
 def _personal_card(

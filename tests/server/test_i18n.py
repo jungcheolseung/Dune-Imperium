@@ -272,7 +272,6 @@ _KOREAN_KEEPS_ENGLISH = (
     "Memories",
     "Secret Project",
     "Wild card",
-    "Crysknife",
     "Immediate",
     "Usurp",
     "Feyd",
@@ -369,6 +368,60 @@ def test_korean_text_names_the_council_seat_and_swordmaster_in_korean() -> None:
         for name in _KOREAN_STATUS_NAMES
         if name in text
     ]
+    assert not leaks, "; ".join(leaks[:10])
+
+
+def test_korean_text_names_a_card_by_its_korean_print() -> None:
+    """A card whose Korean print is known is named in Korean in Korean text.
+
+    The page shows such a card's catalog name in Korean (``name_ko``), so
+    Korean chrome that spells it in English (the promo option's "Arrakis
+    Revolt", 2026-09-23) reads as two different cards. Cards without a known
+    Korean print keep their English name, in the chrome as on the table. A
+    name that is also a rule word still waiting for its glossary row
+    (``_KOREAN_KEEPS_ENGLISH``: the Immediate contract) is left for that row.
+    """
+
+    from dune_imperium.display.names_ko import KOREAN_CARD_NAMES
+
+    catalog = build_catalog()
+    english: dict[str, str] = {}
+    for section, names in KOREAN_CARD_NAMES.items():
+        table = catalog[section]
+        assert isinstance(table, dict)
+        for entry_id, korean in names.items():
+            entry = table[entry_id]
+            assert isinstance(entry, dict)
+            name = entry["name"]
+            assert isinstance(name, str)
+            if name not in _KOREAN_KEEPS_ENGLISH:
+                english[name] = korean
+    texts = [
+        (f"{table}.{key}", text)
+        for table, rows in _korean_tables().items()
+        for key, text in rows.items()
+    ]
+    texts += [(f"UI_TEXT.{key}", entry["ko"]) for key, entry in _ui_text().items()]
+    assert len(texts) > 300, "the tables were not read"
+    # Names that stay English go first, longest first: "Ruthless Leadership"
+    # (not read) holds "Leadership" (read).
+    kept: set[str] = set()
+    for table in catalog.values():
+        if not isinstance(table, dict):
+            continue
+        for entry in table.values():
+            other = entry.get("name") if isinstance(entry, dict) else None
+            if isinstance(other, str) and other not in english:
+                kept.add(other)
+    others = sorted(kept, key=len, reverse=True)
+    leaks = []
+    for where, text in texts:
+        bare = text
+        for other in others:
+            bare = bare.replace(other, " ")
+        for name, korean in english.items():
+            if re.search(rf"(?<![A-Za-z']){re.escape(name)}(?![A-Za-z'])", bare):
+                leaks.append(f"{where}: {name!r} (Korean print {korean!r}) in {text!r}")
     assert not leaks, "; ".join(leaks[:10])
 
 

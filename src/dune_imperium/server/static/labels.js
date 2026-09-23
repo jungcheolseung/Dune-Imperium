@@ -353,8 +353,8 @@ const EVENT_LABELS = {
   contracts_revealed: "{contract} 공개",
   control_bonus_gained: "{control} 보너스 획득",
   corrinth_city_payment_declined: "지불 안 함",
-  corrinth_city_payment_resolved: "Corrinth City: 5 {solari} 지불 → {victory_point} 1",
-  corrinth_city_payment_started: "Corrinth City: 첫 카드 선택",
+  corrinth_city_payment_resolved: "코린트 시티: 5 {solari} 지불 → {victory_point} 1",
+  corrinth_city_payment_started: "코린트 시티: 첫 카드 선택",
   endgame_intrigue_passed: "패스",
   endgame_started: "{endgame} 시작",
   endgame_wild_matched: "와일드 {battle_icon} 매칭",
@@ -404,7 +404,7 @@ const EVENT_LABELS = {
   leader_signet_solari_paid: "{solari} 지불 ({signet_ring})",
   leader_signet_spice_paid: "{spice} 지불 ({signet_ring})",
   leader_signet_troops_recruited: "{troop} {recruit} ({signet_ring})",
-  long_live_fighters_selection_started: "카드 선택 시작 (Long Live the Fighters)",
+  long_live_fighters_selection_started: "카드 선택 시작 (전사들이여 영원하라)",
   maker_spice_added: "{maker} 공간에 {spice} 추가",
   navigation_card_placed: "{navigation} 슬롯에 놓기",
   navigation_card_played: "{navigation} 사용",
@@ -573,8 +573,8 @@ const VALUE_LABELS = {
    (docs/ui-improvement-plan.md, "언어 정책"). */
 /* What an action-log line calls each field of an engine event payload
    (logEventPayload). prettify(key) is only the fallback for a key added
-   later. Names with no glossary row (Crysknife, Secret Project) stay
-   English here too. */
+   later. Names with no glossary row (Secret Project) stay English here
+   too; the battle icon is the glossary's 크리스나이프 [Main p. 20]. */
 const PAYLOAD_KEY_LABELS = {
   action_id: "행동",
   amount: "수량",
@@ -594,7 +594,7 @@ const PAYLOAD_KEY_LABELS = {
   cost: "비용",
   cost_option: "비용 선택지",
   count: "수",
-  crysknife: "Crysknife",
+  crysknife: "크리스나이프",
   destination: "목적지",
   destroy_shield_wall: "방어벽 파괴",
   discount: "할인",

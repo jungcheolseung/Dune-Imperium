@@ -24,6 +24,7 @@ async function init() {
   loadCollapsedStrips();
   loadExpandedSeats();
   state.catalog = await api("/catalog");
+  localizeCatalog(state.catalog);
   const adminError = await adoptAdminLink();
   state.server = await api("/whoami");
   /* The host of a remote game plays too and must not know the seed. */

@@ -514,7 +514,7 @@ const UI_TEXT = {
     "en": "Dune: Imperium — Uprising"
   },
   "html.opt_promo": {
-    "ko": "프로모 카드 (봉기 3장: Arrakis Revolt, The Beast's Spoils, Pivotal Gambit; 혈통을 켜면 Ruthless Leadership, 불멸을 켜면 틀레이락스 덱에 Piter, Genius Advisor도)",
+    "ko": "프로모 카드 (봉기 3장: 아라키스 반란, The Beast's Spoils, Pivotal Gambit; 혈통을 켜면 Ruthless Leadership, 불멸을 켜면 틀레이락스 덱에 Piter, Genius Advisor도)",
     "en": "Promo cards (3 in Uprising: Arrakis Revolt, The Beast's Spoils, Pivotal Gambit; plus Ruthless Leadership with Bloodlines on, and Piter, Genius Advisor in the Tleilaxu deck with Immortality on)"
   },
   "html.opt_seed_label": {

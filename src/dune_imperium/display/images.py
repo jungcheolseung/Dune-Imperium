@@ -18,11 +18,13 @@ Manifest entries look like::
      "source": {"site": "dunecardshub", "file": "...", "url": "...",
                 "sha256": "..."}}
 
-``path`` is language neutral; the language directory is chosen here so a
-Korean scan at ``ko/<path>`` is preferred per file and falls back to
-``en/<path>``. Only entries of the indexed sets (Uprising, and Bloodlines
-for the ``bloodlines`` option) that carry a ``content_id`` are indexed;
-the other sets in the manifest are archived for future expansions. The
+``path`` is language neutral; the language directory is chosen here, per
+file, in the order given: the play server resolves once for each UI
+language, English first (``en/<path>``, else ``ko/<path>``) and Korean
+first, and the page shows the picture of its language. Only entries of
+the indexed sets (Uprising, and Bloodlines for the ``bloodlines`` option)
+that carry a ``content_id`` are indexed; the other sets in the manifest
+are archived for future expansions. The
 manifest's ``starting`` and ``reserve`` kinds both map to the catalog's
 ``other`` kind (starting and Reserve cards), and its ``promo`` kind (the
 three Uprising promo Imperium cards) to ``imperium``.
@@ -84,8 +86,9 @@ def resolve_card_images(
 ) -> Mapping[ImageKey, str]:
     """Return ``{key: "<language>/<path>"}`` for every image file present.
 
-    ``languages`` is tried in order per file (Korean scan first, English
-    fallback), and keys whose file exists in no language are dropped so
+    ``languages`` is tried in order per file (by default the Korean
+    picture first, the English one as fallback), and keys whose file
+    exists in no language are dropped so
     the catalog never links to a missing file. A missing directory or
     manifest yields an empty mapping.
     """
