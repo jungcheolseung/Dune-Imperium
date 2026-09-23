@@ -125,15 +125,13 @@ git 무시 `checkpoints/2026-09-22/m10-evidence/`). 요지:
   sandworm)은 정책이 이미 배웠다. 비용 문턱으로 거르는 얇은 덱은 heuristic 틀에서 단조롭게 진다(같은 조건 직접 −17.8%p).
   **옆길 발견: heuristic이 Tleilaxu 카드를 사지 않기만 해도 평소 구성에서 +21.8%p [+18.4, +25.1]** — 채택은 별도 작업
   단위·사용자 결정(6.5).
-  **2026-09-23(WSL 노트북, 그 문서 7절, 이어갈 때는 7.6부터)**: 커뮤니티 팁 38개를 규칙 확인·측정 경로로 분류했다(엔진 불일치
+  **2026-09-23(WSL 노트북, 그 문서 7절, 이어갈 때는 7.8부터)**: 커뮤니티 팁 38개를 규칙 확인·측정 경로로 분류했다(엔진 불일치
   0, 테스트 공백 1건 메움). 그 측정을 한 명령으로 내는 **`scripts/ab/tip_census.py`**(수집기 `deck`·`combat`·`influence`·
-  `endgame`)를 넣고 heuristic 기준값(3구성 × 100 seed)을 냈다. **다음은 Mac mini에서 같은 명령으로 5081 census** — 이 노트북에는
-  체크포인트가 없다. Mac 스크래치 census와 heuristic 수치 일부(구매 수, Fremen 2 도달)가 어긋나 원인 미확정이므로 6.2·6.3의
-  5081 대 heuristic 비교도 이 도구로 두 팔을 다시 낸다.
-  **같은 날 사용자가 5081을 노트북에 가져와 census를 냈다(그 문서 7.7, 이어갈 때는 7.8부터)**: 정책은 Swordmaster 초반(79~94%)·
-  Heighliner·sandworm·초반 폐기에서 팁과 같고, 초반 Faction 접근 카드(1~3라운드 0.67장, 팁 1~2장)·작게 이기기·tier III용
-  garrison·이른 Reveal(0번)·Espionage에서 다르다. 1+3 표는 Mac 수치와 0.2 안으로 맞아 도구 정의 문제는 아닌 것으로 보인다.
-  다음 1순위는 "기능으로 거른 H-deck" 정책 탐침(초반 Faction 카드 강제 구매, 덮어쓰기 에이전트부터 만들어야 한다).
+  `endgame`)와 비교 도구 `scripts/ab/tip_compare.py`를 넣고, heuristic 기준값(3구성 × 100 seed)과, 사용자가 노트북에 가져온 5081의
+  census를 냈다(7.7): 정책은 Swordmaster 초반(79~94%)·Heighliner·sandworm·초반 폐기에서 팁과 같고, 초반 Faction 접근 카드
+  (1~3라운드 0.67장, 팁 1~2장)·작게 이기기·tier III용 garrison·이른 Reveal(0번)·Espionage에서 다르다. 1+3 표는 Mac 스크래치 수치와
+  0.2 안으로 맞는다. 초반 Faction 카드 강제 구매 탐침(`scripts/ab/pypath/netprobes.py`)은 파일럿에서 0.67 → 1.00장만 올라 용량이
+  작다 — A/B는 아직 안 돌렸다(7.8에 명령).
 
 아래는 그 앞의 기록이다(시간 역순이 아니라 적힌 순서 그대로 남긴다).
 
