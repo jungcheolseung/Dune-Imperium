@@ -69,6 +69,8 @@ def test_a_search_seat_enters_by_file_like_a_checkpoint(tmp_path: Path) -> None:
     # The runner must hand it the state, or it would only play greedily.
     assert isinstance(agent, StateAgent)
     assert isinstance(agent, NetworkSearchAgent)
+    # The measured default leaves Agent-effect ordering to the network.
+    assert agent.search_effect_order is False
     with pytest.raises(ValueError, match="must not be negative"):
         NetworkSearchAgent(_checkpoint(tmp_path, config), seed=-1)
     with pytest.raises(ValueError, match="positive"):

@@ -19,6 +19,12 @@ construction. That cell paid about 2s per searched decision; reading only
 the legal rows of the policy head takes a single-threaded decision from
 0.53s to 0.14s with the same choices.
 
+By default the seat leaves one kind of decision to the greedy network:
+ordering an Agent turn's effects (``search_effect_order``). Over 300 new
+matches paired deal for deal with the full search, that seat wins 62.7%
+against 64.0% -- a difference of -1.3pp [-8.7, +6.0], mean rank +0.04
+[-0.09, +0.18] -- at 17s instead of 43s a match (section 13).
+
 Like greedy play, the search keeps a cycle guard (``_Taken``), both for its
 own decisions and inside every playout. Without one a search seat stalled a
 tournament match on ``switch_graft_card``: the network ranked the switch
@@ -47,16 +53,19 @@ from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.training.policy import without_undo_actions
 
-# The defaults the 100-match cell measured (section 12). Worlds and
-# candidates are the cost knobs: a decision plays ``rollouts * candidates``
-# playouts, each to the end of the current round.
+# The worlds, candidates and horizon the 100-match cell measured (section
+# 12). Worlds and candidates are the cost knobs: a decision plays
+# ``rollouts * candidates`` playouts, each to the end of the current round.
+# One world, and two worlds on top of the effect-ordering switch below, both
+# lost measurably against these defaults (section 13).
 DEFAULT_ROLLOUTS = 4
 DEFAULT_CANDIDATES = 3
 DEFAULT_HORIZON_ROUNDS = 1
 # Ordering an Agent turn's effects is half of all searched decisions and
 # 63% of the search time, yet the search overrides the network there least
-# (10% against 22.6% overall; docs/evaluation/m10-2026-09-22.md section 13).
-DEFAULT_SEARCH_EFFECT_ORDER = True
+# (10% against 22.6% overall), and leaving it to the network cost nothing
+# measurable (docs/evaluation/m10-2026-09-22.md section 13).
+DEFAULT_SEARCH_EFFECT_ORDER = False
 
 
 class _Taken:
