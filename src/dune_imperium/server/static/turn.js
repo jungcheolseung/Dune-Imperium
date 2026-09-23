@@ -306,9 +306,15 @@ function pickStepNode(number, label, ref, part) {
 
 /* The decision panel of the seat to move. An Agent turn is staged (card,
    space, what is left), with the turn's other actions under it; everything
-   else, and the staged turn behind its toggle, is the flat list. */
-function renderActionPanel(box) {
-  const actions = state.actions.actions;
+   else, and the staged turn behind its toggle, is the flat list.
+
+   `turnEnd` is the seat's own explicit turn-end action (turnEndAction in
+   render.js), already shown as the banner's turn-end row: it is filtered
+   out here so it never doubles as an item in any of the lists below. */
+function renderActionPanel(box, turnEnd) {
+  const actions = state.actions.actions.filter(
+    (action) => !turnEnd || action.index !== turnEnd.index
+  );
   const placements = placementActions();
   if (state.summary.decision && state.summary.decision.kind === "reveal") {
     renderRevealPanel(box, actions);

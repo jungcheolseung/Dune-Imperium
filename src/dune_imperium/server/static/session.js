@@ -420,8 +420,9 @@ async function applyAction(index) {
   }
 }
 
-/* Hand the turn over after the seat's still-undoable steps: only now do
-   the chance stream and the other seats advance. */
+/* Hand the turn over: the seat's turn-end press, whether or not its steps
+   can still be taken back. Only now do the chance stream and the other
+   seats advance. */
 async function confirmTurn() {
   if (state.busy) return;
   state.busy = true;

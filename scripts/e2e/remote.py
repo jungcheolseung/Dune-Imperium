@@ -301,7 +301,7 @@ def scenario(base, host, host_rec, guest, guest_rec, pages) -> None:
     if actor in seat_pages:
         waiting = seat_pages[1 - actor]
         banner = waiting.inner_text("#decision-info")
-        expected = "턴 종료 확정을 기다리는 중" if held else "결정 대기 중"
+        expected = "턴 종료를 기다리는 중" if held else "결정 대기 중"
         check.ok(
             expected in banner,
             "the waiting seat's banner says who it waits for",

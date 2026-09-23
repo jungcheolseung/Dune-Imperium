@@ -337,14 +337,6 @@ const UI_TEXT = {
     "ko": "연구 트랙 {{column}}-{{row}}",
     "en": "Research track {{column}}-{{row}}"
   },
-  "help.announce_confirm_mine": {
-    "ko": "{{name}} — 행동을 마쳤습니다. 턴 종료를 확정하세요.",
-    "en": "{{name}} — done acting. Confirm the end of turn."
-  },
-  "help.announce_confirm_other": {
-    "ko": "{{name}}의 턴 종료 확정을 기다리는 중",
-    "en": "Waiting for {{name}} to confirm the end of turn"
-  },
   "help.announce_finished_winner": {
     "ko": "게임 종료 — {{name}} 승리",
     "en": "Game over — {{name}} wins"
@@ -352,6 +344,14 @@ const UI_TEXT = {
   "help.announce_turn_mine": {
     "ko": "{{name}} — 당신 차례입니다: {{prompt}}",
     "en": "{{name}} — your turn: {{prompt}}"
+  },
+  "help.announce_turn_end_mine": {
+    "ko": "{{name}} — 할 일을 마쳤습니다. 턴 종료를 누르세요.",
+    "en": "{{name}} — done. Press End turn."
+  },
+  "help.announce_turn_end_other": {
+    "ko": "{{name}}의 턴 종료를 기다리는 중",
+    "en": "Waiting for {{name}} to end the turn"
   },
   "help.announce_turn_other": {
     "ko": "{{name}} 차례",
@@ -406,8 +406,8 @@ const UI_TEXT = {
     "en": "{agent_turn}: ① a highlighted card in hand → ② a highlighted space → ③ any choice left. You can also click the space first; Esc cancels."
   },
   "help.turn_confirm": {
-    "ko": "되돌릴 수 있는 동안은 턴이 넘어가지 않습니다. 끝나면 \"턴 종료 확정\"을 누르세요.",
-    "en": "The turn does not pass while you can still undo. When done, press \"Confirm end of turn\"."
+    "ko": "차례는 \"턴 종료 ▶\"를 한 번 눌러야 넘어갑니다. 누르기 전에는 되돌릴 수 있는 행동을 되돌릴 수 있습니다.",
+    "en": "A turn passes only when you press \"End turn ▶\" once. Until then you can take back what can still be undone."
   },
   "help.turn_heading": {
     "ko": "한 턴 진행",
@@ -897,18 +897,6 @@ const UI_TEXT = {
     "ko": "확정",
     "en": "Confirm"
   },
-  "render.confirm_turn_button": {
-    "ko": "턴 종료 확정 ▶",
-    "en": "Confirm end of turn ▶"
-  },
-  "render.confirm_turn_meta": {
-    "ko": "되돌릴 수 있는 동안은 턴이 넘어가지 않습니다 · 다음: {{next}}",
-    "en": "The turn does not pass while it can still be undone · Next: {{next}}"
-  },
-  "render.confirm_turn_prompt": {
-    "ko": "행동을 마쳤습니다. 턴을 넘길까요?",
-    "en": "Actions are done. Hand over the turn?"
-  },
   "render.contract_bank": {
     "ko": "남은 계약",
     "en": "Contract bank"
@@ -948,14 +936,6 @@ const UI_TEXT = {
   "render.effect_preview_title": {
     "ko": "효과 미리보기",
     "en": "Effect preview"
-  },
-  "render.finish_reveal": {
-    "ko": "{reveal_turn} 종료",
-    "en": "End {reveal_turn}"
-  },
-  "render.finish_reveal_with_buys": {
-    "ko": "구매 끝 · {reveal_turn} 종료",
-    "en": "Done acquiring · End {reveal_turn}"
   },
   "render.free": {
     "ko": "무료",
@@ -1081,6 +1061,22 @@ const UI_TEXT = {
     "ko": "이 행동 뒤의 내 {strength}",
     "en": "My {strength} after this action"
   },
+  "render.turn_end_button": {
+    "ko": "턴 종료 ▶",
+    "en": "End turn ▶"
+  },
+  "render.turn_end_button_pass": {
+    "ko": "패스 · 턴 종료 ▶",
+    "en": "Pass · End turn ▶"
+  },
+  "render.turn_end_button_with_buys": {
+    "ko": "구매 끝 · 턴 종료 ▶",
+    "en": "Done acquiring · End turn ▶"
+  },
+  "render.turn_end_prompt": {
+    "ko": "이번 차례에 할 일을 마쳤습니다.",
+    "en": "You have nothing left to do this turn."
+  },
   "render.undo_all_steps": {
     "ko": "{{steps}}단계 모두 되돌리기",
     "en": "Undo all {{steps}} steps"
@@ -1093,10 +1089,6 @@ const UI_TEXT = {
     "ko": "전체 보기",
     "en": "View all"
   },
-  "render.waiting_confirm": {
-    "ko": "{{name}}의 턴 종료 확정을 기다리는 중…",
-    "en": "Waiting for {{name}} to confirm end of turn…"
-  },
   "render.waiting_decision": {
     "ko": "{{name}} 결정 대기 중…",
     "en": "Waiting for {{name}}'s decision…"
@@ -1108,6 +1100,10 @@ const UI_TEXT = {
   "render.waiting_hint_offline": {
     "ko": " (접속이 끊겨 있습니다)",
     "en": " (disconnected)"
+  },
+  "render.waiting_turn_end": {
+    "ko": "{{name}}의 턴 종료를 기다리는 중…",
+    "en": "Waiting for {{name}} to end the turn…"
   },
   "review.before_game_start": {
     "ko": "게임 시작 전",

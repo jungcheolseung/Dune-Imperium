@@ -49,8 +49,8 @@ function announceTurn(summary) {
     const seat = summary.confirmation;
     key = `confirm:${seat}`;
     text = isMine(seat)
-      ? t("help.announce_confirm_mine", { name: playerLabel(seat) })
-      : t("help.announce_confirm_other", { name: playerLabel(seat) });
+      ? t("help.announce_turn_end_mine", { name: playerLabel(seat) })
+      : t("help.announce_turn_end_other", { name: playerLabel(seat) });
   } else if (summary.decision) {
     const owner = summary.decision.owner;
     key = `seat:${owner}`;

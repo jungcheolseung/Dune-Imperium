@@ -66,8 +66,12 @@ def scenario(base, browser) -> None:
     check.ok(len(placements) > 1, "the seat is offered placements", len(placements))
 
     print("[1] the panel shows steps, not the flat list")
+    # finish_agent_turn is the seat's explicit turn-end action: it never
+    # doubles as an #actions item, appearing only as the banner's turn-end
+    # row (render.js EXPLICIT_TURN_END_IDS / turnEndAction).
     others = page.evaluate(
-        "state.actions.actions.filter((a) => a.action_id !== 'agent_turn').length"
+        "state.actions.actions.filter((a) => a.action_id !== 'agent_turn'"
+        " && !EXPLICIT_TURN_END_IDS.has(a.action_id)).length"
     )
     check.ok(page.evaluate("stagedTurn()"), "the turn is staged")
     check.ok(
@@ -78,6 +82,10 @@ def scenario(base, browser) -> None:
         "only the turn's other actions are listed",
         (page.locator("#actions .action-item").count(), others),
     )
+    # finish_agent_turn is never legal at this point (a fresh turn start,
+    # before any Combat-space deployment is open); that it is pulled out of
+    # #actions when it IS legal is checked where it happens,
+    # turn_end.py's check_finish_agent_turn (combined_scenarios [c]).
     cards = sorted({p["card"] for p in placements})
     spaces = sorted({p["space"] for p in placements})
     check.ok(
@@ -213,7 +221,10 @@ def scenario(base, browser) -> None:
     print("[6] the flat list is one toggle away, and the choice is remembered")
     placements = to_agent_turn(page)
     if placements:
-        total = page.evaluate("state.actions.actions.length")
+        total = page.evaluate(
+            "state.actions.actions.filter((a) =>"
+            " !EXPLICIT_TURN_END_IDS.has(a.action_id)).length"
+        )
         page.click("#actions .action-list-toggle")
         check.ok(not page.evaluate("stagedTurn()"), "the toggle leaves the staged view")
         check.ok(

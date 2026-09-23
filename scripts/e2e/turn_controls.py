@@ -65,8 +65,12 @@ def deployment(page, rec) -> None:
     deploys = of_id(page, "deploy_troops")
     rows = page.locator("#actions .count-row[data-action='deploy_troops']")
     check.ok(rows.count() == 1, "the panel folds the counts into one row")
+    # finish_agent_turn can be legal here too (a Combat-space deployment is
+    # open): it never doubles as an #actions item, appearing only as the
+    # banner's turn-end row (render.js EXPLICIT_TURN_END_IDS).
     others = page.evaluate(
-        "state.actions.actions.filter((a) => a.action_id !== 'deploy_troops').length"
+        "state.actions.actions.filter((a) => a.action_id !== 'deploy_troops'"
+        " && !EXPLICIT_TURN_END_IDS.has(a.action_id)).length"
     )
     check.ok(
         page.locator("#actions .action-item").count() == others + 1,
@@ -164,15 +168,33 @@ def reveal_shop(page, rec) -> None:
         "every card that can be bought is listed with its cost",
         (page.locator("#actions .acquire-cost").count(), buys),
     )
-    last = page.evaluate(
-        "(() => { const n = document.querySelector('#actions').lastElementChild;"
-        " const action = state.actions.actions[Number(n.dataset.index)];"
-        " return [n.className, action.action_id]; })()"
+    # finish_reveal is the seat's explicit turn-end action: it is pulled out
+    # of the panel and shown as the banner's turn-end row instead (render.js
+    # turnEndAction / appendTurnEndRow), never as an #actions item, though it
+    # stays in the raw legal-action list the server sends.
+    finish = page.evaluate(
+        "state.actions.actions.find((a) => a.action_id === 'finish_reveal')"
     )
     check.ok(
-        "finish-row" in last[0] and last[1] == "finish_reveal",
-        "the way out is the last thing in the panel",
-        last,
+        finish is not None
+        and not page.evaluate(
+            "[...document.querySelectorAll('#actions .action-item')]"
+            f".some((n) => Number(n.dataset.index) === {finish['index']})"
+        ),
+        "finish_reveal is not among the panel's items",
+    )
+    check.ok(
+        page.locator(".turn-end-row button").count() == 1,
+        "the way out is the banner's turn-end row",
+    )
+    # The prefix follows whether the Reveal still offers buyable cards
+    # (isAcquire actions among state.actions.actions), not whether anything
+    # has been bought yet -- so it already shows here, before any purchase,
+    # since `buys > 0` was just asserted above.
+    check.ok(
+        "구매 끝" in page.locator(".turn-end-row button").inner_text(),
+        "the turn-end row carries the prefix while buyable cards remain",
+        page.locator(".turn-end-row button").inner_text(),
     )
 
     lit = page.evaluate(
@@ -195,15 +217,29 @@ def reveal_shop(page, rec) -> None:
         "the panel lists what has been bought",
         page.locator(".reveal-bought").inner_text(),
     )
-    page.click("#actions .finish-row > button")
+    still_buyable = page.evaluate(
+        "state.actions.actions.some((a) => a.action_id.startsWith('acquire'))"
+    )
+    check.ok(
+        ("구매 끝" in page.locator(".turn-end-row button").inner_text()) == still_buyable,
+        "and after the purchase, the prefix follows what remains buyable, not the purchase",
+        (page.locator(".turn-end-row button").inner_text(), still_buyable),
+    )
+    page.click(".turn-end-row button")
     assert settled(page, 20)
+    # finish_reveal is an explicit turn-end action: applying it seals the
+    # turn and hands over at once (server/turn_end.py EXPLICIT_TURN_ENDS),
+    # so this seat is never held for a second press afterwards.
+    check.ok(
+        page.evaluate("state.summary.confirmation !== state.viewSeat"),
+        "the way out never holds this seat for a second press",
+    )
     check.ok(
         page.evaluate(
             "!state.summary.decision || state.summary.decision.kind !== 'reveal'"
             " || state.summary.decision.owner !== state.viewSeat"
-            " || state.summary.confirmation === state.viewSeat"
         ),
-        "the way out ends the Reveal",
+        "and ends the Reveal",
     )
 
 

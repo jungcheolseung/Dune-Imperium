@@ -493,6 +493,54 @@ function renderDisclosure() {
   }
 }
 
+/* Actions whose whole meaning is "I am done": applying one IS the seat's
+   own turn-end press, so it renders as the banner's turn-end row instead
+   of an item in the action list. Mirrors EXPLICIT_TURN_ENDS in
+   server/turn_end.py — keep the two lists in step. */
+const EXPLICIT_TURN_END_IDS = new Set([
+  "finish_agent_turn",
+  "finish_reveal",
+  "pass_combat_intrigue",
+  "pass_endgame_intrigue",
+]);
+
+/* The seat's own explicit turn-end action among its legal actions, if the
+   pending decision offers one. There is at most one: the four ids belong
+   to four different decision kinds. */
+function turnEndAction(actions) {
+  return actions.find((action) => EXPLICIT_TURN_END_IDS.has(action.action_id)) || null;
+}
+
+/* The turn-end row's label for the seat's own explicit action: plain, or
+   with the prefix that marks a Reveal that still offers buyable cards (the
+   same isAcquire test renderRevealPanel uses for its own `buys`, not
+   whether anything was already bought) or an Intrigue pass. */
+function turnEndButtonLabel(action, actions) {
+  if (action.action_id === "finish_reveal" && actions.some(isAcquire)) {
+    return t("render.turn_end_button_with_buys");
+  }
+  if (action.action_id === "pass_combat_intrigue" || action.action_id === "pass_endgame_intrigue") {
+    return t("render.turn_end_button_pass");
+  }
+  return t("render.turn_end_button");
+}
+
+/* The one turn-end control, always the same row in the same place: a hold
+   waiting for confirmTurn(), or the seat's own explicit turn-end action
+   applied directly (onClick). Never marked irreversible — it is built by
+   hand, not through actionItem(), so no badge is possible. */
+function appendTurnEndRow(container, label, onClick) {
+  const row = document.createElement("div");
+  row.className = "confirm-row turn-end-row";
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = label;
+  button.disabled = state.busy;
+  button.addEventListener("click", onClick);
+  row.appendChild(button);
+  container.appendChild(row);
+}
+
 function renderBanner() {
   const summary = state.summary;
   const info = el("decision-info");
@@ -532,25 +580,18 @@ function renderBanner() {
       prompt.textContent = t("render.in_progress");
       info.append(prompt);
     } else if (summary.confirmation === state.viewSeat) {
-      /* The viewing seat's turn has ended but its steps can still be taken
-         back: nothing advances until it confirms the hand-over. */
-      prompt.textContent = t("render.confirm_turn_prompt");
-      meta.textContent = t("render.confirm_turn_meta", { next: playerLabel(decision.owner) });
+      /* The viewing seat's turn has ended: nothing advances until it
+         presses the turn-end row (confirmTurn), whether or not the steps
+         that ended it can still be taken back. */
+      prompt.textContent = t("render.turn_end_prompt");
+      meta.textContent = t("render.next_label", { name: playerLabel(decision.owner) });
       info.append(prompt, meta);
-      const row = document.createElement("div");
-      row.className = "confirm-row";
-      const confirm = document.createElement("button");
-      confirm.type = "button";
-      confirm.textContent = t("render.confirm_turn_button");
-      confirm.disabled = state.busy;
-      confirm.addEventListener("click", () => confirmTurn());
-      row.appendChild(confirm);
-      info.appendChild(row);
+      appendTurnEndRow(info, t("render.turn_end_button"), () => confirmTurn());
     } else if (typeof summary.confirmation === "number") {
-      /* Another seat's turn has ended but can still be taken back; nobody
-         moves until that seat hands it over. */
+      /* Another seat's turn has ended; nobody moves until that seat
+         presses its own turn-end row. */
       prompt.textContent =
-        t("render.waiting_confirm", { name: playerLabel(summary.confirmation) }) +
+        t("render.waiting_turn_end", { name: playerLabel(summary.confirmation) }) +
         waitingHint(summary.confirmation);
       meta.textContent = t("render.next_label", { name: playerLabel(decision.owner) });
       info.append(prompt, meta);
@@ -565,7 +606,19 @@ function renderBanner() {
       meta.textContent = t("render.seat_you", { seat: decision.owner });
       info.append(prompt, meta);
 
-      if (state.actions) renderActionPanel(actionsBox);
+      /* The seat's own explicit turn-end action (EXPLICIT_TURN_END_IDS),
+         when the pending decision offers one, IS this turn's end: it
+         renders as the same banner row and is pulled out of every action
+         list below (renderActionPanel). */
+      const turnEnd = state.actions ? turnEndAction(state.actions.actions) : null;
+      if (turnEnd) {
+        appendTurnEndRow(
+          info,
+          turnEndButtonLabel(turnEnd, state.actions.actions),
+          () => applyAction(turnEnd.index),
+        );
+      }
+      if (state.actions) renderActionPanel(actionsBox, turnEnd);
     }
   }
 
@@ -927,9 +980,11 @@ function renderRevealPanel(box, actions) {
     node.textContent = text;
     box.appendChild(node);
   };
+  /* finish_reveal itself never reaches `actions`: it is the seat's
+     explicit turn-end action, already pulled into the banner's turn-end
+     row by renderBanner. */
   const buys = actions.filter(isAcquire);
-  const finish = actions.filter((action) => action.action_id === "finish_reveal");
-  const effects = actions.filter((action) => !isAcquire(action) && action.action_id !== "finish_reveal");
+  const effects = actions.filter((action) => !isAcquire(action));
   if (effects.length) {
     heading(t("render.reveal_effects_heading"));
     appendActionItems(box, effects);
@@ -942,15 +997,6 @@ function renderRevealPanel(box, actions) {
       if (cost) item.querySelector("button").appendChild(cost);
       box.appendChild(item);
     }
-  }
-  for (const action of finish) {
-    const item = actionItem(action);
-    item.classList.add("finish-row");
-    const button = item.querySelector("button");
-    button.textContent = buys.length
-      ? t("render.finish_reveal_with_buys")
-      : t("render.finish_reveal");
-    box.appendChild(item);
   }
 }
 

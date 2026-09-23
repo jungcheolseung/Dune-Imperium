@@ -1163,18 +1163,6 @@ kbd {
 .reveal-bought { font-size: 0.9em; }
 .acquire-cost { float: right; margin-left: 0.6em; font-weight: 700; }
 .acquire-cost .icon { height: 1.05em; }
-.action-item.finish-row { margin-top: 0.4rem; }
-#actions .action-item.finish-row > button:first-child {
-  border-color: var(--good);
-  color: var(--good);
-  background: transparent;
-  font-weight: 700;
-  text-align: center;
-}
-#actions .action-item.finish-row > button:first-child:hover:not(:disabled) {
-  background: var(--good);
-  color: #111;
-}
 /* The option chooser borrows the card popover next to the picked space. */
 #card-popover .action-item { margin-top: 0.3rem; }
 #card-popover .action-item > button:first-child { flex: 1; text-align: left; }
