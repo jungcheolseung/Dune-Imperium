@@ -411,8 +411,19 @@ Mac 스크립트의 seed·정의를 이 노트북에서 볼 수 없어 원인은
 
 1. **정책 탐침 1순위 — 기능으로 거른 H-deck (C1.6 + 6.1)**: 1~3라운드 Reveal 구매에서 Faction 접근 아이콘 카드를 살 수 있으면 사게
    덮어쓴 5081 대 5081, 2:2 미러. 정책과 팁이 가장 분명히 갈리고(0.67 대 1~2장), 승자 쪽 상관도 같은 방향이며, 6.8의 "정책 틀 H-deck
-   탐침"을 "비용"이 아니라 사람이 말한 "기능" 기준으로 시험한다. 덮어쓰기 에이전트는 아직 저장소에 없다(Mac의 `net_buy_always`는
-   스크래치). 이 노트북에서 1,000판은 약 2.5시간, Mac mini가 빠르다.
+   탐침"을 "비용"이 아니라 사람이 말한 "기능" 기준으로 시험한다. 덮어쓰기 에이전트는 `scripts/ab/pypath/netprobes.py`
+   (`net_faction_early1`·`net_faction_early2`: 1~3라운드 Reveal 구매에서 Faction 아이콘 카드를 살 수 있으면 스스로 산 것까지 합쳐
+   cap장이 될 때까지 네트워크 logit 최고인 것을 산다; `DUNE_PROBE_CKPT`가 있을 때만 등록). **파일럿**(`net_faction_early2` 4명,
+   12 seed): 1~3라운드 Faction 카드 0.67 → **1.00장**, 1~3라운드 구매 1.08 → 1.42장 — 개입은 일어나지만 cap 2에 한참 못 미친다.
+   1~3라운드에 Faction 카드를 살 Persuasion이 모자란 경우가 많은 것으로 보인다. 용량이 +0.3장 남짓이라 효과도 작을 것이고, 이
+   노트북에서 2:2 미러 1,000판(약 2.5시간)의 분해능(승률 약 ±6%p)으로는 가르기 어렵다 — VP 마진이 더 민감하다. A/B 명령:
+   ```bash
+   export DUNE_PROBE_CKPT=checkpoints/2026-09-22/exploit/champion-5081.pt
+   PYTHONPATH=scripts/ab/pypath uv run dune-imperium-tournament --agents net_faction_early2,checkpoint:$DUNE_PROBE_CKPT \
+       --games 500 --start-seed 8100 --ruleset choam --bloodlines --tech-module --immortality --promo-cards --rotate-leaders \
+       --workers 4 --matches ab-runs/tips/probe-faction2.jsonl
+   uv run python scripts/ab/paired.py ab-runs/tips/probe-faction2.jsonl --a net_faction_early2 --b checkpoint:$DUNE_PROBE_CKPT
+   ```
 2. 탐침 후보 2: 이른 Reveal(C3.4) — 조건 설계가 어렵다(그 Reveal의 Persuasion으로 Row의 Faction 카드를 살 수 있을 때). 3: tier III 전
    garrison 남기기(C2.6), 작게 이기기(C2.1) — 배치는 여러 단계 결정이라 덮어쓰기가 까다롭다.
 3. **평가 문제집 첫 문항**: 마지막 라운드, 맞는 face-up 전투 카드가 있는데 battle-icon Intrigue를 Plot으로 쓰는 결정(C8.3; 5081이
