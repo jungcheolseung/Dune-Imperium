@@ -61,9 +61,9 @@ uv run mypy src tests
    Usurp(계획서 6단계 "남은 것" 1; Gather Intelligence·Infiltrate·Family Atomics·set-aside는 2026-09-22에
    옮겼다). 한국어 룰북에서 찾아 용어집에 더한 뒤에만 바꾼다. 바꾸면 `test_i18n.py`와 `log_words.py`의 허용
    목록에서도 뺀다.
-3. **한글 카드 스캔** — 확보하면 `display/images.py`가 코드 변경 없이 쓴다(언어 정책의 3번). **2026-09-22에
-   네이버 블로그 사진에서 잘라낸 한글판 크롭 138장이 준비됐다**(아래 "2026-09-22 한글판 카드 사진 크롭" 세션
-   요약) — `cards/ko/`에 넣기 전에 사용자 결정 셋이 남아 있다.
+3. ~~한글 카드 스캔~~ — **2026-09-23 적용**(아래 "2026-09-23 한글 카드 이름·그림" 세션 요약): 사진 크롭
+   138장이 `cards/ko/`에, 한국어 화면은 한글 그림·한글 이름(인쇄 확인분 115개). 남은 것은 빠진 카드 —
+   음모 33장·대모 제시카·프로모 2장·혈통/불멸 카드 전부 — 이며, 그 출처 후보는 TTS 한글화 모드 3종이다.
 
 **UI를 이어갈 때의 규칙**(세 세션이 값을 치른 것들):
 - `static/*.js`를 고치면 pytest로는 부족하다. [`scripts/e2e/`](../scripts/e2e/README.md) **15종**을 돌린다.
@@ -465,6 +465,8 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 
 ## 원격 저장소 인계 주의
 
+2026-09-23(WSL 노트북, 한글 카드 이름·그림 세션): 앞 세션의 커밋(에셋 `d01e9d9`, 메인 `18a45ed`)은 사용자가 push해 `origin/master`에 있다. 이 세션은 에셋 저장소에 `cards/ko/` 138장(`ddd34ec`)을, 메인 저장소에 코드·문서 커밋을 더했다 — push 여부는 두 저장소에서 `git log origin/master..master`로 확인한다. 에셋이 없는 기기도 한글 **이름**은 보인다(메인 저장소의 표); 한글 **그림**은 에셋 저장소를 pull해야 보인다.
+
 2026-09-22(WSL 노트북, 한글판 카드 사진 크롭 세션): 비공개 에셋 저장소에 미push 커밋 3건 — `b8784f4`(앞 세션의 Immortality specimen 아이콘), `3fcf62f`(`origin/master`의 `1574241` merge), `d01e9d9`(`reference/naver-vampmiyu-223464306472/`, 약 190 MB). 메인 저장소에는 이 문서 커밋 1건. 이 세션에서는 자동 모드 권한 검사가 push를 막아 **두 저장소 모두 push하지 않았다** — 사용자가 이 기기에서 push한 뒤 다른 기기에서 두 저장소를 pull한다. 새 세션은 `git log origin/master..master`와 반대 방향을 두 저장소에서 모두 확인한다.
 
 2026-09-20 새벽(Mac mini, 보드 조각·아이콘 전사 정정 세션): 이 세션의 커밋(`82a0423`·`c9aec0a`·`7188523`·`2c967b7`와 문서 커밋)은 master에만 있고 **push하지 않았다**. 비공개 에셋 저장소에도 커밋 1건(`e7f7741`: `tokens/maker_hooks.png`·`alliance_<faction>.jpg` + README)이 있고 역시 push하지 않았다 — 다른 기기에서 후크·동맹 토큰 그림을 보려면 두 저장소를 모두 push·pull한다(에셋이 없으면 룰북 아이콘으로 그릴 뿐 동작은 같다). **`src/`의 규칙이 바뀌었으므로 학습이 도는 기기에서는 pull하지 않는다**; pull한 뒤의 학습은 새 규칙의 환경이다(세션 요약의 "M10에 미치는 영향"). 떠 있던 플레이 서버는 재시작해야 새 규칙·새 카탈로그 필드가 적용된다(정적 파일은 즉시 반영).
@@ -486,6 +488,38 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 2026-09-07: `bloodlines` 브랜치(35 커밋)를 master 쪽에서 `--no-ff`로 머지했고(`dbd9b73`), 같은 날 저녁 슬라이스 6 커밋 5건과 이 문서 갱신을 master에 직접 올렸다. 아직 push하지 않았다면 `git log origin/master..master`로 확인한다. 비공개 에셋 저장소(`assets` symlink → `Dune-Imperium-assets`)에도 같은 날 manifest 커밋 6건(Bloodlines 카드 44장 content id, Leader 8종, Tuek's Sietch 타일 이미지, Twisted·Navigation 카드 키, Kota Odax의 content id `43c25fc`)이 있으니 다른 머신에서는 그쪽도 pull한다.
 
 2026-09-04 세션 종료 시점에 이 세션의 커밋 전부(보드·카드 아이콘 분리 v86/v87, 서버·UI 확인 흐름과 마커, Reveal 순서 v88, OQ-028 조건 판정 시점, OQ-029 등록)를 `origin/master`에 push했다. 새 세션은 `git fetch origin` 뒤 `git log origin/master..master`와 반대 방향을 확인하고, 일치하면 이 문서의 기준선을 그대로 쓴다. 에셋 저장소(`Dune-Imperium-assets`)의 `5b55e45` 1개 미push 여부는 그 저장소에서 확인한다. 원격에는 병합하지 않은 `kyungtae` 브랜치가 있다. 새 세션은 `git log origin/master..master`와 반대 방향을 모두 확인하고, checkout이 `853ecd4`보다 이전이면 이 문서의 989개 테스트·codec v84 기준선이 실제 코드와 일치하지 않는다. **다른 머신에서 이어서 작업한다면 먼저 이 머신에서 push가 필요하다.** 새 머신의 UI 카드 이미지·아이콘·보드 스캔은 비공개 `Dune-Imperium-assets` 저장소를 clone해 symlink로 연결한다(그 README 참고; 루트의 `assets` symlink 하나로 cards·icons·board·rulebooks를 모두 연결). 카드 매핑은 그 저장소의 `cards/manifest.json`에만 있으므로 접근이 없으면 텍스트 UI로 동작한다.
+
+## 2026-09-23 한글 카드 이름·그림 세션 요약 (WSL 노트북 i5-8250U, master 직접 커밋, 관측 v20, codec v107, 변경은 `display/`·`server/`·`server/static/`·`scripts/e2e/lang.py`·테스트·`docs/` — **엔진·학습 코드 무변경**; 에셋 `ddd34ec`)
+
+- **사용자 결정 셋**(앞 세션이 남긴 질문): (1) 사진 크롭을 **바로** 쓴다(TTS 한글화 모드는 확인하지 않았다),
+  (2) 카드 그림은 **화면 언어를 따른다**, (3) 한국어 화면의 카드 이름은 **지금 확보된 한글 인쇄 이름으로** —
+  사진에 없는 카드는 영어 그대로. 공간 이름은 여전히 영어다.
+- **에셋**(`ddd34ec`): `reference/naver-vampmiyu-223464306472/best/`의 가림 없는 138장을 manifest 경로·형식
+  그대로 `cards/ko/`에(WebP, Spice Refinery I만 AVIF), 계약 타일은 영문 렌더의 알파로 잘린 모서리를 투명하게.
+  "Deliver Supplies"·"Secrets"는 계약과 장소가 같은 이름이라 이름만으로 manifest를 찾으면 계약 그림이
+  `location/`에 써진다 — 종류와 이름을 함께 키로 쓴다.
+- **그림**: 서버가 언어마다 한 번씩 해석한다(`resolve_card_images(dir, ("en","ko"))`와 `("ko","en")`, `app.py`).
+  카탈로그의 `image`는 영어 화면용이고, 한국어 화면용이 다르면 그 항목에 `image_ko`가 붙는다 — 카탈로그 전체의
+  `image`를 URL로 짝지으므로 카드·리더·장소·오버레이 어느 절도 빠지지 않는다(`catalog._add_korean`).
+- **이름**: `display/names_ko.py`의 `KOREAN_CARD_NAMES`(카탈로그 절·id별, 카드 64·음모 6·계약 20·분쟁 16·
+  리더 9 = 115개)가 `name_ko`로 붙는다. 출처는 에셋 `matching.csv`의 두 번 읽어 일치한 인쇄 제목; 엔진 영어
+  이름의 인쇄되지 않은 구분자는 한국어에도 단다(아라킨 I, 채취 3+, 소규모 전투 (크리스나이프) — 배틀 아이콘은
+  용어집 `[Main p. 20]`). 용어집의 고유명사 정책을 이에 맞춰 고쳤다([`rules/glossary-ko.md`](rules/glossary-ko.md)).
+- **클라이언트**: `localizeCatalog()`(`i18n.js`)가 카탈로그를 받은 직후와 언어 전환마다 각 항목의 `name`·`image`를
+  그 언어의 것으로 바꿔 넣고 영어는 `name_en`·`image_en`에 둔다 — 화면 코드 약 30곳은 그대로 `entry.name`·
+  `entry.image`를 읽는다. 전환은 원래 화면 전체를 다시 그리므로 그림도 즉시 바뀐다.
+- **화면 문구**: 한국어 문구가 한글 인쇄가 있는 카드를 영어로 적던 곳을 고쳤다 — 코린트 시티 이벤트 둘, 전사들이여
+  영원하라, 프로모 옵션의 아라키스 반란(`index.html` 인라인 포함). 로그의 배틀 아이콘 개수 `crysknife`는 용어집의
+  크리스나이프 `[Main p. 20]`로 — 그 행을 "참고(카드 이름)"에서 "적용"으로 바꿨고 "영어 유지" 목록 둘
+  (`test_i18n.py`·`log_words.py`)에서 Crysknife를 뺐다. **Immediate**는 계약 카드 이름이면서 용어집 행을 기다리는
+  규칙 낱말이라 그대로 두었다(UI 다음 후보 2).
+- **가드**: `test_catalog.py`에 그림 짝·한글 이름 테스트 2개(이름 표의 id가 전부 카탈로그에 있고 한글이며
+  라틴 문자는 계약 번호뿐), `test_i18n.py`에 한국어 문구가 한글 인쇄가 있는 카드를 영어로 적지 않는지(영어로
+  남는 이름을 긴 것부터 먼저 지운다 — "Ruthless Leadership" 안의 "Leadership"), `lang.py`에 공용 카드 열의
+  이름·그림이 언어를 따르는지. 같은 영어 그림에 다른 한글 그림 둘이 짝지어지면 `build_catalog`가 오류를 낸다.
+- **기준**: pytest **1,906개 통과**(이 세션 +3, 실측), ruff·mypy 통과, 브라우저 E2E 15종 녹색(`lang.py` 38 —
+  새 이름·그림 검사 6개 포함, `log_words.py` 13, `board_tokens.py` 199 등). 한국어 화면에서 혈통·불멸 카드와
+  사진에 없는 카드는 영어 이름·영문 그림으로 섞여 보이는 것이 정상이다(결정 3의 "나머지는 영어").
 
 ## 2026-09-23 커뮤니티 팁 분류와 tip census 세션 요약 (WSL 노트북 i5-8250U, master 직접 커밋, 관측 v20, codec v107, 변경은 `scripts/ab/`·`tests/`·`docs/` — **엔진·학습 코드 무변경**)
 
