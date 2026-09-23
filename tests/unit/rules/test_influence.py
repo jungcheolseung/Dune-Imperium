@@ -95,6 +95,35 @@ def test_track_bonuses_match_the_printed_board() -> None:
     }
 
 
+def test_reaching_four_again_after_a_drop_pays_the_track_bonus_again() -> None:
+    # "4 아래로 내려가도 보너스를 반환하지 않으며, 다시 4에 도달하면 같은
+    # 보너스를 다시 받을 수 있다." [Main pp. 4, 7 board artwork]
+    # (docs/rules/uprising-systems.md). The Alliance is lost at 3 and taken
+    # back at 4, but the bonus is paid on every reach, not once a game.
+    reached = gain_faction_influence(
+        _at_three(Faction.SPACING_GUILD),
+        0,
+        Faction.SPACING_GUILD,
+        1,
+        event_prefix="test:reach",
+    )
+    dropped = lose_faction_influence(
+        reached.state, 0, Faction.SPACING_GUILD, 1, event_prefix="test:drop"
+    )
+    kept = dropped.state.players[0]
+    assert kept.alliance_faction_ids == ()
+    assert kept.resources.solari == 3
+
+    again = gain_faction_influence(
+        dropped.state, 0, Faction.SPACING_GUILD, 1, event_prefix="test:again"
+    )
+
+    player = again.state.players[0]
+    assert player.resources.solari == 6
+    assert player.alliance_faction_ids == (Faction.SPACING_GUILD.value,)
+    assert [e.kind for e in again.events].count("influence_track_bonus_gained") == 1
+
+
 def test_matching_the_holder_does_not_transfer_an_alliance() -> None:
     players = tuple(PlayerState(player_id=seat) for seat in range(4))
     challenger = replace(players[0], influence=Influence(emperor=3))
