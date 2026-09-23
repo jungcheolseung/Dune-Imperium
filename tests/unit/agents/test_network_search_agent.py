@@ -1,7 +1,9 @@
 """Tests for the policy-guided determinized search agent (``search:<path>``)."""
 
+from collections.abc import Sequence
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 torch = pytest.importorskip("torch")
@@ -13,6 +15,7 @@ from dune_imperium.agents.network_search_agent import (  # noqa: E402
     orders_agent_effects,
 )
 from dune_imperium.agents.registry import SEARCH_PREFIX, is_agent_kind  # noqa: E402
+from dune_imperium.core.actions import DomainAction  # noqa: E402
 from dune_imperium.core.chance import ChanceResolver  # noqa: E402
 from dune_imperium.core.decisions import (  # noqa: E402
     ChanceDecision,
@@ -22,6 +25,7 @@ from dune_imperium.core.state import GamePhase, GameState  # noqa: E402
 from dune_imperium.rules import UprisingRulesEngine  # noqa: E402
 from dune_imperium.training.checkpoint import save_checkpoint  # noqa: E402
 from dune_imperium.training.network import PolicyValueNetwork  # noqa: E402
+from dune_imperium.training.policy import without_undo_actions  # noqa: E402
 
 
 def _checkpoint(tmp_path: Path, config: RulesetConfig) -> str:
@@ -233,3 +237,96 @@ def test_effect_ordering_can_be_left_to_the_network(
         engine.legal_actions(other, decision.owner),
     )
     assert playouts
+
+
+def _switch_offered(config: RulesetConfig, seed: int) -> GameState:
+    """Play heuristic seats until a seat can switch its Graft pair back and forth.
+
+    Some pairs offer the switch once; this waits for one that still offers
+    it after switching, the reversible case a search seat can loop on.
+    """
+
+    engine = UprisingRulesEngine()
+    state = engine.reset(config, seed)
+    chance = ChanceResolver(seed=seed)
+    agents = [make_agent("heuristic", index) for index in range(config.players)]
+    while state.phase is not GamePhase.FINISHED:
+        decision = engine.current_decision(state)
+        if isinstance(decision, ChanceDecision):
+            state = engine.apply(state, chance.resolve(decision)).state
+            continue
+        assert isinstance(decision, PlayerDecision)
+        actions = engine.legal_actions(state, decision.owner)
+        offered = without_undo_actions(actions)
+        switch = next(
+            (action for action in offered if action.action_id == "switch_graft_card"),
+            None,
+        )
+        if len(offered) > 1 and switch is not None:
+            switched = engine.apply(state, switch).state
+            again = engine.legal_actions(switched, decision.owner)
+            if any(action.action_id == "switch_graft_card" for action in again):
+                return state
+        choice = agents[decision.owner].choose_action(
+            engine.observe(state, decision.owner), actions
+        )
+        state = engine.apply(state, choice).state
+    raise AssertionError("no Graft switch in the game")  # pragma: no cover
+
+
+def test_a_reversible_move_cannot_stall_a_search_seat(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A search seat never loops on ``switch_graft_card``.
+
+    Switching a Graft pair is reversible: after a switch the only move is to
+    switch back, which returns the seat to the same decision. On 2026-09-23 a
+    tournament match stalled for hours on exactly that: the network ranked
+    the switch first, so the switch playouts looped to the step cap, and the
+    value head rated that stalled mid-turn position above finishing the
+    turn (docs/evaluation/m10-2026-09-22.md section 13). Here the network
+    always ranks the switch first and every leaf is worth the same, so only
+    the cycle guard lets the turn go on.
+    """
+
+    config = RulesetConfig(immortality=True)
+    path = _checkpoint(tmp_path, config)
+    engine = UprisingRulesEngine()
+    state = _switch_offered(config, seed=1)
+    decision = engine.current_decision(state)
+    assert isinstance(decision, PlayerDecision)
+    seat = decision.owner
+
+    def switch_first(
+        self: NetworkSearchAgent, encoded: np.ndarray, legal: Sequence[DomainAction]
+    ) -> np.ndarray:
+        return np.array(
+            [float(action.action_id == "switch_graft_card") for action in legal]
+        )
+
+    monkeypatch.setattr(NetworkSearchAgent, "_scores", switch_first)
+    monkeypatch.setattr(NetworkSearchAgent, "_leaf_value", lambda self, view: 0.0)
+    agent = NetworkSearchAgent(
+        path, seed=0, rollouts=1, candidates=2, max_rollout_steps=300
+    )
+
+    switches = 0
+    for _ in range(10):
+        decision = engine.current_decision(state)
+        if not isinstance(decision, PlayerDecision) or decision.owner != seat:
+            break
+        actions = engine.legal_actions(state, seat)
+        if not any(action.action_id == "switch_graft_card" for action in actions):
+            break
+        choice = agent.choose_action_with_state(
+            state, engine.observe(state, seat), actions
+        )
+        switches += choice.action_id == "switch_graft_card"
+        state = engine.apply(state, choice, legal_actions=actions).state
+    else:  # pragma: no cover - the failure this test guards against
+        pytest.fail("the search seat kept switching its Graft pair")
+
+    # The seat moved on after at most a switch and the switch back. The
+    # observation does not show which card of the pair leads, so here the
+    # guard already refuses the switch back.
+    assert 1 <= switches <= 2

@@ -19,6 +19,13 @@ construction. That cell paid about 2s per searched decision; reading only
 the legal rows of the policy head takes a single-threaded decision from
 0.53s to 0.14s with the same choices.
 
+Like greedy play, the search keeps a cycle guard (``_Taken``), both for its
+own decisions and inside every playout. Without one a search seat stalled a
+tournament match on ``switch_graft_card``: the network ranked the switch
+first, so the switch playouts looped to ``max_rollout_steps``, and the value
+head rated that stalled mid-turn position above finishing the turn, so the
+seat switched forever (docs/evaluation/m10-2026-09-22.md section 13).
+
 Like a checkpoint seat, a search seat enters by file: ``search:<path>``.
 """
 
@@ -52,6 +59,52 @@ DEFAULT_HORIZON_ROUNDS = 1
 DEFAULT_SEARCH_EFFECT_ORDER = True
 
 
+class _Taken:
+    """Moves a seat already made at an identical decision this round.
+
+    The greedy ``NetworkAgent`` keeps the same guard (``torch_policy``):
+    reversible pairs such as ``defer_reveal_choice``/``resume_reveal_choice``
+    return a seat to an identical observation and legal set, and an argmax
+    -- or a search that keeps preferring the same move there -- never
+    finishes the turn. The key is the observation *and* the legal set, so
+    two different decisions that happen to share an observation never mask
+    each other; only a true repeat is steered to an untried move.
+    """
+
+    def __init__(self) -> None:
+        self._round = -1
+        self._taken: dict[tuple[object, ...], set[DomainAction]] = {}
+        self.breaks = 0
+
+    def untried(
+        self,
+        round_number: int,
+        seat: int,
+        encoded: np.ndarray,
+        offered: Sequence[DomainAction],
+    ) -> tuple[tuple[object, ...], Sequence[DomainAction]]:
+        """Return the decision's key and its moves not yet made here.
+
+        Every move is returned again once all of them have been made.
+        """
+
+        if round_number != self._round:
+            self._round = round_number
+            self._taken.clear()
+        key = (seat, encoded.tobytes(), tuple(offered))
+        taken = self._taken.get(key)
+        if not taken:
+            return key, offered
+        fresh = [action for action in offered if action not in taken]
+        if not fresh:
+            return key, offered
+        self.breaks += 1
+        return key, fresh
+
+    def record(self, key: tuple[object, ...], action: DomainAction) -> None:
+        self._taken.setdefault(key, set()).add(action)
+
+
 class NetworkSearchAgent:
     """Search a checkpoint's top actions by determinized network playouts."""
 
@@ -82,6 +135,7 @@ class NetworkSearchAgent:
         self.search_effect_order = search_effect_order
         self._rng = random.Random(seed)
         self._engine = UprisingRulesEngine()
+        self._taken = _Taken()
 
     # -- the network --------------------------------------------------------
     # Both read the trunk and then only the head rows they need: the policy
@@ -89,30 +143,32 @@ class NetworkSearchAgent:
     # full forward pass, while a decision offers a handful of actions. The
     # legal logits match the full pass to float rounding (3.8e-6 at most
     # over 1,695 decisions, never a different argmax) at a sixth of the cost.
-    def _hidden(self, view: PlayerView) -> torch.Tensor:
-        observation = np.asarray(encode_player_view(view), dtype=np.int32)
-        return self.greedy.network.trunk(torch.from_numpy(observation).unsqueeze(0))
+    @staticmethod
+    def _encode(view: PlayerView) -> np.ndarray:
+        return np.asarray(encode_player_view(view), dtype=np.int32)
 
-    def _logits(
-        self, view: PlayerView, legal: Sequence[DomainAction]
+    def _hidden(self, encoded: np.ndarray) -> torch.Tensor:
+        return self.greedy.network.trunk(torch.from_numpy(encoded).unsqueeze(0))
+
+    def _scores(
+        self, encoded: np.ndarray, legal: Sequence[DomainAction]
     ) -> np.ndarray:
         codec = self.greedy.codec
         index = torch.tensor([codec.encode(action) for action in legal])
         with torch.no_grad():
-            logits = self.greedy.network.action_logits(self._hidden(view), index)
+            logits = self.greedy.network.action_logits(self._hidden(encoded), index)
         scores: np.ndarray = logits[0].numpy()
         return scores
 
+    def _logits(
+        self, view: PlayerView, legal: Sequence[DomainAction]
+    ) -> np.ndarray:
+        return self._scores(self._encode(view), legal)
+
     def _leaf_value(self, view: PlayerView) -> float:
         with torch.no_grad():
-            value = self.greedy.network.value_head(self._hidden(view))
+            value = self.greedy.network.value_head(self._hidden(self._encode(view)))
         return float(value[0, 0])
-
-    def _best(
-        self, view: PlayerView, legal: Sequence[DomainAction]
-    ) -> DomainAction:
-        best: DomainAction = legal[int(np.argmax(self._logits(view, legal)))]
-        return best
 
     # -- the agent contract -------------------------------------------------
     def choose_action(
@@ -139,13 +195,23 @@ class NetworkSearchAgent:
         offered = without_undo_actions(legal_actions)
         if len(offered) == 1:
             return offered[0]
-        order = np.argsort(-self._logits(observation, offered), kind="stable")
+        seat = observation.player
+        encoded = self._encode(observation)
+        key, fresh = self._taken.untried(state.round_number, seat, encoded, offered)
+        order = np.argsort(-self._scores(encoded, fresh), kind="stable")
         candidates: list[DomainAction] = [
-            offered[int(index)] for index in order[: self.candidates]
+            fresh[int(index)] for index in order[: self.candidates]
         ]
+        chosen = self._search(state, seat, candidates)
+        self._taken.record(key, chosen)
+        return chosen
+
+    # -- the search ---------------------------------------------------------
+    def _search(
+        self, state: GameState, seat: int, candidates: list[DomainAction]
+    ) -> DomainAction:
         if len(candidates) == 1:
             return candidates[0]
-        seat = observation.player
         horizon = state.round_number + self.horizon_rounds
         totals = [0.0 for _ in candidates]
         for _ in range(self.rollouts):
@@ -160,12 +226,14 @@ class NetworkSearchAgent:
         # Candidates are in the network's own order, so a tie keeps its pick.
         return candidates[totals.index(best)]
 
-    # -- the search ---------------------------------------------------------
     def _playout(
         self, state: GameState, seat: int, horizon: int, chance_seed: int
     ) -> float:
         engine = self._engine
         chance = ChanceResolver(seed=chance_seed)
+        # Greedy playouts need the same guard as greedy play: without it a
+        # reversible pair runs every playout to ``max_rollout_steps``.
+        taken = _Taken()
         for _ in range(self.max_rollout_steps):
             if state.phase is GamePhase.FINISHED or state.round_number >= horizon:
                 break
@@ -179,11 +247,15 @@ class NetworkSearchAgent:
             if not actions:
                 break
             offered = without_undo_actions(actions)
-            action = (
-                offered[0]
-                if len(offered) == 1
-                else self._best(engine.observe(state, decision.owner), offered)
-            )
+            if len(offered) == 1:
+                action = offered[0]
+            else:
+                owner = decision.owner
+                encoded = self._encode(engine.observe(state, owner))
+                round_number = state.round_number
+                key, fresh = taken.untried(round_number, owner, encoded, offered)
+                action = fresh[int(np.argmax(self._scores(encoded, fresh)))]
+                taken.record(key, action)
             state = engine.apply(state, action, legal_actions=actions).state
         if state.phase is GamePhase.FINISHED:
             # A finished game is read by official rank, which dominates any
