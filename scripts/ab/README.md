@@ -47,6 +47,7 @@ heuristic·rollout 변경을 측정으로 채택하는 데 쓰는 스크립트�
 | `pair_matrix.py` / `rollout_table.py` | 미러 라운드 / 단일 좌석 라운드 요약 표 |
 | `paired.py` | 대회의 `--matches` 행으로 두 에이전트를 **짝지어** 비교(승률·평균 순위·VP 마진, seed 군집 부트스트랩 CI) |
 | `probe_mix.py` | 배치 분포·종료 자산·Conflict 승 probe |
+| `tip_census.py`, `tipcensus/` | 사람 팁 가설용 좌석별 통계(덱·전투·영향력·Landsraad·Spy·끝내기·Bloodlines/Tech·Bond). 대회와 같은 게임, 판마다 JSONL + 종류별·승자 평균표; 어떤 registry 종류든(`checkpoint:` 포함) 돈다 — [`docs/player-tips-for-training.md`](../../docs/player-tips-for-training.md) 7절 |
 | `profile_run.py`, `profile_legal.py`, `profile_guards.py` | 대회 경로 cProfile(전체 / legal·관측 / handler guard 비용) |
 | `profile_selfplay.py` | M10 수집 경로(`SelfPlayRunner`) cProfile |
 | `soak.sh`, `soak_summary.py` | 전 룰셋 검증 소크와 census 요약 |
