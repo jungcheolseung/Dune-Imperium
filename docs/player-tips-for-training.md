@@ -426,8 +426,11 @@ Mac 스크립트의 seed·정의를 이 노트북에서 볼 수 없어 원인은
    ```
 2. 탐침 후보 2: 이른 Reveal(C3.4) — 조건 설계가 어렵다(그 Reveal의 Persuasion으로 Row의 Faction 카드를 살 수 있을 때). 3: tier III 전
    garrison 남기기(C2.6), 작게 이기기(C2.1) — 배치는 여러 단계 결정이라 덮어쓰기가 까다롭다.
-3. **평가 문제집 첫 문항**: 마지막 라운드, 맞는 face-up 전투 카드가 있는데 battle-icon Intrigue를 Plot으로 쓰는 결정(C8.3; 5081이
-   Plot의 약 3분의 1을 이 상태에서 쓴다). sandworm·Shield Wall 문항은 그다음.
+3. **평가 문제집 — 틀과 첫 세 문항이 들어갔다(2026-09-23)**: [evaluation/problem-set.md](evaluation/problem-set.md),
+   `dune-imperium-problems mine|score|check`. 문항은 Endgame battle-icon VP(clear), 마지막 라운드 battle-icon 보유(tip), Deep
+   Desert 소환(tip, 사용자 팁 1). 5081은 소환·Endgame에서 이미 팁대로 두고(정답률 1.00), 보유 문항에서 20개 중 3개를 Plot으로 쓴다.
+   Opus 검증이 "규칙상 명백"이라 믿었던 보유 문항의 반례(앞면 와일드 카드, 같은 턴의 "spice를 얻었다면" 효과)를 찾아 tip으로
+   내렸다. 다음 문항 후보: Shield Wall 폭파(C2.4), 이른 Reveal(C3.4), tier III garrison(C2.6).
 4. Commander: 퇴각할 수 있었던 기회 수를 세는 열을 더해 "퇴각 대신 재고용"이 약점인지 가린다(C7.2).
 5. 스타일 봇(Guild·Emperor, C3.1)은 5081이 이미 Guild 전문이라 값이 줄었다 — Emperor 쪽이나 전투를 버리는 쪽으로 다시 정한다.
 6. 6.8의 나머지(heuristic Tleilaxu 채택, 사용자 팁 더 적기)는 그대로다.
