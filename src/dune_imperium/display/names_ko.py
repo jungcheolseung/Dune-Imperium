@@ -4,10 +4,12 @@ The Korean UI names a card by its Korean print where one is known here and
 keeps the English name otherwise (``server.catalog`` hands both out, the
 page picks by its language). Source: the Korea Boardgames editions of
 Uprising, Bloodlines and Immortality, card faces read from photographs of
-the retail cards (the private assets repository's
-``reference/naver-vampmiyu-<post>/matching.csv`` for the posts 223464306472,
-223970873634 and 223033440849); every title was read twice, independently,
-and both readings agreed character for character (2026-09-22/23).
+the retail cards in three Naver blog reviews (vampmiyu 223464306472,
+223970873634, 223033440849); every title was read twice, independently, and
+both readings agreed character for character (2026-09-22/23). The photos
+and the per-crop matching tables (``matching.csv``) are kept outside git, in
+the assets checkout's ``reference/naver-vampmiyu-<post>/`` on the machine
+that made them (the WSL laptop; the assets README says why).
 
 Keyed like the display catalog's sections (``cards`` holds Imperium,
 Tleilaxu, starting, Reserve and promo cards; ``skills`` the Sardaukar

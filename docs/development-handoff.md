@@ -466,6 +466,18 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 
 ## 원격 저장소 인계 주의
 
+2026-09-23 저녁(WSL 노트북, **에셋 저장소 이력 정리** — 사용자 지시 "진짜 게임에 쓰이는 asset만 git 이력에"):
+전날 다른 기기로 넘기려고 커밋·push한 블로그 사진·크롭·`best/`·매칭 표·도구(`reference/naver-vampmiyu-*`,
+854개·354 MB)를 에셋 저장소 이력에서 뺐다. `3fcf62f` 위의 세 커밋을 둘로 다시 만들어 `--force-with-lease`로
+push했다: `d01e9d9`(참조 폴더뿐) **삭제**, `ddd34ec` → **`949009a`**(`cards/ko/uprising` 138장),
+`85f037c` → **`301fdd0`**(`cards/ko` 혈통 90·불멸 58장, `.gitignore`, README). `cards/ko` 286장은 바이트 그대로,
+그 밖의 파일은 `README.md`·`.gitignore`만 다르다. 참조 폴더는 **이 WSL 노트북의 에셋 체크아웃에만** 있고
+`.gitignore`(`/reference/naver-vampmiyu-*/`)로 추적에서 빠졌다. 옛 이력은 이 기기의 로컬 브랜치
+`backup/pre-cleanup-2026-09-23`에만 있다(push하지 않았다; 필요 없으면 `git branch -D` 뒤 `git gc`). 아래 문단과
+세션 요약의 옛 해시(`d01e9d9`·`ddd34ec`·`85f037c`)는 이 정리 전의 것이다. **다른 기기**에서 에셋 저장소를 이미
+pull했다면 로컬 변경이 없는지 `git status`로 본 뒤 `git fetch origin && git reset --hard origin/master`로 맞춘다 —
+옛 커밋을 가진 채 push하면 지운 커밋이 되살아난다. 메인 저장소 이력은 건드리지 않았다(이미지·중간 산출물 없음).
+
 2026-09-23(WSL 노트북, 한글 카드 이름·그림 세션): 앞 세션의 커밋(에셋 `d01e9d9`, 메인 `18a45ed`)은 사용자가 push해 `origin/master`에 있다. 이 세션은 에셋 저장소에 `cards/ko/` 138장(`ddd34ec`)을, 메인 저장소에 코드·문서 커밋을 더했다 — push 여부는 두 저장소에서 `git log origin/master..master`로 확인한다. 에셋이 없는 기기도 한글 **이름**은 보인다(메인 저장소의 표); 한글 **그림**은 에셋 저장소를 pull해야 보인다.
 
 2026-09-22(WSL 노트북, 한글판 카드 사진 크롭 세션): 비공개 에셋 저장소에 미push 커밋 3건 — `b8784f4`(앞 세션의 Immortality specimen 아이콘), `3fcf62f`(`origin/master`의 `1574241` merge), `d01e9d9`(`reference/naver-vampmiyu-223464306472/`, 약 190 MB). 메인 저장소에는 이 문서 커밋 1건. 이 세션에서는 자동 모드 권한 검사가 push를 막아 **두 저장소 모두 push하지 않았다** — 사용자가 이 기기에서 push한 뒤 다른 기기에서 두 저장소를 pull한다. 새 세션은 `git log origin/master..master`와 반대 방향을 두 저장소에서 모두 확인한다.
@@ -494,7 +506,8 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 
 - 사용자 지시: 혈통([vampmiyu/223970873634](https://blog.naver.com/vampmiyu/223970873634))·불멸([vampmiyu/223033440849](https://blog.naver.com/vampmiyu/223033440849))
   개봉기 사진으로 봉기와 **똑같이** — 사진 받기, 카드 자르기·원근 보정(실제 비율), 제목 판독·매칭, `cards/ko`와
-  한글 이름 적용. 에셋 `reference/naver-vampmiyu-{223970873634,223033440849}/`(사진 31·23장, 크롭 124·74장,
+  한글 이름 적용. 에셋 체크아웃의 `reference/naver-vampmiyu-{223970873634,223033440849}/`(**git 밖**, 이 WSL
+  노트북에만 — 위 "이력 정리"; 사진 31·23장, 크롭 124·74장,
   표·`best/`·`tools/`, 방법은 각 README), `cards/ko/bloodlines` 90장·`cards/ko/immortality` 58장.
 - **커버리지**: 불멸은 manifest 58장 **전부**(임페리움 25·틀레이락스 20·음모 11·실험·연구 기지 오버레이). 혈통은
   113장 중 90장 — 임페리움 26·프로모·리더 9·교전 2·계약 8·기술 타일 18·지휘관 기술 토큰 7·튜엑의 시치·익스 대사관
@@ -524,7 +537,7 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 - **사용자 결정 셋**(앞 세션이 남긴 질문): (1) 사진 크롭을 **바로** 쓴다(TTS 한글화 모드는 확인하지 않았다),
   (2) 카드 그림은 **화면 언어를 따른다**, (3) 한국어 화면의 카드 이름은 **지금 확보된 한글 인쇄 이름으로** —
   사진에 없는 카드는 영어 그대로. 공간 이름은 여전히 영어다.
-- **에셋**(`ddd34ec`): `reference/naver-vampmiyu-223464306472/best/`의 가림 없는 138장을 manifest 경로·형식
+- **에셋**(`ddd34ec`, 이력 정리 뒤 `949009a`): `reference/naver-vampmiyu-223464306472/best/`의 가림 없는 138장을 manifest 경로·형식
   그대로 `cards/ko/`에(WebP, Spice Refinery I만 AVIF), 계약 타일은 영문 렌더의 알파로 잘린 모서리를 투명하게.
   "Deliver Supplies"·"Secrets"는 계약과 장소가 같은 이름이라 이름만으로 manifest를 찾으면 계약 그림이
   `location/`에 써진다 — 종류와 이름을 함께 키로 쓴다.
@@ -582,7 +595,8 @@ sandbox에서 uv cache 쓰기가 제한되면 명령 앞에 `UV_CACHE_DIR=/tmp/d
 
 - 사용자 지시: 네이버 블로그 [vampmiyu/223464306472](https://blog.naver.com/vampmiyu/223464306472)(한국어판
   Uprising 개봉기)의 사진을 전부 받고, 카드를 잘라 **실제 카드 비율로** 원근 보정한 뒤 영문 manifest와의 매칭
-  표를 만든다. 결과는 에셋 저장소 `reference/naver-vampmiyu-223464306472/`에 있다 — 사진 51장(원본 해상도),
+  표를 만든다. 결과는 에셋 체크아웃의 `reference/naver-vampmiyu-223464306472/`에 있다(2026-09-23 이력 정리로
+  **git 밖**, 이 WSL 노트북에만) — 사진 51장(원본 해상도),
   `crops/` 190장, `best/uprising/<kind>/<Name>.jpg`(카드별 대표 1장, `cards/en/`과 같은 배치), `matching.md`
   (한국어 표)·`matching.csv`·`coverage.csv`·`matching.json`, `matching.html`(한글 크롭과 영문 스캔을 나란히 보는
   자기완결 갤러리), `tools/`(스크립트·중간 데이터, 재실행법은 그 README). 방법·근거·다음 단계는 그 폴더
