@@ -10,6 +10,7 @@ from dune_imperium import RulesetConfig  # noqa: E402
 from dune_imperium.agents import StateAgent, make_agent  # noqa: E402
 from dune_imperium.agents.network_search_agent import (  # noqa: E402
     NetworkSearchAgent,
+    orders_agent_effects,
 )
 from dune_imperium.agents.registry import SEARCH_PREFIX, is_agent_kind  # noqa: E402
 from dune_imperium.core.chance import ChanceResolver  # noqa: E402
@@ -165,3 +166,70 @@ def test_without_a_state_the_search_plays_the_network_greedily(
     plain = make_agent(f"checkpoint:{path}", 4)
 
     assert searcher.choose_action(view, actions) == plain.choose_action(view, actions)
+
+
+def _first_choice(config: RulesetConfig, seed: int, effect_order: bool) -> GameState:
+    """Play heuristic seats to the first multi-action decision of one kind."""
+
+    engine = UprisingRulesEngine()
+    state = engine.reset(config, seed)
+    chance = ChanceResolver(seed=seed)
+    agents = [make_agent("heuristic", index) for index in range(config.players)]
+    while state.phase is not GamePhase.FINISHED:
+        decision = engine.current_decision(state)
+        if isinstance(decision, ChanceDecision):
+            state = engine.apply(state, chance.resolve(decision)).state
+            continue
+        assert isinstance(decision, PlayerDecision)
+        actions = engine.legal_actions(state, decision.owner)
+        if len(actions) > 1 and orders_agent_effects(state) is effect_order:
+            return state
+        choice = agents[decision.owner].choose_action(
+            engine.observe(state, decision.owner), actions
+        )
+        state = engine.apply(state, choice).state
+    raise AssertionError("no such decision in the game")  # pragma: no cover
+
+
+def test_effect_ordering_can_be_left_to_the_network(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With ``search_effect_order=False`` only Agent-effect ordering skips search.
+
+    That decision is answered by the greedy network without a single
+    playout, and every other decision is still searched.
+    """
+
+    config = RulesetConfig()
+    path = _checkpoint(tmp_path, config)
+    engine = UprisingRulesEngine()
+    playouts: list[int] = []
+
+    def counting(self: NetworkSearchAgent, *args: object) -> float:
+        playouts.append(1)
+        return 0.0
+
+    monkeypatch.setattr(NetworkSearchAgent, "_playout", counting)
+    agent = NetworkSearchAgent(
+        path, seed=1, rollouts=1, candidates=2, search_effect_order=False
+    )
+
+    ordering = _first_choice(config, seed=7, effect_order=True)
+    decision = engine.current_decision(ordering)
+    assert isinstance(decision, PlayerDecision)
+    assert decision.prompt == "Choose the next Agent-turn effect to resolve"
+    actions = engine.legal_actions(ordering, decision.owner)
+    view = engine.observe(ordering, decision.owner)
+    chosen = agent.choose_action_with_state(ordering, view, actions)
+    assert playouts == []
+    assert chosen == make_agent(f"checkpoint:{path}", 1).choose_action(view, actions)
+
+    other = _first_choice(config, seed=7, effect_order=False)
+    decision = engine.current_decision(other)
+    assert isinstance(decision, PlayerDecision)
+    agent.choose_action_with_state(
+        other,
+        engine.observe(other, decision.owner),
+        engine.legal_actions(other, decision.owner),
+    )
+    assert playouts

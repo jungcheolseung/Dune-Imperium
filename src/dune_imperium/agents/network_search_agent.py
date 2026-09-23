@@ -37,6 +37,7 @@ from dune_imperium.core.decisions import ChanceDecision, PlayerDecision
 from dune_imperium.core.observation import PlayerView
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.frames import FrameKind
 from dune_imperium.training.policy import without_undo_actions
 
 # The defaults the 100-match cell measured (section 12). Worlds and
@@ -45,6 +46,10 @@ from dune_imperium.training.policy import without_undo_actions
 DEFAULT_ROLLOUTS = 4
 DEFAULT_CANDIDATES = 3
 DEFAULT_HORIZON_ROUNDS = 1
+# Ordering an Agent turn's effects is half of all searched decisions and
+# 63% of the search time, yet the search overrides the network there least
+# (10% against 22.6% overall; docs/evaluation/m10-2026-09-22.md section 13).
+DEFAULT_SEARCH_EFFECT_ORDER = True
 
 
 class NetworkSearchAgent:
@@ -59,6 +64,7 @@ class NetworkSearchAgent:
         candidates: int = DEFAULT_CANDIDATES,
         horizon_rounds: int = DEFAULT_HORIZON_ROUNDS,
         max_rollout_steps: int = 3_000,
+        search_effect_order: bool = DEFAULT_SEARCH_EFFECT_ORDER,
     ) -> None:
         if seed < 0:
             raise ValueError("agent seed must not be negative")
@@ -73,6 +79,7 @@ class NetworkSearchAgent:
         self.candidates = candidates
         self.horizon_rounds = horizon_rounds
         self.max_rollout_steps = max_rollout_steps
+        self.search_effect_order = search_effect_order
         self._rng = random.Random(seed)
         self._engine = UprisingRulesEngine()
 
@@ -127,6 +134,8 @@ class NetworkSearchAgent:
 
         if not legal_actions:
             raise ValueError("a search agent requires at least one legal action")
+        if not self.search_effect_order and orders_agent_effects(state):
+            return self.greedy.choose_action(observation, legal_actions)
         offered = without_undo_actions(legal_actions)
         if len(offered) == 1:
             return offered[0]
@@ -181,3 +190,17 @@ class NetworkSearchAgent:
             # asset difference (``position_value``).
             return position_value(state, seat)
         return self._leaf_value(self._engine.observe(state, seat))
+
+
+def orders_agent_effects(state: GameState) -> bool:
+    """Whether the pending decision picks the next effect of an Agent turn.
+
+    Read from the decision frame's kind rather than its prompt: the
+    ``AGENT_EFFECTS`` frame owns exactly the "Choose the next Agent-turn
+    effect to resolve" decisions (3,055 of 3,055 agreed over four games).
+    """
+
+    return (
+        bool(state.decision_stack)
+        and state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    )
