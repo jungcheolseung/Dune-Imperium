@@ -1,6 +1,7 @@
 """The tip-census driver plays the tournament's games and keeps its columns apart."""
 
 import importlib.util
+import json
 import sys
 from collections.abc import Iterator
 from pathlib import Path
@@ -88,3 +89,43 @@ def test_the_summary_averages_numbers_and_tallies(tip_census: ModuleType) -> Non
     assert summary["flag"] == (0.5, 2)
     assert summary["t"] == {"c": 1.5, "d": 0.5}
     assert summary["maybe"] == (4.0, 1)
+
+
+def _load_compare() -> ModuleType:
+    path = _TOOL.with_name("tip_compare.py")
+    spec = importlib.util.spec_from_file_location("tip_compare", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_the_comparison_pairs_seeds_and_reads_tallies_and_nones(
+    tmp_path: Path,
+) -> None:
+    tip_compare = _load_compare()
+
+    def seat(
+        kind: str, x: float, tally: dict[str, int], maybe: int | None
+    ) -> dict[str, object]:
+        return {"kind": kind, "seat": 0, "win": False, "x": x, "t": tally, "m": maybe}
+
+    games = [
+        {"seed": 0, "seats": [seat("a", 1, {"k": 1}, None), seat("b", 3, {}, 2)]},
+        {"seed": 1, "seats": [seat("a", 2, {}, 5), seat("b", 6, {"k": 2}, None)]},
+    ]
+    (tmp_path / "rows.jsonl").write_text("".join(json.dumps(g) + "\n" for g in games))
+    a_rows = tip_compare.load_arm(f"{tmp_path}::a")
+    b_rows = tip_compare.load_arm(f"{tmp_path}::b")
+    rows = {
+        r["column"]: r
+        for r in tip_compare.compare(a_rows, b_rows, paired=True, resamples=200)
+    }
+    assert (rows["x"]["a"], rows["x"]["b"], rows["x"]["diff"]) == (1.5, 4.5, 3.0)
+    # Every resample keeps the difference within the per-seed differences.
+    assert 2.0 <= rows["x"]["low"] <= rows["x"]["high"] <= 4.0
+    # A tally key a seat never hit counts as 0 for that seat.
+    assert (rows["t[k]"]["a"], rows["t[k]"]["b"]) == (0.5, 1.0)
+    # None is left out of the mean and shows up in the share column.
+    assert (rows["m"]["a"], rows["m"]["n_a"]) == (5.0, 1)
+    assert (rows["has:m"]["a"], rows["has:m"]["b"]) == (0.5, 0.5)
