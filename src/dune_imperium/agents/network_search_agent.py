@@ -285,7 +285,7 @@ def finished_reward(state: GameState, seat: int) -> float:
     one: a candidate that ended the game in fourth place outscored one that
     played on. Over 1,400 new one-against-three matches paired deal for deal,
     reading it as a reward wins +5.2pp [+3.4, +7.1] more, and the shipped seat
-    had ended the game early in 133 pairs against 38 the other way
+    had ended the game earlier in 170 pairs against 50 the other way
     (docs/evaluation/m10-2026-09-22.md section 14).
     """
 
