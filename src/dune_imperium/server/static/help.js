@@ -140,6 +140,21 @@ function openHelp() {
   heading.appendChild(close);
   body.appendChild(heading);
 
+  /* The turn walkthrough first: it is the one section a new player needs
+     before any other, so it must not scroll off below the icon legend and
+     the seat-panel marks (it used to be built last and fell below the
+     fold at common panel heights). */
+  const turn = document.createElement("h3");
+  turn.textContent = t("help.turn_heading");
+  const list = document.createElement("ul");
+  list.className = "help-turn";
+  for (const line of HELP_TURN) {
+    const item = document.createElement("li");
+    item.textContent = t(line);
+    list.appendChild(item);
+  }
+  body.append(turn, list);
+
   /* Every rule term that has a printed icon, from the one table the rest
      of the UI reads, so the legend cannot drift from what is drawn. */
   const icons = helpSection(body, t("help.icons_heading"));
@@ -170,17 +185,6 @@ function openHelp() {
     kbd.textContent = key;
     helpRow(keys, kbd, t(textKey));
   }
-
-  const turn = document.createElement("h3");
-  turn.textContent = t("help.turn_heading");
-  const list = document.createElement("ul");
-  list.className = "help-turn";
-  for (const line of HELP_TURN) {
-    const item = document.createElement("li");
-    item.textContent = t(line);
-    list.appendChild(item);
-  }
-  body.append(turn, list);
 
   panel.hidden = false;
   close.focus();
