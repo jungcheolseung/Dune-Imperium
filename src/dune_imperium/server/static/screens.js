@@ -18,7 +18,11 @@ function buildSeatSelects() {
       option.textContent = text;
       select.appendChild(option);
     }
-    select.value = chosen[seat] || (seat === 0 ? "human" : "heuristic");
+    /* Remote games are four friends: an admin who forgets to change three
+       dropdowns must not seat AIs where a friend expects to sit. The open
+       (local) server keeps its human + heuristic-AI default. */
+    const defaultKind = isRemote() ? "human" : seat === 0 ? "human" : "heuristic";
+    select.value = chosen[seat] || defaultKind;
     label.appendChild(select);
     wrap.appendChild(label);
   }

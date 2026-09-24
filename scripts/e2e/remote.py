@@ -140,11 +140,17 @@ def drive(pages, seat_pages, game_id: str, steps: int, label: str) -> int:
 
 
 def seat_two_players(base: str, host, guest) -> str:
-    """Host (seat 0) and guest (seat 1) at the table of a fresh remote game."""
+    """Host (seat 0) and guest (seat 1) at the table of a fresh remote game.
+
+    A remote room now defaults every seat to human, so seats 2 and 3 (which
+    this scenario never claims) must be pointed at an AI explicitly.
+    """
 
     host.goto(f"{base}/#admin={KEY}")
     host.wait_for_selector("#setup-screen:not([hidden])")
     host.select_option("#seat-selects select[data-seat='1']", "human")
+    host.select_option("#seat-selects select[data-seat='2']", "heuristic")
+    host.select_option("#seat-selects select[data-seat='3']", "heuristic")
     set_rule_options(host)
     host.click("#create-game")
     host.wait_for_selector("#lobby-screen:not([hidden])")
@@ -191,7 +197,17 @@ def scenario(base, host, host_rec, guest, guest_rec, pages) -> None:
     check.ok(
         not host.is_visible("#opt-seed-row"), "seed input hidden on a remote server"
     )
+    seat_defaults = host.evaluate(
+        "[...document.querySelectorAll('#seat-selects select')].map((s) => s.value)"
+    )
+    check.ok(
+        seat_defaults == ["human", "human", "human", "human"],
+        "a remote room starts with all four seats human, not three AI strangers",
+        seat_defaults,
+    )
     host.select_option("#seat-selects select[data-seat='1']", "human")
+    host.select_option("#seat-selects select[data-seat='2']", "heuristic")
+    host.select_option("#seat-selects select[data-seat='3']", "heuristic")
     set_rule_options(host)
     host.click("#create-game")
     host.wait_for_selector("#lobby-screen:not([hidden])")

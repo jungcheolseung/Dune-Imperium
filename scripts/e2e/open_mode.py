@@ -32,6 +32,24 @@ check = Check()
 SEED = 20260917
 
 
+def check_default_seats(base, browser) -> None:
+    """An open server keeps seat 0 human and the rest AI by default -- only
+    a remote room (which no stranger should walk into) starts every seat
+    human."""
+    print("[D] the open server's setup screen still defaults to human + 3 AI")
+    _, page, _ = open_context(browser, "defaults")
+    page.goto(base + "/")
+    page.wait_for_selector("#setup-screen:not([hidden])")
+    values = page.evaluate(
+        "[...document.querySelectorAll('#seat-selects select')].map((s) => s.value)"
+    )
+    check.ok(
+        values == ["human", "heuristic", "heuristic", "heuristic"],
+        "seat 0 defaults to human, seats 1-3 default to heuristic",
+        values,
+    )
+
+
 def create_game(page, base: str, humans=(0, 1), seed: int | None = SEED) -> str:
     page.goto(base + "/")
     page.wait_for_selector("#setup-screen:not([hidden])")
@@ -518,6 +536,7 @@ def main() -> None:
     with server() as (base, server_log), chrome() as browser:
         try:
             if which in ("all", "game"):
+                check_default_seats(base, browser)
                 scenario_full_game(base, browser)
             if which in ("all", "bell"):
                 scenario_doorbell(base, browser)

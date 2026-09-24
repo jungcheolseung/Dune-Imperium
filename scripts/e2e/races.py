@@ -122,7 +122,11 @@ async def _presence_bell_during_entry(patched: bool) -> bool:
                 await guest_context.route("**/static/session.js", patch)
             await host.goto(f"{base}/#admin={KEY}")
             await host.wait_for_selector("#setup-screen:not([hidden])")
+            # A remote room now defaults every seat to human; seats 2 and 3,
+            # which nobody claims here, need an explicit AI.
             await host.select_option("#seat-selects select[data-seat='1']", "human")
+            await host.select_option("#seat-selects select[data-seat='2']", "heuristic")
+            await host.select_option("#seat-selects select[data-seat='3']", "heuristic")
             for selector, checked in rule_option_steps():
                 await host.set_checked(selector, checked)
             await host.click("#create-game")
