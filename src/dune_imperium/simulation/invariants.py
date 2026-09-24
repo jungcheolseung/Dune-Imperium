@@ -26,6 +26,7 @@ from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
 from dune_imperium.content.uprising.types import ConflictTier
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.observation import (
+    known_card_seats,
     observe_state,
     peeked_card_id,
     peeked_intrigue_ids,
@@ -284,32 +285,17 @@ def check_observation_privacy(state: GameState) -> None:
 def _hidden_instances(state: GameState) -> frozenset[str]:
     """Card instances no seat may currently identify from the table.
 
-    Decks and the Contract bank are face down [Main pp. 4-6, 16]; hands and
-    held Intrigue are known only to their owner [Main p. 7]. Everything else
-    (in play, discard piles, trash, face-up Intrigue, the Imperium Row,
+    Exactly the cards ``known_card_seats`` lists: face-down decks, stacks and
+    the Contract bank [Main pp. 4-6, 16], hands and held Intrigue [Main p. 7]
+    and the other private glimpses it tracks. Everything else (in play,
+    discard piles, trash, face-up Intrigue, the Imperium and Tleilaxu Rows,
     set-aside cards, active and completed Contracts, battle cards) has been
-    face up at some point and stays re-checkable under OQ-010.
+    face up at some point and stays re-checkable under OQ-010. One list
+    serves the log, the undo boundary and this invariant, so a new hidden
+    zone cannot be missed by one of them.
     """
 
-    hidden: set[str] = set()
-    hidden.update(state.imperium_deck)
-    hidden.update(state.intrigue_deck)
-    hidden.update(state.contract_bank)
-    hidden.update(state.conflict_deck)
-    for stack in state.tech_stacks:
-        hidden.update(stack[1:])
-    for player in state.players:
-        if player.secret_project_tech_id:
-            # Kota Odax's Secret Project tile is face down on the Leader.
-            hidden.add(player.secret_project_tech_id)
-        hidden.update(player.hand)
-        hidden.update(player.deck)
-        hidden.update(player.intrigue_cards)
-        # Cards that reached the hand through a public move stay known.
-        hidden.difference_update(player.hand_public)
-    # A played Intrigue is revealed even while its choices still resolve.
-    hidden.difference_update(resolving_intrigue_ids(state))
-    return frozenset(hidden)
+    return frozenset(known_card_seats(state))
 
 
 def _payload_strings(event: GameEvent) -> Iterator[tuple[str, str]]:

@@ -1,5 +1,6 @@
 """Tests for action undo and the session log (M11 slice 6, OQ-010 boundary)."""
 
+import random
 from dataclasses import replace
 
 import pytest
@@ -377,6 +378,103 @@ def test_a_save_taken_during_the_pause_restores_the_pause() -> None:
     assert restored["confirmation"] == 0
     assert restored["revision"] == 14
     assert restored["undo"] == [{"seat": 0, "steps": 3}]
+
+
+# ------------------------------------------------ piles of the expansions
+
+
+def _play_seat0_until(
+    manager: GameSessionManager, summary: JsonObject, action_id: str
+) -> tuple[JsonObject, dict[str, object]]:
+    """Play seat 0 at random (pressing its turn ends) until ``action_id`` is legal."""
+
+    game_id = str(summary["game_id"])
+    rng = random.Random(_int(summary["revision"]))
+    for _ in range(3_000):
+        assert not summary["finished"], f"{action_id} never became legal"
+        if summary["confirmation"] == 0:
+            summary = manager.confirm_turn(
+                game_id,
+                seat=0,
+                revision=_int(summary["revision"]),
+                undo_count=_int(summary["undo_count"]),
+            )
+            continue
+        actions = _rows(manager.legal_actions(game_id, 0)["actions"])
+        wanted = [entry for entry in actions if entry["action_id"] == action_id]
+        if wanted:
+            return summary, wanted[0]
+        summary = _play_raw(manager, summary, index=_int(rng.choice(actions)["index"]))
+    raise AssertionError(f"{action_id} never became legal")
+
+
+@pytest.mark.parametrize(
+    ("action_id", "expansion"),
+    [
+        # The Row refills from the face-down Tleilaxu deck [Immortality p. 9].
+        ("acquire_tleilaxu", "immortality"),
+        # The stack's next tile turns face up [Bloodlines p. 6].
+        ("acquire_tech", "tech_module"),
+    ],
+)
+def test_a_purchase_that_turns_up_a_hidden_card_cannot_be_taken_back(
+    action_id: str, expansion: str
+) -> None:
+    # 2026-09-24, found in play: buying from the Tleilaxu Row could be taken
+    # back after the refill had shown the deck's next card, because the
+    # Tleilaxu deck (and the Skill and Tech stacks) were missing from the
+    # hidden piles the undo boundary reads (OQ-010: what left a hidden pile
+    # cannot be taken back).
+    manager = GameSessionManager()
+    summary = manager.create_game(
+        HUMAN_FIRST,
+        game_seed=0,
+        immortality=expansion == "immortality",
+        bloodlines=expansion == "tech_module",
+        tech_module=expansion == "tech_module",
+    )
+    summary, action = _play_seat0_until(manager, summary, action_id)
+    assert action["undoable"] is False
+
+    game_id = str(summary["game_id"])
+    bought = _play_raw(manager, summary, index=_int(action["index"]))
+    assert [row for row in _rows(bought["undo"]) if row["seat"] == 0] == []
+    with pytest.raises(SessionError, match="at most 0"):
+        manager.undo(
+            game_id,
+            seat=0,
+            revision=_int(bought["revision"]),
+            undo_count=_int(bought["undo_count"]),
+        )
+
+
+def test_reveal_detection_covers_the_expansion_piles() -> None:
+    config = RulesetConfig(
+        choam_module=True, bloodlines=True, tech_module=True, immortality=True
+    )
+    base = GameState(
+        config=config,
+        seed=1,
+        players=tuple(PlayerState(player_id=seat) for seat in range(4)),
+    )
+
+    # Tleilaxu Row refill: the deck's top card turns face up.
+    before = replace(base, tleilaxu_deck=("t:next", "t:after"), tleilaxu_row=("t:a",))
+    after = replace(base, tleilaxu_deck=("t:after",), tleilaxu_row=("t:a", "t:next"))
+    assert reveals_hidden_information(before, after, actor=0) is True
+
+    # A Skill is refilled from the face-down stack [Bloodlines p. 4].
+    before = replace(base, skill_stack=("s:next",), skill_face_up=("s:a",))
+    after = replace(base, skill_face_up=("s:a", "s:next"))
+    assert reveals_hidden_information(before, after, actor=0) is True
+
+    # The tile under an acquired Tech tile turns face up.
+    before = replace(base, tech_stacks=(("tech:top", "tech:next", "tech:last"),))
+    after = replace(base, tech_stacks=(("tech:next", "tech:last"),))
+    assert reveals_hidden_information(before, after, actor=0) is True
+    # ...but nothing is revealed while it stays under the top.
+    shuffled = replace(base, tech_stacks=(("tech:top", "tech:last", "tech:next"),))
+    assert reveals_hidden_information(before, shuffled, actor=0) is False
 
 
 # ---------------------------------------------------------------- undo

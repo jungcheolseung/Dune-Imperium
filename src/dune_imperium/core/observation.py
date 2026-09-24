@@ -3,8 +3,10 @@
 from dataclasses import dataclass
 
 from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
+from dune_imperium.content.uprising.effect_dsl import RevealContractsTakeOne
+from dune_imperium.content.uprising.intrigue import INTRIGUE_CARDS_BY_INSTANCE
 from dune_imperium.core.actions import ActionValue
-from dune_imperium.core.decisions import PlayerDecision
+from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.player import Influence, PlayerState, Resources
 from dune_imperium.core.state import GamePhase, GameState
 
@@ -223,12 +225,22 @@ def known_card_seats(state: GameState) -> dict[str, frozenset[int]]:
     """Map every card that is not public to the seats that can identify it.
 
     Cards absent from the result are public to every seat. Face-down decks
-    and the Contract bank are known to nobody [Main pp. 4-6, 16]; a hand or
-    a held Intrigue card is known to its owner only [Main p. 7], except the
-    cards OQ-010 keeps public: publicly acquired hand cards
-    (``PlayerState.hand_public``) and a played Intrigue whose choices are
-    still resolving. This is the single source the server uses to decide
-    what an event log may show and which steps an undo may take back.
+    and the Contract bank are known to nobody [Main pp. 4-6, 16], and so are
+    the expansions' face-down stacks: the Tleilaxu deck [Immortality p. 4],
+    the Skill stack [Bloodlines p. 3] and each Tech stack below its face-up
+    top [Bloodlines p. 6], as well as the Conflict cards set aside unused at
+    setup. A hand or a held Intrigue card is known to its owner only
+    [Main p. 7], except the cards OQ-010 keeps public: publicly acquired hand
+    cards (``PlayerState.hand_public``) and a played Intrigue whose choices
+    are still resolving. A hidden card its owner has been shown is known to
+    that owner: a peeked deck top (Controlled, Glowglobes), Long Live the
+    Fighters' top three, Imperium Ceremony's two Intrigue cards, the bank
+    Contracts Coercive Negotiation reveals, Kota Odax's bottom Tech tiles and
+    Secret Project. This is the single source the
+    server uses to decide what an event log may show and which steps an undo
+    may take back, so every hidden zone and every private glimpse belongs
+    here (``tests/unit/test_known_card_seats.py`` checks it against
+    what each seat's view and choices show).
     """
 
     nobody: frozenset[int] = frozenset()
@@ -238,17 +250,25 @@ def known_card_seats(state: GameState) -> dict[str, frozenset[int]]:
         *state.intrigue_deck,
         *state.contract_bank,
         *state.conflict_deck,
+        *state.unused_conflict_ids,
         *state.twisted_deck_stock,
         *state.navigation_stock,
+        *state.tleilaxu_deck,
+        *state.skill_stack,
     ):
         known[card_id] = nobody
+    for stack in state.tech_stacks:
+        # Only the top tile of an Ixian Embassy stack is face up.
+        for card_id in stack[1:]:
+            known[card_id] = nobody
     resolving = set(resolving_intrigue_ids(state))
     for player in state.players:
         owner = frozenset({player.player_id})
         for card_id in (*player.deck, *player.twisted_deck, *player.navigation_box):
             known[card_id] = nobody
         for card_id in player.navigation_slots:
-            known[card_id] = owner
+            if card_id not in resolving:
+                known[card_id] = owner
         public_hand = set(player.hand_public)
         for card_id in player.hand:
             if card_id not in public_hand:
@@ -256,9 +276,18 @@ def known_card_seats(state: GameState) -> dict[str, frozenset[int]]:
         for card_id in player.intrigue_cards:
             if card_id not in resolving:
                 known[card_id] = owner
-        # Imperium Ceremony's peek shows the deck's top cards to its owner.
-        for card_id in peeked_intrigue_ids(state, player.player_id):
-            known[card_id] = owner
+        if player.secret_project_tech_id:
+            known[player.secret_project_tech_id] = owner
+        for card_id in (
+            # Imperium Ceremony's peek shows the deck's top cards to its owner.
+            *peeked_intrigue_ids(state, player.player_id),
+            peeked_card_id(state, player.player_id),
+            *long_live_fighters_ids(state, player.player_id),
+            *secret_project_candidate_ids(state, player.player_id),
+            *revealed_contract_ids(state, player.player_id),
+        ):
+            if card_id:
+                known[card_id] = owner
     return known
 
 
@@ -428,6 +457,64 @@ def peeked_intrigue_ids(state: GameState, player: int) -> tuple[str, ...]:
         return ()
     peeked = tuple(value.split(","))
     return peeked if state.intrigue_deck[: len(peeked)] == peeked else ()
+
+
+def long_live_fighters_ids(state: GameState, player: int) -> tuple[str, ...]:
+    """Return the deck's top three cards while Long Live the Fighters picks.
+
+    Its draw-then-discard choice names them to the owner only [Long Live the
+    Fighters card]; they stay in the deck until the second pick.
+    """
+
+    frame = _own_top_frame(state, "long_live_fighters", player)
+    return state.players[player].deck[:3] if frame is not None else ()
+
+
+def secret_project_candidate_ids(state: GameState, player: int) -> tuple[str, ...]:
+    """Return the bottom Tech tiles Kota Odax looks at for the Secret Project.
+
+    "Game Start: Look at the bottom Tech tile of each stack" [Kota Odax of Ix
+    card]: the choice shows them to the owner only.
+    """
+
+    frame = _own_top_frame(state, "tech_secret_project", player)
+    if frame is None:
+        return ()
+    value = dict(frame.context).get("candidates")
+    return tuple(value.split(",")) if isinstance(value, str) and value else ()
+
+
+def revealed_contract_ids(state: GameState, player: int) -> tuple[str, ...]:
+    """Return the bank Contracts Coercive Negotiation shows its owner.
+
+    "Reveal three Contracts from the bank, take one" [Coercive Negotiation
+    card]: they stay on top of the bank while the choice is open.
+    """
+
+    frame = _own_top_frame(state, "intrigue_trigger_contract", player)
+    if frame is None:
+        return ()
+    card_id = dict(frame.context).get("card_id")
+    entry = INTRIGUE_CARDS_BY_INSTANCE.get(str(card_id))
+    counts = (
+        reward.count
+        for option in (entry.options if entry is not None else ())
+        for section in option.sections
+        for reward in section.rewards
+        if isinstance(reward, RevealContractsTakeOne)
+    )
+    return state.contract_bank[: next(counts, 0)]
+
+
+def _own_top_frame(state: GameState, kind: str, player: int) -> DecisionFrame | None:
+    if not state.decision_stack:
+        return None
+    frame = state.decision_stack[-1]
+    if str(frame.kind) != kind:
+        return None
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return None
+    return frame
 
 
 # One public view per ``PlayerState`` object. A seat's state is immutable and
