@@ -414,7 +414,7 @@ function enterTable(summary, seat) {
   stopPlayback();
   state.review = null;
   el("review-bar").hidden = true;
-  el("game-error").hidden = true;
+  hideGameError();
   showScreen("game-screen");
   const options = seat === undefined ? undefined : { seat };
   const gameId = state.gameId;
@@ -426,9 +426,16 @@ function enterTable(summary, seat) {
     .catch(showRefreshError);
 }
 
+/* A refresh failing in the background (the doorbell asked for one and the
+   request was lost, not something the player did) must not sit on screen
+   once the page has caught up: the message is marked "refresh" so
+   adoptSnapshot can clear it, on its own, the moment a later snapshot
+   lands. */
 function showRefreshError(error) {
-  el("game-error").textContent = t("screens.game_state_failed", { message: error.message });
-  el("game-error").hidden = false;
+  const box = el("game-error");
+  box.textContent = t("screens.game_state_failed", { message: error.message });
+  box.dataset.source = "refresh";
+  box.hidden = false;
 }
 
 function leaveGame(message) {

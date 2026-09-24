@@ -1179,10 +1179,7 @@ function renderStandings() {
           ? mySeats()[0]
           : humans[0];
       enterReview(seat).catch((error) => {
-        el("game-error").textContent = t("panels.review_start_failed", {
-          message: error.message,
-        });
-        el("game-error").hidden = false;
+        showGameError(t("panels.review_start_failed", { message: error.message }));
       });
     });
   }

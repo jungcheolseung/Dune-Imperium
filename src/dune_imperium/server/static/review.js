@@ -79,7 +79,7 @@ async function reviewGoto(cursor) {
   cursor = Math.max(0, Math.min(review.meta.step_count, cursor));
   const request = ++reviewRequest;
   try {
-    el("game-error").hidden = true;
+    hideGameError();
     const payload = await api(
       `/games/${state.gameId}/review/${cursor}?seat=${review.seat}`
     );
@@ -96,8 +96,7 @@ async function reviewGoto(cursor) {
     render();
     return true;
   } catch (error) {
-    el("game-error").textContent = t("review.status_fetch_failed", { message: error.message });
-    el("game-error").hidden = false;
+    showGameError(t("review.status_fetch_failed", { message: error.message }));
     return false;
   }
 }
@@ -356,8 +355,7 @@ function spectatorOnly() {
 function watchGame() {
   enterReview(state.review ? state.review.seat : 0, { cursor: 0, play: true }).catch(
     (error) => {
-      el("game-error").textContent = t("review.watch_failed", { message: error.message });
-      el("game-error").hidden = false;
+      showGameError(t("review.watch_failed", { message: error.message }));
     }
   );
 }

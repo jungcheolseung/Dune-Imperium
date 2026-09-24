@@ -69,6 +69,28 @@ function el(id) {
   return document.getElementById(id);
 }
 
+/* #game-error carries at most one message at a time. A background refresh
+   failure (the doorbell's silent poll losing a request, screens.js
+   showRefreshError) is marked with data-source="refresh" so that once a
+   later snapshot lands the page can tell its own stale message apart from
+   one the player caused; adoptSnapshot (session.js) clears the banner on a
+   success only when it still carries that mark. Every other writer goes
+   through here too, so its own message (the player's action, turn end,
+   undo, or a review request) is never wiped by an unrelated refresh landing
+   behind it. */
+function showGameError(message) {
+  const box = el("game-error");
+  box.textContent = message;
+  delete box.dataset.source;
+  box.hidden = false;
+}
+
+function hideGameError() {
+  const box = el("game-error");
+  box.hidden = true;
+  delete box.dataset.source;
+}
+
 async function api(path, options) {
   const response = await fetch(path, options);
   if (!response.ok) {
