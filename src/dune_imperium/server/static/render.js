@@ -562,10 +562,138 @@ function appendTurnEndRow(container, label, onClick) {
   container.appendChild(row);
 }
 
+/* ---------- combat result line (banner) ----------
+
+   ITEM 5: nothing on screen said who won a Conflict or what a seat got —
+   the reward is a public log event (combat_reward_gained, conflict_won),
+   just never surfaced. One muted line above the prompt reports the most
+   recently resolved Conflict from the live log, from the moment its
+   reward events appear (so the winner reads it while still choosing an
+   optional reward) until the viewing seat's own next turn-taking step. */
+
+/* The action ids that start the viewing seat's own next turn, at which
+   point an older combat result stops being news. */
+const OWN_TURN_ACTION_IDS = new Set(["agent_turn", "reveal_turn", "play_turn_start_card"]);
+
+/* The reward group for the most recently resolved Conflict the given seat
+   has seen, or null when none has resolved yet, it already resolved with
+   no participants (rank_combat's zero-strength rule leaves no reward
+   events to report), or the seat has since taken its own next turn. Reads
+   only the live log (undone steps dropped, like board.js's spyArrivals). */
+function latestCombatResolution(seat) {
+  const entries = (state.log && state.log.entries) || [];
+  let conflictId = null;
+  let bundle = null;
+  let sawRewards = false;
+  for (const entry of entries) {
+    if (entry.undone) continue;
+    for (const event of entry.events || []) {
+      if (event.kind === "conflict_revealed") {
+        conflictId = event.payload.conflict_id;
+        sawRewards = false;
+      } else if (event.kind === "combat_reward_gained") {
+        if (!sawRewards) {
+          bundle = { conflictId, rewards: [] };
+          sawRewards = true;
+        }
+        bundle.rewards.push(event.payload);
+      } else if (event.kind === "combat_cleaned_up" && !sawRewards) {
+        bundle = null;
+      }
+    }
+    if (
+      bundle &&
+      entry.type === "action" &&
+      entry.actor === seat &&
+      OWN_TURN_ACTION_IDS.has(entry.action_id)
+    ) {
+      bundle = null;
+    }
+  }
+  return bundle;
+}
+
+const COMBAT_RESULT_RANK_KEYS = {
+  1: "render.combat_result_rank_1",
+  2: "render.combat_result_rank_2",
+  3: "render.combat_result_rank_3",
+};
+
+/* "1위: 좌석 0 (사람) · 2위: 좌석 1 (사람), 좌석 2 (사람)" — ties share a rank
+   and are read from left in turn order (the ranking's own order, combat.py's
+   _rewards). Plain text: ranks and names are never a rule term. */
+function combatResultRanksText(bundle) {
+  const byRank = new Map();
+  for (const reward of bundle.rewards) {
+    if (!byRank.has(reward.rank)) byRank.set(reward.rank, []);
+    byRank.get(reward.rank).push(reward.player);
+  }
+  return [...byRank.keys()]
+    .sort((a, b) => a - b)
+    .map(
+      (rank) => `${t(COMBAT_RESULT_RANK_KEYS[rank])}: ${byRank.get(rank).map(playerLabel).join(", ")}`,
+    )
+    .join(" · ");
+}
+
+/* What one reward payload (combat.py's _combat_reward_event) grants, as
+   term icons in printed order. A reward already carries the sandworm
+   multiplier, so the counts here are the amounts the seat actually got. */
+function combatRewardNodes(reward) {
+  const nodes = [];
+  const add = (term, count) => nodes.push(termNode(term, count));
+  if (reward.victory_points) add("victory_point", reward.victory_points);
+  if (reward.solari) add("solari", reward.solari);
+  if (reward.spice) add("spice", reward.spice);
+  if (reward.water) add("water", reward.water);
+  if (reward.troops) add("troop", reward.troops);
+  if (reward.intrigue) add("intrigue", reward.intrigue);
+  if (reward.contracts) add("contract", reward.contracts);
+  if (reward.faction_influence && reward.faction) {
+    nodes.push(termNode(`influence_${reward.faction}`, reward.faction_influence));
+  }
+  if (reward.choose_influence) add("influence_any", reward.choose_influence);
+  if (reward.control_space_id) nodes.push(termNode("control"));
+  return nodes;
+}
+
+/* The banner's one-line Conflict summary for `seat`, or null to show
+   nothing (no Conflict has resolved yet, review mode, or the line's
+   window has closed). */
+function combatResultLine(seat) {
+  if (state.review) return null;
+  const bundle = latestCombatResolution(seat);
+  if (!bundle) return null;
+  const own = bundle.rewards.find((reward) => reward.player === seat);
+  let reward;
+  if (own) {
+    const nodes = combatRewardNodes(own);
+    reward = document.createDocumentFragment();
+    nodes.forEach((node, index) => {
+      if (index) reward.append(" ");
+      reward.appendChild(node);
+    });
+  } else {
+    reward = t("render.combat_result_unranked");
+  }
+  const line = document.createElement("div");
+  line.className = "combat-result";
+  line.appendChild(
+    tNode("render.combat_result_line", {
+      name: nameOf(bundle.conflictId),
+      ranks: combatResultRanksText(bundle),
+      reward,
+    }),
+  );
+  return line;
+}
+
 function renderBanner() {
   const summary = state.summary;
   const info = el("decision-info");
   info.textContent = "";
+  const resultLine = combatResultLine(state.viewSeat);
+  if (resultLine) info.appendChild(resultLine);
   const actionsBox = el("actions");
   actionsBox.textContent = "";
 

@@ -889,6 +889,26 @@ const UI_TEXT = {
     "ko": "살 수 있는 카드 — 테이블에서 빛나는 카드를 눌러도 됩니다",
     "en": "Cards you can acquire — you can also click the highlighted cards on the table"
   },
+  "render.combat_result_line": {
+    "ko": "{{name}} — {{ranks}} — {{reward}}",
+    "en": "{{name}} — {{ranks}} — {{reward}}"
+  },
+  "render.combat_result_rank_1": {
+    "ko": "1위",
+    "en": "1st"
+  },
+  "render.combat_result_rank_2": {
+    "ko": "2위",
+    "en": "2nd"
+  },
+  "render.combat_result_rank_3": {
+    "ko": "3위",
+    "en": "3rd"
+  },
+  "render.combat_result_unranked": {
+    "ko": "순위 없음",
+    "en": "Not ranked"
+  },
   "render.confirm_count_label": {
     "ko": "{{count}}개 {{label}}",
     "en": "{{count}} {{label}}"

@@ -1057,6 +1057,9 @@ kbd {
 #decision-banner { border-left: 6px solid var(--accent); }
 #decision-info .prompt { font-weight: 700; font-size: 1rem; }
 #decision-info .meta { font-size: 0.8rem; opacity: 0.75; }
+/* ITEM 5: the most recently resolved Conflict, one muted line above the
+   prompt (render.js's combatResultLine) -- no badge, no animation. */
+#decision-info .combat-result { font-size: 0.8rem; opacity: 0.7; margin-bottom: 0.35rem; }
 
 #actions {
   display: flex;
