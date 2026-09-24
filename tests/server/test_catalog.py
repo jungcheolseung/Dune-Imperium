@@ -91,8 +91,13 @@ def test_catalog_serves_generated_effect_text() -> None:
     assert isinstance(cards, dict)
     for entry in cards.values():
         assert isinstance(entry, dict)
+        # A card with no dynamic effect data (no Agent/Reveal/acquire/
+        # discard/trash line beyond its printed Persuasion/strength) serves
+        # an empty list, not a made-up placeholder line (ITEM 8f,
+        # 2026-09-25); every line the list does serve must still be real,
+        # non-empty text.
         assert isinstance(entry["text"], list)
-        assert entry["text"]
+        assert all(isinstance(line, str) and line for line in entry["text"])
 
     intrigue = catalog["intrigue"]
     assert isinstance(intrigue, dict)

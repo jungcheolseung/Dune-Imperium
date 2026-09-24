@@ -295,9 +295,24 @@ function renderSeats() {
     if (player.discard_pile.length) {
       zones.classList.add("clickable");
       zones.title = t("panels.discard_pile_view");
+      /* Same "mine" test as the hand strip (~line 997): on a remote table
+         ownership follows the seats this browser claimed regardless of what
+         is being viewed; locally (live or reviewed) it follows the seat
+         being looked at, but only when reviewing a seat this browser
+         actually played -- an all-AI review must never call an AI's pile
+         "my discard" just because it is the one on screen. */
+      const mine = isRemote()
+        ? mySeats().includes(seat)
+        : seat === activeSeat() && (!state.review || mySeats().includes(seat));
       zones.addEventListener("click", (event) => {
         event.stopPropagation();
-        openPileList(`${t("common.seat", { seat })} discard`, player.discard_pile, zones);
+        openPileList(
+          mine
+            ? t("panels.my_discard")
+            : t("panels.seat_discard", { seat: t("common.seat", { seat }) }),
+          player.discard_pile,
+          zones,
+        );
       });
     }
     card.appendChild(zones);

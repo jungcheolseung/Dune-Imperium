@@ -25,11 +25,14 @@ def test_covers_all_57_imperium_7_starting_2_reserve_entries() -> None:
     assert len(_ALL_ENTRIES) == 66 + 26 + 1 + 25
 
 
-def test_every_entry_produces_a_non_empty_list() -> None:
+def test_every_entry_produces_a_list_of_non_empty_lines() -> None:
+    # A card with no dynamic effect data (no Agent/Reveal/acquire/discard/
+    # trash line beyond its printed Persuasion/strength) produces an empty
+    # list, not a made-up placeholder line (ITEM 8f, 2026-09-25); every
+    # entry the list does produce must still be real, non-empty text.
     for entry in _ALL_ENTRIES:
         lines = personal_card_text(entry)
 
-        assert lines, f"{entry.card.name} produced no display lines"
         assert all(isinstance(line, str) and line for line in lines)
 
 
@@ -103,13 +106,13 @@ def test_truthtrance_has_no_dynamic_effects() -> None:
     # printed (not duplicated here) Persuasion value.
     entry = IMPERIUM_CARDS_BY_ID["truthtrance"]
 
-    assert personal_card_text(entry) == ["(no additional ability)"]
+    assert personal_card_text(entry) == []
 
 
 def test_convincing_argument_starting_card_has_no_dynamic_effects() -> None:
     entry = STARTING_CARDS_BY_ID["convincing_argument"]
 
-    assert personal_card_text(entry) == ["(no additional ability)"]
+    assert personal_card_text(entry) == []
 
 
 def test_signet_ring_starting_card_agent_line() -> None:
@@ -134,8 +137,9 @@ def test_the_spice_must_flow_reserve_acquisition_vp() -> None:
 
 def test_untranscribed_imperium_card_reports_missing_play_data() -> None:
     # No current IMPERIUM_CARDS entry has play_data_complete=False (verified
-    # by test_every_entry_produces_a_non_empty_list finding real text for
-    # all 54), so this exercises the branch with a constructed stand-in.
+    # by test_every_entry_produces_a_list_of_non_empty_lines finding real
+    # text for all 54), so this exercises the branch with a constructed
+    # stand-in.
     sources = (SourceRef(SourceDocument.MAIN_RULEBOOK, (3,)),)
     untranscribed = ImperiumCardEntry(
         card=CardDefinition("test_untranscribed", "Test Untranscribed", sources),

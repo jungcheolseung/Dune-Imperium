@@ -380,6 +380,11 @@ def test_korean_text_names_a_card_by_its_korean_print() -> None:
     Korean print keep their English name, in the chrome as on the table. A
     name that is also a rule word still waiting for its glossary row
     (``_KOREAN_KEEPS_ENGLISH``: the Immediate contract) is left for that row.
+
+    Covers ``PROMPT_KO`` too (ITEM 8f, 2026-09-25): the engine's English
+    prompts for Plasteel Blades and Covert Operation still named them in
+    English after both cards' rows already used their Korean prints, so a
+    rename that only touches the catalog and label tables can miss a prompt.
     """
 
     from dune_imperium.display.names_ko import KOREAN_CARD_NAMES
@@ -402,6 +407,8 @@ def test_korean_text_names_a_card_by_its_korean_print() -> None:
         for key, text in rows.items()
     ]
     texts += [(f"UI_TEXT.{key}", entry["ko"]) for key, entry in _ui_text().items()]
+    korean = _json_const("PROMPT_KO", "prompts_ko.js")
+    texts += [(f"PROMPT_KO.{key}", ko) for key, ko in korean.items()]
     assert len(texts) > 300, "the tables were not read"
     # Names that stay English go first, longest first: "Ruthless Leadership"
     # (not read) holds "Leadership" (read).

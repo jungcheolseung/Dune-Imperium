@@ -19,6 +19,8 @@ because it is built by concatenation rather than from a label table.
 
 from __future__ import annotations
 
+import re
+
 from common import LAPTOP_VIEWPORT, SERVER_LOG_COPY, Check, chrome, open_context, server
 
 check = Check()
@@ -166,6 +168,46 @@ def run(base: str, browser) -> None:
         if any(word in c["zones"] for word in ("hand", "deck", "discard", "supply"))
     ]
     check.ok(not english, "the zone counts are not left in English", english[:2])
+
+    # The zone counts are clickable when a discard pile is non-empty, opening
+    # a popover whose title used to concatenate `${t("common.seat", {seat})}
+    # discard` (ITEM 8f, 2026-09-25): fixed English word next to a Korean
+    # seat label. watched_game's game is all-heuristic in review, so this
+    # browser plays no seat (mySeats() == []); every popover here must read
+    # "seat N's discard pile", never "my discard pile" -- crediting an AI
+    # seat's pile to this browser just because it is the one under review
+    # was the fix's own regression (reviewer-found blocker, 2026-09-25).
+    my_seats = page.evaluate("mySeats()")
+    check.ok(not my_seats, "watched_game is spectating, no seats of its own", my_seats)
+    discard_seats = page.evaluate(
+        "[...document.querySelectorAll('#seats .seat')]"
+        ".map((c, i) => (c.querySelector('.zones.clickable') ? i : -1))"
+        ".filter((i) => i >= 0)"
+    )
+    check.ok(discard_seats, "some seat has a discard pile to click", discard_seats)
+    titles = {}
+    for seat in discard_seats:
+        page.click(f"#seats > *:nth-child({seat + 1}) .zones")
+        page.wait_for_selector("#card-popover .popover-title")
+        titles[seat] = page.evaluate(
+            "document.querySelector('#card-popover .popover-title').textContent"
+        )
+        page.keyboard.press("Escape")
+    latin = {seat: title for seat, title in titles.items() if re.search(r"[A-Za-z]", title)}
+    check.ok(not latin, "no seat's discard popover title has Latin letters", latin)
+    expected = {
+        # openPileList appends " (<count>)" itself (panels.js ~419).
+        seat: page.evaluate(
+            "t('panels.seat_discard', { seat: t('common.seat', { seat: %d }) })"
+            " + ` (${state.view.players[%d].discard_pile.length})`" % (seat, seat)
+        )
+        for seat in discard_seats
+    }
+    check.ok(
+        titles == expected,
+        "an all-AI review never calls a seat's pile 'my discard'",
+        {s: (titles[s], expected[s]) for s in discard_seats if titles[s] != expected[s]},
+    )
 
     # The point of folding: all four seats in the column at 1600x1000, late in
     # an every-expansion game. They took 986px of 751 before the rows were

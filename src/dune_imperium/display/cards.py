@@ -49,7 +49,6 @@ def _factions_or(factions: tuple[Faction, ...]) -> str:
     return f"{', '.join(names[:-1])}, or {names[-1]}"
 
 
-_NO_ADDITIONAL_ABILITY: Final = "(no additional ability)"
 _PLAY_DATA_NOT_TRANSCRIBED: Final = "(play data not transcribed)"
 
 # The single transcribed PersonalCardRevealAcquisitionEffect member is
@@ -132,8 +131,5 @@ def personal_card_text(entry: PersonalCardDefinition) -> list[str]:
     if entry.reveal_acquisition_effect is not None:
         reward = REVEAL_ACQUISITION_EFFECT_TEXT[entry.reveal_acquisition_effect]
         lines.append(f"{_REVEAL_ACQUISITION_PREFIX}{reward}")
-
-    if not lines:
-        lines.append(_NO_ADDITIONAL_ABILITY)
 
     return lines
