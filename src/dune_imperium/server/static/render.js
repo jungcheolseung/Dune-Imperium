@@ -1035,13 +1035,62 @@ function countRow(id, family, compact) {
   return row;
 }
 
+/* The viewing seat's own pile holding a card instance ("hand", "discard_pile"
+   or "in_play"), or null when the card sits in none of them (a board or
+   reserve card, or another seat's). Zones come from the viewing seat's own
+   view: its hand in the private block, its discard pile and in-play list in
+   its public player block. */
+function ownCardZone(cardId) {
+  const hand = (state.view && state.view.private && state.view.private.hand) || [];
+  if (hand.includes(cardId)) return "hand";
+  const own = state.view && state.view.players && state.view.players[state.viewSeat];
+  if (own && own.discard_pile.includes(cardId)) return "discard_pile";
+  if (own && own.in_play.includes(cardId)) return "in_play";
+  return null;
+}
+
+/* Rows of this list that need a zone suffix: two or more rows of the same
+   action_id naming the same card (same baseId) but sitting in different
+   piles of the viewing seat. Trashing the hand copy costs that card's play
+   this round, and nothing else on the row says which pile a row means
+   (item 8c: the Feyd track, Desert Tactics and Combat reward trashes all
+   offer hand, then discard pile, then in-play candidates). A duplicate
+   that shares one pile with its sibling rows is interchangeable and keeps
+   its plain label. */
+function zoneSuffixes(actions) {
+  const groups = new Map();
+  for (const action of actions) {
+    const cardId = action.arguments.card_id;
+    if (typeof cardId !== "string") continue;
+    const zone = ownCardZone(cardId);
+    if (!zone) continue;
+    const key = `${action.action_id}\u0000${baseId(cardId)}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push({ action, zone });
+  }
+  const suffixes = new Map();
+  for (const entries of groups.values()) {
+    if (new Set(entries.map((entry) => entry.zone)).size < 2) continue;
+    for (const { action, zone } of entries) suffixes.set(action, zone);
+  }
+  return suffixes;
+}
+
+/* " (hand)" / " (discard pile)" / " (in play)": the TERMS glossary word for
+   the zone a row's card sits in ([Main p. 20]), through phrase() so it
+   reads in the chosen language like the rest of the row. */
+function zoneSuffixNode(zone) {
+  return phrase(` ({${zone}})`);
+}
+
 /* A list of legal actions with its count families folded into rows. */
 function appendActionItems(box, actions) {
   const families = countFamilies(actions);
+  const suffixes = zoneSuffixes(actions);
   const done = new Set();
   for (const action of actions) {
     const family = families.get(action.action_id);
-    if (!family) box.appendChild(actionItem(action));
+    if (!family) box.appendChild(actionItem(action, undefined, suffixes.get(action)));
     else if (!done.has(action.action_id)) {
       done.add(action.action_id);
       box.appendChild(countRow(action.action_id, family, false));
@@ -1159,13 +1208,14 @@ function tableRefs(action) {
   );
 }
 
-function actionItem(action, onApply) {
+function actionItem(action, onApply, zone) {
   const wrap = document.createElement("div");
   wrap.className = "action-item";
   wrap.dataset.index = String(action.index);
   wrap.dataset.refs = JSON.stringify(actionRefs(action));
   const button = document.createElement("button");
   button.appendChild(describeAction(action));
+  if (zone) button.appendChild(zoneSuffixNode(zone));
   button.disabled = state.busy;
   button.addEventListener("click", () =>
     onApply ? onApply(action) : applyAction(action.index)

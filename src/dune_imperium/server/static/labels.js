@@ -744,6 +744,7 @@ const TERMS = {
   hand: { icon: null, ko: "핸드", en: "hand" },
   deck: { icon: null, ko: "카드덱", en: "deck" },
   discard_pile: { icon: null, ko: "버림 더미", en: "discard pile" },
+  in_play: { icon: null, ko: "플레이 영역", en: "in play" },
   conflict: { icon: null, ko: "교전", en: "Conflict" },
   strength: { icon: null, ko: "전투력", en: "strength" },
   research: { icon: null, ko: "연구", en: "Research" },
