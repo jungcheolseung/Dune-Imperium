@@ -393,3 +393,31 @@ def test_a_search_result_carries_the_values_behind_its_choice(tmp_path: Path) ->
     assert result.chosen == result.candidates[totals.index(max(totals))]
     twin = NetworkSearchAgent(path, seed=5, rollouts=2, candidates=2)
     assert twin.choose_action_with_state(state, view, actions) == result.chosen
+
+
+def test_candidates_can_be_evaluated_without_letting_the_search_choose(
+    tmp_path: Path,
+) -> None:
+    """``candidate_order`` and ``evaluate_candidates`` repeat a searched decision.
+
+    Expert iteration labels a greedy player's decisions: it asks the search
+    for its ranking and its playout values without the search choosing, so
+    both must equal what ``search_with_state`` computes for the same seed.
+    """
+
+    config = RulesetConfig()
+    path = _checkpoint(tmp_path, config)
+    engine = UprisingRulesEngine()
+    state = _first_choice(config, seed=7, effect_order=False)
+    decision = engine.current_decision(state)
+    assert isinstance(decision, PlayerDecision)
+    actions = engine.legal_actions(state, decision.owner)
+    view = engine.observe(state, decision.owner)
+
+    searched = NetworkSearchAgent(path, seed=5, rollouts=2, candidates=2)
+    result = searched.search_with_state(state, view, actions)
+    labeller = NetworkSearchAgent(path, seed=5, rollouts=2, candidates=2)
+    ranked = labeller.candidate_order(view, actions)
+
+    assert ranked[:2] == result.candidates
+    assert labeller.evaluate_candidates(state, view.player, ranked[:2]) == result.values
