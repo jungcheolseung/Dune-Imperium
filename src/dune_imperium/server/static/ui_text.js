@@ -890,8 +890,12 @@ const UI_TEXT = {
     "en": "Cards you can acquire — you can also click the highlighted cards on the table"
   },
   "render.combat_result_line": {
-    "ko": "{{name}} — {{ranks}} — {{reward}}",
-    "en": "{{name}} — {{ranks}} — {{reward}}"
+    "ko": "{{name}} — {{ranks}} — 내 보상: {{reward}}",
+    "en": "{{name}} — {{ranks}} — Your reward: {{reward}}"
+  },
+  "render.combat_result_line_ranks": {
+    "ko": "{{name}} — {{ranks}}",
+    "en": "{{name}} — {{ranks}}"
   },
   "render.combat_result_rank_1": {
     "ko": "1위",
@@ -906,8 +910,8 @@ const UI_TEXT = {
     "en": "3rd"
   },
   "render.combat_result_unranked": {
-    "ko": "순위 없음",
-    "en": "Not ranked"
+    "ko": "없음 (순위 밖)",
+    "en": "none (not ranked)"
   },
   "render.confirm_count_label": {
     "ko": "{{count}}개 {{label}}",

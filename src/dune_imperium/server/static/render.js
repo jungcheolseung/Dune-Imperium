@@ -661,30 +661,32 @@ function combatRewardNodes(reward) {
    nothing (no Conflict has resolved yet, review mode, or the line's
    window has closed). */
 function combatResultLine(seat) {
-  if (state.review) return null;
+  /* A finished game has its own headline; review shows the log instead. */
+  if (state.review || state.summary.finished) return null;
   const bundle = latestCombatResolution(seat);
   if (!bundle) return null;
   const own = bundle.rewards.find((reward) => reward.player === seat);
-  let reward;
-  if (own) {
-    const nodes = combatRewardNodes(own);
-    reward = document.createDocumentFragment();
-    nodes.forEach((node, index) => {
-      if (index) reward.append(" ");
-      reward.appendChild(node);
-    });
+  const vars = { name: nameOf(bundle.conflictId), ranks: combatResultRanksText(bundle) };
+  let key = "render.combat_result_line";
+  if (!own) {
+    vars.reward = t("render.combat_result_unranked");
   } else {
-    reward = t("render.combat_result_unranked");
+    const nodes = combatRewardNodes(own);
+    if (nodes.length) {
+      vars.reward = document.createDocumentFragment();
+      nodes.forEach((node, index) => {
+        if (index) vars.reward.append(" ");
+        vars.reward.appendChild(node);
+      });
+    } else {
+      /* A reward the event does not itemize (a Spy, a trash, two distinct
+         Influences) is the choice the seat is shown next. */
+      key = "render.combat_result_line_ranks";
+    }
   }
   const line = document.createElement("div");
   line.className = "combat-result";
-  line.appendChild(
-    tNode("render.combat_result_line", {
-      name: nameOf(bundle.conflictId),
-      ranks: combatResultRanksText(bundle),
-      reward,
-    }),
-  );
+  line.appendChild(tNode(key, vars));
   return line;
 }
 

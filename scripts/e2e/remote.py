@@ -147,7 +147,7 @@ def seat_two_players(base: str, host, guest) -> str:
     """
 
     host.goto(f"{base}/#admin={KEY}")
-    host.wait_for_selector("#setup-screen:not([hidden])")
+    wait_for_setup(host)
     host.select_option("#seat-selects select[data-seat='1']", "human")
     host.select_option("#seat-selects select[data-seat='2']", "heuristic")
     host.select_option("#seat-selects select[data-seat='3']", "heuristic")
@@ -187,10 +187,22 @@ def main() -> None:
     check.finish()
 
 
+def wait_for_setup(page) -> None:
+    """The setup screen is in the page before init() has asked /whoami and
+    built the seat selects; waiting for the element alone raced it on a busy
+    machine (state.server was still null)."""
+
+    page.wait_for_selector("#setup-screen:not([hidden])")
+    page.wait_for_function(
+        "state.server !== null"
+        " && document.querySelectorAll('#seat-selects select').length === 4"
+    )
+
+
 def scenario(base, host, host_rec, guest, guest_rec, pages) -> None:
     print("[1] host enters through the admin link and creates a room")
     host.goto(f"{base}/#admin={KEY}")
-    host.wait_for_selector("#setup-screen:not([hidden])")
+    wait_for_setup(host)
     check.ok("admin" not in host.url, "admin key left the address bar", host.url)
     check.ok(host.evaluate("state.server.access") == "remote", "whoami says remote")
     check.ok(host.evaluate("state.server.admin") is True, "whoami says admin")

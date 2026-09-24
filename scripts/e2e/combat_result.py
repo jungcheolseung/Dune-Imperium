@@ -284,6 +284,7 @@ def check_persistence(page, label: str) -> None:
     """The line survives everything between the resolution and the seat's
     own next turn-taking step (including its own reward choices, when the
     seed hands it any), and is gone right after that step."""
+    chose = []
     for _ in range(400):
         assert settled(page, 20)
         if page.evaluate("state.summary.finished"):
@@ -311,6 +312,11 @@ def check_persistence(page, label: str) -> None:
             check.ok(
                 True, f"{label}: still shown right up to the seat's own next {action_id}"
             )
+            check.ok(
+                bool(chose),
+                f"{label}: the line stayed on screen through the seat's reward choices",
+                chose,
+            )
             page.evaluate(f"applyAction({index})")
             assert settled(page, 20)
             after = combat_result_dom(page)
@@ -319,6 +325,7 @@ def check_persistence(page, label: str) -> None:
         # A decision that is not the seat's own next turn -- most often one
         # of its own reward choices (an Influence pick, an optional cost, a
         # trash, a Spy) -- exercises "still shown while choosing a reward".
+        chose.append(actions[0]["action_id"])
         page.evaluate(f"applyAction({actions[0]['index']})")
         assert settled(page, 20)
     check.ok(False, f"{label}: reached the seat's own next turn within the step budget")
