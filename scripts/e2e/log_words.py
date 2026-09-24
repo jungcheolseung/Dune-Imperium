@@ -17,7 +17,10 @@ languages, with prettify() wrapped, and asserts:
   English by policy) and the phrases the glossary deliberately leaves English
   (docs/rules/glossary-ko.md has no row for them, e.g. Secret Project);
 - in English, no Hangul, and nowhere an engine id's shape: snake_case, a
-  colon path, a research coordinate, a post id.
+  colon path, a research coordinate, a post id;
+- every pass_combat_intrigue / pass_endgame_intrigue turn-line renders quiet
+  (panels.js QUIET_ACTIONS), the class that keeps a Combat/Endgame Intrigue
+  pass from reading as a full-weight turn card.
 
 Then the whole game screen at the end of the review, in both languages, with
 its titles (a Spy's post read `Arrakis Hagga Basin`, a research hex `c2r2`),
@@ -40,6 +43,11 @@ EVERY_EXPANSION = {
     "immortality": True,
     "promo_cards": True,
 }
+# Declining a Combat or Endgame Intrigue window (rules/combat.py,
+# rules/endgame.py) — the engine never emits a bare "pass". Mirrors
+# QUIET_ACTIONS/PASS_ACTION_IDS in static/panels.js and static/review.js.
+PASS_ACTION_IDS = {"pass_combat_intrigue", "pass_endgame_intrigue"}
+
 GAMES = (
     {"seats": ["heuristic"] * 4, "game_seed": 7, **EVERY_EXPANSION},
     # Random seats wander into what a heuristic never picks (Family Atomics,
@@ -108,9 +116,10 @@ async ({gameId}) => {
           events(lang, entry);
         } else if (entry.type === "action") {
           take();
-          const text = turnLine({...entry, events: []}).textContent;
-          out.push({lang, src: `action ${entry.action_id}`, text, pretty: take(),
-                    args: entry.arguments});
+          const line = turnLine({...entry, events: []});
+          out.push({lang, src: `action ${entry.action_id}`, text: line.textContent,
+                    pretty: take(), args: entry.arguments,
+                    quiet: line.classList.contains("quiet")});
           events(lang, entry);
         }
       }
@@ -216,9 +225,24 @@ def check_coverage(records: list[dict]) -> None:
         == "payload family_atomics_used.removed",
         "an exchanged Influence": lambda s: s == "action exchange_reveal_influence",
         "a Secrets steal": lambda s: s.startswith("chance ") and ":secrets:steal:" in s,
+        "a Combat/Endgame Intrigue pass": lambda s: s.startswith("action ")
+        and s.split(" ", 1)[1] in PASS_ACTION_IDS,
     }
     missing = [label for label, test in wanted.items() if not any(map(test, sources))]
     check.ok(not missing, "the games reach every surface this guards", missing)
+
+
+def check_pass_quiet(records: list[dict]) -> None:
+    """Every pass_combat_intrigue / pass_endgame_intrigue turn-line renders
+    quiet (panels.js QUIET_ACTIONS) — it never gets the full-weight card."""
+    passes = [
+        r
+        for r in records
+        if r["src"].startswith("action ")
+        and r["src"].split(" ", 1)[1] in PASS_ACTION_IDS
+    ]
+    loud = [(r["lang"], r["src"], r["text"][:60]) for r in passes if not r.get("quiet")]
+    check.ok(not loud, "every Intrigue pass renders quiet", loud[:4])
 
 
 def check_log(records, names, posts) -> None:
@@ -297,6 +321,7 @@ def main() -> None:
         print(f"  .. {len(records)} rendered lines")
         check_coverage(records)
         check_log(records, names, posts)
+        check_pass_quiet(records)
         print("[2] the whole screen at the end of the first game's review")
         if game_ids:
             check_page(page, base, game_ids[0], posts, names)

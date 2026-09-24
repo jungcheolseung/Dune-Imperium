@@ -492,8 +492,17 @@ function logEventLine(event) {
   return line;
 }
 
-/* Steps that only close a window; kept in the record but muted. */
-const QUIET_ACTIONS = new Set(["finish_agent_turn", "finish_reveal", "pass"]);
+/* Steps that only close a window; kept in the record but muted:
+   finish_agent_turn and finish_reveal end an Agent or Reveal turn, and
+   pass_combat_intrigue / pass_endgame_intrigue decline a Combat or Endgame
+   Intrigue window (rules/combat.py, rules/endgame.py) — the engine never
+   emits a bare "pass". */
+const QUIET_ACTIONS = new Set([
+  "finish_agent_turn",
+  "finish_reveal",
+  "pass_combat_intrigue",
+  "pass_endgame_intrigue",
+]);
 
 /* Steps that stand as a card of their own (setup picks). */
 const SOLO_ACTIONS = new Set(["pick_leader"]);
@@ -540,7 +549,8 @@ function splitEntryEvents(entry) {
 
 /* Group the log into cards. A turn card holds consecutive steps by one
    seat (with only their own events) until a step closes the turn
-   (finish_agent_turn, finish_reveal, pass); a Leader pick is a card of
+   (finish_agent_turn, finish_reveal, pass_combat_intrigue,
+   pass_endgame_intrigue); a Leader pick is a card of
    its own. Everything the game does by itself — the neutral events above
    and every chance step — goes into a "게임 진행" card between them, so
    the round change never reads as the last actor's move. */

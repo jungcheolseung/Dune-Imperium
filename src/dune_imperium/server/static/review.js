@@ -189,6 +189,11 @@ function reviewLog(review) {
    there is a full record to walk through and nothing left to wait for. */
 const playback = { playing: false, timer: 0, unit: "turn", intervalMs: 1000 };
 
+/* Declining a Combat or Endgame Intrigue window (rules/combat.py,
+   rules/endgame.py): both count as "a pass" for turnStops below, whichever
+   seat and whichever of the two it is. */
+const PASS_ACTION_IDS = new Set(["pass_combat_intrigue", "pass_endgame_intrigue"]);
+
 /* Where turn-by-turn playback stops: the cursor positions between two
    turns, by the rule the log's turn cards follow (logGroups) — the action
    before closed its turn, or the next action is another seat's. Chance steps
@@ -204,7 +209,8 @@ function turnStops(steps) {
         SOLO_ACTIONS.has(last.action_id) ||
         QUIET_ACTIONS.has(last.action_id) ||
         label.actor !== last.actor;
-      const passing = last.action_id === "pass" && label.action_id === "pass";
+      const passing =
+        PASS_ACTION_IDS.has(last.action_id) && PASS_ACTION_IDS.has(label.action_id);
       if (closed && !passing) stops.push(position);
     }
     last = label;
