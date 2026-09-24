@@ -37,6 +37,7 @@ Like a checkpoint seat, a search seat enters by file: ``search:<path>``.
 
 import random
 from collections.abc import Sequence
+from dataclasses import dataclass
 
 import numpy as np
 import torch
@@ -67,6 +68,30 @@ DEFAULT_HORIZON_ROUNDS = 1
 # (10% against 22.6% overall), and leaving it to the network cost nothing
 # measurable (docs/evaluation/m10-2026-09-22.md section 13).
 DEFAULT_SEARCH_EFFECT_ORDER = False
+
+
+@dataclass(frozen=True, slots=True)
+class SearchResult:
+    """One decision of a search seat, with the evidence behind it.
+
+    ``values[world][candidate]`` holds each playout's value on the value
+    head's scale; ``candidates`` are in the network's own order, so the
+    choice is the first candidate with the largest column sum. A decision
+    the seat answered without searching (a single offered action, a single
+    untried candidate, or Agent-effect ordering left to the network) has
+    ``searched`` false and no candidates or values.
+    """
+
+    chosen: DomainAction
+    searched: bool
+    candidates: tuple[DomainAction, ...] = ()
+    values: tuple[tuple[float, ...], ...] = ()
+
+    @property
+    def totals(self) -> tuple[float, ...]:
+        """Each candidate's value summed over the worlds."""
+
+        return tuple(sum(column) for column in zip(*self.values, strict=True))
 
 
 class _Taken:
@@ -201,43 +226,71 @@ class NetworkSearchAgent:
     ) -> DomainAction:
         """Search the network's best candidates by determinized playouts."""
 
+        return self.search_with_state(state, observation, legal_actions).chosen
+
+    def search_with_state(
+        self,
+        state: GameState,
+        observation: PlayerView,
+        legal_actions: tuple[DomainAction, ...],
+    ) -> SearchResult:
+        """Answer a decision and return the candidates and playout values.
+
+        The same decision, RNG use and choice as ``choose_action_with_state``;
+        expert iteration reads the values as training targets.
+        """
+
         if not legal_actions:
             raise ValueError("a search agent requires at least one legal action")
         if not self.search_effect_order and orders_agent_effects(state):
-            return self.greedy.choose_action(observation, legal_actions)
+            chosen = self.greedy.choose_action(observation, legal_actions)
+            return SearchResult(chosen=chosen, searched=False)
         offered = without_undo_actions(legal_actions)
         if len(offered) == 1:
-            return offered[0]
+            return SearchResult(chosen=offered[0], searched=False)
         seat = observation.player
         encoded = self._encode(observation)
         key, fresh = self._taken.untried(state.round_number, seat, encoded, offered)
         order = np.argsort(-self._scores(encoded, fresh), kind="stable")
-        candidates: list[DomainAction] = [
-            fresh[int(index)] for index in order[: self.candidates]
-        ]
-        chosen = self._search(state, seat, candidates)
-        self._taken.record(key, chosen)
-        return chosen
+        candidates = tuple(fresh[int(index)] for index in order[: self.candidates])
+        if len(candidates) == 1:
+            result = SearchResult(chosen=candidates[0], searched=False)
+        else:
+            values = self._search(state, seat, candidates)
+            totals = [sum(column) for column in zip(*values, strict=True)]
+            # Candidates are in the network's own order, so a tie keeps its pick.
+            chosen = candidates[totals.index(max(totals))]
+            result = SearchResult(
+                chosen=chosen, searched=True, candidates=candidates, values=values
+            )
+        self._taken.record(key, result.chosen)
+        return result
 
     # -- the search ---------------------------------------------------------
     def _search(
-        self, state: GameState, seat: int, candidates: list[DomainAction]
-    ) -> DomainAction:
-        if len(candidates) == 1:
-            return candidates[0]
+        self, state: GameState, seat: int, candidates: tuple[DomainAction, ...]
+    ) -> tuple[tuple[float, ...], ...]:
+        """Return ``values[world][candidate]`` over the determinized worlds."""
+
         horizon = state.round_number + self.horizon_rounds
-        totals = [0.0 for _ in candidates]
+        values: list[tuple[float, ...]] = []
         for _ in range(self.rollouts):
             world = determinize(state, seat, self._rng)
             # Common random numbers: every candidate meets the same world
             # and the same chance stream, so they differ only by the action.
             chance_seed = self._rng.randrange(2**31)
-            for index, action in enumerate(candidates):
-                branched = self._engine.apply(world, action).state
-                totals[index] += self._playout(branched, seat, horizon, chance_seed)
-        best = max(totals)
-        # Candidates are in the network's own order, so a tie keeps its pick.
-        return candidates[totals.index(best)]
+            values.append(
+                tuple(
+                    self._playout(
+                        self._engine.apply(world, action).state,
+                        seat,
+                        horizon,
+                        chance_seed,
+                    )
+                    for action in candidates
+                )
+            )
+        return tuple(values)
 
     def _playout(
         self, state: GameState, seat: int, horizon: int, chance_seed: int

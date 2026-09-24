@@ -363,3 +363,33 @@ def test_a_finished_playout_is_read_as_the_value_head_s_reward(
     horizon = state.round_number + 1
     assert agent._playout(state, winner, horizon, 0) == WINNER_REWARD
     assert agent._playout(state, last, horizon, 0) == LOSER_REWARD
+
+
+def test_a_search_result_carries_the_values_behind_its_choice(tmp_path: Path) -> None:
+    """``search_with_state`` returns the candidates and per-world values.
+
+    Expert iteration trains on these values, so the choice must be exactly
+    the first candidate with the largest summed value, and the same agent
+    state must give the same choice through ``choose_action_with_state``.
+    """
+
+    config = RulesetConfig()
+    path = _checkpoint(tmp_path, config)
+    engine = UprisingRulesEngine()
+    state = _first_choice(config, seed=7, effect_order=False)
+    decision = engine.current_decision(state)
+    assert isinstance(decision, PlayerDecision)
+    actions = engine.legal_actions(state, decision.owner)
+    view = engine.observe(state, decision.owner)
+
+    agent = NetworkSearchAgent(path, seed=5, rollouts=2, candidates=2)
+    result = agent.search_with_state(state, view, actions)
+
+    assert result.searched
+    assert len(result.candidates) == 2
+    assert set(result.candidates) <= set(actions)
+    assert len(result.values) == 2 and all(len(row) == 2 for row in result.values)
+    totals = result.totals
+    assert result.chosen == result.candidates[totals.index(max(totals))]
+    twin = NetworkSearchAgent(path, seed=5, rollouts=2, candidates=2)
+    assert twin.choose_action_with_state(state, view, actions) == result.chosen
