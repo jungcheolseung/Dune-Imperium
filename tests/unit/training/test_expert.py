@@ -30,6 +30,7 @@ from dune_imperium.training.expert import (  # noqa: E402
     LabelRow,
     read_shards,
     run_meta,
+    shard_paths,
     validate_game,
     write_game,
 )
@@ -198,3 +199,21 @@ def test_game_shards_round_trip_and_refuse_bad_input(tmp_path: Path) -> None:
     )
     with pytest.raises(ValueError, match="differs"):
         read_shards([tmp_path / "g10.npz", tmp_path / "g16.npz"])
+
+
+def test_only_complete_shards_are_listed(tmp_path: Path) -> None:
+    """A write interrupted by a kill leaves nothing a shard listing picks up.
+
+    The temporary file is hidden and never ends in ``.npz``; an older
+    ``g<seed>.npz.tmp.npz`` leftover is ignored too, since reading a
+    truncated one would fail every later training run.
+    """
+
+    meta = run_meta("teacher.pt", LabelConfig(rollouts=2), 50, "ruleset")
+    write_game(tmp_path / "g20.npz", _game(20, [_row(LABEL, [2, 5], 2, [2, 5])]), meta)
+    (tmp_path / "g21.npz.tmp.npz").write_bytes(b"truncated")
+    (tmp_path / ".g22.npz.partial").write_bytes(b"truncated")
+
+    assert [p.name for p in shard_paths(tmp_path)] == ["g20.npz"]
+    assert not list(tmp_path.glob(".g20*"))
+    assert read_shards(shard_paths(tmp_path)).rows == 1

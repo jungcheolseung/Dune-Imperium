@@ -49,9 +49,11 @@ def _collect(arguments: argparse.Namespace) -> int:
 
 
 def _shards(directories: Sequence[str]) -> list[Path]:
+    from dune_imperium.training.expert import shard_paths
+
     paths: list[Path] = []
     for directory in directories:
-        paths.extend(sorted(Path(directory).glob("g*.npz")))
+        paths.extend(shard_paths(Path(directory)))
     return paths
 
 

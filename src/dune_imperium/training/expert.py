@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import os
 import random
+import re
 import time
 from collections.abc import Mapping, Sequence
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -431,10 +432,22 @@ def write_game(path: Path, game: LabelledGame, meta: Mapping[str, object]) -> No
         }
     )
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(path.name + ".tmp.npz")
+    # A hidden name that no shard glob matches; written through a handle so
+    # numpy does not append ".npz" to it.
+    temporary = path.with_name(f".{path.name}.partial")
     arrays["meta_json"] = np.asarray(json.dumps(header))
-    np.savez_compressed(temporary, allow_pickle=False, **arrays)
+    with temporary.open("wb") as handle:
+        np.savez_compressed(handle, allow_pickle=False, **arrays)
     os.replace(temporary, path)
+
+
+SHARD_NAME: Final = re.compile(r"g\d+\.npz")
+
+
+def shard_paths(directory: Path) -> list[Path]:
+    """The complete game shards in ``directory`` (no partial writes)."""
+
+    return sorted(p for p in directory.glob("g*.npz") if SHARD_NAME.fullmatch(p.name))
 
 
 def run_meta(
@@ -480,6 +493,9 @@ def collect_to_directory(
 
     agent = load_network_agent(teacher)
     action_size = agent.codec.size
+    out.mkdir(parents=True, exist_ok=True)
+    for stale in [*out.glob(".g*.partial"), *out.glob("g*.npz.tmp.npz")]:
+        stale.unlink()  # a write interrupted by an earlier kill
     specs = [
         spec
         for spec in collection_specs(teacher, start_seed=start_seed, games=games)
