@@ -139,7 +139,9 @@ def main() -> None:
 
             page.goto(server.base + "/")
             page.wait_for_selector("#setup-screen:not([hidden])")
-            page.wait_for_function("document.querySelectorAll('#save-list li').length === 3")
+            page.wait_for_function(
+                "document.querySelectorAll('#save-list li').length === 3"
+            )
 
             print("[1] the delete button has its own class, apart from Load")
             alpha = delete_of(state(page, "SaveAlpha"))
@@ -147,12 +149,17 @@ def main() -> None:
             # Found by position (last button in the row) above, so this checks
             # the .save-delete class itself rather than assuming it (the old
             # client's identical-looking delete button carries no such class).
-            check.ok("save-delete" in alpha["className"], "delete button carries the save-delete class", alpha)
+            check.ok(
+                "save-delete" in alpha["className"],
+                "delete button carries the save-delete class",
+                alpha,
+            )
             check.ok(alpha["text"] == "삭제", "starts unarmed, reading 삭제", alpha)
             check.ok(alpha["armed"] is False, "not armed at rest", alpha)
             alpha_load = load_of(state(page, "SaveAlpha"))
             check.ok(
-                alpha_load["text"] == "불러오기" and "save-delete" not in alpha_load["className"],
+                alpha_load["text"] == "불러오기"
+                and "save-delete" not in alpha_load["className"],
                 "Load keeps its own class and text",
                 alpha_load,
             )
@@ -161,16 +168,22 @@ def main() -> None:
             check.ok(click_delete(page, "SaveAlpha"), "clicked SaveAlpha's delete once")
             armed = delete_of(state(page, "SaveAlpha"))
             check.ok(armed["armed"] is True, "armed after one click", armed)
-            check.ok(armed["text"] == "정말 삭제?", "button reads the confirm text", armed)
+            check.ok(
+                armed["text"] == "정말 삭제?", "button reads the confirm text", armed
+            )
             page.wait_for_timeout(700)
             check.ok(row_count(page) == 3, "one click alone has not deleted the entry")
             page.wait_for_timeout(ARM_MS - 700 + 400)
             reverted = delete_of(state(page, "SaveAlpha"))
-            check.ok(reverted["armed"] is False, "armed reverts after the timeout", reverted)
+            check.ok(
+                reverted["armed"] is False, "armed reverts after the timeout", reverted
+            )
             check.ok(reverted["text"] == "삭제", "text is back to 삭제", reverted)
             check.ok(row_count(page) == 3, "still three saves after the timeout")
 
-            print("[3] only one button is armed at a time; a click elsewhere reverts it")
+            print(
+                "[3] only one button is armed at a time; a click elsewhere reverts it"
+            )
             check.ok(click_delete(page, "SaveAlpha"), "armed SaveAlpha again")
             check.ok(click_delete(page, "SaveBravo"), "then clicked SaveBravo's delete")
             after_bravo = delete_of(state(page, "SaveAlpha"))
@@ -181,7 +194,9 @@ def main() -> None:
             )
             bravo_armed = delete_of(state(page, "SaveBravo"))
             check.ok(
-                bravo_armed["armed"] is True, "SaveBravo is the one now armed", bravo_armed
+                bravo_armed["armed"] is True,
+                "SaveBravo is the one now armed",
+                bravo_armed,
             )
             click_elsewhere(page)
             bravo_after = delete_of(state(page, "SaveBravo"))
@@ -192,18 +207,26 @@ def main() -> None:
             )
             check.ok(row_count(page) == 3, "nothing was deleted by any of this")
 
-            print("[4] a double-click only arms; a second click after it deletes for good")
+            print(
+                "[4] a double-click only arms; a second click after it deletes for good"
+            )
             page.dblclick('#save-list li:has-text("SaveCharlie") button:last-of-type')
             page.wait_for_timeout(700)
-            check.ok(row_count(page) == 3, "a double-click alone has not deleted the entry")
+            check.ok(
+                row_count(page) == 3, "a double-click alone has not deleted the entry"
+            )
             check.ok(
                 delete_of(state(page, "SaveCharlie"))["armed"] is True,
                 "and it left the button armed",
             )
             check.ok(click_delete(page, "SaveCharlie"), "clicked it once more")
-            ok = wait_ok(page, "document.querySelectorAll('#save-list li').length === 2")
+            ok = wait_ok(
+                page, "document.querySelectorAll('#save-list li').length === 2"
+            )
             check.ok(ok, "the list drops to two entries")
-            check.ok(state(page, "SaveCharlie") is None, "SaveCharlie is gone from the list")
+            check.ok(
+                state(page, "SaveCharlie") is None, "SaveCharlie is gone from the list"
+            )
             saves_now = json.loads(
                 page.evaluate("fetch('/saves').then((r) => r.text())")
             )
@@ -247,9 +270,13 @@ def main() -> None:
                 "English at rest: Delete / Load, no Hangul",
                 (resting, resting_load),
             )
-            check.ok(click_delete(page, "SaveAlpha"), "clicked SaveAlpha's delete in English")
+            check.ok(
+                click_delete(page, "SaveAlpha"), "clicked SaveAlpha's delete in English"
+            )
             confirm = delete_of(state(page, "SaveAlpha"))
-            check.ok(confirm["text"] == "Delete for good?", "English confirm text", confirm)
+            check.ok(
+                confirm["text"] == "Delete for good?", "English confirm text", confirm
+            )
             check.ok(
                 confirm["text"] is not None and not HANGUL.search(confirm["text"]),
                 "no Hangul in the English confirm text",

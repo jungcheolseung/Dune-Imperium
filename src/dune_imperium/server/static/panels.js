@@ -295,7 +295,8 @@ function renderSeats() {
     if (player.discard_pile.length) {
       zones.classList.add("clickable");
       zones.title = t("panels.discard_pile_view");
-      /* Same "mine" test as the hand strip (~line 997): on a remote table
+      /* Same "mine" test as this seat panel's own "you" badge above, with a
+         review guard added to the local branch: on a remote table
          ownership follows the seats this browser claimed regardless of what
          is being viewed; locally (live or reviewed) it follows the seat
          being looked at, but only when reviewing a seat this browser
@@ -444,10 +445,19 @@ const SEAT_PAYLOAD_KEYS = new Set([
   "visitor",
 ]);
 
-function logEventPayload(payload) {
+function logEventPayload(payload, eventKind) {
   const parts = [];
   const shownNames = new Set();
   for (const [key, value] of Object.entries(payload)) {
+    /* intrigue_played (rules/intrigue.py) is the only event whose step head
+       already names its "option" in words -- describeAction()'s
+       play_intrigue branch (core.js) -- so only there would a bare index
+       here ("선택지: 0") just repeat it in a form the reader can't read.
+       navigation_card_played (rules/navigation.py) also carries an
+       "option", but play_navigation has no such branch, so its log line is
+       the only place that option is named at all; skipping it there too
+       would hide it outright, not de-duplicate it. */
+    if (key === "option" && eventKind === "intrigue_played") continue;
     const label = PAYLOAD_KEY_LABELS[key] || prettify(key);
     /* Before the zero filter: seat 0 is a seat. */
     if (SEAT_PAYLOAD_KEYS.has(key)) {
@@ -502,7 +512,7 @@ function logEventLine(event) {
   /* phrase(), not textContent: an event label may name a term, and the
      braces must never reach the screen. */
   line.appendChild(phrase(EVENT_LABELS[event.kind] || prettify(event.kind)));
-  const payload = logEventPayload(event.payload);
+  const payload = logEventPayload(event.payload, event.kind);
   if (payload) line.append(` — ${payload}`);
   return line;
 }
@@ -813,11 +823,13 @@ function turnCard(group, glowFrom) {
 
 /* The label for a folded chain of Combat/Endgame Intrigue passes: the words
    the engine's own event carries for it, once for the whole card. Combat
-   Intrigue already has one (EVENT_LABELS.combat_intrigue_passed); Endgame
-   Intrigue's own event label is bare ("Passed") because turnLine's head
-   names the window already (ACTION_LABELS) -- a fold has no such head per
-   seat, so it gets a matching label of its own
-   (panels.pass_fold_endgame_intrigue, UI_TEXT). */
+   Intrigue already has one that names the window
+   (EVENT_LABELS.combat_intrigue_passed, "{combat} {intrigue} 패스"); Endgame
+   Intrigue's own event label is bare ("Passed", EVENT_LABELS.
+   endgame_intrigue_passed) -- and so is the action label next to it
+   (ACTION_LABELS.pass_endgame_intrigue is just "패스"/"Pass" too, nothing on
+   an unfolded pass names the window either) -- so a fold needs a label of
+   its own that does name it (panels.pass_fold_endgame_intrigue, UI_TEXT). */
 function passFoldLabel(actionId) {
   return actionId === "pass_endgame_intrigue"
     ? tNode("panels.pass_fold_endgame_intrigue")

@@ -2,10 +2,10 @@
 
 Bug this reproduces: renderLog() decided "following" from the previous
 list's scroll position alone (`scrollHeight - scrollTop - clientHeight <
-24`). A render always scrolls to the FIRST fresh card, not the end, so when
-a fresh batch is taller than the list (the leader draft, a round change)
-that scroll lands well short of the end. The next render then reads the
-reader as "away from the end" and keeps that stale offset forever -- at
+24`). A render always scrolls to the FIRST arrived card, not the end, so
+when an arrived batch is taller than the list (the leader draft, a round
+change) that scroll lands well short of the end. The next render then reads
+the reader as "away from the end" and keeps that stale offset forever -- at
 round 7 the log still showed an early leader pick while the newest card sat
 thousands of pixels below.
 
@@ -107,8 +107,12 @@ def log_follow_state(page, before: int) -> dict:
             let first = null;
             groups.forEach((g, i) => {
                 if (first) return;
+                // 'passes' (folded Combat/Endgame Intrigue passes) holds an
+                // entries list exactly like 'turn' does, so it finds its
+                // ARRIVED card the same way.
                 const hit = g.kind === 'neutral' ? g.lastIndex >= before
-                    : g.kind === 'turn' && g.entries.some((e) => e.index >= before);
+                    : (g.kind === 'turn' || g.kind === 'passes')
+                        && g.entries.some((e) => e.index >= before);
                 if (hit) first = cards[i];
             });
             if (!first) return { present: false };
@@ -163,12 +167,15 @@ def drive_rounds(page, min_round: int, step_cap: int = 4000) -> bool:
         before, after = take_step(page)
         steps += 1
         # The render that takes the log from empty to non-empty resets
-        # freshFrom to the count it just saw (panels.js renderLog): a fresh
-        # game has nothing to compare against, so that first batch of
-        # entries is the baseline, not "new since last seen", and correctly
-        # shows no .fresh card at all. That is the one step this loop does
-        # not check; every later entries-adding step has a real "before" to
-        # be fresh against.
+        # arrivedFrom to the count it just saw (panels.js renderLog): a
+        # fresh game has nothing to compare against, so that first batch of
+        # entries is the baseline, not "arrived since last seen", and
+        # check_following correctly finds no ARRIVED card at all (this is
+        # not about .fresh/glow -- under the new glow rule (ITEM 8a) a seat
+        # that has not acted yet sees its whole log glow, not none of it).
+        # That is the one step this loop does not check; every later
+        # entries-adding step has a real "before" to find the ARRIVED card
+        # against.
         if after > before and before > 0:
             checked += 1
             check_following(page, f"round {round_number} step {steps}", before)

@@ -190,7 +190,8 @@ const playback = { playing: false, timer: 0, unit: "turn", intervalMs: 1000 };
 
 /* Declining a Combat or Endgame Intrigue window (rules/combat.py,
    rules/endgame.py): both count as "a pass" for turnStops below, whichever
-   seat and whichever of the two it is. */
+   seat and whichever of the two it is. panels.js logGroups reads this same
+   set too, to fold consecutive passes into one log card. */
 const PASS_ACTION_IDS = new Set(["pass_combat_intrigue", "pass_endgame_intrigue"]);
 
 /* Where turn-by-turn playback stops: the cursor positions between two

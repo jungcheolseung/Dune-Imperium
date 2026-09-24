@@ -187,26 +187,36 @@ def run(base: str, browser) -> None:
     check.ok(discard_seats, "some seat has a discard pile to click", discard_seats)
     titles = {}
     for seat in discard_seats:
-        page.click(f"#seats > *:nth-child({seat + 1}) .zones")
+        page.click(f"#seats article.seat[data-seat='{seat}'] .zones")
         page.wait_for_selector("#card-popover .popover-title")
         titles[seat] = page.evaluate(
             "document.querySelector('#card-popover .popover-title').textContent"
         )
         page.keyboard.press("Escape")
-    latin = {seat: title for seat, title in titles.items() if re.search(r"[A-Za-z]", title)}
+    latin = {
+        seat: title for seat, title in titles.items() if re.search(r"[A-Za-z]", title)
+    }
     check.ok(not latin, "no seat's discard popover title has Latin letters", latin)
     expected = {
         # openPileList appends " (<count>)" itself (panels.js ~419).
         seat: page.evaluate(
-            "t('panels.seat_discard', { seat: t('common.seat', { seat: %d }) })"
-            " + ` (${state.view.players[%d].discard_pile.length})`" % (seat, seat)
+            "t('panels.seat_discard', { seat: t('common.seat', { seat: "
+            f"{seat}"
+            " }) })"
+            " + ` (${state.view.players["
+            f"{seat}"
+            "].discard_pile.length})`"
         )
         for seat in discard_seats
     }
     check.ok(
         titles == expected,
         "an all-AI review never calls a seat's pile 'my discard'",
-        {s: (titles[s], expected[s]) for s in discard_seats if titles[s] != expected[s]},
+        {
+            s: (titles[s], expected[s])
+            for s in discard_seats
+            if titles[s] != expected[s]
+        },
     )
 
     # The point of folding: all four seats in the column at 1600x1000, late in
@@ -226,7 +236,7 @@ def run(base: str, browser) -> None:
     check_compact_stats(page)
 
     # Open one seat: only that one grows.
-    page.click("#seats > *:nth-child(2) .seat-more")
+    page.click("#seats article.seat[data-seat='1'] .seat-more")
     one = page.evaluate(SEATS)
     check.ok(one["cards"][1]["expanded"] == "true", "the clicked seat opened")
     check.ok(one["cards"][1]["detailShown"], "its card lines are shown")
@@ -273,7 +283,7 @@ def run(base: str, browser) -> None:
     )
 
     # Remembered across a reload.
-    page.click("#seats > *:nth-child(3) .seat-more")
+    page.click("#seats article.seat[data-seat='2'] .seat-more")
     page.reload()
     page.wait_for_selector("#game-screen:not([hidden])")
     page.wait_for_function("state.view !== null && refreshFlight === null")
@@ -338,14 +348,14 @@ def run_laptop(base: str, browser) -> None:
         "the Leader is still named where the picture was",
         [g["name"] for g in geometry],
     )
-    page.click("#seats > *:nth-child(1) .seat-more")
+    page.click("#seats article.seat[data-seat='0'] .seat-more")
     opened = page.evaluate(SEATS)["cards"][0]
     check.ok(
         opened["expanded"] == "true" and opened["detailShown"],
         "the arrow opens its seat",
         opened["expanded"],
     )
-    page.click("#seats > *:nth-child(1) .seat-more")
+    page.click("#seats article.seat[data-seat='0'] .seat-more")
     check.ok(
         page.evaluate(SEATS)["cards"][0]["expanded"] == "false",
         "and folds it again",

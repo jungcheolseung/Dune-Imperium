@@ -22,18 +22,19 @@ sibling shares their own pile are untouched (interchangeable copies), and
 never touched, so the log keeps reading the plain card name.
 
 Reaching a real trash decision with a same-named duplicate split across two
-piles needs a real game: a raw-HTTP walk (no browser, see
-find_zone_dup_seed.py in git history of this file / the session scratchpad)
-replaying "confirm every hold at once; otherwise take the seat's own first
-legal action" against seed 0 with the Leader draft off (so seat 0 keeps
-its server-assigned Leader) landed seat 0 on a `trash_leader_card` decision
-(Feyd Rautha Harkonnen's Personal Training track) at its 106th decision,
-offering a "Prepare the Way" reserve card from hand and its other copy from
-in play. The same policy is replayed live against the browser below rather
-than hard-coded to a step count, so a content or engine change that only
-shifts *when* the decision appears still gets caught by this script; if the
-decision moves out of the step budget entirely, re-running that raw-HTTP
-search (see this file's git history) finds a new seed.
+piles needs a real game: a one-off raw-HTTP walk (no browser, not kept --
+it was a throwaway script, not a committed one) replaying "confirm every
+hold at once; otherwise take the seat's own first legal action" against
+seed 0 with the Leader draft off (so seat 0 keeps its server-assigned
+Leader) landed seat 0 on a `trash_leader_card` decision (Feyd Rautha
+Harkonnen's Personal Training track) at its 106th decision, offering a
+"Prepare the Way" reserve card from hand and its other copy from in play.
+The same policy is replayed live against the browser below rather than
+hard-coded to a step count, so a content or engine change that only shifts
+*when* the decision appears still gets caught by this script; if the
+decision moves out of the step budget entirely, re-running that same
+raw-HTTP walk (a fresh throwaway script against this policy and seed 0)
+finds a new seed.
 """
 
 from __future__ import annotations
@@ -43,7 +44,14 @@ import shutil
 import time
 from typing import Any
 
-from common import SERVER_LOG_COPY, Check, chrome, open_context, server, set_rule_options
+from common import (
+    SERVER_LOG_COPY,
+    Check,
+    chrome,
+    open_context,
+    server,
+    set_rule_options,
+)
 from lang import switch as switch_language
 from open_mode import settled
 
@@ -123,14 +131,18 @@ def find_zone_duplicate(page) -> list[dict[str, Any]] | None:
         if zone is None:
             continue
         key = (action["action_id"], base_id(card_id))
-        groups.setdefault(key, []).append({"action": action, "zone": zone, "cardId": card_id})
+        groups.setdefault(key, []).append(
+            {"action": action, "zone": zone, "cardId": card_id}
+        )
     for entries in groups.values():
         if len({e["zone"] for e in entries}) >= 2:
             return entries
     return None
 
 
-def create_game_no_leader_draft(page, base: str, humans: tuple[int, ...], seed: int) -> str:
+def create_game_no_leader_draft(
+    page, base: str, humans: tuple[int, ...], seed: int
+) -> str:
     """open_mode.create_game's own steps, plus unchecking the Leader-draft
     box (its own checkbox, not one of RULE_OPTIONS -- default checked)."""
 
@@ -174,7 +186,9 @@ def drive_to_zone_duplicate(page, step_cap: int = STEP_CAP) -> list[dict] | None
 
 
 def row_button(page, index: int):
-    return page.locator(f"#actions .action-item[data-index='{index}'] > button:not(.action-info)")
+    return page.locator(
+        f"#actions .action-item[data-index='{index}'] > button:not(.action-info)"
+    )
 
 
 def check_rows(page, what: str, lang: str, entries: list[dict]) -> None:

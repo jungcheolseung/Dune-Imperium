@@ -18,12 +18,13 @@ expansions, no leader draft -- `open_mode.create_game`'s defaults), driving
 seat 0 with a fixed random policy (`rng = random.Random(SEED)`; `rng.choice()`
 over the *current* legal actions each decision, confirming holds at once)
 lands seat 0 on a Combat decision offering "Tactical Option" options 0 and 1
-side by side. SEED was found once with a fast raw-HTTP walk (no browser,
-same policy) and pinned here; the policy itself is replayed live against the
-browser below rather than hard-coded to a step count, so a content or engine
-change that only shifts *when* the decision appears still gets caught by
-this script. If a change removes the decision entirely, re-running that
-raw-HTTP search (see git history of this file) finds a new seed.
+side by side. SEED was found once with a one-off raw-HTTP walk (no browser,
+same policy; a throwaway script, not kept) and pinned here; the policy
+itself is replayed live against the browser below rather than hard-coded to
+a step count, so a content or engine change that only shifts *when* the
+decision appears still gets caught by this script. If a change removes the
+decision entirely, re-running that same raw-HTTP walk (a fresh throwaway
+script against this policy) finds a new seed.
 """
 
 from __future__ import annotations
@@ -46,7 +47,8 @@ SEED = 4
 STEP_CAP = 150
 
 # An Intrigue instance id, e.g. "intrigue:special_mission:0"; group 1 is the
-# catalog key core.js's baseId() strips it to (the same regex, shared/…).
+# catalog key core.js's baseId() strips it to (copied from its "shared"
+# branch, the one every non-starter, non-contract instance id matches).
 INSTANCE_ID = re.compile(r"^(?:imperium|reserve|intrigue|tleilaxu|skill):(.+):\d+$")
 
 # describeAction's new branch strips up to and including the first " — "
@@ -61,6 +63,19 @@ STRIP_AND_ICONIZE_JS = """(text) => {
   for (const n of box.querySelectorAll(".amount")) n.replaceWith(n.title);
   for (const n of box.querySelectorAll("img")) n.replaceWith(n.alt);
   return { stripped, rendered: box.textContent };
+}"""
+
+# logEventLine() (panels.js) is what draws the log card under a played
+# step; it never runs for an action still on screen, so this builds the
+# same intrigue_played event the engine would emit for the row (payload
+# shape from rules/intrigue.py: card_id, option, player) and renders it
+# directly, the way describeActionText() below renders an action.
+LOG_EVENT_LINE_JS = """(payload) => {
+  const box = document.createElement("span");
+  box.appendChild(logEventLine({ kind: "intrigue_played", payload }));
+  for (const n of box.querySelectorAll(".amount")) n.replaceWith(n.title);
+  for (const n of box.querySelectorAll("img")) n.replaceWith(n.alt);
+  return box.textContent;
 }"""
 
 
@@ -109,8 +124,9 @@ def drive_to_dual_option(page) -> tuple[str | None, list[dict]]:
 
 
 def check_no_bare_option_index(page, actions: list[dict], what: str) -> None:
-    """Every play_intrigue row on screen -- not just the dual-option one --
-    reads real wording, never the engine's bare option index."""
+    """Every play_intrigue row in ``actions`` reads real wording, never the
+    engine's bare option index -- in the step head (describeActionText) and
+    in the log line a played row later draws under it (logEventLine)."""
 
     for action in actions:
         if action["action_id"] != "play_intrigue":
@@ -123,7 +139,8 @@ def check_no_bare_option_index(page, actions: list[dict], what: str) -> None:
             shown,
         )
         button = page.locator(
-            f"#actions .action-item[data-index='{action['index']}'] > button:not(.action-info)"
+            f"#actions .action-item[data-index='{action['index']}']"
+            " > button:not(.action-info)"
         )
         if button.count():
             live = button.inner_text()
@@ -132,6 +149,18 @@ def check_no_bare_option_index(page, actions: list[dict], what: str) -> None:
                 f"{what}: the rendered button for it agrees",
                 live,
             )
+        # logEventPayload (panels.js) skips the "option" key outright, so
+        # the log card this row would draw once played never shows it
+        # either -- build the intrigue_played event the engine would emit
+        # (rules/intrigue.py) and render it the same way.
+        payload = dict(action["arguments"])
+        payload["player"] = 0
+        log_line = page.evaluate(LOG_EVENT_LINE_JS, payload)
+        check.ok(
+            "선택지:" not in log_line and "Option:" not in log_line,
+            f"{what}: the log line it would draw once played agrees",
+            log_line,
+        )
 
 
 def check_dual_option_rows(page, what: str, card_id: str, rows: list[dict]) -> None:
@@ -154,7 +183,8 @@ def check_dual_option_rows(page, what: str, card_id: str, rows: list[dict]) -> N
     for row in rows[:2]:
         option = row["arguments"]["option"]
         button = page.locator(
-            f"#actions .action-item[data-index='{row['index']}'] > button:not(.action-info)"
+            f"#actions .action-item[data-index='{row['index']}']"
+            " > button:not(.action-info)"
         )
         check.ok(button.count() == 1, f"{what}: option {option}'s row is on screen")
 
@@ -185,7 +215,10 @@ def check_dual_option_rows(page, what: str, card_id: str, rows: list[dict]) -> N
         shown_rows,
     )
 
-    check_no_bare_option_index(page, rows, what)
+    # Every play_intrigue row currently offered, not just this card's --
+    # matches check_no_bare_option_index's own claim about what it covers.
+    all_actions = page.evaluate("state.actions.actions")
+    check_no_bare_option_index(page, all_actions, what)
 
 
 def main() -> None:
@@ -212,7 +245,8 @@ def main() -> None:
                 _, rows_en = find_dual_option(actions)
                 check.ok(
                     len(rows_en) >= 2 and rows_en[0]["arguments"]["card_id"] == card_id,
-                    "the dual-option decision is still on screen after switching language",
+                    "the dual-option decision is still on screen after switching "
+                    "language",
                 )
                 if len(rows_en) >= 2:
                     check_dual_option_rows(page, "English", card_id, rows_en)

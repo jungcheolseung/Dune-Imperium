@@ -59,6 +59,13 @@ KEY = "e2e-fresh-admin-key"
 VIEWPORT = {"width": 1440, "height": 900}
 # How many of seat 0's own turn starts (a) checks the glowing set at.
 MY_TURNS = 3
+# The remote server hides the seed, so seat order (and so which seats acted
+# between two of seat 0's turns) is out of this script's control -- a turn
+# start with nothing expected to glow (seat 0 moving first, before any
+# opponent has acted) would pass glow_matches vacuously. At least one of
+# the MY_TURNS checks must have found glowing steps from this many distinct
+# OTHER seats, or the run is thrown out as not having exercised the bug.
+MIN_DISTINCT_GLOWING_SEATS = 2
 # Safety cap on opponents' raw-HTTP steps overall, so a stuck game fails
 # fast instead of hanging.
 MAX_OPPONENT_STEPS = 300
@@ -142,14 +149,30 @@ GLOW_CHECK_JS = """(seat) => {
     (card) => !card.classList.contains("undo-marker")
   );
   const actual = cards.map((card) => card.classList.contains("fresh"));
+  // Which OTHER seats' steps are among the glowing groups (a "turn" group
+  // carries one actor, a "passes" group one per folded entry) -- used
+  // outside this check to rule out a vacuous pass where nothing was
+  // expected to glow at all.
+  const glowingActors = new Set();
+  groups.forEach((g, i) => {
+    if (!expected[i] || g.kind === "neutral") return;
+    if (g.kind === "turn") glowingActors.add(g.actor);
+    else for (const e of g.entries) glowingActors.add(e.actor);
+  });
   return {
     lastOwn, expected, actual,
     entryCount: entries.length, cardCount: cards.length,
+    glowingActors: [...glowingActors],
   };
 }"""
 
 
-def glow_matches(page, seat: int, label: str) -> None:
+def glow_matches(page, seat: int, label: str) -> list[int]:
+    """Checks the glow boundary at this turn start and returns the seats
+    (other than ``seat``) whose steps were expected to glow, so a caller
+    can confirm the run gave this check something real to check (see
+    MIN_DISTINCT_GLOWING_SEATS below)."""
+
     result = page.evaluate(GLOW_CHECK_JS, seat)
     check.ok(
         result["expected"] == result["actual"],
@@ -157,6 +180,7 @@ def glow_matches(page, seat: int, label: str) -> None:
         "last action glow, none before",
         result,
     )
+    return result["glowingActors"]
 
 
 def active_actor(summary: dict) -> int | None:
@@ -234,6 +258,7 @@ def scenario_remote() -> None:
 
             my_turns_seen = 0
             opponent_steps = 0
+            glowing_actor_sets: list[list[int]] = []
             while my_turns_seen < MY_TURNS and opponent_steps < MAX_OPPONENT_STEPS:
                 summary = opponents[1].get(f"/games/{game_id}")
                 if summary["finished"]:
@@ -252,7 +277,9 @@ def scenario_remote() -> None:
                         ),
                         "seat 0's page has caught up to its own turn",
                     )
-                    glow_matches(page, 0, f"seat 0 turn start #{my_turns_seen + 1}")
+                    glowing_actor_sets.append(
+                        glow_matches(page, 0, f"seat 0 turn start #{my_turns_seen + 1}")
+                    )
                     my_turns_seen += 1
                     play_seat0_turn(page)
                     continue
@@ -285,6 +312,13 @@ def scenario_remote() -> None:
                 f"checked the glowing set at {MY_TURNS} of seat 0's turn starts",
                 my_turns_seen,
             )
+            best = max((len(s) for s in glowing_actor_sets), default=0)
+            check.ok(
+                best >= MIN_DISTINCT_GLOWING_SEATS,
+                f"at least one checked turn start had glowing steps from "
+                f"{MIN_DISTINCT_GLOWING_SEATS}+ other seats (not a vacuous pass)",
+                glowing_actor_sets,
+            )
 
             failed = [r for r in rec.requests if r[3] is not None and r[3] >= 400]
             check.ok(not failed, "no failed requests on seat 0's page", failed[:5])
@@ -305,7 +339,14 @@ OWN_CARD_CHECK_JS = """(seat) => {
   const groups = logGroups(state.log.entries).filter((g) => g.kind !== "undo");
   let lastOwnGroup = -1;
   groups.forEach((g, i) => {
+    // 'passes' (folded Combat/Endgame Intrigue passes) has no single
+    // .actor -- it can fold more than one seat's passes into one card --
+    // so it finds its own seat's entries the same way 'turn' finds them,
+    // through its entries list.
     if (g.kind === "turn" && g.actor === seat) lastOwnGroup = i;
+    else if (g.kind === "passes" && g.entries.some((e) => e.actor === seat)) {
+      lastOwnGroup = i;
+    }
   });
   const cards = [...document.querySelectorAll("#action-log .turn-card")].filter(
     (card) => !card.classList.contains("undo-marker")
