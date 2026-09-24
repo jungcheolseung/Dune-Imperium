@@ -383,18 +383,7 @@ function render(options) {
   const foreign = Boolean(options && options.foreign);
   const kept = foreign ? keepScroll() : [];
   if (!(foreign && popoverPinned)) closePopover();
-  const shown = state.review && state.review.phase ? state.review : null;
-  const round = shown ? shown.round : summary.round_number;
-  const phase = shown ? shown.phase : summary.phase;
-  el("header-status").textContent =
-    t("render.round_status", { round, phase: PHASE_LABELS[phase] || phase }) +
-    (summary.game_seed === null ? "" : " · " + t("common.seed", { seed: summary.game_seed })) +
-    RULESET_BADGES.filter(([field]) => summary[field])
-      .map(([, key]) => " · " + t(key))
-      .join("") +
-    (state.review
-      ? " · " + (spectatorOnly() ? t("render.spectating_ai") : t("render.replay_review"))
-      : "");
+  renderHeaderStatus();
   el("decision-banner").hidden = Boolean(state.review);
   renderBanner();
   renderStandings();
@@ -411,6 +400,38 @@ function render(options) {
     pane.scrollTop = top;
     pane.scrollLeft = left;
   }
+}
+
+/* #header-status in three spans (style.css): the round and phase, the
+   review label, then the seed and ruleset badges. The first two always
+   stay whole; the last, which never changes during a game, takes what room
+   is left and ends in an ellipsis when it runs out. The full text goes in
+   the title. */
+function renderHeaderStatus() {
+  const summary = state.summary;
+  const shown = state.review && state.review.phase ? state.review : null;
+  const round = shown ? shown.round : summary.round_number;
+  const phase = shown ? shown.phase : summary.phase;
+  const pieces = [
+    ["status-core", t("render.round_status", { round, phase: PHASE_LABELS[phase] || phase })],
+  ];
+  if (state.review) {
+    const label = spectatorOnly() ? t("render.spectating_ai") : t("render.replay_review");
+    pieces.push(["status-label", " · " + label]);
+  }
+  /* The seed and the ruleset badges never change during a game. */
+  const extras = RULESET_BADGES.filter(([field]) => summary[field]).map(([, key]) => t(key));
+  if (summary.game_seed !== null) extras.unshift(t("common.seed", { seed: summary.game_seed }));
+  if (extras.length) pieces.push(["status-badges", " · " + extras.join(" · ")]);
+  const status = el("header-status");
+  status.textContent = "";
+  for (const [className, text] of pieces) {
+    const span = document.createElement("span");
+    span.className = className;
+    span.textContent = text;
+    status.appendChild(span);
+  }
+  status.title = status.textContent;
 }
 
 /* Post-game full disclosure (OQ-010 ruling 4): once a game has finished,

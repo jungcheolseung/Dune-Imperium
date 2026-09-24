@@ -304,8 +304,11 @@ function resetGameState() {
   announcedTurn = undefined;
   document.title = baseTitle();
   /* The header named the game's round and ruleset; the setup screen kept
-     showing it, in whichever language it was drawn. */
+     showing it, in whichever language it was drawn. textContent clears the
+     child spans but not an attribute set directly on the element, so the
+     title (render.js's renderHeaderStatus) needs clearing here too. */
   el("header-status").textContent = "";
+  el("header-status").title = "";
   el("review-bar").hidden = true;
 }
 
