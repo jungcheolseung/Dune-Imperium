@@ -24,6 +24,9 @@ ordering an Agent turn's effects (``search_effect_order``). Over 300 new
 matches paired deal for deal with the full search, both guarded, that seat
 wins 61.7% against 64.3% -- a difference of -2.7pp [-10.0, +5.0], mean
 rank +0.06 [-0.08, +0.20] -- at 18s instead of 45s a match (section 13).
+With five candidates instead of three (the default since 2026-09-24) it
+wins 66.1% [63.2, 69.1] of 1,000 fresh deals against three greedy 5081,
+where the three-candidate seat won 62.0% of the same deals (section 16).
 
 Like greedy play, the search keeps a cycle guard (``_Taken``), both for its
 own decisions and inside every playout. Without one a search seat stalled a
@@ -55,13 +58,17 @@ from dune_imperium.rules.endgame import final_standings
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.training.policy import without_undo_actions
 
-# The worlds, candidates and horizon the 100-match cell measured (section
-# 12). Worlds and candidates are the cost knobs: a decision plays
+# Worlds and candidates are the cost knobs: a decision plays
 # ``rollouts * candidates`` playouts, each to the end of the current round.
-# One world, and two worlds on top of the effect-ordering switch below, both
-# lost measurably against these defaults (section 13).
+# Five candidates beat three: +5.6pp [+2.4, +8.9] in one-against-three win
+# share over 1,400 deals paired with the three-candidate seat (+4.1pp
+# [+0.1, +8.1] on the 1,000 fresh deals of the declared confirmation), mean
+# rank -0.09, at 31s instead of 18s a match. Eight worlds (+5.8pp over 400)
+# cost more for less; a two-round horizon was no better at 3.4x the cost;
+# one world, and two worlds with effect ordering skipped, lost
+# (docs/evaluation/m10-2026-09-22.md sections 13 and 16).
 DEFAULT_ROLLOUTS = 4
-DEFAULT_CANDIDATES = 3
+DEFAULT_CANDIDATES = 5
 DEFAULT_HORIZON_ROUNDS = 1
 # Ordering an Agent turn's effects is half of all searched decisions and
 # 63% of the search time, yet the search overrides the network there least
