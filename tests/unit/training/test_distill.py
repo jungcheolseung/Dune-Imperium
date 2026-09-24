@@ -633,3 +633,41 @@ def test_clearhard_teaches_only_clear_search_choices() -> None:
     )
     weights = _row_weights(data, np.arange(3), config)
     assert weights.tolist() == [1.0, config.anchor_weight, config.anchor_weight]
+
+
+def test_clearhard_agreement_counts_only_the_rows_it_teaches() -> None:
+    """With clearhard, ``agree_target`` is measured on the clear rows alone.
+
+    The other LABEL rows target the prior, so counting them would reward a
+    network for staying the incumbent rather than for learning the search.
+    """
+
+    nan = float("nan")
+    legal = [1, 4, 6]
+    prior = [0.0, 1.0, 0.5]
+    candidates = [4, 6, -1]
+    clear = [[0.0, 0.2, nan], [0.0, 0.2, nan], [0.0, 0.2, nan], [0.0, 0.2, nan]]
+    split = [[0.3, 0.1, nan], [0.3, 0.1, nan], [0.0, 0.4, nan], [0.0, 0.4, nan]]
+    data = _stack_rows(
+        legal=[legal, legal],
+        prior_logits=[prior, prior],
+        kind=[LABEL, LABEL],
+        candidates=[candidates, candidates],
+        values=[clear, split],
+        game_seed=[10, 20],
+    )
+    torch.manual_seed(0)
+    network = PolicyValueNetwork(32, hidden=(8,))
+    rows = np.arange(2)
+    with torch.no_grad():
+        hidden = network.trunk(torch.from_numpy(data.observations[:1].astype(np.int32)))
+        log_probs = legal_log_probs(
+            network,
+            hidden,
+            torch.tensor([legal]),
+            torch.ones(1, 3, dtype=torch.bool),
+        )
+    student = legal[int(log_probs[0].argmax())]
+    stats = evaluate(network, data, rows, DistillConfig(mode="clearhard"))
+    # Only the clear row counts; its target is the search's choice, action 6.
+    assert stats.agree_target == float(student == 6)

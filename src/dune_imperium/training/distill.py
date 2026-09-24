@@ -332,9 +332,11 @@ def evaluate(
 ) -> HoldoutStats:
     """Agreement, cross-entropy and value error of ``network`` on ``rows``.
 
-    ``agree_target``: argmax over legal equals the target's argmax (LABEL
-    rows). ``agree_search``: equals the search's choice. ``agree_override``:
-    the same on rows where the search overrode the network's own pick.
+    ``agree_target``: argmax over legal equals the target's argmax, on the
+    LABEL rows whose target differs from the prior (all LABEL rows, or with
+    ``clearhard`` the clear ones). ``agree_search``: equals the search's
+    choice. ``agree_override``: the same on rows where the search overrode
+    the network's own pick.
     ``anchor_agree_clear``: on ANCHOR rows whose prior's top two differ by
     at least 0.1 nat, the argmax still equals the prior's. ``anchor_kl``:
     mean KL(P0 || network) on ANCHOR rows. ``prior_max_abs_diff`` (only with
@@ -354,6 +356,13 @@ def evaluate(
     target_best = np.where(padded.valid, padded.target, -1.0).argmax(axis=1)
     kind = data.kind[rows]
     is_label = kind == LABEL
+    # Rows whose target teaches something beyond the prior: every LABEL row,
+    # or with clearhard only the clear ones (the rest target the prior).
+    taught = (
+        is_label & clear_rows(data, rows, config.clear_margin)
+        if config.mode == "clearhard"
+        else is_label
+    )
     is_anchor = kind == ANCHOR
     ce = -(padded.target * np.where(padded.valid, log_probs, 0.0)).sum(axis=1)
     choice = search_choice(data.candidates[rows], data.values[rows])
@@ -389,7 +398,8 @@ def evaluate(
     stats.label_rows = int(is_label.sum())
     stats.anchor_rows = int(is_anchor.sum())
     if stats.label_rows:
-        stats.agree_target = float(np.mean(student[is_label] == target_best[is_label]))
+        if taught.any():
+            stats.agree_target = float(np.mean(student[taught] == target_best[taught]))
         stats.agree_search = float(np.mean(student[is_label] == search_index[is_label]))
         stats.agree_prior = float(np.mean(student[is_label] == prior_best[is_label]))
         overrode = is_label & (search_index != prior_best) & (search_index >= 0)
@@ -430,7 +440,7 @@ def evaluate(
     stats.per_game = _per_game(
         games,
         {
-            "agree_target": np.where(is_label, student == target_best, np.nan),
+            "agree_target": np.where(taught, student == target_best, np.nan),
             "label_rows": is_label.astype(np.float64),
             "value_error": error,
             "anchor_kl": np.where(is_anchor, kl, np.nan),
