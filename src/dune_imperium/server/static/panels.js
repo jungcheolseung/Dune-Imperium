@@ -764,17 +764,32 @@ function undoRow(entry) {
    their turn cards are marked and the list scrolls to the first one. */
 let logSeen = { gameId: null, count: 0, freshFrom: 0 };
 
+/* The scrollTop the renderer itself set on its last automatic scroll (to the
+   first fresh card, or to the end), per game. Whether the *next* render
+   should keep following is decided from this, not from "near the bottom"
+   alone: a fresh batch taller than the list (the leader draft, a round
+   change) lands the auto-scroll well short of the end, and comparing only
+   position then reads that as the reader having wandered off and never
+   follows again. */
+let logAutoTop = { gameId: null, top: 0 };
+
 function renderLog() {
   const panel = el("action-log");
   /* The list is rebuilt from scratch, so its scroll offset has to be read
      before the panel is emptied. A reader who has scrolled up to re-read an
-     earlier turn keeps their place; one already at the end keeps following
-     the game. Without this the log yanked itself to the newest entry on
-     every render, including renders caused by somebody else's move. */
+     earlier turn keeps their place; one already at the end, or still sitting
+     where the previous render's auto-scroll left them, keeps following the
+     game. Without this the log yanked itself to the newest entry on every
+     render, including renders caused by somebody else's move. */
   const previous = panel.querySelector(".log-list");
   const previousTop = previous ? previous.scrollTop : 0;
+  const atAutoOffset =
+    Boolean(previous) &&
+    logAutoTop.gameId === state.gameId &&
+    Math.abs(previousTop - logAutoTop.top) <= 2;
   const following =
     !previous ||
+    atAutoOffset ||
     previous.scrollHeight - previous.scrollTop - previous.clientHeight < 24;
   panel.textContent = "";
   /* In review the log follows the cursor (reviewLog) and leaves the live
@@ -815,6 +830,11 @@ function renderLog() {
   const first = list.querySelector(".turn-card.fresh");
   if (first) list.scrollTop = Math.max(0, first.offsetTop - list.offsetTop - 6);
   else list.scrollTop = list.scrollHeight;
+  /* Remember this render's own offset so the next one can tell "still
+     following" from "wandered off, coincidentally near the same spot".
+     Review positions the cursor itself and never follows, so it neither
+     reads nor writes this. */
+  if (!state.review) logAutoTop = { gameId: state.gameId, top: list.scrollTop };
 }
 
 /* ---------- own hand ---------- */
