@@ -42,14 +42,15 @@ import numpy as np
 import torch
 
 from dune_imperium.adapters.observation_encoding import encode_player_view
+from dune_imperium.adapters.pettingzoo_env import LOSER_REWARD, WINNER_REWARD
 from dune_imperium.agents.determinize import determinize
-from dune_imperium.agents.rollout_agent import position_value
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceResolver
 from dune_imperium.core.decisions import ChanceDecision, PlayerDecision
 from dune_imperium.core.observation import PlayerView
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.endgame import final_standings
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.training.policy import without_undo_actions
 
@@ -270,10 +271,26 @@ class NetworkSearchAgent:
                 taken.record(key, action)
             state = engine.apply(state, action, legal_actions=actions).state
         if state.phase is GamePhase.FINISHED:
-            # A finished game is read by official rank, which dominates any
-            # asset difference (``position_value``).
-            return position_value(state, seat)
+            return finished_reward(state, seat)
         return self._leaf_value(self._engine.observe(state, seat))
+
+
+def finished_reward(state: GameState, seat: int) -> float:
+    """Read a playout that finished the game on the value head's scale.
+
+    The value head is trained toward the winner's reward and the losers'
+    (``WINNER_REWARD`` / ``LOSER_REWARD``), so a finished playout must be read
+    the same way. It used to be read by ``position_value``'s rank ladder
+    (100/70/40/10), which put every finished playout above every unfinished
+    one: a candidate that ended the game in fourth place outscored one that
+    played on. Over 1,400 new one-against-three matches paired deal for deal,
+    reading it as a reward wins +5.2pp [+3.4, +7.1] more, and the shipped seat
+    had ended the game early in 133 pairs against 38 the other way
+    (docs/evaluation/m10-2026-09-22.md section 14).
+    """
+
+    rank = next(s.rank for s in final_standings(state) if s.player == seat)
+    return WINNER_REWARD if rank == 1 else LOSER_REWARD
 
 
 def orders_agent_effects(state: GameState) -> bool:

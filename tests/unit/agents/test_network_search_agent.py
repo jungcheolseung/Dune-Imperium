@@ -9,9 +9,14 @@ import pytest
 torch = pytest.importorskip("torch")
 
 from dune_imperium import RulesetConfig  # noqa: E402
+from dune_imperium.adapters.pettingzoo_env import (  # noqa: E402
+    LOSER_REWARD,
+    WINNER_REWARD,
+)
 from dune_imperium.agents import StateAgent, make_agent  # noqa: E402
 from dune_imperium.agents.network_search_agent import (  # noqa: E402
     NetworkSearchAgent,
+    finished_reward,
     orders_agent_effects,
 )
 from dune_imperium.agents.registry import SEARCH_PREFIX, is_agent_kind  # noqa: E402
@@ -23,6 +28,7 @@ from dune_imperium.core.decisions import (  # noqa: E402
 )
 from dune_imperium.core.state import GamePhase, GameState  # noqa: E402
 from dune_imperium.rules import UprisingRulesEngine  # noqa: E402
+from dune_imperium.rules.endgame import final_standings  # noqa: E402
 from dune_imperium.training.checkpoint import save_checkpoint  # noqa: E402
 from dune_imperium.training.network import PolicyValueNetwork  # noqa: E402
 from dune_imperium.training.policy import without_undo_actions  # noqa: E402
@@ -332,3 +338,28 @@ def test_a_reversible_move_cannot_stall_a_search_seat(
     # observation does not show which card of the pair leads, so here the
     # guard already refuses the switch back.
     assert 1 <= switches <= 2
+
+
+def test_a_finished_playout_is_read_as_the_value_head_s_reward(
+    tmp_path: Path,
+) -> None:
+    """A playout that ends the game scores the winner's or a loser's reward.
+
+    Unfinished playouts are read by the value head, trained toward exactly
+    those rewards. The rank ladder used before (100/70/40/10) put any
+    finished playout, even a fourth place, above every unfinished one.
+    """
+
+    config = RulesetConfig()
+    state = _mid_game(config, seed=3, rounds=99)
+    assert state.phase is GamePhase.FINISHED
+    standings = final_standings(state)
+    winner = next(s.player for s in standings if s.rank == 1)
+    last = next(s.player for s in standings if s.rank == config.players)
+
+    assert finished_reward(state, winner) == WINNER_REWARD
+    assert finished_reward(state, last) == LOSER_REWARD
+    agent = NetworkSearchAgent(_checkpoint(tmp_path, config), seed=0)
+    horizon = state.round_number + 1
+    assert agent._playout(state, winner, horizon, 0) == WINNER_REWARD
+    assert agent._playout(state, last, horizon, 0) == LOSER_REWARD
