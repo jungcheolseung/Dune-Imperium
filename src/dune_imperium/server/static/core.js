@@ -537,6 +537,34 @@ function describeAction(action) {
       else if (EFFECT_ICON_LABELS[value]) parts.push(phrase(EFFECT_ICON_LABELS[value]));
     } else if (SEAT_PAYLOAD_KEYS.has(key) && typeof value === "number") {
       parts.push(document.createTextNode(t("common.seat", { seat: value })));
+    } else if (
+      action.action_id === "play_intrigue" &&
+      key === "option" &&
+      typeof value === "number"
+    ) {
+      /* The numeric option index means nothing on its own ("선택지: 0"); the
+         catalog already carries each printed option's wording
+         (catalog.intrigue[card_id].text[option], one line per engine
+         option, always prefixed by its timing: "Plot — ", "Combat — ",
+         "Endgame — "). Show that line, prefix stripped, as printed card
+         text. A card with only one option needs nothing here (the card
+         name already said it); a card the catalog can't resolve (redacted
+         or unknown) falls back to the plain numeric label. */
+      const cardId = action.arguments.card_id;
+      const entry =
+        typeof cardId === "string" && state.catalog
+          ? state.catalog.intrigue[baseId(cardId)]
+          : null;
+      const lines = entry && Array.isArray(entry.text) ? entry.text : null;
+      if (lines && lines[value] !== undefined) {
+        if (lines.length > 1) {
+          const line = lines[value];
+          const split = line.indexOf(" — ");
+          parts.push(iconize(split === -1 ? line : line.slice(split + 3)));
+        }
+      } else {
+        parts.push(document.createTextNode(`${label}: ${value}`));
+      }
     } else if (typeof value === "boolean") {
       /* A flag says itself by its name. */
       if (value) parts.push(document.createTextNode(label));

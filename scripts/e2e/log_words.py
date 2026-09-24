@@ -89,6 +89,19 @@ async ({gameId}) => {
   const realPrettify = window.prettify;
   window.prettify = (id) => { calls.push(String(id)); return realPrettify(id); };
   const take = () => calls.splice(0, calls.length);
+  // Printed card wording (ITEM 8b's Intrigue option line, and any other
+  // .card-text span) stays English by policy in both languages (iconize()'s
+  // own comment: "the wrapper marks it as the card's own English text ...
+  // which lang.py's Korean check skips"). The Korean-leak check below needs
+  // the same exemption lang.py already gives the rest of the page, so every
+  // DOM-built line reports a second, .card-text-stripped copy of its words
+  // for that check only; the full text (still used for display and the
+  // English/Hangul check) is unaffected.
+  const wordsOf = (el) => {
+    const clone = el.cloneNode(true);
+    for (const node of clone.querySelectorAll(".card-text")) node.remove();
+    return clone.textContent;
+  };
   const events = (lang, entry) => {
     for (const event of entry.events || []) {
       for (const [key, value] of Object.entries(event.payload)) {
@@ -98,8 +111,9 @@ async ({gameId}) => {
                   pretty: take()});
       }
       take();
-      out.push({lang, src: `event ${event.kind}`, text: logEventLine(event).textContent,
-                pretty: take()});
+      const eventLine = logEventLine(event);
+      out.push({lang, src: `event ${event.kind}`, text: eventLine.textContent,
+                wordsText: wordsOf(eventLine), pretty: take()});
     }
   };
   try {
@@ -118,6 +132,7 @@ async ({gameId}) => {
           take();
           const line = turnLine({...entry, events: []});
           out.push({lang, src: `action ${entry.action_id}`, text: line.textContent,
+                    wordsText: wordsOf(line),
                     pretty: take(), args: entry.arguments,
                     quiet: line.classList.contains("quiet")});
           events(lang, entry);
@@ -258,7 +273,12 @@ def check_log(records, names, posts) -> None:
     latin = [
         (r["src"], words, r["text"][:90])
         for r in korean
-        if (words := sorted(set(LATIN.findall(strip(r["text"], allowed)))))
+        # Printed card wording (a .card-text span, e.g. ITEM 8b's Intrigue
+        # option line) is stripped out by wordsOf() before this check, the
+        # same exemption lang.py already gives the rest of the page; a
+        # source with no DOM element to strip (a payload, a chance line)
+        # falls back to its plain text, unaffected.
+        if (words := sorted(set(LATIN.findall(strip(r.get("wordsText", r["text"]), allowed)))))
     ]
     check.ok(
         not latin,
