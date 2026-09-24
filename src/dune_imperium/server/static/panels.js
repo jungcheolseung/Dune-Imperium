@@ -547,13 +547,28 @@ function splitEntryEvents(entry) {
   return { own, neutral };
 }
 
+/* Events a folded pass's own line (below) may carry and still fold: the
+   window's own "declined" marker, or nothing at all (the pass that closes
+   the window reads as flow instead, see splitEntryEvents/NEUTRAL_EVENT_KINDS
+   and combat_intrigue_finished). */
+const PASS_MARKER_KINDS = new Set(["combat_intrigue_passed", "endgame_intrigue_passed"]);
+
 /* Group the log into cards. A turn card holds consecutive steps by one
    seat (with only their own events) until a step closes the turn
    (finish_agent_turn, finish_reveal, pass_combat_intrigue,
    pass_endgame_intrigue); a Leader pick is a card of
    its own. Everything the game does by itself — the neutral events above
    and every chance step — goes into a "게임 진행" card between them, so
-   the round change never reads as the last actor's move. */
+   the round change never reads as the last actor's move.
+
+   A pass_combat_intrigue / pass_endgame_intrigue that would otherwise start
+   a brand new, single-entry card of its own (nothing of that seat's own is
+   open to continue) instead folds into the run of chained passes right
+   before it, one "passes" group per unbroken chain of the same action_id:
+   an unused Combat or Endgame Intrigue window used to show "pass" once per
+   seat, each as its own full-weight card (ITEM 8h). A pass that closes a
+   seat's own open card (it played something first) still ends that card,
+   as before -- it is that seat's own move, not an empty decline. */
 function logGroups(entries) {
   const groups = [];
   let open = null;
@@ -581,7 +596,18 @@ function logGroups(entries) {
     }
     const { own, neutral: flow } = splitEntryEvents(entry);
     const step = { ...entry, events: own };
-    if (SOLO_ACTIONS.has(entry.action_id)) {
+    const foldable =
+      PASS_ACTION_IDS.has(entry.action_id) &&
+      !(open && open.actor === entry.actor) &&
+      own.every((event) => PASS_MARKER_KINDS.has(event.kind));
+    const last = groups[groups.length - 1];
+    if (foldable && last && last.kind === "passes" && last.action_id === entry.action_id) {
+      last.entries.push(step);
+      open = null;
+    } else if (foldable) {
+      groups.push({ kind: "passes", action_id: entry.action_id, entries: [step] });
+      open = null;
+    } else if (SOLO_ACTIONS.has(entry.action_id)) {
       groups.push({ kind: "turn", actor: entry.actor, entries: [step] });
       open = null;
     } else {
@@ -694,6 +720,15 @@ function turnLine(entry) {
   return line;
 }
 
+/* The Leader name shown for a seat in the log -- its current Leader once
+   picked (front or flipped face), "Seat N" before that. turnCard's head and
+   a folded pass's seat line (passesCard) both read a seat's name this way. */
+function seatLeaderName(seat) {
+  const player = state.view && state.view.players[seat];
+  const leaderFace = player && (player.leader_face_id || player.leader_id);
+  return leaderFace ? nameOf(leaderFace) : t("common.seat", { seat });
+}
+
 function turnCard(group, glowFrom) {
   const card = document.createElement("div");
   card.className = "turn-card";
@@ -702,13 +737,11 @@ function turnCard(group, glowFrom) {
   if (group.entries.some((entry) => entry.index >= glowFrom)) card.classList.add("fresh");
   if (group.entries.every((entry) => entry.undone)) card.classList.add("undone");
 
-  const player = state.view && state.view.players[group.actor];
-  const leaderFace = player && (player.leader_face_id || player.leader_id);
   const head = document.createElement("div");
   head.className = "turn-head";
   head.appendChild(seatToken(group.actor, "seat-mark"));
   const who = document.createElement("strong");
-  who.textContent = leaderFace ? nameOf(leaderFace) : t("common.seat", { seat: group.actor });
+  who.textContent = seatLeaderName(group.actor);
   head.appendChild(who);
   const kind = state.summary.seats[group.actor];
   const badge = document.createElement("span");
@@ -760,6 +793,48 @@ function turnCard(group, glowFrom) {
   card.addEventListener("mouseleave", () => {
     if (spotlightGroup === group) setSpotlight(null);
   });
+  return card;
+}
+
+/* The label for a folded chain of Combat/Endgame Intrigue passes: the words
+   the engine's own event carries for it, once for the whole card. Combat
+   Intrigue already has one (EVENT_LABELS.combat_intrigue_passed); Endgame
+   Intrigue's own event label is bare ("Passed") because turnLine's head
+   names the window already (ACTION_LABELS) -- a fold has no such head per
+   seat, so it gets a matching label of its own
+   (panels.pass_fold_endgame_intrigue, UI_TEXT). */
+function passFoldLabel(actionId) {
+  return actionId === "pass_endgame_intrigue"
+    ? tNode("panels.pass_fold_endgame_intrigue")
+    : phrase(EVENT_LABELS.combat_intrigue_passed);
+}
+
+/* One compact card for a run of chained Combat/Endgame Intrigue passes
+   (logGroups, ITEM 8h): the label once, then the seats that passed, in
+   order, on the SAME wrapping line as the label (one .turn-head, like a
+   turn card's own head) -- not a full turn card per seat repeating the
+   same "pass", and not a second line below the label either. */
+function passesCard(group, glowFrom) {
+  const card = document.createElement("div");
+  card.className = "turn-card passes";
+  if (group.entries.some((entry) => entry.index >= glowFrom)) card.classList.add("fresh");
+  if (group.entries.every((entry) => entry.undone)) card.classList.add("undone");
+
+  const head = document.createElement("div");
+  head.className = "turn-head";
+  const label = document.createElement("strong");
+  label.appendChild(passFoldLabel(group.action_id));
+  head.appendChild(label);
+  group.entries.forEach((entry, index) => {
+    if (index) head.append(" · ");
+    const seat = document.createElement("span");
+    seat.className = "pass-seat";
+    if (entry.undone) seat.classList.add("undone");
+    seat.appendChild(seatToken(entry.actor, "seat-mark"));
+    seat.append(seatLeaderName(entry.actor));
+    head.appendChild(seat);
+  });
+  card.appendChild(head);
   return card;
 }
 
@@ -874,7 +949,7 @@ function renderLog() {
       node = neutralCard(group, glowFrom);
       if (!arrivedTarget && group.lastIndex >= arrivedFrom) arrivedTarget = node;
     } else {
-      node = turnCard(group, glowFrom);
+      node = group.kind === "passes" ? passesCard(group, glowFrom) : turnCard(group, glowFrom);
       if (!arrivedTarget && group.entries.some((entry) => entry.index >= arrivedFrom)) {
         arrivedTarget = node;
       }

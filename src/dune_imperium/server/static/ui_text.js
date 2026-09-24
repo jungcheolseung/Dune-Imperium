@@ -757,6 +757,10 @@ const UI_TEXT = {
     "ko": "게임 준비",
     "en": "Game setup"
   },
+  "panels.pass_fold_endgame_intrigue": {
+    "ko": "{endgame} {intrigue} 패스",
+    "en": "{endgame} {intrigue} Passed"
+  },
   "panels.reveal_preview_prefix": {
     "ko": "지금 공개하면 ",
     "en": "If revealed now: "

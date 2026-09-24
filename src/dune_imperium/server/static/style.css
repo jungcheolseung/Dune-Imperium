@@ -1406,6 +1406,10 @@ kbd {
 .turn-card.neutral .turn-head strong { opacity: 0.85; font-size: 0.85rem; letter-spacing: 0.04em; }
 .turn-card.neutral .logevent { margin-left: 0.3rem; }
 .neutral-mark { opacity: 0.6; }
+/* A folded chain of Combat/Endgame Intrigue passes (ITEM 8h): the seats
+   that passed, inline in the card's one .turn-head line, instead of a full
+   turn card each. .pass-seat.undone shares .turn-line.undone's rule below. */
+.turn-card.passes .pass-seat { display: inline-flex; align-items: center; gap: 0.25rem; }
 .turn-head { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.25rem; }
 .turn-head strong { font-size: 0.95rem; }
 .turn-where { margin-left: auto; font-weight: 700; white-space: nowrap; }
@@ -1417,7 +1421,7 @@ kbd {
 .turn-index { font-size: 0.7rem; opacity: 0.5; flex: none; }
 .turn-line.quiet { opacity: 0.5; font-size: 0.75rem; }
 .turn-line.chance { opacity: 0.6; font-size: 0.75rem; font-style: italic; }
-.turn-line.undone { opacity: 0.55; text-decoration: line-through; }
+.turn-line.undone, .turn-card.passes .pass-seat.undone { opacity: 0.55; text-decoration: line-through; }
 .turn-cards { display: flex; flex-direction: column; gap: 0.25rem; flex: none; }
 .turn-cards .vcard.small { width: 54px; }
 .logevent { margin: 0.05rem 0 0.05rem 1.4rem; font-size: 0.72rem; opacity: 0.65; }
