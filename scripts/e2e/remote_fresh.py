@@ -156,8 +156,11 @@ GLOW_CHECK_JS = """(seat) => {
   const glowingActors = new Set();
   groups.forEach((g, i) => {
     if (!expected[i] || g.kind === "neutral") return;
-    if (g.kind === "turn") glowingActors.add(g.actor);
-    else for (const e of g.entries) glowingActors.add(e.actor);
+    if (g.kind === "turn") {
+      if (g.actor !== seat) glowingActors.add(g.actor);
+    } else {
+      for (const e of g.entries) if (e.actor !== seat) glowingActors.add(e.actor);
+    }
   });
   return {
     lastOwn, expected, actual,

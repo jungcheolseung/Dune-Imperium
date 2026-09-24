@@ -149,7 +149,8 @@ def check_no_bare_option_index(page, actions: list[dict], what: str) -> None:
                 f"{what}: the rendered button for it agrees",
                 live,
             )
-        # logEventPayload (panels.js) skips the "option" key outright, so
+        # logEventPayload (panels.js) skips the "option" key of an
+        # intrigue_played event, so
         # the log card this row would draw once played never shows it
         # either -- build the intrigue_played event the engine would emit
         # (rules/intrigue.py) and render it the same way.

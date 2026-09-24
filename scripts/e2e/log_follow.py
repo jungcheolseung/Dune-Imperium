@@ -166,16 +166,14 @@ def drive_rounds(page, min_round: int, step_cap: int = 4000) -> bool:
             return False
         before, after = take_step(page)
         steps += 1
-        # The render that takes the log from empty to non-empty resets
+        # The render that takes the log from empty to non-empty sets
         # arrivedFrom to the count it just saw (panels.js renderLog): a
-        # fresh game has nothing to compare against, so that first batch of
-        # entries is the baseline, not "arrived since last seen", and
-        # check_following correctly finds no ARRIVED card at all (this is
-        # not about .fresh/glow -- under the new glow rule (ITEM 8a) a seat
-        # that has not acted yet sees its whole log glow, not none of it).
-        # That is the one step this loop does not check; every later
-        # entries-adding step has a real "before" to find the ARRIVED card
-        # against.
+        # fresh game has nothing to compare against, so that first batch is
+        # the baseline, renderLog has no arrived card to scroll to and goes
+        # to the end instead. (Glow is separate: under ITEM 8a a seat that
+        # has not acted yet sees its whole log glow.) That is the one step
+        # this loop does not check; every later entries-adding step has a
+        # real "before" to find the arrived card against.
         if after > before and before > 0:
             checked += 1
             check_following(page, f"round {round_number} step {steps}", before)

@@ -449,14 +449,12 @@ function logEventPayload(payload, eventKind) {
   const parts = [];
   const shownNames = new Set();
   for (const [key, value] of Object.entries(payload)) {
-    /* intrigue_played (rules/intrigue.py) is the only event whose step head
-       already names its "option" in words -- describeAction()'s
-       play_intrigue branch (core.js) -- so only there would a bare index
-       here ("선택지: 0") just repeat it in a form the reader can't read.
-       navigation_card_played (rules/navigation.py) also carries an
-       "option", but play_navigation has no such branch, so its log line is
-       the only place that option is named at all; skipping it there too
-       would hide it outright, not de-duplicate it. */
+    /* intrigue_played (rules/intrigue.py): the step head already names the
+       option in words (describeAction's play_intrigue branch, core.js), so
+       a bare index here ("선택지: 1") would only repeat it unreadably.
+       navigation_card_played also carries an "option", but play_navigation's
+       head prints it only as a bare index with no card beside it, so this
+       line is the one place card and option appear together; left alone. */
     if (key === "option" && eventKind === "intrigue_played") continue;
     const label = PAYLOAD_KEY_LABELS[key] || prettify(key);
     /* Before the zero filter: seat 0 is a seat. */
