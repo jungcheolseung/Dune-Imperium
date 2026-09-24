@@ -266,6 +266,27 @@ class NetworkSearchAgent:
         self._taken.record(key, result.chosen)
         return result
 
+    # -- expert iteration ---------------------------------------------------
+    def candidate_order(
+        self, observation: PlayerView, actions: Sequence[DomainAction]
+    ) -> tuple[DomainAction, ...]:
+        """``actions`` in the order the search ranks candidates (stable)."""
+
+        order = np.argsort(-self._logits(observation, actions), kind="stable")
+        return tuple(actions[int(index)] for index in order)
+
+    def evaluate_candidates(
+        self, state: GameState, seat: int, candidates: tuple[DomainAction, ...]
+    ) -> tuple[tuple[float, ...], ...]:
+        """Playout values ``values[world][candidate]`` for given candidates.
+
+        The same playouts and RNG use as a searched decision; expert
+        iteration labels a greedy player's decisions with it without letting
+        the search choose the move.
+        """
+
+        return self._search(state, seat, candidates)
+
     # -- the search ---------------------------------------------------------
     def _search(
         self, state: GameState, seat: int, candidates: tuple[DomainAction, ...]
