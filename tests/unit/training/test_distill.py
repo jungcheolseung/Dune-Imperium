@@ -27,9 +27,11 @@ from dune_imperium.training.checkpoint import (  # noqa: E402
 )
 from dune_imperium.training.distill import (  # noqa: E402
     DistillConfig,
+    _row_weights,
     clustered_difference,
     distill,
     evaluate,
+    is_clear,
     legal_log_probs,
     policy_targets,
     row_target,
@@ -339,8 +341,7 @@ def test_distill_learns_a_clean_bit_signal_and_keeps_the_best_epoch() -> None:
     assert report.best_epoch >= 1
     best = report.per_epoch[report.best_epoch - 1]
     assert (
-        best.agree_target > report.before.agree_target + 0.2
-        or best.agree_target > 0.9
+        best.agree_target > report.before.agree_target + 0.2 or best.agree_target > 0.9
     )
 
     heldout_rows = np.flatnonzero(data.heldout(config.heldout_modulus))
@@ -577,3 +578,58 @@ def test_cli_train_and_metrics_round_trip_on_synthetic_shards(tmp_path: Path) ->
     result = json.loads(metrics_path.read_text())
     assert {"pass", "checks", "student", "reference"} <= result.keys()
     assert result["checks"]["G0e_pipeline"] is True
+
+
+def test_clearhard_teaches_only_clear_search_choices() -> None:
+    """A clear choice becomes a one-hot target; anything else stays the prior.
+
+    Clear means the choice wins on both halves of the worlds and beats the
+    runner-up's mean by the margin; the other LABEL rows are weighted and
+    targeted like anchors.
+    """
+
+    legal = [3, 5, 8]
+    prior_logits = np.asarray([2.0, 0.5, 0.0], dtype=np.float32)
+    candidates = np.asarray([3, 5, -1], dtype=np.int32)
+    nan = float("nan")
+    clear = np.asarray(
+        [[0.10, 0.20, nan], [0.12, 0.22, nan], [0.05, 0.10, nan], [0.00, 0.08, nan]],
+        dtype=np.float32,
+    )
+    split = np.asarray(
+        [[0.30, 0.10, nan], [0.30, 0.10, nan], [0.00, 0.40, nan], [0.00, 0.40, nan]],
+        dtype=np.float32,
+    )
+    close = np.asarray(
+        [
+            [0.100, 0.105, nan],
+            [0.100, 0.105, nan],
+            [0.100, 0.105, nan],
+            [0.100, 0.105, nan],
+        ],
+        dtype=np.float32,
+    )
+    config = DistillConfig(mode="clearhard")
+    legal_array = np.asarray(legal, dtype=np.int32)
+
+    assert is_clear(candidates, clear, 0.01)
+    assert not is_clear(candidates, split, 0.01)  # the halves disagree
+    assert not is_clear(candidates, close, 0.01)  # margin 0.005 < 0.01
+    target = row_target(LABEL, legal_array, prior_logits, candidates, clear, config)
+    assert target.tolist() == [0.0, 1.0, 0.0]
+    prior = _prior_from_logits(prior_logits)
+    for values in (split, close):
+        unclear = row_target(
+            LABEL, legal_array, prior_logits, candidates, values, config
+        )
+        assert np.allclose(unclear, prior, atol=1e-9)
+
+    data = _stack_rows(
+        legal=[legal, legal, legal],
+        prior_logits=[prior_logits.tolist()] * 3,
+        kind=[LABEL, LABEL, ANCHOR],
+        candidates=[candidates.tolist(), candidates.tolist(), [-1, -1, -1]],
+        values=[clear.tolist(), split.tolist(), np.full((4, 3), nan).tolist()],
+    )
+    weights = _row_weights(data, np.arange(3), config)
+    assert weights.tolist() == [1.0, config.anchor_weight, config.anchor_weight]

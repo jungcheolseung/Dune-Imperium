@@ -10,7 +10,11 @@ candidates the search valued higher::
 
 so an exact tie leaves P0 unchanged, a confident prior flips only on a clear
 margin, and the argmax of pi is always a candidate. ``mode="hard"`` puts
-all mass on the search's own choice instead. ANCHOR rows target P0 itself.
+all mass on the search's own choice instead. ``mode="clearhard"`` does that
+only on rows where the search is clear -- its choice wins on both halves of
+the worlds by a mean margin of at least ``clear_margin`` -- and treats every
+other LABEL row as an anchor (target P0, anchor weight). ANCHOR rows target
+P0 itself.
 The value head is regressed on the game outcome z (winner +1, others
 -1/3). The loss is the row-weighted cross-entropy to pi plus
 ``value_coefficient`` times the value MSE; training starts from the
@@ -43,6 +47,7 @@ class DistillConfig:
 
     mode: str = "tilt"
     tau: float = 0.005
+    clear_margin: float = 0.01
     anchor_weight: float = 0.5
     value_coefficient: float = 0.5
     learning_rate: float = 1.0e-4
@@ -55,8 +60,8 @@ class DistillConfig:
     threads: int = 4
 
     def __post_init__(self) -> None:
-        if self.mode not in ("tilt", "hard"):
-            raise ValueError("mode is 'tilt' or 'hard'")
+        if self.mode not in ("tilt", "hard", "clearhard"):
+            raise ValueError("mode is 'tilt', 'hard' or 'clearhard'")
         if self.tau <= 0.0:
             raise ValueError("tau must be positive")
 
@@ -74,6 +79,43 @@ def search_choice(candidates: np.ndarray, values: np.ndarray) -> np.ndarray:
     choice = np.argmax(totals, axis=1).astype(np.int64)
     choice[(candidates >= 0).sum(axis=1) < 2] = -1
     return choice
+
+
+def is_clear(candidates: np.ndarray, values: np.ndarray, margin: float) -> bool:
+    """Whether one row's search choice is clear.
+
+    The choice (first largest sum over all worlds) must also win on the
+    first half and on the second half of the worlds, and beat the
+    runner-up's mean value by at least ``margin``.
+    """
+
+    valid = candidates >= 0
+    if valid.sum() < 2:
+        return False
+    table = values[:, valid].astype(np.float64)
+    worlds = table.shape[0]
+    if worlds < 2:
+        return False
+    choice = int(np.argmax(table.sum(axis=0)))
+    half = worlds // 2
+    first = int(np.argmax(table[:half].sum(axis=0)))
+    second = int(np.argmax(table[half:].sum(axis=0)))
+    means = table.mean(axis=0)
+    runner_up = np.max(np.delete(means, choice))
+    return first == second == choice and means[choice] - runner_up >= margin
+
+
+def clear_rows(data: ExpertData, rows: np.ndarray, margin: float) -> np.ndarray:
+    """``is_clear`` for each of ``rows`` (False for non-LABEL rows)."""
+
+    return np.asarray(
+        [
+            data.kind[row] == LABEL
+            and is_clear(data.candidates[row], data.values[row], margin)
+            for row in rows
+        ],
+        dtype=bool,
+    )
 
 
 def _softmax(logits: np.ndarray) -> np.ndarray:
@@ -102,7 +144,11 @@ def row_target(
     if np.any(legal[position] != chosen):
         raise ValueError("a candidate is not in the row's legal set")
     table = values[:, valid].astype(np.float64)
-    if config.mode == "hard":
+    if config.mode == "clearhard" and not is_clear(
+        candidates, values, config.clear_margin
+    ):
+        return prior
+    if config.mode in ("hard", "clearhard"):
         best = int(np.argmax(table.sum(axis=0)))
         target = np.zeros_like(prior)
         target[position[best]] = 1.0
@@ -453,7 +499,13 @@ def _row_weights(
     data: ExpertData, rows: np.ndarray, config: DistillConfig
 ) -> np.ndarray:
     kind = data.kind[rows]
-    base = np.where(kind == ANCHOR, config.anchor_weight, 1.0)
+    anchored = kind == ANCHOR
+    if config.mode == "clearhard":
+        # Unclear LABEL rows are trained as anchors.
+        anchored = anchored | (
+            (kind == LABEL) & ~clear_rows(data, rows, config.clear_margin)
+        )
+    base = np.where(anchored, config.anchor_weight, 1.0)
     weights: np.ndarray = (base * data.weight[rows]).astype(np.float32)
     return weights
 

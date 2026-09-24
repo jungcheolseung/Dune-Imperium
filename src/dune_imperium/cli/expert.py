@@ -195,7 +195,7 @@ def _metrics(arguments: argparse.Namespace) -> int:
 
 def _add_distill_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--data", nargs="+", required=True, help="shard directories")
-    parser.add_argument("--mode", choices=("tilt", "hard"), default="tilt")
+    parser.add_argument("--mode", choices=("tilt", "hard", "clearhard"), default="tilt")
     parser.add_argument("--tau", type=float, default=0.005)
     parser.add_argument("--epochs", type=int, default=4)
     parser.add_argument("--seed", type=int, default=0)
