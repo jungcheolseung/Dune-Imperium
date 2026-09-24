@@ -76,9 +76,9 @@ def test_a_search_seat_enters_by_file_like_a_checkpoint(tmp_path: Path) -> None:
     assert isinstance(agent, StateAgent)
     assert isinstance(agent, NetworkSearchAgent)
     # The measured defaults: effect ordering left to the network, five
-    # candidates, four worlds.
+    # candidates, eight worlds.
     assert agent.search_effect_order is False
-    assert (agent.candidates, agent.rollouts) == (5, 4)
+    assert (agent.candidates, agent.rollouts) == (5, 8)
     with pytest.raises(ValueError, match="must not be negative"):
         NetworkSearchAgent(_checkpoint(tmp_path, config), seed=-1)
     with pytest.raises(ValueError, match="positive"):

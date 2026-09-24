@@ -24,9 +24,10 @@ ordering an Agent turn's effects (``search_effect_order``). Over 300 new
 matches paired deal for deal with the full search, both guarded, that seat
 wins 61.7% against 64.3% -- a difference of -2.7pp [-10.0, +5.0], mean
 rank +0.06 [-0.08, +0.20] -- at 18s instead of 45s a match (section 13).
-With five candidates instead of three (the default since 2026-09-24) it
-wins 66.1% [63.2, 69.1] of 1,000 fresh deals against three greedy 5081,
-where the three-candidate seat won 62.0% of the same deals (section 16).
+With five candidates in eight worlds (the default since 2026-09-25) it
+wins 76.1% [73.7, 78.7] of 1,000 fresh deals against three greedy 5081,
+where three candidates in four worlds won 62.0% of the same deals
+(section 16); a searched decision costs about 0.27s.
 
 Like greedy play, the search keeps a cycle guard (``_Taken``), both for its
 own decisions and inside every playout. Without one a search seat stalled a
@@ -60,14 +61,15 @@ from dune_imperium.training.policy import without_undo_actions
 
 # Worlds and candidates are the cost knobs: a decision plays
 # ``rollouts * candidates`` playouts, each to the end of the current round.
-# Five candidates beat three: +5.6pp [+2.4, +8.9] in one-against-three win
-# share over 1,400 deals paired with the three-candidate seat (+4.1pp
-# [+0.1, +8.1] on the 1,000 fresh deals of the declared confirmation), mean
-# rank -0.09, at 31s instead of 18s a match. Eight worlds (+5.8pp over 400)
-# cost more for less; a two-round horizon was no better at 3.4x the cost;
-# one world, and two worlds with effect ordering skipped, lost
-# (docs/evaluation/m10-2026-09-22.md sections 13 and 16).
-DEFAULT_ROLLOUTS = 4
+# Five candidates in eight worlds beat five in four by +10.0pp [+6.4, +13.7]
+# in one-against-three win share over 1,000 fresh deals paired deal for deal
+# (mean rank -0.21), and five in four beat three in four by +4.1pp
+# [+0.1, +8.1]: against three greedy 5081 the three settings win 76.1%,
+# 66.1% and 62.0% of the same deals, at 58s, 31s and 18s a match. Eight
+# candidates in four worlds were no better than five; a two-round horizon
+# gained nothing at 3.4x the cost; one world, and two worlds with effect
+# ordering skipped, lost (docs/evaluation/m10-2026-09-22.md sections 13, 16).
+DEFAULT_ROLLOUTS = 8
 DEFAULT_CANDIDATES = 5
 DEFAULT_HORIZON_ROUNDS = 1
 # Ordering an Agent turn's effects is half of all searched decisions and
