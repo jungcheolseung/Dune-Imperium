@@ -1241,6 +1241,10 @@ const UI_TEXT = {
     "ko": "삭제",
     "en": "Delete"
   },
+  "screens.delete_confirm_button": {
+    "ko": "정말 삭제?",
+    "en": "Delete for good?"
+  },
   "screens.empty_seat": {
     "ko": "빈 좌석",
     "en": "Empty seat"

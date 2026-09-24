@@ -49,8 +49,33 @@ async function loadGameList() {
   }
 }
 
+/* The delete button arms on a first click (text -> "정말 삭제?") instead of
+   deleting at once, so a misclick next to the identical Load button cannot
+   throw a save away by itself; a second click on the same armed button
+   within SAVE_DELETE_ARM_MS deletes for real. Anything else -- the timeout,
+   a click on a different target, or the list being redrawn -- reverts it.
+   Only one button is ever armed at a time. A second click sooner than
+   SAVE_DELETE_GUARD_MS after arming is the same double-click gesture, not
+   a decision, so it leaves the button armed. */
+const SAVE_DELETE_ARM_MS = 4000;
+const SAVE_DELETE_GUARD_MS = 400;
+let armedSaveDelete = null; // { button, timer, at } while a delete button is armed
+
+function disarmSaveDelete() {
+  if (!armedSaveDelete) return;
+  clearTimeout(armedSaveDelete.timer);
+  armedSaveDelete.button.classList.remove("armed");
+  armedSaveDelete.button.textContent = t("screens.delete_button");
+  armedSaveDelete = null;
+}
+
+document.addEventListener("click", (event) => {
+  if (armedSaveDelete && event.target !== armedSaveDelete.button) disarmSaveDelete();
+});
+
 async function loadSaveList() {
   const saves = await api("/saves");
+  disarmSaveDelete();
   el("save-list-wrap").hidden = saves.length === 0;
   const list = el("save-list");
   list.textContent = "";
@@ -81,12 +106,24 @@ async function loadSaveList() {
       }
     });
     const remove = document.createElement("button");
+    remove.className = "save-delete";
     remove.textContent = t("screens.delete_button");
     remove.addEventListener("click", async () => {
-      await api(`/saves/${entry.save_id}`, { method: "DELETE" }).catch(
-        () => {}
-      );
-      loadSaveList().catch(() => {});
+      if (armedSaveDelete && armedSaveDelete.button === remove) {
+        if (performance.now() - armedSaveDelete.at < SAVE_DELETE_GUARD_MS) return;
+        clearTimeout(armedSaveDelete.timer);
+        armedSaveDelete = null;
+        await api(`/saves/${entry.save_id}`, { method: "DELETE" }).catch(() => {});
+        loadSaveList().catch(() => {});
+        return;
+      }
+      disarmSaveDelete();
+      remove.classList.add("armed");
+      remove.textContent = t("screens.delete_confirm_button");
+      const timer = setTimeout(() => {
+        if (armedSaveDelete && armedSaveDelete.button === remove) disarmSaveDelete();
+      }, SAVE_DELETE_ARM_MS);
+      armedSaveDelete = { button: remove, timer, at: performance.now() };
     });
     item.append(load, " ", remove);
     list.appendChild(item);
