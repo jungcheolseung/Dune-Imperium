@@ -625,10 +625,10 @@ function neutralTitle(group) {
   return parts.length ? parts.join(" · ") : t("panels.neutral_default");
 }
 
-function neutralCard(group, freshFrom) {
+function neutralCard(group, glowFrom) {
   const card = document.createElement("div");
   card.className = "turn-card neutral";
-  if (group.lastIndex >= freshFrom) card.classList.add("fresh");
+  if (group.lastIndex >= glowFrom) card.classList.add("fresh");
   const head = document.createElement("div");
   head.className = "turn-head";
   const mark = document.createElement("span");
@@ -694,12 +694,12 @@ function turnLine(entry) {
   return line;
 }
 
-function turnCard(group, freshFrom) {
+function turnCard(group, glowFrom) {
   const card = document.createElement("div");
   card.className = "turn-card";
   const color = SEAT_COLORS[group.actor];
   card.style.borderLeftColor = color;
-  if (group.entries.some((entry) => entry.index >= freshFrom)) card.classList.add("fresh");
+  if (group.entries.some((entry) => entry.index >= glowFrom)) card.classList.add("fresh");
   if (group.entries.every((entry) => entry.undone)) card.classList.add("undone");
 
   const player = state.view && state.view.players[group.actor];
@@ -770,18 +770,40 @@ function undoRow(entry) {
   return row;
 }
 
-/* Entries from this index on arrived since the viewing seat last acted;
-   their turn cards are marked and the list scrolls to the first one. */
+/* Entries from this index on arrived since the previous render: the list
+   scrolls to the first card that holds one of them (arrivedFrom in
+   renderLog). Locally a whole AI batch lands in one render, so this is
+   close to "since the viewing seat last acted" (glowFrom) -- not exactly
+   equal, since glowFrom also leaves out the viewing seat's own new card,
+   which this number includes. In remote play every opponent step triggers
+   its own render, so this number alone would only ever cover the last
+   step -- see glowFrom for what actually glows. */
 let logSeen = { gameId: null, count: 0, freshFrom: 0 };
 
 /* The scrollTop the renderer itself set on its last automatic scroll (to the
-   first fresh card, or to the end), per game. Whether the *next* render
+   first arrived card, or to the end), per game. Whether the *next* render
    should keep following is decided from this, not from "near the bottom"
    alone: a fresh batch taller than the list (the leader draft, a round
    change) lands the auto-scroll well short of the end, and comparing only
    position then reads that as the reader having wandered off and never
    follows again. */
 let logAutoTop = { gameId: null, top: 0 };
+
+/* Where "new to `seat`" starts: one past `seat`'s own last live entry (its
+   last non-undone action, or its last undo marker, whichever is later in
+   the log). Everything from there on is new to that seat, whether it
+   arrived in one render or many -- which is what a remote table needs,
+   since there every opponent step is its own render and "since the
+   previous render" (logSeen.freshFrom) would only ever show the last one.
+   0 when the seat has not acted yet, so its whole log is new. */
+function ownGlowFrom(seat, entries) {
+  let last = -1;
+  for (const entry of entries) {
+    if (entry.type === "action" && entry.actor === seat && !entry.undone) last = entry.index;
+    else if (entry.type === "undo" && entry.seat === seat) last = entry.index;
+  }
+  return last + 1;
+}
 
 function renderLog() {
   const panel = el("action-log");
@@ -810,7 +832,17 @@ function renderLog() {
     return;
   }
   panel.hidden = false;
-  let freshFrom = log.freshFrom;
+  /* arrivedFrom only decides the auto-scroll target (below); glowFrom
+     decides which cards get the .fresh class. In review both are the
+     cursor's own freshFrom, as before -- review has one reader and no
+     per-step renders to tell apart. Live, arrivedFrom keeps today's "since
+     the previous render" bookkeeping, and glowFrom is the viewing seat's
+     own boundary (ownGlowFrom), so a remote table's separate renders for
+     each opponent step still glow every step since this seat's own last
+     action, not just the last one to arrive. A spectator (no seat) has no
+     "own last action", so it falls back to arrivedFrom like before. */
+  let arrivedFrom = log.freshFrom;
+  let glowFrom = log.freshFrom;
   if (!state.review) {
     if (logSeen.gameId !== state.gameId) {
       logSeen = { gameId: state.gameId, count: log.count, freshFrom: log.count };
@@ -818,7 +850,9 @@ function renderLog() {
       logSeen.freshFrom = logSeen.count;
       logSeen.count = log.count;
     }
-    freshFrom = logSeen.freshFrom;
+    arrivedFrom = logSeen.freshFrom;
+    const seat = activeSeat();
+    glowFrom = typeof seat === "number" ? ownGlowFrom(seat, log.entries) : arrivedFrom;
   }
 
   const heading = document.createElement("h2");
@@ -826,10 +860,26 @@ function renderLog() {
   panel.appendChild(heading);
   const list = document.createElement("div");
   list.className = "log-list";
+  /* The scroll target is picked from the groups themselves (which card
+     first reaches arrivedFrom), not by re-querying the DOM for .fresh --
+     that class now tracks glowFrom, which can lag behind arrivedFrom (a
+     seat's own new card is never fresh to itself) or sit ahead of it (a
+     remote reader catching up on several opponents' steps at once). */
+  let arrivedTarget = null;
   for (const group of logGroups(log.entries)) {
-    if (group.kind === "undo") list.appendChild(undoRow(group.entry));
-    else if (group.kind === "neutral") list.appendChild(neutralCard(group, freshFrom));
-    else list.appendChild(turnCard(group, freshFrom));
+    let node;
+    if (group.kind === "undo") {
+      node = undoRow(group.entry);
+    } else if (group.kind === "neutral") {
+      node = neutralCard(group, glowFrom);
+      if (!arrivedTarget && group.lastIndex >= arrivedFrom) arrivedTarget = node;
+    } else {
+      node = turnCard(group, glowFrom);
+      if (!arrivedTarget && group.entries.some((entry) => entry.index >= arrivedFrom)) {
+        arrivedTarget = node;
+      }
+    }
+    list.appendChild(node);
   }
   panel.appendChild(list);
   /* Review drives the cursor itself, so it always shows the step it moved to. */
@@ -837,8 +887,7 @@ function renderLog() {
     list.scrollTop = previousTop;
     return;
   }
-  const first = list.querySelector(".turn-card.fresh");
-  if (first) list.scrollTop = Math.max(0, first.offsetTop - list.offsetTop - 6);
+  if (arrivedTarget) list.scrollTop = Math.max(0, arrivedTarget.offsetTop - list.offsetTop - 6);
   else list.scrollTop = list.scrollHeight;
   /* Remember this render's own offset so the next one can tell "still
      following" from "wandered off, coincidentally near the same spot".

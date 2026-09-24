@@ -11,11 +11,18 @@ thousands of pixels below.
 
 This drives a human seat through several rounds of a full-expansion,
 leader-draft game and checks, after every step that added log entries, that
-the newest ("fresh") card is actually on screen -- which the leader draft's
-own batch (four picks landing in one render) is tall enough to break on the
-old client. It then checks the two behaviours the fix must not disturb: a
-reader who scrolled up to read an earlier turn keeps their exact place, and
-scrolling back to the end resumes following.
+the card holding the newly arrived entries is actually on screen -- which
+the leader draft's own batch (four picks landing in one render) is tall
+enough to break on the old client. It then checks the two behaviours the
+fix must not disturb: a reader who scrolled up to read an earlier turn
+keeps their exact place, and scrolling back to the end resumes following.
+
+Looks for the ARRIVED card (the first one holding an entry with index >=
+the log length before the step) rather than a `.turn-card.fresh` one:
+panels.js (ITEM 8a, 2026-09-25) split the old single "fresh" number into
+arrivedFrom, which still decides this scroll target, and glowFrom, which
+now decides the .fresh class from the viewing seat's own last action -- a
+mid-turn step can arrive with nothing fresh to glow.
 """
 
 from __future__ import annotations
@@ -85,16 +92,25 @@ def take_step(page) -> tuple[int, int]:
     return before, after
 
 
-def log_follow_state(page) -> dict:
-    """Whether the newest ('fresh') card is actually inside the visible
-    .log-list viewport right now, measured with getBoundingClientRect (not
-    by re-deriving it from scroll math, which is exactly what the bug got
-    wrong)."""
+def log_follow_state(page, before: int) -> dict:
+    """Whether the ARRIVED card -- the first one holding a log entry with
+    index >= `before` -- is actually inside the visible .log-list viewport
+    right now, measured with getBoundingClientRect (not by re-deriving it
+    from scroll math, which is exactly what the bug got wrong)."""
     return page.evaluate(
-        """() => {
+        """(before) => {
             const list = document.querySelector('#action-log .log-list');
             if (!list) return { present: false };
-            const first = list.querySelector('.turn-card.fresh');
+            const groups = logGroups(state.log.entries);
+            const cards = [...list.querySelectorAll('.turn-card')];
+            if (cards.length !== groups.length) return { present: false };
+            let first = null;
+            groups.forEach((g, i) => {
+                if (first) return;
+                const hit = g.kind === 'neutral' ? g.lastIndex >= before
+                    : g.kind === 'turn' && g.entries.some((e) => e.index >= before);
+                if (hit) first = cards[i];
+            });
             if (!first) return { present: false };
             const listRect = list.getBoundingClientRect();
             const cardRect = first.getBoundingClientRect();
@@ -106,13 +122,14 @@ def log_follow_state(page) -> dict:
                 listTop: Math.round(listRect.top),
                 listBottom: Math.round(listRect.bottom),
             };
-        }"""
+        }""",
+        before,
     )
 
 
-def check_following(page, label: str) -> None:
-    result = log_follow_state(page)
-    if not check.ok(result["present"], f"{label}: a fresh turn card exists", result):
+def check_following(page, label: str, before: int) -> None:
+    result = log_follow_state(page, before)
+    if not check.ok(result["present"], f"{label}: an arrived card exists", result):
         return
     check.ok(
         result["inView"],
@@ -154,7 +171,7 @@ def drive_rounds(page, min_round: int, step_cap: int = 4000) -> bool:
         # be fresh against.
         if after > before and before > 0:
             checked += 1
-            check_following(page, f"round {round_number} step {steps}")
+            check_following(page, f"round {round_number} step {steps}", before)
     check.ok(
         checked > 0,
         "at least one entries-adding step was checked while following",
@@ -203,7 +220,7 @@ def check_scroll_to_end_resumes_following(page) -> None:
     )
     before, after = take_step(page)
     check.ok(after > before, "the move actually added a log entry", (before, after))
-    check_following(page, "after scrolling to the end and moving again")
+    check_following(page, "after scrolling to the end and moving again", before)
 
 
 def main() -> None:
