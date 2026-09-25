@@ -419,6 +419,12 @@ def test_without_the_wall_the_detonation_variant_disappears() -> None:
 SERVO_STACKS = (("servo_receivers",), (), ())
 
 
+def _decider(state: GameState) -> int:
+    decision = state.decision_stack[-1].decision
+    assert isinstance(decision, PlayerDecision)
+    return decision.owner
+
+
 def _servo_visit(leader_id: str, **overrides: object) -> GameState:
     return _visit(
         _turn_state(_owner(leader_id=leader_id, **overrides), stacks=SERVO_STACKS),
@@ -442,7 +448,7 @@ def test_servo_receivers_uses_the_leaders_signet_ring_ability() -> None:
     ]
     # Nothing else was pending at Assembly Hall: the turn moved on.
     assert result.state.decision_stack[-1].kind == "turn"
-    assert result.state.decision_stack[-1].decision.owner == 1
+    assert _decider(result.state) == 1
 
     drawn = apply_tech_acquisition(
         _servo_visit("muad_dib"), _tech_actions(state)["servo_receivers"]
@@ -469,7 +475,7 @@ def test_servo_receivers_opens_a_signet_choice_frame() -> None:
     done = engine.apply(opened, trash).state
     assert dict(trash.arguments)["card_id"] in done.players[0].trashed
     assert all(frame.kind != "leader_signet" for frame in done.decision_stack)
-    assert done.decision_stack[-1].decision.owner == 1
+    assert _decider(done) == 1
 
 
 def test_servo_receivers_signet_reads_the_agent_turns_space() -> None:
@@ -487,7 +493,7 @@ def test_steersman_y_rkoon_has_no_signet_ring_ability_to_use() -> None:
     result = apply_tech_acquisition(state, _tech_actions(state)["servo_receivers"])
     assert "servo_receivers" in result.state.players[0].tech_ids
     assert result.events[-1].kind == "leader_signet_unavailable"
-    assert result.state.decision_stack[-1].decision.owner == 1
+    assert _decider(result.state) == 1
 
 
 def test_servo_receivers_signet_outside_an_agent_turn() -> None:
@@ -509,11 +515,13 @@ def test_servo_receivers_signet_outside_an_agent_turn() -> None:
         _owner(leader_id="liet_kynes", influence=Influence(emperor=2)),
         stacks=SERVO_STACKS,
     )
-    opened = push_tech_acquisition(_reveal(liet).state, 0, discount=1, source="t")
-    bought = apply_tech_acquisition(
-        opened.state, _tech_actions(opened.state)["servo_receivers"]
+    liet_opened = push_tech_acquisition(
+        _reveal(liet).state, 0, discount=1, source="t"
     ).state
-    assert bought.players[0].resources.water == 2
+    liet_bought = apply_tech_acquisition(
+        liet_opened, _tech_actions(liet_opened)["servo_receivers"]
+    ).state
+    assert liet_bought.players[0].resources.water == 2
 
 
 @pytest.mark.parametrize(

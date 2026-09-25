@@ -211,8 +211,10 @@ def test_hungry_for_spice_counts_only_y_rkoons_own_turn() -> None:
 
     # Three spice during an opponent's turn: no draw.
     theirs = _opponent_turn(own_turn)
-    fed = grant_hungry_for_spice(RuleResult(state=_with_spice(theirs, 3)), theirs)
-    assert fed.state.players[0].hand == ()
+    fed = grant_hungry_for_spice(
+        RuleResult(state=_with_spice(theirs, 3)), theirs
+    ).state
+    assert fed.players[0].hand == ()
 
     # Three spice gained by the step that closed his own turn still draws.
     closed = _with_spice(_opponent_turn(own_turn), 3)
