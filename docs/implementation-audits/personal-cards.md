@@ -88,7 +88,9 @@ from a player's personal deck. General Agent, Reveal, and deck-building rules in
   Reveal values.
 - Chani, Clever Tactician's linked printed image was visually checked on
   2026-08-26 for its unit condition, troop-retreat cost, Agent icons, and Reveal
-  values.
+  values. That 2026-08-26 check misread the Agent icons: a re-read on
+  2026-09-26 found the first icon is the blue Fremen sietch badge, not the red
+  Spacing Guild infinity symbol.
 - Steersman's linked printed image was visually checked on 2026-08-26 for its
   acquisition Influence, Agent draw and recall icons, destinations, and Reveal
   values.
