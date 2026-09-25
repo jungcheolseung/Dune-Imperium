@@ -50,8 +50,9 @@ Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 �
 | 카드·리더·Conflict·Contract·기술 타일·사다우카 지휘관 기술 토큰 **이름** | **한글판 인쇄가 확인된 것은 그 한국어**, 나머지는 영어 그대로(2026-09-23 사용자 결정; 같은 날 혈통·불멸까지). 인쇄 제목은 한국어판 카드 실물 사진에서 두 번 독립적으로 읽어 일치한 것만 쓴다(`src/dune_imperium/display/names_ko.py`, 출처는 그 docstring). 엔진의 영어 이름이 인쇄되지 않은 구분자를 달면(계약의 I·II·3+, Skirmish의 배틀 아이콘) 한국어 이름도 같은 구분자를 단다 — 배틀 아이콘은 아래 표의 말로. 항해 카드는 제목이 인쇄되지 않아 영어 그대로 |
 | **공간 이름** | **영어 그대로** |
 | 카드 그림 | 화면 언어를 따른다 — 한국어 화면은 한글판 그림(있을 때), 영어 화면은 영어판 그림 |
-| 카드 인쇄 텍스트 | **영어 그대로 + 이 표를 쓰는 용어 툴팁** |
-| **엔진이 생성하는 효과 문구**(Contract 조건·보상, Conflict 보상, 공간 옵션 등 — 카드에 인쇄된 문구가 아니라 `display/*.py`가 카드 데이터로부터 만드는 문장) | **이 표의 한국어로 새로 렌더링**(2026-09-25 사용자 결정, K1). `{term}`/`{term:count}` 플레이스홀더로 이 표의 단어·아이콘을 그대로 가리키며, 영어가 그리는 아이콘과 똑같은 아이콘 집합을 그려야 한다(공간 이름은 여기서도 영어 그대로) |
+| 카드·Contract·Conflict·기술 타일·공간의 **효과 문구** | **화면 언어를 따른다**(2026-09-25 사용자 결정). 화면의 효과 문장은 카드 인쇄를 옮긴 것이 아니라 `display/*.py`가 엔진 데이터로 짓는 문장이다 — 카드 능력(`cards.py`·`tokens.py`), 책략·운항 카드(`effect_dsl_text.py`), 계약·교전 보상(`structs.py`), 공간(`spaces.py`), 기술 타일·지휘관 기술 토큰(`bloodlines.py`), 선택 줄의 효과 설명(`actions.py`). 한국어는 그 옆의 `*_ko` 쌍둥이가 이 표의 단어와 한글판 카드의 문체([`korean-card-style.md`](korean-card-style.md))로 짓고, 영어가 아이콘으로 그리는 자리는 `{term}`/`{term:count}` 자리표시자로 같은 아이콘을 그린다. 공간 이름은 여기서도 영어 그대로 |
+| 리더 능력·인장 반지 능력 **문구** | **한국어 화면은 한글판 카드 인쇄를 그대로 옮긴다**(2026-09-25 사용자 결정). 이름 행과 같이 두 번 독립적으로 옮기고 대조했다(`display/leaders_ko.py`, 기록은 [`../implementation-audits/leaders-ko.md`](../implementation-audits/leaders-ko.md)). 인쇄가 이 표와 다른 단어를 쓴 곳(Liet Kynes가 모래벌레에 "소환")이나 공간 이름을 한국어로 적은 곳(시치 타브르, 튜엑의 시치)도 인쇄대로다. 한글판 스캔이 없는 Reverend Mother Jessica는 영어 |
+| 카드 그림에 인쇄된 문구 | 그림 그대로 — 한국어 화면은 한글판 그림이 있을 때 그것 |
 
 아래 표의 "적용"은 UI가 그 한국어를 쓰는지다. `참고`는 룰북에 있지만 위 정책에
 따라 화면에서는 영어를 유지하는 항목이다.
@@ -120,6 +121,7 @@ Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 �
 | Deploy (to the Conflict) | 배치 | `[Main p. 10]`("부대를 교전 칸에 배치할 수 있습니다"), `[Main p. 20]`("Control" 항목: "개인 공급처에 있던 병력 1을 교전 칸에 배치할 수 있습니다") | 적용 |
 | Recall Spy | 스파이 소환 | `[Main p. 20]` | 적용 |
 | Infiltrate | 침투 | `[Main p. 11]` ("침투: 다른 플레이어의 에이전트가 이미 놓여 있는 게임판 장소에…") | 적용 |
+| spying on (a Faction) | 정탐 | `[KO card: Guild Spy]` ("당신이 정탐하고 있는 각각의 팩션에서") | 적용 |
 | Gather Intelligence | 정보 수집 | `[Main p. 11]` ("정보 수집: 당신이 게임판 장소에 에이전트를 보낼 때마다…") | 적용 |
 | Maker Hooks | 메이커 작살 | `[Main p. 20]` | 적용 |
 | Shield Wall | 방어벽 | `[Main p. 20]` | 적용 |
@@ -259,6 +261,7 @@ Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 �
 | Spy with Deep Cover | 잠복 스파이 | `[Bloodlines p. 12]` | 적용 |
 | Twisted Intrigue | 뒤틀린 책략 | `[Bloodlines p. 12]` | 적용 |
 | Navigation card | 운항 카드 | `[Bloodlines p. 12]` | 적용 |
+| Navigation slot | 운항 구획 | `[KO card: Navigation Card 3]` ("이 카드가 운항 구획 4에 놓여 있었다면") | 적용 |
 | Tactics token / track | 전술 토큰 / 전술 트랙 | `[Bloodlines p. 12]` | 적용 |
 | Rival Tech Tile | 라이벌 기술 타일 | `[Bloodlines p. 12]` | 범위 밖(1인 게임) |
 | Tuek's Sietch | 튜엑의 시치 | `[Bloodlines p. 12]` | 참고(공간 이름) |
@@ -309,3 +312,4 @@ Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 �
 3. 고유명사 중 공간 이름은 영어를 유지한다. 카드·리더·Conflict·Contract·기술
    타일·사다우카 지휘관 기술 토큰 이름은 한글판 인쇄가 확인된 것(`display/names_ko.py`)만
    한국어이고, 나머지는 영어를 유지한다 — 인쇄를 확인하지 않은 이름을 번역해 채우지 않는다.
+   리더 능력·인장 반지 문구는 한글판 인쇄를 옮긴 것이라 그 안의 공간 이름도 인쇄대로다.
