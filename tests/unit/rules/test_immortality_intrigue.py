@@ -274,13 +274,14 @@ def test_tleilaxu_puppet_played_in_the_owners_reveal_pays_that_reveal() -> None:
     revealed = begin_reveal_turn(
         state, DomainAction(action_id="reveal_turn", actor=0)
     ).state
-    before = dict(revealed.decision_stack[-1].context)
+    persuasion = dict(revealed.decision_stack[-1].context)["persuasion"]
+    assert isinstance(persuasion, int)
     assert _playable(revealed, puppet) == {0}
     played = UprisingRulesEngine().apply(revealed, _play(puppet)).state
     after = dict(played.decision_stack[-1].context)
     assert played.decision_stack[-1].kind == FrameKind.REVEAL
-    assert after["persuasion"] == before["persuasion"] + 1
-    assert after["persuasion_generated"] == before["persuasion"] + 1
+    assert after["persuasion"] == persuasion + 1
+    assert after["persuasion_generated"] == persuasion + 1
     assert played.players[0].reveal_persuasion_round_bonus == 0
     assert puppet in played.intrigue_discard
 
