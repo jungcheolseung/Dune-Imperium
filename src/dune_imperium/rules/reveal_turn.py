@@ -1160,7 +1160,12 @@ def legal_reveal_troop_move_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Shadout Mapes: "You may deploy or retreat one troop"."""
+    """Shadout Mapes: "You may deploy or retreat one of your troops".
+
+    A Sardaukar Commander "is a 'troop' that's worth 2 strength in the
+    Conflict" [Bloodlines p. 4], so a garrison or Conflict Commander is a
+    legal unit too; ``commanders`` 1 names it, as the other troop retreats do.
+    """
 
     context = _reveal_choice_frame_context(
         state, player, PersonalCardRevealChoiceEffect.MAY_DEPLOY_OR_RETREAT_ONE_TROOP
@@ -1171,14 +1176,25 @@ def legal_reveal_troop_move_actions(
     return (
         DomainAction(action_id="decline_reveal_troop_move", actor=player),
         *(
-            (DomainAction(action_id="deploy_reveal_card_troop", actor=player),)
-            if owner.troops_garrison >= 1
-            else ()
-        ),
-        *(
-            (DomainAction(action_id="retreat_reveal_card_troop", actor=player),)
-            if owner.troops_conflict >= 1
-            else ()
+            DomainAction(
+                action_id=action_id,
+                actor=player,
+                arguments=(("commanders", 1),) if commander else (),
+            )
+            for action_id, troops, commanders in (
+                (
+                    "deploy_reveal_card_troop",
+                    owner.troops_garrison,
+                    owner.commanders_garrison,
+                ),
+                (
+                    "retreat_reveal_card_troop",
+                    owner.troops_conflict,
+                    owner.commanders_conflict,
+                ),
+            )
+            for commander, available in ((False, troops), (True, commanders))
+            if available >= 1
         ),
     )
 
@@ -1187,7 +1203,7 @@ def apply_reveal_troop_move(
     state: GameState,
     action: DomainAction,
 ) -> RuleResult:
-    """Decline, deploy one garrison troop, or retreat one Conflict troop."""
+    """Decline, deploy one garrison unit, or retreat one Conflict unit."""
 
     if action not in legal_reveal_troop_move_actions(state, action.actor):
         raise ValueError("action is not a legal Reveal troop move")
@@ -1207,21 +1223,26 @@ def apply_reveal_troop_move(
                 ),
             ),
         )
+    commanders = 1 if dict(action.arguments).get("commanders") == 1 else 0
     if action.action_id == "deploy_reveal_card_troop":
-        counted = add_units_to_reveal(popped, action.actor, troops=1)
+        counted = add_units_to_reveal(
+            popped, action.actor, troops=1 - commanders, commanders=commanders
+        )
         return RuleResult(
             state=counted.state,
             events=(
                 GameEvent(
                     event_id=f"{source}:deployed",
-                    kind="troops_deployed",
+                    kind="commanders_deployed" if commanders else "troops_deployed",
                     payload=(("count", 1), ("player", action.actor)),
                 ),
                 *counted.events,
             ),
         )
     before = popped.players[action.actor].combat_strength
-    retreated = retreat_units(popped, action.actor, source, troops=1)
+    retreated = retreat_units(
+        popped, action.actor, source, troops=1 - commanders, commanders=commanders
+    )
     delta = retreated.state.players[action.actor].combat_strength - before
     next_state = retreated.state
     if delta:
@@ -2890,8 +2911,13 @@ def _reveal_choice_effect_is_available(
             )
         )
         or (
+            # Shadout Mapes: a Commander is a troop [Bloodlines p. 4].
             effect is PersonalCardRevealChoiceEffect.MAY_DEPLOY_OR_RETREAT_ONE_TROOP
-            and (owner.troops_garrison >= 1 or owner.troops_conflict >= 1)
+            and owner.troops_garrison
+            + owner.commanders_garrison
+            + owner.troops_conflict
+            + owner.commanders_conflict
+            >= 1
         )
         or (
             # Tleilaxu Surgeon: any two troops, from either zone (OQ-053).

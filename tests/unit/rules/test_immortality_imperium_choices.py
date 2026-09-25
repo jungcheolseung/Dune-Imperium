@@ -23,6 +23,7 @@ from dune_imperium.core import (
     PlayerDecision,
     PlayerState,
     Resources,
+    RuleResult,
 )
 from dune_imperium.core.chance import ChanceResolver
 from dune_imperium.core.decisions import ChanceDecision
@@ -58,9 +59,11 @@ from dune_imperium.rules.reveal_turn import (
     legal_reveal_troop_move_actions,
     legal_reveal_troop_sacrifice_actions,
 )
+from dune_imperium.rules.strength import refresh_pre_reveal_strength
 from dune_imperium.simulation.invariants import check_observation_privacy
 
 IMMORTALITY = RulesetConfig(immortality=True)
+IMMORTALITY_BLOODLINES = RulesetConfig(immortality=True, bloodlines=True)
 STARTERS = starting_deck_instance_ids(0, immortality=True)
 DAGGER = next(card for card in STARTERS if "dagger:0" in card)
 FACE_DANCER = "tleilaxu:face_dancer:0"
@@ -410,6 +413,90 @@ def test_shadout_mapes_deploys_or_retreats_one_troop_at_reveal() -> None:
     assert declined.decision_stack[-1].kind == FrameKind.REVEAL
 
 
+# Shadout Mapes: "You may deploy or retreat one of your troops." [Shadout
+# Mapes card]; a Sardaukar Commander "is a 'troop' that's worth 2 strength in
+# the Conflict" [Bloodlines p. 4] (docs/rules/bloodlines.md: "troop을 대상으로
+# 하는 효과(예: Go to Ground의 retreat)는 Commander에도 적용된다"), so with
+# Bloodlines a Commander is a legal unit for either move.
+def _mapes_reveal(
+    *, troops_garrison: int = 0, troops_conflict: int = 0, **extra: object
+) -> GameState:
+    owner = _owner(
+        (_card("shadout_mapes"),),
+        troops_supply=12 - troops_garrison - troops_conflict,
+        troops_garrison=troops_garrison,
+        troops_conflict=troops_conflict,
+        **extra,
+    )
+    state = _state(owner, config=IMMORTALITY_BLOODLINES)
+    return _reveal(refresh_pre_reveal_strength(RuleResult(state=state)).state)
+
+
+def test_shadout_mapes_deploys_a_garrison_commander() -> None:
+    revealed = _mapes_reveal(
+        troops_garrison=0,
+        commanders_garrison=1,
+        skill_ids=("skill:charismatic:0", "skill:loyal:0"),
+        influence=Influence(emperor=3),
+    )
+    # The Commander alone opens the choice (it used to need a plain troop).
+    assert revealed.decision_stack[-1].kind == FrameKind.REVEAL_CHOICE
+    decline, deploy = legal_reveal_troop_move_actions(revealed, 0)
+    assert decline.action_id == "decline_reveal_troop_move"
+    assert deploy == DomainAction("deploy_reveal_card_troop", 0, (("commanders", 1),))
+    result = UprisingRulesEngine().apply(revealed, deploy)
+    owner = result.state.players[0]
+    assert (owner.commanders_conflict, owner.commanders_garrison) == (1, 0)
+    context = dict(result.state.decision_stack[-1].context)
+    # Commander 2 + Mapes' sword; the Skills switch on with the Commander:
+    # Loyal's 2 strength and Charismatic's late Persuasion (OQ-028 (c)).
+    assert context["strength"] == 2 + 1
+    assert owner.combat_strength == 2 + 1 + 2
+    assert context["persuasion"] == 1 + 1
+    assert "commanders_deployed" in {event.kind for event in result.events}
+
+
+def test_shadout_mapes_retreats_the_last_commander_and_its_skills() -> None:
+    revealed = _mapes_reveal(
+        troops_garrison=0,
+        commanders_conflict=1,
+        skill_ids=("skill:loyal:0",),
+        influence=Influence(emperor=3),
+    )
+    # Commander 2 + Loyal 2 before the Reveal, + Mapes' sword.
+    assert revealed.players[0].combat_strength == 5
+    _decline, retreat = legal_reveal_troop_move_actions(revealed, 0)
+    assert retreat == DomainAction("retreat_reveal_card_troop", 0, (("commanders", 1),))
+    retreated = UprisingRulesEngine().apply(revealed, retreat).state
+    owner = retreated.players[0]
+    assert (owner.commanders_conflict, owner.commanders_garrison) == (0, 1)
+    # No unit left in the Conflict: no strength and no active Skill; "she will
+    # no longer have any Sardaukar Commanders in the Conflict, and so will not
+    # get any extra strength" [Bloodlines p. 4].
+    assert owner.combat_strength == 0 and owner.skill_strength_applied == 0
+    assert dict(retreated.decision_stack[-1].context)["strength"] == 0
+
+
+def test_shadout_mapes_offers_both_unit_kinds_in_each_zone() -> None:
+    revealed = _mapes_reveal(
+        troops_garrison=1,
+        troops_conflict=1,
+        commanders_garrison=1,
+        commanders_conflict=1,
+    )
+    actions = legal_reveal_troop_move_actions(revealed, 0)
+    assert actions == (
+        DomainAction("decline_reveal_troop_move", 0),
+        DomainAction("deploy_reveal_card_troop", 0),
+        DomainAction("deploy_reveal_card_troop", 0, (("commanders", 1),)),
+        DomainAction("retreat_reveal_card_troop", 0),
+        DomainAction("retreat_reveal_card_troop", 0, (("commanders", 1),)),
+    )
+    codec = ActionCodec(IMMORTALITY_BLOODLINES)
+    for action in actions:
+        assert codec.decode(codec.encode(action), 0) == action
+
+
 def test_tleilaxu_master_acquires_a_cheap_card_and_researches_at_reveal() -> None:
     master = _card("tleilaxu_master")
     unmarked = _place(_state(_owner((master,))), master, "assembly_hall")
@@ -563,6 +650,22 @@ def test_the_codec_holds_the_slice_choices_only_with_immortality() -> None:
         for template in ActionCodec(RulesetConfig()).catalog
         if template.action_id == "resume_reveal_choice"
     }
+    # Mapes' Commander moves exist only where Commanders do [Bloodlines p. 4].
+    assert {
+        (template.action_id, template.arguments)
+        for template in ActionCodec(IMMORTALITY_BLOODLINES).catalog
+        if template.action_id.endswith("_reveal_card_troop")
+    } == {
+        ("deploy_reveal_card_troop", ()),
+        ("retreat_reveal_card_troop", ()),
+        ("deploy_reveal_card_troop", (("commanders", 1),)),
+        ("retreat_reveal_card_troop", (("commanders", 1),)),
+    }
+    assert all(
+        template.arguments == ()
+        for template in codec.catalog
+        if template.action_id.endswith("_reveal_card_troop")
+    )
 
 
 def test_an_acquired_research_box_stacks_above_the_acquiring_frame() -> None:
