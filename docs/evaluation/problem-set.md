@@ -81,3 +81,23 @@ Immortality). 캔 명령은 파일의 `note`에 있다. 원자료 git 무시 `ab
   고쳤지만 `s2452/p0`를 새로 틀렸다). sandworm 문항에서는 네트워크가 소환하던 6개(`s4/p1`·`s5/p3`·`s6/p0`·`s12/p2`·`s17/p3`·
   `s49/p2`)에서 수확을 골랐다 — 라운드 끝까지만 보는 탐색이 두 배 보상의 값을 네트워크보다 낮게 읽는 것으로 보이지만 확인하지
   않았다(조사 후보).
+
+## 재채굴 (2026-09-25)
+
+Bloodlines 카드면 전사 정정 셋 — Chani의 Fedaykin Maneuver(water → 카드 2장 draw), Fenring의 Corrino Liaison과 Storms in the
+South 1등 보상의 Spy with Deep Cover([implementation-audits/leaders.md](../implementation-audits/leaders.md),
+[implementation-audits/bloodlines.md](../implementation-audits/bloodlines.md)) — 뒤에 국면이 복원되지 않아(`check` 96/110, 이어서
+87/107), 정정마다 파일의 `note` 명령 그대로 다시 캤다. 최종 **104개** — sandworm 80(heuristic 40 + 5081 40), 마지막 라운드 보유
+17(전부 heuristic), Endgame 7(heuristic 6 + 5081 1). 바뀌거나 빠진 국면은 첫 재채굴에서는 전부 Chani나 Fenring이 앉은 판,
+둘째에서는 전부 Storms in the South가 Conflict 덱에 든 판이었다. 두 규칙과 무관한 국면이 새로 든 경우는 문항당 40개 상한의
+꼬리 보충(옛 마지막 seed보다 뒤의 seed)뿐이다. 위 2026-09-23 표는 재채굴 전 110개로 잰 것이다. 최종 문제집의 채점(탐색 좌석은
+다시 재지 않았다):
+
+| 에이전트 | sandworm (tip, 80) | Endgame (clear, 7) | 마지막 라운드 보유 (tip, 17) |
+|---|---|---|---|
+| random | 0.49 | 0.14 | 0.88 |
+| heuristic | 1.00 | 1.00 | 0.59 |
+| 5081 (`checkpoint:`), 정답률 / 평균 P(정답) | 1.00 / 0.98 | 1.00 / 1.00 | 0.88 / 0.84 |
+
+- 5081의 보유 문항 오답은 `s1240/p1`(P(정답) 0.0003)·`s2728/p3`(0.15) 둘이다. 위에서 적은 셋째 `s2281/p0`는 Fenring이 앉은 판이라
+  첫 재채굴에서 빠졌다.

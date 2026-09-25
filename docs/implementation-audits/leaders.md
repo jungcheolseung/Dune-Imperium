@@ -62,17 +62,17 @@ Leader identity와 setup은 `content/uprising/leaders.py`, 능력 규칙은 `rul
 
 ## Bloodlines Leader (2026-09-07, `bloodlines` 옵션 전용)
 
-카드면(`assets/cards/en/bloodlines/leader/*.webp`)을 직접 판독해 전사했다. 아이콘은 `assets/icons`와 대조했다(Emperor=회색 뿔 투구, Fremen=파란 원 sietch, Landsraad=초록 오각형, City=파란 원, Spice Trade=노란 삼각형, Spy=눈, Intrigue=노란 카드, draw=초록 카드, trash=X 카드). 룰북은 설정과 clarification만 더한다 `[Bloodlines pp. 3, 12]`. 새 상태는 관측 v8의 좌석 scalar `tactics_track_space`·`agent_in_conflict`다.
+카드면(`assets/cards/en/bloodlines/leader/*.webp`)을 직접 판독해 전사했다. 아이콘은 `assets/icons`와 대조했다(Emperor=회색 뿔 투구, Fremen=파란 원 sietch, Landsraad=초록 오각형, City=파란 원, Spice Trade=노란 삼각형, Spy=눈, Intrigue=노란 카드, draw=초록 카드, trash=X 카드; 2026-09-25에 9장 모두의 능력·Signet 칸을 자원·유닛 아이콘(원기둥 Spy 대 금색이 겹친 Deep Cover Spy, 정육면체 troop 대 초록 카드 draw)까지 다시 대조해 Chani와 Fenring의 Signet 두 곳을 고쳤고, 나머지 7장은 전사와 일치했다 — 아래 각 항목). 룰북은 설정과 clarification만 더한다 `[Bloodlines pp. 3, 12]`. 새 상태는 관측 v8의 좌석 scalar `tactics_track_space`·`agent_in_conflict`다.
 
 ### Chani
 
 - **Tactician** — "Whenever you retreat or lose any number of troops from the Conflict, advance your Tactics token that many spaces, earning rewards as you reach them. Reset the token after reaching the end of the track." 11칸 track: 4인은 3번째 칸(index 2)에서 시작, 6번째 칸 spice 1, 마지막 칸 water 1 뒤 시작 칸으로 reset; 끝을 넘기는 초과분은 버린다 `[Bloodlines p. 12]`. `rules/tactics.py`가 leaf `units.retreat_units` 안에서 호출되므로 모든 retreat 경로(Reveal·Intrigue·Signet)와 Conflict에서의 유닛 손실(`unit_loss`, Holy War)이 자동으로 센다. Commander는 troop으로 센다 `[Bloodlines p. 4]`. Combat 종료 후 garrison으로 돌아가는 유닛은 retreat가 아니다.
-- **Fedaykin Maneuver(Signet)** — "Retreat any number of your troops. —OR— [Fremen] 2 Influence: water → 2 troops." `retreat_leader_troops(count[, commanders])`(0은 `decline_leader_signet_payment`), `pay_leader_signet_water`(Fremen Influence 2+, water 1+). Agent turn 중의 retreat는 `combat_deployment.reconcile_deployment_after_retreat`로 이번 turn의 배치 카운터를 함께 줄인다(회수 창 언더플로 방지; Intrigue의 Agent turn retreat도 같은 경로).
+- **Fedaykin Maneuver(Signet)** — "Retreat any number of your troops. —OR— [Fremen] 2 Influence: water → [draw][draw]." `retreat_leader_troops(count[, commanders])`(0은 `decline_leader_signet_payment`), `pay_leader_signet_water`(Fremen Influence 2+, water 1+ → 카드 2장 draw, 덱이 모자라면 discard reshuffle chance). **2026-09-25 정정**: 오른쪽의 초록 카드 두 장은 draw 아이콘(`assets/icons/draw.png`, Y'rkoon의 Hungry for Spice와 같은 아이콘)인데 처음 전사에서 "2 troops"로 읽어 troop 2를 recruit하고 있었다. 영문·한글 카드면이 같다. 회귀 테스트 `test_fedaykin_maneuver_retreats_any_number_or_draws_two_cards`·`test_fedaykin_maneuver_draw_shuffles_the_discard_when_the_deck_is_short`. Agent turn 중의 retreat는 `combat_deployment.reconcile_deployment_after_retreat`로 이번 turn의 배치 카운터를 함께 줄인다(회수 창 언더플로 방지; Intrigue의 Agent turn retreat도 같은 경로).
 
 ### Count Hasimir Fenring
 
 - **Assassin** — "Whenever you trash a card: 1 Solari." `card_trash.trash_personal_card`에서 지급; Intrigue trash는 제외 `[Bloodlines p. 12]`.
-- **Corrino Liaison(Signet)** — "You may trash a card in your play area. —OR— Spy on [Emperor]." play area의 어떤 카드든(Signet Ring 자신 포함) `trash_leader_card`, 또는 Emperor observation post에 `place_leader_spy`(supply가 비면 회수 먼저), 또는 거절.
+- **Corrino Liaison(Signet)** — "You may trash a card in your play area. —OR— [Spy with Deep Cover] on [Emperor]." play area의 어떤 카드든(Signet Ring 자신 포함) `trash_leader_card`, 또는 Emperor observation post(`emperor-sardaukar-dutiful-service` 하나)에 `place_leader_spy`(supply가 비면 회수 먼저), 또는 거절. Deep Cover라서 상대 Spy가 있어도 놓을 수 있고 자기 Spy가 이미 있으면 놓을 수 없다 `[Bloodlines pp. 5, 12]`. **2026-09-25 정정**: 아이콘은 회색 원기둥 뒤에 금색 원기둥이 겹친 Spy with Deep Cover(Deliver Supplies contract와 같은 그림)인데, 처음 전사에서 일반 Spy로 읽어 상대 Spy가 있는 post를 막고 있었다. 같은 확장의 Mohiam Listeners는 회색 원기둥 하나(일반 Spy)라 인쇄가 구별된다. 회귀 테스트 `test_corrino_liaison_spy_has_deep_cover`.
 
 ### Duncan Idaho
 
@@ -119,6 +119,6 @@ Leader identity와 setup은 `content/uprising/leaders.py`, 능력 규칙은 `rul
 
 ## 회귀 테스트
 
-`tests/unit/rules/test_navigation.py`(9건)가 Steersman Y'rkoon의 setup 선택·Strange Form·Hungry for Spice와 Navigation 카드의 trigger 순서·slot 조건·불발·카드 1/3/4/5/8 경로를 고정한다. `tests/unit/rules/test_twisted_intrigue.py`(12건)가 Piter De Vries의 setup·round start·Signet과 Twisted Intrigue 12장의 play 경로(Controlled의 비공개 peek 포함)를 고정한다. `tests/unit/rules/test_bloodlines_leaders.py`(14건)가 Bloodlines Leader 6종의 능력과 Signet(Tuek's Sietch의 존재 조건·방문 행·상대 방문 Intrigue·Smuggle Spice·Makers 누적, Tactics 전진·reset, Fedaykin 후퇴·water 지불, Assassin, Corrino Liaison, Swordmaster 할인, Into the Fray와 비워진 공간, Clandestine 접근·강제 수집, Listeners 두 경로, Planetologist의 Sietch Tabr·sandworm 대체·선택 trash, Judge of the Change 세 아이콘)을 고정한다.
+`tests/unit/rules/test_navigation.py`(9건)가 Steersman Y'rkoon의 setup 선택·Strange Form·Hungry for Spice와 Navigation 카드의 trigger 순서·slot 조건·불발·카드 1/3/4/5/8 경로를 고정한다. `tests/unit/rules/test_twisted_intrigue.py`(12건)가 Piter De Vries의 setup·round start·Signet과 Twisted Intrigue 12장의 play 경로(Controlled의 비공개 peek 포함)를 고정한다. `tests/unit/rules/test_bloodlines_leaders.py`(18건)가 Bloodlines Leader 6종의 능력과 Signet(Tuek's Sietch의 존재 조건·방문 행·상대 방문 Intrigue·Smuggle Spice·Makers 누적, Tactics 전진·reset, Fedaykin 후퇴·water → draw 2와 그 reshuffle, Assassin, Corrino Liaison과 그 Deep Cover Spy, Swordmaster 할인, Into the Fray와 비워진 공간, Clandestine 접근·강제 수집, Listeners 두 경로, Planetologist의 Sietch Tabr·sandworm 대체·선택 trash, Judge of the Change 세 아이콘)을 고정한다.
 
 `tests/unit/rules/test_leader_abilities.py`가 signet 자동 해결, Feyd 트랙 분기·단계·최종 칸, Devious/Desert Scouts의 Reveal 액션과 1회 제한, Always Smiling·Unpredictable Foe 문턱과 중복 방지, Jessica 지불·flip·repeat 경로, reach-2 보너스(통과·재도달·타 Faction 미발동), Margot·Staban의 Spy 배치 제한과 후속 지불, Chronicler's Insight의 획득·trash·거절, Limited Allies setup, Smuggle Spice 조건, setup 면 배정을 고정한다. 기본 4종과 신규 4종 각각의 random 4인 완주 soak에서 모든 신규 이벤트가 발동함을 확인했고 replay 검증을 통과했다.
