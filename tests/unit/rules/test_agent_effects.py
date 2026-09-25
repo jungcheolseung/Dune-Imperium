@@ -980,17 +980,15 @@ def test_chani_agent_effect_is_unavailable_below_three_units() -> None:
     assert result.events[0].kind == "agent_card_effect_unavailable"
 
 
-def test_steersman_draws_and_may_recall_its_just_placed_agent() -> None:
-    steersman = _imperium_instance("steersman")
-    drawn_card = _instance("dagger")
+def _steersman_state(agent_locations: tuple[str, ...]) -> GameState:
     owner = PlayerState(
         player_id=0,
-        agents_available=1,
-        agent_locations=("dutiful_service",),
-        hand=(steersman,),
-        deck=(drawn_card,),
+        agents_available=2 - len(agent_locations),
+        agent_locations=agent_locations,
+        hand=(_imperium_instance("steersman"),),
+        deck=(_instance("dagger"),),
     )
-    state = GameState(
+    return GameState(
         config=RulesetConfig(),
         seed=1,
         phase=GamePhase.PLAYER_TURNS,
@@ -1004,23 +1002,34 @@ def test_steersman_draws_and_may_recall_its_just_placed_agent() -> None:
             ),
         ),
     )
+
+
+def test_steersman_draws_and_recalls_only_another_agent() -> None:
+    # Recall Agent: "Return one of your other Agents on the board to your
+    # Leader (not the Agent you sent during this turn)." [Main p. 20]
+    # (docs/rules/uprising-systems.md "Recall Agent").
+    steersman = _imperium_instance("steersman")
+    drawn_card = _instance("dagger")
+    state = _steersman_state(("dutiful_service",))
     placed = apply_agent_action(state, _action_to(state, "deliver_supplies")).state
 
     actions = legal_agent_card_recall_actions(placed, 0)
-    assert {
-        dict(action.arguments)["space_id"] for action in actions
-    } == {"dutiful_service", "deliver_supplies"}
-    recall_new = next(
-        action
-        for action in actions
-        if dict(action.arguments)["space_id"] == "deliver_supplies"
+    assert {dict(action.arguments)["space_id"] for action in actions} == {
+        "dutiful_service"
+    }
+    recall_just_sent = DomainAction(
+        action_id="recall_agent_for_agent_card",
+        actor=0,
+        arguments=(("space_id", "deliver_supplies"),),
     )
-    assert recall_new in UprisingRulesEngine().legal_actions(placed, 0)
+    assert recall_just_sent not in UprisingRulesEngine().legal_actions(placed, 0)
+    with pytest.raises(ValueError):
+        apply_agent_card_recall(placed, recall_just_sent)
 
-    result = apply_agent_card_recall(placed, recall_new)
+    result = apply_agent_card_recall(placed, actions[0])
 
     assert result.state.players[0].agents_available == 1
-    assert result.state.players[0].agent_locations == ("dutiful_service",)
+    assert result.state.players[0].agent_locations == ("deliver_supplies",)
     assert result.state.players[0].in_play == (steersman,)
     assert [event.kind for event in result.events] == ["agent_recalled"]
     # The card draw is the box's other printed icon (OQ-027): still pending.
@@ -1039,7 +1048,33 @@ def test_steersman_draws_and_may_recall_its_just_placed_agent() -> None:
     assert {
         dict(action.arguments)["space_id"]
         for action in legal_agent_card_recall_actions(drawn_first, 0)
-    } == {"dutiful_service", "deliver_supplies"}
+    } == {"dutiful_service"}
+
+
+def test_steersman_recall_fizzles_at_turn_end_without_another_agent() -> None:
+    # With no other Agent on the board the Recall Agent icon [Main p. 20] has
+    # no target: the draw still resolves, and the mandatory icon waits for
+    # the turn's end and fizzles there (OQ-057 (1)).
+    state = _steersman_state(())
+    placed = apply_agent_action(state, _action_to(state, "deliver_supplies")).state
+    assert legal_agent_card_recall_actions(placed, 0) == ()
+
+    drawn = _resolve_agent_icons(placed, "cards")
+    assert drawn.players[0].hand == (_instance("dagger"),)
+    engine = UprisingRulesEngine()
+    finish = DomainAction(action_id="finish_agent_turn", actor=0)
+    settled = resolve_faction_influence(_resolve_board_icons(drawn)).state
+    assert finish in engine.legal_actions(settled, 0)
+
+    result = engine.apply(settled, finish)
+
+    assert result.state.players[0].agent_locations == ("deliver_supplies",)
+    assert result.state.players[0].agents_available == 1
+    assert any(
+        event.kind == "agent_card_effect_unavailable"
+        and dict(event.payload)["effect"] == "recall"
+        for event in result.events
+    )
 
 
 def test_junction_headquarters_may_pay_intrigue_and_spice_for_vp() -> None:

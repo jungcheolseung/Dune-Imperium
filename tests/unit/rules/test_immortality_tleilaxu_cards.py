@@ -663,22 +663,32 @@ def test_usurp_is_offered_only_where_a_partner_can_follow() -> None:
 def test_ghola_copying_steersman_can_end_the_turn_with_no_agent_to_recall() -> None:
     """Steersman's box is "draw a card, recall an Agent"; Ghola copies it,
     so the second box's recall icon has no Agent left once the first box
-    recalled the only one. A mandatory box whose condition is false waits
-    for the turn's end and fizzles there (OQ-057), and before this the turn
-    stalled with no legal action at all (soak seed 78, --immortality)."""
+    recalled the only other one — the Agent sent this turn is never a target
+    ("Return one of your other Agents on the board to your Leader (not the
+    Agent you sent during this turn)." [Main p. 20]). A mandatory box whose
+    condition is false waits for the turn's end and fizzles there (OQ-057),
+    and before this the turn stalled with no legal action at all (soak seed
+    78, --immortality)."""
 
     ghola = _tleilaxu("ghola")
     steersman = "imperium:steersman:0"
     engine = UprisingRulesEngine()
     state = _graft(
-        _state(_owner((steersman, ghola), family_atomics=False)),
+        _state(
+            _owner(
+                (steersman, ghola),
+                family_atomics=False,
+                agents_available=1,
+                agent_locations=("dutiful_service",),
+            )
+        ),
         steersman,
         "arrakeen",
         ghola,
     )
 
     # Both boxes queue (cards, recall); resolve the active one and let its
-    # recall take the Agent this turn placed.
+    # recall take the seat's other Agent.
     def _apply(state: GameState, action_id: str, **arguments: object) -> GameState:
         action = next(
             action
@@ -697,8 +707,13 @@ def test_ghola_copying_steersman_can_end_the_turn_with_no_agent_to_recall() -> N
     ):
         state = _apply(state, "resolve_board_effect")
     state = _apply(state, "resolve_agent_card_effect", effect="cards")
-    state = _apply(state, "recall_agent_for_agent_card", space_id="arrakeen")
-    assert state.players[0].agent_locations == ()
+    assert not any(
+        dict(action.arguments).get("space_id") == "arrakeen"
+        for action in engine.legal_actions(state, 0)
+        if action.action_id == "recall_agent_for_agent_card"
+    )
+    state = _apply(state, "recall_agent_for_agent_card", space_id="dutiful_service")
+    assert state.players[0].agent_locations == ("arrakeen",)
     state = _apply(state, "switch_graft_card")
     state = _apply(state, "resolve_agent_card_effect", effect="cards")
 

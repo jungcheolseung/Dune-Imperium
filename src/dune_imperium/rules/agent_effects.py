@@ -1290,6 +1290,10 @@ def legal_agent_card_recall_actions(
                 for space_id in locations
             ),
         )
+    # The Recall Agent icon: "Return one of your other Agents on the board to
+    # your Leader (not the Agent you sent during this turn)." [Main p. 20].
+    # With no other Agent on the board the icon offers nothing; the box then
+    # waits for the turn's end and fizzles there (OQ-057 (1)).
     return tuple(
         DomainAction(
             action_id="recall_agent_for_agent_card",
@@ -1297,6 +1301,7 @@ def legal_agent_card_recall_actions(
             arguments=(("space_id", space_id),),
         )
         for space_id in state.players[player].agent_locations
+        if space_id != turn_space_id
     )
 
 
