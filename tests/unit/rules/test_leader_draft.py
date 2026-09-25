@@ -11,6 +11,7 @@ from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.engine import DEFAULT_LEADER_IDS
 from dune_imperium.rules.leader_draft import draft_pick_order, remaining_draft_pool
 from dune_imperium.rules.setup import create_draft_initial_state
+from dune_imperium.rules.tactics import TACTICS_TRACK_START
 
 
 def _pick(actor: int, leader_id: str) -> DomainAction:
@@ -136,6 +137,36 @@ def test_picking_staban_removes_diplomacy_from_the_shuffled_deck() -> None:
     assert after == tuple(
         instance_id for instance_id in before if ":diplomacy:" not in instance_id
     )
+
+
+@pytest.mark.parametrize("leader_id", ["steersman_y_rkoon", "chani"])
+def test_a_drafted_leader_gets_the_same_printed_setup_as_a_fixed_one(
+    leader_id: str,
+) -> None:
+    # Strange Form: "You start the game with no [water] and without Signet
+    # Ring in your deck" [Steersman Y'rkoon card]; Tactician: the Tactics
+    # token starts on the space for the number of players [Bloodlines p. 12].
+    # The draft pick applies them exactly like the fixed Leader setup.
+    engine = UprisingRulesEngine()
+    config = RulesetConfig(bloodlines=True, leader_draft=True)
+    state = next(
+        candidate
+        for candidate in (engine.reset(config, seed) for seed in range(64))
+        if leader_id in candidate.leader_draft_pool
+    )
+    assert state.first_player is not None
+    picker = draft_pick_order(state.first_player, 4)[0]
+    picked = engine.apply(state, _pick(picker, leader_id)).state.players[picker]
+    definition = LEADERS_BY_ID[leader_id]
+    assert picked.resources.water == definition.starting_water
+    assert picked.tactics_track_space == (
+        TACTICS_TRACK_START if definition.uses_tactics_track else 0
+    )
+    if leader_id == "steersman_y_rkoon":
+        assert picked.resources.water == 0
+        assert not any(":signet_ring:" in card for card in picked.deck)
+    else:
+        assert picked.tactics_track_space == TACTICS_TRACK_START
 
 
 def test_picking_shaddam_sets_the_sardaukar_contracts_aside() -> None:
