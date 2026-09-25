@@ -354,6 +354,23 @@ def test_calculus_of_power_cannot_pay_with_itself() -> None:
     assert dict(revealed.decision_stack[-1].context)["persuasion"] == 2
 
 
+def test_calculus_of_power_cannot_pay_with_overthrow() -> None:
+    # Overthrow prints no affiliation banner under its title [card face; BGG
+    # inventory row blank] and is no longer an Emperor card, so it is not a
+    # candidate for Calculus of Power's "trash another Emperor card" Reveal
+    # choice. With no eligible Emperor card in play, the optional trash
+    # choice never opens at all, same as when Calculus is alone in hand.
+    calculus = _imperium_instance("calculus_of_power")
+    overthrow = _imperium_instance("overthrow")
+    revealed = begin_reveal_turn(
+        _state(PlayerState(player_id=0, hand=(calculus, overthrow))),
+        DomainAction(action_id="reveal_turn", actor=0),
+    ).state
+
+    assert overthrow in revealed.players[0].in_play
+    assert legal_reveal_card_trash_actions(revealed, 0) == ()
+
+
 def test_desert_power_recounts_calculus_sword_when_it_adds_the_first_unit() -> None:
     desert_power = _imperium_instance("desert_power")
     calculus = _imperium_instance("calculus_of_power")
@@ -1374,6 +1391,34 @@ def test_sardaukar_coordination_ignores_emperor_agent_cards_in_play() -> None:
     # per-revealed-Emperor multiplier: 1 troop (strength 2) + 1 sword from
     # the lone revealed Coordination = 3.
     assert result.state.players[0].combat_strength == 3
+
+
+def test_sardaukar_coordination_ignores_a_revealed_overthrow() -> None:
+    # Overthrow prints no affiliation banner [card face; BGG inventory row
+    # blank] and is no longer an Emperor card, so revealing it alongside
+    # Sardaukar Coordination must not add to the "+[sword] for each Emperor
+    # card you revealed (including this one)" count: only the lone
+    # Coordination counts itself, for 1 sword. Overthrow's own printed Reveal
+    # (2 Persuasion, 2 strength) still applies on its own. Total: 1 troop
+    # (strength 2) + 1 (Coordination's own count) + 2 (Overthrow's own
+    # sword) = 5 strength; 2 (Coordination) + 2 (Overthrow) = 4 Persuasion.
+    coordination = _imperium_instance("sardaukar_coordination")
+    overthrow = _imperium_instance("overthrow")
+    owner = PlayerState(
+        player_id=0,
+        hand=(coordination, overthrow),
+        troops_supply=8,
+        troops_conflict=1,
+    )
+
+    result = begin_reveal_turn(
+        _state(owner),
+        DomainAction(action_id="reveal_turn", actor=0),
+    )
+
+    assert result.state.players[0].combat_strength == 5
+    assert dict(result.state.decision_stack[-1].context)["strength"] == 5
+    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 4
 
 
 def test_shishakli_reveal_gains_fremen_influence_only_with_bond() -> None:
@@ -2562,3 +2607,4 @@ def test_interstellar_trade_counts_its_contracts_once_at_the_reveal() -> None:
 
     assert dict(granted.state.decision_stack[-1].context)["persuasion"] == 2
     assert granted.events == ()
+
