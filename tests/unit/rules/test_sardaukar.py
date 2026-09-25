@@ -213,6 +213,28 @@ def test_visiting_a_commander_space_offers_the_purchase_with_face_up_skills() ->
     assert bought.state.decision_stack[-1].kind == "agent_effects"
 
 
+def test_a_first_high_council_visit_may_buy_its_commander() -> None:
+    # "During one of your turns, if you send an Agent to a board space that
+    # has a Sardaukar Commander, you may spend 2 Solari to acquire and then
+    # immediately recruit that Sardaukar Commander" [Bloodlines p. 4]; setup
+    # puts one on High Council [Bloodlines p. 3], and taking the seat on the
+    # same visit does not hide it.
+    state = _turn_state(_owner(resources=Resources(solari=7, water=2)))
+    placed = apply_agent_action(state, _agent_action_to(state, "high_council")).state
+    assert dict(placed.decision_stack[-1].context)["pending_board_icons"] == (
+        "high_council,sardaukar_commander"
+    )
+    state = _visit(state, "high_council")
+    assert state.players[0].high_council
+    bought = apply_sardaukar_commander_action(
+        state, _commander_actions(state)["acquire_sardaukar_commander:canny"]
+    )
+    owner = bought.state.players[0]
+    assert owner.resources.solari == 0
+    assert owner.commanders_garrison == 1
+    assert "high_council" not in bought.state.sardaukar_commander_space_ids
+
+
 def test_a_held_skill_cannot_be_chosen_again() -> None:
     owner = _owner(skill_ids=(_skill("canny"),), commanders_supply=1)
     state = _turn_state(owner, face_up=(_skill("canny", 1), *SKILLS[2:5]))

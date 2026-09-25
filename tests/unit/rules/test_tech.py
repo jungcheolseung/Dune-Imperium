@@ -249,6 +249,58 @@ def test_a_non_landsraad_visit_offers_no_tile() -> None:
     assert legal_tech_acquisition_actions(state, 0) == ()
 
 
+@pytest.mark.parametrize(
+    ("space_id", "printed_key"),
+    [
+        ("high_council", "high_council"),
+        ("imperial_privilege", "imperial_privilege"),
+        ("swordmaster", "swordmaster"),
+    ],
+)
+def test_every_landsraad_visit_offers_acquire_tech(
+    space_id: str, printed_key: str
+) -> None:
+    # "The Ixian Embassy board gives you this option each time you send an
+    # Agent to a [Landsraad] board space" [Bloodlines p. 12]; the spaces
+    # whose printed effect is one special key (a first High Council seat,
+    # Imperial Privilege's sentences, the Swordmaster) are Landsraad spaces
+    # too.
+    owner = _owner(
+        resources=Resources(solari=10, spice=6, water=2),
+        influence=Influence(emperor=2),
+    )
+    placed = apply_agent_action(
+        _turn_state(owner),
+        next(
+            action
+            for action in legal_agent_actions(_turn_state(owner), 0)
+            if dict(action.arguments)["space_id"] == space_id
+        ),
+    ).state
+    icons = dict(placed.decision_stack[-1].context)["pending_board_icons"]
+    assert icons == f"{printed_key},tech"
+    offered = _tech_actions(placed)
+    assert "decline_tech" in offered
+    assert "glowglobes:faction=fremen" in offered
+
+
+def test_a_first_high_council_visit_buys_tech_at_the_new_seat_discount() -> None:
+    # "It's Brennen's Agent turn, and he sends an Agent to High Council ...
+    # He places his Councilor token on a Council seat. High Council is a
+    # [Landsraad] board space, so Brennen can use the Ixian Embassy to
+    # acquire a Tech tile. Because he now has a High Council seat, the Tech
+    # tile costs him 1 less Spice. He pays 1 spice to acquire Glowglobes"
+    # [Bloodlines p. 7].
+    owner = _owner(resources=Resources(solari=5, spice=1, water=2))
+    state = _visit(_turn_state(owner), "high_council")
+    assert state.players[0].high_council
+    bought = _acquire(state, "glowglobes:faction=fremen")
+    seat = bought.players[0]
+    assert seat.tech_ids == ("glowglobes",)
+    assert seat.resources.spice == 0
+    assert seat.influence.fremen == 1
+
+
 def test_acquiring_pays_spice_reveals_the_next_tile_and_pays_the_acquire_effect() -> (
     None
 ):

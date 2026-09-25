@@ -282,43 +282,49 @@ def board_icons_for(
     actions. A printed choose-one row (Sietch Tabr, the Maker spaces' spice or
     sandworms) and Imperial Privilege's two written sentences stay single
     keys, and Secrets' random steal is text that follows its Intrigue draw
-    (OQ-027).
+    (OQ-027). Those single printed keys still take the Bloodlines additions
+    every visit gets: a waiting Sardaukar Commander [Bloodlines p. 4] and,
+    on a Landsraad space, the Ixian Embassy's Acquire Tech -- a first High
+    Council visit included, as in the rulebook's Brennen example
+    [Bloodlines p. 7].
     """
 
     owner = state.players[player]
     choam_module = state.config.choam_module
+    icons: list[str]
     match space_id:
         case "high_council" if not owner.high_council:
-            return (BOARD_ICON_HIGH_COUNCIL,)
+            icons = [BOARD_ICON_HIGH_COUNCIL]
         case "swordmaster":
-            return (BOARD_ICON_SWORDMASTER,)
+            icons = [BOARD_ICON_SWORDMASTER]
         case "sietch_tabr":
-            return (BOARD_ICON_SIETCH_TABR,)
+            icons = [BOARD_ICON_SIETCH_TABR]
         case "deep_desert" | "hagga_basin" | "imperial_basin":
-            return (BOARD_ICON_MAKER,)
+            icons = [BOARD_ICON_MAKER]
         case "imperial_privilege":
-            return (BOARD_ICON_IMPERIAL_PRIVILEGE,)
+            icons = [BOARD_ICON_IMPERIAL_PRIVILEGE]
         case "tuek_sietch":
-            return (BOARD_ICON_TUEK_SIETCH,)
-    icons = [
-        board_icon_for_effect(effect)
-        for effect in visit_board_effects(
-            owner,
-            space_id,
-            cost_option,
-            choam_module=choam_module,
-            immortality=state.config.immortality,
-        )
-    ]
-    match space_id:
-        case "espionage":
-            icons.append(BOARD_ICON_SPY)
-        case "desert_tactics":
-            icons.append(BOARD_ICON_TRASH)
-        case "shipping":
-            icons.append(BOARD_ICON_INFLUENCE)
-        case "accept_contract" | "dutiful_service" if choam_module:
-            icons.append(BOARD_ICON_CONTRACT)
+            icons = [BOARD_ICON_TUEK_SIETCH]
+        case _:
+            icons = [
+                board_icon_for_effect(effect)
+                for effect in visit_board_effects(
+                    owner,
+                    space_id,
+                    cost_option,
+                    choam_module=choam_module,
+                    immortality=state.config.immortality,
+                )
+            ]
+            match space_id:
+                case "espionage":
+                    icons.append(BOARD_ICON_SPY)
+                case "desert_tactics":
+                    icons.append(BOARD_ICON_TRASH)
+                case "shipping":
+                    icons.append(BOARD_ICON_INFLUENCE)
+                case "accept_contract" | "dutiful_service" if choam_module:
+                    icons.append(BOARD_ICON_CONTRACT)
     if space_id in state.sardaukar_commander_space_ids:
         # Bloodlines: the Commander waiting on the space may be bought as
         # one more freely ordered effect of the visit [Bloodlines p. 4].
