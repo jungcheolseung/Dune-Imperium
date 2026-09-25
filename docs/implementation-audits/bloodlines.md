@@ -41,8 +41,8 @@ Skill 7종은 에셋 저장소 `cards/en/bloodlines/skill/*.webp`를 직접 판�
 | I Believe | Fremen, 3, Fremen·City. Agent: [discard] → draw. Reveal: 1 Persuasion; Command: troop 2. | `MAY_DISCARD_TO_DRAW_ONE`(거절 가능); Command 자동 효과 `requires_command`. |
 | Pointing the Way | Fremen, 6, Fremen·City·SpiceTrade. Agent: sandworm이 Conflict에 있으면 Intrigue. Reveal: 1 Persuasion, 검 2; Command: Influence 1 선택. | `COMMAND_GAIN_CHOSEN_INFLUENCE` → 행동 `gain_reveal_influence(faction)`. |
 | Sandwalk ×2 | Fremen, 1, SpiceTrade. Agent: 이번 turn spice 2 이상 획득했으면 draw. Reveal: 1 Persuasion, 검 1; Fremen Bond +1 Persuasion. | 획득량 = 현재 spice − turn 시작 spice + turn 중 지출(`spice_gained_this_turn`, DSL의 `GainedSpiceThisTurn`과 같은 정의). |
-| Fremen War Name | Fremen, 4, Fremen·SpiceTrade. Agent: spice 2 이상 획득했으면 troop + draw. Reveal: 2 Persuasion; Fremen Bond 검 2. | OQ-027 다중 아이콘(troops·cards), 조건은 아이콘별 해결 시점 판정. |
-| Corrupt Bureaucrat (CHOAM) | Guild, 4, Guild·Landsraad·Spy. "discard될 때: 3 Solari". Agent: 이번 turn Spy를 recall했으면 contract. Reveal: 2 Persuasion. | `GAIN_THREE_SOLARI` discard trigger; contract는 `begin_contract_gain`(module 없으면 2 Solari). |
+| Fremen War Name | Fremen, 4, Fremen·SpiceTrade. Agent: spice 2 이상 획득했으면 troop + draw. Reveal: 2 Persuasion; Fremen Bond 검 2. | OQ-027 다중 아이콘(troops·cards), 조건은 아이콘별 해결 시점 판정. 조건이 거짓인 동안 두 아이콘은 제시되지 않고 turn 종료까지 보류된 뒤 불발한다 — 뒤의 spice 획득(Hagga Basin 수확 등)으로 성립하면 의무가 된다(OQ-057 (1), 2026-09-26). |
+| Corrupt Bureaucrat (CHOAM) | Guild, 4, Guild·Landsraad·Spy. "discard될 때: 3 Solari". Agent: 이번 turn Spy를 recall했으면 contract. Reveal: 2 Persuasion. | `GAIN_THREE_SOLARI` discard trigger; contract는 `begin_contract_gain`(module 없으면 2 Solari). recall 조건은 좌석 카운터 `spies_recalled_turn`으로 판정해 이번 turn의 모든 recall(Plot Intrigue의 Recall Spy 비용 포함)을 센다(OQ-044 (d), 2026-09-26). |
 | Mercantile Affairs (CHOAM) | BG, 5, BG·City·SpiceTrade·Spy, 획득 시 contract. Agent: 이번 turn contract를 완료했으면 Intrigue. Reveal: 2 Persuasion. | 새 좌석 카운터 `contracts_completed_turn`(관측 scalar, TURN frame에서 초기화). |
 
 ### Intrigue (슬라이스 4c-1)

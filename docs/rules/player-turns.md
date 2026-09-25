@@ -77,10 +77,13 @@
   sandworm을 합쳐 unit이 3개 이상이면 Intrigue card 1장을 얻는다. 같은 Agent
   turn의 병력 배치를 먼저 처리해 세 번째 unit을 보낸 뒤 이 조건을 확인할 수
   있다. `[Chani, Clever Tactician card]` `[Main pp. 9-10]`
-- Steersman은 Agent box에서 개인 card 1장을 draw하고 board의 자기 Agent 하나를
-  선택해 Leader로 recall한다. 이전 turn에 배치한 Agent뿐 아니라 Steersman을 내며
-  방금 배치한 Agent도 고를 수 있고, 회수한 Agent는 이후 turn에 다시 사용할 수
-  있다. `[Steersman card]` `[Main pp. 9, 20]`
+- Steersman은 Agent box에서 개인 card 1장을 draw하고 board의 자기 **다른** Agent
+  하나를 선택해 Leader로 recall한다 — "Return one of your other Agents on the
+  board to your Leader (not the Agent you sent during this turn)." `[Main p. 20]`.
+  Steersman을 내며 방금 보낸 Agent는 고를 수 없고, 다른 Agent가 없으면 recall
+  아이콘은 turn 종료까지 보류된 뒤 불발한다(OQ-057 (1)). 회수한 Agent는 이후
+  turn에 다시 사용할 수 있다. `[Steersman card]` `[Main pp. 9, 20]`
+  (2026-09-26 정정: 이전 문장은 방금 보낸 Agent도 고를 수 있다고 잘못 적었다.)
 - Junction Headquarters는 Spacing Guild Alliance를 보유할 때 Agent box의 화살표를
   선택해 hand의 Intrigue card 1장을 trash하고 Spice 2를 함께 지불하면 Victory
   Point 1을 얻는다. 비용 일부만 지불할 수 없으며 전체 비용을 지불하지 않고
