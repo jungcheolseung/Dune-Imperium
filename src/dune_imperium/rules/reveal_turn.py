@@ -16,7 +16,10 @@ and the ones still unavailable at the end simply never happen.
 from collections.abc import Mapping
 from dataclasses import replace
 
-from dune_imperium.content.bloodlines.sardaukar import skill_for_instance
+from dune_imperium.content.bloodlines.sardaukar import (
+    SkillDefinition,
+    skill_for_instance,
+)
 from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
 from dune_imperium.content.immortality.board import genetic_markers_reached
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
@@ -1955,6 +1958,9 @@ _COMMAND_TECH = (
     ("training_depot", TechAbility.COMMAND_TWO_STRENGTH),
 )
 _TECH_GRANTED_KEY = "tech_granted"
+# Skills whose Reveal-turn bonus this Reveal already paid ("Each one works
+# only once each round" [Bloodlines p. 4]).
+_SKILL_GRANTED_KEY = "skill_reveal_granted"
 # Reveal-turn tile effects the owner still has to take, in any order the
 # owner likes [Main p. 12] (OQ-044): Forbidden Weapons' mandatory choice and
 # Panopticon's Spy placement.
@@ -2449,6 +2455,32 @@ def _add_reveal_sword(
     )
 
 
+def _granted_skill_ids(context: Mapping[str, ActionValue]) -> tuple[str, ...]:
+    value = context.get(_SKILL_GRANTED_KEY, "")
+    if not isinstance(value, str):
+        raise RuntimeError("Reveal frame has invalid granted Skills")
+    return tuple(skill_id for skill_id in value.split(",") if skill_id)
+
+
+def _late_skill_bonuses(
+    context: Mapping[str, ActionValue], owner: PlayerState
+) -> tuple[SkillDefinition, ...]:
+    """Return the owner's Reveal-bonus Skills that became active this Reveal.
+
+    A frame without the record (built before it existed) pays none.
+    """
+
+    if owner.commanders_conflict < 1 or _SKILL_GRANTED_KEY not in context:
+        return ()
+    granted = set(_granted_skill_ids(context))
+    return tuple(
+        skill
+        for skill in (skill_for_instance(instance) for instance in owner.skill_ids)
+        if skill.skill_id not in granted
+        and (skill.reveal_persuasion or skill.reveal_spice or skill.reveal_water)
+    )
+
+
 def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
     """Pay out revealed cards' automatic effects whose condition came true later.
 
@@ -2501,6 +2533,49 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
     pending_trashes: list[tuple[str, str]] = []
     pending_combat_icons = 0
     newly_granted: dict[str, int | None] = {}
+    # Skills switch on while any Commander is in the Conflict [Bloodlines
+    # p. 4]; one that arrives there during the Reveal (a Combat icon
+    # deployment) pays its Reveal-turn bonus then, once (OQ-028 (c)). Paid
+    # first, so Charismatic's Persuasion counts toward Command (6+) below.
+    late_skills = _late_skill_bonuses(context, owner)
+    for skill in late_skills:
+        if skill.reveal_persuasion:
+            frames = add_reveal_persuasion(frames, skill.reveal_persuasion)
+        skill_resources = resource_gain_entry(
+            f"skill:{skill.skill_id}",
+            spice=skill.reveal_spice,
+            water=skill.reveal_water,
+        )
+        if skill_resources is not None:
+            late_gains.append(skill_resources)
+        events.append(
+            GameEvent(
+                event_id=(
+                    f"round:{state.round_number}:player:{player}:reveal:"
+                    f"skill:{skill.skill_id}:late"
+                ),
+                kind="skill_reveal_bonus",
+                payload=(
+                    ("persuasion", skill.reveal_persuasion),
+                    ("player", player),
+                    ("skill_id", skill.skill_id),
+                    ("spice", skill.reveal_spice),
+                    ("water", skill.reveal_water),
+                ),
+            )
+        )
+    if late_skills:
+        frames = _update_reveal_frame(
+            frames,
+            {
+                _SKILL_GRANTED_KEY: ",".join(
+                    (
+                        *_granted_skill_ids(context),
+                        *(skill.skill_id for skill in late_skills),
+                    )
+                )
+            },
+        )
     for card_id, card in zip(revealed_ids, revealed_cards, strict=True):
         for index, effect in enumerate(card.reveal_effects):
             key = f"{card_id}#{index}"
@@ -2625,7 +2700,7 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
             with_context(frames[position], reveal_context),
             *frames[position + 1 :],
         )
-    if not newly_granted and not late_tech:
+    if not newly_granted and not late_tech and not late_skills:
         return result
     frames = _record_granted_effects(frames, newly_granted)
     frames = _append_reveal_gains(frames, tuple(late_gains))
@@ -3719,6 +3794,7 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         ("strength", strength),
         ("sword_strength", sword_strength),
         (_TECH_GRANTED_KEY, ",".join(tech_granted)),
+        (_SKILL_GRANTED_KEY, ",".join(skill.skill_id for skill in active_skills)),
         ("turn_owner", action.actor),
     ]
     context.extend(

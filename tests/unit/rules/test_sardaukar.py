@@ -484,6 +484,88 @@ def test_reveal_bonuses_need_a_commander_in_the_conflict() -> None:
     assert not [event for event in result.events if event.kind == "skill_reveal_bonus"]
 
 
+def test_a_commander_deployed_during_the_reveal_pays_the_reveal_bonuses() -> None:
+    # "While you have any number of Sardaukar Commanders in the Conflict, the
+    # effects of all your Sardaukar Commander Skills are active. Each one
+    # either gives you a bonus when taking your Reveal turn ... Each one
+    # works only once each round" [Bloodlines p. 4]; Charismatic "Reveal
+    # Turn: [1 Persuasion]", Driven "Reveal Turn: [1 spice]" [Skill tile
+    # faces]. A Commander deployed with a Combat icon during the Reveal
+    # [Bloodlines p. 5] switches them on then, and the bonus is paid late
+    # like any late-met Reveal gain (OQ-028 (c)) -- once.
+    from dune_imperium.rules.combat_deployment import grant_combat_icon
+    from dune_imperium.rules.reveal_turn import (
+        legal_reveal_gain_actions,
+        reveal_pending_gains,
+    )
+
+    owner = _seat_with_skills(
+        skill_ids=(_skill("charismatic"), _skill("driven")),
+        commanders_conflict=0,
+        commanders_garrison=1,
+        combat_strength=2,
+        hand=starting_deck_instance_ids(0)[:5],
+        resources=Resources(solari=0, spice=0, water=1),
+    )
+    state = refresh_pre_reveal_strength(RuleResult(state=_turn_state(owner))).state
+    revealed = begin_reveal_turn(
+        state, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    persuasion = dict(revealed.decision_stack[-1].context)["persuasion"]
+    assert isinstance(persuasion, int)
+    assert legal_reveal_gain_actions(revealed, 0) == ()
+    opened = grant_combat_icon(revealed, 0)
+
+    engine = UprisingRulesEngine()
+    deploy = DomainAction("deploy_commanders", 0, (("count", 1),))
+    result = engine.apply(opened, deploy)
+    deployed = result.state
+    context = dict(deployed.decision_stack[-1].context)
+    assert deployed.players[0].commanders_conflict == 1
+    assert context["persuasion"] == persuasion + 1
+    assert context["persuasion_generated"] == persuasion + 1
+    assert ("resources", "0/1/0", "skill:driven") in reveal_pending_gains(context)
+    assert {
+        dict(event.payload)["skill_id"]
+        for event in result.events
+        if event.kind == "skill_reveal_bonus"
+    } == {"charismatic", "driven"}
+
+    # Once each round: taking the spice (another transition) pays nothing more.
+    (gain,) = legal_reveal_gain_actions(deployed, 0)
+    taken = engine.apply(deployed, gain).state
+    assert taken.players[0].resources.spice == 1
+    assert dict(taken.decision_stack[-1].context)["persuasion"] == persuasion + 1
+    assert legal_reveal_gain_actions(taken, 0) == ()
+
+
+def test_reveal_bonuses_paid_at_the_start_are_not_paid_again_late() -> None:
+    # A Commander already in the Conflict paid the bonuses when the Reveal
+    # began [Bloodlines p. 4]; a second Commander deployed later adds none.
+    from dune_imperium.rules.combat_deployment import grant_combat_icon
+    from dune_imperium.rules.reveal_turn import legal_reveal_gain_actions
+
+    owner = _seat_with_skills(
+        skill_ids=(_skill("charismatic"), _skill("driven")),
+        commanders_garrison=1,
+        hand=starting_deck_instance_ids(0)[:5],
+        resources=Resources(solari=0, spice=0, water=1),
+    )
+    state = refresh_pre_reveal_strength(RuleResult(state=_turn_state(owner))).state
+    revealed = begin_reveal_turn(
+        state, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    persuasion = dict(revealed.decision_stack[-1].context)["persuasion"]
+    engine = UprisingRulesEngine()
+    deployed = engine.apply(
+        grant_combat_icon(revealed, 0),
+        DomainAction("deploy_commanders", 0, (("count", 1),)),
+    ).state
+    assert deployed.players[0].commanders_conflict == 2
+    assert dict(deployed.decision_stack[-1].context)["persuasion"] == persuasion
+    assert len(legal_reveal_gain_actions(deployed, 0)) == 1  # Driven's, from start
+
+
 def test_desperate_trashes_for_three_swords_during_the_reveal() -> None:
     owner = _seat_with_skills(
         skill_ids=(_skill("desperate"),), hand=starting_deck_instance_ids(0)[:5]
