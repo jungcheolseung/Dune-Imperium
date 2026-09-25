@@ -204,7 +204,10 @@ def build_catalog(
         ]
         intrigue[intrigue_id] = {
             "name": intrigue_entry.card.name,
-            "timings": timings,
+            # A Navigation card has no timing banner: Plot Course plays it
+            # [Steersman Y'rkoon card]; the client names it as such.
+            "timings": [] if intrigue_entry.navigation else timings,
+            "navigation": intrigue_entry.navigation,
             "text": list(intrigue_card_text(intrigue_entry)),
             "image": _image_url("intrigue", intrigue_id, image_files),
         }

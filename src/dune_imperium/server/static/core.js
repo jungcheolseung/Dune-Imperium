@@ -260,6 +260,7 @@ function cardDetail(instanceId) {
     return bits.join(" · ");
   }
   const intrigue = state.catalog && state.catalog.intrigue[id];
+  if (intrigue && intrigue.navigation) return phraseText("{navigation}");
   if (intrigue) return t("core.intrigue_timings", { timings: timingWords(intrigue.timings) });
   const tile = state.catalog && state.catalog.tech && state.catalog.tech[id];
   if (tile) return t("core.tech_tile_cost", { cost: tile.cost });
@@ -417,7 +418,10 @@ function openPopover(entry, anchor) {
   if (entry.factions && entry.factions.length) {
     words.push(entry.factions.map((f) => FACTION_LABELS[f] || f).join("/"));
   }
-  if (entry.timings) {
+  if (entry.navigation) {
+    /* No timing banner: Plot Course plays it [Steersman Y'rkoon card]. */
+    words.push(phraseText("{navigation}"));
+  } else if (entry.timings) {
     words.push(t("core.intrigue_timings", { timings: timingWords(entry.timings) }));
   }
   if (entry.tier !== undefined) {

@@ -154,6 +154,18 @@ def test_intrigue_card_text_renders_every_option_of_every_card() -> None:
         assert len(intrigue_card_text(entry)) == len(entry.options)
 
 
+def test_navigation_cards_carry_no_timing_prefix() -> None:
+    # Navigation cards print no timing banner; Plot Course plays them
+    # [Steersman Y'rkoon card; navigation_card_10 face].
+    navigation = [entry for entry in INTRIGUE_CARDS if entry.navigation]
+    assert len(navigation) == 10
+    for entry in navigation:
+        for line in intrigue_card_text(entry):
+            assert not line.startswith(("Plot", "Combat", "Endgame")), line
+    (line,) = intrigue_card_text(INTRIGUE_CARDS_BY_ID["navigation_card_10"])
+    assert line.startswith("Lose 1 Influence")
+
+
 def test_special_mission_text_names_the_city_post() -> None:
     # "[Spy] on [City disc]" [Special Mission card]; the post must connect
     # to a City space [Main p. 20].

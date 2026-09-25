@@ -419,6 +419,16 @@ def option_text(option: IntrigueOption) -> str:
 
 
 def intrigue_card_text(entry: IntrigueCardEntry) -> list[str]:
-    """Render one line of English text per printed Intrigue option."""
+    """Render one line of English text per printed Intrigue option.
 
+    A Navigation card prints no timing banner -- Plot Course plays it when
+    its owner reaches 2 Influence [Steersman Y'rkoon card] -- so its lines
+    carry no timing prefix.
+    """
+
+    if entry.navigation:
+        return [
+            "; ".join(section_text(section) for section in option.sections)
+            for option in entry.options
+        ]
     return [option_text(option) for option in entry.options]
