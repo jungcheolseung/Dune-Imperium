@@ -349,22 +349,6 @@ def apply_trigger_spy_action(state: GameState, action: DomainAction) -> RuleResu
     )
 
 
-def revealed_contract_count(state: GameState, player: int) -> int:
-    """How many top bank Contracts ``player`` is choosing among right now.
-
-    Coercive Negotiation reveals the bank's top three while its frame is
-    open [card face]; zero without such a frame. The rollout's determinizer
-    keeps that many in place, since the owner has seen them.
-    """
-
-    frame = owned_top_frame(state, FrameKind.INTRIGUE_TRIGGER_CONTRACT, player)
-    if frame is None:
-        return 0
-    card_id = dict(frame.context).get("card_id")
-    reward = _deployment_trigger_reward(card_id) if isinstance(card_id, str) else None
-    return reward.count if isinstance(reward, RevealContractsTakeOne) else 0
-
-
 def takeable_trigger_contract_ids(
     state: GameState,
     player: int,

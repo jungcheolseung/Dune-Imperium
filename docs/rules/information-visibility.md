@@ -12,6 +12,7 @@
 - 해결한 Intrigue는 Intrigue Deck 옆의 face-up discard pile에 놓는다. `[Main p. 7]`
 - Agent turn에 play한 카드와 Reveal turn에 reveal한 카드는 Clean Up 전까지 face-up in play다. `[Main pp. 9, 12, 20]`
 - CHOAM Module의 시장 contract 2개와 플레이어가 아직 완료하지 않은 contract는 face-up이다. contract를 완료할 때 완료 사실과 reward를 알린 뒤 그 contract를 face-down으로 뒤집는다. `[Main p. 16]`
+- Bloodlines Coercive Negotiation의 "Reveal three contracts from the bank. Take one and trash the other two." `[Coercive Negotiation card]`로 공개한 contract는 모든 좌석에게 보인다 — 규칙서의 reveal은 opponent에게 보여 주는 것이다("Reveal them to your opponents only when you play them" `[Main p. 7]`, Conflict card를 "revealing ... Place it face up" `[Main p. 8]`). 소유자가 가져갈 수 없는 것(Intrigue 없이 Immediate `[Bloodlines p. 2]`)도 공개된 셋에 든다. 선택하는 동안 bank 위에 그대로 있고(관측 `revealed_contract_ids`, 인코딩 밖), 가져가지 않은 둘은 공개 zone `contract_trash`로 간다. 2026-09-26 전에는 소유자만 아는 것으로 다뤘다.
 
 ## 명시적으로 face-down 또는 보지 않는 정보
 

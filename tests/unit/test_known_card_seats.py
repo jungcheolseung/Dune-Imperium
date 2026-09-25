@@ -127,6 +127,44 @@ def test_kota_odax_sees_the_bottom_tiles_while_choosing() -> None:
     assert known["tech:bottom"] == known["tech:bottom2"] == frozenset({2})
 
 
+def test_the_contracts_coercive_negotiation_reveals_are_public_while_it_chooses() -> (
+    None
+):
+    # "Reveal three contracts from the bank. Take one and trash the other
+    # two." [Coercive Negotiation card]; a revealed card is shown "to your
+    # opponents" [Main p. 7]. All three are face up to the whole table while
+    # the owner chooses, including the Immediate it cannot take without an
+    # Intrigue card to trash [Bloodlines p. 2]. known_card_seats used to give
+    # them to the owner alone while nothing showed the untakeable Immediate
+    # to anyone (the seat saw only its take actions).
+    bank = (
+        "contract:bloodlines_immediate",
+        "contract:arrakeen_i",
+        "contract:arrakeen_ii",
+        "contract:secrets",
+    )
+    card = "intrigue:coercive_negotiation:0"
+    players = list(_state().players)
+    players[0] = replace(players[0], intrigue_faceup=(card,))
+    state = replace(
+        _state(),
+        players=tuple(players),
+        phase=GamePhase.PLAYER_TURNS,
+        contract_bank=bank,
+        decision_stack=(
+            _frame(FrameKind.INTRIGUE_TRIGGER_CONTRACT, 0, card_id=card, turn_owner=0),
+        ),
+    )
+    known = known_card_seats(state)
+
+    for revealed in bank[:3]:
+        assert revealed not in known, revealed
+    assert known["contract:secrets"] == frozenset()
+    for seat in range(4):
+        assert observe_state(state, seat).revealed_contract_ids == bank[:3]
+    assert list(_mismatches(UprisingRulesEngine(), state, {})) == []
+
+
 # ---------------------------------------------------------------------------
 # The whole table: every card of random games against what each seat is shown.
 
