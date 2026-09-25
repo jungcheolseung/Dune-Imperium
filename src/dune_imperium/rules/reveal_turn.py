@@ -1056,11 +1056,77 @@ def _reveal_choice_card_source(
     )
 
 
+# For Humanity's arrow cost: a "?" Influence diamond with two red chevrons,
+# two Influence with one chosen Faction [For Humanity card]; like gaining two,
+# the two steps cannot be split between Factions [Main p. 20].
+_FOR_HUMANITY_INFLUENCE_COST = 2
+
+
+def _stepwise_alliance_recipients(
+    state: GameState,
+    player: int,
+    faction: Faction,
+    steps: int,
+) -> tuple[int, ...]:
+    """Return the Alliance recipients to pick from while losing ``steps``.
+
+    The steps are lost one space at a time [FAQ p. 1]; only the holder can
+    lose the token, so at most one step can move it, and the choice (if any)
+    belongs to that step.
+    """
+
+    working = state
+    for step in range(steps):
+        recipients = alliance_recipients_after_influence_loss(working, player, faction)
+        if len(recipients) > 1:
+            return recipients
+        working = lose_faction_influence(
+            working, player, faction, 1, event_prefix=f"probe:{step}"
+        ).state
+    return ()
+
+
+def _lose_influence_stepwise(
+    state: GameState,
+    player: int,
+    faction: Faction,
+    steps: int,
+    *,
+    event_prefix: str,
+    alliance_recipient: int | None,
+) -> RuleResult:
+    """Lose ``steps`` Influence one space at a time [FAQ p. 1].
+
+    ``alliance_recipient`` is the owner's pick for the one step whose
+    Alliance token has several possible recipients.
+    """
+
+    working = state
+    events: list[GameEvent] = []
+    for step in range(steps):
+        recipients = alliance_recipients_after_influence_loss(working, player, faction)
+        lost = lose_faction_influence(
+            working,
+            player,
+            faction,
+            1,
+            event_prefix=f"{event_prefix}:{step}",
+            alliance_recipient=alliance_recipient if len(recipients) > 1 else None,
+        )
+        working = lost.state
+        events.extend(lost.events)
+    return RuleResult(state=working, events=tuple(events))
+
+
 def legal_reveal_influence_loss_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """For Humanity: "Bene Gesserit Alliance: lose one Influence -> 1 VP"."""
+    """For Humanity: "Bene Gesserit Alliance: lose two Influence -> 1 VP".
+
+    The arrow cost is paid in full or not at all [Main p. 20], so only a
+    Faction with two or more Influence can pay it.
+    """
 
     context = _reveal_choice_frame_context(state, player, _LOSE_INFLUENCE_FOR_VP)
     if context is None:
@@ -1070,9 +1136,11 @@ def legal_reveal_influence_loss_actions(
     ]
     owner = state.players[player]
     for faction in Faction:
-        if influence_amount(owner.influence, faction) == 0:
+        if influence_amount(owner.influence, faction) < _FOR_HUMANITY_INFLUENCE_COST:
             continue
-        recipients = alliance_recipients_after_influence_loss(state, player, faction)
+        recipients = _stepwise_alliance_recipients(
+            state, player, faction, _FOR_HUMANITY_INFLUENCE_COST
+        )
         recipient_options: tuple[int | None, ...] = (
             tuple(recipients) if len(recipients) > 1 else (None,)
         )
@@ -1096,7 +1164,7 @@ def apply_reveal_influence_loss(
     state: GameState,
     action: DomainAction,
 ) -> RuleResult:
-    """Decline, or lose one Influence step for a Victory Point."""
+    """Decline, or lose two Influence with one Faction for a Victory Point."""
 
     if action not in legal_reveal_influence_loss_actions(state, action.actor):
         raise ValueError("action is not a legal Reveal Influence loss")
@@ -1125,11 +1193,11 @@ def apply_reveal_influence_loss(
         isinstance(recipient, bool) or not isinstance(recipient, int)
     ):
         raise RuntimeError("Reveal Influence loss has invalid recipient")
-    lost = lose_faction_influence(
+    lost = _lose_influence_stepwise(
         popped,
         action.actor,
         Faction(faction_value),
-        1,
+        _FOR_HUMANITY_INFLUENCE_COST,
         event_prefix=f"{source}:lost:{faction_value}",
         alliance_recipient=recipient,
     )
@@ -2729,7 +2797,8 @@ def reveal_choice_prompt(effect: PersonalCardRevealChoiceEffect) -> str:
 
     effect = _RESOLVES_AS.get(effect, effect)
     return (
-        "Bene Gesserit Alliance: lose one Influence for a Victory Point, or decline"
+        "Bene Gesserit Alliance: lose two Influence with one Faction for a "
+        "Victory Point, or decline"
         if effect
         is _LOSE_INFLUENCE_FOR_VP
         else "Deploy or retreat one troop, or decline"
@@ -2815,13 +2884,15 @@ def _reveal_choice_effect_is_available(
     command_open = persuasion is not None and persuasion >= COMMAND_PERSUASION
     return (
         (
-            # For Humanity: the Alliance and an Influence to lose, judged
-            # when the choice opens (OQ-028).
+            # For Humanity: the Alliance and two Influence with one Faction
+            # to lose, judged when the choice opens (OQ-028).
             effect
             is _LOSE_INFLUENCE_FOR_VP
             and Faction.BENE_GESSERIT.value in owner.alliance_faction_ids
             and any(
-                influence_amount(owner.influence, faction) > 0 for faction in Faction
+                influence_amount(owner.influence, faction)
+                >= _FOR_HUMANITY_INFLUENCE_COST
+                for faction in Faction
             )
         )
         or (

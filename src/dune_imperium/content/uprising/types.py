@@ -432,7 +432,7 @@ class PersonalCardRevealChoiceEffect(StrEnum):
     # gain 1 Influence of your choice".
     GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH = "gain_chosen_influence_if_two_tech"
     # Immortality (card faces). For Humanity: "Bene Gesserit Alliance: lose
-    # one Influence -> 1 Victory Point".
+    # two Influence (one Faction) -> 1 Victory Point".
     MAY_LOSE_INFLUENCE_FOR_VP_IF_BENE_GESSERIT_ALLIANCE = (
         "may_lose_influence_for_vp_if_bene_gesserit_alliance"
     )

@@ -1643,7 +1643,8 @@ IMPERIUM_CARDS: Final = (
     ),
     # For Humanity (Bene Gesserit): BG, Landsraad, Spice Trade; Agent:
     # Influence of your choice; Reveal: 2 Persuasion and "Bene Gesserit
-    # Alliance: lose one Influence -> 1 Victory Point" [card face].
+    # Alliance: lose two Influence (one Faction) -> 1 Victory Point" [card
+    # face: a "?" diamond with two red chevrons].
     _entry(
         373,
         "for-humanity",

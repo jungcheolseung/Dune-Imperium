@@ -496,7 +496,10 @@ REVEAL_CHOICE_EFFECT_TEXT: Final[Mapping[PersonalCardRevealChoiceEffect, str]] =
             (
                 PersonalCardRevealChoiceEffect
                 .MAY_LOSE_INFLUENCE_FOR_VP_IF_BENE_GESSERIT_ALLIANCE
-            ): ("Bene Gesserit Alliance: You may lose 1 Influence → Gain 1 VP"),
+            ): (
+                "Bene Gesserit Alliance: You may lose 2 Influence with one Faction "
+                "→ Gain 1 VP"
+            ),
             PersonalCardRevealChoiceEffect.MAY_DEPLOY_OR_RETREAT_ONE_TROOP: (
                 "You may deploy or retreat 1 troop"
             ),
