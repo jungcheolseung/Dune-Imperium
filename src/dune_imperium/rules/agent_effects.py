@@ -115,7 +115,7 @@ _SOLARI_PER_PARTNER_ICON = (
 )
 _CHOOSE_TWO_REWARDS = PersonalCardAgentEffect.CHOOSE_TWO_OF_WATER_TROOP_TRASH_TLEILAXU
 _TRASH_GRAFTED_FOR_INFLUENCE = (
-    PersonalCardAgentEffect.MAY_TRASH_GRAFTED_CARD_FOR_VISITED_FACTION_INFLUENCE
+    PersonalCardAgentEffect.TRASH_GRAFTED_CARD_FOR_VISITED_FACTION_INFLUENCE
 )
 _LOSE_TROOP_FOR_CARDS = PersonalCardAgentEffect.MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH
 # Branching Path (Uprising card face, re-read 2026-09-19): the Agent box's
@@ -2030,20 +2030,20 @@ def legal_agent_card_payment_actions(
     if source_card.agent_effect is _TRASH_GRAFTED_FOR_INFLUENCE:
         # Beguiling Pheromones: a Faction space visited this turn and a
         # grafted card (either one) still in play [card face] [FAQ p. 1].
+        # "trash one of the grafted cards and gain an additional Influence"
+        # has no "may", arrow or black-X icon, so it is mandatory [FAQ p. 3]:
+        # the owner picks which card, never whether.
         _, _, space_id = _effect_subject(context)
         if BOARD_SPACES_BY_ID[space_id].faction is None or not is_grafted(context):
             return ()
-        return (
-            DomainAction(action_id="decline_agent_card_payment", actor=player),
-            *(
-                DomainAction(
-                    action_id="trash_grafted_card_for_influence",
-                    actor=player,
-                    arguments=(("card_id", card_id),),
-                )
-                for card_id in (source_card_id, other_grafted_card_id(context))
-                if card_id in owner.in_play
-            ),
+        return tuple(
+            DomainAction(
+                action_id="trash_grafted_card_for_influence",
+                actor=player,
+                arguments=(("card_id", card_id),),
+            )
+            for card_id in (source_card_id, other_grafted_card_id(context))
+            if card_id in owner.in_play
         )
     if source_card.agent_effect is _LOSE_TROOP_FOR_CARDS:
         # Piter, Genius Advisor: "Lose a troop -> draw two cards and

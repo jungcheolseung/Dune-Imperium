@@ -332,19 +332,29 @@ def test_beguiling_pheromones_trades_a_grafted_card_for_the_visited_faction() ->
     )
     switched = _switch(grafted)
     actions = legal_agent_card_payment_actions(switched, 0)
+    # "If you sent an Agent to a Faction board space this turn, trash one of
+    # the grafted cards and gain an additional Influence with that Faction."
+    # [Beguiling Pheromones card] has no "may", arrow or black-X icon, so it
+    # is mandatory: "Most effects from a board space or card you play are
+    # mandatory, unless: a card says "you may" do something; there's an
+    # arrow in the effect ...; you're trashing a card using the "black X"
+    # card icon" [FAQ p. 3]. The owner picks the card, never whether.
     assert [(a.action_id, dict(a.arguments).get("card_id")) for a in actions] == [
-        ("decline_agent_card_payment", None),
         ("trash_grafted_card_for_influence", pheromones),
         ("trash_grafted_card_for_influence", FACE_DANCER),
     ]
+    engine = UprisingRulesEngine()
+    legal_ids = {a.action_id for a in engine.legal_actions(switched, 0)}
+    assert "decline_agent_card_payment" not in legal_ids
+    assert "finish_agent_turn" not in legal_ids
     # Trashing the partner expires its un-activated draw (OQ-022, FAQ p. 1).
-    partner = apply_agent_card_payment(switched, actions[2])
+    partner = apply_agent_card_payment(switched, actions[1])
     owner = partner.state.players[0]
     assert FACE_DANCER in owner.trashed and owner.influence.emperor == 1
     _, context = current_agent_effect_context(partner.state)
     assert context["graft_pending_effect"] is False
     # Trashing itself keeps the Influence (its own cost).
-    own = apply_agent_card_payment(switched, actions[1])
+    own = apply_agent_card_payment(switched, actions[0])
     owner = own.state.players[0]
     assert pheromones in owner.trashed and owner.influence.emperor == 1
     _, context = current_agent_effect_context(own.state)

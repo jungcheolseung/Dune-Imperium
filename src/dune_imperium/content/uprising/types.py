@@ -286,11 +286,11 @@ class PersonalCardAgentEffect(StrEnum):
     CHOOSE_TWO_OF_WATER_TROOP_TRASH_TLEILAXU = (
         "choose_two_of_water_troop_trash_tleilaxu"
     )
-    # Beguiling Pheromones (Graft): "If you sent your Agent to a Faction
-    # board space this turn: trash a grafted card -> 1 Influence with that
-    # Faction".
-    MAY_TRASH_GRAFTED_CARD_FOR_VISITED_FACTION_INFLUENCE = (
-        "may_trash_grafted_card_for_visited_faction_influence"
+    # Beguiling Pheromones (Graft): "If you sent an Agent to a Faction board
+    # space this turn, trash one of the grafted cards and gain an additional
+    # Influence with that Faction." -- no "may", no arrow (mandatory).
+    TRASH_GRAFTED_CARD_FOR_VISITED_FACTION_INFLUENCE = (
+        "trash_grafted_card_for_visited_faction_influence"
     )
     # Piter, Genius Advisor (promo): "Lose a troop -> draw two cards and
     # Research".

@@ -103,10 +103,10 @@ def _entry(
 # The 18 Tleilaxu deck cards [Immortality p. 3], in catalog order. Play data
 # is transcribed from the card faces slice by slice.
 TLEILAXU_CARDS: Final[tuple[TleilaxuCardEntry, ...]] = (
-    # Beguiling Pheromones: City, Spice Trade; GRAFT: "If you sent your
-    # Agent to a Faction board space this turn: trash a grafted card -> 1
-    # Influence with that Faction"; Reveal: 1 Persuasion, 1 sword [card
-    # face].
+    # Beguiling Pheromones: City, Spice Trade; GRAFT: "If you sent an Agent
+    # to a Faction board space this turn, trash one of the grafted cards and
+    # gain an additional Influence with that Faction."; Reveal: 1 Persuasion,
+    # 1 sword [card face].
     _entry(
         403,
         "beguiling-pheromones",
@@ -115,7 +115,7 @@ TLEILAXU_CARDS: Final[tuple[TleilaxuCardEntry, ...]] = (
         graft=True,
         agent_icons=(AgentIcon.CITY, AgentIcon.SPICE_TRADE),
         agent_effect=(
-            PersonalCardAgentEffect.MAY_TRASH_GRAFTED_CARD_FOR_VISITED_FACTION_INFLUENCE
+            PersonalCardAgentEffect.TRASH_GRAFTED_CARD_FOR_VISITED_FACTION_INFLUENCE
         ),
         reveal_persuasion=1,
         reveal_strength=1,

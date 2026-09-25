@@ -279,10 +279,10 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         ),
         (
             PersonalCardAgentEffect
-            .MAY_TRASH_GRAFTED_CARD_FOR_VISITED_FACTION_INFLUENCE
+            .TRASH_GRAFTED_CARD_FOR_VISITED_FACTION_INFLUENCE
         ): (
-            "If you sent your Agent to a Faction space this turn: "
-            "You may trash a grafted card → Gain 1 Influence with that Faction"
+            "If you sent an Agent to a Faction space this turn: "
+            "Trash one of the grafted cards, Gain 1 Influence with that Faction"
         ),
         PersonalCardAgentEffect.MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH: (
             "You may lose 1 troop → Draw 2 cards, Research"

@@ -1,5 +1,6 @@
 """Tests for personal_card_text() display lines."""
 
+from dune_imperium.content.immortality.tleilaxu import TLEILAXU_CARDS_BY_ID
 from dune_imperium.content.schema import CardDefinition, SourceDocument, SourceRef
 from dune_imperium.content.uprising.imperium import (
     IMPERIUM_CARDS,
@@ -60,6 +61,18 @@ def test_double_agent_spy_is_limited_to_the_visited_space() -> None:
     assert personal_card_text(entry)[0] == (
         "Agent: Place a Spy on a post connected to the space you sent an Agent "
         "to this turn (may share a post with another player's Spy)"
+    )
+
+
+def test_beguiling_pheromones_trash_is_not_optional() -> None:
+    # "If you sent an Agent to a Faction board space this turn, trash one of
+    # the grafted cards and gain an additional Influence with that Faction."
+    # [Beguiling Pheromones card]: no "may" and no arrow [FAQ p. 3].
+    entry = TLEILAXU_CARDS_BY_ID["beguiling_pheromones"]
+
+    assert personal_card_text(entry)[0] == (
+        "Agent: If you sent an Agent to a Faction space this turn: "
+        "Trash one of the grafted cards, Gain 1 Influence with that Faction"
     )
 
 
