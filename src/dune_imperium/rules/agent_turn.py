@@ -829,7 +829,7 @@ def agent_effect_is_available(
         PersonalCardAgentEffect.RECRUIT_TWO_IF_BENE_GESSERIT_BOND,
         PersonalCardAgentEffect.RETURN_SELF_IF_BENE_GESSERIT_BOND,
         PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND,
-        PersonalCardAgentEffect.GAIN_WATER_IF_BENE_GESSERIT_BOND,
+        PersonalCardAgentEffect.DRAW_ONE_AND_PLACE_SPY_IF_BENE_GESSERIT_BOND,
     ):
         return has_faction_bond(
             (*owner.in_play, card_instance_id),

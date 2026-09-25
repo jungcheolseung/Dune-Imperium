@@ -367,15 +367,19 @@ def test_in_high_places_play_data_has_bond_acquisition_and_reveal_choice() -> No
     assert card.play_data_complete is True
     assert card.factions == (Faction.BENE_GESSERIT,)
     assert card.agent_icons == (AgentIcon.BENE_GESSERIT, AgentIcon.EMPEROR)
+    # "If you have another Bene Gesserit card in play: [draw 1 card] [Spy]"
+    # and "[recall Spy] [recall Spy] -> +3 Persuasion" [In High Places card]
+    # (BGG inventory: "Draw 1 card, +1 Spy", "Recall 2 Spies -> +3
+    # Persuasion"); once transcribed as one water and +2 Persuasion.
     assert (
         card.agent_effect
-        is PersonalCardAgentEffect.GAIN_WATER_IF_BENE_GESSERIT_BOND
+        is PersonalCardAgentEffect.DRAW_ONE_AND_PLACE_SPY_IF_BENE_GESSERIT_BOND
     )
     assert card.acquisition_effect is PersonalCardAcquisitionEffect.PLACE_SPY
     assert card.reveal_persuasion == 2
     assert card.reveal_strength == 0
     assert card.reveal_choice_effects == (
-        PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_TWO_PERSUASION,
+        PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_THREE_PERSUASION,
     )
 
 

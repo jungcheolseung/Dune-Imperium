@@ -185,7 +185,10 @@ def legal_reveal_spy_actions(
                 for post_id in post_ids
             ),
         )
-    if effect is PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_TWO_PERSUASION:
+    if (
+        effect
+        is PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_THREE_PERSUASION
+    ):
         return (
             DomainAction(action_id="decline_reveal_spy_recall", actor=player),
             *(
@@ -1699,8 +1702,10 @@ def apply_reveal_spy_action(
         second_post_id = arguments.get("second_post_id")
         if not isinstance(first_post_id, str) or not isinstance(second_post_id, str):
             raise RuntimeError("Reveal Spy choice has invalid post IDs")
+        # In High Places: "[recall Spy] [recall Spy] -> +3 Persuasion"
+        # [In High Places card].
         next_owner = recall_spy(recall_spy(owner, first_post_id), second_post_id)
-        remaining = add_reveal_persuasion(remaining, 2)
+        remaining = add_reveal_persuasion(remaining, 3)
         events.extend(
             (
                 _spy_recalled_event(state, action.actor, card_id, first_post_id),
@@ -1709,7 +1714,7 @@ def apply_reveal_spy_action(
                     event_id=f"{source}:persuasion",
                     kind="reveal_persuasion_gained",
                     payload=(
-                        ("amount", 2),
+                        ("amount", 3),
                         ("card_id", card_id),
                         ("player", action.actor),
                     ),
@@ -2759,7 +2764,7 @@ def reveal_choice_prompt(effect: PersonalCardRevealChoiceEffect) -> str:
         if effect is PersonalCardRevealChoiceEffect.PLACE_SPY
         else "Choose two Spies to recall or decline this Reveal effect"
         if effect
-        is (PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_TWO_PERSUASION)
+        is (PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_THREE_PERSUASION)
         else "Trash another Emperor card or decline this Reveal effect"
         if effect
         is (PersonalCardRevealChoiceEffect.MAY_TRASH_OTHER_EMPEROR_FOR_THREE_STRENGTH)
@@ -2911,7 +2916,7 @@ def _reveal_choice_effect_is_available(
             effect
             in (
                 PersonalCardRevealChoiceEffect.RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED,
-                PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_TWO_PERSUASION,
+                PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_THREE_PERSUASION,
             )
             and len(owner.spy_post_ids) >= 2
         )

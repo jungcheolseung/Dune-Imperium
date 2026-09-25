@@ -115,7 +115,11 @@ class PersonalCardAgentEffect(StrEnum):
     DRAW_INTRIGUE_IF_THREE_UNITS_IN_CONFLICT = (
         "draw_intrigue_if_three_units_in_conflict"
     )
-    GAIN_WATER_IF_BENE_GESSERIT_BOND = "gain_water_if_bene_gesserit_bond"
+    # In High Places: "If you have another Bene Gesserit card in play: [draw
+    # 1 card] [Spy]" [In High Places card].
+    DRAW_ONE_AND_PLACE_SPY_IF_BENE_GESSERIT_BOND = (
+        "draw_one_and_place_spy_if_bene_gesserit_bond"
+    )
     GAIN_VISITED_FACTION_INFLUENCE = "gain_visited_faction_influence"
     GAIN_WATER = "gain_water"
     GAIN_BY_BENE_GESSERIT_AND_FREMEN_INFLUENCE_TWO = (
@@ -375,8 +379,8 @@ class PersonalCardRevealChoiceEffect(StrEnum):
     RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED = (
         "recall_spy_to_draw_intrigue_if_two_placed"
     )
-    MAY_RECALL_TWO_SPIES_FOR_TWO_PERSUASION = (
-        "may_recall_two_spies_for_two_persuasion"
+    MAY_RECALL_TWO_SPIES_FOR_THREE_PERSUASION = (
+        "may_recall_two_spies_for_three_persuasion"
     )
     PLACE_SPY = "place_spy"
     # Covert Operation: two plain Spy icons [Covert Operation card]. Each

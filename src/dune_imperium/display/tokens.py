@@ -170,8 +170,8 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.DRAW_INTRIGUE_IF_THREE_UNITS_IN_CONFLICT: (
             "If you have 3 or more units in the Conflict: Draw 1 Intrigue card"
         ),
-        PersonalCardAgentEffect.GAIN_WATER_IF_BENE_GESSERIT_BOND: (
-            "If Bene Gesserit Bond: Gain 1 water"
+        PersonalCardAgentEffect.DRAW_ONE_AND_PLACE_SPY_IF_BENE_GESSERIT_BOND: (
+            "If Bene Gesserit Bond: Draw 1 card, Place a Spy"
         ),
         PersonalCardAgentEffect.GAIN_VISITED_FACTION_INFLUENCE: (
             "Gain 1 additional Influence with the visited Faction"
@@ -468,8 +468,8 @@ REVEAL_CHOICE_EFFECT_TEXT: Final[Mapping[PersonalCardRevealChoiceEffect, str]] =
                 "If you have placed 2 or more Spies: Recall a Spy, "
                 "Draw 1 Intrigue card"
             ),
-            PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_TWO_PERSUASION: (
-                "You may recall 2 Spies → +2 Persuasion"
+            PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_THREE_PERSUASION: (
+                "You may recall 2 Spies → +3 Persuasion"
             ),
             PersonalCardRevealChoiceEffect.PLACE_SPY: "Place a Spy",
             PersonalCardRevealChoiceEffect.PLACE_TWO_SPIES: "Place 2 Spies",

@@ -976,7 +976,7 @@ def test_spy_network_has_no_recall_effect_with_only_one_spy() -> None:
     assert dict(result.state.decision_stack[-1].context)["persuasion"] == 2
 
 
-def test_in_high_places_may_recall_two_spies_for_two_persuasion() -> None:
+def test_in_high_places_may_recall_two_spies_for_three_persuasion() -> None:
     in_high_places = _imperium_instance("in_high_places")
     posts = (
         "arrakis-hagga-basin",
@@ -1002,12 +1002,15 @@ def test_in_high_places_may_recall_two_spies_for_two_persuasion() -> None:
     assert len(choices) == 4
     assert result.state.players[0].spies_supply == 2
     assert len(result.state.players[0].spy_post_ids) == 1
-    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 4
+    # "[recall Spy] [recall Spy] -> +3 Persuasion" on top of the printed 2
+    # [In High Places card]; the engine used to add only 2.
+    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 5
     assert tuple(event.kind for event in result.events) == (
         "spy_recalled",
         "spy_recalled",
         "reveal_persuasion_gained",
     )
+    assert dict(result.events[-1].payload)["amount"] == 3
 
 
 def test_in_high_places_reveal_spy_recall_may_be_declined() -> None:
@@ -2440,7 +2443,7 @@ def test_a_deferred_choice_whose_condition_lapsed_waits_and_lapses_at_finish() -
     revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
     engine = UprisingRulesEngine()
     assert dict(revealed.decision_stack[-1].context)["reveal_choice_effect"] == (
-        "may_recall_two_spies_for_two_persuasion"
+        "may_recall_two_spies_for_three_persuasion"
     )
 
     deferred = engine.apply(
@@ -2463,7 +2466,7 @@ def test_a_deferred_choice_whose_condition_lapsed_waits_and_lapses_at_finish() -
     assert "finish_reveal" in action_ids
     reveal_context = dict(recalled.decision_stack[-1].context)
     assert reveal_context["deferred_reveal_choices"] == (
-        f"{in_high_places}|may_recall_two_spies_for_two_persuasion"
+        f"{in_high_places}|may_recall_two_spies_for_three_persuasion"
     )
 
     finished = engine.apply(
@@ -2478,9 +2481,9 @@ def test_an_unavailable_choice_opens_once_its_condition_holds() -> None:
     # In High Places' two-Spy recall fails at Reveal start (one Spy placed)
     # and waits in the deferred queue instead of lapsing; Wheels Within
     # Wheels' Reveal placement then puts a second Spy out, after which the
-    # owner may bring the recall back and take its two Persuasion
-    # [Main p. 12] — the owner's own choices can still satisfy a printed
-    # condition later in the same Reveal.
+    # owner may bring the recall back and take its three Persuasion
+    # [Main p. 12] [In High Places card] — the owner's own choices can still
+    # satisfy a printed condition later in the same Reveal.
     in_high_places = _imperium_instance("in_high_places")
     wheels = _imperium_instance("wheels_within_wheels")
     state = _state(
@@ -2498,7 +2501,7 @@ def test_an_unavailable_choice_opens_once_its_condition_holds() -> None:
     reveal_context = dict(revealed.decision_stack[-2].context)
     assert reveal_context["persuasion"] == 3
     assert reveal_context["deferred_reveal_choices"] == (
-        f"{in_high_places}|may_recall_two_spies_for_two_persuasion"
+        f"{in_high_places}|may_recall_two_spies_for_three_persuasion"
     )
 
     placement = next(
@@ -2516,12 +2519,12 @@ def test_an_unavailable_choice_opens_once_its_condition_holds() -> None:
         action for action in actions if action.action_id == "resume_reveal_choice"
     )
     assert dict(resume.arguments) == {
-        "effect": "may_recall_two_spies_for_two_persuasion"
+        "effect": "may_recall_two_spies_for_three_persuasion"
     }
 
     resumed = engine.apply(placed, resume).state
     assert dict(resumed.decision_stack[-1].context)["reveal_choice_effect"] == (
-        "may_recall_two_spies_for_two_persuasion"
+        "may_recall_two_spies_for_three_persuasion"
     )
     pair = next(
         action
@@ -2530,7 +2533,7 @@ def test_an_unavailable_choice_opens_once_its_condition_holds() -> None:
     )
     paid = engine.apply(resumed, pair).state
     assert paid.decision_stack[-1].kind == "reveal"
-    assert dict(paid.decision_stack[-1].context)["persuasion"] == 5
+    assert dict(paid.decision_stack[-1].context)["persuasion"] == 3 + 3
     assert paid.players[0].spy_post_ids == ()
     assert "finish_reveal" in {
         action.action_id for action in engine.legal_actions(paid, 0)
