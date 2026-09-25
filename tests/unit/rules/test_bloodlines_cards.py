@@ -22,6 +22,7 @@ from dune_imperium.core import (
     PlayerState,
     Resources,
 )
+from dune_imperium.rules.acquisition import apply_reserve_acquisition
 from dune_imperium.rules.agent_effects import (
     apply_agent_card_discard,
     legal_agent_card_discard_actions,
@@ -44,15 +45,19 @@ from dune_imperium.rules.combat import (
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind, replace_player
 from dune_imperium.rules.reveal_turn import (
+    apply_defer_reveal_choice,
+    apply_resume_reveal_choice,
     apply_reveal_card_trash,
     apply_reveal_influence_gain,
     apply_reveal_troop_retreat,
     begin_reveal_turn,
     legal_finish_reveal_actions,
+    legal_resume_reveal_choice_actions,
     legal_reveal_card_trash_actions,
     legal_reveal_influence_gain_actions,
     legal_reveal_spy_actions,
     legal_reveal_troop_retreat_actions,
+    reveal_pending_gains,
 )
 from dune_imperium.simulation.sweep import run_checked_game
 
@@ -221,6 +226,84 @@ def test_intelligence_training_command_places_a_spy() -> None:
     assert {a.action_id for a in actions} == {"place_reveal_spy"}
     # Its own sword plus the two Sandwalks' swords.
     assert _reveal_context(revealed)["sword_strength"] == 1 + 2
+
+
+_RESERVE = (("prepare_the_way", 7), ("the_spice_must_flow", 10))
+
+
+def test_a_deferred_command_choice_survives_persuasion_spent_below_six() -> None:
+    # "Command (6+) — You may use this effect only in a Reveal turn in which
+    # you generate 6 Persuasion or more" [Bloodlines p. 12] [Bloodlines p. 5]
+    # (docs/rules/bloodlines.md: "그 Reveal turn에 Persuasion을 6 이상 생성했을
+    # 때"). Persuasion spent on a purchase was still generated, so buying
+    # Prepare the Way (2) out of 7 does not close Intelligence Training's
+    # Command Spy again; before the fix the choice lapsed at 5 left.
+    card = _card("intelligence_training")
+    state = replace(_state(_six_persuasion_hand(card)), reserve_stacks=_RESERVE)
+    revealed = _reveal(state)
+    assert _reveal_context(revealed)["persuasion"] == 7
+    deferred = apply_defer_reveal_choice(
+        revealed, DomainAction(action_id="defer_reveal_choice", actor=0)
+    ).state
+    bought = apply_reserve_acquisition(
+        deferred,
+        DomainAction(
+            action_id="acquire_reserve",
+            actor=0,
+            arguments=(("card_id", "prepare_the_way"),),
+        ),
+    ).state
+    assert _reveal_context(bought)["persuasion"] == 5
+    assert _reveal_context(bought)["persuasion_generated"] == 7
+    assert legal_finish_reveal_actions(bought, 0) == ()
+    (resume,) = legal_resume_reveal_choice_actions(bought, 0)
+    resumed = apply_resume_reveal_choice(bought, resume).state
+    place = legal_reveal_spy_actions(resumed, 0)[0]
+    assert place.action_id == "place_reveal_spy"
+    placed = UprisingRulesEngine().apply(resumed, place).state
+    assert len(placed.players[0].spy_post_ids) == 1
+
+
+def test_a_late_command_counts_persuasion_spent_before_it() -> None:
+    # Command (6+) counts the Persuasion the Reveal turn generates [Bloodlines
+    # pp. 5, 12]: I Believe (1) + Command Center (1) + High Council (2) is 4,
+    # 2 of it spent on Prepare the Way, then Command Center's retreat adds 2.
+    # The turn has generated 6, so I Believe's "Command (6+): 2 troops" pays
+    # late (OQ-033) although only 4 is left to spend.
+    owner = _owner(
+        hand=(_card("i_believe"), _card("command_center")),
+        high_council=True,
+        troops_supply=7,
+        troops_conflict=2,
+        combat_strength=4,
+    )
+    engine = UprisingRulesEngine()
+    revealed = _reveal(replace(_state(owner), reserve_stacks=_RESERVE))
+    assert _reveal_context(revealed)["persuasion"] == 4
+    deferred = engine.apply(
+        revealed, DomainAction(action_id="defer_reveal_choice", actor=0)
+    ).state
+    bought = engine.apply(
+        deferred,
+        DomainAction(
+            action_id="acquire_reserve",
+            actor=0,
+            arguments=(("card_id", "prepare_the_way"),),
+        ),
+    ).state
+    (resume,) = legal_resume_reveal_choice_actions(bought, 0)
+    resumed = engine.apply(bought, resume).state
+    retreat = next(
+        a
+        for a in legal_reveal_troop_retreat_actions(resumed, 0)
+        if a.action_id == "retreat_two_troops_for_reveal"
+    )
+    retreated = engine.apply(resumed, retreat).state
+    context = _reveal_context(retreated)
+    assert context["persuasion"] == 4
+    assert context["persuasion_generated"] == 6
+    pending = reveal_pending_gains(dict(retreated.decision_stack[-1].context))
+    assert ("troops", "2", _card("i_believe")) in pending
 
 
 def test_pointing_the_way_needs_a_sandworm_and_commands_influence() -> None:

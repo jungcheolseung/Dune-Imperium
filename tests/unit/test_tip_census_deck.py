@@ -807,7 +807,7 @@ def test_bond_does_not_count_a_reveal_bond_card_grafted_in_as_an_agent(
     deck_module: ModuleType, base_module: ModuleType
 ) -> None:
     """Stilgar the Devoted has no AGENT_BOND entry (its Bond is checked only
-    on the Reveal side -- see PER_REVEALED). Grafted in as an Agent-turn
+    on the Reveal side -- see REVEAL_BOND). Grafted in as an Agent-turn
     partner (``choose_graft_partner``, while the owner's AGENT_EFFECTS frame
     stays open), the pre-fix ``action_id == "agent_turn"`` test misread this
     as Reveal-side and counted it via REVEAL_BOND; it must not be counted as

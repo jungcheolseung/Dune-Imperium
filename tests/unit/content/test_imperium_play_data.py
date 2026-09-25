@@ -481,10 +481,13 @@ def test_stilgar_play_data_counts_revealed_fremen_cards() -> None:
         AgentIcon.SPICE_TRADE,
     )
     assert card.agent_effect is PersonalCardAgentEffect.RECRUIT_TWO_TROOPS
+    # "for each Fremen card you have in play (including this one)"
+    # [Stilgar, The Devoted card]: Agent-turn cards count too [Main p. 20]
+    # [FAQ p. 2 Liet Kynes], not only the revealed ones.
     assert card.reveal_effects == (
         PersonalCardRevealEffect(
             persuasion=2,
-            per_revealed_faction=PersonalCardBond.FREMEN,
+            per_in_play_faction=PersonalCardBond.FREMEN,
         ),
     )
 
@@ -974,6 +977,22 @@ def test_personal_card_reveal_effect_requires_a_nonnegative_gain() -> None:
         PersonalCardRevealEffect(
             water=1,
             per_revealed_faction=PersonalCardBond.FREMEN,
+        )
+    with pytest.raises(ValueError, match="scales Persuasion only"):
+        PersonalCardRevealEffect(
+            strength=1,
+            per_in_play_faction=PersonalCardBond.FREMEN,
+        )
+    with pytest.raises(ValueError, match="revealed or in-play"):
+        PersonalCardRevealEffect(
+            persuasion=1,
+            per_revealed_faction=PersonalCardBond.FREMEN,
+            per_in_play_faction=PersonalCardBond.FREMEN,
+        )
+    with pytest.raises(TypeError, match="in-play Faction must use"):
+        PersonalCardRevealEffect(
+            persuasion=1,
+            per_in_play_faction="fremen",  # type: ignore[arg-type]
         )
     with pytest.raises(ValueError, match="must be paired"):
         PersonalCardRevealEffect(influence=1)

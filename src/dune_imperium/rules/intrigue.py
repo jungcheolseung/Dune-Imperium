@@ -113,7 +113,11 @@ from dune_imperium.rules.influence import (
     lose_faction_influence,
 )
 from dune_imperium.rules.planetologist import replace_sandworms
-from dune_imperium.rules.reveal_turn import add_reveal_strength, add_units_to_reveal
+from dune_imperium.rules.reveal_turn import (
+    add_reveal_persuasion,
+    add_reveal_strength,
+    add_units_to_reveal,
+)
 from dune_imperium.rules.shield_wall import destroy_shield_wall
 from dune_imperium.rules.spy_moves import (
     connected_post_ids,
@@ -1439,7 +1443,7 @@ def _apply_section_rewards(
     """Apply the sections' automatic rewards and their turn bookkeeping."""
 
     outcome = apply_rewards(state, player, automatic_rewards(sections), source=source)
-    next_state = outcome.result.state
+    next_state = _gain_reveal_persuasion_now(state, outcome.result.state, player)
     events: list[GameEvent] = list(outcome.result.events)
     if outcome.troops_recruited:
         next_state = update_turn_recruits(
@@ -1776,6 +1780,42 @@ def _unit_counts(arguments: Mapping[str, ActionValue]) -> tuple[int, int]:
     commanders = arguments.get("commanders", 0)
     assert isinstance(count, int) and isinstance(commanders, int)
     return count - commanders, commanders
+
+
+def _gain_reveal_persuasion_now(
+    before: GameState, after: GameState, player: int
+) -> GameState:
+    """Pay "Persuasion during your Reveal turn this round" into an open Reveal.
+
+    Tleilaxu Puppet: "Gain [1 Persuasion] during your Reveal turn this
+    round" [Tleilaxu Puppet card]. A Plot may be played at any time during
+    the owner's Agent or Reveal turn [Main p. 7] [Main p. 8]
+    (docs/rules/player-turns.md), so one played in the owner's own Reveal
+    turn gains the Persuasion in that Reveal; ``begin_reveal_turn`` only
+    adds the round bonus when a later Reveal starts. It is generated
+    Persuasion, so it counts toward Command (6+) [Bloodlines p. 5].
+    """
+
+    gained = (
+        after.players[player].reveal_persuasion_round_bonus
+        - before.players[player].reveal_persuasion_round_bonus
+    )
+    if gained <= 0 or not reveal_is_open_for(after, player):
+        return after
+    owner = after.players[player]
+    return replace(
+        after,
+        players=replace_player(
+            after.players,
+            replace(
+                owner,
+                reveal_persuasion_round_bonus=(
+                    owner.reveal_persuasion_round_bonus - gained
+                ),
+            ),
+        ),
+        decision_stack=add_reveal_persuasion(after.decision_stack, gained),
+    )
 
 
 def _follow_reveal_strength(

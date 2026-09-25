@@ -16,7 +16,10 @@ and the ones still unavailable at the end simply never happen.
 from collections.abc import Mapping
 from dataclasses import replace
 
-from dune_imperium.content.bloodlines.sardaukar import skill_for_instance
+from dune_imperium.content.bloodlines.sardaukar import (
+    SkillDefinition,
+    skill_for_instance,
+)
 from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
 from dune_imperium.content.immortality.board import genetic_markers_reached
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
@@ -111,14 +114,14 @@ def legal_reveal_spy_actions(
         PersonalCardRevealChoiceEffect.PLACE_SPY_OR_GAIN_TWO_STRENGTH,
         PersonalCardRevealChoiceEffect.COMMAND_PLACE_SPY,
     ):
+        recalled = context.get("reveal_spy_recalled") is True
+        plain_spy = effect in (
+            PersonalCardRevealChoiceEffect.PLACE_SPY,
+            PersonalCardRevealChoiceEffect.COMMAND_PLACE_SPY,
+        )
         strength_choice = (
             ()
-            if context.get("reveal_spy_recalled") is True
-            or effect
-            in (
-                PersonalCardRevealChoiceEffect.PLACE_SPY,
-                PersonalCardRevealChoiceEffect.COMMAND_PLACE_SPY,
-            )
+            if recalled or plain_spy
             else (
                 DomainAction(
                     action_id="gain_two_reveal_strength",
@@ -138,8 +141,20 @@ def legal_reveal_spy_actions(
                     for post_id in empty_observation_post_ids(state)
                 ),
             )
+        # With an empty supply the Spy icon allows "you may first recall one
+        # of your Spies for no effect" [Main pp. 11, 20]: the recall stays
+        # optional, so the plain icon may pass without a placement (OQ-057
+        # (14)). Once a Spy was recalled it is in the supply, and the
+        # placement is mandatory again. "Spy -OR- 2 swords" keeps its printed
+        # alternative instead.
+        decline = (
+            (DomainAction(action_id="decline_reveal_spy_recall", actor=player),)
+            if plain_spy and not recalled
+            else ()
+        )
         return (
             *strength_choice,
+            *decline,
             *(
                 DomainAction(
                     action_id="recall_spy_for_reveal_placement",
@@ -157,20 +172,24 @@ def legal_reveal_spy_actions(
         effect
         is PersonalCardRevealChoiceEffect.RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED
     ):
-        if len(post_ids) < 2:
-            # The two-Spy condition is judged again when this queued choice
-            # resolves in the owner's chosen Reveal order [Main p. 12]
-            # [Main pp. 9, 20]; a freely ordered recall (for example In High
-            # Places) can leave fewer than two, and the required recall and
-            # draw are then unavailable.
-            return (DomainAction(action_id="decline_reveal_spy_recall", actor=player),)
-        return tuple(
-            DomainAction(
-                action_id="recall_spy_for_reveal",
-                actor=player,
-                arguments=(("post_id", post_id),),
-            )
-            for post_id in post_ids
+        # Spy Network: "If you have two or more Spies on the board: [recall
+        # Spy] -> [Intrigue card]" [Spy Network card]. The recall is an arrow
+        # cost, and "You do not have to pay such a cost on a card" [Main p.
+        # 20] [FAQ p. 3], so declining is always offered. The two-Spy
+        # condition is judged again when this queued choice resolves in the
+        # owner's chosen Reveal order [Main p. 12]; a freely ordered recall
+        # (for example In High Places) can leave fewer than two, and only the
+        # decline remains.
+        return (
+            DomainAction(action_id="decline_reveal_spy_recall", actor=player),
+            *(
+                DomainAction(
+                    action_id="recall_spy_for_reveal",
+                    actor=player,
+                    arguments=(("post_id", post_id),),
+                )
+                for post_id in (post_ids if len(post_ids) >= 2 else ())
+            ),
         )
     if effect is PersonalCardRevealChoiceEffect.MAY_RECALL_SPY_FOR_THREE_STRENGTH:
         # Arrakis Observer: "[recall a Spy] -> 3 swords", an arrow cost.
@@ -257,16 +276,34 @@ def legal_reveal_influence_exchange_actions(
     return tuple(actions)
 
 
-def _frame_persuasion(frames: tuple[DecisionFrame, ...]) -> int | None:
-    """Return the open Reveal frame's Persuasion total, if a Reveal is open."""
+# Persuasion generated in this Reveal turn, which only gains raise; the
+# frame's "persuasion" is what is left to spend after acquisitions.
+GENERATED_PERSUASION_KEY = "persuasion_generated"
+
+
+def _generated_persuasion(context: Mapping[str, ActionValue]) -> int | None:
+    """Return the Persuasion a Reveal frame's turn has generated so far.
+
+    "Command (6+)" is judged on the Persuasion the Reveal turn generates
+    [Bloodlines pp. 5, 12], so Persuasion already spent on acquisitions
+    still counts. A frame built without the counter falls back to its
+    spendable total.
+    """
+
+    value = context.get(GENERATED_PERSUASION_KEY, context.get("persuasion"))
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise RuntimeError("Reveal frame has invalid generated Persuasion")
+    return value
+
+
+def _frame_generated_persuasion(frames: tuple[DecisionFrame, ...]) -> int | None:
+    """Return the open Reveal frame's generated Persuasion, if a Reveal is open."""
 
     for frame in reversed(frames):
-        if frame.kind != FrameKind.REVEAL:
-            continue
-        value = dict(frame.context).get("persuasion")
-        if isinstance(value, bool) or not isinstance(value, int):
-            raise RuntimeError("Reveal frame has invalid Persuasion")
-        return value
+        if frame.kind == FrameKind.REVEAL:
+            return _generated_persuasion(dict(frame.context))
     return None
 
 
@@ -965,7 +1002,7 @@ def apply_reveal_troop_retreat(
             payload=(("amount", 2), ("card_id", card_id), ("player", action.actor)),
         )
     else:
-        remaining = add_reveal_optional_sword_strength(remaining, 4)
+        remaining = add_reveal_optional_sword_strength(remaining, 4, card_id=card_id)
         reward_event = GameEvent(
             event_id=f"{source}:strength",
             kind="reveal_strength_gained",
@@ -1123,7 +1160,12 @@ def legal_reveal_troop_move_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Shadout Mapes: "You may deploy or retreat one troop"."""
+    """Shadout Mapes: "You may deploy or retreat one of your troops".
+
+    A Sardaukar Commander "is a 'troop' that's worth 2 strength in the
+    Conflict" [Bloodlines p. 4], so a garrison or Conflict Commander is a
+    legal unit too; ``commanders`` 1 names it, as the other troop retreats do.
+    """
 
     context = _reveal_choice_frame_context(
         state, player, PersonalCardRevealChoiceEffect.MAY_DEPLOY_OR_RETREAT_ONE_TROOP
@@ -1134,14 +1176,25 @@ def legal_reveal_troop_move_actions(
     return (
         DomainAction(action_id="decline_reveal_troop_move", actor=player),
         *(
-            (DomainAction(action_id="deploy_reveal_card_troop", actor=player),)
-            if owner.troops_garrison >= 1
-            else ()
-        ),
-        *(
-            (DomainAction(action_id="retreat_reveal_card_troop", actor=player),)
-            if owner.troops_conflict >= 1
-            else ()
+            DomainAction(
+                action_id=action_id,
+                actor=player,
+                arguments=(("commanders", 1),) if commander else (),
+            )
+            for action_id, troops, commanders in (
+                (
+                    "deploy_reveal_card_troop",
+                    owner.troops_garrison,
+                    owner.commanders_garrison,
+                ),
+                (
+                    "retreat_reveal_card_troop",
+                    owner.troops_conflict,
+                    owner.commanders_conflict,
+                ),
+            )
+            for commander, available in ((False, troops), (True, commanders))
+            if available >= 1
         ),
     )
 
@@ -1150,7 +1203,7 @@ def apply_reveal_troop_move(
     state: GameState,
     action: DomainAction,
 ) -> RuleResult:
-    """Decline, deploy one garrison troop, or retreat one Conflict troop."""
+    """Decline, deploy one garrison unit, or retreat one Conflict unit."""
 
     if action not in legal_reveal_troop_move_actions(state, action.actor):
         raise ValueError("action is not a legal Reveal troop move")
@@ -1170,21 +1223,26 @@ def apply_reveal_troop_move(
                 ),
             ),
         )
+    commanders = 1 if dict(action.arguments).get("commanders") == 1 else 0
     if action.action_id == "deploy_reveal_card_troop":
-        counted = add_units_to_reveal(popped, action.actor, troops=1)
+        counted = add_units_to_reveal(
+            popped, action.actor, troops=1 - commanders, commanders=commanders
+        )
         return RuleResult(
             state=counted.state,
             events=(
                 GameEvent(
                     event_id=f"{source}:deployed",
-                    kind="troops_deployed",
+                    kind="commanders_deployed" if commanders else "troops_deployed",
                     payload=(("count", 1), ("player", action.actor)),
                 ),
                 *counted.events,
             ),
         )
     before = popped.players[action.actor].combat_strength
-    retreated = retreat_units(popped, action.actor, source, troops=1)
+    retreated = retreat_units(
+        popped, action.actor, source, troops=1 - commanders, commanders=commanders
+    )
     delta = retreated.state.players[action.actor].combat_strength - before
     next_state = retreated.state
     if delta:
@@ -1349,7 +1407,9 @@ def apply_reveal_card_trash(
         combat_strength=owner.combat_strength + counted_strength,
     )
     remaining = trashed.state.decision_stack[:-1]
-    remaining = add_reveal_optional_sword_strength(remaining, 3)
+    remaining = add_reveal_optional_sword_strength(
+        remaining, 3, card_id=source_card_id
+    )
     if counted_strength:
         remaining = add_reveal_strength(remaining, counted_strength)
     return RuleResult(
@@ -1528,7 +1588,7 @@ def apply_reveal_spy_action(
             combat_strength=owner.combat_strength + counted_strength,
         )
         remaining = state.decision_stack[:-1]
-        remaining = add_reveal_optional_sword_strength(remaining, 2)
+        remaining = add_reveal_optional_sword_strength(remaining, 2, card_id=card_id)
         if counted_strength:
             remaining = add_reveal_strength(remaining, counted_strength)
         return RuleResult(
@@ -1617,7 +1677,7 @@ def apply_reveal_spy_action(
             recall_spy(owner, post_id),
             combat_strength=owner.combat_strength + counted,
         )
-        remaining = add_reveal_optional_sword_strength(remaining, 3)
+        remaining = add_reveal_optional_sword_strength(remaining, 3, card_id=card_id)
         if counted:
             remaining = add_reveal_strength(remaining, counted)
         return RuleResult(
@@ -1735,7 +1795,14 @@ def add_reveal_persuasion(
             continue
         if isinstance(persuasion, bool) or not isinstance(persuasion, int):
             raise RuntimeError("Reveal frame has invalid Persuasion")
+        generated = _generated_persuasion(context)
         context["persuasion"] = persuasion + amount
+        if generated is not None:
+            # Gains are generated Persuasion [Bloodlines p. 5]; the only
+            # negative amount is Desert Power's "2 Persuasion -OR- sandworm",
+            # whose sandworm branch takes back Persuasion that was never
+            # generated. Acquisition costs do not come through here.
+            context[GENERATED_PERSUASION_KEY] = generated + amount
         return (
             *frames[:index],
             replace(frames[index], context=tuple(sorted(context.items()))),
@@ -1769,8 +1836,15 @@ def add_reveal_strength(
 def add_reveal_optional_sword_strength(
     frames: tuple[DecisionFrame, ...],
     amount: int,
+    *,
+    card_id: str | None = None,
 ) -> tuple[DecisionFrame, ...]:
-    """Record a chosen sword bonus even when no unit currently counts it."""
+    """Record a chosen sword bonus even when no unit currently counts it.
+
+    ``card_id`` names the revealed card whose Reveal choice provided the
+    swords, so Leadership can count it as a card that "provides one or more
+    [sword] this turn" [Leadership card].
+    """
 
     for index in range(len(frames) - 1, -1, -1):
         context = dict(frames[index].context)
@@ -1782,6 +1856,10 @@ def add_reveal_optional_sword_strength(
         ):
             raise RuntimeError("Reveal frame has invalid optional sword strength")
         context["optional_sword_strength"] = optional_strength + amount
+        if card_id is not None and amount > 0:
+            context[_CHOICE_SWORD_CARDS_KEY] = ",".join(
+                dict.fromkeys((*_choice_sword_card_ids(context), card_id))
+            )
         return (
             *frames[:index],
             replace(frames[index], context=tuple(sorted(context.items()))),
@@ -1914,6 +1992,9 @@ _COMMAND_TECH = (
     ("training_depot", TechAbility.COMMAND_TWO_STRENGTH),
 )
 _TECH_GRANTED_KEY = "tech_granted"
+# Skills whose Reveal-turn bonus this Reveal already paid ("Each one works
+# only once each round" [Bloodlines p. 4]).
+_SKILL_GRANTED_KEY = "skill_reveal_granted"
 # Reveal-turn tile effects the owner still has to take, in any order the
 # owner likes [Main p. 12] (OQ-044): Forbidden Weapons' mandatory choice and
 # Panopticon's Spy placement.
@@ -1983,9 +2064,13 @@ def _reveal_effect_is_eligible(
         and (
             not effect.requires_spying_on_maker_space or is_spying_on_maker_space(owner)
         )
+        # Priority Contracts / Delivery Agreement: "[spice] -OR- If you have
+        # completed four or more contracts: Trash this card -> [1 VP]" [card
+        # faces]. The spice is one branch of that choice, paid only by it,
+        # so a fourth Contract completed later this Reveal (OQ-028 (b)) can
+        # never add the Victory Point on top of spice already paid.
         and not (
-            len(owner.completed_contract_ids) >= 4
-            and effect.spice > 0
+            effect.spice > 0
             and (
                 PersonalCardRevealChoiceEffect.KEEP_SPICE_OR_TRASH_SELF_FOR_VP_IF_FOUR_CONTRACTS
                 in card.reveal_choice_effects
@@ -2023,7 +2108,8 @@ def _granted_reveal_effects(
 
     Keys are ``card#index`` over ``card.reveal_effects``; the value is the
     completed-Contract count a per-Contract Persuasion effect was last paid
-    for, or None for every other effect.
+    for, the sword cards Leadership has counted, or None for every other
+    effect.
     """
 
     value = context.get(_GRANTED_EFFECTS_KEY, "")
@@ -2044,6 +2130,107 @@ def _encode_granted(granted: dict[str, int | None]) -> str:
     )
 
 
+# Revealed cards whose Reveal choice provided swords this turn (Chani, Clever
+# Tactician's retreat, Calculus of Power, Undercover Asset, Arrakis Observer).
+_CHOICE_SWORD_CARDS_KEY = "choice_sword_card_ids"
+
+
+def _choice_sword_card_ids(context: Mapping[str, ActionValue]) -> tuple[str, ...]:
+    value = context.get(_CHOICE_SWORD_CARDS_KEY, "")
+    if not isinstance(value, str):
+        raise RuntimeError("Reveal frame has invalid choice sword cards")
+    return tuple(card_id for card_id in value.split(",") if card_id)
+
+
+def _count_leadership_swords(state: GameState, player: int) -> RuleResult:
+    """Pay Leadership's swords for sword cards it has not counted yet.
+
+    "+[sword] for each other revealed card that provides one or more
+    [sword] this turn" [Leadership card]: a card counts through its printed
+    or automatic Reveal swords, or through swords its Reveal choice
+    provided (Undercover Asset's "-OR- 2 swords"). Leadership "counts at one
+    moment and a trashed card cannot be counted" (designer ruling, OQ-057;
+    designer-rulings-audit.md), and the owner orders the Reveal effects
+    [Main p. 12], so the owner may count at the moment with the most sword
+    cards in play. The granted-effect record keeps the count already paid
+    (from ``begin_reveal_turn``); this pass tops it up to the current count
+    and never takes swords back (OQ-022), which pays exactly the best single
+    moment.
+    """
+
+    frames = state.decision_stack
+    position = _reveal_frame_position(frames)
+    context = frame_context(frames[position])
+    granted = _granted_reveal_effects(context)
+    owner = state.players[player]
+    revealed_ids = tuple(
+        context_str(context, f"revealed_card_{index:03d}", owner="Reveal frame")
+        for index in range(
+            context_int(context, "revealed_card_count", owner="Reveal frame")
+        )
+    )
+    revealed_cards = tuple(
+        personal_card_for_instance(card_id) for card_id in revealed_ids
+    )
+    choice_swords = set(_choice_sword_card_ids(context))
+    sword_cards = {
+        card_id
+        for card_id, card in zip(revealed_ids, revealed_cards, strict=True)
+        if card_id in owner.in_play
+        and (
+            card_id in choice_swords
+            or card.reveal_strength
+            + sum(
+                _reveal_effect_strength(effect, revealed_cards)
+                for index, effect in enumerate(card.reveal_effects)
+                if f"{card_id}#{index}" in granted
+            )
+            > 0
+        )
+    }
+    updates: dict[str, int | None] = {}
+    swords = 0
+    for card_id, card in zip(revealed_ids, revealed_cards, strict=True):
+        if card_id not in owner.in_play:
+            continue
+        for index, effect in enumerate(card.reveal_effects):
+            counted = granted.get(f"{card_id}#{index}")
+            if not effect.strength_per_other_sword_card or counted is None:
+                continue
+            now = len(sword_cards - {card_id})
+            if now > counted:
+                swords += effect.strength_per_other_sword_card * (now - counted)
+                updates[f"{card_id}#{index}"] = now
+    if not swords:
+        return RuleResult(state=state)
+    units = owner.units_in_conflict
+    frames = _add_reveal_sword(
+        _record_granted_effects(frames, updates),
+        swords,
+        counts_toward_combat=units > 0,
+    )
+    next_owner = replace(
+        owner, combat_strength=owner.combat_strength + (swords if units else 0)
+    )
+    return RuleResult(
+        state=replace(
+            state,
+            players=replace_player(state.players, next_owner),
+            decision_stack=frames,
+        ),
+        events=(
+            GameEvent(
+                event_id=(
+                    f"round:{state.round_number}:player:{player}:reveal:"
+                    f"leadership:{','.join(f'{key}={n}' for key, n in updates.items())}"
+                ),
+                kind="reveal_strength_gained",
+                payload=(("amount", swords), ("player", player)),
+            ),
+        ),
+    )
+
+
 def _granted_entries(
     card_ids: tuple[str, ...],
     cards: tuple[PersonalCardDefinition, ...],
@@ -2061,9 +2248,13 @@ def _granted_entries(
             if _reveal_effect_is_eligible(
                 owner, cards_in_play, card_id, card, effect, persuasion=persuasion
             ):
+                # Leadership keeps the number of sword cards it has counted
+                # (``_count_leadership_swords``); a new entry has counted none.
                 entries[f"{card_id}#{index}"] = (
                     completed_contracts
                     if effect.persuasion_per_completed_contract
+                    else 0
+                    if effect.strength_per_other_sword_card
                     else None
                 )
     return entries
@@ -2408,6 +2599,32 @@ def _add_reveal_sword(
     )
 
 
+def _granted_skill_ids(context: Mapping[str, ActionValue]) -> tuple[str, ...]:
+    value = context.get(_SKILL_GRANTED_KEY, "")
+    if not isinstance(value, str):
+        raise RuntimeError("Reveal frame has invalid granted Skills")
+    return tuple(skill_id for skill_id in value.split(",") if skill_id)
+
+
+def _late_skill_bonuses(
+    context: Mapping[str, ActionValue], owner: PlayerState
+) -> tuple[SkillDefinition, ...]:
+    """Return the owner's Reveal-bonus Skills that became active this Reveal.
+
+    A frame without the record (built before it existed) pays none.
+    """
+
+    if owner.commanders_conflict < 1 or _SKILL_GRANTED_KEY not in context:
+        return ()
+    granted = set(_granted_skill_ids(context))
+    return tuple(
+        skill
+        for skill in (skill_for_instance(instance) for instance in owner.skill_ids)
+        if skill.skill_id not in granted
+        and (skill.reveal_persuasion or skill.reveal_spice or skill.reveal_water)
+    )
+
+
 def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
     """Pay out revealed cards' automatic effects whose condition came true later.
 
@@ -2460,6 +2677,49 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
     pending_trashes: list[tuple[str, str]] = []
     pending_combat_icons = 0
     newly_granted: dict[str, int | None] = {}
+    # Skills switch on while any Commander is in the Conflict [Bloodlines
+    # p. 4]; one that arrives there during the Reveal (a Combat icon
+    # deployment) pays its Reveal-turn bonus then, once (OQ-028 (c)). Paid
+    # first, so Charismatic's Persuasion counts toward Command (6+) below.
+    late_skills = _late_skill_bonuses(context, owner)
+    for skill in late_skills:
+        if skill.reveal_persuasion:
+            frames = add_reveal_persuasion(frames, skill.reveal_persuasion)
+        skill_resources = resource_gain_entry(
+            f"skill:{skill.skill_id}",
+            spice=skill.reveal_spice,
+            water=skill.reveal_water,
+        )
+        if skill_resources is not None:
+            late_gains.append(skill_resources)
+        events.append(
+            GameEvent(
+                event_id=(
+                    f"round:{state.round_number}:player:{player}:reveal:"
+                    f"skill:{skill.skill_id}:late"
+                ),
+                kind="skill_reveal_bonus",
+                payload=(
+                    ("persuasion", skill.reveal_persuasion),
+                    ("player", player),
+                    ("skill_id", skill.skill_id),
+                    ("spice", skill.reveal_spice),
+                    ("water", skill.reveal_water),
+                ),
+            )
+        )
+    if late_skills:
+        frames = _update_reveal_frame(
+            frames,
+            {
+                _SKILL_GRANTED_KEY: ",".join(
+                    (
+                        *_granted_skill_ids(context),
+                        *(skill.skill_id for skill in late_skills),
+                    )
+                )
+            },
+        )
     for card_id, card in zip(revealed_ids, revealed_cards, strict=True):
         for index, effect in enumerate(card.reveal_effects):
             key = f"{card_id}#{index}"
@@ -2477,10 +2737,12 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
                 card_id,
                 card,
                 effect,
-                persuasion=_frame_persuasion(frames),
+                persuasion=_frame_generated_persuasion(frames),
             ):
                 continue
-            persuasion = _reveal_effect_persuasion(effect, revealed_cards, completed)
+            persuasion = _reveal_effect_persuasion(
+                effect, revealed_cards, completed, _in_play_cards(next_owner)
+            )
             sword = _reveal_effect_strength(effect, revealed_cards)
             if persuasion:
                 frames = add_reveal_persuasion(frames, persuasion)
@@ -2532,8 +2794,9 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
                     ),
                 )
             )
-    # Tech tiles whose Command (6+) line opens late pay the same way.
-    late_persuasion = _frame_persuasion(frames)
+    # Tech tiles whose Command (6+) line opens late pay the same way, on the
+    # Persuasion generated so far, spent or not [Bloodlines p. 5].
+    late_persuasion = _frame_generated_persuasion(frames)
     reveal_context = frame_context(frames[_reveal_frame_position(frames)])
     tech_granted = tuple(
         key
@@ -2581,15 +2844,22 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
             with_context(frames[position], reveal_context),
             *frames[position + 1 :],
         )
-    if not newly_granted and not late_tech:
-        return result
     frames = _record_granted_effects(frames, newly_granted)
     frames = _append_reveal_gains(frames, tuple(late_gains))
-    working = replace(
-        state,
-        players=replace_player(state.players, next_owner),
-        decision_stack=frames,
+    # Leadership may count every sword card provided so far, a late-met
+    # effect's or a Reveal choice's included, before a late self-trash.
+    counted = _count_leadership_swords(
+        replace(
+            state,
+            players=replace_player(state.players, next_owner),
+            decision_stack=frames,
+        ),
+        player,
     )
+    if not newly_granted and not late_tech and not late_skills and not counted.events:
+        return result
+    working = counted.state
+    events.extend(counted.events)
     for trash_source, trashed_card_id in pending_trashes:
         if trashed_card_id in working.players[player].in_play:
             trashed = trash_personal_card(
@@ -2606,21 +2876,35 @@ def _reveal_effect_persuasion(
     effect: PersonalCardRevealEffect,
     revealed_cards: tuple[PersonalCardDefinition, ...],
     completed_contracts: int,
+    in_play_cards: tuple[PersonalCardDefinition, ...],
 ) -> int:
-    """Return one eligible effect's Persuasion over the given revealed set."""
+    """Return one eligible effect's Persuasion over the revealed or in-play set.
 
-    return (
-        effect.persuasion
-        * (
-            sum(
-                Faction(effect.per_revealed_faction.value) in card.factions
-                for card in revealed_cards
-            )
-            if effect.per_revealed_faction is not None
-            else 1
+    "Revealed" counts this Reveal's cards (Sardaukar Coordination);
+    "in play" also counts the cards played on this round's Agent turns
+    [Main p. 20 "In Play"] [FAQ p. 2 Liet Kynes] (Stilgar, The Devoted).
+    """
+
+    if effect.per_revealed_faction is not None:
+        counted = sum(
+            Faction(effect.per_revealed_faction.value) in card.factions
+            for card in revealed_cards
         )
+    elif effect.per_in_play_faction is not None:
+        counted = sum(
+            Faction(effect.per_in_play_faction.value) in card.factions
+            for card in in_play_cards
+        )
+    else:
+        counted = 1
+    return (
+        effect.persuasion * counted
         + effect.persuasion_per_completed_contract * completed_contracts
     )
+
+
+def _in_play_cards(owner: PlayerState) -> tuple[PersonalCardDefinition, ...]:
+    return tuple(personal_card_for_instance(card_id) for card_id in owner.in_play)
 
 
 def _reveal_effect_strength(
@@ -2636,21 +2920,6 @@ def _reveal_effect_strength(
         )
         if effect.per_revealed_faction is not None
         else 1
-    )
-
-
-def _card_reveal_strength(
-    owner: PlayerState,
-    cards_in_play: tuple[str, ...],
-    card_id: str,
-    card: PersonalCardDefinition,
-    revealed_cards: tuple[PersonalCardDefinition, ...],
-) -> int:
-    """Return one card's own strength before any sword cross-term is added."""
-
-    return card.reveal_strength + sum(
-        _reveal_effect_strength(effect, revealed_cards)
-        for effect in _eligible_reveal_effects(owner, cards_in_play, card_id, card)
     )
 
 
@@ -2717,6 +2986,9 @@ def reveal_choice_prompt(effect: PersonalCardRevealChoiceEffect) -> str:
         is (
             PersonalCardRevealChoiceEffect.KEEP_SPICE_OR_TRASH_SELF_FOR_VP_IF_FOUR_CONTRACTS
         )
+        else "Recall a Spy to draw an Intrigue card, or decline"
+        if effect
+        is PersonalCardRevealChoiceEffect.RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED
         else "Choose a Spy to recall for this Reveal effect"
     )
 
@@ -2754,8 +3026,13 @@ def _reveal_choice_effect_is_available(
             )
         )
         or (
+            # Shadout Mapes: a Commander is a troop [Bloodlines p. 4].
             effect is PersonalCardRevealChoiceEffect.MAY_DEPLOY_OR_RETREAT_ONE_TROOP
-            and (owner.troops_garrison >= 1 or owner.troops_conflict >= 1)
+            and owner.troops_garrison
+            + owner.commanders_garrison
+            + owner.troops_conflict
+            + owner.commanders_conflict
+            >= 1
         )
         or (
             # Tleilaxu Surgeon: any two troops, from either zone (OQ-053).
@@ -2855,12 +3132,12 @@ def _reveal_choice_effect_is_available(
             )
             and len(owner.spy_post_ids) >= 2
         )
-        or (
-            effect
-            is (
-                PersonalCardRevealChoiceEffect.KEEP_SPICE_OR_TRASH_SELF_FOR_VP_IF_FOUR_CONTRACTS
-            )
-            and len(owner.completed_contract_ids) >= 4
+        # The spice branch needs nothing, so this choice always opens; its
+        # trash branch is offered only with four completed Contracts at
+        # resolution (legal_contract_reveal_choice_actions).
+        or effect
+        is (
+            PersonalCardRevealChoiceEffect.KEEP_SPICE_OR_TRASH_SELF_FOR_VP_IF_FOUR_CONTRACTS
         )
     )
 
@@ -2948,7 +3225,9 @@ def _available_deferred_choices(
     """Return the deferred entries whose printed condition holds right now."""
 
     owner = state.players[player]
-    persuasion = context.get("persuasion")
+    # Command (6+) is judged on the Persuasion generated this Reveal turn
+    # [Bloodlines pp. 5, 12], so a purchase does not close it again.
+    persuasion = _generated_persuasion(context)
     return tuple(
         (card_id, effect_value)
         for card_id, effect_value in _deferred_reveal_choices(context)
@@ -2959,11 +3238,7 @@ def _available_deferred_choices(
             owner.in_play,
             card_id,
             PersonalCardRevealChoiceEffect(effect_value),
-            persuasion=(
-                persuasion
-                if isinstance(persuasion, int) and not isinstance(persuasion, bool)
-                else None
-            ),
+            persuasion=persuasion,
         )
     )
 
@@ -3119,10 +3394,13 @@ def _apply_late_reveal_frame_update(
         context[f"revealed_card_{count:03d}"] = card_id
         context["revealed_card_count"] = count + 1
         if persuasion_delta:
+            generated = _generated_persuasion(context)
             context["persuasion"] = (
                 context_int(context, "persuasion", owner="Reveal frame")
                 + persuasion_delta
             )
+            if generated is not None:
+                context[GENERATED_PERSUASION_KEY] = generated + persuasion_delta
         if sword_delta:
             context["sword_strength"] = (
                 context_int(context, "sword_strength", owner="Reveal frame")
@@ -3197,7 +3475,7 @@ def _late_reveal_one_card(
         for instance_id in (*previously_revealed_ids, card_id)
     )
 
-    frame_persuasion = _frame_persuasion(state.decision_stack)
+    frame_persuasion = _frame_generated_persuasion(state.decision_stack)
     eligible = _eligible_reveal_effects(
         next_owner,
         cards_in_play,
@@ -3210,37 +3488,26 @@ def _late_reveal_one_card(
         ),
     )
     persuasion_gain = card.reveal_persuasion + sum(
-        _reveal_effect_persuasion(effect, revealed_cards, completed_contracts)
+        _reveal_effect_persuasion(
+            effect, revealed_cards, completed_contracts, _in_play_cards(next_owner)
+        )
         for effect in eligible
     )
     own_strength = card.reveal_strength + sum(
         _reveal_effect_strength(effect, revealed_cards) for effect in eligible
     )
-    other_positive_strength = sum(
-        _card_reveal_strength(
-            next_owner,
-            cards_in_play,
-            other_id,
-            personal_card_for_instance(other_id),
-            revealed_cards,
-        )
-        > 0
-        for other_id in previously_revealed_ids
-    )
-    sword_delta = own_strength + sum(
-        effect.strength_per_other_sword_card * other_positive_strength
-        for effect in eligible
-        if effect.strength_per_other_sword_card
-    )
+    # Leadership's count, for this card and for one revealed earlier, is
+    # topped up by _count_leadership_swords once the card is recorded.
+    sword_delta = own_strength
 
     persuasion_increment = 0
     for other_id in previously_revealed_ids:
         other_card = personal_card_for_instance(other_id)
         for effect in other_card.reveal_effects:
-            if (
-                effect.per_revealed_faction is None
-                and not effect.strength_per_other_sword_card
-            ):
+            # The arriving card is both revealed and in play, so either
+            # count grows by it.
+            counted_faction = effect.per_revealed_faction or effect.per_in_play_faction
+            if counted_faction is None:
                 continue
             if not _reveal_effect_is_eligible(
                 next_owner,
@@ -3248,17 +3515,12 @@ def _late_reveal_one_card(
                 other_id,
                 other_card,
                 effect,
-                persuasion=_frame_persuasion(state.decision_stack),
+                persuasion=frame_persuasion,
             ):
                 continue
-            if (
-                effect.per_revealed_faction is not None
-                and Faction(effect.per_revealed_faction.value) in card.factions
-            ):
+            if Faction(counted_faction.value) in card.factions:
                 persuasion_increment += effect.persuasion
                 sword_delta += effect.strength
-            if effect.strength_per_other_sword_card and own_strength > 0:
-                sword_delta += effect.strength_per_other_sword_card
     persuasion_delta = persuasion_gain + persuasion_increment
 
     # Troop recruits, Intrigue draws and resources join the Reveal's pending
@@ -3311,6 +3573,8 @@ def _late_reveal_one_card(
             late_gains,
         ),
     )
+    counted = _count_leadership_swords(next_state, player)
+    next_state = counted.state
     guild_spy_events: tuple[GameEvent, ...] = ()
     if card.reveal_acquisition_effect is _GUILD_SPY_EFFECT:
         # A Guild Spy revealed late still reacts to The Spice Must Flow
@@ -3341,7 +3605,7 @@ def _late_reveal_one_card(
             cards_in_play,
             card_id,
             choice_effect,
-            persuasion=_frame_persuasion(next_state.decision_stack),
+            persuasion=_frame_generated_persuasion(next_state.decision_stack),
         ):
             choice_frames.append(
                 _build_reveal_choice_frame(
@@ -3365,7 +3629,9 @@ def _late_reveal_one_card(
             ),
         )
 
-    return RuleResult(state=next_state, events=(*events, *guild_spy_events))
+    return RuleResult(
+        state=next_state, events=(*events, *counted.events, *guild_spy_events)
+    )
 
 
 def reveal_late_arrivals(
@@ -3455,6 +3721,7 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
     revealed = owner.hand
     cards = tuple(personal_card_for_instance(card_id) for card_id in revealed)
     cards_in_play = (*owner.in_play, *revealed)
+    in_play_cards = (*_in_play_cards(owner), *cards)
 
     def eligible_effects(
         persuasion: int | None,
@@ -3479,7 +3746,9 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         effects: tuple[tuple[str, PersonalCardRevealEffect], ...],
     ) -> int:
         total = sum(card.reveal_persuasion for card in cards) + sum(
-            _reveal_effect_persuasion(effect, cards, len(owner.completed_contract_ids))
+            _reveal_effect_persuasion(
+                effect, cards, len(owner.completed_contract_ids), in_play_cards
+            )
             for _, effect in effects
         )
         if owner.high_council:
@@ -3526,15 +3795,19 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         )
         for card_id, card in zip(revealed, cards, strict=True)
     )
+    # Leadership counts the other sword cards revealed now; a card that
+    # provides swords later (a Reveal choice, a late arrival) is added by
+    # _count_leadership_swords, which reads the count recorded here.
+    other_sword_cards = {
+        card_id: sum(
+            strength > 0 for other_id, strength in card_strengths if other_id != card_id
+        )
+        for card_id in revealed
+    }
     sword_strength = (
         sum(strength for _, strength in card_strengths)
         + sum(
-            effect.strength_per_other_sword_card
-            * sum(
-                strength > 0
-                for card_id, strength in card_strengths
-                if card_id != effect_card_id
-            )
+            effect.strength_per_other_sword_card * other_sword_cards[effect_card_id]
             for effect_card_id, effect in reveal_effects
         )
         + tech_sword
@@ -3624,26 +3897,28 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         next_owner if player.player_id == action.actor else player
         for player in state.players
     )
+    granted_at_start = _granted_entries(
+        revealed,
+        cards,
+        owner,
+        cards_in_play,
+        len(owner.completed_contract_ids),
+        persuasion=persuasion,
+    )
+    for card_id, card in zip(revealed, cards, strict=True):
+        for index, effect in enumerate(card.reveal_effects):
+            key = f"{card_id}#{index}"
+            if effect.strength_per_other_sword_card and key in granted_at_start:
+                granted_at_start[key] = other_sword_cards[card_id]
     context: list[tuple[str, ActionValue]] = [
-        (
-            _GRANTED_EFFECTS_KEY,
-            _encode_granted(
-                _granted_entries(
-                    revealed,
-                    cards,
-                    owner,
-                    cards_in_play,
-                    len(owner.completed_contract_ids),
-                    persuasion=persuasion,
-                )
-            ),
-        ),
+        (_GRANTED_EFFECTS_KEY, _encode_granted(granted_at_start)),
         # Combat-icon deployment during the Reveal [Bloodlines p. 5]: open
         # when an icon arrived earlier this turn, counting this Reveal's
         # recruits toward the limit.
         ("combat_deployment", owner.combat_icon_turn),
         ("optional_sword_strength", 0),
         ("persuasion", persuasion),
+        (GENERATED_PERSUASION_KEY, persuasion),
         ("reveal_troops_recruited", reveal_troops_recruited),
         (REVEAL_GAINS_KEY, _encode_gains(pending_gains)),
         ("reveal_units_deployed", 0),
@@ -3651,6 +3926,7 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         ("strength", strength),
         ("sword_strength", sword_strength),
         (_TECH_GRANTED_KEY, ",".join(tech_granted)),
+        (_SKILL_GRANTED_KEY, ",".join(skill.skill_id for skill in active_skills)),
         ("turn_owner", action.actor),
     ]
     context.extend(

@@ -916,6 +916,13 @@ def _immortality_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "decline_reveal_troop_sacrifice",
         )
     ]
+    if config.bloodlines:
+        # Shadout Mapes may move a Sardaukar Commander: it "is a 'troop'"
+        # [Bloodlines p. 4].
+        templates.extend(
+            ActionTemplate(action_id=action_id, arguments=(("commanders", 1),))
+            for action_id in ("deploy_reveal_card_troop", "retreat_reveal_card_troop")
+        )
     templates.extend(
         ActionTemplate(
             action_id="lose_reveal_troops_for_specimens", arguments=(("zones", zones),)

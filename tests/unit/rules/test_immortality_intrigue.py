@@ -261,6 +261,31 @@ def test_tleilaxu_puppet_adds_persuasion_this_round_only() -> None:
     )
 
 
+def test_tleilaxu_puppet_played_in_the_owners_reveal_pays_that_reveal() -> None:
+    # Tleilaxu Puppet: "Gain [1 Persuasion] during your Reveal turn this
+    # round" [Tleilaxu Puppet card]; a Plot may be played at any time during
+    # the owner's Agent or Reveal turn [Main p. 7] [Main p. 8]
+    # (docs/rules/player-turns.md: "Plot Intrigue 카드는 자신의 Agent 턴 또는
+    # 공개 턴 중 어느 때든 플레이할 수 있다"). Played after the Reveal began,
+    # the Persuasion joins that Reveal; before the fix it was parked in the
+    # round bonus that only a later Reveal start reads, and lost.
+    puppet = _intrigue("tleilaxu_puppet")
+    state = _plot_state(_owner(intrigue_cards=(puppet,)))
+    revealed = begin_reveal_turn(
+        state, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    persuasion = dict(revealed.decision_stack[-1].context)["persuasion"]
+    assert isinstance(persuasion, int)
+    assert _playable(revealed, puppet) == {0}
+    played = UprisingRulesEngine().apply(revealed, _play(puppet)).state
+    after = dict(played.decision_stack[-1].context)
+    assert played.decision_stack[-1].kind == FrameKind.REVEAL
+    assert after["persuasion"] == persuasion + 1
+    assert after["persuasion_generated"] == persuasion + 1
+    assert played.players[0].reveal_persuasion_round_bonus == 0
+    assert puppet in played.intrigue_discard
+
+
 def test_vicious_talents_adds_swords_per_marker() -> None:
     card = _intrigue("vicious_talents")
     engine = UprisingRulesEngine()

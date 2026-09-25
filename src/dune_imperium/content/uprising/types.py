@@ -493,6 +493,11 @@ class PersonalCardRevealEffect:
     minimum_spies_placed: int = 0
     requires_spying_on_maker_space: bool = False
     per_revealed_faction: PersonalCardBond | None = None
+    # "for each <Faction> card you have in play (including this one)"
+    # (Stilgar, The Devoted): Agent-turn cards this round count as well as
+    # this Reveal's [Main p. 20 "In Play"] [FAQ p. 2 Liet Kynes], unlike
+    # the "revealed" count above (Sardaukar Coordination).
+    per_in_play_faction: PersonalCardBond | None = None
     persuasion_per_completed_contract: int = 0
     # Bloodlines conditions: a Sardaukar Commander in the Conflict (Quash
     # Rebellion), a garrison size (Imperial Throneship: "four or more
@@ -534,6 +539,13 @@ class PersonalCardRevealEffect:
             and self.strength == 0
         ):
             raise ValueError("counted Reveal Faction requires Persuasion or strength")
+        if self.per_in_play_faction is not None:
+            if not isinstance(self.per_in_play_faction, PersonalCardBond):
+                raise TypeError("counted in-play Faction must use PersonalCardBond")
+            if self.per_revealed_faction is not None:
+                raise ValueError("a Reveal gain counts revealed or in-play cards")
+            if self.persuasion == 0 or self.strength:
+                raise ValueError("counted in-play Faction scales Persuasion only")
         if self.influence_faction is not None and not isinstance(
             self.influence_faction,
             PersonalCardBond,
