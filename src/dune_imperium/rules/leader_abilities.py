@@ -31,6 +31,7 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.acquisition import (
+    acquirable_imperium_instance_ids,
     acquire_imperium_for_intrigue,
     acquire_reserve_for_intrigue,
     acquisition_spy_frame,
@@ -721,29 +722,21 @@ def legal_leader_signet_actions(
     if owner.leader_id == "princess_irulan":
         # Chronicler's Insight: acquire a card that costs one to hand, or
         # trash a hand card (two Spice if it costs one or more), or neither
-        # [Princess Irulan card].
+        # [Princess Irulan card]. The face puts no condition on the Imperium
+        # Deck: once it is exhausted the Row keeps operating with fewer cards
+        # (OQ-004), so its one-cost cards stay acquirable.
         actions: list[DomainAction] = [
             DomainAction(action_id="decline_leader_signet_payment", actor=player)
         ]
-        if state.imperium_deck:
-            actions.extend(
-                DomainAction(
-                    action_id="acquire_leader_imperium",
-                    actor=player,
-                    arguments=(("instance_id", instance_id),),
-                )
-                for instance_id in state.imperium_row
-                if (
-                    (
-                        definition := imperium_card_for_instance(instance_id)
-                    ).acquisition_cost
-                    == 1
-                    and (
-                        not definition.has_acquisition_bonus
-                        or definition.acquisition_effect is not None
-                    )
-                )
+        actions.extend(
+            DomainAction(
+                action_id="acquire_leader_imperium",
+                actor=player,
+                arguments=(("instance_id", instance_id),),
             )
+            for instance_id in acquirable_imperium_instance_ids(state, 1)
+            if imperium_card_for_instance(instance_id).acquisition_cost == 1
+        )
         actions.extend(
             DomainAction(
                 action_id="acquire_leader_reserve",
