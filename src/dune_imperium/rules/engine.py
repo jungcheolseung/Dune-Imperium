@@ -763,7 +763,7 @@ class UprisingRulesEngine(RulesEngine):
         # so the automatic advance runs again after the passives.
         result = grant_late_reveal_effects(
             grant_leader_reveal_passives(
-                grant_hungry_for_spice(_advance_automatic(result))
+                grant_hungry_for_spice(_advance_automatic(result), state)
             )
         )
         result = skip_impossible_imperial_privilege_recall(
@@ -805,7 +805,7 @@ class UprisingRulesEngine(RulesEngine):
         # again after them.
         result = _advance_automatic(
             grant_late_reveal_effects(
-                grant_leader_reveal_passives(grant_hungry_for_spice(result))
+                grant_leader_reveal_passives(grant_hungry_for_spice(result, state))
             )
         )
         # A freely ordered recall may have removed Imperial Privilege's last

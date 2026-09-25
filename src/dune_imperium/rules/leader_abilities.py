@@ -29,7 +29,7 @@ from dune_imperium.core.decisions import ChanceDecision, DecisionFrame, PlayerDe
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
-from dune_imperium.core.state import GameState
+from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.acquisition import (
     acquirable_imperium_instance_ids,
     acquire_imperium_for_intrigue,
@@ -48,7 +48,12 @@ from dune_imperium.rules.effects import (
     recruit_shortfall_events,
     recruit_troops,
 )
-from dune_imperium.rules.frames import FrameKind, owned_top_frame, replace_player
+from dune_imperium.rules.frames import (
+    FrameKind,
+    owned_top_frame,
+    replace_player,
+    turn_owner_of,
+)
 from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
 from dune_imperium.rules.reveal_turn import (
@@ -2020,12 +2025,23 @@ def apply_leader_reveal_action(
     )
 
 
-def grant_hungry_for_spice(result: RuleResult) -> RuleResult:
+def grant_hungry_for_spice(
+    result: RuleResult,
+    before: GameState | None = None,
+) -> RuleResult:
     """Hungry for Spice: three spice gained in one turn draws a card.
 
     "Whenever you gain 3 or more spice in a single turn: draw a card"
     [Steersman Y'rkoon card]; once per turn, judged against the seat's
     spice gained since its turn opened (``spice_gained_this_turn``).
+
+    Only Y'rkoon's own turn counts. A seat is judged while its turn is in
+    progress, and in the transition that closed it (``before`` is the state
+    the transition started from), so a gain resolved by the turn's last
+    step still draws. Gains outside the turn never reach the tally: the
+    Combat, Makers and Recall phases are not turns [Main p. 8], so a
+    transition that leaves Player Turns judges nothing, and the snapshot is
+    retaken when the seat's next turn opens.
     """
 
     state = result.state
@@ -2036,10 +2052,14 @@ def grant_hungry_for_spice(result: RuleResult) -> RuleResult:
         # queue a second reshuffle of the same discard pile. The hook runs
         # again after the next transition.
         return result
+    judged = {turn_owner_of(state)}
+    if before is not None and state.phase is GamePhase.PLAYER_TURNS:
+        judged.add(turn_owner_of(before))
     events = list(result.events)
     for seat in state.players:
         if (
             seat.leader_id != "steersman_y_rkoon"
+            or seat.player_id not in judged
             or seat.hungry_for_spice_granted_turn
             or seat.resources.spice - seat.spice_at_turn_start + seat.spice_spent_turn
             < 3
