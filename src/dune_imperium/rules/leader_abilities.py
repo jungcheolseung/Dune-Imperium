@@ -810,10 +810,14 @@ def legal_leader_signet_actions(
     if owner.leader_id == "esmar_tuek":
         # Smuggle Spice: a bonus spice onto Tuek's Sietch, or one taken from
         # any Maker space holding some [Esmar Tuek card]; the space's own
-        # visit may then collect it the same turn [Bloodlines p. 12].
+        # visit may then collect it the same turn [Bloodlines p. 12]. The
+        # face prints no "may" and no arrow, so it is a mandatory choose-one:
+        # "Most effects from a board space or card you play are mandatory"
+        # [FAQ p. 3]. The refusal remains only when neither half is possible
+        # (Tuek's Sietch missing and no bonus spice anywhere), so the frame
+        # cannot jam.
         bonus = dict(state.maker_bonus_spice)
-        return (
-            DomainAction(action_id="decline_leader_signet_payment", actor=player),
+        choices = (
             *(
                 (DomainAction(action_id="place_leader_bonus_spice", actor=player),)
                 if "tuek_sietch" in bonus
@@ -828,6 +832,9 @@ def legal_leader_signet_actions(
                 for space_id, amount in state.maker_bonus_spice
                 if amount > 0
             ),
+        )
+        return choices or (
+            DomainAction(action_id="decline_leader_signet_payment", actor=player),
         )
 
     if owner.leader_id == "duncan_idaho":

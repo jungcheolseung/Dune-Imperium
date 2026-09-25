@@ -506,19 +506,20 @@ def test_smuggle_spice_moves_bonus_spice_on_or_off_maker_spaces() -> None:
     owner = PlayerState(player_id=0, leader_id="esmar_tuek", hand=(SIGNET,))
     state = _play(_esmar_state(owner), SIGNET, "arrakeen")
     actions = legal_leader_signet_actions(state, 0)
+    # "Place 1 bonus spice on Tuek's Sietch. -OR- Take 1 bonus spice from a
+    # Maker board space." prints no "may" [Esmar Tuek card]: "Most effects
+    # from a board space or card you play are mandatory" [FAQ p. 3], so the
+    # Signet offers no refusal.
     assert [tuple(a.arguments) for a in actions] == [
-        (),
         (),
         (("space_id", "hagga_basin"),),
         (("space_id", "tuek_sietch"),),
     ]
-    assert [a.action_id for a in actions[:2]] == [
-        "decline_leader_signet_payment",
-        "place_leader_bonus_spice",
-    ]
-    placed = apply_leader_bonus_spice(state, actions[1]).state
+    assert actions[0].action_id == "place_leader_bonus_spice"
+    assert all(a.action_id != "decline_leader_signet_payment" for a in actions)
+    placed = apply_leader_bonus_spice(state, actions[0]).state
     assert dict(placed.maker_bonus_spice)["tuek_sietch"] == 2
-    taken = apply_leader_bonus_spice(state, actions[2]).state
+    taken = apply_leader_bonus_spice(state, actions[1]).state
     assert dict(taken.maker_bonus_spice)["hagga_basin"] == 1
     assert taken.players[0].resources.spice == 1
 
