@@ -1120,7 +1120,21 @@ def test_cunning_owner_may_draw_first_and_trash_the_drawn_card() -> None:
     assert trashed.intrigue_discard == (card,)
 
 
-def test_special_mission_places_a_spy_on_a_bene_gesserit_post() -> None:
+_CITY_POSTS = frozenset(
+    {
+        "arrakis-research-station-spice-refinery",
+        "arrakis-research-station-sietch-tabr",
+        "arrakis-spice-refinery-arrakeen",
+    }
+)
+
+
+def test_special_mission_places_a_spy_on_a_city_post() -> None:
+    # The card prints "[Spy] on [City disc]" (the blue-violet disc is the
+    # City Agent icon, not the Bene Gesserit ornament) [Special Mission
+    # card]; '"[Spy] on [City]" means the observation post must connect to
+    # a [City] board space' [Main p. 20]. It used to target the Bene
+    # Gesserit post.
     card = _intrigue("special_mission")
     owner = PlayerState(player_id=0, intrigue_cards=(card,))
     state = _turn_state(owner)
@@ -1138,7 +1152,8 @@ def test_special_mission_places_a_spy_on_a_bene_gesserit_post() -> None:
         for a in offered
         if a.action_id == "place_intrigue_spy"
     }
-    assert targets and all("bene-gesserit" in post for post in targets)
+    assert targets == _CITY_POSTS
+    assert "bene-gesserit-espionage-secrets" not in targets
     post = sorted(targets)[0]
     placed = engine.apply(opened, _place_spy(post)).state
     assert placed.players[0].spy_post_ids == (post,)
@@ -1213,26 +1228,43 @@ def test_special_mission_recalls_first_when_no_spy_is_in_supply() -> None:
     }
 
 
+def _city_posts_held_by_rivals(state: GameState) -> GameState:
+    """Fill the two City posts the owner does not watch with rival Spies."""
+
+    first = replace(
+        state.players[1],
+        spies_supply=2,
+        spy_post_ids=("arrakis-research-station-sietch-tabr",),
+    )
+    second = replace(
+        state.players[2],
+        spies_supply=2,
+        spy_post_ids=("arrakis-spice-refinery-arrakeen",),
+    )
+    return replace(state, players=(state.players[0], first, second, state.players[3]))
+
+
 def test_special_mission_shared_post_does_not_make_the_placement_playable() -> None:
-    # Seed-97 sweep shape: the owner's only Bene Gesserit Spy shares its post
-    # with another player's Spy, so recalling it cannot free the post
-    # [Main pp. 11, 20] and option 0 must not be offered at all.
+    # Seed-97 sweep shape: the owner's only City Spy shares its post with
+    # another player's Spy and the other City posts are full, so recalling
+    # it cannot free a post [Main pp. 11, 20] and option 0 must not be
+    # offered at all.
     card = _intrigue("special_mission")
     owner = PlayerState(
         player_id=0,
         intrigue_cards=(card,),
         spies_supply=0,
         spy_post_ids=(
-            "bene-gesserit-espionage-secrets",
+            "arrakis-research-station-spice-refinery",
             "fremen-desert-tactics-fremkit",
             "landsraad-assembly-hall-gather-support",
         ),
     )
-    state = _turn_state(owner)
+    state = _city_posts_held_by_rivals(_turn_state(owner))
     watcher = replace(
         state.players[3],
         spies_supply=2,
-        spy_post_ids=("bene-gesserit-espionage-secrets",),
+        spy_post_ids=("arrakis-research-station-spice-refinery",),
     )
     state = replace(state, players=(*state.players[:3], watcher))
     engine = UprisingRulesEngine()
@@ -1253,19 +1285,19 @@ def test_special_mission_slot_declines_after_a_drift_strands_the_placement() -> 
         intrigue_cards=(card,),
         spies_supply=0,
         spy_post_ids=(
-            "bene-gesserit-espionage-secrets",
+            "arrakis-research-station-spice-refinery",
             "fremen-desert-tactics-fremkit",
             "landsraad-assembly-hall-gather-support",
         ),
     )
-    state = _turn_state(owner)
+    state = _city_posts_held_by_rivals(_turn_state(owner))
     engine = UprisingRulesEngine()
 
     opened = engine.apply(state, _play(state, card, 0)).state
     watcher = replace(
         opened.players[3],
         spies_supply=2,
-        spy_post_ids=("bene-gesserit-espionage-secrets",),
+        spy_post_ids=("arrakis-research-station-spice-refinery",),
     )
     drifted = replace(opened, players=(*opened.players[:3], watcher))
 

@@ -1,5 +1,7 @@
 """Tests for the Intrigue effect DSL English text renderer."""
 
+import pytest
+
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
     CompletedContractsAtLeast,
@@ -12,8 +14,10 @@ from dune_imperium.content.uprising.effect_dsl import (
     OnRevealAcquisitionThisRound,
     OnUnitsDeployedInTurn,
     PayResources,
+    PlaceSpy,
 )
 from dune_imperium.content.uprising.intrigue import INTRIGUE_CARDS, INTRIGUE_CARDS_BY_ID
+from dune_imperium.content.uprising.types import AgentIcon
 from dune_imperium.display.effect_dsl_text import (
     condition_text,
     cost_text,
@@ -148,3 +152,23 @@ def test_intrigue_card_text_covers_every_card_with_non_empty_lines() -> None:
 def test_intrigue_card_text_renders_every_option_of_every_card() -> None:
     for entry in INTRIGUE_CARDS:
         assert len(intrigue_card_text(entry)) == len(entry.options)
+
+
+def test_special_mission_text_names_the_city_post() -> None:
+    # "[Spy] on [City disc]" [Special Mission card]; the post must connect
+    # to a City space [Main p. 20].
+    entry = INTRIGUE_CARDS_BY_ID["special_mission"]
+
+    assert option_text(entry.options[0]) == "Plot — Place a Spy (City Observation Post)"
+
+
+def test_place_spy_agent_icon_target_is_validated() -> None:
+    assert reward_text(PlaceSpy(agent_icons=(AgentIcon.SPICE_TRADE,))) == (
+        "Place a Spy (Spice Trade Observation Post)"
+    )
+    with pytest.raises(ValueError):
+        PlaceSpy(agent_icons=())
+    with pytest.raises(ValueError):
+        PlaceSpy(agent_icons=(AgentIcon.CITY,), factions=(Faction.FREMEN,))
+    with pytest.raises(ValueError):
+        PlaceSpy(agent_icons=(AgentIcon.CITY,), shared_post=True)

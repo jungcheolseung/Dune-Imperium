@@ -84,6 +84,7 @@ from dune_imperium.rules.effect_interpreter import (
     pay_cost,
     resource_cost,
     section_is_usable,
+    spy_placement_allowed_post_ids,
     spy_placement_targets,
     trashable_discard_pile_ids,
 )
@@ -121,7 +122,6 @@ from dune_imperium.rules.spy_moves import (
     turn_space_spy_frames,
 )
 from dune_imperium.rules.spy_placement import (
-    observation_post_ids_for_factions,
     place_spy,
     recall_spy,
     solo_occupied_post_ids,
@@ -913,11 +913,7 @@ def legal_intrigue_choice_actions(
                 # reachable are offered: any Spy while a target post is
                 # free, otherwise a Spy that is the sole occupant of an
                 # allowed post (a shared post stays occupied).
-                allowed_posts = (
-                    observation_post_ids_for_factions(slot.factions)
-                    if slot.factions is not None
-                    else None
-                )
+                allowed_posts = spy_placement_allowed_post_ids(slot)
                 recallable = (
                     owner.spy_post_ids
                     if targets

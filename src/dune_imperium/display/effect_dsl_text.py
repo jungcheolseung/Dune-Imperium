@@ -146,6 +146,11 @@ def _place_spy_text(spy: PlaceSpy) -> str:
     if spy.factions is not None:
         names = " or ".join(_faction_name(faction) for faction in spy.factions)
         return f"Place a Spy ({names} Observation Post)"
+    if spy.agent_icons is not None:
+        names = " or ".join(
+            icon.value.replace("_", " ").title() for icon in spy.agent_icons
+        )
+        return f"Place a Spy ({names} Observation Post)"
     return "Place a Spy"
 
 

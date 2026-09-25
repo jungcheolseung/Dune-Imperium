@@ -673,9 +673,9 @@ INTRIGUE_CARDS: Final = (
         "Special Mission",
         copies=2,
         options=(
-            _plot(
-                EffectSection(rewards=(PlaceSpy(factions=(Faction.BENE_GESSERIT,)),))
-            ),
+            # "[Spy] on [City]": the disc is the City Agent icon, so the post
+            # must connect to a City space [Special Mission card; Main p. 20].
+            _plot(EffectSection(rewards=(PlaceSpy(agent_icons=(AgentIcon.CITY,)),))),
             _plot(
                 EffectSection(
                     costs=(RecallSpy(1),),

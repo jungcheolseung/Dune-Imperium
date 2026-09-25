@@ -259,9 +259,13 @@ detonation icon is a detonate-or-keep choice because the rules make removing
 the token optional [Main pp. 10, 20].
 
 The fourth batch transcribes Cunning and Special Mission from their card
-images. Special Mission's first half places a Spy on a Bene Gesserit-connected
-post (the purple Faction disc on the card); DIU's `target: "blue"` is read the
-same way.
+images. Special Mission's first half places a Spy on a City-connected post:
+the plain blue-violet disc on the card is the City Agent icon (compare
+`assets/icons/agent_icon_city.png`; the Bene Gesserit icon is the ornament),
+and "'[Spy] on [City]' means the observation post must connect to a [City]
+board space" [Main p. 20]. DIU's `target: "blue"` says the same. The batch
+first misread the disc as the Bene Gesserit Faction and targeted the Bene
+Gesserit post; corrected 2026-09-26.
 
 The fifth batch transcribes Weirding Combat, Questionable Methods and Find
 Weakness from their card images; all three match DIU's shapes.
