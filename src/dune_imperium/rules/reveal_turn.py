@@ -1002,7 +1002,7 @@ def apply_reveal_troop_retreat(
             payload=(("amount", 2), ("card_id", card_id), ("player", action.actor)),
         )
     else:
-        remaining = add_reveal_optional_sword_strength(remaining, 4)
+        remaining = add_reveal_optional_sword_strength(remaining, 4, card_id=card_id)
         reward_event = GameEvent(
             event_id=f"{source}:strength",
             kind="reveal_strength_gained",
@@ -1407,7 +1407,9 @@ def apply_reveal_card_trash(
         combat_strength=owner.combat_strength + counted_strength,
     )
     remaining = trashed.state.decision_stack[:-1]
-    remaining = add_reveal_optional_sword_strength(remaining, 3)
+    remaining = add_reveal_optional_sword_strength(
+        remaining, 3, card_id=source_card_id
+    )
     if counted_strength:
         remaining = add_reveal_strength(remaining, counted_strength)
     return RuleResult(
@@ -1586,7 +1588,7 @@ def apply_reveal_spy_action(
             combat_strength=owner.combat_strength + counted_strength,
         )
         remaining = state.decision_stack[:-1]
-        remaining = add_reveal_optional_sword_strength(remaining, 2)
+        remaining = add_reveal_optional_sword_strength(remaining, 2, card_id=card_id)
         if counted_strength:
             remaining = add_reveal_strength(remaining, counted_strength)
         return RuleResult(
@@ -1675,7 +1677,7 @@ def apply_reveal_spy_action(
             recall_spy(owner, post_id),
             combat_strength=owner.combat_strength + counted,
         )
-        remaining = add_reveal_optional_sword_strength(remaining, 3)
+        remaining = add_reveal_optional_sword_strength(remaining, 3, card_id=card_id)
         if counted:
             remaining = add_reveal_strength(remaining, counted)
         return RuleResult(
@@ -1834,8 +1836,15 @@ def add_reveal_strength(
 def add_reveal_optional_sword_strength(
     frames: tuple[DecisionFrame, ...],
     amount: int,
+    *,
+    card_id: str | None = None,
 ) -> tuple[DecisionFrame, ...]:
-    """Record a chosen sword bonus even when no unit currently counts it."""
+    """Record a chosen sword bonus even when no unit currently counts it.
+
+    ``card_id`` names the revealed card whose Reveal choice provided the
+    swords, so Leadership can count it as a card that "provides one or more
+    [sword] this turn" [Leadership card].
+    """
 
     for index in range(len(frames) - 1, -1, -1):
         context = dict(frames[index].context)
@@ -1847,6 +1856,10 @@ def add_reveal_optional_sword_strength(
         ):
             raise RuntimeError("Reveal frame has invalid optional sword strength")
         context["optional_sword_strength"] = optional_strength + amount
+        if card_id is not None and amount > 0:
+            context[_CHOICE_SWORD_CARDS_KEY] = ",".join(
+                dict.fromkeys((*_choice_sword_card_ids(context), card_id))
+            )
         return (
             *frames[:index],
             replace(frames[index], context=tuple(sorted(context.items()))),
@@ -2095,7 +2108,8 @@ def _granted_reveal_effects(
 
     Keys are ``card#index`` over ``card.reveal_effects``; the value is the
     completed-Contract count a per-Contract Persuasion effect was last paid
-    for, or None for every other effect.
+    for, the sword cards Leadership has counted, or None for every other
+    effect.
     """
 
     value = context.get(_GRANTED_EFFECTS_KEY, "")
@@ -2116,6 +2130,107 @@ def _encode_granted(granted: dict[str, int | None]) -> str:
     )
 
 
+# Revealed cards whose Reveal choice provided swords this turn (Chani, Clever
+# Tactician's retreat, Calculus of Power, Undercover Asset, Arrakis Observer).
+_CHOICE_SWORD_CARDS_KEY = "choice_sword_card_ids"
+
+
+def _choice_sword_card_ids(context: Mapping[str, ActionValue]) -> tuple[str, ...]:
+    value = context.get(_CHOICE_SWORD_CARDS_KEY, "")
+    if not isinstance(value, str):
+        raise RuntimeError("Reveal frame has invalid choice sword cards")
+    return tuple(card_id for card_id in value.split(",") if card_id)
+
+
+def _count_leadership_swords(state: GameState, player: int) -> RuleResult:
+    """Pay Leadership's swords for sword cards it has not counted yet.
+
+    "+[sword] for each other revealed card that provides one or more
+    [sword] this turn" [Leadership card]: a card counts through its printed
+    or automatic Reveal swords, or through swords its Reveal choice
+    provided (Undercover Asset's "-OR- 2 swords"). Leadership "counts at one
+    moment and a trashed card cannot be counted" (designer ruling, OQ-057;
+    designer-rulings-audit.md), and the owner orders the Reveal effects
+    [Main p. 12], so the owner may count at the moment with the most sword
+    cards in play. The granted-effect record keeps the count already paid
+    (from ``begin_reveal_turn``); this pass tops it up to the current count
+    and never takes swords back (OQ-022), which pays exactly the best single
+    moment.
+    """
+
+    frames = state.decision_stack
+    position = _reveal_frame_position(frames)
+    context = frame_context(frames[position])
+    granted = _granted_reveal_effects(context)
+    owner = state.players[player]
+    revealed_ids = tuple(
+        context_str(context, f"revealed_card_{index:03d}", owner="Reveal frame")
+        for index in range(
+            context_int(context, "revealed_card_count", owner="Reveal frame")
+        )
+    )
+    revealed_cards = tuple(
+        personal_card_for_instance(card_id) for card_id in revealed_ids
+    )
+    choice_swords = set(_choice_sword_card_ids(context))
+    sword_cards = {
+        card_id
+        for card_id, card in zip(revealed_ids, revealed_cards, strict=True)
+        if card_id in owner.in_play
+        and (
+            card_id in choice_swords
+            or card.reveal_strength
+            + sum(
+                _reveal_effect_strength(effect, revealed_cards)
+                for index, effect in enumerate(card.reveal_effects)
+                if f"{card_id}#{index}" in granted
+            )
+            > 0
+        )
+    }
+    updates: dict[str, int | None] = {}
+    swords = 0
+    for card_id, card in zip(revealed_ids, revealed_cards, strict=True):
+        if card_id not in owner.in_play:
+            continue
+        for index, effect in enumerate(card.reveal_effects):
+            counted = granted.get(f"{card_id}#{index}")
+            if not effect.strength_per_other_sword_card or counted is None:
+                continue
+            now = len(sword_cards - {card_id})
+            if now > counted:
+                swords += effect.strength_per_other_sword_card * (now - counted)
+                updates[f"{card_id}#{index}"] = now
+    if not swords:
+        return RuleResult(state=state)
+    units = owner.units_in_conflict
+    frames = _add_reveal_sword(
+        _record_granted_effects(frames, updates),
+        swords,
+        counts_toward_combat=units > 0,
+    )
+    next_owner = replace(
+        owner, combat_strength=owner.combat_strength + (swords if units else 0)
+    )
+    return RuleResult(
+        state=replace(
+            state,
+            players=replace_player(state.players, next_owner),
+            decision_stack=frames,
+        ),
+        events=(
+            GameEvent(
+                event_id=(
+                    f"round:{state.round_number}:player:{player}:reveal:"
+                    f"leadership:{','.join(f'{key}={n}' for key, n in updates.items())}"
+                ),
+                kind="reveal_strength_gained",
+                payload=(("amount", swords), ("player", player)),
+            ),
+        ),
+    )
+
+
 def _granted_entries(
     card_ids: tuple[str, ...],
     cards: tuple[PersonalCardDefinition, ...],
@@ -2133,9 +2248,13 @@ def _granted_entries(
             if _reveal_effect_is_eligible(
                 owner, cards_in_play, card_id, card, effect, persuasion=persuasion
             ):
+                # Leadership keeps the number of sword cards it has counted
+                # (``_count_leadership_swords``); a new entry has counted none.
                 entries[f"{card_id}#{index}"] = (
                     completed_contracts
                     if effect.persuasion_per_completed_contract
+                    else 0
+                    if effect.strength_per_other_sword_card
                     else None
                 )
     return entries
@@ -2725,15 +2844,22 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
             with_context(frames[position], reveal_context),
             *frames[position + 1 :],
         )
-    if not newly_granted and not late_tech and not late_skills:
-        return result
     frames = _record_granted_effects(frames, newly_granted)
     frames = _append_reveal_gains(frames, tuple(late_gains))
-    working = replace(
-        state,
-        players=replace_player(state.players, next_owner),
-        decision_stack=frames,
+    # Leadership may count every sword card provided so far, a late-met
+    # effect's or a Reveal choice's included, before a late self-trash.
+    counted = _count_leadership_swords(
+        replace(
+            state,
+            players=replace_player(state.players, next_owner),
+            decision_stack=frames,
+        ),
+        player,
     )
+    if not newly_granted and not late_tech and not late_skills and not counted.events:
+        return result
+    working = counted.state
+    events.extend(counted.events)
     for trash_source, trashed_card_id in pending_trashes:
         if trashed_card_id in working.players[player].in_play:
             trashed = trash_personal_card(
@@ -2794,21 +2920,6 @@ def _reveal_effect_strength(
         )
         if effect.per_revealed_faction is not None
         else 1
-    )
-
-
-def _card_reveal_strength(
-    owner: PlayerState,
-    cards_in_play: tuple[str, ...],
-    card_id: str,
-    card: PersonalCardDefinition,
-    revealed_cards: tuple[PersonalCardDefinition, ...],
-) -> int:
-    """Return one card's own strength before any sword cross-term is added."""
-
-    return card.reveal_strength + sum(
-        _reveal_effect_strength(effect, revealed_cards)
-        for effect in _eligible_reveal_effects(owner, cards_in_play, card_id, card)
     )
 
 
@@ -3385,22 +3496,9 @@ def _late_reveal_one_card(
     own_strength = card.reveal_strength + sum(
         _reveal_effect_strength(effect, revealed_cards) for effect in eligible
     )
-    other_positive_strength = sum(
-        _card_reveal_strength(
-            next_owner,
-            cards_in_play,
-            other_id,
-            personal_card_for_instance(other_id),
-            revealed_cards,
-        )
-        > 0
-        for other_id in previously_revealed_ids
-    )
-    sword_delta = own_strength + sum(
-        effect.strength_per_other_sword_card * other_positive_strength
-        for effect in eligible
-        if effect.strength_per_other_sword_card
-    )
+    # Leadership's count, for this card and for one revealed earlier, is
+    # topped up by _count_leadership_swords once the card is recorded.
+    sword_delta = own_strength
 
     persuasion_increment = 0
     for other_id in previously_revealed_ids:
@@ -3409,7 +3507,7 @@ def _late_reveal_one_card(
             # The arriving card is both revealed and in play, so either
             # count grows by it.
             counted_faction = effect.per_revealed_faction or effect.per_in_play_faction
-            if counted_faction is None and not effect.strength_per_other_sword_card:
+            if counted_faction is None:
                 continue
             if not _reveal_effect_is_eligible(
                 next_owner,
@@ -3420,14 +3518,9 @@ def _late_reveal_one_card(
                 persuasion=frame_persuasion,
             ):
                 continue
-            if (
-                counted_faction is not None
-                and Faction(counted_faction.value) in card.factions
-            ):
+            if Faction(counted_faction.value) in card.factions:
                 persuasion_increment += effect.persuasion
                 sword_delta += effect.strength
-            if effect.strength_per_other_sword_card and own_strength > 0:
-                sword_delta += effect.strength_per_other_sword_card
     persuasion_delta = persuasion_gain + persuasion_increment
 
     # Troop recruits, Intrigue draws and resources join the Reveal's pending
@@ -3480,6 +3573,8 @@ def _late_reveal_one_card(
             late_gains,
         ),
     )
+    counted = _count_leadership_swords(next_state, player)
+    next_state = counted.state
     guild_spy_events: tuple[GameEvent, ...] = ()
     if card.reveal_acquisition_effect is _GUILD_SPY_EFFECT:
         # A Guild Spy revealed late still reacts to The Spice Must Flow
@@ -3534,7 +3629,9 @@ def _late_reveal_one_card(
             ),
         )
 
-    return RuleResult(state=next_state, events=(*events, *guild_spy_events))
+    return RuleResult(
+        state=next_state, events=(*events, *counted.events, *guild_spy_events)
+    )
 
 
 def reveal_late_arrivals(
@@ -3698,15 +3795,19 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         )
         for card_id, card in zip(revealed, cards, strict=True)
     )
+    # Leadership counts the other sword cards revealed now; a card that
+    # provides swords later (a Reveal choice, a late arrival) is added by
+    # _count_leadership_swords, which reads the count recorded here.
+    other_sword_cards = {
+        card_id: sum(
+            strength > 0 for other_id, strength in card_strengths if other_id != card_id
+        )
+        for card_id in revealed
+    }
     sword_strength = (
         sum(strength for _, strength in card_strengths)
         + sum(
-            effect.strength_per_other_sword_card
-            * sum(
-                strength > 0
-                for card_id, strength in card_strengths
-                if card_id != effect_card_id
-            )
+            effect.strength_per_other_sword_card * other_sword_cards[effect_card_id]
             for effect_card_id, effect in reveal_effects
         )
         + tech_sword
@@ -3796,20 +3897,21 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         next_owner if player.player_id == action.actor else player
         for player in state.players
     )
+    granted_at_start = _granted_entries(
+        revealed,
+        cards,
+        owner,
+        cards_in_play,
+        len(owner.completed_contract_ids),
+        persuasion=persuasion,
+    )
+    for card_id, card in zip(revealed, cards, strict=True):
+        for index, effect in enumerate(card.reveal_effects):
+            key = f"{card_id}#{index}"
+            if effect.strength_per_other_sword_card and key in granted_at_start:
+                granted_at_start[key] = other_sword_cards[card_id]
     context: list[tuple[str, ActionValue]] = [
-        (
-            _GRANTED_EFFECTS_KEY,
-            _encode_granted(
-                _granted_entries(
-                    revealed,
-                    cards,
-                    owner,
-                    cards_in_play,
-                    len(owner.completed_contract_ids),
-                    persuasion=persuasion,
-                )
-            ),
-        ),
+        (_GRANTED_EFFECTS_KEY, _encode_granted(granted_at_start)),
         # Combat-icon deployment during the Reveal [Bloodlines p. 5]: open
         # when an icon arrived earlier this turn, counting this Reveal's
         # recruits toward the limit.

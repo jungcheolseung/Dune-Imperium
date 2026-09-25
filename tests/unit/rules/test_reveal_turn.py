@@ -344,6 +344,82 @@ def test_leadership_counts_sword_cards_once_and_ignores_a_later_trash() -> None:
     # Not 9: Calculus becoming a sword card does not recount Leadership.
     assert result.state.players[0].combat_strength == 8
 
+# Leadership: "+[sword] for each other revealed card that provides one or
+# more [sword] this turn." [Leadership card]. A card whose Reveal choice gave
+# swords provides them this turn too, and Leadership "counts at one moment"
+# (designer ruling, designer-rulings-audit.md; OQ-057) of the owner's
+# choosing [Main p. 12], so it can count after that choice.
+def _leadership_reveal(*hand: str, troops_conflict: int) -> GameState:
+    leadership = _imperium_instance("leadership")
+    state = _state(
+        PlayerState(
+            player_id=0,
+            hand=(leadership, *hand),
+            troops_supply=9 - troops_conflict,
+            troops_conflict=troops_conflict,
+        )
+    )
+    return begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+
+
+def _apply_first(state: GameState, action_id: str) -> GameState:
+    engine = UprisingRulesEngine()
+    action = next(
+        action
+        for action in engine.legal_actions(state, 0)
+        if action.action_id == action_id
+    )
+    return engine.apply(state, action).state
+
+
+def test_leadership_counts_undercover_assets_chosen_swords() -> None:
+    revealed = _leadership_reveal(
+        _imperium_instance("undercover_asset"), troops_conflict=1
+    )
+    # troop 2 + Leadership 1: Undercover Asset has provided no sword yet.
+    assert revealed.players[0].combat_strength == 3
+    chose = _apply_first(revealed, "gain_two_reveal_strength")
+    # + Undercover Asset's 2 swords + Leadership's 1 for it (5 before the fix).
+    assert chose.players[0].combat_strength == 6
+    context = dict(chose.decision_stack[-1].context)
+    assert context["strength"] == 6
+    # Counted once: a later step adds nothing more.
+    assert _apply_first(chose, "finish_reveal").players[0].combat_strength == 6
+
+
+def test_leadership_does_not_count_undercover_asset_taking_the_spy() -> None:
+    revealed = _leadership_reveal(
+        _imperium_instance("undercover_asset"), troops_conflict=1
+    )
+    placed = _apply_first(revealed, "place_reveal_spy")
+    assert placed.players[0].combat_strength == 3
+
+
+def test_leadership_counts_chanis_retreat_swords() -> None:
+    revealed = _leadership_reveal(
+        _imperium_instance("chani_clever_tactician"), troops_conflict=4
+    )
+    # troops 8 + Leadership 1.
+    assert revealed.players[0].combat_strength == 9
+    retreated = _apply_first(revealed, "retreat_two_troops_for_reveal")
+    # Two troops (4) leave, Chani's 4 swords arrive, Leadership +1 for Chani.
+    assert retreated.players[0].combat_strength == 10
+    assert retreated.players[0].troops_conflict == 2
+
+
+def test_leadership_through_the_engine_still_counts_calculus_once() -> None:
+    # The designer's example (see the test above): after Calculus of Power
+    # trashes Sardaukar Soldier, Calculus is a sword card and Sardaukar is
+    # gone, so the best single moment is still one card: 8, not 9.
+    calculus = _imperium_instance("calculus_of_power")
+    sardaukar = _imperium_instance("sardaukar_soldier")
+    revealed = _leadership_reveal(calculus, sardaukar, troops_conflict=1)
+    assert revealed.players[0].combat_strength == 5
+    trashed = _apply_first(revealed, "trash_reveal_card")
+    assert trashed.players[0].trashed == (sardaukar,)
+    assert trashed.players[0].combat_strength == 8
+
+
 def test_calculus_of_power_cannot_pay_with_itself() -> None:
     calculus = _imperium_instance("calculus_of_power")
     revealed = begin_reveal_turn(
