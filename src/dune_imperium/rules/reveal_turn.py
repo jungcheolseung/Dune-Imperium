@@ -57,7 +57,10 @@ from dune_imperium.rules.influence import (
     influence_amount,
     lose_faction_influence,
 )
-from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
+from dune_imperium.rules.intrigue_deck import (
+    credit_suspensor_suits,
+    draw_or_queue_intrigue_cards,
+)
 from dune_imperium.rules.intrigue_triggers import expire_reveal_faceup_intrigue
 from dune_imperium.rules.planetologist import replace_sandworms, replaces_sandworms
 from dune_imperium.rules.shield_wall import current_conflict_is_shield_wall_protected
@@ -1668,6 +1671,7 @@ def apply_reveal_spy_action(
                 next_owner,
                 intrigue_cards=(*next_owner.intrigue_cards, intrigue_deck[0]),
             )
+            next_owner = credit_suspensor_suits(state, next_owner, 1)
             intrigue_deck = intrigue_deck[1:]
             events.append(
                 GameEvent(

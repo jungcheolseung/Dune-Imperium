@@ -8,6 +8,7 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import Influence, PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.frames import replace_player
+from dune_imperium.rules.intrigue_deck import credit_suspensor_suits
 
 MAX_INFLUENCE = 6
 
@@ -53,6 +54,7 @@ def gain_faction_influence(
             # "reach 2" semantics: passing 2 in one multi-step gain counts,
             # re-reaching after a loss counts again, and moving down never
             # does [Main pp. 7, 17].
+            deck_before = len(intrigue_deck)
             players, intrigue_deck, pending_draws, bonus_events = (
                 _apply_reach_two_leader_bonus(
                     players,
@@ -62,6 +64,13 @@ def gain_faction_influence(
                     faction,
                     event_id=f"{event_prefix}:leader_bonus:{step}",
                 )
+            )
+            # Imperial Birthright's Intrigue draw counts for Suspensor Suits.
+            players = replace_player(
+                players,
+                credit_suspensor_suits(
+                    state, players[player], deck_before - len(intrigue_deck)
+                ),
             )
             events.extend(bonus_events)
             if players[player].leader_id == "steersman_y_rkoon":
@@ -75,11 +84,20 @@ def gain_faction_influence(
                 )
 
         if next_amount == 4:
+            deck_before = len(intrigue_deck)
             players, intrigue_deck, bonus_payload, shortfall = _apply_track_bonus(
                 players,
                 intrigue_deck,
                 player,
                 faction,
+            )
+            # The Bene Gesserit bonus's Intrigue draw counts for Suspensor
+            # Suits.
+            players = replace_player(
+                players,
+                credit_suspensor_suits(
+                    state, players[player], deck_before - len(intrigue_deck)
+                ),
             )
             if shortfall:
                 pending_draws = (

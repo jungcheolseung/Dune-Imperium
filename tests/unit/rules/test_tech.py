@@ -850,6 +850,126 @@ def test_suspensor_suits_deploys_a_troop_per_intrigue_gained_in_the_owners_turn(
     assert quiet.state.players[1].suspensor_owed == 0
 
 
+def _owed_and_deployed(state: GameState, player: int = 0) -> tuple[int, int]:
+    from dune_imperium.rules.tech import deploy_suspensor_troops
+
+    owed = state.players[player].suspensor_owed
+    deployed = deploy_suspensor_troops(RuleResult(state=state)).state
+    return owed, deployed.players[player].troops_conflict
+
+
+def test_suspensor_suits_counts_every_direct_intrigue_draw_in_the_turn() -> None:
+    # "For each Intrigue card you draw or steal during your turn: [troop]
+    # Deploy it to the Conflict" [Suspensor Suits Tech tile]; the face limits
+    # only the turn (OQ-042 (a)), not which effect draws. Draws that took a
+    # card straight off the Intrigue deck skipped the troop.
+    from dune_imperium.content.uprising.board import Faction
+    from dune_imperium.rules.acquisition import acquire_imperium_for_intrigue
+    from dune_imperium.rules.card_trash import trash_personal_card
+    from dune_imperium.rules.influence import gain_faction_influence
+    from dune_imperium.rules.reveal_turn import (
+        apply_reveal_spy_action,
+        legal_reveal_spy_actions,
+    )
+
+    stacks: tuple[tuple[str, ...], ...] = ((), (), ())
+    # The Bene Gesserit track's Influence 4 bonus [Main p. 7].
+    bene_gesserit = _turn_state(
+        _tech_owner("suspensor_suits", influence=Influence(bene_gesserit=3)),
+        stacks=stacks,
+    )
+    gained = gain_faction_influence(
+        bene_gesserit, 0, Faction.BENE_GESSERIT, 1, event_prefix="test"
+    ).state
+    assert len(gained.players[0].intrigue_cards) == 1
+    assert _owed_and_deployed(gained) == (1, 1)
+
+    # Imperial Birthright on reaching two Emperor Influence [Princess
+    # Irulan card].
+    irulan = _turn_state(
+        _tech_owner(
+            "suspensor_suits",
+            leader_id="princess_irulan",
+            influence=Influence(emperor=1),
+        ),
+        stacks=stacks,
+    )
+    gained = gain_faction_influence(
+        irulan, 0, Faction.EMPEROR, 1, event_prefix="test"
+    ).state
+    assert _owed_and_deployed(gained) == (1, 1)
+
+    # Sardaukar Soldier: "When this card is trashed: [Intrigue]".
+    soldier = "imperium:sardaukar_soldier:0"
+    trashing = _turn_state(
+        _tech_owner("suspensor_suits", hand=(*_owner().hand, soldier)),
+        stacks=stacks,
+    )
+    trashed = trash_personal_card(trashing, 0, soldier, source="test").state
+    assert _owed_and_deployed(trashed) == (1, 1)
+
+    # Overthrow's acquire box draws an Intrigue card.
+    overthrow = "imperium:overthrow:0"
+    acquiring = _turn_state(
+        _tech_owner("suspensor_suits"),
+        stacks=stacks,
+        imperium_row=(overthrow,),
+        imperium_deck=(),
+    )
+    acquired = acquire_imperium_for_intrigue(
+        acquiring, 0, overthrow, to_hand=False, source="test"
+    ).result.state
+    assert _owed_and_deployed(acquired) == (1, 1)
+
+    # Spy Network's Reveal: recall one of two placed Spies to draw.
+    network = "imperium:spy_network:0"
+    revealing = _turn_state(
+        _tech_owner(
+            "suspensor_suits",
+            hand=(network,),
+            deck=_owner().hand + _owner().deck,
+            spies_supply=1,
+            spy_post_ids=(LANDSRAAD_POST, SIETCH_POST),
+        ),
+        stacks=stacks,
+    )
+    revealed = _reveal(revealing).state
+    recall = next(
+        action
+        for action in legal_reveal_spy_actions(revealed, 0)
+        if action.action_id == "recall_spy_for_reveal"
+    )
+    drew = apply_reveal_spy_action(revealed, recall).state
+    assert len(drew.players[0].intrigue_cards) == 1
+    assert drew.players[0].suspensor_owed == 1
+
+
+def test_suspensor_suits_ignores_direct_draws_outside_the_owners_turn() -> None:
+    # OQ-042 (a): only the owner's own Agent or Reveal turn counts; the Bene
+    # Gesserit bonus reached on another seat's turn owes nothing.
+    from dune_imperium.content.uprising.board import Faction
+    from dune_imperium.rules.influence import gain_faction_influence
+
+    state = _turn_state(_owner(), stacks=((), (), ()))
+    others = replace(
+        state,
+        players=(
+            state.players[0],
+            replace(
+                state.players[1],
+                tech_ids=("suspensor_suits",),
+                influence=Influence(bene_gesserit=3),
+            ),
+            *state.players[2:],
+        ),
+    )
+    gained = gain_faction_influence(
+        others, 1, Faction.BENE_GESSERIT, 1, event_prefix="test"
+    ).state
+    assert len(gained.players[1].intrigue_cards) == 1
+    assert gained.players[1].suspensor_owed == 0
+
+
 def test_flip_tiles_are_offered_once_per_round_and_return_at_round_start() -> None:
     from dune_imperium.rules.phases import begin_round
     from dune_imperium.rules.tech import apply_tech_flip, legal_tech_flip_actions
