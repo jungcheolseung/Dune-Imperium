@@ -273,16 +273,34 @@ def legal_reveal_influence_exchange_actions(
     return tuple(actions)
 
 
-def _frame_persuasion(frames: tuple[DecisionFrame, ...]) -> int | None:
-    """Return the open Reveal frame's Persuasion total, if a Reveal is open."""
+# Persuasion generated in this Reveal turn, which only gains raise; the
+# frame's "persuasion" is what is left to spend after acquisitions.
+GENERATED_PERSUASION_KEY = "persuasion_generated"
+
+
+def _generated_persuasion(context: Mapping[str, ActionValue]) -> int | None:
+    """Return the Persuasion a Reveal frame's turn has generated so far.
+
+    "Command (6+)" is judged on the Persuasion the Reveal turn generates
+    [Bloodlines pp. 5, 12], so Persuasion already spent on acquisitions
+    still counts. A frame built without the counter falls back to its
+    spendable total.
+    """
+
+    value = context.get(GENERATED_PERSUASION_KEY, context.get("persuasion"))
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise RuntimeError("Reveal frame has invalid generated Persuasion")
+    return value
+
+
+def _frame_generated_persuasion(frames: tuple[DecisionFrame, ...]) -> int | None:
+    """Return the open Reveal frame's generated Persuasion, if a Reveal is open."""
 
     for frame in reversed(frames):
-        if frame.kind != FrameKind.REVEAL:
-            continue
-        value = dict(frame.context).get("persuasion")
-        if isinstance(value, bool) or not isinstance(value, int):
-            raise RuntimeError("Reveal frame has invalid Persuasion")
-        return value
+        if frame.kind == FrameKind.REVEAL:
+            return _generated_persuasion(dict(frame.context))
     return None
 
 
@@ -1751,7 +1769,14 @@ def add_reveal_persuasion(
             continue
         if isinstance(persuasion, bool) or not isinstance(persuasion, int):
             raise RuntimeError("Reveal frame has invalid Persuasion")
+        generated = _generated_persuasion(context)
         context["persuasion"] = persuasion + amount
+        if generated is not None:
+            # Gains are generated Persuasion [Bloodlines p. 5]; the only
+            # negative amount is Desert Power's "2 Persuasion -OR- sandworm",
+            # whose sandworm branch takes back Persuasion that was never
+            # generated. Acquisition costs do not come through here.
+            context[GENERATED_PERSUASION_KEY] = generated + amount
         return (
             *frames[:index],
             replace(frames[index], context=tuple(sorted(context.items()))),
@@ -2493,7 +2518,7 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
                 card_id,
                 card,
                 effect,
-                persuasion=_frame_persuasion(frames),
+                persuasion=_frame_generated_persuasion(frames),
             ):
                 continue
             persuasion = _reveal_effect_persuasion(effect, revealed_cards, completed)
@@ -2548,8 +2573,9 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
                     ),
                 )
             )
-    # Tech tiles whose Command (6+) line opens late pay the same way.
-    late_persuasion = _frame_persuasion(frames)
+    # Tech tiles whose Command (6+) line opens late pay the same way, on the
+    # Persuasion generated so far, spent or not [Bloodlines p. 5].
+    late_persuasion = _frame_generated_persuasion(frames)
     reveal_context = frame_context(frames[_reveal_frame_position(frames)])
     tech_granted = tuple(
         key
@@ -2967,7 +2993,9 @@ def _available_deferred_choices(
     """Return the deferred entries whose printed condition holds right now."""
 
     owner = state.players[player]
-    persuasion = context.get("persuasion")
+    # Command (6+) is judged on the Persuasion generated this Reveal turn
+    # [Bloodlines pp. 5, 12], so a purchase does not close it again.
+    persuasion = _generated_persuasion(context)
     return tuple(
         (card_id, effect_value)
         for card_id, effect_value in _deferred_reveal_choices(context)
@@ -2978,11 +3006,7 @@ def _available_deferred_choices(
             owner.in_play,
             card_id,
             PersonalCardRevealChoiceEffect(effect_value),
-            persuasion=(
-                persuasion
-                if isinstance(persuasion, int) and not isinstance(persuasion, bool)
-                else None
-            ),
+            persuasion=persuasion,
         )
     )
 
@@ -3138,10 +3162,13 @@ def _apply_late_reveal_frame_update(
         context[f"revealed_card_{count:03d}"] = card_id
         context["revealed_card_count"] = count + 1
         if persuasion_delta:
+            generated = _generated_persuasion(context)
             context["persuasion"] = (
                 context_int(context, "persuasion", owner="Reveal frame")
                 + persuasion_delta
             )
+            if generated is not None:
+                context[GENERATED_PERSUASION_KEY] = generated + persuasion_delta
         if sword_delta:
             context["sword_strength"] = (
                 context_int(context, "sword_strength", owner="Reveal frame")
@@ -3216,7 +3243,7 @@ def _late_reveal_one_card(
         for instance_id in (*previously_revealed_ids, card_id)
     )
 
-    frame_persuasion = _frame_persuasion(state.decision_stack)
+    frame_persuasion = _frame_generated_persuasion(state.decision_stack)
     eligible = _eligible_reveal_effects(
         next_owner,
         cards_in_play,
@@ -3267,7 +3294,7 @@ def _late_reveal_one_card(
                 other_id,
                 other_card,
                 effect,
-                persuasion=_frame_persuasion(state.decision_stack),
+                persuasion=frame_persuasion,
             ):
                 continue
             if (
@@ -3360,7 +3387,7 @@ def _late_reveal_one_card(
             cards_in_play,
             card_id,
             choice_effect,
-            persuasion=_frame_persuasion(next_state.decision_stack),
+            persuasion=_frame_generated_persuasion(next_state.decision_stack),
         ):
             choice_frames.append(
                 _build_reveal_choice_frame(
@@ -3663,6 +3690,7 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         ("combat_deployment", owner.combat_icon_turn),
         ("optional_sword_strength", 0),
         ("persuasion", persuasion),
+        (GENERATED_PERSUASION_KEY, persuasion),
         ("reveal_troops_recruited", reveal_troops_recruited),
         (REVEAL_GAINS_KEY, _encode_gains(pending_gains)),
         ("reveal_units_deployed", 0),

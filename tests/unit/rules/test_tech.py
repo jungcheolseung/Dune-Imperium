@@ -917,6 +917,52 @@ def test_a_command_tile_pays_late_when_persuasion_reaches_six() -> None:
     assert again.state.players[0].resources.solari == 4 + 2
 
 
+def test_training_depot_counts_persuasion_spent_before_the_sixth() -> None:
+    # Training Depot: "Reveal Turn: Command (6+): [2 swords]" [Training Depot
+    # tile]; Command is "a Reveal turn in which you generate 6 Persuasion or
+    # more" [Bloodlines p. 12] [Bloodlines p. 5]. Spending on a purchase does
+    # not un-generate Persuasion, so the late grant (OQ-033) pays the same
+    # swords whether the purchase came before the sixth Persuasion or after.
+    from dune_imperium.rules.acquisition import apply_reserve_acquisition
+    from dune_imperium.rules.reveal_turn import (
+        add_reveal_persuasion,
+        grant_late_reveal_effects,
+    )
+
+    owner = _tech_owner(
+        "training_depot",
+        hand=starting_deck_instance_ids(0)[:5],
+        troops_conflict=1,
+        troops_supply=8,
+        combat_strength=2,
+    )
+    state = _turn_state(
+        owner,
+        stacks=((), (), ()),
+        reserve_stacks=(("prepare_the_way", 7), ("the_spice_must_flow", 10)),
+    )
+    revealed = _reveal(state).state
+    context = dict(revealed.decision_stack[0].context)
+    persuasion = context["persuasion"]
+    swords = context["sword_strength"]
+    assert isinstance(persuasion, int) and isinstance(swords, int)
+    assert 2 <= persuasion < 6
+    assert context["tech_granted"] == ""
+    bought = apply_reserve_acquisition(
+        revealed,
+        DomainAction("acquire_reserve", 0, (("card_id", "prepare_the_way"),)),
+    ).state
+    bumped = replace(
+        bought,
+        decision_stack=add_reveal_persuasion(bought.decision_stack, 6 - persuasion),
+    )
+    late = grant_late_reveal_effects(RuleResult(state=bumped)).state
+    late_context = dict(late.decision_stack[0].context)
+    assert late_context["persuasion"] == 6 - 2
+    assert late_context["tech_granted"] == "training_depot"
+    assert late_context["sword_strength"] == swords + 2
+
+
 def test_forbidden_weapons_demands_its_choice_in_the_owners_order() -> None:
     from dune_imperium.rules.reveal_turn import legal_finish_reveal_actions
     from dune_imperium.rules.tech import apply_tech_choice, legal_tech_reveal_actions
