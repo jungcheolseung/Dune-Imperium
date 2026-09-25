@@ -88,6 +88,31 @@ def test_ghola_names_its_borrowed_agent_box() -> None:
     ]
 
 
+def test_long_reach_names_the_condition_on_its_greyed_icons() -> None:
+    # "If you have another Bene Gesserit card in play, this has [Landsraad],
+    # [City], and [Spice Trade]." [Long Reach card]: the icons are printed
+    # greyed, so the text must say they need the condition.
+    entry = IMPERIUM_CARDS_BY_ID["long_reach"]
+
+    assert personal_card_text(entry)[:2] == [
+        "If you have another Bene Gesserit card in play, this has Landsraad, "
+        "City, and Spice Trade",
+        "Agent: Choose two Factions: Gain 1 Influence with each",
+    ]
+
+
+def test_show_of_strength_names_the_condition_on_its_greyed_icons() -> None:
+    # "If you have more deployed troops than each opponent, this has
+    # [Landsraad] and [Spice Trade]." [Show of Strength card]
+    entry = IMPERIUM_CARDS_BY_ID["show_of_strength"]
+
+    assert personal_card_text(entry) == [
+        "If you have more deployed troops than each opponent, this has "
+        "Landsraad and Spice Trade",
+        "Agent: Draw 2 cards",
+    ]
+
+
 def test_sardaukar_soldier_trash_trigger_only() -> None:
     entry = IMPERIUM_CARDS_BY_ID["sardaukar_soldier"]
 

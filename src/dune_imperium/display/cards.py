@@ -19,10 +19,12 @@ from dune_imperium.content.uprising.personal_cards import (
     card_is_ghola,
 )
 from dune_imperium.content.uprising.reserve import ReserveStackDefinition
+from dune_imperium.content.uprising.types import AgentIcon
 from dune_imperium.display.tokens import (
     ACQUISITION_EFFECT_TEXT,
     AGENT_EFFECT_TEXT,
     DISCARD_EFFECT_TEXT,
+    ICON_CONDITION_TEXT,
     REVEAL_ACQUISITION_EFFECT_TEXT,
     REVEAL_CHOICE_EFFECT_TEXT,
     TRASH_EFFECT_TEXT,
@@ -50,6 +52,40 @@ def _factions_or(factions: tuple[Faction, ...]) -> str:
     if len(names) == 2:
         return f"{names[0]} or {names[1]}"
     return f"{', '.join(names[:-1])}, or {names[-1]}"
+
+
+_AGENT_ICON_NAMES: Final[dict[AgentIcon, str]] = {
+    AgentIcon.EMPEROR: "Emperor",
+    AgentIcon.SPACING_GUILD: "Spacing Guild",
+    AgentIcon.BENE_GESSERIT: "Bene Gesserit",
+    AgentIcon.FREMEN: "Fremen",
+    AgentIcon.LANDSRAAD: "Landsraad",
+    AgentIcon.CITY: "City",
+    AgentIcon.SPICE_TRADE: "Spice Trade",
+    AgentIcon.SPY: "Spy",
+}
+
+
+def _names_and(names: list[str]) -> str:
+    """Join names with a natural "and"/Oxford-comma list."""
+
+    if len(names) <= 2:
+        return " and ".join(names)
+    return f"{', '.join(names[:-1])}, and {names[-1]}"
+
+
+def _icon_condition_line(entry: PersonalCardDefinition) -> str | None:
+    """Render the printed condition under which the greyed icons are real.
+
+    Long Reach's and Show of Strength's Agent icons are printed greyed and
+    only exist while the card's condition holds [card faces]; the catalog
+    still lists them, so the text must say so.
+    """
+
+    if not isinstance(entry, ImperiumCardEntry) or entry.icon_condition is None:
+        return None
+    icons = _names_and([_AGENT_ICON_NAMES[icon] for icon in entry.agent_icons])
+    return f"{ICON_CONDITION_TEXT[entry.icon_condition]}, this has {icons}"
 
 
 _NO_ADDITIONAL_ABILITY: Final = "(no additional ability)"
@@ -107,6 +143,9 @@ def personal_card_text(entry: PersonalCardDefinition) -> list[str]:
 
     lines: list[str] = []
 
+    icon_condition_line = _icon_condition_line(entry)
+    if icon_condition_line is not None:
+        lines.append(icon_condition_line)
     agent_line = _agent_line(entry)
     if agent_line is not None:
         lines.append(agent_line)

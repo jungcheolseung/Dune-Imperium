@@ -25,6 +25,7 @@ from dune_imperium.content.uprising.types import (
     PersonalCardAgentEffect,
     PersonalCardBond,
     PersonalCardDiscardEffect,
+    PersonalCardIconCondition,
     PersonalCardRevealAcquisitionEffect,
     PersonalCardRevealChoiceEffect,
     PersonalCardRevealEffect,
@@ -405,6 +406,25 @@ TRASH_EFFECT_TEXT: Final[Mapping[PersonalCardTrashEffect, str]] = MappingProxyTy
             "Tleilaxu (advance your Tleilaxu token)"
         ),
     }
+)
+
+# The printed condition that turns a card's greyed Agent icons on; ``cards``
+# appends ", this has <icons>" from the entry's ``agent_icons``. Long Reach:
+# "If you have another Bene Gesserit card in play, this has [Landsraad],
+# [City], and [Spice Trade]."; Show of Strength: "If you have more deployed
+# troops than each opponent, this has [Landsraad] and [Spice Trade]." [card
+# faces].
+ICON_CONDITION_TEXT: Final[Mapping[PersonalCardIconCondition, str]] = (
+    MappingProxyType(
+        {
+            PersonalCardIconCondition.BENE_GESSERIT_BOND: (
+                "If you have another Bene Gesserit card in play"
+            ),
+            PersonalCardIconCondition.MORE_DEPLOYED_TROOPS_THAN_EACH_OPPONENT: (
+                "If you have more deployed troops than each opponent"
+            ),
+        }
+    )
 )
 
 DISCARD_EFFECT_TEXT: Final[Mapping[PersonalCardDiscardEffect, str]] = MappingProxyType(
