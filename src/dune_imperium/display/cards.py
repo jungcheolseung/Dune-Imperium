@@ -14,7 +14,10 @@ from typing import Final
 
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.imperium import ImperiumCardEntry
-from dune_imperium.content.uprising.personal_cards import PersonalCardDefinition
+from dune_imperium.content.uprising.personal_cards import (
+    PersonalCardDefinition,
+    card_is_ghola,
+)
 from dune_imperium.content.uprising.reserve import ReserveStackDefinition
 from dune_imperium.display.tokens import (
     ACQUISITION_EFFECT_TEXT,
@@ -50,6 +53,9 @@ def _factions_or(factions: tuple[Faction, ...]) -> str:
 
 
 _NO_ADDITIONAL_ABILITY: Final = "(no additional ability)"
+_GHOLA_AGENT_LINE: Final = (
+    "Agent: This card has the same Agent box as the other grafted card"
+)
 _PLAY_DATA_NOT_TRANSCRIBED: Final = "(play data not transcribed)"
 
 # The single transcribed PersonalCardRevealAcquisitionEffect member is
@@ -104,6 +110,10 @@ def personal_card_text(entry: PersonalCardDefinition) -> list[str]:
     agent_line = _agent_line(entry)
     if agent_line is not None:
         lines.append(agent_line)
+    if card_is_ghola(entry):
+        # The box is borrowed at play time (``rules.effects``), so the
+        # printed Graft box has no effect of its own to render [Ghola card].
+        lines.append(_GHOLA_AGENT_LINE)
 
     if isinstance(entry, ImperiumCardEntry):
         if entry.ignores_influence_requirements:

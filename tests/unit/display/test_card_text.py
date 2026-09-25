@@ -76,6 +76,18 @@ def test_beguiling_pheromones_trash_is_not_optional() -> None:
     )
 
 
+def test_ghola_names_its_borrowed_agent_box() -> None:
+    # "This card has the same Agent box as the other grafted card." [Ghola
+    # card]. Its own data has no Agent effect (the rules borrow the
+    # partner's at play time), so the text fell back to "(no additional
+    # ability)" -- the opposite of what the card does.
+    entry = TLEILAXU_CARDS_BY_ID["ghola"]
+
+    assert personal_card_text(entry) == [
+        "Agent: This card has the same Agent box as the other grafted card"
+    ]
+
+
 def test_sardaukar_soldier_trash_trigger_only() -> None:
     entry = IMPERIUM_CARDS_BY_ID["sardaukar_soldier"]
 
