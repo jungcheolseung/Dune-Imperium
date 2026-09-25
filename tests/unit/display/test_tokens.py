@@ -11,6 +11,7 @@ from dune_imperium.content.uprising.types import (
     PersonalCardRevealChoiceEffect,
     PersonalCardRevealEffect,
     PersonalCardTrashEffect,
+    PersonalCardTurnStartEffect,
 )
 from dune_imperium.display.tokens import (
     _HANDLED_REVEAL_FIELDS,
@@ -20,6 +21,7 @@ from dune_imperium.display.tokens import (
     REVEAL_ACQUISITION_EFFECT_TEXT,
     REVEAL_CHOICE_EFFECT_TEXT,
     TRASH_EFFECT_TEXT,
+    TURN_START_EFFECT_TEXT,
     reveal_effect_text,
 )
 
@@ -48,6 +50,22 @@ def test_reveal_acquisition_effect_text_covers_every_member() -> None:
 
 def test_reveal_choice_effect_text_covers_every_member() -> None:
     assert set(REVEAL_CHOICE_EFFECT_TEXT.keys()) == set(PersonalCardRevealChoiceEffect)
+
+
+def test_turn_start_effect_text_covers_every_member() -> None:
+    assert set(TURN_START_EFFECT_TEXT.keys()) == set(PersonalCardTurnStartEffect)
+
+
+def test_bene_gesserit_bond_trash_to_draw_has_no_arrow() -> None:
+    # Tread in Darkness: two icons side by side with no arrow between them
+    # (OQ-058) — the draw happens even if the trash is declined, unlike
+    # Shishakli's TRASH_PERSONAL_CARD_TO_DRAW_ONE, which is a real arrow.
+    text = AGENT_EFFECT_TEXT[
+        PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND
+    ]
+
+    assert "→" not in text
+    assert text == "If Bene Gesserit Bond: You may trash a card, Draw 1 card"
 
 
 def test_every_agent_effect_text_is_non_empty_or_documented_sentinel() -> None:

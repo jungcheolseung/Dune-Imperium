@@ -3,17 +3,24 @@
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
     CompletedContractsAtLeast,
+    DeployFromGarrison,
     EffectSection,
+    FlipBattleCard,
     GainCombatStrength,
+    GainInfluence,
     GainResources,
     InfluenceAtLeast,
     IntrigueTiming,
     LoseInfluence,
+    LoseTroops,
     OnRevealAcquisitionThisRound,
     OnUnitsDeployedInTurn,
     PayResources,
+    SandwormsInConflictAtLeast,
+    TrashPersonalCard,
 )
 from dune_imperium.content.uprising.intrigue import INTRIGUE_CARDS, INTRIGUE_CARDS_BY_ID
+from dune_imperium.content.uprising.types import BattleIcon
 from dune_imperium.display.effect_dsl_text import (
     condition_text,
     cost_text,
@@ -144,3 +151,163 @@ def test_intrigue_card_text_covers_every_card_with_non_empty_lines() -> None:
 def test_intrigue_card_text_renders_every_option_of_every_card() -> None:
     for entry in INTRIGUE_CARDS:
         assert len(intrigue_card_text(entry)) == len(entry.options)
+
+
+def test_cost_text_lose_troops_prints_the_count() -> None:
+    # "Lose two of your troops" [Twisted Sinister card face]; the noun-only
+    # wording ("Lose troops") dropped the printed count.
+    assert cost_text(LoseTroops(2)) == "Lose 2 troops"
+    assert cost_text(LoseTroops(1)) == "Lose 1 troop"
+    assert (
+        cost_text(LoseTroops(2, from_conflict=True))
+        == "Lose 2 troops in the Conflict"
+    )
+
+
+def test_twisted_ambitious_and_sinister_name_their_troop_counts() -> None:
+    ambitious = intrigue_card_text(INTRIGUE_CARDS_BY_ID["twisted_ambitious"])
+    assert "Lose 3 troops" in ambitious[0]
+    assert "opponent has more Influence" in ambitious[0]
+
+    sinister = intrigue_card_text(INTRIGUE_CARDS_BY_ID["twisted_sinister"])
+    assert "Lose 2 troops" in sinister[0]
+
+
+def test_gruesome_sacrifice_names_its_troop_count() -> None:
+    # "Lose two of your troops in the Conflict" [Gruesome Sacrifice card face].
+    lines = intrigue_card_text(INTRIGUE_CARDS_BY_ID["gruesome_sacrifice"])
+
+    assert lines == [
+        "Combat — Lose 2 troops in the Conflict → "
+        "Tleilaxu (advance your Tleilaxu token), Generate 2 specimens"
+    ]
+
+
+def test_cost_text_flip_battle_card_names_the_wild_alternative() -> None:
+    # "Flip one of your face-up [icon] or [wild] Conflict cards" [Crysknife
+    # card face] [Desert Mouse card face] [Ornithopter card face]; the
+    # interpreter accepts a Wild-icon card too (effect_interpreter.py).
+    assert cost_text(FlipBattleCard(BattleIcon.CRYSKNIFE)) == (
+        "Flip a face-up won Conflict card (Crysknife or Wild icon) face down"
+    )
+
+
+def test_crysknife_desert_mouse_and_ornithopter_name_the_wild_alternative() -> None:
+    for card_id in ("crysknife", "desert_mouse", "ornithopter"):
+        lines = intrigue_card_text(INTRIGUE_CARDS_BY_ID[card_id])
+        assert any("Wild" in line for line in lines), card_id
+
+
+def test_reward_text_deploy_from_garrison_names_up_to_and_the_source() -> None:
+    # "Deploy up to four troops from your garrison to the Conflict"
+    # [Detonation card face]; the old text read "Deploy 4 troops".
+    assert reward_text(DeployFromGarrison(4)) == (
+        "Deploy up to 4 troops from your garrison to the Conflict"
+    )
+    assert reward_text(DeployFromGarrison(1)) == (
+        "Deploy up to 1 troop from your garrison to the Conflict"
+    )
+
+
+def test_detonation_counterattack_and_twisted_devious_name_up_to() -> None:
+    detonation = intrigue_card_text(INTRIGUE_CARDS_BY_ID["detonation"])
+    assert "Deploy up to 4 troops from your garrison" in detonation[1]
+
+    counterattack = intrigue_card_text(INTRIGUE_CARDS_BY_ID["counterattack"])
+    assert "Deploy up to 2 troops from your garrison" in counterattack[0]
+
+    devious = intrigue_card_text(INTRIGUE_CARDS_BY_ID["twisted_devious"])
+    assert "Deploy up to 2 troops from your garrison" in devious[1]
+
+
+def test_reward_text_trash_personal_card_reads_hand_only_and_bonus_spice() -> None:
+    assert reward_text(TrashPersonalCard()) == "Trash a card"
+    assert (
+        reward_text(TrashPersonalCard(hand_only=True))
+        == "Trash a card from your hand"
+    )
+    # Navigation card 5: "If you trash a card that costs 1 or more: 2 spice"
+    # [Navigation Card 5 face].
+    assert reward_text(TrashPersonalCard(bonus_spice=2, bonus_minimum_cost=1)) == (
+        "Trash a card; if it costs 1 or more: Gain 2 spice"
+    )
+
+
+def test_twisted_devious_first_option_names_the_hand() -> None:
+    # "Trash a card from your hand." [Twisted Devious card face].
+    lines = intrigue_card_text(INTRIGUE_CARDS_BY_ID["twisted_devious"])
+
+    assert lines[0] == "Plot — Trash a card from your hand"
+
+
+def test_navigation_card_5_renders_its_bonus_spice_condition() -> None:
+    lines = intrigue_card_text(INTRIGUE_CARDS_BY_ID["navigation_card_5"])
+
+    assert lines == ["Trash a card; if it costs 1 or more: Gain 2 spice"]
+
+
+def test_condition_text_sandworms_in_conflict_names_the_owner() -> None:
+    # "If you have one or more sandworms in the Conflict:" [Devour card
+    # face] [Ripples in the Sand card face]; the rule checks the owner's own
+    # sandworms (effect_interpreter.py), unlike the old "there is a
+    # sandworm" wording.
+    assert (
+        condition_text(SandwormsInConflictAtLeast(1))
+        == "you have one or more sandworms in the Conflict"
+    )
+    assert (
+        condition_text(SandwormsInConflictAtLeast(2))
+        == "you have 2 or more sandworms in the Conflict"
+    )
+
+
+def test_devour_and_ripples_in_the_sand_name_the_owner() -> None:
+    for card_id in ("devour", "ripples_in_the_sand"):
+        lines = intrigue_card_text(INTRIGUE_CARDS_BY_ID[card_id])
+        assert any(
+            "If you have one or more sandworms in the Conflict" in line
+            for line in lines
+        ), card_id
+
+
+def test_gain_influence_text_renders_where_opponent_leads() -> None:
+    # Twisted Ambitious: "a Faction where an opponent has more Influence
+    # than you" [Twisted Ambitious card face].
+    assert reward_text(GainInfluence(where_opponent_leads=True)) == (
+        "Gain 1 Influence (choose a Faction where an opponent has more "
+        "Influence than you)"
+    )
+
+
+def test_gain_influence_text_renders_different_from_trigger_and_minimum() -> None:
+    # Navigation card 1: "a different Faction ... where you have 2+
+    # Influence" [Navigation Card 1 face].
+    assert reward_text(
+        GainInfluence(different_from_trigger=True, minimum_own=2)
+    ) == "Gain 1 Influence (choose a different Faction where you have 2+ Influence)"
+
+
+def test_navigation_card_1_names_its_influence_limits() -> None:
+    lines = intrigue_card_text(INTRIGUE_CARDS_BY_ID["navigation_card_1"])
+
+    assert "different Faction" in lines[1]
+    assert "2+ Influence" in lines[1]
+
+
+def test_navigation_cards_print_no_timing_label() -> None:
+    # A Navigation card is played automatically when Steersman Y'rkoon
+    # reaches 2 Influence with a Faction and prints no Plot/Combat/Endgame
+    # banner [Navigation card faces].
+    for number in range(1, 11):
+        entry = INTRIGUE_CARDS_BY_ID[f"navigation_card_{number}"]
+        for line in intrigue_card_text(entry):
+            assert not line.startswith(("Plot —", "Combat —", "Endgame —")), (
+                entry.card.card_id
+            )
+
+
+def test_option_text_show_timing_false_omits_the_prefix() -> None:
+    entry = INTRIGUE_CARDS_BY_ID["navigation_card_9"]
+
+    assert option_text(entry.options[0], show_timing=False) == "Draw 1 card"
+    assert option_text(entry.options[0]) == "Plot — Draw 1 card"

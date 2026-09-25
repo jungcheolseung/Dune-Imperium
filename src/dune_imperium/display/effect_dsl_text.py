@@ -134,6 +134,16 @@ def _gain_influence_text(gain: GainInfluence) -> str:
         choice = "any Faction"
     else:
         choice = " or ".join(_faction_name(faction) for faction in gain.factions)
+    # Twisted Ambitious: "a Faction where an opponent has more Influence than
+    # you" [Twisted Ambitious card face].
+    if gain.where_opponent_leads:
+        choice = "a Faction where an opponent has more Influence than you"
+    # Navigation card 1: "a different Faction ... where you have 2+
+    # Influence" [Navigation Card 1 face].
+    elif gain.different_from_trigger or gain.minimum_own:
+        choice = "a different Faction" if gain.different_from_trigger else choice
+        if gain.minimum_own:
+            choice += f" where you have {gain.minimum_own}+ Influence"
     if gain.times == 1:
         return f"Gain 1 Influence (choose {choice})"
     suffix = ", distinct" if gain.distinct else ""
@@ -171,9 +181,12 @@ def condition_text(condition: Condition) -> str:
         case CompletedContractsAtLeast(count=count):
             return f"you have completed {count} or more Contracts"
         case SandwormsInConflictAtLeast(count=1):
-            return "there is a sandworm in the Conflict"
+            # "If you have one or more sandworms in the Conflict:" [Devour
+            # card face] [Ripples in the Sand card face] — the owner's own
+            # sandworms, per effect_interpreter.py's owner-only check.
+            return "you have one or more sandworms in the Conflict"
         case SandwormsInConflictAtLeast(count=count):
-            return f"there are {count} or more sandworms in the Conflict"
+            return f"you have {count} or more sandworms in the Conflict"
         case GainedSpiceThisTurn(amount=amount):
             return f"you have gained {amount} or more spice this turn"
         case SpiceMustFlowCardsAtLeast(count=count):
@@ -221,7 +234,7 @@ def cost_text(cost: Cost) -> str:
             return f"Lose {count} Influence"
         case LoseTroops(count=count, from_conflict=from_conflict):
             where = " in the Conflict" if from_conflict else ""
-            return f"Lose {_plural(count, 'troop')}{where}"
+            return f"Lose {count} {_plural(count, 'troop')}{where}"
         case GiveIntrigueToOpponent(bonus_spice_if_not_twisted=bonus):
             extra = f" (+{bonus} spice if it is not a Twisted card)" if bonus else ""
             return f"Give an opponent an Intrigue card from your hand{extra}"
@@ -243,8 +256,16 @@ def cost_text(cost: Cost) -> str:
         case RetreatTroops() as troops:
             return _retreat_troops_text(troops)
         case FlipBattleCard(icon=icon):
+            # "Flip one of your face-up [icon] or [Wild] Conflict cards"
+            # [Crysknife card face] [Desert Mouse card face] [Ornithopter
+            # card face]; the interpreter accepts the named icon or Wild
+            # (effect_interpreter.py), so every card naming one icon also
+            # takes a Wild-icon card.
             icon_name = _BATTLE_ICON_NAMES[icon]
-            return f"Flip a won Conflict card ({icon_name} icon) face down"
+            return (
+                f"Flip a face-up won Conflict card ({icon_name} or Wild icon)"
+                " face down"
+            )
         case FlipFaceUpConflictCard(count=1):
             return "Flip a face-up won Conflict card face down"
         case FlipFaceUpConflictCard(count=count):
@@ -290,9 +311,28 @@ def reward_text(reward: Reward) -> str:
                 text += " (Maker Hooks required)"
             return text
         case DeployFromGarrison(up_to=up_to):
-            return f"Deploy {up_to} {_plural(up_to, 'troop')}"
-        case TrashPersonalCard():
-            return "Trash a card"
+            # "Deploy up to N troops from your garrison to the Conflict"
+            # [Detonation card face] [Counterattack card face] [Twisted
+            # Devious card face] — the player may deploy fewer.
+            return (
+                f"Deploy up to {up_to} {_plural(up_to, 'troop')} from your"
+                " garrison to the Conflict"
+            )
+        case TrashPersonalCard(
+            hand_only=hand_only,
+            bonus_spice=bonus_spice,
+            bonus_minimum_cost=bonus_minimum_cost,
+        ):
+            # Twisted Devious: "Trash a card from your hand" [Twisted
+            # Devious card face]. Navigation card 5: "If you trash a card
+            # that costs 1 or more: 2 spice" [Navigation Card 5 face].
+            text = "Trash a card from your hand" if hand_only else "Trash a card"
+            if bonus_spice:
+                text += (
+                    f"; if it costs {bonus_minimum_cost} or more: "
+                    f"Gain {bonus_spice} spice"
+                )
+            return text
         case PlaceSpy() as spy:
             return _place_spy_text(spy)
         case RetreatTroops() as troops:
@@ -399,21 +439,28 @@ def section_text(section: EffectSection) -> str:
     return body
 
 
-def option_text(option: IntrigueOption) -> str:
+def option_text(option: IntrigueOption, *, show_timing: bool = True) -> str:
     """Render one Intrigue option, prefixed by its timing.
 
     A triggered option (``option.trigger`` set) never resolves when played;
     its trigger clause introduces the sections that fire later instead.
+    ``show_timing`` is false for Steersman Y'rkoon's Navigation cards: their
+    faces print no Plot/Combat/Endgame banner (they are played automatically
+    by Plot Course, not chosen by timing) [Navigation card faces].
     """
 
-    prefix = f"{_TIMING_LABELS[option.timing]} — "
     body = "; ".join(section_text(section) for section in option.sections)
     if option.trigger is not None:
-        return f"{prefix}{trigger_text(option.trigger)}: {body}"
-    return f"{prefix}{body}"
+        body = f"{trigger_text(option.trigger)}: {body}"
+    if not show_timing:
+        return body
+    return f"{_TIMING_LABELS[option.timing]} — {body}"
 
 
 def intrigue_card_text(entry: IntrigueCardEntry) -> list[str]:
     """Render one line of English text per printed Intrigue option."""
 
-    return [option_text(option) for option in entry.options]
+    return [
+        option_text(option, show_timing=not entry.navigation)
+        for option in entry.options
+    ]

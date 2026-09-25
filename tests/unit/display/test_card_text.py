@@ -1,5 +1,6 @@
 """Tests for personal_card_text() display lines."""
 
+from dune_imperium.content.immortality.tleilaxu import TLEILAXU_CARDS_BY_ID
 from dune_imperium.content.schema import CardDefinition, SourceDocument, SourceRef
 from dune_imperium.content.uprising.imperium import (
     IMPERIUM_CARDS,
@@ -136,6 +137,65 @@ def test_the_spice_must_flow_reserve_acquisition_vp() -> None:
     assert personal_card_text(entry) == [
         "Reveal: Gain 1 spice",
         "On acquire: Gain 1 VP",
+    ]
+
+
+def test_tread_in_darkness_bene_gesserit_bond_has_no_arrow() -> None:
+    # Card face: two icons side by side with no arrow (OQ-058); the draw
+    # happens even if the trash is declined [Tread in Darkness card face].
+    entry = IMPERIUM_CARDS_BY_ID["tread_in_darkness"]
+
+    assert personal_card_text(entry) == [
+        "Agent: If Bene Gesserit Bond: You may trash a card, Draw 1 card"
+    ]
+
+
+def test_delivery_logistics_lists_its_contract_agent_icons() -> None:
+    # Card face Agent box: "This has the Agent icons shown on all your
+    # incomplete contracts." [Delivery Logistics card face].
+    entry = IMPERIUM_CARDS_BY_ID["delivery_logistics"]
+
+    assert personal_card_text(entry) == [
+        "Has the Agent icons shown on all your incomplete contracts",
+        "Reveal: Choose one: 1 Persuasion / Contract",
+    ]
+
+
+def test_litany_against_fear_renders_its_turn_start_box() -> None:
+    # Red box: "At the start of your turn: Put this card into play -> draw a
+    # card and pass your turn." [Litany Against Fear card face].
+    entry = IMPERIUM_CARDS_BY_ID["litany_against_fear"]
+
+    assert personal_card_text(entry) == [
+        "At the start of your turn: Put this card into play → "
+        "Draw 1 card and pass your turn"
+    ]
+    assert "(no additional ability)" not in personal_card_text(entry)
+
+
+def test_blank_slate_renders_its_grafted_agent_icons() -> None:
+    # Agent box: "If grafted: This has [Emperor], [Spacing Guild], [Bene
+    # Gesserit], and [Fremen]." [Blank Slate card face].
+    entry = IMPERIUM_CARDS_BY_ID["blank_slate"]
+
+    lines = personal_card_text(entry)
+    assert lines != ["(no additional ability)"]
+    assert lines == [
+        "If grafted: This has Emperor, Spacing Guild, Bene Gesserit, "
+        "and Fremen Agent icons"
+    ]
+
+
+def test_usurp_renders_its_graft_box() -> None:
+    # GRAFT box: "You may graft this to a card in the Imperium Row without
+    # acquiring it. If you do, trash that card at the end of your turn."
+    # [Usurp card face].
+    entry = TLEILAXU_CARDS_BY_ID["usurp"]
+
+    assert personal_card_text(entry) == [
+        "Graft: You may graft this to a card in the Imperium Row without "
+        "acquiring it. If you do, trash that card at the end of your turn",
+        "Reveal: Generate 1 specimen",
     ]
 
 
