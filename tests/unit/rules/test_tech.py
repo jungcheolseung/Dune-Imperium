@@ -42,6 +42,7 @@ from dune_imperium.rules.board_effects import (
     resolve_board_effect,
 )
 from dune_imperium.rules.engine import UprisingRulesEngine
+from dune_imperium.rules.leader_abilities import IMPLEMENTED_ABILITY_LEADER_IDS
 from dune_imperium.rules.optional_trash import legal_optional_trash_actions
 from dune_imperium.rules.setup import create_draft_initial_state, create_initial_state
 from dune_imperium.rules.spy_moves import (
@@ -550,6 +551,68 @@ def test_servo_receivers_signet_outside_an_agent_turn() -> None:
         liet_opened, _tech_actions(liet_opened)["servo_receivers"]
     ).state
     assert liet_bought.players[0].resources.water == 2
+
+
+_SERVO_SPY_SETUPS: dict[str, dict[str, object]] = {
+    "spies_in_supply": {"spies_supply": 3},
+    # Every Spy already out: the Spy-placing Signets (Feyd, Fenring, Staban,
+    # Margot) must resolve through their recall-first or no-Spy branches.
+    "spies_on_posts": {
+        "spies_supply": 0,
+        "spy_post_ids": (
+            "arrakis-deep-desert",
+            "fremen-desert-tactics-fremkit",
+            "emperor-sardaukar-dutiful-service",
+        ),
+    },
+}
+
+
+@pytest.mark.parametrize("spies", sorted(_SERVO_SPY_SETUPS))
+@pytest.mark.parametrize("host", ["landsraad", "reveal"])
+@pytest.mark.parametrize("leader_id", sorted(IMPLEMENTED_ABILITY_LEADER_IDS))
+def test_every_servo_receivers_signet_choice_closes_its_own_frame(
+    leader_id: str, host: str, spies: str
+) -> None:
+    # Servo-Receivers uses the Leader's Signet Ring ability [Main p. 20]
+    # [Servo-Receivers Tech tile] in its own leader_signet frame (OQ-062).
+    # Every choice path must close that frame and hand control back to the
+    # host: the next seat's turn after the Landsraad visit, or the owner's
+    # open Reveal turn. A Signet handler that writes through the Agent box
+    # (advance_after_effect / current_agent_effect_context) instead of
+    # _store_signet / _signet_context breaks this (merge guard for Signet
+    # handler changes on other branches).
+    engine = UprisingRulesEngine()
+    codec = ActionCodec(TECH)
+    owner = _owner(
+        leader_id=leader_id,
+        influence=Influence(emperor=2, fremen=2),
+        troops_conflict=2,
+        troops_supply=7,
+        **_SERVO_SPY_SETUPS[spies],
+    )
+    if host == "landsraad":
+        state = _visit(_turn_state(owner, stacks=SERVO_STACKS), "assembly_hall")
+        expected = ("turn", 1)
+    else:
+        revealed = _reveal(_turn_state(owner, stacks=SERVO_STACKS)).state
+        state = push_tech_acquisition(revealed, 0, discount=1, source="t").state
+        expected = ("reveal", 0)
+    pending = [engine.apply(state, _tech_actions(state)["servo_receivers"]).state]
+    leaves = 0
+    while pending:
+        current = pending.pop()
+        if all(frame.kind != "leader_signet" for frame in current.decision_stack):
+            leaves += 1
+            assert (current.decision_stack[-1].kind, _decider(current)) == expected
+            continue
+        actions = engine.legal_actions(current, _decider(current))
+        assert actions, "a leader_signet frame must offer a choice"
+        for action in actions:
+            assert codec.decode(codec.encode(action), action.actor) == action
+            pending.append(engine.apply(current, action).state)
+        assert leaves + len(pending) < 400, "Signet choices must terminate"
+    assert leaves >= 1
 
 
 @pytest.mark.parametrize(
