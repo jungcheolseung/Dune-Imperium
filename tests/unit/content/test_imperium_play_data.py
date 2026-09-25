@@ -642,8 +642,14 @@ def test_covert_operation_play_data_forces_each_opponent_to_discard() -> None:
         card.agent_effect
         is PersonalCardAgentEffect.EACH_OPPONENT_DISCARDS_PERSONAL_CARD
     )
-    assert card.reveal_persuasion == 2
+    # The Reveal box prints two Spy icons and no Persuasion diamond
+    # [Covert Operation card] (BGG inventory: "+2 Spies"); it was once
+    # transcribed as two Persuasion.
+    assert card.reveal_persuasion == 0
     assert card.reveal_strength == 0
+    assert card.reveal_choice_effects == (
+        PersonalCardRevealChoiceEffect.PLACE_TWO_SPIES,
+    )
 
 
 def test_calculus_of_power_play_data_trashes_self_or_another_emperor() -> None:

@@ -472,6 +472,7 @@ REVEAL_CHOICE_EFFECT_TEXT: Final[Mapping[PersonalCardRevealChoiceEffect, str]] =
                 "You may recall 2 Spies → +2 Persuasion"
             ),
             PersonalCardRevealChoiceEffect.PLACE_SPY: "Place a Spy",
+            PersonalCardRevealChoiceEffect.PLACE_TWO_SPIES: "Place 2 Spies",
             PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH: (
                 "If you have 2 or more Tech tiles: "
                 "Gain 1 Influence with a chosen Faction"

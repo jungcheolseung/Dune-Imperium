@@ -33,7 +33,8 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     # track's Influence 4 Spy [Main p. 7]): place_spy_on_space and
     # recall_spy_for_placement per post (13 + 13) and decline_spy_placement
     # join the catalogs without Bloodlines, +27.
-    assert first.size == 4354 + 2 + 7 + 4 + 1 + 2 + 1 + 40 + 1 + 27
+    # Covert Operation's two Reveal Spies: resume_reveal_choice(place_two_spies), +1.
+    assert first.size == 4354 + 2 + 7 + 4 + 1 + 2 + 1 + 40 + 1 + 27 + 1
 
 
 def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
@@ -50,7 +51,8 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
     # Intrigue instance (+44) and Branching Path's corrected City icon shifts
     # its agent_turn space coverage by +1 (see test_catalog_is_fixed...).
     # v107: +27, the generic Spy placement frame (see above).
-    assert codec.size == 4640 + 2 + 7 + 4 + 1 + 2 + 1 + 44 + 1 + 27
+    # Covert Operation's two Reveal Spies: resume_reveal_choice(place_two_spies), +1.
+    assert codec.size == 4640 + 2 + 7 + 4 + 1 + 2 + 1 + 44 + 1 + 27 + 1
 
     try:
         ActionCodec(RulesetConfig()).encode(action)
@@ -93,7 +95,8 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
     # catalogs, see test_catalog_is_fixed_and_versioned_for_a_ruleset):
     # every Bene Gesserit card already gets every Agent icon's placements
     # under Bloodlines, for Urgent Shigawire's boost.
-    assert both.size == 11100 + 28 + 28 + 72
+    # Covert Operation's two Reveal Spies: resume_reveal_choice(place_two_spies), +1.
+    assert both.size == 11100 + 28 + 28 + 72 + 1
 
     choam_only = ActionCodec(RulesetConfig(choam_module=True))
     for action in actions:

@@ -339,7 +339,8 @@ IMPERIUM_CARDS: Final = (
         3,
         agent_icons=(AgentIcon.SPY,),
         agent_effect=PersonalCardAgentEffect.EACH_OPPONENT_DISCARDS_PERSONAL_CARD,
-        reveal_persuasion=2,
+        # Reveal: two plain Spy icons and no Persuasion [Covert Operation card].
+        reveal_choice_effects=(PersonalCardRevealChoiceEffect.PLACE_TWO_SPIES,),
         play_data_complete=True,
     ),
     _entry(

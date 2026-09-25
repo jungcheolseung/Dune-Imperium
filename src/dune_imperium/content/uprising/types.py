@@ -379,6 +379,9 @@ class PersonalCardRevealChoiceEffect(StrEnum):
         "may_recall_two_spies_for_two_persuasion"
     )
     PLACE_SPY = "place_spy"
+    # Covert Operation: two plain Spy icons [Covert Operation card]. Each
+    # resolves like PLACE_SPY; the second opens once the first is done.
+    PLACE_TWO_SPIES = "place_two_spies"
     PLACE_SPY_OR_GAIN_TWO_STRENGTH = "place_spy_or_gain_two_strength"
     MAY_LOSE_INFLUENCE_TO_GAIN_INFLUENCE = (
         "may_lose_influence_to_gain_influence"

@@ -1140,6 +1140,129 @@ def test_public_spectacle_reveal_recalls_before_placing_with_empty_supply() -> N
     )
 
 
+def _post_choice(actions: tuple[DomainAction, ...], post_id: str) -> DomainAction:
+    return next(
+        action
+        for action in actions
+        if action.action_id == "place_reveal_spy"
+        and dict(action.arguments)["post_id"] == post_id
+    )
+
+
+def test_covert_operation_reveal_places_two_spies_and_no_persuasion() -> None:
+    # Covert Operation's Reveal box prints two Spy icons and no Persuasion
+    # [Covert Operation card] (BGG inventory: "+2 Spies"). "Spy. Place one
+    # Spy; take it from your supply and put it on an unoccupied observation
+    # post" [Main p. 20]: one placement per icon. The engine used to give two
+    # Persuasion and no Spy.
+    covert = _imperium_instance("covert_operation")
+    state = _state(PlayerState(player_id=0, hand=(covert,)))
+    engine = UprisingRulesEngine()
+    revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+    first_post, second_post = (post.post_id for post in OBSERVATION_POSTS[:2])
+
+    first_choices = engine.legal_actions(revealed, 0)
+    first = engine.apply(revealed, _post_choice(first_choices, first_post))
+    second_choices = engine.legal_actions(first.state, 0)
+    second = engine.apply(first.state, _post_choice(second_choices, second_post))
+
+    assert dict(revealed.decision_stack[-2].context)["persuasion"] == 0
+    assert {action.action_id for action in first_choices} == {
+        "defer_reveal_choice",
+        "place_reveal_spy",
+    }
+    # The second icon is a placement of its own, on another empty post.
+    assert {action.action_id for action in second_choices} == {
+        "defer_reveal_choice",
+        "place_reveal_spy",
+    }
+    assert first_post not in {
+        dict(action.arguments).get("post_id") for action in second_choices
+    }
+    owner = second.state.players[0]
+    assert owner.spies_supply == 1
+    assert owner.spy_post_ids == (first_post, second_post)
+    assert [event.kind for event in (*first.events, *second.events)] == [
+        "spy_placed",
+        "spy_placed",
+    ]
+    assert dict(second.state.decision_stack[-1].context)["persuasion"] == 0
+    assert legal_finish_reveal_actions(second.state, 0)
+
+
+def test_covert_operation_second_spy_waits_like_any_reveal_choice() -> None:
+    # Reveal effects resolve in any order [Main p. 12]: the second Spy icon
+    # can be put off, and the Reveal cannot finish while it can still open.
+    covert = _imperium_instance("covert_operation")
+    state = _state(PlayerState(player_id=0, hand=(covert,)))
+    engine = UprisingRulesEngine()
+    revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+    first_post = OBSERVATION_POSTS[0].post_id
+    first = engine.apply(
+        revealed, _post_choice(engine.legal_actions(revealed, 0), first_post)
+    )
+
+    deferred = engine.apply(
+        first.state, DomainAction(action_id="defer_reveal_choice", actor=0)
+    )
+
+    assert legal_finish_reveal_actions(deferred.state, 0) == ()
+    assert DomainAction(
+        action_id="resume_reveal_choice",
+        actor=0,
+        arguments=(("effect", "place_spy"),),
+    ) in engine.legal_actions(deferred.state, 0)
+
+
+def test_covert_operation_spy_icons_follow_the_plain_reveal_spy_rules() -> None:
+    # Each icon is the plain Spy icon, like Public Spectacle's: "If you have
+    # no Spies in your supply, you may first recall one of your Spies for no
+    # effect" [Main pp. 11, 20] (uprising-systems.md, OQ-057 (14)). Both of
+    # Covert Operation's icons offer exactly Public Spectacle's choices.
+    posts = tuple(post.post_id for post in OBSERVATION_POSTS[:3])
+
+    def revealed_with(card_id: str, supply: int, placed: tuple[str, ...]) -> GameState:
+        card = _imperium_instance(card_id)
+        state = _state(
+            PlayerState(
+                player_id=0, hand=(card,), spies_supply=supply, spy_post_ids=placed
+            )
+        )
+        return begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+
+    covert_empty = revealed_with("covert_operation", 0, posts)
+    spectacle_empty = revealed_with("public_spectacle", 0, posts)
+    assert legal_reveal_spy_actions(covert_empty, 0) == legal_reveal_spy_actions(
+        spectacle_empty, 0
+    )
+
+    # The first icon takes the last Spy in supply; the second then meets an
+    # empty supply exactly as Public Spectacle's icon would.
+    covert_one = revealed_with("covert_operation", 1, posts[:2])
+    first = apply_reveal_spy_action(
+        covert_one,
+        _post_choice(legal_reveal_spy_actions(covert_one, 0), posts[2]),
+    ).state
+    assert first.players[0].spies_supply == 0
+    assert legal_reveal_spy_actions(first, 0) == legal_reveal_spy_actions(
+        spectacle_empty, 0
+    )
+    recall = next(
+        action
+        for action in legal_reveal_spy_actions(first, 0)
+        if action.action_id == "recall_spy_for_reveal_placement"
+    )
+    recalled = apply_reveal_spy_action(first, recall).state
+    target = next(
+        action
+        for action in legal_reveal_spy_actions(recalled, 0)
+        if dict(action.arguments)["post_id"] not in posts
+    )
+    placed = apply_reveal_spy_action(recalled, target).state
+    assert len(placed.players[0].spy_post_ids) == 3
+    assert legal_finish_reveal_actions(placed, 0)
+
+
 def test_wheels_within_wheels_reveals_for_persuasion_and_places_a_spy() -> None:
     wheels = _imperium_instance("wheels_within_wheels")
     state = _state(PlayerState(player_id=0, hand=(wheels,)))

@@ -104,7 +104,7 @@ def legal_reveal_spy_actions(
     effect_value = context.get("reveal_choice_effect")
     if not isinstance(effect_value, str):
         return ()
-    effect = PersonalCardRevealChoiceEffect(effect_value)
+    effect = _resolved_choice_effect(effect_value)
     owner = state.players[player]
     if effect in (
         PersonalCardRevealChoiceEffect.PLACE_SPY,
@@ -988,12 +988,34 @@ def apply_reveal_troop_retreat(
     )
 
 
+# Choices whose actions are exactly another choice's: each of Covert
+# Operation's two Spy icons is the plain Reveal Spy icon; only how often the
+# choice opens differs.
+_RESOLVES_AS: Mapping[
+    PersonalCardRevealChoiceEffect, PersonalCardRevealChoiceEffect
+] = {
+    PersonalCardRevealChoiceEffect.PLACE_TWO_SPIES: (
+        PersonalCardRevealChoiceEffect.PLACE_SPY
+    ),
+}
+
+
+def _resolved_choice_effect(effect_value: str) -> PersonalCardRevealChoiceEffect:
+    """Return the choice whose actions resolve the frame's ``effect_value``."""
+
+    effect = PersonalCardRevealChoiceEffect(effect_value)
+    return _RESOLVES_AS.get(effect, effect)
+
+
 def _reveal_choice_frame_context(
     state: GameState,
     player: int,
     effect: PersonalCardRevealChoiceEffect,
 ) -> dict[str, ActionValue] | None:
-    """Return the top REVEAL_CHOICE context if it is ``player``'s ``effect``."""
+    """Return the top REVEAL_CHOICE context if it resolves as ``player``'s ``effect``.
+
+    ``_RESOLVES_AS`` lets a choice share another choice's actions.
+    """
 
     if not 0 <= player < state.config.players or not state.decision_stack:
         return None
@@ -1001,7 +1023,10 @@ def _reveal_choice_frame_context(
     if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
         return None
     context = dict(frame.context)
-    if context.get("reveal_choice_effect") != effect.value:
+    effect_value = context.get("reveal_choice_effect")
+    if not isinstance(effect_value, str):
+        return None
+    if _resolved_choice_effect(effect_value) is not effect:
         return None
     return context
 
@@ -1574,7 +1599,7 @@ def apply_reveal_spy_action(
             state=replace(
                 state,
                 players=replace_player(state.players, next_owner),
-                decision_stack=state.decision_stack[:-1],
+                decision_stack=_after_reveal_spy_icon(state, action.actor, effect),
             ),
             events=(
                 GameEvent(
@@ -1591,7 +1616,10 @@ def apply_reveal_spy_action(
 
     if action.action_id == "decline_reveal_spy_recall":
         return RuleResult(
-            state=replace(state, decision_stack=state.decision_stack[:-1]),
+            state=replace(
+                state,
+                decision_stack=_after_reveal_spy_icon(state, action.actor, effect),
+            ),
             events=(
                 GameEvent(
                     event_id=f"{source}:spy_recall_declined",
@@ -1700,6 +1728,36 @@ def apply_reveal_spy_action(
         decision_stack=remaining,
     )
     return RuleResult(state=next_state, events=tuple(events))
+
+
+def _after_reveal_spy_icon(
+    state: GameState,
+    player: int,
+    effect: PersonalCardRevealChoiceEffect,
+) -> tuple[DecisionFrame, ...]:
+    """Close a resolved Reveal Spy frame; Covert Operation opens its second icon.
+
+    Covert Operation prints two Spy icons [Covert Operation card]. Its frame
+    resolves the first like any plain Spy icon [Main pp. 11, 20] and is then
+    replaced by a plain ``PLACE_SPY`` frame of the same card for the second,
+    which the owner may put off like any other Reveal choice [Main p. 12].
+    """
+
+    remaining = state.decision_stack[:-1]
+    if effect is not PersonalCardRevealChoiceEffect.PLACE_TWO_SPIES:
+        return remaining
+    card_id = context_str(
+        frame_context(state.decision_stack[-1]), "reveal_card_id", owner=_CHOICE_FRAME
+    )
+    return (
+        *remaining,
+        _build_reveal_choice_frame(
+            state.round_number,
+            player,
+            card_id,
+            PersonalCardRevealChoiceEffect.PLACE_SPY,
+        ),
+    )
 
 
 def _spy_recalled_event(
@@ -2657,6 +2715,7 @@ def _card_reveal_strength(
 def reveal_choice_prompt(effect: PersonalCardRevealChoiceEffect) -> str:
     """Return the REVEAL_CHOICE frame prompt text for one choice effect."""
 
+    effect = _RESOLVES_AS.get(effect, effect)
     return (
         "Bene Gesserit Alliance: lose one Influence for a Victory Point, or decline"
         if effect
@@ -2824,6 +2883,7 @@ def _reveal_choice_effect_is_available(
         or effect
         in (
             PersonalCardRevealChoiceEffect.PLACE_SPY,
+            PersonalCardRevealChoiceEffect.PLACE_TWO_SPIES,
             PersonalCardRevealChoiceEffect.PLACE_SPY_OR_GAIN_TWO_STRENGTH,
         )
         or (
