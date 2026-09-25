@@ -895,15 +895,20 @@ def test_spy_network_recalls_one_of_two_spies_and_draws_intrigue() -> None:
     selected = next(
         action
         for action in choices
-        if dict(action.arguments)["post_id"] == posts[1]
+        if dict(action.arguments).get("post_id") == posts[1]
     )
     result = engine.apply(revealed.state, selected)
 
+    # The recall is an arrow cost, so declining is offered first [Spy
+    # Network card] [Main p. 20].
     assert tuple(action.action_id for action in choices) == (
+        "decline_reveal_spy_recall",
         "recall_spy_for_reveal",
         "recall_spy_for_reveal",
     )
-    assert {dict(action.arguments)["post_id"] for action in choices} == set(posts)
+    assert {dict(action.arguments)["post_id"] for action in choices[1:]} == set(
+        posts
+    )
     assert result.state.players[0].spy_post_ids == (posts[0],)
     assert result.state.players[0].spies_supply == 2
     assert result.state.players[0].intrigue_cards == ("intrigue:test:0",)
@@ -916,10 +921,46 @@ def test_spy_network_recalls_one_of_two_spies_and_draws_intrigue() -> None:
     )
 
 
+def test_spy_network_recall_may_be_declined_with_two_spies_placed() -> None:
+    # Spy Network: "If you have two or more Spies on the board: [recall Spy]
+    # -> [Intrigue card]" [Spy Network card]. The recall is left of an arrow,
+    # and "You do not have to pay such a cost on a card" [Main p. 20]; paying
+    # an arrow cost is optional [FAQ p. 3]. Declining keeps both Spies, draws
+    # nothing and lets the Reveal finish.
+    spy_network = _imperium_instance("spy_network")
+    posts = (
+        "arrakis-hagga-basin",
+        "bene-gesserit-espionage-secrets",
+    )
+    state = _state(
+        PlayerState(
+            player_id=0,
+            hand=(spy_network,),
+            spies_supply=1,
+            spy_post_ids=posts,
+        )
+    )
+    state = replace(state, intrigue_deck=("intrigue:test:0",))
+    revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+    engine = UprisingRulesEngine()
+
+    declined = engine.apply(
+        revealed, DomainAction(action_id="decline_reveal_spy_recall", actor=0)
+    ).state
+
+    assert declined.players[0].spy_post_ids == posts
+    assert declined.players[0].intrigue_cards == ()
+    assert declined.intrigue_deck == ("intrigue:test:0",)
+    assert declined.decision_stack[-1].kind == "reveal"
+    assert "finish_reveal" in {
+        action.action_id for action in engine.legal_actions(declined, 0)
+    }
+
+
 def test_spy_network_recall_becomes_unavailable_when_spies_drop_mid_reveal() -> None:
     # The two-Spy condition is judged again when the queued choice resolves
     # in the owner's chosen Reveal order [Main p. 12] [Main pp. 9, 20]; In
-    # High Places can recall both remaining Spies first, and the required
+    # High Places can recall both remaining Spies first, and the optional
     # recall and Intrigue draw are then unavailable.
     in_high_places = _imperium_instance("in_high_places")
     spy_network = _imperium_instance("spy_network")
@@ -1114,7 +1155,11 @@ def test_public_spectacle_reveal_recalls_before_placing_with_empty_supply() -> N
         )
     )
     revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
-    recall = legal_reveal_spy_actions(revealed.state, 0)[0]
+    recall = next(
+        action
+        for action in legal_reveal_spy_actions(revealed.state, 0)
+        if action.action_id == "recall_spy_for_reveal_placement"
+    )
 
     recalled = apply_reveal_spy_action(revealed.state, recall)
     placements = legal_reveal_spy_actions(recalled.state, 0)
@@ -1138,6 +1183,39 @@ def test_public_spectacle_reveal_recalls_before_placing_with_empty_supply() -> N
         "spy_recalled",
         "spy_placed",
     )
+
+
+def test_public_spectacle_reveal_may_pass_without_a_spy_in_supply() -> None:
+    # Spy icon: "If you have no Spies in your supply, you may first recall
+    # one of your Spies for no effect" [Main p. 20] [Main p. 11]; the Spy is
+    # mandatory only while one is in the supply (OQ-057 (14)), so with all
+    # three Spies on the board the owner may decline and keep them.
+    spectacle = _imperium_instance("public_spectacle")
+    original_posts = tuple(post.post_id for post in OBSERVATION_POSTS[:3])
+    state = _state(
+        PlayerState(
+            player_id=0,
+            hand=(spectacle,),
+            spies_supply=0,
+            spy_post_ids=original_posts,
+        )
+    )
+    revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+    engine = UprisingRulesEngine()
+    choices = legal_reveal_spy_actions(revealed, 0)
+
+    assert tuple(action.action_id for action in choices) == (
+        "decline_reveal_spy_recall",
+        *("recall_spy_for_reveal_placement",) * 3,
+    )
+    declined = engine.apply(revealed, choices[0]).state
+
+    assert declined.players[0].spy_post_ids == original_posts
+    assert declined.players[0].spies_supply == 0
+    assert declined.decision_stack[-1].kind == "reveal"
+    assert "finish_reveal" in {
+        action.action_id for action in engine.legal_actions(declined, 0)
+    }
 
 
 def test_wheels_within_wheels_reveals_for_persuasion_and_places_a_spy() -> None:
@@ -2294,7 +2372,7 @@ def test_a_started_spy_placement_cannot_be_deferred() -> None:
 def test_a_deferred_choice_whose_condition_lapsed_waits_and_lapses_at_finish() -> (
     None
 ):
-    # In High Places' two-Spy recall is deferred, Spy Network's required
+    # In High Places' two-Spy recall is deferred, Spy Network's optional
     # recall resolves first and leaves one Spy. The deferred choice cannot
     # be brought back while its condition fails (judged at resolution
     # [Main p. 12]), it does not block the Reveal's end, and it lapses when

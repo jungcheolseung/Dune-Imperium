@@ -465,8 +465,8 @@ REVEAL_CHOICE_EFFECT_TEXT: Final[Mapping[PersonalCardRevealChoiceEffect, str]] =
     MappingProxyType(
         {
             PersonalCardRevealChoiceEffect.RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED: (
-                "If you have placed 2 or more Spies: Recall a Spy, "
-                "Draw 1 Intrigue card"
+                "If you have placed 2 or more Spies: "
+                "You may recall a Spy → Draw 1 Intrigue card"
             ),
             PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_TWO_PERSUASION: (
                 "You may recall 2 Spies → +2 Persuasion"

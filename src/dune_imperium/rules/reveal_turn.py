@@ -111,14 +111,14 @@ def legal_reveal_spy_actions(
         PersonalCardRevealChoiceEffect.PLACE_SPY_OR_GAIN_TWO_STRENGTH,
         PersonalCardRevealChoiceEffect.COMMAND_PLACE_SPY,
     ):
+        recalled = context.get("reveal_spy_recalled") is True
+        plain_spy = effect in (
+            PersonalCardRevealChoiceEffect.PLACE_SPY,
+            PersonalCardRevealChoiceEffect.COMMAND_PLACE_SPY,
+        )
         strength_choice = (
             ()
-            if context.get("reveal_spy_recalled") is True
-            or effect
-            in (
-                PersonalCardRevealChoiceEffect.PLACE_SPY,
-                PersonalCardRevealChoiceEffect.COMMAND_PLACE_SPY,
-            )
+            if recalled or plain_spy
             else (
                 DomainAction(
                     action_id="gain_two_reveal_strength",
@@ -138,8 +138,20 @@ def legal_reveal_spy_actions(
                     for post_id in empty_observation_post_ids(state)
                 ),
             )
+        # With an empty supply the Spy icon allows "you may first recall one
+        # of your Spies for no effect" [Main pp. 11, 20]: the recall stays
+        # optional, so the plain icon may pass without a placement (OQ-057
+        # (14)). Once a Spy was recalled it is in the supply, and the
+        # placement is mandatory again. "Spy -OR- 2 swords" keeps its printed
+        # alternative instead.
+        decline = (
+            (DomainAction(action_id="decline_reveal_spy_recall", actor=player),)
+            if plain_spy and not recalled
+            else ()
+        )
         return (
             *strength_choice,
+            *decline,
             *(
                 DomainAction(
                     action_id="recall_spy_for_reveal_placement",
@@ -157,20 +169,24 @@ def legal_reveal_spy_actions(
         effect
         is PersonalCardRevealChoiceEffect.RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED
     ):
-        if len(post_ids) < 2:
-            # The two-Spy condition is judged again when this queued choice
-            # resolves in the owner's chosen Reveal order [Main p. 12]
-            # [Main pp. 9, 20]; a freely ordered recall (for example In High
-            # Places) can leave fewer than two, and the required recall and
-            # draw are then unavailable.
-            return (DomainAction(action_id="decline_reveal_spy_recall", actor=player),)
-        return tuple(
-            DomainAction(
-                action_id="recall_spy_for_reveal",
-                actor=player,
-                arguments=(("post_id", post_id),),
-            )
-            for post_id in post_ids
+        # Spy Network: "If you have two or more Spies on the board: [recall
+        # Spy] -> [Intrigue card]" [Spy Network card]. The recall is an arrow
+        # cost, and "You do not have to pay such a cost on a card" [Main p.
+        # 20] [FAQ p. 3], so declining is always offered. The two-Spy
+        # condition is judged again when this queued choice resolves in the
+        # owner's chosen Reveal order [Main p. 12]; a freely ordered recall
+        # (for example In High Places) can leave fewer than two, and only the
+        # decline remains.
+        return (
+            DomainAction(action_id="decline_reveal_spy_recall", actor=player),
+            *(
+                DomainAction(
+                    action_id="recall_spy_for_reveal",
+                    actor=player,
+                    arguments=(("post_id", post_id),),
+                )
+                for post_id in (post_ids if len(post_ids) >= 2 else ())
+            ),
         )
     if effect is PersonalCardRevealChoiceEffect.MAY_RECALL_SPY_FOR_THREE_STRENGTH:
         # Arrakis Observer: "[recall a Spy] -> 3 swords", an arrow cost.
@@ -2717,6 +2733,9 @@ def reveal_choice_prompt(effect: PersonalCardRevealChoiceEffect) -> str:
         is (
             PersonalCardRevealChoiceEffect.KEEP_SPICE_OR_TRASH_SELF_FOR_VP_IF_FOUR_CONTRACTS
         )
+        else "Recall a Spy to draw an Intrigue card, or decline"
+        if effect
+        is PersonalCardRevealChoiceEffect.RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED
         else "Choose a Spy to recall for this Reveal effect"
     )
 

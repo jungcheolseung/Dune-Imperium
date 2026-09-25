@@ -51,6 +51,7 @@ const PROMPT_KO = {
   "Play an Intrigue card that triggers at this Conflict's end, or decline": "이 {conflict} 종료 시 발동하는 {intrigue} 사용, 또는 거절",
   "Play the Navigation card": "{navigation} 사용",
   "Recall a Spy for three swords or decline": "{spy} 1 소환하고 {sword} 3 획득, 또는 거절",
+  "Recall a Spy to draw an Intrigue card, or decline": "{spy}를 소환하고 {intrigue} 1장 뽑기, 또는 거절",
   "Resolve Reveal effects and acquire cards": "{reveal_turn} 효과 해결 및 카드 획득",
   "Resolve the Intrigue choice": "{intrigue} 선택 해결",
   "Resolve the Navigation choice": "{navigation} 선택 해결",
