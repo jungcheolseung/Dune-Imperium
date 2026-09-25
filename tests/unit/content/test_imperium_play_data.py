@@ -382,15 +382,19 @@ def test_in_high_places_play_data_has_bond_acquisition_and_reveal_choice() -> No
     # "BENE GESSERIT" [card face].
     assert card.factions == (Faction.EMPEROR, Faction.BENE_GESSERIT)
     assert card.agent_icons == (AgentIcon.BENE_GESSERIT, AgentIcon.EMPEROR)
+    # "If you have another Bene Gesserit card in play: [draw 1 card] [Spy]"
+    # and "[recall Spy] [recall Spy] -> +3 Persuasion" [In High Places card]
+    # (BGG inventory: "Draw 1 card, +1 Spy", "Recall 2 Spies -> +3
+    # Persuasion"); once transcribed as one water and +2 Persuasion.
     assert (
         card.agent_effect
-        is PersonalCardAgentEffect.GAIN_WATER_IF_BENE_GESSERIT_BOND
+        is PersonalCardAgentEffect.DRAW_ONE_AND_PLACE_SPY_IF_BENE_GESSERIT_BOND
     )
     assert card.acquisition_effect is PersonalCardAcquisitionEffect.PLACE_SPY
     assert card.reveal_persuasion == 2
     assert card.reveal_strength == 0
     assert card.reveal_choice_effects == (
-        PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_TWO_PERSUASION,
+        PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_THREE_PERSUASION,
     )
 
 
@@ -456,7 +460,7 @@ def test_wheels_within_wheels_play_data_reuses_reveal_spy_placement() -> None:
     )
 
 
-def test_unswerving_loyalty_play_data_has_only_reveal_rewards() -> None:
+def test_unswerving_loyalty_play_data_has_reveal_rewards_and_bond_move() -> None:
     card = IMPERIUM_CARDS_BY_ID["unswerving_loyalty"]
 
     assert card.play_data_complete is True
@@ -467,6 +471,11 @@ def test_unswerving_loyalty_play_data_has_only_reveal_rewards() -> None:
     assert card.reveal_strength == 0
     assert card.reveal_effects == (
         PersonalCardRevealEffect(recruit_troops=1),
+    )
+    # "Fremen Bond : You may deploy or retreat one of your troops."
+    # [Unswerving Loyalty card]; the line was missing from the transcription.
+    assert card.reveal_choice_effects == (
+        PersonalCardRevealChoiceEffect.MAY_DEPLOY_OR_RETREAT_ONE_TROOP_IF_FREMEN_BOND,
     )
 
 
@@ -660,8 +669,14 @@ def test_covert_operation_play_data_forces_each_opponent_to_discard() -> None:
         card.agent_effect
         is PersonalCardAgentEffect.EACH_OPPONENT_DISCARDS_PERSONAL_CARD
     )
-    assert card.reveal_persuasion == 2
+    # The Reveal box prints two Spy icons and no Persuasion diamond
+    # [Covert Operation card] (BGG inventory: "+2 Spies"); it was once
+    # transcribed as two Persuasion.
+    assert card.reveal_persuasion == 0
     assert card.reveal_strength == 0
+    assert card.reveal_choice_effects == (
+        PersonalCardRevealChoiceEffect.PLACE_TWO_SPIES,
+    )
 
 
 def test_calculus_of_power_play_data_trashes_self_or_another_emperor() -> None:

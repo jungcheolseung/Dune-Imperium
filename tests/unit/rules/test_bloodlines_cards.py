@@ -2015,9 +2015,15 @@ def test_ruthless_leadership_round_trips_and_is_dealt_in_random_games() -> None:
     # does not change its agent_turn coverage under Bloodlines (every Bene
     # Gesserit card already gets every Agent icon's placements there, for
     # Urgent Shigawire's boost).
+    # FIXUP-V108 (merge of s2): recompute this size after all slices merge.
     # After v107: +14, the Conflict reward Spy's recall-first (13 recalls
     # and a decline), and +1 for the Leader Spy's decline.
     assert codec.size == 10159 + 292 + 1 + 1 + 1 + 2 + 1 + 28 + 28 + 67 + 14 + 1
+    # s2 side of the merge:
+    # # Covert Operation's two Reveal Spies: resume_reveal_choice(place_two_spies), +1.
+    # # Unswerving Loyalty's Fremen Bond troop move: its resume_reveal_choice
+    # # and Mapes' deploy/retreat/decline templates join every catalog, +4.
+    # assert codec.size == 10159 + 292 + 1 + 1 + 1 + 2 + 1 + 28 + 28 + 67 + 1 + 4
     action = DomainAction(
         action_id="trash_agent_card",
         actor=2,

@@ -116,7 +116,11 @@ class PersonalCardAgentEffect(StrEnum):
     DRAW_INTRIGUE_IF_THREE_UNITS_IN_CONFLICT = (
         "draw_intrigue_if_three_units_in_conflict"
     )
-    GAIN_WATER_IF_BENE_GESSERIT_BOND = "gain_water_if_bene_gesserit_bond"
+    # In High Places: "If you have another Bene Gesserit card in play: [draw
+    # 1 card] [Spy]" [In High Places card].
+    DRAW_ONE_AND_PLACE_SPY_IF_BENE_GESSERIT_BOND = (
+        "draw_one_and_place_spy_if_bene_gesserit_bond"
+    )
     GAIN_VISITED_FACTION_INFLUENCE = "gain_visited_faction_influence"
     GAIN_WATER = "gain_water"
     GAIN_BY_BENE_GESSERIT_AND_FREMEN_INFLUENCE_TWO = (
@@ -376,10 +380,13 @@ class PersonalCardRevealChoiceEffect(StrEnum):
     RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED = (
         "recall_spy_to_draw_intrigue_if_two_placed"
     )
-    MAY_RECALL_TWO_SPIES_FOR_TWO_PERSUASION = (
-        "may_recall_two_spies_for_two_persuasion"
+    MAY_RECALL_TWO_SPIES_FOR_THREE_PERSUASION = (
+        "may_recall_two_spies_for_three_persuasion"
     )
     PLACE_SPY = "place_spy"
+    # Covert Operation: two plain Spy icons [Covert Operation card]. Each
+    # resolves like PLACE_SPY; the second opens once the first is done.
+    PLACE_TWO_SPIES = "place_two_spies"
     PLACE_SPY_OR_GAIN_TWO_STRENGTH = "place_spy_or_gain_two_strength"
     MAY_LOSE_INFLUENCE_TO_GAIN_INFLUENCE = (
         "may_lose_influence_to_gain_influence"
@@ -426,12 +433,18 @@ class PersonalCardRevealChoiceEffect(StrEnum):
     # gain 1 Influence of your choice".
     GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH = "gain_chosen_influence_if_two_tech"
     # Immortality (card faces). For Humanity: "Bene Gesserit Alliance: lose
-    # one Influence -> 1 Victory Point".
+    # two Influence (one Faction) -> 1 Victory Point".
     MAY_LOSE_INFLUENCE_FOR_VP_IF_BENE_GESSERIT_ALLIANCE = (
         "may_lose_influence_for_vp_if_bene_gesserit_alliance"
     )
     # Shadout Mapes: "You may deploy or retreat one troop".
     MAY_DEPLOY_OR_RETREAT_ONE_TROOP = "may_deploy_or_retreat_one_troop"
+    # Unswerving Loyalty (Uprising, so outside the Immortality set below):
+    # "Fremen Bond: You may deploy or retreat one of your troops"
+    # [Unswerving Loyalty card]; Shadout Mapes' choice behind the Bond.
+    MAY_DEPLOY_OR_RETREAT_ONE_TROOP_IF_FREMEN_BOND = (
+        "may_deploy_or_retreat_one_troop_if_fremen_bond"
+    )
     # Tleilaxu Surgeon: "Lose two troops -> two specimens".
     MAY_LOSE_TWO_TROOPS_FOR_TWO_SPECIMENS = "may_lose_two_troops_for_two_specimens"
 

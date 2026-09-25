@@ -346,7 +346,8 @@ IMPERIUM_CARDS: Final = (
         3,
         agent_icons=(AgentIcon.SPY,),
         agent_effect=PersonalCardAgentEffect.EACH_OPPONENT_DISCARDS_PERSONAL_CARD,
-        reveal_persuasion=2,
+        # Reveal: two plain Spy icons and no Persuasion [Covert Operation card].
+        reveal_choice_effects=(PersonalCardRevealChoiceEffect.PLACE_TWO_SPIES,),
         play_data_complete=True,
     ),
     _entry(
@@ -520,11 +521,11 @@ IMPERIUM_CARDS: Final = (
         # are unaffected here; slice s2 owns their Agent-box effect.
         factions=(Faction.EMPEROR, Faction.BENE_GESSERIT),
         agent_icons=(AgentIcon.BENE_GESSERIT, AgentIcon.EMPEROR),
-        agent_effect=PersonalCardAgentEffect.GAIN_WATER_IF_BENE_GESSERIT_BOND,
+        agent_effect=PersonalCardAgentEffect.DRAW_ONE_AND_PLACE_SPY_IF_BENE_GESSERIT_BOND,
         acquisition_effect=PersonalCardAcquisitionEffect.PLACE_SPY,
         reveal_persuasion=2,
         reveal_choice_effects=(
-            PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_TWO_PERSUASION,
+            PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_THREE_PERSUASION,
         ),
         play_data_complete=True,
     ),
@@ -1036,6 +1037,11 @@ IMPERIUM_CARDS: Final = (
         factions=(Faction.FREMEN,),
         reveal_persuasion=1,
         reveal_effects=(PersonalCardRevealEffect(recruit_troops=1),),
+        # "Fremen Bond: You may deploy or retreat one of your troops."
+        # [Unswerving Loyalty card]
+        reveal_choice_effects=(
+            PersonalCardRevealChoiceEffect.MAY_DEPLOY_OR_RETREAT_ONE_TROOP_IF_FREMEN_BOND,
+        ),
         play_data_complete=True,
     ),
     _entry(
@@ -1667,7 +1673,8 @@ IMPERIUM_CARDS: Final = (
     ),
     # For Humanity (Bene Gesserit): BG, Landsraad, Spice Trade; Agent:
     # Influence of your choice; Reveal: 2 Persuasion and "Bene Gesserit
-    # Alliance: lose one Influence -> 1 Victory Point" [card face].
+    # Alliance: lose two Influence (one Faction) -> 1 Victory Point" [card
+    # face: a "?" diamond with two red chevrons].
     _entry(
         373,
         "for-humanity",

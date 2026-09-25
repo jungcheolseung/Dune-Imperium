@@ -111,7 +111,7 @@ def legal_reveal_spy_actions(
     effect_value = context.get("reveal_choice_effect")
     if not isinstance(effect_value, str):
         return ()
-    effect = PersonalCardRevealChoiceEffect(effect_value)
+    effect = _resolved_choice_effect(effect_value)
     owner = state.players[player]
     if effect in (
         PersonalCardRevealChoiceEffect.PLACE_SPY,
@@ -208,7 +208,10 @@ def legal_reveal_spy_actions(
                 for post_id in post_ids
             ),
         )
-    if effect is PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_TWO_PERSUASION:
+    if (
+        effect
+        is PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_THREE_PERSUASION
+    ):
         return (
             DomainAction(action_id="decline_reveal_spy_recall", actor=player),
             *(
@@ -1029,12 +1032,41 @@ def apply_reveal_troop_retreat(
     )
 
 
+_FREMEN_BOND_TROOP_MOVE = (
+    PersonalCardRevealChoiceEffect.MAY_DEPLOY_OR_RETREAT_ONE_TROOP_IF_FREMEN_BOND
+)
+# Choices whose actions are exactly another choice's: each of Covert
+# Operation's two Spy icons is the plain Reveal Spy icon, and Unswerving
+# Loyalty's Fremen Bond line is Shadout Mapes' troop move. Only when (and how
+# often) the choice opens differs.
+_RESOLVES_AS: Mapping[
+    PersonalCardRevealChoiceEffect, PersonalCardRevealChoiceEffect
+] = {
+    PersonalCardRevealChoiceEffect.PLACE_TWO_SPIES: (
+        PersonalCardRevealChoiceEffect.PLACE_SPY
+    ),
+    _FREMEN_BOND_TROOP_MOVE: (
+        PersonalCardRevealChoiceEffect.MAY_DEPLOY_OR_RETREAT_ONE_TROOP
+    ),
+}
+
+
+def _resolved_choice_effect(effect_value: str) -> PersonalCardRevealChoiceEffect:
+    """Return the choice whose actions resolve the frame's ``effect_value``."""
+
+    effect = PersonalCardRevealChoiceEffect(effect_value)
+    return _RESOLVES_AS.get(effect, effect)
+
+
 def _reveal_choice_frame_context(
     state: GameState,
     player: int,
     effect: PersonalCardRevealChoiceEffect,
 ) -> dict[str, ActionValue] | None:
-    """Return the top REVEAL_CHOICE context if it is ``player``'s ``effect``."""
+    """Return the top REVEAL_CHOICE context if it resolves as ``player``'s ``effect``.
+
+    ``_RESOLVES_AS`` lets a choice share another choice's actions.
+    """
 
     if not 0 <= player < state.config.players or not state.decision_stack:
         return None
@@ -1042,7 +1074,10 @@ def _reveal_choice_frame_context(
     if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
         return None
     context = dict(frame.context)
-    if context.get("reveal_choice_effect") != effect.value:
+    effect_value = context.get("reveal_choice_effect")
+    if not isinstance(effect_value, str):
+        return None
+    if _resolved_choice_effect(effect_value) is not effect:
         return None
     return context
 
@@ -1062,11 +1097,77 @@ def _reveal_choice_card_source(
     )
 
 
+# For Humanity's arrow cost: a "?" Influence diamond with two red chevrons,
+# two Influence with one chosen Faction [For Humanity card]; like gaining two,
+# the two steps cannot be split between Factions [Main p. 20].
+_FOR_HUMANITY_INFLUENCE_COST = 2
+
+
+def _stepwise_alliance_recipients(
+    state: GameState,
+    player: int,
+    faction: Faction,
+    steps: int,
+) -> tuple[int, ...]:
+    """Return the Alliance recipients to pick from while losing ``steps``.
+
+    The steps are lost one space at a time [FAQ p. 1]; only the holder can
+    lose the token, so at most one step can move it, and the choice (if any)
+    belongs to that step.
+    """
+
+    working = state
+    for step in range(steps):
+        recipients = alliance_recipients_after_influence_loss(working, player, faction)
+        if len(recipients) > 1:
+            return recipients
+        working = lose_faction_influence(
+            working, player, faction, 1, event_prefix=f"probe:{step}"
+        ).state
+    return ()
+
+
+def _lose_influence_stepwise(
+    state: GameState,
+    player: int,
+    faction: Faction,
+    steps: int,
+    *,
+    event_prefix: str,
+    alliance_recipient: int | None,
+) -> RuleResult:
+    """Lose ``steps`` Influence one space at a time [FAQ p. 1].
+
+    ``alliance_recipient`` is the owner's pick for the one step whose
+    Alliance token has several possible recipients.
+    """
+
+    working = state
+    events: list[GameEvent] = []
+    for step in range(steps):
+        recipients = alliance_recipients_after_influence_loss(working, player, faction)
+        lost = lose_faction_influence(
+            working,
+            player,
+            faction,
+            1,
+            event_prefix=f"{event_prefix}:{step}",
+            alliance_recipient=alliance_recipient if len(recipients) > 1 else None,
+        )
+        working = lost.state
+        events.extend(lost.events)
+    return RuleResult(state=working, events=tuple(events))
+
+
 def legal_reveal_influence_loss_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """For Humanity: "Bene Gesserit Alliance: lose one Influence -> 1 VP"."""
+    """For Humanity: "Bene Gesserit Alliance: lose two Influence -> 1 VP".
+
+    The arrow cost is paid in full or not at all [Main p. 20], so only a
+    Faction with two or more Influence can pay it.
+    """
 
     context = _reveal_choice_frame_context(state, player, _LOSE_INFLUENCE_FOR_VP)
     if context is None:
@@ -1076,9 +1177,11 @@ def legal_reveal_influence_loss_actions(
     ]
     owner = state.players[player]
     for faction in Faction:
-        if influence_amount(owner.influence, faction) == 0:
+        if influence_amount(owner.influence, faction) < _FOR_HUMANITY_INFLUENCE_COST:
             continue
-        recipients = alliance_recipients_after_influence_loss(state, player, faction)
+        recipients = _stepwise_alliance_recipients(
+            state, player, faction, _FOR_HUMANITY_INFLUENCE_COST
+        )
         recipient_options: tuple[int | None, ...] = (
             tuple(recipients) if len(recipients) > 1 else (None,)
         )
@@ -1102,7 +1205,7 @@ def apply_reveal_influence_loss(
     state: GameState,
     action: DomainAction,
 ) -> RuleResult:
-    """Decline, or lose one Influence step for a Victory Point."""
+    """Decline, or lose two Influence with one Faction for a Victory Point."""
 
     if action not in legal_reveal_influence_loss_actions(state, action.actor):
         raise ValueError("action is not a legal Reveal Influence loss")
@@ -1131,11 +1234,11 @@ def apply_reveal_influence_loss(
         isinstance(recipient, bool) or not isinstance(recipient, int)
     ):
         raise RuntimeError("Reveal Influence loss has invalid recipient")
-    lost = lose_faction_influence(
+    lost = _lose_influence_stepwise(
         popped,
         action.actor,
         Faction(faction_value),
-        1,
+        _FOR_HUMANITY_INFLUENCE_COST,
         event_prefix=f"{source}:lost:{faction_value}",
         alliance_recipient=recipient,
     )
@@ -1652,7 +1755,7 @@ def apply_reveal_spy_action(
             state=replace(
                 state,
                 players=replace_player(state.players, next_owner),
-                decision_stack=state.decision_stack[:-1],
+                decision_stack=_after_reveal_spy_icon(state, action.actor, effect),
             ),
             events=(
                 GameEvent(
@@ -1669,7 +1772,10 @@ def apply_reveal_spy_action(
 
     if action.action_id == "decline_reveal_spy_recall":
         return RuleResult(
-            state=replace(state, decision_stack=state.decision_stack[:-1]),
+            state=replace(
+                state,
+                decision_stack=_after_reveal_spy_icon(state, action.actor, effect),
+            ),
             events=(
                 GameEvent(
                     event_id=f"{source}:spy_recall_declined",
@@ -1750,8 +1856,10 @@ def apply_reveal_spy_action(
         second_post_id = arguments.get("second_post_id")
         if not isinstance(first_post_id, str) or not isinstance(second_post_id, str):
             raise RuntimeError("Reveal Spy choice has invalid post IDs")
+        # In High Places: "[recall Spy] [recall Spy] -> +3 Persuasion"
+        # [In High Places card].
         next_owner = recall_spy(recall_spy(owner, first_post_id), second_post_id)
-        remaining = add_reveal_persuasion(remaining, 2)
+        remaining = add_reveal_persuasion(remaining, 3)
         events.extend(
             (
                 _spy_recalled_event(state, action.actor, card_id, first_post_id),
@@ -1760,7 +1868,7 @@ def apply_reveal_spy_action(
                     event_id=f"{source}:persuasion",
                     kind="reveal_persuasion_gained",
                     payload=(
-                        ("amount", 2),
+                        ("amount", 3),
                         ("card_id", card_id),
                         ("player", action.actor),
                     ),
@@ -1779,6 +1887,36 @@ def apply_reveal_spy_action(
         decision_stack=remaining,
     )
     return RuleResult(state=next_state, events=tuple(events))
+
+
+def _after_reveal_spy_icon(
+    state: GameState,
+    player: int,
+    effect: PersonalCardRevealChoiceEffect,
+) -> tuple[DecisionFrame, ...]:
+    """Close a resolved Reveal Spy frame; Covert Operation opens its second icon.
+
+    Covert Operation prints two Spy icons [Covert Operation card]. Its frame
+    resolves the first like any plain Spy icon [Main pp. 11, 20] and is then
+    replaced by a plain ``PLACE_SPY`` frame of the same card for the second,
+    which the owner may put off like any other Reveal choice [Main p. 12].
+    """
+
+    remaining = state.decision_stack[:-1]
+    if effect is not PersonalCardRevealChoiceEffect.PLACE_TWO_SPIES:
+        return remaining
+    card_id = context_str(
+        frame_context(state.decision_stack[-1]), "reveal_card_id", owner=_CHOICE_FRAME
+    )
+    return (
+        *remaining,
+        _build_reveal_choice_frame(
+            state.round_number,
+            player,
+            card_id,
+            PersonalCardRevealChoiceEffect.PLACE_SPY,
+        ),
+    )
 
 
 def _spy_recalled_event(
@@ -2949,8 +3087,10 @@ def _reveal_effect_strength(
 def reveal_choice_prompt(effect: PersonalCardRevealChoiceEffect) -> str:
     """Return the REVEAL_CHOICE frame prompt text for one choice effect."""
 
+    effect = _RESOLVES_AS.get(effect, effect)
     return (
-        "Bene Gesserit Alliance: lose one Influence for a Victory Point, or decline"
+        "Bene Gesserit Alliance: lose two Influence with one Faction for a "
+        "Victory Point, or decline"
         if effect
         is _LOSE_INFLUENCE_FOR_VP
         else "Deploy or retreat one troop, or decline"
@@ -2992,7 +3132,7 @@ def reveal_choice_prompt(effect: PersonalCardRevealChoiceEffect) -> str:
         if effect is PersonalCardRevealChoiceEffect.PLACE_SPY
         else "Choose two Spies to recall or decline this Reveal effect"
         if effect
-        is (PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_TWO_PERSUASION)
+        is (PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_THREE_PERSUASION)
         else "Trash another Emperor card or decline this Reveal effect"
         if effect
         is (PersonalCardRevealChoiceEffect.MAY_TRASH_OTHER_EMPEROR_FOR_THREE_STRENGTH)
@@ -3039,13 +3179,15 @@ def _reveal_choice_effect_is_available(
     command_open = persuasion is not None and persuasion >= COMMAND_PERSUASION
     return (
         (
-            # For Humanity: the Alliance and an Influence to lose, judged
-            # when the choice opens (OQ-028).
+            # For Humanity: the Alliance and two Influence with one Faction
+            # to lose, judged when the choice opens (OQ-028).
             effect
             is _LOSE_INFLUENCE_FOR_VP
             and Faction.BENE_GESSERIT.value in owner.alliance_faction_ids
             and any(
-                influence_amount(owner.influence, faction) > 0 for faction in Faction
+                influence_amount(owner.influence, faction)
+                >= _FOR_HUMANITY_INFLUENCE_COST
+                for faction in Faction
             )
         )
         or (
@@ -3124,7 +3266,25 @@ def _reveal_choice_effect_is_available(
         or effect
         in (
             PersonalCardRevealChoiceEffect.PLACE_SPY,
+            PersonalCardRevealChoiceEffect.PLACE_TWO_SPIES,
             PersonalCardRevealChoiceEffect.PLACE_SPY_OR_GAIN_TWO_STRENGTH,
+        )
+        or (
+            # Unswerving Loyalty: "Fremen Bond: You may deploy or retreat one
+            # of your troops" [Unswerving Loyalty card] -- "one or more other
+            # Fremen cards in play" [Main p. 20], judged when the choice opens
+            # like the other Reveal conditions (OQ-028); then Shadout Mapes'
+            # own condition (a troop to move).
+            effect is _FREMEN_BOND_TROOP_MOVE
+            and has_faction_bond(cards_in_play, card_id, Faction.FREMEN)
+            and _reveal_choice_effect_is_available(
+                state,
+                player,
+                owner,
+                cards_in_play,
+                card_id,
+                PersonalCardRevealChoiceEffect.MAY_DEPLOY_OR_RETREAT_ONE_TROOP,
+            )
         )
         or (
             effect
@@ -3151,7 +3311,7 @@ def _reveal_choice_effect_is_available(
             effect
             in (
                 PersonalCardRevealChoiceEffect.RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED,
-                PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_TWO_PERSUASION,
+                PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_THREE_PERSUASION,
             )
             and len(owner.spy_post_ids) >= 2
         )

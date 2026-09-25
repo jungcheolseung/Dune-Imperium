@@ -189,6 +189,11 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "decline_reveal_sandworm",
             "decline_reveal_spice_influence",
             "decline_reveal_troop_retreat",
+            # Unswerving Loyalty's Fremen Bond troop move [Unswerving Loyalty
+            # card], shared with Shadout Mapes (Immortality).
+            "decline_reveal_troop_move",
+            "deploy_reveal_card_troop",
+            "retreat_reveal_card_troop",
             "defer_reveal_choice",
             "deploy_control_defense",
             # Reveal troop recruits and Intrigue draws in the owner's order
@@ -288,6 +293,12 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     templates.append(ActionTemplate(action_id="finish_agent_turn"))
     if config.bloodlines:
         templates.extend(_bloodlines_templates(config))
+        # Unswerving Loyalty (every ruleset) and Shadout Mapes (Immortality)
+        # may move a Sardaukar Commander: it "is a 'troop'" [Bloodlines p. 4].
+        templates.extend(
+            ActionTemplate(action_id=action_id, arguments=(("commanders", 1),))
+            for action_id in ("deploy_reveal_card_troop", "retreat_reveal_card_troop")
+        )
     if config.tech_module:
         templates.extend(_tech_templates(config))
     if config.immortality:
@@ -908,21 +919,12 @@ def _immortality_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             # Scientific Breakthrough, Slig Farmer.
             "trash_agent_card_self_for_vp",
             "pay_agent_card_five_solari_for_tleilaxu",
-            # For Humanity, Shadout Mapes, Tleilaxu Surgeon Reveal choices.
+            # For Humanity and Tleilaxu Surgeon Reveal choices (Shadout
+            # Mapes' troop move is in every catalog, for Unswerving Loyalty).
             "decline_reveal_influence_loss",
-            "deploy_reveal_card_troop",
-            "retreat_reveal_card_troop",
-            "decline_reveal_troop_move",
             "decline_reveal_troop_sacrifice",
         )
     ]
-    if config.bloodlines:
-        # Shadout Mapes may move a Sardaukar Commander: it "is a 'troop'"
-        # [Bloodlines p. 4].
-        templates.extend(
-            ActionTemplate(action_id=action_id, arguments=(("commanders", 1),))
-            for action_id in ("deploy_reveal_card_troop", "retreat_reveal_card_troop")
-        )
     templates.extend(
         ActionTemplate(
             action_id="lose_reveal_troops_for_specimens", arguments=(("zones", zones),)

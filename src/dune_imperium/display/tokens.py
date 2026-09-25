@@ -175,8 +175,8 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.DRAW_INTRIGUE_IF_THREE_UNITS_IN_CONFLICT: (
             "If you have 3 or more units in the Conflict: Draw 1 Intrigue card"
         ),
-        PersonalCardAgentEffect.GAIN_WATER_IF_BENE_GESSERIT_BOND: (
-            "If Bene Gesserit Bond: Gain 1 water"
+        PersonalCardAgentEffect.DRAW_ONE_AND_PLACE_SPY_IF_BENE_GESSERIT_BOND: (
+            "If Bene Gesserit Bond: Draw 1 card, Place a Spy"
         ),
         PersonalCardAgentEffect.GAIN_VISITED_FACTION_INFLUENCE: (
             "Gain 1 additional Influence with the visited Faction"
@@ -504,10 +504,11 @@ REVEAL_CHOICE_EFFECT_TEXT: Final[Mapping[PersonalCardRevealChoiceEffect, str]] =
                 "If you have placed 2 or more Spies: "
                 "You may recall a Spy → Draw 1 Intrigue card"
             ),
-            PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_TWO_PERSUASION: (
-                "You may recall 2 Spies → +2 Persuasion"
+            PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_THREE_PERSUASION: (
+                "You may recall 2 Spies → +3 Persuasion"
             ),
             PersonalCardRevealChoiceEffect.PLACE_SPY: "Place a Spy",
+            PersonalCardRevealChoiceEffect.PLACE_TWO_SPIES: "Place 2 Spies",
             PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH: (
                 "If you have 2 or more Tech tiles: "
                 "Gain 1 Influence with a chosen Faction"
@@ -531,10 +532,17 @@ REVEAL_CHOICE_EFFECT_TEXT: Final[Mapping[PersonalCardRevealChoiceEffect, str]] =
             (
                 PersonalCardRevealChoiceEffect
                 .MAY_LOSE_INFLUENCE_FOR_VP_IF_BENE_GESSERIT_ALLIANCE
-            ): ("Bene Gesserit Alliance: You may lose 1 Influence → Gain 1 VP"),
+            ): (
+                "Bene Gesserit Alliance: You may lose 2 Influence with one Faction "
+                "→ Gain 1 VP"
+            ),
             PersonalCardRevealChoiceEffect.MAY_DEPLOY_OR_RETREAT_ONE_TROOP: (
                 "You may deploy or retreat 1 troop"
             ),
+            (
+                PersonalCardRevealChoiceEffect
+                .MAY_DEPLOY_OR_RETREAT_ONE_TROOP_IF_FREMEN_BOND
+            ): "Fremen Bond: You may deploy or retreat 1 troop",
             PersonalCardRevealChoiceEffect.MAY_LOSE_TWO_TROOPS_FOR_TWO_SPECIMENS: (
                 "You may lose 2 troops → Generate 2 specimens"
             ),

@@ -75,6 +75,10 @@ from dune_imperium.rules.spies import (
     apply_gather_intelligence_action,
     legal_gather_intelligence_actions,
 )
+from dune_imperium.rules.spy_moves import (
+    apply_spy_placement,
+    legal_spy_placement_actions,
+)
 
 
 def _instance(card_id: str) -> str:
@@ -2448,13 +2452,15 @@ def test_maker_keeper_resolves_as_unavailable_after_influence_drops() -> None:
 
 def test_in_high_places_bond_is_judged_when_the_effect_resolves() -> None:
     # Trashing the bonded card mid-frame (for example through an Intrigue
-    # trash slot) forfeits the conditional gain [Main pp. 9, 20].
+    # trash slot) forfeits the conditional card and Spy [Main pp. 9, 20].
     in_high_places = _imperium_instance("in_high_places")
     truthtrance = _imperium_instance("truthtrance")
+    drawn = _instance("dagger")
     owner = PlayerState(
         player_id=0,
         hand=(in_high_places,),
         in_play=(truthtrance,),
+        deck=(drawn,),
     )
     state = GameState(
         config=RulesetConfig(),
@@ -2482,8 +2488,10 @@ def test_in_high_places_bond_is_judged_when_the_effect_resolves() -> None:
 
     result = resolve_agent_card_effect(lowered)
 
-    assert result.state.players[0].resources.water == 1
     assert result.events[0].kind == "agent_card_effect_unavailable"
+    assert result.state.players[0].deck == (drawn,)
+    assert result.state.players[0].spies_supply == 3
+    assert result.state.decision_stack[-1].kind != FrameKind.SPY_PLACEMENT
 
 
 def test_seek_allies_box_expires_after_a_mid_frame_trash() -> None:
@@ -2567,13 +2575,21 @@ def test_corrinth_city_first_selection_resets_when_the_card_leaves_hand() -> Non
     } == {dagger, diplomacy}
 
 
-def test_in_high_places_gains_water_with_bene_gesserit_bond() -> None:
+def _in_high_places_on_secrets(
+    *, spies_supply: int = 3, spy_post_ids: tuple[str, ...] = ()
+) -> tuple[GameState, str]:
+    """Play In High Places beside another Bene Gesserit card; return the drawable."""
+
     in_high_places = _imperium_instance("in_high_places")
     truthtrance = _imperium_instance("truthtrance")
+    drawn = _instance("dagger")
     owner = PlayerState(
         player_id=0,
         hand=(in_high_places,),
         in_play=(truthtrance,),
+        deck=(drawn,),
+        spies_supply=spies_supply,
+        spy_post_ids=spy_post_ids,
     )
     state = GameState(
         config=RulesetConfig(),
@@ -2589,11 +2605,61 @@ def test_in_high_places_gains_water_with_bene_gesserit_bond() -> None:
             ),
         ),
     )
-    placed = apply_agent_action(state, _action_to(state, "secrets")).state
+    return apply_agent_action(state, _action_to(state, "secrets")).state, drawn
+
+
+def test_in_high_places_bond_draws_a_card_and_places_a_spy() -> None:
+    # "If you have another Bene Gesserit card in play: [draw 1 card] [Spy]"
+    # [In High Places card] (BGG inventory: "Draw 1 card, +1 Spy"). The
+    # engine used to gain one water instead. The Spy is the plain icon:
+    # "Place one Spy; take it from your supply and put it on an unoccupied
+    # observation post on the board" [Main p. 20].
+    placed, drawn = _in_high_places_on_secrets()
 
     result = resolve_agent_card_effect(placed)
 
-    assert result.state.players[0].resources.water == 2
+    owner = result.state.players[0]
+    assert result.events[0].kind == "agent_card_effect_resolved"
+    assert drawn in owner.hand
+    assert owner.resources.water == placed.players[0].resources.water
+    assert result.state.decision_stack[-1].kind == FrameKind.SPY_PLACEMENT
+    choices = legal_spy_placement_actions(result.state, 0)
+    # Mandatory with a Spy in supply, on any unoccupied post (OQ-057 (14)).
+    assert {action.action_id for action in choices} == {"place_spy_on_space"}
+    assert len(choices) == len(OBSERVATION_POSTS)
+    post_id = OBSERVATION_POSTS[0].post_id
+    spied = apply_spy_placement(
+        result.state,
+        DomainAction(
+            action_id="place_spy_on_space", actor=0, arguments=(("post_id", post_id),)
+        ),
+    ).state
+    assert spied.players[0].spy_post_ids == (post_id,)
+    assert spied.players[0].spies_supply == 2
+    # Back to the Agent turn, whose box is now resolved.
+    assert spied.decision_stack[-1].kind == placed.decision_stack[-1].kind
+    assert dict(spied.decision_stack[-1].context)["pending_agent_effect"] is False
+
+
+def test_in_high_places_spy_may_pass_on_the_recall_with_an_empty_supply() -> None:
+    # "If you have no Spies in your supply, you may first recall one of your
+    # Spies for no effect" [Main pp. 11, 20]: the recall stays optional, and
+    # placing is only mandatory with a Spy in supply (OQ-057 (14)).
+    posts = tuple(post.post_id for post in OBSERVATION_POSTS[:3])
+    placed, _ = _in_high_places_on_secrets(spies_supply=0, spy_post_ids=posts)
+
+    result = resolve_agent_card_effect(placed)
+
+    choices = legal_spy_placement_actions(result.state, 0)
+    assert [action.action_id for action in choices] == [
+        "decline_spy_placement",
+        "recall_spy_for_placement",
+        "recall_spy_for_placement",
+        "recall_spy_for_placement",
+    ]
+    passed = apply_spy_placement(result.state, choices[0]).state
+    assert passed.players[0].spy_post_ids == posts
+    assert passed.decision_stack[-1].kind == placed.decision_stack[-1].kind
 
 
 def test_rebel_supplier_recruits_two_after_gathering_intelligence() -> None:

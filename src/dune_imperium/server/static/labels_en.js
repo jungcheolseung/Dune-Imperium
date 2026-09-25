@@ -198,7 +198,7 @@ const LABELS_EN = {
     "keep_peeked_intrigue": "Keep {intrigue}",
     "acquire_reserve_by_card": "Tleilaxu Master: Acquire {reserve}",
     "acquire_imperium_by_card": "Tleilaxu Master: Acquire {imperium_row} card",
-    "lose_reveal_influence_for_vp": "Lose 1 {influence_any} -> 1 {victory_point}",
+    "lose_reveal_influence_for_vp": "Lose 2 {influence_any} -> 1 {victory_point}",
     "decline_reveal_influence_loss": "Decline to lose {influence_any}",
     "deploy_reveal_card_troop": "Deploy 1 {troop}",
     "retreat_reveal_card_troop": "Retreat 1 {troop}",

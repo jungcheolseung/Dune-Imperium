@@ -232,7 +232,7 @@ const ACTION_LABELS = {
   keep_peeked_intrigue: "{intrigue} 보관",
   acquire_reserve_by_card: "틀레이락스의 주인: {reserve} 획득",
   acquire_imperium_by_card: "틀레이락스의 주인: {imperium_row} 카드 획득",
-  lose_reveal_influence_for_vp: "{influence_any} 1 잃기 → {victory_point} 1",
+  lose_reveal_influence_for_vp: "{influence_any} 2 잃기 → {victory_point} 1",
   decline_reveal_influence_loss: "{influence_any} 잃지 않음",
   deploy_reveal_card_troop: "{troop} 1 배치",
   retreat_reveal_card_troop: "{troop} 1 후퇴",

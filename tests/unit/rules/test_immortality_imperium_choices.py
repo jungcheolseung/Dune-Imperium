@@ -203,31 +203,82 @@ def test_for_humanity_chooses_influence_and_trades_influence_for_a_vp() -> None:
     }
     assert picks == {"emperor", "spacing_guild", "bene_gesserit", "fremen"}
 
-    plain = _reveal(_state(_owner((humanity,), influence=Influence(fremen=1))))
+    plain = _reveal(_state(_owner((humanity,), influence=Influence(fremen=2))))
     assert plain.decision_stack[-1].kind == FrameKind.REVEAL
+    # "Bene Gesserit Alliance: [lose two Influence] -> [1 VP]": the Reveal
+    # prints a "?" Influence diamond with two red chevrons [For Humanity card]
+    # (Dune Cards Hub: "lose 2 Influence with any one Faction"; BGG inventory:
+    # "-2 Influence with a Faction -> +1 Victory Point"). Like gaining two,
+    # both steps come from one Faction [Main p. 20], and an arrow cost is
+    # paid in full or not at all: "If you don't pay the cost, you don't get
+    # the effect" [Main p. 20]. The engine used to take one Influence.
     allied = _reveal(
         _state(
             _owner(
                 (humanity,),
-                influence=Influence(bene_gesserit=4, fremen=1),
+                influence=Influence(bene_gesserit=4, fremen=2, emperor=1),
                 alliance_faction_ids=("bene_gesserit",),
+                victory_points=4,
             )
         )
     )
     assert allied.decision_stack[-1].kind == FrameKind.REVEAL_CHOICE
     actions = legal_reveal_influence_loss_actions(allied, 0)
-    assert {a.action_id for a in actions} == {
-        "decline_reveal_influence_loss",
-        "lose_reveal_influence_for_vp",
-    }
+    assert [(a.action_id, dict(a.arguments).get("faction")) for a in actions] == [
+        ("decline_reveal_influence_loss", None),
+        ("lose_reveal_influence_for_vp", "bene_gesserit"),
+        ("lose_reveal_influence_for_vp", "fremen"),
+    ]
     lose = next(a for a in actions if dict(a.arguments).get("faction") == "fremen")
     result = apply_reveal_influence_loss(allied, lose)
     owner = result.state.players[0]
-    # Every seat starts the game with one Victory Point.
-    assert owner.influence.fremen == 0 and owner.victory_points == 2
+    # Fremen 2 -> 0 gives back its two-Influence VP; the card pays one.
+    assert owner.influence.fremen == 0 and owner.victory_points == 4
     assert result.state.decision_stack[-1].kind == FrameKind.REVEAL
     declined = apply_reveal_influence_loss(allied, actions[0]).state
-    assert declined.players[0].victory_points == 1
+    assert declined.players[0].victory_points == 4
+    # Paid with Bene Gesserit, 4 -> 2 costs the Alliance (nobody else has
+    # four, so the token returns) but keeps the two-Influence VP.
+    bene = apply_reveal_influence_loss(allied, actions[1]).state.players[0]
+    assert bene.influence.bene_gesserit == 2
+    assert bene.alliance_faction_ids == ()
+    assert bene.victory_points == 4
+
+
+def test_for_humanity_passes_the_alliance_on_the_second_step() -> None:
+    # Influence is lost one space at a time; a holder who was already tied
+    # before a step hands the token to the tied player, and picks among
+    # several [FAQ p. 1] (uprising-systems.md, Alliance). At five Bene
+    # Gesserit Influence with two rivals on four, the first step keeps the
+    # token and the second passes it, so the recipient is offered for the
+    # two-Influence cost [For Humanity card].
+    humanity = _card("for_humanity")
+    allied = _reveal(
+        _state(
+            _owner(
+                (humanity,),
+                influence=Influence(bene_gesserit=5),
+                alliance_faction_ids=("bene_gesserit",),
+                victory_points=3,
+            ),
+            _seat(1, influence=Influence(bene_gesserit=4), victory_points=2),
+            _seat(2, influence=Influence(bene_gesserit=4), victory_points=2),
+        )
+    )
+    actions = legal_reveal_influence_loss_actions(allied, 0)
+    assert [dict(a.arguments) for a in actions[1:]] == [
+        {"alliance_recipient": 1, "faction": "bene_gesserit"},
+        {"alliance_recipient": 2, "faction": "bene_gesserit"},
+    ]
+
+    result = apply_reveal_influence_loss(allied, actions[2]).state
+    owner, first, second = result.players[:3]
+    assert owner.influence.bene_gesserit == 3
+    assert owner.alliance_faction_ids == ()
+    assert owner.victory_points == 3 - 1 + 1
+    assert first.alliance_faction_ids == ()
+    assert second.alliance_faction_ids == ("bene_gesserit",)
+    assert second.victory_points == 3
 
 
 def test_high_priority_travel_offers_the_draw_or_the_combat_icon() -> None:
@@ -671,8 +722,13 @@ def test_the_codec_holds_the_slice_choices_only_with_immortality() -> None:
         ),
     ):
         assert codec.decode(codec.encode(action), 0) == action
-        assert (
-            action.action_id not in base or action.action_id == "resume_reveal_choice"
+        assert action.action_id not in base or action.action_id in (
+            "resume_reveal_choice",
+            # Shadout Mapes shares its troop move with Unswerving Loyalty's
+            # "Fremen Bond: You may deploy or retreat one of your troops"
+            # [Unswerving Loyalty card], so every catalog holds it.
+            "deploy_reveal_card_troop",
+            "retreat_reveal_card_troop",
         )
     assert "may_deploy_or_retreat_one_troop" not in {
         dict(template.arguments).get("effect")

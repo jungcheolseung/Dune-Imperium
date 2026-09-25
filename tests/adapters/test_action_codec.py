@@ -33,6 +33,7 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     # track's Influence 4 Spy [Main p. 7]): place_spy_on_space and
     # recall_spy_for_placement per post (13 + 13) and decline_spy_placement
     # join the catalogs without Bloodlines, +27.
+    # FIXUP-V108 (merge of s2): recompute this size after all slices merge.
     # Card-face re-read (2026-09-26, no version bump — pending the controller's
     # post-merge re-pin): Maker Keeper's corrected single City icon (not City
     # + Spice Trade) drops its agent_turn space/cost/infiltration-post
@@ -48,6 +49,11 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     # so does decline_leader_spy_placement for a Leader's Spy (Personal
     # Training, Arrakis Informant ...), +1.
     assert first.size == 4354 + 2 + 7 + 4 + 1 + 2 + 1 + 40 + 1 + 27 - 36 + 14 + 1
+    # s2 side of the merge:
+    # # Covert Operation's two Reveal Spies: resume_reveal_choice(place_two_spies), +1.
+    # # Unswerving Loyalty's Fremen Bond troop move: its resume_reveal_choice
+    # # and Mapes' deploy/retreat/decline templates join every catalog, +4.
+    # assert first.size == 4354 + 2 + 7 + 4 + 1 + 2 + 1 + 40 + 1 + 27 + 1 + 4
 
 
 def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
@@ -64,6 +70,7 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
     # Intrigue instance (+44) and Branching Path's corrected City icon shifts
     # its agent_turn space coverage by +1 (see test_catalog_is_fixed...).
     # v107: +27, the generic Spy placement frame (see above).
+    # FIXUP-V108 (merge of s2): recompute this size after all slices merge.
     # Card-face re-read (2026-09-26, no version bump — pending the controller's
     # post-merge re-pin): Maker Keeper and Undercover Asset's corrected Agent
     # icons drop -36 here too (see test_catalog_is_fixed_and_versioned...).
@@ -72,6 +79,11 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
     # After v107: +14 + 1, the Conflict reward and Leader Spies'
     # recall-first (see above).
     assert codec.size == 4640 + 2 + 7 + 4 + 1 + 2 + 1 + 44 + 1 + 27 - 36 + 1 + 14 + 1
+    # s2 side of the merge:
+    # # Covert Operation's two Reveal Spies: resume_reveal_choice(place_two_spies), +1.
+    # # Unswerving Loyalty's Fremen Bond troop move: its resume_reveal_choice
+    # # and Mapes' deploy/retreat/decline templates join every catalog, +4.
+    # assert codec.size == 4640 + 2 + 7 + 4 + 1 + 2 + 1 + 44 + 1 + 27 + 1 + 4
 
     try:
         ActionCodec(RulesetConfig()).encode(action)
@@ -114,10 +126,16 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
     # catalogs, see test_catalog_is_fixed_and_versioned_for_a_ruleset):
     # every Bene Gesserit card already gets every Agent icon's placements
     # under Bloodlines, for Urgent Shigawire's boost.
+    # FIXUP-V108 (merge of s2): recompute this size after all slices merge.
     # After v107: decline_contract_spy (see the CHOAM catalog test), +1.
     # After v107: +14 + 1, the Conflict reward and Leader Spies'
     # recall-first.
     assert both.size == 11100 + 28 + 28 + 72 + 1 + 14 + 1
+    # s2 side of the merge:
+    # # Covert Operation's two Reveal Spies: resume_reveal_choice(place_two_spies), +1.
+    # # Unswerving Loyalty's Fremen Bond troop move: its resume_reveal_choice
+    # # and Mapes' deploy/retreat/decline templates join every catalog, +4.
+    # assert both.size == 11100 + 28 + 28 + 72 + 1 + 4
 
     choam_only = ActionCodec(RulesetConfig(choam_module=True))
     for action in actions:

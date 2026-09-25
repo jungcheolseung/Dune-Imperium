@@ -82,7 +82,7 @@ from dune_imperium.rules.shield_wall import (
     destroy_shield_wall,
 )
 from dune_imperium.rules.specimens import generate_specimens, spend_specimens
-from dune_imperium.rules.spy_moves import turn_space_spy_frames
+from dune_imperium.rules.spy_moves import spy_placement_frame, turn_space_spy_frames
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
     observation_post_ids_for_factions,
@@ -4092,20 +4092,17 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         else:
             next_owner = owner
             event_kind = "agent_card_effect_unavailable"
-    elif effect is PersonalCardAgentEffect.GAIN_WATER_IF_BENE_GESSERIT_BOND:
-        # The Bond is judged when the effect resolves [Main pp. 9, 20].
-        if has_faction_bond(owner.in_play, card_instance_id, Faction.BENE_GESSERIT):
-            next_owner = replace(
-                owner,
-                resources=replace(
-                    owner.resources,
-                    water=owner.resources.water + 1,
-                ),
-            )
-            event_kind = "agent_card_effect_resolved"
-        else:
-            next_owner = owner
-            event_kind = "agent_card_effect_unavailable"
+    elif effect is PersonalCardAgentEffect.DRAW_ONE_AND_PLACE_SPY_IF_BENE_GESSERIT_BOND:
+        # In High Places: "If you have another Bene Gesserit card in play:
+        # [draw 1 card] [Spy]" [In High Places card]. The Bond is judged
+        # when the effect resolves [Main pp. 9, 20]; the card and the Spy
+        # follow below, once the effect frame has advanced.
+        next_owner = owner
+        event_kind = (
+            "agent_card_effect_resolved"
+            if has_faction_bond(owner.in_play, card_instance_id, Faction.BENE_GESSERIT)
+            else "agent_card_effect_unavailable"
+        )
     elif effect in (
         PersonalCardAgentEffect.PLACE_SPY,
         PersonalCardAgentEffect.PLACE_SPY_ON_VISITED_SPACE_MAY_SHARE,
@@ -4296,6 +4293,23 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         kind=event_kind,
         payload=(("card_id", card_instance_id), ("player", player)),
     )
+    if (
+        effect is PersonalCardAgentEffect.DRAW_ONE_AND_PLACE_SPY_IF_BENE_GESSERIT_BOND
+        and event_kind == "agent_card_effect_resolved"
+    ):
+        # The plain Spy icon opens the shared placement frame: any unoccupied
+        # post, mandatory with a Spy in supply, and with an empty supply "you
+        # may first recall one of your Spies" [Main pp. 11, 20] (OQ-057 (14)).
+        # The frame waits under the draw, whose discard shuffle (if any)
+        # resolves first, so the printed order holds.
+        with_spy = spy_placement_frame(
+            next_state,
+            player,
+            tuple(post.post_id for post in OBSERVATION_POSTS),
+            source=event_source,
+        )
+        draw = draw_or_request_personal_cards(with_spy, player, 1, source=event_source)
+        return RuleResult(state=draw.state, events=(event, *draw.events))
     if effect is PersonalCardAgentEffect.EACH_OPPONENT_LOSES_TROOP_AND_MOVES_SPY:
         if not isinstance(space_id_value, str):
             raise RuntimeError("Agent-turn effect frame has invalid space")

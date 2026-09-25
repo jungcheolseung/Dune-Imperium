@@ -7,7 +7,7 @@
    bodies are JSON so tests/server/test_i18n.py can read them. */
 const PROMPT_KO = {
   "Acquire a Tech tile or decline": "{tech_tile} 획득 또는 거절",
-  "Bene Gesserit Alliance: lose one Influence for a Victory Point, or decline": "베네 게세리트 {alliance}: {influence_any} 1 잃고 {victory_point} 1 획득, 또는 거절",
+  "Bene Gesserit Alliance: lose two Influence with one Faction for a Victory Point, or decline": "베네 게세리트 {alliance}: 한 진영의 {influence_any} 2 잃고 {victory_point} 1 획득, 또는 거절",
   "Choose Influence to lose and gain or decline this Reveal effect": "잃을 {influence_any}과 얻을 {influence_any} 선택, 또는 이 {reveal_turn} 효과 거절",
   "Choose a Spy placement or gain two strength": "{spy} 배치 위치 선택 또는 {strength} 2 획득",
   "Choose a Spy to recall for this Reveal effect": "이 {reveal_turn} 효과로 소환할 {spy} 선택",

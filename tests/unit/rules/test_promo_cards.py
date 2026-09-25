@@ -618,6 +618,7 @@ def test_promo_actions_round_trip_through_the_codec() -> None:
     # City icon shifts its agent_turn space coverage by +1 (see
     # test_action_codec.test_catalog_is_fixed_and_versioned_for_a_ruleset).
     # v107: +27, the generic Spy placement frame in every catalog.
+    # FIXUP-V108 (merge of s2): recompute this size after all slices merge.
     # Card-face re-read (2026-09-26, no version bump — pending the
     # controller's post-merge re-pin): Maker Keeper's and Undercover Asset's
     # corrected Agent icons drop -36 here too (see test_action_codec.
@@ -630,6 +631,16 @@ def test_promo_actions_round_trip_through_the_codec() -> None:
     assert choam_promo.size == (
         4740 + 12 + 1 + 1 + 2 + 1 + 44 + 1 + 27 - 36 + 1 + 14 + 1
     )
+    # s2 side of the merge:
+    # # Covert Operation's two Reveal Spies: resume_reveal_choice(place_two_spies), +1.
+    # # Unswerving Loyalty's Fremen Bond troop move: its resume_reveal_choice
+    # # and Mapes' deploy/retreat/decline templates join every catalog, +4.
+    # assert codec.size == 4454 + 12 + 1 + 1 + 2 + 1 + 40 + 1 + 27 + 1 + 4
+    # choam_promo = ActionCodec(RulesetConfig(choam_module=True, promo_cards=True))
+    # # Covert Operation's two Reveal Spies: resume_reveal_choice(place_two_spies), +1.
+    # # Unswerving Loyalty's Fremen Bond troop move: its resume_reveal_choice
+    # # and Mapes' deploy/retreat/decline templates join every catalog, +4.
+    # assert choam_promo.size == 4740 + 12 + 1 + 1 + 2 + 1 + 44 + 1 + 27 + 1 + 4
     for action_id in (
         "pay_agent_card_spice_for_sandworm",
         "pay_agent_card_spice_for_sandworm_and_shield_wall",

@@ -16,43 +16,43 @@
 
 ### Tleilaxu deck 18장 + Reclaimed Forces + 프로모
 
-| 카드 | specimen 비용 | Agent 아이콘 | Agent box | Reveal box |
-| --- | --- | --- | --- | --- |
-| Beguiling Pheromones | 3 | City, Spice Trade | GRAFT: 이번 turn Faction board space에 Agent를 보냈으면, grafted 카드 하나를 trash하고 그 Faction Influence 1 추가 | ◆1 ⚔1 |
-| Chairdog | 2 | City | GRAFT: 자신의 Reveal turn 시작 때 *다른* grafted 카드를 play에서 hand로 되돌린다 | ◆1 |
+| 카드 | 구현 | 규칙 민감 메모 |
+| --- | --- | --- |
+| Beguiling Pheromones | `TRASH_GRAFTED_CARD_FOR_VISITED_FACTION_INFLUENCE`: 방문 space에 진영이 있고 graft일 때 `trash_grafted_card_for_influence(card_id)`로 두 grafted 카드 중 하나(play 영역에 있는 것)를 trash하고 그 진영 Influence 1. 인쇄문 "trash one of the grafted cards and gain an additional Influence"에는 "may"·화살표·검은 X가 없어 의무다 `[FAQ p. 3]` — 거절은 없고 어느 카드를 trash할지만 고른다(2026-09-26 정정: 이전에는 `decline_agent_card_payment`를 제시했다). 상대를 trash하면 상대의 미발동 box 소멸(`graft_pending_effect=False`), 자기를 trash하면 `agent_card_self_trashed`. | `[FAQ p. 1]`의 Beguiling Pheromones 판정(OQ-022). Faction 방문 여부는 `space_id`의 인쇄 진영. |
+| Chairdog | `RETURN_OTHER_GRAFTED_TO_HAND_AT_REVEAL_START`: 해결 시 상대 카드 id를 좌석의 `chairdog_return_card_ids`에 적고, `begin_reveal_turn`이 `_return_chairdog_cards`로 play 영역에서 hand(`hand_public`)로 되돌린 뒤 그 hand를 Reveal한다. Round Start에 비운다. 관측 v15 좌석 scalar(대기 수). | 상대가 이미 play 영역을 떠났으면 무시. |
 | Contaminator (Fremen) | 1 | Fremen | Tleilaxu | ◆1 |
 | Corrino Genes (Emperor) | 1, 획득 시 Solari 2 | Emperor | If grafted: Tleilaxu | ◆1 |
 | Face Dancer (Emperor·Guild·Fremen) | 2 | Emperor, Guild, Fremen | GRAFT: draw 1 | ◆1 |
 | Face Dancer Initiate (Emperor·Guild·Fremen) | 1 | Emperor, Guild, Fremen | GRAFT: (효과 없음) | ◆1 |
 | From the Tanks | 2 | Landsraad | troop 2 | ◆1 |
-| Ghola | 3 | City | GRAFT: 이 카드는 *다른* grafted 카드와 같은 Agent box를 가진다 | ◆1 ⚔1 |
+| Ghola | 정의에는 box가 없고(`agent_effect=None`), `rules/effects.py`의 `borrowed_agent_card`/`active_agent_card(context)`가 활성 카드가 Ghola면 상대 카드의 `agent_effect`와 Spy 배치 제한(`agent_spy_factions`, Reliable Informant의 "[Spy] on ...")을 끼운 정의를 돌려준다 — "Ghola copies the entire Agent box" `[Immortality p. 14]`(2026-09-26: 이전에는 효과만 복사해 제한 없이 놓았다). `agent_effects.py`의 활성 카드 조회 17곳, `acquisition.py`(Tleilaxu Master·Price is No Object provider), `leader_abilities.py`(Signet 판정)가 이 접근자를 쓴다. `apply_graft_partner`는 양쪽을 빌린 box로 판정해 `pending_*`/`graft_pending_*`을 채운다. | 상대 box가 비어 있으면(Face Dancer Initiate) Ghola도 비어 있다. 상대가 self-trash box면 Ghola 자신이 trash된다(`card_id`가 Ghola). |
 | Guild Impersonator (Guild) | 2 | Guild | GRAFT: 이번 turn spice를 얻으면 Guild Influence 1 | ◆1 |
-| Industrial Espionage | 1 | Landsraad | draw 1; If grafted: Research + specimen 1 | ◆1 |
+| Industrial Espionage | `DRAW_ONE_AND_RESEARCH_AND_SPECIMEN_IF_GRAFTED`: box를 닫은 뒤 graft면 specimen·research(방향 frame은 turn 위에), 그 다음 draw. | `is_grafted`는 해결 시점 판정. |
 | Reclaimed Forces (Row 고정) | 3 | — | — | 획득 box: troop 2 —OR— Tleilaxu |
-| Scientific Breakthrough | 3 | Landsraad, City, Spice Trade | Research; (2M): 이 카드 trash ▶ VP 1 | ◆1 ⚔1 |
-| Slig Farmer | 2 | Landsraad | GRAFT: *다른* grafted 카드의 Agent 아이콘마다 Solari 1; Solari 5 ▶ Tleilaxu | ◆1 |
-| Stitched Horror | 3 | City | GRAFT: 둘 선택 — water 1, troop 1, trash, Tleilaxu | ◆1 ⚔1 |
+| Scientific Breakthrough | `RESEARCH_AND_MAY_TRASH_SELF_FOR_VP_IF_TWO_MARKERS`: marker 2 이상이면 지불 provider가 `resolve_agent_card_effect`(research 먼저)와 `trash_agent_card_self_for_vp`(자기 trash + VP + research)를 연다. research를 먼저 해결하면 box는 열린 채 남고(`research_resolved_card_ids`), research가 끝난 뒤 marker가 2 이상이면 `decline_agent_card_payment`와 research 없는 `trash_agent_card_self_for_vp`를 연다 — 카드 자신의 Research가 두 번째 marker에 닿아도 trash 줄을 쓸 수 있다(OQ-028, 2026-09-26). 2 미만이면 줄은 turn 종료까지 보류된 뒤 소멸한다(OQ-057 (1)). 자기 trash는 `agent_card_self_trashed`(OQ-022: 자기 비용이라 보상 유지). | 두 번째 marker 뒤의 Research는 draw(슬라이스 2 판정). Ghola가 복사한 box는 따로 research한다(카드별 기록). |
+| Slig Farmer | `GAIN_SOLARI_PER_PARTNER_ICON_AND_MAY_PAY_FIVE_SOLARI_FOR_TLEILAXU`: 상대 카드가 그 순간 가진 Agent 아이콘 수만큼 Solari(`_partner_icon_count` → `effective_agent_icons`, graft 기준); 받은 뒤 5 이상이면 `pay_agent_card_five_solari_for_tleilaxu`로 Tleilaxu 1칸. | OQ-055(사용자 판정): Blank Slate의 graft 아이콘 등 추가 아이콘도 센다. |
+| Stitched Horror | `CHOOSE_TWO_OF_WATER_TROOP_TRASH_TLEILAXU`: `choose_agent_card_reward(reward)`를 두 번, 같은 보상은 두 번 고를 수 없다(`rewards_chosen`). water·troop은 즉시, tleilaxu는 `advance_tleilaxu`, trash는 `optional_trash` frame(첫 선택이면 효과 frame 위에, 둘째면 turn을 닫은 뒤). | "Choose two"의 순차 선택은 Long Reach와 같은 기계. |
 | Subject X-137 | 2, 획득 시 Tleilaxu | Landsraad, Spice Trade | (1M): Tleilaxu | ◆1 |
 | Tleilaxu Infiltrator | 2 | City | GRAFT: 이번 turn 적 Agent가 자신의 Agent를 막지 않는다. draw 1 —AND— (2M): Intrigue 1 | ◆1 |
 | Twisted Mentat | 4 | Landsraad, City | GRAFT: 이번 turn 보낸 Agent를 recall할 수 있다 | ◆1 ⚔1 specimen 1 |
 | Unnatural Reflexes | 3 | Spice Trade | GRAFT: (1M): draw 2 | ◆1 ⚔1 |
-| Usurp | 4 | (없음) | GRAFT: Imperium Row의 카드에 acquire하지 않고 graft할 수 있다. 그러면 turn 끝에 그 카드를 trash | ◆1 ⚔1 specimen 1 |
+| Usurp | 아이콘·box 없음. 배치: graft 변형만, 후보 상대(Row 카드 + hand 카드) 아이콘의 합집합으로 space 결정(`_placements_for_card`; 따라올 상대가 없는 space는 제외; codec은 graft 변형을 모든 space에 둔다). 상대 선택: Row 카드와 hand 카드 중 그 space에 닿는 카드(`legal_graft_partner_actions`) — "may"라 hand 상대도 된다. Row 상대는 `take_imperium_row_card`로 빠지고 Row가 즉시 채워지며 좌석의 `usurped_row_card_id`에 남는다. turn이 닫히면(`usurp_trash_is_queued`) `resolve_usurp_trash`가 `trash_personal_card`로 **자동 trash**해 trash 이벤트·트리거가 발동한다(OQ-054, 사용자 판정). 관측 v15 좌석 scalar(빌린 카드 여부). | hand 카드를 먼저 놓고 Usurp를 상대로 고르는 보통의 graft도 그대로 된다(Usurp box 없음). |
 | Piter, Genius Advisor (프로모) | 3 | Landsraad, Spice Trade | Lose a troop ▶ draw 2 + Research | ◆1 ⚔1 |
 
 ### Imperium 25종
 
-| 카드 | 비용 | Faction | Agent 아이콘 | Agent box | Reveal box |
-| --- | --- | --- | --- | --- | --- |
+| 카드 | 구현 | 규칙 민감 메모 |
+| --- | --- | --- |
 | Bene Tleilax Lab | 2 | — | City, Spice Trade | specimen 1 | ◆1; (1M): spice 1 |
 | Bene Tleilax Researcher | 4 | — | Landsraad | GRAFT: Research | ◆1; (1M): +◆1; (2M): +◆1 |
 | Blank Slate | 1 | — | Landsraad, City, Spice Trade (+ 흐린 Emperor·Guild·BG·Fremen) | If grafted: Emperor, Guild, BG, Fremen 아이콘을 가진다 | ◆1 |
 | Clandestine Meeting | 4 | BG | (없음) | BG Influence 1 + Intrigue 1 | ◆2 |
 | Corrupt Smuggler | 3 | Guild·Fremen | Guild, Spice Trade | If grafted: spice 2 | ◆1 ⚔1 |
 | Dissecting Kit ×2 | 2 | — | Landsraad, City | GRAFT: *다른* grafted 카드 trash ▶ specimen 1 | ◆1; (1M): Tleilaxu |
-| For Humanity | 7 | BG | BG, Landsraad, Spice Trade | ◇? | ◆2; BG Alliance: Influence 1 잃기 ▶ VP 1 |
-| High Priority Travel | 1 | Guild | Landsraad, Spice Trade | Guild Influence 2: draw 1 —OR— Combat 아이콘 | ◆1 Solari 1 |
-| Imperium Ceremony | 6 | Emperor·Guild | Emperor, Guild, Landsraad | Intrigue deck 맨 위 2장을 보고 1장 keep, 나머지는 맨 위로 | ◆3 |
-| Interstellar Conspiracy | 4 | — | City | GRAFT: spice 1 —AND— Emperor 또는 Guild 카드와 graft했으면 ◇? | ◆2 |
+| For Humanity | Agent `GAIN_CHOSEN_INFLUENCE`(기존). Reveal choice `MAY_LOSE_INFLUENCE_FOR_VP_IF_BENE_GESSERIT_ALLIANCE`: `lose_reveal_influence_for_vp(faction[, alliance_recipient])`/거절 — 고른 한 진영에서 Influence 2를 잃는다(카드 면의 "?" 다이아몬드에 빨간 chevron 두 개 `[For Humanity card]`; 2026-09-26 이전에는 1로 오독). 열리는 조건: BG Alliance 보유 + Influence 2 이상인 진영 존재(화살표 비용은 전부 내거나 안 낸다 `[Main p. 20]`; OQ-028, 선택이 열릴 때 판정). | Influence 손실의 Alliance 이전은 OQ-015·`lose_faction_influence`와 동일하게 한 칸씩 처리하며, 수령자 선택은 token이 움직이는 칸(첫째 또는 둘째)에서 제시한다 `[FAQ p. 1]`. |
+| High Priority Travel | `DRAW_ONE_OR_COMBAT_ICON_IF_SPACING_GUILD_INFLUENCE_TWO`: Guild 2 이상이면 `resolve_agent_card_effect`(draw)와 `take_agent_card_combat_icon` 중 선택, 아니면 불발. Combat 아이콘은 `grant_combat_icon`이 frame에 쓰므로 컨텍스트를 다시 읽고 닫는다(Occupation도 같은 수정). Reveal 1 Solari. | |
+| Imperium Ceremony | `PEEK_TWO_INTRIGUE_KEEP_ONE` → `rules/intrigue_peek.py`의 `INTRIGUE_PEEK` frame(`keep_peeked_intrigue(instance_id)`). 소유자만 두 장을 본다: `PrivatePlayerView.peeked_intrigue_ids`(관측 v14 세그먼트 `private_peeked_intrigue`), `known_card_seats`, determinize·privacy invariant가 deck 맨 위 두 장을 고정. keep 이벤트는 공개 `intrigue_card_drawn`(수만) + 소유자 전용 `intrigue_card_kept`. | OQ-052(사용자 판정): 두 장 미만이면 맨 윗장을 두고 그 밑에 discard를 섞은 뒤 두 장을 본다(셔플 frame `purpose=peek`). |
+| Interstellar Conspiracy | `GAIN_SPICE_AND_CHOSEN_INFLUENCE_IF_GRAFTED_WITH_EMPEROR_OR_GUILD`: 상대 카드에 Emperor/Guild 진영이 있으면 Influence provider가 4진영 선택을 열고 spice 1을 함께 지급, 아니면 일반 해결로 spice 1만. | Graft 카드. |
 | Keys to Power | 5 | Guild·BG | Guild, BG, Landsraad | Emperor Influence 2: spice 2 | ◆2 |
 | Lisan al Gaib | 4, 획득 시 spice 1 | BG·Fremen | Fremen, City, Spice Trade | 다른 BG 카드가 play 중이면 Fremen Influence 1 | ◆1; Fremen Bond: ⚔2 |
 | Long Reach | 6 | BG | (흐린 Landsraad·City·Spice Trade) | 다른 BG 카드가 play 중이면 Landsraad·City·Spice Trade 아이콘을 가진다. 둘 선택: Emperor·Guild·BG·Fremen Influence 1 | ◆1 Intrigue 1 |
@@ -61,30 +61,30 @@
 | Planned Coupling | 3 | BG | BG | GRAFT: draw 1 | ◆1 |
 | Replacement Eyes | 5 | — | City | GRAFT: trash될 때 Tleilaxu. trash ▶ draw 1 | ◆1 ⚔1 |
 | Sardaukar Quartermaster | 2 | Emperor | Landsraad, City | If grafted: troop 1 + draw 1 | ◆1 ⚔2 |
-| Shadout Mapes | 2 | Fremen | Fremen, Spice Trade | (없음) | ◆1 ⚔1; troop 1개를 deploy하거나 retreat할 수 있다 |
+| Shadout Mapes | Agent box 없음. Reveal choice `MAY_DEPLOY_OR_RETREAT_ONE_TROOP`: `deploy_reveal_card_troop`(`add_units_to_reveal`)·`retreat_reveal_card_troop`(`retreat_units`, 전투력 차이를 Reveal frame `strength`에 반영)·거절. 같은 행동을 Uprising의 Unswerving Loyalty("Fremen Bond: … deploy or retreat one of your troops")가 Fremen Bond 뒤에서 쓰므로(2026-09-26) 세 행동 template은 모든 catalog에 있다. Bloodlines와 함께면 Commander도 "troop"이므로 `[Bloodlines p. 4]` `commanders` 1 변형으로 garrison·Conflict의 Commander를 배치·후퇴할 수 있고(2026-09-26 감사 수정), 그 두 template은 Immortality 여부와 관계없이 Bloodlines catalog에 있다. | 배치는 Combat 아이콘 없이 카드 효과로 한다. |
 | Show of Strength | 3 | Emperor·Fremen | (흐린 Landsraad·Spice Trade) | 배치한 troop이 각 상대보다 많으면 Landsraad·Spice Trade 아이콘을 가진다. draw 2 | ◆1 ⚔2 |
 | Spiritual Fervor | 3, 획득 시 Research | — | Spice Trade | (없음) | ◆1 specimen 1 |
 | Stillsuit Manufacturer | 5 | Fremen | Fremen, City | water 1 —AND— Fremen Alliance: 이 카드를 play에서 hand로 되돌린다 | ◆1 —AND— Fremen Bond: spice 2 |
 | Throne Room Politics | 4 | Emperor·BG | Emperor | troop 1 + trash | ◆1 BG Influence 1 |
 | Tleilaxu Master ×2 | 5 | — | Landsraad, Spice Trade | (1M): 비용 6 이하 카드 1장을 acquire할 수 있다. (2M): 그 카드를 hand에 둔다 | ◆1 Research Research |
-| Tleilaxu Surgeon | 3 | — | Emperor, City | specimen 2 ▶ Tleilaxu 2 | ◆2; troop 2 잃기 ▶ specimen 2 |
+| Tleilaxu Surgeon | `MAY_PAY_TWO_SPECIMENS_FOR_TWO_TLEILAXU`: `pay_agent_card_two_specimens`/거절 → `advance_tleilaxu` 2칸. Reveal choice `MAY_LOSE_TWO_TROOPS_FOR_TWO_SPECIMENS`: `lose_reveal_troops_for_specimens(zones)`/거절 → troop마다 존을 골라(garrison·Conflict 둘 다, 각각 하나씩) `lose_unit` ×2, 전투력 차이 반영, specimen 2. | OQ-053(사용자 판정: 존 혼합 허용, Commander 제외). |
 
 Sardaukar Quartermaster는 카드면에 "Sarduakar"로 오식돼 있다(하브도 같은 슬러그); 프로젝트 ID는 `sardaukar_quartermaster`다.
 
 ### Intrigue 11종
 
-| 카드 | timing | 전사 |
+| 카드 | 구현 | 규칙 민감 메모 |
 | --- | --- | --- |
 | Breakthrough | Plot | Research |
-| Counterattack | Plot / Combat | garrison에서 troop 최대 2개를 Conflict에 deploy —OR— 이 Conflict에서 상대가 Combat Intrigue를 play했으면 ⚔4 |
+| Counterattack | `apply_intrigue_play`가 Combat 중 play된 Combat option의 좌석을 `combat_intrigue_players`에 기록하고 `finish_combat`이 비운다(관측 세그먼트). | "in this Conflict" = 이번 Combat. |
 | Disguised Bureaucrat | Plot | (1M): spice 1; (2M): ◇? |
 | Economic Positioning | Combat / Endgame | troop 2개 retreat ▶ Solari 3 —OR— Solari 10 이상이면 VP 1 |
 | Gruesome Sacrifice | Combat | Conflict의 자기 troop 2개 잃기 ▶ Tleilaxu + specimen 2 |
-| Harvest Cells | Combat | Conflict 끝에 troop을 3개 이상 잃으면: specimen 2. Tleilaxu 카드 1장을 (정상 비용으로) acquire할 수도 있다 |
+| Harvest Cells | Combat에 play하면 face-up으로 대기; `finish_combat`이 정리 전 각 좌석의 Conflict troop+Commander 수를 "잃은 troop"으로 삼아(FAQ p. 1 Chani: supply로 돌아간 troop은 lost) 3 이상이면 `resolve_faceup_trigger_option`으로 발동(Makers 전에 INTRIGUE_CHOICE frame), 아니면 `intrigue_expired`로 discard. | `[FAQ p. 1]` `[card face]`. |
 | Illicit Dealings | Plot | Tleilaxu |
 | Shadowy Bargain | Plot / Endgame | specimen 1 —OR— Tleilaxu |
 | Study Melange | Plot / Endgame | spice 1 —OR— spice 3 이상이면 (2M): VP 1 |
-| Tleilaxu Puppet | Plot / Endgame | 이번 round Reveal turn에 ◆1 —OR— High Council 자리가 있으면 (2M): VP 1 |
+| Tleilaxu Puppet | `PlayerState.reveal_persuasion_round_bonus`: Round Start에 0, `begin_reveal_turn`의 Persuasion 합계에 더한다(Command (6+) 판정에도 포함). 소유자의 Reveal이 이미 열린 뒤 play하면(Plot은 Reveal turn에도 쓸 수 있다 `[Main pp. 7, 8]`) 그 Reveal frame에 바로 더하고 round 보너스는 그대로 둔다(2026-09-26 감사 수정; 전에는 카드만 쓰이고 Persuasion이 사라졌다). | "this round". |
 | Vicious Talents | Combat | ⚔2; (1M): +⚔2; (2M): +⚔2 |
 
 Illicit Dealings의 에셋 파일명은 하브 슬러그 오타 "Illicit Deadlings"를 따른다(`content_id`로 연결).
@@ -95,7 +95,7 @@ Spice Trade 아이콘. Agent: Research. Reveal: ◆1 specimen 1. 카드 이름 �
 
 ## 구현된 동작
 
-| 영역 | 구현 | 규칙 민감 메모 |
+| 영역 | 구현 | 메모 |
 | --- | --- | --- |
 | 옵션 | `RulesetConfig(immortality=True)`, identifier `+immortality`; 서버 `immortality` 필드·UI 체크박스·상태 배지, 저장 문서 플래그, sweep/tournament `--immortality`, coverage census, 체크포인트 룰셋 파싱. | `[Main p. 18]`. Bloodlines와 독립. |
 | 카탈로그 | Imperium 25종(`immortality_only`), Intrigue 11종, Tleilaxu deck 18종 + Reclaimed Forces + 프로모 Piter(`content/immortality/tleilaxu.py`, instance `tleilaxu:<id>:<copy>`). play data가 없는 카드는 옵션을 켜도 덱에 들어가지 않는다. | 관측 identity 우주에 Imperium 25·Intrigue 11이 들어와 관측 v11. Tleilaxu 카드는 아직 관측 우주 밖(슬라이스 2). |
@@ -103,7 +103,7 @@ Spice Trade 아이콘. Agent: Research. Reveal: ◆1 specimen 1. 카드 이름 �
 
 ## 슬라이스 2: Bene Tleilax board
 
-| 영역 | 구현 | 규칙 민감 메모 |
+| 영역 | 구현 | 메모 |
 | --- | --- | --- |
 | 상태 | `PlayerState.research_space`(칸 ID, 옵션 off ""), `tleilaxu_space`(0~7), `specimens`(troop 12개 불변식에 포함), `family_atomics`; `GameState.tleilaxu_deck`(비공개 순서)·`tleilaxu_row`·`tleilaxu_track_spice`. 옵션이 꺼지면 전부 비어 있어야 한다. | `[Immortality pp. 4-8, 12]`. |
 | Setup | `create_unshuffled_players(immortality=)`가 Dune, the Desert Planet 2장을 Experimentation 2장으로 바꾸고, `_immortality_setup`이 Tleilaxu deck을 seeded chance `setup:tleilaxu_deck`으로 섞어(play data가 있는 카드가 없으면 생략) Row 2장을 deal하며, `_with_immortality`가 token·spice 2·Family Atomics를 놓는다. 고정 Leader setup과 draft setup 모두. Bloodlines 결정 뒤에 해결해 기존 chance 순서를 보존. | `[Immortality pp. 4-5]`. |
@@ -118,27 +118,27 @@ Spice Trade 아이콘. Agent: Research. Reveal: ◆1 specimen 1. 카드 이름 �
 
 ## 슬라이스 3: Tleilaxu Row
 
-| 영역 | 구현 | 규칙 민감 메모 |
+| 영역 | 구현 | 메모 |
 | --- | --- | --- |
 | 획득 | `rules/tleilaxu_row.py`: REVEAL frame 소유자에게 Row 카드마다 `acquire_tleilaxu(instance_id)`(specimen ≥ 비용), 첫 genetic marker 뒤에는 `to_deck_top=True` 변형도. 지불은 `spend_specimens`(tanks→supply), 카드는 discard pile 또는 deck 맨 위, Row는 deck 맨 위에서 보충(`refill_tleilaxu_row`), 획득 box는 Imperium과 같은 `resolve_acquisition_bonus`(Tleilaxu-aware) + `apply_acquisition_track_effects`. deck 맨 위로 보낸 카드의 instance는 이벤트에 싣지 않는다(deck 순서는 비공개, OQ-010). | `[Immortality pp. 6, 8-9]`. Imperium Row 획득 효과·Persuasion 효과는 Row를 보지 않으므로 자연히 배제된다. |
 | Reclaimed Forces | `acquire_reclaimed_forces(choice)`: specimen 3, `troops`(recruit 2, `reveal_troops_recruited`에 합산) 또는 `tleilaxu`(1 전진); 카드는 Row에 남는다. | `[Immortality p. 9]` `[Reclaimed Forces card]`. |
 | 획득 box | `PersonalCardAcquisitionEffect.RESEARCH`·`ADVANCE_TLEILAXU`는 카드가 존에 들어간 뒤 state 수준에서 해결(`apply_acquisition_track_effects`; research는 방향 선택 frame을 열 수 있다). Imperium 획득 경로 4곳과 Tleilaxu 경로 모두. | Subject X-137, (슬라이스 5의) Spiritual Fervor. |
-| 카드 | Contaminator(Fremen, `ADVANCE_TLEILAXU`), From the Tanks(`RECRUIT_TWO_TROOPS`), Subject X-137(`ADVANCE_TLEILAXU_IF_ONE_MARKER`, 해결 시점 판정 OQ-028; 획득 box Tleilaxu). Graft 카드는 슬라이스 4 전까지 덱 밖. | 카드면 전사표와 일치. |
-| codec | `immortality` 카탈로그에 `acquire_tleilaxu` ×2/카드, `acquire_reclaimed_forces` ×2, Tleilaxu 카드의 Agent 배치 템플릿, trash 계열 템플릿의 Tleilaxu instance; Bloodlines 없이도 `optional_trash` 템플릿(trash+specimen 칸). | codec v96 그대로(옵션 카탈로그만 커짐: 4,490→4,578). |
+| 카드 | 구현 | 규칙 민감 메모 |
+| codec | `immortality` 카탈로그: 모든 카드의 배치 템플릿에 `graft` 변형(Graft 카드는 graft만), `choose_graft_partner` ×개인 카드, `switch_graft_card`, `decline_agent_card_recall`. 기본 카탈로그 불변(4,367). | 4,578→6,857. |
 
 ## 슬라이스 4: Graft
 
-| 영역 | 구현 | 규칙 민감 메모 |
+| 영역 | 구현 | 메모 |
 | --- | --- | --- |
 | 배치 | `legal_agent_actions`: Graft 카드(`ImperiumCardEntry.graft`)는 `graft=True` 변형만, 일반 카드는 단독과 (hand에 Graft 상대가 있으면) graft 변형. 아이콘은 첫 카드 기준(`effective_agent_icons(grafted=)`; Blank Slate는 진영 4개 추가). 상대 Agent가 점유한 space는 hand에 Tleilaxu Infiltrator가 있을 때 graft 배치로 열린다. | `[Immortality p. 10]` "You may use an Agent icon from either card": 아이콘을 내는 카드를 첫 카드로 두면 어떤 쌍이든 표현된다. |
 | 상대 선택 | `apply_agent_action(graft)`가 효과 frame 위에 `graft_partner` frame을 밀고, `choose_graft_partner(card_id)`는 hand의 카드 중 (첫 카드 또는 후보가 Graft) 조건을 만족하는 것만; 점유 space였으면 둘 중 하나가 Infiltrator여야 한다. 상대는 hand→in play, 효과 frame의 `graft_card_id`·`graft_pending_effect`·`graft_pending_icons`에 자기 box가 대기한다(`agent_effect_is_available`로 판정). | 두 카드 모두 "보낸" 것: Bond·"in play" 판정은 in_play로 자연 성립. |
 | 해결 | `switch_graft_card`(효과 frame, 상대 box가 대기 중이고 Long Live 선택 중이 아닐 때)가 `card_id`↔`graft_card_id`와 pending 플래그·아이콘을 맞바꿔 기존 Agent box 기계로 해결한다. `agent_turn_has_other_pending_effects`가 `graft_pending_effect`를 본다. `expire_trashed_card_effects`는 상대 카드의 미발동 box도 만료한다(FAQ의 Beguiling Pheromones 판정). | `[Immortality pp. 10-11]` `[FAQ p. 1]`. `is_grafted`/`other_grafted_card_id`(`rules/effects.py`). |
-| 카드 | Face Dancer(GRAFT draw 1), Face Dancer Initiate(빈 box), Planned Coupling(Imperium, GRAFT draw 1), Bene Tleilax Researcher(Imperium, GRAFT Research; Reveal (1M)+1·(2M)+1 Persuasion → `minimum_genetic_markers`), Corrino Genes(`ADVANCE_TLEILAXU_IF_GRAFTED`), Unnatural Reflexes(`DRAW_TWO_IF_ONE_MARKER`), Tleilaxu Infiltrator(`DRAW_ONE_AND_INTRIGUE_IF_TWO_MARKERS`: cards·intrigue 아이콘, Intrigue는 해결 시점에 marker 2 판정), Twisted Mentat(`MAY_RECALL_AGENT_SENT_THIS_TURN`: recall 아이콘을 이번 turn의 space로 한정 + `decline_agent_card_recall`). | 조건은 해결 시점 판정(OQ-028). |
+| 카드 | 구현 | 규칙 민감 메모 |
 | codec | `immortality` 카탈로그: 모든 카드의 배치 템플릿에 `graft` 변형(Graft 카드는 graft만), `choose_graft_partner` ×개인 카드, `switch_graft_card`, `decline_agent_card_recall`. 기본 카탈로그 불변(4,367). | 4,578→6,857. |
 
 ## 슬라이스 5a: Intrigue 11장
 
-| 영역 | 구현 | 규칙 민감 메모 |
+| 영역 | 구현 | 메모 |
 | --- | --- | --- |
 | DSL | `effect_dsl.py`: 조건 `GeneticMarkersAtLeast(1|2)`·`SolariAtLeast`·`SpiceAtLeast`·`OpponentPlayedCombatIntrigue`·`AllConditions`(Study Melange·Tleilaxu Puppet의 두 조건); 보상 `Research`·`AdvanceTleilaxu(count)`·`GenerateSpecimens(count)`·`AcquireTleilaxuCard`·`RevealPersuasionThisRound`; trigger `OnTroopsLostAtConflictEnd(minimum)`(Combat timing 허용). | 전사표(위 Intrigue 표)와 1:1. |
 | 해석 | `effect_interpreter.apply_rewards`가 자원 뒤에 specimen → Tleilaxu → Research 순으로 state 수준에서 해결(research는 방향 frame을 열 수 있어 마지막). `AcquireTleilaxuCard`는 선택 slot: Row 카드(specimen ≥ 비용)와 deck 맨 위 변형, 거절. Harvest Cells는 자동 보상(specimen 2)을 OQ-015대로 소유자가 `resolve_intrigue_rewards`로 먼저 받아야 살 수 있다. | `[Immortality pp. 6-8]`. |
@@ -149,7 +149,7 @@ Spice Trade 아이콘. Agent: Research. Reveal: ◆1 specimen 1. 카드 이름 �
 
 ## 슬라이스 5b-1: Imperium 15종
 
-| 영역 | 구현 | 규칙 민감 메모 |
+| 영역 | 구현 | 메모 |
 | --- | --- | --- |
 | 단일 box | `GENERATE_SPECIMEN`(Lab), `GAIN_BENE_GESSERIT_INFLUENCE_AND_INTRIGUE`(Clandestine Meeting — 아이콘이 없어 graft 상대로만 play), `GAIN_TWO_SPICE_IF_GRAFTED`(Corrupt Smuggler), `GAIN_TWO_SPICE_IF_EMPEROR_INFLUENCE_TWO`(Keys to Power), `GAIN_FREMEN_INFLUENCE_IF_BENE_GESSERIT_BOND`(Lisan al Gaib), `DRAW_ONE_AND_COMBAT_ICON`(Occupation), `DRAW_TWO_CARDS`(Show of Strength), `GAIN_WATER_AND_RETURN_SELF_IF_FREMEN_ALLIANCE`(Stillsuit Manufacturer — hand으로 돌아온 카드는 `hand_public`), `RECRUIT_ONE_AND_MAY_TRASH`(Throne Room Politics — recruit 뒤 `optional_trash` frame). 모두 해결 시점 판정(OQ-028). | 카드면. |
 | 선택 box | Long Reach `GAIN_TWO_DISTINCT_CHOSEN_INFLUENCE`: `choose_agent_card_influence`를 두 번, 두 번째는 다른 진영만(`influence_chosen` 컨텍스트). Organ Merchants `MAY_PAY_SPECIMEN_FOR_FOUR_SOLARI`: `pay_agent_card_specimen`/거절. Sardaukar Quartermaster `RECRUIT_ONE_AND_DRAW_ONE_IF_GRAFTED`: troops·cards 아이콘, graft 아닐 때 둘 다 불발. | |
@@ -164,11 +164,11 @@ For Humanity와 Interstellar Conspiracy의 "◇?" 아이콘은 카드면 확대�
 | 카드 | 구현 | 규칙 민감 메모 |
 | --- | --- | --- |
 | Dissecting Kit | `MAY_TRASH_OTHER_GRAFTED_FOR_SPECIMEN`: 지불 provider의 `trash_grafted_card_for_specimen`/거절. 상대 카드가 play 영역에 없으면 box 불발. trash 전에 상대의 `graft_pending_effect`를 끄고(OQ-022) 효과 frame을 정리한 뒤 trash·specimen 생성. Reveal (1M) Tleilaxu. | Graft 카드라 단독 play 불가 `[Immortality p. 10]`. |
-| For Humanity | Agent `GAIN_CHOSEN_INFLUENCE`(기존). Reveal choice `MAY_LOSE_INFLUENCE_FOR_VP_IF_BENE_GESSERIT_ALLIANCE`: `lose_reveal_influence_for_vp(faction[, alliance_recipient])`/거절. 열리는 조건: BG Alliance 보유 + 잃을 Influence 존재(OQ-028, 선택이 열릴 때 판정). | Influence 손실의 Alliance 이전은 OQ-015·`lose_faction_influence`와 동일. |
+| For Humanity | Agent `GAIN_CHOSEN_INFLUENCE`(기존). Reveal choice `MAY_LOSE_INFLUENCE_FOR_VP_IF_BENE_GESSERIT_ALLIANCE`: `lose_reveal_influence_for_vp(faction[, alliance_recipient])`/거절 — 고른 한 진영에서 Influence 2를 잃는다(카드 면의 "?" 다이아몬드에 빨간 chevron 두 개 `[For Humanity card]`; 2026-09-26 이전에는 1로 오독). 열리는 조건: BG Alliance 보유 + Influence 2 이상인 진영 존재(화살표 비용은 전부 내거나 안 낸다 `[Main p. 20]`; OQ-028, 선택이 열릴 때 판정). | Influence 손실의 Alliance 이전은 OQ-015·`lose_faction_influence`와 동일하게 한 칸씩 처리하며, 수령자 선택은 token이 움직이는 칸(첫째 또는 둘째)에서 제시한다 `[FAQ p. 1]`. |
 | High Priority Travel | `DRAW_ONE_OR_COMBAT_ICON_IF_SPACING_GUILD_INFLUENCE_TWO`: Guild 2 이상이면 `resolve_agent_card_effect`(draw)와 `take_agent_card_combat_icon` 중 선택, 아니면 불발. Combat 아이콘은 `grant_combat_icon`이 frame에 쓰므로 컨텍스트를 다시 읽고 닫는다(Occupation도 같은 수정). Reveal 1 Solari. | |
 | Imperium Ceremony | `PEEK_TWO_INTRIGUE_KEEP_ONE` → `rules/intrigue_peek.py`의 `INTRIGUE_PEEK` frame(`keep_peeked_intrigue(instance_id)`). 소유자만 두 장을 본다: `PrivatePlayerView.peeked_intrigue_ids`(관측 v14 세그먼트 `private_peeked_intrigue`), `known_card_seats`, determinize·privacy invariant가 deck 맨 위 두 장을 고정. keep 이벤트는 공개 `intrigue_card_drawn`(수만) + 소유자 전용 `intrigue_card_kept`. | OQ-052(사용자 판정): 두 장 미만이면 맨 윗장을 두고 그 밑에 discard를 섞은 뒤 두 장을 본다(셔플 frame `purpose=peek`). |
 | Interstellar Conspiracy | `GAIN_SPICE_AND_CHOSEN_INFLUENCE_IF_GRAFTED_WITH_EMPEROR_OR_GUILD`: 상대 카드에 Emperor/Guild 진영이 있으면 Influence provider가 4진영 선택을 열고 spice 1을 함께 지급, 아니면 일반 해결로 spice 1만. | Graft 카드. |
-| Shadout Mapes | Agent box 없음. Reveal choice `MAY_DEPLOY_OR_RETREAT_ONE_TROOP`: `deploy_reveal_card_troop`(`add_units_to_reveal`)·`retreat_reveal_card_troop`(`retreat_units`, 전투력 차이를 Reveal frame `strength`에 반영)·거절. Bloodlines와 함께면 Commander도 "troop"이므로 `[Bloodlines p. 4]` `commanders` 1 변형으로 garrison·Conflict의 Commander를 배치·후퇴할 수 있다(2026-09-26 감사 수정; codec의 Immortality+Bloodlines 카탈로그 +2). | 배치는 Combat 아이콘 없이 카드 효과로 한다. |
+| Shadout Mapes | Agent box 없음. Reveal choice `MAY_DEPLOY_OR_RETREAT_ONE_TROOP`: `deploy_reveal_card_troop`(`add_units_to_reveal`)·`retreat_reveal_card_troop`(`retreat_units`, 전투력 차이를 Reveal frame `strength`에 반영)·거절. 같은 행동을 Uprising의 Unswerving Loyalty("Fremen Bond: … deploy or retreat one of your troops")가 Fremen Bond 뒤에서 쓰므로(2026-09-26) 세 행동 template은 모든 catalog에 있다. Bloodlines와 함께면 Commander도 "troop"이므로 `[Bloodlines p. 4]` `commanders` 1 변형으로 garrison·Conflict의 Commander를 배치·후퇴할 수 있고(2026-09-26 감사 수정), 그 두 template은 Immortality 여부와 관계없이 Bloodlines catalog에 있다. | 배치는 Combat 아이콘 없이 카드 효과로 한다. |
 | Tleilaxu Master | `MAY_ACQUIRE_CARD_UP_TO_SIX_IF_ONE_MARKER`: 획득 provider(`legal_agent_card_acquisitions`)가 marker 1 이상일 때 `acquire_reserve_by_card`/`acquire_imperium_by_card`(비용 6 이하, `acquirable_*` 헬퍼)·거절을 연다. marker 2 이상이면 hand로(`hand_public`). box를 먼저 닫고(`advance_after_effect`) `acquire_*_for_intrigue`로 획득해 Spy·Contract·Research 후속 frame이 turn 위에 쌓인다. Reveal Research ×2. | (1M)/(2M) 모두 해결 시점 판정(OQ-028). |
 | Tleilaxu Surgeon | `MAY_PAY_TWO_SPECIMENS_FOR_TWO_TLEILAXU`: `pay_agent_card_two_specimens`/거절 → `advance_tleilaxu` 2칸. Reveal choice `MAY_LOSE_TWO_TROOPS_FOR_TWO_SPECIMENS`: `lose_reveal_troops_for_specimens(zones)`/거절 → troop마다 존을 골라(garrison·Conflict 둘 다, 각각 하나씩) `lose_unit` ×2, 전투력 차이 반영, specimen 2. | OQ-053(사용자 판정: 존 혼합 허용, Commander 제외). |
 
