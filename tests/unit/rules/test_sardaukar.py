@@ -444,14 +444,16 @@ def test_reveal_bonuses_pay_once_and_keep_the_skill_strength() -> None:
         event for event in result.events if event.kind == "skill_reveal_bonus"
     ]
     assert len(bonus_events) == 3
-    # Driven's spice and Hardy's water are the owner's own Reveal actions
-    # (OQ-045); Charismatic's Persuasion is totalled at once.
+    # Driven's spice and Hardy's troop are the owner's own Reveal actions
+    # (OQ-045); Charismatic's Persuasion is totalled at once. Hardy prints
+    # "Reveal Turn: [troop]" -- a recruit, not water [Hardy Skill tile].
     taken = result.state
     while gains := legal_reveal_gain_actions(taken, 0):
         taken = apply_reveal_gain(taken, gains[0]).state
     revealed = taken.players[0]
     context = dict(taken.decision_stack[0].context)
-    assert revealed.resources.spice == 1 and revealed.resources.water == 2
+    assert revealed.resources.spice == 1 and revealed.resources.water == 1
+    assert revealed.troops_garrison == state.players[0].troops_garrison + 1
     sword_strength = context["sword_strength"]
     assert isinstance(sword_strength, int)
     assert context["persuasion"] == revealed_persuasion_without_skill(state) + 1
@@ -469,6 +471,50 @@ def revealed_persuasion_without_skill(state: GameState) -> int:
     persuasion = dict(result.state.decision_stack[0].context)["persuasion"]
     assert isinstance(persuasion, int)
     return persuasion
+
+
+def test_hardy_recruits_one_troop_in_the_reveal_turn() -> None:
+    # Hardy's tile prints "Reveal Turn: [troop]" -- the grey cube is the troop
+    # icon, "Troop. Recruit one troop" [Main p. 20] [Hardy Skill tile]. The
+    # recruit is the owner's own Reveal action like any other (OQ-045).
+    owner = _seat_with_skills(
+        skill_ids=(_skill("hardy"),),
+        hand=starting_deck_instance_ids(0)[:5],
+        resources=Resources(solari=0, spice=0, water=1),
+    )
+    state = refresh_pre_reveal_strength(RuleResult(state=_turn_state(owner))).state
+    result = begin_reveal_turn(state, DomainAction(action_id="reveal_turn", actor=0))
+    (bonus,) = [e for e in result.events if e.kind == "skill_reveal_bonus"]
+    assert dict(bonus.payload)["troops"] == 1
+    assert "water" not in dict(bonus.payload)
+
+    from dune_imperium.rules.reveal_turn import (
+        apply_reveal_gain,
+        legal_reveal_gain_actions,
+    )
+
+    gains = legal_reveal_gain_actions(result.state, 0)
+    assert [action.action_id for action in gains] == ["recruit_reveal_troops"]
+    recruited = apply_reveal_gain(result.state, gains[0])
+    seat = recruited.state.players[0]
+    assert seat.resources.water == 1
+    assert seat.troops_garrison == owner.troops_garrison + 1
+    assert seat.troops_supply == owner.troops_supply - 1
+    assert legal_reveal_gain_actions(recruited.state, 0) == ()
+
+    # With an empty supply the troop is lost (OQ-030), not turned into water.
+    drained = replace(
+        owner,
+        troops_supply=0,
+        troops_garrison=owner.troops_garrison + owner.troops_supply,
+    )
+    empty = replace(state, players=(drained, *state.players[1:]))
+    started = begin_reveal_turn(empty, DomainAction(action_id="reveal_turn", actor=0))
+    (recruit,) = legal_reveal_gain_actions(started.state, 0)
+    short = apply_reveal_gain(started.state, recruit)
+    assert short.state.players[0].troops_garrison == drained.troops_garrison
+    assert short.state.players[0].resources.water == 1
+    assert any(event.kind == "troops_recruit_short" for event in short.events)
 
 
 def test_reveal_bonuses_need_a_commander_in_the_conflict() -> None:

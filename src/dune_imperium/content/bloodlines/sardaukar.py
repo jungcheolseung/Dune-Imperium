@@ -52,7 +52,8 @@ class SkillDefinition:
     # Commander in the Conflict.
     reveal_persuasion: int = 0
     reveal_spice: int = 0
-    reveal_water: int = 0
+    # Troops recruited in the Reveal turn (Hardy's troop icon).
+    reveal_troops: int = 0
     # "Reveal Turn: Trash this -> 3 swords" (Desperate): an optional arrow.
     trash_for_strength: int = 0
     # Combat strength while a Commander is in the Conflict.
@@ -96,8 +97,9 @@ SKILLS: Final[tuple[SkillDefinition, ...]] = (
         strength=1,
         strength_if_opponent_sandworm=1,
     ),
-    # "Reveal Turn: 1 water".
-    SkillDefinition("hardy", "Hardy", SkillKind.REVEAL, reveal_water=1),
+    # "Reveal Turn: [troop]": the grey cube is the troop icon, "Recruit one
+    # troop" [Main p. 20] [Hardy Skill tile] (not a water drop).
+    SkillDefinition("hardy", "Hardy", SkillKind.REVEAL, reveal_troops=1),
     # "[Emperor] 3 Influence: 2 swords".
     SkillDefinition(
         "loyal",

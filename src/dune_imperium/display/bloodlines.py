@@ -70,8 +70,8 @@ def skill_effect_text(skill: SkillDefinition) -> str:
         parts.append(f"Reveal Turn: +{skill.reveal_persuasion} Persuasion")
     if skill.reveal_spice:
         parts.append(f"Reveal Turn: Gain {skill.reveal_spice} spice")
-    if skill.reveal_water:
-        parts.append(f"Reveal Turn: Gain {skill.reveal_water} water")
+    if skill.reveal_troops:
+        parts.append(f"Reveal Turn: Recruit {skill.reveal_troops} troop")
     if skill.trash_for_strength:
         parts.append(f"Reveal Turn: Trash this → +{skill.trash_for_strength} swords")
     if skill.strength:

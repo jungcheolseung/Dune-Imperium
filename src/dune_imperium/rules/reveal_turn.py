@@ -3564,11 +3564,7 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
             for card_id, effect in reveal_effects
         ),
         *(
-            resource_gain_entry(
-                f"skill:{skill.skill_id}",
-                spice=skill.reveal_spice,
-                water=skill.reveal_water,
-            )
+            resource_gain_entry(f"skill:{skill.skill_id}", spice=skill.reveal_spice)
             for skill in active_skills
         ),
         resource_gain_entry(
@@ -3582,6 +3578,12 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
             if effect.recruit_troops
         ),
         *((("troops", "1", "tech:panopticon"),) if panopticon else ()),
+        # Hardy: "Reveal Turn: [troop]" [Hardy Skill tile] [Main p. 20].
+        *(
+            ("troops", str(skill.reveal_troops), f"skill:{skill.skill_id}")
+            for skill in active_skills
+            if skill.reveal_troops
+        ),
         *(
             ("intrigue", str(effect.draw_intrigue), card_id)
             for card_id, effect in reveal_effects
@@ -3759,11 +3761,11 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
                 ("player", action.actor),
                 ("skill_id", skill.skill_id),
                 ("spice", skill.reveal_spice),
-                ("water", skill.reveal_water),
+                ("troops", skill.reveal_troops),
             ),
         )
         for skill in active_skills
-        if skill.reveal_persuasion or skill.reveal_spice or skill.reveal_water
+        if skill.reveal_persuasion or skill.reveal_spice or skill.reveal_troops
     )
     return RuleResult(state=next_state, events=tuple(events))
 

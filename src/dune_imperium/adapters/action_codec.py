@@ -1163,8 +1163,8 @@ def _reveal_resource_templates() -> tuple[ActionTemplate, ...]:
             if effect.solari or effect.spice or effect.water:
                 bundles.add((effect.solari, effect.spice, effect.water))
     for skill in SKILLS:
-        if skill.reveal_spice or skill.reveal_water:
-            bundles.add((0, skill.reveal_spice, skill.reveal_water))
+        if skill.reveal_spice:
+            bundles.add((0, skill.reveal_spice, 0))
     bundles.add((2, 0, 0))  # Delivery Bay
     return (
         *(

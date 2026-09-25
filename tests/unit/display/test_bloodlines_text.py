@@ -31,6 +31,8 @@ def test_every_skill_renders_a_non_empty_effect() -> None:
     )
     driven = skill_effect_text(SKILLS_BY_ID["driven"])
     assert driven.startswith("Reveal Turn: Gain")
+    # "Reveal Turn: [troop]" [Hardy Skill tile] [Main p. 20].
+    assert skill_effect_text(SKILLS_BY_ID["hardy"]) == "Reveal Turn: Recruit 1 troop"
 
 
 def test_acquire_text_is_empty_exactly_when_the_tile_has_no_acquire_effect() -> None:
