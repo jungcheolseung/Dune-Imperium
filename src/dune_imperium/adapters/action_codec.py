@@ -185,6 +185,11 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "decline_reveal_sandworm",
             "decline_reveal_spice_influence",
             "decline_reveal_troop_retreat",
+            # Unswerving Loyalty's Fremen Bond troop move [Unswerving Loyalty
+            # card], shared with Shadout Mapes (Immortality).
+            "decline_reveal_troop_move",
+            "deploy_reveal_card_troop",
+            "retreat_reveal_card_troop",
             "defer_reveal_choice",
             "deploy_control_defense",
             # Reveal troop recruits and Intrigue draws in the owner's order
@@ -895,11 +900,9 @@ def _immortality_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             # Scientific Breakthrough, Slig Farmer.
             "trash_agent_card_self_for_vp",
             "pay_agent_card_five_solari_for_tleilaxu",
-            # For Humanity, Shadout Mapes, Tleilaxu Surgeon Reveal choices.
+            # For Humanity and Tleilaxu Surgeon Reveal choices (Shadout
+            # Mapes' troop move is in every catalog, for Unswerving Loyalty).
             "decline_reveal_influence_loss",
-            "deploy_reveal_card_troop",
-            "retreat_reveal_card_troop",
-            "decline_reveal_troop_move",
             "decline_reveal_troop_sacrifice",
         )
     ]

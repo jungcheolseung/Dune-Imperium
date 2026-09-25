@@ -1007,6 +1007,11 @@ IMPERIUM_CARDS: Final = (
         factions=(Faction.FREMEN,),
         reveal_persuasion=1,
         reveal_effects=(PersonalCardRevealEffect(recruit_troops=1),),
+        # "Fremen Bond: You may deploy or retreat one of your troops."
+        # [Unswerving Loyalty card]
+        reveal_choice_effects=(
+            PersonalCardRevealChoiceEffect.MAY_DEPLOY_OR_RETREAT_ONE_TROOP_IF_FREMEN_BOND,
+        ),
         play_data_complete=True,
     ),
     _entry(

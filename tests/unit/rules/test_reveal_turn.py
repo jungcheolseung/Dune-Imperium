@@ -41,6 +41,7 @@ from dune_imperium.rules.reveal_turn import (
     apply_reveal_sandworm_action,
     apply_reveal_spice_influence,
     apply_reveal_spy_action,
+    apply_reveal_troop_move,
     apply_reveal_troop_retreat,
     begin_reveal_turn,
     finish_reveal_turn,
@@ -55,6 +56,7 @@ from dune_imperium.rules.reveal_turn import (
     legal_reveal_sandworm_actions,
     legal_reveal_spice_influence_actions,
     legal_reveal_spy_actions,
+    legal_reveal_troop_move_actions,
     legal_reveal_troop_retreat_actions,
     reveal_late_arrivals,
 )
@@ -1387,6 +1389,131 @@ def test_unswerving_loyalty_reveals_for_persuasion_and_recruits_one() -> None:
     assert dict(revealed.decision_stack[-1].context)["persuasion"] == 1
     assert revealed.players[0].troops_supply == 8
     assert revealed.players[0].troops_garrison == 4
+
+
+_LOYALTY_MOVE = "may_deploy_or_retreat_one_troop_if_fremen_bond"
+
+
+def test_unswerving_loyalty_fremen_bond_deploys_or_retreats_one_troop() -> None:
+    # "Fremen Bond : You may deploy or retreat one of your troops."
+    # [Unswerving Loyalty card]. "Fremen Bond -- You may use this effect if
+    # you have one or more other Fremen cards in play" [Main p. 20]
+    # (uprising-systems.md); here Maula Pistol, played on an Agent turn.
+    # The engine used to offer no such choice.
+    loyalty = _imperium_instance("unswerving_loyalty")
+    maula = _imperium_instance("maula_pistol")
+    state = _state(
+        PlayerState(
+            player_id=0,
+            hand=(loyalty,),
+            in_play=(maula,),
+            troops_supply=9,
+            troops_garrison=2,
+            troops_conflict=1,
+            combat_strength=2,
+        )
+    )
+    revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+
+    top = revealed.decision_stack[-1]
+    assert dict(top.context)["reveal_choice_effect"] == _LOYALTY_MOVE
+    actions = legal_reveal_troop_move_actions(revealed, 0)
+    assert [action.action_id for action in actions] == [
+        "decline_reveal_troop_move",
+        "deploy_reveal_card_troop",
+        "retreat_reveal_card_troop",
+    ]
+    deployed = apply_reveal_troop_move(revealed, actions[1]).state
+    owner = deployed.players[0]
+    assert (owner.troops_garrison, owner.troops_conflict) == (1, 2)
+    assert dict(deployed.decision_stack[-1].context)["strength"] == 4
+    retreated = apply_reveal_troop_move(revealed, actions[2]).state
+    owner = retreated.players[0]
+    assert (owner.troops_garrison, owner.troops_conflict) == (3, 0)
+    assert dict(retreated.decision_stack[-1].context)["strength"] == 0
+    declined = apply_reveal_troop_move(revealed, actions[0]).state
+    assert declined.players[0] == revealed.players[0]
+    assert declined.decision_stack[-1].kind == "reveal"
+
+
+def test_unswerving_loyalty_offers_no_troop_move_without_a_fremen_bond() -> None:
+    # No other Fremen card in play: the Bond line does nothing [Main p. 20].
+    loyalty = _imperium_instance("unswerving_loyalty")
+    state = _state(
+        PlayerState(player_id=0, hand=(loyalty,), troops_supply=9, troops_garrison=3)
+    )
+    revealed = _take_reveal_gains(
+        begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+    )
+
+    actions = UprisingRulesEngine().legal_actions(revealed, 0)
+    assert revealed.decision_stack[-1].kind == "reveal"
+    assert legal_reveal_troop_move_actions(revealed, 0) == ()
+    assert "resume_reveal_choice" not in {action.action_id for action in actions}
+    assert "finish_reveal" in {action.action_id for action in actions}
+
+
+def test_two_unswerving_loyalties_bond_each_other() -> None:
+    # "Two cards with Fremen Bond can activate one another, regardless of
+    # order played." [Main p. 20]
+    first = _imperium_instance("unswerving_loyalty", 0)
+    second = _imperium_instance("unswerving_loyalty", 1)
+    state = _state(
+        PlayerState(
+            player_id=0, hand=(first, second), troops_supply=9, troops_garrison=3
+        )
+    )
+    revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+
+    choices = [
+        dict(frame.context)
+        for frame in revealed.decision_stack
+        if dict(frame.context).get("reveal_choice_effect") == _LOYALTY_MOVE
+    ]
+    assert sorted(context["reveal_card_id"] for context in choices) == sorted(
+        (first, second)
+    )
+
+
+def test_unswerving_loyalty_may_deploy_the_troop_it_recruits() -> None:
+    # With no troop yet, the Bond move waits in the deferred queue [Main p. 12]
+    # until the card's own recruit (taken in the owner's order, OQ-045) gives
+    # it one to deploy.
+    loyalty = _imperium_instance("unswerving_loyalty")
+    maula = _imperium_instance("maula_pistol")
+    state = _state(
+        PlayerState(
+            player_id=0,
+            hand=(loyalty,),
+            in_play=(maula,),
+            troops_supply=12,
+            troops_garrison=0,
+        )
+    )
+    engine = UprisingRulesEngine()
+    revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+    assert revealed.decision_stack[-1].kind == "reveal"
+    assert "resume_reveal_choice" not in {
+        action.action_id for action in engine.legal_actions(revealed, 0)
+    }
+
+    recruited = _take_reveal_gains(revealed)
+    resume = DomainAction(
+        action_id="resume_reveal_choice",
+        actor=0,
+        arguments=(("effect", _LOYALTY_MOVE),),
+    )
+    assert recruited.players[0].troops_garrison == 1
+    assert resume in engine.legal_actions(recruited, 0)
+    assert "finish_reveal" not in {
+        action.action_id for action in engine.legal_actions(recruited, 0)
+    }
+    resumed = engine.apply(recruited, resume).state
+    deployed = engine.apply(
+        resumed, DomainAction(action_id="deploy_reveal_card_troop", actor=0)
+    ).state
+    assert deployed.players[0].troops_conflict == 1
+    assert deployed.players[0].troops_garrison == 0
 
 
 def test_stilgar_counts_only_fremen_cards_revealed_this_turn() -> None:

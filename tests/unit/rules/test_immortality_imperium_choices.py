@@ -555,8 +555,13 @@ def test_the_codec_holds_the_slice_choices_only_with_immortality() -> None:
         ),
     ):
         assert codec.decode(codec.encode(action), 0) == action
-        assert (
-            action.action_id not in base or action.action_id == "resume_reveal_choice"
+        assert action.action_id not in base or action.action_id in (
+            "resume_reveal_choice",
+            # Shadout Mapes shares its troop move with Unswerving Loyalty's
+            # "Fremen Bond: You may deploy or retreat one of your troops"
+            # [Unswerving Loyalty card], so every catalog holds it.
+            "deploy_reveal_card_troop",
+            "retreat_reveal_card_troop",
         )
     assert "may_deploy_or_retreat_one_troop" not in {
         dict(template.arguments).get("effect")

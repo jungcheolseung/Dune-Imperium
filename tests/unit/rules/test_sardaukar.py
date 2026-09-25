@@ -598,7 +598,9 @@ def test_bloodlines_actions_round_trip_only_in_the_bloodlines_catalog() -> None:
     # test_action_codec.test_catalog_is_fixed_and_versioned_for_a_ruleset).
     # v107: +27, the generic Spy placement frame in every catalog.
     # Covert Operation's two Reveal Spies: resume_reveal_choice(place_two_spies), +1.
-    assert base.size == 4354 + 12 + 1 + 1 + 2 + 1 + 40 + 1 + 27 + 1
+    # Unswerving Loyalty's Fremen Bond troop move: its resume_reveal_choice
+    # and Mapes' deploy/retreat/decline templates join every catalog, +4.
+    assert base.size == 4354 + 12 + 1 + 1 + 2 + 1 + 40 + 1 + 27 + 1 + 4
     # Commander choices, the Commander share of retreats and deployments,
     # and the wild pairs of the two Bloodlines Conflicts are bloodlines-only.
     assert codec.size > base.size

@@ -991,14 +991,21 @@ def apply_reveal_troop_retreat(
     )
 
 
+_FREMEN_BOND_TROOP_MOVE = (
+    PersonalCardRevealChoiceEffect.MAY_DEPLOY_OR_RETREAT_ONE_TROOP_IF_FREMEN_BOND
+)
 # Choices whose actions are exactly another choice's: each of Covert
-# Operation's two Spy icons is the plain Reveal Spy icon; only how often the
-# choice opens differs.
+# Operation's two Spy icons is the plain Reveal Spy icon, and Unswerving
+# Loyalty's Fremen Bond line is Shadout Mapes' troop move. Only when (and how
+# often) the choice opens differs.
 _RESOLVES_AS: Mapping[
     PersonalCardRevealChoiceEffect, PersonalCardRevealChoiceEffect
 ] = {
     PersonalCardRevealChoiceEffect.PLACE_TWO_SPIES: (
         PersonalCardRevealChoiceEffect.PLACE_SPY
+    ),
+    _FREMEN_BOND_TROOP_MOVE: (
+        PersonalCardRevealChoiceEffect.MAY_DEPLOY_OR_RETREAT_ONE_TROOP
     ),
 }
 
@@ -2890,6 +2897,23 @@ def _reveal_choice_effect_is_available(
             PersonalCardRevealChoiceEffect.PLACE_SPY,
             PersonalCardRevealChoiceEffect.PLACE_TWO_SPIES,
             PersonalCardRevealChoiceEffect.PLACE_SPY_OR_GAIN_TWO_STRENGTH,
+        )
+        or (
+            # Unswerving Loyalty: "Fremen Bond: You may deploy or retreat one
+            # of your troops" [Unswerving Loyalty card] -- "one or more other
+            # Fremen cards in play" [Main p. 20], judged when the choice opens
+            # like the other Reveal conditions (OQ-028); then Shadout Mapes'
+            # own condition (a troop to move).
+            effect is _FREMEN_BOND_TROOP_MOVE
+            and has_faction_bond(cards_in_play, card_id, Faction.FREMEN)
+            and _reveal_choice_effect_is_available(
+                state,
+                player,
+                owner,
+                cards_in_play,
+                card_id,
+                PersonalCardRevealChoiceEffect.MAY_DEPLOY_OR_RETREAT_ONE_TROOP,
+            )
         )
         or (
             effect

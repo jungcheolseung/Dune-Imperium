@@ -1790,7 +1790,9 @@ def test_ruthless_leadership_round_trips_and_is_dealt_in_random_games() -> None:
     # Gesserit card already gets every Agent icon's placements there, for
     # Urgent Shigawire's boost).
     # Covert Operation's two Reveal Spies: resume_reveal_choice(place_two_spies), +1.
-    assert codec.size == 10159 + 292 + 1 + 1 + 1 + 2 + 1 + 28 + 28 + 67 + 1
+    # Unswerving Loyalty's Fremen Bond troop move: its resume_reveal_choice
+    # and Mapes' deploy/retreat/decline templates join every catalog, +4.
+    assert codec.size == 10159 + 292 + 1 + 1 + 1 + 2 + 1 + 28 + 28 + 67 + 1 + 4
     action = DomainAction(
         action_id="trash_agent_card",
         actor=2,

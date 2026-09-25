@@ -438,6 +438,12 @@ class PersonalCardRevealChoiceEffect(StrEnum):
     )
     # Shadout Mapes: "You may deploy or retreat one troop".
     MAY_DEPLOY_OR_RETREAT_ONE_TROOP = "may_deploy_or_retreat_one_troop"
+    # Unswerving Loyalty (Uprising, so outside the Immortality set below):
+    # "Fremen Bond: You may deploy or retreat one of your troops"
+    # [Unswerving Loyalty card]; Shadout Mapes' choice behind the Bond.
+    MAY_DEPLOY_OR_RETREAT_ONE_TROOP_IF_FREMEN_BOND = (
+        "may_deploy_or_retreat_one_troop_if_fremen_bond"
+    )
     # Tleilaxu Surgeon: "Lose two troops -> two specimens".
     MAY_LOSE_TWO_TROOPS_FOR_TWO_SPECIMENS = "may_lose_two_troops_for_two_specimens"
 

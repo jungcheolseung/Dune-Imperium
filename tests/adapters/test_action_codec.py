@@ -34,7 +34,9 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     # recall_spy_for_placement per post (13 + 13) and decline_spy_placement
     # join the catalogs without Bloodlines, +27.
     # Covert Operation's two Reveal Spies: resume_reveal_choice(place_two_spies), +1.
-    assert first.size == 4354 + 2 + 7 + 4 + 1 + 2 + 1 + 40 + 1 + 27 + 1
+    # Unswerving Loyalty's Fremen Bond troop move: its resume_reveal_choice
+    # and Mapes' deploy/retreat/decline templates join every catalog, +4.
+    assert first.size == 4354 + 2 + 7 + 4 + 1 + 2 + 1 + 40 + 1 + 27 + 1 + 4
 
 
 def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
@@ -52,7 +54,9 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
     # its agent_turn space coverage by +1 (see test_catalog_is_fixed...).
     # v107: +27, the generic Spy placement frame (see above).
     # Covert Operation's two Reveal Spies: resume_reveal_choice(place_two_spies), +1.
-    assert codec.size == 4640 + 2 + 7 + 4 + 1 + 2 + 1 + 44 + 1 + 27 + 1
+    # Unswerving Loyalty's Fremen Bond troop move: its resume_reveal_choice
+    # and Mapes' deploy/retreat/decline templates join every catalog, +4.
+    assert codec.size == 4640 + 2 + 7 + 4 + 1 + 2 + 1 + 44 + 1 + 27 + 1 + 4
 
     try:
         ActionCodec(RulesetConfig()).encode(action)
@@ -96,7 +100,9 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
     # every Bene Gesserit card already gets every Agent icon's placements
     # under Bloodlines, for Urgent Shigawire's boost.
     # Covert Operation's two Reveal Spies: resume_reveal_choice(place_two_spies), +1.
-    assert both.size == 11100 + 28 + 28 + 72 + 1
+    # Unswerving Loyalty's Fremen Bond troop move: its resume_reveal_choice
+    # and Mapes' deploy/retreat/decline templates join every catalog, +4.
+    assert both.size == 11100 + 28 + 28 + 72 + 1 + 4
 
     choam_only = ActionCodec(RulesetConfig(choam_module=True))
     for action in actions:

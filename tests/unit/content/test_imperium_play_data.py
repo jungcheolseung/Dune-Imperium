@@ -445,7 +445,7 @@ def test_wheels_within_wheels_play_data_reuses_reveal_spy_placement() -> None:
     )
 
 
-def test_unswerving_loyalty_play_data_has_only_reveal_rewards() -> None:
+def test_unswerving_loyalty_play_data_has_reveal_rewards_and_bond_move() -> None:
     card = IMPERIUM_CARDS_BY_ID["unswerving_loyalty"]
 
     assert card.play_data_complete is True
@@ -456,6 +456,11 @@ def test_unswerving_loyalty_play_data_has_only_reveal_rewards() -> None:
     assert card.reveal_strength == 0
     assert card.reveal_effects == (
         PersonalCardRevealEffect(recruit_troops=1),
+    )
+    # "Fremen Bond : You may deploy or retreat one of your troops."
+    # [Unswerving Loyalty card]; the line was missing from the transcription.
+    assert card.reveal_choice_effects == (
+        PersonalCardRevealChoiceEffect.MAY_DEPLOY_OR_RETREAT_ONE_TROOP_IF_FREMEN_BOND,
     )
 
 

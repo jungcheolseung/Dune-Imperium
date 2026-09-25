@@ -500,6 +500,10 @@ REVEAL_CHOICE_EFFECT_TEXT: Final[Mapping[PersonalCardRevealChoiceEffect, str]] =
             PersonalCardRevealChoiceEffect.MAY_DEPLOY_OR_RETREAT_ONE_TROOP: (
                 "You may deploy or retreat 1 troop"
             ),
+            (
+                PersonalCardRevealChoiceEffect
+                .MAY_DEPLOY_OR_RETREAT_ONE_TROOP_IF_FREMEN_BOND
+            ): "Fremen Bond: You may deploy or retreat 1 troop",
             PersonalCardRevealChoiceEffect.MAY_LOSE_TWO_TROOPS_FOR_TWO_SPECIMENS: (
                 "You may lose 2 troops → Generate 2 specimens"
             ),
