@@ -661,6 +661,10 @@ const UI_TEXT = {
     "ko": "{discard_pile} 보기",
     "en": "View {discard_pile}"
   },
+  "panels.face_down_badge": {
+    "ko": "뒷면",
+    "en": "Face down"
+  },
   "panels.facedown_suffix": {
     "ko": " (뒤집힘)",
     "en": " (face-down)"

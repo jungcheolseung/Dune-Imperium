@@ -455,13 +455,19 @@ function logEventPayload(payload, eventKind) {
   const parts = [];
   const shownNames = new Set();
   for (const [key, value] of Object.entries(payload)) {
-    /* intrigue_played (rules/intrigue.py): the step head already names the
-       option in words (describeAction's play_intrigue branch, core.js), so
-       a bare index here ("선택지: 1") would only repeat it unreadably.
-       navigation_card_played also carries an "option", but play_navigation's
-       head prints it only as a bare index with no card beside it, so this
-       line is the one place card and option appear together; left alone. */
-    if (key === "option" && eventKind === "intrigue_played") continue;
+    /* intrigue_played and navigation_card_played (rules/intrigue.py,
+       rules/navigation.py): the step head already names the option in words
+       (describeAction's play_intrigue and play_navigation branches,
+       core.js), so a bare index here ("선택지: 1") would only repeat it
+       unreadably. A fizzled navigation_card_played (rules/navigation.py
+       begin_navigation_play) carries no "option" at all, so this leaves it
+       untouched. */
+    if (
+      key === "option" &&
+      (eventKind === "intrigue_played" || eventKind === "navigation_card_played")
+    ) {
+      continue;
+    }
     const label = PAYLOAD_KEY_LABELS[key] || prettify(key);
     /* Before the zero filter: seat 0 is a seat. */
     if (SEAT_PAYLOAD_KEYS.has(key)) {

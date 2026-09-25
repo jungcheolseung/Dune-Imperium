@@ -1358,6 +1358,38 @@ kbd {
 .popover-leader-stage { position: relative; margin-top: 0.5rem; }
 .popover-leader-stage > img { display: block; width: 100%; border-radius: 8px; }
 .leader-token { z-index: 1; }
+/* Steersman Y'rkoon's Navigation-card row (core.js `leaderNavigationRow`),
+   above the leader image rather than over it: its own `aspectRatio` (set
+   inline, matching `NAVIGATION_CARD_WIDTH`) gives it a height to lay its
+   cards in, each centred at its slot's measured x like a card in its
+   printed board slot (`.vcard.slot-card`). */
+.popover-navigation-row { position: relative; margin-top: 0.5rem; }
+.popover-navigation-row .leader-nav-card {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+/* `.vcard.flipped img` (below) already mutes a face-down-but-owner-visible
+   card's picture. No back art exists for a Navigation card
+   (report_assets.md §2): a plain card-shaped box in the page's own
+   palette, no text — like `.commander-piece.drawn` without a rulebook
+   figure to draw. Flat fill, not a gradient (`.vcard`'s own background;
+   user convention, `ui-token-style.md`: flat colour, no gradients). */
+.nav-card-back {
+  aspect-ratio: 573 / 880;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: #2a2419;
+}
+/* The face-down badge (`.vcard-badge`, board.js `visualCard`) at the
+   ~55px-wide Navigation-slot scale: English "Face down" wraps to two lines
+   at the badge's usual 0.7rem there, covering most of the card. Smaller and
+   non-wrapping keeps it to the one line Korean "뒷면" already fits on. */
+.leader-nav-card .vcard-badge {
+  font-size: 0.55rem;
+  white-space: nowrap;
+  padding: 0 0.25em;
+}
 
 /* ---------- text board fallback ---------- */
 

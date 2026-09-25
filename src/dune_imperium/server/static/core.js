@@ -433,6 +433,68 @@ function leaderTokenBox(entry, seatState) {
    Feyd's tightest space (`mid_trash`, 5.9% wide). */
 const LEADER_TOKEN_SIZE = 4;
 
+/* Each Navigation-card thumbnail's width, a percent of `leaderNavigationRow`'s
+   own width (which spans the same width as the leader image below it, both
+   being direct children of the popover). Navigation art is a 573x880
+   portrait, so this also sets the row's own height (its `aspectRatio`
+   below) to fit one card at full height. 18 sits comfortably under the
+   narrowest gap between two slot centres — about 24% of the row, between
+   slots 1 and 2 (`display.leader_layout.YRKOON_NAVIGATION_SLOT_BOXES`). */
+const NAVIGATION_CARD_WIDTH = 18;
+
+/* Steersman Y'rkoon's four Navigation-card slots, drawn in a row above the
+   leader image (openPopover), not overlaid on it: printed slot k (1-based;
+   `entry.layout.navigation_slots[k - 1]` is the box around the printed
+   "1 2 3 4" strip marking where a card lies above the card) shows
+   `seatState.navigation_played[k - 1]` face up, for every viewer, once
+   played [Bloodlines p. 12]. While a slot still waits
+   (k <= navigation_played.length + navigation_remaining), only Y'rkoon's
+   own owner sees its face -- docs/rules/bloodlines.md:142 "자신의 face-down
+   Navigation 카드를 언제든 볼 수 있다" [Bloodlines p. 12] -- read from
+   `state.view.private.navigation_slots` (populated only into the owning
+   seat's own view, core/observation.py); every other viewer gets a plain
+   card-back placeholder, since no back art exists for a Navigation card
+   (report_assets.md §2). Nothing is drawn past
+   navigation_played.length + navigation_remaining. Returns `null` when this
+   leader has no Navigation slots (every leader but Y'rkoon) or there is no
+   seat context. */
+function leaderNavigationRow(entry, seatState) {
+  const boxes = entry.layout && entry.layout.navigation_slots;
+  if (!boxes || !seatState) return null;
+  const played = seatState.navigation_played || [];
+  const remaining = seatState.navigation_remaining || 0;
+  const view = state.view;
+  const owner = Boolean(view && view.private && view.player === seatState.player);
+  const hidden = owner ? view.private.navigation_slots || [] : [];
+  const row = document.createElement("div");
+  row.className = "popover-navigation-row";
+  row.style.aspectRatio = `100 / ${NAVIGATION_CARD_WIDTH * (880 / 573)}`;
+  boxes.forEach((box, index) => {
+    const slot = index + 1;
+    if (slot > played.length + remaining) return;
+    let card;
+    if (slot <= played.length) {
+      card = visualCard(played[slot - 1], { className: "leader-nav-card" });
+    } else {
+      const cardId = hidden[slot - played.length - 1];
+      if (cardId !== undefined) {
+        card = visualCard(cardId, {
+          className: "leader-nav-card flipped",
+          badge: t("panels.face_down_badge"),
+        });
+      } else {
+        card = document.createElement("div");
+        card.className = "leader-nav-card nav-card-back";
+      }
+    }
+    const [left, , width] = box;
+    card.style.width = `${NAVIGATION_CARD_WIDTH}%`;
+    placeAt(card, left + width / 2, 50);
+    row.appendChild(card);
+  });
+  return row.childNodes.length ? row : null;
+}
+
 function popoverNodes(entry) {
   const nodes = [];
   if (entry.text) for (const text of entry.text) nodes.push(iconLine(text));
@@ -502,6 +564,11 @@ function openPopover(entry, anchor, seatState) {
   for (const node of popoverNodes(entry)) pop.appendChild(node);
   const image = entryImage(entry);
   if (image && seatState) {
+    /* Y'rkoon's own state is a row of Navigation-card slots above the
+       image, not a token on it (leaderNavigationRow); every other leader
+       with on-card state gets a token instead, below. */
+    const navRow = leaderNavigationRow(entry, seatState);
+    if (navRow) pop.appendChild(navRow);
     /* A seat's own leader popover: the image becomes a stage (a
        `position: relative` wrapper the same width as the popover; the img
        inside keeps its own natural aspect, so the stage does too) and a
@@ -694,6 +761,59 @@ function describeAction(action) {
           : null;
       const lines = entry && Array.isArray(entry.text) ? entry.text : null;
       if (lines && lines[value] !== undefined) {
+        if (lines.length > 1) {
+          const line = lines[value];
+          const split = line.indexOf(" — ");
+          parts.push(iconize(split === -1 ? line : line.slice(split + 3)));
+        }
+      } else {
+        parts.push(document.createTextNode(`${label}: ${value}`));
+      }
+    } else if (
+      action.action_id === "play_navigation" &&
+      key === "option" &&
+      typeof value === "number"
+    ) {
+      /* Unlike play_intrigue, this action carries only "option"
+         (rules/navigation.py legal_navigation_play_actions) — no card_id
+         argument names the card, so (unlike the play_intrigue branch above)
+         this branch must find the card itself, not just its option text.
+         A logged step's own `navigation_card_played` event (this action's
+         `.events`, panels.js turnLine) carries the card that resolved; the
+         card stays in `navigation_slots` while it resolves
+         (rules/navigation.py begin_navigation_play/apply_navigation_play),
+         so for a LIVE legal action (not yet in `.events`) the front of the
+         viewing seat's own `view.private.navigation_slots` is that same
+         card. That live-view fallback must not fire for anything else: a
+         turn-log entry always carries its own `.events` already (handled
+         above), but a replay-review label (server/sessions.py
+         `_review_step_label`) carries neither `.events` nor a `card_id` --
+         by the time it is shown, `state.view` is the view AFTER the step,
+         so the played card has usually already left `navigation_slots` for
+         the NEXT slot's own card, and reading the live view here would
+         print that wrong card's name as if it were the one played. A live
+         legal action (server/sessions.py `_serialize_action`) is the only
+         shape with no "type" key at all; both a log entry and a review
+         label carry `type: "action"`. Falls back to the plain numeric
+         label when neither the event nor (for a live action only) the live
+         view resolves a card (a redacted or unknown card, no seat context,
+         or -- always, for a review label -- no event). */
+      const played = Array.isArray(action.events)
+        ? action.events.find((event) => event.kind === "navigation_card_played")
+        : null;
+      const live = action.type === undefined;
+      const view = state.view;
+      const liveSlots = live && view && view.private ? view.private.navigation_slots : null;
+      const cardId =
+        played && typeof played.payload.card_id === "string"
+          ? played.payload.card_id
+          : liveSlots && liveSlots.length
+            ? liveSlots[0]
+            : null;
+      const entry = cardId && state.catalog ? state.catalog.intrigue[baseId(cardId)] : null;
+      const lines = entry && Array.isArray(entry.text) ? entry.text : null;
+      if (cardId && lines && lines[value] !== undefined) {
+        parts.push(document.createTextNode(nameOf(cardId)));
         if (lines.length > 1) {
           const line = lines[value];
           const split = line.indexOf(" — ");
