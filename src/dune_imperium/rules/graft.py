@@ -32,7 +32,7 @@ from dune_imperium.rules.agent_effects import agent_card_icons_at_placement
 from dune_imperium.rules.agent_icons import (
     card_is_boosted,
     effective_agent_icons,
-    is_ghola,
+    is_bond_partner,
 )
 from dune_imperium.rules.agent_turn import (
     agent_effect_is_available,
@@ -93,13 +93,14 @@ def legal_graft_partner_actions(
     # state the placement was judged in.
     recalled = context.get("infiltrate_post_id")
     recalled_post_id = recalled if isinstance(recalled, str) and recalled else None
-    # Long Reach entered on the promise of Ghola's copy (OQ-057): only Ghola
-    # may then be the partner.
-    needs_ghola = False
+    # Long Reach entered on the promise of its Bond partner -- a Bene Gesserit
+    # card played with it [Long Reach card] [Immortality pp. 10, 14] or
+    # Ghola's copy (OQ-057 (12)): only such a card may then be the partner.
+    needs_bond_partner = False
     if not placed_reaches:
-        needs_ghola = card_can_access_space(
+        needs_bond_partner = card_can_access_space(
             effective_agent_icons(
-                placed, owner, grafted=True, opponents=opponents, ghola_partner=True
+                placed, owner, grafted=True, opponents=opponents, bond_partner=True
             ),
             space,
             owner,
@@ -108,7 +109,7 @@ def legal_graft_partner_actions(
         )
     # Only a placed card that cannot reach the space by any means of its own
     # (Usurp, which has no icons) leans on the partner for access.
-    partner_must_fit = not placed_reaches and not needs_ghola
+    partner_must_fit = not placed_reaches and not needs_bond_partner
     candidates: tuple[str, ...] = (
         *(card_id for card_id in owner.hand if card_id != placed_id),
         # Usurp: "graft this card with a card from the Imperium Row".
@@ -124,7 +125,7 @@ def legal_graft_partner_actions(
         if (
             card_is_graft(placed) or card_is_graft(personal_card_for_instance(card_id))
         )
-        and (not needs_ghola or is_ghola(card_id))
+        and (not needs_bond_partner or is_bond_partner(card_id))
         # An occupied space was entered on Tleilaxu Infiltrator's promise.
         and (
             not occupied

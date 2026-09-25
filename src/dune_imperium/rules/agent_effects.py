@@ -698,8 +698,16 @@ def _partner_icon_count(state: GameState, context: Mapping[str, ActionValue]) ->
     owner = state.players[player]
     opponents = tuple(seat for seat in state.players if seat.player_id != player)
     partner_card = personal_card_for_instance(partner)
+    # Long Reach in play does not count as its own "another Bene Gesserit
+    # card in play" [Long Reach card].
     return len(
-        effective_agent_icons(partner_card, owner, grafted=True, opponents=opponents)
+        effective_agent_icons(
+            partner_card,
+            owner,
+            grafted=True,
+            opponents=opponents,
+            card_instance_id=partner,
+        )
     )
 
 
