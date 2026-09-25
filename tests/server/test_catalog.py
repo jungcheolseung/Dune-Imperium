@@ -48,6 +48,43 @@ def test_catalog_serves_the_tleilaxu_deck_and_the_bene_tleilax_board() -> None:
     assert isinstance(track, list) and len(track) == 8
 
 
+def test_catalog_reclaimed_forces_names_both_acquire_choices() -> None:
+    # Acquire box (blue chevron): "[troop][troop] -OR- [Tleilaxu]" [Immortality
+    # p. 9] [Reclaimed Forces card]; personal_card_text() would otherwise
+    # print "(play data not transcribed)" for this Row-only card.
+    catalog = build_catalog()
+    cards = catalog["cards"]
+    assert isinstance(cards, dict)
+    entry = cards["reclaimed_forces"]
+    assert isinstance(entry, dict)
+
+    text = entry["text"]
+    assert isinstance(text, list)
+    lines = [line for line in text if isinstance(line, str)]
+    assert len(lines) == len(text)
+    assert not any("(play data not transcribed)" in line for line in lines)
+    assert any("Recruit 2 troops" in line for line in lines)
+    assert any("Tleilaxu" in line for line in lines)
+
+
+def test_catalog_navigation_cards_have_no_timing_label() -> None:
+    # Navigation cards print no Plot/Combat/Endgame banner [Navigation card
+    # faces]; they are played by Plot Course, not chosen by timing.
+    catalog = build_catalog()
+    intrigue = catalog["intrigue"]
+    assert isinstance(intrigue, dict)
+
+    for number in range(1, 11):
+        entry = intrigue[f"navigation_card_{number}"]
+        assert isinstance(entry, dict)
+        assert entry["timings"] == []
+        text = entry["text"]
+        assert isinstance(text, list)
+        lines = [line for line in text if isinstance(line, str)]
+        assert len(lines) == len(text)
+        assert not any(line.startswith("Plot —") for line in lines)
+
+
 def test_catalog_names_and_details_match_the_manifests() -> None:
     catalog = build_catalog()
     cards = catalog["cards"]
