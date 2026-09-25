@@ -1,4 +1,4 @@
-"""E2E for the Korean effect-text feature, Steps K1-K3 (2026-09-25).
+"""E2E for the Korean effect-text feature, Steps K1-K4 (2026-09-25).
 
 Feature decided 2026-09-25: the effect text the engine *generates* (as
 opposed to a card's printed wording, which stays English in both languages)
@@ -74,9 +74,24 @@ were: still ``.card-text``, no ``.effect-text-ko`` anywhere, matching
 ``iconize(entry.condition)``/``iconize(entry.reward)`` computed
 independently of the popover under test.
 
-Screenshots of the Contract/Conflict/personal-card/Intrigue popovers, the
-resolution row and the Intrigue play row, Korean, 1440x900, go beside this
-script's results for a human to look at.
+Step K4 grows the same wiring to board spaces (``spaces[id].options[].
+effect_ko``/``notes_ko``, ``display.spaces``'s ``_ko`` renderers), keyed
+board-effect resolution rows (``display.spaces.board_effect_action_text_ko``,
+wired into ``display.actions.effect_action_text_ko``) and the Bloodlines
+Tech tiles / Skills (``tech[id].text_ko``/``skills[id].text_ko``,
+``display.bloodlines``'s ``_ko`` renderers). A space's own ``options``/
+``choam_options``/``immortality.options`` are ``{cost, effect, effect_ko}``
+objects rather than a flat ``text``/``text_ko`` array, so they get their own
+``check_space_korean``/``check_all_spaces_icon_parity``; a Tech tile's
+``text``/``text_ko`` is the same generic shape personal cards and Intrigue
+already use, so it reuses ``check_korean``/``check_english`` directly, and
+its own full-catalog sweep reuses ``check_icon_parity`` the same way
+``check_all_cards_icon_parity`` does.
+
+Screenshots of the Contract/Conflict/personal-card/Intrigue/board-space/Tech
+popovers, the Agent-box and board-effect resolution rows and the Intrigue
+play row, Korean, 1440x900, go beside this script's results for a human to
+look at.
 """
 
 from __future__ import annotations
@@ -86,7 +101,7 @@ import re
 import tempfile
 from pathlib import Path
 
-from common import Check, chrome, open_context, server
+from common import Check, chrome, open_context, server, set_rule_options
 from open_mode import create_game, settled
 
 check = Check()
@@ -119,6 +134,15 @@ PERSONAL_CARD_ID = "guild_spy"
 # CHOAM]`), so a change to either is caught there first; this script only
 # checks how the DOM renders it.
 INTRIGUE_ID = "backed_by_choam"
+# Step K4: a board space with several of the trickier translation calls in
+# one line (the combined {trash_intrigue} icon, a bare {agent} recall, a
+# counted {intrigue:1} — imperial_privilege's own docstring in
+# display/spaces.py). A Tech tile whose ability line exercises a forced
+# choice, a counted sword and Influence-lose icon, a bare spice icon and a
+# trash, plus its own acquire line's bare {shield_wall}/{troop:1}
+# (Forbidden Weapons).
+SPACE_ID = "imperial_privilege"
+TECH_ID = "forbidden_weapons"
 
 OPEN_POPOVER_JS = """(id) => {
   const entry = lookup(id);
@@ -136,6 +160,11 @@ OPEN_POPOVER_JS = """(id) => {
     rewards_ko: entry.rewards_ko || null,
     text: entry.text || null,
     text_ko: entry.text_ko || null,
+    options: entry.options
+      ? entry.options.map((o) => ({ effect: o.effect, effect_ko: o.effect_ko || null }))
+      : null,
+    notes: entry.notes || null,
+    notes_ko: entry.notes_ko || null,
     lines: lines.map((line) => ({
       className: line.className,
       text: line.textContent,
@@ -376,6 +405,157 @@ def check_all_intrigue_icon_parity(page) -> None:
     )
 
 
+ALL_SPACES_ICON_PARITY_JS = r"""
+() => {
+  const rows = [];
+  for (const [id, e] of Object.entries(state.catalog.spaces)) {
+    for (const opt of (e.options || [])) {
+      rows.push([id, "options", opt.effect, opt.effect_ko || null]);
+    }
+    for (const opt of (e.choam_options || [])) {
+      rows.push([id, "choam_options", opt.effect, opt.effect_ko || null]);
+    }
+    if (e.immortality) {
+      for (const opt of e.immortality.options) {
+        rows.push([id, "immortality.options", opt.effect, opt.effect_ko || null]);
+      }
+    }
+    const notesKo = e.notes_ko || [];
+    (e.notes || []).forEach((n, i) => rows.push([id, "notes", n, notesKo[i] || null]));
+  }
+  return rows;
+}
+"""
+
+ALL_TECH_ICON_PARITY_JS = (
+    "() => Object.entries(state.catalog.tech)"
+    ".map(([id, e]) => [id, e.text || [], e.text_ko || []])"
+)
+
+ALL_SKILLS_ICON_PARITY_JS = (
+    "() => Object.entries(state.catalog.skills)"
+    ".map(([id, e]) => [id, e.text || [], e.text_ko || []])"
+)
+
+
+def check_all_spaces_icon_parity(page) -> None:
+    """Icon parity (``check_icon_parity``) for every board space's own
+    ``options``/``choam_options``/``immortality.options`` (each ``{cost,
+    effect, effect_ko}``) and ``notes``/``notes_ko`` (Step K4) — the space
+    twin of ``check_all_cards_icon_parity``/``check_all_intrigue_icon_
+    parity`` above, over the whole catalog rather than only ``SPACE_ID``.
+    """
+
+    rows = page.evaluate(ALL_SPACES_ICON_PARITY_JS)
+    checked = 0
+    for space_id, field, en_text, ko_text in rows:
+        checked += 1
+        check_icon_parity(page, "Space", f"{space_id}.{field}", en_text, ko_text)
+    check.ok(checked > 0, "checked at least one space effect/note line", checked)
+
+
+def check_all_tech_icon_parity(page) -> None:
+    """Icon parity for every Tech tile's ``text``/``text_ko`` (Step K4)."""
+
+    rows = page.evaluate(ALL_TECH_ICON_PARITY_JS)
+    checked = 0
+    for tech_id, en_lines, ko_lines in rows:
+        ko_padded = list(ko_lines) + [None] * (len(en_lines) - len(ko_lines))
+        pairs = zip(en_lines, ko_padded, strict=True)
+        for index, (en_line, ko_line) in enumerate(pairs):
+            checked += 1
+            field = f"{tech_id}.text[{index}]"
+            check_icon_parity(page, "Tech", field, en_line, ko_line)
+    check.ok(checked > 0, "checked at least one Tech text[]/text_ko[] line", checked)
+
+
+def check_all_skills_icon_parity(page) -> None:
+    """Icon parity for every Skill tile's ``text``/``text_ko`` (Step K4)."""
+
+    rows = page.evaluate(ALL_SKILLS_ICON_PARITY_JS)
+    checked = 0
+    for skill_id, en_lines, ko_lines in rows:
+        ko_padded = list(ko_lines) + [None] * (len(en_lines) - len(ko_lines))
+        pairs = zip(en_lines, ko_padded, strict=True)
+        for index, (en_line, ko_line) in enumerate(pairs):
+            checked += 1
+            field = f"{skill_id}.text[{index}]"
+            check_icon_parity(page, "Skill", field, en_line, ko_line)
+    check.ok(checked > 0, "checked at least one Skill text[]/text_ko[] line", checked)
+
+
+def check_space_korean(page, space_id: str, space_names: list[str]) -> None:
+    """The Korean twin of ``check_korean`` for a board space's own popover.
+
+    A space entry has no ``condition``/``reward``/``rewards``/``text`` field
+    — its generated effect text lives in ``options``/``choam_options``/
+    ``immortality.options`` (``{cost, effect, effect_ko}``) and ``notes``/
+    ``notes_ko`` instead (``server/catalog.py`` ``_space``), so this checks
+    those shapes rather than reusing ``check_korean`` directly.
+    """
+
+    result = page.evaluate(OPEN_POPOVER_JS, space_id)
+    check.ok(result is not None, f"Korean Space: {space_id} resolves via lookup()")
+    if result is None:
+        return
+    options = result["options"] or []
+    for index, option in enumerate(options):
+        check_icon_parity(
+            page, "Space", f"{space_id}.options[{index}]",
+            option["effect"], option["effect_ko"],
+        )
+    notes = result["notes"] or []
+    notes_ko = result["notes_ko"] or [None] * len(notes)
+    for index, (en_line, ko_line) in enumerate(zip(notes, notes_ko, strict=True)):
+        check_icon_parity(page, "Space", f"{space_id}.notes[{index}]", en_line, ko_line)
+    # A space's own Faction-Influence "requirement" line (requirementNode(),
+    # core.js) is built entirely from t()/phraseText() UI-chrome strings,
+    # not from an engine-*generated* effect field this step covers
+    # (server/catalog.py's docstring flags it as out of scope) — it has
+    # neither .card-text nor .effect-text-ko, so it is excluded from the
+    # per-line class checks below.
+    lines = [line for line in result["lines"] if "requirement" not in line["className"]]
+    check.ok(bool(lines), "Korean Space: the popover has lines", result)
+    for line in lines:
+        check.ok(
+            line["koSpans"] > 0 and line["cardTextSpans"] == 0,
+            f"Korean Space: '{line['text']}' renders through .effect-text-ko, "
+            "not .card-text",
+            line,
+        )
+        check.ok(
+            "{" not in line["text"] and "}" not in line["text"],
+            f"Korean Space: '{line['text']}' has no leftover {{placeholder}}",
+            line,
+        )
+        _check_no_stray_latin("Korean Space", line["text"], space_names)
+    check.ok(
+        any(line["icons"] > 0 for line in lines),
+        "Korean Space: at least one line draws a real icon element",
+        lines,
+    )
+    fields = [option["effect_ko"] for option in options] + list(notes_ko)
+    raw = "|".join(filter(None, fields))
+    check.ok(
+        "{" in raw, "Korean Space: the catalog field itself uses placeholders", raw
+    )
+
+
+def check_space_english(page, space_id: str) -> None:
+    result = page.evaluate(OPEN_POPOVER_JS, space_id)
+    check.ok(result is not None, f"English Space: {space_id} resolves via lookup()")
+    if result is None:
+        return
+    lines = [line for line in result["lines"] if "requirement" not in line["className"]]
+    for line in lines:
+        check.ok(
+            line["cardTextSpans"] > 0 and line["koSpans"] == 0,
+            f"English Space: '{line['text']}' still renders through .card-text, "
+            "not .effect-text-ko",
+            line,
+        )
+
+
 def check_english(page, kind: str, entry_id: str) -> None:
     result = page.evaluate(OPEN_POPOVER_JS, entry_id)
     check.ok(result is not None, f"English {kind}: {entry_id} resolves via lookup()")
@@ -461,6 +641,197 @@ def check_resolution_row_english(page) -> None:
         "iconize() reading",
         (shown, expected),
     )
+
+
+# Arrakeen's Intrigue icon (Step K4): tests/server/test_sessions.py
+# test_legal_actions_describe_the_board_icon_they_resolve pins this exact
+# (detail, detail_ko) pair against the live server pipeline
+# (display.spaces.board_effect_action_text_ko); this script only checks how
+# the DOM renders it, the same shortcut RESOLUTION_ACTION uses above.
+BOARD_RESOLUTION_ACTION = {
+    "action_id": "resolve_board_effect",
+    "arguments": {"effect": "intrigue"},
+    "detail": "Draw 1 Intrigue card",
+    "detail_ko": "{intrigue:1}",
+}
+
+
+def check_board_resolution_row_korean(page) -> None:
+    """The board-effect icon's legal-action row reads its ``detail_ko``
+    in Korean, the "보드 효과 해결" row a real Agent-turn decision shows."""
+
+    check_icon_parity(
+        page,
+        "board resolution row",
+        "detail",
+        BOARD_RESOLUTION_ACTION["detail"],
+        BOARD_RESOLUTION_ACTION["detail_ko"],
+    )
+    shown = page.evaluate(ROW_JS, BOARD_RESOLUTION_ACTION)
+    check.ok(
+        shown["koSpans"] > 0 and shown["cardTextSpans"] == 0,
+        "Korean board resolution row: renders through .effect-text-ko, not "
+        ".card-text",
+        shown,
+    )
+    check.ok(
+        "{" not in shown["text"] and "}" not in shown["text"],
+        "Korean board resolution row: no leftover {placeholder}",
+        shown,
+    )
+    _check_no_stray_latin("Korean board resolution row", shown["text"], [])
+    check.ok(
+        shown["icons"] >= 1,
+        "Korean board resolution row: draws the Intrigue icon",
+        shown,
+    )
+
+
+def check_board_resolution_row_english(page) -> None:
+    shown = page.evaluate(ROW_JS, BOARD_RESOLUTION_ACTION)
+    expected = page.evaluate(ICONIZE_TEXT_JS, BOARD_RESOLUTION_ACTION["detail"])
+    check.ok(
+        shown["cardTextSpans"] > 0
+        and shown["koSpans"] == 0
+        and expected in shown["text"],
+        "English board resolution row: still .card-text, matching an "
+        "independent iconize() reading",
+        (shown, expected),
+    )
+
+
+# A REAL resolve_board_effect decision (2026-09-25 review): the synthetic
+# BOARD_RESOLUTION_ACTION check above only proves describeAction() renders a
+# hand-built detail/detail_ko pair correctly -- it would keep passing even
+# if the server had never actually wired detail_ko onto a live legal
+# action, since it never asks the server for one (this is exactly what let
+# this exact gap through review once already). Seed 0 with the Leader
+# draft off hands seat 0's own deterministic first-legal-action policy a
+# single "Deploy -- Reconnaissance, Arrakeen" step, which immediately
+# offers a real two-icon "다음에 해결할 에이전트 차례 효과 선택" decision:
+# two resolve_board_effect actions, "보드 효과 해결 — 1[troop]" and
+# "— 1[draw]" (Arrakeen: Recruit 1 troop, Draw 1 card,
+# `docs/rules/board-spaces.md`), reached in exactly one step. This drives
+# that decision end to end and reads the actions' own serialized
+# detail/detail_ko (server/sessions.py), not a hand-built object.
+REAL_BOARD_ROW_SEED = 0
+
+
+def create_game_no_leader_draft(
+    page, base: str, humans: tuple[int, ...], seed: int, *, lang: str
+) -> str:
+    """``open_mode.create_game``'s own steps, plus unchecking the
+    Leader-draft box (its own checkbox, not one of RULE_OPTIONS -- default
+    checked; ``trash_zone.py``'s identically named helper does the same)
+    and setting the language before the setup form ever renders (a fresh
+    ``page.goto`` is the only point ``setLanguage`` -- defined once the
+    page's own scripts load -- can first be called)."""
+
+    page.goto(base + "/")
+    page.wait_for_selector("#setup-screen:not([hidden])")
+    page.evaluate(f"setLanguage('{lang}')")
+    for seat in range(4):
+        page.select_option(
+            f"#seat-selects select[data-seat='{seat}']",
+            "human" if seat in humans else "heuristic",
+        )
+    set_rule_options(page)
+    page.set_checked("#opt-leader-draft", False)
+    page.fill("#opt-seed", str(seed))
+    page.click("#create-game")
+    page.wait_for_selector("#game-screen:not([hidden])")
+    page.wait_for_function("state.view !== null && refreshFlight === null")
+    return page.evaluate("state.gameId")
+
+
+REAL_BOARD_ROWS_JS = """() => {
+  const rows = state.actions.actions.filter(
+    (a) => a.action_id === "resolve_board_effect",
+  );
+  return rows.map((action) => {
+    const box = document.createElement("span");
+    box.appendChild(describeAction(action));
+    return {
+      text: box.textContent,
+      icons: box.querySelectorAll("img, svg, .icon-text").length,
+      koSpans: box.querySelectorAll(".effect-text-ko").length,
+      cardTextSpans: box.querySelectorAll(".card-text").length,
+      detail: action.detail,
+      detailKo: action.detail_ko,
+    };
+  });
+}"""
+
+
+def _reach_real_board_resolution_rows(page, base: str, *, lang: str) -> list[dict]:
+    create_game_no_leader_draft(
+        page, base, humans=(0,), seed=REAL_BOARD_ROW_SEED, lang=lang
+    )
+    settled(page)
+    # A human seat's own agent_turn actions render through the staged
+    # card-then-space picker (staged_turn.py), not a flat #actions list --
+    # applyAction(index) is the same function that picker ends up calling
+    # once a pick names exactly one action (session.js), so this submits
+    # the real first legal action (index 0) the same way the live UI would,
+    # without needing to drive the staged clicks themselves.
+    page.evaluate("applyAction(0)")
+    assert settled(page, 20)
+    return page.evaluate(REAL_BOARD_ROWS_JS)
+
+
+def check_real_board_resolution_rows_korean(page, base: str) -> None:
+    rows = _reach_real_board_resolution_rows(page, base, lang="ko")
+    check.ok(
+        len(rows) >= 2,
+        "Korean real board resolution rows: a live resolve_board_effect "
+        "decision offers at least two icons",
+        rows,
+    )
+    for row in rows:
+        check_icon_parity(
+            page,
+            "real board resolution row",
+            "detail",
+            row["detail"],
+            row["detailKo"],
+        )
+        check.ok(
+            row["koSpans"] > 0 and row["cardTextSpans"] == 0,
+            "Korean real board resolution row: renders through "
+            ".effect-text-ko, not .card-text",
+            row,
+        )
+        check.ok(
+            "{" not in row["text"] and "}" not in row["text"],
+            "Korean real board resolution row: no leftover {placeholder}",
+            row,
+        )
+        _check_no_stray_latin("Korean real board resolution row", row["text"], [])
+        check.ok(
+            row["icons"] >= 1,
+            "Korean real board resolution row: draws an icon",
+            row,
+        )
+
+
+def check_real_board_resolution_rows_english(page, base: str) -> None:
+    rows = _reach_real_board_resolution_rows(page, base, lang="en")
+    check.ok(
+        len(rows) >= 2,
+        "English real board resolution rows: a live resolve_board_effect "
+        "decision offers at least two icons",
+        rows,
+    )
+    for row in rows:
+        expected = page.evaluate(ICONIZE_TEXT_JS, row["detail"])
+        check.ok(
+            row["cardTextSpans"] > 0
+            and row["koSpans"] == 0
+            and expected in row["text"],
+            "English real board resolution row: still .card-text, matching "
+            "an independent iconize() reading",
+            (row, expected),
+        )
 
 
 # A synthetic play_intrigue action for each of INTRIGUE_ID's two options
@@ -573,6 +944,16 @@ def main() -> None:
         _wait_for_popover_images(page)
         page.screenshot(path=str(shots / "effect_text_intrigue_ko.png"))
 
+        print(f"[2b3] Korean: {SPACE_ID} (board space) popover (Step K4)")
+        check_space_korean(page, SPACE_ID, space_names)
+        _wait_for_popover_images(page)
+        page.screenshot(path=str(shots / "effect_text_space_ko.png"))
+
+        print(f"[2b4] Korean: {TECH_ID} (Tech tile) popover (Step K4)")
+        check_korean(page, "Tech", TECH_ID, space_names)
+        _wait_for_popover_images(page)
+        page.screenshot(path=str(shots / "effect_text_tech_ko.png"))
+
         print("[2c] Korean: the Agent-box icon's resolution row (Step K2)")
         check_resolution_row_korean(page)
         row_shot = page.evaluate(
@@ -592,11 +973,39 @@ def main() -> None:
             _wait_for_popover_images(page)
             page.screenshot(path=str(shots / "effect_text_resolution_row_ko.png"))
 
+        print("[2c2] Korean: the board-effect icon's resolution row (Step K4)")
+        check_board_resolution_row_korean(page)
+        row_shot = page.evaluate(
+            """(action) => {
+              const box = document.getElementById("card-popover");
+              box.classList.add("hover");
+              box.textContent = "";
+              const line = document.createElement("div");
+              line.className = "popover-line";
+              line.appendChild(describeAction(action));
+              box.appendChild(line);
+              return true;
+            }""",
+            BOARD_RESOLUTION_ACTION,
+        )
+        if row_shot:
+            _wait_for_popover_images(page)
+            page.screenshot(path=str(shots / "effect_text_board_resolution_row_ko.png"))
+
         print("[2d] Korean: icon parity across every catalog card (2026-09-25 review)")
         check_all_cards_icon_parity(page)
 
         print("[2e] Korean: icon parity across every Intrigue card (Step K3)")
         check_all_intrigue_icon_parity(page)
+
+        print("[2e2] Korean: icon parity across every board space (Step K4)")
+        check_all_spaces_icon_parity(page)
+
+        print("[2e3] Korean: icon parity across every Tech tile (Step K4)")
+        check_all_tech_icon_parity(page)
+
+        print("[2e4] Korean: icon parity across every Skill tile (Step K4)")
+        check_all_skills_icon_parity(page)
 
         print(f"[2f] Korean: {INTRIGUE_ID}'s two play_intrigue option rows (Step K3)")
         check_play_intrigue_rows_korean(page)
@@ -626,7 +1035,10 @@ def main() -> None:
         check_english(page, "Conflict", CONFLICT_ID)
         check_english(page, "Card", PERSONAL_CARD_ID)
         check_english(page, "Intrigue", INTRIGUE_ID)
+        check_space_english(page, SPACE_ID)
+        check_english(page, "Tech", TECH_ID)
         check_resolution_row_english(page)
+        check_board_resolution_row_english(page)
         check_play_intrigue_rows_english(page)
         # ... and match iconize(condition/reward) computed independently.
         contract = page.evaluate("(id) => lookup(id)", CONTRACT_ID)
@@ -645,6 +1057,22 @@ def main() -> None:
 
         check.ok(not rec.js_errors, "no JS errors", rec.js_errors[:5])
         context.close()
+
+        print(
+            "[4] Korean/English: a REAL resolve_board_effect decision "
+            "(seed 0, Leader draft off, Arrakeen) -- not the synthetic "
+            "action the checks above use (2026-09-25 review)"
+        )
+        context2, page2, rec2 = open_context(
+            browser, "effect-text-real-board", VIEWPORT
+        )
+        check_real_board_resolution_rows_korean(page2, base)
+        page2.screenshot(path=str(shots / "effect_text_real_board_rows_ko.png"))
+        check_real_board_resolution_rows_english(page2, base)
+        check.ok(
+            not rec2.js_errors, "no JS errors (real board rows)", rec2.js_errors[:5]
+        )
+        context2.close()
     check.finish()
 
 

@@ -116,16 +116,14 @@ def test_legal_actions_describe_the_board_icon_they_resolve() -> None:
         for entry in actions
         if entry["action_id"] == "resolve_board_effect"
     ] == [("resolve_board_effect", "intrigue", "Draw 1 Intrigue card")]
-    # detail_ko: display.actions.effect_action_text_ko has no Korean table
-    # to draw on yet (its own docstring says why), so it is always None; a
-    # later step's generator makes this a real Korean string instead, and
-    # the client falls back to `detail` in the meantime (static/core.js
-    # describeAction, effectNode).
+    # detail_ko: display.spaces.board_effect_action_text_ko (Step K4) renders
+    # the same automatic-effect table English draws from, as its Korean twin
+    # (display.spaces.automatic_effect_texts_ko).
     assert [
         entry["detail_ko"]
         for entry in actions
         if entry["action_id"] == "resolve_board_effect"
-    ] == [None]
+    ] == ["{intrigue:1}"]
 
 
 def _play_until(
@@ -565,8 +563,8 @@ def test_serialized_actions_warn_about_a_short_troop_supply() -> None:
 def test_serialized_actions_carry_the_agent_box_icon_detail_ko() -> None:
     """Step K2 (2026-09-25): a personal card's own keyed Agent-box icon
     (OQ-027) now carries a real Korean ``detail_ko``, not just English
-    ``detail`` (``display.actions.agent_card_icon_text_ko``) — unlike
-    ``resolve_board_effect``'s, which is still ``None``
+    ``detail`` (``display.actions.agent_card_icon_text_ko``) — the same as
+    ``resolve_board_effect``'s own ``detail_ko`` since Step K4
     (test_legal_actions_describe_the_board_icon_they_resolve, above)."""
 
     from types import SimpleNamespace

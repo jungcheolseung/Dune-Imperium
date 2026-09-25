@@ -22,8 +22,12 @@ twin the same way, suffixed ``_ko``: so far ``contracts[].condition_ko``/
 renderers), ``cards[].text_ko`` (``display.cards``'s
 ``personal_card_text_ko``, Step K2) and ``intrigue[].text_ko``
 (``display.effect_dsl_text_ko``'s ``intrigue_card_text_ko``, Step K3, one
-line per printed option, aligned index-for-index with ``text``); more
-fields grow this list as later work translates their generators.
+line per printed option, aligned index-for-index with ``text``);
+``spaces[].options[].effect_ko``/``.choam_options[].effect_ko``/
+``.immortality.options[].effect_ko``, ``spaces[].notes_ko``,
+``skills[].text_ko`` and ``tech[].text_ko`` (``display.spaces`` and
+``display.bloodlines``'s ``_ko`` renderers, Step K4); more fields grow this
+list as later work translates their generators.
 ``icon_files``, ``token_files`` and ``board_image`` work the same way for
 the rulebook icon set (``/icons/...``), the pictured
 Combat markers (``/tokens/...``, ``display.token_images``) and the local board
@@ -73,14 +77,19 @@ from dune_imperium.display import (
     personal_card_text_ko,
     space_is_implemented,
     space_notes,
+    space_notes_ko,
     space_option_count,
     space_option_effects,
+    space_option_effects_ko,
 )
 from dune_imperium.display.bene_tleilax_layout import bene_tleilax_layout
 from dune_imperium.display.bloodlines import (
     skill_effect_text,
+    skill_effect_text_ko,
     tech_ability_text,
+    tech_ability_text_ko,
     tech_acquire_text,
+    tech_acquire_text_ko,
 )
 from dune_imperium.display.board_layout import (
     COMMANDER_ANCHOR,
@@ -254,6 +263,7 @@ def build_catalog(
             "name": skill.name,
             "kind": skill.kind.value,
             "text": [skill_effect_text(skill)],
+            "text_ko": [skill_effect_text_ko(skill)],
             "image": _image_url("skill", skill.skill_id, image_files),
         }
         for skill in SKILLS
@@ -271,6 +281,17 @@ def build_catalog(
                     else ()
                 ),
                 tech_ability_text(tile),
+            ],
+            # Korean twin of "text" (Step K4): "{acquire}: " matches the
+            # bare box-label placeholder convention every other timing/box
+            # label in this feature uses ({reveal_turn}:, {endgame}:, ...).
+            "text_ko": [
+                *(
+                    (f"{{acquire}}: {tech_acquire_text_ko(tile)}",)
+                    if tech_acquire_text_ko(tile)
+                    else ()
+                ),
+                tech_ability_text_ko(tile),
             ],
             "flips": tile.flips,
             "choam_only": tile.choam_only,
@@ -524,21 +545,27 @@ def _leader_face(
 def _space(space_id: str, image_files: dict[tuple[str, str], str]) -> JsonObject:
     space = BOARD_SPACES_BY_ID[space_id]
     base_effects = space_option_effects(space_id, choam_module=False)
+    base_effects_ko = space_option_effects_ko(space_id, choam_module=False)
     choam_effects = space_option_effects(space_id, choam_module=True)
+    choam_effects_ko = space_option_effects_ko(space_id, choam_module=True)
     costs: list[JsonObject] = [
         {"solari": cost.solari, "spice": cost.spice, "water": cost.water}
         for cost in space.cost_options
     ] or [{"solari": 0, "spice": 0, "water": 0}]
     assert len(costs) == space_option_count(space_id)
     options: list[JsonValue] = [
-        {"cost": cost, "effect": effect}
-        for cost, effect in zip(costs, base_effects, strict=True)
+        {"cost": cost, "effect": effect, "effect_ko": effect_ko}
+        for cost, effect, effect_ko in zip(
+            costs, base_effects, base_effects_ko, strict=True
+        )
     ]
     choam_options: list[JsonValue] | None = None
     if choam_effects != base_effects:
         choam_options = [
-            {"cost": cost, "effect": effect}
-            for cost, effect in zip(costs, choam_effects, strict=True)
+            {"cost": cost, "effect": effect, "effect_ko": effect_ko}
+            for cost, effect, effect_ko in zip(
+                costs, choam_effects, choam_effects_ko, strict=True
+            )
         ]
     return {
         "name": space.name,
@@ -561,6 +588,7 @@ def _space(space_id: str, image_files: dict[tuple[str, str], str]) -> JsonObject
         "choam_options": choam_options,
         "immortality": _immortality_overlay(space_id, costs, base_effects, image_files),
         "notes": list(space_notes(space_id)),
+        "notes_ko": list(space_notes_ko(space_id)),
         "box": list(SPACE_BOXES[space_id]),
         "implemented": space_is_implemented(space_id, choam_module=False),
         "choam_implemented": space_is_implemented(space_id, choam_module=True),
@@ -595,10 +623,11 @@ def _immortality_overlay(
     if effects == base_effects:
         return None
     assert space_id == "research_station", space_id
+    effects_ko = space_option_effects_ko(space_id, choam_module=False, immortality=True)
     return {
         "options": [
-            {"cost": cost, "effect": effect}
-            for cost, effect in zip(costs, effects, strict=True)
+            {"cost": cost, "effect": effect, "effect_ko": effect_ko}
+            for cost, effect, effect_ko in zip(costs, effects, effects_ko, strict=True)
         ],
         "image": _image_url("location", RESEARCH_STATION_OVERLAY_IMAGE_ID, image_files),
         "tile_box": list(RESEARCH_STATION_OVERLAY_BOX),

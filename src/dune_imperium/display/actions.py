@@ -13,7 +13,10 @@ from dune_imperium.content.uprising.types import (
 )
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.state import GameState
-from dune_imperium.display.spaces import board_effect_action_text
+from dune_imperium.display.spaces import (
+    board_effect_action_text,
+    board_effect_action_text_ko,
+)
 from dune_imperium.rules.effects import current_agent_effect_context
 from dune_imperium.rules.reveal_turn import reveal_choice_prompt
 
@@ -200,20 +203,21 @@ def effect_action_text(state: GameState, action: DomainAction) -> str | None:
 def effect_action_text_ko(state: GameState, action: DomainAction) -> str | None:
     """Korean twin of ``effect_action_text``.
 
-    ``resolve_agent_card_effect`` (Step K2) now resolves through
-    ``agent_card_icon_text_ko``. ``resolve_board_effect`` still draws on
-    ``spaces.py``'s English-only ``_ICON_TEXTS``/``board_effect_action_text``
-    (a later step's board-space Korean twin), so it stays ``None`` for now;
-    the client's ``detail_ko`` then falls back to the English ``detail``
-    exactly as before (``static/render.js`` ``effectNode``).
+    ``resolve_agent_card_effect`` (Step K2) resolves through
+    ``agent_card_icon_text_ko``; ``resolve_board_effect`` (Step K4) now
+    resolves through ``spaces.py``'s ``board_effect_action_text_ko``.
     ``resume_reveal_choice``'s detail is an engine prompt, already
     translated client-side by ``promptText()`` (``i18n.js``) rather than
-    through this field, so it stays ``None`` here regardless.
+    through this field, so it stays ``None`` here regardless; the client's
+    ``detail_ko`` falls back to the English ``detail`` whenever this
+    returns ``None`` (``static/render.js`` ``effectNode``).
     """
 
     key = dict(action.arguments).get("effect")
     if not isinstance(key, str):
         return None
+    if action.action_id == "resolve_board_effect":
+        return board_effect_action_text_ko(state, action)
     if action.action_id != "resolve_agent_card_effect":
         return None
     try:

@@ -27,11 +27,15 @@ from dune_imperium.display.images import (
 from dune_imperium.display.leaders import LEADER_FACE_TEXTS, LeaderFaceText
 from dune_imperium.display.spaces import (
     board_effect_action_text,
+    board_effect_action_text_ko,
     board_icon_text,
+    board_icon_text_ko,
     space_is_implemented,
     space_notes,
+    space_notes_ko,
     space_option_count,
     space_option_effects,
+    space_option_effects_ko,
 )
 from dune_imperium.display.structs import (
     conflict_rewards_texts,
@@ -57,7 +61,9 @@ __all__ = [
     "available_icons",
     "available_strength_tokens",
     "board_effect_action_text",
+    "board_effect_action_text_ko",
     "board_icon_text",
+    "board_icon_text_ko",
     "conflict_rewards_texts",
     "conflict_rewards_texts_ko",
     "contract_condition_text",
@@ -76,7 +82,9 @@ __all__ = [
     "resolve_card_images",
     "space_is_implemented",
     "space_notes",
+    "space_notes_ko",
     "space_option_count",
     "space_option_effects",
+    "space_option_effects_ko",
     "strength_token_filenames",
 ]

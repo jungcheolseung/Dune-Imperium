@@ -326,6 +326,7 @@ def test_catalog_spaces_carry_structured_board_data() -> None:
                 "Gain 1 Emperor Influence, Draw 1 Intrigue card, "
                 "Recruit 4 troops"
             ),
+            "effect_ko": "{influence_emperor:1}, {intrigue:1}, {troop:4}",
         }
     ]
     assert sardaukar["choam_options"] is None
@@ -625,6 +626,7 @@ def test_catalog_lays_the_pieces_the_scan_does_not_print() -> None:
         {
             "cost": {"solari": 0, "spice": 0, "water": 2},
             "effect": "Recruit 2 troops, Draw 2 cards",
+            "effect_ko": "{troop:2}, {draw:2}",
         }
     ]
     overlay = station["immortality"]
@@ -633,6 +635,7 @@ def test_catalog_lays_the_pieces_the_scan_does_not_print() -> None:
         {
             "cost": {"solari": 0, "spice": 0, "water": 2},
             "effect": "Draw 2 cards, Research (advance your research token)",
+            "effect_ko": "{draw:2}, {research} (연구 토큰 전진)",
         }
     ]
     assert overlay["image"] is None
