@@ -789,7 +789,9 @@ INTRIGUE_CARDS: Final = (
     ),
     # Battlefield Research (Tech Module, card face): "Retreat one or two of
     # your troops -> Acquire Tech (1 spice off) — OR — If you have three or
-    # more Tech tiles: 1 VP", Combat / Endgame.
+    # more Tech tiles: 1 VP", Combat / Endgame. Each band has one timing, in
+    # its colour and the footer's: the red retreat band is Combat, the
+    # dark-green VP band Endgame [card face; Main p. 7].
     _entry(
         110,
         "battlefield-research",
@@ -801,12 +803,6 @@ INTRIGUE_CARDS: Final = (
                 EffectSection(
                     costs=(RetreatTroops(1, 2),),
                     rewards=(AcquireTech(1),),
-                )
-            ),
-            _combat(
-                EffectSection(
-                    condition=TechTilesAtLeast(3),
-                    rewards=(GainVictoryPoints(1),),
                 )
             ),
             _endgame(
@@ -861,6 +857,9 @@ INTRIGUE_CARDS: Final = (
         bloodlines_only=True,
         options=(_plot(EffectSection(rewards=(RedirectSpiesOnTurnSpace(),))),),
     ),
+    # Grasp Arrakis (Combat / Endgame): the red band's three swords are the
+    # Combat half, the dark-green band's "Flip two of your face-up Conflict
+    # cards -> 1 VP" the Endgame half [card face; Main p. 7].
     _entry(
         115,
         "grasp-arrakis",
@@ -868,12 +867,6 @@ INTRIGUE_CARDS: Final = (
         bloodlines_only=True,
         options=(
             _combat(EffectSection(rewards=(GainCombatStrength(3),))),
-            _combat(
-                EffectSection(
-                    costs=(FlipFaceUpConflictCard(2),),
-                    rewards=(GainVictoryPoints(1),),
-                )
-            ),
             _endgame(
                 EffectSection(
                     costs=(FlipFaceUpConflictCard(2),),
@@ -1024,6 +1017,9 @@ INTRIGUE_CARDS: Final = (
             ),
         ),
     ),
+    # Tenuous Bond (Plot / Combat): the gold band's Influence swap is the
+    # Plot half, the red band's "Trash a card from your discard pile that
+    # costs 1 or more -> 4 swords" the Combat half [card face; Main p. 7].
     _entry(
         124,
         "tenuous-bond",
@@ -1034,18 +1030,6 @@ INTRIGUE_CARDS: Final = (
                 EffectSection(
                     costs=(LoseInfluence(1),),
                     rewards=(GainInfluence(),),
-                )
-            ),
-            _combat(
-                EffectSection(
-                    costs=(LoseInfluence(1),),
-                    rewards=(GainInfluence(),),
-                )
-            ),
-            _plot(
-                EffectSection(
-                    costs=(TrashDiscardPileCard(1),),
-                    rewards=(GainCombatStrength(4),),
                 )
             ),
             _combat(

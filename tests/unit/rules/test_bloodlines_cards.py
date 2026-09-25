@@ -625,13 +625,35 @@ def test_tenuous_bond_trashes_a_costly_discard_for_four_swords() -> None:
         for a in engine.legal_actions(state, 0)
         if a.action_id == "play_intrigue"
     ]
-    assert options == [1, 3]
-    opened = engine.apply(state, _play_intrigue(card, 3)).state
+    # The gold Influence band is Plot and the red trash band is Combat
+    # ("PLOT / COMBAT" footer) [Tenuous Bond card; Main p. 7]: in Combat only
+    # the trash for four swords is offered, even with Influence to swap.
+    assert options == [1]
+    opened = engine.apply(state, _play_intrigue(card, 1)).state
     trash_actions = engine.legal_actions(opened, 0)
     assert [dict(a.arguments)["card_id"] for a in trash_actions] == [_card("sandwalk")]
     done = engine.apply(opened, trash_actions[0]).state
     assert done.players[0].trashed == (_card("sandwalk"),)
     assert done.players[0].combat_strength == 2 + 4
+
+
+def test_tenuous_bond_swaps_influence_only_as_a_plot() -> None:
+    # Plot half: the gold band's "[lose 1 Influence] -> [gain 1 Influence]";
+    # the red four-sword band is not a Plot [Tenuous Bond card; Main p. 7].
+    card = _intrigue("tenuous_bond")
+    engine = UprisingRulesEngine()
+    owner = _owner(
+        intrigue_cards=(card,),
+        discard_pile=(_card("sandwalk"),),
+        influence=Influence(fremen=1),
+    )
+    state = _state(owner)
+    options = [
+        dict(a.arguments)["option"]
+        for a in engine.legal_actions(state, 0)
+        if a.action_id == "play_intrigue"
+    ]
+    assert options == [0]
 
 
 def test_the_strong_survive_retreats_one_troop_to_trash_a_card() -> None:
@@ -705,8 +727,16 @@ def test_grasp_arrakis_flips_two_conflict_cards_for_a_point() -> None:
         for a in engine.legal_actions(state, 0)
         if a.action_id == "play_intrigue"
     ]
-    assert options == [0, 1]
-    opened = engine.apply(state, _play_intrigue(card, 1)).state
+    # The red band (three swords) is Combat; the dark-green flip band is
+    # Endgame ("COMBAT / ENDGAME" footer) [Grasp Arrakis card; Main p. 7].
+    assert options == [0]
+    endgame = _endgame_window(
+        _owner(
+            intrigue_cards=(card,),
+            won_conflict_ids=("skirmish_ornithopter", "storms_in_the_south"),
+        )
+    )
+    opened = engine.apply(endgame, _play_intrigue(card, 1)).state
     first = engine.legal_actions(opened, 0)
     assert {dict(a.arguments)["card_id"] for a in first} == {
         "skirmish_ornithopter",
@@ -1789,7 +1819,10 @@ def test_ruthless_leadership_round_trips_and_is_dealt_in_random_games() -> None:
     # does not change its agent_turn coverage under Bloodlines (every Bene
     # Gesserit card already gets every Agent icon's placements there, for
     # Urgent Shigawire's boost).
-    assert codec.size == 10159 + 292 + 1 + 1 + 1 + 2 + 1 + 28 + 28 + 67
+    # Grasp Arrakis loses its Combat copy of the Endgame flip and Tenuous
+    # Bond its Combat swap and Plot swords: one timing per printed band
+    # [card faces; Main p. 7] (-3 play_intrigue templates).
+    assert codec.size == 10159 + 292 + 1 + 1 + 1 + 2 + 1 + 28 + 28 + 67 - 3
     action = DomainAction(
         action_id="trash_agent_card",
         actor=2,

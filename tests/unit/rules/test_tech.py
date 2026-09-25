@@ -1281,9 +1281,11 @@ def test_battlefield_research_retreats_for_a_tile_or_scores_with_three() -> None
     )
     combat = begin_combat_intrigue(state).state
     plays = legal_intrigue_play_actions(combat, 0)
-    assert [dict(a.arguments)["option"] for a in plays] == [0, 1]
-    scored = apply_intrigue_play(combat, plays[1]).state
-    assert scored.players[0].victory_points == 1 + 1
+    # The VP band is dark green, the Endgame colour, and only the red retreat
+    # band is Combat ("COMBAT / ENDGAME" footer) [card face; Main p. 7: "You
+    # may play an Endgame Intrigue card only at the end of the game"]. The
+    # VP used to be offered in Combat too.
+    assert [dict(a.arguments)["option"] for a in plays] == [0]
 
     retreat = apply_intrigue_play(combat, plays[0]).state
     counts = sorted(
@@ -1301,6 +1303,40 @@ def test_battlefield_research_retreats_for_a_tile_or_scores_with_three() -> None
     assert bought.players[0].resources.spice == 0
     assert "plasteel_blades" in bought.players[0].tech_ids
     assert bought.decision_stack[-1].kind == "combat_intrigue"
+
+
+def test_battlefield_research_scores_its_point_only_at_the_endgame() -> None:
+    # "If you have three or more Tech tiles: [VP]" sits in the dark-green
+    # Endgame band [Battlefield Research card; Main p. 7].
+    from dune_imperium.rules.endgame import begin_endgame_intrigue
+    from dune_imperium.rules.intrigue import (
+        apply_intrigue_play,
+        legal_intrigue_play_actions,
+    )
+
+    card = "intrigue:battlefield_research:0"
+
+    def window(*tech_ids: str) -> GameState:
+        owner = _tech_owner(*tech_ids, intrigue_cards=(card,), victory_points=1)
+        state = replace(
+            _turn_state(
+                owner,
+                stacks=(("plasteel_blades",), ("delivery_bay",), ("servo_receivers",)),
+            ),
+            phase=GamePhase.ENDGAME,
+            first_player=0,
+            reveal_order=(0, 1, 2, 3),
+            decision_stack=(),
+        )
+        return begin_endgame_intrigue(state).state
+
+    two = window("glowglobes", "training_depot")
+    assert legal_intrigue_play_actions(two, 0) == ()
+    three = window("glowglobes", "training_depot", "panopticon")
+    plays = legal_intrigue_play_actions(three, 0)
+    assert [dict(a.arguments)["option"] for a in plays] == [1]
+    scored = apply_intrigue_play(three, plays[0]).state
+    assert scored.players[0].victory_points == 2
 
 
 def test_kota_odax_needs_the_tech_module_and_picks_a_secret_project() -> None:

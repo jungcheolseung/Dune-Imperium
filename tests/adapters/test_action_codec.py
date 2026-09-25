@@ -93,7 +93,10 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
     # catalogs, see test_catalog_is_fixed_and_versioned_for_a_ruleset):
     # every Bene Gesserit card already gets every Agent icon's placements
     # under Bloodlines, for Urgent Shigawire's boost.
-    assert both.size == 11100 + 28 + 28 + 72
+    # Grasp Arrakis loses its Combat copy of the Endgame flip and Tenuous
+    # Bond its Combat swap and Plot swords: one timing per printed band
+    # [card faces; Main p. 7] (-3 play_intrigue templates).
+    assert both.size == 11100 + 28 + 28 + 72 - 3
 
     choam_only = ActionCodec(RulesetConfig(choam_module=True))
     for action in actions:
