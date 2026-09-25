@@ -397,13 +397,123 @@ def test_forbidden_weapons_recruits_a_deployable_troop_and_may_drop_the_wall() -
 
 
 def test_without_the_wall_the_detonation_variant_disappears() -> None:
+    # Forbidden Weapons prints the Shield Wall detonation icon; Servo-
+    # Receivers (which this test used before) prints the Signet Ring icon
+    # instead [Servo-Receivers Tech tile].
     state = _visit(
         _turn_state(
-            _owner(), stacks=(("servo_receivers",), (), ()), shield_wall_present=False
+            _owner(), stacks=(("forbidden_weapons",), (), ()), shield_wall_present=False
         ),
         "assembly_hall",
     )
+    assert set(_tech_actions(state)) == {"decline_tech", "forbidden_weapons"}
+
+
+# --- Servo-Receivers: the Signet Ring icon ------------------------------------
+#
+# The acquire box prints the brown-gold Signet Ring icon: "you use the
+# Signet Ring ability (with the corresponding icon) on your Leader"
+# [Main p. 20] [Servo-Receivers Tech tile]. It is not the Shield Wall
+# detonation icon Forbidden Weapons prints.
+
+SERVO_STACKS = (("servo_receivers",), (), ())
+
+
+def _servo_visit(leader_id: str, **overrides: object) -> GameState:
+    return _visit(
+        _turn_state(_owner(leader_id=leader_id, **overrides), stacks=SERVO_STACKS),
+        "assembly_hall",
+    )
+
+
+def test_servo_receivers_uses_the_leaders_signet_ring_ability() -> None:
+    state = _servo_visit("gurney_halleck")
+    # No Shield Wall variant, though the wall stands.
+    assert state.shield_wall_present
     assert set(_tech_actions(state)) == {"decline_tech", "servo_receivers"}
+    result = apply_tech_acquisition(state, _tech_actions(state)["servo_receivers"])
+    seat = result.state.players[0]
+    # Warmaster: recruit one troop [Gurney Halleck card].
+    assert seat.troops_garrison == state.players[0].troops_garrison + 1
+    assert result.state.shield_wall_present
+    assert [event.kind for event in result.events][-2:] == [
+        "leader_signet_started",
+        "leader_signet_resolved",
+    ]
+    # Nothing else was pending at Assembly Hall: the turn moved on.
+    assert result.state.decision_stack[-1].kind == "turn"
+    assert result.state.decision_stack[-1].decision.owner == 1
+
+    drawn = apply_tech_acquisition(
+        _servo_visit("muad_dib"), _tech_actions(state)["servo_receivers"]
+    ).state
+    # Lead the Way: draw one card [Muad'Dib card].
+    assert len(drawn.players[0].hand) == len(state.players[0].hand) + 1
+
+
+def test_servo_receivers_opens_a_signet_choice_frame() -> None:
+    engine = UprisingRulesEngine()
+    state = _servo_visit("princess_irulan")
+    opened = engine.apply(state, _tech_actions(state)["servo_receivers"]).state
+    frame = opened.decision_stack[-1]
+    assert frame.kind == "leader_signet"
+    offered = {action.action_id for action in engine.legal_actions(opened, 0)}
+    # Chronicler's Insight: acquire a one-cost card, trash a hand card, or
+    # neither [Princess Irulan card]; the turn waits for the choice.
+    assert offered == {"decline_leader_signet_payment", "trash_leader_card"}
+    trash = next(
+        action
+        for action in engine.legal_actions(opened, 0)
+        if action.action_id == "trash_leader_card"
+    )
+    done = engine.apply(opened, trash).state
+    assert dict(trash.arguments)["card_id"] in done.players[0].trashed
+    assert all(frame.kind != "leader_signet" for frame in done.decision_stack)
+    assert done.decision_stack[-1].decision.owner == 1
+
+
+def test_servo_receivers_signet_reads_the_agent_turns_space() -> None:
+    # Judge of the Change: "If you sent an Agent this turn to... [Landsraad]:
+    # [Emperor] 2 Influence: [water]" [Liet Kynes card].
+    liet = _servo_visit("liet_kynes", influence=Influence(emperor=2))
+    bought = apply_tech_acquisition(liet, _tech_actions(liet)["servo_receivers"])
+    assert bought.state.players[0].resources.water == 2 + 1
+
+
+def test_steersman_y_rkoon_has_no_signet_ring_ability_to_use() -> None:
+    # Plot Course sits where a Signet Ring ability would be but prints none
+    # [Steersman Y'rkoon card] (OQ-062).
+    state = _servo_visit("steersman_y_rkoon")
+    result = apply_tech_acquisition(state, _tech_actions(state)["servo_receivers"])
+    assert "servo_receivers" in result.state.players[0].tech_ids
+    assert result.events[-1].kind == "leader_signet_unavailable"
+    assert result.state.decision_stack[-1].decision.owner == 1
+
+
+def test_servo_receivers_signet_outside_an_agent_turn() -> None:
+    # A card-granted Acquire Tech in the Reveal turn (Rapid Engineering) or
+    # in Combat (Battlefield Research) uses the ability with no Agent sent
+    # this turn (OQ-062): Warmaster's troop joins the Reveal's recruits.
+    owner = _owner(leader_id="gurney_halleck")
+    state = _turn_state(owner, stacks=SERVO_STACKS)
+    revealed = _reveal(state).state
+    opened = push_tech_acquisition(revealed, 0, discount=1, source="test").state
+    bought = apply_tech_acquisition(
+        opened, _tech_actions(opened)["servo_receivers"]
+    ).state
+    assert bought.decision_stack[-1].kind == "reveal"
+    assert bought.players[0].troops_garrison == owner.troops_garrison + 1
+    assert dict(bought.decision_stack[-1].context)["reveal_troops_recruited"] == 1
+
+    liet = _turn_state(
+        _owner(leader_id="liet_kynes", influence=Influence(emperor=2)),
+        stacks=SERVO_STACKS,
+    )
+    opened = push_tech_acquisition(_reveal(liet).state, 0, discount=1, source="t")
+    bought = apply_tech_acquisition(
+        opened.state, _tech_actions(opened.state)["servo_receivers"]
+    ).state
+    assert bought.players[0].resources.water == 2
 
 
 @pytest.mark.parametrize(

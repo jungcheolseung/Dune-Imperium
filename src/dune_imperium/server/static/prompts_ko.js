@@ -68,6 +68,7 @@ const PROMPT_KO = {
   "Trash this card for the Combat icon or decline": "이 카드를 {trash}하고 {combat} 아이콘 획득, 또는 거절",
   "Two or more Tech tiles: choose a Faction to gain one Influence with": "{tech_tile} 2개 이상: {influence_any}을 얻을 {faction} 선택",
   "Use one of the card's lines, or finish the card": "카드의 한 줄 사용, 또는 카드 마무리",
+  "Use your Leader's Signet Ring ability": "{leader}의 {signet_ring} 능력 사용",
   "Use the face-up Intrigue card or decline": "공개된 {intrigue} 사용, 또는 거절"
 };
 

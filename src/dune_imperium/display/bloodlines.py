@@ -102,6 +102,8 @@ def tech_acquire_text(tile: TechTile) -> str:
         parts.append("To acquire this, trash one of your Spies from the board")
     if tile.acquire_may_destroy_shield_wall:
         parts.append("You may destroy the Shield Wall")
+    if tile.acquire_leader_signet:
+        parts.append("Use your Leader's Signet Ring ability")
     if tile.acquire_solari:
         parts.append(f"Gain {tile.acquire_solari} solari")
     if tile.acquire_troops:

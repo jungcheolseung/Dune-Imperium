@@ -54,3 +54,9 @@ def test_tech_text_goldens() -> None:
     assert tech_acquire_text(drones) == "Place 2 Spies with Deep Cover"
     assert tech_acquire_text(TECH_TILES_BY_ID["ornithopter_fleet"]) == "Gain 2 troops"
     assert tech_acquire_text(TECH_TILES_BY_ID["training_depot"]) == ""
+    # The Signet Ring icon, not the Shield Wall detonation [Servo-Receivers
+    # Tech tile] [Main p. 20].
+    assert (
+        tech_acquire_text(TECH_TILES_BY_ID["servo_receivers"])
+        == "Use your Leader's Signet Ring ability"
+    )
