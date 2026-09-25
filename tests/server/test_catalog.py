@@ -84,6 +84,24 @@ def test_catalog_names_and_details_match_the_manifests() -> None:
     assert "high_council" in spaces
 
 
+def test_catalog_serves_the_reserve_stacks_printed_factions() -> None:
+    # Prepare the Way prints a purple "BENE GESSERIT" affiliation banner and
+    # The Spice Must Flow a red "SPACING GUILD" one [card face]; the catalog
+    # must expose each Reserve stack's own factions, not the empty tuple it
+    # used to hard-code.
+    catalog = build_catalog()
+    cards = catalog["cards"]
+    assert isinstance(cards, dict)
+
+    prepare_the_way = cards["prepare_the_way"]
+    assert isinstance(prepare_the_way, dict)
+    assert prepare_the_way["factions"] == ["bene_gesserit"]
+
+    spice_must_flow = cards["the_spice_must_flow"]
+    assert isinstance(spice_must_flow, dict)
+    assert spice_must_flow["factions"] == ["spacing_guild"]
+
+
 def test_catalog_serves_generated_effect_text() -> None:
     catalog = build_catalog()
 

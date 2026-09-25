@@ -797,7 +797,9 @@ def test_undercover_asset_play_data_is_complete() -> None:
     assert card.factions == (Faction.EMPEROR, Faction.SPACING_GUILD)
     # Re-read from the card face 2026-09-26: only three Agent icon boxes
     # (Landsraad, City, Spice Trade) sit on the left edge; there is no Spy
-    # eye box (the Korean scan and the BGG "Spy Access" mark were both slips).
+    # eye box. The Korean scan (assets/cards/ko/uprising/imperium/Undercover
+    # Asset.webp) shows the same three boxes and confirms this reading; only
+    # the BGG inventory sheet's "Spy Access" mark was the slip.
     assert card.agent_icons == (
         AgentIcon.LANDSRAAD,
         AgentIcon.CITY,

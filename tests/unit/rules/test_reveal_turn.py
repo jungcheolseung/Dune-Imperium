@@ -1345,8 +1345,9 @@ def test_sardaukar_coordination_counts_each_revealed_emperor_card() -> None:
 
     # Reveal box: Persuasion 2 (no base sword) plus "+[sword] for each
     # Emperor card you revealed (including this one)" [card face]. All three
-    # cards are Emperor, so each Coordination adds 3 swords: 3 + 3 + the
-    # Soldier's printed 1 = 9. Persuasion: 2 + 2 (Coordinations) + 1
+    # cards are Emperor, so each Coordination adds 3 swords: 3 + 3 from the
+    # two Coordinations, + 1 from the Soldier's printed sword, + 2 from the
+    # one troop in the Conflict = 9. Persuasion: 2 + 2 (Coordinations) + 1
     # (Soldier) = 5.
     assert result.state.players[0].combat_strength == 9
     assert dict(result.state.decision_stack[-1].context)["strength"] == 9

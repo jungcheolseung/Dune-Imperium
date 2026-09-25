@@ -236,6 +236,24 @@ def test_maker_keeper_uses_its_city_icon() -> None:
     assert _space_ids(_state(maker_keeper)) == {"arrakeen", "spice_refinery"}
 
 
+def test_chani_clever_tactician_uses_its_fremen_icon() -> None:
+    # Re-read from the card face 2026-09-26: the first Agent icon box is the
+    # blue Fremen sietch badge (BGG: Fremen Access), not the red Spacing
+    # Guild infinity symbol. Fremen spaces (Desert Tactics, Fremkit) are
+    # reachable; Spacing Guild spaces (Deliver Supplies, Heighliner) are not.
+    chani = _imperium_instance("chani_clever_tactician")
+
+    assert _space_ids(_state(chani)) == {
+        "accept_contract",
+        "arrakeen",
+        "desert_tactics",
+        "fremkit",
+        "hagga_basin",
+        "imperial_basin",
+        "spice_refinery",
+    }
+
+
 def test_southern_elders_uses_its_two_faction_icons() -> None:
     southern_elders = _imperium_instance("southern_elders")
 
