@@ -111,9 +111,9 @@ function renderSeats() {
       image.alt = leaderEntry.name;
       image.addEventListener("click", (event) => {
         event.stopPropagation();
-        pinPopover(leaderEntry, image);
+        pinPopover(leaderEntry, image, player);
       });
-      hoverPopover(image, () => leaderEntry);
+      hoverPopover(image, () => leaderEntry, () => player);
       head.appendChild(image);
     }
     const who = document.createElement("div");
@@ -134,9 +134,9 @@ function renderSeats() {
       leaderName.classList.add("clickable");
       leaderName.addEventListener("click", (event) => {
         event.stopPropagation();
-        pinPopover(leaderEntry, leaderName);
+        pinPopover(leaderEntry, leaderName, player);
       });
-      hoverPopover(leaderName, () => leaderEntry);
+      hoverPopover(leaderName, () => leaderEntry, () => player);
     }
     nameLine.appendChild(leaderName);
     who.appendChild(nameLine);
@@ -400,6 +400,12 @@ function renderSeats() {
     }
     wrap.appendChild(card);
   }
+  // A pinned leader popover otherwise stays open exactly as it was through
+  // a foreign update (render.js's `render()` only closes a pinned popover
+  // on a local one) -- fine for a card's fixed text, but this popover draws
+  // the seat's own live state, which the update may have just changed;
+  // redraw it (core.js) against the seat panel this call just rebuilt.
+  refreshPinnedLeaderPopover();
 }
 
 /* A Skill tile instance ("skill:<id>:<copy>") to its catalog id. */

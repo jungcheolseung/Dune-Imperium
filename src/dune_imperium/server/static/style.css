@@ -581,7 +581,7 @@ button:disabled { opacity: 0.5; cursor: wait; }
   border-radius: 50%;
   box-shadow: 0 0 0 1px #111, 0 1px 3px rgba(0, 0, 0, 0.9);
 }
-.board-stage .seat-disc, .bt-stage .seat-disc {
+.board-stage .seat-disc, .bt-stage .seat-disc, .popover-leader-stage .seat-disc {
   position: absolute;
   transform: translate(-50%, -50%);
 }
@@ -1352,6 +1352,12 @@ kbd {
 .popover .meta { font-size: 0.8rem; opacity: 0.85; margin-bottom: 0.3rem; }
 .popover-line { margin: 0.15rem 0; }
 .popover > img { width: 100%; border-radius: 8px; margin-top: 0.5rem; }
+/* A seat's own leader popover: the image becomes a stage the token from
+   `leaderTokenBox` (core.js) lies on, sized and placed in percent of it
+   like the board's own tokens (`.board-stage .seat-disc`). */
+.popover-leader-stage { position: relative; margin-top: 0.5rem; }
+.popover-leader-stage > img { display: block; width: 100%; border-radius: 8px; }
+.leader-token { z-index: 1; }
 
 /* ---------- text board fallback ---------- */
 

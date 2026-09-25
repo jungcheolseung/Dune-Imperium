@@ -86,6 +86,7 @@ from dune_imperium.display.images import (
     IXIAN_EMBASSY_IMAGE_ID,
     RESEARCH_STATION_OVERLAY_IMAGE_ID,
 )
+from dune_imperium.display.leader_layout import leader_layout
 from dune_imperium.display.names_ko import KOREAN_CARD_NAMES
 from dune_imperium.display.token_images import (
     MAKER_HOOKS_TOKEN_FILENAME,
@@ -209,6 +210,7 @@ def build_catalog(
             "image": _image_url("intrigue", intrigue_id, image_files),
         }
 
+    leader_layouts = leader_layout()
     leaders: dict[str, JsonValue] = {}
     for leader in LEADERS:
         leaders[leader.leader_id] = _leader_face(
@@ -217,6 +219,7 @@ def build_catalog(
             signet=leader.signet_name,
             face_id=leader.leader_id,
             image_files=image_files,
+            layout=leader_layouts.get(leader.leader_id),
         )
         if leader.alternate_face_id is not None:
             leaders[leader.alternate_face_id] = _leader_face(
@@ -476,6 +479,7 @@ def _leader_face(
     signet: str | None,
     face_id: str,
     image_files: dict[tuple[str, str], str],
+    layout: JsonValue | None = None,
 ) -> JsonObject:
     texts = LEADER_FACE_TEXTS[face_id]
     return {
@@ -486,6 +490,10 @@ def _leader_face(
         "signet_text": texts.signet_text,
         "notes": list(texts.notes),
         "image": _image_url("leader", face_id, image_files),
+        # Percent-coordinate boxes for the state a seat's leader popover
+        # draws on the card image (display.leader_layout); null for a
+        # leader with no printed on-card token/slot state.
+        "layout": layout,
     }
 
 

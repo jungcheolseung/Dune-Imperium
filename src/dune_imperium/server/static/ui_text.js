@@ -845,6 +845,10 @@ const UI_TEXT = {
     "ko": "전술 트랙 {{space}}칸",
     "en": "Tactics space {{space}}"
   },
+  "panels.feyd_track_space": {
+    "ko": "훈련 트랙: {{space}}",
+    "en": "Training track: {{space}}"
+  },
   "panels.tech_label": {
     "ko": "{tech_tile}",
     "en": "Tech"

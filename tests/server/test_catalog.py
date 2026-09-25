@@ -149,6 +149,33 @@ def test_catalog_includes_leader_alternate_faces_with_text() -> None:
     assert reverend_mother["ability_text"]
 
 
+def test_catalog_serves_leader_card_overlay_layouts() -> None:
+    from dune_imperium.display.leader_layout import leader_layout
+
+    catalog = build_catalog()
+    leaders = catalog["leaders"]
+    assert isinstance(leaders, dict)
+    layouts = leader_layout()
+
+    feyd = leaders["feyd_rautha_harkonnen"]
+    assert isinstance(feyd, dict)
+    assert feyd["layout"] == layouts["feyd_rautha_harkonnen"]
+
+    chani = leaders["chani"]
+    assert isinstance(chani, dict)
+    assert chani["layout"] == layouts["chani"]
+
+    yrkoon = leaders["steersman_y_rkoon"]
+    assert isinstance(yrkoon, dict)
+    assert yrkoon["layout"] == layouts["steersman_y_rkoon"]
+
+    # A leader with no printed on-card token/slot state serves a null
+    # layout rather than leaving the key out.
+    staban = leaders["staban_tuek"]
+    assert isinstance(staban, dict)
+    assert staban["layout"] is None
+
+
 def test_catalog_spaces_carry_structured_board_data() -> None:
     catalog = build_catalog()
     spaces = catalog["spaces"]

@@ -388,6 +388,51 @@ function termLine(key, vars) {
   return line;
 }
 
+/* Where a seat's own state sits on its leader's printed track: Feyd-Rautha's
+   Training track [Main p. 17] and Chani's Tactics track [Bloodlines p. 12]
+   are the only two with a UI text key today (the popover's `seatState` is
+   `null`/`undefined` for every other card, and for a leader with no printed
+   on-card token, so no line is built for them). `spaceNode` is icon-bearing
+   (for the popover line, `tNode`); `spaceText` is the same words as plain
+   text (for the token's title, `t()`). */
+function leaderStateDescriptor(seatState) {
+  if (!seatState) return null;
+  if (seatState.leader_id === "chani") {
+    const space = seatState.tactics_track_space + 1;
+    return { key: "panels.tactics_space", spaceNode: String(space), spaceText: String(space) };
+  }
+  if (seatState.leader_id === "feyd_rautha_harkonnen") {
+    const label = FEYD_TRACK_LABELS[seatState.feyd_track_space] || seatState.feyd_track_space;
+    return { key: "panels.feyd_track_space", spaceNode: phrase(label), spaceText: phraseText(label) };
+  }
+  return null;
+}
+
+/* The box (percent of the leader-card image, `entry.layout` from
+   `display.leader_layout`) a seat's own token sits on, or `null` for a
+   leader with no printed on-card token, a leader entry with no layout at
+   all, or no seat context (a non-leader popover). */
+function leaderTokenBox(entry, seatState) {
+  if (!entry.layout || !seatState) return null;
+  if (seatState.leader_id === "feyd_rautha_harkonnen") {
+    return entry.layout.track ? entry.layout.track[seatState.feyd_track_space] || null : null;
+  }
+  if (seatState.leader_id === "chani") {
+    return Array.isArray(entry.layout.track)
+      ? entry.layout.track[seatState.tactics_track_space] || null
+      : null;
+  }
+  return null;
+}
+
+/* One shared token size for every space on either track, a percent of the
+   leader-card stage's width: like one physical piece, sized (with a CSS
+   `aspect-ratio: 1` token, so its rendered height matches regardless of the
+   stage's own aspect ratio) to sit inside Chani's tightest printed space —
+   about 6.4% of the stage on both axes — with a margin, and it also clears
+   Feyd's tightest space (`mid_trash`, 5.9% wide). */
+const LEADER_TOKEN_SIZE = 4;
+
 function popoverNodes(entry) {
   const nodes = [];
   if (entry.text) for (const text of entry.text) nodes.push(iconLine(text));
@@ -414,7 +459,11 @@ function popoverNodes(entry) {
   return nodes;
 }
 
-function openPopover(entry, anchor) {
+/* `seatState` is the seat's own `PublicPlayerView` (panels.js's `player`)
+   when this popover was opened from a seat's leader thumbnail or name, so
+   the leader image can draw that seat's own state on the card; every other
+   caller leaves it out and gets the plain card popover unchanged. */
+function openPopover(entry, anchor, seatState) {
   const pop = el("card-popover");
   pop.classList.remove("hover");
   pop.textContent = "";
@@ -451,12 +500,44 @@ function openPopover(entry, anchor) {
   if (meta.childNodes.length) pop.appendChild(meta);
 
   for (const node of popoverNodes(entry)) pop.appendChild(node);
-  if (entryImage(entry)) {
-    const image = document.createElement("img");
-    image.loading = "lazy";
-    image.src = entryImage(entry);
-    image.alt = entry.name;
-    pop.appendChild(image);
+  const image = entryImage(entry);
+  if (image && seatState) {
+    /* A seat's own leader popover: the image becomes a stage (a
+       `position: relative` wrapper the same width as the popover; the img
+       inside keeps its own natural aspect, so the stage does too) and a
+       seat-coloured token is laid on it at the box `leaderTokenBox` finds
+       for this seat's current state, in percent of the stage — the same
+       technique the board draws its own tokens with (`board.js`'s
+       `seatDisc`/`placeAt`). */
+    const stage = document.createElement("div");
+    stage.className = "popover-leader-stage";
+    const stageImage = document.createElement("img");
+    stageImage.loading = "lazy";
+    stageImage.src = image;
+    stageImage.alt = entry.name;
+    stage.appendChild(stageImage);
+    const box = leaderTokenBox(entry, seatState);
+    if (box) {
+      const [left, top, width, height] = box;
+      const token = seatDisc(seatState.player, "leader-token", LEADER_TOKEN_SIZE);
+      const descriptor = leaderStateDescriptor(seatState);
+      if (descriptor) token.title = t(descriptor.key, { space: descriptor.spaceText });
+      placeAt(token, left + width / 2, top + height / 2);
+      stage.appendChild(token);
+    }
+    pop.appendChild(stage);
+  } else if (image) {
+    const plainImage = document.createElement("img");
+    plainImage.loading = "lazy";
+    plainImage.src = image;
+    plainImage.alt = entry.name;
+    pop.appendChild(plainImage);
+  } else if (seatState) {
+    /* No card image (no private assets): say in words where the token
+       sits, the same wording the seat panel's own status flag already uses
+       for Chani, and the log's own Feyd track wording for Feyd-Rautha. */
+    const descriptor = leaderStateDescriptor(seatState);
+    if (descriptor) pop.appendChild(termLine(descriptor.key, { space: descriptor.spaceNode }));
   }
   placePopover(pop, anchor, 340);
 }
@@ -483,6 +564,7 @@ function closePopover() {
   pop.hidden = true;
   pop.classList.remove("hover");
   popoverPinned = false;
+  pinnedLeaderSeat = null;
   clearTimeout(hoverTimer);
 }
 
@@ -494,13 +576,20 @@ let popoverPinned = false;
 let hoverTimer = 0;
 const HOVER_DELAY_MS = 120;
 
-function hoverPopover(anchor, entryOf) {
+/* The seat whose leader popover is currently pinned open, or `null` when
+   nothing is pinned or the pinned popover is not a seat's leader.
+   `refreshPinnedLeaderPopover` uses this after a render to redraw it
+   against the seat's freshly rendered state, the way a pinned popover
+   otherwise stays open unrefreshed through a foreign one. */
+let pinnedLeaderSeat = null;
+
+function hoverPopover(anchor, entryOf, seatOf) {
   anchor.addEventListener("mouseenter", () => {
     clearTimeout(hoverTimer);
     hoverTimer = setTimeout(() => {
       const entry = entryOf();
       if (!entry || popoverPinned) return;
-      openPopover(entry, anchor);
+      openPopover(entry, anchor, seatOf ? seatOf() : undefined);
       popoverPinned = false;
       el("card-popover").classList.add("hover");
     }, HOVER_DELAY_MS);
@@ -512,9 +601,35 @@ function hoverPopover(anchor, entryOf) {
 }
 
 /* A click pins the popover open until a click elsewhere or Escape. */
-function pinPopover(entry, anchor) {
-  openPopover(entry, anchor);
+function pinPopover(entry, anchor, seatState) {
+  openPopover(entry, anchor, seatState);
   popoverPinned = true;
+  pinnedLeaderSeat = seatState ? seatState.player : null;
+}
+
+/* After a foreign update (someone else's move synced in), a pinned popover
+   otherwise stays open exactly as it was — fine for a card's fixed text,
+   but a seat's leader popover draws that seat's own live state, which the
+   update may have just changed. Redraw it against the freshly rendered seat
+   panel (panels.js's `renderSeats()` calls this right after rebuilding it);
+   if the seat or its leader is gone, close it instead of showing something
+   stale. */
+function refreshPinnedLeaderPopover() {
+  if (!popoverPinned || pinnedLeaderSeat === null) return;
+  const view = state.view;
+  const player = view && view.players.find((p) => p.player === pinnedLeaderSeat);
+  const faceId = player && (player.leader_face_id || player.leader_id);
+  const entry = faceId ? lookup(faceId) : null;
+  const anchor = document.querySelector(
+    `.seat[data-seat="${pinnedLeaderSeat}"] .leader-name`,
+  );
+  if (!player || !entry || !anchor) {
+    closePopover();
+    return;
+  }
+  openPopover(entry, anchor, player);
+  popoverPinned = true;
+  pinnedLeaderSeat = player.player;
 }
 
 function chipList(container, ids, emptyText) {
