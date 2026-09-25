@@ -12,6 +12,14 @@ languages -- instead of the bare index; a single-option card shows nothing
 for the option (the card name already says it), and a card the catalog
 cannot resolve (redacted or unknown) falls back to the old numeric label.
 
+Step K3 (2026-09-25) gave Intrigue its own Korean twin
+(`catalog.intrigue[<card key>].text_ko`, `display.effect_dsl_text_ko`); the
+Korean pass below (`check_dual_option_rows(page, "Korean", ...)`) now
+expects each row against `text_ko`/`phrase()`, the line `intrigueOptionBody`
+(core.js) actually renders once that field exists, instead of the pre-K3
+`text`/`iconize()` fallback it was really checking before -- the English
+pass keeps checking `text`/`iconize()` as before.
+
 Reaching a real decision that offers two options of the same card at once
 needs a real game, not a synthetic action list: with the base ruleset (no
 expansions, no leader draft -- `open_mode.create_game`'s defaults), driving
@@ -60,6 +68,23 @@ STRIP_AND_ICONIZE_JS = """(text) => {
   const stripped = dash === -1 ? text : text.slice(dash + 3);
   const box = document.createElement("span");
   box.appendChild(iconize(stripped));
+  for (const n of box.querySelectorAll(".amount")) n.replaceWith(n.title);
+  for (const n of box.querySelectorAll("img")) n.replaceWith(n.alt);
+  return { stripped, rendered: box.textContent };
+}"""
+
+# Step K3 (2026-09-25): the catalog now carries intrigue[id].text_ko
+# (display.effect_dsl_text_ko), so the Korean pass below renders a real
+# Korean line through phrase() -- {term}/{term:count} expansion, our own
+# labels' path -- rather than falling back to iconize(en) the way it did
+# before Intrigue had a Korean twin. Same " — " timing-prefix strip as
+# STRIP_AND_ICONIZE_JS above; kept as a separate function so each check
+# derives its expectation independently of the branch it is checking.
+STRIP_AND_PHRASE_JS = """(text) => {
+  const dash = text.indexOf(" — ");
+  const stripped = dash === -1 ? text : text.slice(dash + 3);
+  const box = document.createElement("span");
+  box.appendChild(phrase(stripped));
   for (const n of box.querySelectorAll(".amount")) n.replaceWith(n.title);
   for (const n of box.querySelectorAll("img")) n.replaceWith(n.alt);
   return { stripped, rendered: box.textContent };
@@ -173,9 +198,15 @@ def check_dual_option_rows(page, what: str, card_id: str, rows: list[dict]) -> N
     base_id = match.group(1) if match else card_id
     entry = page.evaluate("(id) => state.catalog.intrigue[id]", base_id)
     check.ok(entry is not None, f"{what}: the catalog has an entry for {base_id}")
-    texts = entry["text"] if entry else []
+    # Step K3: the Korean pass now checks against text_ko/phrase(), the
+    # line the page actually renders once entry.text_ko exists (core.js
+    # intrigueOptionBody() prefers it) -- text/iconize() would be checking
+    # the pre-K3 fallback, not what is really on screen.
+    korean = what == "Korean"
+    texts = (entry.get("text_ko") if korean else entry["text"]) if entry else []
+    strip_js = STRIP_AND_PHRASE_JS if korean else STRIP_AND_ICONIZE_JS
     check.ok(
-        len(texts) > 1,
+        len(texts or []) > 1,
         f"{what}: the catalog gives more than one option line for {base_id}",
         texts,
     )
@@ -197,7 +228,7 @@ def check_dual_option_rows(page, what: str, card_id: str, rows: list[dict]) -> N
             shown,
         )
 
-        expected = page.evaluate(STRIP_AND_ICONIZE_JS, texts[option])
+        expected = page.evaluate(strip_js, texts[option])
         check.ok(
             shown.endswith(expected["rendered"]),
             f"{what}: option {option}'s row ends with the catalog's option "

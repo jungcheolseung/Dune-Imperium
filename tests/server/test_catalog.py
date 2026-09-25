@@ -229,6 +229,41 @@ def test_catalog_serves_korean_personal_card_text() -> None:
             assert_no_stray_latin(ko_line)
 
 
+def test_catalog_serves_korean_intrigue_text() -> None:
+    """``intrigue[id].text_ko`` beside the English ``text`` (Step K3,
+    2026-09-25): one Korean line per printed option, same length and order
+    as ``text`` (``display.effect_dsl_text_ko.intrigue_card_text_ko``), each
+    a valid Korean line by the same guards ``ko_text.py`` gives every
+    generator, and carrying the same " — " timing separator the client
+    strips (``core.js`` ``intrigueOptionBody()``).
+    """
+    from dune_imperium.display.effect_dsl_text import intrigue_card_text
+    from dune_imperium.display.effect_dsl_text_ko import intrigue_card_text_ko
+
+    terms = terms_keys()
+    catalog = build_catalog()
+    intrigue = catalog["intrigue"]
+    assert isinstance(intrigue, dict)
+    assert intrigue, "no intrigue cards in the catalog"
+
+    for intrigue_id, entry in intrigue.items():
+        assert isinstance(entry, dict)
+        text = entry["text"]
+        text_ko = entry["text_ko"]
+        assert isinstance(text, list) and isinstance(text_ko, list)
+        assert len(text_ko) == len(text), intrigue_id
+        # Matches the direct renderer call, confirming the catalog wires the
+        # same generator through rather than a stale/duplicated copy.
+        definition = INTRIGUE_CARDS_BY_ID[intrigue_id]
+        assert text_ko == intrigue_card_text_ko(definition), intrigue_id
+        assert text == intrigue_card_text(definition), intrigue_id
+        for ko_line in text_ko:
+            assert isinstance(ko_line, str) and ko_line.strip(), intrigue_id
+            assert_placeholders_are_terms(ko_line, terms)
+            assert_no_stray_latin(ko_line)
+            assert " — " in ko_line, (intrigue_id, ko_line)
+
+
 def test_catalog_includes_leader_alternate_faces_with_text() -> None:
     catalog = build_catalog()
     leaders = catalog["leaders"]

@@ -17,6 +17,7 @@ from dune_imperium.display.actions import (
 )
 from dune_imperium.display.cards import personal_card_text, personal_card_text_ko
 from dune_imperium.display.effect_dsl_text import intrigue_card_text
+from dune_imperium.display.effect_dsl_text_ko import intrigue_card_text_ko
 from dune_imperium.display.icons import ICON_NAMES, available_icons, icon_filename
 from dune_imperium.display.images import (
     load_card_manifest,
@@ -67,6 +68,7 @@ __all__ = [
     "effect_action_text_ko",
     "icon_filename",
     "intrigue_card_text",
+    "intrigue_card_text_ko",
     "load_card_manifest",
     "personal_card_text",
     "personal_card_text_ko",

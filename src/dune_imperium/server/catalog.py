@@ -19,10 +19,13 @@ the pair of its language. An entry's engine-*generated* effect text (as
 opposed to printed card wording, which stays English) carries its Korean
 twin the same way, suffixed ``_ko``: so far ``contracts[].condition_ko``/
 ``reward_ko``, ``conflicts[].rewards_ko`` (``display.structs``'s ``_ko``
-renderers) and ``cards[].text_ko`` (``display.cards``'s
-``personal_card_text_ko``, Step K2); more fields grow this list as later
-work translates their generators. ``icon_files``, ``token_files`` and ``board_image``
-work the same way for the rulebook icon set (``/icons/...``), the pictured
+renderers), ``cards[].text_ko`` (``display.cards``'s
+``personal_card_text_ko``, Step K2) and ``intrigue[].text_ko``
+(``display.effect_dsl_text_ko``'s ``intrigue_card_text_ko``, Step K3, one
+line per printed option, aligned index-for-index with ``text``); more
+fields grow this list as later work translates their generators.
+``icon_files``, ``token_files`` and ``board_image`` work the same way for
+the rulebook icon set (``/icons/...``), the pictured
 Combat markers (``/tokens/...``, ``display.token_images``) and the local board
 scan (``/board-image``): the catalog also carries the percent coordinates
 that place the live state on that scan (``display.board_layout``).
@@ -65,6 +68,7 @@ from dune_imperium.display import (
     contract_reward_text,
     contract_reward_text_ko,
     intrigue_card_text,
+    intrigue_card_text_ko,
     personal_card_text,
     personal_card_text_ko,
     space_is_implemented,
@@ -221,6 +225,7 @@ def build_catalog(
             "name": intrigue_entry.card.name,
             "timings": timings,
             "text": list(intrigue_card_text(intrigue_entry)),
+            "text_ko": list(intrigue_card_text_ko(intrigue_entry)),
             "image": _image_url("intrigue", intrigue_id, image_files),
         }
 

@@ -1,4 +1,4 @@
-"""E2E for the Korean effect-text feature, Steps K1-K2 (2026-09-25).
+"""E2E for the Korean effect-text feature, Steps K1-K3 (2026-09-25).
 
 Feature decided 2026-09-25: the effect text the engine *generates* (as
 opposed to a card's printed wording, which stays English in both languages)
@@ -9,12 +9,18 @@ reward and Conflict reward text, ``server/catalog.py``'s ``condition_ko``/
 cards (Imperium/starting/Reserve/Tleilaxu): ``cards[id].text_ko``
 (``display.cards.personal_card_text_ko``) and a keyed Agent-box icon's own
 ``detail_ko`` (``display.actions.agent_card_icon_text_ko``,
-``server/sessions.py`` ``_serialize_action``); later steps grow the same
-wiring to Intrigue, spaces and Leaders.
+``server/sessions.py`` ``_serialize_action``). Step K3 grows it to Intrigue
+and Navigation cards: ``intrigue[id].text_ko``
+(``display.effect_dsl_text_ko.intrigue_card_text_ko``, one Korean line per
+printed option, same index as ``text``) and a ``play_intrigue``/
+``play_navigation`` option row (``core.js`` ``describeAction()`` →
+``intrigueOptionBody()``); later steps grow the same wiring to spaces and
+Leaders.
 
-This opens one Contract's, one Conflict's and one personal card's popover
-directly (``lookup()`` + ``openPopover()``, the way ``card_labels.py`` does,
-so it needs no real game decision to reach them) and checks, in Korean:
+This opens one Contract's, one Conflict's, one personal card's and one
+Intrigue card's popover directly (``lookup()`` + ``openPopover()``, the way
+``card_labels.py`` does, so it needs no real game decision to reach them)
+and checks, in Korean:
 
 - the condition/reward lines render through the new ``.effect-text-ko``
   class, not ``.card-text`` (the class printed English wording uses, and
@@ -54,14 +60,23 @@ golden-checks against the live server pipeline
 Contract/Conflict popovers — this script's job is only to check how the DOM
 renders a string the Python side already verified is the right one.
 
+Step K3 checks an Intrigue card's popover through the same generic
+``text``/``text_ko`` loop (``lookup()`` resolves ``state.catalog.intrigue``
+too), plus a **synthetic** two-option ``play_intrigue`` row for a real
+two-option card (``describeAction()``'s ``play_intrigue`` branch resolves
+``state.catalog.intrigue[baseId(card_id)].text_ko[option]`` the same way a
+live row would; ``intrigue_options.py`` drives a *real* dual-option decision
+end to end, so this script only needs the synthetic shortcut to also check
+Korean, mirroring the resolution-row check above).
+
 And, in English, that the same lines are pixel-for-pixel what they always
 were: still ``.card-text``, no ``.effect-text-ko`` anywhere, matching
 ``iconize(entry.condition)``/``iconize(entry.reward)`` computed
 independently of the popover under test.
 
-Screenshots of the Contract/Conflict/personal-card popovers and the
-resolution row, Korean, 1440x900, go beside this script's results for a
-human to look at.
+Screenshots of the Contract/Conflict/personal-card/Intrigue popovers, the
+resolution row and the Intrigue play row, Korean, 1440x900, go beside this
+script's results for a human to look at.
 """
 
 from __future__ import annotations
@@ -95,6 +110,15 @@ CONFLICT_ID = "battle_for_arrakeen"
 # its exact English/Korean text, so a change to either is caught there
 # first; this script only checks how the DOM renders it.
 PERSONAL_CARD_ID = "guild_spy"
+# Backed by CHOAM (Step K3): two options, Plot (LoseInfluence -> Gain
+# solari) and Combat (a CompletedContractsAtLeast condition -> Gain
+# swords) -- exercises a cost/reward arrow and a condition line in one
+# card. tests/unit/display/test_effect_dsl_text.py's
+# test_option_text_ko_backed_by_choam_plot_option pins its exact Korean
+# text (quoted from the card's own Korean scan, `[KO card: Backed by
+# CHOAM]`), so a change to either is caught there first; this script only
+# checks how the DOM renders it.
+INTRIGUE_ID = "backed_by_choam"
 
 OPEN_POPOVER_JS = """(id) => {
   const entry = lookup(id);
@@ -276,6 +300,11 @@ ALL_CARDS_ICON_PARITY_JS = (
     ".map(([id, e]) => [id, e.text || [], e.text_ko || []])"
 )
 
+ALL_INTRIGUE_ICON_PARITY_JS = (
+    "() => Object.entries(state.catalog.intrigue)"
+    ".map(([id, e]) => [id, e.text || [], e.text_ko || []])"
+)
+
 # One accepted exception (2026-09-25 review): Urgent Shigawire's Agent-box
 # line is "The next Bene Gesserit card you play this round has all Agent
 # icons and, added to its Agent box: Draw 1 card" — ICON_RULES' bare
@@ -320,6 +349,30 @@ def check_all_cards_icon_parity(page) -> None:
             check_icon_parity(page, "Card", f"{card_id}.text[{index}]", en_line, ko_line)
     check.ok(
         checked > 0, "checked at least one card text[]/text_ko[] line", checked
+    )
+
+
+def check_all_intrigue_icon_parity(page) -> None:
+    """Icon parity (``check_icon_parity``) for every Intrigue card's
+    ``text``/``text_ko`` lines (Step K3), the Intrigue twin of
+    ``check_all_cards_icon_parity`` above — that sweep found 17 mismatched
+    personal-card lines the single-card ``PERSONAL_CARD_ID`` check missed,
+    so Intrigue gets the same full-catalog sweep from the start rather than
+    trusting the one hand-picked ``INTRIGUE_ID`` example.
+    """
+
+    rows = page.evaluate(ALL_INTRIGUE_ICON_PARITY_JS)
+    checked = 0
+    for card_id, en_lines, ko_lines in rows:
+        ko_padded = list(ko_lines) + [None] * (len(en_lines) - len(ko_lines))
+        pairs = zip(en_lines, ko_padded, strict=True)
+        for index, (en_line, ko_line) in enumerate(pairs):
+            checked += 1
+            check_icon_parity(
+                page, "Intrigue", f"{card_id}.text[{index}]", en_line, ko_line
+            )
+    check.ok(
+        checked > 0, "checked at least one Intrigue text[]/text_ko[] line", checked
     )
 
 
@@ -410,6 +463,82 @@ def check_resolution_row_english(page) -> None:
     )
 
 
+# A synthetic play_intrigue action for each of INTRIGUE_ID's two options
+# (Step K3): describeAction() resolves state.catalog.intrigue[card_id]
+# itself from the live catalog (no server round trip needed), the same
+# "no real game decision needed" shortcut RESOLUTION_ACTION uses above.
+# intrigue_options.py drives an actual dual-option decision end to end (and
+# checks English); this only adds the Korean row check that needs no real
+# decision.
+PLAY_INTRIGUE_ACTIONS = [
+    {
+        "action_id": "play_intrigue",
+        "arguments": {"card_id": INTRIGUE_ID, "option": option},
+        "index": option,
+    }
+    for option in (0, 1)
+]
+
+
+def check_play_intrigue_rows_korean(page) -> None:
+    """Both of ``INTRIGUE_ID``'s option rows read their own Korean option
+    line (``core.js`` ``intrigueOptionBody()``), not each other's and not
+    the bare numeric index."""
+
+    entry = page.evaluate("(id) => lookup(id)", INTRIGUE_ID)
+    check.ok(entry is not None, f"{INTRIGUE_ID} resolves via lookup()")
+    if entry is None:
+        return
+    shown_rows = []
+    for action in PLAY_INTRIGUE_ACTIONS:
+        option = action["arguments"]["option"]
+        shown = page.evaluate(ROW_JS, action)
+        shown_rows.append(shown["text"])
+        check.ok(
+            shown["koSpans"] > 0 and shown["cardTextSpans"] == 0,
+            f"Korean play_intrigue row (option {option}): renders through "
+            ".effect-text-ko, not .card-text",
+            shown,
+        )
+        check.ok(
+            "{" not in shown["text"] and "}" not in shown["text"],
+            f"Korean play_intrigue row (option {option}): no leftover "
+            "{placeholder}",
+            shown,
+        )
+        check.ok(
+            "선택지:" not in shown["text"] and "Option:" not in shown["text"],
+            f"Korean play_intrigue row (option {option}): not the bare "
+            "numeric index",
+            shown,
+        )
+        check.ok(
+            entry["name"] in shown["text"],
+            f"Korean play_intrigue row (option {option}): still names the card",
+            shown,
+        )
+        _check_no_stray_latin(
+            f"Korean play_intrigue row (option {option})", shown["text"], []
+        )
+    check.ok(
+        shown_rows[0] != shown_rows[1],
+        "Korean play_intrigue rows: the two options read differently",
+        shown_rows,
+    )
+
+
+def check_play_intrigue_rows_english(page) -> None:
+    for action in PLAY_INTRIGUE_ACTIONS:
+        option = action["arguments"]["option"]
+        shown = page.evaluate(ROW_JS, action)
+        check.ok(
+            shown["cardTextSpans"] > 0 and shown["koSpans"] == 0,
+            f"English play_intrigue row (option {option}): still .card-text, "
+            "not .effect-text-ko",
+            shown,
+        )
+
+
 def main() -> None:
     # E2E_SHOTS_DIR: where the screenshots below go (no default committed
     # here, since a session scratchpad path is not portable); falls back to
@@ -439,6 +568,11 @@ def main() -> None:
         _wait_for_popover_images(page)
         page.screenshot(path=str(shots / "effect_text_card_ko.png"))
 
+        print(f"[2b2] Korean: {INTRIGUE_ID} (Intrigue) popover (Step K3)")
+        check_korean(page, "Intrigue", INTRIGUE_ID, space_names)
+        _wait_for_popover_images(page)
+        page.screenshot(path=str(shots / "effect_text_intrigue_ko.png"))
+
         print("[2c] Korean: the Agent-box icon's resolution row (Step K2)")
         check_resolution_row_korean(page)
         row_shot = page.evaluate(
@@ -461,13 +595,39 @@ def main() -> None:
         print("[2d] Korean: icon parity across every catalog card (2026-09-25 review)")
         check_all_cards_icon_parity(page)
 
-        print("[3] English: the same popovers and row are unchanged")
+        print("[2e] Korean: icon parity across every Intrigue card (Step K3)")
+        check_all_intrigue_icon_parity(page)
+
+        print(f"[2f] Korean: {INTRIGUE_ID}'s two play_intrigue option rows (Step K3)")
+        check_play_intrigue_rows_korean(page)
+        row_shot = page.evaluate(
+            """(actions) => {
+              const box = document.getElementById("card-popover");
+              box.classList.add("hover");
+              box.textContent = "";
+              for (const action of actions) {
+                const line = document.createElement("div");
+                line.className = "popover-line";
+                line.appendChild(describeAction(action));
+                box.appendChild(line);
+              }
+              return true;
+            }""",
+            PLAY_INTRIGUE_ACTIONS,
+        )
+        if row_shot:
+            _wait_for_popover_images(page)
+            page.screenshot(path=str(shots / "effect_text_play_intrigue_rows_ko.png"))
+
+        print("[3] English: the same popovers and rows are unchanged")
         page.evaluate("setLanguage('en')")
         settled(page)
         check_english(page, "Contract", CONTRACT_ID)
         check_english(page, "Conflict", CONFLICT_ID)
         check_english(page, "Card", PERSONAL_CARD_ID)
+        check_english(page, "Intrigue", INTRIGUE_ID)
         check_resolution_row_english(page)
+        check_play_intrigue_rows_english(page)
         # ... and match iconize(condition/reward) computed independently.
         contract = page.evaluate("(id) => lookup(id)", CONTRACT_ID)
         expected_condition = page.evaluate(ICONIZE_TEXT_JS, contract["condition"])
