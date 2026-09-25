@@ -705,6 +705,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "take_exhausted_contract_solari": apply_exhausted_contract_solari,
     "place_contract_spy": apply_contract_spy_action,
     "recall_spy_for_contract": apply_contract_spy_action,
+    "decline_contract_spy": apply_contract_spy_action,
     "recall_agent_for_contract": apply_contract_recall_action,
     "trash_intrigue_for_contract": apply_contract_intrigue_trash,
     # Round start and Combat

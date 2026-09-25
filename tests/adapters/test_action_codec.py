@@ -50,7 +50,9 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
     # Intrigue instance (+44) and Branching Path's corrected City icon shifts
     # its agent_turn space coverage by +1 (see test_catalog_is_fixed...).
     # v107: +27, the generic Spy placement frame (see above).
-    assert codec.size == 4640 + 2 + 7 + 4 + 1 + 2 + 1 + 44 + 1 + 27
+    # After v107: decline_contract_spy, the Contract Spy's way to pass up the
+    # recall-first without a Spy in supply [Main pp. 11, 20], +1.
+    assert codec.size == 4640 + 2 + 7 + 4 + 1 + 2 + 1 + 44 + 1 + 27 + 1
 
     try:
         ActionCodec(RulesetConfig()).encode(action)
@@ -93,7 +95,8 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
     # catalogs, see test_catalog_is_fixed_and_versioned_for_a_ruleset):
     # every Bene Gesserit card already gets every Agent icon's placements
     # under Bloodlines, for Urgent Shigawire's boost.
-    assert both.size == 11100 + 28 + 28 + 72
+    # After v107: decline_contract_spy (see the CHOAM catalog test), +1.
+    assert both.size == 11100 + 28 + 28 + 72 + 1
 
     choam_only = ActionCodec(RulesetConfig(choam_module=True))
     for action in actions:
@@ -122,6 +125,7 @@ def test_choam_contract_completion_and_spy_choices_round_trip() -> None:
             actor=1,
             arguments=(("post_id", "arrakis-spice-refinery-arrakeen"),),
         ),
+        DomainAction(action_id="decline_contract_spy", actor=1),
         DomainAction(action_id="keep_contract_reveal_spice", actor=1),
         DomainAction(action_id="trash_contract_reveal_for_vp", actor=1),
     )

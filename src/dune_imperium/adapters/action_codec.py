@@ -257,6 +257,9 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
                 "keep_contract_reveal_spice",
                 "take_exhausted_contract_solari",
                 "trash_contract_reveal_for_vp",
+                # A Contract Spy may pass up the recall-first without a Spy
+                # in supply [Main pp. 11, 20].
+                "decline_contract_spy",
             )
         )
     templates.extend(_agent_turn_templates(config))
