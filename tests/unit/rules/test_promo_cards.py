@@ -579,11 +579,13 @@ def test_promo_actions_round_trip_through_the_codec() -> None:
     # test_action_codec.test_catalog_is_fixed_and_versioned_for_a_ruleset).
     # v107: +27, the generic Spy placement frame in every catalog.
     # After v107: +14, the Conflict reward Spy's recall-first (13 recalls
-    # and a decline, every catalog).
-    assert codec.size == 4454 + 12 + 1 + 1 + 2 + 1 + 40 + 1 + 27 + 14
+    # and a decline, every catalog), and +1 for the Leader Spy's decline.
+    assert codec.size == 4454 + 12 + 1 + 1 + 2 + 1 + 40 + 1 + 27 + 14 + 1
     choam_promo = ActionCodec(RulesetConfig(choam_module=True, promo_cards=True))
     # After v107: decline_contract_spy joins the CHOAM catalogs, +1.
-    assert choam_promo.size == 4740 + 12 + 1 + 1 + 2 + 1 + 44 + 1 + 27 + 1 + 14
+    assert choam_promo.size == (
+        4740 + 12 + 1 + 1 + 2 + 1 + 44 + 1 + 27 + 1 + 14 + 1
+    )
     for action_id in (
         "pay_agent_card_spice_for_sandworm",
         "pay_agent_card_spice_for_sandworm_and_shield_wall",

@@ -1841,8 +1841,8 @@ def test_ruthless_leadership_round_trips_and_is_dealt_in_random_games() -> None:
     # Gesserit card already gets every Agent icon's placements there, for
     # Urgent Shigawire's boost).
     # After v107: +14, the Conflict reward Spy's recall-first (13 recalls
-    # and a decline).
-    assert codec.size == 10159 + 292 + 1 + 1 + 1 + 2 + 1 + 28 + 28 + 67 + 14
+    # and a decline), and +1 for the Leader Spy's decline.
+    assert codec.size == 10159 + 292 + 1 + 1 + 1 + 2 + 1 + 28 + 28 + 67 + 14 + 1
     action = DomainAction(
         action_id="trash_agent_card",
         actor=2,

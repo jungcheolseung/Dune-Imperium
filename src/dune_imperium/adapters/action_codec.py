@@ -176,6 +176,9 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "decline_leader_board_repeat",
             "decline_leader_card_trash",
             "decline_leader_signet_payment",
+            # A Leader's Spy may pass up the recall-first without a Spy in
+            # supply [Main pp. 11, 20].
+            "decline_leader_spy_placement",
             "decline_other_memories",
             "decline_gather_intelligence",
             "decline_reveal_spy_recall",

@@ -86,6 +86,7 @@ const ACTION_LABELS = {
   decline_leader_board_repeat: "반복 안 함",
   decline_leader_card_trash: "{trash} 안 함",
   decline_leader_signet_payment: "지불 안 함",
+  decline_leader_spy_placement: "{spy} 배치 안 함",
   decline_other_memories: "Other Memories 안 씀",
   decline_reveal_card_trash: "{trash} 안 함",
   decline_reveal_influence_exchange: "교환 안 함",

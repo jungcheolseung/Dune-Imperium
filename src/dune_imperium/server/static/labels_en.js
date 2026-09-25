@@ -52,6 +52,7 @@ const LABELS_EN = {
     "decline_leader_board_repeat": "Decline to repeat",
     "decline_leader_card_trash": "Decline to {trash}",
     "decline_leader_signet_payment": "Decline to pay",
+    "decline_leader_spy_placement": "Decline to place {spy}",
     "decline_other_memories": "Decline Other Memories",
     "decline_reveal_card_trash": "Decline to {trash}",
     "decline_reveal_influence_exchange": "Decline to exchange",

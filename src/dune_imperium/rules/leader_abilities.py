@@ -356,9 +356,10 @@ def legal_feyd_track_actions(
                     else ()
                 ),
             )
-        # Spy stages place from supply on an empty observation post, first
-        # recalling a Spy for no effect when the supply is empty
-        # [Main pp. 11, 20].
+        # Spy stages place from supply on an empty observation post; with
+        # the supply empty, "you may first recall one of your Spies for no
+        # effect" [Main pp. 11, 20]. That recall can be passed up, and once
+        # made the Spy has to be placed (OQ-057 (14)).
         if owner.spies_supply > 0:
             return tuple(
                 DomainAction(
@@ -368,7 +369,7 @@ def legal_feyd_track_actions(
                 )
                 for post_id in empty_observation_post_ids(state)
             )
-        return tuple(
+        recalls = tuple(
             DomainAction(
                 action_id="recall_spy_for_leader_placement",
                 actor=player,
@@ -376,6 +377,12 @@ def legal_feyd_track_actions(
             )
             for post_id in owner.spy_post_ids
         )
+        if recalls and context.get("feyd_spy_recalled") is not True:
+            return (
+                DomainAction(action_id="decline_leader_spy_placement", actor=player),
+                *recalls,
+            )
+        return recalls
     current = FEYD_TRACK_BY_ID[owner.feyd_track_space]
     return tuple(
         DomainAction(
@@ -523,6 +530,23 @@ def apply_feyd_track_action(
             events=(*events, *trashed.events),
         )
 
+    if action.action_id == "decline_leader_spy_placement":
+        # The recall-first was passed up: the stage ends without its Spy
+        # (the final space's troop was recruited on arrival).
+        context.pop("feyd_track_stage")
+        context["pending_agent_effect"] = False
+        next_state = advance_after_effect(state, context, state.players)
+        return RuleResult(
+            state=next_state,
+            events=(
+                GameEvent(
+                    event_id=f"{source}:spy_unavailable",
+                    kind="spy_placement_unavailable",
+                    payload=(("player", player),),
+                ),
+            ),
+        )
+
     post_id = arguments.get("post_id")
     if not isinstance(post_id, str):
         raise RuntimeError("Personal Training Spy choice has invalid post ID")
@@ -611,18 +635,23 @@ def _leader_spy_placement_actions(
     allowed_post_ids: frozenset[str] | None,
     *,
     deep_cover: bool = False,
+    offer_decline: bool = True,
 ) -> tuple[DomainAction, ...]:
     """Return place or recall-first choices for a Leader Spy placement.
 
     Placement needs a Spy in supply on an empty (optionally restricted)
-    observation post; without one the player first recalls a Spy for no
-    effect [Main pp. 11, 20]. When no restricted post is empty, only recalls
-    from restricted posts can open one. The supply is judged now, not when
-    an earlier recall happened: a freely ordered effect of the same turn
-    (a Distraction trigger, say) may have spent the recalled Spy, and then
-    the recall is offered again instead of a placement that cannot happen.
-    With ``deep_cover`` opponents' Spies are ignored and only the owner's
-    own Spies block a post (Spy with Deep Cover [Bloodlines pp. 5, 12]).
+    observation post and is then mandatory (OQ-057 (14)); without one the
+    player "may first recall one of your Spies for no effect" [Main pp. 11,
+    20], so ``decline_leader_spy_placement`` is offered beside the recalls
+    until one is made (``offer_decline`` is off where the Signet's own
+    "— OR —" choice already has a way out). When no restricted post is
+    empty, only recalls from restricted posts can open one. The supply is
+    judged now, not when an earlier recall happened: a freely ordered effect
+    of the same turn (a Distraction trigger, say) may have spent the
+    recalled Spy, and then the recall is offered again instead of a
+    placement that cannot happen. With ``deep_cover`` opponents' Spies are
+    ignored and only the owner's own Spies block a post (Spy with Deep
+    Cover [Bloodlines pp. 5, 12]).
     """
 
     owner = state.players[player]
@@ -650,7 +679,7 @@ def _leader_spy_placement_actions(
         recall_post_ids = tuple(
             post_id for post_id in owner.spy_post_ids if post_id in allowed_post_ids
         )
-    return tuple(
+    recalls = tuple(
         DomainAction(
             action_id="recall_spy_for_leader_placement",
             actor=player,
@@ -658,6 +687,12 @@ def _leader_spy_placement_actions(
         )
         for post_id in recall_post_ids
     )
+    if recalls and offer_decline and context.get("leader_spy_recalled") is not True:
+        return (
+            DomainAction(action_id="decline_leader_spy_placement", actor=player),
+            *recalls,
+        )
+    return recalls
 
 
 def legal_leader_signet_actions(
@@ -825,7 +860,12 @@ def legal_leader_signet_actions(
                 for card_id in owner.in_play
             ),
             *_leader_spy_placement_actions(
-                state, player, context, EMPEROR_POST_IDS, deep_cover=True
+                state,
+                player,
+                context,
+                EMPEROR_POST_IDS,
+                deep_cover=True,
+                offer_decline=False,
             ),
         )
 
@@ -892,7 +932,9 @@ def legal_leader_signet_actions(
             return _leader_spy_placement_actions(state, player, context, None)
         return (
             DomainAction(action_id="decline_leader_signet_payment", actor=player),
-            *_leader_spy_placement_actions(state, player, context, LANDSRAAD_POST_IDS),
+            *_leader_spy_placement_actions(
+                state, player, context, LANDSRAAD_POST_IDS, offer_decline=False
+            ),
             *(
                 (DomainAction(action_id="pay_leader_signet_spice", actor=player),)
                 if owner.resources.spice >= 1
@@ -1419,10 +1461,25 @@ def apply_leader_signet_spy(
     _, context = current_agent_effect_context(state)
     player = action.actor
     owner = state.players[player]
+    source = f"round:{state.round_number}:player:{player}:leader_signet"
+    if action.action_id == "decline_leader_spy_placement":
+        # The recall-first was passed up [Main pp. 11, 20]: no Spy.
+        context["pending_agent_effect"] = False
+        context.pop("listeners_paid", None)
+        next_state = advance_after_effect(state, context, state.players)
+        return RuleResult(
+            state=next_state,
+            events=(
+                GameEvent(
+                    event_id=f"{source}:spy_unavailable",
+                    kind="spy_placement_unavailable",
+                    payload=(("player", player),),
+                ),
+            ),
+        )
     post_id = dict(action.arguments).get("post_id")
     if not isinstance(post_id, str):
         raise RuntimeError("Leader Signet Spy choice has invalid post ID")
-    source = f"round:{state.round_number}:player:{player}:leader_signet"
 
     if action.action_id == "recall_spy_for_leader_placement":
         next_owner = recall_spy(owner, post_id)

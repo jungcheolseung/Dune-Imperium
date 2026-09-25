@@ -633,6 +633,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "decline_leader_card_trash": apply_feyd_track_action,
     "place_leader_spy": apply_leader_spy_action,
     "recall_spy_for_leader_placement": apply_leader_spy_action,
+    "decline_leader_spy_placement": apply_leader_spy_action,
     "pay_leader_signet_spice": apply_leader_signet_payment,
     "pay_leader_signet_solari": apply_leader_signet_payment,
     "decline_leader_signet_payment": apply_leader_signet_payment,

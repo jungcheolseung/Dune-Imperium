@@ -35,8 +35,10 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     # join the catalogs without Bloodlines, +27.
     # After v107: a Conflict reward Spy without a Spy in supply may recall
     # one first or decline [Main pp. 11, 20]: recall_spy_for_combat_reward
-    # per post (13) and decline_combat_reward_spy join every catalog, +14.
-    assert first.size == 4354 + 2 + 7 + 4 + 1 + 2 + 1 + 40 + 1 + 27 + 14
+    # per post (13) and decline_combat_reward_spy join every catalog, +14;
+    # so does decline_leader_spy_placement for a Leader's Spy (Personal
+    # Training, Arrakis Informant ...), +1.
+    assert first.size == 4354 + 2 + 7 + 4 + 1 + 2 + 1 + 40 + 1 + 27 + 14 + 1
 
 
 def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
@@ -55,8 +57,9 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
     # v107: +27, the generic Spy placement frame (see above).
     # After v107: decline_contract_spy, the Contract Spy's way to pass up the
     # recall-first without a Spy in supply [Main pp. 11, 20], +1.
-    # After v107: +14, the Conflict reward Spy's recall-first (see above).
-    assert codec.size == 4640 + 2 + 7 + 4 + 1 + 2 + 1 + 44 + 1 + 27 + 1 + 14
+    # After v107: +14 + 1, the Conflict reward and Leader Spies'
+    # recall-first (see above).
+    assert codec.size == 4640 + 2 + 7 + 4 + 1 + 2 + 1 + 44 + 1 + 27 + 1 + 14 + 1
 
     try:
         ActionCodec(RulesetConfig()).encode(action)
@@ -100,8 +103,9 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
     # every Bene Gesserit card already gets every Agent icon's placements
     # under Bloodlines, for Urgent Shigawire's boost.
     # After v107: decline_contract_spy (see the CHOAM catalog test), +1.
-    # After v107: +14, the Conflict reward Spy's recall-first.
-    assert both.size == 11100 + 28 + 28 + 72 + 1 + 14
+    # After v107: +14 + 1, the Conflict reward and Leader Spies'
+    # recall-first.
+    assert both.size == 11100 + 28 + 28 + 72 + 1 + 14 + 1
 
     choam_only = ActionCodec(RulesetConfig(choam_module=True))
     for action in actions:
@@ -137,6 +141,29 @@ def test_choam_contract_completion_and_spy_choices_round_trip() -> None:
 
     for action in actions:
         assert codec.decode(codec.encode(action), actor=1) == action
+
+
+def test_spy_recall_first_choices_round_trip_in_every_catalog() -> None:
+    # A Spy icon without a Spy in supply: "you may first recall one of your
+    # Spies for no effect" [Main pp. 11, 20] -- the Conflict reward and
+    # Leader Spies' recall and decline templates exist in every catalog.
+    actions = (
+        DomainAction(action_id="decline_combat_reward_spy", actor=2),
+        DomainAction(
+            action_id="recall_spy_for_combat_reward",
+            actor=2,
+            arguments=(("post_id", "arrakis-deep-desert"),),
+        ),
+        DomainAction(action_id="decline_leader_spy_placement", actor=2),
+    )
+    for config in (
+        RulesetConfig(),
+        RulesetConfig(choam_module=True),
+        RulesetConfig(bloodlines=True, choam_module=True),
+    ):
+        codec = ActionCodec(config)
+        for action in actions:
+            assert codec.decode(codec.encode(action), actor=2) == action
 
 
 def test_board_effect_icons_round_trip_and_the_bare_action_is_gone() -> None:
