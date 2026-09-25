@@ -522,7 +522,6 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
                     ("space_id", space_id),
                     ("spice_at_placement", next_owner.resources.spice),
                     ("spice_spent_after_placement", 0),
-                    ("spy_recalled_this_turn", infiltrate_post_id is not None),
                     ("troops_recruited", _troops_recruited_before_placement(state)),
                     ("turn_owner", action.actor),
                     ("units_deploy_blocked", units_deploy_blocked),

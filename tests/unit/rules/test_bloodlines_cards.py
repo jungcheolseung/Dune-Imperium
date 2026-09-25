@@ -316,16 +316,58 @@ def test_corrupt_bureaucrat_takes_a_contract_after_a_spy_recall() -> None:
         resolve_agent_card_effect(state).events[0].kind
         == "agent_card_effect_unavailable"
     )
-    frame = state.decision_stack[-1]
-    context = dict(frame.context)
-    context["spy_recalled_this_turn"] = True
+    # "If you recalled a Spy this turn:" reads the seat's per-turn recall
+    # count (OQ-044 (d)), which every recall path raises.
     recalled = replace(
         state,
-        decision_stack=(
-            *state.decision_stack[:-1],
-            replace(frame, context=tuple(sorted(context.items()))),
+        players=(
+            replace(state.players[0], spies_recalled_turn=1),
+            *state.players[1:],
         ),
     )
+    result = resolve_agent_card_effect(recalled)
+    assert result.state.decision_stack[-1].kind == "contract_market"
+
+
+def test_corrupt_bureaucrat_counts_a_plot_recall_during_its_agent_turn() -> None:
+    # [Corrupt Bureaucrat card] "If you recalled a Spy this turn: [contract]"
+    # names no way of recalling; "When the Recall Spy icon appears on a card,
+    # you may return one of your Spies from an observation post to your
+    # supply." [Main p. 11]. Sleeper Unit's "[Spy recall] -> 2 troops" Plot,
+    # played while the box waits (OQ-057), meets the condition.
+    card = _card("corrupt_bureaucrat")
+    sleeper = _intrigue("sleeper_unit")
+    contracts = ("contract:deliver_supplies:0", "contract:harvest_3:0")
+    base = replace(
+        _state(
+            _owner(
+                hand=(card,),
+                intrigue_cards=(sleeper,),
+                spies_supply=2,
+                spy_post_ids=("emperor-sardaukar-dutiful-service",),
+            ),
+            CHOAM_BLOODLINES,
+        ),
+        face_up_contract_ids=contracts,
+    )
+    state = _play(base, card, "assembly_hall")
+    engine = UprisingRulesEngine()
+    assert "resolve_agent_card_effect" not in {
+        action.action_id for action in engine.legal_actions(state, 0)
+    }
+
+    opened = engine.apply(state, _play_intrigue(sleeper, 1)).state
+    recall = next(
+        action
+        for action in engine.legal_actions(opened, 0)
+        if action.action_id == "recall_spy_for_intrigue"
+    )
+    recalled = engine.apply(opened, recall).state
+    assert recalled.players[0].spies_recalled_turn == 1
+    assert "resolve_agent_card_effect" in {
+        action.action_id for action in engine.legal_actions(recalled, 0)
+    }
+
     result = resolve_agent_card_effect(recalled)
     assert result.state.decision_stack[-1].kind == "contract_market"
 

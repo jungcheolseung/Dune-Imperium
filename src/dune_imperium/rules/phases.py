@@ -43,6 +43,10 @@ def begin_round(state: GameState) -> RuleResult:
             units_deployed_committed=0,
             spice_at_turn_start=player.resources.spice,
             spice_spent_turn=0,
+            # The round's first turn opens without reset_turn_counters, so a
+            # recall made on a seat's last (Reveal) turn must not reach its
+            # next turn's "If you recalled a Spy this turn" (OQ-044 (d)).
+            spies_recalled_turn=0,
             # Urgent Shigawire's boost lasts "this round" only.
             bene_gesserit_boost_pending=False,
             # Tleilaxu Puppet's Reveal Persuasion lasts "this round" only.

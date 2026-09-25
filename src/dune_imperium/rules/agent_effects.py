@@ -880,7 +880,7 @@ def legal_agent_card_influence_actions(
     if (
         effect
         is PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE_IF_SPY_RECALLED_THIS_TURN
-        and context.get("spy_recalled_this_turn") is not True
+        and not spy_recalled_this_turn(state.players[player])
     ):
         return ()
     if (
@@ -3292,7 +3292,7 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
     elif effect is PersonalCardAgentEffect.TAKE_CONTRACT_IF_SPY_RECALLED_THIS_TURN:
         # Corrupt Bureaucrat (Bloodlines): "If you recalled a Spy this turn:
         # contract" (2 Solari without the CHOAM Module [Main p. 20]).
-        if context.get("spy_recalled_this_turn") is not True:
+        if not spy_recalled_this_turn(owner):
             next_owner = owner
             event_kind = "agent_card_effect_unavailable"
         else:
@@ -4039,7 +4039,7 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         next_owner = owner
         event_kind = "agent_card_effect_unavailable"
     elif effect is PersonalCardAgentEffect.RECRUIT_THREE_IF_SPY_RECALLED_THIS_TURN:
-        if context.get("spy_recalled_this_turn") is True:
+        if spy_recalled_this_turn(owner):
             next_owner, recruited = recruit_troops(owner, 3)
             previous = context.get("troops_recruited")
             if isinstance(previous, bool) or not isinstance(previous, int):
@@ -4053,7 +4053,7 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             next_owner = owner
             event_kind = "agent_card_effect_unavailable"
     elif effect is PersonalCardAgentEffect.RECRUIT_TWO_IF_SPY_RECALLED_THIS_TURN:
-        if context.get("spy_recalled_this_turn") is True:
+        if spy_recalled_this_turn(owner):
             next_owner, recruited = recruit_troops(owner, 2)
             previous = context.get("troops_recruited")
             if isinstance(previous, bool) or not isinstance(previous, int):
@@ -4067,7 +4067,7 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             next_owner = owner
             event_kind = "agent_card_effect_unavailable"
     elif effect is PersonalCardAgentEffect.DRAW_INTRIGUE_IF_SPY_RECALLED_THIS_TURN:
-        if context.get("spy_recalled_this_turn") is not True:
+        if not spy_recalled_this_turn(owner):
             next_owner = owner
             event_kind = "agent_card_effect_unavailable"
         else:
@@ -4126,7 +4126,7 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         effect
         is PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE_IF_SPY_RECALLED_THIS_TURN
     ):
-        if context.get("spy_recalled_this_turn") is True:
+        if spy_recalled_this_turn(owner):
             raise RuntimeError("Agent-card Influence effect requires a player choice")
         next_owner = owner
         event_kind = "agent_card_effect_unavailable"
@@ -4311,6 +4311,22 @@ def spice_gained_this_turn(owner: PlayerState) -> int:
     """
 
     return owner.resources.spice - owner.spice_at_turn_start + owner.spice_spent_turn
+
+
+def spy_recalled_this_turn(owner: PlayerState) -> bool:
+    """Return whether the seat recalled one of its Spies during this turn.
+
+    "If you recalled a Spy this turn:" (Imperial Spymaster, Strike Fleet,
+    Rebel Supplier, Public Spectacle, Corrupt Bureaucrat) names no way of
+    recalling, so every recall counts: Infiltrate and Gather Intelligence
+    [Main p. 11], a card's Recall Spy icon or cost [Main pp. 11, 20], and
+    the "first recall one of your Spies for no effect" before a placement
+    [Main pp. 11, 20]. ``spies_recalled_turn`` counts each of them and
+    restarts whenever the seat's turn opens — the same reading as Spy
+    Drones (OQ-044 (d)).
+    """
+
+    return owner.spies_recalled_turn > 0
 
 
 def _effect_subject(context: dict[str, bool | int | str]) -> tuple[int, str, str]:

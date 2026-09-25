@@ -525,7 +525,6 @@ def apply_feyd_track_action(
     if action.action_id == "recall_spy_for_leader_placement":
         next_owner = recall_spy(owner, post_id)
         context["feyd_spy_recalled"] = True
-        context["spy_recalled_this_turn"] = True
         next_state = advance_after_effect(
             state,
             context,
@@ -1409,7 +1408,6 @@ def apply_leader_signet_spy(
     if action.action_id == "recall_spy_for_leader_placement":
         next_owner = recall_spy(owner, post_id)
         context["leader_spy_recalled"] = True
-        context["spy_recalled_this_turn"] = True
         next_state = advance_after_effect(
             state,
             context,

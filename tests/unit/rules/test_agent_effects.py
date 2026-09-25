@@ -2652,6 +2652,124 @@ def test_public_spectacle_influence_is_unavailable_without_spy_recall() -> None:
     assert result.events[0].kind == "agent_card_effect_unavailable"
 
 
+# "If you recalled a Spy this turn:" [Imperial Spymaster card] [Strike Fleet
+# card] [Rebel Supplier card] [Public Spectacle card] names no way of
+# recalling. "When the Recall Spy icon appears on a card, you may return one
+# of your Spies from an observation post to your supply." [Main p. 11], so a
+# Plot Intrigue's Recall Spy cost is a recall like Infiltrate or Gather
+# Intelligence — the same all-paths reading as Spy Drones (OQ-044 (d)).
+_SPECIAL_MISSION = "intrigue:special_mission:0"
+_ARRAKEEN_POST = "arrakis-spice-refinery-arrakeen"
+
+
+def _recall_card_state(card_id: str, spy_post_ids: tuple[str, ...]) -> GameState:
+    owner = PlayerState(
+        player_id=0,
+        hand=(_imperium_instance(card_id),),
+        intrigue_cards=(_SPECIAL_MISSION,),
+        spies_supply=3 - len(spy_post_ids),
+        spy_post_ids=spy_post_ids,
+    )
+    return GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        intrigue_deck=("intrigue:test:0",),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+
+
+def _recall_with_special_mission(state: GameState, post_id: str) -> GameState:
+    """Play Special Mission's "Recall Spy -> Shield Wall + 2 spice" Plot."""
+
+    engine = UprisingRulesEngine()
+    play = DomainAction(
+        action_id="play_intrigue",
+        actor=0,
+        arguments=(("card_id", _SPECIAL_MISSION), ("option", 1)),
+    )
+    assert play in engine.legal_actions(state, 0)
+    opened = engine.apply(state, play).state
+    recalled = engine.apply(
+        opened,
+        DomainAction(
+            action_id="recall_spy_for_intrigue",
+            actor=0,
+            arguments=(("post_id", post_id),),
+        ),
+    ).state
+    done = engine.apply(
+        recalled, DomainAction(action_id="keep_shield_wall", actor=0)
+    ).state
+    assert done.players[0].spies_recalled_turn == 1
+    return done
+
+
+def _decline_gathering(state: GameState) -> GameState:
+    decline = DomainAction(action_id="decline_gather_intelligence", actor=0)
+    return apply_gather_intelligence_action(state, decline).state
+
+
+def test_imperial_spymaster_counts_a_plot_recall_made_before_the_agent() -> None:
+    state = _recall_card_state("imperial_spymaster", (_ARRAKEEN_POST,))
+    before = _recall_with_special_mission(state, _ARRAKEEN_POST)
+    placed = apply_agent_action(before, _action_to(before, "dutiful_service")).state
+
+    result = resolve_agent_card_effect(placed)
+
+    assert result.events[0].kind == "agent_card_effect_resolved"
+    assert result.state.players[0].intrigue_cards == ("intrigue:test:0",)
+
+
+@pytest.mark.parametrize(
+    ("card_id", "troops"), (("strike_fleet", 3), ("rebel_supplier", 2))
+)
+def test_recruit_boxes_count_a_plot_recall_made_during_the_agent_turn(
+    card_id: str, troops: int
+) -> None:
+    state = _recall_card_state(card_id, (_ARRAKEEN_POST,))
+    placed = _decline_gathering(
+        apply_agent_action(state, _action_to(state, "arrakeen")).state
+    )
+    engine = UprisingRulesEngine()
+    # Without a recall the mandatory box waits for the turn's end (OQ-057).
+    assert "resolve_agent_card_effect" not in {
+        action.action_id for action in engine.legal_actions(placed, 0)
+    }
+
+    recalled = _recall_with_special_mission(placed, _ARRAKEEN_POST)
+    result = resolve_agent_card_effect(recalled)
+
+    assert result.events[0].kind == "agent_card_effect_resolved"
+    assert result.state.players[0].troops_garrison == (
+        placed.players[0].troops_garrison + troops
+    )
+    assert dict(result.state.decision_stack[-1].context)["troops_recruited"] == troops
+
+
+def test_public_spectacle_counts_a_plot_recall_made_during_the_agent_turn() -> None:
+    state = _recall_card_state("public_spectacle", (_ARRAKEEN_POST,))
+    placed = _decline_gathering(
+        apply_agent_action(state, _action_to(state, "arrakeen")).state
+    )
+    assert legal_agent_card_influence_actions(placed, 0) == ()
+
+    recalled = _recall_with_special_mission(placed, _ARRAKEEN_POST)
+
+    assert {
+        dict(action.arguments)["faction"]
+        for action in legal_agent_card_influence_actions(recalled, 0)
+    } == {faction.value for faction in Faction}
+
+
 @pytest.mark.parametrize(
     ("influence", "expected_solari", "expected_spice"),
     (
