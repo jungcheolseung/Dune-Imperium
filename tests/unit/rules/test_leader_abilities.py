@@ -526,11 +526,16 @@ def test_personal_training_spy_stage_recalls_first_without_supply() -> None:
     )
     advanced = apply_feyd_track_action(placed, advance).state
 
-    recall_actions = legal_feyd_track_actions(advanced, 0)
-    assert all(
-        action.action_id == "recall_spy_for_leader_placement"
-        for action in recall_actions
-    )
+    # The stage prints a plain Spy [Feyd-Rautha Harkonnen card]: "If you
+    # have no Spies in your supply, you may first recall one of your Spies
+    # for no effect" [Main pp. 11, 20] -- a choice (OQ-057 (14)), so the
+    # decline stands beside the recalls. This test used to pin recalls only.
+    actions = legal_feyd_track_actions(advanced, 0)
+    assert [action.action_id for action in actions] == [
+        "decline_leader_spy_placement",
+        *("recall_spy_for_leader_placement",) * 3,
+    ]
+    recall_actions = actions[1:]
     recalled = apply_feyd_track_action(advanced, recall_actions[0]).state
     assert dict(recalled.decision_stack[-1].context)["feyd_spy_recalled"] is True
 
@@ -556,7 +561,11 @@ def test_spy_stage_recalls_again_when_the_recalled_spy_was_spent() -> None:
         if dict(action.arguments)["space_id"] == "first_spy"
     )
     advanced = apply_feyd_track_action(placed, advance).state
-    recall = legal_feyd_track_actions(advanced, 0)[0]
+    recall = next(
+        action
+        for action in legal_feyd_track_actions(advanced, 0)
+        if action.action_id == "recall_spy_for_leader_placement"
+    )
     recalled = apply_feyd_track_action(advanced, recall).state
     assert recalled.players[0].spies_supply == 1
 
@@ -570,6 +579,7 @@ def test_spy_stage_recalls_again_when_the_recalled_spy_was_spent() -> None:
 
     offered = legal_feyd_track_actions(spent, 0)
     assert offered
+    # Committed by the earlier recall: no decline comes back (OQ-057 (14)).
     assert all(
         action.action_id == "recall_spy_for_leader_placement" for action in offered
     )
@@ -579,6 +589,61 @@ def test_spy_stage_recalls_again_when_the_recalled_spy_was_spent() -> None:
         action.action_id == "place_leader_spy"
         for action in legal_feyd_track_actions(again, 0)
     )
+
+
+@pytest.mark.parametrize("stage", ("first_spy", "final"))
+def test_personal_training_spy_stage_can_pass_up_the_recall_first(
+    stage: str,
+) -> None:
+    # "you may first recall one of your Spies for no effect" [Main pp. 11,
+    # 20]; docs/rules/uprising-systems.md: "supply가 비었을 때의 선행 recall
+    # ... 은 그대로 선택이므로, 그때는 배치하지 않고 넘어갈 수 있다" (OQ-057
+    # (14)). Declining moves the token without a Spy; at the final space
+    # the troop was already recruited on arrival [Feyd-Rautha Harkonnen card].
+    posts = tuple(post.post_id for post in OBSERVATION_POSTS[:3])
+    track_space = "start" if stage == "first_spy" else "late_trash"
+    placed = _feyd_effect_state(
+        track_space=track_space, spies_supply=0, spy_post_ids=posts
+    )
+    advance = next(
+        action
+        for action in legal_feyd_track_actions(placed, 0)
+        if dict(action.arguments)["space_id"] == stage
+    )
+    advanced = apply_feyd_track_action(placed, advance).state
+    decline = legal_feyd_track_actions(advanced, 0)[0]
+    assert decline.action_id == "decline_leader_spy_placement"
+
+    result = apply_leader_spy_action(advanced, decline)
+
+    owner = result.state.players[0]
+    assert owner.feyd_track_space == stage
+    assert owner.spy_post_ids == posts
+    assert owner.spies_recalled_turn == 0
+    context = dict(result.state.decision_stack[-1].context)
+    assert context["pending_agent_effect"] is False
+    assert "feyd_track_stage" not in context
+    assert "spy_recalled_this_turn" not in context or (
+        context["spy_recalled_this_turn"] is False
+    )
+    assert [event.kind for event in result.events] == ["spy_placement_unavailable"]
+
+
+def test_personal_training_spy_stage_with_a_spy_in_supply_must_place() -> None:
+    # Placing is mandatory while a Spy is in the supply (OQ-057 (14)).
+    placed = _feyd_effect_state(
+        spies_supply=1, spy_post_ids=("arrakis-hagga-basin", "arrakis-deep-desert")
+    )
+    advance = next(
+        action
+        for action in legal_feyd_track_actions(placed, 0)
+        if dict(action.arguments)["space_id"] == "first_spy"
+    )
+    advanced = apply_feyd_track_action(placed, advance).state
+
+    assert {action.action_id for action in legal_feyd_track_actions(advanced, 0)} == {
+        "place_leader_spy"
+    }
 
 
 def test_devious_strength_recalls_a_spy_for_two_swords() -> None:
@@ -1155,6 +1220,51 @@ def test_arrakis_informant_fizzles_when_every_city_post_is_taken() -> None:
     result = resolve_agent_card_effect(placed)
 
     assert result.events[0].kind == "agent_card_effect_unavailable"
+
+
+def test_arrakis_informant_can_pass_up_the_recall_first_without_supply() -> None:
+    # Arrakis Informant prints "[Spy] on [City]" [Lady Margot Fenring card];
+    # "If you have no Spies in your supply, you may first recall one of your
+    # Spies for no effect" [Main pp. 11, 20], a choice (docs/rules/
+    # uprising-systems.md, OQ-057 (14)). The Signet used to force a recall.
+    posts = (
+        "emperor-sardaukar-dutiful-service",
+        "landsraad-assembly-hall-gather-support",
+        "arrakis-deep-desert",
+    )
+    owner = PlayerState(
+        player_id=0,
+        leader_id="lady_margot_fenring",
+        hand=(_signet_instance(),),
+        spies_supply=0,
+        spy_post_ids=posts,
+    )
+    state = _turn_state(owner)
+    placed = apply_agent_action(state, _signet_action_to(state, "arrakeen")).state
+
+    actions = legal_leader_signet_actions(placed, 0)
+    assert [action.action_id for action in actions] == [
+        "decline_leader_spy_placement",
+        *("recall_spy_for_leader_placement",) * 3,
+    ]
+    declined = apply_leader_spy_action(placed, actions[0])
+    assert declined.state.players[0].spy_post_ids == posts
+    assert declined.state.players[0].spies_recalled_turn == 0
+    assert (
+        dict(declined.state.decision_stack[-1].context)["pending_agent_effect"]
+        is False
+    )
+    assert [event.kind for event in declined.events] == ["spy_placement_unavailable"]
+
+    # Once a Spy is recalled it has to be placed on a City post.
+    recalled = apply_leader_spy_action(placed, actions[3]).state
+    after = legal_leader_signet_actions(recalled, 0)
+    assert {action.action_id for action in after} == {"place_leader_spy"}
+    assert {dict(action.arguments)["post_id"] for action in after} == {
+        "arrakis-research-station-spice-refinery",
+        "arrakis-research-station-sietch-tabr",
+        "arrakis-spice-refinery-arrakeen",
+    }
 
 
 def test_lead_the_way_signet_draws_one_card() -> None:

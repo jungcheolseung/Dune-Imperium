@@ -1469,6 +1469,52 @@ def test_choam_demands_completes_a_contract_and_trashes_for_influence() -> None:
     assert below.decision_stack[-1].kind == "reveal"
 
 
+@pytest.mark.parametrize(
+    "contract_id", ("contract:sardaukar_ii", "contract:bloodlines_high_council")
+)
+def test_choam_demands_recall_reward_never_takes_this_turns_agent(
+    contract_id: str,
+) -> None:
+    # Sardaukar II (and the Bloodlines High Council token) print the Recall
+    # Agent icon [Sardaukar II card]: "Return one of your other Agents on the
+    # board to your Leader (not the Agent you sent during this turn)"
+    # [Main p. 20]. Completed by CHOAM Demands' Agent box, the Agent just
+    # sent to Arrakeen used to be a legal target.
+    from dune_imperium.rules.agent_effects import (
+        apply_agent_card_contract_completion,
+        legal_agent_card_contract_completion_actions,
+    )
+    from dune_imperium.rules.contracts import legal_contract_recall_actions
+
+    card = _card("choam_demands")
+
+    def complete(**overrides: object) -> tuple[GameState, tuple[str, ...]]:
+        state = _play(
+            _state(
+                _owner(hand=(card,), active_contract_ids=(contract_id,), **overrides),
+                CHOAM_BLOODLINES,
+            ),
+            card,
+            "arrakeen",
+        )
+        action = legal_agent_card_contract_completion_actions(state, 0)[0]
+        result = apply_agent_card_contract_completion(state, action)
+        return result.state, tuple(event.kind for event in result.events)
+
+    alone, kinds = complete()
+    assert alone.players[0].agent_locations == ("arrakeen",)
+    assert "contract_recall_unavailable" in kinds
+    assert alone.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert legal_contract_recall_actions(alone, 0) == ()
+
+    earlier, _ = complete(agent_locations=("hagga_basin",), agents_available=1)
+    assert earlier.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_RECALL
+    assert [
+        dict(action.arguments)["space_id"]
+        for action in legal_contract_recall_actions(earlier, 0)
+    ] == ["hagga_basin"]
+
+
 # --- Bloodlines slice 4d-3: Holy War, False Orders, Coercive Negotiation --
 
 
@@ -1794,7 +1840,9 @@ def test_ruthless_leadership_round_trips_and_is_dealt_in_random_games() -> None:
     # does not change its agent_turn coverage under Bloodlines (every Bene
     # Gesserit card already gets every Agent icon's placements there, for
     # Urgent Shigawire's boost).
-    assert codec.size == 10159 + 292 + 1 + 1 + 1 + 2 + 1 + 28 + 28 + 67
+    # After v107: +14, the Conflict reward Spy's recall-first (13 recalls
+    # and a decline), and +1 for the Leader Spy's decline.
+    assert codec.size == 10159 + 292 + 1 + 1 + 1 + 2 + 1 + 28 + 28 + 67 + 14 + 1
     action = DomainAction(
         action_id="trash_agent_card",
         actor=2,
@@ -1886,4 +1934,71 @@ def test_storms_in_the_south_first_place_spy_has_deep_cover() -> None:
     assert len(posts) == 12
     placed = apply_combat_reward_spy(rewarded, posts[rival_post]).state
     assert placed.players[0].spy_post_ids == (own_post, rival_post)
+    assert placed.players[1].spy_post_ids == (rival_post,)
+
+
+def test_storms_in_the_south_deep_cover_spy_may_recall_first_without_supply() -> None:
+    # The Deep Cover Spy is still a Spy icon [Storms in the South card]: "If
+    # you have no Spies in your supply, you may first recall one of your
+    # Spies for no effect" [Main pp. 11, 20], optional (docs/rules/
+    # uprising-systems.md, OQ-057 (14)). With all three Spies on the board
+    # the reward used to open no frame and the Spy was lost.
+    from dune_imperium.rules.combat import combat_reward_spy_is_unavailable
+
+    rival_post = "emperor-sardaukar-dutiful-service"
+    own_posts = (
+        "choam-shipping-accept-contract",
+        "arrakis-hagga-basin",
+        "arrakis-deep-desert",
+    )
+    players = (
+        PlayerState(
+            player_id=0, combat_strength=8, spies_supply=0, spy_post_ids=own_posts
+        ),
+        PlayerState(
+            player_id=1, combat_strength=6, spies_supply=2, spy_post_ids=(rival_post,)
+        ),
+        PlayerState(player_id=2, combat_strength=4),
+        PlayerState(player_id=3),
+    )
+    state = GameState(
+        config=BLOODLINES,
+        seed=1,
+        phase=GamePhase.COMBAT,
+        round_number=3,
+        first_player=0,
+        players=players,
+        current_conflict_ids=("storms_in_the_south",),
+        combat_intrigue_complete=True,
+        intrigue_deck=intrigue_deck_instance_ids(False)[:4],
+    )
+    rewarded = resolve_combat_rewards(state).state
+    frame = rewarded.decision_stack[-1]
+    assert frame.kind == FrameKind.COMBAT_REWARD_SPY
+    assert dict(frame.context)["deep_cover"] is True
+    assert not combat_reward_spy_is_unavailable(rewarded)
+    actions = legal_combat_reward_spy_actions(rewarded, 0)
+    assert [action.action_id for action in actions] == [
+        "decline_combat_reward_spy",
+        *("recall_spy_for_combat_reward",) * 3,
+    ]
+
+    recalled = apply_combat_reward_spy(rewarded, actions[1]).state
+    targets = {
+        dict(action.arguments)["post_id"]
+        for action in legal_combat_reward_spy_actions(recalled, 0)
+    }
+    # Deep Cover [Bloodlines pp. 5, 12]: the rival's post and the one just
+    # left are open, the owner's other posts are not.
+    assert {rival_post, own_posts[0]} <= targets
+    assert not targets & set(own_posts[1:])
+    placed = apply_combat_reward_spy(
+        recalled,
+        DomainAction(
+            action_id="place_combat_reward_spy",
+            actor=0,
+            arguments=(("post_id", rival_post),),
+        ),
+    ).state
+    assert placed.players[0].spy_post_ids == (*own_posts[1:], rival_post)
     assert placed.players[1].spy_post_ids == (rival_post,)

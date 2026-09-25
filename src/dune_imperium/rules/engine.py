@@ -633,6 +633,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "decline_leader_card_trash": apply_feyd_track_action,
     "place_leader_spy": apply_leader_spy_action,
     "recall_spy_for_leader_placement": apply_leader_spy_action,
+    "decline_leader_spy_placement": apply_leader_spy_action,
     "pay_leader_signet_spice": apply_leader_signet_payment,
     "pay_leader_signet_solari": apply_leader_signet_payment,
     "decline_leader_signet_payment": apply_leader_signet_payment,
@@ -705,6 +706,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "take_exhausted_contract_solari": apply_exhausted_contract_solari,
     "place_contract_spy": apply_contract_spy_action,
     "recall_spy_for_contract": apply_contract_spy_action,
+    "decline_contract_spy": apply_contract_spy_action,
     "recall_agent_for_contract": apply_contract_recall_action,
     "trash_intrigue_for_contract": apply_contract_intrigue_trash,
     # Round start and Combat
@@ -719,6 +721,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "play_conflict_end_intrigue": apply_conflict_end_trigger,
     "decline_conflict_end_intrigue": apply_conflict_end_trigger,
     "place_combat_reward_spy": apply_combat_reward_spy,
+    "recall_spy_for_combat_reward": apply_combat_reward_spy,
+    "decline_combat_reward_spy": apply_combat_reward_spy,
     "choose_combat_reward_influence": apply_combat_reward_influence,
     "choose_distinct_combat_reward_influence": (apply_distinct_combat_reward_influence),
     # Endgame
@@ -867,9 +871,9 @@ def _advance_automatic(result: RuleResult) -> RuleResult:
         elif navigation_play_is_queued(state):
             automatic = begin_navigation_play(state)
         elif combat_reward_spy_is_unavailable(state):
-            # A Conflict reward Spy that can no longer be placed (no Spy left
-            # in the supply, no free post) is lost rather than left as a
-            # frame without a legal action.
+            # A Conflict reward Spy that cannot be placed (no Spy in the
+            # supply and none on the board to recall first, or no free post)
+            # is lost rather than left as a frame without a legal action.
             automatic = fizzle_combat_reward_spy(state)
         elif combat_influence_choice_is_unavailable(state):
             # Every eligible Faction is at the top of its track, so the

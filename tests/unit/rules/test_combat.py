@@ -429,6 +429,153 @@ def test_combat_influence_choice_resolves_track_bonus_and_alliance() -> None:
     assert resolved.players[0].victory_points == 2
 
 
+def _bene_gesserit_three_with_an_empty_deck(conflict_id: str) -> GameState:
+    # The second-place Intrigue card takes the deck's last card, so the
+    # first-place winner (Bene Gesserit 3) chooses with the deck empty and
+    # one card in the discard.
+    state = _with_influence(
+        _reward_state(conflict_id), 0, Influence(bene_gesserit=3)
+    )
+    return replace(
+        state,
+        intrigue_deck=("intrigue:last",),
+        intrigue_discard=("intrigue:discarded",),
+    )
+
+
+def _reshuffle_and_draw(state: GameState) -> GameState:
+    from dune_imperium.core import ChanceDecision, ChanceResolver
+    from dune_imperium.rules.intrigue_deck import (
+        apply_intrigue_reshuffle,
+        intrigue_draw_is_queued,
+        resolve_pending_intrigue_draw,
+    )
+
+    assert intrigue_draw_is_queued(state)
+    opened = resolve_pending_intrigue_draw(state).state
+    assert opened.decision_stack[-1].kind == "intrigue_reshuffle"
+    decision = UprisingRulesEngine().current_decision(opened)
+    assert isinstance(decision, ChanceDecision)
+    return apply_intrigue_reshuffle(
+        opened, ChanceResolver(seed=1).resolve(decision)
+    ).state
+
+
+def test_bene_gesserit_stays_a_choice_when_the_intrigue_deck_is_empty() -> None:
+    # Skirmish (Crysknife) 1st place prints the choose-Influence icon:
+    # "Choose any one of the four Factions" [Main p. 20]. Reaching Bene
+    # Gesserit 4 draws an Intrigue card, and "In the rare case that you
+    # exhaust the Intrigue deck, shuffle the discarded Intrigue cards to form
+    # a new deck" [FAQ p. 2]; an empty deck used to hide the Faction.
+    rewarded = resolve_combat_rewards(
+        _bene_gesserit_three_with_an_empty_deck("skirmish_crysknife")
+    ).state
+    assert rewarded.intrigue_deck == ()
+    actions = legal_combat_reward_influence_actions(rewarded, 0)
+    assert {dict(action.arguments)["faction"] for action in actions} == {
+        "emperor",
+        "spacing_guild",
+        "bene_gesserit",
+        "fremen",
+    }
+    bene_gesserit = next(
+        action
+        for action in actions
+        if dict(action.arguments)["faction"] == "bene_gesserit"
+    )
+
+    chosen = apply_combat_reward_influence(rewarded, bene_gesserit).state
+
+    assert chosen.players[0].influence.bene_gesserit == 4
+    assert chosen.players[0].alliance_faction_ids == ("bene_gesserit",)
+    assert [(player, count) for player, count, _ in chosen.pending_intrigue_draws] == [
+        (0, 1)
+    ]
+    drawn = _reshuffle_and_draw(chosen)
+    assert drawn.players[0].intrigue_cards == ("intrigue:discarded",)
+    assert drawn.intrigue_discard == ()
+
+
+def test_bene_gesserit_is_chosen_with_both_intrigue_piles_empty() -> None:
+    # With nothing to reshuffle the Influence and the Alliance still apply;
+    # only the Intrigue card is missing [Main p. 20] [FAQ p. 2].
+    state = replace(
+        _bene_gesserit_three_with_an_empty_deck("skirmish_crysknife"),
+        intrigue_discard=(),
+    )
+    rewarded = resolve_combat_rewards(state).state
+    bene_gesserit = next(
+        action
+        for action in legal_combat_reward_influence_actions(rewarded, 0)
+        if dict(action.arguments)["faction"] == "bene_gesserit"
+    )
+
+    chosen = apply_combat_reward_influence(rewarded, bene_gesserit).state
+    from dune_imperium.rules.intrigue_deck import resolve_pending_intrigue_draw
+
+    drawn = resolve_pending_intrigue_draw(chosen).state
+
+    assert drawn.decision_stack == ()
+    assert drawn.pending_intrigue_draws == ()
+    assert drawn.players[0].influence.bene_gesserit == 4
+    assert drawn.players[0].alliance_faction_ids == ("bene_gesserit",)
+    assert drawn.players[0].intrigue_cards == ()
+
+
+def test_bene_gesserit_is_the_last_faction_left_with_an_empty_deck() -> None:
+    # Spice Freighters 1st place (choose-Influence icon [Main p. 20]) with
+    # every other track at the top: Bene Gesserit is still offered, so the
+    # choice is not dropped as unavailable (OQ-060 covers only a full track).
+    # No Intrigue card is drawn below 1st place here, so the deck starts empty.
+    state = replace(
+        _bene_gesserit_three_with_an_empty_deck("spice_freighters"),
+        intrigue_deck=(),
+    )
+    state = _with_influence(
+        state, 0, Influence(emperor=6, spacing_guild=6, bene_gesserit=3, fremen=6)
+    )
+    rewarded = resolve_combat_rewards(state).state
+
+    actions = legal_combat_reward_influence_actions(rewarded, 0)
+
+    assert [dict(action.arguments)["faction"] for action in actions] == [
+        "bene_gesserit"
+    ]
+    assert not combat_influence_choice_is_unavailable(rewarded)
+
+
+def test_propaganda_offers_bene_gesserit_when_the_intrigue_deck_is_empty() -> None:
+    # Propaganda 1st place: "Choose two:" of the four Faction icons [Propaganda
+    # card], with no condition on the Intrigue deck [Main p. 20] [FAQ p. 2].
+    rewarded = resolve_combat_rewards(
+        _bene_gesserit_three_with_an_empty_deck("propaganda")
+    ).state
+    assert rewarded.intrigue_deck == ()
+    first = legal_distinct_combat_reward_influence_actions(rewarded, 0)
+    assert "bene_gesserit" in {dict(action.arguments)["faction"] for action in first}
+    named = apply_distinct_combat_reward_influence(
+        rewarded,
+        next(
+            action
+            for action in first
+            if dict(action.arguments)["faction"] == "bene_gesserit"
+        ),
+    ).state
+    fremen = next(
+        action
+        for action in legal_distinct_combat_reward_influence_actions(named, 0)
+        if dict(action.arguments)["faction"] == "fremen"
+    )
+
+    chosen = apply_distinct_combat_reward_influence(named, fremen).state
+
+    assert chosen.players[0].influence.bene_gesserit == 4
+    assert chosen.players[0].influence.fremen == 1
+    assert chosen.combat_rewards_resolved is True
+    drawn = _reshuffle_and_draw(chosen)
+    assert drawn.players[0].intrigue_cards == ("intrigue:discarded",)
+
+
 def test_combat_rewards_require_completed_intrigue_and_only_resolve_once() -> None:
     state = _reward_state("skirmish_desert_mouse")
 
@@ -693,8 +840,8 @@ def test_sandworm_repeats_spy_placement_but_not_control() -> None:
 def test_the_emperor_tracks_spy_follows_the_conflicts_own_spy_rewards() -> None:
     # Test of Loyalty pays a Spy and one Emperor Influence. From Influence 3
     # that reaches the Emperor track's Spy icon [Main p. 7] while the
-    # Conflict's own Spy was already counted against the supply: the reward
-    # Spy is placed first and the track's Spy opens after it, in the generic
+    # Conflict's own Spy is still waiting: the reward Spy is placed first
+    # and the track's Spy opens after it, in the generic
     # placement frame (a sweep deadlock, seed 92, before the ordering: the
     # track's Spy took the last supply Spy and left the reward frame
     # without a legal action).
@@ -731,31 +878,120 @@ def test_the_emperor_tracks_spy_follows_the_conflicts_own_spy_rewards() -> None:
     }
 
 
-def test_a_conflict_reward_spy_that_cannot_be_placed_is_dropped() -> None:
-    # Should the supply run dry before a reward Spy frame resolves, the frame
-    # is lost publicly instead of standing without a legal action.
-    paid = resolve_combat_rewards(_reward_state("seize_spice_refinery")).state
+_ALL_SPIES_PLACED = (
+    "arrakis-hagga-basin",
+    "arrakis-deep-desert",
+    "arrakis-imperial-basin",
+)
+
+
+def _winner_spies(
+    state: GameState, supply: int, posts: tuple[str, ...], boxed: int = 0
+) -> GameState:
+    winner = replace(
+        state.players[0], spies_supply=supply, spy_post_ids=posts, spies_boxed=boxed
+    )
+    return replace(state, players=(winner, *state.players[1:]))
+
+
+@pytest.mark.parametrize("conflict_id", ("seize_spice_refinery", "test_of_loyalty"))
+def test_a_conflict_reward_spy_without_supply_may_recall_first(
+    conflict_id: str,
+) -> None:
+    # Seize Spice Refinery and Test of Loyalty print a plain Spy in their
+    # first-place reward [Seize Spice Refinery card] [Test of Loyalty card].
+    # "If you have no Spies in your supply, you may first recall one of your
+    # Spies for no effect" [Main pp. 11, 20]; the recall stays optional
+    # (docs/rules/uprising-systems.md, OQ-057 (14)). With all three Spies on
+    # the board the reward used to open no frame at all.
+    engine = UprisingRulesEngine()
+    state = _winner_spies(_reward_state(conflict_id), 0, _ALL_SPIES_PLACED)
+
+    paid = resolve_combat_rewards(state).state
+
     assert paid.decision_stack[-1].kind == "combat_reward_spy"
     assert not combat_reward_spy_is_unavailable(paid)
-    drained = replace(
-        paid,
-        players=(
-            replace(
-                paid.players[0],
-                spies_supply=0,
-                spy_post_ids=(
-                    "arrakis-hagga-basin",
-                    "arrakis-deep-desert",
-                    "arrakis-imperial-basin",
-                ),
-            ),
-            *paid.players[1:],
-        ),
-    )
+    actions = engine.legal_actions(paid, 0)
+    assert [action.action_id for action in actions] == [
+        "decline_combat_reward_spy",
+        *("recall_spy_for_combat_reward",) * 3,
+    ]
 
-    assert legal_combat_reward_spy_actions(drained, 0) == ()
-    assert combat_reward_spy_is_unavailable(drained)
-    dropped = fizzle_combat_reward_spy(drained)
+    declined = apply_combat_reward_spy(paid, actions[0])
+    assert declined.state.decision_stack == ()
+    assert declined.state.combat_rewards_resolved is True
+    assert declined.state.players[0].spy_post_ids == _ALL_SPIES_PLACED
+    assert [event.kind for event in declined.events] == [
+        "combat_reward_spy_unavailable"
+    ]
+
+    # Once recalled the Spy is in the supply and must be placed, the post it
+    # left included.
+    recalled = apply_combat_reward_spy(paid, actions[1]).state
+    assert recalled.players[0].spies_supply == 1
+    assert recalled.combat_rewards_resolved is False
+    after = legal_combat_reward_spy_actions(recalled, 0)
+    assert {action.action_id for action in after} == {"place_combat_reward_spy"}
+    open_posts = {dict(action.arguments)["post_id"] for action in after}
+    assert _ALL_SPIES_PLACED[0] in open_posts
+    placed = apply_combat_reward_spy(
+        recalled,
+        next(
+            action
+            for action in after
+            if dict(action.arguments)["post_id"] == "arrakis-spice-refinery-arrakeen"
+        ),
+    ).state
+    assert placed.players[0].spy_post_ids == (
+        *_ALL_SPIES_PLACED[1:],
+        "arrakis-spice-refinery-arrakeen",
+    )
+    assert placed.combat_rewards_resolved is True
+
+
+def test_a_doubled_reward_spy_is_not_capped_by_the_supply_at_payment() -> None:
+    # A sandworm doubles Seize Spice Refinery's Spy [Main p. 14]. With one
+    # Spy in the supply both frames open; the second may recall first
+    # [Main pp. 11, 20] instead of being lost.
+    state = _winner_spies(
+        _reward_state("seize_spice_refinery", sandworm_players=(0,)),
+        1,
+        _ALL_SPIES_PLACED[:2],
+    )
+    paid = resolve_combat_rewards(state).state
+    assert [frame.kind for frame in paid.decision_stack] == ["combat_reward_spy"] * 2
+
+    first = legal_combat_reward_spy_actions(paid, 0)
+    assert {action.action_id for action in first} == {"place_combat_reward_spy"}
+    placed = apply_combat_reward_spy(paid, first[0]).state
+    assert placed.players[0].spies_supply == 0
+
+    second = legal_combat_reward_spy_actions(placed, 0)
+    assert [action.action_id for action in second] == [
+        "decline_combat_reward_spy",
+        *("recall_spy_for_combat_reward",) * 3,
+    ]
+
+
+def test_a_conflict_reward_spy_with_no_spy_to_recall_is_dropped() -> None:
+    # No Spy in the supply and none on the board (a Tech sent them to the
+    # box): nothing can be placed, so the frame is lost publicly instead of
+    # standing without a legal action.
+    state = _winner_spies(
+        replace(
+            _reward_state("seize_spice_refinery"),
+            config=RulesetConfig(bloodlines=True, tech_module=True),
+        ),
+        0,
+        (),
+        boxed=3,
+    )
+    paid = resolve_combat_rewards(state).state
+    assert paid.decision_stack[-1].kind == "combat_reward_spy"
+
+    assert legal_combat_reward_spy_actions(paid, 0) == ()
+    assert combat_reward_spy_is_unavailable(paid)
+    dropped = fizzle_combat_reward_spy(paid)
     assert dropped.state.decision_stack == ()
     assert dropped.state.combat_rewards_resolved is True
     assert [event.kind for event in dropped.events] == [

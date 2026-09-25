@@ -433,6 +433,61 @@ def test_deliver_supplies_places_its_spy_with_deep_cover_over_an_opponent() -> N
     assert spied.players[0].completed_contract_ids == (DELIVER_SUPPLIES,)
 
 
+def test_deliver_supplies_spy_without_supply_may_pass_up_the_recall_first() -> None:
+    # A Spy with Deep Cover is still a Spy icon: "If you have no Spies in
+    # your supply, you may first recall one of your Spies for no effect"
+    # [Main pp. 11, 20] (optional, docs/rules/uprising-systems.md, OQ-057
+    # (14)); "Spy with Deep Cover: 일반 규칙대로 Spy 하나를 놓되, 놓을 때
+    # 상대의 Spy를 무시할 수 있다" [Bloodlines pp. 5, 12].
+    engine = UprisingRulesEngine()
+    watched = "arrakis-hagga-basin"
+    own_posts = (
+        "emperor-sardaukar-dutiful-service",
+        "arrakis-deep-desert",
+        "arrakis-imperial-basin",
+    )
+    state = _state(
+        _owner(
+            spies_supply=0,
+            spy_post_ids=own_posts,
+            active_contract_ids=(DELIVER_SUPPLIES,),
+        ),
+        opponents=(
+            PlayerState(player_id=1, spies_supply=2, spy_post_ids=(watched,)),
+        ),
+    )
+    placed = _place(state, "deliver_supplies")
+    completion = next(
+        action
+        for action in engine.legal_actions(placed, 0)
+        if action.action_id == "complete_contract"
+    )
+    completed = engine.apply(placed, completion).state
+    actions = engine.legal_actions(completed, 0)
+    assert [action.action_id for action in actions] == [
+        "decline_contract_spy",
+        *("recall_spy_for_contract",) * 3,
+    ]
+
+    declined = engine.apply(completed, actions[0]).state
+    assert declined.players[0].spy_post_ids == own_posts
+    assert declined.decision_stack[-1].kind == "agent_effects"
+
+    recalled = engine.apply(completed, actions[1]).state
+    targets = {
+        dict(action.arguments)["post_id"]
+        for action in engine.legal_actions(recalled, 0)
+        if action.action_id == "place_contract_spy"
+    }
+    assert {action.action_id for action in engine.legal_actions(recalled, 0)} == {
+        "place_contract_spy"
+    }
+    # Deep Cover: the opponent's post is open, the owner's own are not.
+    assert watched in targets
+    assert own_posts[0] in targets
+    assert not targets & set(own_posts[1:])
+
+
 @pytest.mark.parametrize(
     ("instance_id", "expected"),
     [

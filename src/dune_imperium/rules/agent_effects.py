@@ -1086,8 +1086,15 @@ def apply_agent_card_contract_completion(
         f"agent_card:{source_card_id}:contract:{instance_id}"
     )
     garrison_before = state.players[action.actor].troops_garrison
+    # A Recall Agent reward may not take back the Agent this turn sent
+    # [Main p. 20], as for a Contract completed by its own space.
+    turn_space_id = context.get("space_id")
     completed = complete_contract_by_effect(
-        state, action.actor, instance_id, source=source
+        state,
+        action.actor,
+        instance_id,
+        source=source,
+        excluded_space_id=turn_space_id if isinstance(turn_space_id, str) else "",
     )
     recruited = completed.state.players[action.actor].troops_garrison - garrison_before
     if recruited:

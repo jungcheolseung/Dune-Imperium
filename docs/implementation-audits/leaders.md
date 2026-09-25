@@ -23,7 +23,7 @@ Leader identity와 setup은 `content/uprising/leaders.py`, 능력 규칙은 `rul
 ### Feyd-Rautha Harkonnen
 
 - **Devious Strength** — "Reveal Turn: [Spy recall] → 검 2." arrow 비용-효과이므로 Reveal turn당 1회 `[Main p. 20]` `[FAQ p. 3]`. 배치된 Spy 하나를 supply로 되돌리고 optional sword 2를 더한다. unit이 Conflict에 없으면 세지 않는 것은 기존 Reveal sword 처리와 동일하다.
-- **Personal Training(Signet)** — "Move your Feyd token one space to the right on your Training track, earning the reward on the new space." 트랙은 분기 경로다: start → {1 Solari→trash | Spy} → trash → {trash | Spy → Spice 2} → 최종(troop 1 + Spy). 구조와 보상은 카드 이미지에서 전사해 `FEYD_TRAINING_TRACK`(content)에 고정했다. token은 setup 때 맨 왼쪽, 맨 오른쪽 도달 후 그대로 남는다 `[Main p. 17]`. 오른쪽 끝에서는 이동할 새 공간이 없으므로 보상이 없다(OQ-017 convention). trash 대상은 hand, discard pile, in play `[Main p. 20]`이고, Spy 배치는 supply가 비면 recall-first `[Main pp. 11, 20]`를 따른다. 관측소 13곳 > 전체 Spy 12개라 Spy 배치가 막히는 상태는 성립하지 않는다.
+- **Personal Training(Signet)** — "Move your Feyd token one space to the right on your Training track, earning the reward on the new space." 트랙은 분기 경로다: start → {1 Solari→trash | Spy} → trash → {trash | Spy → Spice 2} → 최종(troop 1 + Spy). 구조와 보상은 카드 이미지에서 전사해 `FEYD_TRAINING_TRACK`(content)에 고정했다. token은 setup 때 맨 왼쪽, 맨 오른쪽 도달 후 그대로 남는다 `[Main p. 17]`. 오른쪽 끝에서는 이동할 새 공간이 없으므로 보상이 없다(OQ-017 convention). trash 대상은 hand, discard pile, in play `[Main p. 20]`이고, Spy 배치는 supply에 Spy가 있으면 의무, supply가 비면 recall-first `[Main pp. 11, 20]`가 선택이라 `decline_leader_spy_placement`로 넘어갈 수 있다(그러면 token만 전진하고 Spy는 없다; 최종 칸의 troop은 도착 때 이미 받는다). recall한 뒤에는 배치가 의무다(OQ-057 (14)). **2026-09-26 정정**: 이전에는 supply가 비면 recall을 강제했다. 관측소 13곳 > 전체 Spy 12개라 Spy 배치가 막히는 상태는 성립하지 않는다.
 - DIU의 트랙 데이터는 위쪽 trash 분기를 지나도 Spice 칸을 통과하는 평탄 구조였으나, 카드 이미지의 연결선은 위 분기가 Spice 칸을 건너뛰고 바로 최종 칸으로 이어짐을 보여 준다. 이미지를 따랐다.
 
 ### Lady Jessica / Reverend Mother Jessica (양면)
@@ -37,7 +37,7 @@ Leader identity와 setup은 `content/uprising/leaders.py`, 능력 규칙은 `rul
 ### Lady Margot Fenring
 
 - **Loyalty** — "When you reach [Bene Gesserit] 2 Influence: Spice 2." Influence 상승 루프에서 `reach 2` VP와 같은 지점에 연결해 다단 상승의 통과, 재도달, 하강 미발동 판정을 공식 의미론과 공유한다 `[Main pp. 7, 17]`.
-- **Arrakis Informant(Signet)** — "[Spy] on [파란 원]" = City board space에 연결된 관측소에 Spy 배치. City 연결 관측소는 3곳뿐이라 전부 점유된 상태가 성립할 수 있고, supply Spy가 있는데 빈 City 관측소가 없으면 배치는 소실된다(recall-first는 supply가 빌 때만 `[Main pp. 11, 20]`; supply가 비었으면 City 관측소의 자기 Spy를 recall해 자리를 열 수 있다).
+- **Arrakis Informant(Signet)** — "[Spy] on [파란 원]" = City board space에 연결된 관측소에 Spy 배치. City 연결 관측소는 3곳뿐이라 전부 점유된 상태가 성립할 수 있고, supply Spy가 있는데 빈 City 관측소가 없으면 배치는 소실된다(recall-first는 supply가 빌 때만 `[Main pp. 11, 20]`; supply가 비었으면 City 관측소의 자기 Spy를 recall해 자리를 열 수 있다). supply가 비었을 때의 recall은 선택이라 `decline_leader_spy_placement`로 Signet을 Spy 없이 끝낼 수 있고, recall한 뒤에는 배치가 의무다(OQ-057 (14)). **2026-09-26 정정**: 이전에는 recall을 강제했다. 같은 Signet 배치 도우미를 쓰는 Staban Tuek의 Unseen Network와 Mohiam의 지불 뒤 Listeners Spy도 같다.
 
 ### Muad'Dib
 

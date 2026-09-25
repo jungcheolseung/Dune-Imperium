@@ -601,7 +601,9 @@ def test_bloodlines_actions_round_trip_only_in_the_bloodlines_catalog() -> None:
     # controller's post-merge re-pin): Maker Keeper's and Undercover Asset's
     # corrected Agent icons drop -36 here too (see test_action_codec.
     # test_catalog_is_fixed_and_versioned_for_a_ruleset).
-    assert base.size == 4354 + 12 + 1 + 1 + 2 + 1 + 40 + 1 + 27 - 36
+    # After v107: +14 + 1, the Conflict reward and Leader Spies'
+    # recall-first.
+    assert base.size == 4354 + 12 + 1 + 1 + 2 + 1 + 40 + 1 + 27 - 36 + 14 + 1
     # Commander choices, the Commander share of retreats and deployments,
     # and the wild pairs of the two Bloodlines Conflicts are bloodlines-only.
     assert codec.size > base.size

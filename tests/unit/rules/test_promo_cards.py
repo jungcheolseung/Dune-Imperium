@@ -582,9 +582,14 @@ def test_promo_actions_round_trip_through_the_codec() -> None:
     # controller's post-merge re-pin): Maker Keeper's and Undercover Asset's
     # corrected Agent icons drop -36 here too (see test_action_codec.
     # test_catalog_is_fixed_and_versioned_for_a_ruleset).
-    assert codec.size == 4454 + 12 + 1 + 1 + 2 + 1 + 40 + 1 + 27 - 36
+    # After v107: +14, the Conflict reward Spy's recall-first (13 recalls
+    # and a decline, every catalog), and +1 for the Leader Spy's decline.
+    # After v107: decline_contract_spy joins the CHOAM catalogs, +1.
+    assert codec.size == 4454 + 12 + 1 + 1 + 2 + 1 + 40 + 1 + 27 - 36 + 14 + 1
     choam_promo = ActionCodec(RulesetConfig(choam_module=True, promo_cards=True))
-    assert choam_promo.size == 4740 + 12 + 1 + 1 + 2 + 1 + 44 + 1 + 27 - 36
+    assert choam_promo.size == (
+        4740 + 12 + 1 + 1 + 2 + 1 + 44 + 1 + 27 - 36 + 1 + 14 + 1
+    )
     for action_id in (
         "pay_agent_card_spice_for_sandworm",
         "pay_agent_card_spice_for_sandworm_and_shield_wall",

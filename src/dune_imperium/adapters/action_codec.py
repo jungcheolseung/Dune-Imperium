@@ -164,6 +164,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         ActionTemplate(action_id=action_id)
         for action_id in (
             "decline_combat_reward",
+            "decline_combat_reward_spy",
             "decline_combat_reward_trash",
             "decline_agent_card_trash",
             "decline_agent_card_payment",
@@ -175,6 +176,9 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "decline_leader_board_repeat",
             "decline_leader_card_trash",
             "decline_leader_signet_payment",
+            # A Leader's Spy may pass up the recall-first without a Spy in
+            # supply [Main pp. 11, 20].
+            "decline_leader_spy_placement",
             "decline_other_memories",
             "decline_gather_intelligence",
             "decline_reveal_spy_recall",
@@ -257,6 +261,9 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
                 "keep_contract_reveal_spice",
                 "take_exhausted_contract_solari",
                 "trash_contract_reveal_for_vp",
+                # A Contract Spy may pass up the recall-first without a Spy
+                # in supply [Main pp. 11, 20].
+                "decline_contract_spy",
             )
         )
     templates.extend(_agent_turn_templates(config))
@@ -562,13 +569,19 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             )
             for post_id in post_ids
         )
-    templates.extend(
-        ActionTemplate(
-            action_id="place_combat_reward_spy",
-            arguments=(("post_id", post_id),),
+    for action_id in (
+        "place_combat_reward_spy",
+        # Without a Spy in supply a Conflict reward Spy may recall one first
+        # [Main pp. 11, 20].
+        "recall_spy_for_combat_reward",
+    ):
+        templates.extend(
+            ActionTemplate(
+                action_id=action_id,
+                arguments=(("post_id", post_id),),
+            )
+            for post_id in post_ids
         )
-        for post_id in post_ids
-    )
     templates.extend(
         ActionTemplate(
             action_id="recall_spies_for_reveal",
