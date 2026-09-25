@@ -1784,10 +1784,12 @@ def _serialize_action(
     """Serialize one legal action.
 
     ``detail`` names a keyed icon's printed effect; ``detail_ko`` is its
-    Korean twin (``None`` until a later step's generator table supplies
-    one — ``display.actions.effect_action_text_ko``'s own docstring says
-    why it always does today; the client falls back to ``detail`` in that
-    case, ``static/core.js`` ``describeAction``). ``undoable`` says whether
+    Korean twin, real for a personal card's own Agent-box icon (Step K2,
+    ``display.actions.agent_card_icon_text_ko``) and still ``None`` for a
+    board-space icon, whose Korean table is a later step's work
+    (``display.actions.effect_action_text_ko``'s own docstring says why);
+    the client falls back to ``detail`` in that case, ``static/core.js``
+    ``describeAction``. ``undoable`` says whether
     the step could still be taken back afterwards (it could not once it
     reveals hidden information or hands the game to a chance outcome, nor
     when it is an explicit turn end, which seals the turn);

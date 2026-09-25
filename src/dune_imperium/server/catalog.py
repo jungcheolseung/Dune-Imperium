@@ -18,9 +18,10 @@ carries ``image_ko`` beside ``image``. Cards whose Korean print is known
 the pair of its language. An entry's engine-*generated* effect text (as
 opposed to printed card wording, which stays English) carries its Korean
 twin the same way, suffixed ``_ko``: so far ``contracts[].condition_ko``/
-``reward_ko`` and ``conflicts[].rewards_ko`` (``display.structs``'s ``_ko``
-renderers); more fields grow this list as later work translates their
-generators. ``icon_files``, ``token_files`` and ``board_image``
+``reward_ko``, ``conflicts[].rewards_ko`` (``display.structs``'s ``_ko``
+renderers) and ``cards[].text_ko`` (``display.cards``'s
+``personal_card_text_ko``, Step K2); more fields grow this list as later
+work translates their generators. ``icon_files``, ``token_files`` and ``board_image``
 work the same way for the rulebook icon set (``/icons/...``), the pictured
 Combat markers (``/tokens/...``, ``display.token_images``) and the local board
 scan (``/board-image``): the catalog also carries the percent coordinates
@@ -65,6 +66,7 @@ from dune_imperium.display import (
     contract_reward_text_ko,
     intrigue_card_text,
     personal_card_text,
+    personal_card_text_ko,
     space_is_implemented,
     space_notes,
     space_option_count,
@@ -157,6 +159,7 @@ def build_catalog(
             factions=tuple(faction.value for faction in starter.factions),
             agent_icons=tuple(icon.value for icon in starter.agent_icons),
             text=personal_card_text(starter),
+            text_ko=personal_card_text_ko(starter),
             image=_image_url("other", card_id, image_files),
         )
     for stack in RESERVE_STACKS:
@@ -168,6 +171,7 @@ def build_catalog(
             factions=(),
             agent_icons=tuple(icon.value for icon in stack.agent_icons),
             text=personal_card_text(stack),
+            text_ko=personal_card_text_ko(stack),
             image=_image_url("other", stack.card.card_id, image_files),
         )
     for card_id, entry in IMPERIUM_CARDS_BY_ID.items():
@@ -179,6 +183,7 @@ def build_catalog(
             factions=tuple(faction.value for faction in entry.factions),
             agent_icons=tuple(icon.value for icon in entry.agent_icons),
             text=personal_card_text(entry),
+            text_ko=personal_card_text_ko(entry),
             image=_image_url("imperium", card_id, image_files),
             # Immortality's Imperium deck has Graft cards too (Dissecting
             # Kit, Corrino Genes, ...), not only the Tleilaxu deck.
@@ -198,6 +203,7 @@ def build_catalog(
             factions=tuple(faction.value for faction in tleilaxu_entry.factions),
             agent_icons=tuple(icon.value for icon in tleilaxu_entry.agent_icons),
             text=personal_card_text(tleilaxu_entry),
+            text_ko=personal_card_text_ko(tleilaxu_entry),
             image=_image_url("tleilaxu", card_id, image_files),
             specimens=tleilaxu_entry.specimen_cost,
             graft=tleilaxu_entry.graft,
@@ -461,6 +467,7 @@ def _personal_card(
     factions: tuple[str, ...],
     agent_icons: tuple[str, ...],
     text: list[str],
+    text_ko: list[str],
     image: str | None,
     specimens: int | None = None,
     graft: bool = False,
@@ -473,6 +480,7 @@ def _personal_card(
         "factions": list(factions),
         "agent_icons": list(agent_icons),
         "text": list(text),
+        "text_ko": list(text_ko),
         "image": image,
     }
     if specimens is not None:

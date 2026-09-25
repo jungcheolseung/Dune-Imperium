@@ -9,6 +9,21 @@ with "[Agent]:" under it and took the card's own name for iconized. The check
 opens the popovers of cards whose lines start with those labels, in both
 languages, and asserts each label is a text node while the same word inside
 an effect still becomes the icon.
+
+Since Step K2 (2026-09-25) gave personal cards a real ``text_ko`` twin
+(``display.cards.personal_card_text_ko``), a "cards" section line with a
+Korean twin now renders through the newer ``.effect-text-ko``/``phrase()``
+path instead of ``.card-text``/``iconize()`` when the UI is in Korean — a
+different code path the English-label bug this script guards against does
+not even reach, because ``personal_card_text_ko``'s box-label prefixes
+("에이전트 칸:", "버리면:") are hardcoded Korean words, never a
+``{agent}``/``{discard}`` icon placeholder ``phrase()`` could turn into a
+graphic (``display/cards.py``'s own module docstring says why). The Korean
+check below follows whichever path a given entry's line actually takes:
+``.effect-text-ko`` with the matching Korean label word when a ``text_ko``
+twin exists for that exact line, ``.card-text`` with the English label
+otherwise (a section this project hasn't translated yet, e.g. Tech tiles'
+"Agent Turn:").
 """
 
 from __future__ import annotations
@@ -18,23 +33,35 @@ from open_mode import create_game, settled
 
 check = Check()
 
+# Korean twin of each English box label this script watches for, keyed by
+# the same word FIND_JS captures — display/cards.py's own prefixes.
+KOREAN_LABELS = {
+    "Agent": "에이전트 칸",
+    "On discard": "버리면",
+    # Tech tiles' "Agent Turn:" (bloodlines.py/tech display) has no Korean
+    # twin yet; left unmapped so the Korean check below falls back to the
+    # English-label/.card-text path for it, same as before this change.
+}
+
 # Every catalog line that opens with one of the labels, and one effect line
 # that says "Agent" mid-sentence (to prove the icon rule still works there).
+# ``index`` is the line's position in ``entry.text``, so the Korean check
+# can read the same position out of ``entry.text_ko`` when one exists.
 FIND_JS = """() => {
   const found = {labels: [], inline: null};
   for (const [section, entries] of Object.entries(state.catalog)) {
     if (!entries || typeof entries !== "object") continue;
     for (const [id, entry] of Object.entries(entries)) {
       const lines = (entry && Array.isArray(entry.text)) ? entry.text : [];
-      for (const line of lines) {
+      lines.forEach((line, index) => {
         const label = /^(Agent Turn|Agent|On discard):/.exec(line);
         if (label && !found.labels.some((f) => f.label === label[1])) {
-          found.labels.push({section, id, label: label[1], line});
+          found.labels.push({section, id, index, label: label[1], line});
         }
         if (!found.inline && !label && /\\bAgents?\\b/.test(line)) {
           found.inline = {section, id, line};
         }
-      }
+      });
     }
   }
   return found;
@@ -54,6 +81,27 @@ POPOVER_JS = """(args) => {
     firstText: first && first.nodeType === 3 ? first.textContent : null,
     agentIcons: node ? node.querySelectorAll(".agent-piece-icon, img[alt='Agent'], img[alt='에이전트']").length : 0,
     icons: node ? node.querySelectorAll("img, svg").length : 0,
+    text: node ? node.textContent : null,
+  };
+}"""
+
+# Korean twin of POPOVER_JS: reads entry.text_ko[index] (when it exists)
+# and the .effect-text-ko lines instead of .card-text/iconize().
+POPOVER_KO_JS = """(args) => {
+  const [id, index] = args;
+  const entry = lookup(id);
+  openPopover(entry, document.querySelector("header h1"));
+  const pop = document.getElementById("card-popover");
+  const lineKo = entry.text_ko ? entry.text_ko[index] : undefined;
+  if (lineKo === undefined) return {hasKoTwin: false};
+  const texts = [...pop.querySelectorAll(".effect-text-ko")];
+  const node = texts.find((t) => t.textContent === phrase(lineKo).textContent)
+    || texts[0];
+  const first = node ? node.firstChild : null;
+  return {
+    hasKoTwin: true,
+    firstIsText: Boolean(first) && first.nodeType === 3,
+    firstText: first && first.nodeType === 3 ? first.textContent : null,
     text: node ? node.textContent : null,
   };
 }"""
@@ -79,6 +127,22 @@ def main() -> None:
             page.evaluate(f"setLanguage('{lang}')")
             settled(page)
             for item in found["labels"]:
+                korean_label = KOREAN_LABELS.get(item["label"])
+                if lang == "ko" and korean_label is not None:
+                    shown_ko = page.evaluate(
+                        POPOVER_KO_JS, [item["id"], item["index"]]
+                    )
+                    if shown_ko["hasKoTwin"]:
+                        check.ok(
+                            shown_ko["firstIsText"]
+                            and (shown_ko["firstText"] or "").startswith(
+                                f"{korean_label}:"
+                            ),
+                            f"{lang}: {item['id']} opens its .effect-text-ko line "
+                            f"with the words '{korean_label}:'",
+                            shown_ko,
+                        )
+                        continue
                 shown = page.evaluate(POPOVER_JS, [item["id"], item["line"]])
                 check.ok(
                     shown["firstIsText"]

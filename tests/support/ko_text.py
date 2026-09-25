@@ -18,6 +18,13 @@ generator (a later step's ``effect_dsl_text_ko.py``, ``cards_ko`` helpers,
   the opposite (``assert_trash_and_discard_match`` —
   ``docs/rules/glossary-ko.md``: "trash와 discard를 절대 섞지 않는다";
   ``docs/lessons.md`` 2026-09-09 logs a real bug from mixing them).
+- an English line that names a sandworm (the verb "Summon" or the noun
+  "sandworm(s)") never renders 소환 in Korean — that word is reserved for
+  Agent/Spy recall (``assert_no_summon_for_sandworm`` —
+  ``docs/rules/glossary-ko.md``: "Sandworm (summon) | 부르다 —
+  **"소환"이 아님**(소환은 Agent/Spy 회수 전용)", `[Main p. 10]`
+  "모래벌레를 불러서 즉시 교전 칸에 배치합니다", `[Main p. 20]`
+  "모래벌레 1마리를 불러서 배치합니다").
 """
 
 import re
@@ -38,6 +45,8 @@ _TRASH_EN = re.compile(r"\btrash(?:e[sd])?\b", re.IGNORECASE)
 # a card from your discard pile").
 _DISCARD_PILE_EN = re.compile(r"\bdiscard piles?\b", re.IGNORECASE)
 _DISCARD_EN = re.compile(r"\bdiscard(?:s|ed|ing)?\b", re.IGNORECASE)
+_SUMMON_EN = re.compile(r"\bsummon(?:s|ed|ing)?\b", re.IGNORECASE)
+_SANDWORM_EN = re.compile(r"\bsandworms?\b", re.IGNORECASE)
 
 
 def terms_keys() -> frozenset[str]:
@@ -122,3 +131,23 @@ def assert_trash_and_discard_match(english: str, korean: str) -> None:
         f"{english!r} (discards={discards_en}) does not match Korean 버리 "
         f"presence ({discards_ko}): {korean!r}"
     )
+
+
+def assert_no_summon_for_sandworm(english: str, korean: str) -> None:
+    """A Korean line never uses 소환 for a sandworm (Agent/Spy recall only).
+
+    ``docs/rules/glossary-ko.md``: "Sandworm (summon) | 부르다 —
+    **"소환"이 아님**(소환은 Agent/Spy 회수 전용)" (`[Main p. 10]`
+    "모래벌레를 불러서 즉시 교전 칸에 배치합니다", `[Main p. 20]`
+    "모래벌레 1마리를 불러서 배치합니다"). Triggered whenever the English
+    line names a sandworm at all — the verb "Summon" or the bare noun
+    "sandworm(s)" — since a line naming one correctly never needs 소환
+    even where a sibling entry in the same table correctly uses 소환 for a
+    recalled Agent or Spy.
+    """
+
+    if _SUMMON_EN.search(english) or _SANDWORM_EN.search(english):
+        assert "소환" not in korean, (
+            f"{english!r} names a sandworm but Korean uses 소환 (reserved "
+            f"for Agent/Spy recall): {korean!r}"
+        )

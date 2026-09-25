@@ -204,6 +204,31 @@ def test_catalog_serves_korean_contract_and_conflict_text() -> None:
             assert_no_stray_latin(line, space_names)
 
 
+def test_catalog_serves_korean_personal_card_text() -> None:
+    """``cards[id].text_ko`` beside the English ``text`` (Step K2,
+    2026-09-25): every card carries the same number of Korean lines as
+    English ones (``display.cards.personal_card_text_ko``), each a valid
+    Korean line by the same guards ``ko_text.py`` gives every generator.
+    """
+
+    terms = terms_keys()
+    catalog = build_catalog()
+    cards = catalog["cards"]
+    assert isinstance(cards, dict)
+    assert cards, "no cards in the catalog"
+
+    for card_id, entry in cards.items():
+        assert isinstance(entry, dict)
+        text = entry["text"]
+        text_ko = entry["text_ko"]
+        assert isinstance(text, list) and isinstance(text_ko, list)
+        assert len(text_ko) == len(text), card_id
+        for _en_line, ko_line in zip(text, text_ko, strict=True):
+            assert isinstance(ko_line, str) and ko_line.strip(), card_id
+            assert_placeholders_are_terms(ko_line, terms)
+            assert_no_stray_latin(ko_line)
+
+
 def test_catalog_includes_leader_alternate_faces_with_text() -> None:
     catalog = build_catalog()
     leaders = catalog["leaders"]

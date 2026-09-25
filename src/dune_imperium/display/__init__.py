@@ -11,10 +11,11 @@ summaries under ``docs/rules/``.
 
 from dune_imperium.display.actions import (
     agent_card_icon_text,
+    agent_card_icon_text_ko,
     effect_action_text,
     effect_action_text_ko,
 )
-from dune_imperium.display.cards import personal_card_text
+from dune_imperium.display.cards import personal_card_text, personal_card_text_ko
 from dune_imperium.display.effect_dsl_text import intrigue_card_text
 from dune_imperium.display.icons import ICON_NAMES, available_icons, icon_filename
 from dune_imperium.display.images import (
@@ -51,6 +52,7 @@ __all__ = [
     "LeaderFaceText",
     "STRENGTH_TOKEN_COLORS",
     "agent_card_icon_text",
+    "agent_card_icon_text_ko",
     "available_icons",
     "available_strength_tokens",
     "board_effect_action_text",
@@ -67,6 +69,7 @@ __all__ = [
     "intrigue_card_text",
     "load_card_manifest",
     "personal_card_text",
+    "personal_card_text_ko",
     "required_image_keys",
     "resolve_card_images",
     "space_is_implemented",
