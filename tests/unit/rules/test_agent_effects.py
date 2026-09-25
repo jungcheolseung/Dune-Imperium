@@ -23,6 +23,7 @@ from dune_imperium.core import (
     RuleResult,
 )
 from dune_imperium.rules.agent_effects import (
+    agent_card_effect_is_unavailable,
     apply_agent_card_discard,
     apply_agent_card_influence,
     apply_agent_card_intrigue_payment,
@@ -33,6 +34,7 @@ from dune_imperium.rules.agent_effects import (
     apply_agent_card_trash,
     apply_corrinth_city_payment,
     expire_trashed_card_effects,
+    fizzle_pending_agent_icons,
     legal_agent_card_discard_actions,
     legal_agent_card_icon_actions,
     legal_agent_card_influence_actions,
@@ -552,17 +554,34 @@ def test_hidden_missive_has_no_agent_effect_below_required_influence() -> None:
 
     placed = apply_agent_action(state, _action_to(state, "gather_support")).state
 
-    # Both icons stay pending (OQ-028) and resolve as unavailable below two
-    # Bene Gesserit Influence.
+    # Both icons stay pending (OQ-028). Below two Bene Gesserit Influence the
+    # mandatory icons are not offered to fizzle on demand: they wait for the
+    # turn's end (OQ-057 (1)) ...
     assert dict(placed.decision_stack[-1].context)["pending_agent_icons"] == (
         "troops,cards"
     )
-    troops = resolve_agent_card_icon(placed, _icon_action(placed, "troops"))
-    assert troops.events[-1].kind == "agent_card_effect_unavailable"
-    cards = resolve_agent_card_icon(troops.state, _icon_action(troops.state, "cards"))
-    assert cards.events[-1].kind == "agent_card_effect_unavailable"
-    assert cards.state.players[0].troops_garrison == 3
-    assert cards.state.players[0].hand == ()
+    assert legal_agent_card_icon_actions(placed, 0) == ()
+    assert agent_card_effect_is_unavailable(placed)
+    fizzled = fizzle_pending_agent_icons(placed)
+    assert [event.kind for event in fizzled.events] == [
+        "agent_card_effect_unavailable",
+        "agent_card_effect_unavailable",
+    ]
+    assert fizzled.state.players[0].troops_garrison == 3
+    assert fizzled.state.players[0].hand == ()
+    # ... and become resolvable (and mandatory) once a later effect of the
+    # turn raises the Influence.
+    raised = replace(
+        placed,
+        players=(
+            replace(placed.players[0], influence=Influence(bene_gesserit=2)),
+            *placed.players[1:],
+        ),
+    )
+    assert {
+        dict(action.arguments)["effect"]
+        for action in legal_agent_card_icon_actions(raised, 0)
+    } == {"troops", "cards"}
 
 
 def test_desert_survival_may_trash_from_any_eligible_zone() -> None:
@@ -1692,11 +1711,13 @@ def test_maker_keeper_has_no_agent_effect_without_matching_influence() -> None:
     placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
 
     # Both Influence thresholds are judged icon by icon at resolution
-    # (OQ-028): the icons stay pending and resolve as unavailable.
+    # (OQ-028): the icons stay pending, are not offered while unmet and
+    # fizzle at the turn's end (OQ-057 (1)).
     assert dict(placed.decision_stack[-1].context)["pending_agent_icons"] == (
         "water,spice"
     )
-    resolved = _resolve_agent_icons(placed)
+    assert legal_agent_card_icon_actions(placed, 0) == ()
+    resolved = fizzle_pending_agent_icons(placed).state
     assert resolved.players[0].resources.water == 1
     assert resolved.players[0].resources.spice == 0
     assert dict(resolved.decision_stack[-1].context)["pending_agent_effect"] is False
@@ -2312,8 +2333,9 @@ def test_imperial_spymaster_draws_intrigue_after_gathering_intelligence() -> Non
 
 def test_maker_keeper_resolves_as_unavailable_after_influence_drops() -> None:
     # Both Influence conditions are judged when the effect resolves in the
-    # player's chosen order [Main pp. 7, 9]; a mid-frame Influence loss (for
-    # example an Intrigue cost) forfeits the queued conditional gains.
+    # player's chosen order [Main pp. 7, 9]; after a mid-frame Influence loss
+    # (for example an Intrigue cost) the queued conditional gains are no
+    # longer offered and fizzle at the turn's end (OQ-057 (1)).
     maker_keeper = _imperium_instance("maker_keeper")
     owner = PlayerState(
         player_id=0,
@@ -2337,11 +2359,17 @@ def test_maker_keeper_resolves_as_unavailable_after_influence_drops() -> None:
     placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
     lowered_owner = replace(placed.players[0], influence=Influence())
     lowered = replace(placed, players=(lowered_owner, *placed.players[1:]))
+    assert {
+        dict(action.arguments)["effect"]
+        for action in legal_agent_card_icon_actions(placed, 0)
+    } == {"spice"}
 
-    water = resolve_agent_card_icon(lowered, _icon_action(lowered, "water"))
-    assert water.events[-1].kind == "agent_card_effect_unavailable"
-    spice = resolve_agent_card_icon(water.state, _icon_action(water.state, "spice"))
-    assert spice.events[-1].kind == "agent_card_effect_unavailable"
+    assert legal_agent_card_icon_actions(lowered, 0) == ()
+    spice = fizzle_pending_agent_icons(lowered)
+    assert [event.kind for event in spice.events] == [
+        "agent_card_effect_unavailable",
+        "agent_card_effect_unavailable",
+    ]
 
     assert spice.state.players[0].resources.spice == 0
     assert spice.state.players[0].resources.water == 1
@@ -2876,11 +2904,13 @@ def test_wheels_within_wheels_has_no_agent_effect_below_both_thresholds() -> Non
 
     placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
 
-    # Both thresholds are judged icon by icon at resolution (OQ-028).
+    # Both thresholds are judged icon by icon at resolution (OQ-028); unmet,
+    # the icons wait for the turn's end and fizzle there (OQ-057 (1)).
     assert dict(placed.decision_stack[-1].context)["pending_agent_icons"] == (
         "solari,spice"
     )
-    resolved = _resolve_agent_icons(placed)
+    assert legal_agent_card_icon_actions(placed, 0) == ()
+    resolved = fizzle_pending_agent_icons(placed).state
     assert resolved.players[0].resources.solari == 0
     assert resolved.players[0].resources.spice == 0
     assert dict(resolved.decision_stack[-1].context)["pending_agent_effect"] is False

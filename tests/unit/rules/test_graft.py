@@ -28,7 +28,10 @@ from dune_imperium.core import (
 )
 from dune_imperium.rules.agent_effect_frame import legal_agent_effect_frame_actions
 from dune_imperium.rules.agent_effects import (
+    agent_card_effect_is_unavailable,
     apply_agent_card_recall,
+    fizzle_pending_agent_icons,
+    legal_agent_card_icon_actions,
     legal_agent_card_recall_actions,
     resolve_agent_card_effect,
     resolve_agent_card_icon,
@@ -265,15 +268,14 @@ def test_tleilaxu_infiltrator_enters_an_occupied_space_and_draws() -> None:
         ),
     )
     assert len(drawn.state.players[0].hand) == hand_before + 1
-    # Without both genetic markers the Intrigue icon is spent for nothing.
-    intrigue = resolve_agent_card_icon(
-        drawn.state,
-        DomainAction(
-            action_id="resolve_agent_card_effect",
-            actor=0,
-            arguments=(("effect", "intrigue"),),
-        ),
-    )
+    # "[card] -AND- [2 genetic markers]: [Intrigue]" [Tleilaxu Infiltrator
+    # card]: without both markers the mandatory Intrigue icon is not offered
+    # to fire and fizzle; it waits for the turn's end and fizzles there
+    # (OQ-057 (1)).
+    assert legal_agent_card_icon_actions(drawn.state, 0) == ()
+    assert agent_card_effect_is_unavailable(drawn.state)
+    intrigue = fizzle_pending_agent_icons(drawn.state)
+    assert [dict(e.payload)["effect"] for e in intrigue.events] == ["intrigue"]
     assert intrigue.state.players[0].intrigue_cards == ()
 
 

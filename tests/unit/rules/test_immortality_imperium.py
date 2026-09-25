@@ -30,6 +30,8 @@ from dune_imperium.rules.acquisition import (
 from dune_imperium.rules.agent_effects import (
     apply_agent_card_influence,
     apply_agent_card_payment,
+    fizzle_pending_agent_icons,
+    legal_agent_card_icon_actions,
     legal_agent_card_influence_actions,
     legal_agent_card_payment_actions,
     resolve_agent_card_effect,
@@ -384,16 +386,13 @@ def test_sardaukar_quartermaster_needs_the_graft() -> None:
     alone = _place(_state(_owner((quartermaster,))), quartermaster, "arrakeen")
     _, context = current_agent_effect_context(alone)
     assert context["pending_agent_icons"] == "troops,cards"
-    troops = resolve_agent_card_icon(
-        alone,
-        DomainAction(
-            action_id="resolve_agent_card_effect",
-            actor=0,
-            arguments=(("effect", "troops"),),
-        ),
-    )
-    assert troops.state.players[0].troops_garrison == 3  # Arrakeen is still pending
-    assert troops.events[-1].kind == "agent_card_effect_unavailable"
+    # "If grafted: [troop] [card]" [Sardaukar Quartermaster card]: ungrafted,
+    # the mandatory icons are not offered to fire and fizzle; they wait for
+    # the turn's end and fizzle there (OQ-057 (1)).
+    assert legal_agent_card_icon_actions(alone, 0) == ()
+    fizzled = fizzle_pending_agent_icons(alone)
+    assert [e.kind for e in fizzled.events] == ["agent_card_effect_unavailable"] * 2
+    assert fizzled.state.players[0].troops_garrison == 3  # Arrakeen is still pending
     grafted = _graft(
         _state(_owner((quartermaster, FACE_DANCER))),
         quartermaster,

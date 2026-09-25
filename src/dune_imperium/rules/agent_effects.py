@@ -2783,6 +2783,8 @@ def legal_agent_card_icon_actions(
         return ()
     if context.get("pending_agent_effect") is not True:
         return ()
+    owner = state.players[player]
+    effect = active_agent_card(context).agent_effect
     return tuple(
         DomainAction(
             action_id="resolve_agent_card_effect",
@@ -2791,7 +2793,64 @@ def legal_agent_card_icon_actions(
         )
         for key in pending_agent_icons(context)
         if key in AUTOMATIC_AGENT_ICONS
+        and agent_icon_condition_holds(owner, context, effect, key)
     )
+
+
+def agent_icon_condition_holds(
+    owner: PlayerState,
+    context: Mapping[str, ActionValue],
+    effect: PersonalCardAgentEffect | None,
+    key: str,
+) -> bool:
+    """Return whether an Agent-box icon's printed condition holds right now.
+
+    Hidden Missive (two Bene Gesserit Influence), Fremen War Name ("If you
+    gained [2 spice] or more this turn:" [Fremen War Name card]), Sardaukar
+    Quartermaster (grafted), Tleilaxu Infiltrator (two genetic markers),
+    Maker Keeper and Wheels Within Wheels (Influence thresholds) print a
+    condition on icons that are otherwise mandatory. The condition is judged
+    when the icon resolves (OQ-028), and while it is false the icon is not
+    offered: a mandatory effect cannot be fired to fizzle, it waits for the
+    turn's end and fizzles there (OQ-057 (1)). A later effect of the turn that
+    meets the condition makes it resolvable, and then mandatory, again.
+    """
+
+    if key in (AGENT_ICON_CARDS, AGENT_ICON_TROOPS):
+        if effect is (
+            PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO
+        ):
+            return owner.influence.bene_gesserit >= 2
+        if effect is (
+            PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_ONE_IF_GAINED_TWO_SPICE_THIS_TURN
+        ):
+            return spice_gained_this_turn(owner) >= 2
+        if effect is PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_ONE_IF_GRAFTED:
+            return is_grafted(context)
+        return True
+    if key == AGENT_ICON_INTRIGUE:
+        return (
+            effect is not PersonalCardAgentEffect.DRAW_ONE_AND_INTRIGUE_IF_TWO_MARKERS
+            or genetic_markers_reached(owner.research_space) >= 2
+        )
+    maker_keeper = (
+        effect is PersonalCardAgentEffect.GAIN_BY_BENE_GESSERIT_AND_FREMEN_INFLUENCE_TWO
+    )
+    wheels = (
+        effect
+        is PersonalCardAgentEffect.GAIN_BY_EMPEROR_AND_SPACING_GUILD_INFLUENCE_TWO
+    )
+    if key == AGENT_ICON_SOLARI:
+        return wheels and owner.influence.emperor >= 2
+    if key == AGENT_ICON_SPICE:
+        return (
+            effect is _BRANCHING_PATH
+            or (maker_keeper and owner.influence.fremen >= 2)
+            or (wheels and owner.influence.spacing_guild >= 2)
+        )
+    if key == AGENT_ICON_WATER:
+        return maker_keeper and owner.influence.bene_gesserit >= 2
+    return True
 
 
 def resolve_agent_card_icon(state: GameState, action: DomainAction) -> RuleResult:
@@ -2799,8 +2858,8 @@ def resolve_agent_card_icon(state: GameState, action: DomainAction) -> RuleResul
 
     Conditions printed on the box (Hidden Missive's, Maker Keeper's and
     Wheels Within Wheels' Influence thresholds) are judged when the icon
-    resolves in the owner's order [Main pp. 7, 9]; an unmet condition
-    consumes the icon without effect.
+    resolves in the owner's order [Main pp. 7, 9]; an icon is offered only
+    while its condition holds (``agent_icon_condition_holds``).
     """
 
     if action not in legal_agent_card_icon_actions(state, action.actor):
@@ -2842,83 +2901,34 @@ def resolve_agent_card_icon(state: GameState, action: DomainAction) -> RuleResul
             ),
         )
 
-    hidden_missive = (
-        effect
-        is PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO
-    )
-    # Fremen War Name: both icons need two spice gained this turn, judged
-    # when each icon resolves (OQ-028).
-    war_name_blocked = (
-        effect
-        is (
-            PersonalCardAgentEffect
-            .RECRUIT_ONE_AND_DRAW_ONE_IF_GAINED_TWO_SPICE_THIS_TURN
-        )
-        and spice_gained_this_turn(owner) < 2
-    )
-    # Sardaukar Quartermaster: both icons need the card to be grafted.
-    quartermaster_blocked = (
-        effect is PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_ONE_IF_GRAFTED
-        and not is_grafted(context)
-    )
-    missive_blocked = (
-        hidden_missive and owner.influence.bene_gesserit < 2
-    ) or quartermaster_blocked
-    maker_keeper = (
-        effect is PersonalCardAgentEffect.GAIN_BY_BENE_GESSERIT_AND_FREMEN_INFLUENCE_TWO
-    )
-    wheels = (
-        effect
-        is PersonalCardAgentEffect.GAIN_BY_EMPEROR_AND_SPACING_GUILD_INFLUENCE_TWO
-    )
     next_owner = owner
     effect_state = state
-    available = True
+    # Only an icon whose printed condition holds is offered (see
+    # ``agent_icon_condition_holds``); the check stays as a safety net.
+    available = agent_icon_condition_holds(owner, context, effect, key)
     personal_draw_count = 0
     intrigue_draw_count = 0
     match key:
         case "cards":
-            if missive_blocked or war_name_blocked:
-                available = False
-            else:
+            if available:
                 personal_draw_count = 1
         case "intrigue":
-            if (
-                effect is PersonalCardAgentEffect.DRAW_ONE_AND_INTRIGUE_IF_TWO_MARKERS
-                and genetic_markers_reached(owner.research_space) < 2
-            ):
-                # Tleilaxu Infiltrator: the Intrigue needs both genetic
-                # markers, judged when the icon resolves (OQ-028).
-                available = False
-            else:
+            if available:
                 intrigue_draw_count = 1
         case "troops":
-            if missive_blocked or war_name_blocked:
-                available = False
-            else:
+            if available:
                 next_owner = recruit(1)
         case "solari":
-            if wheels and owner.influence.emperor >= 2:
+            if available:
                 next_owner = gain(solari=2)
-            else:
-                available = False
         case "spice":
-            if effect is _BRANCHING_PATH:
-                # "[Intrigue card] [2 spice]" [Main p. 20]: unconditional,
-                # unlike Maker Keeper's and Wheels Within Wheels' Influence
-                # thresholds below.
-                next_owner = gain(spice=2)
-            elif (maker_keeper and owner.influence.fremen >= 2) or (
-                wheels and owner.influence.spacing_guild >= 2
-            ):
-                next_owner = gain(spice=1)
-            else:
-                available = False
+            if available:
+                # Branching Path's "[Intrigue card] [2 spice]" [Main p. 20];
+                # Maker Keeper and Wheels Within Wheels pay 1 spice.
+                next_owner = gain(spice=2 if effect is _BRANCHING_PATH else 1)
         case "water":
-            if maker_keeper and owner.influence.bene_gesserit >= 2:
+            if available:
                 next_owner = gain(water=1)
-            else:
-                available = False
         case "trash_self":
             if card_instance_id in owner.in_play:
                 # The card trashes itself by its own printed icon, so any

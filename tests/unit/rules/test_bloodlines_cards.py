@@ -436,16 +436,66 @@ def test_fremen_war_name_icons_need_two_spice_gained() -> None:
     resolved = resolve_agent_card_icon(rich, troops).state
     assert resolved.players[0].troops_garrison == before + 1
 
-    poor = _play(_state(_owner(hand=(card,))), card)
-    troops = next(
-        a
-        for a in legal_agent_card_icon_actions(poor, 0)
-        if dict(a.arguments)["effect"] == "troops"
+    # "If you gained [2 spice] or more this turn: [troop] [draw a card]"
+    # [Fremen War Name card] prints no "may": once the condition holds both
+    # icons are mandatory. While it is false they are not offered to fire and
+    # fizzle; the box waits for the turn's end (OQ-057 (1), designer ruling
+    # "조건이 거짓인 의무 Agent box는 turn 종료까지 보류").
+    from dune_imperium.rules.agent_effects import (
+        agent_card_effect_is_unavailable,
+        fizzle_pending_agent_icons,
     )
-    before = poor.players[0].troops_garrison
-    result = resolve_agent_card_icon(poor, troops)
-    assert result.state.players[0].troops_garrison == before
-    assert result.events[0].kind == "agent_card_effect_unavailable"
+
+    poor = _play(_state(_owner(hand=(card,))), card)
+    assert legal_agent_card_icon_actions(poor, 0) == ()
+    assert agent_card_effect_is_unavailable(poor)
+    ended = fizzle_pending_agent_icons(poor)
+    assert {dict(e.payload)["effect"] for e in ended.events} == {"troops", "cards"}
+    assert {e.kind for e in ended.events} == {"agent_card_effect_unavailable"}
+    assert ended.state.players[0].troops_garrison == poor.players[0].troops_garrison
+
+
+def test_fremen_war_name_icons_become_mandatory_after_a_later_spice_gain() -> None:
+    # The same box sent to Hagga Basin: before the Maker harvest the owner
+    # has gained no spice, so the icons are held rather than fizzled
+    # (OQ-057 (1)); the harvest meets "If you gained [2 spice] or more this
+    # turn:" [Fremen War Name card] and both icons then resolve.
+    from dune_imperium.rules.agent_effect_frame import legal_agent_effect_frame_actions
+
+    card = _card("fremen_war_name")
+    state = _state(_owner(hand=(card,), resources=Resources(water=1)))
+    placed = apply_agent_action(
+        state,
+        next(
+            action
+            for action in legal_agent_actions(state, 0)
+            if dict(action.arguments)["space_id"] == "hagga_basin"
+        ),
+    ).state
+    assert legal_agent_card_icon_actions(placed, 0) == ()
+    harvested = UprisingRulesEngine().apply(
+        placed,
+        next(
+            action
+            for action in legal_agent_effect_frame_actions(placed, 0)
+            if action.action_id == "harvest_maker_spice"
+        ),
+    ).state
+    assert harvested.players[0].resources.spice >= 2
+    icons = legal_agent_card_icon_actions(harvested, 0)
+    assert {dict(action.arguments)["effect"] for action in icons} == {
+        "troops",
+        "cards",
+    }
+    assert DomainAction(
+        action_id="finish_agent_turn", actor=0
+    ) not in legal_agent_effect_frame_actions(harvested, 0)
+    troops = next(a for a in icons if dict(a.arguments)["effect"] == "troops")
+    recruited = resolve_agent_card_icon(harvested, troops).state
+    assert (
+        recruited.players[0].troops_garrison
+        == harvested.players[0].troops_garrison + 1
+    )
 
 
 # --- soak ---------------------------------------------------------------------
