@@ -1358,7 +1358,10 @@ def apply_leader_agent_deploy(
         agent_locations=tuple(
             candidate for candidate in owner.agent_locations if candidate != space_id
         ),
-        agent_in_conflict=1,
+        # Each use moves "the Agent you sent this turn" [Duncan Idaho card]:
+        # a Servo-Receivers Signet on a later turn of the round may send a
+        # second one to join the first (OQ-037(e)).
+        agent_in_conflict=owner.agent_in_conflict + 1,
         units_deployed_turn=owner.units_deployed_turn + 1,
     )
     context["pending_agent_effect"] = False

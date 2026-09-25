@@ -452,6 +452,56 @@ def test_imperial_privilege_may_recall_the_into_the_fray_agent() -> None:
     assert result.state.players[0].combat_strength == 0
     assert engine.legal_actions(result.state, 0) == ()
 
+
+def test_two_into_the_fray_agents_recall_one_at_a_time_and_return_at_cleanup() -> None:
+    # A Servo-Receivers Signet can send a second "Agent you sent this turn"
+    # into the Conflict [Duncan Idaho card] (OQ-037(e)). Imperial Privilege
+    # recalls "one of your other Agents" [Board Guide p. 2] (OQ-037(d)), so
+    # one of the two leaves; the Combat cleanup returns every Agent still
+    # there.
+    from dune_imperium.rules.board_effects import (
+        apply_imperial_privilege_action,
+        legal_imperial_privilege_actions,
+    )
+    from dune_imperium.rules.combat import finish_combat
+
+    owner = PlayerState(
+        player_id=0,
+        leader_id="duncan_idaho",
+        hand=(DAGGER,),
+        deck=(RECON,),
+        resources=Resources(solari=3),
+        influence=Influence(emperor=2),
+        swordmaster_acquired=True,
+        agents_available=1,
+        agent_in_conflict=2,
+    )
+    state = _play(_turn_state(owner), DAGGER, "imperial_privilege")
+    assert units_strength(state.players[0]) == 3 + 3
+    decline = next(
+        action
+        for action in legal_imperial_privilege_actions(state, 0)
+        if action.action_id == "decline_imperial_privilege_intrigue"
+    )
+    declined = apply_imperial_privilege_action(state, decline).state
+    recall = next(
+        action
+        for action in legal_imperial_privilege_actions(declined, 0)
+        if action.action_id == "recall_conflict_agent_for_imperial_privilege"
+    )
+    seat = apply_imperial_privilege_action(declined, recall).state.players[0]
+    assert seat.agent_in_conflict == 1
+    assert seat.agents_available == 1
+    assert units_strength(seat) == 3
+
+    fighting = replace(
+        owner, has_revealed=True, hand=(), agents_available=1, combat_strength=6
+    )
+    cleaned = finish_combat(_cleanup_state(fighting)).state.players[0]
+    assert cleaned.agent_in_conflict == 0
+    assert cleaned.agents_available == 3
+
+
 # --- Gaius Helen Mohiam ------------------------------------------------------
 
 

@@ -48,6 +48,7 @@ from dune_imperium.rules.spy_moves import (
     apply_spy_placement,
     legal_spy_placement_actions,
 )
+from dune_imperium.rules.strength import units_strength
 from dune_imperium.rules.tech import (
     apply_tech_acquisition,
     legal_tech_acquisition_actions,
@@ -484,6 +485,33 @@ def test_servo_receivers_signet_reads_the_agent_turns_space() -> None:
     liet = _servo_visit("liet_kynes", influence=Influence(emperor=2))
     bought = apply_tech_acquisition(liet, _tech_actions(liet)["servo_receivers"])
     assert bought.state.players[0].resources.water == 2 + 1
+
+
+def test_servo_receivers_lets_duncan_send_a_second_agent_into_the_fray() -> None:
+    # Into the Fray: "You may take the Agent you sent this turn and deploy
+    # it to the Conflict as a 2 strength unit that can't be retreated"
+    # [Duncan Idaho card]. Servo-Receivers uses that ability again on a
+    # later Agent turn [Main p. 20] [Servo-Receivers Tech tile], and the
+    # Agent sent on that turn is a different one: it joins the first
+    # (OQ-037(e)). Before, the engine kept the one-Agent counter at 1 and
+    # lost this Agent (checked sweep: bloodlines+tech+draft seed 1003).
+    engine = UprisingRulesEngine()
+    state = _servo_visit("duncan_idaho", agent_in_conflict=1, agents_available=1)
+    opened = engine.apply(state, _tech_actions(state)["servo_receivers"]).state
+    assert opened.decision_stack[-1].kind == "leader_signet"
+    deploy = next(
+        action
+        for action in engine.legal_actions(opened, 0)
+        if action.action_id == "deploy_leader_agent"
+    )
+    fighting = engine.apply(opened, deploy).state
+    seat = fighting.players[0]
+    assert seat.agent_in_conflict == 2
+    assert seat.agent_locations == ()
+    assert seat.agents_available == 0
+    assert seat.units_in_conflict == 2
+    assert units_strength(seat) == 2 + 2
+    assert all(frame.kind != "leader_signet" for frame in fighting.decision_stack)
 
 
 def test_steersman_y_rkoon_has_no_signet_ring_ability_to_use() -> None:

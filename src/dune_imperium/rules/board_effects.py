@@ -1114,12 +1114,14 @@ def apply_imperial_privilege_action(
     ):
         if action.action_id == "recall_conflict_agent_for_imperial_privilege":
             # Into the Fray's Agent leaves the Conflict as a unit and returns
-            # to the Leader (OQ-037(d)); the running strength follows.
+            # to the Leader (OQ-037(d)); the running strength follows. One
+            # recall brings back one Agent, even when a Servo-Receivers
+            # Signet sent a second one (OQ-037(e)).
             space_id = "conflict"
             next_owner = replace(
                 owner,
                 agents_available=owner.agents_available + 1,
-                agent_in_conflict=0,
+                agent_in_conflict=owner.agent_in_conflict - 1,
             )
         else:
             space_value = dict(action.arguments).get("space_id")
