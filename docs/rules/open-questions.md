@@ -659,3 +659,16 @@
   Bloodlines 템플릿 1개 추가). `tests/unit/rules/test_bloodlines_cards.py`
   (`test_a_forced_spy_move_with_no_post_off_the_space_loses_the_spy`)로 고정한다. 사용자 확인 대기.
 
+## OQ-064 — Reclaimed Forces의 "acquire"는 "whenever you acquire a card" trigger를 일으키는가
+
+- 상태: `OPEN` (구현 convention 적용 중)
+- Tleilaxu Row의 카드는 Imperium 카드처럼 Reveal turn에 acquire한다("In many ways, Tleilaxu cards are similar to
+  Imperium cards. You acquire them during your Reveal turn" `[Immortality p. 8]`). 그래서 Call to Arms("During your
+  Reveal turn this round, whenever you acquire a card:" `[Call to Arms card]`)는 Tleilaxu Row 획득에도 발동한다
+  (2026-09-26). 그러나 Reclaimed Forces는 Row에서 제거되지 않고, 룰북이 그 획득을 따옴표로 쓴다: "When a player
+  “acquires” it, they choose one of its effects ... but leave the card in place." `[Immortality p. 9]` 카드를
+  얻지 않는 이 "acquire"가 "acquire a card" trigger(Call to Arms 등)에 해당하는지 공식 문서는 말하지 않는다.
+- 필요한 답: Reclaimed Forces의 "acquire"가 카드 획득 trigger를 일으키는지.
+- 구현 convention: 일으키지 않는다(카드가 소유자에게 오지 않으며, 따옴표가 일반 획득과 구분한다). 엔진은
+  `_apply_reclaimed_forces`에서 `fire_reveal_acquisition_intrigue`를 부르지 않는다. 사용자 확인 대기.
+

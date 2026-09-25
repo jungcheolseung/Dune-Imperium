@@ -40,6 +40,7 @@ from dune_imperium.rules.frames import (
     with_context,
 )
 from dune_imperium.rules.immortality import advance_tleilaxu
+from dune_imperium.rules.intrigue_triggers import fire_reveal_acquisition_intrigue
 from dune_imperium.rules.specimens import spend_specimens
 
 RECLAIMED_FORCES_CHOICES = ("troops", "tleilaxu")
@@ -162,8 +163,17 @@ def acquire_tleilaxu_card(
     tracked = apply_acquisition_track_effects(
         next_state, player, definition, source=f"{source}:{instance_id}"
     )
+    # "In many ways, Tleilaxu cards are similar to Imperium cards. You acquire
+    # them during your Reveal turn" [Immortality p. 8]: acquiring one is
+    # acquiring a card, so a face-up Call to Arms ("During your Reveal turn
+    # this round, whenever you acquire a card:" [Call to Arms card]) fires,
+    # after the card's own acquire box (OQ-012). It checks the owner's Reveal
+    # itself, so Harvest Cells' offer at the end of a Conflict does not.
+    fired = fire_reveal_acquisition_intrigue(
+        tracked.state, player, source=f"{source}:{instance_id}"
+    )
     return RuleResult(
-        state=tracked.state,
+        state=fired.state,
         events=(
             GameEvent(
                 event_id=f"{source}:{instance_id}",
@@ -181,6 +191,7 @@ def acquire_tleilaxu_card(
             ),
             *bonus.events,
             *tracked.events,
+            *fired.events,
         ),
     )
 
