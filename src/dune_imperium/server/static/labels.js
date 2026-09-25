@@ -186,6 +186,7 @@ const ACTION_LABELS = {
   draw_top_card_for_solari: "{solari} 1 지불 → 덱 맨 위 카드 {draw}",
   place_navigation_card: "{navigation} 슬롯에 놓기",
   play_navigation: "{navigation} 사용",
+  decline_navigation: "{navigation} 비용 거절 (효과 없이 사용)",
   trash_agent_card: "카드 {trash}",
   trash_card_for_desert_tactics: "카드 {trash} (Desert Tactics)",
   trash_combat_reward_card: "카드 {trash} ({combat} 보상)",

@@ -152,6 +152,7 @@ const LABELS_EN = {
     "draw_top_card_for_solari": "Pay 1 {solari} -> {draw} top card of deck",
     "place_navigation_card": "Place {navigation} in slot",
     "play_navigation": "Play {navigation}",
+    "decline_navigation": "Decline {navigation} cost (spent without effect)",
     "trash_agent_card": "{trash} card",
     "trash_card_for_desert_tactics": "{trash} card (Desert Tactics)",
     "trash_combat_reward_card": "{trash} card ({combat} reward)",

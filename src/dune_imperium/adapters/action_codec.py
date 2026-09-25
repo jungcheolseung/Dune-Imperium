@@ -789,6 +789,9 @@ def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         ActionTemplate(action_id="play_navigation", arguments=(("option", option),))
         for option in range(2)
     )
+    # An arrow cost is optional [Main p. 20]: Navigation card 10 may be
+    # declined (spent without effect).
+    templates.append(ActionTemplate(action_id="decline_navigation"))
     twisted = twisted_intrigue_instance_ids()
     all_intrigue = (
         *intrigue_deck_instance_ids(

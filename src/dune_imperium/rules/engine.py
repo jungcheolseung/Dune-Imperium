@@ -629,6 +629,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "trash_optional_card": apply_optional_trash,
     "place_navigation_card": apply_navigation_setup_action,
     "play_navigation": apply_navigation_play,
+    "decline_navigation": apply_navigation_play,
     "decline_optional_trash": apply_optional_trash,
     "decline_leader_card_trash": apply_feyd_track_action,
     "place_leader_spy": apply_leader_spy_action,

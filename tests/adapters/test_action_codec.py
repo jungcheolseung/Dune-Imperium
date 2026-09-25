@@ -97,8 +97,9 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
     # Bond its Combat swap and Plot swords: one timing per printed band
     # [card faces; Main p. 7] (-3 play_intrigue templates).
     # A forced Spy move with no empty post off the Agent's space loses the
-    # Spy [FAQ p. 2] (OQ-063): +1 lose_moved_spy.
-    assert both.size == 11100 + 28 + 28 + 72 - 3 + 1
+    # Spy [FAQ p. 2] (OQ-063): +1 lose_moved_spy. Navigation card 10's arrow
+    # cost may be declined [Main p. 20]: +1 decline_navigation.
+    assert both.size == 11100 + 28 + 28 + 72 - 3 + 1 + 1
 
     choam_only = ActionCodec(RulesetConfig(choam_module=True))
     for action in actions:

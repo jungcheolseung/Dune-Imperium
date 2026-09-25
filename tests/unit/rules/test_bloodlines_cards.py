@@ -1941,8 +1941,9 @@ def test_ruthless_leadership_round_trips_and_is_dealt_in_random_games() -> None:
     # Bond its Combat swap and Plot swords: one timing per printed band
     # [card faces; Main p. 7] (-3 play_intrigue templates).
     # A forced Spy move with no empty post off the Agent's space loses the
-    # Spy [FAQ p. 2] (OQ-063): +1 lose_moved_spy.
-    assert codec.size == 10159 + 292 + 1 + 1 + 1 + 2 + 1 + 28 + 28 + 67 - 3 + 1
+    # Spy [FAQ p. 2] (OQ-063): +1 lose_moved_spy. Navigation card 10's arrow
+    # cost may be declined [Main p. 20]: +1 decline_navigation.
+    assert codec.size == 10159 + 292 + 1 + 1 + 1 + 2 + 1 + 28 + 28 + 67 - 3 + 1 + 1
     action = DomainAction(
         action_id="trash_agent_card",
         actor=2,
