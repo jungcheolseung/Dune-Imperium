@@ -66,7 +66,7 @@ def _spy_placed_text_ko(count: int) -> str:
     ``amount`` (render-parity blocker, 2026-09-25 review: eight "Place a
     Spy" rows drew a numbered icon English never shows). This uses the bare
     ``{spy}`` term for the same reason, with the count written as a plain
-    digit — never ``{spy:count}`` — following ``cardstyle.md``'s "default to
+    digit — never ``{spy:count}`` — following ``korean-card-style.md``'s "default to
     the digit" rule for a reward count paired with an icon.
     """
 
@@ -428,9 +428,9 @@ def _optional_trade_text_ko(reward: ConflictReward) -> str | None:
     """Korean twin of ``_optional_trade_text``.
 
     "가능" is the terse nominal ending printed Korean card text uses for
-    "may" (``cardstyle.md`` style guide item 9: "확인 가능", "폐기 가능").
+    "may" (``korean-card-style.md`` item 9: "확인 가능", "폐기 가능").
     "지불" (pay) is `[Main p. 20]` ("Paying a cost" 비용 지불). The arrow is
-    never translated (``cardstyle.md`` item 11), but it is still the
+    never translated (``korean-card-style.md`` item 11), but it is still the
     ``{arrow_right}`` TERM here, not a literal "→" character: the client's
     ``phrase()`` only expands ``{term}`` placeholders, so a bare "→" in a
     *generated* Korean line stays plain text instead of becoming the same
@@ -515,7 +515,7 @@ def conflict_rewards_texts_ko(definition: ConflictDefinition) -> list[str] | Non
     """Korean twin of ``conflict_rewards_texts``.
 
     "1등"/"2등"/"3등" quote the glossary's "first/second/third place" row
-    (`[Main p. 14]`), matching ``cardstyle.md``'s attested Conflict-card
+    (`[Main p. 14]`), matching ``korean-card-style.md``'s attested Conflict-card
     print (Battle for Arrakeen / Siege of Arrakeen).
     """
 

@@ -39,7 +39,7 @@ not just whether a ``TERMS`` row happens to exist for the concept:
   a *bare* icon there and leaves the number as plain trailing text; the
   Korean twin does the same (bare ``{term}`` + a plain digit/native numeral
   near "이상"). "2 or more/4 or more Contracts" specifically reuses the
-  native numerals 둘/넷 ``cardstyle.md`` verified on a real card (Cargo
+  native numerals 둘/넷 ``korean-card-style.md`` verified on a real card (Cargo
   Runner / CHOAM Profits, "계약을 둘/넷 이상 완수했다면:"); every other
   threshold defaults to a digit, per that same file's rule 5.
 - "trash an Intrigue card" (singular, this *exact* adjacency) matches
@@ -90,7 +90,7 @@ not just whether a ``TERMS`` row happens to exist for the concept:
   text exactly like any other bare-icon threshold two bullets up, never a
   counted ``{persuasion:6}``.
 
-Conditions follow ``cardstyle.md``'s style guide: time/location phrases
+Conditions follow ``korean-card-style.md``'s style guide: time/location phrases
 front the clause, the verb ends it, and a condition closes with
 ``-다면:``/``-(이)면:`` (rule 1) — this module uses ``-(이)면`` uniformly for
 its own bare noun/threshold conditions (a Faction Bond/Alliance/Command
@@ -104,7 +104,7 @@ own established row, not composed here (``Fremen Bond | 프레멘의 유대감 |
 [Main p. 20]``; Northern Watermaster's Korean print pins it, "프레멘의
 유대감:"). A Faction Alliance condition, by contrast, has no such
 possessive in either its glossary row (``Alliance | 동맹``) or the sampled
-card print (``cardstyle.md``, Branching Path: "동맹:", no genitive) and so
+card print (``korean-card-style.md``, Branching Path: "동맹:", no genitive) and so
 stays a bare compound, "<Faction> {alliance}이면:" — the two conditions look
 parallel in English ("If X Bond"/"If X Alliance") but are not spelled the
 same way in Korean, and inventing symmetry between them would be a real
@@ -415,7 +415,7 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
         "카드 1장 {discard} 가능 {arrow_right} {draw:1}"
     ),
     PersonalCardAgentEffect.DRAW_INTRIGUE_IF_SANDWORM_IN_CONFLICT: (
-        "{conflict}에 {sandworm}이 1 이상 있다면: {intrigue:1}"
+        "{conflict}에 {sandworm}가 1 이상 있다면: {intrigue:1}"
     ),
     PersonalCardAgentEffect.DRAW_ONE_IF_GAINED_TWO_SPICE_THIS_TURN: (
         "이번 차례에 {spice}를 2 이상 얻었다면: {draw:1}"
@@ -438,7 +438,7 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
         "다른 플레이어의 {troop} 강제 {retreat}"
     ),
     PersonalCardAgentEffect.MAY_TRASH_TWO_CARDS_IF_COMMANDER_IN_CONFLICT: (
-        "{conflict}에 {commander}가 1 이상 있다면: 카드 1장 {trash} 가능, "
+        "{conflict}에 {commander}이 1 이상 있다면: 카드 1장 {trash} 가능, "
         "카드 1장 {trash} 가능"
     ),
     PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY: (
@@ -638,7 +638,7 @@ def reveal_effect_text_ko(effect: PersonalCardRevealEffect) -> str:
     ``_HANDLED_REVEAL_FIELDS``) so a field the English renderer grows and
     this one misses fails the same coverage test. Each requirement field
     becomes one complete condition clause, already ending in the
-    conditional appropriate to its shape — ``cardstyle.md`` rule 1's
+    conditional appropriate to its shape — ``docs/rules/korean-card-style.md`` rule 1's
     ``-다면`` for a condition naming an action (있다/배치하다/도달하다, …)
     versus ``-(이)면`` for a bare nominal state (a Faction Bond, Command);
     no card in the current catalog combines more than one of these (the
@@ -663,7 +663,7 @@ def reveal_effect_text_ko(effect: PersonalCardRevealEffect) -> str:
     if effect.requires_spying_on_maker_space:
         conditions.append("메이커 장소를 정탐 중이라면")
     if effect.requires_commander_in_conflict:
-        conditions.append("{conflict}에 {commander}가 1 이상 있다면")
+        conditions.append("{conflict}에 {commander}이 1 이상 있다면")
     if effect.minimum_genetic_markers:
         n_markers = effect.minimum_genetic_markers
         conditions.append(f"유전자 마커 {n_markers}개에 도달했다면")

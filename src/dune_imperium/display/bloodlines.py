@@ -92,7 +92,7 @@ TECH_ABILITY_TEXT_KO: Final = MappingProxyType(
         # parity sweep). "You must choose" is mandatory, not a free
         # option — the Korean print reads "다음 중 하나 반드시 선택:"
         # [KO card: Forbidden Weapons], and both options end in the same
-        # terse nominal 잃음 (cardstyle.md), not a mix of 잃기/잃음.
+        # terse nominal 잃음 (docs/rules/korean-card-style.md), not a mix of 잃기/잃음.
         TechAbility.FORBIDDEN_WEAPONS: (
             "{reveal_turn}: 다음 중 하나 반드시 선택: +{sword:3},"
             " {influence_any:1} 잃음 / {spice} 전부 잃음, 이 타일 {trash}"
@@ -280,7 +280,7 @@ def skill_effect_text_ko(skill: SkillDefinition) -> str:
 def tech_acquire_text_ko(tile: TechTile) -> str:
     """Korean twin of ``tech_acquire_text``.
 
-    ``acquire_requires_spy_trash`` quotes ``cardstyle.md``'s own attested
+    ``acquire_requires_spy_trash`` quotes ``korean-card-style.md``'s own attested
     Korean print of this exact sentence (Advanced Data Analysis Tech tile):
     "이 타일을 획득하려면, 게임판에서 당신의 스파이 하나를 폐기해야 함" —
     with 스파이 swapped for the bare {spy} placeholder, since English's

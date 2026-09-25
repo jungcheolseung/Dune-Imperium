@@ -18,7 +18,7 @@ ordinary Korean grammar for connectives/particles; a term neither source has
 is left in English rather than invented.
 
 A condition clause ends in the conjugated Korean conditional appropriate to
-its shape (``cardstyle.md`` rule 1: ``-다면`` for a clause naming an action,
+its shape (``korean-card-style.md`` rule 1: ``-다면`` for a clause naming an action,
 ``-(이)면`` for a bare nominal/threshold state) and carries **no** leading
 "if"/"만약" word and **no** trailing colon — ``section_text_ko`` appends
 ``": "`` + the body itself, mirroring every other Korean condition renderer
@@ -29,7 +29,7 @@ object) keeps the counted TERM bare and puts the digit after it as plain
 text ("{influence_emperor} 3 이상이면", matching 8 precedents in
 ``tokens_ko.py``); a threshold on a counted physical thing that "exists"
 somewhere (Spies on the board, Commanders/sandworms in the Conflict) adds
-"있다면" the same way ("{conflict}에 {commander}가 1 이상 있다면", also
+"있다면" the same way ("{conflict}에 {commander}이 1 이상 있다면", also
 already established there). Completed-Contracts and Navigation-slot wording
 are quoted directly from Korean card scans (see each case's docstring).
 """
@@ -154,12 +154,23 @@ _AGENT_ICON_NAMES_KO: dict[AgentIcon, str] = {
 _TIMING_LABELS_KO: dict[IntrigueTiming, str] = {
     # PLOT/COMBAT/ENDGAME timing headers | 음모/전투/종료 단계
     # (`docs/rules/glossary-ko.md`: "Plot / Combat / Endgame Intrigue | 음모 /
-    # 전투 / 종료 단계 책략 카드", `[Main p. 7]`; cardstyle.md rule 7).
+    # 전투 / 종료 단계 책략 카드", `[Main p. 7]`; korean-card-style.md
+    # rule 7).
     IntrigueTiming.PLOT: "음모",
     IntrigueTiming.COMBAT: "전투",
     IntrigueTiming.ENDGAME: "종료 단계",
 }
 
+
+
+def _object_particle(word: str) -> str:
+    """을 after a final consonant, 를 after a vowel (the Hangul syllable's
+    final-consonant slot); a card name read aloud takes the same particle."""
+
+    last = word.rstrip()[-1:]
+    if "가" <= last <= "힣":
+        return "을" if (ord(last) - ord("가")) % 28 else "를"
+    return "을"
 
 def _faction_name_ko(faction: Faction) -> str:
     return _FACTION_NAMES_KO[faction]
@@ -188,7 +199,7 @@ def _retreat_troops_text_ko(troops: RetreatTroops) -> str:
     bare "troops" word (no adjacent digit) still hits ``ICON_RULES``' bare
     troop rule, so the unlimited case uses bare ``{troop}``, not the plain
     word "병력", even though the print form ("병력 1 또는 2 후퇴", Reach
-    Agreement, ``cardstyle.md`` row 36) never shows an icon. The two-value
+    Agreement, ``korean-card-style.md`` row 36) never shows an icon. The two-value
     range case is the odder one: English's own "Retreat 1-2 troops" only
     lets the *second* number's regex match ("1-2 troops" — the "1-" breaks
     the counted-troop pattern, so only "2 troops" hits it), so English
@@ -253,7 +264,7 @@ def _gain_influence_text_ko(gain: GainInfluence) -> str:
     (out of this task's scope — a display gap, not a rules question).
     Non-distinct/"any Faction" wording quotes ``display/structs.py``'s own
     ``_choose_influence_text_ko`` ("4개의 팩션 중 하나", "각기 다른 팩션 중
-    하나"); an explicit Faction subset joins with "또는" (cardstyle.md rule
+    하나"); an explicit Faction subset joins with "또는" (korean-card-style.md rule
     6's "—OR—" → "—또는—", extended to an inline word list).
     """
 
@@ -320,7 +331,7 @@ def condition_text_ko(condition: Condition) -> str:
             # 계약을 넷 이상 완수했다면:" (CHOAM Profits) — two independent
             # Korean card prints (`[KO card: Backed by CHOAM]`, `[KO card:
             # CHOAM Profits]`) confirm this specific condition always uses
-            # a native-Korean numeral, not a digit (cardstyle.md rule 5's
+            # a native-Korean numeral, not a digit (korean-card-style.md rule 5's
             # own example is this exact phrase). The bare {contract} icon
             # replaces the print's plain word "계약": English's own
             # "Contracts" hits ICON_RULES' bare Contract rule (no numeric
@@ -330,9 +341,9 @@ def condition_text_ko(condition: Condition) -> str:
             # actually shows), not the print's word choice.
             return f"당신이 {{contract}}을 {_contract_count_ko(count)} 이상 완수했다면"
         case SandwormsInConflictAtLeast(count=1):
-            return "{conflict}에 {sandworm}이 있다면"
+            return "{conflict}에 {sandworm}가 있다면"
         case SandwormsInConflictAtLeast(count=count):
-            return f"{{conflict}}에 {{sandworm}}이 {count} 이상 있다면"
+            return f"{{conflict}}에 {{sandworm}}가 {count} 이상 있다면"
         case GainedSpiceThisTurn(amount=amount):
             # Quotes ``display/actions.py``'s ``_ICON_CONDITIONS_KO`` (same
             # underlying condition, a parenthetical suffix there): "이번
@@ -340,7 +351,7 @@ def condition_text_ko(condition: Condition) -> str:
             return f"이번 차례에 {{spice}}를 {amount} 이상 얻었다면"
         case SpiceMustFlowCardsAtLeast(count=count):
             name = _reserve_card_name_ko("the_spice_must_flow")
-            return f"당신이 {name}을 {count} 이상 보유했다면"
+            return f"당신이 {name}{_object_particle(name)} {count} 이상 보유했다면"
         case OpponentAllianceInfluenceAtLeast(amount=amount):
             # No adjacent digit+"Influence" in English's own text ("N or
             # more Influence on a..."), so ICON_RULES draws no icon there
@@ -353,8 +364,8 @@ def condition_text_ko(condition: Condition) -> str:
             return f"{{water}} {amount} 이상이면"
         case CommandersInConflictAtLeast(count=count):
             # Quotes ``tokens_ko.py``'s established "{conflict}에
-            # {commander}가 N 이상 있다면".
-            return f"{{conflict}}에 {{commander}}가 {count} 이상 있다면"
+            # {commander}이 N 이상 있다면".
+            return f"{{conflict}}에 {{commander}}이 {count} 이상 있다면"
         case TechTilesAtLeast(count=count):
             # Quotes ``tokens_ko.py``'s established "{tech_tile} N 이상이면".
             return f"{{tech_tile}} {count} 이상이면"
@@ -387,7 +398,7 @@ def _contract_count_ko(count: int) -> str:
     Quotes two independent Korean card prints (see ``condition_text_ko``'s
     ``CompletedContractsAtLeast`` case): "둘" for 2, "넷" for 4. No card in
     the current catalog uses a threshold this table does not cover; a count
-    outside it falls back to the digit (``cardstyle.md``'s own "when
+    outside it falls back to the digit (``docs/rules/korean-card-style.md``'s own "when
     unsure, default to the digit" rule) rather than guessing a native
     numeral no print has confirmed.
     """
@@ -459,7 +470,7 @@ def cost_text_ko(cost: Cost) -> str:
             return f"이긴 앞면 {{conflict}} 카드 {count}장 뒤집기"
         case TrashDiscardPileCard(minimum_cost=minimum_cost):
             # "비용이 1 이상인 카드를 폐기했다면:" — Navigation Card 5's own
-            # Korean print (`[KO card: Navigation Card 5]`, cardstyle.md
+            # Korean print (`[KO card: Navigation Card 5]`, korean-card-style.md
             # row 49), reused here for "or more" on a cost.
             return f"{{discard_pile}}에서 비용이 {minimum_cost} 이상인 카드 {{trash}}"
         case _:
@@ -526,7 +537,7 @@ def reward_text_ko(reward: Reward) -> str:
         case GrantAgentIconThisTurn(icon=icon):
             # "이번 차례에 당신이 플레이하는 카드는 [아이콘] 아이콘 보유." —
             # Emperor's Invitation's own Korean print (`[KO card: Emperor's
-            # Invitation]`, cardstyle.md row 44).
+            # Invitation]`, docs/rules/korean-card-style.md row 44).
             name = _AGENT_ICON_NAMES_KO[icon]
             return f"이번 차례에 당신이 플레이하는 카드는 {name} 아이콘 보유"
         case GrantCombatDeployment():
@@ -538,7 +549,7 @@ def reward_text_ko(reward: Reward) -> str:
             return "{conflict}에 있는 부대 종류마다 {solari:1}"
         case PeekTopCard():
             # "언제든지 당신의 카드덱 맨 위 카드 1장 확인 가능." — Glowglobes'
-            # own Korean print (`[KO card: Glowglobes]`, cardstyle.md
+            # own Korean print (`[KO card: Glowglobes]`, docs/rules/korean-card-style.md
             # row 47) for "look at the top card of your deck". The final
             # "draw it" is the plain word "뽑기", not the {draw} icon:
             # English's own "...to draw it" names no card/count next to

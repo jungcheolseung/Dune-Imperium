@@ -46,7 +46,7 @@ def test_four_player_ability_values() -> None:
 def test_every_scanned_leader_face_has_korean_text() -> None:
     """Every face with a Korean scan has all four Korean fields.
 
-    ``reverend_mother_jessica`` has no Korean scan (leaders_reconcile.md:
+    ``reverend_mother_jessica`` has no Korean scan (leaders-ko.md:
     "cards/ko/uprising/leader/ holds only 'Lady Jessica.webp'") and is the
     one printed face missing here; the catalog keeps her English.
     """
@@ -106,7 +106,7 @@ def test_liet_kynes_ability_keeps_the_printed_summon_word() -> None:
 def test_chani_signet_ko_keeps_the_printed_draw_icons() -> None:
     """The Korean print shows two draw-card icons, not troops, for Chani's
 
-    Signet Ring reward (leaders_reconcile.md finding 1) — kept faithful to
+    Signet Ring reward (leaders-ko.md finding 1) — kept faithful to
     the print even though it disagrees with the English display text
     ("Recruit 2 troops") and the engine (rules/leader_abilities.py's
     ``_apply_chani_water_payment``); that disagreement is a rules question

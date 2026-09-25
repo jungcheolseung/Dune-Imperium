@@ -21,9 +21,9 @@ not even reach, because ``personal_card_text_ko``'s box-label prefixes
 graphic (``display/cards.py``'s own module docstring says why). The Korean
 check below follows whichever path a given entry's line actually takes:
 ``.effect-text-ko`` with the matching Korean label word when a ``text_ko``
-twin exists for that exact line, ``.card-text`` with the English label
-otherwise (a section this project hasn't translated yet, e.g. Tech tiles'
-"Agent Turn:").
+twin exists for that exact line (since Step K4 every one of them does,
+Tech tiles' "Agent Turn:" included), ``.card-text`` with the English label
+otherwise.
 """
 
 from __future__ import annotations
@@ -38,9 +38,9 @@ check = Check()
 KOREAN_LABELS = {
     "Agent": "에이전트 칸",
     "On discard": "버리면",
-    # Tech tiles' "Agent Turn:" (bloodlines.py/tech display) has no Korean
-    # twin yet; left unmapped so the Korean check below falls back to the
-    # English-label/.card-text path for it, same as before this change.
+    # Tech tiles' "Agent Turn:" (display/bloodlines.py, since Step K4): the
+    # {agent_turn} term, which has no icon and so is drawn as its word.
+    "Agent Turn": "에이전트 차례",
 }
 
 # Every catalog line that opens with one of the labels, and one effect line
@@ -59,7 +59,7 @@ FIND_JS = """() => {
           found.labels.push({section, id, index, label: label[1], line});
         }
         if (!found.inline && !label && /\\bAgents?\\b/.test(line)) {
-          found.inline = {section, id, line};
+          found.inline = {section, id, index, line};
         }
       });
     }
@@ -98,10 +98,12 @@ POPOVER_KO_JS = """(args) => {
   const node = texts.find((t) => t.textContent === phrase(lineKo).textContent)
     || texts[0];
   const first = node ? node.firstChild : null;
+  const isIcon = (n) => n && n.nodeType === 1
+    && (n.matches("img, svg") || Boolean(n.querySelector("img, svg")));
   return {
     hasKoTwin: true,
-    firstIsText: Boolean(first) && first.nodeType === 3,
-    firstText: first && first.nodeType === 3 ? first.textContent : null,
+    leadingIcon: isIcon(first),
+    icons: node ? node.querySelectorAll("img, svg").length : 0,
     text: node ? node.textContent : null,
   };
 }"""
@@ -134,8 +136,8 @@ def main() -> None:
                     )
                     if shown_ko["hasKoTwin"]:
                         check.ok(
-                            shown_ko["firstIsText"]
-                            and (shown_ko["firstText"] or "").startswith(
+                            not shown_ko["leadingIcon"]
+                            and (shown_ko["text"] or "").startswith(
                                 f"{korean_label}:"
                             ),
                             f"{lang}: {item['id']} opens its .effect-text-ko line "
@@ -151,9 +153,14 @@ def main() -> None:
                     shown,
                 )
             if found["inline"]:
-                shown = page.evaluate(
-                    POPOVER_JS, [found["inline"]["id"], found["inline"]["line"]]
+                inline = found["inline"]
+                shown = (
+                    page.evaluate(POPOVER_KO_JS, [inline["id"], inline["index"]])
+                    if lang == "ko"
+                    else {"hasKoTwin": False}
                 )
+                if not shown["hasKoTwin"]:
+                    shown = page.evaluate(POPOVER_JS, [inline["id"], inline["line"]])
                 check.ok(
                     shown["icons"] > 0,
                     f"{lang}: Agent inside an effect is still drawn as an icon",

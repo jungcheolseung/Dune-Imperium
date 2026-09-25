@@ -17,11 +17,11 @@ icon term: rendering "Agent:" as the Agent-piece icon was a real bug (a
 card's own printed name is plain text so it is safe, but the box label sits
 right where the popover renders through ``iconize()``/``phrase()``, and a
 general "Agent"-word icon rule would have swallowed it exactly the way it
-already once swallowed the "Signet Ring" card name in the action log —
-inventory.md, 2026-09-25 review). "에이전트 칸"/"공개 칸" are the card
-structure legend's own words (``docs/rules/glossary-ko.md``'s "Agent box"
-row, `[Main p. 8]`: "당신의 카드덱을 구성하는 각 카드의 효과는 에이전트
-칸과 공개 칸으로 구분되어 있습니다" — the same sentence names both boxes).
+already once swallowed the "Signet Ring" card name in the action log).
+"에이전트 칸"/"공개 칸" are the card structure legend's own words
+(``docs/rules/glossary-ko.md``'s "Agent box" row, `[Main p. 8]`:
+"당신의 카드덱을 구성하는 각 카드의 효과는 에이전트 칸과 공개 칸으로
+구분되어 있습니다" — the same sentence names both boxes).
 "획득 시"/"버리면"/"폐기되면" compose the glossary's own verbs (획득
 `[Main p. 20]`, 버리다/폐기 `[Main p. 20]`) with ordinary Korean grammar
 ("시"/조건형 어미 "-면"은 게임 용어가 아닌 일반 문법) for a trigger no box
@@ -107,11 +107,10 @@ def _factions_or(factions: tuple[Faction, ...]) -> str:
 def _factions_or_ko(factions: tuple[Faction, ...]) -> str:
     """Korean twin of ``_factions_or``.
 
-    "또는" (or) is a rulebook connective, not a glossary game term
-    (``docs/rules/rulebook_vocab``-style grammar word), attested at
-    `[Main p. 14]` ("4인(또는 6인) 게임에서는…"). A Korean list has no
-    Oxford comma to drop, so every item but the last is simply joined with
-    "、" style comma-space before the final "또는".
+    "또는" (or) is a rulebook connective, not a glossary game term,
+    attested at `[Main p. 14]` ("4인(또는 6인) 게임에서는…"). A Korean list
+    has no Oxford comma to drop: every item but the last is joined with a
+    comma and a space before the final "또는".
     """
 
     names = [_faction_name_ko(faction) for faction in factions]

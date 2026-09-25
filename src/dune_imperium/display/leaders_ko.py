@@ -12,13 +12,12 @@ even where that differs from the engine or from the English display text
 ``docs/rules/glossary-ko.md`` reserves for Agent/Spy recall; see the source
 note below). No engine or English text changes with this module.
 
-Source: ``leaders_ko.json``, the reconciliation of two independent
-transcriptions (A, B) of the Korean-edition card scans
+Source: the reconciliation of two independent transcriptions (A, B) of
+the Korean-edition card scans
 (``cards/ko/{uprising,bloodlines}/leader/*.webp``), read against the English
 card and ``leaders.py`` where the two disagreed or where a print detail
 needed clarifying; every disagreement and its evidence crop is logged in
-``leaders_reconcile.md`` (both files produced 2026-09-25, kept with the
-session's other Korean-text preparation, outside this repository). Keyed by
+``docs/implementation-audits/leaders-ko.md`` (2026-09-25). Keyed by
 Leader *face* id exactly like ``LEADER_FACE_TEXTS``; a face with no Korean
 scan is simply absent here (only ``reverend_mother_jessica``: "no Korean
 scan: cards/ko/uprising/leader/ holds only 'Lady Jessica.webp' (front
@@ -26,31 +25,30 @@ face)" — the catalog keeps her English).
 
 Icon tokens follow the same ``{term}``/``{term:count}`` syntax as every
 other ``_ko`` display module (``static/labels.js`` ``TERMS``, expanded by
-``phrase()``): a token immediately followed by a printed digit
-(``leaders_ko.json``'s own convention, "a number printed inside an icon
-follows the token") becomes the counted form (``{spice}1`` -> ``{spice:1}``)
-and a bare printed icon (no digit) stays bare, exactly as printed — a
-faithful transcription, not a render-parity match with the English line's
-own ``{term:count}``/bare choice (``tokens_ko.py``'s docstring), since nine
-of these eighteen faces have no matching generated-text precedent to match
-at all (a Leader's ability/Signet is hand-authored prose in both
-languages). The one token the transcription used that has no ``TERMS`` row
-of its own, ``{spy_deep_cover}`` (Fenring's Signet), is written the same way
-``display/structs.py``'s ``_spy_placed_text_ko`` already writes a Spy with
-Deep Cover reward: the bare ``{spy}`` icon plus the glossary's own noun,
-"(잠복 스파이)" (``Spy with Deep Cover | 잠복 스파이 | [Bloodlines p. 12]``) —
-no new icon exists for it (``leaders_reconcile.md``: "which has no icons.py
-key"). The seven Agent-box faction/space icons and the Spy Agent icon
-(``{agent_icon_bene_gesserit}``, ``{agent_icon_city}``,
-``{agent_icon_emperor}``, ``{agent_icon_fremen}``,
+``phrase()``): a token immediately followed by a printed digit (the
+transcription's own convention in ``leaders-ko.md``, "a number printed
+inside an icon follows the token") becomes the counted form (``{spice}1`` ->
+``{spice:1}``) and a bare printed icon (no digit) stays bare, exactly as
+printed — a faithful transcription, not a render-parity match with the
+English line's own ``{term:count}``/bare choice (``tokens_ko.py``'s
+docstring), since nine of these eighteen faces have no matching
+generated-text precedent to match at all (a Leader's ability/Signet is
+hand-authored prose in both languages). The one token the transcription used
+that has no ``TERMS`` row of its own, ``{spy_deep_cover}`` (Fenring's
+Signet), is written the same way ``display/structs.py``'s
+``_spy_placed_text_ko`` already writes a Spy with Deep Cover reward: the
+bare ``{spy}`` icon plus the glossary's own noun, "(잠복 스파이)" (``Spy with
+Deep Cover | 잠복 스파이 | [Bloodlines p. 12]``) — no new icon exists for it
+(``leaders-ko.md``: "which has no icons.py key"). The seven Agent-box
+faction/space icons and the Spy Agent icon (``{agent_icon_bene_gesserit}``,
+``{agent_icon_city}``, ``{agent_icon_emperor}``, ``{agent_icon_fremen}``,
 ``{agent_icon_landsraad}``, ``{agent_icon_spacing_guild}``,
 ``{agent_icon_spice_trade}``, ``{agent_icon_spy}``) are new ``TERMS`` rows
 added with this module, sourced from ``docs/rules/glossary-ko.md``'s "Agent
-아이콘 분류" table (`` [Board Guide pp. 1-2]``) and its "Spy" row
-(`` [Main p. 20]``) — the Spy Agent icon is a distinct rulebook glyph from
-the plain Spy piece icon but names the same rule concept, so it reuses that
-row's word rather than inventing a second one.
-"""
+아이콘 분류" table (`` [Board Guide pp. 1-2]``) and its "Spy" row (`` [Main p.
+20]``) — the Spy Agent icon is a distinct rulebook glyph from the plain Spy
+piece icon but names the same rule concept, so it reuses that row's word
+rather than inventing a second one. """
 
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -84,7 +82,7 @@ LEADER_FACE_TEXTS_KO: Mapping[str, LeaderFaceTextKo] = MappingProxyType(
             ),
             signet_name="전쟁 참모",
             # Bare troop icon, no printed number or sentence (= Recruit 1
-            # troop); leaders_reconcile.md row 9.
+            # troop); docs/implementation-audits/leaders-ko.md row 9.
             signet_text="{troop}",
         ),
         "lady_amber_metulli": LeaderFaceTextKo(
@@ -133,7 +131,7 @@ LEADER_FACE_TEXTS_KO: Mapping[str, LeaderFaceTextKo] = MappingProxyType(
             ),
             signet_name="솔선수범",
             # Bare draw icon, no printed number or sentence (= Draw 1 card);
-            # leaders_reconcile.md row 15.
+            # docs/implementation-audits/leaders-ko.md row 15.
             signet_text="{draw}",
         ),
         "princess_irulan": LeaderFaceTextKo(
@@ -190,7 +188,7 @@ LEADER_FACE_TEXTS_KO: Mapping[str, LeaderFaceTextKo] = MappingProxyType(
             ),
             signet_name="페다이킨의 책략",
             # SIGNET REWARD IS TWO DRAW-CARD ICONS, not troops
-            # (leaders_reconcile.md finding 1, row 2): the print's icons match
+            # (leaders-ko.md finding 1, row 2): the print's icons match
             # Muad'Dib's draw icon, not the troop cube; display/leaders.py's
             # English ("Recruit 2 troops") and rules/leader_abilities.py's
             # _apply_chani_water_payment disagree with the print — that is a
@@ -204,13 +202,13 @@ LEADER_FACE_TEXTS_KO: Mapping[str, LeaderFaceTextKo] = MappingProxyType(
         "count_hasimir_fenring": LeaderFaceTextKo(
             ability_name="암살자",
             ability_text="당신이 카드 1장을 폐기할 때마다: {solari:1}",
-            # SPY WITH DEEP COVER (leaders_reconcile.md finding 2, row 4): the
+            # SPY WITH DEEP COVER (leaders-ko.md finding 2, row 4): the
             # Signet's Spy icon is a gold cylinder behind a grey one, the same
             # icon as the Deliver Supplies contract's Spy with Deep Cover, not
             # the plain Spy icon the engine currently offers
             # (_leader_spy_placement_actions on EMPEROR_POST_IDS) — a rules
             # question for the main session, not changed here. No dedicated
-            # icon exists for it (leaders_reconcile.md: "no icons.py key"),
+            # icon exists for it (leaders-ko.md: "no icons.py key"),
             # so this follows display/structs.py's own precedent for a Spy
             # with Deep Cover reward: the bare {spy} icon plus the glossary's
             # noun.
@@ -236,7 +234,7 @@ LEADER_FACE_TEXTS_KO: Mapping[str, LeaderFaceTextKo] = MappingProxyType(
         "esmar_tuek": LeaderFaceTextKo(
             ability_name="튜엑의 시치",
             # Two side-by-side columns with no punctuation between them on
-            # the print; \n marks that column break (leaders_reconcile.md
+            # the print; \n marks that column break (leaders-ko.md
             # row 6).
             ability_text=(
                 "당신*이 튜엑의 시치에 에이전트를 보낼 때마다: {solari:1}\n"
@@ -253,7 +251,7 @@ LEADER_FACE_TEXTS_KO: Mapping[str, LeaderFaceTextKo] = MappingProxyType(
             ability_name="은밀함",
             # The ability's icon is the eye-shaped Spy Agent icon
             # (agent_icon_spy), distinct from the plain grey-cylinder Spy
-            # icon used in the Signet below (leaders_reconcile.md finding
+            # icon used in the Signet below (leaders-ko.md finding
             # "Fields where A and B agreed but the print differs").
             ability_text=(
                 "당신이 플레이하는 모든 카드는 {agent_icon_spy} 아이콘 보유. "
@@ -263,7 +261,7 @@ LEADER_FACE_TEXTS_KO: Mapping[str, LeaderFaceTextKo] = MappingProxyType(
             signet_name="듣는 자들",
             # This card prints the separator with short hyphens "-또는-",
             # unlike the long-dash "—또는—" on every other face
-            # (leaders_reconcile.md row 8/output conventions).
+            # (docs/implementation-audits/leaders-ko.md row 8/output conventions).
             signet_text="{agent_icon_landsraad} 에 {spy} -또는- {spice:1} → {spy}",
         ),
         "piter_de_vries": LeaderFaceTextKo(
@@ -280,7 +278,7 @@ LEADER_FACE_TEXTS_KO: Mapping[str, LeaderFaceTextKo] = MappingProxyType(
             # Two printed boxes (red setup "기이한 모습", tan "스파이스를
             # 갈구하다"); mirrors LEADER_FACE_TEXTS["steersman_y_rkoon"]'s
             # English "Strange Form / Hungry for Spice" structure, both
-            # names and both box texts kept (leaders_reconcile.md, Structural
+            # names and both box texts kept (leaders-ko.md, Structural
             # differences section).
             ability_name="기이한 모습 / 스파이스를 갈구하다",
             ability_text=(
@@ -313,7 +311,7 @@ LEADER_FACE_TEXTS_KO: Mapping[str, LeaderFaceTextKo] = MappingProxyType(
         "liet_kynes": LeaderFaceTextKo(
             ability_name="아라키스 행성학자",
             # The print's own words for summoning a sandworm are "소환"
-            # (leaders_reconcile.md, Glossary notes: "The print uses 소환
+            # (leaders-ko.md, Glossary notes: "The print uses 소환
             # both for recalling a Spy ... and for summoning a sandworm ...
             # The glossary only has the Recall sense") — kept faithful to
             # the print rather than corrected to the glossary's 부르다, per

@@ -1462,7 +1462,7 @@ def leader_popover_korean_text(page, lang: str) -> None:
     (a Leader's prose is hand-transcribed in both languages, unlike a
     card's engine-derived line) and her Signet is the one face whose
     printed reward is known to disagree with the English/engine (two draw
-    icons, not troops, leaders_reconcile.md finding 1); Kota's own ability
+    icons, not troops, docs/implementation-audits/leaders-ko.md finding 1); Kota's own ability
     and Signet use no `{agent_icon_...}` token at all -- his printed
     Signet Ring ("폐기") and ability exercise the ordinary case.
 

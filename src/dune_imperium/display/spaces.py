@@ -180,7 +180,7 @@ _AUTHORED_OPTION_EFFECTS_KO: Mapping[
             # "의원 토큰을 놓습니다" quotes glossary-ko.md's High Council
             # citation ([Board Guide p. 2]) for "seat your Councilor";
             # "매 {reveal_turn}마다" is the rulebook's own recurring-trigger
-            # shape (cardstyle.md's "때마다" note), not the one-shot -다면.
+            # shape (korean-card-style.md's "때마다" note), not the one-shot -다면.
             # English opens the line with "First visit:" — the Korean
             # rulebook's own two-visit split ("이 장소에 처음으로 에이전트를
             # 보낼 때: … / 그 뒤로 이 장소에 다시 에이전트를 보낼 때: …")
@@ -258,7 +258,7 @@ SPACE_NOTES: Mapping[str, tuple[str, ...]] = MappingProxyType(
 # conflict_reward_text_ko docstring notes this), so no {control} placeholder
 # is used even though one exists. "여기로 {agent}를 보낼 때마다" mirrors
 # glossary-ko.md's Send-an-Agent citation ([Main p. 9], 보내다) in the
-# recurring "때마다" shape (cardstyle.md). "지배권을 가진 플레이어"
+# recurring "때마다" shape (docs/rules/korean-card-style.md). "지배권을 가진 플레이어"
 # (rather than an invented "지배자") and the verb 얻다 (never Acquire's
 # 획득) both quote the Korean Board Guide itself: "아라킨 지배권을 가진
 # 플레이어는 1 솔라리를 얻습니다" [Board Guide p. 1], "제국 분지 지배권을
