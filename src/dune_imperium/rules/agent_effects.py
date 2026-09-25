@@ -2590,7 +2590,10 @@ def _arrakis_revolt_payment_actions(
     the arrow [Main p. 20]. The removal is optional, so paying while keeping
     the wall is offered only when the worm can still do something (the
     Conflict is not Shield Wall-protected); a summon that "does nothing"
-    against a protected Conflict is not worth two spice (OQ-026).
+    against a protected Conflict is not worth two spice (OQ-026). Arrakis
+    Planetologist's replacement still pays behind the wall -- "(Even when
+    the Conflict is protected by the Shield Wall.)" [Liet Kynes card] -- so
+    Liet may pay and keep the wall there too.
     """
 
     decline = DomainAction(action_id="decline_agent_card_payment", actor=player)
@@ -2609,7 +2612,9 @@ def _arrakis_revolt_payment_actions(
                 actor=player,
             )
         )
-    if not current_conflict_is_shield_wall_protected(state):
+    if replaces_sandworms(owner) or not current_conflict_is_shield_wall_protected(
+        state
+    ):
         actions.append(
             DomainAction(action_id="pay_agent_card_spice_for_sandworm", actor=player)
         )
