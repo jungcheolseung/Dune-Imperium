@@ -31,6 +31,7 @@ from dune_imperium.rules.agent_effects import (
     apply_agent_card_payment,
     legal_agent_card_discard_actions,
     legal_agent_card_payment_actions,
+    legal_agent_card_spy_actions,
     resolve_agent_card_effect,
 )
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
@@ -44,6 +45,7 @@ from dune_imperium.rules.graft import (
     legal_graft_switch_actions,
 )
 from dune_imperium.rules.reveal_turn import begin_reveal_turn
+from dune_imperium.rules.spy_placement import observation_post_ids_for_factions
 
 IMMORTALITY = RulesetConfig(immortality=True, promo_cards=True)
 STARTERS = starting_deck_instance_ids(0, immortality=True)
@@ -809,3 +811,34 @@ def test_ghola_borrowing_a_discard_box_still_pays_out_its_rewards() -> None:
     # Before the fix the discard was spent and neither reward was queued.
     assert context["pending_agent_icons"] == "intrigue,cards"
     assert context["pending_agent_effect"] is True
+
+
+def test_ghola_borrowing_a_restricted_spy_box_keeps_its_post_limit() -> None:
+    # "This card has the same Agent box as the other grafted card." [Ghola
+    # card] and "Ghola copies the entire Agent box of the card it's grafted
+    # to" [Immortality p. 14] (docs/rules/immortality.md "Ghola는 상대 카드의
+    # Agent box 전체 ... 를 복사하고"). Reliable Informant's box is a Spy with
+    # a placement limit -- "[Spy] on [icon]" means "the observation post must
+    # connect to a [icon] board space" [Main p. 20] -- so Ghola's copy is
+    # limited the same way. The borrowed box took the effect alone, and
+    # Ghola's Spy could go on any empty post (13 instead of 3).
+    ghola = _tleilaxu("ghola")
+    informant = "imperium:reliable_informant:0"
+    grafted = _graft(_state(_owner((ghola, informant))), ghola, "arrakeen", informant)
+    targets = set(
+        observation_post_ids_for_factions(
+            personal_card_for_instance(informant).agent_spy_factions
+        )
+    )
+
+    def offered(state: GameState) -> set[str]:
+        return {
+            str(dict(action.arguments)["post_id"])
+            for action in legal_agent_card_spy_actions(state, 0)
+        }
+
+    # Ghola's box is the active one first; the switch then offers the
+    # Informant's own box with the same limit.
+    assert targets
+    assert offered(grafted) == targets
+    assert offered(_switch(grafted)) == targets
