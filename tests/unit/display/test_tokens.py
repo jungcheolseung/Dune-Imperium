@@ -7,6 +7,7 @@ from dune_imperium.content.uprising.types import (
     PersonalCardAgentEffect,
     PersonalCardBond,
     PersonalCardDiscardEffect,
+    PersonalCardIconCondition,
     PersonalCardRevealAcquisitionEffect,
     PersonalCardRevealChoiceEffect,
     PersonalCardRevealEffect,
@@ -18,6 +19,7 @@ from dune_imperium.display.tokens import (
     ACQUISITION_EFFECT_TEXT,
     AGENT_EFFECT_TEXT,
     DISCARD_EFFECT_TEXT,
+    ICON_CONDITION_TEXT,
     REVEAL_ACQUISITION_EFFECT_TEXT,
     REVEAL_CHOICE_EFFECT_TEXT,
     TRASH_EFFECT_TEXT,
@@ -36,6 +38,10 @@ def test_trash_effect_text_covers_every_member() -> None:
 
 def test_discard_effect_text_covers_every_member() -> None:
     assert set(DISCARD_EFFECT_TEXT.keys()) == set(PersonalCardDiscardEffect)
+
+
+def test_icon_condition_text_covers_every_member() -> None:
+    assert set(ICON_CONDITION_TEXT.keys()) == set(PersonalCardIconCondition)
 
 
 def test_acquisition_effect_text_covers_every_member() -> None:

@@ -63,6 +63,26 @@ def test_round_start_reveals_conflict_draws_five_and_opens_first_turn() -> None:
     assert decision.owner == state.first_player
 
 
+def test_round_start_forgets_the_spy_recalls_of_the_previous_round() -> None:
+    # "If you recalled a Spy this turn:" [Imperial Spymaster card] reads the
+    # seat's per-turn recall count (OQ-044 (d)). The round's first turn opens
+    # without the per-turn reset, so a recall made on a seat's last Reveal
+    # turn must be cleared at Round Start, or it would reach the next turn.
+    state = _setup_state()
+    recalled = replace(state.players[state.first_player or 0], spies_recalled_turn=1)
+    state = replace(
+        state,
+        players=tuple(
+            recalled if player.player_id == recalled.player_id else player
+            for player in state.players
+        ),
+    )
+
+    started = begin_round(state).state
+
+    assert all(player.spies_recalled_turn == 0 for player in started.players)
+
+
 def test_round_start_adds_five_cards_instead_of_refilling_hand_to_five() -> None:
     state = _setup_state()
     first = replace(state.players[0], hand=("retained_card",))

@@ -204,15 +204,13 @@ def _close_servo_signet(
         ):
             continue
         # The ability resolved inside the owner's Agent turn: its recruits
-        # stay deployable, Harkonnen Advisor's troop stays undeployable and
-        # a Spy recalled for it counts as recalled this turn.
+        # stay deployable and Harkonnen Advisor's troop stays undeployable (a
+        # Spy recalled for it counts through the seat's spies_recalled_turn).
         agent_context = dict(frame.context)
         for key in _TURN_COUNTERS:
             agent_context[key] = _context_count(agent_context, key) + (
                 _context_count(context, key)
             )
-        if context.get("spy_recalled_this_turn") is True:
-            agent_context["spy_recalled_this_turn"] = True
         if index == len(frames) - 1 and context.get("advance_agent_frame") is True:
             # The Landsraad visit's Acquire Tech waited for the ability;
             # the Agent turn now moves on as that icon's resolution would.
@@ -769,7 +767,6 @@ def apply_feyd_track_action(
     if action.action_id == "recall_spy_for_leader_placement":
         next_owner = recall_spy(owner, post_id)
         context["feyd_spy_recalled"] = True
-        context["spy_recalled_this_turn"] = True
         next_state = _store_signet(
             state,
             context,
@@ -1719,7 +1716,6 @@ def apply_leader_signet_spy(
     if action.action_id == "recall_spy_for_leader_placement":
         next_owner = recall_spy(owner, post_id)
         context["leader_spy_recalled"] = True
-        context["spy_recalled_this_turn"] = True
         next_state = _store_signet(
             state,
             context,

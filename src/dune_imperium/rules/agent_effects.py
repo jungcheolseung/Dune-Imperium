@@ -106,6 +106,10 @@ _DRAW_RESEARCH_SPECIMEN = (
 _RESEARCH_AND_TRASH_FOR_VP = (
     PersonalCardAgentEffect.RESEARCH_AND_MAY_TRASH_SELF_FOR_VP_IF_TWO_MARKERS
 )
+# The card instances whose Scientific Breakthrough box already did its
+# Research this turn. Keyed by card, not by the frame, because a Ghola
+# grafted to it copies the box and each box researches once.
+_RESEARCHED_BOXES: Final = "research_resolved_card_ids"
 _GUILD_INFLUENCE_IF_SPICE = (
     PersonalCardAgentEffect.GAIN_SPACING_GUILD_INFLUENCE_IF_GAINED_SPICE_THIS_TURN
 )
@@ -115,7 +119,7 @@ _SOLARI_PER_PARTNER_ICON = (
 )
 _CHOOSE_TWO_REWARDS = PersonalCardAgentEffect.CHOOSE_TWO_OF_WATER_TROOP_TRASH_TLEILAXU
 _TRASH_GRAFTED_FOR_INFLUENCE = (
-    PersonalCardAgentEffect.MAY_TRASH_GRAFTED_CARD_FOR_VISITED_FACTION_INFLUENCE
+    PersonalCardAgentEffect.TRASH_GRAFTED_CARD_FOR_VISITED_FACTION_INFLUENCE
 )
 _LOSE_TROOP_FOR_CARDS = PersonalCardAgentEffect.MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH
 # Branching Path (Uprising card face, re-read 2026-09-19): the Agent box's
@@ -249,11 +253,13 @@ def legal_agent_card_discard_actions(
         PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE,
     ):
         return ()
-    may_pay = (
-        effect
-        is not PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD
-        or bool(state.intrigue_deck)
-    )
+    # Any hand card may pay the discard: neither Captured Mentat's nor Guild
+    # Spy's face conditions the cost on the Intrigue reward [Captured Mentat
+    # card] [Guild Spy card]. An empty Intrigue deck does not block it
+    # either: the draw reshuffles the discard pile ("In the rare case that
+    # you exhaust the Intrigue deck, shuffle the discarded Intrigue cards to
+    # form a new deck." [FAQ p. 2]) or stops short when both piles are
+    # empty, while the card draw still pays out.
     return (
         *(
             (DomainAction(action_id="decline_agent_card_discard", actor=player),)
@@ -276,16 +282,6 @@ def legal_agent_card_discard_actions(
                 arguments=(("card_id", card_id),),
             )
             for card_id in state.players[player].hand
-            if may_pay
-            and not (
-                effect
-                is (
-                    PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE_AND_INTRIGUE_IF_SPACING_GUILD
-                )
-                and Faction.SPACING_GUILD
-                in personal_card_for_instance(card_id).factions
-                and not state.intrigue_deck
-            )
         ),
     )
 
@@ -706,8 +702,16 @@ def _partner_icon_count(state: GameState, context: Mapping[str, ActionValue]) ->
     owner = state.players[player]
     opponents = tuple(seat for seat in state.players if seat.player_id != player)
     partner_card = personal_card_for_instance(partner)
+    # Long Reach in play does not count as its own "another Bene Gesserit
+    # card in play" [Long Reach card].
     return len(
-        effective_agent_icons(partner_card, owner, grafted=True, opponents=opponents)
+        effective_agent_icons(
+            partner_card,
+            owner,
+            grafted=True,
+            opponents=opponents,
+            card_instance_id=partner,
+        )
     )
 
 
@@ -888,7 +892,7 @@ def legal_agent_card_influence_actions(
     if (
         effect
         is PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE_IF_SPY_RECALLED_THIS_TURN
-        and context.get("spy_recalled_this_turn") is not True
+        and not spy_recalled_this_turn(state.players[player])
     ):
         return ()
     if (
@@ -1133,16 +1137,19 @@ def legal_agent_card_spy_actions(
         return ()
     if context.get("pending_agent_effect") is not True:
         return ()
-    _, source_card_id, _ = _effect_subject(context)
+    _, source_card_id, visited_space_id = _effect_subject(context)
     source_card = active_agent_card(context)
     deep_cover = (
         source_card.agent_effect
         is PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY
         and context.get("agent_card_spy_pending") is True
     )
-    if not deep_cover and source_card.agent_effect not in (
-        PersonalCardAgentEffect.PLACE_SPY,
-        PersonalCardAgentEffect.PLACE_SPY_ALLOW_SHARED_IF_SPYING_ON_VISITED_SPACE,
+    double_agent = (
+        source_card.agent_effect
+        is PersonalCardAgentEffect.PLACE_SPY_ON_VISITED_SPACE_MAY_SHARE
+    )
+    if not deep_cover and not double_agent and (
+        source_card.agent_effect is not PersonalCardAgentEffect.PLACE_SPY
     ):
         return ()
 
@@ -1161,25 +1168,23 @@ def legal_agent_card_spy_actions(
             for post in OBSERVATION_POSTS
             if post.post_id not in owner.spy_post_ids
         )
-    if (
-        source_card.agent_effect
-        is PersonalCardAgentEffect.PLACE_SPY_ALLOW_SHARED_IF_SPYING_ON_VISITED_SPACE
-        and _owner_is_spying_on_visited_space(state, player, context)
-    ):
-        opponent_posts = {
-            post_id
-            for candidate in state.players
-            if candidate.player_id != player
-            for post_id in candidate.spy_post_ids
-        }
+    if double_agent:
+        # Double Agent: "[Spy] spying on the board space you sent an Agent to
+        # this turn. You may place this Spy on the same observation post as
+        # another player's Spy." [Double Agent card] -- a placement limit in
+        # the "[Spy] on [icon]" sense ("the observation post must connect to
+        # a ... board space" [Main p. 20]) whose post may already hold
+        # another player's Spy, never the owner's own.
+        allowed_post_ids = frozenset(
+            post.post_id
+            for post in OBSERVATION_POSTS
+            if visited_space_id in post.connected_space_ids
+        )
         placements = tuple(
             post.post_id
             for post in OBSERVATION_POSTS
-            if post.post_id not in owner.spy_post_ids
-            and (
-                post.post_id in opponent_posts
-                or post.post_id in placements
-            )
+            if post.post_id in allowed_post_ids
+            and post.post_id not in owner.spy_post_ids
         )
     # Placement needs a Spy in supply right now [Main pp. 11, 20]; a recall
     # made earlier this turn may already have been consumed by another effect
@@ -1305,6 +1310,10 @@ def legal_agent_card_recall_actions(
                 for space_id in locations
             ),
         )
+    # The Recall Agent icon: "Return one of your other Agents on the board to
+    # your Leader (not the Agent you sent during this turn)." [Main p. 20].
+    # With no other Agent on the board the icon offers nothing; the box then
+    # waits for the turn's end and fizzles there (OQ-057 (1)).
     return tuple(
         DomainAction(
             action_id="recall_agent_for_agent_card",
@@ -1312,6 +1321,7 @@ def legal_agent_card_recall_actions(
             arguments=(("space_id", space_id),),
         )
         for space_id in state.players[player].agent_locations
+        if space_id != turn_space_id
     )
 
 
@@ -2007,12 +2017,23 @@ def legal_agent_card_payment_actions(
         )
     owner = state.players[player]
     if source_card.agent_effect is _RESEARCH_AND_TRASH_FOR_VP:
-        # Scientific Breakthrough: at two genetic markers the research may
-        # come with "trash this card -> 1 Victory Point" [card face].
+        # Scientific Breakthrough prints the Research icon and, on its own
+        # line, "[2 genetic markers]: Trash this card -> 1 VP" [card face].
+        # The line is judged when it resolves (OQ-028), so the card's own
+        # Research, resolved first, may reach the second marker [Main p. 9].
+        # Before the Research, the plain resolution is the Research; after
+        # it, the line is an arrow cost the owner may decline.
         if genetic_markers_reached(owner.research_space) < 2:
             return ()
         return (
-            DomainAction(action_id="resolve_agent_card_effect", actor=player),
+            DomainAction(
+                action_id=(
+                    "decline_agent_card_payment"
+                    if _box_researched(context, source_card_id)
+                    else "resolve_agent_card_effect"
+                ),
+                actor=player,
+            ),
             DomainAction(action_id="trash_agent_card_self_for_vp", actor=player),
         )
     if source_card.agent_effect is _SOLARI_PER_PARTNER_ICON:
@@ -2031,20 +2052,20 @@ def legal_agent_card_payment_actions(
     if source_card.agent_effect is _TRASH_GRAFTED_FOR_INFLUENCE:
         # Beguiling Pheromones: a Faction space visited this turn and a
         # grafted card (either one) still in play [card face] [FAQ p. 1].
+        # "trash one of the grafted cards and gain an additional Influence"
+        # has no "may", arrow or black-X icon, so it is mandatory [FAQ p. 3]:
+        # the owner picks which card, never whether.
         _, _, space_id = _effect_subject(context)
         if BOARD_SPACES_BY_ID[space_id].faction is None or not is_grafted(context):
             return ()
-        return (
-            DomainAction(action_id="decline_agent_card_payment", actor=player),
-            *(
-                DomainAction(
-                    action_id="trash_grafted_card_for_influence",
-                    actor=player,
-                    arguments=(("card_id", card_id),),
-                )
-                for card_id in (source_card_id, other_grafted_card_id(context))
-                if card_id in owner.in_play
-            ),
+        return tuple(
+            DomainAction(
+                action_id="trash_grafted_card_for_influence",
+                actor=player,
+                arguments=(("card_id", card_id),),
+            )
+            for card_id in (source_card_id, other_grafted_card_id(context))
+            if card_id in owner.in_play
         )
     if source_card.agent_effect is _LOSE_TROOP_FOR_CARDS:
         # Piter, Genius Advisor: "Lose a troop -> draw two cards and
@@ -2361,9 +2382,10 @@ def apply_agent_card_payment(state: GameState, action: DomainAction) -> RuleResu
         )
     if action.action_id == "trash_agent_card_self_for_vp":
         # Scientific Breakthrough: the card trashes itself as its own cost,
-        # so its research still pays out (OQ-022); the direction choice
-        # opens above the settled turn.
+        # so its research still pays out (OQ-022) unless it already did;
+        # the direction choice opens above the settled turn.
         card_instance_id = _effect_subject(context)[1]
+        research_owed = not _box_researched(context, card_instance_id)
         context["agent_card_self_trashed"] = True
         trashed = trash_personal_card(
             state, action.actor, card_instance_id, source=f"{source}:trash"
@@ -2375,8 +2397,10 @@ def apply_agent_card_payment(state: GameState, action: DomainAction) -> RuleResu
         next_state = advance_after_effect(
             trashed.state, context, replace_player(trashed.state.players, rewarded)
         )
-        researched = advance_research(
-            next_state, action.actor, source=f"{source}:research"
+        researched = (
+            advance_research(next_state, action.actor, source=f"{source}:research")
+            if research_owed
+            else RuleResult(state=next_state, events=())
         )
         return RuleResult(
             state=researched.state,
@@ -2797,6 +2821,8 @@ def legal_agent_card_icon_actions(
         return ()
     if context.get("pending_agent_effect") is not True:
         return ()
+    owner = state.players[player]
+    effect = active_agent_card(context).agent_effect
     return tuple(
         DomainAction(
             action_id="resolve_agent_card_effect",
@@ -2805,7 +2831,64 @@ def legal_agent_card_icon_actions(
         )
         for key in pending_agent_icons(context)
         if key in AUTOMATIC_AGENT_ICONS
+        and agent_icon_condition_holds(owner, context, effect, key)
     )
+
+
+def agent_icon_condition_holds(
+    owner: PlayerState,
+    context: Mapping[str, ActionValue],
+    effect: PersonalCardAgentEffect | None,
+    key: str,
+) -> bool:
+    """Return whether an Agent-box icon's printed condition holds right now.
+
+    Hidden Missive (two Bene Gesserit Influence), Fremen War Name ("If you
+    gained [2 spice] or more this turn:" [Fremen War Name card]), Sardaukar
+    Quartermaster (grafted), Tleilaxu Infiltrator (two genetic markers),
+    Maker Keeper and Wheels Within Wheels (Influence thresholds) print a
+    condition on icons that are otherwise mandatory. The condition is judged
+    when the icon resolves (OQ-028), and while it is false the icon is not
+    offered: a mandatory effect cannot be fired to fizzle, it waits for the
+    turn's end and fizzles there (OQ-057 (1)). A later effect of the turn that
+    meets the condition makes it resolvable, and then mandatory, again.
+    """
+
+    if key in (AGENT_ICON_CARDS, AGENT_ICON_TROOPS):
+        if effect is (
+            PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO
+        ):
+            return owner.influence.bene_gesserit >= 2
+        if effect is (
+            PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_ONE_IF_GAINED_TWO_SPICE_THIS_TURN
+        ):
+            return spice_gained_this_turn(owner) >= 2
+        if effect is PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_ONE_IF_GRAFTED:
+            return is_grafted(context)
+        return True
+    if key == AGENT_ICON_INTRIGUE:
+        return (
+            effect is not PersonalCardAgentEffect.DRAW_ONE_AND_INTRIGUE_IF_TWO_MARKERS
+            or genetic_markers_reached(owner.research_space) >= 2
+        )
+    maker_keeper = (
+        effect is PersonalCardAgentEffect.GAIN_BY_BENE_GESSERIT_AND_FREMEN_INFLUENCE_TWO
+    )
+    wheels = (
+        effect
+        is PersonalCardAgentEffect.GAIN_BY_EMPEROR_AND_SPACING_GUILD_INFLUENCE_TWO
+    )
+    if key == AGENT_ICON_SOLARI:
+        return wheels and owner.influence.emperor >= 2
+    if key == AGENT_ICON_SPICE:
+        return (
+            effect is _BRANCHING_PATH
+            or (maker_keeper and owner.influence.fremen >= 2)
+            or (wheels and owner.influence.spacing_guild >= 2)
+        )
+    if key == AGENT_ICON_WATER:
+        return maker_keeper and owner.influence.bene_gesserit >= 2
+    return True
 
 
 def resolve_agent_card_icon(state: GameState, action: DomainAction) -> RuleResult:
@@ -2813,8 +2896,8 @@ def resolve_agent_card_icon(state: GameState, action: DomainAction) -> RuleResul
 
     Conditions printed on the box (Hidden Missive's, Maker Keeper's and
     Wheels Within Wheels' Influence thresholds) are judged when the icon
-    resolves in the owner's order [Main pp. 7, 9]; an unmet condition
-    consumes the icon without effect.
+    resolves in the owner's order [Main pp. 7, 9]; an icon is offered only
+    while its condition holds (``agent_icon_condition_holds``).
     """
 
     if action not in legal_agent_card_icon_actions(state, action.actor):
@@ -2856,83 +2939,34 @@ def resolve_agent_card_icon(state: GameState, action: DomainAction) -> RuleResul
             ),
         )
 
-    hidden_missive = (
-        effect
-        is PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO
-    )
-    # Fremen War Name: both icons need two spice gained this turn, judged
-    # when each icon resolves (OQ-028).
-    war_name_blocked = (
-        effect
-        is (
-            PersonalCardAgentEffect
-            .RECRUIT_ONE_AND_DRAW_ONE_IF_GAINED_TWO_SPICE_THIS_TURN
-        )
-        and spice_gained_this_turn(owner) < 2
-    )
-    # Sardaukar Quartermaster: both icons need the card to be grafted.
-    quartermaster_blocked = (
-        effect is PersonalCardAgentEffect.RECRUIT_ONE_AND_DRAW_ONE_IF_GRAFTED
-        and not is_grafted(context)
-    )
-    missive_blocked = (
-        hidden_missive and owner.influence.bene_gesserit < 2
-    ) or quartermaster_blocked
-    maker_keeper = (
-        effect is PersonalCardAgentEffect.GAIN_BY_BENE_GESSERIT_AND_FREMEN_INFLUENCE_TWO
-    )
-    wheels = (
-        effect
-        is PersonalCardAgentEffect.GAIN_BY_EMPEROR_AND_SPACING_GUILD_INFLUENCE_TWO
-    )
     next_owner = owner
     effect_state = state
-    available = True
+    # Only an icon whose printed condition holds is offered (see
+    # ``agent_icon_condition_holds``); the check stays as a safety net.
+    available = agent_icon_condition_holds(owner, context, effect, key)
     personal_draw_count = 0
     intrigue_draw_count = 0
     match key:
         case "cards":
-            if missive_blocked or war_name_blocked:
-                available = False
-            else:
+            if available:
                 personal_draw_count = 1
         case "intrigue":
-            if (
-                effect is PersonalCardAgentEffect.DRAW_ONE_AND_INTRIGUE_IF_TWO_MARKERS
-                and genetic_markers_reached(owner.research_space) < 2
-            ):
-                # Tleilaxu Infiltrator: the Intrigue needs both genetic
-                # markers, judged when the icon resolves (OQ-028).
-                available = False
-            else:
+            if available:
                 intrigue_draw_count = 1
         case "troops":
-            if missive_blocked or war_name_blocked:
-                available = False
-            else:
+            if available:
                 next_owner = recruit(1)
         case "solari":
-            if wheels and owner.influence.emperor >= 2:
+            if available:
                 next_owner = gain(solari=2)
-            else:
-                available = False
         case "spice":
-            if effect is _BRANCHING_PATH:
-                # "[Intrigue card] [2 spice]" [Main p. 20]: unconditional,
-                # unlike Maker Keeper's and Wheels Within Wheels' Influence
-                # thresholds below.
-                next_owner = gain(spice=2)
-            elif (maker_keeper and owner.influence.fremen >= 2) or (
-                wheels and owner.influence.spacing_guild >= 2
-            ):
-                next_owner = gain(spice=1)
-            else:
-                available = False
+            if available:
+                # Branching Path's "[Intrigue card] [2 spice]" [Main p. 20];
+                # Maker Keeper and Wheels Within Wheels pay 1 spice.
+                next_owner = gain(spice=2 if effect is _BRANCHING_PATH else 1)
         case "water":
-            if maker_keeper and owner.influence.bene_gesserit >= 2:
+            if available:
                 next_owner = gain(water=1)
-            else:
-                available = False
         case "trash_self":
             if card_instance_id in owner.in_play:
                 # The card trashes itself by its own printed icon, so any
@@ -3312,7 +3346,7 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
     elif effect is PersonalCardAgentEffect.TAKE_CONTRACT_IF_SPY_RECALLED_THIS_TURN:
         # Corrupt Bureaucrat (Bloodlines): "If you recalled a Spy this turn:
         # contract" (2 Solari without the CHOAM Module [Main p. 20]).
-        if context.get("spy_recalled_this_turn") is not True:
+        if not spy_recalled_this_turn(owner):
             next_owner = owner
             event_kind = "agent_card_effect_unavailable"
         else:
@@ -3685,8 +3719,30 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             ),
         )
     elif effect is _RESEARCH_AND_TRASH_FOR_VP:
-        # Scientific Breakthrough without (or declining) the trash: research.
-        context["pending_agent_effect"] = False
+        if _box_researched(context, card_instance_id):
+            # Scientific Breakthrough's trash line after its Research: an
+            # arrow choice once two markers are reached, else it waits for
+            # the turn's end and lapses there (OQ-057 (1)).
+            if genetic_markers_reached(owner.research_space) >= 2:
+                raise ValueError("choose whether to trash Scientific Breakthrough")
+            context["pending_agent_effect"] = False
+            return RuleResult(
+                state=advance_after_effect(state, context),
+                events=(
+                    GameEvent(
+                        event_id=f"{event_source}:trash_line",
+                        kind="agent_card_effect_unavailable",
+                        payload=(("card_id", card_instance_id), ("player", player)),
+                    ),
+                ),
+            )
+        # Scientific Breakthrough's Research first: the trash line stays
+        # open behind it and is judged once the Research has settled
+        # ("[2 genetic markers]: Trash this card -> 1 VP" [card face];
+        # OQ-028), so a Research that reaches the second marker unlocks it.
+        context[_RESEARCHED_BOXES] = ",".join(
+            (*_researched_boxes(context), card_instance_id)
+        )
         next_state = advance_after_effect(state, context)
         researched = advance_research(
             next_state, player, source=f"{event_source}:research"
@@ -4052,14 +4108,14 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             event_kind = "agent_card_effect_unavailable"
     elif effect in (
         PersonalCardAgentEffect.PLACE_SPY,
-        PersonalCardAgentEffect.PLACE_SPY_ALLOW_SHARED_IF_SPYING_ON_VISITED_SPACE,
+        PersonalCardAgentEffect.PLACE_SPY_ON_VISITED_SPACE_MAY_SHARE,
     ):
         if legal_agent_card_spy_actions(state, player):
             raise RuntimeError("place-Spy Agent effect requires a player choice")
         next_owner = owner
         event_kind = "agent_card_effect_unavailable"
     elif effect is PersonalCardAgentEffect.RECRUIT_THREE_IF_SPY_RECALLED_THIS_TURN:
-        if context.get("spy_recalled_this_turn") is True:
+        if spy_recalled_this_turn(owner):
             next_owner, recruited = recruit_troops(owner, 3)
             previous = context.get("troops_recruited")
             if isinstance(previous, bool) or not isinstance(previous, int):
@@ -4073,7 +4129,7 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             next_owner = owner
             event_kind = "agent_card_effect_unavailable"
     elif effect is PersonalCardAgentEffect.RECRUIT_TWO_IF_SPY_RECALLED_THIS_TURN:
-        if context.get("spy_recalled_this_turn") is True:
+        if spy_recalled_this_turn(owner):
             next_owner, recruited = recruit_troops(owner, 2)
             previous = context.get("troops_recruited")
             if isinstance(previous, bool) or not isinstance(previous, int):
@@ -4087,7 +4143,7 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             next_owner = owner
             event_kind = "agent_card_effect_unavailable"
     elif effect is PersonalCardAgentEffect.DRAW_INTRIGUE_IF_SPY_RECALLED_THIS_TURN:
-        if context.get("spy_recalled_this_turn") is not True:
+        if not spy_recalled_this_turn(owner):
             next_owner = owner
             event_kind = "agent_card_effect_unavailable"
         else:
@@ -4146,7 +4202,7 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         effect
         is PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE_IF_SPY_RECALLED_THIS_TURN
     ):
-        if context.get("spy_recalled_this_turn") is True:
+        if spy_recalled_this_turn(owner):
             raise RuntimeError("Agent-card Influence effect requires a player choice")
         next_owner = owner
         event_kind = "agent_card_effect_unavailable"
@@ -4333,6 +4389,22 @@ def spice_gained_this_turn(owner: PlayerState) -> int:
     return owner.resources.spice - owner.spice_at_turn_start + owner.spice_spent_turn
 
 
+def spy_recalled_this_turn(owner: PlayerState) -> bool:
+    """Return whether the seat recalled one of its Spies during this turn.
+
+    "If you recalled a Spy this turn:" (Imperial Spymaster, Strike Fleet,
+    Rebel Supplier, Public Spectacle, Corrupt Bureaucrat) names no way of
+    recalling, so every recall counts: Infiltrate and Gather Intelligence
+    [Main p. 11], a card's Recall Spy icon or cost [Main pp. 11, 20], and
+    the "first recall one of your Spies for no effect" before a placement
+    [Main pp. 11, 20]. ``spies_recalled_turn`` counts each of them and
+    restarts whenever the seat's turn opens — the same reading as Spy
+    Drones (OQ-044 (d)).
+    """
+
+    return owner.spies_recalled_turn > 0
+
+
 def _effect_subject(context: dict[str, bool | int | str]) -> tuple[int, str, str]:
     player = context["turn_owner"]
     card_id = context["card_id"]
@@ -4347,17 +4419,12 @@ def _effect_subject(context: dict[str, bool | int | str]) -> tuple[int, str, str
     return player, card_id, space_id
 
 
+def _researched_boxes(context: Mapping[str, ActionValue]) -> tuple[str, ...]:
+    value = context.get(_RESEARCHED_BOXES, "")
+    return tuple(value.split(",")) if isinstance(value, str) and value else ()
 
-def _owner_is_spying_on_visited_space(
-    state: GameState,
-    player: int,
-    context: dict[str, ActionValue],
-) -> bool:
-    space_id = context.get("space_id")
-    if not isinstance(space_id, str):
-        raise RuntimeError("Agent-turn effect frame has invalid space")
-    occupied = frozenset(state.players[player].spy_post_ids)
-    return any(
-        space_id in post.connected_space_ids and post.post_id in occupied
-        for post in OBSERVATION_POSTS
-    )
+
+def _box_researched(context: Mapping[str, ActionValue], card_instance_id: str) -> bool:
+    """Return whether this card's Scientific Breakthrough box did its Research."""
+
+    return card_instance_id in _researched_boxes(context)

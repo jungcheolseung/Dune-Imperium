@@ -46,6 +46,10 @@ def begin_round(state: GameState) -> RuleResult:
             # Hungry for Spice is judged once per turn; the round's first
             # turn opens here, without its own counter reset.
             hungry_for_spice_granted_turn=False,
+            # The round's first turn opens without reset_turn_counters, so a
+            # recall made on a seat's last (Reveal) turn must not reach its
+            # next turn's "If you recalled a Spy this turn" (OQ-044 (d)).
+            spies_recalled_turn=0,
             # Urgent Shigawire's boost lasts "this round" only.
             bene_gesserit_boost_pending=False,
             # Tleilaxu Puppet's Reveal Persuasion lasts "this round" only.

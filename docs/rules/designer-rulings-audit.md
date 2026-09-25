@@ -69,7 +69,7 @@
 | 9 | (2026-09-09 반영: OQ-057) Battlefield Research·Rapid Engineering(·Machine Culture)은 play했으면 반드시 Tech 획득(Message from designer) | Tech 획득 frame에 항상 `decline_tech` | `rules/tech.py:237` | Intrigue 출처 frame에서만 decline 제거 |
 | 10 | (2026-09-09 반영: OQ-057) Imperium Ceremony의 "keep one"은 draw 1 → Suspensor Suits troop 1(Message from designer) | peek keep 경로는 `suspensor_owed`를 올리지 않음 | `rules/intrigue_peek.py:114` | Tech+Immortality 조합 |
 | 11 | (2026-09-09 반영: OQ-057, `conflict_end_trigger` 창) Combat 보상으로 받은 Harvest Cells는 즉시 play 가능(BGG) | trigger는 face-up 카드만 보고, Combat Intrigue 창은 보상 지급보다 앞이라 그 Combat에서는 불가 | `rules/combat.py:1461` `_fire_troop_loss_triggers` | 보상 지급 뒤 troop 손실 전 hand의 Harvest Cells를 play할 창이 필요 |
-| 12 | (2026-09-09 반영: OQ-057, `ghola_partner`) Ghola를 Long Reach와 graft하면 세 아이콘(Landsraad·City·Spice Trade)을 모두 얻는다(Email, TTS Discord) | Long Reach 아이콘은 BG Bond 조건이고 Ghola는 BG가 아니라 City만 접근 | `rules/agent_icons.py:36` | Planned Coupling(BG)과의 graft는 일치 |
+| 12 | (2026-09-09 반영: OQ-057, `ghola_partner` → 2026-09-26 `bond_partner`) Ghola를 Long Reach와 graft하면 세 아이콘(Landsraad·City·Spice Trade)을 모두 얻는다(Email, TTS Discord) | Long Reach 아이콘은 BG Bond 조건이고 Ghola는 BG가 아니라 City만 접근 | `rules/agent_icons.py:36` | Planned Coupling(BG)과의 graft: 2026-09-26까지 코드는 이 칸과 달리 BG 상대를 세지 않았다 — `bond_partner`로 고쳐 이제 일치 |
 | 13 | (2026-09-09 반영: OQ-057) Tleilaxu Master의 research 2개는 따로 해결 가능(BGG) | 한 행동에서 연속 처리(방향 선택 frame만 끼어듦) | `rules/reveal_turn.py:2231` | 영향 작음 |
 
 ## 대조하지 못한 항목 (콘텐츠 공백)

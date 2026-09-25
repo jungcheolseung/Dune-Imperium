@@ -12,6 +12,7 @@ from dune_imperium.content.immortality.board import RESEARCH_START_ID
 from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
+from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.core import (
     DecisionFrame,
@@ -30,6 +31,8 @@ from dune_imperium.rules.acquisition import (
 from dune_imperium.rules.agent_effects import (
     apply_agent_card_influence,
     apply_agent_card_payment,
+    fizzle_pending_agent_icons,
+    legal_agent_card_icon_actions,
     legal_agent_card_influence_actions,
     legal_agent_card_payment_actions,
     resolve_agent_card_effect,
@@ -336,6 +339,55 @@ def test_ghola_grafted_to_long_reach_turns_its_greyed_icons_on() -> None:
         dict(a.arguments)["card_id"] == reach for a in legal_agent_actions(plain, 0)
     )
 
+
+def test_long_reach_grafted_with_a_bene_gesserit_card_has_its_icons() -> None:
+    # "If you have another Bene Gesserit card in play, this has [Landsraad],
+    # [City], and [Spice Trade]." [Long Reach card]. A Graft pair is played
+    # together and "You may use an Agent icon from either card to send your
+    # Agent" [Immortality p. 10]; the Ghola clarification counts the Bene
+    # Gesserit card it is grafted to as in play for "if you have a Bene
+    # Gesserit card in play" [Immortality p. 14]. So Planned Coupling (a Bene
+    # Gesserit Graft card) grafted with Long Reach turns the icons on, and
+    # the space they reach keeps Planned Coupling as the only partner.
+    reach = _card("long_reach")
+    coupling = _card("planned_coupling")
+    state = _state(_owner((reach, coupling, DAGGER)))
+    placements = {
+        (dict(a.arguments)["space_id"], dict(a.arguments).get("graft"))
+        for a in legal_agent_actions(state, 0)
+        if dict(a.arguments)["card_id"] == reach
+    }
+    assert {("assembly_hall", True), ("arrakeen", True), ("imperial_basin", True)} <= (
+        placements
+    )
+    assert ("assembly_hall", None) not in placements
+
+    placed = _place(state, reach, "assembly_hall", graft=True)
+    partners = [
+        dict(a.arguments)["card_id"] for a in legal_graft_partner_actions(placed, 0)
+    ]
+    assert partners == [coupling]
+    grafted = apply_graft_partner(placed, legal_graft_partner_actions(placed, 0)[0])
+    picks = {
+        dict(a.arguments)["faction"]
+        for a in legal_agent_card_influence_actions(grafted.state, 0)
+    }
+    assert picks == {"emperor", "spacing_guild", "bene_gesserit", "fremen"}
+
+
+def test_long_reach_in_play_is_not_its_own_other_bene_gesserit_card() -> None:
+    # "If you have another Bene Gesserit card in play" [Long Reach card]:
+    # Long Reach is itself a Bene Gesserit card, so once in play it does not
+    # meet its own condition (Slig Farmer counts the grafted Long Reach's
+    # icons, OQ-055).
+    reach = _card("long_reach")
+    card = personal_card_for_instance(reach)
+    alone = _owner((), in_play=(reach,))
+    assert effective_agent_icons(card, alone, card_instance_id=reach) == ()
+    bonded = _owner((), in_play=(reach, _card("planned_coupling")))
+    assert len(effective_agent_icons(card, bonded, card_instance_id=reach)) == 3
+
+
 def test_occupation_draws_and_grants_the_combat_icon() -> None:
     occupation = _card("occupation")
     state = _place(
@@ -384,16 +436,13 @@ def test_sardaukar_quartermaster_needs_the_graft() -> None:
     alone = _place(_state(_owner((quartermaster,))), quartermaster, "arrakeen")
     _, context = current_agent_effect_context(alone)
     assert context["pending_agent_icons"] == "troops,cards"
-    troops = resolve_agent_card_icon(
-        alone,
-        DomainAction(
-            action_id="resolve_agent_card_effect",
-            actor=0,
-            arguments=(("effect", "troops"),),
-        ),
-    )
-    assert troops.state.players[0].troops_garrison == 3  # Arrakeen is still pending
-    assert troops.events[-1].kind == "agent_card_effect_unavailable"
+    # "If grafted: [troop] [card]" [Sardaukar Quartermaster card]: ungrafted,
+    # the mandatory icons are not offered to fire and fizzle; they wait for
+    # the turn's end and fizzle there (OQ-057 (1)).
+    assert legal_agent_card_icon_actions(alone, 0) == ()
+    fizzled = fizzle_pending_agent_icons(alone)
+    assert [e.kind for e in fizzled.events] == ["agent_card_effect_unavailable"] * 2
+    assert fizzled.state.players[0].troops_garrison == 3  # Arrakeen is still pending
     grafted = _graft(
         _state(_owner((quartermaster, FACE_DANCER))),
         quartermaster,

@@ -23,6 +23,7 @@ from dune_imperium.core import (
     RuleResult,
 )
 from dune_imperium.rules.agent_effects import (
+    agent_card_effect_is_unavailable,
     apply_agent_card_discard,
     apply_agent_card_influence,
     apply_agent_card_intrigue_payment,
@@ -33,6 +34,7 @@ from dune_imperium.rules.agent_effects import (
     apply_agent_card_trash,
     apply_corrinth_city_payment,
     expire_trashed_card_effects,
+    fizzle_pending_agent_icons,
     legal_agent_card_discard_actions,
     legal_agent_card_icon_actions,
     legal_agent_card_influence_actions,
@@ -552,17 +554,34 @@ def test_hidden_missive_has_no_agent_effect_below_required_influence() -> None:
 
     placed = apply_agent_action(state, _action_to(state, "gather_support")).state
 
-    # Both icons stay pending (OQ-028) and resolve as unavailable below two
-    # Bene Gesserit Influence.
+    # Both icons stay pending (OQ-028). Below two Bene Gesserit Influence the
+    # mandatory icons are not offered to fizzle on demand: they wait for the
+    # turn's end (OQ-057 (1)) ...
     assert dict(placed.decision_stack[-1].context)["pending_agent_icons"] == (
         "troops,cards"
     )
-    troops = resolve_agent_card_icon(placed, _icon_action(placed, "troops"))
-    assert troops.events[-1].kind == "agent_card_effect_unavailable"
-    cards = resolve_agent_card_icon(troops.state, _icon_action(troops.state, "cards"))
-    assert cards.events[-1].kind == "agent_card_effect_unavailable"
-    assert cards.state.players[0].troops_garrison == 3
-    assert cards.state.players[0].hand == ()
+    assert legal_agent_card_icon_actions(placed, 0) == ()
+    assert agent_card_effect_is_unavailable(placed)
+    fizzled = fizzle_pending_agent_icons(placed)
+    assert [event.kind for event in fizzled.events] == [
+        "agent_card_effect_unavailable",
+        "agent_card_effect_unavailable",
+    ]
+    assert fizzled.state.players[0].troops_garrison == 3
+    assert fizzled.state.players[0].hand == ()
+    # ... and become resolvable (and mandatory) once a later effect of the
+    # turn raises the Influence.
+    raised = replace(
+        placed,
+        players=(
+            replace(placed.players[0], influence=Influence(bene_gesserit=2)),
+            *placed.players[1:],
+        ),
+    )
+    assert {
+        dict(action.arguments)["effect"]
+        for action in legal_agent_card_icon_actions(raised, 0)
+    } == {"troops", "cards"}
 
 
 def test_desert_survival_may_trash_from_any_eligible_zone() -> None:
@@ -980,17 +999,15 @@ def test_chani_agent_effect_is_unavailable_below_three_units() -> None:
     assert result.events[0].kind == "agent_card_effect_unavailable"
 
 
-def test_steersman_draws_and_may_recall_its_just_placed_agent() -> None:
-    steersman = _imperium_instance("steersman")
-    drawn_card = _instance("dagger")
+def _steersman_state(agent_locations: tuple[str, ...]) -> GameState:
     owner = PlayerState(
         player_id=0,
-        agents_available=1,
-        agent_locations=("dutiful_service",),
-        hand=(steersman,),
-        deck=(drawn_card,),
+        agents_available=2 - len(agent_locations),
+        agent_locations=agent_locations,
+        hand=(_imperium_instance("steersman"),),
+        deck=(_instance("dagger"),),
     )
-    state = GameState(
+    return GameState(
         config=RulesetConfig(),
         seed=1,
         phase=GamePhase.PLAYER_TURNS,
@@ -1004,23 +1021,34 @@ def test_steersman_draws_and_may_recall_its_just_placed_agent() -> None:
             ),
         ),
     )
+
+
+def test_steersman_draws_and_recalls_only_another_agent() -> None:
+    # Recall Agent: "Return one of your other Agents on the board to your
+    # Leader (not the Agent you sent during this turn)." [Main p. 20]
+    # (docs/rules/uprising-systems.md "Recall Agent").
+    steersman = _imperium_instance("steersman")
+    drawn_card = _instance("dagger")
+    state = _steersman_state(("dutiful_service",))
     placed = apply_agent_action(state, _action_to(state, "deliver_supplies")).state
 
     actions = legal_agent_card_recall_actions(placed, 0)
-    assert {
-        dict(action.arguments)["space_id"] for action in actions
-    } == {"dutiful_service", "deliver_supplies"}
-    recall_new = next(
-        action
-        for action in actions
-        if dict(action.arguments)["space_id"] == "deliver_supplies"
+    assert {dict(action.arguments)["space_id"] for action in actions} == {
+        "dutiful_service"
+    }
+    recall_just_sent = DomainAction(
+        action_id="recall_agent_for_agent_card",
+        actor=0,
+        arguments=(("space_id", "deliver_supplies"),),
     )
-    assert recall_new in UprisingRulesEngine().legal_actions(placed, 0)
+    assert recall_just_sent not in UprisingRulesEngine().legal_actions(placed, 0)
+    with pytest.raises(ValueError):
+        apply_agent_card_recall(placed, recall_just_sent)
 
-    result = apply_agent_card_recall(placed, recall_new)
+    result = apply_agent_card_recall(placed, actions[0])
 
     assert result.state.players[0].agents_available == 1
-    assert result.state.players[0].agent_locations == ("dutiful_service",)
+    assert result.state.players[0].agent_locations == ("deliver_supplies",)
     assert result.state.players[0].in_play == (steersman,)
     assert [event.kind for event in result.events] == ["agent_recalled"]
     # The card draw is the box's other printed icon (OQ-027): still pending.
@@ -1039,7 +1067,33 @@ def test_steersman_draws_and_may_recall_its_just_placed_agent() -> None:
     assert {
         dict(action.arguments)["space_id"]
         for action in legal_agent_card_recall_actions(drawn_first, 0)
-    } == {"dutiful_service", "deliver_supplies"}
+    } == {"dutiful_service"}
+
+
+def test_steersman_recall_fizzles_at_turn_end_without_another_agent() -> None:
+    # With no other Agent on the board the Recall Agent icon [Main p. 20] has
+    # no target: the draw still resolves, and the mandatory icon waits for
+    # the turn's end and fizzles there (OQ-057 (1)).
+    state = _steersman_state(())
+    placed = apply_agent_action(state, _action_to(state, "deliver_supplies")).state
+    assert legal_agent_card_recall_actions(placed, 0) == ()
+
+    drawn = _resolve_agent_icons(placed, "cards")
+    assert drawn.players[0].hand == (_instance("dagger"),)
+    engine = UprisingRulesEngine()
+    finish = DomainAction(action_id="finish_agent_turn", actor=0)
+    settled = resolve_faction_influence(_resolve_board_icons(drawn)).state
+    assert finish in engine.legal_actions(settled, 0)
+
+    result = engine.apply(settled, finish)
+
+    assert result.state.players[0].agent_locations == ("deliver_supplies",)
+    assert result.state.players[0].agents_available == 1
+    assert any(
+        event.kind == "agent_card_effect_unavailable"
+        and dict(event.payload)["effect"] == "recall"
+        for event in result.events
+    )
 
 
 def test_junction_headquarters_may_pay_intrigue_and_spice_for_vp() -> None:
@@ -1657,11 +1711,13 @@ def test_maker_keeper_has_no_agent_effect_without_matching_influence() -> None:
     placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
 
     # Both Influence thresholds are judged icon by icon at resolution
-    # (OQ-028): the icons stay pending and resolve as unavailable.
+    # (OQ-028): the icons stay pending, are not offered while unmet and
+    # fizzle at the turn's end (OQ-057 (1)).
     assert dict(placed.decision_stack[-1].context)["pending_agent_icons"] == (
         "water,spice"
     )
-    resolved = _resolve_agent_icons(placed)
+    assert legal_agent_card_icon_actions(placed, 0) == ()
+    resolved = fizzle_pending_agent_icons(placed).state
     assert resolved.players[0].resources.water == 1
     assert resolved.players[0].resources.spice == 0
     assert dict(resolved.decision_stack[-1].context)["pending_agent_effect"] is False
@@ -2347,8 +2403,9 @@ def test_imperial_spymaster_draws_intrigue_after_gathering_intelligence() -> Non
 
 def test_maker_keeper_resolves_as_unavailable_after_influence_drops() -> None:
     # Both Influence conditions are judged when the effect resolves in the
-    # player's chosen order [Main pp. 7, 9]; a mid-frame Influence loss (for
-    # example an Intrigue cost) forfeits the queued conditional gains.
+    # player's chosen order [Main pp. 7, 9]; after a mid-frame Influence loss
+    # (for example an Intrigue cost) the queued conditional gains are no
+    # longer offered and fizzle at the turn's end (OQ-057 (1)).
     maker_keeper = _imperium_instance("maker_keeper")
     owner = PlayerState(
         player_id=0,
@@ -2372,11 +2429,17 @@ def test_maker_keeper_resolves_as_unavailable_after_influence_drops() -> None:
     placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
     lowered_owner = replace(placed.players[0], influence=Influence())
     lowered = replace(placed, players=(lowered_owner, *placed.players[1:]))
+    assert {
+        dict(action.arguments)["effect"]
+        for action in legal_agent_card_icon_actions(placed, 0)
+    } == {"spice"}
 
-    water = resolve_agent_card_icon(lowered, _icon_action(lowered, "water"))
-    assert water.events[-1].kind == "agent_card_effect_unavailable"
-    spice = resolve_agent_card_icon(water.state, _icon_action(water.state, "spice"))
-    assert spice.events[-1].kind == "agent_card_effect_unavailable"
+    assert legal_agent_card_icon_actions(lowered, 0) == ()
+    spice = fizzle_pending_agent_icons(lowered)
+    assert [event.kind for event in spice.events] == [
+        "agent_card_effect_unavailable",
+        "agent_card_effect_unavailable",
+    ]
 
     assert spice.state.players[0].resources.spice == 0
     assert spice.state.players[0].resources.water == 1
@@ -2722,6 +2785,124 @@ def test_public_spectacle_influence_is_unavailable_without_spy_recall() -> None:
     assert result.events[0].kind == "agent_card_effect_unavailable"
 
 
+# "If you recalled a Spy this turn:" [Imperial Spymaster card] [Strike Fleet
+# card] [Rebel Supplier card] [Public Spectacle card] names no way of
+# recalling. "When the Recall Spy icon appears on a card, you may return one
+# of your Spies from an observation post to your supply." [Main p. 11], so a
+# Plot Intrigue's Recall Spy cost is a recall like Infiltrate or Gather
+# Intelligence — the same all-paths reading as Spy Drones (OQ-044 (d)).
+_SPECIAL_MISSION = "intrigue:special_mission:0"
+_ARRAKEEN_POST = "arrakis-spice-refinery-arrakeen"
+
+
+def _recall_card_state(card_id: str, spy_post_ids: tuple[str, ...]) -> GameState:
+    owner = PlayerState(
+        player_id=0,
+        hand=(_imperium_instance(card_id),),
+        intrigue_cards=(_SPECIAL_MISSION,),
+        spies_supply=3 - len(spy_post_ids),
+        spy_post_ids=spy_post_ids,
+    )
+    return GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        intrigue_deck=("intrigue:test:0",),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+
+
+def _recall_with_special_mission(state: GameState, post_id: str) -> GameState:
+    """Play Special Mission's "Recall Spy -> Shield Wall + 2 spice" Plot."""
+
+    engine = UprisingRulesEngine()
+    play = DomainAction(
+        action_id="play_intrigue",
+        actor=0,
+        arguments=(("card_id", _SPECIAL_MISSION), ("option", 1)),
+    )
+    assert play in engine.legal_actions(state, 0)
+    opened = engine.apply(state, play).state
+    recalled = engine.apply(
+        opened,
+        DomainAction(
+            action_id="recall_spy_for_intrigue",
+            actor=0,
+            arguments=(("post_id", post_id),),
+        ),
+    ).state
+    done = engine.apply(
+        recalled, DomainAction(action_id="keep_shield_wall", actor=0)
+    ).state
+    assert done.players[0].spies_recalled_turn == 1
+    return done
+
+
+def _decline_gathering(state: GameState) -> GameState:
+    decline = DomainAction(action_id="decline_gather_intelligence", actor=0)
+    return apply_gather_intelligence_action(state, decline).state
+
+
+def test_imperial_spymaster_counts_a_plot_recall_made_before_the_agent() -> None:
+    state = _recall_card_state("imperial_spymaster", (_ARRAKEEN_POST,))
+    before = _recall_with_special_mission(state, _ARRAKEEN_POST)
+    placed = apply_agent_action(before, _action_to(before, "dutiful_service")).state
+
+    result = resolve_agent_card_effect(placed)
+
+    assert result.events[0].kind == "agent_card_effect_resolved"
+    assert result.state.players[0].intrigue_cards == ("intrigue:test:0",)
+
+
+@pytest.mark.parametrize(
+    ("card_id", "troops"), (("strike_fleet", 3), ("rebel_supplier", 2))
+)
+def test_recruit_boxes_count_a_plot_recall_made_during_the_agent_turn(
+    card_id: str, troops: int
+) -> None:
+    state = _recall_card_state(card_id, (_ARRAKEEN_POST,))
+    placed = _decline_gathering(
+        apply_agent_action(state, _action_to(state, "arrakeen")).state
+    )
+    engine = UprisingRulesEngine()
+    # Without a recall the mandatory box waits for the turn's end (OQ-057).
+    assert "resolve_agent_card_effect" not in {
+        action.action_id for action in engine.legal_actions(placed, 0)
+    }
+
+    recalled = _recall_with_special_mission(placed, _ARRAKEEN_POST)
+    result = resolve_agent_card_effect(recalled)
+
+    assert result.events[0].kind == "agent_card_effect_resolved"
+    assert result.state.players[0].troops_garrison == (
+        placed.players[0].troops_garrison + troops
+    )
+    assert dict(result.state.decision_stack[-1].context)["troops_recruited"] == troops
+
+
+def test_public_spectacle_counts_a_plot_recall_made_during_the_agent_turn() -> None:
+    state = _recall_card_state("public_spectacle", (_ARRAKEEN_POST,))
+    placed = _decline_gathering(
+        apply_agent_action(state, _action_to(state, "arrakeen")).state
+    )
+    assert legal_agent_card_influence_actions(placed, 0) == ()
+
+    recalled = _recall_with_special_mission(placed, _ARRAKEEN_POST)
+
+    assert {
+        dict(action.arguments)["faction"]
+        for action in legal_agent_card_influence_actions(recalled, 0)
+    } == {faction.value for faction in Faction}
+
+
 @pytest.mark.parametrize(
     ("influence", "expected_solari", "expected_spice"),
     (
@@ -2793,11 +2974,13 @@ def test_wheels_within_wheels_has_no_agent_effect_below_both_thresholds() -> Non
 
     placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
 
-    # Both thresholds are judged icon by icon at resolution (OQ-028).
+    # Both thresholds are judged icon by icon at resolution (OQ-028); unmet,
+    # the icons wait for the turn's end and fizzle there (OQ-057 (1)).
     assert dict(placed.decision_stack[-1].context)["pending_agent_icons"] == (
         "solari,spice"
     )
-    resolved = _resolve_agent_icons(placed)
+    assert legal_agent_card_icon_actions(placed, 0) == ()
+    resolved = fizzle_pending_agent_icons(placed).state
     assert resolved.players[0].resources.solari == 0
     assert resolved.players[0].resources.spice == 0
     assert dict(resolved.decision_stack[-1].context)["pending_agent_effect"] is False
@@ -4037,15 +4220,29 @@ def test_captured_mentat_may_discard_to_draw_intrigue_and_personal_card() -> Non
     assert dict(resolved.decision_stack[-1].context)["pending_agent_effect"] is False
 
 
-def test_captured_mentat_cannot_pay_discard_without_intrigue_reward() -> None:
-    mentat = _imperium_instance("captured_mentat")
-    owner = PlayerState(player_id=0, hand=(mentat, _instance("dagger")))
-    state = GameState(
+def _intrigue_discard_state(
+    card_id: str,
+    hand_extra: tuple[str, ...],
+    *,
+    intrigue_discard: tuple[str, ...],
+) -> GameState:
+    """Captured Mentat / Guild Spy in hand with an exhausted Intrigue deck."""
+
+    owner = PlayerState(
+        player_id=0,
+        spies_supply=2,
+        spy_post_ids=("landsraad-assembly-hall-gather-support",),
+        hand=(_imperium_instance(card_id), *hand_extra),
+        deck=(_instance("convincing_argument"),),
+    )
+    return GameState(
         config=RulesetConfig(),
         seed=1,
         phase=GamePhase.PLAYER_TURNS,
         round_number=1,
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        intrigue_deck=(),
+        intrigue_discard=intrigue_discard,
         decision_stack=(
             DecisionFrame(
                 kind="turn",
@@ -4055,11 +4252,79 @@ def test_captured_mentat_cannot_pay_discard_without_intrigue_reward() -> None:
         ),
     )
 
-    placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
 
-    assert legal_agent_card_discard_actions(placed, 0) == (
-        DomainAction(action_id="decline_agent_card_discard", actor=0),
+def _place_without_gathering(state: GameState) -> GameState:
+    """Send the Agent to Assembly Hall and decline Gather Intelligence."""
+
+    placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
+    decline = DomainAction(action_id="decline_gather_intelligence", actor=0)
+    if decline in legal_gather_intelligence_actions(placed, 0):
+        placed = apply_gather_intelligence_action(placed, decline).state
+    return placed
+
+
+def _discard_then_draw_rewards(state: GameState, discarded: str) -> GameState:
+    """Pay the arrow discard, then resolve every queued reward icon through the
+    engine so an owed Intrigue draw reshuffles the discard pile."""
+
+    placed = _place_without_gathering(state)
+    discard = DomainAction(
+        action_id="discard_agent_card",
+        actor=0,
+        arguments=(("card_id", discarded),),
     )
+    assert discard in legal_agent_card_discard_actions(placed, 0)
+    working = apply_agent_card_discard(placed, discard).state
+    engine = UprisingRulesEngine()
+    while icons := legal_agent_card_icon_actions(working, 0):
+        working = engine.apply(working, icons[0]).state
+        decision = engine.current_decision(working)
+        if isinstance(decision, ChanceDecision):
+            working = engine.apply(
+                working, ChanceOutcome(decision.decision_id, decision.options)
+            ).state
+    return working
+
+
+def test_captured_mentat_discard_is_offered_when_the_intrigue_deck_is_exhausted() -> (
+    None
+):
+    # [Captured Mentat card]: "[discard] -> [Intrigue] [card]" with no
+    # condition on the cost. "In the rare case that you exhaust the Intrigue
+    # deck, shuffle the discarded Intrigue cards to form a new deck."
+    # [FAQ p. 2] (docs/rules/player-turns.md), so an empty deck with a
+    # non-empty discard pile must not block the discard.
+    dagger = _instance("dagger")
+    state = _intrigue_discard_state(
+        "captured_mentat", (dagger,), intrigue_discard=("intrigue:plot",)
+    )
+
+    resolved = _discard_then_draw_rewards(state, dagger)
+
+    assert resolved.players[0].intrigue_cards == ("intrigue:plot",)
+    assert resolved.intrigue_discard == ()
+    assert resolved.players[0].hand == (_instance("convincing_argument"),)
+    assert resolved.players[0].discard_pile == (dagger,)
+
+
+def test_captured_mentat_discard_still_draws_with_both_intrigue_piles_empty() -> None:
+    # The face sets no condition on the discard [Captured Mentat card] and an
+    # arrow cost may always be paid [Main p. 9]; with both Intrigue piles
+    # empty the Intrigue draw stops short but the green card draw pays out.
+    dagger = _instance("dagger")
+    state = _intrigue_discard_state("captured_mentat", (dagger,), intrigue_discard=())
+    placed = _place_without_gathering(state)
+
+    offered = legal_agent_card_discard_actions(placed, 0)
+    assert {action.action_id for action in offered} == {
+        "decline_agent_card_discard",
+        "discard_agent_card",
+    }
+
+    resolved = _discard_then_draw_rewards(state, dagger)
+
+    assert resolved.players[0].intrigue_cards == ()
+    assert resolved.players[0].hand == (_instance("convincing_argument"),)
 
 
 @pytest.mark.parametrize(
@@ -4177,31 +4442,17 @@ def test_guild_spy_draws_intrigue_for_a_the_spice_must_flow_discard() -> None:
     assert resolved.players[0].intrigue_cards == ("intrigue:plot",)
 
 
-def test_guild_spy_cannot_discard_guild_card_without_intrigue_reward() -> None:
-    guild_spy = _imperium_instance("guild_spy")
+def test_guild_spy_offers_every_hand_card_with_both_intrigue_piles_empty() -> None:
+    # [Guild Spy card]: "[discard] -> [card]. If you discarded a Spacing
+    # Guild card: [Intrigue]". Nothing restricts which card pays the
+    # discard; the Guild condition only adds the Intrigue reward, which
+    # stops short when both Intrigue piles are empty.
     guild_card = _imperium_instance("reliable_informant")
     non_guild_card = _instance("dagger")
-    owner = PlayerState(
-        player_id=0,
-        spies_supply=2,
-        spy_post_ids=("landsraad-assembly-hall-gather-support",),
-        hand=(guild_spy, guild_card, non_guild_card),
+    state = _intrigue_discard_state(
+        "guild_spy", (guild_card, non_guild_card), intrigue_discard=()
     )
-    state = GameState(
-        config=RulesetConfig(),
-        seed=1,
-        phase=GamePhase.PLAYER_TURNS,
-        round_number=1,
-        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
-        decision_stack=(
-            DecisionFrame(
-                kind="turn",
-                frame_id="round:1:turn:0",
-                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
-            ),
-        ),
-    )
-    placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
+    placed = _place_without_gathering(state)
 
     actions = legal_agent_card_discard_actions(placed, 0)
 
@@ -4209,7 +4460,28 @@ def test_guild_spy_cannot_discard_guild_card_without_intrigue_reward() -> None:
         dict(action.arguments).get("card_id")
         for action in actions
         if action.action_id == "discard_agent_card"
-    ) == (non_guild_card,)
+    ) == (guild_card, non_guild_card)
+    resolved = _discard_then_draw_rewards(state, guild_card)
+    assert resolved.players[0].intrigue_cards == ()
+    assert resolved.players[0].hand == (
+        non_guild_card,
+        _instance("convincing_argument"),
+    )
+
+
+def test_guild_spy_guild_discard_reshuffles_the_intrigue_discard_pile() -> None:
+    # [Guild Spy card] "If you discarded a Spacing Guild card: [Intrigue]";
+    # an exhausted deck reshuffles its discard pile [FAQ p. 2], so the Guild
+    # discard is offered and pays the Intrigue card.
+    guild_card = _imperium_instance("reliable_informant")
+    state = _intrigue_discard_state(
+        "guild_spy", (guild_card,), intrigue_discard=("intrigue:plot",)
+    )
+
+    resolved = _discard_then_draw_rewards(state, guild_card)
+
+    assert resolved.players[0].intrigue_cards == ("intrigue:plot",)
+    assert resolved.players[0].hand == (_instance("convincing_argument"),)
 
 
 def test_covert_operation_makes_opponents_with_cards_discard_clockwise() -> None:
@@ -4393,22 +4665,30 @@ def test_agent_card_discard_resolves_spacing_guilds_favor_trigger() -> None:
     ]
 
 
-def test_double_agent_may_share_opponent_post_when_spying_on_visited_space() -> None:
-    double_agent = _imperium_instance("double_agent")
-    connected = "landsraad-assembly-hall-gather-support"
-    opponent_post = "emperor-sardaukar-dutiful-service"
+# Double Agent: "[Spy] spying on the board space you sent an Agent to this
+# turn. You may place this Spy on the same observation post as another
+# player's Spy." [Double Agent card]. "[Spy] on [icon]" limits placement:
+# "the observation post must connect to a ... board space" [Main p. 20]; the
+# sharing permission needs no condition, but a player never has two Spies
+# on one post.
+def _double_agent_state(
+    owner_posts: tuple[str, ...] = (),
+    opponent_posts: tuple[str, ...] = (),
+    *,
+    owner_supply: int | None = None,
+) -> GameState:
     owner = PlayerState(
         player_id=0,
-        hand=(double_agent,),
-        spies_supply=2,
-        spy_post_ids=(connected,),
+        hand=(_imperium_instance("double_agent"),),
+        spies_supply=3 - len(owner_posts) if owner_supply is None else owner_supply,
+        spy_post_ids=owner_posts,
     )
     opponent = PlayerState(
         player_id=1,
-        spies_supply=2,
-        spy_post_ids=(opponent_post,),
+        spies_supply=3 - len(opponent_posts),
+        spy_post_ids=opponent_posts,
     )
-    state = GameState(
+    return GameState(
         config=RulesetConfig(),
         seed=1,
         phase=GamePhase.PLAYER_TURNS,
@@ -4422,50 +4702,80 @@ def test_double_agent_may_share_opponent_post_when_spying_on_visited_space() -> 
             ),
         ),
     )
-    placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
-    shared = next(
-        action
-        for action in legal_agent_card_spy_actions(placed, 0)
-        if dict(action.arguments)["post_id"] == opponent_post
-    )
-
-    result = apply_agent_card_spy_action(placed, shared).state
-
-    assert opponent_post in result.players[0].spy_post_ids
-    assert opponent_post in result.players[1].spy_post_ids
 
 
-def test_double_agent_cannot_share_post_without_spying_on_visited_space() -> None:
-    double_agent = _imperium_instance("double_agent")
-    opponent_post = "emperor-sardaukar-dutiful-service"
-    owner = PlayerState(player_id=0, hand=(double_agent,))
-    opponent = PlayerState(
-        player_id=1,
-        spies_supply=2,
-        spy_post_ids=(opponent_post,),
-    )
-    state = GameState(
-        config=RulesetConfig(),
-        seed=1,
-        phase=GamePhase.PLAYER_TURNS,
-        round_number=1,
-        players=(owner, opponent, PlayerState(player_id=2), PlayerState(player_id=3)),
-        decision_stack=(
-            DecisionFrame(
-                kind="turn",
-                frame_id="round:1:turn:0",
-                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
-            ),
-        ),
-    )
-    placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
-
-    post_ids = {
-        dict(action.arguments)["post_id"]
-        for action in legal_agent_card_spy_actions(placed, 0)
+def _double_agent_posts(state: GameState) -> set[str]:
+    return {
+        str(dict(action.arguments)["post_id"])
+        for action in legal_agent_card_spy_actions(state, 0)
+        if action.action_id == "place_agent_card_spy"
     }
 
-    assert opponent_post not in post_ids
+
+def test_double_agent_places_only_on_a_post_spying_on_the_visited_space() -> None:
+    state = _double_agent_state()
+    placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
+
+    # Every other post on the board is empty, but only the one connected to
+    # Arrakeen spies on it.
+    assert _double_agent_posts(placed) == {"arrakis-spice-refinery-arrakeen"}
+
+
+def test_double_agent_may_share_an_opponents_post_without_already_spying() -> None:
+    shared_post = "landsraad-assembly-hall-gather-support"
+    state = _double_agent_state(opponent_posts=(shared_post,))
+    placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
+
+    assert _double_agent_posts(placed) == {shared_post}
+    share = DomainAction(
+        action_id="place_agent_card_spy", actor=0, arguments=(("post_id", shared_post),)
+    )
+    result = apply_agent_card_spy_action(placed, share).state
+
+    assert shared_post in result.players[0].spy_post_ids
+    assert shared_post in result.players[1].spy_post_ids
+
+
+def test_double_agent_never_offers_a_post_holding_its_owners_spy() -> None:
+    own_post = "arrakis-spice-refinery-arrakeen"
+    state = _double_agent_state(owner_posts=(own_post,))
+    placed = _decline_gathering(
+        apply_agent_action(state, _action_to(state, "arrakeen")).state
+    )
+
+    assert legal_agent_card_spy_actions(placed, 0) == ()
+    assert resolve_agent_card_effect(placed).events[0].kind == (
+        "agent_card_effect_unavailable"
+    )
+
+
+def test_double_agent_empty_supply_recalls_only_to_open_a_connected_post() -> None:
+    # "If you have no Spies in your supply, you may first recall one of your
+    # Spies for no effect." [Main p. 20]: when the owner's own Spy holds the
+    # only connected post, only that recall can open a destination.
+    own_post = "arrakis-spice-refinery-arrakeen"
+    state = _double_agent_state(
+        owner_posts=(
+            own_post,
+            "emperor-sardaukar-dutiful-service",
+            "fremen-desert-tactics-fremkit",
+        ),
+        owner_supply=0,
+    )
+    placed = _decline_gathering(
+        apply_agent_action(state, _action_to(state, "arrakeen")).state
+    )
+
+    actions = legal_agent_card_spy_actions(placed, 0)
+    assert actions == (
+        DomainAction(
+            action_id="recall_spy_for_agent_card",
+            actor=0,
+            arguments=(("post_id", own_post),),
+        ),
+    )
+    recalled = apply_agent_card_spy_action(placed, actions[0]).state
+    assert _double_agent_posts(recalled) == {own_post}
 
 
 def test_calculus_of_power_agent_box_is_an_optional_trash() -> None:

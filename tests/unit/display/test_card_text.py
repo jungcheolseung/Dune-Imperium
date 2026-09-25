@@ -54,6 +54,67 @@ def test_reliable_informant_lists_its_spy_target_factions() -> None:
     ]
 
 
+def test_double_agent_spy_is_limited_to_the_visited_space() -> None:
+    # "[Spy] spying on the board space you sent an Agent to this turn. You
+    # may place this Spy on the same observation post as another player's
+    # Spy." [Double Agent card]
+    entry = IMPERIUM_CARDS_BY_ID["double_agent"]
+
+    assert personal_card_text(entry)[0] == (
+        "Agent: Place a Spy on a post connected to the space you sent an Agent "
+        "to this turn (may share a post with another player's Spy)"
+    )
+
+
+def test_beguiling_pheromones_trash_is_not_optional() -> None:
+    # "If you sent an Agent to a Faction board space this turn, trash one of
+    # the grafted cards and gain an additional Influence with that Faction."
+    # [Beguiling Pheromones card]: no "may" and no arrow [FAQ p. 3].
+    entry = TLEILAXU_CARDS_BY_ID["beguiling_pheromones"]
+
+    assert personal_card_text(entry)[0] == (
+        "Agent: If you sent an Agent to a Faction space this turn: "
+        "Trash one of the grafted cards, Gain 1 Influence with that Faction"
+    )
+
+
+def test_ghola_names_its_borrowed_agent_box() -> None:
+    # "This card has the same Agent box as the other grafted card." [Ghola
+    # card]. Its own data has no Agent effect (the rules borrow the
+    # partner's at play time), so the text fell back to "(no additional
+    # ability)" -- the opposite of what the card does.
+    entry = TLEILAXU_CARDS_BY_ID["ghola"]
+
+    assert personal_card_text(entry) == [
+        "Agent: This card has the same Agent box as the other grafted card"
+    ]
+
+
+def test_long_reach_names_the_condition_on_its_greyed_icons() -> None:
+    # "If you have another Bene Gesserit card in play, this has [Landsraad],
+    # [City], and [Spice Trade]." [Long Reach card]: the icons are printed
+    # greyed, so the text must say they need the condition.
+    entry = IMPERIUM_CARDS_BY_ID["long_reach"]
+
+    assert personal_card_text(entry)[:2] == [
+        "If you have another Bene Gesserit card in play, this has Landsraad, "
+        "City, and Spice Trade",
+        "Agent: Choose two Factions: Gain 1 Influence with each",
+    ]
+
+
+def test_show_of_strength_names_the_condition_on_its_greyed_icons() -> None:
+    # "If you have more deployed troops than each opponent, this has
+    # [Landsraad] and [Spice Trade]." [Show of Strength card]
+    entry = IMPERIUM_CARDS_BY_ID["show_of_strength"]
+
+    assert personal_card_text(entry) == [
+        "If you have more deployed troops than each opponent, this has "
+        "Landsraad and Spice Trade",
+        "Agent: Draw 2 cards",
+    ]
+
+
 def test_sardaukar_soldier_trash_trigger_only() -> None:
     entry = IMPERIUM_CARDS_BY_ID["sardaukar_soldier"]
 

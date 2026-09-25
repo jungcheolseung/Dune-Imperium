@@ -624,7 +624,7 @@ def test_double_agent_play_data_has_conditional_shared_spy_placement() -> None:
     )
     assert (
         card.agent_effect
-        is PersonalCardAgentEffect.PLACE_SPY_ALLOW_SHARED_IF_SPYING_ON_VISITED_SPACE
+        is PersonalCardAgentEffect.PLACE_SPY_ON_VISITED_SPACE_MAY_SHARE
     )
     assert card.reveal_persuasion == 1
     assert card.reveal_strength == 1

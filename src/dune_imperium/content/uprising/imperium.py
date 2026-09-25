@@ -415,7 +415,7 @@ IMPERIUM_CARDS: Final = (
             AgentIcon.SPICE_TRADE,
         ),
         agent_effect=(
-            PersonalCardAgentEffect.PLACE_SPY_ALLOW_SHARED_IF_SPYING_ON_VISITED_SPACE
+            PersonalCardAgentEffect.PLACE_SPY_ON_VISITED_SPACE_MAY_SHARE
         ),
         reveal_persuasion=1,
         reveal_strength=1,

@@ -32,6 +32,7 @@ from dune_imperium.rules.agent_effects import (
     apply_agent_card_payment,
     legal_agent_card_discard_actions,
     legal_agent_card_payment_actions,
+    legal_agent_card_spy_actions,
     resolve_agent_card_effect,
 )
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
@@ -45,6 +46,7 @@ from dune_imperium.rules.graft import (
     legal_graft_switch_actions,
 )
 from dune_imperium.rules.reveal_turn import begin_reveal_turn
+from dune_imperium.rules.spy_placement import observation_post_ids_for_factions
 
 IMMORTALITY = RulesetConfig(immortality=True, promo_cards=True)
 STARTERS = starting_deck_instance_ids(0, immortality=True)
@@ -193,6 +195,122 @@ def test_scientific_breakthrough_researches_and_may_trash_itself_at_two_markers(
     assert "card_trashed" in {event.kind for event in result.events}
     kept = resolve_agent_card_effect(two).state.players[0]
     assert breakthrough in kept.in_play and kept.victory_points == 1
+
+
+def _research_to(state: GameState, space_id: str) -> GameState:
+    """Answer the research-direction frame the Research just opened."""
+
+    assert state.decision_stack[-1].kind == FrameKind.RESEARCH_ADVANCE
+    return UprisingRulesEngine().apply(
+        state,
+        DomainAction("choose_research_space", 0, (("space_id", space_id),)),
+    ).state
+
+
+def test_scientific_breakthrough_own_research_can_unlock_its_trash_line() -> None:
+    # The box prints the Research icon and, on its own line, "[2 genetic
+    # markers]: Trash this card -> 1 VP" [Scientific Breakthrough card].
+    # "When your research token reaches a column with a genetic marker at the
+    # bottom, for the rest of the game, any effects on cards marked with that
+    # icon are active for you." [Immortality p. 6] (docs/rules/immortality.md
+    # "token이 아래에 genetic marker가 있는 열에 도달하면 남은 게임 동안 그
+    # 아이콘이 붙은 카드 효과가 활성화된다"), the owner carries out the
+    # effects "in any order" [Main p. 9], and a condition is judged when its
+    # effect resolves (OQ-028). The markers were judged once, before the
+    # card's own Research, so a token one step short of the second marker
+    # researched into it and the trash line was never offered.
+    breakthrough = _tleilaxu("scientific_breakthrough")
+    placed = _place(
+        _state(_owner((breakthrough,), research_space="c7r3")),
+        breakthrough,
+        "arrakeen",
+    )
+    assert legal_agent_card_payment_actions(placed, 0) == ()
+    researched = _research_to(resolve_agent_card_effect(placed).state, "c8r2")
+    before = researched.players[0]
+    assert before.research_space == "c8r2"
+
+    assert {a.action_id for a in legal_agent_card_payment_actions(researched, 0)} == {
+        "decline_agent_card_payment",
+        "trash_agent_card_self_for_vp",
+    }
+    trashed = apply_agent_card_payment(
+        researched, _payment(researched, "trash_agent_card_self_for_vp")
+    )
+    owner = trashed.state.players[0]
+    assert breakthrough in owner.trashed and breakthrough not in owner.in_play
+    assert owner.victory_points == before.victory_points + 1
+    # The Research already resolved: the trash does not research again
+    # (past the second marker that would draw a card).
+    assert owner.hand == before.hand
+    assert owner.research_space == "c8r2"
+
+    # Declining keeps the card in play and gives nothing.
+    declined = apply_agent_card_payment(
+        researched, _payment(researched, "decline_agent_card_payment")
+    ).state.players[0]
+    assert breakthrough in declined.in_play
+    assert declined.victory_points == before.victory_points
+
+
+def test_scientific_breakthrough_trash_line_waits_for_the_turn_end() -> None:
+    # A Research that stops short of the second marker leaves the line
+    # closed; it waits for the turn's end (OQ-057 (1)) in case a later
+    # effect of the turn reaches the marker, and lapses there.
+    breakthrough = _tleilaxu("scientific_breakthrough")
+    placed = _place(
+        _state(_owner((breakthrough,), research_space="c4r2")),
+        breakthrough,
+        "arrakeen",
+    )
+    researched = _research_to(resolve_agent_card_effect(placed).state, "c5r3")
+    engine = UprisingRulesEngine()
+    card_actions = {
+        "resolve_agent_card_effect",
+        "decline_agent_card_payment",
+        "trash_agent_card_self_for_vp",
+    }
+    offered = {
+        a.action_id
+        for a in engine.legal_actions(researched, 0)
+        if not dict(a.arguments).get("effect")
+    }
+    assert not offered & card_actions
+    _, context = current_agent_effect_context(researched)
+    assert context["pending_agent_effect"] is True
+
+    closed = _engine_finish_turn(researched)
+    owner = closed.players[0]
+    assert breakthrough in owner.in_play
+    assert owner.victory_points == researched.players[0].victory_points
+
+
+def test_ghola_copying_scientific_breakthrough_researches_on_its_own() -> None:
+    # Ghola "copies the entire Agent box" [Immortality p. 14]: each box does
+    # its own Research, so the first box's Research must not count as the
+    # copy's.
+    breakthrough = _tleilaxu("scientific_breakthrough")
+    ghola = _tleilaxu("ghola")
+    grafted = _graft(
+        _state(_owner((breakthrough, ghola), research_space="c7r3")),
+        breakthrough,
+        "arrakeen",
+        ghola,
+    )
+    researched = _research_to(resolve_agent_card_effect(grafted).state, "c8r2")
+    assert {a.action_id for a in legal_agent_card_payment_actions(researched, 0)} == {
+        "decline_agent_card_payment",
+        "trash_agent_card_self_for_vp",
+    }
+    switched = _switch(researched)
+    assert {a.action_id for a in legal_agent_card_payment_actions(switched, 0)} == {
+        "resolve_agent_card_effect",
+        "trash_agent_card_self_for_vp",
+    }
+    # Past the second marker Ghola's Research draws a card.
+    hand = switched.players[0].hand
+    drawn = resolve_agent_card_effect(switched).state
+    assert len(drawn.players[0].hand) == len(hand) + 1
 
 
 def test_guild_impersonator_needs_spice_gained_this_turn() -> None:
@@ -376,19 +494,29 @@ def test_beguiling_pheromones_trades_a_grafted_card_for_the_visited_faction() ->
     )
     switched = _switch(grafted)
     actions = legal_agent_card_payment_actions(switched, 0)
+    # "If you sent an Agent to a Faction board space this turn, trash one of
+    # the grafted cards and gain an additional Influence with that Faction."
+    # [Beguiling Pheromones card] has no "may", arrow or black-X icon, so it
+    # is mandatory: "Most effects from a board space or card you play are
+    # mandatory, unless: a card says "you may" do something; there's an
+    # arrow in the effect ...; you're trashing a card using the "black X"
+    # card icon" [FAQ p. 3]. The owner picks the card, never whether.
     assert [(a.action_id, dict(a.arguments).get("card_id")) for a in actions] == [
-        ("decline_agent_card_payment", None),
         ("trash_grafted_card_for_influence", pheromones),
         ("trash_grafted_card_for_influence", FACE_DANCER),
     ]
+    engine = UprisingRulesEngine()
+    legal_ids = {a.action_id for a in engine.legal_actions(switched, 0)}
+    assert "decline_agent_card_payment" not in legal_ids
+    assert "finish_agent_turn" not in legal_ids
     # Trashing the partner expires its un-activated draw (OQ-022, FAQ p. 1).
-    partner = apply_agent_card_payment(switched, actions[2])
+    partner = apply_agent_card_payment(switched, actions[1])
     owner = partner.state.players[0]
     assert FACE_DANCER in owner.trashed and owner.influence.emperor == 1
     _, context = current_agent_effect_context(partner.state)
     assert context["graft_pending_effect"] is False
     # Trashing itself keeps the Influence (its own cost).
-    own = apply_agent_card_payment(switched, actions[1])
+    own = apply_agent_card_payment(switched, actions[0])
     owner = own.state.players[0]
     assert pheromones in owner.trashed and owner.influence.emperor == 1
     _, context = current_agent_effect_context(own.state)
@@ -707,22 +835,32 @@ def test_usurp_is_offered_only_where_a_partner_can_follow() -> None:
 def test_ghola_copying_steersman_can_end_the_turn_with_no_agent_to_recall() -> None:
     """Steersman's box is "draw a card, recall an Agent"; Ghola copies it,
     so the second box's recall icon has no Agent left once the first box
-    recalled the only one. A mandatory box whose condition is false waits
-    for the turn's end and fizzles there (OQ-057), and before this the turn
-    stalled with no legal action at all (soak seed 78, --immortality)."""
+    recalled the only other one — the Agent sent this turn is never a target
+    ("Return one of your other Agents on the board to your Leader (not the
+    Agent you sent during this turn)." [Main p. 20]). A mandatory box whose
+    condition is false waits for the turn's end and fizzles there (OQ-057),
+    and before this the turn stalled with no legal action at all (soak seed
+    78, --immortality)."""
 
     ghola = _tleilaxu("ghola")
     steersman = "imperium:steersman:0"
     engine = UprisingRulesEngine()
     state = _graft(
-        _state(_owner((steersman, ghola), family_atomics=False)),
+        _state(
+            _owner(
+                (steersman, ghola),
+                family_atomics=False,
+                agents_available=1,
+                agent_locations=("dutiful_service",),
+            )
+        ),
         steersman,
         "arrakeen",
         ghola,
     )
 
     # Both boxes queue (cards, recall); resolve the active one and let its
-    # recall take the Agent this turn placed.
+    # recall take the seat's other Agent.
     def _apply(state: GameState, action_id: str, **arguments: object) -> GameState:
         action = next(
             action
@@ -741,8 +879,13 @@ def test_ghola_copying_steersman_can_end_the_turn_with_no_agent_to_recall() -> N
     ):
         state = _apply(state, "resolve_board_effect")
     state = _apply(state, "resolve_agent_card_effect", effect="cards")
-    state = _apply(state, "recall_agent_for_agent_card", space_id="arrakeen")
-    assert state.players[0].agent_locations == ()
+    assert not any(
+        dict(action.arguments).get("space_id") == "arrakeen"
+        for action in engine.legal_actions(state, 0)
+        if action.action_id == "recall_agent_for_agent_card"
+    )
+    state = _apply(state, "recall_agent_for_agent_card", space_id="dutiful_service")
+    assert state.players[0].agent_locations == ("arrakeen",)
     state = _apply(state, "switch_graft_card")
     state = _apply(state, "resolve_agent_card_effect", effect="cards")
 
@@ -828,3 +971,34 @@ def test_ghola_borrowing_a_discard_box_still_pays_out_its_rewards() -> None:
     # Before the fix the discard was spent and neither reward was queued.
     assert context["pending_agent_icons"] == "intrigue,cards"
     assert context["pending_agent_effect"] is True
+
+
+def test_ghola_borrowing_a_restricted_spy_box_keeps_its_post_limit() -> None:
+    # "This card has the same Agent box as the other grafted card." [Ghola
+    # card] and "Ghola copies the entire Agent box of the card it's grafted
+    # to" [Immortality p. 14] (docs/rules/immortality.md "Ghola는 상대 카드의
+    # Agent box 전체 ... 를 복사하고"). Reliable Informant's box is a Spy with
+    # a placement limit -- "[Spy] on [icon]" means "the observation post must
+    # connect to a [icon] board space" [Main p. 20] -- so Ghola's copy is
+    # limited the same way. The borrowed box took the effect alone, and
+    # Ghola's Spy could go on any empty post (13 instead of 3).
+    ghola = _tleilaxu("ghola")
+    informant = "imperium:reliable_informant:0"
+    grafted = _graft(_state(_owner((ghola, informant))), ghola, "arrakeen", informant)
+    targets = set(
+        observation_post_ids_for_factions(
+            personal_card_for_instance(informant).agent_spy_factions
+        )
+    )
+
+    def offered(state: GameState) -> set[str]:
+        return {
+            str(dict(action.arguments)["post_id"])
+            for action in legal_agent_card_spy_actions(state, 0)
+        }
+
+    # Ghola's box is the active one first; the switch then offers the
+    # Informant's own box with the same limit.
+    assert targets
+    assert offered(grafted) == targets
+    assert offered(_switch(grafted)) == targets

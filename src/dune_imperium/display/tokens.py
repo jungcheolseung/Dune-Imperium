@@ -25,6 +25,7 @@ from dune_imperium.content.uprising.types import (
     PersonalCardAgentEffect,
     PersonalCardBond,
     PersonalCardDiscardEffect,
+    PersonalCardIconCondition,
     PersonalCardRevealAcquisitionEffect,
     PersonalCardRevealChoiceEffect,
     PersonalCardRevealEffect,
@@ -158,9 +159,9 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.GAIN_TWO_SOLARI: "Gain 2 solari",
         PersonalCardAgentEffect.GAIN_ONE_SPICE: "Gain 1 spice",
         PersonalCardAgentEffect.PLACE_SPY: "Place a Spy",
-        PersonalCardAgentEffect.PLACE_SPY_ALLOW_SHARED_IF_SPYING_ON_VISITED_SPACE: (
-            "Place a Spy (may share a post with an opponent's Spy if you are "
-            "spying on the visited space)"
+        PersonalCardAgentEffect.PLACE_SPY_ON_VISITED_SPACE_MAY_SHARE: (
+            "Place a Spy on a post connected to the space you sent an Agent to "
+            "this turn (may share a post with another player's Spy)"
         ),
         PersonalCardAgentEffect.RECRUIT_THREE_IF_SPY_RECALLED_THIS_TURN: (
             "If you recalled a Spy this turn: Recruit 3 troops"
@@ -283,10 +284,10 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         ),
         (
             PersonalCardAgentEffect
-            .MAY_TRASH_GRAFTED_CARD_FOR_VISITED_FACTION_INFLUENCE
+            .TRASH_GRAFTED_CARD_FOR_VISITED_FACTION_INFLUENCE
         ): (
-            "If you sent your Agent to a Faction space this turn: "
-            "You may trash a grafted card → Gain 1 Influence with that Faction"
+            "If you sent an Agent to a Faction space this turn: "
+            "Trash one of the grafted cards, Gain 1 Influence with that Faction"
         ),
         PersonalCardAgentEffect.MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH: (
             "You may lose 1 troop → Draw 2 cards, Research"
@@ -421,6 +422,25 @@ TRASH_EFFECT_TEXT: Final[Mapping[PersonalCardTrashEffect, str]] = MappingProxyTy
             "Tleilaxu (advance your Tleilaxu token)"
         ),
     }
+)
+
+# The printed condition that turns a card's greyed Agent icons on; ``cards``
+# appends ", this has <icons>" from the entry's ``agent_icons``. Long Reach:
+# "If you have another Bene Gesserit card in play, this has [Landsraad],
+# [City], and [Spice Trade]."; Show of Strength: "If you have more deployed
+# troops than each opponent, this has [Landsraad] and [Spice Trade]." [card
+# faces].
+ICON_CONDITION_TEXT: Final[Mapping[PersonalCardIconCondition, str]] = (
+    MappingProxyType(
+        {
+            PersonalCardIconCondition.BENE_GESSERIT_BOND: (
+                "If you have another Bene Gesserit card in play"
+            ),
+            PersonalCardIconCondition.MORE_DEPLOYED_TROOPS_THAN_EACH_OPPONENT: (
+                "If you have more deployed troops than each opponent"
+            ),
+        }
+    )
 )
 
 DISCARD_EFFECT_TEXT: Final[Mapping[PersonalCardDiscardEffect, str]] = MappingProxyType(
