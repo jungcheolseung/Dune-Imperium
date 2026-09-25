@@ -268,7 +268,7 @@ def test_coercive_negotiation_offers_the_immediate_only_with_hand_intrigue() -> 
 def test_coercive_negotiation_waits_when_nothing_revealed_can_be_taken() -> None:
     # Only the Immediate is left in the bank and the hand holds no Intrigue
     # to trash for it [Bloodlines p. 2]: nothing can be taken, so the one
-    # action left is the decline and the card stays face up (OQ-062).
+    # action left is the decline and the card stays face up (OQ-064).
     card = next(card for card in INTRIGUE if ":coercive_negotiation:" in card)
     base = _state(
         _owner(intrigue_faceup=(card,), units_deployed_turn=3),

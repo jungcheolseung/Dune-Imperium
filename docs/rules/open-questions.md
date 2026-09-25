@@ -246,7 +246,7 @@
 
 - 상태: `DECIDED` (project convention)
 - Holy War의 "Each opponent loses one troop"(카드면)는 troop을 garrison에서 잃는지 Conflict에서 잃는지, 누가 고르는지, Sardaukar Commander도 대상인지를 말하지 않는다. Holy War와 False Orders의 "Each opponent spying on the board space where you sent an Agent this turn must move that Spy"는 Spy가 어디로 갈 수 있는지, 갈 곳이 없으면 어떻게 되는지를 말하지 않는다. `[Bloodlines p. 4]`는 Commander를 card 효과의 "troop"으로 취급하라고만 한다.
-- 판정(2026-09-07, 사용자 판정, project convention): (a) 잃는 좌석이 **zone(garrison/Conflict)과 유닛 종류(troop/Commander)를 모두 고른다**(`lose_unit(zone, commanders?)`); 선택지가 하나뿐이면 자동. Commander는 [Bloodlines p. 4]에 따라 card 효과의 troop이므로 대상이다. Conflict에서 잃으면 retreat와 같이 strength 2를 뺀다. 유닛이 없는 좌석은 공개 이벤트만 남긴다. (b) 강제 이동은 **Spy를 옮기는 좌석이** 목적지를 고른다(`move_spy(post_id)`), 이동 순서는 시계 방향 다음 좌석부터. 목적지는 처음엔 일반 배치 규칙대로 빈 post 아무 곳이었으나, **2026-09-26부터 공식 FAQ를 따른다**: "* False Orders — Each opponent affected by this card must move their Spy to an empty observation post that isn't connected to the space where you sent an Agent this turn." `[FAQ p. 2]` 즉 Agent를 보낸 공간에 연결된 post(Research Station·Spice Refinery는 둘)는 목적지가 아니다. 이 FAQ는 False Orders만 말하지만, 같은 문장을 인쇄한 Holy War("Each opponent spying on the board space where you sent an Agent this turn must move that Spy." `[Holy War card]`)에도 **같은 목적지 규칙을 적용한다**(2026-09-26 사용자 판정, FAQ를 확장한 project convention). 연결되지 않은 빈 post가 하나도 없을 때의 처리는 [OQ-063](#oq-063--강제-spy-이동에-agent-공간과-연결되지-않은-빈-post가-없을-때). (c) False Orders의 "Then you place a Spy on that space"는 상대의 이동이 모두 끝난 뒤 그 공간에 연결된 빈 post에 배치하며, supply에 Spy가 없으면 먼저 하나를 회수한다(`[Main pp. 11, 20]`); 배치할 곳이 없으면 배치 없이 끝난다. 이 카드는 이번 turn에 Agent를 보낸 뒤에만 낼 수 있다.
+- 판정(2026-09-07, 사용자 판정, project convention): (a) 잃는 좌석이 **zone(garrison/Conflict)과 유닛 종류(troop/Commander)를 모두 고른다**(`lose_unit(zone, commanders?)`); 선택지가 하나뿐이면 자동. Commander는 [Bloodlines p. 4]에 따라 card 효과의 troop이므로 대상이다. Conflict에서 잃으면 retreat와 같이 strength 2를 뺀다. 유닛이 없는 좌석은 공개 이벤트만 남긴다. (b) 강제 이동은 **Spy를 옮기는 좌석이** 목적지를 고른다(`move_spy(post_id)`), 이동 순서는 시계 방향 다음 좌석부터. 목적지는 처음엔 일반 배치 규칙대로 빈 post 아무 곳이었으나, **2026-09-26부터 공식 FAQ를 따른다**: "* False Orders — Each opponent affected by this card must move their Spy to an empty observation post that isn't connected to the space where you sent an Agent this turn." `[FAQ p. 2]` 즉 Agent를 보낸 공간에 연결된 post(Research Station·Spice Refinery는 둘)는 목적지가 아니다. 이 FAQ는 False Orders만 말하지만, 같은 문장을 인쇄한 Holy War("Each opponent spying on the board space where you sent an Agent this turn must move that Spy." `[Holy War card]`)에도 **같은 목적지 규칙을 적용한다**(2026-09-26 사용자 판정, FAQ를 확장한 project convention). 연결되지 않은 빈 post가 하나도 없을 때의 처리는 [OQ-065](#oq-065--강제-spy-이동에-agent-공간과-연결되지-않은-빈-post가-없을-때). (c) False Orders의 "Then you place a Spy on that space"는 상대의 이동이 모두 끝난 뒤 그 공간에 연결된 빈 post에 배치하며, supply에 Spy가 없으면 먼저 하나를 회수한다(`[Main pp. 11, 20]`); 배치할 곳이 없으면 배치 없이 끝난다. 이 카드는 이번 turn에 Agent를 보낸 뒤에만 낼 수 있다.
 - 같이 정한 것: Coercive Negotiation이 "trash"하는 contract 2장은 게임에서 제외되며 공개 zone `contract_trash`에 남긴다(인구 census와 관측 세그먼트).
 - 재개 조건: 공식 FAQ가 "lose a troop"의 출처를 정할 때. 강제 이동의 목적지는 False Orders에 대해 FAQ 2025-01-13이 정했고(위 (b)), 같은 FAQ의 둘째 문장 "You may play this Intrigue card even if no opponents' Spies are on the space where you sent an Agent this turn." `[FAQ p. 2]`도 이미 따른다([designer-rulings-audit.md](designer-rulings-audit.md)). Holy War에 대한 공식 판정이 나오면 (b)의 확장을 다시 본다.
 
@@ -350,7 +350,7 @@
 - 필요한 답: face-up Intrigue의 만료와 거절 시 처리에 대한 공식 판정.
 - 구현 convention: (a)(b) 창이 명시된 카드(Call to Arms의 "이번 round의 자신의 Reveal turn")는 그 창이 닫힐 때(Reveal turn 종료) 발동 여부와 무관하게 discard한다. "whenever" trigger는 창이 닫힐 때까지 반복 발동한다. (c) 선택적 trigger(Distraction)를 거절한 카드는 사용된 것이 아니므로 face up으로 남아 이후의 조건 충족 turn에 다시 제시된다. 같은 turn에서는 배치 수가 마지막 제시 시점보다 늘었을 때만 다시 제시하며, 이미 제시가 지나간 수치에서 나중에 낸 두 번째 사본은 다음 배치 때 제시된다. 세 판정 모두 `tests/unit/rules/test_intrigue.py`로 고정한다.
 - 확정(2026-09-01): 위 (a)-(c) convention 전부를 최종 판정으로 채택한다. 현재 face-up trigger 카드는 Call to Arms와 Distraction 두 종뿐이며 두 카드 모두 이 판정으로 완전히 규정된다.
-- 보강(2026-09-26, 사용자 판정): (c)의 거절은 인쇄문이 "you may"인 trigger(Distraction)에만 해당한다. Bloodlines의 Coercive Negotiation("When you deploy three or more units to the Conflict in a single turn: Reveal three contracts from the bank. Take one and trash the other two." `[Coercive Negotiation card]`)에는 "may"가 없고 "Most effects from a board space or card you play are mandatory, unless: a card says 'you may' do something" `[FAQ p. 3]`이므로, 조건이 성립하면 효과가 해결된다(거절 없음; 카드는 발동할 때까지만 face up으로 남는다). 가져갈 수 있는 contract가 없을 때의 처리는 [OQ-062](#oq-062--coercive-negotiation이-공개한-contract를-하나도-가져갈-수-없을-때).
+- 보강(2026-09-26, 사용자 판정): (c)의 거절은 인쇄문이 "you may"인 trigger(Distraction)에만 해당한다. Bloodlines의 Coercive Negotiation("When you deploy three or more units to the Conflict in a single turn: Reveal three contracts from the bank. Take one and trash the other two." `[Coercive Negotiation card]`)에는 "may"가 없고 "Most effects from a board space or card you play are mandatory, unless: a card says 'you may' do something" `[FAQ p. 3]`이므로, 조건이 성립하면 효과가 해결된다(거절 없음; 카드는 발동할 때까지만 face up으로 남는다). 가져갈 수 있는 contract가 없을 때의 처리는 [OQ-064](#oq-064--coercive-negotiation이-공개한-contract를-하나도-가져갈-수-없을-때).
 
 ## OQ-015 — Intrigue의 Plot timing 시작점과 복수 비용 줄의 의무 지불
 
@@ -629,7 +629,7 @@
   Intrigue 1장 draw, recall·card draw 문장(OQ-023, OQ-027 (d))은 그대로다. 행동 id는
   `trash_intrigue_for_imperial_privilege`다. 공식 FAQ가 이 칸을 다루면 다시 연다.
 
-## OQ-062 — Coercive Negotiation이 공개한 contract를 하나도 가져갈 수 없을 때
+## OQ-064 — Coercive Negotiation이 공개한 contract를 하나도 가져갈 수 없을 때
 
 - 상태: `OPEN` (구현 convention 적용 중)
 - Coercive Negotiation은 의무다(OQ-016 보강, `[FAQ p. 3]`). 그런데 bank 위에서 공개한 contract가 모두
@@ -643,7 +643,7 @@
   `tests/unit/rules/test_bloodlines_contracts.py`(`test_coercive_negotiation_waits_when_nothing_revealed_can_be_taken`)로
   고정한다.
 
-## OQ-063 — 강제 Spy 이동에 Agent 공간과 연결되지 않은 빈 post가 없을 때
+## OQ-065 — 강제 Spy 이동에 Agent 공간과 연결되지 않은 빈 post가 없을 때
 
 - 상태: `OPEN` (구현 convention 적용 중)
 - False Orders·Holy War로 Spy를 옮기는 상대는 "an empty observation post that isn't connected to the space
@@ -659,7 +659,7 @@
   Bloodlines 템플릿 1개 추가). `tests/unit/rules/test_bloodlines_cards.py`
   (`test_a_forced_spy_move_with_no_post_off_the_space_loses_the_spy`)로 고정한다. 사용자 확인 대기.
 
-## OQ-064 — Reclaimed Forces의 "acquire"는 "whenever you acquire a card" trigger를 일으키는가
+## OQ-066 — Reclaimed Forces의 "acquire"는 "whenever you acquire a card" trigger를 일으키는가
 
 - 상태: `OPEN` (구현 convention 적용 중)
 - Tleilaxu Row의 카드는 Imperium 카드처럼 Reveal turn에 acquire한다("In many ways, Tleilaxu cards are similar to

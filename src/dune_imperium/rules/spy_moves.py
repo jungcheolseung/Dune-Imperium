@@ -10,7 +10,7 @@ same rule to Holy War's identical sentence (OQ-036 (b), 2026-09-26). When
 every such post is taken -- possible only at Research Station or Spice
 Refinery, with all twelve Spies on the board -- the Spy is lost to its
 owner's supply, by analogy with the Rival rule "If all other Faction
-observation posts are full, the Spy is lost." [Bloodlines p. 8] (OQ-063).
+observation posts are full, the Spy is lost." [Bloodlines p. 8] (OQ-065).
 """
 
 from dataclasses import replace
@@ -99,7 +99,7 @@ def legal_spy_move_actions(
     """Offer every empty post not connected to the Agent's space [FAQ p. 2].
 
     The mover chooses (OQ-036). With no such post the Spy is lost to its
-    owner's supply (OQ-063).
+    owner's supply (OQ-065).
     """
 
     frame = owned_top_frame(state, FrameKind.OPPONENT_SPY_MOVE, player)
@@ -142,7 +142,7 @@ def apply_spy_move(state: GameState, action: DomainAction) -> RuleResult:
         )
     ]
     if action.action_id == "lose_moved_spy":
-        # No empty post off the space: the Spy returns to the supply (OQ-063).
+        # No empty post off the space: the Spy returns to the supply (OQ-065).
         events.append(
             GameEvent(
                 event_id=f"{frame.frame_id}:lost",

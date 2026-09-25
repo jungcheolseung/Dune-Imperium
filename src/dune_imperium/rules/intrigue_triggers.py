@@ -373,7 +373,7 @@ def legal_trigger_contract_actions(
     from a board space or card you play are mandatory, unless a card says
     'you may' do something" [FAQ p. 3]. So once the trigger holds it
     resolves; the decline is left only when no revealed Contract can be
-    taken, and then the card stays face up (OQ-062).
+    taken, and then the card stays face up (OQ-064).
     """
 
     frame = owned_top_frame(state, FrameKind.INTRIGUE_TRIGGER_CONTRACT, player)
@@ -414,7 +414,7 @@ def apply_trigger_contract_action(
     source = frame.frame_id
     if action.action_id == "decline_intrigue_contract_trigger":
         # Only when nothing revealed can be taken: the card stays face up
-        # (OQ-062).
+        # (OQ-064).
         return RuleResult(
             state=state.pop_decision(),
             events=(
