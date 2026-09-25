@@ -156,6 +156,11 @@ const ICON_RULES = [
   [/\b[Dd]iscard piles?\b/y, (m) => document.createTextNode(m[0])],
   [/\b[Dd]iscard\b/y, () => textIcon("discard", "Discard")],
   [/\b(?:a |an )?Sp(?:y|ies)\b/y, (m) => textIcon("spy", m[0].trim())],
+  /* A line's box label ("Agent: …" for an Agent box, "Agent Turn: …",
+     "On discard: …") names where the effect sits, not a piece: kept as
+     words. As an icon it read like part of the card title above it
+     ("Double Agent" / "[Agent]: Place a Spy"). */
+  [/(?:Agent(?: Turn)?|On discard):/y, (m) => document.createTextNode(m[0])],
   [/\bAgents?\b/y, (m) => textIcon("agent", m[0])],
   [/\b[Ss]andworms?\b/y, (m) => textIcon("sandworm", m[0])],
   [/\bMaker Hooks\b/y, () => textIcon("maker_hooks", "Maker Hooks")],
