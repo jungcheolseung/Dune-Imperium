@@ -365,28 +365,37 @@ def legal_trigger_contract_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Coercive Negotiation: take one of the bank's top Contracts, or decline."""
+    """Coercive Negotiation: take one of the bank's top Contracts.
+
+    The card never says "may" ("When you deploy three or more units to the
+    Conflict in a single turn: Reveal three contracts from the bank. Take one
+    and trash the other two." [Coercive Negotiation card]), and "Most effects
+    from a board space or card you play are mandatory, unless a card says
+    'you may' do something" [FAQ p. 3]. So once the trigger holds it
+    resolves; the decline is left only when no revealed Contract can be
+    taken, and then the card stays face up (OQ-062).
+    """
 
     frame = owned_top_frame(state, FrameKind.INTRIGUE_TRIGGER_CONTRACT, player)
     if frame is None:
         return ()
     count = revealed_contract_count(state, player)
     holds_intrigue = bool(state.players[player].intrigue_cards)
-    return (
-        DomainAction(action_id="decline_intrigue_contract_trigger", actor=player),
-        *(
-            DomainAction(
-                action_id="take_trigger_contract",
-                actor=player,
-                arguments=(("instance_id", instance_id),),
-            )
-            for instance_id in state.contract_bank[:count]
-            # The Bloodlines Immediate needs an Intrigue card in hand to be
-            # taken [Bloodlines p. 2]; the played Plot is already face up.
-            if holds_intrigue
-            or not contract_for_instance(instance_id).requires_intrigue_trash
-        ),
+    takes = tuple(
+        DomainAction(
+            action_id="take_trigger_contract",
+            actor=player,
+            arguments=(("instance_id", instance_id),),
+        )
+        for instance_id in state.contract_bank[:count]
+        # The Bloodlines Immediate needs an Intrigue card in hand to be
+        # taken [Bloodlines p. 2]; the played Plot is already face up.
+        if holds_intrigue
+        or not contract_for_instance(instance_id).requires_intrigue_trash
     )
+    if takes:
+        return takes
+    return (DomainAction(action_id="decline_intrigue_contract_trigger", actor=player),)
 
 
 def apply_trigger_contract_action(
@@ -404,6 +413,8 @@ def apply_trigger_contract_action(
     player = action.actor
     source = frame.frame_id
     if action.action_id == "decline_intrigue_contract_trigger":
+        # Only when nothing revealed can be taken: the card stays face up
+        # (OQ-062).
         return RuleResult(
             state=state.pop_decision(),
             events=(

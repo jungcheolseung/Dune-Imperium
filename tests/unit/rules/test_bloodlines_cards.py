@@ -1628,18 +1628,25 @@ def test_coercive_negotiation_reveals_three_contracts_on_a_big_deployment() -> N
     frame = offered.decision_stack[-1]
     assert frame.kind == "intrigue_trigger_contract"
     actions = legal_trigger_contract_actions(offered, 0)
-    assert actions[0].action_id == "decline_intrigue_contract_trigger"
-    assert [dict(a.arguments)["instance_id"] for a in actions[1:]] == list(bank[:3])
-    taken = apply_trigger_contract_action(offered, actions[2]).state
+    # No "may" on the card ("Reveal three contracts from the bank. Take one
+    # and trash the other two." [Coercive Negotiation card]), and "Most
+    # effects from a board space or card you play are mandatory, unless a
+    # card says 'you may' do something" [FAQ p. 3]: no decline is offered
+    # while a revealed Contract can be taken (it used to be).
+    assert {a.action_id for a in actions} == {"take_trigger_contract"}
+    assert [dict(a.arguments)["instance_id"] for a in actions] == list(bank[:3])
+    taken = apply_trigger_contract_action(offered, actions[1]).state
     owner = taken.players[0]
     assert owner.active_contract_ids == (bank[1],)
     assert owner.intrigue_faceup == ()
     assert card in taken.intrigue_discard
     assert taken.contract_bank == bank[3:]
     assert taken.contract_trash == (bank[0], bank[2])
-    # Declining keeps the card face up for a later qualifying turn (OQ-016).
-    declined = apply_trigger_contract_action(offered, actions[0]).state
-    assert declined.players[0].intrigue_faceup == (card,)
+    with pytest.raises(ValueError):
+        apply_trigger_contract_action(
+            offered,
+            DomainAction(action_id="decline_intrigue_contract_trigger", actor=0),
+        )
     # Without the CHOAM bank the trigger has nothing to reveal.
     quiet = offer_deployment_triggers(
         RuleResult(state=replace(base, contract_bank=()))

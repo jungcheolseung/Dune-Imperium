@@ -349,6 +349,7 @@
 - 필요한 답: face-up Intrigue의 만료와 거절 시 처리에 대한 공식 판정.
 - 구현 convention: (a)(b) 창이 명시된 카드(Call to Arms의 "이번 round의 자신의 Reveal turn")는 그 창이 닫힐 때(Reveal turn 종료) 발동 여부와 무관하게 discard한다. "whenever" trigger는 창이 닫힐 때까지 반복 발동한다. (c) 선택적 trigger(Distraction)를 거절한 카드는 사용된 것이 아니므로 face up으로 남아 이후의 조건 충족 turn에 다시 제시된다. 같은 turn에서는 배치 수가 마지막 제시 시점보다 늘었을 때만 다시 제시하며, 이미 제시가 지나간 수치에서 나중에 낸 두 번째 사본은 다음 배치 때 제시된다. 세 판정 모두 `tests/unit/rules/test_intrigue.py`로 고정한다.
 - 확정(2026-09-01): 위 (a)-(c) convention 전부를 최종 판정으로 채택한다. 현재 face-up trigger 카드는 Call to Arms와 Distraction 두 종뿐이며 두 카드 모두 이 판정으로 완전히 규정된다.
+- 보강(2026-09-26, 사용자 판정): (c)의 거절은 인쇄문이 "you may"인 trigger(Distraction)에만 해당한다. Bloodlines의 Coercive Negotiation("When you deploy three or more units to the Conflict in a single turn: Reveal three contracts from the bank. Take one and trash the other two." `[Coercive Negotiation card]`)에는 "may"가 없고 "Most effects from a board space or card you play are mandatory, unless: a card says 'you may' do something" `[FAQ p. 3]`이므로, 조건이 성립하면 효과가 해결된다(거절 없음; 카드는 발동할 때까지만 face up으로 남는다). 가져갈 수 있는 contract가 없을 때의 처리는 [OQ-062](#oq-062--coercive-negotiation이-공개한-contract를-하나도-가져갈-수-없을-때).
 
 ## OQ-015 — Intrigue의 Plot timing 시작점과 복수 비용 줄의 의무 지불
 
@@ -626,4 +627,18 @@
   Board Guide의 "discard"는 "플레이하지 않고 내놓는다"는 느슨한 서술로 읽는다. 선택("You may")과 그 뒤의
   Intrigue 1장 draw, recall·card draw 문장(OQ-023, OQ-027 (d))은 그대로다. 행동 id는
   `trash_intrigue_for_imperial_privilege`다. 공식 FAQ가 이 칸을 다루면 다시 연다.
+
+## OQ-062 — Coercive Negotiation이 공개한 contract를 하나도 가져갈 수 없을 때
+
+- 상태: `OPEN` (구현 convention 적용 중)
+- Coercive Negotiation은 의무다(OQ-016 보강, `[FAQ p. 3]`). 그런데 bank 위에서 공개한 contract가 모두
+  Bloodlines의 Immediate token이고 hand에 trash할 Intrigue가 없으면 어느 것도 가져갈 수 없다("trash할
+  Intrigue 카드가 없으면 가져갈 수 없다" `[Bloodlines p. 2]`). 이때 (a) 카드가 사용되지 않은 채 face up으로
+  남는지, (b) 공개·trash만 하고 카드를 discard하는지 공식 문서는 말하지 않는다 `[Coercive Negotiation card]`.
+  Immediate token이 하나뿐이라 bank에 그 token만 남았을 때만 생기는 드문 경우다.
+- 필요한 답: 가져갈 수 없는 공개 결과에서 Coercive Negotiation의 처리.
+- 구현 convention: (a) — 효과를 해결할 수 없으므로 아무것도 공개·trash하지 않고 `decline_intrigue_contract_trigger`
+  하나만 제시하며, 카드는 face up으로 남아 이후 조건 충족 turn에 다시 제시된다(OQ-016 (c)의 재제시 규칙).
+  `tests/unit/rules/test_bloodlines_contracts.py`(`test_coercive_negotiation_waits_when_nothing_revealed_can_be_taken`)로
+  고정한다.
 
