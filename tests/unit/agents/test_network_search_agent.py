@@ -316,8 +316,17 @@ def test_a_reversible_move_cannot_stall_a_search_seat(
 
     monkeypatch.setattr(NetworkSearchAgent, "_scores", switch_first)
     monkeypatch.setattr(NetworkSearchAgent, "_leaf_value", lambda self, view: 0.0)
+    # The switch is offered while the Agent turn's effects are ordered, which
+    # the default seat leaves to the greedy network: its untrained weights
+    # (sized by the action catalog) would then pick the moves instead of the
+    # patched scores, and any new action template changed the count.
     agent = NetworkSearchAgent(
-        path, seed=0, rollouts=1, candidates=2, max_rollout_steps=300
+        path,
+        seed=0,
+        rollouts=1,
+        candidates=2,
+        max_rollout_steps=300,
+        search_effect_order=True,
     )
 
     switches = 0
