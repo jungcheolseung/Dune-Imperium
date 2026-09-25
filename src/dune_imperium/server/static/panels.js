@@ -216,18 +216,13 @@ function renderSeats() {
         }),
       );
     }
-    /* Bloodlines Leader state: Chani's Tactics token, Piter's Twisted deck,
-       Y'rkoon's remaining Navigation slots, Kota's Secret Project tile. */
-    if (player.leader_id === "chani") {
-      flags.push(tNode("panels.tactics_space", { space: player.tactics_track_space + 1 }));
-    }
+    /* Bloodlines Leader state: Piter's Twisted deck. Chani's Tactics space,
+       Y'rkoon's Navigation cards and Kota's Secret Project tile are drawn
+       on the leader popover (core.js openPopover, with a text fallback
+       without card images), so this line does not repeat them. */
     if (player.twisted_deck_size) {
       flags.push(tNode("panels.twisted_deck", { count: player.twisted_deck_size }));
     }
-    if (player.navigation_remaining) {
-      flags.push(tNode("panels.navigation_remaining", { count: player.navigation_remaining }));
-    }
-    if (player.has_secret_project) flags.push(tNode("panels.secret_project"));
     if (player.spies_boxed) flags.push(tNode("panels.spy_boxed", { count: player.spies_boxed }));
     /* Immortality state not drawn on the Bene Tleilax board: the Family
        Atomics token and grafted-card promises. */
@@ -1087,13 +1082,10 @@ function renderPrivate() {
     zones.appendChild(intrigue);
   }
   /* Owner-only peeks: the deck's top card (Controlled, Glowglobes) and
-     Kota Odax's face-down Secret Project tile. */
+     peeked Intrigue. Kota Odax's Secret Project tile is on his leader
+     popover (core.js leaderSecretProjectBox). */
   const peekedIntrigue = view.private.peeked_intrigue_ids || [];
-  if (
-    view.private.peeked_card_id ||
-    view.private.secret_project_tech_id ||
-    peekedIntrigue.length
-  ) {
+  if (view.private.peeked_card_id || peekedIntrigue.length) {
     const peeks = document.createElement("div");
     peeks.className = "strip-cards";
     if (view.private.peeked_card_id) {
@@ -1107,14 +1099,6 @@ function renderPrivate() {
     for (const cardId of peekedIntrigue) {
       peeks.appendChild(
         visualCard(cardId, { className: "small", badge: t("panels.intrigue_deck_top_badge") })
-      );
-    }
-    if (view.private.secret_project_tech_id) {
-      peeks.appendChild(
-        visualCard(view.private.secret_project_tech_id, {
-          className: "tile",
-          badge: "Secret Project (−1)",
-        })
       );
     }
     zones.appendChild(peeks);

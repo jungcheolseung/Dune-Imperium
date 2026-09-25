@@ -1370,8 +1370,8 @@ kbd {
   transform: translate(-50%, -50%);
 }
 /* `.vcard.flipped img` (below) already mutes a face-down-but-owner-visible
-   card's picture. No back art exists for a Navigation card
-   (report_assets.md §2): a plain card-shaped box in the page's own
+   card's picture. No back art exists for a Navigation card: a plain
+   card-shaped box in the page's own
    palette, no text — like `.commander-piece.drawn` without a rulebook
    figure to draw. Flat fill, not a gradient (`.vcard`'s own background;
    user convention, `ui-token-style.md`: flat colour, no gradients). */
@@ -1390,6 +1390,26 @@ kbd {
   white-space: nowrap;
   padding: 0 0.25em;
 }
+/* Kota Odax of Ix's kept Secret Project tile (core.js
+   `leaderSecretProjectBox`), below the leader image: the card has no
+   printed frame for it ("Place one face down here"), so this is a plain
+   block, left-aligned by default, not positioned like the Navigation
+   row's per-slot boxes above. */
+.popover-secret-project-row { margin-top: 0.5rem; }
+/* No back art exists for a Tech tile either: a
+   landscape placeholder (737x479) at the width `.vcard.tile` draws its
+   own face at, flat-filled like `.nav-card-back`. */
+.tile-back {
+  display: block;
+  width: 118px;
+  aspect-ratio: 737 / 479;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: #2a2419;
+}
+/* Shaddam Corrino IV's set-aside Sardaukar contracts (core.js
+   `leaderSardaukarRow`), below the leader image, face up side by side. */
+.popover-sardaukar-row { display: flex; gap: 0.35rem; margin-top: 0.5rem; }
 
 /* ---------- text board fallback ---------- */
 

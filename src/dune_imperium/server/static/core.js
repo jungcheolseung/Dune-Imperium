@@ -408,6 +408,31 @@ function leaderStateDescriptor(seatState) {
   return null;
 }
 
+/* The popover's no-image fallback (openPopover's last branch): plain text
+   lines for what the card image would otherwise show -- Chani's and
+   Feyd-Rautha's printed space, how many of Steersman Y'rkoon's Navigation
+   cards are played and remaining, and that Kota Odax holds a Secret
+   Project. Other leaders get no line. */
+function leaderFallbackLines(seatState) {
+  if (!seatState) return [];
+  const lines = [];
+  const descriptor = leaderStateDescriptor(seatState);
+  if (descriptor) lines.push({ key: descriptor.key, vars: { space: descriptor.spaceNode } });
+  if (seatState.leader_id === "steersman_y_rkoon") {
+    const played = (seatState.navigation_played || []).length;
+    const remaining = seatState.navigation_remaining || 0;
+    /* Nothing before his setup placed the cards; after that the line
+       stays, even once all four are played. */
+    if (played || remaining) {
+      lines.push({ key: "panels.navigation_progress", vars: { played, remaining } });
+    }
+  }
+  if (seatState.leader_id === "kota_odax_of_ix" && seatState.has_secret_project) {
+    lines.push({ key: "panels.secret_project", vars: {} });
+  }
+  return lines;
+}
+
 /* The box (percent of the leader-card image, `entry.layout` from
    `display.leader_layout`) a seat's own token sits on, or `null` for a
    leader with no printed on-card token, a leader entry with no layout at
@@ -442,6 +467,17 @@ const LEADER_TOKEN_SIZE = 4;
    slots 1 and 2 (`display.leader_layout.YRKOON_NAVIGATION_SLOT_BOXES`). */
 const NAVIGATION_CARD_WIDTH = 18;
 
+/* `visualCard()` (board.js) marks its `<img>` "lazy"; the few cards of a
+   leader popover load eagerly instead, so none can sit outside the
+   still-unmeasured fixed popover and miss the lazy-load threshold. The
+   popover's height needs them (openPopover repositions as each loads). */
+function eagerCard(instanceId, options) {
+  const card = visualCard(instanceId, options);
+  const image = card.querySelector("img");
+  if (image) image.loading = "eager";
+  return card;
+}
+
 /* Steersman Y'rkoon's four Navigation-card slots, drawn in a row above the
    leader image (openPopover), not overlaid on it: printed slot k (1-based;
    `entry.layout.navigation_slots[k - 1]` is the box around the printed
@@ -453,8 +489,8 @@ const NAVIGATION_CARD_WIDTH = 18;
    Navigation 카드를 언제든 볼 수 있다" [Bloodlines p. 12] -- read from
    `state.view.private.navigation_slots` (populated only into the owning
    seat's own view, core/observation.py); every other viewer gets a plain
-   card-back placeholder, since no back art exists for a Navigation card
-   (report_assets.md §2). Nothing is drawn past
+   card-back placeholder, since no back art exists for a Navigation card.
+   Nothing is drawn past
    navigation_played.length + navigation_remaining. Returns `null` when this
    leader has no Navigation slots (every leader but Y'rkoon) or there is no
    seat context. */
@@ -474,11 +510,11 @@ function leaderNavigationRow(entry, seatState) {
     if (slot > played.length + remaining) return;
     let card;
     if (slot <= played.length) {
-      card = visualCard(played[slot - 1], { className: "leader-nav-card" });
+      card = eagerCard(played[slot - 1], { className: "leader-nav-card" });
     } else {
       const cardId = hidden[slot - played.length - 1];
       if (cardId !== undefined) {
-        card = visualCard(cardId, {
+        card = eagerCard(cardId, {
           className: "leader-nav-card flipped",
           badge: t("panels.face_down_badge"),
         });
@@ -495,6 +531,73 @@ function leaderNavigationRow(entry, seatState) {
   return row.childNodes.length ? row : null;
 }
 
+/* Kota Odax of Ix's kept Secret Project tile, drawn below the leader image
+   (openPopover), left-aligned under the card's own printed "Secret
+   Project" ability box: the card has no printed frame for the tile itself
+   ("Place one face down here" [card face]), only the
+   ability text it sits under. The owner alone sees which tile it is
+   (`view.private.secret_project_tech_id`, populated only into the owning
+   seat's own view, core/observation.py) and gets its face muted with the
+   same "Face down" badge a face-down Navigation slot uses above
+   (`leaderNavigationRow`); every other viewer, knowing only
+   `has_secret_project`, gets a Tech-tile-shaped (737x479, landscape)
+   placeholder with no identity, since no back art
+   exists for a Tech tile either. Nothing once the tile is acquired --
+   `has_secret_project` turns false the moment `_take_tile` clears it
+   (rules/tech.py). Returns `null` for every leader but Kota, a seat with
+   no tile kept, or no seat context. */
+function leaderSecretProjectBox(seatState) {
+  if (
+    !seatState ||
+    seatState.leader_id !== "kota_odax_of_ix" ||
+    !seatState.has_secret_project
+  ) {
+    return null;
+  }
+  const view = state.view;
+  const owner = Boolean(view && view.private && view.player === seatState.player);
+  const techId = owner ? view.private.secret_project_tech_id : null;
+  const row = document.createElement("div");
+  row.className = "popover-secret-project-row";
+  row.appendChild(
+    techId
+      ? eagerCard(techId, { className: "tile flipped", badge: t("panels.face_down_badge") })
+      : Object.assign(document.createElement("div"), { className: "tile-back" }),
+  );
+  return row;
+}
+
+/* Shaddam Corrino IV's two set-aside Sardaukar contracts [Main p. 17]
+   [FAQ p. 3], drawn face up below his leader image the same way Kota's
+   tile is: `view.sardaukar_contract_ids` is a top-level, fully public
+   field (not per-seat, core/observation.py), so both viewers of his own
+   popover see the same list -- it shrinks as he takes one and the popover
+   redraws (refreshPinnedLeaderPopover), with no market refill
+   (rules/contracts.py). Their own `take_contract` action rows are
+   unaffected; a card here stays a legal click target like any other
+   `visualCard` (board.js `tableClick`). Returns `null` for every leader
+   but Shaddam, no contracts left set aside, or no seat context. */
+function leaderSardaukarRow(seatState) {
+  if (!seatState || seatState.leader_id !== "shaddam_corrino_iv") return null;
+  const view = state.view;
+  const ids = (view && view.sardaukar_contract_ids) || [];
+  if (!ids.length) return null;
+  const row = document.createElement("div");
+  row.className = "popover-sardaukar-row";
+  for (const id of ids) {
+    row.appendChild(eagerCard(id, { className: "contract", badge: t("board.set_aside") }));
+  }
+  return row;
+}
+
+/* The Bloodlines Leaders' texts already open with their ability's own name
+   ("Tactician: Whenever…", "Plot Course (no Signet Ring): …"), so the
+   popover does not print that name a second time in front of it. */
+function opensWithName(text, name) {
+  const first = String(name || "").split(" / ")[0];
+  return Boolean(first) && (text.startsWith(`${first}:`) || text.startsWith(`${first} (`));
+}
+
 function popoverNodes(entry) {
   const nodes = [];
   if (entry.text) for (const text of entry.text) nodes.push(iconLine(text));
@@ -508,11 +611,19 @@ function popoverNodes(entry) {
     for (const option of spaceOptionsFor(entry)) nodes.push(spaceOptionLine(option));
   }
   if (entry.ability_text) {
-    nodes.push(iconLine(`${entry.ability}: ${entry.ability_text}`));
+    nodes.push(
+      iconLine(
+        opensWithName(entry.ability_text, entry.ability)
+          ? entry.ability_text
+          : `${entry.ability}: ${entry.ability_text}`,
+      ),
+    );
   }
   if (entry.signet_text) {
     nodes.push(
-      termLine("core.signet_line", { name: entry.signet, text: iconize(entry.signet_text) }),
+      opensWithName(entry.signet_text, entry.signet)
+        ? termLine("core.signet_line_unnamed", { text: iconize(entry.signet_text) })
+        : termLine("core.signet_line", { name: entry.signet, text: iconize(entry.signet_text) }),
     );
   }
   if (entry.notes) {
@@ -593,6 +704,13 @@ function openPopover(entry, anchor, seatState) {
       stage.appendChild(token);
     }
     pop.appendChild(stage);
+    /* Kota's kept tile and Shaddam's set-aside contracts sit below the
+       image, like the Navigation row above it: neither is a token *on*
+       the printed card, so neither uses `leaderTokenBox`. */
+    const secretProjectBox = leaderSecretProjectBox(seatState);
+    if (secretProjectBox) pop.appendChild(secretProjectBox);
+    const sardaukarRow = leaderSardaukarRow(seatState);
+    if (sardaukarRow) pop.appendChild(sardaukarRow);
   } else if (image) {
     const plainImage = document.createElement("img");
     plainImage.loading = "lazy";
@@ -601,18 +719,63 @@ function openPopover(entry, anchor, seatState) {
     pop.appendChild(plainImage);
   } else if (seatState) {
     /* No card image (no private assets): say in words where the token
-       sits, the same wording the seat panel's own status flag already uses
-       for Chani, and the log's own Feyd track wording for Feyd-Rautha. */
-    const descriptor = leaderStateDescriptor(seatState);
-    if (descriptor) pop.appendChild(termLine(descriptor.key, { space: descriptor.spaceNode }));
+       sits or what the seat holds -- the same wording the seat panel's own
+       status flag used to carry for Chani, Y'rkoon and Kota, and the log's
+       own Feyd track wording for Feyd-Rautha. Kota's tile and Shaddam's
+       contracts still draw here too -- `visualCard` (via `eagerCard`)
+       already falls back to a named textcard when `entry.image` is
+       missing, so these are the only place those two facts appear when no
+       card art is loaded at all. */
+    for (const line of leaderFallbackLines(seatState)) pop.appendChild(termLine(line.key, line.vars));
+    const secretProjectBox = leaderSecretProjectBox(seatState);
+    if (secretProjectBox) pop.appendChild(secretProjectBox);
+    const sardaukarRow = leaderSardaukarRow(seatState);
+    if (sardaukarRow) pop.appendChild(sardaukarRow);
   }
   placePopover(pop, anchor, 340);
+  /* Every `<img>` this popover ends up with -- the leader's own portrait
+     and, now, any eager card below or above it -- lacks an explicit
+     `aspect-ratio`, so before it finishes loading the browser lays it out
+     at no height at all; `placePopover` above, called synchronously, then
+     measures a too-short popover and misplaces it. Repositioning again as
+     each image finishes loading (there again once it is already
+     `.complete`, e.g. from the browser's own cache, is harmless) fixes
+     that without delaying the popover's first paint. */
+  for (const loadingImage of pop.querySelectorAll("img")) {
+    if (loadingImage.complete) continue;
+    loadingImage.addEventListener(
+      "load",
+      () => {
+        /* Only while this is still the popover showing it. A later
+           `openPopover` replacing the content detaches this image
+           (`pop.textContent = ""`), but `closePopover` does not -- it only
+           sets `pop.hidden = true`, leaving a slow image connected and
+           able to un-hide the popover from under a pointer that has
+           already left. Check both. */
+        if (loadingImage.isConnected && !pop.hidden) placePopover(pop, anchor, 340);
+      },
+      { once: true },
+    );
+  }
 }
 
 /* The popover is fixed-positioned (the table columns scroll on their own)
-   and flips above the anchor when it would run off the bottom. */
+   and flips above the anchor when it would run off the bottom. An anchor
+   that has left the page has an all-zero rect and would throw the popover
+   into the top-left corner: the table re-rendered under a pinned popover
+   before its image finished loading, or the anchor was a card inside this
+   very popover, cleared with its old content. The popover then stays where
+   it is, only pulled back up if its new content runs off the bottom. */
 function placePopover(pop, anchor, maxWidth) {
   pop.hidden = false;
+  if (!anchor.isConnected) {
+    const height = pop.offsetHeight;
+    const top = parseFloat(pop.style.top) || 8;
+    if (top + height > window.innerHeight - 8) {
+      pop.style.top = `${Math.max(8, window.innerHeight - height - 8)}px`;
+    }
+    return;
+  }
   const rect = anchor.getBoundingClientRect();
   const width = Math.min(maxWidth, window.innerWidth - 16);
   pop.style.width = `${width}px`;

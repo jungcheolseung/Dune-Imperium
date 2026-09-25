@@ -15,12 +15,11 @@ bloodlines}/leader/*.webp``, 1460 px wide: Feyd-Rautha Harkonnen
 1460x1020, Chani and Steersman Y'rkoon 1460x1022) using fine-pixel grid
 overlays, cross-checked with brightness-profile scans for Chani's uniform
 row and Y'rkoon's slot dividers, and confirmed by drawing the boxes back
-onto the card and viewing the result (overlay screenshots kept at
-``…/scratchpad/leaders/overlays/{feyd,chani,yrkoon}_overlay.png``). Feyd's
+onto the card and viewing the result. Feyd's
 Korean scan is the same 1460x1020; the Bloodlines Korean scans (Chani,
 Y'rkoon) are 1460x1020, 2 px shorter than their English counterparts, but
 applying the English boxes unchanged still lands on the same printed
-spaces on all three Korean scans (``…_ko_overlay.png``), so one table
+spaces on all three Korean scans, so one table
 drives both languages. A differently cropped scan needs a re-measure, not
 a rules change, exactly as ``board_layout`` notes for the shared board.
 """

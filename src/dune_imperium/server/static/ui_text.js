@@ -133,10 +133,6 @@ const UI_TEXT = {
     "ko": "{commander} · 보드 {{count}} · 은행 {{bank}}",
     "en": "{commander} · board {{count}} · bank {{bank}}"
   },
-  "board.sardaukar_contract_title": {
-    "ko": "사다우카 {contract} · 샤담 코리노 4세 전용, 따로 치워둠",
-    "en": "Sardaukar {contract} · Shaddam only, set aside"
-  },
   "board.seat_conflict_troops": {
     "ko": "좌석 {{seat}} · {conflict} 병력",
     "en": "Seat {{seat}} · {conflict} troops"
@@ -308,6 +304,10 @@ const UI_TEXT = {
   "core.signet_line": {
     "ko": "인장 반지 능력 — {{name}}: {{text}}",
     "en": "Signet — {{name}}: {{text}}"
+  },
+  "core.signet_line_unnamed": {
+    "ko": "인장 반지 능력 — {{text}}",
+    "en": "Signet — {{text}}"
   },
   "core.reward_line": {
     "ko": "보상: {{text}}",
@@ -733,9 +733,9 @@ const UI_TEXT = {
     "ko": "내 손패 · {{seat}}",
     "en": "My hand · {{seat}}"
   },
-  "panels.navigation_remaining": {
-    "ko": "{navigation} {{count}}장 남음",
-    "en": "{{count}} Navigation cards remaining"
+  "panels.navigation_progress": {
+    "ko": "{navigation} {{played}}장 사용, {{remaining}}장 남음",
+    "en": "{{played}} Navigation card(s) played, {{remaining}} remaining"
   },
   "panels.neutral_combat_intrigue": {
     "ko": "전투 책략 카드 창",
