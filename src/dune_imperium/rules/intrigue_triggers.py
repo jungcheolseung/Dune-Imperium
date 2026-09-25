@@ -162,10 +162,14 @@ def _trigger_frame_kind(state: GameState, player: int, card_id: str) -> str | No
             return None
         return FrameKind.INTRIGUE_TRIGGER_SPY
     if isinstance(reward, RevealContractsTakeOne):
-        # Coercive Negotiation needs Contracts left in the bank.
+        # Coercive Negotiation is mandatory once it triggers (no "may" on the
+        # card [Coercive Negotiation card]; [FAQ p. 3]), so it opens only
+        # when a revealed Contract can be taken; otherwise it waits face up
+        # (OQ-064).
         return (
             FrameKind.INTRIGUE_TRIGGER_CONTRACT
-            if state.config.choam_module and state.contract_bank
+            if state.config.choam_module
+            and takeable_trigger_contract_ids(state, player, card_id)
             else None
         )
     return None
@@ -361,6 +365,30 @@ def revealed_contract_count(state: GameState, player: int) -> int:
     return reward.count if isinstance(reward, RevealContractsTakeOne) else 0
 
 
+def takeable_trigger_contract_ids(
+    state: GameState,
+    player: int,
+    card_id: str,
+) -> tuple[str, ...]:
+    """Return the bank Contracts ``card_id`` would reveal that ``player`` can take.
+
+    Coercive Negotiation reveals the bank's top three [Coercive Negotiation
+    card]. "You can't take the new Immediate contract unless you have an
+    Intrigue card to trash." [Bloodlines p. 2]; the face-up Plot itself is
+    not in the hand.
+    """
+
+    reward = _deployment_trigger_reward(card_id)
+    count = reward.count if isinstance(reward, RevealContractsTakeOne) else 0
+    holds_intrigue = bool(state.players[player].intrigue_cards)
+    return tuple(
+        instance_id
+        for instance_id in state.contract_bank[:count]
+        if holds_intrigue
+        or not contract_for_instance(instance_id).requires_intrigue_trash
+    )
+
+
 def legal_trigger_contract_actions(
     state: GameState,
     player: int,
@@ -370,32 +398,28 @@ def legal_trigger_contract_actions(
     The card never says "may" ("When you deploy three or more units to the
     Conflict in a single turn: Reveal three contracts from the bank. Take one
     and trash the other two." [Coercive Negotiation card]), and "Most effects
-    from a board space or card you play are mandatory, unless a card says
-    'you may' do something" [FAQ p. 3]. So once the trigger holds it
-    resolves; the decline is left only when no revealed Contract can be
-    taken, and then the card stays face up (OQ-064).
+    from a board space or card you play are mandatory, unless: a card says
+    'you may' do something" [FAQ p. 3]. So the frame offers no decline: it
+    only opens when a revealed Contract can be taken (OQ-064).
     """
 
     frame = owned_top_frame(state, FrameKind.INTRIGUE_TRIGGER_CONTRACT, player)
     if frame is None:
         return ()
-    count = revealed_contract_count(state, player)
-    holds_intrigue = bool(state.players[player].intrigue_cards)
-    takes = tuple(
+    card_id = dict(frame.context).get("card_id")
+    if not isinstance(card_id, str):
+        raise RuntimeError("Intrigue trigger frame has invalid card ID")
+    takes = takeable_trigger_contract_ids(state, player, card_id)
+    if not takes:
+        raise RuntimeError("Coercive Negotiation opened with no Contract to take")
+    return tuple(
         DomainAction(
             action_id="take_trigger_contract",
             actor=player,
             arguments=(("instance_id", instance_id),),
         )
-        for instance_id in state.contract_bank[:count]
-        # The Bloodlines Immediate needs an Intrigue card in hand to be
-        # taken [Bloodlines p. 2]; the played Plot is already face up.
-        if holds_intrigue
-        or not contract_for_instance(instance_id).requires_intrigue_trash
+        for instance_id in takes
     )
-    if takes:
-        return takes
-    return (DomainAction(action_id="decline_intrigue_contract_trigger", actor=player),)
 
 
 def apply_trigger_contract_action(
@@ -412,19 +436,6 @@ def apply_trigger_contract_action(
         raise RuntimeError("Intrigue trigger frame has invalid card ID")
     player = action.actor
     source = frame.frame_id
-    if action.action_id == "decline_intrigue_contract_trigger":
-        # Only when nothing revealed can be taken: the card stays face up
-        # (OQ-064).
-        return RuleResult(
-            state=state.pop_decision(),
-            events=(
-                GameEvent(
-                    event_id=f"{source}:declined",
-                    kind="intrigue_trigger_declined",
-                    payload=(("card_id", card_id), ("player", player)),
-                ),
-            ),
-        )
     reward = _deployment_trigger_reward(card_id)
     count = reward.count if isinstance(reward, RevealContractsTakeOne) else 0
     revealed = state.contract_bank[:count]

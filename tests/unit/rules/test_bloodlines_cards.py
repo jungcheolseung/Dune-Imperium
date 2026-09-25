@@ -1753,11 +1753,12 @@ def test_coercive_negotiation_reveals_three_contracts_on_a_big_deployment() -> N
     assert card in taken.intrigue_discard
     assert taken.contract_bank == bank[3:]
     assert taken.contract_trash == (bank[0], bank[2])
-    with pytest.raises(ValueError):
-        apply_trigger_contract_action(
-            offered,
-            DomainAction(action_id="decline_intrigue_contract_trigger", actor=0),
-        )
+    # The decline action is gone altogether (OQ-064).
+    from dune_imperium.adapters import ActionCodec
+
+    assert "decline_intrigue_contract_trigger" not in {
+        template.action_id for template in ActionCodec(CHOAM_BLOODLINES).catalog
+    }
     # Without the CHOAM bank the trigger has nothing to reveal.
     quiet = offer_deployment_triggers(
         RuleResult(state=replace(base, contract_bank=()))
@@ -1942,8 +1943,9 @@ def test_ruthless_leadership_round_trips_and_is_dealt_in_random_games() -> None:
     # [card faces; Main p. 7] (-3 play_intrigue templates).
     # A forced Spy move with no empty post off the Agent's space loses the
     # Spy [FAQ p. 2] (OQ-065): +1 lose_moved_spy. Navigation card 10's arrow
-    # cost may be declined [Main p. 20]: +1 decline_navigation.
-    assert codec.size == 10159 + 292 + 1 + 1 + 1 + 2 + 1 + 28 + 28 + 67 - 3 + 1 + 1
+    # cost may be declined [Main p. 20]: +1 decline_navigation. Coercive
+    # Negotiation is mandatory [FAQ p. 3], so its decline is gone (OQ-064): -1.
+    assert codec.size == 10159 + 292 + 1 + 1 + 1 + 2 + 1 + 28 + 28 + 67 - 3 + 1 + 1 - 1
     action = DomainAction(
         action_id="trash_agent_card",
         actor=2,

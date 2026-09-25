@@ -638,8 +638,11 @@
   남는지, (b) 공개·trash만 하고 카드를 discard하는지 공식 문서는 말하지 않는다 `[Coercive Negotiation card]`.
   Immediate token이 하나뿐이라 bank에 그 token만 남았을 때만 생기는 드문 경우다.
 - 필요한 답: 가져갈 수 없는 공개 결과에서 Coercive Negotiation의 처리.
-- 구현 convention: (a) — 효과를 해결할 수 없으므로 아무것도 공개·trash하지 않고 `decline_intrigue_contract_trigger`
-  하나만 제시하며, 카드는 face up으로 남아 이후 조건 충족 turn에 다시 제시된다(OQ-016 (c)의 재제시 규칙).
+- 구현 convention: (a) — 효과를 해결할 수 없으므로 trigger가 열리지 않는다: 아무것도 공개·trash하지 않고, 카드는
+  face up으로 남아 해결할 수 있는 이후의 조건 충족 시점에 열린다(같은 turn에 hand에 Intrigue가 들어온 뒤 더
+  배치해도 된다; 가져갈 수 없는 동안에는 제시 기록 `deploy_trigger_offered_at`도 올리지 않는다). 의무 효과라
+  거절 행동은 없다(2026-09-26: 처음엔 거절 하나만 있는 frame을 열었으나, 사용자 판정 "no decline"에 맞춰
+  거절 행동 `decline_intrigue_contract_trigger`를 없앴다 — codec Bloodlines 카탈로그 템플릿 1개 감소).
   `tests/unit/rules/test_bloodlines_contracts.py`(`test_coercive_negotiation_waits_when_nothing_revealed_can_be_taken`)로
   고정한다.
 

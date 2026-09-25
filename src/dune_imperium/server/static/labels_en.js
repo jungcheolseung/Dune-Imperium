@@ -234,7 +234,6 @@ const LABELS_EN = {
     "decline_spy_placement": "Cannot place {spy}",
     "lose_unit": "Lose 1 unit",
     "take_trigger_contract": "Choose revealed {contract}",
-    "decline_intrigue_contract_trigger": "Decline to trigger {intrigue}",
     "retreat_leader_troops": "Fedaykin Maneuver: Retreat {troop}",
     "pay_leader_signet_water": "Pay {water} -> 2 {troop} ({signet_ring})",
     "deploy_leader_agent": "Into the Fray: Deploy {agent} to {conflict}",

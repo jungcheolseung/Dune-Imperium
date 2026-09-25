@@ -758,7 +758,6 @@ def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     templates.extend(
         ActionTemplate(action_id=action_id)
         for action_id in (
-            "decline_intrigue_contract_trigger",
             # Bloodlines Leaders: Duncan Idaho, Chani, Liet Kynes, Esmar Tuek.
             "deploy_leader_agent",
             "recall_conflict_agent_for_imperial_privilege",

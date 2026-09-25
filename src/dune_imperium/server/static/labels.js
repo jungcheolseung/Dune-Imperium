@@ -268,7 +268,6 @@ const ACTION_LABELS = {
   decline_spy_placement: "{spy} 배치 불가",
   lose_unit: "유닛 1 잃기",
   take_trigger_contract: "공개된 {contract} 선택",
-  decline_intrigue_contract_trigger: "{intrigue} 발동 거절",
   retreat_leader_troops: "Fedaykin Maneuver: {troop} 후퇴",
   pay_leader_signet_water: "{water} 지불 → {troop} 2 ({signet_ring})",
   deploy_leader_agent: "Into the Fray: {agent}를 {conflict}에 배치",

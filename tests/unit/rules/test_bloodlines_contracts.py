@@ -266,23 +266,38 @@ def test_coercive_negotiation_offers_the_immediate_only_with_hand_intrigue() -> 
 
 
 def test_coercive_negotiation_waits_when_nothing_revealed_can_be_taken() -> None:
-    # Only the Immediate is left in the bank and the hand holds no Intrigue
-    # to trash for it [Bloodlines p. 2]: nothing can be taken, so the one
-    # action left is the decline and the card stays face up (OQ-064).
+    # Only the Immediate is left in the bank and the hand holds no Intrigue:
+    # "You can't take the new Immediate contract unless you have an Intrigue
+    # card to trash." [Bloodlines p. 2]. The trigger is mandatory ("Most
+    # effects from a board space or card you play are mandatory, unless: a
+    # card says 'you may' do something" [FAQ p. 3]), so there is no decline
+    # to offer; the card does not open, reveals nothing and waits face up
+    # for a qualifying turn it can resolve on (OQ-064). It used to open a
+    # frame offering only a decline.
     card = next(card for card in INTRIGUE if ":coercive_negotiation:" in card)
     base = _state(
         _owner(intrigue_faceup=(card,), units_deployed_turn=3),
         market=(),
         bank=(IMMEDIATE,),
     )
-    stuck = offer_deployment_triggers(RuleResult(state=base)).state
-    actions = legal_trigger_contract_actions(stuck, 0)
-    assert [action.action_id for action in actions] == [
-        "decline_intrigue_contract_trigger"
-    ]
-    declined = apply_trigger_contract_action(stuck, actions[0]).state
-    assert declined.players[0].intrigue_faceup == (card,)
-    assert declined.contract_bank == (IMMEDIATE,)
+    waiting = offer_deployment_triggers(RuleResult(state=base)).state
+    assert waiting.decision_stack == base.decision_stack
+    assert waiting.players[0].intrigue_faceup == (card,)
+    assert waiting.players[0].deploy_trigger_offered_at == 0
+    assert waiting.contract_bank == (IMMEDIATE,)
+    # With an Intrigue card in hand the same deployment opens it.
+    holding = replace(
+        base,
+        players=(
+            replace(base.players[0], intrigue_cards=INTRIGUE[:1]),
+            *base.players[1:],
+        ),
+    )
+    opened = offer_deployment_triggers(RuleResult(state=holding)).state
+    assert [
+        dict(action.arguments)["instance_id"]
+        for action in legal_trigger_contract_actions(opened, 0)
+    ] == [IMMEDIATE]
 
 
 def test_earn_any_alliance_taken_this_turn_completes_on_this_turns_bump() -> None:

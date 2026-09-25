@@ -684,7 +684,6 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "decline_spy_placement": apply_spy_placement,
     "lose_unit": apply_unit_loss,
     "take_trigger_contract": apply_trigger_contract_action,
-    "decline_intrigue_contract_trigger": apply_trigger_contract_action,
     "decline_command_acquisition": apply_reveal_command_acquisition,
     "decline_reveal_influence_exchange": apply_reveal_influence_exchange,
     "pay_reveal_water_for_sandworm": apply_reveal_sandworm_action,
