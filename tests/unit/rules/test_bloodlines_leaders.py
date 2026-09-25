@@ -118,6 +118,124 @@ def test_tactician_advances_per_retreated_troop_and_resets_at_the_end() -> None:
     assert seat.resources.spice == 1
 
 
+def _cleanup_state(chani: PlayerState) -> GameState:
+    return replace(
+        _turn_state(chani),
+        phase=GamePhase.COMBAT,
+        first_player=0,
+        combat_intrigue_complete=True,
+        combat_rewards_resolved=True,
+        decision_stack=(),
+        players=(
+            chani,
+            *(PlayerState(player_id=seat, has_revealed=True) for seat in range(1, 4)),
+        ),
+    )
+
+
+def test_tactician_advances_for_units_lost_at_combat_cleanup() -> None:
+    # "Chani (Leader) -- When resolving combat, troops that return to your
+    # supply are considered 'lost.' Each different source of retreating or
+    # losing troops is handled separately" [FAQ p. 1]; Tactician advances
+    # "that many spaces, earning rewards as you reach them" [Chani card].
+    # Commanders are troops [Bloodlines p. 4].
+    from dune_imperium.rules.combat import finish_combat
+
+    chani = PlayerState(
+        player_id=0,
+        leader_id="chani",
+        has_revealed=True,
+        tactics_track_space=2,
+        troops_supply=9,
+        troops_garrison=0,
+        troops_conflict=3,
+        commanders_conflict=1,
+        combat_strength=8,
+    )
+    result = finish_combat(_cleanup_state(chani))
+    seat = result.state.players[0]
+    assert seat.troops_conflict == 0 and seat.troops_supply == 12
+    assert seat.tactics_track_space == 6
+    assert seat.resources.spice == 1  # the sixth space
+    assert any(
+        event.kind == "tactics_token_advanced" and dict(event.payload)["count"] == 4
+        for event in result.events
+    )
+
+    # The cleanup is one source: passing the end pays the water once and
+    # resets without advancing for the extra troops [Bloodlines p. 12].
+    near_end = replace(chani, tactics_track_space=8)
+    seat = finish_combat(_cleanup_state(near_end)).state.players[0]
+    assert seat.tactics_track_space == 2
+    assert seat.resources.water == 1 + 1
+    assert seat.resources.spice == 0
+
+
+def test_tactician_advances_once_for_one_multi_troop_loss() -> None:
+    # Gruesome Sacrifice's "lose two troops" is one source [FAQ p. 1]: "If
+    # you lose or retreat enough troops that you would pass the end of the
+    # Tactics track, you still reset at the starting space (and do not
+    # advance for those extra troops)" [Bloodlines p. 12].
+    from dune_imperium.content.immortality.board import RESEARCH_START_ID
+    from dune_imperium.rules.combat import begin_combat_intrigue
+    from dune_imperium.rules.intrigue import (
+        apply_intrigue_choice,
+        apply_intrigue_play,
+        legal_intrigue_choice_actions,
+        legal_intrigue_play_actions,
+    )
+
+    card = "intrigue:gruesome_sacrifice:0"
+    chani = PlayerState(
+        player_id=0,
+        leader_id="chani",
+        has_revealed=True,
+        research_space=RESEARCH_START_ID,
+        tactics_track_space=9,
+        intrigue_cards=(card,),
+        troops_supply=9,
+        troops_garrison=0,
+        troops_conflict=3,
+        combat_strength=6,
+    )
+    state = GameState(
+        config=RulesetConfig(bloodlines=True, immortality=True),
+        seed=1,
+        phase=GamePhase.COMBAT,
+        round_number=1,
+        first_player=0,
+        current_conflict_ids=(CONFLICTS[0].card.card_id,),
+        intrigue_deck=intrigue_deck_instance_ids(False)[:3],
+        players=(
+            chani,
+            *(
+                PlayerState(
+                    player_id=seat, has_revealed=True, research_space=RESEARCH_START_ID
+                )
+                for seat in range(1, 4)
+            ),
+        ),
+    )
+    state = begin_combat_intrigue(state).state
+    play = next(
+        action
+        for action in legal_intrigue_play_actions(state, 0)
+        if dict(action.arguments).get("card_id") == card
+    )
+    played = apply_intrigue_play(state, play).state
+    for _ in range(2):
+        loss = next(
+            action
+            for action in legal_intrigue_choice_actions(played, 0)
+            if action.action_id == "lose_intrigue_troop"
+        )
+        played = apply_intrigue_choice(played, loss).state
+    seat = played.players[0]
+    assert seat.troops_conflict == 1
+    assert seat.tactics_track_space == 2  # not 3
+    assert seat.resources.water == 1 + 1
+
+
 def test_fedaykin_maneuver_retreats_any_number_or_buys_two_troops() -> None:
     owner = PlayerState(
         player_id=0,

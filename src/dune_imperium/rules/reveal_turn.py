@@ -70,6 +70,7 @@ from dune_imperium.rules.spy_placement import (
     spied_factions,
 )
 from dune_imperium.rules.strength import units_strength
+from dune_imperium.rules.tactics import advance_tactics_token
 from dune_imperium.rules.unit_loss import lose_unit
 from dune_imperium.rules.units import retreat_units
 
@@ -1252,9 +1253,23 @@ def apply_reveal_troop_sacrifice(
     working = popped
     events: list[GameEvent] = []
     for index, zone in enumerate(zones):
-        lost = lose_unit(working, action.actor, zone, source=f"{source}:{index}")
+        lost = lose_unit(
+            working,
+            action.actor,
+            zone,
+            source=f"{source}:{index}",
+            advance_tactics=False,
+        )
         working = lost.state
         events.extend(lost.events)
+    # Tactician: "Each different source of retreating or losing troops is
+    # handled separately" [FAQ p. 1], so the two troops advance the token
+    # once, and a pass past the end still only resets it [Bloodlines p. 12].
+    tactician, tactics_events = advance_tactics_token(
+        working.players[action.actor], zones.count("conflict"), source=source
+    )
+    working = replace(working, players=replace_player(working.players, tactician))
+    events.extend(tactics_events)
     delta = working.players[action.actor].combat_strength - before
     if delta:
         working = replace(

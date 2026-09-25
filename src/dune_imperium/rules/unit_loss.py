@@ -49,8 +49,14 @@ def lose_unit(
     *,
     commander: bool = False,
     source: str,
+    advance_tactics: bool = True,
 ) -> RuleResult:
-    """Return one unit of ``player`` from ``zone`` to the supply."""
+    """Return one unit of ``player`` from ``zone`` to the supply.
+
+    ``advance_tactics=False`` is for a caller losing several units to one
+    source: it advances Chani's Tactics token once for them all
+    [FAQ p. 1] [Bloodlines p. 12].
+    """
 
     if zone not in UNIT_ZONES:
         raise ValueError("unit loss zone must be garrison or conflict")
@@ -66,6 +72,7 @@ def lose_unit(
             f"{source}:loss",
             troops=0 if commander else 1,
             commanders=1 if commander else 0,
+            advance_tactics=advance_tactics,
         )
         working = retreated.state
         events.extend(retreated.events)
