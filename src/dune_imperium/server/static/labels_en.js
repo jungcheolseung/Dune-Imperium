@@ -451,6 +451,8 @@ const LABELS_EN = {
     "leader_influence_bonus_gained": "{leader} {influence_any} Bonus Gained",
     "leader_signet_payment_declined": "Payment Declined",
     "leader_signet_resolved": "{signet_ring} Effect Resolved",
+    "leader_signet_started": "{signet_ring} Ability Used",
+    "leader_signet_unavailable": "No {signet_ring} Ability to Use",
     "leader_signet_solari_paid": "{solari} Paid ({signet_ring})",
     "leader_signet_spice_paid": "{spice} Paid ({signet_ring})",
     "leader_signet_troops_recruited": "{troop} {recruit}ed ({signet_ring})",

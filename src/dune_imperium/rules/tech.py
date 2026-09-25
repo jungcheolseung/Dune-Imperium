@@ -61,7 +61,10 @@ from dune_imperium.rules.influence import (
     lose_faction_influence,
 )
 from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
-from dune_imperium.rules.leader_abilities import units_deployment_blocked
+from dune_imperium.rules.leader_abilities import (
+    units_deployment_blocked,
+    use_leader_signet_for_tech,
+)
 from dune_imperium.rules.optional_trash import optional_trash_frame
 from dune_imperium.rules.ornithopter import (
     has_ornithopter_fleet,
@@ -416,7 +419,21 @@ def apply_tech_acquisition(state: GameState, action: DomainAction) -> RuleResult
             context_int(context, "troops_recruited", owner=_FRAME_LABEL)
             + troops_recruited
         )
-        working = advance_after_effect(working, context, players)
+        if tile.acquire_leader_signet:
+            # The Signet Ring ability resolves inside this Agent turn; the
+            # effect frame moves on once it has (``use_leader_signet_for_tech``).
+            working = replace(
+                working,
+                decision_stack=(
+                    *working.decision_stack[:-1],
+                    replace(
+                        working.decision_stack[-1],
+                        context=tuple(sorted(context.items())),
+                    ),
+                ),
+            )
+        else:
+            working = advance_after_effect(working, context, players)
     else:
         working = working.pop_decision()
         working = replace(
@@ -481,6 +498,17 @@ def apply_tech_acquisition(state: GameState, action: DomainAction) -> RuleResult
         )
         working = drawn.state
         events.extend(drawn.events)
+    if tile.acquire_leader_signet:
+        # Servo-Receivers: the Signet Ring icon uses the Leader's Signet
+        # Ring ability once [Main p. 20] [Servo-Receivers Tech tile].
+        signet = use_leader_signet_for_tech(
+            working,
+            player,
+            source=f"{source}:{tech_id}",
+            advance_agent_frame=context is not None,
+        )
+        working = signet.state
+        events.extend(signet.events)
     return RuleResult(state=working, events=tuple(events))
 
 

@@ -1572,6 +1572,36 @@ def test_chroniclers_insight_acquires_a_one_cost_card_to_hand() -> None:
     )
 
 
+def test_chroniclers_insight_still_acquires_once_the_imperium_deck_is_empty() -> None:
+    # "Acquire a card that costs [1] to your hand" puts no condition on the
+    # Imperium Deck [Princess Irulan card]; once the deck is exhausted the Row
+    # keeps operating with fewer cards (OQ-004), so its one-cost card stays
+    # acquirable and the Row shrinks instead of refilling.
+    target = "imperium:sardaukar_soldier:0"
+    owner = PlayerState(
+        player_id=0,
+        leader_id="princess_irulan",
+        hand=(_signet_instance(),),
+    )
+    state = replace(
+        _turn_state(owner),
+        imperium_row=(target, "imperium:calculus_of_power:0"),
+        imperium_deck=(),
+    )
+    placed = apply_agent_action(state, _signet_action_to(state, "arrakeen")).state
+
+    acquire = DomainAction(
+        action_id="acquire_leader_imperium",
+        actor=0,
+        arguments=(("instance_id", target),),
+    )
+    assert acquire in legal_leader_signet_actions(placed, 0)
+    result = apply_leader_signet_acquire(placed, acquire)
+    assert target in result.state.players[0].hand
+    assert result.state.imperium_row == ("imperium:calculus_of_power:0",)
+    assert result.state.imperium_deck == ()
+
+
 def test_chroniclers_insight_trash_pays_spice_only_for_costed_cards() -> None:
     costed = "imperium:overthrow:0"
     starter = "player:0:starter:dagger:0"

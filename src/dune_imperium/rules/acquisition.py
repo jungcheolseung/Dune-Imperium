@@ -36,6 +36,7 @@ from dune_imperium.rules.effects import (
 from dune_imperium.rules.frames import FrameKind, replace_player, reveal_is_open_for
 from dune_imperium.rules.immortality import advance_research, advance_tleilaxu
 from dune_imperium.rules.influence import gain_faction_influence
+from dune_imperium.rules.intrigue_deck import credit_suspensor_suits
 from dune_imperium.rules.intrigue_triggers import fire_reveal_acquisition_intrigue
 from dune_imperium.rules.reveal_turn import (
     current_reveal_context,
@@ -859,9 +860,13 @@ def _resolve_imperium_acquisition_bonus(
             f"acquire:{instance_id}:intrigue_draw"
         )
         if intrigue_deck:
-            owner = replace(
-                owner,
-                intrigue_cards=(*owner.intrigue_cards, intrigue_deck[0]),
+            owner = credit_suspensor_suits(
+                state,
+                replace(
+                    owner,
+                    intrigue_cards=(*owner.intrigue_cards, intrigue_deck[0]),
+                ),
+                1,
             )
             intrigue_deck = intrigue_deck[1:]
             events = (

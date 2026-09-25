@@ -120,6 +120,124 @@ def test_tactician_advances_per_retreated_troop_and_resets_at_the_end() -> None:
     assert seat.resources.spice == 1
 
 
+def _cleanup_state(chani: PlayerState) -> GameState:
+    return replace(
+        _turn_state(chani),
+        phase=GamePhase.COMBAT,
+        first_player=0,
+        combat_intrigue_complete=True,
+        combat_rewards_resolved=True,
+        decision_stack=(),
+        players=(
+            chani,
+            *(PlayerState(player_id=seat, has_revealed=True) for seat in range(1, 4)),
+        ),
+    )
+
+
+def test_tactician_advances_for_units_lost_at_combat_cleanup() -> None:
+    # "Chani (Leader) -- When resolving combat, troops that return to your
+    # supply are considered 'lost.' Each different source of retreating or
+    # losing troops is handled separately" [FAQ p. 1]; Tactician advances
+    # "that many spaces, earning rewards as you reach them" [Chani card].
+    # Commanders are troops [Bloodlines p. 4].
+    from dune_imperium.rules.combat import finish_combat
+
+    chani = PlayerState(
+        player_id=0,
+        leader_id="chani",
+        has_revealed=True,
+        tactics_track_space=2,
+        troops_supply=9,
+        troops_garrison=0,
+        troops_conflict=3,
+        commanders_conflict=1,
+        combat_strength=8,
+    )
+    result = finish_combat(_cleanup_state(chani))
+    seat = result.state.players[0]
+    assert seat.troops_conflict == 0 and seat.troops_supply == 12
+    assert seat.tactics_track_space == 6
+    assert seat.resources.spice == 1  # the sixth space
+    assert any(
+        event.kind == "tactics_token_advanced" and dict(event.payload)["count"] == 4
+        for event in result.events
+    )
+
+    # The cleanup is one source: passing the end pays the water once and
+    # resets without advancing for the extra troops [Bloodlines p. 12].
+    near_end = replace(chani, tactics_track_space=8)
+    seat = finish_combat(_cleanup_state(near_end)).state.players[0]
+    assert seat.tactics_track_space == 2
+    assert seat.resources.water == 1 + 1
+    assert seat.resources.spice == 0
+
+
+def test_tactician_advances_once_for_one_multi_troop_loss() -> None:
+    # Gruesome Sacrifice's "lose two troops" is one source [FAQ p. 1]: "If
+    # you lose or retreat enough troops that you would pass the end of the
+    # Tactics track, you still reset at the starting space (and do not
+    # advance for those extra troops)" [Bloodlines p. 12].
+    from dune_imperium.content.immortality.board import RESEARCH_START_ID
+    from dune_imperium.rules.combat import begin_combat_intrigue
+    from dune_imperium.rules.intrigue import (
+        apply_intrigue_choice,
+        apply_intrigue_play,
+        legal_intrigue_choice_actions,
+        legal_intrigue_play_actions,
+    )
+
+    card = "intrigue:gruesome_sacrifice:0"
+    chani = PlayerState(
+        player_id=0,
+        leader_id="chani",
+        has_revealed=True,
+        research_space=RESEARCH_START_ID,
+        tactics_track_space=9,
+        intrigue_cards=(card,),
+        troops_supply=9,
+        troops_garrison=0,
+        troops_conflict=3,
+        combat_strength=6,
+    )
+    state = GameState(
+        config=RulesetConfig(bloodlines=True, immortality=True),
+        seed=1,
+        phase=GamePhase.COMBAT,
+        round_number=1,
+        first_player=0,
+        current_conflict_ids=(CONFLICTS[0].card.card_id,),
+        intrigue_deck=intrigue_deck_instance_ids(False)[:3],
+        players=(
+            chani,
+            *(
+                PlayerState(
+                    player_id=seat, has_revealed=True, research_space=RESEARCH_START_ID
+                )
+                for seat in range(1, 4)
+            ),
+        ),
+    )
+    state = begin_combat_intrigue(state).state
+    play = next(
+        action
+        for action in legal_intrigue_play_actions(state, 0)
+        if dict(action.arguments).get("card_id") == card
+    )
+    played = apply_intrigue_play(state, play).state
+    for _ in range(2):
+        loss = next(
+            action
+            for action in legal_intrigue_choice_actions(played, 0)
+            if action.action_id == "lose_intrigue_troop"
+        )
+        played = apply_intrigue_choice(played, loss).state
+    seat = played.players[0]
+    assert seat.troops_conflict == 1
+    assert seat.tactics_track_space == 2  # not 3
+    assert seat.resources.water == 1 + 1
+
+
 def test_fedaykin_maneuver_retreats_any_number_or_draws_two_cards() -> None:
     # The paid half prints "2 Influence: [water] -> [two green card icons]";
     # the green card is the draw icon (assets/icons/draw.png), not a troop
@@ -419,6 +537,56 @@ def test_imperial_privilege_may_recall_the_into_the_fray_agent() -> None:
     assert result.state.players[0].combat_strength == 0
     assert engine.legal_actions(result.state, 0) == ()
 
+
+def test_two_into_the_fray_agents_recall_one_at_a_time_and_return_at_cleanup() -> None:
+    # A Servo-Receivers Signet can send a second "Agent you sent this turn"
+    # into the Conflict [Duncan Idaho card] (OQ-037(e)). Imperial Privilege
+    # recalls "one of your other Agents" [Board Guide p. 2] (OQ-037(d)), so
+    # one of the two leaves; the Combat cleanup returns every Agent still
+    # there.
+    from dune_imperium.rules.board_effects import (
+        apply_imperial_privilege_action,
+        legal_imperial_privilege_actions,
+    )
+    from dune_imperium.rules.combat import finish_combat
+
+    owner = PlayerState(
+        player_id=0,
+        leader_id="duncan_idaho",
+        hand=(DAGGER,),
+        deck=(RECON,),
+        resources=Resources(solari=3),
+        influence=Influence(emperor=2),
+        swordmaster_acquired=True,
+        agents_available=1,
+        agent_in_conflict=2,
+    )
+    state = _play(_turn_state(owner), DAGGER, "imperial_privilege")
+    assert units_strength(state.players[0]) == 3 + 3
+    decline = next(
+        action
+        for action in legal_imperial_privilege_actions(state, 0)
+        if action.action_id == "decline_imperial_privilege_intrigue"
+    )
+    declined = apply_imperial_privilege_action(state, decline).state
+    recall = next(
+        action
+        for action in legal_imperial_privilege_actions(declined, 0)
+        if action.action_id == "recall_conflict_agent_for_imperial_privilege"
+    )
+    seat = apply_imperial_privilege_action(declined, recall).state.players[0]
+    assert seat.agent_in_conflict == 1
+    assert seat.agents_available == 1
+    assert units_strength(seat) == 3
+
+    fighting = replace(
+        owner, has_revealed=True, hand=(), agents_available=1, combat_strength=6
+    )
+    cleaned = finish_combat(_cleanup_state(fighting)).state.players[0]
+    assert cleaned.agent_in_conflict == 0
+    assert cleaned.agents_available == 3
+
+
 # --- Gaius Helen Mohiam ------------------------------------------------------
 
 
@@ -591,19 +759,20 @@ def test_smuggle_spice_moves_bonus_spice_on_or_off_maker_spaces() -> None:
     owner = PlayerState(player_id=0, leader_id="esmar_tuek", hand=(SIGNET,))
     state = _play(_esmar_state(owner), SIGNET, "arrakeen")
     actions = legal_leader_signet_actions(state, 0)
+    # "Place 1 bonus spice on Tuek's Sietch. -OR- Take 1 bonus spice from a
+    # Maker board space." prints no "may" [Esmar Tuek card]: "Most effects
+    # from a board space or card you play are mandatory" [FAQ p. 3], so the
+    # Signet offers no refusal.
     assert [tuple(a.arguments) for a in actions] == [
-        (),
         (),
         (("space_id", "hagga_basin"),),
         (("space_id", "tuek_sietch"),),
     ]
-    assert [a.action_id for a in actions[:2]] == [
-        "decline_leader_signet_payment",
-        "place_leader_bonus_spice",
-    ]
-    placed = apply_leader_bonus_spice(state, actions[1]).state
+    assert actions[0].action_id == "place_leader_bonus_spice"
+    assert all(a.action_id != "decline_leader_signet_payment" for a in actions)
+    placed = apply_leader_bonus_spice(state, actions[0]).state
     assert dict(placed.maker_bonus_spice)["tuek_sietch"] == 2
-    taken = apply_leader_bonus_spice(state, actions[2]).state
+    taken = apply_leader_bonus_spice(state, actions[1]).state
     assert dict(taken.maker_bonus_spice)["hagga_basin"] == 1
     assert taken.players[0].resources.spice == 1
 

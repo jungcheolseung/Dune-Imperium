@@ -162,6 +162,81 @@ def test_hungry_for_spice_draws_once_per_turn() -> None:
     assert again.players[0].hand == (DAGGER,)
 
 
+def _with_spice(state: GameState, spice: int) -> GameState:
+    owner = state.players[0]
+    return replace(
+        state,
+        players=(
+            replace(owner, resources=replace(owner.resources, spice=spice)),
+            *state.players[1:],
+        ),
+    )
+
+
+def _opponent_turn(state: GameState) -> GameState:
+    return replace(
+        state,
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:1",
+                decision=PlayerDecision(owner=1, prompt="Choose a turn"),
+            ),
+        ),
+    )
+
+
+def test_hungry_for_spice_counts_only_y_rkoons_own_turn() -> None:
+    # "Whenever you gain [3 spice] or more in a single turn: [draw]"
+    # [Steersman Y'rkoon card]. Round phases are Round Start, Player Turns,
+    # Combat, Makers and Recall [Main p. 8]: Combat is nobody's turn, and an
+    # opponent's turn is not Y'rkoon's.
+    from dune_imperium.core.engine import RuleResult
+    from dune_imperium.rules.leader_abilities import grant_hungry_for_spice
+
+    owner = _steersman((), deck=(DAGGER, RECON), spice_at_turn_start=0)
+    own_turn = _turn_state(owner)
+
+    # Three spice from a Conflict reward during Combat: no draw.
+    combat = replace(_with_spice(own_turn, 3), phase=GamePhase.COMBAT)
+    combat = replace(combat, decision_stack=())
+    fed = grant_hungry_for_spice(RuleResult(state=combat), combat).state
+    assert fed.players[0].hand == ()
+
+    # One spice in his Reveal turn, two more once Combat has begun (the last
+    # Reveal and the Combat rewards in one transition): still no draw.
+    reveal = _with_spice(own_turn, 1)
+    fed = grant_hungry_for_spice(RuleResult(state=combat), reveal).state
+    assert fed.players[0].hand == ()
+
+    # Three spice during an opponent's turn: no draw.
+    theirs = _opponent_turn(own_turn)
+    fed = grant_hungry_for_spice(
+        RuleResult(state=_with_spice(theirs, 3)), theirs
+    ).state
+    assert fed.players[0].hand == ()
+
+    # Three spice gained by the step that closed his own turn still draws.
+    closed = _with_spice(_opponent_turn(own_turn), 3)
+    fed = grant_hungry_for_spice(RuleResult(state=closed), own_turn).state
+    assert fed.players[0].hand == (DAGGER,)
+
+
+def test_round_start_clears_the_hungry_for_spice_flag() -> None:
+    from dune_imperium.rules.phases import begin_round
+
+    owner = _steersman((), deck=(DAGGER, RECON), hungry_for_spice_granted_turn=True)
+    state = replace(
+        _turn_state(owner),
+        phase=GamePhase.ROUND_START,
+        decision_stack=(),
+        conflict_deck=(CONFLICTS[1].card.card_id,),
+        first_player=0,
+    )
+    started = begin_round(state).state
+    assert started.players[0].hungry_for_spice_granted_turn is False
+
+
 # --- Navigation cards ----------------------------------------------------------
 
 

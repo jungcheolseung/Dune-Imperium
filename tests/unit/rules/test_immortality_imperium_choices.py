@@ -614,6 +614,35 @@ def test_tleilaxu_surgeon_spends_specimens_and_sacrifices_troops() -> None:
     ] == [None, "garrison,conflict"]
 
 
+def test_tleilaxu_surgeon_advances_chanis_tactics_once() -> None:
+    # The two troops Tleilaxu Surgeon loses are one source: "Each different
+    # source of retreating or losing troops is handled separately" [FAQ
+    # p. 1], and passing the end of the track "still reset[s] at the
+    # starting space (and do[es] not advance for those extra troops)"
+    # [Bloodlines p. 12].
+    surgeon = _card("tleilaxu_surgeon")
+    chani = _owner(
+        (surgeon,),
+        leader_id="chani",
+        tactics_track_space=9,
+        troops_garrison=0,
+        troops_conflict=2,
+        troops_supply=10,
+    )
+    revealed = _reveal(
+        _state(chani, config=RulesetConfig(bloodlines=True, immortality=True))
+    )
+    sacrifice = next(
+        action
+        for action in legal_reveal_troop_sacrifice_actions(revealed, 0)
+        if dict(action.arguments).get("zones") == "conflict,conflict"
+    )
+    owner = apply_reveal_troop_sacrifice(revealed, sacrifice).state.players[0]
+    assert owner.troops_conflict == 0
+    assert owner.tactics_track_space == 2  # not 3
+    assert owner.resources.water == 2 + 1
+
+
 def test_the_codec_holds_the_slice_choices_only_with_immortality() -> None:
     codec = ActionCodec(IMMORTALITY)
     base = {template.action_id for template in ActionCodec(RulesetConfig()).catalog}

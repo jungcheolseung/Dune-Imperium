@@ -76,6 +76,10 @@ class FrameKind(StrEnum):
     # other Agent-turn effect is offered, because the effect frame is not on
     # top of the stack.
     LONG_LIVE_FIGHTERS = "long_live_fighters"
+    # Servo-Receivers' acquire effect: the Leader's Signet Ring ability used
+    # without the Signet Ring card, so outside its Agent box (appended last:
+    # the observation encodes the frame kind by its index).
+    LEADER_SIGNET = "leader_signet"
 
 
 def top_frame(state: GameState) -> DecisionFrame | None:

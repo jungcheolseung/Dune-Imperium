@@ -60,7 +60,10 @@ from dune_imperium.rules.influence import (
     influence_amount,
     lose_faction_influence,
 )
-from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
+from dune_imperium.rules.intrigue_deck import (
+    credit_suspensor_suits,
+    draw_or_queue_intrigue_cards,
+)
 from dune_imperium.rules.intrigue_triggers import expire_reveal_faceup_intrigue
 from dune_imperium.rules.planetologist import replace_sandworms, replaces_sandworms
 from dune_imperium.rules.shield_wall import current_conflict_is_shield_wall_protected
@@ -73,6 +76,7 @@ from dune_imperium.rules.spy_placement import (
     spied_factions,
 )
 from dune_imperium.rules.strength import units_strength
+from dune_imperium.rules.tactics import advance_tactics_token
 from dune_imperium.rules.unit_loss import lose_unit
 from dune_imperium.rules.units import retreat_units
 
@@ -1310,9 +1314,23 @@ def apply_reveal_troop_sacrifice(
     working = popped
     events: list[GameEvent] = []
     for index, zone in enumerate(zones):
-        lost = lose_unit(working, action.actor, zone, source=f"{source}:{index}")
+        lost = lose_unit(
+            working,
+            action.actor,
+            zone,
+            source=f"{source}:{index}",
+            advance_tactics=False,
+        )
         working = lost.state
         events.extend(lost.events)
+    # Tactician: "Each different source of retreating or losing troops is
+    # handled separately" [FAQ p. 1], so the two troops advance the token
+    # once, and a pass past the end still only resets it [Bloodlines p. 12].
+    tactician, tactics_events = advance_tactics_token(
+        working.players[action.actor], zones.count("conflict"), source=source
+    )
+    working = replace(working, players=replace_player(working.players, tactician))
+    events.extend(tactics_events)
     delta = working.players[action.actor].combat_strength - before
     if delta:
         working = replace(
@@ -1713,6 +1731,7 @@ def apply_reveal_spy_action(
                 next_owner,
                 intrigue_cards=(*next_owner.intrigue_cards, intrigue_deck[0]),
             )
+            next_owner = credit_suspensor_suits(state, next_owner, 1)
             intrigue_deck = intrigue_deck[1:]
             events.append(
                 GameEvent(
@@ -2621,7 +2640,7 @@ def _late_skill_bonuses(
         skill
         for skill in (skill_for_instance(instance) for instance in owner.skill_ids)
         if skill.skill_id not in granted
-        and (skill.reveal_persuasion or skill.reveal_spice or skill.reveal_water)
+        and (skill.reveal_persuasion or skill.reveal_spice or skill.reveal_troops)
     )
 
 
@@ -2686,12 +2705,16 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
         if skill.reveal_persuasion:
             frames = add_reveal_persuasion(frames, skill.reveal_persuasion)
         skill_resources = resource_gain_entry(
-            f"skill:{skill.skill_id}",
-            spice=skill.reveal_spice,
-            water=skill.reveal_water,
+            f"skill:{skill.skill_id}", spice=skill.reveal_spice
         )
         if skill_resources is not None:
             late_gains.append(skill_resources)
+        if skill.reveal_troops:
+            # Hardy: "Reveal Turn: [troop]" [Hardy Skill tile], waiting for
+            # the owner's order like the Reveal-start recruit (OQ-045).
+            late_gains.append(
+                ("troops", str(skill.reveal_troops), f"skill:{skill.skill_id}")
+            )
         events.append(
             GameEvent(
                 event_id=(
@@ -2704,7 +2727,7 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
                     ("player", player),
                     ("skill_id", skill.skill_id),
                     ("spice", skill.reveal_spice),
-                    ("water", skill.reveal_water),
+                    ("troops", skill.reveal_troops),
                 ),
             )
         )
@@ -3837,11 +3860,7 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
             for card_id, effect in reveal_effects
         ),
         *(
-            resource_gain_entry(
-                f"skill:{skill.skill_id}",
-                spice=skill.reveal_spice,
-                water=skill.reveal_water,
-            )
+            resource_gain_entry(f"skill:{skill.skill_id}", spice=skill.reveal_spice)
             for skill in active_skills
         ),
         resource_gain_entry(
@@ -3855,6 +3874,12 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
             if effect.recruit_troops
         ),
         *((("troops", "1", "tech:panopticon"),) if panopticon else ()),
+        # Hardy: "Reveal Turn: [troop]" [Hardy Skill tile] [Main p. 20].
+        *(
+            ("troops", str(skill.reveal_troops), f"skill:{skill.skill_id}")
+            for skill in active_skills
+            if skill.reveal_troops
+        ),
         *(
             ("intrigue", str(effect.draw_intrigue), card_id)
             for card_id, effect in reveal_effects
@@ -4035,11 +4060,11 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
                 ("player", action.actor),
                 ("skill_id", skill.skill_id),
                 ("spice", skill.reveal_spice),
-                ("water", skill.reveal_water),
+                ("troops", skill.reveal_troops),
             ),
         )
         for skill in active_skills
-        if skill.reveal_persuasion or skill.reveal_spice or skill.reveal_water
+        if skill.reveal_persuasion or skill.reveal_spice or skill.reveal_troops
     )
     return RuleResult(state=next_state, events=tuple(events))
 

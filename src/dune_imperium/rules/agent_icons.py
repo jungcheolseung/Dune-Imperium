@@ -94,6 +94,11 @@ def effective_agent_icons(
                 icons.append(BOARD_SPACES_BY_ID[condition.target].agent_icon)
             elif condition.kind is ContractConditionKind.HARVEST_SPICE:
                 icons.append(AgentIcon.SPICE_TRADE)
+    if owner.leader_id == "gaius_helen_mohiam":
+        # Clandestine: "Each card you play has the [Spy] icon" [Gaius Helen
+        # Mohiam card] -- after the icon condition, which cannot take it
+        # away, so Slig Farmer counts it with the other icons (OQ-055).
+        icons.append(AgentIcon.SPY)
     return tuple(dict.fromkeys(icons))
 
 

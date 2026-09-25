@@ -200,7 +200,9 @@ from dune_imperium.rules.leader_abilities import (
     grant_hungry_for_spice,
     grant_leader_reveal_passives,
     leader_signet_is_implemented,
+    legal_feyd_track_actions,
     legal_leader_reveal_actions,
+    legal_leader_signet_actions,
 )
 from dune_imperium.rules.leader_draft import (
     apply_leader_draft_pick,
@@ -475,6 +477,8 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     FrameKind.RESEARCH_BONUS: (legal_research_bonus_actions,),
     FrameKind.GRAFT_PARTNER: (legal_graft_partner_actions,),
     FrameKind.INTRIGUE_PEEK: (legal_intrigue_peek_actions,),
+    # Servo-Receivers: the Leader's Signet Ring ability outside its box.
+    FrameKind.LEADER_SIGNET: (legal_feyd_track_actions, legal_leader_signet_actions),
 }
 
 ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
@@ -767,7 +771,7 @@ class UprisingRulesEngine(RulesEngine):
         # so the automatic advance runs again after the passives.
         result = grant_late_reveal_effects(
             grant_leader_reveal_passives(
-                grant_hungry_for_spice(_advance_automatic(result))
+                grant_hungry_for_spice(_advance_automatic(result), state)
             )
         )
         result = skip_impossible_imperial_privilege_recall(
@@ -809,7 +813,7 @@ class UprisingRulesEngine(RulesEngine):
         # again after them.
         result = _advance_automatic(
             grant_late_reveal_effects(
-                grant_leader_reveal_passives(grant_hungry_for_spice(result))
+                grant_leader_reveal_passives(grant_hungry_for_spice(result, state))
             )
         )
         # A freely ordered recall may have removed Imperial Privilege's last

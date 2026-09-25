@@ -405,6 +405,8 @@ const EVENT_LABELS = {
   leader_influence_bonus_gained: "{leader} {influence_any} 보너스 획득",
   leader_signet_payment_declined: "지불 안 함",
   leader_signet_resolved: "{signet_ring} 효과 해결",
+  leader_signet_started: "{signet_ring} 능력 사용",
+  leader_signet_unavailable: "쓸 {signet_ring} 능력 없음",
   leader_signet_solari_paid: "{solari} 지불 ({signet_ring})",
   leader_signet_spice_paid: "{spice} 지불 ({signet_ring})",
   leader_signet_troops_recruited: "{troop} {recruit} ({signet_ring})",

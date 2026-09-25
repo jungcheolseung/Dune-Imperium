@@ -70,8 +70,8 @@ def skill_effect_text(skill: SkillDefinition) -> str:
         parts.append(f"Reveal Turn: +{skill.reveal_persuasion} Persuasion")
     if skill.reveal_spice:
         parts.append(f"Reveal Turn: Gain {skill.reveal_spice} spice")
-    if skill.reveal_water:
-        parts.append(f"Reveal Turn: Gain {skill.reveal_water} water")
+    if skill.reveal_troops:
+        parts.append(f"Reveal Turn: Recruit {skill.reveal_troops} troop")
     if skill.trash_for_strength:
         parts.append(f"Reveal Turn: Trash this → +{skill.trash_for_strength} swords")
     if skill.strength:
@@ -102,6 +102,8 @@ def tech_acquire_text(tile: TechTile) -> str:
         parts.append("To acquire this, trash one of your Spies from the board")
     if tile.acquire_may_destroy_shield_wall:
         parts.append("You may destroy the Shield Wall")
+    if tile.acquire_leader_signet:
+        parts.append("Use your Leader's Signet Ring ability")
     if tile.acquire_solari:
         parts.append(f"Gain {tile.acquire_solari} solari")
     if tile.acquire_troops:

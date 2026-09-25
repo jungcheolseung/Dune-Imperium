@@ -31,6 +31,8 @@ def test_every_skill_renders_a_non_empty_effect() -> None:
     )
     driven = skill_effect_text(SKILLS_BY_ID["driven"])
     assert driven.startswith("Reveal Turn: Gain")
+    # "Reveal Turn: [troop]" [Hardy Skill tile] [Main p. 20].
+    assert skill_effect_text(SKILLS_BY_ID["hardy"]) == "Reveal Turn: Recruit 1 troop"
 
 
 def test_acquire_text_is_empty_exactly_when_the_tile_has_no_acquire_effect() -> None:
@@ -52,3 +54,9 @@ def test_tech_text_goldens() -> None:
     assert tech_acquire_text(drones) == "Place 2 Spies with Deep Cover"
     assert tech_acquire_text(TECH_TILES_BY_ID["ornithopter_fleet"]) == "Gain 2 troops"
     assert tech_acquire_text(TECH_TILES_BY_ID["training_depot"]) == ""
+    # The Signet Ring icon, not the Shield Wall detonation [Servo-Receivers
+    # Tech tile] [Main p. 20].
+    assert (
+        tech_acquire_text(TECH_TILES_BY_ID["servo_receivers"])
+        == "Use your Leader's Signet Ring ability"
+    )

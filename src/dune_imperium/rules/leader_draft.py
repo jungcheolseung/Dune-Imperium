@@ -10,8 +10,6 @@ Leaders stay unused for the game.
 
 from dataclasses import replace
 
-from dune_imperium.content.uprising.leaders import LEADERS_BY_ID
-from dune_imperium.content.uprising.starting_cards import starting_card_for_instance
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import PlayerDecision
 from dune_imperium.core.engine import RuleResult
@@ -22,6 +20,7 @@ from dune_imperium.rules.frames import FrameKind, replace_player, top_frame_of_k
 from dune_imperium.rules.navigation import assign_navigation_deck
 from dune_imperium.rules.setup import (
     SARDAUKAR_CONTRACT_IDS,
+    apply_leader_setup,
     assign_twisted_deck,
     maker_bonus_spice_for,
 )
@@ -79,24 +78,9 @@ def apply_leader_draft_pick(state: GameState, action: DomainAction) -> RuleResul
         raise RuntimeError("the Leader draft requires a decided First Player")
     picker = action.actor
     leader_id = str(dict(action.arguments)["leader_id"])
-    definition = LEADERS_BY_ID[leader_id]
-    owner = state.players[picker]
-    picked_owner = replace(
-        owner,
-        leader_id=leader_id,
-        # Double-sided Leaders begin on their printed setup face
-        # [Main p. 17]; every other Leader's face is its identity.
-        leader_face_id=definition.setup_face_id or leader_id,
-        # Printed setup rules may remove starting cards (Staban Tuek's
-        # Limited Allies); filtering the already-shuffled deck keeps the
-        # remaining order uniformly random.
-        deck=tuple(
-            instance_id
-            for instance_id in owner.deck
-            if starting_card_for_instance(instance_id).card.card_id
-            not in definition.removed_starting_card_ids
-        ),
-    )
+    # The same printed setup as a fixed Leader: face, removed starting cards,
+    # Strange Form's water and Tactician's starting space.
+    picked_owner = apply_leader_setup(state.players[picker], leader_id)
     players = replace_player(state.players, picked_owner)
     events = [
         GameEvent(

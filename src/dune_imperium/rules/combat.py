@@ -36,6 +36,7 @@ from dune_imperium.rules.ornithopter import (
     match_all_battle_icons,
 )
 from dune_imperium.rules.spy_placement import recall_spy
+from dune_imperium.rules.tactics import advance_tactics_token
 
 
 class RewardRank(IntEnum):
@@ -1396,6 +1397,21 @@ def finish_combat(state: GameState) -> RuleResult:
         )
         for player in players
     )
+    # Tactician: "When resolving combat, troops that return to your supply
+    # are considered 'lost.' Each different source of retreating or losing
+    # troops is handled separately" [FAQ p. 1] -- the cleanup is one source,
+    # so the token advances once by the whole loss [Chani card].
+    advanced = [
+        advance_tactics_token(
+            player,
+            lost,
+            source=f"round:{state.round_number}:player:{player.player_id}:"
+            "combat_cleanup",
+        )
+        for player, lost in zip(players, losses, strict=True)
+    ]
+    players = tuple(player for player, _ in advanced)
+    events.extend(event for _, tactics_events in advanced for event in tactics_events)
     next_state = replace(
         state,
         phase=GamePhase.MAKERS,

@@ -456,6 +456,40 @@ def assign_twisted_deck(state: GameState) -> GameState:
     )
 
 
+def apply_leader_setup(player: PlayerState, leader_id: str) -> PlayerState:
+    """Seat ``leader_id`` with the setup its card prints.
+
+    Shared by the fixed Leader setup and the Leader draft's pick, so the two
+    paths apply the same printed setup rules.
+    """
+
+    definition = LEADERS_BY_ID[leader_id]
+    return replace(
+        player,
+        leader_id=leader_id,
+        # Double-sided Leaders begin on their printed setup face
+        # [Main p. 17]; every other Leader's face is its identity.
+        leader_face_id=definition.setup_face_id or leader_id,
+        # Printed setup rules may remove starting cards (Staban Tuek's
+        # Limited Allies, Y'rkoon's Strange Form); filtering keeps the order
+        # of an already-shuffled deck uniformly random.
+        deck=tuple(
+            instance_id
+            for instance_id in player.deck
+            if starting_card_for_instance(instance_id).card.card_id
+            not in definition.removed_starting_card_ids
+        ),
+        # Strange Form: "You start the game with no [water]" [Steersman
+        # Y'rkoon card].
+        resources=replace(player.resources, water=definition.starting_water),
+        # Tactician: the Tactics token starts on the four-player space
+        # [Bloodlines p. 12].
+        tactics_track_space=(
+            TACTICS_TRACK_START if definition.uses_tactics_track else 0
+        ),
+    )
+
+
 def create_initial_state(
     config: RulesetConfig,
     seed: int,
@@ -483,34 +517,9 @@ def create_initial_state(
         create_unshuffled_players(immortality=config.immortality),
         resolver.resolve(objective_setup_decision()),
     )
+    # The shuffle decision below then covers the reduced decks.
     players = tuple(
-        replace(
-            player,
-            leader_id=leader_id,
-            # Double-sided Leaders begin on their printed setup face
-            # [Main p. 17]; every other Leader's face is its identity.
-            leader_face_id=(LEADERS_BY_ID[leader_id].setup_face_id or leader_id),
-            # Printed setup rules may remove starting cards (Staban Tuek's
-            # Limited Allies); the shuffle decision below then covers the
-            # reduced deck.
-            deck=tuple(
-                instance_id
-                for instance_id in player.deck
-                if starting_card_for_instance(instance_id).card.card_id
-                not in LEADERS_BY_ID[leader_id].removed_starting_card_ids
-            ),
-            # Strange Form: Steersman Y'rkoon starts with no water.
-            resources=replace(
-                player.resources, water=LEADERS_BY_ID[leader_id].starting_water
-            ),
-            # Tactician: the Tactics token starts on the four-player space
-            # [Bloodlines p. 12].
-            tactics_track_space=(
-                TACTICS_TRACK_START
-                if LEADERS_BY_ID[leader_id].uses_tactics_track
-                else 0
-            ),
-        )
+        apply_leader_setup(player, leader_id)
         for player, leader_id in zip(players, leader_ids, strict=True)
     )
 

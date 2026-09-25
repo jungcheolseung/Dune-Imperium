@@ -11,6 +11,7 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.effects import recruit_shortfall_events, recruit_troops
 from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.intrigue_deck import credit_suspensor_suits
 
 
 def trash_personal_card(
@@ -145,9 +146,13 @@ def trash_personal_card(
     if _trash_effect(card_id) is PersonalCardTrashEffect.DRAW_INTRIGUE_CARD:
         draw_source = f"{source}:trash:{card_id}:intrigue_draw"
         if intrigue_deck:
-            next_owner = replace(
-                next_owner,
-                intrigue_cards=(*next_owner.intrigue_cards, intrigue_deck[0]),
+            next_owner = credit_suspensor_suits(
+                state,
+                replace(
+                    next_owner,
+                    intrigue_cards=(*next_owner.intrigue_cards, intrigue_deck[0]),
+                ),
+                1,
             )
             intrigue_deck = intrigue_deck[1:]
             events.append(

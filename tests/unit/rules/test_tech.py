@@ -42,12 +42,14 @@ from dune_imperium.rules.board_effects import (
     resolve_board_effect,
 )
 from dune_imperium.rules.engine import UprisingRulesEngine
+from dune_imperium.rules.leader_abilities import IMPLEMENTED_ABILITY_LEADER_IDS
 from dune_imperium.rules.optional_trash import legal_optional_trash_actions
 from dune_imperium.rules.setup import create_draft_initial_state, create_initial_state
 from dune_imperium.rules.spy_moves import (
     apply_spy_placement,
     legal_spy_placement_actions,
 )
+from dune_imperium.rules.strength import units_strength
 from dune_imperium.rules.tech import (
     apply_tech_acquisition,
     legal_tech_acquisition_actions,
@@ -249,6 +251,58 @@ def test_a_non_landsraad_visit_offers_no_tile() -> None:
     assert legal_tech_acquisition_actions(state, 0) == ()
 
 
+@pytest.mark.parametrize(
+    ("space_id", "printed_key"),
+    [
+        ("high_council", "high_council"),
+        ("imperial_privilege", "imperial_privilege"),
+        ("swordmaster", "swordmaster"),
+    ],
+)
+def test_every_landsraad_visit_offers_acquire_tech(
+    space_id: str, printed_key: str
+) -> None:
+    # "The Ixian Embassy board gives you this option each time you send an
+    # Agent to a [Landsraad] board space" [Bloodlines p. 12]; the spaces
+    # whose printed effect is one special key (a first High Council seat,
+    # Imperial Privilege's sentences, the Swordmaster) are Landsraad spaces
+    # too.
+    owner = _owner(
+        resources=Resources(solari=10, spice=6, water=2),
+        influence=Influence(emperor=2),
+    )
+    placed = apply_agent_action(
+        _turn_state(owner),
+        next(
+            action
+            for action in legal_agent_actions(_turn_state(owner), 0)
+            if dict(action.arguments)["space_id"] == space_id
+        ),
+    ).state
+    icons = dict(placed.decision_stack[-1].context)["pending_board_icons"]
+    assert icons == f"{printed_key},tech"
+    offered = _tech_actions(placed)
+    assert "decline_tech" in offered
+    assert "glowglobes:faction=fremen" in offered
+
+
+def test_a_first_high_council_visit_buys_tech_at_the_new_seat_discount() -> None:
+    # "It's Brennen's Agent turn, and he sends an Agent to High Council ...
+    # He places his Councilor token on a Council seat. High Council is a
+    # [Landsraad] board space, so Brennen can use the Ixian Embassy to
+    # acquire a Tech tile. Because he now has a High Council seat, the Tech
+    # tile costs him 1 less Spice. He pays 1 spice to acquire Glowglobes"
+    # [Bloodlines p. 7].
+    owner = _owner(resources=Resources(solari=5, spice=1, water=2))
+    state = _visit(_turn_state(owner), "high_council")
+    assert state.players[0].high_council
+    bought = _acquire(state, "glowglobes:faction=fremen")
+    seat = bought.players[0]
+    assert seat.tech_ids == ("glowglobes",)
+    assert seat.resources.spice == 0
+    assert seat.influence.fremen == 1
+
+
 def test_acquiring_pays_spice_reveals_the_next_tile_and_pays_the_acquire_effect() -> (
     None
 ):
@@ -345,13 +399,220 @@ def test_forbidden_weapons_recruits_a_deployable_troop_and_may_drop_the_wall() -
 
 
 def test_without_the_wall_the_detonation_variant_disappears() -> None:
+    # Forbidden Weapons prints the Shield Wall detonation icon; Servo-
+    # Receivers (which this test used before) prints the Signet Ring icon
+    # instead [Servo-Receivers Tech tile].
     state = _visit(
         _turn_state(
-            _owner(), stacks=(("servo_receivers",), (), ()), shield_wall_present=False
+            _owner(), stacks=(("forbidden_weapons",), (), ()), shield_wall_present=False
         ),
         "assembly_hall",
     )
+    assert set(_tech_actions(state)) == {"decline_tech", "forbidden_weapons"}
+
+
+# --- Servo-Receivers: the Signet Ring icon ------------------------------------
+#
+# The acquire box prints the brown-gold Signet Ring icon: "you use the
+# Signet Ring ability (with the corresponding icon) on your Leader"
+# [Main p. 20] [Servo-Receivers Tech tile]. It is not the Shield Wall
+# detonation icon Forbidden Weapons prints.
+
+SERVO_STACKS = (("servo_receivers",), (), ())
+
+
+def _decider(state: GameState) -> int:
+    decision = state.decision_stack[-1].decision
+    assert isinstance(decision, PlayerDecision)
+    return decision.owner
+
+
+def _servo_visit(leader_id: str, **overrides: object) -> GameState:
+    return _visit(
+        _turn_state(_owner(leader_id=leader_id, **overrides), stacks=SERVO_STACKS),
+        "assembly_hall",
+    )
+
+
+def test_servo_receivers_uses_the_leaders_signet_ring_ability() -> None:
+    state = _servo_visit("gurney_halleck")
+    # No Shield Wall variant, though the wall stands.
+    assert state.shield_wall_present
     assert set(_tech_actions(state)) == {"decline_tech", "servo_receivers"}
+    result = apply_tech_acquisition(state, _tech_actions(state)["servo_receivers"])
+    seat = result.state.players[0]
+    # Warmaster: recruit one troop [Gurney Halleck card].
+    assert seat.troops_garrison == state.players[0].troops_garrison + 1
+    assert result.state.shield_wall_present
+    assert [event.kind for event in result.events][-2:] == [
+        "leader_signet_started",
+        "leader_signet_resolved",
+    ]
+    # Nothing else was pending at Assembly Hall: the turn moved on.
+    assert result.state.decision_stack[-1].kind == "turn"
+    assert _decider(result.state) == 1
+
+    drawn = apply_tech_acquisition(
+        _servo_visit("muad_dib"), _tech_actions(state)["servo_receivers"]
+    ).state
+    # Lead the Way: draw one card [Muad'Dib card].
+    assert len(drawn.players[0].hand) == len(state.players[0].hand) + 1
+
+
+def test_servo_receivers_opens_a_signet_choice_frame() -> None:
+    engine = UprisingRulesEngine()
+    state = _servo_visit("princess_irulan")
+    opened = engine.apply(state, _tech_actions(state)["servo_receivers"]).state
+    frame = opened.decision_stack[-1]
+    assert frame.kind == "leader_signet"
+    offered = {action.action_id for action in engine.legal_actions(opened, 0)}
+    # Chronicler's Insight: acquire a one-cost card, trash a hand card, or
+    # neither [Princess Irulan card]; the turn waits for the choice.
+    assert offered == {"decline_leader_signet_payment", "trash_leader_card"}
+    trash = next(
+        action
+        for action in engine.legal_actions(opened, 0)
+        if action.action_id == "trash_leader_card"
+    )
+    done = engine.apply(opened, trash).state
+    assert dict(trash.arguments)["card_id"] in done.players[0].trashed
+    assert all(frame.kind != "leader_signet" for frame in done.decision_stack)
+    assert _decider(done) == 1
+
+
+def test_servo_receivers_signet_reads_the_agent_turns_space() -> None:
+    # Judge of the Change: "If you sent an Agent this turn to... [Landsraad]:
+    # [Emperor] 2 Influence: [water]" [Liet Kynes card].
+    liet = _servo_visit("liet_kynes", influence=Influence(emperor=2))
+    bought = apply_tech_acquisition(liet, _tech_actions(liet)["servo_receivers"])
+    assert bought.state.players[0].resources.water == 2 + 1
+
+
+def test_servo_receivers_lets_duncan_send_a_second_agent_into_the_fray() -> None:
+    # Into the Fray: "You may take the Agent you sent this turn and deploy
+    # it to the Conflict as a 2 strength unit that can't be retreated"
+    # [Duncan Idaho card]. Servo-Receivers uses that ability again on a
+    # later Agent turn [Main p. 20] [Servo-Receivers Tech tile], and the
+    # Agent sent on that turn is a different one: it joins the first
+    # (OQ-037(e)). Before, the engine kept the one-Agent counter at 1 and
+    # lost this Agent (checked sweep: bloodlines+tech+draft seed 1003).
+    engine = UprisingRulesEngine()
+    state = _servo_visit("duncan_idaho", agent_in_conflict=1, agents_available=1)
+    opened = engine.apply(state, _tech_actions(state)["servo_receivers"]).state
+    assert opened.decision_stack[-1].kind == "leader_signet"
+    deploy = next(
+        action
+        for action in engine.legal_actions(opened, 0)
+        if action.action_id == "deploy_leader_agent"
+    )
+    fighting = engine.apply(opened, deploy).state
+    seat = fighting.players[0]
+    assert seat.agent_in_conflict == 2
+    assert seat.agent_locations == ()
+    assert seat.agents_available == 0
+    assert seat.units_in_conflict == 2
+    assert units_strength(seat) == 2 + 2
+    assert all(frame.kind != "leader_signet" for frame in fighting.decision_stack)
+
+
+def test_steersman_y_rkoon_has_no_signet_ring_ability_to_use() -> None:
+    # Plot Course sits where a Signet Ring ability would be but prints none
+    # [Steersman Y'rkoon card] (OQ-062).
+    state = _servo_visit("steersman_y_rkoon")
+    result = apply_tech_acquisition(state, _tech_actions(state)["servo_receivers"])
+    assert "servo_receivers" in result.state.players[0].tech_ids
+    assert result.events[-1].kind == "leader_signet_unavailable"
+    assert _decider(result.state) == 1
+
+
+def test_servo_receivers_signet_outside_an_agent_turn() -> None:
+    # A card-granted Acquire Tech in the Reveal turn (Rapid Engineering) or
+    # in Combat (Battlefield Research) uses the ability with no Agent sent
+    # this turn (OQ-062): Warmaster's troop joins the Reveal's recruits.
+    owner = _owner(leader_id="gurney_halleck")
+    state = _turn_state(owner, stacks=SERVO_STACKS)
+    revealed = _reveal(state).state
+    opened = push_tech_acquisition(revealed, 0, discount=1, source="test").state
+    bought = apply_tech_acquisition(
+        opened, _tech_actions(opened)["servo_receivers"]
+    ).state
+    assert bought.decision_stack[-1].kind == "reveal"
+    assert bought.players[0].troops_garrison == owner.troops_garrison + 1
+    assert dict(bought.decision_stack[-1].context)["reveal_troops_recruited"] == 1
+
+    liet = _turn_state(
+        _owner(leader_id="liet_kynes", influence=Influence(emperor=2)),
+        stacks=SERVO_STACKS,
+    )
+    liet_opened = push_tech_acquisition(
+        _reveal(liet).state, 0, discount=1, source="t"
+    ).state
+    liet_bought = apply_tech_acquisition(
+        liet_opened, _tech_actions(liet_opened)["servo_receivers"]
+    ).state
+    assert liet_bought.players[0].resources.water == 2
+
+
+_SERVO_SPY_SETUPS: dict[str, dict[str, object]] = {
+    "spies_in_supply": {"spies_supply": 3},
+    # Every Spy already out: the Spy-placing Signets (Feyd, Fenring, Staban,
+    # Margot) must resolve through their recall-first or no-Spy branches.
+    "spies_on_posts": {
+        "spies_supply": 0,
+        "spy_post_ids": (
+            "arrakis-deep-desert",
+            "fremen-desert-tactics-fremkit",
+            "emperor-sardaukar-dutiful-service",
+        ),
+    },
+}
+
+
+@pytest.mark.parametrize("spies", sorted(_SERVO_SPY_SETUPS))
+@pytest.mark.parametrize("host", ["landsraad", "reveal"])
+@pytest.mark.parametrize("leader_id", sorted(IMPLEMENTED_ABILITY_LEADER_IDS))
+def test_every_servo_receivers_signet_choice_closes_its_own_frame(
+    leader_id: str, host: str, spies: str
+) -> None:
+    # Servo-Receivers uses the Leader's Signet Ring ability [Main p. 20]
+    # [Servo-Receivers Tech tile] in its own leader_signet frame (OQ-062).
+    # Every choice path must close that frame and hand control back to the
+    # host: the next seat's turn after the Landsraad visit, or the owner's
+    # open Reveal turn. A Signet handler that writes through the Agent box
+    # (advance_after_effect / current_agent_effect_context) instead of
+    # _store_signet / _signet_context breaks this (merge guard for Signet
+    # handler changes on other branches).
+    engine = UprisingRulesEngine()
+    codec = ActionCodec(TECH)
+    owner = _owner(
+        leader_id=leader_id,
+        influence=Influence(emperor=2, fremen=2),
+        troops_conflict=2,
+        troops_supply=7,
+        **_SERVO_SPY_SETUPS[spies],
+    )
+    if host == "landsraad":
+        state = _visit(_turn_state(owner, stacks=SERVO_STACKS), "assembly_hall")
+        expected = ("turn", 1)
+    else:
+        revealed = _reveal(_turn_state(owner, stacks=SERVO_STACKS)).state
+        state = push_tech_acquisition(revealed, 0, discount=1, source="t").state
+        expected = ("reveal", 0)
+    pending = [engine.apply(state, _tech_actions(state)["servo_receivers"]).state]
+    leaves = 0
+    while pending:
+        current = pending.pop()
+        if all(frame.kind != "leader_signet" for frame in current.decision_stack):
+            leaves += 1
+            assert (current.decision_stack[-1].kind, _decider(current)) == expected
+            continue
+        actions = engine.legal_actions(current, _decider(current))
+        assert actions, "a leader_signet frame must offer a choice"
+        for action in actions:
+            assert codec.decode(codec.encode(action), action.actor) == action
+            pending.append(engine.apply(current, action).state)
+        assert leaves + len(pending) < 400, "Signet choices must terminate"
+    assert leaves >= 1
 
 
 @pytest.mark.parametrize(
@@ -796,6 +1057,126 @@ def test_suspensor_suits_deploys_a_troop_per_intrigue_gained_in_the_owners_turn(
     )
     quiet = draw_intrigue_cards(other, 1, 1, source="test")
     assert quiet.state.players[1].suspensor_owed == 0
+
+
+def _owed_and_deployed(state: GameState, player: int = 0) -> tuple[int, int]:
+    from dune_imperium.rules.tech import deploy_suspensor_troops
+
+    owed = state.players[player].suspensor_owed
+    deployed = deploy_suspensor_troops(RuleResult(state=state)).state
+    return owed, deployed.players[player].troops_conflict
+
+
+def test_suspensor_suits_counts_every_direct_intrigue_draw_in_the_turn() -> None:
+    # "For each Intrigue card you draw or steal during your turn: [troop]
+    # Deploy it to the Conflict" [Suspensor Suits Tech tile]; the face limits
+    # only the turn (OQ-042 (a)), not which effect draws. Draws that took a
+    # card straight off the Intrigue deck skipped the troop.
+    from dune_imperium.content.uprising.board import Faction
+    from dune_imperium.rules.acquisition import acquire_imperium_for_intrigue
+    from dune_imperium.rules.card_trash import trash_personal_card
+    from dune_imperium.rules.influence import gain_faction_influence
+    from dune_imperium.rules.reveal_turn import (
+        apply_reveal_spy_action,
+        legal_reveal_spy_actions,
+    )
+
+    stacks: tuple[tuple[str, ...], ...] = ((), (), ())
+    # The Bene Gesserit track's Influence 4 bonus [Main p. 7].
+    bene_gesserit = _turn_state(
+        _tech_owner("suspensor_suits", influence=Influence(bene_gesserit=3)),
+        stacks=stacks,
+    )
+    gained = gain_faction_influence(
+        bene_gesserit, 0, Faction.BENE_GESSERIT, 1, event_prefix="test"
+    ).state
+    assert len(gained.players[0].intrigue_cards) == 1
+    assert _owed_and_deployed(gained) == (1, 1)
+
+    # Imperial Birthright on reaching two Emperor Influence [Princess
+    # Irulan card].
+    irulan = _turn_state(
+        _tech_owner(
+            "suspensor_suits",
+            leader_id="princess_irulan",
+            influence=Influence(emperor=1),
+        ),
+        stacks=stacks,
+    )
+    gained = gain_faction_influence(
+        irulan, 0, Faction.EMPEROR, 1, event_prefix="test"
+    ).state
+    assert _owed_and_deployed(gained) == (1, 1)
+
+    # Sardaukar Soldier: "When this card is trashed: [Intrigue]".
+    soldier = "imperium:sardaukar_soldier:0"
+    trashing = _turn_state(
+        _tech_owner("suspensor_suits", hand=(*_owner().hand, soldier)),
+        stacks=stacks,
+    )
+    trashed = trash_personal_card(trashing, 0, soldier, source="test").state
+    assert _owed_and_deployed(trashed) == (1, 1)
+
+    # Overthrow's acquire box draws an Intrigue card.
+    overthrow = "imperium:overthrow:0"
+    acquiring = _turn_state(
+        _tech_owner("suspensor_suits"),
+        stacks=stacks,
+        imperium_row=(overthrow,),
+        imperium_deck=(),
+    )
+    acquired = acquire_imperium_for_intrigue(
+        acquiring, 0, overthrow, to_hand=False, source="test"
+    ).result.state
+    assert _owed_and_deployed(acquired) == (1, 1)
+
+    # Spy Network's Reveal: recall one of two placed Spies to draw.
+    network = "imperium:spy_network:0"
+    revealing = _turn_state(
+        _tech_owner(
+            "suspensor_suits",
+            hand=(network,),
+            deck=_owner().hand + _owner().deck,
+            spies_supply=1,
+            spy_post_ids=(LANDSRAAD_POST, SIETCH_POST),
+        ),
+        stacks=stacks,
+    )
+    revealed = _reveal(revealing).state
+    recall = next(
+        action
+        for action in legal_reveal_spy_actions(revealed, 0)
+        if action.action_id == "recall_spy_for_reveal"
+    )
+    drew = apply_reveal_spy_action(revealed, recall).state
+    assert len(drew.players[0].intrigue_cards) == 1
+    assert drew.players[0].suspensor_owed == 1
+
+
+def test_suspensor_suits_ignores_direct_draws_outside_the_owners_turn() -> None:
+    # OQ-042 (a): only the owner's own Agent or Reveal turn counts; the Bene
+    # Gesserit bonus reached on another seat's turn owes nothing.
+    from dune_imperium.content.uprising.board import Faction
+    from dune_imperium.rules.influence import gain_faction_influence
+
+    state = _turn_state(_owner(), stacks=((), (), ()))
+    others = replace(
+        state,
+        players=(
+            state.players[0],
+            replace(
+                state.players[1],
+                tech_ids=("suspensor_suits",),
+                influence=Influence(bene_gesserit=3),
+            ),
+            *state.players[2:],
+        ),
+    )
+    gained = gain_faction_influence(
+        others, 1, Faction.BENE_GESSERIT, 1, event_prefix="test"
+    ).state
+    assert len(gained.players[1].intrigue_cards) == 1
+    assert gained.players[1].suspensor_owed == 0
 
 
 def test_flip_tiles_are_offered_once_per_round_and_return_at_round_start() -> None:

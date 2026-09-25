@@ -16,6 +16,7 @@ from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
+from dune_imperium.content.uprising.types import AgentIcon
 from dune_imperium.core import (
     DecisionFrame,
     DomainAction,
@@ -263,6 +264,49 @@ def test_slig_farmer_pays_per_partner_icon_and_may_buy_a_track_step() -> None:
     )
     resolved = resolve_agent_card_effect(borrowed)
     assert resolved.state.players[0].resources.solari == 7
+
+
+def test_slig_farmer_counts_mohiams_clandestine_spy_icon() -> None:
+    # Clandestine: "Each card you play has the [Spy] icon" [Gaius Helen
+    # Mohiam card]; Slig Farmer counts every Agent icon the other grafted
+    # card has at that moment (OQ-055), so the Dagger's Landsraad icon and
+    # the Spy make two.
+    farmer = _tleilaxu("slig_farmer")
+    both = RulesetConfig(bloodlines=True, immortality=True, promo_cards=True)
+    mohiam = _graft(
+        _state(
+            _owner(
+                (farmer, DAGGER),
+                leader_id="gaius_helen_mohiam",
+                resources=Resources(solari=0),
+            ),
+            config=both,
+        ),
+        farmer,
+        "assembly_hall",
+        DAGGER,
+    )
+    assert personal_card_for_instance(DAGGER).agent_icons == (AgentIcon.LANDSRAAD,)
+    resolved = resolve_agent_card_effect(mohiam)
+    assert resolved.state.players[0].resources.solari == 2
+
+    # With three Solari the five-Solari Tleilaxu payment opens (3 + 2).
+    richer = _graft(
+        _state(
+            _owner(
+                (farmer, DAGGER),
+                leader_id="gaius_helen_mohiam",
+                resources=Resources(solari=3),
+            ),
+            config=both,
+        ),
+        farmer,
+        "assembly_hall",
+        DAGGER,
+    )
+    assert "pay_agent_card_five_solari_for_tleilaxu" in {
+        action.action_id for action in legal_agent_card_payment_actions(richer, 0)
+    }
 
 
 def test_stitched_horror_pays_two_distinct_rewards() -> None:

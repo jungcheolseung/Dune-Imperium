@@ -131,6 +131,7 @@ from dune_imperium.rules.spy_placement import (
     solo_occupied_post_ids,
 )
 from dune_imperium.rules.strength import reveal_in_progress
+from dune_imperium.rules.tactics import advance_tactics_token
 from dune_imperium.rules.tech import push_tech_acquisition
 from dune_imperium.rules.tleilaxu_row import acquire_tleilaxu_card
 from dune_imperium.rules.unit_loss import lose_unit
@@ -1216,6 +1217,7 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
                 zone,
                 commander=arguments.get("commanders") == 1,
                 source=step_source,
+                advance_tactics=False,
             )
             if zone == "conflict":
                 result = RuleResult(
@@ -1228,6 +1230,9 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
                     events=result.events,
                 )
                 result = _follow_reveal_strength(state, result, player)
+            result = _lose_troops_tactics(
+                result, context, player, slot_index, zone, source=step_source
+            )
         case GiveIntrigueToOpponent(bonus_spice_if_not_twisted=bonus):
             result = _give_intrigue_card(
                 state,
@@ -1299,6 +1304,45 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
     return RuleResult(
         state=_restack(finished.state, pushed),
         events=(*result.events, *finished.events),
+    )
+
+
+def _lose_troops_tactics(
+    result: RuleResult,
+    context: dict[str, ActionValue],
+    player: int,
+    slot_index: int,
+    zone: str,
+    *,
+    source: str,
+) -> RuleResult:
+    """Advance Chani's Tactics token once for one "lose N troops" cost.
+
+    The cost is paid one troop per slot, but it is one source: "Each
+    different source of retreating or losing troops is handled separately"
+    [FAQ p. 1], and "If you lose or retreat enough troops that you would
+    pass the end of the Tactics track, you still reset at the starting
+    space (and do not advance for those extra troops)" [Bloodlines p. 12].
+    The Conflict losses are counted in the frame context and the token
+    moves once, on the cost's last slot.
+    """
+
+    lost = int(zone == "conflict")
+    if "tactics_lost" in context:
+        lost += context_int(context, "tactics_lost", owner=_CHOICE_FRAME)
+    slots = _slots(context)
+    if slot_index + 1 < len(slots) and slots[slot_index + 1] is slots[slot_index]:
+        context["tactics_lost"] = lost
+        return result
+    context.pop("tactics_lost", None)
+    tactician, events = advance_tactics_token(
+        result.state.players[player], lost, source=source
+    )
+    return RuleResult(
+        state=replace(
+            result.state, players=replace_player(result.state.players, tactician)
+        ),
+        events=(*result.events, *events),
     )
 
 

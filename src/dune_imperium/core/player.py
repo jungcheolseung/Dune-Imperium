@@ -285,7 +285,10 @@ class PlayerState:
             != active_agents
         ):
             raise ValueError("available and placed agents must equal active agents")
-        if self.agent_in_conflict not in (0, 1) or self.tactics_track_space < 0:
+        # Into the Fray may send more than one Agent into the Conflict in a
+        # round when Servo-Receivers grants a second Signet use (OQ-037(e));
+        # the agent total above bounds the count.
+        if self.agent_in_conflict < 0 or self.tactics_track_space < 0:
             raise ValueError("Leader token positions must be non-negative")
         if len(self.agent_locations) != len(set(self.agent_locations)):
             raise ValueError("a player cannot place two agents in one space")
