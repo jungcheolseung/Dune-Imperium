@@ -154,9 +154,9 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.GAIN_TWO_SOLARI: "Gain 2 solari",
         PersonalCardAgentEffect.GAIN_ONE_SPICE: "Gain 1 spice",
         PersonalCardAgentEffect.PLACE_SPY: "Place a Spy",
-        PersonalCardAgentEffect.PLACE_SPY_ALLOW_SHARED_IF_SPYING_ON_VISITED_SPACE: (
-            "Place a Spy (may share a post with an opponent's Spy if you are "
-            "spying on the visited space)"
+        PersonalCardAgentEffect.PLACE_SPY_ON_VISITED_SPACE_MAY_SHARE: (
+            "Place a Spy on a post connected to the space you sent an Agent to "
+            "this turn (may share a post with another player's Spy)"
         ),
         PersonalCardAgentEffect.RECRUIT_THREE_IF_SPY_RECALLED_THIS_TURN: (
             "If you recalled a Spy this turn: Recruit 3 troops"

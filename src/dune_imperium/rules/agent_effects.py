@@ -1118,16 +1118,19 @@ def legal_agent_card_spy_actions(
         return ()
     if context.get("pending_agent_effect") is not True:
         return ()
-    _, source_card_id, _ = _effect_subject(context)
+    _, source_card_id, visited_space_id = _effect_subject(context)
     source_card = active_agent_card(context)
     deep_cover = (
         source_card.agent_effect
         is PersonalCardAgentEffect.MAY_DISCARD_FOR_DEEP_COVER_SPY
         and context.get("agent_card_spy_pending") is True
     )
-    if not deep_cover and source_card.agent_effect not in (
-        PersonalCardAgentEffect.PLACE_SPY,
-        PersonalCardAgentEffect.PLACE_SPY_ALLOW_SHARED_IF_SPYING_ON_VISITED_SPACE,
+    double_agent = (
+        source_card.agent_effect
+        is PersonalCardAgentEffect.PLACE_SPY_ON_VISITED_SPACE_MAY_SHARE
+    )
+    if not deep_cover and not double_agent and (
+        source_card.agent_effect is not PersonalCardAgentEffect.PLACE_SPY
     ):
         return ()
 
@@ -1146,25 +1149,23 @@ def legal_agent_card_spy_actions(
             for post in OBSERVATION_POSTS
             if post.post_id not in owner.spy_post_ids
         )
-    if (
-        source_card.agent_effect
-        is PersonalCardAgentEffect.PLACE_SPY_ALLOW_SHARED_IF_SPYING_ON_VISITED_SPACE
-        and _owner_is_spying_on_visited_space(state, player, context)
-    ):
-        opponent_posts = {
-            post_id
-            for candidate in state.players
-            if candidate.player_id != player
-            for post_id in candidate.spy_post_ids
-        }
+    if double_agent:
+        # Double Agent: "[Spy] spying on the board space you sent an Agent to
+        # this turn. You may place this Spy on the same observation post as
+        # another player's Spy." [Double Agent card] -- a placement limit in
+        # the "[Spy] on [icon]" sense ("the observation post must connect to
+        # a ... board space" [Main p. 20]) whose post may already hold
+        # another player's Spy, never the owner's own.
+        allowed_post_ids = frozenset(
+            post.post_id
+            for post in OBSERVATION_POSTS
+            if visited_space_id in post.connected_space_ids
+        )
         placements = tuple(
             post.post_id
             for post in OBSERVATION_POSTS
-            if post.post_id not in owner.spy_post_ids
-            and (
-                post.post_id in opponent_posts
-                or post.post_id in placements
-            )
+            if post.post_id in allowed_post_ids
+            and post.post_id not in owner.spy_post_ids
         )
     # Placement needs a Spy in supply right now [Main pp. 11, 20]; a recall
     # made earlier this turn may already have been consumed by another effect
@@ -4037,7 +4038,7 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             event_kind = "agent_card_effect_unavailable"
     elif effect in (
         PersonalCardAgentEffect.PLACE_SPY,
-        PersonalCardAgentEffect.PLACE_SPY_ALLOW_SHARED_IF_SPYING_ON_VISITED_SPACE,
+        PersonalCardAgentEffect.PLACE_SPY_ON_VISITED_SPACE_MAY_SHARE,
     ):
         if legal_agent_card_spy_actions(state, player):
             raise RuntimeError("place-Spy Agent effect requires a player choice")
@@ -4346,19 +4347,3 @@ def _effect_subject(context: dict[str, bool | int | str]) -> tuple[int, str, str
     ):
         raise RuntimeError("Agent-turn effect frame has invalid subject")
     return player, card_id, space_id
-
-
-
-def _owner_is_spying_on_visited_space(
-    state: GameState,
-    player: int,
-    context: dict[str, ActionValue],
-) -> bool:
-    space_id = context.get("space_id")
-    if not isinstance(space_id, str):
-        raise RuntimeError("Agent-turn effect frame has invalid space")
-    occupied = frozenset(state.players[player].spy_post_ids)
-    return any(
-        space_id in post.connected_space_ids and post.post_id in occupied
-        for post in OBSERVATION_POSTS
-    )

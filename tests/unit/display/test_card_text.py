@@ -51,6 +51,18 @@ def test_reliable_informant_lists_its_spy_target_factions() -> None:
     ]
 
 
+def test_double_agent_spy_is_limited_to_the_visited_space() -> None:
+    # "[Spy] spying on the board space you sent an Agent to this turn. You
+    # may place this Spy on the same observation post as another player's
+    # Spy." [Double Agent card]
+    entry = IMPERIUM_CARDS_BY_ID["double_agent"]
+
+    assert personal_card_text(entry)[0] == (
+        "Agent: Place a Spy on a post connected to the space you sent an Agent "
+        "to this turn (may share a post with another player's Spy)"
+    )
+
+
 def test_sardaukar_soldier_trash_trigger_only() -> None:
     entry = IMPERIUM_CARDS_BY_ID["sardaukar_soldier"]
 

@@ -91,9 +91,10 @@ class PersonalCardAgentEffect(StrEnum):
     # Ixian Ambassador (Tech Module): "1 spice".
     GAIN_ONE_SPICE = "gain_one_spice"
     PLACE_SPY = "place_spy"
-    PLACE_SPY_ALLOW_SHARED_IF_SPYING_ON_VISITED_SPACE = (
-        "place_spy_allow_shared_if_spying_on_visited_space"
-    )
+    # Double Agent: "[Spy] spying on the board space you sent an Agent to
+    # this turn. You may place this Spy on the same observation post as
+    # another player's Spy."
+    PLACE_SPY_ON_VISITED_SPACE_MAY_SHARE = "place_spy_on_visited_space_may_share"
     RECRUIT_THREE_IF_SPY_RECALLED_THIS_TURN = (
         "recruit_three_if_spy_recalled_this_turn"
     )
