@@ -57,6 +57,7 @@ from dune_imperium.rules.reveal_turn import (
     legal_reveal_spy_actions,
     legal_reveal_troop_retreat_actions,
     reveal_late_arrivals,
+    reveal_pending_gains,
 )
 
 
@@ -1742,7 +1743,13 @@ def test_interstellar_trade_persuasion_uses_completed_contracts_at_reveal() -> N
     assert dict(result.state.decision_stack[-1].context)["persuasion"] == 3
 
 
-def test_delivery_agreement_gains_spice_automatically_below_four_contracts() -> None:
+def test_delivery_agreement_below_four_contracts_pays_spice_by_its_choice() -> None:
+    # "[1 spice] -OR- If you have completed four or more contracts: Trash
+    # this card -> [1 VP]" [Delivery Agreement card]: the spice is one branch
+    # of the choice (docs/rules/player-turns.md: "completed Contract가 4개
+    # 이상이면 그 Spice 대신 해당 card를 trash하고 Victory Point 1을 얻을 수
+    # 있다"), so it is paid by keeping, never as a separate automatic gain.
+    # With fewer than four Contracts keeping is the only branch.
     delivery = _imperium_instance(
         "delivery_agreement",
         choam_module=True,
@@ -1757,11 +1764,81 @@ def test_delivery_agreement_gains_spice_automatically_below_four_contracts() -> 
 
     result = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
 
-    result = _with_gains(result)
+    assert reveal_pending_gains(dict(result.state.decision_stack[-2].context)) == ()
+    (keep,) = legal_contract_reveal_choice_actions(result.state, 0)
+    assert keep.action_id == "keep_contract_reveal_spice"
+    kept = apply_contract_reveal_choice(result.state, keep).state
+    assert kept.players[0].resources.spice == 3
+    assert dict(kept.decision_stack[-1].context)["persuasion"] == 0
 
-    assert result.state.players[0].resources.spice == 3
-    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 0
-    assert legal_contract_reveal_choice_actions(result.state, 0) == ()
+
+@pytest.mark.parametrize(
+    ("card_id", "spice"), (("priority_contracts", 2), ("delivery_agreement", 1))
+)
+@pytest.mark.parametrize(
+    "pick", ("keep_contract_reveal_spice", "trash_contract_reveal_for_vp")
+)
+def test_a_fourth_contract_completed_mid_reveal_offers_spice_or_vp_never_both(
+    card_id: str, spice: int, pick: str
+) -> None:
+    # "[spice] -OR- If you have completed four or more contracts: Trash this
+    # card -> [1 VP]" [Priority Contracts card] [Delivery Agreement card]:
+    # exactly one branch. With three Contracts the owner may put the choice
+    # off, acquire The Spice Must Flow to complete the Acquire contract, and
+    # then trash for the Victory Point (OQ-028 (b)); the spice was paid on top
+    # of the Victory Point, or twice on keeping, before 2026-09-26.
+    card = _imperium_instance(card_id, choam_module=True)
+    owner = PlayerState(
+        player_id=0,
+        hand=(card,),
+        active_contract_ids=("contract:acquire",),
+        completed_contract_ids=(
+            "contract:arrakeen_i",
+            "contract:arrakeen_ii",
+            "contract:deliver_supplies",
+        ),
+        reveal_persuasion_bonus=9,
+    )
+    state = replace(
+        _state(owner, choam_module=True),
+        reserve_stacks=(("prepare_the_way", 8), ("the_spice_must_flow", 10)),
+    )
+    engine = UprisingRulesEngine()
+
+    def take(current: GameState, action_id: str, argument: str = "") -> GameState:
+        action = next(
+            action
+            for action in engine.legal_actions(current, 0)
+            if action.action_id == action_id and argument in str(action.arguments)
+        )
+        return engine.apply(current, action).state
+
+    revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+    assert tuple(
+        action.action_id for action in legal_contract_reveal_choice_actions(revealed, 0)
+    ) == ("keep_contract_reveal_spice",)
+    deferred = take(revealed, "defer_reveal_choice")
+    assert reveal_pending_gains(dict(deferred.decision_stack[-1].context)) == ()
+    bought = take(deferred, "acquire_reserve", "the_spice_must_flow")
+    assert len(bought.players[0].completed_contract_ids) == 4
+    resumed = take(bought, "resume_reveal_choice")
+    assert tuple(
+        action.action_id for action in legal_contract_reveal_choice_actions(resumed, 0)
+    ) == ("keep_contract_reveal_spice", "trash_contract_reveal_for_vp")
+
+    done = _take_reveal_gains(take(resumed, pick))
+    before, after = bought.players[0], done.players[0]
+    if pick == "keep_contract_reveal_spice":
+        assert after.resources.spice == before.resources.spice + spice
+        assert after.victory_points == before.victory_points
+    else:
+        assert after.resources.spice == before.resources.spice
+        assert after.victory_points == before.victory_points + 1
+        assert card in after.trashed
+    assert legal_contract_reveal_choice_actions(done, 0) == ()
+    assert "finish_reveal" in {
+        action.action_id for action in engine.legal_actions(done, 0)
+    }
 
 
 def test_four_contract_reveal_can_keep_spice_or_trash_the_card_for_vp() -> None:

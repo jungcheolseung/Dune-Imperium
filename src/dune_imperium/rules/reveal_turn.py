@@ -2051,9 +2051,13 @@ def _reveal_effect_is_eligible(
         and (
             not effect.requires_spying_on_maker_space or is_spying_on_maker_space(owner)
         )
+        # Priority Contracts / Delivery Agreement: "[spice] -OR- If you have
+        # completed four or more contracts: Trash this card -> [1 VP]" [card
+        # faces]. The spice is one branch of that choice, paid only by it,
+        # so a fourth Contract completed later this Reveal (OQ-028 (b)) can
+        # never add the Victory Point on top of spice already paid.
         and not (
-            len(owner.completed_contract_ids) >= 4
-            and effect.spice > 0
+            effect.spice > 0
             and (
                 PersonalCardRevealChoiceEffect.KEEP_SPICE_OR_TRASH_SELF_FOR_VP_IF_FOUR_CONTRACTS
                 in card.reveal_choice_effects
@@ -3017,12 +3021,12 @@ def _reveal_choice_effect_is_available(
             )
             and len(owner.spy_post_ids) >= 2
         )
-        or (
-            effect
-            is (
-                PersonalCardRevealChoiceEffect.KEEP_SPICE_OR_TRASH_SELF_FOR_VP_IF_FOUR_CONTRACTS
-            )
-            and len(owner.completed_contract_ids) >= 4
+        # The spice branch needs nothing, so this choice always opens; its
+        # trash branch is offered only with four completed Contracts at
+        # resolution (legal_contract_reveal_choice_actions).
+        or effect
+        is (
+            PersonalCardRevealChoiceEffect.KEEP_SPICE_OR_TRASH_SELF_FOR_VP_IF_FOUR_CONTRACTS
         )
     )
 
