@@ -53,6 +53,7 @@ from dune_imperium.rules.frames import (
     owned_top_frame,
     replace_player,
     reveal_is_open_for,
+    update_turn_recruits,
 )
 from dune_imperium.rules.influence import (
     alliance_recipients_after_influence_loss,
@@ -345,11 +346,15 @@ def apply_tech_acquisition(state: GameState, action: DomainAction) -> RuleResult
         state, owner, tech_id, source=source
     )
     events.extend(reveal_events)
+    # The price is Spice spent, not Spice never gained: "If you gained spice
+    # this turn" (Leverage) and Harvest Contracts count every gain of the
+    # turn [Main p. 16], so the spend is recorded like any other payment.
     next_owner = replace(
         next_owner,
         resources=replace(
             next_owner.resources, spice=next_owner.resources.spice - cost
         ),
+        spice_spent_turn=next_owner.spice_spent_turn + cost,
     )
 
     # --- immediate acquire effects on the owner ---------------------------
@@ -416,6 +421,10 @@ def apply_tech_acquisition(state: GameState, action: DomainAction) -> RuleResult
             context_int(context, "troops_recruited", owner=_FRAME_LABEL)
             + troops_recruited
         )
+        spent = context.get("spice_spent_after_placement", 0)
+        if isinstance(spent, bool) or not isinstance(spent, int):
+            raise RuntimeError("Agent-turn effect frame has invalid Spice spending")
+        context["spice_spent_after_placement"] = spent + cost
         working = advance_after_effect(working, context, players)
     else:
         working = working.pop_decision()
@@ -425,6 +434,7 @@ def apply_tech_acquisition(state: GameState, action: DomainAction) -> RuleResult
                 working.decision_stack, player, troops_recruited
             ),
         )
+        working = update_turn_recruits(working, spice_spent=cost)
 
     # --- effects that touch shared state or open follow-up frames ---------
     if arguments.get("destroy_shield_wall") is True:

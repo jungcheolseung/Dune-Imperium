@@ -216,6 +216,32 @@ def test_a_tile_cannot_occupy_two_zones() -> None:
 # --- acquiring from a Landsraad visit ---------------------------------------
 
 
+def test_paying_spice_for_a_tile_does_not_undo_spice_gained_this_turn() -> None:
+    # Leverage: "If you gained spice this turn:" [Leverage card]; spending
+    # it later does not un-gain it (designer ruling, designer-rulings-audit
+    # "Leverage는 실제 spice 획득 필요"), and Harvest Contracts count every
+    # gain of the turn [Main p. 16]. The Tech price was taken from the Spice
+    # without being recorded as spent, so it hid the turn's gains.
+    from dune_imperium.content.uprising.effect_dsl import GainedSpiceThisTurn
+    from dune_imperium.rules.agent_effects import spice_gained_this_turn
+    from dune_imperium.rules.effect_interpreter import condition_holds
+
+    owner = _owner(
+        resources=Resources(solari=4, spice=6, water=2), spice_at_turn_start=4
+    )
+    state = _visit(_turn_state(owner, config=TECH_CHOAM), "assembly_hall")
+    assert spice_gained_this_turn(state.players[0]) == 2
+
+    bought = _acquire(state, "glowglobes:faction=fremen")
+    seat = bought.players[0]
+    assert seat.resources.spice == 4
+    assert seat.spice_spent_turn == 2
+    assert spice_gained_this_turn(seat) == 2
+    # Leverage's own condition; the Agent turn has closed, so it is checked
+    # directly rather than through the Plot window.
+    assert condition_holds(bought, 0, GainedSpiceThisTurn(1))
+
+
 def test_a_landsraad_visit_offers_the_face_up_tiles_the_owner_can_afford() -> None:
     state = _visit(_turn_state(_owner(resources=Resources(spice=2))), "assembly_hall")
 
