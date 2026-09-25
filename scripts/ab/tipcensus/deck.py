@@ -454,6 +454,8 @@ def _reveal_bond_faction(entry: PersonalCardDefinition) -> Faction | None:
             return Faction(effect.required_faction_bond.value)
         if effect.per_revealed_faction is not None:
             return Faction(effect.per_revealed_faction.value)
+        if effect.per_in_play_faction is not None:
+            return Faction(effect.per_in_play_faction.value)
     return None
 
 
@@ -493,12 +495,14 @@ AGENT_BOND, REVEAL_BOND = _build_bond_tables()
 BOND_CARD_IDS = frozenset(AGENT_BOND) | frozenset(REVEAL_BOND)
 
 # Cards whose Reveal Bond is the "per revealed same-Faction card" count
-# (Sardaukar Coordination, Stilgar the Devoted -- see ``_reveal_bond_faction``
-# above). The engine judges these against the cards revealed THIS Reveal turn
-# only, not the seat's whole ``in_play`` (docs/rules/player-turns.md:235-237
-# [Sardaukar Coordination card]: "이전 Agent turn에 낸 Emperor card는 이 수에
-# 포함하지 않는다"), so their activation check reads the Reveal frame's
-# revealed set instead of ``in_play`` (see ``step``).
+# (Sardaukar Coordination -- see ``_reveal_bond_faction`` above). The engine
+# judges these against the cards revealed THIS Reveal turn only, not the
+# seat's whole ``in_play`` (docs/rules/player-turns.md:235-237 [Sardaukar
+# Coordination card]: "이전 Agent turn에 낸 Emperor card는 이 수에 포함하지
+# 않는다"), so their activation check reads the Reveal frame's revealed set
+# instead of ``in_play`` (see ``step``). Stilgar the Devoted counts every
+# Fremen card in play [Main p. 20] [FAQ p. 2], so it reads ``in_play`` like
+# the other Bonds.
 PER_REVEALED: frozenset[str] = frozenset(
     card_id
     for card_id, entry in _catalog_entries()

@@ -1341,7 +1341,17 @@ def test_unswerving_loyalty_reveals_for_persuasion_and_recruits_one() -> None:
     assert revealed.players[0].troops_garrison == 4
 
 
-def test_stilgar_counts_only_fremen_cards_revealed_this_turn() -> None:
+def test_stilgar_counts_fremen_cards_played_on_agent_turns() -> None:
+    # Stilgar, The Devoted: "2 Persuasion for each Fremen card you have in
+    # play (including this one)" [Stilgar, The Devoted card]. In play is
+    # "Cards you play on Agent turns and reveal during your Reveal turn"
+    # [Main p. 20] (docs/rules/uprising-systems.md: "Agent turn에 play한
+    # 카드와 현재 Reveal turn에 reveal한 카드는 ... in play다"), and the FAQ
+    # rules the same wording on Liet Kynes: "Cards from your Agent turns this
+    # round and your current Reveal turn count" [FAQ p. 2]. Unswerving
+    # Loyalty played on an Agent turn is the third Fremen card: 3 x 2 plus
+    # Maula Pistol's and Truthtrance's printed Persuasion. The old reading
+    # counted only the revealed cards and gave 6.
     stilgar = _imperium_instance("stilgar_the_devoted")
     maula = _imperium_instance("maula_pistol")
     truthtrance = _imperium_instance("truthtrance")
@@ -1356,7 +1366,7 @@ def test_stilgar_counts_only_fremen_cards_revealed_this_turn() -> None:
 
     result = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
 
-    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 6
+    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 8
 
 
 def test_stilgar_counts_itself_as_a_revealed_fremen_card() -> None:
@@ -2104,7 +2114,7 @@ def _with_late_hand(state: GameState, card_id: str) -> GameState:
 def test_late_reveal_stilgar_gains_a_persuasion_increment_from_a_fremen_arrival() -> (
     None
 ):
-    # Stilgar, The Devoted (per_revealed_faction=FREMEN) is already revealed;
+    # Stilgar, The Devoted (per_in_play_faction=FREMEN) is already revealed;
     # a late-arriving Fremen card [FAQ p. 3] adds the increment its own
     # arrival causes on top of its own printed values, without recomputing
     # Stilgar's already-granted amount.
@@ -2243,17 +2253,19 @@ def test_late_reveal_works_through_the_personal_draw_reshuffle_chance() -> None:
 
 def test_cross_scaling_reveal_effects_have_no_eligibility_gates() -> None:
     # The late-reveal cross-increment path [FAQ p. 3] re-adjudicates a
-    # per_revealed_faction/strength_per_other_sword_card effect's
-    # eligibility gates at arrival but never revokes an already-granted
-    # amount. Today every such effect is unconditional, so re-adjudication
-    # is vacuous; this pin fails the suite if future content adds a gated
-    # one, which would need the increment logic to also track revocation.
+    # per_revealed_faction/per_in_play_faction/strength_per_other_sword_card
+    # effect's eligibility gates at arrival but never revokes an
+    # already-granted amount. Today every such effect is unconditional, so
+    # re-adjudication is vacuous; this pin fails the suite if future content
+    # adds a gated one, which would need the increment logic to also track
+    # revocation.
     entries = (*STARTING_DECK, *RESERVE_STACKS, *IMPERIUM_CARDS)
     scaling_effects = [
         effect
         for entry in entries
         for effect in entry.reveal_effects
         if effect.per_revealed_faction is not None
+        or effect.per_in_play_faction is not None
         or effect.strength_per_other_sword_card
     ]
 

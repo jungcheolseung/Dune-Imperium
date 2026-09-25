@@ -105,8 +105,7 @@ def test_reveal_effect_text_high_council_and_swordmaster() -> None:
 
 
 def test_reveal_effect_text_per_revealed_faction_scales_the_gain() -> None:
-    # Stilgar, The Devoted: PersonalCardRevealEffect(persuasion=2,
-    # per_revealed_faction=PersonalCardBond.FREMEN).
+    # Sardaukar Coordination's shape: a gain per revealed Faction card.
     effect = PersonalCardRevealEffect(
         persuasion=2,
         per_revealed_faction=PersonalCardBond.FREMEN,
@@ -116,6 +115,17 @@ def test_reveal_effect_text_per_revealed_faction_scales_the_gain() -> None:
         reveal_effect_text(effect)
         == "+2 Persuasion per revealed Fremen card"
     )
+
+
+def test_reveal_effect_text_per_in_play_faction_names_in_play() -> None:
+    # Stilgar, The Devoted: "2 Persuasion for each Fremen card you have in
+    # play (including this one)" [Stilgar, The Devoted card].
+    effect = PersonalCardRevealEffect(
+        persuasion=2,
+        per_in_play_faction=PersonalCardBond.FREMEN,
+    )
+
+    assert reveal_effect_text(effect) == "+2 Persuasion per Fremen card in play"
 
 
 def test_reveal_effect_text_influence_gain_names_its_faction() -> None:

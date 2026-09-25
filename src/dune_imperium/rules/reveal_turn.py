@@ -2521,7 +2521,9 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
                 persuasion=_frame_generated_persuasion(frames),
             ):
                 continue
-            persuasion = _reveal_effect_persuasion(effect, revealed_cards, completed)
+            persuasion = _reveal_effect_persuasion(
+                effect, revealed_cards, completed, _in_play_cards(next_owner)
+            )
             sword = _reveal_effect_strength(effect, revealed_cards)
             if persuasion:
                 frames = add_reveal_persuasion(frames, persuasion)
@@ -2648,21 +2650,35 @@ def _reveal_effect_persuasion(
     effect: PersonalCardRevealEffect,
     revealed_cards: tuple[PersonalCardDefinition, ...],
     completed_contracts: int,
+    in_play_cards: tuple[PersonalCardDefinition, ...],
 ) -> int:
-    """Return one eligible effect's Persuasion over the given revealed set."""
+    """Return one eligible effect's Persuasion over the revealed or in-play set.
 
-    return (
-        effect.persuasion
-        * (
-            sum(
-                Faction(effect.per_revealed_faction.value) in card.factions
-                for card in revealed_cards
-            )
-            if effect.per_revealed_faction is not None
-            else 1
+    "Revealed" counts this Reveal's cards (Sardaukar Coordination);
+    "in play" also counts the cards played on this round's Agent turns
+    [Main p. 20 "In Play"] [FAQ p. 2 Liet Kynes] (Stilgar, The Devoted).
+    """
+
+    if effect.per_revealed_faction is not None:
+        counted = sum(
+            Faction(effect.per_revealed_faction.value) in card.factions
+            for card in revealed_cards
         )
+    elif effect.per_in_play_faction is not None:
+        counted = sum(
+            Faction(effect.per_in_play_faction.value) in card.factions
+            for card in in_play_cards
+        )
+    else:
+        counted = 1
+    return (
+        effect.persuasion * counted
         + effect.persuasion_per_completed_contract * completed_contracts
     )
+
+
+def _in_play_cards(owner: PlayerState) -> tuple[PersonalCardDefinition, ...]:
+    return tuple(personal_card_for_instance(card_id) for card_id in owner.in_play)
 
 
 def _reveal_effect_strength(
@@ -3256,7 +3272,9 @@ def _late_reveal_one_card(
         ),
     )
     persuasion_gain = card.reveal_persuasion + sum(
-        _reveal_effect_persuasion(effect, revealed_cards, completed_contracts)
+        _reveal_effect_persuasion(
+            effect, revealed_cards, completed_contracts, _in_play_cards(next_owner)
+        )
         for effect in eligible
     )
     own_strength = card.reveal_strength + sum(
@@ -3283,10 +3301,10 @@ def _late_reveal_one_card(
     for other_id in previously_revealed_ids:
         other_card = personal_card_for_instance(other_id)
         for effect in other_card.reveal_effects:
-            if (
-                effect.per_revealed_faction is None
-                and not effect.strength_per_other_sword_card
-            ):
+            # The arriving card is both revealed and in play, so either
+            # count grows by it.
+            counted_faction = effect.per_revealed_faction or effect.per_in_play_faction
+            if counted_faction is None and not effect.strength_per_other_sword_card:
                 continue
             if not _reveal_effect_is_eligible(
                 next_owner,
@@ -3298,8 +3316,8 @@ def _late_reveal_one_card(
             ):
                 continue
             if (
-                effect.per_revealed_faction is not None
-                and Faction(effect.per_revealed_faction.value) in card.factions
+                counted_faction is not None
+                and Faction(counted_faction.value) in card.factions
             ):
                 persuasion_increment += effect.persuasion
                 sword_delta += effect.strength
@@ -3501,6 +3519,7 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
     revealed = owner.hand
     cards = tuple(personal_card_for_instance(card_id) for card_id in revealed)
     cards_in_play = (*owner.in_play, *revealed)
+    in_play_cards = (*_in_play_cards(owner), *cards)
 
     def eligible_effects(
         persuasion: int | None,
@@ -3525,7 +3544,9 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         effects: tuple[tuple[str, PersonalCardRevealEffect], ...],
     ) -> int:
         total = sum(card.reveal_persuasion for card in cards) + sum(
-            _reveal_effect_persuasion(effect, cards, len(owner.completed_contract_ids))
+            _reveal_effect_persuasion(
+                effect, cards, len(owner.completed_contract_ids), in_play_cards
+            )
             for _, effect in effects
         )
         if owner.high_council:

@@ -572,6 +572,7 @@ _HANDLED_REVEAL_FIELDS: Final[frozenset[str]] = frozenset(
         "minimum_spies_placed",
         "requires_spying_on_maker_space",
         "per_revealed_faction",
+        "per_in_play_faction",
         "persuasion_per_completed_contract",
         "requires_commander_in_conflict",
         "minimum_garrisoned_units",
@@ -591,9 +592,10 @@ def reveal_effect_text(effect: PersonalCardRevealEffect) -> str:
 
     Requirement fields are rendered first as an ``If ...:`` prefix (Faction
     Bond, High Council/Swordmaster, minimum placed Spies, spying on a Maker
-    space); ``per_revealed_faction`` instead scales whichever gain
-    (Persuasion or strength) it accompanies, so it is folded into that
-    gain's own text rather than into the prefix. The gains that follow are
+    space); ``per_revealed_faction`` and ``per_in_play_faction`` instead
+    scale whichever gain (Persuasion or strength) they accompany, so they
+    are folded into that gain's own text rather than into the prefix. The
+    gains that follow are
     joined with ", "; Persuasion and strength use the "+N" shorthand that
     matches the printed Reveal diamonds, everything else uses "Gain N ...".
     """
@@ -629,6 +631,8 @@ def reveal_effect_text(effect: PersonalCardRevealEffect) -> str:
     per_faction = (
         f" per revealed {_bond_name(effect.per_revealed_faction)} card"
         if effect.per_revealed_faction is not None
+        else f" per {_bond_name(effect.per_in_play_faction)} card in play"
+        if effect.per_in_play_faction is not None
         else ""
     )
 

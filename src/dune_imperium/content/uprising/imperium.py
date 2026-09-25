@@ -894,10 +894,13 @@ IMPERIUM_CARDS: Final = (
         factions=(Faction.FREMEN,),
         agent_icons=(AgentIcon.FREMEN, AgentIcon.CITY, AgentIcon.SPICE_TRADE),
         agent_effect=PersonalCardAgentEffect.RECRUIT_TWO_TROOPS,
+        # "2 Persuasion for each Fremen card you have in play (including
+        # this one)" [Stilgar, The Devoted card]: Agent-turn cards count
+        # [Main p. 20 "In Play"] [FAQ p. 2 Liet Kynes].
         reveal_effects=(
             PersonalCardRevealEffect(
                 persuasion=2,
-                per_revealed_faction=PersonalCardBond.FREMEN,
+                per_in_play_faction=PersonalCardBond.FREMEN,
             ),
         ),
         play_data_complete=True,
