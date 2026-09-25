@@ -918,19 +918,27 @@ def complete_contract_by_effect(
     instance_id: str,
     *,
     source: str,
+    excluded_space_id: str = "",
 ) -> RuleResult:
     """Complete one active Contract by a card effect, ignoring its condition.
 
     CHOAM Demands (Bloodlines): "Complete one of your contracts." The
     printed reward resolves as for a normal completion, its choices pushed
-    on top of the current decision stack.
+    on top of the current decision stack. ``excluded_space_id`` is where the
+    Agent of this turn went: a Recall Agent reward returns "one of your
+    other Agents on the board ... (not the Agent you sent during this turn)"
+    [Main p. 20].
     """
 
     completed = _complete_contract_without_choices(
         state, player, instance_id, source=source
     )
     follow_up = _begin_contract_reward_choice(
-        completed.state, player, contract_for_instance(instance_id), source=source
+        completed.state,
+        player,
+        contract_for_instance(instance_id),
+        source=source,
+        excluded_space_id=excluded_space_id,
     )
     return RuleResult(
         state=follow_up.state, events=(*completed.events, *follow_up.events)

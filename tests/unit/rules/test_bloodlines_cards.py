@@ -1469,6 +1469,52 @@ def test_choam_demands_completes_a_contract_and_trashes_for_influence() -> None:
     assert below.decision_stack[-1].kind == "reveal"
 
 
+@pytest.mark.parametrize(
+    "contract_id", ("contract:sardaukar_ii", "contract:bloodlines_high_council")
+)
+def test_choam_demands_recall_reward_never_takes_this_turns_agent(
+    contract_id: str,
+) -> None:
+    # Sardaukar II (and the Bloodlines High Council token) print the Recall
+    # Agent icon [Sardaukar II card]: "Return one of your other Agents on the
+    # board to your Leader (not the Agent you sent during this turn)"
+    # [Main p. 20]. Completed by CHOAM Demands' Agent box, the Agent just
+    # sent to Arrakeen used to be a legal target.
+    from dune_imperium.rules.agent_effects import (
+        apply_agent_card_contract_completion,
+        legal_agent_card_contract_completion_actions,
+    )
+    from dune_imperium.rules.contracts import legal_contract_recall_actions
+
+    card = _card("choam_demands")
+
+    def complete(**overrides: object) -> tuple[GameState, tuple[str, ...]]:
+        state = _play(
+            _state(
+                _owner(hand=(card,), active_contract_ids=(contract_id,), **overrides),
+                CHOAM_BLOODLINES,
+            ),
+            card,
+            "arrakeen",
+        )
+        action = legal_agent_card_contract_completion_actions(state, 0)[0]
+        result = apply_agent_card_contract_completion(state, action)
+        return result.state, tuple(event.kind for event in result.events)
+
+    alone, kinds = complete()
+    assert alone.players[0].agent_locations == ("arrakeen",)
+    assert "contract_recall_unavailable" in kinds
+    assert alone.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert legal_contract_recall_actions(alone, 0) == ()
+
+    earlier, _ = complete(agent_locations=("hagga_basin",), agents_available=1)
+    assert earlier.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_RECALL
+    assert [
+        dict(action.arguments)["space_id"]
+        for action in legal_contract_recall_actions(earlier, 0)
+    ] == ["hagga_basin"]
+
+
 # --- Bloodlines slice 4d-3: Holy War, False Orders, Coercive Negotiation --
 
 
