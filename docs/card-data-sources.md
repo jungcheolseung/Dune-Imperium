@@ -157,8 +157,10 @@ this bond check does not depend on card origin.
 
 The eighth batch transcribes Maker Keeper. Its Bene Gesserit and Fremen
 Influence thresholds are evaluated independently, awarding Water, Spice, or
-both, while its dual affiliation, two Agent icons, and static Reveal Persuasion
-use the common personal-card schema.
+both, while its dual affiliation, single City Agent icon, and static Reveal
+Persuasion use the common personal-card schema. (Corrected 2026-09-26: the
+card face prints one City Agent icon box, not City and Spice Trade — see
+`docs/implementation-audits/personal-cards.md`.)
 
 The ninth batch transcribes Southern Elders. Personal cards may now carry
 multiple automatic Reveal effects, each with an optional typed Faction Bond.

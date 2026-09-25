@@ -156,7 +156,7 @@ def build_catalog(
             cost=stack.acquisition_cost,
             persuasion=stack.reveal_persuasion,
             swords=stack.reveal_strength,
-            factions=(),
+            factions=tuple(faction.value for faction in stack.factions),
             agent_icons=tuple(icon.value for icon in stack.agent_icons),
             text=personal_card_text(stack),
             image=_image_url("other", stack.card.card_id, image_files),

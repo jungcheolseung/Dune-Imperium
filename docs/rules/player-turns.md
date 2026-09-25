@@ -188,8 +188,9 @@
   `[FAQ p. 2]`
 - Long Live the Fighters는 Reveal에서 Persuasion 2와 strength 3을 얻는다.
   `[Long Live the Fighters card]`
-- Subversive Advisor는 Reveal에서 Solari 1을 얻는다.
-  `[Subversive Advisor card]`
+- Subversive Advisor는 Reveal에서 Persuasion 1을 얻는다. Reveal box는 파란
+  Persuasion 다이아몬드 "1"을 인쇄하며 Solari 코인이 아니다(재판독,
+  2026-09-26). `[Subversive Advisor card]`
 - Cargo Runner는 Reveal에서 Persuasion 1을 얻는다. Interstellar Trade는 Reveal을
   시작할 때 보유한 completed Contract마다 Persuasion 1을 얻으며, 같은 Reveal
   중 The Spice Must Flow acquire로 Contract를 추가 완료해도 다시 계산하지 않는다.
@@ -232,9 +233,12 @@
 - Calculus of Power는 Reveal 중 play 영역의 다른 Emperor card를 trash해 sword
   3을 얻거나 거절할 수 있다. 비용으로 자기 자신을 고를 수 없고, trash된 card의
   고유 trash 효과는 정상 처리한다. `[Calculus of Power card]`
-- Sardaukar Coordination은 기본 sword 1개에 더해 이번 Reveal에 공개한 Emperor
-  card마다 sword 1개를 얻으며 자기 자신도 센다. 이전 Agent turn에 낸 Emperor
-  card는 이 수에 포함하지 않는다. `[Sardaukar Coordination card]`
+- Sardaukar Coordination은 Reveal에서 Persuasion 2를 얻고, 이번 Reveal에 공개한
+  Emperor card마다 sword 1개를 얻으며 자기 자신도 센다. 별도의 기본 sword는
+  없다(재판독, 2026-09-26: Reveal box는 파란 Persuasion 다이아몬드 "2" 뒤에
+  "공개한 Emperor card 1장당 +sword(이 카드 포함)"만 인쇄한다). 이전 Agent
+  turn에 낸 Emperor card는 이 수에 포함하지 않는다. `[Sardaukar Coordination
+  card]`
 - Chani, Clever Tactician은 Fremen Bond로 Persuasion 2를 얻는다. Reveal의
   선택형 화살표를 사용하면 Conflict의 troop 2개를 garrison으로 retreat하고
   sword 4개를 얻는다. 다른 unit이 남아 있으면 troop strength 4가 sword 4로

@@ -1777,6 +1777,72 @@ def test_weirding_woman_has_no_agent_effect_without_bene_gesserit_bond() -> None
     assert dict(placed.decision_stack[-1].context)["pending_agent_effect"] is False
 
 
+def test_weirding_woman_returns_to_hand_with_prepare_the_way_in_play() -> None:
+    # Prepare the Way's purple "BENE GESSERIT" affiliation banner [card face]
+    # satisfies another card's Bond the same as an Imperium-deck card; Main
+    # p. 20 defines Bond by other cards of that Faction in play, regardless
+    # of deck of origin.
+    weirding_woman = _imperium_instance("weirding_woman")
+    prepare_the_way = "reserve:prepare_the_way:7"
+    owner = PlayerState(
+        player_id=0,
+        hand=(weirding_woman,),
+        in_play=(prepare_the_way,),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
+
+    result = resolve_agent_card_effect(placed)
+
+    assert result.state.players[0].hand == (weirding_woman,)
+    assert result.state.players[0].in_play == (prepare_the_way,)
+
+
+def test_weirding_woman_returns_to_hand_with_bene_gesserit_operative_in_play() -> None:
+    # Bene Gesserit Operative's purple "BENE GESSERIT" affiliation banner
+    # [card face] satisfies another card's Bond the same as Truthtrance's.
+    weirding_woman = _imperium_instance("weirding_woman")
+    operative = _imperium_instance("bene_gesserit_operative")
+    owner = PlayerState(
+        player_id=0,
+        hand=(weirding_woman,),
+        in_play=(operative,),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
+
+    result = resolve_agent_card_effect(placed)
+
+    assert result.state.players[0].hand == (weirding_woman,)
+    assert result.state.players[0].in_play == (operative,)
+
+
 def test_ecological_testing_station_may_pay_water_to_draw_two() -> None:
     station = _imperium_instance("ecological_testing_station")
     first = _instance("dagger")
@@ -2078,9 +2144,13 @@ def test_reliable_informant_limits_spy_placement_to_three_faction_posts() -> Non
         for action in legal_agent_card_spy_actions(placed_agent, 0)
     }
 
+    # Re-read from the card face 2026-09-26: the third target icon is the
+    # blue Fremen sietch badge, not the red Spacing Guild infinity symbol.
+    # The Agent icon that placed this card is still Spacing Guild
+    # (deliver_supplies), independent of the Spy's own target Factions.
     assert post_ids == {
         "emperor-sardaukar-dutiful-service",
-        "spacing-guild-heighliner-deliver-supplies",
+        "fremen-desert-tactics-fremkit",
         "bene-gesserit-espionage-secrets",
     }
 
@@ -2089,7 +2159,7 @@ def test_reliable_informant_can_only_recall_a_spy_that_opens_a_target_post() -> 
     informant = _imperium_instance("reliable_informant")
     target_posts = (
         "emperor-sardaukar-dutiful-service",
-        "spacing-guild-heighliner-deliver-supplies",
+        "fremen-desert-tactics-fremkit",
         "bene-gesserit-espionage-secrets",
     )
     owner = PlayerState(
@@ -2133,7 +2203,7 @@ def test_reliable_informant_finishes_when_every_target_post_is_unavailable() -> 
     informant = _imperium_instance("reliable_informant")
     target_posts = (
         "emperor-sardaukar-dutiful-service",
-        "spacing-guild-heighliner-deliver-supplies",
+        "fremen-desert-tactics-fremkit",
         "bene-gesserit-espionage-secrets",
     )
     owner = PlayerState(player_id=0, hand=(informant,))
@@ -3769,6 +3839,43 @@ def test_guild_envoy_requires_discard_and_only_draws_for_spacing_guild(
     assert len(result.state.players[0].deck) == expected_deck_count
 
 
+def test_guild_envoy_draws_two_for_a_the_spice_must_flow_discard() -> None:
+    # Red "SPACING GUILD" affiliation banner [card face]: a Reserve card's
+    # Faction counts for this discard just like an Imperium-deck card's.
+    envoy = _imperium_instance("guild_envoy")
+    discarded = "reserve:the_spice_must_flow:9"
+    first = _instance("convincing_argument")
+    second = _instance("reconnaissance")
+    owner = PlayerState(
+        player_id=0,
+        hand=(envoy, discarded),
+        deck=(first, second),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "deliver_supplies")).state
+    actions = legal_agent_card_discard_actions(placed, 0)
+
+    assert {action.action_id for action in actions} == {"discard_agent_card"}
+    result = apply_agent_card_discard(placed, actions[0])
+
+    assert result.state.players[0].discard_pile == (discarded,)
+    assert len(result.state.players[0].hand) == 2
+    assert len(result.state.players[0].deck) == 0
+
+
 def test_guild_envoy_has_no_agent_effect_without_another_hand_card() -> None:
     envoy = _imperium_instance("guild_envoy")
     owner = PlayerState(player_id=0, hand=(envoy,))
@@ -4023,6 +4130,51 @@ def test_guild_spy_may_cycle_and_draws_intrigue_for_guild_discard(
         ("intrigue:plot",) if draws_intrigue else ()
     )
     assert dict(resolved.decision_stack[-1].context)["pending_agent_effect"] is False
+
+
+def test_guild_spy_draws_intrigue_for_a_the_spice_must_flow_discard() -> None:
+    # Red "SPACING GUILD" affiliation banner [card face]: a Reserve card's
+    # Faction counts for this discard just like an Imperium-deck card's.
+    guild_spy = _imperium_instance("guild_spy")
+    discarded = "reserve:the_spice_must_flow:9"
+    drawn = _instance("convincing_argument")
+    owner = PlayerState(
+        player_id=0,
+        spies_supply=2,
+        spy_post_ids=("landsraad-assembly-hall-gather-support",),
+        hand=(guild_spy, discarded),
+        deck=(drawn,),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        intrigue_deck=("intrigue:plot",),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
+    result = apply_agent_card_discard(
+        placed,
+        next(
+            action
+            for action in legal_agent_card_discard_actions(placed, 0)
+            if action.action_id == "discard_agent_card"
+        ),
+    )
+
+    assert dict(result.state.decision_stack[-1].context)["pending_agent_icons"] == (
+        "cards,intrigue"
+    )
+    resolved = _resolve_agent_icons(result.state)
+    assert resolved.players[0].intrigue_cards == ("intrigue:plot",)
 
 
 def test_guild_spy_cannot_discard_guild_card_without_intrigue_reward() -> None:

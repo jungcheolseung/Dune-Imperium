@@ -47,6 +47,7 @@ from dune_imperium.content.uprising.types import (
     BattleIcon,
     ConflictTier,
     PersonalCardAgentEffect,
+    PersonalCardRevealEffect,
 )
 
 
@@ -308,16 +309,24 @@ def test_reserve_play_data_matches_the_printed_cards() -> None:
     prepare = RESERVE_STACKS_BY_ID["prepare_the_way"]
     spice = RESERVE_STACKS_BY_ID["the_spice_must_flow"]
 
+    # Purple "BENE GESSERIT" banner [card face]; Main p. 20 defines Bond by
+    # other cards of that Faction in play.
+    assert prepare.factions == (Faction.BENE_GESSERIT,)
     assert prepare.agent_icons == (AgentIcon.LANDSRAAD, AgentIcon.CITY)
     assert prepare.agent_effect is (
         PersonalCardAgentEffect.DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO
     )
     assert prepare.reveal_persuasion == 2
     assert prepare.reveal_strength == 0
+    # Red "SPACING GUILD" banner [card face].
+    assert spice.factions == (Faction.SPACING_GUILD,)
     assert spice.agent_icons == ()
     assert spice.agent_effect is None
     assert spice.reveal_persuasion == 0
-    assert spice.reveal_strength == 1
+    # The Reveal box prints an orange spice hexagon "1" [Main p. 20] (icon
+    # guide: spice, not a sword), not a base sword.
+    assert spice.reveal_strength == 0
+    assert spice.reveal_effects == (PersonalCardRevealEffect(spice=1),)
 
 
 def test_reserve_instance_ids_resolve_and_validate_copy_bounds() -> None:

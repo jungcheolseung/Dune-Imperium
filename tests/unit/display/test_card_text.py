@@ -45,8 +45,10 @@ def test_bene_gesserit_operative_golden() -> None:
 def test_reliable_informant_lists_its_spy_target_factions() -> None:
     entry = IMPERIUM_CARDS_BY_ID["reliable_informant"]
 
+    # Re-read from the card face 2026-09-26: the third target icon is the
+    # blue Fremen sietch badge, not the red Spacing Guild infinity symbol.
     assert personal_card_text(entry) == [
-        "Agent: Place a Spy (Emperor, Bene Gesserit, or Spacing Guild Spy)",
+        "Agent: Place a Spy (Emperor, Bene Gesserit, or Fremen Spy)",
         "Reveal: Gain 1 solari",
     ]
 
@@ -129,7 +131,12 @@ def test_prepare_the_way_reserve_agent_line() -> None:
 def test_the_spice_must_flow_reserve_acquisition_vp() -> None:
     entry = RESERVE_STACKS_BY_ID["the_spice_must_flow"]
 
-    assert personal_card_text(entry) == ["On acquire: Gain 1 VP"]
+    # The Reveal box prints an orange spice hexagon "1" [Main p. 20] (icon
+    # guide: spice, not a sword), not the previously transcribed sword.
+    assert personal_card_text(entry) == [
+        "Reveal: Gain 1 spice",
+        "On acquire: Gain 1 VP",
+    ]
 
 
 def test_untranscribed_imperium_card_reports_missing_play_data() -> None:

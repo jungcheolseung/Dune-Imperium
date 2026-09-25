@@ -354,6 +354,23 @@ def test_calculus_of_power_cannot_pay_with_itself() -> None:
     assert dict(revealed.decision_stack[-1].context)["persuasion"] == 2
 
 
+def test_calculus_of_power_cannot_pay_with_overthrow() -> None:
+    # Overthrow prints no affiliation banner under its title [card face; BGG
+    # inventory row blank] and is no longer an Emperor card, so it is not a
+    # candidate for Calculus of Power's "trash another Emperor card" Reveal
+    # choice. With no eligible Emperor card in play, the optional trash
+    # choice never opens at all, same as when Calculus is alone in hand.
+    calculus = _imperium_instance("calculus_of_power")
+    overthrow = _imperium_instance("overthrow")
+    revealed = begin_reveal_turn(
+        _state(PlayerState(player_id=0, hand=(calculus, overthrow))),
+        DomainAction(action_id="reveal_turn", actor=0),
+    ).state
+
+    assert overthrow in revealed.players[0].in_play
+    assert legal_reveal_card_trash_actions(revealed, 0) == ()
+
+
 def test_desert_power_recounts_calculus_sword_when_it_adds_the_first_unit() -> None:
     desert_power = _imperium_instance("desert_power")
     calculus = _imperium_instance("calculus_of_power")
@@ -1343,8 +1360,15 @@ def test_sardaukar_coordination_counts_each_revealed_emperor_card() -> None:
         DomainAction(action_id="reveal_turn", actor=0),
     )
 
-    assert result.state.players[0].combat_strength == 11
-    assert dict(result.state.decision_stack[-1].context)["strength"] == 11
+    # Reveal box: Persuasion 2 (no base sword) plus "+[sword] for each
+    # Emperor card you revealed (including this one)" [card face]. All three
+    # cards are Emperor, so each Coordination adds 3 swords: 3 + 3 from the
+    # two Coordinations, + 1 from the Soldier's printed sword, + 2 from the
+    # one troop in the Conflict = 9. Persuasion: 2 + 2 (Coordinations) + 1
+    # (Soldier) = 5.
+    assert result.state.players[0].combat_strength == 9
+    assert dict(result.state.decision_stack[-1].context)["strength"] == 9
+    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 5
 
 
 def test_sardaukar_coordination_ignores_emperor_agent_cards_in_play() -> None:
@@ -1363,7 +1387,38 @@ def test_sardaukar_coordination_ignores_emperor_agent_cards_in_play() -> None:
         DomainAction(action_id="reveal_turn", actor=0),
     )
 
-    assert result.state.players[0].combat_strength == 4
+    # The Soldier in play (not revealed this turn) does not count toward the
+    # per-revealed-Emperor multiplier: 1 troop (strength 2) + 1 sword from
+    # the lone revealed Coordination = 3.
+    assert result.state.players[0].combat_strength == 3
+
+
+def test_sardaukar_coordination_ignores_a_revealed_overthrow() -> None:
+    # Overthrow prints no affiliation banner [card face; BGG inventory row
+    # blank] and is no longer an Emperor card, so revealing it alongside
+    # Sardaukar Coordination must not add to the "+[sword] for each Emperor
+    # card you revealed (including this one)" count: only the lone
+    # Coordination counts itself, for 1 sword. Overthrow's own printed Reveal
+    # (2 Persuasion, 2 strength) still applies on its own. Total: 1 troop
+    # (strength 2) + 1 (Coordination's own count) + 2 (Overthrow's own
+    # sword) = 5 strength; 2 (Coordination) + 2 (Overthrow) = 4 Persuasion.
+    coordination = _imperium_instance("sardaukar_coordination")
+    overthrow = _imperium_instance("overthrow")
+    owner = PlayerState(
+        player_id=0,
+        hand=(coordination, overthrow),
+        troops_supply=8,
+        troops_conflict=1,
+    )
+
+    result = begin_reveal_turn(
+        _state(owner),
+        DomainAction(action_id="reveal_turn", actor=0),
+    )
+
+    assert result.state.players[0].combat_strength == 5
+    assert dict(result.state.decision_stack[-1].context)["strength"] == 5
+    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 4
 
 
 def test_shishakli_reveal_gains_fremen_influence_only_with_bond() -> None:
@@ -1490,7 +1545,12 @@ def test_reserve_cards_contribute_their_printed_reveal_values() -> None:
     context = dict(result.state.decision_stack[-1].context)
 
     assert context["persuasion"] == 2
-    assert context["strength"] == 3
+    # The Spice Must Flow's Reveal box is a spice hexagon "1" [Main p. 20],
+    # not a sword, so only the 1 troop's own strength (2) counts here.
+    assert context["strength"] == 2
+
+    taken = _with_gains(result)
+    assert taken.state.players[0].resources.spice == 1
 
 
 def test_transcribed_imperium_cards_contribute_reveal_values() -> None:
@@ -1621,7 +1681,7 @@ def test_price_is_no_object_reveals_for_persuasion_and_solari() -> None:
     assert result.state.players[0].resources.solari == 2
 
 
-def test_subversive_advisor_reveals_for_one_solari() -> None:
+def test_subversive_advisor_reveals_for_one_persuasion() -> None:
     subversive = _imperium_instance("subversive_advisor")
     state = _state(PlayerState(player_id=0, hand=(subversive,)))
 
@@ -1629,8 +1689,10 @@ def test_subversive_advisor_reveals_for_one_solari() -> None:
 
     result = _with_gains(result)
 
-    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 0
-    assert result.state.players[0].resources.solari == 1
+    # The Reveal band prints a single blue Persuasion diamond "1" [card
+    # face], not a Solari coin.
+    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 1
+    assert result.state.players[0].resources.solari == 0
 
 
 def test_interstellar_trade_persuasion_uses_completed_contracts_at_reveal() -> None:
@@ -2545,3 +2607,4 @@ def test_interstellar_trade_counts_its_contracts_once_at_the_reveal() -> None:
 
     assert dict(granted.state.decision_stack[-1].context)["persuasion"] == 2
     assert granted.events == ()
+

@@ -553,13 +553,17 @@ def test_an_explicit_end_into_the_same_seats_next_turn_still_hands_over() -> Non
 
 
 def test_a_seat_taking_consecutive_turns_is_held_between_them() -> None:
-    # Seed 4: at some point seat 0 is the only seat left unrevealed this
-    # round, so its next "turn" decision is its own again with no other
-    # seat's turn in between -- the engine cannot tell this from a Plot
-    # Intrigue return (test_i below) by the frame alone, so the hold uses
-    # the session's own log-based ``_fresh_turn`` check.
+    # Seed 11 (re-searched 2026-09-26: the s1-card-data icon fixes -- Maker
+    # Keeper's single City icon, Calculus of Power's City icon, Chani's
+    # Fremen icon, and Undercover Asset losing its Spy icon [card faces] --
+    # shift this index-0 policy's path, so the old seed 4 no longer reaches
+    # this shape before the game finishes): at some point seat 0 is the only
+    # seat left unrevealed this round, so its next "turn" decision is its own
+    # again with no other seat's turn in between -- the engine cannot tell
+    # this from a Plot Intrigue return (test_i below) by the frame alone, so
+    # the hold uses the session's own log-based ``_fresh_turn`` check.
     manager = GameSessionManager()
-    summary = manager.create_game(HUMAN_FIRST, game_seed=4)
+    summary = manager.create_game(HUMAN_FIRST, game_seed=11)
     game_id = str(summary["game_id"])
     summary = _play_until(
         manager,
@@ -864,12 +868,16 @@ def test_a_control_defense_restore_gives_the_same_confirmation_as_live() -> None
     # reviewer script used the bare "heuristic" agent, which is retuned as
     # the baseline improves (see HUMAN_FIRST's own comment above), so its
     # seed 10 does not reproduce against this suite's pinned
-    # "heuristic_uprising_table" table.
+    # "heuristic_uprising_table" table. Re-searched 2026-09-26 with this same
+    # rng.Random(seed).choice policy: the s1-card-data icon fixes (Maker
+    # Keeper, Calculus of Power, Chani, Undercover Asset [card faces]) moved
+    # this path enough that the old seed 0 no longer reaches a seat-0
+    # control_defense decision; seed 13 does.
     manager = GameSessionManager()
-    summary = manager.create_game(HUMAN_FIRST, game_seed=0)
+    summary = manager.create_game(HUMAN_FIRST, game_seed=13)
     game_id = str(summary["game_id"])
     session = manager._get(game_id)
-    rng = random.Random(0)
+    rng = random.Random(13)
 
     found = False
     choice: dict[str, object] = {}
