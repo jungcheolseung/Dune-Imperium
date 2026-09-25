@@ -429,6 +429,153 @@ def test_combat_influence_choice_resolves_track_bonus_and_alliance() -> None:
     assert resolved.players[0].victory_points == 2
 
 
+def _bene_gesserit_three_with_an_empty_deck(conflict_id: str) -> GameState:
+    # The second-place Intrigue card takes the deck's last card, so the
+    # first-place winner (Bene Gesserit 3) chooses with the deck empty and
+    # one card in the discard.
+    state = _with_influence(
+        _reward_state(conflict_id), 0, Influence(bene_gesserit=3)
+    )
+    return replace(
+        state,
+        intrigue_deck=("intrigue:last",),
+        intrigue_discard=("intrigue:discarded",),
+    )
+
+
+def _reshuffle_and_draw(state: GameState) -> GameState:
+    from dune_imperium.core import ChanceDecision, ChanceResolver
+    from dune_imperium.rules.intrigue_deck import (
+        apply_intrigue_reshuffle,
+        intrigue_draw_is_queued,
+        resolve_pending_intrigue_draw,
+    )
+
+    assert intrigue_draw_is_queued(state)
+    opened = resolve_pending_intrigue_draw(state).state
+    assert opened.decision_stack[-1].kind == "intrigue_reshuffle"
+    decision = UprisingRulesEngine().current_decision(opened)
+    assert isinstance(decision, ChanceDecision)
+    return apply_intrigue_reshuffle(
+        opened, ChanceResolver(seed=1).resolve(decision)
+    ).state
+
+
+def test_bene_gesserit_stays_a_choice_when_the_intrigue_deck_is_empty() -> None:
+    # Skirmish (Crysknife) 1st place prints the choose-Influence icon:
+    # "Choose any one of the four Factions" [Main p. 20]. Reaching Bene
+    # Gesserit 4 draws an Intrigue card, and "In the rare case that you
+    # exhaust the Intrigue deck, shuffle the discarded Intrigue cards to form
+    # a new deck" [FAQ p. 2]; an empty deck used to hide the Faction.
+    rewarded = resolve_combat_rewards(
+        _bene_gesserit_three_with_an_empty_deck("skirmish_crysknife")
+    ).state
+    assert rewarded.intrigue_deck == ()
+    actions = legal_combat_reward_influence_actions(rewarded, 0)
+    assert {dict(action.arguments)["faction"] for action in actions} == {
+        "emperor",
+        "spacing_guild",
+        "bene_gesserit",
+        "fremen",
+    }
+    bene_gesserit = next(
+        action
+        for action in actions
+        if dict(action.arguments)["faction"] == "bene_gesserit"
+    )
+
+    chosen = apply_combat_reward_influence(rewarded, bene_gesserit).state
+
+    assert chosen.players[0].influence.bene_gesserit == 4
+    assert chosen.players[0].alliance_faction_ids == ("bene_gesserit",)
+    assert [(player, count) for player, count, _ in chosen.pending_intrigue_draws] == [
+        (0, 1)
+    ]
+    drawn = _reshuffle_and_draw(chosen)
+    assert drawn.players[0].intrigue_cards == ("intrigue:discarded",)
+    assert drawn.intrigue_discard == ()
+
+
+def test_bene_gesserit_is_chosen_with_both_intrigue_piles_empty() -> None:
+    # With nothing to reshuffle the Influence and the Alliance still apply;
+    # only the Intrigue card is missing [Main p. 20] [FAQ p. 2].
+    state = replace(
+        _bene_gesserit_three_with_an_empty_deck("skirmish_crysknife"),
+        intrigue_discard=(),
+    )
+    rewarded = resolve_combat_rewards(state).state
+    bene_gesserit = next(
+        action
+        for action in legal_combat_reward_influence_actions(rewarded, 0)
+        if dict(action.arguments)["faction"] == "bene_gesserit"
+    )
+
+    chosen = apply_combat_reward_influence(rewarded, bene_gesserit).state
+    from dune_imperium.rules.intrigue_deck import resolve_pending_intrigue_draw
+
+    drawn = resolve_pending_intrigue_draw(chosen).state
+
+    assert drawn.decision_stack == ()
+    assert drawn.pending_intrigue_draws == ()
+    assert drawn.players[0].influence.bene_gesserit == 4
+    assert drawn.players[0].alliance_faction_ids == ("bene_gesserit",)
+    assert drawn.players[0].intrigue_cards == ()
+
+
+def test_bene_gesserit_is_the_last_faction_left_with_an_empty_deck() -> None:
+    # Spice Freighters 1st place (choose-Influence icon [Main p. 20]) with
+    # every other track at the top: Bene Gesserit is still offered, so the
+    # choice is not dropped as unavailable (OQ-060 covers only a full track).
+    # No Intrigue card is drawn below 1st place here, so the deck starts empty.
+    state = replace(
+        _bene_gesserit_three_with_an_empty_deck("spice_freighters"),
+        intrigue_deck=(),
+    )
+    state = _with_influence(
+        state, 0, Influence(emperor=6, spacing_guild=6, bene_gesserit=3, fremen=6)
+    )
+    rewarded = resolve_combat_rewards(state).state
+
+    actions = legal_combat_reward_influence_actions(rewarded, 0)
+
+    assert [dict(action.arguments)["faction"] for action in actions] == [
+        "bene_gesserit"
+    ]
+    assert not combat_influence_choice_is_unavailable(rewarded)
+
+
+def test_propaganda_offers_bene_gesserit_when_the_intrigue_deck_is_empty() -> None:
+    # Propaganda 1st place: "Choose two:" of the four Faction icons [Propaganda
+    # card], with no condition on the Intrigue deck [Main p. 20] [FAQ p. 2].
+    rewarded = resolve_combat_rewards(
+        _bene_gesserit_three_with_an_empty_deck("propaganda")
+    ).state
+    assert rewarded.intrigue_deck == ()
+    first = legal_distinct_combat_reward_influence_actions(rewarded, 0)
+    assert "bene_gesserit" in {dict(action.arguments)["faction"] for action in first}
+    named = apply_distinct_combat_reward_influence(
+        rewarded,
+        next(
+            action
+            for action in first
+            if dict(action.arguments)["faction"] == "bene_gesserit"
+        ),
+    ).state
+    fremen = next(
+        action
+        for action in legal_distinct_combat_reward_influence_actions(named, 0)
+        if dict(action.arguments)["faction"] == "fremen"
+    )
+
+    chosen = apply_distinct_combat_reward_influence(named, fremen).state
+
+    assert chosen.players[0].influence.bene_gesserit == 4
+    assert chosen.players[0].influence.fremen == 1
+    assert chosen.combat_rewards_resolved is True
+    drawn = _reshuffle_and_draw(chosen)
+    assert drawn.players[0].intrigue_cards == ("intrigue:discarded",)
+
+
 def test_combat_rewards_require_completed_intrigue_and_only_resolve_once() -> None:
     state = _reward_state("skirmish_desert_mouse")
 

@@ -846,7 +846,12 @@ def legal_combat_reward_influence_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Return factions whose Alliance boundary is not reached yet."""
+    """Return every Faction whose track is below the top.
+
+    "Choose any one of the four Factions" [Main p. 20]. Bene Gesserit at 3
+    stays a choice with the Intrigue deck empty: the track's Influence 4
+    Intrigue card is drawn after the discard is reshuffled [FAQ p. 2].
+    """
 
     if not 0 <= player < state.config.players or not state.decision_stack:
         return ()
@@ -865,11 +870,6 @@ def legal_combat_reward_influence_actions(
         )
         for faction in Faction
         if influence_amount(influence, faction) < MAX_INFLUENCE
-        and not (
-            faction is Faction.BENE_GESSERIT
-            and influence_amount(influence, faction) == 3
-            and not state.intrigue_deck
-        )
     )
 
 
@@ -899,11 +899,6 @@ def legal_distinct_combat_reward_influence_actions(
         for index, faction in enumerate(Faction)
         if not chosen_mask & (1 << index)
         and influence_amount(influence, faction) < MAX_INFLUENCE
-        and not (
-            faction is Faction.BENE_GESSERIT
-            and influence_amount(influence, faction) == 3
-            and not state.intrigue_deck
-        )
     )
 
 
