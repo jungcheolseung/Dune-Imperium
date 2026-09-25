@@ -106,6 +106,10 @@ _DRAW_RESEARCH_SPECIMEN = (
 _RESEARCH_AND_TRASH_FOR_VP = (
     PersonalCardAgentEffect.RESEARCH_AND_MAY_TRASH_SELF_FOR_VP_IF_TWO_MARKERS
 )
+# The card instances whose Scientific Breakthrough box already did its
+# Research this turn. Keyed by card, not by the frame, because a Ghola
+# grafted to it copies the box and each box researches once.
+_RESEARCHED_BOXES: Final = "research_resolved_card_ids"
 _GUILD_INFLUENCE_IF_SPICE = (
     PersonalCardAgentEffect.GAIN_SPACING_GUILD_INFLUENCE_IF_GAINED_SPICE_THIS_TURN
 )
@@ -2006,12 +2010,23 @@ def legal_agent_card_payment_actions(
         )
     owner = state.players[player]
     if source_card.agent_effect is _RESEARCH_AND_TRASH_FOR_VP:
-        # Scientific Breakthrough: at two genetic markers the research may
-        # come with "trash this card -> 1 Victory Point" [card face].
+        # Scientific Breakthrough prints the Research icon and, on its own
+        # line, "[2 genetic markers]: Trash this card -> 1 VP" [card face].
+        # The line is judged when it resolves (OQ-028), so the card's own
+        # Research, resolved first, may reach the second marker [Main p. 9].
+        # Before the Research, the plain resolution is the Research; after
+        # it, the line is an arrow cost the owner may decline.
         if genetic_markers_reached(owner.research_space) < 2:
             return ()
         return (
-            DomainAction(action_id="resolve_agent_card_effect", actor=player),
+            DomainAction(
+                action_id=(
+                    "decline_agent_card_payment"
+                    if _box_researched(context, source_card_id)
+                    else "resolve_agent_card_effect"
+                ),
+                actor=player,
+            ),
             DomainAction(action_id="trash_agent_card_self_for_vp", actor=player),
         )
     if source_card.agent_effect is _SOLARI_PER_PARTNER_ICON:
@@ -2360,9 +2375,10 @@ def apply_agent_card_payment(state: GameState, action: DomainAction) -> RuleResu
         )
     if action.action_id == "trash_agent_card_self_for_vp":
         # Scientific Breakthrough: the card trashes itself as its own cost,
-        # so its research still pays out (OQ-022); the direction choice
-        # opens above the settled turn.
+        # so its research still pays out (OQ-022) unless it already did;
+        # the direction choice opens above the settled turn.
         card_instance_id = _effect_subject(context)[1]
+        research_owed = not _box_researched(context, card_instance_id)
         context["agent_card_self_trashed"] = True
         trashed = trash_personal_card(
             state, action.actor, card_instance_id, source=f"{source}:trash"
@@ -2374,8 +2390,10 @@ def apply_agent_card_payment(state: GameState, action: DomainAction) -> RuleResu
         next_state = advance_after_effect(
             trashed.state, context, replace_player(trashed.state.players, rewarded)
         )
-        researched = advance_research(
-            next_state, action.actor, source=f"{source}:research"
+        researched = (
+            advance_research(next_state, action.actor, source=f"{source}:research")
+            if research_owed
+            else RuleResult(state=next_state, events=())
         )
         return RuleResult(
             state=researched.state,
@@ -3689,8 +3707,30 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             ),
         )
     elif effect is _RESEARCH_AND_TRASH_FOR_VP:
-        # Scientific Breakthrough without (or declining) the trash: research.
-        context["pending_agent_effect"] = False
+        if _box_researched(context, card_instance_id):
+            # Scientific Breakthrough's trash line after its Research: an
+            # arrow choice once two markers are reached, else it waits for
+            # the turn's end and lapses there (OQ-057 (1)).
+            if genetic_markers_reached(owner.research_space) >= 2:
+                raise ValueError("choose whether to trash Scientific Breakthrough")
+            context["pending_agent_effect"] = False
+            return RuleResult(
+                state=advance_after_effect(state, context),
+                events=(
+                    GameEvent(
+                        event_id=f"{event_source}:trash_line",
+                        kind="agent_card_effect_unavailable",
+                        payload=(("card_id", card_instance_id), ("player", player)),
+                    ),
+                ),
+            )
+        # Scientific Breakthrough's Research first: the trash line stays
+        # open behind it and is judged once the Research has settled
+        # ("[2 genetic markers]: Trash this card -> 1 VP" [card face];
+        # OQ-028), so a Research that reaches the second marker unlocks it.
+        context[_RESEARCHED_BOXES] = ",".join(
+            (*_researched_boxes(context), card_instance_id)
+        )
         next_state = advance_after_effect(state, context)
         researched = advance_research(
             next_state, player, source=f"{event_source}:research"
@@ -4365,3 +4405,14 @@ def _effect_subject(context: dict[str, bool | int | str]) -> tuple[int, str, str
     ):
         raise RuntimeError("Agent-turn effect frame has invalid subject")
     return player, card_id, space_id
+
+
+def _researched_boxes(context: Mapping[str, ActionValue]) -> tuple[str, ...]:
+    value = context.get(_RESEARCHED_BOXES, "")
+    return tuple(value.split(",")) if isinstance(value, str) and value else ()
+
+
+def _box_researched(context: Mapping[str, ActionValue], card_instance_id: str) -> bool:
+    """Return whether this card's Scientific Breakthrough box did its Research."""
+
+    return card_instance_id in _researched_boxes(context)

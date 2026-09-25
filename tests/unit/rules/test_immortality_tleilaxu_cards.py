@@ -196,6 +196,122 @@ def test_scientific_breakthrough_researches_and_may_trash_itself_at_two_markers(
     assert breakthrough in kept.in_play and kept.victory_points == 1
 
 
+def _research_to(state: GameState, space_id: str) -> GameState:
+    """Answer the research-direction frame the Research just opened."""
+
+    assert state.decision_stack[-1].kind == FrameKind.RESEARCH_ADVANCE
+    return UprisingRulesEngine().apply(
+        state,
+        DomainAction("choose_research_space", 0, (("space_id", space_id),)),
+    ).state
+
+
+def test_scientific_breakthrough_own_research_can_unlock_its_trash_line() -> None:
+    # The box prints the Research icon and, on its own line, "[2 genetic
+    # markers]: Trash this card -> 1 VP" [Scientific Breakthrough card].
+    # "When your research token reaches a column with a genetic marker at the
+    # bottom, for the rest of the game, any effects on cards marked with that
+    # icon are active for you." [Immortality p. 6] (docs/rules/immortality.md
+    # "token이 아래에 genetic marker가 있는 열에 도달하면 남은 게임 동안 그
+    # 아이콘이 붙은 카드 효과가 활성화된다"), the owner carries out the
+    # effects "in any order" [Main p. 9], and a condition is judged when its
+    # effect resolves (OQ-028). The markers were judged once, before the
+    # card's own Research, so a token one step short of the second marker
+    # researched into it and the trash line was never offered.
+    breakthrough = _tleilaxu("scientific_breakthrough")
+    placed = _place(
+        _state(_owner((breakthrough,), research_space="c7r3")),
+        breakthrough,
+        "arrakeen",
+    )
+    assert legal_agent_card_payment_actions(placed, 0) == ()
+    researched = _research_to(resolve_agent_card_effect(placed).state, "c8r2")
+    before = researched.players[0]
+    assert before.research_space == "c8r2"
+
+    assert {a.action_id for a in legal_agent_card_payment_actions(researched, 0)} == {
+        "decline_agent_card_payment",
+        "trash_agent_card_self_for_vp",
+    }
+    trashed = apply_agent_card_payment(
+        researched, _payment(researched, "trash_agent_card_self_for_vp")
+    )
+    owner = trashed.state.players[0]
+    assert breakthrough in owner.trashed and breakthrough not in owner.in_play
+    assert owner.victory_points == before.victory_points + 1
+    # The Research already resolved: the trash does not research again
+    # (past the second marker that would draw a card).
+    assert owner.hand == before.hand
+    assert owner.research_space == "c8r2"
+
+    # Declining keeps the card in play and gives nothing.
+    declined = apply_agent_card_payment(
+        researched, _payment(researched, "decline_agent_card_payment")
+    ).state.players[0]
+    assert breakthrough in declined.in_play
+    assert declined.victory_points == before.victory_points
+
+
+def test_scientific_breakthrough_trash_line_waits_for_the_turn_end() -> None:
+    # A Research that stops short of the second marker leaves the line
+    # closed; it waits for the turn's end (OQ-057 (1)) in case a later
+    # effect of the turn reaches the marker, and lapses there.
+    breakthrough = _tleilaxu("scientific_breakthrough")
+    placed = _place(
+        _state(_owner((breakthrough,), research_space="c4r2")),
+        breakthrough,
+        "arrakeen",
+    )
+    researched = _research_to(resolve_agent_card_effect(placed).state, "c5r3")
+    engine = UprisingRulesEngine()
+    card_actions = {
+        "resolve_agent_card_effect",
+        "decline_agent_card_payment",
+        "trash_agent_card_self_for_vp",
+    }
+    offered = {
+        a.action_id
+        for a in engine.legal_actions(researched, 0)
+        if not dict(a.arguments).get("effect")
+    }
+    assert not offered & card_actions
+    _, context = current_agent_effect_context(researched)
+    assert context["pending_agent_effect"] is True
+
+    closed = _engine_finish_turn(researched)
+    owner = closed.players[0]
+    assert breakthrough in owner.in_play
+    assert owner.victory_points == researched.players[0].victory_points
+
+
+def test_ghola_copying_scientific_breakthrough_researches_on_its_own() -> None:
+    # Ghola "copies the entire Agent box" [Immortality p. 14]: each box does
+    # its own Research, so the first box's Research must not count as the
+    # copy's.
+    breakthrough = _tleilaxu("scientific_breakthrough")
+    ghola = _tleilaxu("ghola")
+    grafted = _graft(
+        _state(_owner((breakthrough, ghola), research_space="c7r3")),
+        breakthrough,
+        "arrakeen",
+        ghola,
+    )
+    researched = _research_to(resolve_agent_card_effect(grafted).state, "c8r2")
+    assert {a.action_id for a in legal_agent_card_payment_actions(researched, 0)} == {
+        "decline_agent_card_payment",
+        "trash_agent_card_self_for_vp",
+    }
+    switched = _switch(researched)
+    assert {a.action_id for a in legal_agent_card_payment_actions(switched, 0)} == {
+        "resolve_agent_card_effect",
+        "trash_agent_card_self_for_vp",
+    }
+    # Past the second marker Ghola's Research draws a card.
+    hand = switched.players[0].hand
+    drawn = resolve_agent_card_effect(switched).state
+    assert len(drawn.players[0].hand) == len(hand) + 1
+
+
 def test_guild_impersonator_needs_spice_gained_this_turn() -> None:
     impersonator = _tleilaxu("guild_impersonator")
     piter = _tleilaxu("piter_genius_advisor")
