@@ -35,6 +35,7 @@ from dune_imperium.rules.ornithopter import (
     has_ornithopter_fleet,
     match_all_battle_icons,
 )
+from dune_imperium.rules.spy_placement import recall_spy
 
 
 class RewardRank(IntEnum):
@@ -420,22 +421,14 @@ def resolve_combat_rewards(state: GameState) -> RuleResult:
                     len(frames_in_order),
                 )
             )
-        occupied_posts = {
-            post_id for player in players for post_id in player.spy_post_ids
-        }
-        spy_count = min(
-            reward.place_spies * amount,
-            next_owner.spies_supply,
-            len(OBSERVATION_POSTS) - len(occupied_posts),
-        )
-        # A Spy with Deep Cover ignores opponents' Spies, so only the
-        # owner's own posts are closed to it [Bloodlines pp. 5, 12].
-        deep_cover_count = min(
-            reward.deep_cover_spies * amount,
-            next_owner.spies_supply - spy_count,
-            len(OBSERVATION_POSTS) - len(next_owner.spy_post_ids) - spy_count,
-        )
-        for deep_cover in (False,) * spy_count + (True,) * deep_cover_count:
+        # One frame per printed Spy, repeated by a sandworm [Main p. 14],
+        # each judged when it resolves: with the supply empty its owner may
+        # first recall a Spy [Main pp. 11, 20], so the supply at payment
+        # does not cap them. A Spy with Deep Cover ignores opponents' Spies
+        # [Bloodlines pp. 5, 12].
+        for deep_cover in (False,) * (reward.place_spies * amount) + (True,) * (
+            reward.deep_cover_spies * amount
+        ):
             frames_in_order.append(
                 _spy_placement_frame(
                     state,
@@ -720,10 +713,14 @@ def legal_combat_reward_spy_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Return the Observation Posts open to a Conflict reward Spy now.
+    """Return the choices of a Conflict reward Spy now.
 
     A plain reward Spy needs an empty post; a Spy with Deep Cover needs only
-    a post without the owner's own Spy.
+    a post without the owner's own Spy. Placing is mandatory while a Spy is
+    in the supply (the erratum to [Main p. 11], OQ-057 (14)). Without one,
+    "you may first recall one of your Spies for no effect" [Main pp. 11,
+    20]: the recall can be declined, and once made the Spy is back in the
+    supply and must be placed -- on the post it left, if its owner likes.
     """
 
     if not 0 <= player < state.config.players or not state.decision_stack:
@@ -734,33 +731,48 @@ def legal_combat_reward_spy_actions(
     decision = frame.decision
     if not isinstance(decision, PlayerDecision) or decision.owner != player:
         return ()
-    if state.players[player].spies_supply == 0:
-        return ()
+    owner = state.players[player]
     if dict(frame.context).get("deep_cover") is True:
         # Spy with Deep Cover: opponents' Spies may be ignored, never one's
         # own [Bloodlines pp. 5, 12].
-        occupied = set(state.players[player].spy_post_ids)
+        occupied = set(owner.spy_post_ids)
     else:
         occupied = {
-            post_id for owner in state.players for post_id in owner.spy_post_ids
+            post_id for seat in state.players for post_id in seat.spy_post_ids
         }
-    return tuple(
-        DomainAction(
-            action_id="place_combat_reward_spy",
-            actor=player,
-            arguments=(("post_id", post.post_id),),
-        )
-        for post in OBSERVATION_POSTS
-        if post.post_id not in occupied
+    targets = tuple(
+        post.post_id for post in OBSERVATION_POSTS if post.post_id not in occupied
     )
+    if targets and owner.spies_supply > 0:
+        return tuple(
+            DomainAction(
+                action_id="place_combat_reward_spy",
+                actor=player,
+                arguments=(("post_id", post_id),),
+            )
+            for post_id in targets
+        )
+    if targets and owner.spy_post_ids:
+        return (
+            DomainAction(action_id="decline_combat_reward_spy", actor=player),
+            *(
+                DomainAction(
+                    action_id="recall_spy_for_combat_reward",
+                    actor=player,
+                    arguments=(("post_id", post_id),),
+                )
+                for post_id in owner.spy_post_ids
+            ),
+        )
+    return ()
 
 
 def combat_reward_spy_is_unavailable(state: GameState) -> bool:
     """Return whether the top Conflict reward Spy can no longer be placed.
 
-    The reward frames are counted against the supply when the rewards are
-    paid; should the supply or the free posts run out before one resolves,
-    the frame would be left without a legal action.
+    With no Spy in the supply and none of its owner's on the board to
+    recall (or no post left to place on), the frame would be left without
+    a legal action.
     """
 
     if not state.decision_stack:
@@ -806,16 +818,54 @@ def apply_combat_reward_spy(
     state: GameState,
     action: DomainAction,
 ) -> RuleResult:
-    """Place one Spy from supply on the selected open Observation Post."""
+    """Place the reward Spy, or recall one first, or pass up that recall."""
 
     if action not in legal_combat_reward_spy_actions(state, action.actor):
         raise ValueError("action is not a legal Combat reward Spy placement")
+    frame = state.decision_stack[-1]
+    choice_index = context_int(dict(frame.context), "choice_index")
+    if action.action_id == "decline_combat_reward_spy":
+        remaining = state.decision_stack[:-1]
+        return RuleResult(
+            state=replace(
+                state, decision_stack=remaining, combat_rewards_resolved=not remaining
+            ),
+            events=(
+                GameEvent(
+                    event_id=(
+                        f"round:{state.round_number}:combat_reward:spy_unavailable:"
+                        f"{choice_index}:{action.actor}"
+                    ),
+                    kind="combat_reward_spy_unavailable",
+                    payload=(
+                        ("choice_index", choice_index),
+                        ("player", action.actor),
+                    ),
+                ),
+            ),
+        )
     post_id = dict(action.arguments)["post_id"]
     if not isinstance(post_id, str):
         raise RuntimeError("Combat reward Spy placement has invalid post ID")
-    frame = state.decision_stack[-1]
-    choice_index = context_int(dict(frame.context), "choice_index")
     owner = state.players[action.actor]
+    if action.action_id == "recall_spy_for_combat_reward":
+        # The frame stays: the recalled Spy now has to be placed.
+        return RuleResult(
+            state=replace(
+                state,
+                players=replace_player(state.players, recall_spy(owner, post_id)),
+            ),
+            events=(
+                GameEvent(
+                    event_id=(
+                        f"round:{state.round_number}:combat_reward:spy_recalled:"
+                        f"{choice_index}:{action.actor}:{post_id}"
+                    ),
+                    kind="spy_recalled",
+                    payload=(("player", action.actor), ("post_id", post_id)),
+                ),
+            ),
+        )
     next_owner = replace(
         owner,
         spies_supply=owner.spies_supply - 1,

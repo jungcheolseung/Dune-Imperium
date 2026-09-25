@@ -597,7 +597,8 @@ def test_bloodlines_actions_round_trip_only_in_the_bloodlines_catalog() -> None:
     # City icon shifts its agent_turn space coverage by +1 (see
     # test_action_codec.test_catalog_is_fixed_and_versioned_for_a_ruleset).
     # v107: +27, the generic Spy placement frame in every catalog.
-    assert base.size == 4354 + 12 + 1 + 1 + 2 + 1 + 40 + 1 + 27
+    # After v107: +14, the Conflict reward Spy's recall-first.
+    assert base.size == 4354 + 12 + 1 + 1 + 2 + 1 + 40 + 1 + 27 + 14
     # Commander choices, the Commander share of retreats and deployments,
     # and the wild pairs of the two Bloodlines Conflicts are bloodlines-only.
     assert codec.size > base.size

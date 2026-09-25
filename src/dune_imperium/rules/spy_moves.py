@@ -144,9 +144,8 @@ def track_spy_is_queued(state: GameState) -> bool:
     A pending chance frame always resolves first, like the other queues. So
     do the choices of a Conflict's rewards: a fixed Emperor Influence reward
     may reach 4 while that Conflict's own Spy rewards are still waiting, and
-    those were counted against the supply when the rewards were paid -- the
-    track's Spy follows them (with an empty supply it may still recall one
-    first) instead of taking a Spy they were promised.
+    the track's Spy follows them. Each of them, the track's included, may
+    first recall a Spy when the supply is empty [Main pp. 11, 20].
     """
 
     if not state.pending_track_spies:

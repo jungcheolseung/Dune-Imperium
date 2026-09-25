@@ -720,6 +720,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "play_conflict_end_intrigue": apply_conflict_end_trigger,
     "decline_conflict_end_intrigue": apply_conflict_end_trigger,
     "place_combat_reward_spy": apply_combat_reward_spy,
+    "recall_spy_for_combat_reward": apply_combat_reward_spy,
+    "decline_combat_reward_spy": apply_combat_reward_spy,
     "choose_combat_reward_influence": apply_combat_reward_influence,
     "choose_distinct_combat_reward_influence": (apply_distinct_combat_reward_influence),
     # Endgame
@@ -868,9 +870,9 @@ def _advance_automatic(result: RuleResult) -> RuleResult:
         elif navigation_play_is_queued(state):
             automatic = begin_navigation_play(state)
         elif combat_reward_spy_is_unavailable(state):
-            # A Conflict reward Spy that can no longer be placed (no Spy left
-            # in the supply, no free post) is lost rather than left as a
-            # frame without a legal action.
+            # A Conflict reward Spy that cannot be placed (no Spy in the
+            # supply and none on the board to recall first, or no free post)
+            # is lost rather than left as a frame without a legal action.
             automatic = fizzle_combat_reward_spy(state)
         elif combat_influence_choice_is_unavailable(state):
             # Every eligible Faction is at the top of its track, so the

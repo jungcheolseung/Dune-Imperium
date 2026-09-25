@@ -33,7 +33,10 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     # track's Influence 4 Spy [Main p. 7]): place_spy_on_space and
     # recall_spy_for_placement per post (13 + 13) and decline_spy_placement
     # join the catalogs without Bloodlines, +27.
-    assert first.size == 4354 + 2 + 7 + 4 + 1 + 2 + 1 + 40 + 1 + 27
+    # After v107: a Conflict reward Spy without a Spy in supply may recall
+    # one first or decline [Main pp. 11, 20]: recall_spy_for_combat_reward
+    # per post (13) and decline_combat_reward_spy join every catalog, +14.
+    assert first.size == 4354 + 2 + 7 + 4 + 1 + 2 + 1 + 40 + 1 + 27 + 14
 
 
 def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
@@ -52,7 +55,8 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
     # v107: +27, the generic Spy placement frame (see above).
     # After v107: decline_contract_spy, the Contract Spy's way to pass up the
     # recall-first without a Spy in supply [Main pp. 11, 20], +1.
-    assert codec.size == 4640 + 2 + 7 + 4 + 1 + 2 + 1 + 44 + 1 + 27 + 1
+    # After v107: +14, the Conflict reward Spy's recall-first (see above).
+    assert codec.size == 4640 + 2 + 7 + 4 + 1 + 2 + 1 + 44 + 1 + 27 + 1 + 14
 
     try:
         ActionCodec(RulesetConfig()).encode(action)
@@ -96,7 +100,8 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
     # every Bene Gesserit card already gets every Agent icon's placements
     # under Bloodlines, for Urgent Shigawire's boost.
     # After v107: decline_contract_spy (see the CHOAM catalog test), +1.
-    assert both.size == 11100 + 28 + 28 + 72 + 1
+    # After v107: +14, the Conflict reward Spy's recall-first.
+    assert both.size == 11100 + 28 + 28 + 72 + 1 + 14
 
     choam_only = ActionCodec(RulesetConfig(choam_module=True))
     for action in actions:

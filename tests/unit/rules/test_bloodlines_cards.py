@@ -1840,7 +1840,9 @@ def test_ruthless_leadership_round_trips_and_is_dealt_in_random_games() -> None:
     # does not change its agent_turn coverage under Bloodlines (every Bene
     # Gesserit card already gets every Agent icon's placements there, for
     # Urgent Shigawire's boost).
-    assert codec.size == 10159 + 292 + 1 + 1 + 1 + 2 + 1 + 28 + 28 + 67
+    # After v107: +14, the Conflict reward Spy's recall-first (13 recalls
+    # and a decline).
+    assert codec.size == 10159 + 292 + 1 + 1 + 1 + 2 + 1 + 28 + 28 + 67 + 14
     action = DomainAction(
         action_id="trash_agent_card",
         actor=2,
@@ -1932,4 +1934,71 @@ def test_storms_in_the_south_first_place_spy_has_deep_cover() -> None:
     assert len(posts) == 12
     placed = apply_combat_reward_spy(rewarded, posts[rival_post]).state
     assert placed.players[0].spy_post_ids == (own_post, rival_post)
+    assert placed.players[1].spy_post_ids == (rival_post,)
+
+
+def test_storms_in_the_south_deep_cover_spy_may_recall_first_without_supply() -> None:
+    # The Deep Cover Spy is still a Spy icon [Storms in the South card]: "If
+    # you have no Spies in your supply, you may first recall one of your
+    # Spies for no effect" [Main pp. 11, 20], optional (docs/rules/
+    # uprising-systems.md, OQ-057 (14)). With all three Spies on the board
+    # the reward used to open no frame and the Spy was lost.
+    from dune_imperium.rules.combat import combat_reward_spy_is_unavailable
+
+    rival_post = "emperor-sardaukar-dutiful-service"
+    own_posts = (
+        "choam-shipping-accept-contract",
+        "arrakis-hagga-basin",
+        "arrakis-deep-desert",
+    )
+    players = (
+        PlayerState(
+            player_id=0, combat_strength=8, spies_supply=0, spy_post_ids=own_posts
+        ),
+        PlayerState(
+            player_id=1, combat_strength=6, spies_supply=2, spy_post_ids=(rival_post,)
+        ),
+        PlayerState(player_id=2, combat_strength=4),
+        PlayerState(player_id=3),
+    )
+    state = GameState(
+        config=BLOODLINES,
+        seed=1,
+        phase=GamePhase.COMBAT,
+        round_number=3,
+        first_player=0,
+        players=players,
+        current_conflict_ids=("storms_in_the_south",),
+        combat_intrigue_complete=True,
+        intrigue_deck=intrigue_deck_instance_ids(False)[:4],
+    )
+    rewarded = resolve_combat_rewards(state).state
+    frame = rewarded.decision_stack[-1]
+    assert frame.kind == FrameKind.COMBAT_REWARD_SPY
+    assert dict(frame.context)["deep_cover"] is True
+    assert not combat_reward_spy_is_unavailable(rewarded)
+    actions = legal_combat_reward_spy_actions(rewarded, 0)
+    assert [action.action_id for action in actions] == [
+        "decline_combat_reward_spy",
+        *("recall_spy_for_combat_reward",) * 3,
+    ]
+
+    recalled = apply_combat_reward_spy(rewarded, actions[1]).state
+    targets = {
+        dict(action.arguments)["post_id"]
+        for action in legal_combat_reward_spy_actions(recalled, 0)
+    }
+    # Deep Cover [Bloodlines pp. 5, 12]: the rival's post and the one just
+    # left are open, the owner's other posts are not.
+    assert {rival_post, own_posts[0]} <= targets
+    assert not targets & set(own_posts[1:])
+    placed = apply_combat_reward_spy(
+        recalled,
+        DomainAction(
+            action_id="place_combat_reward_spy",
+            actor=0,
+            arguments=(("post_id", rival_post),),
+        ),
+    ).state
+    assert placed.players[0].spy_post_ids == (*own_posts[1:], rival_post)
     assert placed.players[1].spy_post_ids == (rival_post,)
