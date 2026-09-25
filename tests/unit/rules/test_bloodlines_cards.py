@@ -36,8 +36,13 @@ from dune_imperium.rules.board_effects import (
 )
 from dune_imperium.rules.card_discard import discard_personal_card_from_hand
 from dune_imperium.rules.card_trash import trash_personal_card
+from dune_imperium.rules.combat import (
+    apply_combat_reward_spy,
+    legal_combat_reward_spy_actions,
+    resolve_combat_rewards,
+)
 from dune_imperium.rules.engine import UprisingRulesEngine
-from dune_imperium.rules.frames import replace_player
+from dune_imperium.rules.frames import FrameKind, replace_player
 from dune_imperium.rules.reveal_turn import (
     apply_reveal_card_trash,
     apply_reveal_influence_gain,
@@ -1833,3 +1838,52 @@ def test_ruthless_leadership_round_trips_and_is_dealt_in_random_games() -> None:
             )
         }
         assert "ruthless_leadership" in dealt
+
+
+# --- Bloodlines Conflict cards ------------------------------------------------
+
+
+def test_storms_in_the_south_first_place_spy_has_deep_cover() -> None:
+    # The first-place reward prints a gold Spy behind a grey one (the Spy
+    # with Deep Cover of Deliver Supplies) and 2 spice [Storms in the South
+    # card]. Deep Cover places a Spy by the normal rules but may "ignore any
+    # opponents' Spies"; a post holding the owner's own Spy stays closed
+    # [Bloodlines pp. 5, 12] (docs/rules/bloodlines.md §4).
+    rival_post = "emperor-sardaukar-dutiful-service"
+    own_post = "choam-shipping-accept-contract"
+    players = (
+        PlayerState(
+            player_id=0, combat_strength=8, spies_supply=2, spy_post_ids=(own_post,)
+        ),
+        PlayerState(
+            player_id=1, combat_strength=6, spies_supply=2, spy_post_ids=(rival_post,)
+        ),
+        PlayerState(player_id=2, combat_strength=4),
+        PlayerState(player_id=3),
+    )
+    state = GameState(
+        config=BLOODLINES,
+        seed=1,
+        phase=GamePhase.COMBAT,
+        round_number=3,
+        first_player=0,
+        players=players,
+        current_conflict_ids=("storms_in_the_south",),
+        combat_intrigue_complete=True,
+        intrigue_deck=intrigue_deck_instance_ids(False)[:4],
+    )
+    rewarded = resolve_combat_rewards(state).state
+    assert rewarded.players[0].resources.spice == 2
+    frame = rewarded.decision_stack[-1]
+    assert frame.kind == FrameKind.COMBAT_REWARD_SPY
+    assert dict(frame.context)["deep_cover"] is True
+    posts = {
+        dict(a.arguments)["post_id"]: a
+        for a in legal_combat_reward_spy_actions(rewarded, 0)
+    }
+    assert rival_post in posts
+    assert own_post not in posts
+    assert len(posts) == 12
+    placed = apply_combat_reward_spy(rewarded, posts[rival_post]).state
+    assert placed.players[0].spy_post_ids == (own_post, rival_post)
+    assert placed.players[1].spy_post_ids == (rival_post,)

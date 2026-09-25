@@ -347,14 +347,23 @@ def test_endgame_vp_leader_and_trigger_vp_match_the_round_end_check_state(
     == False there, both because Panopticon's Endgame-opening Influence gain
     (1 -> 2, +1 VP each -- ``rules/influence.py`` line 46) was already folded
     into the snapshot it took.
+
+    Seed 23's game changed with the 2026-09-25 Storms in the South
+    correction (its first divergence is that card's first-place Spy with
+    Deep Cover) and no longer changes the leader, so the pinned case is now
+    seed 45 (full), the only seed in 1-120 where an Endgame-opening Tech
+    effect changes the leader: seat 1 (Gaius Helen Mohiam) holds Panopticon,
+    is tied with seat 0 on 9 VP at the check, and its Emperor 1 -> 2 and
+    Fremen 1 -> 2 gains make it 11. The buggy collector would read
+    ``end.endgame_vp`` == 0 for seat 1 and ``end.leader_changed`` == False.
     """
 
     import dune_imperium.rules.engine as rules_engine
     from dune_imperium.rules.endgame import final_standings as real_final_standings
     from dune_imperium.rules.phases import resolve_recall_or_endgame as real_resolve
 
-    saw_seed_23 = False
-    for seed in (*FULL_SEEDS, 23):
+    saw_seed_45 = False
+    for seed in (*FULL_SEEDS, 45):
         spec = _spec(True, seed)
         captured: list[Any] = []
 
@@ -389,12 +398,12 @@ def test_endgame_vp_leader_and_trigger_vp_match_the_round_end_check_state(
         for seat, player in zip(census["seats"], at_check.players, strict=True):
             assert seat["vp"] - seat["end.endgame_vp"] == player.victory_points
 
-        if seed == 23:
-            saw_seed_23 = True
-            assert census["seats"][3]["end.endgame_vp"] == 4
+        if seed == 45:
+            saw_seed_45 = True
+            assert census["seats"][1]["end.endgame_vp"] == 2
             assert census["game"]["end.leader_changed"] is True
 
-    assert saw_seed_23, "the seed 23 regression case must run"
+    assert saw_seed_45, "the seed 45 regression case must run"
 
 
 def test_commander_retreats_excludes_conflict_losses_and_opponent_forced_retreats(

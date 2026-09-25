@@ -428,12 +428,20 @@ def resolve_combat_rewards(state: GameState) -> RuleResult:
             next_owner.spies_supply,
             len(OBSERVATION_POSTS) - len(occupied_posts),
         )
-        for _ in range(spy_count):
+        # A Spy with Deep Cover ignores opponents' Spies, so only the
+        # owner's own posts are closed to it [Bloodlines pp. 5, 12].
+        deep_cover_count = min(
+            reward.deep_cover_spies * amount,
+            next_owner.spies_supply - spy_count,
+            len(OBSERVATION_POSTS) - len(next_owner.spy_post_ids) - spy_count,
+        )
+        for deep_cover in (False,) * spy_count + (True,) * deep_cover_count:
             frames_in_order.append(
                 _spy_placement_frame(
                     state,
                     assignment.player,
                     len(frames_in_order),
+                    deep_cover=deep_cover,
                 )
             )
         reward_event = _combat_reward_event(state, assignment, reward)
@@ -712,7 +720,11 @@ def legal_combat_reward_spy_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Return currently empty Observation Posts for a Conflict reward."""
+    """Return the Observation Posts open to a Conflict reward Spy now.
+
+    A plain reward Spy needs an empty post; a Spy with Deep Cover needs only
+    a post without the owner's own Spy.
+    """
 
     if not 0 <= player < state.config.players or not state.decision_stack:
         return ()
@@ -724,7 +736,14 @@ def legal_combat_reward_spy_actions(
         return ()
     if state.players[player].spies_supply == 0:
         return ()
-    occupied = {post_id for owner in state.players for post_id in owner.spy_post_ids}
+    if dict(frame.context).get("deep_cover") is True:
+        # Spy with Deep Cover: opponents' Spies may be ignored, never one's
+        # own [Bloodlines pp. 5, 12].
+        occupied = set(state.players[player].spy_post_ids)
+    else:
+        occupied = {
+            post_id for owner in state.players for post_id in owner.spy_post_ids
+        }
     return tuple(
         DomainAction(
             action_id="place_combat_reward_spy",
@@ -787,7 +806,7 @@ def apply_combat_reward_spy(
     state: GameState,
     action: DomainAction,
 ) -> RuleResult:
-    """Place one Spy from supply on a selected empty Observation Post."""
+    """Place one Spy from supply on the selected open Observation Post."""
 
     if action not in legal_combat_reward_spy_actions(state, action.actor):
         raise ValueError("action is not a legal Combat reward Spy placement")
@@ -1613,15 +1632,26 @@ def _spy_placement_frame(
     state: GameState,
     player: int,
     index: int,
+    *,
+    deep_cover: bool = False,
 ) -> DecisionFrame:
     return DecisionFrame(
         kind=FrameKind.COMBAT_REWARD_SPY,
         frame_id=f"round:{state.round_number}:combat_reward_spy:{index}:{player}",
         decision=PlayerDecision(
             owner=player,
-            prompt="Choose an empty Observation Post for your Spy",
+            prompt=(
+                "Choose an Observation Post for your Spy with Deep Cover"
+                if deep_cover
+                else "Choose an empty Observation Post for your Spy"
+            ),
         ),
-        context=(("choice_index", index), ("player", player)),
+        # Plain reward Spies keep their earlier context (and replay digests).
+        context=(
+            (("choice_index", index), ("deep_cover", True), ("player", player))
+            if deep_cover
+            else (("choice_index", index), ("player", player))
+        ),
     )
 
 

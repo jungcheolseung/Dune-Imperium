@@ -18,6 +18,8 @@ class ConflictReward:
     intrigue: int = 0
     troops: int = 0
     place_spies: int = 0
+    # Spy with Deep Cover: may ignore opponents' Spies [Bloodlines pp. 5, 12].
+    deep_cover_spies: int = 0
     contracts: int = 0
     trash_cards: int = 0
     victory_points: int = 0
@@ -39,6 +41,7 @@ class ConflictReward:
             self.intrigue,
             self.troops,
             self.place_spies,
+            self.deep_cover_spies,
             self.contracts,
             self.trash_cards,
             self.victory_points,
@@ -396,7 +399,10 @@ CONFLICTS: Final = (
         tier=ConflictTier.TWO,
         battle_icon=BattleIcon.WILD,
         rewards=(
-            ConflictReward(place_spies=1, spice=2),
+            # The first place prints a gold Spy behind a grey one: a Spy
+            # with Deep Cover, as on Deliver Supplies [Storms in the South
+            # card] [Bloodlines p. 5].
+            ConflictReward(deep_cover_spies=1, spice=2),
             ConflictReward(intrigue=2, solari=2),
             ConflictReward(intrigue=1, solari=2),
         ),

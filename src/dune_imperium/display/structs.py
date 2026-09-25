@@ -138,6 +138,7 @@ _HANDLED_CONFLICT_REWARD_FIELDS: frozenset[str] = frozenset(
         "intrigue",
         "troops",
         "place_spies",
+        "deep_cover_spies",
         "contracts",
         "trash_cards",
         "victory_points",
@@ -192,6 +193,8 @@ def conflict_reward_text(reward: ConflictReward) -> str:
         parts.append(f"Recruit {reward.troops} {_plural(reward.troops, 'troop')}")
     if reward.place_spies:
         parts.append(_spy_text(reward.place_spies))
+    if reward.deep_cover_spies:
+        parts.append(f"{_spy_text(reward.deep_cover_spies)} with Deep Cover")
     if reward.contracts:
         contracts_noun = _plural(reward.contracts, "Contract")
         parts.append(f"Take {reward.contracts} {contracts_noun}")
