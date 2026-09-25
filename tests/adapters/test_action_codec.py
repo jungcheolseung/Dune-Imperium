@@ -33,7 +33,16 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     # track's Influence 4 Spy [Main p. 7]): place_spy_on_space and
     # recall_spy_for_placement per post (13 + 13) and decline_spy_placement
     # join the catalogs without Bloodlines, +27.
-    assert first.size == 4354 + 2 + 7 + 4 + 1 + 2 + 1 + 40 + 1 + 27
+    # Card-face re-read (2026-09-26, no version bump — pending the controller's
+    # post-merge re-pin): Maker Keeper's corrected single City icon (not City
+    # + Spice Trade) drops its agent_turn space/cost/infiltration-post
+    # coverage by 20, and Undercover Asset's removed Spy icon (it never had
+    # one) drops its coverage by 16, net -36. Calculus of Power's City icon
+    # (not Landsraad) and Chani's Fremen icon (not Spacing Guild) leave their
+    # own template counts unchanged: Calculus of Power keeps its Spy icon, so
+    # every space was already covered either way, and Fremen and Spacing
+    # Guild board spaces carry the same cost/infiltration-post combinations.
+    assert first.size == 4354 + 2 + 7 + 4 + 1 + 2 + 1 + 40 + 1 + 27 - 36
 
 
 def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
@@ -50,7 +59,10 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
     # Intrigue instance (+44) and Branching Path's corrected City icon shifts
     # its agent_turn space coverage by +1 (see test_catalog_is_fixed...).
     # v107: +27, the generic Spy placement frame (see above).
-    assert codec.size == 4640 + 2 + 7 + 4 + 1 + 2 + 1 + 44 + 1 + 27
+    # Card-face re-read (2026-09-26, no version bump — pending the controller's
+    # post-merge re-pin): Maker Keeper and Undercover Asset's corrected Agent
+    # icons drop -36 here too (see test_catalog_is_fixed_and_versioned...).
+    assert codec.size == 4640 + 2 + 7 + 4 + 1 + 2 + 1 + 44 + 1 + 27 - 36
 
     try:
         ActionCodec(RulesetConfig()).encode(action)
