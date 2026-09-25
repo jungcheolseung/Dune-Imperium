@@ -475,6 +475,7 @@ def test_harvest_cells_in_hand_may_be_played_after_the_rewards() -> None:
     assert short.phase is not GamePhase.COMBAT
     assert card in short.players[0].intrigue_cards
 
+
 def test_harvest_cells_from_hand_takes_its_specimens_after_the_loss() -> None:
     # "When you lose at least three troops at the end of a Conflict: [2
     # specimens]" [Harvest Cells card]; "When resolving combat, troops that
