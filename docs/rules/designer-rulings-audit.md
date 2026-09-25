@@ -78,7 +78,7 @@
 
 ## 추가 확인이 필요한 항목
 
-- (2026-09-09 해소) Leadership + Calculus of Power + Sardaukar Soldier: "Leadership은 한 순간에 세고 trash된 카드는 못 센다"(In person). 엔진은 Reveal 시작에 한 번 세고(Sardaukar 1장 → +1) Calculus가 Sardaukar를 trash해도 다시 세지 않는다 — trash 뒤에 세어도 Calculus가 검 카드가 되고 Sardaukar가 빠져 같은 +1이므로 어느 순간에 세든 결과가 같다. Sardaukar의 이미 모인 검 1은 OQ-022대로 남는다. `tests/unit/rules/test_reveal_turn.py::test_leadership_counts_sword_cards_once_and_ignores_a_later_trash`(총 8, 9가 아님).
+- (2026-09-09 해소) Leadership + Calculus of Power + Sardaukar Soldier: "Leadership은 한 순간에 세고 trash된 카드는 못 센다"(In person). 엔진은 Reveal 시작에 한 번 세고(Sardaukar 1장 → +1) Calculus가 Sardaukar를 trash해도 다시 세지 않는다 — trash 뒤에 세어도 Calculus가 검 카드가 되고 Sardaukar가 빠져 같은 +1이므로 어느 순간에 세든 결과가 같다. Sardaukar의 이미 모인 검 1은 OQ-022대로 남는다. `tests/unit/rules/test_reveal_turn.py::test_leadership_counts_sword_cards_once_and_ignores_a_later_trash`(총 8, 9가 아님). 2026-09-26 보강: 인쇄 문구 "provides one or more [sword] this turn" `[Leadership card]`에는 Reveal 선택이 낸 검(Undercover Asset·Chani, Clever Tactician·Calculus of Power·Arrakis Observer)도 들어간다. 엔진은 Reveal 시작에 센 수를 frame에 기록하고 매 단계 뒤 아직 in play인 검 카드 수까지 올리기만 해(내리지 않음) 소유자가 고를 최선의 한 순간을 지급한다(OQ-057, `test_leadership_counts_undercover_assets_chosen_swords`).
 - (2026-09-09 반영) Duncan Idaho(Bloodlines) Into the Fray의 Agent를 Imperial Privilege로 recall 가능(Message from designer): 엔진은 `agent_locations`만 후보로 봐 불가능했다. `recall_conflict_agent_for_imperial_privilege` 행동을 더해 Conflict의 Agent를 Leader로 되돌리고(OQ-037(d), codec v99), 다른 Agent가 없어도 recall을 불발시키지 않는다. `tests/unit/rules/test_bloodlines_leaders.py::test_imperial_privilege_may_recall_the_into_the_fray_agent`.
 - Combat 보상으로 Tech를 얻는 Conflict는 현재 카탈로그에 없어 "Trade Monopoly" 계열 판정은 해당 없음(확인만).
 
