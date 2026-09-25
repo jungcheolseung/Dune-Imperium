@@ -96,7 +96,9 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
     # Grasp Arrakis loses its Combat copy of the Endgame flip and Tenuous
     # Bond its Combat swap and Plot swords: one timing per printed band
     # [card faces; Main p. 7] (-3 play_intrigue templates).
-    assert both.size == 11100 + 28 + 28 + 72 - 3
+    # A forced Spy move with no empty post off the Agent's space loses the
+    # Spy [FAQ p. 2] (OQ-063): +1 lose_moved_spy.
+    assert both.size == 11100 + 28 + 28 + 72 - 3 + 1
 
     choam_only = ActionCodec(RulesetConfig(choam_module=True))
     for action in actions:

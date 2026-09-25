@@ -683,6 +683,9 @@ def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "recruit_sardaukar_commander",
             # Bought without a Skill when none is choosable (OQ-031).
             "acquire_sardaukar_commander",
+            # False Orders / Holy War: no empty post off the Agent's space,
+            # so the forced-to-move Spy is lost [FAQ p. 2] (OQ-063).
+            "lose_moved_spy",
         )
     ]
     for action_id in (

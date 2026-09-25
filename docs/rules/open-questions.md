@@ -246,9 +246,9 @@
 
 - 상태: `DECIDED` (project convention)
 - Holy War의 "Each opponent loses one troop"(카드면)는 troop을 garrison에서 잃는지 Conflict에서 잃는지, 누가 고르는지, Sardaukar Commander도 대상인지를 말하지 않는다. Holy War와 False Orders의 "Each opponent spying on the board space where you sent an Agent this turn must move that Spy"는 Spy가 어디로 갈 수 있는지, 갈 곳이 없으면 어떻게 되는지를 말하지 않는다. `[Bloodlines p. 4]`는 Commander를 card 효과의 "troop"으로 취급하라고만 한다.
-- 판정(2026-09-07, 사용자 판정, project convention): (a) 잃는 좌석이 **zone(garrison/Conflict)과 유닛 종류(troop/Commander)를 모두 고른다**(`lose_unit(zone, commanders?)`); 선택지가 하나뿐이면 자동. Commander는 [Bloodlines p. 4]에 따라 card 효과의 troop이므로 대상이다. Conflict에서 잃으면 retreat와 같이 strength 2를 뺀다. 유닛이 없는 좌석은 공개 이벤트만 남긴다. (b) 강제 이동은 일반 배치 규칙을 따른다: **Spy를 옮기는 좌석이** 빈 observation post 아무 곳이나 고른다(`move_spy(post_id)`). 갈 곳이 없는 경우는 없다 — post는 13곳이고 게임의 Spy는 4인 × 3 = 12개라 항상 하나는 비어 있다(엔진은 이를 불변식으로 둔다). 이동 순서는 시계 방향 다음 좌석부터. (c) False Orders의 "Then you place a Spy on that space"는 상대의 이동이 모두 끝난 뒤 그 공간에 연결된 빈 post에 배치하며, supply에 Spy가 없으면 먼저 하나를 회수한다(`[Main pp. 11, 20]`); 배치할 곳이 없으면 배치 없이 끝난다. 이 카드는 이번 turn에 Agent를 보낸 뒤에만 낼 수 있다.
+- 판정(2026-09-07, 사용자 판정, project convention): (a) 잃는 좌석이 **zone(garrison/Conflict)과 유닛 종류(troop/Commander)를 모두 고른다**(`lose_unit(zone, commanders?)`); 선택지가 하나뿐이면 자동. Commander는 [Bloodlines p. 4]에 따라 card 효과의 troop이므로 대상이다. Conflict에서 잃으면 retreat와 같이 strength 2를 뺀다. 유닛이 없는 좌석은 공개 이벤트만 남긴다. (b) 강제 이동은 **Spy를 옮기는 좌석이** 목적지를 고른다(`move_spy(post_id)`), 이동 순서는 시계 방향 다음 좌석부터. 목적지는 처음엔 일반 배치 규칙대로 빈 post 아무 곳이었으나, **2026-09-26부터 공식 FAQ를 따른다**: "* False Orders — Each opponent affected by this card must move their Spy to an empty observation post that isn't connected to the space where you sent an Agent this turn." `[FAQ p. 2]` 즉 Agent를 보낸 공간에 연결된 post(Research Station·Spice Refinery는 둘)는 목적지가 아니다. 이 FAQ는 False Orders만 말하지만, 같은 문장을 인쇄한 Holy War("Each opponent spying on the board space where you sent an Agent this turn must move that Spy." `[Holy War card]`)에도 **같은 목적지 규칙을 적용한다**(2026-09-26 사용자 판정, FAQ를 확장한 project convention). 연결되지 않은 빈 post가 하나도 없을 때의 처리는 [OQ-063](#oq-063--강제-spy-이동에-agent-공간과-연결되지-않은-빈-post가-없을-때). (c) False Orders의 "Then you place a Spy on that space"는 상대의 이동이 모두 끝난 뒤 그 공간에 연결된 빈 post에 배치하며, supply에 Spy가 없으면 먼저 하나를 회수한다(`[Main pp. 11, 20]`); 배치할 곳이 없으면 배치 없이 끝난다. 이 카드는 이번 turn에 Agent를 보낸 뒤에만 낼 수 있다.
 - 같이 정한 것: Coercive Negotiation이 "trash"하는 contract 2장은 게임에서 제외되며 공개 zone `contract_trash`에 남긴다(인구 census와 관측 세그먼트).
-- 재개 조건: 공식 FAQ가 "lose a troop"의 출처나 강제 이동의 목적지를 정할 때.
+- 재개 조건: 공식 FAQ가 "lose a troop"의 출처를 정할 때. 강제 이동의 목적지는 False Orders에 대해 FAQ 2025-01-13이 정했고(위 (b)), 같은 FAQ의 둘째 문장 "You may play this Intrigue card even if no opponents' Spies are on the space where you sent an Agent this turn." `[FAQ p. 2]`도 이미 따른다([designer-rulings-audit.md](designer-rulings-audit.md)). Holy War에 대한 공식 판정이 나오면 (b)의 확장을 다시 본다.
 
 ## OQ-037 — Into the Fray로 Conflict에 간 Agent와 Bloodlines Leader 카드면의 아이콘 읽기
 
@@ -641,4 +641,20 @@
   하나만 제시하며, 카드는 face up으로 남아 이후 조건 충족 turn에 다시 제시된다(OQ-016 (c)의 재제시 규칙).
   `tests/unit/rules/test_bloodlines_contracts.py`(`test_coercive_negotiation_waits_when_nothing_revealed_can_be_taken`)로
   고정한다.
+
+## OQ-063 — 강제 Spy 이동에 Agent 공간과 연결되지 않은 빈 post가 없을 때
+
+- 상태: `OPEN` (구현 convention 적용 중)
+- False Orders·Holy War로 Spy를 옮기는 상대는 "an empty observation post that isn't connected to the space
+  where you sent an Agent this turn"로 가야 한다(`[FAQ p. 2]`, Holy War는 OQ-036 (b)의 확장). 연결 post가 둘인
+  Research Station·Spice Refinery에서는 연결되지 않은 post가 11곳이라, Spy 12개가 모두 board에 있고 옮길 Spy를
+  뺀 11개가 그 11곳을 하나씩 차지하면 갈 곳이 없다(연결 post가 하나인 공간에서는 생기지 않는다). 공식 문서는
+  이 경우를 말하지 않는다.
+- 필요한 답: 옮길 곳이 없는 Spy의 처리(잃는지, 연결된 빈 post로라도 옮기는지, 그대로 두는지).
+- 구현 convention: 인쇄된 가장 가까운 규칙인 Bloodlines의 Rival clarification — "When a Rival must move a Spy, it
+  treats it as though it were placing a new Spy ... If all other Faction observation posts are full, the Spy is
+  lost." `[Bloodlines p. 8]` — 을 따라 **Spy를 잃는다**: 그 Spy는 주인의 supply로 돌아간다("lose"를 troop처럼
+  supply 반환으로 읽음). 행동은 `lose_moved_spy` 하나만 제시되고 공개 이벤트 `spy_lost`를 남긴다(codec에
+  Bloodlines 템플릿 1개 추가). `tests/unit/rules/test_bloodlines_cards.py`
+  (`test_a_forced_spy_move_with_no_post_off_the_space_loses_the_spy`)로 고정한다. 사용자 확인 대기.
 

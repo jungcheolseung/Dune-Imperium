@@ -84,6 +84,7 @@ Main p. 20은 FAQ를 적용하기 전의 일반 용어 기준이다. 아래 항�
 | --- | --- | --- | --- |
 | The Spice Must Flow | Uprising 기본 Reserve card. `[Main p. 3]` | acquire할 때 얻은 VP는 card를 나중에 trash해도 유지한다. `[FAQ p. 4]` | [player-turns.md](player-turns.md); card 수치와 test는 content manifest |
 | Reverend Mother Jessica | Uprising 기본 Leader인 Lady Jessica의 반대 면. module 전용 Leader는 Shaddam이다. `[Main pp. 4, 16-17]` | 이 면으로 flip한 바로 그 turn에 Reverend Mother 능력을 사용할 수 있다. `[FAQ p. 3]` | `rules/leader_abilities.py`의 Other Memories flip과 [leaders audit](../implementation-audits/leaders.md) |
+| False Orders | Bloodlines Intrigue(`*` 새 항목; observation post는 Uprising·Bloodlines에만 있다). `[Bloodlines p. 2]` | 영향받는 상대는 Agent를 보낸 공간에 연결되지 않은 빈 observation post로 Spy를 옮긴다. 공간을 보는 상대 Spy가 없어도 이 카드를 낼 수 있다. `[FAQ p. 2]` | `rules/spy_moves.py`, OQ-036 (b)(Holy War로 확장, 사용자 판정)·OQ-063 |
 | Shaddam Corrino IV | CHOAM Module 전용 Leader. `[Main pp. 4, 16]` | Sardaukar contract는 처음부터 보유하지 않으며 일반 contract 대신 set-aside contract를 얻는 선택지다. `Emperor of the Known Universe`는 발동한 turn에만 적용된다. `[FAQ p. 3]` | [choam-module.md](choam-module.md), `rules/contracts.py`의 set-aside 선택, [leaders audit](../implementation-audits/leaders.md) |
 
 ### content manifest 전사 시 확인: Uprising 연결은 명시됨
@@ -109,7 +110,7 @@ Uprising 기본 룰셋 소속을 확정할 수 없다. 따라서 현재 규범 �
   Chaumurky. [FAQ p. 1]
 - FAQ p. 2: Corner the Market, Count Ilban Richese,
   Countess Ariana Thorvald, Demand Respect, Dispatch an Envoy, Double Cross,
-  False Orders, Foldspace, Ghola, Guild Bankers, Guild Envoy, Gun Thopter,
+  Foldspace, Ghola, Guild Bankers, Guild Envoy, Gun Thopter,
   Helena Richese, Ilesa Ecaz, Imperial Spy, Liet Kynes, Litany Against Fear.
   [FAQ p. 2]
 - FAQ p. 3: Plans Within Plans, Poison Snooper, “Princess” Yuna Moritani,

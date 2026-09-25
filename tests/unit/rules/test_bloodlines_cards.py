@@ -1607,6 +1607,117 @@ def test_false_orders_moves_watching_spies_then_places_one() -> None:
     assert placed.decision_stack[-1].kind == "agent_effects"
 
 
+REFINERY_POSTS = (
+    "arrakis-research-station-spice-refinery",
+    "arrakis-spice-refinery-arrakeen",
+)
+
+
+def test_false_orders_moves_the_spy_off_every_post_of_the_space() -> None:
+    # "Each opponent affected by this card must move their Spy to an empty
+    # observation post that isn't connected to the space where you sent an
+    # Agent this turn." [FAQ p. 2]. Spice Refinery watches two posts; the
+    # watcher used to be allowed onto the other one and keep spying.
+    from dune_imperium.rules.spy_moves import (
+        apply_spy_move,
+        apply_spy_placement,
+        legal_spy_move_actions,
+        legal_spy_placement_actions,
+    )
+
+    card = _intrigue("false_orders")
+    city = STARTERS[7]  # Reconnaissance: the City Agent icon.
+    watcher = replace(
+        PlayerState(player_id=1), spies_supply=2, spy_post_ids=(REFINERY_POSTS[0],)
+    )
+    base = _state(_owner(hand=(city,), intrigue_cards=(card,)))
+    base = replace(base, players=(base.players[0], watcher, *base.players[2:]))
+    state = _play(base, city, "spice_refinery")
+    played = UprisingRulesEngine().apply(state, _play_intrigue(card)).state
+    moves = legal_spy_move_actions(played, 1)
+    targets = {dict(a.arguments)["post_id"] for a in moves}
+    assert targets
+    assert not targets & set(REFINERY_POSTS)
+    moved = apply_spy_move(played, moves[0]).state
+    assert not set(moved.players[1].spy_post_ids) & set(REFINERY_POSTS)
+    # "Then you [Spy] on that space": both of its posts are free now.
+    placements = legal_spy_placement_actions(moved, 0)
+    assert {dict(a.arguments)["post_id"] for a in placements} == set(REFINERY_POSTS)
+    placed = apply_spy_placement(moved, placements[0]).state
+    assert placed.players[0].spy_post_ids == (REFINERY_POSTS[0],)
+
+
+def test_holy_war_moves_the_spy_off_every_post_of_the_space() -> None:
+    # Holy War prints the same sentence as False Orders ("Each opponent
+    # spying on the board space where you sent an Agent this turn must move
+    # that Spy." [Holy War card]); the user extended the FAQ's destination
+    # [FAQ p. 2] to it on 2026-09-26 (OQ-036 (b)).
+    from dune_imperium.rules.spy_moves import legal_spy_move_actions
+
+    card = _card("holy_war")
+    watcher = replace(
+        PlayerState(player_id=1),
+        spies_supply=2,
+        spy_post_ids=(REFINERY_POSTS[1],),
+        troops_supply=12,
+        troops_garrison=0,
+    )
+    # A granted City icon (as Emperor's Invitation grants one) sends Holy War
+    # to the two-post Spice Refinery.
+    owner = _owner(hand=(card,), granted_agent_icon_turn="city")
+    base = _state(owner)
+    base = replace(base, players=(base.players[0], watcher, *base.players[2:]))
+    state = _play(base, card, "spice_refinery")
+    result = resolve_agent_card_effect(state)
+    assert result.state.decision_stack[-1].kind == "opponent_spy_move"
+    targets = {
+        dict(a.arguments)["post_id"]
+        for a in legal_spy_move_actions(result.state, 1)
+    }
+    assert targets
+    assert not targets & set(REFINERY_POSTS)
+
+
+def test_a_forced_spy_move_with_no_post_off_the_space_loses_the_spy() -> None:
+    # All twelve Spies are out and every post not connected to Spice
+    # Refinery is taken: the FAQ's destination [FAQ p. 2] does not exist, so
+    # the Spy is lost to its owner's supply, like a Rival's ("If all other
+    # Faction observation posts are full, the Spy is lost." [Bloodlines
+    # p. 8]; OQ-063).
+    from dune_imperium.content.uprising.board import OBSERVATION_POSTS
+    from dune_imperium.rules.spy_moves import (
+        apply_spy_move,
+        legal_spy_move_actions,
+        turn_space_spy_frames,
+    )
+
+    off_space = [
+        post.post_id
+        for post in OBSERVATION_POSTS
+        if post.post_id not in REFINERY_POSTS
+    ]
+    assert len(off_space) == 11
+    seats = (
+        _owner(spies_supply=0, spy_post_ids=tuple(off_space[0:3])),
+        PlayerState(
+            player_id=1,
+            spies_supply=0,
+            spy_post_ids=(REFINERY_POSTS[0], *off_space[3:5]),
+        ),
+        PlayerState(player_id=2, spies_supply=0, spy_post_ids=tuple(off_space[5:8])),
+        PlayerState(player_id=3, spies_supply=0, spy_post_ids=tuple(off_space[8:11])),
+    )
+    state = replace(_state(seats[0]), players=seats)
+    pushed = turn_space_spy_frames(state, 0, "spice_refinery", source="test").state
+    actions = legal_spy_move_actions(pushed, 1)
+    assert [a.action_id for a in actions] == ["lose_moved_spy"]
+    lost = apply_spy_move(pushed, actions[0])
+    assert lost.state.players[1].spy_post_ids == tuple(off_space[3:5])
+    assert lost.state.players[1].spies_supply == 1
+    assert lost.state.decision_stack == state.decision_stack
+    assert "spy_lost" in [event.kind for event in lost.events]
+
+
 def test_coercive_negotiation_reveals_three_contracts_on_a_big_deployment() -> None:
     from dune_imperium.content.uprising.contracts import contract_instance_ids
     from dune_imperium.core.engine import RuleResult
@@ -1829,7 +1940,9 @@ def test_ruthless_leadership_round_trips_and_is_dealt_in_random_games() -> None:
     # Grasp Arrakis loses its Combat copy of the Endgame flip and Tenuous
     # Bond its Combat swap and Plot swords: one timing per printed band
     # [card faces; Main p. 7] (-3 play_intrigue templates).
-    assert codec.size == 10159 + 292 + 1 + 1 + 1 + 2 + 1 + 28 + 28 + 67 - 3
+    # A forced Spy move with no empty post off the Agent's space loses the
+    # Spy [FAQ p. 2] (OQ-063): +1 lose_moved_spy.
+    assert codec.size == 10159 + 292 + 1 + 1 + 1 + 2 + 1 + 28 + 28 + 67 - 3 + 1
     action = DomainAction(
         action_id="trash_agent_card",
         actor=2,

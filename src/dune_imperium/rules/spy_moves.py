@@ -2,10 +2,15 @@
 
 Holy War and False Orders read "each opponent spying on the board space
 where you sent an Agent this turn must move that Spy"; False Orders then
-lets its owner place a Spy on that space. Where a Spy may move is not
-printed: the project convention (OQ-036, user decision) applies the normal
-placement rule, so its owner moves it to any empty Observation Post. One
-is always free: thirteen posts hold at most the twelve Spies in the game.
+lets its owner place a Spy on that space. The official FAQ sets the
+destination for False Orders: "Each opponent affected by this card must
+move their Spy to an empty observation post that isn't connected to the
+space where you sent an Agent this turn." [FAQ p. 2]; the user extended the
+same rule to Holy War's identical sentence (OQ-036 (b), 2026-09-26). When
+every such post is taken -- possible only at Research Station or Spice
+Refinery, with all twelve Spies on the board -- the Spy is lost to its
+owner's supply, by analogy with the Rival rule "If all other Faction
+observation posts are full, the Spy is lost." [Bloodlines p. 8] (OQ-063).
 """
 
 from dataclasses import replace
@@ -55,7 +60,9 @@ def turn_space_spy_frames(
 ) -> RuleResult:
     """Push one Spy-move decision per opposing Spy watching ``space_id``.
 
-    Frames are pushed so the next clockwise opponent decides first.
+    Frames are pushed so the next clockwise opponent decides first. Each
+    frame keeps ``space_id``: the Spy may not move to a post connected to
+    it [FAQ p. 2].
     """
 
     posts = set(connected_post_ids(space_id))
@@ -75,6 +82,7 @@ def turn_space_spy_frames(
                         ("player", seat),
                         ("post_id", post_id),
                         ("source", source),
+                        ("space_id", space_id),
                     ),
                 )
             )
@@ -88,14 +96,24 @@ def legal_spy_move_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Offer every empty post; the mover chooses (OQ-036)."""
+    """Offer every empty post not connected to the Agent's space [FAQ p. 2].
+
+    The mover chooses (OQ-036). With no such post the Spy is lost to its
+    owner's supply (OQ-063).
+    """
 
     frame = owned_top_frame(state, FrameKind.OPPONENT_SPY_MOVE, player)
     if frame is None:
         return ()
-    targets = empty_observation_post_ids(state)
+    space_id = context_str(dict(frame.context), "space_id", owner="Spy move frame")
+    watched = set(connected_post_ids(space_id))
+    targets = tuple(
+        post_id
+        for post_id in empty_observation_post_ids(state)
+        if post_id not in watched
+    )
     if not targets:
-        raise RuntimeError("thirteen posts cannot all be occupied by twelve Spies")
+        return (DomainAction(action_id="lose_moved_spy", actor=player),)
     return tuple(
         DomainAction(
             action_id="move_spy",
@@ -107,7 +125,7 @@ def legal_spy_move_actions(
 
 
 def apply_spy_move(state: GameState, action: DomainAction) -> RuleResult:
-    """Move the Spy to the chosen post."""
+    """Move the Spy to the chosen post, or lose it when none is left."""
 
     if action not in legal_spy_move_actions(state, action.actor):
         raise ValueError("action is not a legal Spy move")
@@ -123,6 +141,21 @@ def apply_spy_move(state: GameState, action: DomainAction) -> RuleResult:
             payload=(("player", action.actor), ("post_id", origin)),
         )
     ]
+    if action.action_id == "lose_moved_spy":
+        # No empty post off the space: the Spy returns to the supply (OQ-063).
+        events.append(
+            GameEvent(
+                event_id=f"{frame.frame_id}:lost",
+                kind="spy_lost",
+                payload=(("player", action.actor), ("post_id", origin)),
+            )
+        )
+        return RuleResult(
+            state=replace(
+                state.pop_decision(), players=replace_player(state.players, recalled)
+            ),
+            events=tuple(events),
+        )
     target = str(dict(action.arguments)["post_id"])
     next_owner = place_spy(recalled, target)
     events.append(

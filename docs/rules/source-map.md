@@ -239,7 +239,7 @@ FAQ의 `See ...` 항목은 새 규칙이 없더라도 연결 대상의 coverage�
 | `dreadnoughts`의 strength·Combat Intrigue 참가 `[FAQ p. 2]` | `out of scope` | Rise of Ix unit 제외 |
 | `Endgame` 최종 tiebreaker `[FAQ p. 2]` | `covered` | [setup-and-game-flow.md](setup-and-game-flow.md), [combat-and-round-end.md](combat-and-round-end.md) |
 | `Faction`의 Tleilaxu track 참조 `[FAQ p. 2]` | `out of scope` | Immortality track 제외 |
-| `False Orders`의 Spy 이동 `[FAQ p. 2]` | `deferred to content manifest` | Intrigue 데이터와 `official-rulings-index.md` |
+| `False Orders`의 Spy 이동 `[FAQ p. 2]` | `covered` | `rules/spy_moves.py`, [open-questions.md](open-questions.md) OQ-036 (b)·OQ-063, `official-rulings-index.md` |
 | `Foldspace` acquire 제한 `[FAQ p. 2]` | `out of scope` | Uprising setup에는 Foldspace stack이 없음 |
 | `Gather Intelligence` 참조 `[FAQ p. 2]` | `covered` | [player-turns.md](player-turns.md), [uprising-systems.md](uprising-systems.md) |
 | `Ghola`와 grafted card 상호작용 `[FAQ p. 2]` | `out of scope` | Immortality의 graft 규칙 제외 |
