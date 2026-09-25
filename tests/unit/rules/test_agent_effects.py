@@ -3930,15 +3930,29 @@ def test_captured_mentat_may_discard_to_draw_intrigue_and_personal_card() -> Non
     assert dict(resolved.decision_stack[-1].context)["pending_agent_effect"] is False
 
 
-def test_captured_mentat_cannot_pay_discard_without_intrigue_reward() -> None:
-    mentat = _imperium_instance("captured_mentat")
-    owner = PlayerState(player_id=0, hand=(mentat, _instance("dagger")))
-    state = GameState(
+def _intrigue_discard_state(
+    card_id: str,
+    hand_extra: tuple[str, ...],
+    *,
+    intrigue_discard: tuple[str, ...],
+) -> GameState:
+    """Captured Mentat / Guild Spy in hand with an exhausted Intrigue deck."""
+
+    owner = PlayerState(
+        player_id=0,
+        spies_supply=2,
+        spy_post_ids=("landsraad-assembly-hall-gather-support",),
+        hand=(_imperium_instance(card_id), *hand_extra),
+        deck=(_instance("convincing_argument"),),
+    )
+    return GameState(
         config=RulesetConfig(),
         seed=1,
         phase=GamePhase.PLAYER_TURNS,
         round_number=1,
         players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        intrigue_deck=(),
+        intrigue_discard=intrigue_discard,
         decision_stack=(
             DecisionFrame(
                 kind="turn",
@@ -3948,11 +3962,79 @@ def test_captured_mentat_cannot_pay_discard_without_intrigue_reward() -> None:
         ),
     )
 
-    placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
 
-    assert legal_agent_card_discard_actions(placed, 0) == (
-        DomainAction(action_id="decline_agent_card_discard", actor=0),
+def _place_without_gathering(state: GameState) -> GameState:
+    """Send the Agent to Assembly Hall and decline Gather Intelligence."""
+
+    placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
+    decline = DomainAction(action_id="decline_gather_intelligence", actor=0)
+    if decline in legal_gather_intelligence_actions(placed, 0):
+        placed = apply_gather_intelligence_action(placed, decline).state
+    return placed
+
+
+def _discard_then_draw_rewards(state: GameState, discarded: str) -> GameState:
+    """Pay the arrow discard, then resolve every queued reward icon through the
+    engine so an owed Intrigue draw reshuffles the discard pile."""
+
+    placed = _place_without_gathering(state)
+    discard = DomainAction(
+        action_id="discard_agent_card",
+        actor=0,
+        arguments=(("card_id", discarded),),
     )
+    assert discard in legal_agent_card_discard_actions(placed, 0)
+    working = apply_agent_card_discard(placed, discard).state
+    engine = UprisingRulesEngine()
+    while icons := legal_agent_card_icon_actions(working, 0):
+        working = engine.apply(working, icons[0]).state
+        decision = engine.current_decision(working)
+        if isinstance(decision, ChanceDecision):
+            working = engine.apply(
+                working, ChanceOutcome(decision.decision_id, decision.options)
+            ).state
+    return working
+
+
+def test_captured_mentat_discard_is_offered_when_the_intrigue_deck_is_exhausted() -> (
+    None
+):
+    # [Captured Mentat card]: "[discard] -> [Intrigue] [card]" with no
+    # condition on the cost. "In the rare case that you exhaust the Intrigue
+    # deck, shuffle the discarded Intrigue cards to form a new deck."
+    # [FAQ p. 2] (docs/rules/player-turns.md), so an empty deck with a
+    # non-empty discard pile must not block the discard.
+    dagger = _instance("dagger")
+    state = _intrigue_discard_state(
+        "captured_mentat", (dagger,), intrigue_discard=("intrigue:plot",)
+    )
+
+    resolved = _discard_then_draw_rewards(state, dagger)
+
+    assert resolved.players[0].intrigue_cards == ("intrigue:plot",)
+    assert resolved.intrigue_discard == ()
+    assert resolved.players[0].hand == (_instance("convincing_argument"),)
+    assert resolved.players[0].discard_pile == (dagger,)
+
+
+def test_captured_mentat_discard_still_draws_with_both_intrigue_piles_empty() -> None:
+    # The face sets no condition on the discard [Captured Mentat card] and an
+    # arrow cost may always be paid [Main p. 9]; with both Intrigue piles
+    # empty the Intrigue draw stops short but the green card draw pays out.
+    dagger = _instance("dagger")
+    state = _intrigue_discard_state("captured_mentat", (dagger,), intrigue_discard=())
+    placed = _place_without_gathering(state)
+
+    offered = legal_agent_card_discard_actions(placed, 0)
+    assert {action.action_id for action in offered} == {
+        "decline_agent_card_discard",
+        "discard_agent_card",
+    }
+
+    resolved = _discard_then_draw_rewards(state, dagger)
+
+    assert resolved.players[0].intrigue_cards == ()
+    assert resolved.players[0].hand == (_instance("convincing_argument"),)
 
 
 @pytest.mark.parametrize(
@@ -4025,31 +4107,17 @@ def test_guild_spy_may_cycle_and_draws_intrigue_for_guild_discard(
     assert dict(resolved.decision_stack[-1].context)["pending_agent_effect"] is False
 
 
-def test_guild_spy_cannot_discard_guild_card_without_intrigue_reward() -> None:
-    guild_spy = _imperium_instance("guild_spy")
+def test_guild_spy_offers_every_hand_card_with_both_intrigue_piles_empty() -> None:
+    # [Guild Spy card]: "[discard] -> [card]. If you discarded a Spacing
+    # Guild card: [Intrigue]". Nothing restricts which card pays the
+    # discard; the Guild condition only adds the Intrigue reward, which
+    # stops short when both Intrigue piles are empty.
     guild_card = _imperium_instance("reliable_informant")
     non_guild_card = _instance("dagger")
-    owner = PlayerState(
-        player_id=0,
-        spies_supply=2,
-        spy_post_ids=("landsraad-assembly-hall-gather-support",),
-        hand=(guild_spy, guild_card, non_guild_card),
+    state = _intrigue_discard_state(
+        "guild_spy", (guild_card, non_guild_card), intrigue_discard=()
     )
-    state = GameState(
-        config=RulesetConfig(),
-        seed=1,
-        phase=GamePhase.PLAYER_TURNS,
-        round_number=1,
-        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
-        decision_stack=(
-            DecisionFrame(
-                kind="turn",
-                frame_id="round:1:turn:0",
-                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
-            ),
-        ),
-    )
-    placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
+    placed = _place_without_gathering(state)
 
     actions = legal_agent_card_discard_actions(placed, 0)
 
@@ -4057,7 +4125,28 @@ def test_guild_spy_cannot_discard_guild_card_without_intrigue_reward() -> None:
         dict(action.arguments).get("card_id")
         for action in actions
         if action.action_id == "discard_agent_card"
-    ) == (non_guild_card,)
+    ) == (guild_card, non_guild_card)
+    resolved = _discard_then_draw_rewards(state, guild_card)
+    assert resolved.players[0].intrigue_cards == ()
+    assert resolved.players[0].hand == (
+        non_guild_card,
+        _instance("convincing_argument"),
+    )
+
+
+def test_guild_spy_guild_discard_reshuffles_the_intrigue_discard_pile() -> None:
+    # [Guild Spy card] "If you discarded a Spacing Guild card: [Intrigue]";
+    # an exhausted deck reshuffles its discard pile [FAQ p. 2], so the Guild
+    # discard is offered and pays the Intrigue card.
+    guild_card = _imperium_instance("reliable_informant")
+    state = _intrigue_discard_state(
+        "guild_spy", (guild_card,), intrigue_discard=("intrigue:plot",)
+    )
+
+    resolved = _discard_then_draw_rewards(state, guild_card)
+
+    assert resolved.players[0].intrigue_cards == ("intrigue:plot",)
+    assert resolved.players[0].hand == (_instance("convincing_argument"),)
 
 
 def test_covert_operation_makes_opponents_with_cards_discard_clockwise() -> None:

@@ -249,11 +249,13 @@ def legal_agent_card_discard_actions(
         PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE,
     ):
         return ()
-    may_pay = (
-        effect
-        is not PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD
-        or bool(state.intrigue_deck)
-    )
+    # Any hand card may pay the discard: neither Captured Mentat's nor Guild
+    # Spy's face conditions the cost on the Intrigue reward [Captured Mentat
+    # card] [Guild Spy card]. An empty Intrigue deck does not block it
+    # either: the draw reshuffles the discard pile ("In the rare case that
+    # you exhaust the Intrigue deck, shuffle the discarded Intrigue cards to
+    # form a new deck." [FAQ p. 2]) or stops short when both piles are
+    # empty, while the card draw still pays out.
     return (
         *(
             (DomainAction(action_id="decline_agent_card_discard", actor=player),)
@@ -276,16 +278,6 @@ def legal_agent_card_discard_actions(
                 arguments=(("card_id", card_id),),
             )
             for card_id in state.players[player].hand
-            if may_pay
-            and not (
-                effect
-                is (
-                    PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE_AND_INTRIGUE_IF_SPACING_GUILD
-                )
-                and Faction.SPACING_GUILD
-                in personal_card_for_instance(card_id).factions
-                and not state.intrigue_deck
-            )
         ),
     )
 
