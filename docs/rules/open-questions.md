@@ -153,6 +153,7 @@
 - 카드면(Agent box): "Maker Hooks: 2 spice → [Shield Wall 아이콘] [sandworm 아이콘]". 공식 아이콘 정의는 Shield Wall 아이콘을 "You **may** remove the Shield Wall token from the game board", sandworm을 "Does nothing if the current Conflict is protected by the Shield Wall. Otherwise, summon and deploy one sandworm"으로 둔다. `[Main p. 20]` 본문도 "When the Shield Wall detonation icon appears on a card or board space, you **may** remove the Shield Wall token"이라고 쓴다. `[Main p. 10]` `[card face]`
 - 필요한 답: 비용을 내고 Shield Wall을 남긴 채 보호된 Conflict에 sandworm을 소환하는(아무 효과 없는) 선택을 제시할지, 비용 재판정 시점.
 - 판정(2026-09-03, project convention; 제거가 선택이라는 점은 위 공식 문장 그대로): Maker Hooks는 배치 시 요구 조건이고 2 spice는 해결 시점에 다시 판정하는 화살표 비용이다(`[Main pp. 9, 20]`, 다른 화살표 비용과 같음). 선택지는 "지불 + Shield Wall 제거 + 소환"(벽이 있을 때)과 "지불 + 벽 유지 + 소환"(현재 Conflict가 보호되지 않을 때)이며, 보호된 Conflict에서 벽을 남기고 지불하는 무효 선택은 제시하지 않는다(2 spice로 아무것도 얻지 못하는 선택은 규칙상 가능하더라도 행동 공간에서 뺀다). Emperor of the Known Universe의 배치 차단(`[Main p. 17]`)은 sandworm 소환에도 적용된다. 구현: `MAY_PAY_TWO_SPICE_FOR_SHIELD_WALL_AND_SANDWORM_IF_MAKER_HOOKS`. `tests/unit/rules/test_promo_cards.py`.
+- 보강(2026-09-26, 카드면): Liet Kynes에게는 "벽 유지 + 지불"이 보호된 Conflict에서도 무효가 아니다 — Arrakis Planetologist의 대체(trash·spice 1·Intrigue 1)는 "(Even when the Conflict is protected by the Shield Wall.)" `[Liet Kynes card]`이므로 그에게는 보호된 Conflict에서도 벽을 남긴 채 지불하는 선택을 제시한다(`replaces_sandworms`).
 
 ## OQ-027 — 보드 공간에 인쇄된 여러 아이콘의 해결 단위
 
@@ -294,6 +295,7 @@
 - 상태: `DECIDED` (project convention)
 - Suspensor Suits("자기 turn에 Intrigue 카드를 draw하거나 훔칠 때마다 troop 1을 Conflict에 배치")는 (a) "자기 turn"의 범위, (b) supply에 troop이 없거나 배치가 금지된 경우(Emperor of the Known Universe), (c) Conflict가 없는 시점을 말하지 않는다 `[Tech tile face]`.
 - 판정(2026-09-07): (a) 자기 Agent turn 또는 Reveal turn frame이 열려 있는 동안(그 위에 쌓인 상대 결정 포함)의 draw·Secrets 강탈만 센다; Combat 보상·Endgame·상대 turn 중의 획득은 세지 않는다. (b)(c) 엔진이 전이 뒤에 빚진 수만큼 supply에서 Conflict로 옮기고(Reveal 중이면 Reveal 전투력 계산에 합산), supply가 모자라거나 배치가 막혔거나 Conflict가 없으면 부족분은 소멸하고 소급하지 않는다(OQ-030과 같은 방향; 이벤트 `suspensor_deployment_unavailable`). Reveal 중 배치는 그 Reveal의 배치 카운터에 합산된다.
+- 보강(2026-09-26, tile 면 "For each Intrigue card you draw or steal during your turn"): (a)의 제한은 turn뿐이다. Intrigue deck에서 카드를 바로 가져오는 효과 — Bene Gesserit Influence 4 보너스, Imperial Birthright, Sardaukar Soldier의 trash, Overthrow의 획득, Spy Network의 Reveal — 도 모두 센다(`intrigue_deck.credit_suspensor_suits`).
 - 재개 조건: 공식 FAQ가 Suspensor Suits의 시점을 정할 때.
 
 ## OQ-043 — Command (6+) 판정에 세는 Persuasion의 범위
@@ -307,7 +309,7 @@
 
 - 상태: `DECIDED` (사용자 판정 2026-09-07, project convention)
 - `[Main p. 12]`는 "You may resolve Reveal effects in any order you like"라고 하지만, 어느 효과를 하나의 단위로 순서를 고르는지는 정하지 않는다. 2026-09-04의 OQ-027 Reveal box 판정은 자동 이득 전부를 Reveal 시작 시 한꺼번에 적용했다(시점이 결과를 바꾸지 않는다는 전제). Bloodlines에서 그 전제가 깨졌다: Twisted Intrigue의 troop 손실 비용은 Reveal 중 supply를 늘리고(OQ-030은 소급 recruit를 허용하지 않음), Rapid Engineering으로 Reveal 중 Suspensor Suits를 얻으면 그 뒤의 Intrigue draw만 troop을 배치한다. Immortality의 specimen 반환도 같은 종류다.
-- 판정(사용자, 2026-09-07): troop recruit·Intrigue draw·자원 획득(Solari·spice·water)은 카드 draw와 같은 **각각 하나의 효과**로 보고 소유자가 Reveal 안에서 시점을 고른다(자원은 같은 날 사용자 추가 지시 — Forbidden Weapons의 "spice 전부 잃기" 앞뒤로 결과가 달라지므로). 구현: Reveal 시작 시 카드·Skill·tile의 troop 아이콘, Intrigue draw 아이콘, 자원 묶음을 Reveal frame의 대기 목록(`reveal_pending_gains`)에 넣고, `recruit_reveal_troops`/`draw_reveal_intrigue`는 가장 오래된 같은 종류 항목 하나를(같은 종류끼리는 supply·덱이 같아 순서가 무의미하므로 인자 없음), `gain_reveal_resources(solari, spice, water)`는 그 묶음의 항목 하나를 해결한다(인쇄된 효과 한 줄의 자원이 한 묶음; 같은 묶음끼리는 교환 가능). 늦게 조건이 성립한 효과(OQ-028), Reveal 중 도착한 카드(FAQ p. 3), Skill의 Reveal 보너스(Driven·Hardy), Delivery Bay의 Command Solari도 같은 목록에 들어간다. 이득이므로 거절은 없고, 남아 있으면 `finish_reveal`이 제시되지 않는다. 고정 진영 Influence(Shishakli의 Fremen Bond Influence)도 같은 날 사용자 지시로 `gain_reveal_faction_influence(faction)` 행동으로 분리했다(진영마다 하나; Alliance·Navigation trigger 등 Influence 도달 효과는 행동 해결 시점에 일어난다). Persuasion과 sword만 시작 시 합산한다 — 합계만 의미가 있기 때문이다. troop recruit의 `troops_recruit_short`(OQ-030)와 Combat 아이콘 배치 창의 recruit 합산은 행동 해결 시점에 일어난다. codec v94(모든 카탈로그 +12: 행동 2 + 자원 묶음 6 + 진영 4).
+- 판정(사용자, 2026-09-07): troop recruit·Intrigue draw·자원 획득(Solari·spice·water)은 카드 draw와 같은 **각각 하나의 효과**로 보고 소유자가 Reveal 안에서 시점을 고른다(자원은 같은 날 사용자 추가 지시 — Forbidden Weapons의 "spice 전부 잃기" 앞뒤로 결과가 달라지므로). 구현: Reveal 시작 시 카드·Skill·tile의 troop 아이콘, Intrigue draw 아이콘, 자원 묶음을 Reveal frame의 대기 목록(`reveal_pending_gains`)에 넣고, `recruit_reveal_troops`/`draw_reveal_intrigue`는 가장 오래된 같은 종류 항목 하나를(같은 종류끼리는 supply·덱이 같아 순서가 무의미하므로 인자 없음), `gain_reveal_resources(solari, spice, water)`는 그 묶음의 항목 하나를 해결한다(인쇄된 효과 한 줄의 자원이 한 묶음; 같은 묶음끼리는 교환 가능). 늦게 조건이 성립한 효과(OQ-028), Reveal 중 도착한 카드(FAQ p. 3), Skill의 Reveal 보너스(Driven의 spice·Hardy의 troop recruit — Hardy는 2026-09-26 water에서 정정), Delivery Bay의 Command Solari도 같은 목록에 들어간다. 이득이므로 거절은 없고, 남아 있으면 `finish_reveal`이 제시되지 않는다. 고정 진영 Influence(Shishakli의 Fremen Bond Influence)도 같은 날 사용자 지시로 `gain_reveal_faction_influence(faction)` 행동으로 분리했다(진영마다 하나; Alliance·Navigation trigger 등 Influence 도달 효과는 행동 해결 시점에 일어난다). Persuasion과 sword만 시작 시 합산한다 — 합계만 의미가 있기 때문이다. troop recruit의 `troops_recruit_short`(OQ-030)와 Combat 아이콘 배치 창의 recruit 합산은 행동 해결 시점에 일어난다. codec v94(모든 카탈로그 +12: 행동 2 + 자원 묶음 6 + 진영 4).
 - 재개 조건: 공식 FAQ가 Reveal 효과의 단위나 순서를 정할 때.
 
 ## OQ-044 — Forbidden Weapons·Panopticon·Plasteel Blades의 해결 세부
@@ -475,6 +477,7 @@
 - Slig Farmer는 "1 Solari per Agent icon on the other grafted card"라고만 한다 `[card face]`. Blank Slate가 graft 시 얻는 진영 아이콘 4개, Long Reach·Show of Strength의 회색 조건부 아이콘, Servo-Receivers가 Signet Ring에 주는 아이콘을 세는지 말하지 않는다.
 - 필요한 답: 세는 아이콘의 범위.
 - 확정(2026-09-08, 사용자 판정 "추가된 Agent 아이콘도 세는 게 맞다 — 어쨌든 카드에 그 아이콘이 있는 것"): 그 순간 상대 카드가 가진 Agent 아이콘 전부를 센다(`rules/agent_icons.py`의 `effective_agent_icons`, graft 기준): Blank Slate가 graft로 얻는 진영 4개, Servo-Receivers가 Signet Ring에 주는 4개, Delivery Logistics의 계약 아이콘, 조건이 성립한 Long Reach·Show of Strength의 회색 아이콘 모두 포함이고, 조건이 성립하지 않은 회색 아이콘은 없는 것으로 친다. (처음 구현했던 "인쇄 아이콘만"은 사용자가 정정했다.) 구현: `rules/agent_effects.py`의 `_partner_icon_count`.
+- 보강(2026-09-26): Gaius Helen Mohiam의 Clandestine "Each card you play has the [Spy] icon" `[Gaius Helen Mohiam card]`도 카드가 가진 아이콘이므로 센다 — `effective_agent_icons`가 Mohiam의 카드에 Spy 아이콘을 더한다(인쇄된 Spy와는 중복 없이).
 
 ## OQ-056 — Earn Any Alliance의 완료 시점과 Alliance 이전
 
@@ -627,3 +630,19 @@
   Intrigue 1장 draw, recall·card draw 문장(OQ-023, OQ-027 (d))은 그대로다. 행동 id는
   `trash_intrigue_for_imperial_privilege`다. 공식 FAQ가 이 칸을 다루면 다시 연다.
 
+## OQ-062 — Servo-Receivers의 Signet Ring 아이콘: Signet Ring 카드 밖에서 쓰는 Leader 능력
+
+- 상태: `DECIDED` (project convention, 2026-09-26)
+- Servo-Receivers의 획득 칸은 Signet Ring 아이콘(갈색·금색 반지)이다 `[Servo-Receivers Tech tile]`. 아이콘 정의는 "Signet Ring. When you play your Signet Ring card on an Agent turn, you use the Signet Ring ability (with the corresponding icon) on your Leader." `[Main p. 20]`뿐이고, Bloodlines 룰북은 이 tile에 획득 효과가 있다는 것만 확인한다("Servo-Receivers — A Rival uses only the Acquire effects" `[Bloodlines p. 9]`). Tech tile은 Landsraad 방문(Agent turn), Rapid Engineering(Plot: Agent 또는 Reveal turn), Battlefield Research(Combat)로 얻을 수 있으므로, Signet Ring 카드의 Agent box 밖 — Reveal turn이나 turn이 아닌 Combat — 에서 능력을 쓸 때 "이번 turn" 부분이 무엇을 가리키는지 공식 문서가 말하지 않는다.
+- 필요한 답: (a) Agent box가 없을 때 능력의 해결 창, (b) "이번 turn"을 읽는 부분(Judge of the Change "If you sent an Agent this turn to…", Into the Fray의 이번 turn Agent, Emperor of the Known Universe의 "Units can't be deployed to the Conflict this turn", Warmaster·Fedaykin Maneuver·Emperor의 troop이 배치 몫에 드는지), (c) Signet Ring 능력이 없는 Leader.
+- 판정(프로젝트 convention; 슬라이스 지시 "Signet을 Agent turn 밖에서 해결하는 설계가 규칙으로 정해지지 않으면 OQ에 적고 가장 단순한 충실한 동작"): (a) tile을 놓은 직후 소유자의 `leader_signet` frame이 열리고 능력을 Signet Ring의 box와 같은 선택으로 해결한다(선택 없는 Leader는 즉시). Landsraad 방문의 Acquire Tech였다면 그 Agent turn은 능력이 끝날 때까지 기다렸다가 진행한다. (b) "이번 turn"은 소유자가 지금 진행 중인 **Agent turn**을 읽는다: 그 turn에 Agent를 보낸 공간(Judge of the Change, Into the Fray)이 있고, Emperor의 배치 금지가 그 turn에 걸리며, recruit한 troop은 그 turn의 배치 몫에 들어가고 Harkonnen Advisor의 troop은 배치 불가로 남는다. Reveal turn에서 쓰면 Agent를 보낸 공간이 없으므로 Judge of the Change·Into the Fray는 아무것도 주지 않고, recruit한 troop은 Reveal의 Combat 아이콘 배치 몫에 들어가며, Emperor의 배치 금지는 Reveal에 걸 수단이 없어 적용하지 않는다(잔여 경계). Combat에서는 turn이 없으므로 "이번 turn" 부분이 모두 비고 troop은 garrison에 남는다. (c) Steersman Y'rkoon은 Signet Ring 카드 없이 시작하고 Signet 자리의 Plot Course는 Signet Ring 능력을 인쇄하지 않으므로 아무 일도 일어나지 않는다(`leader_signet_unavailable`).
+- 구현: `content/bloodlines/tech.py`의 `acquire_leader_signet`, `rules/tech.py`의 `apply_tech_acquisition`, `rules/leader_abilities.py`의 `use_leader_signet_for_tech`·`_signet_context`·`_store_signet`·`_close_servo_signet`. `tests/unit/rules/test_tech.py`의 Servo-Receivers 절.
+- 재개 조건: 공식 FAQ가 Servo-Receivers나 Signet Ring 아이콘의 box 밖 사용을 다룰 때.
+
+## OQ-063 — Hungry for Spice의 "in a single turn"
+
+- 상태: `DECIDED` (2026-09-26, 슬라이스 지시에 따른 판정)
+- Steersman Y'rkoon의 Hungry for Spice는 "Whenever you gain [spice 3] or more in a single turn: [draw]"라고만 한다 `[Steersman Y'rkoon card]`. 라운드는 Round Start, Player Turns, Combat, Makers, Recall로 나뉘고 turn은 Player Turns 안의 Agent turn과 Reveal turn이다 `[Main p. 8]`. Combat 보상·Makers에서 얻는 spice와 상대 turn 중에 얻는 spice가 "a single turn"에 드는지 말하지 않는다. 엔진은 Y'rkoon의 turn이 열릴 때 찍은 spice 기준으로 모든 전이 뒤에 판정해 Combat 보상을 앞의 Reveal turn 획득과 합쳐 세고 있었다(휴리스틱 6판에서 11번 중 8번이 Combat 단계 draw).
+- 확정: **Y'rkoon 자신의 Agent turn 또는 Reveal turn**에 얻은 spice만 센다. Combat·Makers·Recall은 turn이 아니고 `[Main p. 8]`, 상대의 turn은 그의 turn이 아니다. 그 turn의 마지막 단계에서 얻은 spice는 turn을 닫는 전이에서도 판정한다. Round Start에서 turn당 1회 표시를 지운다(그 라운드 첫 turn은 따로 초기화되지 않으므로).
+- 구현: `rules/leader_abilities.py`의 `grant_hungry_for_spice(result, before)`(엔진이 전이 시작 상태를 넘긴다), `rules/phases.py`의 Round Start 초기화. `tests/unit/rules/test_navigation.py`.
+- 재개 조건: 공식 FAQ가 Hungry for Spice의 시점을 다룰 때.

@@ -44,7 +44,9 @@ Bloodlines 룰북은 공식 리소스 페이지의 "Bloodlines Rules" 링크에�
 받아 위 checksum을 고정했다. 4인 게임에 적용되는 규칙(pp. 2-7)과 아이콘·용어·
 clarification(p. 12)만 [bloodlines.md](bloodlines.md)에 반영하며, Rivals(pp. 8-9),
 6인(p. 10), 원본 Dune: Imperium·Rise of Ix 조합 규칙은 범위 밖이다. 2025-01-13
-FAQ에는 Bloodlines 항목이 없다. Skill tile, Tech tile, 카드의 인쇄 텍스트는
+FAQ에도 Bloodlines 항목이 있다(새 항목 표시 `*`): Chani (Leader) `[FAQ p. 1]`,
+False Orders·Litany Against Fear `[FAQ p. 2]`(2026-09-26 정정 — 이전에는 없다고
+적었다). Skill tile, Tech tile, 카드의 인쇄 텍스트는
 프로모 카드와 같이 카드면(`SourceDocument.CARD_FACE`)을 근거로 전사한다.
 
 ### Immortality 룰북

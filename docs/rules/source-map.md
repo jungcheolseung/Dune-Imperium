@@ -219,7 +219,7 @@ FAQ의 `See ...` 항목은 새 규칙이 없더라도 연결 대상의 coverage�
 | `Carryall`의 Uprising base harvest 수치 `[FAQ p. 1]` | `deferred to content manifest` | card 판정과 `official-rulings-index.md`; 6인 Habbanya Erg는 제외 |
 | `Chairdog`의 grafted card 반환 뒤 Reveal 지속 `[FAQ p. 1]` | `out of scope` | Immortality의 graft 규칙 제외 |
 | `Chani` Imperium card의 Retreat 참조 `[FAQ p. 1]` | `deferred to content manifest` | card 데이터와 `official-rulings-index.md`; Retreat 일반 규칙은 [uprising-systems.md](uprising-systems.md) |
-| `Chani` Leader의 Combat 정리 troop `lost` 판정 `[FAQ p. 1]` | `deferred to content manifest` | 현재 ruleset 소속 확인과 Leader 능력 연결은 content manifest 및 `official-rulings-index.md` |
+| `Chani` Leader의 Combat 정리 troop `lost` 판정 `[FAQ p. 1]` | `covered` | [bloodlines.md](bloodlines.md) 6절 Chani; 구현은 `combat.finish_combat`의 Tactics 전진과 출처당 1회 전진 |
 | `Charisma`의 Intrigue timing 참조 `[FAQ p. 1]` | `deferred to content manifest` | card 데이터와 `official-rulings-index.md`; 일반 timing은 [player-turns.md](player-turns.md) |
 | `Chaumurky` Endgame tiebreaker `[FAQ p. 1]` | `out of scope` | Tech tile을 쓰는 확장 조합 제외 |
 | `Conflict`의 4인 보상 차이 `[FAQ p. 1]` | `covered` | [combat-and-round-end.md](combat-and-round-end.md) |
