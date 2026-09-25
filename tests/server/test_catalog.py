@@ -283,6 +283,50 @@ def test_catalog_includes_leader_alternate_faces_with_text() -> None:
     assert reverend_mother["ability_text"]
 
 
+def test_catalog_serves_korean_leader_text() -> None:
+    """Step K5 (2026-09-25): a scanned Leader face carries its Korean
+
+    ability/Signet Ring name and text beside the English ones;
+    ``reverend_mother_jessica`` has no Korean scan and so carries none of
+    the ``_ko`` keys, exactly like a field with no Korean twin anywhere
+    else in the catalog.
+    """
+
+    terms = terms_keys()
+    catalog = build_catalog()
+    leaders = catalog["leaders"]
+    assert isinstance(leaders, dict)
+
+    chani = leaders["chani"]
+    assert isinstance(chani, dict)
+    assert chani["ability_ko"] == "전술가"
+    assert chani["signet_ko"] == "페다이킨의 책략"
+    for field in ("ability_text_ko", "signet_text_ko"):
+        value = chani[field]
+        assert isinstance(value, str) and value.strip()
+        assert_placeholders_are_terms(value, terms)
+        assert_no_stray_latin(value)
+    assert isinstance(chani["notes_ko"], list)
+
+    staban = leaders["staban_tuek"]
+    assert isinstance(staban, dict)
+    assert staban["notes_ko"] == [
+        "한정된 조력자: 당신의 카드덱에서 외교를 제외한 채로 게임을 시작합니다."
+    ]
+
+    reverend_mother = leaders["reverend_mother_jessica"]
+    assert isinstance(reverend_mother, dict)
+    ko_fields = (
+        "ability_ko",
+        "signet_ko",
+        "ability_text_ko",
+        "signet_text_ko",
+        "notes_ko",
+    )
+    for field in ko_fields:
+        assert field not in reverend_mother
+
+
 def test_catalog_serves_leader_card_overlay_layouts() -> None:
     from dune_imperium.display.leader_layout import leader_layout
 

@@ -1351,6 +1351,13 @@ kbd {
 .popover-title { font-weight: 700; margin-bottom: 0.2rem; }
 .popover .meta { font-size: 0.8rem; opacity: 0.85; margin-bottom: 0.3rem; }
 .popover-line { margin: 0.15rem 0; }
+/* A Leader's printed Korean text (render.js effectNode) carries literal
+   "\n" for a printed line/column break with no punctuation (Staban's and
+   Liet's case lists, Esmar's two columns, Steersman's two boxes,
+   display/leaders_ko.py) -- phrase() emits it as a plain text node, so the
+   line must keep it as a visible break itself (2026-09-25 fix review: with
+   no white-space rule the browser collapsed it to a single run). */
+.effect-text-ko { white-space: pre-line; }
 .popover > img { width: 100%; border-radius: 8px; margin-top: 0.5rem; }
 /* A seat's own leader popover: the image becomes a stage the token from
    `leaderTokenBox` (core.js) lies on, sized and placed in percent of it

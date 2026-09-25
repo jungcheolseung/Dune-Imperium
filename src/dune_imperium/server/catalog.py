@@ -27,7 +27,13 @@ line per printed option, aligned index-for-index with ``text``);
 ``.immortality.options[].effect_ko``, ``spaces[].notes_ko``,
 ``skills[].text_ko`` and ``tech[].text_ko`` (``display.spaces`` and
 ``display.bloodlines``'s ``_ko`` renderers, Step K4); more fields grow this
-list as later work translates their generators.
+list as later work translates their generators. ``leaders[].ability_ko``/
+``ability_text_ko``/``signet_ko``/``signet_text_ko``/``notes_ko`` (Step K5)
+are the one exception to "printed card wording stays English": a Leader
+face's own ability/Signet Ring name and text are hand-transcribed from the
+Korean card print the same way the English is (``display.leaders_ko``'s
+``LEADER_FACE_TEXTS_KO``), not composed from engine data, and are absent for
+``reverend_mother_jessica``, whose flip face has no Korean scan.
 ``icon_files``, ``token_files`` and ``board_image`` work the same way for
 the rulebook icon set (``/icons/...``), the pictured
 Combat markers (``/tokens/...``, ``display.token_images``) and the local board
@@ -63,6 +69,7 @@ from dune_imperium.content.uprising.reserve import RESERVE_STACKS
 from dune_imperium.content.uprising.starting_cards import STARTING_CARDS_BY_ID
 from dune_imperium.display import (
     LEADER_FACE_TEXTS,
+    LEADER_FACE_TEXTS_KO,
     available_icons,
     available_strength_tokens,
     conflict_rewards_texts,
@@ -527,7 +534,7 @@ def _leader_face(
     layout: JsonValue | None = None,
 ) -> JsonObject:
     texts = LEADER_FACE_TEXTS[face_id]
-    return {
+    entry: JsonObject = {
         "name": name,
         "ability": ability,
         "signet": signet,
@@ -540,6 +547,21 @@ def _leader_face(
         # leader with no printed on-card token/slot state.
         "layout": layout,
     }
+    # Korean twin (Step K5, 2026-09-25): a face with a Korean scan carries
+    # its transcribed ability/Signet Ring name and text beside the English
+    # ones (LOCALIZED_FIELDS in i18n.js already swaps ability/signet by
+    # name; core.js's popoverNodes already reads ability_text_ko/
+    # signet_text_ko). Absent for reverend_mother_jessica, whose flip face
+    # has no Korean scan — the client falls back to English exactly as it
+    # does before any _ko field exists.
+    texts_ko = LEADER_FACE_TEXTS_KO.get(face_id)
+    if texts_ko is not None:
+        entry["ability_ko"] = texts_ko.ability_name
+        entry["signet_ko"] = texts_ko.signet_name
+        entry["ability_text_ko"] = texts_ko.ability_text
+        entry["signet_text_ko"] = texts_ko.signet_text
+        entry["notes_ko"] = list(texts_ko.notes)
+    return entry
 
 
 def _space(space_id: str, image_files: dict[tuple[str, str], str]) -> JsonObject:

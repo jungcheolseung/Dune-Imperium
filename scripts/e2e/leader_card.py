@@ -1442,6 +1442,173 @@ def status_line_drops_leader_flags(page) -> None:
     page.evaluate("() => { expandedSeats = new Set(); }")
 
 
+POPOVER_TEXT_JS = """() => {
+  const pop = document.getElementById("card-popover");
+  return {
+    koLineCount: pop.querySelectorAll(".effect-text-ko").length,
+    text: pop.textContent,
+  };
+}"""
+
+
+def leader_popover_korean_text(page, lang: str) -> None:
+    """Step K5 (2026-09-25): a Leader face with a Korean scan shows its
+    transcribed Korean ability/Signet Ring name and text in the Korean UI --
+    through the same `.effect-text-ko` wrapper every other generated-text
+    field draws its Korean line in (`effectNode`, render.js), never the
+    printed-card `.card-text` wrapper -- and the English UI is unchanged.
+    Chani and Kota Odax of Ix, named by the controlling task: Chani's own
+    ability/Signet text has no generated-text precedent to compare against
+    (a Leader's prose is hand-transcribed in both languages, unlike a
+    card's engine-derived line) and her Signet is the one face whose
+    printed reward is known to disagree with the English/engine (two draw
+    icons, not troops, leaders_reconcile.md finding 1); Kota's own ability
+    and Signet use no `{agent_icon_...}` token at all -- his printed
+    Signet Ring ("폐기") and ability exercise the ordinary case.
+
+    Fix review (2026-09-25) adds Steersman Y'rkoon: his Korean
+    `signet_text_ko` ("게임 시작: 운항 카드를 …") never opens with its own
+    Korean Signet name "항로 결정", unlike the English "Plot Course (no
+    Signet Ring): …", which opens with its own English name "Plot Course".
+    `popoverNodes`'s signet branch used to decide the named-vs-unnamed
+    template from the ENGLISH text alone (`opensWithName(entry.signet_text,
+    signetEn)`), so it picked the unnamed template for both languages and
+    the Korean name never showed at all -- this case's own name assertions
+    below catch that regression; the earlier Chani/Kota cases only checked
+    for text substrings, never names, so they missed it.
+
+    Must fail on the pre-K5 client: `ability_text_ko`/`signet_text_ko` did
+    not exist on the catalog, so `effectNode` always fell back to
+    `iconize(en)` and no `.effect-text-ko` node was ever drawn in this
+    popover; the Korean substrings checked below would not appear at all."""
+
+    print(
+        f"[18] Leader popover Korean text ({lang}): Chani, Kota Odax of Ix, "
+        "Steersman Y'rkoon"
+    )
+    cases = (
+        ("chani", "전술 토큰을", "원하는 만큼 후퇴", "Tactician", "retreat"),
+        (
+            "kota_odax_of_ix",
+            "각각의 기술 타일 더미",
+            "기술 타일 1개 폐기",
+            "Secret Project",
+            "Tech tile",
+        ),
+        (
+            "steersman_y_rkoon",
+            "스파이스를 갈구하다",
+            "운항 카드를 잘 섞고",
+            "Hungry for Spice",
+            "Plot Course",
+        ),
+    )
+    for leader_id, ability_ko, signet_ko, ability_en, signet_en in cases:
+        _set_leader_and_open(page, 0, leader_id)
+        shown = page.evaluate(POPOVER_TEXT_JS)
+        if lang == "ko":
+            check.ok(
+                shown["koLineCount"] >= 2,
+                f"{leader_id} (ko): at least two Korean-wrapped lines "
+                "(ability and Signet)",
+                shown,
+            )
+            check.ok(
+                ability_ko in shown["text"],
+                f"{leader_id} (ko): the transcribed ability text shows",
+                shown["text"][:200],
+            )
+            check.ok(
+                signet_ko in shown["text"],
+                f"{leader_id} (ko): the transcribed Signet Ring text shows",
+                shown["text"][:400],
+            )
+            if leader_id == "steersman_y_rkoon":
+                # Blocker fix regression check: the Korean NAMES themselves
+                # must show, not just the texts the two checks above
+                # already cover. The ability's own two printed sub-names
+                # ("기이한 모습:", "스파이스를 갈구하다:") already open
+                # their own halves of ability_text_ko
+                # (leaders_ko.py's own "editorial name: prefixes"
+                # convention), so namedEffectLine correctly does not print
+                # the combined editorial header "기이한 모습 / 스파이스를
+                # 갈구하다" a second time in front of them — this was never
+                # the bug, opensWithName already ran per-language there.
+                # The Signet Ring name is the actual regression: Korean
+                # signet_text_ko never opens with its own name, so it never
+                # showed at all before this fix (docstring above).
+                check.ok(
+                    "기이한 모습:" in shown["text"]
+                    and "스파이스를 갈구하다:" in shown["text"],
+                    f"{leader_id} (ko): both printed ability sub-names open "
+                    "their own halves of the ability text",
+                    shown["text"][:200],
+                )
+                check.ok(
+                    "항로 결정" in shown["text"],
+                    f"{leader_id} (ko): the Korean Signet Ring name shows "
+                    "(opensWithName decided against the Korean text/name, "
+                    "not the English's)",
+                    shown["text"][:400],
+                )
+        else:
+            check.ok(
+                shown["koLineCount"] == 0,
+                f"{leader_id} (en): no Korean-wrapped line at all",
+                shown,
+            )
+            check.ok(
+                ability_ko not in shown["text"] and signet_ko not in shown["text"],
+                f"{leader_id} (en): no Korean leaks into the English popover",
+                shown["text"][:200],
+            )
+            check.ok(
+                ability_en in shown["text"] and signet_en in shown["text"],
+                f"{leader_id} (en): the English text is unchanged",
+                shown["text"][:200],
+            )
+        page.keyboard.press("Escape")
+
+
+STABAN_SIGNET_LINE_JS = """() => {
+  const lines = [...document.querySelectorAll("#card-popover .popover-line")];
+  const line = lines.find((l) => l.textContent.includes("놓은 곳에 따라"));
+  return line ? line.innerText : null;
+}"""
+
+
+def leader_popover_line_breaks(page) -> None:
+    """Blocker fix (2026-09-25 review): four Korean fields carry a literal
+    "\\n" for a printed line/column break with no punctuation of its own
+    (`display/leaders_ko.py`'s own convention: Staban's and Liet's case
+    lists, Esmar's two columns, Steersman's two boxes) -- `phrase()`
+    (render.js) emits it as a plain text node, so nothing but a CSS
+    `white-space` rule turns it back into a visible line break; with none,
+    the browser collapsed every one of those four lines into a single run
+    (confirmed in the browser, review-k5/popovers_new.json and
+    review-k5/shots/staban_tuek_ko.png). `.effect-text-ko { white-space:
+    pre-line; }` (style.css) is the fix, checked here with `innerText`
+    (which reflects CSS layout) rather than `textContent` (which does not
+    and would pass even with the bug still present).
+
+    Staban Tuek's own Signet Ring line ("보이지 않는 망") is the one this
+    checks directly -- it is found by a substring unique to it ("놓은 곳에
+    따라", printed with no punctuation before or after the break) among
+    every `.popover-line` in the open popover, so this does not depend on
+    it being any particular line's position."""
+
+    print("[19] a printed Korean line/column break renders as a real line break")
+    _set_leader_and_open(page, 0, "staban_tuek")
+    line = page.evaluate(STABAN_SIGNET_LINE_JS)
+    check.ok(
+        bool(line) and "\n" in line,
+        "staban_tuek (ko): the Signet Ring line's innerText keeps its "
+        "printed line break, not collapsed into one run",
+        line,
+    )
+    page.keyboard.press("Escape")
+
+
 def _api_post(base: str, path: str, body: dict) -> dict:
     request = urllib.request.Request(
         base + path,
@@ -1910,6 +2077,7 @@ def main() -> None:
             card_click_inside_leader_popover(page)
             ability_names_once(page)
             status_line_drops_leader_flags(page)
+            leader_popover_korean_text(page, "en")
 
             switch_language(page, "ko")
             feyd_geometry(page, "ko")
@@ -1917,6 +2085,8 @@ def main() -> None:
             navigation_geometry_language(page, "ko")
             kota_secret_project(page, "ko")
             shaddam_sardaukar(page, "ko")
+            leader_popover_korean_text(page, "ko")
+            leader_popover_line_breaks(page)
 
             check.ok(not rec.js_errors, "no JS exceptions", rec.js_errors[:5])
             context.close()

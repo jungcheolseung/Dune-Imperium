@@ -25,6 +25,7 @@ from dune_imperium.display.images import (
     resolve_card_images,
 )
 from dune_imperium.display.leaders import LEADER_FACE_TEXTS, LeaderFaceText
+from dune_imperium.display.leaders_ko import LEADER_FACE_TEXTS_KO, LeaderFaceTextKo
 from dune_imperium.display.spaces import (
     board_effect_action_text,
     board_effect_action_text_ko,
@@ -54,7 +55,9 @@ from dune_imperium.display.token_images import (
 __all__ = [
     "ICON_NAMES",
     "LEADER_FACE_TEXTS",
+    "LEADER_FACE_TEXTS_KO",
     "LeaderFaceText",
+    "LeaderFaceTextKo",
     "STRENGTH_TOKEN_COLORS",
     "agent_card_icon_text",
     "agent_card_icon_text_ko",

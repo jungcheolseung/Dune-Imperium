@@ -601,14 +601,14 @@ function opensWithName(text, name) {
 /* A line that opens with its own header name ("Tactician: Whenever…", a
    Leader's ability_text) unless the text already starts with it — a Leader
    whose Bloodlines ability text already opens that way is not given it a
-   second time (opensWithName(), above). `name` is always the ENGLISH
-   header (entry.ability_en falls back to entry.ability, which is English
-   until a later step adds ability_ko to i18n.js's LOCALIZED_FIELDS and the
-   catalog starts localizing it); `nameKo`/`textKo` are that later step's
-   fields, undefined until then, in which case this renders exactly the
-   English line it always has. The Korean check is re-run against the
-   Korean text and name (its own text may or may not open with its own name,
-   independently of whether the English does). */
+   second time (opensWithName(), above). `name` is the ENGLISH header
+   (entry.ability_en falls back to entry.ability); `textKo`/`nameKo` are
+   Step K5's Korean twins (entry.ability_text_ko / entry.ability, the
+   latter already the Korean name once i18n.js's LOCALIZED_FIELDS has
+   localized it) — `undefined` for a face with no Korean scan, in which
+   case this renders exactly the English line. The Korean check is re-run
+   against the Korean text and name (its own text may or may not open with
+   its own name, independently of whether the English does). */
 function namedEffectLine(text, name, textKo, nameKo) {
   const en = opensWithName(text, name) ? text : `${name}: ${text}`;
   if (textKo === undefined) return effectLine(en, undefined);
@@ -651,8 +651,21 @@ function popoverNodes(entry) {
   }
   if (entry.signet_text) {
     const signetEn = entry.signet_en !== undefined ? entry.signet_en : entry.signet;
+    // Named vs. unnamed is decided against the rendered language's OWN
+    // text and name (entry.signet_text_ko / entry.signet, the latter
+    // already the Korean name once localized) rather than always against
+    // English — the way namedEffectLine already does for the ability line
+    // above. Steersman Y'rkoon's Korean signet_text_ko ("게임 시작: 운항
+    // 카드를 …") never opens with its own name "항로 결정" even though the
+    // English "Plot Course (no Signet Ring): …" opens with its own, so
+    // deciding from English alone picked the unnamed template for Korean
+    // too and the Korean name never showed (2026-09-25 fix review).
+    const named =
+      TERM_LANGUAGE === "ko" && entry.signet_text_ko !== undefined
+        ? opensWithName(entry.signet_text_ko, entry.signet)
+        : opensWithName(entry.signet_text, signetEn);
     nodes.push(
-      opensWithName(entry.signet_text, signetEn)
+      named
         ? termLine("core.signet_line_unnamed", {
             text: effectNode(entry.signet_text, entry.signet_text_ko),
           })

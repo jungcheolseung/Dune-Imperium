@@ -713,6 +713,27 @@ const TERMS = {
     icon: "influence_bene_gesserit", ko: "베네 게세리트 영향력", en: "Bene Gesserit Influence",
   },
   influence_fremen: { icon: "influence_fremen", ko: "프레멘 영향력", en: "Fremen Influence" },
+  /* The seven printed board-space Agent-box icons (glossary-ko.md "Agent
+     아이콘 분류", `[Board Guide pp. 1-2]`) plus the Spy Agent icon variant
+     (glossary-ko.md's "Spy" row, `[Main p. 20]` — a distinct rulebook glyph
+     from the plain Spy piece icon `spy` above, naming the same rule
+     concept). A Leader's printed Signet Ring text (Step K5,
+     display/leaders_ko.py) names one of these inline where the card shows
+     the icon in place of the faction/space word. */
+  agent_icon_emperor: { icon: "agent_icon_emperor", ko: "황제", en: "Emperor" },
+  agent_icon_spacing_guild: {
+    icon: "agent_icon_spacing_guild", ko: "우주 항행 길드", en: "Spacing Guild",
+  },
+  agent_icon_bene_gesserit: {
+    icon: "agent_icon_bene_gesserit", ko: "베네 게세리트", en: "Bene Gesserit",
+  },
+  agent_icon_fremen: { icon: "agent_icon_fremen", ko: "프레멘", en: "Fremen" },
+  agent_icon_landsraad: { icon: "agent_icon_landsraad", ko: "랜드스래드", en: "Landsraad" },
+  agent_icon_city: { icon: "agent_icon_city", ko: "도시", en: "City" },
+  agent_icon_spice_trade: {
+    icon: "agent_icon_spice_trade", ko: "스파이스 거래", en: "Spice Trade",
+  },
+  agent_icon_spy: { icon: "agent_icon_spy", ko: "스파이", en: "Spy" },
   contract: { icon: "contract", ko: "계약", en: "Contract" },
   control: { icon: "control", ko: "지배", en: "Control" },
   maker: { icon: "maker", ko: "메이커", en: "Maker" },
