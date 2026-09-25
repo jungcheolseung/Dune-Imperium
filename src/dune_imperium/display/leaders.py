@@ -132,14 +132,14 @@ LEADER_FACE_TEXTS: Mapping[str, LeaderFaceText] = MappingProxyType(
             ),
             signet_text=(
                 "Retreat any number of your troops — or with 2 Fremen"
-                " Influence: pay 1 water → Recruit 2 troops"
+                " Influence: pay 1 water → Draw 2 cards"
             ),
         ),
         "count_hasimir_fenring": LeaderFaceText(
             ability_text="Assassin: Whenever you trash a card: Gain 1 solari",
             signet_text=(
-                "You may trash a card in your play area — or place a Spy on an"
-                " Emperor observation post"
+                "You may trash a card in your play area — or place a Spy with"
+                " Deep Cover on an Emperor observation post"
             ),
         ),
         "duncan_idaho": LeaderFaceText(

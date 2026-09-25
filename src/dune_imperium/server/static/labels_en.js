@@ -234,7 +234,7 @@ const LABELS_EN = {
     "take_trigger_contract": "Choose revealed {contract}",
     "decline_intrigue_contract_trigger": "Decline to trigger {intrigue}",
     "retreat_leader_troops": "Fedaykin Maneuver: Retreat {troop}",
-    "pay_leader_signet_water": "Pay {water} -> 2 {troop} ({signet_ring})",
+    "pay_leader_signet_water": "Pay {water} -> {draw} 2 cards ({signet_ring})",
     "deploy_leader_agent": "Into the Fray: Deploy {agent} to {conflict}",
     "trash_optional_card": "{trash} card (optional)",
     "decline_optional_trash": "Decline {trash}"

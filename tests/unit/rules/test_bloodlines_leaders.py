@@ -12,6 +12,7 @@ from dune_imperium import RulesetConfig
 from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
 from dune_imperium.core import (
+    ChanceDecision,
     DecisionFrame,
     DomainAction,
     GamePhase,
@@ -30,6 +31,7 @@ from dune_imperium.rules.board_effects import (
 )
 from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.engine import UprisingRulesEngine
+from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.leader_abilities import (
     apply_leader_agent_deploy,
     apply_leader_card_trash,
@@ -118,12 +120,16 @@ def test_tactician_advances_per_retreated_troop_and_resets_at_the_end() -> None:
     assert seat.resources.spice == 1
 
 
-def test_fedaykin_maneuver_retreats_any_number_or_buys_two_troops() -> None:
+def test_fedaykin_maneuver_retreats_any_number_or_draws_two_cards() -> None:
+    # The paid half prints "2 Influence: [water] -> [two green card icons]";
+    # the green card is the draw icon (assets/icons/draw.png), not a troop
+    # cube [Chani card]. It was transcribed as two troops until 2026-09-25.
     owner = PlayerState(
         player_id=0,
         leader_id="chani",
         tactics_track_space=2,
         hand=(SIGNET,),
+        deck=(DAGGER, DUNE, RECON),
         troops_supply=7,
         troops_garrison=3,
         troops_conflict=2,
@@ -151,13 +157,41 @@ def test_fedaykin_maneuver_retreats_any_number_or_buys_two_troops() -> None:
     assert seat.troops_conflict == 0 and seat.commanders_conflict == 0
     assert seat.tactics_track_space == 5 and seat.resources.spice == 1
 
+    result = apply_leader_signet_payment(
+        state, DomainAction(action_id="pay_leader_signet_water", actor=0)
+    )
+    paid = result.state
+    seat = paid.players[0]
+    assert seat.resources.water == 0
+    assert len(seat.hand) == 2 and len(seat.deck) == 1
+    assert sorted((*seat.hand, *seat.deck)) == sorted((DAGGER, DUNE, RECON))
+    # No troop is recruited.
+    assert seat.troops_supply == 7 and seat.troops_garrison == 3
+    assert dict(paid.decision_stack[-1].context)["troops_recruited"] == 0
+    resolved = next(e for e in result.events if e.kind == "leader_signet_resolved")
+    assert dict(resolved.payload) == {"cards": 2, "player": 0, "water": 1}
+
+
+def test_fedaykin_maneuver_draw_shuffles_the_discard_when_the_deck_is_short() -> None:
+    owner = PlayerState(
+        player_id=0,
+        leader_id="chani",
+        tactics_track_space=2,
+        hand=(SIGNET,),
+        deck=(DAGGER,),
+        discard_pile=(DUNE, RECON),
+        resources=Resources(water=1),
+        influence=Influence(fremen=2),
+    )
+    state = _play(_turn_state(owner), SIGNET, "arrakeen")
     paid = apply_leader_signet_payment(
         state, DomainAction(action_id="pay_leader_signet_water", actor=0)
     ).state
-    seat = paid.players[0]
-    assert seat.resources.water == 0
-    assert seat.troops_garrison == 3 + 2
-    assert dict(paid.decision_stack[-1].context)["troops_recruited"] == 2
+    reshuffle = paid.decision_stack[-1]
+    assert reshuffle.kind == FrameKind.PERSONAL_DRAW_RESHUFFLE
+    assert isinstance(reshuffle.decision, ChanceDecision)
+    assert dict(reshuffle.context)["count"] == 2
+    assert paid.players[0].resources.water == 0
 
 
 # --- Count Hasimir Fenring ---------------------------------------------------
@@ -187,6 +221,57 @@ def test_corrino_liaison_trashes_a_played_card_or_spies_on_the_emperor() -> None
     assert trashed.players[0].resources.solari == 1
     placed = apply_leader_spy_action(state, spies[0]).state
     assert placed.players[0].spy_post_ids == ("emperor-sardaukar-dutiful-service",)
+
+
+def test_corrino_liaison_spy_has_deep_cover() -> None:
+    # The card prints the Spy with Deep Cover icon (a gold Spy behind a grey
+    # one, as on Deliver Supplies), not the plain Spy of Mohiam's Listeners
+    # [Count Hasimir Fenring card]. Deep Cover places a Spy by the normal
+    # rules but may "ignore any opponents' Spies"; a post holding the
+    # owner's own Spy stays closed [Bloodlines pp. 5, 12]
+    # (docs/rules/bloodlines.md §4).
+    emperor_post = "emperor-sardaukar-dutiful-service"
+    other_post = "choam-shipping-accept-contract"
+    owner = PlayerState(player_id=0, leader_id="count_hasimir_fenring", hand=(SIGNET,))
+    rival = PlayerState(
+        player_id=1, spies_supply=2, spy_post_ids=(emperor_post,)
+    )
+    base = _turn_state(owner)
+    state = _play(
+        replace(base, players=(owner, rival, *base.players[2:])), SIGNET, "arrakeen"
+    )
+    spies = [
+        a
+        for a in legal_leader_signet_actions(state, 0)
+        if a.action_id == "place_leader_spy"
+    ]
+    assert [dict(a.arguments)["post_id"] for a in spies] == [emperor_post]
+    placed = apply_leader_spy_action(state, spies[0]).state
+    assert placed.players[0].spy_post_ids == (emperor_post,)
+    assert placed.players[1].spy_post_ids == (emperor_post,)
+
+    # With no Spy in supply, any Spy may first be recalled for no effect
+    # [Main pp. 11, 20]; the rival's Spy on the post does not block.
+    elsewhere = (other_post, "arrakis-deep-desert", "fremen-desert-tactics-fremkit")
+    drained = replace(owner, spies_supply=0, spy_post_ids=elsewhere)
+    state = _play(
+        replace(base, players=(drained, rival, *base.players[2:])), SIGNET, "arrakeen"
+    )
+    recalls = {
+        dict(a.arguments)["post_id"]
+        for a in legal_leader_signet_actions(state, 0)
+        if a.action_id == "recall_spy_for_leader_placement"
+    }
+    assert recalls == set(elsewhere)
+
+    # His own Spy on the post blocks it.
+    own = replace(owner, spies_supply=2, spy_post_ids=(emperor_post,))
+    state = _play(replace(base, players=(own, *base.players[1:])), SIGNET, "arrakeen")
+    assert not [
+        a
+        for a in legal_leader_signet_actions(state, 0)
+        if a.action_id == "place_leader_spy"
+    ]
 
 
 # --- Duncan Idaho ------------------------------------------------------------

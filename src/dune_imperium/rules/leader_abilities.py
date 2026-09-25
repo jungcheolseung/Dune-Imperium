@@ -12,7 +12,11 @@ through ``leader_signet_is_implemented``.
 from dataclasses import replace
 from typing import Final
 
-from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID, Faction
+from dune_imperium.content.uprising.board import (
+    BOARD_SPACES_BY_ID,
+    OBSERVATION_POSTS,
+    Faction,
+)
 from dune_imperium.content.uprising.imperium import imperium_card_for_instance
 from dune_imperium.content.uprising.leaders import (
     FEYD_TRACK_BY_ID,
@@ -605,6 +609,8 @@ def _leader_spy_placement_actions(
     player: int,
     context: dict[str, ActionValue],
     allowed_post_ids: frozenset[str] | None,
+    *,
+    deep_cover: bool = False,
 ) -> tuple[DomainAction, ...]:
     """Return place or recall-first choices for a Leader Spy placement.
 
@@ -615,10 +621,21 @@ def _leader_spy_placement_actions(
     an earlier recall happened: a freely ordered effect of the same turn
     (a Distraction trigger, say) may have spent the recalled Spy, and then
     the recall is offered again instead of a placement that cannot happen.
+    With ``deep_cover`` opponents' Spies are ignored and only the owner's
+    own Spies block a post (Spy with Deep Cover [Bloodlines pp. 5, 12]).
     """
 
     owner = state.players[player]
-    placements = empty_observation_post_ids(state, allowed_post_ids)
+    placements = (
+        tuple(
+            post.post_id
+            for post in OBSERVATION_POSTS
+            if post.post_id not in owner.spy_post_ids
+            and (allowed_post_ids is None or post.post_id in allowed_post_ids)
+        )
+        if deep_cover
+        else empty_observation_post_ids(state, allowed_post_ids)
+    )
     if owner.spies_supply > 0:
         return tuple(
             DomainAction(
@@ -766,7 +783,8 @@ def legal_leader_signet_actions(
     if owner.leader_id == "chani":
         # Fedaykin Maneuver: retreat any number of troops (Commanders are
         # troops [Bloodlines p. 4]; zero is the decline), or with two Fremen
-        # Influence pay one water for two troops [Chani card].
+        # Influence pay one water to draw two cards (two green draw icons)
+        # [Chani card].
         retreats = [
             DomainAction(
                 action_id="retreat_leader_troops",
@@ -792,8 +810,10 @@ def legal_leader_signet_actions(
 
     if owner.leader_id == "count_hasimir_fenring":
         # Corrino Liaison: trash a card in play (any, the Signet Ring
-        # included), or a Spy next to the Emperor [Count Hasimir Fenring
-        # card].
+        # included), or a Spy with Deep Cover next to the Emperor: the card
+        # prints the Deep Cover icon (a gold Spy behind a grey one, as on
+        # Deliver Supplies), so an opponent's Spy there does not block it
+        # [Count Hasimir Fenring card] [Bloodlines pp. 5, 12].
         return (
             DomainAction(action_id="decline_leader_signet_payment", actor=player),
             *(
@@ -804,7 +824,9 @@ def legal_leader_signet_actions(
                 )
                 for card_id in owner.in_play
             ),
-            *_leader_spy_placement_actions(state, player, context, EMPEROR_POST_IDS),
+            *_leader_spy_placement_actions(
+                state, player, context, EMPEROR_POST_IDS, deep_cover=True
+            ),
         )
 
     if owner.leader_id == "esmar_tuek":
@@ -1004,7 +1026,7 @@ def _apply_chani_water_payment(
     action: DomainAction,
     source: str,
 ) -> RuleResult:
-    """Fedaykin Maneuver's paid half: one water for two troops [Chani card]."""
+    """Fedaykin Maneuver's paid half: one water to draw two cards [Chani card]."""
 
     player = action.actor
     owner = state.players[player]
@@ -1013,24 +1035,20 @@ def _apply_chani_water_payment(
     paid = replace(
         owner, resources=replace(owner.resources, water=owner.resources.water - 1)
     )
-    recruited_owner, recruited = recruit_troops(paid, 2)
-    previous = context.get("troops_recruited")
-    if isinstance(previous, bool) or not isinstance(previous, int):
-        raise RuntimeError("Agent-turn effect frame has invalid recruit count")
-    context["troops_recruited"] = previous + recruited
     context["pending_agent_effect"] = False
     next_state = advance_after_effect(
-        state, context, replace_player(state.players, recruited_owner)
+        state, context, replace_player(state.players, paid)
     )
+    drawn = draw_or_request_personal_cards(next_state, player, 2, source=source)
     return RuleResult(
-        state=next_state,
+        state=drawn.state,
         events=(
             GameEvent(
                 event_id=source,
                 kind="leader_signet_resolved",
-                payload=(("player", player), ("troops", recruited), ("water", 1)),
+                payload=(("cards", 2), ("player", player), ("water", 1)),
             ),
-            *recruit_shortfall_events(source, player, 2, recruited),
+            *drawn.events,
         ),
     )
 

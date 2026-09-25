@@ -268,7 +268,7 @@ const ACTION_LABELS = {
   take_trigger_contract: "공개된 {contract} 선택",
   decline_intrigue_contract_trigger: "{intrigue} 발동 거절",
   retreat_leader_troops: "Fedaykin Maneuver: {troop} 후퇴",
-  pay_leader_signet_water: "{water} 지불 → {troop} 2 ({signet_ring})",
+  pay_leader_signet_water: "{water} 지불 → 카드 2장 {draw} ({signet_ring})",
   deploy_leader_agent: "Into the Fray: {agent}를 {conflict}에 배치",
   trash_optional_card: "카드 {trash} (선택)",
   decline_optional_trash: "{trash} 거절",
