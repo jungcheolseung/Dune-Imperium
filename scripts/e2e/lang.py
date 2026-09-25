@@ -104,7 +104,14 @@ ENGLISH_TERMS_JS = r"""() => {
 # English by policy; the catalog's engine ids are not, so a raw
 # "combat" or "emperor" fallback still fails), and so is iconized card
 # wording (.card-text, whose icons' tooltips are checked) and the help
-# legend's muted English twins. What is left must be empty. Every seat's
+# legend's muted English twins. An engine-*generated* effect line's Korean
+# twin (STEP K1, 2026-09-25 — a Contract's condition/reward, a Conflict's
+# reward row, ...) is deliberately NOT in that skip list: it renders
+# through its own class, .effect-text-ko (render.js effectNode()), not
+# .card-text, since it is not printed on any card and must read as
+# ordinary Korean like everything else this check scans (scripts/
+# effect_text.py checks it directly, popover by popover; lang.py only
+# needs to not skip it by mistake). What is left must be empty. Every seat's
 # detail and every action's ⓘ detail is opened for the scan, so the seat
 # status line is read too. The name-free check above missed "· seed … ·
 # CHOAM · Bloodlines" in the header, the Alliance and troop tooltips and

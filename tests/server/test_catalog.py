@@ -2,6 +2,8 @@
 
 import json
 import re
+import sys
+from pathlib import Path
 
 from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS_BY_ID
 from dune_imperium.content.uprising.intrigue import INTRIGUE_CARDS_BY_ID
@@ -9,6 +11,17 @@ from dune_imperium.content.uprising.starting_cards import STARTING_CARDS_BY_ID
 from dune_imperium.display.board_layout import LEADER_TILE_BOXES, SPACE_BOXES
 from dune_imperium.server.catalog import build_catalog
 from dune_imperium.server.sessions import JsonValue
+
+# tests/support isn't a package pytest or mypy resolve from a dotted import
+# (tests/server/ has no __init__.py, so pytest never puts the repo root on
+# sys.path for a test file here); reached by path instead, shared by every
+# generator's test file this way (tests/unit/display/test_struct_text.py).
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "support"))
+from ko_text import (  # type: ignore[import-not-found]  # noqa: E402
+    assert_no_stray_latin,
+    assert_placeholders_are_terms,
+    terms_keys,
+)
 
 
 def test_catalog_is_json_serializable_and_covers_every_card() -> None:
@@ -128,6 +141,67 @@ def test_catalog_serves_generated_effect_text() -> None:
         )
         assert "shield_wall_protected" in entry
         assert "icon" in entry
+
+
+def test_catalog_serves_korean_contract_and_conflict_text() -> None:
+    """``condition_ko``/``reward_ko``/``rewards_ko`` beside the English.
+
+    Feature decided 2026-09-25 (Korean twin of engine-*generated* effect
+    text); ``display.structs``'s ``*_ko`` renderers are the first
+    generator this covers. Every placeholder must be a real
+    ``static/labels.js`` ``TERMS`` key and the text must hold no stray
+    Latin (``tests/support/ko_text.py``, shared with the unit-level
+    ``display/structs.py`` tests).
+    """
+    from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID
+    from dune_imperium.content.uprising.contracts import (
+        CONTRACTS_BY_ID,
+        ContractConditionKind,
+    )
+    from dune_imperium.display.structs import _card_name, _card_name_ko
+
+    terms = terms_keys()
+    space_names = frozenset(space.name for space in BOARD_SPACES_BY_ID.values())
+    catalog = build_catalog()
+
+    contracts = catalog["contracts"]
+    assert isinstance(contracts, dict)
+    for contract_id, entry in contracts.items():
+        assert isinstance(entry, dict)
+        condition_ko = entry["condition_ko"]
+        reward_ko = entry["reward_ko"]
+        assert isinstance(condition_ko, str) and condition_ko.strip(), contract_id
+        assert isinstance(reward_ko, str) and reward_ko.strip(), contract_id
+        assert_placeholders_are_terms(condition_ko, terms)
+        assert_placeholders_are_terms(reward_ko, terms)
+        assert_no_stray_latin(reward_ko)
+        # A board space name always stays English; an acquired card with no
+        # known Korean print keeps its English name too.
+        condition = CONTRACTS_BY_ID[contract_id].condition
+        allowed: frozenset[str] = frozenset()
+        if condition.kind is ContractConditionKind.BOARD_SPACE:
+            allowed = frozenset({BOARD_SPACES_BY_ID[condition.target].name})
+        elif condition.kind is ContractConditionKind.ACQUIRE_CARD:
+            english = _card_name(condition.target)
+            korean = _card_name_ko(condition.target)
+            allowed = frozenset({english}) if english == korean else frozenset()
+        assert_no_stray_latin(condition_ko, allowed)
+
+    conflicts = catalog["conflicts"]
+    assert isinstance(conflicts, dict)
+    for conflict_id, entry in conflicts.items():
+        assert isinstance(entry, dict)
+        rewards = entry["rewards"]
+        rewards_ko = entry["rewards_ko"]
+        assert (rewards is None) == (rewards_ko is None), conflict_id
+        if rewards_ko is None:
+            continue
+        assert isinstance(rewards_ko, list) and len(rewards_ko) == 3, conflict_id
+        for label, line in zip(("1등: ", "2등: ", "3등: "), rewards_ko, strict=True):
+            assert isinstance(line, str)
+            assert line.startswith(label)
+            assert_placeholders_are_terms(line, terms)
+            assert_no_stray_latin(line, space_names)
 
 
 def test_catalog_includes_leader_alternate_faces_with_text() -> None:

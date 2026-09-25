@@ -754,6 +754,14 @@ const TERMS = {
   tech_tile: { icon: null, ko: "기술 타일", en: "Tech tile" },
   commander_skill: { icon: null, ko: "사다우카 지휘관 기술 토큰", en: "Sardaukar Commander Skill" },
   commander: { icon: null, ko: "사다우카 지휘관", en: "Sardaukar Commander" },
+  /* Not a rulebook word — the printed cost→effect arrow (`[Main p. 20]`
+     "비용 지불": "화살표는 비용… 과 효과…를 표시합니다"), the same glyph in
+     both languages. A Korean generated line names it `{arrow_right}` so
+     phrase() draws the same icon ICON_RULES' own bare "→" rule draws for
+     English (`iconize()`, above) instead of leaving a plain "→" character
+     that only the English pass turns into an icon (render-parity blocker,
+     2026-09-25 review). */
+  arrow_right: { icon: "arrow_right", ko: "→", en: "→" },
 };
 
 /* The language the client renders rule terms in. Stage 2c turns this into a

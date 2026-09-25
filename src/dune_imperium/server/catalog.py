@@ -15,7 +15,12 @@ machine without the assets checkout serves the same catalog with every
 ``image_index_ko`` is the Korean UI's, and wherever the two differ an entry
 carries ``image_ko`` beside ``image``. Cards whose Korean print is known
 (``display.names_ko``) carry ``name_ko`` beside ``name``; the page shows
-the pair of its language. ``icon_files``, ``token_files`` and ``board_image``
+the pair of its language. An entry's engine-*generated* effect text (as
+opposed to printed card wording, which stays English) carries its Korean
+twin the same way, suffixed ``_ko``: so far ``contracts[].condition_ko``/
+``reward_ko`` and ``conflicts[].rewards_ko`` (``display.structs``'s ``_ko``
+renderers); more fields grow this list as later work translates their
+generators. ``icon_files``, ``token_files`` and ``board_image``
 work the same way for the rulebook icon set (``/icons/...``), the pictured
 Combat markers (``/tokens/...``, ``display.token_images``) and the local board
 scan (``/board-image``): the catalog also carries the percent coordinates
@@ -53,8 +58,11 @@ from dune_imperium.display import (
     available_icons,
     available_strength_tokens,
     conflict_rewards_texts,
+    conflict_rewards_texts_ko,
     contract_condition_text,
+    contract_condition_text_ko,
     contract_reward_text,
+    contract_reward_text_ko,
     intrigue_card_text,
     personal_card_text,
     space_is_implemented,
@@ -297,7 +305,9 @@ def build_catalog(
             contract_id: {
                 "name": definition.card.name,
                 "condition": contract_condition_text(definition.condition),
+                "condition_ko": contract_condition_text_ko(definition.condition),
                 "reward": contract_reward_text(definition.reward),
+                "reward_ko": contract_reward_text_ko(definition.reward),
                 "immediate": definition.completes_immediately,
                 "image": _image_url("contract", contract_id, image_files),
             }
@@ -314,6 +324,7 @@ def build_catalog(
                 ),
                 "shield_wall_protected": conflict.shield_wall_protected,
                 "rewards": _conflict_rewards(conflict),
+                "rewards_ko": _conflict_rewards_ko(conflict),
                 "image": _image_url(
                     "conflict", conflict.card.card_id, image_files
                 ),
@@ -583,6 +594,14 @@ def _immortality_overlay(
 
 def _conflict_rewards(conflict: ConflictDefinition) -> list[JsonValue] | None:
     texts = conflict_rewards_texts(conflict)
+    if texts is None:
+        return None
+    rewards: list[JsonValue] = list(texts)
+    return rewards
+
+
+def _conflict_rewards_ko(conflict: ConflictDefinition) -> list[JsonValue] | None:
+    texts = conflict_rewards_texts_ko(conflict)
     if texts is None:
         return None
     rewards: list[JsonValue] = list(texts)

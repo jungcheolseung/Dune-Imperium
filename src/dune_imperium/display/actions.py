@@ -106,3 +106,21 @@ def effect_action_text(state: GameState, action: DomainAction) -> str | None:
     if not isinstance(card_id, str):
         return None
     return agent_card_icon_text(personal_card_for_instance(card_id).agent_effect, key)
+
+
+def effect_action_text_ko(state: GameState, action: DomainAction) -> str | None:
+    """Korean twin of ``effect_action_text``.
+
+    Every branch this module's own English function resolves through
+    (``board_effect_action_text`` / ``agent_card_icon_text``) draws on a
+    hand-written English table (``tokens.py``'s ``AGENT_EFFECT_TEXT``,
+    ``spaces.py``'s ``_ICON_TEXTS``) that has no Korean twin yet, so this
+    returns ``None`` until a later step adds one; the client's ``detail_ko``
+    then falls back to the English ``detail`` exactly as before
+    (``static/render.js`` ``effectNode``). ``resume_reveal_choice``'s detail
+    is an engine prompt, already translated client-side by ``promptText()``
+    (``i18n.js``) rather than through this field, so it stays ``None`` here
+    even once the other branches grow a Korean table.
+    """
+
+    return None

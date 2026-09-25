@@ -598,36 +598,75 @@ function opensWithName(text, name) {
   return Boolean(first) && (text.startsWith(`${first}:`) || text.startsWith(`${first} (`));
 }
 
+/* A line that opens with its own header name ("Tactician: Whenever…", a
+   Leader's ability_text) unless the text already starts with it — a Leader
+   whose Bloodlines ability text already opens that way is not given it a
+   second time (opensWithName(), above). `name` is always the ENGLISH
+   header (entry.ability_en falls back to entry.ability, which is English
+   until a later step adds ability_ko to i18n.js's LOCALIZED_FIELDS and the
+   catalog starts localizing it); `nameKo`/`textKo` are that later step's
+   fields, undefined until then, in which case this renders exactly the
+   English line it always has. The Korean check is re-run against the
+   Korean text and name (its own text may or may not open with its own name,
+   independently of whether the English does). */
+function namedEffectLine(text, name, textKo, nameKo) {
+  const en = opensWithName(text, name) ? text : `${name}: ${text}`;
+  if (textKo === undefined) return effectLine(en, undefined);
+  const koName = nameKo === undefined ? name : nameKo;
+  const ko = opensWithName(textKo, koName) ? textKo : `${koName}: ${textKo}`;
+  return effectLine(en, ko);
+}
+
 function popoverNodes(entry) {
   const nodes = [];
-  if (entry.text) for (const text of entry.text) nodes.push(iconLine(text));
-  if (entry.condition) {
-    nodes.push(termLine("core.condition_line", { text: iconize(entry.condition) }));
+  if (entry.text) {
+    const textKo = entry.text_ko || [];
+    entry.text.forEach((text, i) => nodes.push(effectLine(text, textKo[i])));
   }
-  if (entry.reward) nodes.push(termLine("core.reward_line", { text: iconize(entry.reward) }));
-  if (entry.rewards) for (const text of entry.rewards) nodes.push(iconLine(text));
+  if (entry.condition) {
+    nodes.push(
+      termLine("core.condition_line", {
+        text: effectNode(entry.condition, entry.condition_ko),
+      }),
+    );
+  }
+  if (entry.reward) {
+    nodes.push(
+      termLine("core.reward_line", { text: effectNode(entry.reward, entry.reward_ko) }),
+    );
+  }
+  if (entry.rewards) {
+    const rewardsKo = entry.rewards_ko || [];
+    entry.rewards.forEach((text, i) => nodes.push(effectLine(text, rewardsKo[i])));
+  }
   if (entry.options) {
     if (entry.requirement) nodes.push(requirementNode(entry.requirement));
     for (const option of spaceOptionsFor(entry)) nodes.push(spaceOptionLine(option));
   }
   if (entry.ability_text) {
+    const abilityEn = entry.ability_en !== undefined ? entry.ability_en : entry.ability;
     nodes.push(
-      iconLine(
-        opensWithName(entry.ability_text, entry.ability)
-          ? entry.ability_text
-          : `${entry.ability}: ${entry.ability_text}`,
-      ),
+      namedEffectLine(entry.ability_text, abilityEn, entry.ability_text_ko, entry.ability),
     );
   }
   if (entry.signet_text) {
+    const signetEn = entry.signet_en !== undefined ? entry.signet_en : entry.signet;
     nodes.push(
-      opensWithName(entry.signet_text, entry.signet)
-        ? termLine("core.signet_line_unnamed", { text: iconize(entry.signet_text) })
-        : termLine("core.signet_line", { name: entry.signet, text: iconize(entry.signet_text) }),
+      opensWithName(entry.signet_text, signetEn)
+        ? termLine("core.signet_line_unnamed", {
+            text: effectNode(entry.signet_text, entry.signet_text_ko),
+          })
+        : termLine("core.signet_line", {
+            name: entry.signet,
+            text: effectNode(entry.signet_text, entry.signet_text_ko),
+          }),
     );
   }
   if (entry.notes) {
-    for (const text of entry.notes) nodes.push(iconLine(text, "popover-line muted"));
+    const notesKo = entry.notes_ko || [];
+    entry.notes.forEach((text, i) => {
+      nodes.push(effectLine(text, notesKo[i], "popover-line muted"));
+    });
   }
   return nodes;
 }
@@ -874,6 +913,24 @@ function chipList(container, ids, emptyText) {
   for (const id of ids) container.appendChild(chip(id));
 }
 
+/* An Intrigue card's chosen-option body, its timing prefix stripped
+   ("Plot — " etc., intrigue_card_text()'s own label) — the card's own name
+   is already on the line, so repeating the timing here would be redundant.
+   entry.text_ko[index] is that option's Korean twin, undefined until a
+   later step's effect_dsl_text_ko.py fills it in; this strips the same
+   " — " separator from it too on the assumption that generator keeps
+   ``effect_dsl_text.py option_text()``'s own prefix format (not yet
+   written, so unconfirmed — worth checking when that step lands). Until
+   the twin exists, effectNode() falls back to the English body. */
+function intrigueOptionBody(entry, index) {
+  const strip = (line) => {
+    const split = line.indexOf(" — ");
+    return split === -1 ? line : line.slice(split + 3);
+  };
+  const textKo = entry.text_ko && entry.text_ko[index];
+  return effectNode(strip(entry.text[index]), textKo ? strip(textKo) : undefined);
+}
+
 /* One action as nodes, not a string. The verb and any effect label are ours,
    so they go through phrase() and may name terms; a card, Leader or space
    name is a proper noun and is appended as plain text. That split is the
@@ -893,12 +950,15 @@ function describeAction(action) {
          effect id is the engine's name for what the events then say. */
       if (action.detail) {
         /* Some details are an engine prompt (resume_reveal_choice), which
-           Korean translates; the rest is card wording. */
+           Korean translates; the rest is generated effect text (action.
+           detail_ko is its Korean twin, server/sessions.py, undefined
+           until a later step's generator fills it in — effectNode() then
+           falls back to iconize(action.detail) exactly as before). */
         const translated = promptText(action.detail);
         parts.push(
           translated !== action.detail
             ? document.createTextNode(translated)
-            : iconize(action.detail),
+            : effectNode(action.detail, action.detail_ko),
         );
       }
       else if (EFFECT_ICON_LABELS[value]) parts.push(phrase(EFFECT_ICON_LABELS[value]));
@@ -925,9 +985,7 @@ function describeAction(action) {
       const lines = entry && Array.isArray(entry.text) ? entry.text : null;
       if (lines && lines[value] !== undefined) {
         if (lines.length > 1) {
-          const line = lines[value];
-          const split = line.indexOf(" — ");
-          parts.push(iconize(split === -1 ? line : line.slice(split + 3)));
+          parts.push(intrigueOptionBody(entry, value));
         }
       } else {
         parts.push(document.createTextNode(`${label}: ${value}`));
@@ -978,9 +1036,7 @@ function describeAction(action) {
       if (cardId && lines && lines[value] !== undefined) {
         parts.push(document.createTextNode(nameOf(cardId)));
         if (lines.length > 1) {
-          const line = lines[value];
-          const split = line.indexOf(" — ");
-          parts.push(iconize(split === -1 ? line : line.slice(split + 3)));
+          parts.push(intrigueOptionBody(entry, value));
         }
       } else {
         parts.push(document.createTextNode(`${label}: ${value}`));

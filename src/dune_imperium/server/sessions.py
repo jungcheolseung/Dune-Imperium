@@ -57,7 +57,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.observation import PlayerView, disclose_hidden_zones
 from dune_imperium.core.replay import ReplayStep
 from dune_imperium.core.state import GamePhase, GameState, canonical_state_hash
-from dune_imperium.display import effect_action_text
+from dune_imperium.display import effect_action_text, effect_action_text_ko
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.endgame import final_standings
 from dune_imperium.server.access import (
@@ -1783,7 +1783,11 @@ def _serialize_action(
 ) -> JsonObject:
     """Serialize one legal action.
 
-    ``detail`` names a keyed icon's printed effect; ``undoable`` says whether
+    ``detail`` names a keyed icon's printed effect; ``detail_ko`` is its
+    Korean twin (``None`` until a later step's generator table supplies
+    one — ``display.actions.effect_action_text_ko``'s own docstring says
+    why it always does today; the client falls back to ``detail`` in that
+    case, ``static/core.js`` ``describeAction``). ``undoable`` says whether
     the step could still be taken back afterwards (it could not once it
     reveals hidden information or hands the game to a chance outcome, nor
     when it is an explicit turn end, which seals the turn);
@@ -1801,6 +1805,7 @@ def _serialize_action(
         "action_id": action.action_id,
         "arguments": _jsonify(dict(action.arguments)),
         "detail": effect_action_text(session.state, action),
+        "detail_ko": effect_action_text_ko(session.state, action),
         "undoable": undoable,
         "warning": shortfall_warning(outcome),
         "shortfall": shortfall_details(outcome),

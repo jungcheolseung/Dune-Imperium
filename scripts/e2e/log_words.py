@@ -96,7 +96,15 @@ async ({gameId}) => {
   // the same exemption lang.py already gives the rest of the page, so every
   // DOM-built line reports a second, .card-text-stripped copy of its words
   // for that check only; the full text (still used for display and the
-  // English/Hangul check) is unaffected.
+  // English/Hangul check) is unaffected. An engine-*generated* effect
+  // line's Korean twin (STEP K1, 2026-09-25) is NOT stripped here: its own
+  // class is .effect-text-ko, not .card-text, on purpose (render.js
+  // effectNode()) -- it must read as ordinary Korean, so this loop leaves
+  // it in place for the Korean-leak check below. None of this script's own
+  // turn/event/chance renderers reach a popover today, so no such line is
+  // in these recorded strings yet; this comment is here so the next
+  // generator's step does not have to rediscover why the strip list stops
+  // at .card-text.
   const wordsOf = (el) => {
     const clone = el.cloneNode(true);
     for (const node of clone.querySelectorAll(".card-text")) node.remove();

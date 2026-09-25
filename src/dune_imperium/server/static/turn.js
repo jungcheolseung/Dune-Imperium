@@ -223,7 +223,11 @@ function placementOptionNode(action, candidates) {
   const space = state.catalog.spaces[action.arguments.space_id];
   const option = space && spaceOptionsFor(space)[action.arguments.cost_option || 0];
   if (option && candidates.some((other) => other.arguments.cost_option !== action.arguments.cost_option)) {
-    line.append(costNode(option.cost), icon("arrow_right", "→"), iconize(option.effect));
+    line.append(
+      costNode(option.cost),
+      icon("arrow_right", "→"),
+      effectNode(option.effect, option.effect_ko),
+    );
   }
   const differs = (key) =>
     candidates.some((other) => other.arguments[key] !== action.arguments[key]);

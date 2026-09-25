@@ -260,6 +260,42 @@ function iconLine(text, className) {
   return line;
 }
 
+/* One line of engine-*generated* effect text (a card's Agent/Reveal line, a
+   Contract's condition/reward, a space option, ...), as opposed to printed
+   card wording (which stays English in both languages and always goes
+   through iconize() above). The catalog serves such a field's Korean twin
+   beside the English one, suffixed `_ko` (server/catalog.py); ``ko`` is
+   that twin, possibly ``undefined`` where a later step's generator has not
+   filled it in yet.
+
+   Korean reads `ko` through phrase(), the same `{term}`/`{term:count}`
+   expansion our own hand-written labels use (TERMS, static/labels.js) — a
+   Korean line names its icons this way instead of English words for
+   iconize()'s regex to catch. It is wrapped in its own class, not
+   `card-text` (which marks *printed* wording and is what lang.py's/
+   log_words.py's Korean-leak checks skip): this text is not printed on any
+   card, so it must read as ordinary Korean and stays inside those checks.
+
+   English, or Korean with no twin yet, reads `en` through iconize() exactly
+   as before — the fallback that keeps every renderer working before its
+   own step fills in a `_ko` field. */
+function effectNode(en, ko) {
+  if (TERM_LANGUAGE === "ko" && ko) {
+    const span = document.createElement("span");
+    span.className = "effect-text-ko";
+    span.appendChild(phrase(ko));
+    return span;
+  }
+  return iconize(en);
+}
+
+function effectLine(en, ko, className) {
+  const line = document.createElement("div");
+  line.className = className || "popover-line";
+  line.appendChild(effectNode(en, ko));
+  return line;
+}
+
 function costNode(cost) {
   const wrap = document.createElement("span");
   wrap.className = "cost";
@@ -880,7 +916,7 @@ function spaceOptionLine(option) {
   line.className = "popover-line option-line";
   line.appendChild(costNode(option.cost));
   line.appendChild(icon("arrow_right", "→"));
-  line.appendChild(iconize(option.effect));
+  line.appendChild(effectNode(option.effect, option.effect_ko));
   return line;
 }
 
@@ -895,7 +931,10 @@ function actionPreviewNodes(action, entry) {
     const nodes = [];
     if (entry.requirement) nodes.push(requirementNode(entry.requirement));
     nodes.push(spaceOptionLine(option));
-    for (const text of entry.notes) nodes.push(iconLine(text, "popover-line muted"));
+    const notesKo = entry.notes_ko || [];
+    entry.notes.forEach((text, i) => {
+      nodes.push(effectLine(text, notesKo[i], "popover-line muted"));
+    });
     return nodes;
   }
   const optionIndex = action.arguments.option;
@@ -905,7 +944,8 @@ function actionPreviewNodes(action, entry) {
     typeof optionIndex === "number" &&
     entry.text[optionIndex]
   ) {
-    return [iconLine(entry.text[optionIndex])];
+    const textKo = entry.text_ko || [];
+    return [effectLine(entry.text[optionIndex], textKo[optionIndex])];
   }
   return popoverNodes(entry);
 }

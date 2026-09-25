@@ -104,6 +104,7 @@ def test_legal_actions_describe_the_board_icon_they_resolve() -> None:
     game_id = _text(summary["game_id"])
     placements = _rows(manager.legal_actions(game_id, 0)["actions"])
     assert all(entry["detail"] is None for entry in placements)
+    assert all(entry["detail_ko"] is None for entry in placements)
     assert _obj(placements[0]["arguments"])["space_id"] == "assembly_hall"
 
     summary = manager.apply_action(
@@ -115,6 +116,16 @@ def test_legal_actions_describe_the_board_icon_they_resolve() -> None:
         for entry in actions
         if entry["action_id"] == "resolve_board_effect"
     ] == [("resolve_board_effect", "intrigue", "Draw 1 Intrigue card")]
+    # detail_ko: display.actions.effect_action_text_ko has no Korean table
+    # to draw on yet (its own docstring says why), so it is always None; a
+    # later step's generator makes this a real Korean string instead, and
+    # the client falls back to `detail` in the meantime (static/core.js
+    # describeAction, effectNode).
+    assert [
+        entry["detail_ko"]
+        for entry in actions
+        if entry["action_id"] == "resolve_board_effect"
+    ] == [None]
 
 
 def _play_until(

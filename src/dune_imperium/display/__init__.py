@@ -9,7 +9,11 @@ audit documents under ``docs/implementation-audits/`` and the cited rules
 summaries under ``docs/rules/``.
 """
 
-from dune_imperium.display.actions import agent_card_icon_text, effect_action_text
+from dune_imperium.display.actions import (
+    agent_card_icon_text,
+    effect_action_text,
+    effect_action_text_ko,
+)
 from dune_imperium.display.cards import personal_card_text
 from dune_imperium.display.effect_dsl_text import intrigue_card_text
 from dune_imperium.display.icons import ICON_NAMES, available_icons, icon_filename
@@ -29,8 +33,11 @@ from dune_imperium.display.spaces import (
 )
 from dune_imperium.display.structs import (
     conflict_rewards_texts,
+    conflict_rewards_texts_ko,
     contract_condition_text,
+    contract_condition_text_ko,
     contract_reward_text,
+    contract_reward_text_ko,
 )
 from dune_imperium.display.token_images import (
     STRENGTH_TOKEN_COLORS,
@@ -49,9 +56,13 @@ __all__ = [
     "board_effect_action_text",
     "board_icon_text",
     "conflict_rewards_texts",
+    "conflict_rewards_texts_ko",
     "contract_condition_text",
+    "contract_condition_text_ko",
     "contract_reward_text",
+    "contract_reward_text_ko",
     "effect_action_text",
+    "effect_action_text_ko",
     "icon_filename",
     "intrigue_card_text",
     "load_card_manifest",

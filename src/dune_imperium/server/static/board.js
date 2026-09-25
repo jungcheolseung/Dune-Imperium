@@ -948,7 +948,10 @@ function spaceRow(spaceId, occupants, controllers, makerSpice) {
   const detail = document.createElement("div");
   if (entry.requirement) detail.appendChild(requirementNode(entry.requirement));
   for (const option of spaceOptionsFor(entry)) detail.appendChild(spaceOptionLine(option));
-  for (const noteText of entry.notes) detail.appendChild(iconLine(noteText, "muted"));
+  const notesKo = entry.notes_ko || [];
+  entry.notes.forEach((noteText, i) => {
+    detail.appendChild(effectLine(noteText, notesKo[i], "muted"));
+  });
   const status = [];
   const seats = occupants.get(spaceId);
   if (seats && seats.length) {

@@ -124,10 +124,30 @@ function promptText(prompt) {
    the Korean edition is known, name_ko and image_ko beside them. The page
    reads entry.name and entry.image everywhere, so this points them at the
    current language's pair, keeping the English under name_en and image_en.
-   Runs on the loaded catalog and again on every switch. */
+   Runs on the loaded catalog and again on every switch.
+
+   ability/signet (a Leader's ability and Signet Ring ability *names*, not
+   their effect text) are plain labels the same way — ability_ko/signet_ko
+   join them once a later step transcribes a Leader's Korean print (Track
+   2, docs/rules/glossary-ko.md "아직 채우지 않은 것"); listed here now so
+   that step needs no client change; today every entry lacks the _ko key,
+   so the loop below is a no-op for them and entry.ability/.signet stay
+   English in both languages exactly as before.
+
+   A card's, Contract's, Conflict's, ... engine-*generated* effect text
+   (text/condition/reward/rewards/notes/ability_text/signet_text, ...) is
+   NOT here: unlike a name or a picture, a Korean line is not the same
+   string in a different language — it is prose with its own {term}
+   placeholders, rendered through phrase() instead of the English's
+   iconize(). Swapping it in place here would leave those placeholders as
+   literal text for iconize() to garble. static/render.js's effectNode()/
+   effectLine() choose the right renderer per field, at the point each
+   renderer draws that field, instead. */
 const LOCALIZED_FIELDS = [
   ["name", "name_ko"],
   ["image", "image_ko"],
+  ["ability", "ability_ko"],
+  ["signet", "signet_ko"],
 ];
 
 function localizeCatalog(node) {
