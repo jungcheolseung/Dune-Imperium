@@ -49,7 +49,7 @@
 | Clandestine Meeting | 4 | BG | (없음) | BG Influence 1 + Intrigue 1 | ◆2 |
 | Corrupt Smuggler | 3 | Guild·Fremen | Guild, Spice Trade | If grafted: spice 2 | ◆1 ⚔1 |
 | Dissecting Kit ×2 | 2 | — | Landsraad, City | GRAFT: *다른* grafted 카드 trash ▶ specimen 1 | ◆1; (1M): Tleilaxu |
-| For Humanity | 7 | BG | BG, Landsraad, Spice Trade | ◇? | ◆2; BG Alliance: Influence 1 잃기 ▶ VP 1 |
+| For Humanity | 7 | BG | BG, Landsraad, Spice Trade | ◇? | ◆2; BG Alliance: 한 진영 Influence 2 잃기 ▶ VP 1 |
 | High Priority Travel | 1 | Guild | Landsraad, Spice Trade | Guild Influence 2: draw 1 —OR— Combat 아이콘 | ◆1 Solari 1 |
 | Imperium Ceremony | 6 | Emperor·Guild | Emperor, Guild, Landsraad | Intrigue deck 맨 위 2장을 보고 1장 keep, 나머지는 맨 위로 | ◆3 |
 | Interstellar Conspiracy | 4 | — | City | GRAFT: spice 1 —AND— Emperor 또는 Guild 카드와 graft했으면 ◇? | ◆2 |
@@ -159,16 +159,16 @@ Spice Trade 아이콘. Agent: Research. Reveal: ◆1 specimen 1. 카드 이름 �
 
 ## 슬라이스 5b-2: Imperium 8종
 
-For Humanity와 Interstellar Conspiracy의 "◇?" 아이콘은 카드면 확대로 "원하는 진영의 Influence 1"로 확인했다.
+For Humanity와 Interstellar Conspiracy의 "◇?" 아이콘은 카드면 확대로 "원하는 진영의 Influence 1"로 확인했다. For Humanity Reveal의 Alliance 줄은 같은 "?" 다이아몬드에 **빨간 chevron 두 개**가 붙은 "한 진영 Influence 2 잃기"다(2026-09-26 재판독; 노란 chevron 두 개인 "2 얻기"의 대응, Dune Cards Hub·BGG 인벤토리 일치).
 
 | 카드 | 구현 | 규칙 민감 메모 |
 | --- | --- | --- |
 | Dissecting Kit | `MAY_TRASH_OTHER_GRAFTED_FOR_SPECIMEN`: 지불 provider의 `trash_grafted_card_for_specimen`/거절. 상대 카드가 play 영역에 없으면 box 불발. trash 전에 상대의 `graft_pending_effect`를 끄고(OQ-022) 효과 frame을 정리한 뒤 trash·specimen 생성. Reveal (1M) Tleilaxu. | Graft 카드라 단독 play 불가 `[Immortality p. 10]`. |
-| For Humanity | Agent `GAIN_CHOSEN_INFLUENCE`(기존). Reveal choice `MAY_LOSE_INFLUENCE_FOR_VP_IF_BENE_GESSERIT_ALLIANCE`: `lose_reveal_influence_for_vp(faction[, alliance_recipient])`/거절. 열리는 조건: BG Alliance 보유 + 잃을 Influence 존재(OQ-028, 선택이 열릴 때 판정). | Influence 손실의 Alliance 이전은 OQ-015·`lose_faction_influence`와 동일. |
+| For Humanity | Agent `GAIN_CHOSEN_INFLUENCE`(기존). Reveal choice `MAY_LOSE_INFLUENCE_FOR_VP_IF_BENE_GESSERIT_ALLIANCE`: `lose_reveal_influence_for_vp(faction[, alliance_recipient])`/거절 — 고른 한 진영에서 Influence 2를 잃는다(카드 면의 "?" 다이아몬드에 빨간 chevron 두 개 `[For Humanity card]`; 2026-09-26 이전에는 1로 오독). 열리는 조건: BG Alliance 보유 + Influence 2 이상인 진영 존재(화살표 비용은 전부 내거나 안 낸다 `[Main p. 20]`; OQ-028, 선택이 열릴 때 판정). | Influence 손실의 Alliance 이전은 OQ-015·`lose_faction_influence`와 동일하게 한 칸씩 처리하며, 수령자 선택은 token이 움직이는 칸(첫째 또는 둘째)에서 제시한다 `[FAQ p. 1]`. |
 | High Priority Travel | `DRAW_ONE_OR_COMBAT_ICON_IF_SPACING_GUILD_INFLUENCE_TWO`: Guild 2 이상이면 `resolve_agent_card_effect`(draw)와 `take_agent_card_combat_icon` 중 선택, 아니면 불발. Combat 아이콘은 `grant_combat_icon`이 frame에 쓰므로 컨텍스트를 다시 읽고 닫는다(Occupation도 같은 수정). Reveal 1 Solari. | |
 | Imperium Ceremony | `PEEK_TWO_INTRIGUE_KEEP_ONE` → `rules/intrigue_peek.py`의 `INTRIGUE_PEEK` frame(`keep_peeked_intrigue(instance_id)`). 소유자만 두 장을 본다: `PrivatePlayerView.peeked_intrigue_ids`(관측 v14 세그먼트 `private_peeked_intrigue`), `known_card_seats`, determinize·privacy invariant가 deck 맨 위 두 장을 고정. keep 이벤트는 공개 `intrigue_card_drawn`(수만) + 소유자 전용 `intrigue_card_kept`. | OQ-052(사용자 판정): 두 장 미만이면 맨 윗장을 두고 그 밑에 discard를 섞은 뒤 두 장을 본다(셔플 frame `purpose=peek`). |
 | Interstellar Conspiracy | `GAIN_SPICE_AND_CHOSEN_INFLUENCE_IF_GRAFTED_WITH_EMPEROR_OR_GUILD`: 상대 카드에 Emperor/Guild 진영이 있으면 Influence provider가 4진영 선택을 열고 spice 1을 함께 지급, 아니면 일반 해결로 spice 1만. | Graft 카드. |
-| Shadout Mapes | Agent box 없음. Reveal choice `MAY_DEPLOY_OR_RETREAT_ONE_TROOP`: `deploy_reveal_card_troop`(`add_units_to_reveal`)·`retreat_reveal_card_troop`(`retreat_units`, 전투력 차이를 Reveal frame `strength`에 반영)·거절. | 배치는 Combat 아이콘 없이 카드 효과로 한다. |
+| Shadout Mapes | Agent box 없음. Reveal choice `MAY_DEPLOY_OR_RETREAT_ONE_TROOP`: `deploy_reveal_card_troop`(`add_units_to_reveal`)·`retreat_reveal_card_troop`(`retreat_units`, 전투력 차이를 Reveal frame `strength`에 반영)·거절. 같은 행동을 Uprising의 Unswerving Loyalty("Fremen Bond: … deploy or retreat one of your troops")가 Fremen Bond 뒤에서 쓰므로(2026-09-26) 세 행동 template은 모든 catalog에 있다. | 배치는 Combat 아이콘 없이 카드 효과로 한다. |
 | Tleilaxu Master | `MAY_ACQUIRE_CARD_UP_TO_SIX_IF_ONE_MARKER`: 획득 provider(`legal_agent_card_acquisitions`)가 marker 1 이상일 때 `acquire_reserve_by_card`/`acquire_imperium_by_card`(비용 6 이하, `acquirable_*` 헬퍼)·거절을 연다. marker 2 이상이면 hand로(`hand_public`). box를 먼저 닫고(`advance_after_effect`) `acquire_*_for_intrigue`로 획득해 Spy·Contract·Research 후속 frame이 turn 위에 쌓인다. Reveal Research ×2. | (1M)/(2M) 모두 해결 시점 판정(OQ-028). |
 | Tleilaxu Surgeon | `MAY_PAY_TWO_SPECIMENS_FOR_TWO_TLEILAXU`: `pay_agent_card_two_specimens`/거절 → `advance_tleilaxu` 2칸. Reveal choice `MAY_LOSE_TWO_TROOPS_FOR_TWO_SPECIMENS`: `lose_reveal_troops_for_specimens(zones)`/거절 → troop마다 존을 골라(garrison·Conflict 둘 다, 각각 하나씩) `lose_unit` ×2, 전투력 차이 반영, specimen 2. | OQ-053(사용자 판정: 존 혼합 허용, Commander 제외). |
 
