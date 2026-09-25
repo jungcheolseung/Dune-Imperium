@@ -64,9 +64,11 @@ def test_trigger_text_renders_on_reveal_acquisition() -> None:
 
 
 def test_trigger_text_renders_on_units_deployed() -> None:
+    # "When you deploy three or more units to the Conflict in a single
+    # turn:" [Distraction card; Coercive Negotiation card].
     assert (
         trigger_text(OnUnitsDeployedInTurn(3))
-        == "When you deploy 3 or more units in a turn"
+        == "When you deploy 3 or more units to the Conflict in a turn"
     )
 
 
@@ -113,9 +115,11 @@ def test_option_text_renders_a_reveal_acquisition_trigger() -> None:
 def test_option_text_renders_a_units_deployed_trigger() -> None:
     entry = INTRIGUE_CARDS_BY_ID["distraction"]
 
+    # "You may place this Spy on the same observation post as another
+    # player's Spy." [Distraction card]: sharing is allowed, not required.
     assert option_text(entry.options[0]) == (
-        "Plot — When you deploy 3 or more units in a turn: "
-        "Place a Spy (sharing another player's Spy's post)"
+        "Plot — When you deploy 3 or more units to the Conflict in a turn: "
+        "Place a Spy (may share another player's Spy's post)"
     )
 
 

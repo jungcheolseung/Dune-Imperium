@@ -603,8 +603,10 @@ class PlaceSpy:
     """Place a Spy on an empty Observation Post, limited to ``factions`` if set.
 
     Without a Spy in supply the player first recalls one [Main pp. 11, 20].
-    ``shared_post`` inverts the target rule for card text that places the Spy
-    on the same post as another player's Spy.
+    ``shared_post`` adds the posts held only by other players' Spies to the
+    normal empty-post targets, for card text that says the Spy *may* go on
+    the same post as another player's Spy [Distraction card] -- the Spy with
+    Deep Cover set [Bloodlines p. 5]; the owner's own posts never qualify.
     """
 
     factions: tuple[Faction, ...] | None = None

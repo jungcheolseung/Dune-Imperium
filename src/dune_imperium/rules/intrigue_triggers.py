@@ -111,20 +111,20 @@ def fire_reveal_acquisition_intrigue(
     return RuleResult(state=next_state, events=tuple(events))
 
 
-def shared_spy_post_ids(state: GameState, player: int) -> tuple[str, ...]:
-    """Return posts holding another player's Spy where ``player`` has none."""
+def trigger_spy_post_ids(state: GameState, player: int) -> tuple[str, ...]:
+    """Return the posts Distraction's Spy may go to: any without ``player``'s.
+
+    The Spy icon places on an unoccupied post [Main p. 20]; the card adds
+    "You may place this Spy on the same observation post as another player's
+    Spy" [Distraction card], so a post held only by opponents is allowed too
+    -- the Spy with Deep Cover set: "you also have the option to ignore any
+    opponents' Spies ... (You can't place the Spy where you already have a
+    Spy of your own.)" [Bloodlines p. 5].
+    """
 
     own = set(state.players[player].spy_post_ids)
-    others = {
-        post_id
-        for candidate in state.players
-        if candidate.player_id != player
-        for post_id in candidate.spy_post_ids
-    }
     return tuple(
-        post.post_id
-        for post in OBSERVATION_POSTS
-        if post.post_id in others and post.post_id not in own
+        post.post_id for post in OBSERVATION_POSTS if post.post_id not in own
     )
 
 
@@ -158,7 +158,7 @@ def _trigger_frame_kind(state: GameState, player: int, card_id: str) -> str | No
 
     reward = _deployment_trigger_reward(card_id)
     if isinstance(reward, PlaceSpy):
-        if not shared_spy_post_ids(state, player):
+        if not trigger_spy_post_ids(state, player):
             return None
         return FrameKind.INTRIGUE_TRIGGER_SPY
     if isinstance(reward, RevealContractsTakeOne):
@@ -175,8 +175,9 @@ def offer_deployment_triggers(result: RuleResult) -> RuleResult:
     """Open the face-up deployment-trigger choice after a transition.
 
     Runs on every applied action: when a player's per-turn deployment count
-    has passed a face-up card's minimum since the last offer and a shared
-    post exists, one decision frame per qualifying card opens for its owner.
+    has passed a face-up card's minimum since the last offer and the card's
+    effect has a target, one decision frame per qualifying card opens for
+    its owner.
     A pending chance decision is never buried; a later transition re-offers.
     """
 
@@ -241,7 +242,7 @@ def legal_trigger_spy_actions(
     actions: list[DomainAction] = [
         DomainAction(action_id="decline_intrigue_trigger", actor=player)
     ]
-    targets = shared_spy_post_ids(state, player)
+    targets = trigger_spy_post_ids(state, player)
     if owner.spies_supply > 0:
         actions.extend(
             DomainAction(
@@ -265,7 +266,7 @@ def legal_trigger_spy_actions(
 
 
 def apply_trigger_spy_action(state: GameState, action: DomainAction) -> RuleResult:
-    """Decline, recall first, or place the Spy on another player's post."""
+    """Decline, recall first, or place the Spy (a shared post allowed)."""
 
     if action not in legal_trigger_spy_actions(state, action.actor):
         raise ValueError("action is not a legal Intrigue trigger choice")

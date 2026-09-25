@@ -2289,7 +2289,15 @@ def test_distraction_played_after_deploying_three_fires_at_once() -> None:
     assert done.intrigue_discard[-1] == distraction
 
 
-def test_distraction_needs_a_post_with_another_players_spy() -> None:
+def test_distraction_fires_without_any_opponent_spy_on_the_board() -> None:
+    # The Spy icon places "on an unoccupied observation post" [Main p. 20];
+    # "You may place this Spy on the same observation post as another
+    # player's Spy" [Distraction card] only adds a permission, like Deep
+    # Cover's "you also have the option to ignore any opponents' Spies"
+    # [Bloodlines p. 5]. So the card fires with no opponent Spy anywhere and
+    # offers the empty posts (it used to wait for a post to share).
+    from dune_imperium.content.uprising.board import OBSERVATION_POSTS
+
     state = _distraction_arrakeen_state(rival_post=None)
     engine = UprisingRulesEngine()
     to_arrakeen = next(
@@ -2307,10 +2315,55 @@ def test_distraction_needs_a_post_with_another_players_spy() -> None:
         DomainAction(action_id="deploy_troops", actor=0, arguments=(("count", 3),)),
     ).state
 
-    # No opponent Spy on the board: nothing is offered and the card waits.
-    assert deployed.decision_stack[-1].kind == "agent_effects"
-    assert deployed.players[0].intrigue_faceup == (_intrigue("distraction"),)
-    assert deployed.players[0].deploy_trigger_offered_at == 0
+    assert deployed.decision_stack[-1].kind == "intrigue_trigger_spy"
+    assert deployed.players[0].deploy_trigger_offered_at == 3
+    offered = {
+        dict(action.arguments)["post_id"]
+        for action in engine.legal_actions(deployed, 0)
+        if action.action_id == "place_trigger_spy"
+    }
+    assert offered == {post.post_id for post in OBSERVATION_POSTS}
+    done = engine.apply(deployed, _place_trigger(_post(0))).state
+    assert done.players[0].spy_post_ids == (_post(0),)
+    assert done.intrigue_discard[-1] == _intrigue("distraction")
+
+
+def test_distraction_offers_empty_and_rival_posts_but_never_its_own() -> None:
+    from dune_imperium.content.uprising.board import OBSERVATION_POSTS
+    from dune_imperium.core.engine import RuleResult
+    from dune_imperium.rules.intrigue_triggers import offer_deployment_triggers
+
+    rival_post = _post(1)
+    own_post = _post(2)
+    owner = PlayerState(
+        player_id=0,
+        intrigue_faceup=(_intrigue("distraction"),),
+        spies_supply=2,
+        spy_post_ids=(own_post,),
+        units_deployed_turn=3,
+    )
+    state = replace(
+        _turn_state(owner),
+        players=(
+            owner,
+            _spy_rival(rival_post),
+            PlayerState(player_id=2),
+            PlayerState(player_id=3),
+        ),
+    )
+    offered = offer_deployment_triggers(RuleResult(state=state)).state
+    assert offered.decision_stack[-1].kind == "intrigue_trigger_spy"
+    targets = {
+        dict(action.arguments)["post_id"]
+        for action in UprisingRulesEngine().legal_actions(offered, 0)
+        if action.action_id == "place_trigger_spy"
+    }
+    # Empty posts and the rival's post [Distraction card; Bloodlines p. 5],
+    # but not a post the owner already watches.
+    assert rival_post in targets
+    assert _post(0) in targets
+    assert own_post not in targets
+    assert targets == {post.post_id for post in OBSERVATION_POSTS} - {own_post}
 
 
 def test_reveal_deployment_counts_for_distraction() -> None:

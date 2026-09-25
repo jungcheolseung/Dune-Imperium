@@ -142,7 +142,7 @@ def _gain_influence_text(gain: GainInfluence) -> str:
 
 def _place_spy_text(spy: PlaceSpy) -> str:
     if spy.shared_post:
-        return "Place a Spy (sharing another player's Spy's post)"
+        return "Place a Spy (may share another player's Spy's post)"
     if spy.factions is not None:
         names = " or ".join(_faction_name(faction) for faction in spy.factions)
         return f"Place a Spy ({names} Observation Post)"
@@ -378,7 +378,7 @@ def trigger_text(trigger: Trigger) -> str:
         case OnRevealAcquisitionThisRound():
             return "Whenever you acquire a card during your Reveal turn this round"
         case OnUnitsDeployedInTurn(minimum=minimum):
-            return f"When you deploy {minimum} or more units in a turn"
+            return f"When you deploy {minimum} or more units to the Conflict in a turn"
         case OnTroopsLostAtConflictEnd(minimum=minimum):
             return f"When you lose {minimum} or more troops at the end of a Conflict"
         case _:
