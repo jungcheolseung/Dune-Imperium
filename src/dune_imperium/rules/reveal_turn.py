@@ -4107,7 +4107,25 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
     panopticon = has_tech(owner.tech_ids, TechAbility.PANOPTICON)
     # Troop recruits, Intrigue draws and resource gains wait for the owner's
     # order (OQ-045).
-    reveal_troops_recruited = 0
+    # A troop recruited earlier this same turn (a Plot Intrigue played before
+    # placing an Agent, or an acquire-box troop resolved mid-turn) still
+    # joins this Reveal's Combat-icon deployment: "이번 turn에 recruit한
+    # 유닛 전부와 garrison에서 최대 두 개 ... Reveal turn에서도 쓸 수
+    # 있다" [Bloodlines pp. 5, 12] and "그 turn에 어떤 출처에서
+    # recruit했든 새 troop은 Conflict에 deploy할 수 있다" [Main p. 10]
+    # [FAQ p. 4] (docs/rules/player-turns.md:137). The turn frame this
+    # Reveal is about to replace carries the count in, mirroring
+    # ``agent_turn._troops_recruited_before_placement``.
+    turn_context = dict(state.decision_stack[-1].context)
+    reveal_troops_recruited = turn_context.get("troops_recruited", 0)
+    if isinstance(reveal_troops_recruited, bool) or not isinstance(
+        reveal_troops_recruited, int
+    ):
+        raise RuntimeError("turn frame has an invalid recruit count")
+    # A Harkonnen Advisor troop kept undeployable that turn stays so in the
+    # Reveal (OQ-038, OQ-062); ``legal_reveal_deployments`` already reads
+    # this key off the Reveal frame's context.
+    carried_undeployable = undeployable_troops(turn_context)
     resource_gains = (
         *(
             resource_gain_entry(
@@ -4210,6 +4228,8 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         (_SKILL_GRANTED_KEY, ",".join(skill.skill_id for skill in active_skills)),
         ("turn_owner", action.actor),
     ]
+    if carried_undeployable:
+        context.append(("undeployable_troops", carried_undeployable))
     context.extend(
         (f"revealed_card_{index:03d}", card_id)
         for index, card_id in enumerate(revealed)

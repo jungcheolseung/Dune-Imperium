@@ -1390,6 +1390,38 @@ def test_adaptive_tactics_before_placement_opens_a_deployment_at_any_space() -> 
     ] == [1, 2, 3]
 
 
+def test_adaptive_tactics_before_reveal_joins_the_reveals_allowance() -> None:
+    # Played from the bare "turn" frame, before the owner has chosen an
+    # Agent or a Reveal turn: the recruit lands in the TURN frame's own
+    # ``troops_recruited`` (``update_turn_recruits``'s TURN branch). "그
+    # turn에 어떤 출처에서 recruit했든 새 troop은 Conflict에 deploy할 수
+    # 있다" [Main p. 10] [FAQ p. 4] and the Combat 아이콘 "Reveal
+    # turn에서도 쓸 수 있다" [Bloodlines pp. 5, 12]: choosing Reveal next
+    # must carry that count in, not reset it to 0.
+    from dune_imperium.rules.reveal_turn import legal_reveal_deployments
+
+    card = _intrigue("adaptive_tactics")
+    engine = UprisingRulesEngine()
+    owner = _owner(
+        intrigue_cards=(card,), hand=(STARTERS[4],), resources=Resources(spice=1)
+    )
+    played = engine.apply(_state(owner), _play_intrigue(card)).state
+    assert played.decision_stack[-1].kind == "turn"
+    assert played.players[0].combat_icon_turn is True
+    assert played.players[0].troops_garrison == 4
+
+    revealed = _reveal(played)
+
+    context = _reveal_context(revealed)
+    assert context["combat_deployment"] is True
+    assert context["reveal_troops_recruited"] == 1
+    assert {
+        dict(a.arguments)["count"]
+        for a in legal_reveal_deployments(revealed, 0)
+        if a.action_id == "deploy_troops"
+    } == {1, 2, 3}
+
+
 def test_adaptive_tactics_during_the_reveal_deploys_with_strength() -> None:
     from dune_imperium.rules.reveal_turn import (
         apply_reveal_deployment,
@@ -1720,6 +1752,43 @@ def test_engineered_miracle_discards_for_water_and_commands_a_row_card() -> None
     assert _reveal(_state(_six_persuasion_hand(card))).decision_stack[-1].kind == (
         "reveal"
     )
+
+
+def test_engineered_miracle_command_troop_joins_the_reveals_allowance() -> None:
+    # "Command: Trash this card -> Acquire a card from the Imperium Row"
+    # (any cost, no Persuasion) [Engineered Miracle card]; Arrakis Revolt's
+    # acquire box recruits one troop [Main p. 20]. "그 turn에 어떤
+    # 출처에서 recruit했든 새 troop은 Conflict에 deploy할 수 있다"
+    # [Main p. 10] [FAQ p. 4], and the Combat 아이콘 deploys "이번 turn에
+    # recruit한 유닛 전부와 garrison에서 최대 두 개 ... Reveal turn에서도
+    # 쓸 수 있다" [Bloodlines pp. 5, 12]. This Command acquisition used to
+    # leave ``reveal_troops_recruited`` at 0.
+    from dune_imperium.rules.acquisition import (
+        apply_reveal_command_acquisition,
+        legal_reveal_command_acquisition_actions,
+    )
+    from dune_imperium.rules.reveal_turn import legal_reveal_deployments
+
+    card = _card("engineered_miracle")
+    arrakis_revolt = "imperium:arrakis_revolt:0"
+    owner = replace(_six_persuasion_hand(card), combat_icon_turn=True)
+    base = replace(_state(owner), imperium_row=(arrakis_revolt,))
+    revealed = _reveal(base)
+    acquire = next(
+        a
+        for a in legal_reveal_command_acquisition_actions(revealed, 0)
+        if dict(a.arguments).get("instance_id") == arrakis_revolt
+    )
+
+    result = apply_reveal_command_acquisition(revealed, acquire).state
+
+    assert result.players[0].troops_garrison == 4
+    assert _reveal_context(result)["reveal_troops_recruited"] == 1
+    assert {
+        dict(action.arguments)["count"]
+        for action in legal_reveal_deployments(result, 0)
+        if action.action_id == "deploy_troops"
+    } == {1, 2, 3}
 
 
 def test_southern_faith_draws_or_takes_bene_gesserit_influence_with_a_bond() -> None:
