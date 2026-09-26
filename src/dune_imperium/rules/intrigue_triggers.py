@@ -33,7 +33,9 @@ from dune_imperium.rules.frames import (
     FrameKind,
     owned_top_frame,
     replace_player,
+    replace_top_frame,
     reveal_is_open_for,
+    with_context,
 )
 from dune_imperium.rules.spy_placement import place_spy, recall_spy
 
@@ -243,9 +245,17 @@ def legal_trigger_spy_actions(
     if frame is None:
         return ()
     owner = state.players[player]
-    actions: list[DomainAction] = [
-        DomainAction(action_id="decline_intrigue_trigger", actor=player)
-    ]
+    # Declining is the card's timing choice (OQ-016 (c)) and stays open until
+    # a recall-first is made; after "you may first recall one of your Spies
+    # for no effect" [Main pp. 11, 20] the card is being used and the Spy,
+    # now in supply, must be placed (OQ-057 (14)), as on every other
+    # recall-first path.
+    recalled = dict(frame.context).get("trigger_spy_recalled") is True
+    actions: list[DomainAction] = (
+        []
+        if recalled
+        else [DomainAction(action_id="decline_intrigue_trigger", actor=player)]
+    )
     targets = trigger_spy_post_ids(state, player)
     if owner.spies_supply > 0:
         actions.extend(
@@ -302,7 +312,10 @@ def apply_trigger_spy_action(state: GameState, action: DomainAction) -> RuleResu
         raise RuntimeError("Intrigue trigger choice has an invalid post")
     if action.action_id == "recall_spy_for_trigger":
         recalled = recall_spy(owner, post_id)
-        next_state = replace(state, players=replace_player(state.players, recalled))
+        next_state = replace_top_frame(
+            replace(state, players=replace_player(state.players, recalled)),
+            with_context(frame, {**context, "trigger_spy_recalled": True}),
+        )
         return RuleResult(
             state=next_state,
             events=(

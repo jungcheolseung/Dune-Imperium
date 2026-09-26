@@ -2503,6 +2503,15 @@ def test_distraction_recalls_a_spy_first_when_the_supply_is_empty() -> None:
     ).state
     # The recall keeps the frame open; the freed Spy may now be placed.
     assert recalled.decision_stack[-1].kind == "intrigue_trigger_spy"
+    # ... and must be: "If you have no Spies in your supply when you need to
+    # place one, you may first recall one of your Spies for no effect."
+    # [Main p. 11]; OQ-057 (14): "recall한 뒤에는 그 Spy가 supply에 있으므로
+    # 배치가 의무다". Declining (the OQ-016 (c) timing choice) used to stay
+    # open, leaving a free recall with the card still face up.
+    after_recall = engine.legal_actions(recalled, 0)
+    assert _decline_trigger() not in after_recall
+    assert after_recall
+    assert {action.action_id for action in after_recall} == {"place_trigger_spy"}
     done = engine.apply(recalled, _place_trigger(rival_post)).state
     assert rival_post in done.players[0].spy_post_ids
     assert done.intrigue_discard == (card,)
