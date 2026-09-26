@@ -143,8 +143,11 @@ class PlayerState:
     navigation_trigger_faction: str = ""
     # Navigation card 3 from slot 4: Persuasion at every later Reveal.
     reveal_persuasion_bonus: int = 0
-    # Hungry for Spice fired this turn.
+    # Hungry for Spice fired this turn, and a draw it earned that the engine
+    # has not handed out yet: a reshuffle was pending, or the turn closed
+    # straight into the same seat's next turn (OQ-063).
     hungry_for_spice_granted_turn: bool = False
+    hungry_for_spice_owed: bool = False
     # The Skill strength currently folded into ``combat_strength`` so the
     # running total can be re-derived when a Skill condition changes.
     skill_strength_applied: int = 0

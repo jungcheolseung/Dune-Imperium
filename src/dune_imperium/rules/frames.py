@@ -171,17 +171,42 @@ def replace_player(
     )
 
 
+def hungry_for_spice_is_due(seat: PlayerState) -> bool:
+    """Return whether Hungry for Spice has earned this turn's draw.
+
+    "Whenever you gain 3 or more spice in a single turn: draw a card"
+    [Steersman Y'rkoon card]; once per turn, against the spice held when
+    the seat's turn opened plus the spice spent since (OQ-063).
+    """
+
+    return (
+        seat.leader_id == "steersman_y_rkoon"
+        and not seat.hungry_for_spice_granted_turn
+        and seat.resources.spice - seat.spice_at_turn_start + seat.spice_spent_turn
+        >= 3
+    )
+
+
 def reset_turn_counters(
     players: tuple[PlayerState, ...],
     player: int,
+    *,
+    closing: int | None = None,
 ) -> tuple[PlayerState, ...]:
     """Restart one player's per-turn bookkeeping as their turn opens.
 
     Deployment counters return to zero and the Spice-gained tracking takes a
-    fresh snapshot of the player's current Spice.
+    fresh snapshot of the player's current Spice. ``closing`` is the seat
+    whose turn just closed. When it is the same seat (every other seat has
+    revealed), the snapshot would erase the closed turn's spice before
+    Hungry for Spice judges it in the closing transition, so a draw that
+    turn earned is kept as owed (OQ-063).
     """
 
     owner = players[player]
+    owed = owner.hungry_for_spice_owed or (
+        closing == player and hungry_for_spice_is_due(owner)
+    )
     return replace_player(
         players,
         replace(
@@ -202,6 +227,7 @@ def reset_turn_counters(
             granted_agent_icon_turn="",
             combat_icon_turn=False,
             hungry_for_spice_granted_turn=False,
+            hungry_for_spice_owed=owed,
             spies_recalled_turn=0,
             suspensor_owed=0,
         ),
@@ -225,6 +251,31 @@ def turn_owner_of(state: GameState) -> int | None:
             FrameKind.REVEAL,
         ) and isinstance(frame.decision, PlayerDecision):
             return frame.decision.owner
+    return None
+
+
+def own_turn_frame_index(state: GameState, player: int) -> int | None:
+    """Return the stack index of ``player``'s own open turn frame, if any.
+
+    The turn frame before the Agent is placed, the Agent-turn effect frame
+    and the Reveal frame each carry the bookkeeping of that one turn.
+    ``None`` when the open turn is another seat's or no turn is open (the
+    Combat, Makers and Recall phases are not turns [Main p. 8]).
+    """
+
+    for index in range(len(state.decision_stack) - 1, -1, -1):
+        frame = state.decision_stack[index]
+        if frame.kind not in (
+            FrameKind.TURN,
+            FrameKind.AGENT_EFFECTS,
+            FrameKind.REVEAL,
+        ):
+            continue
+        if isinstance(frame.decision, PlayerDecision) and (
+            frame.decision.owner == player
+        ):
+            return index
+        return None
     return None
 
 

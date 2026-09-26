@@ -154,7 +154,7 @@ def open_next_turn(state: GameState, player: int) -> GameState:
     """
 
     next_player = next_unrevealed_player(state, player)
-    players = reset_turn_counters(state.players, next_player)
+    players = reset_turn_counters(state.players, next_player, closing=player)
     frames = list(state.decision_stack)
     for index in range(len(frames) - 1, -1, -1):
         frame = frames[index]
@@ -370,7 +370,7 @@ def advance_after_effect(
         next_frame = replace(frame, context=tuple(sorted(context.items())))
     else:
         next_player = next_unrevealed_player(state, owner)
-        next_players = reset_turn_counters(next_players, next_player)
+        next_players = reset_turn_counters(next_players, next_player, closing=owner)
         next_frame = DecisionFrame(
             kind=FrameKind.TURN,
             frame_id=f"round:{state.round_number}:turn:{next_player}",
