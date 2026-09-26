@@ -195,6 +195,7 @@ def complete_acquire_contracts(
     next_state = state
     events: tuple[GameEvent, ...] = ()
     for instance_id in matching:
+        garrison_before = next_state.players[player].troops_garrison
         completed = _complete_contract_without_choices(
             next_state,
             player,
@@ -214,6 +215,14 @@ def complete_acquire_contracts(
             )
         next_state = completed.state
         events = (*events, *completed.events)
+        recruited = next_state.players[player].troops_garrison - garrison_before
+        if recruited and turn_owner_of(next_state) == player:
+            # Troops recruited during the owner's own turn "from any
+            # source" may be deployed [Main p. 10] [FAQ p. 4]; an Acquire
+            # Contract completed outside the owner's turn (Combat, another
+            # seat's turn) keeps them out of this count, like Earn Any
+            # Alliance (``complete_alliance_contracts``).
+            next_state = update_turn_recruits(next_state, troops_recruited=recruited)
     return RuleResult(state=next_state, events=events)
 
 

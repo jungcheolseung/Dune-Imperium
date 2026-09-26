@@ -33,7 +33,14 @@ from dune_imperium.rules.effects import (
     recruit_shortfall_events,
     recruit_troops,
 )
-from dune_imperium.rules.frames import FrameKind, replace_player, reveal_is_open_for
+from dune_imperium.rules.frames import (
+    FrameKind,
+    context_int,
+    replace_player,
+    reveal_is_open_for,
+    turn_owner_of,
+    update_turn_recruits,
+)
 from dune_imperium.rules.immortality import advance_research, advance_tleilaxu
 from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.intrigue_deck import credit_suspensor_suits
@@ -411,12 +418,27 @@ def _acquire_reserve_to_hand_with_solari(
         players=replace_player(state.players, next_owner),
         reserve_stacks=reserve_stacks,
     )
+    garrison_before_contracts = prepared.players[action.actor].troops_garrison
     completed = complete_acquire_contracts(
         prepared,
         action.actor,
         card_id,
         source=source,
     )
+    contract_recruited = (
+        completed.state.players[action.actor].troops_garrison
+        - garrison_before_contracts
+    )
+    if contract_recruited:
+        # Same stale-context trap as the Imperium-card path: an Acquire
+        # Contract's troop reward would otherwise sit only in
+        # ``complete_acquire_contracts``'s own state, which
+        # ``advance_after_effect`` below discards in favor of ``context``
+        # [Main p. 10] [FAQ p. 4].
+        previous = context_int(
+            context, "troops_recruited", owner="Agent-turn effect frame"
+        )
+        context["troops_recruited"] = previous + contract_recruited
     next_state = advance_after_effect(
         completed.state,
         context,
@@ -473,6 +495,19 @@ def _acquire_imperium_to_hand_with_solari(
     acquisition_events = bonus.events
     places_spy = bonus.places_spy
     takes_contract = bonus.takes_contract
+    if bonus.recruited:
+        # Arrakis Revolt's and Occupation's acquire-box troops join this
+        # Agent turn's recruit count like any other Plot recruit [Main
+        # p. 10] [FAQ p. 4]; ``context`` is written back below (and, for a
+        # Combat-icon deployment, threaded through ``advance_after_effect``
+        # further down), so the credit must land here rather than on a
+        # frame ``update_turn_recruits`` would find and this handler would
+        # then overwrite (the stale-context trap, ``docs/lessons.md``
+        # 2026-09-26 item 4).
+        previous = context_int(
+            context, "troops_recruited", owner="Agent-turn effect frame"
+        )
+        context["troops_recruited"] = previous + bonus.recruited
     base_frame = replace(
         state.decision_stack[-1],
         context=tuple(sorted(context.items())),
@@ -500,6 +535,7 @@ def _acquire_imperium_to_hand_with_solari(
         )
         prepared = gained.state
         acquisition_events = (*acquisition_events, *gained.events)
+    garrison_before_contracts = prepared.players[action.actor].troops_garrison
     completed = complete_acquire_contracts(
         prepared,
         action.actor,
@@ -508,6 +544,19 @@ def _acquire_imperium_to_hand_with_solari(
     )
     prepared = completed.state
     acquisition_events = (*acquisition_events, *completed.events)
+    contract_recruited = (
+        prepared.players[action.actor].troops_garrison - garrison_before_contracts
+    )
+    if contract_recruited:
+        # Same trap as the acquire box above: an Acquire Contract's own
+        # troop reward completed here would otherwise sit only in
+        # ``complete_acquire_contracts``'s own state update, which the
+        # ``advance_after_effect`` calls below discard in favor of
+        # ``context``.
+        previous = context_int(
+            context, "troops_recruited", owner="Agent-turn effect frame"
+        )
+        context["troops_recruited"] = previous + contract_recruited
     if places_spy:
         next_state = replace(
             prepared,
@@ -744,6 +793,13 @@ def apply_imperium_acquisition(
     takes_contract = bonus.takes_contract
     players = replace_player(state.players, next_owner)
     context["persuasion"] = persuasion - cost
+    if bonus.recruited:
+        # Arrakis Revolt's and Occupation's acquire-box troops recruited
+        # during a Reveal turn join that turn's Combat-icon deploy count
+        # [Bloodlines p. 5], since a troop recruited "from any source" this
+        # turn may be deployed [Main p. 10] [FAQ p. 4].
+        previous = context_int(context, "reveal_troops_recruited", owner="Reveal frame")
+        context["reveal_troops_recruited"] = previous + bonus.recruited
     frame = state.decision_stack[-1]
     next_frame = replace(frame, context=tuple(sorted(context.items())))
     decision_stack = (*state.decision_stack[:-1], next_frame)
@@ -834,6 +890,10 @@ class AcquisitionBonus:
     places_spy: bool
     takes_contract: bool
     pending_draw: tuple[int, int, str] | None = None
+    # Arrakis Revolt's and Occupation's acquire-box troops [RECRUIT_ONE_TROOP,
+    # RECRUIT_THREE_TROOPS]; every caller must still join them to the turn's
+    # recruit count itself [Main p. 10] [FAQ p. 4].
+    recruited: int = 0
 
 
 def _acquired_definition(instance_id: str) -> ImperiumCardEntry:
@@ -893,6 +953,7 @@ def _resolve_imperium_acquisition_bonus(
     intrigue_deck = state.intrigue_deck
     events: tuple[GameEvent, ...] = ()
     pending_draw: tuple[int, int, str] | None = None
+    recruited = 0
     if effect is PersonalCardAcquisitionEffect.DRAW_INTRIGUE_CARD:
         source = (
             f"round:{state.round_number}:player:{player}:"
@@ -1002,6 +1063,7 @@ def _resolve_imperium_acquisition_bonus(
         places_spy=effect is PersonalCardAcquisitionEffect.PLACE_SPY,
         takes_contract=effect is PersonalCardAcquisitionEffect.TAKE_CONTRACT,
         pending_draw=pending_draw,
+        recruited=recruited,
     )
 
 
@@ -1169,6 +1231,11 @@ def apply_manipulated_acquisition(
         next_owner,
     )
     context["persuasion"] = persuasion - cost
+    if bonus.recruited:
+        # Same Reveal-turn recruit count as the ordinary Row purchase
+        # [Main p. 10] [FAQ p. 4] [Bloodlines p. 5].
+        previous = context_int(context, "reveal_troops_recruited", owner="Reveal frame")
+        context["reveal_troops_recruited"] = previous + bonus.recruited
     frame = state.decision_stack[-1]
     next_frame = replace(frame, context=tuple(sorted(context.items())))
     decision_stack = (*state.decision_stack[:-1], next_frame)
@@ -1481,6 +1548,17 @@ def acquire_imperium_for_intrigue(
         intrigue_deck=bonus.intrigue_deck,
         pending_intrigue_draws=_with_pending_draw(state, bonus.pending_draw),
     )
+    if bonus.recruited and turn_owner_of(prepared) == player:
+        # Shared by many callers: a card-granted Acquire Tech style effect
+        # played mid-turn (Tleilaxu Master, a Leader's Signet acquisition,
+        # Engineered Miracle's Command, a Navigation or Inspire Awe pick),
+        # where the recruiting frame may no longer be the stack's top by
+        # now, and Impress's identical Combat reward, which is outside any
+        # turn and credits nothing. Troops recruited during the owner's own
+        # turn "from any source" join its deploy allowance [Main p. 10]
+        # [FAQ p. 4]; ``turn_owner_of`` finds that turn's frame directly
+        # instead of trusting a possibly stale local context.
+        prepared = update_turn_recruits(prepared, troops_recruited=bonus.recruited)
     acquisition_events = bonus.events
     faction = _acquisition_influence_faction(definition.acquisition_effect)
     if faction is not None:

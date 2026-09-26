@@ -40,6 +40,7 @@ from dune_imperium.rules.agent_effects import (
     resolve_agent_card_effect,
 )
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
+from dune_imperium.rules.combat_deployment import legal_combat_deployments
 from dune_imperium.rules.effects import current_agent_effect_context
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
@@ -606,6 +607,42 @@ def test_tleilaxu_master_acquires_a_cheap_card_and_researches_at_reveal() -> Non
         dict(revealed.decision_stack[-1].context)["reveal_pending_gains"]
         == "research|2|imperium:tleilaxu_master:0"
     )
+
+
+def test_tleilaxu_masters_acquired_troop_joins_a_combat_turns_allowance() -> None:
+    # Tleilaxu Master's Agent box may acquire Arrakis Revolt (cost 6, at the
+    # "6 or less" cap [card face]) whose own acquire box recruits one troop
+    # [Main p. 20]; "그 turn에 어떤 출처에서 recruit했든 새 troop은
+    # Conflict에 deploy할 수 있다" [Main p. 10] [FAQ p. 4]
+    # (docs/rules/player-turns.md). This Agent turn visits a Combat space
+    # (Imperial Basin's Spice Trade icon [Main p. 15]), so the troop must
+    # join ``troops_recruited`` and ``legal_combat_deployments`` there, not
+    # just the garrison -- the engine used to advance the Agent-turn frame
+    # before the acquisition recruited, discarding the count.
+    master = _card("tleilaxu_master")
+    arrakis_revolt = "imperium:arrakis_revolt:0"
+    placed = _place(
+        _state(
+            _owner((master,), research_space="c4r2"),
+            imperium_row=(arrakis_revolt,),
+        ),
+        master,
+        "imperial_basin",
+    )
+    acquire = next(
+        a
+        for a in legal_agent_card_acquisitions(placed, 0)
+        if dict(a.arguments).get("instance_id") == arrakis_revolt
+    )
+
+    result = apply_agent_card_acquisition(placed, acquire)
+
+    assert result.state.players[0].troops_garrison == 4
+    _, context = current_agent_effect_context(result.state)
+    assert context["troops_recruited"] == 1
+    assert [
+        dict(a.arguments)["count"] for a in legal_combat_deployments(result.state, 0)
+    ] == [1, 2, 3]
 
 
 def test_tleilaxu_surgeon_spends_specimens_and_sacrifices_troops() -> None:

@@ -2002,6 +2002,52 @@ def test_call_to_arms_recruits_per_reveal_acquisition_then_expires() -> None:
     assert "intrigue_expired" in [event.kind for event in finished.events]
 
 
+def test_arrakis_revolt_and_call_to_arms_credit_the_same_acquisition_additively() -> (
+    None
+):
+    # Two independent recruit mechanisms firing on the same acquisition must
+    # add, not double count or clobber each other: Arrakis Revolt's own
+    # acquire box [Main p. 20] and Call to Arms' per-Reveal-acquisition
+    # trigger [Bloodlines pp. 5, 12] (docs/rules/bloodlines.md) both feed
+    # ``reveal_troops_recruited``, since "그 turn에 어떤 출처에서 recruit
+    # 했든 새 troop은 Conflict에 deploy할 수 있다" [Main p. 10] [FAQ p. 4]
+    # (docs/rules/player-turns.md).
+    call = _intrigue("call_to_arms")
+    arrakis_revolt = "imperium:arrakis_revolt:0"
+    owner = PlayerState(
+        player_id=0, intrigue_faceup=(call,), hand=_persuasion_hand()
+    )
+    state = _with_market(_turn_state(owner))
+    state = replace(state, imperium_row=(arrakis_revolt, *state.imperium_row))
+    engine = UprisingRulesEngine()
+    revealed = engine.apply(state, _reveal(state)).state
+    frame = revealed.decision_stack[-1]
+    context = dict(frame.context)
+    context["persuasion"] = 10
+    revealed = replace(
+        revealed,
+        decision_stack=(
+            *revealed.decision_stack[:-1],
+            replace(frame, context=tuple(sorted(context.items()))),
+        ),
+    )
+
+    bought = engine.apply(
+        revealed,
+        DomainAction(
+            action_id="acquire_imperium",
+            actor=0,
+            arguments=(("instance_id", arrakis_revolt),),
+        ),
+    )
+
+    # 1 from Arrakis Revolt's own acquire box, 1 from Call to Arms: neither
+    # mechanism overwrites the other's credit.
+    assert bought.state.players[0].troops_garrison == owner.troops_garrison + 2
+    context_after = dict(bought.state.decision_stack[-1].context)
+    assert context_after["reveal_troops_recruited"] == 2
+
+
 def test_call_to_arms_troop_counts_toward_reveal_deployment_allowance() -> None:
     # "You may deploy any units you recruit this turn and up to two more
     # from your garrison" [Bloodlines p. 5] does not carve out an exception
