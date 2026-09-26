@@ -121,7 +121,7 @@ Spice Trade 아이콘. Agent: Research. Reveal: ◆1 specimen 1. 카드 이름 �
 | 영역 | 구현 | 메모 |
 | --- | --- | --- |
 | 획득 | `rules/tleilaxu_row.py`: REVEAL frame 소유자에게 Row 카드마다 `acquire_tleilaxu(instance_id)`(specimen ≥ 비용), 첫 genetic marker 뒤에는 `to_deck_top=True` 변형도. 지불은 `spend_specimens`(tanks→supply), 카드는 discard pile 또는 deck 맨 위, Row는 deck 맨 위에서 보충(`refill_tleilaxu_row`), 획득 box는 Imperium과 같은 `resolve_acquisition_bonus`(Tleilaxu-aware) + `apply_acquisition_track_effects`. deck 맨 위로 보낸 카드의 instance는 이벤트에 싣지 않는다(deck 순서는 비공개, OQ-010). | `[Immortality pp. 6, 8-9]`. Imperium Row 획득 효과·Persuasion 효과는 Row를 보지 않으므로 자연히 배제된다. |
-| Reclaimed Forces | `acquire_reclaimed_forces(choice)`: specimen 3, `troops`(recruit 2, `reveal_troops_recruited`에 합산) 또는 `tleilaxu`(1 전진); 카드는 Row에 남는다. | `[Immortality p. 9]` `[Reclaimed Forces card]`. |
+| Reclaimed Forces | `acquire_reclaimed_forces(choice)`: specimen 3, `troops`(recruit 2, `reveal_troops_recruited`에 합산) 또는 `tleilaxu`(1 전진); 카드는 Row에 남는다. 선택 효과 뒤 face-up Call to Arms가 발동한다(사용자 판정 2026-09-26, OQ-066; `[Immortality p. 9]`). | `[Immortality p. 9]` `[Reclaimed Forces card]`. |
 | 획득 box | `PersonalCardAcquisitionEffect.RESEARCH`·`ADVANCE_TLEILAXU`는 카드가 존에 들어간 뒤 state 수준에서 해결(`apply_acquisition_track_effects`; research는 방향 선택 frame을 열 수 있다). Imperium 획득 경로 4곳과 Tleilaxu 경로 모두. | Subject X-137, (슬라이스 5의) Spiritual Fervor. |
 | 카드 | 구현 | 규칙 민감 메모 |
 | codec | `immortality` 카탈로그: 모든 카드의 배치 템플릿에 `graft` 변형(Graft 카드는 graft만), `choose_graft_partner` ×개인 카드, `switch_graft_card`, `decline_agent_card_recall`. 기본 카탈로그 불변(4,367). | 4,578→6,857. |
