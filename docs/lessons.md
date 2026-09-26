@@ -579,3 +579,25 @@
      판, 이어서 전부 Storms 판이었다 — 예외는 문항당 상한의 꼬리 보충뿐), 고정 판은 옛·새 엔진으로 같은 판을 두어 **처음 갈라지는
      결정**을 찾는다(seed 3·23 모두 Storms의 1등 보상 Spy). 그리고 고정값이 원래 무엇을 검사하려던 것인지 다시 읽는다 — seed 23의
      Panopticon 선두 교체 사례는 새 경로에서 사라져, 같은 상황이 나는 seed 45로 옮겨야 했다.
+
+## 2026-09-26 — 학습 전 점검이 카드 전사 오류 110여 건을 남김, 블라인드 전수 감사로 드러남
+
+- 무슨 일: 학습 전에 버그·오동작을 점검했는데도 2026-09-25에 Chani·Fenring Signet 오독이 나왔고, 사용자 요청으로 348개 항목(카드·
+  타일·보드·Leader) 전부를 카드면과 대조하자 **확정 불일치 114건**(규칙 80, 표시 32)이 나왔다. 기본판 카드도 여럿이다 — The Spice
+  Must Flow의 Reveal이 spice 1인데 검 1, Covert Operation의 Reveal이 Spy 2인데 Persuasion 2, Subversive Advisor가 Persuasion 1인데
+  Solari 1, Calculus of Power·Maker Keeper·Undercover Asset·Chani, Clever Tactician의 Agent 아이콘, Prepare the Way·Bene Gesserit
+  Operative·In High Places·Overthrow의 소속, Sardaukar Coordination의 Persuasion 2 누락. 2026-08부터 모든 판·모든 학습이 이 값으로 돌았다.
+- 원인: (1) 이전 점검은 엔진 전사를 **보면서** 카드와 맞는지 확인했다 — 기대가 판독을 끌고 간다(2026-09-08·09-19 교훈과 같은 뿌리).
+  감사 문서에 "visual check 일치"라고 적힌 카드(Subversive Advisor)도 틀려 있었다. (2) 데이터의 출처(DIU 목록·수입)를 사실상 정답으로
+  썼고, 카드 그림은 의심이 생긴 카드만 봤다. (3) 소속·Agent 아이콘처럼 "눈에 띄지 않는" 필드는 행동 테스트가 드물어 틀려도 드러나지
+  않았다.
+- 재발 방지:
+  1. 전사 점검은 **블라인드 전사 → 엔진 대조 → 반박 검증** 순서로 한다: 먼저 엔진을 보지 않은 판독을 받고, 엔진과 다른 곳은 모두
+     확대해 판정하며, 불일치마다 독립 검증자가 반박을 시도하게 한다(스크래치 `audit/build_items.py`·`zoom.py`의 방식; 348항목에
+     약 2시간 40분). 새 확장·새 카드를 전사하면 같은 방식으로 그 카드들을 감사한다.
+  2. 구조화된 외부 자료(BGG 인벤토리의 소속·Agent 접근·비용·Reveal 수치·매수)와 **기계 대조**를 함께 돌린다 — 이번에는 감사가 놓친
+     것이 없음을 보여 준 독립 확인이었다. 시트도 틀리므로(8건) 차이는 카드 그림으로 판정한다.
+  3. 병렬 수정은 worktree 단위로 나누되, 통합에서 생기는 의미 충돌(한 slice가 없앤 필드를 다른 slice가 새로 씀 — Hardy의
+     `reveal_water`; 한 slice의 새 합법 행동이 다른 slice가 넓힌 카드에서 codec에 없음 — Commander 이동)을 통합 브랜치의 전체 테스트와
+     codec 탐침(모든 합법 행동을 인코딩)으로 잡는다. worktree는 `origin/master`에서 갈라질 수 있으니 기준 커밋을 확인한다. 서브에이전트가
+     출력 없이 3분 넘게 도는 명령(부하 걸린 전체 pytest)은 멈춤으로 처리되므로 테스트를 묶음으로 나눠 돌리게 한다.
