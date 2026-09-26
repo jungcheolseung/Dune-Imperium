@@ -59,6 +59,7 @@ from dune_imperium.rules.frames import (
     own_turn_frame_index,
     owned_top_frame,
     replace_player,
+    turn_closing_player,
     turn_owner_of,
 )
 from dune_imperium.rules.influence import gain_faction_influence
@@ -1903,7 +1904,14 @@ def apply_leader_signet_acquire(
     # other seat has revealed. The acquisition below must not let
     # ``turn_owner_of`` credit that new frame with a troop this box
     # recruited in the turn that just closed [Main p. 10] [FAQ p. 4].
-    turn_closed = settled.decision_stack[-1].kind == FrameKind.TURN
+    # A bare top-of-stack "turn" frame alone does not mean it just closed:
+    # Servo-Receivers can also run *from* a bare turn frame before the
+    # Agent is placed (OQ-062), and ``_close_servo_signet`` then merges back
+    # into that same, still-open frame without ever leaving it.
+    # ``turn_closing_player`` checks the frame kind from before this call
+    # too, so it only reports a close when an AGENT_EFFECTS or Reveal frame
+    # actually turned into a fresh "turn" frame.
+    turn_closed = turn_closing_player(state, settled) == player
     if action.action_id == "acquire_leader_reserve":
         card_id = arguments.get("card_id")
         if not isinstance(card_id, str):
