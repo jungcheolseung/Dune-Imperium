@@ -618,11 +618,10 @@ imperium:rebel_supplier:1,…`, `To Space: paid_trash`). 결정 prompt는 엔진
 없는 Wild card·Immediate·Usurp. 리더 팝오버는 한글판 이름(다른 기억들·비밀 프로젝트·페다이킨의 책략 …)을 쓰지만 행동
 목록·로그 라벨(`labels.js`)은 아직 영어 이름이라, 둘을 맞출지는 다음 결정거리다.
 
-**전사하다 찾은 엔진 쪽 불일치 둘**(규칙 확인이 필요해 이 브랜치에서 고치지 않았다; 별도 작업으로 넘김):
-Chani의 인장 반지 Fedaykin Maneuver는 영어판·한글판 모두 보상이 **카드 2장 뽑기** 아이콘인데 엔진·영어 문구는 병력 2
-(`rules/leader_abilities.py`의 `_apply_chani_water_payment`, `display/leaders.py`); Count Hasimir Fenring의 Corrino Liaison은
-**Deep Cover 스파이** 아이콘인데 엔진은 일반 스파이 배치. 한국어 리더 문구는 인쇄대로라, 엔진이 고쳐지기 전까지 Chani의
-한국어(카드 2장)와 영어(병력 2)가 서로 다르다.
+**전사하다 찾은 엔진 쪽 불일치 둘**(이 브랜치에서는 고치지 않았다): Chani의 인장 반지 Fedaykin Maneuver는 영어판·한글판
+모두 보상이 **카드 2장 뽑기** 아이콘인데 엔진·영어 문구는 병력 2였고, Count Hasimir Fenring의 Corrino Liaison은 **Deep Cover
+스파이** 아이콘인데 엔진은 일반 스파이 배치였다. 둘 다 master가 같은 날 `27ed643`에서 카드면대로 고쳐, 병합(`08b5003`) 뒤로는
+두 언어가 같은 말을 한다.
 
 ## 감사에서 기각된 것 (다시 꺼내지 않기 위해)
 
