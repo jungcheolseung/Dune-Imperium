@@ -782,7 +782,7 @@ def apply_turn_start_card(state: GameState, action: DomainAction) -> RuleResult:
     # "Pass your turn": the clockwise unrevealed player's turn opens, as
     # after an Agent turn; this seat stays unrevealed and comes around again.
     next_player = next_unrevealed_player(replace(state, players=players), action.actor)
-    players = reset_turn_counters(players, next_player)
+    players = reset_turn_counters(players, next_player, closing=action.actor)
     passed = replace(
         state,
         players=players,

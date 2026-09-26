@@ -55,6 +55,7 @@ from dune_imperium.rules.effects import (
 )
 from dune_imperium.rules.frames import (
     FrameKind,
+    hungry_for_spice_is_due,
     own_turn_frame_index,
     owned_top_frame,
     replace_player,
@@ -2435,40 +2436,43 @@ def grant_hungry_for_spice(
 
     "Whenever you gain 3 or more spice in a single turn: draw a card"
     [Steersman Y'rkoon card]; once per turn, judged against the seat's
-    spice gained since its turn opened (``spice_gained_this_turn``).
+    spice gained since its turn opened (``hungry_for_spice_is_due``).
 
     Only Y'rkoon's own turn counts. A seat is judged while its turn is in
     progress, and in the transition that closed it (``before`` is the state
     the transition started from), so a gain resolved by the turn's last
-    step still draws. Gains outside the turn never reach the tally: the
-    Combat, Makers and Recall phases are not turns [Main p. 8], so a
-    transition that leaves Player Turns judges nothing, and the snapshot is
-    retaken when the seat's next turn opens.
+    step still draws. When that transition opened the same seat's next turn
+    at once, ``reset_turn_counters`` judged the closed turn before retaking
+    the snapshot and left the draw owed. Gains outside the turn never reach
+    the tally: the Combat, Makers and Recall phases are not turns
+    [Main p. 8], so a transition that leaves Player Turns judges nothing,
+    and the snapshot is retaken when the seat's next turn opens (OQ-063).
+
+    An earned draw waits (``hungry_for_spice_owed``) while a reshuffle is
+    pending, since drawing would queue a second reshuffle of the same
+    discard pile; the hook pays it after a later transition.
     """
 
     state = result.state
-    if state.decision_stack and isinstance(
-        state.decision_stack[-1].decision, ChanceDecision
-    ):
-        # A pending reshuffle must resolve first; the draw would otherwise
-        # queue a second reshuffle of the same discard pile. The hook runs
-        # again after the next transition.
-        return result
     judged = {turn_owner_of(state)}
     if before is not None and state.phase is GamePhase.PLAYER_TURNS:
         judged.add(turn_owner_of(before))
+    for seat in state.players:
+        if seat.player_id in judged and hungry_for_spice_is_due(seat):
+            earned = replace(
+                seat, hungry_for_spice_granted_turn=True, hungry_for_spice_owed=True
+            )
+            state = replace(state, players=replace_player(state.players, earned))
+    if state.decision_stack and isinstance(
+        state.decision_stack[-1].decision, ChanceDecision
+    ):
+        return RuleResult(state=state, events=result.events)
     events = list(result.events)
     for seat in state.players:
-        if (
-            seat.leader_id != "steersman_y_rkoon"
-            or seat.player_id not in judged
-            or seat.hungry_for_spice_granted_turn
-            or seat.resources.spice - seat.spice_at_turn_start + seat.spice_spent_turn
-            < 3
-        ):
+        if not seat.hungry_for_spice_owed:
             continue
-        flagged = replace(seat, hungry_for_spice_granted_turn=True)
-        state = replace(state, players=replace_player(state.players, flagged))
+        paid = replace(seat, hungry_for_spice_owed=False)
+        state = replace(state, players=replace_player(state.players, paid))
         source = f"round:{state.round_number}:player:{seat.player_id}:hungry_for_spice"
         drawn = draw_or_request_personal_cards(state, seat.player_id, 1, source=source)
         state = drawn.state

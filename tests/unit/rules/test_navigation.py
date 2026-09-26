@@ -222,6 +222,90 @@ def test_hungry_for_spice_counts_only_y_rkoons_own_turn() -> None:
     assert fed.players[0].hand == (DAGGER,)
 
 
+def test_hungry_for_spice_judges_a_turn_that_reopens_into_his_own() -> None:
+    # "Whenever you gain [3 spice] or more in a single turn: [draw]"
+    # [Steersman Y'rkoon card]; OQ-063: "그 turn의 마지막 단계에서 얻은
+    # spice는 turn을 닫는 전이에서도 판정한다". With every opponent revealed,
+    # the step that closes his Agent turn opens his own next turn at once,
+    # and the new turn's snapshot used to erase the closed turn's gain
+    # before the hook judged it: no card, where unrevealed opponents gave one.
+    ambassador = "imperium:ixian_ambassador:0"
+    owner = _steersman(
+        (),
+        hand=(ambassador,),
+        deck=(DAGGER, RECON),
+        resources=Resources(spice=2),
+        spice_at_turn_start=0,
+        agents_available=2,
+    )
+    others = tuple(PlayerState(player_id=seat, has_revealed=True) for seat in (1, 2, 3))
+    state = _turn_state(
+        owner,
+        players=(owner, *others),
+        config=RulesetConfig(bloodlines=True, tech_module=True),
+    )
+
+    def act(current: GameState, action_id: str, **arguments: object) -> GameState:
+        action = next(
+            action
+            for action in ENGINE.legal_actions(current, 0)
+            if action.action_id == action_id
+            and all(dict(action.arguments).get(k) == v for k, v in arguments.items())
+        )
+        return ENGINE.apply(current, action).state
+
+    state = act(state, "agent_turn", card_id=ambassador, space_id="assembly_hall")
+    state = act(state, "resolve_board_effect")
+    state = act(state, "decline_tech")
+    # Ixian Ambassador's box, one spice [Ixian Ambassador card], is the
+    # turn's last step: two before it, three with it.
+    closed = act(state, "resolve_agent_card_effect")
+    frame = closed.decision_stack[-1]
+    assert frame.kind == "turn"
+    assert isinstance(frame.decision, PlayerDecision) and frame.decision.owner == 0
+    seat = closed.players[0]
+    assert seat.resources.spice == 3
+    assert seat.hand == (DAGGER,)
+    assert seat.hungry_for_spice_owed is False
+    # The new turn is judged on its own.
+    assert seat.hungry_for_spice_granted_turn is False
+    assert seat.spice_at_turn_start == 3
+
+
+def test_hungry_for_spice_draws_after_a_reshuffle_left_by_the_closing_step() -> (
+    None
+):
+    # OQ-063 judges the closing step's gain in the transition that closed
+    # the turn. When that step also left a reshuffle pending, the draw waits
+    # for it; before, the next transition started in the opponent's turn and
+    # never judged Y'rkoon again, so the draw was lost.
+    from dune_imperium.core import ChanceDecision
+    from dune_imperium.core.engine import RuleResult
+    from dune_imperium.rules.leader_abilities import grant_hungry_for_spice
+
+    owner = _steersman((), deck=(DAGGER, RECON), spice_at_turn_start=0)
+    own_turn = _turn_state(owner)
+    reshuffle = DecisionFrame(
+        kind="personal_draw_reshuffle",
+        frame_id="test:reshuffle",
+        decision=ChanceDecision(
+            decision_id="test:reshuffle", prompt="Shuffle", options=(RECON,)
+        ),
+    )
+    theirs = _with_spice(_opponent_turn(own_turn), 3)
+    pending = replace(theirs, decision_stack=(*theirs.decision_stack, reshuffle))
+    waited = grant_hungry_for_spice(RuleResult(state=pending), own_turn).state
+    assert waited.players[0].hand == ()
+    assert waited.players[0].hungry_for_spice_owed is True
+    # The reshuffle resolved: the owed card is drawn once.
+    resolved = replace(waited, decision_stack=theirs.decision_stack)
+    fed = grant_hungry_for_spice(RuleResult(state=resolved), waited).state
+    assert fed.players[0].hand == (DAGGER,)
+    assert fed.players[0].hungry_for_spice_owed is False
+    again = grant_hungry_for_spice(RuleResult(state=fed), fed).state
+    assert again.players[0].hand == (DAGGER,)
+
+
 def test_round_start_clears_the_hungry_for_spice_flag() -> None:
     from dune_imperium.rules.phases import begin_round
 
