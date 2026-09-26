@@ -49,6 +49,7 @@ from dune_imperium.rules.combat_deployment import (
     legal_combat_deployments,
     legal_commander_deployments,
     legal_commander_withdrawals,
+    reconcile_deployment_after_retreat,
 )
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.reveal_turn import (
@@ -71,6 +72,7 @@ from dune_imperium.rules.sardaukar import (
 )
 from dune_imperium.rules.setup import create_draft_initial_state, create_initial_state
 from dune_imperium.rules.strength import refresh_pre_reveal_strength
+from dune_imperium.rules.units import retreat_units
 from dune_imperium.simulation.sweep import run_checked_game
 
 BLOODLINES = RulesetConfig(bloodlines=True)
@@ -349,7 +351,7 @@ def test_paid_recruit_is_offered_in_the_reveal_turn_to_the_garrison() -> None:
     assert recruited.decision_stack[-1].kind == "reveal"
 
 
-def test_paid_recruit_in_reveal_joins_the_shared_allowance() -> None:
+def test_paid_recruit_in_reveal_counts_as_a_commander() -> None:
     # Finding 2 (2026-09-26 review round 3): ``apply_commander_recruit``
     # only credited an owned AGENT_EFFECTS frame's ``troops_recruited``; in
     # a Reveal turn no such frame sits on top, so this once-per-turn
@@ -797,6 +799,62 @@ def test_a_closed_turns_commander_credit_goes_nowhere() -> None:
         placed, DomainAction("deploy_commanders", 0, (("count", 1),))
     ).state
     assert _counts(legal_combat_deployments(commander, 0), "deploy_troops") == [1]
+
+
+def test_a_retreated_earlier_troop_leaves_the_commander_share_alone() -> None:
+    # "그와 별도로 garrison의 troop을 최대 두 개 더 deploy할 수 있다"
+    # [Main p. 10] (docs/rules/player-turns.md:136) and the recruited
+    # Commander's own slot (user ruling OQ-070). A retreat of a troop that
+    # was already in the Conflict before this turn (an Intrigue retreat,
+    # Fedaykin Maneuver) used to shrink the unit total below the deployed
+    # Commander share, so the troop share read back short and three garrison
+    # troops deployed beside the recruited Commander.
+    state = _recruited_commander_at_research_station(
+        troops_garrison=5, troops_conflict=2, troops_supply=5, combat_strength=4
+    )
+    state = apply_commander_deployment(
+        state, DomainAction("deploy_commanders", 0, (("count", 1),))
+    ).state
+    retreated = retreat_units(state, 0, "test:retreat", troops=1).state
+    retreated = reconcile_deployment_after_retreat(retreated, 0, troops=1)
+
+    context = dict(retreated.decision_stack[-1].context)
+    assert (
+        context["combat_troops_deployed"],
+        context["combat_commanders_deployed"],
+    ) == (1, 1)
+    assert _counts(legal_combat_deployments(retreated, 0), "deploy_troops") == [1, 2]
+    troops = apply_combat_deployment(
+        retreated, DomainAction("deploy_troops", 0, (("count", 2),))
+    ).state
+    assert legal_combat_deployments(troops, 0) == ()
+
+
+def test_a_retreated_earlier_commander_leaves_the_troop_share_alone() -> None:
+    # The mirror case: a Commander that was in the Conflict before this
+    # turn retreats after two garrison troops deployed; those two still
+    # fill the garrison extra [Main p. 10] (OQ-070).
+    state = _turn_state(
+        _owner(
+            commanders_conflict=1,
+            troops_garrison=5,
+            troops_supply=7,
+            combat_strength=2,
+        ),
+        spaces=(),
+    )
+    state = apply_agent_action(state, _agent_action_to(state, "research_station")).state
+    state = apply_combat_deployment(
+        state, DomainAction("deploy_troops", 0, (("count", 2),))
+    ).state
+    retreated = retreat_units(state, 0, "test:retreat", troops=0, commanders=1).state
+    retreated = reconcile_deployment_after_retreat(
+        retreated, 0, troops=0, commanders=1
+    )
+
+    context = dict(retreated.decision_stack[-1].context)
+    assert context["combat_troops_deployed"] == 2
+    assert legal_combat_deployments(retreated, 0) == ()
 
 
 def _seat_with_skills(**overrides: object) -> PlayerState:

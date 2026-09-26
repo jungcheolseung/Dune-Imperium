@@ -436,6 +436,14 @@ def reconcile_deployment_after_retreat(
     offering the counters it recorded, so they follow the retreat down.
     The per-turn deployment count also drops, never below the count a
     trigger already consumed (OQ-029).
+
+    Each kind's share shrinks only by its own retreated units: a retreated
+    troop (perhaps one deployed in an earlier turn) never eats into the
+    Commander share, or the troop share read back as ``deployed -
+    commanders`` would fall short and let extra garrison troops deploy past
+    "garrison의 troop을 최대 두 개 더" [Main p. 10]
+    (docs/rules/player-turns.md:136) and a recruited Commander's own slot
+    (user ruling OQ-070).
     """
 
     total = troops + commanders
@@ -464,10 +472,13 @@ def reconcile_deployment_after_retreat(
         deployed = context.get("combat_troops_deployed", 0)
         if isinstance(deployed, bool) or not isinstance(deployed, int):
             raise RuntimeError("Agent-turn effect frame has invalid deployment count")
-        context["combat_troops_deployed"] = max(0, deployed - total)
-        context["combat_commanders_deployed"] = max(
-            0, _commanders_deployed(context) - commanders
+        commander_share = _commanders_deployed(context)
+        troop_share = max(0, deployed - commander_share)
+        next_commanders = max(0, commander_share - commanders)
+        context["combat_troops_deployed"] = (
+            max(0, troop_share - troops) + next_commanders
         )
+        context["combat_commanders_deployed"] = next_commanders
         frames[index] = replace(frame, context=tuple(sorted(context.items())))
         break
     return replace(state, players=players, decision_stack=tuple(frames))
