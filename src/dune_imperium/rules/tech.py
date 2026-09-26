@@ -34,7 +34,6 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
-from dune_imperium.rules.card_trash import with_recruited_units
 from dune_imperium.rules.combat_deployment import grant_combat_icon
 from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effects import (
@@ -450,14 +449,14 @@ def apply_tech_acquisition(state: GameState, action: DomainAction) -> RuleResult
             # Plot) pops back to its own turn, which stays unflagged.
             turn_closed = working.decision_stack[-1].kind == FrameKind.TURN
     else:
+        # A card-granted Acquire Tech (a Plot) returns to the turn it was
+        # played in, before or after the placement or in a Reveal: its troops
+        # join that turn's recruits, since "그 turn에 어떤 출처에서 recruit했든
+        # 새 troop은 Conflict에 deploy할 수 있다" [Main p. 10] [FAQ p. 4].
         working = working.pop_decision()
-        working = replace(
-            working,
-            decision_stack=with_recruited_units(
-                working.decision_stack, player, troops_recruited
-            ),
+        working = update_turn_recruits(
+            working, troops_recruited=troops_recruited, spice_spent=cost
         )
-        working = update_turn_recruits(working, spice_spent=cost)
 
     # --- effects that touch shared state or open follow-up frames ---------
     if arguments.get("destroy_shield_wall") is True:

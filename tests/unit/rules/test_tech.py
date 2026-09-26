@@ -484,6 +484,48 @@ def test_forbidden_weapons_recruits_a_deployable_troop_and_may_drop_the_wall() -
     assert any(event.kind == "shield_wall_destroyed" for event in destroyed.events)
 
 
+def test_a_plot_tiles_troops_join_the_turn_before_the_placement() -> None:
+    # "그 turn에 어떤 출처에서 recruit했든 새 troop은 Conflict에 deploy할 수
+    # 있다" [Main p. 10] [FAQ p. 4] (docs/rules/player-turns.md). Rapid
+    # Engineering (a Plot) buys Rapid Dropships ("troop 2", bloodlines.md
+    # Tech table) before the Agent goes out; the two troops used to reach
+    # the garrison without counting as this turn's recruits.
+    from dune_imperium.rules.combat_deployment import legal_combat_deployments
+    from dune_imperium.rules.intrigue import (
+        apply_intrigue_choice,
+        apply_intrigue_play,
+        legal_intrigue_choice_actions,
+        legal_intrigue_play_actions,
+    )
+
+    card = "intrigue:rapid_engineering:0"
+    state = _turn_state(
+        _owner(intrigue_cards=(card,)), stacks=(("rapid_dropships",), (), ())
+    )
+    played = apply_intrigue_play(state, legal_intrigue_play_actions(state, 0)[0])
+    chosen = apply_intrigue_choice(
+        played.state, legal_intrigue_choice_actions(played.state, 0)[0]
+    ).state
+    bought = _acquire(chosen, "rapid_dropships")
+    turn = bought.decision_stack[-1]
+    assert turn.kind == "turn"
+    assert bought.players[0].troops_garrison == 3 + 2
+    assert dict(turn.context)["troops_recruited"] == 2
+
+    placement = next(
+        action
+        for action in legal_agent_actions(bought, 0)
+        if dict(action.arguments)["space_id"] == "desert_tactics"
+    )
+    placed = apply_agent_action(bought, placement).state
+    counts = {
+        dict(action.arguments)["count"]
+        for action in legal_combat_deployments(placed, 0)
+    }
+    # Two recruited plus up to two more from the garrison [Main p. 10].
+    assert counts == {1, 2, 3, 4}
+
+
 def test_without_the_wall_the_detonation_variant_disappears() -> None:
     # Forbidden Weapons prints the Shield Wall detonation icon; Servo-
     # Receivers (which this test used before) prints the Signet Ring icon
