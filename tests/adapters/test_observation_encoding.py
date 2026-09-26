@@ -232,11 +232,15 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # same vector as the current one at every one of these games' decisions
 # (``core/observation.py`` only added the unencoded revealed_contract_ids
 # and FrameKind gained LEADER_SIGNET at the end, keeping every old index).
+# The integration review's rules fixes of the same day moved
+# ``promo_bloodlines_tech`` again; the encoder of that pin (ab87327) and the
+# current one agreed on every vector of all five games, and no observation
+# or encoder file changed in between.
 _GOLDEN_DIGESTS = {
     "base": ("2d50b45756e1958cd6b83c1433839c9f228e344edc14bffa88f44c0d8f8ab0c2", 2572),
     "choam": ("7a0d28ab59a1721b19d38c3a4eee18add65bc1924a64ac252b8eef90e9609095", 2972),
     "promo_bloodlines_tech": (
-        "60de4fa90601ca8d84092a81e326cebedd1b186cfe514d3aef6a1ae35e920eac",
+        "53a671ab242e040e5fac4b53e6a9a861700df1e216319269eec309657071be6d",
         3040,
     ),
     "everything": (
