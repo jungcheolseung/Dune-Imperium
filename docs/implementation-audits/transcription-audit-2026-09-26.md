@@ -176,7 +176,10 @@ s4가 계속 읽음, Commander 배치 템플릿이 Immortality 카탈로그에�
 Eliminate Allies의 troop 2도 R8과 같은 이유로 배치 몫에서 빠졌고, Rapid Engineering·Battlefield Research로 산 tile의 troop(Rapid
 Dropships·Ornithopter Fleet 2, Forbidden Weapons 1)이 배치 전·Reveal에서는 그 turn의 recruit로 세이지 않았다("그 turn에 어떤 출처에서
 recruit했든 새 troop은 Conflict에 deploy할 수 있다" `[Main p. 10]` `[FAQ p. 4]`). r1이 보고한 Desert Power와 Command (6+)의 순서 문제는
-[OQ-069](../rules/open-questions.md#oq-069--desert-power의-선택-전-2-persuasion과-command-6)에 OPEN으로 적었다.
+[OQ-069](../rules/open-questions.md#oq-069--desert-power의-선택-전-2-persuasion과-command-6)에 OPEN으로 적었다. (갱신: OQ-069는
+2026-09-26 사용자 판정으로 DECIDED되어 반영되었다. 그 결과 위 R4의 수정(쓴 뒤에도 sandworm을 살 수 있던 것을 막는 "Persuasion −2"
+게이트, `_unspent_reveal_persuasion`)은 전제 자체가 없어져 제거되었다: Desert Power의 2 Persuasion은 이제 Persuasion 갈래를 실제로
+고르기 전까지 애초에 집계되지 않으므로, 고르기 전에 "쓴다"는 상황이 생기지 않는다.)
 
 커밋 메시지 정정(기존 커밋은 고치지 않는다): e797452의 "13 of 107 positions moved"는 **20**개가 옮겨졌고, b6fa486의 마지막 항목(Influence·lands·Spy 열)
 "full seed 158 seat 0 with base seed 3 seat 2"의 뒤쪽은 **full seed 3 seat 2**다(앞의 deck 열 "base seed 3 seat 2"는 맞다).

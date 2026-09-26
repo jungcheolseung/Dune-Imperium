@@ -57,7 +57,7 @@ const LABELS_EN = {
     "decline_other_memories": "Decline Other Memories",
     "decline_reveal_card_trash": "Decline to {trash}",
     "decline_reveal_influence_exchange": "Decline to exchange",
-    "decline_reveal_sandworm": "Decline to summon {sandworm}",
+    "decline_reveal_sandworm": "2 {persuasion} (no {sandworm})",
     "decline_reveal_spice_influence": "Decline to pay",
     "decline_reveal_spy_recall": "Decline to recall {spy}",
     "decline_reveal_troop_retreat": "Decline to retreat",

@@ -91,7 +91,7 @@ const ACTION_LABELS = {
   decline_other_memories: "Other Memories 안 씀",
   decline_reveal_card_trash: "{trash} 안 함",
   decline_reveal_influence_exchange: "교환 안 함",
-  decline_reveal_sandworm: "{sandworm} 소환 안 함",
+  decline_reveal_sandworm: "{persuasion} 2 ({sandworm} 소환 안 함)",
   decline_reveal_spice_influence: "지불 안 함",
   decline_reveal_spy_recall: "{spy} 소환 안 함",
   decline_reveal_troop_retreat: "후퇴 안 함",
