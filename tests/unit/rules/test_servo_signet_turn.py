@@ -247,6 +247,34 @@ def test_warmaster_troop_from_the_turn_frame_joins_the_allowance() -> None:
     assert _deploy_counts(placed) == [1, 2, 3]
 
 
+def test_harkonnen_troop_from_turn_frame_stays_undeployable_in_a_reveal() -> None:
+    # Servo-Receivers used before the Agent is placed folds Harkonnen
+    # Advisor's undeployable troop into the bare "turn" frame (OQ-062 (b)).
+    # Choosing Reveal instead of an Agent turn must carry that troop's
+    # undeployability into the Reveal, not drop it: "You can't deploy this
+    # troop to the Conflict this turn" [Piter De Vries card] (OQ-038 (b)),
+    # and the Combat 아이콘 deploys "이번 turn에 recruit한 유닛 전부와
+    # garrison에서 최대 두 개" [Bloodlines pp. 5, 12] regardless of whether
+    # the turn opened as an Agent or a Reveal turn (docs/rules/player-turns.
+    # md:137 [Main p. 10] [FAQ p. 4], OQ-062 2026-09-26 보강 2). Before,
+    # ``begin_reveal_turn`` always started at ``reveal_troops_recruited = 0``
+    # with no ``undeployable_troops``, discarding the turn frame's own troop.
+    owner = _owner(
+        "piter_de_vries", troops_garrison=0, troops_supply=12, combat_icon_turn=True
+    )
+    before = _servo_before_placement(owner)
+    assert before.players[0].troops_garrison == 1
+    assert dict(before.decision_stack[-1].context)["undeployable_troops"] == 1
+
+    revealed = _act(before, "reveal_turn")
+
+    assert revealed.decision_stack[-1].kind == FrameKind.REVEAL
+    reveal_context = dict(revealed.decision_stack[-1].context)
+    assert reveal_context["combat_deployment"] is True
+    assert reveal_context["undeployable_troops"] == 1
+    assert _deploy_counts(revealed) == []
+
+
 # --- In a Reveal turn --------------------------------------------------------
 
 
