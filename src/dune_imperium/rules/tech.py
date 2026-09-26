@@ -490,8 +490,15 @@ def apply_tech_acquisition(state: GameState, action: DomainAction) -> RuleResult
         working = contracts.state
         events.extend(contracts.events)
     if tile.acquire_may_trash_card:
+        # Same closed-turn hole as the Deep Cover Spies below: as the Agent
+        # turn's last effect this tile already handed the turn over, so a
+        # troop Eliminate Allies' trash recruits must not join the fresh
+        # "turn" frame that reopened underneath (OQ-044 (d)) [Main p. 10]
+        # [FAQ p. 4].
         working = working.push_decision(
-            optional_trash_frame(player, f"{source}:{tech_id}")
+            optional_trash_frame(
+                player, f"{source}:{tech_id}", turn_closed=turn_closed
+            )
         )
     for index in range(tile.acquire_deep_cover_spies):
         working = spy_placement_frame(

@@ -48,6 +48,8 @@ from dune_imperium.rules.frames import (
     context_str,
     owned_top_frame,
     replace_player,
+    turn_owner_of,
+    update_turn_recruits,
 )
 from dune_imperium.rules.reveal_turn import (
     add_reveal_optional_sword_strength,
@@ -103,7 +105,7 @@ def queue_plasteel_blades(state: GameState, player: int, source: str) -> GameSta
         state,
         pending_skill_choices=(
             *state.pending_skill_choices,
-            (player, PLASTEEL_BLADES_CARD_ID, f"{source}:plasteel_blades"),
+            (player, PLASTEEL_BLADES_CARD_ID, f"{source}:plasteel_blades", False),
         ),
     )
 
@@ -310,8 +312,17 @@ def _acquire_bank_commander(
     skill_id: str,
     *,
     source: str,
+    turn_closed: bool = False,
 ) -> RuleResult:
-    """Move the bank's Commander to the garrison with ``skill_id`` (or none)."""
+    """Move the bank's Commander to the garrison with ``skill_id`` (or none).
+
+    ``turn_closed`` marks a Skill choice whose owner's turn had already
+    closed before it opened (the queued ``pending_skill_choices`` entry's own
+    flag, set either by the ``OPTIONAL_TRASH`` frame that queued it or
+    retroactively by ``advance_after_effect``): the Commander this acquires
+    must then not join whatever fresh "turn" frame reopened underneath, even
+    the same player's own (OQ-044 (d)) [Main p. 10] [FAQ p. 4].
+    """
 
     if state.sardaukar_commanders_bank < 1:
         raise RuntimeError("no Sardaukar Commander is left in the bank")
@@ -323,8 +334,35 @@ def _acquire_bank_commander(
     working, next_owner, events = _gain_skill(working, next_owner, skill_id, source)
     players = replace_player(working.players, next_owner)
     # Recruited this turn: it may join an open Agent turn's basic deployment
-    # like a recruited troop [Bloodlines p. 4].
-    decision_stack = with_recruited_units(working.decision_stack, player, 1)
+    # like a recruited troop [Bloodlines p. 4]. This box's own Skill choice
+    # is queued and opened by the engine (``begin_skill_choice``), so
+    # anything -- a Reveal, an Intrigue choice, another stacked frame -- can
+    # sit on top by the time it resolves; ``with_recruited_units`` only
+    # credits an AGENT_EFFECTS frame directly on top, so a Reveal-turn
+    # acquisition (or one reached through a choice frame) would otherwise
+    # never join a deploy allowance at all.
+    top = working.decision_stack[-1] if working.decision_stack else None
+    credited_in_place = (
+        top is not None
+        and top.kind == FrameKind.AGENT_EFFECTS
+        and isinstance(top.decision, PlayerDecision)
+        and top.decision.owner == player
+    )
+    if credited_in_place:
+        decision_stack = with_recruited_units(working.decision_stack, player, 1)
+    else:
+        decision_stack = working.decision_stack
+        if not turn_closed and turn_owner_of(working) == player:
+            # ``update_turn_recruits`` finds the owner's Reveal (or bare
+            # turn) frame directly instead, guarded the same way
+            # ``credit_trash_recruits`` guards a trash reward: nothing is
+            # credited outside the owner's own turn [Main p. 10] [FAQ p. 4].
+            # When ``turn_closed`` is set, that frame is a fresh "turn" this
+            # box's own trigger reopened (or reached after it reopened), not
+            # the turn the acquisition belongs to (OQ-044 (d)), so the
+            # credit is skipped even though ``turn_owner_of`` still matches.
+            working = update_turn_recruits(working, troops_recruited=1)
+            decision_stack = working.decision_stack
     events.insert(
         0,
         GameEvent(
@@ -362,7 +400,7 @@ def begin_skill_choice(state: GameState) -> RuleResult:
 
     if not state.pending_skill_choices:
         raise ValueError("there is no pending Skill choice")
-    player, card_id, source = state.pending_skill_choices[0]
+    player, card_id, source, turn_closed = state.pending_skill_choices[0]
     remaining = replace(state, pending_skill_choices=state.pending_skill_choices[1:])
     if card_id == PLASTEEL_BLADES_CARD_ID:
         owner = remaining.players[player]
@@ -386,7 +424,9 @@ def begin_skill_choice(state: GameState) -> RuleResult:
     ):
         # Every face-up Skill is already held: the Commander comes without
         # a Skill and needs no choice (OQ-031, OQ-035).
-        return _acquire_bank_commander(remaining, player, card_id, "", source=source)
+        return _acquire_bank_commander(
+            remaining, player, card_id, "", source=source, turn_closed=turn_closed
+        )
     if remaining.sardaukar_commanders_bank < 1:
         # The bank emptied while the trash effect finished (OQ-035).
         return RuleResult(
@@ -406,7 +446,12 @@ def begin_skill_choice(state: GameState) -> RuleResult:
             owner=player,
             prompt="Choose the Skill for the acquired Sardaukar Commander",
         ),
-        context=(("card_id", card_id), ("player", player), ("source", source)),
+        context=(
+            ("card_id", card_id),
+            ("player", player),
+            ("source", source),
+            *((("turn_closed", True),) if turn_closed else ()),
+        ),
     )
     return RuleResult(state=remaining.push_decision(frame))
 
@@ -444,6 +489,7 @@ def apply_skill_choice(state: GameState, action: DomainAction) -> RuleResult:
     context = dict(frame.context)
     source = context_str(context, "source", owner="Skill choice frame")
     card_id = context_str(context, "card_id", owner="Skill choice frame")
+    turn_closed = context.get("turn_closed") is True
     popped = state.pop_decision()
     if action.action_id == "decline_skill":
         return RuleResult(
@@ -487,7 +533,7 @@ def apply_skill_choice(state: GameState, action: DomainAction) -> RuleResult:
             ),
         )
     return _acquire_bank_commander(
-        popped, action.actor, card_id, skill_id, source=source
+        popped, action.actor, card_id, skill_id, source=source, turn_closed=turn_closed
     )
 
 
@@ -547,6 +593,21 @@ def apply_commander_recruit(state: GameState, action: DomainAction) -> RuleResul
             context_int(context, "troops_recruited", owner=_FRAME_LABEL) + 1
         )
         next_state = advance_after_effect(next_state, context, players)
+    elif turn_owner_of(next_state) == player:
+        # "Once per turn, Agent or Reveal" [Bloodlines p. 4]: in a Reveal
+        # turn no AGENT_EFFECTS frame sits on top, so the in-place credit
+        # above never fires. ``update_turn_recruits`` finds the owner's
+        # Reveal (or bare turn) frame directly instead; troops recruited
+        # "from any source" this turn join its deploy allowance
+        # [Main p. 10] [FAQ p. 4], and the Combat 아이콘 deploys "이번
+        # turn에 recruit한 유닛 전부와 garrison에서 최대 두 개" regardless
+        # of an Agent or Reveal turn [Bloodlines pp. 5, 12]. The
+        # ``turn_owner_of`` check is the same no-op-outside-the-owner's-
+        # turn guard ``credit_trash_recruits`` uses; this is a direct
+        # player action resolved from the frame ``legal_commander_recruit_
+        # actions`` already required, so it never reaches a stale reopened
+        # turn frame the way a queued follow-up could.
+        next_state = update_turn_recruits(next_state, troops_recruited=1)
     recruit_source = (
         f"round:{state.round_number}:player:{player}:recruit_commander:"
         f"{next_owner.commanders_total - next_owner.commanders_supply}"

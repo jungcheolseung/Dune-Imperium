@@ -60,6 +60,7 @@ SIGNET = "player:0:starter:signet_ring:0"
 DAGGER = "player:0:starter:dagger:0"
 RECON = "player:0:starter:reconnaissance:0"
 DUNE = "player:0:starter:dune_the_desert_planet:0"
+ELIMINATE_ALLIES = "imperium:eliminate_allies:0"
 
 
 def _turn_state(owner: PlayerState, **overrides: object) -> GameState:
@@ -959,6 +960,100 @@ def test_arrakis_planetologist_ignores_sietch_tabr_and_replaces_sandworms() -> N
     trashed = apply_optional_trash(replaced.state, trash_recon).state
     assert RECON in trashed.players[0].trashed
     assert trashed.decision_stack[-1].kind != "optional_trash"
+
+
+def test_planetologist_credits_eliminate_allies_from_either_stacked_trash_frame() -> (
+    None
+):
+    # Round 3 review finding 1: apply_optional_trash's own crediting only
+    # fired when the owner's AGENT_EFFECTS frame sat directly under the
+    # OPTIONAL_TRASH frame just popped. Deep Desert replaces two sandworms,
+    # pushing two OPTIONAL_TRASH frames; trashing Eliminate Allies from the
+    # one that resolves FIRST (the frame on top, with the other OPTIONAL_
+    # TRASH still beneath it, not the owner's AGENT_EFFECTS frame) used to
+    # drop its troops. "그 turn에 어떤 출처에서 recruit했든 새 troop은
+    # Conflict에 deploy할 수 있다. 이미 garrison에 있던 troop을 다시
+    # recruit한 것으로 취급해 두 개 제한을 우회할 수는 없다" [Main p. 10]
+    # [FAQ p. 4] (docs/rules/player-turns.md:137).
+    owner = PlayerState(
+        player_id=0,
+        leader_id="liet_kynes",
+        hand=(DUNE, ELIMINATE_ALLIES, RECON),
+        maker_hooks=True,
+        troops_garrison=3,
+        troops_supply=9,
+        resources=Resources(water=3),
+    )
+    placed = _play(_turn_state(owner), DUNE, "deep_desert")
+    summon = next(
+        a
+        for a in legal_maker_space_actions(placed, 0)
+        if a.action_id == "summon_maker_sandworms"
+    )
+    replaced = apply_maker_space_action(placed, summon).state
+    assert replaced.decision_stack[-1].kind == "optional_trash"
+    assert replaced.decision_stack[-2].kind == "optional_trash"
+
+    top_options = legal_optional_trash_actions(replaced, 0)
+    trash_first = next(
+        a for a in top_options[1:] if dict(a.arguments)["card_id"] == ELIMINATE_ALLIES
+    )
+    after_first = apply_optional_trash(replaced, trash_first).state
+    # The trash is applied; only its recruit count was ever at risk.
+    assert after_first.players[0].troops_garrison == 5
+    assert after_first.decision_stack[-1].kind == "optional_trash"
+
+    decline_second = next(
+        a
+        for a in legal_optional_trash_actions(after_first, 0)
+        if a.action_id == "decline_optional_trash"
+    )
+    resolved = apply_optional_trash(after_first, decline_second).state
+
+    assert resolved.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert dict(resolved.decision_stack[-1].context)["troops_recruited"] == 2
+    assert [
+        dict(a.arguments)["count"] for a in legal_combat_deployments(resolved, 0)
+    ] == [1, 2, 3, 4]
+
+
+def test_planetologist_single_trash_frame_does_not_double_count_eliminate_allies() -> (
+    None
+):
+    # No-double-count guard for the fix above: when the OPTIONAL_TRASH frame
+    # sits directly over the owner's AGENT_EFFECTS frame (Hagga Basin's
+    # single replacement), trash_personal_card's own crediting already
+    # counts Eliminate Allies' troops once; apply_optional_trash's new
+    # ``credit_trash_recruits`` call must not add them again
+    # [Main p. 10] [FAQ p. 4].
+    owner = PlayerState(
+        player_id=0,
+        leader_id="liet_kynes",
+        hand=(DUNE, ELIMINATE_ALLIES),
+        maker_hooks=True,
+        troops_garrison=3,
+        troops_supply=9,
+        resources=Resources(water=1),
+    )
+    placed = _play(_turn_state(owner), DUNE, "hagga_basin")
+    summon = next(
+        a
+        for a in legal_maker_space_actions(placed, 0)
+        if a.action_id == "summon_maker_sandworms"
+    )
+    replaced = apply_maker_space_action(placed, summon).state
+    assert replaced.decision_stack[-1].kind == "optional_trash"
+
+    trash = next(
+        a
+        for a in legal_optional_trash_actions(replaced, 0)[1:]
+        if dict(a.arguments)["card_id"] == ELIMINATE_ALLIES
+    )
+    resolved = apply_optional_trash(replaced, trash).state
+
+    assert resolved.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert resolved.players[0].troops_garrison == 5
+    assert dict(resolved.decision_stack[-1].context)["troops_recruited"] == 2
 
 
 def test_judge_of_the_change_rewards_the_visited_space_kind() -> None:

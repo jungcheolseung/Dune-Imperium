@@ -24,7 +24,7 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState, Resources
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
-from dune_imperium.rules.card_trash import trash_personal_card
+from dune_imperium.rules.card_trash import keep_trash_recruits, trash_personal_card
 from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effects import (
     BOARD_ICON_COMMANDER,
@@ -562,6 +562,12 @@ def resolve_board_effect(state: GameState, action: DomainAction) -> RuleResult:
         effect_state = intrigue_draw.state
         intrigue_events = intrigue_draw.events
     next_state = advance_after_effect(effect_state, context)
+    # A TRASH_AND_SPECIMEN Research bonus's trash offer must not credit the
+    # fresh "turn" frame this ``advance_after_effect`` call may already have
+    # reopened for this same player, when this board icon is the turn's
+    # last pending effect and every other seat has revealed [Main p. 10]
+    # [FAQ p. 4] (OQ-044 (d)).
+    turn_closed = next_state.decision_stack[-1].kind == FrameKind.TURN
     draw_events: tuple[GameEvent, ...] = ()
     if personal_draw_count:
         draw = draw_or_request_personal_cards(
@@ -580,7 +586,9 @@ def resolve_board_effect(state: GameState, action: DomainAction) -> RuleResult:
     if research:
         # The advance (and any direction choice it opens) follows the
         # frame bookkeeping, like the card draw.
-        advanced = advance_research(next_state, player, source=source)
+        advanced = advance_research(
+            next_state, player, source=source, turn_closed=turn_closed
+        )
         next_state = advanced.state
         contract_events = (*contract_events, *advanced.events)
     steal_events: tuple[GameEvent, ...] = ()
@@ -1008,6 +1016,11 @@ def apply_desert_tactics_action(
                 f"round:{state.round_number}:player:{action.actor}:board:desert_tactics"
             ),
         )
+        # Eliminate Allies' "2 troops" lands in this AGENT_EFFECTS frame's
+        # own context (``_with_recruited_troops``), which the write-back
+        # below would otherwise overwrite with the box's context read
+        # before the trash, discarding the credit [Main p. 10] [FAQ p. 4].
+        keep_trash_recruits(context, trashed)
         effect_state = trashed.state
         events.extend(trashed.events)
 
@@ -1539,11 +1552,16 @@ def apply_maker_space_action(
         ),
     )
     if replaced:
+        # See ``planetologist.replace_sandworms``: future-proofing only,
+        # since summoning at a Maker space keeps the turn open here today
+        # (OQ-044 (d)) [Main p. 10] [FAQ p. 4].
+        turn_closed = next_state.decision_stack[-1].kind == FrameKind.TURN
         replacement = replace_sandworms(
             next_state,
             action.actor,
             replaced,
             source=f"round:{state.round_number}:player:{action.actor}:board:{space_id}",
+            turn_closed=turn_closed,
         )
         return RuleResult(state=replacement.state, events=(event, *replacement.events))
     return RuleResult(state=next_state, events=(event,))

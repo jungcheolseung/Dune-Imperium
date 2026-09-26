@@ -2,7 +2,18 @@
 
 from dataclasses import replace
 
+import pytest
+
 from dune_imperium import RulesetConfig
+from dune_imperium.content.schema import CardDefinition
+from dune_imperium.content.uprising.contracts import (
+    CONTRACT_SOURCES,
+    CONTRACTS_BY_ID,
+    ContractCondition,
+    ContractConditionKind,
+    ContractDefinition,
+    ContractReward,
+)
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.core import (
@@ -18,19 +29,27 @@ from dune_imperium.rules.acquisition import (
     apply_acquisition_spy_action,
     apply_agent_card_acquisition,
     apply_imperium_acquisition,
+    apply_manipulated_acquisition,
     apply_reserve_acquisition,
     legal_acquisition_spy_actions,
     legal_agent_card_acquisitions,
     legal_imperium_acquisitions,
+    legal_manipulated_acquisitions,
     legal_reserve_acquisitions,
 )
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
+from dune_imperium.rules.combat_deployment import (
+    grant_combat_icon,
+    legal_combat_deployments,
+)
 from dune_imperium.rules.contracts import apply_contract_action, legal_contract_actions
+from dune_imperium.rules.effects import current_agent_effect_context
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.reveal_turn import (
     begin_reveal_turn,
     legal_reveal_actions,
+    legal_reveal_deployments,
 )
 
 
@@ -1048,3 +1067,282 @@ def test_reserve_acquisition_never_reissues_an_owned_copy_id() -> None:
     assert next_reserve_instance_id(state, "the_spice_must_flow") == (
         "reserve:the_spice_must_flow:9"
     )
+
+
+def _combat_reveal_state(imperium_row: tuple[str, ...]) -> GameState:
+    """A Reveal turn with a Combat icon already granted and ample Persuasion.
+
+    ``combat_deployment`` mirrors what a Combat-icon-granting reveal effect
+    (or the space visited before a Reveal, [Bloodlines p. 5]) would already
+    have set; the acquisition itself is what this test exercises.
+    """
+
+    state = _reveal_state(_instance("convincing_argument"))
+    owner = replace(state.players[0], troops_garrison=3)
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    context["persuasion"] = 10
+    context["combat_deployment"] = True
+    return replace(
+        state,
+        players=(owner, *state.players[1:]),
+        imperium_row=imperium_row,
+        decision_stack=(
+            *state.decision_stack[:-1],
+            replace(frame, context=tuple(sorted(context.items()))),
+        ),
+    )
+
+
+def test_arrakis_revolt_in_a_combat_reveal_recruits_a_countable_troop() -> None:
+    # Arrakis Revolt's acquire box recruits one troop [Arrakis Revolt card,
+    # promo]. "Combat 아이콘...이번 turn에 recruit한 유닛 전부와 garrison
+    # 에서 최대 두 개" [Bloodlines pp. 5, 12] does not carve out an
+    # exception for a recruit from an acquire box, and "그 turn에 어떤
+    # 출처에서 recruit했든 새 troop은 Conflict에 deploy할 수 있다"
+    # [Main p. 10] [FAQ p. 4] (docs/rules/player-turns.md). The engine used
+    # to move the troop to the garrison without joining
+    # ``reveal_troops_recruited``, so the Combat-icon deployment stayed
+    # capped at the flat two from the garrison. Arrakis Revolt sits in the
+    # Row here regardless of ``promo_cards``, a setup-only flag
+    # (``AGENTS.md``): the acquisition path itself never gates on it.
+    arrakis_revolt = "imperium:arrakis_revolt:0"
+    state = _combat_reveal_state((arrakis_revolt,))
+
+    action = next(
+        action
+        for action in legal_imperium_acquisitions(state, 0)
+        if dict(action.arguments)["instance_id"] == arrakis_revolt
+    )
+    result = apply_imperium_acquisition(state, action)
+
+    assert result.state.players[0].troops_garrison == 4
+    context = dict(result.state.decision_stack[-1].context)
+    assert context["reveal_troops_recruited"] == 1
+    assert [
+        dict(a.arguments)["count"]
+        for a in legal_reveal_deployments(result.state, 0)
+        if a.action_id == "deploy_troops"
+    ] == [1, 2, 3]
+
+
+def test_occupation_in_a_combat_reveal_recruits_countable_troops() -> None:
+    # Occupation's acquire box recruits three troops [Occupation card,
+    # Immortality]; same citations as Arrakis Revolt above.
+    occupation = "imperium:occupation:0"
+    state = _combat_reveal_state((occupation,))
+
+    action = next(
+        action
+        for action in legal_imperium_acquisitions(state, 0)
+        if dict(action.arguments)["instance_id"] == occupation
+    )
+    result = apply_imperium_acquisition(state, action)
+
+    assert result.state.players[0].troops_garrison == 6
+    context = dict(result.state.decision_stack[-1].context)
+    assert context["reveal_troops_recruited"] == 3
+    assert [
+        dict(a.arguments)["count"]
+        for a in legal_reveal_deployments(result.state, 0)
+        if a.action_id == "deploy_troops"
+    ] == [1, 2, 3, 4, 5]
+
+
+def test_manipulated_arrakis_revolt_recruits_a_countable_reveal_troop() -> None:
+    # The manipulated (set-aside) acquisition path shares the same acquire
+    # box resolution [Main p. 20] [Main p. 10] [FAQ p. 4]
+    # (docs/rules/player-turns.md).
+    arrakis_revolt = "imperium:arrakis_revolt:0"
+    state = _combat_reveal_state(())
+    owner = replace(state.players[0], imperium_set_aside=(arrakis_revolt,))
+    state = replace(state, players=(owner, *state.players[1:]))
+
+    action = next(
+        action
+        for action in legal_manipulated_acquisitions(state, 0)
+        if dict(action.arguments)["instance_id"] == arrakis_revolt
+    )
+    result = apply_manipulated_acquisition(state, action)
+
+    assert result.state.players[0].troops_garrison == 4
+    context = dict(result.state.decision_stack[-1].context)
+    assert context["reveal_troops_recruited"] == 1
+
+
+def test_price_is_no_object_acquired_troop_joins_a_combat_icons_allowance() -> None:
+    # Price is No Object's Emperor/Bene Gesserit icons never lead to a
+    # Combat space, so ``grant_combat_icon`` stands in for whatever other
+    # source opened this Agent turn's deploy window (Devastator, a Skill
+    # tile): the acquired card's own troop must still join it [Main p. 10]
+    # [FAQ p. 4] (docs/rules/player-turns.md).
+    arrakis_revolt = "imperium:arrakis_revolt:0"
+    state = _price_agent_state(solari=6, imperium_row=(arrakis_revolt,))
+    granted = grant_combat_icon(state, 0)
+
+    action = next(
+        action
+        for action in legal_agent_card_acquisitions(granted, 0)
+        if dict(action.arguments).get("instance_id") == arrakis_revolt
+    )
+    result = apply_agent_card_acquisition(granted, action)
+
+    _, context = current_agent_effect_context(result.state)
+    assert context["troops_recruited"] == 1
+    assert [
+        dict(a.arguments)["count"] for a in legal_combat_deployments(result.state, 0)
+    ] == [1, 2, 3]
+
+
+def _fake_troop_contract(card_id: str, target: str) -> ContractDefinition:
+    return ContractDefinition(
+        card=CardDefinition(
+            card_id=card_id,
+            name="Fake Troop Acquire",
+            sources=CONTRACT_SOURCES,
+        ),
+        condition=ContractCondition(ContractConditionKind.ACQUIRE_CARD, target=target),
+        reward=ContractReward(troops=1),
+    )
+
+
+def test_acquire_contract_troop_reward_joins_the_solari_imperium_acquisitions_turn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # An Acquire Contract's own troop reward is unused by any current
+    # Contract, but shares Arrakis Revolt's and Occupation's shape and must
+    # join this Agent turn's recruit count the same way, not just the
+    # garrison [Main p. 10] [FAQ p. 4]. ``complete_acquire_contracts``
+    # credits the still-current Agent-turn effect frame directly through
+    # ``turn_owner_of`` here, and ``_acquire_imperium_to_hand_with_solari``
+    # also folds the same garrison diff into its own local ``context`` --
+    # but that local copy is only written back through the
+    # ``advance_after_effect`` call below, which replaces the frame
+    # ``complete_acquire_contracts`` already updated, so exactly one credit
+    # survives.
+    sardaukar = _imperium_instance("sardaukar_soldier")
+    monkeypatch.setitem(
+        CONTRACTS_BY_ID,
+        "fake_troop_acquire",
+        _fake_troop_contract("fake_troop_acquire", "sardaukar_soldier"),
+    )
+    others = tuple(
+        instance_id
+        for instance_id in imperium_deck_instance_ids(True)
+        if instance_id
+        not in {sardaukar, _imperium_instance("price_is_no_object", choam_module=True)}
+    )
+    state = _price_agent_state(
+        solari=1,
+        choam_module=True,
+        imperium_row=(sardaukar, *others[:4]),
+        imperium_deck=others[4:],
+    )
+    owner = replace(
+        state.players[0], active_contract_ids=("contract:fake_troop_acquire",)
+    )
+    state = replace(state, players=(owner, *state.players[1:]))
+    garrison = state.players[0].troops_garrison
+
+    action = next(
+        action
+        for action in legal_agent_card_acquisitions(state, 0)
+        if dict(action.arguments).get("instance_id") == sardaukar
+    )
+    result = apply_agent_card_acquisition(state, action)
+
+    assert result.state.players[0].troops_garrison == garrison + 1
+    assert result.state.players[0].completed_contract_ids == (
+        "contract:fake_troop_acquire",
+    )
+    _, context = current_agent_effect_context(result.state)
+    assert context["troops_recruited"] == 1
+
+
+def test_acquire_contract_troop_reward_joins_the_solari_places_spy_acquisitions_turn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Same Contract reward as above, but through the acquisition-bonus
+    # branch that pushes a Spy-placement frame instead of calling
+    # ``advance_after_effect``: there the credit that survives is
+    # ``complete_acquire_contracts``'s own, already written into the
+    # Agent-turn effect frame before this handler's local ``context`` copy
+    # is (harmlessly) discarded.
+    strike_fleet = _imperium_instance("strike_fleet")
+    monkeypatch.setitem(
+        CONTRACTS_BY_ID,
+        "fake_troop_acquire_spy",
+        _fake_troop_contract("fake_troop_acquire_spy", "strike_fleet"),
+    )
+    others = tuple(
+        instance_id
+        for instance_id in imperium_deck_instance_ids(True)
+        if instance_id
+        not in {
+            strike_fleet,
+            _imperium_instance("price_is_no_object", choam_module=True),
+        }
+    )
+    state = _price_agent_state(
+        solari=5,
+        choam_module=True,
+        imperium_row=(strike_fleet, *others[:4]),
+        imperium_deck=others[4:],
+    )
+    owner = replace(
+        state.players[0], active_contract_ids=("contract:fake_troop_acquire_spy",)
+    )
+    state = replace(state, players=(owner, *state.players[1:]))
+    garrison = state.players[0].troops_garrison
+
+    action = next(
+        action
+        for action in legal_agent_card_acquisitions(state, 0)
+        if dict(action.arguments).get("instance_id") == strike_fleet
+    )
+    result = apply_agent_card_acquisition(state, action)
+
+    assert result.state.players[0].troops_garrison == garrison + 1
+    assert result.state.players[0].completed_contract_ids == (
+        "contract:fake_troop_acquire_spy",
+    )
+    assert result.state.decision_stack[-1].kind == FrameKind.ACQUISITION_SPY
+    context = dict(result.state.decision_stack[-2].context)
+    assert context["troops_recruited"] == 1
+
+
+def test_acquire_contract_troop_reward_joins_the_solari_reserve_acquisitions_turn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Same Contract reward through the Reserve-with-Solari handler
+    # (``_acquire_reserve_to_hand_with_solari``), which always calls
+    # ``advance_after_effect`` and so always keeps its own local credit.
+    monkeypatch.setitem(
+        CONTRACTS_BY_ID,
+        "fake_troop_acquire_reserve",
+        _fake_troop_contract("fake_troop_acquire_reserve", "prepare_the_way"),
+    )
+    state = replace(
+        _price_agent_state(solari=2, choam_module=True),
+        reserve_stacks=(("prepare_the_way", 8),),
+    )
+    owner = replace(
+        state.players[0],
+        active_contract_ids=("contract:fake_troop_acquire_reserve",),
+    )
+    state = replace(state, players=(owner, *state.players[1:]))
+    garrison = state.players[0].troops_garrison
+
+    action = next(
+        action
+        for action in legal_agent_card_acquisitions(state, 0)
+        if action.action_id == "acquire_reserve_with_solari"
+    )
+    result = apply_agent_card_acquisition(state, action)
+
+    assert result.state.players[0].troops_garrison == garrison + 1
+    assert result.state.players[0].completed_contract_ids == (
+        "contract:fake_troop_acquire_reserve",
+    )
+    _, context = current_agent_effect_context(result.state)
+    assert context["troops_recruited"] == 1

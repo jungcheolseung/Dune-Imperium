@@ -26,6 +26,7 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.contract_tiles import (
     contract_intrigue_trash_frame,
+    contract_reveal_is_possible,
     receive_contract,
 )
 from dune_imperium.rules.effects import recruit_shortfall_events, recruit_troops
@@ -173,12 +174,14 @@ def _trigger_frame_kind(state: GameState, player: int, card_id: str) -> str | No
         return FrameKind.INTRIGUE_TRIGGER_SPY
     if isinstance(reward, RevealContractsTakeOne):
         # Coercive Negotiation is mandatory once it triggers (no "may" on the
-        # card [Coercive Negotiation card]; [FAQ p. 3]), so it opens only
-        # when a revealed Contract can be taken; otherwise it waits face up
-        # (OQ-064).
+        # card [Coercive Negotiation card]; [FAQ p. 3]). With fewer than
+        # three Contracts in the bank it cannot be used at all and stays
+        # face up (OQ-064, user ruling 2026-09-26); with three revealed one
+        # is always takeable, since only the single Immediate token needs an
+        # Intrigue card to trash [Bloodlines p. 2].
         return (
             FrameKind.INTRIGUE_TRIGGER_CONTRACT
-            if state.config.choam_module
+            if contract_reveal_is_possible(state, reward)
             and takeable_trigger_contract_ids(state, player, card_id)
             else None
         )

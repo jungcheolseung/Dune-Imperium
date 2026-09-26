@@ -132,6 +132,7 @@ from dune_imperium.rules.contracts import (
     open_held_contract_icons,
     resolve_exhausted_contract_choice,
 )
+from dune_imperium.rules.effects import mark_queued_turn_closed
 from dune_imperium.rules.endgame import (
     apply_endgame_intrigue_action,
     begin_endgame_intrigue,
@@ -139,7 +140,13 @@ from dune_imperium.rules.endgame import (
     finish_endgame_without_pending_effects,
     legal_endgame_intrigue_actions,
 )
-from dune_imperium.rules.frames import FrameKind, owned_top_frame, turn_owner_of
+from dune_imperium.rules.frames import (
+    FrameKind,
+    owned_top_frame,
+    turn_closed_frame_owner,
+    turn_closing_player,
+    turn_owner_of,
+)
 from dune_imperium.rules.graft import (
     apply_graft_partner,
     apply_graft_switch,
@@ -771,6 +778,19 @@ class UprisingRulesEngine(RulesEngine):
             result = apply_secrets_steal(state, outcome)
         else:
             result = apply_round_start_reshuffle(state, outcome)
+        # Flag any Skill choice or Navigation play this chance resolution
+        # just queued before the automatic advance below can open it, for
+        # the same reason ``_apply_legal`` does (OQ-044 (d)) [Main p. 10]
+        # [FAQ p. 4]. No chance handler queues either today (see the
+        # Suspensor Suits comment further down), so this is a no-op in
+        # practice; it is kept only for symmetry and future-proofing.
+        chance_closed = turn_closing_player(state, result.state)
+        if chance_closed is None:
+            chance_closed = turn_closed_frame_owner(state)
+        if chance_closed is not None:
+            result = replace(
+                result, state=mark_queued_turn_closed(result.state, chance_closed)
+            )
         # An Intrigue draw granted by a Reveal passive may queue a reshuffle,
         # so the automatic advance runs again after the passives.
         result = grant_late_reveal_effects(
@@ -782,9 +802,23 @@ class UprisingRulesEngine(RulesEngine):
             expire_trashed_card_effects(_advance_automatic(result))
         )
         # Suspensor Suits pays the troops owed by this step's Intrigue gains.
+        # ``state`` (before this whole chance resolution) is the reference
+        # ``turn_closing_player`` needs: a still-open turn's automatic
+        # advance may already have closed and reopened by this point, and a
+        # troop the closed turn recruited must not join the fresh one
+        # (``frames.turn_closing_player``) [Main p. 10] [FAQ p. 4]. No chance
+        # resolution today runs ``advance_after_effect`` or otherwise
+        # replaces an AGENT_EFFECTS/REVEAL frame with a bare turn one (none
+        # of the four chance handlers, ``grant_late_reveal_effects``,
+        # ``grant_leader_reveal_passives``, ``grant_hungry_for_spice``, or
+        # any ``_advance_automatic`` step do), so ``closing_player`` is
+        # always ``None`` here; it is kept only as future-proofing should
+        # one ever need to.
+        advanced = _advance_automatic(result)
+        closing_player = turn_closing_player(state, advanced.state)
         result = deploy_suspensor_troops(
             draw_owed_tech_cards(
-                complete_alliance_contracts(_advance_automatic(result))
+                complete_alliance_contracts(advanced, closing_player=closing_player)
             )
         )
         return refresh_pre_reveal_strength(
@@ -811,7 +845,35 @@ class UprisingRulesEngine(RulesEngine):
         )
 
     def _apply_legal(self, state: GameState, action: DomainAction) -> RuleResult:
-        result = _advance_automatic(ACTION_HANDLERS[action.action_id](state, action))
+        handled = ACTION_HANDLERS[action.action_id](state, action)
+        # A Sardaukar Standard Skill choice (an OPTIONAL_TRASH pick) or a
+        # Navigation play (an Influence
+        # gain reaching 2 with a Faction) this action's own handler just
+        # queued must be flagged *before* the automatic advance below can
+        # open it, not only when the specific caller that queued it happens
+        # to thread its own ``turn_closed`` flag through: threading it case
+        # by case at each of the many ``gain_faction_influence`` and
+        # ``trash_personal_card`` call sites has repeatedly missed one.
+        # ``turn_closing_player`` catches the turn closing inside this very
+        # handler (this action's own before/after states, the same
+        # reference the Suspensor Suits check below reuses);
+        # ``turn_closed_frame_owner`` catches this action instead only
+        # *resolving* a frame a prior action already left marked
+        # ``turn_closed`` (a Research bonus's Influence choice itself
+        # queuing a Navigation play). Either way, whatever the queued entry
+        # recruits or completes must not join the turn that only just
+        # reopened, even the same player's own (OQ-044 (d)) [Main p. 10]
+        # [FAQ p. 4]. Usurp's automatic end-of-turn trash is not covered
+        # here: it runs later, in ``_advance_automatic``, so
+        # ``graft.resolve_usurp_trash`` marks its own entry.
+        handler_closed = turn_closing_player(state, handled.state)
+        if handler_closed is None:
+            handler_closed = turn_closed_frame_owner(state)
+        if handler_closed is not None:
+            handled = replace(
+                handled, state=mark_queued_turn_closed(handled.state, handler_closed)
+            )
+        result = _advance_automatic(handled)
         # An Intrigue draw granted by a Reveal passive or a late-met Reveal
         # condition may queue a reshuffle, so the automatic advance runs
         # again after them.
@@ -828,9 +890,26 @@ class UprisingRulesEngine(RulesEngine):
         )
         # Units moved this step: the running strength follows [Main p. 12].
         # Suspensor Suits pays the troops owed by this step's Intrigue gains.
+        # ``state`` (before the action) is the reference ``turn_closing_player``
+        # needs: the action's own handler may already have closed and
+        # reopened the actor's turn (an Influence bump crossing an Alliance
+        # threshold as the turn's last effect, with every other seat
+        # revealed), and a troop that closed turn recruited must not join
+        # the fresh one (``frames.turn_closing_player``) [Main p. 10]
+        # [FAQ p. 4]. When the turn instead closed in an *earlier* action --
+        # this one only resolves a follow-up frame a prior effect left
+        # marked ``turn_closed`` (a Research bonus's Influence choice
+        # completing an Alliance) -- ``turn_closing_player`` can no longer
+        # see that close from this action's own before/after states alone,
+        # so ``turn_closed_frame_owner`` reads the marker off the frame this
+        # action resolves instead (OQ-044 (d)).
+        advanced = _advance_automatic(result)
+        closing_player = turn_closing_player(state, advanced.state)
+        if closing_player is None:
+            closing_player = turn_closed_frame_owner(state)
         result = deploy_suspensor_troops(
             draw_owed_tech_cards(
-                complete_alliance_contracts(_advance_automatic(result))
+                complete_alliance_contracts(advanced, closing_player=closing_player)
             )
         )
         return refresh_pre_reveal_strength(

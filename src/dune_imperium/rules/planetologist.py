@@ -29,8 +29,20 @@ def replace_sandworms(
     count: int,
     *,
     source: str,
+    turn_closed: bool = False,
 ) -> RuleResult:
-    """Pay ``count`` replacements: spice and Intrigue now, trashes as frames."""
+    """Pay ``count`` replacements: spice and Intrigue now, trashes as frames.
+
+    ``turn_closed`` marks a replacement offered after the caller's own
+    ``advance_after_effect`` call already closed the owner's turn: a troop
+    the pushed trash recruits (Eliminate Allies) must not join whatever
+    fresh "turn" frame reopened underneath, even the same player's own
+    (OQ-044 (d)) [Main p. 10] [FAQ p. 4]. Neither known caller can reach
+    this today (the sandworm summon is withheld while deployment is
+    blocked, and the Combat- or Maker-space deployment it triggers keeps
+    the turn open until ``finish_agent_turn``), so this is passed only for
+    future-proofing.
+    """
 
     if count < 1:
         return RuleResult(state=state)
@@ -46,7 +58,9 @@ def replace_sandworms(
     working = drawn.state
     for index in range(count):
         working = working.push_decision(
-            optional_trash_frame(player, f"{source}:planetologist:{index}")
+            optional_trash_frame(
+                player, f"{source}:planetologist:{index}", turn_closed=turn_closed
+            )
         )
     return RuleResult(
         state=working,

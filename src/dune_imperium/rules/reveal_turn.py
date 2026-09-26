@@ -39,7 +39,7 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.card_bonds import has_faction_bond
-from dune_imperium.rules.card_trash import trash_personal_card
+from dune_imperium.rules.card_trash import credit_trash_recruits, trash_personal_card
 from dune_imperium.rules.combat_deployment import grant_combat_icon, undeployable_troops
 from dune_imperium.rules.effects import recruit_shortfall_events, recruit_troops
 from dune_imperium.rules.frames import (
@@ -946,6 +946,13 @@ def apply_contract_reveal_choice(
         card_id,
         source=source,
     )
+    # A trashed card's own troop-on-trash trigger (Eliminate Allies) is not
+    # credited by ``trash_personal_card`` here: the frame on top is this
+    # Reveal choice's own, not an AGENT_EFFECTS frame. A troop recruited
+    # during the owner's own turn "from any source" may be deployed
+    # [Main p. 10] [FAQ p. 4]; the Reveal's Combat icon deploys it
+    # [Bloodlines pp. 5, 12].
+    trashed = credit_trash_recruits(trashed, action.actor)
     owner = trashed.state.players[action.actor]
     next_owner = replace(owner, victory_points=owner.victory_points + 1)
     next_state = replace(
@@ -1508,6 +1515,14 @@ def apply_reveal_card_trash(
         card_id,
         source=source,
     )
+    # The frame on top here is this Reveal choice's own, not an
+    # AGENT_EFFECTS frame, so ``trash_personal_card`` never credited a
+    # troop-on-trash trigger (Eliminate Allies) anywhere: "그 turn에 어떤
+    # 출처에서 recruit했든 새 troop은 Conflict에 deploy할 수 있다" [Main
+    # p. 10] [FAQ p. 4], and the Combat 아이콘 deploys "이번 turn에
+    # recruit한 유닛 전부" [Bloodlines pp. 5, 12]. Every branch below shares
+    # this credit.
+    trashed = credit_trash_recruits(trashed, action.actor)
     if (
         context.get("reveal_choice_effect")
         == PersonalCardRevealChoiceEffect.COMMAND_MAY_TRASH_CARD.value
@@ -4107,7 +4122,25 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
     panopticon = has_tech(owner.tech_ids, TechAbility.PANOPTICON)
     # Troop recruits, Intrigue draws and resource gains wait for the owner's
     # order (OQ-045).
-    reveal_troops_recruited = 0
+    # A troop recruited earlier this same turn (a Plot Intrigue played before
+    # placing an Agent, or an acquire-box troop resolved mid-turn) still
+    # joins this Reveal's Combat-icon deployment: "이번 turn에 recruit한
+    # 유닛 전부와 garrison에서 최대 두 개 ... Reveal turn에서도 쓸 수
+    # 있다" [Bloodlines pp. 5, 12] and "그 turn에 어떤 출처에서
+    # recruit했든 새 troop은 Conflict에 deploy할 수 있다" [Main p. 10]
+    # [FAQ p. 4] (docs/rules/player-turns.md:137). The turn frame this
+    # Reveal is about to replace carries the count in, mirroring
+    # ``agent_turn._troops_recruited_before_placement``.
+    turn_context = dict(state.decision_stack[-1].context)
+    reveal_troops_recruited = turn_context.get("troops_recruited", 0)
+    if isinstance(reveal_troops_recruited, bool) or not isinstance(
+        reveal_troops_recruited, int
+    ):
+        raise RuntimeError("turn frame has an invalid recruit count")
+    # A Harkonnen Advisor troop kept undeployable that turn stays so in the
+    # Reveal (OQ-038, OQ-062); ``legal_reveal_deployments`` already reads
+    # this key off the Reveal frame's context.
+    carried_undeployable = undeployable_troops(turn_context)
     resource_gains = (
         *(
             resource_gain_entry(
@@ -4210,6 +4243,8 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         (_SKILL_GRANTED_KEY, ",".join(skill.skill_id for skill in active_skills)),
         ("turn_owner", action.actor),
     ]
+    if carried_undeployable:
+        context.append(("undeployable_troops", carried_undeployable))
     context.extend(
         (f"revealed_card_{index:03d}", card_id)
         for index, card_id in enumerate(revealed)

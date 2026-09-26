@@ -34,6 +34,10 @@ from dune_imperium.rules.card_draw import (
     draw_or_request_personal_cards,
 )
 from dune_imperium.rules.engine import UprisingRulesEngine
+from dune_imperium.rules.optional_trash import (
+    apply_optional_trash,
+    legal_optional_trash_actions,
+)
 from dune_imperium.rules.reveal_turn import (
     apply_contract_reveal_choice,
     apply_corrinth_city_reveal,
@@ -54,6 +58,7 @@ from dune_imperium.rules.reveal_turn import (
     legal_resume_reveal_choice_actions,
     legal_reveal_actions,
     legal_reveal_card_trash_actions,
+    legal_reveal_deployments,
     legal_reveal_influence_exchange_actions,
     legal_reveal_sandworm_actions,
     legal_reveal_spice_influence_actions,
@@ -426,6 +431,62 @@ def test_desert_power_sandworm_branch_never_grants_persuasion_for_liet_kynes() -
     final_context = dict(reveal_frame.context)
     assert final_context["persuasion"] == 1
     assert final_context["persuasion_generated"] == 1
+
+
+def test_desert_power_replacement_credits_eliminate_allies_in_combat_reveal() -> None:
+    # Round 3 review finding 1: Arrakis Planetologist's replacement pushes
+    # an OPTIONAL_TRASH frame directly over the REVEAL frame here (never an
+    # AGENT_EFFECTS frame), so trash_personal_card's own AGENT_EFFECTS-only
+    # crediting never fires; apply_optional_trash used to leave Eliminate
+    # Allies' troops out of the Combat icon's Reveal deployment allowance.
+    # "이번 turn에 recruit한 유닛 전부와 garrison에서 최대 두 개"
+    # [Bloodlines pp. 5, 12] ("Combat 아이콘" line, docs/rules/bloodlines.md);
+    # "그 turn에 어떤 출처에서 recruit했든 새 troop은 Conflict에 deploy할
+    # 수 있다" [Main p. 10] [FAQ p. 4] (docs/rules/player-turns.md:137).
+    desert_power = _imperium_instance("desert_power")
+    # Eliminate Allies is a Bloodlines card; ``_imperium_instance`` only
+    # looks up the base Uprising deck, so its instance ID is hardcoded here
+    # the same way ``ELIMINATE_ALLIES`` is in test_bloodlines_leaders.py and
+    # test_servo_signet_turn.py.
+    eliminate_allies = "imperium:eliminate_allies:0"
+    owner = PlayerState(
+        player_id=0,
+        leader_id="liet_kynes",
+        hand=(desert_power, eliminate_allies),
+        maker_hooks=True,
+        troops_garrison=3,
+        troops_supply=9,
+        combat_icon_turn=True,
+        resources=Resources(water=1),
+    )
+    state = replace(_state(owner), current_conflict_ids=("propaganda",))
+    revealed = begin_reveal_turn(
+        state, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    assert dict(revealed.decision_stack[0].context)["combat_deployment"] is True
+
+    pay_water = next(
+        action
+        for action in legal_reveal_sandworm_actions(revealed, 0)
+        if action.action_id == "pay_reveal_water_for_sandworm"
+    )
+    replaced = apply_reveal_sandworm_action(revealed, pay_water).state
+    assert replaced.decision_stack[-1].kind == "optional_trash"
+
+    trash = next(
+        action
+        for action in legal_optional_trash_actions(replaced, 0)[1:]
+        if dict(action.arguments)["card_id"] == eliminate_allies
+    )
+    resolved = apply_optional_trash(replaced, trash).state
+
+    assert resolved.decision_stack[-1].kind == "reveal"
+    assert resolved.players[0].troops_garrison == 5
+    assert dict(resolved.decision_stack[-1].context)["reveal_troops_recruited"] == 2
+    assert [
+        dict(action.arguments)["count"]
+        for action in legal_reveal_deployments(resolved, 0)
+    ] == [1, 2, 3, 4]
 
 
 def test_calculus_of_power_trashes_another_emperor_for_strength() -> None:

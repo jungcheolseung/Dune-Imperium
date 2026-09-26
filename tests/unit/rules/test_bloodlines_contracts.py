@@ -28,6 +28,7 @@ from dune_imperium.core import (
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
+from dune_imperium.rules.combat_deployment import legal_combat_deployments
 from dune_imperium.rules.contracts import (
     begin_contract_gain,
     complete_alliance_contracts,
@@ -41,6 +42,7 @@ from dune_imperium.rules.intrigue_triggers import (
     legal_trigger_contract_actions,
     offer_deployment_triggers,
 )
+from dune_imperium.rules.reveal_turn import legal_reveal_deployments
 from dune_imperium.rules.setup import create_initial_state
 
 CHOAM_BLOODLINES = RulesetConfig(bloodlines=True, choam_module=True)
@@ -266,84 +268,82 @@ def test_coercive_negotiation_offers_the_immediate_only_with_hand_intrigue() -> 
     assert taken.contract_bank == ("contract:secrets",)
 
 
-def test_coercive_negotiation_waits_when_nothing_revealed_can_be_taken() -> None:
-    # Only the Immediate is left in the bank and the hand holds no Intrigue:
-    # "You can't take the new Immediate contract unless you have an Intrigue
-    # card to trash." [Bloodlines p. 2]. The trigger is mandatory ("Most
-    # effects from a board space or card you play are mandatory, unless: a
-    # card says 'you may' do something" [FAQ p. 3]), so there is no decline
-    # to offer; the card does not open, reveals nothing and waits face up
-    # for a qualifying turn it can resolve on (OQ-064). It used to open a
-    # frame offering only a decline.
-    card = next(card for card in INTRIGUE if ":coercive_negotiation:" in card)
-    base = _state(
-        _owner(intrigue_faceup=(card,), units_deployed_turn=3),
+# OQ-064, user ruling 2026-09-26: "책략은 명백히 리필된다는 룰이 있지만,
+# 계약은 리필되는 수단이 없으니 3장이 없으면 Coercive Negotiation을 아예 사용할
+# 수 없는게 맞다고 보여진다. 사용 후 효과가 없는게 아니라 아예 사용을 못
+# 하는거지". The card reads "Reveal three contracts from the bank. Take one
+# and trash the other two." [Coercive Negotiation card]; Intrigue cards
+# reshuffle when their deck runs out [FAQ p. 2], Contracts never do.
+
+COERCIVE = next(card for card in INTRIGUE if ":coercive_negotiation:" in card)
+THREE_BANK = ("contract:arrakeen_i", "contract:arrakeen_ii", "contract:espionage_i")
+
+
+def _plays_coercive(state: GameState) -> bool:
+    from dune_imperium.rules.intrigue import legal_intrigue_play_actions
+
+    return any(
+        dict(action.arguments)["card_id"] == COERCIVE
+        for action in legal_intrigue_play_actions(state, 0)
+    )
+
+
+@pytest.mark.parametrize("bank", [(), (IMMEDIATE,), THREE_BANK[:2]])
+def test_coercive_negotiation_cannot_be_played_with_fewer_than_three_contracts(
+    bank: tuple[str, ...],
+) -> None:
+    held = _owner(intrigue_cards=(COERCIVE,))
+    assert not _plays_coercive(_state(held, market=(), bank=bank))
+    assert _plays_coercive(_state(held, market=(), bank=THREE_BANK))
+
+
+def test_coercive_negotiation_face_up_never_triggers_with_fewer_than_three() -> None:
+    # Played while the bank still held three, then the bank ran down: the
+    # face-up card cannot be used, even with an Intrigue card in hand for
+    # the Immediate token, and it stays face up.
+    for bank in ((IMMEDIATE,), THREE_BANK[:2]):
+        base = _state(
+            _owner(
+                intrigue_faceup=(COERCIVE,),
+                intrigue_cards=INTRIGUE[:1],
+                units_deployed_turn=3,
+            ),
+            market=(),
+            bank=bank,
+        )
+        waiting = offer_deployment_triggers(RuleResult(state=base)).state
+        assert waiting.decision_stack == base.decision_stack
+        assert waiting.players[0].intrigue_faceup == (COERCIVE,)
+        assert waiting.contract_bank == bank
+    # With three in the bank one is always takeable (the single Immediate
+    # token is the only Contract that needs an Intrigue card [Bloodlines
+    # p. 2]), so the same deployment opens it at once.
+    three = _state(
+        _owner(intrigue_faceup=(COERCIVE,), units_deployed_turn=3),
         market=(),
-        bank=(IMMEDIATE,),
+        bank=(IMMEDIATE, *THREE_BANK[:2]),
     )
-    waiting = offer_deployment_triggers(RuleResult(state=base)).state
-    assert waiting.decision_stack == base.decision_stack
-    assert waiting.players[0].intrigue_faceup == (card,)
-    assert waiting.players[0].deploy_trigger_offered_at == 0
-    assert waiting.contract_bank == (IMMEDIATE,)
-    # With an Intrigue card in hand the same deployment opens it.
-    holding = replace(
-        base,
-        players=(
-            replace(base.players[0], intrigue_cards=INTRIGUE[:1]),
-            *base.players[1:],
-        ),
-    )
-    opened = offer_deployment_triggers(RuleResult(state=holding)).state
+    opened = offer_deployment_triggers(RuleResult(state=three)).state
+    assert opened.decision_stack[-1].kind == FrameKind.INTRIGUE_TRIGGER_CONTRACT
     assert [
         dict(action.arguments)["instance_id"]
         for action in legal_trigger_contract_actions(opened, 0)
-    ] == [IMMEDIATE]
+    ] == list(THREE_BANK[:2])
 
 
-def test_coercive_negotiation_waits_even_when_distraction_is_offered() -> None:
-    # OQ-064: while nothing Coercive Negotiation reveals can be taken, the
-    # card stays face up and opens at a later qualifying point where it can
-    # be resolved; its wait does not raise the offer record. Distraction
-    # face up beside it used to raise the seat's shared record at the same
-    # count, so gaining an Intrigue card later that turn no longer opened
-    # the mandatory card ("When you deploy three or more units to the
-    # Conflict in a single turn: Reveal three contracts from the bank. Take
-    # one and trash the other two." [Coercive Negotiation card]).
-    coercive = next(card for card in INTRIGUE if ":coercive_negotiation:" in card)
+def test_coercive_negotiation_with_three_contracts_opens_beside_distraction() -> None:
+    # Coercive Negotiation is mandatory, so the offer record that stops a
+    # declined Distraction from being offered again at the same count
+    # (OQ-016 (c)) never holds it back; a pending frame is not pushed twice.
     distraction = next(card for card in INTRIGUE if ":distraction:" in card)
     base = _state(
-        _owner(intrigue_faceup=(coercive, distraction), units_deployed_turn=3),
+        _owner(intrigue_faceup=(COERCIVE, distraction), units_deployed_turn=3),
         market=(),
-        bank=(IMMEDIATE,),
+        bank=THREE_BANK,
     )
-    offered = offer_deployment_triggers(RuleResult(state=base)).state
-    assert [frame.kind for frame in offered.decision_stack[-1:]] == [
-        FrameKind.INTRIGUE_TRIGGER_SPY
-    ]
-    assert offered.players[0].deploy_trigger_offered_at == 3
-    declined = UprisingRulesEngine().apply(
-        offered, DomainAction(action_id="decline_intrigue_trigger", actor=0)
-    ).state
-    assert declined.decision_stack == base.decision_stack
-
-    holding = replace(
-        declined,
-        players=(
-            replace(declined.players[0], intrigue_cards=INTRIGUE[:1]),
-            *declined.players[1:],
-        ),
-    )
-    opened = offer_deployment_triggers(RuleResult(state=holding)).state
-    # Coercive Negotiation opens at the same count; the declined Distraction
-    # is not offered again there (OQ-016 (c)).
+    opened = offer_deployment_triggers(RuleResult(state=base)).state
     pushed = opened.decision_stack[len(base.decision_stack) :]
-    assert [frame.kind for frame in pushed] == [FrameKind.INTRIGUE_TRIGGER_CONTRACT]
-    assert [
-        dict(action.arguments)["instance_id"]
-        for action in legal_trigger_contract_actions(opened, 0)
-    ] == [IMMEDIATE]
-    # A pending Coercive Negotiation frame is not pushed a second time.
+    assert FrameKind.INTRIGUE_TRIGGER_CONTRACT in [frame.kind for frame in pushed]
     again = offer_deployment_triggers(RuleResult(state=opened)).state
     assert again.decision_stack == opened.decision_stack
 
@@ -423,6 +423,103 @@ def test_earn_any_alliance_recruits_join_the_turn_owners_deployment_allowance() 
     assert rival_done.state.players[2].completed_contract_ids == (EARN_ALLIANCE,)
     assert rival_done.state.players[2].troops_garrison == 3 + 2
     assert dict(rival_done.state.decision_stack[-1].context)["troops_recruited"] == 0
+
+
+def _closing_alliance_state() -> GameState:
+    """Seat 0 is one Influence bump from completing Earn Any Alliance, and
+    that bump is the Agent turn's last pending effect with every other seat
+    already revealed -- ``advance_after_effect`` then reopens seat 0's own
+    next "turn" frame in the same step."""
+
+    return _state(
+        _owner(
+            influence=Influence(spacing_guild=3),
+            active_contract_ids=(EARN_ALLIANCE,),
+        ),
+        market=(),
+        opponents=(
+            PlayerState(player_id=1, has_revealed=True),
+            PlayerState(player_id=2, has_revealed=True),
+            PlayerState(player_id=3, has_revealed=True),
+        ),
+    )
+
+
+def test_earn_any_alliance_does_not_join_the_next_agent_turns_allowance() -> None:
+    # "그 turn에 어떤 출처에서 recruit했든 새 troop은 Conflict에 deploy할 수
+    # 있다. 이미 garrison에 있던 troop을 다시 recruit한 것으로 취급해 두 개
+    # 제한을 우회할 수는 없다" [Main p. 10] [FAQ p. 4]
+    # (docs/rules/player-turns.md:137). Deliver Supplies is a Spacing Guild
+    # space with no automatic troop recruit [Main p. 7], so its
+    # ``resolve_faction_influence`` (Guild 3 -> 4) is the turn's very last
+    # pending effect; with seats 1-3 already revealed,
+    # ``next_unrevealed_player`` reopens seat 0's own next "turn" frame in
+    # the same step Earn Any Alliance completes -- the engine used to let
+    # ``complete_alliance_contracts`` credit that fresh frame with the
+    # completion's 2 troops instead of leaving it uncredited there.
+    engine = UprisingRulesEngine()
+    placed = _place(_closing_alliance_state(), "deliver_supplies")
+    with_water = engine.apply(placed, _board_effect(placed, engine, "resources")).state
+
+    result = engine.apply(
+        with_water, DomainAction(action_id="resolve_faction_influence", actor=0)
+    ).state
+
+    owner = result.players[0]
+    assert owner.influence.spacing_guild == 4
+    assert owner.alliance_faction_ids == ("spacing_guild",)
+    assert owner.completed_contract_ids == (EARN_ALLIANCE,)
+    assert owner.troops_garrison == 3 + 2
+    top = result.decision_stack[-1]
+    assert top.kind == FrameKind.TURN
+    assert dict(top.context)["turn_owner"] == 0
+    assert dict(top.context).get("troops_recruited") in (None, 0)
+
+    # Arrakeen recruits nothing on its own [Main p. 7]; the deploy window
+    # opens on placement, before its printed icons resolve (OQ-027).
+    next_placed = _place(result, "arrakeen")
+    assert [
+        dict(a.arguments)["count"] for a in legal_combat_deployments(next_placed, 0)
+    ] == [1, 2]
+
+
+def test_earn_any_alliance_does_not_join_a_later_reveals_allowance() -> None:
+    # Same closed-turn scenario as above, but seat 0 picks a Reveal turn
+    # next instead of another Agent turn. The fresh "turn" frame correctly
+    # holds no troops_recruited (previous test), and
+    # ``reveal_turn._begin_reveal_turn``'s carry of a closing turn frame's
+    # recruits into the Reveal (``2d2fa81``, OQ-062) must carry that
+    # (correct) zero, not the completion's 2 troops: Combat 아이콘 "이번
+    # turn에 recruit한 유닛 전부와 garrison에서 최대 두 개 ... Reveal
+    # turn에서도 쓸 수 있다" [Bloodlines pp. 5, 12].
+    engine = UprisingRulesEngine()
+    placed = _place(_closing_alliance_state(), "deliver_supplies")
+    with_water = engine.apply(placed, _board_effect(placed, engine, "resources")).state
+    result = engine.apply(
+        with_water, DomainAction(action_id="resolve_faction_influence", actor=0)
+    ).state
+    assert result.decision_stack[-1].kind == FrameKind.TURN
+
+    # The Combat icon is granted only now, after the turn has already
+    # closed: setting it before placement would keep the deployment window
+    # (and so the Agent-turn effect frame) open through this whole step.
+    combat_icon_owner = replace(result.players[0], combat_icon_turn=True)
+    with_combat_icon = replace(
+        result, players=(combat_icon_owner, *result.players[1:])
+    )
+    revealed = engine.apply(
+        with_combat_icon, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+
+    reveal_frame = next(
+        frame for frame in revealed.decision_stack if frame.kind == FrameKind.REVEAL
+    )
+    assert dict(reveal_frame.context)["reveal_troops_recruited"] == 0
+    assert [
+        dict(a.arguments)["count"]
+        for a in legal_reveal_deployments(revealed, 0)
+        if a.action_id == "deploy_troops"
+    ] == [1, 2]
 
 
 def test_earn_any_alliance_waits_for_a_new_alliance_token() -> None:

@@ -187,6 +187,43 @@ def test_shrouded_counsel_command_trash_opens_at_six_persuasion() -> None:
     assert trashed.decision_stack[-1].kind == "reveal"
 
 
+def test_shrouded_counsel_command_trash_of_eliminate_allies_joins_the_reveal() -> None:
+    # Eliminate Allies: "When this card is trashed: 2 troops" [Eliminate
+    # Allies card]. Shrouded Counsel's Command trash runs from its own
+    # "reveal_choice" frame, not a Reveal or Agent-turn effect frame, so
+    # ``trash_personal_card``'s own AGENT_EFFECTS-only crediting never ran
+    # for it: "그 turn에 어떤 출처에서 recruit했든 새 troop은 Conflict에
+    # deploy할 수 있다" [Main p. 10] [FAQ p. 4] (docs/rules/player-turns.md:
+    # 137), and the Combat 아이콘 deploys "이번 turn에 recruit한 유닛
+    # 전부와 garrison에서 최대 두 개" [Bloodlines pp. 5, 12].
+    from dune_imperium.rules.reveal_turn import legal_reveal_deployments
+
+    card = _card("shrouded_counsel")
+    eliminate_allies = _card("eliminate_allies")
+    owner = replace(
+        _six_persuasion_hand(card, eliminate_allies), combat_icon_turn=True
+    )
+    revealed = _reveal(_state(owner))
+    frame = revealed.decision_stack[-1]
+    assert dict(frame.context)["reveal_choice_effect"] == "command_may_trash_card"
+    action = next(
+        a
+        for a in legal_reveal_card_trash_actions(revealed, 0)
+        if dict(a.arguments).get("card_id") == eliminate_allies
+    )
+
+    trashed = apply_reveal_card_trash(revealed, action).state
+
+    assert trashed.decision_stack[-1].kind == "reveal"
+    assert trashed.players[0].troops_garrison == 3 + 2
+    assert _reveal_context(trashed)["reveal_troops_recruited"] == 2
+    assert {
+        dict(a.arguments)["count"]
+        for a in legal_reveal_deployments(trashed, 0)
+        if a.action_id == "deploy_troops"
+    } == {1, 2, 3, 4}
+
+
 def test_command_choices_wait_below_six_persuasion() -> None:
     card = _card("shrouded_counsel")
     revealed = _reveal(_state(_owner(hand=(card, _card("sandwalk")))))
@@ -1390,6 +1427,38 @@ def test_adaptive_tactics_before_placement_opens_a_deployment_at_any_space() -> 
     ] == [1, 2, 3]
 
 
+def test_adaptive_tactics_before_reveal_joins_the_reveals_allowance() -> None:
+    # Played from the bare "turn" frame, before the owner has chosen an
+    # Agent or a Reveal turn: the recruit lands in the TURN frame's own
+    # ``troops_recruited`` (``update_turn_recruits``'s TURN branch). "그
+    # turn에 어떤 출처에서 recruit했든 새 troop은 Conflict에 deploy할 수
+    # 있다" [Main p. 10] [FAQ p. 4] and the Combat 아이콘 "Reveal
+    # turn에서도 쓸 수 있다" [Bloodlines pp. 5, 12]: choosing Reveal next
+    # must carry that count in, not reset it to 0.
+    from dune_imperium.rules.reveal_turn import legal_reveal_deployments
+
+    card = _intrigue("adaptive_tactics")
+    engine = UprisingRulesEngine()
+    owner = _owner(
+        intrigue_cards=(card,), hand=(STARTERS[4],), resources=Resources(spice=1)
+    )
+    played = engine.apply(_state(owner), _play_intrigue(card)).state
+    assert played.decision_stack[-1].kind == "turn"
+    assert played.players[0].combat_icon_turn is True
+    assert played.players[0].troops_garrison == 4
+
+    revealed = _reveal(played)
+
+    context = _reveal_context(revealed)
+    assert context["combat_deployment"] is True
+    assert context["reveal_troops_recruited"] == 1
+    assert {
+        dict(a.arguments)["count"]
+        for a in legal_reveal_deployments(revealed, 0)
+        if a.action_id == "deploy_troops"
+    } == {1, 2, 3}
+
+
 def test_adaptive_tactics_during_the_reveal_deploys_with_strength() -> None:
     from dune_imperium.rules.reveal_turn import (
         apply_reveal_deployment,
@@ -1722,6 +1791,43 @@ def test_engineered_miracle_discards_for_water_and_commands_a_row_card() -> None
     )
 
 
+def test_engineered_miracle_command_troop_joins_the_reveals_allowance() -> None:
+    # "Command: Trash this card -> Acquire a card from the Imperium Row"
+    # (any cost, no Persuasion) [Engineered Miracle card]; Arrakis Revolt's
+    # acquire box recruits one troop [Main p. 20]. "그 turn에 어떤
+    # 출처에서 recruit했든 새 troop은 Conflict에 deploy할 수 있다"
+    # [Main p. 10] [FAQ p. 4], and the Combat 아이콘 deploys "이번 turn에
+    # recruit한 유닛 전부와 garrison에서 최대 두 개 ... Reveal turn에서도
+    # 쓸 수 있다" [Bloodlines pp. 5, 12]. This Command acquisition used to
+    # leave ``reveal_troops_recruited`` at 0.
+    from dune_imperium.rules.acquisition import (
+        apply_reveal_command_acquisition,
+        legal_reveal_command_acquisition_actions,
+    )
+    from dune_imperium.rules.reveal_turn import legal_reveal_deployments
+
+    card = _card("engineered_miracle")
+    arrakis_revolt = "imperium:arrakis_revolt:0"
+    owner = replace(_six_persuasion_hand(card), combat_icon_turn=True)
+    base = replace(_state(owner), imperium_row=(arrakis_revolt,))
+    revealed = _reveal(base)
+    acquire = next(
+        a
+        for a in legal_reveal_command_acquisition_actions(revealed, 0)
+        if dict(a.arguments).get("instance_id") == arrakis_revolt
+    )
+
+    result = apply_reveal_command_acquisition(revealed, acquire).state
+
+    assert result.players[0].troops_garrison == 4
+    assert _reveal_context(result)["reveal_troops_recruited"] == 1
+    assert {
+        dict(action.arguments)["count"]
+        for action in legal_reveal_deployments(result, 0)
+        if action.action_id == "deploy_troops"
+    } == {1, 2, 3}
+
+
 def test_southern_faith_draws_or_takes_bene_gesserit_influence_with_a_bond() -> None:
     from dune_imperium.rules.agent_effects import (
         apply_agent_card_influence,
@@ -1854,7 +1960,9 @@ def test_sardaukar_standard_acquires_the_bank_commander_when_trashed() -> None:
     # The trashing effect still owns the top frame; the choice is queued and
     # the engine opens it afterwards.
     assert result.state.decision_stack[-1].kind == "agent_effects"
-    assert result.state.pending_skill_choices == ((0, card, "test:trash:" + card),)
+    assert result.state.pending_skill_choices == (
+        (0, card, "test:trash:" + card, False),
+    )
     opened = begin_skill_choice(result.state).state
     assert opened.pending_skill_choices == ()
     frame = opened.decision_stack[-1]
@@ -1891,6 +1999,116 @@ def test_sardaukar_standard_acquires_the_bank_commander_when_trashed() -> None:
     assert direct.state.players[0].commanders_garrison == 1
     assert len(direct.state.players[0].skill_ids) == 2
     assert direct.events[0].kind == "sardaukar_commander_acquired"
+
+
+def test_sardaukar_standard_bank_commander_joins_the_reveals_allowance() -> None:
+    # Finding 2 (2026-09-26 review round 3): ``_acquire_bank_commander``'s
+    # ``with_recruited_units`` call only credits an AGENT_EFFECTS frame
+    # directly on top; the Skill choice this box owes is queued and opened
+    # by the engine afterwards (``begin_skill_choice``), so a bank Commander
+    # acquired while a Reveal frame sits underneath used to reach the
+    # garrison without ever joining the Combat 아이콘's shared deploy
+    # allowance. "이번 turn에 recruit한 유닛 전부와 garrison에서 최대 두
+    # 개" [Bloodlines pp. 5, 12] applies to an Agent or a Reveal turn alike
+    # (docs/rules/player-turns.md:137) [Main p. 10] [FAQ p. 4].
+    from dune_imperium.content.bloodlines.sardaukar import skill_tile_instance_ids
+    from dune_imperium.rules.sardaukar import (
+        apply_skill_choice,
+        begin_skill_choice,
+        legal_skill_choice_actions,
+    )
+
+    card = _card("sardaukar_standard")
+    skills = skill_tile_instance_ids()
+    base = replace(
+        _state(_owner(hand=(card,))),
+        skill_face_up=skills[:4],
+        skill_stack=skills[4:],
+    )
+    revealed = _reveal(base)
+    result = trash_personal_card(revealed, 0, card, source="test")
+    # The trashing effect resolves from the Reveal frame, not an
+    # AGENT_EFFECTS one; the choice is still queued and opened afterwards.
+    assert result.state.decision_stack[-1].kind == "reveal"
+    assert result.state.pending_skill_choices == (
+        (0, card, "test:trash:" + card, False),
+    )
+    opened = begin_skill_choice(result.state).state
+    assert opened.decision_stack[-1].kind == "skill_choice"
+    actions = legal_skill_choice_actions(opened, 0)
+    chosen = apply_skill_choice(opened, actions[0]).state
+
+    assert chosen.decision_stack[-1].kind == "reveal"
+    assert chosen.players[0].commanders_garrison == 1
+    # 1 from Sardaukar Standard's own "Reveal: 2 Persuasion + troop 1"
+    # [card face] (already taken before the trash below) plus 1 from the
+    # bank Commander this fix now credits.
+    assert dict(chosen.decision_stack[-1].context)["reveal_troops_recruited"] == 2
+
+
+def test_sardaukar_standard_trashed_before_the_turn_closes_credits_nothing() -> None:
+    # 2026-09-26 review round 4, Finding 1 (Sardaukar Commander), probe B: a
+    # Sardaukar Standard trashed by a caller that does *not* go through an
+    # ``OPTIONAL_TRASH`` frame at all (a card's own agent-effect box, like
+    # Desert Survival at Accept Contract in the reviewer's probe) reaches the
+    # same closed-turn hole. The trash runs, and only *afterward* does the
+    # caller's own ``advance_after_effect`` decide the turn is over, so
+    # nothing at trash time could mark the queued Skill choice; the
+    # retroactive flag ``advance_after_effect`` now sets on the owner's
+    # currently pending ``pending_skill_choices`` (and ``pending_navigation_
+    # plays``) entries when it closes a turn is what has to catch this one.
+    # "그 turn에 어떤 출처에서 recruit했든 새 troop은 Conflict에 deploy할
+    # 수 있다..." [Main p. 10] [FAQ p. 4] (docs/rules/player-turns.md:137).
+    from dune_imperium.content.bloodlines.sardaukar import skill_tile_instance_ids
+    from dune_imperium.rules.agent_effects import resolve_faction_influence
+    from dune_imperium.rules.sardaukar import (
+        apply_skill_choice,
+        begin_skill_choice,
+        legal_skill_choice_actions,
+    )
+
+    card = _card("sardaukar_standard")
+    skills = skill_tile_instance_ids()
+    state = replace(
+        _state(_owner(hand=(card,))),
+        skill_face_up=skills[:4],
+        skill_stack=skills[4:],
+        players=(
+            _owner(hand=(card,)),
+            PlayerState(player_id=1, has_revealed=True),
+            PlayerState(player_id=2, has_revealed=True),
+            PlayerState(player_id=3, has_revealed=True),
+        ),
+    )
+    # Dutiful Service's own resources icon leaves only the Faction Influence
+    # gain pending; Sardaukar Standard carries no Agent-turn effect of its
+    # own [card face], so nothing else keeps the box open once it resolves.
+    placed = _play(state, card, "dutiful_service")
+    for board_action in legal_board_effect_actions(placed, 0):
+        placed = resolve_board_effect(placed, board_action).state
+    assert dict(placed.decision_stack[-1].context)["pending_faction_influence"] is True
+
+    trashed = trash_personal_card(placed, 0, card, source="test:trash")
+    assert trashed.state.decision_stack[-1].kind == "agent_effects"
+    assert trashed.state.pending_skill_choices[0][3] is False
+
+    closed = resolve_faction_influence(trashed.state).state
+    assert closed.decision_stack[-1].kind == "turn"
+    assert dict(closed.decision_stack[-1].context)["turn_owner"] == 0
+    # Retroactively flagged: the trash ran before this call decided the
+    # effect frame was done (OQ-044 (d)).
+    assert closed.pending_skill_choices[0][3] is True
+
+    opened = begin_skill_choice(closed).state
+    assert dict(opened.decision_stack[-1].context).get("turn_closed") is True
+    actions = legal_skill_choice_actions(opened, 0)
+    chosen = apply_skill_choice(opened, actions[0]).state
+
+    assert chosen.players[0].commanders_garrison == 1
+    top = chosen.decision_stack[-1]
+    assert top.kind == "turn"
+    assert dict(top.context)["turn_owner"] == 0
+    assert dict(top.context).get("troops_recruited") in (None, 0)
 
 
 def test_litany_against_fear_draws_and_passes_the_turn() -> None:

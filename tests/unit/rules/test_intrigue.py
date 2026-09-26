@@ -32,6 +32,7 @@ from dune_imperium.rules.acquisition import (
     legal_imperium_acquisitions,
 )
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
+from dune_imperium.rules.combat_deployment import legal_combat_deployments
 from dune_imperium.rules.intrigue import (
     apply_intrigue_choice,
     apply_intrigue_play,
@@ -1120,6 +1121,55 @@ def test_cunning_owner_may_draw_first_and_trash_the_drawn_card() -> None:
     assert trashed.intrigue_discard == (card,)
 
 
+def test_cunning_trash_of_eliminate_allies_before_placement_joins_the_combat_turn() -> (
+    None
+):
+    # Eliminate Allies: "When this card is trashed: 2 troops" [Eliminate
+    # Allies card]. Cunning's paid option trashes from the Intrigue choice
+    # frame (``apply_intrigue_choice``'s ``TrashPersonalCard`` branch), not
+    # an AGENT_EFFECTS frame, so ``trash_personal_card``'s own crediting
+    # never applied there: "그 turn에 어떤 출처에서 recruit했든 새 troop은
+    # Conflict에 deploy할 수 있다" [Main p. 10] [FAQ p. 4]
+    # (docs/rules/player-turns.md:137). Played before the Agent is placed,
+    # the credit must reach the bare turn frame and carry into the Agent
+    # turn's Combat deployment [Main p. 10].
+    card = _intrigue("cunning")
+    eliminate_allies = "imperium:eliminate_allies:0"
+    diplomacy = _starter("diplomacy")
+    owner = PlayerState(
+        player_id=0,
+        intrigue_cards=(card,),
+        hand=(eliminate_allies, diplomacy),
+        deck=(_starter("reconnaissance"),),
+        resources=Resources(spice=6),
+    )
+    state = replace(_turn_state(owner), config=RulesetConfig(bloodlines=True))
+    engine = UprisingRulesEngine()
+
+    opened = engine.apply(state, _play(state, card, 1)).state
+    resolved = engine.apply(
+        opened, DomainAction(action_id="resolve_intrigue_rewards", actor=0)
+    ).state
+    trashed = engine.apply(resolved, _trash(eliminate_allies)).state
+
+    assert trashed.decision_stack[-1].kind == "turn"
+    assert trashed.players[0].troops_garrison == 3 + 2
+    assert dict(trashed.decision_stack[-1].context)["troops_recruited"] == 2
+
+    placed = engine.apply(
+        trashed,
+        next(
+            a
+            for a in legal_agent_actions(trashed, 0)
+            if dict(a.arguments)["card_id"] == diplomacy
+            and dict(a.arguments)["space_id"] == "heighliner"
+        ),
+    ).state
+    assert {
+        dict(a.arguments)["count"] for a in legal_combat_deployments(placed, 0)
+    } == {1, 2, 3, 4}
+
+
 _CITY_POSTS = frozenset(
     {
         "arrakis-research-station-spice-refinery",
@@ -2000,6 +2050,52 @@ def test_call_to_arms_recruits_per_reveal_acquisition_then_expires() -> None:
     assert finished.state.players[0].intrigue_faceup == ()
     assert finished.state.intrigue_discard == (card,)
     assert "intrigue_expired" in [event.kind for event in finished.events]
+
+
+def test_arrakis_revolt_and_call_to_arms_credit_the_same_acquisition_additively() -> (
+    None
+):
+    # Two independent recruit mechanisms firing on the same acquisition must
+    # add, not double count or clobber each other: Arrakis Revolt's own
+    # acquire box [Main p. 20] and Call to Arms' per-Reveal-acquisition
+    # trigger [Bloodlines pp. 5, 12] (docs/rules/bloodlines.md) both feed
+    # ``reveal_troops_recruited``, since "그 turn에 어떤 출처에서 recruit
+    # 했든 새 troop은 Conflict에 deploy할 수 있다" [Main p. 10] [FAQ p. 4]
+    # (docs/rules/player-turns.md).
+    call = _intrigue("call_to_arms")
+    arrakis_revolt = "imperium:arrakis_revolt:0"
+    owner = PlayerState(
+        player_id=0, intrigue_faceup=(call,), hand=_persuasion_hand()
+    )
+    state = _with_market(_turn_state(owner))
+    state = replace(state, imperium_row=(arrakis_revolt, *state.imperium_row))
+    engine = UprisingRulesEngine()
+    revealed = engine.apply(state, _reveal(state)).state
+    frame = revealed.decision_stack[-1]
+    context = dict(frame.context)
+    context["persuasion"] = 10
+    revealed = replace(
+        revealed,
+        decision_stack=(
+            *revealed.decision_stack[:-1],
+            replace(frame, context=tuple(sorted(context.items()))),
+        ),
+    )
+
+    bought = engine.apply(
+        revealed,
+        DomainAction(
+            action_id="acquire_imperium",
+            actor=0,
+            arguments=(("instance_id", arrakis_revolt),),
+        ),
+    )
+
+    # 1 from Arrakis Revolt's own acquire box, 1 from Call to Arms: neither
+    # mechanism overwrites the other's credit.
+    assert bought.state.players[0].troops_garrison == owner.troops_garrison + 2
+    context_after = dict(bought.state.decision_stack[-1].context)
+    assert context_after["reveal_troops_recruited"] == 2
 
 
 def test_call_to_arms_troop_counts_toward_reveal_deployment_allowance() -> None:

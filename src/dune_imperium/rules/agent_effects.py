@@ -37,6 +37,7 @@ from dune_imperium.rules.agent_icons import effective_agent_icons
 from dune_imperium.rules.card_bonds import has_faction_bond
 from dune_imperium.rules.card_discard import discard_personal_card_from_hand
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
+from dune_imperium.rules.card_trash import keep_trash_recruits as _keep_trash_recruits
 from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.combat import face_up_battle_icons
 from dune_imperium.rules.combat_deployment import (
@@ -784,6 +785,12 @@ def _apply_stitched_horror_reward(
             players = replace_player(players, recruited_owner)
             events.extend(recruit_shortfall_events(source, player, 1, recruited))
     next_state = advance_after_effect(state, context, players)
+    # Stitched Horror's second pick can be the turn's last effect:
+    # ``advance_after_effect`` may already have reopened a fresh "turn"
+    # frame for this same player (every other seat revealed), and a troop
+    # the trash pick below recruits (Eliminate Allies) must not join it
+    # [Main p. 10] [FAQ p. 4] (OQ-044 (d)).
+    turn_closed = next_state.decision_stack[-1].kind == FrameKind.TURN
     for index, pick in enumerate(chosen):
         if pick == "tleilaxu":
             advanced = advance_tleilaxu(
@@ -793,7 +800,9 @@ def _apply_stitched_horror_reward(
             events.extend(advanced.events)
         elif pick == "trash":
             next_state = next_state.push_decision(
-                optional_trash_frame(player, f"{source}:{index + 1}")
+                optional_trash_frame(
+                    player, f"{source}:{index + 1}", turn_closed=turn_closed
+                )
             )
     return RuleResult(state=next_state, events=tuple(events))
 
@@ -1661,32 +1670,6 @@ def legal_agent_card_trash_actions(
     )
 
 
-def _keep_trash_recruits(
-    context: dict[str, ActionValue], trashed: RuleResult
-) -> None:
-    """Carry troops a trash trigger recruited into the context written back.
-
-    Eliminate Allies: "When this card is trashed: 2 troops", and a troop
-    recruited during the turn "from any source" may be deployed [Main p. 10]
-    [FAQ p. 4]. ``trash_personal_card`` credits them to the Agent-turn frame
-    on top, which the box's own context -- read before the trash -- then
-    overwrites; the count goes into that context instead.
-    """
-
-    recruited = sum(
-        troops
-        for event in trashed.events
-        if event.kind == "personal_card_trash_effect_resolved"
-        for troops in (dict(event.payload).get("troops", 0),)
-        if isinstance(troops, int) and not isinstance(troops, bool)
-    )
-    if recruited:
-        previous = context.get("troops_recruited", 0)
-        if isinstance(previous, bool) or not isinstance(previous, int):
-            raise RuntimeError("Agent-turn effect frame has invalid recruit count")
-        context["troops_recruited"] = previous + recruited
-
-
 def apply_agent_card_trash(state: GameState, action: DomainAction) -> RuleResult:
     """Resolve or decline an Agent-box personal-card trash choice."""
 
@@ -2510,8 +2493,18 @@ def apply_agent_card_payment(state: GameState, action: DomainAction) -> RuleResu
         next_state = advance_after_effect(
             trashed.state, context, replace_player(trashed.state.players, rewarded)
         )
+        # See the RECRUIT_ONE_AND_MAY_TRASH comment above: a TRASH_AND_
+        # SPECIMEN Research bonus's trash offer must not credit the fresh
+        # "turn" frame this ``advance_after_effect`` call may have already
+        # reopened for this same player [Main p. 10] [FAQ p. 4] (OQ-044 (d)).
+        turn_closed = next_state.decision_stack[-1].kind == FrameKind.TURN
         researched = (
-            advance_research(next_state, action.actor, source=f"{source}:research")
+            advance_research(
+                next_state,
+                action.actor,
+                source=f"{source}:research",
+                turn_closed=turn_closed,
+            )
             if research_owed
             else RuleResult(state=next_state, events=())
         )
@@ -2602,8 +2595,16 @@ def apply_agent_card_payment(state: GameState, action: DomainAction) -> RuleResu
                 lost_state, action.actor, troops=1
             )
         next_state = advance_after_effect(lost_state, context, lost_state.players)
+        # See the RECRUIT_ONE_AND_MAY_TRASH comment above: a TRASH_AND_
+        # SPECIMEN Research bonus's trash offer must not credit the fresh
+        # "turn" frame this ``advance_after_effect`` call may have already
+        # reopened for this same player [Main p. 10] [FAQ p. 4] (OQ-044 (d)).
+        turn_closed = next_state.decision_stack[-1].kind == FrameKind.TURN
         researched = advance_research(
-            next_state, action.actor, source=f"{source}:research"
+            next_state,
+            action.actor,
+            source=f"{source}:research",
+            turn_closed=turn_closed,
         )
         drawn = draw_or_request_personal_cards(
             researched.state, action.actor, 2, source=f"{source}:draw"
@@ -2830,8 +2831,16 @@ def _apply_arrakis_revolt_payment(
         )
     next_state = advance_after_effect(paid, context, paid.players)
     if replaced:
+        # See ``planetologist.replace_sandworms``: future-proofing only,
+        # since Arrakis Revolt's Combat icon keeps the turn open here today
+        # (OQ-044 (d)) [Main p. 10] [FAQ p. 4].
+        turn_closed = next_state.decision_stack[-1].kind == FrameKind.TURN
         replacement = replace_sandworms(
-            next_state, action.actor, replaced, source=source
+            next_state,
+            action.actor,
+            replaced,
+            source=source,
+            turn_closed=turn_closed,
         )
         return RuleResult(
             state=replacement.state, events=(*events, *replacement.events)
@@ -3806,13 +3815,21 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         context["pending_agent_effect"] = False
         grafted = is_grafted(context)
         next_state = advance_after_effect(state, context)
+        # See the RECRUIT_ONE_AND_MAY_TRASH comment above: a TRASH_AND_
+        # SPECIMEN Research bonus's trash offer must not credit the fresh
+        # "turn" frame this ``advance_after_effect`` call may have already
+        # reopened for this same player [Main p. 10] [FAQ p. 4] (OQ-044 (d)).
+        turn_closed = next_state.decision_stack[-1].kind == FrameKind.TURN
         extra: list[GameEvent] = []
         if grafted:
             generated = generate_specimens(
                 next_state, player, 1, source=f"{event_source}:specimen"
             )
             researched = advance_research(
-                generated.state, player, source=f"{event_source}:research"
+                generated.state,
+                player,
+                source=f"{event_source}:research",
+                turn_closed=turn_closed,
             )
             next_state = researched.state
             extra.extend((*generated.events, *researched.events))
@@ -3857,8 +3874,16 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
             (*_researched_boxes(context), card_instance_id)
         )
         next_state = advance_after_effect(state, context)
+        # See the RECRUIT_ONE_AND_MAY_TRASH comment above: a TRASH_AND_
+        # SPECIMEN Research bonus's trash offer must not credit the fresh
+        # "turn" frame this ``advance_after_effect`` call may have already
+        # reopened for this same player [Main p. 10] [FAQ p. 4] (OQ-044 (d)).
+        turn_closed = next_state.decision_stack[-1].kind == FrameKind.TURN
         researched = advance_research(
-            next_state, player, source=f"{event_source}:research"
+            next_state,
+            player,
+            source=f"{event_source}:research",
+            turn_closed=turn_closed,
         )
         return RuleResult(
             state=researched.state,
@@ -4069,8 +4094,17 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         next_state = advance_after_effect(
             state, context, replace_player(state.players, next_owner)
         )
+        # As the Agent turn's last effect, ``advance_after_effect`` already
+        # replaced this turn's frame with the next unrevealed player's bare
+        # "turn" frame -- which can be this same player's, if every other
+        # seat has revealed. A troop the trash below recruits (Eliminate
+        # Allies) must not join that fresh frame [Main p. 10] [FAQ p. 4]
+        # (OQ-044 (d)).
+        turn_closed = next_state.decision_stack[-1].kind == FrameKind.TURN
         return RuleResult(
-            state=next_state.push_decision(optional_trash_frame(player, event_source)),
+            state=next_state.push_decision(
+                optional_trash_frame(player, event_source, turn_closed=turn_closed)
+            ),
             events=(
                 GameEvent(
                     event_id=event_source,
@@ -4085,7 +4119,14 @@ def resolve_agent_card_effect(state: GameState) -> RuleResult:
         # advance (and its direction choice) follows the frame bookkeeping.
         context["pending_agent_effect"] = False
         next_state = advance_after_effect(state, context)
-        advanced = advance_research(next_state, player, source=event_source)
+        # A TRASH_AND_SPECIMEN bonus's trash offer must not credit the
+        # fresh "turn" frame this ``advance_after_effect`` call may already
+        # have reopened for this same player (every other seat revealed)
+        # [Main p. 10] [FAQ p. 4] (OQ-044 (d)).
+        turn_closed = next_state.decision_stack[-1].kind == FrameKind.TURN
+        advanced = advance_research(
+            next_state, player, source=event_source, turn_closed=turn_closed
+        )
         return RuleResult(
             state=advanced.state,
             events=(

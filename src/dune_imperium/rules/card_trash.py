@@ -5,12 +5,13 @@ from dataclasses import replace
 from dune_imperium.content.uprising.imperium import imperium_card_for_instance
 from dune_imperium.content.uprising.reserve import RESERVE_STACKS_BY_ID
 from dune_imperium.content.uprising.types import PersonalCardTrashEffect
+from dune_imperium.core.actions import ActionValue
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.effects import recruit_shortfall_events, recruit_troops
-from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.frames import FrameKind, turn_owner_of, update_turn_recruits
 from dune_imperium.rules.intrigue_deck import credit_suspensor_suits
 
 
@@ -21,12 +22,19 @@ def trash_personal_card(
     *,
     source: str,
     allow_deck: bool = False,
+    turn_closed: bool = False,
 ) -> RuleResult:
     """Remove one owned card from an eligible zone and resolve its trash trigger.
 
     Deck trashing is an explicit exception used by card effects such as Long
     Live the Fighters; ordinary trash callers remain limited to hand, discard,
     and in-play cards.
+
+    ``turn_closed`` marks a trash whose caller already knows the owner's turn
+    is closed (an ``OPTIONAL_TRASH`` frame carrying its own ``turn_closed``
+    marker): a Sardaukar Standard Commander this trash queues must not join
+    whatever fresh "turn" frame the queued Skill choice eventually opens on,
+    even the same player's own (OQ-044 (d)) [Main p. 10] [FAQ p. 4].
     """
 
     if not 0 <= player < state.config.players:
@@ -133,7 +141,7 @@ def trash_personal_card(
         if state.sardaukar_commanders_bank > 0:
             pending_skill_choices = (
                 *pending_skill_choices,
-                (player, card_id, f"{source}:trash:{card_id}"),
+                (player, card_id, f"{source}:trash:{card_id}", turn_closed),
             )
         else:
             events.append(
@@ -228,6 +236,70 @@ def _with_recruited_troops(
         raise RuntimeError("Agent-turn effect frame has invalid recruit count")
     context["troops_recruited"] = previous + recruited
     return (*frames[:-1], replace(frame, context=tuple(sorted(context.items()))))
+
+
+def recruited_troops_from_trash(trashed: RuleResult) -> int:
+    """Sum the troops a ``trash_personal_card`` call recruited (Eliminate Allies).
+
+    "When this card is trashed: 2 troops" [Eliminate Allies card]; a troop
+    recruited during the owner's turn "from any source" may be deployed
+    [Main p. 10] [FAQ p. 4]. Every caller that needs to carry this credit
+    past ``trash_personal_card``'s own AGENT_EFFECTS-only crediting
+    (``_with_recruited_troops``) reads it from here instead of re-summing
+    ``trashed.events`` itself.
+    """
+
+    return sum(
+        troops
+        for event in trashed.events
+        if event.kind == "personal_card_trash_effect_resolved"
+        for troops in (dict(event.payload).get("troops", 0),)
+        if isinstance(troops, int) and not isinstance(troops, bool)
+    )
+
+
+def keep_trash_recruits(
+    context: dict[str, ActionValue], trashed: RuleResult
+) -> None:
+    """Carry troops a trash trigger recruited into the context written back.
+
+    Eliminate Allies: "When this card is trashed: 2 troops", and a troop
+    recruited during the turn "from any source" may be deployed [Main p. 10]
+    [FAQ p. 4]. ``trash_personal_card`` credits them to the Agent-turn effect
+    frame on top, which the caller's own context -- read before the trash --
+    then overwrites when it is written back (``advance_after_effect``,
+    ``replace(frame, context=...)``); the count goes into that context
+    instead so the write-back keeps it.
+    """
+
+    recruited = recruited_troops_from_trash(trashed)
+    if recruited:
+        previous = context.get("troops_recruited", 0)
+        if isinstance(previous, bool) or not isinstance(previous, int):
+            raise RuntimeError("Agent-turn effect frame has invalid recruit count")
+        context["troops_recruited"] = previous + recruited
+
+
+def credit_trash_recruits(trashed: RuleResult, player: int) -> RuleResult:
+    """Credit ``player``'s open turn frame with troops a trash just recruited.
+
+    For a trash resolved while no Agent-turn effect frame is on top (a
+    Reveal-turn choice, an Intrigue choice) ``trash_personal_card``'s own
+    AGENT_EFFECTS-only crediting (``_with_recruited_troops``) never runs, so
+    Eliminate Allies' troops would otherwise reach the garrison uncounted.
+    Troops recruited during the owner's own turn "from any source" may be
+    deployed [Main p. 10] [FAQ p. 4]; a trash resolved outside ``player``'s
+    own turn (Combat, another seat's turn) is left uncredited, matching
+    ``update_turn_recruits``'s other callers.
+    """
+
+    recruited = recruited_troops_from_trash(trashed)
+    if not recruited or turn_owner_of(trashed.state) != player:
+        return trashed
+    return RuleResult(
+        state=update_turn_recruits(trashed.state, troops_recruited=recruited),
+        events=trashed.events,
+    )
 
 
 def _trash_effect(card_id: str) -> PersonalCardTrashEffect | None:

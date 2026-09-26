@@ -838,6 +838,79 @@ def test_usurp_trash_fires_the_borrowed_cards_trash_trigger() -> None:
     assert "usurped_card_trashed" in kinds and "card_trashed" in kinds
 
 
+def test_usurp_trash_does_not_credit_a_bank_commander_to_the_next_turn() -> None:
+    """2026-09-26 review round 5, Finding 1 (Usurp regression, major):
+    ``resolve_usurp_trash`` only ever fires once ``_agent_turn_is_open_for``
+    is False -- the owner's turn has always already closed by then -- but it
+    called ``trash_personal_card`` with the default ``turn_closed=False``.
+    Sardaukar Standard's trash trigger (Emperor Faction, ACQUIRE_BANK_
+    COMMANDER) then queues an unmarked ``pending_skill_choices`` entry;
+    ``begin_skill_choice`` opens on whatever frame sits on top when the
+    engine gets to it, which -- once every other seat has revealed -- is the
+    fresh "turn" frame ``advance_after_effect`` already reopened for this
+    same player. "그 turn에 어떤 출처에서 recruit했든 새 troop은 Conflict에
+    deploy할 수 있다. 이미 garrison에 있던 troop을 다시 recruit한 것으로
+    취급해 두 개 제한을 우회할 수는 없다" [Main p. 10] [FAQ p. 4]
+    (docs/rules/player-turns.md:137); a Sardaukar Commander is a "troop"
+    worth 2 strength [Bloodlines p. 4].
+    """
+
+    from dune_imperium.content.bloodlines.sardaukar import skill_tile_instance_ids
+    from dune_imperium.rules.combat_deployment import legal_combat_deployments
+
+    usurp = _tleilaxu("usurp")
+    standard = "imperium:sardaukar_standard:0"
+    experimentation = next(card for card in STARTERS if "experimentation:0" in card)
+    imperium = imperium_deck_instance_ids(False)
+    skills = skill_tile_instance_ids()
+    owner = _owner((usurp, experimentation))
+    state = _state(
+        owner,
+        imperium_row=(standard, *imperium[1:5]),
+        imperium_deck=imperium[5:20],
+        config=RulesetConfig(bloodlines=True, immortality=True, promo_cards=True),
+        sardaukar_commanders_bank=1,
+        skill_face_up=skills[:4],
+        skill_stack=skills[4:],
+        players=(
+            owner,
+            _seat(1, has_revealed=True),
+            _seat(2, has_revealed=True),
+            _seat(3, has_revealed=True),
+        ),
+    )
+    placed = _place(state, usurp, "arrakeen", graft=True)
+    grafted = apply_graft_partner(
+        placed, DomainAction("choose_graft_partner", 0, (("card_id", standard),))
+    ).state
+    engine = UprisingRulesEngine()
+    result = None
+    for _ in range(20):
+        if grafted.decision_stack[-1].kind == FrameKind.TURN:
+            break
+        actions = engine.legal_actions(grafted, 0)
+        preferred = [a for a in actions if not a.action_id.startswith("deploy")]
+        result = engine.apply(grafted, preferred[0])
+        grafted = result.state
+
+    top = grafted.decision_stack[-1]
+    assert top.kind == FrameKind.TURN
+    owner_after = grafted.players[0]
+    # The trash, and the Commander it acquires, still happen...
+    assert standard in owner_after.trashed and owner_after.usurped_row_card_id == ""
+    assert grafted.sardaukar_commanders_bank == 0
+    assert owner_after.commanders_garrison == 1
+    # ...but the Commander must not join the fresh "turn" frame's deploy
+    # allowance, since it belongs to the turn that just closed.
+    assert dict(top.context)["turn_owner"] == 0
+    assert dict(top.context).get("troops_recruited") in (None, 0)
+
+    next_placed = _place(grafted, experimentation, "imperial_basin")
+    assert [
+        dict(a.arguments)["count"] for a in legal_combat_deployments(next_placed, 0)
+    ] == [1, 2]
+
+
 def test_usurp_placed_first_may_take_a_hand_partner_instead_of_the_row() -> None:
     """ "You may graft ... with a card from the Imperium Row": the hand stays
     an option, and a hand partner is never trashed at the turn's end."""

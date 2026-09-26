@@ -38,8 +38,14 @@ from dune_imperium.rules.agent_effects import (
     legal_agent_card_influence_actions,
     legal_agent_card_payment_actions,
     resolve_agent_card_effect,
+    resolve_faction_influence,
 )
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
+from dune_imperium.rules.board_effects import (
+    legal_board_effect_actions,
+    resolve_board_effect,
+)
+from dune_imperium.rules.combat_deployment import legal_combat_deployments
 from dune_imperium.rules.effects import current_agent_effect_context
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
@@ -48,12 +54,17 @@ from dune_imperium.rules.intrigue_peek import (
     apply_intrigue_peek,
     legal_intrigue_peek_actions,
 )
+from dune_imperium.rules.optional_trash import (
+    apply_optional_trash,
+    legal_optional_trash_actions,
+)
 from dune_imperium.rules.reveal_turn import (
     apply_reveal_gain,
     apply_reveal_influence_loss,
     apply_reveal_troop_move,
     apply_reveal_troop_sacrifice,
     begin_reveal_turn,
+    legal_reveal_deployments,
     legal_reveal_gain_actions,
     legal_reveal_influence_loss_actions,
     legal_reveal_troop_move_actions,
@@ -66,6 +77,9 @@ IMMORTALITY = RulesetConfig(immortality=True)
 IMMORTALITY_BLOODLINES = RulesetConfig(immortality=True, bloodlines=True)
 STARTERS = starting_deck_instance_ids(0, immortality=True)
 DAGGER = next(card for card in STARTERS if "dagger:0" in card)
+# Immortality replaces Dune, the Desert Planet with Experimentation, the only
+# starter carrying its Spice Trade icon [Immortality p. 5].
+EXPERIMENTATION = next(card for card in STARTERS if "experimentation:0" in card)
 FACE_DANCER = "tleilaxu:face_dancer:0"
 INTRIGUE = intrigue_deck_instance_ids(False, immortality=True)
 
@@ -606,6 +620,529 @@ def test_tleilaxu_master_acquires_a_cheap_card_and_researches_at_reveal() -> Non
         dict(revealed.decision_stack[-1].context)["reveal_pending_gains"]
         == "research|2|imperium:tleilaxu_master:0"
     )
+
+
+def test_tleilaxu_masters_acquired_troop_joins_a_combat_turns_allowance() -> None:
+    # Tleilaxu Master's Agent box may acquire Arrakis Revolt (cost 6, at the
+    # "6 or less" cap [card face]) whose own acquire box recruits one troop
+    # [Main p. 20]; "그 turn에 어떤 출처에서 recruit했든 새 troop은
+    # Conflict에 deploy할 수 있다" [Main p. 10] [FAQ p. 4]
+    # (docs/rules/player-turns.md). This Agent turn visits a Combat space
+    # (Imperial Basin's Spice Trade icon [Main p. 15]), so the troop must
+    # join ``troops_recruited`` and ``legal_combat_deployments`` there, not
+    # just the garrison -- the engine used to put the troop in the garrison
+    # without crediting any turn frame.
+    master = _card("tleilaxu_master")
+    arrakis_revolt = "imperium:arrakis_revolt:0"
+    placed = _place(
+        _state(
+            _owner((master,), research_space="c4r2"),
+            imperium_row=(arrakis_revolt,),
+        ),
+        master,
+        "imperial_basin",
+    )
+    acquire = next(
+        a
+        for a in legal_agent_card_acquisitions(placed, 0)
+        if dict(a.arguments).get("instance_id") == arrakis_revolt
+    )
+
+    result = apply_agent_card_acquisition(placed, acquire)
+
+    assert result.state.players[0].troops_garrison == 4
+    _, context = current_agent_effect_context(result.state)
+    assert context["troops_recruited"] == 1
+    assert [
+        dict(a.arguments)["count"] for a in legal_combat_deployments(result.state, 0)
+    ] == [1, 2, 3]
+
+
+def test_tleilaxu_masters_acquired_troop_does_not_join_the_next_agent_turn() -> None:
+    # Same acquire box as above, but resolved as the Agent turn's very last
+    # pending effect (Assembly Hall carries no Combat icon, so nothing keeps
+    # a deployment window open) while every other seat has already
+    # revealed. ``_acquire_by_agent_card`` calls ``advance_after_effect``
+    # *before* the acquisition recruits, and since seats 1-3 have revealed,
+    # ``next_unrevealed_player`` reopens seat 0's own next "turn" frame.
+    # "그 turn에 어떤 출처에서 recruit했든 새 troop은 Conflict에 deploy할
+    # 수 있다. 이미 garrison에 있던 troop을 다시 recruit한 것으로 취급해
+    # 두 개 제한을 우회할 수는 없다" [Main p. 10] [FAQ p. 4]
+    # (docs/rules/player-turns.md): this troop belongs to the turn that
+    # just closed, not to the fresh one that happens to reopen for the same
+    # player -- the engine used to let ``turn_owner_of`` find and credit
+    # that new frame anyway, joining the troop to the *next* Agent turn's
+    # deploy allowance instead of leaving it uncredited there.
+    master = _card("tleilaxu_master")
+    arrakis_revolt = "imperium:arrakis_revolt:0"
+    placed = _place(
+        _state(
+            _owner((master, EXPERIMENTATION), research_space="c4r2"),
+            _seat(1, has_revealed=True),
+            _seat(2, has_revealed=True),
+            _seat(3, has_revealed=True),
+            imperium_row=(arrakis_revolt,),
+        ),
+        master,
+        "assembly_hall",
+    )
+    # Assembly Hall's own Landsraad icon is a separate pending effect from
+    # Tleilaxu Master's marker ability; resolve it first so the acquisition
+    # below is the turn's last one [Main p. 9] (OQ-027).
+    for board_action in legal_board_effect_actions(placed, 0):
+        placed = resolve_board_effect(placed, board_action).state
+    acquire = next(
+        a
+        for a in legal_agent_card_acquisitions(placed, 0)
+        if dict(a.arguments).get("instance_id") == arrakis_revolt
+    )
+
+    result = apply_agent_card_acquisition(placed, acquire)
+
+    assert result.state.players[0].troops_garrison == 4
+    top = result.state.decision_stack[-1]
+    assert top.kind == FrameKind.TURN
+    assert dict(top.context)["turn_owner"] == 0
+    assert dict(top.context).get("troops_recruited") in (None, 0)
+
+    next_placed = _place(result.state, EXPERIMENTATION, "imperial_basin")
+    assert [
+        dict(a.arguments)["count"]
+        for a in legal_combat_deployments(next_placed, 0)
+    ] == [1, 2]
+
+
+def test_throne_room_politics_last_effect_does_not_credit_the_next_turn() -> None:
+    # 2026-09-26 review round 3, Finding 1: ``apply_optional_trash``'s
+    # fallback credit (``a6e5d0d``) reads whatever frame sits beneath the
+    # popped OPTIONAL_TRASH frame, but several handlers -- Throne Room
+    # Politics among them -- push that frame *after* their own
+    # ``advance_after_effect`` call already closed the turn. With every
+    # other seat revealed, that call reopens a fresh "turn" frame for this
+    # same player, and the old code let ``credit_trash_recruits`` credit it
+    # anyway. "그 turn에 어떤 출처에서 recruit했든 새 troop은 Conflict에
+    # deploy할 수 있다. 이미 garrison에 있던 troop을 다시 recruit한 것으로
+    # 취급해 두 개 제한을 우회할 수는 없다" [Main p. 10] [FAQ p. 4]
+    # (docs/rules/player-turns.md:137); Eliminate Allies: "When this card is
+    # trashed: 2 troops" [Eliminate Allies card].
+    throne = _card("throne_room_politics")
+    eliminate_allies = _card("eliminate_allies")
+    placed = _place(
+        _state(
+            _owner((throne, eliminate_allies, EXPERIMENTATION)),
+            _seat(1, has_revealed=True),
+            _seat(2, has_revealed=True),
+            _seat(3, has_revealed=True),
+            config=IMMORTALITY_BLOODLINES,
+        ),
+        throne,
+        "dutiful_service",
+    )
+    # Dutiful Service's own resources icon and the matching-Faction
+    # Influence gain are separate pending effects from Throne Room
+    # Politics' box [Main p. 9] (OQ-027); resolve both first so the Agent
+    # card's box is the turn's last one.
+    for board_action in legal_board_effect_actions(placed, 0):
+        placed = resolve_board_effect(placed, board_action).state
+    if dict(placed.decision_stack[-1].context)["pending_faction_influence"] is True:
+        placed = resolve_faction_influence(placed).state
+    resolved = resolve_agent_card_effect(placed).state
+    assert resolved.decision_stack[-1].kind == FrameKind.OPTIONAL_TRASH
+
+    trash = next(
+        a
+        for a in legal_optional_trash_actions(resolved, 0)
+        if dict(a.arguments).get("card_id") == eliminate_allies
+    )
+    trashed = apply_optional_trash(resolved, trash).state
+
+    # The trash itself still happens; only its recruit credit was at risk.
+    assert trashed.players[0].troops_garrison == 6
+    top = trashed.decision_stack[-1]
+    assert top.kind == FrameKind.TURN
+    assert dict(top.context)["turn_owner"] == 0
+    assert dict(top.context).get("troops_recruited") in (None, 0)
+
+    next_placed = _place(trashed, EXPERIMENTATION, "imperial_basin")
+    assert [
+        dict(a.arguments)["count"]
+        for a in legal_combat_deployments(next_placed, 0)
+    ] == [1, 2]
+
+
+def test_throne_room_politics_last_effect_does_not_credit_a_later_reveal() -> None:
+    # Same regression as above, carried one step further: the fresh "turn"
+    # frame that reopens for this player then chooses Reveal. Adaptive
+    # Tactics (a Plot Intrigue card, playable from a bare "turn" frame
+    # [Bloodlines p. 12]) legitimately recruits one troop and grants a
+    # Combat icon in that same fresh turn; only that one troop -- not
+    # Eliminate Allies' phantom two -- may carry into the Reveal's
+    # allowance. "이번 turn에 recruit한 유닛 전부와 garrison에서 최대 두
+    # 개" [Bloodlines pp. 5, 12] applies to an Agent or a Reveal turn alike
+    # (docs/rules/player-turns.md:137) [Main p. 10] [FAQ p. 4].
+    throne = _card("throne_room_politics")
+    eliminate_allies = _card("eliminate_allies")
+    adaptive_tactics = "intrigue:adaptive_tactics:0"
+    placed = _place(
+        _state(
+            _owner((throne, eliminate_allies), intrigue_cards=(adaptive_tactics,)),
+            _seat(1, has_revealed=True),
+            _seat(2, has_revealed=True),
+            _seat(3, has_revealed=True),
+            config=IMMORTALITY_BLOODLINES,
+        ),
+        throne,
+        "dutiful_service",
+    )
+    for board_action in legal_board_effect_actions(placed, 0):
+        placed = resolve_board_effect(placed, board_action).state
+    if dict(placed.decision_stack[-1].context)["pending_faction_influence"] is True:
+        placed = resolve_faction_influence(placed).state
+    resolved = resolve_agent_card_effect(placed).state
+    trash = next(
+        a
+        for a in legal_optional_trash_actions(resolved, 0)
+        if dict(a.arguments).get("card_id") == eliminate_allies
+    )
+    trashed = apply_optional_trash(resolved, trash).state
+    assert dict(trashed.decision_stack[-1].context).get("troops_recruited") in (
+        None,
+        0,
+    )
+
+    engine = UprisingRulesEngine()
+    played = engine.apply(
+        trashed,
+        DomainAction(
+            action_id="play_intrigue",
+            actor=0,
+            arguments=(("card_id", adaptive_tactics), ("option", 0)),
+        ),
+    ).state
+    assert played.decision_stack[-1].kind == FrameKind.TURN
+    assert dict(played.decision_stack[-1].context)["troops_recruited"] == 1
+    assert played.players[0].combat_icon_turn is True
+
+    revealed = _reveal(played)
+
+    assert revealed.decision_stack[-1].kind == FrameKind.REVEAL
+    reveal_context = dict(revealed.decision_stack[-1].context)
+    assert reveal_context["reveal_troops_recruited"] == 1
+    assert {
+        dict(a.arguments)["count"]
+        for a in legal_reveal_deployments(revealed, 0)
+        if a.action_id == "deploy_troops"
+    } == {1, 2, 3}
+
+
+def test_throne_room_politics_last_effect_does_not_credit_a_bank_commander() -> None:
+    # 2026-09-26 review round 4, Finding 1 (Sardaukar Commander): the same
+    # closed-turn hole as Eliminate Allies above, reached through the
+    # Sardaukar Standard trash effect instead. Its bank-Commander acquisition
+    # is queued and opens later through ``begin_skill_choice``, so the
+    # ``OPTIONAL_TRASH`` frame's own ``turn_closed`` marker (already read by
+    # ``apply_optional_trash``) has to be carried into the queued
+    # ``pending_skill_choices`` entry too, or the Commander this credits
+    # would join the fresh "turn" frame instead of the turn that closed.
+    # "그 turn에 어떤 출처에서 recruit했든 새 troop은 Conflict에 deploy할
+    # 수 있다..." [Main p. 10] [FAQ p. 4] (docs/rules/player-turns.md:137);
+    # a Sardaukar Commander is a "troop" worth 2 strength [Bloodlines p. 4].
+    from dune_imperium.content.bloodlines.sardaukar import skill_tile_instance_ids
+    from dune_imperium.rules.sardaukar import (
+        apply_skill_choice,
+        begin_skill_choice,
+        legal_skill_choice_actions,
+    )
+
+    throne = _card("throne_room_politics")
+    standard = _card("sardaukar_standard")
+    skills = skill_tile_instance_ids()
+    placed = _place(
+        replace(
+            _state(
+                _owner((throne, standard, EXPERIMENTATION)),
+                _seat(1, has_revealed=True),
+                _seat(2, has_revealed=True),
+                _seat(3, has_revealed=True),
+                config=IMMORTALITY_BLOODLINES,
+            ),
+            sardaukar_commanders_bank=1,
+            skill_face_up=skills[:4],
+            skill_stack=skills[4:],
+        ),
+        throne,
+        "dutiful_service",
+    )
+    for board_action in legal_board_effect_actions(placed, 0):
+        placed = resolve_board_effect(placed, board_action).state
+    if dict(placed.decision_stack[-1].context)["pending_faction_influence"] is True:
+        placed = resolve_faction_influence(placed).state
+    resolved = resolve_agent_card_effect(placed).state
+    assert resolved.decision_stack[-1].kind == FrameKind.OPTIONAL_TRASH
+
+    trash = next(
+        a
+        for a in legal_optional_trash_actions(resolved, 0)
+        if dict(a.arguments).get("card_id") == standard
+    )
+    trashed = apply_optional_trash(resolved, trash).state
+    assert trashed.pending_skill_choices[0][0] == 0
+    assert trashed.pending_skill_choices[0][1] == standard
+    assert trashed.pending_skill_choices[0][3] is True
+
+    opened = begin_skill_choice(trashed).state
+    assert opened.decision_stack[-1].kind == "skill_choice"
+    actions = legal_skill_choice_actions(opened, 0)
+    chosen = apply_skill_choice(opened, actions[0]).state
+
+    assert chosen.players[0].commanders_garrison == 1
+    top = chosen.decision_stack[-1]
+    assert top.kind == FrameKind.TURN
+    assert dict(top.context)["turn_owner"] == 0
+    assert dict(top.context).get("troops_recruited") in (None, 0)
+
+    next_placed = _place(chosen, EXPERIMENTATION, "imperial_basin")
+    assert [
+        dict(a.arguments)["count"]
+        for a in legal_combat_deployments(next_placed, 0)
+    ] == [1, 2]
+
+
+def test_research_bonus_after_the_turn_closed_does_not_credit_an_alliance() -> None:
+    # 2026-09-26 review round 4, Finding 3 (Research Bonus / Earn Any
+    # Alliance): ``turn_closed`` was carried only as far as
+    # TRASH_AND_SPECIMEN; an INFLUENCE_ANY bonus's ``_bonus_frame`` dropped
+    # it. The Influence choice this frame offers is a *separate* action from
+    # whichever earlier action closed the turn, so
+    # ``frames.turn_closing_player``'s own before/after comparison of that
+    # one action can no longer see the close -- the engine now reads the
+    # marker straight off the RESEARCH_BONUS frame instead
+    # (``frames.turn_closed_frame_owner``) before calling
+    # ``complete_alliance_contracts``. "Earn any Alliance is completed the
+    # next time you take an Alliance token you do not already have"
+    # [Bloodlines p. 2]; a troop it recruits mid-turn joins that turn's
+    # deployment allowance [Main p. 10] [FAQ p. 4]
+    # (docs/rules/player-turns.md:137) -- but never a turn that only just
+    # reopened for the very player who is completing it.
+    from dune_imperium.rules.contracts import (
+        apply_contract_action,
+        legal_contract_actions,
+    )
+    from dune_imperium.rules.immortality import (
+        legal_research_advance_actions,
+        legal_research_bonus_actions,
+    )
+
+    earn_alliance = "contract:bloodlines_earn_any_alliance"
+    owner = _owner(
+        (EXPERIMENTATION,),
+        research_space="c5r5",
+        influence=Influence(spacing_guild=3),
+        active_contract_ids=(earn_alliance,),
+    )
+    engine = UprisingRulesEngine()
+    placed = _place(
+        _state(
+            owner,
+            _seat(1, has_revealed=True),
+            _seat(2, has_revealed=True),
+            _seat(3, has_revealed=True),
+            config=replace(IMMORTALITY_BLOODLINES, choam_module=True),
+            face_up_contract_ids=("contract:arrakeen_i",),
+        ),
+        EXPERIMENTATION,
+        "accept_contract",
+    )
+    for board_action in legal_board_effect_actions(placed, 0):
+        placed = resolve_board_effect(placed, board_action).state
+    taken = apply_contract_action(
+        placed, legal_contract_actions(placed, 0)[0]
+    ).state
+    resolved = resolve_agent_card_effect(taken).state
+    assert dict(resolved.decision_stack[-1].context)["turn_closed"] is True
+
+    to_influence_choice = next(
+        a
+        for a in legal_research_advance_actions(resolved, 0)
+        if dict(a.arguments)["space_id"] == "c6r6"
+    )
+    advanced = engine.apply(resolved, to_influence_choice).state
+    assert advanced.decision_stack[-1].kind == "research_bonus"
+    assert dict(advanced.decision_stack[-1].context)["turn_closed"] is True
+
+    influence_choice = next(
+        a
+        for a in legal_research_bonus_actions(advanced, 0)
+        if dict(a.arguments).get("faction") == "spacing_guild"
+    )
+    result = engine.apply(advanced, influence_choice).state
+
+    owner_after = result.players[0]
+    assert owner_after.influence.spacing_guild == 4
+    assert owner_after.alliance_faction_ids == ("spacing_guild",)
+    assert owner_after.completed_contract_ids == (earn_alliance,)
+    # The Contract still completes and still recruits its troops...
+    assert owner_after.troops_garrison == 3 + 2
+    # ...but not into the fresh "turn" frame's deploy allowance.
+    top = result.decision_stack[-1]
+    assert top.kind == FrameKind.TURN
+    assert dict(top.context)["turn_owner"] == 0
+    assert dict(top.context).get("troops_recruited") in (None, 0)
+
+
+def test_research_bonus_after_the_turn_closed_does_not_credit_a_navigation_play() -> (
+    None
+):
+    # 2026-09-26 review round 5, Finding 2/4 (Navigation, major):
+    # ``influence.gain_faction_influence`` always queues its Navigation
+    # trigger with ``turn_closed=False`` hardcoded, and ``advance_after_
+    # effect``'s own retroactive pass only reaches an entry already queued
+    # at the moment IT closes a turn. The Influence choice this
+    # ``RESEARCH_BONUS`` frame offers is a *separate* action from whichever
+    # earlier action closed the turn (mirroring the Earn Any Alliance test
+    # above), so the entry ``choose_research_influence`` queues here is
+    # unmarked even though the frame it resolves already carries the
+    # ``turn_closed`` marker. The engine now flags any Skill choice or
+    # Navigation play queued while resolving a ``turn_closed``-marked frame
+    # (or by the same action that closes the turn) before the automatic
+    # advance can open it (``engine._apply_legal``,
+    # ``effects.mark_queued_turn_closed``) (OQ-044 (d)). "그 turn에 어떤
+    # 출처에서 recruit했든 새 troop은 Conflict에 deploy할 수 있다. 이미
+    # garrison에 있던 troop을 다시 recruit한 것으로 취급해 두 개 제한을
+    # 우회할 수는 없다" [Main p. 10] [FAQ p. 4]
+    # (docs/rules/player-turns.md:137); Combat 아이콘, Reveal에서도: "이번
+    # turn에 recruit한 유닛 전부와 garrison에서 최대 두 개"
+    # [Bloodlines pp. 5, 12].
+    from dune_imperium.rules.contracts import (
+        apply_contract_action,
+        legal_contract_actions,
+    )
+    from dune_imperium.rules.immortality import (
+        legal_research_advance_actions,
+        legal_research_bonus_actions,
+    )
+    from dune_imperium.rules.navigation import legal_navigation_play_actions
+
+    nav_card_6 = "intrigue:navigation_card_6:0"
+    owner = _owner(
+        (EXPERIMENTATION,),
+        research_space="c5r5",
+        leader_id="steersman_y_rkoon",
+        navigation_slots=(nav_card_6,),
+        influence=Influence(emperor=1),
+    )
+    engine = UprisingRulesEngine()
+    placed = _place(
+        _state(
+            owner,
+            _seat(1, has_revealed=True),
+            _seat(2, has_revealed=True),
+            _seat(3, has_revealed=True),
+            config=replace(IMMORTALITY_BLOODLINES, choam_module=True),
+            face_up_contract_ids=("contract:arrakeen_i",),
+        ),
+        EXPERIMENTATION,
+        "accept_contract",
+    )
+    for board_action in legal_board_effect_actions(placed, 0):
+        placed = resolve_board_effect(placed, board_action).state
+    taken = apply_contract_action(placed, legal_contract_actions(placed, 0)[0]).state
+    resolved = resolve_agent_card_effect(taken).state
+    assert dict(resolved.decision_stack[-1].context)["turn_closed"] is True
+
+    to_influence_choice = next(
+        a
+        for a in legal_research_advance_actions(resolved, 0)
+        if dict(a.arguments)["space_id"] == "c6r6"
+    )
+    advanced = engine.apply(resolved, to_influence_choice).state
+    assert advanced.decision_stack[-1].kind == "research_bonus"
+    assert dict(advanced.decision_stack[-1].context)["turn_closed"] is True
+
+    influence_choice = next(
+        a
+        for a in legal_research_bonus_actions(advanced, 0)
+        if dict(a.arguments).get("faction") == "emperor"
+    )
+    opened = engine.apply(advanced, influence_choice).state
+
+    # The Influence gain still happens, and the queued Navigation play still
+    # opens, carrying the marker the engine set on it.
+    assert opened.players[0].influence.emperor == 2
+    assert opened.decision_stack[-1].kind == "navigation_choice"
+    assert dict(opened.decision_stack[-1].context).get("turn_closed") is True
+
+    play = next(
+        a
+        for a in legal_navigation_play_actions(opened, 0)
+        if dict(a.arguments)["option"] == 0
+    )
+    result = engine.apply(opened, play).state
+
+    # Card 6 option 0 (RecruitTroops(1)) still recruits its troop...
+    assert result.players[0].troops_garrison == 3 + 1
+    # ...but not into the fresh "turn" frame's deploy allowance.
+    top = result.decision_stack[-1]
+    assert top.kind == FrameKind.TURN
+    assert dict(top.context)["turn_owner"] == 0
+    assert dict(top.context).get("troops_recruited") in (None, 0)
+
+
+def test_research_icon_last_effect_does_not_credit_a_trash_and_specimen() -> None:
+    # 2026-09-26 review round 4, minor (test gap): mutation testing found
+    # that dropping the ``turn_closed`` marker from the Research icon's own
+    # TRASH_AND_SPECIMEN ``optional_trash_frame`` call
+    # (``immortality._resolve_research_bonus``) left all 1356 rules tests
+    # passing, because the only existing coverage of that marker (Throne
+    # Room Politics) never goes through the board/card Research icon or the
+    # two-way ``RESEARCH_ADVANCE`` choice at all. Experimentation's own
+    # Research icon [Immortality pp. 3, 5] as the Agent turn's last effect,
+    # with every other seat revealed, closes and reopens a fresh "turn"
+    # frame for this same player before the fork (c2r4 -> c3r3/c3r5) and the
+    # trash offer even exist; Eliminate Allies' troops must not join it.
+    # "그 turn에 어떤 출처에서 recruit했든 새 troop은 Conflict에 deploy할 수
+    # 있다..." [Main p. 10] [FAQ p. 4] (docs/rules/player-turns.md:137).
+    from dune_imperium.rules.immortality import legal_research_advance_actions
+
+    eliminate_allies = _card("eliminate_allies")
+    engine = UprisingRulesEngine()
+    placed = _place(
+        _state(
+            _owner((EXPERIMENTATION, eliminate_allies), research_space="c2r4"),
+            _seat(1, has_revealed=True),
+            _seat(2, has_revealed=True),
+            _seat(3, has_revealed=True),
+        ),
+        EXPERIMENTATION,
+        "accept_contract",
+    )
+    for board_action in legal_board_effect_actions(placed, 0):
+        placed = resolve_board_effect(placed, board_action).state
+    resolved = resolve_agent_card_effect(placed).state
+    assert resolved.decision_stack[-1].kind == "research_advance"
+    assert dict(resolved.decision_stack[-1].context)["turn_closed"] is True
+
+    to_trash_and_specimen = next(
+        a
+        for a in legal_research_advance_actions(resolved, 0)
+        if dict(a.arguments)["space_id"] == "c3r3"
+    )
+    advanced = engine.apply(resolved, to_trash_and_specimen).state
+    assert advanced.decision_stack[-1].kind == FrameKind.OPTIONAL_TRASH
+    assert dict(advanced.decision_stack[-1].context)["turn_closed"] is True
+
+    trash = next(
+        a
+        for a in legal_optional_trash_actions(advanced, 0)
+        if dict(a.arguments).get("card_id") == eliminate_allies
+    )
+    trashed = apply_optional_trash(advanced, trash).state
+
+    assert trashed.players[0].troops_garrison == 3 + 2
+    top = trashed.decision_stack[-1]
+    assert top.kind == FrameKind.TURN
+    assert dict(top.context)["turn_owner"] == 0
+    assert dict(top.context).get("troops_recruited") in (None, 0)
 
 
 def test_tleilaxu_surgeon_spends_specimens_and_sacrifices_troops() -> None:

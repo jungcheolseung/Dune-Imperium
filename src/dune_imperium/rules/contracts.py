@@ -174,8 +174,17 @@ def complete_acquire_contracts(
     acquired_card_id: str,
     *,
     source: str,
+    credit_turn_recruits: bool = True,
 ) -> RuleResult:
-    """Complete Contracts triggered by acquiring a named card."""
+    """Complete Contracts triggered by acquiring a named card.
+
+    ``credit_turn_recruits`` is false when the caller already closed the
+    owner's turn frame (Tleilaxu Master, the Leader's Signet) before this
+    Contract's reward resolved: ``turn_owner_of`` would then find whatever
+    turn frame opened next, which is never the one this reward belongs to,
+    even when it happens to belong to the same player again (the
+    only-seat-left-unrevealed case) [Main p. 10] [FAQ p. 4].
+    """
 
     if not state.config.choam_module:
         return RuleResult(state=state)
@@ -195,6 +204,7 @@ def complete_acquire_contracts(
     next_state = state
     events: tuple[GameEvent, ...] = ()
     for instance_id in matching:
+        garrison_before = next_state.players[player].troops_garrison
         completed = _complete_contract_without_choices(
             next_state,
             player,
@@ -214,6 +224,14 @@ def complete_acquire_contracts(
             )
         next_state = completed.state
         events = (*events, *completed.events)
+        recruited = next_state.players[player].troops_garrison - garrison_before
+        if recruited and credit_turn_recruits and turn_owner_of(next_state) == player:
+            # Troops recruited during the owner's own turn "from any
+            # source" may be deployed [Main p. 10] [FAQ p. 4]; an Acquire
+            # Contract completed outside the owner's turn (Combat, another
+            # seat's turn) keeps them out of this count, like Earn Any
+            # Alliance (``complete_alliance_contracts``).
+            next_state = update_turn_recruits(next_state, troops_recruited=recruited)
     return RuleResult(state=next_state, events=events)
 
 
@@ -1334,7 +1352,9 @@ def apply_contract_intrigue_trash(
 # --- Bloodlines Earn Any Alliance -----------------------------------------------------
 
 
-def complete_alliance_contracts(result: RuleResult) -> RuleResult:
+def complete_alliance_contracts(
+    result: RuleResult, *, closing_player: int | None = None
+) -> RuleResult:
     """Complete Earn Any Alliance when its holder takes a new Alliance token.
 
     "Earn any Alliance is completed the next time you take an Alliance token
@@ -1344,7 +1364,18 @@ def complete_alliance_contracts(result: RuleResult) -> RuleResult:
     in the same turn completes on a later bump of that turn (no placement
     snapshot applies: the condition is the Alliance itself, not an Agent
     visit). Troops recruited during the holder's own turn join that turn's
-    deployment allowance like any other mid-turn recruit.
+    deployment allowance like any other mid-turn recruit [Main p. 10]
+    [FAQ p. 4].
+
+    ``closing_player`` is the player, if any, whose own-turn frame closed
+    during the automatic advance that produced ``result``
+    (``frames.turn_closing_player``, the engine's caller computes it against
+    the state from before that advance). When the completed contract's
+    recruit and the alliance bump that earned it both happened while that
+    player's turn was still open, ``turn_owner_of`` would otherwise find and
+    credit the fresh "turn" frame the advance reopened for the same
+    player -- the turn that is only just starting, not the one the recruit
+    belongs to (the same reopen ``4e29e27`` guards at the acquisition sites).
     """
 
     state = result.state
@@ -1382,7 +1413,11 @@ def complete_alliance_contracts(result: RuleResult) -> RuleResult:
             state = completed.state
             events.extend(completed.events)
             recruited = state.players[player].troops_garrison - garrison_before
-            if recruited and turn_owner_of(state) == player:
+            if (
+                recruited
+                and player != closing_player
+                and turn_owner_of(state) == player
+            ):
                 state = update_turn_recruits(state, troops_recruited=recruited)
     return RuleResult(state=state, events=tuple(events))
 

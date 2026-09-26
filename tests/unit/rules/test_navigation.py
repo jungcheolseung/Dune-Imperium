@@ -24,7 +24,10 @@ from dune_imperium.core import (
     PlayerState,
     Resources,
 )
+from dune_imperium.core.actions import ActionValue
 from dune_imperium.core.observation import observe_state
+from dune_imperium.rules.combat_deployment import legal_combat_deployments
+from dune_imperium.rules.effects import advance_after_effect
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.intrigue import legal_intrigue_choice_actions
@@ -344,6 +347,11 @@ def test_reaching_two_influence_plays_the_next_slot_in_order() -> None:
     assert seat.navigation_played == (_card(6),)
     assert seat.navigation_active_slot == 0
     assert played.decision_stack[-1].kind == "turn"
+    # Open-turn control (2026-09-26 review round 4, Finding 2): this bare
+    # "turn" frame is genuinely the player's own, still-open turn -- not one
+    # ``advance_after_effect`` just reopened -- so the recruit still joins
+    # its deploy allowance [Main p. 10] [FAQ p. 4].
+    assert dict(played.decision_stack[-1].context)["troops_recruited"] == 1
 
 
 def test_card_one_gains_influence_with_a_different_faction_at_two() -> None:
@@ -514,3 +522,214 @@ def test_two_triggers_in_one_effect_open_one_play_at_a_time() -> None:
     assert seat.navigation_played == (_card(6), _card(7))
     assert seat.navigation_slots == ()
     assert finished.pending_navigation_plays == ()
+
+
+def _closed_turn_agent_effects_state(
+    owner: PlayerState, *others: PlayerState
+) -> tuple[GameState, dict[str, ActionValue]]:
+    """An AGENT_EFFECTS frame one Influence gain away from closing the turn.
+
+    Mirrors a card whose board effect gains Influence as its last pending
+    thing (Diplomacy at Dutiful Service, in the reviewer's probe): the
+    caller gains Influence through this frame's ``context``, then calls
+    ``advance_after_effect`` with the same ``context`` to close it, exactly
+    as a real handler would.
+    """
+
+    context: dict[str, ActionValue] = {
+        "turn_owner": 0,
+        "pending_combat_deployment": False,
+        "pending_agent_effect": False,
+        "pending_board_effect": False,
+        "pending_faction_influence": False,
+    }
+    frame = DecisionFrame(
+        kind="agent_effects",
+        frame_id="test:agent_effects",
+        decision=PlayerDecision(owner=0, prompt="Resolve"),
+        context=tuple(sorted(context.items())),
+    )
+    state = _turn_state(
+        owner,
+        players=(owner, *others) if others else (owner,),
+        decision_stack=(frame,),
+    )
+    return state, context
+
+
+def test_navigation_trigger_after_the_turn_closed_does_not_credit_the_next_turn() -> (
+    None
+):
+    # 2026-09-26 review round 4, Finding 2 (Navigation), probe (a): caabdf4
+    # added ``credit_trash_recruits`` to ``apply_intrigue_choice``'s
+    # ``TrashPersonalCard`` slot, which card 5 uses. When the Influence gain
+    # that triggers a Navigation play is also the turn's last effect (every
+    # other seat revealed), ``advance_after_effect`` reopens a fresh "turn"
+    # frame for the same player before the queued play even opens, and the
+    # trash's troops must not join it. "그 turn에 어떤 출처에서 recruit했든
+    # 새 troop은 Conflict에 deploy할 수 있다. 이미 garrison에 있던 troop을
+    # 다시 recruit한 것으로 취급해 두 개 제한을 우회할 수는 없다"
+    # [Main p. 10] [FAQ p. 4] (docs/rules/player-turns.md:137).
+    eliminate_allies = "imperium:eliminate_allies:0"
+    owner = _steersman(
+        (_card(5),), influence=Influence(emperor=1), hand=(eliminate_allies,)
+    )
+    state, context = _closed_turn_agent_effects_state(
+        owner,
+        PlayerState(player_id=1, has_revealed=True),
+        PlayerState(player_id=2, has_revealed=True),
+        PlayerState(player_id=3, has_revealed=True),
+    )
+    gained = gain_faction_influence(state, 0, Faction.EMPEROR, 1, event_prefix="test")
+    closed = advance_after_effect(gained.state, context, gained.state.players)
+    assert closed.decision_stack[-1].kind == "turn"
+    assert dict(closed.decision_stack[-1].context)["turn_owner"] == 0
+    # Retroactively flagged: the trigger fired before this call decided the
+    # effect frame was done (OQ-044 (d)).
+    assert closed.pending_navigation_plays == (
+        (0, "emperor", "test:navigation:0", True),
+    )
+
+    opened = begin_navigation_play(closed).state
+    assert dict(opened.decision_stack[-1].context).get("turn_closed") is True
+    played = _play_option(opened, 0)
+    assert dict(played.decision_stack[-1].context).get("turn_closed") is True
+
+    options = legal_intrigue_choice_actions(played, 0)
+    trash = next(
+        a for a in options if dict(a.arguments).get("card_id") == eliminate_allies
+    )
+    result = ENGINE.apply(played, trash).state
+
+    # The trash itself, and Eliminate Allies' troops, still happen.
+    assert result.players[0].troops_garrison == 3 + 2
+    top = result.decision_stack[-1]
+    assert top.kind == "turn"
+    assert dict(top.context)["turn_owner"] == 0
+    assert dict(top.context).get("troops_recruited") in (None, 0)
+
+
+def test_navigation_trigger_after_the_turn_passed_credits_no_other_seat() -> None:
+    # 2026-09-26 review round 4, Finding 2 (Navigation), probe (b): a cross-
+    # seat misattribution, reachable without any turn closing on the same
+    # player. Card 6 option 0 (``RecruitTroops(1)``, no choice slots) routes
+    # through ``_apply_section_rewards``, whose ``update_turn_recruits`` call
+    # had no owner guard: it credits whatever turn-family frame is nearest
+    # the stack's top, regardless of whose it is. Once the Influence gain
+    # that triggered this play is the turn's last effect and the turn simply
+    # passes to the next unrevealed seat (P1), P1's fresh "turn" frame is
+    # what sits there when the queued play opens and finishes -- not P0's,
+    # who this troop belongs to [Main p. 10] [FAQ p. 4]
+    # (docs/rules/player-turns.md:137).
+    owner = _steersman((_card(6),), influence=Influence(emperor=1))
+    state, context = _closed_turn_agent_effects_state(
+        owner,
+        PlayerState(player_id=1),
+        PlayerState(player_id=2),
+        PlayerState(player_id=3),
+    )
+    gained = gain_faction_influence(state, 0, Faction.EMPEROR, 1, event_prefix="test")
+    closed = advance_after_effect(gained.state, context, gained.state.players)
+    # The turn passed to P1, not P0: P0's own AGENT_EFFECTS frame still
+    # closed, so the retroactive marker is set. That marker alone would
+    # already block the credit below, so it is reset before opening the
+    # play (2026-09-26 review round 5, Finding 5 (test gaps)): this probe
+    # is about the separate owner guard in ``_apply_section_rewards``,
+    # reachable even without any turn closing on the same player, and
+    # dropping it (leaving only the marker) must still fail this test.
+    assert dict(closed.decision_stack[-1].context)["turn_owner"] == 1
+    assert closed.pending_navigation_plays == (
+        (0, "emperor", "test:navigation:0", True),
+    )
+    unflagged = replace(
+        closed,
+        pending_navigation_plays=((0, "emperor", "test:navigation:0", False),),
+    )
+
+    opened = begin_navigation_play(unflagged).state
+    played = _play_option(opened, 0)
+
+    assert played.players[0].troops_garrison == 3 + 1
+    top = played.decision_stack[-1]
+    assert top.kind == "turn"
+    assert dict(top.context)["turn_owner"] == 1
+    assert dict(top.context).get("troops_recruited") in (None, 0)
+
+
+def test_navigation_play_queued_by_a_tech_tiles_last_effect_is_the_closed_turns() -> (
+    None
+):
+    # 2026-09-26 review, mutation gap: ``_apply_legal`` marks a Navigation
+    # play its own handler queued with ``turn_closing_player`` first and
+    # ``turn_closed_frame_owner`` only as a fallback. Replacing the first
+    # with ``None`` passed every rules test. This is the engine path that
+    # needs it: Glowglobes bought at Assembly Hall as the Agent turn's last
+    # effect runs ``advance_after_effect`` *before* its own Influence gain
+    # (``tech.apply_tech_acquisition``), so the Emperor bump to 2 queues the
+    # play unflagged, after the turn already closed and reopened a fresh
+    # bare "turn" frame for P0 (every other seat revealed). Only the
+    # engine's before/after comparison sees that close; the Agent-effects
+    # frame the purchase resolved carried no ``turn_closed`` marker for the
+    # fallback to read.
+    # Card 6's troop belongs to the closed turn (OQ-044 (d)): "그 turn에
+    # 어떤 출처에서 recruit했든 새 troop은 Conflict에 deploy할 수 있다. 이미
+    # garrison에 있던 troop을 다시 recruit한 것으로 취급해 두 개 제한을
+    # 우회할 수는 없다." [Main p. 10] [FAQ p. 4]
+    # (docs/rules/player-turns.md:137).
+    dagger = "player:0:starter:dagger:0"
+    desert_planet = "player:0:starter:dune_the_desert_planet:0"
+    owner = _steersman(
+        (_card(6),),
+        influence=Influence(emperor=1),
+        hand=(dagger, desert_planet),
+        resources=Resources(solari=4, spice=6, water=2),
+    )
+    state = _turn_state(
+        owner,
+        config=RulesetConfig(bloodlines=True, tech_module=True),
+        tech_stacks=(("glowglobes",), (), ()),
+        players=(
+            owner,
+            *(PlayerState(player_id=seat, has_revealed=True) for seat in (1, 2, 3)),
+        ),
+    )
+
+    def act(current: GameState, action_id: str, **arguments: object) -> GameState:
+        action = next(
+            a
+            for a in ENGINE.legal_actions(current, 0)
+            if a.action_id == action_id
+            and all(dict(a.arguments).get(k) == v for k, v in arguments.items())
+        )
+        return ENGINE.apply(current, action).state
+
+    visited = act(state, "agent_turn", card_id=dagger, space_id="assembly_hall")
+    visited = act(visited, "resolve_board_effect", effect="intrigue")
+    bought = act(visited, "acquire_tech", tech_id="glowglobes", faction="emperor")
+
+    assert bought.players[0].influence.emperor == 2
+    assert [frame.kind for frame in bought.decision_stack] == [
+        "turn",
+        "navigation_choice",
+    ]
+    reopened = bought.decision_stack[0]
+    assert isinstance(reopened.decision, PlayerDecision)
+    assert reopened.decision.owner == 0
+    assert dict(bought.decision_stack[-1].context).get("turn_closed") is True
+
+    played = act(bought, "play_navigation", option=0)
+
+    # Card 6's troop is still recruited, just not into the fresh turn.
+    assert played.players[0].troops_garrison == 3 + 1
+    top = played.decision_stack[-1]
+    assert top.kind == "turn"
+    assert dict(top.context)["turn_owner"] == 0
+    assert dict(top.context).get("troops_recruited") in (None, 0)
+
+    # The next Agent turn's Combat deploy: only the two garrison troops.
+    placed = act(played, "agent_turn", card_id=desert_planet, space_id="hagga_basin")
+    counts = [
+        dict(action.arguments)["count"]
+        for action in legal_combat_deployments(placed, 0)
+    ]
+    assert counts == [1, 2]
