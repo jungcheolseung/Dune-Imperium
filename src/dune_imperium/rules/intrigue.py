@@ -104,6 +104,7 @@ from dune_imperium.rules.frames import (
     replace_top_frame,
     reveal_is_open_for,
     top_frame,
+    turn_owner_of,
     update_turn_recruits,
     with_context,
 )
@@ -976,8 +977,14 @@ def apply_intrigue_rewards(state: GameState, action: DomainAction) -> RuleResult
     # like the acquisition slot's advance-before-move pattern.
     context["rewards_applied"] = True
     advanced = replace_top_frame(state, with_context(frame, context))
+    # A choice frame opened after its owner's turn closed keeps that mark
+    # for the automatic rewards too (OQ-044 (d)) [Main p. 10] [FAQ p. 4].
     applied = _apply_section_rewards(
-        advanced, action.actor, _sections(context), f"{source}:rewards"
+        advanced,
+        action.actor,
+        _sections(context),
+        f"{source}:rewards",
+        turn_closed=context.get("turn_closed") is True,
     )
     return RuleResult(state=applied.state, events=applied.events)
 
@@ -996,6 +1003,12 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
     slot = _current_slot(context)
     arguments = dict(action.arguments)
     step_source = f"{source}:slot:{slot_index}"
+    # Set by ``begin_navigation_play``/``apply_navigation_play`` when this
+    # choice frame opened after ``advance_after_effect`` had already closed
+    # the owner's turn: whatever this slot recruits or acquires must not
+    # join the fresh "turn" frame that reopened underneath, even the same
+    # player's own (OQ-044 (d)) [Main p. 10] [FAQ p. 4].
+    turn_closed = context.get("turn_closed") is True
 
     match slot:
         case AcquireCardUpTo():
@@ -1034,14 +1047,22 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
             )
         case TrashDiscardPileCard():
             result = trash_personal_card(
-                state, player, str(arguments["card_id"]), source=step_source
+                state,
+                player,
+                str(arguments["card_id"]),
+                source=step_source,
+                turn_closed=turn_closed,
             )
             # The Intrigue choice frame is on top here, not an AGENT_EFFECTS
             # frame, so ``trash_personal_card`` credited no troop-on-trash
             # trigger (Eliminate Allies) anywhere. A troop recruited during
             # the owner's own turn "from any source" may be deployed
-            # [Main p. 10] [FAQ p. 4].
-            result = credit_trash_recruits(result, player)
+            # [Main p. 10] [FAQ p. 4]. Skipped when ``turn_closed``: this
+            # choice opened after the owner's turn had already closed, so
+            # the troop must not join the fresh "turn" frame beneath
+            # (OQ-044 (d)).
+            if not turn_closed:
+                result = credit_trash_recruits(result, player)
         case AcquireTleilaxuCard():
             if action.action_id == "decline_intrigue_tleilaxu":
                 result = RuleResult(
@@ -1181,14 +1202,23 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
             else:
                 trashed_id = str(arguments["card_id"])
                 result = trash_personal_card(
-                    state, player, trashed_id, source=step_source
+                    state,
+                    player,
+                    trashed_id,
+                    source=step_source,
+                    turn_closed=turn_closed,
                 )
                 # The Intrigue choice frame is on top here, not an
                 # AGENT_EFFECTS frame, so ``trash_personal_card`` credited no
                 # troop-on-trash trigger (Eliminate Allies) anywhere. A troop
                 # recruited during the owner's own turn "from any source" may
-                # be deployed [Main p. 10] [FAQ p. 4].
-                result = credit_trash_recruits(result, player)
+                # be deployed [Main p. 10] [FAQ p. 4]. Skipped when
+                # ``turn_closed``: this choice (a Navigation card's slot,
+                # among others) opened after the owner's turn had already
+                # closed, so the troop must not join the fresh "turn" frame
+                # beneath (OQ-044 (d)).
+                if not turn_closed:
+                    result = credit_trash_recruits(result, player)
                 cost = getattr(
                     personal_card_for_instance(trashed_id), "acquisition_cost", None
                 )
@@ -1252,7 +1282,12 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
             )
         case TrashIntrigueCard(troops_if_not_twisted=troops_bonus):
             result = _trash_intrigue_hand_card(
-                state, player, str(arguments["card_id"]), troops_bonus, step_source
+                state,
+                player,
+                str(arguments["card_id"]),
+                troops_bonus,
+                step_source,
+                turn_closed=turn_closed,
             )
         case PeekTopCard():
             result = _resolve_peek(state, player, action.action_id, step_source)
@@ -1308,6 +1343,7 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
         source,
         skip_rewards=context.get("rewards_applied") is True,
         discard=context.get("separate_effect") is not True,
+        turn_closed=turn_closed,
     )
     return RuleResult(
         state=_restack(finished.state, pushed),
@@ -1409,6 +1445,9 @@ def _apply_intrigue_acquisition(
     card_id = context_str(context, "card_id", owner=_CHOICE_FRAME)
     source = context_str(context, "source", owner=_CHOICE_FRAME)
     slot_index = context_int(context, "slot", owner=_CHOICE_FRAME)
+    # See ``apply_intrigue_choice``: set when this choice opened after the
+    # owner's turn had already closed (OQ-044 (d)) [Main p. 10] [FAQ p. 4].
+    turn_closed = context.get("turn_closed") is True
     # "Put that card in your hand" overrides the discard destination only
     # while its printed condition holds at resolution time.
     to_hand = slot.to_hand_if is not None and condition_holds(
@@ -1434,6 +1473,7 @@ def _apply_intrigue_acquisition(
                 source,
                 skip_rewards=context.get("rewards_applied") is True,
                 discard=context.get("separate_effect") is not True,
+                turn_closed=turn_closed,
             )
             return RuleResult(
                 state=finished.state, events=(*skipped_events, *finished.events)
@@ -1446,6 +1486,7 @@ def _apply_intrigue_acquisition(
             str(arguments["card_id"]),
             to_hand=to_hand,
             source=step_source,
+            credit_turn_recruits=not turn_closed,
         )
     else:
         acquired = acquire_imperium_for_intrigue(
@@ -1454,6 +1495,7 @@ def _apply_intrigue_acquisition(
             str(arguments["instance_id"]),
             to_hand=to_hand,
             source=step_source,
+            credit_turn_recruits=not turn_closed,
         )
     next_state, pushed = _lift_pushed_frames(frame.frame_id, acquired.result.state)
     events = acquired.result.events
@@ -1469,6 +1511,7 @@ def _apply_intrigue_acquisition(
             source,
             skip_rewards=context.get("rewards_applied") is True,
             discard=context.get("separate_effect") is not True,
+            turn_closed=turn_closed,
         )
         next_state = finished.state
         events = (*events, *finished.events)
@@ -1491,21 +1534,46 @@ def _apply_section_rewards(
     player: int,
     sections: tuple[EffectSection, ...],
     source: str,
+    *,
+    turn_closed: bool = False,
 ) -> RuleResult:
-    """Apply the sections' automatic rewards and their turn bookkeeping."""
+    """Apply the sections' automatic rewards and their turn bookkeeping.
+
+    ``turn_closed`` marks a card whose own Navigation trigger fired after
+    ``advance_after_effect`` had already closed the owner's turn: troops
+    these sections recruit must not join the fresh "turn" frame that
+    reopened underneath, even the same player's own (OQ-044 (d))
+    [Main p. 10] [FAQ p. 4]. ``update_turn_recruits`` also finds whatever
+    turn-family frame is nearest the top regardless of whose it is, so this
+    is additionally guarded by ``turn_owner_of`` against crediting a
+    different seat's frame -- reachable here even without a close, when a
+    Navigation card's own trigger resolves after the turn simply passed to
+    the next unrevealed player.
+    """
 
     outcome = apply_rewards(state, player, automatic_rewards(sections), source=source)
     next_state = _gain_reveal_persuasion_now(state, outcome.result.state, player)
     events: list[GameEvent] = list(outcome.result.events)
-    if outcome.troops_recruited:
+    if (
+        outcome.troops_recruited
+        and not turn_closed
+        and turn_owner_of(next_state) == player
+    ):
         next_state = update_turn_recruits(
             next_state, troops_recruited=outcome.troops_recruited
         )
     if outcome.combat_icons:
         next_state = grant_combat_icon(next_state, player)
     if outcome.sandworms_replaced:
+        # Same closed-turn hole as the troop credit just above: a Navigation
+        # card's sandworm-replacement reward can fire after ``turn_closed``
+        # (OQ-044 (d)) [Main p. 10] [FAQ p. 4].
         replacement = replace_sandworms(
-            next_state, player, outcome.sandworms_replaced, source=source
+            next_state,
+            player,
+            outcome.sandworms_replaced,
+            source=source,
+            turn_closed=turn_closed,
         )
         next_state = replacement.state
         events.extend(replacement.events)
@@ -1522,7 +1590,12 @@ def _apply_section_rewards(
             )
             continue
         acquired = acquire_reserve_for_intrigue(
-            next_state, player, reserve_card_id, to_hand=False, source=source
+            next_state,
+            player,
+            reserve_card_id,
+            to_hand=False,
+            source=source,
+            credit_turn_recruits=not turn_closed,
         )
         next_state = acquired.result.state
         events.extend(acquired.result.events)
@@ -1651,8 +1724,21 @@ def _trash_intrigue_hand_card(
     card_id: str,
     troops_bonus: int,
     step_source: str,
+    *,
+    turn_closed: bool = False,
 ) -> RuleResult:
-    """Trash an Intrigue card from hand [Bloodlines p. 11]; Unnatural's troop."""
+    """Trash an Intrigue card from hand [Bloodlines p. 11]; Unnatural's troop.
+
+    ``turn_closed`` marks a choice offered by a box whose own ``advance_
+    after_effect`` call already closed the owner's turn (the same marker
+    ``apply_intrigue_choice``'s sibling ``TrashDiscardPileCard`` case
+    already reads off the choice frame's context): Unnatural's troop must
+    then not join the fresh "turn" frame that reopened underneath, even the
+    same player's own (OQ-044 (d)) [Main p. 10] [FAQ p. 4]. Unnatural is
+    played directly from hand today, never as a follow-up reached this way,
+    so this is passed only for the same future-proofing consistency as its
+    sibling case.
+    """
 
     owner = state.players[player]
     twisted = intrigue_card_for_instance(card_id).twisted
@@ -1678,7 +1764,7 @@ def _trash_intrigue_hand_card(
         players=replace_player(state.players, next_owner),
         intrigue_trash=(*state.intrigue_trash, card_id),
     )
-    if recruited:
+    if recruited and not turn_closed:
         next_state = update_turn_recruits(next_state, troops_recruited=recruited)
     return RuleResult(state=next_state, events=tuple(events))
 
@@ -1745,6 +1831,7 @@ def finish_intrigue_play(
     *,
     skip_rewards: bool = False,
     discard: bool = True,
+    turn_closed: bool = False,
 ) -> RuleResult:
     """Apply pending automatic rewards, discard the card, and update turns.
 
@@ -1752,13 +1839,16 @@ def finish_intrigue_play(
     rewards mid-frame at a point of their choosing (OQ-015). Without
     ``discard`` only one line of a separate-lines card finished: the card
     stays in play under its ``intrigue_effects`` frame, which closes on its
-    own once no line can follow (OQ-058).
+    own once no line can follow (OQ-058). ``turn_closed`` is a Navigation
+    play's own flag (OQ-044 (d)): see ``_apply_section_rewards``.
     """
 
     applied = (
         RuleResult(state=state)
         if skip_rewards
-        else _apply_section_rewards(state, player, sections, source)
+        else _apply_section_rewards(
+            state, player, sections, source, turn_closed=turn_closed
+        )
     )
     resolved = applied.state
     if not discard:

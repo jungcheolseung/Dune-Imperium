@@ -15,14 +15,28 @@ from dune_imperium.rules.card_trash import credit_trash_recruits, trash_personal
 from dune_imperium.rules.frames import FrameKind, context_str, owned_top_frame
 
 
-def optional_trash_frame(player: int, source: str) -> DecisionFrame:
-    """Return the decision frame offering one optional trash."""
+def optional_trash_frame(
+    player: int, source: str, *, turn_closed: bool = False
+) -> DecisionFrame:
+    """Return the decision frame offering one optional trash.
+
+    ``turn_closed`` marks a trash offered by a box whose ``advance_after_
+    effect`` call already closed the owner's turn before this frame was
+    pushed: a troop the trash recruits then belongs to the turn that just
+    closed, not to whatever fresh "turn" frame happens to sit beneath this
+    one (OQ-044 (d), the same principle ``spy_placement_frame`` and
+    ``mark_contract_spy_after_turn`` already carry).
+    """
 
     return DecisionFrame(
         kind=FrameKind.OPTIONAL_TRASH,
         frame_id=f"{source}:optional_trash",
         decision=PlayerDecision(owner=player, prompt="Trash a card or decline"),
-        context=(("player", player), ("source", source)),
+        context=(
+            ("player", player),
+            ("source", source),
+            *((("turn_closed", True),) if turn_closed else ()),
+        ),
     )
 
 
@@ -69,6 +83,7 @@ def apply_optional_trash(state: GameState, action: DomainAction) -> RuleResult:
             ),
         )
     card_id = str(dict(action.arguments)["card_id"])
+    turn_closed = dict(frame.context).get("turn_closed") is True
     top = popped.decision_stack[-1] if popped.decision_stack else None
     credited_in_place = (
         top is not None
@@ -76,8 +91,10 @@ def apply_optional_trash(state: GameState, action: DomainAction) -> RuleResult:
         and isinstance(top.decision, PlayerDecision)
         and top.decision.owner == action.actor
     )
-    trashed = trash_personal_card(popped, action.actor, card_id, source=source)
-    if not credited_in_place:
+    trashed = trash_personal_card(
+        popped, action.actor, card_id, source=source, turn_closed=turn_closed
+    )
+    if not credited_in_place and not turn_closed:
         # trash_personal_card's own crediting (card_trash._with_recruited_
         # troops) only fires when the owner's AGENT_EFFECTS frame sits
         # directly beneath the OPTIONAL_TRASH frame just popped. With more
@@ -92,6 +109,11 @@ def apply_optional_trash(state: GameState, action: DomainAction) -> RuleResult:
         # owner's still-open turn frame past any such frame and is a no-op
         # outside the owner's own turn, so this never double-counts and
         # never credits a trash resolved during Combat or another seat's
-        # turn.
+        # turn. When the pushing box's own ``advance_after_effect`` already
+        # closed the owner's turn (``turn_closed``), ``turn_owner_of`` would
+        # otherwise find and credit the fresh "turn" frame that reopened
+        # underneath -- possibly for the same player, if every other seat
+        # has revealed -- which is never the turn this trash belongs to
+        # (OQ-044 (d)).
         trashed = credit_trash_recruits(trashed, action.actor)
     return trashed

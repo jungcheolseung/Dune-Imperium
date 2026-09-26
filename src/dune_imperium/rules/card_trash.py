@@ -22,12 +22,19 @@ def trash_personal_card(
     *,
     source: str,
     allow_deck: bool = False,
+    turn_closed: bool = False,
 ) -> RuleResult:
     """Remove one owned card from an eligible zone and resolve its trash trigger.
 
     Deck trashing is an explicit exception used by card effects such as Long
     Live the Fighters; ordinary trash callers remain limited to hand, discard,
     and in-play cards.
+
+    ``turn_closed`` marks a trash whose caller already knows the owner's turn
+    is closed (an ``OPTIONAL_TRASH`` frame carrying its own ``turn_closed``
+    marker): a Sardaukar Standard Commander this trash queues must not join
+    whatever fresh "turn" frame the queued Skill choice eventually opens on,
+    even the same player's own (OQ-044 (d)) [Main p. 10] [FAQ p. 4].
     """
 
     if not 0 <= player < state.config.players:
@@ -134,7 +141,7 @@ def trash_personal_card(
         if state.sardaukar_commanders_bank > 0:
             pending_skill_choices = (
                 *pending_skill_choices,
-                (player, card_id, f"{source}:trash:{card_id}"),
+                (player, card_id, f"{source}:trash:{card_id}", turn_closed),
             )
         else:
             events.append(

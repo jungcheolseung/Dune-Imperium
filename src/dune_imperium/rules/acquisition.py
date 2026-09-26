@@ -567,6 +567,7 @@ def _acquire_imperium_to_hand_with_solari(
             context, "troops_recruited", owner="Agent-turn effect frame"
         )
         context["troops_recruited"] = previous + contract_recruited
+    turn_closed = False
     if places_spy:
         next_state = replace(
             prepared,
@@ -581,6 +582,11 @@ def _acquire_imperium_to_hand_with_solari(
             context,
             prepared.players,
         )
+        # See ``_acquire_by_agent_card``: a Research box's TRASH_AND_
+        # SPECIMEN trash offer must not credit the fresh "turn" frame this
+        # ``advance_after_effect`` call may already have reopened for this
+        # same player [Main p. 10] [FAQ p. 4] (OQ-044 (d)).
+        turn_closed = resumed.decision_stack[-1].kind == FrameKind.TURN
         contracts = begin_contract_gain(
             resumed,
             action.actor,
@@ -595,10 +601,11 @@ def _acquire_imperium_to_hand_with_solari(
             context,
             prepared.players,
         )
+        turn_closed = next_state.decision_stack[-1].kind == FrameKind.TURN
     # A Research box (Immortality) opens its direction choice above the
     # settled effect frame, never inside it.
     tracked = apply_acquisition_track_effects(
-        next_state, action.actor, definition, source=source
+        next_state, action.actor, definition, source=source, turn_closed=turn_closed
     )
     next_state = tracked.state
     acquisition_events = (*acquisition_events, *tracked.events)
@@ -920,17 +927,29 @@ def apply_acquisition_track_effects(
     definition: ImperiumCardEntry,
     *,
     source: str,
+    turn_closed: bool = False,
 ) -> RuleResult:
     """Pay an acquire box that moves a Bene Tleilax token (Immortality).
 
     Spiritual Fervor's box researches and Subject X-137's advances the
     Tleilaxu token [card faces]; both resolve after the card has reached
     its zone, and the research may open a direction choice.
+
+    ``turn_closed`` marks an acquisition whose caller already closed the
+    owner's turn before this ran (Tleilaxu Master, the Leader's Signet): a
+    TRASH_AND_SPECIMEN Research bonus's trash offer must not credit the
+    fresh "turn" frame that reopened underneath [Main p. 10] [FAQ p. 4]
+    (OQ-044 (d)).
     """
 
     effect = definition.acquisition_effect
     if effect is PersonalCardAcquisitionEffect.RESEARCH:
-        return advance_research(state, player, source=f"{source}:acquisition_bonus")
+        return advance_research(
+            state,
+            player,
+            source=f"{source}:acquisition_bonus",
+            turn_closed=turn_closed,
+        )
     if effect is PersonalCardAcquisitionEffect.ADVANCE_TLEILAXU:
         return advance_tleilaxu(
             state, player, 1, source=f"{source}:acquisition_bonus"
@@ -1601,8 +1620,16 @@ def acquire_imperium_for_intrigue(
         )
         prepared = gained.state
         acquisition_events = (*acquisition_events, *gained.events)
+    # When the caller already closed the owner's turn (``credit_turn_
+    # recruits`` false), a Research bonus's TRASH_AND_SPECIMEN trash offer
+    # must not credit the fresh "turn" frame that reopened underneath
+    # either [Main p. 10] [FAQ p. 4] (OQ-044 (d)).
     tracked = apply_acquisition_track_effects(
-        prepared, player, definition, source=source
+        prepared,
+        player,
+        definition,
+        source=source,
+        turn_closed=not credit_turn_recruits,
     )
     prepared = tracked.state
     acquisition_events = (*acquisition_events, *tracked.events)

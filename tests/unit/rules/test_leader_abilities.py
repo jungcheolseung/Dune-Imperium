@@ -5,7 +5,16 @@ from dataclasses import replace
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.content.schema import CardDefinition
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS, Faction
+from dune_imperium.content.uprising.contracts import (
+    CONTRACT_SOURCES,
+    CONTRACTS_BY_ID,
+    ContractCondition,
+    ContractConditionKind,
+    ContractDefinition,
+    ContractReward,
+)
 from dune_imperium.core import (
     DecisionFrame,
     DomainAction,
@@ -26,6 +35,7 @@ from dune_imperium.rules.board_effects import (
     resolve_board_effect,
 )
 from dune_imperium.rules.engine import UprisingRulesEngine
+from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.influence import (
     gain_faction_influence,
     lose_faction_influence,
@@ -55,21 +65,23 @@ def _signet_instance(player: int = 0) -> str:
     return f"player:{player}:starter:signet_ring:0"
 
 
-def _turn_state(owner: PlayerState) -> GameState:
-    return GameState(
-        config=RulesetConfig(),
-        seed=1,
-        phase=GamePhase.PLAYER_TURNS,
-        round_number=1,
-        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
-        decision_stack=(
+def _turn_state(owner: PlayerState, **overrides: object) -> GameState:
+    values: dict[str, object] = {
+        "config": RulesetConfig(),
+        "seed": 1,
+        "phase": GamePhase.PLAYER_TURNS,
+        "round_number": 1,
+        "players": (owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        "decision_stack": (
             DecisionFrame(
                 kind="turn",
                 frame_id="round:1:turn:0",
                 decision=PlayerDecision(owner=0, prompt="Choose a turn"),
             ),
         ),
-    )
+    }
+    values.update(overrides)
+    return GameState(**values)  # type: ignore[arg-type]
 
 
 def _signet_action_to(state: GameState, space_id: str) -> DomainAction:
@@ -1570,6 +1582,85 @@ def test_chroniclers_insight_acquires_a_one_cost_card_to_hand() -> None:
     assert (
         dict(result.state.decision_stack[-1].context)["pending_agent_effect"] is False
     )
+
+
+def _fake_signet_troop_contract(card_id: str, target: str) -> ContractDefinition:
+    return ContractDefinition(
+        card=CardDefinition(
+            card_id=card_id,
+            name="Fake Troop Acquire",
+            sources=CONTRACT_SOURCES,
+        ),
+        condition=ContractCondition(ContractConditionKind.ACQUIRE_CARD, target=target),
+        reward=ContractReward(troops=1),
+    )
+
+
+def test_chroniclers_insight_troop_reward_does_not_join_the_next_agent_turn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test gap flagged by mutation testing on ``ce533c4``: forcing
+    # ``apply_leader_signet_acquire``'s ``turn_closed`` to ``False``
+    # survived the rules suite, since no acquisition this Signet reaches
+    # currently recruits a troop (that commit's own note). A monkeypatched
+    # Acquire Contract (as ``test_acquisition.py``'s ``_fake_troop_
+    # contract``) exercises the same shape as a real troop-rewarding
+    # acquisition would: Chronicler's Insight resolved as the turn's last
+    # effect, with every other seat already revealed, closes and reopens a
+    # fresh "turn" frame for this same player; a troop the completed
+    # Contract's reward recruits here must not join that fresh frame
+    # ("credit_turn_recruits=not turn_closed", ``4e29e27``) [Main p. 10]
+    # [FAQ p. 4] (docs/rules/player-turns.md:137).
+    target = "imperium:sardaukar_soldier:0"
+    monkeypatch.setitem(
+        CONTRACTS_BY_ID,
+        "fake_troop_acquire_signet",
+        _fake_signet_troop_contract("fake_troop_acquire_signet", "sardaukar_soldier"),
+    )
+    owner = PlayerState(
+        player_id=0,
+        leader_id="princess_irulan",
+        hand=(_signet_instance(),),
+        active_contract_ids=("contract:fake_troop_acquire_signet",),
+    )
+    state = _turn_state(
+        owner,
+        config=RulesetConfig(choam_module=True),
+        players=(
+            owner,
+            PlayerState(player_id=1, has_revealed=True),
+            PlayerState(player_id=2, has_revealed=True),
+            PlayerState(player_id=3, has_revealed=True),
+        ),
+        imperium_row=(target, "imperium:calculus_of_power:0"),
+        imperium_deck=("imperium:overthrow:0",),
+        intrigue_deck=("intrigue:test",),
+    )
+    placed = apply_agent_action(state, _signet_action_to(state, "assembly_hall")).state
+    # Assembly Hall's own Intrigue icon is a separate pending effect from
+    # the Signet's own box [Main p. 9] (OQ-027); resolve it first so the
+    # Signet acquisition below is the turn's last one. Assembly Hall is not
+    # a Combat space, so nothing else keeps a deployment window open
+    # (OQ-029).
+    for board_action in legal_board_effect_actions(placed, 0):
+        placed = resolve_board_effect(placed, board_action).state
+    garrison = placed.players[0].troops_garrison
+
+    acquire = next(
+        action
+        for action in legal_leader_signet_actions(placed, 0)
+        if action.action_id == "acquire_leader_imperium"
+    )
+    result = apply_leader_signet_acquire(placed, acquire)
+
+    assert result.state.players[0].troops_garrison == garrison + 1
+    assert result.state.players[0].completed_contract_ids == (
+        "contract:fake_troop_acquire_signet",
+    )
+    top = result.state.decision_stack[-1]
+    assert top.kind == FrameKind.TURN
+    assert dict(top.context)["turn_owner"] == 0
+    assert dict(top.context).get("troops_recruited") in (None, 0)
 
 
 def test_chroniclers_insight_still_acquires_once_the_imperium_deck_is_empty() -> None:

@@ -80,7 +80,7 @@ def gain_faction_influence(
                 # gain order (OQ-012, OQ-039).
                 pending_navigation = (
                     *pending_navigation,
-                    (player, faction.value, f"{event_prefix}:navigation:{step}"),
+                    (player, faction.value, f"{event_prefix}:navigation:{step}", False),
                 )
 
         if next_amount == 4:

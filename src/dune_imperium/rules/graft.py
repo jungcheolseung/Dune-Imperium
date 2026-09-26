@@ -296,8 +296,19 @@ def resolve_usurp_trash(state: GameState) -> RuleResult:
     )
     if card_id not in (*owner.hand, *owner.deck, *owner.discard_pile, *owner.in_play):
         return RuleResult(state=cleared, events=(event,))
+    # ``usurp_trash_is_queued`` only fires once ``_agent_turn_is_open_for``
+    # is False, so the owner's turn has always already closed by the time
+    # this trash resolves: a Sardaukar Standard Commander it queues must not
+    # join whatever fresh "turn" frame the queued Skill choice eventually
+    # opens on, even the same player's own (OQ-044 (d)) [Main p. 10]
+    # [FAQ p. 4].
     trashed = trash_personal_card(
-        cleared, owner.player_id, card_id, source=source, allow_deck=True
+        cleared,
+        owner.player_id,
+        card_id,
+        source=source,
+        allow_deck=True,
+        turn_closed=True,
     )
     return RuleResult(state=trashed.state, events=(event, *trashed.events))
 

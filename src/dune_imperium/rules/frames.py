@@ -313,6 +313,33 @@ def turn_closing_player(before: GameState, after: GameState) -> int | None:
     return None
 
 
+def turn_closed_frame_owner(state: GameState) -> int | None:
+    """Return the owner of a top decision frame explicitly marked ``turn_closed``.
+
+    Several follow-up frames (a ``RESEARCH_BONUS`` pick, a
+    ``RESEARCH_ADVANCE`` direction choice, an ``OPTIONAL_TRASH`` offer) are
+    pushed by a box whose own ``advance_after_effect`` call already closed
+    the owner's turn (OQ-044 (d)); their pushing callers stamp
+    ``("turn_closed", True)`` on them for exactly this reason. When the
+    action that resolves such a frame is a *later* action than the one that
+    closed the turn, ``turn_closing_player``'s own before/after comparison
+    of that single action can no longer see the close (the "before" state
+    already shows a bare turn frame, not the AGENT_EFFECTS or REVEAL frame
+    it requires) [Main p. 10] [FAQ p. 4]. This reads the marker straight off
+    the frame instead, so ``complete_alliance_contracts`` can still exclude
+    an Alliance the frame's own choice completes.
+    """
+
+    if not state.decision_stack:
+        return None
+    frame = state.decision_stack[-1]
+    if not isinstance(frame.decision, PlayerDecision):
+        return None
+    if dict(frame.context).get("turn_closed") is not True:
+        return None
+    return frame.decision.owner
+
+
 def reveal_is_open_for(state: GameState, player: int) -> bool:
     """Return whether ``player``'s Reveal frame is on the decision stack."""
 

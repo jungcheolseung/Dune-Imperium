@@ -183,7 +183,7 @@ def begin_navigation_play(state: GameState) -> RuleResult:
 
     if not state.pending_navigation_plays:
         raise ValueError("there is no pending Navigation play")
-    player, faction, source = state.pending_navigation_plays[0]
+    player, faction, source, turn_closed = state.pending_navigation_plays[0]
     remaining = replace(
         state, pending_navigation_plays=state.pending_navigation_plays[1:]
     )
@@ -236,7 +236,18 @@ def begin_navigation_play(state: GameState) -> RuleResult:
         kind=FrameKind.NAVIGATION_CHOICE,
         frame_id=f"{source}:choice",
         decision=PlayerDecision(owner=player, prompt="Play the Navigation card"),
-        context=(("card_id", card_id), ("faction", faction), ("source", source)),
+        context=(
+            ("card_id", card_id),
+            ("faction", faction),
+            ("source", source),
+            # ``turn_closed`` marks a trigger that fired after
+            # ``advance_after_effect`` had already closed the owner's turn
+            # (``pending_navigation_plays``' own flag): whatever this card
+            # recruits or completes must not join the fresh "turn" frame
+            # that reopened underneath, even the same player's own
+            # (OQ-044 (d)) [Main p. 10] [FAQ p. 4].
+            *((("turn_closed", True),) if turn_closed else ()),
+        ),
     )
     return RuleResult(state=working.push_decision(frame))
 
@@ -289,6 +300,7 @@ def apply_navigation_play(state: GameState, action: DomainAction) -> RuleResult:
     context = dict(frame.context)
     card_id = context_str(context, "card_id", owner="Navigation frame")
     source = context_str(context, "source", owner="Navigation frame")
+    turn_closed = context.get("turn_closed") is True
     if action.action_id == "decline_navigation":
         # The arrow cost was not paid [Main p. 20]: the card is still played
         # and spent, like one that fizzles (OQ-039 (b)).
@@ -365,8 +377,15 @@ def apply_navigation_play(state: GameState, action: DomainAction) -> RuleResult:
                 ("shield_wall_at_play", state.shield_wall_present),
                 ("slot", 0),
                 ("source", source),
+                # Carried from the NAVIGATION_CHOICE frame: whatever this
+                # choice recruits or acquires must not join a fresh "turn"
+                # frame that reopened for the owner before this card could
+                # be played (OQ-044 (d)) [Main p. 10] [FAQ p. 4].
+                *((("turn_closed", True),) if turn_closed else ()),
             ),
         )
         return RuleResult(state=popped.push_decision(choice), events=tuple(events))
-    finished = finish_intrigue_play(popped, player, card_id, sections, source)
+    finished = finish_intrigue_play(
+        popped, player, card_id, sections, source, turn_closed=turn_closed
+    )
     return RuleResult(state=finished.state, events=(*events, *finished.events))

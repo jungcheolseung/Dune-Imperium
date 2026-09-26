@@ -317,6 +317,10 @@ def test_paid_recruit_from_supply_once_per_turn() -> None:
     assert legal_commander_recruit_actions(recruited, 0) == ()
     # Recruited this turn at a Combat space: it may join the deployment.
     assert legal_commander_deployments(recruited, 0) != ()
+    # Finding 2's Reveal branch (``turn_owner_of(next_state) == player``)
+    # must not double-credit this Agent-turn recruit, which the in-place
+    # ``context["troops_recruited"]`` update already counts once.
+    assert dict(recruited.decision_stack[-1].context)["troops_recruited"] == 1
 
 
 def test_paid_recruit_is_offered_in_the_reveal_turn_to_the_garrison() -> None:
@@ -330,6 +334,27 @@ def test_paid_recruit_is_offered_in_the_reveal_turn_to_the_garrison() -> None:
     assert recruited.players[0].commanders_garrison == 1
     assert recruited.players[0].commanders_conflict == 0
     assert recruited.decision_stack[-1].kind == "reveal"
+
+
+def test_paid_recruit_in_reveal_joins_the_shared_allowance() -> None:
+    # Finding 2 (2026-09-26 review round 3): ``apply_commander_recruit``
+    # only credited an owned AGENT_EFFECTS frame's ``troops_recruited``; in
+    # a Reveal turn no such frame sits on top, so this once-per-turn
+    # recruit reached the garrison without ever joining the Combat
+    # 아이콘's shared deploy allowance. "Once per turn, Agent or Reveal"
+    # [Bloodlines p. 4]; "이번 turn에 recruit한 유닛 전부와 garrison에서
+    # 최대 두 개" [Bloodlines pp. 5, 12] applies to either alike
+    # (docs/rules/player-turns.md:137) [Main p. 10] [FAQ p. 4].
+    state = _turn_state(_owner(commanders_supply=1, resources=Resources(solari=2)))
+    state = begin_reveal_turn(
+        state, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+
+    (recruit,) = legal_commander_recruit_actions(state, 0)
+    recruited = apply_commander_recruit(state, recruit).state
+
+    assert recruited.decision_stack[-1].kind == "reveal"
+    assert dict(recruited.decision_stack[-1].context)["reveal_troops_recruited"] == 1
 
 
 def test_paid_recruit_needs_supply_solari_and_the_option() -> None:

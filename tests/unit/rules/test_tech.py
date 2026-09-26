@@ -43,7 +43,10 @@ from dune_imperium.rules.board_effects import (
 )
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.leader_abilities import IMPLEMENTED_ABILITY_LEADER_IDS
-from dune_imperium.rules.optional_trash import legal_optional_trash_actions
+from dune_imperium.rules.optional_trash import (
+    apply_optional_trash,
+    legal_optional_trash_actions,
+)
 from dune_imperium.rules.setup import create_draft_initial_state, create_initial_state
 from dune_imperium.rules.spy_moves import (
     apply_spy_placement,
@@ -957,6 +960,48 @@ def test_planetary_array_opens_an_optional_trash_after_the_visit() -> None:
     actions = legal_optional_trash_actions(bought, 0)
     assert actions[0].action_id == "decline_optional_trash"
     assert len(actions) == 1 + 4 + 1  # hand (Dagger played) + played card
+
+
+def test_planetary_array_last_effect_does_not_credit_the_next_turn() -> None:
+    # 2026-09-26 review round 4, minor (test gap): mutation testing found
+    # that dropping the ``turn_closed`` marker from Planetary Array's own
+    # ``optional_trash_frame`` call (``tech.apply_tech_acquisition``) left
+    # all 1356 rules tests passing; nothing exercised this tile as the
+    # Agent turn's very last effect. Bought here with every other seat
+    # revealed, the acquisition's own ``advance_after_effect`` closes and
+    # reopens a fresh "turn" frame for this same player before the trash
+    # offer even exists; Eliminate Allies' troops must not join it. "그
+    # turn에 어떤 출처에서 recruit했든 새 troop은 Conflict에 deploy할 수
+    # 있다..." [Main p. 10] [FAQ p. 4] (docs/rules/player-turns.md:137).
+    eliminate_allies = "imperium:eliminate_allies:0"
+    owner = _owner(hand=(*starting_deck_instance_ids(0)[:5], eliminate_allies))
+    state = _turn_state(
+        owner,
+        stacks=(("planetary_array",), (), ()),
+        players=(
+            owner,
+            PlayerState(player_id=1, has_revealed=True),
+            PlayerState(player_id=2, has_revealed=True),
+            PlayerState(player_id=3, has_revealed=True),
+        ),
+    )
+    visited = _visit(state, "assembly_hall")
+    bought = _acquire(visited, "planetary_array")
+    assert bought.decision_stack[-1].kind == "optional_trash"
+    assert dict(bought.decision_stack[-1].context)["turn_closed"] is True
+
+    trash = next(
+        a
+        for a in legal_optional_trash_actions(bought, 0)
+        if dict(a.arguments).get("card_id") == eliminate_allies
+    )
+    trashed = apply_optional_trash(bought, trash).state
+
+    assert trashed.players[0].troops_garrison == 3 + 2
+    top = trashed.decision_stack[-1]
+    assert top.kind == "turn"
+    assert dict(top.context)["turn_owner"] == 0
+    assert dict(top.context).get("troops_recruited") in (None, 0)
 
 
 def test_spy_drones_place_two_spies_with_deep_cover() -> None:
