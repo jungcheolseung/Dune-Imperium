@@ -27,8 +27,10 @@ from dune_imperium.rules import card_trash
 from dune_imperium.rules.acquisition import apply_reserve_acquisition
 from dune_imperium.rules.agent_effects import (
     apply_agent_card_discard,
+    apply_agent_card_trash,
     legal_agent_card_discard_actions,
     legal_agent_card_icon_actions,
+    legal_agent_card_trash_actions,
     resolve_agent_card_effect,
     resolve_agent_card_icon,
 )
@@ -737,6 +739,37 @@ def test_eliminate_allies_recruits_two_troops_when_trashed() -> None:
     assert card in owner.trashed
     # Recruited during the Agent turn: they join the deployable count
     assert dict(result.state.decision_stack[-1].context)["troops_recruited"] == 2
+
+
+def test_eliminate_allies_box_may_trash_itself_and_keep_its_troops() -> None:
+    # Its own trash icon may pick the card itself: "일반 trash 아이콘은
+    # hand, discard pile, in play 가운데 카드 1장을 대상으로 한다", and a
+    # card played on an Agent turn is in play [Main p. 20]
+    # (docs/rules/uprising-systems.md:17-18). The two troops join the
+    # turn's allowance [Main p. 10] [FAQ p. 4] (docs/rules/player-turns.md:
+    # 137) through the box's chosen-card trash, whose context is read before
+    # the trash (``keep_trash_recruits``).
+    card = _card("eliminate_allies")
+    owner = _owner(
+        hand=(card,),
+        spies_supply=2,
+        spy_post_ids=("emperor-sardaukar-dutiful-service",),
+    )
+    state = _play(_state(owner), card, "dutiful_service")
+    before = state.players[0].troops_garrison
+    action = next(
+        a
+        for a in legal_agent_card_trash_actions(state, 0)
+        if dict(a.arguments).get("card_id") == card
+    )
+
+    result = apply_agent_card_trash(state, action).state
+
+    assert card in result.players[0].trashed
+    assert result.players[0].troops_garrison == before + 2
+    frame = result.decision_stack[-1]
+    assert frame.kind == FrameKind.AGENT_EFFECTS
+    assert dict(frame.context)["troops_recruited"] == 2
 
 
 def test_corrupt_bureaucrat_discard_pays_three_solari() -> None:
