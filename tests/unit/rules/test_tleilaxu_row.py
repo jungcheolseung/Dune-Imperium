@@ -209,6 +209,45 @@ def test_reclaimed_forces_stays_and_offers_troops_or_tleilaxu() -> None:
     assert tleilaxu.state.players[0].tleilaxu_space == 1
 
 
+def test_reclaimed_forces_troops_choice_fires_call_to_arms() -> None:
+    # User ruling (2026-09-26, OQ-066): "acquire 발동하지. 룰북 보면 acquire는
+    # 하지만 카드 열에서 안 없어지는걸로 표현되어 있지 않나" -- choosing an
+    # effect on Reclaimed Forces is still acquiring a card, just one that is
+    # "left in place" instead of taken [Immortality p. 9], same as any other
+    # Tleilaxu card ("You acquire them during your Reveal turn"
+    # [Immortality p. 8]). So a face-up Call to Arms ("During your Reveal
+    # turn this round, whenever you acquire a card:" [Call to Arms card])
+    # fires for it too. It used to fire only for Row cards, not for
+    # Reclaimed Forces.
+    call_to_arms = "intrigue:call_to_arms:0"
+    state = _reveal_state(_owner(intrigue_faceup=(call_to_arms,)))
+
+    result = apply_tleilaxu_acquisition(state, _actions(state)["reclaimed:troops"])
+
+    owner = result.state.players[0]
+    # Reclaimed Forces' own 2 troops, plus 1 more from Call to Arms.
+    assert owner.troops_garrison == 6
+    assert "intrigue_triggered" in [event.kind for event in result.events]
+    assert owner.intrigue_faceup == (call_to_arms,)
+    # The trigger's troop is not part of Reclaimed Forces' own recruit count.
+    assert dict(result.state.decision_stack[-1].context)["reveal_troops_recruited"] == 2
+
+
+def test_reclaimed_forces_tleilaxu_choice_fires_call_to_arms() -> None:
+    # Same ruling as above (OQ-066), exercised on the Tleilaxu-track choice:
+    # Call to Arms fires for any acquisition, not only the troops effect.
+    call_to_arms = "intrigue:call_to_arms:0"
+    state = _reveal_state(_owner(intrigue_faceup=(call_to_arms,)))
+
+    result = apply_tleilaxu_acquisition(state, _actions(state)["reclaimed:tleilaxu"])
+
+    owner = result.state.players[0]
+    assert owner.tleilaxu_space == 1
+    assert owner.troops_garrison == 4
+    assert "intrigue_triggered" in [event.kind for event in result.events]
+    assert owner.intrigue_faceup == (call_to_arms,)
+
+
 def _agent_turn(card_id: str, space_id: str, **overrides: object) -> GameState:
     deck = starting_deck_instance_ids(0, immortality=True)
     owner = _owner(hand=(card_id,), deck=deck, **overrides)

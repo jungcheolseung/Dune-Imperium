@@ -214,19 +214,35 @@ def _apply_reclaimed_forces(
         advanced = advance_tleilaxu(
             paid, player, 1, source=f"{source}:reclaimed_forces"
         )
-        return RuleResult(state=advanced.state, events=(event, *advanced.events))
+        # "In many ways, Tleilaxu cards are similar to Imperium cards. You
+        # acquire them during your Reveal turn" [Immortality p. 8], and
+        # Reclaimed Forces is acquired the same way, just left in place
+        # instead of taken to hand [Immortality p. 9] (user ruling,
+        # 2026-09-26, OQ-066): a face-up Call to Arms ("During your Reveal
+        # turn this round, whenever you acquire a card:" [Call to Arms card])
+        # fires after the chosen effect (OQ-012).
+        fired = fire_reveal_acquisition_intrigue(
+            advanced.state, player, source=f"{source}:reclaimed_forces"
+        )
+        return RuleResult(
+            state=fired.state, events=(event, *advanced.events, *fired.events)
+        )
     recruited_owner, recruited = recruit_troops(owner, 2)
     next_state = _record_reveal_recruits(
         replace(state, players=replace_player(state.players, recruited_owner)),
         recruited,
     )
+    fired = fire_reveal_acquisition_intrigue(
+        next_state, player, source=f"{source}:reclaimed_forces"
+    )
     return RuleResult(
-        state=next_state,
+        state=fired.state,
         events=(
             event,
             *recruit_shortfall_events(
                 f"{source}:reclaimed_forces", player, 2, recruited
             ),
+            *fired.events,
         ),
     )
 
