@@ -74,6 +74,7 @@ Uprising setup에 다음 단계를 더하거나 바꾼다. `[Immortality pp. 4-5
 
 - Tleilaxu 카드는 Imperium 카드와 비슷하다: Reveal turn에 acquire해 discard pile에 놓고, Agent turn에 play하거나 Reveal turn에 reveal한다. 다만 Tleilaxu Row에서 오고 Persuasion 대신 specimen을 비용으로 낸다. `[Immortality p. 8]`
 - Tleilaxu Row는 항상 카드 2장과 Reclaimed Forces를 갖춰야 하며, 모자라면 Tleilaxu deck 맨 위에서 보충한다. Reclaimed Forces는 Row에서 제거되지 않는다: "acquire"하면 효과 하나를 고르고(troop 2 recruit 또는 Tleilaxu 1) 카드는 그 자리에 남긴다. 그 비용은 카드에 인쇄된 specimen 3이다. `[Immortality p. 9]` `[Reclaimed Forces card]`
+- Reclaimed Forces의 "acquire" 역시 다른 Tleilaxu 카드와 마찬가지로 카드를 "acquire"하는 것이며(카드가 Row에 남는 점만 다르다), "whenever you acquire a card" 트리거(예: Call to Arms)의 대상이 된다(사용자 판정, 2026-09-26, OQ-066). `[Immortality p. 9]`
 - Imperium Row에서 카드를 acquire하는 효과로는 Tleilaxu 카드를 acquire할 수 없고, Persuasion 비용을 참조·수정하는 효과도 쓸 수 없다. `[Immortality p. 9]`
 - Tleilaxu deck 18장은 [implementation-audits/immortality.md](../implementation-audits/immortality.md)에 카드면 전사로 기록한다. `[Tleilaxu card faces]`
 
