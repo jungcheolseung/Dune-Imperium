@@ -244,6 +244,66 @@ def test_paying_spice_for_a_tile_does_not_undo_spice_gained_this_turn() -> None:
     assert condition_holds(bought, 0, GainedSpiceThisTurn(1))
 
 
+def test_a_tile_bought_mid_placement_still_counts_toward_a_harvest_contract() -> None:
+    # A Harvest contract is met by "sending an Agent to a Maker board space
+    # and gaining the amount of spice shown during that turn (in total,
+    # including from sources other than the space itself)" [Main p. 16]
+    # (docs/rules/choam-module.md). The Agent frame counts the gain as the
+    # Spice now, less the Spice at placement, plus what was spent after it;
+    # a Tech tile bought through Rapid Engineering's frame on top of the
+    # Agent turn must be recorded as spent there, or its price hides gains.
+    from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
+    from dune_imperium.rules.contracts import legal_contract_completion_actions
+
+    def card(card_id: str) -> str:
+        return next(
+            instance
+            for instance in imperium_deck_instance_ids(True)
+            if f":{card_id}:" in instance
+        )
+
+    desert_power = card("desert_power")
+    owner = PlayerState(
+        player_id=0,
+        hand=(desert_power, card("smuggler_s_haven")),
+        deck=(card("smuggler_s_harvester"),),
+        intrigue_cards=("intrigue:rapid_engineering:0",),
+        active_contract_ids=("contract:harvest_4",),
+        resources=Resources(water=1),
+    )
+    state = _turn_state(
+        owner,
+        stacks=(("gene_locked_vault",), ("glowglobes",), ("plasteel_blades",)),
+        config=TECH_CHOAM,
+    )
+    engine = UprisingRulesEngine()
+
+    def take(current: GameState, action_id: str, **arguments: object) -> GameState:
+        action = next(
+            action
+            for action in engine.legal_actions(current, 0)
+            if action.action_id == action_id
+            and all(dict(action.arguments).get(k) == v for k, v in arguments.items())
+        )
+        return engine.apply(current, action).state
+
+    placed = take(state, "agent_turn", card_id=desert_power, space_id="hagga_basin")
+    gained = take(placed, "resolve_agent_card_effect")  # Desert Power: +2 spice
+    plotted = take(take(gained, "play_intrigue"), "choose_intrigue_discard")
+    bought = take(plotted, "acquire_tech", tech_id="gene_locked_vault", choice="card")
+
+    assert bought.decision_stack[-1].kind == "agent_effects"
+    context = dict(bought.decision_stack[-1].context)
+    assert context["spice_spent_after_placement"] == 1
+    harvested = take(bought, "harvest_maker_spice")
+    # 2 + 2 Spice gained this turn, 3 left after the tile.
+    assert harvested.players[0].resources.spice == 3
+    assert [
+        dict(action.arguments)["instance_id"]
+        for action in legal_contract_completion_actions(harvested, 0)
+    ] == ["contract:harvest_4"]
+
+
 def test_a_landsraad_visit_offers_the_face_up_tiles_the_owner_can_afford() -> None:
     state = _visit(_turn_state(_owner(resources=Resources(spice=2))), "assembly_hall")
 
