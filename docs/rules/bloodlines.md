@@ -22,7 +22,7 @@ CHOAM Module과 함께 쓸 때만 기존 contract 20개에 섞는 token 8개다(
 | Earn Any Alliance | 아직 갖고 있지 않은 Alliance token을 가져갈 때 | Solari 2, troop 2 | 아래 "Earn Any Alliance" 참조 |
 | Harvest 3+ | Maker space에 Agent, 그 turn spice 3+ | Solari 2, Spy 1 | Uprising Harvest와 같은 조건 `[Main p. 16]` |
 | Harvest 4+ | Maker space에 Agent, 그 turn spice 4+ | Solari 3, Spy 1 | |
-| High Council | High Council에 Agent | Agent 1 recall | Sardaukar II와 같은 보상; 방금 보낸 Agent는 대상이 아니다 `[Main p. 20]` |
+| High Council | High Council에 Agent | Agent 1 recall | Sardaukar II와 같은 보상; 방금 보낸 Agent는 대상이 아니다 `[Main p. 20]`. Duncan Idaho(Bloodlines)의 Into the Fray로 이전 turn에 Conflict에 보낸 Agent도 "자신의 Agent" 중 하나라 recall 대상이 되며, 방금 보낸 Agent는 여전히 제외된다(2026-09-26 사용자 판정, OQ-068) |
 | Immediate ("Requires an Intrigue card") | 가져오는 즉시 | Intrigue 카드 1장 trash → Intrigue 1 + draw 1 | 아래 "새 Immediate" 참조 |
 | Secrets | Secrets에 Agent | Solari 2, draw 1 | |
 | Spice Refinery | Spice Refinery에 Agent | troop 2 | |

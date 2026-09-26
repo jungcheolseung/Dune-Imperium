@@ -109,6 +109,7 @@ Graft라고 적힌 특별한 배경의 Agent box를 가진 카드는 hand의 다
 
 ## 9. 구현 상태
 
+- 2026-09-26: Twisted Mentat("You may recall the Agent you sent this turn.")이 recall하는 "이번 turn 보낸 Agent"는 Duncan Idaho(Bloodlines)의 Into the Fray가 그 사이 Conflict로 옮겼어도 여전히 그 Agent이므로, Mentat의 recall이 Conflict까지 따라간다(2026-09-26 사용자 판정, OQ-068; `docs/rules/uprising-systems.md` 97행).
 - 2026-09-16: 점유된 space로의 graft 배치는 놓는 카드가 Ghola의 약속(OQ-057) 없이 그 space에 닿을 때만(또는 놓는 카드가 Tleilaxu Infiltrator일 때만) 제시한다 — 한 turn에 카드는 두 장뿐이라 `[Immortality p. 10]` "Infiltrator가 partner"와 "Ghola가 partner"를 한 partner가 다 지킬 수 없다. 전 확장 기준선 seed 42에서 Long Reach(BG Bond 아이콘)·Ghola·Infiltrator를 든 좌석이 점유된 Arrakeen에 graft 배치를 받고 partner 선택에 합법 행동이 없던 결함([evaluation/baseline-2026-09-10.md](../evaluation/baseline-2026-09-10.md) 18절(k)).
 - 2026-09-08 슬라이스 6: 웹 UI(Tleilaxu Row·Bene Tleilax board 패널·좌석의 specimen/token/Family Atomics/Chairdog/Usurp 표시), 대규모 소크 830판 실패 0(적발한 결함 3계열 수정: Research draw의 이중 셔플, Usurp 배치의 상대 부재 교착, heuristic의 graft switch 무한 반복), census에서 Immortality 구성물 0회 없음. **M13 완료.**
 - 2026-09-08 슬라이스 5c-2: Ghola(상대 grafted 카드의 Agent box를 빌린다 — `active_agent_card`), Chairdog(자기 Reveal turn 시작 때 상대 grafted 카드를 hand로), Usurp(Imperium Row 카드와도 graft할 수 있고, 빌린 카드는 turn이 닫히면 자동 trash — 트리거 발동, OQ-054). 관측 v15(좌석 scalar 51). Slig Farmer의 아이콘 셈은 OQ-055. **이로써 Immortality의 카드 play data(Imperium 25종, Intrigue 11장, Tleilaxu 18장 + Piter)가 완결됐다.**
