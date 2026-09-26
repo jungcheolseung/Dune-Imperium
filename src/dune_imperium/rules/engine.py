@@ -200,7 +200,9 @@ from dune_imperium.rules.leader_abilities import (
     grant_hungry_for_spice,
     grant_leader_reveal_passives,
     leader_signet_is_implemented,
+    legal_feyd_track_actions,
     legal_leader_reveal_actions,
+    legal_leader_signet_actions,
 )
 from dune_imperium.rules.leader_draft import (
     apply_leader_draft_pick,
@@ -475,6 +477,8 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     FrameKind.RESEARCH_BONUS: (legal_research_bonus_actions,),
     FrameKind.GRAFT_PARTNER: (legal_graft_partner_actions,),
     FrameKind.INTRIGUE_PEEK: (legal_intrigue_peek_actions,),
+    # Servo-Receivers: the Leader's Signet Ring ability outside its box.
+    FrameKind.LEADER_SIGNET: (legal_feyd_track_actions, legal_leader_signet_actions),
 }
 
 ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
@@ -629,10 +633,12 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "trash_optional_card": apply_optional_trash,
     "place_navigation_card": apply_navigation_setup_action,
     "play_navigation": apply_navigation_play,
+    "decline_navigation": apply_navigation_play,
     "decline_optional_trash": apply_optional_trash,
     "decline_leader_card_trash": apply_feyd_track_action,
     "place_leader_spy": apply_leader_spy_action,
     "recall_spy_for_leader_placement": apply_leader_spy_action,
+    "decline_leader_spy_placement": apply_leader_spy_action,
     "pay_leader_signet_spice": apply_leader_signet_payment,
     "pay_leader_signet_solari": apply_leader_signet_payment,
     "decline_leader_signet_payment": apply_leader_signet_payment,
@@ -655,6 +661,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "resume_reveal_choice": apply_resume_reveal_choice,
     "place_acquisition_spy": apply_acquisition_spy_action,
     "recall_spy_for_acquisition": apply_acquisition_spy_action,
+    "decline_acquisition_spy": apply_acquisition_spy_action,
     # Reveal serial choices
     "gain_five_reveal_solari": apply_corrinth_city_reveal,
     "take_high_council_from_reveal": apply_corrinth_city_reveal,
@@ -677,12 +684,12 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "complete_contract_by_card": apply_agent_card_contract_completion,
     "choose_skill": apply_skill_choice,
     "move_spy": apply_spy_move,
+    "lose_moved_spy": apply_spy_move,
     "place_spy_on_space": apply_spy_placement,
     "recall_spy_for_placement": apply_spy_placement,
     "decline_spy_placement": apply_spy_placement,
     "lose_unit": apply_unit_loss,
     "take_trigger_contract": apply_trigger_contract_action,
-    "decline_intrigue_contract_trigger": apply_trigger_contract_action,
     "decline_command_acquisition": apply_reveal_command_acquisition,
     "decline_reveal_influence_exchange": apply_reveal_influence_exchange,
     "pay_reveal_water_for_sandworm": apply_reveal_sandworm_action,
@@ -705,6 +712,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "take_exhausted_contract_solari": apply_exhausted_contract_solari,
     "place_contract_spy": apply_contract_spy_action,
     "recall_spy_for_contract": apply_contract_spy_action,
+    "decline_contract_spy": apply_contract_spy_action,
     "recall_agent_for_contract": apply_contract_recall_action,
     "trash_intrigue_for_contract": apply_contract_intrigue_trash,
     # Round start and Combat
@@ -719,6 +727,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "play_conflict_end_intrigue": apply_conflict_end_trigger,
     "decline_conflict_end_intrigue": apply_conflict_end_trigger,
     "place_combat_reward_spy": apply_combat_reward_spy,
+    "recall_spy_for_combat_reward": apply_combat_reward_spy,
+    "decline_combat_reward_spy": apply_combat_reward_spy,
     "choose_combat_reward_influence": apply_combat_reward_influence,
     "choose_distinct_combat_reward_influence": (apply_distinct_combat_reward_influence),
     # Endgame
@@ -763,7 +773,7 @@ class UprisingRulesEngine(RulesEngine):
         # so the automatic advance runs again after the passives.
         result = grant_late_reveal_effects(
             grant_leader_reveal_passives(
-                grant_hungry_for_spice(_advance_automatic(result))
+                grant_hungry_for_spice(_advance_automatic(result), state)
             )
         )
         result = skip_impossible_imperial_privilege_recall(
@@ -805,7 +815,7 @@ class UprisingRulesEngine(RulesEngine):
         # again after them.
         result = _advance_automatic(
             grant_late_reveal_effects(
-                grant_leader_reveal_passives(grant_hungry_for_spice(result))
+                grant_leader_reveal_passives(grant_hungry_for_spice(result, state))
             )
         )
         # A freely ordered recall may have removed Imperial Privilege's last
@@ -867,9 +877,9 @@ def _advance_automatic(result: RuleResult) -> RuleResult:
         elif navigation_play_is_queued(state):
             automatic = begin_navigation_play(state)
         elif combat_reward_spy_is_unavailable(state):
-            # A Conflict reward Spy that can no longer be placed (no Spy left
-            # in the supply, no free post) is lost rather than left as a
-            # frame without a legal action.
+            # A Conflict reward Spy that cannot be placed (no Spy in the
+            # supply and none on the board to recall first, or no free post)
+            # is lost rather than left as a frame without a legal action.
             automatic = fizzle_combat_reward_spy(state)
         elif combat_influence_choice_is_unavailable(state):
             # Every eligible Faction is at the top of its track, so the

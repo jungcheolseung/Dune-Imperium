@@ -62,7 +62,7 @@ from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.rules.agent_effects import AUTOMATIC_AGENT_ICONS
 from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
 
-ACTION_CODEC_VERSION = 107
+ACTION_CODEC_VERSION = 108
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -164,6 +164,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         ActionTemplate(action_id=action_id)
         for action_id in (
             "decline_combat_reward",
+            "decline_combat_reward_spy",
             "decline_combat_reward_trash",
             "decline_agent_card_trash",
             "decline_agent_card_payment",
@@ -175,6 +176,9 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "decline_leader_board_repeat",
             "decline_leader_card_trash",
             "decline_leader_signet_payment",
+            # A Leader's Spy may pass up the recall-first without a Spy in
+            # supply [Main pp. 11, 20].
+            "decline_leader_spy_placement",
             "decline_other_memories",
             "decline_gather_intelligence",
             "decline_reveal_spy_recall",
@@ -185,6 +189,11 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "decline_reveal_sandworm",
             "decline_reveal_spice_influence",
             "decline_reveal_troop_retreat",
+            # Unswerving Loyalty's Fremen Bond troop move [Unswerving Loyalty
+            # card], shared with Shadout Mapes (Immortality).
+            "decline_reveal_troop_move",
+            "deploy_reveal_card_troop",
+            "retreat_reveal_card_troop",
             "defer_reveal_choice",
             "deploy_control_defense",
             # Reveal troop recruits and Intrigue draws in the owner's order
@@ -213,6 +222,9 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             # The generic Spy placement frame's way out when nothing can be
             # placed (every ruleset since the Emperor track's Spy uses it).
             "decline_spy_placement",
+            # An acquisition-bonus Spy may pass up the recall-first without a
+            # Spy in supply [Main pp. 11, 20] (OQ-057 (14)).
+            "decline_acquisition_spy",
             "resolve_faction_influence",
             "retreat_leader_troop",
             "reveal_turn",
@@ -257,6 +269,9 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
                 "keep_contract_reveal_spice",
                 "take_exhausted_contract_solari",
                 "trash_contract_reveal_for_vp",
+                # A Contract Spy may pass up the recall-first without a Spy
+                # in supply [Main pp. 11, 20].
+                "decline_contract_spy",
             )
         )
     templates.extend(_agent_turn_templates(config))
@@ -281,6 +296,12 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     templates.append(ActionTemplate(action_id="finish_agent_turn"))
     if config.bloodlines:
         templates.extend(_bloodlines_templates(config))
+        # Unswerving Loyalty (every ruleset) and Shadout Mapes (Immortality)
+        # may move a Sardaukar Commander: it "is a 'troop'" [Bloodlines p. 4].
+        templates.extend(
+            ActionTemplate(action_id=action_id, arguments=(("commanders", 1),))
+            for action_id in ("deploy_reveal_card_troop", "retreat_reveal_card_troop")
+        )
     if config.tech_module:
         templates.extend(_tech_templates(config))
     if config.immortality:
@@ -562,13 +583,19 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             )
             for post_id in post_ids
         )
-    templates.extend(
-        ActionTemplate(
-            action_id="place_combat_reward_spy",
-            arguments=(("post_id", post_id),),
+    for action_id in (
+        "place_combat_reward_spy",
+        # Without a Spy in supply a Conflict reward Spy may recall one first
+        # [Main pp. 11, 20].
+        "recall_spy_for_combat_reward",
+    ):
+        templates.extend(
+            ActionTemplate(
+                action_id=action_id,
+                arguments=(("post_id", post_id),),
+            )
+            for post_id in post_ids
         )
-        for post_id in post_ids
-    )
     templates.extend(
         ActionTemplate(
             action_id="recall_spies_for_reveal",
@@ -683,6 +710,9 @@ def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "recruit_sardaukar_commander",
             # Bought without a Skill when none is choosable (OQ-031).
             "acquire_sardaukar_commander",
+            # False Orders / Holy War: no empty post off the Agent's space,
+            # so the forced-to-move Spy is lost [FAQ p. 2] (OQ-065).
+            "lose_moved_spy",
         )
     ]
     for action_id in (
@@ -755,7 +785,6 @@ def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     templates.extend(
         ActionTemplate(action_id=action_id)
         for action_id in (
-            "decline_intrigue_contract_trigger",
             # Bloodlines Leaders: Duncan Idaho, Chani, Liet Kynes, Esmar Tuek.
             "deploy_leader_agent",
             "recall_conflict_agent_for_imperial_privilege",
@@ -786,6 +815,9 @@ def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         ActionTemplate(action_id="play_navigation", arguments=(("option", option),))
         for option in range(2)
     )
+    # An arrow cost is optional [Main p. 20]: Navigation card 10 may be
+    # declined (spent without effect).
+    templates.append(ActionTemplate(action_id="decline_navigation"))
     twisted = twisted_intrigue_instance_ids()
     all_intrigue = (
         *intrigue_deck_instance_ids(
@@ -895,11 +927,9 @@ def _immortality_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             # Scientific Breakthrough, Slig Farmer.
             "trash_agent_card_self_for_vp",
             "pay_agent_card_five_solari_for_tleilaxu",
-            # For Humanity, Shadout Mapes, Tleilaxu Surgeon Reveal choices.
+            # For Humanity and Tleilaxu Surgeon Reveal choices (Shadout
+            # Mapes' troop move is in every catalog, for Unswerving Loyalty).
             "decline_reveal_influence_loss",
-            "deploy_reveal_card_troop",
-            "retreat_reveal_card_troop",
-            "decline_reveal_troop_move",
             "decline_reveal_troop_sacrifice",
         )
     ]
@@ -1163,8 +1193,8 @@ def _reveal_resource_templates() -> tuple[ActionTemplate, ...]:
             if effect.solari or effect.spice or effect.water:
                 bundles.add((effect.solari, effect.spice, effect.water))
     for skill in SKILLS:
-        if skill.reveal_spice or skill.reveal_water:
-            bundles.add((0, skill.reveal_spice, skill.reveal_water))
+        if skill.reveal_spice:
+            bundles.add((0, skill.reveal_spice, 0))
     bundles.add((2, 0, 0))  # Delivery Bay
     return (
         *(

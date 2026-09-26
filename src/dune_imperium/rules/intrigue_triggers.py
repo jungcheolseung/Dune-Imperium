@@ -33,7 +33,9 @@ from dune_imperium.rules.frames import (
     FrameKind,
     owned_top_frame,
     replace_player,
+    replace_top_frame,
     reveal_is_open_for,
+    with_context,
 )
 from dune_imperium.rules.spy_placement import place_spy, recall_spy
 
@@ -111,20 +113,20 @@ def fire_reveal_acquisition_intrigue(
     return RuleResult(state=next_state, events=tuple(events))
 
 
-def shared_spy_post_ids(state: GameState, player: int) -> tuple[str, ...]:
-    """Return posts holding another player's Spy where ``player`` has none."""
+def trigger_spy_post_ids(state: GameState, player: int) -> tuple[str, ...]:
+    """Return the posts Distraction's Spy may go to: any without ``player``'s.
+
+    The Spy icon places on an unoccupied post [Main p. 20]; the card adds
+    "You may place this Spy on the same observation post as another player's
+    Spy" [Distraction card], so a post held only by opponents is allowed too
+    -- the Spy with Deep Cover set: "you also have the option to ignore any
+    opponents' Spies ... (You can't place the Spy where you already have a
+    Spy of your own.)" [Bloodlines p. 5].
+    """
 
     own = set(state.players[player].spy_post_ids)
-    others = {
-        post_id
-        for candidate in state.players
-        if candidate.player_id != player
-        for post_id in candidate.spy_post_ids
-    }
     return tuple(
-        post.post_id
-        for post in OBSERVATION_POSTS
-        if post.post_id in others and post.post_id not in own
+        post.post_id for post in OBSERVATION_POSTS if post.post_id not in own
     )
 
 
@@ -158,25 +160,45 @@ def _trigger_frame_kind(state: GameState, player: int, card_id: str) -> str | No
 
     reward = _deployment_trigger_reward(card_id)
     if isinstance(reward, PlaceSpy):
-        if not shared_spy_post_ids(state, player):
+        if not trigger_spy_post_ids(state, player):
             return None
         return FrameKind.INTRIGUE_TRIGGER_SPY
     if isinstance(reward, RevealContractsTakeOne):
-        # Coercive Negotiation needs Contracts left in the bank.
+        # Coercive Negotiation is mandatory once it triggers (no "may" on the
+        # card [Coercive Negotiation card]; [FAQ p. 3]), so it opens only
+        # when a revealed Contract can be taken; otherwise it waits face up
+        # (OQ-064).
         return (
             FrameKind.INTRIGUE_TRIGGER_CONTRACT
-            if state.config.choam_module and state.contract_bank
+            if state.config.choam_module
+            and takeable_trigger_contract_ids(state, player, card_id)
             else None
         )
     return None
+
+
+def _trigger_is_mandatory(card_id: str) -> bool:
+    """Return whether a deployment trigger resolves without a decline.
+
+    The seat's offer record ``deploy_trigger_offered_at`` only stops a
+    declined optional trigger (Distraction) from being offered again at the
+    same count (OQ-016 (c)). Coercive Negotiation has no decline and waits
+    face up while nothing it reveals can be taken, opening at a later point
+    where it can be resolved (OQ-064); another card's offer must not use that
+    wait up. It leaves the face-up row when it resolves, so it cannot be
+    offered twice; a frame already pending is skipped by the caller.
+    """
+
+    return isinstance(_deployment_trigger_reward(card_id), RevealContractsTakeOne)
 
 
 def offer_deployment_triggers(result: RuleResult) -> RuleResult:
     """Open the face-up deployment-trigger choice after a transition.
 
     Runs on every applied action: when a player's per-turn deployment count
-    has passed a face-up card's minimum since the last offer and a shared
-    post exists, one decision frame per qualifying card opens for its owner.
+    has passed a face-up card's minimum since the last offer and the card's
+    effect has a target, one decision frame per qualifying card opens for
+    its owner.
     A pending chance decision is never buried; a later transition re-offers.
     """
 
@@ -187,15 +209,26 @@ def offer_deployment_triggers(result: RuleResult) -> RuleResult:
     if not isinstance(top.decision, PlayerDecision):
         return result
     next_state = state
+    pending = {
+        dict(frame.context).get("card_id")
+        for frame in state.decision_stack
+        if frame.kind
+        in (FrameKind.INTRIGUE_TRIGGER_SPY, FrameKind.INTRIGUE_TRIGGER_CONTRACT)
+    }
     for seat in state.players:
         count = seat.units_deployed_turn
-        if not seat.intrigue_faceup or count <= seat.deploy_trigger_offered_at:
+        if not seat.intrigue_faceup:
             continue
         cards = tuple(
             (card_id, kind)
             for card_id in seat.intrigue_faceup
             if (minimum := _deployment_trigger_minimum(card_id)) is not None
             and minimum <= count
+            and card_id not in pending
+            and (
+                count > seat.deploy_trigger_offered_at
+                or _trigger_is_mandatory(card_id)
+            )
             and (kind := _trigger_frame_kind(next_state, seat.player_id, card_id))
             is not None
         )
@@ -238,10 +271,18 @@ def legal_trigger_spy_actions(
     if frame is None:
         return ()
     owner = state.players[player]
-    actions: list[DomainAction] = [
-        DomainAction(action_id="decline_intrigue_trigger", actor=player)
-    ]
-    targets = shared_spy_post_ids(state, player)
+    # Declining is the card's timing choice (OQ-016 (c)) and stays open until
+    # a recall-first is made; after "you may first recall one of your Spies
+    # for no effect" [Main pp. 11, 20] the card is being used and the Spy,
+    # now in supply, must be placed (OQ-057 (14)), as on every other
+    # recall-first path.
+    recalled = dict(frame.context).get("trigger_spy_recalled") is True
+    actions: list[DomainAction] = (
+        []
+        if recalled
+        else [DomainAction(action_id="decline_intrigue_trigger", actor=player)]
+    )
+    targets = trigger_spy_post_ids(state, player)
     if owner.spies_supply > 0:
         actions.extend(
             DomainAction(
@@ -265,7 +306,7 @@ def legal_trigger_spy_actions(
 
 
 def apply_trigger_spy_action(state: GameState, action: DomainAction) -> RuleResult:
-    """Decline, recall first, or place the Spy on another player's post."""
+    """Decline, recall first, or place the Spy (a shared post allowed)."""
 
     if action not in legal_trigger_spy_actions(state, action.actor):
         raise ValueError("action is not a legal Intrigue trigger choice")
@@ -297,7 +338,10 @@ def apply_trigger_spy_action(state: GameState, action: DomainAction) -> RuleResu
         raise RuntimeError("Intrigue trigger choice has an invalid post")
     if action.action_id == "recall_spy_for_trigger":
         recalled = recall_spy(owner, post_id)
-        next_state = replace(state, players=replace_player(state.players, recalled))
+        next_state = replace_top_frame(
+            replace(state, players=replace_player(state.players, recalled)),
+            with_context(frame, {**context, "trigger_spy_recalled": True}),
+        )
         return RuleResult(
             state=next_state,
             events=(
@@ -344,47 +388,60 @@ def apply_trigger_spy_action(state: GameState, action: DomainAction) -> RuleResu
     )
 
 
-def revealed_contract_count(state: GameState, player: int) -> int:
-    """How many top bank Contracts ``player`` is choosing among right now.
+def takeable_trigger_contract_ids(
+    state: GameState,
+    player: int,
+    card_id: str,
+) -> tuple[str, ...]:
+    """Return the bank Contracts ``card_id`` would reveal that ``player`` can take.
 
-    Coercive Negotiation reveals the bank's top three while its frame is
-    open [card face]; zero without such a frame. The rollout's determinizer
-    keeps that many in place, since the owner has seen them.
+    Coercive Negotiation reveals the bank's top three [Coercive Negotiation
+    card]. "You can't take the new Immediate contract unless you have an
+    Intrigue card to trash." [Bloodlines p. 2]; the face-up Plot itself is
+    not in the hand.
     """
 
-    frame = owned_top_frame(state, FrameKind.INTRIGUE_TRIGGER_CONTRACT, player)
-    if frame is None:
-        return 0
-    card_id = dict(frame.context).get("card_id")
-    reward = _deployment_trigger_reward(card_id) if isinstance(card_id, str) else None
-    return reward.count if isinstance(reward, RevealContractsTakeOne) else 0
+    reward = _deployment_trigger_reward(card_id)
+    count = reward.count if isinstance(reward, RevealContractsTakeOne) else 0
+    holds_intrigue = bool(state.players[player].intrigue_cards)
+    return tuple(
+        instance_id
+        for instance_id in state.contract_bank[:count]
+        if holds_intrigue
+        or not contract_for_instance(instance_id).requires_intrigue_trash
+    )
 
 
 def legal_trigger_contract_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Coercive Negotiation: take one of the bank's top Contracts, or decline."""
+    """Coercive Negotiation: take one of the bank's top Contracts.
+
+    The card never says "may" ("When you deploy three or more units to the
+    Conflict in a single turn: Reveal three contracts from the bank. Take one
+    and trash the other two." [Coercive Negotiation card]), and "Most effects
+    from a board space or card you play are mandatory, unless: a card says
+    'you may' do something" [FAQ p. 3]. So the frame offers no decline: it
+    only opens when a revealed Contract can be taken (OQ-064).
+    """
 
     frame = owned_top_frame(state, FrameKind.INTRIGUE_TRIGGER_CONTRACT, player)
     if frame is None:
         return ()
-    count = revealed_contract_count(state, player)
-    holds_intrigue = bool(state.players[player].intrigue_cards)
-    return (
-        DomainAction(action_id="decline_intrigue_contract_trigger", actor=player),
-        *(
-            DomainAction(
-                action_id="take_trigger_contract",
-                actor=player,
-                arguments=(("instance_id", instance_id),),
-            )
-            for instance_id in state.contract_bank[:count]
-            # The Bloodlines Immediate needs an Intrigue card in hand to be
-            # taken [Bloodlines p. 2]; the played Plot is already face up.
-            if holds_intrigue
-            or not contract_for_instance(instance_id).requires_intrigue_trash
-        ),
+    card_id = dict(frame.context).get("card_id")
+    if not isinstance(card_id, str):
+        raise RuntimeError("Intrigue trigger frame has invalid card ID")
+    takes = takeable_trigger_contract_ids(state, player, card_id)
+    if not takes:
+        raise RuntimeError("Coercive Negotiation opened with no Contract to take")
+    return tuple(
+        DomainAction(
+            action_id="take_trigger_contract",
+            actor=player,
+            arguments=(("instance_id", instance_id),),
+        )
+        for instance_id in takes
     )
 
 
@@ -402,17 +459,6 @@ def apply_trigger_contract_action(
         raise RuntimeError("Intrigue trigger frame has invalid card ID")
     player = action.actor
     source = frame.frame_id
-    if action.action_id == "decline_intrigue_contract_trigger":
-        return RuleResult(
-            state=state.pop_decision(),
-            events=(
-                GameEvent(
-                    event_id=f"{source}:declined",
-                    kind="intrigue_trigger_declined",
-                    payload=(("card_id", card_id), ("player", player)),
-                ),
-            ),
-        )
     reward = _deployment_trigger_reward(card_id)
     count = reward.count if isinstance(reward, RevealContractsTakeOne) else 0
     revealed = state.contract_bank[:count]

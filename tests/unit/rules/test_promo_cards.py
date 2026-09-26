@@ -201,6 +201,46 @@ def test_arrakis_revolt_offers_wall_removal_only_while_the_wall_stands() -> None
     ]
 
 
+def test_liet_may_pay_arrakis_revolt_and_keep_the_wall_behind_it() -> None:
+    # Arrakis Planetologist: "You summon no sandworms. For each one you would,
+    # instead: [trash] [1 spice] [Intrigue]. (Even when the Conflict is
+    # protected by the Shield Wall.)" [Liet Kynes card]. The replacement pays
+    # behind the wall, so keeping it is a live choice for Liet even where the
+    # worm alone "does nothing" [Main p. 20] (OQ-026 withholds it only for
+    # the other seats).
+    revolt = _promo_instance("arrakis_revolt")
+    owner = PlayerState(
+        player_id=0,
+        leader_id="liet_kynes",
+        hand=(revolt,),
+        maker_hooks=True,
+        resources=Resources(spice=2),
+    )
+    placed = _place(
+        _turn_state(
+            owner,
+            current_conflict_ids=("siege_of_arrakeen",),
+            intrigue_deck=("intrigue:bribery:0",),
+        ),
+        "arrakeen",
+    )
+    assert _payment_ids(placed) == [
+        "decline_agent_card_payment",
+        "pay_agent_card_spice_for_sandworm_and_shield_wall",
+        "pay_agent_card_spice_for_sandworm",
+    ]
+    kept = apply_agent_card_payment(
+        placed,
+        DomainAction(action_id="pay_agent_card_spice_for_sandworm", actor=0),
+    )
+    liet = kept.state.players[0]
+    assert kept.state.shield_wall_present is True
+    assert liet.sandworms_conflict == 0
+    assert liet.resources.spice == 1  # 2 paid, 1 from the replacement
+    assert liet.intrigue_cards == ("intrigue:bribery:0",)
+    assert kept.state.decision_stack[-1].kind == "optional_trash"
+
+
 def test_arrakis_revolt_pays_two_spice_to_destroy_the_wall_and_summon() -> None:
     revolt = _promo_instance("arrakis_revolt")
     owner = PlayerState(
@@ -578,9 +618,17 @@ def test_promo_actions_round_trip_through_the_codec() -> None:
     # City icon shifts its agent_turn space coverage by +1 (see
     # test_action_codec.test_catalog_is_fixed_and_versioned_for_a_ruleset).
     # v107: +27, the generic Spy placement frame in every catalog.
-    assert codec.size == 4454 + 12 + 1 + 1 + 2 + 1 + 40 + 1 + 27
+    # v108 (2026-09-26 card-transcription audit): -36 + 15 + 5, the same
+    # net change as the base catalog (see test_action_codec.
+    # test_catalog_is_fixed_and_versioned_for_a_ruleset); the CHOAM catalog
+    # also gains decline_contract_spy (+1).
+    # decline_acquisition_spy: an acquisition-bonus Spy may pass up the
+    # recall-first without a Spy in supply [Main pp. 11, 20] (+1).
+    assert codec.size == 4454 + 12 + 1 + 1 + 2 + 1 + 40 + 1 + 27 - 36 + 15 + 5 + 1
     choam_promo = ActionCodec(RulesetConfig(choam_module=True, promo_cards=True))
-    assert choam_promo.size == 4740 + 12 + 1 + 1 + 2 + 1 + 44 + 1 + 27
+    assert choam_promo.size == (
+        4740 + 12 + 1 + 1 + 2 + 1 + 44 + 1 + 27 - 36 + 15 + 5 + 1 + 1
+    )
     for action_id in (
         "pay_agent_card_spice_for_sandworm",
         "pay_agent_card_spice_for_sandworm_and_shield_wall",

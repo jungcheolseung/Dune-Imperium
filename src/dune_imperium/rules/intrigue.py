@@ -84,6 +84,7 @@ from dune_imperium.rules.effect_interpreter import (
     pay_cost,
     resource_cost,
     section_is_usable,
+    spy_placement_allowed_post_ids,
     spy_placement_targets,
     trashable_discard_pile_ids,
 )
@@ -113,7 +114,11 @@ from dune_imperium.rules.influence import (
     lose_faction_influence,
 )
 from dune_imperium.rules.planetologist import replace_sandworms
-from dune_imperium.rules.reveal_turn import add_reveal_strength, add_units_to_reveal
+from dune_imperium.rules.reveal_turn import (
+    add_reveal_persuasion,
+    add_reveal_strength,
+    add_units_to_reveal,
+)
 from dune_imperium.rules.shield_wall import destroy_shield_wall
 from dune_imperium.rules.spy_moves import (
     connected_post_ids,
@@ -121,12 +126,12 @@ from dune_imperium.rules.spy_moves import (
     turn_space_spy_frames,
 )
 from dune_imperium.rules.spy_placement import (
-    observation_post_ids_for_factions,
     place_spy,
     recall_spy,
     solo_occupied_post_ids,
 )
 from dune_imperium.rules.strength import reveal_in_progress
+from dune_imperium.rules.tactics import advance_tactics_token
 from dune_imperium.rules.tech import push_tech_acquisition
 from dune_imperium.rules.tleilaxu_row import acquire_tleilaxu_card
 from dune_imperium.rules.unit_loss import lose_unit
@@ -913,11 +918,7 @@ def legal_intrigue_choice_actions(
                 # reachable are offered: any Spy while a target post is
                 # free, otherwise a Spy that is the sole occupant of an
                 # allowed post (a shared post stays occupied).
-                allowed_posts = (
-                    observation_post_ids_for_factions(slot.factions)
-                    if slot.factions is not None
-                    else None
-                )
+                allowed_posts = spy_placement_allowed_post_ids(slot)
                 recallable = (
                     owner.spy_post_ids
                     if targets
@@ -1212,6 +1213,7 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
                 zone,
                 commander=arguments.get("commanders") == 1,
                 source=step_source,
+                advance_tactics=False,
             )
             if zone == "conflict":
                 result = RuleResult(
@@ -1224,6 +1226,9 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
                     events=result.events,
                 )
                 result = _follow_reveal_strength(state, result, player)
+            result = _lose_troops_tactics(
+                result, context, player, slot_index, zone, source=step_source
+            )
         case GiveIntrigueToOpponent(bonus_spice_if_not_twisted=bonus):
             result = _give_intrigue_card(
                 state,
@@ -1295,6 +1300,45 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
     return RuleResult(
         state=_restack(finished.state, pushed),
         events=(*result.events, *finished.events),
+    )
+
+
+def _lose_troops_tactics(
+    result: RuleResult,
+    context: dict[str, ActionValue],
+    player: int,
+    slot_index: int,
+    zone: str,
+    *,
+    source: str,
+) -> RuleResult:
+    """Advance Chani's Tactics token once for one "lose N troops" cost.
+
+    The cost is paid one troop per slot, but it is one source: "Each
+    different source of retreating or losing troops is handled separately"
+    [FAQ p. 1], and "If you lose or retreat enough troops that you would
+    pass the end of the Tactics track, you still reset at the starting
+    space (and do not advance for those extra troops)" [Bloodlines p. 12].
+    The Conflict losses are counted in the frame context and the token
+    moves once, on the cost's last slot.
+    """
+
+    lost = int(zone == "conflict")
+    if "tactics_lost" in context:
+        lost += context_int(context, "tactics_lost", owner=_CHOICE_FRAME)
+    slots = _slots(context)
+    if slot_index + 1 < len(slots) and slots[slot_index + 1] is slots[slot_index]:
+        context["tactics_lost"] = lost
+        return result
+    context.pop("tactics_lost", None)
+    tactician, events = advance_tactics_token(
+        result.state.players[player], lost, source=source
+    )
+    return RuleResult(
+        state=replace(
+            result.state, players=replace_player(result.state.players, tactician)
+        ),
+        events=(*result.events, *events),
     )
 
 
@@ -1439,7 +1483,7 @@ def _apply_section_rewards(
     """Apply the sections' automatic rewards and their turn bookkeeping."""
 
     outcome = apply_rewards(state, player, automatic_rewards(sections), source=source)
-    next_state = outcome.result.state
+    next_state = _gain_reveal_persuasion_now(state, outcome.result.state, player)
     events: list[GameEvent] = list(outcome.result.events)
     if outcome.troops_recruited:
         next_state = update_turn_recruits(
@@ -1776,6 +1820,42 @@ def _unit_counts(arguments: Mapping[str, ActionValue]) -> tuple[int, int]:
     commanders = arguments.get("commanders", 0)
     assert isinstance(count, int) and isinstance(commanders, int)
     return count - commanders, commanders
+
+
+def _gain_reveal_persuasion_now(
+    before: GameState, after: GameState, player: int
+) -> GameState:
+    """Pay "Persuasion during your Reveal turn this round" into an open Reveal.
+
+    Tleilaxu Puppet: "Gain [1 Persuasion] during your Reveal turn this
+    round" [Tleilaxu Puppet card]. A Plot may be played at any time during
+    the owner's Agent or Reveal turn [Main p. 7] [Main p. 8]
+    (docs/rules/player-turns.md), so one played in the owner's own Reveal
+    turn gains the Persuasion in that Reveal; ``begin_reveal_turn`` only
+    adds the round bonus when a later Reveal starts. It is generated
+    Persuasion, so it counts toward Command (6+) [Bloodlines p. 5].
+    """
+
+    gained = (
+        after.players[player].reveal_persuasion_round_bonus
+        - before.players[player].reveal_persuasion_round_bonus
+    )
+    if gained <= 0 or not reveal_is_open_for(after, player):
+        return after
+    owner = after.players[player]
+    return replace(
+        after,
+        players=replace_player(
+            after.players,
+            replace(
+                owner,
+                reveal_persuasion_round_bonus=(
+                    owner.reveal_persuasion_round_bonus - gained
+                ),
+            ),
+        ),
+        decision_stack=add_reveal_persuasion(after.decision_stack, gained),
+    )
 
 
 def _follow_reveal_strength(

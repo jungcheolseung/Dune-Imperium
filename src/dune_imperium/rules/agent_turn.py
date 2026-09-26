@@ -35,7 +35,7 @@ from dune_imperium.rules.agent_effects import agent_card_icons_at_placement
 from dune_imperium.rules.agent_icons import (
     card_is_boosted,
     effective_agent_icons,
-    is_ghola,
+    is_bond_partner,
 )
 from dune_imperium.rules.board_effects import board_icons_for
 from dune_imperium.rules.card_bonds import has_faction_bond
@@ -177,21 +177,39 @@ def _placements_for_card(
 ) -> tuple[DomainAction, ...]:
     actions: list[DomainAction] = []
     opponents = tuple(seat for seat in state.players if seat.player_id != player)
-    # Grafting with Ghola in hand may turn the card's Bond icons on
-    # (OQ-057); the partner choice then keeps Ghola alone when it must.
-    ghola_partner = graft and any(
-        is_ghola(other) for other in owner.hand if other != card_instance_id
+    # Grafting with a Bene Gesserit card or Ghola in hand may turn the card's
+    # Bond icons on: "If you have another Bene Gesserit card in play" [Long
+    # Reach card] counts a card played with it [Immortality pp. 10, 14], and
+    # Ghola's copy counts Long Reach (OQ-057 (12)). The partner choice then
+    # keeps such a partner when the space needs it.
+    bond_partner = graft and any(
+        is_bond_partner(other)
+        and (card_is_graft(card) or card_is_graft(personal_card_for_instance(other)))
+        for other in owner.hand
+        if other != card_instance_id
     )
     icons = effective_agent_icons(
-        card, owner, grafted=graft, opponents=opponents, ghola_partner=ghola_partner
+        card,
+        owner,
+        grafted=graft,
+        opponents=opponents,
+        bond_partner=bond_partner,
+        card_instance_id=card_instance_id,
     )
-    # The card's reach without Ghola's promise: an occupied space is entered
-    # on Tleilaxu Infiltrator's promise instead, and a turn plays two cards
-    # only [Immortality p. 10], so a card that reaches the space only with
-    # Ghola as its partner cannot also have the Infiltrator as its partner.
-    icons_without_ghola = (
-        effective_agent_icons(card, owner, grafted=graft, opponents=opponents)
-        if ghola_partner
+    # The card's reach without the Bond partner's promise: an occupied space
+    # is entered on Tleilaxu Infiltrator's promise instead, and a turn plays
+    # two cards only [Immortality p. 10], so a card that reaches the space
+    # only with a Bond partner cannot also have the Infiltrator as its
+    # partner.
+    icons_without_bond_partner = (
+        effective_agent_icons(
+            card,
+            owner,
+            grafted=graft,
+            opponents=opponents,
+            card_instance_id=card_instance_id,
+        )
+        if bond_partner
         else icons
     )
     usurp = graft and card_is_usurp(card)
@@ -280,13 +298,13 @@ def _placements_for_card(
             and not is_tleilaxu_infiltrator(card_instance_id)
         ):
             # The Infiltrator must be the partner here, so the placed card
-            # has to reach the space without Ghola's promise (OQ-057); the
+            # has to reach the space without a Bond partner's promise; the
             # partner choice would otherwise have no card that satisfies both
             # (2026-09-16 baseline re-measurement, all expansions, game seed
             # 42: Long Reach's Bond icons needed Ghola, the occupied Arrakeen
             # needed the Infiltrator, and the turn had no legal action).
             infiltrator_partner_fits = card_can_access_space(
-                icons_without_ghola, space, owner, any_icon=any_icon
+                icons_without_bond_partner, space, owner, any_icon=any_icon
             )
         if not occupying_opponents or (
             graft and _infiltrator_may_join(owner) and infiltrator_partner_fits
@@ -396,11 +414,18 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
     owner = state.players[action.actor]
     # Emperor of the Known Universe: playing Shaddam's Signet Ring blocks
     # unit deployment to the Conflict for this whole turn, effective
-    # immediately from the placement [Main p. 17] [FAQ p. 3].
+    # immediately from the placement [Main p. 17] [FAQ p. 3]. Used through
+    # Servo-Receivers before the placement, the ban already waits in the
+    # turn frame, as may a Harkonnen Advisor troop that stays undeployable
+    # (OQ-062 (b), OQ-038).
+    turn_context = dict(state.decision_stack[-1].context)
     units_deploy_blocked = (
         card.agent_effect is PersonalCardAgentEffect.LEADER_SIGNET
         and owner.leader_id == "shaddam_corrino_iv"
-    )
+    ) or turn_context.get("units_deploy_blocked") is True
+    undeployable = turn_context.get("undeployable_troops", 0)
+    if isinstance(undeployable, bool) or not isinstance(undeployable, int):
+        raise RuntimeError("turn frame has an invalid undeployable count")
     infiltrate_post_id = arguments.get("infiltrate_post_id")
     if infiltrate_post_id is not None and not isinstance(infiltrate_post_id, str):
         raise ValueError("Agent action infiltrate_post_id must be a string")
@@ -522,9 +547,9 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
                     ("space_id", space_id),
                     ("spice_at_placement", next_owner.resources.spice),
                     ("spice_spent_after_placement", 0),
-                    ("spy_recalled_this_turn", infiltrate_post_id is not None),
                     ("troops_recruited", _troops_recruited_before_placement(state)),
                     ("turn_owner", action.actor),
+                    *((("undeployable_troops", undeployable),) if undeployable else ()),
                     ("units_deploy_blocked", units_deploy_blocked),
                 )
             )
@@ -757,7 +782,7 @@ def apply_turn_start_card(state: GameState, action: DomainAction) -> RuleResult:
     # "Pass your turn": the clockwise unrevealed player's turn opens, as
     # after an Agent turn; this seat stays unrevealed and comes around again.
     next_player = next_unrevealed_player(replace(state, players=players), action.actor)
-    players = reset_turn_counters(players, next_player)
+    players = reset_turn_counters(players, next_player, closing=action.actor)
     passed = replace(
         state,
         players=players,
@@ -829,7 +854,7 @@ def agent_effect_is_available(
         PersonalCardAgentEffect.RECRUIT_TWO_IF_BENE_GESSERIT_BOND,
         PersonalCardAgentEffect.RETURN_SELF_IF_BENE_GESSERIT_BOND,
         PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND,
-        PersonalCardAgentEffect.GAIN_WATER_IF_BENE_GESSERIT_BOND,
+        PersonalCardAgentEffect.DRAW_ONE_AND_PLACE_SPY_IF_BENE_GESSERIT_BOND,
     ):
         return has_faction_bond(
             (*owner.in_play, card_instance_id),

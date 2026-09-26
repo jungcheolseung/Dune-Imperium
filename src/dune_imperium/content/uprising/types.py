@@ -91,9 +91,10 @@ class PersonalCardAgentEffect(StrEnum):
     # Ixian Ambassador (Tech Module): "1 spice".
     GAIN_ONE_SPICE = "gain_one_spice"
     PLACE_SPY = "place_spy"
-    PLACE_SPY_ALLOW_SHARED_IF_SPYING_ON_VISITED_SPACE = (
-        "place_spy_allow_shared_if_spying_on_visited_space"
-    )
+    # Double Agent: "[Spy] spying on the board space you sent an Agent to
+    # this turn. You may place this Spy on the same observation post as
+    # another player's Spy."
+    PLACE_SPY_ON_VISITED_SPACE_MAY_SHARE = "place_spy_on_visited_space_may_share"
     RECRUIT_THREE_IF_SPY_RECALLED_THIS_TURN = (
         "recruit_three_if_spy_recalled_this_turn"
     )
@@ -115,7 +116,11 @@ class PersonalCardAgentEffect(StrEnum):
     DRAW_INTRIGUE_IF_THREE_UNITS_IN_CONFLICT = (
         "draw_intrigue_if_three_units_in_conflict"
     )
-    GAIN_WATER_IF_BENE_GESSERIT_BOND = "gain_water_if_bene_gesserit_bond"
+    # In High Places: "If you have another Bene Gesserit card in play: [draw
+    # 1 card] [Spy]" [In High Places card].
+    DRAW_ONE_AND_PLACE_SPY_IF_BENE_GESSERIT_BOND = (
+        "draw_one_and_place_spy_if_bene_gesserit_bond"
+    )
     GAIN_VISITED_FACTION_INFLUENCE = "gain_visited_faction_influence"
     GAIN_WATER = "gain_water"
     GAIN_BY_BENE_GESSERIT_AND_FREMEN_INFLUENCE_TWO = (
@@ -285,11 +290,11 @@ class PersonalCardAgentEffect(StrEnum):
     CHOOSE_TWO_OF_WATER_TROOP_TRASH_TLEILAXU = (
         "choose_two_of_water_troop_trash_tleilaxu"
     )
-    # Beguiling Pheromones (Graft): "If you sent your Agent to a Faction
-    # board space this turn: trash a grafted card -> 1 Influence with that
-    # Faction".
-    MAY_TRASH_GRAFTED_CARD_FOR_VISITED_FACTION_INFLUENCE = (
-        "may_trash_grafted_card_for_visited_faction_influence"
+    # Beguiling Pheromones (Graft): "If you sent an Agent to a Faction board
+    # space this turn, trash one of the grafted cards and gain an additional
+    # Influence with that Faction." -- no "may", no arrow (mandatory).
+    TRASH_GRAFTED_CARD_FOR_VISITED_FACTION_INFLUENCE = (
+        "trash_grafted_card_for_visited_faction_influence"
     )
     # Piter, Genius Advisor (promo): "Lose a troop -> draw two cards and
     # Research".
@@ -375,10 +380,13 @@ class PersonalCardRevealChoiceEffect(StrEnum):
     RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED = (
         "recall_spy_to_draw_intrigue_if_two_placed"
     )
-    MAY_RECALL_TWO_SPIES_FOR_TWO_PERSUASION = (
-        "may_recall_two_spies_for_two_persuasion"
+    MAY_RECALL_TWO_SPIES_FOR_THREE_PERSUASION = (
+        "may_recall_two_spies_for_three_persuasion"
     )
     PLACE_SPY = "place_spy"
+    # Covert Operation: two plain Spy icons [Covert Operation card]. Each
+    # resolves like PLACE_SPY; the second opens once the first is done.
+    PLACE_TWO_SPIES = "place_two_spies"
     PLACE_SPY_OR_GAIN_TWO_STRENGTH = "place_spy_or_gain_two_strength"
     MAY_LOSE_INFLUENCE_TO_GAIN_INFLUENCE = (
         "may_lose_influence_to_gain_influence"
@@ -425,12 +433,18 @@ class PersonalCardRevealChoiceEffect(StrEnum):
     # gain 1 Influence of your choice".
     GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH = "gain_chosen_influence_if_two_tech"
     # Immortality (card faces). For Humanity: "Bene Gesserit Alliance: lose
-    # one Influence -> 1 Victory Point".
+    # two Influence (one Faction) -> 1 Victory Point".
     MAY_LOSE_INFLUENCE_FOR_VP_IF_BENE_GESSERIT_ALLIANCE = (
         "may_lose_influence_for_vp_if_bene_gesserit_alliance"
     )
     # Shadout Mapes: "You may deploy or retreat one troop".
     MAY_DEPLOY_OR_RETREAT_ONE_TROOP = "may_deploy_or_retreat_one_troop"
+    # Unswerving Loyalty (Uprising, so outside the Immortality set below):
+    # "Fremen Bond: You may deploy or retreat one of your troops"
+    # [Unswerving Loyalty card]; Shadout Mapes' choice behind the Bond.
+    MAY_DEPLOY_OR_RETREAT_ONE_TROOP_IF_FREMEN_BOND = (
+        "may_deploy_or_retreat_one_troop_if_fremen_bond"
+    )
     # Tleilaxu Surgeon: "Lose two troops -> two specimens".
     MAY_LOSE_TWO_TROOPS_FOR_TWO_SPECIMENS = "may_lose_two_troops_for_two_specimens"
 
@@ -493,6 +507,11 @@ class PersonalCardRevealEffect:
     minimum_spies_placed: int = 0
     requires_spying_on_maker_space: bool = False
     per_revealed_faction: PersonalCardBond | None = None
+    # "for each <Faction> card you have in play (including this one)"
+    # (Stilgar, The Devoted): Agent-turn cards this round count as well as
+    # this Reveal's [Main p. 20 "In Play"] [FAQ p. 2 Liet Kynes], unlike
+    # the "revealed" count above (Sardaukar Coordination).
+    per_in_play_faction: PersonalCardBond | None = None
     persuasion_per_completed_contract: int = 0
     # Bloodlines conditions: a Sardaukar Commander in the Conflict (Quash
     # Rebellion), a garrison size (Imperial Throneship: "four or more
@@ -534,6 +553,13 @@ class PersonalCardRevealEffect:
             and self.strength == 0
         ):
             raise ValueError("counted Reveal Faction requires Persuasion or strength")
+        if self.per_in_play_faction is not None:
+            if not isinstance(self.per_in_play_faction, PersonalCardBond):
+                raise TypeError("counted in-play Faction must use PersonalCardBond")
+            if self.per_revealed_faction is not None:
+                raise ValueError("a Reveal gain counts revealed or in-play cards")
+            if self.persuasion == 0 or self.strength:
+                raise ValueError("counted in-play Faction scales Persuasion only")
         if self.influence_faction is not None and not isinstance(
             self.influence_faction,
             PersonalCardBond,

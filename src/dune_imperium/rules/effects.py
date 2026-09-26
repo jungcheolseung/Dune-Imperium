@@ -154,7 +154,7 @@ def open_next_turn(state: GameState, player: int) -> GameState:
     """
 
     next_player = next_unrevealed_player(state, player)
-    players = reset_turn_counters(state.players, next_player)
+    players = reset_turn_counters(state.players, next_player, closing=player)
     frames = list(state.decision_stack)
     for index in range(len(frames) - 1, -1, -1):
         frame = frames[index]
@@ -306,13 +306,20 @@ def borrowed_agent_card(
     """Return ``card`` with Ghola's borrowed box: the other grafted card's.
 
     "This card has the same Agent box as the other grafted card" [Ghola
-    card face]; every other card keeps its own definition.
+    card face], and "Ghola copies the entire Agent box of the card it's
+    grafted to" [Immortality p. 14]: the effect together with the box's
+    limit on where its Spy may go (Reliable Informant's "[Spy] on ..."
+    [Main p. 20]). Every other card keeps its own definition.
     """
 
     if not partner_id or not card_is_ghola(card):
         return card
     partner = personal_card_for_instance(partner_id)
-    return replace(card, agent_effect=partner.agent_effect)
+    return replace(
+        card,
+        agent_effect=partner.agent_effect,
+        agent_spy_factions=partner.agent_spy_factions,
+    )
 
 
 def active_agent_card(context: Mapping[str, ActionValue]) -> PersonalCardDefinition:
@@ -363,7 +370,7 @@ def advance_after_effect(
         next_frame = replace(frame, context=tuple(sorted(context.items())))
     else:
         next_player = next_unrevealed_player(state, owner)
-        next_players = reset_turn_counters(next_players, next_player)
+        next_players = reset_turn_counters(next_players, next_player, closing=owner)
         next_frame = DecisionFrame(
             kind=FrameKind.TURN,
             frame_id=f"round:{state.round_number}:turn:{next_player}",

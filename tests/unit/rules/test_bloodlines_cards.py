@@ -22,6 +22,7 @@ from dune_imperium.core import (
     PlayerState,
     Resources,
 )
+from dune_imperium.rules.acquisition import apply_reserve_acquisition
 from dune_imperium.rules.agent_effects import (
     apply_agent_card_discard,
     legal_agent_card_discard_actions,
@@ -44,15 +45,19 @@ from dune_imperium.rules.combat import (
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind, replace_player
 from dune_imperium.rules.reveal_turn import (
+    apply_defer_reveal_choice,
+    apply_resume_reveal_choice,
     apply_reveal_card_trash,
     apply_reveal_influence_gain,
     apply_reveal_troop_retreat,
     begin_reveal_turn,
     legal_finish_reveal_actions,
+    legal_resume_reveal_choice_actions,
     legal_reveal_card_trash_actions,
     legal_reveal_influence_gain_actions,
     legal_reveal_spy_actions,
     legal_reveal_troop_retreat_actions,
+    reveal_pending_gains,
 )
 from dune_imperium.simulation.sweep import run_checked_game
 
@@ -212,6 +217,64 @@ def test_i_believe_discards_to_draw_and_recruits_two_on_command() -> None:
     assert below.players[0].troops_garrison == 3
 
 
+@pytest.mark.parametrize(
+    ("card_name", "gain"),
+    [
+        ("i_believe", ("troops", "2")),
+        ("southern_faith", ("resources", "0/2/0")),
+        ("bombast", ("resources", "3/0/0")),
+    ],
+)
+def test_a_card_drawn_mid_reveal_pays_its_command_once(
+    card_name: str, gain: tuple[str, str]
+) -> None:
+    # "Command (6+)": "In a Reveal turn, you use the effect that follows if
+    # you generate 6 Persuasion or more" [Bloodlines p. 5] (bloodlines.md §4),
+    # and a card drawn during the Reveal is revealed and used at once
+    # [FAQ p. 3]. Each face prints one Command line (I Believe "2 troops",
+    # Southern Faith "2 spice", Bombast "3 Solari and trash this card"), so
+    # it pays once. Before the fix the arrival paid it without recording it
+    # and grant_late_reveal_effects paid it again: 4 troops, 4 spice, 6
+    # Solari.
+    card = _card(card_name)
+    cunning = _intrigue("cunning")
+    owner = replace(_six_persuasion_hand(), deck=(card,), intrigue_cards=(cunning,))
+    engine = UprisingRulesEngine()
+    revealed = engine.apply(
+        _state(owner), DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    assert _reveal_context(revealed)["persuasion_generated"] == 6
+    drawn = engine.apply(revealed, _play_intrigue(cunning)).state
+    (reveal,) = (f for f in drawn.decision_stack if f.kind == FrameKind.REVEAL)
+    pending = reveal_pending_gains(dict(reveal.context))
+    assert [entry for entry in pending if entry[2] == card] == [(*gain, card)]
+    player = drawn.players[0]
+    if card_name == "bombast":
+        assert player.trashed.count(card) == 1
+        assert card not in player.in_play
+    else:
+        assert card in player.in_play
+
+
+def test_ruthless_leadership_drawn_mid_reveal_still_commands_the_combat_icon() -> None:
+    from dune_imperium.rules.reveal_turn import legal_reveal_deployments
+
+    # Paid and recorded at arrival, "Command (6+): [Combat]" [Ruthless
+    # Leadership card] still opens this Reveal's deployment [Bloodlines p. 5].
+    card = _card("ruthless_leadership")
+    cunning = _intrigue("cunning")
+    owner = replace(_six_persuasion_hand(), deck=(card,), intrigue_cards=(cunning,))
+    engine = UprisingRulesEngine()
+    revealed = engine.apply(
+        _state(owner, PROMO_BLOODLINES), DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    drawn = engine.apply(revealed, _play_intrigue(cunning)).state
+    assert _reveal_context(drawn)["combat_deployment"] is True
+    assert {a.action_id for a in legal_reveal_deployments(drawn, 0)} == {
+        "deploy_troops"
+    }
+
+
 def test_intelligence_training_command_places_a_spy() -> None:
     card = _card("intelligence_training")
     revealed = _reveal(_state(_six_persuasion_hand(card)))
@@ -221,6 +284,84 @@ def test_intelligence_training_command_places_a_spy() -> None:
     assert {a.action_id for a in actions} == {"place_reveal_spy"}
     # Its own sword plus the two Sandwalks' swords.
     assert _reveal_context(revealed)["sword_strength"] == 1 + 2
+
+
+_RESERVE = (("prepare_the_way", 7), ("the_spice_must_flow", 10))
+
+
+def test_a_deferred_command_choice_survives_persuasion_spent_below_six() -> None:
+    # "Command (6+) — You may use this effect only in a Reveal turn in which
+    # you generate 6 Persuasion or more" [Bloodlines p. 12] [Bloodlines p. 5]
+    # (docs/rules/bloodlines.md: "그 Reveal turn에 Persuasion을 6 이상 생성했을
+    # 때"). Persuasion spent on a purchase was still generated, so buying
+    # Prepare the Way (2) out of 7 does not close Intelligence Training's
+    # Command Spy again; before the fix the choice lapsed at 5 left.
+    card = _card("intelligence_training")
+    state = replace(_state(_six_persuasion_hand(card)), reserve_stacks=_RESERVE)
+    revealed = _reveal(state)
+    assert _reveal_context(revealed)["persuasion"] == 7
+    deferred = apply_defer_reveal_choice(
+        revealed, DomainAction(action_id="defer_reveal_choice", actor=0)
+    ).state
+    bought = apply_reserve_acquisition(
+        deferred,
+        DomainAction(
+            action_id="acquire_reserve",
+            actor=0,
+            arguments=(("card_id", "prepare_the_way"),),
+        ),
+    ).state
+    assert _reveal_context(bought)["persuasion"] == 5
+    assert _reveal_context(bought)["persuasion_generated"] == 7
+    assert legal_finish_reveal_actions(bought, 0) == ()
+    (resume,) = legal_resume_reveal_choice_actions(bought, 0)
+    resumed = apply_resume_reveal_choice(bought, resume).state
+    place = legal_reveal_spy_actions(resumed, 0)[0]
+    assert place.action_id == "place_reveal_spy"
+    placed = UprisingRulesEngine().apply(resumed, place).state
+    assert len(placed.players[0].spy_post_ids) == 1
+
+
+def test_a_late_command_counts_persuasion_spent_before_it() -> None:
+    # Command (6+) counts the Persuasion the Reveal turn generates [Bloodlines
+    # pp. 5, 12]: I Believe (1) + Command Center (1) + High Council (2) is 4,
+    # 2 of it spent on Prepare the Way, then Command Center's retreat adds 2.
+    # The turn has generated 6, so I Believe's "Command (6+): 2 troops" pays
+    # late (OQ-033) although only 4 is left to spend.
+    owner = _owner(
+        hand=(_card("i_believe"), _card("command_center")),
+        high_council=True,
+        troops_supply=7,
+        troops_conflict=2,
+        combat_strength=4,
+    )
+    engine = UprisingRulesEngine()
+    revealed = _reveal(replace(_state(owner), reserve_stacks=_RESERVE))
+    assert _reveal_context(revealed)["persuasion"] == 4
+    deferred = engine.apply(
+        revealed, DomainAction(action_id="defer_reveal_choice", actor=0)
+    ).state
+    bought = engine.apply(
+        deferred,
+        DomainAction(
+            action_id="acquire_reserve",
+            actor=0,
+            arguments=(("card_id", "prepare_the_way"),),
+        ),
+    ).state
+    (resume,) = legal_resume_reveal_choice_actions(bought, 0)
+    resumed = engine.apply(bought, resume).state
+    retreat = next(
+        a
+        for a in legal_reveal_troop_retreat_actions(resumed, 0)
+        if a.action_id == "retreat_two_troops_for_reveal"
+    )
+    retreated = engine.apply(resumed, retreat).state
+    context = _reveal_context(retreated)
+    assert context["persuasion"] == 4
+    assert context["persuasion_generated"] == 6
+    pending = reveal_pending_gains(dict(retreated.decision_stack[-1].context))
+    assert ("troops", "2", _card("i_believe")) in pending
 
 
 def test_pointing_the_way_needs_a_sandworm_and_commands_influence() -> None:
@@ -280,6 +421,85 @@ def test_command_center_retreats_two_troops_for_two_persuasion() -> None:
     assert result.events[1].kind == "reveal_persuasion_gained"
 
 
+@pytest.mark.parametrize("commanders", [0, 1])
+def test_command_center_retreat_takes_the_two_units_strength(commanders: int) -> None:
+    # "Retreat two troops -> +2 [Persuasion]" [Command Center card] gives no
+    # swords, and "Each troop is worth 2 strength" [Main p. 12]
+    # (player-turns.md: "Conflict의 troop 하나는 strength 2"); a Commander is
+    # "a 'troop' that's worth 2 strength" [Bloodlines p. 4]. "If a card changes
+    # the number of units a player has in the Conflict ... they adjust their
+    # Combat marker accordingly" [Main p. 14]. Three units (6) retreating two
+    # leave one troop: strength 2. Before the fix the strength stayed at 6.
+    card = _card("command_center")
+    owner = _owner(
+        hand=(card,),
+        troops_supply=6 + commanders,
+        troops_conflict=3 - commanders,
+        commanders_conflict=commanders,
+        combat_strength=6,
+    )
+    engine = UprisingRulesEngine()
+    revealed = _reveal(_state(owner))
+    retreat = DomainAction(
+        action_id="retreat_two_troops_for_reveal",
+        actor=0,
+        arguments=(("commanders", commanders),) if commanders else (),
+    )
+    assert retreat in legal_reveal_troop_retreat_actions(revealed, 0)
+    retreated = engine.apply(revealed, retreat).state
+    player = retreated.players[0]
+    assert player.troops_conflict + player.commanders_conflict == 1
+    assert player.combat_strength == 2
+    assert _reveal_context(retreated)["strength"] == 2
+    assert _reveal_context(retreated)["persuasion"] == 1 + 2
+
+
+@pytest.mark.parametrize(
+    ("card_name", "start", "commanders", "space", "spice"),
+    [
+        ("command_center", 2, 0, 4, 0),
+        ("chani_clever_tactician", 2, 0, 4, 0),
+        # From the fourth space the two reach the sixth, which pays a spice.
+        ("chani_clever_tactician", 3, 0, 5, 1),
+        # A Commander is a troop [Bloodlines p. 4] and moves the token too.
+        ("command_center", 2, 1, 4, 0),
+    ],
+)
+def test_reveal_two_troop_retreats_advance_chanis_tactics_token(
+    card_name: str, start: int, commanders: int, space: int, spice: int
+) -> None:
+    # Tactician: "Whenever you retreat or lose any number of troops from the
+    # Conflict, advance your Tactics token that many spaces, earning rewards
+    # as you reach them" [Chani card]; "Each different source of retreating
+    # or losing troops is handled separately" [FAQ p. 1] (bloodlines.md §6),
+    # so one "Retreat two troops" [Command Center card] / "Retreat two of
+    # your troops" [Chani, Clever Tactician card] moves it two spaces, once.
+    # Before the fix both Reveal retreats left the token where it was.
+    card = _card(card_name)
+    owner = _owner(
+        leader_id="chani",
+        tactics_track_space=start,
+        hand=(card,),
+        troops_supply=6 + commanders,
+        troops_conflict=3 - commanders,
+        commanders_conflict=commanders,
+        combat_strength=6,
+    )
+    revealed = _reveal(_state(owner))
+    retreat = DomainAction(
+        action_id="retreat_two_troops_for_reveal",
+        actor=0,
+        arguments=(("commanders", commanders),) if commanders else (),
+    )
+    result = apply_reveal_troop_retreat(revealed, retreat)
+    player = result.state.players[0]
+    assert player.tactics_track_space == space
+    assert player.resources.spice == revealed.players[0].resources.spice + spice
+    advanced = [e for e in result.events if e.kind == "tactics_token_advanced"]
+    assert len(advanced) == 1
+    assert dict(advanced[0].payload)["count"] == 2
+
+
 # --- trash, discard, acquisition triggers -------------------------------------
 
 
@@ -321,16 +541,58 @@ def test_corrupt_bureaucrat_takes_a_contract_after_a_spy_recall() -> None:
         resolve_agent_card_effect(state).events[0].kind
         == "agent_card_effect_unavailable"
     )
-    frame = state.decision_stack[-1]
-    context = dict(frame.context)
-    context["spy_recalled_this_turn"] = True
+    # "If you recalled a Spy this turn:" reads the seat's per-turn recall
+    # count (OQ-044 (d)), which every recall path raises.
     recalled = replace(
         state,
-        decision_stack=(
-            *state.decision_stack[:-1],
-            replace(frame, context=tuple(sorted(context.items()))),
+        players=(
+            replace(state.players[0], spies_recalled_turn=1),
+            *state.players[1:],
         ),
     )
+    result = resolve_agent_card_effect(recalled)
+    assert result.state.decision_stack[-1].kind == "contract_market"
+
+
+def test_corrupt_bureaucrat_counts_a_plot_recall_during_its_agent_turn() -> None:
+    # [Corrupt Bureaucrat card] "If you recalled a Spy this turn: [contract]"
+    # names no way of recalling; "When the Recall Spy icon appears on a card,
+    # you may return one of your Spies from an observation post to your
+    # supply." [Main p. 11]. Sleeper Unit's "[Spy recall] -> 2 troops" Plot,
+    # played while the box waits (OQ-057), meets the condition.
+    card = _card("corrupt_bureaucrat")
+    sleeper = _intrigue("sleeper_unit")
+    contracts = ("contract:deliver_supplies:0", "contract:harvest_3:0")
+    base = replace(
+        _state(
+            _owner(
+                hand=(card,),
+                intrigue_cards=(sleeper,),
+                spies_supply=2,
+                spy_post_ids=("emperor-sardaukar-dutiful-service",),
+            ),
+            CHOAM_BLOODLINES,
+        ),
+        face_up_contract_ids=contracts,
+    )
+    state = _play(base, card, "assembly_hall")
+    engine = UprisingRulesEngine()
+    assert "resolve_agent_card_effect" not in {
+        action.action_id for action in engine.legal_actions(state, 0)
+    }
+
+    opened = engine.apply(state, _play_intrigue(sleeper, 1)).state
+    recall = next(
+        action
+        for action in engine.legal_actions(opened, 0)
+        if action.action_id == "recall_spy_for_intrigue"
+    )
+    recalled = engine.apply(opened, recall).state
+    assert recalled.players[0].spies_recalled_turn == 1
+    assert "resolve_agent_card_effect" in {
+        action.action_id for action in engine.legal_actions(recalled, 0)
+    }
+
     result = resolve_agent_card_effect(recalled)
     assert result.state.decision_stack[-1].kind == "contract_market"
 
@@ -399,16 +661,66 @@ def test_fremen_war_name_icons_need_two_spice_gained() -> None:
     resolved = resolve_agent_card_icon(rich, troops).state
     assert resolved.players[0].troops_garrison == before + 1
 
-    poor = _play(_state(_owner(hand=(card,))), card)
-    troops = next(
-        a
-        for a in legal_agent_card_icon_actions(poor, 0)
-        if dict(a.arguments)["effect"] == "troops"
+    # "If you gained [2 spice] or more this turn: [troop] [draw a card]"
+    # [Fremen War Name card] prints no "may": once the condition holds both
+    # icons are mandatory. While it is false they are not offered to fire and
+    # fizzle; the box waits for the turn's end (OQ-057 (1), designer ruling
+    # "조건이 거짓인 의무 Agent box는 turn 종료까지 보류").
+    from dune_imperium.rules.agent_effects import (
+        agent_card_effect_is_unavailable,
+        fizzle_pending_agent_icons,
     )
-    before = poor.players[0].troops_garrison
-    result = resolve_agent_card_icon(poor, troops)
-    assert result.state.players[0].troops_garrison == before
-    assert result.events[0].kind == "agent_card_effect_unavailable"
+
+    poor = _play(_state(_owner(hand=(card,))), card)
+    assert legal_agent_card_icon_actions(poor, 0) == ()
+    assert agent_card_effect_is_unavailable(poor)
+    ended = fizzle_pending_agent_icons(poor)
+    assert {dict(e.payload)["effect"] for e in ended.events} == {"troops", "cards"}
+    assert {e.kind for e in ended.events} == {"agent_card_effect_unavailable"}
+    assert ended.state.players[0].troops_garrison == poor.players[0].troops_garrison
+
+
+def test_fremen_war_name_icons_become_mandatory_after_a_later_spice_gain() -> None:
+    # The same box sent to Hagga Basin: before the Maker harvest the owner
+    # has gained no spice, so the icons are held rather than fizzled
+    # (OQ-057 (1)); the harvest meets "If you gained [2 spice] or more this
+    # turn:" [Fremen War Name card] and both icons then resolve.
+    from dune_imperium.rules.agent_effect_frame import legal_agent_effect_frame_actions
+
+    card = _card("fremen_war_name")
+    state = _state(_owner(hand=(card,), resources=Resources(water=1)))
+    placed = apply_agent_action(
+        state,
+        next(
+            action
+            for action in legal_agent_actions(state, 0)
+            if dict(action.arguments)["space_id"] == "hagga_basin"
+        ),
+    ).state
+    assert legal_agent_card_icon_actions(placed, 0) == ()
+    harvested = UprisingRulesEngine().apply(
+        placed,
+        next(
+            action
+            for action in legal_agent_effect_frame_actions(placed, 0)
+            if action.action_id == "harvest_maker_spice"
+        ),
+    ).state
+    assert harvested.players[0].resources.spice >= 2
+    icons = legal_agent_card_icon_actions(harvested, 0)
+    assert {dict(action.arguments)["effect"] for action in icons} == {
+        "troops",
+        "cards",
+    }
+    assert DomainAction(
+        action_id="finish_agent_turn", actor=0
+    ) not in legal_agent_effect_frame_actions(harvested, 0)
+    troops = next(a for a in icons if dict(a.arguments)["effect"] == "troops")
+    recruited = resolve_agent_card_icon(harvested, troops).state
+    assert (
+        recruited.players[0].troops_garrison
+        == harvested.players[0].troops_garrison + 1
+    )
 
 
 # --- soak ---------------------------------------------------------------------
@@ -630,13 +942,35 @@ def test_tenuous_bond_trashes_a_costly_discard_for_four_swords() -> None:
         for a in engine.legal_actions(state, 0)
         if a.action_id == "play_intrigue"
     ]
-    assert options == [1, 3]
-    opened = engine.apply(state, _play_intrigue(card, 3)).state
+    # The gold Influence band is Plot and the red trash band is Combat
+    # ("PLOT / COMBAT" footer) [Tenuous Bond card; Main p. 7]: in Combat only
+    # the trash for four swords is offered, even with Influence to swap.
+    assert options == [1]
+    opened = engine.apply(state, _play_intrigue(card, 1)).state
     trash_actions = engine.legal_actions(opened, 0)
     assert [dict(a.arguments)["card_id"] for a in trash_actions] == [_card("sandwalk")]
     done = engine.apply(opened, trash_actions[0]).state
     assert done.players[0].trashed == (_card("sandwalk"),)
     assert done.players[0].combat_strength == 2 + 4
+
+
+def test_tenuous_bond_swaps_influence_only_as_a_plot() -> None:
+    # Plot half: the gold band's "[lose 1 Influence] -> [gain 1 Influence]";
+    # the red four-sword band is not a Plot [Tenuous Bond card; Main p. 7].
+    card = _intrigue("tenuous_bond")
+    engine = UprisingRulesEngine()
+    owner = _owner(
+        intrigue_cards=(card,),
+        discard_pile=(_card("sandwalk"),),
+        influence=Influence(fremen=1),
+    )
+    state = _state(owner)
+    options = [
+        dict(a.arguments)["option"]
+        for a in engine.legal_actions(state, 0)
+        if a.action_id == "play_intrigue"
+    ]
+    assert options == [0]
 
 
 def test_the_strong_survive_retreats_one_troop_to_trash_a_card() -> None:
@@ -710,8 +1044,16 @@ def test_grasp_arrakis_flips_two_conflict_cards_for_a_point() -> None:
         for a in engine.legal_actions(state, 0)
         if a.action_id == "play_intrigue"
     ]
-    assert options == [0, 1]
-    opened = engine.apply(state, _play_intrigue(card, 1)).state
+    # The red band (three swords) is Combat; the dark-green flip band is
+    # Endgame ("COMBAT / ENDGAME" footer) [Grasp Arrakis card; Main p. 7].
+    assert options == [0]
+    endgame = _endgame_window(
+        _owner(
+            intrigue_cards=(card,),
+            won_conflict_ids=("skirmish_ornithopter", "storms_in_the_south"),
+        )
+    )
+    opened = engine.apply(endgame, _play_intrigue(card, 1)).state
     first = engine.legal_actions(opened, 0)
     assert {dict(a.arguments)["card_id"] for a in first} == {
         "skirmish_ornithopter",
@@ -1072,6 +1414,43 @@ def test_arrakis_observer_discard_places_a_deep_cover_spy() -> None:
     plain = apply_agent_card_discard(state, discard_plain).state
     assert plain.players[0].resources.spice == 0
     assert legal_agent_card_spy_actions(plain, 0) != ()
+
+
+def test_arrakis_observer_spy_may_pass_up_the_recall_with_an_empty_supply() -> None:
+    # "If you have no Spies in your supply when you need to place one, you
+    # may first recall one of your Spies for no effect." [Main p. 11];
+    # docs/rules/uprising-systems.md: with an empty supply the recall stays
+    # optional, so the owner may pass without placing (OQ-057 (14)). After
+    # the paid discard the Deep Cover Spy used to have no way to lapse: the
+    # recall was the only choice and the turn could not end.
+    card = _card("arrakis_observer")
+    filler = STARTERS[4]
+    posts = (
+        "emperor-sardaukar-dutiful-service",
+        "fremen-desert-tactics-fremkit",
+        "landsraad-assembly-hall-gather-support",
+    )
+    state = _play(
+        _state(_owner(hand=(card, filler), spies_supply=0, spy_post_ids=posts)),
+        card,
+        "arrakeen",
+    )
+    discard = next(
+        action
+        for action in legal_agent_card_discard_actions(state, 0)
+        if dict(action.arguments).get("card_id") == filler
+    )
+    discarded = apply_agent_card_discard(state, discard).state
+    engine = UprisingRulesEngine()
+    offered = {action.action_id for action in engine.legal_actions(discarded, 0)}
+    assert {"recall_spy_for_agent_card", "finish_agent_turn"} <= offered
+
+    passed = engine.apply(
+        discarded, DomainAction(action_id="finish_agent_turn", actor=0)
+    ).state
+    assert passed.players[0].spy_post_ids == posts
+    assert passed.players[0].spies_recalled_turn == 0
+    assert passed.decision_stack[-1].kind == FrameKind.TURN
 
 
 def test_arrakis_observer_recalls_a_spy_for_three_swords() -> None:
@@ -1469,6 +1848,153 @@ def test_choam_demands_completes_a_contract_and_trashes_for_influence() -> None:
     assert below.decision_stack[-1].kind == "reveal"
 
 
+@pytest.mark.parametrize(
+    "contract_id", ("contract:sardaukar_ii", "contract:bloodlines_high_council")
+)
+def test_choam_demands_recall_reward_never_takes_this_turns_agent(
+    contract_id: str,
+) -> None:
+    # Sardaukar II (and the Bloodlines High Council token) print the Recall
+    # Agent icon [Sardaukar II card]: "Return one of your other Agents on the
+    # board to your Leader (not the Agent you sent during this turn)"
+    # [Main p. 20]. Completed by CHOAM Demands' Agent box, the Agent just
+    # sent to Arrakeen used to be a legal target.
+    from dune_imperium.rules.agent_effects import (
+        apply_agent_card_contract_completion,
+        legal_agent_card_contract_completion_actions,
+    )
+    from dune_imperium.rules.contracts import legal_contract_recall_actions
+
+    card = _card("choam_demands")
+
+    def complete(**overrides: object) -> tuple[GameState, tuple[str, ...]]:
+        state = _play(
+            _state(
+                _owner(hand=(card,), active_contract_ids=(contract_id,), **overrides),
+                CHOAM_BLOODLINES,
+            ),
+            card,
+            "arrakeen",
+        )
+        action = legal_agent_card_contract_completion_actions(state, 0)[0]
+        result = apply_agent_card_contract_completion(state, action)
+        return result.state, tuple(event.kind for event in result.events)
+
+    alone, kinds = complete()
+    assert alone.players[0].agent_locations == ("arrakeen",)
+    assert "contract_recall_unavailable" in kinds
+    assert alone.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert legal_contract_recall_actions(alone, 0) == ()
+
+    earlier, _ = complete(agent_locations=("hagga_basin",), agents_available=1)
+    assert earlier.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_RECALL
+    assert [
+        dict(action.arguments)["space_id"]
+        for action in legal_contract_recall_actions(earlier, 0)
+    ] == ["hagga_basin"]
+
+
+_FAR_POSTS = (
+    "emperor-sardaukar-dutiful-service",
+    "arrakis-hagga-basin",
+    "arrakis-deep-desert",
+)
+
+
+def _last_to_reveal(state: GameState) -> GameState:
+    return replace(
+        state,
+        players=(
+            state.players[0],
+            *(replace(seat, has_revealed=True) for seat in state.players[1:]),
+        ),
+    )
+
+
+def _recall_and_place_contract_spy(state: GameState) -> GameState:
+    engine = UprisingRulesEngine()
+    assert state.decision_stack[-1].kind == FrameKind.CONTRACT_REWARD_SPY
+    assert state.decision_stack[-2].kind == FrameKind.TURN
+    recall = next(
+        action
+        for action in engine.legal_actions(state, 0)
+        if action.action_id == "recall_spy_for_contract"
+    )
+    recalled = engine.apply(state, recall).state
+    return engine.apply(recalled, engine.legal_actions(recalled, 0)[0]).state
+
+
+def test_a_contract_spy_recall_after_the_turn_closed_is_not_the_next_turns() -> None:
+    # "If a contract's condition is sending an Agent to a board space, the
+    # contract is another effect of your Agent turn." [FAQ p. 1], and "If
+    # you recalled a Spy this turn" counts the seat's recalls in its own
+    # turn (OQ-044 (d)). Completed as the turn's last effect by the last
+    # seat to reveal, the reward's recall-first ("you may first recall one
+    # of your Spies for no effect" [Main pp. 11, 20]) resolved after the
+    # seat's next turn had opened, and counted for that next turn.
+    seek_allies = next(card for card in STARTERS if ":seek_allies:" in card)
+    state = _last_to_reveal(
+        _state(
+            _owner(
+                hand=(seek_allies,),
+                spies_supply=0,
+                spy_post_ids=_FAR_POSTS,
+                active_contract_ids=("contract:bloodlines_deliver_supplies",),
+            ),
+            CHOAM_BLOODLINES,
+        )
+    )
+    engine = UprisingRulesEngine()
+    current = _play(state, seek_allies, "deliver_supplies")
+    for _ in range(10):
+        if current.decision_stack[-1].kind != FrameKind.AGENT_EFFECTS:
+            break
+        offered = engine.legal_actions(current, 0)
+        pick = next(
+            (a for a in offered if a.action_id != "complete_contract"), offered[0]
+        )
+        current = engine.apply(current, pick).state
+    placed = _recall_and_place_contract_spy(current)
+
+    seat = placed.players[0]
+    assert placed.decision_stack[-1].kind == FrameKind.TURN
+    assert seat.spies_supply == 0 and len(seat.spy_post_ids) == 3
+    assert seat.spies_recalled_turn == 0
+
+
+def test_choam_demands_spy_recall_after_the_turn_closed_is_not_the_next_turns() -> (
+    None
+):
+    # The same for a Contract completed by CHOAM Demands' Agent box
+    # ("Complete one of your contracts." [CHOAM Demands card]) as the turn's
+    # last effect: its Spy frame is re-pushed above the next turn (OQ-044
+    # (d)).
+    from dune_imperium.rules.agent_effects import (
+        apply_agent_card_contract_completion,
+        legal_agent_card_contract_completion_actions,
+    )
+
+    card = _card("choam_demands")
+    state = _last_to_reveal(
+        _state(
+            _owner(
+                hand=(card,),
+                spies_supply=0,
+                spy_post_ids=_FAR_POSTS,
+                active_contract_ids=("contract:arrakeen_ii",),
+            ),
+            CHOAM_BLOODLINES,
+        )
+    )
+    played = _play(state, card, "assembly_hall")
+    completion = legal_agent_card_contract_completion_actions(played, 0)[0]
+    completed = apply_agent_card_contract_completion(played, completion).state
+    placed = _recall_and_place_contract_spy(completed)
+
+    assert placed.decision_stack[-1].kind == FrameKind.TURN
+    assert placed.players[0].spies_recalled_turn == 0
+
+
 # --- Bloodlines slice 4d-3: Holy War, False Orders, Coercive Negotiation --
 
 
@@ -1533,6 +2059,57 @@ def test_holy_war_makes_each_opponent_lose_a_unit_and_move_its_spy() -> None:
     assert lost.decision_stack[-1].kind == "turn"
 
 
+def test_a_forced_spy_move_is_not_a_recall_for_the_next_seats_turn() -> None:
+    # Holy War: "Each opponent spying on the board space where you sent an
+    # Agent this turn must move that Spy." [Holy War card]; the FAQ calls it
+    # a move "to an empty observation post" [FAQ p. 2], not a return "from
+    # an observation post to your supply" (Recall Spy, [Main p. 11]), and
+    # "If you recalled a Spy this turn" counts the seat's own recalls in its
+    # own turn (OQ-044 (d)). Resolved as the turn's last effect, Holy War's
+    # move runs after seat 1's turn has opened; the move used to count as
+    # seat 1's recall, so Rebel Supplier recruited for free.
+    from dune_imperium.rules.spy_moves import apply_spy_move, legal_spy_move_actions
+
+    card = _card("holy_war")
+    supplier = _card("rebel_supplier")
+    watcher = replace(
+        PlayerState(player_id=1),
+        hand=(supplier,),
+        spies_supply=2,
+        spy_post_ids=(ASSEMBLY_POST,),
+    )
+    base = _state(_owner(hand=(card,)))
+    base = replace(base, players=(base.players[0], watcher, *base.players[2:]))
+    result = resolve_agent_card_effect(_play(base, card, "assembly_hall"))
+    stack = result.state.decision_stack[-2:]
+    assert [frame.kind for frame in stack] == ["turn", "opponent_spy_move"]
+    assert all(
+        isinstance(frame.decision, PlayerDecision) and frame.decision.owner == 1
+        for frame in stack
+    )
+    move = next(
+        action
+        for action in legal_spy_move_actions(result.state, 1)
+        if dict(action.arguments)["post_id"] == "arrakis-deep-desert"
+    )
+    moved = apply_spy_move(result.state, move).state
+    assert moved.players[1].spy_post_ids == ("arrakis-deep-desert",)
+    assert moved.players[1].spies_recalled_turn == 0
+
+    engine = UprisingRulesEngine()
+    sent = engine.apply(
+        moved,
+        next(
+            action
+            for action in legal_agent_actions(moved, 1)
+            if dict(action.arguments)["space_id"] == "arrakeen"
+            and dict(action.arguments)["card_id"] == supplier
+        ),
+    ).state
+    offered = {action.action_id for action in engine.legal_actions(sent, 1)}
+    assert "resolve_agent_card_effect" not in offered
+
+
 def test_holy_war_reveal_recruits_and_bonds_for_the_combat_icon() -> None:
     card = _card("holy_war")
     plain = _reveal(_state(_owner(hand=(card,))))
@@ -1541,6 +2118,37 @@ def test_holy_war_reveal_recruits_and_bonds_for_the_combat_icon() -> None:
     assert _reveal_context(plain)["combat_deployment"] is False
     bonded = _reveal(_state(_owner(hand=(card,), in_play=(_card("desert_power"),))))
     assert _reveal_context(bonded)["combat_deployment"] is True
+
+
+@pytest.mark.parametrize("bonded", [True, False])
+def test_holy_war_drawn_mid_reveal_still_bonds_for_the_combat_icon(
+    bonded: bool,
+) -> None:
+    from dune_imperium.rules.reveal_turn import legal_reveal_deployments
+
+    # "If you draw a card during your Reveal turn ... you must immediately
+    # reveal that card and use it this turn" [FAQ p. 3]; Holy War's "Fremen
+    # Bond: [Combat]" [Holy War card] lets this Reveal "deploy troops to the
+    # Conflict as though you'd sent an Agent to a Combat space" [Bloodlines
+    # p. 5] (bloodlines.md §4). Stilgar, The Devoted (Fremen) is revealed,
+    # Cunning's Plot draws Holy War: before the fix its Bond line was recorded
+    # as paid but the deployment window never opened.
+    card = _card("holy_war")
+    revealed_card = _card("stilgar_the_devoted") if bonded else STARTERS[0]
+    cunning = _intrigue("cunning")
+    owner = _owner(hand=(revealed_card,), deck=(card,), intrigue_cards=(cunning,))
+    engine = UprisingRulesEngine()
+    revealed = engine.apply(
+        _state(owner), DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    assert _reveal_context(revealed)["combat_deployment"] is False
+    drawn = engine.apply(revealed, _play_intrigue(cunning)).state
+    assert card in drawn.players[0].in_play
+    assert _reveal_context(drawn)["combat_deployment"] is bonded
+    deployments = {
+        a.action_id for a in engine.legal_actions(drawn, 0)
+    } & {a.action_id for a in legal_reveal_deployments(drawn, 0)}
+    assert ("deploy_troops" in deployments) is bonded
 
 
 def test_false_orders_moves_watching_spies_then_places_one() -> None:
@@ -1582,6 +2190,119 @@ def test_false_orders_moves_watching_spies_then_places_one() -> None:
     assert placed.decision_stack[-1].kind == "agent_effects"
 
 
+REFINERY_POSTS = (
+    "arrakis-research-station-spice-refinery",
+    "arrakis-spice-refinery-arrakeen",
+)
+
+
+def test_false_orders_moves_the_spy_off_every_post_of_the_space() -> None:
+    # "Each opponent affected by this card must move their Spy to an empty
+    # observation post that isn't connected to the space where you sent an
+    # Agent this turn." [FAQ p. 2]. Spice Refinery watches two posts; the
+    # watcher used to be allowed onto the other one and keep spying.
+    from dune_imperium.rules.spy_moves import (
+        apply_spy_move,
+        apply_spy_placement,
+        legal_spy_move_actions,
+        legal_spy_placement_actions,
+    )
+
+    card = _intrigue("false_orders")
+    city = STARTERS[7]  # Reconnaissance: the City Agent icon.
+    watcher = replace(
+        PlayerState(player_id=1), spies_supply=2, spy_post_ids=(REFINERY_POSTS[0],)
+    )
+    base = _state(_owner(hand=(city,), intrigue_cards=(card,)))
+    base = replace(base, players=(base.players[0], watcher, *base.players[2:]))
+    state = _play(base, city, "spice_refinery")
+    played = UprisingRulesEngine().apply(state, _play_intrigue(card)).state
+    moves = legal_spy_move_actions(played, 1)
+    targets = {dict(a.arguments)["post_id"] for a in moves}
+    assert targets
+    assert not targets & set(REFINERY_POSTS)
+    moved = apply_spy_move(played, moves[0]).state
+    assert not set(moved.players[1].spy_post_ids) & set(REFINERY_POSTS)
+    # "Then you [Spy] on that space": both of its posts are free now.
+    placements = legal_spy_placement_actions(moved, 0)
+    assert {dict(a.arguments)["post_id"] for a in placements} == set(REFINERY_POSTS)
+    placed = apply_spy_placement(moved, placements[0]).state
+    assert placed.players[0].spy_post_ids == (REFINERY_POSTS[0],)
+
+
+def test_holy_war_moves_the_spy_off_every_post_of_the_space() -> None:
+    # Holy War prints the same sentence as False Orders ("Each opponent
+    # spying on the board space where you sent an Agent this turn must move
+    # that Spy." [Holy War card]); the user extended the FAQ's destination
+    # [FAQ p. 2] to it on 2026-09-26 (OQ-036 (b)).
+    from dune_imperium.rules.spy_moves import legal_spy_move_actions
+
+    card = _card("holy_war")
+    watcher = replace(
+        PlayerState(player_id=1),
+        spies_supply=2,
+        spy_post_ids=(REFINERY_POSTS[1],),
+        troops_supply=12,
+        troops_garrison=0,
+    )
+    # A granted City icon (as Emperor's Invitation grants one) sends Holy War
+    # to the two-post Spice Refinery.
+    owner = _owner(hand=(card,), granted_agent_icon_turn="city")
+    base = _state(owner)
+    base = replace(base, players=(base.players[0], watcher, *base.players[2:]))
+    state = _play(base, card, "spice_refinery")
+    result = resolve_agent_card_effect(state)
+    assert result.state.decision_stack[-1].kind == "opponent_spy_move"
+    targets = {
+        dict(a.arguments)["post_id"]
+        for a in legal_spy_move_actions(result.state, 1)
+    }
+    assert targets
+    assert not targets & set(REFINERY_POSTS)
+
+
+def test_a_forced_spy_move_with_no_post_off_the_space_loses_the_spy() -> None:
+    # All twelve Spies are out and every post not connected to Spice
+    # Refinery is taken: the FAQ's destination [FAQ p. 2] does not exist, so
+    # the Spy is lost to its owner's supply, like a Rival's ("If all other
+    # Faction observation posts are full, the Spy is lost." [Bloodlines
+    # p. 8]; OQ-065).
+    from dune_imperium.content.uprising.board import OBSERVATION_POSTS
+    from dune_imperium.rules.spy_moves import (
+        apply_spy_move,
+        legal_spy_move_actions,
+        turn_space_spy_frames,
+    )
+
+    off_space = [
+        post.post_id
+        for post in OBSERVATION_POSTS
+        if post.post_id not in REFINERY_POSTS
+    ]
+    assert len(off_space) == 11
+    seats = (
+        _owner(spies_supply=0, spy_post_ids=tuple(off_space[0:3])),
+        PlayerState(
+            player_id=1,
+            spies_supply=0,
+            spy_post_ids=(REFINERY_POSTS[0], *off_space[3:5]),
+        ),
+        PlayerState(player_id=2, spies_supply=0, spy_post_ids=tuple(off_space[5:8])),
+        PlayerState(player_id=3, spies_supply=0, spy_post_ids=tuple(off_space[8:11])),
+    )
+    state = replace(_state(seats[0]), players=seats)
+    pushed = turn_space_spy_frames(state, 0, "spice_refinery", source="test").state
+    actions = legal_spy_move_actions(pushed, 1)
+    assert [a.action_id for a in actions] == ["lose_moved_spy"]
+    lost = apply_spy_move(pushed, actions[0])
+    assert lost.state.players[1].spy_post_ids == tuple(off_space[3:5])
+    assert lost.state.players[1].spies_supply == 1
+    # Lost to a forced move, not recalled by its owner (OQ-044 (d)).
+    assert lost.state.players[1].spies_recalled_turn == 0
+    assert lost.state.decision_stack == state.decision_stack
+    assert "spy_lost" in [event.kind for event in lost.events]
+
+
 def test_coercive_negotiation_reveals_three_contracts_on_a_big_deployment() -> None:
     from dune_imperium.content.uprising.contracts import contract_instance_ids
     from dune_imperium.core.engine import RuleResult
@@ -1603,18 +2324,26 @@ def test_coercive_negotiation_reveals_three_contracts_on_a_big_deployment() -> N
     frame = offered.decision_stack[-1]
     assert frame.kind == "intrigue_trigger_contract"
     actions = legal_trigger_contract_actions(offered, 0)
-    assert actions[0].action_id == "decline_intrigue_contract_trigger"
-    assert [dict(a.arguments)["instance_id"] for a in actions[1:]] == list(bank[:3])
-    taken = apply_trigger_contract_action(offered, actions[2]).state
+    # No "may" on the card ("Reveal three contracts from the bank. Take one
+    # and trash the other two." [Coercive Negotiation card]), and "Most
+    # effects from a board space or card you play are mandatory, unless a
+    # card says 'you may' do something" [FAQ p. 3]: no decline is offered
+    # while a revealed Contract can be taken (it used to be).
+    assert {a.action_id for a in actions} == {"take_trigger_contract"}
+    assert [dict(a.arguments)["instance_id"] for a in actions] == list(bank[:3])
+    taken = apply_trigger_contract_action(offered, actions[1]).state
     owner = taken.players[0]
     assert owner.active_contract_ids == (bank[1],)
     assert owner.intrigue_faceup == ()
     assert card in taken.intrigue_discard
     assert taken.contract_bank == bank[3:]
     assert taken.contract_trash == (bank[0], bank[2])
-    # Declining keeps the card face up for a later qualifying turn (OQ-016).
-    declined = apply_trigger_contract_action(offered, actions[0]).state
-    assert declined.players[0].intrigue_faceup == (card,)
+    # The decline action is gone altogether (OQ-064).
+    from dune_imperium.adapters import ActionCodec
+
+    assert "decline_intrigue_contract_trigger" not in {
+        template.action_id for template in ActionCodec(CHOAM_BLOODLINES).catalog
+    }
     # Without the CHOAM bank the trigger has nothing to reveal.
     quiet = offer_deployment_triggers(
         RuleResult(state=replace(base, contract_bank=()))
@@ -1794,7 +2523,21 @@ def test_ruthless_leadership_round_trips_and_is_dealt_in_random_games() -> None:
     # does not change its agent_turn coverage under Bloodlines (every Bene
     # Gesserit card already gets every Agent icon's placements there, for
     # Urgent Shigawire's boost).
-    assert codec.size == 10159 + 292 + 1 + 1 + 1 + 2 + 1 + 28 + 28 + 67
+    # v108 (2026-09-26 card-transcription audit): the Conflict reward and
+    # Leader Spies' recall-first (+15, see the base catalog test), Covert
+    # Operation and Unswerving Loyalty (+5), Unswerving Loyalty's and Shadout
+    # Mapes' Commander moves in every Bloodlines catalog (+2, a Commander "is
+    # a 'troop'" [Bloodlines p. 4]); one timing per printed band for Grasp
+    # Arrakis and Tenuous Bond (-3 play_intrigue), a forced Spy move with no
+    # post off the Agent's space loses the Spy (+1 lose_moved_spy, OQ-065),
+    # Navigation card 10's arrow cost may be declined (+1), Coercive
+    # Negotiation is mandatory (-1 decline, OQ-064).
+    # decline_acquisition_spy: an acquisition-bonus Spy may pass up the
+    # recall-first without a Spy in supply [Main pp. 11, 20] (+1).
+    assert codec.size == (
+        10159 + 292 + 1 + 1 + 1 + 2 + 1 + 28 + 28 + 67 + 15 + 5 + 2 - 3 + 1 + 1 - 1
+        + 1
+    )
     action = DomainAction(
         action_id="trash_agent_card",
         actor=2,
@@ -1886,4 +2629,71 @@ def test_storms_in_the_south_first_place_spy_has_deep_cover() -> None:
     assert len(posts) == 12
     placed = apply_combat_reward_spy(rewarded, posts[rival_post]).state
     assert placed.players[0].spy_post_ids == (own_post, rival_post)
+    assert placed.players[1].spy_post_ids == (rival_post,)
+
+
+def test_storms_in_the_south_deep_cover_spy_may_recall_first_without_supply() -> None:
+    # The Deep Cover Spy is still a Spy icon [Storms in the South card]: "If
+    # you have no Spies in your supply, you may first recall one of your
+    # Spies for no effect" [Main pp. 11, 20], optional (docs/rules/
+    # uprising-systems.md, OQ-057 (14)). With all three Spies on the board
+    # the reward used to open no frame and the Spy was lost.
+    from dune_imperium.rules.combat import combat_reward_spy_is_unavailable
+
+    rival_post = "emperor-sardaukar-dutiful-service"
+    own_posts = (
+        "choam-shipping-accept-contract",
+        "arrakis-hagga-basin",
+        "arrakis-deep-desert",
+    )
+    players = (
+        PlayerState(
+            player_id=0, combat_strength=8, spies_supply=0, spy_post_ids=own_posts
+        ),
+        PlayerState(
+            player_id=1, combat_strength=6, spies_supply=2, spy_post_ids=(rival_post,)
+        ),
+        PlayerState(player_id=2, combat_strength=4),
+        PlayerState(player_id=3),
+    )
+    state = GameState(
+        config=BLOODLINES,
+        seed=1,
+        phase=GamePhase.COMBAT,
+        round_number=3,
+        first_player=0,
+        players=players,
+        current_conflict_ids=("storms_in_the_south",),
+        combat_intrigue_complete=True,
+        intrigue_deck=intrigue_deck_instance_ids(False)[:4],
+    )
+    rewarded = resolve_combat_rewards(state).state
+    frame = rewarded.decision_stack[-1]
+    assert frame.kind == FrameKind.COMBAT_REWARD_SPY
+    assert dict(frame.context)["deep_cover"] is True
+    assert not combat_reward_spy_is_unavailable(rewarded)
+    actions = legal_combat_reward_spy_actions(rewarded, 0)
+    assert [action.action_id for action in actions] == [
+        "decline_combat_reward_spy",
+        *("recall_spy_for_combat_reward",) * 3,
+    ]
+
+    recalled = apply_combat_reward_spy(rewarded, actions[1]).state
+    targets = {
+        dict(action.arguments)["post_id"]
+        for action in legal_combat_reward_spy_actions(recalled, 0)
+    }
+    # Deep Cover [Bloodlines pp. 5, 12]: the rival's post and the one just
+    # left are open, the owner's other posts are not.
+    assert {rival_post, own_posts[0]} <= targets
+    assert not targets & set(own_posts[1:])
+    placed = apply_combat_reward_spy(
+        recalled,
+        DomainAction(
+            action_id="place_combat_reward_spy",
+            actor=0,
+            arguments=(("post_id", rival_post),),
+        ),
+    ).state
+    assert placed.players[0].spy_post_ids == (*own_posts[1:], rival_post)
     assert placed.players[1].spy_post_ids == (rival_post,)

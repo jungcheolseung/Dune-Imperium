@@ -2,10 +2,15 @@
 
 Holy War and False Orders read "each opponent spying on the board space
 where you sent an Agent this turn must move that Spy"; False Orders then
-lets its owner place a Spy on that space. Where a Spy may move is not
-printed: the project convention (OQ-036, user decision) applies the normal
-placement rule, so its owner moves it to any empty Observation Post. One
-is always free: thirteen posts hold at most the twelve Spies in the game.
+lets its owner place a Spy on that space. The official FAQ sets the
+destination for False Orders: "Each opponent affected by this card must
+move their Spy to an empty observation post that isn't connected to the
+space where you sent an Agent this turn." [FAQ p. 2]; the user extended the
+same rule to Holy War's identical sentence (OQ-036 (b), 2026-09-26). When
+every such post is taken -- possible only at Research Station or Spice
+Refinery, with all twelve Spies on the board -- the Spy is lost to its
+owner's supply, by analogy with the Rival rule "If all other Faction
+observation posts are full, the Spy is lost." [Bloodlines p. 8] (OQ-065).
 """
 
 from dataclasses import replace
@@ -55,7 +60,9 @@ def turn_space_spy_frames(
 ) -> RuleResult:
     """Push one Spy-move decision per opposing Spy watching ``space_id``.
 
-    Frames are pushed so the next clockwise opponent decides first.
+    Frames are pushed so the next clockwise opponent decides first. Each
+    frame keeps ``space_id``: the Spy may not move to a post connected to
+    it [FAQ p. 2].
     """
 
     posts = set(connected_post_ids(space_id))
@@ -75,6 +82,7 @@ def turn_space_spy_frames(
                         ("player", seat),
                         ("post_id", post_id),
                         ("source", source),
+                        ("space_id", space_id),
                     ),
                 )
             )
@@ -88,14 +96,24 @@ def legal_spy_move_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Offer every empty post; the mover chooses (OQ-036)."""
+    """Offer every empty post not connected to the Agent's space [FAQ p. 2].
+
+    The mover chooses (OQ-036). With no such post the Spy is lost to its
+    owner's supply (OQ-065).
+    """
 
     frame = owned_top_frame(state, FrameKind.OPPONENT_SPY_MOVE, player)
     if frame is None:
         return ()
-    targets = empty_observation_post_ids(state)
+    space_id = context_str(dict(frame.context), "space_id", owner="Spy move frame")
+    watched = set(connected_post_ids(space_id))
+    targets = tuple(
+        post_id
+        for post_id in empty_observation_post_ids(state)
+        if post_id not in watched
+    )
     if not targets:
-        raise RuntimeError("thirteen posts cannot all be occupied by twelve Spies")
+        return (DomainAction(action_id="lose_moved_spy", actor=player),)
     return tuple(
         DomainAction(
             action_id="move_spy",
@@ -107,7 +125,7 @@ def legal_spy_move_actions(
 
 
 def apply_spy_move(state: GameState, action: DomainAction) -> RuleResult:
-    """Move the Spy to the chosen post."""
+    """Move the Spy to the chosen post, or lose it when none is left."""
 
     if action not in legal_spy_move_actions(state, action.actor):
         raise ValueError("action is not a legal Spy move")
@@ -115,7 +133,16 @@ def apply_spy_move(state: GameState, action: DomainAction) -> RuleResult:
     context = dict(frame.context)
     origin = context_str(context, "post_id", owner="Spy move frame")
     owner = state.players[action.actor]
-    recalled = recall_spy(owner, origin)
+    # The forced move (and the OQ-065 loss) is not a recall by the Spy's
+    # owner: the opponent's card makes them "move their Spy to an empty
+    # observation post" [FAQ p. 2] during the card player's turn, while
+    # "If you recalled a Spy this turn" counts the seat's own recalls in its
+    # own turn (OQ-044 (d)). Holy War resolved as a turn's last effect runs
+    # these frames after the next seat's turn has opened, so counting the
+    # move would credit that seat's turn.
+    recalled = replace(
+        recall_spy(owner, origin), spies_recalled_turn=owner.spies_recalled_turn
+    )
     events: list[GameEvent] = [
         GameEvent(
             event_id=f"{frame.frame_id}:recalled",
@@ -123,6 +150,21 @@ def apply_spy_move(state: GameState, action: DomainAction) -> RuleResult:
             payload=(("player", action.actor), ("post_id", origin)),
         )
     ]
+    if action.action_id == "lose_moved_spy":
+        # No empty post off the space: the Spy returns to the supply (OQ-065).
+        events.append(
+            GameEvent(
+                event_id=f"{frame.frame_id}:lost",
+                kind="spy_lost",
+                payload=(("player", action.actor), ("post_id", origin)),
+            )
+        )
+        return RuleResult(
+            state=replace(
+                state.pop_decision(), players=replace_player(state.players, recalled)
+            ),
+            events=tuple(events),
+        )
     target = str(dict(action.arguments)["post_id"])
     next_owner = place_spy(recalled, target)
     events.append(
@@ -144,9 +186,8 @@ def track_spy_is_queued(state: GameState) -> bool:
     A pending chance frame always resolves first, like the other queues. So
     do the choices of a Conflict's rewards: a fixed Emperor Influence reward
     may reach 4 while that Conflict's own Spy rewards are still waiting, and
-    those were counted against the supply when the rewards were paid -- the
-    track's Spy follows them (with an empty supply it may still recall one
-    first) instead of taking a Spy they were promised.
+    the track's Spy follows them. Each of them, the track's included, may
+    first recall a Spy when the supply is empty [Main pp. 11, 20].
     """
 
     if not state.pending_track_spies:
@@ -191,11 +232,15 @@ def spy_placement_frame(
     *,
     source: str,
     deep_cover: bool = False,
+    turn_closed: bool = False,
 ) -> GameState:
     """Push the owner's placement of a Spy on one of ``allowed_post_ids``.
 
     With ``deep_cover`` the placement ignores opponents' Spies (Spy with
     Deep Cover [Bloodlines pp. 5, 12]); only the owner's own Spies block.
+    ``turn_closed`` marks a Spy owed by an Agent turn that has already
+    handed over: a recall-first made for it belongs to that closed turn and
+    does not count as the newly opened turn's (OQ-044 (d)).
     """
 
     return state.push_decision(
@@ -215,6 +260,7 @@ def spy_placement_frame(
                 ("deep_cover", deep_cover),
                 ("player", player),
                 ("source", source),
+                *((("turn_closed", True),) if turn_closed else ()),
             ),
         )
     )
@@ -293,6 +339,10 @@ def apply_spy_placement(state: GameState, action: DomainAction) -> RuleResult:
     post_id = str(dict(action.arguments)["post_id"])
     if action.action_id == "recall_spy_for_placement":
         recalled = recall_spy(owner, post_id)
+        if dict(frame.context).get("turn_closed") is True:
+            recalled = replace(
+                recalled, spies_recalled_turn=owner.spies_recalled_turn
+            )
         return RuleResult(
             state=replace(state, players=replace_player(state.players, recalled)),
             events=(

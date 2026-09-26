@@ -77,10 +77,13 @@
   sandworm을 합쳐 unit이 3개 이상이면 Intrigue card 1장을 얻는다. 같은 Agent
   turn의 병력 배치를 먼저 처리해 세 번째 unit을 보낸 뒤 이 조건을 확인할 수
   있다. `[Chani, Clever Tactician card]` `[Main pp. 9-10]`
-- Steersman은 Agent box에서 개인 card 1장을 draw하고 board의 자기 Agent 하나를
-  선택해 Leader로 recall한다. 이전 turn에 배치한 Agent뿐 아니라 Steersman을 내며
-  방금 배치한 Agent도 고를 수 있고, 회수한 Agent는 이후 turn에 다시 사용할 수
-  있다. `[Steersman card]` `[Main pp. 9, 20]`
+- Steersman은 Agent box에서 개인 card 1장을 draw하고 board의 자기 **다른** Agent
+  하나를 선택해 Leader로 recall한다 — "Return one of your other Agents on the
+  board to your Leader (not the Agent you sent during this turn)." `[Main p. 20]`.
+  Steersman을 내며 방금 보낸 Agent는 고를 수 없고, 다른 Agent가 없으면 recall
+  아이콘은 turn 종료까지 보류된 뒤 불발한다(OQ-057 (1)). 회수한 Agent는 이후
+  turn에 다시 사용할 수 있다. `[Steersman card]` `[Main pp. 9, 20]`
+  (2026-09-26 정정: 이전 문장은 방금 보낸 Agent도 고를 수 있다고 잘못 적었다.)
 - Junction Headquarters는 Spacing Guild Alliance를 보유할 때 Agent box의 화살표를
   선택해 hand의 Intrigue card 1장을 trash하고 Spice 2를 함께 지불하면 Victory
   Point 1을 얻는다. 비용 일부만 지불할 수 없으며 전체 비용을 지불하지 않고
@@ -149,7 +152,11 @@
 - Sardaukar Coordination으로 Agent를 보내면 Combat space가 아니어도 그 turn에
   실제로 recruit한 troop을 Conflict에 deploy할 수 있다. 이 예외는 기존
   garrison troop 두 개를 추가로 deploy하는 권한을 주지 않는다.
-  `[Sardaukar Coordination card]` `[Main p. 6]`
+  `[Sardaukar Coordination card]` `[Main p. 6]` Immortality의 Graft로 다른 카드와
+  함께 냈다면 어느 카드의 아이콘으로 보냈든 같다 — "Both played cards are
+  considered to have 'sent' the Agent, no matter which card's icon you use",
+  "You gain the effects on both cards" `[Immortality p. 10]` (2026-09-26 수정:
+  이전에는 놓은 카드일 때만 적용했다).
 - garrison이나 supply의 troop은 Conflict strength를 제공하지 않는다. [Main p. 10] [Main p. 12]
 
 ## Reveal turn
@@ -188,8 +195,9 @@
   `[FAQ p. 2]`
 - Long Live the Fighters는 Reveal에서 Persuasion 2와 strength 3을 얻는다.
   `[Long Live the Fighters card]`
-- Subversive Advisor는 Reveal에서 Solari 1을 얻는다.
-  `[Subversive Advisor card]`
+- Subversive Advisor는 Reveal에서 Persuasion 1을 얻는다. Reveal box는 파란
+  Persuasion 다이아몬드 "1"을 인쇄하며 Solari 코인이 아니다(재판독,
+  2026-09-26). `[Subversive Advisor card]`
 - Cargo Runner는 Reveal에서 Persuasion 1을 얻는다. Interstellar Trade는 Reveal을
   시작할 때 보유한 completed Contract마다 Persuasion 1을 얻으며, 같은 Reveal
   중 The Spice Must Flow acquire로 Contract를 추가 완료해도 다시 계산하지 않는다.
@@ -232,9 +240,12 @@
 - Calculus of Power는 Reveal 중 play 영역의 다른 Emperor card를 trash해 sword
   3을 얻거나 거절할 수 있다. 비용으로 자기 자신을 고를 수 없고, trash된 card의
   고유 trash 효과는 정상 처리한다. `[Calculus of Power card]`
-- Sardaukar Coordination은 기본 sword 1개에 더해 이번 Reveal에 공개한 Emperor
-  card마다 sword 1개를 얻으며 자기 자신도 센다. 이전 Agent turn에 낸 Emperor
-  card는 이 수에 포함하지 않는다. `[Sardaukar Coordination card]`
+- Sardaukar Coordination은 Reveal에서 Persuasion 2를 얻고, 이번 Reveal에 공개한
+  Emperor card마다 sword 1개를 얻으며 자기 자신도 센다. 별도의 기본 sword는
+  없다(재판독, 2026-09-26: Reveal box는 파란 Persuasion 다이아몬드 "2" 뒤에
+  "공개한 Emperor card 1장당 +sword(이 카드 포함)"만 인쇄한다). 이전 Agent
+  turn에 낸 Emperor card는 이 수에 포함하지 않는다. `[Sardaukar Coordination
+  card]`
 - Chani, Clever Tactician은 Fremen Bond로 Persuasion 2를 얻는다. Reveal의
   선택형 화살표를 사용하면 Conflict의 troop 2개를 garrison으로 retreat하고
   sword 4개를 얻는다. 다른 unit이 남아 있으면 troop strength 4가 sword 4로

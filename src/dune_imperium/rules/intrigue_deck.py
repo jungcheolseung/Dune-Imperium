@@ -12,6 +12,7 @@ from dune_imperium.core.chance import ChanceOutcome
 from dune_imperium.core.decisions import ChanceDecision, DecisionFrame
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
+from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.frames import (
     FrameKind,
@@ -21,6 +22,29 @@ from dune_imperium.rules.frames import (
     top_frame_of_kind,
     turn_owner_of,
 )
+
+
+def credit_suspensor_suits(
+    state: GameState,
+    owner: PlayerState,
+    count: int,
+) -> PlayerState:
+    """Owe Suspensor Suits' troops for ``count`` Intrigue cards just drawn.
+
+    "For each Intrigue card you draw or steal during your turn: [troop]
+    Deploy it to the Conflict" [Suspensor Suits Tech tile]; only the owner's
+    own Agent or Reveal turn counts (OQ-042 (a)). Every Intrigue draw calls
+    this, the direct ones (track bonus, Leader and card effects) included;
+    the engine deploys what is owed after the transition.
+    """
+
+    if (
+        count < 1
+        or turn_owner_of(state) != owner.player_id
+        or not has_tech(owner.tech_ids, TechAbility.INTRIGUE_DRAW_TROOP)
+    ):
+        return owner
+    return replace(owner, suspensor_owed=owner.suspensor_owed + count)
 
 
 def draw_intrigue_cards(
@@ -179,15 +203,11 @@ def _draw_available(
     if not drawn:
         return RuleResult(state=state)
     owner = state.players[player]
-    next_owner = replace(owner, intrigue_cards=(*owner.intrigue_cards, *drawn))
-    if turn_owner_of(state) == player and has_tech(
-        owner.tech_ids, TechAbility.INTRIGUE_DRAW_TROOP
-    ):
-        # Suspensor Suits: each card drawn during the owner's turn owes a
-        # troop to the Conflict, paid by the engine after the transition.
-        next_owner = replace(
-            next_owner, suspensor_owed=next_owner.suspensor_owed + len(drawn)
-        )
+    next_owner = credit_suspensor_suits(
+        state,
+        replace(owner, intrigue_cards=(*owner.intrigue_cards, *drawn)),
+        len(drawn),
+    )
     next_state = replace(
         state,
         players=replace_player(state.players, next_owner),

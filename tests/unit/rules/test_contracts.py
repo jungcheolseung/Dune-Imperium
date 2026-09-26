@@ -262,6 +262,74 @@ def test_matching_space_contracts_are_mandatory_orderable_agent_effects() -> Non
     assert len(placed_spy.players[0].spy_post_ids) == 1
 
 
+# Three posts connected to neither Arrakeen nor the Research Station, so no
+# Gather Intelligence window opens at those spaces.
+_REMOTE_POSTS = (
+    "emperor-sardaukar-dutiful-service",
+    "arrakis-hagga-basin",
+    "arrakis-deep-desert",
+)
+
+
+@pytest.mark.parametrize(
+    ("contract_id", "space_id"),
+    (
+        ("contract:arrakeen_ii", "arrakeen"),
+        ("contract:research_station_i", "research_station"),
+    ),
+)
+def test_contract_spy_without_supply_may_pass_up_the_recall_first(
+    contract_id: str, space_id: str
+) -> None:
+    # Arrakeen II prints a troop and a Spy, Research Station I 2 Solari and
+    # a Spy [Arrakeen II card] [Research Station I card]. "If you have no
+    # Spies in your supply, you may first recall one of your Spies for no
+    # effect" [Main pp. 11, 20]; docs/rules/uprising-systems.md: "supply가
+    # 비었을 때의 선행 recall ... 은 그대로 선택이므로, 그때는 배치하지 않고
+    # 넘어갈 수 있다" (OQ-057 (14)). The Contract frame used to force it.
+    engine = UprisingRulesEngine()
+    placed = _place_agent(
+        _agent_contract_state(
+            "reserve:prepare_the_way:7", contract_id, spy_post_ids=_REMOTE_POSTS
+        ),
+        space_id,
+    )
+    completion = next(
+        action
+        for action in engine.legal_actions(placed, 0)
+        if action.action_id == "complete_contract"
+    )
+    completed = engine.apply(placed, completion).state
+    assert completed.decision_stack[-1].kind == "contract_reward_spy"
+    actions = engine.legal_actions(completed, 0)
+    assert [action.action_id for action in actions] == [
+        "decline_contract_spy",
+        "recall_spy_for_contract",
+        "recall_spy_for_contract",
+        "recall_spy_for_contract",
+    ]
+
+    declined = engine.apply(completed, actions[0])
+    assert declined.state.decision_stack[-1].kind == "agent_effects"
+    assert declined.state.players[0].spy_post_ids == _REMOTE_POSTS
+    assert declined.state.players[0].spies_recalled_turn == 0
+    assert "spy_placement_unavailable" in {event.kind for event in declined.events}
+
+    # Once recalled, the Spy is in the supply and has to be placed; the post
+    # it left is open again.
+    recall = next(
+        action
+        for action in actions
+        if dict(action.arguments).get("post_id") == "arrakis-hagga-basin"
+    )
+    recalled = engine.apply(completed, recall).state
+    after = engine.legal_actions(recalled, 0)
+    assert {action.action_id for action in after} == {"place_contract_spy"}
+    assert "arrakis-hagga-basin" in {
+        dict(action.arguments)["post_id"] for action in after
+    }
+
+
 def test_gather_intelligence_window_precedes_contract_completion() -> None:
     state = _agent_contract_state(
         "reserve:prepare_the_way:7",

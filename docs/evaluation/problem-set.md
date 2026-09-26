@@ -101,3 +101,29 @@ South 1등 보상의 Spy with Deep Cover([implementation-audits/leaders.md](../i
 
 - 5081의 보유 문항 오답은 `s1240/p1`(P(정답) 0.0003)·`s2728/p3`(0.15) 둘이다. 위에서 적은 셋째 `s2281/p0`는 Fenring이 앉은 판이라
   첫 재채굴에서 빠졌다.
+
+## 재채굴 (2026-09-26, 전수 감사)
+
+카드·보드 전사 전수 감사([implementation-audits/transcription-audit-2026-09-26.md](../implementation-audits/transcription-audit-2026-09-26.md))의
+규칙 수정 110여 건은 기본판 카드도 바꿔(The Spice Must Flow의 Reveal, Reserve·Imperium 카드의 소속, Agent 아이콘 등) 고정한 국면이
+하나도 복원되지 않았다. 파일의 `note` 명령 그대로 다시 캤다(5081 체크포인트는 codec v107 → v108로 이관: 유지 32,980·새 23·삭제 7).
+**108개** — sandworm 80(heuristic 40 + 5081 40), 마지막 라운드 보유 19(전부 heuristic), Endgame 9(전부 heuristic). 새 문제집의 채점:
+
+| 에이전트 | sandworm (tip, 80) | Endgame (clear, 9) | 마지막 라운드 보유 (tip, 19) |
+|---|---|---|---|
+| random | 0.54 | 0.44 | 0.68 |
+| heuristic | 1.00 | 1.00 | 0.37 |
+| 5081 (`checkpoint:`), 정답률 / 평균 P(정답) | 1.00 / 0.98 | 1.00 / 1.00 | 0.95 / 0.88 |
+
+5081은 옛 규칙으로 학습한 정책이다. 위 수치는 새 규칙의 국면에서 그 정책이 어떻게 두는지를 볼 뿐이다.
+
+같은 날 통합 리뷰의 규칙 수정(Reveal 중 Command·Holy War, Chani의 Tactics, Desert Power의 sandworm 제한, Agent box·Plot으로 recruit한
+troop의 배치 몫 등, [감사 문서](../implementation-audits/transcription-audit-2026-09-26.md)의 "통합 리뷰" 절) 뒤 국면 넷이 복원되지 않아
+같은 명령으로 한 번 더 캤다. **106개**(유지 104, 빠짐 4 — sandworm 2와 마지막 라운드 보유 2, 새로 듦 2 — sandworm 2): sandworm 80,
+마지막 라운드 보유 17, Endgame 9.
+
+| 에이전트 | sandworm (tip, 80) | Endgame (clear, 9) | 마지막 라운드 보유 (tip, 17) |
+|---|---|---|---|
+| random | 0.56 | 0.44 | 0.71 |
+| heuristic | 1.00 | 1.00 | 0.35 |
+| 5081 (`checkpoint:`), 정답률 / 평균 P(정답) | 1.00 / 0.98 | 1.00 / 1.00 | 0.94 / 0.88 |

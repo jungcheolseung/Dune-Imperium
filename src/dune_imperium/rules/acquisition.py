@@ -36,6 +36,7 @@ from dune_imperium.rules.effects import (
 from dune_imperium.rules.frames import FrameKind, replace_player, reveal_is_open_for
 from dune_imperium.rules.immortality import advance_research, advance_tleilaxu
 from dune_imperium.rules.influence import gain_faction_influence
+from dune_imperium.rules.intrigue_deck import credit_suspensor_suits
 from dune_imperium.rules.intrigue_triggers import fire_reveal_acquisition_intrigue
 from dune_imperium.rules.reveal_turn import (
     current_reveal_context,
@@ -73,7 +74,15 @@ def legal_acquisition_spy_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Return choices for a place-Spy acquisition bonus."""
+    """Return choices for a place-Spy acquisition bonus.
+
+    Placing is mandatory while a Spy is in the supply (the erratum to
+    [Main p. 11], OQ-057 (14)). Without one, "If you have no Spies in your
+    supply when you need to place one, you may first recall one of your
+    Spies for no effect" [Main pp. 11, 20]: the recall can be passed up
+    (``decline_acquisition_spy``), and once made the Spy is back in the
+    supply and must be placed.
+    """
 
     if not 0 <= player < state.config.players or not state.decision_stack:
         return ()
@@ -86,23 +95,31 @@ def legal_acquisition_spy_actions(
     ):
         return ()
     owner = state.players[player]
-    if owner.spies_supply > 0:
+    targets = empty_observation_post_ids(state)
+    if targets and owner.spies_supply > 0:
         return tuple(
             DomainAction(
                 action_id="place_acquisition_spy",
                 actor=player,
                 arguments=(("post_id", post_id),),
             )
-            for post_id in empty_observation_post_ids(state)
+            for post_id in targets
         )
-    return tuple(
-        DomainAction(
-            action_id="recall_spy_for_acquisition",
-            actor=player,
-            arguments=(("post_id", post_id),),
+    decline = DomainAction(action_id="decline_acquisition_spy", actor=player)
+    if targets and owner.spy_post_ids:
+        return (
+            decline,
+            *(
+                DomainAction(
+                    action_id="recall_spy_for_acquisition",
+                    actor=player,
+                    arguments=(("post_id", post_id),),
+                )
+                for post_id in owner.spy_post_ids
+            ),
         )
-        for post_id in owner.spy_post_ids
-    )
+    # Nothing can be placed (no free post, or no Spy at all).
+    return (decline,)
 
 
 def apply_acquisition_spy_action(
@@ -116,14 +133,27 @@ def apply_acquisition_spy_action(
     frame = state.decision_stack[-1]
     context = dict(frame.context)
     card_id = context["acquisition_card_id"]
-    post_id = dict(action.arguments).get("post_id")
-    if not isinstance(card_id, str) or not isinstance(post_id, str):
+    if not isinstance(card_id, str):
         raise RuntimeError("acquisition Spy frame has invalid context")
-    owner = state.players[action.actor]
     source = (
         f"round:{state.round_number}:player:{action.actor}:"
         f"acquire:{card_id}"
     )
+    if action.action_id == "decline_acquisition_spy":
+        return RuleResult(
+            state=_resume_after_acquisition_spy(state.pop_decision()),
+            events=(
+                GameEvent(
+                    event_id=f"{source}:spy_unavailable",
+                    kind="spy_placement_unavailable",
+                    payload=(("card_id", card_id), ("player", action.actor)),
+                ),
+            ),
+        )
+    post_id = dict(action.arguments).get("post_id")
+    if not isinstance(post_id, str):
+        raise RuntimeError("acquisition Spy frame has invalid context")
+    owner = state.players[action.actor]
 
     if action.action_id == "recall_spy_for_acquisition":
         next_owner = recall_spy(owner, post_id)
@@ -146,18 +176,13 @@ def apply_acquisition_spy_action(
         return RuleResult(state=next_state, events=(event,))
 
     next_owner = place_spy(owner, post_id)
-    next_state = replace(
-        state,
-        players=replace_player(state.players, next_owner),
-        decision_stack=state.decision_stack[:-1],
+    next_state = _resume_after_acquisition_spy(
+        replace(
+            state,
+            players=replace_player(state.players, next_owner),
+            decision_stack=state.decision_stack[:-1],
+        )
     )
-    # An Agent-turn acquisition (Price is No Object) returns to an effect
-    # frame that may have nothing left pending; advance it like every other
-    # discharging handler so the Agent turn can end. Reveal acquisitions
-    # return to the Reveal frame, which keeps its own purchase actions.
-    top_frame = next_state.decision_stack[-1] if next_state.decision_stack else None
-    if top_frame is not None and top_frame.kind == FrameKind.AGENT_EFFECTS:
-        next_state = advance_after_effect(next_state, dict(top_frame.context))
     event = GameEvent(
         event_id=f"{source}:spy_placed:{post_id}",
         kind="spy_placed",
@@ -168,6 +193,21 @@ def apply_acquisition_spy_action(
         ),
     )
     return RuleResult(state=next_state, events=(event,))
+
+
+def _resume_after_acquisition_spy(state: GameState) -> GameState:
+    """Advance the Agent turn under a finished acquisition Spy, if any.
+
+    An Agent-turn acquisition (Price is No Object) returns to an effect
+    frame that may have nothing left pending; advance it like every other
+    discharging handler so the Agent turn can end. Reveal acquisitions
+    return to the Reveal frame, which keeps its own purchase actions.
+    """
+
+    top_frame = state.decision_stack[-1] if state.decision_stack else None
+    if top_frame is not None and top_frame.kind == FrameKind.AGENT_EFFECTS:
+        return advance_after_effect(state, dict(top_frame.context))
+    return state
 
 
 def legal_agent_card_acquisitions(
@@ -859,9 +899,13 @@ def _resolve_imperium_acquisition_bonus(
             f"acquire:{instance_id}:intrigue_draw"
         )
         if intrigue_deck:
-            owner = replace(
-                owner,
-                intrigue_cards=(*owner.intrigue_cards, intrigue_deck[0]),
+            owner = credit_suspensor_suits(
+                state,
+                replace(
+                    owner,
+                    intrigue_cards=(*owner.intrigue_cards, intrigue_deck[0]),
+                ),
+                1,
             )
             intrigue_deck = intrigue_deck[1:]
             events = (

@@ -177,6 +177,11 @@ def test_determinize_keeps_the_contracts_coercive_negotiation_revealed() -> None
         world = determinize(state, 0, random.Random(seed))
         assert world.contract_bank[:3] == state.contract_bank[:3]
         assert legal_trigger_contract_actions(world, 0) == real
+        # Revealed to the whole table [Coercive Negotiation card; Main p. 7],
+        # so another seat's sampled world keeps them on top too.
+        other = determinize(state, 1, random.Random(seed))
+        assert other.contract_bank[:3] == state.contract_bank[:3]
+        assert observe_state(other, 1) == observe_state(state, 1)
     # The rest of the bank is still re-dealt.
     assert any(
         determinize(state, 0, random.Random(seed)).contract_bank[3:]

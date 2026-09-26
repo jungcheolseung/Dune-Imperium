@@ -10,7 +10,7 @@ summaries under ``docs/rules/``.
 """
 
 from dune_imperium.display.actions import agent_card_icon_text, effect_action_text
-from dune_imperium.display.cards import personal_card_text
+from dune_imperium.display.cards import RECLAIMED_FORCES_TEXT, personal_card_text
 from dune_imperium.display.effect_dsl_text import intrigue_card_text
 from dune_imperium.display.icons import ICON_NAMES, available_icons, icon_filename
 from dune_imperium.display.images import (
@@ -42,6 +42,7 @@ __all__ = [
     "ICON_NAMES",
     "LEADER_FACE_TEXTS",
     "LeaderFaceText",
+    "RECLAIMED_FORCES_TEXT",
     "STRENGTH_TOKEN_COLORS",
     "agent_card_icon_text",
     "available_icons",

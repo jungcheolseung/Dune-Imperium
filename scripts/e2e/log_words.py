@@ -45,7 +45,10 @@ GAMES = (
     # Random seats wander into what a heuristic never picks (Family Atomics,
     # the Feyd track, Secrets' random steal, an exchanged Influence).
     {"seats": ["random"] * 4, "game_seed": 25, "policy_seed": 25, **EVERY_EXPANSION},
-    {"seats": ["random"] * 4, "game_seed": 30, "policy_seed": 30, **EVERY_EXPANSION},
+    # Seed 38 (was 30 until the 2026-09-26 card-transcription audit's rules
+    # fixes moved every game): still Family Atomics, the Feyd track and
+    # research, and now the only one of the four with a Secrets steal.
+    {"seats": ["random"] * 4, "game_seed": 38, "policy_seed": 38, **EVERY_EXPANSION},
     {
         "seats": ["random"] * 4,
         "game_seed": 23,

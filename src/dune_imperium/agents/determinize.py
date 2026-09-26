@@ -19,10 +19,10 @@ from dune_imperium.core.observation import (
     peeked_card_id,
     peeked_intrigue_ids,
     resolving_intrigue_ids,
+    revealed_contract_ids,
 )
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.frames import FrameKind, owned_top_frame
-from dune_imperium.rules.intrigue_triggers import revealed_contract_count
 
 
 def secret_project_candidates(state: GameState, observer: int) -> tuple[str, ...]:
@@ -106,11 +106,11 @@ def determinize(state: GameState, observer: int, rng: random.Random) -> GameStat
 
     imperium_deck = list(state.imperium_deck)
     rng.shuffle(imperium_deck)
-    # Coercive Negotiation shows the observer the bank's top Contracts while
-    # its choice is open [card face]; they stay in place, or the frame's own
-    # choices become unappliable in the sampled world (2026-09-16 rollout
-    # cells, CHOAM+Bloodlines+Tech, 16 of 200 games).
-    revealed = list(state.contract_bank[: revealed_contract_count(state, observer)])
+    # Coercive Negotiation reveals the bank's top Contracts to every seat
+    # while its choice is open [card face; Main p. 7]; they stay in place, or
+    # the frame's own choices become unappliable in the sampled world
+    # (2026-09-16 rollout cells, CHOAM+Bloodlines+Tech, 16 of 200 games).
+    revealed = list(revealed_contract_ids(state))
     contract_bank = list(state.contract_bank[len(revealed) :])
     rng.shuffle(contract_bank)
     contract_bank = [*revealed, *contract_bank]

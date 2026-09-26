@@ -27,6 +27,7 @@ from dune_imperium.rules.acquisition import (
 from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
 from dune_imperium.rules.contracts import apply_contract_action, legal_contract_actions
 from dune_imperium.rules.engine import UprisingRulesEngine
+from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.reveal_turn import (
     begin_reveal_turn,
     legal_reveal_actions,
@@ -945,7 +946,7 @@ def test_guild_spy_bumps_once_per_reveal_and_a_late_guild_spy_still_reacts() -> 
     again = buy(arrived)
     assert again.players[0].influence.emperor == 1
 
-def test_strike_fleet_acquisition_recalls_before_placing_with_empty_supply() -> None:
+def _strike_fleet_bought_with_an_empty_supply() -> tuple[GameState, tuple[str, ...]]:
     state = _reveal_state(
         _instance("convincing_argument", 0),
         _instance("convincing_argument", 1),
@@ -972,8 +973,16 @@ def test_strike_fleet_acquisition_recalls_before_placing_with_empty_supply() -> 
         if dict(action.arguments).get("instance_id") == strike_fleet
     )
 
-    acquired = apply_imperium_acquisition(state, acquire).state
-    recall = legal_acquisition_spy_actions(acquired, 0)[0]
+    return apply_imperium_acquisition(state, acquire).state, posts
+
+
+def test_strike_fleet_acquisition_recalls_before_placing_with_empty_supply() -> None:
+    acquired, posts = _strike_fleet_bought_with_an_empty_supply()
+    recall = next(
+        action
+        for action in legal_acquisition_spy_actions(acquired, 0)
+        if action.action_id == "recall_spy_for_acquisition"
+    )
     recalled = apply_acquisition_spy_action(acquired, recall)
     placement = next(
         action
@@ -986,6 +995,37 @@ def test_strike_fleet_acquisition_recalls_before_placing_with_empty_supply() -> 
     assert replaced.state.players[0].spies_supply == 0
     assert set(replaced.state.players[0].spy_post_ids) == set(posts)
     assert dict(replaced.state.decision_stack[-1].context)["persuasion"] == 0
+    # Once recalled, the Spy is in supply and must be placed (OQ-057 (14)).
+    assert {
+        action.action_id
+        for action in legal_acquisition_spy_actions(recalled.state, 0)
+    } == {"place_acquisition_spy"}
+
+
+def test_strike_fleet_acquisition_spy_may_pass_up_the_recall_with_an_empty_supply() -> (
+    None
+):
+    # "If you have no Spies in your supply when you need to place one, you
+    # may first recall one of your Spies for no effect." [Main p. 11] (again
+    # [Main p. 20]); docs/rules/uprising-systems.md: with an empty supply the
+    # recall stays optional, so the owner may pass without placing (OQ-057
+    # (14)). The acquisition Spy used to offer only the recalls.
+    acquired, posts = _strike_fleet_bought_with_an_empty_supply()
+    choices = legal_acquisition_spy_actions(acquired, 0)
+    assert choices[0] == DomainAction(action_id="decline_acquisition_spy", actor=0)
+    assert {action.action_id for action in choices[1:]} == {
+        "recall_spy_for_acquisition"
+    }
+
+    passed = apply_acquisition_spy_action(acquired, choices[0])
+
+    owner = passed.state.players[0]
+    assert owner.spy_post_ids == posts
+    assert owner.spies_supply == 0
+    assert owner.spies_recalled_turn == 0
+    assert passed.events[0].kind == "spy_placement_unavailable"
+    assert passed.state.decision_stack[-1].kind == FrameKind.REVEAL
+    assert dict(passed.state.decision_stack[-1].context)["persuasion"] == 0
 
 
 def test_reserve_acquisition_never_reissues_an_owned_copy_id() -> None:

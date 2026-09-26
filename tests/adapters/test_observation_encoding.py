@@ -226,18 +226,28 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # printed Influence 4 bonuses): the seeds play differently, while
 # ``adapters/observation_encoding.py`` and ``core/observation.py`` are byte
 # for byte the files the previous digests were pinned with.
+# Re-pinned on 2026-09-26 for the card-transcription audit's rules fixes
+# (codec v108): ``adapters/observation_encoding.py`` is byte for byte the
+# previous file, and the encoder of the previous pin (7de618d) produced the
+# same vector as the current one at every one of these games' decisions
+# (``core/observation.py`` only added the unencoded revealed_contract_ids
+# and FrameKind gained LEADER_SIGNET at the end, keeping every old index).
+# The integration review's rules fixes of the same day moved
+# ``promo_bloodlines_tech`` again; the encoder of that pin (ab87327) and the
+# current one agreed on every vector of all five games, and no observation
+# or encoder file changed in between.
 _GOLDEN_DIGESTS = {
-    "base": ("ffab2cb7af85b8b0113ed7df0f3ad264d9ab9510abdf98bef83be6d4b0ab3ed4", 2316),
-    "choam": ("85152cde322a35f7ca4295fc505d997c5d5eb068878272e39cd6463385408cee", 3096),
+    "base": ("2d50b45756e1958cd6b83c1433839c9f228e344edc14bffa88f44c0d8f8ab0c2", 2572),
+    "choam": ("7a0d28ab59a1721b19d38c3a4eee18add65bc1924a64ac252b8eef90e9609095", 2972),
     "promo_bloodlines_tech": (
-        "79775461ab04c7a4501c51c40561ea012e7a9c8d139a08361206833c0a42219b",
-        2892,
+        "53a671ab242e040e5fac4b53e6a9a861700df1e216319269eec309657071be6d",
+        3040,
     ),
     "everything": (
-        "557d9f5d2a3c8dd84476f787b652f30a66fcaf9ee6751cd8521917db8e2cae87",
-        3020,
+        "703f5f984e007045a4b7b15410e819d22d513f9560a95a5f08a78b211c32463e",
+        3012,
     ),
-    "draft": ("6920d8837ddf0066ffa33115997d3103fac333b67a473dad2b2ddfc88be978a4", 2476),
+    "draft": ("a5e5cdaa2b4382445f48f93b5beb721f59e880a1c99deff6c0896c9cf30369ba", 2476),
 }
 _GOLDEN_CONFIGS = {
     "base": {},

@@ -162,6 +162,165 @@ def test_hungry_for_spice_draws_once_per_turn() -> None:
     assert again.players[0].hand == (DAGGER,)
 
 
+def _with_spice(state: GameState, spice: int) -> GameState:
+    owner = state.players[0]
+    return replace(
+        state,
+        players=(
+            replace(owner, resources=replace(owner.resources, spice=spice)),
+            *state.players[1:],
+        ),
+    )
+
+
+def _opponent_turn(state: GameState) -> GameState:
+    return replace(
+        state,
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:1",
+                decision=PlayerDecision(owner=1, prompt="Choose a turn"),
+            ),
+        ),
+    )
+
+
+def test_hungry_for_spice_counts_only_y_rkoons_own_turn() -> None:
+    # "Whenever you gain [3 spice] or more in a single turn: [draw]"
+    # [Steersman Y'rkoon card]. Round phases are Round Start, Player Turns,
+    # Combat, Makers and Recall [Main p. 8]: Combat is nobody's turn, and an
+    # opponent's turn is not Y'rkoon's.
+    from dune_imperium.core.engine import RuleResult
+    from dune_imperium.rules.leader_abilities import grant_hungry_for_spice
+
+    owner = _steersman((), deck=(DAGGER, RECON), spice_at_turn_start=0)
+    own_turn = _turn_state(owner)
+
+    # Three spice from a Conflict reward during Combat: no draw.
+    combat = replace(_with_spice(own_turn, 3), phase=GamePhase.COMBAT)
+    combat = replace(combat, decision_stack=())
+    fed = grant_hungry_for_spice(RuleResult(state=combat), combat).state
+    assert fed.players[0].hand == ()
+
+    # One spice in his Reveal turn, two more once Combat has begun (the last
+    # Reveal and the Combat rewards in one transition): still no draw.
+    reveal = _with_spice(own_turn, 1)
+    fed = grant_hungry_for_spice(RuleResult(state=combat), reveal).state
+    assert fed.players[0].hand == ()
+
+    # Three spice during an opponent's turn: no draw.
+    theirs = _opponent_turn(own_turn)
+    fed = grant_hungry_for_spice(
+        RuleResult(state=_with_spice(theirs, 3)), theirs
+    ).state
+    assert fed.players[0].hand == ()
+
+    # Three spice gained by the step that closed his own turn still draws.
+    closed = _with_spice(_opponent_turn(own_turn), 3)
+    fed = grant_hungry_for_spice(RuleResult(state=closed), own_turn).state
+    assert fed.players[0].hand == (DAGGER,)
+
+
+def test_hungry_for_spice_judges_a_turn_that_reopens_into_his_own() -> None:
+    # "Whenever you gain [3 spice] or more in a single turn: [draw]"
+    # [Steersman Y'rkoon card]; OQ-063: "그 turn의 마지막 단계에서 얻은
+    # spice는 turn을 닫는 전이에서도 판정한다". With every opponent revealed,
+    # the step that closes his Agent turn opens his own next turn at once,
+    # and the new turn's snapshot used to erase the closed turn's gain
+    # before the hook judged it: no card, where unrevealed opponents gave one.
+    ambassador = "imperium:ixian_ambassador:0"
+    owner = _steersman(
+        (),
+        hand=(ambassador,),
+        deck=(DAGGER, RECON),
+        resources=Resources(spice=2),
+        spice_at_turn_start=0,
+        agents_available=2,
+    )
+    others = tuple(PlayerState(player_id=seat, has_revealed=True) for seat in (1, 2, 3))
+    state = _turn_state(
+        owner,
+        players=(owner, *others),
+        config=RulesetConfig(bloodlines=True, tech_module=True),
+    )
+
+    def act(current: GameState, action_id: str, **arguments: object) -> GameState:
+        action = next(
+            action
+            for action in ENGINE.legal_actions(current, 0)
+            if action.action_id == action_id
+            and all(dict(action.arguments).get(k) == v for k, v in arguments.items())
+        )
+        return ENGINE.apply(current, action).state
+
+    state = act(state, "agent_turn", card_id=ambassador, space_id="assembly_hall")
+    state = act(state, "resolve_board_effect")
+    state = act(state, "decline_tech")
+    # Ixian Ambassador's box, one spice [Ixian Ambassador card], is the
+    # turn's last step: two before it, three with it.
+    closed = act(state, "resolve_agent_card_effect")
+    frame = closed.decision_stack[-1]
+    assert frame.kind == "turn"
+    assert isinstance(frame.decision, PlayerDecision) and frame.decision.owner == 0
+    seat = closed.players[0]
+    assert seat.resources.spice == 3
+    assert seat.hand == (DAGGER,)
+    assert seat.hungry_for_spice_owed is False
+    # The new turn is judged on its own.
+    assert seat.hungry_for_spice_granted_turn is False
+    assert seat.spice_at_turn_start == 3
+
+
+def test_hungry_for_spice_draws_after_a_reshuffle_left_by_the_closing_step() -> (
+    None
+):
+    # OQ-063 judges the closing step's gain in the transition that closed
+    # the turn. When that step also left a reshuffle pending, the draw waits
+    # for it; before, the next transition started in the opponent's turn and
+    # never judged Y'rkoon again, so the draw was lost.
+    from dune_imperium.core import ChanceDecision
+    from dune_imperium.core.engine import RuleResult
+    from dune_imperium.rules.leader_abilities import grant_hungry_for_spice
+
+    owner = _steersman((), deck=(DAGGER, RECON), spice_at_turn_start=0)
+    own_turn = _turn_state(owner)
+    reshuffle = DecisionFrame(
+        kind="personal_draw_reshuffle",
+        frame_id="test:reshuffle",
+        decision=ChanceDecision(
+            decision_id="test:reshuffle", prompt="Shuffle", options=(RECON,)
+        ),
+    )
+    theirs = _with_spice(_opponent_turn(own_turn), 3)
+    pending = replace(theirs, decision_stack=(*theirs.decision_stack, reshuffle))
+    waited = grant_hungry_for_spice(RuleResult(state=pending), own_turn).state
+    assert waited.players[0].hand == ()
+    assert waited.players[0].hungry_for_spice_owed is True
+    # The reshuffle resolved: the owed card is drawn once.
+    resolved = replace(waited, decision_stack=theirs.decision_stack)
+    fed = grant_hungry_for_spice(RuleResult(state=resolved), waited).state
+    assert fed.players[0].hand == (DAGGER,)
+    assert fed.players[0].hungry_for_spice_owed is False
+    again = grant_hungry_for_spice(RuleResult(state=fed), fed).state
+    assert again.players[0].hand == (DAGGER,)
+
+
+def test_round_start_clears_the_hungry_for_spice_flag() -> None:
+    from dune_imperium.rules.phases import begin_round
+
+    owner = _steersman((), deck=(DAGGER, RECON), hungry_for_spice_granted_turn=True)
+    state = replace(
+        _turn_state(owner),
+        phase=GamePhase.ROUND_START,
+        decision_stack=(),
+        conflict_deck=(CONFLICTS[1].card.card_id,),
+        first_player=0,
+    )
+    started = begin_round(state).state
+    assert started.players[0].hungry_for_spice_granted_turn is False
+
+
 # --- Navigation cards ----------------------------------------------------------
 
 
@@ -274,6 +433,38 @@ def test_a_card_with_no_playable_option_is_spent_without_effect() -> None:
     )
     dropped = begin_navigation_play(gained_empty.state)
     assert dropped.events[0].kind == "navigation_exhausted"
+
+
+def test_card_ten_arrow_cost_may_be_declined_and_the_card_is_spent() -> None:
+    # Card 10 prints "[lose 1 Influence] -> [gain 1 Influence]" with an
+    # arrow; "You do not have to pay such a cost on a card." [Main p. 20]
+    # (OQ-058). Plot Course still plays the card, so declining spends it
+    # without effect (OQ-039 (b)). It used to force the loss.
+    owner = _steersman(
+        (_card(10), _card(5)), influence=Influence(fremen=1), victory_points=1
+    )
+    opened = _reach_two(_turn_state(owner), Faction.FREMEN)
+    actions = legal_navigation_play_actions(opened, 0)
+    decline = DomainAction(action_id="decline_navigation", actor=0)
+    assert [a.action_id for a in actions] == ["play_navigation", "decline_navigation"]
+    declined = apply_navigation_play(opened, decline)
+    seat = declined.state.players[0]
+    assert seat.influence.fremen == 2
+    assert seat.victory_points == 1 + 1
+    assert seat.navigation_played == (_card(10),)
+    assert seat.navigation_slots == (_card(5),)
+    assert seat.navigation_active_slot == 0
+    assert declined.state.pending_navigation_plays == ()
+    assert declined.state.decision_stack[-1].kind == "turn"
+    assert dict(declined.events[0].payload)["declined"] == 1
+    # A card with a cost-free option has no decline: its play is mandatory.
+    free = _reach_two(
+        _turn_state(_steersman((_card(9),), influence=Influence(fremen=1))),
+        Faction.FREMEN,
+    )
+    assert "decline_navigation" not in {
+        a.action_id for a in legal_navigation_play_actions(free, 0)
+    }
 
 
 def test_card_five_pays_spice_for_trashing_a_costed_card() -> None:

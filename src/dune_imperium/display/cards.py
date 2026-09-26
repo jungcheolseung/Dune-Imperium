@@ -14,15 +14,22 @@ from typing import Final
 
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.imperium import ImperiumCardEntry
-from dune_imperium.content.uprising.personal_cards import PersonalCardDefinition
+from dune_imperium.content.uprising.personal_cards import (
+    PersonalCardDefinition,
+    card_is_ghola,
+    card_is_usurp,
+)
 from dune_imperium.content.uprising.reserve import ReserveStackDefinition
+from dune_imperium.content.uprising.types import AgentIcon
 from dune_imperium.display.tokens import (
     ACQUISITION_EFFECT_TEXT,
     AGENT_EFFECT_TEXT,
     DISCARD_EFFECT_TEXT,
+    ICON_CONDITION_TEXT,
     REVEAL_ACQUISITION_EFFECT_TEXT,
     REVEAL_CHOICE_EFFECT_TEXT,
     TRASH_EFFECT_TEXT,
+    TURN_START_EFFECT_TEXT,
     reveal_effect_text,
 )
 
@@ -49,8 +56,75 @@ def _factions_or(factions: tuple[Faction, ...]) -> str:
     return f"{', '.join(names[:-1])}, or {names[-1]}"
 
 
+_AGENT_ICON_NAMES: Final[dict[AgentIcon, str]] = {
+    AgentIcon.EMPEROR: "Emperor",
+    AgentIcon.SPACING_GUILD: "Spacing Guild",
+    AgentIcon.BENE_GESSERIT: "Bene Gesserit",
+    AgentIcon.FREMEN: "Fremen",
+    AgentIcon.LANDSRAAD: "Landsraad",
+    AgentIcon.CITY: "City",
+    AgentIcon.SPICE_TRADE: "Spice Trade",
+    AgentIcon.SPY: "Spy",
+}
+
+
+def _names_and(names: list[str]) -> str:
+    """Join names with a natural "and"/Oxford-comma list."""
+
+    if len(names) <= 2:
+        return " and ".join(names)
+    return f"{', '.join(names[:-1])}, and {names[-1]}"
+
+
+def _icon_condition_line(entry: PersonalCardDefinition) -> str | None:
+    """Render the printed condition under which the greyed icons are real.
+
+    Long Reach's and Show of Strength's Agent icons are printed greyed and
+    only exist while the card's condition holds [card faces]; the catalog
+    still lists them, so the text must say so.
+    """
+
+    if not isinstance(entry, ImperiumCardEntry) or entry.icon_condition is None:
+        return None
+    icons = _names_and([_AGENT_ICON_NAMES[icon] for icon in entry.agent_icons])
+    return f"{ICON_CONDITION_TEXT[entry.icon_condition]}, this has {icons}"
+
+
 _NO_ADDITIONAL_ABILITY: Final = "(no additional ability)"
+_GHOLA_AGENT_LINE: Final = (
+    "Agent: This card has the same Agent box as the other grafted card"
+)
 _PLAY_DATA_NOT_TRANSCRIBED: Final = "(play data not transcribed)"
+
+# Reclaimed Forces never enters a player's deck (it is "never removed from
+# the Tleilaxu Row" [Immortality p. 9] [Reclaimed Forces card]), so it has
+# no Agent/Reveal play data and personal_card_text() would otherwise print
+# "(play data not transcribed)" for it. Its printed acquire box is a choice
+# ("recruit two troops -OR- Tleilaxu"), which fits no single
+# PersonalCardAcquisitionEffect, so server.catalog renders this text
+# directly instead of routing the card through personal_card_text().
+RECLAIMED_FORCES_TEXT: Final[tuple[str, ...]] = (
+    "On acquire (choose one): Recruit 2 troops / Tleilaxu "
+    "(advance your Tleilaxu token)",
+    "Never removed from the Tleilaxu Row",
+)
+
+# Blank Slate: "If grafted: This has [Emperor], [Spacing Guild], [Bene
+# Gesserit], and [Fremen]" [Blank Slate card face]. The four Faction icons
+# are added by rules.agent_icons via a card_id check rather than a typed
+# ImperiumCardEntry field, so this line is hand-authored the same way.
+_BLANK_SLATE_GRAFT_ICONS_LINE: Final = (
+    "If grafted: This has Emperor, Spacing Guild, Bene Gesserit, "
+    "and Fremen Agent icons"
+)
+
+# Usurp's GRAFT box is a passive with no PersonalCardAgentEffect member: it
+# grafts to a card in the Imperium Row instead of one from the player's hand
+# [Usurp card face].
+_USURP_GRAFT_LINE: Final = (
+    "Graft: You may graft this to a card in the Imperium Row without "
+    "acquiring it. If you do, trash that card at the end of your turn"
+)
 
 # The single transcribed PersonalCardRevealAcquisitionEffect member is
 # specific to The Spice Must Flow (see its enum name and Guild Spy's audit
@@ -101,11 +175,34 @@ def personal_card_text(entry: PersonalCardDefinition) -> list[str]:
 
     lines: list[str] = []
 
+    icon_condition_line = _icon_condition_line(entry)
+    if icon_condition_line is not None:
+        lines.append(icon_condition_line)
     agent_line = _agent_line(entry)
     if agent_line is not None:
         lines.append(agent_line)
+    if card_is_ghola(entry):
+        # The box is borrowed at play time (``rules.effects``), so the
+        # printed Graft box has no effect of its own to render [Ghola card].
+        lines.append(_GHOLA_AGENT_LINE)
+
+    if isinstance(entry, ImperiumCardEntry) and entry.turn_start_effect is not None:
+        # Litany Against Fear: a red turn-start box replaces its Agent box
+        # [Litany Against Fear card face].
+        lines.append(
+            "At the start of your turn: "
+            f"{TURN_START_EFFECT_TEXT[entry.turn_start_effect]}"
+        )
 
     if isinstance(entry, ImperiumCardEntry):
+        if entry.card.card_id == "blank_slate":
+            lines.append(_BLANK_SLATE_GRAFT_ICONS_LINE)
+        if card_is_usurp(entry):
+            lines.append(_USURP_GRAFT_LINE)
+        if entry.agent_icons_from_contracts:
+            lines.append(
+                "Has the Agent icons shown on all your incomplete contracts"
+            )
         if entry.ignores_influence_requirements:
             lines.append("Ignores Influence requirements")
         if entry.allows_recruited_troop_deployment:

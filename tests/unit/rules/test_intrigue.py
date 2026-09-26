@@ -1120,7 +1120,21 @@ def test_cunning_owner_may_draw_first_and_trash_the_drawn_card() -> None:
     assert trashed.intrigue_discard == (card,)
 
 
-def test_special_mission_places_a_spy_on_a_bene_gesserit_post() -> None:
+_CITY_POSTS = frozenset(
+    {
+        "arrakis-research-station-spice-refinery",
+        "arrakis-research-station-sietch-tabr",
+        "arrakis-spice-refinery-arrakeen",
+    }
+)
+
+
+def test_special_mission_places_a_spy_on_a_city_post() -> None:
+    # The card prints "[Spy] on [City disc]" (the blue-violet disc is the
+    # City Agent icon, not the Bene Gesserit ornament) [Special Mission
+    # card]; '"[Spy] on [City]" means the observation post must connect to
+    # a [City] board space' [Main p. 20]. It used to target the Bene
+    # Gesserit post.
     card = _intrigue("special_mission")
     owner = PlayerState(player_id=0, intrigue_cards=(card,))
     state = _turn_state(owner)
@@ -1138,7 +1152,8 @@ def test_special_mission_places_a_spy_on_a_bene_gesserit_post() -> None:
         for a in offered
         if a.action_id == "place_intrigue_spy"
     }
-    assert targets and all("bene-gesserit" in post for post in targets)
+    assert targets == _CITY_POSTS
+    assert "bene-gesserit-espionage-secrets" not in targets
     post = sorted(targets)[0]
     placed = engine.apply(opened, _place_spy(post)).state
     assert placed.players[0].spy_post_ids == (post,)
@@ -1213,26 +1228,43 @@ def test_special_mission_recalls_first_when_no_spy_is_in_supply() -> None:
     }
 
 
+def _city_posts_held_by_rivals(state: GameState) -> GameState:
+    """Fill the two City posts the owner does not watch with rival Spies."""
+
+    first = replace(
+        state.players[1],
+        spies_supply=2,
+        spy_post_ids=("arrakis-research-station-sietch-tabr",),
+    )
+    second = replace(
+        state.players[2],
+        spies_supply=2,
+        spy_post_ids=("arrakis-spice-refinery-arrakeen",),
+    )
+    return replace(state, players=(state.players[0], first, second, state.players[3]))
+
+
 def test_special_mission_shared_post_does_not_make_the_placement_playable() -> None:
-    # Seed-97 sweep shape: the owner's only Bene Gesserit Spy shares its post
-    # with another player's Spy, so recalling it cannot free the post
-    # [Main pp. 11, 20] and option 0 must not be offered at all.
+    # Seed-97 sweep shape: the owner's only City Spy shares its post with
+    # another player's Spy and the other City posts are full, so recalling
+    # it cannot free a post [Main pp. 11, 20] and option 0 must not be
+    # offered at all.
     card = _intrigue("special_mission")
     owner = PlayerState(
         player_id=0,
         intrigue_cards=(card,),
         spies_supply=0,
         spy_post_ids=(
-            "bene-gesserit-espionage-secrets",
+            "arrakis-research-station-spice-refinery",
             "fremen-desert-tactics-fremkit",
             "landsraad-assembly-hall-gather-support",
         ),
     )
-    state = _turn_state(owner)
+    state = _city_posts_held_by_rivals(_turn_state(owner))
     watcher = replace(
         state.players[3],
         spies_supply=2,
-        spy_post_ids=("bene-gesserit-espionage-secrets",),
+        spy_post_ids=("arrakis-research-station-spice-refinery",),
     )
     state = replace(state, players=(*state.players[:3], watcher))
     engine = UprisingRulesEngine()
@@ -1253,19 +1285,19 @@ def test_special_mission_slot_declines_after_a_drift_strands_the_placement() -> 
         intrigue_cards=(card,),
         spies_supply=0,
         spy_post_ids=(
-            "bene-gesserit-espionage-secrets",
+            "arrakis-research-station-spice-refinery",
             "fremen-desert-tactics-fremkit",
             "landsraad-assembly-hall-gather-support",
         ),
     )
-    state = _turn_state(owner)
+    state = _city_posts_held_by_rivals(_turn_state(owner))
     engine = UprisingRulesEngine()
 
     opened = engine.apply(state, _play(state, card, 0)).state
     watcher = replace(
         opened.players[3],
         spies_supply=2,
-        spy_post_ids=("bene-gesserit-espionage-secrets",),
+        spy_post_ids=("arrakis-research-station-spice-refinery",),
     )
     drifted = replace(opened, players=(*opened.players[:3], watcher))
 
@@ -2289,7 +2321,15 @@ def test_distraction_played_after_deploying_three_fires_at_once() -> None:
     assert done.intrigue_discard[-1] == distraction
 
 
-def test_distraction_needs_a_post_with_another_players_spy() -> None:
+def test_distraction_fires_without_any_opponent_spy_on_the_board() -> None:
+    # The Spy icon places "on an unoccupied observation post" [Main p. 20];
+    # "You may place this Spy on the same observation post as another
+    # player's Spy" [Distraction card] only adds a permission, like Deep
+    # Cover's "you also have the option to ignore any opponents' Spies"
+    # [Bloodlines p. 5]. So the card fires with no opponent Spy anywhere and
+    # offers the empty posts (it used to wait for a post to share).
+    from dune_imperium.content.uprising.board import OBSERVATION_POSTS
+
     state = _distraction_arrakeen_state(rival_post=None)
     engine = UprisingRulesEngine()
     to_arrakeen = next(
@@ -2307,10 +2347,55 @@ def test_distraction_needs_a_post_with_another_players_spy() -> None:
         DomainAction(action_id="deploy_troops", actor=0, arguments=(("count", 3),)),
     ).state
 
-    # No opponent Spy on the board: nothing is offered and the card waits.
-    assert deployed.decision_stack[-1].kind == "agent_effects"
-    assert deployed.players[0].intrigue_faceup == (_intrigue("distraction"),)
-    assert deployed.players[0].deploy_trigger_offered_at == 0
+    assert deployed.decision_stack[-1].kind == "intrigue_trigger_spy"
+    assert deployed.players[0].deploy_trigger_offered_at == 3
+    offered = {
+        dict(action.arguments)["post_id"]
+        for action in engine.legal_actions(deployed, 0)
+        if action.action_id == "place_trigger_spy"
+    }
+    assert offered == {post.post_id for post in OBSERVATION_POSTS}
+    done = engine.apply(deployed, _place_trigger(_post(0))).state
+    assert done.players[0].spy_post_ids == (_post(0),)
+    assert done.intrigue_discard[-1] == _intrigue("distraction")
+
+
+def test_distraction_offers_empty_and_rival_posts_but_never_its_own() -> None:
+    from dune_imperium.content.uprising.board import OBSERVATION_POSTS
+    from dune_imperium.core.engine import RuleResult
+    from dune_imperium.rules.intrigue_triggers import offer_deployment_triggers
+
+    rival_post = _post(1)
+    own_post = _post(2)
+    owner = PlayerState(
+        player_id=0,
+        intrigue_faceup=(_intrigue("distraction"),),
+        spies_supply=2,
+        spy_post_ids=(own_post,),
+        units_deployed_turn=3,
+    )
+    state = replace(
+        _turn_state(owner),
+        players=(
+            owner,
+            _spy_rival(rival_post),
+            PlayerState(player_id=2),
+            PlayerState(player_id=3),
+        ),
+    )
+    offered = offer_deployment_triggers(RuleResult(state=state)).state
+    assert offered.decision_stack[-1].kind == "intrigue_trigger_spy"
+    targets = {
+        dict(action.arguments)["post_id"]
+        for action in UprisingRulesEngine().legal_actions(offered, 0)
+        if action.action_id == "place_trigger_spy"
+    }
+    # Empty posts and the rival's post [Distraction card; Bloodlines p. 5],
+    # but not a post the owner already watches.
+    assert rival_post in targets
+    assert _post(0) in targets
+    assert own_post not in targets
+    assert targets == {post.post_id for post in OBSERVATION_POSTS} - {own_post}
 
 
 def test_reveal_deployment_counts_for_distraction() -> None:
@@ -2418,6 +2503,15 @@ def test_distraction_recalls_a_spy_first_when_the_supply_is_empty() -> None:
     ).state
     # The recall keeps the frame open; the freed Spy may now be placed.
     assert recalled.decision_stack[-1].kind == "intrigue_trigger_spy"
+    # ... and must be: "If you have no Spies in your supply when you need to
+    # place one, you may first recall one of your Spies for no effect."
+    # [Main p. 11]; OQ-057 (14): "recall한 뒤에는 그 Spy가 supply에 있으므로
+    # 배치가 의무다". Declining (the OQ-016 (c) timing choice) used to stay
+    # open, leaving a free recall with the card still face up.
+    after_recall = engine.legal_actions(recalled, 0)
+    assert _decline_trigger() not in after_recall
+    assert after_recall
+    assert {action.action_id for action in after_recall} == {"place_trigger_spy"}
     done = engine.apply(recalled, _place_trigger(rival_post)).state
     assert rival_post in done.players[0].spy_post_ids
     assert done.intrigue_discard == (card,)

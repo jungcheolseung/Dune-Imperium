@@ -30,14 +30,17 @@ from dune_imperium.rules.board_effects import (
     resolve_board_effect,
 )
 from dune_imperium.rules.card_trash import trash_personal_card
+from dune_imperium.rules.combat_deployment import legal_combat_deployments
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.leader_abilities import (
+    apply_feyd_track_action,
     apply_leader_agent_deploy,
     apply_leader_card_trash,
     apply_leader_signet_payment,
     apply_leader_spy_action,
     apply_leader_troop_retreat,
+    legal_feyd_track_actions,
     legal_leader_signet_actions,
     resolve_leader_signet,
 )
@@ -118,6 +121,124 @@ def test_tactician_advances_per_retreated_troop_and_resets_at_the_end() -> None:
     assert seat.tactics_track_space == 2
     assert seat.resources.water == 1 + 1
     assert seat.resources.spice == 1
+
+
+def _cleanup_state(chani: PlayerState) -> GameState:
+    return replace(
+        _turn_state(chani),
+        phase=GamePhase.COMBAT,
+        first_player=0,
+        combat_intrigue_complete=True,
+        combat_rewards_resolved=True,
+        decision_stack=(),
+        players=(
+            chani,
+            *(PlayerState(player_id=seat, has_revealed=True) for seat in range(1, 4)),
+        ),
+    )
+
+
+def test_tactician_advances_for_units_lost_at_combat_cleanup() -> None:
+    # "Chani (Leader) -- When resolving combat, troops that return to your
+    # supply are considered 'lost.' Each different source of retreating or
+    # losing troops is handled separately" [FAQ p. 1]; Tactician advances
+    # "that many spaces, earning rewards as you reach them" [Chani card].
+    # Commanders are troops [Bloodlines p. 4].
+    from dune_imperium.rules.combat import finish_combat
+
+    chani = PlayerState(
+        player_id=0,
+        leader_id="chani",
+        has_revealed=True,
+        tactics_track_space=2,
+        troops_supply=9,
+        troops_garrison=0,
+        troops_conflict=3,
+        commanders_conflict=1,
+        combat_strength=8,
+    )
+    result = finish_combat(_cleanup_state(chani))
+    seat = result.state.players[0]
+    assert seat.troops_conflict == 0 and seat.troops_supply == 12
+    assert seat.tactics_track_space == 6
+    assert seat.resources.spice == 1  # the sixth space
+    assert any(
+        event.kind == "tactics_token_advanced" and dict(event.payload)["count"] == 4
+        for event in result.events
+    )
+
+    # The cleanup is one source: passing the end pays the water once and
+    # resets without advancing for the extra troops [Bloodlines p. 12].
+    near_end = replace(chani, tactics_track_space=8)
+    seat = finish_combat(_cleanup_state(near_end)).state.players[0]
+    assert seat.tactics_track_space == 2
+    assert seat.resources.water == 1 + 1
+    assert seat.resources.spice == 0
+
+
+def test_tactician_advances_once_for_one_multi_troop_loss() -> None:
+    # Gruesome Sacrifice's "lose two troops" is one source [FAQ p. 1]: "If
+    # you lose or retreat enough troops that you would pass the end of the
+    # Tactics track, you still reset at the starting space (and do not
+    # advance for those extra troops)" [Bloodlines p. 12].
+    from dune_imperium.content.immortality.board import RESEARCH_START_ID
+    from dune_imperium.rules.combat import begin_combat_intrigue
+    from dune_imperium.rules.intrigue import (
+        apply_intrigue_choice,
+        apply_intrigue_play,
+        legal_intrigue_choice_actions,
+        legal_intrigue_play_actions,
+    )
+
+    card = "intrigue:gruesome_sacrifice:0"
+    chani = PlayerState(
+        player_id=0,
+        leader_id="chani",
+        has_revealed=True,
+        research_space=RESEARCH_START_ID,
+        tactics_track_space=9,
+        intrigue_cards=(card,),
+        troops_supply=9,
+        troops_garrison=0,
+        troops_conflict=3,
+        combat_strength=6,
+    )
+    state = GameState(
+        config=RulesetConfig(bloodlines=True, immortality=True),
+        seed=1,
+        phase=GamePhase.COMBAT,
+        round_number=1,
+        first_player=0,
+        current_conflict_ids=(CONFLICTS[0].card.card_id,),
+        intrigue_deck=intrigue_deck_instance_ids(False)[:3],
+        players=(
+            chani,
+            *(
+                PlayerState(
+                    player_id=seat, has_revealed=True, research_space=RESEARCH_START_ID
+                )
+                for seat in range(1, 4)
+            ),
+        ),
+    )
+    state = begin_combat_intrigue(state).state
+    play = next(
+        action
+        for action in legal_intrigue_play_actions(state, 0)
+        if dict(action.arguments).get("card_id") == card
+    )
+    played = apply_intrigue_play(state, play).state
+    for _ in range(2):
+        loss = next(
+            action
+            for action in legal_intrigue_choice_actions(played, 0)
+            if action.action_id == "lose_intrigue_troop"
+        )
+        played = apply_intrigue_choice(played, loss).state
+    seat = played.players[0]
+    assert seat.troops_conflict == 1
+    assert seat.tactics_track_space == 2  # not 3
+    assert seat.resources.water == 1 + 1
 
 
 def test_fedaykin_maneuver_retreats_any_number_or_draws_two_cards() -> None:
@@ -274,6 +395,91 @@ def test_corrino_liaison_spy_has_deep_cover() -> None:
     ]
 
 
+_SPIES_ELSEWHERE = (
+    "choam-shipping-accept-contract",
+    "arrakis-deep-desert",
+    "fremen-desert-tactics-fremkit",
+)
+
+
+def _recall_first(state: GameState) -> GameState:
+    recall = next(
+        a
+        for a in legal_leader_signet_actions(state, 0)
+        if a.action_id == "recall_spy_for_leader_placement"
+    )
+    return apply_leader_spy_action(state, recall).state
+
+
+def test_corrino_liaison_recall_first_commits_to_the_spy() -> None:
+    # "If you have no Spies in your supply when you need to place one, you
+    # may first recall one of your Spies for no effect" [Main p. 11]: the
+    # recall is the first step of the Spy half of "You may trash a card in
+    # your play area. —OR— [Deep Cover Spy] on [Emperor]" [Count Hasimir
+    # Fenring card], and "각각 recall한 뒤에는 배치만 남는다" (OQ-057 (14)).
+    # Before, the decline and the trash half stayed on offer, so he could
+    # keep a counted recall (spies_recalled_turn) and trash as well.
+    owner = PlayerState(
+        player_id=0,
+        leader_id="count_hasimir_fenring",
+        hand=(SIGNET, RECON),
+        spies_supply=0,
+        spy_post_ids=_SPIES_ELSEWHERE,
+    )
+    state = _play(_turn_state(owner), SIGNET, "arrakeen")
+    assert {a.action_id for a in legal_leader_signet_actions(state, 0)} == {
+        "decline_leader_signet_payment",
+        "recall_spy_for_leader_placement",
+        "trash_leader_card",
+    }
+    recalled = _recall_first(state)
+    assert recalled.players[0].spies_supply == 1
+    assert [
+        (a.action_id, dict(a.arguments)["post_id"])
+        for a in legal_leader_signet_actions(recalled, 0)
+    ] == [("place_leader_spy", "emperor-sardaukar-dutiful-service")]
+
+
+def test_listeners_recall_first_leaves_only_the_spy_halves() -> None:
+    # Listeners: "[Spy] on [Landsraad] —OR— [1 spice] → [Spy]" [Gaius Helen
+    # Mohiam card]. Both halves place a Spy, so after the recall-first
+    # [Main p. 11] either remains, but the recalled Spy must be placed
+    # (OQ-057 (14)): no decline.
+    owner = PlayerState(
+        player_id=0,
+        leader_id="gaius_helen_mohiam",
+        hand=(SIGNET,),
+        resources=Resources(spice=1),
+        spies_supply=0,
+        spy_post_ids=_SPIES_ELSEWHERE,
+    )
+    state = _play(_turn_state(owner), SIGNET, "arrakeen")
+    assert "decline_leader_signet_payment" in {
+        a.action_id for a in legal_leader_signet_actions(state, 0)
+    }
+    recalled = _recall_first(state)
+    actions = legal_leader_signet_actions(recalled, 0)
+    assert {a.action_id for a in actions} == {
+        "place_leader_spy",
+        "pay_leader_signet_spice",
+    }
+    assert {
+        dict(a.arguments)["post_id"]
+        for a in actions
+        if a.action_id == "place_leader_spy"
+    } == {
+        "landsraad-high-council-imperial-privilege-swordmaster",
+        "landsraad-assembly-hall-gather-support",
+    }
+    # Paying after the recall still ends in a placement, never a decline.
+    paid = apply_leader_signet_payment(
+        recalled, DomainAction(action_id="pay_leader_signet_spice", actor=0)
+    ).state
+    assert {a.action_id for a in legal_leader_signet_actions(paid, 0)} == {
+        "place_leader_spy"
+    }
+
+
 # --- Duncan Idaho ------------------------------------------------------------
 
 
@@ -418,6 +624,128 @@ def test_imperial_privilege_may_recall_the_into_the_fray_agent() -> None:
     engine = UprisingRulesEngine()
     assert result.state.players[0].combat_strength == 0
     assert engine.legal_actions(result.state, 0) == ()
+
+
+def _signet_into_the_fray_at_imperial_privilege(earlier_in_conflict: int) -> GameState:
+    from dune_imperium.rules.board_effects import (
+        apply_imperial_privilege_action,
+        legal_imperial_privilege_actions,
+    )
+
+    owner = PlayerState(
+        player_id=0,
+        leader_id="duncan_idaho",
+        hand=(SIGNET,),
+        deck=(RECON,),
+        resources=Resources(solari=3),
+        influence=Influence(emperor=2),
+        agents_available=2 - earlier_in_conflict,
+        agent_in_conflict=earlier_in_conflict,
+    )
+    state = _play(_turn_state(owner), SIGNET, "imperial_privilege")
+    deploy = next(
+        action
+        for action in legal_leader_signet_actions(state, 0)
+        if action.action_id == "deploy_leader_agent"
+    )
+    fighting = apply_leader_agent_deploy(state, deploy).state
+    assert fighting.players[0].agent_locations == ()
+    assert fighting.players[0].agent_in_conflict == earlier_in_conflict + 1
+    decline = next(
+        action
+        for action in legal_imperial_privilege_actions(fighting, 0)
+        if action.action_id == "decline_imperial_privilege_intrigue"
+    )
+    return apply_imperial_privilege_action(fighting, decline).state
+
+
+def test_imperial_privilege_never_recalls_this_turns_into_the_fray_agent() -> None:
+    # "Recall one of your other Agents from the board, and draw a card."
+    # [Board Guide p. 2]; docs/rules/board-spaces.md: "이번 turn에 보낸
+    # Agent가 아닌 자신의 다른 Agent 1개를 recall", and OQ-037 (d) allows
+    # recalling an Into the Fray Agent only "뒤의 turn에" (on a later turn).
+    # Resolving Into the Fray first moves this turn's Agent to the Conflict;
+    # it used to be the only (forced) recall target, so Duncan got back the
+    # Agent he had just sent. Now the recall is skipped and the card is still
+    # drawn (OQ-023).
+    from dune_imperium.rules.board_effects import legal_imperial_privilege_actions
+
+    declined = _signet_into_the_fray_at_imperial_privilege(earlier_in_conflict=0)
+
+    assert legal_imperial_privilege_actions(declined, 0) == ()
+    seat = declined.players[0]
+    assert seat.agent_in_conflict == 1
+    assert seat.agents_available == 1
+    assert seat.hand == (RECON,)
+
+
+def test_imperial_privilege_recalls_an_earlier_into_the_fray_agent_only() -> None:
+    # An Agent Into the Fray sent on an earlier turn (OQ-037 (e)) is one of
+    # the "other Agents" [Board Guide p. 2]: one recall stays on offer and
+    # this turn's Agent stays in the Conflict.
+    from dune_imperium.rules.board_effects import (
+        apply_imperial_privilege_action,
+        legal_imperial_privilege_actions,
+    )
+
+    declined = _signet_into_the_fray_at_imperial_privilege(earlier_in_conflict=1)
+    recalls = legal_imperial_privilege_actions(declined, 0)
+    assert [action.action_id for action in recalls] == [
+        "recall_conflict_agent_for_imperial_privilege"
+    ]
+    seat = apply_imperial_privilege_action(declined, recalls[0]).state.players[0]
+    assert seat.agent_in_conflict == 1
+    assert seat.agents_available == 1
+
+
+def test_two_into_the_fray_agents_recall_one_at_a_time_and_return_at_cleanup() -> None:
+    # A Servo-Receivers Signet can send a second "Agent you sent this turn"
+    # into the Conflict [Duncan Idaho card] (OQ-037(e)). Imperial Privilege
+    # recalls "one of your other Agents" [Board Guide p. 2] (OQ-037(d)), so
+    # one of the two leaves; the Combat cleanup returns every Agent still
+    # there.
+    from dune_imperium.rules.board_effects import (
+        apply_imperial_privilege_action,
+        legal_imperial_privilege_actions,
+    )
+    from dune_imperium.rules.combat import finish_combat
+
+    owner = PlayerState(
+        player_id=0,
+        leader_id="duncan_idaho",
+        hand=(DAGGER,),
+        deck=(RECON,),
+        resources=Resources(solari=3),
+        influence=Influence(emperor=2),
+        swordmaster_acquired=True,
+        agents_available=1,
+        agent_in_conflict=2,
+    )
+    state = _play(_turn_state(owner), DAGGER, "imperial_privilege")
+    assert units_strength(state.players[0]) == 3 + 3
+    decline = next(
+        action
+        for action in legal_imperial_privilege_actions(state, 0)
+        if action.action_id == "decline_imperial_privilege_intrigue"
+    )
+    declined = apply_imperial_privilege_action(state, decline).state
+    recall = next(
+        action
+        for action in legal_imperial_privilege_actions(declined, 0)
+        if action.action_id == "recall_conflict_agent_for_imperial_privilege"
+    )
+    seat = apply_imperial_privilege_action(declined, recall).state.players[0]
+    assert seat.agent_in_conflict == 1
+    assert seat.agents_available == 1
+    assert units_strength(seat) == 3
+
+    fighting = replace(
+        owner, has_revealed=True, hand=(), agents_available=1, combat_strength=6
+    )
+    cleaned = finish_combat(_cleanup_state(fighting)).state.players[0]
+    assert cleaned.agent_in_conflict == 0
+    assert cleaned.agents_available == 3
+
 
 # --- Gaius Helen Mohiam ------------------------------------------------------
 
@@ -591,19 +919,20 @@ def test_smuggle_spice_moves_bonus_spice_on_or_off_maker_spaces() -> None:
     owner = PlayerState(player_id=0, leader_id="esmar_tuek", hand=(SIGNET,))
     state = _play(_esmar_state(owner), SIGNET, "arrakeen")
     actions = legal_leader_signet_actions(state, 0)
+    # "Place 1 bonus spice on Tuek's Sietch. -OR- Take 1 bonus spice from a
+    # Maker board space." prints no "may" [Esmar Tuek card]: "Most effects
+    # from a board space or card you play are mandatory" [FAQ p. 3], so the
+    # Signet offers no refusal.
     assert [tuple(a.arguments) for a in actions] == [
-        (),
         (),
         (("space_id", "hagga_basin"),),
         (("space_id", "tuek_sietch"),),
     ]
-    assert [a.action_id for a in actions[:2]] == [
-        "decline_leader_signet_payment",
-        "place_leader_bonus_spice",
-    ]
-    placed = apply_leader_bonus_spice(state, actions[1]).state
+    assert actions[0].action_id == "place_leader_bonus_spice"
+    assert all(a.action_id != "decline_leader_signet_payment" for a in actions)
+    placed = apply_leader_bonus_spice(state, actions[0]).state
     assert dict(placed.maker_bonus_spice)["tuek_sietch"] == 2
-    taken = apply_leader_bonus_spice(state, actions[2]).state
+    taken = apply_leader_bonus_spice(state, actions[1]).state
     assert dict(taken.maker_bonus_spice)["hagga_basin"] == 1
     assert taken.players[0].resources.spice == 1
 
@@ -615,3 +944,84 @@ def test_makers_phase_feeds_tueks_sietch_like_the_other_maker_spaces() -> None:
     state = _esmar_state(owner, phase=GamePhase.MAKERS, decision_stack=())
     fed = resolve_makers(state).state
     assert dict(fed.maker_bonus_spice)["tuek_sietch"] == 2
+
+
+# --- Signet trashes that recruit ---------------------------------------------
+#
+# Eliminate Allies: "When this card is trashed: 2 troops" [Eliminate Allies
+# card]. "그 turn에 어떤 출처에서 recruit했든 새 troop은 Conflict에 deploy할
+# 수 있다" [Main p. 10] [FAQ p. 4] (docs/rules/player-turns.md). Trashed
+# through a Signet Ring box, the two troops used to vanish from the Agent
+# turn's allowance: the box wrote back the context it had read before the
+# trash, overwriting the count the trash had added.
+
+ELIMINATE_ALLIES = "imperium:eliminate_allies:0"
+
+
+def _allowance(state: GameState) -> tuple[object, list[object]]:
+    """Return the Agent turn's recruit count and the offered deploy counts."""
+
+    frame = state.decision_stack[-1]
+    assert frame.kind == FrameKind.AGENT_EFFECTS
+    counts: list[object] = [
+        dict(a.arguments)["count"] for a in legal_combat_deployments(state, 0)
+    ]
+    return dict(frame.context)["troops_recruited"], counts
+
+
+def _trash_by_signet(state: GameState, card_id: str) -> GameState:
+    action = next(
+        a
+        for a in legal_leader_signet_actions(state, 0)
+        if a.action_id == "trash_leader_card"
+        and dict(a.arguments)["card_id"] == card_id
+    )
+    return apply_leader_card_trash(state, action).state
+
+
+def test_chroniclers_insight_trash_keeps_eliminate_allies_troops_deployable() -> (
+    None
+):
+    owner = PlayerState(
+        player_id=0, leader_id="princess_irulan", hand=(SIGNET, ELIMINATE_ALLIES)
+    )
+    state = _play(_turn_state(owner), SIGNET, "arrakeen")
+    trashed = _trash_by_signet(state, ELIMINATE_ALLIES)
+    assert trashed.players[0].troops_garrison == 3 + 2
+    # Two recruited plus up to two more from the garrison [Main p. 10].
+    assert _allowance(trashed) == (2, [1, 2, 3, 4])
+
+
+def test_corrino_liaison_trash_keeps_eliminate_allies_troops_deployable() -> None:
+    owner = PlayerState(
+        player_id=0,
+        leader_id="count_hasimir_fenring",
+        hand=(SIGNET,),
+        in_play=(ELIMINATE_ALLIES,),
+    )
+    state = _play(_turn_state(owner), SIGNET, "arrakeen")
+    trashed = _trash_by_signet(state, ELIMINATE_ALLIES)
+    assert trashed.players[0].resources.solari == 1  # Assassin
+    assert _allowance(trashed) == (2, [1, 2, 3, 4])
+
+
+def test_personal_training_trash_keeps_eliminate_allies_troops_deployable() -> (
+    None
+):
+    owner = PlayerState(
+        player_id=0,
+        leader_id="feyd_rautha_harkonnen",
+        hand=(SIGNET, ELIMINATE_ALLIES),
+        feyd_track_space="first_spy",
+    )
+    state = _play(_turn_state(owner), SIGNET, "arrakeen")
+    (advance,) = legal_feyd_track_actions(state, 0)
+    staged = apply_feyd_track_action(state, advance).state
+    trash = next(
+        a
+        for a in legal_feyd_track_actions(staged, 0)
+        if dict(a.arguments).get("card_id") == ELIMINATE_ALLIES
+    )
+    trashed = apply_feyd_track_action(staged, trash).state
+    assert ELIMINATE_ALLIES in trashed.players[0].trashed
+    assert _allowance(trashed) == (2, [1, 2, 3, 4])

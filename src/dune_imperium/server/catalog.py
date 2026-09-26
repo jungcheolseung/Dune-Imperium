@@ -50,6 +50,7 @@ from dune_imperium.content.uprising.reserve import RESERVE_STACKS
 from dune_imperium.content.uprising.starting_cards import STARTING_CARDS_BY_ID
 from dune_imperium.display import (
     LEADER_FACE_TEXTS,
+    RECLAIMED_FORCES_TEXT,
     available_icons,
     available_strength_tokens,
     conflict_rewards_texts,
@@ -156,7 +157,7 @@ def build_catalog(
             cost=stack.acquisition_cost,
             persuasion=stack.reveal_persuasion,
             swords=stack.reveal_strength,
-            factions=(),
+            factions=tuple(faction.value for faction in stack.factions),
             agent_icons=tuple(icon.value for icon in stack.agent_icons),
             text=personal_card_text(stack),
             image=_image_url("other", stack.card.card_id, image_files),
@@ -188,7 +189,16 @@ def build_catalog(
             swords=tleilaxu_entry.reveal_strength,
             factions=tuple(faction.value for faction in tleilaxu_entry.factions),
             agent_icons=tuple(icon.value for icon in tleilaxu_entry.agent_icons),
-            text=personal_card_text(tleilaxu_entry),
+            # Reclaimed Forces never enters a deck and has no Agent/Reveal
+            # play data (it stays in the Tleilaxu Row [Immortality p. 9]
+            # [Reclaimed Forces card]), so personal_card_text() would print
+            # "(play data not transcribed)" for it; this text is hand-
+            # authored instead.
+            text=(
+                list(RECLAIMED_FORCES_TEXT)
+                if card_id == RECLAIMED_FORCES.card.card_id
+                else personal_card_text(tleilaxu_entry)
+            ),
             image=_image_url("tleilaxu", card_id, image_files),
             specimens=tleilaxu_entry.specimen_cost,
             graft=tleilaxu_entry.graft,
@@ -196,15 +206,25 @@ def build_catalog(
 
     intrigue: dict[str, JsonValue] = {}
     for intrigue_id, intrigue_entry in INTRIGUE_CARDS_BY_ID.items():
-        timings: list[JsonValue] = [
-            timing
-            for timing in sorted(
-                {option.timing.value for option in intrigue_entry.options}
-            )
-        ]
+        # Navigation cards print no Plot/Combat/Endgame banner: Plot Course
+        # plays them automatically on reaching 2 Influence, not by timing
+        # [Navigation card faces].
+        timings: list[JsonValue] = (
+            []
+            if intrigue_entry.navigation
+            else [
+                timing
+                for timing in sorted(
+                    {option.timing.value for option in intrigue_entry.options}
+                )
+            ]
+        )
         intrigue[intrigue_id] = {
             "name": intrigue_entry.card.name,
             "timings": timings,
+            # The client names a Navigation card as such (Plot Course plays
+            # it [Steersman Y'rkoon card]).
+            "navigation": intrigue_entry.navigation,
             "text": list(intrigue_card_text(intrigue_entry)),
             "image": _image_url("intrigue", intrigue_id, image_files),
         }

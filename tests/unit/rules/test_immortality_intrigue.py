@@ -261,6 +261,31 @@ def test_tleilaxu_puppet_adds_persuasion_this_round_only() -> None:
     )
 
 
+def test_tleilaxu_puppet_played_in_the_owners_reveal_pays_that_reveal() -> None:
+    # Tleilaxu Puppet: "Gain [1 Persuasion] during your Reveal turn this
+    # round" [Tleilaxu Puppet card]; a Plot may be played at any time during
+    # the owner's Agent or Reveal turn [Main p. 7] [Main p. 8]
+    # (docs/rules/player-turns.md: "Plot Intrigue 카드는 자신의 Agent 턴 또는
+    # 공개 턴 중 어느 때든 플레이할 수 있다"). Played after the Reveal began,
+    # the Persuasion joins that Reveal; before the fix it was parked in the
+    # round bonus that only a later Reveal start reads, and lost.
+    puppet = _intrigue("tleilaxu_puppet")
+    state = _plot_state(_owner(intrigue_cards=(puppet,)))
+    revealed = begin_reveal_turn(
+        state, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    persuasion = dict(revealed.decision_stack[-1].context)["persuasion"]
+    assert isinstance(persuasion, int)
+    assert _playable(revealed, puppet) == {0}
+    played = UprisingRulesEngine().apply(revealed, _play(puppet)).state
+    after = dict(played.decision_stack[-1].context)
+    assert played.decision_stack[-1].kind == FrameKind.REVEAL
+    assert after["persuasion"] == persuasion + 1
+    assert after["persuasion_generated"] == persuasion + 1
+    assert played.players[0].reveal_persuasion_round_bonus == 0
+    assert puppet in played.intrigue_discard
+
+
 def test_vicious_talents_adds_swords_per_marker() -> None:
     card = _intrigue("vicious_talents")
     engine = UprisingRulesEngine()
@@ -448,6 +473,9 @@ def test_harvest_cells_in_hand_may_be_played_after_the_rewards() -> None:
 
     played = engine.apply(window, actions[1]).state
     assert card not in played.players[0].intrigue_faceup
+    # The card waited for the cleanup's troop return (it is "lost" there
+    # [FAQ p. 1]); its choice opens after it, not straight after the play.
+    assert played.phase is not GamePhase.COMBAT
     assert played.decision_stack[-1].kind == FrameKind.INTRIGUE_CHOICE
     rewarded = engine.apply(
         played, DomainAction(action_id="resolve_intrigue_rewards", actor=0)
@@ -471,6 +499,47 @@ def test_harvest_cells_in_hand_may_be_played_after_the_rewards() -> None:
     )
     assert short.phase is not GamePhase.COMBAT
     assert card in short.players[0].intrigue_cards
+
+
+def test_harvest_cells_from_hand_takes_its_specimens_after_the_loss() -> None:
+    # "When you lose at least three troops at the end of a Conflict: [2
+    # specimens]" [Harvest Cells card]; "When resolving combat, troops that
+    # return to your supply are considered 'lost.'" [FAQ p. 1]; a specimen
+    # is "a troop from your supply" [Immortality p. 8]. Played in the window
+    # (OQ-057), the card used to resolve before the cleanup, so an empty
+    # supply gave no specimens although the same card waiting face up gets
+    # two. It now waits for the cleanup like that face-up card.
+    card = _intrigue("harvest_cells")
+    engine = UprisingRulesEngine()
+    state = _combat_state(
+        _fighter(
+            4,
+            intrigue_cards=(card,),
+            specimens=0,
+            troops_supply=0,
+            troops_garrison=8,
+        )
+    )
+    window = _pass_through_combat(engine, state)
+    assert window.decision_stack[-1].kind == FrameKind.CONFLICT_END_TRIGGER
+    played = engine.apply(
+        window,
+        DomainAction(
+            action_id="play_conflict_end_intrigue",
+            actor=0,
+            arguments=(("card_id", card),),
+        ),
+    ).state
+    # The cleanup ran first: the four troops are back in the supply.
+    assert played.phase is not GamePhase.COMBAT
+    assert played.players[0].troops_conflict == 0
+    assert played.decision_stack[-1].kind == FrameKind.INTRIGUE_CHOICE
+    rewarded = engine.apply(
+        played, DomainAction(action_id="resolve_intrigue_rewards", actor=0)
+    ).state
+    assert rewarded.players[0].specimens == 2
+    assert rewarded.players[0].troops_supply == 4 - 2
+
 
 def test_immortality_intrigue_choices_round_trip_through_the_codec() -> None:
     codec = ActionCodec(IMMORTALITY)

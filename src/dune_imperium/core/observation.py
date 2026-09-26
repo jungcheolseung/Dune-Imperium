@@ -171,6 +171,10 @@ class PlayerView:
     face_up_contract_ids: tuple[str, ...] = ()
     sardaukar_contract_ids: tuple[str, ...] = ()
     contract_trash: tuple[str, ...] = ()
+    # The bank's top Contracts an open Coercive Negotiation has revealed,
+    # face up to every seat while its owner chooses [Coercive Negotiation
+    # card; Main p. 7]. Shown to the server and the UI; not encoded.
+    revealed_contract_ids: tuple[str, ...] = ()
     # The face-up six-Leader pool of the OQ-007 draft option, public to
     # everyone for the whole game (empty without the option).
     leader_draft_pool: tuple[str, ...] = ()
@@ -229,14 +233,15 @@ def known_card_seats(state: GameState) -> dict[str, frozenset[int]]:
     the expansions' face-down stacks: the Tleilaxu deck [Immortality p. 4],
     the Skill stack [Bloodlines p. 3] and each Tech stack below its face-up
     top [Bloodlines p. 6], as well as the Conflict cards set aside unused at
-    setup. A hand or a held Intrigue card is known to its owner only
-    [Main p. 7], except the cards OQ-010 keeps public: publicly acquired hand
-    cards (``PlayerState.hand_public``) and a played Intrigue whose choices
-    are still resolving. A hidden card its owner has been shown is known to
-    that owner: a peeked deck top (Controlled, Glowglobes), Long Live the
-    Fighters' top three, Imperium Ceremony's two Intrigue cards, the bank
-    Contracts Coercive Negotiation reveals, Kota Odax's bottom Tech tiles and
-    Secret Project. This is the single source the
+    setup. The bank Contracts an open Coercive Negotiation has revealed are
+    public (``revealed_contract_ids``). A hand or a held Intrigue card is
+    known to its owner only [Main p. 7], except the cards OQ-010 keeps
+    public: publicly acquired hand cards (``PlayerState.hand_public``) and a
+    played Intrigue whose choices are still resolving. A hidden card its
+    owner has been shown is known to that owner: a peeked deck top
+    (Controlled, Glowglobes), Long Live the Fighters' top three, Imperium
+    Ceremony's two Intrigue cards, Kota Odax's bottom Tech tiles and Secret
+    Project. This is the single source the
     server uses to decide what an event log may show and which steps an undo
     may take back, so every hidden zone and every private glimpse belongs
     here (``tests/unit/test_known_card_seats.py`` checks it against
@@ -261,6 +266,9 @@ def known_card_seats(state: GameState) -> dict[str, frozenset[int]]:
         # Only the top tile of an Ixian Embassy stack is face up.
         for card_id in stack[1:]:
             known[card_id] = nobody
+    for card_id in revealed_contract_ids(state):
+        # Revealed from the bank to the whole table while the choice is open.
+        known.pop(card_id, None)
     resolving = set(resolving_intrigue_ids(state))
     for player in state.players:
         owner = frozenset({player.player_id})
@@ -284,7 +292,6 @@ def known_card_seats(state: GameState) -> dict[str, frozenset[int]]:
             peeked_card_id(state, player.player_id),
             *long_live_fighters_ids(state, player.player_id),
             *secret_project_candidate_ids(state, player.player_id),
-            *revealed_contract_ids(state, player.player_id),
         ):
             if card_id:
                 known[card_id] = owner
@@ -394,6 +401,7 @@ def observe_state(state: GameState, player: int) -> PlayerView:
         face_up_contract_ids=state.face_up_contract_ids,
         sardaukar_contract_ids=state.sardaukar_contract_ids,
         contract_trash=state.contract_trash,
+        revealed_contract_ids=revealed_contract_ids(state),
         leader_draft_pool=state.leader_draft_pool,
         reserve_stacks=state.reserve_stacks,
         shield_wall_present=state.shield_wall_present,
@@ -484,15 +492,22 @@ def secret_project_candidate_ids(state: GameState, player: int) -> tuple[str, ..
     return tuple(value.split(",")) if isinstance(value, str) and value else ()
 
 
-def revealed_contract_ids(state: GameState, player: int) -> tuple[str, ...]:
-    """Return the bank Contracts Coercive Negotiation shows its owner.
+def revealed_contract_ids(state: GameState) -> tuple[str, ...]:
+    """Return the bank Contracts an open Coercive Negotiation has revealed.
 
-    "Reveal three Contracts from the bank, take one" [Coercive Negotiation
-    card]: they stay on top of the bank while the choice is open.
+    "Reveal three contracts from the bank. Take one and trash the other
+    two." [Coercive Negotiation card]: they stay on top of the bank while
+    the owner chooses, and they are face up to the whole table -- a card is
+    revealed "to your opponents" [Main p. 7], as a Conflict card is revealed
+    and placed "face up" [Main p. 8]. All of them count, including one the
+    owner cannot take (the Bloodlines Immediate without an Intrigue card to
+    trash [Bloodlines p. 2]).
     """
 
-    frame = _own_top_frame(state, "intrigue_trigger_contract", player)
-    if frame is None:
+    if not state.decision_stack:
+        return ()
+    frame = state.decision_stack[-1]
+    if str(frame.kind) != "intrigue_trigger_contract":
         return ()
     card_id = dict(frame.context).get("card_id")
     entry = INTRIGUE_CARDS_BY_INSTANCE.get(str(card_id))

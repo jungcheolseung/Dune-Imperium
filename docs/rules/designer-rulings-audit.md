@@ -19,18 +19,18 @@
 ## 일치 확인 항목 (코드로 직접 확인)
 
 | 판정 | 구현 위치 |
-| --- | --- |
+| --- | --- | --- | --- | --- |
 | Agent 배치 직후 Gather Intelligence 결정을 먼저 하고, 그 뒤 space·Agent box·Faction 효과 자유 순서 | `rules/agent_effect_frame.py`(Gather Intelligence 행동이 단독 제시), OQ-011 |
 | space 비용은 어떤 효과보다 먼저 지불(Spice Refinery·Gather Support: 카드로 얻은 spice로 1 spice 업그레이드 불가) | `rules/agent_turn.py`(`_pay_cost`가 effect frame 생성보다 앞) |
 | trash된 카드의 효과는 발동 불가, 이미 pool에 들어간 Persuasion·검은 유지 | OQ-022(같은 Paul 판정을 이미 채택), `expire_trashed_card_effects` |
 | Imperium Row 보충이 획득 효과보다 먼저 | `rules/acquisition.py`(`take_imperium_row_card` 뒤 획득 보너스) |
 | Corrinth City: 비용 전액을 먼저 확보해야 하며 discard한 카드의 효과로 충당 불가 | `rules/agent_effects.py` `apply_corrinth_city_payment`(Solari 검사 뒤 discard) |
 | Command (6+)·Fremen Bond는 의무 | `rules/reveal_turn.py`, `rules/card_bonds.py`, OQ-033·043 |
-| Spy 배치는 supply에 Spy가 있으면 의무(룰북 p. 11 errata) | `rules/spy_moves.py`(`decline_spy_placement`는 놓을 곳이 없을 때만). **2026-09-20 정정**: 이 행은 공용 `spy_placement` frame만 보고 "일치"로 적었고, Uprising 기본 경로 둘 — Espionage의 `resolve_espionage_without_spy`(`rules/board_effects.py`)와 Intrigue의 `PlaceSpy` slot의 `decline_intrigue_spy`(`rules/intrigue.py`; Special Mission·Go to Ground·Sleeper Unit 등) — 은 supply에 Spy가 있어도 거절을 제시하고 있었다(사용자가 플레이 중 적발). 둘 다 supply에 Spy가 있고 놓을 post가 있으면 배치만 제시하도록 고쳤다(OQ-057 (14)). 나머지 경로(카드 Agent box·획득·Leader·contract·Reveal·Combat 보상·Tech)는 원래 거절이 없다. |
+| Spy 배치는 supply에 Spy가 있으면 의무(룰북 p. 11 errata) | `rules/spy_moves.py`(`decline_spy_placement`는 놓을 곳이 없을 때만). **2026-09-20 정정**: 이 행은 공용 `spy_placement` frame만 보고 "일치"로 적었고, Uprising 기본 경로 둘 — Espionage의 `resolve_espionage_without_spy`(`rules/board_effects.py`)와 Intrigue의 `PlaceSpy` slot의 `decline_intrigue_spy`(`rules/intrigue.py`; Special Mission·Go to Ground·Sleeper Unit 등) — 은 supply에 Spy가 있어도 거절을 제시하고 있었다(사용자가 플레이 중 적발). 둘 다 supply에 Spy가 있고 놓을 post가 있으면 배치만 제시하도록 고쳤다(OQ-057 (14)). 나머지 경로(카드 Agent box·획득·Leader·contract·Reveal·Combat 보상·Tech)는 supply에 Spy가 있을 때 원래 거절이 없다. supply가 빈 쪽(선행 recall은 선택 `[Main pp. 11, 20]`)은 2026-09-26에 모든 경로를 맞췄다(OQ-057 (14)). |
 | 같은 post에 자기 Spy 둘 금지, supply가 비면 recall 뒤 재배치(같은 자리 포함) | `rules/spy_placement.py`, `rules/spy_moves.py` |
 | Combat 아이콘은 중첩되지 않음(garrison 2개 상한) | `rules/combat_deployment.py` `grant_combat_icon`(`max(limit, 2)`) |
 | 검은 unit이 없으면 0이지만, 같은 Reveal에서 unit이 들어오면 기록된 `sword_strength`가 합산됨 | `rules/reveal_turn.py`(`sword_strength`와 `strength` 분리 기록) |
-| Call to Arms: Intrigue draw는 세지 않고, 소급하지 않으며, Agent turn에 play해 face-up 대기 | `rules/intrigue_triggers.py` `fire_reveal_acquisition_intrigue`(personal card 획득 경로에서만 호출) |
+| Call to Arms: Intrigue draw는 세지 않고, 소급하지 않으며, Agent turn에 play해 face-up 대기 | `rules/intrigue_triggers.py` `fire_reveal_acquisition_intrigue`(personal card 획득 경로에서만 호출 — 2026-09-26부터 Tleilaxu Row 획득 `acquire_tleilaxu_card`도 포함 `[Immortality p. 8]`; Reclaimed Forces는 OQ-066) |
 | Leverage는 실제 spice 획득 필요, Counterattack은 supply 0이어도 play, Shield Wall 제거는 선택, Unexpected Allies는 hooks 없이 worm | `rules/effect_interpreter.py`, `tests/unit/rules/test_intrigue.py` |
 | False Orders는 상대 Spy가 없어도 play 가능(Spy 배치 부분만) | `rules/intrigue.py`, `tests/unit/rules/test_bloodlines_cards.py` |
 | Strategic Stockpiling: 조건이 성립한 section만 발동 | `tests/unit/rules/test_intrigue.py` |
@@ -68,8 +68,8 @@
 | 8 | (2026-09-09 반영: OQ-054 보강) Usurp로 빌린 Stillsuit Manufacturer는 "in play"가 아니므로 hand로 돌아올 수 없다(BGG) | 빌린 Row 카드가 `in_play`에 들어가 Fremen Alliance면 hand로 이동 | `rules/graft.py:135`, `rules/agent_effects.py:3606` | OQ-054 보강 |
 | 9 | (2026-09-09 반영: OQ-057) Battlefield Research·Rapid Engineering(·Machine Culture)은 play했으면 반드시 Tech 획득(Message from designer) | Tech 획득 frame에 항상 `decline_tech` | `rules/tech.py:237` | Intrigue 출처 frame에서만 decline 제거 |
 | 10 | (2026-09-09 반영: OQ-057) Imperium Ceremony의 "keep one"은 draw 1 → Suspensor Suits troop 1(Message from designer) | peek keep 경로는 `suspensor_owed`를 올리지 않음 | `rules/intrigue_peek.py:114` | Tech+Immortality 조합 |
-| 11 | (2026-09-09 반영: OQ-057, `conflict_end_trigger` 창) Combat 보상으로 받은 Harvest Cells는 즉시 play 가능(BGG) | trigger는 face-up 카드만 보고, Combat Intrigue 창은 보상 지급보다 앞이라 그 Combat에서는 불가 | `rules/combat.py:1461` `_fire_troop_loss_triggers` | 보상 지급 뒤 troop 손실 전 hand의 Harvest Cells를 play할 창이 필요 |
-| 12 | (2026-09-09 반영: OQ-057, `ghola_partner`) Ghola를 Long Reach와 graft하면 세 아이콘(Landsraad·City·Spice Trade)을 모두 얻는다(Email, TTS Discord) | Long Reach 아이콘은 BG Bond 조건이고 Ghola는 BG가 아니라 City만 접근 | `rules/agent_icons.py:36` | Planned Coupling(BG)과의 graft는 일치 |
+| 11 | (2026-09-09 반영: OQ-057, `conflict_end_trigger` 창) Combat 보상으로 받은 Harvest Cells는 즉시 play 가능(BGG) | trigger는 face-up 카드만 보고, Combat Intrigue 창은 보상 지급보다 앞이라 그 Combat에서는 불가 | `rules/combat.py:1461` `_fire_troop_loss_triggers` | 보상 지급 뒤 troop 손실 전 hand의 Harvest Cells를 play할 창이 필요. 2026-09-26: 창에서 play한 카드는 face-up으로 대기해 정리의 troop 반환 뒤 발동(`[FAQ p. 1]` "lost"는 supply 반환) |
+| 12 | (2026-09-09 반영: OQ-057, `ghola_partner` → 2026-09-26 `bond_partner`) Ghola를 Long Reach와 graft하면 세 아이콘(Landsraad·City·Spice Trade)을 모두 얻는다(Email, TTS Discord) | Long Reach 아이콘은 BG Bond 조건이고 Ghola는 BG가 아니라 City만 접근 | `rules/agent_icons.py:36` | Planned Coupling(BG)과의 graft: 2026-09-26까지 코드는 이 칸과 달리 BG 상대를 세지 않았다 — `bond_partner`로 고쳐 이제 일치 |
 | 13 | (2026-09-09 반영: OQ-057) Tleilaxu Master의 research 2개는 따로 해결 가능(BGG) | 한 행동에서 연속 처리(방향 선택 frame만 끼어듦) | `rules/reveal_turn.py:2231` | 영향 작음 |
 
 ## 대조하지 못한 항목 (콘텐츠 공백)
@@ -78,7 +78,7 @@
 
 ## 추가 확인이 필요한 항목
 
-- (2026-09-09 해소) Leadership + Calculus of Power + Sardaukar Soldier: "Leadership은 한 순간에 세고 trash된 카드는 못 센다"(In person). 엔진은 Reveal 시작에 한 번 세고(Sardaukar 1장 → +1) Calculus가 Sardaukar를 trash해도 다시 세지 않는다 — trash 뒤에 세어도 Calculus가 검 카드가 되고 Sardaukar가 빠져 같은 +1이므로 어느 순간에 세든 결과가 같다. Sardaukar의 이미 모인 검 1은 OQ-022대로 남는다. `tests/unit/rules/test_reveal_turn.py::test_leadership_counts_sword_cards_once_and_ignores_a_later_trash`(총 8, 9가 아님).
+- (2026-09-09 해소) Leadership + Calculus of Power + Sardaukar Soldier: "Leadership은 한 순간에 세고 trash된 카드는 못 센다"(In person). 엔진은 Reveal 시작에 한 번 세고(Sardaukar 1장 → +1) Calculus가 Sardaukar를 trash해도 다시 세지 않는다 — trash 뒤에 세어도 Calculus가 검 카드가 되고 Sardaukar가 빠져 같은 +1이므로 어느 순간에 세든 결과가 같다. Sardaukar의 이미 모인 검 1은 OQ-022대로 남는다. `tests/unit/rules/test_reveal_turn.py::test_leadership_counts_sword_cards_once_and_ignores_a_later_trash`(총 8, 9가 아님). 2026-09-26 보강: 인쇄 문구 "provides one or more [sword] this turn" `[Leadership card]`에는 Reveal 선택이 낸 검(Undercover Asset·Chani, Clever Tactician·Calculus of Power·Arrakis Observer)도 들어간다. 엔진은 Reveal 시작에 센 수를 frame에 기록하고 매 단계 뒤 아직 in play인 검 카드 수까지 올리기만 해(내리지 않음) 소유자가 고를 최선의 한 순간을 지급한다(OQ-057, `test_leadership_counts_undercover_assets_chosen_swords`).
 - (2026-09-09 반영) Duncan Idaho(Bloodlines) Into the Fray의 Agent를 Imperial Privilege로 recall 가능(Message from designer): 엔진은 `agent_locations`만 후보로 봐 불가능했다. `recall_conflict_agent_for_imperial_privilege` 행동을 더해 Conflict의 Agent를 Leader로 되돌리고(OQ-037(d), codec v99), 다른 Agent가 없어도 recall을 불발시키지 않는다. `tests/unit/rules/test_bloodlines_leaders.py::test_imperial_privilege_may_recall_the_into_the_fray_agent`.
 - Combat 보상으로 Tech를 얻는 Conflict는 현재 카탈로그에 없어 "Trade Monopoly" 계열 판정은 해당 없음(확인만).
 

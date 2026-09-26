@@ -25,10 +25,12 @@ from dune_imperium.content.uprising.types import (
     PersonalCardAgentEffect,
     PersonalCardBond,
     PersonalCardDiscardEffect,
+    PersonalCardIconCondition,
     PersonalCardRevealAcquisitionEffect,
     PersonalCardRevealChoiceEffect,
     PersonalCardRevealEffect,
     PersonalCardTrashEffect,
+    PersonalCardTurnStartEffect,
 )
 
 _BOND_NAMES: dict[PersonalCardBond, str] = {
@@ -66,8 +68,11 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE: (
             "You may trash a card → Draw 1 card"
         ),
+        # Tread in Darkness: two icons side by side with no arrow between
+        # them (OQ-058) — the draw always happens, even if the trash is
+        # declined (agent_effects.py), unlike Shishakli's real arrow above.
         PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND: (
-            "If Bene Gesserit Bond: You may trash a card → Draw 1 card"
+            "If Bene Gesserit Bond: You may trash a card, Draw 1 card"
         ),
         (
             PersonalCardAgentEffect
@@ -154,9 +159,9 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.GAIN_TWO_SOLARI: "Gain 2 solari",
         PersonalCardAgentEffect.GAIN_ONE_SPICE: "Gain 1 spice",
         PersonalCardAgentEffect.PLACE_SPY: "Place a Spy",
-        PersonalCardAgentEffect.PLACE_SPY_ALLOW_SHARED_IF_SPYING_ON_VISITED_SPACE: (
-            "Place a Spy (may share a post with an opponent's Spy if you are "
-            "spying on the visited space)"
+        PersonalCardAgentEffect.PLACE_SPY_ON_VISITED_SPACE_MAY_SHARE: (
+            "Place a Spy on a post connected to the space you sent an Agent to "
+            "this turn (may share a post with another player's Spy)"
         ),
         PersonalCardAgentEffect.RECRUIT_THREE_IF_SPY_RECALLED_THIS_TURN: (
             "If you recalled a Spy this turn: Recruit 3 troops"
@@ -170,8 +175,8 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.DRAW_INTRIGUE_IF_THREE_UNITS_IN_CONFLICT: (
             "If you have 3 or more units in the Conflict: Draw 1 Intrigue card"
         ),
-        PersonalCardAgentEffect.GAIN_WATER_IF_BENE_GESSERIT_BOND: (
-            "If Bene Gesserit Bond: Gain 1 water"
+        PersonalCardAgentEffect.DRAW_ONE_AND_PLACE_SPY_IF_BENE_GESSERIT_BOND: (
+            "If Bene Gesserit Bond: Draw 1 card, Place a Spy"
         ),
         PersonalCardAgentEffect.GAIN_VISITED_FACTION_INFLUENCE: (
             "Gain 1 additional Influence with the visited Faction"
@@ -279,10 +284,10 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         ),
         (
             PersonalCardAgentEffect
-            .MAY_TRASH_GRAFTED_CARD_FOR_VISITED_FACTION_INFLUENCE
+            .TRASH_GRAFTED_CARD_FOR_VISITED_FACTION_INFLUENCE
         ): (
-            "If you sent your Agent to a Faction space this turn: "
-            "You may trash a grafted card → Gain 1 Influence with that Faction"
+            "If you sent an Agent to a Faction space this turn: "
+            "Trash one of the grafted cards, Gain 1 Influence with that Faction"
         ),
         PersonalCardAgentEffect.MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH: (
             "You may lose 1 troop → Draw 2 cards, Research"
@@ -394,6 +399,18 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
     }
 )
 
+# Turn-start alternatives, printed in a red box in place of an Agent box
+# (Litany Against Fear).
+TURN_START_EFFECT_TEXT: Final[Mapping[PersonalCardTurnStartEffect, str]] = (
+    MappingProxyType(
+        {
+            PersonalCardTurnStartEffect.PLAY_TO_DRAW_AND_PASS: (
+                "Put this card into play → Draw 1 card and pass your turn"
+            ),
+        }
+    )
+)
+
 TRASH_EFFECT_TEXT: Final[Mapping[PersonalCardTrashEffect, str]] = MappingProxyType(
     {
         PersonalCardTrashEffect.DRAW_INTRIGUE_CARD: "Draw 1 Intrigue card",
@@ -405,6 +422,25 @@ TRASH_EFFECT_TEXT: Final[Mapping[PersonalCardTrashEffect, str]] = MappingProxyTy
             "Tleilaxu (advance your Tleilaxu token)"
         ),
     }
+)
+
+# The printed condition that turns a card's greyed Agent icons on; ``cards``
+# appends ", this has <icons>" from the entry's ``agent_icons``. Long Reach:
+# "If you have another Bene Gesserit card in play, this has [Landsraad],
+# [City], and [Spice Trade]."; Show of Strength: "If you have more deployed
+# troops than each opponent, this has [Landsraad] and [Spice Trade]." [card
+# faces].
+ICON_CONDITION_TEXT: Final[Mapping[PersonalCardIconCondition, str]] = (
+    MappingProxyType(
+        {
+            PersonalCardIconCondition.BENE_GESSERIT_BOND: (
+                "If you have another Bene Gesserit card in play"
+            ),
+            PersonalCardIconCondition.MORE_DEPLOYED_TROOPS_THAN_EACH_OPPONENT: (
+                "If you have more deployed troops than each opponent"
+            ),
+        }
+    )
 )
 
 DISCARD_EFFECT_TEXT: Final[Mapping[PersonalCardDiscardEffect, str]] = MappingProxyType(
@@ -465,13 +501,14 @@ REVEAL_CHOICE_EFFECT_TEXT: Final[Mapping[PersonalCardRevealChoiceEffect, str]] =
     MappingProxyType(
         {
             PersonalCardRevealChoiceEffect.RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED: (
-                "If you have placed 2 or more Spies: Recall a Spy, "
-                "Draw 1 Intrigue card"
+                "If you have placed 2 or more Spies: "
+                "You may recall a Spy → Draw 1 Intrigue card"
             ),
-            PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_TWO_PERSUASION: (
-                "You may recall 2 Spies → +2 Persuasion"
+            PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_THREE_PERSUASION: (
+                "You may recall 2 Spies → +3 Persuasion"
             ),
             PersonalCardRevealChoiceEffect.PLACE_SPY: "Place a Spy",
+            PersonalCardRevealChoiceEffect.PLACE_TWO_SPIES: "Place 2 Spies",
             PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH: (
                 "If you have 2 or more Tech tiles: "
                 "Gain 1 Influence with a chosen Faction"
@@ -495,10 +532,17 @@ REVEAL_CHOICE_EFFECT_TEXT: Final[Mapping[PersonalCardRevealChoiceEffect, str]] =
             (
                 PersonalCardRevealChoiceEffect
                 .MAY_LOSE_INFLUENCE_FOR_VP_IF_BENE_GESSERIT_ALLIANCE
-            ): ("Bene Gesserit Alliance: You may lose 1 Influence → Gain 1 VP"),
+            ): (
+                "Bene Gesserit Alliance: You may lose 2 Influence with one Faction "
+                "→ Gain 1 VP"
+            ),
             PersonalCardRevealChoiceEffect.MAY_DEPLOY_OR_RETREAT_ONE_TROOP: (
                 "You may deploy or retreat 1 troop"
             ),
+            (
+                PersonalCardRevealChoiceEffect
+                .MAY_DEPLOY_OR_RETREAT_ONE_TROOP_IF_FREMEN_BOND
+            ): "Fremen Bond: You may deploy or retreat 1 troop",
             PersonalCardRevealChoiceEffect.MAY_LOSE_TWO_TROOPS_FOR_TWO_SPECIMENS: (
                 "You may lose 2 troops → Generate 2 specimens"
             ),
@@ -572,6 +616,7 @@ _HANDLED_REVEAL_FIELDS: Final[frozenset[str]] = frozenset(
         "minimum_spies_placed",
         "requires_spying_on_maker_space",
         "per_revealed_faction",
+        "per_in_play_faction",
         "persuasion_per_completed_contract",
         "requires_commander_in_conflict",
         "minimum_garrisoned_units",
@@ -591,9 +636,10 @@ def reveal_effect_text(effect: PersonalCardRevealEffect) -> str:
 
     Requirement fields are rendered first as an ``If ...:`` prefix (Faction
     Bond, High Council/Swordmaster, minimum placed Spies, spying on a Maker
-    space); ``per_revealed_faction`` instead scales whichever gain
-    (Persuasion or strength) it accompanies, so it is folded into that
-    gain's own text rather than into the prefix. The gains that follow are
+    space); ``per_revealed_faction`` and ``per_in_play_faction`` instead
+    scale whichever gain (Persuasion or strength) they accompany, so they
+    are folded into that gain's own text rather than into the prefix. The
+    gains that follow are
     joined with ", "; Persuasion and strength use the "+N" shorthand that
     matches the printed Reveal diamonds, everything else uses "Gain N ...".
     """
@@ -629,6 +675,8 @@ def reveal_effect_text(effect: PersonalCardRevealEffect) -> str:
     per_faction = (
         f" per revealed {_bond_name(effect.per_revealed_faction)} card"
         if effect.per_revealed_faction is not None
+        else f" per {_bond_name(effect.per_in_play_faction)} card in play"
+        if effect.per_in_play_faction is not None
         else ""
     )
 

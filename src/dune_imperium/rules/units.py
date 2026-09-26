@@ -16,12 +16,14 @@ def retreat_units(
     *,
     troops: int,
     commanders: int = 0,
+    advance_tactics: bool = True,
 ) -> RuleResult:
     """Return Conflict units of ``player`` to the garrison, adjusting strength.
 
     Each troop or Sardaukar Commander carried two strength; a player left
     without units keeps no strength at all [Main pp. 12, 14] [Bloodlines
-    p. 4].
+    p. 4]. ``advance_tactics=False`` leaves Chani's Tactics token to a caller
+    that moves several units for one source and advances it once.
     """
 
     owner = state.players[player]
@@ -48,9 +50,11 @@ def retreat_units(
     )
     # Tactician: Chani's token advances one space per troop retreated or
     # lost from the Conflict; Commanders are troops here [Bloodlines p. 4].
-    next_owner, tactics_events = advance_tactics_token(
-        next_owner, retreated, source=step_source
-    )
+    tactics_events: tuple[GameEvent, ...] = ()
+    if advance_tactics:
+        next_owner, tactics_events = advance_tactics_token(
+            next_owner, retreated, source=step_source
+        )
     return RuleResult(
         state=replace(state, players=replace_player(state.players, next_owner)),
         events=(

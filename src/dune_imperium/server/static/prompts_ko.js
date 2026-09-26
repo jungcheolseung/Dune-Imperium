@@ -7,7 +7,7 @@
    bodies are JSON so tests/server/test_i18n.py can read them. */
 const PROMPT_KO = {
   "Acquire a Tech tile or decline": "{tech_tile} 획득 또는 거절",
-  "Bene Gesserit Alliance: lose one Influence for a Victory Point, or decline": "베네 게세리트 {alliance}: {influence_any} 1 잃고 {victory_point} 1 획득, 또는 거절",
+  "Bene Gesserit Alliance: lose two Influence with one Faction for a Victory Point, or decline": "베네 게세리트 {alliance}: 한 진영의 {influence_any} 2 잃고 {victory_point} 1 획득, 또는 거절",
   "Choose Influence to lose and gain or decline this Reveal effect": "잃을 {influence_any}과 얻을 {influence_any} 선택, 또는 이 {reveal_turn} 효과 거절",
   "Choose a Spy placement or gain two strength": "{spy} 배치 위치 선택 또는 {strength} 2 획득",
   "Choose a Spy to recall for this Reveal effect": "이 {reveal_turn} 효과로 소환할 {spy} 선택",
@@ -52,6 +52,7 @@ const PROMPT_KO = {
   "Play an Intrigue card that triggers at this Conflict's end, or decline": "이 {conflict} 종료 시 발동하는 {intrigue} 사용, 또는 거절",
   "Play the Navigation card": "{navigation} 사용",
   "Recall a Spy for three swords or decline": "{spy} 1 소환하고 {sword} 3 획득, 또는 거절",
+  "Recall a Spy to draw an Intrigue card, or decline": "{spy}를 소환하고 {intrigue} 1장 뽑기, 또는 거절",
   "Resolve Reveal effects and acquire cards": "{reveal_turn} 효과 해결 및 카드 획득",
   "Resolve the Intrigue choice": "{intrigue} 선택 해결",
   "Resolve the Navigation choice": "{navigation} 선택 해결",
@@ -69,6 +70,7 @@ const PROMPT_KO = {
   "Trash this card for the Combat icon or decline": "이 카드를 {trash}하고 {combat} 아이콘 획득, 또는 거절",
   "Two or more Tech tiles: choose a Faction to gain one Influence with": "{tech_tile} 2개 이상: {influence_any}을 얻을 {faction} 선택",
   "Use one of the card's lines, or finish the card": "카드의 한 줄 사용, 또는 카드 마무리",
+  "Use your Leader's Signet Ring ability": "{leader}의 {signet_ring} 능력 사용",
   "Use the face-up Intrigue card or decline": "공개된 {intrigue} 사용, 또는 거절"
 };
 

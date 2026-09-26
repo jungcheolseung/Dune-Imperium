@@ -213,6 +213,28 @@ def test_visiting_a_commander_space_offers_the_purchase_with_face_up_skills() ->
     assert bought.state.decision_stack[-1].kind == "agent_effects"
 
 
+def test_a_first_high_council_visit_may_buy_its_commander() -> None:
+    # "During one of your turns, if you send an Agent to a board space that
+    # has a Sardaukar Commander, you may spend 2 Solari to acquire and then
+    # immediately recruit that Sardaukar Commander" [Bloodlines p. 4]; setup
+    # puts one on High Council [Bloodlines p. 3], and taking the seat on the
+    # same visit does not hide it.
+    state = _turn_state(_owner(resources=Resources(solari=7, water=2)))
+    placed = apply_agent_action(state, _agent_action_to(state, "high_council")).state
+    assert dict(placed.decision_stack[-1].context)["pending_board_icons"] == (
+        "high_council,sardaukar_commander"
+    )
+    state = _visit(state, "high_council")
+    assert state.players[0].high_council
+    bought = apply_sardaukar_commander_action(
+        state, _commander_actions(state)["acquire_sardaukar_commander:canny"]
+    )
+    owner = bought.state.players[0]
+    assert owner.resources.solari == 0
+    assert owner.commanders_garrison == 1
+    assert "high_council" not in bought.state.sardaukar_commander_space_ids
+
+
 def test_a_held_skill_cannot_be_chosen_again() -> None:
     owner = _owner(skill_ids=(_skill("canny"),), commanders_supply=1)
     state = _turn_state(owner, face_up=(_skill("canny", 1), *SKILLS[2:5]))
@@ -444,14 +466,16 @@ def test_reveal_bonuses_pay_once_and_keep_the_skill_strength() -> None:
         event for event in result.events if event.kind == "skill_reveal_bonus"
     ]
     assert len(bonus_events) == 3
-    # Driven's spice and Hardy's water are the owner's own Reveal actions
-    # (OQ-045); Charismatic's Persuasion is totalled at once.
+    # Driven's spice and Hardy's troop are the owner's own Reveal actions
+    # (OQ-045); Charismatic's Persuasion is totalled at once. Hardy prints
+    # "Reveal Turn: [troop]" -- a recruit, not water [Hardy Skill tile].
     taken = result.state
     while gains := legal_reveal_gain_actions(taken, 0):
         taken = apply_reveal_gain(taken, gains[0]).state
     revealed = taken.players[0]
     context = dict(taken.decision_stack[0].context)
-    assert revealed.resources.spice == 1 and revealed.resources.water == 2
+    assert revealed.resources.spice == 1 and revealed.resources.water == 1
+    assert revealed.troops_garrison == state.players[0].troops_garrison + 1
     sword_strength = context["sword_strength"]
     assert isinstance(sword_strength, int)
     assert context["persuasion"] == revealed_persuasion_without_skill(state) + 1
@@ -471,6 +495,50 @@ def revealed_persuasion_without_skill(state: GameState) -> int:
     return persuasion
 
 
+def test_hardy_recruits_one_troop_in_the_reveal_turn() -> None:
+    # Hardy's tile prints "Reveal Turn: [troop]" -- the grey cube is the troop
+    # icon, "Troop. Recruit one troop" [Main p. 20] [Hardy Skill tile]. The
+    # recruit is the owner's own Reveal action like any other (OQ-045).
+    owner = _seat_with_skills(
+        skill_ids=(_skill("hardy"),),
+        hand=starting_deck_instance_ids(0)[:5],
+        resources=Resources(solari=0, spice=0, water=1),
+    )
+    state = refresh_pre_reveal_strength(RuleResult(state=_turn_state(owner))).state
+    result = begin_reveal_turn(state, DomainAction(action_id="reveal_turn", actor=0))
+    (bonus,) = [e for e in result.events if e.kind == "skill_reveal_bonus"]
+    assert dict(bonus.payload)["troops"] == 1
+    assert "water" not in dict(bonus.payload)
+
+    from dune_imperium.rules.reveal_turn import (
+        apply_reveal_gain,
+        legal_reveal_gain_actions,
+    )
+
+    gains = legal_reveal_gain_actions(result.state, 0)
+    assert [action.action_id for action in gains] == ["recruit_reveal_troops"]
+    recruited = apply_reveal_gain(result.state, gains[0])
+    seat = recruited.state.players[0]
+    assert seat.resources.water == 1
+    assert seat.troops_garrison == owner.troops_garrison + 1
+    assert seat.troops_supply == owner.troops_supply - 1
+    assert legal_reveal_gain_actions(recruited.state, 0) == ()
+
+    # With an empty supply the troop is lost (OQ-030), not turned into water.
+    drained = replace(
+        owner,
+        troops_supply=0,
+        troops_garrison=owner.troops_garrison + owner.troops_supply,
+    )
+    empty = replace(state, players=(drained, *state.players[1:]))
+    started = begin_reveal_turn(empty, DomainAction(action_id="reveal_turn", actor=0))
+    (recruit,) = legal_reveal_gain_actions(started.state, 0)
+    short = apply_reveal_gain(started.state, recruit)
+    assert short.state.players[0].troops_garrison == drained.troops_garrison
+    assert short.state.players[0].resources.water == 1
+    assert any(event.kind == "troops_recruit_short" for event in short.events)
+
+
 def test_reveal_bonuses_need_a_commander_in_the_conflict() -> None:
     owner = _seat_with_skills(
         skill_ids=(_skill("driven"),),
@@ -482,6 +550,130 @@ def test_reveal_bonuses_need_a_commander_in_the_conflict() -> None:
     result = begin_reveal_turn(state, DomainAction(action_id="reveal_turn", actor=0))
     assert result.state.players[0].resources.spice == 0
     assert not [event for event in result.events if event.kind == "skill_reveal_bonus"]
+
+
+def test_a_commander_deployed_during_the_reveal_pays_the_reveal_bonuses() -> None:
+    # "While you have any number of Sardaukar Commanders in the Conflict, the
+    # effects of all your Sardaukar Commander Skills are active. Each one
+    # either gives you a bonus when taking your Reveal turn ... Each one
+    # works only once each round" [Bloodlines p. 4]; Charismatic "Reveal
+    # Turn: [1 Persuasion]", Driven "Reveal Turn: [1 spice]" [Skill tile
+    # faces]. A Commander deployed with a Combat icon during the Reveal
+    # [Bloodlines p. 5] switches them on then, and the bonus is paid late
+    # like any late-met Reveal gain (OQ-028 (c)) -- once.
+    from dune_imperium.rules.combat_deployment import grant_combat_icon
+    from dune_imperium.rules.reveal_turn import (
+        legal_reveal_gain_actions,
+        reveal_pending_gains,
+    )
+
+    owner = _seat_with_skills(
+        skill_ids=(_skill("charismatic"), _skill("driven")),
+        commanders_conflict=0,
+        commanders_garrison=1,
+        combat_strength=2,
+        hand=starting_deck_instance_ids(0)[:5],
+        resources=Resources(solari=0, spice=0, water=1),
+    )
+    state = refresh_pre_reveal_strength(RuleResult(state=_turn_state(owner))).state
+    revealed = begin_reveal_turn(
+        state, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    persuasion = dict(revealed.decision_stack[-1].context)["persuasion"]
+    assert isinstance(persuasion, int)
+    assert legal_reveal_gain_actions(revealed, 0) == ()
+    opened = grant_combat_icon(revealed, 0)
+
+    engine = UprisingRulesEngine()
+    deploy = DomainAction("deploy_commanders", 0, (("count", 1),))
+    result = engine.apply(opened, deploy)
+    deployed = result.state
+    context = dict(deployed.decision_stack[-1].context)
+    assert deployed.players[0].commanders_conflict == 1
+    assert context["persuasion"] == persuasion + 1
+    assert context["persuasion_generated"] == persuasion + 1
+    assert ("resources", "0/1/0", "skill:driven") in reveal_pending_gains(context)
+    assert {
+        dict(event.payload)["skill_id"]
+        for event in result.events
+        if event.kind == "skill_reveal_bonus"
+    } == {"charismatic", "driven"}
+
+    # Once each round: taking the spice (another transition) pays nothing more.
+    (gain,) = legal_reveal_gain_actions(deployed, 0)
+    taken = engine.apply(deployed, gain).state
+    assert taken.players[0].resources.spice == 1
+    assert dict(taken.decision_stack[-1].context)["persuasion"] == persuasion + 1
+    assert legal_reveal_gain_actions(taken, 0) == ()
+
+
+def test_a_commander_deployed_during_the_reveal_pays_hardys_troop() -> None:
+    # Hardy prints "Reveal Turn: [troop]" [Hardy Skill tile] (a recruit, not
+    # water); a Commander deployed with a Combat icon during the Reveal
+    # switches it on then [Bloodlines pp. 4, 5] and the recruit waits for the
+    # owner's order like the Reveal-start one (OQ-028 (c), OQ-045).
+    from dune_imperium.rules.combat_deployment import grant_combat_icon
+    from dune_imperium.rules.reveal_turn import (
+        legal_reveal_gain_actions,
+        reveal_pending_gains,
+    )
+
+    owner = _seat_with_skills(
+        skill_ids=(_skill("hardy"),),
+        commanders_conflict=0,
+        commanders_garrison=1,
+        combat_strength=2,
+        hand=starting_deck_instance_ids(0)[:5],
+        resources=Resources(solari=0, spice=0, water=1),
+    )
+    state = refresh_pre_reveal_strength(RuleResult(state=_turn_state(owner))).state
+    revealed = begin_reveal_turn(
+        state, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    assert legal_reveal_gain_actions(revealed, 0) == ()
+    engine = UprisingRulesEngine()
+    result = engine.apply(
+        grant_combat_icon(revealed, 0),
+        DomainAction("deploy_commanders", 0, (("count", 1),)),
+    )
+    deployed = result.state
+    context = dict(deployed.decision_stack[-1].context)
+    assert ("troops", "1", "skill:hardy") in reveal_pending_gains(context)
+    (bonus,) = (e for e in result.events if e.kind == "skill_reveal_bonus")
+    assert dict(bonus.payload)["troops"] == 1
+    assert "water" not in dict(bonus.payload)
+    supply = deployed.players[0].troops_supply
+    (recruit,) = legal_reveal_gain_actions(deployed, 0)
+    recruited = engine.apply(deployed, recruit).state
+    assert recruited.players[0].troops_supply == supply - 1
+    assert recruited.players[0].resources.water == 1
+
+
+def test_reveal_bonuses_paid_at_the_start_are_not_paid_again_late() -> None:
+    # A Commander already in the Conflict paid the bonuses when the Reveal
+    # began [Bloodlines p. 4]; a second Commander deployed later adds none.
+    from dune_imperium.rules.combat_deployment import grant_combat_icon
+    from dune_imperium.rules.reveal_turn import legal_reveal_gain_actions
+
+    owner = _seat_with_skills(
+        skill_ids=(_skill("charismatic"), _skill("driven")),
+        commanders_garrison=1,
+        hand=starting_deck_instance_ids(0)[:5],
+        resources=Resources(solari=0, spice=0, water=1),
+    )
+    state = refresh_pre_reveal_strength(RuleResult(state=_turn_state(owner))).state
+    revealed = begin_reveal_turn(
+        state, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    persuasion = dict(revealed.decision_stack[-1].context)["persuasion"]
+    engine = UprisingRulesEngine()
+    deployed = engine.apply(
+        grant_combat_icon(revealed, 0),
+        DomainAction("deploy_commanders", 0, (("count", 1),)),
+    ).state
+    assert deployed.players[0].commanders_conflict == 2
+    assert dict(deployed.decision_stack[-1].context)["persuasion"] == persuasion
+    assert len(legal_reveal_gain_actions(deployed, 0)) == 1  # Driven's, from start
 
 
 def test_desperate_trashes_for_three_swords_during_the_reveal() -> None:
@@ -597,10 +789,17 @@ def test_bloodlines_actions_round_trip_only_in_the_bloodlines_catalog() -> None:
     # City icon shifts its agent_turn space coverage by +1 (see
     # test_action_codec.test_catalog_is_fixed_and_versioned_for_a_ruleset).
     # v107: +27, the generic Spy placement frame in every catalog.
-    assert base.size == 4354 + 12 + 1 + 1 + 2 + 1 + 40 + 1 + 27
-    # Commander choices, the Commander share of retreats and deployments,
-    # and the wild pairs of the two Bloodlines Conflicts are bloodlines-only.
-    assert codec.size > base.size
+    # v108 (2026-09-26 card-transcription audit, net per catalog without
+    # Bloodlines): Maker Keeper's single City icon and Undercover Asset's
+    # missing Spy icon [card faces] drop 36 agent_turn placements; a Conflict
+    # reward Spy may recall first or decline [Main pp. 11, 20] (+13 recalls,
+    # +1 decline) and so may a Leader Spy (+1); Covert Operation's two Reveal
+    # Spies (+1 resume) and Unswerving Loyalty's Fremen Bond troop move (+1
+    # resume, and Shadout Mapes' deploy/retreat/decline join every catalog,
+    # +3).
+    # decline_acquisition_spy: an acquisition-bonus Spy may pass up the
+    # recall-first without a Spy in supply [Main pp. 11, 20] (+1).
+    assert base.size == 4354 + 12 + 1 + 1 + 2 + 1 + 40 + 1 + 27 - 36 + 15 + 5 + 1
 
     actions = (
         DomainAction("acquire_sardaukar_commander", 2, (("skill_id", "loyal"),)),

@@ -41,6 +41,7 @@ from dune_imperium.rules.reveal_turn import (
     apply_reveal_sandworm_action,
     apply_reveal_spice_influence,
     apply_reveal_spy_action,
+    apply_reveal_troop_move,
     apply_reveal_troop_retreat,
     begin_reveal_turn,
     finish_reveal_turn,
@@ -49,14 +50,17 @@ from dune_imperium.rules.reveal_turn import (
     legal_corrinth_city_reveal_actions,
     legal_defer_reveal_choice_actions,
     legal_finish_reveal_actions,
+    legal_resume_reveal_choice_actions,
     legal_reveal_actions,
     legal_reveal_card_trash_actions,
     legal_reveal_influence_exchange_actions,
     legal_reveal_sandworm_actions,
     legal_reveal_spice_influence_actions,
     legal_reveal_spy_actions,
+    legal_reveal_troop_move_actions,
     legal_reveal_troop_retreat_actions,
     reveal_late_arrivals,
+    reveal_pending_gains,
 )
 
 
@@ -149,6 +153,60 @@ def test_desert_power_can_keep_persuasion_or_pay_water_for_a_sandworm() -> None:
         "reveal_sandworm_deployed",
         "reveal_strength_gained",
     )
+
+
+@pytest.mark.parametrize("extra_persuasion", [False, True])
+def test_desert_power_sandworm_closes_once_its_two_persuasion_are_spent(
+    extra_persuasion: bool,
+) -> None:
+    # "[2 Persuasion] -OR- [Maker Hooks]: [water] -> [sandworm]" [Desert Power
+    # card] (player-turns.md: "Desert Power는 Reveal에서 Persuasion 2를
+    # 얻거나, ... sandworm 1개를 소환" [Desert Power card] [Main pp. 10, 20]).
+    # Effects resolve in any order and "you may use Persuasion that you've
+    # gained to acquire new cards" [Main p. 12], but the 2 spent on Prepare
+    # the Way were the Persuasion branch: the sandworm, which gives them
+    # back, no longer opens. Before the fix the seat bought the card and then
+    # still took the sandworm, leaving the Reveal at -2 Persuasion. With 2
+    # more Persuasion unspent (Convincing Argument) the sandworm stays open.
+    desert_power = _imperium_instance("desert_power")
+    hand = (desert_power, _instance("convincing_argument")) if extra_persuasion else (
+        desert_power,
+    )
+    owner = PlayerState(
+        player_id=0, hand=hand, maker_hooks=True, resources=Resources(water=2)
+    )
+    state = replace(
+        _state(owner),
+        current_conflict_ids=("propaganda",),
+        reserve_stacks=(("prepare_the_way", 7),),
+    )
+    engine = UprisingRulesEngine()
+    revealed = engine.apply(state, DomainAction(action_id="reveal_turn", actor=0))
+    deferred = engine.apply(
+        revealed.state, DomainAction(action_id="defer_reveal_choice", actor=0)
+    ).state
+    bought = engine.apply(
+        deferred,
+        DomainAction(
+            action_id="acquire_reserve",
+            actor=0,
+            arguments=(("card_id", "prepare_the_way"),),
+        ),
+    ).state
+    persuasion = dict(bought.decision_stack[-1].context)["persuasion"]
+    assert persuasion == (2 if extra_persuasion else 0)
+    resumes = legal_resume_reveal_choice_actions(bought, 0)
+    if not extra_persuasion:
+        assert resumes == ()
+        finish = engine.legal_actions(bought, 0)
+        assert DomainAction(action_id="finish_reveal", actor=0) in finish
+        return
+    resumed = engine.apply(bought, resumes[0]).state
+    sandworm = DomainAction(action_id="pay_reveal_water_for_sandworm", actor=0)
+    assert sandworm in legal_reveal_sandworm_actions(resumed, 0)
+    worm = engine.apply(resumed, sandworm).state
+    assert worm.players[0].sandworms_conflict == 1
+    assert dict(worm.decision_stack[-1].context)["persuasion"] == 0
 
 
 def test_desert_power_recalculates_sword_strength_when_sandworm_is_first_unit() -> None:
@@ -343,6 +401,82 @@ def test_leadership_counts_sword_cards_once_and_ignores_a_later_trash() -> None:
     # Not 9: Calculus becoming a sword card does not recount Leadership.
     assert result.state.players[0].combat_strength == 8
 
+# Leadership: "+[sword] for each other revealed card that provides one or
+# more [sword] this turn." [Leadership card]. A card whose Reveal choice gave
+# swords provides them this turn too, and Leadership "counts at one moment"
+# (designer ruling, designer-rulings-audit.md; OQ-057) of the owner's
+# choosing [Main p. 12], so it can count after that choice.
+def _leadership_reveal(*hand: str, troops_conflict: int) -> GameState:
+    leadership = _imperium_instance("leadership")
+    state = _state(
+        PlayerState(
+            player_id=0,
+            hand=(leadership, *hand),
+            troops_supply=9 - troops_conflict,
+            troops_conflict=troops_conflict,
+        )
+    )
+    return begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+
+
+def _apply_first(state: GameState, action_id: str) -> GameState:
+    engine = UprisingRulesEngine()
+    action = next(
+        action
+        for action in engine.legal_actions(state, 0)
+        if action.action_id == action_id
+    )
+    return engine.apply(state, action).state
+
+
+def test_leadership_counts_undercover_assets_chosen_swords() -> None:
+    revealed = _leadership_reveal(
+        _imperium_instance("undercover_asset"), troops_conflict=1
+    )
+    # troop 2 + Leadership 1: Undercover Asset has provided no sword yet.
+    assert revealed.players[0].combat_strength == 3
+    chose = _apply_first(revealed, "gain_two_reveal_strength")
+    # + Undercover Asset's 2 swords + Leadership's 1 for it (5 before the fix).
+    assert chose.players[0].combat_strength == 6
+    context = dict(chose.decision_stack[-1].context)
+    assert context["strength"] == 6
+    # Counted once: a later step adds nothing more.
+    assert _apply_first(chose, "finish_reveal").players[0].combat_strength == 6
+
+
+def test_leadership_does_not_count_undercover_asset_taking_the_spy() -> None:
+    revealed = _leadership_reveal(
+        _imperium_instance("undercover_asset"), troops_conflict=1
+    )
+    placed = _apply_first(revealed, "place_reveal_spy")
+    assert placed.players[0].combat_strength == 3
+
+
+def test_leadership_counts_chanis_retreat_swords() -> None:
+    revealed = _leadership_reveal(
+        _imperium_instance("chani_clever_tactician"), troops_conflict=4
+    )
+    # troops 8 + Leadership 1.
+    assert revealed.players[0].combat_strength == 9
+    retreated = _apply_first(revealed, "retreat_two_troops_for_reveal")
+    # Two troops (4) leave, Chani's 4 swords arrive, Leadership +1 for Chani.
+    assert retreated.players[0].combat_strength == 10
+    assert retreated.players[0].troops_conflict == 2
+
+
+def test_leadership_through_the_engine_still_counts_calculus_once() -> None:
+    # The designer's example (see the test above): after Calculus of Power
+    # trashes Sardaukar Soldier, Calculus is a sword card and Sardaukar is
+    # gone, so the best single moment is still one card: 8, not 9.
+    calculus = _imperium_instance("calculus_of_power")
+    sardaukar = _imperium_instance("sardaukar_soldier")
+    revealed = _leadership_reveal(calculus, sardaukar, troops_conflict=1)
+    assert revealed.players[0].combat_strength == 5
+    trashed = _apply_first(revealed, "trash_reveal_card")
+    assert trashed.players[0].trashed == (sardaukar,)
+    assert trashed.players[0].combat_strength == 8
+
+
 def test_calculus_of_power_cannot_pay_with_itself() -> None:
     calculus = _imperium_instance("calculus_of_power")
     revealed = begin_reveal_turn(
@@ -352,6 +486,23 @@ def test_calculus_of_power_cannot_pay_with_itself() -> None:
 
     assert legal_reveal_card_trash_actions(revealed, 0) == ()
     assert dict(revealed.decision_stack[-1].context)["persuasion"] == 2
+
+
+def test_calculus_of_power_cannot_pay_with_overthrow() -> None:
+    # Overthrow prints no affiliation banner under its title [card face; BGG
+    # inventory row blank] and is no longer an Emperor card, so it is not a
+    # candidate for Calculus of Power's "trash another Emperor card" Reveal
+    # choice. With no eligible Emperor card in play, the optional trash
+    # choice never opens at all, same as when Calculus is alone in hand.
+    calculus = _imperium_instance("calculus_of_power")
+    overthrow = _imperium_instance("overthrow")
+    revealed = begin_reveal_turn(
+        _state(PlayerState(player_id=0, hand=(calculus, overthrow))),
+        DomainAction(action_id="reveal_turn", actor=0),
+    ).state
+
+    assert overthrow in revealed.players[0].in_play
+    assert legal_reveal_card_trash_actions(revealed, 0) == ()
 
 
 def test_desert_power_recounts_calculus_sword_when_it_adds_the_first_unit() -> None:
@@ -895,15 +1046,20 @@ def test_spy_network_recalls_one_of_two_spies_and_draws_intrigue() -> None:
     selected = next(
         action
         for action in choices
-        if dict(action.arguments)["post_id"] == posts[1]
+        if dict(action.arguments).get("post_id") == posts[1]
     )
     result = engine.apply(revealed.state, selected)
 
+    # The recall is an arrow cost, so declining is offered first [Spy
+    # Network card] [Main p. 20].
     assert tuple(action.action_id for action in choices) == (
+        "decline_reveal_spy_recall",
         "recall_spy_for_reveal",
         "recall_spy_for_reveal",
     )
-    assert {dict(action.arguments)["post_id"] for action in choices} == set(posts)
+    assert {dict(action.arguments)["post_id"] for action in choices[1:]} == set(
+        posts
+    )
     assert result.state.players[0].spy_post_ids == (posts[0],)
     assert result.state.players[0].spies_supply == 2
     assert result.state.players[0].intrigue_cards == ("intrigue:test:0",)
@@ -916,10 +1072,46 @@ def test_spy_network_recalls_one_of_two_spies_and_draws_intrigue() -> None:
     )
 
 
+def test_spy_network_recall_may_be_declined_with_two_spies_placed() -> None:
+    # Spy Network: "If you have two or more Spies on the board: [recall Spy]
+    # -> [Intrigue card]" [Spy Network card]. The recall is left of an arrow,
+    # and "You do not have to pay such a cost on a card" [Main p. 20]; paying
+    # an arrow cost is optional [FAQ p. 3]. Declining keeps both Spies, draws
+    # nothing and lets the Reveal finish.
+    spy_network = _imperium_instance("spy_network")
+    posts = (
+        "arrakis-hagga-basin",
+        "bene-gesserit-espionage-secrets",
+    )
+    state = _state(
+        PlayerState(
+            player_id=0,
+            hand=(spy_network,),
+            spies_supply=1,
+            spy_post_ids=posts,
+        )
+    )
+    state = replace(state, intrigue_deck=("intrigue:test:0",))
+    revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+    engine = UprisingRulesEngine()
+
+    declined = engine.apply(
+        revealed, DomainAction(action_id="decline_reveal_spy_recall", actor=0)
+    ).state
+
+    assert declined.players[0].spy_post_ids == posts
+    assert declined.players[0].intrigue_cards == ()
+    assert declined.intrigue_deck == ("intrigue:test:0",)
+    assert declined.decision_stack[-1].kind == "reveal"
+    assert "finish_reveal" in {
+        action.action_id for action in engine.legal_actions(declined, 0)
+    }
+
+
 def test_spy_network_recall_becomes_unavailable_when_spies_drop_mid_reveal() -> None:
     # The two-Spy condition is judged again when the queued choice resolves
     # in the owner's chosen Reveal order [Main p. 12] [Main pp. 9, 20]; In
-    # High Places can recall both remaining Spies first, and the required
+    # High Places can recall both remaining Spies first, and the optional
     # recall and Intrigue draw are then unavailable.
     in_high_places = _imperium_instance("in_high_places")
     spy_network = _imperium_instance("spy_network")
@@ -976,7 +1168,7 @@ def test_spy_network_has_no_recall_effect_with_only_one_spy() -> None:
     assert dict(result.state.decision_stack[-1].context)["persuasion"] == 2
 
 
-def test_in_high_places_may_recall_two_spies_for_two_persuasion() -> None:
+def test_in_high_places_may_recall_two_spies_for_three_persuasion() -> None:
     in_high_places = _imperium_instance("in_high_places")
     posts = (
         "arrakis-hagga-basin",
@@ -1002,12 +1194,15 @@ def test_in_high_places_may_recall_two_spies_for_two_persuasion() -> None:
     assert len(choices) == 4
     assert result.state.players[0].spies_supply == 2
     assert len(result.state.players[0].spy_post_ids) == 1
-    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 4
+    # "[recall Spy] [recall Spy] -> +3 Persuasion" on top of the printed 2
+    # [In High Places card]; the engine used to add only 2.
+    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 5
     assert tuple(event.kind for event in result.events) == (
         "spy_recalled",
         "spy_recalled",
         "reveal_persuasion_gained",
     )
+    assert dict(result.events[-1].payload)["amount"] == 3
 
 
 def test_in_high_places_reveal_spy_recall_may_be_declined() -> None:
@@ -1114,7 +1309,11 @@ def test_public_spectacle_reveal_recalls_before_placing_with_empty_supply() -> N
         )
     )
     revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
-    recall = legal_reveal_spy_actions(revealed.state, 0)[0]
+    recall = next(
+        action
+        for action in legal_reveal_spy_actions(revealed.state, 0)
+        if action.action_id == "recall_spy_for_reveal_placement"
+    )
 
     recalled = apply_reveal_spy_action(revealed.state, recall)
     placements = legal_reveal_spy_actions(recalled.state, 0)
@@ -1138,6 +1337,162 @@ def test_public_spectacle_reveal_recalls_before_placing_with_empty_supply() -> N
         "spy_recalled",
         "spy_placed",
     )
+
+
+def test_public_spectacle_reveal_may_pass_without_a_spy_in_supply() -> None:
+    # Spy icon: "If you have no Spies in your supply, you may first recall
+    # one of your Spies for no effect" [Main p. 20] [Main p. 11]; the Spy is
+    # mandatory only while one is in the supply (OQ-057 (14)), so with all
+    # three Spies on the board the owner may decline and keep them.
+    spectacle = _imperium_instance("public_spectacle")
+    original_posts = tuple(post.post_id for post in OBSERVATION_POSTS[:3])
+    state = _state(
+        PlayerState(
+            player_id=0,
+            hand=(spectacle,),
+            spies_supply=0,
+            spy_post_ids=original_posts,
+        )
+    )
+    revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+    engine = UprisingRulesEngine()
+    choices = legal_reveal_spy_actions(revealed, 0)
+
+    assert tuple(action.action_id for action in choices) == (
+        "decline_reveal_spy_recall",
+        *("recall_spy_for_reveal_placement",) * 3,
+    )
+    declined = engine.apply(revealed, choices[0]).state
+
+    assert declined.players[0].spy_post_ids == original_posts
+    assert declined.players[0].spies_supply == 0
+    assert declined.decision_stack[-1].kind == "reveal"
+    assert "finish_reveal" in {
+        action.action_id for action in engine.legal_actions(declined, 0)
+    }
+
+
+def _post_choice(actions: tuple[DomainAction, ...], post_id: str) -> DomainAction:
+    return next(
+        action
+        for action in actions
+        if action.action_id == "place_reveal_spy"
+        and dict(action.arguments)["post_id"] == post_id
+    )
+
+
+def test_covert_operation_reveal_places_two_spies_and_no_persuasion() -> None:
+    # Covert Operation's Reveal box prints two Spy icons and no Persuasion
+    # [Covert Operation card] (BGG inventory: "+2 Spies"). "Spy. Place one
+    # Spy; take it from your supply and put it on an unoccupied observation
+    # post" [Main p. 20]: one placement per icon. The engine used to give two
+    # Persuasion and no Spy.
+    covert = _imperium_instance("covert_operation")
+    state = _state(PlayerState(player_id=0, hand=(covert,)))
+    engine = UprisingRulesEngine()
+    revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+    first_post, second_post = (post.post_id for post in OBSERVATION_POSTS[:2])
+
+    first_choices = engine.legal_actions(revealed, 0)
+    first = engine.apply(revealed, _post_choice(first_choices, first_post))
+    second_choices = engine.legal_actions(first.state, 0)
+    second = engine.apply(first.state, _post_choice(second_choices, second_post))
+
+    assert dict(revealed.decision_stack[-2].context)["persuasion"] == 0
+    assert {action.action_id for action in first_choices} == {
+        "defer_reveal_choice",
+        "place_reveal_spy",
+    }
+    # The second icon is a placement of its own, on another empty post.
+    assert {action.action_id for action in second_choices} == {
+        "defer_reveal_choice",
+        "place_reveal_spy",
+    }
+    assert first_post not in {
+        dict(action.arguments).get("post_id") for action in second_choices
+    }
+    owner = second.state.players[0]
+    assert owner.spies_supply == 1
+    assert owner.spy_post_ids == (first_post, second_post)
+    assert [event.kind for event in (*first.events, *second.events)] == [
+        "spy_placed",
+        "spy_placed",
+    ]
+    assert dict(second.state.decision_stack[-1].context)["persuasion"] == 0
+    assert legal_finish_reveal_actions(second.state, 0)
+
+
+def test_covert_operation_second_spy_waits_like_any_reveal_choice() -> None:
+    # Reveal effects resolve in any order [Main p. 12]: the second Spy icon
+    # can be put off, and the Reveal cannot finish while it can still open.
+    covert = _imperium_instance("covert_operation")
+    state = _state(PlayerState(player_id=0, hand=(covert,)))
+    engine = UprisingRulesEngine()
+    revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+    first_post = OBSERVATION_POSTS[0].post_id
+    first = engine.apply(
+        revealed, _post_choice(engine.legal_actions(revealed, 0), first_post)
+    )
+
+    deferred = engine.apply(
+        first.state, DomainAction(action_id="defer_reveal_choice", actor=0)
+    )
+
+    assert legal_finish_reveal_actions(deferred.state, 0) == ()
+    assert DomainAction(
+        action_id="resume_reveal_choice",
+        actor=0,
+        arguments=(("effect", "place_spy"),),
+    ) in engine.legal_actions(deferred.state, 0)
+
+
+def test_covert_operation_spy_icons_follow_the_plain_reveal_spy_rules() -> None:
+    # Each icon is the plain Spy icon, like Public Spectacle's: "If you have
+    # no Spies in your supply, you may first recall one of your Spies for no
+    # effect" [Main pp. 11, 20] (uprising-systems.md, OQ-057 (14)). Both of
+    # Covert Operation's icons offer exactly Public Spectacle's choices.
+    posts = tuple(post.post_id for post in OBSERVATION_POSTS[:3])
+
+    def revealed_with(card_id: str, supply: int, placed: tuple[str, ...]) -> GameState:
+        card = _imperium_instance(card_id)
+        state = _state(
+            PlayerState(
+                player_id=0, hand=(card,), spies_supply=supply, spy_post_ids=placed
+            )
+        )
+        return begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+
+    covert_empty = revealed_with("covert_operation", 0, posts)
+    spectacle_empty = revealed_with("public_spectacle", 0, posts)
+    assert legal_reveal_spy_actions(covert_empty, 0) == legal_reveal_spy_actions(
+        spectacle_empty, 0
+    )
+
+    # The first icon takes the last Spy in supply; the second then meets an
+    # empty supply exactly as Public Spectacle's icon would.
+    covert_one = revealed_with("covert_operation", 1, posts[:2])
+    first = apply_reveal_spy_action(
+        covert_one,
+        _post_choice(legal_reveal_spy_actions(covert_one, 0), posts[2]),
+    ).state
+    assert first.players[0].spies_supply == 0
+    assert legal_reveal_spy_actions(first, 0) == legal_reveal_spy_actions(
+        spectacle_empty, 0
+    )
+    recall = next(
+        action
+        for action in legal_reveal_spy_actions(first, 0)
+        if action.action_id == "recall_spy_for_reveal_placement"
+    )
+    recalled = apply_reveal_spy_action(first, recall).state
+    target = next(
+        action
+        for action in legal_reveal_spy_actions(recalled, 0)
+        if dict(action.arguments)["post_id"] not in posts
+    )
+    placed = apply_reveal_spy_action(recalled, target).state
+    assert len(placed.players[0].spy_post_ids) == 3
+    assert legal_finish_reveal_actions(placed, 0)
 
 
 def test_wheels_within_wheels_reveals_for_persuasion_and_places_a_spy() -> None:
@@ -1263,7 +1618,180 @@ def test_unswerving_loyalty_reveals_for_persuasion_and_recruits_one() -> None:
     assert revealed.players[0].troops_garrison == 4
 
 
-def test_stilgar_counts_only_fremen_cards_revealed_this_turn() -> None:
+_LOYALTY_MOVE = "may_deploy_or_retreat_one_troop_if_fremen_bond"
+
+
+def test_unswerving_loyalty_fremen_bond_deploys_or_retreats_one_troop() -> None:
+    # "Fremen Bond : You may deploy or retreat one of your troops."
+    # [Unswerving Loyalty card]. "Fremen Bond -- You may use this effect if
+    # you have one or more other Fremen cards in play" [Main p. 20]
+    # (uprising-systems.md); here Maula Pistol, played on an Agent turn.
+    # The engine used to offer no such choice.
+    loyalty = _imperium_instance("unswerving_loyalty")
+    maula = _imperium_instance("maula_pistol")
+    state = _state(
+        PlayerState(
+            player_id=0,
+            hand=(loyalty,),
+            in_play=(maula,),
+            troops_supply=9,
+            troops_garrison=2,
+            troops_conflict=1,
+            combat_strength=2,
+        )
+    )
+    revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+
+    top = revealed.decision_stack[-1]
+    assert dict(top.context)["reveal_choice_effect"] == _LOYALTY_MOVE
+    actions = legal_reveal_troop_move_actions(revealed, 0)
+    assert [action.action_id for action in actions] == [
+        "decline_reveal_troop_move",
+        "deploy_reveal_card_troop",
+        "retreat_reveal_card_troop",
+    ]
+    deployed = apply_reveal_troop_move(revealed, actions[1]).state
+    owner = deployed.players[0]
+    assert (owner.troops_garrison, owner.troops_conflict) == (1, 2)
+    assert dict(deployed.decision_stack[-1].context)["strength"] == 4
+    retreated = apply_reveal_troop_move(revealed, actions[2]).state
+    owner = retreated.players[0]
+    assert (owner.troops_garrison, owner.troops_conflict) == (3, 0)
+    assert dict(retreated.decision_stack[-1].context)["strength"] == 0
+    declined = apply_reveal_troop_move(revealed, actions[0]).state
+    assert declined.players[0] == revealed.players[0]
+    assert declined.decision_stack[-1].kind == "reveal"
+
+
+def test_unswerving_loyalty_moves_a_commander_in_a_bloodlines_only_catalog() -> None:
+    # "You may deploy or retreat one of your troops" [Unswerving Loyalty
+    # card]; a Sardaukar Commander "is a 'troop'" [Bloodlines p. 4]. The
+    # card is in every ruleset, so its Commander moves must encode without
+    # Immortality too (a merge-time gap between two audit slices).
+    from dune_imperium.adapters.action_codec import ActionCodec
+
+    config = RulesetConfig(bloodlines=True)
+    loyalty = _imperium_instance("unswerving_loyalty")
+    maula = _imperium_instance("maula_pistol")
+    owner = PlayerState(
+        player_id=0,
+        hand=(loyalty,),
+        in_play=(maula,),
+        commanders_supply=0,
+        commanders_garrison=1,
+        commanders_conflict=1,
+        combat_strength=2,
+    )
+    state = GameState(
+        config=config,
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=_state(PlayerState(player_id=0)).decision_stack,
+    )
+    revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+    actions = legal_reveal_troop_move_actions(revealed, 0)
+    assert {
+        (action.action_id, dict(action.arguments).get("commanders"))
+        for action in actions
+    } >= {("deploy_reveal_card_troop", 1), ("retreat_reveal_card_troop", 1)}
+    codec = ActionCodec(config)
+    for action in actions:
+        assert codec.decode(codec.encode(action), actor=0) == action
+
+
+def test_unswerving_loyalty_offers_no_troop_move_without_a_fremen_bond() -> None:
+    # No other Fremen card in play: the Bond line does nothing [Main p. 20].
+    loyalty = _imperium_instance("unswerving_loyalty")
+    state = _state(
+        PlayerState(player_id=0, hand=(loyalty,), troops_supply=9, troops_garrison=3)
+    )
+    revealed = _take_reveal_gains(
+        begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+    )
+
+    actions = UprisingRulesEngine().legal_actions(revealed, 0)
+    assert revealed.decision_stack[-1].kind == "reveal"
+    assert legal_reveal_troop_move_actions(revealed, 0) == ()
+    assert "resume_reveal_choice" not in {action.action_id for action in actions}
+    assert "finish_reveal" in {action.action_id for action in actions}
+
+
+def test_two_unswerving_loyalties_bond_each_other() -> None:
+    # "Two cards with Fremen Bond can activate one another, regardless of
+    # order played." [Main p. 20]
+    first = _imperium_instance("unswerving_loyalty", 0)
+    second = _imperium_instance("unswerving_loyalty", 1)
+    state = _state(
+        PlayerState(
+            player_id=0, hand=(first, second), troops_supply=9, troops_garrison=3
+        )
+    )
+    revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+
+    choices = [
+        dict(frame.context)
+        for frame in revealed.decision_stack
+        if dict(frame.context).get("reveal_choice_effect") == _LOYALTY_MOVE
+    ]
+    assert sorted(context["reveal_card_id"] for context in choices) == sorted(
+        (first, second)
+    )
+
+
+def test_unswerving_loyalty_may_deploy_the_troop_it_recruits() -> None:
+    # With no troop yet, the Bond move waits in the deferred queue [Main p. 12]
+    # until the card's own recruit (taken in the owner's order, OQ-045) gives
+    # it one to deploy.
+    loyalty = _imperium_instance("unswerving_loyalty")
+    maula = _imperium_instance("maula_pistol")
+    state = _state(
+        PlayerState(
+            player_id=0,
+            hand=(loyalty,),
+            in_play=(maula,),
+            troops_supply=12,
+            troops_garrison=0,
+        )
+    )
+    engine = UprisingRulesEngine()
+    revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+    assert revealed.decision_stack[-1].kind == "reveal"
+    assert "resume_reveal_choice" not in {
+        action.action_id for action in engine.legal_actions(revealed, 0)
+    }
+
+    recruited = _take_reveal_gains(revealed)
+    resume = DomainAction(
+        action_id="resume_reveal_choice",
+        actor=0,
+        arguments=(("effect", _LOYALTY_MOVE),),
+    )
+    assert recruited.players[0].troops_garrison == 1
+    assert resume in engine.legal_actions(recruited, 0)
+    assert "finish_reveal" not in {
+        action.action_id for action in engine.legal_actions(recruited, 0)
+    }
+    resumed = engine.apply(recruited, resume).state
+    deployed = engine.apply(
+        resumed, DomainAction(action_id="deploy_reveal_card_troop", actor=0)
+    ).state
+    assert deployed.players[0].troops_conflict == 1
+    assert deployed.players[0].troops_garrison == 0
+
+
+def test_stilgar_counts_fremen_cards_played_on_agent_turns() -> None:
+    # Stilgar, The Devoted: "2 Persuasion for each Fremen card you have in
+    # play (including this one)" [Stilgar, The Devoted card]. In play is
+    # "Cards you play on Agent turns and reveal during your Reveal turn"
+    # [Main p. 20] (docs/rules/uprising-systems.md: "Agent turn에 play한
+    # 카드와 현재 Reveal turn에 reveal한 카드는 ... in play다"), and the FAQ
+    # rules the same wording on Liet Kynes: "Cards from your Agent turns this
+    # round and your current Reveal turn count" [FAQ p. 2]. Unswerving
+    # Loyalty played on an Agent turn is the third Fremen card: 3 x 2 plus
+    # Maula Pistol's and Truthtrance's printed Persuasion. The old reading
+    # counted only the revealed cards and gave 6.
     stilgar = _imperium_instance("stilgar_the_devoted")
     maula = _imperium_instance("maula_pistol")
     truthtrance = _imperium_instance("truthtrance")
@@ -1278,7 +1806,7 @@ def test_stilgar_counts_only_fremen_cards_revealed_this_turn() -> None:
 
     result = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
 
-    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 6
+    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 8
 
 
 def test_stilgar_counts_itself_as_a_revealed_fremen_card() -> None:
@@ -1343,8 +1871,15 @@ def test_sardaukar_coordination_counts_each_revealed_emperor_card() -> None:
         DomainAction(action_id="reveal_turn", actor=0),
     )
 
-    assert result.state.players[0].combat_strength == 11
-    assert dict(result.state.decision_stack[-1].context)["strength"] == 11
+    # Reveal box: Persuasion 2 (no base sword) plus "+[sword] for each
+    # Emperor card you revealed (including this one)" [card face]. All three
+    # cards are Emperor, so each Coordination adds 3 swords: 3 + 3 from the
+    # two Coordinations, + 1 from the Soldier's printed sword, + 2 from the
+    # one troop in the Conflict = 9. Persuasion: 2 + 2 (Coordinations) + 1
+    # (Soldier) = 5.
+    assert result.state.players[0].combat_strength == 9
+    assert dict(result.state.decision_stack[-1].context)["strength"] == 9
+    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 5
 
 
 def test_sardaukar_coordination_ignores_emperor_agent_cards_in_play() -> None:
@@ -1363,7 +1898,38 @@ def test_sardaukar_coordination_ignores_emperor_agent_cards_in_play() -> None:
         DomainAction(action_id="reveal_turn", actor=0),
     )
 
-    assert result.state.players[0].combat_strength == 4
+    # The Soldier in play (not revealed this turn) does not count toward the
+    # per-revealed-Emperor multiplier: 1 troop (strength 2) + 1 sword from
+    # the lone revealed Coordination = 3.
+    assert result.state.players[0].combat_strength == 3
+
+
+def test_sardaukar_coordination_ignores_a_revealed_overthrow() -> None:
+    # Overthrow prints no affiliation banner [card face; BGG inventory row
+    # blank] and is no longer an Emperor card, so revealing it alongside
+    # Sardaukar Coordination must not add to the "+[sword] for each Emperor
+    # card you revealed (including this one)" count: only the lone
+    # Coordination counts itself, for 1 sword. Overthrow's own printed Reveal
+    # (2 Persuasion, 2 strength) still applies on its own. Total: 1 troop
+    # (strength 2) + 1 (Coordination's own count) + 2 (Overthrow's own
+    # sword) = 5 strength; 2 (Coordination) + 2 (Overthrow) = 4 Persuasion.
+    coordination = _imperium_instance("sardaukar_coordination")
+    overthrow = _imperium_instance("overthrow")
+    owner = PlayerState(
+        player_id=0,
+        hand=(coordination, overthrow),
+        troops_supply=8,
+        troops_conflict=1,
+    )
+
+    result = begin_reveal_turn(
+        _state(owner),
+        DomainAction(action_id="reveal_turn", actor=0),
+    )
+
+    assert result.state.players[0].combat_strength == 5
+    assert dict(result.state.decision_stack[-1].context)["strength"] == 5
+    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 4
 
 
 def test_shishakli_reveal_gains_fremen_influence_only_with_bond() -> None:
@@ -1490,7 +2056,12 @@ def test_reserve_cards_contribute_their_printed_reveal_values() -> None:
     context = dict(result.state.decision_stack[-1].context)
 
     assert context["persuasion"] == 2
-    assert context["strength"] == 3
+    # The Spice Must Flow's Reveal box is a spice hexagon "1" [Main p. 20],
+    # not a sword, so only the 1 troop's own strength (2) counts here.
+    assert context["strength"] == 2
+
+    taken = _with_gains(result)
+    assert taken.state.players[0].resources.spice == 1
 
 
 def test_transcribed_imperium_cards_contribute_reveal_values() -> None:
@@ -1621,7 +2192,7 @@ def test_price_is_no_object_reveals_for_persuasion_and_solari() -> None:
     assert result.state.players[0].resources.solari == 2
 
 
-def test_subversive_advisor_reveals_for_one_solari() -> None:
+def test_subversive_advisor_reveals_for_one_persuasion() -> None:
     subversive = _imperium_instance("subversive_advisor")
     state = _state(PlayerState(player_id=0, hand=(subversive,)))
 
@@ -1629,8 +2200,10 @@ def test_subversive_advisor_reveals_for_one_solari() -> None:
 
     result = _with_gains(result)
 
-    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 0
-    assert result.state.players[0].resources.solari == 1
+    # The Reveal band prints a single blue Persuasion diamond "1" [card
+    # face], not a Solari coin.
+    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 1
+    assert result.state.players[0].resources.solari == 0
 
 
 def test_interstellar_trade_persuasion_uses_completed_contracts_at_reveal() -> None:
@@ -1654,7 +2227,13 @@ def test_interstellar_trade_persuasion_uses_completed_contracts_at_reveal() -> N
     assert dict(result.state.decision_stack[-1].context)["persuasion"] == 3
 
 
-def test_delivery_agreement_gains_spice_automatically_below_four_contracts() -> None:
+def test_delivery_agreement_below_four_contracts_pays_spice_by_its_choice() -> None:
+    # "[1 spice] -OR- If you have completed four or more contracts: Trash
+    # this card -> [1 VP]" [Delivery Agreement card]: the spice is one branch
+    # of the choice (docs/rules/player-turns.md: "completed Contract가 4개
+    # 이상이면 그 Spice 대신 해당 card를 trash하고 Victory Point 1을 얻을 수
+    # 있다"), so it is paid by keeping, never as a separate automatic gain.
+    # With fewer than four Contracts keeping is the only branch.
     delivery = _imperium_instance(
         "delivery_agreement",
         choam_module=True,
@@ -1669,11 +2248,81 @@ def test_delivery_agreement_gains_spice_automatically_below_four_contracts() -> 
 
     result = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
 
-    result = _with_gains(result)
+    assert reveal_pending_gains(dict(result.state.decision_stack[-2].context)) == ()
+    (keep,) = legal_contract_reveal_choice_actions(result.state, 0)
+    assert keep.action_id == "keep_contract_reveal_spice"
+    kept = apply_contract_reveal_choice(result.state, keep).state
+    assert kept.players[0].resources.spice == 3
+    assert dict(kept.decision_stack[-1].context)["persuasion"] == 0
 
-    assert result.state.players[0].resources.spice == 3
-    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 0
-    assert legal_contract_reveal_choice_actions(result.state, 0) == ()
+
+@pytest.mark.parametrize(
+    ("card_id", "spice"), (("priority_contracts", 2), ("delivery_agreement", 1))
+)
+@pytest.mark.parametrize(
+    "pick", ("keep_contract_reveal_spice", "trash_contract_reveal_for_vp")
+)
+def test_a_fourth_contract_completed_mid_reveal_offers_spice_or_vp_never_both(
+    card_id: str, spice: int, pick: str
+) -> None:
+    # "[spice] -OR- If you have completed four or more contracts: Trash this
+    # card -> [1 VP]" [Priority Contracts card] [Delivery Agreement card]:
+    # exactly one branch. With three Contracts the owner may put the choice
+    # off, acquire The Spice Must Flow to complete the Acquire contract, and
+    # then trash for the Victory Point (OQ-028 (b)); the spice was paid on top
+    # of the Victory Point, or twice on keeping, before 2026-09-26.
+    card = _imperium_instance(card_id, choam_module=True)
+    owner = PlayerState(
+        player_id=0,
+        hand=(card,),
+        active_contract_ids=("contract:acquire",),
+        completed_contract_ids=(
+            "contract:arrakeen_i",
+            "contract:arrakeen_ii",
+            "contract:deliver_supplies",
+        ),
+        reveal_persuasion_bonus=9,
+    )
+    state = replace(
+        _state(owner, choam_module=True),
+        reserve_stacks=(("prepare_the_way", 8), ("the_spice_must_flow", 10)),
+    )
+    engine = UprisingRulesEngine()
+
+    def take(current: GameState, action_id: str, argument: str = "") -> GameState:
+        action = next(
+            action
+            for action in engine.legal_actions(current, 0)
+            if action.action_id == action_id and argument in str(action.arguments)
+        )
+        return engine.apply(current, action).state
+
+    revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
+    assert tuple(
+        action.action_id for action in legal_contract_reveal_choice_actions(revealed, 0)
+    ) == ("keep_contract_reveal_spice",)
+    deferred = take(revealed, "defer_reveal_choice")
+    assert reveal_pending_gains(dict(deferred.decision_stack[-1].context)) == ()
+    bought = take(deferred, "acquire_reserve", "the_spice_must_flow")
+    assert len(bought.players[0].completed_contract_ids) == 4
+    resumed = take(bought, "resume_reveal_choice")
+    assert tuple(
+        action.action_id for action in legal_contract_reveal_choice_actions(resumed, 0)
+    ) == ("keep_contract_reveal_spice", "trash_contract_reveal_for_vp")
+
+    done = _take_reveal_gains(take(resumed, pick))
+    before, after = bought.players[0], done.players[0]
+    if pick == "keep_contract_reveal_spice":
+        assert after.resources.spice == before.resources.spice + spice
+        assert after.victory_points == before.victory_points
+    else:
+        assert after.resources.spice == before.resources.spice
+        assert after.victory_points == before.victory_points + 1
+        assert card in after.trashed
+    assert legal_contract_reveal_choice_actions(done, 0) == ()
+    assert "finish_reveal" in {
+        action.action_id for action in engine.legal_actions(done, 0)
+    }
 
 
 def test_four_contract_reveal_can_keep_spice_or_trash_the_card_for_vp() -> None:
@@ -2026,7 +2675,7 @@ def _with_late_hand(state: GameState, card_id: str) -> GameState:
 def test_late_reveal_stilgar_gains_a_persuasion_increment_from_a_fremen_arrival() -> (
     None
 ):
-    # Stilgar, The Devoted (per_revealed_faction=FREMEN) is already revealed;
+    # Stilgar, The Devoted (per_in_play_faction=FREMEN) is already revealed;
     # a late-arriving Fremen card [FAQ p. 3] adds the increment its own
     # arrival causes on top of its own printed values, without recomputing
     # Stilgar's already-granted amount.
@@ -2165,17 +2814,19 @@ def test_late_reveal_works_through_the_personal_draw_reshuffle_chance() -> None:
 
 def test_cross_scaling_reveal_effects_have_no_eligibility_gates() -> None:
     # The late-reveal cross-increment path [FAQ p. 3] re-adjudicates a
-    # per_revealed_faction/strength_per_other_sword_card effect's
-    # eligibility gates at arrival but never revokes an already-granted
-    # amount. Today every such effect is unconditional, so re-adjudication
-    # is vacuous; this pin fails the suite if future content adds a gated
-    # one, which would need the increment logic to also track revocation.
+    # per_revealed_faction/per_in_play_faction/strength_per_other_sword_card
+    # effect's eligibility gates at arrival but never revokes an
+    # already-granted amount. Today every such effect is unconditional, so
+    # re-adjudication is vacuous; this pin fails the suite if future content
+    # adds a gated one, which would need the increment logic to also track
+    # revocation.
     entries = (*STARTING_DECK, *RESERVE_STACKS, *IMPERIUM_CARDS)
     scaling_effects = [
         effect
         for entry in entries
         for effect in entry.reveal_effects
         if effect.per_revealed_faction is not None
+        or effect.per_in_play_faction is not None
         or effect.strength_per_other_sword_card
     ]
 
@@ -2294,7 +2945,7 @@ def test_a_started_spy_placement_cannot_be_deferred() -> None:
 def test_a_deferred_choice_whose_condition_lapsed_waits_and_lapses_at_finish() -> (
     None
 ):
-    # In High Places' two-Spy recall is deferred, Spy Network's required
+    # In High Places' two-Spy recall is deferred, Spy Network's optional
     # recall resolves first and leaves one Spy. The deferred choice cannot
     # be brought back while its condition fails (judged at resolution
     # [Main p. 12]), it does not block the Reveal's end, and it lapses when
@@ -2317,7 +2968,7 @@ def test_a_deferred_choice_whose_condition_lapsed_waits_and_lapses_at_finish() -
     revealed = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0]).state
     engine = UprisingRulesEngine()
     assert dict(revealed.decision_stack[-1].context)["reveal_choice_effect"] == (
-        "may_recall_two_spies_for_two_persuasion"
+        "may_recall_two_spies_for_three_persuasion"
     )
 
     deferred = engine.apply(
@@ -2340,7 +2991,7 @@ def test_a_deferred_choice_whose_condition_lapsed_waits_and_lapses_at_finish() -
     assert "finish_reveal" in action_ids
     reveal_context = dict(recalled.decision_stack[-1].context)
     assert reveal_context["deferred_reveal_choices"] == (
-        f"{in_high_places}|may_recall_two_spies_for_two_persuasion"
+        f"{in_high_places}|may_recall_two_spies_for_three_persuasion"
     )
 
     finished = engine.apply(
@@ -2355,9 +3006,9 @@ def test_an_unavailable_choice_opens_once_its_condition_holds() -> None:
     # In High Places' two-Spy recall fails at Reveal start (one Spy placed)
     # and waits in the deferred queue instead of lapsing; Wheels Within
     # Wheels' Reveal placement then puts a second Spy out, after which the
-    # owner may bring the recall back and take its two Persuasion
-    # [Main p. 12] — the owner's own choices can still satisfy a printed
-    # condition later in the same Reveal.
+    # owner may bring the recall back and take its three Persuasion
+    # [Main p. 12] [In High Places card] — the owner's own choices can still
+    # satisfy a printed condition later in the same Reveal.
     in_high_places = _imperium_instance("in_high_places")
     wheels = _imperium_instance("wheels_within_wheels")
     state = _state(
@@ -2375,7 +3026,7 @@ def test_an_unavailable_choice_opens_once_its_condition_holds() -> None:
     reveal_context = dict(revealed.decision_stack[-2].context)
     assert reveal_context["persuasion"] == 3
     assert reveal_context["deferred_reveal_choices"] == (
-        f"{in_high_places}|may_recall_two_spies_for_two_persuasion"
+        f"{in_high_places}|may_recall_two_spies_for_three_persuasion"
     )
 
     placement = next(
@@ -2393,12 +3044,12 @@ def test_an_unavailable_choice_opens_once_its_condition_holds() -> None:
         action for action in actions if action.action_id == "resume_reveal_choice"
     )
     assert dict(resume.arguments) == {
-        "effect": "may_recall_two_spies_for_two_persuasion"
+        "effect": "may_recall_two_spies_for_three_persuasion"
     }
 
     resumed = engine.apply(placed, resume).state
     assert dict(resumed.decision_stack[-1].context)["reveal_choice_effect"] == (
-        "may_recall_two_spies_for_two_persuasion"
+        "may_recall_two_spies_for_three_persuasion"
     )
     pair = next(
         action
@@ -2407,7 +3058,7 @@ def test_an_unavailable_choice_opens_once_its_condition_holds() -> None:
     )
     paid = engine.apply(resumed, pair).state
     assert paid.decision_stack[-1].kind == "reveal"
-    assert dict(paid.decision_stack[-1].context)["persuasion"] == 5
+    assert dict(paid.decision_stack[-1].context)["persuasion"] == 3 + 3
     assert paid.players[0].spy_post_ids == ()
     assert "finish_reveal" in {
         action.action_id for action in engine.legal_actions(paid, 0)
@@ -2545,3 +3196,4 @@ def test_interstellar_trade_counts_its_contracts_once_at_the_reveal() -> None:
 
     assert dict(granted.state.decision_stack[-1].context)["persuasion"] == 2
     assert granted.events == ()
+

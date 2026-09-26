@@ -34,7 +34,6 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
-from dune_imperium.rules.card_trash import with_recruited_units
 from dune_imperium.rules.combat_deployment import grant_combat_icon
 from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effects import (
@@ -53,6 +52,7 @@ from dune_imperium.rules.frames import (
     owned_top_frame,
     replace_player,
     reveal_is_open_for,
+    update_turn_recruits,
 )
 from dune_imperium.rules.influence import (
     alliance_recipients_after_influence_loss,
@@ -61,7 +61,10 @@ from dune_imperium.rules.influence import (
     lose_faction_influence,
 )
 from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
-from dune_imperium.rules.leader_abilities import units_deployment_blocked
+from dune_imperium.rules.leader_abilities import (
+    units_deployment_blocked,
+    use_leader_signet_for_tech,
+)
 from dune_imperium.rules.optional_trash import optional_trash_frame
 from dune_imperium.rules.ornithopter import (
     has_ornithopter_fleet,
@@ -345,11 +348,15 @@ def apply_tech_acquisition(state: GameState, action: DomainAction) -> RuleResult
         state, owner, tech_id, source=source
     )
     events.extend(reveal_events)
+    # The price is Spice spent, not Spice never gained: "If you gained spice
+    # this turn" (Leverage) and Harvest Contracts count every gain of the
+    # turn [Main p. 16], so the spend is recorded like any other payment.
     next_owner = replace(
         next_owner,
         resources=replace(
             next_owner.resources, spice=next_owner.resources.spice - cost
         ),
+        spice_spent_turn=next_owner.spice_spent_turn + cost,
     )
 
     # --- immediate acquire effects on the owner ---------------------------
@@ -410,20 +417,45 @@ def apply_tech_acquisition(state: GameState, action: DomainAction) -> RuleResult
     working = replace(working, players=players)
 
     # --- frame bookkeeping ------------------------------------------------
+    turn_closed = False
     if context is not None:
         finish_board_icon(context, BOARD_ICON_TECH)
         context["troops_recruited"] = (
             context_int(context, "troops_recruited", owner=_FRAME_LABEL)
             + troops_recruited
         )
-        working = advance_after_effect(working, context, players)
+        spent = context.get("spice_spent_after_placement", 0)
+        if isinstance(spent, bool) or not isinstance(spent, int):
+            raise RuntimeError("Agent-turn effect frame has invalid Spice spending")
+        context["spice_spent_after_placement"] = spent + cost
+        if tile.acquire_leader_signet:
+            # The Signet Ring ability resolves inside this Agent turn; the
+            # effect frame moves on once it has (``use_leader_signet_for_tech``).
+            working = replace(
+                working,
+                decision_stack=(
+                    *working.decision_stack[:-1],
+                    replace(
+                        working.decision_stack[-1],
+                        context=tuple(sorted(context.items())),
+                    ),
+                ),
+            )
+        else:
+            working = advance_after_effect(working, context, players)
+            # As the Agent turn's last effect the tile handed the turn over
+            # already; a recall-first for its Deep Cover Spies is still this
+            # turn's (OQ-044 (d)). A Tech frame without Agent context (a
+            # Plot) pops back to its own turn, which stays unflagged.
+            turn_closed = working.decision_stack[-1].kind == FrameKind.TURN
     else:
+        # A card-granted Acquire Tech (a Plot) returns to the turn it was
+        # played in, before or after the placement or in a Reveal: its troops
+        # join that turn's recruits, since "그 turn에 어떤 출처에서 recruit했든
+        # 새 troop은 Conflict에 deploy할 수 있다" [Main p. 10] [FAQ p. 4].
         working = working.pop_decision()
-        working = replace(
-            working,
-            decision_stack=with_recruited_units(
-                working.decision_stack, player, troops_recruited
-            ),
+        working = update_turn_recruits(
+            working, troops_recruited=troops_recruited, spice_spent=cost
         )
 
     # --- effects that touch shared state or open follow-up frames ---------
@@ -468,6 +500,7 @@ def apply_tech_acquisition(state: GameState, action: DomainAction) -> RuleResult
             ALL_POST_IDS,
             source=f"{source}:{tech_id}:{index}",
             deep_cover=True,
+            turn_closed=turn_closed,
         )
     if intrigue:
         drawn = draw_or_queue_intrigue_cards(
@@ -481,6 +514,17 @@ def apply_tech_acquisition(state: GameState, action: DomainAction) -> RuleResult
         )
         working = drawn.state
         events.extend(drawn.events)
+    if tile.acquire_leader_signet:
+        # Servo-Receivers: the Signet Ring icon uses the Leader's Signet
+        # Ring ability once [Main p. 20] [Servo-Receivers Tech tile].
+        signet = use_leader_signet_for_tech(
+            working,
+            player,
+            source=f"{source}:{tech_id}",
+            advance_agent_frame=context is not None,
+        )
+        working = signet.state
+        events.extend(signet.events)
     return RuleResult(state=working, events=tuple(events))
 
 

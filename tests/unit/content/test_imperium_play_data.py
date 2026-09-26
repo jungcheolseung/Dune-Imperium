@@ -45,7 +45,8 @@ def test_bene_gesserit_operative_play_data_places_and_counts_spies() -> None:
     card = IMPERIUM_CARDS_BY_ID["bene_gesserit_operative"]
 
     assert card.play_data_complete is True
-    assert card.factions == ()
+    # Purple "BENE GESSERIT" affiliation banner [card face].
+    assert card.factions == (Faction.BENE_GESSERIT,)
     assert card.agent_icons == (AgentIcon.BENE_GESSERIT,)
     assert card.agent_effect is PersonalCardAgentEffect.PLACE_SPY
     assert card.reveal_persuasion == 1
@@ -62,10 +63,12 @@ def test_reliable_informant_play_data_restricts_its_spy_targets() -> None:
     assert card.factions == (Faction.SPACING_GUILD,)
     assert card.agent_icons == (AgentIcon.SPACING_GUILD,)
     assert card.agent_effect is PersonalCardAgentEffect.PLACE_SPY
+    # Re-read from the card face 2026-09-26: the third target icon is the
+    # blue Fremen sietch badge, not the red Spacing Guild infinity symbol.
     assert card.agent_spy_factions == (
         Faction.EMPEROR,
         Faction.BENE_GESSERIT,
-        Faction.SPACING_GUILD,
+        Faction.FREMEN,
     )
     assert card.reveal_persuasion == 1
     assert card.reveal_effects == (PersonalCardRevealEffect(solari=1),)
@@ -107,7 +110,11 @@ def test_sardaukar_coordination_play_data_deploys_and_counts_emperor_cards() -> 
     assert card.factions == (Faction.EMPEROR,)
     assert card.agent_icons == (AgentIcon.EMPEROR, AgentIcon.LANDSRAAD)
     assert card.allows_recruited_troop_deployment is True
-    assert card.reveal_strength == 1
+    # Reveal box: a blue Persuasion diamond "2", then "+[sword] for each
+    # Emperor card you revealed (including this one)" [card face]; there is
+    # no separate base sword icon.
+    assert card.reveal_persuasion == 2
+    assert card.reveal_strength == 0
     assert card.reveal_effects == (
         PersonalCardRevealEffect(
             strength=1,
@@ -218,7 +225,10 @@ def test_maker_keeper_play_data_has_independent_influence_rewards() -> None:
 
     assert card.play_data_complete is True
     assert card.factions == (Faction.BENE_GESSERIT, Faction.FREMEN)
-    assert card.agent_icons == (AgentIcon.CITY, AgentIcon.SPICE_TRADE)
+    # Re-read from the card face 2026-09-26: only one Agent icon box (the
+    # blue City circle) sits above the Agent box; there is no Spice Trade
+    # triangle (BGG marks only Purple Access for this card).
+    assert card.agent_icons == (AgentIcon.CITY,)
     assert (
         card.agent_effect
         is PersonalCardAgentEffect.GAIN_BY_BENE_GESSERIT_AND_FREMEN_INFLUENCE_TWO
@@ -300,7 +310,10 @@ def test_overthrow_play_data_covers_acquisition_agent_and_reveal() -> None:
     card = IMPERIUM_CARDS_BY_ID["overthrow"]
 
     assert card.play_data_complete is True
-    assert card.factions == (Faction.EMPEROR,)
+    # No affiliation banner under the title [card face]; the BGG inventory
+    # row also leaves every affiliation column blank. The four Faction
+    # symbols on the left edge are Agent icons, not affiliation.
+    assert card.factions == ()
     assert card.agent_icons == (
         AgentIcon.EMPEROR,
         AgentIcon.SPACING_GUILD,
@@ -365,17 +378,23 @@ def test_in_high_places_play_data_has_bond_acquisition_and_reveal_choice() -> No
     card = IMPERIUM_CARDS_BY_ID["in_high_places"]
 
     assert card.play_data_complete is True
-    assert card.factions == (Faction.BENE_GESSERIT,)
+    # Two affiliation bands under the title: grey "EMPEROR" above purple
+    # "BENE GESSERIT" [card face].
+    assert card.factions == (Faction.EMPEROR, Faction.BENE_GESSERIT)
     assert card.agent_icons == (AgentIcon.BENE_GESSERIT, AgentIcon.EMPEROR)
+    # "If you have another Bene Gesserit card in play: [draw 1 card] [Spy]"
+    # and "[recall Spy] [recall Spy] -> +3 Persuasion" [In High Places card]
+    # (BGG inventory: "Draw 1 card, +1 Spy", "Recall 2 Spies -> +3
+    # Persuasion"); once transcribed as one water and +2 Persuasion.
     assert (
         card.agent_effect
-        is PersonalCardAgentEffect.GAIN_WATER_IF_BENE_GESSERIT_BOND
+        is PersonalCardAgentEffect.DRAW_ONE_AND_PLACE_SPY_IF_BENE_GESSERIT_BOND
     )
     assert card.acquisition_effect is PersonalCardAcquisitionEffect.PLACE_SPY
     assert card.reveal_persuasion == 2
     assert card.reveal_strength == 0
     assert card.reveal_choice_effects == (
-        PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_TWO_PERSUASION,
+        PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_THREE_PERSUASION,
     )
 
 
@@ -441,7 +460,7 @@ def test_wheels_within_wheels_play_data_reuses_reveal_spy_placement() -> None:
     )
 
 
-def test_unswerving_loyalty_play_data_has_only_reveal_rewards() -> None:
+def test_unswerving_loyalty_play_data_has_reveal_rewards_and_bond_move() -> None:
     card = IMPERIUM_CARDS_BY_ID["unswerving_loyalty"]
 
     assert card.play_data_complete is True
@@ -452,6 +471,11 @@ def test_unswerving_loyalty_play_data_has_only_reveal_rewards() -> None:
     assert card.reveal_strength == 0
     assert card.reveal_effects == (
         PersonalCardRevealEffect(recruit_troops=1),
+    )
+    # "Fremen Bond : You may deploy or retreat one of your troops."
+    # [Unswerving Loyalty card]; the line was missing from the transcription.
+    assert card.reveal_choice_effects == (
+        PersonalCardRevealChoiceEffect.MAY_DEPLOY_OR_RETREAT_ONE_TROOP_IF_FREMEN_BOND,
     )
 
 
@@ -466,10 +490,13 @@ def test_stilgar_play_data_counts_revealed_fremen_cards() -> None:
         AgentIcon.SPICE_TRADE,
     )
     assert card.agent_effect is PersonalCardAgentEffect.RECRUIT_TWO_TROOPS
+    # "for each Fremen card you have in play (including this one)"
+    # [Stilgar, The Devoted card]: Agent-turn cards count too [Main p. 20]
+    # [FAQ p. 2 Liet Kynes], not only the revealed ones.
     assert card.reveal_effects == (
         PersonalCardRevealEffect(
             persuasion=2,
-            per_revealed_faction=PersonalCardBond.FREMEN,
+            per_in_play_faction=PersonalCardBond.FREMEN,
         ),
     )
 
@@ -606,7 +633,7 @@ def test_double_agent_play_data_has_conditional_shared_spy_placement() -> None:
     )
     assert (
         card.agent_effect
-        is PersonalCardAgentEffect.PLACE_SPY_ALLOW_SHARED_IF_SPYING_ON_VISITED_SPACE
+        is PersonalCardAgentEffect.PLACE_SPY_ON_VISITED_SPACE_MAY_SHARE
     )
     assert card.reveal_persuasion == 1
     assert card.reveal_strength == 1
@@ -642,8 +669,14 @@ def test_covert_operation_play_data_forces_each_opponent_to_discard() -> None:
         card.agent_effect
         is PersonalCardAgentEffect.EACH_OPPONENT_DISCARDS_PERSONAL_CARD
     )
-    assert card.reveal_persuasion == 2
+    # The Reveal box prints two Spy icons and no Persuasion diamond
+    # [Covert Operation card] (BGG inventory: "+2 Spies"); it was once
+    # transcribed as two Persuasion.
+    assert card.reveal_persuasion == 0
     assert card.reveal_strength == 0
+    assert card.reveal_choice_effects == (
+        PersonalCardRevealChoiceEffect.PLACE_TWO_SPIES,
+    )
 
 
 def test_calculus_of_power_play_data_trashes_self_or_another_emperor() -> None:
@@ -652,7 +685,9 @@ def test_calculus_of_power_play_data_trashes_self_or_another_emperor() -> None:
     assert card.play_data_complete is True
     assert card.copies == 2
     assert card.factions == (Faction.EMPEROR,)
-    assert card.agent_icons == (AgentIcon.LANDSRAAD, AgentIcon.SPY)
+    # Re-read from the card face 2026-09-26: the top icon is a solid blue
+    # circle (City), not the green Landsraad pentagon.
+    assert card.agent_icons == (AgentIcon.CITY, AgentIcon.SPY)
     # The plain trash icon, not "trash this card" (bug fixed 2026-09-09).
     assert card.agent_effect is PersonalCardAgentEffect.TRASH_PERSONAL_CARD
     assert card.reveal_persuasion == 2
@@ -705,8 +740,10 @@ def test_chani_clever_tactician_play_data_matches_the_card() -> None:
 
     assert card.play_data_complete is True
     assert card.factions == (Faction.FREMEN,)
+    # Re-read from the card face 2026-09-26: the first icon is the blue
+    # Fremen sietch badge, not the red Spacing Guild infinity symbol.
     assert card.agent_icons == (
-        AgentIcon.SPACING_GUILD,
+        AgentIcon.FREMEN,
         AgentIcon.CITY,
         AgentIcon.SPICE_TRADE,
     )
@@ -776,11 +813,15 @@ def test_undercover_asset_play_data_is_complete() -> None:
 
     assert card.play_data_complete is True
     assert card.factions == (Faction.EMPEROR, Faction.SPACING_GUILD)
+    # Re-read from the card face 2026-09-26: only three Agent icon boxes
+    # (Landsraad, City, Spice Trade) sit on the left edge; there is no Spy
+    # eye box. The Korean scan (assets/cards/ko/uprising/imperium/Undercover
+    # Asset.webp) shows the same three boxes and confirms this reading; only
+    # the BGG inventory sheet's "Spy Access" mark was the slip.
     assert card.agent_icons == (
         AgentIcon.LANDSRAAD,
         AgentIcon.CITY,
         AgentIcon.SPICE_TRADE,
-        AgentIcon.SPY,
     )
     assert card.ignores_influence_requirements is True
     assert card.reveal_persuasion == 0
@@ -851,9 +892,11 @@ def test_subversive_advisor_play_data_matches_the_card() -> None:
         is PersonalCardAgentEffect.GAIN_TWO_VISITED_FACTION_INFLUENCE_AND_TRASH_SELF
     )
     assert card.acquisition_effect is PersonalCardAcquisitionEffect.PLACE_SPY
-    assert card.reveal_persuasion == 0
+    # Re-read from the card face 2026-09-26: the Reveal band prints a single
+    # blue Persuasion diamond "1", not a Solari coin.
+    assert card.reveal_persuasion == 1
     assert card.reveal_strength == 0
-    assert card.reveal_effects == (PersonalCardRevealEffect(solari=1),)
+    assert card.reveal_effects == ()
 
 
 def test_cargo_runner_play_data_scales_draws_with_completed_contracts() -> None:
@@ -949,6 +992,22 @@ def test_personal_card_reveal_effect_requires_a_nonnegative_gain() -> None:
         PersonalCardRevealEffect(
             water=1,
             per_revealed_faction=PersonalCardBond.FREMEN,
+        )
+    with pytest.raises(ValueError, match="scales Persuasion only"):
+        PersonalCardRevealEffect(
+            strength=1,
+            per_in_play_faction=PersonalCardBond.FREMEN,
+        )
+    with pytest.raises(ValueError, match="revealed or in-play"):
+        PersonalCardRevealEffect(
+            persuasion=1,
+            per_revealed_faction=PersonalCardBond.FREMEN,
+            per_in_play_faction=PersonalCardBond.FREMEN,
+        )
+    with pytest.raises(TypeError, match="in-play Faction must use"):
+        PersonalCardRevealEffect(
+            persuasion=1,
+            per_in_play_faction="fremen",  # type: ignore[arg-type]
         )
     with pytest.raises(ValueError, match="must be paired"):
         PersonalCardRevealEffect(influence=1)

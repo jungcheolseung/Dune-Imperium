@@ -34,6 +34,7 @@ from dune_imperium.rules.contracts import (
     legal_contract_actions,
 )
 from dune_imperium.rules.engine import UprisingRulesEngine
+from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.intrigue_triggers import (
     apply_trigger_contract_action,
@@ -242,10 +243,12 @@ def test_coercive_negotiation_offers_the_immediate_only_with_hand_intrigue() -> 
         return offer_deployment_triggers(RuleResult(state=base)).state
 
     without = offered(_owner(intrigue_faceup=(card,), units_deployed_turn=3))
+    # The trigger is mandatory [Coercive Negotiation card; FAQ p. 3], so
+    # only the takeable Contracts are offered, with no decline.
     assert [
         dict(action.arguments).get("instance_id")
         for action in legal_trigger_contract_actions(without, 0)
-    ] == [None, "contract:arrakeen_i", "contract:arrakeen_ii"]
+    ] == ["contract:arrakeen_i", "contract:arrakeen_ii"]
 
     holding = offered(
         _owner(
@@ -255,12 +258,94 @@ def test_coercive_negotiation_offers_the_immediate_only_with_hand_intrigue() -> 
         )
     )
     actions = legal_trigger_contract_actions(holding, 0)
-    assert dict(actions[1].arguments)["instance_id"] == IMMEDIATE
-    taken = apply_trigger_contract_action(holding, actions[1]).state
+    assert dict(actions[0].arguments)["instance_id"] == IMMEDIATE
+    taken = apply_trigger_contract_action(holding, actions[0]).state
     assert taken.decision_stack[-1].kind == "contract_intrigue_trash"
     assert taken.players[0].active_contract_ids == (IMMEDIATE,)
     assert taken.contract_trash == ("contract:arrakeen_i", "contract:arrakeen_ii")
     assert taken.contract_bank == ("contract:secrets",)
+
+
+def test_coercive_negotiation_waits_when_nothing_revealed_can_be_taken() -> None:
+    # Only the Immediate is left in the bank and the hand holds no Intrigue:
+    # "You can't take the new Immediate contract unless you have an Intrigue
+    # card to trash." [Bloodlines p. 2]. The trigger is mandatory ("Most
+    # effects from a board space or card you play are mandatory, unless: a
+    # card says 'you may' do something" [FAQ p. 3]), so there is no decline
+    # to offer; the card does not open, reveals nothing and waits face up
+    # for a qualifying turn it can resolve on (OQ-064). It used to open a
+    # frame offering only a decline.
+    card = next(card for card in INTRIGUE if ":coercive_negotiation:" in card)
+    base = _state(
+        _owner(intrigue_faceup=(card,), units_deployed_turn=3),
+        market=(),
+        bank=(IMMEDIATE,),
+    )
+    waiting = offer_deployment_triggers(RuleResult(state=base)).state
+    assert waiting.decision_stack == base.decision_stack
+    assert waiting.players[0].intrigue_faceup == (card,)
+    assert waiting.players[0].deploy_trigger_offered_at == 0
+    assert waiting.contract_bank == (IMMEDIATE,)
+    # With an Intrigue card in hand the same deployment opens it.
+    holding = replace(
+        base,
+        players=(
+            replace(base.players[0], intrigue_cards=INTRIGUE[:1]),
+            *base.players[1:],
+        ),
+    )
+    opened = offer_deployment_triggers(RuleResult(state=holding)).state
+    assert [
+        dict(action.arguments)["instance_id"]
+        for action in legal_trigger_contract_actions(opened, 0)
+    ] == [IMMEDIATE]
+
+
+def test_coercive_negotiation_waits_even_when_distraction_is_offered() -> None:
+    # OQ-064: while nothing Coercive Negotiation reveals can be taken, the
+    # card stays face up and opens at a later qualifying point where it can
+    # be resolved; its wait does not raise the offer record. Distraction
+    # face up beside it used to raise the seat's shared record at the same
+    # count, so gaining an Intrigue card later that turn no longer opened
+    # the mandatory card ("When you deploy three or more units to the
+    # Conflict in a single turn: Reveal three contracts from the bank. Take
+    # one and trash the other two." [Coercive Negotiation card]).
+    coercive = next(card for card in INTRIGUE if ":coercive_negotiation:" in card)
+    distraction = next(card for card in INTRIGUE if ":distraction:" in card)
+    base = _state(
+        _owner(intrigue_faceup=(coercive, distraction), units_deployed_turn=3),
+        market=(),
+        bank=(IMMEDIATE,),
+    )
+    offered = offer_deployment_triggers(RuleResult(state=base)).state
+    assert [frame.kind for frame in offered.decision_stack[-1:]] == [
+        FrameKind.INTRIGUE_TRIGGER_SPY
+    ]
+    assert offered.players[0].deploy_trigger_offered_at == 3
+    declined = UprisingRulesEngine().apply(
+        offered, DomainAction(action_id="decline_intrigue_trigger", actor=0)
+    ).state
+    assert declined.decision_stack == base.decision_stack
+
+    holding = replace(
+        declined,
+        players=(
+            replace(declined.players[0], intrigue_cards=INTRIGUE[:1]),
+            *declined.players[1:],
+        ),
+    )
+    opened = offer_deployment_triggers(RuleResult(state=holding)).state
+    # Coercive Negotiation opens at the same count; the declined Distraction
+    # is not offered again there (OQ-016 (c)).
+    pushed = opened.decision_stack[len(base.decision_stack) :]
+    assert [frame.kind for frame in pushed] == [FrameKind.INTRIGUE_TRIGGER_CONTRACT]
+    assert [
+        dict(action.arguments)["instance_id"]
+        for action in legal_trigger_contract_actions(opened, 0)
+    ] == [IMMEDIATE]
+    # A pending Coercive Negotiation frame is not pushed a second time.
+    again = offer_deployment_triggers(RuleResult(state=opened)).state
+    assert again.decision_stack == opened.decision_stack
 
 
 def test_earn_any_alliance_taken_this_turn_completes_on_this_turns_bump() -> None:
@@ -431,6 +516,61 @@ def test_deliver_supplies_places_its_spy_with_deep_cover_over_an_opponent() -> N
     assert spied.players[0].spy_post_ids == (post,)
     assert spied.players[1].spy_post_ids == (post,)
     assert spied.players[0].completed_contract_ids == (DELIVER_SUPPLIES,)
+
+
+def test_deliver_supplies_spy_without_supply_may_pass_up_the_recall_first() -> None:
+    # A Spy with Deep Cover is still a Spy icon: "If you have no Spies in
+    # your supply, you may first recall one of your Spies for no effect"
+    # [Main pp. 11, 20] (optional, docs/rules/uprising-systems.md, OQ-057
+    # (14)); "Spy with Deep Cover: 일반 규칙대로 Spy 하나를 놓되, 놓을 때
+    # 상대의 Spy를 무시할 수 있다" [Bloodlines pp. 5, 12].
+    engine = UprisingRulesEngine()
+    watched = "arrakis-hagga-basin"
+    own_posts = (
+        "emperor-sardaukar-dutiful-service",
+        "arrakis-deep-desert",
+        "arrakis-imperial-basin",
+    )
+    state = _state(
+        _owner(
+            spies_supply=0,
+            spy_post_ids=own_posts,
+            active_contract_ids=(DELIVER_SUPPLIES,),
+        ),
+        opponents=(
+            PlayerState(player_id=1, spies_supply=2, spy_post_ids=(watched,)),
+        ),
+    )
+    placed = _place(state, "deliver_supplies")
+    completion = next(
+        action
+        for action in engine.legal_actions(placed, 0)
+        if action.action_id == "complete_contract"
+    )
+    completed = engine.apply(placed, completion).state
+    actions = engine.legal_actions(completed, 0)
+    assert [action.action_id for action in actions] == [
+        "decline_contract_spy",
+        *("recall_spy_for_contract",) * 3,
+    ]
+
+    declined = engine.apply(completed, actions[0]).state
+    assert declined.players[0].spy_post_ids == own_posts
+    assert declined.decision_stack[-1].kind == "agent_effects"
+
+    recalled = engine.apply(completed, actions[1]).state
+    targets = {
+        dict(action.arguments)["post_id"]
+        for action in engine.legal_actions(recalled, 0)
+        if action.action_id == "place_contract_spy"
+    }
+    assert {action.action_id for action in engine.legal_actions(recalled, 0)} == {
+        "place_contract_spy"
+    }
+    # Deep Cover: the opponent's post is open, the owner's own are not.
+    assert watched in targets
+    assert own_posts[0] in targets
+    assert not targets & set(own_posts[1:])
 
 
 @pytest.mark.parametrize(

@@ -9,6 +9,7 @@ a choice (a Spy post, a card to trash, a Faction) resolve through the space's
 dedicated actions further down this module.
 """
 
+from collections.abc import Mapping
 from dataclasses import replace
 from typing import Final, assert_never
 
@@ -282,43 +283,49 @@ def board_icons_for(
     actions. A printed choose-one row (Sietch Tabr, the Maker spaces' spice or
     sandworms) and Imperial Privilege's two written sentences stay single
     keys, and Secrets' random steal is text that follows its Intrigue draw
-    (OQ-027).
+    (OQ-027). Those single printed keys still take the Bloodlines additions
+    every visit gets: a waiting Sardaukar Commander [Bloodlines p. 4] and,
+    on a Landsraad space, the Ixian Embassy's Acquire Tech -- a first High
+    Council visit included, as in the rulebook's Brennen example
+    [Bloodlines p. 7].
     """
 
     owner = state.players[player]
     choam_module = state.config.choam_module
+    icons: list[str]
     match space_id:
         case "high_council" if not owner.high_council:
-            return (BOARD_ICON_HIGH_COUNCIL,)
+            icons = [BOARD_ICON_HIGH_COUNCIL]
         case "swordmaster":
-            return (BOARD_ICON_SWORDMASTER,)
+            icons = [BOARD_ICON_SWORDMASTER]
         case "sietch_tabr":
-            return (BOARD_ICON_SIETCH_TABR,)
+            icons = [BOARD_ICON_SIETCH_TABR]
         case "deep_desert" | "hagga_basin" | "imperial_basin":
-            return (BOARD_ICON_MAKER,)
+            icons = [BOARD_ICON_MAKER]
         case "imperial_privilege":
-            return (BOARD_ICON_IMPERIAL_PRIVILEGE,)
+            icons = [BOARD_ICON_IMPERIAL_PRIVILEGE]
         case "tuek_sietch":
-            return (BOARD_ICON_TUEK_SIETCH,)
-    icons = [
-        board_icon_for_effect(effect)
-        for effect in visit_board_effects(
-            owner,
-            space_id,
-            cost_option,
-            choam_module=choam_module,
-            immortality=state.config.immortality,
-        )
-    ]
-    match space_id:
-        case "espionage":
-            icons.append(BOARD_ICON_SPY)
-        case "desert_tactics":
-            icons.append(BOARD_ICON_TRASH)
-        case "shipping":
-            icons.append(BOARD_ICON_INFLUENCE)
-        case "accept_contract" | "dutiful_service" if choam_module:
-            icons.append(BOARD_ICON_CONTRACT)
+            icons = [BOARD_ICON_TUEK_SIETCH]
+        case _:
+            icons = [
+                board_icon_for_effect(effect)
+                for effect in visit_board_effects(
+                    owner,
+                    space_id,
+                    cost_option,
+                    choam_module=choam_module,
+                    immortality=state.config.immortality,
+                )
+            ]
+            match space_id:
+                case "espionage":
+                    icons.append(BOARD_ICON_SPY)
+                case "desert_tactics":
+                    icons.append(BOARD_ICON_TRASH)
+                case "shipping":
+                    icons.append(BOARD_ICON_INFLUENCE)
+                case "accept_contract" | "dutiful_service" if choam_module:
+                    icons.append(BOARD_ICON_CONTRACT)
     if space_id in state.sardaukar_commander_space_ids:
         # Bloodlines: the Commander waiting on the space may be bought as
         # one more freely ordered effect of the visit [Bloodlines p. 4].
@@ -700,7 +707,6 @@ def apply_espionage_action(
             raise RuntimeError("Espionage recall has invalid post ID")
         next_owner = recall_spy(owner, post_id)
         context["espionage_spy_recalled"] = True
-        context["spy_recalled_this_turn"] = True
         players = tuple(
             next_owner if candidate.player_id == action.actor else candidate
             for candidate in state.players
@@ -1082,10 +1088,35 @@ def legal_imperial_privilege_actions(
                     actor=player,
                 ),
             )
-            if owner.agent_in_conflict
+            if _recallable_conflict_agents(owner, context)
             else ()
         ),
     )
+
+
+def _recallable_conflict_agents(
+    owner: PlayerState, context: Mapping[str, ActionValue]
+) -> int:
+    """Count the owner's Conflict Agents Imperial Privilege may recall.
+
+    "Recall one of your other Agents from the board" [Board Guide p. 2]
+    excludes the Agent sent there this turn (docs/rules/board-spaces.md),
+    and an Into the Fray Agent may be recalled only on a later turn
+    (OQ-037 (d)). While Imperial Privilege's recall is pending, this turn's
+    Agent is still on the space, or Into the Fray has moved it to the
+    Conflict, where it is not one of the "other" Agents, or Twisted
+    Mentat's "You may recall the Agent you sent this turn." [Twisted Mentat
+    card] has sent it home (``turn_agent_recalled``), which leaves every
+    Conflict Agent an earlier turn's.
+    """
+
+    sent_this_turn = (
+        0
+        if "imperial_privilege" in owner.agent_locations
+        or context.get("turn_agent_recalled") is True
+        else 1
+    )
+    return max(0, owner.agent_in_conflict - sent_this_turn)
 
 
 def apply_imperial_privilege_action(
@@ -1108,12 +1139,14 @@ def apply_imperial_privilege_action(
     ):
         if action.action_id == "recall_conflict_agent_for_imperial_privilege":
             # Into the Fray's Agent leaves the Conflict as a unit and returns
-            # to the Leader (OQ-037(d)); the running strength follows.
+            # to the Leader (OQ-037(d)); the running strength follows. One
+            # recall brings back one Agent, even when a Servo-Receivers
+            # Signet sent a second one (OQ-037(e)).
             space_id = "conflict"
             next_owner = replace(
                 owner,
                 agents_available=owner.agents_available + 1,
-                agent_in_conflict=0,
+                agent_in_conflict=owner.agent_in_conflict - 1,
             )
         else:
             space_value = dict(action.arguments).get("space_id")
@@ -1203,7 +1236,7 @@ def apply_imperial_privilege_action(
         events.extend(drawn.events)
 
     context["imperial_privilege_intrigue_resolved"] = True
-    if not _other_agent_spaces(effect_state, action.actor):
+    if not _other_agent_spaces(effect_state, action.actor, context):
         skipped = _skip_imperial_privilege_recall(
             effect_state, context, action.actor, source, action.action_id
         )
@@ -1213,7 +1246,9 @@ def apply_imperial_privilege_action(
     return RuleResult(state=next_state, events=tuple(events))
 
 
-def _other_agent_spaces(state: GameState, player: int) -> tuple[str, ...]:
+def _other_agent_spaces(
+    state: GameState, player: int, context: Mapping[str, ActionValue]
+) -> tuple[str, ...]:
     """Return where Imperial Privilege may recall from ("conflict" for Duncan)."""
 
     owner = state.players[player]
@@ -1223,7 +1258,7 @@ def _other_agent_spaces(state: GameState, player: int) -> tuple[str, ...]:
             for location in owner.agent_locations
             if location != "imperial_privilege"
         ),
-        *(("conflict",) if owner.agent_in_conflict else ()),
+        *(("conflict",) if _recallable_conflict_agents(owner, context) else ()),
     )
 
 
@@ -1286,7 +1321,7 @@ def skip_impossible_imperial_privilege_recall(result: RuleResult) -> RuleResult:
         context.get("space_id") != "imperial_privilege"
         or not board_icon_is_pending(context, BOARD_ICON_IMPERIAL_PRIVILEGE)
         or context.get("imperial_privilege_intrigue_resolved") is not True
-        or _other_agent_spaces(state, player)
+        or _other_agent_spaces(state, player, context)
     ):
         return result
     source = f"round:{state.round_number}:player:{player}:board:imperial_privilege"

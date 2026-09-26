@@ -22,13 +22,17 @@ from dune_imperium.core import (
     DomainAction,
     GamePhase,
     GameState,
+    Influence,
     PlayerDecision,
     PlayerState,
     Resources,
 )
 from dune_imperium.rules.agent_effect_frame import legal_agent_effect_frame_actions
 from dune_imperium.rules.agent_effects import (
+    agent_card_effect_is_unavailable,
     apply_agent_card_recall,
+    fizzle_pending_agent_icons,
+    legal_agent_card_icon_actions,
     legal_agent_card_recall_actions,
     resolve_agent_card_effect,
     resolve_agent_card_icon,
@@ -265,15 +269,14 @@ def test_tleilaxu_infiltrator_enters_an_occupied_space_and_draws() -> None:
         ),
     )
     assert len(drawn.state.players[0].hand) == hand_before + 1
-    # Without both genetic markers the Intrigue icon is spent for nothing.
-    intrigue = resolve_agent_card_icon(
-        drawn.state,
-        DomainAction(
-            action_id="resolve_agent_card_effect",
-            actor=0,
-            arguments=(("effect", "intrigue"),),
-        ),
-    )
+    # "[card] -AND- [2 genetic markers]: [Intrigue]" [Tleilaxu Infiltrator
+    # card]: without both markers the mandatory Intrigue icon is not offered
+    # to fire and fizzle; it waits for the turn's end and fizzles there
+    # (OQ-057 (1)).
+    assert legal_agent_card_icon_actions(drawn.state, 0) == ()
+    assert agent_card_effect_is_unavailable(drawn.state)
+    intrigue = fizzle_pending_agent_icons(drawn.state)
+    assert [dict(e.payload)["effect"] for e in intrigue.events] == ["intrigue"]
     assert intrigue.state.players[0].intrigue_cards == ()
 
 
@@ -352,6 +355,62 @@ def test_twisted_mentat_may_recall_the_agent_sent_this_turn() -> None:
     assert owner.agents_available == 1
     declined = apply_agent_card_recall(grafted, actions[0])
     assert "assembly_hall" in declined.state.players[0].agent_locations
+
+
+def test_imperial_privilege_recalls_the_fray_agent_after_a_mentat_recall() -> None:
+    # Twisted Mentat: "You may recall the Agent you sent this turn."
+    # [Twisted Mentat card]. Imperial Privilege: "Recall one of your other
+    # Agents from the board, and draw a card." [Board Guide p. 2]; OQ-037
+    # (d): an Into the Fray Agent in the Conflict is still "자신의 Agent" and
+    # may be recalled "뒤의 turn에" (on a later turn). Once the Mentat has
+    # sent this turn's Agent home, the Agent Duncan sent Into the Fray on an
+    # earlier turn is an "other" Agent. The Conflict count used to take this
+    # turn's Agent off the space as Into the Fray's and hid that Agent, so
+    # the recall was skipped.
+    from dune_imperium.rules.board_effects import (
+        apply_imperial_privilege_action,
+        legal_imperial_privilege_actions,
+    )
+
+    config = RulesetConfig(immortality=True, bloodlines=True)
+    state = _state(
+        _owner(
+            (MENTAT, DAGGER),
+            leader_id="duncan_idaho",
+            influence=Influence(emperor=2),
+            agents_available=1,
+            agent_in_conflict=1,
+        ),
+        config=config,
+    )
+    grafted = _graft(state, MENTAT, "imperial_privilege", DAGGER)
+    mentat_recall = next(
+        action
+        for action in legal_agent_card_recall_actions(grafted, 0)
+        if action.action_id == "recall_agent_for_agent_card"
+    )
+    home = apply_agent_card_recall(grafted, mentat_recall).state
+    assert home.players[0].agent_locations == ()
+    assert home.players[0].agents_available == 1
+    decline = next(
+        action
+        for action in legal_imperial_privilege_actions(home, 0)
+        if action.action_id == "decline_imperial_privilege_intrigue"
+    )
+    declined = apply_imperial_privilege_action(home, decline)
+    assert "imperial_privilege_recall_skipped" not in {
+        event.kind for event in declined.events
+    }
+
+    recalls = legal_imperial_privilege_actions(declined.state, 0)
+    assert [action.action_id for action in recalls] == [
+        "recall_conflict_agent_for_imperial_privilege"
+    ]
+    hand_before = len(declined.state.players[0].hand)
+    seat = apply_imperial_privilege_action(declined.state, recalls[0]).state.players[0]
+    assert seat.agent_in_conflict == 0
+    assert seat.agents_available == 2
+    assert len(seat.hand) == hand_before + 1
 
 
 def test_a_trashed_partner_loses_its_unactivated_box() -> None:

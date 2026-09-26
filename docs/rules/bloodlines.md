@@ -68,7 +68,7 @@ Uprising setup에 다음 단계를 더하거나 바꾼다. `[Bloodlines p. 3]`
 | Desperate | Reveal Turn: 이 tile을 trash → strength 3 | Reveal 보너스(선택형 arrow) |
 | Driven | Reveal Turn: spice 1 | Reveal 보너스 |
 | Fierce | strength 1; 상대 누군가의 sandworm이 Conflict에 있으면 strength 1 추가 | Combat strength |
-| Hardy | Reveal Turn: water 1 | Reveal 보너스 |
+| Hardy | Reveal Turn: troop 1 (recruit — 회색 정육면체, "Troop. Recruit one troop" `[Main p. 20]`; 2026-09-26 정정, 이전 전사는 water 1) | Reveal 보너스 |
 | Loyal | Emperor Influence 3 이상이면 strength 2 | Combat strength |
 
 ## 4. 새 아이콘과 용어
@@ -90,7 +90,7 @@ Uprising setup에 다음 단계를 더하거나 바꾼다. `[Bloodlines p. 3]`
 
 ### Tech tile 획득
 
-- Acquire Tech 아이콘이 Tech tile을 얻는 유일한 방법이다. 기본 경로는 Ixian Embassy board 위에 적혀 있다: Landsraad board space에 Agent를 보낸 turn에 Tech tile 하나를 acquire할 수 있다. 보유 수 제한은 없다. `[Bloodlines pp. 7, 12]`
+- Acquire Tech 아이콘이 Tech tile을 얻는 유일한 방법이다. 기본 경로는 Ixian Embassy board 위에 적혀 있다: Landsraad board space에 Agent를 보낸 turn에 Tech tile 하나를 acquire할 수 있다. 보유 수 제한은 없다. `[Bloodlines pp. 7, 12]` Landsraad 공간 다섯 곳(Assembly Hall, Gather Support, High Council, Imperial Privilege, Swordmaster) 모두이며, 처음 자리를 얻는 High Council 방문도 포함한다 — 룰북 예시: "High Council is a Landsraad board space, so Brennen can use the Ixian Embassy to acquire a Tech tile. Because he now has a High Council seat, the Tech tile costs him 1 less Spice" `[Bloodlines p. 7]`.
 - acquire할 때는 세 stack 맨 위의 face-up tile 중 하나를 골라 표시된 spice 비용을 내고 자신의 supply(공개)에 둔 뒤 그 stack의 다음 tile을 face-up으로 뒤집는다. stack이 비면 남은 게임 동안 선택지가 줄어든다. `[Bloodlines p. 7]`
 - 비용 감소는 두 가지이며 비용은 0 아래로 내려가지 않는다. High Council 자리가 있으면 Ixian Embassy board의 할인으로 tile마다 spice 1을 덜 낸다. 카드의 Tech Discount 아이콘은 tile 하나를 spice 1 할인으로 acquire하게 하며 High Council 할인과 합칠 수 있지만, Tech Discount 아이콘 둘 이상을 합칠 수는 없다. `[Bloodlines pp. 7, 12]` Intrigue 카드(Battlefield Research·Rapid Engineering)의 Tech Discount 아이콘은 play한 뒤 살 수 있는 tile이 있으면 반드시 acquire한다(디자이너 판정 채택, [OQ-057](open-questions.md#oq-057--디자이너-커뮤니티-판정의-일괄-채택-2026-09-09)); Landsraad 방문의 Acquire Tech만 "할 수 있다"다. Imperium Ceremony(Immortality)의 "keep one"은 Intrigue draw라 Suspensor Suits의 troop을 낸다(같은 OQ).
 
@@ -103,7 +103,7 @@ Uprising setup에 다음 단계를 더하거나 바꾼다. `[Bloodlines p. 3]`
 
 ### Tech tile 18장
 
-에셋 저장소 `cards/en/bloodlines/tech/*.webp`의 tile 면을 직접 판독해 전사했다(2026-09-07). 아이콘은 Uprising 아이콘 가이드와 대조했다: 회색 정육면체 = troop, 초록 줄무늬 카드 = draw, 금색 카드 = Intrigue, 회색 원기둥 = Spy, 노란 후드가 붙은 원기둥 = Spy with Deep Cover, 흰 X 검 = Combat 아이콘, 황갈색 벽 조각 + 붉은 파편 = Shield Wall 파괴, X 카드 = trash, 금색 ? 마름모 = Influence 1 선택. 오른쪽 아래 조개 표시는 솔로 전용 Rival Tech 표시다. `[Tech tile faces]` `[Bloodlines p. 7]`
+에셋 저장소 `cards/en/bloodlines/tech/*.webp`의 tile 면을 직접 판독해 전사했다(2026-09-07). 아이콘은 Uprising 아이콘 가이드와 대조했다: 갈색·금색 반지 = Signet Ring, 회색 정육면체 = troop, 초록 줄무늬 카드 = draw, 금색 카드 = Intrigue, 회색 원기둥 = Spy, 노란 후드가 붙은 원기둥 = Spy with Deep Cover, 흰 X 검 = Combat 아이콘, 황갈색 벽 조각 + 붉은 파편 = Shield Wall 파괴, X 카드 = trash, 금색 ? 마름모 = Influence 1 선택. 오른쪽 아래 조개 표시는 솔로 전용 Rival Tech 표시다. `[Tech tile faces]` `[Bloodlines p. 7]`
 
 | Tile | 비용 | 획득 효과(1회) | 능력 |
 | --- | --- | --- | --- |
@@ -121,7 +121,7 @@ Uprising setup에 다음 단계를 더하거나 바꾼다. `[Bloodlines p. 3]`
 | Rapid Dropships | 4 | troop 2 | Agent Turn: Flip → Combat 아이콘 |
 | Sardaukar High Command | 7 | VP 1 | Commander recruit(획득 포함) 비용 Solari 1 감소 |
 | Self-Destroying Messages | 4 | Intrigue 2 | Reveal Turn: Persuasion 1 |
-| Servo-Receivers | 2 | Shield Wall 파괴(선택) | 자신의 Signet Ring은 Emperor·Guild·BG·Fremen Agent 아이콘을 가진다 |
+| Servo-Receivers | 2 | Leader의 Signet Ring 능력 1회 사용 — 갈색·금색 반지 = Signet Ring 아이콘 "you use the Signet Ring ability … on your Leader" `[Main p. 20]` (2026-09-26 정정, 이전 전사는 Shield Wall 파괴; 해결 시점은 [OQ-062](open-questions.md#oq-062--servo-receivers의-signet-ring-아이콘-signet-ring-카드-밖에서-쓰는-leader-능력)) | 자신의 Signet Ring은 Emperor·Guild·BG·Fremen Agent 아이콘을 가진다 |
 | Spy Drones | 5 | Spy with Deep Cover 2 | Flip → Solari 1; 이번 turn Spy를 recall했으면 trash 1(선택) |
 | Suspensor Suits | 3 | — | 자기 turn에 Intrigue 카드를 draw하거나 훔칠 때마다 troop 1을 Conflict에 배치 |
 | Training Depot | 1 | — | Reveal Turn: Command (6+): 검 2 |
@@ -129,13 +129,13 @@ Uprising setup에 다음 단계를 더하거나 바꾼다. `[Bloodlines p. 3]`
 ### Tech 전용 카드와 Leader
 
 - **Ixian Ambassador ×2**(Imperium, 4, 진영 없음, Landsraad 아이콘): Agent: spice 1. Reveal: Persuasion 1; Tech tile 2장 이상이면 Influence 1 선택. `[card face]`
-- **Battlefield Research**(Intrigue, Combat/Endgame): troop 1~2 retreat → Acquire Tech(spice 1 할인) — OR — Tech tile 3장 이상이면 VP 1. `[card face]`
+- **Battlefield Research**(Intrigue, Combat/Endgame): Combat에는 troop 1~2 retreat → Acquire Tech(spice 1 할인) — OR — Endgame에는 Tech tile 3장 이상이면 VP 1. 두 띠의 색(빨강/짙은 녹색)과 바닥글 "COMBAT / ENDGAME"이 띠마다 시점을 하나씩 정한다("Each Intrigue card indicates when it can be played" `[Main p. 7]`; Grasp Arrakis·Tenuous Bond도 같다, 2026-09-26 사용자 판정). `[card face]`
 - **Rapid Engineering**(Intrigue, Plot): 카드 1장 discard → Acquire Tech(spice 1 할인) — OR — Tech tile 3장 이상이면 네 진영 중 둘을 골라 Influence 1씩. `[card face]`
 - **Kota Odax of Ix**(Leader, Tech Module 전용 `[Bloodlines p. 6]`): **Secret Project** — "Game Start: 각 stack의 맨 아래 Tech tile을 본다. 하나를 face-down으로 여기에 둔다. Tech tile을 acquire할 수 있을 때마다 이 tile을 고를 수 있고, 비용이 spice 1 적다." **Reverse Engineering(Signet)** — spice 1 — OR — 자신의 Tech tile 하나를 trash → Intrigue 1 + draw 1. `[card face]`
 
 ## 6. Leader 관련 clarification
 
-- Chani: setup 때 Leader에 인쇄된 track의 인원수 칸에 Tactics token을 놓는다. token이 맨 오른쪽 칸에 도달하면 시작 칸으로 되돌려 reset한다. track 끝을 넘길 만큼 troop을 잃거나 retreat해도 시작 칸으로 reset할 뿐 초과분만큼 더 나아가지 않는다. `[Bloodlines p. 12]`
+- Chani: setup 때 Leader에 인쇄된 track의 인원수 칸에 Tactics token을 놓는다. token이 맨 오른쪽 칸에 도달하면 시작 칸으로 되돌려 reset한다. track 끝을 넘길 만큼 troop을 잃거나 retreat해도 시작 칸으로 reset할 뿐 초과분만큼 더 나아가지 않는다. `[Bloodlines p. 12]` FAQ: "When resolving combat, troops that return to your supply are considered 'lost.' Each different source of retreating or losing troops is handled separately." — Combat 정리에서 supply로 돌아가는 troop(Commander 포함, `[Bloodlines p. 4]`)도 잃은 것이고, 한 출처(정리 한 번, "troop 2개 잃기" 비용 하나)는 한 번에 전진한다. `[FAQ p. 1]`
 - Count Hasimir Fenring: Intrigue 카드를 trash할 때 Solari를 얻지 않는다. `[Bloodlines p. 12]`
 - Duncan Idaho: Into the Fray로 Conflict에 보낸 Agent는 여전히 자신의 Agent라서 뒤의 turn에 Imperial Privilege의 recall 대상이 된다(디자이너 판정, [OQ-037](open-questions.md#oq-037--into-the-fray로-conflict에-간-agent와-bloodlines-leader-카드면의-아이콘-읽기)(d)). `[Board Guide p. 2]` `[Duncan Idaho card]`
 - Esmar Tuek: setup 때 Tuek's Sietch board space를 game board 옆에 놓는다. Maker board space이므로 spice가 쌓인다. Signet Ring으로 Tuek's Sietch에 bonus spice를 놓고 같은 turn에 그곳으로 보낸 Agent로 그 spice를 가져갈 수 있다. `[Bloodlines p. 12]`
@@ -170,3 +170,5 @@ Uprising setup에 다음 단계를 더하거나 바꾼다. `[Bloodlines p. 3]`
 - 2026-09-07 슬라이스 6c·6d: Tech 전용 카드 3종(effect DSL `TechTilesAtLeast`·`AcquireTech`)과 Kota Odax of Ix(Secret Project의 `tech_secret_project` setup frame, 비공개 tile, 할인 후보, Reverse Engineering Signet). 이로써 Bloodlines 구성물 전부가 play된다; 남은 것은 슬라이스 7(UI 표시·heuristic 가중치·대규모 소크·학습 재개)이다. 세부는 [implementation-audits/bloodlines.md](../implementation-audits/bloodlines.md)의 Tech Module 절.
 - 2026-09-09: 1절의 CHOAM Module contract token 8개를 전사·구현했다(`ContractConditionKind.EARN_ALLIANCE`·`IMMEDIATE_INTRIGUE_TRASH`, 보상 필드 `intrigue_cards`·`deep_cover_spies`, `contract_intrigue_trash` frame, Alliance 이벤트 후속 hook `complete_alliance_contracts`; 관측 v16, codec v98; OQ-056). 세부는 [Bloodlines audit](../implementation-audits/bloodlines.md)의 "Contract token" 절.
 - 2026-09-09: 디자이너 판정 채택(OQ-057) — 카드 출처 Acquire Tech의 거절 제거(살 수 있을 때), Imperium Ceremony의 Suspensor troop, Combat 보상 동률의 turn 순서(OQ-002).
+- 2026-09-26 (카드 전사 감사): Command (6+)를 그 Reveal에 생성한 Persuasion으로 판정한다(구매로 줄지 않음, OQ-033 보강). Reveal 도중 Conflict에 처음 들어온 Commander가 Charismatic·Driven·Hardy의 Reveal 보너스를 그때 한 번 지급한다(OQ-028 (c)). 3절의 "Commander는 troop"을 Shadout Mapes의 "deploy or retreat one of your troops"에도 적용했다.
+- 2026-09-26 카드면 감사 정정: Servo-Receivers의 획득 효과는 Signet Ring 아이콘(Leader의 Signet Ring 능력 1회, [OQ-062](open-questions.md#oq-062--servo-receivers의-signet-ring-아이콘-signet-ring-카드-밖에서-쓰는-leader-능력))이고 Hardy는 Reveal turn의 troop recruit이다(둘 다 2026-09-07 전사에서 아이콘 오독). 단일 키 공간(첫 High Council 방문·Imperial Privilege·Swordmaster)도 Acquire Tech와 대기 중인 Commander를 받는다. Suspensor Suits는 자기 turn의 모든 Intrigue draw를 센다(Bene Gesserit 4단계 보너스, Imperial Birthright, Sardaukar Soldier의 trash, Overthrow의 획득, Spy Network의 Reveal 포함). Chani의 Tactics token은 Combat 정리로 supply에 돌아가는 유닛만큼 전진하고, 한 출처가 여러 troop을 잃어도 한 번만 전진한다 `[FAQ p. 1]`.

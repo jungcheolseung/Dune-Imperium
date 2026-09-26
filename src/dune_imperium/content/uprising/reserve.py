@@ -72,6 +72,8 @@ RESERVE_STACKS: Final = (
         ),
         copies=8,
         acquisition_cost=2,
+        # Purple "BENE GESSERIT" affiliation banner under the title [card face].
+        factions=(Faction.BENE_GESSERIT,),
         agent_icons=(AgentIcon.LANDSRAAD, AgentIcon.CITY),
         agent_effect=(
             PersonalCardAgentEffect.DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO
@@ -90,7 +92,12 @@ RESERVE_STACKS: Final = (
         copies=10,
         acquisition_cost=9,
         acquisition_vp=1,
-        reveal_strength=1,
+        # Red "SPACING GUILD" affiliation banner under the title [card face].
+        factions=(Faction.SPACING_GUILD,),
+        # The Reveal box prints one orange spice hexagon with a "1", not a
+        # sword [card face] [Main p. 20] (icon guide): the prior
+        # reveal_strength=1 misread the spice hexagon as a sword.
+        reveal_effects=(PersonalCardRevealEffect(spice=1),),
     ),
 )
 

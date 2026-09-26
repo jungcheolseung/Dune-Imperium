@@ -104,6 +104,9 @@ class TechTile:
     acquire_intrigue_or_card: bool = False
     # The Shield Wall detonation icon: the owner may destroy the wall.
     acquire_may_destroy_shield_wall: bool = False
+    # The Signet Ring icon: "you use the Signet Ring ability (with the
+    # corresponding icon) on your Leader" [Main p. 20] (Servo-Receivers).
+    acquire_leader_signet: bool = False
     # The trash icon: the owner may trash a card.
     acquire_may_trash_card: bool = False
     # Spy Drones: two Spies with Deep Cover.
@@ -244,13 +247,15 @@ TECH_TILES: Final[tuple[TechTile, ...]] = (
         rival=True,
         acquire_intrigue=2,
     ),
+    # The acquire box prints the brown-gold Signet Ring icon, not Forbidden
+    # Weapons' red-and-tan Shield Wall detonation [Servo-Receivers Tech tile].
     TechTile(
         "servo_receivers",
         "Servo-Receivers",
         2,
         TechAbility.SIGNET_FACTION_ICONS,
         rival=True,
-        acquire_may_destroy_shield_wall=True,
+        acquire_leader_signet=True,
     ),
     TechTile(
         "spy_drones",

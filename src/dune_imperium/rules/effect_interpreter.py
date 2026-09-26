@@ -105,6 +105,7 @@ from dune_imperium.rules.shield_wall import current_conflict_is_shield_wall_prot
 from dune_imperium.rules.specimens import generate_specimens
 from dune_imperium.rules.spy_placement import (
     empty_observation_post_ids,
+    observation_post_ids_for_agent_icons,
     observation_post_ids_for_factions,
     solo_occupied_post_ids,
 )
@@ -461,12 +462,21 @@ def spy_placement_targets(
 ) -> tuple[str, ...]:
     """Return the empty posts this placement may use."""
 
-    allowed = (
-        observation_post_ids_for_factions(reward.factions)
-        if reward.factions is not None
-        else None
-    )
-    return empty_observation_post_ids(state, allowed)
+    return empty_observation_post_ids(state, spy_placement_allowed_post_ids(reward))
+
+
+def spy_placement_allowed_post_ids(reward: PlaceSpy) -> frozenset[str] | None:
+    """Return the posts a limited placement may use; None when unlimited.
+
+    "Some effects limit placement. For example: '[Spy] on [City]' means the
+    observation post must connect to a [City] board space." [Main p. 20]
+    """
+
+    if reward.factions is not None:
+        return observation_post_ids_for_factions(reward.factions)
+    if reward.agent_icons is not None:
+        return observation_post_ids_for_agent_icons(reward.agent_icons)
+    return None
 
 
 def spy_placement_possible(state: GameState, player: int, reward: PlaceSpy) -> bool:
@@ -477,11 +487,7 @@ def spy_placement_possible(state: GameState, player: int, reward: PlaceSpy) -> b
         return owner.spies_supply > 0 or bool(owner.spy_post_ids)
     if owner.spies_supply > 0:
         return False
-    allowed = (
-        observation_post_ids_for_factions(reward.factions)
-        if reward.factions is not None
-        else None
-    )
+    allowed = spy_placement_allowed_post_ids(reward)
     # With an empty supply, one preparatory recall may free an allowed post,
     # but only when the owner's Spy is its sole occupant; a post shared with
     # another player's Spy stays occupied [Main pp. 11, 20].

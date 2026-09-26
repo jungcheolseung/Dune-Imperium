@@ -219,6 +219,9 @@ IMPERIUM_CARDS: Final = (
         "Bene Gesserit Operative",
         3,
         copies=2,
+        # Purple "BENE GESSERIT" affiliation banner under the title [card face],
+        # the same banner Branching Path carries.
+        factions=(Faction.BENE_GESSERIT,),
         agent_icons=(AgentIcon.BENE_GESSERIT,),
         agent_effect=PersonalCardAgentEffect.PLACE_SPY,
         reveal_persuasion=1,
@@ -254,7 +257,9 @@ IMPERIUM_CARDS: Final = (
         3,
         copies=2,
         factions=(Faction.EMPEROR,),
-        agent_icons=(AgentIcon.LANDSRAAD, AgentIcon.SPY),
+        # Re-read from the card face 2026-09-26: the top icon is a solid blue
+        # circle (City), not the green Landsraad pentagon.
+        agent_icons=(AgentIcon.CITY, AgentIcon.SPY),
         # The Agent box prints the plain trash icon: optionally trash one card
         # from hand, discard pile, or play [Main p. 20] (not "trash this
         # card"; the self-trash was a transcription bug fixed 2026-09-09).
@@ -300,8 +305,10 @@ IMPERIUM_CARDS: Final = (
         "Chani, Clever Tactician",
         5,
         factions=(Faction.FREMEN,),
+        # Re-read from the card face 2026-09-26: the first icon is the blue
+        # Fremen sietch badge, not the red Spacing Guild infinity symbol.
         agent_icons=(
-            AgentIcon.SPACING_GUILD,
+            AgentIcon.FREMEN,
             AgentIcon.CITY,
             AgentIcon.SPICE_TRADE,
         ),
@@ -339,7 +346,8 @@ IMPERIUM_CARDS: Final = (
         3,
         agent_icons=(AgentIcon.SPY,),
         agent_effect=PersonalCardAgentEffect.EACH_OPPONENT_DISCARDS_PERSONAL_CARD,
-        reveal_persuasion=2,
+        # Reveal: two plain Spy icons and no Persuasion [Covert Operation card].
+        reveal_choice_effects=(PersonalCardRevealChoiceEffect.PLACE_TWO_SPIES,),
         play_data_complete=True,
     ),
     _entry(
@@ -408,7 +416,7 @@ IMPERIUM_CARDS: Final = (
             AgentIcon.SPICE_TRADE,
         ),
         agent_effect=(
-            PersonalCardAgentEffect.PLACE_SPY_ALLOW_SHARED_IF_SPYING_ON_VISITED_SPACE
+            PersonalCardAgentEffect.PLACE_SPY_ON_VISITED_SPACE_MAY_SHARE
         ),
         reveal_persuasion=1,
         reveal_strength=1,
@@ -508,13 +516,16 @@ IMPERIUM_CARDS: Final = (
         "In High Places",
         5,
         has_acquisition_bonus=True,
-        factions=(Faction.BENE_GESSERIT,),
+        # Two affiliation bands under the title: grey "EMPEROR" above purple
+        # "BENE GESSERIT" [card face]. The Agent-box and Reveal-choice wording
+        # are unaffected here; slice s2 owns their Agent-box effect.
+        factions=(Faction.EMPEROR, Faction.BENE_GESSERIT),
         agent_icons=(AgentIcon.BENE_GESSERIT, AgentIcon.EMPEROR),
-        agent_effect=PersonalCardAgentEffect.GAIN_WATER_IF_BENE_GESSERIT_BOND,
+        agent_effect=PersonalCardAgentEffect.DRAW_ONE_AND_PLACE_SPY_IF_BENE_GESSERIT_BOND,
         acquisition_effect=PersonalCardAcquisitionEffect.PLACE_SPY,
         reveal_persuasion=2,
         reveal_choice_effects=(
-            PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_TWO_PERSUASION,
+            PersonalCardRevealChoiceEffect.MAY_RECALL_TWO_SPIES_FOR_THREE_PERSUASION,
         ),
         play_data_complete=True,
     ),
@@ -578,7 +589,10 @@ IMPERIUM_CARDS: Final = (
         2,
         copies=2,
         factions=(Faction.BENE_GESSERIT, Faction.FREMEN),
-        agent_icons=(AgentIcon.CITY, AgentIcon.SPICE_TRADE),
+        # Re-read from the card face 2026-09-26: only one Agent icon box (the
+        # blue City circle) sits above the Agent box; the extra Spice Trade
+        # triangle was a transcription slip (BGG marks only Purple Access).
+        agent_icons=(AgentIcon.CITY,),
         agent_effect=(
             PersonalCardAgentEffect.GAIN_BY_BENE_GESSERIT_AND_FREMEN_INFLUENCE_TWO
         ),
@@ -621,7 +635,10 @@ IMPERIUM_CARDS: Final = (
         "Overthrow",
         8,
         has_acquisition_bonus=True,
-        factions=(Faction.EMPEROR,),
+        # No affiliation banner: the title bar sits directly on the art, with
+        # no Emperor/Guild/BG/Fremen band beneath it [card face]; the BGG
+        # inventory row also leaves every affiliation column blank. The four
+        # Faction symbols on the left edge are Agent icons, not affiliation.
         agent_icons=(
             AgentIcon.EMPEROR,
             AgentIcon.SPACING_GUILD,
@@ -720,10 +737,12 @@ IMPERIUM_CARDS: Final = (
         factions=(Faction.SPACING_GUILD,),
         agent_icons=(AgentIcon.SPACING_GUILD,),
         agent_effect=PersonalCardAgentEffect.PLACE_SPY,
+        # Re-read from the card face 2026-09-26: the third target icon is the
+        # blue Fremen sietch badge, not the red Spacing Guild infinity symbol.
         agent_spy_factions=(
             Faction.EMPEROR,
             Faction.BENE_GESSERIT,
-            Faction.SPACING_GUILD,
+            Faction.FREMEN,
         ),
         reveal_persuasion=1,
         reveal_effects=(PersonalCardRevealEffect(solari=1),),
@@ -738,7 +757,10 @@ IMPERIUM_CARDS: Final = (
         factions=(Faction.EMPEROR,),
         agent_icons=(AgentIcon.EMPEROR, AgentIcon.LANDSRAAD),
         allows_recruited_troop_deployment=True,
-        reveal_strength=1,
+        # Reveal box: a blue Persuasion diamond "2", then "+[sword] for each
+        # Emperor card you revealed (including this one)" [card face]. There
+        # is no separate base sword icon, so reveal_strength must stay 0.
+        reveal_persuasion=2,
         reveal_effects=(
             PersonalCardRevealEffect(
                 strength=1,
@@ -894,10 +916,13 @@ IMPERIUM_CARDS: Final = (
         factions=(Faction.FREMEN,),
         agent_icons=(AgentIcon.FREMEN, AgentIcon.CITY, AgentIcon.SPICE_TRADE),
         agent_effect=PersonalCardAgentEffect.RECRUIT_TWO_TROOPS,
+        # "2 Persuasion for each Fremen card you have in play (including
+        # this one)" [Stilgar, The Devoted card]: Agent-turn cards count
+        # [Main p. 20 "In Play"] [FAQ p. 2 Liet Kynes].
         reveal_effects=(
             PersonalCardRevealEffect(
                 persuasion=2,
-                per_revealed_faction=PersonalCardBond.FREMEN,
+                per_in_play_faction=PersonalCardBond.FREMEN,
             ),
         ),
         play_data_complete=True,
@@ -926,7 +951,11 @@ IMPERIUM_CARDS: Final = (
             PersonalCardAgentEffect.GAIN_TWO_VISITED_FACTION_INFLUENCE_AND_TRASH_SELF
         ),
         acquisition_effect=PersonalCardAcquisitionEffect.PLACE_SPY,
-        reveal_effects=(PersonalCardRevealEffect(solari=1),),
+        # Re-read from the card face 2026-09-26: the Reveal band prints a
+        # single blue Persuasion diamond "1" (the same shape as Sardaukar
+        # Coordination's and Strike Fleet's Persuasion icons), not a Solari
+        # coin.
+        reveal_persuasion=1,
         play_data_complete=True,
     ),
     _entry(
@@ -985,11 +1014,13 @@ IMPERIUM_CARDS: Final = (
         "Undercover Asset",
         2,
         factions=(Faction.EMPEROR, Faction.SPACING_GUILD),
+        # Re-read from the card face 2026-09-26: only three Agent icon boxes
+        # (Landsraad, City, Spice Trade) sit on the left edge; there is no
+        # Spy eye box, and the art continues above the Landsraad pentagon.
         agent_icons=(
             AgentIcon.LANDSRAAD,
             AgentIcon.CITY,
             AgentIcon.SPICE_TRADE,
-            AgentIcon.SPY,
         ),
         ignores_influence_requirements=True,
         reveal_choice_effects=(
@@ -1006,6 +1037,11 @@ IMPERIUM_CARDS: Final = (
         factions=(Faction.FREMEN,),
         reveal_persuasion=1,
         reveal_effects=(PersonalCardRevealEffect(recruit_troops=1),),
+        # "Fremen Bond: You may deploy or retreat one of your troops."
+        # [Unswerving Loyalty card]
+        reveal_choice_effects=(
+            PersonalCardRevealChoiceEffect.MAY_DEPLOY_OR_RETREAT_ONE_TROOP_IF_FREMEN_BOND,
+        ),
         play_data_complete=True,
     ),
     _entry(
@@ -1637,7 +1673,8 @@ IMPERIUM_CARDS: Final = (
     ),
     # For Humanity (Bene Gesserit): BG, Landsraad, Spice Trade; Agent:
     # Influence of your choice; Reveal: 2 Persuasion and "Bene Gesserit
-    # Alliance: lose one Influence -> 1 Victory Point" [card face].
+    # Alliance: lose two Influence (one Faction) -> 1 Victory Point" [card
+    # face: a "?" diamond with two red chevrons].
     _entry(
         373,
         "for-humanity",

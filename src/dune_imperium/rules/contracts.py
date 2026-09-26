@@ -33,6 +33,7 @@ from dune_imperium.rules.frames import (
     replace_player,
     turn_owner_of,
     update_turn_recruits,
+    with_context,
 )
 from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
@@ -145,6 +146,9 @@ def apply_contract_completion(
         definition,
         source=source,
         excluded_space_id=turn_space_id if isinstance(turn_space_id, str) else "",
+        # The completion was the turn's last effect when the advance replaced
+        # the Agent frame with the next turn's.
+        turn_closed=next_state.decision_stack[-1].kind == FrameKind.TURN,
     )
     return RuleResult(
         state=follow_up.state,
@@ -205,7 +209,13 @@ def legal_contract_spy_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Return recall-or-place choices for a Contract Spy reward."""
+    """Return place, or recall-first-or-decline, choices for a Contract Spy.
+
+    Placing is mandatory while a Spy is in the supply (the erratum to
+    [Main p. 11], OQ-057 (14)). Without one, "you may first recall one of
+    your Spies for no effect" [Main pp. 11, 20]: the recall can be passed
+    up, and once made the Spy is back in the supply and must be placed.
+    """
 
     if not 0 <= player < state.config.players or not state.decision_stack:
         return ()
@@ -218,17 +228,17 @@ def legal_contract_spy_actions(
     ):
         return ()
     owner = state.players[player]
-    if owner.spies_supply > 0:
-        if context.get("deep_cover") is True:
-            # Spy with Deep Cover ignores opponents' Spies; only the owner's
-            # own Spies block a post [Bloodlines pp. 5, 12].
-            targets = tuple(
-                post.post_id
-                for post in OBSERVATION_POSTS
-                if post.post_id not in owner.spy_post_ids
-            )
-        else:
-            targets = empty_observation_post_ids(state)
+    if context.get("deep_cover") is True:
+        # Spy with Deep Cover ignores opponents' Spies; only the owner's
+        # own Spies block a post [Bloodlines pp. 5, 12].
+        targets = tuple(
+            post.post_id
+            for post in OBSERVATION_POSTS
+            if post.post_id not in owner.spy_post_ids
+        )
+    else:
+        targets = empty_observation_post_ids(state)
+    if targets and owner.spies_supply > 0:
         return tuple(
             DomainAction(
                 action_id="place_contract_spy",
@@ -237,21 +247,28 @@ def legal_contract_spy_actions(
             )
             for post_id in targets
         )
-    return tuple(
-        DomainAction(
-            action_id="recall_spy_for_contract",
-            actor=player,
-            arguments=(("post_id", post_id),),
+    decline = DomainAction(action_id="decline_contract_spy", actor=player)
+    if targets and owner.spy_post_ids:
+        return (
+            decline,
+            *(
+                DomainAction(
+                    action_id="recall_spy_for_contract",
+                    actor=player,
+                    arguments=(("post_id", post_id),),
+                )
+                for post_id in owner.spy_post_ids
+            ),
         )
-        for post_id in owner.spy_post_ids
-    )
+    # Nothing can be placed (no free post, or no Spy at all).
+    return (decline,)
 
 
 def apply_contract_spy_action(
     state: GameState,
     action: DomainAction,
 ) -> RuleResult:
-    """Recall if necessary, then place a Spy granted by a Contract."""
+    """Recall first or decline without a Spy in supply, or place the Spy."""
 
     if action not in legal_contract_spy_actions(state, action.actor):
         raise ValueError("action is not a legal Contract Spy choice")
@@ -259,16 +276,30 @@ def apply_contract_spy_action(
     context = dict(frame.context)
     instance_id = context.get("contract_spy_id")
     source = context.get("source")
-    post_id = dict(action.arguments).get("post_id")
-    if (
-        not isinstance(instance_id, str)
-        or not isinstance(source, str)
-        or not isinstance(post_id, str)
-    ):
+    if not isinstance(instance_id, str) or not isinstance(source, str):
         raise RuntimeError("Contract Spy frame has invalid context")
+    if action.action_id == "decline_contract_spy":
+        return RuleResult(
+            state=replace(state, decision_stack=state.decision_stack[:-1]),
+            events=(
+                GameEvent(
+                    event_id=f"{source}:spy_unavailable",
+                    kind="spy_placement_unavailable",
+                    payload=(("contract_id", instance_id), ("player", action.actor)),
+                ),
+            ),
+        )
+    post_id = dict(action.arguments).get("post_id")
+    if not isinstance(post_id, str):
+        raise RuntimeError("Contract Spy choice has invalid post ID")
     owner = state.players[action.actor]
     if action.action_id == "recall_spy_for_contract":
         next_owner = recall_spy(owner, post_id)
+        if context.get("turn_closed") is True:
+            # The recall belongs to the closed turn (OQ-044 (d)).
+            next_owner = replace(
+                next_owner, spies_recalled_turn=owner.spies_recalled_turn
+            )
         context["contract_spy_recalled"] = True
         next_frame = replace(frame, context=tuple(sorted(context.items())))
         next_state = replace(
@@ -918,19 +949,27 @@ def complete_contract_by_effect(
     instance_id: str,
     *,
     source: str,
+    excluded_space_id: str = "",
 ) -> RuleResult:
     """Complete one active Contract by a card effect, ignoring its condition.
 
     CHOAM Demands (Bloodlines): "Complete one of your contracts." The
     printed reward resolves as for a normal completion, its choices pushed
-    on top of the current decision stack.
+    on top of the current decision stack. ``excluded_space_id`` is where the
+    Agent of this turn went: a Recall Agent reward returns "one of your
+    other Agents on the board ... (not the Agent you sent during this turn)"
+    [Main p. 20].
     """
 
     completed = _complete_contract_without_choices(
         state, player, instance_id, source=source
     )
     follow_up = _begin_contract_reward_choice(
-        completed.state, player, contract_for_instance(instance_id), source=source
+        completed.state,
+        player,
+        contract_for_instance(instance_id),
+        source=source,
+        excluded_space_id=excluded_space_id,
     )
     return RuleResult(
         state=follow_up.state, events=(*completed.events, *follow_up.events)
@@ -1022,6 +1061,7 @@ def _begin_contract_reward_choice(
     *,
     source: str,
     excluded_space_id: str = "",
+    turn_closed: bool = False,
 ) -> RuleResult:
     reward = definition.reward
     choice_count = sum(
@@ -1106,8 +1146,26 @@ def _begin_contract_reward_choice(
                 ("turn_owner", player),
             ),
         )
+        if turn_closed:
+            frame = mark_contract_spy_after_turn(frame)
         return RuleResult(state=state.push_decision(frame))
     return RuleResult(state=state)
+
+
+def mark_contract_spy_after_turn(frame: DecisionFrame) -> DecisionFrame:
+    """Mark a Contract Spy frame that resolves after its turn has closed.
+
+    A Contract completed by sending an Agent "is another effect of your
+    Agent turn" [FAQ p. 1], so a recall made for its Spy belongs to that
+    turn. When the completion was the turn's last effect the next turn --
+    the same seat's, if it is the last to reveal -- has already opened and
+    reset its counters; the recall must not count as that turn's "If you
+    recalled a Spy this turn" (OQ-044 (d)).
+    """
+
+    if frame.kind != FrameKind.CONTRACT_REWARD_SPY:
+        return frame
+    return with_context(frame, {**dict(frame.context), "turn_closed": True})
 
 
 # --- Bloodlines Immediate: trash an Intrigue card -----------------------------------
