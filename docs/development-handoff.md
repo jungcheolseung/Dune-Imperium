@@ -1,6 +1,6 @@
 # 개발 인수인계
 
-기준일: 2026-09-26
+기준일: 2026-09-27
 
 이 문서는 새 개발 세션(Claude Code, Codex 등 어떤 도구든)에서 저장소의 현재 위치를 빠르게 복구하기 위한 진입점이다. 규칙의 규범 근거는 [`rules/README.md`](rules/README.md), 장기 마일스톤과 구현 순서는 [`implementation-plan.md`](implementation-plan.md), 카드별 세부 동작은 [`implementation-audits/personal-cards.md`](implementation-audits/personal-cards.md), Leader 능력은 [`implementation-audits/leaders.md`](implementation-audits/leaders.md), 계약 경계는 [`implementation-audits/contracts.md`](implementation-audits/contracts.md)를 따른다.
 
@@ -98,6 +98,22 @@ OQ-065(강제 Spy 이동 순서와 갈 곳이 없는 Spy)도 밤에 사용자 �
   `assets` symlink와 `.venv`가 없으니 둘 다 걸고 `PYTHONPATH=<wt>/src E2E_REPO=<wt>`로 그 클라이언트를 띄운다.
 
 ### 학습(M10) 쪽 순서
+
+**현재 위치(2026-09-27 아침, 밤샘 세션).** 결론과 근거는 **[evaluation/m10-2026-09-27.md](evaluation/m10-2026-09-27.md)**. 요지:
+- **새 규칙(codec v110) 재적응 완료 — 이득은 작다.** 5081에서 같은 설정으로 1,000 iteration(`checkpoints/2026-09-27/readapt-v110`, 4.5시간, 실패 0).
+  6081 대 5081 2:2 1,400판: 승률 +3.1%p [−2.0, +8.1](잡음 안), 평균 순위 −0.086 [−0.151, −0.021](분해). heuristic 3명 상대 86.8%(포화).
+  **새 규칙의 기준 체크포인트는 `checkpoints/2026-09-27/readapt-v110/iteration_06081.pt`**(쓰기 금지 사본). 사다리 중간점(5600) 셀 둘은 남았다
+  (`readapt-v110/post_eval.sh 2 checkpoints/2026-09-27/readapt-v110/iteration_05600.pt`, 약 45분).
+- **표현력 가설(H1)**: 네트워크가 `log1p`로 읽는 정체 칸(Imperium Row, 현재 Conflict, 결정 종류, Agent 위치, Leader…)을 크기로 읽어 가르지 못한다.
+  가치 민감도로 확인: Row 먼 카드 교체 0.0013, Conflict 교체 0.0011, 손패 교체 0.039. 처방 `mlp_slots`(0 초기화 one-hot 경로, +3.0%,
+  넓힌 직후 함수 동일)는 **브랜치 `repr-slots`(`5044080`, 미병합)**. 그 네트워크로 C와 짝지은 **T 팔이 08:22부터 돈다**
+  (`checkpoints/2026-09-27/slots-v1`, 워크트리 `.claude/worktrees/repr-slots`에서 실행 — **T가 도는 동안 그 워크트리의 `src/`를 고치지 않는다**;
+  13시 무렵 끝). 판정 규칙은 결과 전에 그 폴더 `README.md`에 적었고, 끝나면 `slots-v1/latest.pt`를 `iteration_06081.pt`로 복사한 뒤
+  `slots-v1/judge.sh J1`(2,800판, 약 50분)·`J2`·`J4`·`M`을 워크트리에서 돌린다.
+- **합법 행만 쓰는 learner**: **브랜치 `learner-legal`(`930eac5`, 미병합)**. 미니배치 합법 합집합(33,007 중 690~795개)만 계산 — dense 경로와
+  수학적으로 같고(테스트로 대조) update 중앙값 1.88 → 0.44초. 앞으로의 학습에 쓸 것; T·C 비교에는 쓰지 않는다.
+- **병합·다음 실험은 사용자 결정**: 두 브랜치의 병합, J1 결과에 따른 채택·복제(seed 1)·연장, 탐색 좌석의 새 규칙 표, 설계안 4절의
+  다음 단계(분해된 residual head 등). 설계 조사 전문은 세션 스크래치에 있었고 요지는 evaluation 문서 3절이다.
 
 **현재 위치(2026-09-22).** 결론과 근거는 한 곳에 모았다 — **[evaluation/m10-2026-09-22.md](evaluation/m10-2026-09-22.md)**(원자료는
 git 무시 `checkpoints/2026-09-22/m10-evidence/`). 요지:
@@ -553,6 +569,22 @@ pull했다면 로컬 변경이 없는지 `git status`로 본 뒤 `git fetch orig
 2026-09-07: `bloodlines` 브랜치(35 커밋)를 master 쪽에서 `--no-ff`로 머지했고(`dbd9b73`), 같은 날 저녁 슬라이스 6 커밋 5건과 이 문서 갱신을 master에 직접 올렸다. 아직 push하지 않았다면 `git log origin/master..master`로 확인한다. 비공개 에셋 저장소(`assets` symlink → `Dune-Imperium-assets`)에도 같은 날 manifest 커밋 6건(Bloodlines 카드 44장 content id, Leader 8종, Tuek's Sietch 타일 이미지, Twisted·Navigation 카드 키, Kota Odax의 content id `43c25fc`)이 있으니 다른 머신에서는 그쪽도 pull한다.
 
 2026-09-04 세션 종료 시점에 이 세션의 커밋 전부(보드·카드 아이콘 분리 v86/v87, 서버·UI 확인 흐름과 마커, Reveal 순서 v88, OQ-028 조건 판정 시점, OQ-029 등록)를 `origin/master`에 push했다. 새 세션은 `git fetch origin` 뒤 `git log origin/master..master`와 반대 방향을 확인하고, 일치하면 이 문서의 기준선을 그대로 쓴다. 에셋 저장소(`Dune-Imperium-assets`)의 `5b55e45` 1개 미push 여부는 그 저장소에서 확인한다. 원격에는 병합하지 않은 `kyungtae` 브랜치가 있다. 새 세션은 `git log origin/master..master`와 반대 방향을 모두 확인하고, checkout이 `853ecd4`보다 이전이면 이 문서의 989개 테스트·codec v84 기준선이 실제 코드와 일치하지 않는다. **다른 머신에서 이어서 작업한다면 먼저 이 머신에서 push가 필요하다.** 새 머신의 UI 카드 이미지·아이콘·보드 스캔은 비공개 `Dune-Imperium-assets` 저장소를 clone해 symlink로 연결한다(그 README 참고; 루트의 `assets` symlink 하나로 cards·icons·board·rulebooks를 모두 연결). 카드 매핑은 그 저장소의 `cards/manifest.json`에만 있으므로 접근이 없으면 텍스트 UI로 동작한다.
+
+## 2026-09-27 밤샘 M10 재개 세션 요약 (Mac mini, master `3288212`·`27f48fb` + 미병합 브랜치 `repr-slots`·`learner-legal`, 관측 v20, codec v110 — **master의 엔진·학습 코드 무변경**; 변경은 `scripts/train/`·`docs/`)
+
+- 기준 검증(master `ac1412f`): pytest 2,514 통과, ruff·mypy 통과. 5081이 v110으로 이관됨(32,980 유지·27 새로·7 삭제, Adam 포함),
+  3 iteration 스모크 15.3초/it.
+- **재적응 C**(`checkpoints/2026-09-27/readapt-v110`): 5081 → 6081, long-2k와 같은 설정, 학습 중 평가는 얼린 5081 ×3. 결과는
+  위 "현재 위치"와 [evaluation/m10-2026-09-27.md](evaluation/m10-2026-09-27.md) 2절.
+- **설계 조사 워크플로**(읽기 전용: 읽기 4 → 설계 3 → 판정 3 → 종합 → 비판): 판정 셋이 모두 "진단 먼저"를 골랐고, 종합안은 `mlp_slots`
+  + 오프라인 관문 D3 + RL 팔 T였다. D3는 C 옆에서 돌리면 메모리 가드가 C를 죽일 위험이 있고(교훈 2026-09-27) 오프라인 일치율이 강도를 예측하지
+  못했던 전례(교훈 2026-09-24)가 있어 생략하고 T로 바로 갔다(선언 README에 적음).
+- **`repr-slots` 브랜치**: `training/slots.py`(108 조회·1,128행, `SLOT_KEYS` digest), `MlpSlotsNetwork`, `build_network`, 체크포인트 형식 3
+  (`arch`·`slot_keys`; MLP는 형식 2 그대로; `stamp`는 강등하지 않음), `widen` CLI(이관 기록 보존), worker는 `arch_spec`으로 재구성.
+  구현 1 → 검토 3관점(지적 5건: seat scalar 위치를 T2가 다 검사하지 않음, widen의 이관 기록 누락 등 — 모두 확인·수정) → 검증. 전체 2,532 통과.
+- **`learner-legal` 브랜치**: `TrainingBatch.local_legal` + learner의 `_local_logits`. 전체 2,524 통과.
+- **도구**: `watch_run.sh`가 평가가 든 모든 기록과 압박 수준 변화를 보여 준다(`3288212`; 재개 실행에서 평가 줄을 전부 놓쳤다).
+- 워크트리 둘(`.claude/worktrees/repr-slots`, `learner-legal`)은 병합 전까지 둔다(각자 `.venv`, `assets` 절대경로 symlink).
 
 ## 2026-09-24 ~ 09-27 UI 7~10단계 세션 요약 (Mac mini, 워크트리 `ui-work` → master `08b5003`, 관측 v20, codec v110 — **엔진 규칙·코덱·관측 인코딩 무변경**; 변경은 `display/`의 한국어 쌍둥이와 리더 배치표·`server/`·`server/static/`·`scripts/e2e/`·테스트·`docs/`)
 
