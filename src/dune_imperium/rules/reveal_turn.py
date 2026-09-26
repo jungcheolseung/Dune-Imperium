@@ -1007,6 +1007,11 @@ def apply_reveal_troop_retreat(
         commanders_conflict=owner.commanders_conflict - commanders,
         combat_strength=next_strength,
     )
+    # Tactician: "Whenever you retreat or lose any number of troops from the
+    # Conflict, advance your Tactics token that many spaces" [Chani card];
+    # Commanders are troops [Bloodlines p. 4], and this one source moves the
+    # token once [FAQ p. 1].
+    next_owner, tactics_events = advance_tactics_token(next_owner, 2, source=source)
     remaining = state.decision_stack[:-1]
     strength_delta = next_strength - owner.combat_strength
     if strength_delta:
@@ -1038,6 +1043,7 @@ def apply_reveal_troop_retreat(
                 kind="troops_retreated",
                 payload=(("count", 2), ("player", action.actor)),
             ),
+            *tactics_events,
             reward_event,
         ),
     )

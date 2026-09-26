@@ -396,6 +396,52 @@ def test_command_center_retreat_takes_the_two_units_strength(commanders: int) ->
     assert _reveal_context(retreated)["persuasion"] == 1 + 2
 
 
+@pytest.mark.parametrize(
+    ("card_name", "start", "commanders", "space", "spice"),
+    [
+        ("command_center", 2, 0, 4, 0),
+        ("chani_clever_tactician", 2, 0, 4, 0),
+        # From the fourth space the two reach the sixth, which pays a spice.
+        ("chani_clever_tactician", 3, 0, 5, 1),
+        # A Commander is a troop [Bloodlines p. 4] and moves the token too.
+        ("command_center", 2, 1, 4, 0),
+    ],
+)
+def test_reveal_two_troop_retreats_advance_chanis_tactics_token(
+    card_name: str, start: int, commanders: int, space: int, spice: int
+) -> None:
+    # Tactician: "Whenever you retreat or lose any number of troops from the
+    # Conflict, advance your Tactics token that many spaces, earning rewards
+    # as you reach them" [Chani card]; "Each different source of retreating
+    # or losing troops is handled separately" [FAQ p. 1] (bloodlines.md §6),
+    # so one "Retreat two troops" [Command Center card] / "Retreat two of
+    # your troops" [Chani, Clever Tactician card] moves it two spaces, once.
+    # Before the fix both Reveal retreats left the token where it was.
+    card = _card(card_name)
+    owner = _owner(
+        leader_id="chani",
+        tactics_track_space=start,
+        hand=(card,),
+        troops_supply=6 + commanders,
+        troops_conflict=3 - commanders,
+        commanders_conflict=commanders,
+        combat_strength=6,
+    )
+    revealed = _reveal(_state(owner))
+    retreat = DomainAction(
+        action_id="retreat_two_troops_for_reveal",
+        actor=0,
+        arguments=(("commanders", commanders),) if commanders else (),
+    )
+    result = apply_reveal_troop_retreat(revealed, retreat)
+    player = result.state.players[0]
+    assert player.tactics_track_space == space
+    assert player.resources.spice == revealed.players[0].resources.spice + spice
+    advanced = [e for e in result.events if e.kind == "tactics_token_advanced"]
+    assert len(advanced) == 1
+    assert dict(advanced[0].payload)["count"] == 2
+
+
 # --- trash, discard, acquisition triggers -------------------------------------
 
 
