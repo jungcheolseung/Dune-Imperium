@@ -30,14 +30,17 @@ from dune_imperium.rules.board_effects import (
     resolve_board_effect,
 )
 from dune_imperium.rules.card_trash import trash_personal_card
+from dune_imperium.rules.combat_deployment import legal_combat_deployments
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.leader_abilities import (
+    apply_feyd_track_action,
     apply_leader_agent_deploy,
     apply_leader_card_trash,
     apply_leader_signet_payment,
     apply_leader_spy_action,
     apply_leader_troop_retreat,
+    legal_feyd_track_actions,
     legal_leader_signet_actions,
     resolve_leader_signet,
 )
@@ -869,3 +872,82 @@ def test_makers_phase_feeds_tueks_sietch_like_the_other_maker_spaces() -> None:
     state = _esmar_state(owner, phase=GamePhase.MAKERS, decision_stack=())
     fed = resolve_makers(state).state
     assert dict(fed.maker_bonus_spice)["tuek_sietch"] == 2
+
+
+# --- Signet trashes that recruit ---------------------------------------------
+#
+# Eliminate Allies: "When this card is trashed: 2 troops" [Eliminate Allies
+# card]. "그 turn에 어떤 출처에서 recruit했든 새 troop은 Conflict에 deploy할
+# 수 있다" [Main p. 10] [FAQ p. 4] (docs/rules/player-turns.md). Trashed
+# through a Signet Ring box, the two troops used to vanish from the Agent
+# turn's allowance: the box wrote back the context it had read before the
+# trash, overwriting the count the trash had added.
+
+ELIMINATE_ALLIES = "imperium:eliminate_allies:0"
+
+
+def _allowance(state: GameState) -> tuple[object, list[object]]:
+    """Return the Agent turn's recruit count and the offered deploy counts."""
+
+    frame = state.decision_stack[-1]
+    assert frame.kind == FrameKind.AGENT_EFFECTS
+    counts = [dict(a.arguments)["count"] for a in legal_combat_deployments(state, 0)]
+    return dict(frame.context)["troops_recruited"], counts
+
+
+def _trash_by_signet(state: GameState, card_id: str) -> GameState:
+    action = next(
+        a
+        for a in legal_leader_signet_actions(state, 0)
+        if a.action_id == "trash_leader_card"
+        and dict(a.arguments)["card_id"] == card_id
+    )
+    return apply_leader_card_trash(state, action).state
+
+
+def test_chroniclers_insight_trash_keeps_eliminate_allies_troops_deployable() -> (
+    None
+):
+    owner = PlayerState(
+        player_id=0, leader_id="princess_irulan", hand=(SIGNET, ELIMINATE_ALLIES)
+    )
+    state = _play(_turn_state(owner), SIGNET, "arrakeen")
+    trashed = _trash_by_signet(state, ELIMINATE_ALLIES)
+    assert trashed.players[0].troops_garrison == 3 + 2
+    # Two recruited plus up to two more from the garrison [Main p. 10].
+    assert _allowance(trashed) == (2, [1, 2, 3, 4])
+
+
+def test_corrino_liaison_trash_keeps_eliminate_allies_troops_deployable() -> None:
+    owner = PlayerState(
+        player_id=0,
+        leader_id="count_hasimir_fenring",
+        hand=(SIGNET,),
+        in_play=(ELIMINATE_ALLIES,),
+    )
+    state = _play(_turn_state(owner), SIGNET, "arrakeen")
+    trashed = _trash_by_signet(state, ELIMINATE_ALLIES)
+    assert trashed.players[0].resources.solari == 1  # Assassin
+    assert _allowance(trashed) == (2, [1, 2, 3, 4])
+
+
+def test_personal_training_trash_keeps_eliminate_allies_troops_deployable() -> (
+    None
+):
+    owner = PlayerState(
+        player_id=0,
+        leader_id="feyd_rautha_harkonnen",
+        hand=(SIGNET, ELIMINATE_ALLIES),
+        feyd_track_space="first_spy",
+    )
+    state = _play(_turn_state(owner), SIGNET, "arrakeen")
+    (advance,) = legal_feyd_track_actions(state, 0)
+    staged = apply_feyd_track_action(state, advance).state
+    trash = next(
+        a
+        for a in legal_feyd_track_actions(staged, 0)
+        if dict(a.arguments).get("card_id") == ELIMINATE_ALLIES
+    )
+    trashed = apply_feyd_track_action(staged, trash).state
+    assert ELIMINATE_ALLIES in trashed.players[0].trashed
+    assert _allowance(trashed) == (2, [1, 2, 3, 4])

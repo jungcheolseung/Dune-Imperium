@@ -185,6 +185,42 @@ def _context_count(context: dict[str, ActionValue], key: str) -> int:
     return value
 
 
+def _trash_for_signet(
+    state: GameState,
+    context: dict[str, ActionValue],
+    player: int,
+    card_id: str,
+    *,
+    source: str,
+) -> RuleResult:
+    """Trash a card for a Signet Ring ability, keeping the troops it recruits.
+
+    Eliminate Allies' "When this card is trashed: 2 troops" recruits during
+    the owner's turn, and a troop recruited that turn "from any source" may
+    be deployed [Main p. 10] [FAQ p. 4]. ``trash_personal_card`` credits it
+    only to an Agent-turn frame on top of the stack, which the Signet
+    context written back afterwards overwrites (the Signet Ring's box) or
+    which is not the Signet's frame at all (Servo-Receivers). The count goes
+    into ``context`` instead and reaches the turn through ``_store_signet``.
+    """
+
+    trashed = trash_personal_card(state, player, card_id, source=source)
+    recruited = 0
+    for event in trashed.events:
+        troops = dict(event.payload).get("troops", 0)
+        if (
+            event.kind == "personal_card_trash_effect_resolved"
+            and isinstance(troops, int)
+            and not isinstance(troops, bool)
+        ):
+            recruited += troops
+    if recruited:
+        context["troops_recruited"] = (
+            _context_count(context, "troops_recruited") + recruited
+        )
+    return trashed
+
+
 def _close_servo_signet(
     state: GameState,
     context: dict[str, ActionValue],
@@ -757,8 +793,9 @@ def apply_feyd_track_action(
                     payload=(("amount", 1), ("player", player)),
                 )
             )
-        trashed = trash_personal_card(
+        trashed = _trash_for_signet(
             working,
+            context,
             player,
             card_id,
             source=source,
@@ -1551,7 +1588,7 @@ def apply_fenring_signet_trash(
     player = action.actor
     card_id = str(dict(action.arguments)["card_id"])
     source = f"round:{state.round_number}:player:{player}:leader_signet"
-    trashed = trash_personal_card(state, player, card_id, source=source)
+    trashed = _trash_for_signet(state, context, player, card_id, source=source)
     context["pending_agent_effect"] = False
     next_state = _store_signet(trashed.state, context, trashed.state.players)
     return RuleResult(state=next_state, events=trashed.events)
@@ -1978,7 +2015,7 @@ def apply_irulan_signet_trash(
     source = f"round:{state.round_number}:player:{player}:leader_signet"
     definition = personal_card_for_instance(card_id)
     printed_cost = getattr(definition, "acquisition_cost", None)
-    trashed = trash_personal_card(state, player, card_id, source=source)
+    trashed = _trash_for_signet(state, context, player, card_id, source=source)
     events = list(trashed.events)
     players = trashed.state.players
     if isinstance(printed_cost, int) and printed_cost >= 1:
