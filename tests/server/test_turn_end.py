@@ -293,11 +293,13 @@ def test_an_explicit_end_handing_straight_to_a_human_still_seals_the_turn() -> N
 
 
 def test_a_human_answering_an_opponent_interrupt_is_not_held() -> None:
-    # Seed 12 (bloodlines, three "random" AI opponents): a Holy War-like
+    # Seed 7 (bloodlines, three "random" AI opponents): a Holy War-like
     # effect from an AI seat forces seat 0 to lose one unit while that AI's
     # own turn is still open. Answering it is not a turn end of seat 0's.
+    # (Re-searched 2026-09-26: the card-transcription audit's rules fixes
+    # moved the old seed 12 off this shape; seeds 7 and 16 of 0-16 reach it.)
     manager = GameSessionManager()
-    summary = manager.create_game(HUMAN_VS_RANDOM_AI, game_seed=12, bloodlines=True)
+    summary = manager.create_game(HUMAN_VS_RANDOM_AI, game_seed=7, bloodlines=True)
     game_id = str(summary["game_id"])
     summary = _play_until(
         manager,
