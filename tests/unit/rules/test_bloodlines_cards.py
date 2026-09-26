@@ -1873,6 +1873,37 @@ def test_holy_war_reveal_recruits_and_bonds_for_the_combat_icon() -> None:
     assert _reveal_context(bonded)["combat_deployment"] is True
 
 
+@pytest.mark.parametrize("bonded", [True, False])
+def test_holy_war_drawn_mid_reveal_still_bonds_for_the_combat_icon(
+    bonded: bool,
+) -> None:
+    from dune_imperium.rules.reveal_turn import legal_reveal_deployments
+
+    # "If you draw a card during your Reveal turn ... you must immediately
+    # reveal that card and use it this turn" [FAQ p. 3]; Holy War's "Fremen
+    # Bond: [Combat]" [Holy War card] lets this Reveal "deploy troops to the
+    # Conflict as though you'd sent an Agent to a Combat space" [Bloodlines
+    # p. 5] (bloodlines.md §4). Stilgar, The Devoted (Fremen) is revealed,
+    # Cunning's Plot draws Holy War: before the fix its Bond line was recorded
+    # as paid but the deployment window never opened.
+    card = _card("holy_war")
+    revealed_card = _card("stilgar_the_devoted") if bonded else STARTERS[0]
+    cunning = _intrigue("cunning")
+    owner = _owner(hand=(revealed_card,), deck=(card,), intrigue_cards=(cunning,))
+    engine = UprisingRulesEngine()
+    revealed = engine.apply(
+        _state(owner), DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    assert _reveal_context(revealed)["combat_deployment"] is False
+    drawn = engine.apply(revealed, _play_intrigue(cunning)).state
+    assert card in drawn.players[0].in_play
+    assert _reveal_context(drawn)["combat_deployment"] is bonded
+    deployments = {
+        a.action_id for a in engine.legal_actions(drawn, 0)
+    } & {a.action_id for a in legal_reveal_deployments(drawn, 0)}
+    assert ("deploy_troops" in deployments) is bonded
+
+
 def test_false_orders_moves_watching_spies_then_places_one() -> None:
     from dune_imperium.rules.intrigue import legal_intrigue_play_actions
     from dune_imperium.rules.spy_moves import (

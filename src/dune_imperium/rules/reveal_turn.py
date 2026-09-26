@@ -3828,9 +3828,27 @@ def _late_reveal_one_card(
                 next_state.decision_stack, tuple(late_deferred)
             ),
         )
+    # The card is used this turn like a card revealed at the start [FAQ p. 3],
+    # so its recorded effects also trash it or open the Combat icon, as in
+    # begin_reveal_turn (after Leadership has counted it, as in
+    # grant_late_reveal_effects).
+    self_events: list[GameEvent] = []
+    for effect in eligible:
+        if effect.trashes_self and card_id in next_state.players[player].in_play:
+            # Bombast: "Command (6+): 3 Solari and trash this card".
+            trashed = trash_personal_card(
+                next_state, player, card_id, source=f"{source}:late_trash"
+            )
+            next_state = trashed.state
+            self_events.extend(trashed.events)
+        if effect.grants_combat_icon:
+            # Holy War's Fremen Bond, Ruthless Leadership's Command: deploy
+            # as though at a Combat space [Bloodlines p. 5].
+            next_state = grant_combat_icon(next_state, player)
 
     return RuleResult(
-        state=next_state, events=(*events, *counted.events, *guild_spy_events)
+        state=next_state,
+        events=(*events, *counted.events, *guild_spy_events, *self_events),
     )
 
 
