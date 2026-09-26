@@ -1133,9 +1133,11 @@ def test_steersman_recalls_an_earlier_into_the_fray_agent_from_the_conflict() ->
     # the 2026-09-26 user ruling (OQ-068): an Into the Fray Agent sent on an
     # earlier turn is one of the "other Agents on the board" [Main p. 20] a
     # Recall Agent icon may target. It is never the Agent sent this turn --
-    # which Steersman's own Agent can never be, since only a Leader's Signet
-    # Ring sends an Agent Into the Fray, so the only offer here is the
-    # Conflict recall.
+    # here Steersman's own Agent, still on its space this turn, so the only
+    # offer is the Conflict recall (Steersman's own Agent can reach the
+    # Conflict too, via Servo-Receivers' Signet Ring icon, OQ-037 (e),
+    # OQ-062: see test_steersman_recall_never_offers_its_own_into_the_fray_agent
+    # in test_tech.py).
     state = _steersman_conflict_state()
     placed = apply_agent_action(state, _action_to(state, "deliver_supplies")).state
 
@@ -1168,6 +1170,38 @@ def test_steersman_conflict_recall_counts_the_swordmaster_bonus() -> None:
 
     assert units_strength(result.state.players[0]) == 0
     assert result.state.players[0].agents_available == 2
+
+
+def test_steersman_conflict_recall_updates_combat_strength_through_the_engine() -> (
+    None
+):
+    # Review round 1 blocker: recall_conflict_agent_for_agent_card must be
+    # registered in engine.ACTION_HANDLERS
+    # (src/dune_imperium/rules/engine.py) exactly like recall_agent_for_
+    # agent_card, or choosing it through UprisingRulesEngine raises KeyError.
+    # The running Combat strength [Main p. 12] the engine keeps current
+    # (refresh_pre_reveal_strength) is what a real turn actually depends on,
+    # not units_strength alone.
+    engine = UprisingRulesEngine()
+    state = _steersman_conflict_state()
+    placement = next(
+        action
+        for action in engine.legal_actions(state, 0)
+        if dict(action.arguments).get("space_id") == "deliver_supplies"
+    )
+    placed = engine.apply(state, placement).state
+    assert placed.players[0].combat_strength == 2
+
+    recall = next(
+        action
+        for action in engine.legal_actions(placed, 0)
+        if action.action_id == "recall_conflict_agent_for_agent_card"
+    )
+    result = engine.apply(placed, recall)
+
+    assert result.state.players[0].combat_strength == 0
+    assert result.state.players[0].agent_in_conflict == 0
+    assert result.state.players[0].agents_available == 1
 
 
 def test_junction_headquarters_may_pay_intrigue_and_spice_for_vp() -> None:

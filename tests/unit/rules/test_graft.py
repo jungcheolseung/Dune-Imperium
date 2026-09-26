@@ -552,6 +552,88 @@ def test_sardaukar_ii_never_recalls_this_turns_into_the_fray_agent() -> None:
     assert seat.agents_available == 1
 
 
+def test_sardaukar_ii_reward_still_fizzles_with_no_earlier_conflict_agent() -> None:
+    # Review round 1 major finding: with no board Agent and no earlier
+    # turn's Conflict Agent, Sardaukar II's "recall one of your Agents"
+    # [Main p. 20] must still fizzle -- it is never this turn's own Agent,
+    # even though Into the Fray moved it to the Conflict (OQ-037 (d),
+    # extended to every Recall Agent effect by the 2026-09-26 user ruling,
+    # OQ-068). Unlike
+    # test_sardaukar_ii_never_recalls_this_turns_into_the_fray_agent, there
+    # is no earlier turn's Conflict Agent here, so the reward has nothing at
+    # all to recall.
+    from dune_imperium.rules.contracts import (
+        apply_contract_completion,
+        legal_contract_completion_actions,
+        legal_contract_recall_actions,
+    )
+
+    config = RulesetConfig(immortality=True, bloodlines=True, choam_module=True)
+    state = _state(
+        _owner(
+            (FACE_DANCER, SIGNET),
+            leader_id="duncan_idaho",
+            influence=Influence(emperor=2),
+            resources=Resources(solari=4, spice=4, water=2),
+            agents_available=2,
+            agent_in_conflict=0,
+            active_contract_ids=("contract:sardaukar_ii",),
+        ),
+        config=config,
+    )
+    grafted = _graft(state, FACE_DANCER, "sardaukar", SIGNET)
+    switched = apply_graft_switch(
+        grafted, next(iter(legal_graft_switch_actions(grafted, 0)))
+    ).state
+    deploy = next(
+        action
+        for action in legal_leader_signet_actions(switched, 0)
+        if action.action_id == "deploy_leader_agent"
+    )
+    fighting = apply_leader_agent_deploy(switched, deploy).state
+    assert fighting.players[0].agent_locations == ()
+    assert fighting.players[0].agent_in_conflict == 1
+
+    completion = next(
+        action
+        for action in legal_contract_completion_actions(fighting, 0)
+        if dict(action.arguments)["instance_id"] == "contract:sardaukar_ii"
+    )
+    completed = apply_contract_completion(fighting, completion)
+
+    assert any(
+        event.kind == "contract_recall_unavailable" for event in completed.events
+    )
+    assert legal_contract_recall_actions(completed.state, 0) == ()
+    assert completed.state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+
+
+def test_twisted_mentat_never_offers_an_earlier_turns_conflict_agent() -> None:
+    # Review round 1 major finding: Twisted Mentat may recall only "the
+    # Agent you sent this turn" [Twisted Mentat card]. While that Agent is
+    # still on its space (no Into the Fray this turn), an earlier turn's
+    # Conflict Agent must never be offered, even though the seat has one.
+    state = _state(
+        _owner(
+            (MENTAT, DAGGER),
+            agent_locations=(),
+            agents_available=1,
+            agent_in_conflict=1,
+        )
+    )
+    grafted = _graft(state, MENTAT, "assembly_hall", DAGGER)
+    actions = legal_agent_card_recall_actions(grafted, 0)
+    assert {action.action_id for action in actions} == {
+        "decline_agent_card_recall",
+        "recall_agent_for_agent_card",
+    }
+    assert {
+        dict(action.arguments).get("space_id")
+        for action in actions
+        if action.action_id == "recall_agent_for_agent_card"
+    } == {"assembly_hall"}
+
+
 def test_a_trashed_partner_loses_its_unactivated_box() -> None:
     state = _state(_owner((FACE_DANCER, DAGGER)))
     grafted = _graft(state, DAGGER, "assembly_hall", FACE_DANCER)

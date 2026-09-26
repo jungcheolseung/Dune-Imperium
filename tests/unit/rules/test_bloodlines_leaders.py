@@ -799,6 +799,62 @@ def test_sardaukar_ii_recalls_an_earlier_into_the_fray_agent_instead_of_fizzling
     assert resolved.agent_locations == ("sardaukar",)
 
 
+def test_sardaukar_ii_conflict_recall_updates_combat_strength_through_the_engine() -> (
+    None
+):
+    # Review round 1 blocker: recall_conflict_agent_for_contract must be
+    # registered in engine.ACTION_HANDLERS
+    # (src/dune_imperium/rules/engine.py) exactly like recall_agent_for_
+    # contract, or choosing it through UprisingRulesEngine raises KeyError --
+    # it is the only legal action once the reward opens with no board Agent
+    # left to recall. The running Combat strength [Main p. 12] the engine
+    # keeps current (refresh_pre_reveal_strength) is what a real turn
+    # actually depends on.
+    engine = UprisingRulesEngine()
+    truthtrance = next(
+        card_id
+        for card_id in imperium_deck_instance_ids(True)
+        if ":truthtrance:" in card_id
+    )
+    owner = PlayerState(
+        player_id=0,
+        leader_id="duncan_idaho",
+        hand=(truthtrance,),
+        deck=(RECON,),
+        resources=Resources(spice=4),
+        agents_available=1,
+        agent_in_conflict=1,
+        active_contract_ids=("contract:sardaukar_ii",),
+    )
+    state = _turn_state(owner, config=RulesetConfig(bloodlines=True, choam_module=True))
+    placement = next(
+        action
+        for action in engine.legal_actions(state, 0)
+        if dict(action.arguments).get("space_id") == "sardaukar"
+    )
+    placed = engine.apply(state, placement).state
+    assert placed.players[0].combat_strength == 2
+
+    completion = next(
+        action
+        for action in engine.legal_actions(placed, 0)
+        if action.action_id == "complete_contract"
+        and dict(action.arguments)["instance_id"] == "contract:sardaukar_ii"
+    )
+    completed = engine.apply(placed, completion).state
+
+    recall = next(
+        action
+        for action in engine.legal_actions(completed, 0)
+        if action.action_id == "recall_conflict_agent_for_contract"
+    )
+    result = engine.apply(completed, recall)
+
+    assert result.state.players[0].combat_strength == 0
+    assert result.state.players[0].agent_in_conflict == 0
+    assert result.state.players[0].agents_available == 1
+
+
 # --- Gaius Helen Mohiam ------------------------------------------------------
 
 
