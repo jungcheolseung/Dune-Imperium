@@ -9,11 +9,22 @@ tile was acquired in (OQ-062 (b)). Rapid Engineering ("[discard] → [-1]
 of an Agent or Reveal turn, including before the Agent is placed.
 """
 
+from dataclasses import replace
+
 import pytest
 
 from dune_imperium import RulesetConfig
 from dune_imperium.adapters import ActionCodec
+from dune_imperium.content.schema import CardDefinition
 from dune_imperium.content.uprising.conflicts import CONFLICTS
+from dune_imperium.content.uprising.contracts import (
+    CONTRACT_SOURCES,
+    CONTRACTS_BY_ID,
+    ContractCondition,
+    ContractConditionKind,
+    ContractDefinition,
+    ContractReward,
+)
 from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
 from dune_imperium.core import (
     DecisionFrame,
@@ -243,6 +254,75 @@ def test_warmaster_troop_from_the_turn_frame_joins_the_allowance() -> None:
     before = _servo_before_placement(owner)
     assert before.players[0].troops_garrison == 3
     placed = _send_agent(before, "heighliner")
+    assert _agent_frame(placed)["troops_recruited"] == 1
+    assert _deploy_counts(placed) == [1, 2, 3]
+
+
+def _fake_troop_contract(card_id: str, target: str) -> ContractDefinition:
+    return ContractDefinition(
+        card=CardDefinition(
+            card_id=card_id,
+            name="Fake Troop Acquire",
+            sources=CONTRACT_SOURCES,
+        ),
+        condition=ContractCondition(ContractConditionKind.ACQUIRE_CARD, target=target),
+        reward=ContractReward(troops=1),
+    )
+
+
+def test_chroniclers_insight_contract_troop_from_the_turn_frame_joins_the_allowance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Round 3 review finding 3: apply_leader_signet_acquire used to compute
+    # ``turn_closed`` as "the top frame is a bare turn frame after the box
+    # settles", which wrongly matched Servo-Receivers running *from* a bare
+    # turn frame before the Agent is placed (OQ-062) and dropped this
+    # Contract's troop reward from the turn's recruit count.
+    # ``turn_closing_player`` (ce533c4) only reports a close when an
+    # AGENT_EFFECTS or Reveal frame actually turned into a fresh "turn"
+    # frame -- not when it was already one. No shipped Acquire Contract
+    # rewards a troop, so a fake one shares Arrakis Revolt's and
+    # Occupation's shape (``test_acquisition.py``'s ``_fake_troop_contract``)
+    # to exercise the path. "그 turn에 어떤 출처에서 recruit했든 새 troop은
+    # Conflict에 deploy할 수 있다" [Main p. 10] [FAQ p. 4]
+    # (docs/rules/player-turns.md:137).
+    target = "imperium:sardaukar_soldier:0"
+    monkeypatch.setitem(
+        CONTRACTS_BY_ID,
+        "fake_troop_acquire",
+        _fake_troop_contract("fake_troop_acquire", target.split(":")[1]),
+    )
+    owner = _owner("princess_irulan", troops_garrison=2, troops_supply=10)
+    base = _turn_state(owner)
+    contracted_owner = replace(
+        owner, active_contract_ids=("contract:fake_troop_acquire",)
+    )
+    state = replace(
+        base,
+        config=replace(TECH, choam_module=True),
+        players=(contracted_owner, *base.players[1:]),
+        imperium_row=(target, "imperium:calculus_of_power:0"),
+        imperium_deck=("imperium:overthrow:0",),
+    )
+    signet = _acquire_servo(state)
+    assert signet.decision_stack[-1].kind == FrameKind.LEADER_SIGNET
+
+    acquire = next(
+        action
+        for action in ENGINE.legal_actions(signet, 0)
+        if action.action_id == "acquire_leader_imperium"
+        and dict(action.arguments).get("instance_id") == target
+    )
+    resolved = ENGINE.apply(signet, acquire).state
+
+    assert [frame.kind for frame in resolved.decision_stack] == [FrameKind.TURN]
+    assert resolved.players[0].troops_garrison == 3
+    assert resolved.players[0].completed_contract_ids == (
+        "contract:fake_troop_acquire",
+    )
+    assert dict(resolved.decision_stack[-1].context)["troops_recruited"] == 1
+
+    placed = _send_agent(resolved, "heighliner")
     assert _agent_frame(placed)["troops_recruited"] == 1
     assert _deploy_counts(placed) == [1, 2, 3]
 
